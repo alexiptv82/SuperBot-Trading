@@ -16,14 +16,18 @@ class RiskManager:
         else:
             stop_loss = price + sl_distance
             take_profit = price - (sl_distance * tp_ratio)
-        risk_amount = capital * self.RISK_PER_TRADE
-        sl_pct = sl_distance / price
-        position_value = risk_amount / sl_pct if sl_pct > 0 else 0
-        quantity = (position_value * leverage) / price if price > 0 else 0
+
+        # Sizing corretto: max 20% del capitale per trade
+        max_position_usdt = capital * 0.20
+        position_usdt = min(max_position_usdt, capital * 0.10)
+        quantity = round(position_usdt / price, 6)
+
         return {
-            'quantity': round(quantity, 6), 'leverage': leverage,
-            'stop_loss': round(stop_loss, 4), 'take_profit': round(take_profit, 4),
-            'risk_amount_usdt': round(risk_amount, 2),
+            'quantity': quantity,
+            'leverage': leverage,
+            'stop_loss': round(stop_loss, 4),
+            'take_profit': round(take_profit, 4),
+            'risk_amount_usdt': round(position_usdt, 2),
         }
 
     def check_daily_loss_limit(self, daily_pnl, capital) -> bool:
