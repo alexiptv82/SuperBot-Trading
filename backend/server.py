@@ -46,7 +46,7 @@ async def get_prices():
 async def get_indicators(symbol: str):
     try:
         ohlcv = await exchange.get_ohlcv(symbol, '1m', 100)
-        from backend.indicators import TechnicalIndicators
+        from indicators import TechnicalIndicators
         return TechnicalIndicators(ohlcv).compute_all()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
