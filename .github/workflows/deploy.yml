@@ -1,15 +1,12 @@
 name: Deploy SuperBot to OVH
-
 on:
   push:
     branches: [ main ]
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -17,11 +14,29 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/superbot || (git clone https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot && cd /opt/superbot)
-            git pull origin main
+            # Installa dipendenze se non presenti
+            apt-get update -qq
+            apt-get install -y python3 python3-pip git curl
+            # Clona o aggiorna il repo
+            if [ -d "/opt/superbot" ]; then
+              cd /opt/superbot && git pull origin main
+            else
+              git clone https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot
+              cd /opt/superbot
+            fi
+            # Crea .env se non esiste
+            if [ ! -f "/opt/superbot/backend/.env" ]; then
+              cp /opt/superbot/.env.example /opt/superbot/backend/.env
+            fi
+            # Crea cartella dati
+            mkdir -p /opt/superbot/data
+            # Installa dipendenze Python
             cd /opt/superbot
             pip3 install -r backend/requirements.txt --break-system-packages
+            # Ferma bot esistente
             pkill -f "uvicorn backend.server" || true
             sleep 2
-            nohup python3 -m uvicorn backend.server:app --host 0.0.0.0 --port 8001 &
-            echo "Deploy completato"
+            # Avvia bot
+            cd /opt/superbot
+            nohup python3 -m uvicorn backend.server:app --host 0.0.0.0 --port 8001 > /var/log/superbot.log 2>&1 &
+            echo "Deploy completato OK"
