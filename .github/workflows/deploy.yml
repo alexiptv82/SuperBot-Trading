@@ -34,9 +34,14 @@ jobs:
             # Installa dipendenze Python
             cd /opt/superbot
             pip3 install --upgrade pip --break-system-packages
-            pip3 install fastapi uvicorn python-dotenv python-multipart --break-system-packages
-            pip3 install ccxt sqlalchemy aiosqlite httpx apscheduler --break-system-packages
-            pip3 install pandas numpy ta --break-system-packages
+            pip3 install -r backend/requirements.txt \
+              --break-system-packages \
+              --ignore-installed \
+              --no-deps \
+              2>/dev/null || true
+            pip3 install -r backend/requirements.txt \
+              --break-system-packages \
+              --ignore-installed
             # Ferma bot esistente
             pkill -f "uvicorn backend.server" || true
             sleep 2
