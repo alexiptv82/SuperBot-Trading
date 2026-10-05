@@ -1,4 +1,4 @@
-from backend.indicators import TechnicalIndicators
+from indicators import TechnicalIndicators
 
 class SignalEngine:
     MIN_STRENGTH = 60

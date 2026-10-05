@@ -1,4 +1,4 @@
-from backend.config import config
+from config import config
 
 class RiskManager:
     RISK_PER_TRADE = 0.02

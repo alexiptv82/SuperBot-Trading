@@ -3,7 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import os
-from backend.config import config
+from config import config
 
 os.makedirs('data', exist_ok=True)
 DATABASE_URL = f"sqlite:///{config.DB_PATH}"

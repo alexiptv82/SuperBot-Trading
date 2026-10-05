@@ -1,6 +1,6 @@
 import ccxt
 import asyncio
-from backend.config import config
+from config import config
 
 class BitGetExchange:
     def __init__(self):

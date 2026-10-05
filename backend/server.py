@@ -2,10 +2,10 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from backend.config import config
-from backend.database import init_db, get_db, Trade, AuditLog
-from backend.bot_engine import bot
-from backend.exchange import exchange
+from config import config
+from database import init_db, get_db, Trade, AuditLog
+from bot_engine import bot
+from exchange import exchange
 
 init_db()
 

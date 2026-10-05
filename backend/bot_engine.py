@@ -2,11 +2,11 @@ import asyncio
 import json
 from datetime import datetime
 from typing import Optional
-from backend.config import config
-from backend.database import Trade, AuditLog, SessionLocal
-from backend.exchange import exchange
-from backend.signal_engine import signal_engine
-from backend.risk_manager import risk_manager
+from config import config
+from database import Trade, AuditLog, SessionLocal
+from exchange import exchange
+from signal_engine import signal_engine
+from risk_manager import risk_manager
 
 class BotEngine:
     def __init__(self):
