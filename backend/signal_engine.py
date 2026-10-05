@@ -1,7 +1,7 @@
 from indicators import TechnicalIndicators
 
 class SignalEngine:
-    MIN_STRENGTH = 60
+    MIN_STRENGTH = 50
 
     def analyze(self, ohlcv_1m, ohlcv_15m, ohlcv_1h) -> dict:
         try:
