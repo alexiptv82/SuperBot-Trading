@@ -47,3 +47,5 @@ jobs:
             cd /opt/superbot
             nohup python3 -m uvicorn backend.server:app --host 0.0.0.0 --port 8001 > /var/log/superbot.log 2>&1 &
             echo "Deploy completato OK"
+
+# Deploy v3 - timeout 30m
