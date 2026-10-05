@@ -9,3 +9,9 @@ credentials.json
 __pycache__/
 *.py[cod]
 *.pyc
+
+frontend/node_modules/
+frontend/build/
+frontend/.cache/
+backend/data/*.db
+backend/__pycache__/

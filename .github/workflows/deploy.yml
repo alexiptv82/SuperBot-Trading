@@ -1,0 +1,27 @@
+name: Deploy SuperBot to OVH
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/superbot || (git clone https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot && cd /opt/superbot)
+            git pull origin main
+            cd /opt/superbot
+            pip3 install -r backend/requirements.txt --break-system-packages
+            pkill -f "uvicorn backend.server" || true
+            sleep 2
+            nohup python3 -m uvicorn backend.server:app --host 0.0.0.0 --port 8001 &
+            echo "Deploy completato"
