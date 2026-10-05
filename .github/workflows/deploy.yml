@@ -33,21 +33,25 @@ jobs:
             mkdir -p /opt/superbot/data
             # Installa dipendenze Python
             cd /opt/superbot
+            export PIP_NO_DEPS=0
             pip3 install --upgrade pip --break-system-packages
             pip3 install -r backend/requirements.txt \
               --break-system-packages \
-              --ignore-installed \
-              --no-deps \
-              2>/dev/null || true
-            pip3 install -r backend/requirements.txt \
+              --no-deps
+            pip3 install fastapi uvicorn python-dotenv \
+              python-multipart ccxt sqlalchemy aiosqlite \
+              httpx apscheduler pytest pytest-asyncio \
               --break-system-packages \
-              --ignore-installed
+              --no-deps
             # Ferma bot esistente
-            pkill -f "uvicorn backend.server" || true
+            pkill -f "uvicorn" || true
             sleep 2
-            # Avvia bot
             cd /opt/superbot
-            nohup python3 -m uvicorn backend.server:app --host 0.0.0.0 --port 8001 > /var/log/superbot.log 2>&1 &
+            nohup python3 -m uvicorn backend.server:app \
+              --host 0.0.0.0 --port 8001 \
+              > /var/log/superbot.log 2>&1 &
+            sleep 3
+            curl -s http://localhost:8001/api/health && echo "BOT ONLINE" || echo "BOT NON RISPONDE"
             echo "Deploy completato OK"
 
 # Deploy v3 - timeout 30m
