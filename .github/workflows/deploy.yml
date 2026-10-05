@@ -15,45 +15,27 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 30m
           script: |
-            set -e
-            
-            # Installa dipendenze sistema
-            apt-get install -y python3 python3-venv python3-pip git curl 2>/dev/null || true
-            
-            # Clona o aggiorna repo
+            apt-get install -y docker.io git curl 2>/dev/null || true
+            systemctl start docker 2>/dev/null || true
             if [ -d "/opt/superbot/.git" ]; then
               cd /opt/superbot && git pull origin main
             else
-              rm -rf /opt/superbot
               git clone https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot
             fi
-            
             cd /opt/superbot
-            
-            # Crea virtual environment isolato
-            python3 -m venv /opt/superbot-venv
-            source /opt/superbot-venv/bin/activate
-            
-            # Installa dipendenze nel venv (no conflitti con sistema)
-            pip install --upgrade pip
-            pip install -r backend/requirements.txt
-            
-            # Crea .env se non esiste
-            if [ ! -f "/opt/superbot/backend/.env" ]; then
-              cp /opt/superbot/.env.example /opt/superbot/backend/.env 2>/dev/null || true
+            if [ ! -f "backend/.env" ]; then
+              cp .env.example backend/.env 2>/dev/null || touch backend/.env
             fi
-            
-            mkdir -p /opt/superbot/data
-            
-            # Ferma istanza precedente
-            pkill -f "uvicorn" || true
-            sleep 2
-            
-            # Avvia bot con venv
-            cd /opt/superbot
-            nohup /opt/superbot-venv/bin/python -m uvicorn backend.server:app \
-              --host 0.0.0.0 --port 8001 \
-              > /var/log/superbot.log 2>&1 &
-            
+            mkdir -p data
+            docker stop superbot 2>/dev/null || true
+            docker rm superbot 2>/dev/null || true
+            docker build -t superbot .
+            docker run -d \
+              --name superbot \
+              --restart always \
+              -p 8001:8001 \
+              -v /opt/superbot/data:/app/data \
+              -v /opt/superbot/backend/.env:/app/backend/.env \
+              superbot
             sleep 5
             curl -s http://localhost:8001/api/health && echo "BOT ONLINE OK" || echo "ERRORE AVVIO"
