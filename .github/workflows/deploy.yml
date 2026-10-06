@@ -5,11 +5,42 @@ on:
     branches: [ main ]
 
 jobs:
-  deploy:
+  build-frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Build React
+        working-directory: frontend
+        run: |
+          npm install --legacy-peer-deps
+          REACT_APP_API_URL=http://51.91.109.45:8002 npm run build
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build
 
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build
+      - name: Copy frontend to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: frontend/build/*
+          target: /opt/superbot/
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -19,28 +50,18 @@ jobs:
           command_timeout: 30m
           envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
           script: |
-            apt-get install -y docker.io git curl nginx nodejs npm 2>/dev/null || true
+            apt-get install -y docker.io git curl nginx 2>/dev/null || true
             systemctl start docker 2>/dev/null || true
-            systemctl enable nginx 2>/dev/null || true
-            if [ -d "/opt/superbot/.git" ]; then
-              cd /opt/superbot && git fetch origin && git reset --hard origin/main
-            else
-              git clone https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot
-            fi
-            cd /opt/superbot
-            printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD=superbot2024\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" > backend/.env
-            mkdir -p data
-            cd /opt/superbot/frontend
-            npm install --legacy-peer-deps 2>/dev/null || true
-            REACT_APP_API_URL=http://51.91.109.45:8002 npm run build 2>/dev/null || true
-            cd /opt/superbot
-            cp nginx.conf /etc/nginx/sites-available/superbot
+            cd /opt/superbot && git fetch origin && git reset --hard origin/main
+            printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD=superbot2024\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" > /opt/superbot/backend/.env
+            mkdir -p /opt/superbot/data
+            cp /opt/superbot/nginx.conf /etc/nginx/sites-available/superbot
             ln -sf /etc/nginx/sites-available/superbot /etc/nginx/sites-enabled/superbot
             rm -f /etc/nginx/sites-enabled/default
             nginx -t && systemctl restart nginx
             docker stop superbot 2>/dev/null || true
             docker rm superbot 2>/dev/null || true
-            docker build --no-cache -t superbot .
+            docker build --no-cache -t superbot /opt/superbot
             docker run -d \
               --name superbot \
               --restart always \
