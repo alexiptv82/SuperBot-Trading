@@ -1,7 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+import os
 from config import config
 from database import init_db, get_db, Trade, AuditLog
 from bot_engine import bot
@@ -88,6 +91,22 @@ async def get_logs(db: Session = Depends(get_db), limit: int = 100):
 @app.get('/api/health')
 async def health():
     return {'status': 'ok', 'mode': config.TRADING_MODE, 'version': '1.0.0'}
+
+# Serve frontend React se la cartella build esiste
+frontend_build = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'build')
+if os.path.exists(frontend_build):
+    app.mount("/static", StaticFiles(directory=os.path.join(frontend_build, 'static')), name="static")
+
+    @app.get("/")
+    async def serve_frontend():
+        return FileResponse(os.path.join(frontend_build, 'index.html'))
+
+    @app.get("/{path:path}")
+    async def serve_frontend_routes(path: str):
+        file_path = os.path.join(frontend_build, path)
+        if os.path.exists(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(frontend_build, 'index.html'))
 
 if __name__ == '__main__':
     import uvicorn
