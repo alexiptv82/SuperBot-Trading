@@ -1,6 +1,6 @@
 import axios from 'axios';
 const API = axios.create({
-  baseURL: process.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_API_URL || 'http://localhost:8001',
+  baseURL: process.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_API_URL || 'http://51.91.109.45:8002',
   timeout: 10000
 });
 export const botAPI = {
