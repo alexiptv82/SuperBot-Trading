@@ -33,9 +33,9 @@ jobs:
             docker run -d \
               --name superbot \
               --restart always \
-              -p 8001:8001 \
+              -p 8002:8001 \
               -v /opt/superbot/data:/app/data \
               -v /opt/superbot/backend/.env:/app/backend/.env \
               superbot
             sleep 5
-            curl -s http://localhost:8001/api/health && echo "BOT ONLINE OK" || echo "ERRORE AVVIO"
+            curl -s http://localhost:8002/api/health && echo "BOT ONLINE OK" || echo "ERRORE AVVIO"

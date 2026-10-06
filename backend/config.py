@@ -14,7 +14,7 @@ class Config:
     MAX_OPEN_POSITIONS = int(os.getenv('MAX_OPEN_POSITIONS', '3'))
     TRADING_PAIRS_RAW = os.getenv('TRADING_PAIRS', 'BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT')
     TRADING_PAIRS = [p.strip() for p in TRADING_PAIRS_RAW.split(',')]
-    BACKEND_PORT = int(os.getenv('BACKEND_PORT', '8001'))
+    BACKEND_PORT = int(os.getenv('BACKEND_PORT', '8002'))
     DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', 'superbot2024')
     SECRET_KEY = os.getenv('SECRET_KEY', 'superbot-secret-key')
     DB_PATH = os.getenv('DB_PATH', './data/superbot.db')
