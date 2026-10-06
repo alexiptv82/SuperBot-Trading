@@ -19,7 +19,7 @@ jobs:
           command_timeout: 30m
           envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
           script: |
-            apt-get install -y docker.io git curl 2>/dev/null || true
+            apt-get install -y docker.io git curl nginx 2>/dev/null || true
             systemctl start docker 2>/dev/null || true
             if [ -d "/opt/superbot/.git" ]; then
               cd /opt/superbot && git fetch origin && git reset --hard origin/main
@@ -29,6 +29,10 @@ jobs:
             cd /opt/superbot
             printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD=superbot2024\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" > backend/.env
             mkdir -p data
+            cp nginx.conf /etc/nginx/sites-available/superbot
+            ln -sf /etc/nginx/sites-available/superbot /etc/nginx/sites-enabled/superbot
+            rm -f /etc/nginx/sites-enabled/default
+            nginx -t && systemctl restart nginx || true
             docker stop superbot 2>/dev/null || true
             docker rm superbot 2>/dev/null || true
             docker build --no-cache -t superbot .
@@ -41,3 +45,4 @@ jobs:
               superbot
             sleep 5
             curl -s http://localhost:8002/api/health && echo "BOT ONLINE OK" || echo "ERRORE AVVIO"
+            systemctl is-active nginx && echo "NGINX OK" || echo "NGINX NON ATTIVO"
