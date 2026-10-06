@@ -14,7 +14,7 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 30m
-          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE
+          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
           script: |
             apt-get install -y docker.io git curl 2>/dev/null || true
             systemctl start docker 2>/dev/null || true
@@ -24,10 +24,12 @@ jobs:
               git clone https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot
             fi
             cd /opt/superbot
-            cat > backend/.env << 'EOF'
+            cat > backend/.env << EOF
 BITGET_API_KEY=$BITGET_API_KEY
 BITGET_SECRET_KEY=$BITGET_SECRET_KEY
 BITGET_PASSPHRASE=$BITGET_PASSPHRASE
+TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
 TRADING_MODE=paper
 INITIAL_CAPITAL=1000
 MAX_LEVERAGE=10

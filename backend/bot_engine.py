@@ -7,6 +7,10 @@ from database import Trade, AuditLog, SessionLocal
 from exchange import exchange
 from signal_engine import signal_engine
 from risk_manager import risk_manager
+try:
+    from backend.telegram_notifier import notifier
+except ImportError:
+    from telegram_notifier import notifier
 
 class BotEngine:
     def __init__(self):
@@ -21,11 +25,13 @@ class BotEngine:
         self.is_running = True
         self._task = asyncio.create_task(self._main_loop())
         self._log('bot_start', message=f'Bot avviato - modalita {config.TRADING_MODE}')
+        asyncio.create_task(notifier.send("🤖 <b>SuperBot avviato!</b>\nModalità: " + config.TRADING_MODE.upper()))
 
     async def stop(self):
         self.is_running = False
         if self._task: self._task.cancel()
         self._log('bot_stop', message='Bot fermato')
+        asyncio.create_task(notifier.send("⏹️ <b>SuperBot fermato</b>"))
 
     async def _main_loop(self):
         while self.is_running:
@@ -84,6 +90,10 @@ class BotEngine:
             self.open_trades[order['id']] = record
             self._log('trade_open', symbol=symbol,
                       message=f"{analysis['signal'].upper()} {symbol} @ {price} | {analysis['trade_type']} | forza:{analysis['strength']}")
+            asyncio.create_task(notifier.trade_opened(
+                symbol, analysis['signal'], price,
+                params['leverage'], analysis['trade_type'], analysis['strength']
+            ))
         except Exception as e:
             self._log('error', symbol=symbol, message=f'Errore analisi {symbol}: {e}')
 
@@ -106,6 +116,9 @@ class BotEngine:
                     closed.append(oid)
                     self._log('trade_close', symbol=trade['symbol'],
                               message=f"Chiuso {trade['symbol']} PnL:{pnl:.2f} USDT motivo:{close_reason}")
+                    asyncio.create_task(notifier.trade_closed(
+                        trade['symbol'], trade['side'], pnl, close_reason
+                    ))
             except Exception as e:
                 print(f'Errore monitoraggio: {e}')
         for oid in closed: del self.open_trades[oid]
