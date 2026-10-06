@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# PYTHONPATH include /app/backend così gli import locali funzionano
+ENV PYTHONPATH=/app/backend
+
 # Installa dipendenze sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -19,4 +22,4 @@ RUN mkdir -p /app/data
 
 EXPOSE 8001
 
-CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["python", "-m", "uvicorn", "backend.server:app", "--host", "0.0.0.0", "--port", "8001"]
