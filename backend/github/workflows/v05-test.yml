@@ -1,0 +1,106 @@
+name: V0.5 Strategy Engine - Manual Test
+
+# Manual-only workflow for testing the V0.5 strategy engine (backend/backtest_harness.py
+# and backend/live_monitor.py). Never triggers on push, never touches main, never
+# deploys anything -- completely separate from .github/workflows/deploy.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Tipo di test"
+        required: true
+        default: "backtest"
+        type: choice
+        options:
+          - backtest
+          - live_monitor
+      symbols:
+        description: "Simboli separati da virgola"
+        required: false
+        default: "BTC/USDT:USDT,ETH/USDT:USDT,XAU/USDT:USDT,XAG/USDT:USDT"
+      candles:
+        description: "Numero di candele 1m da scaricare (solo backtest)"
+        required: false
+        default: "20000"
+      holding:
+        description: "Holding: numero di barre (backtest) o minuti (live_monitor)"
+        required: false
+        default: "15"
+      stride:
+        description: "Stride tra uno step e il successivo (solo backtest)"
+        required: false
+        default: "10"
+      offset_days:
+        description: "Giorni indietro da cui far terminare la finestra storica (solo backtest, 0 = fino ad ora)"
+        required: false
+        default: "0"
+      max_hours:
+        description: "Durata massima in ore (solo live_monitor, tetto di sicurezza)"
+        required: false
+        default: "5.5"
+      poll_seconds:
+        description: "Intervallo di polling in secondi (solo live_monitor)"
+        required: false
+        default: "60"
+
+jobs:
+  run-test:
+    runs-on: ubuntu-latest
+    # Safety ceiling above max_hours so the job doesn't get killed before
+    # live_monitor.py finishes its own graceful shutdown and the artifact
+    # upload step runs.
+    timeout-minutes: 355
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout v0.5
+        uses: actions/checkout@v4
+        with:
+          ref: v0.5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt pandas numpy python-dotenv
+
+      - name: Run backtest
+        if: ${{ inputs.mode == 'backtest' }}
+        run: |
+          python backtest_harness.py \
+            --symbols "${{ inputs.symbols }}" \
+            --candles "${{ inputs.candles }}" \
+            --holding "${{ inputs.holding }}" \
+            --stride "${{ inputs.stride }}" \
+            --offset-days "${{ inputs.offset_days }}" \
+            --state-out backtest_state.json \
+            2>&1 | tee backtest_output.log
+
+      - name: Run live monitor
+        if: ${{ inputs.mode == 'live_monitor' }}
+        run: |
+          python live_monitor.py \
+            --symbols "${{ inputs.symbols }}" \
+            --holding-minutes "${{ inputs.holding }}" \
+            --poll-seconds "${{ inputs.poll_seconds }}" \
+            --max-hours "${{ inputs.max_hours }}" \
+            --state-out live_state.json \
+            2>&1 | tee live_monitor.log
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v05-test-results-${{ github.run_id }}
+          path: |
+            backend/backtest_output.log
+            backend/backtest_state.json
+            backend/live_monitor.log
+            backend/live_state.json
+          if-no-files-found: ignore
+          retention-days: 14
