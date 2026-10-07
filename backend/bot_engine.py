@@ -12,6 +12,36 @@ try:
 except ImportError:
     from telegram_notifier import notifier
 
+# ── V0.5 Strategy Engine ──────────────────────────────────────────────────────
+# Loaded with try/except so the bot can start even if the strategies package
+# is temporarily missing (e.g. during a hot-swap deploy). When unavailable,
+# _v05_enabled=False and every _analyze_v05 call is a no-op.
+try:
+    from strategies import (
+        TrendFollowingStrategy,
+        MeanReversionStrategy,
+        MomentumStrategy,
+        StrategyContext,
+    )
+    from strategy_selector import StrategySelector
+
+    _v05_strategies = [
+        TrendFollowingStrategy(),
+        MeanReversionStrategy(),
+        MomentumStrategy(),
+    ]
+    _v05_selector = StrategySelector(
+        strategy_ids=[s.strategy_id for s in _v05_strategies]
+    )
+    _v05_enabled = True
+except Exception as _v05_import_err:  # noqa: BLE001
+    _v05_strategies = []
+    _v05_selector = None
+    _v05_enabled = False
+    print(f"[V0.5] Strategy engine non disponibile: {_v05_import_err}")
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 class BotEngine:
     def __init__(self):
         self.is_running = False
@@ -24,7 +54,8 @@ class BotEngine:
         if self.is_running: return
         self.is_running = True
         self._task = asyncio.create_task(self._main_loop())
-        self._log('bot_start', message=f'Bot avviato - modalita {config.TRADING_MODE}')
+        v05_status = "ON" if _v05_enabled else "OFF (import error)"
+        self._log('bot_start', message=f'Bot avviato - modalita {config.TRADING_MODE} | V0.5 engine: {v05_status}')
         asyncio.create_task(notifier.send("🤖 <b>SuperBot avviato!</b>\nModalità: " + config.TRADING_MODE.upper()))
 
     async def stop(self):
@@ -51,6 +82,58 @@ class BotEngine:
                 self._log('error', message=f'Errore loop: {e}')
                 await asyncio.sleep(10)
 
+    # ── V0.5: parallel shadow run ─────────────────────────────────────────────
+    def _analyze_v05(self, symbol: str, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime: str = "unknown"):
+        """Run the V0.5 strategy engine in shadow mode (no trade execution).
+
+        Reads the StrategyContext, queries all three strategies, calls the
+        selector, and logs the result. Never raises — any exception is caught
+        and logged so the V1 signal_engine path is never affected.
+        """
+        if not _v05_enabled:
+            return
+
+        try:
+            context = StrategyContext.from_ohlcv(
+                symbol=symbol,
+                ohlcv_1m=ohlcv_1m,
+                ohlcv_15m=ohlcv_15m,
+                ohlcv_1h=ohlcv_1h,
+                regime=regime,
+            )
+
+            decisions = [s.analyze(context) for s in _v05_strategies]
+
+            result = _v05_selector.select(decisions, regime=regime)
+
+            # Build compact summary for the audit log
+            selected = result.selected
+            if selected is not None:
+                summary = (
+                    f"V0.5 [{result.selected_role}] {result.selected_strategy_id}"
+                    f" → {selected.direction.value.upper()}"
+                    f" strength={selected.strength:.1f}"
+                    f" conf={selected.confidence:.2f}"
+                    f" reasons={','.join(selected.reasons[:3])}"
+                    f" regime={result.regime}"
+                )
+            else:
+                # All strategies held or below threshold
+                summary = (
+                    f"V0.5 [NO_SIGNAL] regime={result.regime}"
+                    f" rankings={[r['strategy_id']+':'+str(round(r['strength'],1)) for r in result.rankings]}"
+                )
+
+            if result.promotion:
+                summary += f" | PROMOTION={json.dumps(result.promotion)}"
+
+            self._log('v05_shadow', symbol=symbol, message=summary)
+
+        except Exception as exc:  # noqa: BLE001
+            self._log('v05_error', symbol=symbol, message=f'V0.5 errore shadow: {exc}')
+
+    # ─────────────────────────────────────────────────────────────────────────
+
     async def _analyze_and_trade(self, symbol: str):
         for t in self.open_trades.values():
             if t['symbol'] == symbol: return
@@ -58,8 +141,21 @@ class BotEngine:
             ohlcv_1m = await exchange.get_ohlcv(symbol, '1m', 100)
             ohlcv_15m = await exchange.get_ohlcv(symbol, '15m', 100)
             ohlcv_1h = await exchange.get_ohlcv(symbol, '1h', 100)
+
+            # ── V1 signal engine (production path — unchanged) ───────────────
             analysis = signal_engine.analyze(ohlcv_1m, ohlcv_15m, ohlcv_1h)
+
+            # ── V0.5 shadow run (parallel, no trade execution) ───────────────
+            # Derive a simple regime from the V1 analysis so the selector gets
+            # market-context information even before a dedicated regime detector
+            # is wired in. Falls back to "unknown" if analysis has no trend.
+            regime = str(analysis.get('main_trend', 'unknown')).lower()
+            self._analyze_v05(symbol, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime=regime)
+            # ─────────────────────────────────────────────────────────────────
+
+            # Production gate: only signal_engine controls trade execution
             if analysis.get('error') or analysis['signal'] == 'hold': return
+
             ticker = await exchange.get_ticker(symbol)
             price = ticker['price']
             params = risk_manager.calculate_trade_params(
@@ -165,6 +261,7 @@ class BotEngine:
                 'capital': round(self.capital, 2), 'daily_pnl': round(self.daily_pnl, 2),
                 'open_positions': len(self.open_trades), 'total_trades': total,
                 'win_rate': round((winning / total * 100) if total > 0 else 0, 1),
+                'v05_engine': 'active' if _v05_enabled else 'unavailable',
             }
         finally:
             db.close()
