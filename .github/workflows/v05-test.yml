@@ -46,9 +46,6 @@ on:
 jobs:
   run-test:
     runs-on: ubuntu-latest
-    # Safety ceiling above max_hours so the job doesn't get killed before
-    # live_monitor.py finishes its own graceful shutdown and the artifact
-    # upload step runs.
     timeout-minutes: 355
     defaults:
       run:
@@ -84,4 +81,23 @@ jobs:
       - name: Run live monitor
         if: ${{ inputs.mode == 'live_monitor' }}
         run: |
-          python
+          python live_monitor.py \
+            --symbols "${{ inputs.symbols }}" \
+            --holding-minutes "${{ inputs.holding }}" \
+            --poll-seconds "${{ inputs.poll_seconds }}" \
+            --max-hours "${{ inputs.max_hours }}" \
+            --state-out live_state.json \
+            2>&1 | tee live_monitor.log
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v05-test-results-${{ github.run_id }}
+          path: |
+            backend/backtest_output.log
+            backend/backtest_state.json
+            backend/live_monitor.log
+            backend/live_state.json
+          if-no-files-found: ignore
+          retention-days: 14
