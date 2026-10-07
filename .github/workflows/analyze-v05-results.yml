@@ -1,0 +1,103 @@
+name: Analyze V0.5 Test Results
+
+# Utility tool: downloads the artifact of a past "V0.5 Strategy Engine -
+# Manual Test" run (backtest or live_monitor) and prints a readable
+# summary as workflow annotations -- used because this session's own
+# network can't reach GitHub's artifact storage directly. Read-only,
+# touches nothing else.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run ID del test V0.5 da analizzare"
+        required: true
+      artifact_name:
+        description: "Nome dell'artifact (di solito v05-test-results-<run_id>)"
+        required: false
+        default: ""
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download test results artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name != '' && inputs.artifact_name || format('v05-test-results-{0}', inputs.run_id) }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: results
+
+      - name: List downloaded files
+        run: |
+          echo "::notice title=Files::$(find results -type f | tr '\n' ' ')"
+
+      - name: Analyze live_state.json (live_monitor mode)
+        if: hashFiles('results/live_state.json') != ''
+        run: |
+          python3 - <<'PYEOF'
+          import json
+
+          with open('results/live_state.json') as f:
+              state = json.load(f)
+
+          champions = state.get('champions', {})
+          stats = state.get('stats', [])
+
+          print(f"::notice title=Champions per regime::{json.dumps(champions)}")
+
+          # Global (non-regime-specific) leaderboard first.
+          global_rows = [s for s in stats if s['regime'] == '__GLOBAL__']
+          global_rows.sort(key=lambda r: r.get('expectancy_bps', 0), reverse=True)
+          lines = []
+          for r in global_rows:
+              lines.append(
+                  f"{r['strategy_id']}: samples={r['effective_samples']:.1f} "
+                  f"expectancy={r['expectancy_bps']:.2f}bps win_rate={r['win_rate']*100:.1f}% "
+                  f"profit_factor={r['profit_factor']:.2f}"
+              )
+          print(f"::notice title=Global leaderboard::{' | '.join(lines)}")
+
+          # Per-regime breakdown (excluding global bucket).
+          regimes = sorted(set(s['regime'] for s in stats if s['regime'] != '__GLOBAL__'))
+          for regime in regimes:
+              rows = [s for s in stats if s['regime'] == regime]
+              rows.sort(key=lambda r: r.get('expectancy_bps', 0), reverse=True)
+              lines = []
+              for r in rows:
+                  lines.append(
+                      f"{r['strategy_id']}: samples={r['effective_samples']:.1f} "
+                      f"expectancy={r['expectancy_bps']:.2f}bps win_rate={r['win_rate']*100:.1f}%"
+                  )
+              champ = champions.get(regime, 'none')
+              print(f"::notice title=Regime {regime} (champion={champ})::{' | '.join(lines)}")
+
+          total_samples = sum(r['effective_samples'] for r in global_rows)
+          print(f"::notice title=Totale campioni risolti::{total_samples:.1f}")
+          PYEOF
+
+      - name: Tail live_monitor.log
+        if: hashFiles('results/live_monitor.log') != ''
+        run: |
+          echo "::notice title=Log - prime righe::$(head -5 results/live_monitor.log | tr '\n' ' | ')"
+          echo "::notice title=Log - ultime righe::$(tail -15 results/live_monitor.log | tr '\n' ' | ')"
+          echo "::notice title=Log - conteggio righe::$(wc -l < results/live_monitor.log)"
+          WARN_COUNT=$(grep -c '\[warn\]' results/live_monitor.log || true)
+          echo "::notice title=Avvisi (fetch falliti ecc.)::${WARN_COUNT}"
+
+      - name: Analyze backtest_state.json (backtest mode)
+        if: hashFiles('results/backtest_state.json') != ''
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          with open('results/backtest_state.json') as f:
+              state = json.load(f)
+          champions = state.get('champions', {})
+          stats = state.get('stats', [])
+          print(f"::notice title=Backtest - Champions::{json.dumps(champions)}")
+          global_rows = [s for s in stats if s['regime'] == '__GLOBAL__']
+          global_rows.sort(key=lambda r: r.get('expectancy_bps', 0), reverse=True)
+          lines = [f"{r['strategy_id']}: samples={r['effective_samples']:.1f} expectancy={r['expectancy_bps']:.2f}bps win_rate={r['win_rate']*100:.1f}%" for r in global_rows]
+          print(f"::notice title=Backtest - Global leaderboard::{' | '.join(lines)}")
+          PYEOF

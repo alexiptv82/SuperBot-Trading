@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths-ignore:
       - '.github/workflows/v05-test.yml'
+      - '.github/workflows/analyze-v05-results.yml'
 
 jobs:
   deploy:
