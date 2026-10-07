@@ -1,0 +1,68 @@
+name: Deploy SuperBot Staging (PWA test)
+
+# Si attiva automaticamente a ogni push sul branch pwa-dashboard.
+# Crea/aggiorna un secondo container Docker ("superbot-staging") su una
+# porta diversa (8003 backend, 8080 frontend), completamente separato dal
+# bot live su 8002/80. Il bot live non viene mai toccato da questo workflow.
+
+on:
+  push:
+    branches: [ pwa-dashboard ]
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy staging to VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 30m
+          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
+          script: |
+            set -e
+            apt-get install -y docker.io git curl nginx 2>/dev/null || true
+            systemctl start docker 2>/dev/null || true
+
+            if ! command -v node >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>/dev/null || true
+              apt-get install -y nodejs 2>/dev/null || true
+            fi
+
+            if [ -d "/opt/superbot-staging/.git" ]; then
+              cd /opt/superbot-staging && git fetch origin && git reset --hard origin/pwa-dashboard
+            else
+              git clone -b pwa-dashboard https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-staging
+            fi
+            cd /opt/superbot-staging
+
+            printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD=superbot2024\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" > backend/.env
+            mkdir -p data
+
+            cd frontend
+            REACT_APP_BACKEND_URL=http://51.91.109.45:8003 npm install --no-audit --no-fund
+            REACT_APP_BACKEND_URL=http://51.91.109.45:8003 npm run build
+            cd ..
+
+            cp nginx-staging.conf /etc/nginx/sites-available/superbot-staging
+            ln -sf /etc/nginx/sites-available/superbot-staging /etc/nginx/sites-enabled/superbot-staging
+            nginx -t && systemctl reload nginx || true
+
+            docker stop superbot-staging 2>/dev/null || true
+            docker rm superbot-staging 2>/dev/null || true
+            docker build --no-cache -t superbot-staging .
+            docker run -d \
+              --name superbot-staging \
+              --restart always \
+              -p 8003:8001 \
+              -v /opt/superbot-staging/data:/app/data \
+              -v /opt/superbot-staging/backend/.env:/app/backend/.env \
+              superbot-staging
+
+            sleep 5
+            curl -s http://localhost:8003/api/health && echo "STAGING BOT ONLINE OK" || echo "ERRORE AVVIO STAGING"
+            systemctl is-active nginx && echo "NGINX OK" || echo "NGINX NON ATTIVO"
