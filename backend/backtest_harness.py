@@ -41,6 +41,9 @@ Usage examples
 
     # Longer history, slower stride (fewer, less-overlapping samples)
     python backtest_harness.py --candles 5000 --stride 10 --holding 20
+
+    # A non-overlapping earlier window, for a robustness check
+    python backtest_harness.py --candles 40000 --stride 10 --offset-days 29
 """
 
 from __future__ import annotations
@@ -82,13 +85,22 @@ WINDOW_SIZE = 100  # matches bot_engine.py's last-100-candles window per timefra
 # Data fetching + resampling
 # ─────────────────────────────────────────────────────────────────────────────
 
-def fetch_1m_history(symbol: str, total_candles: int, batch_limit: int = 1000) -> list[list[float]]:
+def fetch_1m_history(
+    symbol: str,
+    total_candles: int,
+    batch_limit: int = 1000,
+    end_ms: int | None = None,
+) -> list[list[float]]:
     """Page backwards-to-forwards through ccxt fetch_ohlcv to assemble a long
-    1-minute series. Returns candles sorted ascending by timestamp, deduped.
+    1-minute series ending at `end_ms` (defaults to now — current behavior
+    unchanged when omitted). Pass an earlier `end_ms` to backtest a historical
+    window that does NOT overlap with a previous run, for a robustness check
+    against a different period. Returns candles sorted ascending by
+    timestamp, deduped.
     """
     client = exchange_wrapper.exchange
-    now_ms = client.milliseconds()
-    since = now_ms - total_candles * ONE_MINUTE_MS
+    end_ms = end_ms if end_ms is not None else client.milliseconds()
+    since = end_ms - total_candles * ONE_MINUTE_MS
     collected: dict[int, list[float]] = {}
 
     while True:
@@ -105,13 +117,16 @@ def fetch_1m_history(symbol: str, total_candles: int, batch_limit: int = 1000) -
             break
 
         for c in batch:
-            collected[int(c[0])] = c
+            if int(c[0]) <= end_ms:
+                collected[int(c[0])] = c
 
         last_ts = int(batch[-1][0])
         if last_ts <= since:
             break  # no progress — stop to avoid an infinite loop
         since = last_ts + ONE_MINUTE_MS
 
+        if since >= end_ms:
+            break  # reached the requested end of the window
         if len(batch) < batch_limit or len(collected) >= total_candles:
             break  # caught up to the most recent data, or have enough
 
@@ -158,10 +173,12 @@ def run_symbol(
     holding: int,
     stride: int,
     quiet: bool,
+    end_ms: int | None = None,
 ) -> dict[str, Any]:
     print(f"\n=== {symbol} ===")
-    print(f"Fetching {total_candles} x 1m candles...")
-    candles_1m = fetch_1m_history(symbol, total_candles)
+    window_note = f" ending {end_ms}ms" if end_ms is not None else " (most recent)"
+    print(f"Fetching {total_candles} x 1m candles{window_note}...")
+    candles_1m = fetch_1m_history(symbol, total_candles, end_ms=end_ms)
     if len(candles_1m) < WINDOW_SIZE + holding + 1:
         print(f"  [skip] not enough 1m data returned ({len(candles_1m)} candles)")
         return {"symbol": symbol, "steps": 0, "signals": 0, "skipped": 0}
@@ -279,10 +296,19 @@ def main() -> None:
         help="Output path for the warmed-up selector state JSON (default: v05_backtest_state.json)",
     )
     parser.add_argument("--state-in", type=str, default=None, help="Optional existing state file to continue warming up")
+    parser.add_argument(
+        "--offset-days", type=float, default=0.0,
+        help="Shift the fetched window this many days into the past from now (default: 0 = most recent data). "
+             "Use this to test a non-overlapping earlier period for a robustness check against a previous run "
+             "(e.g. --candles 40000 covers ~28 days, so --offset-days 29 tests the 28 days right before that).",
+    )
     parser.add_argument("--quiet", action="store_true", help="Suppress per-step progress logging")
     args = parser.parse_args()
 
     symbols = [s.strip() for s in args.symbols.split(",")] if args.symbols else list(config.TRADING_PAIRS)
+    end_ms = None
+    if args.offset_days:
+        end_ms = int(exchange_wrapper.exchange.milliseconds() - args.offset_days * 86_400_000)
 
     strategies = [TrendFollowingStrategy(), MeanReversionStrategy(), MomentumStrategy()]
     selector = StrategySelector(strategy_ids=[s.strategy_id for s in strategies])
@@ -297,7 +323,8 @@ def main() -> None:
 
     print(f"SuperBot V0.5 Backtest Harness")
     print(f"Symbols: {symbols}")
-    print(f"Candles/symbol: {args.candles} | Holding: {args.holding} bars | Stride: {args.stride}")
+    print(f"Candles/symbol: {args.candles} | Holding: {args.holding} bars | Stride: {args.stride}"
+          + (f" | Offset: {args.offset_days} days back" if args.offset_days else ""))
 
     all_regimes: set[str] = set()
     summary = []
@@ -310,6 +337,7 @@ def main() -> None:
             holding=args.holding,
             stride=args.stride,
             quiet=args.quiet,
+            end_ms=end_ms,
         )
         summary.append(result)
         all_regimes.update(result.get("regimes", []))
