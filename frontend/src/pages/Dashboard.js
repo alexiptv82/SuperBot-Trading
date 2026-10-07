@@ -49,7 +49,11 @@ export default function Dashboard() {
   return (
     <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 'bold' }}>🤖 SuperBot</h1>
+        <h1 style={{
+          fontSize: '22px', fontWeight: 'bold',
+          background: 'linear-gradient(90deg, #f1f5f9, #38bdf8)',
+          WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent'
+        }}>🤖 SuperBot</h1>
         <span style={{
           padding: '4px 12px', borderRadius: '20px', fontSize: '12px',
           background: status?.mode === 'paper' ? '#1e40af' : '#166534',
@@ -58,7 +62,10 @@ export default function Dashboard() {
           {status?.mode === 'paper' ? '📝 PAPER' : '💰 LIVE'}
         </span>
       </div>
-      <Card style={{ marginBottom: '16px', textAlign: 'center' }}>
+      <Card style={{
+        marginBottom: '16px', textAlign: 'center',
+        boxShadow: status?.is_running ? '0 0 0 1px rgba(74,222,128,0.25), 0 0 24px rgba(74,222,128,0.12)' : 'none'
+      }}>
         <div style={{ fontSize: '48px', marginBottom: '8px' }}>
           {status?.is_running ? '🟢' : '🔴'}
         </div>

@@ -86,7 +86,11 @@ export default function Login({ onLogin }) {
       background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
     }}>
       <div style={{ fontSize: '60px', marginBottom: '16px' }}>🤖</div>
-      <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px', color: '#f1f5f9' }}>SuperBot</h1>
+      <h1 style={{
+        fontSize: '28px', fontWeight: 'bold', marginBottom: '8px',
+        background: 'linear-gradient(90deg, #f1f5f9, #38bdf8)',
+        WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent'
+      }}>SuperBot</h1>
       <p style={{ color: '#94a3b8', marginBottom: '32px' }}>Trading Bot Dashboard</p>
       <div style={{ width: '100%', maxWidth: '360px' }}>
         {offerBioSetup ? (
