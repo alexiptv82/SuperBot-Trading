@@ -4,7 +4,7 @@ const tabs = [
   { path: '/', icon: '📊', label: 'Dashboard' },
   { path: '/trades', icon: '💹', label: 'Trade' },
   { path: '/performance', icon: '🏆', label: 'Performance' },
-  { path: '/logs', icon: '📋', label: 'Log' },
+  { path: '/settings', icon: '⚙️', label: 'Impostazioni' },
 ];
 export default function NavBar({ onLogout }) {
   const nav = useNavigate();
