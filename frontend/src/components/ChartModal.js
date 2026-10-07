@@ -1,13 +1,15 @@
 import React, { useEffect, useRef } from 'react';
 
 // Mappa i simboli usati dal bot al simbolo TradingView corrispondente.
-// BitGet è il nostro exchange reale; se un simbolo non è listato lì su
-// TradingView, si può cambiare qui senza toccare il resto dell'app.
+// BTC/ETH: usiamo il book di BitGet (il nostro exchange reale).
+// Oro/Argento: BitGet li tratta come contratti sintetici e TradingView non
+// li ha sotto quel ticker, quindi usiamo il mercato spot standard (OANDA),
+// che esiste sempre -- stesso andamento di prezzo, fonte del feed diversa.
 const TV_SYMBOL = {
   BTCUSDT: 'BITGET:BTCUSDT',
   ETHUSDT: 'BITGET:ETHUSDT',
-  XAUUSDT: 'BITGET:XAUUSDT',
-  XAGUSDT: 'BITGET:XAGUSDT',
+  XAUUSDT: 'OANDA:XAUUSD',
+  XAGUSDT: 'OANDA:XAGUSD',
 };
 
 let tvScriptPromise = null;
