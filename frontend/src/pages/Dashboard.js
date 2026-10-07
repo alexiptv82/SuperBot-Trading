@@ -1,17 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { botAPI } from '../api';
-const Card = ({ children, style }) => (
-  <div style={{
+import ChartModal from '../components/ChartModal';
+const Card = ({ children, style, onClick }) => (
+  <div onClick={onClick} style={{
     background: '#1e293b', borderRadius: '16px', padding: '16px',
     border: '1px solid #334155', ...style
   }}>{children}</div>
 );
-const PriceCard = ({ symbol, data }) => {
+const PriceCard = ({ symbol, data, onClick }) => {
   const emoji = { BTCUSDT:'₿', ETHUSDT:'Ξ', XAUUSDT:'🥇', XAGUSDT:'🥈' };
   const up = data?.change_24h > 0;
   return (
-    <Card style={{ flex: '1 1 calc(50% - 8px)', minWidth: '140px' }}>
-      <div style={{ fontSize: '20px', marginBottom: '4px' }}>{emoji[symbol] || '💱'}</div>
+    <Card onClick={onClick} style={{
+      flex: '1 1 calc(50% - 8px)', minWidth: '140px', cursor: 'pointer'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ fontSize: '20px', marginBottom: '4px' }}>{emoji[symbol] || '💱'}</div>
+        <div style={{ fontSize: '14px', color: '#475569' }}>📈</div>
+      </div>
       <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>
         {symbol.replace('USDT','')}
       </div>
@@ -46,6 +52,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(false);
   const [now, setNow] = useState(new Date());
+  const [chartSymbol, setChartSymbol] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -144,14 +151,14 @@ export default function Dashboard() {
       <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px' }}>📈 Mercato Live</h2>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
         {Object.entries(prices).map(([sym, data]) => (
-          <PriceCard key={sym} symbol={sym} data={data} />
+          <PriceCard key={sym} symbol={sym} data={data} onClick={() => setChartSymbol(sym)} />
         ))}
       </div>
       {openTrades.length > 0 && (
         <>
           <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px' }}>⚡ Posizioni Aperte</h2>
           {openTrades.map((t, i) => (
-            <Card key={i} style={{ marginBottom: '8px' }}>
+            <Card key={i} onClick={() => setChartSymbol(t.symbol)} style={{ marginBottom: '8px', cursor: 'pointer' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <span style={{
@@ -173,6 +180,7 @@ export default function Dashboard() {
           ))}
         </>
       )}
+      <ChartModal symbol={chartSymbol} onClose={() => setChartSymbol(null)} />
     </div>
   );
 }
