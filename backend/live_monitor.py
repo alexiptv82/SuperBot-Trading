@@ -38,6 +38,11 @@ def main():
     parser.add_argument("--poll-seconds", type=int, default=60)
     parser.add_argument("--max-hours", type=float, default=5.5)
     parser.add_argument("--state-out", type=str, default="v05_live_state.json")
+    parser.add_argument(
+        "--state-in", type=str, default=None,
+        help="Stato selettore da un run precedente (opzionale): se presente, "
+             "il test riparte dalle statistiche già accumulate invece che da zero.",
+    )
     parser.add_argument("--symbols", type=str, default=None)
     args = parser.parse_args()
 
@@ -48,6 +53,15 @@ def main():
     )
     strategies = [TrendFollowingStrategy(), MeanReversionStrategy(), MomentumStrategy()]
     selector = StrategySelector(strategy_ids=[s.strategy_id for s in strategies])
+
+    if args.state_in and Path(args.state_in).exists():
+        try:
+            previous_state = json.loads(Path(args.state_in).read_text())
+            selector.load_state(previous_state)
+            print(f"Stato precedente caricato da {args.state_in} (le statistiche si accumulano).", flush=True)
+        except Exception as e:
+            print(f"[warn] impossibile caricare lo stato precedente da {args.state_in}: {e} -- si riparte da zero.", flush=True)
+
     client = exchange_wrapper.exchange
 
     # (due_ts, symbol, strategy_id, sign, entry_price, entry_regime)

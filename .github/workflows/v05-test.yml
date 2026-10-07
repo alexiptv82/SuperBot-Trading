@@ -50,6 +50,11 @@ jobs:
     # live_monitor.py finishes its own graceful shutdown and the artifact
     # upload step runs.
     timeout-minutes: 355
+    # Needed only to commit the accumulated checkpoint back to v0.5 after a
+    # live_monitor run. v0.5 has no push-triggered workflows, so this commit
+    # cannot cascade into anything else (no deploy, no re-trigger).
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: backend
@@ -89,8 +94,27 @@ jobs:
             --holding-minutes "${{ inputs.holding }}" \
             --poll-seconds "${{ inputs.poll_seconds }}" \
             --max-hours "${{ inputs.max_hours }}" \
-            --state-out live_state.json \
+            --state-in v05_checkpoint.json \
+            --state-out v05_checkpoint.json \
             2>&1 | tee live_monitor.log
+          cp v05_checkpoint.json live_state.json
+
+      - name: Commit accumulated checkpoint back to v0.5
+        if: ${{ always() && inputs.mode == 'live_monitor' }}
+        run: |
+          if [ ! -f v05_checkpoint.json ]; then
+            echo "Nessun checkpoint da salvare (run terminato prima del primo checkpoint)."
+            exit 0
+          fi
+          git config user.name "superbot-v05-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add v05_checkpoint.json
+          if git diff --cached --quiet; then
+            echo "Checkpoint invariato, niente da committare."
+          else
+            git commit -m "v0.5: aggiorna checkpoint statistiche live_monitor (run ${{ github.run_id }})"
+            git push origin HEAD:v0.5
+          fi
 
       - name: Upload results
         if: always()
@@ -102,5 +126,6 @@ jobs:
             backend/backtest_state.json
             backend/live_monitor.log
             backend/live_state.json
+            backend/v05_checkpoint.json
           if-no-files-found: ignore
           retention-days: 14
