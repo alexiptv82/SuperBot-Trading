@@ -96,3 +96,22 @@ jobs:
             echo "::notice::DOCKER_LOGS=$(docker logs superbot-staging --tail 40 2>&1 | tr '\n' ' ' | cut -c1-1500)"
             echo "::notice::FRONTEND_HEAD=$(curl -s -m 5 http://localhost:8080/ | head -c 300 | tr '\n' ' ')"
             echo "::notice::PORT_LISTEN=$(ss -tlnp 2>&1 | tr '\n' ' ' | cut -c1-600)"
+
+      # Questo step gira sul runner GitHub (internet pubblico vero), non sulla VPS via SSH:
+      # verifica cosa vede davvero un browser esterno (come il telefono dell'utente), e i
+      # messaggi ::notice/::error:: qui sopra via SSH non sempre arrivano nei log leggibili,
+      # quindi questo è il modo affidabile per diagnosticare da fuori.
+      - name: Check staging reachable from the public internet
+        run: |
+          set +e
+          HEALTH_CODE=$(curl -s -o /tmp/health.txt -m 10 -w "%{http_code}" http://51.91.109.45:8003/api/health)
+          FRONT_CODE=$(curl -s -o /tmp/front.txt -m 10 -w "%{http_code}" http://51.91.109.45:8080/)
+          echo "::notice title=Staging backend health::HTTP ${HEALTH_CODE} - $(head -c 300 /tmp/health.txt | tr '\n' ' ')"
+          echo "::notice title=Staging frontend root::HTTP ${FRONT_CODE} - $(head -c 600 /tmp/front.txt | tr '\n' ' ')"
+          JS_PATH=$(grep -oE '/static/js/[a-zA-Z0-9.]+\.js' /tmp/front.txt | head -1)
+          if [ -n "$JS_PATH" ]; then
+            JS_CODE=$(curl -s -o /tmp/js.txt -m 10 -w "%{http_code}" "http://51.91.109.45:8080${JS_PATH}")
+            echo "::notice title=Staging main.js::path=${JS_PATH} HTTP ${JS_CODE} bytes=$(wc -c < /tmp/js.txt)"
+          else
+            echo "::error title=Staging frontend root::No <script src=/static/js/...> found in the HTML returned above"
+          fi
