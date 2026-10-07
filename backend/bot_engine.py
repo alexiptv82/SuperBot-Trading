@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from config import config
 from database import Trade, AuditLog, SessionLocal
@@ -16,6 +17,8 @@ except ImportError:
 # Loaded with try/except so the bot can start even if the strategies package
 # is temporarily missing (e.g. during a hot-swap deploy). When unavailable,
 # _v05_enabled=False and every _analyze_v05 call is a no-op.
+_v05_state_loaded = False
+_v05_state_path_used: Optional[str] = None
 try:
     from strategies import (
         TrendFollowingStrategy,
@@ -34,6 +37,24 @@ try:
         strategy_ids=[s.strategy_id for s in _v05_strategies]
     )
     _v05_enabled = True
+
+    # Optional warm-start: load a selector state produced offline by
+    # backtest_harness.py. Disabled by default (V05_STATE_PATH=''), so this
+    # is a no-op unless a human explicitly points to a reviewed state file
+    # on the VPS. Never touches signal_engine or trade execution either way.
+    _v05_state_path_cfg = getattr(config, "V05_STATE_PATH", "")
+    if _v05_state_path_cfg:
+        _state_file = Path(_v05_state_path_cfg)
+        if _state_file.exists():
+            try:
+                _v05_selector.load_state(json.loads(_state_file.read_text()))
+                _v05_state_loaded = True
+                _v05_state_path_used = str(_state_file)
+                print(f"[V0.5] Loaded warmed-up selector state from {_state_file}")
+            except Exception as _state_err:  # noqa: BLE001
+                print(f"[V0.5] Failed to load state from {_state_file}: {_state_err}")
+        else:
+            print(f"[V0.5] V05_STATE_PATH set but file not found: {_state_file}")
 except Exception as _v05_import_err:  # noqa: BLE001
     _v05_strategies = []
     _v05_selector = None
@@ -54,7 +75,10 @@ class BotEngine:
         if self.is_running: return
         self.is_running = True
         self._task = asyncio.create_task(self._main_loop())
-        v05_status = "ON" if _v05_enabled else "OFF (import error)"
+        if _v05_enabled:
+            v05_status = "ON (warmed-up)" if _v05_state_loaded else "ON (cold)"
+        else:
+            v05_status = "OFF (import error)"
         self._log('bot_start', message=f'Bot avviato - modalita {config.TRADING_MODE} | V0.5 engine: {v05_status}')
         asyncio.create_task(notifier.send("🤖 <b>SuperBot avviato!</b>\nModalità: " + config.TRADING_MODE.upper()))
 
@@ -256,12 +280,16 @@ class BotEngine:
         try:
             total = db.query(Trade).count()
             winning = db.query(Trade).filter(Trade.pnl > 0).count()
+            if _v05_enabled:
+                v05_engine_status = 'warmed-up' if _v05_state_loaded else 'cold'
+            else:
+                v05_engine_status = 'unavailable'
             return {
                 'is_running': self.is_running, 'mode': config.TRADING_MODE,
                 'capital': round(self.capital, 2), 'daily_pnl': round(self.daily_pnl, 2),
                 'open_positions': len(self.open_trades), 'total_trades': total,
                 'win_rate': round((winning / total * 100) if total > 0 else 0, 1),
-                'v05_engine': 'active' if _v05_enabled else 'unavailable',
+                'v05_engine': v05_engine_status,
             }
         finally:
             db.close()

@@ -21,4 +21,12 @@ class Config:
     SCALPING_INTERVAL = 30
     DATA_FETCH_INTERVAL = 10
 
+    # V0.5 Strategy Engine — optional warm-start for the StrategySelector.
+    # Empty by default (= cold start, no behavior change). Set this env var
+    # on the VPS to the path of a state file produced by backtest_harness.py
+    # ONLY after reviewing its leaderboard output — bot_engine.py loads it
+    # once at import time if present, as a read-only warm-up for the V0.5
+    # shadow run. It never affects which trades signal_engine executes.
+    V05_STATE_PATH = os.getenv('V05_STATE_PATH', '')
+
 config = Config()
