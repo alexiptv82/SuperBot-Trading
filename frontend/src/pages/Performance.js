@@ -91,6 +91,8 @@ export default function Performance() {
           color={perf.total_pnl > 0 ? GOOD : BAD} />
         <StatCard label="Media/Trade" value={`${perf.avg_pnl_per_trade > 0 ? '+' : ''}${perf.avg_pnl_per_trade?.toFixed(2)}$`}
           color={perf.avg_pnl_per_trade > 0 ? GOOD : BAD} />
+        <StatCard label="Profit Factor" value={perf.profit_factor != null ? perf.profit_factor : 'N/A'}
+          color={perf.profit_factor != null ? (perf.profit_factor >= 1 ? GOOD : BAD) : MUTED} />
       </div>
 
       {equityData.length > 1 && (

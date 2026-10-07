@@ -269,11 +269,18 @@ async def get_performance(session=Depends(require_session), db: Session = Depend
     for t in trades:
         by_symbol.setdefault(t.symbol, 0.0)
         by_symbol[t.symbol] += (t.pnl or 0)
+    gross_profit = sum(t.pnl for t in trades if t.pnl and t.pnl > 0)
+    gross_loss = abs(sum(t.pnl for t in trades if t.pnl and t.pnl < 0))
+    # Profit factor: utile lordo / perdita lorda. Senza perdite, non è infinito
+    # per convenzione del settore ma "N/A" se non c'è nemmeno un trade perdente
+    # da confrontare (coerente con "non inventare metriche").
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else None
     return {'total_trades': total, 'winning_trades': len(winners),
             'losing_trades': total - len(winners),
             'win_rate': round(len(winners) / total * 100, 1),
             'total_pnl': round(total_pnl, 2),
             'avg_pnl_per_trade': round(total_pnl / total, 2),
+            'profit_factor': profit_factor,
             'equity_curve': equity_curve,
             'pnl_by_symbol': {k: round(v, 2) for k, v in by_symbol.items()}}
 

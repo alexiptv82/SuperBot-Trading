@@ -24,20 +24,44 @@ const PriceCard = ({ symbol, data }) => {
     </Card>
   );
 };
+const StatusChip = ({ label, ok, okText, badText }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px',
+    color: '#cbd5e1', background: '#0f172a', border: '1px solid #334155',
+    borderRadius: '999px', padding: '4px 10px', whiteSpace: 'nowrap'
+  }}>
+    <span style={{
+      width: '6px', height: '6px', borderRadius: '50%',
+      background: ok ? '#4ade80' : '#f87171', flexShrink: 0
+    }} />
+    <span style={{ color: '#94a3b8' }}>{label}</span>
+    <span style={{ fontWeight: 'bold' }}>{ok ? okText : badText}</span>
+  </div>
+);
+
 export default function Dashboard() {
   const [status, setStatus] = useState(null);
   const [prices, setPrices] = useState({});
   const [openTrades, setOpenTrades] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState(false);
+  const [now, setNow] = useState(new Date());
+
   const fetchData = useCallback(async () => {
     try {
       const [s, p, o] = await Promise.all([
         botAPI.getStatus(), botAPI.getPrices(), botAPI.getOpenTrades()
       ]);
       setStatus(s.data); setPrices(p.data); setOpenTrades(o.data);
-    } catch (e) { console.error(e); }
+      setApiError(false);
+    } catch (e) { console.error(e); setApiError(true); }
   }, []);
   useEffect(() => { fetchData(); const t = setInterval(fetchData, 10000); return () => clearInterval(t); }, [fetchData]);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
+
+  const marketLive = !apiError && Object.keys(prices).length > 0;
+  const dateLabel = now.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+  const timeLabel = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   const toggleBot = async () => {
     setLoading(true);
     try {
@@ -62,9 +86,24 @@ export default function Dashboard() {
           {status?.mode === 'paper' ? '📝 PAPER' : '💰 LIVE'}
         </span>
       </div>
+
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        gap: '8px', marginBottom: '16px', flexWrap: 'wrap'
+      }}>
+        <div style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+          <span style={{ textTransform: 'capitalize' }}>{dateLabel}</span>
+          <span style={{ fontWeight: 'bold', fontVariantNumeric: 'tabular-nums' }}>{timeLabel}</span>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <StatusChip label="Mercato" ok={marketLive} okText="Live" badText="Offline" />
+          <StatusChip label="Trading" ok={status?.mode === 'paper'} okText="Paper" badText="Live" />
+        </div>
+      </div>
+
       <Card style={{
         marginBottom: '16px', textAlign: 'center',
-        boxShadow: status?.is_running ? '0 0 0 1px rgba(74,222,128,0.25), 0 0 24px rgba(74,222,128,0.12)' : 'none'
+        boxShadow: status?.is_running ? '0 0 0 1px rgba(74,222,128,0.2)' : 'none'
       }}>
         <div style={{ fontSize: '48px', marginBottom: '8px' }}>
           {status?.is_running ? '🟢' : '🔴'}
