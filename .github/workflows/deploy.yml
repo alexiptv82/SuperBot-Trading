@@ -3,6 +3,8 @@ name: Deploy SuperBot to OVH
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '.github/workflows/v05-test.yml'
 
 jobs:
   deploy:
