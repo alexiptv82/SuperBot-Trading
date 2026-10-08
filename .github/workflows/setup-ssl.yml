@@ -24,6 +24,21 @@ jobs:
   obtain-certificate:
     runs-on: ubuntu-latest
     steps:
+      - name: Ping annotation test (local runner)
+        run: echo "::notice title=ping-local::runner annotations work"
+
+      - name: Ping annotation test (via SSH)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 2m
+          script: |
+            echo "::notice title=ping-ssh::remote ok $(hostname) $(date -u)"
+            whoami
+            echo done
+
       - name: Obtain certificate on VPS
         uses: appleboy/ssh-action@v1.0.0
         with:
