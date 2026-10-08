@@ -8,6 +8,8 @@ from database import Trade, AuditLog, SessionLocal
 from exchange import exchange
 from signal_engine import signal_engine
 from risk_manager import risk_manager
+from indicators import TechnicalIndicators
+from regime_detector import detect_regime
 try:
     from backend.telegram_notifier import notifier
 except ImportError:
@@ -170,10 +172,19 @@ class BotEngine:
             analysis = signal_engine.analyze(ohlcv_1m, ohlcv_15m, ohlcv_1h)
 
             # ── V0.5 shadow run (parallel, no trade execution) ───────────────
-            # Derive a simple regime from the V1 analysis so the selector gets
-            # market-context information even before a dedicated regime detector
-            # is wired in. Falls back to "unknown" if analysis has no trend.
-            regime = str(analysis.get('main_trend', 'unknown')).lower()
+            # Regime di mercato (forza del trend via ADX 1h + direzione via
+            # EMA, con isteresi 20/25 -- vedi regime_detector.py) invece del
+            # precedente placeholder che riusava main_trend del motore V1
+            # (solo direzione, nessuna misura di "quanto" c'è davvero un
+            # trend in corso).
+            try:
+                ind_1h = TechnicalIndicators(ohlcv_1h).compute_all()
+                regime_info = detect_regime(
+                    symbol, adx=ind_1h['adx'], trend_direction=ind_1h['trend'], bbw=ind_1h['bbw'])
+                regime = regime_info['regime']
+            except Exception as regime_exc:  # noqa: BLE001
+                self._log('v05_error', symbol=symbol, message=f'Regime detector errore: {regime_exc}')
+                regime = str(analysis.get('main_trend', 'unknown')).lower()
             self._analyze_v05(symbol, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime=regime)
             # ─────────────────────────────────────────────────────────────────
 

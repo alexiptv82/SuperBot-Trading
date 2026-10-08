@@ -55,6 +55,47 @@ class TechnicalIndicators:
         lc = (self.df['low'] - self.df['close'].shift()).abs()
         return float(pd.concat([hl, hc, lc], axis=1).max(axis=1).rolling(period).mean().iloc[-1])
 
+    def adx(self, period=14) -> float:
+        """Average Directional Index (Wilder). Misura la FORZA del trend
+        (non la direzione): usato dal regime detector per distinguere un
+        mercato in trend da uno laterale. La smoothing di Wilder è
+        approssimata con una EMA ad alpha=1/period (adjust=False), la forma
+        standard usata quando non si ha accesso alla formula ricorsiva
+        esatta di Wilder su tutta la serie.
+        """
+        high, low, close = self.df['high'], self.df['low'], self.df['close']
+        up_move = high.diff()
+        down_move = -low.diff()
+        plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+        minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+        hl = high - low
+        hc = (high - close.shift()).abs()
+        lc = (low - close.shift()).abs()
+        tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+
+        alpha = 1.0 / period
+        tr_s = tr.ewm(alpha=alpha, adjust=False).mean()
+        plus_dm_s = plus_dm.ewm(alpha=alpha, adjust=False).mean()
+        minus_dm_s = minus_dm.ewm(alpha=alpha, adjust=False).mean()
+
+        plus_di = 100 * (plus_dm_s / tr_s.replace(0, float('nan')))
+        minus_di = 100 * (minus_dm_s / tr_s.replace(0, float('nan')))
+        di_sum = (plus_di + minus_di).replace(0, float('nan'))
+        dx = 100 * (plus_di - minus_di).abs() / di_sum
+        adx_series = dx.ewm(alpha=alpha, adjust=False).mean()
+
+        value = adx_series.iloc[-1]
+        return float(value) if pd.notna(value) else 0.0
+
+    def bbw(self) -> float:
+        """Bollinger Band Width normalizzata: (upper-lower)/middle. Usata dal
+        regime detector insieme all'ADX -- una BBW bassa indica un mercato
+        compresso/laterale, coerente con un ADX basso."""
+        bb = self.bollinger_bands()
+        middle = bb['middle']
+        return (bb['upper'] - bb['lower']) / middle if middle else 0.0
+
     def volume_analysis(self) -> dict:
         avg = self.df['volume'].rolling(20).mean().iloc[-1]
         cur = self.df['volume'].iloc[-1]
@@ -80,5 +121,7 @@ class TechnicalIndicators:
             'ema_9': self.ema(9), 'ema_21': self.ema(21), 'ema_50': self.ema(50),
             'bollinger': self.bollinger_bands(),
             'atr': self.atr(),
+            'adx': self.adx(),
+            'bbw': self.bbw(),
             'volume': self.volume_analysis(),
         }
