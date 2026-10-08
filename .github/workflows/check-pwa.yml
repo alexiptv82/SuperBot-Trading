@@ -1,0 +1,44 @@
+name: Check PWA Assets on VPS
+
+# Read-only diagnostic: checks whether the frontend build actually served
+# by nginx on the VPS contains the PWA assets (manifest, service worker,
+# icons) and what HTTP status/content-type each one gets, both locally on
+# the VPS and over the public HTTPS domain. Changes nothing.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H 51.91.109.45 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Inspect frontend build + PWA assets
+        run: |
+          ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 root@51.91.109.45 'bash -s' <<'REMOTE'
+          set +e
+          note() { printf '::notice title=%s::%s\n' "$1" "$(echo "$2" | tr '\n' '|' | sed 's/::/: /g')"; }
+
+          BUILD_LS=$(ls -la /opt/superbot/frontend/build 2>&1)
+          note "frontend/build (top level)" "$BUILD_LS"
+
+          MANIFEST_LOCAL=$(curl -sS -o /dev/null -w "HTTP %{http_code} ct=%{content_type}" "https://superbot-trading.duckdns.org/manifest.json" -k 2>&1)
+          note "manifest.json via https" "$MANIFEST_LOCAL"
+
+          SW_LOCAL=$(curl -sS -o /dev/null -w "HTTP %{http_code} ct=%{content_type}" "https://superbot-trading.duckdns.org/service-worker.js" -k 2>&1)
+          note "service-worker.js via https" "$SW_LOCAL"
+
+          ICON_LOCAL=$(curl -sS -o /dev/null -w "HTTP %{http_code} ct=%{content_type}" "https://superbot-trading.duckdns.org/icons/icon-192.png" -k 2>&1)
+          note "icon-192.png via https" "$ICON_LOCAL"
+
+          MAIN_JS=$(curl -sS "https://superbot-trading.duckdns.org/" -k 2>&1 | grep -o '/static/js/main[^"]*\.js' | head -1)
+          note "main.js referenziato dall'index" "${MAIN_JS:-non trovato}"
+
+          GIT_INFO=$(cd /opt/superbot && git log -1 --oneline -- frontend/public/manifest.json 2>&1)
+          note "ultimo commit noto per manifest.json nel checkout" "$GIT_INFO"
+          REMOTE

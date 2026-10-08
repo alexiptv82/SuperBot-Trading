@@ -7,6 +7,7 @@ on:
       - '.github/workflows/v05-test.yml'
       - '.github/workflows/analyze-v05-results.yml'
       - '.github/workflows/setup-ssl.yml'
+      - '.github/workflows/check-pwa.yml'
 
 jobs:
   deploy:
