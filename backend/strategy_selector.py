@@ -21,6 +21,14 @@ class SelectorConfig:
     expectancy_scale_bps: float = 30.0
     fallback_signal_weight: float = 0.35
     learned_performance_weight: float = 0.65
+    # Gate di significatività statistica sulle PROMOZIONI (non sulla
+    # selezione per-ciclo): un punteggio più alto non basta per diventare
+    # champion se l'expectancy osservata non è significativa rispetto al
+    # suo errore standard -- vedi PerformanceBucket.significance_t_stat.
+    # 1.0 è una soglia permissiva (corrisponde grossomodo a un intervallo
+    # di confidenza dell'~68% su una normale); va vista come un filtro
+    # contro il rumore più evidente, non come un test rigoroso.
+    min_significance_t_stat: float = 1.0
 
     def validate(self) -> None:
         if not 0.0 < self.decay <= 1.0:
@@ -38,6 +46,8 @@ class SelectorConfig:
         if not math.isclose(self.fallback_signal_weight + self.learned_performance_weight,
                             1.0, rel_tol=0.0, abs_tol=1e-9):
             raise ValueError("fallback_signal_weight + learned_performance_weight must equal 1")
+        if self.min_significance_t_stat < 0:
+            raise ValueError("min_significance_t_stat must be >= 0")
 
 
 @dataclass
@@ -48,6 +58,13 @@ class PerformanceBucket:
     weighted_losses: float = 0.0
     gross_profit_bps: float = 0.0
     gross_loss_bps: float = 0.0
+    # Somma pesata/decaduta dei pnl^2 -- serve SOLO per calcolare la vera
+    # varianza empirica (Var = E[X^2] - E[X]^2) usata dal gate di
+    # significatività statistica. Senza questo, l'unica alternativa sarebbe
+    # stimare la varianza da vincita/perdita media, che collassa a zero in
+    # casi degeneri (es. tutte vincite, ma di importo molto diverso tra
+    # loro) e sottostima il rumore reale.
+    weighted_pnl_sq_bps: float = 0.0
     # Conteggio di tutti i trade mai registrati in questo bucket, SENZA
     # decadimento -- a differenza di effective_samples, che decade a ogni
     # add() e quindi (con decay=0.985) si stabilizza asintoticamente
@@ -60,6 +77,7 @@ class PerformanceBucket:
     def decay_by(self, factor: float) -> None:
         self.effective_samples *= factor
         self.weighted_pnl_bps *= factor
+        self.weighted_pnl_sq_bps *= factor
         self.weighted_wins *= factor
         self.weighted_losses *= factor
         self.gross_profit_bps *= factor
@@ -71,6 +89,7 @@ class PerformanceBucket:
         self.effective_samples += 1.0
         self.lifetime_samples += 1.0
         self.weighted_pnl_bps += pnl_bps
+        self.weighted_pnl_sq_bps += pnl_bps * pnl_bps
         if pnl_bps > 0:
             self.weighted_wins += 1.0
             self.gross_profit_bps += pnl_bps
@@ -102,6 +121,41 @@ class PerformanceBucket:
         out = asdict(self)
         out.update(expectancy_bps=self.expectancy_bps, win_rate=self.win_rate, profit_factor=self.profit_factor)
         return out
+
+    @property
+    def pnl_variance_estimate(self) -> float:
+        """Varianza empirica del pnl per trade: Var = E[X^2] - E[X]^2, dalla
+        somma pesata/decaduta dei pnl^2 (weighted_pnl_sq_bps) e dalla media
+        (expectancy_bps). Il clamp a 0 serve solo per i rari errori di
+        arrotondamento in virgola mobile quando la varianza vera è
+        prossima a zero."""
+        if self.effective_samples <= 0:
+            return 0.0
+        mean = self.expectancy_bps
+        mean_sq = self.weighted_pnl_sq_bps / self.effective_samples
+        return max(0.0, mean_sq - mean * mean)
+
+    @property
+    def standard_error_bps(self) -> float:
+        if self.effective_samples <= 1:
+            return math.inf
+        return math.sqrt(self.pnl_variance_estimate / self.effective_samples)
+
+    @property
+    def significance_t_stat(self) -> float:
+        """t-stat approssimato: expectancy / errore standard. Un valore
+        basso significa che l'expectancy osservata potrebbe benissimo
+        essere rumore statistico, anche se e' la più alta tra le strategie
+        candidate -- questo è esattamente il punto del gate di
+        significatività (da Qwen): un punteggio più alto non basta, deve
+        anche essere significativo rispetto alla sua incertezza."""
+        se = self.standard_error_bps
+        if not math.isfinite(se) or se <= 1e-9:
+            return 0.0
+        return self.expectancy_bps / se
+
+    def is_statistically_significant(self, min_t_stat: float = 1.0) -> bool:
+        return abs(self.significance_t_stat) >= min_t_stat
 
     # Kelly frazionale: parametri di sicurezza condivisi da tutti i bucket.
     KELLY_MIN_LIFETIME_SAMPLES = 200.0
@@ -279,10 +333,18 @@ class StrategySelector:
         rows = []
         for sid in self.strategy_ids:
             quality, metrics = self._performance_quality(sid, regime_key)
+            # t-stat sul bucket SPECIFICO del regime (non quello blended con
+            # il global usato per le altre metriche): la domanda del gate di
+            # significatività è "questo expectancy, misurato in QUESTO
+            # regime, è distinguibile dal rumore?", non una media pesata.
+            t_stat = self._bucket(sid, regime_key).significance_t_stat
             rows.append({"strategy_id": sid, "role": "CHAMPION" if sid == champion else "CHALLENGER",
-                         "performance_quality": quality, **metrics})
+                         "performance_quality": quality, "significance_t_stat": t_stat, **metrics})
         rows.sort(key=lambda r: (r["performance_quality"], r["expectancy_bps"], r["effective_samples"]), reverse=True)
         return rows
+
+    def _is_significant(self, row: dict[str, Any]) -> bool:
+        return abs(row["significance_t_stat"]) >= self.config.min_significance_t_stat
 
     def _maybe_promote(self, regime: str) -> dict[str, Any] | None:
         board = self.leaderboard(regime)
@@ -290,21 +352,26 @@ class StrategySelector:
             return None
         current = self._champions.get(regime)
         if current is None:
-            eligible = [r for r in board if r["effective_samples"] >= self.config.min_champion_samples]
+            eligible = [r for r in board
+                        if r["effective_samples"] >= self.config.min_champion_samples and self._is_significant(r)]
             if not eligible:
                 return None
             winner = eligible[0]
             self._champions[regime] = winner["strategy_id"]
-            return {"type": "INITIAL_CHAMPION", "to": winner["strategy_id"], "regime": regime, "quality": winner["performance_quality"]}
+            return {"type": "INITIAL_CHAMPION", "to": winner["strategy_id"], "regime": regime,
+                    "quality": winner["performance_quality"], "t_stat": winner["significance_t_stat"]}
         champion_row = next(r for r in board if r["strategy_id"] == current)
-        challengers = [r for r in board if r["strategy_id"] != current and r["effective_samples"] >= self.config.min_challenger_samples]
+        challengers = [r for r in board
+                       if r["strategy_id"] != current and r["effective_samples"] >= self.config.min_challenger_samples
+                       and self._is_significant(r)]
         if not challengers:
             return None
         best = challengers[0]
         if best["performance_quality"] >= champion_row["performance_quality"] + self.config.promotion_margin:
             self._champions[regime] = best["strategy_id"]
             return {"type": "CHALLENGER_PROMOTED", "from": current, "to": best["strategy_id"],
-                    "regime": regime, "quality_delta": best["performance_quality"] - champion_row["performance_quality"]}
+                    "regime": regime, "quality_delta": best["performance_quality"] - champion_row["performance_quality"],
+                    "t_stat": best["significance_t_stat"]}
         return None
 
     def select(self, decisions: Iterable[StrategyDecision], *, regime: str | None = None) -> SelectionResult:
@@ -365,6 +432,11 @@ class StrategySelector:
             self._stats[(sid, regime)] = PerformanceBucket(
                 effective_samples=float(row.get("effective_samples", 0.0)),
                 weighted_pnl_bps=float(row.get("weighted_pnl_bps", 0.0)),
+                # Assente nei checkpoint precedenti al gate di significatività:
+                # 0.0 fa partire la varianza stimata da zero, quindi il gate
+                # resta prudente (t_stat=0, nessuna promozione) finché non si
+                # riaccumula storia reale -- degradazione sicura, non un crash.
+                weighted_pnl_sq_bps=float(row.get("weighted_pnl_sq_bps", 0.0)),
                 weighted_wins=float(row.get("weighted_wins", 0.0)),
                 weighted_losses=float(row.get("weighted_losses", 0.0)),
                 gross_profit_bps=float(row.get("gross_profit_bps", 0.0)),
