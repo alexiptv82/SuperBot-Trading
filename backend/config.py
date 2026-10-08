@@ -29,4 +29,28 @@ class Config:
     SCALPING_INTERVAL = 30
     DATA_FETCH_INTERVAL = 10
 
+    # ── Risk management (Fase 1 della roadmap di hardening) ─────────────────
+    # Rischio fisso per trade, come % del capitale corrente. La size viene
+    # derivata da questo e dalla distanza dello stop loss (non piu' una
+    # frazione fissa del capitale) -- vedi risk_manager.py.
+    RISK_PER_TRADE_PERCENT = float(os.getenv('RISK_PER_TRADE_PERCENT', '1.0'))
+    # Tetto assoluto sul nozionale di una singola posizione, come % del
+    # capitale: anche con uno stop molto stretto (che implicherebbe una size
+    # enorme per rispettare il rischio fisso) non si supera mai questo.
+    MAX_POSITION_PERCENT = float(os.getenv('MAX_POSITION_PERCENT', '20'))
+
+    # ── Esecuzione reale (SL/TP, retry, riconciliazione) ─────────────────────
+    API_MAX_RETRIES = int(os.getenv('API_MAX_RETRIES', '3'))
+    API_RETRY_BASE_DELAY = float(os.getenv('API_RETRY_BASE_DELAY', '1.0'))
+    # Ogni quanti cicli del loop principale (ognuno ~SCALPING_INTERVAL
+    # secondi) riconciliare lo stato locale delle posizioni con quello reale
+    # sull'exchange, oltre alla riconciliazione gia' fatta all'avvio.
+    RECONCILE_EVERY_N_CYCLES = int(os.getenv('RECONCILE_EVERY_N_CYCLES', '10'))
+
+    # ── Kill switch Telegram (comandi in ingresso) ───────────────────────────
+    TELEGRAM_COMMANDS_ENABLED = os.getenv('TELEGRAM_COMMANDS_ENABLED', 'true').lower() == 'true'
+    # Se impostato, solo messaggi da questo chat_id vengono trattati come
+    # comandi validi (lo stesso chat_id usato per le notifiche in uscita,
+    # di default -- vedi telegram_notifier.py).
+
 config = Config()

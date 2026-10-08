@@ -1,7 +1,6 @@
 from config import config
 
 class RiskManager:
-    RISK_PER_TRADE = 0.02
     SCALP_TP_RATIO = 1.5
     MEDIUM_TP_RATIO = 3.0
 
@@ -17,17 +16,33 @@ class RiskManager:
             stop_loss = price + sl_distance
             take_profit = price - (sl_distance * tp_ratio)
 
-        # Sizing corretto: max 20% del capitale per trade
-        max_position_usdt = capital * 0.20
-        position_usdt = min(max_position_usdt, capital * 0.10)
-        quantity = round(position_usdt / price, 6)
+        # Sizing basato sul rischio: la quantita' e' derivata da "quanto sono
+        # disposto a perdere se lo stop viene colpito", non da una frazione
+        # fissa del capitale. risk_amount_usdt e' l'importo che si perde
+        # (prima della leva, che incide solo sul margine) se il prezzo arriva
+        # esattamente sullo stop loss.
+        #
+        # Nota: in precedenza qui c'era `min(capital*0.20, capital*0.10)`,
+        # un bug per cui il ramo al 20% non veniva mai raggiunto e la size
+        # era sempre il 10% fisso del capitale, indipendentemente dal
+        # rischio reale del trade (stop stretto o largo che fosse).
+        risk_amount_usdt = capital * (config.RISK_PER_TRADE_PERCENT / 100.0)
+        quantity_by_risk = risk_amount_usdt / sl_distance if sl_distance > 0 else 0.0
+
+        # Tetto di sicurezza: anche con uno stop molto stretto (che implica
+        # una size enorme a parita' di rischio in dollari), il nozionale non
+        # supera mai MAX_POSITION_PERCENT del capitale.
+        max_position_usdt = capital * (config.MAX_POSITION_PERCENT / 100.0)
+        notional_by_risk = quantity_by_risk * price
+        position_usdt = min(notional_by_risk, max_position_usdt)
+        quantity = round(position_usdt / price, 6) if price > 0 else 0.0
 
         return {
             'quantity': quantity,
             'leverage': leverage,
             'stop_loss': round(stop_loss, 4),
             'take_profit': round(take_profit, 4),
-            'risk_amount_usdt': round(position_usdt, 2),
+            'risk_amount_usdt': round(min(risk_amount_usdt, position_usdt), 2),
         }
 
     def check_daily_loss_limit(self, daily_pnl, capital) -> bool:
