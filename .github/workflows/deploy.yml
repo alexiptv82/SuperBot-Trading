@@ -24,7 +24,7 @@ jobs:
           command_timeout: 30m
           envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
           script: |
-            apt-get install -y docker.io git curl nginx 2>/dev/null || true
+            apt-get install -y docker.io git curl nginx nodejs npm 2>/dev/null || true
             systemctl start docker 2>/dev/null || true
             if [ -d "/opt/superbot/.git" ]; then
               cd /opt/superbot && git fetch origin && git reset --hard origin/main
@@ -34,6 +34,17 @@ jobs:
             cd /opt/superbot
             printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD=superbot2024\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" > backend/.env
             mkdir -p data
+            # Build reale del frontend ad ogni deploy: prima d'ora
+            # frontend/build sul VPS era una build manuale vecchia, mai
+            # aggiornata automaticamente, quindi mancavano anche gli asset
+            # della PWA (manifest/service worker/icone). BACKEND_URL vuoto
+            # fa usare richieste relative (stesso dominio, via il proxy
+            # /api di nginx) cosi' funziona sia su HTTP che su HTTPS senza
+            # problemi di mixed-content.
+            cd frontend
+            REACT_APP_BACKEND_URL= npm install --no-audit --no-fund
+            REACT_APP_BACKEND_URL= npm run build
+            cd ..
             cp nginx.conf /etc/nginx/sites-available/superbot
             ln -sf /etc/nginx/sites-available/superbot /etc/nginx/sites-enabled/superbot
             rm -f /etc/nginx/sites-enabled/default
