@@ -59,6 +59,15 @@ jobs:
           LOCAL_CURL=$(curl -sS -o /dev/null -w "HTTP %{http_code}" "http://localhost/" --header "Host: ${DOMAIN}" 2>&1)
           note "curl locale (Host header dominio)" "$LOCAL_CURL"
 
+          # Sola lettura: capire perche' il routing con questo Host header
+          # non arriva al nostro vhost, senza toccare nulla (in particolare
+          # senza toccare la configurazione di altri siti sulla stessa VPS).
+          note "sites-enabled" "$(ls -la /etc/nginx/sites-enabled/ 2>&1)"
+          for f in /etc/nginx/sites-enabled/*; do
+            note "config: $f" "$(grep -E 'listen|server_name|default_server|return' "$f" 2>&1)"
+          done
+          note "nginx -T (server_name/listen only)" "$(nginx -T 2>&1 | grep -E 'listen|server_name|# configuration file')"
+
           apt-get update -y >/tmp/apt.log 2>&1
           apt-get install -y certbot >>/tmp/apt.log 2>&1
           note "certbot installato" "$(certbot --version 2>&1)"
