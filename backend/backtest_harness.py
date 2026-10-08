@@ -67,6 +67,7 @@ try:
         StrategyContext,
     )
     from strategy_selector import StrategySelector
+    from regime_detector import detect_regime
 except ImportError:
     from backend.strategies import (  # type: ignore
         TrendFollowingStrategy,
@@ -75,6 +76,7 @@ except ImportError:
         StrategyContext,
     )
     from backend.strategy_selector import StrategySelector  # type: ignore
+    from backend.regime_detector import detect_regime  # type: ignore
 
 
 ONE_MINUTE_MS = 60_000
@@ -226,8 +228,14 @@ def run_symbol(
             i += stride
             continue
 
-        regime = str(context.indicators_15m.get("trend", "unknown")).lower()
+        regime_info = detect_regime(
+            symbol, adx=context.indicators_1h.get("adx", 0.0),
+            trend_direction=context.indicators_1h.get("trend", "unknown"),
+            bbw=context.indicators_1h.get("bbw"))
+        regime = regime_info["regime"]
         regimes_seen.add(regime)
+        # Bucket separato per (simbolo, regime): vedi strategy_selector.make_context_key.
+        context_key = StrategySelector.make_context_key(symbol, regime)
 
         entry_price = candles_1m[i][4]
         exit_price = candles_1m[i + holding][4]
@@ -250,7 +258,7 @@ def run_symbol(
             selector.record_result(
                 strategy_id=decision.strategy_id,
                 pnl_bps=pnl_bps,
-                regime=regime,
+                regime=context_key,
             )
             signals += 1
 

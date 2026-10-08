@@ -121,6 +121,25 @@ class SelectionResult:
 class StrategySelector:
     GLOBAL_REGIME = "__GLOBAL__"
 
+    @staticmethod
+    def make_context_key(symbol: str, regime: str | None) -> str:
+        """Combina simbolo e regime in un'unica chiave di bucket, cosi' le
+        statistiche di performance (e quindi anche la selezione del
+        champion/challenger) restano separate per simbolo oltre che per
+        regime, invece di mescolare BTC/ETH (cripto) con XAU/XAG (metalli)
+        nello stesso bucket solo perche' si trovano nello stesso regime di
+        mercato -- vedi roadmap Fase 2.
+
+        Il bucket GLOBAL (per sola strategy_id, vedi record_result) resta
+        invece condiviso tra tutti i simboli: e' il fallback di warm-start
+        per una combinazione (simbolo, regime) ancora senza campioni.
+
+        Esempio: ('BTCUSDT', 'TREND_BULL') -> 'BTCUSDT::TREND_BULL'.
+        """
+        sym = str(symbol or "UNKNOWN").strip().upper()
+        reg = str(regime or "unknown").strip().upper() or "UNKNOWN"
+        return f"{sym}::{reg}"
+
     def __init__(self, strategy_ids: Iterable[str], config: SelectorConfig | None = None):
         self.config = config or SelectorConfig()
         self.config.validate()

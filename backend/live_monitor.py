@@ -25,11 +25,13 @@ try:
         TrendFollowingStrategy, MeanReversionStrategy, MomentumStrategy, StrategyContext,
     )
     from strategy_selector import StrategySelector
+    from regime_detector import detect_regime
 except ImportError:
     from backend.strategies import (
         TrendFollowingStrategy, MeanReversionStrategy, MomentumStrategy, StrategyContext,
     )
     from backend.strategy_selector import StrategySelector
+    from backend.regime_detector import detect_regime
 
 
 def main():
@@ -171,13 +173,20 @@ def main():
                 print(f"[warn] context build failed {symbol}: {e}", file=sys.stderr)
                 continue
 
-            # Derive the real regime from the 15m trend indicator, same
-            # convention used by backtest_harness.py -- the "unknown"
-            # passed into from_ohlcv above is just a required placeholder.
-            regime = str(context.indicators_15m.get("trend", "unknown")).lower()
+            # Regime via ADX/BBW (1h) + direzione EMA, con isteresi -- stessa
+            # logica usata da bot_engine.py, non piu' il semplice trend EMA
+            # 15m usato come placeholder. La "unknown" passata a from_ohlcv
+            # sopra resta solo un placeholder richiesto dalla firma.
+            regime_info = detect_regime(
+                symbol, adx=context.indicators_1h.get("adx", 0.0),
+                trend_direction=context.indicators_1h.get("trend", "unknown"),
+                bbw=context.indicators_1h.get("bbw"))
+            regime = regime_info["regime"]
+            # Bucket separato per (simbolo, regime): vedi strategy_selector.make_context_key.
+            context_key = StrategySelector.make_context_key(symbol, regime)
 
             decisions = [s.analyze(context) for s in strategies]
-            result = selector.select(decisions, regime=regime)
+            result = selector.select(decisions, regime=context_key)
             price_now = ohlcv_1m[-1][4]
             ts_now = datetime.now(timezone.utc).isoformat()
             log_decision(ts_now, symbol, regime, price_now, result)
@@ -186,7 +195,7 @@ def main():
                 if d.direction.value != "hold":
                     sign = 1.0 if d.direction.value == "long" else -1.0
                     pending.append(
-                        (now + args.holding_minutes * 60, symbol, d.strategy_id, sign, price_now, regime)
+                        (now + args.holding_minutes * 60, symbol, d.strategy_id, sign, price_now, context_key)
                     )
 
             selected_txt = (

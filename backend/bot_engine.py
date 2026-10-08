@@ -130,7 +130,11 @@ class BotEngine:
 
             decisions = [s.analyze(context) for s in _v05_strategies]
 
-            result = _v05_selector.select(decisions, regime=regime)
+            # Bucket di statistiche/champion separato per (simbolo, regime):
+            # BTC/ETH (cripto) e XAU/XAG (metalli) non devono influenzarsi a
+            # vicenda solo perche' si trovano nello stesso regime di mercato.
+            context_key = StrategySelector.make_context_key(symbol, regime)
+            result = _v05_selector.select(decisions, regime=context_key)
 
             # Build compact summary for the audit log
             selected = result.selected
