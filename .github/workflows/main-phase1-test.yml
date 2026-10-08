@@ -1,0 +1,97 @@
+name: Phase 1 Safety - Paper Mode Test
+
+# Manual-only workflow per testare in paper mode, su mercato reale, le
+# modifiche di hardening dell'esecuzione (sizing a rischio fisso, SL/TP
+# condizionali, riconciliazione posizioni, sanity check sui dati, retry
+# con backoff, kill switch). Stesso schema di v05-test.yml: workflow_dispatch
+# con un tetto massimo di durata, nessun trigger automatico su push, non
+# tocca mai main né il deploy di produzione (.github/workflows/deploy.yml).
+#
+# Gira backend/paper_test_runner.py, che forza TRADING_MODE=paper (lo
+# script si rifiuta di partire altrimenti): nessun ordine reale viene
+# piazzato sull'exchange.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch o commit da testare"
+        required: true
+        default: "main-phase1-safety"
+      max_hours:
+        description: "Durata massima del test in ore (tetto di sicurezza)"
+        required: false
+        default: "5"
+      dump_every_seconds:
+        description: "Ogni quanti secondi salvare lo stato intermedio"
+        required: false
+        default: "300"
+      symbols:
+        description: "Coppie separate da virgola (formato spot/ccxt, es. BTCUSDT)"
+        required: false
+        default: "BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT"
+
+jobs:
+  paper-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      TRADING_MODE: paper
+      INITIAL_CAPITAL: "1000"
+      MAX_LEVERAGE: "10"
+      MAX_DAILY_LOSS_PERCENT: "5"
+      MAX_OPEN_POSITIONS: "3"
+      TRADING_PAIRS: ${{ inputs.symbols }}
+      DB_PATH: "./data/paper_test.db"
+      RISK_PER_TRADE_PERCENT: "1.0"
+      MAX_POSITION_PERCENT: "20"
+      API_MAX_RETRIES: "3"
+      API_RETRY_BASE_DELAY: "1.0"
+      RECONCILE_EVERY_N_CYCLES: "10"
+      # Niente token/chat_id Telegram in questo test: le notifiche restano
+      # disattivate (notifier.enabled=False), per non riempire di messaggi
+      # il telefono durante un run di 4-5 ore di scalping simulato. Il kill
+      # switch bidirezionale va verificato a parte con un check manuale
+      # breve, non durante questo run automatico e incustodito.
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run paper-mode test
+        run: |
+          mkdir -p data
+          python paper_test_runner.py \
+            --max-hours "${{ inputs.max_hours }}" \
+            --dump-every-seconds "${{ inputs.dump_every_seconds }}" \
+            --state-out paper_test_state.json \
+            2>&1 | tee paper_test_output.log
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-test-results-${{ github.run_id }}
+          path: |
+            backend/paper_test_output.log
+            backend/paper_test_state.json
+            backend/data/paper_test.db
+          if-no-files-found: ignore
+          retention-days: 14

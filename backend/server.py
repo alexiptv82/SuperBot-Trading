@@ -20,10 +20,13 @@ from webauthn.helpers.structs import (
     AuthenticatorAttachment,
 )
 
+import asyncio
+
 from config import config
 from database import init_db, get_db, Trade, AuditLog
 from bot_engine import bot
 from exchange import exchange
+from telegram_notifier import notifier
 from auth import (
     create_session_token,
     require_session,
@@ -309,6 +312,53 @@ if os.path.exists(frontend_build):
         if os.path.exists(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(frontend_build, 'index.html'))
+
+# ── Kill switch Telegram (comandi bidirezionali) ────────────────────────────
+# Il polling gira indipendentemente da bot.is_running, cosi' /resume
+# funziona anche a bot fermo. Registrato qui (non in telegram_notifier.py)
+# per evitare un import circolare notifier<->bot_engine.
+
+async def _cmd_halt() -> str:
+    await bot.stop()
+    return "⏹️ Bot fermato da comando Telegram (/halt). Usa /resume per far ripartire."
+
+async def _cmd_resume() -> str:
+    await bot.start()
+    return "✅ Bot riavviato da comando Telegram (/resume)."
+
+async def _cmd_status() -> str:
+    s = bot.get_status()
+    return (
+        f"📊 <b>Stato bot</b>\n"
+        f"In esecuzione: {'si' if s['is_running'] else 'no'}\n"
+        f"Modalità: {s['mode']}\n"
+        f"Capitale: ${s['capital']:,.2f}\n"
+        f"P&L oggi: ${s['daily_pnl']:+.2f}\n"
+        f"Posizioni aperte: {s['open_positions']}\n"
+        f"Trade totali: {s['total_trades']} | Win rate: {s['win_rate']}%"
+    )
+
+async def _cmd_closeall() -> str:
+    closed = await bot.close_all_positions(reason='manual_telegram')
+    if not closed:
+        return "ℹ️ Nessuna posizione aperta da chiudere."
+    return f"🔒 Chiuse {len(closed)} posizioni: {', '.join(closed)}"
+
+notifier.register_command('halt', _cmd_halt)
+notifier.register_command('stop', _cmd_halt)
+notifier.register_command('resume', _cmd_resume)
+notifier.register_command('start', _cmd_resume)
+notifier.register_command('status', _cmd_status)
+notifier.register_command('closeall', _cmd_closeall)
+
+
+@app.on_event('startup')
+async def _on_startup():
+    # Il listener dei comandi Telegram parte sempre, a prescindere dal bot --
+    # è l'unico modo per cui /resume possa funzionare se il bot è fermo o il
+    # processo è appena stato riavviato.
+    asyncio.create_task(notifier.poll_commands())
+
 
 if __name__ == '__main__':
     import uvicorn

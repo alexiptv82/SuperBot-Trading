@@ -31,6 +31,15 @@ class Trade(Base):
     close_time = Column(DateTime, nullable=True)
     close_reason = Column(String, nullable=True)
     indicators_snapshot = Column(Text, nullable=True)
+    # clientOrderId mandato all'exchange insieme all'ordine di apertura --
+    # permette di riconoscere un retry della stessa richiesta come lo stesso
+    # ordine invece di aprirne uno duplicato (idempotenza).
+    client_order_id = Column(String, nullable=True, index=True)
+    # Id degli ordini condizionali di stop loss / take profit piazzati
+    # sull'exchange insieme all'apertura (se il bot gira in modalita' live).
+    # Nessuno dei due in modalita' paper, dove SL/TP restano soglie locali.
+    sl_order_id = Column(String, nullable=True)
+    tp_order_id = Column(String, nullable=True)
 
 class MarketSnapshot(Base):
     __tablename__ = "market_snapshots"
@@ -59,8 +68,32 @@ class AuditLog(Base):
     message = Column(Text)
     data = Column(Text, nullable=True)
 
+def _migrate_add_missing_columns():
+    """Micro-migrazione per SQLite: create_all() crea solo le tabelle mancanti,
+    non le colonne nuove su una tabella che esiste gia' (es. il DB di
+    produzione sul VPS, creato prima dei campi di idempotenza/SL-TP qui
+    sotto). Aggiunge con ALTER TABLE solo le colonne che mancano davvero,
+    non tocca nessun dato esistente."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    if 'trades' not in inspector.get_table_names():
+        return  # tabella nuova, create_all() l'ha gia' creata con tutte le colonne
+    existing_cols = {c['name'] for c in inspector.get_columns('trades')}
+    needed = {
+        'client_order_id': 'VARCHAR',
+        'sl_order_id': 'VARCHAR',
+        'tp_order_id': 'VARCHAR',
+    }
+    with engine.connect() as conn:
+        for col, col_type in needed.items():
+            if col not in existing_cols:
+                conn.execute(text(f'ALTER TABLE trades ADD COLUMN {col} {col_type}'))
+        conn.commit()
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _migrate_add_missing_columns()
 
 def get_db():
     db = SessionLocal()
