@@ -96,6 +96,7 @@ jobs:
             --max-hours "${{ inputs.max_hours }}" \
             --state-in v05_checkpoint.json \
             --state-out v05_checkpoint.json \
+            --decision-log decisions.jsonl \
             2>&1 | tee live_monitor.log
           cp v05_checkpoint.json live_state.json
 
@@ -127,5 +128,6 @@ jobs:
             backend/live_monitor.log
             backend/live_state.json
             backend/v05_checkpoint.json
+            backend/decisions.jsonl
           if-no-files-found: ignore
           retention-days: 14
