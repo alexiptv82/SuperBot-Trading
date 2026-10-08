@@ -32,16 +32,42 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 10m
           script: |
-            set -e
-            apt-get update -y
-            apt-get install -y certbot
-            mkdir -p /opt/superbot/frontend/build
+            set +e
+            note() { printf '::notice title=%s::%s\n' "$1" "$(echo "$2" | tr '\n' '|' | sed 's/::/: /g')"; }
+
+            DNS_OUT=$(getent hosts "${{ inputs.domain }}" 2>&1)
+            note "DNS lookup" "${DNS_OUT:-VUOTO/fallita}"
+
+            NGINX_STATUS=$(systemctl is-active nginx 2>&1)
+            note "nginx status" "$NGINX_STATUS"
+
+            LOCAL_CURL=$(curl -sS -o /dev/null -w "HTTP %{http_code}" "http://localhost/" --header "Host: ${{ inputs.domain }}" 2>&1)
+            note "curl locale (Host header dominio)" "$LOCAL_CURL"
+
+            apt-get update -y >/tmp/apt.log 2>&1
+            apt-get install -y certbot >>/tmp/apt.log 2>&1
+            note "certbot installato" "$(certbot --version 2>&1)"
+
+            mkdir -p /opt/superbot/frontend/build/.well-known/acme-challenge
+            echo "ping-test-$(date +%s)" > /opt/superbot/frontend/build/.well-known/acme-challenge/ping-test
+
+            PUBLIC_CURL=$(curl -sS -w "\nHTTP %{http_code}" "http://${{ inputs.domain }}/.well-known/acme-challenge/ping-test" 2>&1)
+            note "curl pubblico al file di test ACME" "$PUBLIC_CURL"
+
             certbot certonly \
               --webroot -w /opt/superbot/frontend/build \
               -d "${{ inputs.domain }}" \
               --non-interactive --agree-tos \
               -m "${{ inputs.email }}" \
               --deploy-hook "systemctl reload nginx" \
-              --keep-until-expiring
-            echo "---"
-            certbot certificates
+              --keep-until-expiring \
+              -v > /tmp/certbot.log 2>&1
+            CERTBOT_EXIT=$?
+
+            note "certbot exit code" "$CERTBOT_EXIT"
+            note "certbot output (coda)" "$(tail -n 40 /tmp/certbot.log)"
+            note "certbot certificates" "$(certbot certificates 2>&1)"
+
+            if [ "$CERTBOT_EXIT" -ne 0 ]; then
+              exit $CERTBOT_EXIT
+            fi
