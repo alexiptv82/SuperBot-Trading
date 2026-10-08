@@ -48,35 +48,15 @@ jobs:
           ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 root@51.91.109.45 \
             "DOMAIN='${DOMAIN}' LE_EMAIL='${LE_EMAIL}' bash -s" <<'REMOTE'
           set +e
+          # Nota: GitHub mostra al massimo 10 annotazioni per check run, quindi
+          # qui stampiamo SOLO l'esito di certbot -- il routing/DNS/nginx sono
+          # gia' stati verificati e corretti in run precedenti.
           note() { printf '::notice title=%s::%s\n' "$1" "$(echo "$2" | tr '\n' '|' | sed 's/::/: /g')"; }
-
-          DNS_OUT=$(getent hosts "$DOMAIN" 2>&1)
-          note "DNS lookup" "${DNS_OUT:-VUOTO/fallita}"
-
-          NGINX_STATUS=$(systemctl is-active nginx 2>&1)
-          note "nginx status" "$NGINX_STATUS"
-
-          LOCAL_CURL=$(curl -sS -o /dev/null -w "HTTP %{http_code}" "http://localhost/" --header "Host: ${DOMAIN}" 2>&1)
-          note "curl locale (Host header dominio)" "$LOCAL_CURL"
-
-          # Sola lettura: capire perche' il routing con questo Host header
-          # non arriva al nostro vhost, senza toccare nulla (in particolare
-          # senza toccare la configurazione di altri siti sulla stessa VPS).
-          note "sites-enabled" "$(ls -la /etc/nginx/sites-enabled/ 2>&1)"
-          for f in /etc/nginx/sites-enabled/*; do
-            note "config: $f" "$(grep -E 'listen|server_name|default_server|return' "$f" 2>&1)"
-          done
-          note "nginx -T (server_name/listen only)" "$(nginx -T 2>&1 | grep -E 'listen|server_name|# configuration file')"
 
           apt-get update -y >/tmp/apt.log 2>&1
           apt-get install -y certbot >>/tmp/apt.log 2>&1
-          note "certbot installato" "$(certbot --version 2>&1)"
 
           mkdir -p /opt/superbot/frontend/build/.well-known/acme-challenge
-          echo "ping-test-$(date +%s)" > /opt/superbot/frontend/build/.well-known/acme-challenge/ping-test
-
-          PUBLIC_CURL=$(curl -sS -w "\nHTTP %{http_code}" "http://${DOMAIN}/.well-known/acme-challenge/ping-test" 2>&1)
-          note "curl pubblico al file di test ACME" "$PUBLIC_CURL"
 
           certbot certonly \
             --webroot -w /opt/superbot/frontend/build \
