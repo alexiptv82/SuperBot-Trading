@@ -1,0 +1,47 @@
+name: Setup SSL Certificate (Let's Encrypt)
+
+# One-off / re-runnable manual tool: obtains (or renews on-demand) a free
+# Let's Encrypt certificate for the dashboard's DuckDNS domain via the
+# webroot method, without touching the live app or the trading bot. It does
+# NOT rewrite nginx.conf itself -- that's done deliberately in a separate,
+# reviewable commit, so the repo's nginx.conf always matches what's really
+# serving on the VPS (the normal deploy.yml step copies nginx.conf over
+# /etc/nginx/sites-available/superbot on every push to main, so a
+# certbot-managed rewrite there would get silently discarded on the next
+# deploy).
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: "Dominio DuckDNS da certificare"
+        required: true
+        default: "superbot-trading.duckdns.org"
+      email:
+        description: "Email per gli avvisi di scadenza Let's Encrypt"
+        required: true
+
+jobs:
+  obtain-certificate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtain certificate on VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 10m
+          script: |
+            set -e
+            apt-get update -y
+            apt-get install -y certbot
+            mkdir -p /opt/superbot/frontend/build
+            certbot certonly \
+              --webroot -w /opt/superbot/frontend/build \
+              -d "${{ inputs.domain }}" \
+              --non-interactive --agree-tos \
+              -m "${{ inputs.email }}" \
+              --deploy-hook "systemctl reload nginx" \
+              --keep-until-expiring
+            echo "---"
+            certbot certificates

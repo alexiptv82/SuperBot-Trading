@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - '.github/workflows/v05-test.yml'
       - '.github/workflows/analyze-v05-results.yml'
+      - '.github/workflows/setup-ssl.yml'
 
 jobs:
   deploy:
