@@ -124,7 +124,15 @@ class BotEngine:
         for oid in closed: del self.open_trades[oid]
 
     def _calc_pnl(self, entry, exit_p, qty, side, leverage) -> float:
-        return round(((exit_p - entry) if side == 'long' else (entry - exit_p)) * qty * leverage, 4)
+        # `qty` e' gia' la size reale della posizione mandata all'exchange
+        # (exchange.create_order invia `quantity` cosi' com'e', la leva viene
+        # impostata separatamente con set_leverage e incide solo sul margine
+        # richiesto, non sul PnL per movimento di prezzo). Moltiplicare di
+        # nuovo per `leverage` qui gonfiava il PnL (e quindi capitale e
+        # daily_pnl) di un fattore leva rispetto a quello che accadrebbe
+        # davvero sull'exchange. `leverage` resta nella firma per i chiamanti
+        # esistenti e per eventuale logging, ma non entra piu' nel calcolo.
+        return round(((exit_p - entry) if side == 'long' else (entry - exit_p)) * qty, 4)
 
     def _save_trade(self, data: dict):
         db = SessionLocal()
