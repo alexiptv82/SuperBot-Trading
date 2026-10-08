@@ -8,6 +8,8 @@ on:
       - '.github/workflows/analyze-v05-results.yml'
       - '.github/workflows/setup-ssl.yml'
       - '.github/workflows/check-pwa.yml'
+      - '.github/workflows/main-phase1-test.yml'
+      - '.github/workflows/analyze-phase1-results.yml'
 
 jobs:
   deploy:
