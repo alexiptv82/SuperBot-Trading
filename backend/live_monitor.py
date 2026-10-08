@@ -26,12 +26,14 @@ try:
     )
     from strategy_selector import StrategySelector
     from regime_detector import detect_regime
+    from funding_filter import funding_penalty
 except ImportError:
     from backend.strategies import (
         TrendFollowingStrategy, MeanReversionStrategy, MomentumStrategy, StrategyContext,
     )
     from backend.strategy_selector import StrategySelector
     from backend.regime_detector import detect_regime
+    from backend.funding_filter import funding_penalty
 
 
 def main():
@@ -125,6 +127,17 @@ def main():
                 time.sleep(2)
         return None
 
+    def fetch_funding(symbol):
+        # Non tutti i simboli supportano il funding rate (XAU/XAG dipende
+        # da come BitGet li tratta) -- nessun retry qui, un fallimento
+        # occasionale si traduce solo in "nessuna penalizzazione" per
+        # quel ciclo, non e' un dato critico come le OHLCV.
+        try:
+            fr = client.fetch_funding_rate(symbol)
+            return fr.get('fundingRate')
+        except Exception:
+            return None
+
     print(
         f"Live shadow monitor starting. symbols={symbols} "
         f"holding={args.holding_minutes}min poll={args.poll_seconds}s "
@@ -208,9 +221,15 @@ def main():
                 kelly = selector.kelly_suggestion(result.selected_strategy_id, context_key)
                 if kelly.get("eligible"):
                     kelly_txt = f" kelly={kelly['kelly_fractional']*100:.2f}%(n={kelly['lifetime_samples']:.0f})"
+            funding_txt = ""
+            if result.selected is not None:
+                funding_rate = fetch_funding(symbol)
+                fp = funding_penalty(funding_rate, result.selected.direction.value)
+                if fp['multiplier'] < 1.0:
+                    funding_txt = f" funding_penalty={fp['multiplier']:.2f}"
             print(
                 f"[{ts_now}] {symbol} regime={regime} selected={selected_txt} "
-                f"price={price_now} resolved_this_cycle={resolved}{kelly_txt}",
+                f"price={price_now} resolved_this_cycle={resolved}{kelly_txt}{funding_txt}",
                 flush=True,
             )
 

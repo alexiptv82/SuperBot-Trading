@@ -23,6 +23,24 @@ class BitGetExchange:
         return await loop.run_in_executor(
             None, lambda: self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit))
 
+    async def get_funding_rate(self, symbol: str) -> dict | None:
+        """Funding rate corrente per un perpetual (BTC/ETH tipicamente; per
+        XAU/XAG dipende se BitGet li tratta come swap con funding o no).
+        Ritorna None se il simbolo non supporta il funding rate o la
+        chiamata fallisce -- mai un'eccezione, visto che questo e' usato
+        solo per un filtro informativo in V0.5 (shadow mode), non deve mai
+        far fallire il ciclo di analisi."""
+        try:
+            loop = asyncio.get_event_loop()
+            fr = await loop.run_in_executor(None, self.exchange.fetch_funding_rate, symbol)
+            return {
+                'symbol': symbol,
+                'funding_rate': fr.get('fundingRate'),
+                'next_funding_time': fr.get('fundingTimestamp'),
+            }
+        except Exception:
+            return None
+
     async def get_balance(self) -> dict:
         if config.IS_PAPER:
             return {'USDT': {'free': config.INITIAL_CAPITAL, 'total': config.INITIAL_CAPITAL}}

@@ -10,6 +10,7 @@ from signal_engine import signal_engine
 from risk_manager import risk_manager
 from indicators import TechnicalIndicators
 from regime_detector import detect_regime
+from funding_filter import funding_penalty
 try:
     from backend.telegram_notifier import notifier
 except ImportError:
@@ -109,7 +110,8 @@ class BotEngine:
                 await asyncio.sleep(10)
 
     # ── V0.5: parallel shadow run ─────────────────────────────────────────────
-    def _analyze_v05(self, symbol: str, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime: str = "unknown"):
+    def _analyze_v05(self, symbol: str, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime: str = "unknown",
+                      funding_rate: float | None = None):
         """Run the V0.5 strategy engine in shadow mode (no trade execution).
 
         Reads the StrategyContext, queries all three strategies, calls the
@@ -157,6 +159,15 @@ class BotEngine:
             if result.promotion:
                 summary += f" | PROMOTION={json.dumps(result.promotion)}"
 
+            # Filtro di sicurezza sul funding rate: penalizza (solo nel log,
+            # shadow mode) un segnale che va nella stessa direzione della
+            # "folla" di posizioni implicata da un funding rate elevato --
+            # vedi funding_filter.py per la logica e le soglie.
+            if selected is not None:
+                fp = funding_penalty(funding_rate, selected.direction.value)
+                if fp['multiplier'] < 1.0:
+                    summary += f" | funding_penalty={fp['multiplier']:.2f} ({fp['reason']})"
+
             # Suggerimento Kelly frazionale, solo informativo (shadow mode):
             # NON cambia il sizing reale di nessun trade, quello resta su
             # risk_manager.py (V1/main) a rischio fisso. Serve solo per
@@ -203,7 +214,11 @@ class BotEngine:
             except Exception as regime_exc:  # noqa: BLE001
                 self._log('v05_error', symbol=symbol, message=f'Regime detector errore: {regime_exc}')
                 regime = str(analysis.get('main_trend', 'unknown')).lower()
-            self._analyze_v05(symbol, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime=regime)
+            # Funding rate (solo per i perpetual che lo supportano -- None
+            # altrimenti, il filtro lo gestisce senza penalizzare nulla).
+            funding_info = await exchange.get_funding_rate(symbol)
+            funding_rate = funding_info['funding_rate'] if funding_info else None
+            self._analyze_v05(symbol, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime=regime, funding_rate=funding_rate)
             # ─────────────────────────────────────────────────────────────────
 
             # Production gate: only signal_engine controls trade execution
