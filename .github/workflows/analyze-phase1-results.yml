@@ -1,0 +1,110 @@
+name: Analyze Phase 1 Test Results
+
+# Utility tool: downloads the artifact of a past "Phase 1 Safety - Paper
+# Mode Test" run and prints a readable summary as workflow annotations --
+# usato perche' questo sandbox non riesce a raggiungere direttamente lo
+# storage blob di GitHub per gli artifact/log grezzi. Di sola lettura,
+# non modifica nulla.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run ID del test Phase 1 da analizzare"
+        required: true
+      artifact_name:
+        description: "Nome dell'artifact (di solito phase1-test-results-<run_id>)"
+        required: false
+        default: ""
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download test results artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name != '' && inputs.artifact_name || format('phase1-test-results-{0}', inputs.run_id) }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: results
+
+      - name: List downloaded files
+        run: |
+          echo "::notice title=Files::$(find results -type f -exec ls -la {} \; | tr '\n' ' | ')"
+
+      - name: Summarize paper_test_state.json
+        if: hashFiles('results/paper_test_state.json') != ''
+        run: |
+          python3 - <<'PYEOF'
+          import json
+
+          with open('results/paper_test_state.json') as f:
+              state = json.load(f)
+
+          status = state.get('bot_status', {})
+          summary = state.get('summary', {})
+          trades = state.get('trades', [])
+          open_trades = state.get('open_trades', [])
+
+          print(f"::notice title=Stato finale bot::{json.dumps(status)}")
+          print(f"::notice title=Riepilogo trade::{json.dumps(summary)}")
+          print(f"::notice title=Posizioni rimaste aperte a fine test::{len(open_trades)} -> {json.dumps(open_trades)[:800]}")
+
+          by_symbol = {}
+          for t in trades:
+              if t['status'] == 'closed':
+                  by_symbol.setdefault(t['symbol'], {'count': 0, 'pnl': 0.0})
+                  by_symbol[t['symbol']]['count'] += 1
+                  by_symbol[t['symbol']]['pnl'] += (t.get('pnl') or 0)
+          print(f"::notice title=PnL per simbolo::{json.dumps(by_symbol)}")
+
+          with_coid = sum(1 for t in trades if t.get('client_order_id'))
+          print(f"::notice title=Trade con clientOrderId (idempotenza)::{with_coid} su {len(trades)}")
+
+          reasons = summary.get('close_reasons', {})
+          print(f"::notice title=Motivi di chiusura::{json.dumps(reasons)}")
+
+          # Primi e ultimi 3 trade per un controllo rapido di sanità sui numeri.
+          closed = [t for t in trades if t['status'] == 'closed']
+          sample = closed[:3] + closed[-3:]
+          print(f"::notice title=Esempio trade (primi/ultimi 3)::{json.dumps(sample)[:1500]}")
+          PYEOF
+
+      - name: Check for data-sanity / reconcile / error events in the audit log
+        if: hashFiles('results/paper_test_state.json') != ''
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          from collections import Counter
+
+          with open('results/paper_test_state.json') as f:
+              state = json.load(f)
+
+          logs = state.get('logs_tail', [])
+          by_type = Counter(l['event_type'] for l in logs)
+          print(f"::notice title=Eventi nel log (ultimi 1000)::{dict(by_type)}")
+
+          sanity_fails = [l for l in logs if l['event_type'] == 'data_sanity_fail']
+          if sanity_fails:
+              lines = [f"{l['timestamp']} {l['symbol']}: {l['message']}" for l in sanity_fails[:15]]
+              print(f"::warning title=Sanity check scattati ({len(sanity_fails)})::{' | '.join(lines)}")
+          else:
+              print("::notice title=Sanity check scattati::0 (nessun dato scartato)")
+
+          errors = [l for l in logs if l['event_type'] == 'error']
+          if errors:
+              lines = [f"{l['timestamp']} {l.get('symbol','')}: {l['message']}" for l in errors[:15]]
+              print(f"::error title=Errori nel loop ({len(errors)})::{' | '.join(lines)}")
+          else:
+              print("::notice title=Errori nel loop::0")
+
+          reconcile = [l for l in logs if 'reconcile' in l['event_type']]
+          print(f"::notice title=Eventi di riconciliazione::{len(reconcile)}")
+          PYEOF
+
+      - name: Tail paper_test_output.log
+        if: hashFiles('results/paper_test_output.log') != ''
+        run: |
+          echo "::notice title=Log - prime righe::$(head -5 results/paper_test_output.log | tr '\n' ' | ')"
+          echo "::notice title=Log - ultime righe::$(tail -15 results/paper_test_output.log | tr '\n' ' | ')"
+          echo "::notice title=Log - conteggio righe::$(wc -l < results/paper_test_output.log)"
