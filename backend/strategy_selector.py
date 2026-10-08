@@ -48,6 +48,13 @@ class PerformanceBucket:
     weighted_losses: float = 0.0
     gross_profit_bps: float = 0.0
     gross_loss_bps: float = 0.0
+    # Conteggio di tutti i trade mai registrati in questo bucket, SENZA
+    # decadimento -- a differenza di effective_samples, che decade a ogni
+    # add() e quindi (con decay=0.985) si stabilizza asintoticamente
+    # intorno a 1/(1-decay)=~66.7 campioni e non supera MAI una soglia più
+    # alta. Serve come gate per il Kelly frazionale (vedi kelly_fraction),
+    # che richiede una storia lunga davvero accumulata, non solo "recente".
+    lifetime_samples: float = 0.0
     last_updated_at: str | None = None
 
     def decay_by(self, factor: float) -> None:
@@ -62,6 +69,7 @@ class PerformanceBucket:
         self.decay_by(decay)
         pnl_bps = float(pnl_bps)
         self.effective_samples += 1.0
+        self.lifetime_samples += 1.0
         self.weighted_pnl_bps += pnl_bps
         if pnl_bps > 0:
             self.weighted_wins += 1.0
@@ -94,6 +102,59 @@ class PerformanceBucket:
         out = asdict(self)
         out.update(expectancy_bps=self.expectancy_bps, win_rate=self.win_rate, profit_factor=self.profit_factor)
         return out
+
+    # Kelly frazionale: parametri di sicurezza condivisi da tutti i bucket.
+    KELLY_MIN_LIFETIME_SAMPLES = 200.0
+    KELLY_FRACTION = 0.25          # 1/4 Kelly -- il pieno Kelly è troppo
+                                    # aggressivo per stime di probabilità
+                                    # rumorose (anche a 200 campioni).
+    KELLY_MAX_STAKE_FRACTION = 0.05  # tetto di sicurezza assoluto: mai
+                                      # oltre il 5% del capitale, qualunque
+                                      # cosa dica la formula.
+
+    def kelly_fraction(self) -> dict[str, Any]:
+        """Frazione di capitale suggerita da un Kelly frazionale (1/4 Kelly),
+        SOLO quando il bucket ha accumulato almeno KELLY_MIN_LIFETIME_SAMPLES
+        trade (gate su lifetime_samples, che non decade mai -- vedi sopra).
+
+        Puramente informativo in questa fase: il motore V0.5 gira in shadow
+        mode, quindi questo numero viene solo calcolato e loggato per
+        confronto, non usato per il sizing reale di nessun trade (che resta
+        su risk_manager.py, V1/main, a rischio fisso).
+
+        Ritorna sempre un dict con 'eligible': bool. Se eligible è True,
+        contiene anche 'kelly_full' (frazione di Kelly piena, può essere
+        negativa se l'edge è negativo) e 'kelly_fractional' (frazione
+        frazionale già tagliata a KELLY_FRACTION e col tetto di sicurezza
+        applicato, mai negativa).
+        """
+        if self.lifetime_samples < self.KELLY_MIN_LIFETIME_SAMPLES:
+            return {"eligible": False,
+                    "reason": f"solo {self.lifetime_samples:.0f}/{self.KELLY_MIN_LIFETIME_SAMPLES:.0f} trade lifetime"}
+
+        wins, losses = self.weighted_wins, self.weighted_losses
+        if wins <= 1e-9 or losses <= 1e-9 or self.gross_loss_bps <= 1e-9:
+            return {"eligible": False,
+                    "reason": "servono sia vincite che perdite per stimare il payoff ratio"}
+
+        p = self.win_rate
+        q = 1.0 - p
+        avg_win = self.gross_profit_bps / wins
+        avg_loss = self.gross_loss_bps / losses
+        if avg_loss <= 1e-9:
+            return {"eligible": False, "reason": "perdita media nulla, payoff ratio non calcolabile"}
+        payoff_ratio = avg_win / avg_loss
+
+        kelly_full = p - (q / payoff_ratio)
+        kelly_fractional = max(0.0, min(kelly_full * self.KELLY_FRACTION, self.KELLY_MAX_STAKE_FRACTION))
+        return {
+            "eligible": True,
+            "kelly_full": round(kelly_full, 4),
+            "kelly_fractional": round(kelly_fractional, 4),
+            "payoff_ratio": round(payoff_ratio, 3),
+            "win_rate": round(p, 3),
+            "lifetime_samples": round(self.lifetime_samples, 0),
+        }
 
 
 @dataclass(frozen=True)
@@ -204,6 +265,14 @@ class StrategySelector:
             return -1.0
         return 0.60 * d.confidence + 0.40 * (d.strength / 100.0)
 
+    def kelly_suggestion(self, strategy_id: str, regime: str | None = None) -> dict[str, Any]:
+        """Suggerimento di sizing Kelly frazionale per (strategy_id, regime)
+        -- regime qui è già la chiave di bucket (es. l'output di
+        make_context_key se si vuole il Kelly per uno specifico simbolo).
+        Vedi PerformanceBucket.kelly_fraction per i dettagli e le soglie."""
+        regime_key = self._normalize_regime(regime)
+        return self._bucket(strategy_id, regime_key).kelly_fraction()
+
     def leaderboard(self, regime: str | None = None) -> list[dict[str, Any]]:
         regime_key = self._normalize_regime(regime)
         champion = self._champions.get(regime_key)
@@ -300,4 +369,10 @@ class StrategySelector:
                 weighted_losses=float(row.get("weighted_losses", 0.0)),
                 gross_profit_bps=float(row.get("gross_profit_bps", 0.0)),
                 gross_loss_bps=float(row.get("gross_loss_bps", 0.0)),
+                # Un checkpoint precedente all'introduzione di lifetime_samples
+                # non ha questo campo: effective_samples è una stima per
+                # difetto accettabile (il decadimento lo tiene sempre <= al
+                # vero conteggio lifetime), quindi il gate Kelly resta
+                # prudente anche sui checkpoint vecchi.
+                lifetime_samples=float(row.get("lifetime_samples", row.get("effective_samples", 0.0))),
                 last_updated_at=row.get("last_updated_at"))

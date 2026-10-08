@@ -203,9 +203,14 @@ def main():
                 if result.selected
                 else "NO_SIGNAL"
             )
+            kelly_txt = ""
+            if result.selected_strategy_id is not None:
+                kelly = selector.kelly_suggestion(result.selected_strategy_id, context_key)
+                if kelly.get("eligible"):
+                    kelly_txt = f" kelly={kelly['kelly_fractional']*100:.2f}%(n={kelly['lifetime_samples']:.0f})"
             print(
                 f"[{ts_now}] {symbol} regime={regime} selected={selected_txt} "
-                f"price={price_now} resolved_this_cycle={resolved}",
+                f"price={price_now} resolved_this_cycle={resolved}{kelly_txt}",
                 flush=True,
             )
 

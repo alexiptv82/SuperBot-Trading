@@ -157,6 +157,20 @@ class BotEngine:
             if result.promotion:
                 summary += f" | PROMOTION={json.dumps(result.promotion)}"
 
+            # Suggerimento Kelly frazionale, solo informativo (shadow mode):
+            # NON cambia il sizing reale di nessun trade, quello resta su
+            # risk_manager.py (V1/main) a rischio fisso. Serve solo per
+            # confrontare "cosa avrebbe detto Kelly" una volta che un bucket
+            # (strategia, simbolo, regime) ha accumulato storia sufficiente.
+            if result.selected_strategy_id is not None:
+                kelly = _v05_selector.kelly_suggestion(result.selected_strategy_id, context_key)
+                if kelly.get("eligible"):
+                    summary += (
+                        f" | kelly_fractional={kelly['kelly_fractional']*100:.2f}%"
+                        f" (full={kelly['kelly_full']*100:.1f}%,"
+                        f" payoff={kelly['payoff_ratio']}, n={kelly['lifetime_samples']:.0f})"
+                    )
+
             self._log('v05_shadow', symbol=symbol, message=summary)
 
         except Exception as exc:  # noqa: BLE001
