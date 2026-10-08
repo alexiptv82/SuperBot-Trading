@@ -86,6 +86,51 @@ jobs:
           WARN_COUNT=$(grep -c '\[warn\]' results/live_monitor.log || true)
           echo "::notice title=Avvisi (fetch falliti ecc.)::${WARN_COUNT}"
 
+      - name: Analyze decisions.jsonl (kill ledger -- live_monitor mode)
+        if: hashFiles('results/decisions.jsonl') != ''
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          from collections import Counter
+
+          rows = []
+          with open('results/decisions.jsonl') as f:
+              for line in f:
+                  line = line.strip()
+                  if line:
+                      rows.append(json.loads(line))
+
+          total = len(rows)
+          no_signal = sum(1 for r in rows if r['selected_strategy_id'] is None)
+          by_role = Counter(r['selected_role'] for r in rows)
+          by_strategy = Counter(r['selected_strategy_id'] for r in rows if r['selected_strategy_id'])
+          promotions = [r for r in rows if r.get('promotion')]
+
+          print(f"::notice title=Kill Ledger - cicli totali::{total}")
+          rate = (no_signal / total * 100) if total else 0.0
+          print(f"::notice title=Kill Ledger - NO_SIGNAL::{no_signal} su {total} ({rate:.1f}%)")
+          print(f"::notice title=Kill Ledger - per ruolo::{dict(by_role)}")
+          print(f"::notice title=Kill Ledger - strategia selezionata::{dict(by_strategy)}")
+
+          if promotions:
+              lines = [f"{p['ts']} {p['symbol']} {p['promotion']}" for p in promotions[:10]]
+              print(f"::notice title=Kill Ledger - promozioni rilevate ({len(promotions)})::{' | '.join(lines)}")
+
+          # Quanto spesso una strategia aveva un segnale "attivabile" ma e'
+          # stata scartata comunque (perche' un'altra ha avuto score migliore) --
+          # e' la domanda che il Candidate Funnel del dossier chiama
+          # "qualita' dei NO TRADE": segnali buoni scartati per il confronto,
+          # non per mancanza di segnale.
+          actionable_but_not_selected = 0
+          for r in rows:
+              sel = r['selected_strategy_id']
+              for c in r['candidates']:
+                  if c['actionable'] and c['strategy_id'] != sel:
+                      actionable_but_not_selected += 1
+                      break
+          print(f"::notice title=Kill Ledger - cicli con segnale scartato dal confronto::{actionable_but_not_selected}")
+          PYEOF
+
       - name: Analyze backtest_state.json (backtest mode)
         if: hashFiles('results/backtest_state.json') != ''
         run: |
