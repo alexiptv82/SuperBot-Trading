@@ -25,14 +25,14 @@ try:
         TrendFollowingStrategy, MeanReversionStrategy, MomentumStrategy, StrategyContext,
     )
     from strategy_selector import StrategySelector
-    from regime_detector import detect_regime
+    from regime_detector import detect_regime, lbma_fixing_guard
     from funding_filter import funding_penalty
 except ImportError:
     from backend.strategies import (
         TrendFollowingStrategy, MeanReversionStrategy, MomentumStrategy, StrategyContext,
     )
     from backend.strategy_selector import StrategySelector
-    from backend.regime_detector import detect_regime
+    from backend.regime_detector import detect_regime, lbma_fixing_guard
     from backend.funding_filter import funding_penalty
 
 
@@ -214,7 +214,7 @@ def main():
             selected_txt = (
                 f"{result.selected_role}:{result.selected_strategy_id}"
                 if result.selected
-                else "NO_SIGNAL"
+                else (result.selected_role if result.selected_role != "NONE" else "NO_SIGNAL")
             )
             kelly_txt = ""
             if result.selected_strategy_id is not None:
@@ -227,9 +227,18 @@ def main():
                 fp = funding_penalty(funding_rate, result.selected.direction.value)
                 if fp['multiplier'] < 1.0:
                     funding_txt = f" funding_penalty={fp['multiplier']:.2f}"
+            # Guardia di sessione LBMA (no-op per simboli non XAU/XAG) --
+            # puramente informativa, vedi regime_detector.lbma_fixing_guard.
+            lbma_txt = ""
+            lbma_guard = lbma_fixing_guard(symbol)
+            if lbma_guard.get("active"):
+                lbma_txt = (
+                    f" lbma_fixing_guard={lbma_guard['metal']}"
+                    f"(Δ{lbma_guard['minutes_to_fixing']:.1f}min,cap={lbma_guard['confidence_cap']:.0f})"
+                )
             print(
                 f"[{ts_now}] {symbol} regime={regime} selected={selected_txt} "
-                f"price={price_now} resolved_this_cycle={resolved}{kelly_txt}{funding_txt}",
+                f"price={price_now} resolved_this_cycle={resolved}{kelly_txt}{funding_txt}{lbma_txt}",
                 flush=True,
             )
 

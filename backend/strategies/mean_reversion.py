@@ -55,6 +55,31 @@ class MeanReversionStrategy(BaseStrategy):
             short_score += 30
             short_reasons.append(f"1M_NEAR_UPPER_BB_POSITION={bb_pos:.3f}")
 
+        # VWAP come seconda ancora di prezzo, indipendente dalle Bollinger
+        # Band: uno z-score ampio rispetto al VWAP mobile e' un altro
+        # segnale di overextension, pesato di piu' delle BB (40 vs 25)
+        # solo nel caso estremo perche' incorpora anche il volume, non solo
+        # il prezzo (vedi trovato Qwen).
+        vwap = i1.get("vwap") or {}
+        try:
+            vwap_z = float(vwap.get("zscore", 0.0))
+        except (TypeError, ValueError):
+            vwap_z = 0.0
+
+        if vwap_z <= -1.5:
+            long_score += 25
+            long_reasons.append(f"1M_VWAP_DEEP_BELOW_ZSCORE={vwap_z:.2f}")
+        elif vwap_z <= -1.0:
+            long_score += 15
+            long_reasons.append(f"1M_VWAP_BELOW_ZSCORE={vwap_z:.2f}")
+
+        if vwap_z >= 1.5:
+            short_score += 25
+            short_reasons.append(f"1M_VWAP_DEEP_ABOVE_ZSCORE={vwap_z:.2f}")
+        elif vwap_z >= 1.0:
+            short_score += 15
+            short_reasons.append(f"1M_VWAP_ABOVE_ZSCORE={vwap_z:.2f}")
+
         trend_15m = self._trend(i15)
         if trend_15m == "sideways":
             long_score += 15; short_score += 15
@@ -86,4 +111,5 @@ class MeanReversionStrategy(BaseStrategy):
 
         return self.decision(context, direction=direction, strength=strength, reasons=reasons,
             metadata={"long_score": long_score, "short_score": short_score,
-                      "rsi": rsi, "bb_position": bb_pos, "trend_15m": trend_15m, "regime": context.regime})
+                      "rsi": rsi, "bb_position": bb_pos, "vwap_zscore": vwap_z,
+                      "trend_15m": trend_15m, "regime": context.regime})

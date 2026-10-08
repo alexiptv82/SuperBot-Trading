@@ -23,6 +23,14 @@ Soglie e isteresi (dal report di revisione di Qwen):
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+try:
+    from zoneinfo import ZoneInfo
+    _LONDON_TZ = ZoneInfo("Europe/London")
+except Exception:  # pragma: no cover - tzdata assente in alcune immagini minimali
+    _LONDON_TZ = None
+
 ADX_TREND_IN = 25.0
 ADX_TREND_OUT = 20.0
 
@@ -80,6 +88,65 @@ def detect_regime(symbol: str, adx: float, trend_direction: str, bbw: float | No
     _last_regime[symbol] = regime
     return {"regime": regime, "confidence_cap": confidence_cap, "adx": round(adx, 2),
             "bbw": round(bbw, 4) if bbw is not None else None}
+
+
+# ── Guardia di sessione LBMA per XAU/XAG (trovato Qwen) ───────────────────────
+# Intorno agli orari di fixing del London Bullion Market (oro: ~10:30 e
+# ~15:00 ora di Londra; argento: ~12:00), il prezzo spot di oro/argento
+# puo' avere un salto di volatilita' legato al meccanismo di fixing in se'
+# piuttosto che a un vero movimento di mercato -- un classico falso
+# segnale per strategie momentum/breakout. Come per TRANSITIONAL_CONFIDENCE_CAP
+# sopra, questo e' per ora solo calcolato e loggato, non ancora applicato
+# alla confidence reale delle strategie.
+LBMA_GOLD_FIXING_TIMES_LONDON = [(10, 30), (15, 0)]
+LBMA_SILVER_FIXING_TIME_LONDON = (12, 0)
+LBMA_GUARD_WINDOW_MINUTES = 10.0
+LBMA_GUARD_CONFIDENCE_CAP = 60.0
+
+
+def _metal_of(symbol: str) -> str | None:
+    sym = str(symbol or "").upper()
+    if "XAU" in sym:
+        return "gold"
+    if "XAG" in sym:
+        return "silver"
+    return None
+
+
+def lbma_fixing_guard(symbol: str, now_utc: datetime | None = None) -> dict:
+    """Guardia di sessione per i fixing LBMA su oro/argento.
+
+    Non e' un veto duro: ritorna solo un tetto di confidenza quando `now_utc`
+    (default: adesso) cade dentro +/- LBMA_GUARD_WINDOW_MINUTES minuti da un
+    orario di fixing. Nessun effetto su simboli diversi da XAU/XAG
+    (ritorna active=False, confidence_cap=None).
+    """
+    metal = _metal_of(symbol)
+    if metal is None:
+        return {"active": False, "confidence_cap": None, "metal": None, "minutes_to_fixing": None}
+
+    now_utc = now_utc or datetime.now(timezone.utc)
+    if _LONDON_TZ is not None:
+        now_london = now_utc.astimezone(_LONDON_TZ)
+    else:
+        # Fallback senza tzdata disponibile: approssima Londra come UTC
+        # (errore di massimo un'ora durante l'ora legale britannica) --
+        # non ideale, ma e' un dato puramente informativo e non deve mai
+        # far fallire il bot per questo.
+        now_london = now_utc
+
+    fixing_times = LBMA_GOLD_FIXING_TIMES_LONDON if metal == "gold" else [LBMA_SILVER_FIXING_TIME_LONDON]
+    best_delta = min(
+        abs((now_london - now_london.replace(hour=hh, minute=mm, second=0, microsecond=0)).total_seconds()) / 60.0
+        for hh, mm in fixing_times
+    )
+    active = best_delta <= LBMA_GUARD_WINDOW_MINUTES
+    return {
+        "active": active,
+        "confidence_cap": LBMA_GUARD_CONFIDENCE_CAP if active else None,
+        "metal": metal,
+        "minutes_to_fixing": round(best_delta, 1),
+    }
 
 
 def reset_state(symbol: str | None = None) -> None:

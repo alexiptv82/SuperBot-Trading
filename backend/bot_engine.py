@@ -9,7 +9,7 @@ from exchange import exchange
 from signal_engine import signal_engine
 from risk_manager import risk_manager
 from indicators import TechnicalIndicators
-from regime_detector import detect_regime
+from regime_detector import detect_regime, lbma_fixing_guard
 from funding_filter import funding_penalty
 try:
     from backend.telegram_notifier import notifier
@@ -111,7 +111,7 @@ class BotEngine:
 
     # ── V0.5: parallel shadow run ─────────────────────────────────────────────
     def _analyze_v05(self, symbol: str, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime: str = "unknown",
-                      funding_rate: float | None = None):
+                      funding_rate: float | None = None, lbma_guard: dict | None = None):
         """Run the V0.5 strategy engine in shadow mode (no trade execution).
 
         Reads the StrategyContext, queries all three strategies, calls the
@@ -150,14 +150,27 @@ class BotEngine:
                     f" regime={result.regime}"
                 )
             else:
-                # All strategies held or below threshold
+                # All strategies held/below threshold, OR the selector
+                # abstained on a strong long/short disagreement (role
+                # ABSTAINED_DISAGREEMENT -- vedi strategy_selector.py).
+                label = result.selected_role if result.selected_role != "NONE" else "NO_SIGNAL"
                 summary = (
-                    f"V0.5 [NO_SIGNAL] regime={result.regime}"
+                    f"V0.5 [{label}] regime={result.regime}"
                     f" rankings={[r['strategy_id']+':'+str(round(r['strength'],1)) for r in result.rankings]}"
                 )
 
             if result.promotion:
                 summary += f" | PROMOTION={json.dumps(result.promotion)}"
+
+            # Guardia di sessione LBMA (XAU/XAG, solo attorno ai fixing di
+            # Londra): puramente informativa per ora, come
+            # TRANSITIONAL_CONFIDENCE_CAP -- vedi regime_detector.py.
+            if lbma_guard and lbma_guard.get("active"):
+                summary += (
+                    f" | lbma_fixing_guard={lbma_guard['metal']}"
+                    f" cap={lbma_guard['confidence_cap']:.0f}"
+                    f" (Δ{lbma_guard['minutes_to_fixing']:.1f}min)"
+                )
 
             # Filtro di sicurezza sul funding rate: penalizza (solo nel log,
             # shadow mode) un segnale che va nella stessa direzione della
@@ -218,7 +231,11 @@ class BotEngine:
             # altrimenti, il filtro lo gestisce senza penalizzare nulla).
             funding_info = await exchange.get_funding_rate(symbol)
             funding_rate = funding_info['funding_rate'] if funding_info else None
-            self._analyze_v05(symbol, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime=regime, funding_rate=funding_rate)
+            # Guardia di sessione LBMA (no-op per simboli non XAU/XAG --
+            # vedi regime_detector.lbma_fixing_guard).
+            lbma_guard = lbma_fixing_guard(symbol)
+            self._analyze_v05(symbol, ohlcv_1m, ohlcv_15m, ohlcv_1h, regime=regime,
+                               funding_rate=funding_rate, lbma_guard=lbma_guard)
             # ─────────────────────────────────────────────────────────────────
 
             # Production gate: only signal_engine controls trade execution

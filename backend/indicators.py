@@ -110,6 +110,50 @@ class TechnicalIndicators:
         if price < e9 < e21 < e50: return 'bearish'
         return 'sideways'
 
+    def vwap(self, period: int = 20) -> dict:
+        """VWAP mobile (rolling, non ancorato a sessione) sul prezzo tipico
+        (H+L+C)/3, con banda di deviazione in unita' di sigma (z-score).
+
+        Usato da MeanReversionStrategy come ancora di prezzo alternativa
+        alle sole Bollinger Band: la deviazione standard qui e' calcolata
+        sulla serie (prezzo_tipico - vwap), quindi lo z-score risponde alla
+        domanda "quanto e' lontano il prezzo dal suo VWAP recente, in unita'
+        di dispersione recente" -- coerente con lo spirito mean-reversion
+        (vedi trovato Qwen: 'VWAP +-k*sigma in MeanReversion').
+        """
+        typical = (self.df['high'] + self.df['low'] + self.df['close']) / 3.0
+        vol = self.df['volume']
+        rolling_pv = (typical * vol).rolling(period).sum()
+        rolling_vol = vol.rolling(period).sum()
+        vwap_series = rolling_pv / rolling_vol.replace(0, np.nan)
+
+        dev = typical - vwap_series
+        dev_std = dev.rolling(period).std()
+
+        price = float(self.df['close'].iloc[-1])
+        vwap_last = vwap_series.iloc[-1]
+        std_last = dev_std.iloc[-1]
+
+        vwap_value = float(vwap_last) if pd.notna(vwap_last) else price
+        std_value = float(std_last) if pd.notna(std_last) and std_last > 0 else 0.0
+        zscore = (price - vwap_value) / std_value if std_value > 0 else 0.0
+        return {'value': vwap_value, 'std': std_value, 'zscore': float(zscore)}
+
+    def realized_vol_ratio(self, short_period: int = 20, long_period: int = 50) -> float:
+        """Rapporto tra volatilita' realizzata di breve periodo e di lungo
+        periodo (deviazione standard dei log-return). Un valore > 1 indica
+        un'espansione recente di volatilita' rispetto alla norma del
+        periodo lungo; < 1 indica una compressione. Puramente informativo
+        per ora (vedi trovato Qwen: 'realized volatility ratio multi-timeframe'),
+        non ancora usato come filtro attivo su nessuna strategia.
+        """
+        log_ret = np.log(self.df['close'] / self.df['close'].shift(1))
+        short_vol = log_ret.rolling(short_period).std().iloc[-1]
+        long_vol = log_ret.rolling(long_period).std().iloc[-1]
+        if pd.isna(short_vol) or pd.isna(long_vol) or long_vol <= 0:
+            return 1.0
+        return float(short_vol / long_vol)
+
     def compute_all(self) -> dict:
         rsi_val = self.rsi()
         return {
@@ -123,5 +167,7 @@ class TechnicalIndicators:
             'atr': self.atr(),
             'adx': self.adx(),
             'bbw': self.bbw(),
+            'vwap': self.vwap(),
+            'realized_vol_ratio': self.realized_vol_ratio(),
             'volume': self.volume_analysis(),
         }

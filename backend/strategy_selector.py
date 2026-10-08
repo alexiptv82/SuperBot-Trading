@@ -29,6 +29,15 @@ class SelectorConfig:
     # di confidenza dell'~68% su una normale); va vista come un filtro
     # contro il rumore più evidente, non come un test rigoroso.
     min_significance_t_stat: float = 1.0
+    # Abstention su disaccordo (trovato Qwen): se tra le decisioni
+    # actionable di questo ciclo compaiono sia un LONG che uno SHORT con
+    # selection_score molto vicini, non ha senso "vincere ai punti" per
+    # una manciata di centesimi -- e' un segnale che le strategie non sono
+    # davvero d'accordo sulla direzione, quindi il selettore si astiene
+    # (nessuna selezione) invece di scegliere quello marginalmente più alto.
+    # 0.10 e' empirico: selection_score e' in [-1, 1] circa, quindi 0.10 e'
+    # un margine piccolo ma non infinitesimo.
+    abstention_margin: float = 0.10
 
     def validate(self) -> None:
         if not 0.0 < self.decay <= 1.0:
@@ -48,6 +57,8 @@ class SelectorConfig:
             raise ValueError("fallback_signal_weight + learned_performance_weight must equal 1")
         if self.min_significance_t_stat < 0:
             raise ValueError("min_significance_t_stat must be >= 0")
+        if self.abstention_margin < 0:
+            raise ValueError("abstention_margin must be >= 0")
 
 
 @dataclass
@@ -399,6 +410,31 @@ class StrategySelector:
                              "signal_quality": signal_quality, "selection_score": selection_score, **metrics})
         rankings.sort(key=lambda r: (r["selection_score"], r["performance_quality"], r["strength"]), reverse=True)
         selected_row = None; selected_role = "NONE"
+
+        # Abstention su disaccordo (trovato Qwen): se le migliori decisioni
+        # actionable LONG e SHORT di questo ciclo sono quasi appaiate per
+        # punteggio, le strategie non sono davvero d'accordo sulla
+        # direzione -- meglio non scegliere nessuno che forzare una
+        # selezione sul margine di un pelo. Controllato PRIMA della logica
+        # normale di champion/challenger: un disaccordo forte scavalca
+        # anche un champion attuale.
+        actionable = [r for r in rankings if r["actionable"]]
+        longs = [r for r in actionable if r["direction"] == SignalDirection.LONG.value]
+        shorts = [r for r in actionable if r["direction"] == SignalDirection.SHORT.value]
+        abstained = False
+        if longs and shorts:
+            best_long = max(longs, key=lambda r: r["selection_score"])
+            best_short = max(shorts, key=lambda r: r["selection_score"])
+            if abs(best_long["selection_score"] - best_short["selection_score"]) <= self.config.abstention_margin:
+                abstained = True
+                selected_role = "ABSTAINED_DISAGREEMENT"
+
+        if abstained:
+            selected = None
+            return SelectionResult(selected=selected, champion_strategy_id=champion,
+                                   selected_strategy_id=None, selected_role=selected_role,
+                                   regime=regime_key, rankings=tuple(rankings), promotion=promotion)
+
         if champion is not None:
             champion_row = next((r for r in rankings if r["strategy_id"] == champion), None)
             if champion_row and champion_row["actionable"]:
