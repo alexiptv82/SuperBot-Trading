@@ -1,0 +1,117 @@
+name: Deploy SuperBot Staging (PWA test)
+
+# Si attiva automaticamente a ogni push sul branch pwa-dashboard.
+# Crea/aggiorna un secondo container Docker ("superbot-staging") su una
+# porta diversa (8003 backend, 8080 frontend), completamente separato dal
+# bot live su 8002/80. Il bot live non viene mai toccato da questo workflow.
+
+on:
+  push:
+    branches: [ pwa-dashboard ]
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy staging to VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 30m
+          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
+          script: |
+            set -e
+            apt-get install -y docker.io git curl nginx 2>/dev/null || true
+            systemctl start docker 2>/dev/null || true
+
+            # Apre le porte di staging sul firewall, se attivo (non tocca le regole esistenti).
+            if command -v ufw >/dev/null 2>&1; then
+              ufw allow 8080/tcp 2>&1 || true
+              ufw allow 8003/tcp 2>&1 || true
+              echo "::notice::UFW_STATUS=$(ufw status 2>&1 | tr '\n' ' ' | cut -c1-500)"
+            fi
+
+            if ! command -v node >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>/dev/null || true
+              apt-get install -y nodejs 2>/dev/null || true
+            fi
+            echo "::notice::NODE=$(node -v 2>&1) NPM=$(npm -v 2>&1)"
+
+            if [ -d "/opt/superbot-staging/.git" ]; then
+              cd /opt/superbot-staging && git fetch origin && git reset --hard origin/pwa-dashboard
+            else
+              git clone -b pwa-dashboard https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-staging
+            fi
+            cd /opt/superbot-staging
+
+            printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD=superbot2024\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" > backend/.env
+            mkdir -p data
+
+            set +e
+            cd frontend
+            REACT_APP_BACKEND_URL=http://51.91.109.45:8003 npm install --no-audit --no-fund > /tmp/npm_install.log 2>&1
+            INSTALL_RC=$?
+            if [ $INSTALL_RC -ne 0 ]; then
+              echo "::error::NPM INSTALL FAILED (rc=$INSTALL_RC): $(tail -c 1500 /tmp/npm_install.log | tr '\n' ' ')"
+            fi
+            REACT_APP_BACKEND_URL=http://51.91.109.45:8003 npm run build > /tmp/npm_build.log 2>&1
+            BUILD_RC=$?
+            if [ $BUILD_RC -ne 0 ]; then
+              echo "::error::NPM BUILD FAILED (rc=$BUILD_RC): $(tail -c 1500 /tmp/npm_build.log | tr '\n' ' ')"
+            fi
+            echo "::notice::BUILD_LS=$(ls -la build 2>&1 | tr '\n' ' ' | cut -c1-500)"
+            cd ..
+            set -e
+
+            cp nginx-staging.conf /etc/nginx/sites-available/superbot-staging
+            ln -sf /etc/nginx/sites-available/superbot-staging /etc/nginx/sites-enabled/superbot-staging
+            NGINX_T=$(nginx -t 2>&1)
+            echo "::notice::NGINX_T=$(echo "$NGINX_T" | tr '\n' ' ' | cut -c1-500)"
+            nginx -t && systemctl reload nginx || echo "::error::NGINX RELOAD FAILED"
+
+            docker stop superbot-staging 2>/dev/null || true
+            docker rm superbot-staging 2>/dev/null || true
+            set +e
+            docker build --no-cache -t superbot-staging . > /tmp/docker_build.log 2>&1
+            DOCKER_BUILD_RC=$?
+            if [ $DOCKER_BUILD_RC -ne 0 ]; then
+              echo "::error::DOCKER BUILD FAILED (rc=$DOCKER_BUILD_RC): $(tail -c 1500 /tmp/docker_build.log | tr '\n' ' ')"
+            fi
+            set -e
+            docker run -d \
+              --name superbot-staging \
+              --restart always \
+              -p 8003:8001 \
+              -v /opt/superbot-staging/data:/app/data \
+              -v /opt/superbot-staging/backend/.env:/app/backend/.env \
+              superbot-staging
+
+            sleep 5
+            curl -s http://localhost:8003/api/health && echo "STAGING BOT ONLINE OK" || echo "::error::ERRORE AVVIO STAGING BACKEND"
+            systemctl is-active nginx && echo "NGINX OK" || echo "::error::NGINX NON ATTIVO"
+            echo "::notice::DOCKER_LOGS=$(docker logs superbot-staging --tail 40 2>&1 | tr '\n' ' ' | cut -c1-1500)"
+            echo "::notice::FRONTEND_HEAD=$(curl -s -m 5 http://localhost:8080/ | head -c 300 | tr '\n' ' ')"
+            echo "::notice::PORT_LISTEN=$(ss -tlnp 2>&1 | tr '\n' ' ' | cut -c1-600)"
+
+      # Questo step gira sul runner GitHub (internet pubblico vero), non sulla VPS via SSH:
+      # verifica cosa vede davvero un browser esterno (come il telefono dell'utente), e i
+      # messaggi ::notice/::error:: qui sopra via SSH non sempre arrivano nei log leggibili,
+      # quindi questo è il modo affidabile per diagnosticare da fuori.
+      - name: Check staging reachable from the public internet
+        run: |
+          set +e
+          HEALTH_CODE=$(curl -s -o /tmp/health.txt -m 10 -w "%{http_code}" http://51.91.109.45:8003/api/health)
+          FRONT_CODE=$(curl -s -o /tmp/front.txt -m 10 -w "%{http_code}" http://51.91.109.45:8080/)
+          echo "::notice title=Staging backend health::HTTP ${HEALTH_CODE} - $(head -c 300 /tmp/health.txt | tr '\n' ' ')"
+          echo "::notice title=Staging frontend root::HTTP ${FRONT_CODE} - $(head -c 600 /tmp/front.txt | tr '\n' ' ')"
+          JS_PATH=$(grep -oE '/static/js/[a-zA-Z0-9.]+\.js' /tmp/front.txt | head -1)
+          if [ -n "$JS_PATH" ]; then
+            JS_CODE=$(curl -s -o /tmp/js.txt -m 10 -w "%{http_code}" "http://51.91.109.45:8080${JS_PATH}")
+            echo "::notice title=Staging main.js::path=${JS_PATH} HTTP ${JS_CODE} bytes=$(wc -c < /tmp/js.txt)"
+          else
+            echo "::error title=Staging frontend root::No <script src=/static/js/...> found in the HTML returned above"
+          fi

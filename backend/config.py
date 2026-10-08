@@ -18,6 +18,14 @@ class Config:
     DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', 'superbot2024')
     SECRET_KEY = os.getenv('SECRET_KEY', 'superbot-secret-key')
     DB_PATH = os.getenv('DB_PATH', './data/superbot.db')
+    # Session tokens
+    JWT_EXPIRE_HOURS = int(os.getenv('JWT_EXPIRE_HOURS', '720'))  # 30 giorni di default
+    # WebAuthn (login biometrico) -- RP_ID deve essere un dominio reale, non un IP;
+    # finché non è impostato un dominio con HTTPS, gli endpoint WebAuthn restano
+    # presenti ma il browser rifiuterà la richiesta per contesto non sicuro.
+    WEBAUTHN_RP_ID = os.getenv('WEBAUTHN_RP_ID', 'localhost')
+    WEBAUTHN_RP_NAME = os.getenv('WEBAUTHN_RP_NAME', 'SuperBot')
+    WEBAUTHN_ORIGIN = os.getenv('WEBAUTHN_ORIGIN', 'http://localhost:3000')
     SCALPING_INTERVAL = 30
     DATA_FETCH_INTERVAL = 10
 
