@@ -9,6 +9,15 @@ name: Setup SSL Certificate (Let's Encrypt)
 # /etc/nginx/sites-available/superbot on every push to main, so a
 # certbot-managed rewrite there would get silently discarded on the next
 # deploy).
+#
+# Uses a plain `ssh` call in a native run: step (not a third-party SSH
+# action) so the remote script's stdout is the runner's own stdout --
+# only then does GitHub's log-command parser pick up ::notice::/::error::
+# lines printed by the remote script as real annotations, readable from a
+# sandbox that can't reach GitHub's raw log/artifact storage directly
+# (confirmed this run: appleboy/ssh-action relays output fine for a human
+# reading the live log, but GitHub's annotation parser never sees it, even
+# on a successful step).
 on:
   workflow_dispatch:
     inputs:
@@ -24,65 +33,55 @@ jobs:
   obtain-certificate:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping annotation test (local runner)
-        run: echo "::notice title=ping-local::runner annotations work"
-
-      - name: Ping annotation test (via SSH)
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: 51.91.109.45
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 2m
-          script: |
-            echo "::notice title=ping-ssh::remote ok $(hostname) $(date -u)"
-            whoami
-            echo done
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H 51.91.109.45 >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Obtain certificate on VPS
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: 51.91.109.45
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 10m
-          script: |
-            set +e
-            note() { printf '::notice title=%s::%s\n' "$1" "$(echo "$2" | tr '\n' '|' | sed 's/::/: /g')"; }
+        env:
+          DOMAIN: ${{ inputs.domain }}
+          LE_EMAIL: ${{ inputs.email }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 root@51.91.109.45 \
+            "DOMAIN='${DOMAIN}' LE_EMAIL='${LE_EMAIL}' bash -s" <<'REMOTE'
+          set +e
+          note() { printf '::notice title=%s::%s\n' "$1" "$(echo "$2" | tr '\n' '|' | sed 's/::/: /g')"; }
 
-            DNS_OUT=$(getent hosts "${{ inputs.domain }}" 2>&1)
-            note "DNS lookup" "${DNS_OUT:-VUOTO/fallita}"
+          DNS_OUT=$(getent hosts "$DOMAIN" 2>&1)
+          note "DNS lookup" "${DNS_OUT:-VUOTO/fallita}"
 
-            NGINX_STATUS=$(systemctl is-active nginx 2>&1)
-            note "nginx status" "$NGINX_STATUS"
+          NGINX_STATUS=$(systemctl is-active nginx 2>&1)
+          note "nginx status" "$NGINX_STATUS"
 
-            LOCAL_CURL=$(curl -sS -o /dev/null -w "HTTP %{http_code}" "http://localhost/" --header "Host: ${{ inputs.domain }}" 2>&1)
-            note "curl locale (Host header dominio)" "$LOCAL_CURL"
+          LOCAL_CURL=$(curl -sS -o /dev/null -w "HTTP %{http_code}" "http://localhost/" --header "Host: ${DOMAIN}" 2>&1)
+          note "curl locale (Host header dominio)" "$LOCAL_CURL"
 
-            apt-get update -y >/tmp/apt.log 2>&1
-            apt-get install -y certbot >>/tmp/apt.log 2>&1
-            note "certbot installato" "$(certbot --version 2>&1)"
+          apt-get update -y >/tmp/apt.log 2>&1
+          apt-get install -y certbot >>/tmp/apt.log 2>&1
+          note "certbot installato" "$(certbot --version 2>&1)"
 
-            mkdir -p /opt/superbot/frontend/build/.well-known/acme-challenge
-            echo "ping-test-$(date +%s)" > /opt/superbot/frontend/build/.well-known/acme-challenge/ping-test
+          mkdir -p /opt/superbot/frontend/build/.well-known/acme-challenge
+          echo "ping-test-$(date +%s)" > /opt/superbot/frontend/build/.well-known/acme-challenge/ping-test
 
-            PUBLIC_CURL=$(curl -sS -w "\nHTTP %{http_code}" "http://${{ inputs.domain }}/.well-known/acme-challenge/ping-test" 2>&1)
-            note "curl pubblico al file di test ACME" "$PUBLIC_CURL"
+          PUBLIC_CURL=$(curl -sS -w "\nHTTP %{http_code}" "http://${DOMAIN}/.well-known/acme-challenge/ping-test" 2>&1)
+          note "curl pubblico al file di test ACME" "$PUBLIC_CURL"
 
-            certbot certonly \
-              --webroot -w /opt/superbot/frontend/build \
-              -d "${{ inputs.domain }}" \
-              --non-interactive --agree-tos \
-              -m "${{ inputs.email }}" \
-              --deploy-hook "systemctl reload nginx" \
-              --keep-until-expiring \
-              -v > /tmp/certbot.log 2>&1
-            CERTBOT_EXIT=$?
+          certbot certonly \
+            --webroot -w /opt/superbot/frontend/build \
+            -d "$DOMAIN" \
+            --non-interactive --agree-tos \
+            -m "$LE_EMAIL" \
+            --deploy-hook "systemctl reload nginx" \
+            --keep-until-expiring \
+            -v > /tmp/certbot.log 2>&1
+          CERTBOT_EXIT=$?
 
-            note "certbot exit code" "$CERTBOT_EXIT"
-            note "certbot output (coda)" "$(tail -n 40 /tmp/certbot.log)"
-            note "certbot certificates" "$(certbot certificates 2>&1)"
+          note "certbot exit code" "$CERTBOT_EXIT"
+          note "certbot output (coda)" "$(tail -n 40 /tmp/certbot.log)"
+          note "certbot certificates" "$(certbot certificates 2>&1)"
 
-            if [ "$CERTBOT_EXIT" -ne 0 ]; then
-              exit $CERTBOT_EXIT
-            fi
+          exit $CERTBOT_EXIT
+          REMOTE
