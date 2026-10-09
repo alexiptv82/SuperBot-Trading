@@ -1,5 +1,7 @@
 """Test end-to-end in un browser vero, in HTTPS (come in produzione):
-aggiornamento dell'app, login, cambio password, password dimenticata."""
+aggiornamento dell'app, login, copia e incolla, cambio password, impronta
+digitale (autenticatore virtuale), gestione in Impostazioni, password
+dimenticata."""
 import json
 import os
 import re
@@ -28,10 +30,21 @@ def telegram_texts():
 with sync_playwright() as p:
     browser = p.chromium.launch(channel='chrome', args=['--ignore-certificate-errors'])
     ctx = browser.new_context(ignore_https_errors=True, viewport={'width': 400, 'height': 800})
+    ctx.grant_permissions(['clipboard-read', 'clipboard-write'], origin=URL.rstrip('/'))
     page = ctx.new_page()
     page.set_default_timeout(15000)
     page.on('requestfailed', lambda r: problems.append('richiesta fallita %s %s %s' % (r.method, r.url, r.failure)))
     page.on('console', lambda m: problems.append('console: ' + m.text[:200]) if m.type == 'error' else None)
+    page.on('dialog', lambda d: d.accept())   # window.confirm di "Rimuovi"
+
+    # Impronta del telefono simulata: autenticatore "interno" con verifica
+    # dell'utente, credenziali NON rilevabili (come una normale impronta del
+    # dispositivo, non una passkey sincronizzata).
+    cdp = ctx.new_cdp_session(page)
+    cdp.send('WebAuthn.enable')
+    cdp.send('WebAuthn.addVirtualAuthenticator', {'options': {
+        'protocol': 'ctap2', 'transport': 'internal', 'hasResidentKey': False,
+        'hasUserVerification': True, 'isUserVerified': True, 'automaticPresenceSimulation': True}})
 
     def login_box():
         return page.get_by_placeholder('Password', exact=True)
@@ -41,12 +54,22 @@ with sync_playwright() as p:
         page.get_by_role('button', name='Accedi').click()
 
     def in_app():
-        expect(page.get_by_text('Impostazioni')).to_be_visible()
+        expect(page.get_by_text('Impostazioni').first).to_be_visible()
 
     def logout():
         page.evaluate("localStorage.removeItem('sb_token')")
         page.reload()
         expect(login_box()).to_be_visible()
+
+    def paste_into(locator, text):
+        """Vero incolla da appunti (Ctrl+V), non digitazione."""
+        page.evaluate("t => navigator.clipboard.writeText(t)", text)
+        locator.click()
+        page.keyboard.press('Control+V')
+
+    def open_settings():
+        page.get_by_text('Impostazioni').first.click()
+        expect(page.get_by_text('Accesso')).to_be_visible()
 
     try:
         # ── aggiornamento dell'app dopo un deploy ──────────────────────────
@@ -56,7 +79,6 @@ with sync_playwright() as p:
         page.wait_for_function("navigator.serviceWorker && navigator.serviceWorker.getRegistration().then(r => !!(r && r.active))")
         page.reload()
         page.wait_for_function("!!navigator.serviceWorker.controller")
-        step('service worker attivo e in controllo della pagina')
         html = open(INDEX).read()
         assert '<head>' in html
         open(INDEX, 'w').write(html.replace('<head>', '<head><meta name="e2e-marker" content="v2">', 1))
@@ -65,7 +87,7 @@ with sync_playwright() as p:
             'dopo un deploy il primo avvio mostra ancora la versione vecchia'
         step('dopo un "deploy" il primo avvio carica gia\' la versione nuova')
 
-        # ── occhio mostra/nascondi ────────────────────────────────────────
+        # ── occhio e copia/incolla nel login ──────────────────────────────
         assert login_box().get_attribute('type') == 'password'
         page.get_by_role('button', name='Mostra password').click()
         assert login_box().get_attribute('type') == 'text'
@@ -73,21 +95,55 @@ with sync_playwright() as p:
         assert login_box().get_attribute('type') == 'password'
         step('occhio: mostra e nasconde')
 
-        # ── login e cambio password ───────────────────────────────────────
-        try_login('sbagliata-xyz-123')
+        paste_into(login_box(), 'sbagliata-xyz-123 ')
+        assert login_box().input_value() == 'sbagliata-xyz-123 ', 'il campo password non accetta Incolla'
+        page.get_by_role('button', name='Accedi').click()
         expect(page.get_by_text('Password errata')).to_be_visible()
-        step('password sbagliata: "Password errata" (401 dal server)')
-        try_login(BOOT)
+        step('copia e incolla accettato nel campo password; password sbagliata: "Password errata"')
+
+        # password iniziale INCOLLATA con uno spazio finale (tipico dell'incolla)
+        paste_into(login_box(), BOOT + ' ')
+        assert login_box().input_value() == BOOT + ' '
+        page.get_by_role('button', name='Accedi').click()
         expect(page.get_by_text('Primo accesso')).to_be_visible()
-        step('password iniziale accettata: schermata di cambio password')
-        page.get_by_placeholder('Nuova password (min. 10 caratteri)').fill(NEW)
-        page.get_by_placeholder('Ripeti la nuova password').fill(NEW)
+        step('password iniziale incollata con spazio finale: accettata, schermata di cambio')
+
+        # ── cambio password con campi incollati ───────────────────────────
+        paste_into(page.get_by_placeholder('Nuova password (min. 10 caratteri)'), NEW + ' ')
+        paste_into(page.get_by_placeholder('Ripeti la nuova password'), NEW + ' ')
         page.get_by_role('button', name='Salva nuova password').click()
-        page.wait_for_timeout(1500)
-        if page.get_by_text('Attiva impronta').count():
-            page.get_by_role('button', name='Più tardi').click()
+
+        # ── impronta digitale: offerta dopo il cambio ─────────────────────
+        expect(page.get_by_text('Vuoi attivare l\'accesso con impronta')).to_be_visible()
+        page.get_by_role('button', name='Attiva impronta').click()
         in_app()
-        step('nuova password salvata: dentro l\'app')
+        step('nuova password (incollata) salvata; impronta attivata subito dopo')
+
+        open_settings()
+        expect(page.get_by_text('Impronta attiva su 1 dispositivo')).to_be_visible()
+        expect(page.get_by_role('button', name='Rimuovi')).to_be_visible()
+        step('Impostazioni: elenco con 1 dispositivo e pulsante Rimuovi')
+
+        # ── accesso con impronta ──────────────────────────────────────────
+        logout()
+        page.get_by_role('button', name='Sblocca con impronta digitale').click()
+        in_app()
+        step('login con impronta riuscito')
+
+        # ── rimuovi e riattiva da Impostazioni ────────────────────────────
+        open_settings()
+        page.get_by_role('button', name='Rimuovi').click()
+        expect(page.get_by_text('Nessuna impronta digitale registrata')).to_be_visible()
+        step('Impostazioni: impronta rimossa')
+        page.get_by_role('button', name='Attiva impronta su questo dispositivo').click()
+        expect(page.get_by_text('Impronta attiva su 1 dispositivo')).to_be_visible()
+        step('Impostazioni: impronta riattivata piu\' tardi')
+
+        # la nuova password vale anche digitata senza lo spazio
+        logout()
+        try_login(NEW)
+        in_app()
+        step('login con la nuova password digitata (senza lo spazio finale incollato)')
 
         # ── password dimenticata ──────────────────────────────────────────
         logout()
@@ -96,12 +152,11 @@ with sync_playwright() as p:
         before = len(telegram_texts())
         page.get_by_role('button', name='Invia codice su Telegram').click()
         expect(page.get_by_placeholder('Codice (8 cifre)')).to_be_visible()
-        step('"Password dimenticata?": richiesta codice accettata')
         texts = telegram_texts()
         assert len(texts) == before + 1, 'il codice non e\' arrivato su Telegram'
         code = re.search(r'<b>(\d{8})</b>', texts[-1]).group(1)
         assert code not in page.inner_text('body'), 'il codice e\' visibile nell\'app'
-        step('codice arrivato su Telegram (8 cifre) e non visibile nell\'app')
+        step('password dimenticata: codice arrivato su Telegram, non visibile nell\'app')
 
         wrong = '00000000' if code != '00000000' else '11111111'
         page.get_by_placeholder('Codice (8 cifre)').fill(wrong)
@@ -109,31 +164,26 @@ with sync_playwright() as p:
         page.get_by_placeholder('Ripeti la nuova password').fill(RECOVERED)
         page.get_by_role('button', name='Imposta nuova password').click()
         expect(page.get_by_text('Codice errato')).to_be_visible()
-        step('codice sbagliato: "Codice errato"')
-
         page.get_by_placeholder('Codice (8 cifre)').fill(code)
         page.get_by_role('button', name='Imposta nuova password').click()
         page.wait_for_timeout(1500)
-        if page.get_by_text('Attiva impronta').count():
-            page.get_by_role('button', name='Più tardi').click()
         in_app()
-        assert any('cambiata' in t for t in telegram_texts()), 'nessun avviso su Telegram a cambio avvenuto'
-        step('codice giusto: nuova password impostata, dentro l\'app, avviso su Telegram')
+        assert any('cambiata' in t for t in telegram_texts())
+        step('codice sbagliato rifiutato, codice giusto: nuova password, dentro l\'app, avviso su Telegram')
 
         logout()
         try_login(NEW)
         expect(page.get_by_text('Password errata')).to_be_visible()
-        step('la password precedente non vale piu\'')
         try_login(RECOVERED)
         in_app()
-        step('login con la password recuperata riuscito')
+        step('la password precedente non vale piu\'; quella recuperata si')
     except Exception as e:
-        print('FALLITO:', type(e).__name__, str(e)[:600], flush=True)
+        print('FALLITO:', type(e).__name__, str(e)[:700], flush=True)
         try:
-            print('TESTO PAGINA:', page.inner_text('body')[:500].replace('\n', ' | '), flush=True)
+            print('TESTO PAGINA:', page.inner_text('body')[:600].replace('\n', ' | '), flush=True)
         except Exception:
             pass
-        print('PROBLEMI RETE/CONSOLE:', problems[:8], flush=True)
+        print('PROBLEMI RETE/CONSOLE:', problems[:10], flush=True)
         browser.close()
         sys.exit(1)
     print('PROBLEMI RETE/CONSOLE (info):', problems[:8], flush=True)
