@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { botAPI } from '../api';
 import { isPlatformAuthenticatorAvailable, createCredential } from '../webauthnClient';
 import Logs from './Logs';
+import ChangePasswordForm from '../components/ChangePasswordForm';
 
 const MUTED = '#94a3b8';
 const BORDER = '#334155';
@@ -44,6 +45,9 @@ export default function Settings() {
   const [riskForm, setRiskForm] = useState(null);
   const [riskMsg, setRiskMsg] = useState(null); // { ok: bool, text: string }
   const [riskBusy, setRiskBusy] = useState(false);
+  const [showPwdForm, setShowPwdForm] = useState(false);
+  const [pwdMsg, setPwdMsg] = useState('');
+  const [pwdStatus, setPwdStatus] = useState(null);
 
   const refreshStatus = async () => {
     try {
@@ -65,6 +69,7 @@ export default function Settings() {
   };
 
   useEffect(() => { refreshStatus(); }, []);
+  useEffect(() => { botAPI.passwordStatus().then(({ data }) => setPwdStatus(data)).catch(() => {}); }, []);
 
   const handleAddBio = async () => {
     setBusy(true); setMsg('');
@@ -156,6 +161,36 @@ export default function Settings() {
           </div>
         )}
         {msg && <div style={{ fontSize: '12px', color: '#4ade80', marginTop: '10px' }}>{msg}</div>}
+        {pwdStatus?.set && (
+          <div style={{ fontSize: '13px', color: pwdStatus.warn ? WARN : '#94a3b8', marginTop: '16px', marginBottom: '10px' }}>
+            Password valida ancora {pwdStatus.days_left} {pwdStatus.days_left === 1 ? 'giorno' : 'giorni'} (si cambia ogni 60 giorni).
+          </div>
+        )}
+        {showPwdForm ? (
+          <div style={{ marginTop: '10px' }}>
+            <ChangePasswordForm
+              askOld
+              onCancel={() => setShowPwdForm(false)}
+              onSuccess={(newToken) => {
+                // Il cambio password chiude tutte le sessioni precedenti: questa
+                // continua col nuovo token.
+                localStorage.setItem('sb_token', newToken);
+                setShowPwdForm(false);
+                setPwdMsg('Password cambiata. Gli altri dispositivi dovranno accedere di nuovo.');
+                botAPI.passwordStatus().then(({ data }) => setPwdStatus(data)).catch(() => {});
+              }}
+            />
+          </div>
+        ) : (
+          <button onClick={() => { setPwdMsg(''); setShowPwdForm(true); }} style={{
+            width: '100%', marginTop: pwdStatus?.set ? 0 : '16px', padding: '12px', borderRadius: '10px',
+            border: '1px solid #334155', background: 'none', color: '#cbd5e1',
+            fontWeight: 'bold', cursor: 'pointer'
+          }}>
+            🔑 Cambia password
+          </button>
+        )}
+        {pwdMsg && <div style={{ fontSize: '12px', color: '#4ade80', marginTop: '10px' }}>{pwdMsg}</div>}
       </Card>
 
       {config && status && (

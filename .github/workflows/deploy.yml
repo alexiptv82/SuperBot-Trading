@@ -19,13 +19,23 @@ jobs:
 
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
           host: 51.91.109.45
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 30m
-          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
+          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD
           script: |
+            # Password iniziale della dashboard (GitHub Secret). Senza, ci si
+            # ferma QUI, prima di toccare il bot in esecuzione.
+            if [ -z "$DASHBOARD_PASSWORD" ]; then
+              echo "ERRORE: GitHub Secret DASHBOARD_PASSWORD mancante. Crealo in Settings > Secrets and variables > Actions e rilancia il deploy."
+              exit 1
+            fi
             apt-get install -y docker.io git curl nginx nodejs npm 2>/dev/null || true
             systemctl start docker 2>/dev/null || true
             if [ -d "/opt/superbot/.git" ]; then
@@ -34,7 +44,7 @@ jobs:
               git clone https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot
             fi
             cd /opt/superbot
-            printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD=superbot2024\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" > backend/.env
+            printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD_B64=%s\nWEBAUTHN_RP_ID=superbot-trading.duckdns.org\nWEBAUTHN_ORIGIN=https://superbot-trading.duckdns.org\nWEBAUTHN_RP_NAME=SuperBot\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" "$(printf %s "$DASHBOARD_PASSWORD" | base64 -w0)" > backend/.env
             mkdir -p data
             # Build reale del frontend ad ogni deploy: prima d'ora
             # frontend/build sul VPS era una build manuale vecchia, mai

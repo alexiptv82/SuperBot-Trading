@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { botAPI } from '../api';
 import { isPlatformAuthenticatorAvailable, createCredential, getCredential } from '../webauthnClient';
+import ChangePasswordForm from '../components/ChangePasswordForm';
 
+const panel = {
+  background: '#1e293b', border: '1px solid #334155', borderRadius: '12px',
+  padding: '16px', marginBottom: '16px', color: '#f1f5f9',
+};
+
+// Fasi: 'login' -> (eventuale) 'change' -> (eventuale) 'bio' -> app
 export default function Login({ onLogin }) {
+  const [stage, setStage] = useState('login');
   const [pwd, setPwd] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
   const [bioAvailable, setBioAvailable] = useState(false);
-  const [offerBioSetup, setOfferBioSetup] = useState(false);
+  // { token, reason: 'first_login'|'expired', knownOld, askOld }
+  const [change, setChange] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -24,27 +33,51 @@ export default function Login({ onLogin }) {
     })();
   }, []);
 
-  const finishLogin = (token) => {
+  // Sessione completa ottenuta: salva il token e, se ha senso, propone
+  // l'impronta prima di entrare nell'app.
+  const finishLogin = async (token, { offerBio } = {}) => {
     localStorage.setItem('sb_token', token);
+    if (offerBio) {
+      try {
+        const [{ data: status }, platformOk] = await Promise.all([
+          botAPI.webauthnStatus(), isPlatformAuthenticatorAvailable(),
+        ]);
+        if (platformOk && !status.has_credentials) {
+          setStage('bio');
+          return;
+        }
+      } catch { /* non blocca l'accesso */ }
+    }
     onLogin();
   };
 
+  // Risposta di login/biometrico: token completo oppure token limitato +
+  // must_change ('first_login' | 'expired').
+  const handleLoginResponse = (data, typedPassword) => {
+    if (data.must_change) {
+      setChange({
+        token: data.token,
+        reason: data.must_change,
+        knownOld: typedPassword || '',
+        askOld: !typedPassword,
+      });
+      setStage('change');
+      return Promise.resolve();
+    }
+    return finishLogin(data.token, { offerBio: true });
+  };
+
   const handleLogin = async () => {
+    if (!pwd) return;
     setLoading(true); setError(''); setInfo('');
     try {
       const { data } = await botAPI.login(pwd);
-      // Dopo il primo login a password, se il dispositivo supporta il
-      // biometrico e non ci sono già credenziali salvate, lo propone.
-      try {
-        const { data: status } = await botAPI.webauthnStatus();
-        const platformOk = await isPlatformAuthenticatorAvailable();
-        if (status.available && platformOk && !status.has_credentials) {
-          setOfferBioSetup(true);
-        }
-      } catch { /* non blocca il login */ }
-      finishLogin(data.token);
-    } catch {
-      setError('Password errata');
+      await handleLoginResponse(data, pwd);
+    } catch (e) {
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      if (status === 429 || status === 503) setError(detail);
+      else setError('Password errata');
     } finally {
       setLoading(false);
     }
@@ -56,7 +89,7 @@ export default function Login({ onLogin }) {
       const { data: options } = await botAPI.webauthnLoginOptions();
       const { state_id, credentialJSON } = await getCredential(options);
       const { data } = await botAPI.webauthnLoginVerify(state_id, credentialJSON);
-      finishLogin(data.token);
+      await handleLoginResponse(data, '');
     } catch {
       setError('Accesso biometrico non riuscito, usa la password');
     } finally {
@@ -65,19 +98,21 @@ export default function Login({ onLogin }) {
   };
 
   const handleRegisterBio = async () => {
-    setLoading(true); setError(''); setInfo('');
+    setLoading(true); setError('');
     try {
       const { data: options } = await botAPI.webauthnRegisterOptions();
       const { state_id, credentialJSON } = await createCredential(options);
       await botAPI.webauthnRegisterVerify(state_id, credentialJSON, 'Questo dispositivo');
-      setOfferBioSetup(false);
-      setInfo('Impronta digitale attivata per i prossimi accessi.');
+      onLogin();
     } catch {
       setError('Non è stato possibile attivare l\'impronta digitale su questo dispositivo');
-    } finally {
       setLoading(false);
     }
   };
+
+  const reasonText = change?.reason === 'expired'
+    ? 'La password è scaduta (dura 60 giorni). Scegline una nuova per continuare.'
+    : 'Primo accesso: scegli la tua password personale. Quella iniziale non servirà più.';
 
   return (
     <div style={{
@@ -93,60 +128,76 @@ export default function Login({ onLogin }) {
       }}>SuperBot</h1>
       <p style={{ color: '#94a3b8', marginBottom: '32px' }}>Trading Bot Dashboard</p>
       <div style={{ width: '100%', maxWidth: '360px' }}>
-        {offerBioSetup ? (
-          <div style={{
-            background: '#1e293b', border: '1px solid #334155', borderRadius: '12px',
-            padding: '16px', marginBottom: '16px', color: '#f1f5f9'
-          }}>
+
+        {stage === 'change' && change && (
+          <div style={panel}>
+            <p style={{ marginBottom: '14px', fontSize: '14px', lineHeight: 1.4 }}>{reasonText}</p>
+            <ChangePasswordForm
+              askOld={change.askOld}
+              knownOld={change.knownOld}
+              token={change.token}
+              onSuccess={(newToken) => finishLogin(newToken, { offerBio: true })}
+            />
+          </div>
+        )}
+
+        {stage === 'bio' && (
+          <div style={panel}>
             <p style={{ marginBottom: '12px', fontSize: '14px' }}>
               Vuoi attivare l'accesso con impronta digitale su questo dispositivo, così non devi sempre digitare la password?
             </p>
+            {error && <p style={{ color: '#f87171', fontSize: '13px', marginBottom: '10px' }}>{error}</p>}
             <div style={{ display: 'flex', gap: '8px' }}>
               <button onClick={handleRegisterBio} disabled={loading} style={{
                 flex: 1, padding: '10px', borderRadius: '10px', background: '#0ea5e9',
                 color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer'
-              }}>Attiva impronta</button>
-              <button onClick={() => setOfferBioSetup(false)} style={{
+              }}>{loading ? '...' : 'Attiva impronta'}</button>
+              <button onClick={onLogin} disabled={loading} style={{
                 flex: 1, padding: '10px', borderRadius: '10px', background: 'none',
                 color: '#94a3b8', border: '1px solid #334155', cursor: 'pointer'
               }}>Più tardi</button>
             </div>
           </div>
-        ) : null}
-
-        {bioAvailable && !offerBioSetup && (
-          <button onClick={handleBioLogin} disabled={loading} style={{
-            width: '100%', padding: '14px', borderRadius: '12px', marginBottom: '16px',
-            background: '#1e293b', border: '1px solid #38bdf8', color: '#38bdf8',
-            fontSize: '15px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-          }}>
-            👆 Sblocca con impronta digitale
-          </button>
         )}
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={pwd}
-          onChange={e => setPwd(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleLogin()}
-          style={{
-            width: '100%', padding: '14px 16px', borderRadius: '12px',
-            border: '1px solid #334155', background: '#1e293b',
-            color: '#f1f5f9', fontSize: '16px', marginBottom: '12px', outline: 'none'
-          }}
-        />
-        {error && <p style={{ color: '#f87171', marginBottom: '12px', textAlign: 'center' }}>{error}</p>}
-        {info && <p style={{ color: '#4ade80', marginBottom: '12px', textAlign: 'center' }}>{info}</p>}
-        <button onClick={handleLogin} disabled={loading} style={{
-          width: '100%', padding: '14px', borderRadius: '12px',
-          background: loading ? '#334155' : '#0ea5e9',
-          color: 'white', fontSize: '16px', fontWeight: 'bold',
-          border: 'none', cursor: loading ? 'not-allowed' : 'pointer'
-        }}>
-          {loading ? 'Accesso...' : 'Accedi'}
-        </button>
+        {stage === 'login' && (
+          <>
+            {bioAvailable && (
+              <button onClick={handleBioLogin} disabled={loading} style={{
+                width: '100%', padding: '14px', borderRadius: '12px', marginBottom: '16px',
+                background: '#1e293b', border: '1px solid #38bdf8', color: '#38bdf8',
+                fontSize: '15px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+              }}>
+                👆 Sblocca con impronta digitale
+              </button>
+            )}
+
+            <input
+              type="password"
+              placeholder="Password"
+              autoComplete="current-password"
+              value={pwd}
+              onChange={e => setPwd(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              style={{
+                width: '100%', padding: '14px 16px', borderRadius: '12px', boxSizing: 'border-box',
+                border: '1px solid #334155', background: '#1e293b',
+                color: '#f1f5f9', fontSize: '16px', marginBottom: '12px', outline: 'none'
+              }}
+            />
+            {error && <p style={{ color: '#f87171', marginBottom: '12px', textAlign: 'center' }}>{error}</p>}
+            {info && <p style={{ color: '#4ade80', marginBottom: '12px', textAlign: 'center' }}>{info}</p>}
+            <button onClick={handleLogin} disabled={loading} style={{
+              width: '100%', padding: '14px', borderRadius: '12px',
+              background: loading ? '#334155' : '#0ea5e9',
+              color: 'white', fontSize: '16px', fontWeight: 'bold',
+              border: 'none', cursor: loading ? 'not-allowed' : 'pointer'
+            }}>
+              {loading ? 'Accesso...' : 'Accedi'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
