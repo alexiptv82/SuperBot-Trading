@@ -1,0 +1,26 @@
+name: Verifica dopo deploy (temporaneo, sola lettura)
+on:
+  push:
+    branches: [ci-check-risk-config]
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H 51.91.109.45 >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Verifica
+        run: |
+          ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 root@51.91.109.45 'bash -s' <<'REMOTE'
+          set +e
+          note() { printf '::notice title=%s::%s\n' "$1" "$(echo "$2" | tr '\n' '|' | sed 's/::/: /g')"; }
+          note "baseURL nel frontend servito" "$(grep -oh 'baseURL:[^,}]\{0,60\}' /opt/superbot/frontend/build/static/js/main.*.js | tr '\n' ' ')"
+          note "file main.js" "$(ls -la --time-style=long-iso /opt/superbot/frontend/build/static/js/main.*.js | awk '{print $6, $7, $8}')"
+          note "HTTPS pubblico: password-status" "$(curl -sS -m 10 -w ' [HTTP %{http_code}]' https://superbot-trading.duckdns.org/api/auth/password-status 2>&1)"
+          note "HTTPS pubblico: webauthn/status" "$(curl -sS -m 10 -w ' [HTTP %{http_code}]' https://superbot-trading.duckdns.org/api/auth/webauthn/status 2>&1)"
+          note "HTTPS pubblico: login con body vuoto (deve dare 422, non toccare nulla)" "$(curl -sS -m 10 -o /dev/null -w 'HTTP %{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' https://superbot-trading.duckdns.org/api/auth/login 2>&1)"
+          note "Container" "$(docker ps --filter name=^superbot$ --format '{{.Names}} {{.Status}}')"
+          REMOTE
