@@ -1,0 +1,83 @@
+name: E2E login e recupero password (temporaneo)
+on:
+  push:
+    branches: [ci-check-risk-config]
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: Test backend (pytest, SQLite reale)
+        working-directory: backend
+        run: |
+          pip install -q -r requirements.txt
+          python -m pytest tests/test_auth_flow.py -q -p no:cacheprovider 2>&1 | tail -40 > /tmp/pytest.out; RC=${PIPESTATUS[0]}
+          cat /tmp/pytest.out
+          SUMMARY=$(tail -3 /tmp/pytest.out | tr '\n' ' ')
+          if [ "$RC" -eq 0 ]; then echo "::notice title=pytest auth::${SUMMARY}"; else echo "::error title=pytest auth FALLITO::$(grep -E 'FAILED|Error|assert' /tmp/pytest.out | head -12 | tr '\n' ' ' | sed 's/::/: /g')"; exit 1; fi
+
+      - name: Build frontend come in produzione
+        working-directory: frontend
+        run: |
+          REACT_APP_BACKEND_URL= npm install --no-audit --no-fund
+          REACT_APP_BACKEND_URL= npm run build 2>&1 | tail -5
+          if grep -q 'baseURL:"http://51.91.109.45' build/static/js/main.*.js; then
+            echo "::error title=baseURL::il frontend compilato punta ancora a http://IP:8002"; exit 1
+          fi
+
+      - name: Telegram finto + backend (come nel container)
+        run: |
+          nohup python ci/fake_telegram.py > /tmp/fake_tg.log 2>&1 &
+          mkdir -p data
+          printf 'DASHBOARD_PASSWORD_B64=%s\nDB_PATH=./data/superbot.db\nTRADING_MODE=paper\nBACKEND_PORT=8001\nWEBAUTHN_RP_ID=localhost\nWEBAUTHN_ORIGIN=https://localhost:8443\nTELEGRAM_BOT_TOKEN=123456:FAKE\nTELEGRAM_CHAT_ID=42\nTELEGRAM_API_BASE=http://127.0.0.1:9100\n' "$(printf %s 'Iniziale-12!' | base64 -w0)" > backend/.env
+          PYTHONPATH=backend nohup python -m uvicorn backend.server:app --host 127.0.0.1 --port 8001 > backend.log 2>&1 &
+          for i in $(seq 1 30); do curl -s http://127.0.0.1:8001/api/health && break; sleep 2; done
+          echo
+
+      - name: nginx in HTTPS (stessa struttura di produzione)
+        run: |
+          sudo apt-get install -y -qq nginx > /dev/null
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/key.pem -out /tmp/cert.pem -days 1 -subj /CN=localhost -addext "subjectAltName=DNS:localhost" 2>/dev/null
+          cat > /tmp/nginx.conf <<EOF
+          user $(whoami);
+          worker_processes 1;
+          pid /tmp/nginx.pid;
+          error_log /tmp/nginx-error.log;
+          events {}
+          http {
+            include /etc/nginx/mime.types;
+            access_log /tmp/nginx-access.log;
+            server {
+              listen 8443 ssl;
+              ssl_certificate /tmp/cert.pem;
+              ssl_certificate_key /tmp/key.pem;
+              root $GITHUB_WORKSPACE/frontend/build;
+              index index.html;
+              location / { try_files \$uri \$uri/ /index.html; }
+              location /api { proxy_pass http://127.0.0.1:8001; proxy_http_version 1.1; proxy_set_header Host \$host; }
+            }
+          }
+          EOF
+          sudo nginx -c /tmp/nginx.conf
+          curl -sk https://localhost:8443/api/health; echo
+
+      - name: Test nel browser
+        env:
+          BUILD_INDEX: ${{ github.workspace }}/frontend/build/index.html
+        run: |
+          pip install -q playwright
+          set +e
+          python ci/e2e_login.py 2>&1 | tee /tmp/e2e.out
+          RC=${PIPESTATUS[0]}
+          SUMMARY=$(cat /tmp/e2e.out | tr '\n' '|' | sed 's/::/: /g' | cut -c1-2400)
+          if [ "$RC" -eq 0 ]; then echo "::notice title=E2E OK::${SUMMARY}"; else
+            echo "::error title=E2E FALLITO::${SUMMARY}"
+            echo "::warning title=backend.log::$(tail -n 15 backend.log | sed -E 's/[0-9]{8}/XXXXXXXX/g' | tr '\n' '|' | sed 's/::/: /g' | cut -c1-1500)"
+            echo "::warning title=nginx access::$(tail -n 12 /tmp/nginx-access.log | tr '\n' '|' | sed 's/::/: /g' | cut -c1-1200)"
+            exit 1
+          fi
