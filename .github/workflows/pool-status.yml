@@ -1,8 +1,8 @@
 name: Pool di regole - stato del runner (sola lettura)
 
 # Legge dal container "superbot-pool" il riepilogo delle regole e la salute. Non modifica nulla.
-# Parte quando cambia deploy/pool-status.trigger. L'output del server viene raccolto e
-# ripubblicato dal runner come annotazione (le righe ::notice:: stampate sul server non arrivano).
+# Parte quando cambia deploy/pool-status.trigger. Usa SSH diretto (la chiave e' il secret gia'
+# usato dal deploy) per poter ripubblicare l'output del server come annotazione.
 
 on:
   push:
@@ -14,35 +14,34 @@ jobs:
   status:
     runs-on: ubuntu-latest
     steps:
-      - name: Stato del runner
-        id: ssh
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: 51.91.109.45
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 5m
-          capture_stdout: true
-          script: |
-            echo "CONTENITORE: $(docker ps -a --filter name=superbot-pool --format '{{.Names}} {{.Status}}')"
-            echo "SALUTE DOCKER: $(docker inspect -f '{{.State.Health.Status}}' superbot-pool 2>&1 | head -1)"
-            echo "ALTRI CONTENITORI: $(docker ps --format '{{.Names}} {{.Status}}' | grep -v superbot-pool | tr '\n' '|' | cut -c1-300)"
-            echo "MEMORIA LIBERA MB: $(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)"
-            echo "USO: $(docker stats --no-stream --format 'cpu={{.CPUPerc}} mem={{.MemUsage}}' superbot-pool 2>&1 | head -1)"
-            echo "SALUTE APP: $(docker exec superbot-pool python -m rule_pool.cli health --data-dir /app/data/pool 2>&1 | tr '\n' ' ' | cut -c1-200)"
-            echo "--- RIEPILOGO ---"
-            docker exec superbot-pool python -m rule_pool.cli report --data-dir /app/data/pool 2>&1 | cut -c1-400
-            echo "--- LOG ---"
-            docker logs --tail 6 superbot-pool 2>&1 | cut -c1-300
+      - name: Leggi lo stato dal server
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_pool
+          chmod 600 ~/.ssh/id_pool
+          ssh -i ~/.ssh/id_pool -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
+            root@51.91.109.45 'bash -s' > status_out.txt 2>&1 <<'REMOTE' || true
+          echo "CONTENITORE: $(docker ps -a --filter name=superbot-pool --format '{{.Names}} {{.Status}}')"
+          echo "SALUTE DOCKER: $(docker inspect -f '{{.State.Health.Status}}' superbot-pool 2>&1 | head -1)"
+          echo "ALTRI CONTENITORI: $(docker ps --format '{{.Names}} {{.Status}}' | grep -v superbot-pool | tr '\n' '|' | cut -c1-300)"
+          echo "MEMORIA LIBERA MB: $(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)"
+          echo "USO: $(docker stats --no-stream --format 'cpu={{.CPUPerc}} mem={{.MemUsage}}' superbot-pool 2>&1 | head -1)"
+          echo "SALUTE APP: $(docker exec superbot-pool python -m rule_pool.cli health --data-dir /app/data/pool 2>&1 | tr '\n' ' ' | cut -c1-200)"
+          echo "--- RIEPILOGO ---"
+          docker exec superbot-pool python -m rule_pool.cli report --data-dir /app/data/pool 2>&1 | cut -c1-400
+          echo "--- LOG ---"
+          docker logs --tail 8 superbot-pool 2>&1 | cut -c1-300
+          REMOTE
+          rm -f ~/.ssh/id_pool
 
       - name: Mostra il risultato
         if: always()
-        env:
-          OUT: ${{ steps.ssh.outputs.stdout }}
         run: |
           python3 - <<'PY'
           import os
-          t = os.environ.get("OUT", "") or "(nessun output dal server)"
+          t = open("status_out.txt").read() if os.path.exists("status_out.txt") else "(nessun output dal server)"
           t = t.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
           print("::notice title=Pool regole - stato::" + t[:6000])
           PY
