@@ -485,6 +485,17 @@ def fetch_1m_history(symbol: str, total_candles: int, end_ms: Optional[int] = No
     return ordered[-total_candles:] if len(ordered) > total_candles else ordered
 
 
+def describe_candles(symbol: str, candles: list) -> str:
+    """Diagnostica sui dati scaricati: copertura, buchi, barre complete."""
+    if not candles:
+        return f"{symbol}: nessuna candela"
+    fmt = lambda ms: datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")  # noqa: E731
+    gaps = [(b[0] - a[0]) // ONE_MINUTE_MS for a, b in zip(candles, candles[1:]) if b[0] - a[0] != ONE_MINUTE_MS]
+    return (f"{symbol}: {len(candles)} candele {fmt(candles[0][0])} -> {fmt(candles[-1][0])} UTC, "
+            f"buchi {len(gaps)} (max {max(gaps) if gaps else 0} min), "
+            f"barre complete 15m={len(resample(candles, 15))} 1h={len(resample(candles, 60))}")
+
+
 def resample(candles_1m: list, minutes: int) -> list:
     """Aggrega candele 1m in barre da `minutes`; scarta i bucket incompleti."""
     bucket_ms = minutes * ONE_MINUTE_MS
@@ -676,6 +687,7 @@ def main() -> None:
     print(f"Simboli: {symbols} | candele {args.candles} | stride {args.stride} | max_hold {args.max_hold}")
     candles: dict[str, list] = {}
     signals: list[dict] = []
+    data_diag: list[str] = []
     for sym in symbols:
         print(f"\n=== {sym} ===", flush=True)
         data = load_or_fetch_candles(sym, args.candles, end_ms, args.cache_dir, tag)
@@ -683,6 +695,8 @@ def main() -> None:
             print(f"  [skip] storico insufficiente ({len(data)} candele)")
             continue
         candles[sym] = data
+        data_diag.append(describe_candles(sym, data))
+        print("  " + data_diag[-1], flush=True)
         signals.extend(load_or_generate_signals(sym, data, args.stride, args.max_hold, args.cache_dir, tag))
     if not candles:
         print("Nessun dato utilizzabile.", file=sys.stderr)
@@ -693,7 +707,7 @@ def main() -> None:
         span_days = (max(s["ts"] for s in signals) - min(s["ts"] for s in signals)) / 86_400_000
     sides = Counter(s["side"] for s in signals)
     kinds = Counter(s["trade_type"] for s in signals)
-    info = [f"simboli {list(candles)}", f"segnali totali {len(signals)} su {span_days:.1f} giorni",
+    info = data_diag + [f"simboli {list(candles)}", f"segnali totali {len(signals)} su {span_days:.1f} giorni",
             f"lato {dict(sides)} tipo {dict(kinds)}"]
     print("\n" + "\n".join(info))
     if args.annotate:
