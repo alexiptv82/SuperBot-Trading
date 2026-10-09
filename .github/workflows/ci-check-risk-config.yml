@@ -1,0 +1,40 @@
+name: CI check risk config (temporaneo)
+on:
+  push:
+    branches: [ci-check-risk-config]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Backend import + test risk_settings con SQLite reale
+        working-directory: backend
+        run: |
+          pip install -q sqlalchemy==2.0.28 python-dotenv fastapi==0.110.0 pydantic
+          cat > /tmp/t.py <<'PY'
+          import os; os.environ['DB_PATH']='/tmp/t.db'
+          from database import init_db, SessionLocal, RiskSettings
+          from config import config
+          import risk_settings as rs
+          init_db()
+          assert rs.load_overrides()=={}
+          rs.save_overrides({'max_leverage':4,'max_daily_loss_percent':2.5,'max_open_positions':2})
+          config.MAX_LEVERAGE, config.MAX_DAILY_LOSS_PERCENT, config.MAX_OPEN_POSITIONS = 10, 5.0, 3
+          print(rs.load_overrides())
+          assert (config.MAX_LEVERAGE, config.MAX_DAILY_LOSS_PERCENT, config.MAX_OPEN_POSITIONS)==(4,2.5,2)
+          try: rs.save_overrides({'max_leverage':99,'max_daily_loss_percent':2.5,'max_open_positions':2}); raise SystemExit('FAIL')
+          except ValueError: pass
+          assert config.MAX_LEVERAGE==4
+          print('::notice title=risk_settings SQLite reale::OK')
+          PY
+          python /tmp/t.py
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          REACT_APP_BACKEND_URL= npm install --no-audit --no-fund
+          REACT_APP_BACKEND_URL= npm run build 2>&1 | tail -25
+          echo "::notice title=Frontend build::OK"
