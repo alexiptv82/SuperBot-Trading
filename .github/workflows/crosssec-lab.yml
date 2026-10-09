@@ -1,0 +1,67 @@
+name: Laboratorio cross-sezionale (solo ricerca, sola lettura)
+
+# Momentum/reversal market-neutral sulle coppie liquide di BitGet, usando i dati
+# gia' scaricati dal laboratorio ampiezza (cache). Nessuna chiave, nessun deploy,
+# nessun contatto col bot in funzione.
+#
+# Parte da sola ad ogni push sul ramo `risk-profiles` che tocca questi file.
+
+on:
+  push:
+    branches: [risk-profiles]
+    paths:
+      - ".github/workflows/crosssec-lab.yml"
+      - "backend/crosssec_lab.py"
+      - "backend/tests/test_crosssec_lab.py"
+
+permissions:
+  contents: read
+
+jobs:
+  crosssec:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt pandas numpy pytest
+
+      - name: Unit tests
+        run: python -m pytest tests/test_crosssec_lab.py tests/test_breadth_lab.py tests/test_strategy_lab.py -q
+
+      # Stessa cache del laboratorio ampiezza (universo e candele 1h).
+      - name: Ripristina cache
+        uses: actions/cache/restore@v4
+        with:
+          path: backend/breadth_cache
+          key: lab-breadth-v1-crosssec-${{ github.run_id }}
+          restore-keys: lab-breadth-v1-
+
+      - name: Laboratorio cross-sezionale
+        shell: bash
+        run: |
+          set -o pipefail
+          ls breadth_cache 2>/dev/null | wc -l
+          python -u crosssec_lab.py --cache-dir breadth_cache --out crosssec_results.json \
+            --annotate 2>&1 | tee crosssec_output.log
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crosssec-lab-${{ github.run_id }}
+          path: |
+            backend/crosssec_output.log
+            backend/crosssec_results.json
+          if-no-files-found: ignore
+          retention-days: 30
