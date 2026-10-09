@@ -64,6 +64,7 @@ with sync_playwright() as p:
     def paste_into(locator, text):
         """Vero incolla da appunti (Ctrl+V), non digitazione."""
         page.evaluate("t => navigator.clipboard.writeText(t)", text)
+        locator.fill('')
         locator.click()
         page.keyboard.press('Control+V')
 
