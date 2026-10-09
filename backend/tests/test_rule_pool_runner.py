@@ -305,3 +305,26 @@ def test_store_stops_at_the_head_without_skipping_when_nothing_new():
         assert store.update("X", ex.fetch, now, 0) == 0
         assert ex.calls - calls <= 2
         assert store.skipped == 0
+
+
+def test_v1_benchmark_reads_a_copy_and_computes_net_bp_on_notional():
+    import sqlite3
+    from rule_pool import v1_benchmark as v1
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "bot.db")
+        con = sqlite3.connect(p)
+        con.execute("CREATE TABLE trades (entry_price REAL, quantity REAL, pnl REAL, status TEXT, close_time TEXT)")
+        con.executemany("INSERT INTO trades VALUES (?,?,?,?,?)", [
+            (100.0, 2.0, 2.0, "closed", "2026-10-01 10:00:00"),      # +100 bp
+            (100.0, 1.0, -0.5, "closed", "2026-10-02 10:00:00"),     # -50 bp
+            (100.0, 1.0, 9.0, "open", None),                         # ignorato
+        ])
+        con.commit()
+        con.close()
+        before = open(p, "rb").read()
+        t, x = v1.read_v1(p)
+        assert list(np.round(x, 6)) == [100.0, -50.0]
+        assert open(p, "rb").read() == before                        # originale intatto
+        assert "V1" in v1.line(p)
+    assert v1.read_v1("/non/esiste.db") is None
+    assert "non leggibile" in v1.line("/non/esiste.db")

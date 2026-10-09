@@ -14,6 +14,7 @@ from rule_pool import runner
 from rule_pool.journal import Journal, ParamsChangedError
 from rule_pool.rules import initial_rules
 
+V1_PATH = os.getenv("V1_DB_PATH", "/app/botdata/superbot.db")
 RUN_OFFSET_MS = 20_000          # secondi dopo la chiusura della candela prima di leggerla
 
 
@@ -77,7 +78,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     journal = open_journal(args.data_dir)
     if args.command == "report":
-        print(runner.render_report(journal, initial_rules()))
+        print(runner.render_report(journal, initial_rules(), v1_path=V1_PATH))
         return 0
     if args.command == "health":
         ok, msg = health(journal, int(time.time() * 1000))
@@ -90,7 +91,7 @@ def main(argv=None) -> int:
     if args.command == "once":
         res = iteration(journal, args.data_dir, notify)
         if res is not None:
-            print(runner.render_report(journal, initial_rules(), res))
+            print(runner.render_report(journal, initial_rules(), res, v1_path=V1_PATH))
         return 0 if res is not None else 1
     while True:
         iteration(journal, args.data_dir, notify)

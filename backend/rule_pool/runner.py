@@ -193,7 +193,7 @@ def _notify(journal: Journal, result: dict, notify: Callable) -> None:
 
 
 def render_report(journal: Journal, rules_: list, result: Optional[dict] = None,
-                  gate: ev.Gate = ev.Gate(), venue: str = "paper") -> str:
+                  gate: ev.Gate = ev.Gate(), venue: str = "paper", v1_path: str = "") -> str:
     """Riepilogo compatto in italiano (stato, avanzamento verso la soglia, controlli)."""
     from rule_pool.rules import promotable_count
     k = promotable_count(rules_)
@@ -220,6 +220,9 @@ def render_report(journal: Journal, rules_: list, result: Optional[dict] = None,
         lines.append(f"- {r.rule_id}: {st}, {s.n}/{gate.min_trades} trade chiusi ({openn} aperti), "
                      f"netto {s.mean:+.1f} bp [{s.ci_low:+.0f},{s.ci_high:+.0f}], t={tg}, "
                      f"{s.n_months}/{gate.min_months} mesi{cm}")
+    if v1_path:
+        from rule_pool import v1_benchmark
+        lines.append(v1_benchmark.line(v1_path))
     if result is not None:
         lines.append("Allarme controlli: " + ("ATTIVO" if result["alarm"] else "no"))
         for sym, msg in sorted(result.get("errors", {}).items()):

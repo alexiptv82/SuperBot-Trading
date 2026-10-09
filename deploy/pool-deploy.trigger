@@ -1,1 +1,1 @@
-deploy 2 (salto buchi candele)
+deploy 3 (confronto V1)
