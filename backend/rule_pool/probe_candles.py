@@ -34,28 +34,16 @@ def main() -> None:
         add("src| " + ln[:200])
     now = int(time.time() * 1000)
     sym = "BTC/USDT:USDT"
-    for d in (80, 60, 55, 52, 51, 50.5, 50, 49, 45, 40, 30, 20, 10, 5, 2, 1):
+    for d in (51, 49, 45, 40, 36, 33, 31, 30):
         since = now - int(d * DAY)
-        for lim in (200,):
+        for label, kw in (("until", {"until": since + 200 * M15}), ("lim1000", {}), ("until+lim1000", {"until": since + 1000 * M15})):
+            lim = 1000 if "1000" in label else 200
             try:
-                rows = ex.fetch_ohlcv(sym, "15m", since=since, limit=lim)
-                if rows:
-                    add(f"since=-{d}g ({fmt(since)}) limit={lim}: {len(rows)} righe, {fmt(rows[0][0])} -> {fmt(rows[-1][0])}")
-                else:
-                    add(f"since=-{d}g ({fmt(since)}) limit={lim}: VUOTO")
+                rows = ex.fetch_ohlcv(sym, "15m", since=since, limit=lim, params=kw)
+                add(f"-{d}g {label}: " + (f"{len(rows)} righe {fmt(rows[0][0])} -> {fmt(rows[-1][0])}" if rows else "VUOTO"))
             except Exception as exc:  # noqa: BLE001
-                add(f"since=-{d}g limit={lim}: errore {type(exc).__name__} {str(exc)[:80]}")
+                add(f"-{d}g {label}: errore {type(exc).__name__} {str(exc)[:70]}")
             time.sleep(0.2)
-    # il punto in cui lo scarico si e' fermato: 2026-08-20 02:00 UTC (in ms)
-    stop = 1_787_190_000_000
-    for off in (0, 1, 2, 4, 8, 24, 48, 72, 96, 120):
-        since = stop + off * 3_600_000
-        try:
-            rows = ex.fetch_ohlcv(sym, "15m", since=since, limit=200)
-            add(f"punto di stop +{off}h ({fmt(since)}): {len(rows)} righe" + (f", {fmt(rows[0][0])} -> {fmt(rows[-1][0])}" if rows else ""))
-        except Exception as exc:  # noqa: BLE001
-            add(f"punto di stop +{off}h: errore {type(exc).__name__}")
-        time.sleep(0.2)
     for i in range(0, len(LINES), 14):
         msg = "%0A".join(x.replace("%", "%25") for x in LINES[i:i + 14])
         print(f"::notice title=Sonda candele ({i // 14 + 1})::{msg}")
