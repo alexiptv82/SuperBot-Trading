@@ -1,0 +1,18 @@
+# Immagine della "sala segnali" (paper trading con Claude): separata dal bot e dal pool.
+# Nessuna chiave di exchange, nessuna porta aperta. La chiave Anthropic arriva solo come variabile d'ambiente.
+FROM python:3.11-slim
+
+WORKDIR /app
+ENV PYTHONPATH=/app/backend PYTHONUNBUFFERED=1
+
+RUN pip install --no-cache-dir "ccxt==4.2.95" "numpy>=1.26.0" "pandas>=2.2.0"
+
+COPY backend/strategy_lab.py ./backend/strategy_lab.py
+COPY backend/rule_pool ./backend/rule_pool
+COPY backend/desk ./backend/desk
+RUN mkdir -p /app/data/desk
+
+HEALTHCHECK --interval=5m --timeout=20s --start-period=10m --retries=2 \
+  CMD python -m desk.cli health --data-dir /app/data/desk
+
+CMD ["python", "-m", "desk.cli", "loop", "--data-dir", "/app/data/desk"]

@@ -1,0 +1,44 @@
+name: Sala segnali - test (nessun deploy, nessun segreto)
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - ".github/workflows/desk-ci.yml"
+      - "Dockerfile.desk"
+      - "backend/desk/**"
+      - "backend/rule_pool/**"
+      - "backend/tests/test_desk.py"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt==4.2.95 pandas numpy pytest
+      - name: Unit tests
+        run: python -m pytest tests/test_desk.py tests/test_rule_pool_runner.py -q
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build immagine
+        run: docker build -t superbot-desk -f Dockerfile.desk .
+      - name: Avvio a vuoto (report e salute)
+        run: |
+          docker run --rm superbot-desk python -m desk.cli report --data-dir /tmp/desk-test
+          docker run --rm superbot-desk sh -c "python -m desk.cli health --data-dir /tmp/desk-test; test \$? -eq 1"

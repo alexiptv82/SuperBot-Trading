@@ -1,0 +1,49 @@
+name: Sala segnali - stato (sola lettura)
+
+# Legge dal container "superbot-desk" il riepilogo delle regole e la salute. Non modifica nulla.
+# Parte quando cambia deploy/desk-status.trigger. Usa SSH diretto (la chiave e' il secret gia'
+# usato dal deploy) per poter ripubblicare l'output del server come annotazione.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-status.trigger"
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Leggi lo stato dal server
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -i ~/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
+            root@51.91.109.45 'bash -s' > status_out.txt 2>&1 <<'REMOTE' || true
+          echo "CONTENITORE: $(docker ps -a --filter name=superbot-desk --format '{{.Names}} {{.Status}}')"
+          echo "SALUTE DOCKER: $(docker inspect -f '{{.State.Health.Status}}' superbot-desk 2>&1 | head -1)"
+          echo "ALTRI CONTENITORI: $(docker ps --format '{{.Names}} {{.Status}}' | grep -v superbot-desk | tr '\n' '|' | cut -c1-300)"
+          echo "MEMORIA LIBERA MB: $(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)"
+          echo "USO: $(docker stats --no-stream --format 'cpu={{.CPUPerc}} mem={{.MemUsage}}' superbot-desk 2>&1 | head -1)"
+          echo "SALUTE APP: $(docker exec superbot-desk python -m desk.cli health --data-dir /app/data/desk 2>&1 | tr '\n' ' ' | cut -c1-200)"
+          echo "--- RIEPILOGO ---"
+          docker exec superbot-desk python -m desk.cli report --data-dir /app/data/desk 2>&1 | cut -c1-400
+          echo "--- ULTIME DECISIONI ---"
+          docker exec superbot-desk sh -c "tail -n 3 /app/data/desk/decisions.jsonl 2>/dev/null | cut -c1-500"
+          echo "--- LOG ---"
+          docker logs --tail 8 superbot-desk 2>&1 | cut -c1-300
+          REMOTE
+          rm -f ~/.ssh/id_desk
+
+      - name: Mostra il risultato
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          t = open("status_out.txt").read() if os.path.exists("status_out.txt") else "(nessun output dal server)"
+          t = t.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+          print("::notice title=Sala segnali - stato::" + t[:6000])
+          PY
