@@ -8,6 +8,8 @@ class TelegramNotifier:
         self.token = os.getenv('TELEGRAM_BOT_TOKEN', '')
         self.chat_id = os.getenv('TELEGRAM_CHAT_ID', '')
         self.enabled = bool(self.token and self.chat_id)
+        # Sovrascrivibile solo per i test (un finto server Telegram locale).
+        self.api_base = os.getenv('TELEGRAM_API_BASE', 'https://api.telegram.org').rstrip('/')
         # Kill switch bidirezionale: comandi registrati da server.py (per
         # evitare un import circolare telegram_notifier -> bot_engine ->
         # telegram_notifier). Ogni handler è una callable async che
@@ -21,19 +23,24 @@ class TelegramNotifier:
         handler `async def handler() -> str`."""
         self._command_handlers[name.lower()] = handler
 
-    async def send(self, message: str):
+    async def send(self, message: str) -> bool:
+        """Manda un messaggio sul chat configurato. True solo se Telegram lo
+        ha accettato (serve a chi deve sapere se e' arrivato, es. il codice
+        di recupero password); gli altri chiamanti possono ignorare il valore."""
         if not self.enabled:
-            return
+            return False
         try:
-            url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+            url = f"{self.api_base}/bot{self.token}/sendMessage"
             async with httpx.AsyncClient() as client:
-                await client.post(url, json={
+                resp = await client.post(url, json={
                     "chat_id": self.chat_id,
                     "text": message,
                     "parse_mode": "HTML"
                 }, timeout=10)
+            return resp.status_code == 200
         except Exception as e:
             print(f"Telegram error: {e}")
+            return False
 
     async def trade_opened(self, symbol, side, price, leverage, trade_type, strength):
         emoji = "🟢" if side == "long" else "🔴"
@@ -87,7 +94,7 @@ class TelegramNotifier:
         if not self.enabled or not config.TELEGRAM_COMMANDS_ENABLED:
             return
         self._polling = True
-        url = f"https://api.telegram.org/bot{self.token}/getUpdates"
+        url = f"{self.api_base}/bot{self.token}/getUpdates"
         async with httpx.AsyncClient() as client:
             while self._polling:
                 try:
