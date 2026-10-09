@@ -61,7 +61,9 @@ jobs:
         run: python -m pytest tests/test_risk_profile_sim.py -q
 
       - name: Run simulator
+        shell: bash
         run: |
+          set -o pipefail
           python -u risk_profile_sim.py \
             --candles "${{ inputs.candles || '43200' }}" \
             --stride "${{ inputs.stride || '5' }}" \
@@ -72,6 +74,21 @@ jobs:
             --out risk_sim_results.json \
             --annotate \
             2>&1 | tee risk_sim_output.log
+
+      - name: Mostra coda del log (annotazione)
+        if: always()
+        run: |
+          python3 - <<'PYEOF'
+          import os
+          p = 'risk_sim_output.log'
+          if os.path.exists(p):
+              lines = open(p, errors='replace').read().splitlines()
+              tail = [l for l in lines if not l.startswith('::notice')][-25:]
+              msg = '%0A'.join(l.replace('%', '%25')[:300] for l in tail)
+              print(f"::notice title=Log simulatore (ultime righe)::{msg}")
+          else:
+              print("::notice title=Log simulatore::file assente")
+          PYEOF
 
       - name: Upload results
         if: always()
