@@ -1,0 +1,95 @@
+name: Edge scan (esiste un vantaggio sopra i costi?)
+
+# Solo analisi, a sola lettura: riusa le candele e i segnali gia' generati dal
+# simulatore (artefatti di un run precedente di risk-sim) e misura il
+# rendimento lordo per fette di segnali nelle due finestre di 30 giorni.
+# Non fa deploy, non usa segreti, non tocca il bot in funzione.
+#
+# Parte da sola ad ogni push sul ramo `risk-profiles` che tocca questi file.
+
+on:
+  push:
+    branches: [risk-profiles]
+    paths:
+      - ".github/workflows/edge-scan.yml"
+      - "backend/edge_scan.py"
+      - "backend/tests/test_edge_scan.py"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  # run di risk-sim da cui prendere cache candele/segnali (stessi dati dei
+  # risultati gia' mostrati); se non disponibile si riscarica e rigenera.
+  SOURCE_RUN_ID: "37899073763"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt pandas numpy python-dotenv pytest
+
+      - name: Unit tests
+        run: python -m pytest tests/test_edge_scan.py tests/test_risk_profile_sim.py -q
+
+      - name: Scarica cache del simulatore (se disponibile)
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: risk-sim-results-${{ env.SOURCE_RUN_ID }}-off*
+          merge-multiple: true
+          path: backend/edge_src
+
+      - name: Edge scan
+        shell: bash
+        run: |
+          set -o pipefail
+          CACHE=$(find edge_src -type d -name cache 2>/dev/null | head -1 || true)
+          if [ -z "$CACHE" ]; then CACHE=cache; echo "cache del simulatore non trovata: riscarico e rigenero"; fi
+          echo "cache: $CACHE"; ls "$CACHE" 2>/dev/null | head -20 || true
+          python -u edge_scan.py \
+            --offsets 0,30 --candles 43200 --stride 5 --max-hold 720 \
+            --cache-dir "$CACHE" --out edge_scan_results.json \
+            --annotate 2>&1 | tee edge_scan_output.log
+
+      - name: Coda del log (annotazione)
+        if: always()
+        run: |
+          python3 - <<'PYEOF'
+          import os
+          p = 'edge_scan_output.log'
+          if os.path.exists(p):
+              lines = open(p, errors='replace').read().splitlines()
+              tail = [l for l in lines if not l.startswith('::notice')][-20:]
+              msg = '%0A'.join(l.replace('%', '%25')[:250] for l in tail)
+              print(f"::notice title=Log edge scan (ultime righe)::{msg}")
+          else:
+              print("::notice title=Log edge scan::file assente")
+          PYEOF
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-scan-${{ github.run_id }}
+          path: |
+            backend/edge_scan_output.log
+            backend/edge_scan_results.json
+          if-no-files-found: ignore
+          retention-days: 14
