@@ -5,6 +5,7 @@ name: Pool di regole - deploy del runner paper (container separato)
 # (solo candele pubbliche); i secret Telegram servono solo per avvisare dei cambi di stato.
 # Parte SOLO quando cambia deploy/pool-deploy.trigger: un deploy deliberato, mai per un push qualsiasi.
 # Prima di fare qualsiasi cosa controlla (sola lettura) che il server abbia memoria e disco liberi.
+# L'esito si legge col workflow pool-status (l'azione SSH in uso non restituisce l'output del server).
 
 on:
   push:
@@ -19,7 +20,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Deploy runner sul VPS
-        id: ssh
         uses: appleboy/ssh-action@v1.0.0
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -29,7 +29,6 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 30m
-          capture_stdout: true
           envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
           script: |
             set -e
@@ -67,15 +66,3 @@ jobs:
             echo "CONTENITORE: $(docker ps --filter name=superbot-pool --format '{{.Names}} {{.Status}}')"
             echo "LOG: $(docker logs --tail 6 superbot-pool 2>&1 | tr '\n' '|' | cut -c1-500)"
             echo "ALTRI CONTENITORI (devono restare in funzione): $(docker ps --format '{{.Names}} {{.Status}}' | grep -v superbot-pool | tr '\n' '|' | cut -c1-300)"
-
-      - name: Mostra il risultato
-        if: always()
-        env:
-          OUT: ${{ steps.ssh.outputs.stdout }}
-        run: |
-          python3 - <<'PY'
-          import os
-          t = os.environ.get("OUT", "") or "(nessun output dal server)"
-          t = t.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
-          print("::notice title=Pool regole - deploy::" + t[:6000])
-          PY
