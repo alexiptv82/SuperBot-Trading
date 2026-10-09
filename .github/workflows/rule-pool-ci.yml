@@ -1,0 +1,38 @@
+name: Pool di regole - test (nessun deploy, nessun segreto)
+
+# Esegue solo i test del modulo `backend/rule_pool` (dati sintetici, nessuna rete).
+# Parte da sola ad ogni push sul ramo `rule-pool` che tocca questi file.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - ".github/workflows/rule-pool-ci.yml"
+      - "backend/rule_pool/**"
+      - "backend/strategy_lab.py"
+      - "backend/tests/test_rule_pool.py"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt pandas numpy pytest
+
+      - name: Unit tests (pool di regole + laboratorio)
+        run: python -m pytest tests/test_rule_pool.py tests/test_strategy_lab.py -q
