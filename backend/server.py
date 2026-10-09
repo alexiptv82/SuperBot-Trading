@@ -27,6 +27,7 @@ from database import init_db, get_db, Trade, AuditLog
 from bot_engine import bot
 from exchange import exchange
 from telegram_notifier import notifier
+from risk_settings import RISK_BOUNDS, load_overrides, save_overrides
 from auth import (
     create_session_token,
     require_session,
@@ -52,6 +53,11 @@ WEBAUTHN_USER_ID = b"superbot-owner"
 
 class LoginRequest(BaseModel):
     password: str
+
+class RiskConfigUpdate(BaseModel):
+    max_leverage: float
+    max_daily_loss_percent: float
+    max_open_positions: float
 
 class WebAuthnRegisterVerifyRequest(BaseModel):
     state_id: str
@@ -218,7 +224,19 @@ async def get_bot_config(session=Depends(require_session)):
         'max_daily_loss_percent': config.MAX_DAILY_LOSS_PERCENT,
         'max_open_positions': config.MAX_OPEN_POSITIONS,
         'trading_pairs': config.TRADING_PAIRS,
+        'risk_bounds': {k: {'min': v['min'], 'max': v['max']} for k, v in RISK_BOUNDS.items()},
     }
+
+@app.put('/api/bot/config/risk')
+async def update_risk_config(body: RiskConfigUpdate, session=Depends(require_session)):
+    """Salva i parametri di rischio modificati dall'app. Validati contro
+    RISK_BOUNDS, persistiti in DB e applicati subito al bot (nessun riavvio)."""
+    try:
+        applied = save_overrides(body.dict())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    bot._log('config_change', message=f'Parametri di rischio aggiornati dall\'app: {applied}')
+    return {'success': True, 'applied': applied}
 
 @app.get('/api/market/prices')
 async def get_prices(session=Depends(require_session)):
@@ -354,6 +372,9 @@ notifier.register_command('closeall', _cmd_closeall)
 
 @app.on_event('startup')
 async def _on_startup():
+    # Riapplica gli override di rischio salvati dall'app (sopravvivono a
+    # riavvii e redeploy perche' stanno nel DB, non in .env).
+    load_overrides()
     # Il listener dei comandi Telegram parte sempre, a prescindere dal bot --
     # è l'unico modo per cui /resume possa funzionare se il bot è fermo o il
     # processo è appena stato riavviato.

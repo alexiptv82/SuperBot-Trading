@@ -41,6 +41,9 @@ export default function Settings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [showLogs, setShowLogs] = useState(false);
+  const [riskForm, setRiskForm] = useState(null);
+  const [riskMsg, setRiskMsg] = useState(null); // { ok: bool, text: string }
+  const [riskBusy, setRiskBusy] = useState(false);
 
   const refreshStatus = async () => {
     try {
@@ -49,6 +52,11 @@ export default function Settings() {
         botAPI.getStatus(), botAPI.getPerformance(),
       ]);
       setConfig(cfg);
+      setRiskForm(prev => prev || {
+        max_leverage: String(cfg.max_leverage),
+        max_daily_loss_percent: String(cfg.max_daily_loss_percent),
+        max_open_positions: String(cfg.max_open_positions),
+      });
       setHasCredentials(!!webauthn.has_credentials);
       setBioAvailable(platformOk);
       setStatus(st);
@@ -73,12 +81,51 @@ export default function Settings() {
     }
   };
 
+  const RISK_FIELDS = [
+    { key: 'max_leverage', label: 'Leva massima', unit: 'x', step: 1 },
+    { key: 'max_daily_loss_percent', label: 'Perdita massima giornaliera', unit: '%', step: 0.5 },
+    { key: 'max_open_positions', label: 'Posizioni aperte massime', unit: '', step: 1 },
+  ];
+
+  const riskError = (key) => {
+    if (!riskForm || !config?.risk_bounds) return null;
+    const b = config.risk_bounds[key];
+    const raw = riskForm[key];
+    const n = Number(raw);
+    if (raw === '' || Number.isNaN(n)) return 'Inserisci un numero';
+    if (key !== 'max_daily_loss_percent' && !Number.isInteger(n)) return 'Deve essere un numero intero';
+    if (n < b.min || n > b.max) return `Tra ${b.min} e ${b.max}`;
+    return null;
+  };
+
+  const riskDirty = !!(config && riskForm) && RISK_FIELDS.some(f => Number(riskForm[f.key]) !== Number(config[f.key]));
+  const riskValid = !!riskForm && RISK_FIELDS.every(f => !riskError(f.key));
+
+  const handleSaveRisk = async () => {
+    setRiskBusy(true); setRiskMsg(null);
+    try {
+      const payload = {};
+      RISK_FIELDS.forEach(f => { payload[f.key] = Number(riskForm[f.key]); });
+      const { data } = await botAPI.updateRiskConfig(payload);
+      const a = data.applied;
+      setConfig(c => ({ ...c, ...a }));
+      setRiskForm({
+        max_leverage: String(a.max_leverage),
+        max_daily_loss_percent: String(a.max_daily_loss_percent),
+        max_open_positions: String(a.max_open_positions),
+      });
+      setRiskMsg({ ok: true, text: 'Salvato. Il bot usa i nuovi valori dal prossimo ciclo.' });
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      setRiskMsg({ ok: false, text: typeof detail === 'string' ? detail : 'Salvataggio non riuscito, riprova.' });
+    } finally {
+      setRiskBusy(false);
+    }
+  };
+
   const rows = config ? [
     ['Modalità', config.trading_mode],
     ['Capitale iniziale', `$${config.initial_capital}`],
-    ['Leva massima', `x${config.max_leverage}`],
-    ['Perdita massima giornaliera', `${config.max_daily_loss_percent}%`],
-    ['Posizioni aperte massime', config.max_open_positions],
     ['Coppie', (config.trading_pairs || []).join(', ')],
   ] : [];
 
@@ -149,6 +196,57 @@ export default function Settings() {
         </>
       )}
 
+      {config && riskForm && (
+        <>
+          <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
+            ✏️ Limiti di Rischio
+          </h2>
+          <Card style={{ marginBottom: '16px' }}>
+            {RISK_FIELDS.map(f => {
+              const err = riskError(f.key);
+              return (
+                <div key={f.key} style={{ padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                    <label htmlFor={f.key} style={{ color: MUTED }}>{f.label}</label>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input
+                        id={f.key} type="number" inputMode="decimal" step={f.step}
+                        value={riskForm[f.key]}
+                        onChange={e => { setRiskMsg(null); setRiskForm(r => ({ ...r, [f.key]: e.target.value })); }}
+                        style={{
+                          width: '80px', padding: '6px 8px', borderRadius: '8px', textAlign: 'right',
+                          background: '#0f172a', color: 'white', fontWeight: 'bold',
+                          border: `1px solid ${err ? BAD : BORDER}`
+                        }}
+                      />
+                      <span style={{ color: MUTED, width: '12px' }}>{f.unit}</span>
+                    </span>
+                  </div>
+                  {err && <div style={{ fontSize: '11px', color: BAD, marginTop: '4px', textAlign: 'right' }}>{err}</div>}
+                </div>
+              );
+            })}
+            <button
+              onClick={handleSaveRisk}
+              disabled={!riskDirty || !riskValid || riskBusy}
+              style={{
+                width: '100%', marginTop: '14px', padding: '12px', borderRadius: '10px', border: 'none',
+                background: (!riskDirty || !riskValid || riskBusy) ? '#334155' : '#0ea5e9',
+                color: 'white', fontWeight: 'bold',
+                cursor: (!riskDirty || !riskValid || riskBusy) ? 'not-allowed' : 'pointer'
+              }}>
+              {riskBusy ? '...' : 'Salva limiti di rischio'}
+            </button>
+            {riskMsg && (
+              <div style={{ fontSize: '12px', color: riskMsg.ok ? GOOD : BAD, marginTop: '10px' }}>{riskMsg.text}</div>
+            )}
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px' }}>
+              I valori salvati restano anche dopo un riavvio o un nuovo deploy. Limiti accettati: leva 1–20x, perdita giornaliera 0,5–20%, posizioni 1–10.
+            </div>
+          </Card>
+        </>
+      )}
+
       <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
         🎛️ Parametri Configurati
       </h2>
@@ -165,7 +263,7 @@ export default function Settings() {
           </div>
         ))}
         <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px' }}>
-          Questi parametri sono definiti sul server; modificarli richiede per ora un aggiornamento della configurazione lato bot.
+          Modalità, capitale e coppie sono definiti sul server (non modificabili da qui).
         </div>
       </Card>
 

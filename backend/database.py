@@ -68,6 +68,20 @@ class AuditLog(Base):
     message = Column(Text)
     data = Column(Text, nullable=True)
 
+class RiskSettings(Base):
+    """Override dei parametri di rischio impostati dall'app (pagina
+    Impostazioni). Una sola riga (id=1). Un campo NULL significa "nessun
+    override, usa il valore di .env" -- vedi risk_settings.py.
+
+    Vive nel DB (non in .env) perche' deve sopravvivere sia ai riavvii del
+    bot sia ai redeploy da GitHub, che riscrivono .env dai secret."""
+    __tablename__ = "risk_settings"
+    id = Column(Integer, primary_key=True)
+    max_leverage = Column(Integer, nullable=True)
+    max_daily_loss_percent = Column(Float, nullable=True)
+    max_open_positions = Column(Integer, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
 def _migrate_add_missing_columns():
     """Micro-migrazione per SQLite: create_all() crea solo le tabelle mancanti,
     non le colonne nuove su una tabella che esiste gia' (es. il DB di

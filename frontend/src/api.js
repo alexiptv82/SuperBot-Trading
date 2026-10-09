@@ -27,6 +27,7 @@ API.interceptors.response.use(
 export const botAPI = {
   getStatus: () => API.get('/api/bot/status'),
   getConfig: () => API.get('/api/bot/config'),
+  updateRiskConfig: (payload) => API.put('/api/bot/config/risk', payload),
   start: () => API.post('/api/bot/start'),
   stop: () => API.post('/api/bot/stop'),
   getPrices: () => API.get('/api/market/prices'),
