@@ -1,1 +1,1 @@
-stato 2 (poca attivita)
+stato 3 (dopo piu attivita)
