@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { botAPI } from '../api';
 import { isPlatformAuthenticatorAvailable, createCredential, getCredential } from '../webauthnClient';
 import ChangePasswordForm from '../components/ChangePasswordForm';
+import PasswordInput from '../components/PasswordInput';
 
 const panel = {
   background: '#1e293b', border: '1px solid #334155', borderRadius: '12px',
@@ -173,8 +174,7 @@ export default function Login({ onLogin }) {
               </button>
             )}
 
-            <input
-              type="password"
+            <PasswordInput
               placeholder="Password"
               autoComplete="current-password"
               value={pwd}
