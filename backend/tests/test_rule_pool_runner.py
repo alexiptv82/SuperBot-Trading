@@ -247,3 +247,27 @@ def test_iteration_survives_errors_and_alerts_once_on_changed_params():
         res = cli.iteration(j2, d, None, fetch=lambda s, since: (_ for _ in ()).throw(KeyError("x")),
                             now_ms=10 ** 12)
         assert res is not None and len(res["errors"]) == 10      # errore di rete: il giro finisce, segnalando i simboli
+
+
+def test_health_tracks_last_successful_round_and_startup_grace():
+    j = Journal()
+    now = 10 ** 12
+    assert cli.health(j, now)[0] is False                       # mai partito, nessun giro
+    j.set_meta("started_ms", str(now - 10 * 60_000))
+    assert cli.health(j, now)[0] is True                        # appena partito: sta scaricando
+    assert cli.health(j, now + 2 * 3_600_000)[0] is False       # partito da ore senza mai riuscire
+    j.set_meta("last_ok_ms", str(now))
+    assert cli.health(j, now + 30 * 60_000)[0] is True
+    assert cli.health(j, now + 50 * 60_000)[0] is False         # troppo vecchio
+
+
+def test_iteration_records_last_ok_only_on_success():
+    with tempfile.TemporaryDirectory() as d:
+        j = cli.open_journal(d)
+        res = cli.iteration(j, d, None, fetch=lambda s, since: [], now_ms=10 ** 12)
+        assert res is not None and j.get_meta("last_ok_ms") == str(10 ** 12)
+        j2 = cli.open_journal(tempfile.mkdtemp())
+        import dataclasses
+        j2.register_rule(dataclasses.replace(rules.initial_rules()[0], symbols=("Q/USDT:USDT",)))
+        assert cli.iteration(j2, d, None, fetch=lambda s, since: [], now_ms=10 ** 12) is None
+        assert j2.get_meta("last_ok_ms") is None

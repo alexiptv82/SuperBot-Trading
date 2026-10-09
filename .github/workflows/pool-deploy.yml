@@ -1,0 +1,67 @@
+name: Pool di regole - deploy del runner paper (container separato)
+
+# Mette in funzione sul VPS un container SEPARATO ("superbot-pool") con il runner in avanti.
+# NON tocca il bot ("superbot"), nginx, il DNS, ne' l'app HI-TV. Non usa chiavi di exchange
+# (solo candele pubbliche); i secret Telegram servono solo per avvisare dei cambi di stato.
+# Parte SOLO quando cambia deploy/pool-deploy.trigger: un deploy deliberato, mai per un push qualsiasi.
+# Prima di fare qualsiasi cosa controlla (sola lettura) che il server abbia memoria e disco liberi.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/pool-deploy.trigger"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy runner sul VPS
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 30m
+          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
+          script: |
+            set -e
+            # --- Verifica preliminare (sola lettura)
+            AVAIL_MB=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
+            DISK_GB=$(df -BG --output=avail /opt | tail -1 | tr -dc '0-9')
+            echo "::notice::PREFLIGHT memoria_disponibile_MB=$AVAIL_MB disco_libero_GB=$DISK_GB contenitori=$(docker ps --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')"
+            if [ "${AVAIL_MB:-0}" -lt 500 ]; then echo "::error::Memoria insufficiente (${AVAIL_MB} MB): il runner non viene avviato"; exit 1; fi
+            if [ "${DISK_GB:-0}" -lt 3 ]; then echo "::error::Disco insufficiente (${DISK_GB} GB): il runner non viene avviato"; exit 1; fi
+            apt-get install -y docker.io git 2>/dev/null || true
+            systemctl start docker 2>/dev/null || true
+
+            # --- Codice del ramo in una cartella SEPARATA da quella del bot (/opt/superbot)
+            if [ -d "/opt/superbot-pool/.git" ]; then
+              cd /opt/superbot-pool && git fetch origin rule-pool && git reset --hard origin/rule-pool
+            else
+              git clone -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-pool
+              cd /opt/superbot-pool
+            fi
+            # Dati FUORI dal checkout: sopravvivono a ogni aggiornamento del codice
+            mkdir -p /opt/superbot-pool-data
+
+            # --- Immagine e container dedicati: si ferma/rimuove SOLO "superbot-pool"
+            docker build -t superbot-pool -f Dockerfile.pool .
+            docker stop superbot-pool 2>/dev/null || true
+            docker rm superbot-pool 2>/dev/null || true
+            docker run -d \
+              --name superbot-pool \
+              --restart unless-stopped \
+              --memory 768m --cpus 0.5 \
+              -e TELEGRAM_BOT_TOKEN -e TELEGRAM_CHAT_ID \
+              -v /opt/superbot-pool-data:/app/data/pool \
+              superbot-pool
+            sleep 20
+            docker ps --filter name=superbot-pool --format '::notice::CONTAINER {{.Names}} {{.Status}}'
+            echo "::notice::LOG $(docker logs --tail 6 superbot-pool 2>&1 | tr '\n' '|' | cut -c1-500)"
+            echo "::notice::ALTRI_CONTENITORI_INTATTI $(docker ps --format '{{.Names}} {{.Status}}' | grep -v superbot-pool | tr '\n' '|' | cut -c1-300)"

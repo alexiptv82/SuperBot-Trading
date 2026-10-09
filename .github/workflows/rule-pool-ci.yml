@@ -8,6 +8,7 @@ on:
     branches: [rule-pool]
     paths:
       - ".github/workflows/rule-pool-ci.yml"
+      - "Dockerfile.pool"
       - "backend/rule_pool/**"
       - "backend/strategy_lab.py"
       - "backend/tests/test_rule_pool.py"
@@ -37,3 +38,16 @@ jobs:
 
       - name: Unit tests (pool di regole + laboratorio)
         run: python -m pytest tests/test_rule_pool.py tests/test_rule_pool_runner.py tests/test_strategy_lab.py -q
+
+  # L'immagine del runner deve costruirsi e avviarsi (senza rete e senza dati): report e salute.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build immagine del runner
+        run: docker build -t superbot-pool -f Dockerfile.pool .
+      - name: Avvio a vuoto (report e salute)
+        run: |
+          docker run --rm superbot-pool python -m rule_pool.cli report --data-dir /tmp/pool-test
+          docker run --rm superbot-pool sh -c "python -m rule_pool.cli health --data-dir /tmp/pool-test; test \$? -eq 1"

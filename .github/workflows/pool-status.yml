@@ -1,0 +1,29 @@
+name: Pool di regole - stato del runner (sola lettura)
+
+# Legge dal container "superbot-pool" il riepilogo delle regole e la salute. Non modifica nulla.
+# Parte quando cambia deploy/pool-status.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/pool-status.trigger"
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Stato del runner
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 5m
+          script: |
+            docker ps -a --filter name=superbot-pool --format '::notice::CONTAINER {{.Names}} {{.Status}}'
+            echo "::notice::SALUTE $(docker inspect -f '{{.State.Health.Status}}' superbot-pool 2>&1 | head -1)"
+            echo "::notice::HEALTHCMD $(docker exec superbot-pool python -m rule_pool.cli health --data-dir /app/data/pool 2>&1 | tr '\n' ' ' | cut -c1-200)"
+            REPORT=$(docker exec superbot-pool python -m rule_pool.cli report --data-dir /app/data/pool 2>&1 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::notice title=Pool regole::$REPORT"
+            echo "::notice::LOG $(docker logs --tail 4 superbot-pool 2>&1 | tr '\n' '|' | cut -c1-500)"
