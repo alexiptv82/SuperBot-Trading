@@ -9,6 +9,18 @@ const panel = {
   padding: '16px', marginBottom: '16px', color: '#f1f5f9',
 };
 
+// "Password errata" solo se il server risponde davvero 401: prima qualunque
+// errore (server irraggiungibile, richiesta bloccata dal browser, 5xx) veniva
+// mostrato come password sbagliata, nascondendo il problema vero.
+const loginErrorMessage = (e) => {
+  const status = e?.response?.status;
+  const detail = e?.response?.data?.detail;
+  if (status === 401) return 'Password errata';
+  if ((status === 429 || status === 503) && typeof detail === 'string') return detail;
+  if (!e?.response) return 'Impossibile contattare il server. Controlla la connessione e riprova.';
+  return `Errore del server (${status}). Riprova tra poco.`;
+};
+
 // Fasi: 'login' -> (eventuale) 'change' -> (eventuale) 'bio' -> app
 export default function Login({ onLogin }) {
   const [stage, setStage] = useState('login');
@@ -75,10 +87,7 @@ export default function Login({ onLogin }) {
       const { data } = await botAPI.login(pwd);
       await handleLoginResponse(data, pwd);
     } catch (e) {
-      const status = e?.response?.status;
-      const detail = e?.response?.data?.detail;
-      if (status === 429 || status === 503) setError(detail);
-      else setError('Password errata');
+      setError(loginErrorMessage(e));
     } finally {
       setLoading(false);
     }
