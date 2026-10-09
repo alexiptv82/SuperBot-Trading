@@ -31,6 +31,15 @@ jobs:
           echo "SALUTE APP: $(docker exec superbot-pool python -m rule_pool.cli health --data-dir /app/data/pool 2>&1 | tr '\n' ' ' | cut -c1-200)"
           echo "--- RIEPILOGO ---"
           docker exec superbot-pool python -m rule_pool.cli report --data-dir /app/data/pool 2>&1 | cut -c1-400
+          echo "--- CANDELE ---"
+          docker exec superbot-pool python -c "
+          import glob, time, numpy as np
+          for f in sorted(glob.glob('/app/data/pool/candles/*.npy')):
+              a = np.load(f); t = a[:, 0].astype('int64'); d = np.diff(t) // 900000
+              g = np.flatnonzero(d > 1)
+              fmt = lambda x: time.strftime('%Y-%m-%d %H:%M', time.gmtime(x / 1000))
+              print(f.split('/')[-1], len(a), 'barre', fmt(t[0]), '->', fmt(t[-1]), 'buchi:', len(g), 'ultimi:', [(fmt(t[i]), int(d[i]) - 1) for i in g[-3:]])
+          " 2>&1 | cut -c1-300
           echo "--- LOG ---"
           docker logs --tail 8 superbot-pool 2>&1 | cut -c1-300
           REMOTE

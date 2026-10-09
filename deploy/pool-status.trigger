@@ -1,1 +1,1 @@
-stato 3
+stato 4 (diagnosi candele)
