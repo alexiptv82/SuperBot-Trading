@@ -76,6 +76,7 @@ def _raw_row():
 
 
 def test_01_jwt_secret_random_and_persisted():
+    auth.init_auth()
     _, secret = _raw_row()
     assert secret and secret != "superbot-secret-key" and len(secret) >= 40
     assert auth._load_settings()["jwt_secret"] == secret
