@@ -146,3 +146,12 @@ jobs:
           lines = [f"{r['strategy_id']}: samples={r['effective_samples']:.1f} expectancy={r['expectancy_bps']:.2f}bps win_rate={r['win_rate']*100:.1f}%" for r in global_rows]
           print(f"::notice title=Backtest - Global leaderboard::{' | '.join(lines)}")
           PYEOF
+
+      - name: Tail backtest_output.log
+        if: hashFiles('results/backtest_output.log') != ''
+        run: |
+          echo "::notice title=Backtest log - prime righe::$(head -15 results/backtest_output.log | tr '\n' ' | ')"
+          echo "::notice title=Backtest log - ultime righe::$(tail -30 results/backtest_output.log | tr '\n' ' | ')"
+          echo "::notice title=Backtest log - conteggio righe::$(wc -l < results/backtest_output.log)"
+          SKIP_COUNT=$(grep -c '\[skip\]' results/backtest_output.log || true)
+          echo "::notice title=Backtest - righe [skip]::${SKIP_COUNT}"
