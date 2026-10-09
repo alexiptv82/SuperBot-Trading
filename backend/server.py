@@ -38,6 +38,10 @@ from auth import (
     session_state_after_biometric,
     change_password,
     reset_password,
+    request_recovery_code,
+    cancel_recovery_code,
+    recover_password,
+    RECOVERY_CODE_TTL_S,
     password_status,
     check_login_allowed,
     register_failure,
@@ -67,6 +71,10 @@ class LoginRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
+    new_password: str
+
+class ForgotConfirmRequest(BaseModel):
+    code: str
     new_password: str
 
 class RiskConfigUpdate(BaseModel):
@@ -128,6 +136,47 @@ async def change_password_endpoint(body: ChangePasswordRequest, session=Depends(
         raise
     register_success()
     bot._log('auth_change', message='Password dashboard cambiata')
+    return {'success': True, 'token': create_session_token('full'), 'password_status': password_status()}
+
+
+@app.post('/api/auth/forgot')
+async def forgot_password():
+    """Password dimenticata, passo 1: manda un codice monouso (8 cifre,
+    valido 10 minuti) sul Telegram del proprietario. Non serve essere
+    autenticati, ma il codice arriva solo su Telegram, mai nella risposta."""
+    if not notifier.enabled:
+        raise HTTPException(status_code=503, detail='Il recupero password via Telegram non è configurato sul server')
+    code = request_recovery_code()
+    delivered = await notifier.send(
+        "🔑 <b>Recupero password SuperBot</b>\n"
+        f"Codice: <b>{code}</b>\n"
+        "Valido 10 minuti, si usa una volta sola. "
+        "Se non l'hai chiesto tu ignora questo messaggio: senza il codice nessuno può cambiare la password."
+    )
+    if not delivered:
+        cancel_recovery_code()
+        raise HTTPException(status_code=502, detail='Non sono riuscito a mandare il codice su Telegram, riprova tra poco')
+    bot._log('auth_recovery_requested', message='Codice di recupero password inviato su Telegram')
+    return {'success': True, 'expires_in': RECOVERY_CODE_TTL_S}
+
+
+@app.post('/api/auth/forgot/confirm')
+async def forgot_password_confirm(body: ForgotConfirmRequest):
+    """Password dimenticata, passo 2: con il codice ricevuto su Telegram si
+    sceglie la nuova password. Chiude tutte le sessioni precedenti e
+    restituisce subito una sessione completa."""
+    try:
+        recover_password(body.code, body.new_password)
+    except HTTPException as e:
+        if e.status_code == 401:
+            await asyncio.sleep(0.8)  # rallenta chi prova a indovinare il codice
+        raise
+    register_success()
+    bot._log('auth_recovery_done', message='Password dashboard recuperata con codice Telegram')
+    await notifier.send(
+        "🔐 La password della dashboard è stata cambiata con il recupero password.\n"
+        "Se non sei stato tu, scrivi /resetpassword per tornare alla password iniziale."
+    )
     return {'success': True, 'token': create_session_token('full'), 'password_status': password_status()}
 
 

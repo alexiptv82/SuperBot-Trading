@@ -29,7 +29,8 @@ API.interceptors.response.use(
   (err) => {
     // Un 401 da login/cambio password significa "password errata", non "sessione scaduta".
     const url = err?.config?.url || '';
-    const isAuthForm = url.includes('/api/auth/login') || url.includes('/api/auth/change-password');
+    const isAuthForm = url.includes('/api/auth/login') || url.includes('/api/auth/change-password')
+      || url.includes('/api/auth/forgot');
     if (err?.response?.status === 401 && !isAuthForm) {
       localStorage.removeItem('sb_token');
       if (window.location.pathname !== '/') window.location.href = '/';
@@ -54,6 +55,9 @@ export const botAPI = {
   changePassword: (old_password, new_password, token) =>
     API.post('/api/auth/change-password', { old_password, new_password },
       token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
+  forgotPassword: () => API.post('/api/auth/forgot'),
+  forgotPasswordConfirm: (code, new_password) =>
+    API.post('/api/auth/forgot/confirm', { code, new_password }),
   passwordStatus: () => API.get('/api/auth/password-status'),
   health: () => API.get('/api/health'),
   webauthnStatus: () => API.get('/api/auth/webauthn/status'),

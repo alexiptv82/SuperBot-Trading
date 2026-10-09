@@ -3,6 +3,7 @@ import { botAPI } from '../api';
 import { isPlatformAuthenticatorAvailable, createCredential, getCredential } from '../webauthnClient';
 import ChangePasswordForm from '../components/ChangePasswordForm';
 import PasswordInput from '../components/PasswordInput';
+import ForgotPasswordForm from '../components/ForgotPasswordForm';
 
 const panel = {
   background: '#1e293b', border: '1px solid #334155', borderRadius: '12px',
@@ -151,6 +152,16 @@ export default function Login({ onLogin }) {
           </div>
         )}
 
+        {stage === 'forgot' && (
+          <div style={panel}>
+            <h2 style={{ fontSize: '16px', margin: '0 0 12px' }}>Password dimenticata</h2>
+            <ForgotPasswordForm
+              onSuccess={(newToken) => finishLogin(newToken, { offerBio: true })}
+              onCancel={() => setStage('login')}
+            />
+          </div>
+        )}
+
         {stage === 'bio' && (
           <div style={panel}>
             <p style={{ marginBottom: '12px', fontSize: '14px' }}>
@@ -204,6 +215,13 @@ export default function Login({ onLogin }) {
               border: 'none', cursor: loading ? 'not-allowed' : 'pointer'
             }}>
               {loading ? 'Accesso...' : 'Accedi'}
+            </button>
+            <button type="button" onClick={() => { setError(''); setInfo(''); setStage('forgot'); }}
+              disabled={loading} style={{
+                width: '100%', marginTop: '14px', background: 'none', border: 'none',
+                color: '#38bdf8', fontSize: '14px', cursor: 'pointer', padding: '8px'
+              }}>
+              Password dimenticata?
             </button>
           </>
         )}

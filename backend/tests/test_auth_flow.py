@@ -8,8 +8,10 @@ Lanciare dalla cartella backend/:  python -m pytest tests/test_auth_flow.py
 import asyncio
 import base64
 import os
+import re
 import sys
 import tempfile
+import time
 from datetime import datetime, timedelta
 
 import jwt
@@ -215,3 +217,99 @@ def test_13_risk_config_requires_full_session(client):
     assert bad.status_code == 400
     assert client.put("/api/bot/config/risk", json={"max_leverage": 5, "max_daily_loss_percent": 3,
                                                     "max_open_positions": 2}).status_code == 401
+
+
+# ── Password dimenticata (codice monouso su Telegram) ───────────────────────
+
+@pytest.fixture()
+def telegram(monkeypatch):
+    """Telegram finto: raccoglie i messaggi, nessuna rete."""
+    sent = []
+
+    async def fake_send(message):
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(server.notifier, "enabled", True)
+    monkeypatch.setattr(server.notifier, "send", fake_send)
+    auth._recovery_requests.clear()
+    auth.cancel_recovery_code()
+    yield sent
+    auth._recovery_requests.clear()
+    auth.cancel_recovery_code()
+
+
+def _confirm(client, code, new):
+    return client.post("/api/auth/forgot/confirm", json={"code": code, "new_password": new})
+
+
+def _code_from(sent):
+    return re.search(r"<b>(\d{8})</b>", sent[-1]).group(1)
+
+
+def test_14_forgot_password_full_flow(client, telegram):
+    # senza richiesta non esiste nessun codice valido
+    assert _confirm(client, "00000000", "Recuperata-Pw-901").status_code == 401
+
+    r = client.post("/api/auth/forgot")
+    assert r.status_code == 200 and r.json()["expires_in"] == 600
+    code = _code_from(telegram)
+    assert "code" not in r.json() and code not in r.text  # il codice va SOLO su Telegram
+
+    wrong = "11111111" if code != "11111111" else "22222222"
+    assert _confirm(client, wrong, "Recuperata-Pw-901").status_code == 401
+    # nuova password non valida: errore 400 e il codice NON si brucia
+    assert _confirm(client, code, "corta").status_code == 400
+    assert _confirm(client, code, "superbot2024-nuova").status_code == 400
+
+    ok = _confirm(client, code, "Recuperata-Pw-901")
+    assert ok.status_code == 200
+    token = ok.json()["token"]
+    assert jwt.decode(token, options={"verify_signature": False})["scope"] == "full"
+    assert client.get("/api/bot/status", headers=_hdr(token)).status_code == 200
+    assert ok.json()["password_status"]["days_left"] == 60
+
+    # la nuova password vale, la vecchia no
+    assert client.post("/api/auth/login", json={"password": "Recuperata-Pw-901"}).status_code == 200
+    assert client.post("/api/auth/login", json={"password": "Quarta-Password-88"}).status_code == 401
+    pwd_hash, _ = _raw_row()
+    assert pwd_hash.startswith("scrypt$") and "Recuperata" not in pwd_hash
+    # codice monouso + avviso su Telegram dell'avvenuto cambio
+    assert _confirm(client, code, "Un-Altra-Pw-902").status_code == 401
+    assert any("cambiata" in m for m in telegram)
+
+
+def test_15_forgot_password_code_burns_after_five_wrong_attempts(client, telegram):
+    assert client.post("/api/auth/forgot").status_code == 200
+    code = _code_from(telegram)
+    wrong = "11111111" if code != "11111111" else "22222222"
+    codes = [_confirm(client, wrong, "Recuperata-Pw-903").status_code for _ in range(5)]
+    assert codes == [401] * 5
+    # anche il codice giusto ora e' annullato
+    assert _confirm(client, code, "Recuperata-Pw-903").status_code == 401
+
+
+def test_16_forgot_password_rate_limit_and_same_code_reused(client, telegram):
+    assert client.post("/api/auth/forgot").status_code == 200
+    first = _code_from(telegram)
+    assert client.post("/api/auth/forgot").status_code == 200
+    assert _code_from(telegram) == first          # chi spamma non invalida il codice in uso
+    assert client.post("/api/auth/forgot").status_code == 200
+    assert client.post("/api/auth/forgot").status_code == 429   # 4a richiesta nell'ora
+
+
+def test_17_forgot_password_expired_unconfigured_and_undelivered(client, telegram, monkeypatch):
+    assert client.post("/api/auth/forgot").status_code == 200
+    code = _code_from(telegram)
+    auth._recovery["expires"] = time.time() - 1
+    assert _confirm(client, code, "Recuperata-Pw-904").status_code == 401   # scaduto
+
+    auth._recovery_requests.clear()
+    async def failing_send(message):
+        return False
+    monkeypatch.setattr(server.notifier, "send", failing_send)
+    assert client.post("/api/auth/forgot").status_code == 502               # Telegram non risponde
+    assert _confirm(client, code, "Recuperata-Pw-904").status_code == 401   # nessun codice rimasto in giro
+
+    monkeypatch.setattr(server.notifier, "enabled", False)
+    assert client.post("/api/auth/forgot").status_code == 503               # Telegram non configurato

@@ -226,6 +226,79 @@ def reset_password() -> None:
                      token_version=s["token_version"] + 1)
 
 
+# ── Password dimenticata: codice monouso su Telegram ────────────────────────
+# Chi non ricorda la password chiede un codice a 8 cifre, che arriva SOLO sul
+# Telegram del proprietario (stesso canale fidato del comando /resetpassword).
+# Il codice vive solo in memoria di processo (un riavvio lo annulla), vale 10
+# minuti, e' monouso e si annulla dopo 5 tentativi sbagliati. Le richieste di
+# codice sono limitate a 3 all'ora, e finche' un codice e' valido una nuova
+# richiesta rimanda lo STESSO codice (cosi' chi spamma la richiesta da fuori
+# non puo' invalidare il codice che il proprietario sta usando).
+RECOVERY_CODE_TTL_S = 600
+RECOVERY_MAX_ATTEMPTS = 5
+RECOVERY_MAX_REQUESTS = 3
+_RECOVERY_WINDOW_S = 3600
+_recovery_lock = threading.Lock()
+_recovery = {"code": None, "expires": 0.0, "attempts": 0}
+_recovery_requests: list = []
+
+
+def _clear_recovery_locked() -> None:
+    _recovery.update(code=None, expires=0.0, attempts=0)
+
+
+def cancel_recovery_code() -> None:
+    with _recovery_lock:
+        _clear_recovery_locked()
+
+
+def request_recovery_code() -> str:
+    """Restituisce il codice da mandare su Telegram (nuovo, o quello ancora
+    valido). Solleva 429 oltre 3 richieste all'ora."""
+    now = time.time()
+    with _recovery_lock:
+        _recovery_requests[:] = [t for t in _recovery_requests if now - t < _RECOVERY_WINDOW_S]
+        if len(_recovery_requests) >= RECOVERY_MAX_REQUESTS:
+            raise HTTPException(status_code=429, detail="Troppe richieste di codice, riprova tra un'ora")
+        _recovery_requests.append(now)
+        if not (_recovery["code"] and now < _recovery["expires"]):
+            _recovery.update(code=f"{secrets.randbelow(10 ** 8):08d}",
+                             expires=now + RECOVERY_CODE_TTL_S, attempts=0)
+        return _recovery["code"]
+
+
+def verify_recovery_code(code: str) -> None:
+    """Controlla il codice SENZA bruciarlo (si brucia solo a password
+    cambiata: se la nuova password e' rifiutata non serve chiederne un altro).
+    Ogni errore conta come tentativo."""
+    now = time.time()
+    with _recovery_lock:
+        if not _recovery["code"] or now >= _recovery["expires"]:
+            _clear_recovery_locked()
+            raise HTTPException(status_code=401, detail="Codice scaduto o non valido: richiedine uno nuovo")
+        if not hmac.compare_digest((code or "").strip().encode(), _recovery["code"].encode()):
+            _recovery["attempts"] += 1
+            if _recovery["attempts"] >= RECOVERY_MAX_ATTEMPTS:
+                _clear_recovery_locked()
+                raise HTTPException(status_code=401, detail="Troppi errori: il codice è stato annullato, richiedine uno nuovo")
+            raise HTTPException(status_code=401, detail="Codice errato")
+
+
+def recover_password(code: str, new_password: str) -> None:
+    """Imposta una nuova password dopo la verifica del codice Telegram.
+    L'ordine conta: prima il codice (cosi' chi non lo ha non puo' nemmeno
+    sondare le regole sulla password), poi la validazione, poi il salvataggio."""
+    verify_recovery_code(code)
+    validate_new_password(new_password, "")
+    s = _load_settings()
+    _update_settings(
+        password_hash=hash_password(new_password),
+        password_changed_at=datetime.utcnow(),
+        token_version=s["token_version"] + 1,
+    )
+    cancel_recovery_code()
+
+
 def password_status() -> dict:
     s = _load_settings()
     if not s["password_hash"] or not s["changed_at"]:
