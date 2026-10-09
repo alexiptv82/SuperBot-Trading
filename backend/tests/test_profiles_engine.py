@@ -57,7 +57,8 @@ class FakeExchange:
 
     async def create_order(self, **kw):
         self.created.append(kw)
-        return {"id": f"PAPER_{kw['symbol']}_1", "client_order_id": "cid", "sl_order_id": None, "tp_order_id": None}
+        # come l'exchange vero: un id diverso per ogni ordine (order_id e' univoco nel DB)
+        return {"id": f"PAPER_{kw['symbol']}_{len(self.created)}", "client_order_id": "cid", "sl_order_id": None, "tp_order_id": None}
 
     async def close_position(self, symbol, side, quantity):
         return {}
