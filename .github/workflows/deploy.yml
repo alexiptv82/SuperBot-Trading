@@ -38,12 +38,33 @@ jobs:
             fi
             apt-get install -y docker.io git curl nginx nodejs npm 2>/dev/null || true
             systemctl start docker 2>/dev/null || true
+            # == DATABASE: dato vivo, da non perdere mai ==
+            # In passato data/superbot.db era tracciato da git e il
+            # "git reset --hard" qui sotto lo sostituiva ad OGNI deploy con la
+            # copia del repository: sparivano password, impostazioni di rischio
+            # e storico. Ora il file non e' piu' nel repository, ma per
+            # sicurezza: (1) copia consistente PRIMA del reset, tenuta in
+            # /opt/superbot-backups (ultime 10), (2) se dopo il reset il file
+            # manca o git lo gestisce ancora, si rimette quella copia.
+            DB_LIVE=/opt/superbot/data/superbot.db
+            DB_KEEP=/tmp/superbot-db-keep.$$
+            mkdir -p /opt/superbot-backups
+            if [ -s "$DB_LIVE" ]; then
+              python3 -c "import sqlite3,sys; s=sqlite3.connect(sys.argv[1]); d=sqlite3.connect(sys.argv[2]); s.backup(d); d.close(); s.close()" "$DB_LIVE" "$DB_KEEP" 2>/dev/null || cp "$DB_LIVE" "$DB_KEEP"
+              cp "$DB_KEEP" "/opt/superbot-backups/superbot-$(date +%Y%m%d-%H%M%S).db"
+              ls -1t /opt/superbot-backups/superbot-*.db 2>/dev/null | tail -n +11 | xargs -r rm -f
+              echo "DB: copia di sicurezza fatta"
+            fi
             if [ -d "/opt/superbot/.git" ]; then
               cd /opt/superbot && git fetch origin && git reset --hard origin/main
             else
               git clone https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot
             fi
             cd /opt/superbot
+            if [ -s "$DB_KEEP" ] && { [ ! -f "$DB_LIVE" ] || git ls-files --error-unmatch data/superbot.db >/dev/null 2>&1; }; then
+              mkdir -p data && cp "$DB_KEEP" "$DB_LIVE" && echo "DB: ripristinato dopo il reset di git"
+            fi
+            rm -f "$DB_KEEP"
             printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD_B64=%s\nWEBAUTHN_RP_ID=superbot-trading.duckdns.org\nWEBAUTHN_ORIGIN=https://superbot-trading.duckdns.org\nWEBAUTHN_RP_NAME=SuperBot\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" "$(printf %s "$DASHBOARD_PASSWORD" | base64 -w0)" > backend/.env
             mkdir -p data
             # Build reale del frontend ad ogni deploy: prima d'ora

@@ -29,6 +29,7 @@ import os
 import secrets
 import threading
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -80,13 +81,23 @@ def _b64(b: bytes) -> str:
     return base64.b64encode(b).decode()
 
 
+def normalize_password(password: str) -> str:
+    """Forma canonica di una password prima di hash e confronto: Unicode NFKC
+    e senza spazi a inizio/fine. Copia e incolla (o la tastiera del telefono)
+    spesso aggiungono uno spazio finale o scrivono una lettera accentata in
+    forma "scomposta": senza questo, la stessa password sembrerebbe errata."""
+    return unicodedata.normalize("NFKC", password or "").strip()
+
+
 def hash_password(password: str) -> str:
+    password = normalize_password(password)
     salt = os.urandom(16)
     dk = hashlib.scrypt(password.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
     return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${_b64(salt)}${_b64(dk)}"
 
 
 def verify_password_hash(password: str, stored: str) -> bool:
+    password = normalize_password(password)
     try:
         algo, n, r, p, salt_b64, dk_b64 = stored.split("$")
         if algo != "scrypt":
@@ -171,7 +182,7 @@ def authenticate_password(password: str):
             return None
         return "expired" if _is_expired(s) else "ok"
     boot = config.DASHBOARD_PASSWORD
-    if not boot or not _safe_equal(password, boot):
+    if not boot or not _safe_equal(normalize_password(password), normalize_password(boot)):
         return None
     return "first_login"
 
@@ -186,6 +197,7 @@ def session_state_after_biometric() -> str:
 
 
 def validate_new_password(new: str, old: str) -> None:
+    new, old = normalize_password(new), normalize_password(old)
     if len(new) < MIN_PASSWORD_LENGTH:
         raise HTTPException(status_code=400, detail=f"La nuova password deve avere almeno {MIN_PASSWORD_LENGTH} caratteri")
     if len(new) > MAX_PASSWORD_LENGTH:
@@ -193,7 +205,7 @@ def validate_new_password(new: str, old: str) -> None:
     if _safe_equal(new, old):
         raise HTTPException(status_code=400, detail="La nuova password deve essere diversa dall'attuale")
     boot = config.DASHBOARD_PASSWORD
-    if (boot and _safe_equal(new, boot)) or "superbot2024" in new.lower():
+    if (boot and _safe_equal(new, normalize_password(boot))) or "superbot2024" in new.lower():
         raise HTTPException(status_code=400, detail="Scegli una password diversa da quella iniziale")
     if len(set(new)) < 4:
         raise HTTPException(status_code=400, detail="Password troppo semplice")
@@ -202,12 +214,14 @@ def validate_new_password(new: str, old: str) -> None:
 def change_password(old_password: str, new_password: str) -> None:
     """Verifica la password attuale (o iniziale), controlla la nuova, salva
     l'hash e invalida tutte le sessioni esistenti."""
+    old_password = normalize_password(old_password)
+    new_password = normalize_password(new_password)
     s = _load_settings()
     if s["password_hash"]:
         ok = verify_password_hash(old_password, s["password_hash"])
     else:
         boot = config.DASHBOARD_PASSWORD
-        ok = bool(boot) and _safe_equal(old_password, boot)
+        ok = bool(boot) and _safe_equal(old_password, normalize_password(boot))
     if not ok:
         raise HTTPException(status_code=401, detail="Password attuale errata")
     validate_new_password(new_password, old_password)
@@ -289,6 +303,7 @@ def recover_password(code: str, new_password: str) -> None:
     L'ordine conta: prima il codice (cosi' chi non lo ha non puo' nemmeno
     sondare le regole sulla password), poi la validazione, poi il salvataggio."""
     verify_recovery_code(code)
+    new_password = normalize_password(new_password)
     validate_new_password(new_password, "")
     s = _load_settings()
     _update_settings(
@@ -417,6 +432,19 @@ def save_credential(db: Session, credential_id: str, public_key: bytes, sign_cou
     db.add(row)
     db.commit()
     return row
+
+
+def delete_credential_by_id(db: Session, cred_id: int):
+    """Rimuove una credenziale biometrica (per id di riga). Restituisce i dati
+    della riga cancellata (letti prima, perche' dopo il commit non e' piu'
+    leggibile), o None se non esiste."""
+    row = db.query(WebAuthnCredential).filter(WebAuthnCredential.id == cred_id).first()
+    if row is None:
+        return None
+    removed = {"id": row.id, "device_label": row.device_label}
+    db.delete(row)
+    db.commit()
+    return removed
 
 
 def update_sign_count(db: Session, credential_id: str, new_count: int):

@@ -15,3 +15,12 @@ frontend/build/
 frontend/.cache/
 backend/data/*.db
 backend/__pycache__/
+
+# Database vivo del bot: dato, non codice. Tracciarlo faceva si' che
+# "git reset --hard" nel deploy lo sostituisse a ogni aggiornamento,
+# cancellando password, impostazioni e storico.
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

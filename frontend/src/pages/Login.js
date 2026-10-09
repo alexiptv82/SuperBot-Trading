@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { botAPI } from '../api';
-import { isPlatformAuthenticatorAvailable, createCredential, getCredential } from '../webauthnClient';
+import {
+  isPlatformAuthenticatorAvailable, createCredential, getCredential,
+  deviceLabel, describeWebAuthnError,
+} from '../webauthnClient';
 import ChangePasswordForm from '../components/ChangePasswordForm';
 import PasswordInput from '../components/PasswordInput';
 import ForgotPasswordForm from '../components/ForgotPasswordForm';
@@ -113,10 +116,12 @@ export default function Login({ onLogin }) {
     try {
       const { data: options } = await botAPI.webauthnRegisterOptions();
       const { state_id, credentialJSON } = await createCredential(options);
-      await botAPI.webauthnRegisterVerify(state_id, credentialJSON, 'Questo dispositivo');
+      await botAPI.webauthnRegisterVerify(state_id, credentialJSON, deviceLabel());
       onLogin();
-    } catch {
-      setError('Non è stato possibile attivare l\'impronta digitale su questo dispositivo');
+    } catch (e) {
+      // Mostra il motivo vero (e il codice tecnico), non un generico "non disponibile".
+      console.warn('Attivazione impronta fallita:', e);
+      setError(`Impronta non attivata. ${describeWebAuthnError(e)} Puoi riprovare più tardi da Impostazioni.`);
       setLoading(false);
     }
   };

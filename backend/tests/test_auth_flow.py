@@ -12,6 +12,7 @@ import re
 import sys
 import tempfile
 import time
+import unicodedata
 from datetime import datetime, timedelta
 
 import jwt
@@ -313,3 +314,75 @@ def test_17_forgot_password_expired_unconfigured_and_undelivered(client, telegra
 
     monkeypatch.setattr(server.notifier, "enabled", False)
     assert client.post("/api/auth/forgot").status_code == 503               # Telegram non configurato
+
+
+# ── Copia e incolla / tastiera: spazi e accenti non devono rompere la password ──
+
+COMPOSED = "Perché-Password-55"
+
+
+def test_18_password_normalization_whitespace_and_unicode(client):
+    auth._fail_times.clear()
+    auth._locked_until = 0.0
+    auth.reset_password()
+    # la password iniziale incollata con spazi e a capo attorno vale comunque
+    r = client.post("/api/auth/login", json={"password": f"  {BOOT} \n"})
+    assert r.status_code == 200 and r.json()["must_change"] == "first_login"
+    limited = r.json()["token"]
+
+    decomposed = unicodedata.normalize("NFD", COMPOSED)
+    assert decomposed != COMPOSED
+    ok = client.post("/api/auth/change-password", headers=_hdr(limited),
+                     json={"old_password": f" {BOOT} ", "new_password": f"  {COMPOSED}  "})
+    assert ok.status_code == 200
+    # una password con spazi finali salvata cosi' non resta "con gli spazi" nel DB
+    for variant in (COMPOSED, f"{COMPOSED} ", f" {COMPOSED}", decomposed, f"\u00a0{decomposed}\u00a0"):
+        assert client.post("/api/auth/login", json={"password": variant}).status_code == 200, repr(variant)
+    # un carattere diverso resta una password diversa
+    assert client.post("/api/auth/login", json={"password": COMPOSED + "x"}).status_code == 401
+    # le regole di validazione valgono sulla versione normalizzata
+    h = _hdr(ok.json()["token"])
+    short = client.post("/api/auth/change-password", headers=h,
+                        json={"old_password": COMPOSED, "new_password": "   corta   "})
+    assert short.status_code == 400
+
+
+def test_19_biometric_credentials_list_and_remove(client):
+    auth._fail_times.clear()
+    auth._locked_until = 0.0
+    r = client.post("/api/auth/login", json={"password": COMPOSED})
+    full = r.json()["token"]
+    db = SessionLocal()
+    try:
+        auth.save_credential(db, "cred-a", b"pk", 0, "Android · Chrome")
+        auth.save_credential(db, "cred-b", b"pk", 0, "Mac · Safari")
+    finally:
+        db.close()
+    assert client.get("/api/auth/webauthn/credentials").status_code == 401
+    lst = client.get("/api/auth/webauthn/credentials", headers=_hdr(full)).json()["credentials"]
+    assert [c["device_label"] for c in lst] == ["Android · Chrome", "Mac · Safari"]
+    assert client.get("/api/auth/webauthn/status").json()["has_credentials"] is True
+
+    first = lst[0]["id"]
+    assert client.delete(f"/api/auth/webauthn/credentials/{first}", headers=_hdr(full)).status_code == 200
+    assert client.delete(f"/api/auth/webauthn/credentials/{first}", headers=_hdr(full)).status_code == 404
+    left = client.get("/api/auth/webauthn/credentials", headers=_hdr(full)).json()["credentials"]
+    assert [c["device_label"] for c in left] == ["Mac · Safari"]
+    assert client.delete(f"/api/auth/webauthn/credentials/{left[0]['id']}", headers=_hdr(full)).status_code == 200
+    assert client.get("/api/auth/webauthn/status").json()["has_credentials"] is False
+
+
+def test_20_register_options_do_not_require_a_passkey(client):
+    r = client.post("/api/auth/login", json={"password": COMPOSED})
+    full = r.json()["token"]
+    # senza sessione non si registra niente
+    assert client.post("/api/auth/webauthn/register/options").status_code == 401
+    opts = client.post("/api/auth/webauthn/register/options", headers=_hdr(full))
+    assert opts.status_code == 200
+    sel = opts.json()["options"]["authenticatorSelection"]
+    # credenziale "normale" del dispositivo, non una passkey sincronizzata: non
+    # richiede Google Password Manager sul telefono
+    assert sel["residentKey"] == "discouraged"
+    assert not sel.get("requireResidentKey")
+    assert sel["authenticatorAttachment"] == "platform"
+    assert sel["userVerification"] == "required"
