@@ -1,0 +1,49 @@
+name: Controllo dati disponibili (sola lettura)
+
+# Interroga solo endpoint PUBBLICI (candele, funding, elenco mercati): nessuna
+# chiave, nessun ordine, nessun segreto, nessun deploy. Serve a sapere quanta
+# storia esiste per i test delle nuove strategie.
+#
+# Parte da sola ad ogni push sul ramo `risk-profiles` che tocca questi file.
+
+on:
+  push:
+    branches: [risk-profiles]
+    paths:
+      - ".github/workflows/data-check.yml"
+      - "backend/data_check.py"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt
+      - name: Controllo dati
+        shell: bash
+        run: |
+          set -o pipefail
+          python -u data_check.py --annotate --out data_check_results.json 2>&1 | tee data_check_output.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-check-${{ github.run_id }}
+          path: |
+            backend/data_check_output.log
+            backend/data_check_results.json
+          if-no-files-found: ignore
+          retention-days: 14
