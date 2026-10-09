@@ -40,6 +40,16 @@ class Trade(Base):
     # Nessuno dei due in modalita' paper, dove SL/TP restano soglie locali.
     sl_order_id = Column(String, nullable=True)
     tp_order_id = Column(String, nullable=True)
+    # Profilo di rischio che ha aperto il trade ('conservative' |
+    # 'aggressive'); NULL = trade aperto prima dell'introduzione dei profili.
+    profile = Column(String, nullable=True, index=True)
+    # Margine bloccato e prezzo di liquidazione stimato (solo paper).
+    margin = Column(Float, nullable=True)
+    liq_price = Column(Float, nullable=True)
+    # In paper `pnl` e' NETTO (dopo commissioni); gross_pnl e' il lordo e
+    # fees le commissioni pagate (ingresso + uscita).
+    gross_pnl = Column(Float, nullable=True)
+    fees = Column(Float, nullable=True)
 
 class MarketSnapshot(Base):
     __tablename__ = "market_snapshots"
@@ -80,6 +90,8 @@ class RiskSettings(Base):
     max_leverage = Column(Integer, nullable=True)
     max_daily_loss_percent = Column(Float, nullable=True)
     max_open_positions = Column(Integer, nullable=True)
+    # 'conservative' | 'aggressive' | 'both' (NULL = valore di .env).
+    risk_mode = Column(String, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 def _migrate_add_missing_columns():
@@ -90,18 +102,30 @@ def _migrate_add_missing_columns():
     non tocca nessun dato esistente."""
     from sqlalchemy import inspect, text
     inspector = inspect(engine)
-    if 'trades' not in inspector.get_table_names():
-        return  # tabella nuova, create_all() l'ha gia' creata con tutte le colonne
-    existing_cols = {c['name'] for c in inspector.get_columns('trades')}
-    needed = {
-        'client_order_id': 'VARCHAR',
-        'sl_order_id': 'VARCHAR',
-        'tp_order_id': 'VARCHAR',
+    tables = inspector.get_table_names()
+    wanted = {
+        'trades': {
+            'client_order_id': 'VARCHAR',
+            'sl_order_id': 'VARCHAR',
+            'tp_order_id': 'VARCHAR',
+            'profile': 'VARCHAR',
+            'margin': 'FLOAT',
+            'liq_price': 'FLOAT',
+            'gross_pnl': 'FLOAT',
+            'fees': 'FLOAT',
+        },
+        'risk_settings': {
+            'risk_mode': 'VARCHAR',
+        },
     }
     with engine.connect() as conn:
-        for col, col_type in needed.items():
-            if col not in existing_cols:
-                conn.execute(text(f'ALTER TABLE trades ADD COLUMN {col} {col_type}'))
+        for table, needed in wanted.items():
+            if table not in tables:
+                continue  # tabella nuova, create_all() l'ha gia' creata con tutte le colonne
+            existing_cols = {c['name'] for c in inspector.get_columns(table)}
+            for col, col_type in needed.items():
+                if col not in existing_cols:
+                    conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col} {col_type}'))
         conn.commit()
 
 

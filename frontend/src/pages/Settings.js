@@ -3,6 +3,7 @@ import { botAPI } from '../api';
 import Logs from './Logs';
 import ChangePasswordForm from '../components/ChangePasswordForm';
 import BiometricManager from '../components/BiometricManager';
+import { profileColor } from '../components/ProfileBadge';
 
 const MUTED = '#94a3b8';
 const BORDER = '#334155';
@@ -16,6 +17,12 @@ const Card = ({ children, style }) => (
     border: `1px solid ${BORDER}`, ...style
   }}>{children}</div>
 );
+
+const MODE_OPTIONS = [
+  { key: 'conservative', icon: '🛡️', title: 'Conservativo' },
+  { key: 'aggressive', icon: '🔥', title: 'Aggressivo' },
+  { key: 'both', icon: '⚖️', title: 'Entrambi' },
+];
 
 const RiskBar = ({ label, current, max, unit = '', tone }) => {
   const pct = max > 0 ? Math.min(100, Math.max(0, (current / max) * 100)) : 0;
@@ -44,6 +51,8 @@ export default function Settings() {
   const [showPwdForm, setShowPwdForm] = useState(false);
   const [pwdMsg, setPwdMsg] = useState('');
   const [pwdStatus, setPwdStatus] = useState(null);
+  const [modeBusy, setModeBusy] = useState(false);
+  const [modeMsg, setModeMsg] = useState(null); // { ok: bool, text: string }
 
   const refreshStatus = async () => {
     try {
@@ -106,10 +115,39 @@ export default function Settings() {
     }
   };
 
+  const handleSelectMode = async (mode) => {
+    if (!config || modeBusy || mode === config.risk_mode) return;
+    setModeBusy(true); setModeMsg(null);
+    try {
+      // Rimanda i limiti GIA' SALVATI: cambiare profilo non deve toccare
+      // eventuali modifiche non ancora salvate nel modulo qui sotto.
+      const { data } = await botAPI.updateRiskConfig({
+        max_leverage: Number(config.max_leverage),
+        max_daily_loss_percent: Number(config.max_daily_loss_percent),
+        max_open_positions: Number(config.max_open_positions),
+        risk_mode: mode,
+      });
+      setConfig(c => ({ ...c, ...data.applied, effective_risk_mode: c.trading_mode === 'paper' ? data.applied.risk_mode : 'conservative' }));
+      setModeMsg({ ok: true, text: 'Profilo salvato. Vale dal prossimo ciclo; i trade già aperti restano al loro portafoglio.' });
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      setModeMsg({ ok: false, text: typeof detail === 'string' ? detail : 'Salvataggio non riuscito, riprova.' });
+    } finally {
+      setModeBusy(false);
+    }
+  };
+
+  const isPaper = config?.trading_mode === 'paper';
+  const portfolios = status?.portfolios || [];
+
   const rows = config ? [
     ['Modalità', config.trading_mode],
-    ['Capitale iniziale', `$${config.initial_capital}`],
+    ['Capitale iniziale', isPaper && portfolios.length > 1 ? `$${config.initial_capital} per portafoglio` : `$${config.initial_capital}`],
     ['Coppie', (config.trading_pairs || []).join(', ')],
+    ...(isPaper && config.paper_costs ? [[
+      'Costi simulati (paper)',
+      `commissione ${config.paper_costs.fee_bps} bps per lato + slippage ${config.paper_costs.slippage_bps} bps`,
+    ]] : []),
   ] : [];
 
   return (
@@ -160,17 +198,21 @@ export default function Settings() {
             🛡️ Rischio in Tempo Reale
           </h2>
           <Card style={{ marginBottom: '16px' }}>
-            <RiskBar
-              label="Perdita giornaliera"
-              current={Math.round(Math.max(0, -(status.daily_pnl || 0)) / (config.initial_capital || 1) * 1000) / 10}
-              max={config.max_daily_loss_percent}
-              unit="%"
-            />
-            <RiskBar
-              label="Posizioni aperte"
-              current={status.open_positions || 0}
-              max={config.max_open_positions}
-            />
+            {(portfolios.length > 0 ? portfolios : [{ name: 'tot', label: '', daily_pnl: status.daily_pnl, open_positions: status.open_positions }]).map(pf => (
+              <React.Fragment key={pf.name}>
+                <RiskBar
+                  label={`Perdita giornaliera${pf.label && portfolios.length > 1 ? ` · ${pf.label}` : ''}${pf.paused ? ' (in pausa)' : ''}`}
+                  current={Math.round(Math.max(0, -(pf.daily_pnl || 0)) / (config.initial_capital || 1) * 1000) / 10}
+                  max={config.max_daily_loss_percent}
+                  unit="%"
+                />
+                <RiskBar
+                  label={`Posizioni aperte${pf.label && portfolios.length > 1 ? ` · ${pf.label}` : ''}`}
+                  current={pf.open_positions || 0}
+                  max={config.max_open_positions}
+                />
+              </React.Fragment>
+            ))}
             {perf && perf.equity_curve && perf.equity_curve.length > 0 && (() => {
               const initial = config.initial_capital || 0;
               let peak = initial, current = initial;
@@ -186,8 +228,59 @@ export default function Settings() {
               );
             })()}
             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-              Calcolato sui dati reali del bot. Il drawdown usa una soglia di riferimento dell'8%, non ancora configurabile.
+              Calcolato sui dati reali del bot. I limiti valgono per ciascun portafoglio. Il drawdown usa una soglia di riferimento dell'8%, non ancora configurabile.
             </div>
+          </Card>
+        </>
+      )}
+
+      {config && config.profiles && (
+        <>
+          <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
+            🎯 Profilo di Trading
+          </h2>
+          <Card style={{ marginBottom: '16px' }}>
+            <div role="radiogroup" aria-label="Profilo di trading" style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              {MODE_OPTIONS.map(o => {
+                const active = config.risk_mode === o.key;
+                return (
+                  <button key={o.key} role="radio" aria-checked={active} disabled={modeBusy}
+                    onClick={() => handleSelectMode(o.key)}
+                    style={{
+                      flex: 1, padding: '10px 4px', borderRadius: '12px', cursor: modeBusy ? 'not-allowed' : 'pointer',
+                      border: `1px solid ${active ? '#38bdf8' : BORDER}`,
+                      background: active ? 'rgba(56,189,248,0.15)' : '#0f172a',
+                      color: active ? '#38bdf8' : '#cbd5e1', fontWeight: 'bold', fontSize: '12px'
+                    }}>
+                    <div style={{ fontSize: '18px', marginBottom: '2px' }}>{o.icon}</div>
+                    {o.title}
+                  </button>
+                );
+              })}
+            </div>
+            {['conservative', 'aggressive'].map(k => {
+              const p = config.profiles[k];
+              if (!p) return null;
+              return (
+                <div key={k} style={{ padding: '8px 0', borderTop: `1px solid ${BORDER}`, fontSize: '12px' }}>
+                  <div style={{ fontWeight: 'bold', color: profileColor(k), marginBottom: '2px' }}>{p.label}</div>
+                  <div style={{ color: MUTED }}>
+                    Leva fino a {p.max_leverage}x (più è alta la leva, meno margine usa per trade), esposizione massima {p.exposure_cap_percent}% del capitale,
+                    stop {p.stop_multiplier}× la volatilità, solo segnali con forza ≥ {p.min_signal_strength}.
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px' }}>
+              {config.risk_mode === 'both'
+                ? `Con "Entrambi" i due profili lavorano in parallelo, ciascuno con il proprio capitale virtuale di $${config.initial_capital}, e si vedono separati in Dashboard e Performance.`
+                : 'Il profilo non scelto non apre nuovi trade; quelli già aperti vengono gestiti fino alla chiusura.'}
+              {!isPaper && ' In modalità reale è sempre attivo solo il Conservativo, con la tua Leva massima come tetto.'}
+            </div>
+            {modeBusy && <div style={{ fontSize: '12px', color: MUTED, marginTop: '8px' }}>Salvataggio...</div>}
+            {modeMsg && (
+              <div style={{ fontSize: '12px', color: modeMsg.ok ? GOOD : BAD, marginTop: '10px' }}>{modeMsg.text}</div>
+            )}
           </Card>
         </>
       )}
@@ -237,7 +330,7 @@ export default function Settings() {
               <div style={{ fontSize: '12px', color: riskMsg.ok ? GOOD : BAD, marginTop: '10px' }}>{riskMsg.text}</div>
             )}
             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px' }}>
-              I valori salvati restano anche dopo un riavvio o un nuovo deploy. Limiti accettati: leva 1–20x, perdita giornaliera 0,5–20%, posizioni 1–10.
+              I valori salvati restano anche dopo un riavvio o un nuovo deploy. Limiti accettati: leva 1–20x, perdita giornaliera 0,5–20%, posizioni 1–10. In paper la leva è decisa dai profili (10x e 30x): la «Leva massima» qui vale per il trading reale. Perdita giornaliera e posizioni valgono per ciascun portafoglio.
             </div>
           </Card>
         </>

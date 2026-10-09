@@ -73,113 +73,17 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+# Profilo, dimensionamento e liquidazione vivono in risk_profiles.py: sono lo
+# stesso codice che usa il bot, cosi' il simulatore e il bot non possono
+# divergere.
+from risk_profiles import (  # noqa: F401,E402
+    MEDIUM_TP_RATIO, MMR, SCALP_TP_RATIO, Profile, lev_target, liquidation_price, size_trade,
+)
+
 ONE_MINUTE_MS = 60_000
 WINDOW_SIZE = 100            # come bot_engine: ultime 100 barre per timeframe
-MMR = 0.005                  # maintenance margin rate approssimato (0,5%)
-SCALP_TP_RATIO = 1.5         # come risk_manager
-MEDIUM_TP_RATIO = 3.0
 
 DEFAULT_SYMBOLS = "BTC/USDT:USDT,ETH/USDT:USDT,XAU/USDT:USDT,XAG/USDT:USDT"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Profilo di rischio + sizing
-# ─────────────────────────────────────────────────────────────────────────────
-
-@dataclass(frozen=True)
-class Profile:
-    name: str
-    max_lev: int = 10
-    min_lev: int = 2
-    lev_mode: str = "legacy"       # 'legacy' | 'scaled'
-    risk_pct: float = 1.0
-    cap_ref_pct: float = 20.0
-    ref_lev: int = 10
-    margin_exp: float = 1.0
-    liq_safety: float = 0.0
-    sl_scale: float = 1.0
-    min_strength: int = 50         # il profilo opera solo su segnali con forza >= min_strength
-
-
-def lev_target(profile: Profile, strength: float) -> int:
-    if profile.lev_mode == "legacy":
-        # identico a risk_manager: max(min(int(forza/10), MAX), 2)
-        return max(min(int(strength / 10), profile.max_lev), profile.min_lev)
-    lo = float(max(profile.min_strength, 50))   # forza del segnale: soglia del profilo .. 110 (max)
-    t = (strength - lo) / (110.0 - lo) if 110.0 > lo else 1.0
-    t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
-    lev = int(round(profile.min_lev + t * (profile.max_lev - profile.min_lev)))
-    return max(profile.min_lev, min(profile.max_lev, lev))
-
-
-def size_trade(
-    profile: Profile,
-    capital: float,
-    price: float,
-    atr: float,
-    side: str,
-    trade_type: str,
-    strength: float,
-    slip_frac: float = 0.0,
-) -> Optional[dict]:
-    """Calcola leva, quantita', SL, TP per un profilo. None = trade saltato.
-
-    Con `Profile(lev_mode='legacy', margin_exp=1, liq_safety=0, sl_scale=1)`
-    riproduce esattamente risk_manager.calculate_trade_params (verificato da
-    un test)."""
-    if not (price > 0) or not (capital > 0) or not (atr > 0):
-        return None
-    sl_mult = (1.0 if trade_type == "scalp" else 2.0) * profile.sl_scale
-    sl_distance = atr * sl_mult
-    if not (sl_distance > 0):
-        return None
-    tp_ratio = SCALP_TP_RATIO if trade_type == "scalp" else MEDIUM_TP_RATIO
-    if side == "long":
-        stop_loss = price - sl_distance
-        take_profit = price + sl_distance * tp_ratio
-    else:
-        stop_loss = price + sl_distance
-        take_profit = price - sl_distance * tp_ratio
-    if stop_loss <= 0 or take_profit <= 0:
-        return None
-    sl_pct = sl_distance / price
-
-    lev = lev_target(profile, strength)
-    if profile.liq_safety > 0:
-        # La distanza di liquidazione (~1/leva - MMR) deve essere almeno
-        # liq_safety volte la distanza di stop (+ slippage): altrimenti si
-        # abbassa la leva. Se nemmeno 1x basta, il trade si salta.
-        denom = profile.liq_safety * (sl_pct + slip_frac) + MMR
-        lev_cap = int(1.0 / denom)
-        if lev_cap < 1:
-            return None
-        lev = min(lev, lev_cap)
-    lev = max(lev, 1)
-
-    cap_pct = profile.cap_ref_pct * (lev / profile.ref_lev) ** (1.0 - profile.margin_exp)
-    max_notional = capital * cap_pct / 100.0
-    risk_notional = capital * (profile.risk_pct / 100.0) / sl_pct
-    notional = min(risk_notional, max_notional)
-    quantity = round(notional / price, 6)
-    if quantity <= 0:
-        return None
-    notional = quantity * price
-    return {
-        "leverage": lev,
-        "quantity": quantity,
-        "notional": notional,
-        "margin": notional / lev,
-        "stop_loss": round(stop_loss, 4),
-        "take_profit": round(take_profit, 4),
-    }
-
-
-def liquidation_price(side: str, entry: float, lev: int) -> float:
-    """Prezzo di liquidazione approssimato (margine isolato)."""
-    dist = 1.0 / lev - MMR
-    if dist <= 0:           # leva cosi' alta che il margine non copre nemmeno la manutenzione
-        return entry
-    return entry * (1.0 - dist) if side == "long" else entry * (1.0 + dist)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

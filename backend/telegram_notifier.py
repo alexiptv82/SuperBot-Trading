@@ -42,7 +42,7 @@ class TelegramNotifier:
             print(f"Telegram error: {e}")
             return False
 
-    async def trade_opened(self, symbol, side, price, leverage, trade_type, strength):
+    async def trade_opened(self, symbol, side, price, leverage, trade_type, strength, profile_label=None):
         emoji = "🟢" if side == "long" else "🔴"
         direction = "LONG" if side == "long" else "SHORT"
         msg = (
@@ -52,22 +52,27 @@ class TelegramNotifier:
             f"⚡ Tipo: {trade_type.upper()}\n"
             f"💪 Forza segnale: {strength}/100"
         )
+        if profile_label:
+            msg += f"\n🎯 Profilo: {profile_label}"
         await self.send(msg)
 
-    async def trade_closed(self, symbol, side, pnl, reason):
+    async def trade_closed(self, symbol, side, pnl, reason, profile_label=None):
         if pnl > 0:
             emoji = "✅"
             pnl_str = f"+${pnl:.2f}"
         else:
             emoji = "❌"
             pnl_str = f"-${abs(pnl):.2f}"
-        reason_map = {"tp": "Take Profit 🎯", "sl": "Stop Loss 🛑", "manual": "Manuale"}
+        reason_map = {"tp": "Take Profit 🎯", "sl": "Stop Loss 🛑", "manual": "Manuale",
+                      "liq": "Liquidazione 💥"}
         msg = (
             f"{emoji} <b>TRADE CHIUSO</b>\n"
             f"📊 {symbol}\n"
             f"💵 P&L: <b>{pnl_str}</b>\n"
             f"📋 Motivo: {reason_map.get(reason, reason)}"
         )
+        if profile_label:
+            msg += f"\n🎯 Profilo: {profile_label}"
         await self.send(msg)
 
     async def daily_report(self, capital, daily_pnl, total_trades, win_rate):

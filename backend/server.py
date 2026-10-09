@@ -27,7 +27,8 @@ from database import init_db, get_db, Trade, AuditLog
 from bot_engine import bot
 from exchange import exchange
 from telegram_notifier import notifier
-from risk_settings import RISK_BOUNDS, load_overrides, save_overrides
+from risk_settings import RISK_BOUNDS, load_overrides, save_overrides, current_mode
+from risk_profiles import PRESETS, PROFILE_LABELS, RISK_MODES
 from auth import (
     create_session_token,
     require_session,
@@ -82,6 +83,9 @@ class RiskConfigUpdate(BaseModel):
     max_leverage: float
     max_daily_loss_percent: float
     max_open_positions: float
+    # Opzionale: i client vecchi (app in cache) non lo mandano e la
+    # modalita' di rischio resta quella attuale.
+    risk_mode: Optional[str] = None
 
 class WebAuthnRegisterVerifyRequest(BaseModel):
     state_id: str
@@ -356,14 +360,29 @@ async def get_bot_config(session=Depends(require_session)):
         'max_open_positions': config.MAX_OPEN_POSITIONS,
         'trading_pairs': config.TRADING_PAIRS,
         'risk_bounds': {k: {'min': v['min'], 'max': v['max']} for k, v in RISK_BOUNDS.items()},
+        # Profili di rischio: la modalita' scelta, quella effettivamente in
+        # uso (in reale solo 'conservative') e i parametri dei due profili.
+        'risk_mode': current_mode(),
+        'effective_risk_mode': current_mode() if config.IS_PAPER else 'conservative',
+        'risk_modes': list(RISK_MODES),
+        'profiles': {
+            name: {
+                'label': PROFILE_LABELS[name], 'max_leverage': p.max_lev, 'min_leverage': p.min_lev,
+                'exposure_cap_percent': p.cap_ref_pct, 'stop_multiplier': p.sl_scale,
+                'min_signal_strength': p.min_strength, 'margin_exponent': p.margin_exp,
+            } for name, p in PRESETS.items()
+        },
+        'paper_costs': {'fee_bps': config.PAPER_FEE_BPS, 'slippage_bps': config.PAPER_SLIPPAGE_BPS},
     }
 
 @app.put('/api/bot/config/risk')
 async def update_risk_config(body: RiskConfigUpdate, session=Depends(require_session)):
     """Salva i parametri di rischio modificati dall'app. Validati contro
     RISK_BOUNDS, persistiti in DB e applicati subito al bot (nessun riavvio)."""
+    data = body.dict()
+    mode = data.pop('risk_mode', None)
     try:
-        applied = save_overrides(body.dict())
+        applied = save_overrides(data, risk_mode=mode)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     bot._log('config_change', message=f'Parametri di rischio aggiornati dall\'app: {applied}')
@@ -395,17 +414,23 @@ async def get_trades(session=Depends(require_session), db: Session = Depends(get
              'pnl': t.pnl, 'pnl_percent': t.pnl_percent, 'status': t.status,
              'open_time': t.open_time.isoformat() if t.open_time else None,
              'close_time': t.close_time.isoformat() if t.close_time else None,
-             'close_reason': t.close_reason} for t in trades]
+             'close_reason': t.close_reason,
+             'profile': t.profile, 'profile_label': PROFILE_LABELS.get(t.profile or 'legacy'),
+             'margin': t.margin, 'gross_pnl': t.gross_pnl, 'fees': t.fees} for t in trades]
 
 @app.get('/api/trades/open')
 async def get_open_trades(session=Depends(require_session)):
-    return list(bot.open_trades.values())
+    trades = []
+    for t in bot.open_trades.values():
+        trades.append({**t, 'profile_label': PROFILE_LABELS.get(t.get('profile') or 'legacy')})
+    return trades
 
 @app.get('/api/performance')
 async def get_performance(session=Depends(require_session), db: Session = Depends(get_db)):
     trades = db.query(Trade).filter(Trade.status == 'closed').all()
     total = len(trades)
-    if total == 0: return {'total_trades': 0, 'win_rate': 0, 'total_pnl': 0, 'equity_curve': []}
+    if total == 0: return {'total_trades': 0, 'win_rate': 0, 'total_pnl': 0, 'equity_curve': [],
+                           'total_fees': 0, 'gross_pnl': 0, 'by_profile': {}}
     winners = [t for t in trades if t.pnl and t.pnl > 0]
     total_pnl = sum(t.pnl for t in trades if t.pnl)
     ordered = sorted(trades, key=lambda t: t.close_time or t.open_time)
@@ -417,6 +442,16 @@ async def get_performance(session=Depends(require_session), db: Session = Depend
             'time': (t.close_time or t.open_time).isoformat(),
             'equity': round(running, 2),
         })
+    # Curva del capitale separata per profilo (ognuno ha il suo portafoglio).
+    equity_by_profile = {}
+    running_by_profile = {}
+    for t in ordered:
+        key = t.profile or 'legacy'
+        running_by_profile[key] = running_by_profile.get(key, 0.0) + (t.pnl or 0)
+        equity_by_profile.setdefault(key, []).append({
+            'time': (t.close_time or t.open_time).isoformat(),
+            'equity': round(running_by_profile[key], 2),
+        })
     by_symbol = {}
     for t in trades:
         by_symbol.setdefault(t.symbol, 0.0)
@@ -427,7 +462,28 @@ async def get_performance(session=Depends(require_session), db: Session = Depend
     # per convenzione del settore ma "N/A" se non c'è nemmeno un trade perdente
     # da confrontare (coerente con "non inventare metriche").
     profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else None
+    # Dettaglio per profilo di rischio: netto (dopo commissioni), lordo e
+    # commissioni, per confrontare Conservativo e Aggressivo.
+    by_profile = {}
+    for t in trades:
+        key = t.profile or 'legacy'
+        d = by_profile.setdefault(key, {'label': PROFILE_LABELS.get(key, key), 'trades': 0, 'wins': 0,
+                                        'net_pnl': 0.0, 'gross_pnl': 0.0, 'fees': 0.0, 'liquidations': 0})
+        d['trades'] += 1
+        d['wins'] += 1 if (t.pnl or 0) > 0 else 0
+        d['net_pnl'] += t.pnl or 0
+        d['gross_pnl'] += t.gross_pnl if t.gross_pnl is not None else (t.pnl or 0)
+        d['fees'] += t.fees or 0
+        d['liquidations'] += 1 if t.close_reason == 'liq' else 0
+    for d in by_profile.values():
+        d['win_rate'] = round(d['wins'] / d['trades'] * 100, 1) if d['trades'] else 0
+        for k in ('net_pnl', 'gross_pnl', 'fees'):
+            d[k] = round(d[k], 2)
     return {'total_trades': total, 'winning_trades': len(winners),
+            'total_fees': round(sum(t.fees or 0 for t in trades), 2),
+            'gross_pnl': round(sum(t.gross_pnl if t.gross_pnl is not None else (t.pnl or 0) for t in trades), 2),
+            'by_profile': by_profile,
+            'equity_by_profile': equity_by_profile,
             'losing_trades': total - len(winners),
             'win_rate': round(len(winners) / total * 100, 1),
             'total_pnl': round(total_pnl, 2),
@@ -477,7 +533,7 @@ async def _cmd_resume() -> str:
 
 async def _cmd_status() -> str:
     s = bot.get_status()
-    return (
+    text = (
         f"📊 <b>Stato bot</b>\n"
         f"In esecuzione: {'si' if s['is_running'] else 'no'}\n"
         f"Modalità: {s['mode']}\n"
@@ -486,6 +542,11 @@ async def _cmd_status() -> str:
         f"Posizioni aperte: {s['open_positions']}\n"
         f"Trade totali: {s['total_trades']} | Win rate: {s['win_rate']}%"
     )
+    if len(s.get('portfolios', [])) > 1:
+        for p in s['portfolios']:
+            text += (f"\n🎯 {p['label']}: ${p['capital']:,.2f} | oggi ${p['daily_pnl']:+.2f} | "
+                     f"aperte {p['open_positions']}{' | in pausa' if p['paused'] else ''}")
+    return text
 
 async def _cmd_closeall() -> str:
     closed = await bot.close_all_positions(reason='manual_telegram')

@@ -16,6 +16,7 @@ from datetime import datetime
 
 from config import config
 from database import SessionLocal, RiskSettings
+from risk_profiles import RISK_MODES
 
 # Limiti di sicurezza accettati dall'API. Servono a impedire che un errore
 # di digitazione (es. leva 100 al posto di 10) o un client compromesso
@@ -32,6 +33,13 @@ _CONFIG_ATTR = {
     'max_daily_loss_percent': 'MAX_DAILY_LOSS_PERCENT',
     'max_open_positions': 'MAX_OPEN_POSITIONS',
 }
+
+
+def validate_mode(mode) -> str:
+    """Modalita' di rischio: 'conservative' | 'aggressive' | 'both'."""
+    if not isinstance(mode, str) or mode not in RISK_MODES:
+        raise ValueError("risk_mode: deve essere 'conservative', 'aggressive' o 'both'")
+    return mode
 
 
 def validate(values: dict) -> dict:
@@ -83,6 +91,12 @@ def load_overrides() -> dict:
             except ValueError:
                 continue  # valore fuori limiti nel DB: si tiene quello di .env
         _apply_to_config(applied)
+        if row.risk_mode is not None:
+            try:
+                config.RISK_MODE = validate_mode(row.risk_mode)
+                applied['risk_mode'] = config.RISK_MODE
+            except ValueError:
+                pass  # valore non valido nel DB: si tiene quello di .env
     finally:
         db.close()
     return applied
@@ -92,11 +106,19 @@ def current_values() -> dict:
     return {field: getattr(config, attr) for field, attr in _CONFIG_ATTR.items()}
 
 
-def save_overrides(values: dict) -> dict:
+def current_mode() -> str:
+    """Modalita' di rischio effettiva (valore di .env se non sovrascritto);
+    un valore non valido in .env ricade su 'both'."""
+    return config.RISK_MODE if config.RISK_MODE in RISK_MODES else 'both'
+
+
+def save_overrides(values: dict, risk_mode=None) -> dict:
     """Valida, salva in DB (upsert riga id=1) e applica subito a config.
     Alza ValueError se qualcosa non e' valido -- in quel caso non viene
-    scritto nulla ne' in DB ne' in memoria."""
+    scritto nulla ne' in DB ne' in memoria. `risk_mode` e' opzionale: se
+    manca, la modalita' di rischio resta quella attuale."""
     clean = validate(values)
+    mode = validate_mode(risk_mode) if risk_mode is not None else None
     db = SessionLocal()
     try:
         row = db.query(RiskSettings).filter(RiskSettings.id == 1).first()
@@ -105,9 +127,15 @@ def save_overrides(values: dict) -> dict:
             db.add(row)
         for field, value in clean.items():
             setattr(row, field, value)
+        if mode is not None:
+            row.risk_mode = mode
         row.updated_at = datetime.utcnow()
         db.commit()
     finally:
         db.close()
     _apply_to_config(clean)
-    return clean
+    if mode is not None:
+        config.RISK_MODE = mode
+    result = dict(clean)
+    result['risk_mode'] = current_mode()
+    return result

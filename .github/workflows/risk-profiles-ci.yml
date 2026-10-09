@@ -1,0 +1,72 @@
+name: Risk profiles CI (test automatici)
+
+# Solo verifica, a sola lettura: lancia i test del backend (autenticazione,
+# profili di rischio, motore con costi paper, impostazioni via API, migrazione
+# DB) e compila il frontend. Non fa deploy, non usa segreti, non tocca il
+# bot in funzione.
+#
+# Parte da sola ad ogni push sul ramo `risk-profiles`.
+
+on:
+  push:
+    branches: [risk-profiles]
+    paths:
+      - ".github/workflows/risk-profiles-ci.yml"
+      - "backend/**"
+      - "frontend/**"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Test backend (pytest)
+        working-directory: backend
+        shell: bash
+        run: |
+          set -o pipefail
+          pip install -q -r requirements.txt
+          set +e
+          python -m pytest tests/test_auth_flow.py tests/test_profiles_engine.py tests/test_risk_profiles.py tests/test_risk_profile_sim.py \
+            -q -p no:cacheprovider -ra 2>&1 | tee /tmp/pytest.out
+          RC=${PIPESTATUS[0]}
+          set -e
+          SUMMARY=$(tail -1 /tmp/pytest.out)
+          if [ "$RC" -eq 0 ]; then
+            echo "::notice title=pytest backend OK::${SUMMARY}"
+          else
+            # prime righe dei test falliti + prime righe d'errore (le annotazioni sono limitate)
+            FAILS=$(grep -E '^(FAILED|ERROR)' /tmp/pytest.out | head -8 | cut -c1-230 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=pytest backend FALLITO::${SUMMARY}%0A${FAILS}"
+            ERRS=$(grep -E '^E  ' /tmp/pytest.out | head -10 | cut -c1-230 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Dettaglio errori::${ERRS}"
+            exit 1
+          fi
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Build frontend
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -o pipefail
+          REACT_APP_BACKEND_URL= npm install --no-audit --no-fund 2>&1 | tail -3
+          set +e
+          REACT_APP_BACKEND_URL= npm run build 2>&1 | tee /tmp/build.out
+          RC=${PIPESTATUS[0]}
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            WARN=$(grep -cE '^\s*Line [0-9]+' /tmp/build.out || true)
+            DET=$(grep -E 'Line [0-9]+|Compiled' /tmp/build.out | head -8 | cut -c1-200 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::notice title=Frontend build OK::avvisi del compilatore: ${WARN}%0A${DET}"
+          else
+            ERRS=$(grep -vE '^\s*$' /tmp/build.out | head -14 | cut -c1-220 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Frontend build FALLITO::${ERRS}"
+            exit 1
+          fi

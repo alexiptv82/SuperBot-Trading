@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { botAPI } from '../api';
 import ChartModal from '../components/ChartModal';
+import ProfileBadge, { profileColor } from '../components/ProfileBadge';
 const Card = ({ children, style, onClick }) => (
   <div onClick={onClick} style={{
     background: '#1e293b', borderRadius: '16px', padding: '16px',
@@ -132,7 +133,9 @@ export default function Dashboard() {
       </Card>
       <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
         <Card style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Capitale</div>
+          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>
+            {(status?.portfolios?.length || 0) > 1 ? 'Capitale totale' : 'Capitale'}
+          </div>
           <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
             ${status?.capital?.toFixed(2) || '0.00'}
           </div>
@@ -148,6 +151,38 @@ export default function Dashboard() {
           <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{status?.total_trades || 0}</div>
         </Card>
       </div>
+      {(status?.portfolios?.length || 0) > 0 && (
+        <>
+          <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px' }}>💼 Portafogli</h2>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+            {status.portfolios.map(pf => (
+              <Card key={pf.name} style={{
+                flex: '1 1 calc(50% - 8px)', minWidth: '240px',
+                borderColor: pf.active ? profileColor(pf.name) : '#334155', opacity: pf.active ? 1 : 0.7
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <ProfileBadge profile={pf.name} label={pf.label} />
+                  <span style={{ fontSize: '11px', color: pf.paused ? '#fbbf24' : '#94a3b8' }}>
+                    {pf.paused ? '⏸ In pausa (limite giornaliero)' : pf.active ? 'Attivo' : 'Solo chiusura'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold' }}>${pf.capital?.toFixed(2)}</div>
+                <div style={{ fontSize: '12px', color: pnlColor(pf.daily_pnl), marginBottom: '8px' }}>
+                  Oggi {pf.daily_pnl > 0 ? '+' : ''}{pf.daily_pnl?.toFixed(2)}$
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8' }}>
+                  <span>Aperte {pf.open_positions}</span>
+                  <span>Chiusi {pf.closed_trades} · Win {pf.win_rate}%</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                  <span style={{ color: pnlColor(pf.net_pnl) }}>Netto {pf.net_pnl > 0 ? '+' : ''}{pf.net_pnl?.toFixed(2)}$</span>
+                  <span>Commissioni {pf.fees_paid?.toFixed(2)}$</span>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
       <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px' }}>📈 Mercato Live</h2>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
         {Object.entries(prices).map(([sym, data]) => (
@@ -169,7 +204,8 @@ export default function Dashboard() {
                     {t.side?.toUpperCase()}
                   </span>
                   <span style={{ fontWeight: 'bold' }}>{t.symbol}</span>
-                  <span style={{ color: '#94a3b8', fontSize: '12px', marginLeft: '6px' }}>x{t.leverage}</span>
+                  <span style={{ color: '#94a3b8', fontSize: '12px', marginLeft: '6px', marginRight: '6px' }}>x{t.leverage}</span>
+                  <ProfileBadge profile={t.profile} label={t.profile_label} />
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '13px' }}>@ ${t.entry_price?.toFixed(2)}</div>

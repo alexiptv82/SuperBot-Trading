@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { botAPI } from '../api';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell, CartesianGrid,
 } from 'recharts';
+import ProfileBadge, { profileColor } from '../components/ProfileBadge';
 
 const ACCENT = '#38bdf8';
 const GOOD = '#4ade80';
@@ -76,6 +77,27 @@ export default function Performance() {
     time: fmtTime(p.time), equity: p.equity,
   }));
 
+  // Una curva per profilo (ognuno ha il suo portafoglio): i punti di tutti i
+  // profili vengono ordinati nel tempo e ogni profilo mantiene l'ultimo valore.
+  const profileKeys = Object.keys(perf.equity_by_profile || {});
+  const multiProfile = profileKeys.length > 1;
+  const profileLabel = (k) => perf.by_profile?.[k]?.label || k;
+  const equityByProfile = (() => {
+    if (!multiProfile) return [];
+    const pts = [];
+    profileKeys.forEach(k => perf.equity_by_profile[k].forEach(pt => pts.push({ t: pt.time, k, v: pt.equity })));
+    pts.sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
+    const last = {};
+    return pts.map(pt => {
+      last[pt.k] = pt.v;
+      const row = { time: fmtTime(pt.t) };
+      profileKeys.forEach(k => { row[k] = last[k] ?? 0; });
+      return row;
+    });
+  })();
+  const profileRows = Object.entries(perf.by_profile || {});
+  const sign = (v) => (v > 0 ? '+' : '');
+
   const pnlBySymbol = Object.entries(perf.pnl_by_symbol || {})
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([symbol, pnl]) => ({ symbol: symbol.replace('USDT', ''), pnl }));
@@ -93,9 +115,62 @@ export default function Performance() {
           color={perf.avg_pnl_per_trade > 0 ? GOOD : BAD} />
         <StatCard label="Profit Factor" value={perf.profit_factor != null ? perf.profit_factor : 'N/A'}
           color={perf.profit_factor != null ? (perf.profit_factor >= 1 ? GOOD : BAD) : MUTED} />
+        {perf.total_fees != null && (
+          <StatCard label="Commissioni pagate" value={`−${perf.total_fees.toFixed(2)}$`} color={MUTED} />
+        )}
+      </div>
+      <div style={{ fontSize: '11px', color: '#64748b', margin: '-8px 0 16px' }}>
+        P&L al netto di commissioni e slippage (paper dal nuovo aggiornamento; i trade più vecchi sono senza costi).
+        {perf.gross_pnl != null && ` Lordo: ${sign(perf.gross_pnl)}${perf.gross_pnl.toFixed(2)}$.`}
       </div>
 
-      {equityData.length > 1 && (
+      {profileRows.length > 0 && (
+        <Card style={{ marginBottom: '16px' }}>
+          <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#f1f5f9' }}>
+            🎯 Per profilo
+          </div>
+          {profileRows.map(([k, d]) => (
+            <div key={k} style={{ padding: '10px 0', borderTop: `1px solid ${BORDER}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <ProfileBadge profile={k} label={d.label} />
+                <span style={{ fontWeight: 'bold', color: d.net_pnl >= 0 ? GOOD : BAD }}>
+                  {sign(d.net_pnl)}{d.net_pnl.toFixed(2)}$ netto
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: MUTED }}>
+                <span>{d.trades} trade · win {d.win_rate}%</span>
+                <span>lordo {sign(d.gross_pnl)}{d.gross_pnl.toFixed(2)}$ · comm. {d.fees.toFixed(2)}$</span>
+              </div>
+              {d.liquidations > 0 && (
+                <div style={{ fontSize: '11px', color: BAD, marginTop: '4px' }}>💥 Liquidazioni: {d.liquidations}</div>
+              )}
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {multiProfile && equityByProfile.length > 1 ? (
+        <Card style={{ marginBottom: '16px' }}>
+          <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#f1f5f9' }}>
+            📈 Curva del Capitale per profilo
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={equityByProfile} margin={{ top: 4, right: 8, bottom: 0, left: -24 }}>
+              <CartesianGrid stroke={BORDER} strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="time" stroke={MUTED} fontSize={10} minTickGap={30} />
+              <YAxis stroke={MUTED} fontSize={10} width={54} />
+              <Tooltip
+                contentStyle={{ background: '#0f172a', border: `1px solid ${BORDER}`, borderRadius: '8px', fontSize: '12px' }}
+                formatter={(v, name) => [`${sign(v)}${Number(v).toFixed(2)}$`, profileLabel(name)]}
+              />
+              <Legend formatter={(name) => profileLabel(name)} wrapperStyle={{ fontSize: '12px' }} />
+              {profileKeys.map(k => (
+                <Line key={k} type="monotone" dataKey={k} stroke={profileColor(k)} strokeWidth={2} dot={false} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+      ) : equityData.length > 1 && (
         <Card style={{ marginBottom: '16px' }}>
           <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#f1f5f9' }}>
             📈 Curva del Capitale

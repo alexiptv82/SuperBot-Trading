@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { botAPI } from '../api';
+import ProfileBadge from '../components/ProfileBadge';
 
 const PAGE_SIZE = 50;
 const MUTED = '#94a3b8';
@@ -23,6 +24,7 @@ export default function Trades() {
   const [symbolFilter, setSymbolFilter] = useState('all');
   const [sideFilter, setSideFilter] = useState('all');
   const [outcomeFilter, setOutcomeFilter] = useState('all');
+  const [profileFilter, setProfileFilter] = useState('all');
 
   const loadPage = useCallback(async (nextOffset) => {
     setLoading(true);
@@ -41,7 +43,14 @@ export default function Trades() {
     return ['all', ...Array.from(set).sort()];
   }, [trades]);
 
+  const profiles = useMemo(() => {
+    const map = new Map();
+    trades.forEach(t => { if (t.profile) map.set(t.profile, t.profile_label || t.profile); });
+    return Array.from(map.entries());
+  }, [trades]);
+
   const filtered = trades.filter(t => {
+    if (profileFilter !== 'all' && t.profile !== profileFilter) return false;
     if (symbolFilter !== 'all' && t.symbol !== symbolFilter) return false;
     if (sideFilter !== 'all' && t.side !== sideFilter) return false;
     if (outcomeFilter === 'open' && t.status !== 'open') return false;
@@ -63,6 +72,14 @@ export default function Trades() {
           </Chip>
         ))}
       </div>
+      {profiles.length > 1 && (
+        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', marginBottom: '8px', paddingBottom: '2px' }}>
+          <Chip active={profileFilter === 'all'} onClick={() => setProfileFilter('all')}>Tutti i profili</Chip>
+          {profiles.map(([k, l]) => (
+            <Chip key={k} active={profileFilter === k} onClick={() => setProfileFilter(k)}>{l}</Chip>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', marginBottom: '8px', paddingBottom: '2px' }}>
         {[['all', 'Lato'], ['long', 'Long'], ['short', 'Short']].map(([v, l]) => (
           <Chip key={v} active={sideFilter === v} onClick={() => setSideFilter(v)}>{l}</Chip>
@@ -91,6 +108,7 @@ export default function Trades() {
               }}>{t.side?.toUpperCase()}</span>
               <span style={{ fontWeight: 'bold' }}>{t.symbol}</span>
               <span style={{ color: MUTED, fontSize: '12px' }}>x{t.leverage}</span>
+              <ProfileBadge profile={t.profile} label={t.profile_label} />
             </div>
             <span style={{
               padding: '2px 8px', borderRadius: '6px', fontSize: '11px',
@@ -117,6 +135,9 @@ export default function Trades() {
           {t.close_reason && (
             <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
               Chiuso: {t.close_reason?.toUpperCase()} | {t.trade_type}
+              {t.fees != null && t.gross_pnl != null && (
+                <> | Lordo {t.gross_pnl > 0 ? '+' : ''}{t.gross_pnl.toFixed(2)}$ − commissioni {t.fees.toFixed(2)}$</>
+              )}
             </div>
           )}
         </div>

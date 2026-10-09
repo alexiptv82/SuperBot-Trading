@@ -55,6 +55,17 @@ class Config:
     # enorme per rispettare il rischio fisso) non si supera mai questo.
     MAX_POSITION_PERCENT = float(os.getenv('MAX_POSITION_PERCENT', '20'))
 
+    # ── Profili di rischio e costi del paper trading ─────────────────────────
+    # Modalita' di rischio di default ('conservative' | 'aggressive' | 'both').
+    # Il valore scelto dall'app (Impostazioni) vive nel DB e prevale su
+    # questo. In modalita' reale vale sempre e solo 'conservative'.
+    RISK_MODE = os.getenv('RISK_MODE', 'both')
+    # Costi simulati nel paper trading (in punti base = 0,01%): commissione
+    # taker BitGet per lato (0,06% = 6 bps) e slippage avverso su ingresso e
+    # uscite a mercato. Il paper di prima non li contava.
+    PAPER_FEE_BPS = float(os.getenv('PAPER_FEE_BPS', '6'))
+    PAPER_SLIPPAGE_BPS = float(os.getenv('PAPER_SLIPPAGE_BPS', '2'))
+
     # ── Esecuzione reale (SL/TP, retry, riconciliazione) ─────────────────────
     API_MAX_RETRIES = int(os.getenv('API_MAX_RETRIES', '3'))
     API_RETRY_BASE_DELAY = float(os.getenv('API_RETRY_BASE_DELAY', '1.0'))
