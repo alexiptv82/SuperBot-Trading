@@ -1,0 +1,86 @@
+name: Risk Profile Simulator (storico)
+
+# Solo ricerca, a sola lettura: scarica candele pubbliche BitGet, genera i
+# segnali V1 e simula profili di rischio/leva (commissioni + liquidazione).
+# Non tocca il bot, il DB, il deploy (.github/workflows/deploy.yml) né
+# alcun ordine: nessuna chiave BitGet, nessun segreto.
+#
+# Parte da sola ad ogni push sul ramo `risk-profiles` che modifica il
+# simulatore (per cambiare i parametri si modifica la riga "Run simulator");
+# in piu' e' lanciabile a mano (workflow_dispatch funziona dal ramo di
+# default).
+
+on:
+  push:
+    branches: [risk-profiles]
+    paths:
+      - ".github/workflows/risk-sim.yml"
+      - "backend/risk_profile_sim.py"
+      - "backend/tests/test_risk_profile_sim.py"
+  workflow_dispatch:
+    inputs:
+      candles:
+        description: "Candele 1m per simbolo (43200 = 30 giorni)"
+        required: false
+        default: "43200"
+      stride:
+        description: "Minuti tra una analisi e la successiva"
+        required: false
+        default: "5"
+      offset_days:
+        description: "La finestra termina N giorni fa (0 = ora)"
+        required: false
+        default: "0"
+      scenarios:
+        description: "commissione_bps:slippage_bps separati da virgola"
+        required: false
+        default: "6:2,0:0,6:10"
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt pandas numpy python-dotenv pytest
+
+      - name: Unit tests del simulatore
+        run: python -m pytest tests/test_risk_profile_sim.py -q
+
+      - name: Run simulator
+        run: |
+          python -u risk_profile_sim.py \
+            --candles "${{ inputs.candles || '43200' }}" \
+            --stride "${{ inputs.stride || '5' }}" \
+            --offset-days "${{ inputs.offset_days || '0' }}" \
+            --scenarios "${{ inputs.scenarios || '6:2,0:0,6:10' }}" \
+            --sweep standard \
+            --cache-dir cache \
+            --out risk_sim_results.json \
+            --annotate \
+            2>&1 | tee risk_sim_output.log
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: risk-sim-results-${{ github.run_id }}
+          path: |
+            backend/risk_sim_output.log
+            backend/risk_sim_results.json
+            backend/cache/
+          if-no-files-found: ignore
+          retention-days: 14
