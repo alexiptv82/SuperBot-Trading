@@ -42,7 +42,8 @@ M15 = 900_000
 H1 = 3_600_000
 H4 = 14_400_000
 SYMBOLS = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
-COSTS = {"A": 16.0, "B": 10.0, "C": 4.0}
+# D = stress da altcoin: 12 commissioni + 18 slippage (spread piu' larghi)
+COSTS = {"A": 16.0, "B": 10.0, "C": 4.0, "D": 30.0}
 FUND_BP_8H = 1.0
 # Un target (ordine limite) si considera eseguito solo se il prezzo lo SUPERA di
 # 1 bp (non basta toccarlo): prima approssimazione prudente del problema del fill.
@@ -380,10 +381,15 @@ def simulate_exit(b: Bars, e: int, side: int, d: float, cfg: ExitCfg, sig: Sig,
     return last, b.c[last], ("time" if last == e + cfg.max_hold - 1 else "end")
 
 
+def donch_arrays(b: Bars, cfg: ExitCfg):
+    if not cfg.donch_exit:
+        return None, None
+    return shift1(rolling_min(b.l, cfg.donch_exit)), shift1(rolling_max(b.h, cfg.donch_exit))
+
+
 def run_strategy(b: Bars, sig: Sig, cfg: ExitCfg, tf_ms: int) -> list:
     n = len(b)
-    dlow = shift1(rolling_min(b.l, cfg.donch_exit)) if cfg.donch_exit else None
-    dhigh = shift1(rolling_max(b.h, cfg.donch_exit)) if cfg.donch_exit else None
+    dlow, dhigh = donch_arrays(b, cfg)
     trades, free_from = [], 0
     for i in np.flatnonzero(sig.side != 0):
         if i < free_from or i + 1 >= n:
@@ -404,7 +410,7 @@ def run_strategy(b: Bars, sig: Sig, cfg: ExitCfg, tf_ms: int) -> list:
             tgt = float("nan")
         j, px, why = simulate_exit(b, e, side, d, cfg, sig, tgt, dlow, dhigh)
         hold_h = (j - e + 1) * tf_ms / H1
-        trades.append({"t": int(b.t[e]), "side": side, "entry": float(p), "exit": float(px),
+        trades.append({"t": int(b.t[e]), "e": int(e), "side": side, "entry": float(p), "exit": float(px),
                        "why": why, "hold_h": hold_h,
                        "gross": side * (px / p - 1.0) * 1e4})
         free_from = j
