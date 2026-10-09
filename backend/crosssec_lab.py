@@ -114,7 +114,7 @@ def run_variant(rows: list):
         r = np.where(np.isfinite(ret), ret, 0.0)
         longs, shorts = w > 0, w < 0
         gl = float((w[longs] * r[longs]).sum() * 1e4)
-        gs = float(-(w[shorts] * r[shorts]).sum() * 1e4)        # contributo dello short
+        gs = float((w[shorts] * r[shorts]).sum() * 1e4)         # contributo dello short (w<0: positivo se scende)
         turnover = float(np.abs(w - (prev if prev is not None else 0.0)).sum())
         prev = w
         gross = gl + gs

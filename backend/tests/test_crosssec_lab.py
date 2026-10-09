@@ -49,6 +49,10 @@ def test_momentum_earns_positive_spread_and_reversal_the_opposite():
     k = max(3, round(0.2 * 20))
     expected = (np.expm1(7 * rates[-k:]).mean() - np.expm1(7 * rates[:k]).mean()) * 1e4
     assert abs(series[2]["gross"] - expected) / expected < 0.02
+    # contributo dei due lati: il long guadagna, lo short (che sale poco) perde poco
+    assert abs(series[2]["long"] - np.expm1(7 * rates[-k:]).mean() * 1e4) < 1.0
+    assert abs(series[2]["short"] + np.expm1(7 * rates[:k]).mean() * 1e4) < 1.0
+    assert abs(series[2]["long"] + series[2]["short"] - series[2]["gross"]) < 1e-9
     rev = cs.run_variant(cs.weekly_returns(O, C, d0, 7, -1))
     assert abs(rev[2]["gross"] + series[2]["gross"]) / series[2]["gross"] < 0.02
 
