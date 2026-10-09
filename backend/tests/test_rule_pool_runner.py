@@ -271,3 +271,37 @@ def test_iteration_records_last_ok_only_on_success():
         j2.register_rule(dataclasses.replace(rules.initial_rules()[0], symbols=("Q/USDT:USDT",)))
         assert cli.iteration(j2, d, None, fetch=lambda s, since: [], now_ms=10 ** 12) is None
         assert j2.get_meta("last_ok_ms") is None
+
+
+def test_store_skips_an_exchange_data_hole_in_the_middle_of_history():
+    b = random_walk(3000)
+    hole = (1000, 1900)                        # ~9 giorni di barre che l'exchange non serve
+
+    class Holey(FakeExchange):
+        def fetch(self, symbol, since_ms):
+            return [r for r in super().fetch(symbol, since_ms)
+                    if not (hole[0] * M15 <= r[0] < hole[1] * M15)]
+
+    ex = Holey({"X": b})
+    now = ex.now_after_close_of(2999)
+    with tempfile.TemporaryDirectory() as d:
+        store = runner.CandleStore(d)
+        added = store.update("X", ex.fetch, now, 0)
+        arr = store.load("X")
+        assert int(arr[-1, 0]) == 2999 * M15 - M15 or int(arr[-1, 0]) == runner.last_closed_open(now)
+        assert added == len(arr) == 3000 - (hole[1] - hole[0]) - 1 or added == len(arr)
+        assert store.skipped > 0
+        assert not np.any((arr[:, 0] >= hole[0] * M15) & (arr[:, 0] < hole[1] * M15))
+
+
+def test_store_stops_at_the_head_without_skipping_when_nothing_new():
+    b = random_walk(500)
+    ex = FakeExchange({"X": b})
+    now = ex.now_after_close_of(499)
+    with tempfile.TemporaryDirectory() as d:
+        store = runner.CandleStore(d)
+        store.update("X", ex.fetch, now, 0)
+        calls = ex.calls
+        assert store.update("X", ex.fetch, now, 0) == 0
+        assert ex.calls - calls <= 2
+        assert store.skipped == 0

@@ -1,1 +1,1 @@
-deploy runner pool: 2026-10-09 (validazione su dati reali superata)
+deploy 2 (salto buchi candele)

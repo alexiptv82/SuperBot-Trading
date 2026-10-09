@@ -27,6 +27,8 @@ SETTLE_MS = 5_000            # una candela e' "chiusa" solo qualche secondo dopo
 BACKFILL_DAYS = 365          # storico iniziale: abbastanza perche' EMA200 su 4h sia a regime
 MIN_BARS = 15_000            # ~156 giorni di barre da 15m: sotto, niente segnali
 MAX_STALE_MS = 3 * 3_600_000
+SKIP_MS = DAY                # salto in avanti su una pagina vuota lontana dalla testa
+MAX_EMPTY_SKIPS = 120        # al massimo ~4 mesi di buco consecutivo
 
 
 def last_closed_open(now_ms: int) -> int:
@@ -39,6 +41,7 @@ class CandleStore:
 
     def __init__(self, directory: str):
         self.dir = directory
+        self.skipped = 0                 # pagine vuote saltate (buchi dei dati dell'exchange)
         os.makedirs(directory, exist_ok=True)
 
     def path(self, symbol: str) -> str:
@@ -61,11 +64,21 @@ class CandleStore:
         since = int(arr[-1, 0]) + M15 if len(arr) else int(backfill_from_ms)
         new: dict = {}
         guard = 0
+        empties = 0
         while since <= limit and guard < 5000:
             guard += 1
             rows = [r for r in fetch(symbol, since) if since <= int(r[0]) <= limit]
             if not rows:
-                break                               # niente di nuovo (o buco): riprova al prossimo giro
+                # Pagina vuota: o siamo in testa (niente di nuovo) o c'e' un buco dei dati dell'exchange
+                # (BitGet non serve ~19 giorni tra 2026-08-20 e 2026-09-08). Se siamo lontani dalla testa
+                # si salta avanti di un giorno; vicino alla testa si riprova al prossimo giro.
+                empties += 1
+                if since + SKIP_MS > limit or empties > MAX_EMPTY_SKIPS:
+                    break
+                since += SKIP_MS
+                self.skipped += 1
+                continue
+            empties = 0
             for r in rows:
                 new[int(r[0])] = [float(x) for x in r[:6]]
             since = max(int(r[0]) for r in rows) + M15

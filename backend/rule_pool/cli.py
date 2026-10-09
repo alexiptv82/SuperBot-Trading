@@ -52,9 +52,12 @@ def iteration(journal: Journal, data_dir: str, notify, fetch=runner.fetch_bitget
         store = runner.CandleStore(os.path.join(data_dir, "candles"))
         res = runner.run_once(journal, initial_rules(), store, fetch, now_ms, notify=notify)
         journal.set_meta("last_ok_ms", str(now_ms))
+        bars = ", ".join(f"{s.split('/')[0]}={len(store.load(s))}@"
+                         f"{time.strftime('%m-%d %H:%M', time.gmtime(int(store.load(s)[-1, 0]) / 1000))}"
+                         for s in sorted(res["fresh"]))
         bad = ", ".join(f"{s}: {m}" for s, m in sorted(res["errors"].items())) or "ok"
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(now_ms / 1000))}Z] giro fatto; "
-              f"allarme={res['alarm']}; dati: {bad}", flush=True)
+              f"allarme={res['alarm']}; dati: {bad}; barre: {bars or 'nessuna'}; buchi saltati={store.skipped}", flush=True)
         return res
     except ParamsChangedError as exc:
         print(f"ERRORE parametri regola cambiati senza nuova versione: {exc}", flush=True)
