@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from risk_profile_sim import (  # noqa: E402
-    MMR, ONE_MINUTE_MS, Profile, build_sweep, lev_target, liquidation_price,
+    MMR, ONE_MINUTE_MS, Profile, build_round2, build_sweep, lev_target, liquidation_price,
     resample, run_portfolio, simulate_exit, size_trade,
 )
 
@@ -249,3 +249,35 @@ def test_sweep_has_baseline_and_grid():
     assert names[0].startswith("ATTUALE")
     assert len(names) == len(set(names)) and len(names) > 20
     assert len(build_sweep("legacy")) == 2
+
+
+def test_scaled_leverage_uses_profile_min_strength():
+    p = Profile(name="m", max_lev=30, min_lev=2, lev_mode="scaled", min_strength=70)
+    assert lev_target(p, 70) == 2
+    assert lev_target(p, 110) == 30
+    assert lev_target(p, 90) == 16
+
+
+def test_min_strength_skips_weak_signals_without_blocking_the_symbol():
+    candles = {"A": bars(flat(1) + [(100, 100.8, 99.99, 100.7)] + flat(30, 100.7))}
+    p = Profile(name="sel", min_strength=70)
+    weak = _sig("A", 0, ONE_MINUTE_MS, strength=60)
+    strong = _sig("A", 0, ONE_MINUTE_MS + 1, strength=90)
+    r = _run(p, [weak, strong], candles)
+    assert r["trades"] == 1
+    assert r["skips"].get("forza_insufficiente") == 1
+    assert "simbolo_gia_aperto" not in r["skips"]
+
+
+def test_stats_by_type():
+    candles = {"A": bars(flat(1) + [(100, 100.8, 99.99, 100.7)] + flat(30, 100.7))}
+    r = _run(LEGACY, [_sig("A", 0, ONE_MINUTE_MS)], candles)
+    assert r["by_type"]["scalp"]["n"] == 1 and r["by_type"]["scalp"]["net"] > 0
+
+
+def test_round2_sweep_shape():
+    ps = build_round2()
+    names = [p.name for p in ps]
+    assert len(ps) == 60 and len(set(names)) == 60
+    assert any(p.sl_scale == 8.0 and p.min_strength == 90 for p in ps)
+    assert sum(1 for p in ps if p.name.startswith("ATT")) == 15

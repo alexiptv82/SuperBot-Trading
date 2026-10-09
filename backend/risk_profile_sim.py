@@ -50,6 +50,8 @@ Profilo di rischio (parametri)
                       di liquidazione, altrimenti la leva viene ABBASSATA
                       automaticamente (0 = disattivato, come oggi)
   sl_scale            moltiplicatore della distanza di stop (1 = come oggi)
+  min_strength        forza minima del segnale per operare (50 = come oggi;
+                      piu' alta = meno operazioni, quindi meno commissioni)
 
 Uso (in locale servono ccxt+pandas; in CI vedi .github/workflows/risk-sim.yml)
 ------------------------------------------------------------------------------
@@ -96,13 +98,15 @@ class Profile:
     margin_exp: float = 1.0
     liq_safety: float = 0.0
     sl_scale: float = 1.0
+    min_strength: int = 50         # il profilo opera solo su segnali con forza >= min_strength
 
 
 def lev_target(profile: Profile, strength: float) -> int:
     if profile.lev_mode == "legacy":
         # identico a risk_manager: max(min(int(forza/10), MAX), 2)
         return max(min(int(strength / 10), profile.max_lev), profile.min_lev)
-    t = (strength - 50.0) / 60.0          # forza del segnale: 50 (soglia) .. 110 (max)
+    lo = float(max(profile.min_strength, 50))   # forza del segnale: soglia del profilo .. 110 (max)
+    t = (strength - lo) / (110.0 - lo) if 110.0 > lo else 1.0
     t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
     lev = int(round(profile.min_lev + t * (profile.max_lev - profile.min_lev)))
     return max(profile.min_lev, min(profile.max_lev, lev))
@@ -280,6 +284,9 @@ def run_portfolio(
     for sig in sorted(signals, key=lambda s: (s["ts"], s["symbol"])):
         settle(sig["ts"])
         sym = sig["symbol"]
+        if sig["strength"] < profile.min_strength:
+            skips["forza_insufficiente"] += 1
+            continue
         if any(p["symbol"] == sym for p in open_pos):
             skips["simbolo_gia_aperto"] += 1
             continue
@@ -343,6 +350,12 @@ def _stats(profile, closed, initial_capital, final_capital, max_dd, skips, signa
     by_symbol: dict[str, float] = {}
     for t in closed:
         by_symbol[t["symbol"]] = by_symbol.get(t["symbol"], 0.0) + t["net"]
+    by_type: dict[str, dict] = {}
+    for t in closed:
+        d = by_type.setdefault(t["trade_type"], {"n": 0, "net": 0.0, "gross": 0.0})
+        d["n"] += 1
+        d["net"] += t["net"]
+        d["gross"] += t["gross"]
     # stabilita': rendimento netto nella prima e nella seconda meta' del periodo (per ingresso)
     half = [0.0, 0.0]
     if signals:
@@ -373,6 +386,8 @@ def _stats(profile, closed, initial_capital, final_capital, max_dd, skips, signa
         "half_1_pct": half[0] / initial_capital * 100.0,
         "half_2_pct": half[1] / initial_capital * 100.0,
         "by_symbol": {k: round(v, 2) for k, v in sorted(by_symbol.items())},
+        "by_type": {k: {"n": v["n"], "net": round(v["net"], 2), "gross": round(v["gross"], 2)}
+                    for k, v in sorted(by_type.items())},
         "skips": dict(skips),
     }
 
@@ -381,7 +396,30 @@ def _stats(profile, closed, initial_capital, final_capital, max_dd, skips, signa
 # Insiemi di profili da confrontare
 # ─────────────────────────────────────────────────────────────────────────────
 
+def build_round2() -> list[Profile]:
+    """Secondo giro: stop piu' larghi + soglia di forza + famiglie di leva.
+    ATT = formula attuale (leva legacy, tetto 20%, nessuna sicurezza di
+    liquidazione); A30* = leva fino a 30 autogestita (meno margine con piu'
+    leva, leva abbassata se lo stop e' vicino alla liquidazione) con tetti
+    d'esposizione crescenti."""
+    fams = [
+        ("ATT", dict()),
+        ("L30-cap20", dict(max_lev=30, lev_mode="scaled", margin_exp=0.5, cap_ref_pct=20.0, liq_safety=3.0)),
+        ("L30-cap50", dict(max_lev=30, lev_mode="scaled", margin_exp=0.5, cap_ref_pct=50.0, liq_safety=3.0)),
+        ("L30-cap100", dict(max_lev=30, lev_mode="scaled", margin_exp=0.5, cap_ref_pct=100.0, liq_safety=3.0)),
+    ]
+    out = []
+    for sl_scale in (1.0, 2.0, 3.0, 5.0, 8.0):
+        for min_str in (50, 70, 90):
+            for fam, kw in fams:
+                out.append(Profile(name=f"{fam} sl{sl_scale:g}x forza>={min_str}",
+                                   sl_scale=sl_scale, min_strength=min_str, **kw))
+    return out
+
+
 def build_sweep(kind: str) -> list[Profile]:
+    if kind == "round2":
+        return build_round2()
     base = [
         Profile(name="ATTUALE lev<=10 tetto20 sl1x"),
         Profile(name="ATTUALE lev<=10 tetto20 sl2x", sl_scale=2.0),
@@ -561,8 +599,13 @@ def format_row(r: dict) -> str:
             f"H1 {r['half_1_pct']:+7.2f} H2 {r['half_2_pct']:+7.2f}")
 
 
+NOTICE_LABEL = ""
+
+
 def notice(title: str, lines: list[str]) -> None:
     """Annotazione GitHub Actions (leggibile anche senza scaricare i log)."""
+    if NOTICE_LABEL:
+        title = f"[{NOTICE_LABEL}] {title}"
     msg = "%0A".join(line.replace("%", "%25").replace("\r", "").replace("\n", " ") for line in lines)
     print(f"::notice title={title}::{msg}")
 
@@ -574,28 +617,29 @@ def print_report(results: list[dict], scenario: str, annotate: bool) -> None:
         print(format_row(r))
     if not annotate:
         return
-    top = ranked[:10]
-    legacy = [r for r in ranked if r["name"].startswith("ATTUALE")]
-    bottom = ranked[-3:]
+    solid = [r for r in ranked if r["trades"] >= 100]          # sotto 100 operazioni e' rumore
+    top = solid[:12]
+    legacy = [r for r in ranked if r["name"].startswith("ATT")]
     shown, seen = [], set()
-    for r in top + legacy + bottom:
+    for r in top + legacy[:3]:
         if r["name"] not in seen:
             seen.add(r["name"])
             shown.append(r)
-    notice(f"Classifica {scenario} (top10 + attuale + peggiori)", [format_row(r) for r in shown])
-    best = ranked[0]
-    notice(f"Dettaglio migliore {scenario}", [
-        f"{best['name']}: per simbolo (USDT netti) {json.dumps(best['by_symbol'])}",
-        f"uscite: SL {best['sl']} TP {best['tp']} timeout {best['timeout']} liquidazioni {best['liquidations']}",
-        f"operazioni saltate: {json.dumps(best['skips'])}",
-    ])
-    base = legacy[0] if legacy else None
-    if base:
-        notice(f"Dettaglio ATTUALE {scenario}", [
-            f"{base['name']}: per simbolo (USDT netti) {json.dumps(base['by_symbol'])}",
-            f"uscite: SL {base['sl']} TP {base['tp']} timeout {base['timeout']} liquidazioni {base['liquidations']}",
-            f"operazioni saltate: {json.dumps(base['skips'])}",
-        ])
+    positive = sum(1 for r in solid if r["return_pct"] > 0)
+    notice(f"Classifica {scenario} (top12 con >=100 operazioni + ATTUALE; {positive}/{len(solid)} in positivo)",
+           [format_row(r) for r in shown])
+
+    def detail(r: dict) -> list[str]:
+        return [
+            f"{r['name']}: per simbolo (USDT netti) {json.dumps(r['by_symbol'])}",
+            f"per tipo {json.dumps(r['by_type'])}",
+            f"uscite: SL {r['sl']} TP {r['tp']} timeout {r['timeout']} liquidazioni {r['liquidations']}",
+            f"operazioni saltate: {json.dumps(r['skips'])}",
+        ]
+    if solid:
+        notice(f"Dettaglio migliore {scenario}", detail(solid[0]))
+    if legacy:
+        notice(f"Dettaglio ATTUALE {scenario}", detail(legacy[0]))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -614,11 +658,14 @@ def main() -> None:
     ap.add_argument("--capital", type=float, default=1000.0)
     ap.add_argument("--max-open", type=int, default=3)
     ap.add_argument("--max-daily-loss", type=float, default=5.0)
-    ap.add_argument("--sweep", default="standard", choices=["standard", "legacy"])
+    ap.add_argument("--sweep", default="standard", choices=["standard", "legacy", "round2"])
     ap.add_argument("--cache-dir", default="")
     ap.add_argument("--out", default="risk_sim_results.json")
     ap.add_argument("--annotate", action="store_true", help="stampa annotazioni GitHub Actions")
+    ap.add_argument("--label", default="", help="prefisso dei titoli delle annotazioni")
     args = ap.parse_args()
+    global NOTICE_LABEL
+    NOTICE_LABEL = args.label
 
     symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
     end_ms = None
