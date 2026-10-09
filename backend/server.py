@@ -31,6 +31,17 @@ from risk_settings import RISK_BOUNDS, load_overrides, save_overrides
 from auth import (
     create_session_token,
     require_session,
+    require_change_session,
+    init_auth,
+    password_login_available,
+    authenticate_password,
+    session_state_after_biometric,
+    change_password,
+    reset_password,
+    password_status,
+    check_login_allowed,
+    register_failure,
+    register_success,
     get_all_credentials,
     get_credential_by_id,
     save_credential,
@@ -54,6 +65,10 @@ WEBAUTHN_USER_ID = b"superbot-owner"
 class LoginRequest(BaseModel):
     password: str
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
 class RiskConfigUpdate(BaseModel):
     max_leverage: float
     max_daily_loss_percent: float
@@ -71,13 +86,55 @@ class WebAuthnLoginVerifyRequest(BaseModel):
 
 # ── Autenticazione ───────────────────────────────────────────────────────────
 
+def _login_response(state: str) -> dict:
+    """state: 'ok' | 'first_login' | 'expired'. Se la password va cambiata
+    si rilascia solo il token limitato, che apre solo /api/auth/change-password."""
+    if state == 'ok':
+        return {'success': True, 'token': create_session_token('full'), 'must_change': None}
+    return {'success': True, 'token': create_session_token('change_only'), 'must_change': state}
+
+
 @app.post('/api/auth/login')
 async def login(req: LoginRequest):
     """Login con password. Restituisce un token di sessione da usare come
-    header `Authorization: Bearer <token>` su tutte le altre chiamate."""
-    if req.password != config.DASHBOARD_PASSWORD:
+    header `Authorization: Bearer <token>` su tutte le altre chiamate. Al
+    primo accesso (password iniziale) o a password scaduta restituisce un
+    token limitato e `must_change`: il frontend deve far cambiare la password."""
+    check_login_allowed()
+    if not password_login_available():
+        raise HTTPException(status_code=503, detail='Password iniziale non configurata sul server')
+    state = authenticate_password(req.password)
+    if state is None:
+        register_failure()
+        await asyncio.sleep(0.8)  # rallenta chi prova a indovinare
+        bot._log('auth_failed', message='Tentativo di login con password errata')
         raise HTTPException(status_code=401, detail='Password errata')
-    return {'success': True, 'token': create_session_token()}
+    register_success()
+    return _login_response(state)
+
+
+@app.post('/api/auth/change-password')
+async def change_password_endpoint(body: ChangePasswordRequest, session=Depends(require_change_session)):
+    """Cambia la password (serve quella attuale, o quella iniziale al primo
+    accesso). Salva solo l'hash, invalida tutte le sessioni precedenti e
+    restituisce un nuovo token completo."""
+    check_login_allowed()
+    try:
+        change_password(body.old_password, body.new_password)
+    except HTTPException as e:
+        if e.status_code == 401:
+            register_failure()
+            await asyncio.sleep(0.8)
+        raise
+    register_success()
+    bot._log('auth_change', message='Password dashboard cambiata')
+    return {'success': True, 'token': create_session_token('full'), 'password_status': password_status()}
+
+
+@app.get('/api/auth/password-status')
+async def password_status_endpoint(session=Depends(require_session)):
+    """Giorni rimasti alla scadenza della password, per il banner di avviso."""
+    return password_status()
 
 
 @app.get('/api/auth/webauthn/status')
@@ -197,7 +254,7 @@ async def webauthn_login_verify(
         raise HTTPException(status_code=400, detail=f'Verifica fallita: {e}')
 
     update_sign_count(db, credential_id, verification.new_sign_count)
-    return {'success': True, 'token': create_session_token()}
+    return _login_response(session_state_after_biometric())
 
 
 # ── Endpoint bot/trading (tutti protetti da sessione) ───────────────────────
@@ -370,11 +427,22 @@ notifier.register_command('status', _cmd_status)
 notifier.register_command('closeall', _cmd_closeall)
 
 
+async def _cmd_resetpassword() -> str:
+    reset_password()
+    bot._log('auth_reset', message='Password dashboard resettata da comando Telegram')
+    return ("🔑 Password della dashboard resettata. Tutte le sessioni sono state chiuse.\n"
+            "Accedi con la password iniziale (GitHub Secret DASHBOARD_PASSWORD) "
+            "e scegline una nuova.")
+
+notifier.register_command('resetpassword', _cmd_resetpassword)
+
+
 @app.on_event('startup')
 async def _on_startup():
     # Riapplica gli override di rischio salvati dall'app (sopravvivono a
     # riavvii e redeploy perche' stanno nel DB, non in .env).
     load_overrides()
+    init_auth()
     # Il listener dei comandi Telegram parte sempre, a prescindere dal bot --
     # è l'unico modo per cui /resume possa funzionare se il bot è fermo o il
     # processo è appena stato riavviato.

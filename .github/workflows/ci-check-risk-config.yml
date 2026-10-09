@@ -11,27 +11,14 @@ jobs:
         with: { python-version: "3.11" }
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
-      - name: Backend import + test risk_settings con SQLite reale
+      - name: Test auth (pytest, SQLite reale)
         working-directory: backend
         run: |
-          pip install -q sqlalchemy==2.0.28 python-dotenv fastapi==0.110.0 pydantic
-          cat > /tmp/t.py <<'PY'
-          import os; os.environ['DB_PATH']='/tmp/t.db'
-          from database import init_db, SessionLocal, RiskSettings
-          from config import config
-          import risk_settings as rs
-          init_db()
-          assert rs.load_overrides()=={}
-          rs.save_overrides({'max_leverage':4,'max_daily_loss_percent':2.5,'max_open_positions':2})
-          config.MAX_LEVERAGE, config.MAX_DAILY_LOSS_PERCENT, config.MAX_OPEN_POSITIONS = 10, 5.0, 3
-          print(rs.load_overrides())
-          assert (config.MAX_LEVERAGE, config.MAX_DAILY_LOSS_PERCENT, config.MAX_OPEN_POSITIONS)==(4,2.5,2)
-          try: rs.save_overrides({'max_leverage':99,'max_daily_loss_percent':2.5,'max_open_positions':2}); raise SystemExit('FAIL')
-          except ValueError: pass
-          assert config.MAX_LEVERAGE==4
-          print('::notice title=risk_settings SQLite reale::OK')
-          PY
-          PYTHONPATH=. python /tmp/t.py 2>&1 | tail -15 ; test ${PIPESTATUS[0]} -eq 0
+          pip install -q -r requirements.txt
+          python -m pytest tests/test_auth_flow.py -q -p no:cacheprovider 2>&1 | tail -40 > /tmp/pytest.out; RC=${PIPESTATUS[0]}
+          cat /tmp/pytest.out
+          SUMMARY=$(tail -3 /tmp/pytest.out | tr '\n' ' ')
+          if [ "$RC" -eq 0 ]; then echo "::notice title=pytest auth::${SUMMARY}"; else echo "::error title=pytest auth FALLITO::$(grep -E 'FAILED|Error|assert' /tmp/pytest.out | head -12 | tr '\n' ' | ')"; exit 1; fi
       - name: Build frontend
         working-directory: frontend
         run: |

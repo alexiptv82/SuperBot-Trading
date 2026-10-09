@@ -8,7 +8,8 @@ const API = axios.create({
 // Allega il token di sessione a ogni richiesta, se presente.
 API.interceptors.request.use((cfg) => {
   const token = localStorage.getItem('sb_token');
-  if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  // Non sovrascrive un token passato esplicitamente (es. quello limitato del cambio password).
+  if (token && !cfg.headers.Authorization) cfg.headers.Authorization = `Bearer ${token}`;
   return cfg;
 });
 
@@ -16,7 +17,10 @@ API.interceptors.request.use((cfg) => {
 API.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err?.response?.status === 401) {
+    // Un 401 da login/cambio password significa "password errata", non "sessione scaduta".
+    const url = err?.config?.url || '';
+    const isAuthForm = url.includes('/api/auth/login') || url.includes('/api/auth/change-password');
+    if (err?.response?.status === 401 && !isAuthForm) {
       localStorage.removeItem('sb_token');
       if (window.location.pathname !== '/') window.location.href = '/';
     }
@@ -37,6 +41,10 @@ export const botAPI = {
   getPerformance: () => API.get('/api/performance'),
   getLogs: () => API.get('/api/logs?limit=50'),
   login: (password) => API.post('/api/auth/login', { password }),
+  changePassword: (old_password, new_password, token) =>
+    API.post('/api/auth/change-password', { old_password, new_password },
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined),
+  passwordStatus: () => API.get('/api/auth/password-status'),
   health: () => API.get('/api/health'),
   webauthnStatus: () => API.get('/api/auth/webauthn/status'),
   webauthnRegisterOptions: () => API.post('/api/auth/webauthn/register/options'),

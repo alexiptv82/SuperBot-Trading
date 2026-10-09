@@ -1,6 +1,21 @@
+import base64
 import os
 from dotenv import load_dotenv
 load_dotenv()
+
+
+def _bootstrap_password() -> str:
+    """Password iniziale (solo per il primo accesso: l'app obbliga a cambiarla).
+    Il deploy la passa in base64 (DASHBOARD_PASSWORD_B64) cosi' qualunque
+    carattere sopravvive al file .env. Nessun valore di default: se manca,
+    il primo accesso con password non e' possibile."""
+    b64 = os.getenv('DASHBOARD_PASSWORD_B64', '')
+    if b64:
+        try:
+            return base64.b64decode(b64).decode()
+        except Exception:
+            return ''
+    return os.getenv('DASHBOARD_PASSWORD', '')
 
 class Config:
     BITGET_API_KEY = os.getenv('BITGET_API_KEY', '')
@@ -15,8 +30,9 @@ class Config:
     TRADING_PAIRS_RAW = os.getenv('TRADING_PAIRS', 'BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT')
     TRADING_PAIRS = [p.strip() for p in TRADING_PAIRS_RAW.split(',')]
     BACKEND_PORT = int(os.getenv('BACKEND_PORT', '8002'))
-    DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', 'superbot2024')
-    SECRET_KEY = os.getenv('SECRET_KEY', 'superbot-secret-key')
+    DASHBOARD_PASSWORD = _bootstrap_password()
+    # La chiave di firma dei token NON e' piu' qui: viene generata a caso e
+    # salvata nel DB (vedi auth.py).
     DB_PATH = os.getenv('DB_PATH', './data/superbot.db')
     # Session tokens
     JWT_EXPIRE_HOURS = int(os.getenv('JWT_EXPIRE_HOURS', '720'))  # 30 giorni di default

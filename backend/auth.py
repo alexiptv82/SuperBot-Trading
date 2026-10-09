@@ -1,26 +1,51 @@
 """Autenticazione per la dashboard SuperBot.
 
 Due vie per ottenere una sessione:
-  1. Password (config.DASHBOARD_PASSWORD) -- sempre disponibile, fallback.
+  1. Password -- al primo accesso vale la password iniziale (GitHub Secret
+     DASHBOARD_PASSWORD, arriva in config.DASHBOARD_PASSWORD) e l'app obbliga
+     subito a sceglierne una nuova. Quella nuova vive nel DB come hash scrypt
+     (mai in chiaro, mai in .env), quindi sopravvive a riavvii e redeploy.
+     Scade dopo PASSWORD_MAX_AGE_DAYS giorni: al login successivo bisogna
+     cambiarla (serve la vecchia).
   2. WebAuthn (impronta digitale / Face ID / PIN del dispositivo) -- richiede
      che il dispositivo abbia già una credenziale registrata (fatta una volta
-     sola, da dentro una sessione già autenticata via password) e richiede un
-     contesto sicuro (HTTPS + dominio reale, non IP via HTTP).
+     sola, da dentro una sessione già autenticata) e un contesto sicuro
+     (HTTPS + dominio reale).
 
-Entrambe le vie producono lo stesso tipo di sessione: un JWT firmato con
-config.SECRET_KEY, da passare come header `Authorization: Bearer <token>`
-su ogni chiamata successiva. Tutti gli endpoint /api/* tranne /api/auth/*
-e /api/health richiedono questo header (vedi require_session in server.py).
+Entrambe le vie producono un JWT, da passare come header
+`Authorization: Bearer <token>`. Due tipi ("scope"):
+  - "full": accesso completo a tutti gli endpoint /api/*.
+  - "change_only": rilasciato quando la password va cambiata (primo accesso o
+    scaduta); vale 15 minuti e apre SOLO /api/auth/change-password.
+
+La chiave di firma dei token NON sta nel codice né in .env: viene generata a
+caso al primo avvio e salvata nel DB. Ogni cambio password incrementa
+token_version e invalida tutte le sessioni precedenti.
 """
+import base64
+import hashlib
+import hmac
+import os
+import secrets
+import threading
 import time
+from datetime import datetime, timedelta, timezone
+
 import jwt
 from fastapi import Header, HTTPException
 from sqlalchemy import Column, Integer, String, DateTime, LargeBinary
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from datetime import datetime
 
 from config import config
 from database import Base, SessionLocal
+
+PASSWORD_MAX_AGE_DAYS = 60
+PASSWORD_WARN_DAYS = 7
+MIN_PASSWORD_LENGTH = 10
+MAX_PASSWORD_LENGTH = 128
+CHANGE_TOKEN_MINUTES = 15
+_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2 ** 14, 8, 1
 
 
 class WebAuthnCredential(Base):
@@ -39,33 +64,262 @@ class WebAuthnCredential(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class AuthSettings(Base):
+    """Stato di autenticazione, riga unica (id=1)."""
+    __tablename__ = "auth_settings"
+    id = Column(Integer, primary_key=True)
+    password_hash = Column(String, nullable=True)        # NULL = ancora la password iniziale
+    password_changed_at = Column(DateTime, nullable=True)  # UTC naive
+    token_version = Column(Integer, nullable=False, default=0)
+    jwt_secret = Column(String, nullable=True)
+
+
+# ── Hash della password ─────────────────────────────────────────────────────
+
+def _b64(b: bytes) -> str:
+    return base64.b64encode(b).decode()
+
+
+def hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    dk = hashlib.scrypt(password.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
+    return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${_b64(salt)}${_b64(dk)}"
+
+
+def verify_password_hash(password: str, stored: str) -> bool:
+    try:
+        algo, n, r, p, salt_b64, dk_b64 = stored.split("$")
+        if algo != "scrypt":
+            return False
+        expected = base64.b64decode(dk_b64)
+        dk = hashlib.scrypt(password.encode(), salt=base64.b64decode(salt_b64),
+                            n=int(n), r=int(r), p=int(p), dklen=len(expected))
+        return hmac.compare_digest(dk, expected)
+    except Exception:
+        return False
+
+
+def _safe_equal(a: str, b: str) -> bool:
+    return hmac.compare_digest(a.encode(), b.encode())
+
+
+# ── Stato nel DB ────────────────────────────────────────────────────────────
+
+def _load_settings() -> dict:
+    """Legge (creando se manca) la riga di stato. Genera la chiave JWT al
+    primo uso."""
+    for _ in range(2):
+        db = SessionLocal()
+        try:
+            row = db.query(AuthSettings).filter(AuthSettings.id == 1).first()
+            if row is None:
+                row = AuthSettings(id=1, token_version=0)
+                db.add(row)
+            if not row.jwt_secret:
+                row.jwt_secret = secrets.token_urlsafe(48)
+            db.commit()
+            return {
+                "password_hash": row.password_hash,
+                "changed_at": row.password_changed_at,
+                "token_version": row.token_version or 0,
+                "jwt_secret": row.jwt_secret,
+            }
+        except IntegrityError:
+            db.rollback()  # due richieste hanno creato la riga insieme: rileggi
+        finally:
+            db.close()
+    raise RuntimeError("auth_settings non leggibile")
+
+
+def init_auth() -> None:
+    """All'avvio: assicura che riga e chiave JWT esistano."""
+    _load_settings()
+
+
+def _update_settings(**fields) -> None:
+    db = SessionLocal()
+    try:
+        row = db.query(AuthSettings).filter(AuthSettings.id == 1).first()
+        for k, v in fields.items():
+            setattr(row, k, v)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _expires_at(changed_at: datetime) -> datetime:
+    return changed_at + timedelta(days=PASSWORD_MAX_AGE_DAYS)
+
+
+def _is_expired(s: dict) -> bool:
+    return bool(s["changed_at"]) and datetime.utcnow() >= _expires_at(s["changed_at"])
+
+
+# ── Login con password ──────────────────────────────────────────────────────
+
+def password_login_available() -> bool:
+    s = _load_settings()
+    return bool(s["password_hash"]) or bool(config.DASHBOARD_PASSWORD)
+
+
+def authenticate_password(password: str):
+    """None se errata; altrimenti 'ok', 'first_login' (password iniziale: va
+    cambiata) o 'expired' (scaduta: va cambiata)."""
+    s = _load_settings()
+    if s["password_hash"]:
+        if not verify_password_hash(password, s["password_hash"]):
+            return None
+        return "expired" if _is_expired(s) else "ok"
+    boot = config.DASHBOARD_PASSWORD
+    if not boot or not _safe_equal(password, boot):
+        return None
+    return "first_login"
+
+
+def session_state_after_biometric() -> str:
+    """Stato da applicare a un login biometrico riuscito: se la password va
+    ancora cambiata, anche con l'impronta si passa dal cambio."""
+    s = _load_settings()
+    if not s["password_hash"]:
+        return "first_login"
+    return "expired" if _is_expired(s) else "ok"
+
+
+def validate_new_password(new: str, old: str) -> None:
+    if len(new) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"La nuova password deve avere almeno {MIN_PASSWORD_LENGTH} caratteri")
+    if len(new) > MAX_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"La nuova password può avere al massimo {MAX_PASSWORD_LENGTH} caratteri")
+    if _safe_equal(new, old):
+        raise HTTPException(status_code=400, detail="La nuova password deve essere diversa dall'attuale")
+    boot = config.DASHBOARD_PASSWORD
+    if (boot and _safe_equal(new, boot)) or "superbot2024" in new.lower():
+        raise HTTPException(status_code=400, detail="Scegli una password diversa da quella iniziale")
+    if len(set(new)) < 4:
+        raise HTTPException(status_code=400, detail="Password troppo semplice")
+
+
+def change_password(old_password: str, new_password: str) -> None:
+    """Verifica la password attuale (o iniziale), controlla la nuova, salva
+    l'hash e invalida tutte le sessioni esistenti."""
+    s = _load_settings()
+    if s["password_hash"]:
+        ok = verify_password_hash(old_password, s["password_hash"])
+    else:
+        boot = config.DASHBOARD_PASSWORD
+        ok = bool(boot) and _safe_equal(old_password, boot)
+    if not ok:
+        raise HTTPException(status_code=401, detail="Password attuale errata")
+    validate_new_password(new_password, old_password)
+    _update_settings(
+        password_hash=hash_password(new_password),
+        password_changed_at=datetime.utcnow(),
+        token_version=s["token_version"] + 1,
+    )
+
+
+def reset_password() -> None:
+    """Torna alla password iniziale (da GitHub Secret) e invalida le
+    sessioni. Usato dal comando Telegram /resetpassword."""
+    s = _load_settings()
+    _update_settings(password_hash=None, password_changed_at=None,
+                     token_version=s["token_version"] + 1)
+
+
+def password_status() -> dict:
+    s = _load_settings()
+    if not s["password_hash"] or not s["changed_at"]:
+        return {"set": False, "days_left": None, "warn": False, "expires_at": None}
+    expires = _expires_at(s["changed_at"])
+    days_left = max(0, -(-int((expires - datetime.utcnow()).total_seconds()) // 86400))
+    return {"set": True, "days_left": days_left, "warn": days_left <= PASSWORD_WARN_DAYS,
+            "expires_at": expires.replace(tzinfo=timezone.utc).isoformat()}
+
+
+# ── Limite ai tentativi di password ─────────────────────────────────────────
+# Globale e non per IP: l'app e' raggiungibile anche direttamente sulla porta
+# 8002 (non solo via nginx), quindi un IP letto da un header sarebbe
+# falsificabile. Il prezzo: chi tenta a raffica puo' bloccare il login con
+# password per qualche minuto -- l'impronta resta disponibile.
+_FAIL_WINDOW_S = 600
+_FAIL_MAX = 8
+_LOCK_S = 600
+_fail_lock = threading.Lock()
+_fail_times: list = []
+_locked_until = 0.0
+
+
+def check_login_allowed() -> None:
+    with _fail_lock:
+        remaining = _locked_until - time.time()
+    if remaining > 0:
+        raise HTTPException(status_code=429, detail=f"Troppi tentativi errati, riprova tra {int(remaining // 60) + 1} minuti")
+
+
+def register_failure() -> None:
+    global _locked_until
+    now = time.time()
+    with _fail_lock:
+        _fail_times[:] = [t for t in _fail_times if now - t < _FAIL_WINDOW_S]
+        _fail_times.append(now)
+        if len(_fail_times) >= _FAIL_MAX:
+            _locked_until = now + _LOCK_S
+            _fail_times.clear()
+
+
+def register_success() -> None:
+    with _fail_lock:
+        _fail_times.clear()
+
+
 # ── Sessioni (JWT) ──────────────────────────────────────────────────────────
 
-def create_session_token() -> str:
+def create_session_token(scope: str = "full") -> str:
+    s = _load_settings()
     now = int(time.time())
-    payload = {
-        "iat": now,
-        "exp": now + config.JWT_EXPIRE_HOURS * 3600,
-        "sub": "superbot-dashboard",
-    }
-    return jwt.encode(payload, config.SECRET_KEY, algorithm="HS256")
+    if scope == "change_only":
+        exp = now + CHANGE_TOKEN_MINUTES * 60
+    else:
+        exp = now + config.JWT_EXPIRE_HOURS * 3600
+        if s["changed_at"]:
+            # La sessione non puo' sopravvivere alla scadenza della password.
+            pwd_exp = int(_expires_at(s["changed_at"]).replace(tzinfo=timezone.utc).timestamp())
+            exp = min(exp, pwd_exp)
+    payload = {"iat": now, "exp": exp, "sub": "superbot-dashboard",
+               "scope": scope, "ver": s["token_version"]}
+    return jwt.encode(payload, s["jwt_secret"], algorithm="HS256")
 
 
-def _verify_token(token: str) -> dict:
+def _verify_token(token: str, allowed_scopes: tuple) -> dict:
+    s = _load_settings()
     try:
-        return jwt.decode(token, config.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(token, s["jwt_secret"], algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Sessione scaduta, accedi di nuovo")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Sessione non valida")
+    if payload.get("ver") != s["token_version"]:
+        raise HTTPException(status_code=401, detail="Sessione non più valida, accedi di nuovo")
+    if payload.get("scope") not in allowed_scopes:
+        raise HTTPException(status_code=403, detail="Prima devi cambiare la password")
+    return payload
+
+
+def _bearer(authorization) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Autenticazione richiesta")
+    return authorization.removeprefix("Bearer ").strip()
 
 
 async def require_session(authorization: str = Header(default=None)) -> dict:
-    """Dependency FastAPI: protegge un endpoint richiedendo un Bearer token valido."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Autenticazione richiesta")
-    token = authorization.removeprefix("Bearer ").strip()
-    return _verify_token(token)
+    """Dependency FastAPI: richiede un Bearer token valido con scope full."""
+    return _verify_token(_bearer(authorization), ("full",))
+
+
+async def require_change_session(authorization: str = Header(default=None)) -> dict:
+    """Come require_session ma accetta anche il token limitato 'change_only'
+    (usato solo da /api/auth/change-password)."""
+    return _verify_token(_bearer(authorization), ("full", "change_only"))
 
 
 # ── Helper per il DB delle credenziali WebAuthn ─────────────────────────────
