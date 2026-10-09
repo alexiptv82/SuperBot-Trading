@@ -18,12 +18,13 @@ from desk import brain, signals
 from desk.engine import Limits, PaperAccount
 from rule_pool import runner as rp
 
-SYMBOLS = ["BTC", "ETH", "SOL", "XRP", "BNB", "DOGE"]
+SYMBOLS = ["BTC", "ETH", "SOL", "XRP", "BNB", "DOGE", "LINK", "AVAX", "LTC", "ADA"]
 PAIR = "{}/USDT:USDT"
 M15, HOUR, DAY = rp.M15, 3_600_000, 86_400_000
 BACKFILL_DAYS = 45
-ENTRY_SCORE = 65                     # sotto questo punteggio un candidato non merita nemmeno la chiamata
-COOLDOWN_MS = 2 * HOUR
+ENTRY_SCORE = 50                     # sotto questo punteggio un candidato non merita nemmeno la chiamata
+RULES_ENTRY = 70                     # soglia d'ingresso della modalita' a sole regole
+COOLDOWN_MS = HOUR
 REVIEW_MS = HOUR
 REPORT_HOUR_UTC = 21
 RUN_OFFSET_MS = 30_000
@@ -136,9 +137,16 @@ def run_cycle(d: str, st: dict, store, fetch, now_ms: int, notify=None, call=bra
     slots = main.limits.max_open - len(main.positions)
     cands = [r for r in readings if r.symbol not in main.positions and r.side != 0 and r.score >= ENTRY_SCORE
              and st["cool"].get(r.symbol, 0) <= now_ms] if slots > 0 and not snap["halt"] else []
+    # scansione oraria: se ci sono posti liberi ma nessun candidato forte, Claude guarda comunque le 4 coppie migliori
+    scan = []
+    if slots > 0 and not cands and not snap["halt"] and now_ms - st.get("last_scan", 0) >= HOUR:
+        scan = sorted([r for r in readings if r.symbol not in main.positions and st["cool"].get(r.symbol, 0) <= now_ms],
+                      key=lambda r: -r.score)[:4]
     decisions, source, cost = [], "nessuna", 0.0
-    if due or cands:
-        view = [r for r in readings if r.symbol in due or r in cands]
+    if due or cands or scan:
+        if scan:
+            st["last_scan"] = now_ms
+        view = [r for r in readings if r.symbol in due or r in cands or r in scan]
         if brain.can_call(st, day):
             if now_ms - st["headlines"]["t"] > HOUR:
                 items = news()
@@ -158,7 +166,7 @@ def run_cycle(d: str, st: dict, store, fetch, now_ms: int, notify=None, call=bra
                 log(d, "decisions.jsonl", {"t": now_ms, "source": "errore", "error": str(exc)[:120]})
                 source = "errore"
         if source != "claude" and os.getenv("DESK_RULES_ONLY") == "1":
-            decisions = brain.rules_decisions(view, positions, set(main.positions), ENTRY_SCORE)
+            decisions = brain.rules_decisions(view, positions, set(main.positions), RULES_ENTRY)
             source = "regole"
         elif source != "claude":
             # senza Claude (chiave assente, tetto finito, errore): solo gestione del rischio, nessun nuovo ingresso

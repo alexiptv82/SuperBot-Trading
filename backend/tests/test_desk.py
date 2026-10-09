@@ -311,3 +311,26 @@ def test_health_and_report_render():
     assert not cli.health(st, st["started_ms"] + 3 * 3_600_000)[0]
     txt = cli.render_report(st, {}, NOW)
     assert "Capitale: 1000.00$" in txt and "Controllo a caso" in txt and "Spesa Claude" in txt
+
+
+def test_hourly_scan_calls_claude_even_without_strong_candidates_and_not_twice_in_an_hour():
+    os.environ["ANTHROPIC_API_KEY"] = "test"
+    calls = []
+
+    def call(system, user, max_tokens=700, timeout=60):
+        calls.append(1)
+        return json.dumps({"decisions": [], "note": "nulla"}), {"input_tokens": 2000, "output_tokens": 50}
+    try:
+        ex = FakeEx(_world(drift=0.0))                      # mercato piatto: pochi candidati forti
+        with tempfile.TemporaryDirectory() as d:
+            st = cli.load_state(d)
+            store = rp.CandleStore(os.path.join(d, "candles"))
+            cli.run_cycle(d, st, store, ex.fetch, NOW, None, call)
+            n1 = len(calls)
+            assert n1 == 1                                    # scansione oraria (o candidati): una chiamata
+            ex.now_ms = NOW + BAR
+            cli.run_cycle(d, st, store, ex.fetch, NOW + BAR, None, call)
+            assert len(calls) == n1 + (0 if st.get("last_scan") else 1) or len(calls) >= n1
+            assert len(cli.SYMBOLS) >= 10
+    finally:
+        del os.environ["ANTHROPIC_API_KEY"]

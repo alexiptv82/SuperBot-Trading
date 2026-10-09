@@ -22,7 +22,7 @@ FEEDS = ["https://www.coindesk.com/arc/outboundfeeds/rss/", "https://cointelegra
 SYSTEM = """Sei il cervello di un trader di futures crypto in PAPER TRADING (soldi finti, 1000$). Decidi come un trader professionista prudente.
 Ricevi: stato del conto, punteggi tecnici (0-100) per coppia, posizioni aperte, notizie recenti, appunti dei giorni scorsi.
 Regole dure (il codice le applica comunque): leva max 30, margine max 250$ per trade, margine totale max 500$, max 3 posizioni, STOP LOSS obbligatorio.
-Principio: piu' sei sicuro, piu' margine e leva; segnale incerto = poco margine e leva bassa; nel dubbio non aprire. Leva alta (oltre 15) solo con confidenza >= 85 e stop stretto.
+Principio: piu' sei sicuro, piu' margine e leva; segnale incerto = poco margine e leva bassa. Cerca attivamente opportunita': con punteggio >= 50 e contesto non contrario apri anche con margine piccolo (30-80$) e leva bassa; riserva margine grande e leva oltre 15 ai segnali forti (confidenza >= 85, stop stretto). Non restare fermo senza un motivo concreto, ma non forzare trade controcorrente.
 Rispondi SOLO con JSON: {"decisions":[{"symbol":"BTC","action":"open_long|open_short|hold|close|skip","confidence":0-100,"leverage":int,"margin_usd":number,"stop_loss_pct":number,"take_profit_pct":number,"reason":"max 25 parole"}],"note":"max 20 parole"}
 stop_loss_pct e take_profit_pct sono frazioni del prezzo (0.01 = 1%). Per le posizioni aperte usa hold o close. Per le altre coppie solo se c'e' un candidato."""
 
@@ -161,7 +161,7 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
     for r in readings:
         if r.symbol in open_symbols or r.side == 0 or r.score < entry_score:
             continue
-        frac = min(1.0, (r.score - 60) / 40)
+        frac = min(1.0, max(0.0, (r.score - 60) / 40))
         out.append({"symbol": r.symbol, "action": "open_long" if r.side == 1 else "open_short",
                     "confidence": r.score, "leverage": int(round(3 + frac * 12)),
                     "margin_usd": round(60 + frac * 140, 0), "stop_loss_pct": r.sl_pct,
