@@ -1,0 +1,52 @@
+name: Diagnosi login 3 (temporaneo, sola lettura)
+on:
+  push:
+    branches: [ci-check-risk-config]
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H 51.91.109.45 >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Diagnosi (nessun segreto viene stampato)
+        run: |
+          ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 root@51.91.109.45 'bash -s' <<'REMOTE'
+          set +e
+          note() { printf '::notice title=%s::%s\n' "$1" "$(echo "$2" | tr '\n' '|' | sed 's/::/: /g')"; }
+          note "ora server (UTC)" "$(date -u '+%F %T')"
+          note "main.js servito ora" "$(ls /opt/superbot/frontend/build/static/js/main.*.js | xargs -n1 basename)"
+
+          NG=$(grep -E '/api/auth/(login|change-password)' /var/log/nginx/access.log | sed -E 's/^[^ ]+ - [^ ]+ //' | cut -c1-120 | tail -20)
+          note "nginx: login e cambio password (senza IP)" "${NG:-nessuna chiamata}"
+          JS=$(grep -E 'GET /static/js/main\.' /var/log/nginx/access.log | sed -E 's/^[^ ]+ - [^ ]+ //' | grep -o '\[[^]]*\] "GET /static/js/main\.[a-z0-9]*\.js HTTP/1.1" [0-9]*' | tail -6)
+          note "nginx: ultimi main.js richiesti dai browser" "${JS:-nessuno}"
+
+          RES=$(python3 - <<'PY'
+          import os, sqlite3
+          out = []
+          env = {}
+          for line in open('/opt/superbot/backend/.env', errors='replace'):
+              if '=' in line:
+                  k, v = line.rstrip('\n').split('=', 1)
+                  env[k] = v
+          out.append('Telegram in .env: token_presente=%s chat_id_presente=%s' % (bool(env.get('TELEGRAM_BOT_TOKEN')), bool(env.get('TELEGRAM_CHAT_ID'))))
+          con = sqlite3.connect('file:/opt/superbot/data/superbot.db?mode=ro', uri=True)
+          row = con.execute('select password_hash is not null, password_changed_at, token_version from auth_settings where id=1').fetchone()
+          out.append('auth_settings: hash_impostato=%s cambiata_il=%s token_version=%s' % row)
+          for ts, ev, msg in con.execute("select timestamp, event_type, message from audit_log where event_type like 'auth%' order by id desc limit 10"):
+              out.append('audit: %s %s %s' % (str(ts)[:19], ev, msg))
+          print('\n'.join(out))
+          PY
+          )
+          note "Stato nel DB" "$RES"
+
+          UV=$(docker logs --since 4h superbot 2>&1 | grep -E 'api/auth/(login|change-password)' | sed -E 's/[0-9a-fA-F.:]+:[0-9]+ - //' | tail -10)
+          note "container: login e cambio password" "${UV:-nessuna}"
+          TG=$(docker logs --since 1h superbot 2>&1 | grep -i telegram | sed -E 's/bot[0-9]+:[A-Za-z0-9_-]+/bot***/g' | cut -c1-170 | tail -4)
+          note "container: righe Telegram (token mascherato)" "${TG:-nessuna}"
+          note "Container" "$(docker ps --filter name=^superbot$ --format '{{.Names}} {{.Status}}')"
+          REMOTE
