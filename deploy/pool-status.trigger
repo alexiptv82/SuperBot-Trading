@@ -1,1 +1,1 @@
-stato 5 (dopo salto buchi)
+stato 6 (confronto V1)
