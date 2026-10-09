@@ -22,8 +22,16 @@ Regole fissate PRIMA di guardare i risultati:
   * se la storia del funding non copre un periodo, il test dichiara "non testabile"
     invece di giudicare su una finestra diversa da quella fissata.
 
-Limiti dichiarati: solo coppie ancora quotate; funding storico dall'API pubblica
-(copertura da verificare); liquidita' degli short su altcoin piccole; nessuno stop.
+DEVIAZIONE DICHIARATA: l'API pubblica di BitGet conserva solo ~90 giorni di storico
+del funding (verificato: da luglio 2026), quindi il test fissato non e' eseguibile con
+i tassi di BitGet. Si usa come PROXY lo storico del funding dei perpetual USDT-M di
+Binance (archivio pubblico data.binance.vision, mensile, dal 2019-09) per le coppie con
+lo stesso simbolo base (anche 1000X): sia per il segnale sia per il funding maturato.
+I tassi dei due exchange sono ancorati allo stesso premio sull'indice ma non uguali:
+un eventuale risultato andra' riconfermato con i tassi di BitGet in avanti.
+
+Limiti dichiarati: solo coppie ancora quotate e presenti anche su Binance; liquidita'
+degli short su altcoin piccole; nessuno stop; funding BitGet reale non misurato.
 """
 from __future__ import annotations
 
@@ -98,6 +106,97 @@ def load_funding(symbols: list, cache_dir: str, end_ms: int, workers: int = 5):
                 out[s] = f.result()
             except Exception as exc:  # noqa: BLE001
                 failed[s] = str(exc)[:100]
+    return out, failed
+
+
+# ------------------------------------------------- archivio pubblico (proxy)
+VISION = "https://data.binance.vision/data/futures/um/monthly/fundingRate"
+
+
+def vision_candidates(symbol: str) -> list:
+    base = symbol.split("/")[0]
+    return [f"{base}USDT", f"1000{base}USDT"]
+
+
+def parse_vision_csv(text: str) -> list:
+    rows = []
+    for line in text.splitlines():
+        parts = line.strip().split(",")
+        if len(parts) < 3:
+            continue
+        try:
+            rows.append((int(parts[0]), float(parts[2])))
+        except ValueError:
+            continue                                     # intestazione
+    return rows
+
+
+def months(start_ms: int, end_ms: int) -> list:
+    d0 = datetime.fromtimestamp(start_ms / 1000, timezone.utc)
+    d1 = datetime.fromtimestamp(end_ms / 1000, timezone.utc)
+    out, y, m = [], d0.year, d0.month
+    while (y, m) <= (d1.year, d1.month):
+        out.append(f"{y}-{m:02d}")
+        m += 1
+        if m == 13:
+            y, m = y + 1, 1
+    return out
+
+
+def http_zip(url: str):
+    import io
+    import urllib.request
+    import zipfile
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                z = zipfile.ZipFile(io.BytesIO(r.read()))
+                return z.read(z.namelist()[0]).decode()
+        except Exception as e:  # noqa: BLE001
+            if getattr(e, "code", None) == 404:
+                return None
+            time.sleep(1 + attempt)
+    raise RuntimeError(f"download fallito: {url}")
+
+
+def fetch_funding_vision(symbol: str, end_ms: int, cache_dir: str, getter=http_zip) -> np.ndarray:
+    name = symbol.split("/")[0]
+    path = os.path.join(cache_dir, f"{name}_fundvis_{end_ms}.npy")
+    if os.path.exists(path):
+        return np.load(path)
+    all_months = months(sl.DATA_START, end_ms - 31 * 86_400_000)      # solo mesi interi gia' chiusi
+    chosen = None
+    for cand in vision_candidates(symbol):
+        if any(getter(f"{VISION}/{cand}/{cand}-fundingRate-{ym}.zip") is not None for ym in all_months[-3:]):
+            chosen = cand
+            break
+    rows = []
+    if chosen:
+        for ym in all_months:
+            text = getter(f"{VISION}/{chosen}/{chosen}-fundingRate-{ym}.zip")
+            if text:
+                rows.extend(parse_vision_csv(text))
+    arr = np.array(sorted(set(rows)), dtype=float).reshape(-1, 2)
+    arr = arr[arr[:, 0] < end_ms] if len(arr) else arr
+    np.save(path, arr)
+    return arr
+
+
+def load_funding_vision(symbols: list, cache_dir: str, end_ms: int, workers: int = 8):
+    out, failed = {}, {}
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(fetch_funding_vision, s, end_ms, cache_dir): s for s in symbols}
+        for f in as_completed(futs):
+            s = futs[f]
+            try:
+                arr = f.result()
+                if len(arr) >= 30:
+                    out[s] = arr
+                else:
+                    failed[s] = "assente su Binance"
+            except Exception as exc:  # noqa: BLE001
+                failed[s] = str(exc)[:80]
     return out, failed
 
 
@@ -213,16 +312,21 @@ def run(args) -> dict:
     if len(raw) < 0.8 * len(universe):
         raise RuntimeError("troppe coppie di prezzo non scaricate")
     O, C, d0 = cs.build_panel(frames, symbols)
-    fund, ffailed = load_funding(symbols, args.cache_dir, sl.DATA_END, args.workers)
+    if args.source == "vision":
+        fund, ffailed = load_funding_vision(symbols, args.cache_dir, sl.DATA_END, 8)
+        symbols = [x for x in symbols if x in fund]                    # solo coppie con funding noto
+        O, C, d0 = cs.build_panel({x: frames[x] for x in symbols}, symbols)
+    else:
+        fund, ffailed = load_funding(symbols, args.cache_dir, sl.DATA_END, args.workers)
     lines: dict = {}
 
     def add(title, text):
         print(text, flush=True)
         lines.setdefault(title, []).append(text[:230])
 
-    add("Copertura", f"{len(symbols)} coppie con prezzi; funding scaricato per {len(fund)}, fallito per {len(ffailed)}"
-                     + (": " + ", ".join(list(ffailed)[:4]) if ffailed else ""))
-    if len(fund) < 0.8 * len(symbols):
+    add("Copertura", f"sorgente funding={args.source}; coppie con prezzi e funding: {len(symbols)}; senza funding: {len(ffailed)}"
+                     + (": " + ", ".join(x.split('/')[0] for x in list(ffailed)[:12]) if ffailed else ""))
+    if len(symbols) < cs.MIN_NAMES:
         raise RuntimeError("funding disponibile per troppe poche coppie")
     cov = []
     for s in symbols:
@@ -297,6 +401,7 @@ def main() -> None:
     ap.add_argument("--out", default="funding_results.json")
     ap.add_argument("--top-n", type=int, default=bl.TOP_N)
     ap.add_argument("--workers", type=int, default=5)
+    ap.add_argument("--source", choices=("vision", "bitget"), default="vision")
     ap.add_argument("--annotate", action="store_true")
     run(ap.parse_args())
 

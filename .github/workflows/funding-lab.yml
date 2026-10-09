@@ -52,7 +52,7 @@ jobs:
         run: |
           set -o pipefail
           ls breadth_cache 2>/dev/null | wc -l
-          python -u funding_lab.py --cache-dir breadth_cache --out funding_results.json \
+          python -u funding_lab.py --source vision --cache-dir breadth_cache --out funding_results.json \
             --annotate 2>&1 | tee funding_output.log
 
       - name: Salva cache

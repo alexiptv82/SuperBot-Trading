@@ -133,7 +133,71 @@ def test_end_to_end_with_cached_synthetic_data(tmp_path):
         pass
     a = A()
     a.cache_dir, a.out, a.top_n, a.workers, a.annotate = cache, os.path.join(cache, "o.json"), 80, 2, False
+    a.source = "bitget"
     res = fl.run(a)
     assert set(res) == {"F7", "F30"}
     assert not any(r["checks"]["pass"] for r in res.values())          # funding casuale, prezzi casuali
     assert all(r["overall"]["weeks"] > 200 for r in res.values())
+
+
+def test_parse_vision_csv_skips_header_and_bad_lines():
+    text = "calc_time,funding_interval_hours,last_funding_rate\n1577836800000,8,-0.00012359\nxx,8,1\n1577865600000,8,0.0001\n"
+    assert fl.parse_vision_csv(text) == [(1577836800000, -0.00012359), (1577865600000, 0.0001)]
+
+
+def test_months_range_and_symbol_candidates():
+    m = fl.months(sl.ms(2019, 10, 1), sl.ms(2020, 2, 15))
+    assert m == ["2019-10", "2019-11", "2019-12", "2020-01", "2020-02"]
+    assert fl.vision_candidates("PEPE/USDT:USDT") == ["PEPEUSDT", "1000PEPEUSDT"]
+
+
+def test_fetch_funding_vision_uses_scaled_symbol_and_skips_missing_months(tmp_path):
+    seen = []
+
+    def getter(url):
+        seen.append(url)
+        if "/1000PEPEUSDT/" not in url:
+            return None                                             # PEPEUSDT non esiste, 1000PEPEUSDT si'
+        ym = url.rsplit("-fundingRate-", 1)[1][:7]
+        if ym < "2023-05":
+            return None                                             # non ancora quotato
+        y, m = int(ym[:4]), int(ym[5:7])
+        t0 = sl.ms(y, m, 1)
+        return "calc_time,funding_interval_hours,last_funding_rate\n" + "\n".join(
+            f"{t0 + k * 8 * 3_600_000},8,0.0001" for k in range(3))
+
+    arr = fl.fetch_funding_vision("PEPE/USDT:USDT", sl.DATA_END, str(tmp_path), getter=getter)
+    assert len(arr) == 3 * len(fl.months(sl.ms(2023, 5, 1), sl.DATA_END - 31 * 86_400_000))
+    assert (np.diff(arr[:, 0]) > 0).all() and arr[0, 0] == sl.ms(2023, 5, 1)
+    assert any("/PEPEUSDT/" in u for u in seen) and any("/1000PEPEUSDT/" in u for u in seen)
+    absent = fl.fetch_funding_vision("ZZZ/USDT:USDT", sl.DATA_END, str(tmp_path), getter=lambda u: None)
+    assert len(absent) == 0
+
+
+def test_end_to_end_vision_source_drops_pairs_without_funding(tmp_path):
+    cache = str(tmp_path)
+    syms = [f"S{i}/USDT:USDT" for i in range(24)]
+    json.dump(syms, open(os.path.join(cache, "universe.json"), "w"))
+    n = (sl.DATA_END - sl.DATA_START) // sl.H1
+    for i, s in enumerate(syms):
+        rng = np.random.default_rng(500 + i)
+        c = 100 * np.exp(np.cumsum(rng.normal(0, 0.004, n)))
+        o = np.r_[100.0, c[:-1]]
+        t = sl.DATA_START + np.arange(n) * sl.H1
+        name = s.split("/")[0]
+        np.save(os.path.join(cache, f"{name}_1h_{sl.DATA_END}.npy"),
+                np.column_stack([t, o, np.maximum(o, c), np.minimum(o, c), c, np.ones(n)]))
+        if i < 22:                                                  # due coppie senza funding su Binance
+            ts = np.arange(sl.DATA_START, sl.DATA_END, H8)
+            np.save(os.path.join(cache, f"{name}_fundvis_{sl.DATA_END}.npy"),
+                    np.column_stack([ts, rng.normal(1e-4, 5e-5, len(ts))]))
+        else:
+            np.save(os.path.join(cache, f"{name}_fundvis_{sl.DATA_END}.npy"), np.zeros((0, 2)))
+
+    class A:
+        pass
+    a = A()
+    a.cache_dir, a.out, a.top_n, a.workers, a.annotate, a.source = cache, os.path.join(cache, "o.json"), 80, 2, False, "vision"
+    res = fl.run(a)
+    assert len(json.load(open(a.out))["symbols"]) == 22
+    assert not any(r["checks"]["pass"] for r in res.values())
