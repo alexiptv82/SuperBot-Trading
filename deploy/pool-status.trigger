@@ -1,1 +1,1 @@
-stato 4 (diagnosi candele)
+stato 5 (dopo salto buchi)
