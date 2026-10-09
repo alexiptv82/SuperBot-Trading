@@ -42,7 +42,7 @@ jobs:
         # Due finestre di mercato NON sovrapposte: le ultime ~30 giorni e le
         # ~30 precedenti (robustezza: un risultato buono in una sola finestra
         # puo' essere fortuna).
-        offset_days: [30]
+        offset_days: [0, 30]
     defaults:
       run:
         working-directory: backend
@@ -72,7 +72,7 @@ jobs:
             --stride "${{ inputs.stride || '5' }}" \
             --offset-days "${{ matrix.offset_days }}" \
             --scenarios "${{ inputs.scenarios || '6:2,3:1,0:0' }}" \
-            --sweep legacy \
+            --sweep round2 \
             --label "finestra-${{ matrix.offset_days }}gg" \
             --cache-dir cache \
             --out risk_sim_results.json \

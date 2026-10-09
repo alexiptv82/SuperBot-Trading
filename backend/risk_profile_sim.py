@@ -443,7 +443,10 @@ def build_sweep(kind: str) -> list[Profile]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def fetch_1m_history(symbol: str, total_candles: int, end_ms: Optional[int] = None,
-                     batch_limit: int = 1000) -> list:
+                     batch_limit: int = 200) -> list:
+    # batch_limit=200: l'endpoint storico di BitGet restituisce al massimo 200
+    # candele per chiamata; con limit=1000 ccxt chiede una finestra di 1000
+    # minuti e se ne vedono solo le ultime 200 (buchi da ~800 minuti).
     import ccxt  # import locale: i test del simulatore non richiedono ccxt
     client = ccxt.bitget({"enableRateLimit": True, "options": {"defaultType": "swap"}})
     end_ms = end_ms if end_ms is not None else client.milliseconds()
