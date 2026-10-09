@@ -1,7 +1,17 @@
 import axios from 'axios';
 
+// REACT_APP_BACKEND_URL impostata ma VUOTA (e' il caso del deploy su main) =
+// richieste relative, cioe' stesso dominio tramite il proxy /api di nginx.
+// Non usare `||`: la stringa vuota e' falsa e cadeva sul fallback con l'IP in
+// http://, che il browser blocca (mixed content) quando la pagina e' in HTTPS,
+// e il login non arrivava mai al server.
+const configuredBackend = process.env.REACT_APP_BACKEND_URL;
+const baseURL = configuredBackend !== undefined
+  ? configuredBackend
+  : (process.env.REACT_APP_API_URL || 'http://51.91.109.45:8002');
+
 const API = axios.create({
-  baseURL: process.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_API_URL || 'http://51.91.109.45:8002',
+  baseURL,
   timeout: 10000
 });
 
