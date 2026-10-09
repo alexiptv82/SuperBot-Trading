@@ -259,6 +259,31 @@ def fmt(tag: str, s: Optional[dict], extra: str = "") -> str:
             f" tenuta={s['hold_h']:.0f}h{extra}")
 
 
+def diagnostics(trades: list, per_sym: dict) -> list:
+    """Robustezza della media: mediana, media tagliata, peso delle code, anni, coppie."""
+    g = np.array([t["gross"] for t in trades])
+    if len(g) < 20:
+        return ["troppo poche operazioni"]
+    lo, hi = np.percentile(g, [10, 90])
+    trimmed = g[(g >= lo) & (g <= hi)].mean()
+    total = g.sum()
+    top10 = np.sort(g)[::-1][:10].sum()
+    out = [f"mediana={np.median(g):+.0f}bp media_tagliata10%={trimmed:+.0f}bp media={g.mean():+.0f}bp "
+           f"le 10 migliori operazioni={100 * top10 / total if total else float('nan'):.0f}% del lordo totale"]
+    by = {}
+    for t in trades:
+        y = datetime.fromtimestamp(t["t"] / 1000, timezone.utc).year
+        by.setdefault(y, []).append(t["gross"])
+    out.append("per anno (n/media/mediana): " + " ".join(
+        f"{y}:{len(v)}/{np.mean(v):+.0f}/{np.median(v):+.0f}" for y, v in sorted(by.items())))
+    contrib = sorted(((sum(t["gross"] for t in tr if any(PERIODS[p][0] <= t["t"] < PERIODS[p][1] for p in ("dev", "val", "test"))), s_)
+                      for s_, tr in per_sym.items()), reverse=True)
+    top5 = contrib[:5]
+    out.append("5 coppie che contribuiscono di piu': " + ", ".join(f"{s_.split('/')[0]} {100 * c / total:.0f}%" for c, s_ in top5)
+               if total else "")
+    return out
+
+
 def mean_gross(trs: list) -> float:
     return float(np.mean([t["gross"] for t in trs])) if trs else float("nan")
 
@@ -345,6 +370,8 @@ def run(args) -> dict:
                    if any(PERIODS[p][0] <= t["t"] < PERIODS[p][1] for p in ("dev", "val", "test"))]
             cs, nm = clustered_t(sub)
             add(ttl, fmt(f"  gruppo {tag}", stats(sub), f" t_mese={cs:+.1f}"))
+        for d in diagnostics(merged, per_sym):
+            add(ttl, "  diagnostica: " + d)
         if checks["pass"]:
             fresh = stats(sl.in_period(allt, "fresh"))
             results[st.name]["fresh"] = fresh
