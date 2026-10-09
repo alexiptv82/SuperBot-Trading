@@ -20,7 +20,7 @@ import ccxt
 
 BITGET_SYMBOLS = ["BTC/USDT:USDT", "ETH/USDT:USDT", "XAU/USDT:USDT", "XAG/USDT:USDT"]
 LADDER_YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
-OTHER_EXCHANGES = ["binanceusdm", "bybit", "okx", "gate", "kucoinfutures"]
+OTHER_EXCHANGES = ["okx", "gate"]
 NOTICE_LINES: dict[str, list[str]] = {}
 
 
@@ -37,34 +37,80 @@ def make(name: str):
     return cls({"enableRateLimit": True, "timeout": 20000, "options": {"defaultType": "swap"}})
 
 
+def probe(ex, symbol: str, tf: str, since_ms: int):
+    """Prima candela restituita partendo da since_ms (None se vuoto/errore).
+    Riprova sui 429. Un since precedente alla quotazione restituisce spesso
+    vuoto, quindi 'ha dati' e' monotono in since (ipotesi della bisezione)."""
+    for attempt in range(5):
+        try:
+            time.sleep(0.25)
+            data = ex.fetch_ohlcv(symbol, tf, since=since_ms, limit=50)
+            return data[0][0] if data else None
+        except (ccxt.DDoSProtection, ccxt.RateLimitExceeded, ccxt.RequestTimeout):
+            time.sleep(2 + attempt * 2)
+        except Exception:  # noqa: BLE001
+            return None
+    return None
+
+
 def first_candle(ex, symbol: str, tf: str) -> str:
-    """Prima candela restituita partendo dagli anni piu' vecchi: la prima scala
-    che restituisce dati indica da quando la storia esiste (approssimato)."""
-    last_err = ""
-    for year in LADDER_YEARS:
-        since = int(datetime(year, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    """Bisezione sul parametro since: trova la prima data da cui l'API restituisce
+    candele (risoluzione ~1 giorno) e riporta la prima candela effettiva."""
+    now = int(time.time() * 1000)
+    lo = int(datetime(2018, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    hi = now - 2 * 86_400_000
+    if probe(ex, symbol, tf, hi) is None:
+        return "nessun dato recente"
+    first = probe(ex, symbol, tf, lo)
+    if first is None:
+        while hi - lo > 86_400_000:
+            mid = (lo + hi) // 2
+            if probe(ex, symbol, tf, mid) is not None:
+                hi = mid
+            else:
+                lo = mid
+        first = probe(ex, symbol, tf, hi)
+    if first is None:
+        return "indeterminato"
+    months = (now - first) / (30.44 * 86_400_000)
+    return f"{day(first)} (~{months:.1f} mesi)"
+
+
+def quality_1h(ex, symbol: str, days: int = 90) -> str:
+    """Completezza e candele piatte (o=h=l=c) sulle ultime `days` giornate di 1h."""
+    now = int(time.time() * 1000)
+    cur = now - days * 86_400_000
+    rows = []
+    for _ in range(60):
         try:
-            data = ex.fetch_ohlcv(symbol, tf, since=since, limit=50)
-        except Exception as e:  # noqa: BLE001
-            last_err = short_err(e)
+            time.sleep(0.25)
+            data = ex.fetch_ohlcv(symbol, "1h", since=cur, limit=200)
+        except (ccxt.DDoSProtection, ccxt.RateLimitExceeded):
+            time.sleep(3)
             continue
-        if data:
-            return f"{day(data[0][0])} (richiesta da {year})"
-    return f"nessun dato ({last_err})" if last_err else "nessun dato"
-
-
-def depth_1m(ex, symbol: str) -> str:
-    """Quanti giorni indietro risponde il timeframe 1m (profondita' massima)."""
-    out = []
-    for days in (30, 90, 180, 365, 730):
-        since = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
-        try:
-            data = ex.fetch_ohlcv(symbol, "1m", since=since, limit=5)
-            ok = bool(data) and data[0][0] - since < 3 * 86_400_000
-            out.append(f"{days}g:{'si' if ok else 'no'}")
         except Exception as e:  # noqa: BLE001
-            out.append(f"{days}g:err({short_err(e)[:30]})")
-    return " ".join(out)
+            return f"errore {short_err(e)}"
+        if not data:
+            break
+        rows.extend(data)
+        nxt = data[-1][0] + 3_600_000
+        if nxt <= cur or nxt >= now:
+            break
+        cur = nxt
+    if not rows:
+        return "nessun dato"
+    uniq = {r[0]: r for r in rows}
+    expected = (max(uniq) - min(uniq)) // 3_600_000 + 1
+    flat_days = {}
+    flat = 0
+    for t, r in uniq.items():
+        if r[1] == r[2] == r[3] == r[4]:
+            flat += 1
+            wd = datetime.fromtimestamp(t / 1000, timezone.utc).weekday()
+            flat_days[wd] = flat_days.get(wd, 0) + 1
+    wd_txt = ",".join(f"{'LMMGVSD'[k]}{v}" for k, v in sorted(flat_days.items()))
+    return (f"{len(uniq)}/{expected} candele ({100 * len(uniq) / expected:.1f}%), "
+            f"piatte={flat} [per giorno: {wd_txt or '-'}]")
 
 
 def funding_info(ex, symbol: str) -> str:
@@ -118,11 +164,9 @@ def main() -> None:
             continue
         add("BitGet mercati", f"{sym}: maker={m.get('maker')} taker={m.get('taker')} "
                               f"contractSize={m.get('contractSize')} attivo={m.get('active')}")
-        for tf in ("1d", "4h", "1h", "15m"):
-            add("BitGet storia", f"{sym} {tf}: prima candela {first_candle(bg, sym, tf)}")
-        if sym in ("BTC/USDT:USDT", "XAU/USDT:USDT"):
-            add("BitGet storia 1m", f"{sym} 1m profondita': {depth_1m(bg, sym)}")
-        add("BitGet funding", f"{sym}: {funding_info(bg, sym)}")
+        for tf in ("1d", "4h", "1h", "15m", "5m", "1m"):
+            add(f"BitGet storia {sym[:3]}", f"{sym} {tf}: da {first_candle(bg, sym, tf)}")
+        add("BitGet qualita 1h", f"{sym} ultimi 90g: {quality_1h(bg, sym)}")
 
     # 2) Altre borse pubbliche: storia lunga per BTC/ETH e presenza dei metalli
     for name in OTHER_EXCHANGES:
@@ -140,7 +184,9 @@ def main() -> None:
                 if sym.startswith(("XAU", "XAG")):
                     add("Altre borse", f"{name} {sym}: non presente")
                 continue
-            pieces = [f"{tf}: {first_candle(ex, sym, tf)}" for tf in ("1d", "1h")]
+            if sym.startswith(("BTC", "ETH")):
+                continue  # gia' noto dal primo giro: qui interessano i metalli
+            pieces = [f"{tf}: {first_candle(ex, sym, tf)}" for tf in ("1d", "1h", "15m")]
             add("Altre borse", f"{name} {sym} -> " + " | ".join(pieces))
 
     add("Esito", f"durata {time.time() - t0:.0f}s")
