@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { botAPI } from '../api';
-import { isPlatformAuthenticatorAvailable, createCredential } from '../webauthnClient';
 import Logs from './Logs';
 import ChangePasswordForm from '../components/ChangePasswordForm';
+import BiometricManager from '../components/BiometricManager';
 
 const MUTED = '#94a3b8';
 const BORDER = '#334155';
@@ -37,10 +37,6 @@ export default function Settings() {
   const [config, setConfig] = useState(null);
   const [status, setStatus] = useState(null);
   const [perf, setPerf] = useState(null);
-  const [bioAvailable, setBioAvailable] = useState(false);
-  const [hasCredentials, setHasCredentials] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
   const [showLogs, setShowLogs] = useState(false);
   const [riskForm, setRiskForm] = useState(null);
   const [riskMsg, setRiskMsg] = useState(null); // { ok: bool, text: string }
@@ -51,9 +47,8 @@ export default function Settings() {
 
   const refreshStatus = async () => {
     try {
-      const [{ data: cfg }, { data: webauthn }, platformOk, { data: st }, { data: pf }] = await Promise.all([
-        botAPI.getConfig(), botAPI.webauthnStatus(), isPlatformAuthenticatorAvailable(),
-        botAPI.getStatus(), botAPI.getPerformance(),
+      const [{ data: cfg }, { data: st }, { data: pf }] = await Promise.all([
+        botAPI.getConfig(), botAPI.getStatus(), botAPI.getPerformance(),
       ]);
       setConfig(cfg);
       setRiskForm(prev => prev || {
@@ -61,8 +56,6 @@ export default function Settings() {
         max_daily_loss_percent: String(cfg.max_daily_loss_percent),
         max_open_positions: String(cfg.max_open_positions),
       });
-      setHasCredentials(!!webauthn.has_credentials);
-      setBioAvailable(platformOk);
       setStatus(st);
       setPerf(pf);
     } catch (e) { console.error(e); }
@@ -70,21 +63,6 @@ export default function Settings() {
 
   useEffect(() => { refreshStatus(); }, []);
   useEffect(() => { botAPI.passwordStatus().then(({ data }) => setPwdStatus(data)).catch(() => {}); }, []);
-
-  const handleAddBio = async () => {
-    setBusy(true); setMsg('');
-    try {
-      const { data: options } = await botAPI.webauthnRegisterOptions();
-      const { state_id, credentialJSON } = await createCredential(options);
-      await botAPI.webauthnRegisterVerify(state_id, credentialJSON, 'Dispositivo aggiunto da Impostazioni');
-      setMsg('Impronta digitale attivata su questo dispositivo.');
-      refreshStatus();
-    } catch {
-      setMsg("Non è stato possibile attivare l'impronta su questo dispositivo.");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const RISK_FIELDS = [
     { key: 'max_leverage', label: 'Leva massima', unit: 'x', step: 1 },
@@ -142,25 +120,8 @@ export default function Settings() {
         🔐 Accesso
       </h2>
       <Card style={{ marginBottom: '16px' }}>
-        <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px' }}>
-          {hasCredentials
-            ? 'Impronta digitale attiva su almeno un dispositivo.'
-            : 'Nessuna impronta digitale registrata ancora.'}
-        </div>
-        {bioAvailable ? (
-          <button onClick={handleAddBio} disabled={busy} style={{
-            width: '100%', padding: '12px', borderRadius: '10px', border: 'none',
-            background: busy ? '#334155' : '#0ea5e9', color: 'white',
-            fontWeight: 'bold', cursor: busy ? 'not-allowed' : 'pointer'
-          }}>
-            {busy ? '...' : '👆 Attiva impronta su questo dispositivo'}
-          </button>
-        ) : (
-          <div style={{ fontSize: '12px', color: '#64748b' }}>
-            Il biometrico richiede HTTPS con un dominio reale: non ancora disponibile su questo indirizzo.
-          </div>
-        )}
-        {msg && <div style={{ fontSize: '12px', color: '#4ade80', marginTop: '10px' }}>{msg}</div>}
+        <BiometricManager />
+        <div style={{ height: '1px', background: BORDER, margin: '16px 0' }} />
         {pwdStatus?.set && (
           <div style={{ fontSize: '13px', color: pwdStatus.warn ? WARN : '#94a3b8', marginTop: '16px', marginBottom: '10px' }}>
             Password valida ancora {pwdStatus.days_left} {pwdStatus.days_left === 1 ? 'giorno' : 'giorni'} (si cambia ogni 60 giorni).

@@ -106,3 +106,37 @@ export async function getCredential(optionsResponse) {
   const credential = await navigator.credentials.get({ publicKey });
   return { state_id, credentialJSON: authenticationCredentialToJSON(credential) };
 }
+
+/** Nome leggibile del dispositivo, mostrato in Impostazioni (es. "Android · Chrome"). */
+export function deviceLabel() {
+  const ua = navigator.userAgent || '';
+  const os = /Android/i.test(ua) ? 'Android'
+    : /iPhone|iPad/i.test(ua) ? 'iPhone/iPad'
+    : /Windows/i.test(ua) ? 'Windows'
+    : /Mac OS X|Macintosh/i.test(ua) ? 'Mac'
+    : /Linux/i.test(ua) ? 'Linux' : 'Dispositivo';
+  const browser = /Edg\//.test(ua) ? 'Edge'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Safari\//.test(ua) ? 'Safari' : '';
+  return browser ? `${os} · ${browser}` : os;
+}
+
+/** Spiega in italiano perche' l'impronta non e' stata attivata, con il codice
+ * tecnico tra parentesi (utile per capire cosa rifiuta il telefono). */
+export function describeWebAuthnError(e) {
+  const serverDetail = e?.response?.data?.detail;
+  if (typeof serverDetail === 'string') return serverDetail;
+  if (e?.response) return `Il server ha risposto con un errore (${e.response.status}).`;
+  const name = e?.name || 'Errore';
+  const hints = {
+    NotAllowedError: 'Operazione annullata o scaduta. Controlla che il telefono abbia un blocco schermo con impronta attivo e riprova.',
+    NotSupportedError: 'Questo dispositivo o browser non supporta l\'impronta per questo sito.',
+    SecurityError: 'Il browser rifiuta l\'impronta per questo indirizzo del sito.',
+    InvalidStateError: 'Questo dispositivo ha già un\'impronta registrata per SuperBot. Rimuovila da Impostazioni e riprova.',
+    AbortError: 'Operazione interrotta, riprova.',
+    ConstraintError: 'Il dispositivo non può creare questo tipo di credenziale.',
+  };
+  const text = hints[name] || (e?.message ? e.message.slice(0, 160) : 'Non è stato possibile attivare l\'impronta.');
+  return `${text} (${name})`;
+}

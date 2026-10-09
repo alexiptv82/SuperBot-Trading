@@ -49,6 +49,7 @@ from auth import (
     get_all_credentials,
     get_credential_by_id,
     save_credential,
+    delete_credential_by_id,
     update_sign_count,
 )
 
@@ -215,7 +216,7 @@ async def webauthn_register_options(
         ],
         authenticator_selection=AuthenticatorSelectionCriteria(
             authenticator_attachment=AuthenticatorAttachment.PLATFORM,
-            resident_key=ResidentKeyRequirement.PREFERRED,
+            resident_key=ResidentKeyRequirement.DISCOURAGED,
             user_verification=UserVerificationRequirement.REQUIRED,
         ),
     )
@@ -249,8 +250,32 @@ async def webauthn_register_verify(
         credential_id=bytes_to_base64url(verification.credential_id),
         public_key=verification.credential_public_key,
         sign_count=verification.sign_count,
-        device_label=body.device_label,
+        device_label=(body.device_label or '')[:60] or None,
     )
+    return {'success': True}
+
+
+@app.get('/api/auth/webauthn/credentials')
+async def webauthn_list_credentials(session=Depends(require_session), db: Session = Depends(get_db)):
+    """Elenco dei dispositivi con impronta registrata (per Impostazioni)."""
+    return {'credentials': [
+        {
+            'id': c.id,
+            'device_label': c.device_label or 'Dispositivo',
+            'created_at': (c.created_at.isoformat() + 'Z') if c.created_at else None,
+        }
+        for c in get_all_credentials(db)
+    ]}
+
+
+@app.delete('/api/auth/webauthn/credentials/{cred_id}')
+async def webauthn_delete_credential(cred_id: int, session=Depends(require_session), db: Session = Depends(get_db)):
+    """Rimuove l'impronta di un dispositivo (cambio telefono, impronta
+    cambiata, o semplicemente non la si vuole piu')."""
+    removed = delete_credential_by_id(db, cred_id)
+    if removed is None:
+        raise HTTPException(status_code=404, detail='Impronta non trovata')
+    bot._log('auth_biometric_removed', message=f"Impronta rimossa: {removed['device_label'] or 'dispositivo'}")
     return {'success': True}
 
 

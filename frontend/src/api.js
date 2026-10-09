@@ -64,6 +64,8 @@ export const botAPI = {
   webauthnRegisterOptions: () => API.post('/api/auth/webauthn/register/options'),
   webauthnRegisterVerify: (state_id, credential, device_label) =>
     API.post('/api/auth/webauthn/register/verify', { state_id, credential, device_label }),
+  webauthnCredentials: () => API.get('/api/auth/webauthn/credentials'),
+  webauthnRemove: (id) => API.delete(`/api/auth/webauthn/credentials/${id}`),
   webauthnLoginOptions: () => API.post('/api/auth/webauthn/login/options'),
   webauthnLoginVerify: (state_id, credential) =>
     API.post('/api/auth/webauthn/login/verify', { state_id, credential }),
