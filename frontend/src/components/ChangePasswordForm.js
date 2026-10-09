@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { botAPI } from '../api';
+import PasswordInput from './PasswordInput';
 
 const MIN_LEN = 10;
 
@@ -53,12 +54,12 @@ export default function ChangePasswordForm({ askOld, knownOld = '', token, onSuc
   return (
     <div>
       {askOld && (
-        <input type="password" autoComplete="current-password" placeholder="Password attuale"
+        <PasswordInput autoComplete="current-password" placeholder="Password attuale"
           value={oldPwd} onChange={e => setOldPwd(e.target.value)} style={inputStyle} />
       )}
-      <input type="password" autoComplete="new-password" placeholder={`Nuova password (min. ${MIN_LEN} caratteri)`}
+      <PasswordInput autoComplete="new-password" placeholder={`Nuova password (min. ${MIN_LEN} caratteri)`}
         value={newPwd} onChange={e => setNewPwd(e.target.value)} style={inputStyle} />
-      <input type="password" autoComplete="new-password" placeholder="Ripeti la nuova password"
+      <PasswordInput autoComplete="new-password" placeholder="Ripeti la nuova password"
         value={confirm} onChange={e => setConfirm(e.target.value)}
         onKeyDown={e => e.key === 'Enter' && submit()} style={inputStyle} />
       {error && <p style={{ color: '#f87171', fontSize: '13px', margin: '0 0 10px' }}>{error}</p>}
