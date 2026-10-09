@@ -40,6 +40,10 @@ def evaluate_pool(journal: Journal, rules: list, gate: ev.Gate = ev.Gate(), venu
               for r in promos}
     decisions = alloc.decide(states, evidences, k, gate, live_enabled, alarm)
     by_id = {r.rule_id: r for r in promos}
+    prior = {rid: journal.get_state(rid, by_id[rid].version) for rid in decisions}
     changed = [rid for rid, (st, why) in decisions.items()
                if journal.set_state(rid, by_id[rid].version, st.value, why)]
-    return {"k": k, "alarm": alarm, "decisions": decisions, "changed": changed, "evidence": evidences}
+    # prior None = primo avvio: non e' una transizione da notificare
+    transitions = [(rid, prior[rid], decisions[rid][0].value, decisions[rid][1]) for rid in changed]
+    return {"k": k, "alarm": alarm, "decisions": decisions, "changed": changed,
+            "transitions": transitions, "evidence": evidences}

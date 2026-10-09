@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS rule_state (
     since_ms INTEGER NOT NULL, reasons TEXT,
     PRIMARY KEY (rule_id, version)
 );
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts_ms INTEGER NOT NULL,
     rule_id TEXT, event TEXT NOT NULL, detail TEXT
@@ -136,6 +137,15 @@ class Journal:
         row = self.db.execute("SELECT state FROM rule_state WHERE rule_id=? AND version=?",
                               (rule_id, version)).fetchone()
         return row["state"] if row else None
+
+    # ---- metadati (attivazione, allarme, ...)
+    def get_meta(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        row = self.db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_meta(self, key: str, value: str) -> None:
+        self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, str(value)))
+        self.db.commit()
 
     def events(self) -> list:
         return [dict(r) for r in self.db.execute("SELECT * FROM events ORDER BY id").fetchall()]

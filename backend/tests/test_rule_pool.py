@@ -422,6 +422,28 @@ def test_control_is_deterministic_and_loses_about_the_costs():
     assert len(replay.compute_trades(base, "X", frames)) > 5
 
 
+def test_control_prefix_stability_even_with_colliding_entries():
+    """Due ingressi casuali sulla stessa candela non devono scambiarsi quando arrivano nuovi dati.
+    Si provano piu' semi (l'id della regola); con trade vicini le collisioni sono frequenti."""
+    b15 = random_walk(seed=7)
+    full_frames = replay.frames_for(b15)
+    collisions = 0
+    for rid in ("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"):
+        ctl = rules.Rule(rid, "S2_donchian_1h", ("X",), kind="control", base_rule="R")
+        full = replay.control_records(ctl, "X", full_frames)
+        j = Journal()
+        for k in range(256, len(b15) + 1, 256):
+            replay.sync_journal(j, ctl, "X", replay.frames_for(b15.head(k)))   # solleva se qualcosa cambia
+        replay.sync_journal(j, ctl, "X", full_frames)
+        rows = {x["entry_t"]: x for x in j.all_trades(rid, 1, "replay")}
+        assert set(rows) == {x["entry_t"] for x in full}, rid
+        for x in full:
+            assert rows[x["entry_t"]]["side"] == x["side"] and abs(rows[x["entry_t"]]["net_bp"] - x["net_bp"]) < 1e-9
+        raw = sl.run_strategy(full_frames["1h"], ctl.strat().build(full_frames), ctl.strat().cfg, sl.H1)
+        collisions += len(raw) * 3 - len(full)       # draw scartati (collisioni e fuori range)
+    assert collisions > 0
+
+
 def _fill(j, rule_id, n, mean, sd, seed, version=1):
     rng = np.random.default_rng(seed)
     for i, (t, x) in enumerate(zip(spread_times(n), rng.normal(mean, sd, n))):

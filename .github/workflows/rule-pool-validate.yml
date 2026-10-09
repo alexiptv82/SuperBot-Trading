@@ -1,0 +1,52 @@
+name: Pool di regole - validazione su dati reali (sola lettura)
+
+# Scarica candele PUBBLICHE 15m di BTC/ETH da BitGet (nessuna chiave) e verifica che il pool
+# riproduca i numeri del laboratorio e che il runner in avanti produca gli stessi trade del
+# calcolo completo. Non fa deploy, non usa segreti, non tocca il bot.
+# Parte da sola a ogni push sul ramo `rule-pool` che tocca questi file.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - ".github/workflows/rule-pool-validate.yml"
+      - "backend/rule_pool/validate_history.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt==4.2.95 pandas numpy pytest
+
+      - name: Unit tests
+        run: python -m pytest tests/test_rule_pool.py tests/test_rule_pool_runner.py tests/test_strategy_lab.py -q
+
+      # Stesso dataset fisso del laboratorio (fine 2026-10-09 00:00 UTC).
+      - name: Cache candele
+        uses: actions/cache@v4
+        with:
+          path: backend/lab_cache
+          key: pool-candles-v1-20261009
+
+      - name: Validazione
+        shell: bash
+        run: |
+          set -o pipefail
+          python -u -m rule_pool.validate_history --cache-dir lab_cache 2>&1 | tee validate_output.log

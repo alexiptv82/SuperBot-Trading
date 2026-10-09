@@ -11,6 +11,7 @@ on:
       - "backend/rule_pool/**"
       - "backend/strategy_lab.py"
       - "backend/tests/test_rule_pool.py"
+      - "backend/tests/test_rule_pool_runner.py"
 
 permissions:
   contents: read
@@ -35,4 +36,4 @@ jobs:
           pip install ccxt pandas numpy pytest
 
       - name: Unit tests (pool di regole + laboratorio)
-        run: python -m pytest tests/test_rule_pool.py tests/test_strategy_lab.py -q
+        run: python -m pytest tests/test_rule_pool.py tests/test_rule_pool_runner.py tests/test_strategy_lab.py -q

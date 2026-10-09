@@ -83,12 +83,15 @@ def control_records(rule: Rule, symbol: str, frames: dict, venue: str = "replay"
             a = sig.atr[e2 - 1]
             if not np.isfinite(a) or a <= 0:
                 continue
+            # L'ingresso si riserva SUBITO, anche se la posizione e' ancora aperta: altrimenti,
+            # con nuovi dati, un secondo ingresso sulla stessa candela potrebbe prendere il suo
+            # posto e il trade gia' registrato cambierebbe (trovato dal test sui prefissi).
+            seen.add(e2)
             side, p = tr["side"], float(b.o[e2])
             j, px, why = sl.simulate_exit(b, e2, side, cfg.stop_mult * a, cfg, sig,
                                           float("nan"), dlow, dhigh)
             if why not in CLOSED_WHY:
                 continue
-            seen.add(e2)
             hold_h = (j - e2 + 1) * rule.tf_ms / sl.H1
             gross = side * (px / p - 1.0) * 1e4
             out.append(_record(rule, symbol, venue, b, {
@@ -115,12 +118,15 @@ def pending_signal(rule: Rule, frames: dict, busy: bool = False) -> Optional[dic
 
 
 def sync_journal(journal: Journal, rule: Rule, symbol: str, frames: dict,
-                 venue: str = "replay") -> dict:
+                 venue: str = "replay", min_entry_t: int = 0) -> dict:
     """Allinea il giornale ai trade calcolati. Un trade chiuso non cambia mai
-    (altrimenti ImmutableTradeError)."""
+    (altrimenti ImmutableTradeError). `min_entry_t`: si registrano solo i trade con ingresso
+    da quel momento in poi (in avanti: nulla di precedente all'attivazione)."""
     counts = {"inserted": 0, "updated": 0, "unchanged": 0}
     recs = (control_records(rule, symbol, frames, venue) if rule.kind == "control"
             else compute_trades(rule, symbol, frames, venue))
     for rec in recs:
+        if rec["entry_t"] < min_entry_t:
+            continue
         counts[journal.upsert_trade(rec)] += 1
     return counts
