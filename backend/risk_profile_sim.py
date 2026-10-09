@@ -411,6 +411,7 @@ def fetch_1m_history(symbol: str, total_candles: int, end_ms: Optional[int] = No
     end_ms = end_ms if end_ms is not None else client.milliseconds()
     since = end_ms - total_candles * ONE_MINUTE_MS
     collected: dict[int, list] = {}
+    calls = 0
     while True:
         attempt, batch = 0, None
         while attempt < 3:
@@ -423,16 +424,25 @@ def fetch_1m_history(symbol: str, total_candles: int, end_ms: Optional[int] = No
                 time.sleep(1.0 * attempt)
         if not batch:
             break
+        calls += 1
+        if calls <= 2:
+            print(f"  [diag] chiamata {calls}: since={since} -> {len(batch)} candele, "
+                  f"prima={int(batch[0][0])} ultima={int(batch[-1][0])}", flush=True)
         for c in batch:
             if int(c[0]) <= end_ms:
                 collected[int(c[0])] = c
-        last_ts = int(batch[-1][0])
-        if last_ts <= since:
-            break
+        # NB: il numero di candele per chiamata dipende dalla versione di ccxt
+        # (200 o 1000): si avanza finche' si fanno progressi, senza presumere
+        # che un batch "corto" significhi fine dei dati.
+        last_ts = max(int(c[0]) for c in batch)
+        if last_ts < since:
+            break                       # nessun progresso
         since = last_ts + ONE_MINUTE_MS
-        if since >= end_ms or len(batch) < batch_limit or len(collected) >= total_candles:
+        if since >= end_ms or len(collected) >= total_candles:
             break
-        time.sleep(0.2)
+        if calls % 50 == 0:
+            print(f"  ...{symbol}: {len(collected)}/{total_candles} candele", flush=True)
+        time.sleep(0.1)
     ordered = sorted(collected.values(), key=lambda c: c[0])
     return ordered[-total_candles:] if len(ordered) > total_candles else ordered
 
