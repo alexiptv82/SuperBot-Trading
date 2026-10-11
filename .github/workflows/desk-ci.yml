@@ -30,7 +30,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install ccxt==4.2.95 pandas numpy pytest
       - name: Unit tests (solo test_desk.py per diagnostica)
-        run: python -m pytest tests/test_desk.py -v --tb=long 2>&1
+        run: |
+          python -m pytest tests/test_desk.py -v --tb=long 2>&1 | tee /tmp/pytest-desk.txt
+          exit ${PIPESTATUS[0]}
+      - name: Mostra output pytest anche se fallito
+        if: failure()
+        run: cat /tmp/pytest-desk.txt || true
+      - name: Upload pytest output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-desk-output
+          path: /tmp/pytest-desk.txt
       - name: Unit tests (rule_pool)
         if: always()
         run: python -m pytest tests/test_rule_pool_runner.py -v --tb=short 2>&1
