@@ -29,23 +29,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install ccxt==4.2.95 pandas numpy pytest
-      - name: Unit tests test_desk
-        id: desk
-        continue-on-error: true
-        run: |
-          python -m pytest tests/test_desk.py -v --tb=long 2>&1 | tee pytest-desk.txt
-          echo "## test_desk.py" >> $GITHUB_STEP_SUMMARY
-          cat pytest-desk.txt >> $GITHUB_STEP_SUMMARY
-      - name: Unit tests rule_pool
-        id: rp
-        continue-on-error: true
-        run: |
-          python -m pytest tests/test_rule_pool_runner.py -v --tb=short 2>&1 | tee pytest-rp.txt
-          echo "## test_rule_pool_runner.py" >> $GITHUB_STEP_SUMMARY
-          cat pytest-rp.txt >> $GITHUB_STEP_SUMMARY
-      - name: Fail se qualcuno ha fallito
-        if: steps.desk.outcome == 'failure' || steps.rp.outcome == 'failure'
-        run: exit 1
+      - name: Unit tests (desk)
+        run: python -m pytest tests/test_desk.py -v --tb=short
+      - name: Unit tests (rule_pool)
+        run: python -m pytest tests/test_rule_pool_runner.py -v --tb=short
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 20
