@@ -30,7 +30,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install ccxt==4.2.95 pandas numpy pytest
       - name: Unit tests (desk)
-        run: python -m pytest tests/test_desk.py -v --tb=short
+        run: python -m pytest tests/test_desk.py -v --tb=long
+      - name: Pubblica summary anche se fallito
+        if: always()
+        run: |
+          python -m pytest tests/test_desk.py --tb=long -q 2>&1 >> $GITHUB_STEP_SUMMARY || true
       - name: Unit tests (rule_pool)
         run: python -m pytest tests/test_rule_pool_runner.py -v --tb=short
   image:
