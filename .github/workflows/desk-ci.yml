@@ -29,8 +29,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install ccxt==4.2.95 pandas numpy pytest
-      - name: Unit tests
-        run: python -m pytest tests/test_desk.py tests/test_rule_pool_runner.py -v --tb=short 2>&1
+      - name: Unit tests (solo test_desk.py per diagnostica)
+        run: python -m pytest tests/test_desk.py -v --tb=long 2>&1
+      - name: Unit tests (rule_pool)
+        if: always()
+        run: python -m pytest tests/test_rule_pool_runner.py -v --tb=short 2>&1
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 20
