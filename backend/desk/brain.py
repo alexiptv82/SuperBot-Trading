@@ -238,6 +238,8 @@ def update_lessons(d: str, st: dict, day: str, call=call_claude) -> None:
     """Aggiorna lessons.md e la sezione errori ricorrenti. Richiama Claude una volta a sera."""
     if st.get("lessons_day") == day or not can_call(st, day, DAILY_CAP + 0.0):
         return
+    if "main" not in st or "closed" not in st.get("main", {}):
+        return
     today = [t for t in st["main"]["closed"] if _utc_day(t["close_ms"]) == day]
     if not today:
         return

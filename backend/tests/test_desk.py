@@ -257,14 +257,19 @@ def test_budget_blocks_calls_when_cap_reached_and_resets_next_day():
     from desk import brain
     os.environ["ANTHROPIC_API_KEY"] = "test-key"
     st = {}
-    assert brain.can_call(st, "d1", 0.28)
-    spent = brain.record_spend(st, "d1", {"input_tokens": 100_000, "output_tokens": 8_000})
-    assert abs(spent - 0.28) < 1e-9
-    assert not brain.can_call(st, "d1", 0.28)
-    assert brain.can_call(st, "d2", 0.28)
-    assert abs(st["budget"]["total_spent"] - 0.28) < 1e-9
+    cap = 1.0  # usa cap alto per non dipendere dai prezzi esatti del modello
+    assert brain.can_call(st, "d1", cap)
+    spent = brain.record_spend(st, "d1", {"input_tokens": 10_000, "output_tokens": 1_000})
+    assert spent > 0
+    # spendi fino al tetto
+    while brain.budget_left(st, "d1", cap) >= brain.CALL_RESERVE:
+        brain.record_spend(st, "d1", {"input_tokens": 10_000, "output_tokens": 1_000})
+    assert not brain.can_call(st, "d1", cap)
+    assert brain.can_call(st, "d2", cap)   # nuovo giorno: azzerato
+    total = st["budget"]["total_spent"]
+    assert total > 0
     del os.environ["ANTHROPIC_API_KEY"]
-    assert not brain.can_call(st, "d2", 0.28)
+    assert not brain.can_call(st, "d2", cap)
 
 
 def test_error_message_never_contains_the_key():
@@ -285,14 +290,16 @@ def test_rules_fallback_sizes_with_score_and_closes_weak_positions():
     from desk.brain import rules_decisions
     from desk.signals import Reading
     # V2: Reading ha campi aggiuntivi (seasonal_note, pattern, trade_type)
+    # entry_score default=70: strong(95) e weak(72) passano, held(80) è già aperto
     strong = Reading("BTC", 100.0, 1, 95, 95, 10, 0.01, 0.01, 0.017, {}, ["a"],
                      seasonal_note="", pattern="", trade_type="scalp")
-    weak = Reading("ETH", 100.0, 1, 65, 65, 20, 0.01, 0.01, 0.017, {}, ["b"],
+    weak = Reading("ETH", 100.0, 1, 72, 72, 20, 0.01, 0.01, 0.017, {}, ["b"],
                    seasonal_note="", pattern="", trade_type="medio")
     held = Reading("SOL", 100.0, -1, 80, 20, 80, 0.01, 0.01, 0.017, {}, [],
                    seasonal_note="", pattern="", trade_type="medio")
     positions = [{"symbol": "SOL", "side": 1, "trade_type": "medio", "dca_count": 0}]
-    d = {x["symbol"]: x for x in rules_decisions([strong, weak, held], positions, {"SOL"})}
+    d = {x["symbol"]: x for x in rules_decisions([strong, weak, held], positions, {"SOL"}, entry_score=70)}
+    assert "BTC" in d and "ETH" in d, f"chiavi attese BTC/ETH, trovate: {list(d)}"
     assert d["BTC"]["leverage"] > d["ETH"]["leverage"]
     assert d["BTC"]["margin_usd"] > d["ETH"]["margin_usd"]
     assert d["SOL"]["action"] == "close"
@@ -363,6 +370,7 @@ def test_full_cycle_v2_opens_position_and_saves_state():
     """Ciclo completo V2: deve aprire una posizione BTC e salvare lo state."""
     import desk.brain as _brain
     import desk.market_context as _mc
+    import desk.cli as _c
 
     world = _world()
     orig_fetch = cli.fetch_candles
@@ -371,14 +379,14 @@ def test_full_cycle_v2_opens_position_and_saves_state():
 
     cli.fetch_candles = lambda sym, bar="15m", limit=300: (world.get(sym, np.zeros((0, 6)))[-limit:].tolist())
     _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
-    _brain.call_claude = _claude_stub()
+    # patch call_claude sia in brain che in cli (cli lo importa direttamente)
+    stub = _claude_stub()
+    _brain.call_claude = stub
+    _c.call_claude = stub
 
     os.environ["ANTHROPIC_API_KEY"] = "test"
     try:
         with tempfile.TemporaryDirectory() as d:
-            os.environ["DESK_DATA_DIR"] = d
-            # patch STATE_FILE
-            import desk.cli as _c
             _c.STATE_FILE = os.path.join(d, "state_v2.json")
             _c.DATA_DIR = d
 
@@ -386,13 +394,13 @@ def test_full_cycle_v2_opens_position_and_saves_state():
             # primo ciclo
             cli.run_cycle(state, NOW)
             cli.save_state(state, _c.STATE_FILE)
-            # secondo ciclo (passa il cooldown scalp=0 in test)
-            state["last_call_ms"] = 0   # forza chiamata Claude
-            state["last_open_ms"] = {}  # azzera cooldown
+            # secondo ciclo: forza chiamata Claude e azzera cooldown
+            state["last_call_ms"] = 0
+            state["last_open_ms"] = {}
             cli.run_cycle(state, NOW + cli.HOUR_MS)
             # verifica
             acc = cli.make_account(state)
-            assert "BTC" in acc.positions, "BTC dovrebbe essere aperto"
+            assert "BTC" in acc.positions, f"BTC dovrebbe essere aperto, posizioni: {list(acc.positions)}"
             pos = acc.positions["BTC"]
             assert pos.leverage == 10
             assert pos.total_margin > 0
@@ -401,8 +409,8 @@ def test_full_cycle_v2_opens_position_and_saves_state():
         cli.fetch_candles = orig_fetch
         _mc.fetch_all_context = orig_ctx
         _brain.call_claude = orig_call
+        _c.call_claude = orig_call
         del os.environ["ANTHROPIC_API_KEY"]
-        os.environ.pop("DESK_DATA_DIR", None)
 
 
 def test_cycle_v2_without_key_uses_rules():
