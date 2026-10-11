@@ -1,1 +1,1 @@
-deploy 2 (piu attivita: 10 coppie, soglia 50, scansione oraria)
+deploy 3 (V2: DCA scalp/medio 27 simboli leva-tier funding/OI stagionalita)
