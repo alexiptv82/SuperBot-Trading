@@ -73,7 +73,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build immagine
         run: docker build -t superbot-desk -f Dockerfile.desk .
-      - name: Avvio a vuoto (report e salute)
+      - name: Import sanity check
         run: |
-          docker run --rm superbot-desk python -m desk.cli report --data-dir /tmp/desk-test
-          docker run --rm superbot-desk sh -c "python -m desk.cli health --data-dir /tmp/desk-test; test \$? -eq 1"
+          docker run --rm superbot-desk python -c "
+          from desk.engine import Limits, PaperAccount
+          from desk.signals import read_symbol
+          from desk.brain import call_claude, build_prompt, rules_decisions
+          from desk.market_context import fetch_all_context
+          from desk import cli
+          print('Import OK')
+          a = PaperAccount(Limits())
+          p, msg = a.open('BTC', 1, 100, 10, 100.0, 98.0, None, 0, {})
+          assert p is not None, f'open fallito: {msg}'
+          print(f'PaperAccount OK — margin={p.margin}  leverage={p.leverage}')
+          "
