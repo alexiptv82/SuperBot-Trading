@@ -1,53 +1,93 @@
-"""Conto di paper trading con regole realistiche: costi, funding, stop, liquidazione, tetti di rischio.
+"""Conto di paper trading V2: DCA su 3 ingressi, leva per asset class, chiusura dinamica.
 
 Nessuna rete, nessuna chiave: solo contabilita'. Tutte le cifre sono in dollari finti.
+
+Classi di asset e leva massima:
+  TIER_A (BTC, XAU, XAG): leva max 45x
+  TIER_B (ETH):            leva max 30x
+  TIER_C (altri top-30):   leva max 25x
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
+# ---- asset tier (leva massima)
+TIER_A = {"BTC", "XAU", "XAG", "XAUUSDT", "XAGUSDT"}   # 45x
+TIER_B = {"ETH"}                                          # 30x
+# tutto il resto: 25x
+
+
+def max_leverage_for(symbol: str) -> int:
+    base = symbol.upper().replace("USDT", "").replace("PERP", "").strip("/:")
+    if base in TIER_A:
+        return 45
+    if base in TIER_B:
+        return 30
+    return 25
+
 
 @dataclass
 class Limits:
     start_equity: float = 1000.0
-    max_leverage: int = 30           # richiesto dall'utente
-    max_margin_trade: float = 250.0  # richiesto dall'utente
-    max_margin_total: float = 500.0  # tetto aggiunto: margine totale in uso
-    max_open: int = 3
-    min_margin: float = 10.0
-    fee_bp_side: float = 6.0         # commissioni taker per lato
-    slip_bp_side: float = 2.0        # slippage per lato (somma a giro = 16 bp come il pool)
-    funding_bp_8h_long: float = 1.0  # funding pagato dai long
-    maint: float = 0.005             # margine di mantenimento
-    sl_liq_frac: float = 0.8         # lo stop deve stare entro l'80% della distanza di liquidazione
-    daily_stop: float = 0.10         # perdita giornaliera che ferma i nuovi ingressi
-    kill_equity: float = 500.0       # sotto questo capitale il conto smette di aprire
+    max_leverage: int = 45            # tetto globale (ignorato se il tier è più basso)
+    max_margin_trade: float = 400.0   # V2: aumentato da 250 a 400
+    max_margin_total: float = 800.0   # V2: aumentato da 500 a 800
+    max_open: int = 5                 # V2: fino a 5 posizioni contemporanee
+    max_dca_total: float = 700.0      # DCA: mai più di 700$ su un singolo asset (tutti gli ingressi)
+    min_margin: float = 15.0
+    fee_bp_side: float = 6.0
+    slip_bp_side: float = 2.0
+    funding_bp_8h_long: float = 1.0
+    maint: float = 0.005
+    sl_liq_frac: float = 0.75        # V2: leggermente più morbido (era 0.8)
+    daily_stop: float = 0.12         # V2: 12% (era 10%)
+    kill_equity: float = 450.0       # V2: abbassato da 500 a 450
+
+
+@dataclass
+class DcaLevel:
+    """Un ingresso DCA aggiuntivo su una posizione esistente."""
+    margin: float
+    entry: float      # prezzo d'ingresso con slippage
+    qty: float
+    fee: float
+    added_ms: int
+    trigger_pct: float   # quanto doveva scendere/salire dal precedente per scattare
 
 
 @dataclass
 class Position:
     id: int
     symbol: str
-    side: int                        # +1 long, -1 short
-    margin: float
+    side: int                  # +1 long, -1 short
+    margin: float              # margine dell'ingresso principale
     leverage: int
-    entry: float                     # prezzo di carico (gia' con slippage)
-    qty: float
-    sl: float
+    entry: float               # prezzo medio ponderato di tutti gli ingressi
+    qty: float                 # quantità totale
+    sl: float                  # stop loss attuale (aggiornato ad ogni DCA)
     tp: Optional[float]
     open_ms: int
     liq: float
     confidence: int = 0
     reason: str = ""
     source: str = "rules"
-    fee_open: float = 0.0
+    fee_open: float = 0.0      # fee totale apertura (incluse DCA)
     last_review_ms: int = 0
     review_price: float = 0.0
+    dca_levels: list = field(default_factory=list)   # lista di DcaLevel serializzati
+    total_margin: float = 0.0  # margine totale (principale + DCA)
+    trade_type: str = "medio"  # "scalp" | "medio"
+    dca_count: int = 0         # quanti DCA eseguiti
 
 
 def liq_price(side: int, entry: float, lev: int, maint: float) -> float:
     return entry * (1 - side * (1 / lev - maint))
+
+
+def weighted_entry(old_entry: float, old_qty: float, new_fill: float, new_qty: float) -> float:
+    total = old_qty + new_qty
+    return (old_entry * old_qty + new_fill * new_qty) / total if total > 0 else old_entry
 
 
 class PaperAccount:
@@ -60,9 +100,8 @@ class PaperAccount:
         self.day = ""
         self.day_start_equity = limits.start_equity
 
-    # ---- stato derivato
     def margin_in_use(self) -> float:
-        return sum(p.margin for p in self.positions.values())
+        return sum(p.total_margin for p in self.positions.values())
 
     def unrealized(self, prices: dict) -> float:
         return sum(p.side * (prices.get(p.symbol, p.entry) - p.entry) * p.qty for p in self.positions.values())
@@ -85,9 +124,7 @@ class PaperAccount:
     # ---- apertura
     def open(self, symbol: str, side: int, margin: float, leverage: int, price: float, sl: float,
              tp: Optional[float], now_ms: int, prices: dict, confidence: int = 0, reason: str = "",
-             source: str = "rules") -> tuple:
-        """Apre una posizione se rispetta i tetti. Ritorna (Position|None, messaggio). I valori
-        eccessivi (leva, margine) vengono RIDOTTI ai tetti; stop mancante o incoerente = rifiuto."""
+             source: str = "rules", trade_type: str = "medio") -> tuple:
         L = self.limits
         if side not in (1, -1):
             return None, "lato non valido"
@@ -104,49 +141,116 @@ class PaperAccount:
             return None, "stop dal lato sbagliato"
         if tp is not None and ((side == 1 and tp <= price) or (side == -1 and tp >= price)):
             tp = None
-        lev = int(max(1, min(int(leverage), L.max_leverage)))
-        room = min(L.max_margin_trade, L.max_margin_total - self.margin_in_use(), self.cash * 0.98)
+        # leva: rispetta il tier dell'asset
+        tier_max = max_leverage_for(symbol)
+        lev = int(max(1, min(int(leverage), tier_max)))
+        room = min(L.max_margin_trade, L.max_margin_total - self.margin_in_use(), self.cash * 0.95)
         mar = min(float(margin), room)
         if mar < L.min_margin:
             return None, "margine disponibile troppo basso"
         fill = price * (1 + side * L.slip_bp_side / 1e4)
         dist = abs(fill - sl) / fill
         if dist > L.sl_liq_frac * (1 / lev - L.maint):
-            return None, "stop troppo lontano per questa leva (la liquidazione verrebbe prima)"
+            return None, "stop troppo lontano (liquidazione verrebbe prima)"
         notional = mar * lev
         fee = notional * L.fee_bp_side / 1e4
         if mar + fee > self.cash:
             return None, "cassa insufficiente"
-        pos = Position(self.next_id, symbol, side, mar, lev, fill, notional / fill, float(sl),
-                       None if tp is None else float(tp), now_ms, liq_price(side, fill, lev, L.maint),
-                       int(confidence), reason[:300], source, fee, now_ms, price)
+        pos = Position(
+            id=self.next_id, symbol=symbol, side=side, margin=mar, leverage=lev,
+            entry=fill, qty=notional / fill,
+            sl=float(sl), tp=None if tp is None else float(tp),
+            open_ms=now_ms, liq=liq_price(side, fill, lev, L.maint),
+            confidence=int(confidence), reason=reason[:300], source=source,
+            fee_open=fee, last_review_ms=now_ms, review_price=price,
+            dca_levels=[], total_margin=mar, trade_type=trade_type, dca_count=0,
+        )
         self.next_id += 1
         self.cash -= mar + fee
         self.positions[symbol] = pos
         return pos, "ok"
 
+    # ---- DCA: aggiunge un ingresso a una posizione esistente
+    def add_dca(self, symbol: str, new_sl: float, new_tp: Optional[float],
+                now_ms: int, prices: dict, reason: str = "") -> tuple:
+        """Aggiunge un secondo/terzo ingresso DCA se le condizioni lo permettono.
+        Il margine del DCA è proporzionale a quello già investito (50% primo, 30% secondo, 20% terzo).
+        """
+        L = self.limits
+        pos = self.positions.get(symbol)
+        if pos is None:
+            return None, "nessuna posizione"
+        if pos.dca_count >= 2:
+            return None, "max 2 DCA aggiuntivi raggiunti (3 ingressi totali)"
+        if pos.trade_type == "scalp":
+            return None, "DCA non consentito su scalp"
+        px = prices.get(symbol)
+        if px is None:
+            return None, "prezzo non disponibile"
+        # verifica che il prezzo sia sfavorevole (DCA ha senso)
+        if pos.side == 1 and px >= pos.entry:
+            return None, "prezzo non ancora sceso per DCA long"
+        if pos.side == -1 and px <= pos.entry:
+            return None, "prezzo non ancora salito per DCA short"
+        # calcola margine DCA
+        fracs = [0.0, 0.35, 0.20]   # frazioni del margine principale (indice = dca_count)
+        dca_mar = round(pos.margin * fracs[pos.dca_count], 2)
+        if dca_mar < L.min_margin:
+            dca_mar = L.min_margin
+        # verifica tetto DCA totale
+        if pos.total_margin + dca_mar > L.max_dca_total:
+            dca_mar = L.max_dca_total - pos.total_margin
+        if dca_mar < L.min_margin:
+            return None, "tetto DCA raggiunto"
+        if dca_mar > self.cash * 0.95:
+            return None, "cassa insufficiente per DCA"
+        fill = px * (1 + pos.side * L.slip_bp_side / 1e4)
+        notional = dca_mar * pos.leverage
+        fee = notional * L.fee_bp_side / 1e4
+        if dca_mar + fee > self.cash:
+            return None, "cassa insufficiente per DCA"
+        new_qty = notional / fill
+        # aggiorna entry media ponderata
+        old_entry, old_qty = pos.entry, pos.qty
+        pos.entry = weighted_entry(old_entry, old_qty, fill, new_qty)
+        pos.qty += new_qty
+        pos.total_margin += dca_mar
+        pos.fee_open += fee
+        pos.sl = float(new_sl)
+        if new_tp is not None:
+            pos.tp = float(new_tp)
+        # ricalcola liquidazione sul nuovo entry medio
+        pos.liq = liq_price(pos.side, pos.entry, pos.leverage, L.maint)
+        trigger_pct = abs(fill - old_entry) / old_entry
+        pos.dca_levels.append({"margin": dca_mar, "entry": fill, "qty": new_qty,
+                                "fee": fee, "added_ms": now_ms, "trigger_pct": round(trigger_pct, 4)})
+        pos.dca_count += 1
+        pos.reason = (pos.reason[:200] + f" | DCA{pos.dca_count} @{fill:.5g}: {reason[:80]}")[:300]
+        self.cash -= dca_mar + fee
+        return pos, "ok"
+
     # ---- chiusura
     def _close(self, pos: Position, exit_price: float, now_ms: int, why: str) -> dict:
         L = self.limits
-        exit_fill = exit_price * (1 - pos.side * L.slip_bp_side / 1e4) if why not in ("liquidazione",) else exit_price
+        exit_fill = exit_price * (1 - pos.side * L.slip_bp_side / 1e4) if why != "liquidazione" else exit_price
         gross = pos.side * (exit_fill - pos.entry) * pos.qty
         fee_close = pos.qty * exit_fill * L.fee_bp_side / 1e4
         hours = max(0.0, (now_ms - pos.open_ms) / 3_600_000)
         funding = (pos.qty * pos.entry * L.funding_bp_8h_long / 1e4 * hours / 8) if pos.side == 1 else 0.0
         net = gross - pos.fee_open - fee_close - funding
-        back = max(0.0, pos.margin + gross - fee_close - funding)      # non si perde piu' del margine
+        back = max(0.0, pos.total_margin + gross - fee_close - funding)
         if why == "liquidazione":
             back = 0.0
         self.cash += back
         del self.positions[pos.symbol]
-        rec = {"id": pos.id, "symbol": pos.symbol, "side": pos.side, "margin": pos.margin,
+        rec = {"id": pos.id, "symbol": pos.symbol, "side": pos.side, "margin": pos.total_margin,
                "leverage": pos.leverage, "entry": pos.entry, "exit": exit_fill, "open_ms": pos.open_ms,
                "close_ms": now_ms, "net": round(net, 4), "gross": round(gross, 4),
                "fees": round(pos.fee_open + fee_close, 4), "funding": round(funding, 4),
                "why": why, "confidence": pos.confidence, "reason": pos.reason, "source": pos.source,
-               "account": self.name}
+               "account": self.name, "trade_type": pos.trade_type, "dca_count": pos.dca_count}
         if why == "liquidazione":
-            rec["net"] = round(-pos.margin - pos.fee_open, 4)
+            rec["net"] = round(-pos.total_margin - pos.fee_open, 4)
         self.closed.append(rec)
         return rec
 
@@ -155,8 +259,6 @@ class PaperAccount:
         return None if pos is None else self._close(pos, price, now_ms, why)
 
     def on_bar(self, symbol: str, t: int, o: float, h: float, l: float, c: float, bar_ms: int) -> Optional[dict]:
-        """Applica una candela CHIUSA (apertura t). Prima lo stop (scelta prudente se nella stessa
-        candela toccano sia stop sia obiettivo), poi l'obiettivo. Solo candele successive all'ingresso."""
         pos = self.positions.get(symbol)
         if pos is None or t < pos.open_ms:
             return None
@@ -179,7 +281,8 @@ class PaperAccount:
 
     # ---- persistenza
     def to_dict(self) -> dict:
-        return {"name": self.name, "cash": self.cash, "positions": {k: asdict(v) for k, v in self.positions.items()},
+        return {"name": self.name, "cash": self.cash,
+                "positions": {k: asdict(v) for k, v in self.positions.items()},
                 "closed": self.closed, "next_id": self.next_id, "day": self.day,
                 "day_start_equity": self.day_start_equity, "limits": asdict(self.limits)}
 
@@ -188,5 +291,12 @@ class PaperAccount:
         a = cls(Limits(**d["limits"]), d.get("name", "main"))
         a.cash, a.closed, a.next_id = d["cash"], d["closed"], d["next_id"]
         a.day, a.day_start_equity = d["day"], d["day_start_equity"]
-        a.positions = {k: Position(**v) for k, v in d["positions"].items()}
+        a.positions = {}
+        for k, v in d["positions"].items():
+            # compatibilità con posizioni V1 (senza i nuovi campi)
+            v.setdefault("dca_levels", [])
+            v.setdefault("total_margin", v.get("margin", 0))
+            v.setdefault("trade_type", "medio")
+            v.setdefault("dca_count", 0)
+            a.positions[k] = Position(**v)
         return a

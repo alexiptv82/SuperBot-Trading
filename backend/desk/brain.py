@@ -1,30 +1,65 @@
-"""Cervello: decisioni di Claude (via API) con tetto di spesa, piu' un ripiego a sole regole.
+"""Cervello V2: decisioni Claude con DCA, scalp vs medio, errori ricorrenti, funding/OI.
 
 Regole d'oro:
-- Claude PROPONE, il codice DECIDE: ogni valore viene validato e ridotto ai tetti dal conto.
-- Se la chiave manca, il tetto di spesa e' finito o la risposta e' illeggibile, si usa il ripiego a regole.
-- La chiave arriva solo da variabile d'ambiente e non viene mai stampata.
+- Claude PROPONE, il codice DECIDE: ogni valore viene validato dai tetti del conto.
+- La chiave arriva solo da variabile d'ambiente, mai stampata.
+- Budget: tetto giornaliero configurabile (default 0.70$/giorno per V2).
 """
 from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.request
-import xml.etree.ElementTree as ET
 
 MODEL = os.getenv("DESK_MODEL", "claude-sonnet-5-5")
-PRICE_IN, PRICE_OUT = 2.0 / 1e6, 10.0 / 1e6        # $/token (da riverificare sul listino ufficiale)
-DAILY_CAP = float(os.getenv("DESK_DAILY_CAP_USD", "0.28"))
-CALL_RESERVE = 0.03                               # non si chiama se resta meno di cosi'
+PRICE_IN, PRICE_OUT = 3.0 / 1e6, 15.0 / 1e6   # claude-sonnet-5-5 prezzi aggiornati
+DAILY_CAP = float(os.getenv("DESK_DAILY_CAP_USD", "0.70"))
+CALL_RESERVE = 0.04
 API_URL = "https://api.anthropic.com/v1/messages"
-FEEDS = ["https://www.coindesk.com/arc/outboundfeeds/rss/", "https://cointelegraph.com/rss"]
 
-SYSTEM = """Sei il cervello di un trader di futures crypto in PAPER TRADING (soldi finti, 1000$). Decidi come un trader professionista prudente.
-Ricevi: stato del conto, punteggi tecnici (0-100) per coppia, posizioni aperte, notizie recenti, appunti dei giorni scorsi.
-Regole dure (il codice le applica comunque): leva max 30, margine max 250$ per trade, margine totale max 500$, max 3 posizioni, STOP LOSS obbligatorio.
-Principio: piu' sei sicuro, piu' margine e leva; segnale incerto = poco margine e leva bassa. Cerca attivamente opportunita': con punteggio >= 50 e contesto non contrario apri anche con margine piccolo (30-80$) e leva bassa; riserva margine grande e leva oltre 15 ai segnali forti (confidenza >= 85, stop stretto). Non restare fermo senza un motivo concreto, ma non forzare trade controcorrente.
-Rispondi SOLO con JSON: {"decisions":[{"symbol":"BTC","action":"open_long|open_short|hold|close|skip","confidence":0-100,"leverage":int,"margin_usd":number,"stop_loss_pct":number,"take_profit_pct":number,"reason":"max 25 parole"}],"note":"max 20 parole"}
-stop_loss_pct e take_profit_pct sono frazioni del prezzo (0.01 = 1%). Per le posizioni aperte usa hold o close. Per le altre coppie solo se c'e' un candidato."""
+SYSTEM = """Sei il cervello di un trader professionista di futures crypto — PAPER TRADING con $1000 finti.
+
+MISSIONE: trovare opportunita' di profitto come un trader H24 esperto. Leggi i dati, ragiona, agisci.
+
+TIPI DI TRADE:
+- SCALP (trade_type=scalp): leva alta 15-45x, margine piccolo 40-120$, TP stretto 0.3-0.8%, SL stretto 0.2-0.5%, durata minuti-ore. Solo su segnali precisi e volume alto.
+- MEDIO (trade_type=medio): leva media 5-20x, margine 80-350$, TP 0.8-3%, SL 0.4-1.5%, durata ore-giorni. Su segnali solidi su piu' timeframe.
+
+LEVA MASSIMA PER ASSET (il codice la riduce automaticamente se eccedi):
+- BTC, XAU, XAG: max 45x
+- ETH: max 30x
+- Altri (SOL, XRP, BNB, ecc.): max 25x
+
+DCA (solo su trade_type=medio, mai su scalp):
+- Se una posizione e' in perdita ma il setup reggel, proponi "dca" come action.
+- Il codice aggiunge un ingresso al prezzo attuale abbassando lo stop.
+- Max 2 DCA aggiuntivi per posizione (3 ingressi totali).
+- Il DCA ha senso solo se ci sono resistenze/supporti reali sotto/sopra.
+
+REGOLE DURE (il codice le applica comunque):
+- Stop loss SEMPRE obbligatorio — niente trade senza stop.
+- Leva scalp su altcoin: max 25x.
+- Margine totale in uso: max 800$.
+- Posizioni aperte: max 5.
+
+APPRENDIMENTO: gli appunti degli errori ricorrenti sono il tuo manuale. Applica le correzioni.
+
+RISPOSTA — SOLO JSON:
+{"decisions":[
+  {"symbol":"BTC","action":"open_long|open_short|hold|close|dca|skip",
+   "trade_type":"scalp|medio",
+   "confidence":0-100,
+   "leverage":int,
+   "margin_usd":number,
+   "stop_loss_pct":number,
+   "take_profit_pct":number,
+   "reason":"max 30 parole",
+   "dca_sl_pct":number,
+   "dca_tp_pct":number}
+],"note":"max 20 parole"}
+
+Per posizioni aperte: hold, close o dca. Per nuovi ingressi: open_long/open_short. Per skip: aggiungi solo se hai un motivo concreto."""
 
 
 # ---------------- spesa
@@ -53,8 +88,7 @@ def record_spend(state: dict, day: str, usage: dict) -> float:
 
 
 # ---------------- chiamata API
-def call_claude(system: str, user: str, max_tokens: int = 700, timeout: int = 60) -> tuple:
-    """(testo, usage). Solleva eccezione in caso di errore (mai con la chiave dentro il messaggio)."""
+def call_claude(system: str, user: str, max_tokens: int = 900, timeout: int = 60) -> tuple:
     key = os.getenv("ANTHROPIC_API_KEY", "")
     body = json.dumps({"model": MODEL, "max_tokens": max_tokens, "system": system,
                        "messages": [{"role": "user", "content": user}]}).encode()
@@ -63,7 +97,7 @@ def call_claude(system: str, user: str, max_tokens: int = 700, timeout: int = 60
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             d = json.loads(r.read().decode())
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise RuntimeError(f"chiamata Claude fallita ({type(exc).__name__})") from None
     text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
     return text, d.get("usage", {})
@@ -80,73 +114,94 @@ def parse_decisions(text: str) -> dict | None:
     if not isinstance(d, dict) or not isinstance(d.get("decisions"), list):
         return None
     out = []
+    valid_actions = ("open_long", "open_short", "hold", "close", "dca", "skip")
     for x in d["decisions"]:
         try:
             act = str(x["action"])
-            if act not in ("open_long", "open_short", "hold", "close", "skip"):
+            if act not in valid_actions:
                 continue
-            out.append({"symbol": str(x["symbol"]).upper().split("/")[0], "action": act,
-                        "confidence": int(max(0, min(100, float(x.get("confidence", 0))))),
-                        "leverage": int(float(x.get("leverage", 1))),
-                        "margin_usd": float(x.get("margin_usd", 0)),
-                        "stop_loss_pct": float(x.get("stop_loss_pct", 0)),
-                        "take_profit_pct": float(x.get("take_profit_pct", 0)),
-                        "reason": str(x.get("reason", ""))[:300]})
+            out.append({
+                "symbol": str(x["symbol"]).upper().split("/")[0],
+                "action": act,
+                "trade_type": str(x.get("trade_type", "medio")),
+                "confidence": int(max(0, min(100, float(x.get("confidence", 0))))),
+                "leverage": int(float(x.get("leverage", 3))),
+                "margin_usd": float(x.get("margin_usd", 0)),
+                "stop_loss_pct": float(x.get("stop_loss_pct", 0)),
+                "take_profit_pct": float(x.get("take_profit_pct", 0)),
+                "reason": str(x.get("reason", ""))[:300],
+                "dca_sl_pct": float(x.get("dca_sl_pct", 0)),
+                "dca_tp_pct": float(x.get("dca_tp_pct", 0)),
+            })
         except (KeyError, TypeError, ValueError):
             continue
     return {"decisions": out, "note": str(d.get("note", ""))[:200]}
 
 
-# ---------------- notizie (gratis, con ripiego silenzioso)
-def fetch_headlines(limit: int = 8, timeout: int = 8) -> list:
-    out = []
-    for url in FEEDS:
-        try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}),
-                                        timeout=timeout) as r:
-                root = ET.fromstring(r.read())
-            for it in root.iter("item"):
-                t = (it.findtext("title") or "").strip()
-                if t:
-                    out.append(t[:140])
-        except Exception:  # noqa: BLE001
-            continue
-    seen, uniq = set(), []
-    for t in out:
-        if t.lower() not in seen:
-            seen.add(t.lower())
-            uniq.append(t)
-    return uniq[:limit]
+# ---------------- prompt V2
+def build_prompt(snapshot: dict, readings: list, positions: list, headlines: list,
+                 lessons: str, ctx: dict | None = None) -> str:
+    lines = [
+        f"CONTO: capitale {snapshot['equity']:.0f}$, cassa {snapshot['cash']:.0f}$, "
+        f"margine in uso {snapshot['margin']:.0f}/800$, posizioni {snapshot['n_open']}/5, "
+        f"P&L oggi {snapshot['day_pnl']:+.1f}$"
+        + (f", STOP: {snapshot['halt']}" if snapshot.get("halt") else "")
+    ]
 
-
-# ---------------- prompt
-def build_prompt(snapshot: dict, readings: list, positions: list, headlines: list, lessons: str) -> str:
-    lines = [f"CONTO: capitale {snapshot['equity']:.0f}$, cassa {snapshot['cash']:.0f}$, margine in uso "
-             f"{snapshot['margin']:.0f}/500$, posizioni {snapshot['n_open']}/3, P&L oggi {snapshot['day_pnl']:+.1f}$"
-             + (f", ATTENZIONE: {snapshot['halt']}" if snapshot.get("halt") else "")]
     if positions:
         lines.append("POSIZIONI APERTE:")
         for p in positions:
-            lines.append(f"- {p['symbol']} {'LONG' if p['side'] == 1 else 'SHORT'} lev {p['leverage']}x margine "
-                         f"{p['margin']:.0f}$ ingresso {p['entry']:.4g} ora {p['price']:.4g} P&L {p['pnl']:+.1f}$ "
-                         f"stop {p['sl']:.4g} da {p['hours']:.1f}h. Motivo apertura: {p['reason'][:120]}. "
-                         f"Punteggio attuale lato posizione {p['score_now']}")
-    lines.append("COPPIE (punteggio tecnico 0-100 per il lato indicato):")
+            dca_info = f", DCA {p.get('dca_count', 0)}/2" if p.get("dca_count", 0) > 0 else ""
+            lines.append(
+                f"- {p['symbol']} {'LONG' if p['side'] == 1 else 'SHORT'} "
+                f"{p.get('trade_type', 'medio').upper()} lev {p['leverage']}x "
+                f"margine {p['margin']:.0f}${dca_info} ingresso {p['entry']:.5g} "
+                f"ora {p['price']:.5g} P&L {p['pnl']:+.1f}$ stop {p['sl']:.5g} "
+                f"da {p['hours']:.1f}h score_ora {p['score_now']}. "
+                f"Motivo: {p['reason'][:120]}"
+            )
+            # contesto di mercato sulla posizione aperta
+            if ctx:
+                for line in _ctx_lines(ctx, p["symbol"]):
+                    lines.append(f"  {line}")
+
+    lines.append("COPPIE ANALIZZATE:")
     for r in readings:
-        side = "LONG" if r.side == 1 else "SHORT" if r.side == -1 else "-"
-        lines.append(f"- {r.symbol}: prezzo {r.price:.5g}, {side} {r.score}/100 (long {r.long_score}, short {r.short_score}), "
-                     f"ATR1h {r.atr_pct:.2%}, RSI1h {r.facts.get('rsi1h')}, trend4h {r.facts.get('ema50_200_4h')}, "
-                     f"stop suggerito {r.sl_pct:.2%}")
+        side_str = "LONG" if r.side == 1 else "SHORT" if r.side == -1 else "-"
+        lines.append(
+            f"- {r.symbol}: {r.price:.5g}, {side_str} {r.score}/100 "
+            f"(L{r.long_score}/S{r.short_score}), tipo={r.trade_type}, "
+            f"ATR {r.atr_pct:.2%}, RSI1h {r.facts.get('rsi1h')}, "
+            f"trend4h {r.facts.get('ema50_200_4h')}, {r.facts.get('daily_trend', '')}, "
+            f"vol x{r.facts.get('vol_ratio', 1):.1f}"
+            + (f", pattern={r.pattern}" if r.pattern else "")
+            + (f", sl_sug {r.sl_pct:.2%}, tp_sug {r.tp_pct:.2%}")
+        )
+        if r.seasonal_note:
+            lines.append(f"  Stagionalità: {r.seasonal_note}")
+        if ctx:
+            for line in _ctx_lines(ctx, r.symbol):
+                lines.append(f"  {line}")
+
     if headlines:
-        lines.append("NOTIZIE RECENTI: " + " | ".join(headlines))
+        lines.append("NOTIZIE (con sentiment se disponibile): " + " | ".join(headlines[:10]))
+
     if lessons.strip():
-        lines.append("APPUNTI DEI GIORNI SCORSI:\n" + lessons.strip()[-1200:])
+        lines.append("APPUNTI ERRORI RICORRENTI (applica queste correzioni):\n" + lessons.strip()[-1500:])
+
     return "\n".join(lines)
+
+
+def _ctx_lines(ctx: dict, symbol: str) -> list:
+    from desk.market_context import context_lines
+    try:
+        return context_lines(ctx, symbol)
+    except Exception:
+        return []
 
 
 # ---------------- ripiego a sole regole
 def rules_decisions(readings: list, positions: list, open_symbols: set, entry_score: int = 70) -> list:
-    """Stessa forma delle decisioni di Claude, ma con formule: nessun ragionamento, nessuna notizia."""
     out = []
     by = {r.symbol: r for r in readings}
     for p in positions:
@@ -156,14 +211,79 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
         mine = r.long_score if p["side"] == 1 else r.short_score
         theirs = r.short_score if p["side"] == 1 else r.long_score
         if mine < 35 or theirs >= 60:
-            out.append({"symbol": p["symbol"], "action": "close", "confidence": 0, "leverage": 1, "margin_usd": 0,
-                        "stop_loss_pct": 0, "take_profit_pct": 0, "reason": f"segnale sceso a {mine}"})
+            out.append({"symbol": p["symbol"], "action": "close", "trade_type": "medio",
+                        "confidence": 0, "leverage": 1, "margin_usd": 0,
+                        "stop_loss_pct": 0, "take_profit_pct": 0,
+                        "reason": f"segnale sceso a {mine}", "dca_sl_pct": 0, "dca_tp_pct": 0})
     for r in readings:
         if r.symbol in open_symbols or r.side == 0 or r.score < entry_score:
             continue
         frac = min(1.0, max(0.0, (r.score - 60) / 40))
-        out.append({"symbol": r.symbol, "action": "open_long" if r.side == 1 else "open_short",
-                    "confidence": r.score, "leverage": int(round(3 + frac * 12)),
-                    "margin_usd": round(60 + frac * 140, 0), "stop_loss_pct": r.sl_pct,
-                    "take_profit_pct": r.tp_pct, "reason": "; ".join(r.why[:3])})
+        is_scalp = r.trade_type == "scalp"
+        out.append({"symbol": r.symbol,
+                    "action": "open_long" if r.side == 1 else "open_short",
+                    "trade_type": r.trade_type,
+                    "confidence": r.score,
+                    "leverage": int(round(8 + frac * 22)) if is_scalp else int(round(3 + frac * 12)),
+                    "margin_usd": round(40 + frac * 80, 0) if is_scalp else round(60 + frac * 190, 0),
+                    "stop_loss_pct": r.sl_pct,
+                    "take_profit_pct": r.tp_pct,
+                    "reason": "; ".join(r.why[:3]),
+                    "dca_sl_pct": 0, "dca_tp_pct": 0})
     return out
+
+
+# ---------------- lessons V2: con sezione errori ricorrenti
+def update_lessons(d: str, st: dict, day: str, call=call_claude) -> None:
+    """Aggiorna lessons.md e la sezione errori ricorrenti. Richiama Claude una volta a sera."""
+    if st.get("lessons_day") == day or not can_call(st, day, DAILY_CAP + 0.0):
+        return
+    today = [t for t in st["main"]["closed"] if _utc_day(t["close_ms"]) == day]
+    if not today:
+        return
+    st["lessons_day"] = day
+    brief = "\n".join(
+        f"{t['symbol']} {'L' if t['side'] == 1 else 'S'} {t['leverage']}x "
+        f"{t.get('trade_type','?')} conf {t['confidence']} {t['net']:+.2f}$ ({t['why']}): {t['reason'][:90]}"
+        for t in today[-15:]
+    )
+    # leggi errori ricorrenti precedenti
+    err_file = os.path.join(d, "errors.md")
+    prev_errors = ""
+    if os.path.exists(err_file):
+        with open(err_file) as f:
+            prev_errors = f.read()[-800:]
+    system_msg = (
+        "Sei un trader senior che fa coaching. Analizza i trade di oggi e:\n"
+        "1. Scrivi max 5 appunti brevi su cosa ripetere o evitare (una riga ciascuno).\n"
+        "2. Sotto la sezione '## ERRORI RICORRENTI' aggiorna un elenco degli errori "
+        "che si ripetono (max 8 voci). Se un errore e' gia' nella lista precedente, "
+        "incrementa il contatore. Se e' nuovo, aggiungilo. Se non si e' ripetuto da "
+        "piu' di 5 giorni, rimuovilo. Usa formato: '- [N volte] descrizione errore'\n"
+        "Niente premesse. Rispondi direttamente."
+    )
+    user_msg = f"Trade chiusi oggi:\n{brief}\n\nErrori ricorrenti precedenti:\n{prev_errors}"
+    try:
+        text, usage = call(system_msg, user_msg, 500)
+        record_spend(st, day, usage)
+        # separa appunti da errori ricorrenti
+        if "## ERRORI RICORRENTI" in text:
+            parts = text.split("## ERRORI RICORRENTI", 1)
+            notes_part = parts[0].strip()
+            errors_part = parts[1].strip() if len(parts) > 1 else ""
+        else:
+            notes_part = text.strip()
+            errors_part = ""
+        # salva appunti giornalieri
+        with open(os.path.join(d, "lessons.md"), "a") as f:
+            f.write(f"\n[{day}]\n{notes_part[:600]}\n")
+        # aggiorna file errori ricorrenti
+        if errors_part:
+            with open(err_file, "w") as f:
+                f.write(f"# Errori ricorrenti — aggiornato {day}\n{errors_part[:1000]}\n")
+    except Exception:
+        pass
+
+
+def _utc_day(ms: int) -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime(ms / 1000))

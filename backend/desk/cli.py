@@ -1,339 +1,387 @@
-"""Sala segnali: ciclo di paper trading ogni 15 minuti.
+"""Loop principale V2: DCA, contesto di mercato, scalp vs medio, top-30 CMC.
 
-`python -m desk.cli once|loop|report|health --data-dir DIR`
-Solo dati pubblici e paper: nessun ordine reale. La chiave Anthropic (se c'e') serve solo per le decisioni.
+Differenze chiave rispetto a V1:
+- Simboli espansi (fino a 30 top-CMC + XAU/XAG)
+- Contesto di mercato (funding/OI/notizie) aggiornato ogni 30 minuti
+- Logica DCA: se Claude propone "dca" su una posizione aperta, si esegue
+- Scalp vs medio: scalp ha cooldown ridotto e revisione più frequente
+- Claude chiamato ogni ora (o prima per scalp)
+- Budget giornaliero 0.70$ con DAILY_CAP dalla variabile d'ambiente
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
-import random
 import sys
 import time
+import traceback
+import urllib.request
+from typing import Optional
 
-import numpy as np
-
-from desk import brain, signals
 from desk.engine import Limits, PaperAccount
-from rule_pool import runner as rp
+from desk.signals import read_symbol
+from desk.brain import (SYSTEM, DAILY_CAP, build_prompt, call_claude,
+                        can_call, parse_decisions, record_spend, rules_decisions,
+                        update_lessons)
+from desk.market_context import fetch_all_context
 
-SYMBOLS = ["BTC", "ETH", "SOL", "XRP", "BNB", "DOGE", "LINK", "AVAX", "LTC", "ADA"]
-PAIR = "{}/USDT:USDT"
-M15, HOUR, DAY = rp.M15, 3_600_000, 86_400_000
-BACKFILL_DAYS = 45
-ENTRY_SCORE = 50                     # sotto questo punteggio un candidato non merita nemmeno la chiamata
-RULES_ENTRY = 70                     # soglia d'ingresso della modalita' a sole regole
-COOLDOWN_MS = HOUR
-REVIEW_MS = HOUR
-REPORT_HOUR_UTC = 21
-RUN_OFFSET_MS = 30_000
+# ---- configurazione V2
+DATA_DIR = os.getenv("DESK_DATA_DIR", "/data/desk")
+ENTRY_SCORE = int(os.getenv("DESK_ENTRY_SCORE", "60"))   # V2: abbassato da 70 a 60
+HOUR_MS = 3_600_000
+HALF_HOUR_MS = 1_800_000
+SCALP_REVIEW_MS = 900_000    # scalp revisionati ogni 15 minuti
+SCALP_COOLDOWN_MS = 600_000  # cooldown per aprire scalp consecutivi (10 min)
+MEDIO_COOLDOWN_MS = 3_600_000  # cooldown per medio (1h)
 
-
-# ---------------- stato su disco
-def load_state(d: str) -> dict:
-    p = os.path.join(d, "state.json")
-    if os.path.exists(p):
-        with open(p) as f:
-            return json.load(f)
-    return {"main": PaperAccount(Limits(), "main").to_dict(), "ctl": PaperAccount(Limits(), "control").to_dict(),
-            "last_bar": {}, "cool": {}, "headlines": {"t": 0, "items": []}, "budget": {}, "rng_n": 0,
-            "report_day": "", "lessons_day": "", "started_ms": int(time.time() * 1000), "stats": {}}
-
-
-def save_state(d: str, st: dict) -> None:
-    os.makedirs(d, exist_ok=True)
-    tmp = os.path.join(d, "state.json.tmp")
-    with open(tmp, "w") as f:
-        json.dump(st, f)
-    os.replace(tmp, os.path.join(d, "state.json"))
+# Simboli V2: top-30 CMC + oro + argento (escludi stablecoin)
+SYMBOLS = [
+    "BTC", "ETH", "BNB", "XRP", "SOL", "ADA", "DOGE", "AVAX",
+    "DOT", "LINK", "MATIC", "UNI", "ATOM", "LTC", "BCH",
+    "APT", "ARB", "OP", "NEAR", "FIL", "INJ", "SUI", "TIA",
+    "RUNE", "STX", "XAU", "XAG",
+]
+BITGET_BASE = "https://api.bitget.com"
+STATE_FILE = os.path.join(DATA_DIR, "state_v2.json")
+LESSONS_FILE = os.path.join(DATA_DIR, "lessons.md")
+ERRORS_FILE = os.path.join(DATA_DIR, "errors.md")
 
 
-def log(d: str, name: str, rec: dict) -> None:
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, name), "a") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-
-
-def utc_day(ms: int) -> str:
-    return time.strftime("%Y-%m-%d", time.gmtime(ms / 1000))
-
-
-def hhmm(ms: int) -> str:
-    return time.strftime("%d/%m %H:%M", time.gmtime(ms / 1000))
-
-
-# ---------------- ciclo
-def fmt_close(rec: dict) -> str:
-    side = "LONG" if rec["side"] == 1 else "SHORT"
-    return (f"CHIUSO {rec['symbol']} {side} {rec['leverage']}x: {rec['net']:+.2f}$ ({rec['why']}). "
-            f"{rec['reason'][:100]}")
-
-
-def snapshot(main: PaperAccount, prices: dict) -> dict:
-    return {"equity": main.equity(prices), "cash": main.cash, "margin": main.margin_in_use(),
-            "n_open": len(main.positions), "day_pnl": main.equity(prices) - main.day_start_equity,
-            "halt": main.halted(prices)}
-
-
-def run_cycle(d: str, st: dict, store, fetch, now_ms: int, notify=None, call=brain.call_claude,
-              news=brain.fetch_headlines) -> dict:
-    main, ctl = PaperAccount.from_dict(st["main"]), PaperAccount.from_dict(st["ctl"])
-    notes = []
-    say = (lambda m: (notes.append(m), notify(m) if notify else None))
-    back = (now_ms - BACKFILL_DAYS * DAY) // signals.H4 * signals.H4
-    limit = rp.last_closed_open(now_ms)
-    arrays, prices, errors = {}, {}, {}
-    for s in SYMBOLS:
-        sym = PAIR.format(s)
-        try:
-            store.update(sym, fetch, now_ms, back)
-        except Exception as exc:  # noqa: BLE001
-            errors[s] = f"aggiornamento fallito ({type(exc).__name__})"
-        arr = store.load(sym)
-        if len(arr) < 1500 or limit - int(arr[-1, 0]) > rp.MAX_STALE_MS:
-            errors.setdefault(s, "dati insufficienti o vecchi")
-            continue
-        arrays[s], prices[s] = arr, float(arr[-1, 4])
-    # 1) candele nuove sulle posizioni (stop, obiettivi, liquidazioni)
-    for s, arr in arrays.items():
-        last = st["last_bar"].get(s)
-        if last is None:
-            st["last_bar"][s] = int(arr[-1, 0])               # primo avvio: niente storia da rigiocare
-            continue
-        for row in arr[arr[:, 0] > last]:
-            t = int(row[0])
-            for acc in (main, ctl):
-                rec = acc.on_bar(s, t, row[1], row[2], row[3], row[4], M15)
-                if rec:
-                    log(d, "trades.jsonl", rec)
-                    if acc is main:
-                        say(fmt_close(rec))
-                        st["cool"][s] = rec["close_ms"] + COOLDOWN_MS
-                        ctl.close(s, float(row[4]), rec["close_ms"], "specchio del bot")
-        st["last_bar"][s] = int(arr[-1, 0])
-    day = utc_day(now_ms)
-    main.roll_day(day, prices)
-    ctl.roll_day(day, prices)
-    # 2) letture tecniche
-    readings = [r for s in SYMBOLS if s in arrays for r in [signals.read_symbol(s, arrays[s])] if r]
-    by = {r.symbol: r for r in readings}
-    positions = []
-    for s, p in main.positions.items():
-        r = by.get(s)
-        px = prices.get(s, p.entry)
-        positions.append({"symbol": s, "side": p.side, "leverage": p.leverage, "margin": p.margin, "entry": p.entry,
-                          "price": px, "pnl": p.side * (px - p.entry) * p.qty, "sl": p.sl,
-                          "hours": (now_ms - p.open_ms) / HOUR, "reason": p.reason,
-                          "score_now": (r.long_score if p.side == 1 else r.short_score) if r else 0})
-    snap = snapshot(main, prices)
-    # 3) serve decidere?
-    due = []
-    for p in main.positions.values():
-        r = by.get(p.symbol)
-        moved = abs(prices.get(p.symbol, p.entry) / (p.review_price or p.entry) - 1)
-        if now_ms - p.last_review_ms >= REVIEW_MS or (r and moved >= 1.5 * r.atr_pct):
-            due.append(p.symbol)
-    slots = main.limits.max_open - len(main.positions)
-    cands = [r for r in readings if r.symbol not in main.positions and r.side != 0 and r.score >= ENTRY_SCORE
-             and st["cool"].get(r.symbol, 0) <= now_ms] if slots > 0 and not snap["halt"] else []
-    # scansione oraria: se ci sono posti liberi ma nessun candidato forte, Claude guarda comunque le 4 coppie migliori
-    scan = []
-    if slots > 0 and not cands and not snap["halt"] and now_ms - st.get("last_scan", 0) >= HOUR:
-        scan = sorted([r for r in readings if r.symbol not in main.positions and st["cool"].get(r.symbol, 0) <= now_ms],
-                      key=lambda r: -r.score)[:4]
-    decisions, source, cost = [], "nessuna", 0.0
-    if due or cands or scan:
-        if scan:
-            st["last_scan"] = now_ms
-        view = [r for r in readings if r.symbol in due or r in cands or r in scan]
-        if brain.can_call(st, day):
-            if now_ms - st["headlines"]["t"] > HOUR:
-                items = news()
-                st["headlines"] = {"t": now_ms, "items": items or st["headlines"]["items"]}
-            lessons = open(os.path.join(d, "lessons.md")).read() if os.path.exists(os.path.join(d, "lessons.md")) else ""
-            prompt = brain.build_prompt(snap, view, positions, st["headlines"]["items"], lessons)
-            try:
-                text, usage = call(brain.SYSTEM, prompt)
-                cost = brain.record_spend(st, day, usage)
-                parsed = brain.parse_decisions(text)
-                if parsed is None:
-                    raise RuntimeError("risposta illeggibile")
-                decisions, source = parsed["decisions"], "claude"
-                log(d, "decisions.jsonl", {"t": now_ms, "source": source, "cost": round(cost, 5),
-                                           "note": parsed["note"], "decisions": decisions})
-            except Exception as exc:  # noqa: BLE001
-                log(d, "decisions.jsonl", {"t": now_ms, "source": "errore", "error": str(exc)[:120]})
-                source = "errore"
-        if source != "claude" and os.getenv("DESK_RULES_ONLY") == "1":
-            decisions = brain.rules_decisions(view, positions, set(main.positions), RULES_ENTRY)
-            source = "regole"
-        elif source != "claude":
-            # senza Claude (chiave assente, tetto finito, errore): solo gestione del rischio, nessun nuovo ingresso
-            decisions = [x for x in brain.rules_decisions(view, positions, set(main.positions), 999)
-                         if x["action"] == "close"]
-    # 4) applica le decisioni
-    rng = random.Random(f"{st.get('rng_n', 0)}-{now_ms}")
-    for dec in decisions:
-        s, act = dec["symbol"], dec["action"]
-        if s not in prices:
-            continue
-        px = prices[s]
-        if act == "close" and s in main.positions:
-            rec = main.close(s, px, now_ms, "chiusura decisa")
-            if rec:
-                rec["reason"] = f"{rec['reason'][:120]} -> chiusura: {dec['reason']}"[:300]
-                log(d, "trades.jsonl", rec)
-                say(fmt_close(rec))
-                ctl.close(s, px, now_ms, "specchio del bot")
-                st["cool"][s] = now_ms + COOLDOWN_MS
-        elif act in ("open_long", "open_short") and s not in main.positions:
-            r = by.get(s)
-            side = 1 if act == "open_long" else -1
-            sl_pct = dec["stop_loss_pct"] if 0.003 <= dec["stop_loss_pct"] <= 0.05 else (r.sl_pct if r else 0.01)
-            tp_pct = dec["take_profit_pct"] if dec["take_profit_pct"] >= sl_pct else (r.tp_pct if r else sl_pct * 1.7)
-            pos, msg = main.open(s, side, dec["margin_usd"], dec["leverage"], px, px * (1 - side * sl_pct),
-                                 px * (1 + side * tp_pct), now_ms, prices, dec["confidence"], dec["reason"], source)
-            log(d, "decisions.jsonl", {"t": now_ms, "apply": act, "symbol": s, "ok": pos is not None, "msg": msg})
-            st["cool"][s] = now_ms + (COOLDOWN_MS if pos is None else 0)
-            if pos:
-                st["rng_n"] = st.get("rng_n", 0) + 1
-                cside = rng.choice([1, -1])
-                ctl.open(s, cside, pos.margin, pos.leverage, px, px * (1 - cside * sl_pct), px * (1 + cside * tp_pct),
-                         now_ms, prices, 0, "controllo casuale", "caso")
-                say(f"APERTO {s} {'LONG' if side == 1 else 'SHORT'} {pos.leverage}x margine {pos.margin:.0f}$ "
-                    f"a {px:.5g}, stop {pos.sl:.5g}, confidenza {pos.confidence} [{source}]: {dec['reason'][:110]}")
-        elif act in ("skip", "hold"):
-            if s in main.positions:
-                p = main.positions[s]
-                p.last_review_ms, p.review_price = now_ms, px
-            else:
-                st["cool"][s] = now_ms + COOLDOWN_MS
-    for p in main.positions.values():
-        if p.symbol in due:
-            p.last_review_ms, p.review_price = now_ms, prices.get(p.symbol, p.entry)
-    st["main"], st["ctl"] = main.to_dict(), ctl.to_dict()
-    st["stats"] = {"last_cycle_ms": now_ms, "source": source, "errors": errors}
-    # 5) riepilogo serale + appunti
-    if (time.gmtime(now_ms / 1000).tm_hour >= REPORT_HOUR_UTC and st.get("report_day") != day):
-        st["report_day"] = day
-        if notify:
-            notify(render_report(st, prices, now_ms))
-        maybe_lessons(d, st, day, call)
-    st["last_ok_ms"] = now_ms
-    return {"notes": notes, "errors": errors, "decisions": decisions, "source": source, "cost": cost}
-
-
-def maybe_lessons(d: str, st: dict, day: str, call=brain.call_claude) -> None:
-    if st.get("lessons_day") == day or not brain.can_call(st, day, brain.DAILY_CAP + 0.0):
-        return
-    today = [t for t in st["main"]["closed"] if utc_day(t["close_ms"]) == day]
-    if not today:
-        return
-    st["lessons_day"] = day
-    brief = "\n".join(f"{t['symbol']} {'L' if t['side'] == 1 else 'S'} {t['leverage']}x conf {t['confidence']} "
-                      f"{t['net']:+.2f}$ ({t['why']}): {t['reason'][:90]}" for t in today[-12:])
+# ---- candles dal BitGet
+def fetch_candles(symbol: str, bar: str = "15m", limit: int = 300) -> list:
+    sym = symbol.upper()
+    if not sym.endswith("USDT"):
+        sym += "USDT"
+    url = (f"{BITGET_BASE}/api/v2/mix/market/candles"
+           f"?symbol={sym}PERP&productType=USDT-FUTURES&granularity={bar}&limit={limit}")
     try:
-        text, usage = call("Sei un trader che rilegge i propri trade paper per migliorare. Scrivi al massimo 4 appunti "
-                           "brevi e concreti (una riga ciascuno) su cosa ripetere o evitare. Niente premesse.",
-                           f"Trade chiusi oggi:\n{brief}", 300)
-        brain.record_spend(st, day, usage)
-        with open(os.path.join(d, "lessons.md"), "a") as f:
-            f.write(f"\n[{day}]\n{text.strip()[:700]}\n")
-    except Exception:  # noqa: BLE001
-        pass
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            d = json.loads(r.read())
+        if d.get("code") != "00000":
+            return []
+        raw = d.get("data", [])
+        # BitGet: [ts, open, high, low, close, base_vol, quote_vol]
+        return [[float(x) for x in row[:6]] for row in sorted(raw, key=lambda r: float(r[0]))]
+    except Exception:
+        return []
 
 
-def stats_of(closed: list) -> str:
-    if not closed:
-        return "0 trade"
-    w = sum(1 for t in closed if t["net"] > 0)
-    return f"{len(closed)} trade, {w} in profitto, netto {sum(t['net'] for t in closed):+.2f}$"
+def load_state(path: str) -> dict:
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
 
 
-def render_report(st: dict, prices: dict, now_ms: int) -> str:
-    main, ctl = PaperAccount.from_dict(st["main"]), PaperAccount.from_dict(st["ctl"])
-    day = utc_day(now_ms)
-    eq, ceq = main.equity(prices), ctl.equity(prices)
-    today = [t for t in main.closed if utc_day(t["close_ms"]) == day]
-    b = st.get("budget", {})
-    lines = [f"Sala segnali - riepilogo {day}",
-             f"Capitale: {eq:.2f}$ ({eq - main.limits.start_equity:+.2f}$ dall'inizio, oggi {eq - main.day_start_equity:+.2f}$)",
-             f"Controllo a caso (stesse dimensioni, lato casuale): {ceq:.2f}$ ({ceq - ctl.limits.start_equity:+.2f}$)",
-             f"Oggi: {stats_of(today)}. In totale: {stats_of(main.closed)}",
-             f"Posizioni aperte: " + (", ".join(f"{p.symbol} {'L' if p.side == 1 else 'S'} {p.leverage}x" for p in main.positions.values()) or "nessuna")]
-    h = main.halted(prices)
-    if h:
-        lines.append(f"ATTENZIONE: {h}")
-    lines.append(f"Spesa Claude oggi {b.get('spent', 0):.3f}$ su tetto {brain.DAILY_CAP:.2f}$ ({b.get('calls', 0)} chiamate); "
-                 f"totale {b.get('total_spent', 0):.2f}$")
+def save_state(state: dict, path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f, default=str)
+    os.replace(tmp, path)
+
+
+def load_lessons() -> str:
+    """Carica appunti giornalieri + errori ricorrenti (input per il prompt)."""
+    parts = []
+    if os.path.exists(ERRORS_FILE):
+        with open(ERRORS_FILE) as f:
+            parts.append(f.read()[-1000:])
+    if os.path.exists(LESSONS_FILE):
+        with open(LESSONS_FILE) as f:
+            content = f.read()
+            # ultimi 5 giorni di note
+            parts.append(content[-1500:])
+    return "\n---\n".join(parts)
+
+
+def make_account(state: dict) -> PaperAccount:
+    if state.get("main"):
+        return PaperAccount.from_dict(state["main"])
+    return PaperAccount(Limits(), "main")
+
+
+def save_account(acc: PaperAccount, state: dict) -> None:
+    state["main"] = acc.to_dict()
+
+
+def get_prices(symbols: list, candles_map: dict) -> dict:
+    return {s: arr[-1][4] for s, arr in candles_map.items() if len(arr) > 0}
+
+
+def position_info(pos, price: float, readings: dict, now_ms: int) -> dict:
+    r = readings.get(pos.symbol)
+    return {
+        "symbol": pos.symbol, "side": pos.side, "leverage": pos.leverage,
+        "margin": pos.margin, "total_margin": pos.total_margin,
+        "trade_type": pos.trade_type, "dca_count": pos.dca_count,
+        "entry": pos.entry, "price": price, "sl": pos.sl,
+        "pnl": pos.side * (price - pos.entry) * pos.qty,
+        "hours": (now_ms - pos.open_ms) / 3_600_000,
+        "score_now": r.score if r else 0,
+        "reason": pos.reason,
+    }
+
+
+def render_report(acc: PaperAccount, prices: dict, now_ms: int) -> str:
+    eq = acc.equity(prices)
+    lines = [
+        f"=== DESK V2 REPORT {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(now_ms/1000))} ===",
+        f"Equity: {eq:.2f}$  Cash: {acc.cash:.2f}$  Margin: {acc.margin_in_use():.2f}$",
+        f"Posizioni: {len(acc.positions)}/{acc.limits.max_open}",
+    ]
+    for sym, pos in acc.positions.items():
+        px = prices.get(sym, pos.entry)
+        pnl = pos.side * (px - pos.entry) * pos.qty
+        lines.append(
+            f"  {sym} {'LONG' if pos.side == 1 else 'SHORT'} {pos.trade_type.upper()} "
+            f"lev {pos.leverage}x  margin {pos.total_margin:.0f}$  DCA {pos.dca_count}/2  "
+            f"P&L {pnl:+.2f}$  SL {pos.sl:.5g}"
+        )
+    if acc.closed:
+        closed_today = [c for c in acc.closed
+                        if now_ms - c["close_ms"] < 24 * 3_600_000]
+        pnl_day = sum(c["net"] for c in closed_today)
+        lines.append(f"Chiusi oggi: {len(closed_today)}  P&L netto: {pnl_day:+.2f}$")
     return "\n".join(lines)
 
 
-# ---------------- loop e salute
-def next_run_ms(now_ms: int) -> int:
-    return (now_ms // M15 + 1) * M15 + RUN_OFFSET_MS
+def needs_scalp_review(pos, now_ms: int) -> bool:
+    """Gli scalp vanno rivisti più spesso."""
+    return pos.trade_type == "scalp" and (now_ms - pos.last_review_ms) >= SCALP_REVIEW_MS
 
 
-def health(st: dict | None, now_ms: int) -> tuple:
-    if st is None:
-        return False, "nessuno stato"
-    last = st.get("last_ok_ms")
-    if last is not None:
-        age = now_ms - int(last)
-        return age <= 45 * 60_000, f"ultimo ciclo riuscito {age // 60_000} minuti fa"
-    if now_ms - st.get("started_ms", 0) <= 60 * 60_000:
-        return True, "avvio in corso"
-    return False, "nessun ciclo riuscito"
+# ---- ciclo principale
+def run_cycle(state: dict, now_ms: int) -> None:
+    import numpy as np
+
+    acc = make_account(state)
+    day = time.strftime("%Y-%m-%d", time.gmtime(now_ms / 1000))
+    acc.roll_day(day, {})
+
+    # carica candele per tutti i simboli
+    candles_map: dict = {}
+    for sym in SYMBOLS:
+        arr = fetch_candles(sym)
+        if arr:
+            candles_map[sym] = np.array(arr)
+        time.sleep(0.05)   # gentile con l'API
+
+    prices = get_prices(SYMBOLS, candles_map)
+    halt = acc.halted(prices)
+
+    # --- contesto di mercato (aggiornato ogni 30 minuti)
+    last_ctx_ts = state.get("last_ctx_ts", 0)
+    ctx = state.get("market_ctx")
+    if ctx is None or (now_ms - last_ctx_ts) >= HALF_HOUR_MS:
+        try:
+            ctx = fetch_all_context(SYMBOLS, now_ms)
+            # serializza FundingInfo/OIInfo in dict per JSON
+            ctx_serial = {
+                "funding": {k: vars(v) for k, v in ctx["funding"].items()},
+                "oi": {k: vars(v) for k, v in ctx["oi"].items()},
+                "news": ctx["news"], "ts": ctx["ts"],
+            }
+            state["market_ctx"] = ctx_serial
+            state["last_ctx_ts"] = now_ms
+        except Exception:
+            pass
+
+    # deserializza ctx per uso
+    ctx_for_prompt: Optional[dict] = None
+    if state.get("market_ctx"):
+        ctx_for_prompt = state["market_ctx"]
+
+    # segnali tecnici
+    readings_list = []
+    readings_map: dict = {}
+    for sym in SYMBOLS:
+        arr = candles_map.get(sym)
+        if arr is None or len(arr) < 80:
+            continue
+        r = read_symbol(sym, arr, now_ms)
+        if r is not None:
+            readings_list.append(r)
+            readings_map[sym] = r
+
+    open_symbols = set(acc.positions)
+
+    # snapshot conto per il prompt
+    eq = acc.equity(prices)
+    margin_used = acc.margin_in_use()
+    snap = {
+        "equity": eq, "cash": acc.cash, "margin": margin_used,
+        "n_open": len(acc.positions), "day_pnl": eq - acc.day_start_equity,
+        "halt": halt,
+    }
+
+    # posizioni aperte con info aggiornate
+    pos_info = [position_info(pos, prices.get(sym, pos.entry), readings_map, now_ms)
+                for sym, pos in acc.positions.items()]
+
+    # notizie dal ctx
+    headlines = ctx_for_prompt.get("news", []) if ctx_for_prompt else []
+
+    lessons = load_lessons()
+
+    last_call = state.get("last_call_ms", 0)
+    # determina se qualche scalp richiede review urgente
+    urgent_scalp = any(needs_scalp_review(pos, now_ms) for pos in acc.positions.values())
+    call_due = (now_ms - last_call) >= HOUR_MS or urgent_scalp
+
+    decisions = []
+    source = "rules"
+    if halt:
+        print(f"[HALT] {halt}")
+    elif call_due and can_call(state, day):
+        try:
+            prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt)
+            text, usage = call_claude(SYSTEM, prompt, max_tokens=1100)
+            cost = record_spend(state, day, usage)
+            state["last_call_ms"] = now_ms
+            parsed = parse_decisions(text)
+            if parsed:
+                decisions = parsed["decisions"]
+                source = "claude"
+                print(f"[Claude] {len(decisions)} decisioni  costo {cost:.4f}$  "
+                      f"budget usato {state['budget']['spent']:.3f}$ / {DAILY_CAP}$")
+                if parsed.get("note"):
+                    print(f"[Claude] Nota: {parsed['note']}")
+        except Exception as e:
+            print(f"[WARN] Claude non disponibile: {e}")
+
+    if not decisions:
+        decisions = rules_decisions(readings_list, pos_info, open_symbols, ENTRY_SCORE)
+        source = "rules"
+
+    # ---- esecuzione decisioni
+    last_open_ms = state.get("last_open_ms", {})
+    for dec in decisions:
+        sym = dec["symbol"]
+        act = dec["action"]
+        px = prices.get(sym)
+        if px is None:
+            continue
+
+        if act == "close":
+            closed = acc.close(sym, px, now_ms, "chiusura Claude")
+            if closed:
+                print(f"[CLOSE] {sym} net {closed['net']:+.2f}$  motivo: {dec['reason'][:60]}")
+
+        elif act == "dca":
+            # DCA su posizione esistente
+            pos = acc.positions.get(sym)
+            if pos is None:
+                continue
+            sl_pct = dec.get("dca_sl_pct") or dec.get("stop_loss_pct", 0)
+            tp_pct = dec.get("dca_tp_pct") or dec.get("take_profit_pct", 0)
+            if sl_pct <= 0:
+                print(f"[DCA SKIP] {sym}: sl_pct mancante")
+                continue
+            new_sl = px * (1 - pos.side * sl_pct)
+            new_tp = px * (1 + pos.side * tp_pct) if tp_pct > 0 else None
+            result, msg = acc.add_dca(sym, new_sl, new_tp, now_ms, prices, dec.get("reason", "")[:80])
+            if result:
+                print(f"[DCA] {sym} DCA#{result.dca_count} @{px:.5g}  nuovo entry medio {result.entry:.5g}  "
+                      f"SL {new_sl:.5g}  margine tot {result.total_margin:.0f}$")
+            else:
+                print(f"[DCA SKIP] {sym}: {msg}")
+
+        elif act in ("open_long", "open_short"):
+            # cooldown per tipo
+            trade_type = dec.get("trade_type", "medio")
+            cooldown = SCALP_COOLDOWN_MS if trade_type == "scalp" else MEDIO_COOLDOWN_MS
+            last_ts = last_open_ms.get(sym, 0)
+            if now_ms - last_ts < cooldown:
+                print(f"[COOLDOWN] {sym} ({trade_type})")
+                continue
+            if sym in acc.positions:
+                continue
+            if dec["confidence"] < ENTRY_SCORE:
+                continue
+            side = 1 if act == "open_long" else -1
+            sl_pct = dec.get("stop_loss_pct", 0)
+            if sl_pct <= 0:
+                r = readings_map.get(sym)
+                sl_pct = r.sl_pct if r else 0.01
+            sl = px * (1 - side * sl_pct)
+            tp_pct = dec.get("take_profit_pct", 0)
+            tp = px * (1 + side * tp_pct) if tp_pct > 0 else None
+            pos, msg = acc.open(
+                sym, side, dec["margin_usd"], dec["leverage"], px, sl, tp, now_ms, prices,
+                confidence=dec["confidence"], reason=dec.get("reason", "")[:200],
+                source=source, trade_type=trade_type,
+            )
+            if pos:
+                last_open_ms[sym] = now_ms
+                print(f"[OPEN] {sym} {'LONG' if side == 1 else 'SHORT'} {trade_type.upper()} "
+                      f"lev {pos.leverage}x  margin {pos.total_margin:.0f}$  "
+                      f"@{px:.5g}  SL {sl:.5g}  conf {dec['confidence']}  src {source}")
+            else:
+                print(f"[SKIP] {sym} {act}: {msg}")
+
+        elif act == "hold":
+            # aggiorna last_review_ms per lo scalp
+            pos = acc.positions.get(sym)
+            if pos:
+                pos.last_review_ms = now_ms
+
+    state["last_open_ms"] = last_open_ms
+
+    # ---- processa barre (stop, liq, tp automatici)
+    import numpy as np
+    for sym, pos in list(acc.positions.items()):
+        arr = candles_map.get(sym)
+        if arr is None:
+            continue
+        bar_ms = 900_000  # 15m
+        for row in arr:
+            ts, o, h, l, c = int(row[0]), row[1], row[2], row[3], row[4]
+            result = acc.on_bar(sym, ts, o, h, l, c, bar_ms)
+            if result:
+                print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
+                break
+
+    # ---- lessons
+    update_lessons(DATA_DIR, state, day)
+
+    # ---- salva
+    save_account(acc, state)
+    save_state(state, STATE_FILE)
+
+    # ---- report
+    print(render_report(acc, prices, now_ms))
 
 
-def iteration(d: str, notify, fetch=rp.fetch_bitget, now_ms: int | None = None, call=brain.call_claude) -> dict | None:
-    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+def iteration(state: dict) -> None:
+    now_ms = int(time.time() * 1000)
     try:
-        st = load_state(d)
-        store = rp.CandleStore(os.path.join(d, "candles"))
-        res = run_cycle(d, st, store, fetch, now_ms, notify, call)
-        save_state(d, st)
-        m = PaperAccount.from_dict(st["main"])
-        px = {s: float(store.load(PAIR.format(s))[-1, 4]) for s in SYMBOLS if len(store.load(PAIR.format(s)))}
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(now_ms / 1000))}Z] ciclo ok; capitale "
-              f"{m.equity(px):.2f}$; aperte {len(m.positions)}; fonte={res['source']}; spesa oggi "
-              f"{st['budget'].get('spent', 0):.3f}$; errori={res['errors'] or 'no'}", flush=True)
-        return res
-    except Exception as exc:  # noqa: BLE001
-        print(f"ERRORE ciclo fallito: {type(exc).__name__}: {str(exc)[:150]}", flush=True)
-        return None
+        run_cycle(state, now_ms)
+    except Exception:
+        traceback.print_exc()
 
 
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("command", choices=["once", "loop", "report", "health"])
-    ap.add_argument("--data-dir", default=os.getenv("DESK_DATA_DIR", "data/desk"))
-    ap.add_argument("--no-telegram", action="store_true")
-    a = ap.parse_args(argv)
-    d = a.data_dir
-    now = int(time.time() * 1000)
-    if a.command == "health":
-        p = os.path.join(d, "state.json")
-        ok, msg = health(json.load(open(p)) if os.path.exists(p) else None, now)
-        print(("SANO: " if ok else "NON SANO: ") + msg)
-        return 0 if ok else 1
-    if a.command == "report":
-        st = load_state(d)
-        store = rp.CandleStore(os.path.join(d, "candles"))
-        px = {s: float(store.load(PAIR.format(s))[-1, 4]) for s in SYMBOLS if len(store.load(PAIR.format(s)))}
-        print(render_report(st, px, now))
-        return 0
-    notify = None if a.no_telegram else rp.telegram_sender()
-    print(f"sala segnali avviata; telegram={'si' if notify else 'no'}; claude={'si' if os.getenv('ANTHROPIC_API_KEY') else 'NO (solo gestione rischio)'}; "
-          f"dati in {d}", flush=True)
-    if a.command == "once":
-        return 0 if iteration(d, notify) is not None else 1
+def main() -> None:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    state = load_state(STATE_FILE)
+
+    if "--once" in sys.argv:
+        iteration(state)
+        return
+
+    print(f"[DESK V2] avvio — simboli: {len(SYMBOLS)}  entry_score={ENTRY_SCORE}  "
+          f"daily_cap={DAILY_CAP}$  data={DATA_DIR}")
     while True:
-        iteration(d, notify)
-        n = int(time.time() * 1000)
-        time.sleep(max(1.0, (next_run_ms(n) - n) / 1000.0))
+        iteration(state)
+        # sleep adattiva: scalp richiede attenzione ogni 15 min, default ogni 30 min
+        sleep_s = 900 if any(p.trade_type == "scalp" for p in make_account(state).positions.values()) else 1800
+        print(f"[SLEEP] {sleep_s//60} min")
+        time.sleep(sleep_s)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
