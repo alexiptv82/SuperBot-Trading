@@ -30,11 +30,40 @@ jobs:
           python -m pip install --upgrade pip
           pip install ccxt==4.2.95 pandas numpy pytest
       - name: Unit tests (desk)
-        run: python -m pytest tests/test_desk.py -v --tb=long
-      - name: Pubblica summary anche se fallito
+        id: desk_tests
+        continue-on-error: true
+        run: |
+          python -m pytest tests/test_desk.py -v --tb=long 2>&1 | tee /tmp/pytest_out.txt
+          exit ${PIPESTATUS[0]}
+      - name: Pubblica errori come annotations
         if: always()
         run: |
-          python -m pytest tests/test_desk.py --tb=long -q 2>&1 >> $GITHUB_STEP_SUMMARY || true
+          python3 - <<'PYEOF'
+          import re, sys
+          try:
+              with open("/tmp/pytest_out.txt") as f:
+                  content = f.read()
+          except FileNotFoundError:
+              sys.exit(0)
+          # stampa tutto nel log
+          print(content)
+          # emetti annotations per ogni FAILED
+          for line in content.splitlines():
+              if line.startswith("FAILED") or "ERROR" in line[:10]:
+                  safe = line.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                  print(f"::error::{safe}")
+          # summary
+          with open("/tmp/pytest_out.txt") as f:
+              txt = f.read()
+          import os
+          sf = os.environ.get("GITHUB_STEP_SUMMARY", "")
+          if sf:
+              with open(sf, "a") as s:
+                  s.write("```\n" + txt[-8000:] + "\n```\n")
+          PYEOF
+      - name: Fallisci se i test sono falliti
+        if: steps.desk_tests.outcome == 'failure'
+        run: exit 1
       - name: Unit tests (rule_pool)
         run: python -m pytest tests/test_rule_pool_runner.py -v --tb=short
   image:
