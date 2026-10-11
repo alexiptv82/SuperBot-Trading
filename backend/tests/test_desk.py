@@ -300,8 +300,11 @@ def test_rules_fallback_sizes_with_score_and_closes_weak_positions():
     positions = [{"symbol": "SOL", "side": 1, "trade_type": "medio", "dca_count": 0}]
     d = {x["symbol"]: x for x in rules_decisions([strong, weak, held], positions, {"SOL"}, entry_score=70)}
     assert "BTC" in d and "ETH" in d, f"chiavi attese BTC/ETH, trovate: {list(d)}"
+    # scalp ha leverage più alto di medio (formula diversa: 8+frac*22 vs 3+frac*12)
     assert d["BTC"]["leverage"] > d["ETH"]["leverage"]
-    assert d["BTC"]["margin_usd"] > d["ETH"]["margin_usd"]
+    # scalp usa range margine 40-120$, medio 60-250$: con score alto scalp < medio è atteso
+    assert 40 <= d["BTC"]["margin_usd"] <= 120, f"scalp fuori range: {d['BTC']['margin_usd']}"
+    assert 60 <= d["ETH"]["margin_usd"] <= 250, f"medio fuori range: {d['ETH']['margin_usd']}"
     assert d["SOL"]["action"] == "close"
     assert d["BTC"]["trade_type"] == "scalp"
 
@@ -443,6 +446,7 @@ def test_cycle_v2_dca_execution():
     """Se Claude propone 'dca' su posizione aperta, il codice deve eseguirlo."""
     import desk.brain as _brain
     import desk.market_context as _mc
+    import desk.cli as _c
 
     world = _world()
     orig_fetch = cli.fetch_candles
@@ -471,11 +475,12 @@ def test_cycle_v2_dca_execution():
                                    "dca_sl_pct": 0.012, "dca_tp_pct": 0.025}], "note": ""}
         return json.dumps(body), {"input_tokens": 2000, "output_tokens": 150}
 
+    # patcha call_claude sia in brain che nel namespace di cli (cli lo importa direttamente)
     _brain.call_claude = alternating_call
+    _c.call_claude = alternating_call
 
     try:
         with tempfile.TemporaryDirectory() as d:
-            import desk.cli as _c
             _c.STATE_FILE = os.path.join(d, "state_v2.json")
             _c.DATA_DIR = d
 
@@ -483,7 +488,7 @@ def test_cycle_v2_dca_execution():
             # ciclo 1: apre
             cli.run_cycle(state, NOW)
             acc = cli.make_account(state)
-            assert "BTC" in acc.positions
+            assert "BTC" in acc.positions, f"BTC non aperto nel ciclo 1, posizioni: {list(acc.positions)}"
 
             # ciclo 2: DCA
             state["last_call_ms"] = 0
@@ -499,6 +504,7 @@ def test_cycle_v2_dca_execution():
         cli.fetch_candles = orig_fetch
         _mc.fetch_all_context = orig_ctx
         _brain.call_claude = orig_call
+        _c.call_claude = orig_call
         del os.environ["ANTHROPIC_API_KEY"]
 
 
