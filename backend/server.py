@@ -938,6 +938,78 @@ async def desk_resume(session=Depends(require_session)):
         raise HTTPException(status_code=500, detail=f"impossibile rimuovere pause.flag: {e}")
     return {"paused": False, "message": "Bot Hawk ripreso"}
 
+_prices_cache: dict = {}
+_prices_cache_ts: float = 0.0
+_PRICES_CACHE_TTL = 30.0   # secondi — refresh max ogni 30s, non ad ogni richiesta
+
+@app.get("/api/desk/prices")
+async def desk_prices(session=Depends(require_session)):
+    """Prezzi live per tutti i 27 simboli V2 — usati dal MarketCarousel nel frontend.
+    Cache server-side 30s: il frontend può fare polling frequente senza sommergere l'exchange.
+    """
+    global _prices_cache, _prices_cache_ts
+    import time as _time
+    now = _time.monotonic()
+    if _prices_cache and (now - _prices_cache_ts) < _PRICES_CACHE_TTL:
+        return _prices_cache
+
+    V2_SYMBOLS = [
+        'BTC','ETH','BNB','XRP','SOL','ADA','DOGE','AVAX',
+        'DOT','LINK','MATIC','UNI','ATOM','LTC','BCH',
+        'APT','ARB','OP','NEAR','FIL','INJ','SUI','TIA',
+        'RUNE','STX','XAU','XAG',
+    ]
+    prices = {}
+    for sym in V2_SYMBOLS:
+        usdt = sym + 'USDT'
+        try:
+            ticker = await exchange.get_ticker(usdt)
+            prices[sym] = ticker
+        except Exception:
+            try:
+                ticker = await exchange.get_ticker(sym + '/USDT')
+                prices[sym] = ticker
+            except Exception as e:
+                prices[sym] = {'error': str(e)}
+    _prices_cache = prices
+    _prices_cache_ts = now
+    return prices
+
+
+@app.post("/api/desk/close-all")
+async def desk_close_all(session=Depends(require_session)):
+    """Segnala al container desk di azzerare tutte le posizioni aperte.
+    Scrive un file reset.flag nel volume condiviso; il desk lo legge al prossimo ciclo
+    (max 15-30 secondi) e azzera posizioni in modo coordinato senza race condition.
+    """
+    flag_path = os.path.join(_DESK_DATA, "reset.flag")
+    try:
+        with open(flag_path, "w") as f:
+            import time as _time
+            f.write(str(int(_time.time())))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"impossibile scrivere reset.flag: {e}")
+
+    # conta le posizioni attuali per dare feedback all'utente
+    state = _desk_state()
+    acc = state.get("main", state.get("account", {}))
+    positions = acc.get("positions", {})
+    n = len(positions)
+    symbols = list(positions.keys())
+
+    return {
+        "queued": True,
+        "positions_found": n,
+        "symbols": symbols,
+        "message": (
+            f"Reset inviato: {n} posizioni verranno chiuse entro il prossimo ciclo (15-30s). "
+            "La dashboard si aggiornerà automaticamente."
+            if n > 0 else
+            "Nessuna posizione aperta al momento. Il flag è stato scritto comunque."
+        ),
+    }
+
+
 @app.get("/api/desk/health")
 async def desk_health():
     """Health check per il bot V2 Hawk (non richiede sessione)."""

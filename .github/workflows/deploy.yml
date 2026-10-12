@@ -65,7 +65,7 @@ jobs:
               mkdir -p data && cp "$DB_KEEP" "$DB_LIVE" && echo "DB: ripristinato dopo il reset di git"
             fi
             rm -f "$DB_KEEP"
-            printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD_B64=%s\nWEBAUTHN_RP_ID=sbtrading.hitvprime.com\nWEBAUTHN_ORIGIN=https://sbtrading.hitvprime.com\nWEBAUTHN_RP_NAME=SuperBot\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" "$(printf %s "$DASHBOARD_PASSWORD" | base64 -w0)" > backend/.env
+            printf "BITGET_API_KEY=%s\nBITGET_SECRET_KEY=%s\nBITGET_PASSPHRASE=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD_B64=%s\nWEBAUTHN_RP_ID=superbot-trading.duckdns.org\nWEBAUTHN_ORIGIN=https://superbot-trading.duckdns.org\nWEBAUTHN_RP_NAME=SuperBot\nDB_PATH=./data/superbot.db\n" "$BITGET_API_KEY" "$BITGET_SECRET_KEY" "$BITGET_PASSPHRASE" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" "$(printf %s "$DASHBOARD_PASSWORD" | base64 -w0)" > backend/.env
             mkdir -p data
             # Build reale del frontend ad ogni deploy: prima d'ora
             # frontend/build sul VPS era una build manuale vecchia, mai
