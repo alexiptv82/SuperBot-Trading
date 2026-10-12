@@ -1,55 +1,75 @@
-=== TUTTI I CONF IN SITES-ENABLED ===
-total 8
-drwxr-xr-x 2 root root 4096 Oct 12 13:17 .
-drwxr-xr-x 8 root root 4096 Sep 18 23:32 ..
-lrwxrwxrwx 1 root root   36 Sep 18 23:32 hitvprime -> /etc/nginx/sites-available/hitvprime
-lrwxrwxrwx 1 root root   35 Oct 12 13:17 superbot -> /etc/nginx/sites-available/superbot
-lrwxrwxrwx 1 root root   43 Oct  8 07:16 superbot-staging -> /etc/nginx/sites-available/superbot-staging
+=== ORA UTC: Mon Oct 12 13:48:41 UTC 2026 ===
+=== DOCKER PS -A (superbot*) ===
+superbot-desk-bull | superbot-desk | Up 13 minutes (health: starting) | creato 2026-10-12 13:34:41 +0000 UTC
+superbot-desk-hawk | superbot-desk | Up 11 minutes (health: starting) | creato 2026-10-12 13:34:41 +0000 UTC
+superbot-desk | 3334ae4fc6b7 | Up 3 hours (unhealthy) | creato 2026-10-12 10:43:43 +0000 UTC
+superbot-pool | superbot-pool | Up 3 days (healthy) | creato 2026-10-09 14:13:44 +0000 UTC
+superbot-staging | superbot-staging | Up 4 days | creato 2026-10-08 07:17:25 +0000 UTC
 
-=== GREP sbtrading in tutti i conf ===
-nessun match
+##### superbot-desk #####
+Status=running Restarts=0 Mounts: /opt/superbot-desk-data->/app/data/desk 
+- righe HALT nelle ultime 300 righe di log: 0
+- ultime 12 righe log:
+Posizioni: 0/5
+Chiusi oggi: 1  P&L netto: -6.76$
+[SLEEP] 30 min
+[DESK V2] candles ok: 26/27 simboli
+[DESK V2] readings validi: 26/27 simboli
+[CONF_LOW] FIL conf=63 < soglia=70
+[CONF_LOW] INJ conf=62 < soglia=70
+=== DESK V2 REPORT 2026-10-12 13:47 UTC ===
+Equity: 974.91$  Cash: 974.91$  Margin: 0.00$
+Posizioni: 0/5
+Chiusi oggi: 1  P&L netto: -6.76$
+[SLEEP] 30 min
 
-=== GREP hitvprime.com in tutti i conf ===
-nessun match
+##### superbot-desk-hawk #####
+Status=running Restarts=1 Mounts: /opt/superbot-desk-data/hawk->/app/data/desk/hawk 
+DESK_PORTFOLIO=hawk
+DESK_DATA_DIR=/app/data/desk/hawk
+- righe HALT nelle ultime 300 righe di log: 0
+- ultime 12 righe log:
+FileNotFoundError: [Errno 2] No such file or directory: '/app/data/desk/hawk/state_v2.json.tmp' -> '/app/data/desk/hawk/state_v2.json'
+[DESK V2] avvio [HAWK] — Hawk — max $100/trade, 10 posizioni, budget $1000
+[DESK V2] simboli: 27  entry_score=60(TIER_AB)/70(TIER_C)  daily_cap=0.7$  data=/app/data/desk/hawk
+[DESK V2] candles ok: 26/27 simboli
+[DESK V2] readings validi: 26/27 simboli
+[CONF_LOW] ARB conf=64 < soglia=70
+[CONF_LOW] FIL conf=63 < soglia=70
+[CONF_LOW] INJ conf=62 < soglia=70
+=== DESK V2 REPORT 2026-10-12 13:37 UTC ===
+Equity: 1000.00$  Cash: 1000.00$  Margin: 0.00$
+Posizioni: 0/10
+[SLEEP] 30 min
 
-=== /etc/nginx/snippets/ ===
-fastcgi-php.conf
-hitv-proxy.conf
-snakeoil.conf
+##### superbot-desk-bull #####
+Status=running Restarts=0 Mounts: /opt/superbot-desk-data/bull->/app/data/desk/bull 
+DESK_PORTFOLIO=bull
+DESK_DATA_DIR=/app/data/desk/bull
+- righe HALT nelle ultime 300 righe di log: 0
+- ultime 12 righe log:
+[DESK V2] simboli: 27  entry_score=60(TIER_AB)/70(TIER_C)  daily_cap=0.7$  data=/app/data/desk/bull
+[PAUSA] pause.flag trovato — bot in attesa. Rimuovi il file per riprendere.
+[PAUSA] pause.flag rimosso — bot riprende.
+[DESK V2] candles ok: 24/27 simboli
+[DESK V2] readings validi: 24/27 simboli
+[CONF_LOW] ARB conf=64 < soglia=70
+[CONF_LOW] FIL conf=63 < soglia=70
+[CONF_LOW] INJ conf=62 < soglia=70
+=== DESK V2 REPORT 2026-10-12 13:40 UTC ===
+Equity: 1000.00$  Cash: 1000.00$  Margin: 0.00$
+Posizioni: 0/3
+[SLEEP] 30 min
 
-=== hitv-proxy.conf ===
-# HI-TV Prime — shared proxy directives
-# Deploy target: /etc/nginx/snippets/hitv-proxy.conf
-#
-# The relay streams live TV and VOD through this proxy. Every directive
-# below is load-bearing for playback — do not "tidy" them away.
-
-proxy_pass         http://127.0.0.1:8001;
-proxy_http_version 1.1;
-
-# relay_service._compute_relay_base_url reads these two headers to build
-# the relayBaseUrl it hands the Android client in the bootstrap
-# response. Get them wrong and the app is handed an unreachable relay.
-proxy_set_header   X-Forwarded-Proto $scheme;
-proxy_set_header   X-Forwarded-Host  $host;
-
-proxy_set_header   Host              $host;
-proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-proxy_set_header   Connection        "";
-
-# Streaming correctness. Buffering would stall live playback; the long
-# timeouts match the relay's own httpx read=None (open-ended streams).
-proxy_buffering         off;
-proxy_request_buffering off;
-proxy_read_timeout      3600s;
-proxy_send_timeout      3600s;
-
-# Never recompress .ts / .m3u8 payloads.
-gzip off;
-
-# Only POST /api/relay/bootstrap carries a body, and it is tiny.
-client_max_body_size 1m;
-
-=== TLS certs disponibili ===
-hitvprime.duckdns.org
-legacy-cross-root.pem
+=== FILE DATI HAWK ===
+total 16
+drwxr-xr-x 2 root root 4096 2026-10-12 13:47:08.103559472 +0000 .
+drwxr-xr-x 5 root root 4096 2026-10-12 13:48:30.411068992 +0000 ..
+-rw-r--r-- 1 root root 5192 2026-10-12 13:47:08.103559472 +0000 state_v2.json
+=== FILE DATI BULL ===
+total 16
+drwxr-xr-x 2 root root 4096 2026-10-12 13:44:36.157301655 +0000 .
+drwxr-xr-x 5 root root 4096 2026-10-12 13:48:30.411068992 +0000 ..
+-rw-r--r-- 1 root root 5193 2026-10-12 13:44:36.157301655 +0000 state_v2.json
+=== SUPERBOT (FastAPI) ===
+FINE
