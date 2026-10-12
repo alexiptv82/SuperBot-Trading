@@ -173,6 +173,7 @@ def run_cycle(state: dict, now_ms: int) -> None:
             candles_map[sym] = np.array(arr)
         time.sleep(0.05)   # gentile con l'API
 
+    print(f"[DESK V2] candles ok: {len(candles_map)}/{len(SYMBOLS)} simboli", flush=True)
     prices = get_prices(SYMBOLS, candles_map)
     halt = acc.halted(prices)
     if halt:
@@ -212,6 +213,7 @@ def run_cycle(state: dict, now_ms: int) -> None:
             readings_list.append(r)
             readings_map[sym] = r
 
+    print(f"[DESK V2] readings validi: {len(readings_list)}/{len(SYMBOLS)} simboli", flush=True)
     open_symbols = set(acc.positions)
 
     # snapshot conto per il prompt
