@@ -787,6 +787,76 @@ async def desk_performance(session=Depends(require_session)):
     }
 
 
+@app.get("/api/desk/diary")
+async def desk_diary(session=Depends(require_session)):
+    """Diario giornaliero: trade chiusi raggruppati per giorno e per simbolo.
+    Restituisce i giorni in ordine cronologico inverso (più recente prima).
+    """
+    from datetime import datetime, timezone
+    trades = _desk_trades_raw(last_n=5000)
+    closed = [t for t in trades if t.get("net") is not None]
+
+    # raggruppa per giorno UTC
+    days: dict = {}
+    for t in closed:
+        ms = t.get("close_ms", 0)
+        day = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d") if ms else "?"
+        days.setdefault(day, []).append(t)
+
+    result = []
+    for day in sorted(days.keys(), reverse=True):
+        day_trades = sorted(days[day], key=lambda x: x.get("close_ms", 0))
+        wins = [t for t in day_trades if (t.get("net") or 0) > 0]
+        losses = [t for t in day_trades if (t.get("net") or 0) <= 0]
+        total_pnl = sum(t.get("net", 0) for t in day_trades)
+
+        # per simbolo in questo giorno
+        by_sym: dict = {}
+        for t in day_trades:
+            sym = t.get("symbol", "?")
+            s = by_sym.setdefault(sym, {"trades": 0, "wins": 0, "losses": 0,
+                                        "total_pnl": 0.0, "best": 0.0, "worst": 0.0})
+            net = t.get("net", 0)
+            s["trades"] += 1
+            s["total_pnl"] += net
+            if net > 0:
+                s["wins"] += 1
+                s["best"] = max(s["best"], net)
+            else:
+                s["losses"] += 1
+                s["worst"] = min(s["worst"], net)
+        for s in by_sym.values():
+            s["total_pnl"] = round(s["total_pnl"], 2)
+            s["best"] = round(s["best"], 2)
+            s["worst"] = round(s["worst"], 2)
+
+        result.append({
+            "day": day,
+            "total_trades": len(day_trades),
+            "wins": len(wins),
+            "losses": len(losses),
+            "total_pnl": round(total_pnl, 2),
+            "by_symbol": by_sym,
+            "trades": [
+                {
+                    "symbol": t.get("symbol"),
+                    "side": t.get("side"),
+                    "net": round(t.get("net", 0), 2),
+                    "why": t.get("why", t.get("reason", "")),
+                    "trade_type": t.get("trade_type", t.get("type", "?")),
+                    "leverage": t.get("lev", t.get("leverage")),
+                    "margin": t.get("margin"),
+                    "close_ms": t.get("close_ms"),
+                    "partial": t.get("partial", False),
+                    "confidence": t.get("confidence"),
+                }
+                for t in day_trades
+            ],
+        })
+
+    return {"days": result, "total_closed": len(closed)}
+
+
 @app.get("/api/desk/logs")
 async def desk_logs(session=Depends(require_session)):
     """Lezioni e note di coaching (lessons.md) generate giornalmente da Claude."""
