@@ -144,6 +144,7 @@ ERRORS_FILE = os.path.join(DATA_DIR, "errors.md")
 
 RESET_FLAG = os.path.join(DATA_DIR, "reset.flag")
 BUDGET_RESET_FLAG = os.path.join(DATA_DIR, "budget_reset.flag")
+PAUSE_FLAG = os.path.join(DATA_DIR, "pause.flag")
 
 
 # ---- candles dal BitGet
@@ -667,6 +668,20 @@ def main() -> None:
           f"entry_score=60(TIER_AB)/70(TIER_C)  "
           f"daily_cap={DAILY_CAP}$  data={DATA_DIR}")
     while True:
+        # ── Pausa: se esiste pause.flag il bot aspetta senza fare nulla ──
+        if os.path.exists(PAUSE_FLAG):
+            print("[PAUSA] pause.flag trovato — bot in attesa. Rimuovi il file per riprendere.")
+            # Segna paused nello stato così il server/frontend lo vede
+            state["paused"] = True
+            save_state(state, STATE_FILE)
+            while os.path.exists(PAUSE_FLAG):
+                time.sleep(15)
+            print("[PAUSA] pause.flag rimosso — bot riprende.")
+            state = load_state(STATE_FILE)  # ricarica stato fresco dopo la pausa
+            state["paused"] = False
+            save_state(state, STATE_FILE)
+            continue
+
         iteration(state)
         # sleep adattiva: scalp richiede attenzione ogni 15 min, default ogni 30 min
         sleep_s = 900 if any(p.trade_type == "scalp" for p in make_account(state).positions.values()) else 1800
