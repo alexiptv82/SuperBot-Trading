@@ -401,8 +401,51 @@ def run_cycle(state: dict, now_ms: int) -> None:
     print(render_report(acc, prices, now_ms))
 
 
+RESET_FLAG = os.path.join(DATA_DIR, "reset.flag")
+
+def _check_reset_flag(state: dict) -> bool:
+    """Se esiste reset.flag, azzera tutte le posizioni aperte e rimuove il flag.
+    Restituisce True se il reset è stato eseguito.
+    """
+    if not os.path.exists(RESET_FLAG):
+        return False
+    try:
+        acc = make_account(state)
+        prices = {}  # chiusura flat: usa prezzi di entrata
+        now_ms = int(time.time() * 1000)
+        closed_count = 0
+        for sym, pos in list(acc.positions.items()):
+            px = pos.entry  # chiusura flat al prezzo di entrata
+            rec = {
+                "id": pos.id, "symbol": sym, "side": pos.side,
+                "margin": pos.total_margin, "lev": pos.leverage,
+                "entry": pos.entry, "exit": px,
+                "open_ms": pos.open_ms, "close_ms": now_ms,
+                "net": 0.0, "gross": 0.0, "fees": 0.0, "funding": 0.0,
+                "reason": "manual_reset", "type": pos.trade_type,
+                "dca_count": pos.dca_count, "source": "manual",
+            }
+            append_trade_history(DATA_DIR, [rec])
+            acc.cash += pos.total_margin
+            closed_count += 1
+        acc.positions.clear()
+        save_account(acc, state)
+        save_state(state, STATE_FILE)
+        os.remove(RESET_FLAG)
+        print(f"[RESET] Azzerate {closed_count} posizioni su richiesta manuale", flush=True)
+        return True
+    except Exception as e:
+        print(f"[RESET ERROR] {e}", flush=True)
+        try:
+            os.remove(RESET_FLAG)
+        except Exception:
+            pass
+        return False
+
+
 def iteration(state: dict) -> None:
     now_ms = int(time.time() * 1000)
+    _check_reset_flag(state)
     try:
         run_cycle(state, now_ms)
     except Exception:
