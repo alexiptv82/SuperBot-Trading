@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { botAPI } from '../api';
+import { botAPI, deskAPI } from '../api';
 import ChartModal from '../components/ChartModal';
 import ProfileBadge, { profileColor } from '../components/ProfileBadge';
 const Card = ({ children, style, onClick }) => (
@@ -55,6 +55,9 @@ export default function Dashboard() {
   const [now, setNow] = useState(new Date());
   const [chartSymbol, setChartSymbol] = useState(null);
 
+  // V2 desk bot state
+  const [deskStatus, setDeskStatus] = useState(null);
+
   const fetchData = useCallback(async () => {
     try {
       const [s, p, o] = await Promise.all([
@@ -64,7 +67,16 @@ export default function Dashboard() {
       setApiError(false);
     } catch (e) { console.error(e); setApiError(true); }
   }, []);
+
+  const fetchDeskData = useCallback(async () => {
+    try {
+      const r = await deskAPI.getStatus();
+      setDeskStatus(r.data);
+    } catch (e) { /* desk offline è normale, non mostriamo errori */ }
+  }, []);
+
   useEffect(() => { fetchData(); const t = setInterval(fetchData, 10000); return () => clearInterval(t); }, [fetchData]);
+  useEffect(() => { fetchDeskData(); const t = setInterval(fetchDeskData, 30000); return () => clearInterval(t); }, [fetchDeskData]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
 
   const marketLive = !apiError && Object.keys(prices).length > 0;
@@ -214,6 +226,75 @@ export default function Dashboard() {
               </div>
             </Card>
           ))}
+        </>
+      )}
+      {/* ── Sezione V2 Bot Desk (paper trading con Claude) ── */}
+      {deskStatus && (
+        <>
+          <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px', marginTop: '8px' }}>
+            🧠 Bot V2 Paper (Claude AI)
+          </h2>
+          {!deskStatus.available ? (
+            <Card style={{ marginBottom: '16px', color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>
+              {deskStatus.message || 'Bot V2 non ancora attivo'}
+            </Card>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <Card style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                  <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Cassa</div>
+                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>${deskStatus.cash?.toFixed(2)}</div>
+                </Card>
+                <Card style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                  <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Aperte</div>
+                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>{deskStatus.open_positions}</div>
+                </Card>
+                <Card style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                  <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Chiusi</div>
+                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>{deskStatus.total_closed}</div>
+                </Card>
+                <Card style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
+                  <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Claude $</div>
+                  <div style={{ fontSize: '17px', fontWeight: 'bold', color: deskStatus.budget_spent_usd > deskStatus.budget_daily_cap_usd * 0.9 ? '#fbbf24' : '#4ade80' }}>
+                    ${deskStatus.budget_spent_usd?.toFixed(3)}
+                  </div>
+                </Card>
+              </div>
+              {deskStatus.halt && (
+                <Card style={{ marginBottom: '8px', borderColor: '#dc2626', color: '#fca5a5', fontSize: '12px' }}>
+                  ⚠️ HALT: {deskStatus.halt}
+                </Card>
+              )}
+              {deskStatus.positions?.length > 0 && (
+                <>
+                  <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>⚡ Posizioni V2 aperte</div>
+                  {deskStatus.positions.map((p, i) => (
+                    <Card key={i} style={{ marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span style={{
+                            padding: '2px 6px', borderRadius: '5px', fontSize: '10px', fontWeight: 'bold',
+                            background: p.side === 'long' ? '#166534' : '#7f1d1d', color: 'white', marginRight: '6px'
+                          }}>{p.side?.toUpperCase()}</span>
+                          <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{p.symbol}</span>
+                          <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '5px' }}>x{p.leverage}</span>
+                          <span style={{ color: '#64748b', fontSize: '10px', marginLeft: '5px' }}>[{p.trade_type}]</span>
+                          {p.dca_count > 0 && <span style={{ color: '#fbbf24', fontSize: '10px', marginLeft: '4px' }}>DCA×{p.dca_count}</span>}
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: '12px' }}>
+                          <div>@ ${p.entry_price?.toFixed?.(2) ?? p.entry_price}</div>
+                          <div style={{ color: '#94a3b8', fontSize: '10px' }}>${p.margin?.toFixed(0)} margin</div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </>
+              )}
+              <div style={{ fontSize: '11px', color: '#475569', marginTop: '4px' }}>
+                Ciclo #{deskStatus.cycle} · Giorno {deskStatus.day} · Budget giornaliero ${deskStatus.budget_daily_cap_usd}
+              </div>
+            </>
+          )}
         </>
       )}
       <ChartModal symbol={chartSymbol} onClose={() => setChartSymbol(null)} />

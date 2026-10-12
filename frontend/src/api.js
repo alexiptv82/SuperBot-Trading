@@ -71,4 +71,15 @@ export const botAPI = {
     API.post('/api/auth/webauthn/login/verify', { state_id, credential }),
 };
 
+// ── V2 Desk Bot API ──────────────────────────────────────────────────────────
+// Endpoint /api/desk/* serviti dallo stesso backend FastAPI, leggono
+// dal volume persistente del container superbot-desk (nessun DB V1).
+export const deskAPI = {
+  getStatus:      () => API.get('/api/desk/status'),
+  getTrades:      (limit = 100) => API.get(`/api/desk/trades?limit=${limit}`),
+  getPerformance: () => API.get('/api/desk/performance'),
+  getLogs:        () => API.get('/api/desk/logs'),
+  health:         () => API.get('/api/desk/health'),
+};
+
 export default API;
