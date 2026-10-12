@@ -50,7 +50,7 @@ def fetch_funding(symbol: str) -> Optional[FundingInfo]:
     sym = symbol.upper()
     if not sym.endswith("USDT"):
         sym = sym + "USDT"
-    url = f"{BITGET_BASE}/api/v2/mix/market/current-fund-rate?symbol={sym}PERP&productType=USDT-FUTURES"
+    url = f"{BITGET_BASE}/api/v2/mix/market/current-fund-rate?symbol={sym}&productType=USDT-FUTURES"
     data = _get(url)
     if data is None:
         return None
@@ -77,7 +77,7 @@ def fetch_open_interest(symbol: str) -> Optional[OIInfo]:
     sym = symbol.upper()
     if not sym.endswith("USDT"):
         sym = sym + "USDT"
-    url = f"{BITGET_BASE}/api/v2/mix/market/open-interest?symbol={sym}PERP&productType=USDT-FUTURES"
+    url = f"{BITGET_BASE}/api/v2/mix/market/open-interest?symbol={sym}&productType=USDT-FUTURES"
     data = _get(url)
     if data is None:
         return None

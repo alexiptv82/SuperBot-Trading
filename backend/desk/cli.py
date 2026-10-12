@@ -28,7 +28,7 @@ from desk.notifier import (notify_open, notify_close, notify_dca,
                            notify_halt, notify_daily_report)
 
 # ---- configurazione V2
-DATA_DIR = os.getenv("DESK_DATA_DIR", "/data/desk")
+DATA_DIR = os.getenv("DESK_DATA_DIR", "/app/data/desk")
 ENTRY_SCORE = int(os.getenv("DESK_ENTRY_SCORE", "60"))   # V2: abbassato da 70 a 60
 HOUR_MS = 3_600_000
 HALF_HOUR_MS = 1_800_000
@@ -55,7 +55,7 @@ def fetch_candles(symbol: str, bar: str = "15m", limit: int = 300) -> list:
     if not sym.endswith("USDT"):
         sym += "USDT"
     url = (f"{BITGET_BASE}/api/v2/mix/market/candles"
-           f"?symbol={sym}PERP&productType=USDT-FUTURES&granularity={bar}&limit={limit}")
+           f"?symbol={sym}&productType=USDT-FUTURES&granularity={bar}&limit={limit}")
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=10) as r:
