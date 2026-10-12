@@ -602,6 +602,15 @@ def _desk_state() -> dict:
         return {}
 
 
+def _desk_state_save(state: dict) -> None:
+    """Scrive state_v2.json sul volume desk in modo atomico."""
+    path = os.path.join(_DESK_DATA, "state_v2.json")
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f, default=str)
+    os.replace(tmp, path)
+
+
 def _desk_trades_raw(last_n: int = 200) -> list:
     """Legge le ultime N righe da trade_history.jsonl."""
     path = os.path.join(_DESK_DATA, "trade_history.jsonl")
@@ -715,6 +724,68 @@ async def desk_prices(session=Depends(require_session)):
             except Exception as e:
                 prices[sym] = {'error': str(e)}
     return prices
+
+
+@app.post("/api/desk/close-all")
+async def desk_close_all(session=Depends(require_session)):
+    """Forza la chiusura di tutte le posizioni V2 aperte scrivendo direttamente sul file di stato.
+    Usato per resettare manualmente le posizioni aperte (es. dopo cambio strategia).
+    Le posizioni vengono registrate come chiuse nel JSONL con reason='manual_reset'.
+    """
+    import time as _time
+    state = _desk_state()
+    if not state:
+        return {"closed": 0, "message": "nessun stato disponibile"}
+
+    acc = state.get("main", state.get("account", {}))
+    positions = acc.get("positions", {})
+    if not positions:
+        return {"closed": 0, "message": "nessuna posizione aperta"}
+
+    # Scrive le posizioni chiuse nel JSONL
+    now_ms = int(_time.time() * 1000)
+    jsonl_path = os.path.join(_DESK_DATA, "trade_history.jsonl")
+    closed_symbols = []
+    total_margin_returned = 0.0
+
+    with open(jsonl_path, "a") as f:
+        for sym, pos in positions.items():
+            margin = pos.get("total_margin", pos.get("margin", 0))
+            rec = {
+                "id": pos.get("id", 0),
+                "symbol": sym,
+                "side": pos.get("side"),
+                "margin": margin,
+                "lev": pos.get("leverage"),
+                "entry": pos.get("entry", pos.get("entry_price")),
+                "exit": pos.get("entry", pos.get("entry_price")),  # chiusura al prezzo di entrata (flat)
+                "open_ms": pos.get("open_ms", now_ms),
+                "close_ms": now_ms,
+                "net": 0.0,
+                "gross": 0.0,
+                "fees": 0.0,
+                "funding": 0.0,
+                "reason": "manual_reset",
+                "type": pos.get("trade_type", "medio"),
+                "dca_count": pos.get("dca_count", 0),
+                "source": "manual",
+            }
+            f.write(json.dumps(rec) + "\n")
+            total_margin_returned += margin
+            closed_symbols.append(sym)
+
+    # Svuota le posizioni e restituisce il margine alla cassa
+    acc["positions"] = {}
+    acc["cash"] = round(acc.get("cash", 0) + total_margin_returned, 4)
+    state["main"] = acc
+    _desk_state_save(state)
+
+    return {
+        "closed": len(closed_symbols),
+        "symbols": closed_symbols,
+        "margin_returned": round(total_margin_returned, 2),
+        "message": f"Chiuse {len(closed_symbols)} posizioni. Margine restituito: ${total_margin_returned:.2f}",
+    }
 
 
 @app.get("/api/desk/trades")

@@ -414,6 +414,26 @@ export default function Dashboard() {
                 </Card>
               )}
 
+              {/* Pulsante chiusura forzata posizioni V2 */}
+              {Array.isArray(deskStatus.positions) && deskStatus.positions.length > 0 && (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm(`Chiudere forzatamente tutte le ${deskStatus.positions.length} posizioni V2 aperte?`)) return;
+                    try {
+                      await deskAPI.closeAll();
+                      await fetchDeskData();
+                    } catch(e) { alert('Errore: ' + (e?.message || e)); }
+                  }}
+                  style={{
+                    width: '100%', padding: '10px', borderRadius: '10px', marginBottom: '10px',
+                    border: '1px solid #dc2626', background: 'rgba(220,38,38,0.1)',
+                    color: '#fca5a5', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer'
+                  }}
+                >
+                  🔒 Chiudi tutte le posizioni V2 ({deskStatus.positions.length})
+                </button>
+              )}
+
               {/* Posizioni V2 — cliccabili per aprire il grafico con dettagli */}
               {Array.isArray(deskStatus.positions) && deskStatus.positions.length > 0 && (
                 <>
