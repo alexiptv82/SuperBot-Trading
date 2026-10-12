@@ -83,6 +83,8 @@ export const deskAPI = {
   health:         () => API.get('/api/desk/health'),
   resetBudget:    (equityReset = false) => API.post('/api/desk/reset-budget', { equity_reset: equityReset }),
   getDiary:       () => API.get('/api/desk/diary'),
+  pause:          () => API.post('/api/desk/pause'),
+  resume:         () => API.post('/api/desk/resume'),
 };
 
 // ── V2 Desk Bot API — BULL ────────────────────────────────────────────────────
@@ -95,6 +97,8 @@ export const bullAPI = {
   health:         () => API.get('/api/desk/bull/health'),
   resetBudget:    (equityReset = false) => API.post('/api/desk/bull/reset-budget', { equity_reset: equityReset }),
   getDiary:       () => API.get('/api/desk/bull/diary'),
+  pause:          () => API.post('/api/desk/bull/pause'),
+  resume:         () => API.post('/api/desk/bull/resume'),
 };
 
 export default API;

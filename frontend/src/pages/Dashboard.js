@@ -1,5 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { deskAPI, bullAPI } from '../api';
+
+// Helper: API giusta per portfolio
+const apiFor = (portfolio) => portfolio === 'bull' ? bullAPI : deskAPI;
 import ChartModal from '../components/ChartModal';
 
 const V2_SYMBOLS = [
@@ -119,10 +122,19 @@ function MarketCarousel({ symbols, prices, onSymbolClick }) {
 }
 
 // Sezione KPI per un portafoglio
-function PortfolioSection({ status, prices, portfolio, onCloseAll, closeAllBusy, onChartOpen }) {
+function PortfolioSection({ status, prices, portfolio, onCloseAll, closeAllBusy, onChartOpen, onPause, onResume, pauseBusy }) {
   const botOnline = status?.available === true;
   const v2OpenCount = Array.isArray(status?.positions) ? status.positions.length : (status?.open_positions ?? 0);
   const isBull = portfolio === 'bull';
+  const isPaused = status?.paused === true;
+
+  // Budget esaurito: speso >= 95% del cap
+  const budgetSpent = status?.budget_spent_usd ?? 0;
+  const budgetCap = status?.budget_daily_cap_usd ?? 0.70;
+  const budgetExhausted = budgetSpent >= budgetCap * 0.95;
+
+  // Equity esaurita: sotto la kill equity (450$)
+  const equityLow = (status?.equity ?? 1000) < 450;
 
   const equityColor = (eq) => {
     if (eq == null) return '#94a3b8';
@@ -182,12 +194,78 @@ function PortfolioSection({ status, prices, portfolio, onCloseAll, closeAllBusy,
         </Card>
       </div>
 
+      {/* ── Banner stato bot ── */}
+
+      {/* Pausa attiva */}
+      {isPaused && (
+        <Card style={{ marginBottom: '12px', borderColor: '#f59e0b', background: 'rgba(245,158,11,0.08)', fontSize: '13px', textAlign: 'center' }}>
+          <div style={{ color: '#fbbf24', fontWeight: 'bold', marginBottom: '4px' }}>⏸ Bot in pausa</div>
+          <div style={{ color: '#94a3b8', fontSize: '12px' }}>Il bot non apre nuovi trade. Premi Riprendi per riattivarlo.</div>
+        </Card>
+      )}
+
+      {/* Budget AI quasi esaurito */}
+      {botOnline && !isPaused && budgetExhausted && (
+        <Card style={{ marginBottom: '12px', borderColor: '#f59e0b', background: 'rgba(245,158,11,0.08)', fontSize: '13px' }}>
+          <div style={{ color: '#fbbf24', fontWeight: 'bold', marginBottom: '2px' }}>
+            ⚠️ Budget AI esaurito ({(budgetSpent / budgetCap * 100).toFixed(0)}% usato)
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: '12px' }}>
+            Il bot non farà nuove chiamate Claude oggi. Metti in pausa e resetta il budget da Impostazioni per una nuova sessione.
+          </div>
+        </Card>
+      )}
+
+      {/* Equity bassa */}
+      {botOnline && equityLow && (
+        <Card style={{ marginBottom: '12px', borderColor: '#dc2626', background: 'rgba(220,38,38,0.08)', fontSize: '13px' }}>
+          <div style={{ color: '#f87171', fontWeight: 'bold', marginBottom: '2px' }}>
+            🛑 Equity sotto soglia critica (${(status?.equity ?? 0).toFixed(0)})
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: '12px' }}>
+            Hai perso oltre il 55% del capitale. Metti in pausa e resetta l'equity da Impostazioni per ripartire.
+          </div>
+        </Card>
+      )}
+
       {/* HALT warning */}
       {status.halt && (
         <Card style={{ marginBottom: '12px', borderColor: '#dc2626', color: '#fca5a5', fontSize: '13px', textAlign: 'center' }}>
           ⚠️ <strong>HALT:</strong> {status.halt}
         </Card>
       )}
+
+      {/* Bottoni Pausa / Riprendi */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+        <button
+          disabled={isPaused || pauseBusy}
+          onClick={onPause}
+          style={{
+            flex: 1, padding: '10px', borderRadius: '10px',
+            border: '1px solid #f59e0b', background: isPaused ? 'rgba(245,158,11,0.05)' : 'rgba(245,158,11,0.1)',
+            color: isPaused ? '#64748b' : '#fbbf24',
+            fontWeight: 'bold', fontSize: '13px',
+            cursor: (isPaused || pauseBusy) ? 'not-allowed' : 'pointer',
+            opacity: isPaused ? 0.5 : 1,
+          }}
+        >
+          {pauseBusy && !isPaused ? '⏳' : '⏸'} Pausa
+        </button>
+        <button
+          disabled={!isPaused || pauseBusy}
+          onClick={onResume}
+          style={{
+            flex: 1, padding: '10px', borderRadius: '10px',
+            border: '1px solid #4ade80', background: !isPaused ? 'rgba(74,222,128,0.05)' : 'rgba(74,222,128,0.1)',
+            color: !isPaused ? '#64748b' : '#4ade80',
+            fontWeight: 'bold', fontSize: '13px',
+            cursor: (!isPaused || pauseBusy) ? 'not-allowed' : 'pointer',
+            opacity: !isPaused ? 0.5 : 1,
+          }}
+        >
+          {pauseBusy && isPaused ? '⏳' : '▶'} Riprendi
+        </button>
+      </div>
 
       {/* Pulsante chiusura forzata */}
       {Array.isArray(status.positions) && status.positions.length > 0 && (
@@ -285,6 +363,7 @@ export default function Dashboard() {
   const [now, setNow] = useState(new Date());
   const [chartState, setChartState] = useState(null);
   const [closeAllBusy, setCloseAllBusy] = useState(false);
+  const [pauseBusy, setPauseBusy] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try { const r = await deskAPI.getStatus(); setHawkStatus(r.data); } catch {}
@@ -315,11 +394,28 @@ export default function Dashboard() {
     if (!window.confirm(`Chiudere forzatamente tutte le ${count} posizioni?`)) return;
     setCloseAllBusy(true);
     try {
-      if (portfolio === 'bull') await bullAPI.resetBudget(); // non ha closeAll — usa deskAPI per hawk
-      else await deskAPI.closeAll();
+      await apiFor(portfolio).closeAll?.() || await deskAPI.closeAll();
       setTimeout(fetchStatus, 1000);
     } catch (e) { alert('Errore: ' + (e?.message || e)); }
     finally { setCloseAllBusy(false); }
+  };
+
+  const handlePause = async () => {
+    setPauseBusy(true);
+    try {
+      await apiFor(portfolio).pause();
+      setTimeout(fetchStatus, 1500);
+    } catch (e) { alert('Errore pausa: ' + (e?.message || e)); }
+    finally { setPauseBusy(false); }
+  };
+
+  const handleResume = async () => {
+    setPauseBusy(true);
+    try {
+      await apiFor(portfolio).resume();
+      setTimeout(fetchStatus, 1500);
+    } catch (e) { alert('Errore ripresa: ' + (e?.message || e)); }
+    finally { setPauseBusy(false); }
   };
 
   return (
@@ -391,6 +487,9 @@ export default function Dashboard() {
           onCloseAll={handleCloseAll}
           closeAllBusy={closeAllBusy}
           onChartOpen={openChart}
+          onPause={handlePause}
+          onResume={handleResume}
+          pauseBusy={pauseBusy}
         />
       </DeskErrorBoundary>
 

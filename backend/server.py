@@ -588,13 +588,16 @@ async def _on_startup():
 # Leggono dal volume persistente del container superbot-desk.
 # Nessuna dipendenza con il DB V1: tutto viene dai file JSON/JSONL.
 # Prefisso /api/desk/ per non collidere con gli endpoint V1.
+# Hawk: DESK_DATA_DIR (default /opt/superbot-desk-data/hawk)
+# Bull: DESK_DATA_DIR_BULL (default /opt/superbot-desk-data/bull)
 
-_DESK_DATA = os.environ.get("DESK_DATA_DIR", "/opt/superbot-desk-data")
+_DESK_DATA      = os.environ.get("DESK_DATA_DIR",      "/opt/superbot-desk-data/hawk")
+_DESK_DATA_BULL = os.environ.get("DESK_DATA_DIR_BULL",  "/opt/superbot-desk-data/bull")
 
 
-def _desk_state() -> dict:
+def _read_state(data_dir: str) -> dict:
     """Legge state_v2.json dal volume desk. Ritorna dict vuoto se non esiste."""
-    path = os.path.join(_DESK_DATA, "state_v2.json")
+    path = os.path.join(data_dir, "state_v2.json")
     try:
         with open(path) as f:
             return json.load(f)
@@ -602,18 +605,17 @@ def _desk_state() -> dict:
         return {}
 
 
-def _desk_state_save(state: dict) -> None:
-    """Scrive state_v2.json sul volume desk in modo atomico."""
-    path = os.path.join(_DESK_DATA, "state_v2.json")
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(state, f, default=str)
-    os.replace(tmp, path)
+def _desk_state() -> dict:
+    return _read_state(_DESK_DATA)
 
 
-def _desk_trades_raw(last_n: int = 200) -> list:
+def _bull_state() -> dict:
+    return _read_state(_DESK_DATA_BULL)
+
+
+def _read_trades_raw(data_dir: str, last_n: int = 200) -> list:
     """Legge le ultime N righe da trade_history.jsonl."""
-    path = os.path.join(_DESK_DATA, "trade_history.jsonl")
+    path = os.path.join(data_dir, "trade_history.jsonl")
     try:
         with open(path) as f:
             lines = f.readlines()
@@ -631,16 +633,32 @@ def _desk_trades_raw(last_n: int = 200) -> list:
     return trades
 
 
-def _desk_lessons() -> str:
+def _desk_trades_raw(last_n: int = 200) -> list:
+    return _read_trades_raw(_DESK_DATA, last_n)
+
+
+def _bull_trades_raw(last_n: int = 200) -> list:
+    return _read_trades_raw(_DESK_DATA_BULL, last_n)
+
+
+def _read_lessons(data_dir: str) -> str:
     """Legge lessons.md (poi errors.md come fallback) dal volume desk."""
     for fname in ("lessons.md", "errors.md"):
-        path = os.path.join(_DESK_DATA, fname)
+        path = os.path.join(data_dir, fname)
         try:
             with open(path) as f:
                 return f.read()
         except Exception:
             pass
     return ""
+
+
+def _desk_lessons() -> str:
+    return _read_lessons(_DESK_DATA)
+
+
+def _bull_lessons() -> str:
+    return _read_lessons(_DESK_DATA_BULL)
 
 
 @app.get("/api/desk/status")
@@ -676,17 +694,8 @@ async def desk_status(session=Depends(require_session)):
     return {
         "available": True,
         "mode": "paper",
-        # cash = liquidità disponibile; margin_used = somma margini in uso
-        # equity = cash + margin_used (capitale totale reale del conto paper)
         "cash": round(acc.get("cash", 0), 2),
-        "margin_used": round(sum(
-            pos.get("total_margin", pos.get("margin", 0))
-            for pos in positions.values()
-        ), 2),
-        "equity": round(acc.get("cash", 0) + sum(
-            pos.get("total_margin", pos.get("margin", 0))
-            for pos in positions.values()
-        ), 2),
+        "equity": round(acc.get("cash", 0), 2),
         "open_positions": len(positions),
         "positions": open_list,
         # "closed" nel PaperAccount può essere una lista (engine.py) oppure un int.
@@ -696,81 +705,10 @@ async def desk_status(session=Depends(require_session)):
         "day": acc.get("day", state.get("day", "")),
         "cycle": state.get("cycle", 0),
         "halt": state.get("halt"),
+        "paused": state.get("paused", False),
         "budget_spent_usd": round(budget.get("spent", 0), 4),
         "budget_daily_cap_usd": budget.get("daily_cap", 0.70),
         "last_report_day": state.get("last_report_day", ""),
-    }
-
-
-_prices_cache: dict = {}
-_prices_cache_ts: float = 0.0
-_PRICES_CACHE_TTL = 30.0   # secondi — refresh max ogni 30s, non ad ogni richiesta
-
-@app.get("/api/desk/prices")
-async def desk_prices(session=Depends(require_session)):
-    """Prezzi live per tutti i 27 simboli V2 — usati dal MarketCarousel nel frontend.
-    Cache server-side 30s: il frontend può fare polling frequente senza sommergere l'exchange.
-    """
-    global _prices_cache, _prices_cache_ts
-    import time as _time
-    now = _time.monotonic()
-    if _prices_cache and (now - _prices_cache_ts) < _PRICES_CACHE_TTL:
-        return _prices_cache
-
-    V2_SYMBOLS = [
-        'BTC','ETH','BNB','XRP','SOL','ADA','DOGE','AVAX',
-        'DOT','LINK','MATIC','UNI','ATOM','LTC','BCH',
-        'APT','ARB','OP','NEAR','FIL','INJ','SUI','TIA',
-        'RUNE','STX','XAU','XAG',
-    ]
-    prices = {}
-    for sym in V2_SYMBOLS:
-        usdt = sym + 'USDT'
-        try:
-            ticker = await exchange.get_ticker(usdt)
-            prices[sym] = ticker
-        except Exception:
-            try:
-                ticker = await exchange.get_ticker(sym + '/USDT')
-                prices[sym] = ticker
-            except Exception as e:
-                prices[sym] = {'error': str(e)}
-    _prices_cache = prices
-    _prices_cache_ts = now
-    return prices
-
-
-@app.post("/api/desk/close-all")
-async def desk_close_all(session=Depends(require_session)):
-    """Segnala al container desk di azzerare tutte le posizioni aperte.
-    Scrive un file reset.flag nel volume condiviso; il desk lo legge al prossimo ciclo
-    (max 15-30 secondi) e azzera posizioni in modo coordinato senza race condition.
-    """
-    flag_path = os.path.join(_DESK_DATA, "reset.flag")
-    try:
-        with open(flag_path, "w") as f:
-            import time as _time
-            f.write(str(int(_time.time())))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"impossibile scrivere reset.flag: {e}")
-
-    # conta le posizioni attuali per dare feedback all'utente
-    state = _desk_state()
-    acc = state.get("main", state.get("account", {}))
-    positions = acc.get("positions", {})
-    n = len(positions)
-    symbols = list(positions.keys())
-
-    return {
-        "queued": True,
-        "positions_found": n,
-        "symbols": symbols,
-        "message": (
-            f"Reset inviato: {n} posizioni verranno chiuse entro il prossimo ciclo (15-30s). "
-            "La dashboard si aggiornerà automaticamente."
-            if n > 0 else
-            "Nessuna posizione aperta al momento. Il flag è stato scritto comunque."
-        ),
     }
 
 
@@ -877,6 +815,76 @@ async def desk_performance(session=Depends(require_session)):
     }
 
 
+@app.get("/api/desk/diary")
+async def desk_diary(session=Depends(require_session)):
+    """Diario giornaliero: trade chiusi raggruppati per giorno e per simbolo.
+    Restituisce i giorni in ordine cronologico inverso (più recente prima).
+    """
+    from datetime import datetime, timezone
+    trades = _desk_trades_raw(last_n=5000)
+    closed = [t for t in trades if t.get("net") is not None]
+
+    # raggruppa per giorno UTC
+    days: dict = {}
+    for t in closed:
+        ms = t.get("close_ms", 0)
+        day = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d") if ms else "?"
+        days.setdefault(day, []).append(t)
+
+    result = []
+    for day in sorted(days.keys(), reverse=True):
+        day_trades = sorted(days[day], key=lambda x: x.get("close_ms", 0))
+        wins = [t for t in day_trades if (t.get("net") or 0) > 0]
+        losses = [t for t in day_trades if (t.get("net") or 0) <= 0]
+        total_pnl = sum(t.get("net", 0) for t in day_trades)
+
+        # per simbolo in questo giorno
+        by_sym: dict = {}
+        for t in day_trades:
+            sym = t.get("symbol", "?")
+            s = by_sym.setdefault(sym, {"trades": 0, "wins": 0, "losses": 0,
+                                        "total_pnl": 0.0, "best": 0.0, "worst": 0.0})
+            net = t.get("net", 0)
+            s["trades"] += 1
+            s["total_pnl"] += net
+            if net > 0:
+                s["wins"] += 1
+                s["best"] = max(s["best"], net)
+            else:
+                s["losses"] += 1
+                s["worst"] = min(s["worst"], net)
+        for s in by_sym.values():
+            s["total_pnl"] = round(s["total_pnl"], 2)
+            s["best"] = round(s["best"], 2)
+            s["worst"] = round(s["worst"], 2)
+
+        result.append({
+            "day": day,
+            "total_trades": len(day_trades),
+            "wins": len(wins),
+            "losses": len(losses),
+            "total_pnl": round(total_pnl, 2),
+            "by_symbol": by_sym,
+            "trades": [
+                {
+                    "symbol": t.get("symbol"),
+                    "side": t.get("side"),
+                    "net": round(t.get("net", 0), 2),
+                    "why": t.get("why", t.get("reason", "")),
+                    "trade_type": t.get("trade_type", t.get("type", "?")),
+                    "leverage": t.get("lev", t.get("leverage")),
+                    "margin": t.get("margin"),
+                    "close_ms": t.get("close_ms"),
+                    "partial": t.get("partial", False),
+                    "confidence": t.get("confidence"),
+                }
+                for t in day_trades
+            ],
+        })
+
+    return {"days": result, "total_closed": len(closed)}
+
+
 @app.get("/api/desk/logs")
 async def desk_logs(session=Depends(require_session)):
     """Lezioni e note di coaching (lessons.md) generate giornalmente da Claude."""
@@ -884,12 +892,326 @@ async def desk_logs(session=Depends(require_session)):
     return {"content": content, "available": bool(content)}
 
 
+@app.post("/api/desk/reset-budget")
+async def desk_reset_budget(request: Request, session=Depends(require_session)):
+    """Azzera il budget giornaliero AI del bot V2.
+    Body JSON opzionale: {"equity_reset": true} per ripristinare anche equity a 1000$
+    e azzerare le posizioni aperte (solo paper mode).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    equity_reset = bool(body.get("equity_reset", False))
+    flag_path = os.path.join(_DESK_DATA, "budget_reset.flag")
+    os.makedirs(_DESK_DATA, exist_ok=True)
+    content = "equity_reset" if equity_reset else "budget_only"
+    with open(flag_path, "w") as f:
+        f.write(content)
+    msg = "Budget AI azzerato + equity ripristinata a 1000$" if equity_reset else "Budget AI azzerato"
+    return {"ok": True, "message": msg, "equity_reset": equity_reset}
+
+
+
+
+@app.post("/api/desk/pause")
+async def desk_pause(session=Depends(require_session)):
+    """Mette il bot Hawk in pausa scrivendo pause.flag nel volume condiviso."""
+    import time as _time
+    flag_path = os.path.join(_DESK_DATA, "pause.flag")
+    try:
+        with open(flag_path, "w") as f:
+            f.write(str(int(_time.time())))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"impossibile scrivere pause.flag: {e}")
+    return {"paused": True, "message": "Bot Hawk in pausa — riprenderà quando chiami /resume"}
+
+
+@app.post("/api/desk/resume")
+async def desk_resume(session=Depends(require_session)):
+    """Rimuove pause.flag e fa riprendere il bot Hawk."""
+    flag_path = os.path.join(_DESK_DATA, "pause.flag")
+    try:
+        if os.path.exists(flag_path):
+            os.remove(flag_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"impossibile rimuovere pause.flag: {e}")
+    return {"paused": False, "message": "Bot Hawk ripreso"}
+
 @app.get("/api/desk/health")
 async def desk_health():
-    """Health check per il bot V2 (non richiede sessione)."""
+    """Health check per il bot V2 Hawk (non richiede sessione)."""
     state = _desk_state()
     return {
         "available": bool(state),
+        "cycle": state.get("cycle", 0),
+        "day": state.get("day", ""),
+        "halt": state.get("halt"),
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PORTAFOGLIO BULL  (/api/desk/bull/*)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _bull_status_data() -> dict:
+    """Stato live del portafoglio Bull (logica condivisa)."""
+    state = _bull_state()
+    if not state:
+        return {"available": False, "message": "Bull non ancora attivo o nessun dato disponibile"}
+    main = state.get("main", {})
+    positions = main.get("positions", {})
+    closed = main.get("closed", [])
+    cash = float(main.get("cash", 1000.0))
+    # equity approssimata
+    equity = cash + sum(float(p.get("total_margin", 0)) for p in positions.values())
+    budget = state.get("budget", {})
+    pos_list = [
+        {
+            "symbol": sym,
+            "side": p.get("side"),
+            "leverage": p.get("leverage"),
+            "margin": p.get("total_margin"),
+            "entry": p.get("entry"),
+            "sl": p.get("sl"),
+            "tp": p.get("tp"),
+            "trade_type": p.get("trade_type", "medio"),
+            "dca_count": p.get("dca_count", 0),
+            "confidence": p.get("confidence"),
+            "reason": p.get("reason", "")[:80],
+        }
+        for sym, p in positions.items()
+    ]
+    return {
+        "available": True,
+        "portfolio": "bull",
+        "equity": round(equity, 2),
+        "cash": round(cash, 2),
+        "margin_used": round(sum(float(p.get("total_margin", 0)) for p in positions.values()), 2),
+        "open_positions": len(positions),
+        "positions": pos_list,
+        "total_closed": len(closed),
+        "budget_spent_usd": round(float(budget.get("spent", 0)), 4),
+        "budget_daily_cap_usd": float(os.getenv("DESK_DAILY_CAP_USD", "0.70")),
+        "cycle": state.get("cycle", 0),
+        "day": state.get("day", ""),
+        "halt": state.get("halt"),
+    }
+
+
+@app.get("/api/desk/bull/status")
+async def bull_status(session=Depends(require_session)):
+    """Stato live del portafoglio Bull."""
+    return _bull_status_data()
+
+
+@app.get("/api/desk/bull/trades")
+async def bull_trades(limit: int = 100, session=Depends(require_session)):
+    """Ultimi N trade chiusi del portafoglio Bull."""
+    trades = _bull_trades_raw(last_n=limit)
+    result = []
+    for t in trades:
+        result.append({
+            "id": t.get("id"),
+            "symbol": t.get("symbol"),
+            "side": t.get("side"),
+            "leverage": t.get("lev"),
+            "margin": t.get("margin"),
+            "gross_pnl": t.get("gross"),
+            "pnl": t.get("net"),
+            "fees": t.get("fees"),
+            "trade_type": t.get("type"),
+            "close_reason": t.get("reason"),
+            "open_ms": t.get("open_ms"),
+            "close_ms": t.get("close_ms"),
+            "dca_count": t.get("dca_count", 0),
+        })
+    return result
+
+
+@app.get("/api/desk/bull/performance")
+async def bull_performance(session=Depends(require_session)):
+    """Statistiche aggregate del portafoglio Bull."""
+    trades = _bull_trades_raw(last_n=5000)
+    if not trades:
+        return {
+            "available": False,
+            "total_trades": 0,
+            "win_rate": 0,
+            "total_pnl": 0,
+            "equity_curve": [],
+            "by_symbol": {},
+            "by_type": {},
+        }
+    closed = [t for t in trades if t.get("net") is not None]
+    total = len(closed)
+    winners = [t for t in closed if (t.get("net") or 0) > 0]
+    total_pnl = sum(t.get("net", 0) for t in closed)
+    total_fees = sum(t.get("fees", 0) for t in closed)
+    ordered = sorted(closed, key=lambda t: t.get("close_ms", 0))
+    running = 0.0
+    equity_curve = []
+    for t in ordered:
+        running += t.get("net", 0)
+        equity_curve.append({"time": t.get("close_ms"), "equity": round(running, 2)})
+    by_symbol: dict = {}
+    for t in closed:
+        sym = t.get("symbol", "?")
+        d = by_symbol.setdefault(sym, {"trades": 0, "wins": 0, "net_pnl": 0.0})
+        d["trades"] += 1
+        d["wins"] += 1 if (t.get("net") or 0) > 0 else 0
+        d["net_pnl"] += t.get("net", 0)
+    for d in by_symbol.values():
+        d["win_rate"] = round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0
+        d["net_pnl"] = round(d["net_pnl"], 2)
+    by_type: dict = {}
+    for t in closed:
+        tp = t.get("type", "?")
+        d = by_type.setdefault(tp, {"trades": 0, "wins": 0, "net_pnl": 0.0})
+        d["trades"] += 1
+        d["wins"] += 1 if (t.get("net") or 0) > 0 else 0
+        d["net_pnl"] += t.get("net", 0)
+    for d in by_type.values():
+        d["win_rate"] = round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0
+        d["net_pnl"] = round(d["net_pnl"], 2)
+    gross_profit = sum(t.get("net", 0) for t in closed if (t.get("net") or 0) > 0)
+    gross_loss = abs(sum(t.get("net", 0) for t in closed if (t.get("net") or 0) < 0))
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else None
+    return {
+        "available": True,
+        "portfolio": "bull",
+        "total_trades": total,
+        "winning_trades": len(winners),
+        "losing_trades": total - len(winners),
+        "win_rate": round(len(winners) / total * 100, 1) if total else 0,
+        "total_pnl": round(total_pnl, 2),
+        "total_fees": round(total_fees, 2),
+        "avg_pnl_per_trade": round(total_pnl / total, 2) if total else 0,
+        "profit_factor": profit_factor,
+        "equity_curve": equity_curve,
+        "by_symbol": by_symbol,
+        "by_type": by_type,
+    }
+
+
+@app.get("/api/desk/bull/diary")
+async def bull_diary(session=Depends(require_session)):
+    """Diario giornaliero del portafoglio Bull."""
+    from datetime import datetime, timezone
+    trades = _bull_trades_raw(last_n=5000)
+    closed = [t for t in trades if t.get("net") is not None]
+    days: dict = {}
+    for t in closed:
+        ms = t.get("close_ms", 0)
+        day = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d") if ms else "?"
+        days.setdefault(day, []).append(t)
+    result = []
+    for day in sorted(days.keys(), reverse=True):
+        day_trades = sorted(days[day], key=lambda x: x.get("close_ms", 0))
+        wins = [t for t in day_trades if (t.get("net") or 0) > 0]
+        losses = [t for t in day_trades if (t.get("net") or 0) <= 0]
+        total_pnl = sum(t.get("net", 0) for t in day_trades)
+        by_sym: dict = {}
+        for t in day_trades:
+            sym = t.get("symbol", "?")
+            s = by_sym.setdefault(sym, {"trades": 0, "wins": 0, "losses": 0,
+                                        "total_pnl": 0.0, "best": 0.0, "worst": 0.0})
+            net = t.get("net", 0)
+            s["trades"] += 1
+            s["total_pnl"] += net
+            if net > 0:
+                s["wins"] += 1
+                s["best"] = max(s["best"], net)
+            else:
+                s["losses"] += 1
+                s["worst"] = min(s["worst"], net)
+        for s in by_sym.values():
+            s["total_pnl"] = round(s["total_pnl"], 2)
+            s["best"] = round(s["best"], 2)
+            s["worst"] = round(s["worst"], 2)
+        result.append({
+            "day": day,
+            "total_trades": len(day_trades),
+            "wins": len(wins),
+            "losses": len(losses),
+            "total_pnl": round(total_pnl, 2),
+            "by_symbol": by_sym,
+            "trades": [
+                {
+                    "symbol": t.get("symbol"),
+                    "side": t.get("side"),
+                    "net": round(t.get("net", 0), 2),
+                    "why": t.get("why", t.get("reason", "")),
+                    "trade_type": t.get("trade_type", t.get("type", "?")),
+                    "leverage": t.get("lev", t.get("leverage")),
+                    "margin": t.get("margin"),
+                    "close_ms": t.get("close_ms"),
+                    "partial": t.get("partial", False),
+                    "confidence": t.get("confidence"),
+                }
+                for t in day_trades
+            ],
+        })
+    return {"days": result, "total_closed": len(closed)}
+
+
+@app.get("/api/desk/bull/logs")
+async def bull_logs(session=Depends(require_session)):
+    """Lessons Bull."""
+    content = _bull_lessons()
+    return {"content": content, "available": bool(content)}
+
+
+@app.post("/api/desk/bull/reset-budget")
+async def bull_reset_budget(request: Request, session=Depends(require_session)):
+    """Azzera il budget giornaliero AI del portafoglio Bull."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    equity_reset = bool(body.get("equity_reset", False))
+    flag_path = os.path.join(_DESK_DATA_BULL, "budget_reset.flag")
+    os.makedirs(_DESK_DATA_BULL, exist_ok=True)
+    content = "equity_reset" if equity_reset else "budget_only"
+    with open(flag_path, "w") as f:
+        f.write(content)
+    msg = "Bull — Budget AI azzerato + equity ripristinata a 1000$" if equity_reset else "Bull — Budget AI azzerato"
+    return {"ok": True, "message": msg, "equity_reset": equity_reset}
+
+
+
+
+@app.post("/api/desk/bull/pause")
+async def bull_pause(session=Depends(require_session)):
+    """Mette il bot Bull in pausa."""
+    import time as _time
+    flag_path = os.path.join(_DESK_DATA_BULL, "pause.flag")
+    try:
+        with open(flag_path, "w") as f:
+            f.write(str(int(_time.time())))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"impossibile scrivere pause.flag bull: {e}")
+    return {"paused": True, "message": "Bot Bull in pausa — riprenderà quando chiami /resume"}
+
+
+@app.post("/api/desk/bull/resume")
+async def bull_resume(session=Depends(require_session)):
+    """Rimuove pause.flag e fa riprendere il bot Bull."""
+    flag_path = os.path.join(_DESK_DATA_BULL, "pause.flag")
+    try:
+        if os.path.exists(flag_path):
+            os.remove(flag_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"impossibile rimuovere pause.flag bull: {e}")
+    return {"paused": False, "message": "Bot Bull ripreso"}
+
+@app.get("/api/desk/bull/health")
+async def bull_health():
+    """Health check per il portafoglio Bull (non richiede sessione)."""
+    state = _bull_state()
+    return {
+        "available": bool(state),
+        "portfolio": "bull",
         "cycle": state.get("cycle", 0),
         "day": state.get("day", ""),
         "halt": state.get("halt"),
