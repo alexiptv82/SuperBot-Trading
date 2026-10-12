@@ -1,0 +1,36 @@
+name: Sala segnali - PAUSA EMERGENZA (scrive pause.flag sui volumi)
+
+# Scrive pause.flag nei volumi hawk e bull SENZA rebuilddare i container.
+# Funziona anche con la versione precedente del bot (pre-pause.flag support).
+# Il bot nella versione attuale NON legge questo flag, ma lo stop giornaliero
+# è già attivo — questo workflow serve per diagnostica e per quando il deploy
+# avrà aggiornato il bot.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-pause-now.trigger"
+
+jobs:
+  pause:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Scrivi pause.flag e ferma/riavvia container in modalità sleep
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 60s
+          script: |
+            set -e
+            TS=$(date +%s)
+            # Scrivi il flag sui volumi
+            echo "$TS" > /opt/superbot-desk-data/hawk/pause.flag
+            echo "$TS" > /opt/superbot-desk-data/bull/pause.flag
+            echo "pause.flag scritto su hawk e bull (ts=$TS)"
+            echo "=== STATO CONTAINER ==="
+            docker ps --filter name=superbot-desk --format '{{.Names}} | {{.Status}}'
+            echo "=== DONE ==="
