@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { deskAPI, bullAPI } from '../api';
+import { fmtDateTime, PARAM_ROWS } from '../deskUi';
 
 const GOOD   = '#4ade80';
 const BAD    = '#f87171';
@@ -178,12 +179,132 @@ const DayCard = ({ day, data, defaultOpen }) => {
   );
 };
 
+
+// Riga etichetta / valore
+const Row = ({ label, value, color }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${BORDER}`, fontSize: '13px' }}>
+    <span style={{ color: MUTED }}>{label}</span>
+    <span style={{ fontWeight: 'bold', color: color || '#f1f5f9' }}>{value}</span>
+  </div>
+);
+
+const REASON_LABEL = {
+  'stop loss': 'Stop loss', 'take profit': 'Take profit', 'liquidazione': 'Liquidazione',
+  'chiusura Claude': 'Uscita decisa dal bot', 'chiusura manuale': 'Chiusura manuale',
+};
+
+// Metriche estese (tab Statistiche)
+const ExtraStats = ({ perf }) => (
+  <Card style={{ marginBottom: '12px' }}>
+    <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '6px', color: '#f1f5f9' }}>📐 Qualità dei trade</div>
+    <Row label="Vincita media" value={fmt(perf.avg_win ?? 0)} color={GOOD} />
+    <Row label="Perdita media" value={fmt(perf.avg_loss ?? 0)} color={BAD} />
+    <Row label="Miglior trade" value={fmt(perf.best_trade ?? 0)} color={GOOD} />
+    <Row label="Peggior trade" value={fmt(perf.worst_trade ?? 0)} color={BAD} />
+    <Row label="Calo massimo (drawdown)" value={`-${Number(perf.max_drawdown ?? 0).toFixed(2)}$`} color={BAD} />
+    <Row label="Durata media" value={perf.avg_hold_hours != null ? `${perf.avg_hold_hours} h` : '--'} />
+    <Row label="Commissioni pagate" value={`-${Number(perf.total_fees ?? 0).toFixed(2)}$`} />
+    {perf.partial_closes > 0 && <Row label="Chiusure parziali incluse" value={perf.partial_closes} />}
+  </Card>
+);
+
+const BucketCard = ({ title, data, labelMap = {} }) => (
+  Object.keys(data || {}).length > 0 ? (
+    <Card style={{ marginBottom: '12px' }}>
+      <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', color: '#f1f5f9' }}>{title}</div>
+      {Object.entries(data).map(([k, s]) => (
+        <div key={k} style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '7px 0', borderBottom: `1px solid ${BORDER}`, fontSize: '13px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontWeight: 'bold', color: '#f1f5f9', textTransform: 'capitalize' }}>{labelMap[k] || k}</span>
+            <WinBadge wins={s.wins} total={s.trades} />
+            <span style={{ color: MUTED, fontSize: '11px' }}>{s.trades} trade</span>
+          </div>
+          <PnlBadge value={s.net_pnl} />
+        </div>
+      ))}
+    </Card>
+  ) : null
+);
+
+
+function RunCard({ run, current, isCurrent }) {
+  const pnl = run.pnl ?? run.net_total ?? 0;
+  const changed = !isCurrent && current ? PARAM_ROWS.filter(([, get]) => {
+    const a = get(run.params), b = get(current.params);
+    return a != null && b != null && String(a) !== String(b);
+  }) : [];
+  const [open, setOpen] = useState(isCurrent);
+  return (
+    <Card style={{ marginBottom: '10px', borderColor: isCurrent ? ACCENT : BORDER }}>
+      <div onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontWeight: 'bold', color: '#f1f5f9', fontSize: '14px' }}>
+            Run #{run.run_no ?? '?'} {isCurrent && <span style={{ color: ACCENT, fontSize: '11px' }}>● in corso</span>}
+          </div>
+          <div style={{ fontSize: '11px', color: MUTED }}>
+            {fmtDateTime(run.started_ms)} → {isCurrent ? 'adesso' : fmtDateTime(run.ended_ms)}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <PnlBadge value={pnl} />
+          <div style={{ fontSize: '11px', color: MUTED }}>{run.trades} trade · {run.win_rate ?? 0}% WR</div>
+        </div>
+      </div>
+      {changed.length > 0 && (
+        <div style={{ marginTop: '8px', fontSize: '11px', color: '#fbbf24' }}>
+          ≠ Parametri diversi dalla run attuale: {changed.map(([l]) => l).join(', ')}
+        </div>
+      )}
+      {open && (
+        <div style={{ marginTop: '10px' }}>
+          <Row label="Equity finale" value={run.end_equity != null ? `$${Number(run.end_equity).toFixed(2)}` : '--'} />
+          <Row label="Vincenti / perdenti" value={`${run.wins ?? 0} / ${run.losses ?? 0}`} />
+          <Row label="Netto dei trade" value={fmt(run.net_total ?? 0)} color={(run.net_total ?? 0) >= 0 ? GOOD : BAD} />
+          <Row label="Miglior / peggior trade" value={`${fmt(run.best ?? 0)} / ${fmt(run.worst ?? 0)}`} />
+          {run.profit_factor != null && <Row label="Profit factor" value={run.profit_factor} />}
+          {run.max_drawdown != null && <Row label="Calo massimo" value={`-${Number(run.max_drawdown).toFixed(2)}$`} color={BAD} />}
+          <div style={{ fontSize: '12px', color: MUTED, margin: '10px 0 4px', fontWeight: 'bold' }}>PARAMETRI USATI</div>
+          {PARAM_ROWS.map(([label, get, show]) => {
+            const v = get(run.params);
+            if (v == null) return null;
+            const cur = current ? get(current.params) : null;
+            const diff = !isCurrent && cur != null && String(cur) !== String(v);
+            return <Row key={label} label={label} value={show(v) + (diff ? `  (ora ${show(cur)})` : '')} color={diff ? '#fbbf24' : undefined} />;
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function RunsTab({ runs }) {
+  if (!runs) return <div style={{ textAlign: 'center', color: MUTED, padding: '30px' }}>Caricamento…</div>;
+  return (
+    <>
+      <div style={{ fontSize: '12px', color: MUTED, marginBottom: '10px' }}>
+        Ogni volta che azzeri il portafoglio da Impostazioni, la run finisce qui con i suoi risultati e i parametri usati:
+        così confronti prima e dopo un cambio di parametri.
+      </div>
+      <RunCard run={runs.current} current={runs.current} isCurrent />
+      {runs.archived.length === 0 ? (
+        <Card><div style={{ textAlign: 'center', color: MUTED, padding: '16px', fontSize: '13px' }}>
+          Nessuna run archiviata ancora. Compaiono dopo il primo azzeramento del portafoglio.
+        </div></Card>
+      ) : runs.archived.map(r => <RunCard key={r.archive} run={r} current={runs.current} isCurrent={false} />)}
+    </>
+  );
+}
+
 export default function Performance() {
   // portfolio selector: 'hawk' | 'bull'
   const [portfolio, setPortfolio] = useState('hawk');
 
   const [diary,   setDiary]   = useState(null);
   const [perf,    setPerf]    = useState(null);
+  const [runs,    setRuns]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab,     setTab]     = useState('diary'); // 'diary' | 'stats'
 
@@ -193,9 +314,11 @@ export default function Performance() {
     Promise.all([
       api.getDiary().catch(() => null),
       api.getPerformance().catch(() => null),
-    ]).then(([d, p]) => {
+      api.getRuns().catch(() => null),
+    ]).then(([d, p, r]) => {
       if (d?.data) setDiary(d.data);
       if (p?.data) setPerf(p.data);
+      if (r?.data) setRuns(r.data);
       setLoading(false);
     });
   }, [portfolio]);
@@ -203,6 +326,7 @@ export default function Performance() {
   useEffect(() => {
     setDiary(null);
     setPerf(null);
+    setRuns(null);
     load(portfolio);
     const id = setInterval(() => load(portfolio), 120_000);
     return () => clearInterval(id);
@@ -212,10 +336,10 @@ export default function Performance() {
     <button
       onClick={() => setTab(id)}
       style={{
-        flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
+        flex: 1, padding: '10px 4px', border: 'none', borderRadius: '10px',
         background: tab === id ? ACCENT : 'transparent',
         color: tab === id ? '#0f172a' : MUTED,
-        fontWeight: 'bold', cursor: 'pointer', fontSize: '13px',
+        fontWeight: 'bold', cursor: 'pointer', fontSize: '12px',
       }}
     >
       {label}
@@ -263,15 +387,16 @@ export default function Performance() {
       <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', background: SURF, borderRadius: '12px', padding: '4px', border: `1px solid ${BORDER}` }}>
         <TabBtn id="diary" label="📖 Diario" />
         <TabBtn id="stats" label="📊 Statistiche" />
+        <TabBtn id="runs" label="🧪 Run" />
       </div>
 
-      {loading && !hasDiary && (
+      {loading && !hasDiary && tab !== 'runs' && (
         <div style={{ textAlign: 'center', color: MUTED, padding: '40px', fontSize: '14px' }}>
           Caricamento...
         </div>
       )}
 
-      {!loading && !hasDiary && !hasPerf && (
+      {!loading && !hasDiary && !hasPerf && tab !== 'runs' && (
         <Card>
           <div style={{ textAlign: 'center', color: MUTED, padding: '30px' }}>
             <div style={{ fontSize: '32px', marginBottom: '10px' }}>📭</div>
@@ -320,33 +445,19 @@ export default function Performance() {
               ))}
           </Card>
 
-          {/* Per tipo */}
-          {Object.keys(perf.by_type || {}).length > 0 && (
-            <Card style={{ marginBottom: '12px' }}>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', color: '#f1f5f9' }}>
-                ⚡ Per tipo di trade
-              </div>
-              {Object.entries(perf.by_type).map(([tp, s]) => (
-                <div key={tp} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '7px 0', borderBottom: `1px solid ${BORDER}`, fontSize: '13px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: 'bold', color: '#f1f5f9', textTransform: 'capitalize' }}>{tp}</span>
-                    <WinBadge wins={s.wins} total={s.trades} />
-                    <span style={{ color: MUTED, fontSize: '11px' }}>{s.trades} trade</span>
-                  </div>
-                  <PnlBadge value={s.net_pnl} />
-                </div>
-              ))}
-            </Card>
-          )}
+          <BucketCard title="⚡ Per tipo di trade" data={perf.by_type} />
+          <BucketCard title="🎯 Come si sono chiusi" data={perf.by_reason} labelMap={REASON_LABEL} />
+          <BucketCard title="↕️ Long / Short" data={perf.by_side} labelMap={{ long: 'Long', short: 'Short' }} />
+          <ExtraStats perf={perf} />
 
           <div style={{ fontSize: '11px', color: '#475569', textAlign: 'center', marginTop: '8px' }}>
             P&L al netto di commissioni e slippage (paper mode)
           </div>
         </>
       )}
+
+      {/* ── TAB RUN ── */}
+      {tab === 'runs' && <RunsTab runs={runs} />}
     </div>
   );
 }

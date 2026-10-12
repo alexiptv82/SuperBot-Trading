@@ -71,34 +71,30 @@ export const botAPI = {
     API.post('/api/auth/webauthn/login/verify', { state_id, credential }),
 };
 
-// ── V2 Desk Bot API — HAWK (default) ─────────────────────────────────────────
-// Portafoglio Hawk: max $100/trade, max 10 posizioni, budget $1000
-export const deskAPI = {
-  getStatus:      () => API.get('/api/desk/status'),
-  getTrades:      (limit = 100) => API.get(`/api/desk/trades?limit=${limit}`),
-  getPerformance: () => API.get('/api/desk/performance'),
-  getPrices:      () => API.get('/api/desk/prices'),
-  closeAll:       () => API.post('/api/desk/close-all'),
-  getLogs:        () => API.get('/api/desk/logs'),
-  health:         () => API.get('/api/desk/health'),
-  resetBudget:    (equityReset = false) => API.post('/api/desk/reset-budget', { equity_reset: equityReset }),
-  getDiary:       () => API.get('/api/desk/diary'),
-  pause:          () => API.post('/api/desk/pause'),
-  resume:         () => API.post('/api/desk/resume'),
-};
+// ── Portafogli desk: Hawk e Bull hanno le stesse API, cambia solo il prefisso ──
+// Hawk: max $100/trade, max 10 posizioni. Bull: max $350/trade, max 3 posizioni.
+const makeDeskAPI = (prefix) => ({
+  getStatus:      () => API.get(`${prefix}/status`),
+  getTrades:      (limit = 100) => API.get(`${prefix}/trades?limit=${limit}`),
+  getPerformance: () => API.get(`${prefix}/performance`),
+  getDiary:       () => API.get(`${prefix}/diary`),
+  getRuns:        () => API.get(`${prefix}/runs`),
+  getLogs:        () => API.get(`${prefix}/logs`),
+  health:         () => API.get(`${prefix}/health`),
+  pause:          () => API.post(`${prefix}/pause`),      // svuota: finisce le posizioni, niente nuovi trade
+  resume:         () => API.post(`${prefix}/resume`),     // avvia / riprende
+  closeAll:       () => API.post(`${prefix}/close-all`),  // chiude tutto a prezzo di mercato
+  resetBudget:    () => API.post(`${prefix}/reset-budget`),
+  resetPortfolio: (clearLessons = false) => API.post(`${prefix}/reset-portfolio`, { clear_lessons: clearLessons }),
+});
 
-// ── V2 Desk Bot API — BULL ────────────────────────────────────────────────────
-// Portafoglio Bull: max $350/trade, max 3 posizioni, TP≥5%, budget $1000
-export const bullAPI = {
-  getStatus:      () => API.get('/api/desk/bull/status'),
-  getTrades:      (limit = 100) => API.get(`/api/desk/bull/trades?limit=${limit}`),
-  getPerformance: () => API.get('/api/desk/bull/performance'),
-  getLogs:        () => API.get('/api/desk/bull/logs'),
-  health:         () => API.get('/api/desk/bull/health'),
-  resetBudget:    (equityReset = false) => API.post('/api/desk/bull/reset-budget', { equity_reset: equityReset }),
-  getDiary:       () => API.get('/api/desk/bull/diary'),
-  pause:          () => API.post('/api/desk/bull/pause'),
-  resume:         () => API.post('/api/desk/bull/resume'),
+export const deskAPI = {
+  ...makeDeskAPI('/api/desk'),
+  getPrices: () => API.get('/api/desk/prices'),   // 27 simboli, comune ai due portafogli
 };
+export const bullAPI = makeDeskAPI('/api/desk/bull');
+
+// Messaggio leggibile da un errore axios (usa il testo del server se c'e')
+export const errMsg = (e) => e?.response?.data?.detail || e?.response?.data?.message || e?.message || String(e);
 
 export default API;
