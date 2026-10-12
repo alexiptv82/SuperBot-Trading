@@ -19,34 +19,15 @@ jobs:
           ref: rule-pool
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Raccoglie info nginx e SSL
+      - name: Legge config nginx hitvprime completa
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_tmp
           chmod 600 ~/.ssh/id_tmp
-
           ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 \
-            'OUT=/tmp/diag_nginx.txt
-            echo "=== NGINX SITES ENABLED ===" > $OUT
-            ls /etc/nginx/sites-enabled/ >> $OUT
-            echo "" >> $OUT
-            echo "=== CONFIG hitvprime/sbtrading ===" >> $OUT
-            grep -r "sbtrading\|hitvprime\|superbot" /etc/nginx/sites-enabled/ 2>/dev/null >> $OUT || echo "nessun match" >> $OUT
-            echo "" >> $OUT
-            echo "=== TUTTI I SERVER_NAME NGINX ===" >> $OUT
-            grep -r "server_name\|listen\|ssl_cert\|proxy_pass" /etc/nginx/sites-enabled/ 2>/dev/null >> $OUT
-            echo "" >> $OUT
-            echo "=== CERTBOT/LE CERTIFICATES ===" >> $OUT
-            certbot certificates 2>/dev/null >> $OUT || ls /etc/letsencrypt/live/ 2>/dev/null >> $OUT
-            echo "" >> $OUT
-            echo "=== PAUSE FLAGS ===" >> $OUT
-            ls -la /opt/superbot-desk-data/hawk/pause.flag 2>/dev/null && echo "HAWK: pause.flag ESISTE" >> $OUT || echo "HAWK: nessun pause.flag" >> $OUT
-            ls -la /opt/superbot-desk-data/bull/pause.flag 2>/dev/null && echo "BULL: pause.flag ESISTE" >> $OUT || echo "BULL: nessun pause.flag" >> $OUT
-            echo "FINE" >> $OUT'
-
-          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new root@51.91.109.45:/tmp/diag_nginx.txt deploy/diag-output.txt
+            'cat /etc/nginx/sites-enabled/hitvprime' > deploy/diag-output.txt
           rm -f ~/.ssh/id_tmp
           cat deploy/diag-output.txt
 
@@ -55,5 +36,5 @@ jobs:
           git config user.email "ci@superbot"
           git config user.name "SuperBot CI"
           git add deploy/diag-output.txt
-          git diff --staged --quiet || git commit -m "diag: nginx + ssl + pause flags [skip ci]"
+          git diff --staged --quiet || git commit -m "diag: config hitvprime nginx [skip ci]"
           git push origin rule-pool
