@@ -19,52 +19,46 @@ jobs:
           ref: rule-pool
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Raccoglie log dal VPS via SSH nativo
+      - name: Raccoglie log e salva diag-output.txt
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_diag
-          chmod 600 ~/.ssh/id_diag
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_tmp
+          chmod 600 ~/.ssh/id_tmp
 
-          ssh -T -i ~/.ssh/id_diag \
-            -o StrictHostKeyChecking=accept-new \
-            -o ConnectTimeout=20 \
-            root@51.91.109.45 << 'REMOTE'
-            OUT=/tmp/diag502.txt
-            echo "=== CONTAINERS ===" > $OUT
-            docker ps -a --format "{{.Names}} | {{.Status}} | RestartCount={{.RunningFor}}" | grep superbot >> $OUT 2>/dev/null || echo "(nessuno)" >> $OUT
-
-            echo "" >> $OUT
-            echo "=== SUPERBOT INSPECT ===" >> $OUT
-            docker inspect superbot --format 'Status={{.State.Status}} ExitCode={{.State.ExitCode}} RestartCount={{.RestartCount}} Error={{.State.Error}}' >> $OUT 2>/dev/null || echo "container non trovato" >> $OUT
-
-            echo "" >> $OUT
-            echo "=== LOG SUPERBOT (ultimi 80) ===" >> $OUT
-            docker logs --tail 80 superbot 2>&1 >> $OUT || echo "nessun log" >> $OUT
-
-            echo "" >> $OUT
-            echo "=== MEMORIA ===" >> $OUT
-            free -m >> $OUT
-            echo "" >> $OUT
-            echo "=== DISCO ===" >> $OUT
-            df -h / >> $OUT
-            echo "FINE" >> $OUT
-REMOTE
-
-          ssh -T -i ~/.ssh/id_diag \
+          ssh -i ~/.ssh/id_tmp \
             -o StrictHostKeyChecking=accept-new \
             -o ConnectTimeout=20 \
             root@51.91.109.45 \
-            'cat /tmp/diag502.txt' > deploy/diag-output.txt 2>/dev/null || echo "SSH FALLITO" > deploy/diag-output.txt
+            'OUT=/tmp/diag502.txt
+            echo "=== CONTAINERS ===" > $OUT
+            docker ps -a --filter name=superbot --format "{{.Names}} | {{.Status}}" >> $OUT 2>/dev/null
+            echo "" >> $OUT
+            echo "=== INSPECT ===" >> $OUT
+            docker inspect superbot --format "Status={{.State.Status}} ExitCode={{.State.ExitCode}} RestartCount={{.RestartCount}}" >> $OUT 2>/dev/null
+            echo "" >> $OUT
+            echo "=== LOG SUPERBOT ===" >> $OUT
+            docker logs --tail 100 superbot >> $OUT 2>&1
+            echo "" >> $OUT
+            echo "=== MEM ===" >> $OUT
+            free -m >> $OUT
+            echo "=== DISCO ===" >> $OUT
+            df -h / >> $OUT'
 
-          rm -f ~/.ssh/id_diag
+          scp -i ~/.ssh/id_tmp \
+            -o StrictHostKeyChecking=accept-new \
+            root@51.91.109.45:/tmp/diag502.txt \
+            deploy/diag-output.txt
+
+          rm -f ~/.ssh/id_tmp
+          echo "--- CONTENUTO ---"
           cat deploy/diag-output.txt
 
-      - name: Committa output nel repo
+      - name: Committa nel repo
         run: |
           git config user.email "ci@superbot"
           git config user.name "SuperBot CI"
           git add deploy/diag-output.txt
-          git diff --staged --quiet || git commit -m "diag: log superbot 502 [skip ci]"
+          git diff --staged --quiet || git commit -m "diag: log docker superbot [skip ci]"
           git push origin rule-pool
