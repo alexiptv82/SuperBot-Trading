@@ -28,6 +28,7 @@ jobs:
           host: 51.91.109.45
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          connect_timeout: 90s
           command_timeout: 30m
           envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY
           script: |
