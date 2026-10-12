@@ -25,10 +25,18 @@ jobs:
             -o ServerAliveInterval=10 \
             -o ServerAliveCountMax=3 \
             root@51.91.109.45 \
-            'docker ps -a --filter name=superbot && echo "---LOGS---" && docker logs --tail 25 superbot-desk 2>&1 && echo "---STATE---" && cat /opt/superbot-desk-data/state_v2.json 2>/dev/null || echo "no state" && echo "---TRADES---" && tail -5 /opt/superbot-desk-data/trade_history.jsonl 2>/dev/null || echo "no trades" && echo "---LESSONS---" && tail -5 /opt/superbot-desk-data/lessons.md 2>/dev/null || echo "no lessons"' \
-            > status_out.txt 2>&1 || true
+            'echo "=CONTAINERS="; docker ps -a --filter name=superbot --format "{{.Names}} {{.Status}}"; echo "=LOGS="; docker logs --tail 30 superbot-desk 2>&1; echo "=STATE="; cat /opt/superbot-desk-data/state_v2.json 2>/dev/null || echo "no state_v2.json"; echo "=TRADES="; tail -5 /opt/superbot-desk-data/trade_history.jsonl 2>/dev/null || echo "no trades"; echo "=LESSONS="; tail -5 /opt/superbot-desk-data/lessons.md 2>/dev/null || echo "no lessons"' \
+            > status_out.txt 2>&1 || echo "SSH error: $?" >> status_out.txt
           rm -f ~/.ssh/id_desk
 
-      - name: Output
+      - name: Output grezzo
         if: always()
-        run: cat status_out.txt 2>/dev/null || echo "(vuoto)"
+        run: |
+          echo "=== RISULTATO STATUS BOT V2 ==="
+          cat status_out.txt 2>/dev/null || echo "(file vuoto)"
+
+      - name: Annotation
+        if: always()
+        run: |
+          CONTENT=$(cat status_out.txt 2>/dev/null | head -100 | tr '\n' '|' | cut -c1-5000)
+          echo "::notice title=BotV2 Stato::${CONTENT}"
