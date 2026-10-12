@@ -159,18 +159,22 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [s, p, o] = await Promise.all([
-        botAPI.getStatus(), botAPI.getPrices(), botAPI.getOpenTrades()
+      const [s, o] = await Promise.all([
+        botAPI.getStatus(), botAPI.getOpenTrades()
       ]);
-      setStatus(s.data); setPrices(p.data); setOpenTrades(o.data);
+      setStatus(s.data); setOpenTrades(o.data);
       setApiError(false);
     } catch (e) { console.error(e); setApiError(true); }
   }, []);
 
   const fetchDeskData = useCallback(async () => {
     try {
-      const r = await deskAPI.getStatus();
+      const [r, p] = await Promise.all([
+        deskAPI.getStatus(),
+        deskAPI.getPrices(),
+      ]);
       setDeskStatus(r.data);
+      setPrices(p.data);
     } catch (e) { /* desk offline è normale */ }
   }, []);
 
@@ -179,7 +183,7 @@ export default function Dashboard() {
   useEffect(() => { fetchDeskData(); const t = setInterval(fetchDeskData, 5000); return () => clearInterval(t); }, [fetchDeskData]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
 
-  const marketLive = !apiError && Object.keys(prices).length > 0;
+  const marketLive = Object.keys(prices).length > 0;
   const dateLabel = now.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
   const timeLabel = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 

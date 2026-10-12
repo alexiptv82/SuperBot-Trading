@@ -78,6 +78,7 @@ export const deskAPI = {
   getStatus:      () => API.get('/api/desk/status'),
   getTrades:      (limit = 100) => API.get(`/api/desk/trades?limit=${limit}`),
   getPerformance: () => API.get('/api/desk/performance'),
+  getPrices:      () => API.get('/api/desk/prices'),
   getLogs:        () => API.get('/api/desk/logs'),
   health:         () => API.get('/api/desk/health'),
 };

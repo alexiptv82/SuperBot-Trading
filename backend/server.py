@@ -693,6 +693,30 @@ async def desk_status(session=Depends(require_session)):
     }
 
 
+@app.get("/api/desk/prices")
+async def desk_prices(session=Depends(require_session)):
+    """Prezzi live per tutti i 27 simboli V2 — usati dal MarketCarousel nel frontend."""
+    V2_SYMBOLS = [
+        'BTC','ETH','BNB','XRP','SOL','ADA','DOGE','AVAX',
+        'DOT','LINK','MATIC','UNI','ATOM','LTC','BCH',
+        'APT','ARB','OP','NEAR','FIL','INJ','SUI','TIA',
+        'RUNE','STX','XAU','XAG',
+    ]
+    prices = {}
+    for sym in V2_SYMBOLS:
+        usdt = sym + 'USDT'
+        try:
+            ticker = await exchange.get_ticker(usdt)
+            prices[sym] = ticker
+        except Exception:
+            try:
+                ticker = await exchange.get_ticker(sym + '/USDT')
+                prices[sym] = ticker
+            except Exception as e:
+                prices[sym] = {'error': str(e)}
+    return prices
+
+
 @app.get("/api/desk/trades")
 async def desk_trades(session=Depends(require_session), limit: int = 100):
     """Ultimi N trade chiusi dal log JSONL permanente."""
