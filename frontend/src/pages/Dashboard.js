@@ -5,19 +5,20 @@ import { deskAPI, bullAPI } from '../api';
 const apiFor = (portfolio) => portfolio === 'bull' ? bullAPI : deskAPI;
 import ChartModal from '../components/ChartModal';
 
+// Stessi 27 simboli del bot V2 (backend/desk/cli.py SYMBOLS) e di /api/desk/prices.
 const V2_SYMBOLS = [
-  'BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','BNBUSDT','DOGEUSDT','ADAUSDT',
-  'AVAXUSDT','DOTUSDT','MATICUSDT','LINKUSDT','UNIUSDT','LTCUSDT','ATOMUSDT',
-  'NEARUSDT','APTUSDT','ARBUSDT','OPUSDT','INJUSDT','SEIUSDT','SUIUSDT',
-  'TIAUSDT','WLDUSDT','FETUSDT','RENDERUSDT','XAUUSDT','XAGUSDT',
+  'BTCUSDT','ETHUSDT','BNBUSDT','XRPUSDT','SOLUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT',
+  'DOTUSDT','LINKUSDT','MATICUSDT','UNIUSDT','ATOMUSDT','LTCUSDT','BCHUSDT',
+  'APTUSDT','ARBUSDT','OPUSDT','NEARUSDT','FILUSDT','INJUSDT','SUIUSDT','TIAUSDT',
+  'RUNEUSDT','STXUSDT','XAUUSDT','XAGUSDT',
 ];
 
-// Mappa simbolo → ID icona su coinicons (stessa stringa lowercase nella maggioranza dei casi)
+// Mappa simbolo → ID icona (lowercase). XAU/XAG usano l'emoji (nessun logo crypto).
 const ICON_ID = {
-  BTC:'btc', ETH:'eth', SOL:'sol', XRP:'xrp', BNB:'bnb', DOGE:'doge', ADA:'ada',
-  AVAX:'avax', DOT:'dot', MATIC:'matic', LINK:'link', UNI:'uni', LTC:'ltc', ATOM:'atom',
-  NEAR:'near', APT:'apt', ARB:'arb', OP:'op', INJ:'inj', SEI:'sei', SUI:'sui',
-  TIA:'tia', WLD:'wld', FET:'fet', RENDER:'render',
+  BTC:'btc', ETH:'eth', BNB:'bnb', XRP:'xrp', SOL:'sol', ADA:'ada', DOGE:'doge', AVAX:'avax',
+  DOT:'dot', LINK:'link', MATIC:'matic', UNI:'uni', ATOM:'atom', LTC:'ltc', BCH:'bch',
+  APT:'apt', ARB:'arb', OP:'op', NEAR:'near', FIL:'fil', INJ:'inj', SUI:'sui', TIA:'tia',
+  RUNE:'rune', STX:'stx',
   XAU:'xau', XAG:'xag',
 };
 
@@ -26,22 +27,39 @@ const FALLBACK_EMOJI = { XAU:'🥇', XAG:'🥈' };
 
 const fmt = (v, d = 2) => (v == null || isNaN(v)) ? '--' : Number(v).toFixed(d);
 
-// Logo crypto: img CDN con fallback graceful
+// Logo crypto: prova più sorgenti in ordine; se falliscono tutte mostra un badge
+// con la sigla, che non dipende da nessun servizio esterno (quindi i simboli si vedono sempre).
 function CryptoIcon({ base, size = 28 }) {
-  const [failed, setFailed] = useState(false);
+  const [idx, setIdx] = useState(0);
   const id = ICON_ID[base];
-  const fallback = FALLBACK_EMOJI[base] || '💱';
 
-  if (!id || failed) {
-    return <span style={{ fontSize: size * 0.7 }}>{fallback}</span>;
+  if (FALLBACK_EMOJI[base]) {
+    return <span style={{ fontSize: size * 0.8 }}>{FALLBACK_EMOJI[base]}</span>;
+  }
+
+  const sources = id ? [
+    `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/128/color/${id}.png`,
+    `https://assets.coincap.io/assets/icons/${id}@2x.png`,
+    `https://coinicons-api.vercel.app/api/icon/${id}`,
+  ] : [];
+
+  if (idx >= sources.length) {
+    return (
+      <span style={{
+        width: size, height: size, borderRadius: '50%', background: '#334155',
+        color: '#e2e8f0', display: 'inline-flex', alignItems: 'center',
+        justifyContent: 'center', fontSize: Math.max(8, size * 0.32), fontWeight: 'bold',
+      }}>{base.slice(0, 4)}</span>
+    );
   }
   return (
     <img
-      src={`https://coinicons-api.vercel.app/api/icon/${id}`}
+      key={sources[idx]}
+      src={sources[idx]}
       alt={base}
       width={size}
       height={size}
-      onError={() => setFailed(true)}
+      onError={() => setIdx(i => i + 1)}
       style={{ borderRadius: '50%', display: 'block' }}
     />
   );
