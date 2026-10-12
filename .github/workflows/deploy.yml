@@ -91,7 +91,7 @@ jobs:
               -p 8002:8001 \
               -v /opt/superbot/data:/app/data \
               -v /opt/superbot/backend/.env:/app/backend/.env \
-              -v /opt/superbot-desk-data:/opt/superbot-desk-data:ro \
+              -v /opt/superbot-desk-data:/opt/superbot-desk-data \
               superbot
             sleep 5
             curl -s http://localhost:8002/api/health && echo "BOT ONLINE OK" || echo "ERRORE AVVIO"
