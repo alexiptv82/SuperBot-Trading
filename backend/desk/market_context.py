@@ -36,6 +36,13 @@ class OIInfo:
     note: str
 
 
+@dataclass
+class LSRatioInfo:
+    symbol: str
+    ratio: float         # long/short ratio (>1 = più long che short)
+    note: str
+
+
 def _get(url: str, timeout: int = TIMEOUT) -> Optional[bytes]:
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -105,6 +112,45 @@ def fetch_open_interest(symbol: str) -> Optional[OIInfo]:
         return None
 
 
+def fetch_ls_ratio(symbol: str) -> Optional[LSRatioInfo]:
+    """Ritorna long/short ratio da BitGet (endpoint pubblico).
+    ratio > 1 = più long che short; ratio < 1 = più short.
+    """
+    sym = symbol.upper()
+    if not sym.endswith("USDT"):
+        sym = sym + "USDT"
+    # XAU/XAG non hanno L/S ratio su BitGet futures
+    if symbol.upper() in ("XAU", "XAG"):
+        return None
+    url = (f"{BITGET_BASE}/api/v2/mix/market/account-long-short-ratio"
+           f"?symbol={sym}&productType=USDT-FUTURES&period=1h")
+    data = _get(url)
+    if data is None:
+        return None
+    try:
+        d = json.loads(data)
+        if d.get("code") != "00000":
+            return None
+        rows = d.get("data", [])
+        if not rows:
+            return None
+        # prendi il dato più recente (lista ordinata per ts, ultimo elemento)
+        row = rows[-1] if isinstance(rows, list) else rows
+        ratio = float(row.get("longShortRatio") or row.get("longRatio") or 0)
+        if ratio <= 0:
+            return None
+        note = f"L/S ratio {symbol}: {ratio:.2f}"
+        if ratio > 1.5:
+            note += " — molti più long (attenzione: crowd long, considera short)"
+        elif ratio < 0.7:
+            note += " — molti più short (crowd short, considera long contrarian)"
+        else:
+            note += " — ratio neutro"
+        return LSRatioInfo(symbol, ratio, note)
+    except Exception:
+        return None
+
+
 def fetch_cryptopanic(symbols: list, limit: int = 6) -> list:
     """Notizie recenti da CryptoPanic (API pubblica gratuita, no autenticazione)."""
     sym_str = ",".join(s[:10] for s in symbols[:5])
@@ -156,8 +202,8 @@ def _fetch_rss_headlines(limit: int = 8) -> list:
 
 
 def fetch_all_context(symbols: list, now_ms: int | None = None) -> dict:
-    """Raccoglie funding + OI per tutti i simboli + notizie. Ritorna dict pronto per il prompt."""
-    funding, oi = {}, {}
+    """Raccoglie funding + OI + L/S ratio per tutti i simboli + notizie."""
+    funding, oi, ls_ratio = {}, {}, {}
     for s in symbols:
         f = fetch_funding(s)
         if f:
@@ -165,17 +211,35 @@ def fetch_all_context(symbols: list, now_ms: int | None = None) -> dict:
         o = fetch_open_interest(s)
         if o:
             oi[s] = o
+        ls = fetch_ls_ratio(s)
+        if ls:
+            ls_ratio[s] = ls
     news = fetch_cryptopanic(symbols[:6])
-    return {"funding": funding, "oi": oi, "news": news, "ts": now_ms or int(time.time() * 1000)}
+    return {"funding": funding, "oi": oi, "ls_ratio": ls_ratio,
+            "news": news, "ts": now_ms or int(time.time() * 1000)}
+
+
+def _note(obj) -> Optional[str]:
+    """Restituisce il campo 'note' da dataclass o dict."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get("note")
+    return getattr(obj, "note", None)
 
 
 def context_lines(ctx: dict, symbol: str) -> list:
-    """Righe di testo sul contesto di mercato per un simbolo (per il prompt)."""
+    """Righe di testo sul contesto di mercato per un simbolo (per il prompt).
+    Funziona sia con dataclass che con dict (dopo deserializzazione JSON).
+    """
     lines = []
-    f = ctx["funding"].get(symbol)
-    if f:
-        lines.append(f.note)
-    o = ctx["oi"].get(symbol)
-    if o:
-        lines.append(o.note)
+    note = _note(ctx.get("funding", {}).get(symbol))
+    if note:
+        lines.append(note)
+    note = _note(ctx.get("oi", {}).get(symbol))
+    if note:
+        lines.append(note)
+    note = _note(ctx.get("ls_ratio", {}).get(symbol))
+    if note:
+        lines.append(note)
     return lines

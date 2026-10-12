@@ -29,7 +29,16 @@ from desk.notifier import (notify_open, notify_close, notify_dca,
 
 # ---- configurazione V2
 DATA_DIR = os.getenv("DESK_DATA_DIR", "/app/data/desk")
-ENTRY_SCORE = int(os.getenv("DESK_ENTRY_SCORE", "60"))   # V2: abbassato da 70 a 60
+# ENTRY_SCORE base (fallback) — il valore effettivo dipende dal tier dell'asset
+_ENTRY_SCORE_BASE = int(os.getenv("DESK_ENTRY_SCORE", "60"))
+
+# Tier A/B: BTC, ETH, XAU, XAG → soglia 60
+# Tier C: tutti gli altri altcoin → soglia 70
+_TIER_AB = {"BTC", "ETH", "XAU", "XAG"}
+
+def tier_entry_score(symbol: str) -> int:
+    """Restituisce la soglia di confidenza minima per aprire un trade su questo simbolo."""
+    return 60 if symbol.upper() in _TIER_AB else 70
 HOUR_MS = 3_600_000
 HALF_HOUR_MS = 1_800_000
 SCALP_REVIEW_MS = 900_000    # scalp revisionati ogni 15 minuti
@@ -185,10 +194,11 @@ def run_cycle(state: dict, now_ms: int) -> None:
     if ctx is None or (now_ms - last_ctx_ts) >= HALF_HOUR_MS:
         try:
             ctx = fetch_all_context(SYMBOLS, now_ms)
-            # serializza FundingInfo/OIInfo in dict per JSON
+            # serializza FundingInfo/OIInfo/LSRatioInfo in dict per JSON
             ctx_serial = {
                 "funding": {k: vars(v) for k, v in ctx["funding"].items()},
                 "oi": {k: vars(v) for k, v in ctx["oi"].items()},
+                "ls_ratio": {k: vars(v) for k, v in ctx.get("ls_ratio", {}).items()},
                 "news": ctx["news"], "ts": ctx["ts"],
             }
             state["market_ctx"] = ctx_serial
@@ -262,7 +272,7 @@ def run_cycle(state: dict, now_ms: int) -> None:
             print(f"[WARN] Claude non disponibile: {e}")
 
     if not decisions:
-        decisions = rules_decisions(readings_list, pos_info, open_symbols, ENTRY_SCORE)
+        decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
         source = "rules"
 
     # ---- esecuzione decisioni
@@ -280,6 +290,27 @@ def run_cycle(state: dict, now_ms: int) -> None:
                 print(f"[CLOSE] {sym} net {closed['net']:+.2f}$  motivo: {dec['reason'][:60]}")
                 notify_close(sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
                 append_trade_history(DATA_DIR, closed)
+
+        elif act == "partial_close":
+            fraction = float(dec.get("partial_close_fraction") or dec.get("partial_fraction") or 0.35)
+            fraction = max(0.1, min(0.9, fraction))
+            tp2_pct = dec.get("partial_close_tp2_pct") or dec.get("take_profit_pct") or 0
+            pos = acc.positions.get(sym)
+            if pos is None:
+                print(f"[PARTIAL_CLOSE SKIP] {sym}: posizione non trovata")
+                continue
+            new_tp = None
+            if tp2_pct and tp2_pct > 0:
+                new_tp = px * (1 + pos.side * tp2_pct)
+            partial = acc.partial_close(sym, px, now_ms, fraction, new_tp=new_tp,
+                                        why=dec.get("reason", "TP parziale")[:80])
+            if partial:
+                print(f"[PARTIAL_CLOSE] {sym} chiuso {fraction*100:.0f}%  net {partial['net']:+.2f}$  "
+                      f"TP2={'%.5g' % new_tp if new_tp else 'none'}")
+                notify_close(sym, partial["net"],
+                             f"TP parziale {fraction*100:.0f}% — {dec.get('reason','')[:80]}",
+                             "partial_close")
+                append_trade_history(DATA_DIR, partial)
 
         elif act == "dca":
             # DCA su posizione esistente
@@ -301,7 +332,10 @@ def run_cycle(state: dict, now_ms: int) -> None:
             else:
                 print(f"[DCA SKIP] {sym}: {msg}")
 
-        elif act in ("open_long", "open_short"):
+        elif act in ("open_long", "open_short", "open_long_split", "open_short_split"):
+            # normalizza: split → azione base (la seconda parte è gestita da pending_split)
+            is_split = act.endswith("_split")
+            base_act = act.replace("_split", "")
             # cooldown per tipo
             trade_type = dec.get("trade_type", "medio")
             cooldown = SCALP_COOLDOWN_MS if trade_type == "scalp" else MEDIO_COOLDOWN_MS
@@ -311,8 +345,11 @@ def run_cycle(state: dict, now_ms: int) -> None:
                 continue
             if sym in acc.positions:
                 continue
-            if dec["confidence"] < ENTRY_SCORE:
+            # soglia confidenza tier-aware
+            if dec["confidence"] < tier_entry_score(sym):
+                print(f"[CONF_LOW] {sym} conf={dec['confidence']} < soglia={tier_entry_score(sym)}")
                 continue
+            act = base_act  # usa open_long / open_short da qui in poi
             side = 1 if act == "open_long" else -1
             sl_pct = dec.get("stop_loss_pct", 0)
             if sl_pct <= 0:
@@ -460,7 +497,8 @@ def main() -> None:
         iteration(state)
         return
 
-    print(f"[DESK V2] avvio — simboli: {len(SYMBOLS)}  entry_score={ENTRY_SCORE}  "
+    print(f"[DESK V2] avvio — simboli: {len(SYMBOLS)}  "
+          f"entry_score=60(TIER_AB)/70(TIER_C)  "
           f"daily_cap={DAILY_CAP}$  data={DATA_DIR}")
     while True:
         iteration(state)

@@ -32,8 +32,8 @@ class Limits:
     start_equity: float = 1000.0
     max_leverage: int = 45            # tetto globale (ignorato se il tier è più basso)
     max_margin_trade: float = 400.0   # V2: aumentato da 250 a 400
-    max_margin_total: float = 800.0   # V2: aumentato da 500 a 800
-    max_open: int = 5                 # V2: fino a 5 posizioni contemporanee
+    max_margin_total: float = 2000.0  # V2: alzato per supportare fino a 10 posizioni (10×200$)
+    max_open: int = 10                # V2: fino a 10 posizioni contemporanee
     max_dca_total: float = 700.0      # DCA: mai più di 700$ su un singolo asset (tutti gli ingressi)
     min_margin: float = 30.0    # minimo per paper test; cli.py GUARDRAIL forza 150$ live
     fee_bp_side: float = 6.0
@@ -258,6 +258,50 @@ class PaperAccount:
     def close(self, symbol: str, price: float, now_ms: int, why: str = "chiusura decisa") -> Optional[dict]:
         pos = self.positions.get(symbol)
         return None if pos is None else self._close(pos, price, now_ms, why)
+
+    def partial_close(self, symbol: str, price: float, now_ms: int, fraction: float,
+                      new_tp: Optional[float] = None, why: str = "TP parziale") -> Optional[dict]:
+        """Chiude una frazione della posizione (es. 0.35 = 35%) e lascia il resto aperto.
+
+        Restituisce un record-trade per la parte chiusa (tagged partial=True).
+        La posizione viene ridotta proporzionalmente (qty, margin, fee_open).
+        """
+        pos = self.positions.get(symbol)
+        if pos is None:
+            return None
+        fraction = max(0.05, min(0.95, fraction))  # tra 5% e 95%
+        L = self.limits
+        exit_fill = price * (1 - pos.side * L.slip_bp_side / 1e4)
+
+        close_qty = pos.qty * fraction
+        close_margin = pos.total_margin * fraction
+        close_fee_open = pos.fee_open * fraction
+        fee_close = close_qty * exit_fill * L.fee_bp_side / 1e4
+        gross = pos.side * (exit_fill - pos.entry) * close_qty
+        hours = max(0.0, (now_ms - pos.open_ms) / 3_600_000)
+        funding = (close_qty * pos.entry * L.funding_bp_8h_long / 1e4 * hours / 8) if pos.side == 1 else 0.0
+        net = gross - close_fee_open - fee_close - funding
+        back = max(0.0, close_margin + gross - fee_close - funding)
+        self.cash += back
+
+        # riduce la posizione
+        pos.qty -= close_qty
+        pos.total_margin -= close_margin
+        pos.fee_open -= close_fee_open
+        if new_tp is not None:
+            pos.tp = float(new_tp)
+
+        rec = {"id": pos.id, "symbol": symbol, "side": pos.side,
+               "margin": round(close_margin, 4), "leverage": pos.leverage,
+               "entry": pos.entry, "exit": exit_fill, "open_ms": pos.open_ms,
+               "close_ms": now_ms, "net": round(net, 4), "gross": round(gross, 4),
+               "fees": round(close_fee_open + fee_close, 4), "funding": round(funding, 4),
+               "why": why, "confidence": pos.confidence, "reason": pos.reason,
+               "source": pos.source, "account": self.name,
+               "trade_type": pos.trade_type, "dca_count": pos.dca_count,
+               "partial": True, "fraction": round(fraction, 3)}
+        self.closed.append(rec)
+        return rec
 
     def on_bar(self, symbol: str, t: int, o: float, h: float, l: float, c: float, bar_ms: int) -> Optional[dict]:
         pos = self.positions.get(symbol)
