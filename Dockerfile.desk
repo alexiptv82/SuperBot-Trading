@@ -12,7 +12,8 @@ COPY backend/rule_pool ./backend/rule_pool
 COPY backend/desk ./backend/desk
 RUN mkdir -p /app/data/desk
 
+# Solo lettura dell'eta' del file di stato: non deve MAI avviare il bot (vedi desk/healthcheck.py).
 HEALTHCHECK --interval=5m --timeout=20s --start-period=10m --retries=2 \
-  CMD python -m desk.cli health --data-dir /app/data/desk
+  CMD python -m desk.healthcheck
 
 CMD ["python", "-m", "desk.cli", "loop", "--data-dir", "/app/data/desk"]
