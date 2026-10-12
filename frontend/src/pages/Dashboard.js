@@ -302,8 +302,8 @@ export default function Dashboard() {
                         <div>
                           <span style={{
                             padding: '2px 6px', borderRadius: '5px', fontSize: '10px', fontWeight: 'bold',
-                            background: p.side === 'long' ? '#166534' : '#7f1d1d', color: 'white', marginRight: '6px'
-                          }}>{(p.side || '?').toUpperCase()}</span>
+                            background: (p.side === 1 || p.side === 'long') ? '#166534' : '#7f1d1d', color: 'white', marginRight: '6px'
+                          }}>{p.side === 1 ? 'LONG' : p.side === -1 ? 'SHORT' : (typeof p.side === 'string' ? p.side.toUpperCase() : '?')}</span>
                           <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{p.symbol || '?'}</span>
                           <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '5px' }}>x{p.leverage ?? '--'}</span>
                           <span style={{ color: '#64748b', fontSize: '10px', marginLeft: '5px' }}>[{p.trade_type || 'medio'}]</span>
