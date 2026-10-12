@@ -11,29 +11,51 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Raccolta stato sul VPS
+      - name: Raccolta stato + auto-restart superbot se fermo
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 51.91.109.45
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 60s
+          command_timeout: 90s
           script: |
             OUT=/tmp/superbot_status.txt
-            echo "=== CONTAINERS ===" > $OUT
-            docker ps -a --filter name=superbot --format "{{.Names}} | {{.Status}} | {{.Image}}" >> $OUT
-            echo "=== LOG HAWK (ultimi 20) ===" >> $OUT
-            docker logs --tail 20 superbot-desk-hawk 2>&1 >> $OUT || echo "container hawk non trovato" >> $OUT
-            echo "=== LOG BULL (ultimi 20) ===" >> $OUT
-            docker logs --tail 20 superbot-desk-bull 2>&1 >> $OUT || echo "container bull non trovato" >> $OUT
+            echo "=== TUTTI I CONTAINER ===" > $OUT
+            docker ps -a --format "{{.Names}} | {{.Status}} | {{.Image}}" | grep superbot >> $OUT 2>/dev/null || echo "(nessun container superbot)" >> $OUT
+
+            echo "" >> $OUT
+            echo "=== LOG SUPERBOT (FastAPI — ultimi 20) ===" >> $OUT
+            docker logs --tail 20 superbot 2>&1 >> $OUT || echo "container superbot non trovato" >> $OUT
+
+            echo "" >> $OUT
+            echo "=== LOG HAWK (ultimi 15) ===" >> $OUT
+            docker logs --tail 15 superbot-desk-hawk 2>&1 >> $OUT || echo "container hawk non trovato" >> $OUT
+
+            echo "" >> $OUT
+            echo "=== LOG BULL (ultimi 15) ===" >> $OUT
+            docker logs --tail 15 superbot-desk-bull 2>&1 >> $OUT || echo "container bull non trovato" >> $OUT
+
+            echo "" >> $OUT
             echo "=== STATE HAWK ===" >> $OUT
-            cat /opt/superbot-desk-data/hawk/state_v2.json 2>/dev/null | head -c 1500 >> $OUT || echo "no hawk state" >> $OUT
+            cat /opt/superbot-desk-data/hawk/state_v2.json 2>/dev/null | head -c 1000 >> $OUT || echo "no hawk state" >> $OUT
+
+            echo "" >> $OUT
             echo "=== STATE BULL ===" >> $OUT
-            cat /opt/superbot-desk-data/bull/state_v2.json 2>/dev/null | head -c 1500 >> $OUT || echo "no bull state" >> $OUT
-            echo "=== ULTIMI 3 TRADE HAWK ===" >> $OUT
-            tail -3 /opt/superbot-desk-data/hawk/trade_history.jsonl 2>/dev/null >> $OUT || echo "no hawk trades" >> $OUT
-            echo "=== ULTIMI 3 TRADE BULL ===" >> $OUT
-            tail -3 /opt/superbot-desk-data/bull/trade_history.jsonl 2>/dev/null >> $OUT || echo "no bull trades" >> $OUT
+            cat /opt/superbot-desk-data/bull/state_v2.json 2>/dev/null | head -c 1000 >> $OUT || echo "no bull state" >> $OUT
+
+            # --- Auto-restart superbot se è Exited
+            if ! docker ps --filter name=^superbot$ --filter status=running --format "{{.Names}}" | grep -q "^superbot$"; then
+              echo "" >> $OUT
+              echo "=== AUTO-RESTART SUPERBOT ===" >> $OUT
+              docker start superbot >> $OUT 2>&1 || echo "ERRORE avvio superbot" >> $OUT
+              sleep 8
+              echo "Stato dopo restart:" >> $OUT
+              docker ps -a --filter name=^superbot$ --format "{{.Names}} | {{.Status}}" >> $OUT
+            else
+              echo "" >> $OUT
+              echo "=== SUPERBOT: UP ===" >> $OUT
+            fi
+
             echo "File scritto: $(wc -l < $OUT) righe"
 
       - name: Leggi output dal VPS
@@ -50,5 +72,5 @@ jobs:
             'cat /tmp/superbot_status.txt' 2>/dev/null > out.txt || true
           rm -f ~/.ssh/id_desk
           echo "=== OUTPUT BOT V2 ===" && cat out.txt
-          OUT=$(cat out.txt | head -100 | tr '\n' '|' | sed 's/%/%25/g')
+          OUT=$(cat out.txt | head -120 | tr '\n' '|' | sed 's/%/%25/g')
           echo "::notice title=BotV2 Stato::${OUT}"
