@@ -83,6 +83,28 @@ jobs:
                 print("learning_log.jsonl: non ancora creato")
             PYEOF
             done
+            # --- Sonda delle API pubbliche di BitGet dal container (sola lettura, nessun segreto)
+            echo "=== SONDA API BITGET ===" >> $OUT2
+            docker exec superbot-desk-hawk python - >> $OUT2 2>&1 <<'PYEOF' || echo "(sonda non riuscita)" >> $OUT2
+            import json, urllib.request
+            from desk import market_context as m
+            B = m.BITGET_BASE
+            for path in ("/api/v2/mix/market/open-interest?symbol=BTCUSDT&productType=USDT-FUTURES",
+                         "/api/v2/mix/market/account-long-short-ratio?symbol=BTCUSDT&productType=USDT-FUTURES&period=1h",
+                         "/api/v2/common/trade-data/account-long-short?symbol=BTCUSDT&period=1h"):
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(B + path, headers={"User-Agent": "Mozilla/5.0"}), timeout=10) as r:
+                        print("OK", r.status, path.split("?")[0], r.read()[:260].decode("utf-8", "replace"))
+                except Exception as e:
+                    body = ""
+                    try:
+                        body = e.read()[:160].decode("utf-8", "replace")
+                    except Exception:
+                        pass
+                    print("ERR", type(e).__name__, getattr(e, "code", ""), path.split("?")[0], body)
+            print("fetch_open_interest(BTC) ->", m.fetch_open_interest("BTC"))
+            print("fetch_ls_ratio(BTC) ->", m.fetch_ls_ratio("BTC"))
+            PYEOF
             if ! docker ps --filter name=^superbot$ --filter status=running --format "{{.Names}}" | grep -q "^superbot$"; then
               echo "" >> $OUT
               echo "=== AUTO-RESTART SUPERBOT ===" >> $OUT
