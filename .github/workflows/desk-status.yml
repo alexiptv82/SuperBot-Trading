@@ -32,11 +32,12 @@ jobs:
             echo "=== LOG BULL (ultimi 10) ===" >> $OUT
             docker logs --tail 10 superbot-desk-bull 2>&1 >> $OUT || echo "bull non trovato" >> $OUT
             # --- Dati dei due bot (sola lettura): heartbeat, posizioni, registro di apprendimento
+            OUT2=/tmp/superbot_data.txt
+            : > $OUT2
             for P in hawk bull; do
               D=/opt/superbot-desk-data/$P
-              echo "" >> $OUT
-              echo "=== DATI $P ===" >> $OUT
-              python3 - "$D" >> $OUT 2>&1 <<'PYEOF' || echo "(lettura dati non riuscita)" >> $OUT
+              echo "=== DATI $P ===" >> $OUT2
+              python3 - "$D" >> $OUT2 2>&1 <<'PYEOF' || echo "(lettura dati non riuscita)" >> $OUT2
             import json, os, sys, time, collections
             d = sys.argv[1]
             try:
@@ -94,6 +95,11 @@ jobs:
             -o ConnectTimeout=15 \
             root@51.91.109.45 \
             'cat /tmp/superbot_status.txt' 2>/dev/null > out.txt || true
+          ssh -T -i ~/.ssh/id_desk \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            root@51.91.109.45 \
+            'cat /tmp/superbot_data.txt' 2>/dev/null > data.txt || true
           rm -f ~/.ssh/id_desk
           # pubblica nel job summary (leggibile via API)
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -102,4 +108,6 @@ jobs:
           # anche come notice
           OUT=$(cat out.txt | head -150 | tr '\n' '|' | sed 's/%/%25/g')
           echo "::notice title=BotV2 Stato::${OUT}"
+          DATA=$(head -60 data.txt | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Dati bot::${DATA}"
           echo "=== OUTPUT ===" && cat out.txt
