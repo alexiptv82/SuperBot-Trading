@@ -584,6 +584,220 @@ async def _on_startup():
     asyncio.create_task(notifier.poll_commands())
 
 
+# ── V2 Desk Bot endpoints ────────────────────────────────────────────────────
+# Leggono dal volume persistente del container superbot-desk.
+# Nessuna dipendenza con il DB V1: tutto viene dai file JSON/JSONL.
+# Prefisso /api/desk/ per non collidere con gli endpoint V1.
+
+_DESK_DATA = os.environ.get("DESK_DATA_DIR", "/opt/superbot-desk-data")
+
+
+def _desk_state() -> dict:
+    """Legge state_v2.json dal volume desk. Ritorna dict vuoto se non esiste."""
+    path = os.path.join(_DESK_DATA, "state_v2.json")
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _desk_trades_raw(last_n: int = 200) -> list:
+    """Legge le ultime N righe da trade_history.jsonl."""
+    path = os.path.join(_DESK_DATA, "trade_history.jsonl")
+    try:
+        with open(path) as f:
+            lines = f.readlines()
+    except Exception:
+        return []
+    trades = []
+    for line in lines[-last_n:]:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            trades.append(json.loads(line))
+        except Exception:
+            pass
+    return trades
+
+
+def _desk_lessons() -> str:
+    """Legge lessons.md (poi errors.md come fallback) dal volume desk."""
+    for fname in ("lessons.md", "errors.md"):
+        path = os.path.join(_DESK_DATA, fname)
+        try:
+            with open(path) as f:
+                return f.read()
+        except Exception:
+            pass
+    return ""
+
+
+@app.get("/api/desk/status")
+async def desk_status(session=Depends(require_session)):
+    """Stato live del bot V2 desk: cash, equity, posizioni aperte, budget Claude."""
+    state = _desk_state()
+    if not state:
+        return {"available": False, "message": "Bot V2 non ancora attivo o nessun dato disponibile"}
+
+    acc = state.get("account", {})
+    budget = state.get("budget", {})
+    positions = acc.get("positions", {})
+
+    open_list = []
+    for sym, pos in positions.items():
+        open_list.append({
+            "symbol": sym,
+            "side": pos.get("side"),
+            "entry_price": pos.get("entry"),
+            "quantity": pos.get("qty"),
+            "leverage": pos.get("lev"),
+            "margin": pos.get("margin"),
+            "trade_type": pos.get("type"),
+            "dca_count": pos.get("dca_count", 0),
+            "open_ms": pos.get("open_ms"),
+        })
+
+    return {
+        "available": True,
+        "mode": "paper",
+        "cash": round(acc.get("cash", 0), 2),
+        "equity": round(acc.get("cash", 0), 2),
+        "open_positions": len(positions),
+        "positions": open_list,
+        "total_closed": state.get("total_closed", 0),
+        "day": state.get("day", ""),
+        "cycle": state.get("cycle", 0),
+        "halt": state.get("halt"),
+        "budget_spent_usd": round(budget.get("spent", 0), 4),
+        "budget_daily_cap_usd": budget.get("daily_cap", 0.70),
+        "last_report_day": state.get("last_report_day", ""),
+    }
+
+
+@app.get("/api/desk/trades")
+async def desk_trades(session=Depends(require_session), limit: int = 100):
+    """Ultimi N trade chiusi dal log JSONL permanente."""
+    trades = _desk_trades_raw(last_n=limit)
+    trades.reverse()  # più recenti prima
+    result = []
+    for t in trades:
+        result.append({
+            "symbol": t.get("symbol"),
+            "side": t.get("side"),
+            "entry_price": t.get("entry"),
+            "exit_price": t.get("exit"),
+            "quantity": t.get("qty"),
+            "leverage": t.get("lev"),
+            "margin": t.get("margin"),
+            "gross_pnl": t.get("gross"),
+            "pnl": t.get("net"),
+            "fees": t.get("fees"),
+            "trade_type": t.get("type"),
+            "close_reason": t.get("reason"),
+            "open_ms": t.get("open_ms"),
+            "close_ms": t.get("close_ms"),
+            "dca_count": t.get("dca_count", 0),
+        })
+    return result
+
+
+@app.get("/api/desk/performance")
+async def desk_performance(session=Depends(require_session)):
+    """Statistiche aggregate del bot V2 calcolate live sul log JSONL."""
+    trades = _desk_trades_raw(last_n=5000)
+    if not trades:
+        return {
+            "available": False,
+            "total_trades": 0,
+            "win_rate": 0,
+            "total_pnl": 0,
+            "equity_curve": [],
+            "by_symbol": {},
+            "by_type": {},
+        }
+
+    closed = [t for t in trades if t.get("net") is not None]
+    total = len(closed)
+    winners = [t for t in closed if (t.get("net") or 0) > 0]
+    total_pnl = sum(t.get("net", 0) for t in closed)
+    total_fees = sum(t.get("fees", 0) for t in closed)
+
+    # Equity curve ordinata per close_ms
+    ordered = sorted(closed, key=lambda t: t.get("close_ms", 0))
+    running = 0.0
+    equity_curve = []
+    for t in ordered:
+        running += t.get("net", 0)
+        equity_curve.append({
+            "time": t.get("close_ms"),
+            "equity": round(running, 2),
+        })
+
+    # Per simbolo
+    by_symbol: dict = {}
+    for t in closed:
+        sym = t.get("symbol", "?")
+        d = by_symbol.setdefault(sym, {"trades": 0, "wins": 0, "net_pnl": 0.0})
+        d["trades"] += 1
+        d["wins"] += 1 if (t.get("net") or 0) > 0 else 0
+        d["net_pnl"] += t.get("net", 0)
+    for d in by_symbol.values():
+        d["win_rate"] = round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0
+        d["net_pnl"] = round(d["net_pnl"], 2)
+
+    # Per tipo (scalp / medio)
+    by_type: dict = {}
+    for t in closed:
+        tp = t.get("type", "?")
+        d = by_type.setdefault(tp, {"trades": 0, "wins": 0, "net_pnl": 0.0})
+        d["trades"] += 1
+        d["wins"] += 1 if (t.get("net") or 0) > 0 else 0
+        d["net_pnl"] += t.get("net", 0)
+    for d in by_type.values():
+        d["win_rate"] = round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0
+        d["net_pnl"] = round(d["net_pnl"], 2)
+
+    gross_profit = sum(t.get("net", 0) for t in closed if (t.get("net") or 0) > 0)
+    gross_loss = abs(sum(t.get("net", 0) for t in closed if (t.get("net") or 0) < 0))
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else None
+
+    return {
+        "available": True,
+        "total_trades": total,
+        "winning_trades": len(winners),
+        "losing_trades": total - len(winners),
+        "win_rate": round(len(winners) / total * 100, 1) if total else 0,
+        "total_pnl": round(total_pnl, 2),
+        "total_fees": round(total_fees, 2),
+        "avg_pnl_per_trade": round(total_pnl / total, 2) if total else 0,
+        "profit_factor": profit_factor,
+        "equity_curve": equity_curve,
+        "by_symbol": by_symbol,
+        "by_type": by_type,
+    }
+
+
+@app.get("/api/desk/logs")
+async def desk_logs(session=Depends(require_session)):
+    """Lezioni e note di coaching (lessons.md) generate giornalmente da Claude."""
+    content = _desk_lessons()
+    return {"content": content, "available": bool(content)}
+
+
+@app.get("/api/desk/health")
+async def desk_health():
+    """Health check per il bot V2 (non richiede sessione)."""
+    state = _desk_state()
+    return {
+        "available": bool(state),
+        "cycle": state.get("cycle", 0),
+        "day": state.get("day", ""),
+        "halt": state.get("halt"),
+    }
+
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run('backend.server:app', host='0.0.0.0', port=config.BACKEND_PORT, reload=True)
