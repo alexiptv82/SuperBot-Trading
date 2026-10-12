@@ -1,9 +1,5 @@
 name: Sala segnali - stato (sola lettura)
 
-# Legge dal container "superbot-desk" i log e lo stato. Non modifica nulla.
-# Parte quando cambia deploy/desk-status.trigger.
-# Usa SSH diretto (la chiave è il secret già usato dal deploy).
-
 on:
   push:
     branches: [rule-pool]
@@ -22,69 +18,17 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
           chmod 600 ~/.ssh/id_desk
-          timeout 60 ssh -i ~/.ssh/id_desk \
+          timeout 60 ssh \
+            -i ~/.ssh/id_desk \
             -o StrictHostKeyChecking=accept-new \
             -o ConnectTimeout=15 \
             -o ServerAliveInterval=10 \
             -o ServerAliveCountMax=3 \
-            root@51.91.109.45 '
-              echo "=== CONTAINERS ==="
-              docker ps -a --format "{{.Names}} | {{.Status}} | {{.Image}}" | grep superbot
-
-              echo "=== MEMORY ==="
-              awk "/MemAvailable/ {print \"Free RAM: \" int(\$2/1024) \" MB\"}" /proc/meminfo
-
-              echo "=== CPU/MEM USAGE ==="
-              docker stats --no-stream --format "cpu={{.CPUPerc}} mem={{.MemUsage}}" superbot-desk 2>/dev/null || echo "stats N/A"
-
-              echo "=== LAST 20 LOG LINES ==="
-              docker logs --tail 20 superbot-desk 2>&1 || echo "no logs"
-
-              echo "=== STATE FILE ==="
-              cat /opt/superbot-desk-data/state_v2.json 2>/dev/null | python3 -c "
-import sys,json
-try:
-  d=json.load(sys.stdin)
-  acc=d.get(\"account\",{})
-  budget=d.get(\"budget\",{})
-  pos=acc.get(\"positions\",{})
-  print(f\"Cash: {acc.get(chr(99)+chr(97)+chr(115)+chr(104),0):.2f}\$  Posizioni aperte: {len(pos)}  Ciclo: {d.get(chr(99)+chr(121)+chr(99)+chr(108)+chr(101),0)}  Giorno: {d.get(chr(100)+chr(97)+chr(121),chr(45))}\")
-  print(f\"Budget Claude oggi: {budget.get(chr(115)+chr(112)+chr(101)+chr(110)+chr(116),0):.4f}\$ / {budget.get(chr(100)+chr(97)+chr(105)+chr(108)+chr(121)+'_'+chr(99)+chr(97)+chr(112),0.70):.2f}\$\")
-  print(f\"Halt: {d.get(chr(104)+chr(97)+chr(108)+chr(116))}\")
-  print(f\"Trade chiusi totali: {d.get(chr(116)+chr(111)+chr(116)+chr(97)+chr(108)+'_'+chr(99)+chr(108)+chr(111)+chr(115)+chr(101)+chr(100),0)}\")
-  for sym,p in pos.items():
-    print(f\"  POS {sym} {p.get(chr(115)+chr(105)+chr(100)+chr(101))} x{p.get(chr(108)+chr(101)+chr(118))} margin={p.get(chr(109)+chr(97)+chr(114)+chr(103)+chr(105)+chr(110))}\$\")
-except Exception as e:
-  print(\"parse error:\", e)
-" 2>/dev/null || echo "state_v2.json non trovato (bot non ancora avviato?)"
-
-              echo "=== TRADE HISTORY (last 5) ==="
-              tail -5 /opt/superbot-desk-data/trade_history.jsonl 2>/dev/null | python3 -c "
-import sys,json
-for line in sys.stdin:
-  line=line.strip()
-  if not line: continue
-  try:
-    t=json.loads(line)
-    print(f\"{t.get(chr(115)+chr(121)+chr(109))} {t.get(chr(115)+chr(105)+chr(100)+chr(101))} net={t.get(chr(110)+chr(101)+chr(116))} reason={t.get(chr(114)+chr(101)+chr(97)+chr(115)+chr(111)+chr(110))}\")
-  except: pass
-" 2>/dev/null || echo "nessun trade storico"
-
-              echo "=== LESSONS (last 5 lines) ==="
-              tail -5 /opt/superbot-desk-data/lessons.md 2>/dev/null || echo "nessuna lesson ancora"
-            ' > status_out.txt 2>&1 || echo "SSH timeout o errore" >> status_out.txt
+            root@51.91.109.45 \
+            'docker ps -a --filter name=superbot && echo "---LOGS---" && docker logs --tail 25 superbot-desk 2>&1 && echo "---STATE---" && cat /opt/superbot-desk-data/state_v2.json 2>/dev/null || echo "no state" && echo "---TRADES---" && tail -5 /opt/superbot-desk-data/trade_history.jsonl 2>/dev/null || echo "no trades" && echo "---LESSONS---" && tail -5 /opt/superbot-desk-data/lessons.md 2>/dev/null || echo "no lessons"' \
+            > status_out.txt 2>&1 || true
           rm -f ~/.ssh/id_desk
 
-      - name: Mostra il risultato
-        if: always()
-        run: |
-          python3 - <<'PY'
-          import os
-          t = open("status_out.txt").read() if os.path.exists("status_out.txt") else "(nessun output)"
-          t = t.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
-          print("::notice title=SuperBot-Desk Stato::" + t[:6000])
-          PY
-
-      - name: Output grezzo
+      - name: Output
         if: always()
         run: cat status_out.txt 2>/dev/null || echo "(vuoto)"
