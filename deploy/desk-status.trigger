@@ -1,1 +1,1 @@
-2026-10-12T04:58:07Z verifica primo ciclo post-fix
+2026-10-12T05:07:16Z check candles diagnostico
