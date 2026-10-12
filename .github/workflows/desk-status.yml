@@ -31,6 +31,48 @@ jobs:
             echo "" >> $OUT
             echo "=== LOG BULL (ultimi 10) ===" >> $OUT
             docker logs --tail 10 superbot-desk-bull 2>&1 >> $OUT || echo "bull non trovato" >> $OUT
+            # --- Dati dei due bot (sola lettura): heartbeat, posizioni, registro di apprendimento
+            for P in hawk bull; do
+              D=/opt/superbot-desk-data/$P
+              echo "" >> $OUT
+              echo "=== DATI $P ===" >> $OUT
+              python3 - "$D" >> $OUT 2>&1 <<'PYEOF' || echo "(lettura dati non riuscita)" >> $OUT
+            import json, os, sys, time, collections
+            d = sys.argv[1]
+            try:
+                hb = json.load(open(os.path.join(d, "heartbeat.json")))
+                print("heartbeat: modalita=%s posizioni=%s eta=%ds split=%s" % (
+                    hb.get("mode"), hb.get("open_positions"), time.time() - hb.get("ts", 0),
+                    (hb.get("params") or {}).get("split")))
+            except Exception as e:
+                print("heartbeat: non leggibile (%s)" % type(e).__name__)
+            try:
+                st = json.load(open(os.path.join(d, "state_v2.json")))
+                for sym, p in ((st.get("main") or {}).get("positions") or {}).items():
+                    print("posizione %s lato=%s margine=%s gambe=%s seconda_gamba=%s features=%d" % (
+                        sym, p.get("side"), p.get("total_margin"), p.get("legs", 1),
+                        p.get("pending_split"), len(p.get("features") or {})))
+            except Exception as e:
+                print("stato: non leggibile (%s)" % type(e).__name__)
+            f = os.path.join(d, "learning_log.jsonl")
+            if os.path.exists(f):
+                c = collections.Counter()
+                last = None
+                for line in open(f, encoding="utf-8"):
+                    try:
+                        r = json.loads(line)
+                    except ValueError:
+                        c["righe_illeggibili"] += 1
+                        continue
+                    c[r.get("ev")] += 1
+                    last = r
+                print("learning_log.jsonl: %d byte, eventi=%s" % (os.path.getsize(f), dict(c)))
+                if last:
+                    print("ultimo evento:", json.dumps(last, ensure_ascii=False)[:700])
+            else:
+                print("learning_log.jsonl: non ancora creato")
+            PYEOF
+            done
             if ! docker ps --filter name=^superbot$ --filter status=running --format "{{.Names}}" | grep -q "^superbot$"; then
               echo "" >> $OUT
               echo "=== AUTO-RESTART SUPERBOT ===" >> $OUT
