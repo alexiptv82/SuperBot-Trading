@@ -349,6 +349,14 @@ def run_cycle(state: dict, now_ms: int) -> None:
             if dec["confidence"] < tier_entry_score(sym):
                 print(f"[CONF_LOW] {sym} conf={dec['confidence']} < soglia={tier_entry_score(sym)}")
                 continue
+            # filtro R:R minimo 1.5 — se SL e TP sono entrambi definiti
+            sl_pct = dec.get("stop_loss_pct", 0)
+            tp_pct = dec.get("take_profit_pct", 0)
+            if sl_pct > 0 and tp_pct > 0:
+                rr = tp_pct / sl_pct
+                if rr < 1.5:
+                    print(f"[RR_LOW] {sym} R:R={rr:.2f} < 1.5 (SL={sl_pct:.2%} TP={tp_pct:.2%})")
+                    continue
             act = base_act  # usa open_long / open_short da qui in poi
             side = 1 if act == "open_long" else -1
             sl_pct = dec.get("stop_loss_pct", 0)
@@ -376,9 +384,10 @@ def run_cycle(state: dict, now_ms: int) -> None:
             )
             if pos:
                 last_open_ms[sym] = now_ms
+                rr_str = f"  R:R 1:{tp_pct/sl_pct:.1f}" if sl_pct > 0 and tp_pct > 0 else ""
                 print(f"[OPEN] {sym} {'LONG' if side == 1 else 'SHORT'} {trade_type.upper()} "
                       f"lev {pos.leverage}x  margin {pos.total_margin:.0f}$  "
-                      f"@{px:.5g}  SL {sl:.5g}  conf {dec['confidence']}  src {source}")
+                      f"@{px:.5g}  SL {sl:.5g}  conf {dec['confidence']}  src {source}{rr_str}")
                 notify_open(sym, side, px, pos.leverage, pos.total_margin,
                             trade_type, dec["confidence"], source,
                             dec.get("reason", "")[:120])
@@ -439,6 +448,67 @@ def run_cycle(state: dict, now_ms: int) -> None:
 
 
 RESET_FLAG = os.path.join(DATA_DIR, "reset.flag")
+BUDGET_RESET_FLAG = os.path.join(DATA_DIR, "budget_reset.flag")
+
+
+def _check_budget_reset_flag(state: dict) -> bool:
+    """Se esiste budget_reset.flag, azzera il budget giornaliero AI e opzionalmente
+    ripristina l'equity a 1000$ (se il flag contiene 'equity_reset').
+    Restituisce True se il reset è stato eseguito.
+    """
+    if not os.path.exists(BUDGET_RESET_FLAG):
+        return False
+    try:
+        with open(BUDGET_RESET_FLAG) as f:
+            content = f.read().strip()
+        full_reset = "equity_reset" in content
+
+        # azzera budget AI
+        day = time.strftime("%Y-%m-%d", time.gmtime())
+        state.setdefault("budget", {})
+        state["budget"]["spent"] = 0.0
+        state["budget"]["calls"] = 0
+        state["budget"]["day"] = day
+        state["last_call_ms"] = 0  # forza una nuova chiamata Claude al prossimo ciclo
+
+        if full_reset:
+            # ripristina equity e azzera posizioni (paper mode)
+            acc = make_account(state)
+            now_ms = int(time.time() * 1000)
+            closed_count = 0
+            for sym, pos in list(acc.positions.items()):
+                rec = {
+                    "id": pos.id, "symbol": sym, "side": pos.side,
+                    "margin": pos.total_margin, "lev": pos.leverage,
+                    "entry": pos.entry, "exit": pos.entry,
+                    "open_ms": pos.open_ms, "close_ms": now_ms,
+                    "net": 0.0, "gross": 0.0, "fees": 0.0, "funding": 0.0,
+                    "reason": "budget_equity_reset", "type": pos.trade_type,
+                    "dca_count": pos.dca_count, "source": "manual",
+                }
+                append_trade_history(DATA_DIR, [rec])
+                closed_count += 1
+            acc.positions.clear()
+            acc.closed.clear()
+            acc.cash = 1000.0
+            # reset day tracking
+            acc.day_start_equity = 1000.0
+            save_account(acc, state)
+            print(f"[BUDGET_RESET] Equity ripristinata a 1000$ — {closed_count} posizioni azzerate", flush=True)
+        else:
+            print(f"[BUDGET_RESET] Budget AI azzerato (equity invariata)", flush=True)
+
+        save_state(state, STATE_FILE)
+        os.remove(BUDGET_RESET_FLAG)
+        return True
+    except Exception as e:
+        print(f"[BUDGET_RESET ERROR] {e}", flush=True)
+        try:
+            os.remove(BUDGET_RESET_FLAG)
+        except Exception:
+            pass
+        return False
+
 
 def _check_reset_flag(state: dict) -> bool:
     """Se esiste reset.flag, azzera tutte le posizioni aperte e rimuove il flag.
@@ -482,6 +552,7 @@ def _check_reset_flag(state: dict) -> bool:
 
 def iteration(state: dict) -> None:
     now_ms = int(time.time() * 1000)
+    _check_budget_reset_flag(state)
     _check_reset_flag(state)
     try:
         run_cycle(state, now_ms)

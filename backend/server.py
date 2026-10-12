@@ -794,6 +794,26 @@ async def desk_logs(session=Depends(require_session)):
     return {"content": content, "available": bool(content)}
 
 
+@app.post("/api/desk/reset-budget")
+async def desk_reset_budget(request: Request, session=Depends(require_session)):
+    """Azzera il budget giornaliero AI del bot V2.
+    Body JSON opzionale: {"equity_reset": true} per ripristinare anche equity a 1000$
+    e azzerare le posizioni aperte (solo paper mode).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    equity_reset = bool(body.get("equity_reset", False))
+    flag_path = os.path.join(_DESK_DATA, "budget_reset.flag")
+    os.makedirs(_DESK_DATA, exist_ok=True)
+    content = "equity_reset" if equity_reset else "budget_only"
+    with open(flag_path, "w") as f:
+        f.write(content)
+    msg = "Budget AI azzerato + equity ripristinata a 1000$" if equity_reset else "Budget AI azzerato"
+    return {"ok": True, "message": msg, "equity_reset": equity_reset}
+
+
 @app.get("/api/desk/health")
 async def desk_health():
     """Health check per il bot V2 (non richiede sessione)."""

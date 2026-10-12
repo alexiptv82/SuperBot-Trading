@@ -51,13 +51,20 @@ DCA — INGRESSI PROGRESSIVI:
 - SCALP: max 1 DCA. MEDIO: max 2 DCA (3 ingressi totali).
 - Non fare DCA se il segnale originale e' cambiato o se il prezzo cade in modo sostenuto.
 
-TAKE PROFIT PARZIALE (usa questa logica per scalp con >0.5% in profitto):
-- Proponi "partial_close" con fraction=0.35 (chiudi 35%) al primo TP.
-  Il codice mantiene aperto il 65% restante con un TP2 piu' lontano.
-  Usa partial_close_tp2_pct per indicare il TP2 sul residuo.
-- Nella risposta JSON usa action="partial_close" con i campi aggiuntivi.
+RISCHIO/RENDIMENTO — REGOLA FONDAMENTALE:
+- Ogni trade DEVE avere R:R >= 1:2 (guadagno potenziale almeno il doppio del rischio).
+- Esempio: margine 150$, SL = rischio 30$ → TP1 DEVE valere almeno 60$ di profitto.
+- Con leva 20x su 150$: SL 0.5% = 15$ persi → TP1 a 1% = 30$ guadagnati (R:R 1:2 minimo).
+- Non aprire MAI un trade con R:R < 1:2. Se il setup non lo consente, usa "skip".
+- R:R ideale per scalp: 1:2.5 o 1:3. Per medio: 1:3 o 1:4.
+
+TAKE PROFIT SCALABILE (usa questa logica per scalp con R:R raggiunto):
+- Primo TP (TP1): quando il profitto equivale a 2x il rischio → chiudi 35% (partial_close).
+  Il codice mantiene aperto il 65% restante con TP2 piu' lontano (3x o 4x il rischio).
+- Usa partial_close_tp2_pct per indicare la percentuale di TP2 sul residuo.
 - I cicli successivi rivaluta il residuo: "hold" se trend regge, "close" se invertito.
-- Su scalp con movimento esplosivo (>1%) puoi chiudere tutto: usa "close" direttamente.
+- Su movimento esplosivo (>4x rischio) puoi chiudere tutto: usa "close" direttamente.
+- Esempio concreto: margin=150$, SL=0.4%, TP1=0.8% (chiudi 35%), TP2=1.5% (residuo 65%).
 
 LONG/SHORT RATIO:
 - Se il long/short ratio e' > 1.5 (molti piu' long che short) su un asset, considera short.
@@ -150,12 +157,15 @@ def parse_decisions(text: str) -> dict | None:
     if not isinstance(d, dict) or not isinstance(d.get("decisions"), list):
         return None
     out = []
-    valid_actions = ("open_long", "open_short", "hold", "close", "dca", "skip")
+    valid_actions = ("open_long", "open_short", "open_long_split", "open_short_split",
+                     "hold", "close", "partial_close", "dca", "skip")
     for x in d["decisions"]:
         try:
             act = str(x["action"])
             if act not in valid_actions:
                 continue
+            sl_pct = float(x.get("stop_loss_pct", 0))
+            tp_pct = float(x.get("take_profit_pct", 0))
             out.append({
                 "symbol": str(x["symbol"]).upper().split("/")[0],
                 "action": act,
@@ -163,8 +173,11 @@ def parse_decisions(text: str) -> dict | None:
                 "confidence": int(max(0, min(100, float(x.get("confidence", 0))))),
                 "leverage": int(float(x.get("leverage", 3))),
                 "margin_usd": float(x.get("margin_usd", 0)),
-                "stop_loss_pct": float(x.get("stop_loss_pct", 0)),
-                "take_profit_pct": float(x.get("take_profit_pct", 0)),
+                "stop_loss_pct": sl_pct,
+                "take_profit_pct": tp_pct,
+                "rr_ratio": round(tp_pct / sl_pct, 2) if sl_pct > 0 else 0.0,
+                "partial_close_fraction": float(x.get("partial_close_fraction", 0.35)),
+                "partial_close_tp2_pct": float(x.get("partial_close_tp2_pct", 0)),
                 "reason": str(x.get("reason", ""))[:300],
                 "dca_sl_pct": float(x.get("dca_sl_pct", 0)),
                 "dca_tp_pct": float(x.get("dca_tp_pct", 0)),
