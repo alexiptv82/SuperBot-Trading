@@ -49,10 +49,23 @@ jobs:
                 print("heartbeat: non leggibile (%s)" % type(e).__name__)
             try:
                 st = json.load(open(os.path.join(d, "state_v2.json")))
+                tot_risk = 0.0
+                net = 0.0
+                gross = 0.0
                 for sym, p in ((st.get("main") or {}).get("positions") or {}).items():
-                    print("posizione %s lato=%s margine=%s gambe=%s seconda_gamba=%s features=%d" % (
-                        sym, p.get("side"), p.get("total_margin"), p.get("legs", 1),
-                        p.get("pending_split"), len(p.get("features") or {})))
+                    q, e, sl = float(p.get("qty") or 0), float(p.get("entry") or 0), float(p.get("sl") or 0)
+                    risk = q * abs(e - sl)
+                    notional = q * e
+                    tot_risk += risk
+                    net += notional * (1 if p.get("side") == 1 else -1)
+                    gross += notional
+                    print("posizione %s lato=%s margine=%s leva=%s stop=%.2f%% rischio_a_stop=%.1f$ nozionale=%.0f$ gambe=%s attesa=%s" % (
+                        sym, p.get("side"), p.get("total_margin"), p.get("leverage"),
+                        abs(e - sl) / e * 100 if e else 0, risk, notional, p.get("legs", 1),
+                        bool(p.get("pending_split"))))
+                m = st.get("main") or {}
+                print("TOTALE: rischio se scattano tutti gli stop=%.0f$ | nozionale lordo=%.0f$ netto=%+.0f$ | cassa=%.0f$ equity a inizio giorno=%.0f$ chiusi=%d" % (
+                    tot_risk, gross, net, float(m.get("cash") or 0), float(m.get("day_start_equity") or 0), len(m.get("closed") or [])))
             except Exception as e:
                 print("stato: non leggibile (%s)" % type(e).__name__)
             f = os.path.join(d, "learning_log.jsonl")
