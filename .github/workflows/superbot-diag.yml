@@ -19,7 +19,7 @@ jobs:
           ref: rule-pool
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Legge config nginx hitvprime completa
+      - name: Legge config nginx sbtrading e snippets
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
@@ -27,7 +27,25 @@ jobs:
           echo "$SSH_KEY" > ~/.ssh/id_tmp
           chmod 600 ~/.ssh/id_tmp
           ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 \
-            'cat /etc/nginx/sites-enabled/hitvprime' > deploy/diag-output.txt
+            'OUT=/tmp/d.txt
+            echo "=== TUTTI I CONF IN SITES-ENABLED ===" > $OUT
+            ls -la /etc/nginx/sites-enabled/ >> $OUT
+            echo "" >> $OUT
+            echo "=== GREP sbtrading in tutti i conf ===" >> $OUT
+            grep -r "sbtrading" /etc/nginx/ 2>/dev/null >> $OUT || echo "nessun match" >> $OUT
+            echo "" >> $OUT
+            echo "=== GREP hitvprime.com in tutti i conf ===" >> $OUT
+            grep -r "hitvprime.com" /etc/nginx/ 2>/dev/null >> $OUT || echo "nessun match" >> $OUT
+            echo "" >> $OUT
+            echo "=== /etc/nginx/snippets/ ===" >> $OUT
+            ls /etc/nginx/snippets/ >> $OUT
+            echo "" >> $OUT
+            echo "=== hitv-proxy.conf ===" >> $OUT
+            cat /etc/nginx/snippets/hitv-proxy.conf 2>/dev/null >> $OUT || echo "non trovato" >> $OUT
+            echo "" >> $OUT
+            echo "=== TLS certs disponibili ===" >> $OUT
+            ls /srv/hitv/tls/ 2>/dev/null >> $OUT || echo "nessuna" >> $OUT
+            cat $OUT' > deploy/diag-output.txt
           rm -f ~/.ssh/id_tmp
           cat deploy/diag-output.txt
 
@@ -36,5 +54,5 @@ jobs:
           git config user.email "ci@superbot"
           git config user.name "SuperBot CI"
           git add deploy/diag-output.txt
-          git diff --staged --quiet || git commit -m "diag: config hitvprime nginx [skip ci]"
+          git diff --staged --quiet || git commit -m "diag: sbtrading nginx routing [skip ci]"
           git push origin rule-pool
