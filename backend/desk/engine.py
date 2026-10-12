@@ -35,7 +35,7 @@ class Limits:
     max_margin_total: float = 800.0   # V2: aumentato da 500 a 800
     max_open: int = 5                 # V2: fino a 5 posizioni contemporanee
     max_dca_total: float = 700.0      # DCA: mai più di 700$ su un singolo asset (tutti gli ingressi)
-    min_margin: float = 15.0
+    min_margin: float = 150.0   # margine minimo per ingresso scalp aggressivo
     fee_bp_side: float = 6.0
     slip_bp_side: float = 2.0
     funding_bp_8h_long: float = 1.0
@@ -180,10 +180,11 @@ class PaperAccount:
         pos = self.positions.get(symbol)
         if pos is None:
             return None, "nessuna posizione"
-        if pos.dca_count >= 2:
-            return None, "max 2 DCA aggiuntivi raggiunti (3 ingressi totali)"
-        if pos.trade_type == "scalp":
-            return None, "DCA non consentito su scalp"
+        if pos.dca_count >= 3:
+            return None, "max 3 DCA aggiuntivi raggiunti (4 ingressi totali)"
+        # DCA consentito anche su scalp ma solo 1 rientro (non 3)
+        if pos.trade_type == "scalp" and pos.dca_count >= 1:
+            return None, "DCA su scalp: max 1 rientro consentito"
         px = prices.get(symbol)
         if px is None:
             return None, "prezzo non disponibile"
@@ -193,7 +194,7 @@ class PaperAccount:
         if pos.side == -1 and px <= pos.entry:
             return None, "prezzo non ancora salito per DCA short"
         # calcola margine DCA
-        fracs = [0.0, 0.35, 0.20]   # frazioni del margine principale (indice = dca_count)
+        fracs = [0.0, 0.40, 0.25, 0.15]  # frazioni del margine principale per DCA 1/2/3
         dca_mar = round(pos.margin * fracs[pos.dca_count], 2)
         if dca_mar < L.min_margin:
             dca_mar = L.min_margin

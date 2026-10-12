@@ -302,9 +302,9 @@ def test_rules_fallback_sizes_with_score_and_closes_weak_positions():
     assert "BTC" in d and "ETH" in d, f"chiavi attese BTC/ETH, trovate: {list(d)}"
     # scalp ha leverage più alto di medio (formula: scalp 15+frac*30, medio 5+frac*20)
     assert d["BTC"]["leverage"] > d["ETH"]["leverage"]
-    # scalp usa range margine 40-120$, medio 60-250$: con score alto scalp < medio è atteso
-    assert 40 <= d["BTC"]["margin_usd"] <= 120, f"scalp fuori range: {d['BTC']['margin_usd']}"
-    assert 60 <= d["ETH"]["margin_usd"] <= 250, f"medio fuori range: {d['ETH']['margin_usd']}"
+    # scalp usa range margine 150-250$, medio 80-250$
+    assert 150 <= d["BTC"]["margin_usd"] <= 250, f"scalp fuori range: {d['BTC']['margin_usd']}"
+    assert 80 <= d["ETH"]["margin_usd"] <= 250, f"medio fuori range: {d['ETH']['margin_usd']}"
     assert d["SOL"]["action"] == "close"
     assert d["BTC"]["trade_type"] == "scalp"
 

@@ -20,32 +20,45 @@ API_URL = "https://api.anthropic.com/v1/messages"
 
 SYSTEM = """Sei il cervello di un trader professionista di futures crypto — PAPER TRADING con $1000 finti.
 
-MISSIONE: trovare opportunita' di profitto come un trader H24 esperto. Leggi i dati, ragiona, agisci.
+MISSIONE: operare come un trader scalper aggressivo H24. Priorita' agli scalp ad alta leva su asset maggiori.
+Usa grafici, volumi, momentum, notizie e pattern per trovare opportunita' precise.
 
-TIPI DI TRADE:
-- SCALP (trade_type=scalp): leva alta 15-45x, margine piccolo 40-120$, TP stretto 0.3-0.8%, SL stretto 0.2-0.5%, durata minuti-ore. Solo su segnali precisi e volume alto.
-- MEDIO (trade_type=medio): leva media 5-20x, margine 80-350$, TP 0.8-3%, SL 0.4-1.5%, durata ore-giorni. Su segnali solidi su piu' timeframe.
+STRATEGIA PRINCIPALE — SCALP AGGRESSIVO:
+- SCALP (trade_type=scalp): PRIORITA'. Leva 15-45x, margine minimo 150$ (medio 150-250$).
+  TP stretto 0.3-1%, SL stretto 0.2-0.6%, durata minuti-poche ore.
+  Preferisci segnali netti: breakout confermato, momentum forte, volume sopra media.
+  Puoi fare 1 DCA anche su scalp se il segnale regge e il prezzo e' sceso del 0.3-0.8%.
+- MEDIO (trade_type=medio): secondario. Leva 5-20x, margine 100-350$.
+  TP 1-4%, SL 0.5-2%, durata ore-giorni. Solo su setup multi-timeframe molto solidi.
+  Fino a 3 DCA consentiti (4 ingressi totali), solo se trend strutturale regge.
 
-LEVA MASSIMA PER ASSET (il codice la riduce automaticamente se eccedi):
-- BTC, XAU, XAG: max 45x
-- ETH: max 30x
-- Altri (SOL, XRP, BNB, ecc.): max 25x
+LEVA MASSIMA PER ASSET (applicata automaticamente dal codice):
+- BTC, XAU, XAG: max 45x  |  ETH: max 30x  |  Altri: max 25x
 
-DCA (solo su trade_type=medio, mai su scalp):
-- Se una posizione e' in perdita ma il setup reggel, proponi "dca" come action.
-- Il codice aggiunge un ingresso al prezzo attuale abbassando lo stop.
-- Max 2 DCA aggiuntivi per posizione (3 ingressi totali).
-- Il DCA ha senso solo se ci sono resistenze/supporti reali sotto/sopra.
+DCA — INGRESSI PROGRESSIVI:
+- Proponi "dca" se la posizione e' in perdita MA il setup originale regge ancora.
+- Deve esserci un supporto/resistenza reale vicino al prezzo attuale.
+- SCALP: max 1 DCA. MEDIO: max 3 DCA (4 ingressi totali).
+- Non fare DCA se il segnale originale e' cambiato o se il prezzo cade in modo sostenuto.
+
+TAKE PROFIT SCALABILI:
+- Puoi chiudere parzialmente: proponi "close" con take_profit_pct al primo TP,
+  poi su cicli successivi "hold" finche' il prezzo sale ancora, poi "close" al TP finale.
+- Non sei obbligato a chiudere tutto in un colpo: valuta ogni ciclo se tenere o chiudere.
+
+GESTIONE POSIZIONI APERTE:
+- Ogni ciclo valuti ogni posizione aperta: hold, close, o dca.
+- "close" se: SL vicino, segnale invertito, TP raggiunto, o migliore opportunita' altrove.
+- "hold" se: trend regge, posizione in profitto, setup ancora valido.
+- "dca" solo se: posizione in perdita E setup regge E supporto reale presente.
 
 REGOLE DURE (il codice le applica comunque):
-- Stop loss SEMPRE obbligatorio — niente trade senza stop.
-- Leva scalp su altcoin: max 25x.
-- Margine totale in uso: max 800$.
-- Posizioni aperte: max 5.
+- Stop loss SEMPRE obbligatorio. Margine totale max 800$. Posizioni max 5.
 
-APPRENDIMENTO: hai due fonti di memoria —
-- STORICO SIMBOLI: win rate e P&L per asset (ultimi 200 trade). Evita simboli con WR < 40% e perde costante.
-- APPUNTI ERRORI: pattern ripetuti identificati dal coaching giornaliero. Applica sempre le correzioni.
+APPRENDIMENTO — MEMORIA PERMANENTE:
+- STORICO SIMBOLI: win rate e P&L per asset (ultimi 200 trade). Evita simboli con WR < 40%.
+- APPUNTI COACHING: errori identificati e pattern ricorrenti. Applicali ogni ciclo.
+- Memorizza cosa ha funzionato e cosa no: sei un trader che impara dai propri errori.
 
 RISPOSTA — SOLO JSON:
 {"decisions":[
@@ -61,7 +74,7 @@ RISPOSTA — SOLO JSON:
    "dca_tp_pct":number}
 ],"note":"max 20 parole"}
 
-Per posizioni aperte: hold, close o dca. Per nuovi ingressi: open_long/open_short. Per skip: aggiungi solo se hai un motivo concreto."""
+Per posizioni aperte: hold, close o dca. Per nuovi ingressi: open_long/open_short/skip."""
 
 
 # ---------------- spesa
@@ -153,7 +166,8 @@ def build_prompt(snapshot: dict, readings: list, positions: list, headlines: lis
     if positions:
         lines.append("POSIZIONI APERTE:")
         for p in positions:
-            dca_info = f", DCA {p.get('dca_count', 0)}/2" if p.get("dca_count", 0) > 0 else ""
+            max_dca = 1 if p.get("trade_type") == "scalp" else 3
+            dca_info = f", DCA {p.get('dca_count', 0)}/{max_dca}" if p.get("dca_count", 0) > 0 else ""
             lines.append(
                 f"- {p['symbol']} {'LONG' if p['side'] == 1 else 'SHORT'} "
                 f"{p.get('trade_type', 'medio').upper()} lev {p['leverage']}x "
@@ -233,7 +247,7 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
                     # Leva medio: 5x (score 60) → 25x (score 100).
                     # engine.py applica il cap tier (BTC/XAU/XAG 45x, ETH 30x, altri 25x).
                     "leverage": int(round(15 + frac * 30)) if is_scalp else int(round(5 + frac * 20)),
-                    "margin_usd": round(40 + frac * 80, 0) if is_scalp else round(60 + frac * 190, 0),
+                    "margin_usd": round(150 + frac * 100, 0) if is_scalp else round(80 + frac * 170, 0),
                     "stop_loss_pct": r.sl_pct,
                     "take_profit_pct": r.tp_pct,
                     "reason": "; ".join(r.why[:3]),
