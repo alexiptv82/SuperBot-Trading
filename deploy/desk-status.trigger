@@ -1,1 +1,1 @@
-2026-10-12T05:07:16Z check candles diagnostico
+2026-10-12T05:15:10Z check fix candles limit 1000
