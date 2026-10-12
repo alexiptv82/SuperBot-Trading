@@ -229,7 +229,10 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
                     "action": "open_long" if r.side == 1 else "open_short",
                     "trade_type": r.trade_type,
                     "confidence": r.score,
-                    "leverage": int(round(8 + frac * 22)) if is_scalp else int(round(3 + frac * 12)),
+                    # Leva scalp: 15x (score 60) → 45x (score 100), rispettando tier asset.
+                    # Leva medio: 5x (score 60) → 25x (score 100).
+                    # engine.py applica il cap tier (BTC/XAU/XAG 45x, ETH 30x, altri 25x).
+                    "leverage": int(round(15 + frac * 30)) if is_scalp else int(round(5 + frac * 20)),
                     "margin_usd": round(40 + frac * 80, 0) if is_scalp else round(60 + frac * 190, 0),
                     "stop_loss_pct": r.sl_pct,
                     "take_profit_pct": r.tp_pct,

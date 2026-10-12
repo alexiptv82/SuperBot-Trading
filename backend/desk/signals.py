@@ -201,8 +201,10 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None) -> Re
 
     # sl più morbido in V2: 1.2x ATR (era 1.5x)
     sl = float(min(0.035, max(0.003, 1.2 * a_pct)))
-    # trade_type: scalp se segnale forte su timeframe basso (15m/1h allineati), medio altrimenti
-    trade_type = "scalp" if (score >= 75 and vol_ratio > 1.5 and abs(roc24) > 0.01) else "medio"
+    # trade_type: scalp se segnale deciso su TF basso con volume sopra media.
+    # Soglia abbassata da 75→68 e vol_ratio da 1.5→1.2 per permettere scalp reali
+    # ad alta leva (15-45x) come previsto dalla roadmap V2.
+    trade_type = "scalp" if (score >= 68 and vol_ratio > 1.2 and abs(roc24) > 0.005) else "medio"
 
     return Reading(
         symbol=symbol, price=price, side=side, score=score, long_score=ls, short_score=ss,

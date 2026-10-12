@@ -174,9 +174,9 @@ export default function Dashboard() {
     } catch (e) { /* desk offline è normale */ }
   }, []);
 
-  // Poll dati V1 ogni 10s, V2 ogni 15s
+  // Poll dati V1 ogni 10s, V2 ogni 5s (per sincronizzarsi con Telegram quasi in tempo reale)
   useEffect(() => { fetchData(); const t = setInterval(fetchData, 10000); return () => clearInterval(t); }, [fetchData]);
-  useEffect(() => { fetchDeskData(); const t = setInterval(fetchDeskData, 15000); return () => clearInterval(t); }, [fetchDeskData]);
+  useEffect(() => { fetchDeskData(); const t = setInterval(fetchDeskData, 5000); return () => clearInterval(t); }, [fetchDeskData]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
 
   const marketLive = !apiError && Object.keys(prices).length > 0;
