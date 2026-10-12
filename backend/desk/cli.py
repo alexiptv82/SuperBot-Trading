@@ -245,6 +245,9 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
         HB["open_positions"] = n_open
         HB["mode"] = compute_mode(paused, n_open)
     HB["portfolio"] = PORTFOLIO.name
+    HB["daily_cap_usd"] = DAILY_CAP
+    if "params" not in HB:
+        HB["params"] = run_params()   # i parametri veri, mostrati in Impostazioni
     HB["ts"] = now
     try:
         os.makedirs(DATA_DIR, exist_ok=True)

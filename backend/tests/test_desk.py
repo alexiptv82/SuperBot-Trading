@@ -962,3 +962,15 @@ def test_symbol_stats_ignore_legacy_list_records():
             f.write(json.dumps({"symbol": "ETH", "net": 5.0, "trade_type": "medio"}) + "\n")
         st = load_symbol_stats(d)
         assert "ETH" in st and st["ETH"]["wins"] == 1 and "BTC" not in st
+
+
+def test_heartbeat_carries_real_params_and_cap():
+    with _sandbox() as (d, calls):
+        cli.HB.pop("params", None)
+        cli.write_heartbeat({"main": {"positions": {}}})
+        hb = json.load(open(os.path.join(d, "heartbeat.json")))
+        pg = cli.PORTFOLIO
+        assert hb["params"]["limits"]["max_margin_trade"] == pg.limits.max_margin_trade
+        assert hb["params"]["limits"]["max_open"] == pg.limits.max_open
+        assert hb["params"]["entry_score_tier_ab"] == 60 and hb["params"]["guardrail"]["min_margin"] == pg.guardrail_min_margin
+        assert hb["daily_cap_usd"] == cli.DAILY_CAP and hb["portfolio"] == pg.name
