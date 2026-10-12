@@ -12,40 +12,20 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Leggi lo stato dal server
-        env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
-          chmod 600 ~/.ssh/id_desk
-
-          ssh -T \
-            -i ~/.ssh/id_desk \
-            -o StrictHostKeyChecking=accept-new \
-            -o ConnectTimeout=15 \
-            root@51.91.109.45 << 'SSHEOF' > status_out.txt 2>&1 || true
-          echo "=CONTAINERS="
-          docker ps -a --filter name=superbot --format "{{.Names}} {{.Status}}"
-          echo "=LOGS="
-          docker logs --tail 30 superbot-desk 2>&1
-          echo "=STATE="
-          cat /opt/superbot-desk-data/state_v2.json 2>/dev/null || echo "no state_v2.json"
-          echo "=TRADES="
-          tail -5 /opt/superbot-desk-data/trade_history.jsonl 2>/dev/null || echo "no trades"
-          echo "=LESSONS="
-          tail -5 /opt/superbot-desk-data/lessons.md 2>/dev/null || echo "no lessons"
-          SSHEOF
-
-          rm -f ~/.ssh/id_desk
-
-      - name: Output grezzo
-        if: always()
-        run: |
-          echo "=== RISULTATO STATUS BOT V2 ==="
-          cat status_out.txt 2>/dev/null || echo "(file vuoto)"
-
-      - name: Annotation
-        if: always()
-        run: |
-          CONTENT=$(cat status_out.txt 2>/dev/null | head -80 | tr '\n' '|' | cut -c1-5000)
-          echo "::notice title=BotV2 Stato::${CONTENT}"
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 60s
+          script: |
+            echo "=== CONTAINERS ==="
+            docker ps -a --filter name=superbot --format "{{.Names}} | {{.Status}} | {{.Image}}"
+            echo "=== LOGS SUPERBOT-DESK (ultimi 30) ==="
+            docker logs --tail 30 superbot-desk 2>&1 || echo "container non trovato"
+            echo "=== STATE FILE RAW ==="
+            cat /opt/superbot-desk-data/state_v2.json 2>/dev/null | head -c 2000 || echo "no state_v2.json"
+            echo "=== ULTIMI 5 TRADE ==="
+            tail -5 /opt/superbot-desk-data/trade_history.jsonl 2>/dev/null || echo "no trade history"
+            echo "=== ULTIMI 10 RIGHE LESSONS ==="
+            tail -10 /opt/superbot-desk-data/lessons.md 2>/dev/null || echo "no lessons"
