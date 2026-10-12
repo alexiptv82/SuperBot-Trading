@@ -79,6 +79,22 @@ class Position:
     total_margin: float = 0.0  # margine totale (principale + DCA)
     trade_type: str = "medio"  # "scalp" | "medio"
     dca_count: int = 0         # quanti DCA eseguiti
+    # ---- registrazione per l'apprendimento (tutti con valore predefinito: gli stati vecchi si caricano)
+    features: dict = field(default_factory=dict)   # valori su cui si e' deciso l'ingresso
+    risk_plan_usd: float = 0.0   # 1R in dollari: margine pianificato x leva x distanza dello stop
+    r_dist: float = 0.0          # distanza dello stop iniziale come frazione del prezzo (1R in prezzo)
+    entry0: float = 0.0          # primo prezzo di ingresso (riferimento per MAE/MFE)
+    px_hi: float = 0.0           # massimo toccato dall'apertura
+    px_lo: float = 0.0           # minimo toccato dall'apertura
+    legs: int = 1                # ingressi principali effettivamente eseguiti (2 con entrata diversificata)
+    # ---- entrata diversificata: seconda gamba in attesa (None = nessuna)
+    pending_split: Optional[dict] = None
+
+
+SPLIT_FIRST_FRAC = 0.5          # quota di margine della prima gamba
+SPLIT_MIN_RETRACE = 0.0015      # sotto lo 0,15% la seconda gamba non ha senso: ingresso unico
+SPLIT_STOP_FRAC = 0.6           # il ritracciamento non supera il 60% della distanza dello stop
+SPLIT_TTL_MS = {"scalp": 3 * 3_600_000, "medio": 12 * 3_600_000}
 
 
 def liq_price(side: int, entry: float, lev: int, maint: float) -> float:
@@ -99,6 +115,9 @@ class PaperAccount:
         self.next_id = 1
         self.day = ""
         self.day_start_equity = limits.start_equity
+        # eventi prodotti dal motore (seconda gamba eseguita/annullata): li legge e svuota cli.py.
+        # Non fanno parte dello stato salvato.
+        self.events: list = []
 
     def margin_in_use(self) -> float:
         return sum(p.total_margin for p in self.positions.values())
@@ -124,7 +143,11 @@ class PaperAccount:
     # ---- apertura
     def open(self, symbol: str, side: int, margin: float, leverage: int, price: float, sl: float,
              tp: Optional[float], now_ms: int, prices: dict, confidence: int = 0, reason: str = "",
-             source: str = "rules", trade_type: str = "medio") -> tuple:
+             source: str = "rules", trade_type: str = "medio",
+             features: Optional[dict] = None, split: Optional[dict] = None) -> tuple:
+        """Apre una posizione. Con `split` ({"retrace_pct", "first_frac", "ttl_ms"}) apre solo la prima
+        gamba (50% del margine) e lascia in attesa la seconda al ritracciamento indicato. Se la seconda
+        gamba non avrebbe senso (stop troppo vicino, margini sotto il minimo) apre tutto subito."""
         L = self.limits
         if side not in (1, -1):
             return None, "lato non valido"
@@ -152,6 +175,17 @@ class PaperAccount:
         dist = abs(fill - sl) / fill
         if dist > L.sl_liq_frac * (1 / lev - L.maint):
             return None, "stop troppo lontano (liquidazione verrebbe prima)"
+        plan_margin = mar            # margine pianificato per l'intero ingresso (entrambe le gambe)
+        pending = None
+        if split:
+            retr = min(float(split.get("retrace_pct") or 0.0), SPLIT_STOP_FRAC * dist)
+            first = round(mar * float(split.get("first_frac", SPLIT_FIRST_FRAC)), 2)
+            second = round(mar - first, 2)
+            if retr >= SPLIT_MIN_RETRACE and first >= L.min_margin and second >= L.min_margin:
+                mar = first
+                ttl = int(split.get("ttl_ms") or SPLIT_TTL_MS.get(trade_type, SPLIT_TTL_MS["medio"]))
+                pending = {"trigger": price * (1 - side * retr), "margin": second,
+                           "retrace_pct": round(retr, 5), "created_ms": now_ms, "expire_ms": now_ms + ttl}
         notional = mar * lev
         fee = notional * L.fee_bp_side / 1e4
         if mar + fee > self.cash:
@@ -164,6 +198,8 @@ class PaperAccount:
             confidence=int(confidence), reason=reason[:300], source=source,
             fee_open=fee, last_review_ms=now_ms, review_price=price,
             dca_levels=[], total_margin=mar, trade_type=trade_type, dca_count=0,
+            features=dict(features or {}), risk_plan_usd=round(plan_margin * lev * dist, 4),
+            r_dist=dist, entry0=fill, px_hi=fill, px_lo=fill, legs=1, pending_split=pending,
         )
         self.next_id += 1
         self.cash -= mar + fee
@@ -228,7 +264,76 @@ class PaperAccount:
         pos.dca_count += 1
         pos.reason = (pos.reason[:200] + f" | DCA{pos.dca_count} @{fill:.5g}: {reason[:80]}")[:300]
         self.cash -= dca_mar + fee
+        self._cancel_split(pos, "DCA eseguito", now_ms)   # un DCA sostituisce la seconda gamba
         return pos, "ok"
+
+    # ---- entrata diversificata: seconda gamba
+    def _cancel_split(self, pos: Position, reason: str, now_ms: int) -> None:
+        """Annulla la seconda gamba in attesa (se c'e') e lascia traccia nell'elenco eventi."""
+        ps = pos.pending_split
+        if not ps:
+            return
+        pos.pending_split = None
+        self.events.append({"ev": "split_cancel", "id": pos.id, "symbol": pos.symbol, "ts": now_ms,
+                            "reason": reason, "margin": ps.get("margin"), "trigger": ps.get("trigger")})
+
+    def cancel_split(self, symbol: str, reason: str, now_ms: int) -> bool:
+        pos = self.positions.get(symbol)
+        if pos is None or not pos.pending_split:
+            return False
+        self._cancel_split(pos, reason, now_ms)
+        return True
+
+    def _fill_split(self, pos: Position, now_ms: int) -> Optional[dict]:
+        """Esegue la seconda gamba al prezzo limite indicato (con slippage e commissioni come ogni
+        altro ingresso). Rispetta tetti di margine e cassa: se non c'e' spazio la annulla."""
+        ps = pos.pending_split
+        if not ps:
+            return None
+        L = self.limits
+        pos.pending_split = None     # consumata in ogni caso: o eseguita o annullata
+        room = min(L.max_margin_trade - pos.total_margin, L.max_margin_total - self.margin_in_use(),
+                   self.cash * 0.95)
+        mar = min(float(ps["margin"]), room)
+        trig = float(ps["trigger"])
+        fill = trig * (1 + pos.side * L.slip_bp_side / 1e4)
+        notional = mar * pos.leverage
+        fee = notional * L.fee_bp_side / 1e4
+        if mar < L.min_margin or mar + fee > self.cash:
+            self.events.append({"ev": "split_cancel", "id": pos.id, "symbol": pos.symbol, "ts": now_ms,
+                                "reason": "margine non disponibile", "margin": ps.get("margin"),
+                                "trigger": trig})
+            return None
+        new_qty = notional / fill
+        pos.entry = weighted_entry(pos.entry, pos.qty, fill, new_qty)
+        pos.qty += new_qty
+        pos.total_margin += mar
+        pos.margin += mar            # il "margine principale" (base dei DCA) comprende entrambe le gambe
+        pos.fee_open += fee
+        pos.liq = liq_price(pos.side, pos.entry, pos.leverage, L.maint)
+        pos.legs = 2
+        pos.reason = (pos.reason[:230] + f" | 2a gamba @{fill:.5g}")[:300]
+        self.cash -= mar + fee
+        ev = {"ev": "split_fill", "id": pos.id, "symbol": pos.symbol, "side": pos.side, "ts": now_ms,
+              "price": fill, "margin": round(mar, 2), "entry_avg": pos.entry,
+              "total_margin": pos.total_margin}
+        self.events.append(ev)
+        return ev
+
+    def _learn_fields(self, pos: Position, net: float, now_ms: int) -> dict:
+        """Valori per l'apprendimento che accompagnano ogni record di chiusura (finale o parziale):
+        net_r e' additivo, quindi la somma dei record con lo stesso id e' il risultato in R del trade."""
+        risk = pos.risk_plan_usd
+        out = {"risk_plan_usd": round(risk, 4), "legs": pos.legs, "r_dist": round(pos.r_dist, 5),
+               "net_r": round(net / risk, 4) if risk > 0 else None,
+               "hold_min": round(max(0, now_ms - pos.open_ms) / 60_000, 1)}
+        if pos.entry0 > 0 and pos.r_dist > 0 and pos.px_hi > 0 and pos.px_lo > 0:
+            d = pos.entry0 * pos.r_dist
+            best = pos.px_hi if pos.side == 1 else pos.px_lo
+            worst = pos.px_lo if pos.side == 1 else pos.px_hi
+            out["mfe_r"] = round(max(0.0, pos.side * (best - pos.entry0)) / d, 3)
+            out["mae_r"] = round(max(0.0, pos.side * (pos.entry0 - worst)) / d, 3)
+        return out
 
     # ---- chiusura
     def _close(self, pos: Position, exit_price: float, now_ms: int, why: str) -> dict:
@@ -252,6 +357,9 @@ class PaperAccount:
                "account": self.name, "trade_type": pos.trade_type, "dca_count": pos.dca_count}
         if why == "liquidazione":
             rec["net"] = round(-pos.total_margin - pos.fee_open, 4)
+        rec.update(self._learn_fields(pos, rec["net"], now_ms))
+        if pos.pending_split:     # posizione chiusa con la seconda gamba ancora in attesa: svanisce
+            self._cancel_split(pos, f"posizione chiusa ({why})", now_ms)
         self.closed.append(rec)
         return rec
 
@@ -300,6 +408,8 @@ class PaperAccount:
                "source": pos.source, "account": self.name,
                "trade_type": pos.trade_type, "dca_count": pos.dca_count,
                "partial": True, "fraction": round(fraction, 3)}
+        rec.update(self._learn_fields(pos, net, now_ms))
+        self._cancel_split(pos, "chiusura parziale", now_ms)   # ridurre il rischio esclude di aumentarlo
         self.closed.append(rec)
         return rec
 
@@ -308,6 +418,18 @@ class PaperAccount:
         if pos is None or t < pos.open_ms:
             return None
         end = t + bar_ms
+        # estremi toccati dall'apertura (per MAE/MFE): prima dei controlli, cosi' includono la barra di uscita
+        if pos.px_hi > 0 and pos.px_lo > 0:
+            pos.px_hi, pos.px_lo = max(pos.px_hi, h), min(pos.px_lo, l)
+        # seconda gamba dell'entrata diversificata. Se nella stessa barra tocca anche lo stop, il prezzo
+        # ha attraversato prima il livello del ritracciamento (piu' vicino): la gamba si esegue e poi
+        # scatta lo stop. E' l'ipotesi piu' sfavorevole, quella corretta per un test onesto.
+        ps = pos.pending_split
+        if ps:
+            if t >= ps["expire_ms"]:
+                self._cancel_split(pos, "scaduta senza ritracciamento", end)
+            elif (pos.side == 1 and l <= ps["trigger"]) or (pos.side == -1 and h >= ps["trigger"]):
+                self._fill_split(pos, end)
         if pos.side == 1:
             if l <= pos.liq:
                 return self._close(pos, pos.liq, end, "liquidazione")

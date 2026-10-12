@@ -41,8 +41,12 @@ SOGLIA MINIMA CONFIDENZA PER APRIRE:
 
 ENTRATA DIVERSIFICATA (opzionale, solo se lo ritieni intelligente):
 - Puoi proporre "open_long_split" o "open_short_split" per dividere il margine in 2 ingressi:
-  primo ingresso subito, secondo ingresso dopo un ritracciamento di 0.3-0.8%.
-- Usa split solo se il prezzo e' vicino a una resistenza/supporto e vuoi un entry migliore.
+  50% subito, il resto con ordine limite dopo un ritracciamento (campo "split_retrace_pct" in
+  percentuale, 0.3-0.8; se manca usa 0.5). Il margine che indichi e' il TOTALE delle due gambe.
+- La seconda gamba scade dopo 3h (scalp) o 12h (medio) se il prezzo non ritraccia, e si annulla se
+  chiudi, fai partial_close o DCA. Lo stop e' lo stesso per entrambe le gambe.
+- Il ritracciamento e' limitato al 60% della distanza dello stop; se lo stop e' troppo vicino il
+  codice apre tutto subito. Usa split solo se il prezzo e' vicino a una resistenza/supporto.
 - In assenza di motivi precisi, usa l'entrata singola normale.
 
 DCA — INGRESSI PROGRESSIVI:
@@ -99,7 +103,8 @@ RISPOSTA — SOLO JSON:
    "partial_close_tp2_pct":number,
    "reason":"max 30 parole",
    "dca_sl_pct":number,
-   "dca_tp_pct":number}
+   "dca_tp_pct":number,
+   "split_retrace_pct":number}
 ],"note":"max 20 parole"}
 
 Per posizioni aperte: hold, close, partial_close o dca. Per nuovi ingressi: open_long/open_short/open_long_split/open_short_split/skip."""
@@ -149,6 +154,13 @@ TAKE PROFIT SCALABILE:
 - Usa partial_close al primo TP raggiunto (chiudi 35-40%), mantieni il resto con TP2 piu' lontano.
 - Il residuo 60-65% rimane aperto: rivaluta ogni ciclo se trend regge o invertire.
 
+ENTRATA DIVERSIFICATA (opzionale):
+- "open_long_split" / "open_short_split": 50% del margine subito, il resto con ordine limite dopo un
+  ritracciamento ("split_retrace_pct" in percentuale, 0.3-0.8; se manca usa 0.5). Il margine che
+  indichi e' il TOTALE delle due gambe. Scade dopo 12h (medio) e si annulla se chiudi, fai
+  partial_close o DCA. Stesso stop per entrambe le gambe.
+- Utile per entrare vicino a un supporto/resistenza con un prezzo medio migliore. Altrimenti entrata singola.
+
 DCA — INGRESSI PROGRESSIVI:
 - Proponi "dca" se la posizione e' in perdita MA il setup originale regge.
 - MEDIO: max 2 DCA (3 ingressi totali). Mai superare 700$ su un singolo asset.
@@ -184,7 +196,8 @@ RISPOSTA — SOLO JSON:
    "partial_close_tp2_pct":number,
    "reason":"max 30 parole",
    "dca_sl_pct":number,
-   "dca_tp_pct":number}
+   "dca_tp_pct":number,
+   "split_retrace_pct":number}
 ],"note":"max 20 parole"}
 
 Per posizioni aperte: hold, close, partial_close o dca. Per nuovi ingressi: open_long/open_short/open_long_split/open_short_split/skip."""
@@ -266,6 +279,8 @@ def parse_decisions(text: str) -> dict | None:
                 "reason": str(x.get("reason", ""))[:300],
                 "dca_sl_pct": float(x.get("dca_sl_pct", 0)),
                 "dca_tp_pct": float(x.get("dca_tp_pct", 0)),
+                # ritracciamento della seconda gamba: Claude lo scrive in percentuale (0.5 = 0,5%)
+                "split_retrace_pct": float(x.get("split_retrace_pct", 0) or 0) / 100.0,
             })
         except (KeyError, TypeError, ValueError):
             continue
@@ -287,6 +302,9 @@ def build_prompt(snapshot: dict, readings: list, positions: list, headlines: lis
         for p in positions:
             max_dca = 1 if p.get("trade_type") == "scalp" else 3
             dca_info = f", DCA {p.get('dca_count', 0)}/{max_dca}" if p.get("dca_count", 0) > 0 else ""
+            sp = p.get("split_pending")
+            if sp:
+                dca_info += f", 2a gamba in attesa @{sp['trigger']:.5g} ({sp['margin']:.0f}$)"
             lines.append(
                 f"- {p['symbol']} {'LONG' if p['side'] == 1 else 'SHORT'} "
                 f"{p.get('trade_type', 'medio').upper()} lev {p['leverage']}x "

@@ -68,6 +68,15 @@ def notify_dca(symbol: str, dca_count: int, price: float,
     )
 
 
+def notify_split(symbol: str, side: int, price: float, new_entry: float, total_margin: float) -> None:
+    dir_str = "LONG" if side == 1 else "SHORT"
+    _send(
+        f"🧩 <b>2ª GAMBA {symbol}</b> — {dir_str}\n"
+        f"📍 @{price:.5g}  Entry medio: {new_entry:.5g}\n"
+        f"💰 Margine totale: {total_margin:.0f}$"
+    )
+
+
 def notify_halt(reason: str) -> None:
     _send(f"⛔ <b>HALT</b> — {reason}")
 

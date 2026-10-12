@@ -27,7 +27,8 @@ from desk.brain import (DAILY_CAP, build_prompt, call_claude,
                         update_lessons, append_trade_history, load_symbol_stats, stats_summary,
                         SYSTEM as SYSTEM_HAWK, SYSTEM_BULL)
 from desk.market_context import fetch_all_context
-from desk.notifier import (notify_open, notify_close, notify_dca,
+from desk.learning import build_features, log_event
+from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
                            notify_halt, notify_daily_report)
 
 
@@ -274,9 +275,32 @@ def get_prices(symbols: list, candles_map: dict) -> dict:
     return {s: arr[-1][4] for s, arr in candles_map.items() if len(arr) > 0}
 
 
+def record_close(state: dict, rec: dict) -> None:
+    """Ogni chiusura (finale o parziale) va nello storico dei trade e nel registro di apprendimento."""
+    append_trade_history(DATA_DIR, rec)
+    row = dict(rec)
+    row["reason"] = str(row.get("reason", ""))[:200]
+    log_event(DATA_DIR, {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name,
+                         "run_no": state.get("run_no", 1), **row})
+
+
+def flush_events(state: dict, acc: PaperAccount) -> None:
+    """Scrive nel registro e notifica gli eventi del motore (seconda gamba eseguita o annullata)."""
+    evs, acc.events = acc.events, []
+    for ev in evs:
+        log_event(DATA_DIR, {**ev, "portfolio": PORTFOLIO.name, "run_no": state.get("run_no", 1)})
+        if ev.get("ev") == "split_fill":
+            print(f"[SPLIT] {ev['symbol']} 2a gamba @{ev['price']:.5g}  entry medio {ev['entry_avg']:.5g}  "
+                  f"margine tot {ev['total_margin']:.0f}$", flush=True)
+            notify_split(ev["symbol"], ev["side"], ev["price"], ev["entry_avg"], ev["total_margin"])
+        else:
+            print(f"[SPLIT ANNULLATO] {ev.get('symbol')}: {ev.get('reason')}", flush=True)
+
+
 def position_info(pos, price: float, readings: dict, now_ms: int) -> dict:
     r = readings.get(pos.symbol)
     return {
+        "split_pending": pos.pending_split,
         "symbol": pos.symbol, "side": pos.side, "leverage": pos.leverage,
         "margin": pos.margin, "total_margin": pos.total_margin,
         "trade_type": pos.trade_type, "dca_count": pos.dca_count,
@@ -460,6 +484,22 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     # ---- esecuzione decisioni
     last_open_ms = state.get("last_open_ms", {})
+
+    def _candidate(status: str, d: dict, price: float) -> None:
+        """Registra un'apertura decisa ma NON eseguita, con le stesse feature di un'apertura vera:
+        servono per etichettarne l'esito in seguito (come sarebbe andata). Mai bloccante."""
+        try:
+            s = d["symbol"]
+            log_event(DATA_DIR, {
+                "ev": "candidate", "status": status, "ts": now_ms, "portfolio": PORTFOLIO.name,
+                "run_no": state.get("run_no", 1), "symbol": s, "price": price, "source": source,
+                "side": 1 if str(d.get("action", "")).startswith("open_long") else -1,
+                "features": build_features(s, readings_map.get(s), ctx_for_prompt, d, now_ms,
+                                           readings_map.get("BTC")),
+            }, candidate=True)
+        except Exception:
+            pass
+
     for dec in decisions:
         sym = dec["symbol"]
         act = dec["action"]
@@ -472,7 +512,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             if closed:
                 print(f"[CLOSE] {sym} net {closed['net']:+.2f}$  motivo: {dec['reason'][:60]}")
                 notify_close(sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
-                append_trade_history(DATA_DIR, closed)
+                record_close(state, closed)
 
         elif act == "partial_close":
             fraction = float(dec.get("partial_close_fraction") or dec.get("partial_fraction") or 0.35)
@@ -493,7 +533,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 notify_close(sym, partial["net"],
                              f"TP parziale {fraction*100:.0f}% — {dec.get('reason','')[:80]}",
                              "partial_close")
-                append_trade_history(DATA_DIR, partial)
+                record_close(state, partial)
 
         elif act == "dca":
             # DCA su posizione esistente
@@ -516,7 +556,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 print(f"[DCA SKIP] {sym}: {msg}")
 
         elif act in ("open_long", "open_short", "open_long_split", "open_short_split"):
-            # normalizza: split → azione base (la seconda parte è gestita da pending_split)
+            # normalizza: split -> azione base. Con _split il motore apre la prima gamba (50% del margine)
+            # e tiene in attesa la seconda al ritracciamento (vedi PaperAccount.open / on_bar).
             is_split = act.endswith("_split")
             base_act = act.replace("_split", "")
             # cooldown per tipo
@@ -525,12 +566,14 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             last_ts = last_open_ms.get(sym, 0)
             if now_ms - last_ts < cooldown:
                 print(f"[COOLDOWN] {sym} ({trade_type})")
+                _candidate("cooldown", dec, px)
                 continue
             if sym in acc.positions:
                 continue
             # soglia confidenza tier-aware
             if dec["confidence"] < tier_entry_score(sym):
                 print(f"[CONF_LOW] {sym} conf={dec['confidence']} < soglia={tier_entry_score(sym)}")
+                _candidate("conf_bassa", dec, px)
                 continue
             # filtro R:R minimo 1.5 — se SL e TP sono entrambi definiti
             sl_pct = dec.get("stop_loss_pct", 0)
@@ -539,6 +582,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 rr = tp_pct / sl_pct
                 if rr < 1.5:
                     print(f"[RR_LOW] {sym} R:R={rr:.2f} < 1.5 (SL={sl_pct:.2%} TP={tp_pct:.2%})")
+                    _candidate("rr_basso", dec, px)
                     continue
             act = base_act  # usa open_long / open_short da qui in poi
             side = 1 if act == "open_long" else -1
@@ -570,22 +614,51 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                       f"→ cappato a {pg.limits.max_margin_trade:.0f}$")
                 dec = dict(dec, margin_usd=pg.limits.max_margin_trade)
             # ─────────────────────────────────────────────────────────────────
+            # valori su cui si decide, registrati con l'apertura (e con i candidati scartati)
+            try:
+                feats = build_features(sym, readings_map.get(sym), ctx_for_prompt, dec, now_ms,
+                                       readings_map.get("BTC"))
+            except Exception:
+                feats = {}   # la registrazione non deve mai impedire un'apertura
+            feats.update(proposed_margin=raw_margin, proposed_lev=raw_lev, split_requested=is_split,
+                          guardrail_forced=bool(raw_margin != dec["margin_usd"] or raw_lev != dec["leverage"]))
+            split_cfg = None
+            if is_split:
+                retr = float(dec.get("split_retrace_pct") or 0.0)   # frazione (0.005 = 0,5%)
+                if not 0.002 <= retr <= 0.012:
+                    retr = 0.005                                    # valore predefinito: 0,5%
+                split_cfg = {"retrace_pct": retr, "first_frac": 0.5}
             pos, msg = acc.open(
                 sym, side, dec["margin_usd"], dec["leverage"], px, sl, tp, now_ms, prices,
                 confidence=dec["confidence"], reason=dec.get("reason", "")[:200],
-                source=source, trade_type=trade_type,
+                source=source, trade_type=trade_type, features=feats, split=split_cfg,
             )
             if pos:
                 last_open_ms[sym] = now_ms
                 rr_str = f"  R:R 1:{tp_pct/sl_pct:.1f}" if sl_pct > 0 and tp_pct > 0 else ""
+                ps = pos.pending_split
+                split_str = ""
+                if is_split and ps:
+                    split_str = f"  [1a gamba, 2a @{ps['trigger']:.5g} {ps['margin']:.0f}$]"
+                elif is_split:
+                    split_str = "  [split non applicato: ingresso unico]"
                 print(f"[OPEN] {sym} {'LONG' if side == 1 else 'SHORT'} {trade_type.upper()} "
                       f"lev {pos.leverage}x  margin {pos.total_margin:.0f}$  "
-                      f"@{px:.5g}  SL {sl:.5g}  conf {dec['confidence']}  src {source}{rr_str}")
+                      f"@{px:.5g}  SL {sl:.5g}  conf {dec['confidence']}  src {source}{rr_str}{split_str}")
                 notify_open(sym, side, px, pos.leverage, pos.total_margin,
                             trade_type, dec["confidence"], source,
-                            dec.get("reason", "")[:120])
+                            ("[1ª gamba] " if ps else "") + dec.get("reason", "")[:110])
+                log_event(DATA_DIR, {
+                    "ev": "open", "ts": now_ms, "id": pos.id, "portfolio": PORTFOLIO.name,
+                    "run_no": state.get("run_no", 1), "symbol": sym, "side": side, "price": px,
+                    "entry": pos.entry, "sl": pos.sl, "tp": pos.tp, "leverage": pos.leverage,
+                    "margin_first": pos.total_margin, "risk_plan_usd": pos.risk_plan_usd,
+                    "r_dist": pos.r_dist, "trade_type": trade_type, "source": source,
+                    "confidence": dec["confidence"], "split_plan": ps, "features": feats,
+                })
             else:
                 print(f"[SKIP] {sym} {act}: {msg}")
+                _candidate("rifiutata:" + str(msg)[:60], dec, px)
 
         elif act == "hold":
             # aggiorna last_review_ms per lo scalp
@@ -594,8 +667,14 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 pos.last_review_ms = now_ms
 
     state["last_open_ms"] = last_open_ms
+    flush_events(state, acc)
 
-    # ---- processa barre (stop, liq, tp automatici)
+    # In pausa non entra nulla di nuovo: nemmeno la seconda gamba di un'entrata diversificata.
+    if drain:
+        for s in list(acc.positions):
+            acc.cancel_split(s, "bot in pausa", now_ms)
+
+    # ---- processa barre (stop, liq, tp automatici; seconda gamba al ritracciamento)
     import numpy as np
     for sym, pos in list(acc.positions.items()):
         arr = candles_map.get(sym)
@@ -608,8 +687,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             if result:
                 print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
                 notify_close(sym, result["net"], result.get("why", ""), result["why"])
-                append_trade_history(DATA_DIR, result)
+                record_close(state, result)
                 break
+    flush_events(state, acc)
 
     # ---- lessons
     update_lessons(DATA_DIR, state, day)
@@ -712,9 +792,10 @@ def _check_close_all_flag(state: dict) -> bool:
                 continue
             rec = acc.close(sym, px, now_ms, "chiusura manuale")
             if rec:
-                append_trade_history(DATA_DIR, rec)
+                record_close(state, rec)
                 closed_n += 1
                 net += rec["net"]
+        flush_events(state, acc)
         save_account(acc, state)
         detail = f"chiuse {closed_n} posizioni (netto {net:+.2f}$)"
         if skipped:
@@ -742,6 +823,8 @@ def run_params() -> dict:
                       "margin_forced": p.guardrail_margin_forced, "lev_forced": p.guardrail_lev_forced,
                       "type_forced": p.guardrail_type_forced},
         "daily_cap_usd": DAILY_CAP,
+        "split": {"first_frac": 0.5, "default_retrace_pct": 0.5, "min_retrace_pct": 0.15,
+                  "max_of_stop_distance": 0.6, "ttl_scalp_h": 3, "ttl_medio_h": 12},
     }
 
 

@@ -974,3 +974,255 @@ def test_heartbeat_carries_real_params_and_cap():
         assert hb["params"]["limits"]["max_open"] == pg.limits.max_open
         assert hb["params"]["entry_score_tier_ab"] == 60 and hb["params"]["guardrail"]["min_margin"] == pg.guardrail_min_margin
         assert hb["daily_cap_usd"] == cli.DAILY_CAP and hb["portfolio"] == pg.name
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ENTRATA DIVERSIFICATA (seconda gamba) E REGISTRO DI APPRENDIMENTO
+# ──────────────────────────────────────────────────────────────────────────────
+from desk import learning  # noqa: E402
+
+SPLIT = {"retrace_pct": 0.005, "first_frac": 0.5}
+
+
+def _split_acct(sl=98.5, margin=100, trade_type="medio", split=SPLIT):
+    a = acct()
+    p, msg = a.open("BTC", 1, margin, 10, 100.0, sl, None, 0, {}, trade_type=trade_type, split=split)
+    assert p, msg
+    return a, p
+
+
+def test_split_opens_first_leg_only_then_fills_on_retrace():
+    a, p = _split_acct()
+    assert p.total_margin == 50 and p.legs == 1
+    assert abs(p.pending_split["trigger"] - 99.5) < 1e-9 and p.pending_split["margin"] == 50
+    assert abs(p.risk_plan_usd - 100 * 10 * (abs(p.entry - 98.5) / p.entry)) < 1e-3, "1R = margine pianificato intero"
+    assert abs(a.cash - (1000 - 50 - 0.3)) < 1e-6
+    assert a.on_bar("BTC", 0, 100, 100.4, 99.7, 100.2, BAR) is None
+    assert p.pending_split is not None and p.legs == 1, "nessun ritracciamento: la seconda gamba resta in attesa"
+    assert a.on_bar("BTC", BAR, 100, 100.0, 99.4, 99.8, BAR) is None
+    assert p.pending_split is None and p.legs == 2
+    assert p.total_margin == 100 and p.margin == 100, "il margine principale (base dei DCA) comprende entrambe le gambe"
+    assert abs(a.cash - (1000 - 100 - 0.6)) < 1e-6, "commissioni su entrambe le gambe"
+    assert 99.6 < p.entry < 99.9, f"entry medio tra le due gambe: {p.entry}"
+    assert p.liq < p.sl, "la liquidazione resta oltre lo stop"
+    assert [e["ev"] for e in a.events] == ["split_fill"] and a.events[0]["margin"] == 50
+
+
+def test_split_second_leg_expires_without_retrace():
+    a, p = _split_acct()
+    ttl = p.pending_split["expire_ms"]
+    assert ttl == 12 * 3_600_000, "medio: 12 ore"
+    assert a.on_bar("BTC", ttl - BAR, 100, 100.3, 99.8, 100.1, BAR) is None and p.pending_split
+    assert a.on_bar("BTC", ttl, 100, 100.3, 99.8, 100.1, BAR) is None
+    assert p.pending_split is None and p.legs == 1 and p.total_margin == 50
+    assert a.events[-1]["ev"] == "split_cancel" and "scaduta" in a.events[-1]["reason"]
+    s, sp = _split_acct(trade_type="scalp")
+    assert sp.pending_split["expire_ms"] == 3 * 3_600_000, "scalp: 3 ore"
+
+
+def test_split_is_cancelled_by_partial_close_dca_and_close():
+    a, p = _split_acct()
+    a.partial_close("BTC", 100.5, 1000, 0.35)
+    assert p.pending_split is None and a.events[-1]["reason"] == "chiusura parziale"
+    b, q = _split_acct()
+    rec, msg = b.add_dca("BTC", 97.5, None, 1000, {"BTC": 99.0}, "dca")
+    assert rec is not None, msg
+    assert q.pending_split is None and b.events[-1]["reason"] == "DCA eseguito" and q.legs == 1
+    c, r = _split_acct()
+    c.close("BTC", 101.0, 1000)
+    assert c.events[-1]["ev"] == "split_cancel" and "chiusa" in c.events[-1]["reason"]
+    assert not c.positions
+
+
+def test_split_falls_back_to_single_entry_when_it_makes_no_sense():
+    # stop troppo vicino: il ritracciamento ammesso (60% dello stop) sarebbe sotto lo 0,15%
+    a, p = _split_acct(sl=99.8)
+    assert p.pending_split is None and p.total_margin == 100 and p.legs == 1
+    # margine troppo piccolo per due gambe sopra il minimo (30$)
+    b, q = _split_acct(margin=40)
+    assert q.pending_split is None and q.total_margin == 40
+    # ritracciamento oltre il 60% dello stop: viene ridotto, non rifiutato
+    c, r = _split_acct(sl=99.0, split={"retrace_pct": 0.012, "first_frac": 0.5})
+    assert r.pending_split is not None and r.pending_split["retrace_pct"] < 0.012
+    assert r.pending_split["trigger"] > r.sl, "il livello della seconda gamba sta sempre prima dello stop"
+
+
+def test_split_trigger_and_stop_in_same_bar_fills_then_stops_out():
+    a, p = _split_acct()
+    rec = a.on_bar("BTC", 0, 100, 100.1, 97.0, 98.0, BAR)
+    assert rec and rec["why"] == "stop loss" and rec["legs"] == 2 and rec["margin"] == 100
+    assert not a.positions and any(e["ev"] == "split_fill" for e in a.events)
+    assert rec["net"] < 0 and rec["net_r"] is not None and rec["net_r"] < 0
+
+
+def test_split_state_roundtrip_and_old_state_still_loads():
+    a, p = _split_acct()
+    p.features = {"tier": "A", "rsi1h": 61.2}
+    d = json.loads(json.dumps(a.to_dict()))
+    b = PaperAccount.from_dict(d)
+    q = b.positions["BTC"]
+    assert q.pending_split == p.pending_split and q.features == p.features and q.risk_plan_usd == p.risk_plan_usd
+    for k in ("features", "risk_plan_usd", "r_dist", "entry0", "px_hi", "px_lo", "legs", "pending_split"):
+        d["positions"]["BTC"].pop(k)          # stato salvato dalla versione precedente
+    old = PaperAccount.from_dict(d).positions["BTC"]
+    assert old.pending_split is None and old.legs == 1 and old.features == {}
+    assert PaperAccount.from_dict(d).on_bar("BTC", 0, 100, 100.2, 99.6, 100.0, BAR) is None, "una posizione vecchia gira"
+
+
+def test_close_records_carry_additive_net_r_and_excursions():
+    a = acct()
+    p, _ = a.open("BTC", 1, 100, 10, 100.0, 99.0, None, 0, {})
+    a.on_bar("BTC", 0, 100, 101.0, 99.6, 100.5, BAR)
+    a.on_bar("BTC", BAR, 100.5, 102.5, 100.2, 102.0, BAR)
+    risk = p.risk_plan_usd
+    assert 10.0 < risk < 10.4
+    part = a.partial_close("BTC", 102.0, 2 * BAR, 0.4)
+    fin = a.close("BTC", 101.0, 3 * BAR)
+    assert abs((part["net_r"] + fin["net_r"]) - (part["net"] + fin["net"]) / risk) < 2e-3, "net_r e' additivo"
+    assert 2.3 < fin["mfe_r"] < 2.6 and 0.35 < fin["mae_r"] < 0.5, (fin["mfe_r"], fin["mae_r"])
+    assert fin["hold_min"] == 45.0 and fin["legs"] == 1 and fin["risk_plan_usd"] == round(risk, 4)
+
+
+def test_learning_log_never_raises_drops_nan_and_caps_candidates():
+    with tempfile.TemporaryDirectory() as d:
+        assert learning.log_event(d, {"ev": "x", "v": float("nan"), "w": [1, float("inf")]}) is True
+        row = learning.read_events(d)[0]
+        assert row["v"] is None and row["w"] == [1, None] and row["schema"] == learning.SCHEMA
+        with open(os.path.join(d, "file.txt"), "w") as f:
+            f.write("x")
+        assert learning.log_event(os.path.join(d, "file.txt", "sub"), {"ev": "x"}) is False, "errore assorbito"
+        old = learning.MAX_BYTES_CANDIDATES
+        learning.MAX_BYTES_CANDIDATES = 1
+        try:
+            assert learning.log_event(d, {"ev": "candidate"}, candidate=True) is False
+            assert learning.log_event(d, {"ev": "open"}) is True, "i trade si scrivono anche oltre il tetto dei candidati"
+        finally:
+            learning.MAX_BYTES_CANDIDATES = old
+        with open(os.path.join(d, learning.LEARN_FILE), "a") as f:
+            f.write("riga rotta {\n")
+        assert [r["ev"] for r in learning.read_events(d)] == ["x", "open"], "le righe illeggibili si ignorano"
+
+
+def test_build_features_is_tolerant_and_json_safe():
+    f0 = learning.build_features("BTC", None, None, None, NOW)
+    assert f0["tier"] == "A" and f0["hour_utc"] == int(NOW // 3_600_000 % 24)
+    from desk.signals import read_symbol
+    r = read_symbol("BTC", _series(4500, 0.0006, seed=3, start=100.0), NOW)
+    ctx = {"funding": {"BTC": {"rate": 0.0001, "predicted": 0.0002, "long_cost_8h_bp": 1.0}},
+           "oi": {}, "ls_ratio": {"BTC": {"ratio": 1.7}}}
+    dec = {"confidence": 80, "stop_loss_pct": 0.01, "take_profit_pct": 0.025, "leverage": 15,
+           "margin_usd": 100, "action": "open_long", "reason": "t", "trade_type": "scalp"}
+    f = learning.build_features("BTC", r, ctx, dec, NOW, btc_reading=r)
+    assert f["ls_ratio"] == 1.7 and f["dec_rr"] == 2.5 and f["funding_pred"] == 0.0002
+    assert f["sig_score"] is not None and f["rsi1h"] is not None and f["btc_score"] == f["sig_score"]
+    assert f["ema50_200_4h"] in (-1, 0, 1) and f["oi_usd"] is None
+    json.dumps(f, allow_nan=False)
+    json.dumps(learning.build_features("ETH", r, {"funding": {"ETH": {"rate": float("nan")}}}, dec, NOW),
+               allow_nan=False)
+
+
+def test_parse_decisions_reads_split_retrace_in_percent():
+    import desk.brain as _b
+    txt = json.dumps({"decisions": [
+        {"symbol": "BTC", "action": "open_long_split", "split_retrace_pct": 0.5},
+        {"symbol": "ETH", "action": "open_short_split"}], "note": ""})
+    out = _b.parse_decisions(txt)["decisions"]
+    assert abs(out[0]["split_retrace_pct"] - 0.005) < 1e-12 and out[1]["split_retrace_pct"] == 0.0
+
+
+def _split_stub(**kw):
+    return _decisions_stub(_dec("BTC", "open_long_split", margin_usd=200, leverage=15,
+                                split_retrace_pct=0.5, **kw))
+
+
+def test_cycle_split_open_logs_features_and_waits_for_second_leg():
+    with _sandbox(_split_stub()) as (d, calls):
+        state = {}
+        acc = _open_btc(state, d)
+        pos = acc.positions["BTC"]
+        assert pos.legs == 1 and pos.pending_split is not None
+        assert abs(pos.total_margin - pos.pending_split["margin"]) < 0.01, "50% subito, 50% in attesa"
+        assert abs(pos.pending_split["retrace_pct"] - 0.005) < 1e-9
+        assert pos.features["tier"] == "A" and pos.features["split_requested"] is True
+        ev = learning.read_events(d, "open")
+        assert len(ev) == 1 and ev[0]["id"] == pos.id and ev[0]["portfolio"] == cli.PORTFOLIO.name
+        assert ev[0]["risk_plan_usd"] > 0 and ev[0]["split_plan"]["margin"] == pos.pending_split["margin"]
+        assert "hour_utc" in ev[0]["features"] and "proposed_margin" in ev[0]["features"]
+
+
+def test_cycle_pause_cancels_pending_second_leg_but_keeps_first():
+    with _sandbox(_split_stub()) as (d, calls):
+        state = {}
+        _open_btc(state, d)
+        import desk.brain as _brain, desk.cli as _c
+        _brain.call_claude = _c.call_claude = _decisions_stub(_dec("BTC", "hold"))
+        state["last_call_ms"] = 0
+        cli.run_cycle(state, NOW + cli.HOUR_MS, drain=True)
+        pos = cli.make_account(state).positions["BTC"]
+        assert pos.pending_split is None and pos.legs == 1, "in pausa non entra nulla di nuovo"
+        cancels = learning.read_events(d, "split_cancel")
+        assert len(cancels) == 1 and cancels[0]["reason"] == "bot in pausa"
+
+
+def test_cycle_second_leg_fills_when_market_retraces_and_is_logged():
+    with _sandbox(_split_stub()) as (d, calls):
+        state = {}
+        _open_btc(state, d)
+        first = cli.make_account(state).positions["BTC"]
+        base = cli.fetch_candles
+
+        def extended(sym, bar="15m", limit=300):
+            rows = base(sym, bar, limit)
+            if sym == "BTC" and rows:
+                last = rows[-1]
+                px = float(last[4])
+                rows = rows + [[int(last[0]) + BAR, px, px * 1.001, px * (1 - 0.0075), px * 0.999, 1.0]]
+            return rows
+
+        cli.fetch_candles = extended
+        import desk.brain as _brain, desk.cli as _c
+        _brain.call_claude = _c.call_claude = _decisions_stub(_dec("BTC", "hold"))
+        state["last_call_ms"] = 0
+        cli.run_cycle(state, NOW + cli.HOUR_MS)
+        pos = cli.make_account(state).positions["BTC"]
+        assert pos.legs == 2 and pos.pending_split is None
+        assert abs(pos.total_margin - 2 * first.total_margin) < 0.02
+        assert pos.entry < first.entry, "la seconda gamba abbassa il prezzo medio del long"
+        fills = learning.read_events(d, "split_fill")
+        assert len(fills) == 1 and fills[0]["portfolio"] == cli.PORTFOLIO.name and fills[0]["id"] == pos.id
+
+
+def test_cycle_close_is_logged_with_net_r_and_reset_keeps_the_learning_log():
+    with _sandbox(_decisions_stub(_dec("BTC", "open_long"))) as (d, calls):
+        state = {}
+        _open_btc(state, d)
+        import desk.brain as _brain, desk.cli as _c
+        _brain.call_claude = _c.call_claude = _decisions_stub(_dec("BTC", "close", reason="girato"))
+        state["last_call_ms"] = 0
+        cli.run_cycle(state, NOW + cli.HOUR_MS, drain=True)
+        cl = learning.read_events(d, "close")
+        assert len(cl) == 1 and cl[0]["net_r"] is not None and cl[0]["risk_plan_usd"] > 0 and cl[0]["legs"] == 1
+        line = json.loads(open(os.path.join(d, "trade_history.jsonl")).read().splitlines()[0])
+        assert line["net_r"] == cl[0]["net_r"], "stesso risultato nello storico e nel registro"
+        cli.save_state(state, cli.STATE_FILE)
+        open(os.path.join(d, "pause.flag"), "w").close()
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
+        assert cli._check_portfolio_reset_flag(state) is True
+        assert len(learning.read_events(d)) >= 2, "il reset a 1000$ non cancella cio' che il bot ha registrato"
+        assert not os.path.exists(os.path.join(d, "trade_history.jsonl"))
+
+
+def test_a_failure_in_feature_logging_never_blocks_an_entry():
+    with _sandbox(_split_stub()) as (d, calls):
+        orig = cli.build_features
+
+        def boom(*a, **k):
+            raise RuntimeError("boom")
+
+        cli.build_features = boom
+        try:
+            state = {}
+            acc = _open_btc(state, d)
+        finally:
+            cli.build_features = orig
+        assert "BTC" in acc.positions and acc.positions["BTC"].pending_split is not None
