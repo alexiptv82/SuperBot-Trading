@@ -658,6 +658,10 @@ async def desk_status(session=Depends(require_session)):
             "trade_type": pos.get("trade_type", pos.get("type")),
             "dca_count": pos.get("dca_count", 0),
             "open_ms": pos.get("open_ms"),
+            # TP/SL e DCA levels per il modal dettaglio
+            "tp": pos.get("tp"),
+            "sl": pos.get("sl"),
+            "dca_levels": pos.get("dca_levels", []),
         })
 
     return {
@@ -667,7 +671,10 @@ async def desk_status(session=Depends(require_session)):
         "equity": round(acc.get("cash", 0), 2),
         "open_positions": len(positions),
         "positions": open_list,
-        "total_closed": acc.get("closed", state.get("total_closed", 0)),
+        # "closed" nel PaperAccount può essere una lista (engine.py) oppure un int.
+        # Gestiamo entrambi i casi per robustezza.
+        "total_closed": (len(acc["closed"]) if isinstance(acc.get("closed"), list)
+                         else acc.get("closed", state.get("total_closed", 0))),
         "day": acc.get("day", state.get("day", "")),
         "cycle": state.get("cycle", 0),
         "halt": state.get("halt"),
