@@ -321,6 +321,17 @@ def run_cycle(state: dict, now_ms: int) -> None:
             sl = px * (1 - side * sl_pct)
             tp_pct = dec.get("take_profit_pct", 0)
             tp = px * (1 + side * tp_pct) if tp_pct > 0 else None
+            # ── GUARDRAIL V2 AGGRESSIVO ─────────────────────────────────────
+            # Se Claude propone valori conservativi (leva < 15 o margine < 150$)
+            # li alziamo ai minimi aggressivi e forziamo trade_type=scalp.
+            raw_margin = dec["margin_usd"]
+            raw_lev    = dec["leverage"]
+            if raw_margin < 150 or raw_lev < 15:
+                print(f"[GUARDRAIL] {sym} Claude proposto margin={raw_margin:.0f}$ lev={raw_lev}x "
+                      f"→ forzato margin=150$ lev=15x scalp")
+                dec = dict(dec, margin_usd=150.0, leverage=15, trade_type="scalp")
+                trade_type = "scalp"
+            # ────────────────────────────────────────────────────────────────
             pos, msg = acc.open(
                 sym, side, dec["margin_usd"], dec["leverage"], px, sl, tp, now_ms, prices,
                 confidence=dec["confidence"], reason=dec.get("reason", "")[:200],

@@ -204,7 +204,9 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None) -> Re
     # trade_type: scalp se segnale deciso su TF basso con volume sopra media.
     # Soglia abbassata da 75→68 e vol_ratio da 1.5→1.2 per permettere scalp reali
     # ad alta leva (15-45x) come previsto dalla roadmap V2.
-    trade_type = "scalp" if (score >= 68 and vol_ratio > 1.2 and abs(roc24) > 0.005) else "medio"
+    # V2 aggressivo: quasi sempre scalp. Solo se segnale debolissimo o trend 4h
+    # contrario e volume piatto si usa medio (setup multi-TF molto lento).
+    trade_type = "scalp" if score >= 55 else "medio"
 
     return Reading(
         symbol=symbol, price=price, side=side, score=score, long_score=ls, short_score=ss,
