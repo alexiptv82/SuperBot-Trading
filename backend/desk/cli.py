@@ -24,6 +24,8 @@ from desk.brain import (SYSTEM, DAILY_CAP, build_prompt, call_claude,
                         can_call, parse_decisions, record_spend, rules_decisions,
                         update_lessons)
 from desk.market_context import fetch_all_context
+from desk.notifier import (notify_open, notify_close, notify_dca,
+                           notify_halt, notify_daily_report)
 
 # ---- configurazione V2
 DATA_DIR = os.getenv("DESK_DATA_DIR", "/data/desk")
@@ -173,6 +175,8 @@ def run_cycle(state: dict, now_ms: int) -> None:
 
     prices = get_prices(SYMBOLS, candles_map)
     halt = acc.halted(prices)
+    if halt:
+        notify_halt(halt)
 
     # --- contesto di mercato (aggiornato ogni 30 minuti)
     last_ctx_ts = state.get("last_ctx_ts", 0)
@@ -271,6 +275,7 @@ def run_cycle(state: dict, now_ms: int) -> None:
             closed = acc.close(sym, px, now_ms, "chiusura Claude")
             if closed:
                 print(f"[CLOSE] {sym} net {closed['net']:+.2f}$  motivo: {dec['reason'][:60]}")
+                notify_close(sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
 
         elif act == "dca":
             # DCA su posizione esistente
@@ -288,6 +293,7 @@ def run_cycle(state: dict, now_ms: int) -> None:
             if result:
                 print(f"[DCA] {sym} DCA#{result.dca_count} @{px:.5g}  nuovo entry medio {result.entry:.5g}  "
                       f"SL {new_sl:.5g}  margine tot {result.total_margin:.0f}$")
+                notify_dca(sym, result.dca_count, px, result.entry, result.total_margin)
             else:
                 print(f"[DCA SKIP] {sym}: {msg}")
 
@@ -321,6 +327,9 @@ def run_cycle(state: dict, now_ms: int) -> None:
                 print(f"[OPEN] {sym} {'LONG' if side == 1 else 'SHORT'} {trade_type.upper()} "
                       f"lev {pos.leverage}x  margin {pos.total_margin:.0f}$  "
                       f"@{px:.5g}  SL {sl:.5g}  conf {dec['confidence']}  src {source}")
+                notify_open(sym, side, px, pos.leverage, pos.total_margin,
+                            trade_type, dec["confidence"], source,
+                            dec.get("reason", "")[:120])
             else:
                 print(f"[SKIP] {sym} {act}: {msg}")
 
@@ -344,10 +353,29 @@ def run_cycle(state: dict, now_ms: int) -> None:
             result = acc.on_bar(sym, ts, o, h, l, c, bar_ms)
             if result:
                 print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
+                notify_close(sym, result["net"], result.get("why", ""), result["why"])
                 break
 
     # ---- lessons
     update_lessons(DATA_DIR, state, day)
+
+    # ---- report giornaliero Telegram (inviato una volta all'inizio del nuovo giorno)
+    _last_report_day = state.get("last_report_day", "")
+    if _last_report_day and _last_report_day != day:
+        # giorno appena cambiato → manda il report del giorno precedente
+        closed_today = [c for c in acc.closed if now_ms - c["close_ms"] < 48 * 3_600_000
+                        and c.get("close_ms", 0) > (now_ms - 48 * 3_600_000)]
+        pnl_today = sum(c["net"] for c in closed_today)
+        notify_daily_report(
+            equity=acc.equity(prices),
+            cash=acc.cash,
+            day_pnl=acc.equity(prices) - acc.day_start_equity,
+            n_open=len(acc.positions),
+            n_closed_today=len(closed_today),
+            pnl_closed_today=pnl_today,
+            budget_spent=state.get("budget", {}).get("spent", 0.0),
+        )
+    state["last_report_day"] = day
 
     # ---- salva
     save_account(acc, state)
