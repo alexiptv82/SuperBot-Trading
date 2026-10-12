@@ -142,9 +142,22 @@ STATE_FILE = os.path.join(DATA_DIR, "state_v2.json")
 LESSONS_FILE = os.path.join(DATA_DIR, "lessons.md")
 ERRORS_FILE = os.path.join(DATA_DIR, "errors.md")
 
-RESET_FLAG = os.path.join(DATA_DIR, "reset.flag")
-BUDGET_RESET_FLAG = os.path.join(DATA_DIR, "budget_reset.flag")
-PAUSE_FLAG = os.path.join(DATA_DIR, "pause.flag")
+# ---- protocollo di controllo server <-> bot (file nella cartella dati)
+#   pause.flag            PAUSA: il bot finisce le posizioni aperte e non ne apre di nuove
+#   reset.flag            chiudi tutte le posizioni a prezzo di mercato
+#   budget_reset.flag     azzera solo il budget giornaliero di Claude
+#   reset_portfolio.flag  riparti da 1000$ (solo in pausa e senza posizioni); JSON {"clear_lessons": bool}
+#   heartbeat.json        scritto dal bot: modalita', ultimo ciclo, prossimo ciclo, versione
+# I percorsi si calcolano al momento dell'uso (DATA_DIR puo' cambiare, es. nei test).
+def _flag(name: str) -> str:
+    return os.path.join(DATA_DIR, name)
+
+
+POLL_S = 5                 # ogni quanto il bot controlla i tasti dell'app
+RETRY_S = 300              # dopo un ciclo fallito riprova dopo 5 minuti
+CYCLE_S = 1800             # ciclo normale: 30 minuti
+CYCLE_FAST_S = 900         # con scalp aperto o in svuotamento: 15 minuti
+CODE_VERSION = os.getenv("DESK_CODE_VERSION", "dev")
 
 
 # ---- candles dal BitGet
@@ -201,8 +214,53 @@ def load_lessons() -> str:
 
 def make_account(state: dict) -> PaperAccount:
     if state.get("main"):
-        return PaperAccount.from_dict(state["main"])
+        acc = PaperAccount.from_dict(state["main"])
+        # I parametri vivono nel codice: i limiti salvati nello stato sarebbero rimasti quelli
+        # del giorno in cui il conto e' nato e un cambio di parametri non avrebbe avuto effetto.
+        acc.limits = PORTFOLIO.limits
+        return acc
     return PaperAccount(PORTFOLIO.limits, "main")
+
+
+# ---- heartbeat: dice all'app (e al healthcheck) che il bot e' vivo e cosa sta facendo
+HB: dict = {"started_ms": int(time.time() * 1000), "version": CODE_VERSION, "pid": os.getpid(),
+            "cycles": 0, "last_start_ms": 0, "last_end_ms": 0, "last_ok": None, "last_error": "",
+            "next_cycle_ms": 0}
+_hb_last_write = 0.0
+
+
+def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -> None:
+    """Scrive heartbeat.json (scrittura atomica). Con force=False al massimo una volta ogni 3 s."""
+    global _hb_last_write
+    now = time.time()
+    if not force and now - _hb_last_write < 3:
+        return
+    _hb_last_write = now
+    HB.update(extra)
+    n_open = None
+    if state is not None:
+        n_open = len((state.get("main") or {}).get("positions") or {})
+        paused = os.path.exists(_flag("pause.flag"))
+        HB["pause_requested"] = paused
+        HB["open_positions"] = n_open
+        HB["mode"] = compute_mode(paused, n_open)
+    HB["portfolio"] = PORTFOLIO.name
+    HB["ts"] = now
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        path = _flag("heartbeat.json")
+        with open(path + ".tmp", "w") as f:
+            json.dump(HB, f, default=str)
+        os.replace(path + ".tmp", path)
+    except Exception:
+        pass   # un heartbeat mancato non deve mai fermare il bot
+
+
+def compute_mode(paused: bool, n_open: int) -> str:
+    """running = lavora; draining = in pausa ma sta finendo le posizioni; paused = fermo e senza posizioni."""
+    if not paused:
+        return "running"
+    return "draining" if n_open > 0 else "paused"
 
 
 def save_account(acc: PaperAccount, state: dict) -> None:
@@ -256,7 +314,16 @@ def needs_scalp_review(pos, now_ms: int) -> bool:
 
 
 # ---- ciclo principale
-def run_cycle(state: dict, now_ms: int) -> None:
+MANAGE_ACTIONS = ("close", "partial_close", "hold")   # unico che resta ammesso in pausa
+
+
+def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
+    """Un ciclo di mercato.
+
+    drain=True e' la PAUSA: le posizioni aperte continuano a essere gestite (stop loss,
+    take profit, liquidazione e uscite decise da regole/Claude) ma non si apre nulla di
+    nuovo e non si fanno DCA. Nessuna posizione viene chiusa a forza.
+    """
     import numpy as np
 
     acc = make_account(state)
@@ -270,9 +337,14 @@ def run_cycle(state: dict, now_ms: int) -> None:
         if arr:
             candles_map[sym] = np.array(arr)
         time.sleep(0.05)   # gentile con l'API
+        write_heartbeat(state, force=False)   # il ciclo puo' durare un minuto: il bot resta "vivo"
 
     print(f"[DESK V2] candles ok: {len(candles_map)}/{len(SYMBOLS)} simboli", flush=True)
     prices = get_prices(SYMBOLS, candles_map)
+    # ultimi prezzi noti: la dashboard li usa come ripiego per il P&L live delle posizioni
+    if prices:
+        state["last_prices"] = {s: p for s, p in prices.items()}
+        state["last_prices_ms"] = now_ms
     halt = acc.halted(prices)
     if halt:
         # Invia l'alert HALT una sola volta per sessione (evita loop di messaggi)
@@ -349,6 +421,8 @@ def run_cycle(state: dict, now_ms: int) -> None:
     source = "rules"
     if halt:
         print(f"[HALT] {halt}")
+    elif drain and not acc.positions:
+        pass   # in pausa e senza posizioni non c'e' nulla da gestire: niente chiamate a Claude
     elif call_due and can_call(state, day):
         try:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats)
@@ -369,6 +443,17 @@ def run_cycle(state: dict, now_ms: int) -> None:
     if not decisions:
         decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
         source = "rules"
+
+    if not drain and os.path.exists(_flag("pause.flag")):
+        drain = True   # pausa premuta mentre il ciclo era in corso: vale da subito
+    if drain:
+        # PAUSA: solo gestione delle posizioni esistenti. Ingressi e DCA sono scartati qui,
+        # prima dell'esecuzione, qualunque sia la loro origine (Claude o regole).
+        skipped = [d for d in decisions if d["action"] not in MANAGE_ACTIONS]
+        decisions = [d for d in decisions if d["action"] in MANAGE_ACTIONS]
+        if skipped:
+            print(f"[PAUSA] {len(skipped)} nuovi ingressi/DCA ignorati: bot in pausa "
+                  f"({len(acc.positions)} posizioni ancora da completare)", flush=True)
 
     # ---- esecuzione decisioni
     last_open_ms = state.get("last_open_ms", {})
@@ -552,113 +637,309 @@ def run_cycle(state: dict, now_ms: int) -> None:
     print(render_report(acc, prices, now_ms))
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# COMANDI DALL'APP (file-flag) E CICLO PRINCIPALE
+# ──────────────────────────────────────────────────────────────────────────────
+def _remove(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _set_last_action(state: dict, kind: str, ok: bool, detail: str = "", **extra) -> None:
+    """Esito dell'ultimo comando ricevuto dall'app: l'app lo mostra all'utente."""
+    state["last_action"] = {"type": kind, "ok": ok, "detail": detail,
+                            "ts": int(time.time() * 1000), **extra}
+
+
 def _check_budget_reset_flag(state: dict) -> bool:
-    """Se esiste budget_reset.flag, azzera il budget giornaliero AI e opzionalmente
-    ripristina l'equity a 1000$ (se il flag contiene 'equity_reset').
-    Restituisce True se il reset è stato eseguito.
-    """
-    if not os.path.exists(BUDGET_RESET_FLAG):
+    """budget_reset.flag: azzera SOLO il budget giornaliero di Claude (il conto non si tocca).
+    Il vecchio contenuto 'equity_reset' viene ignorato: azzerare il conto ha un comando suo."""
+    path = _flag("budget_reset.flag")
+    if not os.path.exists(path):
         return False
     try:
-        with open(BUDGET_RESET_FLAG) as f:
-            content = f.read().strip()
-        full_reset = "equity_reset" in content
-
-        # azzera budget AI
         day = time.strftime("%Y-%m-%d", time.gmtime())
-        state.setdefault("budget", {})
-        state["budget"]["spent"] = 0.0
-        state["budget"]["calls"] = 0
-        state["budget"]["day"] = day
-        state["last_call_ms"] = 0  # forza una nuova chiamata Claude al prossimo ciclo
-
-        if full_reset:
-            # ripristina equity e azzera posizioni (paper mode)
-            acc = make_account(state)
-            now_ms = int(time.time() * 1000)
-            closed_count = 0
-            for sym, pos in list(acc.positions.items()):
-                rec = {
-                    "id": pos.id, "symbol": sym, "side": pos.side,
-                    "margin": pos.total_margin, "lev": pos.leverage,
-                    "entry": pos.entry, "exit": pos.entry,
-                    "open_ms": pos.open_ms, "close_ms": now_ms,
-                    "net": 0.0, "gross": 0.0, "fees": 0.0, "funding": 0.0,
-                    "reason": "budget_equity_reset", "type": pos.trade_type,
-                    "dca_count": pos.dca_count, "source": "manual",
-                }
-                append_trade_history(DATA_DIR, [rec])
-                closed_count += 1
-            acc.positions.clear()
-            acc.closed.clear()
-            acc.cash = 1000.0
-            # reset day tracking
-            acc.day_start_equity = 1000.0
-            save_account(acc, state)
-            print(f"[BUDGET_RESET] Equity ripristinata a 1000$ — {closed_count} posizioni azzerate", flush=True)
-        else:
-            print(f"[BUDGET_RESET] Budget AI azzerato (equity invariata)", flush=True)
-
+        state["budget"] = {"day": day, "spent": 0.0, "calls": 0}
+        state["last_call_ms"] = 0   # permette una nuova chiamata a Claude al prossimo ciclo
         save_state(state, STATE_FILE)
-        os.remove(BUDGET_RESET_FLAG)
+        print("[BUDGET_RESET] budget giornaliero di Claude azzerato (conto invariato)", flush=True)
         return True
     except Exception as e:
         print(f"[BUDGET_RESET ERROR] {e}", flush=True)
-        try:
-            os.remove(BUDGET_RESET_FLAG)
-        except Exception:
-            pass
         return False
+    finally:
+        _remove(path)
 
 
-def _check_reset_flag(state: dict) -> bool:
-    """Se esiste reset.flag, azzera tutte le posizioni aperte e rimuove il flag.
-    Restituisce True se il reset è stato eseguito.
-    """
-    if not os.path.exists(RESET_FLAG):
+def _market_prices(symbols: list, state: dict) -> dict:
+    """Ultimo prezzo di mercato per i simboli indicati (candela 15m piu' recente)."""
+    px: dict = {}
+    for s in symbols:
+        arr = fetch_candles(s, "15m", 3)
+        if arr:
+            px[s] = arr[-1][4]
+    for s in symbols:
+        if s not in px and (state.get("last_prices") or {}).get(s):
+            px[s] = state["last_prices"][s]
+    return px
+
+
+def _check_close_all_flag(state: dict) -> bool:
+    """reset.flag = 'chiudi tutto': chiude ogni posizione al PREZZO DI MERCATO, con commissioni,
+    slippage e funding reali, e registra i trade nello storico. Se per un simbolo non c'e' un
+    prezzo la posizione resta aperta (meglio che inventare un'uscita) e l'esito lo dice."""
+    path = _flag("reset.flag")
+    if not os.path.exists(path):
         return False
     try:
         acc = make_account(state)
-        prices = {}  # chiusura flat: usa prezzi di entrata
+        if not acc.positions:
+            _set_last_action(state, "close_all", True, "nessuna posizione aperta")
+            save_state(state, STATE_FILE)
+            return True
         now_ms = int(time.time() * 1000)
-        closed_count = 0
-        for sym, pos in list(acc.positions.items()):
-            px = pos.entry  # chiusura flat al prezzo di entrata
-            rec = {
-                "id": pos.id, "symbol": sym, "side": pos.side,
-                "margin": pos.total_margin, "lev": pos.leverage,
-                "entry": pos.entry, "exit": px,
-                "open_ms": pos.open_ms, "close_ms": now_ms,
-                "net": 0.0, "gross": 0.0, "fees": 0.0, "funding": 0.0,
-                "reason": "manual_reset", "type": pos.trade_type,
-                "dca_count": pos.dca_count, "source": "manual",
-            }
-            append_trade_history(DATA_DIR, [rec])
-            acc.cash += pos.total_margin
-            closed_count += 1
-        acc.positions.clear()
+        prices = _market_prices(list(acc.positions), state)
+        closed_n, skipped, net = 0, [], 0.0
+        for sym in list(acc.positions):
+            px = prices.get(sym)
+            if px is None:
+                skipped.append(sym)
+                continue
+            rec = acc.close(sym, px, now_ms, "chiusura manuale")
+            if rec:
+                append_trade_history(DATA_DIR, rec)
+                closed_n += 1
+                net += rec["net"]
         save_account(acc, state)
+        detail = f"chiuse {closed_n} posizioni (netto {net:+.2f}$)"
+        if skipped:
+            detail += f"; prezzo non disponibile per {', '.join(skipped)}: ancora aperte, riprova"
+        _set_last_action(state, "close_all", not skipped, detail, closed=closed_n, skipped=skipped)
         save_state(state, STATE_FILE)
-        os.remove(RESET_FLAG)
-        print(f"[RESET] Azzerate {closed_count} posizioni su richiesta manuale", flush=True)
+        print(f"[CHIUDI TUTTO] {detail}", flush=True)
         return True
     except Exception as e:
-        print(f"[RESET ERROR] {e}", flush=True)
+        print(f"[CHIUDI TUTTO ERROR] {e}", flush=True)
+        traceback.print_exc()
+        return False
+    finally:
+        _remove(path)
+
+
+def run_params() -> dict:
+    """I parametri con cui gira questo portafoglio (finiscono nel riepilogo di ogni run archiviata)."""
+    from dataclasses import asdict
+    p = PORTFOLIO
+    return {
+        "portfolio": p.name, "code_version": CODE_VERSION, "limits": asdict(p.limits),
+        "entry_score_base": _ENTRY_SCORE_BASE, "entry_score_tier_ab": 60, "entry_score_tier_c": 70,
+        "guardrail": {"min_margin": p.guardrail_min_margin, "min_lev": p.guardrail_min_lev,
+                      "margin_forced": p.guardrail_margin_forced, "lev_forced": p.guardrail_lev_forced,
+                      "type_forced": p.guardrail_type_forced},
+        "daily_cap_usd": DAILY_CAP,
+    }
+
+
+def summarize_run(state: dict, acc: PaperAccount, now_ms: int) -> dict:
+    closed = list(acc.closed)
+    nets = [float(c.get("net", 0)) for c in closed]
+    wins = [n for n in nets if n > 0]
+    by_type: dict = {}
+    for c in closed:
+        t = by_type.setdefault(c.get("trade_type", "?"), {"n": 0, "net": 0.0})
+        t["n"] += 1
+        t["net"] = round(t["net"] + float(c.get("net", 0)), 4)
+    start = float(acc.limits.start_equity)
+    return {
+        "run_no": state.get("run_no", 1),
+        "portfolio": PORTFOLIO.name,
+        "started_ms": state.get("run_started_ms") or (min((c["open_ms"] for c in closed), default=now_ms)),
+        "ended_ms": now_ms,
+        "start_equity": start,
+        "end_equity": round(acc.cash, 2),
+        "pnl": round(acc.cash - start, 2),
+        "trades": len(closed),
+        "wins": len(wins),
+        "losses": len(nets) - len(wins),
+        "win_rate": round(len(wins) / len(nets) * 100, 1) if nets else 0.0,
+        "net_total": round(sum(nets), 2),
+        "fees_total": round(sum(float(c.get("fees", 0)) for c in closed), 2),
+        "best": round(max(nets), 2) if nets else 0.0,
+        "worst": round(min(nets), 2) if nets else 0.0,
+        "by_type": by_type,
+        "params": run_params(),
+    }
+
+
+def _archive_run(state: dict, acc: PaperAccount, clear_lessons: bool) -> str:
+    """Salva la run corrente in archive/<data-ora>/ (storico trade, stato, appunti, riepilogo,
+    parametri). Ritorna il nome della cartella. Se qualcosa fallisce solleva: il reset NON parte."""
+    import shutil
+    now_ms = int(time.time() * 1000)
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime(now_ms / 1000))
+    root = os.path.join(DATA_DIR, "archive")
+    name, n = stamp, 1
+    while os.path.exists(os.path.join(root, name)):
+        n += 1
+        name = f"{stamp}-{n}"
+    dest = os.path.join(root, name)
+    os.makedirs(dest)
+    with open(os.path.join(dest, "state_v2.json"), "w") as f:
+        json.dump(state, f, default=str)
+    hist = os.path.join(DATA_DIR, "trade_history.jsonl")
+    if os.path.exists(hist):
+        shutil.copy2(hist, os.path.join(dest, "trade_history.jsonl"))
+    for fn in ("lessons.md", "errors.md"):
+        src = os.path.join(DATA_DIR, fn)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(dest, fn))
+    summary = summarize_run(state, acc, now_ms)
+    summary["archive"] = name
+    summary["lessons_cleared"] = clear_lessons
+    with open(os.path.join(dest, "summary.json"), "w") as f:
+        json.dump(summary, f, default=str, indent=1)
+    return name
+
+
+def _check_portfolio_reset_flag(state: dict) -> bool:
+    """reset_portfolio.flag: archivia la run e riparte da 1000$ con i parametri del codice.
+    Regole (controllate anche qui, non solo dall'app): il bot deve essere IN PAUSA e senza
+    posizioni aperte. Dopo il reset resta in pausa: sei tu a premere Avvia."""
+    path = _flag("reset_portfolio.flag")
+    if not os.path.exists(path):
+        return False
+    try:
         try:
-            os.remove(RESET_FLAG)
+            with open(path) as f:
+                opts = json.loads(f.read() or "{}")
+        except Exception:
+            opts = {}
+        clear_lessons = bool(opts.get("clear_lessons")) if isinstance(opts, dict) else False
+        if not os.path.exists(_flag("pause.flag")):
+            _set_last_action(state, "reset_portfolio", False, "rifiutato: il bot non e' in pausa")
+            save_state(state, STATE_FILE)
+            print("[RESET PORTAFOGLIO] rifiutato: bot non in pausa", flush=True)
+            return False
+        acc = make_account(state)
+        if acc.positions:
+            _set_last_action(state, "reset_portfolio", False,
+                             f"rifiutato: {len(acc.positions)} posizioni ancora aperte")
+            save_state(state, STATE_FILE)
+            print("[RESET PORTAFOGLIO] rifiutato: posizioni aperte", flush=True)
+            return False
+        archive = _archive_run(state, acc, clear_lessons)   # se fallisce, non si cancella nulla
+        # solo ora lo storico della run corrente si sposta (la copia e' gia' in archivio)
+        _remove(os.path.join(DATA_DIR, "trade_history.jsonl"))
+        if clear_lessons:
+            _remove(os.path.join(DATA_DIR, "lessons.md"))
+            _remove(os.path.join(DATA_DIR, "errors.md"))
+        now_ms = int(time.time() * 1000)
+        keep = {k: state[k] for k in ("budget", "last_call_ms", "market_ctx", "last_ctx_ts",
+                                      "last_report_day", "last_prices", "last_prices_ms")
+                if k in state}
+        if not clear_lessons and "lessons_day" in state:
+            keep["lessons_day"] = state["lessons_day"]
+        run_no = int(state.get("run_no", 1)) + 1
+        state.clear()
+        state.update(keep)
+        state["main"] = PaperAccount(PORTFOLIO.limits, "main").to_dict()
+        state.update(run_no=run_no, run_started_ms=now_ms, paused=True, mode="paused")
+        _set_last_action(state, "reset_portfolio", True,
+                         f"portafoglio ripartito da {PORTFOLIO.limits.start_equity:.0f}$; run precedente archiviata",
+                         archive=archive)
+        save_state(state, STATE_FILE)
+        print(f"[RESET PORTAFOGLIO] run archiviata in {archive}; conto a "
+              f"{PORTFOLIO.limits.start_equity:.0f}$, bot in pausa", flush=True)
+        return True
+    except Exception as e:
+        print(f"[RESET PORTAFOGLIO ERROR] {e}", flush=True)
+        traceback.print_exc()
+        _set_last_action(state, "reset_portfolio", False, f"errore: {e}")
+        try:
+            save_state(state, STATE_FILE)
         except Exception:
             pass
         return False
+    finally:
+        _remove(path)
 
 
-def iteration(state: dict) -> None:
-    now_ms = int(time.time() * 1000)
+def process_flags(state: dict) -> None:
+    """Esegue i comandi arrivati dall'app. L'ordine conta: budget, chiudi tutto, reset conto."""
     _check_budget_reset_flag(state)
-    _check_reset_flag(state)
+    _check_close_all_flag(state)
+    _check_portfolio_reset_flag(state)
+
+
+def iteration(state: dict, drain: bool = False) -> bool:
+    """Un ciclo di mercato. Ritorna True se e' andato a buon fine."""
+    now_ms = int(time.time() * 1000)
+    HB.update(last_start_ms=now_ms)
+    write_heartbeat(state, cycle_running=True)
+    ok = True
     try:
-        run_cycle(state, now_ms)
-    except Exception:
+        run_cycle(state, now_ms, drain=drain)
+        HB.update(last_ok=True, last_error="")
+    except Exception as e:
+        ok = False
         traceback.print_exc()
+        HB.update(last_ok=False, last_error=f"{type(e).__name__}: {e}"[:300])
+    HB.update(last_end_ms=int(time.time() * 1000), cycles=HB.get("cycles", 0) + 1)
+    write_heartbeat(state, cycle_running=False)
+    return ok
+
+
+def cycle_interval_s(state: dict, paused: bool) -> int:
+    """Pausa con posizioni aperte (svuotamento) o scalp aperto: si guarda piu' spesso."""
+    acc = make_account(state)
+    if any(p.trade_type == "scalp" for p in acc.positions.values()):
+        return CYCLE_FAST_S
+    if paused and acc.positions:
+        return CYCLE_FAST_S
+    return CYCLE_S
+
+
+def sync_mode(state: dict) -> str:
+    """Tiene state['paused'/'mode'] allineati a pause.flag + posizioni; salva solo se cambia."""
+    paused = os.path.exists(_flag("pause.flag"))
+    mode = compute_mode(paused, len((state.get("main") or {}).get("positions") or {}))
+    if state.get("paused") != paused or state.get("mode") != mode:
+        state["paused"], state["mode"] = paused, mode
+        save_state(state, STATE_FILE)
+        print(f"[MODO] {mode}", flush=True)
+    return mode
+
+
+def loop_step(state: dict, ctl: dict) -> bool:
+    """Un giro del ciclo principale (ogni POLL_S secondi). ctl tiene la memoria tra un giro e l'altro:
+    {'next_cycle_ms': int, 'prev_paused': bool|None}. Ritorna True se in questo giro e' girato un ciclo
+    di mercato.
+
+    - i comandi dell'app (chiudi tutto, azzera budget, azzera portafoglio) si eseguono subito;
+    - premere Pausa o Avvia fa partire un ciclo immediato (non si aspetta il prossimo giro);
+    - in pausa il bot continua a girare finche' ha posizioni aperte (svuotamento), poi si ferma da solo.
+    """
+    process_flags(state)
+    paused = os.path.exists(_flag("pause.flag"))
+    if paused != ctl.get("prev_paused"):
+        if ctl.get("prev_paused") is not None:
+            print("[PAUSA] richiesta di pausa: finisco le posizioni aperte, nessun nuovo ingresso"
+                  if paused else "[AVVIO] ripresa richiesta: il bot lavora", flush=True)
+            ctl["next_cycle_ms"] = 0   # reagisce subito al tasto, senza aspettare il prossimo ciclo
+        ctl["prev_paused"] = paused
+    n_open = len((state.get("main") or {}).get("positions") or {})
+    ran = False
+    if int(time.time() * 1000) >= ctl.get("next_cycle_ms", 0) and not (paused and n_open == 0):
+        ok = iteration(state, drain=paused)
+        wait = cycle_interval_s(state, paused) if ok else RETRY_S
+        ctl["next_cycle_ms"] = int(time.time() * 1000) + wait * 1000
+        print(f"[SLEEP] prossimo ciclo tra {wait // 60} min", flush=True)
+        ran = True
+    mode = sync_mode(state)
+    write_heartbeat(state, next_cycle_ms=0 if mode == "paused" else ctl.get("next_cycle_ms", 0))
+    return ran
 
 
 def main() -> None:
@@ -666,33 +947,21 @@ def main() -> None:
     state = load_state(STATE_FILE)
 
     if "--once" in sys.argv:
-        iteration(state)
+        process_flags(state)
+        iteration(state, drain=os.path.exists(_flag("pause.flag")))
         return
 
-    print(f"[DESK V2] avvio [{PORTFOLIO.name.upper()}] — {PORTFOLIO.description}")
+    print(f"[DESK V2] avvio [{PORTFOLIO.name.upper()}] versione {CODE_VERSION} — {PORTFOLIO.description}")
     print(f"[DESK V2] simboli: {len(SYMBOLS)}  "
           f"entry_score=60(TIER_AB)/70(TIER_C)  "
           f"daily_cap={DAILY_CAP}$  data={DATA_DIR}")
+    ctl = {"next_cycle_ms": 0, "prev_paused": None}
     while True:
-        # ── Pausa: se esiste pause.flag il bot aspetta senza fare nulla ──
-        if os.path.exists(PAUSE_FLAG):
-            print("[PAUSA] pause.flag trovato — bot in attesa. Rimuovi il file per riprendere.")
-            # Segna paused nello stato così il server/frontend lo vede
-            state["paused"] = True
-            save_state(state, STATE_FILE)
-            while os.path.exists(PAUSE_FLAG):
-                time.sleep(15)
-            print("[PAUSA] pause.flag rimosso — bot riprende.")
-            state = load_state(STATE_FILE)  # ricarica stato fresco dopo la pausa
-            state["paused"] = False
-            save_state(state, STATE_FILE)
-            continue
-
-        iteration(state)
-        # sleep adattiva: scalp richiede attenzione ogni 15 min, default ogni 30 min
-        sleep_s = 900 if any(p.trade_type == "scalp" for p in make_account(state).positions.values()) else 1800
-        print(f"[SLEEP] {sleep_s//60} min")
-        time.sleep(sleep_s)
+        try:
+            loop_step(state, ctl)
+        except Exception:
+            traceback.print_exc()
+        time.sleep(POLL_S)
 
 
 if __name__ == "__main__":

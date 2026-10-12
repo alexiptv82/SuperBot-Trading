@@ -419,8 +419,10 @@ def test_full_cycle_v2_opens_position_and_saves_state():
             acc = cli.make_account(state)
             assert "BTC" in acc.positions, f"BTC dovrebbe essere aperto, posizioni: {list(acc.positions)}"
             pos = acc.positions["BTC"]
-            assert pos.leverage >= 15, f"GUARDRAIL deve forzare lev>=15x, got {pos.leverage}"
-            assert pos.total_margin >= 150, f"GUARDRAIL deve forzare margin>=150$, got {pos.total_margin}"
+            pg = _c.PORTFOLIO   # i minimi dipendono dal portafoglio (Hawk 50$/10x, Bull 150$/10x)
+            assert pos.leverage >= pg.guardrail_min_lev, f"lev sotto il minimo del portafoglio: {pos.leverage}"
+            assert pg.guardrail_min_margin <= pos.total_margin <= pg.limits.max_margin_trade, \
+                f"margine fuori dai limiti del portafoglio {pg.name}: {pos.total_margin}"
             assert pos.trade_type in ("scalp", "medio")
     finally:
         cli.fetch_candles = orig_fetch
@@ -548,3 +550,415 @@ def test_adaptive_sleep_shorter_with_open_scalp():
         acc.open("BTC", 1, 100, 10, 100.0, 95.0, None, 0, {}, trade_type="scalp")
         sleep_with_scalp = 900 if any(p.trade_type == "scalp" for p in acc.positions.values()) else 1800
         assert sleep_with_scalp == 900
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PAUSA = SVUOTAMENTO, COMANDI DELL'APP, RESET PORTAFOGLIO, HEARTBEAT
+# ──────────────────────────────────────────────────────────────────────────────
+import contextlib  # noqa: E402
+
+
+@contextlib.contextmanager
+def _sandbox(claude=None):
+    """Cartella dati temporanea + mercato finto + Claude finto. Ripristina tutto all'uscita."""
+    import desk.brain as _brain
+    import desk.market_context as _mc
+    import desk.cli as _c
+
+    world = _world()
+    saved = (cli.fetch_candles, _mc.fetch_all_context, _brain.call_claude, _c.call_claude,
+             _c.DATA_DIR, _c.STATE_FILE, os.environ.get("ANTHROPIC_API_KEY"),
+             os.environ.pop("TELEGRAM_BOT_TOKEN", None))
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: (world.get(sym, np.zeros((0, 6)))[-limit:].tolist())
+    _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
+    calls = []
+
+    def counted(system, user, max_tokens=1100, timeout=60):
+        calls.append(1)
+        return claude(system, user, max_tokens, timeout)
+
+    if claude is not None:
+        _brain.call_claude = counted
+        _c.call_claude = counted
+        os.environ["ANTHROPIC_API_KEY"] = "test"
+    else:
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            _c.DATA_DIR = d
+            _c.STATE_FILE = os.path.join(d, "state_v2.json")
+            _c.HB.update(last_ok=None, last_error="", cycles=0)
+            yield d, calls
+    finally:
+        (cli.fetch_candles, _mc.fetch_all_context, _brain.call_claude, _c.call_claude,
+         _c.DATA_DIR, _c.STATE_FILE, key, tok) = saved
+        if key is None:
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+        else:
+            os.environ["ANTHROPIC_API_KEY"] = key
+        if tok is not None:
+            os.environ["TELEGRAM_BOT_TOKEN"] = tok
+
+
+def _decisions_stub(*decs):
+    """call_claude che ritorna sempre le decisioni indicate (dict gia' completi)."""
+    def call(system, user, max_tokens=1100, timeout=60):
+        return json.dumps({"decisions": list(decs), "note": ""}), {"input_tokens": 2000, "output_tokens": 150}
+    return call
+
+
+def _dec(symbol, action, **kw):
+    base = {"symbol": symbol, "action": action, "confidence": 85, "leverage": 10, "margin_usd": 100,
+            "stop_loss_pct": 0.015, "take_profit_pct": 0.03, "reason": "test", "trade_type": "medio",
+            "dca_sl_pct": 0.012, "dca_tp_pct": 0.025}
+    base.update(kw)
+    return base
+
+
+def _open_btc(state, d):
+    """Apre BTC con una prima passata normale (ritorna l'account dopo il ciclo)."""
+    cli.run_cycle(state, NOW)
+    acc = cli.make_account(state)
+    assert "BTC" in acc.positions, f"setup: BTC non aperto ({list(acc.positions)})"
+    return acc
+
+
+def test_pause_drain_blocks_new_entries_and_dca_but_keeps_positions():
+    with _sandbox(_decisions_stub(_dec("BTC", "open_long"))) as (d, calls):
+        state = {}
+        _open_btc(state, d)
+        # in pausa Claude propone un nuovo ingresso (ETH) e un DCA su BTC: nessuno dei due deve passare
+        import desk.brain as _brain, desk.cli as _c
+        stub = _decisions_stub(_dec("ETH", "open_long"), _dec("BTC", "dca"))
+        _brain.call_claude = _c.call_claude = stub
+        state["last_call_ms"] = 0
+        state["last_open_ms"] = {}
+        cli.run_cycle(state, NOW + cli.HOUR_MS, drain=True)
+        acc = cli.make_account(state)
+        assert list(acc.positions) == ["BTC"], f"in pausa non si apre nulla: {list(acc.positions)}"
+        assert acc.positions["BTC"].dca_count == 0, "in pausa niente DCA"
+        assert not acc.closed, "la pausa NON chiude le posizioni a forza"
+
+
+def test_pause_drain_still_allows_exits_decided_by_the_bot():
+    with _sandbox(_decisions_stub(_dec("BTC", "open_long"))) as (d, calls):
+        state = {}
+        _open_btc(state, d)
+        import desk.brain as _brain, desk.cli as _c
+        stub = _decisions_stub(_dec("BTC", "close", reason="segnale girato"))
+        _brain.call_claude = _c.call_claude = stub
+        state["last_call_ms"] = 0
+        cli.run_cycle(state, NOW + cli.HOUR_MS, drain=True)
+        acc = cli.make_account(state)
+        assert not acc.positions, "l'uscita decisa dal bot e' ammessa anche in pausa"
+        assert len(acc.closed) == 1 and acc.closed[0]["why"] == "chiusura Claude"
+        hist = os.path.join(d, "trade_history.jsonl")
+        assert os.path.exists(hist)
+
+
+def test_pause_without_positions_does_not_call_claude_or_open():
+    with _sandbox(_decisions_stub(_dec("BTC", "open_long"))) as (d, calls):
+        state = {}
+        cli.run_cycle(state, NOW, drain=True)
+        assert not calls, "in pausa e senza posizioni non si paga nessuna chiamata a Claude"
+        assert not cli.make_account(state).positions
+
+
+def test_pause_pressed_mid_cycle_applies_immediately():
+    """Se pause.flag compare mentre il ciclo e' in corso, quel ciclo non apre piu' nulla."""
+    with _sandbox(_decisions_stub(_dec("BTC", "open_long"))) as (d, calls):
+        import desk.brain as _brain, desk.cli as _c
+        flag = os.path.join(d, "pause.flag")
+
+        def call_then_pause(system, user, max_tokens=1100, timeout=60):
+            open(flag, "w").close()   # l'utente preme Pausa mentre Claude sta ragionando
+            return _decisions_stub(_dec("BTC", "open_long"))(system, user)
+
+        _brain.call_claude = _c.call_claude = call_then_pause
+        state = {}
+        cli.run_cycle(state, NOW)   # parte "in marcia" (drain=False)
+        assert not cli.make_account(state).positions
+
+
+def test_resume_cycle_opens_again():
+    with _sandbox(_decisions_stub(_dec("BTC", "open_long"))) as (d, calls):
+        state = {}
+        cli.run_cycle(state, NOW, drain=True)
+        assert not cli.make_account(state).positions
+        state["last_call_ms"] = 0
+        cli.run_cycle(state, NOW + cli.HOUR_MS, drain=False)
+        assert "BTC" in cli.make_account(state).positions
+
+
+def test_limits_come_from_code_not_from_saved_state():
+    with tempfile.TemporaryDirectory() as d:
+        import desk.cli as _c
+        _c.DATA_DIR = d
+        old = Limits(max_margin_trade=999.0, max_open=77, kill_equity=1.0)
+        stale = PaperAccount(old, "main").to_dict()
+        acc = cli.make_account({"main": stale})
+        assert acc.limits.max_margin_trade == cli.PORTFOLIO.limits.max_margin_trade
+        assert acc.limits.max_open == cli.PORTFOLIO.limits.max_open
+
+
+def test_compute_mode():
+    assert cli.compute_mode(False, 0) == "running"
+    assert cli.compute_mode(False, 3) == "running"
+    assert cli.compute_mode(True, 3) == "draining"
+    assert cli.compute_mode(True, 0) == "paused"
+
+
+def test_budget_reset_flag_touches_only_the_budget():
+    with _sandbox() as (d, calls):
+        state = {}
+        acc = cli.make_account(state)
+        acc.open("BTC", 1, 100, 10, 100.0, 95.0, None, NOW, {})
+        cli.save_account(acc, state)
+        state["budget"] = {"day": "2026-10-12", "spent": 0.66, "calls": 9}
+        flag = os.path.join(d, "budget_reset.flag")
+        with open(flag, "w") as f:
+            f.write("equity_reset")   # il vecchio contenuto non deve piu' azzerare il conto
+        assert cli._check_budget_reset_flag(state) is True
+        assert state["budget"]["spent"] == 0.0 and state["budget"]["calls"] == 0
+        assert not os.path.exists(flag)
+        after = cli.make_account(state)
+        assert "BTC" in after.positions and after.cash < 1000, "il conto non si tocca"
+
+
+def _state_with_position(price_entry=100.0):
+    state = {}
+    acc = cli.make_account(state)
+    pos, msg = acc.open("BTC", 1, 100, 10, price_entry, price_entry * 0.95, None, NOW, {})
+    assert pos, msg
+    cli.save_account(acc, state)
+    return state
+
+
+def test_close_all_closes_at_market_price_with_real_costs():
+    with _sandbox() as (d, calls):
+        state = _state_with_position(100.0)
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [[NOW, 101, 103, 100, 102.0, 1.0]]
+        open(os.path.join(d, "reset.flag"), "w").close()
+        assert cli._check_close_all_flag(state) is True
+        acc = cli.make_account(state)
+        assert not acc.positions
+        rec = acc.closed[0]
+        assert rec["why"] == "chiusura manuale"
+        assert abs(rec["exit"] - 102.0) < 0.05, f"deve chiudere al prezzo di mercato, non a quello d'ingresso: {rec['exit']}"
+        assert rec["net"] > 0 and rec["fees"] > 0, "pnl e commissioni reali, non zero"
+        assert not os.path.exists(os.path.join(d, "reset.flag"))
+        line = json.loads(open(os.path.join(d, "trade_history.jsonl")).read().splitlines()[0])
+        assert isinstance(line, dict) and line["symbol"] == "BTC" and line["net"] == rec["net"]
+        assert state["last_action"]["type"] == "close_all" and state["last_action"]["ok"] is True
+
+
+def test_close_all_without_price_keeps_position_open_and_says_so():
+    with _sandbox() as (d, calls):
+        state = _state_with_position(100.0)
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: []
+        open(os.path.join(d, "reset.flag"), "w").close()
+        cli._check_close_all_flag(state)
+        assert "BTC" in cli.make_account(state).positions, "senza prezzo non si inventa un'uscita"
+        assert state["last_action"]["ok"] is False and "BTC" in state["last_action"]["skipped"]
+
+
+def _closed_trade_state(d, n=3):
+    """Stato in pausa-e-piatto con n trade chiusi e relativo storico su disco."""
+    state = {}
+    acc = cli.make_account(state)
+    px = 100.0
+    for i in range(n):
+        acc.open("BTC", 1, 100, 10, px, px * 0.95, None, NOW + i * 1000, {})
+        rec = acc.close("BTC", px * (1.02 if i % 2 == 0 else 0.99), NOW + i * 1000 + 500, "take profit")
+        cli.append_trade_history(d, rec)
+    cli.save_account(acc, state)
+    state["budget"] = {"day": "2026-10-12", "spent": 0.3, "calls": 4}
+    state["run_no"] = 1
+    cli.save_state(state, os.path.join(d, "state_v2.json"))
+    return state, acc
+
+
+def test_portfolio_reset_refused_if_not_paused():
+    with _sandbox() as (d, calls):
+        state, acc = _closed_trade_state(d)
+        cash_before = cli.make_account(state).cash
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
+        assert cli._check_portfolio_reset_flag(state) is False
+        assert cli.make_account(state).cash == cash_before and len(cli.make_account(state).closed) == 3
+        assert not os.path.exists(os.path.join(d, "archive"))
+        assert state["last_action"]["ok"] is False and "pausa" in state["last_action"]["detail"]
+        assert not os.path.exists(os.path.join(d, "reset_portfolio.flag"))
+
+
+def test_portfolio_reset_refused_with_open_positions():
+    with _sandbox() as (d, calls):
+        state = _state_with_position()
+        open(os.path.join(d, "pause.flag"), "w").close()
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
+        assert cli._check_portfolio_reset_flag(state) is False
+        assert "BTC" in cli.make_account(state).positions
+        assert "aperte" in state["last_action"]["detail"]
+
+
+def test_portfolio_reset_archives_run_and_restarts_from_1000_in_pause():
+    with _sandbox() as (d, calls):
+        state, acc = _closed_trade_state(d)
+        open(os.path.join(d, "lessons.md"), "w").write("appunti")
+        open(os.path.join(d, "pause.flag"), "w").close()
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
+        net_before = round(sum(c["net"] for c in acc.closed), 2)
+        assert cli._check_portfolio_reset_flag(state) is True
+        # conto nuovo da 1000$, nessun trade, resta in pausa
+        new = cli.make_account(state)
+        assert new.cash == 1000.0 and not new.positions and not new.closed
+        assert state["paused"] is True and state["mode"] == "paused" and state["run_no"] == 2
+        assert state["budget"]["spent"] == 0.3, "il budget giornaliero di Claude non c'entra col conto"
+        assert os.path.exists(os.path.join(d, "pause.flag")), "dopo il reset il bot resta in pausa"
+        assert not os.path.exists(os.path.join(d, "trade_history.jsonl")), "lo storico riparte vuoto"
+        assert os.path.exists(os.path.join(d, "lessons.md")), "gli appunti si tengono se non richiesto"
+        # archivio completo
+        arch = os.path.join(d, "archive", state["last_action"]["archive"])
+        for fn in ("summary.json", "trade_history.jsonl", "state_v2.json", "lessons.md"):
+            assert os.path.exists(os.path.join(arch, fn)), fn
+        summ = json.load(open(os.path.join(arch, "summary.json")))
+        assert summ["trades"] == 3 and summ["run_no"] == 1 and summ["net_total"] == net_before
+        assert summ["params"]["limits"]["max_margin_trade"] == cli.PORTFOLIO.limits.max_margin_trade
+        assert len(open(os.path.join(arch, "trade_history.jsonl")).read().splitlines()) == 3
+        # lo stato su disco e' quello nuovo
+        assert cli.load_state(cli.STATE_FILE)["run_no"] == 2
+
+
+def test_portfolio_reset_can_clear_lessons():
+    with _sandbox() as (d, calls):
+        state, _ = _closed_trade_state(d)
+        open(os.path.join(d, "lessons.md"), "w").write("appunti")
+        open(os.path.join(d, "pause.flag"), "w").close()
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write(json.dumps({"clear_lessons": True}))
+        assert cli._check_portfolio_reset_flag(state) is True
+        assert not os.path.exists(os.path.join(d, "lessons.md"))
+        arch = os.path.join(d, "archive", state["last_action"]["archive"])
+        assert open(os.path.join(arch, "lessons.md")).read() == "appunti", "gli appunti restano in archivio"
+
+
+def test_second_reset_does_not_overwrite_first_archive():
+    with _sandbox() as (d, calls):
+        state, _ = _closed_trade_state(d)
+        open(os.path.join(d, "pause.flag"), "w").close()
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
+        assert cli._check_portfolio_reset_flag(state)
+        first = state["last_action"]["archive"]
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
+        assert cli._check_portfolio_reset_flag(state)
+        assert state["last_action"]["archive"] != first
+        assert len(os.listdir(os.path.join(d, "archive"))) == 2
+
+
+@contextlib.contextmanager
+def _frozen_clock(ms=NOW):
+    """Il bot usa l'ora reale: per far coincidere ora e candele finte si congela time.time() dentro cli."""
+    import time as _real
+
+    class _T:
+        time = staticmethod(lambda: ms / 1000.0)
+        sleep = staticmethod(_real.sleep)
+        strftime = staticmethod(_real.strftime)
+        gmtime = staticmethod(_real.gmtime)
+    saved = cli.time
+    cli.time = _T
+    try:
+        yield
+    finally:
+        cli.time = saved
+
+
+def test_loop_step_pause_drain_then_paused_then_resume():
+    with _frozen_clock():
+        _loop_step_pause_drain_then_paused_then_resume()
+
+
+def _loop_step_pause_drain_then_paused_then_resume():
+    """Il percorso completo dei tasti: marcia -> Pausa (svuotamento) -> fermo -> Avvia."""
+    with _sandbox(_decisions_stub(_dec("BTC", "open_long"))) as (d, calls):
+        import desk.brain as _brain, desk.cli as _c
+        state, ctl = {}, {"next_cycle_ms": 0, "prev_paused": None}
+        hb = lambda: json.load(open(os.path.join(d, "heartbeat.json")))
+        # 1) in marcia: il primo giro fa un ciclo e apre BTC
+        assert cli.loop_step(state, ctl) is True
+        assert "BTC" in cli.make_account(state).positions
+        assert hb()["mode"] == "running" and state["mode"] == "running"
+        # 2) senza tasti, il giro dopo non rifa il ciclo (aspetta il prossimo intervallo)
+        assert cli.loop_step(state, ctl) is False
+        # 3) Pausa: ciclo immediato in svuotamento, la posizione resta, modo = draining
+        open(os.path.join(d, "pause.flag"), "w").close()
+        stub = _decisions_stub(_dec("ETH", "open_long"))
+        _brain.call_claude = _c.call_claude = stub
+        state["last_call_ms"] = 0
+        assert cli.loop_step(state, ctl) is True
+        assert list(cli.make_account(state).positions) == ["BTC"]
+        assert state["mode"] == "draining" and state["paused"] is True and hb()["mode"] == "draining"
+        # 4) la posizione si chiude (qui: chiusura manuale) -> il bot passa a "in pausa" e non cicla piu'
+        open(os.path.join(d, "reset.flag"), "w").close()
+        cli.loop_step(state, ctl)
+        assert not cli.make_account(state).positions
+        assert state["mode"] == "paused" and hb()["mode"] == "paused"
+        ctl["next_cycle_ms"] = 0
+        n_cycles = hb()["cycles"]
+        assert cli.loop_step(state, ctl) is False and hb()["cycles"] == n_cycles, "fermo = nessun ciclo"
+        # 5) Avvia: ripresa immediata
+        os.remove(os.path.join(d, "pause.flag"))
+        stub2 = _decisions_stub(_dec("BTC", "open_long"))
+        _brain.call_claude = _c.call_claude = stub2
+        state["last_call_ms"] = 0
+        state["last_open_ms"] = {}
+        assert cli.loop_step(state, ctl) is True
+        assert state["mode"] == "running" and "BTC" in cli.make_account(state).positions
+
+
+def test_failed_cycle_retries_soon_and_reports_error():
+    with _frozen_clock(), _sandbox() as (d, calls):
+        state, ctl = {}, {"next_cycle_ms": 0, "prev_paused": None}
+        orig = cli.run_cycle
+
+        def boom(*a, **k):
+            raise RuntimeError("mercato giu'")
+        cli.run_cycle = boom
+        try:
+            before = NOW
+            assert cli.loop_step(state, ctl) is True
+            assert ctl["next_cycle_ms"] - before <= (cli.RETRY_S + 5) * 1000
+            hb = json.load(open(os.path.join(d, "heartbeat.json")))
+            assert hb["last_ok"] is False and "mercato" in hb["last_error"]
+        finally:
+            cli.run_cycle = orig
+
+
+def test_heartbeat_and_healthcheck():
+    from desk import healthcheck as hc
+    with tempfile.TemporaryDirectory() as d:
+        now = 1_800_000_000.0
+        assert hc.check(d, now) is False, "niente heartbeat e niente stato: non e' sano"
+        open(os.path.join(d, "pause.flag"), "w").close()
+        assert hc.check(d, now) is True, "ripiego vecchia regola: in pausa e' sano"
+        os.remove(os.path.join(d, "pause.flag"))
+        with open(os.path.join(d, "heartbeat.json"), "w") as f:
+            json.dump({"ts": now - 60}, f)
+        assert hc.check(d, now) is True
+        with open(os.path.join(d, "heartbeat.json"), "w") as f:
+            json.dump({"ts": now - 20 * 60}, f)
+        assert hc.check(d, now) is False, "battito fermo da 20 minuti: bot bloccato"
+        # anche in pausa, con battito fermo, e' bloccato (il nuovo bot batte sempre)
+        open(os.path.join(d, "pause.flag"), "w").close()
+        assert hc.check(d, now) is False
+        with open(os.path.join(d, "heartbeat.json"), "w") as f:
+            f.write("{non json")
+        assert hc.check(d, now) is True, "heartbeat illeggibile: ripiego, pause.flag presente"
+
+
+def test_symbol_stats_ignore_legacy_list_records():
+    from desk.brain import load_symbol_stats
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(d, "trade_history.jsonl"), "w") as f:
+            f.write(json.dumps([{"symbol": "BTC", "net": 0.0}]) + "\n")   # vecchio formato (lista)
+            f.write(json.dumps({"symbol": "ETH", "net": 5.0, "trade_type": "medio"}) + "\n")
+        st = load_symbol_stats(d)
+        assert "ETH" in st and st["ETH"]["wins"] == 1 and "BTC" not in st

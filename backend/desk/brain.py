@@ -455,9 +455,11 @@ def load_symbol_stats(data_dir: str, last_n: int = 200) -> dict:
         trades = []
         for line in lines[-last_n:]:
             try:
-                trades.append(json.loads(line))
+                rec = json.loads(line)
             except Exception:
                 continue
+            if isinstance(rec, dict):   # righe vecchie (liste) di reset passati: si ignorano
+                trades.append(rec)
         stats: dict = {}
         for t in trades:
             sym = t.get("symbol", "?")

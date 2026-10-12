@@ -56,6 +56,8 @@ jobs:
 
             # --- Build immagine comune (una sola build, due container)
             cd /opt/superbot-desk
+            CODE_VERSION=$(git rev-parse --short HEAD)
+            echo "VERSIONE CODICE: ${CODE_VERSION}"
             docker build -t superbot-desk -f Dockerfile.desk .
 
             # ── HAWK ─────────────────────────────────────────────────────────
@@ -67,6 +69,7 @@ jobs:
               --memory 768m --cpus 0.5 \
               -e TELEGRAM_BOT_TOKEN -e TELEGRAM_CHAT_ID -e ANTHROPIC_API_KEY \
               -e DESK_PORTFOLIO=hawk \
+              -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/hawk \
               -v /opt/superbot-desk-data/hawk:/app/data/desk/hawk \
               superbot-desk
@@ -80,6 +83,7 @@ jobs:
               --memory 768m --cpus 0.5 \
               -e TELEGRAM_BOT_TOKEN -e TELEGRAM_CHAT_ID -e ANTHROPIC_API_KEY \
               -e DESK_PORTFOLIO=bull \
+              -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/bull \
               -v /opt/superbot-desk-data/bull:/app/data/desk/bull \
               superbot-desk
