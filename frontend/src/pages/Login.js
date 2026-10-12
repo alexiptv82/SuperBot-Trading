@@ -53,7 +53,7 @@ export default function Login({ onLogin }) {
   // Sessione completa ottenuta: salva il token e, se ha senso, propone
   // l'impronta prima di entrare nell'app.
   const finishLogin = async (token, { offerBio } = {}) => {
-    localStorage.setItem('sb_token', token);
+    sessionStorage.setItem('sb_token', token);
     if (offerBio) {
       try {
         const [{ data: status }, platformOk] = await Promise.all([

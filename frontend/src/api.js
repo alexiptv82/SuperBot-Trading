@@ -17,7 +17,7 @@ const API = axios.create({
 
 // Allega il token di sessione a ogni richiesta, se presente.
 API.interceptors.request.use((cfg) => {
-  const token = localStorage.getItem('sb_token');
+  const token = sessionStorage.getItem('sb_token');
   // Non sovrascrive un token passato esplicitamente (es. quello limitato del cambio password).
   if (token && !cfg.headers.Authorization) cfg.headers.Authorization = `Bearer ${token}`;
   return cfg;
@@ -32,7 +32,7 @@ API.interceptors.response.use(
     const isAuthForm = url.includes('/api/auth/login') || url.includes('/api/auth/change-password')
       || url.includes('/api/auth/forgot');
     if (err?.response?.status === 401 && !isAuthForm) {
-      localStorage.removeItem('sb_token');
+      sessionStorage.removeItem('sb_token');
       if (window.location.pathname !== '/') window.location.href = '/';
     }
     return Promise.reject(err);
