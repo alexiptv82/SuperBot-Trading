@@ -641,7 +641,8 @@ async def desk_status(session=Depends(require_session)):
     if not state:
         return {"available": False, "message": "Bot V2 non ancora attivo o nessun dato disponibile"}
 
-    acc = state.get("account", {})
+    # state_v2.json usa chiave "main" per il conto (non "account")
+    acc = state.get("main", state.get("account", {}))
     budget = state.get("budget", {})
     positions = acc.get("positions", {})
 
@@ -650,11 +651,11 @@ async def desk_status(session=Depends(require_session)):
         open_list.append({
             "symbol": sym,
             "side": pos.get("side"),
-            "entry_price": pos.get("entry"),
+            "entry_price": pos.get("entry_price", pos.get("entry")),
             "quantity": pos.get("qty"),
-            "leverage": pos.get("lev"),
-            "margin": pos.get("margin"),
-            "trade_type": pos.get("type"),
+            "leverage": pos.get("leverage", pos.get("lev")),
+            "margin": pos.get("total_margin", pos.get("margin")),
+            "trade_type": pos.get("trade_type", pos.get("type")),
             "dca_count": pos.get("dca_count", 0),
             "open_ms": pos.get("open_ms"),
         })
@@ -666,8 +667,8 @@ async def desk_status(session=Depends(require_session)):
         "equity": round(acc.get("cash", 0), 2),
         "open_positions": len(positions),
         "positions": open_list,
-        "total_closed": state.get("total_closed", 0),
-        "day": state.get("day", ""),
+        "total_closed": acc.get("closed", state.get("total_closed", 0)),
+        "day": acc.get("day", state.get("day", "")),
         "cycle": state.get("cycle", 0),
         "halt": state.get("halt"),
         "budget_spent_usd": round(budget.get("spent", 0), 4),
