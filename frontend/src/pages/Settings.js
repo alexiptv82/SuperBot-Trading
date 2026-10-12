@@ -288,8 +288,13 @@ export default function Settings() {
       {config && riskForm && (
         <>
           <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
-            ✏️ Limiti di Rischio
+            ✏️ Limiti di Rischio <span style={{ fontSize: '11px', fontWeight: 'normal', color: '#64748b' }}>(Bot V1 — non influenza V2)</span>
           </h2>
+          <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid #78350f', borderRadius: '10px',
+            padding: '10px 12px', marginBottom: '10px', fontSize: '12px', color: '#fbbf24' }}>
+            ⚠️ Questi parametri riguardano il Bot V1 (attualmente disattivato). Il Bot V2 usa leva 15-45x
+            e margine min 150$ configurati direttamente nel codice — non sono modificabili da qui.
+          </div>
           <Card style={{ marginBottom: '16px' }}>
             {RISK_FIELDS.map(f => {
               const err = riskError(f.key);

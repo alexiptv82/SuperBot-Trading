@@ -16,7 +16,8 @@ const Chip = ({ active, onClick, children }) => (
 );
 
 export default function Trades() {
-  const [trades, setTrades] = useState([]);
+  const [trades, setTrades] = useState([]);       // chiusi dal JSONL
+  const [openPos, setOpenPos] = useState([]);     // aperti dallo stato live
   const [loading, setLoading] = useState(false);
   const [symbolFilter, setSymbolFilter] = useState('all');
   const [sideFilter, setSideFilter] = useState('all');
@@ -25,28 +26,54 @@ export default function Trades() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await deskAPI.getTrades(PAGE_SIZE);
-      setTrades(Array.isArray(data) ? data : []);
+      const [histRes, statusRes] = await Promise.all([
+        deskAPI.getTrades(PAGE_SIZE),
+        deskAPI.getStatus(),
+      ]);
+      setTrades(Array.isArray(histRes.data) ? histRes.data : []);
+      // posizioni aperte da status — le trasformiamo nel formato card
+      const pos = statusRes.data?.positions;
+      if (Array.isArray(pos)) {
+        setOpenPos(pos.map(p => ({
+          symbol: p.symbol,
+          side: p.side,
+          entry_price: p.entry,
+          exit_price: null,        // aperta
+          leverage: p.leverage,
+          margin: p.margin,
+          trade_type: p.trade_type,
+          pnl: null,
+          open_ms: null,
+          close_ms: null,
+          close_reason: null,
+          _isOpen: true,
+        })));
+      } else {
+        setOpenPos([]);
+      }
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
+  // unione: aperti in testa, poi chiusi
+  const allTrades = useMemo(() => [...openPos, ...trades], [openPos, trades]);
+
   const symbols = useMemo(() => {
-    const set = new Set(trades.map(t => t.symbol).filter(Boolean));
+    const set = new Set(allTrades.map(t => t.symbol).filter(Boolean));
     return ['all', ...Array.from(set).sort()];
-  }, [trades]);
+  }, [allTrades]);
 
   // side V2 è int (1=LONG, -1=SHORT) — normalizza a stringa per i filtri
   const sideStr = (s) => s === 1 ? 'long' : s === -1 ? 'short' : (s || '').toLowerCase();
 
-  const filtered = trades.filter(t => {
+  const filtered = allTrades.filter(t => {
     if (symbolFilter !== 'all' && t.symbol !== symbolFilter) return false;
     if (sideFilter !== 'all' && sideStr(t.side) !== sideFilter) return false;
-    const closed = t.exit_price != null;
-    if (outcomeFilter === 'open' && closed) return false;
-    if (outcomeFilter === 'win' && !(closed && (t.pnl ?? 0) > 0)) return false;
-    if (outcomeFilter === 'loss' && !(closed && (t.pnl ?? 0) < 0)) return false;
+    const isOpen = t._isOpen || t.exit_price == null;
+    if (outcomeFilter === 'open' && !isOpen) return false;
+    if (outcomeFilter === 'win' && !(t.exit_price != null && (t.pnl ?? 0) > 0)) return false;
+    if (outcomeFilter === 'loss' && !(t.exit_price != null && (t.pnl ?? 0) < 0)) return false;
     return true;
   });
 

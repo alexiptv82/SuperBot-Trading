@@ -742,63 +742,35 @@ async def desk_prices(session=Depends(require_session)):
 
 @app.post("/api/desk/close-all")
 async def desk_close_all(session=Depends(require_session)):
-    """Forza la chiusura di tutte le posizioni V2 aperte scrivendo direttamente sul file di stato.
-    Usato per resettare manualmente le posizioni aperte (es. dopo cambio strategia).
-    Le posizioni vengono registrate come chiuse nel JSONL con reason='manual_reset'.
+    """Segnala al container desk di azzerare tutte le posizioni aperte.
+    Scrive un file reset.flag nel volume condiviso; il desk lo legge al prossimo ciclo
+    (max 15-30 secondi) e azzera posizioni in modo coordinato senza race condition.
     """
-    import time as _time
-    state = _desk_state()
-    if not state:
-        return {"closed": 0, "message": "nessun stato disponibile"}
+    flag_path = os.path.join(_DESK_DATA, "reset.flag")
+    try:
+        with open(flag_path, "w") as f:
+            import time as _time
+            f.write(str(int(_time.time())))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"impossibile scrivere reset.flag: {e}")
 
+    # conta le posizioni attuali per dare feedback all'utente
+    state = _desk_state()
     acc = state.get("main", state.get("account", {}))
     positions = acc.get("positions", {})
-    if not positions:
-        return {"closed": 0, "message": "nessuna posizione aperta"}
-
-    # Scrive le posizioni chiuse nel JSONL
-    now_ms = int(_time.time() * 1000)
-    jsonl_path = os.path.join(_DESK_DATA, "trade_history.jsonl")
-    closed_symbols = []
-    total_margin_returned = 0.0
-
-    with open(jsonl_path, "a") as f:
-        for sym, pos in positions.items():
-            margin = pos.get("total_margin", pos.get("margin", 0))
-            rec = {
-                "id": pos.get("id", 0),
-                "symbol": sym,
-                "side": pos.get("side"),
-                "margin": margin,
-                "lev": pos.get("leverage"),
-                "entry": pos.get("entry", pos.get("entry_price")),
-                "exit": pos.get("entry", pos.get("entry_price")),  # chiusura al prezzo di entrata (flat)
-                "open_ms": pos.get("open_ms", now_ms),
-                "close_ms": now_ms,
-                "net": 0.0,
-                "gross": 0.0,
-                "fees": 0.0,
-                "funding": 0.0,
-                "reason": "manual_reset",
-                "type": pos.get("trade_type", "medio"),
-                "dca_count": pos.get("dca_count", 0),
-                "source": "manual",
-            }
-            f.write(json.dumps(rec) + "\n")
-            total_margin_returned += margin
-            closed_symbols.append(sym)
-
-    # Svuota le posizioni e restituisce il margine alla cassa
-    acc["positions"] = {}
-    acc["cash"] = round(acc.get("cash", 0) + total_margin_returned, 4)
-    state["main"] = acc
-    _desk_state_save(state)
+    n = len(positions)
+    symbols = list(positions.keys())
 
     return {
-        "closed": len(closed_symbols),
-        "symbols": closed_symbols,
-        "margin_returned": round(total_margin_returned, 2),
-        "message": f"Chiuse {len(closed_symbols)} posizioni. Margine restituito: ${total_margin_returned:.2f}",
+        "queued": True,
+        "positions_found": n,
+        "symbols": symbols,
+        "message": (
+            f"Reset inviato: {n} posizioni verranno chiuse entro il prossimo ciclo (15-30s). "
+            "La dashboard si aggiornerà automaticamente."
+            if n > 0 else
+            "Nessuna posizione aperta al momento. Il flag è stato scritto comunque."
+        ),
     }
 
 
