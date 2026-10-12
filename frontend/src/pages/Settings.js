@@ -38,11 +38,32 @@ export default function Settings() {
   const [showPwdForm, setShowPwdForm] = useState(false);
   const [pwdMsg, setPwdMsg] = useState('');
   const [pwdStatus, setPwdStatus] = useState(null);
+  const [resetMsg, setResetMsg] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     botAPI.passwordStatus().then(({ data }) => setPwdStatus(data)).catch(() => {});
     deskAPI.getStatus().then(({ data }) => setDeskStatus(data)).catch(() => {});
   }, []);
+
+  const handleResetBudget = async (equityReset) => {
+    const label = equityReset ? 'equity a 1000$ + budget AI' : 'solo budget AI';
+    if (!window.confirm(`Confermi reset ${label}?`)) return;
+    setResetLoading(true);
+    setResetMsg('');
+    try {
+      const { data } = await deskAPI.resetBudget(equityReset);
+      setResetMsg(`✅ ${data.message} — attivo al prossimo ciclo bot`);
+      // ricarica stato dopo 3 secondi
+      setTimeout(() => {
+        deskAPI.getStatus().then(({ data }) => setDeskStatus(data)).catch(() => {});
+      }, 3000);
+    } catch (e) {
+      setResetMsg('❌ Errore reset: ' + (e?.response?.data?.detail || e.message));
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   return (
     <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
@@ -120,6 +141,47 @@ export default function Settings() {
               </div>
             )}
           </>
+        )}
+      </Card>
+
+      {/* ── Reset Bot V2 ── */}
+      <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
+        🔄 Reset Bot V2
+      </h2>
+      <Card style={{ marginBottom: '16px' }}>
+        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+          Usa questi pulsanti per fermare e ripartire con parametri diversi.
+          Il reset è attivo al ciclo successivo del bot (max 15-30 minuti).
+        </div>
+        <button
+          onClick={() => handleResetBudget(false)}
+          disabled={resetLoading}
+          style={{
+            width: '100%', padding: '11px', borderRadius: '10px', marginBottom: '8px',
+            border: '1px solid #334155', background: 'none', color: '#fbbf24',
+            fontWeight: 'bold', cursor: resetLoading ? 'not-allowed' : 'pointer', fontSize: '13px',
+          }}
+        >
+          🔁 Azzera solo budget AI (mantieni posizioni ed equity)
+        </button>
+        <button
+          onClick={() => handleResetBudget(true)}
+          disabled={resetLoading}
+          style={{
+            width: '100%', padding: '11px', borderRadius: '10px',
+            border: '1px solid #ef4444', background: 'rgba(239,68,68,0.08)', color: '#fca5a5',
+            fontWeight: 'bold', cursor: resetLoading ? 'not-allowed' : 'pointer', fontSize: '13px',
+          }}
+        >
+          ⚠️ Reset completo: equity 1000$ + chiudi posizioni + azzera budget
+        </button>
+        {resetMsg && (
+          <div style={{
+            marginTop: '10px', fontSize: '12px',
+            color: resetMsg.startsWith('✅') ? GOOD : '#fca5a5',
+          }}>
+            {resetMsg}
+          </div>
         )}
       </Card>
 

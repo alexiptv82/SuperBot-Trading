@@ -82,6 +82,7 @@ export const deskAPI = {
   closeAll:       () => API.post('/api/desk/close-all'),
   getLogs:        () => API.get('/api/desk/logs'),
   health:         () => API.get('/api/desk/health'),
+  resetBudget:    (equityReset = false) => API.post('/api/desk/reset-budget', { equity_reset: equityReset }),
 };
 
 export default API;
