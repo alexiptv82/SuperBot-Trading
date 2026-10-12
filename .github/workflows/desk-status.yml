@@ -58,6 +58,9 @@ jobs:
             f = os.path.join(d, "learning_log.jsonl")
             if os.path.exists(f):
                 c = collections.Counter()
+                KEYS = ("oi_usd", "oi_change_24h", "ls_ratio", "funding_rate", "funding_pred", "btc_roc24h", "rsi1h", "atr_pct", "vol_ratio")
+                filled = collections.Counter()
+                nrows = 0
                 last = None
                 for line in open(f, encoding="utf-8"):
                     try:
@@ -67,9 +70,15 @@ jobs:
                         continue
                     c[r.get("ev")] += 1
                     last = r
+                    if r.get("ev") in ("open", "candidate") and isinstance(r.get("features"), dict):
+                        nrows += 1
+                        for k in KEYS:
+                            if r["features"].get(k) is not None:
+                                filled[k] += 1
                 print("learning_log.jsonl: %d byte, eventi=%s" % (os.path.getsize(f), dict(c)))
+                print("feature valorizzate su %d righe: %s" % (nrows, {k: filled[k] for k in KEYS}))
                 if last:
-                    print("ultimo evento:", json.dumps(last, ensure_ascii=False)[:700])
+                    print("ultimo evento:", json.dumps(last, ensure_ascii=False)[:250])
             else:
                 print("learning_log.jsonl: non ancora creato")
             PYEOF
