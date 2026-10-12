@@ -1,43 +1,52 @@
-=== ORA UTC: Mon Oct 12 14:53:44 UTC 2026 ===
+=== ORA UTC: Mon Oct 12 14:56:13 UTC 2026 ===
 --- file Hawk (data completa):
-2026-10-12 14:53:43.757299113 4096 .
+2026-10-12 14:56:12.400945133 4096 .
 2026-10-12 14:03:51.112670442 4096 ..
 2026-10-12 14:51:23.723748436 4096 archive
-2026-10-12 14:53:43.757299113 892 heartbeat.json
-2026-10-12 14:10:51.899493391 10 pause.flag
-2026-10-12 14:51:23.726831209 5345 state_v2.json
+2026-10-12 14:56:12.400945133 954 heartbeat.json
+2026-10-12 14:54:37.382504784 6366 state_v2.json
 --- archivio Hawk:
 2026-10-12 14:51:23.723748436 .
-2026-10-12 14:53:43.757299113 ..
+2026-10-12 14:56:12.400945133 ..
 2026-10-12 14:51:23.724748447 20261012-145123
 --- riepiloghi archiviati:
 {'archive': '20261012-145123', 'run_no': 1, 'trades': 0, 'pnl': 0.0, 'start_equity': 1000.0, 'end_equity': 1000.0, 'lessons_cleared': False}
 --- stato Hawk:
-{'run_no': 2, 'paused': True, 'mode': 'paused', 'cash': 1000.0, 'positions': [], 'closed_in_state': 0, 'last_action': {'type': 'reset_portfolio', 'ok': True, 'detail': 'portafoglio ripartito da 1000$; run precedente archiviata', 'ts': 1791816683726, 'archive': '20261012-145123'}, 'budget': {'day': '2026-10-12', 'spent': 0.0, 'calls': 0}}
+{'run_no': 2, 'paused': False, 'mode': 'running', 'cash': 898.74, 'positions': ['XAG'], 'closed_in_state': 0, 'last_action': {'type': 'reset_portfolio', 'ok': True, 'detail': 'portafoglio ripartito da 1000$; run precedente archiviata', 'ts': 1791816683726, 'archive': '20261012-145123'}, 'budget': {'day': '2026-10-12', 'spent': 0.038679000000000005, 'calls': 1, 'total_spent': 0.038679000000000005}}
 --- log Hawk (ultimi 14):
-[DESK V2] avvio [HAWK] versione a0afc63 — Hawk — max $100/trade, 10 posizioni, budget $1000
-[DESK V2] simboli: 27  entry_score=60(TIER_AB)/70(TIER_C)  daily_cap=0.7$  data=/app/data/desk/hawk
-[BUDGET_RESET] budget giornaliero di Claude azzerato (conto invariato)
-[MODO] paused
-[RESET PORTAFOGLIO] run archiviata in 20261012-145123; conto a 1000$, bot in pausa
+[CONF_LOW] ADA conf=62 < soglia=70
+[CONF_LOW] UNI conf=61 < soglia=70
+[CONF_LOW] ARB conf=64 < soglia=70
+[CONF_LOW] FIL conf=63 < soglia=70
+[CONF_LOW] SUI conf=60 < soglia=70
+[CONF_LOW] RUNE conf=61 < soglia=70
+[CAP:HAWK] XAG margin 170$ → cappato a 100$
+[OPEN] XAG SHORT SCALP lev 21x  margin 100$  @60.45  SL 60.757  conf 68  src rules  R:R 1:1.8
+=== DESK V2 REPORT 2026-10-12 14:53 UTC ===
+Equity: 998.32$  Cash: 898.74$  Margin: 100.00$
+Posizioni: 1/10
+  XAG SHORT SCALP lev 21x  margin 100$  DCA 0/2  P&L -0.42$  SL 60.757
+[SLEEP] prossimo ciclo tra 15 min
+[MODO] running
 --- heartbeat Hawk:
-{'mode': 'paused', 'pause_requested': True, 'open': 0, 'cycles': 0, 'last_ok': None, 'last_error': '', 'version': 'a0afc63', 'age_s': 1, 'next_in_min': None}
-pause.flag Hawk: PRESENTE
-
->> Hawk e' in pausa: premo AVVIA (POST /api/desk/resume), come farebbe l'app
-{'paused': False, 'bot_mode': 'running', 'message': 'Bot avviato: riprende subito a cercare trade.'}
+{'mode': 'running', 'pause_requested': False, 'open': 1, 'cycles': 1, 'last_ok': True, 'last_error': '', 'version': 'a0afc63', 'age_s': 1, 'next_in_min': 13.4}
+pause.flag Hawk: assente
 --- Hawk dopo l'avvio:
-  server: {'bot_mode': 'running', 'paused': False, 'bot_online': True, 'equity': 1000.0, 'cash': 1000.0, 'margin_used': 0.0, 'open_positions': 0, 'total_closed': 0, 'run_no': 2, 'halt': None, 'last_action': {'type': 'reset_portfolio', 'ok': True, 'detail': 'portafoglio ripartito da 1000$; run precedente archiviata', 'ts': 1791816683726, 'archive': '20261012-145123'}}
-  posizioni: []
-  bot: {'mode': 'running', 'pause_requested': False, 'open': 0, 'cycles': 0, 'last_ok': None, 'last_error': '', 'version': 'a0afc63', 'age_s': 34, 'next_in_min': None}
+  server: {'bot_mode': 'running', 'paused': False, 'bot_online': True, 'equity': 997.97, 'cash': 898.74, 'margin_used': 100.0, 'open_positions': 1, 'total_closed': 0, 'run_no': 2, 'halt': None, 'last_action': {'type': 'reset_portfolio', 'ok': True, 'detail': 'portafoglio ripartito da 1000$; run precedente archiviata', 'ts': 1791816683726, 'archive': '20261012-145123'}}
+  posizioni: [('XAG', -1, 'scalp', 21, 100.0, -0.77, 'live')]
+  bot: {'mode': 'running', 'pause_requested': False, 'open': 1, 'cycles': 1, 'last_ok': True, 'last_error': '', 'version': 'a0afc63', 'age_s': 2, 'next_in_min': 13.4}
 [BUDGET_RESET] budget giornaliero di Claude azzerato (conto invariato)
 [MODO] paused
 [AVVIO] ripresa richiesta: il bot lavora
 [DESK V2] candles ok: 26/27 simboli
 [DESK V2] readings validi: 26/27 simboli
+[CAP:HAWK] XAG margin 170$ → cappato a 100$
+[OPEN] XAG SHORT SCALP lev 21x  margin 100$  @60.45  SL 60.757  conf 68  src rules  R:R 1:1.8
+[SLEEP] prossimo ciclo tra 15 min
+[MODO] running
 pause.flag Hawk: assente, Hawk in funzione
 
 --- Bull (non toccato):
-  server: {'bot_mode': 'running', 'paused': False, 'equity': 1000.52, 'open_positions': 1, 'total_closed': 0}
+  server: {'bot_mode': 'running', 'paused': False, 'equity': 999.63, 'open_positions': 1, 'total_closed': 0}
 
 FINE
