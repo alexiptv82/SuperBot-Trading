@@ -12,42 +12,23 @@ on:
 jobs:
   diag:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
           ref: rule-pool
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verifica post-deploy (sola lettura)
+      - name: Verifica end-to-end (sul VPS; prova Pausa/Riprendi su Bull e lo lascia in funzione)
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_tmp
           chmod 600 ~/.ssh/id_tmp
-          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 \
-            'OUT=/tmp/diag_tg.txt
-            echo "=== ORA UTC: $(date -u) ===" > $OUT
-            echo "--- sites-enabled prima:" >> $OUT
-            ls -la /etc/nginx/sites-enabled/ >> $OUT
-            echo "--- sites-available:" >> $OUT
-            ls /etc/nginx/sites-available/ >> $OUT
-            echo "--- letsencrypt/live:" >> $OUT
-            ls /etc/letsencrypt/live/ >> $OUT 2>&1
-            if [ -e /etc/nginx/sites-enabled/sbtrading-temp ] || [ -e /etc/nginx/sites-available/sbtrading-temp ]; then
-              rm -f /etc/nginx/sites-enabled/sbtrading-temp /etc/nginx/sites-available/sbtrading-temp
-              echo "RIMOSSO residuo sbtrading-temp (creato dal mio workflow SSL fallito)" >> $OUT
-              nginx -t >> $OUT 2>&1 && nginx -s reload && echo "nginx ricaricato" >> $OUT
-            else
-              echo "nessun residuo sbtrading-temp" >> $OUT
-            fi
-            echo "--- sites-enabled dopo:" >> $OUT
-            ls -la /etc/nginx/sites-enabled/ >> $OUT
-            echo "--- config hitvprime (data modifica, deve essere invariata):" >> $OUT
-            ls -la --time-style=full-iso /etc/nginx/sites-available/hitvprime >> $OUT
-            echo "FINE" >> $OUT'
-          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new root@51.91.109.45:/tmp/diag_tg.txt deploy/diag-output.txt
+          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 deploy/diag-e2e.sh root@51.91.109.45:/tmp/diag-e2e.sh
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 'bash /tmp/diag-e2e.sh; rm -f /tmp/diag-e2e.sh'
+          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new root@51.91.109.45:/tmp/diag_e2e.txt deploy/diag-output.txt
           rm -f ~/.ssh/id_tmp
 
       - name: Committa nel repo
@@ -55,5 +36,5 @@ jobs:
           git config user.email "ci@superbot"
           git config user.name "SuperBot CI"
           git add deploy/diag-output.txt
-          git diff --staged --quiet || git commit -m "diag: pulizia residuo nginx [skip ci]"
+          git diff --staged --quiet || git commit -m "diag: verifica end-to-end bot e API [skip ci]"
           git push origin rule-pool
