@@ -1,22 +1,55 @@
-=== ORA UTC: Mon Oct 12 14:02:59 UTC 2026 ===
---- MemAvailable (MB) letta dal preflight del deploy desk (soglia 700):
-434
---- free -m:
-               total        used        free      shared  buff/cache   available
-Mem:            3814        3380         121           3         559         434
-Swap:              0           0           0
---- docker stats (memoria per container):
-superbot | 121.9MiB / 3.725GiB | 3.19%
-superbot-desk-bull | 651MiB / 768MiB | 84.77%
-superbot-desk-hawk | 643MiB / 768MiB | 83.72%
-superbot-desk | 747.9MiB / 768MiB | 97.39%
-superbot-pool | 204.3MiB / 768MiB | 26.60%
-superbot-staging | 184.8MiB / 3.725GiB | 4.85%
-hitv-backend | 271.2MiB / 3.725GiB | 7.11%
---- disco:
-/dev/sda1        38G   30G  7.7G  80% /
---- container desk:
-superbot-desk-bull | Up 28 minutes (unhealthy)
-superbot-desk-hawk | Up 25 minutes (unhealthy)
-superbot-desk | Up 3 hours (unhealthy)
+=== ORA UTC: Mon Oct 12 14:06:45 UTC 2026 ===
+superbot-desk-bull | Up About a minute (healthy)
+superbot-desk-hawk | Up About a minute (healthy)
+superbot | Up 8 minutes
+superbot-desk | Exited (137) 2 minutes ago
+superbot-pool | Up 3 days (healthy)
+superbot-staging | Up 4 days
+
+##### superbot-desk-hawk #####
+healthcheck: [CMD-SHELL python -m desk.healthcheck]
+processi nel container (atteso 1 python): 1
+righe HALT nei log: 0
+[DESK V2] candles ok: 26/27 simboli
+[DESK V2] readings validi: 26/27 simboli
+[CONF_LOW] FIL conf=63 < soglia=70
+[CONF_LOW] INJ conf=67 < soglia=70
+=== DESK V2 REPORT 2026-10-12 14:05 UTC ===
+Equity: 1000.00$  Cash: 1000.00$  Margin: 0.00$
+Posizioni: 0/10
+[SLEEP] 30 min
+
+##### superbot-desk-bull #####
+healthcheck: [CMD-SHELL python -m desk.healthcheck]
+processi nel container (atteso 1 python): 1
+righe HALT nei log: 0
+[DESK V2] candles ok: 26/27 simboli
+[DESK V2] readings validi: 26/27 simboli
+[CONF_LOW] FIL conf=63 < soglia=70
+[CONF_LOW] INJ conf=67 < soglia=70
+=== DESK V2 REPORT 2026-10-12 14:05 UTC ===
+Equity: 1000.00$  Cash: 1000.00$  Margin: 0.00$
+Posizioni: 0/3
+[SLEEP] 30 min
+
+--- memoria container:
+superbot-desk-bull | 24.36MiB / 768MiB
+superbot-desk-hawk | 24.36MiB / 768MiB
+superbot | 121.9MiB / 3.725GiB
+superbot-pool | 204.3MiB / 768MiB
+superbot-staging | 184.9MiB / 3.725GiB
+hitv-backend | 271.1MiB / 3.725GiB
+MemAvailable MB: 2323
+--- file dati:
+/opt/superbot-desk-data/bull/:
+total 16
+drwxr-xr-x 2 root root 4096 2026-10-12 14:05:52.163232067 +0000 .
+drwxr-xr-x 5 root root 4096 2026-10-12 14:03:51.112670442 +0000 ..
+-rw-r--r-- 1 root root 5208 2026-10-12 14:05:52.163232067 +0000 state_v2.json
+
+/opt/superbot-desk-data/hawk/:
+total 16
+drwxr-xr-x 2 root root 4096 2026-10-12 14:05:42.936910174 +0000 .
+drwxr-xr-x 5 root root 4096 2026-10-12 14:03:51.112670442 +0000 ..
+-rw-r--r-- 1 root root 5198 2026-10-12 14:05:42.936910174 +0000 state_v2.json
 FINE
