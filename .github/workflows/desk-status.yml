@@ -18,15 +18,24 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
           chmod 600 ~/.ssh/id_desk
-          timeout 60 ssh \
+
+          ssh -T \
             -i ~/.ssh/id_desk \
             -o StrictHostKeyChecking=accept-new \
             -o ConnectTimeout=15 \
-            -o ServerAliveInterval=10 \
-            -o ServerAliveCountMax=3 \
-            root@51.91.109.45 \
-            'echo "=CONTAINERS="; docker ps -a --filter name=superbot --format "{{.Names}} {{.Status}}"; echo "=LOGS="; docker logs --tail 30 superbot-desk 2>&1; echo "=STATE="; cat /opt/superbot-desk-data/state_v2.json 2>/dev/null || echo "no state_v2.json"; echo "=TRADES="; tail -5 /opt/superbot-desk-data/trade_history.jsonl 2>/dev/null || echo "no trades"; echo "=LESSONS="; tail -5 /opt/superbot-desk-data/lessons.md 2>/dev/null || echo "no lessons"' \
-            > status_out.txt 2>&1 || echo "SSH error: $?" >> status_out.txt
+            root@51.91.109.45 << 'SSHEOF' > status_out.txt 2>&1 || true
+          echo "=CONTAINERS="
+          docker ps -a --filter name=superbot --format "{{.Names}} {{.Status}}"
+          echo "=LOGS="
+          docker logs --tail 30 superbot-desk 2>&1
+          echo "=STATE="
+          cat /opt/superbot-desk-data/state_v2.json 2>/dev/null || echo "no state_v2.json"
+          echo "=TRADES="
+          tail -5 /opt/superbot-desk-data/trade_history.jsonl 2>/dev/null || echo "no trades"
+          echo "=LESSONS="
+          tail -5 /opt/superbot-desk-data/lessons.md 2>/dev/null || echo "no lessons"
+          SSHEOF
+
           rm -f ~/.ssh/id_desk
 
       - name: Output grezzo
@@ -38,5 +47,5 @@ jobs:
       - name: Annotation
         if: always()
         run: |
-          CONTENT=$(cat status_out.txt 2>/dev/null | head -100 | tr '\n' '|' | cut -c1-5000)
+          CONTENT=$(cat status_out.txt 2>/dev/null | head -80 | tr '\n' '|' | cut -c1-5000)
           echo "::notice title=BotV2 Stato::${CONTENT}"
