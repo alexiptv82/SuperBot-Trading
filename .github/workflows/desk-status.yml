@@ -52,6 +52,10 @@ jobs:
                 tot_risk = 0.0
                 net = 0.0
                 gross = 0.0
+                lp = st.get("last_prices") or {}
+                upnl_tot = 0.0
+                margin_tot = 0.0
+                n_up = n_dn = 0
                 for sym, p in ((st.get("main") or {}).get("positions") or {}).items():
                     q, e, sl = float(p.get("qty") or 0), float(p.get("entry") or 0), float(p.get("sl") or 0)
                     risk = q * abs(e - sl)
@@ -59,11 +63,26 @@ jobs:
                     tot_risk += risk
                     net += notional * (1 if p.get("side") == 1 else -1)
                     gross += notional
-                    print("posizione %s lato=%s margine=%s leva=%s stop=%.2f%% rischio_a_stop=%.1f$ nozionale=%.0f$ gambe=%s attesa=%s" % (
+                    px = lp.get(sym)
+                    upnl = (float(px) - e) * q * (1 if p.get("side") == 1 else -1) if px else None
+                    if upnl is not None:
+                        upnl_tot += upnl
+                        n_up += upnl > 0
+                        n_dn += upnl <= 0
+                    margin_tot += float(p.get("total_margin") or 0)
+                    print("posizione %s lato=%s margine=%s leva=%s stop=%.2f%% rischio_a_stop=%.1f$ nozionale=%.0f$ gambe=%s attesa=%s pnl_aperto=%s" % (
                         sym, p.get("side"), p.get("total_margin"), p.get("leverage"),
                         abs(e - sl) / e * 100 if e else 0, risk, notional, p.get("legs", 1),
-                        bool(p.get("pending_split"))))
+                        bool(p.get("pending_split")), ("%+.1f$" % upnl) if upnl is not None else "n.d."))
                 m = st.get("main") or {}
+                closed = m.get("closed") or []
+                cn = [float(c.get("net") or 0) for c in closed if isinstance(c, dict)]
+                print("APERTE: pnl non realizzato=%+.1f$ (in utile %d, in perdita %d) | equity stimata=%.0f$ | prezzi di %ds fa" % (
+                    upnl_tot, n_up, n_dn, float(m.get("cash") or 0) + margin_tot + upnl_tot,
+                    int(time.time() - float(st.get("last_prices_ms") or 0) / 1000)))
+                print("CHIUSE (run corrente): %d, in utile %d, netto %+.1f$ | motivi: %s" % (
+                    len(cn), sum(1 for x in cn if x > 0), sum(cn),
+                    dict(collections.Counter(str(c.get("why")) for c in closed if isinstance(c, dict)))))
                 print("TOTALE: rischio se scattano tutti gli stop=%.0f$ | nozionale lordo=%.0f$ netto=%+.0f$ | cassa=%.0f$ equity a inizio giorno=%.0f$ chiusi=%d" % (
                     tot_risk, gross, net, float(m.get("cash") or 0), float(m.get("day_start_equity") or 0), len(m.get("closed") or [])))
             except Exception as e:
@@ -74,6 +93,7 @@ jobs:
                 KEYS = ("oi_usd", "oi_change_24h", "ls_ratio", "funding_rate", "funding_pred", "btc_roc24h", "rsi1h", "atr_pct", "vol_ratio")
                 filled = collections.Counter()
                 nrows = 0
+                n_split_req = 0
                 last = None
                 for line in open(f, encoding="utf-8"):
                     try:
@@ -85,11 +105,14 @@ jobs:
                     last = r
                     if r.get("ev") in ("open", "candidate") and isinstance(r.get("features"), dict):
                         nrows += 1
+                        if r.get("ev") == "open" and r["features"].get("split_requested"):
+                            n_split_req += 1
                         for k in KEYS:
                             if r["features"].get(k) is not None:
                                 filled[k] += 1
                 print("learning_log.jsonl: %d byte, eventi=%s" % (os.path.getsize(f), dict(c)))
                 print("feature valorizzate su %d righe: %s" % (nrows, {k: filled[k] for k in KEYS}))
+                print("aperture con entrata diversificata richiesta da Claude: %d" % n_split_req)
                 if last:
                     print("ultimo evento:", json.dumps(last, ensure_ascii=False)[:250])
             else:
