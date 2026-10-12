@@ -85,7 +85,7 @@ jobs:
             done
             # --- Sonda delle API pubbliche di BitGet dal container (sola lettura, nessun segreto)
             echo "=== SONDA API BITGET ===" >> $OUT2
-            docker exec superbot-desk-hawk python - >> $OUT2 2>&1 <<'PYEOF' || echo "(sonda non riuscita)" >> $OUT2
+            docker exec -i superbot-desk-hawk python - >> $OUT2 2>&1 <<'PYEOF' || echo "(sonda non riuscita)" >> $OUT2
             import json, urllib.request
             from desk import market_context as m
             B = m.BITGET_BASE
