@@ -232,117 +232,120 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Bot V1 status */}
-      <Card style={{
-        marginBottom: '16px', textAlign: 'center',
-        boxShadow: status?.is_running ? '0 0 0 1px rgba(74,222,128,0.2)' : 'none'
-      }}>
-        <div style={{ fontSize: '48px', marginBottom: '8px' }}>
-          {status?.is_running ? '🟢' : '🔴'}
-        </div>
-        <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '4px' }}>
-          {status?.is_running ? 'Bot V1 Attivo' : 'Bot V1 Fermo'}
-        </div>
-        <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
-          Posizioni aperte: {status?.open_positions || 0} | Win rate: {status?.win_rate || 0}%
-        </div>
-        <button onClick={toggleBot} disabled={loading} style={{
-          padding: '12px 32px', borderRadius: '12px', border: 'none',
-          background: status?.is_running ? '#dc2626' : '#16a34a',
-          color: 'white', fontSize: '16px', fontWeight: 'bold',
-          cursor: loading ? 'not-allowed' : 'pointer', width: '100%'
+      {/* V1 DISATTIVATA — codice preservato, non renderizzato. Riattivare togliendo {false &&} */}
+      {false && (<>
+        {/* Bot V1 status */}
+        <Card style={{
+          marginBottom: '16px', textAlign: 'center',
+          boxShadow: status?.is_running ? '0 0 0 1px rgba(74,222,128,0.2)' : 'none'
         }}>
-          {loading ? '...' : status?.is_running ? '⏹ Ferma Bot' : '▶ Avvia Bot'}
-        </button>
-      </Card>
+          <div style={{ fontSize: '48px', marginBottom: '8px' }}>
+            {status?.is_running ? '🟢' : '🔴'}
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '4px' }}>
+            {status?.is_running ? 'Bot V1 Attivo' : 'Bot V1 Fermo'}
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
+            Posizioni aperte: {status?.open_positions || 0} | Win rate: {status?.win_rate || 0}%
+          </div>
+          <button onClick={toggleBot} disabled={loading} style={{
+            padding: '12px 32px', borderRadius: '12px', border: 'none',
+            background: status?.is_running ? '#dc2626' : '#16a34a',
+            color: 'white', fontSize: '16px', fontWeight: 'bold',
+            cursor: loading ? 'not-allowed' : 'pointer', width: '100%'
+          }}>
+            {loading ? '...' : status?.is_running ? '⏹ Ferma Bot' : '▶ Avvia Bot'}
+          </button>
+        </Card>
 
-      {/* KPI V1 */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-        <Card style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>
-            {(status?.portfolios?.length || 0) > 1 ? 'Capitale totale' : 'Capitale'}
-          </div>
-          <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-            ${status?.capital?.toFixed(2) || '0.00'}
-          </div>
-        </Card>
-        <Card style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>P&L Oggi</div>
-          <div style={{ fontSize: '20px', fontWeight: 'bold', color: pnlColor(status?.daily_pnl) }}>
-            {status?.daily_pnl > 0 ? '+' : ''}{status?.daily_pnl?.toFixed(2) || '0.00'}$
-          </div>
-        </Card>
-        <Card style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Trade Tot.</div>
-          <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{status?.total_trades || 0}</div>
-        </Card>
-      </div>
+        {/* KPI V1 */}
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+          <Card style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>
+              {(status?.portfolios?.length || 0) > 1 ? 'Capitale totale' : 'Capitale'}
+            </div>
+            <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
+              ${status?.capital?.toFixed(2) || '0.00'}
+            </div>
+          </Card>
+          <Card style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>P&L Oggi</div>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: pnlColor(status?.daily_pnl) }}>
+              {status?.daily_pnl > 0 ? '+' : ''}{status?.daily_pnl?.toFixed(2) || '0.00'}$
+            </div>
+          </Card>
+          <Card style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Trade Tot.</div>
+            <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{status?.total_trades || 0}</div>
+          </Card>
+        </div>
 
-      {/* Portafogli V1 — mostrati solo se il bot V1 ha dati */}
-      {(status?.portfolios?.length || 0) > 0 && (
-        <>
-          <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>💼 Portafogli V1</h2>
-          <p style={{ fontSize: '11px', color: '#475569', marginBottom: '10px' }}>
-            Portafogli del Bot V1 (Conservativo / Aggressivo) — separati dal Bot V2 qui sotto
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-            {status.portfolios.map(pf => (
-              <Card key={pf.name} style={{
-                flex: '1 1 calc(50% - 8px)', minWidth: '240px',
-                borderColor: pf.active ? profileColor(pf.name) : '#334155', opacity: pf.active ? 1 : 0.7
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <ProfileBadge profile={pf.name} label={pf.label} />
-                  <span style={{ fontSize: '11px', color: pf.paused ? '#fbbf24' : '#94a3b8' }}>
-                    {pf.paused ? '⏸ In pausa (limite giornaliero)' : pf.active ? 'Attivo' : 'Solo chiusura'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '20px', fontWeight: 'bold' }}>${pf.capital?.toFixed(2)}</div>
-                <div style={{ fontSize: '12px', color: pnlColor(pf.daily_pnl), marginBottom: '8px' }}>
-                  Oggi {pf.daily_pnl > 0 ? '+' : ''}{pf.daily_pnl?.toFixed(2)}$
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8' }}>
-                  <span>Aperte {pf.open_positions}</span>
-                  <span>Chiusi {pf.closed_trades} · Win {pf.win_rate}%</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                  <span style={{ color: pnlColor(pf.net_pnl) }}>Netto {pf.net_pnl > 0 ? '+' : ''}{pf.net_pnl?.toFixed(2)}$</span>
-                  <span>Commissioni {pf.fees_paid?.toFixed(2)}$</span>
+        {/* Portafogli V1 — mostrati solo se il bot V1 ha dati */}
+        {(status?.portfolios?.length || 0) > 0 && (
+          <>
+            <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>💼 Portafogli V1</h2>
+            <p style={{ fontSize: '11px', color: '#475569', marginBottom: '10px' }}>
+              Portafogli del Bot V1 (Conservativo / Aggressivo) — separati dal Bot V2 qui sotto
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+              {status.portfolios.map(pf => (
+                <Card key={pf.name} style={{
+                  flex: '1 1 calc(50% - 8px)', minWidth: '240px',
+                  borderColor: pf.active ? profileColor(pf.name) : '#334155', opacity: pf.active ? 1 : 0.7
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <ProfileBadge profile={pf.name} label={pf.label} />
+                    <span style={{ fontSize: '11px', color: pf.paused ? '#fbbf24' : '#94a3b8' }}>
+                      {pf.paused ? '⏸ In pausa (limite giornaliero)' : pf.active ? 'Attivo' : 'Solo chiusura'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold' }}>${pf.capital?.toFixed(2)}</div>
+                  <div style={{ fontSize: '12px', color: pnlColor(pf.daily_pnl), marginBottom: '8px' }}>
+                    Oggi {pf.daily_pnl > 0 ? '+' : ''}{pf.daily_pnl?.toFixed(2)}$
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8' }}>
+                    <span>Aperte {pf.open_positions}</span>
+                    <span>Chiusi {pf.closed_trades} · Win {pf.win_rate}%</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                    <span style={{ color: pnlColor(pf.net_pnl) }}>Netto {pf.net_pnl > 0 ? '+' : ''}{pf.net_pnl?.toFixed(2)}$</span>
+                    <span>Commissioni {pf.fees_paid?.toFixed(2)}$</span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Posizioni aperte V1 */}
+        {openTrades.length > 0 && (
+          <>
+            <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px' }}>⚡ Posizioni V1 Aperte</h2>
+            {openTrades.map((t, i) => (
+              <Card key={i} onClick={() => openChart(t.symbol)} style={{ marginBottom: '8px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold',
+                      background: t.side === 'long' ? '#166534' : '#7f1d1d',
+                      color: 'white', marginRight: '8px'
+                    }}>
+                      {t.side?.toUpperCase()}
+                    </span>
+                    <span style={{ fontWeight: 'bold' }}>{t.symbol}</span>
+                    <span style={{ color: '#94a3b8', fontSize: '12px', marginLeft: '6px', marginRight: '6px' }}>x{t.leverage}</span>
+                    <ProfileBadge profile={t.profile} label={t.profile_label} />
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '13px' }}>@ ${t.entry_price?.toFixed(2)}</div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>{t.trade_type}</div>
+                  </div>
                 </div>
               </Card>
             ))}
-          </div>
-        </>
-      )}
-
-      {/* Posizioni aperte V1 */}
-      {openTrades.length > 0 && (
-        <>
-          <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px' }}>⚡ Posizioni V1 Aperte</h2>
-          {openTrades.map((t, i) => (
-            <Card key={i} onClick={() => openChart(t.symbol)} style={{ marginBottom: '8px', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <span style={{
-                    padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold',
-                    background: t.side === 'long' ? '#166534' : '#7f1d1d',
-                    color: 'white', marginRight: '8px'
-                  }}>
-                    {t.side?.toUpperCase()}
-                  </span>
-                  <span style={{ fontWeight: 'bold' }}>{t.symbol}</span>
-                  <span style={{ color: '#94a3b8', fontSize: '12px', marginLeft: '6px', marginRight: '6px' }}>x{t.leverage}</span>
-                  <ProfileBadge profile={t.profile} label={t.profile_label} />
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '13px' }}>@ ${t.entry_price?.toFixed(2)}</div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>{t.trade_type}</div>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </>
-      )}
+          </>
+        )}
+      </>)}
 
       {/* ── Mercato Live (27 simboli V2 carousel) ── */}
       <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>📊 Mercato Live</h2>
