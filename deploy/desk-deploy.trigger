@@ -1,1 +1,1 @@
-2026-10-12T04:52:58Z fix DATA_DIR + simboli BitGet
+2026-10-12T05:01:36Z log diagnostico candles
