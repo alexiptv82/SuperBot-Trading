@@ -1,0 +1,22 @@
+name: SuperBot - setup SSL per sbtrading.hitvprime.com
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/setup-ssl-sbtrading.trigger"
+
+jobs:
+  setup-ssl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Ottieni certificato SSL e configura nginx
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_tmp
+          chmod 600 ~/.ssh/id_tmp
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 "echo 'IyEvYmluL2Jhc2gKc2V0IC1lCkRPTUFJTj1zYnRyYWRpbmcuaGl0dnByaW1lLmNvbQoKbWtkaXIgLXAgL3Zhci93d3cvYWNtZQoKY2F0ID4gL2V0Yy9uZ2lueC9zaXRlcy1hdmFpbGFibGUvc2J0cmFkaW5nLXRlbXAgPDwgRU9GCnNlcnZlciB7CiAgICBsaXN0ZW4gODA7CiAgICBsaXN0ZW4gWzo6XTo4MDsKICAgIHNlcnZlcl9uYW1lIHNidHJhZGluZy5oaXR2cHJpbWUuY29tOwogICAgbG9jYXRpb24gXn4gLy53ZWxsLWtub3duL2FjbWUtY2hhbGxlbmdlLyB7CiAgICAgICAgcm9vdCAvdmFyL3d3dy9hY21lOwogICAgICAgIGRlZmF1bHRfdHlwZSAidGV4dC9wbGFpbiI7CiAgICAgICAgdHJ5X2ZpbGVzIFwkdXJpID00MDQ7CiAgICB9CiAgICBsb2NhdGlvbiAvIHsgcmV0dXJuIDIwMCAib2siOyB9Cn0KRU9GCgpsbiAtc2YgL2V0Yy9uZ2lueC9zaXRlcy1hdmFpbGFibGUvc2J0cmFkaW5nLXRlbXAgL2V0Yy9uZ2lueC9zaXRlcy1lbmFibGVkL3NidHJhZGluZy10ZW1wIDI+L2Rldi9udWxsIHx8IHRydWUKbmdpbnggLXQgJiYgbmdpbnggLXMgcmVsb2FkCgphcHQtZ2V0IGluc3RhbGwgLXkgY2VydGJvdCAyPi9kZXYvbnVsbCB8fCB0cnVlCmNlcnRib3QgY2VydG9ubHkgXAogIC0td2Vicm9vdCAtdyAvdmFyL3d3dy9hY21lIFwKICAtZCAkRE9NQUlOIFwKICAtLW5vbi1pbnRlcmFjdGl2ZSBcCiAgLS1hZ3JlZS10b3MgXAogIC1tIGFsZXNzYW5kcm9nb3R0d2FsZEBnbWFpbC5jb20gXAogIC0ta2VlcC11bnRpbC1leHBpcmluZwoKZWNobyAiPT09IENFUlQgT1RURU5VVE8gPT09IgpjZXJ0Ym90IGNlcnRpZmljYXRlcyAyPi9kZXYvbnVsbCB8IGdyZXAgLUE1ICIkRE9NQUlOIgoKIyBSaW11b3ZpIGNvbmZpZyB0ZW1wb3JhbmVhCnJtIC1mIC9ldGMvbmdpbngvc2l0ZXMtZW5hYmxlZC9zYnRyYWRpbmctdGVtcApybSAtZiAvZXRjL25naW54L3NpdGVzLWF2YWlsYWJsZS9zYnRyYWRpbmctdGVtcApuZ2lueCAtcyByZWxvYWQKZWNobyAiRE9ORSI=' | base64 -d | bash"
+          rm -f ~/.ssh/id_tmp
