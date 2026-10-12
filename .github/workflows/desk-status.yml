@@ -91,7 +91,11 @@ jobs:
             B = m.BITGET_BASE
             for path in ("/api/v2/mix/market/open-interest?symbol=BTCUSDT&productType=USDT-FUTURES",
                          "/api/v2/mix/market/account-long-short-ratio?symbol=BTCUSDT&productType=USDT-FUTURES&period=1h",
-                         "/api/v2/common/trade-data/account-long-short?symbol=BTCUSDT&period=1h"):
+                         "/api/v2/mix/market/account-long-short?symbol=BTCUSDT&period=1h",
+                         "/api/v2/mix/market/long-short?symbol=BTCUSDT&period=1h",
+                         "/api/v2/mix/market/position-long-short?symbol=BTCUSDT&period=1h",
+                         "/api/v2/mix/market/open-interest-history?symbol=BTCUSDT&productType=USDT-FUTURES&granularity=1H",
+                         "/api/v2/mix/market/taker-buy-sell?symbol=BTCUSDT&period=1h"):
                 try:
                     with urllib.request.urlopen(urllib.request.Request(B + path, headers={"User-Agent": "Mozilla/5.0"}), timeout=10) as r:
                         print("OK", r.status, path.split("?")[0], r.read()[:260].decode("utf-8", "replace"))
