@@ -667,8 +667,17 @@ async def desk_status(session=Depends(require_session)):
     return {
         "available": True,
         "mode": "paper",
+        # cash = liquidità disponibile; margin_used = somma margini in uso
+        # equity = cash + margin_used (capitale totale reale del conto paper)
         "cash": round(acc.get("cash", 0), 2),
-        "equity": round(acc.get("cash", 0), 2),
+        "margin_used": round(sum(
+            pos.get("total_margin", pos.get("margin", 0))
+            for pos in positions.values()
+        ), 2),
+        "equity": round(acc.get("cash", 0) + sum(
+            pos.get("total_margin", pos.get("margin", 0))
+            for pos in positions.values()
+        ), 2),
         "open_positions": len(positions),
         "positions": open_list,
         # "closed" nel PaperAccount può essere una lista (engine.py) oppure un int.

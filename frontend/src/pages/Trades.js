@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { botAPI } from '../api';
-import ProfileBadge from '../components/ProfileBadge';
+import { deskAPI } from '../api';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
 const MUTED = '#94a3b8';
 const BORDER = '#334155';
 const SURFACE = '#1e293b';
@@ -18,44 +17,36 @@ const Chip = ({ active, onClick, children }) => (
 
 export default function Trades() {
   const [trades, setTrades] = useState([]);
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [symbolFilter, setSymbolFilter] = useState('all');
   const [sideFilter, setSideFilter] = useState('all');
   const [outcomeFilter, setOutcomeFilter] = useState('all');
-  const [profileFilter, setProfileFilter] = useState('all');
 
-  const loadPage = useCallback(async (nextOffset) => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await botAPI.getTrades(PAGE_SIZE, nextOffset);
-      setTrades(prev => nextOffset === 0 ? data : [...prev, ...data]);
-      setHasMore(data.length === PAGE_SIZE);
-      setOffset(nextOffset + data.length);
+      const { data } = await deskAPI.getTrades(PAGE_SIZE);
+      setTrades(Array.isArray(data) ? data : []);
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { loadPage(0); }, [loadPage]);
+  useEffect(() => { load(); }, [load]);
 
   const symbols = useMemo(() => {
     const set = new Set(trades.map(t => t.symbol).filter(Boolean));
     return ['all', ...Array.from(set).sort()];
   }, [trades]);
 
-  const profiles = useMemo(() => {
-    const map = new Map();
-    trades.forEach(t => { if (t.profile) map.set(t.profile, t.profile_label || t.profile); });
-    return Array.from(map.entries());
-  }, [trades]);
+  // side V2 è int (1=LONG, -1=SHORT) — normalizza a stringa per i filtri
+  const sideStr = (s) => s === 1 ? 'long' : s === -1 ? 'short' : (s || '').toLowerCase();
 
   const filtered = trades.filter(t => {
-    if (profileFilter !== 'all' && t.profile !== profileFilter) return false;
     if (symbolFilter !== 'all' && t.symbol !== symbolFilter) return false;
-    if (sideFilter !== 'all' && t.side !== sideFilter) return false;
-    if (outcomeFilter === 'open' && t.status !== 'open') return false;
-    if (outcomeFilter === 'win' && !(t.status !== 'open' && t.pnl > 0)) return false;
-    if (outcomeFilter === 'loss' && !(t.status !== 'open' && t.pnl < 0)) return false;
+    if (sideFilter !== 'all' && sideStr(t.side) !== sideFilter) return false;
+    const closed = t.exit_price != null;
+    if (outcomeFilter === 'open' && closed) return false;
+    if (outcomeFilter === 'win' && !(closed && (t.pnl ?? 0) > 0)) return false;
+    if (outcomeFilter === 'loss' && !(closed && (t.pnl ?? 0) < 0)) return false;
     return true;
   });
 
@@ -72,14 +63,6 @@ export default function Trades() {
           </Chip>
         ))}
       </div>
-      {profiles.length > 1 && (
-        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', marginBottom: '8px', paddingBottom: '2px' }}>
-          <Chip active={profileFilter === 'all'} onClick={() => setProfileFilter('all')}>Tutti i profili</Chip>
-          {profiles.map(([k, l]) => (
-            <Chip key={k} active={profileFilter === k} onClick={() => setProfileFilter(k)}>{l}</Chip>
-          ))}
-        </div>
-      )}
       <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', marginBottom: '8px', paddingBottom: '2px' }}>
         {[['all', 'Lato'], ['long', 'Long'], ['short', 'Short']].map(([v, l]) => (
           <Chip key={v} active={sideFilter === v} onClick={() => setSideFilter(v)}>{l}</Chip>
@@ -91,67 +74,79 @@ export default function Trades() {
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {loading && trades.length === 0 ? (
+        <div style={{ textAlign: 'center', color: MUTED, padding: '40px' }}>Caricamento...</div>
+      ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', color: MUTED, padding: '40px' }}>
-          {trades.length === 0 ? 'Nessun trade ancora. Avvia il bot dalla Dashboard.' : 'Nessun trade corrisponde ai filtri.'}
+          {trades.length === 0
+            ? 'Nessun trade chiuso ancora. Il bot scrive qui ogni volta che chiude una posizione.'
+            : 'Nessun trade corrisponde ai filtri.'}
         </div>
-      ) : filtered.map(t => (
-        <div key={t.id} style={{
-          background: SURFACE, borderRadius: '12px', padding: '14px',
-          marginBottom: '10px', border: `1px solid ${BORDER}`
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      ) : filtered.map((t, i) => {
+        const sd = sideStr(t.side);
+        const closed = t.exit_price != null;
+        const pnl = t.pnl ?? t.net;
+        const fmt2 = (v, d = 4) => v != null ? Number(v).toFixed(d) : '--';
+        return (
+          <div key={i} style={{
+            background: SURFACE, borderRadius: '12px', padding: '14px',
+            marginBottom: '10px', border: `1px solid ${BORDER}`
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{
+                  padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold',
+                  background: sd === 'long' ? '#166534' : '#7f1d1d', color: 'white'
+                }}>{sd.toUpperCase()}</span>
+                <span style={{ fontWeight: 'bold' }}>{t.symbol?.replace('USDT', '')}</span>
+                <span style={{ color: MUTED, fontSize: '12px' }}>x{t.leverage ?? '--'}</span>
+                <span style={{ color: '#64748b', fontSize: '10px' }}>[{t.trade_type || 'medio'}]</span>
+              </div>
               <span style={{
-                padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold',
-                background: t.side === 'long' ? '#166534' : '#7f1d1d', color: 'white'
-              }}>{t.side?.toUpperCase()}</span>
-              <span style={{ fontWeight: 'bold' }}>{t.symbol}</span>
-              <span style={{ color: MUTED, fontSize: '12px' }}>x{t.leverage}</span>
-              <ProfileBadge profile={t.profile} label={t.profile_label} />
+                padding: '2px 8px', borderRadius: '6px', fontSize: '11px',
+                background: !closed ? '#1e40af' : SURFACE,
+                border: `1px solid ${BORDER}`, color: MUTED
+              }}>{closed ? (t.close_reason?.toUpperCase() || 'CHIUSO') : 'APERTO'}</span>
             </div>
-            <span style={{
-              padding: '2px 8px', borderRadius: '6px', fontSize: '11px',
-              background: t.status === 'open' ? '#1e40af' : SURFACE,
-              border: `1px solid ${BORDER}`, color: MUTED
-            }}>{t.status}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-            <div>
-              <div style={{ color: MUTED }}>Entrata</div>
-              <div>${t.entry_price?.toFixed(2)}</div>
-            </div>
-            <div>
-              <div style={{ color: MUTED }}>Uscita</div>
-              <div>{t.exit_price ? `$${t.exit_price?.toFixed(2)}` : '--'}</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ color: MUTED }}>P&L</div>
-              <div style={{ fontWeight: 'bold', color: pnlColor(t.pnl) }}>
-                {t.pnl ? `${t.pnl > 0 ? '+' : ''}${t.pnl.toFixed(2)}$` : '--'}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', fontSize: '12px' }}>
+              <div>
+                <div style={{ color: MUTED, fontSize: '10px' }}>Entrata</div>
+                <div>${fmt2(t.entry_price, 4)}</div>
+              </div>
+              <div>
+                <div style={{ color: MUTED, fontSize: '10px' }}>Uscita</div>
+                <div>{t.exit_price != null ? `$${fmt2(t.exit_price, 4)}` : '--'}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ color: MUTED, fontSize: '10px' }}>P&L netto</div>
+                <div style={{ fontWeight: 'bold', color: pnlColor(pnl) }}>
+                  {pnl != null ? `${pnl > 0 ? '+' : ''}${Number(pnl).toFixed(2)}$` : '--'}
+                </div>
               </div>
             </div>
-          </div>
-          {t.close_reason && (
-            <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
-              Chiuso: {t.close_reason?.toUpperCase()} | {t.trade_type}
-              {t.fees != null && t.gross_pnl != null && (
-                <> | Lordo {t.gross_pnl > 0 ? '+' : ''}{t.gross_pnl.toFixed(2)}$ − commissioni {t.fees.toFixed(2)}$</>
-              )}
+            <div style={{ display: 'flex', gap: '12px', marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
+              <span>Margin: ${fmt2(t.margin, 0)}</span>
+              {t.gross_pnl != null && <span>Lordo: {Number(t.gross_pnl) > 0 ? '+' : ''}{Number(t.gross_pnl).toFixed(2)}$</span>}
+              {t.fees != null && <span>Fee: -{Number(t.fees).toFixed(2)}$</span>}
+              {(t.dca_count ?? 0) > 0 && <span style={{ color: '#fbbf24' }}>DCA×{t.dca_count}</span>}
             </div>
-          )}
-        </div>
-      ))}
+            {t.open_ms && (
+              <div style={{ fontSize: '10px', color: '#334155', marginTop: '4px' }}>
+                {new Date(t.open_ms).toLocaleString('it-IT')}
+                {t.close_ms && ` → ${new Date(t.close_ms).toLocaleString('it-IT')}`}
+              </div>
+            )}
+          </div>
+        );
+      })}
 
-      {hasMore && (
-        <button onClick={() => loadPage(offset)} disabled={loading} style={{
-          width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${BORDER}`,
-          background: 'none', color: MUTED, fontWeight: 'bold',
-          cursor: loading ? 'not-allowed' : 'pointer', marginTop: '4px'
-        }}>
-          {loading ? 'Caricamento...' : 'Carica altri'}
-        </button>
-      )}
+      <button onClick={load} disabled={loading} style={{
+        width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${BORDER}`,
+        background: 'none', color: MUTED, fontWeight: 'bold',
+        cursor: loading ? 'not-allowed' : 'pointer', marginTop: '4px'
+      }}>
+        {loading ? 'Aggiornamento...' : '🔄 Aggiorna'}
+      </button>
     </div>
   );
 }

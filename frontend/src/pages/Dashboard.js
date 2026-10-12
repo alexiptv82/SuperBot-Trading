@@ -371,27 +371,29 @@ export default function Dashboard() {
             </Card>
           ) : (
             <>
-              {/* KPI V2 */}
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              {/* KPI V2 — riga 1: equity, cassa, margine in uso */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                 <Card style={{ flex: 1, textAlign: 'center', minWidth: '100px' }}>
-                  <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Cassa</div>
-                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>${fmt(deskStatus.cash)}</div>
-                </Card>
-                <Card style={{ flex: 1, textAlign: 'center', minWidth: '80px' }}>
-                  <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Aperte</div>
-                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>{v2OpenCount}</div>
-                </Card>
-                <Card style={{ flex: 1, textAlign: 'center', minWidth: '80px' }}>
-                  <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Chiusi</div>
-                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>
-                    {/* total_closed da state_v2.json; se 0 proviamo il campo alternativo */}
-                    {deskStatus.total_closed != null ? deskStatus.total_closed : '--'}
+                  <div style={{ color: '#94a3b8', fontSize: '10px', marginBottom: '2px' }}>Equity totale</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#f1f5f9' }}>${fmt(deskStatus.equity)}</div>
+                  <div style={{ fontSize: '10px', color: '#475569', marginTop: '2px' }}>
+                    cassa ${fmt(deskStatus.cash)} · margine ${fmt(deskStatus.margin_used, 0)}
                   </div>
                 </Card>
-                <Card style={{ flex: 1, textAlign: 'center', minWidth: '80px' }}>
-                  <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Claude $</div>
+                <Card style={{ flex: '0 0 auto', textAlign: 'center', minWidth: '80px' }}>
+                  <div style={{ color: '#94a3b8', fontSize: '10px', marginBottom: '2px' }}>Aperte</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{v2OpenCount}</div>
+                </Card>
+                <Card style={{ flex: '0 0 auto', textAlign: 'center', minWidth: '80px' }}>
+                  <div style={{ color: '#94a3b8', fontSize: '10px', marginBottom: '2px' }}>Chiuse</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>
+                    {deskStatus.total_closed ?? '--'}
+                  </div>
+                </Card>
+                <Card style={{ flex: '0 0 auto', textAlign: 'center', minWidth: '80px' }}>
+                  <div style={{ color: '#94a3b8', fontSize: '10px', marginBottom: '2px' }}>Claude $</div>
                   <div style={{
-                    fontSize: '17px', fontWeight: 'bold',
+                    fontSize: '15px', fontWeight: 'bold',
                     color: (deskStatus.budget_spent_usd ?? 0) > (deskStatus.budget_daily_cap_usd ?? 0.7) * 0.9 ? '#fbbf24' : '#4ade80'
                   }}>
                     ${fmt(deskStatus.budget_spent_usd, 3)}
