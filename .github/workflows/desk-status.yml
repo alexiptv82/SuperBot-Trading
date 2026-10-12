@@ -22,14 +22,18 @@ jobs:
             OUT=/tmp/superbot_status.txt
             echo "=== CONTAINERS ===" > $OUT
             docker ps -a --filter name=superbot --format "{{.Names}} | {{.Status}} | {{.Image}}" >> $OUT
-            echo "=== LOGS SUPERBOT-DESK (ultimi 30) ===" >> $OUT
-            docker logs --tail 30 superbot-desk 2>&1 >> $OUT || echo "container non trovato" >> $OUT
-            echo "=== STATE FILE ===" >> $OUT
-            cat /opt/superbot-desk-data/state_v2.json 2>/dev/null | head -c 2000 >> $OUT || echo "no state_v2.json" >> $OUT
-            echo "=== ULTIMI 5 TRADE ===" >> $OUT
-            tail -5 /opt/superbot-desk-data/trade_history.jsonl 2>/dev/null >> $OUT || echo "no trade history" >> $OUT
-            echo "=== LESSONS (last 10) ===" >> $OUT
-            tail -10 /opt/superbot-desk-data/lessons.md 2>/dev/null >> $OUT || echo "no lessons" >> $OUT
+            echo "=== LOG HAWK (ultimi 20) ===" >> $OUT
+            docker logs --tail 20 superbot-desk-hawk 2>&1 >> $OUT || echo "container hawk non trovato" >> $OUT
+            echo "=== LOG BULL (ultimi 20) ===" >> $OUT
+            docker logs --tail 20 superbot-desk-bull 2>&1 >> $OUT || echo "container bull non trovato" >> $OUT
+            echo "=== STATE HAWK ===" >> $OUT
+            cat /opt/superbot-desk-data/hawk/state_v2.json 2>/dev/null | head -c 1500 >> $OUT || echo "no hawk state" >> $OUT
+            echo "=== STATE BULL ===" >> $OUT
+            cat /opt/superbot-desk-data/bull/state_v2.json 2>/dev/null | head -c 1500 >> $OUT || echo "no bull state" >> $OUT
+            echo "=== ULTIMI 3 TRADE HAWK ===" >> $OUT
+            tail -3 /opt/superbot-desk-data/hawk/trade_history.jsonl 2>/dev/null >> $OUT || echo "no hawk trades" >> $OUT
+            echo "=== ULTIMI 3 TRADE BULL ===" >> $OUT
+            tail -3 /opt/superbot-desk-data/bull/trade_history.jsonl 2>/dev/null >> $OUT || echo "no bull trades" >> $OUT
             echo "File scritto: $(wc -l < $OUT) righe"
 
       - name: Leggi output dal VPS

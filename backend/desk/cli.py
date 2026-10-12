@@ -7,6 +7,7 @@ Differenze chiave rispetto a V1:
 - Scalp vs medio: scalp ha cooldown ridotto e revisione più frequente
 - Claude chiamato ogni ora (o prima per scalp)
 - Budget giornaliero 0.70$ con DAILY_CAP dalla variabile d'ambiente
+- Dual portfolio: --portfolio hawk (default) | bull
 """
 from __future__ import annotations
 
@@ -16,25 +17,109 @@ import sys
 import time
 import traceback
 import urllib.request
+from dataclasses import dataclass
 from typing import Optional
 
 from desk.engine import Limits, PaperAccount
 from desk.signals import read_symbol
-from desk.brain import (SYSTEM, DAILY_CAP, build_prompt, call_claude,
+from desk.brain import (DAILY_CAP, build_prompt, call_claude,
                         can_call, parse_decisions, record_spend, rules_decisions,
-                        update_lessons, append_trade_history, load_symbol_stats, stats_summary)
+                        update_lessons, append_trade_history, load_symbol_stats, stats_summary,
+                        SYSTEM as SYSTEM_HAWK, SYSTEM_BULL)
 from desk.market_context import fetch_all_context
 from desk.notifier import (notify_open, notify_close, notify_dca,
                            notify_halt, notify_daily_report)
 
-# ---- configurazione V2
-DATA_DIR = os.getenv("DESK_DATA_DIR", "/app/data/desk")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONFIGURAZIONE PORTAFOGLI
+# ──────────────────────────────────────────────────────────────────────────────
+@dataclass
+class PortfolioConfig:
+    name: str
+    data_dir: str
+    limits: Limits
+    system_prompt: str
+    # GUARDRAIL minimo margine (diverso per i due portafogli)
+    guardrail_min_margin: float
+    guardrail_min_lev: int
+    guardrail_margin_forced: float
+    guardrail_lev_forced: int
+    guardrail_type_forced: str
+    # max trade con cui il bot apre (superiore viene cappato al max_margin_trade del Limits)
+    description: str
+
+
+def _make_hawk_config() -> PortfolioConfig:
+    data_dir = os.getenv("DESK_DATA_DIR", "/app/data/desk/hawk")
+    return PortfolioConfig(
+        name="hawk",
+        data_dir=data_dir,
+        limits=Limits(
+            start_equity=1000.0,
+            max_margin_trade=100.0,   # HAWK: max $100 per trade
+            max_margin_total=1000.0,  # budget totale $1000
+            max_open=10,              # max 10 posizioni
+            kill_equity=450.0,
+            daily_stop=0.12,
+        ),
+        system_prompt=SYSTEM_HAWK,
+        guardrail_min_margin=50.0,
+        guardrail_min_lev=10,
+        guardrail_margin_forced=60.0,
+        guardrail_lev_forced=15,
+        guardrail_type_forced="scalp",
+        description="Hawk — max $100/trade, 10 posizioni, budget $1000",
+    )
+
+
+def _make_bull_config() -> PortfolioConfig:
+    data_dir = os.getenv("DESK_DATA_DIR", "/app/data/desk/bull")
+    return PortfolioConfig(
+        name="bull",
+        data_dir=data_dir,
+        limits=Limits(
+            start_equity=1000.0,
+            max_margin_trade=350.0,   # BULL: max $350 per trade
+            max_margin_total=1050.0,  # max 3 × 350$
+            max_open=3,               # max 3 posizioni
+            kill_equity=450.0,
+            daily_stop=0.12,
+        ),
+        system_prompt=SYSTEM_BULL,
+        guardrail_min_margin=150.0,
+        guardrail_min_lev=10,
+        guardrail_margin_forced=200.0,
+        guardrail_lev_forced=15,
+        guardrail_type_forced="medio",
+        description="Bull — max $350/trade, 3 posizioni, budget $1000, TP≥5%",
+    )
+
+
+# Selezione portfolio da env var o argomento CLI
+def _select_portfolio() -> PortfolioConfig:
+    pname = os.getenv("DESK_PORTFOLIO", "hawk").lower()
+    for arg in sys.argv[1:]:
+        if arg.startswith("--portfolio="):
+            pname = arg.split("=", 1)[1].lower()
+        elif arg == "--portfolio" and sys.argv.index(arg) + 1 < len(sys.argv):
+            pname = sys.argv[sys.argv.index(arg) + 1].lower()
+    if pname == "bull":
+        return _make_bull_config()
+    return _make_hawk_config()
+
+
+PORTFOLIO = _select_portfolio()
+DATA_DIR = PORTFOLIO.data_dir
+SYSTEM = PORTFOLIO.system_prompt
+
 # ENTRY_SCORE base (fallback) — il valore effettivo dipende dal tier dell'asset
 _ENTRY_SCORE_BASE = int(os.getenv("DESK_ENTRY_SCORE", "60"))
 
 # Tier A/B: BTC, ETH, XAU, XAG → soglia 60
 # Tier C: tutti gli altri altcoin → soglia 70
 _TIER_AB = {"BTC", "ETH", "XAU", "XAG"}
+
 
 def tier_entry_score(symbol: str) -> int:
     """Restituisce la soglia di confidenza minima per aprire un trade su questo simbolo."""
@@ -56,6 +141,9 @@ BITGET_BASE = "https://api.bitget.com"
 STATE_FILE = os.path.join(DATA_DIR, "state_v2.json")
 LESSONS_FILE = os.path.join(DATA_DIR, "lessons.md")
 ERRORS_FILE = os.path.join(DATA_DIR, "errors.md")
+
+RESET_FLAG = os.path.join(DATA_DIR, "reset.flag")
+BUDGET_RESET_FLAG = os.path.join(DATA_DIR, "budget_reset.flag")
 
 
 # ---- candles dal BitGet
@@ -113,7 +201,7 @@ def load_lessons() -> str:
 def make_account(state: dict) -> PaperAccount:
     if state.get("main"):
         return PaperAccount.from_dict(state["main"])
-    return PaperAccount(Limits(), "main")
+    return PaperAccount(PORTFOLIO.limits, "main")
 
 
 def save_account(acc: PaperAccount, state: dict) -> None:
@@ -366,17 +454,27 @@ def run_cycle(state: dict, now_ms: int) -> None:
             sl = px * (1 - side * sl_pct)
             tp_pct = dec.get("take_profit_pct", 0)
             tp = px * (1 + side * tp_pct) if tp_pct > 0 else None
-            # ── GUARDRAIL V2 AGGRESSIVO ─────────────────────────────────────
-            # Se Claude propone valori conservativi (leva < 15 o margine < 150$)
-            # li alziamo ai minimi aggressivi e forziamo trade_type=scalp.
+            # ── GUARDRAIL portfolio-aware ────────────────────────────────────
+            # Se Claude propone valori troppo bassi rispetto al portfolio corrente,
+            # forziamo i minimi del portfolio selezionato.
             raw_margin = dec["margin_usd"]
             raw_lev    = dec["leverage"]
-            if raw_margin < 150 or raw_lev < 15:
-                print(f"[GUARDRAIL] {sym} Claude proposto margin={raw_margin:.0f}$ lev={raw_lev}x "
-                      f"→ forzato margin=150$ lev=15x scalp")
-                dec = dict(dec, margin_usd=150.0, leverage=15, trade_type="scalp")
-                trade_type = "scalp"
-            # ────────────────────────────────────────────────────────────────
+            pg = PORTFOLIO
+            if raw_margin < pg.guardrail_min_margin or raw_lev < pg.guardrail_min_lev:
+                print(f"[GUARDRAIL:{pg.name.upper()}] {sym} Claude proposto "
+                      f"margin={raw_margin:.0f}$ lev={raw_lev}x "
+                      f"→ forzato margin={pg.guardrail_margin_forced:.0f}$ "
+                      f"lev={pg.guardrail_lev_forced}x {pg.guardrail_type_forced}")
+                dec = dict(dec, margin_usd=pg.guardrail_margin_forced,
+                           leverage=pg.guardrail_lev_forced,
+                           trade_type=pg.guardrail_type_forced)
+                trade_type = pg.guardrail_type_forced
+            # Cappato al massimo margine del portfolio
+            if dec["margin_usd"] > pg.limits.max_margin_trade:
+                print(f"[CAP:{pg.name.upper()}] {sym} margin {dec['margin_usd']:.0f}$ "
+                      f"→ cappato a {pg.limits.max_margin_trade:.0f}$")
+                dec = dict(dec, margin_usd=pg.limits.max_margin_trade)
+            # ─────────────────────────────────────────────────────────────────
             pos, msg = acc.open(
                 sym, side, dec["margin_usd"], dec["leverage"], px, sl, tp, now_ms, prices,
                 confidence=dec["confidence"], reason=dec.get("reason", "")[:200],
@@ -445,10 +543,6 @@ def run_cycle(state: dict, now_ms: int) -> None:
 
     # ---- report
     print(render_report(acc, prices, now_ms))
-
-
-RESET_FLAG = os.path.join(DATA_DIR, "reset.flag")
-BUDGET_RESET_FLAG = os.path.join(DATA_DIR, "budget_reset.flag")
 
 
 def _check_budget_reset_flag(state: dict) -> bool:
@@ -568,7 +662,8 @@ def main() -> None:
         iteration(state)
         return
 
-    print(f"[DESK V2] avvio — simboli: {len(SYMBOLS)}  "
+    print(f"[DESK V2] avvio [{PORTFOLIO.name.upper()}] — {PORTFOLIO.description}")
+    print(f"[DESK V2] simboli: {len(SYMBOLS)}  "
           f"entry_score=60(TIER_AB)/70(TIER_C)  "
           f"daily_cap={DAILY_CAP}$  data={DATA_DIR}")
     while True:
