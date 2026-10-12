@@ -50,7 +50,7 @@ ERRORS_FILE = os.path.join(DATA_DIR, "errors.md")
 
 
 # ---- candles dal BitGet
-def fetch_candles(symbol: str, bar: str = "15m", limit: int = 300) -> list:
+def fetch_candles(symbol: str, bar: str = "15m", limit: int = 1000) -> list:
     sym = symbol.upper()
     if not sym.endswith("USDT"):
         sym += "USDT"
