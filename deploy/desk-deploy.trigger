@@ -1,1 +1,1 @@
-deploy 3 (V2: DCA scalp/medio 27 simboli leva-tier funding/OI stagionalita)
+2026-10-12T03:08:31Z  telegram-v2
