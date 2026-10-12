@@ -1,32 +1,129 @@
-=== ORA UTC: Mon Oct 12 14:08:14 UTC 2026 ===
---- sites-enabled prima:
-total 8
-drwxr-xr-x 2 root root 4096 Oct 12 13:57 .
-drwxr-xr-x 8 root root 4096 Sep 18 23:32 ..
-lrwxrwxrwx 1 root root   36 Sep 18 23:32 hitvprime -> /etc/nginx/sites-available/hitvprime
-lrwxrwxrwx 1 root root   41 Oct 12 13:45 sbtrading-temp -> /etc/nginx/sites-available/sbtrading-temp
-lrwxrwxrwx 1 root root   35 Oct 12 13:57 superbot -> /etc/nginx/sites-available/superbot
-lrwxrwxrwx 1 root root   43 Oct  8 07:16 superbot-staging -> /etc/nginx/sites-available/superbot-staging
---- sites-available:
-default
-hitvprime
-sbtrading-temp
-superbot
-superbot-staging
---- letsencrypt/live:
-README
-superbot-trading.duckdns.org
-RIMOSSO residuo sbtrading-temp (creato dal mio workflow SSL fallito)
-nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
-nginx: configuration file /etc/nginx/nginx.conf test is successful
-nginx ricaricato
---- sites-enabled dopo:
-total 8
-drwxr-xr-x 2 root root 4096 Oct 12 14:08 .
-drwxr-xr-x 8 root root 4096 Sep 18 23:32 ..
-lrwxrwxrwx 1 root root   36 Sep 18 23:32 hitvprime -> /etc/nginx/sites-available/hitvprime
-lrwxrwxrwx 1 root root   35 Oct 12 13:57 superbot -> /etc/nginx/sites-available/superbot
-lrwxrwxrwx 1 root root   43 Oct  8 07:16 superbot-staging -> /etc/nginx/sites-available/superbot-staging
---- config hitvprime (data modifica, deve essere invariata):
--rw-r--r-- 1 root root 1666 2026-09-19 00:38:37.977189050 +0000 /etc/nginx/sites-available/hitvprime
+=== ORA UTC: Mon Oct 12 14:51:21 UTC 2026 ===
+--- container:
+superbot | Up About a minute
+superbot-desk-bull | Up 2 minutes (healthy)
+superbot-desk-hawk | Up 2 minutes (healthy)
+superbot-pool | Up 3 days (healthy)
+superbot-staging | Up 4 days
+hitv-backend | Up 54 minutes (healthy)
+
+########## hawk ##########
+--- volume:
+4096 .
+4096 ..
+891 heartbeat.json
+10 pause.flag
+5151 state_v2.json
+--- heartbeat:
+{'mode': 'paused', 'pause_requested': True, 'open': 0, 'cycles': 0, 'last_ok': None, 'last_error': '', 'version': 'a0afc63', 'age_s': 3, 'next_in_min': -29863611.4}
+--- versione nel container:
+a0afc63
+--- healthcheck (exit 0 = sano):
+exit=0
+--- docker health:
+healthy
+--- ultimi log:
+[DESK V2] avvio [HAWK] versione a0afc63 — Hawk — max $100/trade, 10 posizioni, budget $1000
+[DESK V2] simboli: 27  entry_score=60(TIER_AB)/70(TIER_C)  daily_cap=0.7$  data=/app/data/desk/hawk
+[BUDGET_RESET] budget giornaliero di Claude azzerato (conto invariato)
+[MODO] paused
+
+########## bull ##########
+--- volume:
+4096 .
+4096 ..
+955 heartbeat.json
+6132 state_v2.json
+--- heartbeat:
+{'mode': 'running', 'pause_requested': False, 'open': 1, 'cycles': 1, 'last_ok': True, 'last_error': '', 'version': 'a0afc63', 'age_s': 3, 'next_in_min': 12.6}
+--- versione nel container:
+a0afc63
+--- healthcheck (exit 0 = sano):
+exit=0
+--- docker health:
+healthy
+--- ultimi log:
+[DESK V2] avvio [BULL] versione a0afc63 — Bull — max $350/trade, 3 posizioni, budget $1000, TP≥5%
+[DESK V2] simboli: 27  entry_score=60(TIER_AB)/70(TIER_C)  daily_cap=0.7$  data=/app/data/desk/bull
+[DESK V2] candles ok: 26/27 simboli
+[DESK V2] readings validi: 26/27 simboli
+[CONF_LOW] XRP conf=68 < soglia=70
+[CONF_LOW] UNI conf=62 < soglia=70
+[CONF_LOW] ARB conf=64 < soglia=70
+[CONF_LOW] SUI conf=63 < soglia=70
+[CONF_LOW] RUNE conf=61 < soglia=70
+[OPEN] XAG SHORT SCALP lev 17x  margin 158$  @60.5  SL 60.807  conf 63  src rules  R:R 1:1.8
+=== DESK V2 REPORT 2026-10-12 14:48 UTC ===
+Equity: 997.85$  Cash: 840.39$  Margin: 158.00$
+Posizioni: 1/3
+  XAG SHORT SCALP lev 17x  margin 158$  DCA 0/2  P&L -0.54$  SL 60.807
+[SLEEP] prossimo ciclo tra 15 min
+[MODO] running
+
+########## API (sessione creata nel container, token mai stampato) ##########
+
+=== /api/desk ===
+status:      {'available': True, 'bot_mode': 'paused', 'paused': True, 'draining': False, 'bot_online': True, 'equity': 1000.0, 'cash': 1000.0, 'margin_used': 0.0, 'unrealized_pnl': 0.0, 'pnl_total': 0.0, 'open_positions': 0, 'total_closed': 0, 'version': 'a0afc63', 'halt': None, 'run_no': 1, 'can_reset': True, 'budget_spent_usd': 0.0, 'budget_daily_cap_usd': 0.7}
+  cycle:     {'count': 0, 'running': False, 'last_start_ms': None, 'last_end_ms': None, 'last_ok': None, 'last_error': '', 'next_cycle_ms': None}
+  posizioni: []
+trades:      lista di 0 elementi; primo: None
+performance: {'available': False, 'total_trades': 0, 'win_rate': 0, 'total_pnl': 0, 'profit_factor': None}
+diary:       {'total_closed': 0}
+runs:        run attuale 1 archiviate 0
+logs:        {'available': False}
+reset-portfolio con bot in funzione (atteso 409): 200
+
+=== /api/desk/bull ===
+status:      {'available': True, 'bot_mode': 'running', 'paused': False, 'draining': False, 'bot_online': True, 'equity': 999.18, 'cash': 840.39, 'margin_used': 158.0, 'unrealized_pnl': 0.79, 'pnl_total': -0.82, 'open_positions': 1, 'total_closed': 0, 'version': 'a0afc63', 'halt': None, 'run_no': 1, 'can_reset': False, 'budget_spent_usd': 0.0359, 'budget_daily_cap_usd': 0.7}
+  cycle:     {'count': 1, 'running': False, 'last_start_ms': 1791816524501, 'last_end_ms': 1791816538924, 'last_ok': True, 'last_error': '', 'next_cycle_ms': 1791817438924}
+  posizioni: [('XAG', -1, 0.79, 'live')]
+trades:      lista di 0 elementi; primo: None
+performance: {'available': False, 'total_trades': 0, 'win_rate': 0, 'total_pnl': 0, 'profit_factor': None}
+diary:       {'total_closed': 0}
+runs:        run attuale 1 archiviate 0
+logs:        {'available': False}
+reset-portfolio con bot in funzione (atteso 409): 409
+
+prezzi (simboli con prezzo): 26 / 27
+senza token (atteso 401): 401
+senza token health (atteso 200): 200
+
+########## PROVA COMANDI VERI su Bull: Pausa -> Riprendi ##########
+prima:
+  server: {'bot_mode': 'running', 'paused': False, 'open_positions': 1}
+  bot:    {'mode': 'running', 'pause_requested': False, 'open': 1, 'cycles': 1, 'last_ok': True, 'last_error': '', 'version': 'a0afc63', 'age_s': 0, 'next_in_min': 12.5}
+>> POST /pause
+{'paused': True, 'bot_mode': 'draining', 'open_positions': 1, 'message': "Pausa attivata: il bot non apre nuovi trade e lascia finire 1 posizioni gia' aperte (stop loss, take profit o uscita del bot)."}
+  pause.flag presente: /opt/superbot-desk-data/bull/pause.flag
+dopo 20s in pausa:
+  server: {'bot_mode': 'draining', 'paused': True, 'open_positions': 1}
+  bot:    {'mode': 'draining', 'pause_requested': True, 'open': 1, 'cycles': 2, 'last_ok': True, 'last_error': '', 'version': 'a0afc63', 'age_s': 3, 'next_in_min': 15.0}
+[PAUSA] richiesta di pausa: finisco le posizioni aperte, nessun nuovo ingresso
+[PAUSA] 6 nuovi ingressi/DCA ignorati: bot in pausa (1 posizioni ancora da completare)
+[MODO] draining
+>> POST /resume
+{'paused': False, 'bot_mode': 'running', 'message': 'Bot avviato: riprende subito a cercare trade.'}
+dopo 25s dalla ripresa:
+  server: {'bot_mode': 'running', 'paused': False, 'open_positions': 1}
+  bot:    {'mode': 'running', 'pause_requested': False, 'open': 1, 'cycles': 3, 'last_ok': True, 'last_error': '', 'version': 'a0afc63', 'age_s': 5, 'next_in_min': 14.8}
+[DESK V2] candles ok: 26/27 simboli
+[PAUSA] 6 nuovi ingressi/DCA ignorati: bot in pausa (1 posizioni ancora da completare)
+[SLEEP] prossimo ciclo tra 15 min
+[MODO] draining
+[AVVIO] ripresa richiesta: il bot lavora
+[DESK V2] candles ok: 26/27 simboli
+[SLEEP] prossimo ciclo tra 15 min
+[MODO] running
+pause.flag assente: Bull in funzione
+
+########## SITO PUBBLICO ##########
+home: 200
+api health: {"status":"ok","mode":"paper","version":"1.0.0"}
+status senza token (atteso 401): 401
+bundle: static/js/main.9dbed108.js
+  contiene "Pausa in corso": 1
+  contiene "Azzera portafoglio": 1
+  contiene "Chiudi subito tutte": 1
+  contiene "Run #": 1
+
 FINE
