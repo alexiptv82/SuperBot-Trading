@@ -405,9 +405,9 @@ def test_full_cycle_v2_opens_position_and_saves_state():
             acc = cli.make_account(state)
             assert "BTC" in acc.positions, f"BTC dovrebbe essere aperto, posizioni: {list(acc.positions)}"
             pos = acc.positions["BTC"]
-            assert pos.leverage == 10
-            assert pos.total_margin > 0
-            assert pos.trade_type == "medio"
+            assert pos.leverage >= 15, f"GUARDRAIL deve forzare lev>=15x, got {pos.leverage}"
+            assert pos.total_margin >= 150, f"GUARDRAIL deve forzare margin>=150$, got {pos.total_margin}"
+            assert pos.trade_type in ("scalp", "medio")
     finally:
         cli.fetch_candles = orig_fetch
         _mc.fetch_all_context = orig_ctx
