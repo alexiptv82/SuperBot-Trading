@@ -49,19 +49,33 @@ def test_stop_beyond_liquidation_is_refused_at_high_leverage():
 
 
 def test_total_margin_cap_and_max_open():
-    a = acct()
-    # V2: max_margin_total=800$, max_open=5
+    # V2: max_margin_total=2000$, max_margin_trade=400$, max_open=10
+    # Usiamo un account con cash abbondante per testare i cap
+    from desk.engine import Limits
+    lim = Limits()
+    a = PaperAccount(lim, "main")
+    a.cash = 3000.0  # cash sufficiente per testare il cap di margine totale
+
+    # singolo trade cappato a max_margin_trade=400$
     p1, _ = a.open("A", 1, 400, 3, 100.0, 90.0, None, 0, {})
     assert p1 is not None and p1.total_margin == 400
     p2, _ = a.open("B", 1, 400, 3, 100.0, 90.0, None, 0, {})
     assert p2 is not None
-    p3, msg = a.open("C", 1, 100, 3, 100.0, 90.0, None, 0, {})   # supera 800$
-    assert p3 is None and "margine" in msg
-    # max_open=5
-    b = acct()
-    for s in "ABCDE":
+    # dopo 5 trade da 400$ = 2000$ siamo al cap
+    for s in "CDE":
+        px, _ = a.open(s, 1, 400, 3, 100.0, 90.0, None, 0, {})
+        assert px is not None, f"atteso aperto per {s}"
+    # il sesto supera max_margin_total=2000$
+    p6, msg = a.open("F", 1, 200, 3, 100.0, 90.0, None, 0, {})
+    assert p6 is None and "margine" in msg, f"atteso rifiuto per margine, got {p6} msg={msg}"
+
+    # max_open=10
+    b = PaperAccount(Limits(), "main")
+    b.cash = 5000.0
+    for s in "ABCDEFGHIJ":   # 10 posizioni — al limite
         b.open(s, 1, 40, 3, 100.0, 90.0, None, 0, {})
-    assert b.open("F", 1, 40, 3, 100.0, 90.0, None, 0, {})[0] is None
+    assert len(b.positions) == 10
+    assert b.open("K", 1, 40, 3, 100.0, 90.0, None, 0, {})[0] is None
 
 
 def test_stop_loss_exit_and_pnl_includes_costs():
