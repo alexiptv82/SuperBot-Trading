@@ -29,21 +29,23 @@ jobs:
           ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 \
             'OUT=/tmp/diag_tg.txt
             echo "=== ORA UTC: $(date -u) ===" > $OUT
-            docker ps -a --filter name=superbot --format "{{.Names}} | {{.Status}}" >> $OUT
-            for C in superbot-desk-hawk superbot-desk-bull; do
-              echo "" >> $OUT
-              echo "##### $C #####" >> $OUT
-              echo "healthcheck: $(docker inspect $C --format "{{.Config.Healthcheck.Test}}")" >> $OUT
-              echo "processi nel container (atteso 1 python): $(docker top $C | tail -n +2 | wc -l)" >> $OUT
-              echo "righe HALT nei log: $(docker logs $C 2>&1 | grep -c HALT)" >> $OUT
-              docker logs --tail 8 $C 2>&1 | cut -c1-200 | sed -E "s/bot[0-9]+:[A-Za-z0-9_-]+/bot-MASKED/g" >> $OUT
-            done
-            echo "" >> $OUT
-            echo "--- memoria container:" >> $OUT
-            docker stats --no-stream --format "{{.Name}} | {{.MemUsage}}" >> $OUT 2>&1
-            awk "/MemAvailable/ {print \"MemAvailable MB:\", int(\$2/1024)}" /proc/meminfo >> $OUT
-            echo "--- file dati:" >> $OUT
-            ls -la --time-style=full-iso /opt/superbot-desk-data/hawk/ /opt/superbot-desk-data/bull/ >> $OUT 2>&1
+            echo "--- sites-enabled prima:" >> $OUT
+            ls -la /etc/nginx/sites-enabled/ >> $OUT
+            echo "--- sites-available:" >> $OUT
+            ls /etc/nginx/sites-available/ >> $OUT
+            echo "--- letsencrypt/live:" >> $OUT
+            ls /etc/letsencrypt/live/ >> $OUT 2>&1
+            if [ -e /etc/nginx/sites-enabled/sbtrading-temp ] || [ -e /etc/nginx/sites-available/sbtrading-temp ]; then
+              rm -f /etc/nginx/sites-enabled/sbtrading-temp /etc/nginx/sites-available/sbtrading-temp
+              echo "RIMOSSO residuo sbtrading-temp (creato dal mio workflow SSL fallito)" >> $OUT
+              nginx -t >> $OUT 2>&1 && nginx -s reload && echo "nginx ricaricato" >> $OUT
+            else
+              echo "nessun residuo sbtrading-temp" >> $OUT
+            fi
+            echo "--- sites-enabled dopo:" >> $OUT
+            ls -la /etc/nginx/sites-enabled/ >> $OUT
+            echo "--- config hitvprime (data modifica, deve essere invariata):" >> $OUT
+            ls -la --time-style=full-iso /etc/nginx/sites-available/hitvprime >> $OUT
             echo "FINE" >> $OUT'
           scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new root@51.91.109.45:/tmp/diag_tg.txt deploy/diag-output.txt
           rm -f ~/.ssh/id_tmp
@@ -53,5 +55,5 @@ jobs:
           git config user.email "ci@superbot"
           git config user.name "SuperBot CI"
           git add deploy/diag-output.txt
-          git diff --staged --quiet || git commit -m "diag: stato finale desk [skip ci]"
+          git diff --staged --quiet || git commit -m "diag: pulizia residuo nginx [skip ci]"
           git push origin rule-pool
