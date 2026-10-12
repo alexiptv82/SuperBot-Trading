@@ -167,20 +167,24 @@ export default function Dashboard() {
     } catch (e) { console.error(e); setApiError(true); }
   }, []);
 
-  const fetchDeskData = useCallback(async () => {
+  const fetchDeskStatus = useCallback(async () => {
     try {
-      const [r, p] = await Promise.all([
-        deskAPI.getStatus(),
-        deskAPI.getPrices(),
-      ]);
+      const r = await deskAPI.getStatus();
       setDeskStatus(r.data);
-      setPrices(p.data);
     } catch (e) { /* desk offline è normale */ }
   }, []);
 
-  // Poll dati V1 ogni 10s, V2 ogni 5s (per sincronizzarsi con Telegram quasi in tempo reale)
-  useEffect(() => { fetchData(); const t = setInterval(fetchData, 10000); return () => clearInterval(t); }, [fetchData]);
-  useEffect(() => { fetchDeskData(); const t = setInterval(fetchDeskData, 5000); return () => clearInterval(t); }, [fetchDeskData]);
+  const fetchDeskPrices = useCallback(async () => {
+    try {
+      const p = await deskAPI.getPrices();
+      setPrices(p.data);
+    } catch (e) { /* prezzi non disponibili */ }
+  }, []);
+
+  // Poll V1 ogni 15s, V2 status ogni 8s, prezzi ogni 60s (sono pesanti: 27 ticker in serie)
+  useEffect(() => { fetchData(); const t = setInterval(fetchData, 15000); return () => clearInterval(t); }, [fetchData]);
+  useEffect(() => { fetchDeskStatus(); const t = setInterval(fetchDeskStatus, 8000); return () => clearInterval(t); }, [fetchDeskStatus]);
+  useEffect(() => { fetchDeskPrices(); const t = setInterval(fetchDeskPrices, 60000); return () => clearInterval(t); }, [fetchDeskPrices]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
 
   const marketLive = Object.keys(prices).length > 0;
@@ -421,7 +425,7 @@ export default function Dashboard() {
                     if (!window.confirm(`Chiudere forzatamente tutte le ${deskStatus.positions.length} posizioni V2 aperte?`)) return;
                     try {
                       await deskAPI.closeAll();
-                      await fetchDeskData();
+                      await fetchDeskStatus();
                     } catch(e) { alert('Errore: ' + (e?.message || e)); }
                   }}
                   style={{

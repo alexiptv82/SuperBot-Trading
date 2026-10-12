@@ -702,9 +702,21 @@ async def desk_status(session=Depends(require_session)):
     }
 
 
+_prices_cache: dict = {}
+_prices_cache_ts: float = 0.0
+_PRICES_CACHE_TTL = 30.0   # secondi — refresh max ogni 30s, non ad ogni richiesta
+
 @app.get("/api/desk/prices")
 async def desk_prices(session=Depends(require_session)):
-    """Prezzi live per tutti i 27 simboli V2 — usati dal MarketCarousel nel frontend."""
+    """Prezzi live per tutti i 27 simboli V2 — usati dal MarketCarousel nel frontend.
+    Cache server-side 30s: il frontend può fare polling frequente senza sommergere l'exchange.
+    """
+    global _prices_cache, _prices_cache_ts
+    import time as _time
+    now = _time.monotonic()
+    if _prices_cache and (now - _prices_cache_ts) < _PRICES_CACHE_TTL:
+        return _prices_cache
+
     V2_SYMBOLS = [
         'BTC','ETH','BNB','XRP','SOL','ADA','DOGE','AVAX',
         'DOT','LINK','MATIC','UNI','ATOM','LTC','BCH',
@@ -723,6 +735,8 @@ async def desk_prices(session=Depends(require_session)):
                 prices[sym] = ticker
             except Exception as e:
                 prices[sym] = {'error': str(e)}
+    _prices_cache = prices
+    _prices_cache_ts = now
     return prices
 
 
