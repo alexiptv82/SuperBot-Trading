@@ -1,5 +1,8 @@
 name: SuperBot - diagnostica 502 (scrive log nel repo)
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [rule-pool]
@@ -8,7 +11,10 @@ on:
 
 jobs:
   diag:
-    runs-on: ubuntu-latest
+    runs-permissions:
+  contents: write
+
+on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
