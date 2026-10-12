@@ -43,7 +43,9 @@ REGOLE DURE (il codice le applica comunque):
 - Margine totale in uso: max 800$.
 - Posizioni aperte: max 5.
 
-APPRENDIMENTO: gli appunti degli errori ricorrenti sono il tuo manuale. Applica le correzioni.
+APPRENDIMENTO: hai due fonti di memoria —
+- STORICO SIMBOLI: win rate e P&L per asset (ultimi 200 trade). Evita simboli con WR < 40% e perde costante.
+- APPUNTI ERRORI: pattern ripetuti identificati dal coaching giornaliero. Applica sempre le correzioni.
 
 RISPOSTA — SOLO JSON:
 {"decisions":[
@@ -140,7 +142,7 @@ def parse_decisions(text: str) -> dict | None:
 
 # ---------------- prompt V2
 def build_prompt(snapshot: dict, readings: list, positions: list, headlines: list,
-                 lessons: str, ctx: dict | None = None) -> str:
+                 lessons: str, ctx: dict | None = None, symbol_stats: str = "") -> str:
     lines = [
         f"CONTO: capitale {snapshot['equity']:.0f}$, cassa {snapshot['cash']:.0f}$, "
         f"margine in uso {snapshot['margin']:.0f}/800$, posizioni {snapshot['n_open']}/5, "
@@ -185,6 +187,9 @@ def build_prompt(snapshot: dict, readings: list, positions: list, headlines: lis
 
     if headlines:
         lines.append("NOTIZIE (con sentiment se disponibile): " + " | ".join(headlines[:10]))
+
+    if symbol_stats.strip():
+        lines.append(symbol_stats.strip())
 
     if lessons.strip():
         lines.append("APPUNTI ERRORI RICORRENTI (applica queste correzioni):\n" + lessons.strip()[-1500:])
@@ -289,3 +294,74 @@ def update_lessons(d: str, st: dict, day: str, call=call_claude) -> None:
 
 def _utc_day(ms: int) -> str:
     return time.strftime("%Y-%m-%d", time.gmtime(ms / 1000))
+
+
+# ---------------- storico trade permanente
+def append_trade_history(data_dir: str, trade: dict) -> None:
+    """Appende un trade chiuso al log JSONL permanente (sopravvive ai rideploy)."""
+    path = os.path.join(data_dir, "trade_history.jsonl")
+    os.makedirs(data_dir, exist_ok=True)
+    try:
+        with open(path, "a") as f:
+            f.write(json.dumps(trade, default=str) + "\n")
+    except Exception:
+        pass
+
+
+def load_symbol_stats(data_dir: str, last_n: int = 200) -> dict:
+    """Legge le ultime N righe del trade_history.jsonl e calcola statistiche per simbolo."""
+    path = os.path.join(data_dir, "trade_history.jsonl")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            lines = f.readlines()
+        trades = []
+        for line in lines[-last_n:]:
+            try:
+                trades.append(json.loads(line))
+            except Exception:
+                continue
+        stats: dict = {}
+        for t in trades:
+            sym = t.get("symbol", "?")
+            if sym not in stats:
+                stats[sym] = {"wins": 0, "losses": 0, "total_net": 0.0,
+                              "best": 0.0, "worst": 0.0, "trade_types": {}}
+            s = stats[sym]
+            net = float(t.get("net", 0))
+            s["total_net"] += net
+            if net >= 0:
+                s["wins"] += 1
+                s["best"] = max(s["best"], net)
+            else:
+                s["losses"] += 1
+                s["worst"] = min(s["worst"], net)
+            tt = t.get("trade_type", "?")
+            s["trade_types"][tt] = s["trade_types"].get(tt, 0) + 1
+        return stats
+    except Exception:
+        return {}
+
+
+def stats_summary(stats: dict, top_n: int = 8) -> str:
+    """Genera un riassunto compatto delle statistiche per simbolo, per il prompt."""
+    if not stats:
+        return ""
+    rows = []
+    for sym, s in stats.items():
+        total = s["wins"] + s["losses"]
+        if total == 0:
+            continue
+        wr = s["wins"] / total * 100
+        rows.append((s["total_net"], sym, s, wr, total))
+    # ordina per P&L totale decrescente
+    rows.sort(key=lambda x: x[0], reverse=True)
+    lines = ["STORICO SIMBOLI (ultimi trade):"]
+    for _, sym, s, wr, total in rows[:top_n]:
+        tt_str = "/".join(f"{k}:{v}" for k, v in s["trade_types"].items())
+        lines.append(
+            f"- {sym}: {total} trade, WR {wr:.0f}%, netto {s['total_net']:+.1f}$  "
+            f"[best {s['best']:+.1f}$ worst {s['worst']:+.1f}$  {tt_str}]"
+        )
+    return "\n".join(lines)

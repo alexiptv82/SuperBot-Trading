@@ -22,7 +22,7 @@ from desk.engine import Limits, PaperAccount
 from desk.signals import read_symbol
 from desk.brain import (SYSTEM, DAILY_CAP, build_prompt, call_claude,
                         can_call, parse_decisions, record_spend, rules_decisions,
-                        update_lessons)
+                        update_lessons, append_trade_history, load_symbol_stats, stats_summary)
 from desk.market_context import fetch_all_context
 from desk.notifier import (notify_open, notify_close, notify_dca,
                            notify_halt, notify_daily_report)
@@ -231,6 +231,7 @@ def run_cycle(state: dict, now_ms: int) -> None:
     headlines = ctx_for_prompt.get("news", []) if ctx_for_prompt else []
 
     lessons = load_lessons()
+    sym_stats = stats_summary(load_symbol_stats(DATA_DIR))
 
     last_call = state.get("last_call_ms", 0)
     # determina se qualche scalp richiede review urgente
@@ -243,7 +244,7 @@ def run_cycle(state: dict, now_ms: int) -> None:
         print(f"[HALT] {halt}")
     elif call_due and can_call(state, day):
         try:
-            prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt)
+            prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats)
             text, usage = call_claude(SYSTEM, prompt, max_tokens=1100)
             cost = record_spend(state, day, usage)
             state["last_call_ms"] = now_ms
@@ -276,6 +277,7 @@ def run_cycle(state: dict, now_ms: int) -> None:
             if closed:
                 print(f"[CLOSE] {sym} net {closed['net']:+.2f}$  motivo: {dec['reason'][:60]}")
                 notify_close(sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
+                append_trade_history(DATA_DIR, closed)
 
         elif act == "dca":
             # DCA su posizione esistente
@@ -354,6 +356,7 @@ def run_cycle(state: dict, now_ms: int) -> None:
             if result:
                 print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
                 notify_close(sym, result["net"], result.get("why", ""), result["why"])
+                append_trade_history(DATA_DIR, result)
                 break
 
     # ---- lessons
