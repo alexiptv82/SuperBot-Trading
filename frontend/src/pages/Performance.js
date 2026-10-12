@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { deskAPI } from '../api';
+import { deskAPI, bullAPI } from '../api';
 
 const GOOD   = '#4ade80';
 const BAD    = '#f87171';
@@ -179,29 +179,34 @@ const DayCard = ({ day, data, defaultOpen }) => {
 };
 
 export default function Performance() {
+  // portfolio selector: 'hawk' | 'bull'
+  const [portfolio, setPortfolio] = useState('hawk');
+
   const [diary,   setDiary]   = useState(null);
   const [perf,    setPerf]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab,     setTab]     = useState('diary'); // 'diary' | 'stats'
 
-  const load = useCallback(() => {
+  const load = useCallback((pf = portfolio) => {
     setLoading(true);
+    const api = pf === 'bull' ? bullAPI : deskAPI;
     Promise.all([
-      deskAPI.getDiary().catch(() => null),
-      deskAPI.getPerformance().catch(() => null),
+      api.getDiary().catch(() => null),
+      api.getPerformance().catch(() => null),
     ]).then(([d, p]) => {
       if (d?.data) setDiary(d.data);
       if (p?.data) setPerf(p.data);
       setLoading(false);
     });
-  }, []);
+  }, [portfolio]);
 
   useEffect(() => {
-    load();
-    // ricarica ogni 2 minuti — aggiornato ad ogni trade chiuso
-    const id = setInterval(load, 120_000);
+    setDiary(null);
+    setPerf(null);
+    load(portfolio);
+    const id = setInterval(() => load(portfolio), 120_000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [portfolio, load]);
 
   const TabBtn = ({ id, label }) => (
     <button
@@ -220,12 +225,14 @@ export default function Performance() {
   const hasDiary = diary?.days?.length > 0;
   const hasPerf  = perf?.total_trades > 0;
 
+  const portfolioColor = portfolio === 'bull' ? '#a78bfa' : '#38bdf8';
+
   return (
     <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>🏆 Performance</h1>
         <button
-          onClick={load}
+          onClick={() => load(portfolio)}
           disabled={loading}
           style={{
             padding: '6px 12px', borderRadius: '8px', border: `1px solid ${BORDER}`,
@@ -235,6 +242,21 @@ export default function Performance() {
         >
           {loading ? '...' : '↻ Aggiorna'}
         </button>
+      </div>
+
+      {/* Selettore portfolio */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', background: SURF, borderRadius: '12px', padding: '4px', border: `1px solid ${BORDER}` }}>
+        {[['hawk', '🦅 Hawk'], ['bull', '🐂 Bull']].map(([id, label]) => (
+          <button key={id} onClick={() => setPortfolio(id)}
+            style={{
+              flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
+              background: portfolio === id ? (id === 'bull' ? '#7c3aed' : ACCENT) : 'transparent',
+              color: portfolio === id ? '#fff' : MUTED,
+              fontWeight: 'bold', cursor: 'pointer', fontSize: '13px',
+            }}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Tab selector */}
@@ -279,7 +301,7 @@ export default function Performance() {
           {/* Per simbolo — tutti i giorni aggregati */}
           <Card style={{ marginBottom: '12px' }}>
             <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', color: '#f1f5f9' }}>
-              💱 Totale per Asset
+              💱 Totale per Asset {portfolio === 'bull' ? '🐂' : '🦅'}
             </div>
             {Object.entries(perf.by_symbol || {})
               .sort((a, b) => b[1].net_pnl - a[1].net_pnl)

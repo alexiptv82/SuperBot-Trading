@@ -71,9 +71,8 @@ export const botAPI = {
     API.post('/api/auth/webauthn/login/verify', { state_id, credential }),
 };
 
-// ── V2 Desk Bot API ──────────────────────────────────────────────────────────
-// Endpoint /api/desk/* serviti dallo stesso backend FastAPI, leggono
-// dal volume persistente del container superbot-desk (nessun DB V1).
+// ── V2 Desk Bot API — HAWK (default) ─────────────────────────────────────────
+// Portafoglio Hawk: max $100/trade, max 10 posizioni, budget $1000
 export const deskAPI = {
   getStatus:      () => API.get('/api/desk/status'),
   getTrades:      (limit = 100) => API.get(`/api/desk/trades?limit=${limit}`),
@@ -84,6 +83,18 @@ export const deskAPI = {
   health:         () => API.get('/api/desk/health'),
   resetBudget:    (equityReset = false) => API.post('/api/desk/reset-budget', { equity_reset: equityReset }),
   getDiary:       () => API.get('/api/desk/diary'),
+};
+
+// ── V2 Desk Bot API — BULL ────────────────────────────────────────────────────
+// Portafoglio Bull: max $350/trade, max 3 posizioni, TP≥5%, budget $1000
+export const bullAPI = {
+  getStatus:      () => API.get('/api/desk/bull/status'),
+  getTrades:      (limit = 100) => API.get(`/api/desk/bull/trades?limit=${limit}`),
+  getPerformance: () => API.get('/api/desk/bull/performance'),
+  getLogs:        () => API.get('/api/desk/bull/logs'),
+  health:         () => API.get('/api/desk/bull/health'),
+  resetBudget:    (equityReset = false) => API.post('/api/desk/bull/reset-budget', { equity_reset: equityReset }),
+  getDiary:       () => API.get('/api/desk/bull/diary'),
 };
 
 export default API;
