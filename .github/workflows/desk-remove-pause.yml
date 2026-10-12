@@ -1,0 +1,24 @@
+name: SuperBot - rimuovi pause flag (riattiva bot)
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-remove-pause.trigger"
+
+jobs:
+  remove-pause:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Rimuovi pause.flag da hawk e bull
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_tmp
+          chmod 600 ~/.ssh/id_tmp
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 \
+            'rm -f /opt/superbot-desk-data/hawk/pause.flag && echo "HAWK: pause.flag rimosso" || echo "HAWK: nessun flag"
+             rm -f /opt/superbot-desk-data/bull/pause.flag && echo "BULL: pause.flag rimosso" || echo "BULL: nessun flag"'
+          rm -f ~/.ssh/id_tmp
