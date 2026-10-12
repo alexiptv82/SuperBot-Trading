@@ -2,6 +2,34 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { botAPI, deskAPI } from '../api';
 import ChartModal from '../components/ChartModal';
 import ProfileBadge, { profileColor } from '../components/ProfileBadge';
+
+// Formatta un numero in modo sicuro: converte stringhe, gestisce null/undefined.
+const fmt = (v, dec = 2) => {
+  const n = parseFloat(v);
+  return isNaN(n) ? '--' : n.toFixed(dec);
+};
+
+// Error boundary: cattura crash di render nella sezione V2 evitando schermata nera.
+class DeskErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, msg: '' }; }
+  static getDerivedStateFromError(e) { return { hasError: true, msg: e?.message || '' }; }
+  componentDidCatch(e, info) { console.error('[DeskSection crash]', e, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          background: '#1e293b', borderRadius: '12px', padding: '14px',
+          border: '1px solid #dc2626', color: '#fca5a5', fontSize: '13px',
+          marginBottom: '16px'
+        }}>
+          ⚠️ Errore nel caricamento dei dati V2. Ricarica l'app.
+          {this.state.msg ? <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{this.state.msg}</div> : null}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 const Card = ({ children, style, onClick }) => (
   <div onClick={onClick} style={{
     background: '#1e293b', borderRadius: '16px', padding: '16px',
@@ -230,7 +258,7 @@ export default function Dashboard() {
       )}
       {/* ── Sezione V2 Bot Desk (paper trading con Claude) ── */}
       {deskStatus && (
-        <>
+        <DeskErrorBoundary>
           <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px', marginTop: '8px' }}>
             🧠 Bot V2 Paper (Claude AI)
           </h2>
@@ -243,20 +271,20 @@ export default function Dashboard() {
               <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
                 <Card style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
                   <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Cassa</div>
-                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>${deskStatus.cash?.toFixed(2)}</div>
+                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>${fmt(deskStatus.cash)}</div>
                 </Card>
                 <Card style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
                   <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Aperte</div>
-                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>{deskStatus.open_positions}</div>
+                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>{deskStatus.open_positions ?? 0}</div>
                 </Card>
                 <Card style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
                   <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Chiusi</div>
-                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>{deskStatus.total_closed}</div>
+                  <div style={{ fontSize: '17px', fontWeight: 'bold' }}>{deskStatus.total_closed ?? 0}</div>
                 </Card>
                 <Card style={{ flex: 1, textAlign: 'center', minWidth: '120px' }}>
                   <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>Claude $</div>
-                  <div style={{ fontSize: '17px', fontWeight: 'bold', color: deskStatus.budget_spent_usd > deskStatus.budget_daily_cap_usd * 0.9 ? '#fbbf24' : '#4ade80' }}>
-                    ${deskStatus.budget_spent_usd?.toFixed(3)}
+                  <div style={{ fontSize: '17px', fontWeight: 'bold', color: (deskStatus.budget_spent_usd ?? 0) > (deskStatus.budget_daily_cap_usd ?? 0.7) * 0.9 ? '#fbbf24' : '#4ade80' }}>
+                    ${fmt(deskStatus.budget_spent_usd, 3)}
                   </div>
                 </Card>
               </div>
@@ -265,7 +293,7 @@ export default function Dashboard() {
                   ⚠️ HALT: {deskStatus.halt}
                 </Card>
               )}
-              {deskStatus.positions?.length > 0 && (
+              {Array.isArray(deskStatus.positions) && deskStatus.positions.length > 0 && (
                 <>
                   <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>⚡ Posizioni V2 aperte</div>
                   {deskStatus.positions.map((p, i) => (
@@ -275,15 +303,15 @@ export default function Dashboard() {
                           <span style={{
                             padding: '2px 6px', borderRadius: '5px', fontSize: '10px', fontWeight: 'bold',
                             background: p.side === 'long' ? '#166534' : '#7f1d1d', color: 'white', marginRight: '6px'
-                          }}>{p.side?.toUpperCase()}</span>
-                          <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{p.symbol}</span>
-                          <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '5px' }}>x{p.leverage}</span>
-                          <span style={{ color: '#64748b', fontSize: '10px', marginLeft: '5px' }}>[{p.trade_type}]</span>
-                          {p.dca_count > 0 && <span style={{ color: '#fbbf24', fontSize: '10px', marginLeft: '4px' }}>DCA×{p.dca_count}</span>}
+                          }}>{(p.side || '?').toUpperCase()}</span>
+                          <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{p.symbol || '?'}</span>
+                          <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '5px' }}>x{p.leverage ?? '--'}</span>
+                          <span style={{ color: '#64748b', fontSize: '10px', marginLeft: '5px' }}>[{p.trade_type || 'medio'}]</span>
+                          {(p.dca_count ?? 0) > 0 && <span style={{ color: '#fbbf24', fontSize: '10px', marginLeft: '4px' }}>DCA×{p.dca_count}</span>}
                         </div>
                         <div style={{ textAlign: 'right', fontSize: '12px' }}>
-                          <div>@ ${p.entry_price?.toFixed?.(2) ?? p.entry_price}</div>
-                          <div style={{ color: '#94a3b8', fontSize: '10px' }}>${p.margin?.toFixed(0)} margin</div>
+                          <div>@ ${fmt(p.entry_price)}</div>
+                          <div style={{ color: '#94a3b8', fontSize: '10px' }}>${fmt(p.margin, 0)} margin</div>
                         </div>
                       </div>
                     </Card>
@@ -291,11 +319,11 @@ export default function Dashboard() {
                 </>
               )}
               <div style={{ fontSize: '11px', color: '#475569', marginTop: '4px' }}>
-                Ciclo #{deskStatus.cycle} · Giorno {deskStatus.day} · Budget giornaliero ${deskStatus.budget_daily_cap_usd}
+                Ciclo #{deskStatus.cycle ?? 0} · Giorno {deskStatus.day || '--'} · Budget giornaliero ${deskStatus.budget_daily_cap_usd ?? 0.70}
               </div>
             </>
           )}
-        </>
+        </DeskErrorBoundary>
       )}
       <ChartModal symbol={chartSymbol} onClose={() => setChartSymbol(null)} />
     </div>

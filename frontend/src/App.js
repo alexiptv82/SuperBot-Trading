@@ -27,7 +27,9 @@ function PasswordBanner() {
 }
 
 export default function App() {
-  const [auth, setAuth] = useState(!!localStorage.getItem('sb_token'));
+  // sessionStorage: si svuota alla chiusura del tab/app → l'auth viene richiesta
+  // ad ogni apertura (sicurezza biometrica obbligatoria ad ogni avvio).
+  const [auth, setAuth] = useState(!!sessionStorage.getItem('sb_token'));
   if (!auth) return <Login onLogin={() => setAuth(true)} />;
   return (
     <BrowserRouter>
@@ -41,7 +43,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>
-      <NavBar onLogout={() => { localStorage.removeItem('sb_token'); setAuth(false); }} />
+      <NavBar onLogout={() => { sessionStorage.removeItem('sb_token'); setAuth(false); }} />
     </BrowserRouter>
   );
 }

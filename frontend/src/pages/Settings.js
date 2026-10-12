@@ -173,7 +173,7 @@ export default function Settings() {
               onSuccess={(newToken) => {
                 // Il cambio password chiude tutte le sessioni precedenti: questa
                 // continua col nuovo token.
-                localStorage.setItem('sb_token', newToken);
+                sessionStorage.setItem('sb_token', newToken);
                 setShowPwdForm(false);
                 setPwdMsg('Password cambiata. Gli altri dispositivi dovranno accedere di nuovo.');
                 botAPI.passwordStatus().then(({ data }) => setPwdStatus(data)).catch(() => {});
