@@ -1,35 +1,22 @@
-=== ORA UTC: Mon Oct 12 13:59:22 UTC 2026 ===
---- container superbot:
-superbot | Up 48 seconds
-Restarts=0 ExitCode=0
---- WEBAUTHN nel .env:
-WEBAUTHN_RP_ID=superbot-trading.duckdns.org
-WEBAUTHN_ORIGIN=https://superbot-trading.duckdns.org
-WEBAUTHN_RP_NAME=SuperBot
---- /api/health:
-{"status":"ok","mode":"paper","version":"1.0.0"}
---- /api/desk/prices GET (401/403 = esiste, 404 = manca):
-401
---- /api/desk/close-all GET (405 = esiste, 404 = manca):
-405
---- /api/desk/pause GET (405 = esiste):
-405
---- volume hawk scrivibile dal container superbot?
-SCRIVIBILE
---- build frontend: file js che contengono RUNEUSDT (>=1 = nuova build):
-1
---- log superbot (ultime 6):
-INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
-INFO:     172.17.0.1:40690 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     172.17.0.1:39518 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     172.17.0.1:39522 - "GET /api/desk/prices HTTP/1.1" 401 Unauthorized
-INFO:     172.17.0.1:39524 - "GET /api/desk/close-all HTTP/1.1" 405 Method Not Allowed
-INFO:     172.17.0.1:39532 - "GET /api/desk/pause HTTP/1.1" 405 Method Not Allowed
---- pause.flag presenti:
-ls: cannot access '/opt/superbot-desk-data/hawk/pause.flag': No such file or directory
-ls: cannot access '/opt/superbot-desk-data/bull/pause.flag': No such file or directory
+=== ORA UTC: Mon Oct 12 14:02:59 UTC 2026 ===
+--- MemAvailable (MB) letta dal preflight del deploy desk (soglia 700):
+434
+--- free -m:
+               total        used        free      shared  buff/cache   available
+Mem:            3814        3380         121           3         559         434
+Swap:              0           0           0
+--- docker stats (memoria per container):
+superbot | 121.9MiB / 3.725GiB | 3.19%
+superbot-desk-bull | 651MiB / 768MiB | 84.77%
+superbot-desk-hawk | 643MiB / 768MiB | 83.72%
+superbot-desk | 747.9MiB / 768MiB | 97.39%
+superbot-pool | 204.3MiB / 768MiB | 26.60%
+superbot-staging | 184.8MiB / 3.725GiB | 4.85%
+hitv-backend | 271.2MiB / 3.725GiB | 7.11%
+--- disco:
+/dev/sda1        38G   30G  7.7G  80% /
 --- container desk:
-superbot-desk-bull | Up 24 minutes (unhealthy)
-superbot-desk-hawk | Up 22 minutes (unhealthy)
+superbot-desk-bull | Up 28 minutes (unhealthy)
+superbot-desk-hawk | Up 25 minutes (unhealthy)
 superbot-desk | Up 3 hours (unhealthy)
 FINE
