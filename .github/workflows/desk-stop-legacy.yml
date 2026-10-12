@@ -1,0 +1,29 @@
+name: Sala segnali - ferma container legacy superbot-desk (reversibile)
+
+# Ferma il vecchio container "superbot-desk" rimasto dalla versione precedente alla
+# divisione Hawk/Bull. NON lo rimuove: dati e immagine restano, si riavvia con
+# "docker start superbot-desk". Toglie anche il riavvio automatico.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-stop-legacy.trigger"
+
+jobs:
+  stop-legacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ferma superbot-desk (solo questo container)
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_tmp
+          chmod 600 ~/.ssh/id_tmp
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 \
+            'docker update --restart=no superbot-desk && docker stop superbot-desk && echo "superbot-desk fermato"
+             docker ps -a --filter name=superbot-desk --format "{{.Names}} | {{.Status}}"
+             awk "/MemAvailable/ {print \"MemAvailable MB:\", int(\$2/1024)}" /proc/meminfo'
+          rm -f ~/.ssh/id_tmp
