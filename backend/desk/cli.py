@@ -275,7 +275,13 @@ def run_cycle(state: dict, now_ms: int) -> None:
     prices = get_prices(SYMBOLS, candles_map)
     halt = acc.halted(prices)
     if halt:
-        notify_halt(halt)
+        # Invia l'alert HALT una sola volta per sessione (evita loop di messaggi)
+        if not state.get("halt_notified"):
+            notify_halt(halt)
+            state["halt_notified"] = True
+    else:
+        # Reset flag quando il halt viene rimosso (es. nuovo giorno / resume)
+        state.pop("halt_notified", None)
 
     # --- contesto di mercato (aggiornato ogni 30 minuti)
     last_ctx_ts = state.get("last_ctx_ts", 0)
