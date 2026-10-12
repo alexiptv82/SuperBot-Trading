@@ -29,33 +29,16 @@ jobs:
           ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 \
             'OUT=/tmp/diag_tg.txt
             echo "=== ORA UTC: $(date -u) ===" > $OUT
-            echo "--- container superbot:" >> $OUT
-            docker ps -a --filter name=^superbot$ --format "{{.Names}} | {{.Status}}" >> $OUT
-            docker inspect superbot --format "Restarts={{.RestartCount}} ExitCode={{.State.ExitCode}}" >> $OUT 2>&1
-            echo "--- WEBAUTHN nel .env:" >> $OUT
-            grep -E "^WEBAUTHN_" /opt/superbot/backend/.env >> $OUT
-            echo "--- /api/health:" >> $OUT
-            curl -s -m 10 localhost:8002/api/health >> $OUT
-            echo "" >> $OUT
-            echo "--- /api/desk/prices GET (401/403 = esiste, 404 = manca):" >> $OUT
-            curl -s -m 10 -o /dev/null -w "%{http_code}" localhost:8002/api/desk/prices >> $OUT
-            echo "" >> $OUT
-            echo "--- /api/desk/close-all GET (405 = esiste, 404 = manca):" >> $OUT
-            curl -s -m 10 -o /dev/null -w "%{http_code}" localhost:8002/api/desk/close-all >> $OUT
-            echo "" >> $OUT
-            echo "--- /api/desk/pause GET (405 = esiste):" >> $OUT
-            curl -s -m 10 -o /dev/null -w "%{http_code}" localhost:8002/api/desk/pause >> $OUT
-            echo "" >> $OUT
-            echo "--- volume hawk scrivibile dal container superbot?" >> $OUT
-            docker exec superbot sh -c "touch /opt/superbot-desk-data/hawk/.wtest && rm /opt/superbot-desk-data/hawk/.wtest && echo SCRIVIBILE || echo SOLA-LETTURA" >> $OUT 2>&1
-            echo "--- build frontend: file js che contengono RUNEUSDT (>=1 = nuova build):" >> $OUT
-            grep -l "RUNEUSDT" /opt/superbot/frontend/build/static/js/*.js 2>/dev/null | wc -l >> $OUT
-            echo "--- log superbot (ultime 6):" >> $OUT
-            docker logs --tail 6 superbot 2>&1 | cut -c1-200 | sed -E "s/bot[0-9]+:[A-Za-z0-9_-]+/bot-MASKED/g" >> $OUT
-            echo "--- pause.flag presenti:" >> $OUT
-            ls /opt/superbot-desk-data/hawk/pause.flag /opt/superbot-desk-data/bull/pause.flag >> $OUT 2>&1
+            echo "--- MemAvailable (MB) letta dal preflight del deploy desk (soglia 700):" >> $OUT
+            awk "/MemAvailable/ {print int(\$2/1024)}" /proc/meminfo >> $OUT
+            echo "--- free -m:" >> $OUT
+            free -m >> $OUT
+            echo "--- docker stats (memoria per container):" >> $OUT
+            docker stats --no-stream --format "{{.Name}} | {{.MemUsage}} | {{.MemPerc}}" >> $OUT 2>&1
+            echo "--- disco:" >> $OUT
+            df -h / | tail -1 >> $OUT
             echo "--- container desk:" >> $OUT
-            docker ps --filter name=superbot-desk --format "{{.Names}} | {{.Status}}" >> $OUT
+            docker ps -a --filter name=superbot-desk --format "{{.Names}} | {{.Status}}" >> $OUT
             echo "FINE" >> $OUT'
           scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new root@51.91.109.45:/tmp/diag_tg.txt deploy/diag-output.txt
           rm -f ~/.ssh/id_tmp
@@ -65,5 +48,5 @@ jobs:
           git config user.email "ci@superbot"
           git config user.name "SuperBot CI"
           git add deploy/diag-output.txt
-          git diff --staged --quiet || git commit -m "diag: verifica post-deploy [skip ci]"
+          git diff --staged --quiet || git commit -m "diag: memoria VPS [skip ci]"
           git push origin rule-pool
