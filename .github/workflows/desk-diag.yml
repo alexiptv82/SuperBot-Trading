@@ -98,39 +98,6 @@ jobs:
             except Exception as e:
                 print("stato: non leggibile (%s %s)" % (type(e).__name__, e))
 
-            # --- log del container (ultime 24 ore), con orari UTC
-            raw = sh("docker logs -t --since 24h %s 2>&1" % C)
-            lines = raw.splitlines()
-            rx = re.compile(r"^(\d{4}-\d\d-\d\d)T(\d\d):(\d\d):\d\d\S*\s+\[([^\]\s:]+)")
-            tags = collections.Counter()
-            byh = collections.defaultdict(collections.Counter)
-            tagged = []
-            tb = 0
-            for ln in lines:
-                if "Traceback" in ln:
-                    tb += 1
-                mt = rx.match(ln)
-                if not mt:
-                    continue
-                tg = mt.group(4)
-                tags[tg] += 1
-                key = mt.group(1)[5:] + " " + mt.group(2) + "h"
-                byh[key][tg] += 1
-                if tg not in ("SLEEP", "DESK", "MODO"):
-                    tagged.append((mt.group(1)[5:] + " " + mt.group(2) + ":" + mt.group(3), ln))
-            print("log 24h: %d righe | prima: %s | ultima: %s | Traceback: %d" % (
-                len(lines), lines[0][:19] if lines else "-", lines[-1][:19] if lines else "-", tb))
-            print("log, conteggio etichette:", dict(tags))
-            WATCH = ("SLEEP", "Claude", "OPEN", "SKIP", "CONF_LOW", "RR_LOW", "COOLDOWN", "WARN", "HALT", "PAUSA", "CLOSE")
-            for key in sorted(byh)[-26:]:
-                print("  %s: %s" % (key, " ".join("%s=%d" % (t, byh[key][t]) for t in WATCH if byh[key][t])))
-            print("ultime righe con etichetta (escluse SLEEP/DESK):")
-            for ts, ln in tagged[-28:]:
-                print("  " + ts + " " + ln.split(" ", 1)[1][:230])
-            print("ultime 4 righe grezze:")
-            for ln in lines[-4:]:
-                print("  " + ln[:200])
-
             # --- registro di apprendimento: eventi dal punto stabile
             f = D + "/learning_log.jsonl"
             if os.path.exists(f):
@@ -170,6 +137,49 @@ jobs:
                     print("  " + ln[:230])
             else:
                 print("trade_history.jsonl: non presente (nessuna chiusura registrata nella run)")
+
+            # --- log del container (ultime 24 ore), con orari UTC
+            raw = sh("docker logs -t --since 24h %s 2>&1" % C)
+            lines = raw.splitlines()
+            rx = re.compile(r"^(\d{4}-\d\d-\d\d)T(\d\d):(\d\d):\d\d\S*\s+\[([^\]\s:]+)")
+            tags = collections.Counter()
+            byh = collections.defaultdict(collections.Counter)
+            tagged = []
+            src = collections.Counter()
+            skips = collections.Counter()
+            tb = 0
+            for ln in lines:
+                if "Traceback" in ln:
+                    tb += 1
+                mt = rx.match(ln)
+                if not mt:
+                    continue
+                tg = mt.group(4)
+                tags[tg] += 1
+                key = mt.group(1)[5:] + " " + mt.group(2) + "h"
+                byh[key][tg] += 1
+                if tg == "OPEN":
+                    ms = re.search(r" src (\w+)", ln)
+                    src[(key[:5], ms.group(1) if ms else "?")] += 1
+                if tg == "SKIP":
+                    skips[re.sub(r"^.*?: ", "", ln.split("[SKIP]", 1)[-1])[:60]] += 1
+                if tg not in ("SLEEP", "DESK", "MODO", "CONF_LOW", "CAP"):
+                    tagged.append((mt.group(1)[5:] + " " + mt.group(2) + ":" + mt.group(3), ln))
+            print("log 24h: %d righe | prima: %s | ultima: %s | Traceback: %d" % (
+                len(lines), lines[0][:19] if lines else "-", lines[-1][:19] if lines else "-", tb))
+            print("log, conteggio etichette:", dict(tags))
+            print("aperture per fonte (giorno, fonte):", {"%s %s" % k: v for k, v in sorted(src.items())})
+            print("motivi dei SKIP:", dict(skips.most_common(5)))
+            WATCH = ("Claude", "OPEN", "SKIP", "WARN", "HALT", "PAUSA", "CLOSE", "STOP", "TAKE", "PARTIAL_CLOSE")
+            for key in sorted(byh)[-16:]:
+                print("  %s: %s" % (key, " ".join("%s=%d" % (t, byh[key][t]) for t in WATCH if byh[key][t])))
+            print("eventi (escluse le righe CONF_LOW/CAP/SLEEP/DESK), ultimi 42:")
+            for ts, ln in tagged[-42:]:
+                print("  " + ts + " " + ln.split(" ", 1)[1][:170])
+            print("ultima riga CONF_LOW:", ([l for l in lines if "[CONF_LOW]" in l] or ["-"])[-1][:120])
+            print("ultime 3 righe grezze:")
+            for ln in lines[-3:]:
+                print("  " + ln[:170])
             PYEOF
             done
             echo "DONE"
