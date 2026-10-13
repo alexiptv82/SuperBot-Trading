@@ -1,0 +1,196 @@
+name: Sala segnali - diagnosi dei bot (sola lettura)
+
+# Legge soltanto: stato dei container, heartbeat, state_v2.json, log, registro di apprendimento.
+# NON scrive nei dati dei bot, NON ferma e NON riavvia nulla. Scrive solo due file in /tmp.
+# Parte SOLO quando cambia deploy/desk-diag.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-diag.trigger"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Raccolta diagnosi
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 150s
+          script: |
+            for P in hawk bull; do
+              python3 -I - "$P" > /tmp/superbot_diag_$P.txt 2>&1 <<'PYEOF' || echo "(diagnosi $P non riuscita)" >> /tmp/superbot_diag_$P.txt
+            import collections
+            import datetime as dt
+            import json
+            import os
+            import re
+            import subprocess
+            import sys
+            import time
+
+            P = sys.argv[1]
+            D = os.environ.get("DIAG_DATA", "/opt/superbot-desk-data") + "/" + P
+            C = "superbot-desk-" + P
+            LIM = {"hawk": 10, "bull": 3}.get(P, 10)
+            SINCE = dt.datetime(2026, 10, 12, 18, 46, tzinfo=dt.timezone.utc).timestamp() * 1000   # punto stabile
+
+
+            def sh(c):
+                return subprocess.run(c, shell=True, capture_output=True, text=True).stdout
+
+
+            def ago(ms):
+                return ("%.1f h fa" % ((time.time() - ms / 1000) / 3600)) if ms else "mai"
+
+
+            def hm(ms):
+                return dt.datetime.fromtimestamp(ms / 1000, dt.timezone.utc).strftime("%d %H:%M")
+
+
+            print("=== %s | ora server UTC %s ===" % (P.upper(), dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M")))
+            print("container:", sh("docker inspect --format 'stato={{.State.Status}} salute={{.State.Health.Status}} riavvii={{.RestartCount}} avviato={{.State.StartedAt}} oom={{.State.OOMKilled}}' " + C).strip())
+            print("risorse:", sh("docker stats --no-stream --format '{{.CPUPerc}} cpu, {{.MemUsage}}' " + C).strip())
+            try:
+                hb = json.load(open(D + "/heartbeat.json"))
+                simple = {k: v for k, v in hb.items() if not isinstance(v, (dict, list))}
+                simple["eta_s"] = int(time.time() - hb.get("ts", 0))
+                print("heartbeat:", json.dumps(simple, ensure_ascii=False)[:420])
+            except Exception as e:
+                print("heartbeat: non leggibile (%s)" % type(e).__name__)
+            try:
+                print("flag di comando presenti:", [f for f in os.listdir(D) if f.endswith(".flag")] or "nessuno")
+            except Exception as e:
+                print("flag: non leggibili (%s)" % type(e).__name__)
+
+            try:
+                st = json.load(open(D + "/state_v2.json"))
+                m = st.get("main") or {}
+                b = st.get("budget") or {}
+                poss = m.get("positions") or {}
+                lp = st.get("last_prices") or {}
+                print("conto: cassa=%.0f$ posizioni=%d/%d chiuse_run=%d equity_inizio_giorno=%.0f$ run=%s" % (
+                    float(m.get("cash") or 0), len(poss), LIM, len(m.get("closed") or []),
+                    float(m.get("day_start_equity") or 0), st.get("run_no")))
+                print("budget Claude: giorno=%s speso=%.3f$ chiamate=%s totale=%.3f$ | ultima chiamata: %s" % (
+                    b.get("day"), float(b.get("spent") or 0), b.get("calls"), float(b.get("total_spent") or 0),
+                    ago(st.get("last_call_ms"))))
+                print("prezzi aggiornati: %s" % ago(st.get("last_prices_ms")))
+                tot = 0.0
+                for sym, p in poss.items():
+                    q, e = float(p.get("qty") or 0), float(p.get("entry") or 0)
+                    sd = 1 if p.get("side") == 1 else -1
+                    px = lp.get(sym)
+                    up = (float(px) - e) * q * sd if px else None
+                    tot += up or 0
+                    print("  %-5s %s margine=%.0f$ leva=%sx tipo=%s aperta %s attesa2gamba=%s pnl=%s" % (
+                        sym, "LONG " if sd == 1 else "SHORT", float(p.get("total_margin") or 0), p.get("leverage"),
+                        p.get("trade_type"), ago(p.get("open_ms")), bool(p.get("pending_split")),
+                        ("%+.1f$" % up) if up is not None else "n.d."))
+                print("  totale non realizzato: %+.1f$" % tot)
+                for c in (m.get("closed") or [])[-5:]:
+                    print("  chiusa:", json.dumps(c, ensure_ascii=False)[:230])
+            except Exception as e:
+                print("stato: non leggibile (%s %s)" % (type(e).__name__, e))
+
+            # --- log del container (ultime 24 ore), con orari UTC
+            raw = sh("docker logs -t --since 24h %s 2>&1" % C)
+            lines = raw.splitlines()
+            rx = re.compile(r"^(\d{4}-\d\d-\d\d)T(\d\d):(\d\d):\d\d\S*\s+\[([^\]\s:]+)")
+            tags = collections.Counter()
+            byh = collections.defaultdict(collections.Counter)
+            tagged = []
+            tb = 0
+            for ln in lines:
+                if "Traceback" in ln:
+                    tb += 1
+                mt = rx.match(ln)
+                if not mt:
+                    continue
+                tg = mt.group(4)
+                tags[tg] += 1
+                key = mt.group(1)[5:] + " " + mt.group(2) + "h"
+                byh[key][tg] += 1
+                if tg not in ("SLEEP", "DESK", "MODO"):
+                    tagged.append((mt.group(1)[5:] + " " + mt.group(2) + ":" + mt.group(3), ln))
+            print("log 24h: %d righe | prima: %s | ultima: %s | Traceback: %d" % (
+                len(lines), lines[0][:19] if lines else "-", lines[-1][:19] if lines else "-", tb))
+            print("log, conteggio etichette:", dict(tags))
+            WATCH = ("SLEEP", "Claude", "OPEN", "SKIP", "CONF_LOW", "RR_LOW", "COOLDOWN", "WARN", "HALT", "PAUSA", "CLOSE")
+            for key in sorted(byh)[-26:]:
+                print("  %s: %s" % (key, " ".join("%s=%d" % (t, byh[key][t]) for t in WATCH if byh[key][t])))
+            print("ultime righe con etichetta (escluse SLEEP/DESK):")
+            for ts, ln in tagged[-28:]:
+                print("  " + ts + " " + ln.split(" ", 1)[1][:230])
+            print("ultime 4 righe grezze:")
+            for ln in lines[-4:]:
+                print("  " + ln[:200])
+
+            # --- registro di apprendimento: eventi dal punto stabile
+            f = D + "/learning_log.jsonl"
+            if os.path.exists(f):
+                c = collections.Counter()
+                cand = collections.Counter()
+                hours = collections.defaultdict(collections.Counter)
+                bad = n = 0
+                last = {}
+                for line in open(f, encoding="utf-8"):
+                    try:
+                        r = json.loads(line)
+                    except ValueError:
+                        bad += 1
+                        continue
+                    n += 1
+                    ts = r.get("ts") or 0
+                    ev = r.get("ev")
+                    last[ev] = max(last.get(ev, 0), ts)
+                    if ts >= SINCE:
+                        c[ev] += 1
+                        hours[hm(ts)[:5] + "h"][ev] += 1
+                        if ev == "candidate":
+                            cand[str(r.get("status"))[:70]] += 1
+                print("registro: %d byte, %d righe valide, %d illeggibili | dal punto stabile: %s" % (
+                    os.path.getsize(f), n, bad, dict(c)))
+                print("registro, ultimo evento per tipo:", {k: hm(v) for k, v in last.items() if v})
+                print("registro, motivi dei candidati non eseguiti:", dict(cand))
+                for k in sorted(hours)[-14:]:
+                    print("  registro %s: %s" % (k, dict(hours[k])))
+            else:
+                print("registro: non presente")
+            f = D + "/trade_history.jsonl"
+            if os.path.exists(f):
+                rows = open(f, encoding="utf-8").read().splitlines()
+                print("trade_history.jsonl: %d righe, %d byte" % (len(rows), os.path.getsize(f)))
+                for ln in rows[-4:]:
+                    print("  " + ln[:230])
+            else:
+                print("trade_history.jsonl: non presente (nessuna chiusura registrata nella run)")
+            PYEOF
+            done
+            echo "DONE"
+
+      - name: Pubblica la diagnosi
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          for P in hawk bull; do
+            ssh -T -i ~/.ssh/id_desk \
+              -o StrictHostKeyChecking=accept-new \
+              -o ConnectTimeout=15 \
+              root@51.91.109.45 \
+              "cat /tmp/superbot_diag_$P.txt" 2>/dev/null > diag_$P.txt || true
+          done
+          rm -f ~/.ssh/id_desk
+          for P in hawk bull; do
+            OUT=$(head -95 diag_$P.txt | cut -c1-300 | tr '\n' '|' | sed 's/%/%25/g')
+            echo "::notice title=Diagnosi $P::${OUT}"
+          done
+          echo "=== HAWK ===" && cat diag_hawk.txt && echo "=== BULL ===" && cat diag_bull.txt
