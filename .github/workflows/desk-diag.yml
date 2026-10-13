@@ -106,6 +106,11 @@ jobs:
                 hours = collections.defaultdict(collections.Counter)
                 bad = n = 0
                 last = {}
+                cc = collections.Counter()
+                cc_stop = collections.Counter()
+                cc_fail = collections.Counter()
+                cc_out = {True: [], False: []}
+                fails = []
                 for line in open(f, encoding="utf-8"):
                     try:
                         r = json.loads(line)
@@ -121,8 +126,27 @@ jobs:
                         hours[hm(ts)[:5] + "h"][ev] += 1
                         if ev == "candidate":
                             cand[str(r.get("status"))[:70]] += 1
+                        if ev == "claude_call":
+                            ok = bool(r.get("ok"))
+                            cc["leggibile" if ok else "scartata"] += 1
+                            cc_stop[str(r.get("stop_reason"))] += 1
+                            if r.get("output_tokens"):
+                                cc_out[ok].append(r["output_tokens"])
+                            if not ok:
+                                cc_fail[str(r.get("fail_reason"))] += 1
+                                fails.append(r)
                 print("registro: %d byte, %d righe valide, %d illeggibili | dal punto stabile: %s" % (
                     os.path.getsize(f), n, bad, dict(c)))
+                if cc:
+                    avg = lambda v: (sum(v) // len(v)) if v else None
+                    print("chiamate a Claude nel registro: %s | motivo di arresto: %s | motivi di scarto: %s | token in uscita medi: leggibili=%s scartate=%s" % (
+                        dict(cc), dict(cc_stop), dict(cc_fail), avg(cc_out[True]), avg(cc_out[False])))
+                    for r in fails[-3:]:
+                        t = str(r.get("reply") or r.get("error") or "").replace("\n", " ")
+                        print("  scartata %s stop=%s posizioni=%s token_out=%s: %s ... %s" % (
+                            hm(r.get("ts") or 0), r.get("stop_reason"), r.get("n_positions"), r.get("output_tokens"), t[:110], t[-110:]))
+                else:
+                    print("chiamate a Claude nel registro: nessun evento claude_call (codice senza il nuovo registro, o nessuna chiamata)")
                 print("registro, ultimo evento per tipo:", {k: hm(v) for k, v in last.items() if v})
                 print("registro, motivi dei candidati non eseguiti:", dict(cand))
                 for k in sorted(hours)[-14:]:
