@@ -1,0 +1,8 @@
+{
+  "nota": "Calendario di Claude per Hawk e Bull. Gli orari sono in ORA SVIZZERA: il passaggio a UTC (e il cambio d'ora del 25 ottobre) lo fa il workflow. Se 'alle' e' uguale o prima di 'dalle', la finestra finisce il giorno dopo. Ogni finestra ha il suo budget (0,70$ per bot). Fuori dalle finestre Claude non viene consultato: decidono le regole. Per cambiare solo un bot si aggiunge 'windows_hawk' o 'windows_bull' (sostituisce 'windows' per quel bot). Togliere il file dai dati dei bot riporta il budget giornaliero di sempre.",
+  "windows": [
+    {"giorno": "2026-10-13", "dalle": "14:30", "alle": "18:30"},
+    {"giorno": "2026-10-14", "dalle": "00:00", "alle": "04:00"},
+    {"giorno": "2026-10-15", "dalle": "08:00", "alle": "12:00"}
+  ]
+}
