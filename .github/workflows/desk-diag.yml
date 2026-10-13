@@ -1,7 +1,8 @@
 name: Sala segnali - diagnosi dei bot (sola lettura)
 
 # Legge soltanto: stato dei container, heartbeat, state_v2.json, log, registro di apprendimento.
-# NON scrive nei dati dei bot, NON ferma e NON riavvia nulla. Scrive solo due file in /tmp.
+# NON scrive nei dati dei bot, NON ferma e NON riavvia nulla. Scrive solo file in /tmp (e una prova di scrittura
+# del registro in /tmp del container hawk, subito cancellata).
 # Parte SOLO quando cambia deploy/desk-diag.trigger.
 
 on:
@@ -206,6 +207,21 @@ jobs:
                 print("  " + ln[:170])
             PYEOF
             done
+            echo "=== PROVA DEL REGISTRO NEL CONTAINER (cartella temporanea nel container, non tocca i dati) ===" > /tmp/superbot_diag_smoke.txt
+            docker exec -i -e DESK_DATA_DIR=/tmp/smoke_cc superbot-desk-hawk python - >> /tmp/superbot_diag_smoke.txt 2>&1 <<'SMOKEEOF' || echo "(prova non riuscita)" >> /tmp/superbot_diag_smoke.txt
+            import json
+            from desk import cli, learning
+            D = "/tmp/smoke_cc"
+            cli.DATA_DIR = D
+            cut = '{"decisions": [{"symbol": "BTC", "action": "hold"}, {"symbol": "ETH", "act'
+            cli.log_claude_call(1, {"run_no": 1, "budget": {"spent": 0.1}}, cut,
+                                {"input_tokens": 9000, "output_tokens": 1100, "stop_reason": "max_tokens"},
+                                0.0435, None, 1234, 2, False, 1100)
+            ev = learning.read_events(D, "claude_call")
+            print("eventi scritti:", len(ev))
+            print({k: ev[0].get(k) for k in ("ok", "fail_reason", "stop_reason", "output_tokens", "n_positions", "reply")} if ev else "NESSUNO")
+            SMOKEEOF
+            docker exec superbot-desk-hawk rm -rf /tmp/smoke_cc
             echo "DONE"
 
       - name: Pubblica la diagnosi
@@ -222,7 +238,13 @@ jobs:
               root@51.91.109.45 \
               "cat /tmp/superbot_diag_$P.txt" 2>/dev/null > diag_$P.txt || true
           done
+          ssh -T -i ~/.ssh/id_desk \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            root@51.91.109.45 \
+            'cat /tmp/superbot_diag_smoke.txt' 2>/dev/null > diag_smoke.txt || true
           rm -f ~/.ssh/id_desk
+          echo "::notice title=Prova registro nel container::$(cat diag_smoke.txt | tr '\n' '|' | sed 's/%/%25/g')"
           for P in hawk bull; do
             OUT=$(sed -n 1,58p diag_$P.txt | cut -c1-200 | tr '\n' '|' | sed 's/%/%25/g')
             echo "::notice title=Diagnosi $P parte 1::${OUT}"
