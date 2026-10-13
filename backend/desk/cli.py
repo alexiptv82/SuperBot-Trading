@@ -23,7 +23,7 @@ from typing import Optional
 from desk.engine import Limits, PaperAccount
 from desk.signals import read_symbol
 from desk.brain import (DAILY_CAP, build_prompt, call_claude,
-                        can_call, parse_decisions, record_spend, rules_decisions,
+                        can_call, diagnose_reply, parse_decisions, record_spend, rules_decisions,
                         update_lessons, append_trade_history, load_symbol_stats, stats_summary,
                         SYSTEM as SYSTEM_HAWK, SYSTEM_BULL)
 from desk.market_context import fetch_all_context
@@ -284,6 +284,45 @@ def record_close(state: dict, rec: dict) -> None:
                          "run_no": state.get("run_no", 1), **row})
 
 
+REPLY_KEEP_CHARS = 6000   # una risposta scartata piu' lunga si salva accorciata (inizio e fine)
+
+
+def log_claude_call(now_ms: int, state: dict, text: str, usage: dict, cost: float, parsed,
+                    prompt_chars: int, n_positions: int, urgent: bool, max_tokens: int) -> None:
+    """Registra ogni chiamata a Claude: esito, token, motivo di arresto. Se la risposta NON e' stata
+    letta ne salva anche il testo, per capire perche' (es. tagliata dal limite di token).
+    Solo registro: non influenza decisioni, budget o fallback, e non solleva mai."""
+    try:
+        u = usage if isinstance(usage, dict) else {}
+        ev = {
+            "ev": "claude_call", "ts": now_ms, "portfolio": PORTFOLIO.name, "run_no": state.get("run_no", 1),
+            "ok": bool(parsed), "n_decisions": len(parsed["decisions"]) if parsed else None,
+            "stop_reason": u.get("stop_reason"), "input_tokens": u.get("input_tokens"),
+            "output_tokens": u.get("output_tokens"), "max_tokens": max_tokens, "cost_usd": round(cost, 5),
+            "prompt_chars": prompt_chars, "reply_chars": len(text or ""), "n_positions": n_positions,
+            "urgent_scalp": bool(urgent), "budget_spent": (state.get("budget") or {}).get("spent"),
+        }
+        if not parsed:
+            ev["fail_reason"] = diagnose_reply(text)
+            t = text or ""
+            ev["reply"] = t if len(t) <= REPLY_KEEP_CHARS else t[:4000] + "\n[... omesso ...]\n" + t[-1500:]
+        log_event(DATA_DIR, ev)
+    except Exception:
+        pass
+
+
+def log_claude_error(now_ms: int, state: dict, exc: Exception, n_positions: int, urgent: bool) -> None:
+    """Registra una chiamata a Claude fallita prima di avere una risposta (rete, errore API, bug nel prompt)."""
+    try:
+        log_event(DATA_DIR, {
+            "ev": "claude_call", "ts": now_ms, "portfolio": PORTFOLIO.name, "run_no": state.get("run_no", 1),
+            "ok": False, "fail_reason": "errore:" + type(exc).__name__, "error": str(exc)[:160],
+            "n_positions": n_positions, "urgent_scalp": bool(urgent),
+        })
+    except Exception:
+        pass
+
+
 def flush_events(state: dict, acc: PaperAccount) -> None:
     """Scrive nel registro e notifica gli eventi del motore (seconda gamba eseguita o annullata)."""
     evs, acc.events = acc.events, []
@@ -457,6 +496,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             cost = record_spend(state, day, usage)
             state["last_call_ms"] = now_ms
             parsed = parse_decisions(text)
+            log_claude_call(now_ms, state, text, usage, cost, parsed, len(prompt),
+                            len(acc.positions), urgent_scalp, 1100)
             if parsed:
                 decisions = parsed["decisions"]
                 source = "claude"
@@ -466,6 +507,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     print(f"[Claude] Nota: {parsed['note']}")
         except Exception as e:
             print(f"[WARN] Claude non disponibile: {e}")
+            log_claude_error(now_ms, state, e, len(acc.positions), urgent_scalp)
 
     if not decisions:
         decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)

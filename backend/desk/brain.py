@@ -241,7 +241,9 @@ def call_claude(system: str, user: str, max_tokens: int = 900, timeout: int = 60
     except Exception as exc:
         raise RuntimeError(f"chiamata Claude fallita ({type(exc).__name__})") from None
     text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
-    return text, d.get("usage", {})
+    usage = dict(d.get("usage") or {})
+    usage["stop_reason"] = d.get("stop_reason")   # solo per il registro: "max_tokens" = risposta tagliata
+    return text, usage
 
 
 def parse_decisions(text: str) -> dict | None:
@@ -285,6 +287,26 @@ def parse_decisions(text: str) -> dict | None:
         except (KeyError, TypeError, ValueError):
             continue
     return {"decisions": out, "note": str(d.get("note", ""))[:200]}
+
+
+def diagnose_reply(text: str) -> str:
+    """Perche' una risposta di Claude non e' stata letta da parse_decisions. SOLO per il registro:
+    non e' usata per nessuna decisione. Valori: vuota, senza_json, json_troncato, json_non_valido,
+    forma_errata, letta (se in realta' si legge)."""
+    t = text or ""
+    if not t.strip():
+        return "vuota"
+    i, j = t.find("{"), t.rfind("}")
+    if i < 0 or j <= i:
+        return "troncato_prima_della_fine" if i >= 0 else "senza_json"
+    try:
+        d = json.loads(t[i:j + 1])
+    except ValueError:
+        # apertura senza chiusura corrispondente: la risposta e' stata interrotta a meta'
+        return "json_troncato" if t.count("{") > t.count("}") or t.count("[") > t.count("]") else "json_non_valido"
+    if not isinstance(d, dict) or not isinstance(d.get("decisions"), list):
+        return "forma_errata"
+    return "letta"
 
 
 # ---------------- prompt V2

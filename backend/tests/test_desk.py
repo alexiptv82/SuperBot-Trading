@@ -1226,3 +1226,162 @@ def test_a_failure_in_feature_logging_never_blocks_an_entry():
         finally:
             cli.build_features = orig
         assert "BTC" in acc.positions and acc.positions["BTC"].pending_split is not None
+
+
+# ---- registro delle chiamate a Claude (solo diagnosi: nessuna decisione cambia) ----
+
+def _cut_stub(n_extra=8, tail=""):
+    """call_claude che risponde con un JSON tagliato a meta' (come se il limite di token fosse finito)."""
+    full = json.dumps({"decisions": [_dec("BTC", "open_long"), _dec("ETH", "hold")], "note": ""})
+    cut = full[:full.index("}, {") + n_extra] + tail
+
+    def call(system, user, max_tokens=1100, timeout=60):
+        return cut, {"input_tokens": 9000, "output_tokens": 1100, "stop_reason": "max_tokens"}
+    call.cut = cut
+    return call
+
+
+def test_call_claude_reports_stop_reason_without_changing_the_cost():
+    from desk import brain
+
+    class _Resp:
+        def __init__(self, payload):
+            self._p = payload
+
+        def read(self):
+            return json.dumps(self._p).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    payload = {"content": [{"type": "text", "text": '{"decisions": ['}],
+               "usage": {"input_tokens": 100, "output_tokens": 1100}, "stop_reason": "max_tokens"}
+    orig = brain.urllib.request.urlopen
+    brain.urllib.request.urlopen = lambda req, timeout=60: _Resp(payload)
+    os.environ["ANTHROPIC_API_KEY"] = "test"
+    try:
+        text, usage = brain.call_claude("s", "u")
+    finally:
+        brain.urllib.request.urlopen = orig
+        del os.environ["ANTHROPIC_API_KEY"]
+    assert text == '{"decisions": ['
+    assert usage["stop_reason"] == "max_tokens" and usage["output_tokens"] == 1100
+    assert abs(brain.cost_of(usage) - (100 * brain.PRICE_IN + 1100 * brain.PRICE_OUT)) < 1e-12, \
+        "la nuova voce non cambia il costo registrato"
+
+
+def test_diagnose_reply_names_the_reason_and_agrees_with_parse_decisions():
+    from desk.brain import diagnose_reply, parse_decisions
+    cut = '{"decisions": [{"symbol": "BTC", "action": "hold"}, {"symbol": "ETH", "action": "ho'
+    assert diagnose_reply(cut) == "json_troncato"
+    assert diagnose_reply('{"decisions": [{"symbol": "BTC", "action"') == "troncato_prima_della_fine"
+    assert diagnose_reply('```json\n{"decisions": [') == "troncato_prima_della_fine"
+    assert diagnose_reply("") == "vuota" and diagnose_reply("   ") == "vuota" and diagnose_reply(None) == "vuota"
+    assert diagnose_reply("nessun json qui") == "senza_json"
+    assert diagnose_reply('{"decisions": 5}') == "forma_errata"
+    assert diagnose_reply('{"decisions": [1,]}') == "json_non_valido"
+    assert diagnose_reply('{"decisions": [], "note": "x"}') == "letta"
+    for txt in (cut, "", "nessun json qui", '{"decisions": 5}', '{"decisions": [1,]}'):
+        assert parse_decisions(txt) is None, "ogni motivo di scarto corrisponde a una risposta che il bot non legge"
+    assert parse_decisions('{"decisions": [], "note": "x"}') is not None
+
+
+def test_cycle_logs_a_discarded_claude_reply_with_its_text_and_reason():
+    stub = _cut_stub()
+    with _sandbox(stub) as (d, calls):
+        state = {}
+        cli.run_cycle(state, NOW)
+        evs = learning.read_events(d, "claude_call")
+        assert len(evs) == 1
+        e = evs[0]
+        assert e["ok"] is False and e["fail_reason"] == "json_troncato" and e["n_decisions"] is None
+        assert e["stop_reason"] == "max_tokens" and e["output_tokens"] == 1100 and e["max_tokens"] == 1100
+        assert e["reply"] == stub.cut and e["reply_chars"] == len(stub.cut)
+        assert e["cost_usd"] > 0 and e["portfolio"] == cli.PORTFOLIO.name and e["n_positions"] == 0
+        assert e["prompt_chars"] > 100
+        assert state["budget"]["calls"] == 1, "la chiamata resta contata nel budget, come prima"
+
+
+def test_cycle_logs_a_readable_claude_reply_without_its_text():
+    with _sandbox(_decisions_stub(_dec("BTC", "open_long"))) as (d, calls):
+        state = {}
+        cli.run_cycle(state, NOW)
+        e = learning.read_events(d, "claude_call")[0]
+        assert e["ok"] is True and e["n_decisions"] == 1
+        assert "reply" not in e and "fail_reason" not in e
+        assert e["stop_reason"] is None, "lo stub non lo fornisce: nessun valore inventato"
+
+
+def test_logging_claude_calls_does_not_change_decisions_budget_or_fallback():
+    def run(without_logging):
+        with _sandbox(_cut_stub()) as (d, calls):
+            orig, orig_rules = cli.log_claude_call, cli.rules_decisions
+            if without_logging:
+                cli.log_claude_call = lambda *a, **k: None
+            # le regole di riserva (usate quando la risposta di Claude e' illeggibile) aprono BTC:
+            # cosi' il confronto riguarda un'azione vera e non un ciclo vuoto
+            cli.rules_decisions = lambda *a, **k: [_dec("BTC", "open_long")]
+            try:
+                state = {}
+                cli.run_cycle(state, NOW)
+                state["last_call_ms"] = 0
+                state["last_open_ms"] = {}
+                cli.run_cycle(state, NOW + cli.HOUR_MS)
+                acc = cli.make_account(state)
+                return (sorted(acc.positions), round(acc.cash, 6), len(acc.closed), state["budget"]["calls"],
+                        round(state["budget"]["spent"], 9), state["last_call_ms"],
+                        round(acc.positions["BTC"].total_margin, 6))
+            finally:
+                cli.log_claude_call, cli.rules_decisions = orig, orig_rules
+    with_log, without_log = run(False), run(True)
+    assert with_log == without_log, f"il registro ha cambiato il comportamento: {with_log} != {without_log}"
+    assert with_log[0] == ["BTC"], "le regole di riserva hanno aperto davvero"
+    assert with_log[3] == 2, "le due chiamate sono contate"
+
+
+def test_cycle_logs_a_failed_claude_call_and_still_falls_back_to_rules():
+    def failing(system, user, max_tokens=1100, timeout=60):
+        raise RuntimeError("chiamata Claude fallita (URLError)")
+
+    with _sandbox(failing) as (d, calls):
+        state = {}
+        cli.run_cycle(state, NOW)
+        e = learning.read_events(d, "claude_call")[0]
+        assert e["ok"] is False and e["fail_reason"] == "errore:RuntimeError" and "URLError" in e["error"]
+        assert (state.get("budget") or {}).get("calls", 0) == 0, "nessuna spesa se la risposta non e' arrivata"
+        assert state["main"]["cash"] > 0, "il ciclo e' andato avanti con le regole"
+
+
+def test_a_failure_while_logging_a_claude_reply_never_blocks_the_cycle():
+    with _sandbox(_cut_stub()) as (d, calls):
+        orig = cli.diagnose_reply
+
+        def boom(*a, **k):
+            raise RuntimeError("boom")
+
+        cli.diagnose_reply = boom
+        try:
+            state = {}
+            cli.run_cycle(state, NOW)
+        finally:
+            cli.diagnose_reply = orig
+        assert state["budget"]["calls"] == 1 and "main" in state
+        assert learning.read_events(d, "claude_call") == [], "niente scritto, ma nessun blocco"
+
+
+def test_discarded_reply_longer_than_the_limit_is_stored_shortened():
+    long_cut = '{"decisions": [{"symbol": "BTC", "reason": "' + "x" * 9000
+
+    def call(system, user, max_tokens=1100, timeout=60):
+        return long_cut, {"input_tokens": 9000, "output_tokens": 1100, "stop_reason": "max_tokens"}
+
+    with _sandbox(call) as (d, calls):
+        state = {}
+        cli.run_cycle(state, NOW)
+        e = learning.read_events(d, "claude_call")[0]
+        assert e["reply_chars"] == len(long_cut) and len(e["reply"]) < 6000
+        assert e["reply"].startswith('{"decisions"') and "[... omesso ...]" in e["reply"]
+        assert e["reply"].endswith("x" * 100)
