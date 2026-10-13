@@ -1,0 +1,58 @@
+name: Sala segnali - calendario di Claude (nessun riavvio, nessuna modifica alla strategia)
+
+# Pubblica il calendario di Claude: legge deploy/claude-schedule.json (orari in ora svizzera), lo controlla,
+# lo converte in UTC e scrive claude_schedule.json nelle cartelle dati di Hawk e Bull.
+# I bot lo rileggono da soli a ogni giro: NON si riavvia nulla e NON si tocca altro (posizioni, stato, budget).
+# Se il controllo fallisce non viene scritto niente sul server.
+# Parte SOLO quando cambia deploy/claude-schedule.json.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/claude-schedule.json"
+
+jobs:
+  schedule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Controlla e converti il calendario
+        run: |
+          python3 deploy/make_claude_schedule.py deploy/claude-schedule.json out | tee riepilogo.txt
+          OUT=$(cat riepilogo.txt | cut -c1-200 | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Calendario di Claude (controllato)::${OUT}"
+
+      - name: Scrivi il calendario nei dati dei bot e verifica
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          SSH="ssh -T -i $HOME/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@51.91.109.45"
+          cat > check.py <<'PYEOF'
+          import json, os, time
+          try:
+              from desk import schedule as S
+          except Exception as e:
+              print("IL CODICE DEL BOT NON HA ANCORA IL CALENDARIO (%s): il file e' scritto ma non ancora usato" % type(e).__name__)
+          else:
+              s = S.schedule_state(os.environ["DESK_DATA_DIR"], int(time.time() * 1000))
+              print("il bot legge il calendario:", json.dumps(S.summary(s)))
+          PYEOF
+          : > esito.txt
+          for P in hawk bull; do
+            D=/opt/superbot-desk-data/$P
+            $SSH "test -d $D && umask 022 && cat > $D/claude_schedule.json.tmp && mv -f $D/claude_schedule.json.tmp $D/claude_schedule.json" < out/$P.json \
+              && echo "$P: calendario scritto" >> esito.txt || echo "$P: SCRITTURA NON RIUSCITA" >> esito.txt
+            $SSH "python3 -c \"import json,sys; d=json.load(open('$D/claude_schedule.json')); print('$P file sul server:', len(d['windows']), 'finestre')\"" >> esito.txt 2>&1 || echo "$P: file non leggibile sul server" >> esito.txt
+            $SSH "docker exec -i superbot-desk-$P python -" < check.py >> esito.txt 2>&1 || echo "$P: container non raggiungibile" >> esito.txt
+          done
+          rm -f ~/.ssh/id_desk
+          cat esito.txt
+          OUT=$(cat esito.txt | cut -c1-300 | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Calendario di Claude (scritto sul server)::${OUT}"
+          if grep -q "NON RIUSCITA\|non leggibile\|non raggiungibile" esito.txt; then exit 1; fi

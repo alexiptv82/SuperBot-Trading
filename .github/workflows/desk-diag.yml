@@ -62,6 +62,13 @@ jobs:
                 simple = {k: v for k, v in hb.items() if not isinstance(v, (dict, list))}
                 simple["eta_s"] = int(time.time() - hb.get("ts", 0))
                 print("heartbeat:", json.dumps(simple, ensure_ascii=False)[:420])
+                cs = hb.get("claude_schedule")
+                if cs:
+                    print("calendario di Claude: modo=%s consentito_ora=%s fine_finestra=%s prossima=%s future=%s errore=%s" % (
+                        cs.get("mode"), cs.get("allowed"), hm(cs["window_end_ms"]) + " UTC" if cs.get("window_end_ms") else "-",
+                        hm(cs["next_start_ms"]) + " UTC" if cs.get("next_start_ms") else "-", cs.get("n_future"), cs.get("error") or "-"))
+                else:
+                    print("calendario di Claude: non presente nel heartbeat (codice senza calendario)")
             except Exception as e:
                 print("heartbeat: non leggibile (%s)" % type(e).__name__)
             try:
@@ -111,6 +118,7 @@ jobs:
                 cc_stop = collections.Counter()
                 cc_fail = collections.Counter()
                 cc_out = {True: [], False: []}
+                byw = collections.Counter()
                 fails = []
                 for line in open(f, encoding="utf-8"):
                     try:
@@ -125,6 +133,8 @@ jobs:
                     if ts >= SINCE:
                         c[ev] += 1
                         hours[hm(ts)[:5] + "h"][ev] += 1
+                        if ev in ("open", "close", "candidate", "claude_call") and "claude_win" in r:
+                            byw[(ev, r.get("claude_win"))] += 1
                         if ev == "candidate":
                             cand[str(r.get("status"))[:70]] += 1
                         if ev == "claude_call":
@@ -148,6 +158,9 @@ jobs:
                             hm(r.get("ts") or 0), r.get("stop_reason"), r.get("n_positions"), r.get("output_tokens"), t[:110], t[-110:]))
                 else:
                     print("chiamate a Claude nel registro: nessun evento claude_call (codice senza il nuovo registro, o nessuna chiamata)")
+                if byw:
+                    print("registro, eventi per etichetta claude_win (1=Claude consentito, 0=solo regole):",
+                          {"%s/%s" % k: v for k, v in sorted(byw.items(), key=lambda kv: str(kv[0]))})
                 print("registro, ultimo evento per tipo:", {k: hm(v) for k, v in last.items() if v})
                 print("registro, motivi dei candidati non eseguiti:", dict(cand))
                 for k in sorted(hours)[-14:]:
@@ -195,7 +208,7 @@ jobs:
             print("log, conteggio etichette:", dict(tags))
             print("aperture per fonte (giorno, fonte):", {"%s %s" % k: v for k, v in sorted(src.items())})
             print("motivi dei SKIP:", dict(skips.most_common(5)))
-            WATCH = ("Claude", "OPEN", "SKIP", "WARN", "HALT", "PAUSA", "CLOSE", "STOP", "TAKE", "PARTIAL_CLOSE")
+            WATCH = ("Claude", "FINESTRA", "OPEN", "SKIP", "WARN", "HALT", "PAUSA", "CLOSE", "STOP", "TAKE", "PARTIAL_CLOSE")
             for key in sorted(byh)[-16:]:
                 print("  %s: %s" % (key, " ".join("%s=%d" % (t, byh[key][t]) for t in WATCH if byh[key][t])))
             print("eventi (escluse le righe CONF_LOW/CAP/SLEEP/DESK), ultimi 42:")
@@ -205,6 +218,7 @@ jobs:
             print("ultime 3 righe grezze:")
             for ln in lines[-3:]:
                 print("  " + ln[:170])
+
             PYEOF
             done
             echo "=== PROVA DEL REGISTRO NEL CONTAINER (cartella temporanea nel container, non tocca i dati) ===" > /tmp/superbot_diag_smoke.txt

@@ -1385,3 +1385,212 @@ def test_discarded_reply_longer_than_the_limit_is_stored_shortened():
         assert e["reply_chars"] == len(long_cut) and len(e["reply"]) < 6000
         assert e["reply"].startswith('{"decisions"') and "[... omesso ...]" in e["reply"]
         assert e["reply"].endswith("x" * 100)
+
+
+# ---- calendario di Claude: decide solo il QUANDO, le decisioni non cambiano ----
+
+_H = 3_600_000
+_CAL_N = [0]
+
+
+def _iso(ms):
+    import datetime as _dt
+    return _dt.datetime.fromtimestamp(ms / 1000, _dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _write_cal(d, *wins, raw=None):
+    """Scrive claude_schedule.json con finestre (inizio_ms, fine_ms). Cambia la data del file ad ogni scrittura."""
+    body = raw if raw is not None else json.dumps(
+        {"version": 1, "windows": [{"start": _iso(s), "end": _iso(e), "label": "t"} for s, e in wins]})
+    p = os.path.join(d, "claude_schedule.json")
+    with open(p, "w") as f:
+        f.write(body)
+    _CAL_N[0] += 1
+    t = 1_700_000_000_000_000_000 + _CAL_N[0] * 1_000_000_000
+    os.utime(p, ns=(t, t))
+
+
+@contextlib.contextmanager
+def _clean_calendar():
+    from desk import schedule as S
+    S.reset_cache()
+    learning.STAMP.clear()
+    try:
+        yield S
+    finally:
+        S.reset_cache()
+        learning.STAMP.clear()
+
+
+def test_calendar_file_is_validated_all_or_nothing():
+    from desk.schedule import parse_windows
+    w, err = parse_windows({"windows": [
+        {"start": "2026-10-13T12:30:00Z", "end": "2026-10-13T16:30:00Z", "label": "mar 13 14:30-18:30"},
+        {"start": "2026-10-13T22:00:00+00:00", "end": "2026-10-14T04:00:00+02:00"}]})
+    assert err == "" and len(w) == 2
+    assert w[0]["end_ms"] - w[0]["start_ms"] == 4 * _H and w[1]["end_ms"] - w[1]["start_ms"] == 4 * _H
+    assert w[0]["id"] == str(w[0]["start_ms"])
+    inverno, _ = parse_windows({"windows": [{"start": "2026-10-27T08:00:00+01:00", "end": "2026-10-27T12:00:00+01:00"}]})
+    assert _iso(inverno[0]["start_ms"]) == "2026-10-27T07:00:00Z", "lo scostamento esplicito vale anche col cambio d'ora"
+    for bad in (
+        {"windows": [{"start": "2026-10-13T12:30:00", "end": "2026-10-13T16:30:00Z"}]},           # senza fuso
+        {"windows": [{"start": "2026-10-13T16:30:00Z", "end": "2026-10-13T12:30:00Z"}]},           # fine prima dell'inizio
+        {"windows": [{"start": "2026-10-13T12:30:00Z", "end": "2026-10-13T12:30:00Z"}]},           # durata zero
+        {"windows": [{"start": "2026-10-13T12:00:00Z", "end": "2026-10-13T16:00:00Z"},
+                     {"start": "2026-10-13T15:00:00Z", "end": "2026-10-13T18:00:00Z"}]},           # sovrapposte
+        {"windows": [{"start": "ieri", "end": "oggi"}]}, {"windows": [{"end": "2026-10-13T12:30:00Z"}]},
+        {"windows": "tutte"}, {"niente": 1}, [], 5, None,
+    ):
+        wins, err = parse_windows(bad)
+        if bad == []:
+            assert wins == [] and err == "", "un elenco vuoto e' valido: Claude spento"
+        else:
+            assert wins == [] and err, f"doveva essere rifiutato: {bad}"
+
+
+def test_schedule_state_edges_hot_reload_and_broken_file():
+    with _clean_calendar() as S, tempfile.TemporaryDirectory() as d:
+        s = S.schedule_state(d, 5 * _H)
+        assert s["mode"] == "none" and s["allowed"] is True and s["window"] is None
+        _write_cal(d, (10 * _H, 14 * _H), (20 * _H, 24 * _H))
+        assert S.schedule_state(d, 10 * _H - 1)["allowed"] is False
+        s = S.schedule_state(d, 10 * _H)
+        assert s["allowed"] is True and s["window"]["id"] == str(10 * _H), "l'inizio e' compreso"
+        assert S.schedule_state(d, 14 * _H - 1)["allowed"] is True
+        s = S.schedule_state(d, 14 * _H)
+        assert s["allowed"] is False and s["next_start_ms"] == 20 * _H and s["n_future"] == 1, "la fine e' esclusa"
+        assert S.schedule_state(d, 25 * _H)["next_start_ms"] is None
+        # il bot rilegge da solo quando il file cambia
+        _write_cal(d, (30 * _H, 31 * _H))
+        assert S.schedule_state(d, 12 * _H)["allowed"] is False and S.schedule_state(d, 30 * _H)["allowed"] is True
+        # file rovinato: resta l'ultimo calendario valido, con l'errore visibile
+        _write_cal(d, raw="{non e' json")
+        s = S.schedule_state(d, 30 * _H)
+        assert s["allowed"] is True and s["error"] and s["mode"] == "calendar"
+        # file tolto: si torna al comportamento di sempre
+        os.remove(os.path.join(d, "claude_schedule.json"))
+        s = S.schedule_state(d, 12 * _H)
+        assert s["mode"] == "none" and s["allowed"] is True
+        # file rovinato senza nessun calendario valido in memoria (riavvio): Claude resta spento
+        S.reset_cache()
+        _write_cal(d, raw="{non e' json")
+        s = S.schedule_state(d, 12 * _H)
+        assert s["mode"] == "invalid" and s["allowed"] is False and s["error"]
+
+
+def test_claude_is_called_only_inside_a_window_and_rules_decide_outside():
+    with _clean_calendar() as S, _sandbox(_decisions_stub(_dec("ETH", "hold"))) as (d, calls):
+        orig_rules = cli.rules_decisions
+        cli.rules_decisions = lambda *a, **k: [_dec("BTC", "open_long")]
+        try:
+            _write_cal(d, (NOW + 2 * _H, NOW + 6 * _H))
+            state = {}
+            cli.run_cycle(state, NOW)   # prima della finestra
+            assert calls == [], "fuori finestra Claude non viene chiamato"
+            assert "BTC" in cli.make_account(state).positions, "fuori finestra decidono le regole"
+            opens = learning.read_events(d, "open")
+            assert opens and all(e.get("claude_win") == 0 for e in opens), "etichetta: fuori finestra"
+            state["last_call_ms"] = 0
+            cli.run_cycle(state, NOW + 2 * _H)   # dentro
+            assert len(calls) == 1
+            cli.run_cycle(state, NOW + 6 * _H + 1000)   # la finestra e' finita (fine esclusa)
+            assert len(calls) == 1
+        finally:
+            cli.rules_decisions = orig_rules
+
+
+def test_each_window_has_its_own_budget_and_midnight_utc_does_not_reset_it():
+    from desk.brain import cost_of
+    cost = cost_of({"input_tokens": 2000, "output_tokens": 150})
+    with _clean_calendar(), _sandbox(_decisions_stub(_dec("ETH", "hold"))) as (d, calls):
+        # NOW e' alle 08:00 UTC: la finestra copre la mezzanotte UTC
+        _write_cal(d, (NOW, NOW + 24 * _H), (NOW + 30 * _H, NOW + 34 * _H))
+        state = {"budget": {"day": "2027-01-15", "spent": 0.69, "calls": 9, "total_spent": 5.0},
+                 "last_call_ms": NOW - 60_000}
+        cli.run_cycle(state, NOW)
+        assert len(calls) == 1, "all'inizio della finestra il budget riparte e la prima chiamata e' subito possibile"
+        assert abs(state["budget"]["spent"] - cost) < 1e-9 and state["budget"]["calls"] == 1
+        assert abs(state["budget"]["total_spent"] - (5.0 + cost)) < 1e-9, "il totale storico si conserva"
+        cli.run_cycle(state, NOW + 17 * _H)   # dopo la mezzanotte UTC, stessa finestra
+        assert len(calls) == 2 and state["budget"]["calls"] == 2
+        assert abs(state["budget"]["spent"] - 2 * cost) < 1e-9, "a mezzanotte UTC il budget della finestra NON si azzera"
+        assert state["budget"]["day"] == "2027-01-16"
+        state["budget"]["spent"] = 0.69   # budget della finestra finito
+        state["last_call_ms"] = 0
+        cli.run_cycle(state, NOW + 18 * _H)
+        assert len(calls) == 2, "col budget finito Claude non viene chiamato nemmeno dentro la finestra"
+        cli.run_cycle(state, NOW + 30 * _H)   # seconda finestra
+        assert len(calls) == 3 and abs(state["budget"]["spent"] - cost) < 1e-9, "ogni finestra ha il suo budget"
+        assert state["claude_window"] == str(NOW + 30 * _H) or state["claude_window"] == _id_of(NOW + 30 * _H)
+
+
+def _id_of(ms):
+    # l'id usa l'orario arrotondato al secondo, come nel file
+    import datetime as _dt
+    return str(int(_dt.datetime.fromisoformat(_iso(ms).replace("Z", "+00:00")).timestamp() * 1000))
+
+
+def test_without_a_calendar_nothing_changes():
+    with _clean_calendar(), _sandbox(_decisions_stub(_dec("ETH", "hold"))) as (d, calls):
+        state = {}
+        cli.run_cycle(state, NOW)
+        assert len(calls) == 1 and "claude_window" not in state
+        assert "claude_win" not in learning.STAMP
+        cli.run_cycle(state, NOW + 17 * _H)   # nuovo giorno UTC: il budget giornaliero di sempre riparte
+        assert state["budget"]["day"] == "2027-01-16" and state["budget"]["calls"] == 1
+
+
+def test_calendar_changes_only_when_claude_is_asked_not_what_happens():
+    def run(with_calendar):
+        with _clean_calendar(), _sandbox(_decisions_stub(_dec("BTC", "open_long"))) as (d, calls):
+            if with_calendar:
+                _write_cal(d, (NOW - _H, NOW + 4 * _H))
+            state = {}
+            cli.run_cycle(state, NOW)
+            acc = cli.make_account(state)
+            return (sorted(acc.positions), round(acc.cash, 6), state["budget"]["calls"],
+                    round(state["budget"]["spent"], 9), round(acc.positions["BTC"].total_margin, 6))
+    assert run(True) == run(False), "dentro la finestra il bot si comporta come prima"
+
+
+def test_lessons_call_follows_the_calendar():
+    with _clean_calendar(), _sandbox(_decisions_stub(_dec("ETH", "hold"))) as (d, calls):
+        seen = []
+        orig = cli.update_lessons
+        cli.update_lessons = lambda *a, **k: seen.append(1)
+        try:
+            _write_cal(d, (NOW + _H, NOW + 5 * _H))
+            state = {}
+            cli.run_cycle(state, NOW)
+            assert seen == [], "fuori finestra niente chiamata per le lezioni"
+            cli.run_cycle(state, NOW + _H)
+            assert seen == [1]
+        finally:
+            cli.update_lessons = orig
+
+
+def test_broken_calendar_keeps_claude_off_and_never_blocks_the_cycle():
+    with _clean_calendar(), _sandbox(_decisions_stub(_dec("ETH", "hold"))) as (d, calls):
+        _write_cal(d, raw="[[[ rotto")
+        state = {}
+        cli.run_cycle(state, NOW)
+        assert calls == [] and "main" in state, "Claude spento, il ciclo e' andato avanti con le regole"
+        cli.write_heartbeat(state)
+        hb = json.load(open(os.path.join(d, "heartbeat.json")))["claude_schedule"]
+        assert hb["mode"] == "invalid" and hb["allowed"] is False and hb["error"]
+
+
+def test_a_window_start_triggers_an_immediate_cycle_and_the_heartbeat_shows_the_schedule():
+    with _frozen_clock(), _clean_calendar(), _sandbox(_decisions_stub(_dec("ETH", "hold"))) as (d, calls):
+        _write_cal(d, (NOW - _H, NOW + 3 * _H))
+        state, ctl = {}, {"next_cycle_ms": NOW + 10 * _H, "prev_paused": False}
+        assert cli.loop_step(state, ctl) is True, "inizia una finestra: il ciclo parte subito"
+        assert len(calls) == 1 and ctl["window_id"] == _id_of(NOW - _H)
+        assert cli.loop_step(state, ctl) is False, "stessa finestra: si torna al ritmo normale"
+        hb = json.load(open(os.path.join(d, "heartbeat.json")))["claude_schedule"]
+        assert hb["mode"] == "calendar" and hb["allowed"] is True and hb["window_end_ms"] == NOW + 3 * _H
+    with _frozen_clock(), _clean_calendar(), _sandbox(_decisions_stub(_dec("ETH", "hold"))) as (d, calls):
+        state, ctl = {}, {"next_cycle_ms": NOW + 10 * _H, "prev_paused": False}
+        assert cli.loop_step(state, ctl) is False, "senza calendario il ritmo non cambia"
+        hb = json.load(open(os.path.join(d, "heartbeat.json")))["claude_schedule"]
+        assert hb["mode"] == "none" and hb["allowed"] is True

@@ -7,6 +7,8 @@ Differenze chiave rispetto a V1:
 - Scalp vs medio: scalp ha cooldown ridotto e revisione più frequente
 - Claude chiamato ogni ora (o prima per scalp)
 - Budget giornaliero 0.70$ con DAILY_CAP dalla variabile d'ambiente
+- Calendario di Claude (claude_schedule.json): se presente, Claude e' consultato solo nelle finestre indicate,
+  ognuna con il suo budget; fuori finestra decidono le regole. Senza file vale il budget giornaliero di sempre.
 - Dual portfolio: --portfolio hawk (default) | bull
 """
 from __future__ import annotations
@@ -27,7 +29,9 @@ from desk.brain import (DAILY_CAP, build_prompt, call_claude,
                         update_lessons, append_trade_history, load_symbol_stats, stats_summary,
                         SYSTEM as SYSTEM_HAWK, SYSTEM_BULL)
 from desk.market_context import fetch_all_context
+from desk import learning as _learning
 from desk.learning import build_features, log_event
+from desk.schedule import schedule_state, summary as schedule_summary
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
                            notify_halt, notify_daily_report)
 
@@ -247,6 +251,10 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
         HB["mode"] = compute_mode(paused, n_open)
     HB["portfolio"] = PORTFOLIO.name
     HB["daily_cap_usd"] = DAILY_CAP
+    try:
+        HB["claude_schedule"] = schedule_summary(schedule_state(DATA_DIR, int(now * 1000)))
+    except Exception:
+        pass   # il calendario non deve mai fermare il bot
     if "params" not in HB:
         HB["params"] = run_params()   # i parametri veri, mostrati in Impostazioni
     HB["ts"] = now
@@ -383,6 +391,40 @@ def needs_scalp_review(pos, now_ms: int) -> bool:
 MANAGE_ACTIONS = ("close", "partial_close", "hold")   # unico che resta ammesso in pausa
 
 
+def apply_claude_schedule(state: dict, now_ms: int, day: str) -> bool:
+    """Calendario di Claude: ritorna True se Claude puo' essere consultato adesso. Decide SOLO il quando.
+
+    - senza calendario: True e nessuna modifica (budget giornaliero di sempre);
+    - con calendario, dentro una finestra: all'inizio di OGNI finestra il budget riparte da zero e la prima
+      chiamata e' subito possibile (come il tasto "Azzera budget"); durante la finestra il budget non si
+      azzera a mezzanotte UTC;
+    - fuori dalle finestre: False (decidono le regole, come quando il budget e' finito).
+    Imposta anche l'etichetta passiva claude_win sulle righe del registro. Non solleva mai."""
+    try:
+        s = schedule_state(DATA_DIR, now_ms)
+        if s["mode"] == "none":
+            _learning.STAMP.pop("claude_win", None)
+            return True
+        _learning.STAMP["claude_win"] = 1 if s["allowed"] else 0
+        w = s["window"]
+        if w:
+            bud = state.setdefault("budget", {})
+            if state.get("claude_window") != w["id"]:
+                state["claude_window"] = w["id"]
+                state["budget"] = {"day": day, "spent": 0.0, "calls": 0, "total_spent": bud.get("total_spent", 0.0)}
+                state["last_call_ms"] = 0
+                print(f"[FINESTRA] inizia una finestra di Claude (fino alle "
+                      f"{time.strftime('%d %H:%M UTC', time.gmtime(w['end_ms'] / 1000))}): budget azzerato", flush=True)
+            else:
+                bud["day"] = day   # il budget della finestra non si azzera al cambio di giorno UTC
+        elif s["mode"] == "invalid":
+            print(f"[FINESTRA] calendario di Claude non valido ({s['error']}): Claude resta spento", flush=True)
+        return bool(s["allowed"])
+    except Exception as e:
+        print(f"[FINESTRA ERROR] {e}: Claude resta spento in questo ciclo", flush=True)
+        return False
+
+
 def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     """Un ciclo di mercato.
 
@@ -395,6 +437,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     acc = make_account(state)
     day = time.strftime("%Y-%m-%d", time.gmtime(now_ms / 1000))
     acc.roll_day(day, {})
+    claude_ok = apply_claude_schedule(state, now_ms, day)
 
     # carica candele per tutti i simboli
     candles_map: dict = {}
@@ -489,6 +532,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         print(f"[HALT] {halt}")
     elif drain and not acc.positions:
         pass   # in pausa e senza posizioni non c'e' nulla da gestire: niente chiamate a Claude
+    elif call_due and not claude_ok:
+        print("[FINESTRA] fuori dal calendario: Claude non viene consultato, decidono le regole", flush=True)
     elif call_due and can_call(state, day):
         try:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats)
@@ -733,8 +778,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 break
     flush_events(state, acc)
 
-    # ---- lessons
-    update_lessons(DATA_DIR, state, day)
+    # ---- lessons (una chiamata a Claude: segue il calendario come le altre)
+    if claude_ok:
+        update_lessons(DATA_DIR, state, day)
 
     # ---- report giornaliero Telegram (inviato una volta all'inizio del nuovo giorno)
     _last_report_day = state.get("last_report_day", "")
@@ -1057,6 +1103,15 @@ def loop_step(state: dict, ctl: dict) -> bool:
                   if paused else "[AVVIO] ripresa richiesta: il bot lavora", flush=True)
             ctl["next_cycle_ms"] = 0   # reagisce subito al tasto, senza aspettare il prossimo ciclo
         ctl["prev_paused"] = paused
+    try:   # all'inizio di una finestra di Claude il ciclo parte subito (non si aspetta il prossimo giro)
+        w = schedule_state(DATA_DIR, int(time.time() * 1000)).get("window")
+        wid = w["id"] if w else None
+        if wid != ctl.get("window_id"):
+            ctl["window_id"] = wid
+            if wid is not None:
+                ctl["next_cycle_ms"] = 0
+    except Exception:
+        pass
     n_open = len((state.get("main") or {}).get("positions") or {})
     ran = False
     if int(time.time() * 1000) >= ctl.get("next_cycle_ms", 0) and not (paused and n_open == 0):

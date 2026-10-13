@@ -29,6 +29,11 @@ SCHEMA = 1
 MAX_BYTES_CANDIDATES = 40 * 1024 * 1024    # sopra questo i candidati scartati non si scrivono piu'
 MAX_BYTES_ALL = 250 * 1024 * 1024          # tetto assoluto di sicurezza
 
+# Etichette passive aggiunte a OGNI riga scritta (le imposta il ciclo del bot). Oggi: claude_win = 1 se in quel
+# momento Claude poteva essere consultato dal calendario, 0 se no; assente se non c'e' un calendario.
+# Servono solo a separare i dati "con Claude" da quelli "solo regole" nell'analisi: non influenzano nulla.
+STAMP: dict = {}
+
 
 def _num(x: Any, nd: int = 5) -> Optional[float]:
     """Numero JSON-sicuro: None per NaN/inf/non numerico (un NaN nel registro avvelenerebbe i modelli)."""
@@ -135,7 +140,7 @@ def log_event(data_dir: str, ev: dict, candidate: bool = False) -> bool:
             size = 0
         if size >= MAX_BYTES_ALL or (candidate and size >= MAX_BYTES_CANDIDATES):
             return False
-        row = _clean({"schema": SCHEMA, **ev})
+        row = _clean({"schema": SCHEMA, **STAMP, **ev})
         row.setdefault("logged_ms", int(time.time() * 1000))
         line = json.dumps(row, ensure_ascii=False, default=str, allow_nan=False)
         with open(path, "a", encoding="utf-8") as fh:
