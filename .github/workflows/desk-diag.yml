@@ -200,7 +200,9 @@ jobs:
           done
           rm -f ~/.ssh/id_desk
           for P in hawk bull; do
-            OUT=$(head -95 diag_$P.txt | cut -c1-300 | tr '\n' '|' | sed 's/%/%25/g')
-            echo "::notice title=Diagnosi $P::${OUT}"
+            OUT=$(sed -n 1,58p diag_$P.txt | cut -c1-200 | tr '\n' '|' | sed 's/%/%25/g')
+            echo "::notice title=Diagnosi $P parte 1::${OUT}"
+            OUT=$(sed -n 59,120p diag_$P.txt | cut -c1-200 | tr '\n' '|' | sed 's/%/%25/g')
+            echo "::notice title=Diagnosi $P parte 2::${OUT}"
           done
           echo "=== HAWK ===" && cat diag_hawk.txt && echo "=== BULL ===" && cat diag_bull.txt
