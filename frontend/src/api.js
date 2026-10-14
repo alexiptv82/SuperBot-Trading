@@ -80,6 +80,13 @@ export const deskAPI = {
   getPerformance: () => API.get('/api/desk/performance'),
   getLogs:        () => API.get('/api/desk/logs'),
   health:         () => API.get('/api/desk/health'),
+  // Bull
+  getBullStatus:      () => API.get('/api/desk/bull/status'),
+  getBullTrades:      (limit = 100) => API.get(`/api/desk/bull/trades?limit=${limit}`),
+  getBullPerformance: () => API.get('/api/desk/bull/performance'),
+  // Live dashboard
+  getLiveWallet:      () => API.get('/api/desk/live/wallet'),
+  getLiveOverview:    () => API.get('/api/desk/live/overview'),
 };
 
 export default API;

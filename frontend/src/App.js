@@ -7,6 +7,7 @@ import Trades from './pages/Trades';
 import Performance from './pages/Performance';
 import Settings from './pages/Settings';
 import NavBar from './components/NavBar';
+import LiveDashboard from './pages/LiveDashboard';
 
 // Error boundary globale: cattura qualsiasi crash di render nell'albero React
 // e mostra un messaggio utile invece della schermata nera.
@@ -101,6 +102,7 @@ export default function App() {
             <Route path="/trades" element={<Trades />} />
             <Route path="/performance" element={<Performance />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/live" element={<LiveDashboard />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>

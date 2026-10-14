@@ -1165,6 +1165,172 @@ async def bull_health():
     }
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# LIVE DASHBOARD  (/api/desk/live/*)
+# Endpoint per la dashboard live: saldo reale BitGet + P&L per portafoglio.
+# Attivi sempre ma significativi solo quando DESK_MODE=live nei container desk.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _live_daily_pnl(trades_raw: list) -> float:
+    """P&L realizzato oggi (dalla mezzanotte UTC) da una lista di trade chiusi."""
+    import time as _time
+    midnight_ms = int(_time.time() // 86400 * 86400 * 1000)
+    return sum(
+        t.get("net", 0.0)
+        for t in trades_raw
+        if (t.get("close_ms") or 0) >= midnight_ms and t.get("net") is not None
+    )
+
+
+def _live_total_pnl(trades_raw: list) -> float:
+    """P&L realizzato totale da una lista di trade chiusi."""
+    return sum(t.get("net", 0.0) for t in trades_raw if t.get("net") is not None)
+
+
+def _fetch_bitget_wallet() -> dict:
+    """
+    Legge il saldo reale del futures wallet da BitGet via ccxt.
+    Richiede BITGET_API_KEY, BITGET_SECRET_KEY, BITGET_PASSPHRASE.
+    Ritorna {"available": bool, "total_usdt": float, "available_usdt": float, "error": str|None}.
+    """
+    api_key    = os.environ.get("BITGET_API_KEY", "")
+    secret_key = os.environ.get("BITGET_SECRET_KEY", "")
+    passphrase = os.environ.get("BITGET_PASSPHRASE", "")
+    desk_mode  = os.environ.get("DESK_MODE", "paper").strip().lower()
+
+    if desk_mode != "live" or not all([api_key, secret_key, passphrase]):
+        return {"available": False, "total_usdt": None, "available_usdt": None,
+                "error": "DESK_MODE non è live o chiavi API mancanti"}
+    try:
+        import ccxt
+        client = ccxt.bitget({
+            "apiKey": api_key, "secret": secret_key, "password": passphrase,
+            "options": {"defaultType": "swap"},
+        })
+        balance = client.fetch_balance()
+        usdt = balance.get("USDT", {})
+        return {
+            "available": True,
+            "total_usdt": round(float(usdt.get("total", 0) or 0), 2),
+            "available_usdt": round(float(usdt.get("free", 0) or 0), 2),
+            "used_usdt": round(float(usdt.get("used", 0) or 0), 2),
+            "error": None,
+        }
+    except Exception as e:
+        return {"available": False, "total_usdt": None, "available_usdt": None,
+                "error": str(e)[:120]}
+
+
+@app.get("/api/desk/live/wallet")
+async def live_wallet(session=Depends(require_session)):
+    """
+    Saldo reale del futures wallet BitGet.
+    In paper mode ritorna available=False senza errore — è il comportamento atteso.
+    """
+    return _fetch_bitget_wallet()
+
+
+@app.get("/api/desk/live/overview")
+async def live_overview(session=Depends(require_session)):
+    """
+    Vista consolidata live: saldo BitGet + P&L e stato di entrambi i portafogli.
+    Aggrega /api/desk/status, /api/desk/bull/status e il wallet BitGet in una sola chiamata.
+    """
+    import time as _time
+
+    # Saldo reale BitGet
+    wallet = _fetch_bitget_wallet()
+
+    # Configurazione capitali (letta dallo stesso env che usa il bot)
+    hawk_capital    = float(os.environ.get("DESK_HAWK_CAPITAL", "1500"))
+    bull_capital    = float(os.environ.get("DESK_BULL_CAPITAL", "1500"))
+    daily_loss_pct  = float(os.environ.get("DESK_DAILY_LOSS_PCT", "25")) / 100.0
+    hawk_loss_limit = hawk_capital * daily_loss_pct
+    bull_loss_limit = bull_capital * daily_loss_pct
+
+    # Dati Hawk
+    hawk_state = _desk_state()
+    hawk_trades = _desk_trades_raw(last_n=5000)
+    hawk_main   = hawk_state.get("main", {}) if hawk_state else {}
+    hawk_positions = hawk_main.get("positions", {})
+    hawk_day_pnl   = _live_daily_pnl(hawk_trades)
+    hawk_total_pnl = _live_total_pnl(hawk_trades)
+    hawk_pos_list = [
+        {
+            "symbol": sym,
+            "side": p.get("side"),
+            "entry": p.get("entry"),
+            "leverage": p.get("leverage"),
+            "margin": p.get("total_margin"),
+            "sl": p.get("sl"),
+            "tp": p.get("tp"),
+            "trade_type": p.get("trade_type"),
+            "open_ms": p.get("open_ms"),
+        }
+        for sym, p in hawk_positions.items()
+    ]
+
+    # Dati Bull
+    bull_state = _bull_state()
+    bull_trades = _bull_trades_raw(last_n=5000)
+    bull_main   = bull_state.get("main", {}) if bull_state else {}
+    bull_positions = bull_main.get("positions", {})
+    bull_day_pnl   = _live_daily_pnl(bull_trades)
+    bull_total_pnl = _live_total_pnl(bull_trades)
+    bull_pos_list = [
+        {
+            "symbol": sym,
+            "side": p.get("side"),
+            "entry": p.get("entry"),
+            "leverage": p.get("leverage"),
+            "margin": p.get("total_margin"),
+            "sl": p.get("sl"),
+            "tp": p.get("tp"),
+            "trade_type": p.get("trade_type"),
+            "open_ms": p.get("open_ms"),
+        }
+        for sym, p in bull_positions.items()
+    ]
+
+    # Limite raggiunto oggi?
+    hawk_limit_hit = hawk_day_pnl <= -hawk_loss_limit
+    bull_limit_hit = bull_day_pnl <= -bull_loss_limit
+
+    desk_mode = os.environ.get("DESK_MODE", "paper").strip().lower()
+
+    return {
+        "mode": desk_mode,
+        "timestamp_ms": int(_time.time() * 1000),
+        "wallet": wallet,
+        "hawk": {
+            "available": bool(hawk_state),
+            "capital_usdt": hawk_capital,
+            "daily_loss_limit_usdt": round(hawk_loss_limit, 2),
+            "daily_pnl": round(hawk_day_pnl, 2),
+            "total_pnl": round(hawk_total_pnl, 2),
+            "daily_limit_hit": hawk_limit_hit,
+            "open_positions": len(hawk_positions),
+            "positions": hawk_pos_list,
+            "total_closed": len([t for t in hawk_trades if t.get("net") is not None]),
+            "cycle": hawk_state.get("cycle", 0) if hawk_state else 0,
+            "halt": hawk_state.get("halt") if hawk_state else None,
+        },
+        "bull": {
+            "available": bool(bull_state),
+            "capital_usdt": bull_capital,
+            "daily_loss_limit_usdt": round(bull_loss_limit, 2),
+            "daily_pnl": round(bull_day_pnl, 2),
+            "total_pnl": round(bull_total_pnl, 2),
+            "daily_limit_hit": bull_limit_hit,
+            "open_positions": len(bull_positions),
+            "positions": bull_pos_list,
+            "total_closed": len([t for t in bull_trades if t.get("net") is not None]),
+            "cycle": bull_state.get("cycle", 0) if bull_state else 0,
+            "halt": bull_state.get("halt") if bull_state else None,
+        },
+    }
+
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run('backend.server:app', host='0.0.0.0', port=config.BACKEND_PORT, reload=True)

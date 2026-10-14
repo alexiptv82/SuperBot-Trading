@@ -169,6 +169,46 @@ CODE_VERSION = os.getenv("DESK_CODE_VERSION", "dev")
 # Lancia ValueError all'avvio se le chiavi API mancano in modalità live
 LIVE = LiveConnector(data_dir=DATA_DIR)
 
+# ── Limite perdita giornaliero (solo in modalità live) ───────────────────────
+# DESK_HAWK_CAPITAL / DESK_BULL_CAPITAL: capitale allocato a ogni portafoglio (USDT)
+# DESK_DAILY_LOSS_PCT: percentuale massima di perdita giornaliera (default 25%)
+# Esempio: capitale $1500, pct 25% → massima perdita $375/giorno
+_PORTFOLIO_CAPITAL = float(os.getenv(
+    f"DESK_{PORTFOLIO.name.upper()}_CAPITAL",
+    os.getenv("DESK_PORTFOLIO_CAPITAL", "1500")
+))
+_DAILY_LOSS_PCT = float(os.getenv("DESK_DAILY_LOSS_PCT", "25")) / 100.0
+_DAILY_LOSS_LIMIT = _PORTFOLIO_CAPITAL * _DAILY_LOSS_PCT
+
+print(f"[CAPITAL] {PORTFOLIO.name.upper()} capitale={_PORTFOLIO_CAPITAL:.0f}$ "
+      f"limite_perdita_giornaliero={_DAILY_LOSS_LIMIT:.0f}$ ({_DAILY_LOSS_PCT*100:.0f}%)", flush=True)
+
+
+def _daily_realized_pnl(acc) -> float:
+    """Calcola il P&L realizzato oggi (dalla mezzanotte UTC)."""
+    import time as _time
+    midnight_ms = int(_time.time() // 86400 * 86400 * 1000)
+    return sum(
+        c.get("net", 0.0)
+        for c in (acc.closed or [])
+        if (c.get("close_ms") or 0) >= midnight_ms
+    )
+
+
+def _daily_loss_exceeded(acc) -> bool:
+    """
+    True se la perdita realizzata oggi supera il limite configurato.
+    Attivo solo in modalità live — in paper mode non blocca mai.
+    """
+    if not LIVE._live:
+        return False
+    pnl = _daily_realized_pnl(acc)
+    if pnl <= -_DAILY_LOSS_LIMIT:
+        print(f"[DAILY LOSS LIMIT] {PORTFOLIO.name.upper()} perdita oggi={pnl:+.2f}$ "
+              f"≥ limite {_DAILY_LOSS_LIMIT:.0f}$ — nessuna nuova apertura per oggi", flush=True)
+        return True
+    return False
+
 
 # ---- candles dal BitGet
 def fetch_candles(symbol: str, bar: str = "15m", limit: int = 1000) -> list:
@@ -724,6 +764,11 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 feats = {}   # la registrazione non deve mai impedire un'apertura
             feats.update(proposed_margin=raw_margin, proposed_lev=raw_lev, split_requested=is_split,
                           guardrail_forced=bool(raw_margin != dec["margin_usd"] or raw_lev != dec["leverage"]))
+            # ── DAILY LOSS LIMIT (solo live) ────────────────────────────────
+            if _daily_loss_exceeded(acc):
+                _candidate("daily_loss_limit", dec, px)
+                continue
+            # ─────────────────────────────────────────────────────────────────
             split_cfg = None
             if is_split:
                 retr = float(dec.get("split_retrace_pct") or 0.0)   # frazione (0.005 = 0,5%)
