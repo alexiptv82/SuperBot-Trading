@@ -2,13 +2,28 @@ Sub-account provato: hawk
 [LIVE_CONNECTOR] modalità LIVE attiva — ordini reali su Bitget
 === PROVA COLLEGAMENTO BITGET — simbolo XRP, margine 3.0$ x5 ===
 [OK ] A1 mercati caricati — 4377 mercati
-[OK ] A2 chiave valida e saldo futures letto — USDT liberi=0.0 totali=0.0
+[OK ] A2 chiave valida e saldo futures letto — USDT liberi=62.21214813 totali=62.21214813
 [OK ] A3 account senza posizioni aperte — nessuna
-[OK ] A4 impostazioni account letti — posizioni=hedge_mode margine=cross leve(long/short)=10/10
+[OK ] A4 impostazioni account letti — posizioni=hedge_mode margine=isolated leve(long/short)=5/5
 [LIVE_CONNECTOR] modalità LIVE attiva — ordini reali su Bitget
 [CAPITAL] HAWK capitale=1500$ limite_perdita_giornaliero=375$ (25%)
 [KO ] A5 simboli del bot presenti come perpetui su Bitget — MANCANO: MATIC
-[OK ] B0 importo del test — qty=11.0 prezzo=1.3253 valore=14.58$ margine~2.92$
-[LIVE] OPEN FALLITA XRP: bitget {"code":"40762","msg":"The order amount exceeds the balance","requestTime":1792008181901,"data":null}
-[KO ] B1 apertura con stop e take profit nello stesso ordine — bitget {"code":"40762","msg":"The order amount exceeds the balance","requestTime":1792008181901,"data":null}
+[OK ] B0 importo del test — qty=11.0 prezzo=1.3291 valore=14.62$ margine~2.92$
+[LIVE] OPEN XRP LONG  qty=11.0  lev=5x  entry=1.329  order_id=1494358003493261313
+[OK ] B1 apertura con stop e take profit nello stesso ordine — 1494358003493261313
+[OK ] B2 posizione ISOLATA, lato e leva giusti — {"side": 1, "qty": 11.0, "entry": 1.329, "leverage": 5, "margin_mode": "isolated"}
+[OK ] B3 stop e take profit presenti sull'exchange — [{'id': '1494358003889991680', 'tipo': 'profit_plan', 'lato': None, 'trigger': 1.4221, 'size': '11'}, {'id': '1494358003919351809', 'tipo': 'loss_plan', 'lato': None, 'trigger': 1.2361, 'size': '11'}]
+     esito reale: prezzo medio=1.329 quantita'=11.0 commissione=0.0087714
+[OK ] B4 spostamento stop/TP (come dopo un DCA) — 1494358013155205121,1494358014379941888 | ora: [{'id': '1494358013155205121', 'tipo': 'pos_loss', 'lato': None, 'trigger': 1.2228, 'size': '0'}, {'id': '1494358014379941888', 'tipo': 'pos_profit', 'lato': None, 'trigger': 1.4354, 'size': '0'}]
+[LIVE] ADD XRP +11.0  order_id=1494358024586416218
+[OK ] B5 aggiunta di contratti (DCA / seconda gamba) — 1494358024586416218 qty ora=22.0
+[OK ] B5b la posizione resta isolata dopo l'aggiunta
+[LIVE] REDUCE XRP -11.0 (50%)  order_id=1494358043381092353
+[OK ] B6 riduzione al 50% (TP parziale) — 1494358043381092353 qty ora=11.0
+[LIVE] CLOSE XRP  qty=11.0  order_id=1494358052709224449
+[OK ] B7 chiusura completa — 1494358052709224449
+[OK ] B8 nessuno stop rimasto dopo la chiusura — pulito
 --- pulizia ---
+saldo finale USDT totali=62.17596187 (costo del test = differenza con quello iniziale)
+============================================================
+RISULTATO: NON OK -> A5 simboli del bot presenti come perpetui su Bitget  (22s)
