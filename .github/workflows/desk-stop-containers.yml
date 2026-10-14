@@ -1,0 +1,31 @@
+name: Sala segnali - STOP EMERGENZA (ferma container senza rimuoverli)
+
+# Ferma i container desk-hawk e desk-bull senza rimuoverli.
+# Usa: docker stop (graceful) — il container rimane, si può riavviare con desk-deploy.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-stop-now.trigger"
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ferma container hawk e bull
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 60s
+          script: |
+            echo "=== PRIMA ==="
+            docker ps --filter name=superbot-desk --format '{{.Names}} | {{.Status}}'
+            docker stop superbot-desk-hawk 2>/dev/null && echo "hawk stoppato" || echo "hawk già fermo"
+            docker stop superbot-desk-bull 2>/dev/null && echo "bull stoppato" || echo "bull già fermo"
+            echo "=== DOPO ==="
+            docker ps -a --filter name=superbot-desk --format '{{.Names}} | {{.Status}}'
+            echo "DONE — per riavviare: triggera desk-deploy.trigger"

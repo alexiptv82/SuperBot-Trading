@@ -1,0 +1,184 @@
+name: Sala segnali - stato (sola lettura)
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-status.trigger"
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Raccolta stato + auto-restart superbot se fermo
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 90s
+          script: |
+            OUT=/tmp/superbot_status.txt
+            echo "=== TUTTI I CONTAINER ===" > $OUT
+            docker ps -a --format "{{.Names}} | {{.Status}} | {{.Image}}" | grep superbot >> $OUT 2>/dev/null || echo "(nessun container superbot)" >> $OUT
+            echo "" >> $OUT
+            echo "=== LOG SUPERBOT FastAPI (ultimi 40) ===" >> $OUT
+            docker logs --tail 40 superbot 2>&1 >> $OUT || echo "container superbot non trovato" >> $OUT
+            echo "" >> $OUT
+            echo "=== LOG HAWK (ultimi 10) ===" >> $OUT
+            docker logs --tail 10 superbot-desk-hawk 2>&1 >> $OUT || echo "hawk non trovato" >> $OUT
+            echo "" >> $OUT
+            echo "=== LOG BULL (ultimi 10) ===" >> $OUT
+            docker logs --tail 10 superbot-desk-bull 2>&1 >> $OUT || echo "bull non trovato" >> $OUT
+            # --- Dati dei due bot (sola lettura): heartbeat, posizioni, registro di apprendimento
+            OUT2=/tmp/superbot_data.txt
+            : > $OUT2
+            for P in hawk bull; do
+              D=/opt/superbot-desk-data/$P
+              echo "=== DATI $P ===" >> $OUT2
+              python3 - "$D" >> $OUT2 2>&1 <<'PYEOF' || echo "(lettura dati non riuscita)" >> $OUT2
+            import json, os, sys, time, collections
+            d = sys.argv[1]
+            try:
+                hb = json.load(open(os.path.join(d, "heartbeat.json")))
+                print("heartbeat: modalita=%s posizioni=%s eta=%ds split=%s" % (
+                    hb.get("mode"), hb.get("open_positions"), time.time() - hb.get("ts", 0),
+                    (hb.get("params") or {}).get("split")))
+            except Exception as e:
+                print("heartbeat: non leggibile (%s)" % type(e).__name__)
+            try:
+                st = json.load(open(os.path.join(d, "state_v2.json")))
+                tot_risk = 0.0
+                net = 0.0
+                gross = 0.0
+                lp = st.get("last_prices") or {}
+                upnl_tot = 0.0
+                margin_tot = 0.0
+                n_up = n_dn = 0
+                for sym, p in ((st.get("main") or {}).get("positions") or {}).items():
+                    q, e, sl = float(p.get("qty") or 0), float(p.get("entry") or 0), float(p.get("sl") or 0)
+                    risk = q * abs(e - sl)
+                    notional = q * e
+                    tot_risk += risk
+                    net += notional * (1 if p.get("side") == 1 else -1)
+                    gross += notional
+                    px = lp.get(sym)
+                    upnl = (float(px) - e) * q * (1 if p.get("side") == 1 else -1) if px else None
+                    if upnl is not None:
+                        upnl_tot += upnl
+                        n_up += upnl > 0
+                        n_dn += upnl <= 0
+                    margin_tot += float(p.get("total_margin") or 0)
+                    print("posizione %s lato=%s margine=%s leva=%s stop=%.2f%% rischio_a_stop=%.1f$ nozionale=%.0f$ gambe=%s attesa=%s pnl_aperto=%s" % (
+                        sym, p.get("side"), p.get("total_margin"), p.get("leverage"),
+                        abs(e - sl) / e * 100 if e else 0, risk, notional, p.get("legs", 1),
+                        bool(p.get("pending_split")), ("%+.1f$" % upnl) if upnl is not None else "n.d."))
+                m = st.get("main") or {}
+                closed = m.get("closed") or []
+                cn = [float(c.get("net") or 0) for c in closed if isinstance(c, dict)]
+                print("APERTE: pnl non realizzato=%+.1f$ (in utile %d, in perdita %d) | equity stimata=%.0f$ | prezzi di %ds fa" % (
+                    upnl_tot, n_up, n_dn, float(m.get("cash") or 0) + margin_tot + upnl_tot,
+                    int(time.time() - float(st.get("last_prices_ms") or 0) / 1000)))
+                print("CHIUSE (run corrente): %d, in utile %d, netto %+.1f$ | motivi: %s" % (
+                    len(cn), sum(1 for x in cn if x > 0), sum(cn),
+                    dict(collections.Counter(str(c.get("why")) for c in closed if isinstance(c, dict)))))
+                print("TOTALE: rischio se scattano tutti gli stop=%.0f$ | nozionale lordo=%.0f$ netto=%+.0f$ | cassa=%.0f$ equity a inizio giorno=%.0f$ chiusi=%d" % (
+                    tot_risk, gross, net, float(m.get("cash") or 0), float(m.get("day_start_equity") or 0), len(m.get("closed") or [])))
+            except Exception as e:
+                print("stato: non leggibile (%s)" % type(e).__name__)
+            f = os.path.join(d, "learning_log.jsonl")
+            if os.path.exists(f):
+                c = collections.Counter()
+                KEYS = ("oi_usd", "oi_change_24h", "ls_ratio", "funding_rate", "funding_pred", "btc_roc24h", "rsi1h", "atr_pct", "vol_ratio")
+                filled = collections.Counter()
+                nrows = 0
+                n_split_req = 0
+                last = None
+                for line in open(f, encoding="utf-8"):
+                    try:
+                        r = json.loads(line)
+                    except ValueError:
+                        c["righe_illeggibili"] += 1
+                        continue
+                    c[r.get("ev")] += 1
+                    last = r
+                    if r.get("ev") in ("open", "candidate") and isinstance(r.get("features"), dict):
+                        nrows += 1
+                        if r.get("ev") == "open" and r["features"].get("split_requested"):
+                            n_split_req += 1
+                        for k in KEYS:
+                            if r["features"].get(k) is not None:
+                                filled[k] += 1
+                print("learning_log.jsonl: %d byte, eventi=%s" % (os.path.getsize(f), dict(c)))
+                print("feature valorizzate su %d righe: %s" % (nrows, {k: filled[k] for k in KEYS}))
+                print("aperture con entrata diversificata richiesta da Claude: %d" % n_split_req)
+                if last:
+                    print("ultimo evento:", json.dumps(last, ensure_ascii=False)[:250])
+            else:
+                print("learning_log.jsonl: non ancora creato")
+            PYEOF
+            done
+            # --- Sonda delle API pubbliche di BitGet dal container (sola lettura, nessun segreto)
+            echo "=== SONDA API BITGET ===" >> $OUT2
+            docker exec -i superbot-desk-hawk python - >> $OUT2 2>&1 <<'PYEOF' || echo "(sonda non riuscita)" >> $OUT2
+            import json, urllib.request
+            from desk import market_context as m
+            B = m.BITGET_BASE
+            for path in ("/api/v2/mix/market/open-interest?symbol=BTCUSDT&productType=USDT-FUTURES",
+                         "/api/v2/mix/market/account-long-short-ratio?symbol=BTCUSDT&productType=USDT-FUTURES&period=1h",
+                         "/api/v2/mix/market/account-long-short?symbol=BTCUSDT&period=1h",
+                         "/api/v2/mix/market/long-short?symbol=BTCUSDT&period=1h",
+                         "/api/v2/mix/market/position-long-short?symbol=BTCUSDT&period=1h",
+                         "/api/v2/mix/market/open-interest-history?symbol=BTCUSDT&productType=USDT-FUTURES&granularity=1H",
+                         "/api/v2/mix/market/taker-buy-sell?symbol=BTCUSDT&period=1h"):
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(B + path, headers={"User-Agent": "Mozilla/5.0"}), timeout=10) as r:
+                        print("OK", r.status, path.split("?")[0], r.read()[:260].decode("utf-8", "replace"))
+                except Exception as e:
+                    body = ""
+                    try:
+                        body = e.read()[:160].decode("utf-8", "replace")
+                    except Exception:
+                        pass
+                    print("ERR", type(e).__name__, getattr(e, "code", ""), path.split("?")[0], body)
+            print("fetch_open_interest(BTC) ->", m.fetch_open_interest("BTC"))
+            print("fetch_ls_ratio(BTC) ->", m.fetch_ls_ratio("BTC"))
+            PYEOF
+            if ! docker ps --filter name=^superbot$ --filter status=running --format "{{.Names}}" | grep -q "^superbot$"; then
+              echo "" >> $OUT
+              echo "=== AUTO-RESTART SUPERBOT ===" >> $OUT
+              docker start superbot >> $OUT 2>&1 || echo "ERRORE avvio superbot" >> $OUT
+              sleep 8
+              docker ps -a --filter name=^superbot$ --format "{{.Names}} | {{.Status}}" >> $OUT
+            fi
+            echo "DONE"
+
+      - name: Pubblica output come step summary
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            root@51.91.109.45 \
+            'cat /tmp/superbot_status.txt' 2>/dev/null > out.txt || true
+          ssh -T -i ~/.ssh/id_desk \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            root@51.91.109.45 \
+            'cat /tmp/superbot_data.txt' 2>/dev/null > data.txt || true
+          rm -f ~/.ssh/id_desk
+          # pubblica nel job summary (leggibile via API)
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          # anche come notice
+          OUT=$(cat out.txt | head -150 | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=BotV2 Stato::${OUT}"
+          DATA=$(head -60 data.txt | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Dati bot::${DATA}"
+          echo "=== OUTPUT ===" && cat out.txt

@@ -1,0 +1,89 @@
+name: Sala segnali - test (nessun deploy, nessun segreto)
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - ".github/workflows/desk-ci.yml"
+      - "Dockerfile.desk"
+      - "backend/desk/**"
+      - "backend/rule_pool/**"
+      - "backend/tests/test_desk.py"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt==4.2.95 pandas numpy pytest
+      - name: Unit tests (desk)
+        id: desk_tests
+        continue-on-error: true
+        run: |
+          python -m pytest tests/test_desk.py -v --tb=long 2>&1 | tee /tmp/pytest_out.txt
+          exit ${PIPESTATUS[0]}
+      - name: Pubblica errori come annotations
+        if: always()
+        run: |
+          python3 - <<'PYEOF'
+          import re, sys
+          try:
+              with open("/tmp/pytest_out.txt") as f:
+                  content = f.read()
+          except FileNotFoundError:
+              sys.exit(0)
+          # stampa tutto nel log
+          print(content)
+          # emetti annotations per ogni FAILED
+          for line in content.splitlines():
+              if line.startswith("FAILED") or "ERROR" in line[:10]:
+                  safe = line.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                  print(f"::error::{safe}")
+          # summary
+          with open("/tmp/pytest_out.txt") as f:
+              txt = f.read()
+          import os
+          sf = os.environ.get("GITHUB_STEP_SUMMARY", "")
+          if sf:
+              with open(sf, "a") as s:
+                  s.write("```\n" + txt[-8000:] + "\n```\n")
+          PYEOF
+      - name: Fallisci se i test sono falliti
+        if: steps.desk_tests.outcome == 'failure'
+        run: exit 1
+      - name: Unit tests (rule_pool)
+        run: python -m pytest tests/test_rule_pool_runner.py -v --tb=short
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build immagine
+        run: docker build -t superbot-desk -f Dockerfile.desk .
+      - name: Import sanity check
+        run: |
+          docker run --rm superbot-desk python -c "
+          from desk.engine import Limits, PaperAccount
+          from desk.signals import read_symbol
+          from desk.brain import call_claude, build_prompt, rules_decisions
+          from desk.market_context import fetch_all_context
+          from desk import cli
+          print('Import OK')
+          a = PaperAccount(Limits())
+          p, msg = a.open('BTC', 1, 100, 10, 100.0, 98.0, None, 0, {})
+          assert p is not None, f'open fallito: {msg}'
+          print(f'PaperAccount OK — margin={p.margin}  leverage={p.leverage}')
+          "

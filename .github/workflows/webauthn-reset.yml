@@ -1,0 +1,22 @@
+name: SuperBot - reset credenziali WebAuthn
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/webauthn-reset.trigger"
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Cancella credenziali WebAuthn vecchio dominio
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_tmp
+          chmod 600 ~/.ssh/id_tmp
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 "echo 'aW1wb3J0IHNxbGl0ZTMKZGIgPSBzcWxpdGUzLmNvbm5lY3QoIi9vcHQvc3VwZXJib3QvZGF0YS9zdXBlcmJvdC5kYiIpCmN1ciA9IGRiLmN1cnNvcigpCmN1ci5leGVjdXRlKCJTRUxFQ1QgbmFtZSBGUk9NIHNxbGl0ZV9tYXN0ZXIgV0hFUkUgdHlwZT1cInRhYmxlXCIiKQp0YWJsZXMgPSBbclswXSBmb3IgciBpbiBjdXIuZmV0Y2hhbGwoKV0KcHJpbnQoIlRhYmVsbGUgREI6IiwgdGFibGVzKQpmb3IgdCBpbiB0YWJsZXM6CiAgICBpZiAiY3JlZGVudGlhbCIgaW4gdC5sb3dlcigpIG9yICJ3ZWJhdXRobiIgaW4gdC5sb3dlcigpOgogICAgICAgIGN1ci5leGVjdXRlKGYiU0VMRUNUIENPVU5UKCopIEZST00ge3R9IikKICAgICAgICBuID0gY3VyLmZldGNob25lKClbMF0KICAgICAgICBwcmludChmIiAge3R9OiB7bn0gY3JlZGVuemlhbGkgLT4gY2FuY2VsbG8iKQogICAgICAgIGN1ci5leGVjdXRlKGYiREVMRVRFIEZST00ge3R9IikKZGIuY29tbWl0KCkKZGIuY2xvc2UoKQpwcmludCgiRE9ORSIpCg==' | base64 -d | python3"
+          rm -f ~/.ssh/id_tmp

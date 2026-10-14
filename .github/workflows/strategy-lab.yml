@@ -1,0 +1,67 @@
+name: Laboratorio strategie (solo ricerca, sola lettura)
+
+# Scarica candele PUBBLICHE 15m di BTC/ETH da BitGet (nessuna chiave), le
+# aggrega a 1h/4h e misura il rendimento lordo/netto di 8 varianti di strategia
+# con parametri fissati in anticipo. Non fa deploy, non usa segreti, non tocca
+# il bot in funzione.
+#
+# Parte da sola ad ogni push sul ramo `risk-profiles` che tocca questi file.
+
+on:
+  push:
+    branches: [risk-profiles]
+    paths:
+      - ".github/workflows/strategy-lab.yml"
+      - "backend/strategy_lab.py"
+      - "backend/tests/test_strategy_lab.py"
+
+permissions:
+  contents: read
+
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt pandas numpy pytest
+
+      - name: Unit tests
+        run: python -m pytest tests/test_strategy_lab.py -q
+
+      # Dataset fisso (fine 2026-10-09 00:00 UTC): la chiave non cambia, cosi'
+      # i run successivi riusano le stesse candele senza riscaricarle.
+      - name: Cache candele
+        uses: actions/cache@v4
+        with:
+          path: backend/lab_cache
+          key: lab-candles-v1-20261009
+
+      - name: Laboratorio
+        shell: bash
+        run: |
+          set -o pipefail
+          python -u strategy_lab.py --cache-dir lab_cache --out strategy_lab_results.json \
+            --annotate 2>&1 | tee strategy_lab_output.log
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-lab-${{ github.run_id }}
+          path: |
+            backend/strategy_lab_output.log
+            backend/strategy_lab_results.json
+          if-no-files-found: ignore
+          retention-days: 30

@@ -1,0 +1,40 @@
+name: SuperBot - diagnostica 502 (scrive log nel repo)
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/superbot-diag.trigger"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verifica end-to-end (sul VPS; prova Pausa/Riprendi su Bull e lo lascia in funzione)
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_tmp
+          chmod 600 ~/.ssh/id_tmp
+          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 deploy/diag-e2e.sh root@51.91.109.45:/tmp/diag-e2e.sh
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 'bash /tmp/diag-e2e.sh; rm -f /tmp/diag-e2e.sh'
+          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new root@51.91.109.45:/tmp/diag_e2e.txt deploy/diag-output.txt
+          rm -f ~/.ssh/id_tmp
+
+      - name: Committa nel repo
+        run: |
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add deploy/diag-output.txt
+          git diff --staged --quiet || git commit -m "diag: verifica end-to-end bot e API [skip ci]"
+          git push origin rule-pool

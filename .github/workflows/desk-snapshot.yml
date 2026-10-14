@@ -1,0 +1,98 @@
+name: Sala segnali - copia del punto stabile (nessuna modifica ai bot)
+
+# Crea UNA SOLA VOLTA una copia di sicurezza dei dati dei bot e delle immagini Docker.
+# NON ferma, NON riavvia e NON modifica i container hawk, bull e superbot.
+# Scrive soltanto in /opt/superbot-backups/stable-<data> e aggiunge etichette alle immagini.
+# Se la copia esiste gia', non la sovrascrive.
+# Parte SOLO quando cambia deploy/desk-snapshot.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-snapshot.trigger"
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Copia dati dei bot + etichette immagini
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 180s
+          script: |
+            STAMP=2026-10-12
+            SRC=/opt/superbot-desk-data
+            SNAP=/opt/superbot-backups/stable-$STAMP
+            OUT=/tmp/superbot_snapshot.txt
+            : > $OUT
+            if [ -e "$SNAP/MANIFEST.txt" ]; then
+              echo "COPIA GIA' PRESENTE in $SNAP: non la sovrascrivo." >> $OUT
+              cat "$SNAP/MANIFEST.txt" >> $OUT
+              echo "DONE"; exit 0
+            fi
+            SZ=$(du -sk $SRC | cut -f1)
+            AV=$(df -k /opt | tail -1 | awk '{print $4}')
+            echo "dati: ${SZ} KB | spazio libero su /opt: ${AV} KB" >> $OUT
+            if [ "$SZ" -gt 800000 ] || [ "$AV" -lt $((SZ * 3 + 500000)) ]; then
+              echo "FERMO: dati troppo grandi o spazio insufficiente. Nessuna copia fatta." >> $OUT
+              echo "DONE"; exit 0
+            fi
+            mkdir -p "$SNAP"
+            for P in hawk bull; do
+              ok=0
+              for TRY in 1 2 3; do
+                tar -czf "$SNAP/$P.tar.gz" -C $SRC $P 2>>$OUT
+                T=$(mktemp -d)
+                tar -xzf "$SNAP/$P.tar.gz" -C "$T" 2>>$OUT
+                if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$T/$P/state_v2.json" 2>>$OUT; then ok=1; rm -rf "$T"; break; fi
+                rm -rf "$T"; sleep 3
+              done
+              echo "copia $P: tentativo $TRY, stato leggibile=$ok" >> $OUT
+            done
+            # etichette stabili sulle immagini che stanno girando adesso
+            IMG_DESK=$(docker inspect --format '{{.Image}}' superbot-desk-hawk 2>/dev/null)
+            IMG_BULL=$(docker inspect --format '{{.Image}}' superbot-desk-bull 2>/dev/null)
+            IMG_APP=$(docker inspect --format '{{.Image}}' superbot 2>/dev/null)
+            [ -n "$IMG_DESK" ] && docker tag "$IMG_DESK" superbot-desk:stable-$STAMP
+            [ -n "$IMG_APP" ] && docker tag "$IMG_APP" superbot:stable-$STAMP
+            {
+              echo "PUNTO STABILE $STAMP - creato $(date -u +%FT%TZ)"
+              echo "codice bot (hawk): $(docker exec superbot-desk-hawk printenv DESK_CODE_VERSION 2>/dev/null)"
+              echo "codice bot (bull): $(docker exec superbot-desk-bull printenv DESK_CODE_VERSION 2>/dev/null)"
+              echo "immagine bot hawk=$IMG_DESK"
+              echo "immagine bot bull=$IMG_BULL (uguale a hawk: $([ "$IMG_DESK" = "$IMG_BULL" ] && echo si || echo NO))"
+              echo "immagine app=$IMG_APP"
+              echo "etichette immagini:"
+              docker images --format '  {{.Repository}}:{{.Tag}} {{.ID}}' | grep "stable-$STAMP"
+              echo "container:"
+              docker ps --format '  {{.Names}} | {{.Status}} | {{.Image}}' | grep superbot
+              echo "contenuto dati:"
+              for P in hawk bull; do echo " -- $P"; ls -la $SRC/$P | awk '{print "   " $5 " " $9}' | tail -n +4; done
+              echo "checksum:"
+              (cd "$SNAP" && sha256sum hawk.tar.gz bull.tar.gz | sed 's/^/  /')
+            } > "$SNAP/MANIFEST.txt"
+            chmod -R go-rwx "$SNAP"
+            cat "$SNAP/MANIFEST.txt" >> $OUT
+            echo "DONE"
+
+      - name: Pubblica il risultato
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            root@51.91.109.45 \
+            'cat /tmp/superbot_snapshot.txt' 2>/dev/null > snap.txt || true
+          rm -f ~/.ssh/id_desk
+          OUT=$(head -80 snap.txt | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Punto stabile::${OUT}"
+          echo "=== OUTPUT ===" && cat snap.txt

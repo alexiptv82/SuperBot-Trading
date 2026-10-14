@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { botAPI, deskAPI, bullAPI, errMsg } from '../api';
-import { botState, signed, fmtClock, PARAM_ROWS } from '../deskUi';
+import { botAPI } from '../api';
 import Logs from './Logs';
 import ChangePasswordForm from '../components/ChangePasswordForm';
 import BiometricManager from '../components/BiometricManager';
+import { profileColor } from '../components/ProfileBadge';
 
 const MUTED = '#94a3b8';
 const BORDER = '#334155';
 const GOOD = '#4ade80';
 const WARN = '#fbbf24';
+const BAD = '#f87171';
 
 const Card = ({ children, style }) => (
   <div style={{
@@ -17,195 +18,142 @@ const Card = ({ children, style }) => (
   }}>{children}</div>
 );
 
-const apiFor = (pf) => (pf === 'bull' ? bullAPI : deskAPI);
+const MODE_OPTIONS = [
+  { key: 'conservative', icon: '🛡️', title: 'Conservativo' },
+  { key: 'aggressive', icon: '🔥', title: 'Aggressivo' },
+  { key: 'both', icon: '⚖️', title: 'Entrambi' },
+];
 
-const Row = ({ label, value, color }) => (
-  <div style={{
-    display: 'flex', justifyContent: 'space-between', gap: '12px',
-    padding: '7px 0', borderBottom: `1px solid ${BORDER}`, fontSize: '13px'
-  }}>
-    <span style={{ color: MUTED }}>{label}</span>
-    <span style={{ fontWeight: 'bold', color: color || '#f1f5f9', textAlign: 'right' }}>{value}</span>
-  </div>
-);
-
-const bigBtn = (enabled, color, bg) => ({
-  width: '100%', padding: '11px', borderRadius: '10px', marginTop: '8px', fontSize: '13px', fontWeight: 'bold',
-  border: `1px solid ${enabled ? color : BORDER}`, background: enabled ? bg : 'rgba(51,65,85,0.2)',
-  color: enabled ? color : '#475569', cursor: enabled ? 'pointer' : 'not-allowed',
-});
-
-// Stato + comandi di un portafoglio (Hawk o Bull)
-function PortfolioControl({ portfolio }) {
-  const isBull = portfolio === 'bull';
-  const name = isBull ? 'Bull' : 'Hawk';
-  const icon = isBull ? '🐂' : '🦅';
-  const [status, setStatus] = useState(null);
-  const [busy, setBusy] = useState(null);
-  const [msg, setMsg] = useState(null);
-  const [clearLessons, setClearLessons] = useState(false);
-
-  const refresh = React.useCallback(async () => {
-    try { const { data } = await apiFor(portfolio).getStatus(); setStatus(data); return data; }
-    catch { return null; }
-  }, [portfolio]);
-
-  useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 6000);
-    return () => clearInterval(t);
-  }, [refresh]);
-
-  const resetBudget = async () => {
-    if (!window.confirm(`Azzerare il budget giornaliero di Claude per ${name}?\nIl conto e le posizioni non vengono toccati.`)) return;
-    setBusy('budget'); setMsg(null);
-    try {
-      const { data } = await apiFor(portfolio).resetBudget();
-      setMsg({ ok: true, text: data.message });
-    } catch (e) { setMsg({ ok: false, text: `Errore: ${errMsg(e)}` }); }
-    finally { setBusy(null); setTimeout(refresh, 2500); }
-  };
-
-  const resetPortfolio = async () => {
-    const n = status?.total_closed ?? 0;
-    const text = `Azzerare il portafoglio ${name}?\n\n` +
-      `• La run attuale (${n} trade chiusi, ${signed(status?.pnl_total)}$) viene archiviata: la ritrovi in Performance → Run.\n` +
-      `• Il conto riparte da ${status?.start_equity ?? 1000}$ con i parametri del codice (quelli mostrati qui sotto).\n` +
-      `• Il bot resta in pausa finché non premi Avvia nella Dashboard.` +
-      (clearLessons ? '\n• Gli appunti di Claude vengono cancellati (restano nell’archivio).' : '');
-    if (!window.confirm(text)) return;
-    setBusy('portfolio'); setMsg(null);
-    const runBefore = status?.run_no;
-    try {
-      const { data } = await apiFor(portfolio).resetPortfolio(clearLessons);
-      setMsg({ ok: true, text: data.message });
-      // il bot esegue il comando entro pochi secondi: aspetto che il numero di run cambi
-      for (let i = 0; i < 12; i += 1) {
-        await new Promise(r => setTimeout(r, 2500));
-        const st = await refresh();
-        if (st && st.run_no !== runBefore) {
-          setMsg({ ok: true, text: `✅ Fatto: nuova run #${st.run_no}, conto a $${Number(st.equity).toFixed(0)}. Il bot è in pausa: premi Avvia dalla Dashboard quando vuoi ripartire.` });
-          break;
-        }
-        if (st && st.last_action?.type === 'reset_portfolio' && st.last_action.ok === false) {
-          setMsg({ ok: false, text: `Il bot ha rifiutato: ${st.last_action.detail}` });
-          break;
-        }
-      }
-    } catch (e) { setMsg({ ok: false, text: errMsg(e) }); }
-    finally { setBusy(null); }
-  };
-
-  const st = botState(status);
-  const canReset = status?.available && status.can_reset && !status.reset_pending && !busy;
-
+const RiskBar = ({ label, current, max, unit = '', tone }) => {
+  const pct = max > 0 ? Math.min(100, Math.max(0, (current / max) * 100)) : 0;
+  const color = tone || (pct >= 100 ? BAD : pct >= 70 ? WARN : GOOD);
   return (
-    <>
-      <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
-        {icon} {name} — Stato e comandi
-      </h2>
-      <Card style={{ marginBottom: '16px' }}>
-        {!status ? (
-          <div style={{ color: '#64748b', fontSize: '13px' }}>Caricamento...</div>
-        ) : !status.available ? (
-          <div style={{ color: MUTED, fontSize: '13px' }}>{status.message || `${name} non raggiungibile`}</div>
-        ) : (
-          <>
-            <Row label="Stato del bot" value={st.text} color={st.color} />
-            <Row label="Equity" value={`$${Number(status.equity ?? 0).toFixed(2)}  (${signed(status.pnl_total)}$)`} />
-            <Row label="Cassa libera" value={`$${Number(status.cash ?? 0).toFixed(2)}`} />
-            <Row label="Margine in uso" value={`$${Number(status.margin_used ?? 0).toFixed(0)}`} />
-            <Row label="Posizioni aperte" value={`${status.open_positions ?? 0} / ${status.max_open ?? '-'}`} />
-            <Row label="Trade chiusi (run attuale)" value={String(status.total_closed ?? 0)} />
-            <Row label="Run" value={`#${status.run_no ?? 1}`} />
-            <Row label="Budget AI oggi" value={`$${Number(status.budget_spent_usd ?? 0).toFixed(3)} / $${Number(status.budget_daily_cap_usd ?? 0.7).toFixed(2)}`} />
-            {status.cycle?.next_cycle_ms && st.key === 'running' && (
-              <Row label="Prossimo controllo mercato" value={fmtClock(status.cycle.next_cycle_ms)} />
-            )}
-            {status.halt && (
-              <div style={{ marginTop: '10px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(220,38,38,0.1)', color: '#fca5a5', fontSize: '12px' }}>
-                ⚠️ Nuovi trade bloccati: {status.halt}
-              </div>
-            )}
-
-            <button onClick={resetBudget} disabled={!!busy} style={bigBtn(!busy, '#fbbf24', 'rgba(251,191,36,0.08)')}>
-              🔁 Azzera budget AI di oggi
-            </button>
-
-            <div style={{ height: '1px', background: BORDER, margin: '16px 0 4px' }} />
-            <div style={{ fontSize: '12px', color: MUTED, margin: '8px 0' }}>
-              <strong style={{ color: '#cbd5e1' }}>Azzera portafoglio</strong> — riparte da {status.start_equity ?? 1000}$ per provare
-              nuovi parametri. Si può fare solo con il bot <em>in pausa</em> e <em>senza posizioni aperte</em>;
-              la run attuale viene archiviata per il confronto.
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: MUTED, marginBottom: '4px' }}>
-              <input type="checkbox" checked={clearLessons} onChange={e => setClearLessons(e.target.checked)} />
-              Cancella anche gli appunti che Claude ha imparato (partenza completamente pulita)
-            </label>
-            <button onClick={resetPortfolio} disabled={!canReset} style={bigBtn(canReset, '#fca5a5', 'rgba(239,68,68,0.1)')}>
-              {busy === 'portfolio' ? '⏳ Azzeramento…' : status.reset_pending ? '⏳ Azzeramento in corso…' : `🗑️ Azzera ${name} a ${status.start_equity ?? 1000}$`}
-            </button>
-            {!status.can_reset && (
-              <div style={{ marginTop: '8px', fontSize: '12px', color: '#fbbf24' }}>{status.reset_blocked_reason}</div>
-            )}
-          </>
-        )}
-        {msg && (
-          <div style={{ marginTop: '10px', fontSize: '12px', color: msg.ok ? GOOD : '#fca5a5' }}>{msg.text}</div>
-        )}
-      </Card>
-    </>
-  );
-}
-
-// Parametri veri, letti dal bot (non piu' scritti a mano nell'app)
-function ParamsCard() {
-  const [params, setParams] = useState({ hawk: null, bull: null });
-  useEffect(() => {
-    deskAPI.getStatus().then(({ data }) => setParams(p => ({ ...p, hawk: data?.params || null }))).catch(() => {});
-    bullAPI.getStatus().then(({ data }) => setParams(p => ({ ...p, bull: data?.params || null }))).catch(() => {});
-  }, []);
-  const block = (label, color, p) => (
-    <>
-      <div style={{ fontSize: '12px', color, fontWeight: 'bold', margin: '10px 0 6px' }}>{label}</div>
-      {!p ? <div style={{ color: '#64748b', fontSize: '12px' }}>Disponibili appena il bot ha il primo battito.</div>
-        : PARAM_ROWS.map(([l, get, show]) => (get(p) == null ? null : <Row key={l} label={l} value={show(get(p))} color={color} />))}
-    </>
-  );
-  return (
-    <Card style={{ marginBottom: '16px' }}>
-      <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>
-        Sono i valori con cui il bot sta davvero girando. Per cambiarli chiedi a Claude: la modifica passa dal codice e
-        vale dal riavvio del bot. Poi azzera il portafoglio qui sopra, così la nuova run parte pulita e puoi confrontarla con la precedente in Performance → Run.
+    <div style={{ marginBottom: '14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
+        <span style={{ color: MUTED }}>{label}</span>
+        <span style={{ fontWeight: 'bold' }}>{current}{unit} / {max}{unit}</span>
       </div>
-      {block('🦅 HAWK', '#38bdf8', params.hawk)}
-      {block('🐂 BULL', '#a78bfa', params.bull)}
-      <div style={{
-        marginTop: '12px', padding: '8px 10px', borderRadius: '8px',
-        background: 'rgba(56,189,248,0.07)', border: '1px solid rgba(56,189,248,0.2)',
-        fontSize: '11px', color: '#38bdf8'
-      }}>
-        💡 Se Claude propone margine o leva sotto i minimi del portafoglio, il codice li porta ai minimi indicati sopra.
+      <div style={{ height: '6px', borderRadius: '4px', background: '#0f172a', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '4px', transition: 'width 0.3s' }} />
       </div>
-    </Card>
+    </div>
   );
-}
+};
 
 export default function Settings() {
+  const [config, setConfig] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [perf, setPerf] = useState(null);
   const [showLogs, setShowLogs] = useState(false);
+  const [riskForm, setRiskForm] = useState(null);
+  const [riskMsg, setRiskMsg] = useState(null); // { ok: bool, text: string }
+  const [riskBusy, setRiskBusy] = useState(false);
   const [showPwdForm, setShowPwdForm] = useState(false);
   const [pwdMsg, setPwdMsg] = useState('');
   const [pwdStatus, setPwdStatus] = useState(null);
+  const [modeBusy, setModeBusy] = useState(false);
+  const [modeMsg, setModeMsg] = useState(null); // { ok: bool, text: string }
 
-  useEffect(() => {
-    botAPI.passwordStatus().then(({ data }) => setPwdStatus(data)).catch(() => {});
-  }, []);
+  const refreshStatus = async () => {
+    try {
+      const [{ data: cfg }, { data: st }, { data: pf }] = await Promise.all([
+        botAPI.getConfig(), botAPI.getStatus(), botAPI.getPerformance(),
+      ]);
+      setConfig(cfg);
+      setRiskForm(prev => prev || {
+        max_leverage: String(cfg.max_leverage),
+        max_daily_loss_percent: String(cfg.max_daily_loss_percent),
+        max_open_positions: String(cfg.max_open_positions),
+      });
+      setStatus(st);
+      setPerf(pf);
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => { refreshStatus(); }, []);
+  useEffect(() => { botAPI.passwordStatus().then(({ data }) => setPwdStatus(data)).catch(() => {}); }, []);
+
+  const RISK_FIELDS = [
+    { key: 'max_leverage', label: 'Leva massima', unit: 'x', step: 1 },
+    { key: 'max_daily_loss_percent', label: 'Perdita massima giornaliera', unit: '%', step: 0.5 },
+    { key: 'max_open_positions', label: 'Posizioni aperte massime', unit: '', step: 1 },
+  ];
+
+  const riskError = (key) => {
+    if (!riskForm || !config?.risk_bounds) return null;
+    const b = config.risk_bounds[key];
+    const raw = riskForm[key];
+    const n = Number(raw);
+    if (raw === '' || Number.isNaN(n)) return 'Inserisci un numero';
+    if (key !== 'max_daily_loss_percent' && !Number.isInteger(n)) return 'Deve essere un numero intero';
+    if (n < b.min || n > b.max) return `Tra ${b.min} e ${b.max}`;
+    return null;
+  };
+
+  const riskDirty = !!(config && riskForm) && RISK_FIELDS.some(f => Number(riskForm[f.key]) !== Number(config[f.key]));
+  const riskValid = !!riskForm && RISK_FIELDS.every(f => !riskError(f.key));
+
+  const handleSaveRisk = async () => {
+    setRiskBusy(true); setRiskMsg(null);
+    try {
+      const payload = {};
+      RISK_FIELDS.forEach(f => { payload[f.key] = Number(riskForm[f.key]); });
+      const { data } = await botAPI.updateRiskConfig(payload);
+      const a = data.applied;
+      setConfig(c => ({ ...c, ...a }));
+      setRiskForm({
+        max_leverage: String(a.max_leverage),
+        max_daily_loss_percent: String(a.max_daily_loss_percent),
+        max_open_positions: String(a.max_open_positions),
+      });
+      setRiskMsg({ ok: true, text: 'Salvato. Il bot usa i nuovi valori dal prossimo ciclo.' });
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      setRiskMsg({ ok: false, text: typeof detail === 'string' ? detail : 'Salvataggio non riuscito, riprova.' });
+    } finally {
+      setRiskBusy(false);
+    }
+  };
+
+  const handleSelectMode = async (mode) => {
+    if (!config || modeBusy || mode === config.risk_mode) return;
+    setModeBusy(true); setModeMsg(null);
+    try {
+      // Rimanda i limiti GIA' SALVATI: cambiare profilo non deve toccare
+      // eventuali modifiche non ancora salvate nel modulo qui sotto.
+      const { data } = await botAPI.updateRiskConfig({
+        max_leverage: Number(config.max_leverage),
+        max_daily_loss_percent: Number(config.max_daily_loss_percent),
+        max_open_positions: Number(config.max_open_positions),
+        risk_mode: mode,
+      });
+      setConfig(c => ({ ...c, ...data.applied, effective_risk_mode: c.trading_mode === 'paper' ? data.applied.risk_mode : 'conservative' }));
+      setModeMsg({ ok: true, text: 'Profilo salvato. Vale dal prossimo ciclo; i trade già aperti restano al loro portafoglio.' });
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      setModeMsg({ ok: false, text: typeof detail === 'string' ? detail : 'Salvataggio non riuscito, riprova.' });
+    } finally {
+      setModeBusy(false);
+    }
+  };
+
+  const isPaper = config?.trading_mode === 'paper';
+  const portfolios = status?.portfolios || [];
+
+  const rows = config ? [
+    ['Modalità', config.trading_mode],
+    ['Capitale iniziale', isPaper && portfolios.length > 1 ? `$${config.initial_capital} per portafoglio` : `$${config.initial_capital}`],
+    ['Coppie', (config.trading_pairs || []).join(', ')],
+    ...(isPaper && config.paper_costs ? [[
+      'Costi simulati (paper)',
+      `commissione ${config.paper_costs.fee_bps} bps per lato + slippage ${config.paper_costs.slippage_bps} bps`,
+    ]] : []),
+  ] : [];
 
   return (
     <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '16px' }}>⚙️ Impostazioni</h1>
 
-      {/* ── Accesso ── */}
       <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
         🔐 Accesso
       </h2>
@@ -213,7 +161,7 @@ export default function Settings() {
         <BiometricManager />
         <div style={{ height: '1px', background: BORDER, margin: '16px 0' }} />
         {pwdStatus?.set && (
-          <div style={{ fontSize: '13px', color: pwdStatus.warn ? WARN : MUTED, marginBottom: '10px' }}>
+          <div style={{ fontSize: '13px', color: pwdStatus.warn ? WARN : '#94a3b8', marginTop: '16px', marginBottom: '10px' }}>
             Password valida ancora {pwdStatus.days_left} {pwdStatus.days_left === 1 ? 'giorno' : 'giorni'} (si cambia ogni 60 giorni).
           </div>
         )}
@@ -223,6 +171,8 @@ export default function Settings() {
               askOld
               onCancel={() => setShowPwdForm(false)}
               onSuccess={(newToken) => {
+                // Il cambio password chiude tutte le sessioni precedenti: questa
+                // continua col nuovo token.
                 sessionStorage.setItem('sb_token', newToken);
                 setShowPwdForm(false);
                 setPwdMsg('Password cambiata. Gli altri dispositivi dovranno accedere di nuovo.');
@@ -239,20 +189,173 @@ export default function Settings() {
             🔑 Cambia password
           </button>
         )}
-        {pwdMsg && <div style={{ fontSize: '12px', color: GOOD, marginTop: '10px' }}>{pwdMsg}</div>}
+        {pwdMsg && <div style={{ fontSize: '12px', color: '#4ade80', marginTop: '10px' }}>{pwdMsg}</div>}
       </Card>
 
-      {/* ── Stato e comandi dei due portafogli ── */}
-      <PortfolioControl portfolio="hawk" />
-      <PortfolioControl portfolio="bull" />
+      {config && status && (
+        <>
+          <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
+            🛡️ Rischio in Tempo Reale
+          </h2>
+          <Card style={{ marginBottom: '16px' }}>
+            {(portfolios.length > 0 ? portfolios : [{ name: 'tot', label: '', daily_pnl: status.daily_pnl, open_positions: status.open_positions }]).map(pf => (
+              <React.Fragment key={pf.name}>
+                <RiskBar
+                  label={`Perdita giornaliera${pf.label && portfolios.length > 1 ? ` · ${pf.label}` : ''}${pf.paused ? ' (in pausa)' : ''}`}
+                  current={Math.round(Math.max(0, -(pf.daily_pnl || 0)) / (config.initial_capital || 1) * 1000) / 10}
+                  max={config.max_daily_loss_percent}
+                  unit="%"
+                />
+                <RiskBar
+                  label={`Posizioni aperte${pf.label && portfolios.length > 1 ? ` · ${pf.label}` : ''}`}
+                  current={pf.open_positions || 0}
+                  max={config.max_open_positions}
+                />
+              </React.Fragment>
+            ))}
+            {perf && perf.equity_curve && perf.equity_curve.length > 0 && (() => {
+              const initial = config.initial_capital || 0;
+              let peak = initial, current = initial;
+              for (const p of perf.equity_curve) {
+                const eq = initial + p.equity;
+                if (eq > peak) peak = eq;
+                current = eq;
+              }
+              const ddPct = peak > 0 ? Math.round(Math.max(0, (peak - current) / peak) * 1000) / 10 : 0;
+              return (
+                <RiskBar label="Drawdown attuale" current={ddPct} max={8} unit="%"
+                  tone={ddPct >= 8 ? BAD : ddPct >= 5 ? WARN : GOOD} />
+              );
+            })()}
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+              Calcolato sui dati reali del bot. I limiti valgono per ciascun portafoglio. Il drawdown usa una soglia di riferimento dell'8%, non ancora configurabile.
+            </div>
+          </Card>
+        </>
+      )}
 
-      {/* ── Parametri con cui gira il bot ── */}
+      {config && config.profiles && (
+        <>
+          <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
+            🎯 Profilo di Trading
+          </h2>
+          <Card style={{ marginBottom: '16px' }}>
+            <div role="radiogroup" aria-label="Profilo di trading" style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              {MODE_OPTIONS.map(o => {
+                const active = config.risk_mode === o.key;
+                return (
+                  <button key={o.key} role="radio" aria-checked={active} disabled={modeBusy}
+                    onClick={() => handleSelectMode(o.key)}
+                    style={{
+                      flex: 1, padding: '10px 4px', borderRadius: '12px', cursor: modeBusy ? 'not-allowed' : 'pointer',
+                      border: `1px solid ${active ? '#38bdf8' : BORDER}`,
+                      background: active ? 'rgba(56,189,248,0.15)' : '#0f172a',
+                      color: active ? '#38bdf8' : '#cbd5e1', fontWeight: 'bold', fontSize: '12px'
+                    }}>
+                    <div style={{ fontSize: '18px', marginBottom: '2px' }}>{o.icon}</div>
+                    {o.title}
+                  </button>
+                );
+              })}
+            </div>
+            {['conservative', 'aggressive'].map(k => {
+              const p = config.profiles[k];
+              if (!p) return null;
+              return (
+                <div key={k} style={{ padding: '8px 0', borderTop: `1px solid ${BORDER}`, fontSize: '12px' }}>
+                  <div style={{ fontWeight: 'bold', color: profileColor(k), marginBottom: '2px' }}>{p.label}</div>
+                  <div style={{ color: MUTED }}>
+                    Leva fino a {p.max_leverage}x (più è alta la leva, meno margine usa per trade), esposizione massima {p.exposure_cap_percent}% del capitale,
+                    stop {p.stop_multiplier}× la volatilità, solo segnali con forza ≥ {p.min_signal_strength}.
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px' }}>
+              {config.risk_mode === 'both'
+                ? `Con "Entrambi" i due profili lavorano in parallelo, ciascuno con il proprio capitale virtuale di $${config.initial_capital}, e si vedono separati in Dashboard e Performance.`
+                : 'Il profilo non scelto non apre nuovi trade; quelli già aperti vengono gestiti fino alla chiusura.'}
+              {!isPaper && ' In modalità reale è sempre attivo solo il Conservativo, con la tua Leva massima come tetto.'}
+            </div>
+            {modeBusy && <div style={{ fontSize: '12px', color: MUTED, marginTop: '8px' }}>Salvataggio...</div>}
+            {modeMsg && (
+              <div style={{ fontSize: '12px', color: modeMsg.ok ? GOOD : BAD, marginTop: '10px' }}>{modeMsg.text}</div>
+            )}
+          </Card>
+        </>
+      )}
+
+      {config && riskForm && (
+        <>
+          <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
+            ✏️ Limiti di Rischio
+          </h2>
+          <Card style={{ marginBottom: '16px' }}>
+            {RISK_FIELDS.map(f => {
+              const err = riskError(f.key);
+              return (
+                <div key={f.key} style={{ padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                    <label htmlFor={f.key} style={{ color: MUTED }}>{f.label}</label>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input
+                        id={f.key} type="number" inputMode="decimal" step={f.step}
+                        value={riskForm[f.key]}
+                        onChange={e => { setRiskMsg(null); setRiskForm(r => ({ ...r, [f.key]: e.target.value })); }}
+                        style={{
+                          width: '80px', padding: '6px 8px', borderRadius: '8px', textAlign: 'right',
+                          background: '#0f172a', color: 'white', fontWeight: 'bold',
+                          border: `1px solid ${err ? BAD : BORDER}`
+                        }}
+                      />
+                      <span style={{ color: MUTED, width: '12px' }}>{f.unit}</span>
+                    </span>
+                  </div>
+                  {err && <div style={{ fontSize: '11px', color: BAD, marginTop: '4px', textAlign: 'right' }}>{err}</div>}
+                </div>
+              );
+            })}
+            <button
+              onClick={handleSaveRisk}
+              disabled={!riskDirty || !riskValid || riskBusy}
+              style={{
+                width: '100%', marginTop: '14px', padding: '12px', borderRadius: '10px', border: 'none',
+                background: (!riskDirty || !riskValid || riskBusy) ? '#334155' : '#0ea5e9',
+                color: 'white', fontWeight: 'bold',
+                cursor: (!riskDirty || !riskValid || riskBusy) ? 'not-allowed' : 'pointer'
+              }}>
+              {riskBusy ? '...' : 'Salva limiti di rischio'}
+            </button>
+            {riskMsg && (
+              <div style={{ fontSize: '12px', color: riskMsg.ok ? GOOD : BAD, marginTop: '10px' }}>{riskMsg.text}</div>
+            )}
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px' }}>
+              I valori salvati restano anche dopo un riavvio o un nuovo deploy. Limiti accettati: leva 1–20x, perdita giornaliera 0,5–20%, posizioni 1–10. In paper la leva è decisa dai profili (10x e 30x): la «Leva massima» qui vale per il trading reale. Perdita giornaliera e posizioni valgono per ciascun portafoglio.
+            </div>
+          </Card>
+        </>
+      )}
+
       <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
-        📐 Parametri del bot
+        🎛️ Parametri Configurati
       </h2>
-      <ParamsCard />
+      <Card style={{ marginBottom: '16px' }}>
+        {!config ? (
+          <div style={{ color: '#64748b', fontSize: '13px' }}>Caricamento...</div>
+        ) : rows.map(([label, value]) => (
+          <div key={label} style={{
+            display: 'flex', justifyContent: 'space-between',
+            padding: '8px 0', borderBottom: '1px solid #334155', fontSize: '13px'
+          }}>
+            <span style={{ color: '#94a3b8' }}>{label}</span>
+            <span style={{ fontWeight: 'bold' }}>{value}</span>
+          </div>
+        ))}
+        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px' }}>
+          Modalità, capitale e coppie sono definiti sul server (non modificabili da qui).
+        </div>
+      </Card>
 
-      {/* ── Log di sistema ── */}
       <button onClick={() => setShowLogs(s => !s)} style={{
         width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #334155',
         background: 'none', color: '#cbd5e1', fontWeight: 'bold', cursor: 'pointer', marginBottom: '16px'

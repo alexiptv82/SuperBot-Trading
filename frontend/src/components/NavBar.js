@@ -4,6 +4,7 @@ const tabs = [
   { path: '/', icon: '📊', label: 'Dashboard' },
   { path: '/trades', icon: '💹', label: 'Trade' },
   { path: '/performance', icon: '🏆', label: 'Performance' },
+  { path: '/live', icon: '🔴', label: 'Live' },
   { path: '/settings', icon: '⚙️', label: 'Impostazioni' },
 ];
 export default function NavBar({ onLogout }) {

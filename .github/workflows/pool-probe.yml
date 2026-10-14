@@ -1,0 +1,32 @@
+name: Pool di regole - sonda candele BitGet (sola lettura)
+
+# Interroga l'API PUBBLICA di BitGet per capire come paginare lo storico. Nessuna chiave.
+# Parte quando cambia deploy/pool-probe.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/pool-probe.trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ccxt==4.2.95
+      - name: Sonda
+        run: python -u rule_pool/probe_candles.py
