@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { botAPI } from './api';
+import { AppProvider } from './AppContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Trades from './pages/Trades';
@@ -8,6 +9,8 @@ import Performance from './pages/Performance';
 import Settings from './pages/Settings';
 import NavBar from './components/NavBar';
 import LiveDashboard from './pages/LiveDashboard';
+import LiveTrades from './pages/LiveTrades';
+import LivePerformance from './pages/LivePerformance';
 
 // Error boundary globale: cattura qualsiasi crash di render nell'albero React
 // e mostra un messaggio utile invece della schermata nera.
@@ -94,20 +97,30 @@ export default function App() {
   );
   return (
     <AppErrorBoundary>
-      <BrowserRouter>
-        <PasswordBanner />
-        <div style={{ paddingBottom: '70px' }}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/trades" element={<Trades />} />
-            <Route path="/performance" element={<Performance />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/live" element={<LiveDashboard />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </div>
-        <NavBar onLogout={() => { sessionStorage.removeItem('sb_token'); setAuth(false); }} />
-      </BrowserRouter>
+      <AppProvider>
+        <BrowserRouter>
+          <PasswordBanner />
+          <div style={{ paddingBottom: '75px' }}>
+            <Routes>
+              {/* ── Sezione PAPER (soldi simulati) ── */}
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/trades" element={<Trades />} />
+              <Route path="/performance" element={<Performance />} />
+              <Route path="/settings" element={<Settings />} />
+              {/* ── Sezione LIVE (BitGet reale) ── */}
+              <Route path="/live" element={<LiveDashboard />} />
+              <Route path="/live/trades" element={<LiveTrades />} />
+              <Route path="/live/performance" element={<LivePerformance />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </div>
+          <NavBar onLogout={() => {
+            sessionStorage.removeItem('sb_token');
+            sessionStorage.removeItem('sb_mode');
+            setAuth(false);
+          }} />
+        </BrowserRouter>
+      </AppProvider>
     </AppErrorBoundary>
   );
 }
