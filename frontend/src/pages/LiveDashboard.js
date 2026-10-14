@@ -107,12 +107,16 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
 
   const { capital_usdt, daily_pnl, total_pnl, daily_loss_limit_usdt,
     daily_limit_hit, open_positions, positions = [], total_closed,
-    cycle, halt, available, trading_enabled } = data;
+    cycle, halt, available, trading_enabled, bot_mode } = data;
 
   const isLive = mode === 'live';
+  // I Secret dicono "live", ma conta come gira DAVVERO il bot (dal suo battito cardiaco).
+  // Se il container non e' stato ridistribuito gira ancora in paper: niente ordini reali.
+  const botIsLive = bot_mode === 'live';
+  const switchBlocked = isLive && !botIsLive && !trading_enabled;
 
   const handleToggle = async () => {
-    if (toggling) return;
+    if (toggling || switchBlocked) return;
     const enabling = !trading_enabled;
     if (enabling) {
       // Conferma prima di abilitare il live
@@ -179,8 +183,10 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
           {isLive && (
             <button
               onClick={handleToggle}
-              disabled={toggling}
-              title={trading_enabled ? 'Stop trading (nessuna nuova apertura)' : 'Avvia trading live'}
+              disabled={toggling || switchBlocked}
+              title={switchBlocked
+                ? 'Il bot gira ancora in paper: ridistribuisci i bot prima di avviare il live'
+                : trading_enabled ? 'Stop trading (nessuna nuova apertura)' : 'Avvia trading live'}
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 padding: '5px 12px',
@@ -190,8 +196,9 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
                   ? 'rgba(239,68,68,0.12)'
                   : 'rgba(74,222,128,0.12)',
                 color: trading_enabled ? '#f87171' : '#4ade80',
-                fontSize: '11px', fontWeight: 700, cursor: toggling ? 'wait' : 'pointer',
-                opacity: toggling ? 0.6 : 1,
+                fontSize: '11px', fontWeight: 700,
+                cursor: switchBlocked ? 'not-allowed' : toggling ? 'wait' : 'pointer',
+                opacity: switchBlocked ? 0.35 : toggling ? 0.6 : 1,
                 transition: 'all 0.2s',
                 letterSpacing: '0.04em',
                 textTransform: 'uppercase',
@@ -206,6 +213,18 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
           )}
         </div>
       </div>
+
+      {isLive && !botIsLive && (
+        <div style={{
+          margin: '12px 20px 0', padding: '8px 12px', borderRadius: '8px',
+          background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)',
+          color: '#fbbf24', fontSize: '12px', lineHeight: 1.4,
+        }}>
+          ⚠️ {bot_mode === 'paper'
+            ? 'Questo bot gira in PAPER: nessun ordine reale. Il live parte solo dopo aver ridistribuito i bot.'
+            : 'Stato del bot non disponibile: gira ancora con una versione senza live, oppure è fermo. Nessun ordine reale.'}
+        </div>
+      )}
 
       {/* P&L stats */}
       <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
@@ -310,15 +329,15 @@ export default function LiveDashboard() {
   const [tradingMsg, setTradingMsg] = useState(null);
   const tradingMsgTimer = useRef(null);
 
-  const showMsg = (msg, isError = false) => {
+  const showMsg = useCallback((msg, isError = false) => {
     setTradingMsg({ text: msg, error: isError });
     clearTimeout(tradingMsgTimer.current);
     tradingMsgTimer.current = setTimeout(() => setTradingMsg(null), 4000);
-  };
+  }, []);
 
   const load = useCallback(async () => {
     try {
-      const data = await deskAPI.getLiveOverview();
+      const { data } = await deskAPI.getLiveOverview();   // axios: il corpo sta in .data
       setOverview(data);
       setLastUpdate(new Date());
       setError(null);
@@ -338,7 +357,7 @@ export default function LiveDashboard() {
     } catch (e) {
       showMsg(`Errore: ${e?.response?.data?.detail || e.message}`, true);
     }
-  }, [load]);
+  }, [load, showMsg]);
 
   const handleBullTrading = useCallback(async (enable) => {
     try {
@@ -349,7 +368,7 @@ export default function LiveDashboard() {
     } catch (e) {
       showMsg(`Errore: ${e?.response?.data?.detail || e.message}`, true);
     }
-  }, [load]);
+  }, [load, showMsg]);
 
   useEffect(() => {
     load();

@@ -71,27 +71,37 @@ export const botAPI = {
     API.post('/api/auth/webauthn/login/verify', { state_id, credential }),
 };
 
-// ── V2 Desk Bot API ──────────────────────────────────────────────────────────
-// Endpoint /api/desk/* serviti dallo stesso backend FastAPI, leggono
-// dal volume persistente del container superbot-desk (nessun DB V1).
+// ── Portafogli desk: Hawk e Bull hanno le stesse API, cambia solo il prefisso ──
+// Hawk: max $100/trade, max 10 posizioni. Bull: max $350/trade, max 3 posizioni.
+const makeDeskAPI = (prefix) => ({
+  getStatus:      () => API.get(`${prefix}/status`),
+  getTrades:      (limit = 100) => API.get(`${prefix}/trades?limit=${limit}`),
+  getPerformance: () => API.get(`${prefix}/performance`),
+  getDiary:       () => API.get(`${prefix}/diary`),
+  getRuns:        () => API.get(`${prefix}/runs`),
+  getLogs:        () => API.get(`${prefix}/logs`),
+  health:         () => API.get(`${prefix}/health`),
+  pause:          () => API.post(`${prefix}/pause`),      // svuota: finisce le posizioni, niente nuovi trade
+  resume:         () => API.post(`${prefix}/resume`),     // avvia / riprende
+  closeAll:       () => API.post(`${prefix}/close-all`),  // chiude tutto a prezzo di mercato
+  resetBudget:    () => API.post(`${prefix}/reset-budget`),
+  resetPortfolio: (clearLessons = false) => API.post(`${prefix}/reset-portfolio`, { clear_lessons: clearLessons }),
+});
+
 export const deskAPI = {
-  getStatus:      () => API.get('/api/desk/status'),
-  getTrades:      (limit = 100) => API.get(`/api/desk/trades?limit=${limit}`),
-  getPerformance: () => API.get('/api/desk/performance'),
-  getLogs:        () => API.get('/api/desk/logs'),
-  health:         () => API.get('/api/desk/health'),
-  // Bull
-  getBullStatus:      () => API.get('/api/desk/bull/status'),
-  getBullTrades:      (limit = 100) => API.get(`/api/desk/bull/trades?limit=${limit}`),
-  getBullPerformance: () => API.get('/api/desk/bull/performance'),
-  // Live dashboard
+  ...makeDeskAPI('/api/desk'),
+  getPrices: () => API.get('/api/desk/prices'),   // 27 simboli, comune ai due portafogli
+  // Pagina Live: saldo BitGet + P&L/limite di perdita + interruttore "trading acceso/spento"
   getLiveWallet:      () => API.get('/api/desk/live/wallet'),
   getLiveOverview:    () => API.get('/api/desk/live/overview'),
-  // Interruttore manuale trading (live only)
   enableHawkTrading:  () => API.post('/api/desk/hawk/trading/enable'),
   disableHawkTrading: () => API.post('/api/desk/hawk/trading/disable'),
   enableBullTrading:  () => API.post('/api/desk/bull/trading/enable'),
   disableBullTrading: () => API.post('/api/desk/bull/trading/disable'),
 };
+export const bullAPI = makeDeskAPI('/api/desk/bull');
+
+// Messaggio leggibile da un errore axios (usa il testo del server se c'e')
+export const errMsg = (e) => e?.response?.data?.detail || e?.response?.data?.message || e?.message || String(e);
 
 export default API;

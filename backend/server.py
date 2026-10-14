@@ -2,7 +2,7 @@ import json
 import secrets
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -584,811 +584,135 @@ async def _on_startup():
     asyncio.create_task(notifier.poll_commands())
 
 
-# ── V2 Desk Bot endpoints ────────────────────────────────────────────────────
-# Leggono dal volume persistente del container superbot-desk.
-# Nessuna dipendenza con il DB V1: tutto viene dai file JSON/JSONL.
-# Prefisso /api/desk/ per non collidere con gli endpoint V1.
-# Hawk: DESK_DATA_DIR (default /opt/superbot-desk-data/hawk)
-# Bull: DESK_DATA_DIR_BULL (default /opt/superbot-desk-data/bull)
+# ── Portafogli desk (Hawk e Bull) ────────────────────────────────────────────
+# I bot girano nei container superbot-desk-hawk / -bull e scrivono nei loro volumi; qui si
+# legge e si mandano i comandi (file-flag). Tutta la logica sta in desk_view.py / desk_api.py:
+# un solo codice per i due portafogli, cosi' non possono piu' divergere.
+import desk_api
 
 _DESK_DATA      = os.environ.get("DESK_DATA_DIR",      "/opt/superbot-desk-data/hawk")
 _DESK_DATA_BULL = os.environ.get("DESK_DATA_DIR_BULL",  "/opt/superbot-desk-data/bull")
 
-
-def _read_state(data_dir: str) -> dict:
-    """Legge state_v2.json dal volume desk. Ritorna dict vuoto se non esiste."""
-    path = os.path.join(data_dir, "state_v2.json")
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _desk_state() -> dict:
-    return _read_state(_DESK_DATA)
-
-
-def _bull_state() -> dict:
-    return _read_state(_DESK_DATA_BULL)
-
-
-def _read_trades_raw(data_dir: str, last_n: int = 200) -> list:
-    """Legge le ultime N righe da trade_history.jsonl."""
-    path = os.path.join(data_dir, "trade_history.jsonl")
-    try:
-        with open(path) as f:
-            lines = f.readlines()
-    except Exception:
-        return []
-    trades = []
-    for line in lines[-last_n:]:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            trades.append(json.loads(line))
-        except Exception:
-            pass
-    return trades
-
-
-def _desk_trades_raw(last_n: int = 200) -> list:
-    return _read_trades_raw(_DESK_DATA, last_n)
-
-
-def _bull_trades_raw(last_n: int = 200) -> list:
-    return _read_trades_raw(_DESK_DATA_BULL, last_n)
-
-
-def _read_lessons(data_dir: str) -> str:
-    """Legge lessons.md (poi errors.md come fallback) dal volume desk."""
-    for fname in ("lessons.md", "errors.md"):
-        path = os.path.join(data_dir, fname)
-        try:
-            with open(path) as f:
-                return f.read()
-        except Exception:
-            pass
-    return ""
-
-
-def _desk_lessons() -> str:
-    return _read_lessons(_DESK_DATA)
-
-
-def _bull_lessons() -> str:
-    return _read_lessons(_DESK_DATA_BULL)
-
-
-@app.get("/api/desk/status")
-async def desk_status(session=Depends(require_session)):
-    """Stato live del bot V2 desk: cash, equity, posizioni aperte, budget Claude."""
-    state = _desk_state()
-    if not state:
-        return {"available": False, "message": "Bot V2 non ancora attivo o nessun dato disponibile"}
-
-    # state_v2.json usa chiave "main" per il conto (non "account")
-    acc = state.get("main", state.get("account", {}))
-    budget = state.get("budget", {})
-    positions = acc.get("positions", {})
-
-    open_list = []
-    for sym, pos in positions.items():
-        open_list.append({
-            "symbol": sym,
-            "side": pos.get("side"),
-            "entry_price": pos.get("entry_price", pos.get("entry")),
-            "quantity": pos.get("qty"),
-            "leverage": pos.get("leverage", pos.get("lev")),
-            "margin": pos.get("total_margin", pos.get("margin")),
-            "trade_type": pos.get("trade_type", pos.get("type")),
-            "dca_count": pos.get("dca_count", 0),
-            "open_ms": pos.get("open_ms"),
-            # TP/SL e DCA levels per il modal dettaglio
-            "tp": pos.get("tp"),
-            "sl": pos.get("sl"),
-            "dca_levels": pos.get("dca_levels", []),
-        })
-
-    return {
-        "available": True,
-        "mode": "paper",
-        "cash": round(acc.get("cash", 0), 2),
-        "equity": round(acc.get("cash", 0), 2),
-        "open_positions": len(positions),
-        "positions": open_list,
-        # "closed" nel PaperAccount può essere una lista (engine.py) oppure un int.
-        # Gestiamo entrambi i casi per robustezza.
-        "total_closed": (len(acc["closed"]) if isinstance(acc.get("closed"), list)
-                         else acc.get("closed", state.get("total_closed", 0))),
-        "day": acc.get("day", state.get("day", "")),
-        "cycle": state.get("cycle", 0),
-        "halt": state.get("halt"),
-        "budget_spent_usd": round(budget.get("spent", 0), 4),
-        "budget_daily_cap_usd": budget.get("daily_cap", 0.70),
-        "last_report_day": state.get("last_report_day", ""),
-    }
-
-
-@app.get("/api/desk/trades")
-async def desk_trades(session=Depends(require_session), limit: int = 100):
-    """Ultimi N trade chiusi dal log JSONL permanente."""
-    trades = _desk_trades_raw(last_n=limit)
-    trades.reverse()  # più recenti prima
-    result = []
-    for t in trades:
-        result.append({
-            "symbol": t.get("symbol"),
-            "side": t.get("side"),
-            "entry_price": t.get("entry"),
-            "exit_price": t.get("exit"),
-            "quantity": t.get("qty"),
-            "leverage": t.get("lev"),
-            "margin": t.get("margin"),
-            "gross_pnl": t.get("gross"),
-            "pnl": t.get("net"),
-            "fees": t.get("fees"),
-            "trade_type": t.get("type"),
-            "close_reason": t.get("reason"),
-            "open_ms": t.get("open_ms"),
-            "close_ms": t.get("close_ms"),
-            "dca_count": t.get("dca_count", 0),
-        })
-    return result
-
-
-@app.get("/api/desk/performance")
-async def desk_performance(session=Depends(require_session)):
-    """Statistiche aggregate del bot V2 calcolate live sul log JSONL."""
-    trades = _desk_trades_raw(last_n=5000)
-    if not trades:
-        return {
-            "available": False,
-            "total_trades": 0,
-            "win_rate": 0,
-            "total_pnl": 0,
-            "equity_curve": [],
-            "by_symbol": {},
-            "by_type": {},
-        }
-
-    closed = [t for t in trades if t.get("net") is not None]
-    total = len(closed)
-    winners = [t for t in closed if (t.get("net") or 0) > 0]
-    total_pnl = sum(t.get("net", 0) for t in closed)
-    total_fees = sum(t.get("fees", 0) for t in closed)
-
-    # Equity curve ordinata per close_ms
-    ordered = sorted(closed, key=lambda t: t.get("close_ms", 0))
-    running = 0.0
-    equity_curve = []
-    for t in ordered:
-        running += t.get("net", 0)
-        equity_curve.append({
-            "time": t.get("close_ms"),
-            "equity": round(running, 2),
-        })
-
-    # Per simbolo
-    by_symbol: dict = {}
-    for t in closed:
-        sym = t.get("symbol", "?")
-        d = by_symbol.setdefault(sym, {"trades": 0, "wins": 0, "net_pnl": 0.0})
-        d["trades"] += 1
-        d["wins"] += 1 if (t.get("net") or 0) > 0 else 0
-        d["net_pnl"] += t.get("net", 0)
-    for d in by_symbol.values():
-        d["win_rate"] = round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0
-        d["net_pnl"] = round(d["net_pnl"], 2)
-
-    # Per tipo (scalp / medio)
-    by_type: dict = {}
-    for t in closed:
-        tp = t.get("type", "?")
-        d = by_type.setdefault(tp, {"trades": 0, "wins": 0, "net_pnl": 0.0})
-        d["trades"] += 1
-        d["wins"] += 1 if (t.get("net") or 0) > 0 else 0
-        d["net_pnl"] += t.get("net", 0)
-    for d in by_type.values():
-        d["win_rate"] = round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0
-        d["net_pnl"] = round(d["net_pnl"], 2)
-
-    gross_profit = sum(t.get("net", 0) for t in closed if (t.get("net") or 0) > 0)
-    gross_loss = abs(sum(t.get("net", 0) for t in closed if (t.get("net") or 0) < 0))
-    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else None
-
-    return {
-        "available": True,
-        "total_trades": total,
-        "winning_trades": len(winners),
-        "losing_trades": total - len(winners),
-        "win_rate": round(len(winners) / total * 100, 1) if total else 0,
-        "total_pnl": round(total_pnl, 2),
-        "total_fees": round(total_fees, 2),
-        "avg_pnl_per_trade": round(total_pnl / total, 2) if total else 0,
-        "profit_factor": profit_factor,
-        "equity_curve": equity_curve,
-        "by_symbol": by_symbol,
-        "by_type": by_type,
-    }
-
-
-@app.get("/api/desk/diary")
-async def desk_diary(session=Depends(require_session)):
-    """Diario giornaliero: trade chiusi raggruppati per giorno e per simbolo.
-    Restituisce i giorni in ordine cronologico inverso (più recente prima).
-    """
-    from datetime import datetime, timezone
-    trades = _desk_trades_raw(last_n=5000)
-    closed = [t for t in trades if t.get("net") is not None]
-
-    # raggruppa per giorno UTC
-    days: dict = {}
-    for t in closed:
-        ms = t.get("close_ms", 0)
-        day = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d") if ms else "?"
-        days.setdefault(day, []).append(t)
-
-    result = []
-    for day in sorted(days.keys(), reverse=True):
-        day_trades = sorted(days[day], key=lambda x: x.get("close_ms", 0))
-        wins = [t for t in day_trades if (t.get("net") or 0) > 0]
-        losses = [t for t in day_trades if (t.get("net") or 0) <= 0]
-        total_pnl = sum(t.get("net", 0) for t in day_trades)
-
-        # per simbolo in questo giorno
-        by_sym: dict = {}
-        for t in day_trades:
-            sym = t.get("symbol", "?")
-            s = by_sym.setdefault(sym, {"trades": 0, "wins": 0, "losses": 0,
-                                        "total_pnl": 0.0, "best": 0.0, "worst": 0.0})
-            net = t.get("net", 0)
-            s["trades"] += 1
-            s["total_pnl"] += net
-            if net > 0:
-                s["wins"] += 1
-                s["best"] = max(s["best"], net)
-            else:
-                s["losses"] += 1
-                s["worst"] = min(s["worst"], net)
-        for s in by_sym.values():
-            s["total_pnl"] = round(s["total_pnl"], 2)
-            s["best"] = round(s["best"], 2)
-            s["worst"] = round(s["worst"], 2)
-
-        result.append({
-            "day": day,
-            "total_trades": len(day_trades),
-            "wins": len(wins),
-            "losses": len(losses),
-            "total_pnl": round(total_pnl, 2),
-            "by_symbol": by_sym,
-            "trades": [
-                {
-                    "symbol": t.get("symbol"),
-                    "side": t.get("side"),
-                    "net": round(t.get("net", 0), 2),
-                    "why": t.get("why", t.get("reason", "")),
-                    "trade_type": t.get("trade_type", t.get("type", "?")),
-                    "leverage": t.get("lev", t.get("leverage")),
-                    "margin": t.get("margin"),
-                    "close_ms": t.get("close_ms"),
-                    "partial": t.get("partial", False),
-                    "confidence": t.get("confidence"),
-                }
-                for t in day_trades
-            ],
-        })
-
-    return {"days": result, "total_closed": len(closed)}
-
-
-@app.get("/api/desk/logs")
-async def desk_logs(session=Depends(require_session)):
-    """Lezioni e note di coaching (lessons.md) generate giornalmente da Claude."""
-    content = _desk_lessons()
-    return {"content": content, "available": bool(content)}
-
-
-@app.post("/api/desk/reset-budget")
-async def desk_reset_budget(request: Request, session=Depends(require_session)):
-    """Azzera il budget giornaliero AI del bot V2.
-    Body JSON opzionale: {"equity_reset": true} per ripristinare anche equity a 1000$
-    e azzerare le posizioni aperte (solo paper mode).
-    """
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    equity_reset = bool(body.get("equity_reset", False))
-    flag_path = os.path.join(_DESK_DATA, "budget_reset.flag")
-    os.makedirs(_DESK_DATA, exist_ok=True)
-    content = "equity_reset" if equity_reset else "budget_only"
-    with open(flag_path, "w") as f:
-        f.write(content)
-    msg = "Budget AI azzerato + equity ripristinata a 1000$" if equity_reset else "Budget AI azzerato"
-    return {"ok": True, "message": msg, "equity_reset": equity_reset}
-
-
-@app.get("/api/desk/health")
-async def desk_health():
-    """Health check per il bot V2 Hawk (non richiede sessione)."""
-    state = _desk_state()
-    return {
-        "available": bool(state),
-        "cycle": state.get("cycle", 0),
-        "day": state.get("day", ""),
-        "halt": state.get("halt"),
-    }
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# PORTAFOGLIO BULL  (/api/desk/bull/*)
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _bull_status_data() -> dict:
-    """Stato live del portafoglio Bull (logica condivisa)."""
-    state = _bull_state()
-    if not state:
-        return {"available": False, "message": "Bull non ancora attivo o nessun dato disponibile"}
-    main = state.get("main", {})
-    positions = main.get("positions", {})
-    closed = main.get("closed", [])
-    cash = float(main.get("cash", 1000.0))
-    # equity approssimata
-    equity = cash + sum(float(p.get("total_margin", 0)) for p in positions.values())
-    budget = state.get("budget", {})
-    pos_list = [
-        {
-            "symbol": sym,
-            "side": p.get("side"),
-            "leverage": p.get("leverage"),
-            "margin": p.get("total_margin"),
-            "entry": p.get("entry"),
-            "sl": p.get("sl"),
-            "tp": p.get("tp"),
-            "trade_type": p.get("trade_type", "medio"),
-            "dca_count": p.get("dca_count", 0),
-            "confidence": p.get("confidence"),
-            "reason": p.get("reason", "")[:80],
-        }
-        for sym, p in positions.items()
-    ]
-    return {
-        "available": True,
-        "portfolio": "bull",
-        "equity": round(equity, 2),
-        "cash": round(cash, 2),
-        "margin_used": round(sum(float(p.get("total_margin", 0)) for p in positions.values()), 2),
-        "open_positions": len(positions),
-        "positions": pos_list,
-        "total_closed": len(closed),
-        "budget_spent_usd": round(float(budget.get("spent", 0)), 4),
-        "budget_daily_cap_usd": float(os.getenv("DESK_DAILY_CAP_USD", "0.70")),
-        "cycle": state.get("cycle", 0),
-        "day": state.get("day", ""),
-        "halt": state.get("halt"),
-    }
-
-
-@app.get("/api/desk/bull/status")
-async def bull_status(session=Depends(require_session)):
-    """Stato live del portafoglio Bull."""
-    return _bull_status_data()
-
-
-@app.get("/api/desk/bull/trades")
-async def bull_trades(limit: int = 100, session=Depends(require_session)):
-    """Ultimi N trade chiusi del portafoglio Bull."""
-    trades = _bull_trades_raw(last_n=limit)
-    result = []
-    for t in trades:
-        result.append({
-            "id": t.get("id"),
-            "symbol": t.get("symbol"),
-            "side": t.get("side"),
-            "leverage": t.get("lev"),
-            "margin": t.get("margin"),
-            "gross_pnl": t.get("gross"),
-            "pnl": t.get("net"),
-            "fees": t.get("fees"),
-            "trade_type": t.get("type"),
-            "close_reason": t.get("reason"),
-            "open_ms": t.get("open_ms"),
-            "close_ms": t.get("close_ms"),
-            "dca_count": t.get("dca_count", 0),
-        })
-    return result
-
-
-@app.get("/api/desk/bull/performance")
-async def bull_performance(session=Depends(require_session)):
-    """Statistiche aggregate del portafoglio Bull."""
-    trades = _bull_trades_raw(last_n=5000)
-    if not trades:
-        return {
-            "available": False,
-            "total_trades": 0,
-            "win_rate": 0,
-            "total_pnl": 0,
-            "equity_curve": [],
-            "by_symbol": {},
-            "by_type": {},
-        }
-    closed = [t for t in trades if t.get("net") is not None]
-    total = len(closed)
-    winners = [t for t in closed if (t.get("net") or 0) > 0]
-    total_pnl = sum(t.get("net", 0) for t in closed)
-    total_fees = sum(t.get("fees", 0) for t in closed)
-    ordered = sorted(closed, key=lambda t: t.get("close_ms", 0))
-    running = 0.0
-    equity_curve = []
-    for t in ordered:
-        running += t.get("net", 0)
-        equity_curve.append({"time": t.get("close_ms"), "equity": round(running, 2)})
-    by_symbol: dict = {}
-    for t in closed:
-        sym = t.get("symbol", "?")
-        d = by_symbol.setdefault(sym, {"trades": 0, "wins": 0, "net_pnl": 0.0})
-        d["trades"] += 1
-        d["wins"] += 1 if (t.get("net") or 0) > 0 else 0
-        d["net_pnl"] += t.get("net", 0)
-    for d in by_symbol.values():
-        d["win_rate"] = round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0
-        d["net_pnl"] = round(d["net_pnl"], 2)
-    by_type: dict = {}
-    for t in closed:
-        tp = t.get("type", "?")
-        d = by_type.setdefault(tp, {"trades": 0, "wins": 0, "net_pnl": 0.0})
-        d["trades"] += 1
-        d["wins"] += 1 if (t.get("net") or 0) > 0 else 0
-        d["net_pnl"] += t.get("net", 0)
-    for d in by_type.values():
-        d["win_rate"] = round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0
-        d["net_pnl"] = round(d["net_pnl"], 2)
-    gross_profit = sum(t.get("net", 0) for t in closed if (t.get("net") or 0) > 0)
-    gross_loss = abs(sum(t.get("net", 0) for t in closed if (t.get("net") or 0) < 0))
-    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else None
-    return {
-        "available": True,
-        "portfolio": "bull",
-        "total_trades": total,
-        "winning_trades": len(winners),
-        "losing_trades": total - len(winners),
-        "win_rate": round(len(winners) / total * 100, 1) if total else 0,
-        "total_pnl": round(total_pnl, 2),
-        "total_fees": round(total_fees, 2),
-        "avg_pnl_per_trade": round(total_pnl / total, 2) if total else 0,
-        "profit_factor": profit_factor,
-        "equity_curve": equity_curve,
-        "by_symbol": by_symbol,
-        "by_type": by_type,
-    }
-
-
-@app.get("/api/desk/bull/diary")
-async def bull_diary(session=Depends(require_session)):
-    """Diario giornaliero del portafoglio Bull."""
-    from datetime import datetime, timezone
-    trades = _bull_trades_raw(last_n=5000)
-    closed = [t for t in trades if t.get("net") is not None]
-    days: dict = {}
-    for t in closed:
-        ms = t.get("close_ms", 0)
-        day = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d") if ms else "?"
-        days.setdefault(day, []).append(t)
-    result = []
-    for day in sorted(days.keys(), reverse=True):
-        day_trades = sorted(days[day], key=lambda x: x.get("close_ms", 0))
-        wins = [t for t in day_trades if (t.get("net") or 0) > 0]
-        losses = [t for t in day_trades if (t.get("net") or 0) <= 0]
-        total_pnl = sum(t.get("net", 0) for t in day_trades)
-        by_sym: dict = {}
-        for t in day_trades:
-            sym = t.get("symbol", "?")
-            s = by_sym.setdefault(sym, {"trades": 0, "wins": 0, "losses": 0,
-                                        "total_pnl": 0.0, "best": 0.0, "worst": 0.0})
-            net = t.get("net", 0)
-            s["trades"] += 1
-            s["total_pnl"] += net
-            if net > 0:
-                s["wins"] += 1
-                s["best"] = max(s["best"], net)
-            else:
-                s["losses"] += 1
-                s["worst"] = min(s["worst"], net)
-        for s in by_sym.values():
-            s["total_pnl"] = round(s["total_pnl"], 2)
-            s["best"] = round(s["best"], 2)
-            s["worst"] = round(s["worst"], 2)
-        result.append({
-            "day": day,
-            "total_trades": len(day_trades),
-            "wins": len(wins),
-            "losses": len(losses),
-            "total_pnl": round(total_pnl, 2),
-            "by_symbol": by_sym,
-            "trades": [
-                {
-                    "symbol": t.get("symbol"),
-                    "side": t.get("side"),
-                    "net": round(t.get("net", 0), 2),
-                    "why": t.get("why", t.get("reason", "")),
-                    "trade_type": t.get("trade_type", t.get("type", "?")),
-                    "leverage": t.get("lev", t.get("leverage")),
-                    "margin": t.get("margin"),
-                    "close_ms": t.get("close_ms"),
-                    "partial": t.get("partial", False),
-                    "confidence": t.get("confidence"),
-                }
-                for t in day_trades
-            ],
-        })
-    return {"days": result, "total_closed": len(closed)}
-
-
-@app.get("/api/desk/bull/logs")
-async def bull_logs(session=Depends(require_session)):
-    """Lessons Bull."""
-    content = _bull_lessons()
-    return {"content": content, "available": bool(content)}
-
-
-@app.post("/api/desk/bull/reset-budget")
-async def bull_reset_budget(request: Request, session=Depends(require_session)):
-    """Azzera il budget giornaliero AI del portafoglio Bull."""
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    equity_reset = bool(body.get("equity_reset", False))
-    flag_path = os.path.join(_DESK_DATA_BULL, "budget_reset.flag")
-    os.makedirs(_DESK_DATA_BULL, exist_ok=True)
-    content = "equity_reset" if equity_reset else "budget_only"
-    with open(flag_path, "w") as f:
-        f.write(content)
-    msg = "Bull — Budget AI azzerato + equity ripristinata a 1000$" if equity_reset else "Bull — Budget AI azzerato"
-    return {"ok": True, "message": msg, "equity_reset": equity_reset}
-
-
-@app.get("/api/desk/bull/health")
-async def bull_health():
-    """Health check per il portafoglio Bull (non richiede sessione)."""
-    state = _bull_state()
-    return {
-        "available": bool(state),
-        "portfolio": "bull",
-        "cycle": state.get("cycle", 0),
-        "day": state.get("day", ""),
-        "halt": state.get("halt"),
-    }
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# LIVE DASHBOARD  (/api/desk/live/*)
-# Endpoint per la dashboard live: saldo reale BitGet + P&L per portafoglio.
-# Attivi sempre ma significativi solo quando DESK_MODE=live nei container desk.
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _live_daily_pnl(trades_raw: list) -> float:
-    """P&L realizzato oggi (dalla mezzanotte UTC) da una lista di trade chiusi."""
+app.include_router(desk_api.make_router("hawk", _DESK_DATA, require_session, exchange.get_ticker),
+                   prefix="/api/desk")
+app.include_router(desk_api.make_router("bull", _DESK_DATA_BULL, require_session, exchange.get_ticker),
+                   prefix="/api/desk/bull")
+
+_prices_cache: dict = {}
+_prices_cache_ts: float = 0.0
+_PRICES_CACHE_TTL = 30.0   # secondi: refresh max ogni 30s, non ad ogni richiesta
+
+V2_SYMBOLS = [
+    'BTC', 'ETH', 'BNB', 'XRP', 'SOL', 'ADA', 'DOGE', 'AVAX',
+    'DOT', 'LINK', 'MATIC', 'UNI', 'ATOM', 'LTC', 'BCH',
+    'APT', 'ARB', 'OP', 'NEAR', 'FIL', 'INJ', 'SUI', 'TIA',
+    'RUNE', 'STX', 'XAU', 'XAG',
+]
+
+
+@app.get("/api/desk/prices")
+async def desk_prices(session=Depends(require_session)):
+    """Prezzi live dei 27 simboli (carosello del mercato). Cache server-side 30s: il frontend puo'
+    fare polling frequente senza sommergere l'exchange. Alimenta anche la cache dei prezzi usata
+    per il P&L live delle posizioni aperte."""
+    global _prices_cache, _prices_cache_ts
     import time as _time
-    midnight_ms = int(_time.time() // 86400 * 86400 * 1000)
-    return sum(
-        t.get("net", 0.0)
-        for t in trades_raw
-        if (t.get("close_ms") or 0) >= midnight_ms and t.get("net") is not None
-    )
+    now = _time.monotonic()
+    if _prices_cache and (now - _prices_cache_ts) < _PRICES_CACHE_TTL:
+        return _prices_cache
+
+    async def one(sym: str):
+        for name in (sym + 'USDT', sym + '/USDT'):
+            try:
+                return sym, await asyncio.wait_for(exchange.get_ticker(name), 5)
+            except Exception as e:
+                err = str(e)
+        return sym, {'error': err}
+
+    prices = dict(await asyncio.gather(*(one(s) for s in V2_SYMBOLS)))
+    for sym, t in prices.items():
+        desk_api.remember_price(sym, t.get('price'))
+    _prices_cache = prices
+    _prices_cache_ts = now
+    return prices
 
 
-def _live_total_pnl(trades_raw: list) -> float:
-    """P&L realizzato totale da una lista di trade chiusi."""
-    return sum(t.get("net", 0.0) for t in trades_raw if t.get("net") is not None)
+# ── Pagina Live: saldo reale BitGet, P&L e limite di perdita, interruttore trading ─────────────
+# La logica dei numeri sta in live_view.py (testata a parte). Qui: il saldo (ccxt) e le rotte.
+import live_view
 
 
 def _fetch_bitget_wallet() -> dict:
-    """
-    Legge il saldo reale del futures wallet da BitGet via ccxt.
-    Richiede BITGET_API_KEY, BITGET_SECRET_KEY, BITGET_PASSPHRASE.
-    Ritorna {"available": bool, "total_usdt": float, "available_usdt": float, "error": str|None}.
-    """
-    api_key    = os.environ.get("BITGET_API_KEY", "")
-    secret_key = os.environ.get("BITGET_SECRET_KEY", "")
+    """Saldo reale del wallet futures BitGet (sola lettura). Solo se DESK_MODE=live e le chiavi
+    BitGet sono presenti nell'ambiente di questo container; altrimenti dice perche' non c'e'."""
+    api_key = os.environ.get("BITGET_API_KEY", "")
+    secret = os.environ.get("BITGET_SECRET_KEY", "")
     passphrase = os.environ.get("BITGET_PASSPHRASE", "")
-    desk_mode  = os.environ.get("DESK_MODE", "paper").strip().lower()
-
-    if desk_mode != "live" or not all([api_key, secret_key, passphrase]):
-        return {"available": False, "total_usdt": None, "available_usdt": None,
-                "error": "DESK_MODE non è live o chiavi API mancanti"}
+    if os.environ.get("DESK_MODE", "paper").strip().lower() != "live":
+        return {"available": False, "error": "modalita' paper: nessun saldo reale da mostrare"}
+    if not (api_key and secret and passphrase):
+        return {"available": False,
+                "error": "chiavi BitGet non presenti nell'app: il saldo non si puo' leggere "
+                         "(i bot le hanno, ma questo container no)"}
     try:
         import ccxt
-        client = ccxt.bitget({
-            "apiKey": api_key, "secret": secret_key, "password": passphrase,
-            "options": {"defaultType": "swap"},
-        })
-        balance = client.fetch_balance()
-        usdt = balance.get("USDT", {})
+        client = ccxt.bitget({"apiKey": api_key, "secret": secret, "password": passphrase,
+                              "options": {"defaultType": "swap"}, "timeout": 8000})
+        usdt = client.fetch_balance().get("USDT", {}) or {}
         return {
             "available": True,
-            "total_usdt": round(float(usdt.get("total", 0) or 0), 2),
-            "available_usdt": round(float(usdt.get("free", 0) or 0), 2),
-            "used_usdt": round(float(usdt.get("used", 0) or 0), 2),
+            "total_usdt": round(float(usdt.get("total") or 0), 2),
+            "available_usdt": round(float(usdt.get("free") or 0), 2),
+            "used_usdt": round(float(usdt.get("used") or 0), 2),
             "error": None,
         }
     except Exception as e:
-        return {"available": False, "total_usdt": None, "available_usdt": None,
-                "error": str(e)[:120]}
+        return {"available": False, "error": str(e)[:120]}
 
 
 @app.get("/api/desk/live/wallet")
 async def live_wallet(session=Depends(require_session)):
-    """
-    Saldo reale del futures wallet BitGet.
-    In paper mode ritorna available=False senza errore — è il comportamento atteso.
-    """
-    return _fetch_bitget_wallet()
+    return await asyncio.to_thread(_fetch_bitget_wallet)
 
 
 @app.get("/api/desk/live/overview")
 async def live_overview(session=Depends(require_session)):
-    """
-    Vista consolidata live: saldo BitGet + P&L e stato di entrambi i portafogli.
-    Aggrega /api/desk/status, /api/desk/bull/status e il wallet BitGet in una sola chiamata.
-    """
+    """Saldo BitGet + stato di Hawk e Bull in una sola chiamata (pagina Live)."""
     import time as _time
-
-    # Saldo reale BitGet
-    wallet = _fetch_bitget_wallet()
-
-    # Configurazione capitali (letta dallo stesso env che usa il bot)
-    hawk_capital    = float(os.environ.get("DESK_HAWK_CAPITAL", "1500"))
-    bull_capital    = float(os.environ.get("DESK_BULL_CAPITAL", "1500"))
-    daily_loss_pct  = float(os.environ.get("DESK_DAILY_LOSS_PCT", "25")) / 100.0
-    hawk_loss_limit = hawk_capital * daily_loss_pct
-    bull_loss_limit = bull_capital * daily_loss_pct
-
-    # Dati Hawk
-    hawk_state = _desk_state()
-    hawk_trades = _desk_trades_raw(last_n=5000)
-    hawk_main   = hawk_state.get("main", {}) if hawk_state else {}
-    hawk_positions = hawk_main.get("positions", {})
-    hawk_day_pnl   = _live_daily_pnl(hawk_trades)
-    hawk_total_pnl = _live_total_pnl(hawk_trades)
-    hawk_pos_list = [
-        {
-            "symbol": sym,
-            "side": p.get("side"),
-            "entry": p.get("entry"),
-            "leverage": p.get("leverage"),
-            "margin": p.get("total_margin"),
-            "sl": p.get("sl"),
-            "tp": p.get("tp"),
-            "trade_type": p.get("trade_type"),
-            "open_ms": p.get("open_ms"),
-        }
-        for sym, p in hawk_positions.items()
-    ]
-
-    # Dati Bull
-    bull_state = _bull_state()
-    bull_trades = _bull_trades_raw(last_n=5000)
-    bull_main   = bull_state.get("main", {}) if bull_state else {}
-    bull_positions = bull_main.get("positions", {})
-    bull_day_pnl   = _live_daily_pnl(bull_trades)
-    bull_total_pnl = _live_total_pnl(bull_trades)
-    bull_pos_list = [
-        {
-            "symbol": sym,
-            "side": p.get("side"),
-            "entry": p.get("entry"),
-            "leverage": p.get("leverage"),
-            "margin": p.get("total_margin"),
-            "sl": p.get("sl"),
-            "tp": p.get("tp"),
-            "trade_type": p.get("trade_type"),
-            "open_ms": p.get("open_ms"),
-        }
-        for sym, p in bull_positions.items()
-    ]
-
-    # Limite raggiunto oggi?
-    hawk_limit_hit = hawk_day_pnl <= -hawk_loss_limit
-    bull_limit_hit = bull_day_pnl <= -bull_loss_limit
-
-    desk_mode = os.environ.get("DESK_MODE", "paper").strip().lower()
-
-    # Stato interruttore manuale (legge trading_enabled.json dal volume dati)
-    def _read_trading_enabled(data_dir: str) -> bool:
-        path = os.path.join(data_dir, "trading_enabled.json")
-        try:
-            with open(path) as f:
-                return bool(json.load(f).get("enabled", False))
-        except Exception:
-            return False
-
-    hawk_trading_enabled = _read_trading_enabled(_DESK_DATA)
-    bull_trading_enabled = _read_trading_enabled(_DESK_DATA_BULL)
-
+    wallet = await asyncio.to_thread(_fetch_bitget_wallet)
+    loss_pct = os.environ.get("DESK_DAILY_LOSS_PCT", "25")
     return {
-        "mode": desk_mode,
+        "mode": os.environ.get("DESK_MODE", "paper").strip().lower(),
         "timestamp_ms": int(_time.time() * 1000),
         "wallet": wallet,
-        "hawk": {
-            "available": bool(hawk_state),
-            "capital_usdt": hawk_capital,
-            "daily_loss_limit_usdt": round(hawk_loss_limit, 2),
-            "daily_pnl": round(hawk_day_pnl, 2),
-            "total_pnl": round(hawk_total_pnl, 2),
-            "daily_limit_hit": hawk_limit_hit,
-            "open_positions": len(hawk_positions),
-            "positions": hawk_pos_list,
-            "total_closed": len([t for t in hawk_trades if t.get("net") is not None]),
-            "cycle": hawk_state.get("cycle", 0) if hawk_state else 0,
-            "halt": hawk_state.get("halt") if hawk_state else None,
-            "trading_enabled": hawk_trading_enabled,
-        },
-        "bull": {
-            "available": bool(bull_state),
-            "capital_usdt": bull_capital,
-            "daily_loss_limit_usdt": round(bull_loss_limit, 2),
-            "daily_pnl": round(bull_day_pnl, 2),
-            "total_pnl": round(bull_total_pnl, 2),
-            "daily_limit_hit": bull_limit_hit,
-            "open_positions": len(bull_positions),
-            "positions": bull_pos_list,
-            "total_closed": len([t for t in bull_trades if t.get("net") is not None]),
-            "cycle": bull_state.get("cycle", 0) if bull_state else 0,
-            "halt": bull_state.get("halt") if bull_state else None,
-            "trading_enabled": bull_trading_enabled,
-        },
+        "hawk": live_view.build_portfolio(_DESK_DATA, os.environ.get("DESK_HAWK_CAPITAL"), loss_pct),
+        "bull": live_view.build_portfolio(_DESK_DATA_BULL, os.environ.get("DESK_BULL_CAPITAL"), loss_pct),
     }
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# INTERRUTTORE MANUALE TRADING  (/api/desk/{portfolio}/trading/*)
-# Scrive trading_enabled.json nel volume dati del bot.
-# Il bot (cli.py) legge questo file prima di ogni apertura.
-# Attivo solo in live mode: in paper mode il flag non ha effetto sul bot
-# ma l'endpoint risponde comunque (così il frontend non deve gestire casi speciali).
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _write_trading_enabled(data_dir: str, enabled: bool) -> None:
-    import time as _time
-    os.makedirs(data_dir, exist_ok=True)
-    path = os.path.join(data_dir, "trading_enabled.json")
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump({"enabled": enabled, "ts": int(_time.time() * 1000)}, f)
-    os.replace(tmp, path)
+def _trading_switch(portfolio: str, data_dir: str, enabled: bool) -> dict:
+    live_view.write_trading_enabled(data_dir, enabled)
+    return {"ok": True, "portfolio": portfolio, "trading_enabled": enabled}
 
 
 @app.post("/api/desk/hawk/trading/enable")
 async def hawk_trading_enable(session=Depends(require_session)):
-    """Abilita il trading live per il portafoglio Hawk."""
-    _write_trading_enabled(_DESK_DATA, True)
-    return {"ok": True, "portfolio": "hawk", "trading_enabled": True}
+    return _trading_switch("hawk", _DESK_DATA, True)
 
 
 @app.post("/api/desk/hawk/trading/disable")
 async def hawk_trading_disable(session=Depends(require_session)):
-    """Disabilita il trading live per il portafoglio Hawk (nessuna nuova apertura)."""
-    _write_trading_enabled(_DESK_DATA, False)
-    return {"ok": True, "portfolio": "hawk", "trading_enabled": False}
+    return _trading_switch("hawk", _DESK_DATA, False)
 
 
 @app.post("/api/desk/bull/trading/enable")
 async def bull_trading_enable(session=Depends(require_session)):
-    """Abilita il trading live per il portafoglio Bull."""
-    _write_trading_enabled(_DESK_DATA_BULL, True)
-    return {"ok": True, "portfolio": "bull", "trading_enabled": True}
+    return _trading_switch("bull", _DESK_DATA_BULL, True)
 
 
 @app.post("/api/desk/bull/trading/disable")
 async def bull_trading_disable(session=Depends(require_session)):
-    """Disabilita il trading live per il portafoglio Bull (nessuna nuova apertura)."""
-    _write_trading_enabled(_DESK_DATA_BULL, False)
-    return {"ok": True, "portfolio": "bull", "trading_enabled": False}
+    return _trading_switch("bull", _DESK_DATA_BULL, False)
 
 
 if __name__ == '__main__':
