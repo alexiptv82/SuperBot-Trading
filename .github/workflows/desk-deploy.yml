@@ -25,11 +25,16 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # Variabili live Bitget — lasciate vuote in paper mode (DESK_MODE=paper di default)
-          # Per passare a live: imposta DESK_MODE=live e aggiungi le tre chiavi nei GitHub Secrets
+          # Per passare a live: imposta DESK_MODE=live. OGNI bot ha il SUO sub-account Bitget e la SUA chiave di
+          # trading: Hawk usa BITGET_HAWK_*, Bull usa BITGET_BULL_*. NESSUN ripiego sulla vecchia chiave
+          # condivisa (BITGET_API_KEY...): se manca una chiave, quel bot in live non parte.
           DESK_MODE: ${{ secrets.DESK_MODE }}
-          BITGET_API_KEY: ${{ secrets.BITGET_API_KEY }}
-          BITGET_SECRET_KEY: ${{ secrets.BITGET_SECRET_KEY }}
-          BITGET_PASSPHRASE: ${{ secrets.BITGET_PASSPHRASE }}
+          BITGET_HAWK_API_KEY: ${{ secrets.BITGET_HAWK_API_KEY }}
+          BITGET_HAWK_SECRET_KEY: ${{ secrets.BITGET_HAWK_SECRET_KEY }}
+          BITGET_HAWK_PASSPHRASE: ${{ secrets.BITGET_HAWK_PASSPHRASE }}
+          BITGET_BULL_API_KEY: ${{ secrets.BITGET_BULL_API_KEY }}
+          BITGET_BULL_SECRET_KEY: ${{ secrets.BITGET_BULL_SECRET_KEY }}
+          BITGET_BULL_PASSPHRASE: ${{ secrets.BITGET_BULL_PASSPHRASE }}
           # Capitale allocato per portfolio e limite perdita giornaliera
           # Default: 1500$ per bot, max 25% di perdita al giorno
           DESK_HAWK_CAPITAL: ${{ secrets.DESK_HAWK_CAPITAL }}
@@ -41,7 +46,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           connect_timeout: 90s
           command_timeout: 30m
-          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
+          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
           script: |
             set -e
             # --- Verifica preliminare (sola lettura)
@@ -83,7 +88,7 @@ jobs:
               -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/hawk \
               -e DESK_MODE="${DESK_MODE:-paper}" \
-              -e BITGET_API_KEY -e BITGET_SECRET_KEY -e BITGET_PASSPHRASE \
+              -e BITGET_API_KEY="${BITGET_HAWK_API_KEY}" -e BITGET_SECRET_KEY="${BITGET_HAWK_SECRET_KEY}" -e BITGET_PASSPHRASE="${BITGET_HAWK_PASSPHRASE}" \
               -e DESK_HAWK_CAPITAL="${DESK_HAWK_CAPITAL:-1500}" \
               -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
               -v /opt/superbot-desk-data/hawk:/app/data/desk/hawk \
@@ -101,7 +106,7 @@ jobs:
               -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/bull \
               -e DESK_MODE="${DESK_MODE:-paper}" \
-              -e BITGET_API_KEY -e BITGET_SECRET_KEY -e BITGET_PASSPHRASE \
+              -e BITGET_API_KEY="${BITGET_BULL_API_KEY}" -e BITGET_SECRET_KEY="${BITGET_BULL_SECRET_KEY}" -e BITGET_PASSPHRASE="${BITGET_BULL_PASSPHRASE}" \
               -e DESK_BULL_CAPITAL="${DESK_BULL_CAPITAL:-1500}" \
               -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
               -v /opt/superbot-desk-data/bull:/app/data/desk/bull \
