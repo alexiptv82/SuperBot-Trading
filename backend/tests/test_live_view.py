@@ -149,6 +149,46 @@ def test_wallet_credentials_use_only_the_read_only_key():
     assert lv.wallet_credentials({}) is None
 
 
+def test_wallet_credentials_per_bot_use_only_that_bots_read_only_key():
+    env = {
+        "BITGET_RO_HAWK_API_KEY": "hk", "BITGET_RO_HAWK_SECRET_KEY": "hs", "BITGET_RO_HAWK_PASSPHRASE": "hp",
+        "BITGET_RO_BULL_API_KEY": "bk", "BITGET_RO_BULL_SECRET_KEY": "bs", "BITGET_RO_BULL_PASSPHRASE": "bp",
+    }
+    assert lv.wallet_key_names("hawk") == ("BITGET_RO_HAWK_API_KEY", "BITGET_RO_HAWK_SECRET_KEY", "BITGET_RO_HAWK_PASSPHRASE")
+    assert lv.wallet_key_names("Bull") == ("BITGET_RO_BULL_API_KEY", "BITGET_RO_BULL_SECRET_KEY", "BITGET_RO_BULL_PASSPHRASE")
+    assert lv.wallet_credentials(env, "hawk") == ("hk", "hs", "hp")
+    assert lv.wallet_credentials(env, "bull") == ("bk", "bs", "bp")
+    # ne manca una sola di Bull -> niente per Bull, e NON si ripiega sulla chiave di Hawk
+    assert lv.wallet_credentials({k: v for k, v in env.items() if k != "BITGET_RO_BULL_PASSPHRASE"}, "bull") is None
+    # nemmeno sulla vecchia chiave a conto unico: mostrerebbe il saldo del conto sbagliato
+    legacy = {"BITGET_RO_API_KEY": "a", "BITGET_RO_SECRET_KEY": "b", "BITGET_RO_PASSPHRASE": "c"}
+    assert lv.wallet_credentials(legacy, "hawk") is None and lv.wallet_credentials(legacy, "bull") is None
+    assert lv.wallet_credentials(legacy) == ("a", "b", "c")                 # senza bot: comportamento di prima
+    # le chiavi di TRADING dei bot non si usano mai nell'app
+    trading = {"BITGET_HAWK_API_KEY": "x", "BITGET_HAWK_SECRET_KEY": "y", "BITGET_HAWK_PASSPHRASE": "z",
+               "BITGET_BULL_API_KEY": "x", "BITGET_BULL_SECRET_KEY": "y", "BITGET_BULL_PASSPHRASE": "z",
+               "BITGET_API_KEY": "x", "BITGET_SECRET_KEY": "y", "BITGET_PASSPHRASE": "z"}
+    assert lv.wallet_credentials(trading, "hawk") is None and lv.wallet_credentials(trading, "bull") is None
+
+
+def test_combine_wallets_sums_only_when_every_bot_is_readable():
+    ok_h = {"available": True, "total_usdt": 1000.0, "available_usdt": 900.0, "used_usdt": 100.0, "error": None}
+    ok_b = {"available": True, "total_usdt": 1000.5, "available_usdt": 650.25, "used_usdt": 350.25, "error": None}
+    both = lv.combine_wallets({"hawk": ok_h, "bull": ok_b})
+    assert both["available"] is True and both["error"] is None
+    assert (both["total_usdt"], both["available_usdt"], both["used_usdt"]) == (2000.5, 1550.25, 450.25)
+    assert both["per_bot"]["hawk"] == ok_h and both["per_bot"]["bull"] == ok_b
+    # un bot illeggibile: niente totale (sarebbe sbagliato), ma il dettaglio dell'altro resta
+    part = lv.combine_wallets({"hawk": ok_h, "bull": {"available": False, "error": "chiave non configurata"}})
+    assert part["available"] is False and "bull: chiave non configurata" in part["error"]
+    assert "total_usdt" not in part and part["per_bot"]["hawk"]["total_usdt"] == 1000.0
+    # entrambi illeggibili / niente
+    both_bad = lv.combine_wallets({"hawk": {"available": False, "error": "e1"}, "bull": {"available": False, "error": "e2"}})
+    assert both_bad["available"] is False and "hawk: e1" in both_bad["error"] and "bull: e2" in both_bad["error"]
+    assert lv.combine_wallets({})["available"] is False
+    assert lv.combine_wallets({"hawk": None, "bull": ok_b})["available"] is False
+
+
 def test_live_interlock_comes_from_the_heartbeat():
     with tempfile.TemporaryDirectory() as d:
         _write(d, "state_v2.json", {"cycle": 1, "main": {"positions": {}}})

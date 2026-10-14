@@ -642,16 +642,17 @@ async def desk_prices(session=Depends(require_session)):
 import live_view
 
 
-def _fetch_bitget_wallet() -> dict:
-    """Saldo reale del wallet futures BitGet (sola lettura). Solo se DESK_MODE=live e le chiavi
-    BitGet sono presenti nell'ambiente di questo container; altrimenti dice perche' non c'e'."""
+def _fetch_bitget_wallet(bot: str) -> dict:
+    """Saldo reale del sub-account BitGet di un bot (sola lettura). Solo se DESK_MODE=live e le chiavi di
+    sola lettura di quel bot sono presenti nell'ambiente di questo container; altrimenti dice perche' non c'e'."""
     if os.environ.get("DESK_MODE", "paper").strip().lower() != "live":
         return {"available": False, "error": "modalita' paper: nessun saldo reale da mostrare"}
-    creds = live_view.wallet_credentials(os.environ)   # solo la chiave di SOLA LETTURA (BITGET_RO_*)
+    creds = live_view.wallet_credentials(os.environ, bot)   # solo la chiave di SOLA LETTURA di questo bot
     if creds is None:
+        names = live_view.wallet_key_names(bot)
         return {"available": False,
-                "error": "chiave BitGet di sola lettura non configurata nell'app "
-                         "(Secret BITGET_RO_API_KEY / _SECRET_KEY / _PASSPHRASE)"}
+                "error": f"chiave BitGet di sola lettura di {bot.capitalize()} non configurata nell'app "
+                         f"(Secret {names[0]} / _SECRET_KEY / _PASSPHRASE)"}
     api_key, secret, passphrase = creds
     try:
         import ccxt
@@ -669,16 +670,23 @@ def _fetch_bitget_wallet() -> dict:
         return {"available": False, "error": str(e)[:120]}
 
 
+async def _fetch_wallets() -> dict:
+    """Saldi dei due sub-account (Hawk e Bull) letti in parallelo, piu' il totale se entrambi sono leggibili."""
+    bots = live_view.WALLET_BOTS
+    results = await asyncio.gather(*(asyncio.to_thread(_fetch_bitget_wallet, b) for b in bots))
+    return live_view.combine_wallets(dict(zip(bots, results)))
+
+
 @app.get("/api/desk/live/wallet")
 async def live_wallet(session=Depends(require_session)):
-    return await asyncio.to_thread(_fetch_bitget_wallet)
+    return await _fetch_wallets()
 
 
 @app.get("/api/desk/live/overview")
 async def live_overview(session=Depends(require_session)):
     """Saldo BitGet + stato di Hawk e Bull in una sola chiamata (pagina Live)."""
     import time as _time
-    wallet = await asyncio.to_thread(_fetch_bitget_wallet)
+    wallet = await _fetch_wallets()
     loss_pct = os.environ.get("DESK_DAILY_LOSS_PCT", "25")
     return {
         "mode": os.environ.get("DESK_MODE", "paper").strip().lower(),

@@ -20,15 +20,45 @@ DEFAULT_CAPITAL = 1500.0       # uguale al default di cli.py
 DEFAULT_LOSS_PCT = 25.0
 
 
-WALLET_KEY_NAMES = ("BITGET_RO_API_KEY", "BITGET_RO_SECRET_KEY", "BITGET_RO_PASSPHRASE")
+WALLET_KEY_NAMES = ("BITGET_RO_API_KEY", "BITGET_RO_SECRET_KEY", "BITGET_RO_PASSPHRASE")   # conto unico (vecchio)
+WALLET_BOTS = ("hawk", "bull")
 
 
-def wallet_credentials(env) -> Optional[tuple]:
-    """(api_key, secret, passphrase) della chiave BitGet di SOLA LETTURA usata dall'app per il saldo,
-    oppure None se manca anche una sola delle tre. Le chiavi di trading (BITGET_API_KEY...) non si
-    usano MAI qui: l'app non deve poterle avere, nemmeno per sbaglio."""
-    vals = tuple((env.get(n) or "").strip() for n in WALLET_KEY_NAMES)
+def wallet_key_names(bot: Optional[str] = None) -> tuple:
+    """Nomi delle tre variabili della chiave di SOLA LETTURA. Con `bot` ("hawk"/"bull") sono quelle del
+    sub-account di quel bot (BITGET_RO_HAWK_API_KEY...); senza, quelle del vecchio conto unico."""
+    if not bot:
+        return WALLET_KEY_NAMES
+    b = bot.strip().upper()
+    return tuple(f"BITGET_RO_{b}_{part}" for part in ("API_KEY", "SECRET_KEY", "PASSPHRASE"))
+
+
+def wallet_credentials(env, bot: Optional[str] = None) -> Optional[tuple]:
+    """(api_key, secret, passphrase) della chiave BitGet di SOLA LETTURA usata dall'app per il saldo
+    (di un bot, se indicato), oppure None se manca anche una sola delle tre. Le chiavi di trading
+    (BITGET_API_KEY, BITGET_HAWK_API_KEY...) non si usano MAI qui: l'app non deve poterle avere, nemmeno per
+    sbaglio. Con `bot` indicato non si ripiega mai sulla chiave di un altro conto: un saldo sbagliato e'
+    peggio di nessun saldo."""
+    vals = tuple((env.get(n) or "").strip() for n in wallet_key_names(bot))
     return vals if all(vals) else None
+
+
+def combine_wallets(per_bot: dict) -> dict:
+    """Mette insieme i saldi dei sub-account (uno per bot). I campi del totale (total_usdt, ...) sono la
+    SOMMA e compaiono solo se TUTTI i bot sono leggibili: una somma parziale mostrerebbe un saldo sbagliato.
+    Il dettaglio di ogni bot resta sempre in `per_bot`, errori compresi."""
+    per_bot = {b: (w or {}) for b, w in per_bot.items()}
+    bad = {b: (w.get("error") or "saldo non disponibile") for b, w in per_bot.items() if not w.get("available")}
+    out = {"per_bot": per_bot}
+    if not per_bot or bad:
+        out["available"] = False
+        out["error"] = "; ".join(f"{b}: {e}" for b, e in sorted(bad.items())) or "nessun saldo"
+        return out
+    out["available"] = True
+    out["error"] = None
+    for k in ("total_usdt", "available_usdt", "used_usdt"):
+        out[k] = round(sum(float(w.get(k) or 0.0) for w in per_bot.values()), 2)
+    return out
 
 
 def utc_midnight_ms(now: Optional[float] = None) -> int:

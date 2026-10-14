@@ -25,6 +25,33 @@ const pnlSign = (v) => {
   return n >= 0 ? '+' : '';
 };
 
+// ── Saldo di un wallet (totale / disponibile / in margine) ─────────────────────────
+function WalletNumbers({ w }) {
+  const lab = { fontSize: '11px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.06em' };
+  return (
+    <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
+      <div>
+        <div style={lab}>Saldo totale</div>
+        <div style={{ fontSize: '28px', fontWeight: 800, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums' }}>
+          ${fmt(w.total_usdt, 2)} <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>USDT</span>
+        </div>
+      </div>
+      <div>
+        <div style={lab}>Disponibile</div>
+        <div style={{ fontSize: '22px', fontWeight: 700, color: '#4ade80', fontVariantNumeric: 'tabular-nums' }}>
+          ${fmt(w.available_usdt, 2)}
+        </div>
+      </div>
+      <div>
+        <div style={lab}>In margine</div>
+        <div style={{ fontSize: '22px', fontWeight: 700, color: '#fb923c', fontVariantNumeric: 'tabular-nums' }}>
+          ${fmt(w.used_usdt, 2)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Wallet banner ──────────────────────────────────────────────────────────────
 function WalletBanner({ wallet, mode }) {
   const isLive = mode === 'live';
@@ -62,34 +89,37 @@ function WalletBanner({ wallet, mode }) {
           }} />
           {isLive ? 'LIVE' : 'PAPER MODE'}
         </span>
-        <span style={{ color: '#475569', fontSize: '12px' }}>Portafoglio BitGet Futures</span>
+        <span style={{ color: '#475569', fontSize: '12px' }}>Portafogli BitGet Futures (un sub-account per bot)</span>
       </div>
 
       {!isLive ? (
         <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
           Il bot è in modalità paper. Imposta <code style={{ color: '#94a3b8', fontSize: '12px' }}>DESK_MODE=live</code> nei GitHub Secrets per attivare il live.
         </p>
-      ) : wallet?.available ? (
-        <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Saldo totale</div>
-            <div style={{ fontSize: '28px', fontWeight: 800, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums' }}>
-              ${fmt(wallet.total_usdt, 2)} <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>USDT</span>
+      ) : wallet?.per_bot ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {[['hawk', '🦅 Hawk'], ['bull', '🐂 Bull']].map(([key, label]) => {
+            const w = wallet.per_bot[key];
+            return (
+              <div key={key}>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  {label} <span style={{ color: '#475569', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>· sub-account</span>
+                </div>
+                {w?.available ? <WalletNumbers w={w} /> : (
+                  <p style={{ color: '#f87171', fontSize: '13px', margin: 0 }}>{w?.error || 'Saldo non disponibile'}</p>
+                )}
+              </div>
+            );
+          })}
+          {wallet.available && (
+            <div style={{ borderTop: '1px solid #1e3a4a', paddingTop: '12px' }}>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Totale Hawk + Bull</div>
+              <WalletNumbers w={wallet} />
             </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Disponibile</div>
-            <div style={{ fontSize: '22px', fontWeight: 700, color: '#4ade80', fontVariantNumeric: 'tabular-nums' }}>
-              ${fmt(wallet.available_usdt, 2)}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>In margine</div>
-            <div style={{ fontSize: '22px', fontWeight: 700, color: '#fb923c', fontVariantNumeric: 'tabular-nums' }}>
-              ${fmt(wallet.used_usdt, 2)}
-            </div>
-          </div>
+          )}
         </div>
+      ) : wallet?.available ? (
+        <WalletNumbers w={wallet} />
       ) : (
         <p style={{ color: '#f87171', fontSize: '13px', margin: 0 }}>
           {wallet?.error || 'Saldo non disponibile — verifica le chiavi API nei GitHub Secrets.'}
