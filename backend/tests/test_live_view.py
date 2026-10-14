@@ -134,3 +134,16 @@ def test_bot_mode_comes_from_heartbeat_not_from_secrets():
         assert p["bot_mode"] == "paper" and p["heartbeat_age_s"] == 12.0
         _write(d, "heartbeat.json", {"ts": NOW - 2.0, "exec_mode": "live"})
         assert lv.build_portfolio(d, 1000, 25, now=NOW)["bot_mode"] == "live"
+
+
+def test_wallet_credentials_use_only_the_read_only_key():
+    full = {"BITGET_RO_API_KEY": " k ", "BITGET_RO_SECRET_KEY": "s", "BITGET_RO_PASSPHRASE": "p"}
+    assert lv.wallet_credentials(full) == ("k", "s", "p")                  # spazi ai bordi tolti
+    for missing in lv.WALLET_KEY_NAMES:                                    # ne manca una sola -> niente
+        partial = {k: v for k, v in full.items() if k != missing}
+        assert lv.wallet_credentials(partial) is None
+    assert lv.wallet_credentials({**full, "BITGET_RO_SECRET_KEY": "  "}) is None
+    # le chiavi di trading NON vanno mai usate dall'app, nemmeno se presenti
+    trading_only = {"BITGET_API_KEY": "a", "BITGET_SECRET_KEY": "b", "BITGET_PASSPHRASE": "c"}
+    assert lv.wallet_credentials(trading_only) is None
+    assert lv.wallet_credentials({}) is None

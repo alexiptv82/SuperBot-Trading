@@ -20,6 +20,17 @@ DEFAULT_CAPITAL = 1500.0       # uguale al default di cli.py
 DEFAULT_LOSS_PCT = 25.0
 
 
+WALLET_KEY_NAMES = ("BITGET_RO_API_KEY", "BITGET_RO_SECRET_KEY", "BITGET_RO_PASSPHRASE")
+
+
+def wallet_credentials(env) -> Optional[tuple]:
+    """(api_key, secret, passphrase) della chiave BitGet di SOLA LETTURA usata dall'app per il saldo,
+    oppure None se manca anche una sola delle tre. Le chiavi di trading (BITGET_API_KEY...) non si
+    usano MAI qui: l'app non deve poterle avere, nemmeno per sbaglio."""
+    vals = tuple((env.get(n) or "").strip() for n in WALLET_KEY_NAMES)
+    return vals if all(vals) else None
+
+
 def utc_midnight_ms(now: Optional[float] = None) -> int:
     now = time.time() if now is None else now
     return int(now // 86400 * 86400 * 1000)

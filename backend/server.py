@@ -645,15 +645,14 @@ import live_view
 def _fetch_bitget_wallet() -> dict:
     """Saldo reale del wallet futures BitGet (sola lettura). Solo se DESK_MODE=live e le chiavi
     BitGet sono presenti nell'ambiente di questo container; altrimenti dice perche' non c'e'."""
-    api_key = os.environ.get("BITGET_API_KEY", "")
-    secret = os.environ.get("BITGET_SECRET_KEY", "")
-    passphrase = os.environ.get("BITGET_PASSPHRASE", "")
     if os.environ.get("DESK_MODE", "paper").strip().lower() != "live":
         return {"available": False, "error": "modalita' paper: nessun saldo reale da mostrare"}
-    if not (api_key and secret and passphrase):
+    creds = live_view.wallet_credentials(os.environ)   # solo la chiave di SOLA LETTURA (BITGET_RO_*)
+    if creds is None:
         return {"available": False,
-                "error": "chiavi BitGet non presenti nell'app: il saldo non si puo' leggere "
-                         "(i bot le hanno, ma questo container no)"}
+                "error": "chiave BitGet di sola lettura non configurata nell'app "
+                         "(Secret BITGET_RO_API_KEY / _SECRET_KEY / _PASSPHRASE)"}
+    api_key, secret, passphrase = creds
     try:
         import ccxt
         client = ccxt.bitget({"apiKey": api_key, "secret": secret, "password": passphrase,
