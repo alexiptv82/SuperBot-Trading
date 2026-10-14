@@ -325,6 +325,7 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
     HB["portfolio"] = PORTFOLIO.name
     HB["daily_cap_usd"] = DAILY_CAP
     HB["trading_enabled"] = is_trading_enabled()
+    HB["exec_mode"] = "live" if LIVE._live else "paper"   # come gira DAVVERO il bot (l'app lo mostra)
     try:
         HB["claude_schedule"] = schedule_summary(schedule_state(DATA_DIR, int(now * 1000)))
     except Exception:
