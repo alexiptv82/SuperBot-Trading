@@ -1,0 +1,14 @@
+Sub-account provato: hawk
+[LIVE_CONNECTOR] modalità LIVE attiva — ordini reali su Bitget
+=== PROVA COLLEGAMENTO BITGET — simbolo XRP, margine 3.0$ x5 ===
+[OK ] A1 mercati caricati — 4377 mercati
+[OK ] A2 chiave valida e saldo futures letto — USDT liberi=0.0 totali=0.0
+[OK ] A3 account senza posizioni aperte — nessuna
+[OK ] A4 impostazioni account letti — posizioni=hedge_mode margine=cross leve(long/short)=10/10
+[LIVE_CONNECTOR] modalità LIVE attiva — ordini reali su Bitget
+[CAPITAL] HAWK capitale=1500$ limite_perdita_giornaliero=375$ (25%)
+[KO ] A5 simboli del bot presenti come perpetui su Bitget — MANCANO: MATIC
+[OK ] B0 importo del test — qty=11.0 prezzo=1.3253 valore=14.58$ margine~2.92$
+[LIVE] OPEN FALLITA XRP: bitget {"code":"40762","msg":"The order amount exceeds the balance","requestTime":1792008181901,"data":null}
+[KO ] B1 apertura con stop e take profit nello stesso ordine — bitget {"code":"40762","msg":"The order amount exceeds the balance","requestTime":1792008181901,"data":null}
+--- pulizia ---
