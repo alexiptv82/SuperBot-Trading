@@ -23,12 +23,16 @@ jobs:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DESK_MODE: ${{ secrets.DESK_MODE }}
+          DESK_HAWK_CAPITAL: ${{ secrets.DESK_HAWK_CAPITAL }}
+          DESK_BULL_CAPITAL: ${{ secrets.DESK_BULL_CAPITAL }}
+          DESK_DAILY_LOSS_PCT: ${{ secrets.DESK_DAILY_LOSS_PCT }}
         with:
           host: 51.91.109.45
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 30m
-          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD
+          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD,DESK_MODE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
           script: |
             # Password iniziale della dashboard (GitHub Secret). Senza, ci si
             # ferma QUI, prima di toccare il bot in esecuzione.
@@ -91,7 +95,14 @@ jobs:
               -p 8002:8001 \
               -v /opt/superbot/data:/app/data \
               -v /opt/superbot/backend/.env:/app/backend/.env \
-              -v /opt/superbot-desk-data:/opt/superbot-desk-data:ro \
+              -v /opt/superbot-desk-data/hawk:/opt/superbot-desk-data/hawk \
+              -v /opt/superbot-desk-data/bull:/opt/superbot-desk-data/bull \
+              -e DESK_DATA_DIR=/opt/superbot-desk-data/hawk \
+              -e DESK_DATA_DIR_BULL=/opt/superbot-desk-data/bull \
+              -e DESK_MODE="${DESK_MODE:-paper}" \
+              -e DESK_HAWK_CAPITAL="${DESK_HAWK_CAPITAL:-1000}" \
+              -e DESK_BULL_CAPITAL="${DESK_BULL_CAPITAL:-1000}" \
+              -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
               superbot
             sleep 5
             curl -s http://localhost:8002/api/health && echo "BOT ONLINE OK" || echo "ERRORE AVVIO"
