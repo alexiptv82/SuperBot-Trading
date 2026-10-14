@@ -147,3 +147,17 @@ def test_wallet_credentials_use_only_the_read_only_key():
     trading_only = {"BITGET_API_KEY": "a", "BITGET_SECRET_KEY": "b", "BITGET_PASSPHRASE": "c"}
     assert lv.wallet_credentials(trading_only) is None
     assert lv.wallet_credentials({}) is None
+
+
+def test_live_interlock_comes_from_the_heartbeat():
+    with tempfile.TemporaryDirectory() as d:
+        _write(d, "state_v2.json", {"cycle": 1, "main": {"positions": {}}})
+        p = lv.build_portfolio(d, 1000, 25, now=NOW)
+        assert p["live_interlock"] is None and p["live_pending_close"] == []        # nessun battito
+        _write(d, "heartbeat.json", {"ts": NOW - 3.0, "exec_mode": "live", "live_interlock": None})
+        assert lv.build_portfolio(d, 1000, 25, now=NOW)["live_interlock"] is None
+        _write(d, "heartbeat.json", {"ts": NOW - 3.0, "exec_mode": "live",
+                                     "live_interlock": "posizioni su Bitget che il motore non conosce: ETH",
+                                     "live_pending_close": ["BTC"]})
+        p = lv.build_portfolio(d, 1000, 25, now=NOW)
+        assert "ETH" in p["live_interlock"] and p["live_pending_close"] == ["BTC"]

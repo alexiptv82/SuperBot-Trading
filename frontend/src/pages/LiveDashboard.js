@@ -107,7 +107,7 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
 
   const { capital_usdt, daily_pnl, total_pnl, daily_loss_limit_usdt,
     daily_limit_hit, open_positions, positions = [], total_closed,
-    cycle, halt, available, trading_enabled, bot_mode } = data;
+    cycle, halt, available, trading_enabled, bot_mode, live_interlock, live_pending_close = [] } = data;
 
   const isLive = mode === 'live';
   // I Secret dicono "live", ma conta come gira DAVVERO il bot (dal suo battito cardiaco).
@@ -223,6 +223,18 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
           ⚠️ {bot_mode === 'paper'
             ? 'Questo bot gira in PAPER: nessun ordine reale. Il live parte solo dopo aver ridistribuito i bot.'
             : 'Stato del bot non disponibile: gira ancora con una versione senza live, oppure è fermo. Nessun ordine reale.'}
+        </div>
+      )}
+
+      {isLive && botIsLive && live_interlock && (
+        <div style={{
+          margin: '12px 20px 0', padding: '8px 12px', borderRadius: '8px',
+          background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
+          color: '#f87171', fontSize: '12px', lineHeight: 1.4,
+        }}>
+          ⛔ Nuove aperture BLOCCATE: {live_interlock}. Le posizioni già aperte restano gestite; il blocco si toglie da solo
+          quando BitGet e bot coincidono di nuovo.
+          {live_pending_close.length > 0 && ` Chiusura da completare su: ${live_pending_close.join(', ')}.`}
         </div>
       )}
 

@@ -111,5 +111,9 @@ def build_portfolio(data_dir: str, capital, loss_pct, now: Optional[float] = Non
         # Come gira DAVVERO il bot ("live"/"paper"), dal suo battito cardiaco. None = il bot non e'
         # raggiungibile oppure gira ancora con un codice precedente al live (container da ridistribuire).
         "bot_mode": (hb or {}).get("exec_mode"),
+        # Collegamento con l'exchange: motivo per cui il bot ha BLOCCATO le nuove aperture (posizione estranea,
+        # lettura fallita, quantita' diverse...) oppure None. Sempre dal battito cardiaco del bot.
+        "live_interlock": (hb or {}).get("live_interlock"),
+        "live_pending_close": (hb or {}).get("live_pending_close") or [],
         "heartbeat_age_s": round(hb["age_s"], 1) if hb else None,
     }
