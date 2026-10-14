@@ -184,6 +184,34 @@ print(f"[CAPITAL] {PORTFOLIO.name.upper()} capitale={_PORTFOLIO_CAPITAL:.0f}$ "
       f"limite_perdita_giornaliero={_DAILY_LOSS_LIMIT:.0f}$ ({_DAILY_LOSS_PCT*100:.0f}%)", flush=True)
 
 
+# ── Interruttore manuale trading (solo live) ──────────────────────────────────
+# In live mode il bot parte con trading DISABILITATO: sei tu a premere "Avvia trading"
+# nell'app. In paper mode l'interruttore non ha effetto (il paper gira sempre).
+# Il flag viene persistito in trading_enabled.json nel volume dati del bot.
+_TRADING_ENABLED_FILE = os.path.join(DATA_DIR, "trading_enabled.json")
+
+
+def is_trading_enabled() -> bool:
+    """True se l'interruttore manuale è attivo (o se siamo in paper mode)."""
+    if not LIVE._live:
+        return True   # paper mode: sempre abilitato
+    try:
+        with open(_TRADING_ENABLED_FILE) as f:
+            return bool(json.load(f).get("enabled", False))
+    except Exception:
+        return False  # file assente o corrotto → disabilitato per sicurezza
+
+
+def set_trading_enabled(enabled: bool) -> None:
+    """Scrive il flag in modo atomico."""
+    tmp = _TRADING_ENABLED_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"enabled": enabled, "ts": int(time.time() * 1000)}, f)
+    os.replace(tmp, _TRADING_ENABLED_FILE)
+    print(f"[TRADING] {PORTFOLIO.name.upper()} trading "
+          f"{'ABILITATO ▶' if enabled else 'DISABILITATO ⏹'}", flush=True)
+
+
 def _daily_realized_pnl(acc) -> float:
     """Calcola il P&L realizzato oggi (dalla mezzanotte UTC)."""
     import time as _time
@@ -296,6 +324,7 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
         HB["mode"] = compute_mode(paused, n_open)
     HB["portfolio"] = PORTFOLIO.name
     HB["daily_cap_usd"] = DAILY_CAP
+    HB["trading_enabled"] = is_trading_enabled()
     try:
         HB["claude_schedule"] = schedule_summary(schedule_state(DATA_DIR, int(now * 1000)))
     except Exception:
@@ -764,6 +793,12 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 feats = {}   # la registrazione non deve mai impedire un'apertura
             feats.update(proposed_margin=raw_margin, proposed_lev=raw_lev, split_requested=is_split,
                           guardrail_forced=bool(raw_margin != dec["margin_usd"] or raw_lev != dec["leverage"]))
+            # ── INTERRUTTORE MANUALE (solo live) ────────────────────────────
+            if not is_trading_enabled():
+                print(f"[TRADING DISABILITATO] {sym}: trading live disabilitato — premi 'Avvia trading' nell'app",
+                      flush=True)
+                _candidate("trading_disabilitato", dec, px)
+                continue
             # ── DAILY LOSS LIMIT (solo live) ────────────────────────────────
             if _daily_loss_exceeded(acc):
                 _candidate("daily_loss_limit", dec, px)

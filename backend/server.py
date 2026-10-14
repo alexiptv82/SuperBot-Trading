@@ -1298,6 +1298,18 @@ async def live_overview(session=Depends(require_session)):
 
     desk_mode = os.environ.get("DESK_MODE", "paper").strip().lower()
 
+    # Stato interruttore manuale (legge trading_enabled.json dal volume dati)
+    def _read_trading_enabled(data_dir: str) -> bool:
+        path = os.path.join(data_dir, "trading_enabled.json")
+        try:
+            with open(path) as f:
+                return bool(json.load(f).get("enabled", False))
+        except Exception:
+            return False
+
+    hawk_trading_enabled = _read_trading_enabled(_DESK_DATA)
+    bull_trading_enabled = _read_trading_enabled(_DESK_DATA_BULL)
+
     return {
         "mode": desk_mode,
         "timestamp_ms": int(_time.time() * 1000),
@@ -1314,6 +1326,7 @@ async def live_overview(session=Depends(require_session)):
             "total_closed": len([t for t in hawk_trades if t.get("net") is not None]),
             "cycle": hawk_state.get("cycle", 0) if hawk_state else 0,
             "halt": hawk_state.get("halt") if hawk_state else None,
+            "trading_enabled": hawk_trading_enabled,
         },
         "bull": {
             "available": bool(bull_state),
@@ -1327,8 +1340,55 @@ async def live_overview(session=Depends(require_session)):
             "total_closed": len([t for t in bull_trades if t.get("net") is not None]),
             "cycle": bull_state.get("cycle", 0) if bull_state else 0,
             "halt": bull_state.get("halt") if bull_state else None,
+            "trading_enabled": bull_trading_enabled,
         },
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# INTERRUTTORE MANUALE TRADING  (/api/desk/{portfolio}/trading/*)
+# Scrive trading_enabled.json nel volume dati del bot.
+# Il bot (cli.py) legge questo file prima di ogni apertura.
+# Attivo solo in live mode: in paper mode il flag non ha effetto sul bot
+# ma l'endpoint risponde comunque (così il frontend non deve gestire casi speciali).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _write_trading_enabled(data_dir: str, enabled: bool) -> None:
+    import time as _time
+    os.makedirs(data_dir, exist_ok=True)
+    path = os.path.join(data_dir, "trading_enabled.json")
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"enabled": enabled, "ts": int(_time.time() * 1000)}, f)
+    os.replace(tmp, path)
+
+
+@app.post("/api/desk/hawk/trading/enable")
+async def hawk_trading_enable(session=Depends(require_session)):
+    """Abilita il trading live per il portafoglio Hawk."""
+    _write_trading_enabled(_DESK_DATA, True)
+    return {"ok": True, "portfolio": "hawk", "trading_enabled": True}
+
+
+@app.post("/api/desk/hawk/trading/disable")
+async def hawk_trading_disable(session=Depends(require_session)):
+    """Disabilita il trading live per il portafoglio Hawk (nessuna nuova apertura)."""
+    _write_trading_enabled(_DESK_DATA, False)
+    return {"ok": True, "portfolio": "hawk", "trading_enabled": False}
+
+
+@app.post("/api/desk/bull/trading/enable")
+async def bull_trading_enable(session=Depends(require_session)):
+    """Abilita il trading live per il portafoglio Bull."""
+    _write_trading_enabled(_DESK_DATA_BULL, True)
+    return {"ok": True, "portfolio": "bull", "trading_enabled": True}
+
+
+@app.post("/api/desk/bull/trading/disable")
+async def bull_trading_disable(session=Depends(require_session)):
+    """Disabilita il trading live per il portafoglio Bull (nessuna nuova apertura)."""
+    _write_trading_enabled(_DESK_DATA_BULL, False)
+    return {"ok": True, "portfolio": "bull", "trading_enabled": False}
 
 
 if __name__ == '__main__':

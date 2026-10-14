@@ -87,6 +87,11 @@ export const deskAPI = {
   // Live dashboard
   getLiveWallet:      () => API.get('/api/desk/live/wallet'),
   getLiveOverview:    () => API.get('/api/desk/live/overview'),
+  // Interruttore manuale trading (live only)
+  enableHawkTrading:  () => API.post('/api/desk/hawk/trading/enable'),
+  disableHawkTrading: () => API.post('/api/desk/hawk/trading/disable'),
+  enableBullTrading:  () => API.post('/api/desk/bull/trading/enable'),
+  disableBullTrading: () => API.post('/api/desk/bull/trading/disable'),
 };
 
 export default API;

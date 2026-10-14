@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { deskAPI } from '../api';
 
 const fmt = (v, dec = 2) => {
@@ -100,13 +100,36 @@ function WalletBanner({ wallet, mode }) {
 }
 
 // ── Portfolio card ─────────────────────────────────────────────────────────────
-function PortfolioCard({ name, emoji, data, color }) {
+function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
   const [expanded, setExpanded] = useState(false);
+  const [toggling, setToggling] = useState(false);
   if (!data) return null;
 
   const { capital_usdt, daily_pnl, total_pnl, daily_loss_limit_usdt,
     daily_limit_hit, open_positions, positions = [], total_closed,
-    cycle, halt, available } = data;
+    cycle, halt, available, trading_enabled } = data;
+
+  const isLive = mode === 'live';
+
+  const handleToggle = async () => {
+    if (toggling) return;
+    const enabling = !trading_enabled;
+    if (enabling) {
+      // Conferma prima di abilitare il live
+      const ok = window.confirm(
+        `Vuoi AVVIARE il trading live per ${name}?\n\n` +
+        `Il bot inizierà ad aprire posizioni reali su BitGet.\n` +
+        `Assicurati che le chiavi API siano configurate correttamente.`
+      );
+      if (!ok) return;
+    }
+    setToggling(true);
+    try {
+      await onToggleTrading(enabling);
+    } finally {
+      setToggling(false);
+    }
+  };
 
   const limitPct = daily_loss_limit_usdt > 0
     ? Math.min(100, Math.abs(Math.min(0, daily_pnl)) / daily_loss_limit_usdt * 100)
@@ -137,20 +160,51 @@ function PortfolioCard({ name, emoji, data, color }) {
             </div>
           </div>
         </div>
-        {daily_limit_hit && (
-          <span style={{
-            fontSize: '10px', fontWeight: 700, color: '#ef4444',
-            background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: '999px', padding: '3px 8px', textTransform: 'uppercase', letterSpacing: '0.06em',
-          }}>⛔ Limite raggiunto</span>
-        )}
-        {halt && !daily_limit_hit && (
-          <span style={{
-            fontSize: '10px', fontWeight: 700, color: '#f59e0b',
-            background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)',
-            borderRadius: '999px', padding: '3px 8px', textTransform: 'uppercase', letterSpacing: '0.06em',
-          }}>⚠️ Halt</span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          {daily_limit_hit && (
+            <span style={{
+              fontSize: '10px', fontWeight: 700, color: '#ef4444',
+              background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: '999px', padding: '3px 8px', textTransform: 'uppercase', letterSpacing: '0.06em',
+            }}>⛔ Limite</span>
+          )}
+          {halt && !daily_limit_hit && (
+            <span style={{
+              fontSize: '10px', fontWeight: 700, color: '#f59e0b',
+              background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)',
+              borderRadius: '999px', padding: '3px 8px', textTransform: 'uppercase', letterSpacing: '0.06em',
+            }}>⚠️ Halt</span>
+          )}
+          {/* Bottone ▶/⏹ — visibile solo in live mode */}
+          {isLive && (
+            <button
+              onClick={handleToggle}
+              disabled={toggling}
+              title={trading_enabled ? 'Stop trading (nessuna nuova apertura)' : 'Avvia trading live'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '5px',
+                padding: '5px 12px',
+                borderRadius: '999px',
+                border: `1px solid ${trading_enabled ? 'rgba(239,68,68,0.4)' : 'rgba(74,222,128,0.4)'}`,
+                background: trading_enabled
+                  ? 'rgba(239,68,68,0.12)'
+                  : 'rgba(74,222,128,0.12)',
+                color: trading_enabled ? '#f87171' : '#4ade80',
+                fontSize: '11px', fontWeight: 700, cursor: toggling ? 'wait' : 'pointer',
+                opacity: toggling ? 0.6 : 1,
+                transition: 'all 0.2s',
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+              }}>
+              {toggling
+                ? '…'
+                : trading_enabled
+                  ? <>⏹ <span>Stop</span></>
+                  : <>▶ <span>Avvia</span></>
+              }
+            </button>
+          )}
+        </div>
       </div>
 
       {/* P&L stats */}
@@ -253,6 +307,14 @@ export default function LiveDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [tradingMsg, setTradingMsg] = useState(null);
+  const tradingMsgTimer = useRef(null);
+
+  const showMsg = (msg, isError = false) => {
+    setTradingMsg({ text: msg, error: isError });
+    clearTimeout(tradingMsgTimer.current);
+    tradingMsgTimer.current = setTimeout(() => setTradingMsg(null), 4000);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -266,6 +328,28 @@ export default function LiveDashboard() {
       setLoading(false);
     }
   }, []);
+
+  const handleHawkTrading = useCallback(async (enable) => {
+    try {
+      if (enable) await deskAPI.enableHawkTrading();
+      else await deskAPI.disableHawkTrading();
+      showMsg(`Hawk: trading ${enable ? 'AVVIATO ▶' : 'FERMATO ⏹'}`);
+      await load(); // rilegge subito lo stato aggiornato
+    } catch (e) {
+      showMsg(`Errore: ${e?.response?.data?.detail || e.message}`, true);
+    }
+  }, [load]);
+
+  const handleBullTrading = useCallback(async (enable) => {
+    try {
+      if (enable) await deskAPI.enableBullTrading();
+      else await deskAPI.disableBullTrading();
+      showMsg(`Bull: trading ${enable ? 'AVVIATO ▶' : 'FERMATO ⏹'}`);
+      await load();
+    } catch (e) {
+      showMsg(`Errore: ${e?.response?.data?.detail || e.message}`, true);
+    }
+  }, [load]);
 
   useEffect(() => {
     load();
@@ -332,6 +416,22 @@ export default function LiveDashboard() {
         </div>
       )}
 
+      {/* Toast feedback interruttore trading */}
+      {tradingMsg && (
+        <div style={{
+          position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)',
+          background: tradingMsg.error ? '#7f1d1d' : '#052e16',
+          border: `1px solid ${tradingMsg.error ? '#ef4444' : '#4ade80'}`,
+          color: tradingMsg.error ? '#fca5a5' : '#86efac',
+          borderRadius: '10px', padding: '10px 20px',
+          fontSize: '13px', fontWeight: 600, zIndex: 200,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          whiteSpace: 'nowrap',
+        }}>
+          {tradingMsg.text}
+        </div>
+      )}
+
       {/* Card portafogli */}
       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
         <PortfolioCard
@@ -339,12 +439,16 @@ export default function LiveDashboard() {
           emoji="🦅"
           data={hawk}
           color="#0ea5e9"
+          mode={mode}
+          onToggleTrading={handleHawkTrading}
         />
         <PortfolioCard
           name="Bull"
           emoji="🐂"
           data={bull}
           color="#f59e0b"
+          mode={mode}
+          onToggleTrading={handleBullTrading}
         />
       </div>
 
