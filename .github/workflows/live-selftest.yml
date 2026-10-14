@@ -1,0 +1,72 @@
+name: Prova collegamento Bitget (importo MINIMO, soldi veri)
+
+# Prova il collegamento reale con Bitget usando poche decine di centesimi: apre una posizione minima
+# (margine <= 5$) con stop e take profit, sposta stop/TP, aggiunge, riduce, chiude e controlla che l'account
+# torni piatto e senza stop rimasti. Poi scrive il rapporto in deploy/live-selftest-output.txt.
+#
+# - NON tocca i bot (superbot-desk-hawk / -bull), i loro dati, i loro flag, ne' il loro codice in esecuzione.
+# - Gira in un container usa-e-getta (immagine "superbot-selftest", diversa da quella dei bot).
+# - Si ferma subito se l'account Bitget ha gia' posizioni aperte.
+# - Parte SOLO quando cambia deploy/live-selftest.trigger (lo cambia chi vuole fare la prova).
+#   Non lanciarla mentre i bot sono in live con posizioni aperte.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/live-selftest.trigger"
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prova sul VPS (container usa-e-getta)
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          BITGET_API_KEY: ${{ secrets.BITGET_API_KEY }}
+          BITGET_SECRET_KEY: ${{ secrets.BITGET_SECRET_KEY }}
+          BITGET_PASSPHRASE: ${{ secrets.BITGET_PASSPHRASE }}
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          connect_timeout: 90s
+          command_timeout: 20m
+          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE
+          script: |
+            set -e
+            rm -rf /opt/superbot-selftest
+            git clone --depth 1 -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-selftest
+            cd /opt/superbot-selftest
+            docker build -t superbot-selftest -f Dockerfile.desk . > /tmp/selftest_build.txt 2>&1 || { tail -20 /tmp/selftest_build.txt; echo "BUILD FALLITA" > /tmp/live_selftest.txt; exit 0; }
+            docker run --rm --name superbot-selftest-run --memory 512m --cpus 0.5 \
+              -e DESK_MODE=live -e DESK_PORTFOLIO=hawk -e DESK_DATA_DIR=/tmp/selftest \
+              -e BITGET_API_KEY -e BITGET_SECRET_KEY -e BITGET_PASSPHRASE \
+              superbot-selftest python -m desk.live_selftest --yes-real-money --symbol XRP --margin 3 --lev 5 \
+              > /tmp/live_selftest.txt 2>&1 || true
+            tail -60 /tmp/live_selftest.txt
+            rm -rf /opt/superbot-selftest
+
+      - name: Porta il rapporto nel repo
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_tmp
+          chmod 600 ~/.ssh/id_tmp
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 'cat /tmp/live_selftest.txt; rm -f /tmp/live_selftest.txt /tmp/selftest_build.txt' > deploy/live-selftest-output.txt
+          rm -f ~/.ssh/id_tmp
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add deploy/live-selftest-output.txt
+          git diff --staged --quiet || git commit -m "live: rapporto prova collegamento Bitget [skip ci]"
+          git push origin rule-pool

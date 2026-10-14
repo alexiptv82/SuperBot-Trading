@@ -33,8 +33,9 @@ from desk import learning as _learning
 from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
-                           notify_halt, notify_daily_report)
+                           notify_halt, notify_daily_report, notify_live_alert)
 from desk.live_connector import LiveConnector
+from desk import live_sync
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -326,6 +327,10 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
     HB["daily_cap_usd"] = DAILY_CAP
     HB["trading_enabled"] = is_trading_enabled()
     HB["exec_mode"] = "live" if LIVE._live else "paper"   # come gira DAVVERO il bot (l'app lo mostra)
+    if LIVE._live:   # stato del collegamento con l'exchange: l'app mostra il blocco aperture se c'e'
+        HB["live_interlock"] = LIVE.interlock
+        HB["live_pending_close"] = sorted(LIVE.pending_close)
+        HB["live_stale_protection"] = sorted(LIVE.stale_protection)
     try:
         HB["claude_schedule"] = schedule_summary(schedule_state(DATA_DIR, int(now * 1000)))
     except Exception:
@@ -514,6 +519,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     acc.roll_day(day, {})
     claude_ok = apply_claude_schedule(state, now_ms, day)
 
+    # ── LIVE: stato dell'exchange a inizio ciclo (decide se si possono aprire nuove posizioni) ──
+    if LIVE._live:
+        live_sync.sync(LIVE, acc, {}, now_ms, close_engine=False, alert=notify_live_alert)
+
     # carica candele per tutti i simboli
     candles_map: dict = {}
     for sym in SYMBOLS:
@@ -682,6 +691,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             # ─────────────────────────────────────────────────────────────────
             closed = acc.close(sym, px, now_ms, "chiusura Claude")
             if closed:
+                if LIVE._live and LIVE.last_fill:
+                    closed["live"] = dict(LIVE.last_fill)   # prezzo/quantita'/fee REALI accanto a quelli simulati
                 print(f"[CLOSE] {sym} net {closed['net']:+.2f}$  motivo: {dec['reason'][:60]}")
                 notify_close(sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
                 record_close(state, closed)
@@ -697,9 +708,22 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             new_tp = None
             if tp2_pct and tp2_pct > 0:
                 new_tp = px * (1 + pos.side * tp2_pct)
+            # ── LIVE: riduci la posizione reale PRIMA di aggiornare il motore ────
+            live_fill = None
+            if LIVE._live:
+                live_ok, live_detail = live_sync.partial_on_exchange(LIVE, pos, fraction)
+                if not live_ok:
+                    print(f"[LIVE PARTIAL FALLITA] {sym}: {live_detail} — posizione resta com'e'")
+                    continue
+                live_fill = dict(LIVE.last_fill)
+            # ─────────────────────────────────────────────────────────────────
             partial = acc.partial_close(sym, px, now_ms, fraction, new_tp=new_tp,
                                         why=dec.get("reason", "TP parziale")[:80])
             if partial:
+                if live_fill is not None:
+                    partial["live"] = live_fill
+                    if new_tp is not None:   # il nuovo take profit del motore va anche sull'exchange
+                        LIVE.set_protection(sym, pos.side, pos.sl, pos.tp)
                 print(f"[PARTIAL_CLOSE] {sym} chiuso {fraction*100:.0f}%  net {partial['net']:+.2f}$  "
                       f"TP2={'%.5g' % new_tp if new_tp else 'none'}")
                 notify_close(sym, partial["net"],
@@ -719,7 +743,14 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 continue
             new_sl = px * (1 - pos.side * sl_pct)
             new_tp = px * (1 + pos.side * tp_pct) if tp_pct > 0 else None
+            before = live_sync.snapshot_position(acc, sym) if LIVE._live else None
             result, msg = acc.add_dca(sym, new_sl, new_tp, now_ms, prices, dec.get("reason", "")[:80])
+            if result and LIVE._live:
+                # ── LIVE: i contratti aggiunti vanno sull'exchange; se rifiuta il DCA si annulla ────
+                live_ok, live_detail = live_sync.dca_on_exchange(LIVE, acc, sym, before, px)
+                if not live_ok:
+                    print(f"[LIVE DCA FALLITO] {sym}: {live_detail} — DCA annullato nel motore")
+                    result, msg = None, f"live: {live_detail}"
             if result:
                 print(f"[DCA] {sym} DCA#{result.dca_count} @{px:.5g}  nuovo entry medio {result.entry:.5g}  "
                       f"SL {new_sl:.5g}  margine tot {result.total_margin:.0f}$")
@@ -804,6 +835,11 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             if _daily_loss_exceeded(acc):
                 _candidate("daily_loss_limit", dec, px)
                 continue
+            # ── BLOCCO DI SICUREZZA LIVE (posizione estranea, lettura fallita, ...) ────────
+            if LIVE._live and LIVE.open_blocked():
+                print(f"[LIVE BLOCCO] {sym}: nuove aperture bloccate — {LIVE.open_blocked()}", flush=True)
+                _candidate("live_bloccato", dec, px)
+                continue
             # ─────────────────────────────────────────────────────────────────
             split_cfg = None
             if is_split:
@@ -820,12 +856,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 # ── LIVE: invia ordine reale a Bitget ───────────────────────
                 live_ok, live_detail = True, "paper"
                 if LIVE._live:
-                    qty = LIVE.qty_from_margin(sym, pos.total_margin, pos.leverage, px)
-                    live_ok, live_detail = LIVE.open(sym, side, qty, pos.leverage, sl, tp)
+                    live_ok, live_detail = live_sync.open_on_exchange(LIVE, pos, px)
                     if not live_ok:
                         # Bitget ha rifiutato: annulla la posizione in memoria
-                        acc.positions.pop(sym, None)
-                        acc.cash += pos.total_margin + pos.fee_open
+                        live_sync.rollback_open(acc, pos)
                         print(f"[LIVE ROLLBACK] {sym}: ordine rifiutato da Bitget — posizione annullata")
                         _candidate("live_rifiutata:" + live_detail[:60], dec, px)
                         continue
@@ -852,6 +886,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     "r_dist": pos.r_dist, "trade_type": trade_type, "source": source,
                     "confidence": dec["confidence"], "split_plan": ps, "features": feats,
                     "live_order_id": live_detail,
+                    "live_fill": dict(LIVE.last_fill) if LIVE._live else None,
                 })
             else:
                 print(f"[SKIP] {sym} {act}: {msg}")
@@ -880,13 +915,32 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         bar_ms = 900_000  # 15m
         for row in arr:
             ts, o, h, l, c = int(row[0]), row[1], row[2], row[3], row[4]
+            # LIVE: con una seconda gamba in attesa la barra puo' farla scattare: serve poter tornare indietro
+            before = None
+            if LIVE._live and sym in acc.positions and acc.positions[sym].pending_split:
+                before = live_sync.snapshot_position(acc, sym)
             result = acc.on_bar(sym, ts, o, h, l, c, bar_ms)
+            if LIVE._live:
+                note = live_sync.after_bar(LIVE, acc, sym, before, result, alert=notify_live_alert, now_ms=now_ms)
+                if note:
+                    print(f"[LIVE] {note}", flush=True)
             if result:
                 print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
                 notify_close(sym, result["net"], result.get("why", ""), result["why"])
                 record_close(state, result)
                 break
     flush_events(state, acc)
+
+    # ── LIVE: riallinea il motore all'exchange (la verita') e aggiorna il blocco aperture ──────
+    if LIVE._live:
+        res = live_sync.sync(LIVE, acc, prices, now_ms, close_engine=True, alert=notify_live_alert)
+        for rec in res["closed"]:
+            print(f"[CHIUSA SU BITGET] {rec['symbol']} net {rec['net']:+.2f}$ (stima del motore)", flush=True)
+            notify_close(rec["symbol"], rec["net"], "chiusa su Bitget", rec["why"])
+            record_close(state, rec)
+        for n in res["notes"]:
+            print(f"[LIVE SYNC] {n}", flush=True)
+        flush_events(state, acc)
 
     # ---- lessons (una chiamata a Claude: segue il calendario come le altre)
     if claude_ok:
@@ -1000,6 +1054,8 @@ def _check_close_all_flag(state: dict) -> bool:
             # ─────────────────────────────────────────────────────────────────
             rec = acc.close(sym, px, now_ms, "chiusura manuale")
             if rec:
+                if LIVE._live and LIVE.last_fill:
+                    rec["live"] = dict(LIVE.last_fill)
                 record_close(state, rec)
                 closed_n += 1
                 net += rec["net"]
@@ -1257,6 +1313,9 @@ def main() -> None:
             print(w, flush=True)
         if warnings:
             print("[RICONCILIAZIONE] controlla le posizioni su Bitget prima di procedere", flush=True)
+        # blocca le nuove aperture finche' motore ed exchange non coincidono (nessuna azione automatica)
+        live_sync.sync(LIVE, acc_check, {}, int(time.time() * 1000), close_engine=False,
+                       alert=notify_live_alert)
     # ─────────────────────────────────────────────────────────────────────────
 
     if "--once" in sys.argv:

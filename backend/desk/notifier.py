@@ -92,3 +92,8 @@ def notify_daily_report(equity: float, cash: float, day_pnl: float,
         f"📂 Posizioni aperte: {n_open}\n"
         f"🤖 Budget Claude usato: {budget_spent:.3f}$"
     )
+
+
+def notify_live_alert(text: str) -> None:
+    """Avviso sul collegamento con l'exchange (blocco aperture, chiusura non riuscita, ecc.)."""
+    _send("⚠️ <b>LIVE</b>\n" + str(text)[:900])
