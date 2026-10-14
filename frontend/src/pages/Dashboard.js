@@ -478,12 +478,17 @@ export default function Dashboard() {
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <h1 style={{
-          fontSize: '22px', fontWeight: 'bold',
-          background: 'linear-gradient(90deg, #f1f5f9, #38bdf8)',
-          WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
-          margin: 0,
-        }}>🤖 SuperBot V2</h1>
+        <div>
+          <h1 style={{
+            fontSize: '22px', fontWeight: 'bold',
+            background: 'linear-gradient(90deg, #f1f5f9, #38bdf8)',
+            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+            margin: 0,
+          }}>💹 Trade non reale</h1>
+          <div style={{ fontSize: '10px', color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginTop: '3px' }}>
+            ○ PAPER MODE · soldi simulati
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <StatusChip label="Mercato" ok={marketLive} okText="Live" badText="Offline" />
         </div>

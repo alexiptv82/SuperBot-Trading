@@ -451,6 +451,35 @@ export default function LiveDashboard() {
   return (
     <div style={{ padding: '16px 0', maxWidth: '900px', margin: '0 auto' }}>
 
+      {/* Intestazione sezione Live */}
+      <div style={{
+        padding: '0 16px 16px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap', gap: '8px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            fontSize: '18px', fontWeight: 900, color: '#f1f5f9', letterSpacing: '-0.01em',
+          }}>
+            🔴 Trade Live
+          </span>
+          <span style={{
+            fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em',
+            color: mode === 'live' ? '#4ade80' : '#64748b',
+            background: mode === 'live' ? 'rgba(74,222,128,0.12)' : '#1e293b',
+            border: `1px solid ${mode === 'live' ? 'rgba(74,222,128,0.3)' : '#334155'}`,
+            borderRadius: '999px', padding: '3px 10px',
+            textTransform: 'uppercase',
+          }}>
+            {mode === 'live' ? '● LIVE' : '○ PAPER'}
+          </span>
+        </div>
+        <div style={{ fontSize: '11px', color: '#475569' }}>
+          Conti reali BitGet · Hawk + Bull
+        </div>
+      </div>
+
       {/* Wallet BitGet */}
       <WalletBanner wallet={wallet} mode={mode} />
 
