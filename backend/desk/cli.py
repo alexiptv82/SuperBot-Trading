@@ -34,6 +34,7 @@ from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
                            notify_halt, notify_daily_report)
+from desk.live_connector import LiveConnector
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -163,6 +164,10 @@ RETRY_S = 300              # dopo un ciclo fallito riprova dopo 5 minuti
 CYCLE_S = 1800             # ciclo normale: 30 minuti
 CYCLE_FAST_S = 900         # con scalp aperto o in svuotamento: 15 minuti
 CODE_VERSION = os.getenv("DESK_CODE_VERSION", "dev")
+
+# Connettore live — no-op in paper mode, attivo se DESK_MODE=live
+# Lancia ValueError all'avvio se le chiavi API mancano in modalità live
+LIVE = LiveConnector(data_dir=DATA_DIR)
 
 
 # ---- candles dal BitGet
@@ -595,6 +600,16 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             continue
 
         if act == "close":
+            # ── LIVE: chiudi su Bitget prima di aggiornare il motore ─────────
+            if LIVE._live:
+                pos_pre = acc.positions.get(sym)
+                if pos_pre:
+                    qty = pos_pre.qty
+                    live_ok, live_detail = LIVE.close(sym, pos_pre.side, qty)
+                    if not live_ok:
+                        print(f"[LIVE CLOSE FALLITA] {sym}: {live_detail} — posizione resta aperta")
+                        continue   # non chiudere in memoria se Bitget ha fallito
+            # ─────────────────────────────────────────────────────────────────
             closed = acc.close(sym, px, now_ms, "chiusura Claude")
             if closed:
                 print(f"[CLOSE] {sym} net {closed['net']:+.2f}$  motivo: {dec['reason'][:60]}")
@@ -721,6 +736,19 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 source=source, trade_type=trade_type, features=feats, split=split_cfg,
             )
             if pos:
+                # ── LIVE: invia ordine reale a Bitget ───────────────────────
+                live_ok, live_detail = True, "paper"
+                if LIVE._live:
+                    qty = LIVE.qty_from_margin(sym, pos.total_margin, pos.leverage, px)
+                    live_ok, live_detail = LIVE.open(sym, side, qty, pos.leverage, sl, tp)
+                    if not live_ok:
+                        # Bitget ha rifiutato: annulla la posizione in memoria
+                        acc.positions.pop(sym, None)
+                        acc.cash += pos.total_margin + pos.fee_open
+                        print(f"[LIVE ROLLBACK] {sym}: ordine rifiutato da Bitget — posizione annullata")
+                        _candidate("live_rifiutata:" + live_detail[:60], dec, px)
+                        continue
+                # ─────────────────────────────────────────────────────────────
                 last_open_ms[sym] = now_ms
                 rr_str = f"  R:R 1:{tp_pct/sl_pct:.1f}" if sl_pct > 0 and tp_pct > 0 else ""
                 ps = pos.pending_split
@@ -742,6 +770,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     "margin_first": pos.total_margin, "risk_plan_usd": pos.risk_plan_usd,
                     "r_dist": pos.r_dist, "trade_type": trade_type, "source": source,
                     "confidence": dec["confidence"], "split_plan": ps, "features": feats,
+                    "live_order_id": live_detail,
                 })
             else:
                 print(f"[SKIP] {sym} {act}: {msg}")
@@ -878,6 +907,16 @@ def _check_close_all_flag(state: dict) -> bool:
             if px is None:
                 skipped.append(sym)
                 continue
+            # ── LIVE: chiudi su Bitget prima di aggiornare il motore ─────────
+            if LIVE._live:
+                pos_pre = acc.positions.get(sym)
+                if pos_pre:
+                    live_ok, live_detail = LIVE.close(sym, pos_pre.side, pos_pre.qty)
+                    if not live_ok:
+                        print(f"[LIVE CLOSE FALLITA] {sym}: {live_detail} — skip chiusura manuale")
+                        skipped.append(sym)
+                        continue
+            # ─────────────────────────────────────────────────────────────────
             rec = acc.close(sym, px, now_ms, "chiusura manuale")
             if rec:
                 record_close(state, rec)
@@ -1128,6 +1167,16 @@ def loop_step(state: dict, ctl: dict) -> bool:
 def main() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
     state = load_state(STATE_FILE)
+
+    # ── LIVE: riconciliazione posizioni al riavvio ────────────────────────────
+    if LIVE._live:
+        acc_check = make_account(state)
+        warnings = LIVE.reconcile(acc_check.positions)
+        for w in warnings:
+            print(w, flush=True)
+        if warnings:
+            print("[RICONCILIAZIONE] controlla le posizioni su Bitget prima di procedere", flush=True)
+    # ─────────────────────────────────────────────────────────────────────────
 
     if "--once" in sys.argv:
         process_flags(state)

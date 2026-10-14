@@ -24,13 +24,19 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Variabili live Bitget — lasciate vuote in paper mode (DESK_MODE=paper di default)
+          # Per passare a live: imposta DESK_MODE=live e aggiungi le tre chiavi nei GitHub Secrets
+          DESK_MODE: ${{ secrets.DESK_MODE }}
+          BITGET_API_KEY: ${{ secrets.BITGET_API_KEY }}
+          BITGET_SECRET_KEY: ${{ secrets.BITGET_SECRET_KEY }}
+          BITGET_PASSPHRASE: ${{ secrets.BITGET_PASSPHRASE }}
         with:
           host: 51.91.109.45
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           connect_timeout: 90s
           command_timeout: 30m
-          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY
+          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE
           script: |
             set -e
             # --- Verifica preliminare (sola lettura)
@@ -71,6 +77,8 @@ jobs:
               -e DESK_PORTFOLIO=hawk \
               -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/hawk \
+              -e DESK_MODE="${DESK_MODE:-paper}" \
+              -e BITGET_API_KEY -e BITGET_SECRET_KEY -e BITGET_PASSPHRASE \
               -v /opt/superbot-desk-data/hawk:/app/data/desk/hawk \
               superbot-desk
 
@@ -85,6 +93,8 @@ jobs:
               -e DESK_PORTFOLIO=bull \
               -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/bull \
+              -e DESK_MODE="${DESK_MODE:-paper}" \
+              -e BITGET_API_KEY -e BITGET_SECRET_KEY -e BITGET_PASSPHRASE \
               -v /opt/superbot-desk-data/bull:/app/data/desk/bull \
               superbot-desk
 
