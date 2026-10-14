@@ -140,7 +140,7 @@ MEDIO_COOLDOWN_MS = 3_600_000  # cooldown per medio (1h)
 # Simboli V2: top-30 CMC + oro + argento (escludi stablecoin)
 SYMBOLS = [
     "BTC", "ETH", "BNB", "XRP", "SOL", "ADA", "DOGE", "AVAX",
-    "DOT", "LINK", "MATIC", "UNI", "ATOM", "LTC", "BCH",
+    "DOT", "LINK", "UNI", "ATOM", "LTC", "BCH",
     "APT", "ARB", "OP", "NEAR", "FIL", "INJ", "SUI", "TIA",
     "RUNE", "STX", "XAU", "XAG",
 ]
