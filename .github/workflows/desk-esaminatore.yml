@@ -24,9 +24,18 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_esam
           chmod 600 ~/.ssh/id_esam
-          cat backend/desk/analyst.py deploy/esaminatore_run.py | ssh -T -i ~/.ssh/id_esam \
-            -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@51.91.109.45 \
-            'python3 -I - hawk=/opt/superbot-desk-data/hawk bull=/opt/superbot-desk-data/bull' > esaminatore_out.txt 2>&1 || echo "ESECUZIONE TERMINATA CON ERRORE" >> esaminatore_out.txt
+          SSH="ssh -T -i $HOME/.ssh/id_esam -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR -o ConnectTimeout=15 root@51.91.109.45"
+          set +e
+          echo "python sul server: $($SSH 'python3 --version 2>&1')" > esaminatore_out.txt
+          cat backend/desk/analyst.py deploy/esaminatore_run.py > script_completo.py
+          echo "script inviato: $(wc -l < script_completo.py) righe" >> esaminatore_out.txt
+          $SSH 'python3 -I - hawk=/opt/superbot-desk-data/hawk bull=/opt/superbot-desk-data/bull' < script_completo.py > risultato.txt 2> errori.txt
+          RC=$?
+          echo "uscita=$RC, byte risultato=$(wc -c < risultato.txt), byte errori=$(wc -c < errori.txt)" >> esaminatore_out.txt
+          cat risultato.txt >> esaminatore_out.txt
+          if [ -s errori.txt ]; then echo "--- messaggi di errore ---" >> esaminatore_out.txt; head -n 40 errori.txt >> esaminatore_out.txt; fi
+          if [ "$RC" != "0" ]; then echo "ESECUZIONE TERMINATA CON ERRORE" >> esaminatore_out.txt; fi
+          set -e
           rm -f ~/.ssh/id_esam
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat esaminatore_out.txt >> $GITHUB_STEP_SUMMARY
