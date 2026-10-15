@@ -1,0 +1,65 @@
+name: Sala segnali - modalita dei bot (sola lettura)
+
+# Legge soltanto con che modalita' (paper/live) sono stati avviati i due bot: il valore di DESK_MODE preso
+# dall'ambiente del container, se le chiavi Bitget sono presenti (si/no, MAI il valore) e quello che il bot
+# scrive nel suo heartbeat e nel log. NON stampa nessun altro segreto, NON scrive, NON ferma, NON riavvia nulla.
+# Parte SOLO quando cambia deploy/desk-mode-check.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-mode-check.trigger"
+
+jobs:
+  mode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Lettura modalita
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 60s
+          script: |
+            OUT=/tmp/superbot_mode.txt
+            : > $OUT
+            for P in hawk bull; do
+              C=superbot-desk-$P
+              echo "=== $P ===" >> $OUT
+              docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' $C 2>/dev/null \
+                | grep -E '^DESK_MODE=' >> $OUT || echo "DESK_MODE: non presente nell'ambiente del container (vale paper)" >> $OUT
+              for V in BITGET_API_KEY BITGET_SECRET_KEY BITGET_PASSPHRASE; do
+                N=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' $C 2>/dev/null | grep -E "^${V}=" | head -1 | cut -d= -f2- | wc -c)
+                if [ "${N:-0}" -gt 1 ]; then echo "$V: presente" >> $OUT; else echo "$V: VUOTA" >> $OUT; fi
+              done
+              docker inspect --format 'avviato={{.State.StartedAt}} stato={{.State.Status}}' $C >> $OUT 2>&1 || echo "container non trovato" >> $OUT
+              python3 -I - /opt/superbot-desk-data/$P >> $OUT 2>&1 <<'PYEOF' || echo "(heartbeat non leggibile)" >> $OUT
+            import json, os, sys, time
+            hb = json.load(open(os.path.join(sys.argv[1], "heartbeat.json")))
+            print("heartbeat: exec_mode=%s modalita_app=%s versione=%s eta=%ds" % (
+                hb.get("exec_mode", "(campo assente nel codice in esecuzione)"), hb.get("mode"),
+                hb.get("version", hb.get("code_version", "-")), time.time() - hb.get("ts", 0)))
+            PYEOF
+              docker logs $C 2>&1 | grep -E '^\[LIVE_CONNECTOR\] modalit' | tail -1 >> $OUT || true
+            done
+            echo "DONE"
+
+      - name: Pubblica output
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+            root@51.91.109.45 'cat /tmp/superbot_mode.txt' 2>/dev/null > out.txt || true
+          rm -f ~/.ssh/id_desk
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          OUT=$(head -60 out.txt | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Modalita bot::${OUT}"
+          cat out.txt
