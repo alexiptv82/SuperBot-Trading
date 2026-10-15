@@ -14,6 +14,13 @@ from desk import cli, learning, macro_calendar as mc  # noqa: E402
 
 NOW = td.NOW
 
+
+def _no_network(url, timeout=8):
+    raise OSError("rete spenta nei test")
+
+
+mc._http_get = _no_network   # rete di sicurezza: se un test dimenticasse il suo fetcher finto, qui non si va mai in rete
+
 MIN, HOUR = 60_000, 3_600_000
 
 
@@ -143,7 +150,7 @@ def test_current_is_neutral_without_data_and_never_raises():
             assert mc.current(os.path.join(f.name, "sotto"), NOW, _fetcher([], fail=True))["regime"] == "nd"
         with tempfile.TemporaryDirectory() as d:                      # cache corrotta
             open(os.path.join(d, mc.CACHE_FILE), "w").write("{non json")
-            assert mc.current(d, NOW)["regime"] == "nd"
+            assert mc.current(d, NOW, _fetcher([], fail=True))["regime"] == "nd"   # mai la rete vera nei test
     finally:
         os.environ["DESK_MACRO_FETCH"] = "0"
 
