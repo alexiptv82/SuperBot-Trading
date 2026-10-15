@@ -93,6 +93,7 @@ jobs:
                         t.setdefault("legs", e.get("legs"))
                         t.setdefault("leverage", e.get("leverage"))
                         t.setdefault("claude_win", e.get("claude_win"))
+                        t.setdefault("code_version", e.get("code_version"))
                         o = opens.get((e.get("run_no"), e.get("id")))
                         if o and "feat" not in t:
                             t["feat"] = o.get("features") or {}
@@ -128,6 +129,8 @@ jobs:
                 "leva":            lambda t: bucket(t.get("leverage"),[10,20],["<10x","10-19x","20x+"]),
                 "live/finto":      lambda t: "live" if t.get("live") else "finto",
                 "Claude consente": lambda t: {1:"si",0:"no"}.get(t.get("claude_win")),
+                "versione codice": lambda t: t.get("code_version"),
+                "regime macro":    lambda t: (t.get("feat") or {}).get("macro_regime"),
             }
 
             def stats(ts):

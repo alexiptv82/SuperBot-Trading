@@ -1,0 +1,39 @@
+name: Analista - esaminatore dei candidati scartati (sola lettura)
+
+# Legge learning_log.jsonl di Hawk e Bull e le candele PUBBLICHE di Bitget dal server, e calcola come sarebbero andate
+# le aperture che il bot ha deciso ma non eseguito (cooldown, confidenza bassa, blocco macro...). Non scrive nulla sul
+# server, non tocca i bot, non usa chiavi di trading. Parte SOLO quando cambia deploy/desk-esaminatore.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-esaminatore.trigger"
+
+jobs:
+  esaminatore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Esegui l'esaminatore sul server
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_esam
+          chmod 600 ~/.ssh/id_esam
+          cat backend/desk/analyst.py deploy/esaminatore_run.py | ssh -T -i ~/.ssh/id_esam \
+            -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@51.91.109.45 \
+            'python3 -I - hawk=/opt/superbot-desk-data/hawk bull=/opt/superbot-desk-data/bull' > esaminatore_out.txt 2>&1 || echo "ESECUZIONE TERMINATA CON ERRORE" >> esaminatore_out.txt
+          rm -f ~/.ssh/id_esam
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat esaminatore_out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          PART1=$(sed -n '1,80p'    esaminatore_out.txt | tr '\n' '|' | sed 's/%/%25/g')
+          PART2=$(sed -n '81,160p'  esaminatore_out.txt | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Esaminatore 1/2::${PART1}"
+          echo "::notice title=Esaminatore 2/2::${PART2}"
+          cat esaminatore_out.txt
+          if grep -q "ESECUZIONE TERMINATA CON ERRORE" esaminatore_out.txt; then exit 1; fi
