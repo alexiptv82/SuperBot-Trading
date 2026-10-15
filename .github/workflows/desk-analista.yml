@@ -1,0 +1,206 @@
+name: Analista del cervello – contabile (sola lettura)
+
+# Legge learning_log.jsonl di hawk e bull in sola lettura (nessun bot toccato, nessun dato scritto).
+# Parte solo quando cambia deploy/desk-analista.trigger su rule-pool.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-analista.trigger"
+
+jobs:
+  analista:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Contabile – numeri aggregati dal registro
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 150s
+          script: |
+            python3 -I - hawk=/opt/superbot-desk-data/hawk bull=/opt/superbot-desk-data/bull <<'PYEOF'
+            import json, math, os, sys
+            from collections import Counter, defaultdict
+
+            MIN_N = 30
+
+            def read_jsonl(path):
+                out = []
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        for line in fh:
+                            try:
+                                row = json.loads(line)
+                            except ValueError:
+                                continue
+                            if isinstance(row, dict):
+                                out.append(row)
+                except OSError:
+                    pass
+                return out
+
+            def wilson(k, n, z=1.96):
+                if n == 0:
+                    return (None, None)
+                p = k / n
+                d = 1 + z*z/n
+                c = (p + z*z/(2*n)) / d
+                h = z * math.sqrt(p*(1-p)/n + z*z/(4*n*n)) / d
+                return (round(c-h,3), round(c+h,3))
+
+            def exit_class(why):
+                w = str(why or "").lower()
+                for key, name in (("stop","stop loss"),("take profit","take profit"),
+                                   ("liquid","liquidazione"),("manual","chiusura manuale"),
+                                   ("bitget","chiusa su Bitget"),("claude","chiusura Claude")):
+                    if key in w:
+                        return name
+                return "altro"
+
+            def build_trades(events_by_bot):
+                trades = {}
+                for bot, evs in events_by_bot.items():
+                    opens = {(e.get("run_no"), e.get("id")): e for e in evs if e.get("ev") == "open"}
+                    for e in evs:
+                        if e.get("ev") != "close":
+                            continue
+                        key = (bot, e.get("run_no"), e.get("id"))
+                        t = trades.setdefault(key, {"bot": bot, "run": e.get("run_no"), "id": e.get("id"),
+                                                     "net": 0.0, "fees": 0.0, "funding": 0.0,
+                                                     "net_r": 0.0, "r_ok": True, "closes": 0})
+                        t["net"] += float(e.get("net") or 0)
+                        t["fees"] += float(e.get("fees") or 0)
+                        t["funding"] += float(e.get("funding") or 0)
+                        if e.get("net_r") is None:
+                            t["r_ok"] = False
+                        else:
+                            t["net_r"] += float(e["net_r"])
+                        t["closes"] += 1
+                        if not e.get("partial"):
+                            t["why"] = exit_class(e.get("why"))
+                            t["mfe_r"], t["mae_r"] = e.get("mfe_r"), e.get("mae_r")
+                            t["close_ms"] = e.get("close_ms") or e.get("ts")
+                            t["closed_by"] = e.get("closed_by")
+                            t["done"] = True
+                        t.setdefault("symbol", e.get("symbol"))
+                        t.setdefault("side", e.get("side"))
+                        t.setdefault("source", e.get("source"))
+                        t.setdefault("trade_type", e.get("trade_type"))
+                        t.setdefault("legs", e.get("legs"))
+                        t.setdefault("leverage", e.get("leverage"))
+                        t.setdefault("claude_win", e.get("claude_win"))
+                        o = opens.get((e.get("run_no"), e.get("id")))
+                        if o and "feat" not in t:
+                            t["feat"] = o.get("features") or {}
+                            t["open_ms"] = o.get("ts")
+                            if o.get("claude_win") is not None:
+                                t["claude_win"] = o.get("claude_win")
+                            t["live"] = bool(o.get("live_fill") or o.get("live_order_id"))
+                return [t for t in trades.values() if t.get("done")]
+
+            def bucket(x, edges, labels=None):
+                if x is None:
+                    return None
+                for i, e in enumerate(edges):
+                    if x < e:
+                        return labels[i] if labels else f"<{e}"
+                return labels[len(edges)] if labels else f">={edges[-1]}"
+
+            DIMS = {
+                "bot":            lambda t: t["bot"],
+                "lato":           lambda t: {1:"long",-1:"short"}.get(t.get("side")),
+                "coppia":         lambda t: t.get("symbol"),
+                "tipo":           lambda t: t.get("trade_type"),
+                "uscita":         lambda t: t.get("why"),
+                "ora UTC (4h)":   lambda t: (lambda h: None if h is None else f"{h//4*4:02d}-{h//4*4+4:02d}")((t.get("feat") or {}).get("hour_utc")),
+                "giorno sett.":   lambda t: (lambda d: None if d is None else "lun mar mer gio ven sab dom".split()[d])((t.get("feat") or {}).get("dow")),
+                "confidenza":     lambda t: bucket((t.get("feat") or {}).get("conf"),[60,70,80,90],["<60","60-69","70-79","80-89","90+"]),
+                "punteggio seg.": lambda t: bucket((t.get("feat") or {}).get("sig_score"),[60,70,80],["<60","60-69","70-79","80+"]),
+                "RSI 1h":         lambda t: bucket((t.get("feat") or {}).get("rsi1h"),[30,45,55,70],["<30","30-44","45-54","55-69","70+"]),
+                "funding":        lambda t: (lambda f: None if f is None else ("positivo" if f>0 else "negativo/zero"))((t.get("feat") or {}).get("funding_rate")),
+                "BTC ROC 24h":    lambda t: bucket((t.get("feat") or {}).get("btc_roc24h"),[-0.03,0,0.03],["<-3%","-3..0%","0..3%",">3%"]),
+                "ATR%":           lambda t: bucket((t.get("feat") or {}).get("atr_pct"),[0.005,0.01,0.02],["<0.5%","0.5-1%","1-2%",">2%"]),
+                "R:R deciso":     lambda t: bucket((t.get("feat") or {}).get("dec_rr"),[1.5,2,3],["<1.5","1.5-2","2-3","3+"]),
+                "leva":           lambda t: bucket(t.get("leverage"),[10,20],["<10x","10-19x","20x+"]),
+                "live/finto":     lambda t: "live" if t.get("live") else "finto",
+                "Claude consente":lambda t: {1:"si",0:"no"}.get(t.get("claude_win")),
+            }
+
+            def stats(ts):
+                n = len(ts)
+                wins = [t for t in ts if t["net"] > 0]
+                gl = -sum(t["net"] for t in ts if t["net"] <= 0)
+                rs = [t["net_r"] for t in ts if t["r_ok"]]
+                lo, hi = wilson(len(wins), n)
+                return {"n": n,
+                        "vittorie": len(wins),
+                        "win%": f"{100*len(wins)/n:.0f}%" if n else None,
+                        "IC95": f"{100*lo:.0f}-{100*hi:.0f}%" if lo is not None else None,
+                        "netto": f"{sum(t['net'] for t in ts):+.1f}$",
+                        "medio": f"{sum(t['net'] for t in ts)/n:+.1f}$" if n else None,
+                        "PF": round(sum(t['net'] for t in wins)/gl,2) if gl>0 else None,
+                        "R_medio": round(sum(rs)/len(rs),3) if rs else None,
+                        "comm+fund": f"{sum(t['fees']+t['funding'] for t in ts):.1f}$",
+                        "indicativo": n < MIN_N}
+
+            def analyze(events_by_bot):
+                trades = build_trades(events_by_bot)
+                print(f"\n{'='*60}")
+                print(f"TRADE CHIUSI TOTALI: {len(trades)}")
+                tot = stats(trades)
+                print(f"TOTALE: win%={tot['win%']} IC95={tot['IC95']} netto={tot['netto']} medio={tot['medio']} PF={tot['PF']} R_medio={tot['R_medio']}")
+                print(f"COMMISSIONI+FUNDING totali: {tot['comm+fund']}")
+
+                # Per ogni dimensione
+                for name, fn in DIMS.items():
+                    groups = defaultdict(list)
+                    for t in trades:
+                        k = fn(t)
+                        if k is not None:
+                            groups[str(k)].append(t)
+                    if len(groups) <= 1 and name != "uscita":
+                        continue
+                    print(f"\n== {name} ==")
+                    for k, v in sorted(groups.items()):
+                        s = stats(v)
+                        flag = " [INDICATIVO]" if s["indicativo"] else ""
+                        print(f"  {k:<22} n={s['n']:<4} win={s['win%']:<6} IC95={s['IC95']:<12} netto={s['netto']:<10} R={s['R_medio']:<7} PF={s['PF']}{flag}")
+
+                # Diagnosi MAE/MFE
+                losers = [t for t in trades if t["net"]<=0 and t.get("mfe_r") is not None]
+                winners = [t for t in trades if t["net"]>0 and t.get("mae_r") is not None]
+                print(f"\n== DIAGNOSI USCITE ==")
+                print(f"  Perdenti con MFE>=0.5R (erano in utile, poi restituito): {sum(1 for t in losers if t['mfe_r']>=0.5)}/{len(losers)}")
+                print(f"  Vincenti con MAE>=0.8R (quasi stoppati prima di vincere): {sum(1 for t in winners if t['mae_r']>=0.8)}/{len(winners)}")
+
+                # Regime
+                sides = Counter(t.get("side") for t in trades)
+                q_short = sides.get(-1,0)/len(trades) if trades else 0
+                print(f"\n== REGIME ==")
+                print(f"  Short: {q_short:.0%}  Long: {1-q_short:.0%}")
+                if trades and max(sides.values())/len(trades) > 0.8:
+                    print("  AVVISO: campione quasi tutto su un lato, regole apprese potrebbero non valere nel regime opposto")
+
+                # Chiamate Claude
+                calls = [e for evs in events_by_bot.values() for e in evs if e.get("ev")=="claude_call"]
+                ok = sum(1 for c in calls if c.get("ok"))
+                trunc = sum(1 for c in calls if c.get("stop_reason")=="max_tokens")
+                cost = sum(float(c.get("cost_usd") or 0) for c in calls)
+                print(f"\n== CHIAMATE CLAUDE ==")
+                print(f"  Totale: {len(calls)}  Lette (ok): {ok}  Tagliate (max_tokens): {trunc}  Costo: {cost:.2f}$")
+
+                # Candidati scartati
+                cands = [e for evs in events_by_bot.values() for e in evs if e.get("ev")=="candidate"]
+                per_stato = dict(Counter(str(c.get("status","?")).split(":")[0] for c in cands))
+                print(f"\n== CANDIDATI SCARTATI ==")
+                print(f"  Totale: {len(cands)}  Per stato: {per_stato}")
+                print(f"{'='*60}")
+
+            dirs = dict(a.split("=",1) for a in sys.argv[1:] if "=" in a)
+            ev = {bot: read_jsonl(os.path.join(d,"learning_log.jsonl")) for bot,d in dirs.items()}
+            analyze(ev)
+            PYEOF
