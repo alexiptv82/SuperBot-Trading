@@ -31,6 +31,7 @@ from desk.brain import (DAILY_CAP, build_prompt, call_claude,
 from desk.market_context import fetch_all_context
 from desk import learning as _learning
 from desk import macro_calendar
+from desk import trading_hours
 from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
@@ -161,10 +162,30 @@ ERRORS_FILE = os.path.join(DATA_DIR, "errors.md")
 #                         Il "cervello" (trade_history.jsonl, lessons.md, errors.md, learning_log.jsonl)
 #                         NON si tocca mai: il reset non lo cancella e l'opzione {"clear_lessons": true}
 #                         (vecchia) viene ignorata.
+#   trading_hours.json    ORARI DI TRADING (spento di default, lo attiva solo l'utente dall'app): fuori dalle fasce
+#                         il bot si comporta come in pausa (niente nuove aperture, le aperte si chiudono da sole)
 #   heartbeat.json        scritto dal bot: modalita', ultimo ciclo, prossimo ciclo, versione
 # I percorsi si calcolano al momento dell'uso (DATA_DIR puo' cambiare, es. nei test).
 def _flag(name: str) -> str:
     return os.path.join(DATA_DIR, name)
+
+
+def hours_blocked(now_ms: int) -> bool:
+    """True se gli orari di trading sono attivi e adesso siamo FUORI dalle fasce (vedi trading_hours.py).
+    Un errore imprevisto qui vale "non bloccato": il bot lavora come prima (gli errori sul file li gestisce
+    trading_hours stesso, in modo prudente)."""
+    try:
+        return bool(trading_hours.hours_state(DATA_DIR, now_ms)["blocked"])
+    except Exception:
+        return False
+
+
+def drain_reason(now_ms: int) -> str:
+    """Perche' il bot non deve aprire nulla di nuovo adesso: "pausa" (tasto Pausa, vince su tutto), "orari"
+    (fuori dalle fasce di trading) oppure "" (lavora)."""
+    if os.path.exists(_flag("pause.flag")):
+        return "pausa"
+    return "orari" if hours_blocked(now_ms) else ""
 
 
 def _sane_tp(sym: str, tp: Optional[float], where: str) -> Optional[float]:
@@ -425,6 +446,10 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
         HB["claude_schedule"] = schedule_summary(schedule_state(DATA_DIR, int(now * 1000)))
     except Exception:
         pass   # il calendario non deve mai fermare il bot
+    try:
+        HB["hours"] = trading_hours.summary(trading_hours.hours_state(DATA_DIR, int(now * 1000)))
+    except Exception:
+        pass   # gli orari di trading non devono mai fermare il bot
     if "params" not in HB:
         HB["params"] = run_params()   # i parametri veri, mostrati in Impostazioni
     HB["ts"] = now
@@ -759,15 +784,17 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
         source = "rules"
 
-    if not drain and os.path.exists(_flag("pause.flag")):
-        drain = True   # pausa premuta mentre il ciclo era in corso: vale da subito
+    why = drain_reason(now_ms)   # "pausa" | "orari" | "" ; la pausa premuta a ciclo in corso vale da subito
+    if why:
+        drain = True
+    why_txt = "fuori dagli orari di trading" if why == "orari" else "bot in pausa"
     if drain:
         # PAUSA: solo gestione delle posizioni esistenti. Ingressi e DCA sono scartati qui,
         # prima dell'esecuzione, qualunque sia la loro origine (Claude o regole).
         skipped = [d for d in decisions if d["action"] not in MANAGE_ACTIONS]
         decisions = [d for d in decisions if d["action"] in MANAGE_ACTIONS]
         if skipped:
-            print(f"[PAUSA] {len(skipped)} nuovi ingressi/DCA ignorati: bot in pausa "
+            print(f"[{'ORARI' if why == 'orari' else 'PAUSA'}] {len(skipped)} nuovi ingressi/DCA ignorati: {why_txt} "
                   f"({len(acc.positions)} posizioni ancora da completare)", flush=True)
 
     # ---- esecuzione decisioni
@@ -1031,7 +1058,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # In pausa non entra nulla di nuovo: nemmeno la seconda gamba di un'entrata diversificata.
     if drain:
         for s in list(acc.positions):
-            acc.cancel_split(s, "bot in pausa", now_ms)
+            acc.cancel_split(s, why_txt, now_ms)
 
     # ---- processa barre (stop, liq, tp automatici; seconda gamba al ritracciamento)
     import numpy as np
@@ -1509,6 +1536,15 @@ def loop_step(state: dict, ctl: dict) -> bool:
                   if paused else "[AVVIO] ripresa richiesta: il bot lavora", flush=True)
             ctl["next_cycle_ms"] = 0   # reagisce subito al tasto, senza aspettare il prossimo ciclo
         ctl["prev_paused"] = paused
+    # orari di trading: fuori dalle fasce il bot si comporta come in pausa (ma la pausa dell'utente vince sempre)
+    off_hours = hours_blocked(int(time.time() * 1000))
+    if off_hours != ctl.get("prev_off_hours"):
+        if ctl.get("prev_off_hours") is not None or off_hours:
+            print("[ORARI] fuori dagli orari di trading: finisco le posizioni aperte, nessun nuovo ingresso"
+                  if off_hours else "[ORARI] dentro gli orari di trading: il bot lavora", flush=True)
+            ctl["next_cycle_ms"] = 0   # entrando in una fascia si parte subito, senza aspettare il prossimo ciclo
+        ctl["prev_off_hours"] = off_hours
+    drain = paused or off_hours
     try:   # all'inizio di una finestra di Claude il ciclo parte subito (non si aspetta il prossimo giro)
         w = schedule_state(DATA_DIR, int(time.time() * 1000)).get("window")
         wid = w["id"] if w else None
@@ -1520,9 +1556,9 @@ def loop_step(state: dict, ctl: dict) -> bool:
         pass
     n_open = len((state.get("main") or {}).get("positions") or {})
     ran = False
-    if int(time.time() * 1000) >= ctl.get("next_cycle_ms", 0) and not (paused and n_open == 0):
-        ok = iteration(state, drain=paused)
-        wait = cycle_interval_s(state, paused) if ok else RETRY_S
+    if int(time.time() * 1000) >= ctl.get("next_cycle_ms", 0) and not (drain and n_open == 0):
+        ok = iteration(state, drain=drain)
+        wait = cycle_interval_s(state, drain) if ok else RETRY_S
         ctl["next_cycle_ms"] = int(time.time() * 1000) + wait * 1000
         print(f"[SLEEP] prossimo ciclo tra {wait // 60} min", flush=True)
         ran = True
@@ -1551,7 +1587,7 @@ def main() -> None:
 
     if "--once" in sys.argv:
         process_flags(state)
-        iteration(state, drain=os.path.exists(_flag("pause.flag")))
+        iteration(state, drain=bool(drain_reason(int(time.time() * 1000))))
         return
 
     # ogni riga del registro di apprendimento porta la versione del codice (short SHA del deploy) che l'ha scritta:
