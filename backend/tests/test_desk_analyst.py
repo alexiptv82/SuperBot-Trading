@@ -158,3 +158,14 @@ def test_examine_report_end_to_end():
     assert "PER CONFRONTO" in txt and "n=2" in txt
     empty = an.examine({"hawk": [], "bull": []}, {})
     assert "Nessun candidato etichettabile" in empty
+
+
+def test_conf_bucket_edges_and_day_groups_in_the_report():
+    assert [an.conf_bucket(x) for x in (None, 49, 50, 59, 60, 70, 80)] == [None, "<50", "50-59", "50-59", "60-69", "70-79", "80+"]
+    ev = {"hawk": [cand(ts=T0 + i * 86_400_000, features={"dec_sl_pct": 0.01, "dec_tp_pct": 0.02, "dec_type": "medio",
+                                                         "conf": 55 + (i % 2) * 20}) for i in range(4)], "bull": []}
+    candles = []
+    for i in range(4):
+        candles += bars([(100.1, 98.9, 99.0)] + [FLAT] * 95, start=T0 + i * 86_400_000 + BAR)
+    txt = an.examine(ev, {"BTC": candles})
+    assert "PER GIORNO UTC" in txt and "PER CONFIDENZA" in txt and "50-59" in txt and "70-79" in txt

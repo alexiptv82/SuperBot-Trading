@@ -155,6 +155,12 @@ def verdict(s: dict) -> str:
     return "nessuna differenza chiara: non cambiare nulla"
 
 
+def conf_bucket(x):
+    if x is None:
+        return None
+    return "<50" if x < 50 else "50-59" if x < 60 else "60-69" if x < 70 else "70-79" if x < 80 else "80+"
+
+
 def group_by(items: list, key) -> dict:
     out = {}
     for c, lab in items:
@@ -243,6 +249,8 @@ def examine(events_by_bot: dict, candles_by_symbol: dict, now_ms: int = None) ->
         L.append(line(k, s))
         L.append(f"      -> {verdict(s)}")
     for title, key in (("PER LATO", lambda c: {1: "long", -1: "short"}.get(c.get("side"))),
+                       ("PER CONFIDENZA (la confidenza distingue i buoni dai cattivi?)", lambda c: conf_bucket((c.get("features") or {}).get("conf"))),
+                       ("PER GIORNO UTC (i casi sono concentrati in pochi giorni?)", lambda c: time.strftime("%Y-%m-%d", time.gmtime((c.get("ts") or 0) / 1000))),
                        ("PER BOT", lambda c: c.get("bot")),
                        ("PER SIMBOLO (n>=5)", lambda c: c.get("symbol")),
                        ("PER REGIME MACRO", lambda c: (c.get("features") or {}).get("macro_regime")),
@@ -259,15 +267,21 @@ def examine(events_by_bot: dict, candles_by_symbol: dict, now_ms: int = None) ->
     L.append(line("tutti i candidati", summarize(labeled)))
 
     # confronto con cio' che il bot ha davvero eseguito (R reale netto, dalle chiusure del registro)
-    real = {}
+    real, real_side = {}, {}
     for bot, evs in events_by_bot.items():
         for e in evs:
             if e.get("ev") == "close" and e.get("net_r") is not None:
-                real.setdefault((bot, e.get("run_no"), e.get("id")), 0.0)
-                real[(bot, e.get("run_no"), e.get("id"))] += float(e["net_r"])
+                k = (bot, e.get("run_no"), e.get("id"))
+                real.setdefault(k, 0.0)
+                real[k] += float(e["net_r"])
+                real_side.setdefault(k, e.get("side"))
     if real:
         rv = list(real.values())
-        L.append(f"\n== PER CONFRONTO: trade eseguiti (R reale netto) ==\n  n={len(rv)}  R_medio={sum(rv) / len(rv):+.2f}"
+        L.append(f"\n== PER CONFRONTO: trade eseguiti (R reale netto, con commissioni) ==\n  n={len(rv)}  R_medio={sum(rv) / len(rv):+.2f}"
                  f"  win={100 * sum(1 for r in rv if r > 0) / len(rv):.0f}%")
+        for lato, nome in ((1, "long"), (-1, "short")):
+            vals = [real[k] for k in real if real_side.get(k) == lato]
+            if vals:
+                L.append(f"  {nome:<8} n={len(vals):<4} R_medio={sum(vals) / len(vals):+.2f}  win={100 * sum(1 for r in vals if r > 0) / len(vals):.0f}%")
     L.append("=" * 60)
     return "\n".join(L)
