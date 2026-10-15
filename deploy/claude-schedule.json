@@ -1,8 +1,19 @@
 {
-  "nota": "Calendario di Claude per Hawk e Bull. Gli orari sono in ORA SVIZZERA: il passaggio a UTC (e il cambio d'ora del 25 ottobre) lo fa il workflow. Se 'alle' e' uguale o prima di 'dalle', la finestra finisce il giorno dopo. Ogni finestra ha il suo budget (0,70$ per bot). Fuori dalle finestre Claude non viene consultato: decidono le regole. Per cambiare solo un bot si aggiunge 'windows_hawk' o 'windows_bull' (sostituisce 'windows' per quel bot). Togliere il file dai dati dei bot riporta il budget giornaliero di sempre.",
+  "nota": "Calendario di Claude per Hawk e Bull. Gli orari sono in ORA SVIZZERA: il passaggio a UTC (e il cambio d'ora del 25 ottobre) lo fa il workflow. Se 'alle' e' uguale o prima di 'dalle', la finestra finisce il giorno dopo. Ogni finestra ha il suo budget (0,70$ per bot). Fuori dalle finestre Claude non viene consultato: decidono le regole. 'windows_hawk' e 'windows_bull' sostituiscono 'windows' per quel bot; 'windows' resta come storico delle prime tre finestre (13-15 ottobre). Dal 15 ottobre: Hawk senza finestre (windows_hawk vuoto = Claude spento, decidono le regole), Bull con una sola finestra al giorno a rotazione (14:30-18:30, 00:00-04:00, 08:00-12:00) fino al 22 ottobre. Dopo l'ultima finestra Claude resta spento finche' non si aggiunge un nuovo calendario. Togliere il file dai dati dei bot riporta il budget giornaliero di sempre.",
   "windows": [
     {"giorno": "2026-10-13", "dalle": "14:30", "alle": "18:30"},
     {"giorno": "2026-10-14", "dalle": "00:00", "alle": "04:00"},
     {"giorno": "2026-10-15", "dalle": "08:00", "alle": "12:00"}
+  ],
+  "windows_hawk": [],
+  "windows_bull": [
+    {"giorno": "2026-10-15", "dalle": "08:00", "alle": "12:00"},
+    {"giorno": "2026-10-16", "dalle": "14:30", "alle": "18:30"},
+    {"giorno": "2026-10-17", "dalle": "00:00", "alle": "04:00"},
+    {"giorno": "2026-10-18", "dalle": "08:00", "alle": "12:00"},
+    {"giorno": "2026-10-19", "dalle": "14:30", "alle": "18:30"},
+    {"giorno": "2026-10-20", "dalle": "00:00", "alle": "04:00"},
+    {"giorno": "2026-10-21", "dalle": "08:00", "alle": "12:00"},
+    {"giorno": "2026-10-22", "dalle": "14:30", "alle": "18:30"}
   ]
 }
