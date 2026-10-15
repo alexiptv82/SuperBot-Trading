@@ -119,58 +119,47 @@ def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
                     now: Optional[float] = None) -> dict:
     """Un portafoglio come lo mostra la pagina Live.
 
-    Quando desk_mode != 'live' i dati P&L e le posizioni NON vengono letti dai file del bot paper:
-    verrebbero confusi con quelli reali. Si restituisce solo lo scheletro con valori a zero/None
-    e il flag 'available=False' cosi' il frontend mostra lo stato corretto senza numeri inventati.
+    I numeri (P&L, posizioni, trade chiusi) si leggono dai file del bot SOLO se il server e' in live
+    (DESK_MODE=live) E il bot sta girando davvero in live (heartbeat exec_mode == "live"). Negli altri
+    casi - server in paper, bot ancora la versione vecchia senza live, bot in paper, bot fermo - quei
+    file sono i dati del simulatore: mostrarli nella pagina Live le farebbe passare per soldi veri.
+    Si restituisce quindi uno scheletro a zero (`real_data: False`); lo stato del bot (heartbeat,
+    interruttore) resta leggibile perche' serve a spiegare perche' non ci sono numeri.
     """
     capital = _positive_float(capital, DEFAULT_CAPITAL)
     loss_pct = _positive_float(loss_pct, DEFAULT_LOSS_PCT)
     limit = round(capital * loss_pct / 100.0, 2)
     hb = dv.read_heartbeat(data_dir, now)
+    server_live = (desk_mode or "").strip().lower() == "live"
+    bot_mode = (hb or {}).get("exec_mode")
+    base = {
+        "capital_usdt": capital,
+        "daily_loss_limit_usdt": limit,
+        "paper_mode": not server_live,       # il server non e' in live (DESK_MODE != live)
+        "trading_enabled": read_trading_enabled(data_dir),
+        "bot_mode": bot_mode,
+        "heartbeat_age_s": round(hb["age_s"], 1) if hb else None,
+    }
 
-    # In modalita' paper: niente dati dal bot paper sulla pagina Live.
-    if desk_mode.strip().lower() != "live":
-        return {
-            "available": False,
-            "paper_mode": True,       # segnala al frontend che il server gira in paper
-            "capital_usdt": capital,
-            "daily_loss_limit_usdt": limit,
-            "daily_pnl": 0.0,
-            "total_pnl": 0.0,
-            "daily_limit_hit": False,
-            "open_positions": 0,
-            "positions": [],
-            "total_closed": 0,
-            "cycle": 0,
-            "halt": None,
-            "trading_enabled": read_trading_enabled(data_dir),
-            "bot_mode": (hb or {}).get("exec_mode"),
-            "live_interlock": None,
-            "live_pending_close": [],
-            "heartbeat_age_s": round(hb["age_s"], 1) if hb else None,
-        }
+    if not (server_live and bot_mode == "live"):
+        return {**base, "available": False, "real_data": False,
+                "daily_pnl": 0.0, "total_pnl": 0.0, "daily_limit_hit": False,
+                "open_positions": 0, "positions": [], "total_closed": 0, "cycle": 0, "halt": None,
+                "live_interlock": None, "live_pending_close": []}
 
-    # In modalita' live: legge stato e trade dai file del bot live.
     state = dv.read_state(data_dir)
     trades = dv.closed_records(data_dir, state)
     day, tot = daily_pnl(trades, now), total_pnl(trades)
     rows = _position_rows(state)
     return {
-        "available": bool(state),
-        "paper_mode": False,
-        "capital_usdt": capital,
-        "daily_loss_limit_usdt": limit,
-        "daily_pnl": round(day, 2),
-        "total_pnl": round(tot, 2),
+        **base,
+        "available": bool(state), "real_data": True,
+        "daily_pnl": round(day, 2), "total_pnl": round(tot, 2),
         "daily_limit_hit": day <= -limit,
-        "open_positions": len(rows),
-        "positions": rows,
+        "open_positions": len(rows), "positions": rows,
         "total_closed": len(trades),
         "cycle": state.get("cycle", 0) if state else 0,
         "halt": state.get("halt") if state else None,
-        "trading_enabled": read_trading_enabled(data_dir),
-        "bot_mode": (hb or {}).get("exec_mode"),
         "live_interlock": (hb or {}).get("live_interlock"),
         "live_pending_close": (hb or {}).get("live_pending_close") or [],
-        "heartbeat_age_s": round(hb["age_s"], 1) if hb else None,
     }

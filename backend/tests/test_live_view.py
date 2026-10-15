@@ -23,6 +23,11 @@ def _write(d, name, obj):
         json.dump(obj, f)
 
 
+def _live_hb(d, **extra):
+    """Heartbeat di un bot che gira DAVVERO in live: solo cosi' la pagina Live mostra i suoi numeri."""
+    _write(d, "heartbeat.json", {"ts": NOW - 2.0, "exec_mode": "live", **extra})
+
+
 def _trade(i, net, close_ms):
     return {"id": i, "symbol": "BTC", "side": 1, "net": net, "close_ms": close_ms}
 
@@ -76,7 +81,7 @@ def test_trading_switch_roundtrip_is_atomic():
 def test_portfolio_limit_is_capital_times_pct():
     with tempfile.TemporaryDirectory() as d:
         _write(d, "state_v2.json", {"cycle": 7, "main": {"positions": {}}})
-        p = lv.build_portfolio(d, "1000", "25", now=NOW)
+        p = lv.build_portfolio(d, "1000", "25", "live", now=NOW)
         assert p["capital_usdt"] == 1000.0
         assert p["daily_loss_limit_usdt"] == 250.0                       # per bot, non sulla somma
         assert p["daily_limit_hit"] is False
@@ -85,18 +90,20 @@ def test_portfolio_limit_is_capital_times_pct():
 def test_portfolio_limit_hit_exactly_at_limit():
     with tempfile.TemporaryDirectory() as d:
         _write(d, "state_v2.json", {"cycle": 1, "main": {"positions": {}}})
+        _live_hb(d)
         _write_history(d, [_trade(1, -250.0, MIDNIGHT_MS + 1000)])
-        p = lv.build_portfolio(d, 1000, 25, now=NOW)
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
         assert p["daily_pnl"] == -250.0 and p["daily_limit_hit"] is True   # come il bot: <= -limite
         _write_history(d, [_trade(1, -249.99, MIDNIGHT_MS + 1000)])
-        assert lv.build_portfolio(d, 1000, 25, now=NOW)["daily_limit_hit"] is False
+        assert lv.build_portfolio(d, 1000, 25, "live", now=NOW)["daily_limit_hit"] is False
 
 
 def test_portfolio_ignores_yesterday_for_the_limit_but_not_for_total():
     with tempfile.TemporaryDirectory() as d:
         _write(d, "state_v2.json", {"cycle": 1, "main": {"positions": {}}})
+        _live_hb(d)
         _write_history(d, [_trade(1, -400.0, MIDNIGHT_MS - 3_600_000), _trade(2, 20.0, MIDNIGHT_MS + 10)])
-        p = lv.build_portfolio(d, 1000, 25, now=NOW)
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
         assert p["daily_pnl"] == 20.0 and p["daily_limit_hit"] is False
         assert p["total_pnl"] == -380.0 and p["total_closed"] == 2
 
@@ -104,21 +111,22 @@ def test_portfolio_ignores_yesterday_for_the_limit_but_not_for_total():
 def test_portfolio_bad_capital_falls_back_to_defaults():
     with tempfile.TemporaryDirectory() as d:
         for bad in (None, "", "abc", "0", "-5"):
-            p = lv.build_portfolio(d, bad, bad, now=NOW)
+            p = lv.build_portfolio(d, bad, bad, "live", now=NOW)
             assert p["capital_usdt"] == lv.DEFAULT_CAPITAL
             assert p["daily_loss_limit_usdt"] == lv.DEFAULT_CAPITAL * lv.DEFAULT_LOSS_PCT / 100
 
 
 def test_portfolio_positions_and_missing_data():
     with tempfile.TemporaryDirectory() as d:
-        p = lv.build_portfolio(d, 1000, 25, now=NOW)                     # nessun file del bot
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)                     # nessun file del bot
         assert p["available"] is False and p["positions"] == [] and p["bot_mode"] is None
         assert p["trading_enabled"] is False
+        _live_hb(d)
         _write(d, "state_v2.json", {"cycle": 3, "main": {"positions": {
             "ETH": {"side": -1, "entry": 3000.0, "leverage": 5, "total_margin": 100.0, "sl": 3100.0,
                     "tp": 2800.0, "trade_type": "scalp", "open_ms": 1},
             "rotto": "non e' un dict"}}})
-        p = lv.build_portfolio(d, 1000, 25, now=NOW)
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
         assert p["available"] is True and p["open_positions"] == 1
         assert p["positions"][0]["symbol"] == "ETH" and p["positions"][0]["margin"] == 100.0
 
@@ -126,14 +134,14 @@ def test_portfolio_positions_and_missing_data():
 def test_bot_mode_comes_from_heartbeat_not_from_secrets():
     with tempfile.TemporaryDirectory() as d:
         _write(d, "state_v2.json", {"cycle": 1, "main": {"positions": {}}})
-        assert lv.build_portfolio(d, 1000, 25, now=NOW)["bot_mode"] is None          # bot senza battito
+        assert lv.build_portfolio(d, 1000, 25, "live", now=NOW)["bot_mode"] is None          # bot senza battito
         _write(d, "heartbeat.json", {"ts": NOW - 12.0})                               # codice vecchio: niente exec_mode
-        assert lv.build_portfolio(d, 1000, 25, now=NOW)["bot_mode"] is None
+        assert lv.build_portfolio(d, 1000, 25, "live", now=NOW)["bot_mode"] is None
         _write(d, "heartbeat.json", {"ts": NOW - 12.0, "exec_mode": "paper"})
-        p = lv.build_portfolio(d, 1000, 25, now=NOW)
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
         assert p["bot_mode"] == "paper" and p["heartbeat_age_s"] == 12.0
         _write(d, "heartbeat.json", {"ts": NOW - 2.0, "exec_mode": "live"})
-        assert lv.build_portfolio(d, 1000, 25, now=NOW)["bot_mode"] == "live"
+        assert lv.build_portfolio(d, 1000, 25, "live", now=NOW)["bot_mode"] == "live"
 
 
 def test_wallet_credentials_use_only_the_read_only_key():
@@ -192,12 +200,62 @@ def test_combine_wallets_sums_only_when_every_bot_is_readable():
 def test_live_interlock_comes_from_the_heartbeat():
     with tempfile.TemporaryDirectory() as d:
         _write(d, "state_v2.json", {"cycle": 1, "main": {"positions": {}}})
-        p = lv.build_portfolio(d, 1000, 25, now=NOW)
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
         assert p["live_interlock"] is None and p["live_pending_close"] == []        # nessun battito
         _write(d, "heartbeat.json", {"ts": NOW - 3.0, "exec_mode": "live", "live_interlock": None})
-        assert lv.build_portfolio(d, 1000, 25, now=NOW)["live_interlock"] is None
+        assert lv.build_portfolio(d, 1000, 25, "live", now=NOW)["live_interlock"] is None
         _write(d, "heartbeat.json", {"ts": NOW - 3.0, "exec_mode": "live",
                                      "live_interlock": "posizioni su Bitget che il motore non conosce: ETH",
                                      "live_pending_close": ["BTC"]})
-        p = lv.build_portfolio(d, 1000, 25, now=NOW)
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
         assert "ETH" in p["live_interlock"] and p["live_pending_close"] == ["BTC"]
+
+
+def _paper_files(d):
+    """Quello che scrive un bot paper: posizioni aperte e storico con guadagni finti."""
+    _write(d, "state_v2.json", {"cycle": 9, "main": {"positions": {
+        "ETH": {"side": 1, "entry": 3000.0, "leverage": 5, "total_margin": 100.0, "open_ms": 1}}}})
+    _write_history(d, [_trade(1, 512.35, MIDNIGHT_MS + 1000), _trade(2, 781.13, MIDNIGHT_MS - 3_600_000)])
+
+
+def _assert_zeroed(p):
+    assert p["real_data"] is False and p["available"] is False
+    assert p["daily_pnl"] == 0.0 and p["total_pnl"] == 0.0 and p["daily_limit_hit"] is False
+    assert p["open_positions"] == 0 and p["positions"] == [] and p["total_closed"] == 0
+    assert p["cycle"] == 0 and p["halt"] is None
+    assert p["live_interlock"] is None and p["live_pending_close"] == []
+
+
+def test_paper_data_never_shown_when_server_is_not_live():
+    with tempfile.TemporaryDirectory() as d:
+        _paper_files(d)
+        _live_hb(d)                                    # anche con un bot live: server in paper = niente numeri
+        for mode in ("paper", "", None, "PAPER"):
+            p = lv.build_portfolio(d, 1000, 25, mode, now=NOW)
+            _assert_zeroed(p)
+            assert p["paper_mode"] is True
+
+
+def test_paper_data_never_shown_while_the_bot_is_not_running_live():
+    """Il caso dello screenshot: DESK_MODE=live sul server, ma i bot sono ancora la versione paper."""
+    with tempfile.TemporaryDirectory() as d:
+        _paper_files(d)
+        for hb in (None,                                              # nessun battito (bot fermo)
+                   {"ts": NOW - 3.0},                                 # versione vecchia: niente exec_mode
+                   {"ts": NOW - 3.0, "exec_mode": "paper"}):          # bot in paper
+            if hb is not None:
+                _write(d, "heartbeat.json", hb)
+            p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
+            _assert_zeroed(p)
+            assert p["paper_mode"] is False                           # il server e' live: il motivo e' il bot
+            assert p["capital_usdt"] == 1000.0 and p["daily_loss_limit_usdt"] == 250.0
+
+
+def test_real_numbers_appear_only_with_server_live_and_bot_live():
+    with tempfile.TemporaryDirectory() as d:
+        _paper_files(d)
+        _live_hb(d)
+        p = lv.build_portfolio(d, 1000, 25, "  LIVE ", now=NOW)         # maiuscole/spazi non contano
+        assert p["real_data"] is True and p["available"] is True and p["paper_mode"] is False
+        assert p["daily_pnl"] == 512.35 and p["total_pnl"] == 1293.48
+        assert p["open_positions"] == 1 and p["total_closed"] == 2

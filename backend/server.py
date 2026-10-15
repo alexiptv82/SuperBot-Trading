@@ -505,7 +505,7 @@ async def health():
         'mode': config.TRADING_MODE,
         'version': '1.0.0',
         'desk_mode': os.environ.get('DESK_MODE', 'paper'),
-        'build': '2026-10-15-fix-live-pnl',
+        'build': '2026-10-15-live-needs-live-bot',
     }
 
 # Serve frontend React se la cartella build esiste
