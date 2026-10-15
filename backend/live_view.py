@@ -115,20 +115,51 @@ def _positive_float(value, default: float) -> float:
     return v if v > 0 else default
 
 
-def build_portfolio(data_dir: str, capital, loss_pct, now: Optional[float] = None) -> dict:
-    """Un portafoglio come lo mostra la pagina Live."""
+def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
+                    now: Optional[float] = None) -> dict:
+    """Un portafoglio come lo mostra la pagina Live.
+
+    Quando desk_mode != 'live' i dati P&L e le posizioni NON vengono letti dai file del bot paper:
+    verrebbero confusi con quelli reali. Si restituisce solo lo scheletro con valori a zero/None
+    e il flag 'available=False' cosi' il frontend mostra lo stato corretto senza numeri inventati.
+    """
     capital = _positive_float(capital, DEFAULT_CAPITAL)
     loss_pct = _positive_float(loss_pct, DEFAULT_LOSS_PCT)
-    limit = capital * loss_pct / 100.0
+    limit = round(capital * loss_pct / 100.0, 2)
+    hb = dv.read_heartbeat(data_dir, now)
+
+    # In modalita' paper: niente dati dal bot paper sulla pagina Live.
+    if desk_mode.strip().lower() != "live":
+        return {
+            "available": False,
+            "paper_mode": True,       # segnala al frontend che il server gira in paper
+            "capital_usdt": capital,
+            "daily_loss_limit_usdt": limit,
+            "daily_pnl": 0.0,
+            "total_pnl": 0.0,
+            "daily_limit_hit": False,
+            "open_positions": 0,
+            "positions": [],
+            "total_closed": 0,
+            "cycle": 0,
+            "halt": None,
+            "trading_enabled": read_trading_enabled(data_dir),
+            "bot_mode": (hb or {}).get("exec_mode"),
+            "live_interlock": None,
+            "live_pending_close": [],
+            "heartbeat_age_s": round(hb["age_s"], 1) if hb else None,
+        }
+
+    # In modalita' live: legge stato e trade dai file del bot live.
     state = dv.read_state(data_dir)
     trades = dv.closed_records(data_dir, state)
     day, tot = daily_pnl(trades, now), total_pnl(trades)
     rows = _position_rows(state)
-    hb = dv.read_heartbeat(data_dir, now)
     return {
         "available": bool(state),
+        "paper_mode": False,
         "capital_usdt": capital,
-        "daily_loss_limit_usdt": round(limit, 2),
+        "daily_loss_limit_usdt": limit,
         "daily_pnl": round(day, 2),
         "total_pnl": round(tot, 2),
         "daily_limit_hit": day <= -limit,
@@ -138,11 +169,7 @@ def build_portfolio(data_dir: str, capital, loss_pct, now: Optional[float] = Non
         "cycle": state.get("cycle", 0) if state else 0,
         "halt": state.get("halt") if state else None,
         "trading_enabled": read_trading_enabled(data_dir),
-        # Come gira DAVVERO il bot ("live"/"paper"), dal suo battito cardiaco. None = il bot non e'
-        # raggiungibile oppure gira ancora con un codice precedente al live (container da ridistribuire).
         "bot_mode": (hb or {}).get("exec_mode"),
-        # Collegamento con l'exchange: motivo per cui il bot ha BLOCCATO le nuove aperture (posizione estranea,
-        # lettura fallita, quantita' diverse...) oppure None. Sempre dal battito cardiaco del bot.
         "live_interlock": (hb or {}).get("live_interlock"),
         "live_pending_close": (hb or {}).get("live_pending_close") or [],
         "heartbeat_age_s": round(hb["age_s"], 1) if hb else None,

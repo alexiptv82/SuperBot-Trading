@@ -687,13 +687,14 @@ async def live_overview(session=Depends(require_session)):
     """Saldo BitGet + stato di Hawk e Bull in una sola chiamata (pagina Live)."""
     import time as _time
     wallet = await _fetch_wallets()
+    desk_mode = os.environ.get("DESK_MODE", "paper").strip().lower()
     loss_pct = os.environ.get("DESK_DAILY_LOSS_PCT", "25")
     return {
-        "mode": os.environ.get("DESK_MODE", "paper").strip().lower(),
+        "mode": desk_mode,
         "timestamp_ms": int(_time.time() * 1000),
         "wallet": wallet,
-        "hawk": live_view.build_portfolio(_DESK_DATA, os.environ.get("DESK_HAWK_CAPITAL"), loss_pct),
-        "bull": live_view.build_portfolio(_DESK_DATA_BULL, os.environ.get("DESK_BULL_CAPITAL"), loss_pct),
+        "hawk": live_view.build_portfolio(_DESK_DATA, os.environ.get("DESK_HAWK_CAPITAL"), loss_pct, desk_mode),
+        "bull": live_view.build_portfolio(_DESK_DATA_BULL, os.environ.get("DESK_BULL_CAPITAL"), loss_pct, desk_mode),
     }
 
 

@@ -137,13 +137,15 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
 
   const { capital_usdt, daily_pnl, total_pnl, daily_loss_limit_usdt,
     daily_limit_hit, open_positions, positions = [], total_closed,
-    cycle, halt, available, trading_enabled, bot_mode, live_interlock, live_pending_close = [] } = data;
+    cycle, halt, available, trading_enabled, bot_mode, live_interlock, live_pending_close = [],
+    paper_mode } = data;
 
   const isLive = mode === 'live';
-  // I Secret dicono "live", ma conta come gira DAVVERO il bot (dal suo battito cardiaco).
-  // Se il container non e' stato ridistribuito gira ancora in paper: niente ordini reali.
+  // paper_mode=true significa DESK_MODE!=live sul server → nessun dato reale disponibile
+  const serverIsLive = !paper_mode;
+  // Il bot gira davvero in live dal suo heartbeat
   const botIsLive = bot_mode === 'live';
-  const switchBlocked = isLive && !botIsLive && !trading_enabled;
+  const switchBlocked = isLive && serverIsLive && !botIsLive && !trading_enabled;
 
   const handleToggle = async () => {
     if (toggling || switchBlocked) return;
@@ -244,7 +246,19 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
         </div>
       </div>
 
-      {isLive && !botIsLive && (
+      {/* Server ancora in paper mode: DESK_MODE non impostato a live */}
+      {isLive && paper_mode && (
+        <div style={{
+          margin: '12px 20px 0', padding: '10px 14px', borderRadius: '8px',
+          background: 'rgba(100,116,139,0.12)', border: '1px solid rgba(100,116,139,0.3)',
+          color: '#94a3b8', fontSize: '12px', lineHeight: 1.5,
+        }}>
+          ⏸ Bot non ancora avviato in modalità live. Premi <strong style={{color:'#f1f5f9'}}>▶ Avvia</strong> per attivarlo — oppure imposta <code style={{fontSize:'11px'}}>DESK_MODE=live</code> nei GitHub Secrets e ridistribuisci i bot.
+        </div>
+      )}
+
+      {/* Server è live ma il container del bot gira ancora in paper */}
+      {isLive && !paper_mode && !botIsLive && (
         <div style={{
           margin: '12px 20px 0', padding: '8px 12px', borderRadius: '8px',
           background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)',
@@ -268,7 +282,7 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
         </div>
       )}
 
-      {/* P&L stats */}
+      {/* P&L stats — visibili solo quando il server è in live e ha dati reali */}
       <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
         <div>
           <div style={{ fontSize: '10px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Capitale</div>
@@ -276,14 +290,14 @@ function PortfolioCard({ name, emoji, data, color, onToggleTrading, mode }) {
         </div>
         <div>
           <div style={{ fontSize: '10px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Oggi</div>
-          <div style={{ fontSize: '16px', fontWeight: 800, color: pnlColor(daily_pnl), fontVariantNumeric: 'tabular-nums' }}>
-            {pnlSign(daily_pnl)}${fmt(daily_pnl, 2)}
+          <div style={{ fontSize: '16px', fontWeight: 800, color: paper_mode ? '#334155' : pnlColor(daily_pnl), fontVariantNumeric: 'tabular-nums' }}>
+            {paper_mode ? '--' : <>{pnlSign(daily_pnl)}${fmt(daily_pnl, 2)}</>}
           </div>
         </div>
         <div>
           <div style={{ fontSize: '10px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Totale</div>
-          <div style={{ fontSize: '16px', fontWeight: 800, color: pnlColor(total_pnl), fontVariantNumeric: 'tabular-nums' }}>
-            {pnlSign(total_pnl)}${fmt(total_pnl, 2)}
+          <div style={{ fontSize: '16px', fontWeight: 800, color: paper_mode ? '#334155' : pnlColor(total_pnl), fontVariantNumeric: 'tabular-nums' }}>
+            {paper_mode ? '--' : <>{pnlSign(total_pnl)}${fmt(total_pnl, 2)}</>}
           </div>
         </div>
       </div>
