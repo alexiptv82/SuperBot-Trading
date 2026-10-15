@@ -52,6 +52,20 @@ jobs:
             PYEOF
               docker logs $C 2>&1 | grep -E '^\[LIVE_CONNECTOR\] modalit' | tail -1 >> $OUT || true
             done
+            # --- Prova a secco del calendario macro DENTRO il container, con una cartella temporanea (non scrive nei dati del bot)
+            echo "=== PROVA CALENDARIO MACRO (cartella temporanea) ===" >> $OUT
+            docker exec -i superbot-desk-hawk python - >> $OUT 2>&1 <<'PYEOF' || echo "(prova macro non riuscita)" >> $OUT
+            import json, tempfile, time
+            from desk import macro_calendar as mc
+            d = tempfile.mkdtemp()
+            now = int(time.time() * 1000)
+            m = mc.current(d, now)
+            v = mc.heartbeat_view(m)
+            print("regime=%s blocco=%s bonus=%s eventi=%s errore=%s" % (v.get("regime"), v.get("blackout"), v.get("conf_bonus"), v.get("n_events"), v.get("error") or "-"))
+            print("prossimo:", json.dumps(v.get("next"), ensure_ascii=False)[:200])
+            for u in (v.get("upcoming") or [])[:5]:
+                print("  in arrivo:", json.dumps(u, ensure_ascii=False)[:160])
+            PYEOF
             echo "DONE"
 
       - name: Pubblica output
