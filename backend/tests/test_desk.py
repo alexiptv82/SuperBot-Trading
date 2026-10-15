@@ -8,6 +8,7 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault("DESK_MACRO_FETCH", "0")   # i test non scaricano mai il calendario macro vero (vedi conftest.py)
 
 from desk.engine import Limits, PaperAccount  # noqa: E402
 
@@ -569,9 +570,11 @@ def _sandbox(claude=None):
     world = _world()
     saved = (cli.fetch_candles, _mc.fetch_all_context, _brain.call_claude, _c.call_claude,
              _c.DATA_DIR, _c.STATE_FILE, os.environ.get("ANTHROPIC_API_KEY"),
-             os.environ.pop("TELEGRAM_BOT_TOKEN", None))
+             os.environ.pop("TELEGRAM_BOT_TOKEN", None), _c.fetch_all_context)
     cli.fetch_candles = lambda sym, bar="15m", limit=300: (world.get(sym, np.zeros((0, 6)))[-limit:].tolist())
-    _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
+    _no_ctx = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
+    _mc.fetch_all_context = _no_ctx
+    _c.fetch_all_context = _no_ctx     # cli usa il nome importato: senza questo ogni ciclo di test andrebbe in rete
     calls = []
 
     def counted(system, user, max_tokens=1100, timeout=60):
@@ -592,7 +595,7 @@ def _sandbox(claude=None):
             yield d, calls
     finally:
         (cli.fetch_candles, _mc.fetch_all_context, _brain.call_claude, _c.call_claude,
-         _c.DATA_DIR, _c.STATE_FILE, key, tok) = saved
+         _c.DATA_DIR, _c.STATE_FILE, key, tok, _c.fetch_all_context) = saved
         if key is None:
             os.environ.pop("ANTHROPIC_API_KEY", None)
         else:

@@ -30,6 +30,7 @@ from desk.brain import (DAILY_CAP, build_prompt, call_claude,
                         SYSTEM as SYSTEM_HAWK, SYSTEM_BULL)
 from desk.market_context import fetch_all_context
 from desk import learning as _learning
+from desk import macro_calendar
 from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
@@ -671,6 +672,20 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     if state.get("market_ctx"):
         ctx_for_prompt = state["market_ctx"]
 
+    # calendario macro: regime del momento. NON solleva mai: se manca il dato o qualcosa va storto e' uno stato
+    # neutro (nessun blocco, nessun bonus) e il bot lavora come prima.
+    macro = macro_calendar.current(DATA_DIR, now_ms)
+    HB["macro"] = macro_calendar.heartbeat_view(macro)
+    macro_feats = macro_calendar.features(macro)
+    if macro["regime"] in ("medio", "alto"):
+        nxt = macro.get("next")
+        print(f"[MACRO] regime {macro['regime'].upper()}  blocco nuove aperture={'SI' if macro['blackout'] else 'no'}  "
+              f"bonus confidenza=+{macro['conf_bonus']}"
+              + (f"  prossimo: {nxt['title']} tra {nxt['min']} min" if nxt else ""), flush=True)
+    elif macro["regime"] == "nd":
+        print(f"[MACRO] calendario non disponibile ({macro.get('error') or 'nessun dato'}): il bot lavora come prima",
+              flush=True)
+
     # segnali tecnici
     readings_list = []
     readings_map: dict = {}
@@ -720,7 +735,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         print("[FINESTRA] fuori dal calendario: Claude non viene consultato, decidono le regole", flush=True)
     elif call_due and can_call(state, day):
         try:
-            prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats)
+            prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats,
+                                  macro_lines="\n".join(macro_calendar.prompt_lines(macro)))
             max_tok, timeout_s = claude_limits(LIVE._live)
             text, usage = call_claude(SYSTEM, prompt, max_tokens=max_tok, timeout=timeout_s)
             cost = record_spend(state, day, usage)
@@ -767,7 +783,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 "run_no": state.get("run_no", 1), "symbol": s, "price": price, "source": source,
                 "side": 1 if str(d.get("action", "")).startswith("open_long") else -1,
                 "features": build_features(s, readings_map.get(s), ctx_for_prompt, d, now_ms,
-                                           readings_map.get("BTC")),
+                                           readings_map.get("BTC"), extra=macro_feats),
             }, candidate=True)
         except Exception:
             pass
@@ -874,10 +890,20 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 continue
             if sym in acc.positions:
                 continue
-            # soglia confidenza tier-aware
-            if dec["confidence"] < tier_entry_score(sym):
-                print(f"[CONF_LOW] {sym} conf={dec['confidence']} < soglia={tier_entry_score(sym)}")
-                _candidate("conf_bassa", dec, px)
+            # ── CALENDARIO MACRO: nessuna NUOVA apertura attorno a un evento ad alto impatto ──────────────
+            # (le posizioni gia' aperte non vengono toccate: stop, take profit, DCA e chiusure restano come sempre)
+            if macro["blackout"]:
+                print(f"[MACRO_BLOCCO] {sym}: nuova apertura sospesa fino alle "
+                      f"{macro_calendar.hm_utc(macro['blackout_until_ms'])} UTC (evento macro)", flush=True)
+                _candidate("macro_blocco", dec, px)
+                continue
+            # soglia confidenza tier-aware, piu' il bonus del regime macro (0 se calmo o calendario non disponibile)
+            base_thr = tier_entry_score(sym)
+            thr = base_thr + macro["conf_bonus"]
+            if dec["confidence"] < thr:
+                print(f"[CONF_LOW] {sym} conf={dec['confidence']} < soglia={thr}"
+                      + (f" ({base_thr}+{macro['conf_bonus']} macro)" if macro["conf_bonus"] else ""))
+                _candidate("conf_bassa_macro" if dec["confidence"] >= base_thr else "conf_bassa", dec, px)
                 continue
             # filtro R:R minimo 1.5 — se SL e TP sono entrambi definiti
             sl_pct = dec.get("stop_loss_pct", 0)
@@ -921,7 +947,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             # valori su cui si decide, registrati con l'apertura (e con i candidati scartati)
             try:
                 feats = build_features(sym, readings_map.get(sym), ctx_for_prompt, dec, now_ms,
-                                       readings_map.get("BTC"))
+                                       readings_map.get("BTC"), extra=macro_feats)
             except Exception:
                 feats = {}   # la registrazione non deve mai impedire un'apertura
             feats.update(proposed_margin=raw_margin, proposed_lev=raw_lev, split_requested=is_split,

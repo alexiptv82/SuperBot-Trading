@@ -9,6 +9,8 @@ on:
       - "backend/desk/**"
       - "backend/rule_pool/**"
       - "backend/tests/test_desk.py"
+      - "backend/tests/test_desk_macro.py"
+      - "backend/tests/conftest.py"
       - "backend/tests/test_live_*.py"
       - "backend/tests/fake_bitget.py"
 
@@ -37,7 +39,7 @@ jobs:
         id: desk_tests
         continue-on-error: true
         run: |
-          python -m pytest tests/test_desk.py -v --tb=long 2>&1 | tee /tmp/pytest_out.txt
+          python -m pytest tests/test_desk.py tests/test_desk_macro.py -v --tb=long 2>&1 | tee /tmp/pytest_out.txt
           exit ${PIPESTATUS[0]}
       - name: Pubblica errori come annotations
         if: always()

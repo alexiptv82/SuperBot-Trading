@@ -311,7 +311,7 @@ def diagnose_reply(text: str) -> str:
 
 # ---------------- prompt V2
 def build_prompt(snapshot: dict, readings: list, positions: list, headlines: list,
-                 lessons: str, ctx: dict | None = None, symbol_stats: str = "") -> str:
+                 lessons: str, ctx: dict | None = None, symbol_stats: str = "", macro_lines: str = "") -> str:
     lines = [
         f"CONTO: capitale {snapshot['equity']:.0f}$, cassa {snapshot['cash']:.0f}$, "
         f"margine in uso {snapshot['margin']:.0f}/2000$, posizioni {snapshot['n_open']}/10, "
@@ -360,6 +360,9 @@ def build_prompt(snapshot: dict, readings: list, positions: list, headlines: lis
 
     if headlines:
         lines.append("NOTIZIE (con sentiment se disponibile): " + " | ".join(headlines[:10]))
+
+    if macro_lines.strip():   # calendario macro: presente solo quando c'e' qualcosa da dire (vedi macro_calendar)
+        lines.append(macro_lines.strip())
 
     if symbol_stats.strip():
         lines.append(symbol_stats.strip())
