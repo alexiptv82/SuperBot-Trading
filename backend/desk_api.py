@@ -103,6 +103,21 @@ def make_router(portfolio: str, data_dir: str, require_session, get_ticker) -> A
         except OSError as e:
             raise _flag_error(e)
 
+    @r.post("/close-position")
+    async def close_position(request: Request, session=Depends(require_session)):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        symbol = body.get("symbol") if isinstance(body, dict) else None
+        try:
+            ok, code, payload = dv.command_close_position(data_dir, symbol)
+        except OSError as e:
+            raise _flag_error(e)
+        if not ok:
+            raise HTTPException(status_code=code, detail=payload["message"])
+        return payload
+
     @r.post("/reset-budget")
     async def reset_budget(session=Depends(require_session)):
         try:

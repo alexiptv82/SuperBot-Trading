@@ -257,6 +257,8 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
         "can_reset": can_reset, "reset_blocked_reason": reset_reason,
         "reset_pending": os.path.exists(os.path.join(data_dir, "reset_portfolio.flag")),
         "close_all_pending": os.path.exists(os.path.join(data_dir, "reset.flag")),
+        "close_position_pending": close_pending(data_dir),
+        "can_close_position": can_close_position(read_heartbeat(data_dir)),
     }
 
 
@@ -278,6 +280,8 @@ def normalize_trade(t: dict) -> dict:
         "open_ms": t.get("open_ms"), "close_ms": t.get("close_ms"),
         "dca_count": t.get("dca_count", 0), "partial": bool(t.get("partial")),
         "fraction": t.get("fraction"), "confidence": t.get("confidence"), "source": t.get("source"),
+        # "utente" se l'ha chiuso l'utente a mano (Chiudi / Chiudi tutto); altrimenti decide il bot
+        "closed_by": t.get("closed_by"),
     }
 
 
@@ -470,6 +474,68 @@ def command_close_all(data_dir: str) -> dict:
     return {"queued": bool(positions), "positions_found": len(positions), "symbols": list(positions),
             "message": (f"Chiusura inviata: {len(positions)} posizioni verranno chiuse a prezzo di mercato "
                         "entro pochi secondi." if positions else "Nessuna posizione aperta.")}
+
+
+CLOSE_OLD_BOT_MESSAGE = ("Il bot gira ancora con la versione precedente, che non sa chiudere una singola posizione. "
+                         "Il tasto si sblocca dopo la ridistribuzione dei bot (intanto resta Chiudi tutto).")
+
+
+def can_close_position(hb: Optional[dict]) -> bool:
+    """Il battito del bot dichiara `close_position` solo dalla versione che sa chiudere una singola posizione.
+    Con un bot piu' vecchio il comando resterebbe in un file e scatterebbe a caso dopo il prossimo aggiornamento:
+    meglio non accodarlo."""
+    return bool(hb and hb.get("close_position") is True)
+
+
+def _read_close_request(data_dir: str) -> list:
+    try:
+        with open(os.path.join(data_dir, "close_position.flag")) as f:
+            req = json.loads(f.read() or "{}")
+        return [str(x) for x in (req.get("symbols") or []) if x] if isinstance(req, dict) else []
+    except Exception:
+        return []
+
+
+def close_pending(data_dir: str) -> list:
+    """Simboli per cui l'utente ha chiesto la chiusura e il bot non l'ha ancora presa in carico."""
+    return _read_close_request(data_dir)
+
+
+def _find_position_key(positions: dict, symbol: str) -> Optional[str]:
+    """Il simbolo come lo scrive il bot ('BTC'), trovato da quello che manda la pagina ('BTC', 'btc', 'BTCUSDT')."""
+    want = str(symbol or "").strip().upper()
+    if want.endswith("USDT") and len(want) > 4:
+        want = want[:-4]
+    for key in positions:
+        k = str(key).upper()
+        if k.endswith("USDT") and len(k) > 4:
+            k = k[:-4]
+        if k == want:
+            return key
+    return None
+
+
+def command_close_position(data_dir: str, symbol: str) -> tuple:
+    """(ok, http_status, risposta). Chiude UNA posizione a prezzo di mercato su richiesta dell'utente.
+    Il comando e' un file che il bot prende in carico entro pochi secondi (e scarta se resta li' oltre 10 minuti).
+    Rifiutato se: simbolo vuoto o strano, il bot e' di una versione che non lo sa fare, la posizione non c'e'."""
+    sym = str(symbol or "").strip()
+    if not sym or len(sym) > 24 or not all(c.isalnum() or c in "-_" for c in sym):
+        return False, 400, {"ok": False, "message": "Simbolo non valido."}
+    if not can_close_position(read_heartbeat(data_dir)):
+        return False, 409, {"ok": False, "message": CLOSE_OLD_BOT_MESSAGE}
+    positions = ((read_state(data_dir).get("main")) or {}).get("positions") or {}
+    key = _find_position_key(positions, sym)
+    if key is None:
+        return False, 404, {"ok": False, "message": f"{sym.upper()}: il bot non ha una posizione aperta su questo "
+                                                    "simbolo (forse è già stata chiusa)."}
+    pending = _read_close_request(data_dir)
+    if key not in pending:
+        pending.append(key)
+    _write_flag(data_dir, "close_position.flag", json.dumps({"symbols": pending, "ts": int(time.time() * 1000)}))
+    return True, 200, {"ok": True, "queued": True, "symbol": key,
+                       "message": f"Chiusura di {key} inviata: il bot la esegue a prezzo di mercato entro pochi "
+                                  "secondi. La vedrai tra i trade chiusi come chiusa da te."}
 
 
 def command_reset_budget(data_dir: str) -> dict:

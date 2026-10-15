@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { fmtClock, fmtDuration, signed, pnlColor } from '../deskUi';
+import { deskAPI, bullAPI, errMsg } from '../api';
 
 // Pezzi condivisi dalle schermate Live (Dashboard Live e scheda Trade Live): stato del bot in parole,
 // scheda di una posizione aperta, elenco degli ultimi trade chiusi.
@@ -48,8 +49,99 @@ export function liveBotStatus(d, serverIsLive) {
   return { key: 'on', color: '#4ade80', text: n > 0 ? `Lavora · ${n} ${n === 1 ? 'posizione aperta' : 'posizioni aperte'}` : 'Lavora · cerca opportunità' };
 }
 
+// ── Chiudere una posizione a mano ──────────────────────────────────────────────
+// Invia al bot (Hawk o Bull) la richiesta di chiudere UNA posizione a prezzo di mercato. Il bot la esegue
+// entro pochi secondi, su BitGet per prima, e la registra come tutti gli altri trade (vinto o perso secondo il
+// profitto vero) con l'etichetta "chiuso da te". Ritorna {ok, message}: non lancia mai.
+export async function closePositionRequest(botKey, symbol) {
+  const api = botKey === 'bull' ? bullAPI : deskAPI;
+  try {
+    const { data } = await api.closePosition(symbol);
+    return { ok: true, message: (data && data.message) || 'Chiusura inviata.' };
+  } catch (e) {
+    return { ok: false, message: errMsg(e) };
+  }
+}
+
+// I passi del tasto: idle -> confirm -> sending -> idle. Si invia solo dalla conferma, una volta sola.
+export function closeStep(step, event) {
+  if (event === 'ask') return step === 'idle' ? 'confirm' : step;
+  if (event === 'cancel') return step === 'confirm' ? 'idle' : step;
+  if (event === 'send') return step === 'confirm' ? 'sending' : step;
+  if (event === 'finish') return step === 'sending' ? 'idle' : step;
+  return step;
+}
+
+const SENT_SHOWN_MS = 45000;   // dopo il clic "inviata" resta in vista un po': poi, se la posizione c'e' ancora, riappare il tasto
+const sameSymbol = (a, b) => String(a || '').toUpperCase().replace(/USDT$/, '') === String(b || '').toUpperCase().replace(/USDT$/, '');
+
+function CloseControl({ p, closer, initialStep = 'idle' }) {
+  const [step, setStep] = useState(initialStep);
+  const [sentAt, setSentAt] = useState(0);
+  const [error, setError] = useState(null);
+  const busy = useRef(false);
+  const hasPnl = p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl);
+  const waiting = (closer.pending || []).some((x) => sameSymbol(x, p.symbol))
+    || (sentAt > 0 && Date.now() - sentAt < SENT_SHOWN_MS);
+
+  const send = async () => {
+    if (busy.current) return;            // un doppio tocco non invia due volte
+    busy.current = true;
+    setStep((s) => closeStep(s, 'send'));
+    setError(null);
+    let r;
+    try {
+      r = await closer.onClose(p.symbol);
+    } catch (e) {
+      r = { ok: false, message: (e && e.message) || 'Errore' };
+    }
+    busy.current = false;
+    if (r && r.ok) setSentAt(Date.now()); else setError((r && r.message) || 'Chiusura non riuscita');
+    setStep((s) => closeStep(s, 'finish'));
+  };
+
+  const btn = (color, bg) => ({
+    fontSize: '11px', fontWeight: 700, color, background: bg, border: `1px solid ${color}55`, borderRadius: '6px',
+    padding: '5px 10px', cursor: 'pointer',
+  });
+  let body;
+  if (step === 'sending') {
+    body = <span style={{ fontSize: '11px', color: MUTED }}>Invio…</span>;
+  } else if (waiting) {
+    body = <span style={{ fontSize: '11px', color: '#fbbf24' }}>⏳ Chiusura inviata: il bot la esegue entro pochi secondi</span>;
+  } else if (step === 'confirm') {
+    body = (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <span style={{ fontSize: '11px', color: '#e2e8f0' }}>
+          Chiudere {p.symbol} a prezzo di mercato adesso{hasPnl ? ` (ora ${signed(p.pnl)}$)` : ''}?
+        </span>
+        <button onClick={send} style={btn('#f87171', 'rgba(248,113,113,0.12)')}>Sì, chiudi</button>
+        <button onClick={() => setStep((s) => closeStep(s, 'cancel'))} style={btn('#94a3b8', 'transparent')}>Annulla</button>
+      </span>
+    );
+  } else {
+    body = <button onClick={() => { setError(null); setStep((s) => closeStep(s, 'ask')); }} style={btn('#cbd5e1', 'transparent')}>Chiudi ora</button>;
+  }
+  return (
+    <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+      {body}
+      {error ? <span style={{ fontSize: '11px', color: '#f87171' }}>{error}</span> : null}
+    </div>
+  );
+}
+
+// Esito dell'ultimo comando "Chiudi": una riga, solo se recente (il bot lo scrive in last_action).
+export function CloseResultNote({ action }) {
+  if (!action || action.type !== 'close_position' || !action.ts || Date.now() - action.ts > 10 * 60 * 1000) return null;
+  return (
+    <div style={{ margin: '0 0 8px', fontSize: '11px', color: action.ok ? '#94a3b8' : '#fca5a5' }}>
+      {action.ok ? '✓' : '✕'} {fmtClock(action.ts)} — {action.detail}
+    </div>
+  );
+}
+
 // ── Una posizione aperta ───────────────────────────────────────────────────────
-export function PositionCard({ p }) {
+export function PositionCard({ p, closer = null, initialCloseStep = 'idle' }) {
   const isLong = p.side === 1;
   const c = isLong ? LONG : SHORT;
   const hasPnl = p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl);
@@ -101,6 +193,9 @@ export function PositionCard({ p }) {
       {notes.map((t) => (
         <div key={t} style={{ marginTop: '6px', fontSize: '10px', color: '#a16207' }}>{t}</div>
       ))}
+
+      {/* Chiusura a mano: solo per posizioni che il bot conosce (le altre non le puo' chiudere) */}
+      {closer && p.in_bot !== false && <CloseControl p={p} closer={closer} initialStep={initialCloseStep} />}
     </div>
   );
 }
@@ -123,8 +218,8 @@ export function RecentTrades({ trades = [] }) {
             <span style={{ fontSize: '10px', fontWeight: 700, color: c.fg, background: c.bg, borderRadius: '4px', padding: '1px 5px' }}>
               {t.side === 1 ? 'LONG' : 'SHORT'}
             </span>
-            <span style={{ color: MUTED, fontSize: '11px', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {t.close_reason}{t.partial ? ' (parziale)' : ''}
+            <span style={{ color: t.closed_by === 'utente' ? '#cbd5e1' : MUTED, fontSize: '11px', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t.closed_by === 'utente' ? '✋ chiuso da te' : t.close_reason}{t.partial ? ' (parziale)' : ''}
             </span>
             <span style={{ color: MUTED, fontSize: '10px' }}>{fmtClock(t.close_ms)}</span>
             <span style={{ fontWeight: 700, color: pnlColor(t.pnl), fontVariantNumeric: 'tabular-nums', minWidth: '60px', textAlign: 'right' }}>

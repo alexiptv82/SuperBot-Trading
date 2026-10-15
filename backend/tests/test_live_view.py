@@ -438,3 +438,26 @@ def test_bot_offline_and_skeleton_carry_the_new_fields():
         z = lv.build_portfolio(d, 1000, 25, "paper", now=NOW)
         assert z["positions_source"] == "none" and z["recent_trades"] == [] and z["unrealized_pnl"] == 0.0
         assert z["bot_online"] is False and z["cycle_info"]["next_cycle_ms"] is None
+
+
+def test_live_page_tells_when_a_single_position_can_be_closed_and_who_closed_the_trades():
+    with tempfile.TemporaryDirectory() as d:
+        _bot_state(d)
+        _live_hb(d)                                   # bot di una versione che non sa chiudere la singola posizione
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
+        assert p["can_close_position"] is False and p["close_pending"] == []
+    with tempfile.TemporaryDirectory() as d:
+        _bot_state(d)
+        _live_hb(d, close_position=True)
+        _write(d, "close_position.flag", {"symbols": ["BTC"], "ts": int(NOW * 1000)})
+        st = json.load(open(os.path.join(d, "state_v2.json")))
+        st["last_action"] = {"type": "close_position", "ok": True, "detail": "chiusa BTC (netto +12.00$)", "ts": 1}
+        _write(d, "state_v2.json", st)
+        _write_history(d, [{"id": 1, "symbol": "BTC", "side": 1, "net": 12.0, "why": "chiusura manuale",
+                            "closed_by": "utente", "open_ms": LIVE_SINCE_MS + 1, "close_ms": LIVE_SINCE_MS + 2000},
+                           {"id": 2, "symbol": "ETH", "side": -1, "net": 3.0, "why": "take profit",
+                            "open_ms": LIVE_SINCE_MS + 1, "close_ms": LIVE_SINCE_MS + 1000}])
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
+        assert p["can_close_position"] is True and p["close_pending"] == ["BTC"]
+        assert p["last_action"]["type"] == "close_position"
+        assert [t["closed_by"] for t in p["recent_trades"]] == ["utente", None]

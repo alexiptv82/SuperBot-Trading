@@ -84,6 +84,7 @@ const makeDeskAPI = (prefix) => ({
   pause:          () => API.post(`${prefix}/pause`),      // svuota: finisce le posizioni, niente nuovi trade
   resume:         () => API.post(`${prefix}/resume`),     // avvia / riprende
   closeAll:       () => API.post(`${prefix}/close-all`),  // chiude tutto a prezzo di mercato
+  closePosition:  (symbol) => API.post(`${prefix}/close-position`, { symbol }),  // chiude UNA posizione a prezzo di mercato
   resetBudget:    () => API.post(`${prefix}/reset-budget`),
   resetPortfolio: () => API.post(`${prefix}/reset-portfolio`, { clear_lessons: false }),   // il cervello non si cancella mai
 });

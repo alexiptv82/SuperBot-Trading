@@ -205,7 +205,7 @@ def _recent_trades(trades: list, scale: float, n: int = 5) -> list:
         out.append({"symbol": nt["symbol"], "side": nt["side"], "leverage": nt["leverage"],
                     "pnl": round(_num(pnl) * scale, 2) if pnl is not None else None,
                     "close_ms": nt["close_ms"], "close_reason": nt["close_reason"],
-                    "trade_type": nt["trade_type"], "partial": nt["partial"]})
+                    "trade_type": nt["trade_type"], "partial": nt["partial"], "closed_by": nt.get("closed_by")})
     return out
 
 
@@ -259,6 +259,9 @@ def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
         "bot_mode": bot_mode,
         "heartbeat_age_s": round(hb["age_s"], 1) if hb else None,
         "bot_online": bool(hb and hb["age_s"] < dv.HEARTBEAT_FRESH_S),
+        # il tasto Chiudi della singola posizione c'e' solo se il bot di adesso lo sa fare (vedi desk_view)
+        "can_close_position": dv.can_close_position(hb),
+        "close_pending": dv.close_pending(data_dir),
         "cycle_info": {"last_end_ms": _positive_ms((hb or {}).get("last_end_ms")) or None,
                        "next_cycle_ms": _positive_ms((hb or {}).get("next_cycle_ms")) or None,
                        "last_ok": (hb or {}).get("last_ok"), "last_error": (hb or {}).get("last_error") or ""},
@@ -298,4 +301,5 @@ def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
         "halt": state.get("halt") if state else None,
         "live_interlock": (hb or {}).get("live_interlock"),
         "live_pending_close": (hb or {}).get("live_pending_close") or [],
+        "last_action": state.get("last_action") if state else None,
     }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { deskAPI } from '../api';
 import { fmtClock, signed, pnlColor } from '../deskUi';
-import { MUTED, money, relTime, liveBotStatus, PositionCard, RecentTrades } from '../components/LiveParts';
+import { MUTED, money, relTime, liveBotStatus, PositionCard, RecentTrades, CloseResultNote, closePositionRequest } from '../components/LiveParts';
 
 const BOTS = [
   { key: 'hawk', name: 'Hawk', emoji: '🦅', color: '#0ea5e9' },
@@ -67,13 +67,13 @@ function WalletSection({ wallet, mode }) {
 }
 
 // ── Una scheda per bot ─────────────────────────────────────────────────────────
-function BotCard({ bot, data, mode, walletOf, onToggleTrading }) {
+function BotCard({ bot, data, mode, walletOf, onToggleTrading, onClosePosition }) {
   const [toggling, setToggling] = useState(false);
   if (!data) return null;
 
   const { capital_usdt, daily_pnl, total_pnl, daily_loss_limit_usdt, daily_limit_hit, positions = [],
     recent_trades = [], trading_enabled, bot_mode, live_interlock, live_pending_close = [],
-    unrealized_pnl, cycle_info = {}, positions_source, positions_error, halt } = data;
+    unrealized_pnl, cycle_info = {}, positions_source, positions_error, halt, last_action } = data;
 
   const serverIsLive = mode === 'live';
   const botIsLive = bot_mode === 'live';
@@ -81,6 +81,9 @@ function BotCard({ bot, data, mode, walletOf, onToggleTrading }) {
   // ▶ bloccato finché il bot non gira davvero in live: l'interruttore resterebbe acceso e il bot, alla prima
   // partenza in live, aprirebbe subito posizioni vere senza che tu l'abbia deciso in quel momento.
   const switchBlocked = serverIsLive && !botIsLive && !trading_enabled;
+  // Tasto "Chiudi ora" sulle posizioni: solo con il bot live, acceso e della versione che lo sa fare
+  const closer = serverIsLive && botIsLive && data.can_close_position && data.bot_online !== false && onClosePosition
+    ? { pending: data.close_pending || [], onClose: onClosePosition } : null;
 
   const handleToggle = async () => {
     if (toggling || switchBlocked) return;
@@ -230,7 +233,8 @@ function BotCard({ bot, data, mode, walletOf, onToggleTrading }) {
             <div style={{ fontSize: '12px', color: MUTED }}>
               Nessuna posizione aperta{status.key === 'on' ? ': il bot sta aspettando l’occasione giusta.' : '.'}
             </div>
-          ) : positions.map((p) => <PositionCard key={`${p.symbol}-${p.side}`} p={p} />)}
+          ) : positions.map((p) => <PositionCard key={`${p.symbol}-${p.side}`} p={p} closer={closer} />)}
+          <CloseResultNote action={last_action} />
           {positions_error && botIsLive && (
             <div style={{ marginTop: '4px', fontSize: '10px', color: '#a16207' }}>
               {positions_source === 'bot' ? 'Posizioni dal bot: ' : ''}{positions_error}
@@ -287,6 +291,13 @@ export default function LiveDashboard() {
     } catch (e) {
       showMsg(`Errore: ${e?.response?.data?.detail || e.message}`, true);
     }
+  };
+
+  // Chiudi una posizione a mano: invia la richiesta e rilegge subito lo stato (la richiesta appare "in corso")
+  const closer = (bot) => async (symbol) => {
+    const r = await closePositionRequest(bot.key, symbol);
+    await load();
+    return r;
   };
 
   useEffect(() => {
@@ -369,6 +380,7 @@ export default function LiveDashboard() {
             mode={mode}
             walletOf={wallet?.per_bot?.[bot.key]}
             onToggleTrading={toggler(bot)}
+            onClosePosition={closer(bot)}
           />
         ))}
       </div>

@@ -1,22 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { deskAPI } from '../api';
 import { signed, pnlColor } from '../deskUi';
-import { MUTED, liveBotStatus, PositionCard, RecentTrades } from '../components/LiveParts';
+import { MUTED, liveBotStatus, PositionCard, RecentTrades, CloseResultNote, closePositionRequest } from '../components/LiveParts';
 
 const BOTS = [
   { key: 'hawk', label: '🦅 Hawk', color: '#0ea5e9' },
   { key: 'bull', label: '🐂 Bull', color: '#f59e0b' },
 ];
 
-function BotSection({ bot, data, serverIsLive }) {
+function BotSection({ bot, data, serverIsLive, onClosePosition }) {
   if (!data) return (
     <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '14px', padding: '16px 20px', marginBottom: '16px' }}>
       <div style={{ color: '#475569', fontSize: '13px' }}>{bot.label} — dati non disponibili</div>
     </div>
   );
 
-  const { positions = [], recent_trades = [], positions_error, positions_source, bot_mode } = data;
+  const { positions = [], recent_trades = [], positions_error, positions_source, bot_mode, last_action } = data;
   const status = liveBotStatus(data, serverIsLive);
+  const closer = serverIsLive && bot_mode === 'live' && data.can_close_position && data.bot_online !== false
+    ? { pending: data.close_pending || [], onClose: onClosePosition } : null;
 
   return (
     <div style={{ background: '#0f172a', border: `1px solid ${bot.color}33`, borderRadius: '14px', overflow: 'hidden', marginBottom: '16px' }}>
@@ -34,7 +36,8 @@ function BotSection({ bot, data, serverIsLive }) {
           <div style={{ fontSize: '12px', color: MUTED }}>
             {serverIsLive && bot_mode !== 'live' ? 'In attesa del bot live: nessuna posizione reale.' : 'Nessuna posizione aperta al momento.'}
           </div>
-        ) : positions.map((p) => <PositionCard key={`${p.symbol}-${p.side}`} p={p} />)}
+        ) : positions.map((p) => <PositionCard key={`${p.symbol}-${p.side}`} p={p} closer={closer} />)}
+        <CloseResultNote action={last_action} />
         {positions_error && bot_mode === 'live' && (
           <div style={{ marginTop: '4px', fontSize: '10px', color: '#a16207' }}>
             {positions_source === 'bot' ? 'Posizioni dal bot: ' : ''}{positions_error}
@@ -116,7 +119,8 @@ export default function LiveTrades() {
       {!loading && overview && (
         <>
           {BOTS.map((bot) => (
-            <BotSection key={bot.key} bot={bot} data={overview[bot.key]} serverIsLive={serverIsLive} />
+            <BotSection key={bot.key} bot={bot} data={overview[bot.key]} serverIsLive={serverIsLive}
+              onClosePosition={async (symbol) => { const r = await closePositionRequest(bot.key, symbol); await load(); return r; }} />
           ))}
           <div style={{ textAlign: 'center', fontSize: '11px', color: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '8px' }}>
             {lastUpdate && <span>Aggiornato: {lastUpdate.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}

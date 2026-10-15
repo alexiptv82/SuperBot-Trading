@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import types
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -265,6 +266,45 @@ def test_close_all_only_queues_when_positions_exist():
         assert r["queued"] is True and r["positions_found"] == 2 and os.path.exists(os.path.join(d, "reset.flag"))
 
 
+def test_close_position_rules():
+    with tempfile.TemporaryDirectory() as d:
+        _write_state(d, {"BTC": _pos(), "ETH": _pos("ETH")}, cash=800.0)
+        # bot di una versione che non sa farlo: non si accoda nulla (scatterebbe a caso dopo)
+        _write_hb(d)
+        ok, code, r = dv.command_close_position(d, "BTC")
+        assert (ok, code) == (False, 409) and "versione precedente" in r["message"]
+        assert not os.path.exists(os.path.join(d, "close_position.flag"))
+        _write_hb(d, close_position=True)
+        for bad in ("", None, "../etc", "BTC; rm", "X" * 40):
+            assert dv.command_close_position(d, bad)[:2] == (False, 400)
+        ok, code, r = dv.command_close_position(d, "SOL")
+        assert (ok, code) == (False, 404) and "SOL" in r["message"], "posizione che il bot non ha"
+        assert not os.path.exists(os.path.join(d, "close_position.flag"))
+        # simbolo scritto come lo manda la pagina o come lo scrive BitGet: stesso risultato
+        ok, code, r = dv.command_close_position(d, "btcusdt")
+        assert (ok, code) == (True, 200) and r["symbol"] == "BTC" and r["queued"] is True
+        req = json.load(open(os.path.join(d, "close_position.flag")))
+        assert req["symbols"] == ["BTC"] and abs(req["ts"] - time.time() * 1000) < 5000
+        # un secondo clic su un'altra posizione, prima che il bot abbia preso il primo, non lo cancella
+        assert dv.command_close_position(d, "ETH")[0] is True
+        assert dv.command_close_position(d, "ETH")[0] is True, "lo stesso clic due volte non duplica"
+        assert json.load(open(os.path.join(d, "close_position.flag")))["symbols"] == ["BTC", "ETH"]
+        assert dv.close_pending(d) == ["BTC", "ETH"]
+        st = dv.build_status(d, "hawk")
+        assert st["close_position_pending"] == ["BTC", "ETH"] and st["can_close_position"] is True
+
+
+def test_trades_say_who_closed_them():
+    with tempfile.TemporaryDirectory() as d:
+        _write_state(d, {}, cash=1000.0)
+        _write_history(d, [{"id": 1, "symbol": "BTC", "side": 1, "net": 12.0, "why": "chiusura manuale",
+                            "closed_by": "utente", "close_ms": 1_800_000_000_000},
+                           {"id": 2, "symbol": "ETH", "side": -1, "net": -3.0, "why": "stop loss",
+                            "close_ms": 1_800_000_100_000}])
+        by_id = {t["id"]: t for t in dv.build_trades(d, 10)}
+        assert by_id[1]["closed_by"] == "utente" and by_id[2]["closed_by"] is None
+
+
 def test_reset_budget_flag_is_budget_only():
     with tempfile.TemporaryDirectory() as d:
         dv.command_reset_budget(d)
@@ -408,7 +448,7 @@ def test_router_has_all_routes_for_both_portfolios_and_status_works():
         router = api.make_router("hawk", d, lambda: None, fake_ticker)
         for path, m in [("/status", "GET"), ("/trades", "GET"), ("/performance", "GET"), ("/diary", "GET"),
                         ("/runs", "GET"), ("/logs", "GET"), ("/health", "GET"), ("/pause", "POST"),
-                        ("/resume", "POST"), ("/close-all", "POST"), ("/reset-budget", "POST"),
+                        ("/resume", "POST"), ("/close-all", "POST"), ("/close-position", "POST"), ("/reset-budget", "POST"),
                         ("/reset-portfolio", "POST")]:
             _handler(router, path, m)
         st = asyncio.run(_handler(router, "/status")(session=None))
@@ -462,3 +502,39 @@ def test_router_pause_resume_roundtrip():
         assert out["paused"] is True and out["bot_mode"] == "draining"
         out = asyncio.run(_handler(router, "/resume", "POST")(session=None))
         assert out["paused"] is False
+
+
+def test_router_close_position_answers_409_404_and_queues():
+    api = _import_desk_api()
+    with tempfile.TemporaryDirectory() as d:
+        _write_state(d, {"BTC": _pos()}, cash=900.0)
+        router = api.make_router("bull", d, lambda: None, None)
+
+        class Req:
+            def __init__(self, body):
+                self.body = body
+
+            async def json(self):
+                return self.body
+
+        def call(body):
+            return asyncio.run(_handler(router, "/close-position", "POST")(request=Req(body), session=None))
+
+        _write_hb(d)
+        try:
+            call({"symbol": "BTC"})
+            raise AssertionError("doveva rifiutare: bot vecchio")
+        except Exception as e:
+            assert getattr(e, "status_code", None) == 409
+        _write_hb(d, close_position=True)
+        try:
+            call({"symbol": "SOL"})
+            raise AssertionError("doveva rifiutare: nessuna posizione")
+        except Exception as e:
+            assert getattr(e, "status_code", None) == 404
+        try:
+            call(None)
+            raise AssertionError("doveva rifiutare: corpo vuoto")
+        except Exception as e:
+            assert getattr(e, "status_code", None) == 400
+        assert call({"symbol": "BTC"})["queued"] is True
