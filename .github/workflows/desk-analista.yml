@@ -214,6 +214,9 @@ jobs:
           cat analista_out.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-          OUT=$(cat analista_out.txt | head -200 | tr '\n' '|' | sed 's/%/%25/g')
-          echo "::notice title=Contabile risultati::${OUT}"
+          # Divide l'output in due blocchi da 150 righe per non superare il limite annotation
+          PART1=$(head -150 analista_out.txt | tr '\n' '|' | sed 's/%/%25/g')
+          PART2=$(tail -n +151 analista_out.txt | head -150 | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Contabile parte 1::${PART1}"
+          echo "::notice title=Contabile parte 2::${PART2}"
           echo "=== OUTPUT CONTABILE ===" && cat analista_out.txt
