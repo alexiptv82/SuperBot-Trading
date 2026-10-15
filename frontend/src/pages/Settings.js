@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { botAPI, deskAPI, bullAPI, errMsg } from '../api';
-import { botState, signed, fmtClock, PARAM_ROWS } from '../deskUi';
+import { botState, signed, fmtClock, fmtDateTime, PARAM_ROWS, DAY_LABELS, DAY_NAMES } from '../deskUi';
 import Logs from './Logs';
 import ChangePasswordForm from '../components/ChangePasswordForm';
 import BiometricManager from '../components/BiometricManager';
@@ -153,6 +153,160 @@ function PortfolioControl({ portfolio }) {
   );
 }
 
+// Orari di trading: spenti di default. Fuori dalle fasce il bot non apre nulla di nuovo e lascia chiudere da sole le
+// posizioni aperte (come la Pausa, ma da solo). Il tasto Pausa vince sempre. Lo accende solo l'utente, da qui.
+const newWindow = () => ({ days: [0, 1, 2, 3, 4, 5, 6], start: '08:00', end: '22:00' });
+
+const draftFrom = (cfg) => ({
+  enabled: !!cfg?.enabled,
+  tz: cfg?.tz || 'Europe/Rome',
+  windows: cfg?.windows?.length
+    ? cfg.windows.map(w => ({ days: w.days || [0, 1, 2, 3, 4, 5, 6], start: w.start, end: w.end }))
+    : [newWindow()],
+});
+
+function HoursControl({ portfolio }) {
+  const isBull = portfolio === 'bull';
+  const name = isBull ? 'Bull' : 'Hawk';
+  const icon = isBull ? '🐂' : '🦅';
+  const [info, setInfo] = useState(null);       // {config, state, supported} come lo vede il server
+  const [draft, setDraft] = useState(null);     // cio' che stai modificando
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
+
+  const load = React.useCallback(async () => {
+    try {
+      const { data } = await apiFor(portfolio).getHours();
+      setInfo(data);
+      if (!dirtyRef.current) setDraft(draftFrom(data.config));   // non butto via cio' che stai scrivendo
+    } catch { /* riprovo al prossimo giro */ }
+  }, [portfolio]);
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const change = (fn) => { setDraft(d => fn(d)); setDirty(true); setMsg(null); };
+  const setWindow = (i, patch) => change(d => ({ ...d, windows: d.windows.map((w, k) => (k === i ? { ...w, ...patch } : w)) }));
+  const toggleDay = (i, day) => change(d => ({
+    ...d,
+    windows: d.windows.map((w, k) => {
+      if (k !== i) return w;
+      const has = w.days.includes(day);
+      return { ...w, days: has ? w.days.filter(x => x !== day) : [...w.days, day].sort() };
+    }),
+  }));
+
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      const { data } = await apiFor(portfolio).setHours(draft);
+      setInfo(data); setDraft(draftFrom(data.config)); setDirty(false);
+      setMsg({ ok: true, text: data.message });
+    } catch (e) { setMsg({ ok: false, text: errMsg(e) }); }
+    finally { setBusy(false); }
+  };
+
+  const state = info?.state;
+  const supported = info?.supported;
+  const color = isBull ? '#a78bfa' : '#38bdf8';
+  const inp = { background: '#0f172a', color: '#f1f5f9', border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '6px 8px', fontSize: '13px' };
+
+  return (
+    <>
+      <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
+        🕒 {icon} {name} — Orari di trading
+      </h2>
+      <Card style={{ marginBottom: '16px' }}>
+        {!draft ? (
+          <div style={{ color: '#64748b', fontSize: '13px' }}>Caricamento...</div>
+        ) : (
+          <>
+            <div style={{ fontSize: '12px', color: MUTED, marginBottom: '10px' }}>
+              Spenti di default. Se li attivi, {name} apre nuovi trade <strong style={{ color: '#cbd5e1' }}>solo nelle fasce</strong> qui sotto.
+              Fuori fascia si comporta come in pausa: non apre niente di nuovo e lascia chiudere da sole le posizioni già aperte
+              (nessuna chiusura forzata). Il tasto Pausa vince sempre. Gli orari sono nel fuso scelto qui sotto.
+            </div>
+            {!supported && (
+              <div style={{ marginBottom: '10px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(251,191,36,0.08)', color: WARN, fontSize: '12px' }}>
+                Il bot gira ancora con la versione precedente e non conosce gli orari: potrai attivarli dopo la ridistribuzione dei bot.
+              </div>
+            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 'bold', color: draft.enabled ? GOOD : MUTED, cursor: 'pointer' }}>
+              <input type="checkbox" checked={draft.enabled} disabled={busy || (!supported && !draft.enabled)}
+                     onChange={e => change(d => ({ ...d, enabled: e.target.checked }))} />
+              {draft.enabled ? 'Orari attivi' : 'Orari spenti'}
+            </label>
+
+            {state?.mode === 'on' && (
+              <div style={{ marginTop: '8px', fontSize: '12px', color: state.blocked ? WARN : GOOD }}>
+                {state.blocked ? '⏸ Adesso: fuori orario (nessuna nuova apertura)' : '▶ Adesso: dentro orario'}
+                {state.next_change_ms ? ` · ${state.blocked ? 'riparte' : 'finisce'} ${fmtDateTime(state.next_change_ms)}` : ''}
+              </div>
+            )}
+            {state?.mode === 'invalid' && (
+              <div style={{ marginTop: '8px', fontSize: '12px', color: '#fca5a5' }}>
+                ⚠️ Il bot non riesce a leggere il file degli orari ({state.error || 'errore'}): per prudenza non apre nuovi trade. Salva di nuovo gli orari.
+              </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', fontSize: '12px', color: MUTED }}>
+              Fuso
+              <select value={draft.tz} onChange={e => change(d => ({ ...d, tz: e.target.value }))} style={inp}>
+                <option value="Europe/Rome">Italia / Svizzera (ora legale automatica)</option>
+                <option value="UTC">UTC</option>
+              </select>
+            </div>
+
+            {draft.windows.map((w, i) => (
+              <div key={i} style={{ marginTop: '10px', padding: '10px', borderRadius: '10px', border: `1px solid ${BORDER}`, background: 'rgba(15,23,42,0.5)' }}>
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  {DAY_LABELS.map((lab, day) => {
+                    const on = w.days.includes(day);
+                    return (
+                      <button key={day} type="button" title={DAY_NAMES[day]} onClick={() => toggleDay(i, day)} style={{
+                        width: '32px', height: '32px', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer',
+                        border: `1px solid ${on ? color : BORDER}`, background: on ? color + '22' : 'none', color: on ? color : '#64748b',
+                      }}>{lab}</button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '12px', color: MUTED }}>
+                  dalle <input type="time" value={w.start} onChange={e => setWindow(i, { start: e.target.value })} style={inp} />
+                  alle <input type="time" value={w.end} onChange={e => setWindow(i, { end: e.target.value })} style={inp} />
+                  <button type="button" onClick={() => change(d => ({ ...d, windows: d.windows.filter((_, k) => k !== i) }))}
+                          style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>
+                    Togli
+                  </button>
+                </div>
+                {w.end <= w.start && (
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                    {w.end === w.start ? '⚠️ Inizio e fine uguali: non vale.' : 'Finisce il giorno dopo (i giorni indicano quando la fascia INIZIA).'}
+                  </div>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={() => change(d => ({ ...d, windows: [...d.windows, newWindow()] }))}
+                    style={{ ...bigBtn(!busy, color, 'none'), marginTop: '10px' }}>
+              + Aggiungi una fascia
+            </button>
+
+            <button onClick={save} disabled={!dirty || busy} style={bigBtn(dirty && !busy, GOOD, 'rgba(74,222,128,0.08)')}>
+              {busy ? '⏳ Salvataggio…' : dirty ? '💾 Salva orari' : 'Nessuna modifica da salvare'}
+            </button>
+          </>
+        )}
+        {msg && <div style={{ marginTop: '10px', fontSize: '12px', color: msg.ok ? GOOD : '#fca5a5' }}>{msg.text}</div>}
+      </Card>
+    </>
+  );
+}
+
 // Parametri veri, letti dal bot (non piu' scritti a mano nell'app)
 function ParamsCard() {
   const [params, setParams] = useState({ hawk: null, bull: null });
@@ -240,6 +394,10 @@ export default function Settings() {
       {/* ── Stato e comandi dei due portafogli ── */}
       <PortfolioControl portfolio="hawk" />
       <PortfolioControl portfolio="bull" />
+
+      {/* ── Orari di trading (spenti di default) ── */}
+      <HoursControl portfolio="hawk" />
+      <HoursControl portfolio="bull" />
 
       {/* ── Parametri con cui gira il bot ── */}
       <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>

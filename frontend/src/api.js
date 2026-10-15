@@ -87,6 +87,8 @@ const makeDeskAPI = (prefix) => ({
   closePosition:  (symbol) => API.post(`${prefix}/close-position`, { symbol }),  // chiude UNA posizione a prezzo di mercato
   resetBudget:    () => API.post(`${prefix}/reset-budget`),
   resetPortfolio: () => API.post(`${prefix}/reset-portfolio`, { clear_lessons: false }),   // il cervello non si cancella mai
+  getHours:       () => API.get(`${prefix}/hours`),                 // orari di trading: impostazione + stato dal bot
+  setHours:       (cfg) => API.post(`${prefix}/hours`, cfg),        // {enabled, tz, windows:[{days,start,end}]}
 });
 
 export const deskAPI = {

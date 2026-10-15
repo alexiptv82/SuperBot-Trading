@@ -140,6 +140,24 @@ def make_router(portfolio: str, data_dir: str, require_session, get_ticker) -> A
             raise HTTPException(status_code=code, detail=payload["message"])
         return payload
 
+    @r.get("/hours")
+    async def hours(session=Depends(require_session)):
+        return dv.read_hours(data_dir)
+
+    @r.post("/hours")
+    async def set_hours(request: Request, session=Depends(require_session)):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        try:
+            ok, code, payload = dv.command_set_hours(data_dir, body)
+        except OSError as e:
+            raise _flag_error(e)
+        if not ok:
+            raise HTTPException(status_code=code, detail=payload["message"])
+        return payload
+
     @r.get("/health")
     async def health():
         return dv.health(data_dir, portfolio)

@@ -551,3 +551,94 @@ def test_router_close_position_answers_409_404_and_queues():
         except Exception as e:
             assert getattr(e, "status_code", None) == 400
         assert call({"symbol": "BTC"})["queued"] is True
+
+
+# ── orari di trading ─────────────────────────────────────────────────────────
+GOOD_HOURS = {"enabled": True, "tz": "Europe/Rome",
+              "windows": [{"days": [0, 1, 2, 3, 4], "start": "08:00", "end": "22:00"}, {"start": "22:00", "end": "02:00"}]}
+
+
+def test_validate_hours_accepts_good_input_and_normalizes_days():
+    clean, err = dv.validate_hours({**GOOD_HOURS, "windows": [{"days": [4, 0, 4], "start": "08:00", "end": "24:00"}]})
+    assert err == "" and clean["windows"] == [{"days": [0, 4], "start": "08:00", "end": "24:00"}]
+    clean, err = dv.validate_hours(GOOD_HOURS)
+    assert err == "" and clean["windows"][1]["days"] == [0, 1, 2, 3, 4, 5, 6], "senza giorni valgono tutti"
+    clean, err = dv.validate_hours({"enabled": False, "windows": []})
+    assert err == "" and clean == {"enabled": False, "tz": "Europe/Rome", "windows": []}
+
+
+def test_validate_hours_rejects_bad_input():
+    w = {"start": "08:00", "end": "09:00"}
+    bad = [None, [], {"windows": [w]}, {"enabled": "si", "windows": [w]}, {"enabled": True, "windows": []},
+           {"enabled": True, "tz": "Mars/Base", "windows": [w]},
+           {"enabled": True, "windows": [{"start": "8:00", "end": "09:00"}]},
+           {"enabled": True, "windows": [{"start": "24:00", "end": "09:00"}]},
+           {"enabled": True, "windows": [{"start": "08:00", "end": "08:00"}]},
+           {"enabled": True, "windows": [{**w, "days": [7]}]}, {"enabled": True, "windows": [{**w, "days": []}]},
+           {"enabled": True, "windows": [{**w, "days": [True]}]}, {"enabled": True, "windows": ["08:00"]},
+           {"enabled": True, "windows": [w] * (dv.HOURS_MAX_WINDOWS + 1)}]
+    for b in bad:
+        clean, err = dv.validate_hours(b)
+        assert clean is None and err, b
+
+
+def test_set_hours_writes_the_file_and_needs_a_bot_that_knows_them():
+    with tempfile.TemporaryDirectory() as d:
+        ok, code, out = dv.command_set_hours(d, {"enabled": True, "windows": []})
+        assert (ok, code) == (False, 400)
+        _write_hb(d)                                             # battito senza "hours" = bot vecchio
+        ok, code, out = dv.command_set_hours(d, GOOD_HOURS)
+        assert (ok, code) == (False, 409) and "versione precedente" in out["message"]
+        assert not os.path.exists(os.path.join(d, dv.HOURS_FILE)), "nulla di scritto se il bot non li conosce"
+        ok, code, out = dv.command_set_hours(d, {"enabled": False, "windows": []})
+        assert (ok, code) == (True, 200), "spegnere si puo' sempre"
+        _write_hb(d, hours={"mode": "off", "enabled": False, "allowed": True, "blocked": False})
+        ok, code, out = dv.command_set_hours(d, GOOD_HOURS)
+        assert (ok, code) == (True, 200) and out["supported"] is True and "attivati" in out["message"]
+        saved = json.load(open(os.path.join(d, dv.HOURS_FILE)))
+        assert saved["enabled"] is True and saved["tz"] == "Europe/Rome" and len(saved["windows"]) == 2
+        assert saved["updated_ms"] > 0
+        assert dv.read_hours(d)["config"]["enabled"] is True
+        ok, code, out = dv.command_set_hours(d, {**GOOD_HOURS, "enabled": False})
+        assert ok and json.load(open(os.path.join(d, dv.HOURS_FILE)))["enabled"] is False
+        assert len(json.load(open(os.path.join(d, dv.HOURS_FILE)))["windows"]) == 2, "spento ma le fasce restano ricordate"
+
+
+def test_status_passes_hours_and_macro_from_the_heartbeat_only():
+    with tempfile.TemporaryDirectory() as d:
+        _write_state(d, {}, cash=1000.0)
+        _write_hb(d)
+        st = dv.build_status(d, "hawk", now=NOW)
+        assert st["hours"] is None and st["macro"] is None, "bot vecchio: niente di inventato"
+        hours = {"mode": "on", "enabled": True, "allowed": False, "blocked": True, "next_change_ms": 123}
+        macro = {"regime": "alto", "blackout": True, "blackout_until_ms": 456}
+        _write_hb(d, hours=hours, macro=macro)
+        st = dv.build_status(d, "hawk", now=NOW)
+        assert st["hours"] == hours and st["macro"] == macro
+        assert st["bot_mode"] == "running", "gli orari non cambiano la modalita': quella la decide il tasto Pausa"
+
+
+def test_router_hours_get_and_post():
+    api = _import_desk_api()
+    with tempfile.TemporaryDirectory() as d:
+        _write_state(d, {}, cash=1000.0)
+        router = api.make_router("hawk", d, lambda: None, None)
+
+        class Req:
+            def __init__(self, body):
+                self.body = body
+
+            async def json(self):
+                return self.body
+
+        get = lambda: asyncio.run(_handler(router, "/hours")(session=None))
+        post = lambda body: asyncio.run(_handler(router, "/hours", "POST")(request=Req(body), session=None))
+        assert get() == {"config": None, "state": None, "supported": False}
+        _write_hb(d, hours={"mode": "off", "enabled": False, "allowed": True, "blocked": False})
+        assert post(GOOD_HOURS)["ok"] is True and get()["config"]["enabled"] is True
+        for body, code in [({"enabled": True, "windows": []}, 400), (None, 400)]:
+            try:
+                post(body)
+                raise AssertionError("doveva rifiutare")
+            except Exception as e:
+                assert getattr(e, "status_code", None) == code

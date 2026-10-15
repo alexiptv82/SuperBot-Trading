@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { deskAPI, bullAPI, errMsg } from '../api';
-import { fmtClock, fmtDuration, signed, pnlColor, botState } from '../deskUi';
+import { fmtClock, fmtDateTime, fmtDuration, signed, pnlColor, botState, macroNote } from '../deskUi';
 import ChartModal from '../components/ChartModal';
 import { CloseControl } from '../components/LiveParts';
 
@@ -166,6 +166,15 @@ function StateBanner({ status, isBull }) {
     return box('#94a3b8', '⏸ Bot in pausa',
       ['Nessuna posizione aperta. Premi Avvia per far ripartire il bot, oppure azzera il portafoglio da Impostazioni.']);
   }
+  if (status.hours?.blocked) {
+    const h = status.hours;
+    const lines = h.mode === 'invalid'
+      ? [`⚠️ Il file degli orari non si legge (${h.error || 'errore'}): per prudenza non apro nuovi trade finché non lo correggi da Impostazioni.`]
+      : ['Non apro nuovi trade. Le posizioni già aperte si chiudono da sole (stop loss, take profit o uscita del bot).'];
+    if (h.mode !== 'invalid' && h.next_change_ms) lines.push(`Riprendo a cercare trade alle ${fmtDateTime(h.next_change_ms)}.`);
+    if (nOpen) lines.push(`${nOpen} ${nOpen === 1 ? 'posizione ancora aperta' : 'posizioni ancora aperte'}.`);
+    return box('#fbbf24', '🕒 Fuori dagli orari di trading', lines);
+  }
   const lines = [];
   if (cyc.running) lines.push('Analisi del mercato in corso…');
   else if (cyc.next_cycle_ms) lines.push(`Prossimo controllo del mercato alle ${fmtClock(cyc.next_cycle_ms)}` +
@@ -276,6 +285,12 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
       )}
 
       {/* Avvisi */}
+      {macroNote(status.macro) && (
+        <Card style={{ marginBottom: '12px', borderColor: '#f59e0b', background: 'rgba(245,158,11,0.08)', fontSize: '13px' }}>
+          <div style={{ color: '#fbbf24', fontWeight: 'bold', marginBottom: '2px' }}>{macroNote(status.macro).title}</div>
+          {macroNote(status.macro).lines.map((l, i) => <div key={i} style={{ color: '#94a3b8', fontSize: '12px', marginTop: i ? '2px' : 0 }}>{l}</div>)}
+        </Card>
+      )}
       {status.halt && (
         <Card style={{ marginBottom: '12px', borderColor: '#dc2626', background: 'rgba(220,38,38,0.08)', color: '#fca5a5', fontSize: '13px' }}>
           <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>🛑 Nuovi trade bloccati: {status.halt}</div>

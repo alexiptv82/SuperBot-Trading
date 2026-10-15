@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -260,6 +261,9 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
         "close_position_pending": close_pending(data_dir),
         "exec_mode": (hb or {}).get("exec_mode"),
         "can_close_position": can_close_position(read_heartbeat(data_dir)),
+        # orari di trading e calendario macro: li calcola il bot, l'app mostra soltanto (assenti nei bot vecchi)
+        "hours": (hb or {}).get("hours"),
+        "macro": (hb or {}).get("macro"),
     }
 
 
@@ -542,6 +546,77 @@ def command_close_position(data_dir: str, symbol: str) -> tuple:
 def command_reset_budget(data_dir: str) -> dict:
     _write_flag(data_dir, "budget_reset.flag", "budget_only")
     return {"ok": True, "message": "Budget giornaliero di Claude azzerato (il conto non si tocca)."}
+
+
+# ── orari di trading ─────────────────────────────────────────────────────────
+# File `trading_hours.json` nella cartella dati del bot (lo legge il bot, vedi desk/trading_hours.py sul ramo del bot).
+# Spento di default; lo accende solo l'utente da Impostazioni. Fuori dalle fasce il bot si comporta come in pausa:
+# nessuna nuova apertura, le posizioni aperte si chiudono da sole. Il tasto Pausa vince sempre.
+HOURS_FILE = "trading_hours.json"
+HOURS_TZ = ("Europe/Rome", "UTC")
+HOURS_MAX_WINDOWS = 14
+HOURS_OLD_BOT_MESSAGE = ("Il bot gira ancora con la versione precedente, che non conosce gli orari di trading. "
+                         "Si sblocca dopo la ridistribuzione dei bot.")
+_HM_RE = re.compile(r"^(\d{2}):(\d{2})$")
+
+
+def _hm_valid(value, allow_24: bool = False) -> bool:
+    m = _HM_RE.match(value) if isinstance(value, str) else None
+    if not m:
+        return False
+    h, mi = int(m.group(1)), int(m.group(2))
+    return (h == 24 and mi == 0 and allow_24) or (h <= 23 and mi <= 59)
+
+
+def validate_hours(body) -> tuple:
+    """(config pulita, errore). Stesse regole del bot: fasce HH:MM nel fuso scelto, giorni 0=lunedi..6=domenica
+    (se mancano valgono tutti), se la fine e' uguale o prima dell'inizio la fascia finisce il giorno dopo."""
+    if not isinstance(body, dict):
+        return None, "Richiesta non valida."
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        return None, "Indica se gli orari sono attivi o spenti."
+    tz = body.get("tz", "Europe/Rome")
+    if tz not in HOURS_TZ:
+        return None, "Fuso orario non valido."
+    raw = body.get("windows", [])
+    if not isinstance(raw, list) or len(raw) > HOURS_MAX_WINDOWS:
+        return None, f"Le fasce devono essere al massimo {HOURS_MAX_WINDOWS}."
+    if enabled and not raw:
+        return None, "Per attivare gli orari serve almeno una fascia."
+    wins = []
+    for i, w in enumerate(raw, 1):
+        if not isinstance(w, dict) or not _hm_valid(w.get("start")) or not _hm_valid(w.get("end"), allow_24=True):
+            return None, f"Fascia {i}: orari non validi (formato HH:MM)."
+        if w["start"] == w["end"]:
+            return None, f"Fascia {i}: inizio e fine uguali (per tutto il giorno usa 00:00 - 24:00)."
+        days = w.get("days", list(range(7)))
+        if (not isinstance(days, list) or not days
+                or any(isinstance(d, bool) or not isinstance(d, int) or not 0 <= d <= 6 for d in days)):
+            return None, f"Fascia {i}: giorni non validi."
+        wins.append({"days": sorted(set(days)), "start": w["start"], "end": w["end"]})
+    return {"enabled": enabled, "tz": tz, "windows": wins}, ""
+
+
+def read_hours(data_dir: str) -> dict:
+    """Impostazione salvata + stato di adesso come lo vede il bot (dal battito). `supported` = il bot gira con una
+    versione che conosce gli orari (altrimenti salvarli non avrebbe alcun effetto)."""
+    hb = read_heartbeat(data_dir)
+    return {"config": _read_json(os.path.join(data_dir, HOURS_FILE)) or None,
+            "state": (hb or {}).get("hours"), "supported": bool(hb and "hours" in hb)}
+
+
+def command_set_hours(data_dir: str, body) -> tuple:
+    """(ok, http_status, risposta). Attivare gli orari richiede un bot che li conosce; spegnerli e' sempre possibile."""
+    clean, err = validate_hours(body)
+    if err:
+        return False, 400, {"ok": False, "message": err}
+    if clean["enabled"] and not read_hours(data_dir)["supported"]:
+        return False, 409, {"ok": False, "message": HOURS_OLD_BOT_MESSAGE}
+    _write_flag(data_dir, HOURS_FILE, json.dumps({**clean, "updated_ms": int(time.time() * 1000)}))
+    msg = ("Orari attivati: fuori dalle fasce il bot non apre nuove posizioni e lascia chiudere da sole quelle aperte."
+           if clean["enabled"] else "Orari spenti: il bot lavora senza limiti di orario.")
+    return True, 200, {"ok": True, "message": msg, **read_hours(data_dir)}
 
 
 RESET_OLD_BOT_MESSAGE = ("Il bot gira ancora con la versione precedente, il cui azzeramento cancellerebbe anche "

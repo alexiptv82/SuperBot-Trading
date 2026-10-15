@@ -26,8 +26,34 @@ export function botState(status) {
   switch (status.bot_mode) {
     case 'draining': return { key: 'draining', text: 'pausa in corso', color: '#fbbf24' };
     case 'paused':   return { key: 'paused', text: 'in pausa', color: '#94a3b8' };
-    default:         return { key: 'running', text: 'in funzione', color: '#4ade80' };
+    default:
+      // gli orari di trading non cambiano la modalita' (quella la decide il tasto Pausa): cambiano solo il testo
+      if (status.hours?.blocked) return { key: 'running', text: 'fuori orario di trading', color: '#fbbf24' };
+      return { key: 'running', text: 'in funzione', color: '#4ade80' };
   }
+}
+
+// Giorni 0=lunedi ... 6=domenica, come nel file degli orari del bot
+export const DAY_LABELS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+export const DAY_NAMES = ['lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica'];
+
+// Avviso del calendario macro (lo calcola il bot, qui solo parole). null = niente da dire.
+export function macroNote(macro) {
+  if (!macro || macro.regime !== 'alto') return null;
+  const nxt = macro.next || (macro.upcoming && macro.upcoming[0]) || null;
+  const ev = nxt ? `${nxt.title} alle ${fmtClock(nxt.ts)}` : null;
+  if (macro.blackout) {
+    return {
+      title: `📅 Evento macro: nuove aperture sospese fino alle ${fmtClock(macro.blackout_until_ms)}`,
+      lines: [ev ? `Evento: ${ev}.` : 'Un evento ad alto impatto è appena uscito o sta per uscire.',
+              'Le posizioni già aperte non vengono toccate (stop, take profit e uscite funzionano come sempre).'],
+    };
+  }
+  return {
+    title: '📅 Giornata a rischio macro',
+    lines: [ev ? `Prossimo evento: ${ev}.` : 'Evento ad alto impatto vicino.',
+            `Il bot chiede ${macro.conf_bonus ? `+${macro.conf_bonus} di confidenza` : 'più cautela'} per aprire e si ferma un'ora prima dell'evento.`],
+  };
 }
 
 // Parametri confrontabili tra una run e l'altra / mostrati in Impostazioni: [etichetta, lettura, formato]
