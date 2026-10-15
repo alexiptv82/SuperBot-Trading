@@ -75,12 +75,15 @@ export function closeStep(step, event) {
 const SENT_SHOWN_MS = 45000;   // dopo il clic "inviata" resta in vista un po': poi, se la posizione c'e' ancora, riappare il tasto
 const sameSymbol = (a, b) => String(a || '').toUpperCase().replace(/USDT$/, '') === String(b || '').toUpperCase().replace(/USDT$/, '');
 
-function CloseControl({ p, closer, initialStep = 'idle' }) {
+export function CloseControl({ p, closer, initialStep = 'idle' }) {
   const [step, setStep] = useState(initialStep);
   const [sentAt, setSentAt] = useState(0);
   const [error, setError] = useState(null);
   const busy = useRef(false);
   const hasPnl = p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl);
+  // Cosa succede davvero: con il bot in paper la posizione e' finta e BitGet non viene toccato
+  const extra = [closer.simulated ? 'trade finto, nessun ordine su BitGet' : null, hasPnl ? `ora ${signed(p.pnl)}$` : null]
+    .filter(Boolean).join('; ');
   const waiting = (closer.pending || []).some((x) => sameSymbol(x, p.symbol))
     || (sentAt > 0 && Date.now() - sentAt < SENT_SHOWN_MS);
 
@@ -113,7 +116,7 @@ function CloseControl({ p, closer, initialStep = 'idle' }) {
     body = (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <span style={{ fontSize: '11px', color: '#e2e8f0' }}>
-          Chiudere {p.symbol} a prezzo di mercato adesso{hasPnl ? ` (ora ${signed(p.pnl)}$)` : ''}?
+          Chiudere {p.symbol} a prezzo di mercato adesso{extra ? ` (${extra})` : ''}?
         </span>
         <button onClick={send} style={btn('#f87171', 'rgba(248,113,113,0.12)')}>Sì, chiudi</button>
         <button onClick={() => setStep((s) => closeStep(s, 'cancel'))} style={btn('#94a3b8', 'transparent')}>Annulla</button>

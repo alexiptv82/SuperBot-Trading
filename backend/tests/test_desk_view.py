@@ -294,6 +294,19 @@ def test_close_position_rules():
         assert st["close_position_pending"] == ["BTC", "ETH"] and st["can_close_position"] is True
 
 
+def test_status_tells_if_the_bot_runs_paper_or_live_so_the_close_button_can_say_it():
+    with tempfile.TemporaryDirectory() as d:
+        _write_state(d, {"BTC": _pos()}, cash=900.0)
+        _write_hb(d, exec_mode="paper", close_position=True)
+        st = dv.build_status(d, "hawk")
+        assert st["exec_mode"] == "paper" and st["can_close_position"] is True
+        _write_hb(d, exec_mode="live", close_position=True)
+        assert dv.build_status(d, "hawk")["exec_mode"] == "live"
+        _write_hb(d)
+        st = dv.build_status(d, "hawk")
+        assert st["exec_mode"] is None and st["can_close_position"] is False
+
+
 def test_trades_say_who_closed_them():
     with tempfile.TemporaryDirectory() as d:
         _write_state(d, {}, cash=1000.0)

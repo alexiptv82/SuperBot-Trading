@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { deskAPI, bullAPI, errMsg } from '../api';
 import { fmtClock, fmtDuration, signed, pnlColor, botState } from '../deskUi';
 import ChartModal from '../components/ChartModal';
+import { CloseControl } from '../components/LiveParts';
 
 // Helper: API giusta per portfolio
 const apiFor = (portfolio) => portfolio === 'bull' ? bullAPI : deskAPI;
@@ -174,7 +175,7 @@ function StateBanner({ status, isBull }) {
 }
 
 // Sezione KPI per un portafoglio
-function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume }) {
+function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume, onClosePosition }) {
   const isBull = portfolio === 'bull';
 
   if (!status) return (
@@ -195,6 +196,10 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
   const mode = status.bot_mode;                       // running | draining | paused
   const canPause = mode === 'running' && !busy;
   const canStart = (mode === 'draining' || mode === 'paused') && !busy;
+  // Tasto "Chiudi ora" su ogni posizione: solo se il bot di adesso lo sa fare (il battito lo dichiara) ed e' acceso.
+  // Con il bot in paper la posizione e' finta: si chiude solo nel simulatore, nessun ordine su BitGet.
+  const closer = status.can_close_position && status.bot_online !== false && onClosePosition
+    ? { pending: status.close_position_pending || [], onClose: onClosePosition, simulated: status.exec_mode !== 'live' } : null;
 
   const budgetSpent = status.budget_spent_usd ?? 0;
   const budgetCap = status.budget_daily_cap_usd ?? 0.70;
@@ -377,6 +382,11 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
                     {p.price_source === 'bot' ? 'Prezzo dell’ultimo ciclo del bot (quello live non è raggiungibile)' : 'Prezzo non disponibile: P&L non calcolabile'}
                   </div>
                 )}
+                {closer && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <CloseControl p={{ ...p, symbol: base }} closer={closer} />
+                  </div>
+                )}
                 <div style={{ fontSize: '10px', color: '#334155', marginTop: '4px', textAlign: 'right' }}>📈 tocca per il grafico</div>
               </Card>
             );
@@ -455,6 +465,19 @@ export default function Dashboard() {
 
   const handlePause = () => run(portfolio, 'pause', () => apiFor(portfolio).pause(), 'Pausa attivata.');
   const handleResume = () => run(portfolio, 'resume', () => apiFor(portfolio).resume(), 'Bot avviato.');
+  // Chiude UNA posizione a mano (stesso comando della pagina Live). Ritorna {ok, message} per il tasto.
+  const handleClosePosition = (pf) => async (symbol) => {
+    try {
+      const { data } = await apiFor(pf).closePosition(symbol);
+      return { ok: true, message: data?.message || 'Chiusura inviata.' };
+    } catch (e) {
+      return { ok: false, message: errMsg(e) };
+    } finally {
+      fetchOne(pf);
+      setTimeout(() => fetchOne(pf), 2500);
+      setTimeout(() => fetchOne(pf), 8000);
+    }
+  };
   const handleCloseAll = () => {
     const n = activeStatus?.open_positions ?? 0;
     if (!window.confirm(`Chiudere subito tutte le ${n} posizioni a prezzo di mercato?\n\nIl bot non si ferma: se non lo metti in pausa potrà riaprirne di nuove.`)) return;
@@ -536,6 +559,7 @@ export default function Dashboard() {
           onChartOpen={openChart}
           onPause={handlePause}
           onResume={handleResume}
+          onClosePosition={handleClosePosition(portfolio)}
         />
       </DeskErrorBoundary>
 
@@ -561,3 +585,6 @@ export default function Dashboard() {
     </div>
   );
 }
+
+// Esportato solo per la prova di rendering (non cambia nulla per l app)
+export { PortfolioSection };

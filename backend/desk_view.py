@@ -258,6 +258,7 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
         "reset_pending": os.path.exists(os.path.join(data_dir, "reset_portfolio.flag")),
         "close_all_pending": os.path.exists(os.path.join(data_dir, "reset.flag")),
         "close_position_pending": close_pending(data_dir),
+        "exec_mode": (hb or {}).get("exec_mode"),
         "can_close_position": can_close_position(read_heartbeat(data_dir)),
     }
 
