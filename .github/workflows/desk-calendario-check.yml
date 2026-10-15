@@ -1,0 +1,132 @@
+name: Calendario eventi macro – prova delle fonti dal server (sola lettura)
+
+# Dal VPS prova a scaricare le fonti candidate del calendario economico e stampa: esito, dimensione, formato,
+# limiti di richieste e gli eventi USA ad alto impatto. NON scrive nei dati dei bot, NON tocca container,
+# NON legge ne' usa chiavi. Parte solo quando cambia deploy/desk-calendario-check.trigger su rule-pool.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-calendario-check.trigger"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Prova le fonti dal server e salva in /tmp
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 150s
+          script: |
+            python3 -I - > /tmp/calendario_out.txt 2>&1 <<'PYEOF'
+            import json, re, time, urllib.request, urllib.error
+            from datetime import datetime, timezone
+
+            UA = {"User-Agent": "Mozilla/5.0 (compatible; superbot-calendar-check/1.0)"}
+
+            def get(url, timeout=20):
+                t0 = time.time()
+                req = urllib.request.Request(url, headers=UA)
+                try:
+                    with urllib.request.urlopen(req, timeout=timeout) as r:
+                        return r.status, dict(r.headers), r.read(), round(time.time() - t0, 2), ""
+                except urllib.error.HTTPError as e:
+                    return e.code, dict(e.headers or {}), (e.read() or b"")[:300], round(time.time() - t0, 2), "HTTPError"
+                except Exception as e:
+                    return None, {}, b"", round(time.time() - t0, 2), type(e).__name__ + ": " + str(e)[:120]
+
+            def head(title):
+                print("=" * 60)
+                print(title)
+
+            print("ora server UTC:", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+
+            # ---- 1. feed settimanale (formato Forex Factory)
+            for name, url in (("questa settimana", "https://nfs.faireconomy.media/ff_calendar_thisweek.json"),
+                              ("prossima settimana", "https://nfs.faireconomy.media/ff_calendar_nextweek.json")):
+                head("FEED " + name + " -> " + url)
+                st, hd, body, secs, err = get(url)
+                print("esito:", st, "| byte:", len(body), "| secondi:", secs, "|", err or "ok")
+                keep = {k: v for k, v in hd.items() if k.lower() in ("content-type", "retry-after", "cache-control", "age", "date", "last-modified") or "ratelimit" in k.lower()}
+                print("header utili:", keep)
+                if st != 200:
+                    print("corpo:", body[:200])
+                    continue
+                try:
+                    ev = json.loads(body.decode("utf-8"))
+                except Exception as e:
+                    print("JSON NON LEGGIBILE:", type(e).__name__)
+                    continue
+                print("eventi totali:", len(ev))
+                print("primo evento (campi):", json.dumps(ev[0], ensure_ascii=False)[:300] if ev else "-")
+                print("paesi:", sorted({e.get("country", "?") for e in ev}))
+                print("impatti:", {i: sum(1 for e in ev if e.get("impact") == i) for i in sorted({e.get("impact", "?") for e in ev})})
+                for e in ev:
+                    if e.get("country") == "USD" and e.get("impact") == "High":
+                        print("  USD ALTO |", e.get("date"), "|", e.get("title"), "| precedente:", e.get("previous"), "| previsto:", e.get("forecast"))
+
+            # ---- 2. calendario ufficiale BLS (CPI, PPI, occupazione) in formato ICS
+            head("BLS ICS -> https://www.bls.gov/schedule/news_release/bls.ics")
+            st, hd, body, secs, err = get("https://www.bls.gov/schedule/news_release/bls.ics")
+            print("esito:", st, "| byte:", len(body), "| secondi:", secs, "|", err or "ok")
+            if st == 200:
+                txt = body.decode("utf-8", "replace")
+                blocks = txt.split("BEGIN:VEVENT")[1:]
+                print("eventi ICS:", len(blocks))
+                now = datetime.now(timezone.utc).strftime("%Y%m%d")
+                shown = 0
+                for b in blocks:
+                    m_s = re.search(r"SUMMARY:(.*)", b)
+                    m_d = re.search(r"DTSTART[^:]*:(\d{8}(T\d{6}Z?)?)", b)
+                    if not (m_s and m_d):
+                        continue
+                    s, d = m_s.group(1).strip(), m_d.group(1)
+                    if d[:8] >= now and re.search(r"Consumer Price|Producer Price|Employment Situation|CPI|PPI", s, re.I) and shown < 8:
+                        print("  ", d, "|", s[:80])
+                        shown += 1
+                print("righe DTSTART di esempio:", re.findall(r"DTSTART[^\n]*", txt)[:2])
+            else:
+                print("corpo:", body[:200])
+
+            # ---- 3. pagina Fed con le date FOMC
+            head("FED FOMC -> https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm")
+            st, hd, body, secs, err = get("https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm")
+            print("esito:", st, "| byte:", len(body), "| secondi:", secs, "|", err or "ok")
+            if st == 200:
+                txt = body.decode("utf-8", "replace")
+                i = txt.find("2026 FOMC Meetings")
+                seg = re.sub(r"<[^>]+>", " ", txt[i:i + 3500]) if i >= 0 else ""
+                print("segmento 2026:", re.sub(r"\s+", " ", seg)[:600] if seg else "sezione 2026 NON trovata")
+            PYEOF
+            echo "Script completato. Righe output: $(wc -l < /tmp/calendario_out.txt)"
+
+      - name: Pubblica risultati come notice
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_cal
+          chmod 600 ~/.ssh/id_cal
+          ssh -T -i ~/.ssh/id_cal \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            root@51.91.109.45 \
+            'cat /tmp/calendario_out.txt' 2>/dev/null > calendario_out.txt || true
+          rm -f ~/.ssh/id_cal
+
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat calendario_out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          PART1=$(sed -n '1,60p'    calendario_out.txt | cut -c1-230 | tr '\n' '|' | sed 's/%/%25/g')
+          PART2=$(sed -n '61,120p'  calendario_out.txt | cut -c1-230 | tr '\n' '|' | sed 's/%/%25/g')
+          PART3=$(sed -n '121,200p' calendario_out.txt | cut -c1-230 | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Calendario fonti 1/3::${PART1}"
+          echo "::notice title=Calendario fonti 2/3::${PART2}"
+          echo "::notice title=Calendario fonti 3/3::${PART3}"
+          echo "=== OUTPUT ===" && cat calendario_out.txt
