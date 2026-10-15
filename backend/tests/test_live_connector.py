@@ -426,3 +426,81 @@ def test_every_order_is_logged_with_real_fill():
     assert "open_attempt" in evs and "open_ok" in evs and "close_attempt" in evs and "close_ok" in evs
     ok_row = next(r for r in rows if r["ev"] == "open_ok")
     assert ok_row["fill"]["avg"] == 60000.0 and ok_row["fill"]["real_qty"] == 0.01
+
+
+# ---- scala del capitale: gli ordini veri sono quelli del motore x scala ------------------------
+
+def mks(scale, pos_mode=fb.ONE_WAY, **kw):
+    fake = fb.FakeBitget(pos_mode=pos_mode, **kw)
+    conn = lc.LiveConnector(data_dir=tempfile.mkdtemp(), client=fake, live=True, sleep=lambda s: None, scale=scale)
+    return conn, fake
+
+
+def test_scale_half_sends_half_of_the_engine_quantity_with_the_same_stops_and_leverage():
+    c, f = mks(0.5)
+    ok, detail = c.open("BTC", 1, 0.02, 10, sl=58000.0, tp=63000.0, ref_price=60000.0)
+    assert ok, detail
+    leg = f.leg("BTC", 1)
+    assert leg["qty"] == 0.01 and leg["leverage"] == 10 and leg["margin_mode"] == "isolated"
+    (req,) = orders_of(f, "open")
+    assert req["presetStopLossPrice"] == "58000" and req["presetStopSurplusPrice"] == "63000"
+    fill = c.last_fill
+    assert fill["engine_qty"] == 0.02 and fill["scale"] == 0.5 and fill["requested_qty"] == 0.01 and fill["real_qty"] == 0.01
+
+
+def test_scale_one_is_identical_to_no_scale():
+    a, fa = mk()
+    b, fb_ = mks(1.0)
+    assert a.scale == 1.0 and b.scale == 1.0
+    a.open("BTC", 1, 0.0123, 10, sl=58000.0, tp=63000.0, ref_price=60000.0)
+    b.open("BTC", 1, 0.0123, 10, sl=58000.0, tp=63000.0, ref_price=60000.0)
+    assert fa.leg("BTC", 1)["qty"] == fb_.leg("BTC", 1)["qty"] == 0.0123
+    # stessa richiesta ordine, campo per campo (a parte l'id cliente, che e' casuale)
+    ra, rb = orders_of(fa, "open")[0], orders_of(fb_, "open")[0]
+    for r in (ra, rb):
+        r.pop("clientOid", None)
+    assert ra == rb
+
+
+def test_scale_applies_to_add_and_closes_use_the_real_quantity():
+    c, f = mks(0.5)
+    assert c.open("BTC", 1, 0.02, 10, sl=58000.0, ref_price=60000.0)[0]
+    ok, detail = c.add("BTC", 1, 0.01, 10, sl=58000.0, ref_price=60000.0)       # il motore aggiunge 0.01
+    assert ok, detail
+    assert abs(f.leg("BTC", 1)["qty"] - 0.015) < 1e-9                           # 0.01 + 0.005 (meta')
+    ok, _ = c.reduce("BTC", 1, 0.4)                                              # frazione della quantita' REALE
+    assert ok and abs(f.leg("BTC", 1)["qty"] - 0.009) < 1e-9
+    ok, _ = c.close("BTC", 1)
+    assert ok and f.leg("BTC", 1) is None                                        # chiude tutto quel che c'e' davvero
+
+
+def test_scale_makes_compare_match_the_scaled_position_and_flag_a_wrong_one():
+    c, f = mks(0.5)
+    f.put_position("BTC", 1, 0.0100)
+    snap = c.snapshot()
+    assert c.compare({"BTC": P(1, 0.02)}, snap)["mismatch"] == []                # motore 0.02 x 0.5 = 0.01: coincide
+    r = c.compare({"BTC": P(1, 0.01)}, snap)                                     # motore 0.01 x 0.5 = 0.005 != 0.01
+    assert [s for s, _ in r["mismatch"]] == ["BTC"]
+    c1, _ = mks(1.0)
+    assert [s for s, _ in c1.compare({"BTC": P(1, 0.02)}, snap)["mismatch"]] == ["BTC"]   # senza scala: come prima
+
+
+def test_scale_that_would_round_below_the_minimum_refuses_the_open_cleanly():
+    c, f = mks(0.001)                                                             # 0,1%: 0.02 -> 0.00002, sotto il lotto (0.0001)
+    ok, detail = c.open("BTC", 1, 0.02, 10, sl=58000.0, ref_price=60000.0)
+    assert not ok and "minimo" in detail and f.orders == [] and f.leg("BTC", 1) is None
+
+
+def test_invalid_scale_stops_a_live_connector_but_not_a_paper_one():
+    for bad in (0, -1, float("nan"), float("inf"), lc.MAX_SCALE + 0.01, "boh", None):
+        try:
+            lc.LiveConnector(data_dir=tempfile.mkdtemp(), client=fb.FakeBitget(), live=True,
+                             sleep=lambda s: None, scale=bad)
+        except ValueError as e:
+            assert "scala" in str(e)
+        else:
+            raise AssertionError(f"scala {bad!r} accettata in live")
+        paper = lc.LiveConnector(data_dir=tempfile.mkdtemp(), live=False, scale=bad)   # in paper non conta
+        assert paper.scale == 1.0
+    assert lc.LiveConnector(data_dir=tempfile.mkdtemp(), client=fb.FakeBitget(), live=True,
+                            sleep=lambda s: None, scale=lc.MAX_SCALE).scale == lc.MAX_SCALE

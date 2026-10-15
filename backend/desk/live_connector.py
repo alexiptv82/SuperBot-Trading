@@ -8,6 +8,12 @@ Principio: l'EXCHANGE e' la verita'. Il motore (engine.py) resta il "cervello" c
 del paper; questo modulo copia sull'exchange quello che il motore fa, e controlla che l'exchange
 risponda come previsto. Niente di quello che c'e' qui cambia una decisione o un parametro di strategia.
 
+Scala del capitale: il motore ragiona sempre su un conto di riferimento (1000$). Se il capitale assegnato e'
+diverso, ogni ORDINE verso Bitget e' moltiplicato per `scale` = capitale / riferimento (apertura, DCA,
+seconda gamba) e il confronto con l'exchange usa la stessa scala. Le chiusure e i parziali lavorano gia'
+sulla quantita' REALE letta dall'exchange. Base fissa: i profitti non si reinvestono e un calo non riduce le
+puntate. Con scale = 1 il comportamento e' identico a prima.
+
 Regole di sicurezza (tutte verificate dai test con un exchange finto, tests/test_live_connector.py):
 - Una lettura fallita NON e' "nessuna posizione": se non riesco a leggere l'exchange non agisco.
 - Prima di ogni apertura: margine ISOLATO e leva impostati e riletti; modalita' posizione (one-way /
@@ -50,6 +56,11 @@ FILL_WAITS    = (0.3, 0.8, 1.5)
 # una posizione appena aperta puo' non comparire subito nell'elenco: nessun giudizio prima di questi secondi
 OPEN_GRACE_S  = 20.0
 
+# Scala massima ammessa tra capitale assegnato e conto di riferimento del motore (1000$). Oltre questa soglia
+# e' quasi certamente un errore di battitura (es. 10000 al posto di 1000): meglio non partire che mandare
+# ordini 10 volte piu' grandi di quelli che il motore ha deciso.
+MAX_SCALE = 5.0
+
 ONE_WAY = "one_way_mode"
 HEDGE   = "hedge_mode"
 
@@ -70,6 +81,21 @@ def _check_credentials() -> None:
             f"[LIVE_CONNECTOR] DESK_MODE=live ma mancano le variabili: {', '.join(missing)}. "
             "Il bot non può partire in modalità live senza chiavi API valide."
         )
+
+
+def _check_scale(scale, live: bool) -> float:
+    """Scala validata. In live un valore assente, non numerico, <= 0 o oltre MAX_SCALE impedisce la partenza
+    (ValueError): un ordine sbagliato di proporzioni e' peggio di un bot fermo. In paper non conta."""
+    try:
+        v = float(scale)
+    except (TypeError, ValueError):
+        v = float("nan")
+    ok = v == v and 0.0 < v <= MAX_SCALE and v != float("inf")
+    if live and not ok:
+        raise ValueError(
+            f"[LIVE_CONNECTOR] scala del capitale non valida ({scale!r}): deve essere > 0 e al massimo "
+            f"{MAX_SCALE:g} (capitale assegnato / conto di riferimento). Controlla DESK_*_CAPITAL.")
+    return v if ok else 1.0
 
 
 def _new_client_order_id(symbol: str) -> str:
@@ -120,8 +146,9 @@ class LiveConnector:
     """
 
     def __init__(self, data_dir: str = ".", client=None, live: Optional[bool] = None,
-                 sleep=time.sleep):
+                 sleep=time.sleep, scale: float = 1.0):
         self._live   = IS_LIVE if live is None else bool(live)
+        self.scale   = _check_scale(scale, self._live)
         self._client = client
         self._log    = Path(data_dir) / "live_orders.jsonl"
         self._sleep  = sleep
@@ -379,11 +406,13 @@ class LiveConnector:
         ccxt_side  = "buy" if side == 1 else "sell"
         client_oid = _new_client_order_id(symbol)
         self.last_fill = {}
+        engine_qty = qty
+        qty = qty * self.scale          # quantita' del motore -> quantita' reale in scala
 
         record = {
             "ts": int(time.time() * 1000), "ev": "open_attempt",
             "symbol": symbol, "ccxt_sym": ccxt_sym,
-            "side": ccxt_side, "qty": qty, "leverage": leverage,
+            "side": ccxt_side, "qty": qty, "engine_qty": engine_qty, "scale": self.scale, "leverage": leverage,
             "sl": sl, "tp": tp, "client_oid": client_oid,
         }
         self._write_log(record)
@@ -456,6 +485,7 @@ class LiveConnector:
 
             fill = self._fill_info(order.get("id"), ccxt_sym, client_oid)
             fill.update(real_qty=pos["qty"], real_entry=pos["entry"], requested_qty=qty,
+                        engine_qty=engine_qty, scale=self.scale,
                         leverage=pos["leverage"], margin_mode=pos["margin_mode"])
             self.last_fill = fill
             self._write_log({**record, "ev": "open_ok", "order_id": order_id, "fill": fill})
@@ -479,8 +509,10 @@ class LiveConnector:
         ccxt_side = "buy" if side == 1 else "sell"
         client_oid = _new_client_order_id(symbol)
         self.last_fill = {}
+        engine_qty = qty
+        qty = qty * self.scale          # quantita' del motore -> quantita' reale in scala
         record = {"ts": int(time.time() * 1000), "ev": "add_attempt", "symbol": symbol, "qty": qty,
-                  "side": ccxt_side, "client_oid": client_oid}
+                  "engine_qty": engine_qty, "scale": self.scale, "side": ccxt_side, "client_oid": client_oid}
         self._write_log(record)
 
         def fail(msg: str) -> tuple[bool, str]:
@@ -523,7 +555,8 @@ class LiveConnector:
                     break
             self._opened_at[base] = time.time()
             fill = self._fill_info(order.get("id"), ccxt_sym, client_oid)
-            fill.update(real_qty=after["qty"] if after else None, real_entry=after["entry"] if after else None,
+            fill.update(engine_qty=engine_qty, scale=self.scale,
+                        real_qty=after["qty"] if after else None, real_entry=after["entry"] if after else None,
                         added_qty=round(after["qty"] - before["qty"], 10) if after else None)
             self.last_fill = fill
             order_id = str(order.get("id") or client_oid)
@@ -760,15 +793,16 @@ class LiveConnector:
             elif x["margin_mode"] != "isolated":
                 mismatch.append((sym, f"margine {x['margin_mode']} invece di isolato"))
             else:
-                diff = abs(x["qty"] - pos.qty)
+                expected = pos.qty * self.scale          # la quantita' del motore, in scala reale
+                diff = abs(x["qty"] - expected)
                 try:
                     lot = _f((((self._client.market(_symbol_ccxt(sym)) or {}).get("limits") or {})
                               .get("amount") or {}).get("min")) if self._client else 0.0
                 except Exception:
                     lot = 0.0
-                tol = max(QTY_TOL_REL * pos.qty, 2 * lot)
+                tol = max(QTY_TOL_REL * expected, 2 * lot)
                 if diff > tol:
-                    mismatch.append((sym, f"quantita' diversa: motore {pos.qty:.6g}, Bitget {x['qty']:.6g}"))
+                    mismatch.append((sym, f"quantita' diversa: motore {expected:.6g}, Bitget {x['qty']:.6g}"))
         mine = {_base(s) for s in engine_positions}
         for base in snap:
             if base not in mine and base not in self.pending_close:

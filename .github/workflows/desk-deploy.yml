@@ -89,7 +89,7 @@ jobs:
               -e DESK_DATA_DIR=/app/data/desk/hawk \
               -e DESK_MODE="${DESK_MODE:-paper}" \
               -e BITGET_API_KEY="${BITGET_HAWK_API_KEY}" -e BITGET_SECRET_KEY="${BITGET_HAWK_SECRET_KEY}" -e BITGET_PASSPHRASE="${BITGET_HAWK_PASSPHRASE}" \
-              -e DESK_HAWK_CAPITAL="${DESK_HAWK_CAPITAL:-1500}" \
+              -e DESK_HAWK_CAPITAL="${DESK_HAWK_CAPITAL:-1000}" \
               -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
               -v /opt/superbot-desk-data/hawk:/app/data/desk/hawk \
               superbot-desk
@@ -107,7 +107,7 @@ jobs:
               -e DESK_DATA_DIR=/app/data/desk/bull \
               -e DESK_MODE="${DESK_MODE:-paper}" \
               -e BITGET_API_KEY="${BITGET_BULL_API_KEY}" -e BITGET_SECRET_KEY="${BITGET_BULL_SECRET_KEY}" -e BITGET_PASSPHRASE="${BITGET_BULL_PASSPHRASE}" \
-              -e DESK_BULL_CAPITAL="${DESK_BULL_CAPITAL:-1500}" \
+              -e DESK_BULL_CAPITAL="${DESK_BULL_CAPITAL:-1000}" \
               -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
               -v /opt/superbot-desk-data/bull:/app/data/desk/bull \
               superbot-desk

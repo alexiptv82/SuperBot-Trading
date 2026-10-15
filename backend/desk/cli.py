@@ -33,7 +33,7 @@ from desk import learning as _learning
 from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
-                           notify_halt, notify_daily_report, notify_live_alert)
+                           notify_halt, notify_daily_report, notify_live_alert, set_context)
 from desk.live_connector import LiveConnector
 from desk import live_sync
 
@@ -166,23 +166,64 @@ CYCLE_S = 1800             # ciclo normale: 30 minuti
 CYCLE_FAST_S = 900         # con scalp aperto o in svuotamento: 15 minuti
 CODE_VERSION = os.getenv("DESK_CODE_VERSION", "dev")
 
+# ── Capitale assegnato e scala degli ordini (solo live) ──────────────────────
+# DESK_HAWK_CAPITAL / DESK_BULL_CAPITAL: capitale allocato a ogni portafoglio (USDT), scelto dall'utente.
+# Il motore e il cervello ragionano SEMPRE su un conto di riferimento (start_equity = 1000$): non cambia
+# nulla della strategia. In live ogni ORDINE verso Bitget e' moltiplicato per CAPITAL_SCALE = capitale /
+# riferimento (con 500$ assegnati: meta' di quello che il motore ha deciso, cioe' le stesse percentuali del
+# conto). Base FISSA: i profitti non si reinvestono e un calo non riduce le puntate. Con 1000$ la scala e' 1
+# e tutto e' identico a prima. Se la variabile manca vale 1000 (prima 1500: ma 1500 sarebbe scala 1.5).
+_PORTFOLIO_CAPITAL = float(
+    os.getenv(f"DESK_{PORTFOLIO.name.upper()}_CAPITAL")
+    or os.getenv("DESK_PORTFOLIO_CAPITAL")
+    or "1000"
+)
+CAPITAL_REF = float(PORTFOLIO.limits.start_equity)
+CAPITAL_SCALE = _PORTFOLIO_CAPITAL / CAPITAL_REF if CAPITAL_REF > 0 else 1.0
+
 # Connettore live — no-op in paper mode, attivo se DESK_MODE=live
-# Lancia ValueError all'avvio se le chiavi API mancano in modalità live
-LIVE = LiveConnector(data_dir=DATA_DIR)
+# Lancia ValueError all'avvio se le chiavi API mancano o la scala non e' valida in modalità live
+LIVE = LiveConnector(data_dir=DATA_DIR, scale=CAPITAL_SCALE)
+set_context(PORTFOLIO.name, LIVE._live, CAPITAL_SCALE)   # intestazione LIVE / NON REALE nei messaggi Telegram
 
 # ── Limite perdita giornaliero (solo in modalità live) ───────────────────────
-# DESK_HAWK_CAPITAL / DESK_BULL_CAPITAL: capitale allocato a ogni portafoglio (USDT)
-# DESK_DAILY_LOSS_PCT: percentuale massima di perdita giornaliera (default 25%)
-# Esempio: capitale $1500, pct 25% → massima perdita $375/giorno
-_PORTFOLIO_CAPITAL = float(os.getenv(
-    f"DESK_{PORTFOLIO.name.upper()}_CAPITAL",
-    os.getenv("DESK_PORTFOLIO_CAPITAL", "1500")
-))
+# DESK_DAILY_LOSS_PCT: percentuale massima di perdita giornaliera (default 25%) del capitale assegnato.
+# Esempio: capitale $1000, pct 25% → massima perdita $250/giorno (reali: il confronto usa la scala).
 _DAILY_LOSS_PCT = float(os.getenv("DESK_DAILY_LOSS_PCT", "25")) / 100.0
 _DAILY_LOSS_LIMIT = _PORTFOLIO_CAPITAL * _DAILY_LOSS_PCT
 
-print(f"[CAPITAL] {PORTFOLIO.name.upper()} capitale={_PORTFOLIO_CAPITAL:.0f}$ "
+print(f"[CAPITAL] {PORTFOLIO.name.upper()} capitale={_PORTFOLIO_CAPITAL:.0f}$ scala={CAPITAL_SCALE:g} "
       f"limite_perdita_giornaliero={_DAILY_LOSS_LIMIT:.0f}$ ({_DAILY_LOSS_PCT*100:.0f}%)", flush=True)
+
+# ── Momento in cui il bot e' partito in live (persistito) ────────────────────
+# Lo storico e le posizioni del simulatore stanno negli stessi file: l'app e il limite giornaliero contano
+# come "veri" solo i trade APERTI dopo questo momento.
+LIVE_SINCE_MS: Optional[int] = None
+_LIVE_SINCE_FILE = os.path.join(DATA_DIR, "live_since.json")
+
+
+def ensure_live_since(now_ms: Optional[int] = None) -> Optional[int]:
+    """In live: legge (o crea alla prima partenza) live_since.json. In paper: None. Non lancia mai."""
+    global LIVE_SINCE_MS
+    if not LIVE._live:
+        return None
+    since = None
+    try:
+        with open(_LIVE_SINCE_FILE) as f:
+            since = int(float(json.load(f).get("since_ms") or 0)) or None
+    except Exception:
+        since = None
+    if not since:
+        since = int(time.time() * 1000) if now_ms is None else int(now_ms)
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(_LIVE_SINCE_FILE + ".tmp", "w") as f:
+                json.dump({"since_ms": since}, f)
+            os.replace(_LIVE_SINCE_FILE + ".tmp", _LIVE_SINCE_FILE)
+        except Exception as e:
+            print(f"[LIVE] impossibile salvare live_since.json: {e}", flush=True)
+    LIVE_SINCE_MS = since
+    return since
 
 
 # ── Interruttore manuale trading (solo live) ──────────────────────────────────
@@ -217,10 +258,14 @@ def _daily_realized_pnl(acc) -> float:
     """Calcola il P&L realizzato oggi (dalla mezzanotte UTC)."""
     import time as _time
     midnight_ms = int(_time.time() // 86400 * 86400 * 1000)
+    # in live contano solo i trade aperti DOPO la partenza del live: le chiusure di posizioni del simulatore
+    # (aperte prima) non sono perdite vere e non devono bloccare le aperture
+    since = LIVE_SINCE_MS if LIVE._live else None
     return sum(
         c.get("net", 0.0)
         for c in (acc.closed or [])
         if (c.get("close_ms") or 0) >= midnight_ms
+        and (not since or (c.get("open_ms") or 0) >= since)
     )
 
 
@@ -231,7 +276,7 @@ def _daily_loss_exceeded(acc) -> bool:
     """
     if not LIVE._live:
         return False
-    pnl = _daily_realized_pnl(acc)
+    pnl = _daily_realized_pnl(acc) * CAPITAL_SCALE      # dal conto del motore alla scala reale
     if pnl <= -_DAILY_LOSS_LIMIT:
         print(f"[DAILY LOSS LIMIT] {PORTFOLIO.name.upper()} perdita oggi={pnl:+.2f}$ "
               f"≥ limite {_DAILY_LOSS_LIMIT:.0f}$ — nessuna nuova apertura per oggi", flush=True)
@@ -327,6 +372,10 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
     HB["daily_cap_usd"] = DAILY_CAP
     HB["trading_enabled"] = is_trading_enabled()
     HB["exec_mode"] = "live" if LIVE._live else "paper"   # come gira DAVVERO il bot (l'app lo mostra)
+    HB["capital_usd"] = _PORTFOLIO_CAPITAL                 # capitale assegnato
+    HB["capital_scale"] = CAPITAL_SCALE                    # ordini veri = importi del motore x scala
+    if LIVE._live:
+        HB["live_since_ms"] = LIVE_SINCE_MS                # da quando i trade contano come veri
     if LIVE._live:   # stato del collegamento con l'exchange: l'app mostra il blocco aperture se c'e'
         HB["live_interlock"] = LIVE.interlock
         HB["live_pending_close"] = sorted(LIVE.pending_close)
@@ -1303,6 +1352,7 @@ def loop_step(state: dict, ctl: dict) -> bool:
 
 def main() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
+    ensure_live_since()          # solo in live: ricorda il momento della prima partenza
     state = load_state(STATE_FILE)
 
     # ── LIVE: riconciliazione posizioni al riavvio ────────────────────────────
