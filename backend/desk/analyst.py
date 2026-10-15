@@ -121,15 +121,32 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple:
     return round(c - h, 3), round(c + h, 3)
 
 
+def _day(c: dict) -> int:
+    return int((c.get("ts") or 0) // 86_400_000)
+
+
 def summarize(labeled: list) -> dict:
-    """labeled = [(candidato, etichetta ok)]. Riassunto di un gruppo."""
+    """labeled = [(candidato, etichetta ok)]. Riassunto di un gruppo. Oltre ai numeri semplici calcola quanto
+    reggono se si toglie il giorno migliore (o peggiore): i candidati dello stesso giorno sono quasi lo stesso evento
+    (un'unica mossa di mercato), quindi la media puo' dipendere da un solo giorno."""
     n = len(labeled)
     if not n:
         return {"n": 0}
     rs = [lab["r"] for _c, lab in labeled]
     wins = sum(1 for r in rs if r > 0)
     lo, hi = wilson(wins, n)
-    return {"n": n,
+    by_day = {}
+    for c, lab in labeled:
+        by_day.setdefault(_day(c), []).append(lab["r"])
+    without_best = without_worst = None
+    if len(by_day) >= 2:
+        best = max(by_day, key=lambda d: sum(by_day[d]))
+        worst = min(by_day, key=lambda d: sum(by_day[d]))
+        rest = [r for d, v in by_day.items() if d != best for r in v]
+        rest_w = [r for d, v in by_day.items() if d != worst for r in v]
+        without_best, without_worst = round(sum(rest) / len(rest), 3), round(sum(rest_w) / len(rest_w), 3)
+    return {"n": n, "giorni": len(by_day), "r_senza_giorno_migliore": without_best,
+            "r_senza_giorno_peggiore": without_worst,
             "tp": sum(1 for _c, lab in labeled if lab["outcome"] == "tp"),
             "sl": sum(1 for _c, lab in labeled if lab["outcome"] == "sl"),
             "timeout": sum(1 for _c, lab in labeled if lab["outcome"] == "timeout"),
@@ -147,11 +164,17 @@ def verdict(s: dict) -> str:
         return "nessun caso etichettabile"
     if s["indicativo"]:
         return f"solo {s['n']} casi: troppo pochi per dire (servono almeno {MIN_N})"
+    if s["giorni"] < 3:
+        return f"solo {s['giorni']} giorni di dati: dipende dal mercato di quei giorni, non concludere"
     lo, hi = s["win_lo"], s["win_hi"]
     if s["r_medio"] > 0.15 and lo is not None and lo > 0.4:
-        return "il filtro sembra COSTARE: i candidati scartati avrebbero guadagnato"
+        if s["r_senza_giorno_migliore"] is not None and s["r_senza_giorno_migliore"] > 0.1:
+            return "il filtro sembra COSTARE: i candidati scartati avrebbero guadagnato (regge anche senza il giorno migliore)"
+        return "positivo ma regge solo grazie a UN giorno: non e' una prova, non cambiare nulla"
     if s["r_medio"] < -0.15 and hi is not None and hi < 0.5:
-        return "il filtro sembra PROTEGGERE: i candidati scartati avrebbero perso"
+        if s["r_senza_giorno_peggiore"] is not None and s["r_senza_giorno_peggiore"] < -0.1:
+            return "il filtro sembra PROTEGGERE: i candidati scartati avrebbero perso (regge anche senza il giorno peggiore)"
+        return "negativo ma dipende solo da UN giorno: non e' una prova, non cambiare nulla"
     return "nessuna differenza chiara: non cambiare nulla"
 
 
@@ -241,7 +264,9 @@ def examine(events_by_bot: dict, candles_by_symbol: dict, now_ms: int = None) ->
         flag = " [IND]" if s["indicativo"] else ""
         return (f"  {name:<24} n={s['n']:<4} TP={s['tp']:<3} SL={s['sl']:<3} tempo={s['timeout']:<3} "
                 f"win={100 * s['win_rate']:.0f}% IC95={ic:<9} R_medio={s['r_medio']:+.2f} R_tot={s['r_totale']:+.1f}"
-                f" MFE={s['mfe_medio']:.2f} MAE={s['mae_medio']:.2f}{flag}")
+                f" MFE={s['mfe_medio']:.2f} MAE={s['mae_medio']:.2f} gg={s['giorni']}"
+                + (f" senza_top={s['r_senza_giorno_migliore']:+.2f}" if s.get("r_senza_giorno_migliore") is not None else "")
+                + flag)
 
     L.append("\n== PER STATO (cosa ha scartato il filtro) ==")
     for k, v in sorted(group_by(labeled, status_head).items()):

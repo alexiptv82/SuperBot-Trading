@@ -102,17 +102,38 @@ def test_dedupe_counts_a_repeated_idea_once():
 
 
 def test_summary_and_verdict_are_prudent_with_few_cases():
+    day = 86_400_000
     lab = lambda o, r: {"ok": True, "outcome": o, "r": r, "mfe_r": 0.5, "mae_r": 0.5}
-    few = an.summarize([(cand(), lab("sl", -1.0))] * 5)
+    spread = lambda n, o, r: [(cand(ts=T0 + i * day), lab(o, r)) for i in range(n)]      # un caso al giorno
+    few = an.summarize(spread(5, "sl", -1.0))
     assert few["n"] == 5 and few["indicativo"] and "troppo pochi" in an.verdict(few)
-    losers = an.summarize([(cand(), lab("sl", -1.0))] * 40)
+    losers = an.summarize(spread(40, "sl", -1.0))
     assert not losers["indicativo"] and losers["r_medio"] == -1.0 and "PROTEGGERE" in an.verdict(losers)
-    winners = an.summarize([(cand(), lab("tp", 2.0))] * 40)
-    assert winners["win_rate"] == 1.0 and "COSTARE" in an.verdict(winners)
-    coin = an.summarize([(cand(), lab("tp", 2.0))] * 15 + [(cand(), lab("sl", -1.0))] * 25)
-    assert "nessuna differenza chiara" in an.verdict(coin)
+    winners = an.summarize(spread(40, "tp", 2.0))
+    assert winners["win_rate"] == 1.0 and "COSTARE" in an.verdict(winners) and winners["giorni"] == 40
+    mixed = spread(15, "tp", 2.0) + [(cand(ts=T0 + (15 + i) * day), lab("sl", -1.0)) for i in range(25)]
+    assert "nessuna differenza chiara" in an.verdict(an.summarize(mixed))
     assert an.summarize([]) == {"n": 0} and "nessun caso" in an.verdict({"n": 0})
     assert an.wilson(0, 0) == (None, None)
+
+
+def test_verdict_does_not_trust_a_result_that_depends_on_one_day():
+    day = 86_400_000
+    lab = lambda o, r: {"ok": True, "outcome": o, "r": r, "mfe_r": 0.5, "mae_r": 0.5}
+    # 30 vincenti nello STESSO giorno (un'unica mossa di mercato) + 10 perdenti in 10 giorni diversi
+    one_day = [(cand(ts=T0 + i * 1000), lab("tp", 2.0)) for i in range(30)]
+    one_day += [(cand(ts=T0 + (i + 1) * day), lab("sl", -1.0)) for i in range(10)]
+    s = an.summarize(one_day)
+    assert s["r_medio"] > 1.0 and s["giorni"] == 11 and s["r_senza_giorno_migliore"] == -1.0
+    assert "UN giorno" in an.verdict(s) and "COSTARE" not in an.verdict(s)
+    # lo stesso al contrario: perdita concentrata in un giorno
+    lost_day = [(cand(ts=T0 + i * 1000), lab("sl", -1.0)) for i in range(30)]
+    lost_day += [(cand(ts=T0 + (i + 1) * day), lab("tp", 2.0)) for i in range(10)]
+    s = an.summarize(lost_day)
+    assert s["r_medio"] < -0.15 and "UN giorno" in an.verdict(s) and "PROTEGGERE" not in an.verdict(s)
+    # pochi giorni di dati: nessuna conclusione, anche con molti casi
+    two = an.summarize([(cand(ts=T0 + (i % 2) * day + i * 1000), lab("tp", 2.0)) for i in range(40)])
+    assert two["giorni"] == 2 and "giorni di dati" in an.verdict(two)
 
 
 def test_fetch_range_pages_backwards_and_never_raises():
