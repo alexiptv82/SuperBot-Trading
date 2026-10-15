@@ -11,7 +11,7 @@
  * take several launches to reach the phone. The cached copy is only a
  * fallback for when the network is unreachable.
  */
-const CACHE_NAME = 'superbot-shell-v2';
+const CACHE_NAME = 'superbot-shell-v3';
 const APP_SHELL = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
