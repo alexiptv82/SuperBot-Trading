@@ -202,9 +202,10 @@ def _sane_tp(sym: str, tp: Optional[float], where: str) -> Optional[float]:
 
 
 # Tetto di token della risposta di Claude. Con 1100 la risposta veniva TAGLIATA in 60 chiamate su 95 (registro
-# 12-15 ott) e il bot la scartava: pagata e ignorata. In paper (test) si prova 2000, con timeout piu' lungo
-# perche' la risposta e' piu' lunga; in LIVE resta 1100 finche' l'utente non decide, dopo aver confrontato i dati.
-CLAUDE_MAX_TOKENS_PAPER, CLAUDE_TIMEOUT_PAPER_S = 2000, 90
+# 12-15 ott) e il bot la scartava: pagata e ignorata. In paper (test) l'utente ha deciso 3000 (15 ott), con
+# timeout piu' lungo perche' la risposta e' piu' lunga; in LIVE resta 1100 finche' l'utente non decide, dopo
+# aver confrontato i dati del test (il contabile conta le risposte ancora tagliate).
+CLAUDE_MAX_TOKENS_PAPER, CLAUDE_TIMEOUT_PAPER_S = 3000, 120
 CLAUDE_MAX_TOKENS_LIVE, CLAUDE_TIMEOUT_LIVE_S = 1100, 60
 
 
@@ -1591,7 +1592,7 @@ def main() -> None:
         return
 
     # ogni riga del registro di apprendimento porta la versione del codice (short SHA del deploy) che l'ha scritta:
-    # cosi' l'analista puo' separare i dati prima/dopo una modifica (es. max_tokens 1100 -> 2000)
+    # cosi' l'analista puo' separare i dati prima/dopo una modifica (es. max_tokens 1100 -> 2000 -> 3000)
     _learning.STAMP["code_version"] = CODE_VERSION
     print(f"[DESK V2] avvio [{PORTFOLIO.name.upper()}] versione {CODE_VERSION} — {PORTFOLIO.description}")
     print(f"[DESK V2] simboli: {len(SYMBOLS)}  "

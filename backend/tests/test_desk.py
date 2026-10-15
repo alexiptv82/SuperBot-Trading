@@ -1472,7 +1472,7 @@ def test_cycle_logs_a_discarded_claude_reply_with_its_text_and_reason():
         assert e["ok"] is False and e["fail_reason"] == "json_troncato" and e["n_decisions"] is None
         # output_tokens e' quello dello stub; max_tokens e' il tetto richiesto in paper (non e' piu' 1100 dal 15 ott)
         assert e["stop_reason"] == "max_tokens" and e["output_tokens"] == 1100
-        assert e["max_tokens"] == cli.CLAUDE_MAX_TOKENS_PAPER == 2000
+        assert e["max_tokens"] == cli.CLAUDE_MAX_TOKENS_PAPER == 3000
         assert e["reply"] == stub.cut and e["reply_chars"] == len(stub.cut)
         assert e["cost_usd"] > 0 and e["portfolio"] == cli.PORTFOLIO.name and e["n_positions"] == 0
         assert e["prompt_chars"] > 100
@@ -1784,7 +1784,7 @@ def test_sane_tp_discards_prices_that_cannot_exist():
 
 
 def test_claude_limits_paper_is_larger_live_is_unchanged():
-    assert cli.claude_limits(False) == (2000, 90)
+    assert cli.claude_limits(False) == (3000, 120)
     assert cli.claude_limits(True) == (1100, 60)   # il live non cambia finche' l'utente non decide
 
 
@@ -1831,10 +1831,10 @@ def _run_open(action, tp_pct, drift):
         del os.environ["ANTHROPIC_API_KEY"]
 
 
-def test_cycle_in_paper_asks_claude_with_2000_tokens():
+def test_cycle_in_paper_asks_claude_with_3000_tokens():
     pos, calls = _run_open("open_long", 0.025, drift=0.0006)
     assert calls, "Claude non e' stato chiamato"
-    assert all(c == {"max_tokens": 2000, "timeout": 90} for c in calls), calls
+    assert all(c == {"max_tokens": 3000, "timeout": 120} for c in calls), calls
     assert pos is not None and pos.tp is not None   # un TP normale non viene toccato
 
 

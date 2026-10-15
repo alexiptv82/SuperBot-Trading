@@ -42,6 +42,13 @@ jobs:
             print("heartbeat: exec_mode=%s modalita_app=%s versione=%s eta=%ds" % (
                 hb.get("exec_mode", "(campo assente nel codice in esecuzione)"), hb.get("mode"),
                 hb.get("version", hb.get("code_version", "-")), time.time() - hb.get("ts", 0)))
+            h, m, cs = hb.get("hours"), hb.get("macro"), hb.get("claude_schedule")
+            print("orari di trading:", ("mode=%s errore=%s" % (h.get("mode"), h.get("error") or "-")) if isinstance(h, dict) else "non presente")
+            print("macro:", json.dumps(m, ensure_ascii=False)[:230] if m is not None else "non presente")
+            print("calendario Claude:", ("modo=%s consentito_ora=%s future=%s errore=%s" % (
+                cs.get("mode"), cs.get("allowed"), cs.get("n_future"), cs.get("error") or "-")) if isinstance(cs, dict) else "non presente")
+            print("funzioni: reset_keeps_brain=%s close_position=%s trading_enabled=%s" % (
+                hb.get("reset_keeps_brain"), hb.get("close_position"), hb.get("trading_enabled")))
             PYEOF
               docker logs $C 2>&1 | grep -E '^\[LIVE_CONNECTOR\] modalit' | tail -1 >> $OUT || true
             done
