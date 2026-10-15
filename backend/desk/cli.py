@@ -152,6 +152,9 @@ ERRORS_FILE = os.path.join(DATA_DIR, "errors.md")
 # ---- protocollo di controllo server <-> bot (file nella cartella dati)
 #   pause.flag            PAUSA: il bot finisce le posizioni aperte e non ne apre di nuove
 #   reset.flag            chiudi tutte le posizioni a prezzo di mercato
+#   close_position.flag   chiudi UNA o piu' posizioni scelte dall'utente, a prezzo di mercato:
+#                         {"symbols": [...], "ts": ms}. Una richiesta piu' vecchia di CLOSE_POSITION_MAX_AGE_S
+#                         si scarta (mai chiudere a distanza di ore per un clic dimenticato).
 #   budget_reset.flag     azzera solo il budget giornaliero di Claude
 #   reset_portfolio.flag  azzera il CONTO e riparti da 1000$ (solo in pausa e senza posizioni).
 #                         Il "cervello" (trade_history.jsonl, lessons.md, errors.md, learning_log.jsonl)
@@ -168,6 +171,7 @@ RETRY_S = 300              # dopo un ciclo fallito riprova dopo 5 minuti
 CYCLE_S = 1800             # ciclo normale: 30 minuti
 CYCLE_FAST_S = 900         # con scalp aperto o in svuotamento: 15 minuti
 CODE_VERSION = os.getenv("DESK_CODE_VERSION", "dev")
+CLOSE_POSITION_MAX_AGE_S = 600   # una richiesta di chiusura singola piu' vecchia di 10 min non si esegue
 
 # ── Capitale assegnato e scala degli ordini (solo live) ──────────────────────
 # DESK_HAWK_CAPITAL / DESK_BULL_CAPITAL: capitale allocato a ogni portafoglio (USDT), scelto dall'utente.
@@ -355,7 +359,10 @@ HB: dict = {"started_ms": int(time.time() * 1000), "version": CODE_VERSION, "pid
             "next_cycle_ms": 0,
             # Dice all'app che in questa versione il reset del portafoglio NON cancella il cervello (storico dei
             # trade, appunti, registro). Senza questo campo l'app tiene bloccato il pulsante di azzeramento.
-            "reset_keeps_brain": True}
+            "reset_keeps_brain": True,
+            # Dice all'app che questa versione sa chiudere una singola posizione su richiesta dell'utente.
+            # Con un bot piu' vecchio il tasto non appare (il comando resterebbe in attesa e scatterebbe dopo).
+            "close_position": True}
 _hb_last_write = 0.0
 
 
@@ -1087,6 +1094,32 @@ def _market_prices(symbols: list, state: dict) -> dict:
     return px
 
 
+def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms: int) -> tuple:
+    """Chiude UNA posizione a prezzo di mercato perche' lo ha chiesto l'utente (Chiudi tutto o Chiudi singola).
+    In live prima sull'exchange: se Bitget non chiude, la posizione resta aperta anche nel motore.
+    Il trade entra nello storico e nel registro come tutti gli altri (vinto o perso secondo il profitto vero),
+    con in piu' `closed_by: "utente"` per poter separare in analisi cio' che ha deciso il bot da cio' che ha
+    deciso l'utente: non cambia l'esito, non e' un trade "falso".
+    Ritorna (record, "") se chiusa, (None, motivo) se non e' stata chiusa."""
+    # ── LIVE: chiudi su Bitget prima di aggiornare il motore ─────────
+    if LIVE._live:
+        pos_pre = acc.positions.get(sym)
+        if pos_pre:
+            live_ok, live_detail = LIVE.close(sym, pos_pre.side, pos_pre.qty)
+            if not live_ok:
+                print(f"[LIVE CLOSE FALLITA] {sym}: {live_detail} — skip chiusura manuale")
+                return None, str(live_detail)[:160] or "chiusura su Bitget non riuscita"
+    # ─────────────────────────────────────────────────────────────────
+    rec = acc.close(sym, px, now_ms, "chiusura manuale")
+    if rec is None:
+        return None, "posizione non trovata"
+    rec["closed_by"] = "utente"
+    if LIVE._live and LIVE.last_fill:
+        rec["live"] = dict(LIVE.last_fill)
+    record_close(state, rec)
+    return rec, ""
+
+
 def _check_close_all_flag(state: dict) -> bool:
     """reset.flag = 'chiudi tutto': chiude ogni posizione al PREZZO DI MERCATO, con commissioni,
     slippage e funding reali, e registra i trade nello storico. Se per un simbolo non c'e' un
@@ -1108,21 +1141,11 @@ def _check_close_all_flag(state: dict) -> bool:
             if px is None:
                 skipped.append(sym)
                 continue
-            # ── LIVE: chiudi su Bitget prima di aggiornare il motore ─────────
-            if LIVE._live:
-                pos_pre = acc.positions.get(sym)
-                if pos_pre:
-                    live_ok, live_detail = LIVE.close(sym, pos_pre.side, pos_pre.qty)
-                    if not live_ok:
-                        print(f"[LIVE CLOSE FALLITA] {sym}: {live_detail} — skip chiusura manuale")
-                        skipped.append(sym)
-                        continue
-            # ─────────────────────────────────────────────────────────────────
-            rec = acc.close(sym, px, now_ms, "chiusura manuale")
+            rec, why_not = _close_for_user(state, acc, sym, px, now_ms)
+            if why_not:
+                skipped.append(sym)
+                continue
             if rec:
-                if LIVE._live and LIVE.last_fill:
-                    rec["live"] = dict(LIVE.last_fill)
-                record_close(state, rec)
                 closed_n += 1
                 net += rec["net"]
         flush_events(state, acc)
@@ -1219,6 +1242,89 @@ def _archive_run(state: dict, acc: PaperAccount, clear_lessons: bool) -> str:
     return name
 
 
+def _check_close_position_flag(state: dict) -> bool:
+    """close_position.flag = {"symbols": [...], "ts": ms}: l'utente vuole chiudere queste posizioni (non tutte) a
+    prezzo di mercato. Stesse regole di 'Chiudi tutto': in live prima su Bitget, mai un'uscita inventata se
+    manca il prezzo. Sicurezze: una richiesta vecchia (clic dimenticato) non si esegue; un simbolo gia' chiuso
+    non e' un errore; il file si 'prende in carico' con un rinomina cosi' un secondo clic arrivato intanto
+    non va perso. L'esito va in state['last_action'] e l'app lo mostra."""
+    path = _flag("close_position.flag")
+    if not os.path.exists(path):
+        return False
+    work = path + ".work"
+    try:
+        os.replace(path, work)
+    except OSError:
+        return False
+    try:
+        try:
+            with open(work) as f:
+                req = json.loads(f.read() or "{}")
+        except Exception:
+            req = {}
+        if not isinstance(req, dict):
+            req = {}
+        wanted = [str(x) for x in (req.get("symbols") or []) if x]
+        wanted = list(dict.fromkeys(wanted))
+        now_ms = int(time.time() * 1000)
+        try:
+            age_s = (now_ms - int(req.get("ts"))) / 1000.0
+        except (TypeError, ValueError):
+            age_s = None
+        if not wanted:
+            _set_last_action(state, "close_position", False, "richiesta di chiusura senza simbolo: ignorata")
+            save_state(state, STATE_FILE)
+            return False
+        if age_s is None or age_s > CLOSE_POSITION_MAX_AGE_S or age_s < -60:
+            _set_last_action(state, "close_position", False,
+                             f"richiesta di chiusura scaduta ({', '.join(wanted)}): non eseguita, riprova")
+            save_state(state, STATE_FILE)
+            print(f"[CHIUDI POSIZIONE] richiesta scaduta o senza ora ({', '.join(wanted)}): non eseguita", flush=True)
+            return False
+        acc = make_account(state)
+        present = [s for s in wanted if s in acc.positions]
+        gone = [s for s in wanted if s not in acc.positions]
+        prices = _market_prices(present, state) if present else {}
+        closed, failed, net = [], [], 0.0
+        for sym in present:
+            px = prices.get(sym)
+            if px is None:
+                failed.append((sym, "prezzo non disponibile"))
+                continue
+            rec, why_not = _close_for_user(state, acc, sym, px, now_ms)
+            if why_not:
+                failed.append((sym, why_not))
+                continue
+            closed.append(sym)
+            net += rec["net"]
+            try:
+                notify_close(sym, rec["net"], "su tua richiesta", "chiusura manuale")
+            except Exception:
+                pass   # il messaggio Telegram non deve mai fermare la chiusura
+        flush_events(state, acc)
+        save_account(acc, state)
+        parts = []
+        if closed:
+            parts.append(f"chiusa {', '.join(closed)} (netto {net:+.2f}$)" if len(closed) == 1
+                         else f"chiuse {', '.join(closed)} (netto {net:+.2f}$)")
+        if gone:
+            parts.append(f"{', '.join(gone)}: gia' chiusa")
+        for sym, why in failed:
+            parts.append(f"{sym}: NON chiusa ({why}), resta aperta: riprova")
+        detail = "; ".join(parts) or "nessuna posizione da chiudere"
+        _set_last_action(state, "close_position", not failed, detail, closed=closed,
+                         skipped=[s for s, _ in failed])
+        save_state(state, STATE_FILE)
+        print(f"[CHIUDI POSIZIONE] {detail}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[CHIUDI POSIZIONE ERROR] {e}", flush=True)
+        traceback.print_exc()
+        return False
+    finally:
+        _remove(work)
+
+
 def _check_portfolio_reset_flag(state: dict) -> bool:
     """reset_portfolio.flag: archivia la run e riparte da 1000$ con i parametri del codice.
     Regole (controllate anche qui, non solo dall'app): il bot deve essere IN PAUSA e senza
@@ -1286,9 +1392,10 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
 
 
 def process_flags(state: dict) -> None:
-    """Esegue i comandi arrivati dall'app. L'ordine conta: budget, chiudi tutto, reset conto."""
+    """Esegue i comandi arrivati dall'app. L'ordine conta: budget, chiudi tutto, chiudi singola, reset conto."""
     _check_budget_reset_flag(state)
     _check_close_all_flag(state)
+    _check_close_position_flag(state)
     _check_portfolio_reset_flag(state)
 
 

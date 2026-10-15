@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 
 import numpy as np
 
@@ -760,6 +761,111 @@ def test_close_all_without_price_keeps_position_open_and_says_so():
         cli._check_close_all_flag(state)
         assert "BTC" in cli.make_account(state).positions, "senza prezzo non si inventa un'uscita"
         assert state["last_action"]["ok"] is False and "BTC" in state["last_action"]["skipped"]
+
+
+def _state_with_two_positions():
+    state = {}
+    acc = cli.make_account(state)
+    for sym in ("BTC", "ETH"):
+        pos, msg = acc.open(sym, 1, 100, 10, 100.0, 95.0, None, NOW, {})
+        assert pos, msg
+    cli.save_account(acc, state)
+    return state
+
+
+def _write_close_request(d, symbols, age_s=0, with_ts=True):
+    req = {"symbols": symbols}
+    if with_ts:
+        req["ts"] = int(time.time() * 1000) - int(age_s * 1000)
+    with open(os.path.join(d, "close_position.flag"), "w") as f:
+        json.dump(req, f)
+
+
+def test_close_position_closes_only_the_chosen_one_and_marks_it_as_the_user_s():
+    with _sandbox() as (d, calls):
+        state = _state_with_two_positions()
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [[NOW, 101, 103, 100, 102.0, 1.0]]
+        _write_close_request(d, ["BTC"])
+        assert cli._check_close_position_flag(state) is True
+        acc = cli.make_account(state)
+        assert "BTC" not in acc.positions and "ETH" in acc.positions, "solo quella scelta"
+        rec = acc.closed[0]
+        assert rec["why"] == "chiusura manuale" and rec["closed_by"] == "utente"
+        assert abs(rec["exit"] - 102.0) < 0.05 and rec["net"] > 0 and rec["fees"] > 0
+        hist = [json.loads(x) for x in open(os.path.join(d, "trade_history.jsonl")).read().splitlines()]
+        assert len(hist) == 1 and hist[0]["closed_by"] == "utente" and hist[0]["net"] == rec["net"]
+        log = [json.loads(x) for x in open(os.path.join(d, "learning_log.jsonl")).read().splitlines()]
+        closes = [r for r in log if r.get("ev") == "close"]
+        assert len(closes) == 1 and closes[0]["closed_by"] == "utente" and closes[0]["symbol"] == "BTC"
+        assert not os.path.exists(os.path.join(d, "close_position.flag"))
+        assert not os.path.exists(os.path.join(d, "close_position.flag.work"))
+        la = state["last_action"]
+        assert la["type"] == "close_position" and la["ok"] is True and la["closed"] == ["BTC"]
+
+
+def test_manual_close_counts_as_a_normal_win_or_loss_in_the_symbol_stats():
+    """Il bot impara dal risultato vero: una chiusura manuale in profitto e' un trade vinto, in perdita un trade perso."""
+    with _sandbox() as (d, calls):
+        state = _state_with_two_positions()
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [[NOW, 101, 103, 100, 102.0 if sym == "BTC" else 97.0, 1.0]]
+        _write_close_request(d, ["BTC", "ETH"])
+        cli._check_close_position_flag(state)
+        stats = cli.load_symbol_stats(d)
+        assert stats["BTC"]["wins"] == 1 and stats["BTC"]["losses"] == 0
+        assert stats["ETH"]["wins"] == 0 and stats["ETH"]["losses"] == 1, "anche le perdite manuali si registrano"
+
+
+def test_close_all_marks_the_closes_as_the_user_s_too():
+    with _sandbox() as (d, calls):
+        state = _state_with_position(100.0)
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [[NOW, 101, 103, 100, 102.0, 1.0]]
+        open(os.path.join(d, "reset.flag"), "w").close()
+        cli._check_close_all_flag(state)
+        assert cli.make_account(state).closed[0]["closed_by"] == "utente"
+
+
+def test_close_position_request_that_is_too_old_is_not_executed():
+    with _sandbox() as (d, calls):
+        state = _state_with_two_positions()
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [[NOW, 101, 103, 100, 102.0, 1.0]]
+        _write_close_request(d, ["BTC"], age_s=cli.CLOSE_POSITION_MAX_AGE_S + 5)
+        assert cli._check_close_position_flag(state) is False
+        assert set(cli.make_account(state).positions) == {"BTC", "ETH"}, "un clic dimenticato non chiude nulla"
+        assert state["last_action"]["ok"] is False and "scaduta" in state["last_action"]["detail"]
+        assert not os.path.exists(os.path.join(d, "close_position.flag"))
+        assert not os.path.exists(os.path.join(d, "trade_history.jsonl"))
+        _write_close_request(d, ["BTC"], with_ts=False)
+        assert cli._check_close_position_flag(state) is False and "BTC" in cli.make_account(state).positions
+
+
+def test_close_position_already_closed_is_not_an_error_and_without_price_stays_open():
+    with _sandbox() as (d, calls):
+        state = _state_with_two_positions()
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [[NOW, 101, 103, 100, 102.0, 1.0]]
+        _write_close_request(d, ["SOL"])
+        cli._check_close_position_flag(state)
+        assert state["last_action"]["ok"] is True and "gia' chiusa" in state["last_action"]["detail"]
+        assert set(cli.make_account(state).positions) == {"BTC", "ETH"}
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: []
+        _write_close_request(d, ["BTC"])
+        cli._check_close_position_flag(state)
+        assert "BTC" in cli.make_account(state).positions, "senza prezzo non si inventa un'uscita"
+        assert state["last_action"]["ok"] is False and "BTC" in state["last_action"]["skipped"]
+
+
+def test_close_position_runs_from_process_flags_even_while_draining():
+    with _sandbox() as (d, calls):
+        state = _state_with_two_positions()
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [[NOW, 101, 103, 100, 102.0, 1.0]]
+        open(os.path.join(d, "pause.flag"), "w").close()                  # in pausa: svuotamento
+        _write_close_request(d, ["ETH"])
+        cli.process_flags(state)
+        assert set(cli.make_account(state).positions) == {"BTC"}
+        assert os.path.exists(os.path.join(d, "pause.flag")), "la chiusura singola non toglie la pausa"
+
+
+def test_heartbeat_declares_that_it_can_close_a_single_position():
+    assert cli.HB.get("close_position") is True
 
 
 def _closed_trade_state(d, n=3):

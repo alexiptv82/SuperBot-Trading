@@ -91,6 +91,7 @@ def notify_close(symbol: str, net: float, reason: str, why: str) -> None:
         "take profit": "Take Profit 🎯",
         "liquidazione": "Liquidazione 💥",
         "chiusura Claude": "Claude 🤖",
+        "chiusura manuale": "Chiusa da te ✋",
     }
     why_label = why_map.get(why, why)
     _send(_tag(

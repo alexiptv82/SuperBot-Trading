@@ -257,3 +257,59 @@ def test_heartbeat_tells_the_app_the_scale_and_when_live_started():
         assert hb["exec_mode"] == "paper" and hb["capital_scale"] == 0.5
     finally:
         cli.LIVE, cli.DATA_DIR, cli.CAPITAL_SCALE, cli._PORTFOLIO_CAPITAL, cli.LIVE_SINCE_MS = keep
+
+
+def _request_close(rig, symbols):
+    with open(os.path.join(rig.d, "close_position.flag"), "w") as f:
+        json.dump({"symbols": symbols, "ts": int(__import__("time").time() * 1000)}, f)
+
+
+def test_manual_close_in_live_closes_on_the_exchange_first_and_keeps_the_real_fill():
+    rig = LiveRig()
+    try:
+        rig.cycle(0)
+        rig.cycle(1)
+        assert "BTC" in rig.acc().positions and rig.fake.legs, "prima c'e' una posizione vera"
+        _request_close(rig, ["BTC"])
+        assert cli._check_close_position_flag(rig.state) is True
+        acc = rig.acc()
+        assert "BTC" not in acc.positions and not rig.fake.legs, "chiusa sia nel motore sia sull'exchange"
+        rec = [c for c in acc.closed if c["symbol"] == "BTC"][-1]
+        assert rec["closed_by"] == "utente" and rec["why"] == "chiusura manuale"
+        assert rec.get("live"), "accanto ai numeri del motore c'e' il fill vero di Bitget"
+        assert rig.state["last_action"]["ok"] is True
+        assert [e for e in rig.events("close") if e.get("closed_by") == "utente"]
+    finally:
+        rig.close()
+
+
+def test_manual_close_in_live_when_the_exchange_refuses_keeps_the_position_open_everywhere():
+    rig = LiveRig()
+    try:
+        rig.cycle(0)
+        rig.cycle(1)
+        assert "BTC" in rig.acc().positions
+        rig.fake.sticky["create_order"] = ccxt.ExchangeError("bitget: ordine rifiutato")
+        _request_close(rig, ["BTC"])
+        cli._check_close_position_flag(rig.state)
+        assert "BTC" in rig.acc().positions and rig.fake.legs, "se Bitget non chiude, il motore non chiude"
+        assert rig.state["last_action"]["ok"] is False and "BTC" in rig.state["last_action"]["skipped"]
+        assert not [c for c in rig.acc().closed if c["symbol"] == "BTC"]
+    finally:
+        rig.close()
+
+
+def test_manual_close_works_with_the_trading_switch_off():
+    """L'interruttore spento ferma le APERTURE, non le chiusure: chiudere una posizione resta sempre possibile."""
+    rig = LiveRig()
+    try:
+        rig.cycle(0)
+        rig.cycle(1)
+        assert "BTC" in rig.acc().positions
+        with open(cli._TRADING_ENABLED_FILE, "w") as f:
+            json.dump({"enabled": False}, f)
+        _request_close(rig, ["BTC"])
+        cli._check_close_position_flag(rig.state)
+        assert "BTC" not in rig.acc().positions and not rig.fake.legs
+    finally:
+        rig.close()
