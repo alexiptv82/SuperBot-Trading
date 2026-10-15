@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
-      - name: Contabile – numeri aggregati dal registro
+      - name: Esegui contabile sul server e salva in /tmp
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 51.91.109.45
@@ -22,7 +22,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 150s
           script: |
-            python3 -I - hawk=/opt/superbot-desk-data/hawk bull=/opt/superbot-desk-data/bull <<'PYEOF'
+            python3 -I - hawk=/opt/superbot-desk-data/hawk bull=/opt/superbot-desk-data/bull > /tmp/analista_out.txt 2>&1 <<'PYEOF'
             import json, math, os, sys
             from collections import Counter, defaultdict
 
@@ -111,23 +111,23 @@ jobs:
                 return labels[len(edges)] if labels else f">={edges[-1]}"
 
             DIMS = {
-                "bot":            lambda t: t["bot"],
-                "lato":           lambda t: {1:"long",-1:"short"}.get(t.get("side")),
-                "coppia":         lambda t: t.get("symbol"),
-                "tipo":           lambda t: t.get("trade_type"),
-                "uscita":         lambda t: t.get("why"),
-                "ora UTC (4h)":   lambda t: (lambda h: None if h is None else f"{h//4*4:02d}-{h//4*4+4:02d}")((t.get("feat") or {}).get("hour_utc")),
-                "giorno sett.":   lambda t: (lambda d: None if d is None else "lun mar mer gio ven sab dom".split()[d])((t.get("feat") or {}).get("dow")),
-                "confidenza":     lambda t: bucket((t.get("feat") or {}).get("conf"),[60,70,80,90],["<60","60-69","70-79","80-89","90+"]),
-                "punteggio seg.": lambda t: bucket((t.get("feat") or {}).get("sig_score"),[60,70,80],["<60","60-69","70-79","80+"]),
-                "RSI 1h":         lambda t: bucket((t.get("feat") or {}).get("rsi1h"),[30,45,55,70],["<30","30-44","45-54","55-69","70+"]),
-                "funding":        lambda t: (lambda f: None if f is None else ("positivo" if f>0 else "negativo/zero"))((t.get("feat") or {}).get("funding_rate")),
-                "BTC ROC 24h":    lambda t: bucket((t.get("feat") or {}).get("btc_roc24h"),[-0.03,0,0.03],["<-3%","-3..0%","0..3%",">3%"]),
-                "ATR%":           lambda t: bucket((t.get("feat") or {}).get("atr_pct"),[0.005,0.01,0.02],["<0.5%","0.5-1%","1-2%",">2%"]),
-                "R:R deciso":     lambda t: bucket((t.get("feat") or {}).get("dec_rr"),[1.5,2,3],["<1.5","1.5-2","2-3","3+"]),
-                "leva":           lambda t: bucket(t.get("leverage"),[10,20],["<10x","10-19x","20x+"]),
-                "live/finto":     lambda t: "live" if t.get("live") else "finto",
-                "Claude consente":lambda t: {1:"si",0:"no"}.get(t.get("claude_win")),
+                "bot":             lambda t: t["bot"],
+                "lato":            lambda t: {1:"long",-1:"short"}.get(t.get("side")),
+                "coppia":          lambda t: t.get("symbol"),
+                "tipo":            lambda t: t.get("trade_type"),
+                "uscita":          lambda t: t.get("why"),
+                "ora UTC (4h)":    lambda t: (lambda h: None if h is None else f"{h//4*4:02d}-{h//4*4+4:02d}")((t.get("feat") or {}).get("hour_utc")),
+                "giorno sett.":    lambda t: (lambda d: None if d is None else "lun mar mer gio ven sab dom".split()[d])((t.get("feat") or {}).get("dow")),
+                "confidenza":      lambda t: bucket((t.get("feat") or {}).get("conf"),[60,70,80,90],["<60","60-69","70-79","80-89","90+"]),
+                "punteggio seg.":  lambda t: bucket((t.get("feat") or {}).get("sig_score"),[60,70,80],["<60","60-69","70-79","80+"]),
+                "RSI 1h":          lambda t: bucket((t.get("feat") or {}).get("rsi1h"),[30,45,55,70],["<30","30-44","45-54","55-69","70+"]),
+                "funding":         lambda t: (lambda f: None if f is None else ("positivo" if f>0 else "negativo/zero"))((t.get("feat") or {}).get("funding_rate")),
+                "BTC ROC 24h":     lambda t: bucket((t.get("feat") or {}).get("btc_roc24h"),[-0.03,0,0.03],["<-3%","-3..0%","0..3%",">3%"]),
+                "ATR%":            lambda t: bucket((t.get("feat") or {}).get("atr_pct"),[0.005,0.01,0.02],["<0.5%","0.5-1%","1-2%",">2%"]),
+                "R:R deciso":      lambda t: bucket((t.get("feat") or {}).get("dec_rr"),[1.5,2,3],["<1.5","1.5-2","2-3","3+"]),
+                "leva":            lambda t: bucket(t.get("leverage"),[10,20],["<10x","10-19x","20x+"]),
+                "live/finto":      lambda t: "live" if t.get("live") else "finto",
+                "Claude consente": lambda t: {1:"si",0:"no"}.get(t.get("claude_win")),
             }
 
             def stats(ts):
@@ -142,20 +142,18 @@ jobs:
                         "IC95": f"{100*lo:.0f}-{100*hi:.0f}%" if lo is not None else None,
                         "netto": f"{sum(t['net'] for t in ts):+.1f}$",
                         "medio": f"{sum(t['net'] for t in ts)/n:+.1f}$" if n else None,
-                        "PF": round(sum(t['net'] for t in wins)/gl,2) if gl>0 else None,
+                        "PF": round(sum(t["net"] for t in wins)/gl,2) if gl>0 else None,
                         "R_medio": round(sum(rs)/len(rs),3) if rs else None,
                         "comm+fund": f"{sum(t['fees']+t['funding'] for t in ts):.1f}$",
                         "indicativo": n < MIN_N}
 
             def analyze(events_by_bot):
                 trades = build_trades(events_by_bot)
-                print(f"\n{'='*60}")
+                print(f"{'='*60}")
                 print(f"TRADE CHIUSI TOTALI: {len(trades)}")
                 tot = stats(trades)
-                print(f"TOTALE: win%={tot['win%']} IC95={tot['IC95']} netto={tot['netto']} medio={tot['medio']} PF={tot['PF']} R_medio={tot['R_medio']}")
-                print(f"COMMISSIONI+FUNDING totali: {tot['comm+fund']}")
-
-                # Per ogni dimensione
+                print(f"TOTALE  win={tot['win%']} IC95={tot['IC95']} netto={tot['netto']} medio={tot['medio']} PF={tot['PF']} R={tot['R_medio']}")
+                print(f"COMM+FUNDING totali: {tot['comm+fund']}")
                 for name, fn in DIMS.items():
                     groups = defaultdict(list)
                     for t in trades:
@@ -167,40 +165,55 @@ jobs:
                     print(f"\n== {name} ==")
                     for k, v in sorted(groups.items()):
                         s = stats(v)
-                        flag = " [INDICATIVO]" if s["indicativo"] else ""
+                        flag = " [IND]" if s["indicativo"] else ""
                         print(f"  {k:<22} n={s['n']:<4} win={s['win%']:<6} IC95={s['IC95']:<12} netto={s['netto']:<10} R={s['R_medio']:<7} PF={s['PF']}{flag}")
-
-                # Diagnosi MAE/MFE
                 losers = [t for t in trades if t["net"]<=0 and t.get("mfe_r") is not None]
                 winners = [t for t in trades if t["net"]>0 and t.get("mae_r") is not None]
                 print(f"\n== DIAGNOSI USCITE ==")
-                print(f"  Perdenti con MFE>=0.5R (erano in utile, poi restituito): {sum(1 for t in losers if t['mfe_r']>=0.5)}/{len(losers)}")
+                print(f"  Perdenti con MFE>=0.5R (erano in utile poi restituito): {sum(1 for t in losers if t['mfe_r']>=0.5)}/{len(losers)}")
                 print(f"  Vincenti con MAE>=0.8R (quasi stoppati prima di vincere): {sum(1 for t in winners if t['mae_r']>=0.8)}/{len(winners)}")
-
-                # Regime
                 sides = Counter(t.get("side") for t in trades)
                 q_short = sides.get(-1,0)/len(trades) if trades else 0
                 print(f"\n== REGIME ==")
                 print(f"  Short: {q_short:.0%}  Long: {1-q_short:.0%}")
                 if trades and max(sides.values())/len(trades) > 0.8:
-                    print("  AVVISO: campione quasi tutto su un lato, regole apprese potrebbero non valere nel regime opposto")
-
-                # Chiamate Claude
+                    print("  AVVISO: campione quasi tutto su un lato")
                 calls = [e for evs in events_by_bot.values() for e in evs if e.get("ev")=="claude_call"]
                 ok = sum(1 for c in calls if c.get("ok"))
                 trunc = sum(1 for c in calls if c.get("stop_reason")=="max_tokens")
                 cost = sum(float(c.get("cost_usd") or 0) for c in calls)
                 print(f"\n== CHIAMATE CLAUDE ==")
-                print(f"  Totale: {len(calls)}  Lette (ok): {ok}  Tagliate (max_tokens): {trunc}  Costo: {cost:.2f}$")
-
-                # Candidati scartati
+                print(f"  Totale={len(calls)}  ok={ok}  troncate={trunc}  costo={cost:.2f}$")
                 cands = [e for evs in events_by_bot.values() for e in evs if e.get("ev")=="candidate"]
                 per_stato = dict(Counter(str(c.get("status","?")).split(":")[0] for c in cands))
                 print(f"\n== CANDIDATI SCARTATI ==")
-                print(f"  Totale: {len(cands)}  Per stato: {per_stato}")
+                print(f"  Totale={len(cands)}  per_stato={per_stato}")
                 print(f"{'='*60}")
 
             dirs = dict(a.split("=",1) for a in sys.argv[1:] if "=" in a)
             ev = {bot: read_jsonl(os.path.join(d,"learning_log.jsonl")) for bot,d in dirs.items()}
             analyze(ev)
             PYEOF
+            echo "Script completato. Righe output: $(wc -l < /tmp/analista_out.txt)"
+
+      - name: Pubblica risultati come notice
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_analista
+          chmod 600 ~/.ssh/id_analista
+          ssh -T -i ~/.ssh/id_analista \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            root@51.91.109.45 \
+            'cat /tmp/analista_out.txt' 2>/dev/null > analista_out.txt || true
+          rm -f ~/.ssh/id_analista
+
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat analista_out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          OUT=$(cat analista_out.txt | head -200 | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Contabile risultati::${OUT}"
+          echo "=== OUTPUT CONTABILE ===" && cat analista_out.txt
