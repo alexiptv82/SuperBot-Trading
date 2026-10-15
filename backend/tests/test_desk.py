@@ -814,8 +814,10 @@ def test_portfolio_reset_archives_run_and_restarts_from_1000_in_pause():
         assert state["paused"] is True and state["mode"] == "paused" and state["run_no"] == 2
         assert state["budget"]["spent"] == 0.3, "il budget giornaliero di Claude non c'entra col conto"
         assert os.path.exists(os.path.join(d, "pause.flag")), "dopo il reset il bot resta in pausa"
-        assert not os.path.exists(os.path.join(d, "trade_history.jsonl")), "lo storico riparte vuoto"
-        assert os.path.exists(os.path.join(d, "lessons.md")), "gli appunti si tengono se non richiesto"
+        hist = os.path.join(d, "trade_history.jsonl")
+        assert os.path.exists(hist) and len(open(hist).read().splitlines()) == 3, \
+            "lo storico e' il cervello: il reset NON lo tocca (l'app mostra solo la run attuale)"
+        assert os.path.exists(os.path.join(d, "lessons.md")), "gli appunti restano"
         # archivio completo
         arch = os.path.join(d, "archive", state["last_action"]["archive"])
         for fn in ("summary.json", "trade_history.jsonl", "state_v2.json", "lessons.md"):
@@ -828,16 +830,77 @@ def test_portfolio_reset_archives_run_and_restarts_from_1000_in_pause():
         assert cli.load_state(cli.STATE_FILE)["run_no"] == 2
 
 
-def test_portfolio_reset_can_clear_lessons():
+def test_portfolio_reset_never_clears_lessons_even_if_asked():
+    """Il cervello non si cancella da nessun comando: la vecchia opzione clear_lessons viene ignorata."""
     with _sandbox() as (d, calls):
         state, _ = _closed_trade_state(d)
         open(os.path.join(d, "lessons.md"), "w").write("appunti")
+        open(os.path.join(d, "errors.md"), "w").write("errori")
         open(os.path.join(d, "pause.flag"), "w").close()
         open(os.path.join(d, "reset_portfolio.flag"), "w").write(json.dumps({"clear_lessons": True}))
         assert cli._check_portfolio_reset_flag(state) is True
-        assert not os.path.exists(os.path.join(d, "lessons.md"))
+        assert open(os.path.join(d, "lessons.md")).read() == "appunti"
+        assert open(os.path.join(d, "errors.md")).read() == "errori"
         arch = os.path.join(d, "archive", state["last_action"]["archive"])
-        assert open(os.path.join(arch, "lessons.md")).read() == "appunti", "gli appunti restano in archivio"
+        assert open(os.path.join(arch, "lessons.md")).read() == "appunti", "e restano anche in archivio"
+        assert json.load(open(os.path.join(arch, "summary.json")))["lessons_cleared"] is False
+
+
+def _brain_snapshot(d):
+    names = ("trade_history.jsonl", "lessons.md", "errors.md", learning.LEARN_FILE)
+    return {n: open(os.path.join(d, n), "rb").read() for n in names if os.path.exists(os.path.join(d, n))}
+
+
+def test_portfolio_reset_leaves_every_brain_file_byte_identical():
+    with _sandbox() as (d, calls):
+        state, _ = _closed_trade_state(d, n=4)
+        open(os.path.join(d, "lessons.md"), "w").write("[2026-10-14]\nnon inseguire il rimbalzo\n")
+        open(os.path.join(d, "errors.md"), "w").write("# Errori ricorrenti\n- [2 volte] stop troppo stretto\n")
+        learning.log_event(d, {"ev": "open", "portfolio": cli.PORTFOLIO.name, "run_no": 1, "symbol": "BTC"})
+        before = _brain_snapshot(d)
+        assert set(before) == {"trade_history.jsonl", "lessons.md", "errors.md", learning.LEARN_FILE}
+        open(os.path.join(d, "pause.flag"), "w").close()
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
+        assert cli._check_portfolio_reset_flag(state) is True
+        assert _brain_snapshot(d) == before, "il reset non deve cambiare nemmeno un byte del cervello"
+        # secondo reset di fila: stessa cosa
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
+        assert cli._check_portfolio_reset_flag(state) is True
+        assert _brain_snapshot(d) == before
+
+
+def test_history_rows_carry_run_and_starting_capital_and_engine_record_is_untouched():
+    with _sandbox() as (d, calls):
+        state = {"run_no": 3}
+        acc = cli.make_account(state)
+        acc.open("BTC", 1, 100, 10, 100.0, 95.0, None, NOW, {})
+        rec = acc.close("BTC", 102.0, NOW + 500, "take profit")
+        keys_before = set(rec)
+        cli.record_close(state, rec)
+        assert set(rec) == keys_before, "il record del motore non si modifica"
+        line = json.loads(open(os.path.join(d, "trade_history.jsonl")).read().splitlines()[0])
+        assert line["run_no"] == 3 and line["start_equity"] == cli.PORTFOLIO.limits.start_equity
+        assert line["symbol"] == "BTC" and line["net"] == rec["net"]
+
+
+def test_brain_keeps_reading_old_runs_after_a_reset_and_new_trades_join_them():
+    """Dopo il reset le statistiche per moneta (il cervello) vedono ancora i trade della run vecchia,
+    e quelli nuovi si aggiungono con il numero di run nuovo."""
+    with _sandbox() as (d, calls):
+        state, _ = _closed_trade_state(d, n=3)
+        open(os.path.join(d, "pause.flag"), "w").close()
+        open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
+        assert cli._check_portfolio_reset_flag(state) is True
+        stats = cli.load_symbol_stats(d)
+        assert stats["BTC"]["wins"] + stats["BTC"]["losses"] == 3
+        acc = cli.make_account(state)
+        acc.open("BTC", 1, 100, 10, 100.0, 95.0, None, NOW + 10_000, {})
+        cli.record_close(state, acc.close("BTC", 103.0, NOW + 10_500, "take profit"))
+        stats = cli.load_symbol_stats(d)
+        assert stats["BTC"]["wins"] + stats["BTC"]["losses"] == 4
+        rows = [json.loads(x) for x in open(os.path.join(d, "trade_history.jsonl")).read().splitlines()]
+        assert rows[-1]["run_no"] == 2 and all("run_no" not in r for r in rows[:3]), \
+            "i trade vecchi restano com'erano, quello nuovo e' della run 2"
 
 
 def test_second_reset_does_not_overwrite_first_archive():
@@ -1209,7 +1272,7 @@ def test_cycle_close_is_logged_with_net_r_and_reset_keeps_the_learning_log():
         open(os.path.join(d, "reset_portfolio.flag"), "w").write("{}")
         assert cli._check_portfolio_reset_flag(state) is True
         assert len(learning.read_events(d)) >= 2, "il reset a 1000$ non cancella cio' che il bot ha registrato"
-        assert not os.path.exists(os.path.join(d, "trade_history.jsonl"))
+        assert os.path.exists(os.path.join(d, "trade_history.jsonl")), "nemmeno lo storico dei trade"
 
 
 def test_a_failure_in_feature_logging_never_blocks_an_entry():

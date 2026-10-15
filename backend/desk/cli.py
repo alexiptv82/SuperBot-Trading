@@ -153,7 +153,10 @@ ERRORS_FILE = os.path.join(DATA_DIR, "errors.md")
 #   pause.flag            PAUSA: il bot finisce le posizioni aperte e non ne apre di nuove
 #   reset.flag            chiudi tutte le posizioni a prezzo di mercato
 #   budget_reset.flag     azzera solo il budget giornaliero di Claude
-#   reset_portfolio.flag  riparti da 1000$ (solo in pausa e senza posizioni); JSON {"clear_lessons": bool}
+#   reset_portfolio.flag  azzera il CONTO e riparti da 1000$ (solo in pausa e senza posizioni).
+#                         Il "cervello" (trade_history.jsonl, lessons.md, errors.md, learning_log.jsonl)
+#                         NON si tocca mai: il reset non lo cancella e l'opzione {"clear_lessons": true}
+#                         (vecchia) viene ignorata.
 #   heartbeat.json        scritto dal bot: modalita', ultimo ciclo, prossimo ciclo, versione
 # I percorsi si calcolano al momento dell'uso (DATA_DIR puo' cambiare, es. nei test).
 def _flag(name: str) -> str:
@@ -349,7 +352,10 @@ def make_account(state: dict) -> PaperAccount:
 # ---- heartbeat: dice all'app (e al healthcheck) che il bot e' vivo e cosa sta facendo
 HB: dict = {"started_ms": int(time.time() * 1000), "version": CODE_VERSION, "pid": os.getpid(),
             "cycles": 0, "last_start_ms": 0, "last_end_ms": 0, "last_ok": None, "last_error": "",
-            "next_cycle_ms": 0}
+            "next_cycle_ms": 0,
+            # Dice all'app che in questa versione il reset del portafoglio NON cancella il cervello (storico dei
+            # trade, appunti, registro). Senza questo campo l'app tiene bloccato il pulsante di azzeramento.
+            "reset_keeps_brain": True}
 _hb_last_write = 0.0
 
 
@@ -412,9 +418,20 @@ def get_prices(symbols: list, candles_map: dict) -> dict:
     return {s: arr[-1][4] for s, arr in candles_map.items() if len(arr) > 0}
 
 
+def history_row(state: dict, rec: dict) -> dict:
+    """Riga dello storico permanente: il trade del motore piu' la run e il capitale di partenza di quella run.
+    Lo storico non si cancella mai (nemmeno con il reset del portafoglio): questi due campi dicono in quale
+    fase e' nato ogni trade, cosi' si possono confrontare run con strategie o capitali diversi.
+    Il record del motore resta com'e' (si lavora su una copia)."""
+    row = dict(rec)
+    row["run_no"] = state.get("run_no", 1)
+    row["start_equity"] = PORTFOLIO.limits.start_equity
+    return row
+
+
 def record_close(state: dict, rec: dict) -> None:
     """Ogni chiusura (finale o parziale) va nello storico dei trade e nel registro di apprendimento."""
-    append_trade_history(DATA_DIR, rec)
+    append_trade_history(DATA_DIR, history_row(state, rec))
     row = dict(rec)
     row["reason"] = str(row.get("reason", ""))[:200]
     log_event(DATA_DIR, {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name,
@@ -1205,7 +1222,9 @@ def _archive_run(state: dict, acc: PaperAccount, clear_lessons: bool) -> str:
 def _check_portfolio_reset_flag(state: dict) -> bool:
     """reset_portfolio.flag: archivia la run e riparte da 1000$ con i parametri del codice.
     Regole (controllate anche qui, non solo dall'app): il bot deve essere IN PAUSA e senza
-    posizioni aperte. Dopo il reset resta in pausa: sei tu a premere Avvia."""
+    posizioni aperte. Dopo il reset resta in pausa: sei tu a premere Avvia.
+    Il reset riguarda SOLO il conto. Il cervello (storico dei trade, appunti, errori ricorrenti, registro di
+    apprendimento) resta dov'e' e continua a crescere: nessuna opzione lo cancella."""
     path = _flag("reset_portfolio.flag")
     if not os.path.exists(path):
         return False
@@ -1215,7 +1234,10 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
                 opts = json.loads(f.read() or "{}")
         except Exception:
             opts = {}
-        clear_lessons = bool(opts.get("clear_lessons")) if isinstance(opts, dict) else False
+        if isinstance(opts, dict) and opts.get("clear_lessons"):
+            print("[RESET PORTAFOGLIO] richiesta di cancellare gli appunti IGNORATA: il cervello non si cancella",
+                  flush=True)
+        clear_lessons = False        # mai: il cervello non si cancella da nessun comando
         if not os.path.exists(_flag("pause.flag")):
             _set_last_action(state, "reset_portfolio", False, "rifiutato: il bot non e' in pausa")
             save_state(state, STATE_FILE)
@@ -1228,12 +1250,9 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
             save_state(state, STATE_FILE)
             print("[RESET PORTAFOGLIO] rifiutato: posizioni aperte", flush=True)
             return False
-        archive = _archive_run(state, acc, clear_lessons)   # se fallisce, non si cancella nulla
-        # solo ora lo storico della run corrente si sposta (la copia e' gia' in archivio)
-        _remove(os.path.join(DATA_DIR, "trade_history.jsonl"))
-        if clear_lessons:
-            _remove(os.path.join(DATA_DIR, "lessons.md"))
-            _remove(os.path.join(DATA_DIR, "errors.md"))
+        archive = _archive_run(state, acc, clear_lessons)   # se fallisce, il reset non parte
+        # Nessun file del cervello viene rimosso o svuotato: trade_history.jsonl, lessons.md, errors.md e
+        # learning_log.jsonl restano intatti. L'app mostra solo i trade della run attuale (run_started_ms).
         now_ms = int(time.time() * 1000)
         keep = {k: state[k] for k in ("budget", "last_call_ms", "market_ctx", "last_ctx_ts",
                                       "last_report_day", "last_prices", "last_prices_ms")
@@ -1246,11 +1265,12 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
         state["main"] = PaperAccount(PORTFOLIO.limits, "main").to_dict()
         state.update(run_no=run_no, run_started_ms=now_ms, paused=True, mode="paused")
         _set_last_action(state, "reset_portfolio", True,
-                         f"portafoglio ripartito da {PORTFOLIO.limits.start_equity:.0f}$; run precedente archiviata",
+                         f"portafoglio ripartito da {PORTFOLIO.limits.start_equity:.0f}$; run precedente archiviata; "
+                         f"cervello (storico, appunti, registro) intatto",
                          archive=archive)
         save_state(state, STATE_FILE)
         print(f"[RESET PORTAFOGLIO] run archiviata in {archive}; conto a "
-              f"{PORTFOLIO.limits.start_equity:.0f}$, bot in pausa", flush=True)
+              f"{PORTFOLIO.limits.start_equity:.0f}$, bot in pausa; cervello intatto", flush=True)
         return True
     except Exception as e:
         print(f"[RESET PORTAFOGLIO ERROR] {e}", flush=True)

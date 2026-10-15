@@ -250,6 +250,7 @@ def test_heartbeat_tells_the_app_the_scale_and_when_live_started():
         hb = json.load(open(os.path.join(d, "heartbeat.json")))
         assert hb["exec_mode"] == "live" and hb["capital_scale"] == 0.5 and hb["capital_usd"] == 500.0
         assert hb["live_since_ms"] == 1_700_000_000_000
+        assert hb["reset_keeps_brain"] is True, "l'app sblocca l'azzeramento solo con questo campo"
         cli.LIVE = lc.LiveConnector(data_dir=d, live=False)
         cli.write_heartbeat(None, force=True)
         hb = json.load(open(os.path.join(d, "heartbeat.json")))
