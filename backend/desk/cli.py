@@ -166,6 +166,33 @@ def _flag(name: str) -> str:
     return os.path.join(DATA_DIR, name)
 
 
+def _sane_tp(sym: str, tp: Optional[float], where: str) -> Optional[float]:
+    """Un take profit e' un PREZZO: se il calcolo da' <= 0 non e' raggiungibile (visto in app: short LTC con TP a
+    -233$, cioe' take_profit_pct=4.72). Lo scartiamo = nessun nuovo TP. In APERTURA e' identico a prima (uno
+    short non tocca mai un prezzo negativo: la posizione era di fatto senza TP). In DCA / chiusura parziale resta
+    il TP che la posizione aveva gia', invece di essere sostituito da uno irraggiungibile. In live il prezzo
+    assurdo non parte piu' verso l'exchange e l'app non mostra piu' un TP impossibile."""
+    if tp is not None and not tp > 0:
+        print(f"[TP_INVALIDO] {sym} ({where}): TP {tp:.5g} non e' un prezzo possibile -> scartato, "
+              f"nessun TP impostato", flush=True)
+        return None
+    return tp
+
+
+# Tetto di token della risposta di Claude. Con 1100 la risposta veniva TAGLIATA in 60 chiamate su 95 (registro
+# 12-15 ott) e il bot la scartava: pagata e ignorata. In paper (test) si prova 2000, con timeout piu' lungo
+# perche' la risposta e' piu' lunga; in LIVE resta 1100 finche' l'utente non decide, dopo aver confrontato i dati.
+CLAUDE_MAX_TOKENS_PAPER, CLAUDE_TIMEOUT_PAPER_S = 2000, 90
+CLAUDE_MAX_TOKENS_LIVE, CLAUDE_TIMEOUT_LIVE_S = 1100, 60
+
+
+def claude_limits(live: bool) -> tuple:
+    """(max_tokens, timeout in secondi) della chiamata a Claude. In live restano i valori di sempre."""
+    if live:
+        return CLAUDE_MAX_TOKENS_LIVE, CLAUDE_TIMEOUT_LIVE_S
+    return CLAUDE_MAX_TOKENS_PAPER, CLAUDE_TIMEOUT_PAPER_S
+
+
 POLL_S = 5                 # ogni quanto il bot controlla i tasti dell'app
 RETRY_S = 300              # dopo un ciclo fallito riprova dopo 5 minuti
 CYCLE_S = 1800             # ciclo normale: 30 minuti
@@ -694,12 +721,13 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     elif call_due and can_call(state, day):
         try:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats)
-            text, usage = call_claude(SYSTEM, prompt, max_tokens=1100)
+            max_tok, timeout_s = claude_limits(LIVE._live)
+            text, usage = call_claude(SYSTEM, prompt, max_tokens=max_tok, timeout=timeout_s)
             cost = record_spend(state, day, usage)
             state["last_call_ms"] = now_ms
             parsed = parse_decisions(text)
             log_claude_call(now_ms, state, text, usage, cost, parsed, len(prompt),
-                            len(acc.positions), urgent_scalp, 1100)
+                            len(acc.positions), urgent_scalp, max_tok)
             if parsed:
                 decisions = parsed["decisions"]
                 source = "claude"
@@ -780,7 +808,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 continue
             new_tp = None
             if tp2_pct and tp2_pct > 0:
-                new_tp = px * (1 + pos.side * tp2_pct)
+                new_tp = _sane_tp(sym, px * (1 + pos.side * tp2_pct), "chiusura parziale")
             # ── LIVE: riduci la posizione reale PRIMA di aggiornare il motore ────
             live_fill = None
             if LIVE._live:
@@ -815,7 +843,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 print(f"[DCA SKIP] {sym}: sl_pct mancante")
                 continue
             new_sl = px * (1 - pos.side * sl_pct)
-            new_tp = px * (1 + pos.side * tp_pct) if tp_pct > 0 else None
+            new_tp = _sane_tp(sym, px * (1 + pos.side * tp_pct), "DCA") if tp_pct > 0 else None
             before = live_sync.snapshot_position(acc, sym) if LIVE._live else None
             result, msg = acc.add_dca(sym, new_sl, new_tp, now_ms, prices, dec.get("reason", "")[:80])
             if result and LIVE._live:
@@ -868,7 +896,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 sl_pct = r.sl_pct if r else 0.01
             sl = px * (1 - side * sl_pct)
             tp_pct = dec.get("take_profit_pct", 0)
-            tp = px * (1 + side * tp_pct) if tp_pct > 0 else None
+            tp = _sane_tp(sym, px * (1 + side * tp_pct), "apertura") if tp_pct > 0 else None
             # ── GUARDRAIL portfolio-aware ────────────────────────────────────
             # Se Claude propone valori troppo bassi rispetto al portfolio corrente,
             # forziamo i minimi del portfolio selezionato.
@@ -1500,6 +1528,9 @@ def main() -> None:
         iteration(state, drain=os.path.exists(_flag("pause.flag")))
         return
 
+    # ogni riga del registro di apprendimento porta la versione del codice (short SHA del deploy) che l'ha scritta:
+    # cosi' l'analista puo' separare i dati prima/dopo una modifica (es. max_tokens 1100 -> 2000)
+    _learning.STAMP["code_version"] = CODE_VERSION
     print(f"[DESK V2] avvio [{PORTFOLIO.name.upper()}] versione {CODE_VERSION} — {PORTFOLIO.description}")
     print(f"[DESK V2] simboli: {len(SYMBOLS)}  "
           f"entry_score=60(TIER_AB)/70(TIER_C)  "

@@ -1467,7 +1467,9 @@ def test_cycle_logs_a_discarded_claude_reply_with_its_text_and_reason():
         assert len(evs) == 1
         e = evs[0]
         assert e["ok"] is False and e["fail_reason"] == "json_troncato" and e["n_decisions"] is None
-        assert e["stop_reason"] == "max_tokens" and e["output_tokens"] == 1100 and e["max_tokens"] == 1100
+        # output_tokens e' quello dello stub; max_tokens e' il tetto richiesto in paper (non e' piu' 1100 dal 15 ott)
+        assert e["stop_reason"] == "max_tokens" and e["output_tokens"] == 1100
+        assert e["max_tokens"] == cli.CLAUDE_MAX_TOKENS_PAPER == 2000
         assert e["reply"] == stub.cut and e["reply_chars"] == len(stub.cut)
         assert e["cost_usd"] > 0 and e["portfolio"] == cli.PORTFOLIO.name and e["n_positions"] == 0
         assert e["prompt_chars"] > 100
@@ -1763,3 +1765,78 @@ def test_a_window_start_triggers_an_immediate_cycle_and_the_heartbeat_shows_the_
         assert cli.loop_step(state, ctl) is False, "senza calendario il ritmo non cambia"
         hb = json.load(open(os.path.join(d, "heartbeat.json")))["claude_schedule"]
         assert hb["mode"] == "none" and hb["allowed"] is True
+
+
+# ---- correzioni del redeploy 15 ott: TP impossibile (negativo), tetto di token di Claude paper/live ----
+
+def test_sane_tp_discards_prices_that_cannot_exist():
+    # il caso visto in app: short LTC a 62.79 con take_profit_pct=4.72 -> TP a -233.84
+    px = 62.79
+    assert cli._sane_tp("LTC", px * (1 + -1 * 4.724159898), "test") is None
+    assert cli._sane_tp("LTC", 0.0, "test") is None
+    assert cli._sane_tp("LTC", None, "test") is None
+    # un TP normale resta identico
+    assert cli._sane_tp("LTC", px * (1 - 0.03), "test") == px * (1 - 0.03)
+    assert cli._sane_tp("LTC", px * (1 + 0.03), "test") == px * (1 + 0.03)
+
+
+def test_claude_limits_paper_is_larger_live_is_unchanged():
+    assert cli.claude_limits(False) == (2000, 90)
+    assert cli.claude_limits(True) == (1100, 60)   # il live non cambia finche' l'utente non decide
+
+
+def _stub(calls, action, tp_pct):
+    def call(system, user, max_tokens=1100, timeout=60):
+        calls.append({"max_tokens": max_tokens, "timeout": timeout})
+        body = {"decisions": [{"symbol": "BTC", "action": action, "confidence": 85, "leverage": 10,
+                               "margin_usd": 150, "stop_loss_pct": 0.01, "take_profit_pct": tp_pct,
+                               "reason": "test", "trade_type": "medio", "dca_sl_pct": 0, "dca_tp_pct": 0}],
+                "note": "test"}
+        return json.dumps(body), {"input_tokens": 2000, "output_tokens": 150}
+    return call
+
+
+def _run_open(action, tp_pct, drift):
+    """Due cicli completi come test_full_cycle_v2: ritorna (posizione BTC o None, chiamate fatte a Claude)."""
+    import desk.brain as _brain
+    import desk.market_context as _mc
+
+    world = _world(drift=drift)
+    orig_fetch, orig_ctx, orig_call = cli.fetch_candles, _mc.fetch_all_context, _brain.call_claude
+    calls = []
+    stub = _stub(calls, action, tp_pct)
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: (world.get(sym, np.zeros((0, 6)))[-limit:].tolist())
+    _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
+    _brain.call_claude = stub
+    cli.call_claude = stub
+    os.environ["ANTHROPIC_API_KEY"] = "test"
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            cli.STATE_FILE = os.path.join(d, "state_v2.json")
+            cli.DATA_DIR = d
+            state = cli.load_state(cli.STATE_FILE)
+            cli.run_cycle(state, NOW)
+            cli.save_state(state, cli.STATE_FILE)
+            state["last_call_ms"] = 0
+            state["last_open_ms"] = {}
+            cli.run_cycle(state, NOW + cli.HOUR_MS)
+            return cli.make_account(state).positions.get("BTC"), calls
+    finally:
+        cli.fetch_candles, _mc.fetch_all_context = orig_fetch, orig_ctx
+        _brain.call_claude = orig_call
+        cli.call_claude = orig_call
+        del os.environ["ANTHROPIC_API_KEY"]
+
+
+def test_cycle_in_paper_asks_claude_with_2000_tokens():
+    pos, calls = _run_open("open_long", 0.025, drift=0.0006)
+    assert calls, "Claude non e' stato chiamato"
+    assert all(c == {"max_tokens": 2000, "timeout": 90} for c in calls), calls
+    assert pos is not None and pos.tp is not None   # un TP normale non viene toccato
+
+
+def test_short_with_absurd_tp_opens_without_tp_instead_of_negative_price():
+    pos, _ = _run_open("open_short", 4.72, drift=-0.0006)
+    assert pos is not None, "lo short deve aprirsi comunque: il guardiano scarta solo il TP, non il trade"
+    assert pos.side == -1
+    assert pos.tp is None, f"TP impossibile non scartato: {pos.tp}"
