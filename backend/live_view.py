@@ -115,6 +115,20 @@ def _positive_float(value, default: float) -> float:
     return v if v > 0 else default
 
 
+def _positive_ms(value) -> int:
+    """Millisecondi epoch > 0, altrimenti 0 (campo assente o rovinato)."""
+    try:
+        v = int(float(value))
+    except (TypeError, ValueError):
+        return 0
+    return v if v > 0 else 0
+
+
+def _opened_ms(trade: dict) -> int:
+    """Quando e' stato aperto un trade chiuso (se manca, vale la chiusura)."""
+    return _positive_ms(trade.get("open_ms")) or _positive_ms(trade.get("close_ms"))
+
+
 def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
                     now: Optional[float] = None) -> dict:
     """Un portafoglio come lo mostra la pagina Live.
@@ -148,12 +162,21 @@ def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
                 "live_interlock": None, "live_pending_close": []}
 
     state = dv.read_state(data_dir)
-    trades = dv.closed_records(data_dir, state)
-    day, tot = daily_pnl(trades, now), total_pnl(trades)
-    rows = _position_rows(state)
+    # Solo cio' che e' stato APERTO dopo la partenza del live: lo storico e le posizioni del simulatore
+    # (aperti prima) stanno negli stessi file ma non sono soldi veri. Senza il momento di partenza non si
+    # puo' distinguere: si mostra zero piuttosto che numeri incerti.
+    since = _positive_ms((hb or {}).get("live_since_ms"))
+    # Il motore ragiona su un conto da 1000$; sull'exchange ogni ordine e' in scala (capitale / 1000):
+    # gli importi del motore si portano nella scala reale prima di mostrarli.
+    scale = _positive_float((hb or {}).get("capital_scale"), 1.0)
+    trades = [t for t in dv.closed_records(data_dir, state) if since and _opened_ms(t) >= since]
+    rows = [dict(r, margin=(r["margin"] * scale if isinstance(r.get("margin"), (int, float)) else r.get("margin")))
+            for r in _position_rows(state) if since and _positive_ms(r.get("open_ms")) >= since]
+    day, tot = daily_pnl(trades, now) * scale, total_pnl(trades) * scale
     return {
         **base,
         "available": bool(state), "real_data": True,
+        "live_since_ms": since or None, "scale": scale,
         "daily_pnl": round(day, 2), "total_pnl": round(tot, 2),
         "daily_limit_hit": day <= -limit,
         "open_positions": len(rows), "positions": rows,

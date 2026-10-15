@@ -16,6 +16,7 @@ import live_view as lv  # noqa: E402
 # 2027-01-15 12:00:00 UTC
 NOW = 1_800_014_400.0
 MIDNIGHT_MS = int(NOW // 86400 * 86400 * 1000)
+LIVE_SINCE_MS = int(NOW * 1000) - 30 * 86_400_000      # il live e' partito 30 giorni prima di NOW
 
 
 def _write(d, name, obj):
@@ -25,7 +26,8 @@ def _write(d, name, obj):
 
 def _live_hb(d, **extra):
     """Heartbeat di un bot che gira DAVVERO in live: solo cosi' la pagina Live mostra i suoi numeri."""
-    _write(d, "heartbeat.json", {"ts": NOW - 2.0, "exec_mode": "live", **extra})
+    _write(d, "heartbeat.json", {"ts": NOW - 2.0, "exec_mode": "live",
+                                 "live_since_ms": LIVE_SINCE_MS, **extra})
 
 
 def _trade(i, net, close_ms):
@@ -124,7 +126,7 @@ def test_portfolio_positions_and_missing_data():
         _live_hb(d)
         _write(d, "state_v2.json", {"cycle": 3, "main": {"positions": {
             "ETH": {"side": -1, "entry": 3000.0, "leverage": 5, "total_margin": 100.0, "sl": 3100.0,
-                    "tp": 2800.0, "trade_type": "scalp", "open_ms": 1},
+                    "tp": 2800.0, "trade_type": "scalp", "open_ms": LIVE_SINCE_MS + 1},
             "rotto": "non e' un dict"}}})
         p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
         assert p["available"] is True and p["open_positions"] == 1
@@ -214,7 +216,8 @@ def test_live_interlock_comes_from_the_heartbeat():
 def _paper_files(d):
     """Quello che scrive un bot paper: posizioni aperte e storico con guadagni finti."""
     _write(d, "state_v2.json", {"cycle": 9, "main": {"positions": {
-        "ETH": {"side": 1, "entry": 3000.0, "leverage": 5, "total_margin": 100.0, "open_ms": 1}}}})
+        "ETH": {"side": 1, "entry": 3000.0, "leverage": 5, "total_margin": 100.0,
+                "open_ms": LIVE_SINCE_MS + 1}}}})
     _write_history(d, [_trade(1, 512.35, MIDNIGHT_MS + 1000), _trade(2, 781.13, MIDNIGHT_MS - 3_600_000)])
 
 
@@ -257,5 +260,64 @@ def test_real_numbers_appear_only_with_server_live_and_bot_live():
         _live_hb(d)
         p = lv.build_portfolio(d, 1000, 25, "  LIVE ", now=NOW)         # maiuscole/spazi non contano
         assert p["real_data"] is True and p["available"] is True and p["paper_mode"] is False
+        assert p["live_since_ms"] == LIVE_SINCE_MS and p["scale"] == 1.0
         assert p["daily_pnl"] == 512.35 and p["total_pnl"] == 1293.48
         assert p["open_positions"] == 1 and p["total_closed"] == 2
+
+
+def _mixed_files(d):
+    """Stessi file del bot: roba del simulatore (aperta PRIMA del live) e roba vera (aperta DOPO)."""
+    before, after = LIVE_SINCE_MS - 86_400_000, LIVE_SINCE_MS + 3_600_000
+    _write(d, "state_v2.json", {"cycle": 9, "main": {"positions": {
+        "ETH": {"side": 1, "entry": 3000.0, "leverage": 5, "total_margin": 100.0, "open_ms": before},
+        "SOL": {"side": -1, "entry": 150.0, "leverage": 10, "total_margin": 60.0, "open_ms": after}}}})
+    _write_history(d, [
+        {"id": 1, "net": 700.0, "open_ms": before, "close_ms": MIDNIGHT_MS + 5},           # finto, chiuso oggi
+        {"id": 2, "net": 40.0, "open_ms": after, "close_ms": MIDNIGHT_MS + 10},            # vero, chiuso oggi
+        {"id": 3, "net": -10.0, "open_ms": after + 1000, "close_ms": MIDNIGHT_MS - 60_000},  # vero, ieri
+    ])
+
+
+def test_live_page_counts_only_what_was_opened_after_live_started():
+    with tempfile.TemporaryDirectory() as d:
+        _mixed_files(d)
+        _live_hb(d)
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
+        assert p["total_closed"] == 2 and p["total_pnl"] == 30.0 and p["daily_pnl"] == 40.0   # il +700 finto no
+        assert [r["symbol"] for r in p["positions"]] == ["SOL"] and p["open_positions"] == 1   # ETH finta no
+
+
+def test_live_page_shows_zero_when_live_start_is_unknown():
+    with tempfile.TemporaryDirectory() as d:
+        _mixed_files(d)
+        for extra in ({"live_since_ms": None}, {"live_since_ms": 0}, {"live_since_ms": "boh"}):
+            _live_hb(d, **extra)
+            p = lv.build_portfolio(d, 1000, 25, "live", now=NOW)
+            assert p["real_data"] is True and p["live_since_ms"] is None
+            assert p["total_pnl"] == 0.0 and p["daily_pnl"] == 0.0
+            assert p["positions"] == [] and p["total_closed"] == 0                             # niente numeri incerti
+
+
+def test_live_page_converts_engine_amounts_to_the_real_scale():
+    """Il motore ragiona su 1000$; con 500$ assegnati gli ordini veri sono la meta': i numeri mostrati pure."""
+    with tempfile.TemporaryDirectory() as d:
+        _mixed_files(d)
+        _live_hb(d, capital_scale=0.5)
+        p = lv.build_portfolio(d, 500, 25, "live", now=NOW)
+        assert p["scale"] == 0.5 and p["capital_usdt"] == 500.0 and p["daily_loss_limit_usdt"] == 125.0
+        assert p["daily_pnl"] == 20.0 and p["total_pnl"] == 15.0
+        assert p["positions"][0]["margin"] == 30.0                                             # 60$ motore -> 30$ veri
+        for bad in (0, -1, "x", None):                                                        # scala illeggibile: 1
+            _live_hb(d, capital_scale=bad)
+            assert lv.build_portfolio(d, 1000, 25, "live", now=NOW)["scale"] == 1.0
+
+
+def test_daily_limit_uses_real_scaled_loss():
+    with tempfile.TemporaryDirectory() as d:
+        _write(d, "state_v2.json", {"cycle": 1, "main": {"positions": {}}})
+        _write_history(d, [{"id": 1, "net": -200.0, "open_ms": LIVE_SINCE_MS + 1, "close_ms": MIDNIGHT_MS + 1000}])
+        _live_hb(d, capital_scale=0.5)                       # -200 del motore = -100 veri
+        p = lv.build_portfolio(d, 500, 25, "live", now=NOW)   # limite 125$ veri
+        assert p["daily_pnl"] == -100.0 and p["daily_limit_hit"] is False
+        _write_history(d, [{"id": 1, "net": -250.0, "open_ms": LIVE_SINCE_MS + 1, "close_ms": MIDNIGHT_MS + 1000}])
+        assert lv.build_portfolio(d, 500, 25, "live", now=NOW)["daily_limit_hit"] is True   # -125 = limite
