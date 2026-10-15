@@ -500,7 +500,13 @@ async def get_logs(session=Depends(require_session), db: Session = Depends(get_d
 
 @app.get('/api/health')
 async def health():
-    return {'status': 'ok', 'mode': config.TRADING_MODE, 'version': '1.0.0'}
+    return {
+        'status': 'ok',
+        'mode': config.TRADING_MODE,
+        'version': '1.0.0',
+        'desk_mode': os.environ.get('DESK_MODE', 'paper'),
+        'build': '2026-10-15-fix-live-pnl',
+    }
 
 # Serve frontend React se la cartella build esiste
 frontend_build = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'build')
