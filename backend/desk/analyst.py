@@ -25,6 +25,7 @@ import urllib.request
 
 BAR_MS = 900_000                       # candele da 15 minuti
 MIN_N = 30                             # sotto questo i numeri sono solo indicativi
+MIN_DAYS = 7                           # sotto questo i giorni coperti sono troppo pochi per dire "il filtro costa/protegge"
 HORIZON_BARS = {"scalp": 24, "medio": 96}   # 6 ore per gli scalp, 24 ore per gli altri
 DEDUPE_MS = 4 * 3_600_000
 BITGET = "https://api.bitget.com"
@@ -164,8 +165,9 @@ def verdict(s: dict) -> str:
         return "nessun caso etichettabile"
     if s["indicativo"]:
         return f"solo {s['n']} casi: troppo pochi per dire (servono almeno {MIN_N})"
-    if s["giorni"] < 3:
-        return f"solo {s['giorni']} giorni di dati: dipende dal mercato di quei giorni, non concludere"
+    if s["giorni"] < MIN_DAYS:
+        return (f"solo {s['giorni']} giorni di dati (ne servono almeno {MIN_DAYS}, in mercati diversi): "
+                "dipende dal mercato di quei giorni, non concludere")
     lo, hi = s["win_lo"], s["win_hi"]
     if s["r_medio"] > 0.15 and lo is not None and lo > 0.4:
         if s["r_senza_giorno_migliore"] is not None and s["r_senza_giorno_migliore"] > 0.1:
