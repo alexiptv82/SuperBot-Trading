@@ -85,7 +85,7 @@ const makeDeskAPI = (prefix) => ({
   resume:         () => API.post(`${prefix}/resume`),     // avvia / riprende
   closeAll:       () => API.post(`${prefix}/close-all`),  // chiude tutto a prezzo di mercato
   resetBudget:    () => API.post(`${prefix}/reset-budget`),
-  resetPortfolio: (clearLessons = false) => API.post(`${prefix}/reset-portfolio`, { clear_lessons: clearLessons }),
+  resetPortfolio: () => API.post(`${prefix}/reset-portfolio`, { clear_lessons: false }),   // il cervello non si cancella mai
 });
 
 export const deskAPI = {

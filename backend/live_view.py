@@ -16,7 +16,7 @@ from typing import Optional
 import desk_view as dv
 
 TRADING_FLAG = "trading_enabled.json"
-DEFAULT_CAPITAL = 1500.0       # uguale al default di cli.py
+DEFAULT_CAPITAL = 1000.0       # uguale al default di cli.py (la base su cui ragiona il motore)
 DEFAULT_LOSS_PCT = 25.0
 
 
@@ -97,14 +97,116 @@ def write_trading_enabled(data_dir: str, enabled: bool, now: Optional[float] = N
     os.replace(tmp, path)
 
 
-def _position_rows(state: dict) -> list:
+def _num(value, default: float = 0.0) -> float:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    return v if v == v and abs(v) != float("inf") else default     # niente NaN / inf
+
+
+def base_symbol(symbol) -> str:
+    """'BTC/USDT:USDT' -> 'BTC'; 'BTCUSDT' -> 'BTC'; 'BTC' -> 'BTC' (stessa regola del connettore live)."""
+    s = str(symbol or "").split("/")[0].split(":")[0].strip().upper()
+    return s[:-4] if s.endswith("USDT") and len(s) > 4 else s
+
+
+def _position_rows(state: dict, scale: float = 1.0) -> list:
+    """Posizioni del motore, gia' portate nella scala reale (margine, quantita', P&L) e con il prezzo
+    dell'ultimo ciclo del bot se c'e' (senza, il P&L non si puo' calcolare e resta None)."""
     positions = ((state.get("main") or {}).get("positions")) or {}
-    return [{
-        "symbol": sym, "side": p.get("side"), "entry": p.get("entry"),
-        "leverage": p.get("leverage"), "margin": p.get("total_margin", p.get("margin")),
-        "sl": p.get("sl"), "tp": p.get("tp"), "trade_type": p.get("trade_type"),
-        "open_ms": p.get("open_ms"),
-    } for sym, p in positions.items() if isinstance(p, dict)]
+    last_prices = state.get("last_prices") or {}
+    rows = []
+    for sym, p in positions.items():
+        if not isinstance(p, dict):
+            continue
+        side = 1 if _num(p.get("side")) >= 0 else -1
+        entry, qty = _num(p.get("entry")), _num(p.get("qty")) * scale
+        margin = _num(p.get("total_margin", p.get("margin"))) * scale
+        price = _num(last_prices.get(sym))
+        pnl = side * (price - entry) * qty if price and entry and qty else None
+        rows.append({
+            "symbol": sym, "side": side, "entry": entry or None, "price": price or None,
+            "leverage": p.get("leverage"), "qty": qty or None, "margin": round(margin, 2),
+            "pnl": round(pnl, 2) if pnl is not None else None,
+            "pnl_pct": round(pnl / margin * 100, 2) if pnl is not None and margin else None,
+            "sl": p.get("sl"), "tp": p.get("tp"), "liq": p.get("liq"),
+            "trade_type": p.get("trade_type") or "medio", "dca_count": p.get("dca_count", 0),
+            "open_ms": p.get("open_ms"), "source": "bot", "confirmed": None,
+        })
+    return rows
+
+
+def normalize_real_positions(raw: list) -> list:
+    """Posizioni vere di BitGet (ccxt fetch_positions, sola lettura) nel formato della pagina Live.
+    Campi come li compone ccxt per Bitget: info.holdSide, info.total (quantita' in coin), info.openPriceAvg,
+    info.markPrice, info.unrealizedPL, info.marginSize, info.liquidationPrice, info.leverage, info.cTime.
+    Le posizioni a quantita' zero si saltano."""
+    rows = []
+    for p in raw or []:
+        if not isinstance(p, dict):
+            continue
+        info = p.get("info") if isinstance(p.get("info"), dict) else {}
+        contracts = abs(_num(p.get("contracts"), _num(info.get("total"))))
+        size = _num(p.get("contractSize"), 1.0) or 1.0
+        qty = abs(_num(info.get("total"))) or contracts * size
+        if qty <= 0:
+            continue
+        side_txt = str(p.get("side") or info.get("holdSide") or "").lower()
+        side = 1 if side_txt == "long" else -1
+        entry = _num(p.get("entryPrice"), _num(info.get("openPriceAvg")))
+        mark = _num(p.get("markPrice"), _num(info.get("markPrice")))
+        pnl = _num(p.get("unrealizedPnl"), _num(info.get("unrealizedPL")))
+        margin = _num(info.get("marginSize")) or _num(p.get("initialMargin")) or _num(p.get("collateral"))
+        liq = _num(p.get("liquidationPrice"), _num(info.get("liquidationPrice")))
+        lev = int(_num(p.get("leverage"), _num(info.get("leverage")))) or None
+        rows.append({
+            "symbol": base_symbol(p.get("symbol") or info.get("symbol")), "side": side,
+            "entry": entry or None, "price": mark or None, "leverage": lev, "qty": qty,
+            "margin": round(margin, 2), "pnl": round(pnl, 2),
+            "pnl_pct": round(pnl / margin * 100, 2) if margin else None,
+            "liq": liq or None, "open_ms": _positive_ms(p.get("timestamp") or info.get("cTime")) or None,
+        })
+    return rows
+
+
+def merge_positions(real: Optional[dict], bot_rows: list) -> tuple:
+    """Posizioni da mostrare: (righe, fonte, errore).
+
+    Con BitGet leggibile le posizioni sono QUELLE VERE dell'exchange (prezzo, P&L, margine, liquidazione), a cui
+    si aggiungono stop loss, take profit, tipo e DCA del bot. Una posizione che il bot ha in registro ma BitGet
+    non mostra resta in lista, segnata `confirmed: False`; una che c'e' su BitGet e il bot non conosce e'
+    segnata `in_bot: False`. Se BitGet non e' leggibile si mostrano i numeri del bot (`source: "bot"`) e si dice perche'."""
+    real = real or {}
+    if not real.get("available"):
+        return list(bot_rows), "bot", real.get("error")
+    bot_by = {base_symbol(r["symbol"]): r for r in bot_rows}
+    out, seen = [], set()
+    for r in real.get("positions") or []:
+        b = bot_by.get(r["symbol"]) or {}
+        seen.add(r["symbol"])
+        out.append({**r, "sl": b.get("sl"), "tp": b.get("tp"), "trade_type": b.get("trade_type"),
+                    "dca_count": b.get("dca_count", 0), "open_ms": b.get("open_ms") or r.get("open_ms"),
+                    "source": "bitget", "confirmed": True, "in_bot": bool(b)})
+    for key, b in bot_by.items():
+        if key not in seen:
+            out.append({**b, "source": "bot", "confirmed": False, "in_bot": True})
+    out.sort(key=lambda x: x.get("open_ms") or 0)
+    return out, "bitget", None
+
+
+def _recent_trades(trades: list, scale: float, n: int = 5) -> list:
+    """Gli ultimi n trade chiusi (piu' recenti prima), con il risultato nella scala reale."""
+    last = sorted(trades, key=lambda t: _positive_ms(t.get("close_ms")), reverse=True)[:n]
+    out = []
+    for t in last:
+        nt = dv.normalize_trade(t)
+        pnl = nt.get("pnl")
+        out.append({"symbol": nt["symbol"], "side": nt["side"], "leverage": nt["leverage"],
+                    "pnl": round(_num(pnl) * scale, 2) if pnl is not None else None,
+                    "close_ms": nt["close_ms"], "close_reason": nt["close_reason"],
+                    "trade_type": nt["trade_type"], "partial": nt["partial"]})
+    return out
 
 
 def _positive_float(value, default: float) -> float:
@@ -130,7 +232,7 @@ def _opened_ms(trade: dict) -> int:
 
 
 def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
-                    now: Optional[float] = None) -> dict:
+                    now: Optional[float] = None, real_positions: Optional[dict] = None) -> dict:
     """Un portafoglio come lo mostra la pagina Live.
 
     I numeri (P&L, posizioni, trade chiusi) si leggono dai file del bot SOLO se il server e' in live
@@ -139,6 +241,9 @@ def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
     file sono i dati del simulatore: mostrarli nella pagina Live le farebbe passare per soldi veri.
     Si restituisce quindi uno scheletro a zero (`real_data: False`); lo stato del bot (heartbeat,
     interruttore) resta leggibile perche' serve a spiegare perche' non ci sono numeri.
+
+    `real_positions` ({"available", "positions": [normalize_real_positions(...)], "error"}) sono le posizioni lette
+    da BitGet con la chiave di sola lettura: se ci sono, la lista delle posizioni e' quella vera (vedi merge_positions).
     """
     capital = _positive_float(capital, DEFAULT_CAPITAL)
     loss_pct = _positive_float(loss_pct, DEFAULT_LOSS_PCT)
@@ -153,12 +258,17 @@ def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
         "trading_enabled": read_trading_enabled(data_dir),
         "bot_mode": bot_mode,
         "heartbeat_age_s": round(hb["age_s"], 1) if hb else None,
+        "bot_online": bool(hb and hb["age_s"] < dv.HEARTBEAT_FRESH_S),
+        "cycle_info": {"last_end_ms": _positive_ms((hb or {}).get("last_end_ms")) or None,
+                       "next_cycle_ms": _positive_ms((hb or {}).get("next_cycle_ms")) or None,
+                       "last_ok": (hb or {}).get("last_ok"), "last_error": (hb or {}).get("last_error") or ""},
     }
 
     if not (server_live and bot_mode == "live"):
         return {**base, "available": False, "real_data": False,
                 "daily_pnl": 0.0, "total_pnl": 0.0, "daily_limit_hit": False,
-                "open_positions": 0, "positions": [], "total_closed": 0, "cycle": 0, "halt": None,
+                "open_positions": 0, "positions": [], "positions_source": "none", "positions_error": None,
+                "unrealized_pnl": 0.0, "recent_trades": [], "total_closed": 0, "cycle": 0, "halt": None,
                 "live_interlock": None, "live_pending_close": []}
 
     state = dv.read_state(data_dir)
@@ -170,8 +280,8 @@ def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
     # gli importi del motore si portano nella scala reale prima di mostrarli.
     scale = _positive_float((hb or {}).get("capital_scale"), 1.0)
     trades = [t for t in dv.closed_records(data_dir, state) if since and _opened_ms(t) >= since]
-    rows = [dict(r, margin=(r["margin"] * scale if isinstance(r.get("margin"), (int, float)) else r.get("margin")))
-            for r in _position_rows(state) if since and _positive_ms(r.get("open_ms")) >= since]
+    bot_rows = [r for r in _position_rows(state, scale) if since and _positive_ms(r.get("open_ms")) >= since]
+    rows, source, pos_error = merge_positions(real_positions, bot_rows)
     day, tot = daily_pnl(trades, now) * scale, total_pnl(trades) * scale
     return {
         **base,
@@ -180,6 +290,9 @@ def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
         "daily_pnl": round(day, 2), "total_pnl": round(tot, 2),
         "daily_limit_hit": day <= -limit,
         "open_positions": len(rows), "positions": rows,
+        "positions_source": source, "positions_error": pos_error,
+        "unrealized_pnl": round(sum(_num(r.get("pnl")) for r in rows), 2),
+        "recent_trades": _recent_trades(trades, scale),
         "total_closed": len(trades),
         "cycle": state.get("cycle", 0) if state else 0,
         "halt": state.get("halt") if state else None,

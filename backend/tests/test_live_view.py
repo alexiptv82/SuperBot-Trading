@@ -321,3 +321,120 @@ def test_daily_limit_uses_real_scaled_loss():
         assert p["daily_pnl"] == -100.0 and p["daily_limit_hit"] is False
         _write_history(d, [{"id": 1, "net": -250.0, "open_ms": LIVE_SINCE_MS + 1, "close_ms": MIDNIGHT_MS + 1000}])
         assert lv.build_portfolio(d, 500, 25, "live", now=NOW)["daily_limit_hit"] is True   # -125 = limite
+
+
+# ── posizioni vere di BitGet + stop/take profit del bot ───────────────────────
+def _ccxt_position(symbol="BTC/USDT:USDT", side="long", total="0.01", entry="60000", mark="61000",
+                   upl="10", margin="60", lev="10", liq="54500", ctime="1799999000000", **extra):
+    """Una posizione come la restituisce ccxt per Bitget (stesso schema di parse_position)."""
+    info = {"symbol": symbol.split("/")[0] + "USDT", "holdSide": side, "total": total, "openPriceAvg": entry,
+            "markPrice": mark, "unrealizedPL": upl, "marginSize": margin, "leverage": lev,
+            "liquidationPrice": liq, "cTime": ctime}
+    info.update(extra)
+    return {"symbol": symbol, "side": side, "contracts": float(total), "contractSize": 1.0,
+            "entryPrice": float(entry), "markPrice": float(mark), "unrealizedPnl": float(upl),
+            "liquidationPrice": float(liq), "leverage": float(lev), "timestamp": int(ctime),
+            "initialMargin": float(margin) * 1.0, "info": info}
+
+
+def test_real_positions_are_normalized_from_the_ccxt_shape():
+    rows = lv.normalize_real_positions([
+        _ccxt_position(),
+        _ccxt_position("ETH/USDT:USDT", side="short", total="0.5", entry="3000", mark="2900", upl="50",
+                       margin="150", lev="10", liq="3290"),
+        _ccxt_position("XRP/USDT:USDT", total="0"),               # quantita' zero: saltata
+        "non e' un dizionario",
+    ])
+    assert [r["symbol"] for r in rows] == ["BTC", "ETH"]
+    btc, eth = rows
+    assert btc["side"] == 1 and btc["entry"] == 60000.0 and btc["price"] == 61000.0 and btc["qty"] == 0.01
+    assert btc["pnl"] == 10.0 and btc["margin"] == 60.0 and btc["pnl_pct"] == 16.67 and btc["leverage"] == 10
+    assert btc["liq"] == 54500.0 and btc["open_ms"] == 1799999000000
+    assert eth["side"] == -1 and eth["pnl"] == 50.0 and eth["pnl_pct"] == 33.33
+
+
+def test_real_positions_tolerate_missing_and_broken_fields():
+    p = {"symbol": "SOL/USDT:USDT", "info": {"holdSide": "long", "total": "2", "openPriceAvg": "bad"}}
+    (row,) = lv.normalize_real_positions([p])
+    assert row["symbol"] == "SOL" and row["qty"] == 2.0 and row["entry"] is None
+    assert row["pnl"] == 0.0 and row["pnl_pct"] is None and row["margin"] == 0.0 and row["liq"] is None
+    assert lv.normalize_real_positions(None) == [] and lv.normalize_real_positions([]) == []
+
+
+def _bot_state(d, scale_positions=None, last_prices=None):
+    pos = scale_positions or {"BTC": {"side": 1, "entry": 60000.0, "qty": 0.01, "total_margin": 60.0,
+                                      "leverage": 10, "sl": 57000.0, "tp": 66000.0, "trade_type": "scalp",
+                                      "dca_count": 1, "open_ms": LIVE_SINCE_MS + 5}}
+    _write(d, "state_v2.json", {"cycle": 4, "last_prices": last_prices or {}, "main": {"positions": pos}})
+
+
+def test_live_positions_are_the_real_ones_enriched_with_the_bots_stops():
+    with tempfile.TemporaryDirectory() as d:
+        _bot_state(d)
+        _live_hb(d)
+        real = {"available": True, "error": None, "positions": lv.normalize_real_positions([_ccxt_position()])}
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW, real_positions=real)
+        assert p["positions_source"] == "bitget" and p["positions_error"] is None and p["open_positions"] == 1
+        pos = p["positions"][0]
+        assert pos["source"] == "bitget" and pos["confirmed"] is True and pos["in_bot"] is True
+        assert pos["price"] == 61000.0 and pos["pnl"] == 10.0 and pos["margin"] == 60.0     # numeri veri di BitGet
+        assert pos["sl"] == 57000.0 and pos["tp"] == 66000.0 and pos["trade_type"] == "scalp" and pos["dca_count"] == 1
+        assert pos["open_ms"] == LIVE_SINCE_MS + 5, "l'apertura e' quella registrata dal bot"
+        assert p["unrealized_pnl"] == 10.0
+
+
+def test_live_positions_flag_what_bitget_and_the_bot_disagree_on():
+    with tempfile.TemporaryDirectory() as d:
+        _bot_state(d)                                         # il bot crede di avere BTC
+        _live_hb(d)
+        real = {"available": True, "error": None,
+                "positions": lv.normalize_real_positions([_ccxt_position("ETH/USDT:USDT", entry="3000", mark="3000",
+                                                                         upl="0", margin="30")])}
+        p = lv.build_portfolio(d, 1000, 25, "live", now=NOW, real_positions=real)
+        by = {r["symbol"]: r for r in p["positions"]}
+        assert by["ETH"]["in_bot"] is False and by["ETH"]["confirmed"] is True and by["ETH"]["sl"] is None
+        assert by["BTC"]["confirmed"] is False and by["BTC"]["source"] == "bot", "BitGet non la mostra: non e' confermata"
+
+
+def test_live_positions_fall_back_to_the_bots_numbers_and_say_why():
+    with tempfile.TemporaryDirectory() as d:
+        _bot_state(d, last_prices={"BTC": 61000.0})
+        _live_hb(d, capital_scale=0.5)
+        for real in (None, {"available": False, "error": "chiave BitGet di sola lettura non configurata"}):
+            p = lv.build_portfolio(d, 500, 25, "live", now=NOW, real_positions=real)
+            assert p["positions_source"] == "bot" and p["open_positions"] == 1
+            pos = p["positions"][0]
+            assert pos["source"] == "bot" and pos["price"] == 61000.0
+            assert pos["margin"] == 30.0 and pos["qty"] == 0.005, "il motore e' in scala 0,5"
+            assert pos["pnl"] == 5.0 and pos["pnl_pct"] == 16.67          # (61000-60000) * 0.005
+        assert "non configurata" in p["positions_error"]
+        # senza prezzo del bot il P&L non si inventa
+        _bot_state(d, last_prices={})
+        pos = lv.build_portfolio(d, 500, 25, "live", now=NOW)["positions"][0]
+        assert pos["price"] is None and pos["pnl"] is None and pos["pnl_pct"] is None
+
+
+def test_live_page_lists_the_last_five_closed_trades_in_real_scale_and_the_cycle_info():
+    with tempfile.TemporaryDirectory() as d:
+        _write(d, "state_v2.json", {"cycle": 9, "main": {"positions": {}}})
+        _write_history(d, [{"id": i, "symbol": "ETH", "side": -1, "net": float(i), "leverage": 10, "why": "take profit",
+                            "open_ms": LIVE_SINCE_MS + i, "close_ms": LIVE_SINCE_MS + 1000 * i} for i in range(1, 8)])
+        _live_hb(d, capital_scale=0.5, last_end_ms=NOW * 1000 - 60_000, next_cycle_ms=NOW * 1000 + 240_000,
+                 last_ok=True)
+        p = lv.build_portfolio(d, 500, 25, "live", now=NOW)
+        rt = p["recent_trades"]
+        assert [t["pnl"] for t in rt] == [3.5, 3.0, 2.5, 2.0, 1.5], "i 5 piu' recenti, risultato in scala 0,5"
+        assert rt[0]["symbol"] == "ETH" and rt[0]["close_reason"] == "take profit" and rt[0]["side"] == -1
+        assert p["bot_online"] is True and p["cycle_info"]["last_ok"] is True
+        assert p["cycle_info"]["next_cycle_ms"] == int(NOW * 1000 + 240_000)
+
+
+def test_bot_offline_and_skeleton_carry_the_new_fields():
+    with tempfile.TemporaryDirectory() as d:
+        _write(d, "heartbeat.json", {"ts": NOW - 900, "exec_mode": "live", "live_since_ms": LIVE_SINCE_MS})
+        _write(d, "state_v2.json", {"cycle": 1, "main": {"positions": {}}})
+        assert lv.build_portfolio(d, 1000, 25, "live", now=NOW)["bot_online"] is False
+    with tempfile.TemporaryDirectory() as d:
+        z = lv.build_portfolio(d, 1000, 25, "paper", now=NOW)
+        assert z["positions_source"] == "none" and z["recent_trades"] == [] and z["unrealized_pnl"] == 0.0
+        assert z["bot_online"] is False and z["cycle_info"]["next_cycle_ms"] is None

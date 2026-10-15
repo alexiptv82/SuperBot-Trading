@@ -59,7 +59,8 @@ def _write_history(d, recs, extra_lines=()):
 
 def _write_hb(d, age=5, **kw):
     hb = {"ts": NOW - age, "mode": "running", "cycles": 7, "last_ok": True, "last_error": "",
-          "next_cycle_ms": int(NOW * 1000) + 600_000, "version": "abc1234", "daily_cap_usd": 0.7}
+          "next_cycle_ms": int(NOW * 1000) + 600_000, "version": "abc1234", "daily_cap_usd": 0.7,
+          "reset_keeps_brain": True}
     hb.update(kw)
     with open(os.path.join(d, "heartbeat.json"), "w") as f:
         json.dump(hb, f)
@@ -109,6 +110,7 @@ def test_status_mode_follows_pause_flag_and_positions():
         assert st["bot_mode"] == "draining" and st["paused"] is True and st["draining"] is True
         assert st["can_reset"] is False and "aperte" in st["reset_blocked_reason"]
         _write_state(d, {}, cash=1003.0)
+        _write_hb(d)
         st = dv.build_status(d, "hawk", now=NOW)
         assert st["bot_mode"] == "paused" and st["can_reset"] is True
 
@@ -282,12 +284,68 @@ def test_reset_portfolio_rules():
         assert (ok, code) == (False, 409) and "1 posizioni aperte" in r["message"]
         assert not os.path.exists(os.path.join(d, "reset_portfolio.flag"))
         _write_state(d, {}, cash=1000.0)
+        _write_hb(d)
         ok, code, r = dv.command_reset_portfolio(d, clear_lessons=True)
         assert (ok, code) == (True, 200) and r["queued"] is True
-        assert json.load(open(os.path.join(d, "reset_portfolio.flag"))) == {"clear_lessons": True}
+        assert json.load(open(os.path.join(d, "reset_portfolio.flag"))) == {"clear_lessons": False}, \
+            "la richiesta di cancellare gli appunti non passa mai al bot: il cervello non si cancella"
         ok, code, r = dv.command_reset_portfolio(d)   # gia' richiesto: non si accoda due volte
         assert ok and "già richiesto" in r["message"]
         assert dv.build_status(d, "hawk", now=NOW)["reset_pending"] is True
+
+
+def test_reset_is_blocked_while_the_bot_still_runs_the_old_version():
+    """Il bot vecchio, azzerando, sposterebbe lo storico dei trade (il cervello): finche' non dichiara
+    reset_keeps_brain il pulsante resta bloccato e il comando rifiutato."""
+    with tempfile.TemporaryDirectory() as d:
+        _write_state(d, {}, cash=1000.0)
+        open(os.path.join(d, "pause.flag"), "w").close()
+        for hb_kwargs in ({"reset_keeps_brain": False}, {}):
+            _write_hb(d)
+            hb = json.load(open(os.path.join(d, "heartbeat.json")))
+            hb.pop("reset_keeps_brain", None)
+            hb.update(hb_kwargs)
+            json.dump(hb, open(os.path.join(d, "heartbeat.json"), "w"))
+            st = dv.build_status(d, "hawk", now=NOW)
+            assert st["can_reset"] is False and "storico" in st["reset_blocked_reason"]
+            ok, code, r = dv.command_reset_portfolio(d)
+            assert (ok, code) == (False, 409) and "storico" in r["message"]
+            assert not os.path.exists(os.path.join(d, "reset_portfolio.flag"))
+        os.remove(os.path.join(d, "heartbeat.json"))   # nessun battito: stessa cosa
+        assert dv.command_reset_portfolio(d)[:2] == (False, 409)
+        _write_hb(d)
+        assert dv.command_reset_portfolio(d)[:2] == (True, 200)
+
+
+# ── lo storico e' permanente: l'app mostra solo la run attuale ───────────────
+def test_views_show_only_the_current_run_while_the_history_keeps_everything():
+    with tempfile.TemporaryDirectory() as d:
+        started = int(NOW * 1000) - 5 * 3_600_000
+        old = [_closed(i, 7.0, close_ms=started - (10 - i) * 3_600_000) for i in range(1, 4)]
+        new = [_closed(10, 2.0, close_ms=started + 1_000), _closed(11, -1.0, close_ms=started + 2_000)]
+        _write_history(d, old + new)
+        _write_state(d, run_no=2, run_started_ms=started)
+        assert [t["id"] for t in dv.closed_records(d)] == [10, 11]
+        assert [t["id"] for t in dv.closed_records(d, last_n=1)] == [11]
+        st = dv.build_status(d, "hawk", now=NOW)
+        assert st["total_closed"] == 2 and st["run_no"] == 2
+        perf = dv.build_performance(d, "hawk")
+        assert perf["total_trades"] == 2 and perf["total_pnl"] == 1.0
+        assert len(dv.build_trades(d)) == 2
+        assert dv.build_diary(d)["total_closed"] == 2
+        # il file su disco non e' stato toccato: le 5 righe ci sono ancora (sono il cervello)
+        assert len(open(os.path.join(d, "trade_history.jsonl")).read().splitlines()) == 5
+        # appena dopo il reset la run e' vuota ma lo storico no
+        _write_state(d, run_no=3, run_started_ms=int(NOW * 1000))
+        assert dv.closed_records(d) == [] and dv.build_status(d, "hawk", now=NOW)["total_closed"] == 0
+        assert dv.build_performance(d, "hawk")["available"] is False
+
+
+def test_history_without_a_run_marker_shows_everything_as_before():
+    with tempfile.TemporaryDirectory() as d:
+        _write_history(d, [_closed(i, 1.0) for i in range(1, 4)])
+        _write_state(d)   # mai azzerato: niente run_started_ms
+        assert len(dv.closed_records(d)) == 3 and len(dv.closed_records(d, last_n=2)) == 2
 
 
 # ── collegamento HTTP (con un FastAPI finto se quello vero non c'e') ──────────
@@ -390,6 +448,7 @@ def test_router_reset_portfolio_conflict_is_http_409():
         except Exception as e:
             assert getattr(e, "status_code", None) == 409 and "pausa" in str(getattr(e, "detail", ""))
         open(os.path.join(d, "pause.flag"), "w").close()
+        _write_hb(d)
         out = asyncio.run(_handler(router, "/reset-portfolio", "POST")(request=Req(), session=None))
         assert out["queued"] is True
 

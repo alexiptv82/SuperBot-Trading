@@ -676,6 +676,37 @@ def _fetch_bitget_wallet(bot: str) -> dict:
         return {"available": False, "error": str(e)[:120]}
 
 
+_bitget_ro_clients: dict = {}      # un client ccxt per bot, riusato: i mercati si caricano una volta sola
+_bitget_ro_locks: dict = {}
+
+
+def _fetch_bitget_positions(bot: str) -> dict:
+    """Posizioni VERE aperte sul sub-account BitGet di un bot, lette con la chiave di SOLA LETTURA (la stessa
+    del saldo). Mai un errore verso l'esterno: se non si puo' leggere si dice perche' e la pagina Live ripiega
+    sui numeri del bot. Le posizioni in uscita sono gia' nel formato della pagina (live_view.normalize_real_positions)."""
+    if os.environ.get("DESK_MODE", "paper").strip().lower() != "live":
+        return {"available": False, "positions": [], "error": "modalita' paper: nessuna posizione reale da mostrare"}
+    creds = live_view.wallet_credentials(os.environ, bot)   # solo la chiave di SOLA LETTURA di questo bot
+    if creds is None:
+        return {"available": False, "positions": [],
+                "error": f"chiave BitGet di sola lettura di {bot.capitalize()} non configurata nell'app"}
+    import threading
+    lock = _bitget_ro_locks.setdefault(bot, threading.Lock())
+    try:
+        with lock:
+            client = _bitget_ro_clients.get(bot)
+            if client is None:
+                import ccxt
+                api_key, secret, passphrase = creds
+                client = ccxt.bitget({"apiKey": api_key, "secret": secret, "password": passphrase,
+                                      "options": {"defaultType": "swap"}, "timeout": 8000})
+                _bitget_ro_clients[bot] = client
+            raw = client.fetch_positions()
+        return {"available": True, "positions": live_view.normalize_real_positions(raw), "error": None}
+    except Exception as e:
+        return {"available": False, "positions": [], "error": f"posizioni BitGet non leggibili: {str(e)[:100]}"}
+
+
 async def _fetch_wallets() -> dict:
     """Saldi dei due sub-account (Hawk e Bull) letti in parallelo, piu' il totale se entrambi sono leggibili."""
     bots = live_view.WALLET_BOTS
@@ -690,17 +721,22 @@ async def live_wallet(session=Depends(require_session)):
 
 @app.get("/api/desk/live/overview")
 async def live_overview(session=Depends(require_session)):
-    """Saldo BitGet + stato di Hawk e Bull in una sola chiamata (pagina Live)."""
+    """Saldo BitGet + posizioni vere + stato di Hawk e Bull in una sola chiamata (pagina Live)."""
     import time as _time
-    wallet = await _fetch_wallets()
+    bots = live_view.WALLET_BOTS
+    wallet, hawk_real, bull_real = await asyncio.gather(
+        _fetch_wallets(),
+        *(asyncio.to_thread(_fetch_bitget_positions, b) for b in bots))
     desk_mode = os.environ.get("DESK_MODE", "paper").strip().lower()
     loss_pct = os.environ.get("DESK_DAILY_LOSS_PCT", "25")
     return {
         "mode": desk_mode,
         "timestamp_ms": int(_time.time() * 1000),
         "wallet": wallet,
-        "hawk": live_view.build_portfolio(_DESK_DATA, os.environ.get("DESK_HAWK_CAPITAL"), loss_pct, desk_mode),
-        "bull": live_view.build_portfolio(_DESK_DATA_BULL, os.environ.get("DESK_BULL_CAPITAL"), loss_pct, desk_mode),
+        "hawk": live_view.build_portfolio(_DESK_DATA, os.environ.get("DESK_HAWK_CAPITAL"), loss_pct, desk_mode,
+                                          real_positions=hawk_real),
+        "bull": live_view.build_portfolio(_DESK_DATA_BULL, os.environ.get("DESK_BULL_CAPITAL"), loss_pct, desk_mode,
+                                          real_positions=bull_real),
     }
 
 

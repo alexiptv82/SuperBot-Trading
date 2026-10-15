@@ -8,7 +8,8 @@ l'app parla al bot.
 File letti dalla cartella dati:
   state_v2.json        conto (main), budget Claude, ultimi prezzi, ultimo comando eseguito
   heartbeat.json       battito del bot: vivo?, ultimo/prossimo ciclo, versione, errori
-  trade_history.jsonl  un trade chiuso per riga (si svuota a ogni reset del portafoglio)
+  trade_history.jsonl  un trade chiuso per riga. E' lo storico PERMANENTE, cioe' il cervello del bot: il reset del
+                       portafoglio non lo cancella. L'app mostra solo i trade della run attuale (dopo run_started_ms)
   archive/*/summary.json  run precedenti archiviate dal reset
 """
 from __future__ import annotations
@@ -74,12 +75,31 @@ def read_history(data_dir: str, last_n: Optional[int] = None) -> list:
     return out
 
 
+def _ms(value) -> int:
+    try:
+        v = int(float(value))
+    except (TypeError, ValueError):
+        return 0
+    return v if v > 0 else 0
+
+
 def closed_records(data_dir: str, state: Optional[dict] = None, last_n: Optional[int] = None) -> list:
-    """Storico permanente; se mancasse, i trade chiusi tenuti nello stato del conto."""
-    recs = read_history(data_dir, last_n)
+    """Trade chiusi della run ATTUALE.
+
+    Lo storico su disco e' permanente (e' il cervello del bot, il reset del portafoglio non lo cancella):
+    dopo un reset contiene anche le run vecchie, quindi qui si tengono solo i trade chiusi dal momento in cui
+    e' partita la run attuale (run_started_ms nello stato). Senza quel campo (bot mai azzerato) vale tutto.
+    Se lo storico manca, si ripiega sui trade chiusi tenuti nello stato del conto."""
+    state = read_state(data_dir) if state is None else state
+    started = _ms(state.get("run_started_ms"))
+    if started:
+        recs = [r for r in read_history(data_dir) if _ms(r.get("close_ms")) >= started]
+        if last_n:
+            recs = recs[-last_n:]
+    else:
+        recs = read_history(data_dir, last_n)
     if recs:
         return recs
-    state = read_state(data_dir) if state is None else state
     closed = (state.get("main") or {}).get("closed")
     if isinstance(closed, list):
         recs = [c for c in closed if isinstance(c, dict) and c.get("net") is not None]
@@ -204,6 +224,8 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
         can_reset, reset_reason = False, "Metti prima il bot in pausa."
     elif n_open > 0:
         can_reset, reset_reason = False, f"Ci sono {n_open} posizioni ancora aperte: aspetta che si chiudano oppure usa Chiudi tutto."
+    elif not reset_keeps_brain(hb):
+        can_reset, reset_reason = False, RESET_OLD_BOT_MESSAGE
 
     run_started = state.get("run_started_ms")
     return {
@@ -455,9 +477,20 @@ def command_reset_budget(data_dir: str) -> dict:
     return {"ok": True, "message": "Budget giornaliero di Claude azzerato (il conto non si tocca)."}
 
 
+RESET_OLD_BOT_MESSAGE = ("Il bot gira ancora con la versione precedente, il cui azzeramento cancellerebbe anche "
+                         "lo storico dei trade (il cervello). Si sblocca dopo la ridistribuzione dei bot.")
+
+
+def reset_keeps_brain(hb: Optional[dict]) -> bool:
+    """Il battito del bot dichiara `reset_keeps_brain` solo dalla versione in cui il reset non tocca piu' il cervello.
+    Con un bot piu' vecchio (o senza battito) il reset resta bloccato: meglio nessun reset che uno che cancella."""
+    return bool(hb and hb.get("reset_keeps_brain") is True)
+
+
 def command_reset_portfolio(data_dir: str, clear_lessons: bool = False) -> tuple:
     """(ok, http_status, risposta). Regole: solo in pausa e senza posizioni aperte; anche il bot le
-    ricontrolla, qui si evita di accodare un comando che verrebbe rifiutato."""
+    ricontrolla, qui si evita di accodare un comando che verrebbe rifiutato.
+    `clear_lessons` e' accettato per compatibilita' ma NON ha effetto: il cervello non si cancella mai."""
     state = read_state(data_dir)
     if not state:
         return False, 404, {"ok": False, "message": "Nessun dato da azzerare: il bot non ha ancora salvato nulla."}
@@ -469,9 +502,12 @@ def command_reset_portfolio(data_dir: str, clear_lessons: bool = False) -> tuple
                                                        "da sole oppure usa Chiudi tutto, poi azzera.")}
     if os.path.exists(os.path.join(data_dir, "reset_portfolio.flag")):
         return True, 200, {"ok": True, "queued": True, "message": "Azzeramento già richiesto: il bot lo sta eseguendo."}
-    _write_flag(data_dir, "reset_portfolio.flag", json.dumps({"clear_lessons": bool(clear_lessons)}))
+    if not reset_keeps_brain(read_heartbeat(data_dir)):
+        return False, 409, {"ok": False, "message": RESET_OLD_BOT_MESSAGE}
+    _write_flag(data_dir, "reset_portfolio.flag", json.dumps({"clear_lessons": False}))
     return True, 200, {"ok": True, "queued": True,
                        "message": "Azzeramento richiesto: la run attuale viene archiviata e il conto riparte da 1000$. "
+                                  "Il cervello (storico dei trade, appunti, registro) non si tocca. "
                                   "Il bot resta in pausa finché non premi Avvia."}
 
 
