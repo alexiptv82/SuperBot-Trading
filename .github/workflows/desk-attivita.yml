@@ -139,11 +139,13 @@ jobs:
                 return np.array([[float(x) for x in row[:6]] for row in sorted(dd.get("data", []), key=lambda q: float(q[0]))])
             now = int(time.time() * 1000)
             res = []
+            CAND = {}
             for s in SY:
                 try:
                     a = fetch(s)
                     if len(a) < 80:
                         continue
+                    CAND[s] = a
                     r = read_symbol(s, a, now)
                     if r is not None:
                         res.append(r)
@@ -157,6 +159,22 @@ jobs:
             print("score massimi adesso (simbolo lato score long/short tipo atr%):")
             for r in res[:12]:
                 print("  %-5s side=%2d score=%3d L=%3d S=%3d %s atr=%.2f%%" % (r.symbol, r.side, r.score, r.long_score, r.short_score, r.trade_type, r.atr_pct * 100 if r.atr_pct < 1 else r.atr_pct))
+            # --- andamento reale del mercato giorno per giorno (UTC, chiusura su chiusura precedente)
+            import statistics, collections
+            def daily(a):
+                last = collections.OrderedDict()
+                for row in a:
+                    last[time.strftime("%d/%m", time.gmtime(row[0] / 1000))] = row[4]
+                ks = list(last)
+                return {ks[i]: (last[ks[i]] / last[ks[i - 1]] - 1) * 100 for i in range(1, len(ks))}
+            D = {s: daily(a) for s, a in CAND.items()}
+            days = sorted({k for v in D.values() for k in v}, key=lambda x: (x[3:5], x[0:2]))[-6:]
+            print("mercato per giorno (UTC, variazione %; l'ultimo giorno e' quello di oggi fino ad ora):")
+            for k in days:
+                vals = [v[k] for v in D.values() if k in v]
+                print("  %s: BTC %+.1f%% ETH %+.1f%% XAU %+.1f%% | mediana 26 simboli %+.1f%% | giu >2%%: %d  su >2%%: %d  (su %d)" % (
+                    k, D.get("BTC", {}).get(k, 0), D.get("ETH", {}).get(k, 0), D.get("XAU", {}).get(k, 0),
+                    statistics.median(vals), sum(1 for x in vals if x < -2), sum(1 for x in vals if x > 2), len(vals)))
             sc = [r.score for r in res]
             print("distribuzione score: >=70:%d  60-69:%d  50-59:%d  <50:%d | side=0: %d" % (
                 sum(1 for x in sc if x >= 70), sum(1 for x in sc if 60 <= x < 70), sum(1 for x in sc if 50 <= x < 60), sum(1 for x in sc if x < 50), sum(1 for r in res if r.side == 0)))
