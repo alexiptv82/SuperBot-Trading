@@ -1,0 +1,114 @@
+name: Sala segnali - confronto giorni, fonte e posizioni contemporanee (sola lettura)
+
+# Legge soltanto il registro di apprendimento: per ogni giorno quante aperture e candidati vengono da Claude e quanti
+# dalle regole, quante posizioni erano aperte insieme, quando e' stato consultato Claude. NON scrive, NON riavvia nulla.
+# Parte SOLO quando cambia deploy/desk-confronto.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-confronto.trigger"
+
+jobs:
+  confronto:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Analisi
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 120s
+          script: |
+            OUT=/tmp/superbot_confronto.txt
+            : > $OUT
+            for P in hawk bull; do
+              python3 -I - /opt/superbot-desk-data/$P $P >> $OUT 2>&1 <<'PYEOF' || echo "($P: analisi non riuscita)" >> $OUT
+            import collections, json, os, sys, time
+            d, name = sys.argv[1], sys.argv[2]
+            CH = 7200
+            def day(ms):
+                return time.strftime("%d/%m", time.gmtime(ms / 1000 + CH))
+            def hhmm(ms):
+                return time.strftime("%d %H:%M", time.gmtime(ms / 1000 + CH))
+            rows = []
+            for line in open(os.path.join(d, "learning_log.jsonl"), encoding="utf-8"):
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    pass
+            print("=== %s ===" % name.upper())
+            per = collections.defaultdict(lambda: collections.Counter())
+            for r in rows:
+                ev = r.get("ev")
+                if ev == "open":
+                    per[day(r["ts"])]["open_" + str(r.get("source"))] += 1
+                elif ev == "candidate":
+                    per[day(r["ts"])]["cand_" + str(r.get("source"))] += 1
+                elif ev == "claude_call":
+                    per[day(r["ts"])]["chiamate_claude"] += 1
+            # posizioni contemporanee: da open(ts) a close(ts)
+            tl = []
+            for r in rows:
+                if r.get("ev") == "open":
+                    tl.append((r["ts"], 1))
+                elif r.get("ev") == "close":
+                    tl.append((r["ts"], -1))
+            tl.sort()
+            cur = 0
+            mx = collections.Counter()
+            for ts, dlt in tl:
+                cur += dlt
+                mx[day(ts)] = max(mx[day(ts)], cur)
+            print("giorno | aperture claude/regole | candidati claude/regole | chiamate Claude | max posizioni insieme")
+            for k in sorted(per):
+                c = per[k]
+                print("  %s | %3d / %3d | %4d / %4d | %3d | %2d" % (k, c["open_claude"], c["open_rules"], c["cand_claude"], c["cand_rules"], c["chiamate_claude"], mx[k]))
+            calls = sorted(r["ts"] for r in rows if r.get("ev") == "claude_call")
+            runs = []
+            for t in calls:
+                if runs and t - runs[-1][1] <= 3 * 3600 * 1000:
+                    runs[-1][1] = t
+                else:
+                    runs.append([t, t])
+            print("periodi in cui Claude e' stato consultato (ora CH):", "; ".join("%s -> %s" % (hhmm(a), hhmm(b)) for a, b in runs))
+            # aperture per fonte, con ora (ultimi 3 giorni)
+            print("aperture per ora e fonte negli ultimi giorni:")
+            bh = collections.defaultdict(collections.Counter)
+            for r in rows:
+                if r.get("ev") == "open" and r["ts"] > time.time() * 1000 - 4 * 86400000:
+                    bh[day(r["ts"])][time.strftime("%H", time.gmtime(r["ts"] / 1000 + CH)) + ":" + str(r.get("source"))[0]] += 1
+            for k in sorted(bh):
+                print("  %s: %s" % (k, " ".join("%s x%d" % (h, n) for h, n in sorted(bh[k].items()))))
+            # candidati da oggi alle 10:02 (dopo il riavvio)
+            t_restart = 0
+            st = json.load(open(os.path.join(d, "state_v2.json")))
+            since = time.time() * 1000 - 70 * 60 * 1000
+            cs = collections.Counter((r.get("source"), r.get("status")) for r in rows if r.get("ev") == "candidate" and r["ts"] >= since)
+            print("candidati ultimi 70 minuti per (fonte, stato):", dict(cs))
+            PYEOF
+            done
+            echo "DONE"
+
+      - name: Pubblica output
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+            root@51.91.109.45 'cat /tmp/superbot_confronto.txt' 2>/dev/null > out.txt || true
+          rm -f ~/.ssh/id_desk
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          split -l 20 -d out.txt part_
+          for f in part_*; do
+            OUT=$(cut -c1-300 "$f" | tr '\n' '~' | sed 's/%/%25/g')
+            echo "::notice title=Confronto ${f#part_}::${OUT}"
+          done
+          cat out.txt
