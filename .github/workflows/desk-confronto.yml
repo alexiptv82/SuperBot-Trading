@@ -89,6 +89,39 @@ jobs:
             since = time.time() * 1000 - 70 * 60 * 1000
             cs = collections.Counter((r.get("source"), r.get("status")) for r in rows if r.get("ev") == "candidate" and r["ts"] >= since)
             print("candidati ultimi 70 minuti per (fonte, stato):", dict(cs))
+            # chiamate a Claude: quante lette bene, quante tagliate, quante decisioni
+            cc = collections.defaultdict(lambda: collections.Counter())
+            for r in rows:
+                if r.get("ev") == "claude_call":
+                    k = day(r["ts"])
+                    cc[k]["chiamate"] += 1
+                    cc[k]["lette_ok"] += bool(r.get("ok"))
+                    cc[k]["tagliate(max_tokens)"] += r.get("stop_reason") == "max_tokens"
+                    cc[k]["decisioni_totali"] += int(r.get("n_decisions") or 0)
+            print("chiamate a Claude per giorno:", {k: dict(v) for k, v in sorted(cc.items())})
+            # che cosa avrebbe fatto il filtro macro sulle aperture della settimana scorsa (stessi orari degli eventi reali)
+            def utc(dd, hh, mm):
+                return int(time.mktime(time.strptime("2026-10-%02d %02d:%02d" % (dd, hh, mm), "%Y-%m-%d %H:%M")) * 1000) - int(time.mktime(time.gmtime(0)) * 1000) if False else int(__import__("calendar").timegm(time.strptime("2026-10-%02d %02d:%02d" % (dd, hh, mm), "%Y-%m-%d %H:%M")) * 1000)
+            MIN = 60000
+            evs = [(utc(14, 12, 30), "grande"), (utc(15, 12, 30), "grande"), (utc(16, 3, 30), "secondario")]
+            def blocked(ts, mode):
+                for t, tier in evs:
+                    if mode == "vecchio":
+                        b, a = 60, 120
+                    else:
+                        b, a = (60, 120) if tier == "grande" else (15, 30)
+                    if t - b * MIN <= ts < t + a * MIN:
+                        return True
+                return False
+            opens = {r["id"]: r for r in rows if r.get("ev") == "open" and r.get("id") is not None and r["ts"] >= utc(13, 22, 0)}
+            closes = {r.get("id"): r for r in rows if r.get("ev") == "close" and r.get("id") in opens}
+            for mode in ("vecchio", "attuale"):
+                bl = [i for i, o in opens.items() if blocked(o["ts"], mode)]
+                fr = [i for i in opens if i not in bl]
+                def agg(ids):
+                    net = [float(closes[i].get("net") or 0) for i in ids if i in closes]
+                    return "%d aperture (%d chiuse, %d in utile) netto %+.1f$" % (len(ids), len(net), sum(1 for x in net if x > 0), sum(net))
+                print("filtro %-8s: aperture dal 14/10 sera che sarebbero state BLOCCATE: %s | non bloccate: %s" % (mode, agg(bl), agg(fr)))
             PYEOF
             done
             echo "DONE"
