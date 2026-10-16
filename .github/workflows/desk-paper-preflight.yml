@@ -1,0 +1,44 @@
+name: Desk paper preflight (read only)
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - ".github/workflows/desk-paper-preflight.yml"
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Read-only VPS checks
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 90s
+          script: |
+            python3 - <<'PY'
+            import json,os,subprocess,datetime
+            for p in ('hawk','bull'):
+                print('===',p,'===')
+                name='superbot-desk-'+p
+                q=subprocess.run(['docker','inspect','--format','{{json .Config.Env}}',name],capture_output=True,text=True)
+                if q.returncode:
+                    print('inspect_error',q.stderr[:150]);continue
+                env=dict(v.split('=',1) for v in json.loads(q.stdout) if '=' in v)
+                print('DESK_MODE',env.get('DESK_MODE','unset'),'DESK_MACRO_ENFORCE',env.get('DESK_MACRO_ENFORCE','unset'))
+                d='/opt/superbot-desk-data/'+p
+                for f in ('claude_schedule.json','trading_hours.json','macro_enforce.flag','macro_off.flag','pause.flag'):
+                    path=os.path.join(d,f)
+                    if f.endswith('.json') and os.path.isfile(path):
+                        try: print(f,json.dumps(json.load(open(path)),ensure_ascii=False)[:1800])
+                        except Exception as e: print(f,'invalid',type(e).__name__)
+                    else: print(f,'exists',os.path.isfile(path))
+                for f in ('heartbeat.json',):
+                    try:
+                        h=json.load(open(os.path.join(d,f)))
+                        print('heartbeat',json.dumps({k:h.get(k) for k in ('exec_mode','mode','claude_schedule','macro')},ensure_ascii=False)[:1400])
+                    except Exception as e: print('heartbeat_error',type(e).__name__)
+            PY
+      - name: Finish
+        run: echo "Read-only inspection completed; see previous step logs."
