@@ -114,6 +114,58 @@ jobs:
                     a += m["regime"] == "alto"
                 print("  %-52s blocco %4.1f%% (%5.1f ore) | regime alto %4.1f%% (%5.1f ore)" % (label, 100 * b / n_steps, b * step / 3.6e6, 100 * a / n_steps, a * step / 3.6e6))
             PYEOF
+            echo "=== RIPASSO DELLA SETTIMANA APPENA FINITA (tutti gli eventi del feed in cache) ===" >> $OUT
+            docker exec -i superbot-desk-hawk python - >> $OUT 2>&1 <<'PYEOF' || echo "(ripasso non riuscito)" >> $OUT
+            import dataclasses, json, os, time
+            from desk import macro_calendar as mc
+            cache = json.load(open(os.path.join(os.environ["DESK_DATA_DIR"], "macro_events.json")))
+            ev = sorted(cache["ff"]["events"] + cache["bls"]["events"], key=lambda e: e["ts"])
+            CH = 7200 * 1000
+            DAYS = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"]
+            def fmt(ts):
+                t = time.gmtime((ts + CH) / 1000)
+                return "%s %02d/%02d %02d:%02d" % (DAYS[t.tm_wday], t.tm_mday, t.tm_mon, t.tm_hour, t.tm_min)
+            week = [e for e in ev if e["src"] == "ff"]
+            print("feed settimanale in cache: %d eventi USA (alti %d, medi %d)" % (len(week), sum(e["impact"] == "High" for e in week), sum(e["impact"] == "Medium" for e in week)))
+            for e in week:
+                print("  %s ora CH | %-6s | %s" % (fmt(e["ts"]), e["impact"], e["title"]))
+            T1 = ("cpi", "non-farm", "nonfarm", "fomc", "federal funds", "pce", "employment change", "unemployment rate")
+            def tier1(e):
+                t = e["title"].lower()
+                return e["src"] == "bls" or any(k in t for k in T1)
+            t1 = [e for e in ev if e["impact"] == "High" and tier1(e)]
+            print("di cui 'grandi' (CPI, occupazione, FOMC, PCE): %d" % len([e for e in week if e["impact"] == "High" and tier1(e)]))
+            # replay: lunedi 00:00 UTC -> venerdi 23:59 UTC della settimana del feed
+            first = min(e["ts"] for e in week) if week else 0
+            day0 = first - first % 86400000
+            while time.gmtime(day0 / 1000).tm_wday != 0:
+                day0 -= 86400000
+            step = 10 * 60 * 1000
+            n = int(5 * 86400000 // step)
+            base = mc.CFG
+            big_only = [e for e in ev if e["impact"] != "High" or tier1(e)]
+            scen = [
+                ("ATTUALE 60/120, -3/+12h, +5, tutti gli alti", base, ev),
+                ("+3 (resto uguale), tutti gli alti", dataclasses.replace(base, conf_bonus_alto=3), ev),
+                ("solo i GRANDI, 60/120, -3/+12h, +5", base, big_only),
+                ("grandi come ora; discorsi/altri: 15/30, +2", None, ev),
+            ]
+            print("settimana lun-ven (120 ore di mercato), quota sotto blocco / regime alto:")
+            for label, cfg, evs in scen:
+                b = a = 0
+                for i in range(n):
+                    now = day0 + i * step
+                    if cfg is None:
+                        big = mc.evaluate([e for e in ev if e["impact"] != "High" or tier1(e)], now, base)
+                        small = mc.evaluate([e for e in ev if e["impact"] == "High" and not tier1(e)], now, dataclasses.replace(base, block_before_min=15, block_after_min=30, lookback_h=1, lookahead_h=3, conf_bonus_alto=2))
+                        b += bool(big["blackout"] or small["blackout"])
+                        a += (big["regime"] == "alto" or small["regime"] == "alto")
+                    else:
+                        m = mc.evaluate(evs, now, cfg)
+                        b += bool(m["blackout"])
+                        a += m["regime"] == "alto"
+                print("  %-46s blocco %5.1f ore | regime alto %5.1f ore" % (label, b * step / 3.6e6, a * step / 3.6e6))
+            PYEOF
             echo "DONE"
 
       - name: Pubblica output
