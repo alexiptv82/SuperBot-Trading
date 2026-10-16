@@ -1,1 +1,1 @@
-2026-10-16T12:25:07Z finestra Claude
+2026-10-16T17:01:00Z controllo diagnostico Claude finestra sola lettura ChatGPT
