@@ -1,0 +1,44 @@
+name: Desk paper - restore Claude availability (no deploy)
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - ".github/workflows/desk-paper-restore-claude.yml"
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Restore pre-schedule Claude behavior in paper only
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 90s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import subprocess,json,os
+            for p in ('hawk','bull'):
+                q=subprocess.run(['docker','inspect','--format','{{json .Config.Env}}','superbot-desk-'+p],check=True,capture_output=True,text=True)
+                env=dict(x.split('=',1) for x in json.loads(q.stdout) if '=' in x)
+                if env.get('DESK_MODE')!='paper':
+                    raise SystemExit('ABORT: '+p+' not paper')
+                if env.get('DESK_MACRO_ENFORCE')=='1':
+                    raise SystemExit('ABORT: unexpected macro enforce env')
+            for p in ('hawk','bull'):
+                d='/opt/superbot-desk-data/'+p
+                path=os.path.join(d,'claude_schedule.json')
+                backup=os.path.join(d,'claude_schedule.pretest-20261016.json')
+                if os.path.exists(path):
+                    if os.path.exists(backup):
+                        raise SystemExit('ABORT: backup already exists for '+p)
+                    os.rename(path,backup)
+                    print(p,'schedule backed up; Claude unrestricted by schedule (daily API budget still applies)')
+                else:
+                    print(p,'schedule already absent')
+                print(p,'macro enforcement flag:',os.path.exists(os.path.join(d,'macro_enforce.flag')))
+            PY
+      - name: Result
+        run: echo "Paper-only schedule restored; no deploy, restart or history changes."
