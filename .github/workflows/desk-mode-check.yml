@@ -45,6 +45,9 @@ jobs:
             h, m, cs = hb.get("hours"), hb.get("macro"), hb.get("claude_schedule")
             print("orari di trading:", ("mode=%s errore=%s" % (h.get("mode"), h.get("error") or "-")) if isinstance(h, dict) else "non presente")
             print("macro:", json.dumps(m, ensure_ascii=False)[:230] if m is not None else "non presente")
+            if isinstance(m, dict):
+                print("macro modalita': enforce=%s (False = osservazione: registra, non frena) regime_pubblicato=%s osservato=%s" % (
+                    m.get("enforce"), m.get("regime"), json.dumps(m.get("observed"), ensure_ascii=False)[:120] if m.get("observed") else "-"))
             print("calendario Claude:", ("modo=%s consentito_ora=%s future=%s errore=%s" % (
                 cs.get("mode"), cs.get("allowed"), cs.get("n_future"), cs.get("error") or "-")) if isinstance(cs, dict) else "non presente")
             print("funzioni: reset_keeps_brain=%s close_position=%s trading_enabled=%s" % (
@@ -65,6 +68,14 @@ jobs:
             print("prossimo:", json.dumps(v.get("next"), ensure_ascii=False)[:200])
             for u in (v.get("upcoming") or [])[:5]:
                 print("  in arrivo:", json.dumps(u, ensure_ascii=False)[:160])
+            # Simulazione: un CPI fra 10 minuti, nella cartella temporanea. Con il codice in esecuzione dice che cosa farebbe il filtro.
+            print("enforcing(cartella temporanea)=%s  enforcing(dati hawk)=%s  enforcing(dati bull)=%s" % (
+                mc.enforcing(d), mc.enforcing("/app/data/desk/hawk"), mc.enforcing("/app/data/desk/bull")))
+            sim = mc.evaluate([{"ts": now + 10 * 60000, "title": "CPI m/m", "country": "USD", "impact": "High", "src": "ff"}], now)
+            sim["enforce"] = mc.enforcing(d)
+            sv = mc.heartbeat_view(sim)
+            print("SIMULAZIONE CPI tra 10 min -> pubblicato: regime=%s blocco=%s bonus=%s | osservato: %s" % (
+                sv.get("regime"), sv.get("blackout"), sv.get("conf_bonus"), json.dumps(sv.get("observed"), ensure_ascii=False)[:140]))
             PYEOF
             echo "DONE"
 
