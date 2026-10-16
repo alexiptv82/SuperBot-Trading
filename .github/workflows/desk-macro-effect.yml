@@ -1,0 +1,137 @@
+name: Sala segnali - effetto del filtro macro (sola lettura)
+
+# Legge soltanto: quanti candidati ha bloccato il filtro macro dopo l'ultimo azzeramento, quali eventi ci sono nel
+# calendario e quanta parte della settimana e' sotto blocco / regime alto con i parametri attuali e con alternative.
+# NON scrive nei dati dei bot, NON ferma e NON riavvia nulla. Nessun segreto in uscita.
+# Parte SOLO quando cambia deploy/desk-macro-effect.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-macro-effect.trigger"
+
+jobs:
+  effect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Analisi
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 120s
+          script: |
+            OUT=/tmp/superbot_macro_effect.txt
+            : > $OUT
+            for P in hawk bull; do
+              python3 -I - /opt/superbot-desk-data/$P $P >> $OUT 2>&1 <<'PYEOF' || echo "($P: analisi non riuscita)" >> $OUT
+            import collections, json, os, sys, time
+            d, name = sys.argv[1], sys.argv[2]
+            CH = 7200   # ora svizzera = UTC+2 fino al 25 ottobre
+            def hm(ms):
+                return time.strftime("%d %H:%M", time.gmtime(ms / 1000 + CH))
+            st = json.load(open(os.path.join(d, "state_v2.json")))
+            t0 = int(st.get("run_started_ms") or 0)
+            now = time.time() * 1000
+            print("=== %s: run %s partita %s (ora svizzera), %.1f ore fa ===" % (name.upper(), st.get("run_no"), hm(t0), (now - t0) / 3.6e6))
+            rows = []
+            for line in open(os.path.join(d, "learning_log.jsonl"), encoding="utf-8"):
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if r.get("ts", 0) >= t0 and r.get("ev") in ("candidate", "open", "close", "claude_call"):
+                    rows.append(r)
+            print("eventi nella run:", dict(collections.Counter(r["ev"] for r in rows)))
+            cand = [r for r in rows if r["ev"] == "candidate"]
+            print("candidati per stato:", dict(collections.Counter(r.get("status") for r in cand)))
+            bh = collections.defaultdict(collections.Counter)
+            for r in cand:
+                bh[time.strftime("%H", time.gmtime(r["ts"] / 1000 + CH))][r.get("status")] += 1
+            for h in sorted(bh):
+                print("  ore %s: %s" % (h, dict(bh[h])))
+            def base_thr(r):
+                return 60 if (r.get("features") or {}).get("tier") in ("A", "B") else 70
+            mb = [r for r in cand if r.get("status") == "macro_blocco"]
+            passa = [r for r in mb if ((r.get("features") or {}).get("conf") or 0) >= base_thr(r)]
+            passa5 = [r for r in mb if ((r.get("features") or {}).get("conf") or 0) >= base_thr(r) + 5]
+            print("bloccati dalla macro: %d candidati; con confidenza >= soglia normale: %d; >= soglia+5: %d" % (len(mb), len(passa), len(passa5)))
+            seen = set()
+            for r in passa:
+                k = (r["symbol"], r.get("side"))
+                if k in seen:
+                    continue
+                seen.add(k)
+                f = r.get("features") or {}
+                print("  avrebbe aperto? %s %s conf=%s (soglia %d) tipo=%s alle %s" % (
+                    r["symbol"], "LONG" if r.get("side") == 1 else "SHORT", f.get("conf"), base_thr(r), f.get("dec_type"), hm(r["ts"])))
+                if len(seen) >= 14:
+                    break
+            cb = [r for r in cand if r.get("status") == "conf_bassa_macro"]
+            print("fermati solo dal +5 (regime alto): %d candidati" % len(cb))
+            for r in [r for r in rows if r["ev"] == "open"][:12]:
+                f = r.get("features") or {}
+                print("  APERTA %s %s conf=%s alle %s" % (r.get("symbol"), "LONG" if r.get("side") == 1 else "SHORT", f.get("conf"), hm(r["ts"])))
+            print("chiamate a Claude nella run:", sum(1 for r in rows if r["ev"] == "claude_call"))
+            PYEOF
+            done
+            echo "=== CALENDARIO E SIMULAZIONE (dentro il container hawk, solo lettura) ===" >> $OUT
+            docker exec -i superbot-desk-hawk python - >> $OUT 2>&1 <<'PYEOF' || echo "(simulazione non riuscita)" >> $OUT
+            import dataclasses, json, os, time
+            from desk import macro_calendar as mc
+            cache = json.load(open(os.path.join(os.environ["DESK_DATA_DIR"], "macro_events.json")))
+            ev = sorted(cache["ff"]["events"] + cache["bls"]["events"], key=lambda e: e["ts"])
+            now = int(time.time() * 1000)
+            CH = 7200 * 1000
+            DAYS = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"]
+            def fmt(ts):
+                t = time.gmtime((ts + CH) / 1000)
+                return "%s %02d/%02d %02d:%02d" % (DAYS[t.tm_wday], t.tm_mday, t.tm_mon, t.tm_hour, t.tm_min)
+            win = [e for e in ev if now - 12 * 3600e3 <= e["ts"] <= now + 8 * 24 * 3600e3]
+            hi = [e for e in win if e["impact"] == "High"]
+            print("eventi USA nella finestra (da 12h fa a 8 giorni): %d alti, %d medi" % (len(hi), len(win) - len(hi)))
+            for e in win:
+                print("  %s ora CH | %-6s | %s (%s)" % (fmt(e["ts"]), e["impact"], e["title"], e["src"]))
+            base = mc.CFG
+            scen = [
+                ("ATTUALE  blocco 60/120, regime -3/+12h, bonus +5", base),
+                ("bonus +3 (resto uguale)", dataclasses.replace(base, conf_bonus_alto=3)),
+                ("bonus +2 (resto uguale)", dataclasses.replace(base, conf_bonus_alto=2)),
+                ("blocco 30/60, regime -2/+6h, bonus +3", dataclasses.replace(base, block_before_min=30, block_after_min=60, lookback_h=2, lookahead_h=6, conf_bonus_alto=3)),
+                ("blocco 15/45, regime -1/+3h, bonus +3", dataclasses.replace(base, block_before_min=15, block_after_min=45, lookback_h=1, lookahead_h=3, conf_bonus_alto=3)),
+            ]
+            step = 10 * 60 * 1000
+            n_steps = int(7 * 24 * 3600e3 // step)
+            print("quota della prossima SETTIMANA sotto blocco / regime alto (passi di 10 minuti):")
+            for label, cfg in scen:
+                b = a = 0
+                for i in range(n_steps):
+                    m = mc.evaluate(ev, now + i * step, cfg)
+                    b += bool(m["blackout"])
+                    a += m["regime"] == "alto"
+                print("  %-52s blocco %4.1f%% (%5.1f ore) | regime alto %4.1f%% (%5.1f ore)" % (label, 100 * b / n_steps, b * step / 3.6e6, 100 * a / n_steps, a * step / 3.6e6))
+            PYEOF
+            echo "DONE"
+
+      - name: Pubblica output
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+            root@51.91.109.45 'cat /tmp/superbot_macro_effect.txt' 2>/dev/null > out.txt || true
+          rm -f ~/.ssh/id_desk
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          split -l 20 -d out.txt part_
+          for f in part_*; do
+            OUT=$(cut -c1-230 "$f" | tr '\n' '|' | sed 's/%/%25/g')
+            echo "::notice title=Effetto macro ${f#part_}::${OUT}"
+          done
+          cat out.txt
