@@ -1,0 +1,87 @@
+name: Sala segnali - che cosa fa Claude nella finestra di oggi (sola lettura)
+
+# Legge soltanto il registro di apprendimento, lo stato e il log dei due bot: chiamate a Claude di oggi, se la risposta
+# e' stata letta, quante decisioni, costo, aperture/chiusure decise da Claude. NON scrive, NON riavvia, NON apre ordini.
+# Parte SOLO quando cambia deploy/desk-claude-finestra.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-claude-finestra.trigger"
+
+jobs:
+  finestra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Analisi
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 120s
+          script: |
+            OUT=/tmp/superbot_finestra.txt
+            : > $OUT
+            for P in hawk bull; do
+              python3 -I - /opt/superbot-desk-data/$P $P >> $OUT 2>&1 <<'PYEOF' || echo "($P: analisi non riuscita)" >> $OUT
+            import json, os, sys, time
+            d, name = sys.argv[1], sys.argv[2]
+            CH = 7200
+            def hm(ms):
+                return time.strftime("%d/%m %H:%M", time.gmtime(ms / 1000 + CH))
+            now = time.time() * 1000
+            t0 = time.strftime("%Y-%m-%d", time.gmtime(now / 1000 + CH))   # oggi (ora svizzera)
+            rows = []
+            for line in open(os.path.join(d, "learning_log.jsonl"), encoding="utf-8"):
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    pass
+            today = [r for r in rows if r.get("ts") and time.strftime("%Y-%m-%d", time.gmtime(r["ts"] / 1000 + CH)) == t0]
+            print("=== %s === ora svizzera %s" % (name.upper(), hm(now)))
+            hb = json.load(open(os.path.join(d, "heartbeat.json")))
+            cs = hb.get("claude_schedule")
+            print("calendario Claude (heartbeat):", json.dumps(cs, ensure_ascii=False)[:300] if cs else "non presente")
+            st = json.load(open(os.path.join(d, "state_v2.json")))
+            print("budget Claude:", json.dumps(st.get("budget"), ensure_ascii=False)[:200], "| ultima chiamata:", hm(st["last_call_ms"]) if st.get("last_call_ms") else "-")
+            calls = [r for r in today if r.get("ev") == "claude_call"]
+            print("chiamate a Claude oggi: %d" % len(calls))
+            for r in calls[-8:]:
+                print("  %s ok=%s decisioni=%s stop=%s token in/out=%s/%s (tetto %s) costo=%s$ posizioni=%s fail=%s" % (
+                    hm(r["ts"]), r.get("ok"), r.get("n_decisions"), r.get("stop_reason"), r.get("input_tokens"), r.get("output_tokens"),
+                    r.get("max_tokens"), r.get("cost_usd"), r.get("n_positions"), r.get("fail_reason", "-")))
+                if not r.get("ok") and r.get("reply"):
+                    print("     risposta (inizio): %s" % r["reply"][:400].replace("\n", " "))
+            cl = [r for r in today if r.get("source") == "claude" and r.get("ev") in ("open", "candidate", "close")]
+            print("righe di oggi decise da Claude (aperture/candidati/chiusure): %d" % len(cl))
+            for r in cl[-10:]:
+                print("  %s %s %s %s stato=%s conf=%s" % (hm(r["ts"]), r.get("ev"), r.get("symbol"), "L" if r.get("side") == 1 else "S",
+                      r.get("status", "-"), (r.get("features") or {}).get("conf", r.get("confidence", "?"))))
+            PYEOF
+              echo "--- log recente ($P), solo righe che riguardano Claude e le decisioni ---" >> $OUT
+              docker logs --since 75m superbot-desk-$P 2>&1 | grep -E '^\[(Claude|FINESTRA|WARN|OPEN|CLOSE|PARTIAL|DCA|SKIP|CONF_LOW|MACRO|HALT|RR|COOLDOWN|ORARI|PAUSA)' | grep -v 'DESK V2' | tail -22 | cut -c1-230 >> $OUT
+            done
+            echo "DONE" >> $OUT
+
+      - name: Pubblica output
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+            root@51.91.109.45 'cat /tmp/superbot_finestra.txt' 2>/dev/null > out.txt || true
+          rm -f ~/.ssh/id_desk
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          split -l 14 -d out.txt part_
+          for f in part_*; do
+            OUT=$(cut -c1-300 "$f" | tr '\n' '~' | sed 's/%/%25/g')
+            echo "::notice title=Finestra ${f#part_}::${OUT}"
+          done
+          cat out.txt
