@@ -707,7 +707,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         nxt = macro.get("next")
         print(f"[MACRO] regime {macro['regime'].upper()}  blocco nuove aperture={'SI' if macro['blackout'] else 'no'}  "
               f"bonus confidenza=+{macro['conf_bonus']}"
-              + (f"  prossimo: {nxt['title']} tra {nxt['min']} min" if nxt else ""), flush=True)
+              + (f"  prossimo: {nxt['title']} tra {nxt['min']} min" if nxt else "")
+              + ("" if macro.get("enforce", True) else "  [OSSERVAZIONE: registra, non frena]"), flush=True)
     elif macro["regime"] == "nd":
         print(f"[MACRO] calendario non disponibile ({macro.get('error') or 'nessun dato'}): il bot lavora come prima",
               flush=True)
@@ -922,17 +923,25 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             # (le posizioni gia' aperte non vengono toccate: stop, take profit, DCA e chiusure restano come sempre)
             # soglia confidenza tier-aware, piu' il bonus del regime macro (0 se calmo o calendario non disponibile)
             base_thr = tier_entry_score(sym)
+            # MODALITA' OSSERVAZIONE (predefinita): il calendario si legge e si registra ma non frena. Blocco e bonus
+            # si applicano solo se l'utente ha acceso `macro_enforce.flag` (vedi macro_calendar).
+            macro_on = bool(macro.get("enforce", True))
+            m_block = bool(macro["blackout"]) and macro_on
+            m_bonus = macro["conf_bonus"] if macro_on else 0
             # "macro_blocco" si registra solo per chi avrebbe superato la soglia NORMALE: chi non la supera si ferma
             # comunque piu' sotto per confidenza bassa, e contarlo come bloccato dalla macro gonfierebbe l'effetto.
-            if macro["blackout"] and dec["confidence"] >= base_thr:
+            if m_block and dec["confidence"] >= base_thr:
                 print(f"[MACRO_BLOCCO] {sym}: nuova apertura sospesa fino alle "
                       f"{macro_calendar.hm_utc(macro['blackout_until_ms'])} UTC (evento macro)", flush=True)
                 _candidate("macro_blocco", dec, px)
                 continue
-            thr = base_thr + macro["conf_bonus"]
+            if macro["blackout"] and not macro_on and dec["confidence"] >= base_thr:
+                print(f"[MACRO_OSSERVATO] {sym}: dentro una finestra a rischio (fino alle "
+                      f"{macro_calendar.hm_utc(macro['blackout_until_ms'])} UTC) ma in osservazione: non frena", flush=True)
+            thr = base_thr + m_bonus
             if dec["confidence"] < thr:
                 print(f"[CONF_LOW] {sym} conf={dec['confidence']} < soglia={thr}"
-                      + (f" ({base_thr}+{macro['conf_bonus']} macro)" if macro["conf_bonus"] else ""))
+                      + (f" ({base_thr}+{m_bonus} macro)" if m_bonus else ""))
                 _candidate("conf_bassa_macro" if dec["confidence"] >= base_thr else "conf_bassa", dec, px)
                 continue
             # filtro R:R minimo 1.5 — se SL e TP sono entrambi definiti

@@ -8,6 +8,7 @@ from datetime import date, datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ["DESK_MACRO_FETCH"] = "0"   # come conftest.py: mai rete vera nei test
+os.environ["DESK_MACRO_ENFORCE"] = "1"  # i test del blocco provano il modo "frena"; l'osservazione ha i suoi test in fondo
 
 import test_desk as td  # noqa: E402   (riuso del mondo di candele, dello sandbox e dello stub di Claude)
 from desk import cli, learning, macro_calendar as mc  # noqa: E402
@@ -389,3 +390,87 @@ def test_cycle_blackout_counts_as_macro_block_only_if_it_would_have_passed_the_n
         _write_cache(d, [_ev(NOW + 10 * MIN)])                                # 60 >= 60: senza blocco aprirebbe
         assert "BTC" not in _cycle({}, NOW).positions
         assert {c["status"] for c in learning.read_events(d, "candidate")} == {"macro_blocco"}
+
+
+# ---------------------------------------------------------------- modalita' osservazione (predefinita): registra, non frena
+import contextlib  # noqa: E402
+
+
+@contextlib.contextmanager
+def _observation():
+    """Toglie DESK_MACRO_ENFORCE per la durata del test: e' il comportamento predefinito del bot."""
+    saved = os.environ.pop("DESK_MACRO_ENFORCE", None)
+    try:
+        yield
+    finally:
+        if saved is not None:
+            os.environ["DESK_MACRO_ENFORCE"] = saved
+
+
+def test_observation_is_the_default_and_the_flag_or_env_turn_blocking_on():
+    with _observation(), tempfile.TemporaryDirectory() as d:
+        assert mc.enforcing(d) is False
+        open(os.path.join(d, mc.ENFORCE_FLAG), "w").close()
+        assert mc.enforcing(d) is True                                # file nella cartella dati: nessun riavvio
+        os.remove(os.path.join(d, mc.ENFORCE_FLAG))
+        os.environ["DESK_MACRO_ENFORCE"] = "1"
+        try:
+            assert mc.enforcing(d) is True
+        finally:
+            del os.environ["DESK_MACRO_ENFORCE"]
+        t = _utc_ms(2026, 10, 15, 12, 30)
+        _write_cache(d, [_ev(t)], ts=t)
+        m = mc.current(d, t)
+        assert m["enforce"] is False and m["blackout"] is True        # la lettura vera c'e', la decisione di frenare no
+
+
+def test_heartbeat_in_observation_does_not_claim_that_openings_are_suspended():
+    t = _utc_ms(2026, 10, 15, 12, 30)
+    m = dict(mc.evaluate([_ev(t)], t - 10 * MIN), enforce=False)
+    v = mc.heartbeat_view(m)
+    assert v["enforce"] is False and v["blackout"] is False and v["conf_bonus"] == 0 and v["regime"] == "osservazione"
+    assert v["observed"]["blackout"] is True and v["observed"]["regime"] == "alto" and v["observed"]["conf_bonus"] == 3
+    on = mc.heartbeat_view(dict(mc.evaluate([_ev(t)], t - 10 * MIN), enforce=True))
+    assert on["enforce"] is True and on["blackout"] is True and on["regime"] == "alto" and "observed" not in on
+
+
+def test_prompt_lines_in_observation_say_that_the_code_does_not_block():
+    t = _utc_ms(2026, 10, 15, 12, 30)
+    m = dict(mc.evaluate([_ev(t)], t - 10 * MIN), enforce=False)
+    lines = "\n".join(mc.prompt_lines(m))
+    assert "OSSERVAZIONE" in lines and "NON blocca" in lines and "blocca le NUOVE aperture" not in lines
+
+
+def test_cycle_in_observation_opens_during_the_blackout_and_logs_what_the_filter_would_have_done():
+    with _observation():
+        prompts = []
+        stub = _recording(td._decisions_stub(td._dec("BTC", "open_long", confidence=62)), prompts)
+        with td._sandbox(stub) as (d, calls):
+            _write_cache(d, [_ev(NOW + 10 * MIN)])                   # CPI tra 10 minuti: con il filtro acceso sarebbe bloccato
+            acc = _cycle({}, NOW)
+            assert "BTC" in acc.positions, "in osservazione il bot lavora come prima"
+            f = learning.read_events(d, "open")[0]["features"]
+            assert f["macro_regime"] == "alto" and f["macro_blackout"] is True and f["macro_bonus"] == 3
+            assert f["macro_enforced"] is False                        # cosi' l'analista separa osservato da applicato
+            assert not any(c["status"] in ("macro_blocco", "conf_bassa_macro") for c in learning.read_events(d, "candidate"))
+            assert cli.HB["macro"]["blackout"] is False and cli.HB["macro"]["observed"]["blackout"] is True
+            assert any("OSSERVAZIONE" in p for p in prompts), "Claude deve sapere che il codice non frena"
+
+
+def test_cycle_in_observation_ignores_the_confidence_bonus():
+    with _observation():
+        with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=62))) as (d, calls):
+            _write_cache(d, [_ev(NOW + 5 * HOUR)])                   # regime alto, ma fuori dal blocco: sarebbe +3
+            assert "BTC" in _cycle({}, NOW).positions                # 62 >= 60: apre come sempre
+            assert learning.read_events(d, "open")[0]["features"]["macro_bonus"] == 3
+
+
+def test_cycle_enforce_flag_file_turns_blocking_back_on_without_restart():
+    with _observation():
+        with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=62))) as (d, calls):
+            _write_cache(d, [_ev(NOW + 10 * MIN)])
+            open(os.path.join(d, mc.ENFORCE_FLAG), "w").close()
+            assert "BTC" not in _cycle({}, NOW).positions
+            assert {c["status"] for c in learning.read_events(d, "candidate")} == {"macro_blocco"}
+            os.remove(os.path.join(d, mc.ENFORCE_FLAG))
+            assert "BTC" in _cycle({}, NOW).positions                # tolto il file: torna a non frenare

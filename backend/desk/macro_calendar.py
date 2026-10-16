@@ -17,6 +17,11 @@ Cosa NON fa: non tocca le posizioni gia' aperte (stop, take profit, DCA, seconda
 la strategia, non decide nulla se non c'e' un dato. Se il calendario non e' disponibile, o qualsiasi cosa va
 storta, il bot lavora esattamente come prima (regime "nd", nessun blocco, nessun bonus).
 
+MODALITA' OSSERVAZIONE (predefinita, scelta dell'utente del 16 ottobre): il calendario viene letto e REGISTRATO
+(regime, blocco che ci sarebbe stato, bonus che ci sarebbe stato) ma NON frena il bot: nessun blocco, nessun +confidenza.
+Serve a confrontare con i dati "con calendario" e "senza" prima di decidere. Per far FRENARE davvero il bot (blocco e
+bonus applicati) basta creare il file `macro_enforce.flag` nella cartella dati (nessun riavvio) oppure DESK_MACRO_ENFORCE=1.
+
 Interruttori: variabile DESK_MACRO=0 (spegne tutto), file `macro_off.flag` nella cartella dati (spegne il filtro
 senza riavviare), DESK_MACRO_FETCH=0 (niente rete: usa solo la cache; serve ai test).
 """
@@ -33,6 +38,7 @@ from typing import Callable, Optional
 
 CACHE_FILE = "macro_events.json"
 OFF_FLAG = "macro_off.flag"
+ENFORCE_FLAG = "macro_enforce.flag"      # presente = il calendario FRENA (blocco e bonus); assente = solo osservazione
 
 FF_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 BLS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
@@ -249,6 +255,13 @@ def evaluate(events: list, now_ms: int, cfg: MacroConfig = CFG, fetched_ms: int 
             "stale": bool(fetched_ms) and (now_ms - fetched_ms) > STALE_MS, "error": error}
 
 
+def enforcing(data_dir: str) -> bool:
+    """True se il calendario deve frenare davvero il bot. Predefinito: NO (osservazione, solo registro)."""
+    if os.getenv("DESK_MACRO_ENFORCE", "") == "1":
+        return True
+    return os.path.exists(os.path.join(data_dir, ENFORCE_FLAG))
+
+
 def current(data_dir: str, now_ms: int, fetch: Optional[Callable] = None, cfg: MacroConfig = CFG) -> dict:
     """Stato macro del momento. NON SOLLEVA MAI: in caso di problemi ritorna uno stato neutro (nessun effetto)."""
     try:
@@ -263,7 +276,9 @@ def current(data_dir: str, now_ms: int, fetch: Optional[Callable] = None, cfg: M
             return _neutral("nd", err)
         events = cache["ff"]["events"] + cache["bls"]["events"]
         err = "; ".join(f"{k}: {cache[k]['error']}" for k in ("ff", "bls") if cache[k]["error"])
-        return evaluate(events, now_ms, cfg, fetched_ms=max(s["ts"] for s in have), error=err)
+        m = evaluate(events, now_ms, cfg, fetched_ms=max(s["ts"] for s in have), error=err)
+        m["enforce"] = enforcing(data_dir)
+        return m
     except Exception as e:                                # qualunque imprevisto: il bot lavora come prima
         return _neutral("nd", f"errore interno: {type(e).__name__}")
 
@@ -293,6 +308,12 @@ def prompt_lines(m: dict, cfg: MacroConfig = CFG) -> list:
     if recent:
         head += (" Usciti da poco: " + "; ".join(f"{hm_utc(u['ts'])} UTC {u['title']} [{u.get('tier', 'grande')}] "
                                                  f"({_fmt_min(u['min'])} fa)" for u in recent) + ".")
+    if not m.get("enforce", True):
+        rule = ("MODALITA' OSSERVAZIONE: il codice NON blocca nulla e NON alza la soglia di confidenza per il calendario; "
+                "usalo solo come informazione per giudicare il rischio di volatilita'")
+        if m["blackout"]:
+            rule += f" (siamo dentro una finestra a rischio, fino alle {hm_utc(m['blackout_until_ms'])} UTC)"
+        return [head, rule + "."]
     rule = (f"Il codice blocca le NUOVE aperture da {cfg.block_before_min} min prima a {cfg.block_after_min} min dopo "
             f"ogni evento [grande] (CPI, PPI, occupazione, FOMC, PCE) e da {cfg.minor_block_before_min} min prima a "
             f"{cfg.minor_block_after_min} min dopo ogni evento [secondario]")
@@ -308,9 +329,17 @@ def features(m: dict) -> dict:
     nxt = m.get("next")
     return {"macro_regime": m.get("regime"), "macro_blackout": bool(m.get("blackout")),
             "macro_bonus": int(m.get("conf_bonus") or 0), "macro_min_next": nxt["min"] if nxt else None,
-            "macro_tier_next": nxt.get("tier") if nxt else None}
+            "macro_tier_next": nxt.get("tier") if nxt else None,
+            "macro_enforced": bool(m.get("enforce", True))}
 
 
 def heartbeat_view(m: dict) -> dict:
-    return {k: m.get(k) for k in ("regime", "blackout", "blackout_until_ms", "conf_bonus", "next", "upcoming",
-                                  "recent", "n_events", "fetched_ms", "stale", "error")}
+    v = {k: m.get(k) for k in ("regime", "blackout", "blackout_until_ms", "conf_bonus", "next", "upcoming",
+                               "recent", "n_events", "fetched_ms", "stale", "error")}
+    v["enforce"] = bool(m.get("enforce", True))
+    if not v["enforce"]:
+        # in osservazione il bot NON frena: l'app non deve mostrare «aperture sospese». La lettura vera resta in `observed`.
+        v["observed"] = {k: v[k] for k in ("regime", "blackout", "blackout_until_ms", "conf_bonus")}
+        v.update(regime="osservazione" if v["regime"] in ("medio", "alto") else v["regime"],
+                 blackout=False, blackout_until_ms=None, conf_bonus=0)
+    return v
