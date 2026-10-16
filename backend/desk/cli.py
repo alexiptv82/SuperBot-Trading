@@ -920,13 +920,15 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 continue
             # ── CALENDARIO MACRO: nessuna NUOVA apertura attorno a un evento ad alto impatto ──────────────
             # (le posizioni gia' aperte non vengono toccate: stop, take profit, DCA e chiusure restano come sempre)
-            if macro["blackout"]:
+            # soglia confidenza tier-aware, piu' il bonus del regime macro (0 se calmo o calendario non disponibile)
+            base_thr = tier_entry_score(sym)
+            # "macro_blocco" si registra solo per chi avrebbe superato la soglia NORMALE: chi non la supera si ferma
+            # comunque piu' sotto per confidenza bassa, e contarlo come bloccato dalla macro gonfierebbe l'effetto.
+            if macro["blackout"] and dec["confidence"] >= base_thr:
                 print(f"[MACRO_BLOCCO] {sym}: nuova apertura sospesa fino alle "
                       f"{macro_calendar.hm_utc(macro['blackout_until_ms'])} UTC (evento macro)", flush=True)
                 _candidate("macro_blocco", dec, px)
                 continue
-            # soglia confidenza tier-aware, piu' il bonus del regime macro (0 se calmo o calendario non disponibile)
-            base_thr = tier_entry_score(sym)
             thr = base_thr + macro["conf_bonus"]
             if dec["confidence"] < thr:
                 print(f"[CONF_LOW] {sym} conf={dec['confidence']} < soglia={thr}"
