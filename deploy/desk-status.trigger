@@ -1,1 +1,1 @@
-2026-10-16T08:03:15Z
+2026-10-16T09:44:08Z verifica post-redeploy osservazione
