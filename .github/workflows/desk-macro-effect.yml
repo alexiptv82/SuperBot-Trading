@@ -76,6 +76,22 @@ jobs:
                 f = r.get("features") or {}
                 print("  APERTA %s %s conf=%s alle %s" % (r.get("symbol"), "LONG" if r.get("side") == 1 else "SHORT", f.get("conf"), hm(r["ts"])))
             print("chiamate a Claude nella run:", sum(1 for r in rows if r["ev"] == "claude_call"))
+            byday = collections.defaultdict(lambda: [0, 0, 0, 0])
+            for line in open(os.path.join(d, "learning_log.jsonl"), encoding="utf-8"):
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if r.get("ev") not in ("candidate", "open"):
+                    continue
+                t = time.gmtime(r["ts"] / 1000 + CH)
+                k = "%02d/%02d" % (t.tm_mday, t.tm_mon)
+                i = 0 if 4 <= t.tm_hour < 9 else 2
+                byday[k][i + (0 if r["ev"] == "candidate" else 1)] += 1
+            print("stessa fascia 04-09 ora CH nei giorni (candidati, aperture) | resto del giorno (candidati, aperture):")
+            for k in sorted(byday):
+                v = byday[k]
+                print("  %s: 04-09 -> %d cand, %d aperte | resto -> %d cand, %d aperte" % (k, v[0], v[1], v[2], v[3]))
             PYEOF
             done
             echo "=== CALENDARIO E SIMULAZIONE (dentro il container hawk, solo lettura) ===" >> $OUT
@@ -149,13 +165,19 @@ jobs:
                 ("+3 (resto uguale), tutti gli alti", dataclasses.replace(base, conf_bonus_alto=3), ev),
                 ("solo i GRANDI, 60/120, -3/+12h, +5", base, big_only),
                 ("grandi come ora; discorsi/altri: 15/30, +2", None, ev),
+                ("PROPOSTA grandi 60/120 -3/+6h +3; altri 15/30 no bonus", "prop", ev),
             ]
             print("settimana lun-ven (120 ore di mercato), quota sotto blocco / regime alto:")
             for label, cfg, evs in scen:
                 b = a = 0
                 for i in range(n):
                     now = day0 + i * step
-                    if cfg is None:
+                    if cfg == "prop":
+                        big = mc.evaluate([e for e in ev if e["impact"] != "High" or tier1(e)], now, dataclasses.replace(base, lookahead_h=6, conf_bonus_alto=3))
+                        small = mc.evaluate([e for e in ev if e["impact"] == "High" and not tier1(e)], now, dataclasses.replace(base, block_before_min=15, block_after_min=30, lookback_h=0, lookahead_h=0, conf_bonus_alto=0))
+                        b += bool(big["blackout"] or small["blackout"])
+                        a += (big["regime"] == "alto")
+                    elif cfg is None:
                         big = mc.evaluate([e for e in ev if e["impact"] != "High" or tier1(e)], now, base)
                         small = mc.evaluate([e for e in ev if e["impact"] == "High" and not tier1(e)], now, dataclasses.replace(base, block_before_min=15, block_after_min=30, lookback_h=1, lookahead_h=3, conf_bonus_alto=2))
                         b += bool(big["blackout"] or small["blackout"])
