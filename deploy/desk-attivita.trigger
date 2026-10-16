@@ -1,1 +1,1 @@
-2026-10-16T11:30:02Z attivita bot + mercato
+2026-10-16T17:00:00Z controllo diagnostico sola lettura ChatGPT Hawk Bull
