@@ -1,0 +1,184 @@
+name: Sala segnali - attivita' dei bot, segnali scarti e aperture per giorno e per ora (sola lettura)
+
+# Legge soltanto il registro di apprendimento e lo stato dei due bot, e calcola con il codice in esecuzione che cosa
+# vedono adesso le regole sul mercato. NON scrive nulla, NON riavvia nulla, NON apre ordini.
+# Parte SOLO quando cambia deploy/desk-attivita.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-attivita.trigger"
+
+jobs:
+  attivita:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Analisi
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 180s
+          script: |
+            OUT=/tmp/superbot_attivita.txt
+            : > $OUT
+            for P in hawk bull; do
+              python3 -I - /opt/superbot-desk-data/$P $P >> $OUT 2>&1 <<'PYEOF' || echo "($P: analisi non riuscita)" >> $OUT
+            import collections, json, os, statistics, sys, time
+            d, name = sys.argv[1], sys.argv[2]
+            CH = 7200   # ora svizzera/italiana (ora legale)
+            def tm(ms):
+                return time.gmtime(ms / 1000 + CH)
+            def day(ms):
+                return time.strftime("%d/%m", tm(ms))
+            def minutes(ms):
+                t = tm(ms)
+                return t.tm_hour * 60 + t.tm_min
+            def in_window(ms):   # stessa fascia di oggi: 05:00 - 13:30
+                return 300 <= minutes(ms) <= 810
+            rows = []
+            for line in open(os.path.join(d, "learning_log.jsonl"), encoding="utf-8"):
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    pass
+            now = time.time() * 1000
+            today = day(now)
+            print("=== %s === ora ora svizzera %s" % (name.upper(), time.strftime("%d/%m %H:%M", tm(now))))
+            # --- 1) per giorno, nella STESSA fascia 05:00-13:30 (oggi vale fino a ora)
+            print("1) per giorno, fascia 05:00-13:30: aperture | candidati | cicli con candidati | stati dei candidati")
+            per = collections.defaultdict(lambda: {"open": 0, "close": 0, "cand": 0, "cyc": set(), "st": collections.Counter(), "atr": [], "roc": []})
+            for r in rows:
+                ts = r.get("ts")
+                if not ts or not in_window(ts):
+                    continue
+                k = day(ts)
+                ev = r.get("ev")
+                if ev == "open":
+                    per[k]["open"] += 1
+                elif ev == "close":
+                    per[k]["close"] += 1
+                elif ev == "candidate":
+                    p = per[k]
+                    p["cand"] += 1
+                    p["cyc"].add(ts)
+                    p["st"][str(r.get("status")).split(":")[0]] += 1
+                    f = r.get("features") or {}
+                    if isinstance(f.get("atr_pct"), (int, float)):
+                        p["atr"].append(f["atr_pct"])
+                    if isinstance(f.get("btc_roc24h"), (int, float)):
+                        p["roc"].append(abs(f["btc_roc24h"]))
+            for k in sorted(per, key=lambda s: (s[3:5], s[0:2])):
+                p = per[k]
+                med = lambda xs: ("%.2f" % statistics.median(xs)) if xs else "-"
+                print("  %s: aperture %2d chiusure %2d | candidati %3d in %2d cicli | %s | atr_med %s |btcroc24h|_med %s" % (
+                    k, p["open"], p["close"], p["cand"], len(p["cyc"]),
+                    " ".join("%s=%d" % (a, b) for a, b in p["st"].most_common(5)), med(p["atr"]), med(p["roc"])))
+            # --- 2) oggi ora per ora
+            print("2) oggi ora per ora (ora svizzera): candidati | aperture | chiusure | stati")
+            hh = collections.defaultdict(lambda: {"cand": 0, "open": 0, "close": 0, "st": collections.Counter()})
+            for r in rows:
+                ts = r.get("ts")
+                if not ts or day(ts) != today:
+                    continue
+                h = tm(ts).tm_hour
+                ev = r.get("ev")
+                if ev in ("open", "close"):
+                    hh[h][ev] += 1
+                elif ev == "candidate":
+                    hh[h]["cand"] += 1
+                    hh[h]["st"][str(r.get("status")).split(":")[0]] += 1
+            for h in sorted(hh):
+                x = hh[h]
+                print("  %02d: cand %3d | open %d | close %d | %s" % (h, x["cand"], x["open"], x["close"], " ".join("%s=%d" % (a, b) for a, b in x["st"].most_common(4))))
+            # --- 3) gli ultimi candidati di oggi (simbolo, lato, stato, confidenza, soglia)
+            print("3) ultimi candidati di oggi (ora, simbolo, lato, stato, confidenza):")
+            todays = [r for r in rows if r.get("ev") == "candidate" and r.get("ts") and day(r["ts"]) == today]
+            for r in todays[-14:]:
+                f = r.get("features") or {}
+                print("  %s %-5s %s %-18s conf=%s tipo=%s" % (time.strftime("%H:%M", tm(r["ts"])), r.get("symbol"), "L" if r.get("side") == 1 else "S",
+                      str(r.get("status"))[:18], f.get("dec_confidence", f.get("confidence", "?")), f.get("trade_type", f.get("dec_trade_type", "?"))))
+            print("   chiavi delle feature di un candidato:", ",".join(sorted((todays[-1].get("features") or {}).keys()))[:260] if todays else "-")
+            # --- 4) quali simboli passano il filtro: aperture di oggi e di ieri
+            print("4) aperture per giorno (ultimi 4 giorni): simbolo/lato")
+            bo = collections.defaultdict(list)
+            for r in rows:
+                if r.get("ev") == "open" and r.get("ts") and r["ts"] > now - 4 * 86400000:
+                    bo[day(r["ts"])].append("%s%s@%s" % (r.get("symbol"), "L" if r.get("side") == 1 else "S", time.strftime("%H", tm(r["ts"]))))
+            for k in sorted(bo, key=lambda s: (s[3:5], s[0:2])):
+                print("  %s (%d): %s" % (k, len(bo[k]), " ".join(bo[k])[:230]))
+            # --- 5) stato del bot: pausa, halt, cooldown, ultimo ciclo
+            st = json.load(open(os.path.join(d, "state_v2.json")))
+            print("5) stato: chiavi=%s" % ",".join(sorted(st.keys()))[:300])
+            lo = st.get("last_open_ms") or {}
+            print("   ultime aperture per simbolo (minuti fa):", {k: int((now - v) / 60000) for k, v in sorted(lo.items(), key=lambda kv: -kv[1])[:8]})
+            print("   run_no=%s halt_notified=%s last_call_min_fa=%s pause.flag=%s macro_enforce.flag=%s" % (
+                st.get("run_no"), st.get("halt_notified"), int((now - st.get("last_call_ms", 0)) / 60000) if st.get("last_call_ms") else "-",
+                os.path.exists(os.path.join(d, "pause.flag")), os.path.exists(os.path.join(d, "macro_enforce.flag"))))
+            hb = json.load(open(os.path.join(d, "heartbeat.json")))
+            print("   heartbeat: eta=%ds modalita=%s posizioni=%s halt=%s sleep_s=%s" % (
+                time.time() - hb.get("ts", 0), hb.get("mode"), hb.get("positions", hb.get("n_open")), hb.get("halt"), hb.get("sleep_s", hb.get("next_cycle_s"))))
+            PYEOF
+            done
+            # --- 6) che cosa vedono le regole ADESSO sul mercato (codice in esecuzione, sola lettura)
+            echo "=== 6) SEGNALI ADESSO (codice in esecuzione, stessa lettura del bot) ===" >> $OUT
+            docker exec -i superbot-desk-hawk python - >> $OUT 2>&1 <<'PYEOF' || echo "(lettura segnali non riuscita)" >> $OUT
+            import json, time, urllib.request
+            import numpy as np
+            from desk.signals import read_symbol
+            SY = ["BTC","ETH","BNB","XRP","SOL","ADA","DOGE","AVAX","DOT","LINK","UNI","ATOM","LTC","BCH","APT","ARB","OP","NEAR","FIL","INJ","SUI","TIA","RUNE","STX","XAU","XAG"]
+            AB = {"BTC","ETH","XAU","XAG"}
+            def fetch(sym):
+                url = "https://api.bitget.com/api/v2/mix/market/candles?symbol=%sUSDT&productType=USDT-FUTURES&granularity=15m&limit=1000" % sym
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    dd = json.loads(r.read())
+                return np.array([[float(x) for x in row[:6]] for row in sorted(dd.get("data", []), key=lambda q: float(q[0]))])
+            now = int(time.time() * 1000)
+            res = []
+            for s in SY:
+                try:
+                    a = fetch(s)
+                    if len(a) < 80:
+                        continue
+                    r = read_symbol(s, a, now)
+                    if r is not None:
+                        res.append(r)
+                except Exception as e:
+                    print("  %s errore %s" % (s, str(e)[:60]))
+                time.sleep(0.05)
+            res.sort(key=lambda r: -r.score)
+            ok = [r for r in res if r.side != 0 and r.score >= (60 if r.symbol in AB else 70)]
+            ok60 = [r for r in res if r.side != 0 and r.score >= 60]
+            print("simboli letti: %d | con segnale (side!=0) e score >= soglia del suo livello (60 BTC/ETH/XAU/XAG, 70 altri): %d | con score >= 60: %d" % (len(res), len(ok), len(ok60)))
+            print("score massimi adesso (simbolo lato score long/short tipo atr%):")
+            for r in res[:12]:
+                print("  %-5s side=%2d score=%3d L=%3d S=%3d %s atr=%.2f%%" % (r.symbol, r.side, r.score, r.long_score, r.short_score, r.trade_type, r.atr_pct * 100 if r.atr_pct < 1 else r.atr_pct))
+            sc = [r.score for r in res]
+            print("distribuzione score: >=70:%d  60-69:%d  50-59:%d  <50:%d | side=0: %d" % (
+                sum(1 for x in sc if x >= 70), sum(1 for x in sc if 60 <= x < 70), sum(1 for x in sc if 50 <= x < 60), sum(1 for x in sc if x < 50), sum(1 for r in res if r.side == 0)))
+            PYEOF
+            echo "DONE" >> $OUT
+
+      - name: Pubblica output
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+            root@51.91.109.45 'cat /tmp/superbot_attivita.txt' 2>/dev/null > out.txt || true
+          rm -f ~/.ssh/id_desk
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          split -l 18 -d out.txt part_
+          for f in part_*; do
+            OUT=$(cut -c1-300 "$f" | tr '\n' '~' | sed 's/%/%25/g')
+            echo "::notice title=Attivita ${f#part_}::${OUT}"
+          done
+          cat out.txt
