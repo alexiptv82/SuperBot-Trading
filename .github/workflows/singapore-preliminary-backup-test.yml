@@ -1,0 +1,84 @@
+name: Singapore preliminary backup - isolated tests
+
+on:
+  push:
+    branches: [setup/singapore-vps-readonly]
+    paths:
+      - 'deploy/prepare_preliminary_backup.py'
+      - '.github/workflows/singapore-preliminary-backup-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-backup-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test backup without VPS access or credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import pathlib
+          import sqlite3
+          import tempfile
+          from unittest.mock import patch
+
+          spec = importlib.util.spec_from_file_location("backup", "deploy/prepare_preliminary_backup.py")
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          with tempfile.TemporaryDirectory() as td:
+              root = pathlib.Path(td)
+              source = root / "source"
+              for name in ("hawk", "bull"):
+                  folder = source / name
+                  folder.mkdir(parents=True)
+                  (folder / "state_v2.json").write_text('{"main":{"positions":{}}}', encoding="utf-8")
+                  (folder / "trade_history.jsonl").write_text('{"trade":1}\n', encoding="utf-8")
+                  (folder / "learning_log.jsonl").write_text('{"ev":"open"}\n', encoding="utf-8")
+                  (folder / "archive").mkdir()
+                  (folder / "archive" / "history.json").write_text('{"old":true}', encoding="utf-8")
+              db = source / "superbot.db"
+              with sqlite3.connect(db) as conn:
+                  conn.execute("CREATE TABLE trades(id INTEGER PRIMARY KEY)")
+                  conn.execute("INSERT INTO trades VALUES (1)")
+              target = root / "backups"
+              target.mkdir()
+              sentinel = target / "existing-backup.txt"
+              sentinel.write_text("DO NOT CHANGE")
+              mod.SOURCES = {name: source / name for name in ("hawk", "bull")}
+              mod.DATABASE = db
+              mod.BASE = target
+              with patch.object(mod.os, "geteuid", return_value=0):
+                  assert mod.main() == 0, "valid backup should succeed"
+                  snaps = sorted(target.glob("singapore-preliminary-*"))
+                  assert len(snaps) == 1
+                  snap = snaps[0]
+                  assert (snap / "hawk" / "archive" / "history.json").is_file()
+                  manifest = json.loads((snap / "manifest.json").read_text())
+                  assert manifest["kind"] == "PRELIMINARY_ONLY_NOT_CUTOVER_READY"
+                  with sqlite3.connect(snap / "superbot.db") as conn:
+                      assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+                      assert conn.execute("SELECT count(*) FROM trades").fetchone()[0] == 1
+                  print("PASS: complete snapshot and SQLite backup validated")
+                  (source / "hawk" / "state_v2.json").write_text('{"broken":')
+                  assert mod.main() == 1, "invalid JSON must reject snapshot"
+                  print("PASS: invalid JSON rejected")
+                  (source / "hawk" / "state_v2.json").write_text('{"main":{}}')
+                  (source / "bull" / "learning_log.jsonl").unlink()
+                  before = len(list(target.glob("singapore-preliminary-*")))
+                  assert mod.main() == 2
+                  assert len(list(target.glob("singapore-preliminary-*"))) == before
+                  print("PASS: missing required file rejected before copying")
+                  assert sentinel.read_text() == "DO NOT CHANGE"
+                  print("PASS: pre-existing backup not overwritten")
+                  (source / "bull" / "learning_log.jsonl").write_text('{"ev":"open"}\n')
+                  (source / "hawk" / "unsafe-link").symlink_to(sentinel)
+                  assert mod.main() == 2
+                  print("PASS: symlinked source rejected")
+                  print("PRELIMINARY_BACKUP_OFFLINE_TESTS_OK")
+          PY
