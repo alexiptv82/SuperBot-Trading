@@ -1,0 +1,34 @@
+name: Verify real preliminary backup with isolated restore
+
+on:
+  push:
+    branches: [setup/singapore-vps-readonly]
+    paths:
+      - '.github/workflows/singapore-preliminary-restore-verify.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: old-vps-preliminary-restore-check
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify manifest and restore in temporary directory on old VPS
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEY"
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/old_key
+          ssh-keyscan -T 10 -t ed25519 51.91.109.45 > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts
+          ssh -i ~/.ssh/old_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 root@51.91.109.45 'python3 -' < deploy/verify_preliminary_restore.py
