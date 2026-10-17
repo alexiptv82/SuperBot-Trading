@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import sqlite3
 import sys
+import tempfile
 
 SOURCES = {
     "hawk": Path("/opt/superbot-desk-data/hawk"),
@@ -70,8 +71,9 @@ def main() -> int:
         print("STOP: insufficient disk headroom")
         return 2
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    target = BASE / ("singapore-preliminary-" + stamp + "-" + str(os.getpid()))
-    target.mkdir(mode=0o700)
+    # Atomic unique directory creation: retries cannot collide within the same second.
+    target = Path(tempfile.mkdtemp(prefix="singapore-preliminary-" + stamp + "-", dir=BASE))
+    os.chmod(target, 0o700)
     try:
         for name, src in SOURCES.items():
             shutil.copytree(src, target / name, symlinks=False)
