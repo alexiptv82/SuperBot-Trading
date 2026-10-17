@@ -6,6 +6,8 @@ on:
     paths:
       - 'backend/desk/profit_manager_shadow.py'
       - 'backend/desk/profit_manager_replay.py'
+      - 'backend/desk/profit_manager_report.py'
+      - 'backend/desk/test_profit_manager_report.py'
       - 'backend/desk/test_profit_manager_shadow.py'
       - 'backend/desk/test_profit_manager_replay.py'
       - '.github/workflows/profit-manager-shadow-tests.yml'
