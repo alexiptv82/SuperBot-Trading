@@ -1,0 +1,62 @@
+name: Desk Hawk profit giveback study read only
+on:
+  push:
+    branches: [rule-pool]
+    paths: [".github/workflows/desk-hawk-profit-giveback.yml"]
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Read-only MFE MAE and profit giveback study
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 130s
+          script: |
+            python3 - <<'PY'
+            import json,datetime,collections,statistics,os
+            from zoneinfo import ZoneInfo
+            tz=ZoneInfo('Europe/Rome')
+            start=datetime.datetime(2026,10,16,18,34,tzinfo=tz).timestamp()*1000
+            def fmt(ms):
+                return datetime.datetime.fromtimestamp(ms/1000,tz).strftime('%d/%m %H:%M') if isinstance(ms,(int,float)) and ms>1e11 else '-'
+            def n(x):
+                try:return round(float(x),4) if x is not None else None
+                except:return None
+            for bot in ('hawk','bull'):
+                d='/opt/superbot-desk-data/'+bot
+                print('\n======',bot.upper(),'======')
+                ev=[]
+                for line in open(d+'/learning_log.jsonl',encoding='utf8'):
+                    try:ev.append(json.loads(line))
+                    except:pass
+                closes=[x for x in ev if x.get('ev')=='close' and (x.get('ts') or 0)>=start]
+                opens=[x for x in ev if x.get('ev')=='open' and (x.get('ts') or 0)>=start]
+                print('OPEN_EVENTS',len(opens),'CLOSE_EVENTS',len(closes))
+                print('CLOSE_ROWS: close_at symbol id run source type side entry exit margin lev hold_min gross fees funding net risk_plan_usd net_r mae_r mfe_r')
+                for x in closes:
+                    print('CLOSE',fmt(x.get('ts')),x.get('symbol'),x.get('id'),x.get('run_no'),x.get('source'),x.get('trade_type'),x.get('side'),n(x.get('entry')),n(x.get('exit')),n(x.get('margin')),n(x.get('leverage')),n(x.get('hold_min')),n(x.get('gross')),n(x.get('fees')),n(x.get('funding')),n(x.get('net')),n(x.get('risk_plan_usd')),n(x.get('net_r')),n(x.get('mae_r')),n(x.get('mfe_r')))
+                print('OPEN_ROWS: open_at symbol id run source type side entry margin_first lev sl tp risk_plan_usd')
+                for x in opens:
+                    print('OPEN',fmt(x.get('ts')),x.get('symbol'),x.get('id'),x.get('run_no'),x.get('source'),x.get('trade_type'),x.get('side'),n(x.get('entry')),n(x.get('margin_first')),n(x.get('leverage')),n(x.get('sl')),n(x.get('tp')),n(x.get('risk_plan_usd')))
+                if closes:
+                    for k in ('mfe_r','mae_r','net_r','hold_min'):
+                        vals=[n(x.get(k)) for x in closes if n(x.get(k)) is not None]
+                        if vals:print('SUMMARY',k,'min',min(vals),'median',statistics.median(vals),'max',max(vals))
+                    eligible=[x for x in closes if n(x.get('mfe_r')) is not None and n(x.get('net_r')) is not None]
+                    print('MFE_vs_REALIZED_n',len(eligible),'mfe_positive_closed_negative',sum(n(x['mfe_r'])>0 and n(x['net_r'])<0 for x in eligible))
+                    print('MFE_minus_netR',[{'symbol':x.get('symbol'),'id':x.get('id'),'giveback_R':round(n(x['mfe_r'])-n(x['net_r']),3)} for x in eligible])
+                state=json.load(open(d+'/state_v2.json'))
+                positions=(state.get('main') or {}).get('positions') or {}
+                if isinstance(positions,list):positions={str(i):v for i,v in enumerate(positions)}
+                print('CURRENT_OPEN',len(positions),'cash',n((state.get('main') or {}).get('cash')))
+                for key,p in positions.items():
+                    if isinstance(p,dict):
+                        print('POSITION',str(key)[:40],{k:p.get(k) for k in ('symbol','side','open_ms','entry','margin','leverage','sl','tp','mfe_r','mae_r','peak_price','best_price','min_price','max_price','highest_pnl','lowest_pnl') if k in p})
+                print('METHODOLOGY: mfe_r and net_r may use different gross/net conventions; compare cautiously. Open positions have no verified current mark PnL in this report.')
+            PY
+      - name: Finished
+        run: echo "Read-only study completed"
