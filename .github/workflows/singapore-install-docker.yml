@@ -1,0 +1,51 @@
+name: Singapore VPS - install Docker (approved)
+
+# Isolated new Singapore VPS only. Runs once on creation/change of this file.
+on:
+  push:
+    branches: [setup/singapore-vps-readonly]
+    paths:
+      - '.github/workflows/singapore-install-docker.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: singapore-docker-install
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install Docker on Singapore VPS only
+        env:
+          KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          HOSTKEY: ${{ secrets.SINGAPORE_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY" && test -n "$HOSTKEY"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/singapore_key
+          chmod 600 ~/.ssh/singapore_key
+          printf '%s\n' "$HOSTKEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh -i ~/.ssh/singapore_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 ubuntu@51.79.205.82 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          test "$(hostname)" = "vps-a06df2a7"
+          . /etc/os-release
+          test "$ID" = "ubuntu"
+          test "$VERSION_ID" = "24.04"
+          sudo -n true || { echo "ERROR: passwordless sudo unavailable; stop safely"; exit 1; }
+          if ! command -v docker >/dev/null 2>&1; then
+            export DEBIAN_FRONTEND=noninteractive
+            sudo -n apt-get update
+            sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+          fi
+          sudo -n systemctl enable --now docker
+          sudo -n docker version --format 'Docker server version: {{.Server.Version}}'
+          sudo -n docker info --format 'Docker daemon: {{.ServerVersion}}'
+          echo 'DOCKER_INSTALL_OK'
+          REMOTE
