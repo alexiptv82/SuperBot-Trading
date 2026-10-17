@@ -63,7 +63,7 @@ class ShadowReplay:
             if prev["exit"] is not None:
                 self._state[snap.trade_id]["timestamp_ms"] = snap.timestamp_ms
                 return prev["exit"]
-        peak = prev["peak"] if prev is not None else float("-inf")
+        peak = prev["peak"] if prev is not None else -1e12
         d = assess(
             side=snap.side, entry=snap.entry, mark=snap.mark, qty=snap.qty,
             margin=snap.allocated_margin, peak_roi_net_pct=peak,
