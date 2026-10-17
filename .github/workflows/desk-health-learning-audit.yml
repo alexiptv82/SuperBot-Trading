@@ -1,0 +1,95 @@
+name: Desk health and learning audit (read only)
+on:
+  push:
+    branches: [rule-pool]
+    paths: [".github/workflows/desk-health-learning-audit.yml"]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Inspect VPS without modifying bot data
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 120s
+          script: |
+            python3 - <<'PY'
+            import os,json,time,datetime,collections,subprocess
+            now=time.time(); cutoff=int((now-24*3600)*1000); since=int(datetime.datetime(2026,10,16,16,34,tzinfo=datetime.timezone.utc).timestamp()*1000)
+            def fmt(ms):
+                try:return datetime.datetime.fromtimestamp(ms/1000,datetime.timezone.utc).strftime('%d/%m %H:%M UTC')
+                except:return '-'
+            for p in ('hawk','bull'):
+                print('\n###',p.upper(),'UTC_NOW',datetime.datetime.now(datetime.timezone.utc).isoformat())
+                d='/opt/superbot-desk-data/'+p
+                q=subprocess.run(['docker','inspect','--format','{{json .State}}', 'superbot-desk-'+p],capture_output=True,text=True)
+                if q.returncode==0:
+                    s=json.loads(q.stdout);print('container',s.get('Status'),'running',s.get('Running'),'restarts',s.get('RestartCount','?'))
+                q=subprocess.run(['docker','inspect','--format','{{json .Config.Env}}','superbot-desk-'+p],capture_output=True,text=True)
+                if q.returncode==0:
+                    e=dict(v.split('=',1) for v in json.loads(q.stdout) if '=' in v)
+                    print('DESK_MODE',e.get('DESK_MODE'),'macro_enforce_env',e.get('DESK_MACRO_ENFORCE','unset'))
+                print('schedule_active',os.path.exists(d+'/claude_schedule.json'),'schedule_backup',os.path.exists(d+'/claude_schedule.pretest-20261016.json'))
+                for f in ('heartbeat.json','state_v2.json'):
+                    try:
+                        s=json.load(open(d+'/'+f))
+                        if f=='heartbeat.json':
+                            print('heartbeat_age_s',round(now-float(s.get('ts',0)),1),'mode',s.get('mode'),'exec_mode',s.get('exec_mode'),'positions',s.get('positions',s.get('n_open')),'halt',s.get('halt'),'claude_schedule',str(s.get('claude_schedule'))[:250])
+                        else:
+                            print('state_last_claude_call',fmt(s.get('last_call_ms',0)),'budget',str(s.get('budget'))[:350],'run_no',s.get('run_no'))
+                    except Exception as ex:print(f,'ERROR',type(ex).__name__,str(ex)[:90])
+                for f in ('learning_log.jsonl','trade_history.jsonl','lessons.md','errors.md','claude_calls.jsonl','claude_log.jsonl'):
+                    fp=d+'/'+f
+                    print('file',f,'exists',os.path.isfile(fp),'bytes',os.path.getsize(fp) if os.path.isfile(fp) else 0,'mtime',datetime.datetime.fromtimestamp(os.path.getmtime(fp),datetime.timezone.utc).strftime('%d/%m %H:%M UTC') if os.path.isfile(fp) else '-')
+                f=d+'/learning_log.jsonl'
+                cnt=collections.Counter();daily=collections.defaultdict(collections.Counter); recent=collections.Counter();since_cnt=collections.Counter();statuses=collections.Counter();last={};bad=0;total=0
+                if os.path.isfile(f):
+                    with open(f,encoding='utf8') as fh:
+                        for line in fh:
+                            total+=1
+                            try:r=json.loads(line)
+                            except Exception:bad+=1;continue
+                            ev=r.get('ev','unknown');cnt[ev]+=1
+                            ts=r.get('ts') or r.get('logged_ms') or 0
+                            if ts:
+                                day=datetime.datetime.fromtimestamp(ts/1000,datetime.timezone.utc).strftime('%Y-%m-%d')
+                                daily[day][ev]+=1
+                                last[ev]=max(last.get(ev,0),ts)
+                                if ts>=cutoff:recent[ev]+=1
+                                if ts>=since:since_cnt[ev]+=1
+                                if ev=='candidate' and ts>=since:statuses[str(r.get('status','?'))[:60]]+=1
+                    print('learning_lines',total,'invalid_json',bad,'event_counts',dict(cnt))
+                    print('learning_last_event_utc',{k:fmt(v) for k,v in last.items()})
+                    print('learning_last24h',dict(recent),'since_restore',dict(since_cnt))
+                    print('candidate_rejection_since_restore',statuses.most_common(8))
+                    print('learning_daily_recent',{k:dict(v) for k,v in sorted(daily.items())[-6:]})
+                for f in ('trade_history.jsonl',):
+                    fp=d+'/'+f
+                    if os.path.isfile(fp):
+                        c=collections.Counter();n=0;bad=0;last_ts=0
+                        with open(fp,encoding='utf8') as fh:
+                            for line in fh:
+                                n+=1
+                                try:r=json.loads(line)
+                                except:bad+=1;continue
+                                for key in ('ev','type','action','event'):
+                                    if r.get(key):c[str(r[key])]+=1;break
+                                t=r.get('ts',r.get('timestamp',0))
+                                if isinstance(t,(float,int)):last_ts=max(last_ts,t)
+                        print('history_lines',n,'invalid',bad,'event_types',c.most_common(8),'last_numeric_ts',last_ts)
+                for f in ('lessons.md','errors.md'):
+                    fp=d+'/'+f
+                    if os.path.isfile(fp):
+                        with open(fp,encoding='utf8',errors='replace') as fh:
+                            lines=fh.readlines()
+                        print(f,'lines',len(lines),'last_nonempty_line_lengths',[len(x.strip()) for x in lines if x.strip()][-4:])
+                q=subprocess.run(['docker','logs','--since','2h','--tail','350','superbot-desk-'+p],capture_output=True,text=True,timeout=12)
+                lines=(q.stdout+'\n'+q.stderr).splitlines()
+                err=[x[:210] for x in lines if any(z in x.lower() for z in ('traceback','error','exception','[warn]','[halt]'))]
+                print('recent_docker_log_lines',len(lines),'warnings_errors_tail',err[-8:])
+            PY
+      - name: Finished
+        run: echo "Read-only audit completed. See logs."
