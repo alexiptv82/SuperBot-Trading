@@ -1,0 +1,79 @@
+name: Desk deep financial audit read only
+on:
+  push:
+    branches: [rule-pool]
+    paths: [".github/workflows/desk-deep-financial-audit.yml"]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Read-only portfolio and AI audit
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 160s
+          script: |
+            python3 - <<'PY'
+            import os,json,datetime,collections,statistics,time
+            from zoneinfo import ZoneInfo
+            TZ=ZoneInfo('Europe/Rome')
+            def dt(ms):return datetime.datetime.fromtimestamp(ms/1000,TZ).strftime('%d/%m %H:%M') if isinstance(ms,(float,int)) and ms>1e11 else '?'
+            for p in ('hawk','bull'):
+                d='/opt/superbot-desk-data/'+p
+                print('\n========',p.upper(),'========')
+                events=[]
+                for line in open(d+'/learning_log.jsonl',encoding='utf8'):
+                    try:events.append(json.loads(line))
+                    except:pass
+                closes=[e for e in events if e.get('ev')=='close']
+                opens=[e for e in events if e.get('ev')=='open']
+                calls=[e for e in events if e.get('ev')=='claude_call']
+                print('close_keys',sorted(closes[-1].keys()) if closes else [])
+                print('open_keys',sorted(opens[-1].keys()) if opens else [])
+                print('claude_keys',sorted(calls[-1].keys()) if calls else [])
+                start=datetime.datetime(2026,10,16,18,34,tzinfo=TZ).timestamp()*1000
+                end=datetime.datetime(2026,10,16,22,34,tzinfo=TZ).timestamp()*1000
+                windows={'4h_test':(start,end),'since_test':(start,float('inf')),'today':(datetime.datetime(2026,10,17,tzinfo=TZ).timestamp()*1000,float('inf'))}
+                for label,(a,b) in windows.items():
+                    oo=[e for e in opens if a<=e.get('ts',0)<b]
+                    cc=[e for e in closes if a<=e.get('ts',0)<b]
+                    ai=[e for e in calls if a<=e.get('ts',0)<b]
+                    def nums(k):return [float(x[k]) for x in cc if isinstance(x.get(k),(float,int))]
+                    print(label,'opens',len(oo),'closes',len(cc),'claude',len(ai),'claude_ok',sum(x.get('ok') is True for x in ai),'claude_failed',sum(x.get('ok') is False for x in ai))
+                    for k in ('net','net_pnl','pnl','gross_pnl','fees','fee','net_r','mae','mfe','duration_min','duration_ms'):
+                        vals=nums(k)
+                        if vals:print(' ',k,'sum',round(sum(vals),4),'avg',round(statistics.mean(vals),4),'min',round(min(vals),4),'max',round(max(vals),4),'n',len(vals))
+                    for k in ('reason','symbol','side'):
+                        print(' ',k,collections.Counter(str(x.get(k,'?'))[:70] for x in cc).most_common(8))
+                    print(' recent_closes',[(dt(x.get('ts')),x.get('symbol'),x.get('reason'),x.get('net'),x.get('net_r')) for x in cc[-10:]])
+                print('claude_all',len(calls),'ok',sum(x.get('ok') is True for x in calls),'failed',sum(x.get('ok') is False for x in calls))
+                print('claude_fail_reasons',collections.Counter(str(x.get('fail_reason','?'))[:90] for x in calls if x.get('ok') is False).most_common(10))
+                print('claude_cost_total',round(sum(x.get('cost_usd',0) or 0 for x in calls),4))
+                state=json.load(open(d+'/state_v2.json'))
+                print('state_keys',sorted(state.keys()))
+                main=state.get('main') or {}
+                print('main_keys',sorted(main.keys()) if isinstance(main,dict) else type(main).__name__)
+                if isinstance(main,dict):
+                    for k,v in main.items():
+                        if isinstance(v,(int,float,bool,str)) and not any(z in k.lower() for z in ('key','token','secret')):print(' main',k,str(v)[:150])
+                        if isinstance(v,(list,dict)):print(' main_collection',k,'type',type(v).__name__,'length',len(v))
+                    positions=main.get('positions',[])
+                    if isinstance(positions,dict):positions=list(positions.values())
+                    if isinstance(positions,list):
+                        print('positions_count',len(positions))
+                        for pos in positions[:15]:
+                            if isinstance(pos,dict):
+                                safe={k:v for k,v in pos.items() if k in ('symbol','side','entry','entry_price','margin','margin_usd','leverage','stop_loss','take_profit','open_ms','opened_ms','qty','size','peak_pnl','mfe')}
+                                print(' position',safe)
+                for fn in ('lessons.md','errors.md'):
+                    fp=d+'/'+fn
+                    if os.path.isfile(fp):
+                        txt=open(fp,encoding='utf8').read()
+                        print(fn,'chars',len(txt),'nonempty',bool(txt.strip()),'last_lines',txt.splitlines()[-10:])
+                print('latest_learning',dt(max((x.get('ts',0) for x in events),default=0)))
+            PY
+      - name: Finished
+        run: echo "Audit complete, no bot state changed."
