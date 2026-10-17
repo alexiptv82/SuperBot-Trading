@@ -57,6 +57,9 @@ def main() -> int:
     if not DATABASE.is_file() or DATABASE.is_symlink():
         print("STOP: source SQLite database missing or symlink")
         return 2
+    if any(p.is_symlink() for d in SOURCES.values() for p in d.rglob("*")):
+        print("STOP: source contains symlinks; manual review required")
+        return 2
     total = sum(p.stat().st_size for d in SOURCES.values() for p in d.rglob("*") if p.is_file())
     total += DATABASE.stat().st_size
     if total > 500 * 1024 * 1024:
