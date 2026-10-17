@@ -26,3 +26,11 @@ Status: PLAN ONLY. No migration or backup execution authorized by this document.
 - Restarting Docker daemon on shared old VPS
 - Publishing secrets or copying .env into workflow logs
 - Assuming live JSON/JSONL file copy is an atomic consistent backup
+
+## Second code-review findings (2026-10-17)
+- backend/desk/cli.py selects Hawk/Bull data directory using DESK_DATA_DIR and DESK_PORTFOLIO; confirm actual runtime env by redacted checks before migration.
+- backend/desk/learning.py documents learning_log.jsonl as append-only, persistent across portfolio resets. Never reset or truncate it.
+- backend/desk/brain.py appends closed trades to trade_history.jsonl; preserve history in full.
+- Existing .github/workflows/desk-snapshot.yml archives Hawk/Bull while running and checks only state_v2.json parseability; that does NOT establish a consistent multi-file snapshot. Do not trigger it as a migration-quality backup.
+- Existing .github/workflows/deploy.yml contains a SQLite backup path for superbot.db, with fallback raw copy. Validate DB consistency with SQLite backup API and integrity_check; do not assume a raw copy is valid.
+- No evidence yet of a successful restored backup. Do not claim recovery readiness.
