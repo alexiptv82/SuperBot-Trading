@@ -4,6 +4,10 @@ name: Singapore VPS - read-only preflight
 # Runs ONLY by manual workflow_dispatch on this branch.
 on:
   workflow_dispatch:
+  push:
+    branches: [setup/singapore-vps-readonly]
+    paths:
+      - '.github/workflows/singapore-vps-readonly.yml'
 
 permissions:
   contents: read
