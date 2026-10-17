@@ -1,0 +1,65 @@
+name: Migration inventory - read-only (old and Singapore)
+
+on:
+  push:
+    branches: [setup/singapore-vps-readonly]
+    paths:
+      - '.github/workflows/singapore-migration-inventory.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Inspect old VPS metadata only
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/old_key
+          chmod 600 ~/.ssh/old_key
+          # Existing production automation uses this same host and key.
+          # Keyscan is for transport bootstrap, not independent host verification.
+          ssh-keyscan -T 10 -t ed25519 51.91.109.45 > ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/old_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 root@51.91.109.45 'bash -se' <<'REMOTE'
+          set -eu
+          echo '=== OLD VPS HOST ==='
+          hostname
+          echo '=== DISK SPACE ==='
+          df -h / /opt
+          echo '=== BOT CONTAINERS: name/status only ==='
+          docker ps -a --format '{{.Names}} | {{.Status}}' | grep -E '^superbot([ -]|$)' || true
+          echo '=== PAPER DATA DIRS: metadata only ==='
+          for d in /opt/superbot-desk-data/hawk /opt/superbot-desk-data/bull /opt/superbot/data /opt/superbot-desk; do
+            if [ -d "$d" ]; then
+              du -sh "$d"
+              find "$d" -maxdepth 1 -mindepth 1 -printf '%f %y\n' | head -n 35
+            else
+              echo "MISSING $d"
+            fi
+          done
+          echo '=== DOCKER MOUNTS: source/destination only ==='
+          for c in superbot-desk-hawk superbot-desk-bull superbot; do
+            if docker inspect "$c" >/dev/null 2>&1; then
+              docker inspect -f '{{.Name}} {{range .Mounts}}{{.Source}} -> {{.Destination}}; {{end}}' "$c"
+            fi
+          done
+          echo 'READ_ONLY_OLD_INVENTORY_OK'
+          REMOTE
+      - name: Inspect Singapore Docker and free space
+        env:
+          KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          HOSTKEY: ${{ secrets.SINGAPORE_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY" && test -n "$HOSTKEY"
+          printf '%s\n' "$KEY" > ~/.ssh/singapore_key
+          chmod 600 ~/.ssh/singapore_key
+          printf '%s\n' "$HOSTKEY" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/singapore_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 ubuntu@51.79.205.82 'set -eu; test "$(hostname)" = "vps-a06df2a7"; df -h /; sudo -n docker info --format "Docker server: {{.ServerVersion}}"; echo READ_ONLY_SINGAPORE_INVENTORY_OK'
