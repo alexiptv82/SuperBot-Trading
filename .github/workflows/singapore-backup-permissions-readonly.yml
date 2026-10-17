@@ -1,0 +1,49 @@
+name: Old VPS backup permissions - read only
+
+on:
+  push:
+    branches: [setup/singapore-vps-readonly]
+    paths:
+      - '.github/workflows/singapore-backup-permissions-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect permissions without reading private file contents
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEY"
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/old_key
+          # Transport bootstrap as used by existing inventory; not independent host verification.
+          ssh-keyscan -T 10 -t ed25519 51.91.109.45 > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts
+          ssh -i ~/.ssh/old_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 root@51.91.109.45 'bash -se' <<'REMOTE'
+          set -eu
+          test "$(id -u)" -eq 0 || { echo "FAIL_NOT_ROOT"; exit 1; }
+          echo "ROOT_ACCESS_OK"
+          for dir in /opt/superbot-desk-data/hawk /opt/superbot-desk-data/bull /opt/superbot/data; do
+            test -d "$dir" && test ! -L "$dir" && test -r "$dir" && test -x "$dir" || { echo "FAIL_SOURCE_DIR"; exit 1; }
+          done
+          for name in hawk bull; do
+            dir="/opt/superbot-desk-data/$name"
+            for file in state_v2.json trade_history.jsonl learning_log.jsonl; do
+              test -f "$dir/$file" && test -r "$dir/$file" || { echo "FAIL_REQUIRED_FILE"; exit 1; }
+            done
+            echo "$name REQUIRED_FILES_READABLE_OK"
+          done
+          test -f /opt/superbot/data/superbot.db && test -r /opt/superbot/data/superbot.db || { echo "FAIL_SQLITE_SOURCE"; exit 1; }
+          echo "SQLITE_SOURCE_READABLE_OK"
+          df -Pk /opt | awk 'NR==2 {if ($4 < 524288) {print "FAIL_DISK_HEADROOM"; exit 1} else print "DISK_HEADROOM_512MB_OK"}'
+          python3 --version
+          echo "BACKUP_PERMISSIONS_READONLY_OK"
+          REMOTE
