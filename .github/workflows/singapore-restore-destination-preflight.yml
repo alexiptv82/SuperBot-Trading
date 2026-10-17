@@ -1,0 +1,45 @@
+name: Singapore restore destination preflight - read only
+
+on:
+  push:
+    branches: [setup/singapore-vps-readonly]
+    paths:
+      - '.github/workflows/singapore-restore-destination-preflight.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check destination before any transfer
+        shell: bash
+        env:
+          KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          HOSTKEY: ${{ secrets.SINGAPORE_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY" && test -n "$HOSTKEY"
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/singapore_key
+          printf '%s\n' "$HOSTKEY" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/singapore_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 ubuntu@51.79.205.82 'bash -se' <<'REMOTE'
+          set -eu
+          test "$(hostname)" = "vps-a06df2a7" || { echo "FAIL_WRONG_HOST"; exit 1; }
+          test "$(id -un)" = "ubuntu" || { echo "FAIL_WRONG_USER"; exit 1; }
+          echo "SINGAPORE_HOST_ID_OK"
+          test ! -e /home/ubuntu/superbot-preliminary-restore || { echo "FAIL_DESTINATION_ALREADY_EXISTS"; exit 1; }
+          echo "DESTINATION_NOT_PRESENT_OK"
+          test -w /home/ubuntu && test -x /home/ubuntu || { echo "FAIL_HOME_NOT_WRITABLE"; exit 1; }
+          echo "DESTINATION_PARENT_PERMISSIONS_OK"
+          df -Pk /home/ubuntu | awk 'NR==2 {if ($4 < 1048576) {print "FAIL_DISK_SPACE"; exit 1} else print "DISK_SPACE_1GB_OK"}'
+          if sudo -n docker ps --format '{{.Names}}' | grep -E '^superbot([_-]|$)'; then
+            echo "FAIL_SUPERBOT_ALREADY_RUNNING"
+            exit 1
+          fi
+          echo "NO_ACTIVE_SUPERBOT_ON_SINGAPORE_OK"
+          echo "READ_ONLY_DESTINATION_PREFLIGHT_OK"
+          REMOTE
