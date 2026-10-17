@@ -1,0 +1,36 @@
+name: Preliminary backup on old VPS - no service interruption
+
+on:
+  push:
+    branches: [setup/singapore-vps-readonly]
+    paths:
+      - '.github/workflows/singapore-preliminary-backup.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: old-vps-preliminary-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tested preliminary backup script on source only
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEY"
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/old_key
+          ssh-keyscan -T 10 -t ed25519 51.91.109.45 > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts
+          # Python source is streamed through SSH stdin, not installed or committed on the VPS.
+          # No docker stop/start, deployment, or Singapore connection.
+          ssh -i ~/.ssh/old_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 root@51.91.109.45 'python3 -' < deploy/prepare_preliminary_backup.py
