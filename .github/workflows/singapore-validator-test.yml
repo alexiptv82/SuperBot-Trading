@@ -1,0 +1,62 @@
+name: Singapore restore validator - isolated tests
+
+on:
+  push:
+    branches: [setup/singapore-vps-readonly]
+    paths:
+      - 'deploy/validate_singapore_restore.py'
+      - '.github/workflows/singapore-validator-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate clean and deliberately damaged offline snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import sqlite3
+          import subprocess
+          import tempfile
+
+          validator = pathlib.Path("deploy/validate_singapore_restore.py").resolve()
+          with tempfile.TemporaryDirectory() as td:
+              root = pathlib.Path(td)
+              for name in ("hawk", "bull"):
+                  d = root / name
+                  d.mkdir()
+                  (d / "state_v2.json").write_text('{"main": {}}', encoding="utf-8")
+                  (d / "trade_history.jsonl").write_text('{"trade": 1}\n', encoding="utf-8")
+                  (d / "learning_log.jsonl").write_text('{"ev": "test"}\n', encoding="utf-8")
+              with sqlite3.connect(root / "superbot.db") as db:
+                  db.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY)")
+                  db.execute("INSERT INTO sample (id) VALUES (1)")
+              def run():
+                  return subprocess.run(["python3", str(validator), str(root)], capture_output=True, text=True)
+              ok = run()
+              assert ok.returncode == 0, ok.stdout + ok.stderr
+              print("PASS: valid isolated snapshot accepted")
+              (root / "hawk" / "state_v2.json").write_text('{"broken":', encoding="utf-8")
+              bad = run()
+              assert bad.returncode != 0, bad.stdout + bad.stderr
+              print("PASS: corrupt state rejected")
+              (root / "hawk" / "state_v2.json").write_text('{"main": {}}', encoding="utf-8")
+              (root / "bull" / "learning_log.jsonl").write_text('{"broken":\n', encoding="utf-8")
+              bad = run()
+              assert bad.returncode != 0, bad.stdout + bad.stderr
+              print("PASS: corrupt learning log rejected")
+              (root / "bull" / "learning_log.jsonl").write_text('{"ev": "test"}\n', encoding="utf-8")
+              (root / "superbot.db").write_bytes(b"not a sqlite database")
+              bad = run()
+              assert bad.returncode != 0, bad.stdout + bad.stderr
+              print("PASS: corrupt SQLite database rejected")
+              print("OFFLINE_VALIDATOR_TESTS_OK")
+          PY
