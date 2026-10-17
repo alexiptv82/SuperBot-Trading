@@ -7,6 +7,8 @@ on:
       - 'backend/desk/profit_manager_shadow.py'
       - 'backend/desk/profit_manager_replay.py'
       - 'backend/desk/profit_manager_report.py'
+      - 'backend/desk/profit_manager_state_adapter.py'
+      - 'backend/desk/test_profit_manager_state_adapter.py'
       - 'backend/desk/test_profit_manager_report.py'
       - 'backend/desk/test_profit_manager_shadow.py'
       - 'backend/desk/test_profit_manager_replay.py'
