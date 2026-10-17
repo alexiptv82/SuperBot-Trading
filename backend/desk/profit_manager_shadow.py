@@ -42,8 +42,10 @@ def assess(*, side: int, entry: float, mark: float, qty: float, margin: float,
     values = (entry, mark, qty, margin, peak_roi_net_pct, held_seconds, funding_usdt)
     if side not in (-1, 1) or not all(math.isfinite(v) for v in values):
         raise ValueError("Invalid position data")
-    if min(entry, mark, qty, margin) <= 0 or held_seconds < 0 or funding_usdt < 0:
+    if min(entry, mark, qty, margin) <= 0 or held_seconds < 0:
         raise ValueError("Invalid positive quantities or duration")
+    if not all(math.isfinite(v) for v in (config.activation_roi_pct, config.lock_roi_pct, config.trail_drawdown_pct, config.fee_rate_side, config.slip_rate_side, config.min_hold_seconds)):
+        raise ValueError("Non-finite configuration")
     if not (0 <= config.fee_rate_side < 0.1 and 0 <= config.slip_rate_side < 0.1):
         raise ValueError("Invalid cost assumptions")
     if not (0 <= config.lock_roi_pct <= config.activation_roi_pct and
@@ -54,6 +56,7 @@ def assess(*, side: int, entry: float, mark: float, qty: float, margin: float,
                 else open_fee_usdt)
     if not math.isfinite(fee_open) or fee_open < 0:
         raise ValueError("Invalid open fee")
+    # funding_usdt is SIGNED: positive means paid, negative means received.
     net = side * (exit_fill - entry) * qty - fee_open - exit_fill * qty * config.fee_rate_side - funding_usdt
     roi = 100 * net / margin
     peak = max(roi, peak_roi_net_pct)
