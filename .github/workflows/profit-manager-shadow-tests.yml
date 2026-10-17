@@ -1,0 +1,27 @@
+name: Profit Manager shadow unit tests (no deployment)
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - 'backend/desk/profit_manager_shadow.py'
+      - 'backend/desk/profit_manager_replay.py'
+      - 'backend/desk/test_profit_manager_shadow.py'
+      - 'backend/desk/test_profit_manager_replay.py'
+      - '.github/workflows/profit-manager-shadow-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shadow-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run isolated shadow unit tests
+        run: python -m unittest discover -s backend/desk -p 'test_profit_manager_*.py' -v
