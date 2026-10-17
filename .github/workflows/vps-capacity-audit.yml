@@ -1,0 +1,41 @@
+name: VPS capacity audit - read only
+
+on:
+  push:
+    branches: [rule-pool]
+    paths: ['deploy/vps-capacity-audit.trigger']
+
+permissions:
+  contents: read
+
+jobs:
+  capacity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Read memory pressure and container limits (no changes)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.91.109.45
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 100s
+          script: |
+            echo '=== HOST AND RESOURCE PRESSURE ==='
+            uptime
+            free -m
+            cat /proc/pressure/memory
+            cat /proc/pressure/cpu
+            echo '=== OOM KERNEL EVENTS LAST 14 DAYS ==='
+            journalctl -k --since '14 days ago' --no-pager -o short-iso 2>/dev/null | grep -Ei 'oom-kill|out of memory|killed process' | tail -n 45 || true
+            echo '=== CONTAINER LIMITS AND RESTART COUNTS ==='
+            for n in hitv-backend superbot superbot-pool superbot-staging superbot-desk-hawk superbot-desk-bull; do
+              docker inspect --format '{{.Name}} memory_limit_bytes={{.HostConfig.Memory}} memory_swap_bytes={{.HostConfig.MemorySwap}} oom_killed={{.State.OOMKilled}} restart_count={{.RestartCount}} status={{.State.Status}}' "$n" 2>/dev/null || true
+            done
+            echo '=== THREE RESOURCE SAMPLES (10s APART) ==='
+            for i in 1 2 3; do
+              date -u '+sample=%Y-%m-%dT%H:%M:%SZ'
+              free -m | head -n 2
+              docker stats --no-stream --format '{{.Name}} mem={{.MemUsage}} cpu={{.CPUPerc}}' 2>/dev/null || true
+              if [ "$i" != 3 ]; then sleep 10; fi
+            done
