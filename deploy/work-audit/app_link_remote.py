@@ -100,12 +100,22 @@ class DockerConnection(http.client.HTTPConnection):
         self.sock.connect('/var/run/docker.sock')
 
 def docker_api(method,path,body=None):
+    version_conn=DockerConnection()
+    try:
+        version_conn.request('GET','/version')
+        reply=version_conn.getresponse()
+        version=json.loads(reply.read())['ApiVersion']
+        if not all(part.isdigit() for part in version.split('.')):raise RuntimeError('Invalid Docker API version')
+    finally:version_conn.close()
     c=DockerConnection()
     try:
-        c.request(method,'/v1.41'+path,body=json.dumps(body) if body is not None else None,
+        c.request(method,'/v'+version+path,body=json.dumps(body) if body is not None else None,
                   headers={'Content-Type':'application/json'})
         r=c.getresponse();data=r.read()
-        if r.status>=300: raise RuntimeError('Docker API request rejected, status '+str(r.status))
+        if r.status>=300:
+            error_path=ROOT/('docker-error-'+secrets.token_hex(4)+'.json')
+            put(error_path,data)
+            raise RuntimeError('Docker API request rejected, status '+str(r.status)+'; protected diagnostic '+error_path.name)
         return json.loads(data) if data else None
     finally:c.close()
 

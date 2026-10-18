@@ -9,6 +9,7 @@ def run(args):
 host = socket.gethostname()
 names = ['superbot'] if host == 'vps-ed34e4ce' else ['superbot-desk-hawk', 'superbot-desk-bull']
 out = {'host': host, 'containers': []}
+out['docker_server_api']=run(['docker','version','--format','{{.Server.APIVersion}}']).strip()
 for name in names:
     c = json.loads(run(['docker', 'inspect', name]))[0]
     env = dict(x.split('=', 1) for x in c['Config']['Env'] if '=' in x)

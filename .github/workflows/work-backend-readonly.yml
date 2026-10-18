@@ -1,6 +1,7 @@
+# Docker API compatibility preflight.
 # Audit revision 3: compare cutover histories and validate database copies in memory.
 # Audit revision 2: PAPER assertions, JSONL validation and existing host trust records.
-name: Work - backend migration app link preflight (read only)
+name: Work - backend migration metadata audit (read only)
 on:
   push:
     branches: [work/backend-singapore-audit]
