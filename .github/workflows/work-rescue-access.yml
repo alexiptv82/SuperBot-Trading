@@ -1,0 +1,26 @@
+name: Work - verified Rescue read-only access
+on:
+  push:
+    branches: [work/backend-singapore-audit]
+    paths: ['.github/workflows/work-rescue-access.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read-only access with existing key and verified public host key
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY"
+          keydir="$(mktemp -d)"
+          trap 'rm -rf "$keydir"' EXIT
+          chmod 700 "$keydir"
+          printf '%s\n' "$SSH_KEY" > "$keydir/key"
+          chmod 600 "$keydir/key"
+          printf '%s\n' '51.91.109.45 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHmuGid5yubPk7TmItmnH/2aB0KBr5jZhgYlLc9c+9Ry' > "$keydir/known_hosts"
+          ssh -i "$keydir/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=15 root@51.91.109.45 'printf "USER="; id -un; lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINTS; echo RESCUE_READONLY_ACCESS_OK'
