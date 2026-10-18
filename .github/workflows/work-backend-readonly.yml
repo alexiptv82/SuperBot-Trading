@@ -1,6 +1,6 @@
 # Audit revision 3: compare cutover histories and validate database copies in memory.
 # Audit revision 2: PAPER assertions, JSONL validation and existing host trust records.
-name: Work - backend migration metadata audit (read only)
+name: Work - backend migration app link preflight (read only)
 on:
   push:
     branches: [work/backend-singapore-audit]
@@ -62,4 +62,4 @@ jobs:
           chmod 600 "$keydir/key" "$keydir/known_hosts"
           ssh -i "$keydir/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=15 \
-            "$SSH_USER@$SSH_HOST" "${SUDO_PREFIX}python3 -" < <(cat deploy/work-audit/backend_readonly.py deploy/work-audit/backend_topology.py)
+            "$SSH_USER@$SSH_HOST" "${SUDO_PREFIX}python3 -" < deploy/work-audit/app_link_preflight.py
