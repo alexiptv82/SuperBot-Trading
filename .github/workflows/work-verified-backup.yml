@@ -1,0 +1,65 @@
+# Audit revision 3: compare cutover histories and validate database copies in memory.
+# Audit revision 2: PAPER assertions, JSONL validation and existing host trust records.
+name: Work - prepare protected backups and verify isolated restore
+on:
+  push:
+    branches: [work/backend-singapore-audit]
+    paths:
+      - '.github/workflows/work-verified-backup.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: work-verified-backup
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Strasbourg
+            host: 51.91.109.45
+            user: root
+            key_secret: SSH_PRIVATE_KEY
+            hostkey_secret: SSH_KNOWN_HOSTS
+            sudo: ''
+          - label: Singapore
+            host: 51.79.205.82
+            user: ubuntu
+            key_secret: SINGAPORE_SSH_PRIVATE_KEY
+            hostkey_secret: SINGAPORE_SSH_KNOWN_HOSTS
+            sudo: 'sudo -n '
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/work-audit
+      - name: Prepare new protected copies; preserve originals and services
+        env:
+          SSH_KEY: ${{ secrets[matrix.key_secret] }}
+          SSH_HOSTKEY: ${{ secrets[matrix.hostkey_secret] }}
+          SSH_HOST: ${{ matrix.host }}
+          SSH_USER: ${{ matrix.user }}
+          SUDO_PREFIX: ${{ matrix.sudo }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$SSH_HOST" = '51.91.109.45' ]; then
+            SSH_HOSTKEY='51.91.109.45 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIRVdMCm9yUh7bW5aPvQl119hPlB94cM1NMGqPZ1Mf4Y'
+          fi
+          if [ -z "$SSH_KEY" ] || [ -z "$SSH_HOSTKEY" ]; then
+            echo 'Required SSH key or verified known-hosts entry missing; refusing connection.'
+            exit 1
+          fi
+          keydir="$(mktemp -d)"
+          trap 'rm -rf "$keydir"' EXIT
+          chmod 700 "$keydir"
+          printf '%s\n' "$SSH_KEY" > "$keydir/key"
+          printf '%s\n' "$SSH_HOSTKEY" > "$keydir/known_hosts"
+          chmod 600 "$keydir/key" "$keydir/known_hosts"
+          ssh -i "$keydir/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=15 \
+            "$SSH_USER@$SSH_HOST" "${SUDO_PREFIX}python3 -" < deploy/work-audit/prepare_verified_backup.py
