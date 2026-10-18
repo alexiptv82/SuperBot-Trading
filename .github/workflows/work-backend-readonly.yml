@@ -1,0 +1,60 @@
+name: Work - backend migration metadata audit (read only)
+on:
+  push:
+    branches: [work/backend-singapore-audit]
+    paths:
+      - '.github/workflows/work-backend-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: work-backend-readonly
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Strasbourg
+            host: 51.91.109.45
+            user: root
+            key_secret: SSH_PRIVATE_KEY
+            hostkey_secret: SSH_KNOWN_HOSTS
+            sudo: ''
+          - label: Singapore
+            host: 51.79.205.82
+            user: ubuntu
+            key_secret: SINGAPORE_SSH_PRIVATE_KEY
+            hostkey_secret: SINGAPORE_SSH_KNOWN_HOSTS
+            sudo: 'sudo -n '
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/work-audit
+      - name: Audit metadata - no writes to VPS
+        env:
+          SSH_KEY: ${{ secrets[matrix.key_secret] }}
+          SSH_HOSTKEY: ${{ secrets[matrix.hostkey_secret] }}
+          SSH_HOST: ${{ matrix.host }}
+          SSH_USER: ${{ matrix.user }}
+          SUDO_PREFIX: ${{ matrix.sudo }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$SSH_KEY" ] || [ -z "$SSH_HOSTKEY" ]; then
+            echo 'Required SSH key or verified known-hosts entry missing; refusing connection.'
+            exit 1
+          fi
+          keydir="$(mktemp -d)"
+          trap 'rm -rf "$keydir"' EXIT
+          chmod 700 "$keydir"
+          printf '%s\n' "$SSH_KEY" > "$keydir/key"
+          printf '%s\n' "$SSH_HOSTKEY" > "$keydir/known_hosts"
+          chmod 600 "$keydir/key" "$keydir/known_hosts"
+          ssh -i "$keydir/key" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=15 \
+            "$SSH_USER@$SSH_HOST" "${SUDO_PREFIX}python3 -" < deploy/work-audit/backend_readonly.py
