@@ -1,0 +1,32 @@
+name: Work - authorized PAPER app link migration
+on:
+  push:
+    branches: [work/backend-singapore-audit]
+    paths: ['.github/workflows/work-app-link-deploy.yml']
+permissions:
+  contents: read
+concurrency:
+  group: superbot-app-link-migration
+  cancel-in-progress: false
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test authenticated routing and command safety using synthetic data only
+        run: |
+          python -m pip install fastapi==0.110.0 httpx==0.27.0
+          python -m unittest discover -s deploy/work-audit/app_link -p test_link.py -v
+          python -m py_compile deploy/work-audit/app_link_remote.py deploy/work-audit/deploy_app_link.py
+      - name: Refresh verified backups, prepare private gateway, activate only SuperBot API and verify
+        env:
+          OLD_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          SG_KNOWN_HOSTS: ${{ secrets.SINGAPORE_SSH_KNOWN_HOSTS }}
+        run: python deploy/work-audit/deploy_app_link.py

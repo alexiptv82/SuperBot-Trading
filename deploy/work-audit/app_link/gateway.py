@@ -23,7 +23,7 @@ def create_app(token, data_dirs, get_ticker):
     @app.middleware('http')
     async def internal_auth(request, call_next):
         candidate = request.headers.get('x-superbot-gateway-token', '')
-        if not hmac.compare_digest(candidate, token):
+        if not hmac.compare_digest(candidate.encode(), token.encode()):
             return JSONResponse({'detail': 'Autenticazione interna richiesta'}, status_code=401)
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):
             # Do not queue commands when the target engine is unavailable or no longer PAPER.
