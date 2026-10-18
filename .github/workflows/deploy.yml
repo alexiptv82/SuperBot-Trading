@@ -42,6 +42,12 @@ jobs:
           command_timeout: 30m
           envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD,DESK_MODE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,BITGET_RO_HAWK_API_KEY,BITGET_RO_HAWK_SECRET_KEY,BITGET_RO_HAWK_PASSPHRASE,BITGET_RO_BULL_API_KEY,BITGET_RO_BULL_SECRET_KEY,BITGET_RO_BULL_PASSPHRASE
           script: |
+            # Singapore migration: the legacy deploy would remove the private desk bridge.
+            # Stop before rewriting env, data, containers, or the shared nginx configuration.
+            if [ -d /opt/superbot-app-link ]; then
+              echo "ERRORE: migrazione Singapore attiva. Questo deploy precedente non conserva il collegamento privato dell app; usare un rilascio compatibile con la migrazione. Nessun servizio modificato."
+              exit 1
+            fi
             # Password iniziale della dashboard (GitHub Secret). Senza, ci si
             # ferma QUI, prima di toccare il bot in esecuzione.
             if [ -z "$DASHBOARD_PASSWORD" ]; then

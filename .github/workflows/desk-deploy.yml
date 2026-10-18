@@ -43,6 +43,11 @@ jobs:
           command_timeout: 30m
           envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
           script: |
+            # Hawk and Bull migrated to Singapore; never recreate engines on the old host.
+            if [ "$(hostname)" = "vps-ed34e4ce" ]; then
+              echo "ERRORE: Hawk e Bull operativi a Singapore. Deploy sul vecchio VPS bloccato prima di qualsiasi modifica."
+              exit 1
+            fi
             set -e
             # --- Verifica preliminare (sola lettura)
             AVAIL_MB=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
