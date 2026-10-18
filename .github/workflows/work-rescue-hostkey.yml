@@ -1,0 +1,21 @@
+name: Work - collect PUBLIC rescue host key only
+on:
+  push:
+    branches: [work/backend-singapore-audit]
+    paths: ['.github/workflows/work-rescue-hostkey.yml']
+permissions:
+  contents: read
+jobs:
+  public-key:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read public SSH key without authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh-keyscan -T 15 -t ed25519 51.91.109.45 > public-hostkey.txt 2>/dev/null
+          test -s public-hostkey.txt
+          cat public-hostkey.txt
+          ssh-keygen -lf public-hostkey.txt
+          echo 'Public key observation only; no authentication and no trust changes.'
