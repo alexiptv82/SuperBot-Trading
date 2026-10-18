@@ -396,10 +396,51 @@ def cleanup(req):
             if c['State']['Running']:run(['docker','stop','--time','15','superbot-desk-api'])
     return {'new_channel_stopped':True}
 
+def finalize(req):
+    p=release(req)
+    if socket.gethostname()==SG:
+        # Revoke only temporary tunnel keys created by our unsuccessful preparation attempts.
+        path=Path('/home/ubuntu/.ssh/authorized_keys')
+        lines=path.read_text().splitlines(keepends=True)
+        comment='superbot-app-link-'+req['tag']
+        if sum(line.strip().split()[-1:]==[comment] for line in lines)!=1:
+            raise RuntimeError('Expected exactly one active tunnel key')
+        kept=[line for line in lines if not (line.strip().split()[-1:] and
+              line.strip().split()[-1].startswith('superbot-app-link-r') and line.strip().split()[-1]!=comment)]
+        put(p/'ubuntu-authorized-keys.before-pruning',path.read_bytes())
+        st=path.stat();temp=path.parent/('authorized_keys.app-link-'+req['tag'])
+        put(temp,''.join(kept));os.chown(temp,st.st_uid,st.st_gid);os.replace(temp,path)
+        c=inspect('superbot-desk-api')
+        if c['HostConfig']['PortBindings']!={'8001/tcp':[{'HostIp':'127.0.0.1','HostPort':'18002'}]}:
+            raise RuntimeError('Gateway is not loopback-only')
+        if c['HostConfig']['RestartPolicy']['Name']!='unless-stopped':raise RuntimeError('Gateway persistence mismatch')
+    else:
+        if run(['systemctl','is-enabled','superbot-api-tunnel.service']).decode().strip()!='enabled':
+            raise RuntimeError('Tunnel is not enabled')
+        if run(['systemctl','is-active','superbot-api-tunnel.service']).decode().strip()!='active':
+            raise RuntimeError('Tunnel is not active')
+        c=inspect(TUNNEL_NET)
+        if c['HostConfig'].get('PortBindings'):raise RuntimeError('Unexpected published tunnel port')
+        if c['HostConfig']['RestartPolicy']['Name']!='unless-stopped':raise RuntimeError('Namespace persistence mismatch')
+        keydir=Path('/root/superbot-secrets/app-link')
+        # A forced /bin/false session returns 1 after successful key authentication; SSH denial returns 255.
+        args=['ssh','-T','-i',str(keydir/(req['tag']+'.ed25519')),'-o','IdentitiesOnly=yes','-o','BatchMode=yes',
+          '-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(keydir/(req['tag']+'.known_hosts')),
+          '-o','ConnectTimeout=15','ubuntu@51.79.205.82','true']
+        probe=subprocess.run(args,capture_output=True,timeout=25)
+        if probe.returncode!=1:raise RuntimeError('Fresh restricted-key authentication failed')
+        if inspect('superbot')['HostConfig']['RestartPolicy']['Name']!='always':raise RuntimeError('API persistence mismatch')
+    link=ROOT/'current'
+    if link.exists() and not link.is_symlink():raise RuntimeError('Unexpected release marker')
+    temp=ROOT/('.current-'+req['tag']);os.symlink(p,temp);os.replace(temp,link)
+    put(p/'migration-verified.json',json.dumps({'verified':True,'release':req['tag'],'mode':'paper',
+        'verified_at_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'data_not_restored_or_overwritten':True}))
+    return {'finalized':True,'persistent_services_verified':True,'secrets_not_logged':True}
+
 def main():
     os.umask(0o077)
     req=json.load(sys.stdin)
-    actions={f.__name__:f for f in [prepare_old,prepare_sg,prepare_tunnel,activate,verify_old,verify_sg,rollback,cleanup]}
+    actions={f.__name__:f for f in [prepare_old,prepare_sg,prepare_tunnel,activate,verify_old,verify_sg,rollback,cleanup,finalize]}
     result=actions[req['action']](req)
     print(json.dumps(result))
 

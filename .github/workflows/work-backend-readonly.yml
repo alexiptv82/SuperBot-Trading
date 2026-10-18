@@ -1,4 +1,4 @@
-# Read-only migration progress observation.
+# Final observation: handle absent host-specific containers safely.
 # Audit revision 3: compare cutover histories and validate database copies in memory.
 # Audit revision 2: PAPER assertions, JSONL validation and existing host trust records.
 name: Work - backend migration metadata audit (read only)
