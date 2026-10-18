@@ -134,3 +134,59 @@ def extended_audit():
 
 if __name__ == '__main__':
     extended_audit()
+
+
+def backup_readonly_check():
+    import hashlib
+    import io
+    import sqlite3
+    import tarfile
+    base = pathlib.Path('/home/ubuntu/superbot-final-staging/cutover-final-20261017T231817Z')
+    archive = base / 'hawk-bull-data.tar.gz'
+    if archive.is_file():
+        raw = archive.read_bytes()
+        print(json.dumps({'cutover_archive_present': True, 'bytes': len(raw),
+                          'sha256': hashlib.sha256(raw).hexdigest()}))
+        with tarfile.open(fileobj=io.BytesIO(raw), mode='r:gz') as tf:
+            members = [m for m in tf.getmembers() if m.isfile()]
+            print(json.dumps({'cutover_archive_regular_files': len(members)}))
+            for portfolio in ('hawk', 'bull'):
+                for filename in ('trade_history.jsonl', 'learning_log.jsonl'):
+                    matching = [m for m in members if m.name.rstrip('/').endswith(portfolio + '/' + filename)]
+                    now = pathlib.Path('/opt/superbot-desk-data') / portfolio / filename
+                    if len(matching) != 1 or not now.is_file():
+                        print(json.dumps({'portfolio': portfolio, 'file': filename, 'comparison_available': False}))
+                        continue
+                    old = tf.extractfile(matching[0]).read()
+                    current = now.read_bytes()
+                    print(json.dumps({'portfolio': portfolio, 'file': filename,
+                        'cutover_bytes': len(old), 'current_bytes': len(current),
+                        'cutover_is_exact_prefix': current.startswith(old)}))
+    else:
+        print(json.dumps({'cutover_archive_present': False}))
+    for label, p in (('cutover', base / 'superbot.db'), ('restored', pathlib.Path('/opt/superbot/data/superbot.db'))):
+        if not p.is_file():
+            print(json.dumps({'database': label, 'present': False}))
+            continue
+        raw = p.read_bytes()
+        wal = pathlib.Path(str(p) + '-wal')
+        result = {'database': label, 'present': True, 'bytes': len(raw),
+                  'sha256': hashlib.sha256(raw).hexdigest(), 'wal_present': wal.exists(),
+                  'validation_scope': 'copied base file in memory; no remote database connection'}
+        conn = sqlite3.connect(':memory:')
+        try:
+            conn.deserialize(raw)
+            result['integrity_ok'] = conn.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
+            names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+            result['table_count'] = len(names)
+            result['known_table_rows'] = {name: conn.execute('SELECT COUNT(*) FROM "' + name + '"').fetchone()[0]
+                                        for name in names if name in ('trades', 'audit_logs', 'config', 'auth_state', 'webauthn_credentials')}
+        except sqlite3.Error as e:
+            result['validation_error_type'] = type(e).__name__
+        finally:
+            conn.close()
+        print(json.dumps(result))
+
+
+if __name__ == '__main__':
+    backup_readonly_check()
