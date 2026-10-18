@@ -62,4 +62,4 @@ jobs:
           chmod 600 "$keydir/key" "$keydir/known_hosts"
           ssh -i "$keydir/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=15 \
-            "$SSH_USER@$SSH_HOST" "${SUDO_PREFIX}python3 -" < deploy/work-audit/backend_readonly.py
+            "$SSH_USER@$SSH_HOST" "${SUDO_PREFIX}python3 -" < <(cat deploy/work-audit/backend_readonly.py deploy/work-audit/backend_topology.py)
