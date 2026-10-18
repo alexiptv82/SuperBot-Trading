@@ -73,3 +73,64 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# Additional checks use only the already authenticated host and read-only files.
+def extended_audit():
+    import hashlib
+    for name in ('superbot-desk-hawk', 'superbot-desk-bull'):
+        p = subprocess.run(['docker', 'inspect', name], capture_output=True, text=True)
+        if p.returncode:
+            continue
+        c = json.loads(p.stdout)[0]
+        env = dict(v.split('=', 1) for v in c.get('Config', {}).get('Env', []) if '=' in v)
+        print(json.dumps({'container': name, 'paper_mode_confirmed': env.get('DESK_MODE', '').strip().lower() == 'paper',
+                         'live_mode_detected': env.get('DESK_MODE', '').strip().lower() == 'live'}))
+        pid = c.get('State', {}).get('Pid', 0)
+        for rel in ('app/backend/desk/cli.py', 'app/backend/desk/engine.py', 'app/desk/cli.py', 'app/desk/engine.py'):
+            path = pathlib.Path('/proc') / str(pid) / 'root' / rel
+            if path.is_file():
+                print(json.dumps({'container': name, 'code_path': rel, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}))
+    for portfolio in ('hawk', 'bull'):
+        root = pathlib.Path('/opt/superbot-desk-data') / portfolio
+        state = read_json(root / 'state_v2.json') or {}
+        acc = state.get('main') or {}
+        lim = acc.get('limits') or {}
+        print(json.dumps({'portfolio': portfolio, 'state_day': acc.get('day'),
+             'day_start_equity': acc.get('day_start_equity'), 'daily_stop_fraction': lim.get('daily_stop'),
+             'halt_recorded': bool(state.get('halt')), 'run_no': state.get('run_no')}))
+        for filename in ('trade_history.jsonl', 'learning_log.jsonl'):
+            p = root / filename
+            if not p.is_file():
+                continue
+            before = p.stat()
+            lines = p.read_bytes().splitlines(keepends=True)
+            invalid = 0
+            objects = 0
+            incomplete_tail = False
+            for i, line in enumerate(lines):
+                if not line.strip():
+                    continue
+                try:
+                    obj = json.loads(line)
+                    objects += isinstance(obj, dict)
+                except (ValueError, UnicodeError):
+                    if i == len(lines)-1 and not line.endswith(b'\n'):
+                        incomplete_tail = True
+                    else:
+                        invalid += 1
+            after = p.stat()
+            print(json.dumps({'portfolio': portfolio, 'file': filename, 'lines': len(lines),
+                 'json_objects': objects, 'invalid_complete_lines': invalid, 'incomplete_tail': incomplete_tail,
+                 'stable_during_read': (before.st_size, before.st_mtime_ns) == (after.st_size, after.st_mtime_ns)}))
+    # Existing trust records only. These are PUBLIC host keys, never private keys.
+    # Do not connect to the old host or learn a new key from the network.
+    for home in ('/home/ubuntu', '/root'):
+        path = pathlib.Path(home) / '.ssh/known_hosts'
+        if path.is_file():
+            p = subprocess.run(['ssh-keygen', '-F', '51.91.109.45', '-f', str(path)], capture_output=True, text=True)
+            entries = [line for line in p.stdout.splitlines() if line and not line.startswith('#')]
+            print(json.dumps({'old_host_existing_trust_file': str(path), 'known_host_entries': entries}))
+
+
+if __name__ == '__main__':
+    extended_audit()

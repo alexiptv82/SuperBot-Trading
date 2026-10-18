@@ -1,3 +1,4 @@
+# Audit revision 2: PAPER assertions, JSONL validation and existing host trust records.
 name: Work - backend migration metadata audit (read only)
 on:
   push:
