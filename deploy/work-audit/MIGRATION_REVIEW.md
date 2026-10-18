@@ -1,4 +1,6 @@
 # SuperBot — verifica e intervento app proposto
+
+Intervento successivamente autorizzato e completato. Esito e configurazione attuale: [MIGRATION_RESULT.md](MIGRATION_RESULT.md). Il testo seguente conserva la proposta precedente al passaggio.
 Aggiornato il 18 ottobre 2026, 09:35 UTC. Stato: analisi e backup completati; collegamento applicativo NON ancora modificato. Questo documento non è uno script di deploy.
 
 ## Risultati verificati
@@ -39,3 +41,4 @@ Se fallisce dopo il passaggio, ripristinare immagine e configurazione precedenti
 
 ## Limiti della verifica
 Nessun test su ordini reali. Nessun reset degli stop, budget, run, database o memoria AI. Il controllo cron/systemd svolto in rescue ha esaminato file regolari, saltando symlink: non costituisce da solo una prova esaustiva dell'assenza di scheduler. Inventario Docker e processi attuali ha trovato i due motori operativi solo a Singapore. La migrazione dei motori è verificata; la migrazione complessiva rimane aperta fino al collegamento e alla verifica dell'app.
+
