@@ -1,0 +1,46 @@
+name: Work - compare SSH public identities only
+on:
+  push:
+    branches: [work/backend-singapore-audit]
+    paths: ['.github/workflows/work-ssh-key-identity.yml']
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Derive public fingerprints privately; no VPS connection
+        env:
+          OLD_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,subprocess,tempfile
+          result={}
+          with tempfile.TemporaryDirectory(prefix="ssh-identity-check-") as folder:
+              pathlib.Path(folder).chmod(0o700)
+              for label,var in [("Strasbourg","OLD_SSH_KEY"),("Singapore","SG_SSH_KEY")]:
+                  value=os.environ.get(var,"")
+                  if not value.strip():
+                      raise SystemExit("Missing configured SSH key for "+label)
+                  key=pathlib.Path(folder)/label
+                  key.write_text(value.replace("\r\n","\n").strip()+"\n")
+                  key.chmod(0o600)
+                  proc=subprocess.run(["ssh-keygen","-y","-P","","-f",str(key)],
+                                      capture_output=True,timeout=10,check=False)
+                  if proc.returncode:
+                      raise SystemExit("Cannot derive public identity for "+label+"; secret content suppressed")
+                  fields=proc.stdout.split()
+                  if len(fields)<2:
+                      raise SystemExit("Invalid public identity; output suppressed")
+                  digest=hashlib.sha256(base64.b64decode(fields[1],validate=True)).digest()
+                  result[label]={"type":fields[0].decode("ascii"),
+                                 "fingerprint":"SHA256:"+base64.b64encode(digest).decode().rstrip("=")}
+                  key.unlink()
+          print("SSH_PUBLIC_IDENTITY_CHECK "+json.dumps({
+              "same_identity":result["Strasbourg"]["fingerprint"]==result["Singapore"]["fingerprint"],
+              "public_fingerprints":result,
+              "private_keys_logged":False,"vps_connections":0}))
+          PY
