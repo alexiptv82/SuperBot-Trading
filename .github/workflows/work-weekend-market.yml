@@ -1,3 +1,4 @@
+# Revision 2: preserve granularity boundaries during history pagination.
 name: Work - public historical candles for weekend loss audit
 on:
   push:

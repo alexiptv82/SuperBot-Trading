@@ -31,7 +31,8 @@ def task(symbol,tf):
   first=min(int(x[0]) for x in data)
   if first<=START:break
   if first>=end:raise RuntimeError('Historical pagination did not advance')
-  end=first-1
+  # Bitget rounds endTime to the granularity boundary. Subtracting 1 ms skips a bar.
+  end=first
   time.sleep(.2)
  values=[rows[k] for k in sorted(rows)]
  return symbol,tf,values,pages
