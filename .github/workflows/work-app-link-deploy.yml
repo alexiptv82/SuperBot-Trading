@@ -1,4 +1,4 @@
-# Revision 2: negotiate the current Docker Engine API version.
+# Revision 3: use a private Docker network namespace for the SSH channel; do not alter the host firewall.
 name: Work - authorized PAPER app link migration
 on:
   push:

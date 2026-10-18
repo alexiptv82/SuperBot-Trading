@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -18,6 +19,8 @@ SG='vps-a06df2a7'
 API_IMAGE='sha256:53bd4d2fee6958044c2c9d4982db46b2fe880254dda21e2ff5ca8bb8450f6b18'
 ENGINE_IMAGE='sha256:bc26042b8672ecce4d5c3632f79ca2c4fa85191f6da0078b76768534d7de2369'
 ROOT=Path('/opt/superbot-app-link')
+PRIVATE_NET='superbot-app-link'
+TUNNEL_NET='superbot-api-tunnel-net'
 
 def run(args, *, input=None):
     p=subprocess.run(args,input=input,capture_output=True)
@@ -128,7 +131,7 @@ def api_config(original,p,entry):
     cfg['Image']=original['Image']
     cfg.pop('Hostname',None)
     env=dict(e.split('=',1) for e in cfg['Env'] if '=' in e)
-    env.update(DESK_MODE='paper',DESK_REMOTE_BASE_URL='http://172.17.0.1:18002')
+    env.update(DESK_MODE='paper',DESK_REMOTE_BASE_URL=(p/'remote-url').read_text().strip())
     cfg['Env']=[k+'='+v for k,v in env.items()]
     hc=copy.deepcopy(original['HostConfig'])
     if hc['NetworkMode']!='bridge' or hc.get('AutoRemove'):raise RuntimeError('Unsupported API network/lifecycle')
@@ -171,7 +174,13 @@ def prepare_old(req):
 def prepare_sg(req):
     if socket.gethostname()!=SG:raise RuntimeError('Wrong host')
     before=engines(True)
-    if inspect('superbot-desk-api'):raise RuntimeError('Gateway already exists; inspect before replacing')
+    previous=inspect('superbot-desk-api')
+    if previous:
+        if previous['State']['Running'] or 'gateway:production_app' not in (previous['Config'].get('Cmd') or []):
+            raise RuntimeError('An active or unrelated gateway exists')
+        if not any(str(ROOT/'releases') in bind for bind in previous['HostConfig'].get('Binds',[])):
+            raise RuntimeError('Unexpected previous gateway mounts')
+        run(['docker','rename','superbot-desk-api','superbot-desk-api-retained-'+req['tag']])
     if any(inspect('superbot-desk-'+b)['Image']!=ENGINE_IMAGE for b in before):raise RuntimeError('Engine image changed')
     p=create_release(req)
     put(p/'engine-baseline.json',json.dumps(before))
@@ -218,8 +227,47 @@ def prepare_tunnel(req):
     keydir=Path('/root/superbot-secrets/app-link')
     key=keydir/(req['tag']+'.ed25519')
     known=keydir/(req['tag']+'.known_hosts')
+    docker=shutil.which('docker');nsenter=shutil.which('nsenter');ssh=shutil.which('ssh')
+    if not all([docker,nsenter,ssh]):raise RuntimeError('Missing tunnel runtime')
+    network=subprocess.run(['docker','network','inspect',PRIVATE_NET],capture_output=True)
+    if network.returncode:
+        run(['docker','network','create','--label','io.superbot.app-link=managed',PRIVATE_NET])
+    else:
+        info=json.loads(network.stdout)[0]
+        if info.get('Labels',{}).get('io.superbot.app-link')!='managed':raise RuntimeError('Unexpected private network')
+    sidecar=inspect(TUNNEL_NET)
+    if not sidecar:
+        docker_api('POST','/containers/create?name='+TUNNEL_NET,{
+            'Image':API_IMAGE,'Entrypoint':[],'Cmd':['sleep','infinity'],
+            'Labels':{'io.superbot.app-link':'managed'},
+            'HostConfig':{'NetworkMode':PRIVATE_NET,'RestartPolicy':{'Name':'unless-stopped'},
+              'ReadonlyRootfs':True,'CapDrop':['ALL'],'SecurityOpt':['no-new-privileges:true'],'Memory':33554432}})
+    elif sidecar['Config'].get('Labels',{}).get('io.superbot.app-link')!='managed':
+        raise RuntimeError('Unexpected tunnel namespace container')
+    run(['docker','update','--restart=unless-stopped',TUNNEL_NET])
+    run(['docker','start',TUNNEL_NET])
+    sidecar=inspect(TUNNEL_NET)
+    address=sidecar['NetworkSettings']['Networks'][PRIVATE_NET]['IPAddress']
+    if not address:raise RuntimeError('Missing private tunnel address')
+    put(p/'remote-url','http://'+address+':18002')
+    script=Path('/usr/local/libexec/superbot-api-tunnel.sh')
+    script.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
+    if script.exists():
+        if '# SuperBot app-link managed' not in script.read_text():raise RuntimeError('Unrelated tunnel launcher exists')
+        put(p/'previous-tunnel-launcher.sh',script.read_bytes())
+    launcher='''#!/bin/sh
+# SuperBot app-link managed
+set -eu
+DOCKER start superbot-api-tunnel-net >/dev/null
+task_pid=$(DOCKER inspect --format '{{.State.Pid}}' superbot-api-tunnel-net)
+exec NSENTER --target "$task_pid" --net SSH -NT -i KEY -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=KNOWN -o ExitOnForwardFailure=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -L 0.0.0.0:18002:127.0.0.1:18002 ubuntu@51.79.205.82
+'''.replace('DOCKER',docker).replace('NSENTER',nsenter).replace('SSH',ssh).replace('KEY',str(key)).replace('KNOWN',str(known))
+    staged=p/'tunnel-launcher.sh';put(staged,launcher,0o700)
+    shutil.copyfile(staged,script);script.chmod(0o700)
     unit=Path('/etc/systemd/system/superbot-api-tunnel.service')
-    if unit.exists():raise RuntimeError('Tunnel unit already exists')
+    if unit.exists():
+        if 'Description=SuperBot private PAPER API channel' not in unit.read_text():raise RuntimeError('Unrelated tunnel unit exists')
+        put(p/'previous-tunnel.service',unit.read_bytes())
     config='''[Unit]
 Description=SuperBot private PAPER API channel to Singapore
 After=network-online.target docker.service
@@ -227,7 +275,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/ssh -NT -i KEY -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=KNOWN -o ExitOnForwardFailure=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -L 172.17.0.1:18002:127.0.0.1:18002 ubuntu@51.79.205.82
+ExecStart=/usr/local/libexec/superbot-api-tunnel.sh
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
@@ -236,15 +284,17 @@ ProtectSystem=strict
 ProtectHome=read-only
 [Install]
 WantedBy=multi-user.target
-'''.replace('KEY',str(key)).replace('KNOWN',str(known))
-    put(unit,config,0o644)
+'''
+    staged_unit=p/'tunnel.service';put(staged_unit,config,0o644)
+    shutil.copyfile(staged_unit,unit);unit.chmod(0o644)
     run(['systemctl','daemon-reload'])
     run(['systemctl','enable','--now','superbot-api-tunnel.service'])
-    wait_api('http://172.17.0.1:18002/api/desk/health',req['token'])
-    # Check reachability from the currently running original API container, before stopping it.
-    code='import json,sys,urllib.request; t=json.load(sys.stdin); r=urllib.request.Request("http://172.17.0.1:18002/api/desk/health",headers={"X-Superbot-Gateway-Token":t}); print(json.load(urllib.request.urlopen(r,timeout=15))["available"])'
-    run(['docker','exec','-i','superbot','python','-c',code],input=json.dumps(req['token']).encode())
-    return {'tunnel_ready':True,'reachable_from_original_backend':True}
+    wait_api('http://'+address+':18002/api/desk/health',req['token'])
+    # Probe from the original API image on the dedicated private network, with no state mounts.
+    code='import json,sys,urllib.request; d=json.load(sys.stdin); r=urllib.request.Request(d["url"]+"/api/desk/health",headers={"X-Superbot-Gateway-Token":d["token"]}); print(json.load(urllib.request.urlopen(r,timeout=15))["available"])'
+    run(['docker','run','--rm','-i','--network',PRIVATE_NET,'--entrypoint','python',API_IMAGE,'-c',code],
+        input=json.dumps({'url':'http://'+address+':18002','token':req['token']}).encode())
+    return {'tunnel_ready':True,'reachable_from_backend_image_on_private_network':True,'no_public_port':True}
 
 def activate(req):
     p=release(req)
@@ -254,6 +304,7 @@ def activate(req):
     engines(False)
     candidate='superbot-app-candidate-'+req['tag']
     docker_api('POST','/containers/create?name='+candidate,api_config(old,p,'entry'))
+    run(['docker','network','connect',PRIVATE_NET,candidate])
     put(p/'activation-started','true')
     run(['docker','update','--restart=no','superbot'])
     run(['docker','stop','--time','20','superbot'])
@@ -334,6 +385,10 @@ def cleanup(req):
     if socket.gethostname()==OLD:
         if Path('/etc/systemd/system/superbot-api-tunnel.service').exists():
             run(['systemctl','disable','--now','superbot-api-tunnel.service'])
+        sidecar=inspect(TUNNEL_NET)
+        if sidecar and sidecar['Config'].get('Labels',{}).get('io.superbot.app-link')=='managed':
+            run(['docker','update','--restart=no',TUNNEL_NET])
+            if sidecar['State']['Running']:run(['docker','stop','--time','5',TUNNEL_NET])
     else:
         c=inspect('superbot-desk-api')
         if c:
