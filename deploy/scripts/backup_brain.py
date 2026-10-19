@@ -5,6 +5,12 @@ Regola dell'utente: i file del cervello (trade_history.jsonl, lessons.md,
 errors.md, learning_log.jsonl) non si cancellano, non si azzerano, non si
 modificano. Questo script li SOLO LEGGE e ne fa una copia a parte.
 
+File irrinunciabili (REQUIRED): per ogni portafoglio devono esistere
+state_v2.json, trade_history.jsonl, learning_log.jsonl e lessons.md (file
+normali, non collegamenti). Una cartella vuota o incompleta NON e' un backup:
+il deploy si ferma. L'unica eccezione e' --first-install, esplicita, che il
+manifesto e l'output dichiarano. errors.md si salva se esiste ma non e' obbligatorio.
+
 Coerenza (il bot scrive mentre noi copiamo):
   i file "centrali" (i quattro del cervello + state_v2.json) vengono copiati
   in una FINESTRA STABILE a FINE CICLO. Il battito del bot (heartbeat.json)
@@ -15,23 +21,25 @@ Coerenza (il bot scrive mentre noi copiamo):
   scritto negli ultimi N secondi. Si registra l'impronta dei file centrali
   (inode, dimensione, istante di modifica) e il contatore dei cicli, si copia,
   si rileggono: se qualcosa e' cambiato la copia viene scartata e si riprova.
-  Se non si arriva a una finestra stabile il backup FALLISCE (uscita 1): una
-  copia di cui non si puo' dimostrare la coerenza tra stato e registri non e'
-  una barriera affidabile. Se il battito e' vecchio di oltre 2 minuti il bot
-  non sta scrivendo (fermo): vale solo il controllo dell'impronta. Se nel
-  battito manca `cycle_running` (versione vecchia del bot) il confine di ciclo
-  non e' verificabile: lo dice il manifesto.
+  Se non si arriva a una finestra stabile il backup FALLISCE (uscita 1).
+  Il percorso normale (quello dei deploy) RICHIEDE il confine di ciclo
+  verificato: battito vecchio o senza `cycle_running` = FALLITO subito, non
+  "ok ma non verificato". Per un bot davvero fermo esiste una modalita'
+  separata ed esplicita, --bot-stopped: ammessa solo se il battito e' vecchio
+  (altrimenti il bot e' vivo e si rifiuta); il manifesto dice "bot_fermo".
 
 Per ogni file dei portafogli:
-  - i quattro file del cervello crescono soltanto, quindi la copia deve
-    essere identica ai primi byte dell'originale e non piu' corta di prima;
+  - i quattro del cervello crescono soltanto, quindi la copia deve essere
+    identica ai primi byte dell'originale e non piu' corta di prima;
+  - i file .jsonl devono essere COMPLETI: ogni riga JSON valida e l'ultima
+    riga terminata da a capo. Una riga finale troncata e' corruzione;
   - i database SQLite (se ce ne sono) si copiano con l'API di backup;
   - gli altri file si copiano e si confrontano per hash, con qualche
     tentativo se il bot li sta riscrivendo (heartbeat: solo avviso).
 Poi una prova di ripristino rilegge tutta la copia dal disco e la confronta
 con il manifesto (hash di ogni file, righe dei file del cervello, JSON validi).
 
-Cartelle o portafogli mancanti sono un ERRORE (uscita 1), salvo --allow-missing.
+Cartelle o portafogli mancanti sono un ERRORE (uscita 1), salvo --first-install.
 Un nome di copia esistente non viene mai sovrascritto; due backup insieme non
 si pestano (blocco condiviso con backup_app_db.py). Esce con 1 se qualcosa non torna.
 """
@@ -48,6 +56,10 @@ import time
 
 CRITICAL = ("trade_history.jsonl", "lessons.md", "errors.md", "learning_log.jsonl")
 CORE = CRITICAL + ("state_v2.json",)
+# Irrinunciabili in ogni portafoglio: senza anche uno solo non c'e' un backup utile.
+REQUIRED = ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")
+HB_STALE = 120  # secondi: battito piu' vecchio di cosi' = il bot non sta scrivendo
+OK, WAIT, NO = "ok", "attesa", "non_verificabile"
 SQLITE_EXT = (".db", ".sqlite", ".sqlite3")
 SKIP_SUFFIX = ("-wal", "-shm", "-journal", ".part")
 BIG = 50 * 1024 * 1024  # file non critici piu' grandi di cosi' non si copiano
@@ -83,25 +95,25 @@ def count_lines(path):
     return n
 
 
-def jsonl_ok(path):
-    """Ogni riga e' JSON valido; l'ultima puo' essere troncata se il file non finisce con a capo."""
+def jsonl_problem(path):
+    """None se il file JSONL e' completo; altrimenti la descrizione del problema.
+    Completo = ogni riga e' JSON valido e (se il file non e' vuoto) l'ultima riga finisce con a capo:
+    una riga finale senza a capo e' una scrittura interrotta, cioe' corruzione."""
     with open(path, "rb") as f:
-        lines = f.read().split(b"\n")
-    if lines and lines[-1] == b"":
-        lines.pop()
-        tail_complete = True
-    else:
-        tail_complete = False
-    for i, line in enumerate(lines):
-        if not line.strip():
-            continue
-        try:
-            json.loads(line)
-        except ValueError:
-            if i == len(lines) - 1 and not tail_complete:
+        for n, line in enumerate(f, 1):
+            if not line.endswith(b"\n"):        # solo l'ultima riga puo' non finire con a capo
+                return "ultima riga incompleta (riga %d senza a capo finale)" % n
+            if not line.strip():
                 continue
-            return False
-    return True
+            try:
+                json.loads(line)
+            except ValueError:
+                return "riga %d non e' JSON valido" % n
+    return None
+
+
+def jsonl_ok(path):
+    return jsonl_problem(path) is None
 
 
 def json_ok(path):
@@ -172,25 +184,41 @@ def read_hb(base):
 
 
 def boundary_state(base, quiet, margin=30.0):
-    """(pronto, verificato, descrizione): il bot e' tra due cicli?
-    pronto=False -> aspettare. verificato=False -> il confine di ciclo non si puo' dimostrare."""
+    """(esito, descrizione): il bot e' tra due cicli?
+    OK = confine di ciclo VERIFICATO e finestra buona; WAIT = riprovare tra poco (ciclo in corso, appena
+    finito, prossimo imminente, battito illeggibile); NO = il confine di ciclo non e' dimostrabile e aspettare
+    non serve (battito vecchio, o bot vecchio senza cycle_running)."""
     hb, mt = read_hb(base)
     if hb is None:
-        return False, False, "battito illeggibile"
+        return WAIT, "battito illeggibile"
     now = time.time()
-    if now - mt > 120:
-        return True, False, "battito vecchio di %d s: il bot non sta scrivendo" % int(now - mt)
+    if now - mt > HB_STALE:
+        return NO, ("battito vecchio di %d s: il bot non sta scrivendo, quindi il confine di ciclo non si puo' "
+                    "verificare (se il bot e' davvero fermo: modalita' esplicita --bot-stopped)" % int(now - mt))
     if "cycle_running" not in hb:
-        return True, False, "nel battito manca cycle_running: confine di ciclo non verificabile"
+        return NO, "nel battito manca cycle_running (bot vecchio): confine di ciclo non verificabile"
     if hb.get("cycle_running") is not False:
-        return False, True, "ciclo in corso"
+        return WAIT, "ciclo in corso"
     end_ms, next_ms = hb.get("last_end_ms"), hb.get("next_cycle_ms")
     if isinstance(end_ms, (int, float)) and now - end_ms / 1000.0 < quiet:
-        return False, True, "ultimo ciclo finito da meno di %g s" % quiet
+        return WAIT, "ultimo ciclo finito da meno di %g s" % quiet
     if isinstance(next_ms, (int, float)) and next_ms / 1000.0 - now < margin:
-        return False, True, "il prossimo ciclo parte tra meno di %g s" % margin
+        return WAIT, "il prossimo ciclo parte tra meno di %g s" % margin
     nxt = ("%d s" % int(next_ms / 1000.0 - now)) if isinstance(next_ms, (int, float)) else "?"
-    return True, True, "tra due cicli (cicli fatti %s, prossimo tra %s)" % (hb.get("cycles"), nxt)
+    return OK, "tra due cicli (cicli fatti %s, prossimo tra %s)" % (hb.get("cycles"), nxt)
+
+
+def stopped_state(base):
+    """Modalita' --bot-stopped: ammessa solo se il bot e' davvero fermo (battito vecchio o assente)."""
+    p = os.path.join(base, "heartbeat.json")
+    try:
+        age = time.time() - os.stat(p).st_mtime
+    except FileNotFoundError:
+        return OK, "nessun battito: bot mai avviato o fermo da tempo (modalita' bot fermo)"
+    if age <= HB_STALE:
+        return NO, ("battito recente (%d s): il bot risulta ATTIVO, la modalita' --bot-stopped non e' ammessa; "
+                    "usare il backup normale" % int(age))
+    return OK, "bot fermo (battito vecchio di %d s; modalita' bot fermo, confine di ciclo non applicabile)" % int(age)
 
 
 def hb_marker(base):
@@ -200,9 +228,10 @@ def hb_marker(base):
     return (hb.get("cycles"), hb.get("last_start_ms"), hb.get("last_end_ms"), hb.get("cycle_running"))
 
 
-def wait_ready(bases, quiet, timeout):
-    """Aspetta la finestra di fine ciclo: bot tra due cicli e nessun file centrale scritto negli
-    ultimi `quiet` secondi. Restituisce (secondi di quiete, descrizioni, tutto_verificato) o None."""
+def wait_ready(bases, quiet, timeout, stopped=False):
+    """Aspetta la finestra buona: bot tra due cicli (o, con stopped, davvero fermo) e nessun file centrale
+    scritto negli ultimi `quiet` secondi. Restituisce (esito, secondi di quiete, descrizioni) con esito
+    'ok', 'attesa_scaduta' oppure 'non_verificabile' (inutile aspettare: si ferma subito)."""
     end = time.time() + timeout
     while True:
         newest = 0.0
@@ -213,12 +242,29 @@ def wait_ready(bases, quiet, timeout):
                 except FileNotFoundError:
                     pass
         age = time.time() - newest
-        states = [boundary_state(b, quiet) for b in bases]
-        if age >= quiet and all(s[0] for s in states):
-            return age, [s[2] for s in states], all(s[1] for s in states)
+        states = [(stopped_state(b) if stopped else boundary_state(b, quiet)) for b in bases]
+        descs = [s[1] for s in states]
+        if any(s[0] == NO for s in states):
+            return "non_verificabile", None, descs
+        if age >= quiet and all(s[0] == OK for s in states):
+            return "ok", age, descs
         if time.time() >= end:
-            return None
+            return "attesa_scaduta", None, descs
         time.sleep(min(max(quiet - age, 0) + 0.5, 5))
+
+
+def required_missing(root, portfolios):
+    """File irrinunciabili assenti o inutilizzabili (una cartella vuota li ha tutti assenti).
+    Un collegamento simbolico non conta: la copia non lo segue."""
+    out = []
+    for p in portfolios:
+        for n in REQUIRED:
+            path = os.path.join(root, p, n)
+            if os.path.islink(path) or not os.path.isfile(path):
+                out.append("%s/%s" % (p, n))
+            elif n == "state_v2.json" and os.path.getsize(path) == 0:
+                out.append("%s/%s (vuoto)" % (p, n))
+    return out
 
 
 def take_lock(directory, timeout=300):
@@ -313,8 +359,12 @@ def main():
     ap.add_argument("--tag", default="")
     ap.add_argument("--portfolios", default=DEFAULT_PORTFOLIOS,
                     help="portafogli obbligatori, separati da virgola (default hawk,bull)")
-    ap.add_argument("--allow-missing", action="store_true",
-                    help="cartelle mancanti non sono un errore (di norma lo sono)")
+    ap.add_argument("--first-install", action="store_true",
+                    help="ECCEZIONE esplicita: cartelle o file irrinunciabili ancora assenti perche' i bot non "
+                         "hanno mai girato (di norma sono un errore e il deploy si ferma)")
+    ap.add_argument("--bot-stopped", action="store_true",
+                    help="modalita' separata per un bot DAVVERO fermo: salta il confine di ciclo ma rifiuta se "
+                         "il battito e' recente (il bot e' vivo)")
     ap.add_argument("--attempts", type=int, default=5, help="tentativi di finestra stabile")
     ap.add_argument("--wait", type=float, default=10.0, help="secondi tra un tentativo e l'altro")
     ap.add_argument("--quiet-secs", type=float, default=10.0,
@@ -332,14 +382,21 @@ def main():
         return 1
     present = [p for p in wanted if os.path.isdir(os.path.join(a.root, p))]
     missing = [p for p in wanted if p not in present]
-    if missing and not a.allow_missing:
+    if missing and not a.first_install:
         print("ERRORE BACKUP CERVELLO: mancano le cartelle dati di %s in %s. "
               "Senza il cervello da salvare il deploy non deve proseguire." % (", ".join(missing), a.root))
         print("RISULTATO: FALLITO. Non si deve sostituire nessun container.")
         return 1
     if not present:
-        print("BACKUP CERVELLO: nessuna cartella dati in %s (accettato con --allow-missing)." % a.root)
+        print("BACKUP CERVELLO: nessuna cartella dati in %s (accettato con --first-install)." % a.root)
         return 0
+    absent = required_missing(a.root, present)
+    if absent and not a.first_install:
+        print("ERRORE BACKUP CERVELLO: file irrinunciabili assenti o inutilizzabili: %s. "
+              "Una cartella vuota o incompleta non e' un backup del cervello: il deploy non deve proseguire "
+              "(solo alla prima installazione, con --first-install esplicito)." % ", ".join(absent))
+        print("RISULTATO: FALLITO. Non si deve sostituire nessun container.")
+        return 1
 
     os.makedirs(a.dir, mode=0o700, exist_ok=True)
     os.chmod(a.dir, 0o700)
@@ -372,15 +429,30 @@ def run(a, present, missing):
     consistent, used, quiet_age = False, 0, None
     verified, boundary_info = False, []
     manifest, problems, warnings, skipped = [], [], [], []
+    absent_ok = []
     for attempt in range(1, a.attempts + 1):
         used = attempt
-        ready = wait_ready(bases, a.quiet_secs, a.quiet_timeout)
-        if ready is None:
+        outcome, quiet_age, boundary_info = wait_ready(bases, a.quiet_secs, a.quiet_timeout, a.bot_stopped)
+        if outcome == "non_verificabile":
+            for p, info in zip(present, boundary_info):
+                print("  %s: %s" % (p, info))
+            print("ERRORE BACKUP CERVELLO: %s."
+                  % ("la modalita' --bot-stopped non e' ammessa: almeno un bot risulta attivo" if a.bot_stopped
+                     else "il confine di ciclo non e' verificabile e il deploy lo richiede"))
+            print("RISULTATO: FALLITO. Non si deve sostituire nessun container.")
+            return 1
+        if outcome != "ok":
             print("  tentativo %d: nessuna finestra di fine ciclo entro %g s (ciclo in corso o file "
                   "scritti di continuo), riprovo" % (attempt, a.quiet_timeout))
             time.sleep(a.wait)
             continue
-        quiet_age, boundary_info, verified = ready
+        verified = not a.bot_stopped
+        # i file irrinunciabili devono esserci anche adesso (non spariti dopo il primo controllo)
+        absent_ok = required_missing(a.root, present)
+        if absent_ok and not a.first_install:
+            print("ERRORE BACKUP CERVELLO: file irrinunciabili assenti o inutilizzabili: %s." % ", ".join(absent_ok))
+            print("RISULTATO: FALLITO. Non si deve sostituire nessun container.")
+            return 1
         before = ([core_fp(b) for b in bases], [hb_marker(b) for b in bases])
         os.makedirs(part, mode=0o700)
         manifest, problems, warnings, skipped = copy_tree(present, a.root, part)
@@ -400,21 +472,32 @@ def run(a, present, missing):
         print("RISULTATO: FALLITO. Non si deve sostituire nessun container.")
         return 1
 
-    # file centrali mancanti nell'origine ma richiesti: i quattro del cervello se esistono devono esserci nella copia
+    # i file irrinunciabili devono esserci nella copia (salvo quelli gia' assenti all'origine con --first-install),
+    # e i file del cervello presenti all'origine devono esserci nella copia
+    for x in required_missing(part, present):
+        if x not in absent_ok:
+            problems.append("file irrinunciabile mancante o vuoto nella copia: %s" % x)
     for p in present:
         for c in CRITICAL:
             if os.path.isfile(os.path.join(a.root, p, c)) and \
                     not os.path.isfile(os.path.join(part, p, c)):
                 problems.append("file del cervello mancante nella copia: %s/%s" % (p, c))
+    # barriera finale: nel percorso normale la copia vale solo con il confine di ciclo verificato
+    if not a.bot_stopped and not verified:
+        problems.append("confine di ciclo non verificato: il deploy richiede confine_di_ciclo_verificato=true")
 
     coerenza = {
         "consistente": True,
+        "modalita": "bot_fermo" if a.bot_stopped else "ciclo_verificato",
         "metodo": ("finestra di fine ciclo (battito del bot) + nessuna scrittura sui file centrali negli "
                    "ultimi %g s + nessuna modifica (inode, dimensione, istante) ne' variazione del "
-                   "contatore dei cicli durante la copia" % a.quiet_secs),
+                   "contatore dei cicli durante la copia" % a.quiet_secs) if not a.bot_stopped else
+                  ("bot fermo (battito vecchio o assente) + nessuna scrittura sui file centrali negli "
+                   "ultimi %g s + nessuna modifica (inode, dimensione, istante) durante la copia" % a.quiet_secs),
         "tentativi": used,
         "quiete_osservata_s": round(quiet_age, 1) if quiet_age is not None else None,
         "file_centrali": list(CORE),
+        "file_irrinunciabili": list(REQUIRED),
         "confine_di_ciclo_verificato": bool(verified),
         "stato_del_confine": dict(zip(present, boundary_info)),
     }
@@ -422,6 +505,9 @@ def run(a, present, missing):
     with open(os.path.join(part, "MANIFEST.json"), "w") as f:
         json.dump({"creato": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                    "coerenza": coerenza, "stato_copiato": stato,
+                   "prima_installazione": {"ammessa": bool(a.first_install),
+                                           "cartelle_assenti": list(missing),
+                                           "file_irrinunciabili_assenti": list(absent_ok)},
                    "file": manifest, "non_copiati_troppo_grandi": skipped}, f, indent=1)
     os.chmod(os.path.join(part, "MANIFEST.json"), 0o600)
 
@@ -430,8 +516,10 @@ def run(a, present, missing):
         path = os.path.join(part, m["file"])
         if not os.path.isfile(path) or sha256(path) != m["sha256"]:
             problems.append("prova di ripristino: %s non coincide col manifesto" % m["file"])
-        elif m["critical"] and m["file"].endswith(".jsonl") and not jsonl_ok(path):
-            problems.append("prova di ripristino: %s contiene righe JSON non valide" % m["file"])
+        elif m["file"].endswith(".jsonl") and os.path.basename(m["file"]) in CRITICAL \
+                and jsonl_problem(path):
+            problems.append("prova di ripristino: %s non e' un JSONL completo (%s)"
+                            % (m["file"], jsonl_problem(path)))
         elif os.path.basename(m["file"]) == "state_v2.json" and not json_ok(path):
             problems.append("prova di ripristino: %s non e' un JSON valido" % m["file"])
 
@@ -443,8 +531,13 @@ def run(a, present, missing):
                 parts.append("%s %d righe" % (os.path.basename(m["file"]), m["righe"]))
         n = sum(1 for m in manifest if m["file"].startswith(p + os.sep))
         print("  %s: %d file | %s" % (p, n, ", ".join(parts) if parts else "nessun file del cervello"))
+    if a.first_install:
+        print("  ATTENZIONE: PRIMA INSTALLAZIONE ammessa (--first-install). Cartelle assenti: %s. "
+              "File irrinunciabili assenti: %s." % (", ".join(missing) or "nessuna", ", ".join(absent_ok) or "nessuno"))
+    if a.bot_stopped:
+        print("  MODALITA' BOT FERMO (--bot-stopped): copia fatta con i bot fermi, senza confine di ciclo.")
     for mm in missing:
-        print("  ATTENZIONE: cartella assente (accettata con --allow-missing): %s" % mm)
+        print("  ATTENZIONE: cartella assente (accettata con --first-install): %s" % mm)
     for s in skipped:
         print("  non copiato (oltre %d MB, non e' del cervello): %s" % (BIG // (1 << 20), s))
     for w in warnings:
@@ -453,7 +546,7 @@ def run(a, present, missing):
         print("  %s: %s" % (p, info))
     print("  coerenza: finestra stabile al tentativo %d (quiete di %.1f s, nessuna modifica ai file centrali "
           "ne' ai cicli durante la copia); confine di ciclo %s"
-          % (used, quiet_age or 0.0, "VERIFICATO" if verified else "NON verificabile (vedi sopra)"))
+          % (used, quiet_age or 0.0, "VERIFICATO" if verified else "non applicabile (bot fermo)"))
 
     if problems:
         for pr in problems:

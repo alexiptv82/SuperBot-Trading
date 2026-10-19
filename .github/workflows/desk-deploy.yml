@@ -10,6 +10,12 @@ name: Sala segnali - deploy (Hawk + Bull, container separati, paper)
 # riesce, il deploy si ferma e non viene toccato nulla. L'immagine in uso resta
 # come superbot-desk:rollback-<data> per tornare indietro. La chiave del server
 # SSH e' verificata (impronta fissa).
+#
+# Backup del cervello nel percorso normale = confine di ciclo VERIFICATO obbligatorio (battito del bot
+# recente, con cycle_running) e file irrinunciabili presenti. Se un bot e' DAVVERO fermo (battito vecchio)
+# il backup normale fallisce di proposito. Solo in quel caso, e solo scrivendolo nel file trigger con
+# la riga esatta "backup=bot_fermo", il backup usa la modalita' separata --bot-stopped (che rifiuta
+# comunque se un bot risulta vivo). Senza quella riga non cambia nulla.
 
 on:
   push:
@@ -27,6 +33,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Modalita' del backup (bot fermo solo se scritto nel file trigger)
+        id: bk
+        run: |
+          set -e
+          MODE=""
+          if grep -qx 'backup=bot_fermo' deploy/desk-deploy.trigger; then MODE="--bot-stopped"; fi
+          echo "extra=$MODE" >> "$GITHUB_OUTPUT"
+          echo "modalita' backup: ${MODE:-normale (confine di ciclo verificato)}"
 
       - name: Copia strumenti di backup sul VPS (chiave del server verificata)
         env:
@@ -50,6 +65,7 @@ jobs:
       - name: Deploy Hawk + Bull sul VPS
         uses: appleboy/ssh-action@v1.0.0
         env:
+          BACKUP_EXTRA: ${{ steps.bk.outputs.extra }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -79,7 +95,7 @@ jobs:
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           connect_timeout: 90s
           command_timeout: 30m
-          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
+          envs: BACKUP_EXTRA,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
           script: |
             set -e
             # --- Verifica preliminare (sola lettura)
@@ -97,8 +113,9 @@ jobs:
               echo "ERRORE: strumenti di backup mancanti sul VPS (/opt/superbot-tools)."
               exit 1
             fi
+            # BACKUP_EXTRA e' vuoto oppure esattamente "--bot-stopped" (deciso dal file trigger, vedi sopra).
             python3 -I /opt/superbot-tools/backup_brain.py \
-              --root /opt/superbot-desk-data --dir /opt/superbot-backups --keep 10 --tag deploy
+              --root /opt/superbot-desk-data --dir /opt/superbot-backups --keep 10 --tag deploy $BACKUP_EXTRA
             # --- Immagine in uso: tenuta per tornare indietro (ultime 3)
             RB="rollback-$(date +%Y%m%d-%H%M%S)"
             IMG=$(docker inspect -f '{{.Image}}' superbot-desk-hawk 2>/dev/null || true)
