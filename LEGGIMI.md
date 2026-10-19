@@ -14,7 +14,7 @@ L'utente è Alessandro (account GitHub `alexiptv82`). Parla italiano e vuole il 
 | `MANUALE-OPERATIVO.md` | Come si lavora sul progetto: rami, workflow, trigger, deploy, controlli, cose da non fare | Quando cambia il modo di lavorare |
 | `diario/AAAA-MM-GG_<chi>.md` | Cronologia: cosa è stato fatto, perché, con quale esito (una voce per giorno e per autore) | Durante e a fine sessione (si aggiunge, non si cancella) |
 | `STORIA-FINO-AL-19-OTTOBRE.md` | Riassunto di come si è arrivati qui (9–19 ottobre 2026) | Non si tocca |
-| `SPECIFICA-EVOLUZIONE-CERVELLO.md` (e la risposta di Claude: `PIANO-TECNICO-CERVELLO-PROFESSIONALE.md` | Il progetto dell'utente per la prossima fase (Profit Manager, cervello professionale, Turbo Scalp), da valutare insieme | Solo se l'utente la modifica |
+| `SPECIFICA-EVOLUZIONE-CERVELLO.md` e la risposta di Claude `PIANO-TECNICO-CERVELLO-PROFESSIONALE.md` | Il progetto dell'utente per la prossima fase (Profit Manager, cervello professionale, Turbo Scalp), da valutare insieme | Solo se l'utente la modifica |
 
 ## Regole inviolabili (valgono per tutte le AI, sempre)
 
