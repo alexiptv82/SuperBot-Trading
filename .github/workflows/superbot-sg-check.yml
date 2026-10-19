@@ -1,0 +1,72 @@
+name: SuperBot App - Controllo Singapore (sola lettura)
+
+# Verifica lo stato reale dell'app su Singapore e scrive il risultato in
+# deploy/superbot-sg-check-output.txt. NON modifica nulla sul VPS.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/superbot-sg-check.trigger"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Controlli (solo lettura)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          OUT=deploy/superbot-sg-check-output.txt
+          {
+            echo "### Controllo $(date -u +%FT%TZ)"
+            echo
+            echo "## 1. Dall'ESTERNO (runner GitHub -> Singapore, porta 80)"
+            curl -s -m 15 -o /dev/null -w "frontend /           : HTTP %{http_code}\n" http://51.79.205.82/ || echo "frontend: NON raggiungibile"
+            echo -n "API /api/health         : "; curl -s -m 15 http://51.79.205.82/api/health || echo "NON raggiungibile"
+            echo
+            echo "## 2. Sul VPS"
+            ssh -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@51.79.205.82 'bash -s' <<'REMOTE'
+          echo "--- container (tutti) ---"
+          docker ps -a --format "{{.Names}} | {{.Status}} | {{.Ports}} | {{.Image}}"
+          echo; echo "--- API locale ---"
+          curl -s -m 10 http://127.0.0.1:8002/api/health; echo
+          echo; echo "--- nginx ---"
+          nginx -t 2>&1; systemctl is-active nginx
+          ls -la /etc/nginx/sites-enabled/
+          echo; echo "--- frontend build ---"
+          ls -la /opt/superbot-web/build | head -12
+          echo; echo "--- dati app ---"
+          ls -la /opt/superbot/data/ 2>&1
+          echo; echo "--- DESK_* dentro il container superbot ---"
+          docker exec superbot env 2>/dev/null | grep -E '^(DESK_|TRADING_MODE)' || echo "(non leggibile)"
+          echo; echo "--- cartelle cervello montate nel container (solo elenco) ---"
+          docker exec superbot ls /opt/superbot-desk-data/hawk /opt/superbot-desk-data/bull 2>&1 | head -30
+          echo; echo "--- log superbot (ultimi 40) ---"
+          docker logs --tail 40 superbot 2>&1
+          echo; echo "--- firewall ufw / porte in ascolto ---"
+          (ufw status 2>/dev/null || echo "ufw non attivo"); ss -ltnp 2>/dev/null | grep -E ':(80|443|8001|8002) ' || true
+          REMOTE
+          } > $OUT 2>&1
+          rm -f ~/.ssh/id_sg
+          cat $OUT
+
+      - name: Committa risultato
+        run: |
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add deploy/superbot-sg-check-output.txt
+          git diff --staged --quiet || git commit -m "check: stato app Singapore [skip ci]"
+          git push origin rule-pool
