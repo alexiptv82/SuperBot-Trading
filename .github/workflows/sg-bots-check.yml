@@ -1,0 +1,162 @@
+name: SuperBot - Stato bot e pagina Live (sola lettura)
+
+# Risponde a due domande, solo leggendo:
+#  1. perche' i bot attivi non mostrano posizioni aperte (stato, battito, ultimi trade, segnali scartati);
+#  2. perche' la pagina Live non mostra i saldi reali di Bitget (cosa restituisce l'app in paper, se le
+#     chiavi di sola lettura sono presenti e se Bitget le accetta da Singapore).
+# NON modifica niente, non ferma ne' riavvia container. Gli importi del conto Bitget NON vengono stampati.
+# Il risultato va in deploy/sg-bots-check-output.txt. Chiave del server SSH verificata.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/sg-bots-check.trigger"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Controlli (solo lettura)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          awk '$1=="PUB" {print "51.79.205.82 " $3 " " $4}' deploy/sg-hardening-check-output.txt > ~/.ssh/known_hosts_sg
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          OUT=deploy/sg-bots-check-output.txt
+          {
+            echo "### Stato bot e pagina Live $(date -u +%FT%TZ)"
+            echo
+            ssh $SSHO root@51.79.205.82 'bash -s' <<'REMOTE'
+          echo "## 1. Cartelle dati e stato dei bot (lettura diretta dei file)"
+          python3 -I - <<'PY'
+          import calendar, json, os, time
+          root = "/opt/superbot-desk-data"
+          now = time.time()
+          def rj(p):
+              try:
+                  return json.load(open(p))
+              except Exception:
+                  return {}
+          def iso(ms):
+              try:
+                  return time.strftime("%m-%d %H:%M", time.gmtime(float(ms) / 1000)) + "Z"
+              except Exception:
+                  return "-"
+          for b in ("hawk", "bull"):
+              d = root + "/" + b
+              print("=== %s ===" % b)
+              names = sorted(n for n in os.listdir(d) if os.path.isfile(os.path.join(d, n)))
+              print("file:", ", ".join("%s(%dB,%dm)" % (n, os.path.getsize(os.path.join(d, n)), (now - os.path.getmtime(os.path.join(d, n))) / 60) for n in names))
+              st, hb = rj(d + "/state_v2.json"), rj(d + "/heartbeat.json")
+              main = st.get("main") or {}
+              pos = main.get("positions") or {}
+              print("stato: chiavi=%s" % sorted(st.keys()))
+              print("conto: chiavi=%s" % sorted(main.keys()))
+              print("posizioni aperte nel bot: %d %s" % (len(pos), sorted(pos.keys())))
+              for k, v in pos.items():
+                  print("  %s lato=%s tipo=%s aperta=%s margine=%s" % (k, v.get("side"), v.get("trade_type"), iso(v.get("open_ms")), v.get("total_margin", v.get("margin"))))
+              print("run_no=%s run_started=%s cycle=%s halt=%s" % (st.get("run_no"), iso(st.get("run_started_ms")), st.get("cycle"), st.get("halt")))
+              la = st.get("last_action") or {}
+              print("ultimo comando: tipo=%s ok=%s ts=%s" % (la.get("type"), la.get("ok"), iso(la.get("ts"))))
+              print("battito: " + json.dumps({k: v for k, v in hb.items() if not isinstance(v, (dict, list))}, ensure_ascii=False)[:700])
+              for k in ("hours", "macro"):
+                  v = hb.get(k)
+                  if isinstance(v, dict):
+                      print("battito.%s: %s" % (k, json.dumps({kk: vv for kk, vv in v.items() if not isinstance(vv, (dict, list))}, ensure_ascii=False)[:300]))
+              for f in ("pause.flag", "reset.flag", "reset_portfolio.flag", "trading_enabled.json", "trading_hours.json"):
+                  p = os.path.join(d, f)
+                  if os.path.exists(p):
+                      print("flag %s: presente %s" % (f, open(p).read()[:150].replace("\n", " ")))
+                  else:
+                      print("flag %s: assente" % f)
+              rows = []
+              try:
+                  for line in open(d + "/trade_history.jsonl"):
+                      try:
+                          rows.append(json.loads(line))
+                      except Exception:
+                          pass
+              except Exception:
+                  pass
+              print("trade chiusi in storico: %d" % len(rows))
+              last = sorted(rows, key=lambda t: t.get("close_ms") or 0)[-6:]
+              for t in last:
+                  print("  chiuso %s %s lato=%s motivo=%s net=%s" % (iso(t.get("close_ms")), t.get("symbol"), t.get("side"), t.get("close_reason"), t.get("net")))
+              since = calendar.timegm(time.strptime("2026-10-19 04:09", "%Y-%m-%d %H:%M")) * 1000
+              n_after = sum(1 for t in rows if (t.get("close_ms") or 0) >= since)
+              print("trade chiusi dopo il riavvio del VPS (04:09 UTC): %d" % n_after)
+          PY
+          echo
+          echo "## 2. Che cosa ha fatto il bot dopo il riavvio (conteggio dei segnali nel log)"
+          for B in hawk bull; do
+            echo "--- $B ---"
+            docker logs --since 2026-10-19T04:09:00Z superbot-desk-$B 2>&1 | grep -o '^\[[A-Z_:]*\]' | sort | uniq -c | sort -rn | head -12
+            echo "ultimo ciclo: $(docker logs --tail 400 superbot-desk-$B 2>&1 | grep -E '^\[(SLEEP|MODO)\]' | tail -2 | tr '\n' ' ')"
+          done
+          echo
+          echo "## 3. Che cosa restituisce l'app (stesse funzioni delle pagine) e chiavi di sola lettura"
+          docker exec -i superbot python - <<'PY'
+          import os, sys
+          sys.path.insert(0, "/app/backend")
+          import desk_view as dv
+          import live_view as lv
+          print("DESK_MODE dell'app:", os.environ.get("DESK_MODE"), "| TRADING_MODE:", os.environ.get("TRADING_MODE"))
+          keys = ("bot_mode", "paused", "bot_online", "exec_mode", "open_positions", "total_closed", "run_no", "halt", "cash", "equity", "day_pnl")
+          for b, env in (("hawk", "DESK_DATA_DIR"), ("bull", "DESK_DATA_DIR_BULL")):
+              d = os.environ.get(env)
+              print("=== %s (cartella %s) ===" % (b, d))
+              s = dv.build_status(d, b)
+              print("pagina %s:" % b.capitalize(), {k: s.get(k) for k in keys})
+              lp = lv.build_portfolio(d, os.environ.get("DESK_%s_CAPITAL" % b.upper()), os.environ.get("DESK_DAILY_LOSS_PCT", "25"), os.environ.get("DESK_MODE", "paper"))
+              print("pagina Live:", {k: lp.get(k) for k in ("paper_mode", "real_data", "bot_mode", "bot_online", "open_positions", "trading_enabled")})
+              names = lv.wallet_key_names(b)
+              print("variabili sola lettura (presenti e non vuote):", {n: bool((os.environ.get(n) or "").strip()) for n in names})
+          try:
+              import ccxt
+          except Exception as e:
+              ccxt = None
+              print("ccxt non disponibile:", e)
+          def scrub(s, vals):
+              for v in vals:
+                  if v:
+                      s = s.replace(v, "***")
+              return s
+          if ccxt:
+              for b in ("hawk", "bull"):
+                  creds = lv.wallet_credentials(os.environ, b)
+                  if creds is None:
+                      print("Bitget %s sola lettura: chiavi mancanti o vuote, nessuna prova" % b)
+                      continue
+                  try:
+                      c = ccxt.bitget({"apiKey": creds[0], "secret": creds[1], "password": creds[2], "options": {"defaultType": "swap"}, "timeout": 12000})
+                      c.fetch_balance()
+                      print("Bitget %s sola lettura: OK, il saldo si legge da Singapore (importi non mostrati)" % b)
+                  except Exception as e:
+                      print("Bitget %s sola lettura: ERRORE %s: %s" % (b, type(e).__name__, scrub(str(e), creds)[:260]))
+          PY
+          REMOTE
+          } > $OUT 2>&1
+          rm -f ~/.ssh/id_sg
+          cat $OUT
+
+      - name: Committa risultato
+        run: |
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add deploy/sg-bots-check-output.txt
+          git diff --staged --quiet || git commit -m "check: stato bot e pagina Live [skip ci]"
+          git pull --rebase origin rule-pool
+          git push origin rule-pool
