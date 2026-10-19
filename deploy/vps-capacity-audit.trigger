@@ -1,1 +1,1 @@
-One-time authorized capacity audit; no service changes.
+2026-10-19 verifica workflow spostato
