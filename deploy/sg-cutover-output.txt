@@ -1,0 +1,59 @@
+### Passaggio finale 2026-10-19T06:34:55Z
+
+== 1. Attesa del cambio DNS di superbot-trading.duckdns.org -> 51.79.205.82 (controllo ogni 30 s, max 2 ore) ==
+ancora in attesa... (cloudflare=51.91.109.45 google=51.91.109.45)
+ancora in attesa... (cloudflare=51.91.109.45 google=51.91.109.45)
+DNS passato a Singapore dopo 1200 s (cloudflare=51.79.205.82 google=51.79.205.82)
+
+== 2. Controllo che Singapore risponda bene COL DOMINIO (prima di fermare Strasburgo) ==
+health: {"status":"ok","mode":"paper","version":"1.0.0","desk_mode":"paper","build":"2026-10-15-live-needs-live-bot"}
+desk/health: {"available":true,"portfolio":"hawk","bot_online":true,"bot_mode":"running","halt":null,"version":"b4709d1","last_ok":true}
+desk/bull/health: {"available":true,"portfolio":"bull","bot_online":true,"bot_mode":"running","halt":null,"version":"b4709d1","last_ok":true}
+
+== 3. Strasburgo: stop (reversibile) di app e tunnel verso Singapore ==
+Warning: Permanently added '51.91.109.45' (ED25519) to the list of known hosts.
+superbot
+superbot-api-tunnel-net
+Removed '/etc/systemd/system/multi-user.target.wants/superbot-api-tunnel.service'.
+hitv-backend | Up 19 hours (healthy)
+superbot | Exited (0) 22 seconds ago
+superbot-api-tunnel-net | Exited (137) 3 seconds ago
+superbot-desk-bull | Exited (137) 32 hours ago
+superbot-desk-hawk | Exited (137) 32 hours ago
+superbot-work-rollback-r39119231791a1 | Exited (0) 20 hours ago
+superbot-desk | Exited (137) 6 days ago
+superbot-pool | Exited (137) 25 minutes ago
+superbot-staging | Up 19 hours
+
+== 4. Copia finale del DB app (Strasburgo ora fermo) ==
+Strasburgo integrity_check: ok
+DB ricevuto: sha256=369613638a3e0fdd...
+Warning: Permanently added '51.79.205.82' (ED25519) to the list of known hosts.
+Singapore integrity_check: ok
+{"status":"ok","mode":"paper","version":"1.0.0","desk_mode":"paper","build":"2026-10-15-live-needs-live-bot"} <- app riavviata col DB finale
+
+== 5. Certificato HTTPS definitivo su Singapore ==
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+subject=CN = superbot-trading.duckdns.org
+notAfter=Jan 17 05:57:52 2027 GMT
+enabled
+  Certificate Name: superbot-trading.duckdns.org
+    Expiry Date: 2027-01-17 05:57:52+00:00 (VALID: 89 days)
+
+== 6. Verifica finale col dominio vero ==
+frontend: HTTP 200, certificato valido=0 (0=ok)
+api/health: {"status":"ok","mode":"paper","version":"1.0.0","desk_mode":"paper","build":"2026-10-15-live-needs-live-bot"}
+desk/health: {"available":true,"portfolio":"hawk","bot_online":true,"bot_mode":"running","halt":null,"version":"b4709d1","last_ok":true}
+
+desk/bull/health: {"available":true,"portfolio":"bull","bot_online":true,"bot_mode":"running","halt":null,"version":"b4709d1","last_ok":true}
+
+senza login /api/desk/status (atteso 401): HTTP 401
+scadenza certificato servito: notAfter=Jan 17 05:57:52 2027 GMT
+conflitti Telegram nei log dell'app: 0
+superbot-pool | Up 25 minutes (healthy)
+superbot | Up 49 seconds
+superbot-desk-api | Up 3 hours (unhealthy)
+superbot-desk-bull | Up 3 hours (healthy)
+superbot-desk-hawk | Up 3 hours (healthy)
+== PASSAGGIO COMPLETATO ==
