@@ -1,7 +1,7 @@
-### Prova sicurezza deploy 2026-10-19T08:43:07Z
+### Prova sicurezza deploy 2026-10-19T09:45:52Z
 
 ## A. Riavvii
-VPS acceso dal: 2026-10-19 04:09:48  (ora: 2026-10-19T08:42:53Z)
+VPS acceso dal: 2026-10-19 04:09:48  (ora: 2026-10-19T09:45:38Z)
 Ultimi riavvii/spegnimenti registrati:
 reboot   system boot  6.8.0-147-generi Mon Oct 19 04:09   still running
 shutdown system down  6.8.0-147-generi Mon Oct 19 04:03 - 04:09  (00:06)
@@ -30,36 +30,39 @@ PUB rsa ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCs
 3.5M	/opt/superbot-desk-data/bull
 16M	/opt/superbot-pool-data
 68K	/opt/superbot/data
-324K	/opt/superbot-backups
+6.7M	/opt/superbot-backups
 /dev/sda1        38G  3.6G   35G  10% /
 
 ## D. Backup DB (app e pool)
-BACKUP DB OK: superbot-deploy-20261019-084254.db
-  dimensione 65536 byte, sha256 cd64269a3ad1d7f4...
-  integrity_check: ok | tabelle: 6 | righe totali: 11
-  prova di ripristino: identico, riaperto, integrita' e righe uguali
-  copie con prefisso 'superbot-deploy' conservate: 1 (eliminate le piu' vecchie: 0)
+BACKUP DB OK: superbot-deploy-20261019-094539.db
+  dimensione 65536 byte, sha256 2f8f5bd458fd959a...
+  integrity_check: ok | oggetti nello schema: 15 | tabelle: 6 | righe totali: 11
+  schema completo identico al database vivo | prova di ripristino: identico, riaperto, integrita', schema e righe uguali
+  copie con prefisso 'superbot-deploy' conservate: 2 (eliminate le piu' vecchie: 0)
 uscita app: 0
-BACKUP DB OK: pool-20261019-084254.db
-  dimensione 73728 byte, sha256 4125bcd471286e40...
-  integrity_check: ok | tabelle: 5 | righe totali: 129
-  prova di ripristino: identico, riaperto, integrita' e righe uguali
-  copie con prefisso 'pool' conservate: 1 (eliminate le piu' vecchie: 0)
+BACKUP DB OK: pool-20261019-094539.db
+  dimensione 73728 byte, sha256 b57d01099ed00c81...
+  integrity_check: ok | oggetti nello schema: 6 | tabelle: 5 | righe totali: 129
+  schema completo identico al database vivo | prova di ripristino: identico, riaperto, integrita', schema e righe uguali
+  copie con prefisso 'pool' conservate: 2 (eliminate le piu' vecchie: 0)
 uscita pool: 0
 
 ## E. Backup cervello Hawk e Bull
-BACKUP CERVELLO: bots-20261019-084254-prova
-  hawk: 13 file | learning_log.jsonl 2087 righe, lessons.md 21 righe, trade_history.jsonl 112 righe
-  bull: 11 file | learning_log.jsonl 2712 righe, lessons.md 28 righe, trade_history.jsonl 47 righe
-  prova di ripristino: ogni file riletto, hash e righe uguali al manifesto
-  copie dei bot conservate: 1 (eliminate le piu' vecchie: 0)
+BACKUP CERVELLO: bots-20261019-094539-prova
+  hawk: 13 file | learning_log.jsonl 2089 righe, lessons.md 21 righe, trade_history.jsonl 112 righe
+  bull: 11 file | learning_log.jsonl 2714 righe, lessons.md 28 righe, trade_history.jsonl 47 righe
+  hawk: tra due cicli (cicli fatti 13, prossimo tra 271 s)
+  bull: tra due cicli (cicli fatti 13, prossimo tra 1216 s)
+  coerenza: finestra stabile al tentativo 1 (quiete di 583.9 s, nessuna modifica ai file centrali ne' ai cicli durante la copia); confine di ciclo VERIFICATO
+  prova di ripristino: ogni file riletto, hash, righe e JSON uguali al manifesto
+  copie dei bot conservate: 2 (eliminate le piu' vecchie: 0)
 RISULTATO: OK
 uscita cervello: 0
 
 ## E2. Bot dopo la prova (devono essere invariati)
-superbot-desk-api | Up 5 hours (unhealthy)
-superbot-desk-bull | Up 5 hours (healthy)
-superbot-desk-hawk | Up 5 hours (healthy)
+superbot-desk-api | Up 6 hours (unhealthy)
+superbot-desk-bull | Up 6 hours (healthy)
+superbot-desk-hawk | Up 6 hours (healthy)
 
 ## F1. ssh normale con chiave host verificata (known_hosts)
   [ssh-ed25519] uscita=0 | OK-chiave-verificata
