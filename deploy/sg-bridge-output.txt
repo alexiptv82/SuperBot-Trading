@@ -1,0 +1,25 @@
+### Ponte - azione controllo - 2026-10-19T10:34:45Z
+
+## CONTROLLO INIZIALE DEL PONTE (sola lettura)
+container del ponte: superbot-desk-api, superbot-desk-api-retained-r39119231791a1
+  superbot-desk-api: in esecuzione=True | riavvio=unless-stopped | immagine=superbot-work-desk-api:r39119231791a1 | salute=unhealthy | porte={"8001/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18002"}]}
+  cartelle montate (solo nomi): /opt/superbot-app-link/releases/r39119231791a1 -> /app/app_link [ro]; /opt/superbot-desk-data/bull -> /opt/superbot-desk-data/bull [rw]; /opt/superbot-desk-data/hawk -> /opt/superbot-desk-data/hawk [rw]
+  container di rollback (NON si toccano): superbot-desk-api-retained-r39119231791a1
+ascolto su 127.0.0.1:18002: SI
+
+## authorized_keys (/home/ubuntu/.ssh/authorized_keys)
+  riga 1 | ssh-ed25519 | SHA256:+F1S6xYpJeMEjo1uYx7Qf2r4FKvFfTXirOErqCKoWzE | altra chiave | opzioni: nessuna
+  riga 2 | ssh-ed25519 | SHA256:QYN9IaIfgDfWquzuYrIG0gHRhC7r3XEUC8UhtH4nbNY | TUNNEL commento=superbot-app-link-r39119231791a1 opzioni=from="51.91.109.45",restrict,port-forwarding,permitopen="127.0.0.1:18002",permitlisten="127.0.0.1:18002",command="/bin/false"
+righe che sembrano la chiave del tunnel: 1 -> impronta SHA256:QYN9IaIfgDfWquzuYrIG0gHRhC7r3XEUC8UhtH4nbNY
+
+## backup esterno
+  NON ANCORA: nessuno stato del backup esterno (/opt/superbot-extbackup/status.json)
+
+## app e bot (devono restare come sono)
+  superbot: {"id": "17b104323524423adcc60b9d6f64ea3b58353400d67caf0601d467c21f7ef8b3", "running": true, "started": "2026-10-19T06:55:54.594827234Z", "restarts": 0, "restart_policy": "always", "image": "superbot", "health": null}
+  superbot-desk-hawk: {"id": "c6cf35e68187468f6c993426e331bf000e32d98b543df816133174f248e5e915", "running": true, "started": "2026-10-19T04:09:59.421624307Z", "restarts": 0, "restart_policy": "unless-stopped", "image": "superbot-desk:singapore", "health": "healthy"}
+  superbot-desk-bull: {"id": "d66ce018391f06d901461575c5c4599d47977ea332236452257603a06a527d8e", "running": true, "started": "2026-10-19T04:09:59.422223038Z", "restarts": 0, "restart_policy": "unless-stopped", "image": "superbot-desk:singapore", "health": "healthy"}
+  superbot-pool: {"id": "010608bce3b38813d504d0d58491ca422146ebd529a99e62bcf402b9cdff20ea", "running": true, "started": "2026-10-19T06:31:13.782547387Z", "restarts": 0, "restart_policy": "unless-stopped", "image": "superbot-pool", "health": "healthy"}
+
+ESITO: NON ancora pronto: vedi sopra
+uscita remota: 0
