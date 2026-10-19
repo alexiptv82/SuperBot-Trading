@@ -1,1 +1,1 @@
-2026-10-19T03:58:00Z fix-remove-invalid-param
+2026-10-19T04:09:00Z test-chiave-singapore-corretta
