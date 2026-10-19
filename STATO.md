@@ -1,7 +1,7 @@
 # STATO di SuperBot Trading
 
 **Aggiornato:** lunedì 19 ottobre 2026, ~14:45 (ora di Roma) — da Claude.
-**In corso:** sidecar PM richiesto per entrambi, preparazione sospesa sul contratto come richiesto dall'utente: collisione dimostrata nella chiave parziali `(id, close_ms)`. Prova commit `6594a9a`, da confronto con Claude. Nessun deploy.
+**In corso:** ChatGPT implementa sidecar PM separato su work/profit-manager. Contratto parziali corretto e confermato da Claude/utente il 19/10 alle 18:28; nessun deploy o nuova run.
 
 ## In una frase
 Il bot di trading su futures Bitget (due portafogli, Hawk e Bull, più un pool di regole) e la sua app girano **tutti su un unico server a Singapore, in modalità paper** (soldi finti). La migrazione da Strasburgo è finita il 19 ottobre. Il live con soldi veri non è attivo e non è in programma finché l'utente non lo decide.
