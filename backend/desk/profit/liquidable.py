@@ -26,6 +26,14 @@ class Leg:
 
 @dataclass(frozen=True)
 class PositionView:
+    """Only open residual quantities and their allocated remaining entry fees.
+
+    Exclude fully closed legs. For a partially closed leg pass its remaining
+    qty and remaining open_fee, never the original full amounts. funding_paid
+    is accrued funding allocated to the residual position, NOT lifecycle
+    funding already charged inside realized_net. This pure view cannot infer
+    allocation correctness from numbers alone; the source adapter must prove it.
+    """
     side: int
     legs: tuple[Leg, ...]
     funding_paid: float

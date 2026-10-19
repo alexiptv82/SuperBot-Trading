@@ -153,6 +153,23 @@ class ProfitTests(unittest.TestCase):
         self.assertEqual((d.state.name, d.state.floor_usd, d.state.peak_usd, d.action), ("CONGELATO",10,20,"HOLD"))
         self.assertEqual(self.advance(d.state, net=9, at=1260000).action, "ESCI")
 
+    def test_armed_freeze_resume_without_rearming(self):
+        armed = self.advance(self.advance().state, at=1260000).state
+        self.assertEqual(armed.name, "ARMATO")
+        frozen = self.advance(armed, features=replace(feature(1320000), valid=False, reason="stale")).state
+        self.assertEqual((frozen.name, frozen.resume), ("CONGELATO", "ARMATO"))
+        repeated = self.advance(frozen, features=replace(feature(1380000), valid=False, reason="missing_bar")).state
+        self.assertEqual(repeated, frozen)
+        resumed = self.advance(repeated, at=1440000)
+        self.assertEqual((resumed.state.name, resumed.action), ("PROTETTO", "STRINGI"))
+        self.assertEqual(resumed.state.confirmations, armed.confirmations)
+
+    def test_exit_remains_terminal_when_stale(self):
+        exited = State(name="USCITA", floor_usd=10, peak_usd=20)
+        result = self.advance(exited, features=replace(feature(), valid=False, reason="stale"))
+        self.assertEqual(result.state, exited)
+        self.assertEqual(result.action, "HOLD")
+
     def test_reversal_requires_two_families(self):
         s = State(name="ARMATO")
         self.assertNotEqual(self.advance(s, reversal=Reversal(1,("momentum","momentum"),())).action, "ESCI")
