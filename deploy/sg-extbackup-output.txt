@@ -1,26 +1,25 @@
-### Backup esterno cifrato - azione run - 2026-10-19T11:11:46Z
+### Backup esterno cifrato - azione run - 2026-10-19T11:20:05Z
 
-## RUN backup esterno (2026-10-19T11:11:43Z)
+## RUN backup esterno (2026-10-19T11:19:52Z)
 copia verificata del database app ...
-  BACKUP DB OK: app-20261019-111143.db
+  BACKUP DB OK: app-20261019-111952.db
 copia verificata del database pool ...
-  BACKUP DB OK: pool-20261019-111144.db
+  BACKUP DB OK: pool-20261019-111952.db
 copia verificata del cervello (tentativo 1) ...
 creo l'archivio e lo cifro con age ...
-ERRORE BACKUP ESTERNO: comando fallito (git clone -q): git@github.com: Permission denied (publickey).
-fatal: Could not read from remote repository.
-
-Please make sure you have the correct access rights
-and the repository exists.
-RISULTATO: FALLITO. Nessun archivio e' stato considerato inviato.
-uscita: 1
+RISULTATO: OK  archivio superbot-backup-20261019T111952Z.tar.gz.age  378627 byte  sha256 9501398220ebfd9e172fdb0f2846f1a4e964d66e18bb70386c2c3ca4409de911
+uscita: 0
 --- stato ---
 {
- "ultimo_errore": "comando fallito (git clone -q): git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.",
- "ultimo_tentativo": "2026-10-19T11:11:43Z"
+ "archivio": "superbot-backup-20261019T111952Z.tar.gz.age",
+ "dimensione": 378627,
+ "sha256": "9501398220ebfd9e172fdb0f2846f1a4e964d66e18bb70386c2c3ca4409de911",
+ "ultimo_errore": null,
+ "ultimo_successo": "2026-10-19T11:19:52Z",
+ "ultimo_tentativo": "2026-10-19T11:19:52Z"
 }--- timer ---
 NEXT                        LEFT LAST PASSED UNIT                     ACTIVATES
 Tue 2026-10-20 03:21:40 UTC  16h -         - superbot-extbackup.timer superbot-extbackup.service
 
 1 timers listed.
-uscita remota: 1
+uscita remota: 0
