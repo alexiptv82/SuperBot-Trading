@@ -4,6 +4,8 @@ name: SuperBot App - Deploy su Singapore
 # (51.79.205.82), indipendente da Strasburgo. Replica fedelmente il deploy
 # originale (deploy.yml): stesse porte, stessi volumi, stesse variabili.
 #
+# PERCORSO UFFICIALE per rilasciare l'app (dal 19/10): il merge su main NON rilascia piu' da solo.
+# Deploya il codice di main. Stesso gruppo di concorrenza di deploy.yml (main).
 # NON tocca superbot-desk-hawk / superbot-desk-bull (nessun redeploy dei bot).
 # Prima di tutto: backup SQLite verificato (si ferma se fallisce); chiave del
 # server SSH verificata; immagine precedente conservata come superbot:prev.
@@ -15,6 +17,11 @@ on:
     branches: [rule-pool]
     paths:
       - "deploy/superbot-sg-deploy.trigger"
+
+# Un solo rilascio alla volta (stesso gruppo anche tra workflow diversi dello stesso componente).
+concurrency:
+  group: superbot-app-singapore
+  cancel-in-progress: false
 
 jobs:
   deploy:

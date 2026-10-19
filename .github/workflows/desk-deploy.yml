@@ -17,6 +17,11 @@ on:
     paths:
       - "deploy/desk-deploy.trigger"
 
+# Un solo rilascio alla volta (stesso gruppo anche tra workflow diversi dello stesso componente).
+concurrency:
+  group: superbot-desk-singapore
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
