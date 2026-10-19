@@ -1,0 +1,88 @@
+### Prova sicurezza deploy 2026-10-19T08:43:07Z
+
+## A. Riavvii
+VPS acceso dal: 2026-10-19 04:09:48  (ora: 2026-10-19T08:42:53Z)
+Ultimi riavvii/spegnimenti registrati:
+reboot   system boot  6.8.0-147-generi Mon Oct 19 04:09   still running
+shutdown system down  6.8.0-147-generi Mon Oct 19 04:03 - 04:09  (00:06)
+reboot   system boot  6.8.0-147-generi Mon Oct 19 03:06 - 04:03  (00:56)
+shutdown system down  6.8.0-136-generi Mon Oct 19 02:58 - 03:06  (00:08)
+reboot   system boot  6.8.0-136-generi Sat Oct 17 18:47 - 02:58 (1+08:10)
+shutdown system down  6.8.0-136-generi Sat Aug  1 01:16 - 18:47 (77+17:31)
+Container (avvio, riavvii automatici, memoria esaurita):
+  /superbot-pool avviato=2026-10-19T06:31:13.782547387Z riavvii=0 oom=false
+  /superbot avviato=2026-10-19T06:55:54.594827234Z riavvii=0 oom=false
+  /superbot-desk-api avviato=2026-10-19T04:09:59.420484074Z riavvii=0 oom=false
+  /superbot-desk-api-retained-r39119231791a1 avviato=2026-10-18T10:21:48.992142024Z riavvii=0 oom=false
+  /superbot-desk-bull avviato=2026-10-19T04:09:59.422223038Z riavvii=0 oom=false
+  /superbot-desk-hawk avviato=2026-10-19T04:09:59.421624307Z riavvii=0 oom=false
+
+## B. Chiavi pubbliche SSH del server
+FP ecdsa SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+PUB ecdsa ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+FP ed25519 SHA256:bocotz2mKh8rI/hgsqIUArcq8l8933UP0QWnwfaLrfs
+PUB ed25519 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+FP rsa SHA256:9+f1od1U3VP/GT4HCiKYNDB26YpXmmn8MyT1wbfIWB8
+PUB rsa ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
+
+## C. Dimensioni e spazio
+2.8M	/opt/superbot-desk-data/hawk
+3.5M	/opt/superbot-desk-data/bull
+16M	/opt/superbot-pool-data
+68K	/opt/superbot/data
+324K	/opt/superbot-backups
+/dev/sda1        38G  3.6G   35G  10% /
+
+## D. Backup DB (app e pool)
+BACKUP DB OK: superbot-deploy-20261019-084254.db
+  dimensione 65536 byte, sha256 cd64269a3ad1d7f4...
+  integrity_check: ok | tabelle: 6 | righe totali: 11
+  prova di ripristino: identico, riaperto, integrita' e righe uguali
+  copie con prefisso 'superbot-deploy' conservate: 1 (eliminate le piu' vecchie: 0)
+uscita app: 0
+BACKUP DB OK: pool-20261019-084254.db
+  dimensione 73728 byte, sha256 4125bcd471286e40...
+  integrity_check: ok | tabelle: 5 | righe totali: 129
+  prova di ripristino: identico, riaperto, integrita' e righe uguali
+  copie con prefisso 'pool' conservate: 1 (eliminate le piu' vecchie: 0)
+uscita pool: 0
+
+## E. Backup cervello Hawk e Bull
+BACKUP CERVELLO: bots-20261019-084254-prova
+  hawk: 13 file | learning_log.jsonl 2087 righe, lessons.md 21 righe, trade_history.jsonl 112 righe
+  bull: 11 file | learning_log.jsonl 2712 righe, lessons.md 28 righe, trade_history.jsonl 47 righe
+  prova di ripristino: ogni file riletto, hash e righe uguali al manifesto
+  copie dei bot conservate: 1 (eliminate le piu' vecchie: 0)
+RISULTATO: OK
+uscita cervello: 0
+
+## E2. Bot dopo la prova (devono essere invariati)
+superbot-desk-api | Up 5 hours (unhealthy)
+superbot-desk-bull | Up 5 hours (healthy)
+superbot-desk-hawk | Up 5 hours (healthy)
+
+## F1. ssh normale con chiave host verificata (known_hosts)
+  [ssh-ed25519] uscita=0 | OK-chiave-verificata
+  [ecdsa-sha2-nistp256] uscita=0 | OK-chiave-verificata
+Controprova con una chiave SBAGLIATA (deve rifiutare la connessione):
+  uscita=255 | @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
+Someone could be eavesdropping on you right now (man-in-the-middle attack)!
+It is also possible that a host key has just been changed.
+The fingerprint for the ED25519 key sent by the remote host is
+SHA256:bocotz2mKh8rI/hgsqIUArcq8l8933UP0QWnwfaLrfs.
+Please contact your system administrator.
+Add correct host key in /tmp/kh_fake to get rid of this message.
+Offending ED25519 key in /tmp/kh_fake:1
+  remove with:
+  ssh-keygen -f '/tmp/kh_fake' -R '51.79.205.82'
+Host key for 51.79.205.82 has changed and you have requested strict checking.
+Host key verification failed.
+
+## F2. appleboy/ssh-action: esito per ogni impronta
+  ECDSA   : success
+  ED25519 : failure
+  RSA     : failure
+  SBAGLIATA (deve fallire): failure
