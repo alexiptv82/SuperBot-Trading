@@ -1,2 +1,2 @@
-2026-10-19 backup esterno: status dopo le correzioni (deve solo leggere)
-azione=status
+2026-10-19 backup esterno: run con verifica a clone nuovo e versioni in esecuzione
+azione=run
