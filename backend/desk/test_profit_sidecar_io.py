@@ -108,7 +108,7 @@ class SidecarIOTests(unittest.TestCase):
         self.write()
         snap,view,costs,_=snapshot(self.obs(),p)
         self.assertEqual(view.reference_margin,280)
-        self.assertAlmostEqual(view.funding_paid,10*100*.0001*3600000/28800000)
+        self.assertAlmostEqual(view.funding_paid,10*100*.0001*3599000/28800000)  # clock = engine cycle start (price_ms), not cycle end
         self.assertEqual(costs.slippage_fraction,.0002)
         self.assertEqual(snap["legs"],2)
 

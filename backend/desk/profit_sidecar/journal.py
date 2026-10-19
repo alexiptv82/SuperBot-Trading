@@ -66,10 +66,14 @@ class Journal:
             self.segment += 1
             path = self.root / f"events-{self.segment:08d}.jsonl"
         fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, "ab") as stream:
-            stream.write(line)
-            stream.flush()
-            os.fsync(stream.fileno())
+        try:
+            # Raw write loop: a buffered stream may split a large line into several syscalls.
+            view = memoryview(line)
+            while view:
+                view = view[os.write(fd, view):]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
         directory = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(directory)

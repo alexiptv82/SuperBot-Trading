@@ -36,16 +36,33 @@ def closed_records(observation, previous_hashes):
             continue
         all_position = [r for r in rows[:i+1] if matching(r, row)]
         realized = sum(numeric(r["net"]) for r in all_position)
+        # Independent internal check: the engine stores net_r = net / risk_plan_usd on every record
+        # (additive). It is rounded to 4 decimals, so compare in dollars with a small tolerance.
+        # Tri-state: True / False / None when the records carry no usable net_r.
+        risk = row.get("risk_plan_usd")
+        try:
+            usable = isinstance(risk, (int, float)) and risk > 0 and all(isinstance(r.get("net_r"), (int, float)) for r in all_position)
+            reconciled = (abs(sum(r["net_r"] for r in all_position) * risk - realized) <= 0.01 * len(all_position) + 0.01) if usable else None
+        except (TypeError, ValueError):
+            reconciled = None
         outcomes.append({"ev": "actual_outcome", "event_id": sha([observation.run_key, i, hashes[i]]),
                          "position_key": key, "closed_index": i, "record_hash": hashes[i],
                          "record": row, "lifecycle_net_usd": realized,
-                         "reconciled": True, "partial": row.get("partial") is True})
+                         "reconciled": reconciled, "partial": row.get("partial") is True})
     return hashes, outcomes
 
 
 def snapshot(observation, pos, *, previous_cycle_end=None, prudent_spread_bp=4.0, prudent_extra_slip_bp=3.0):
-    state, now = observation.state, observation.asof_ms
+    state = observation.state
     key = identity(observation.run_key, pos)
+    # The engine stamps last_prices_ms with the cycle's own clock (cycle start) and takes the price
+    # from the last, possibly still forming, candle. Evaluate at that clock, and refuse a price that
+    # was not produced by this cycle (e.g. candle download failed and the old dict survived).
+    price_ms = integer(state.get("last_prices_ms"), 1)
+    hb = observation.heartbeat
+    if price_ms > hb["last_end_ms"] or price_ms < hb["last_start_ms"] - 5000:
+        raise Freeze("mark_price_not_from_this_cycle")
+    now = price_ms
     if pos["open_ms"] < state["run_started_ms"] or pos["open_ms"] > now:
         raise Freeze("position_time_inconsistent")
     side = pos.get("side")
@@ -66,9 +83,6 @@ def snapshot(observation, pos, *, previous_cycle_end=None, prudent_spread_bp=4.0
     costs = Costs(numeric(limits.get("fee_bp_side"))/10000, 0, numeric(limits.get("slip_bp_side"))/10000)
     prudent = Costs(costs.fee_rate, prudent_spread_bp/10000, costs.slippage_fraction+prudent_extra_slip_bp/10000)
     price = numeric(state.get("last_prices", {}).get(pos["symbol"]), positive=True)
-    price_ms = integer(state.get("last_prices_ms"), 1)
-    if price_ms > now:
-        raise Freeze("future_reference_price")
     lower = previous_cycle_end if previous_cycle_end is not None else observation.heartbeat["last_start_ms"]-1
     dca_in_window = any(integer(d.get("added_ms"), 1) > lower for d in levels)
     partial_in_window = any(r["close_ms"] > lower for r in partials)
@@ -78,7 +92,8 @@ def snapshot(observation, pos, *, previous_cycle_end=None, prudent_spread_bp=4.0
         ambiguous = True
     fields = {k: pos.get(k) for k in ("id", "symbol", "open_ms", "liq", "leverage", "trade_type", "source", "pending_split", "entry0", "legs", "dca_count", "sl", "tp")}
     snap = {**fields, "position_key": key, "run_key": observation.run_key,
-            "asof_ms": now, "cycle": observation.heartbeat["cycles"],
+            "asof_ms": now, "eval_clock": "engine_cycle_start", "cycle_end_ms": hb["last_end_ms"],
+            "cycle": hb["cycles"],
             "aggregate_leg": {"entry": entry, "qty": qty, "open_fee": fee},
             "reference_margin": reference, "current_margin": numeric(pos.get("total_margin"), positive=True),
             "realized_net": realized, "partial_occurrences": len(partials),

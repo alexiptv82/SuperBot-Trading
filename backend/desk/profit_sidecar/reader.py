@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from .common import Freeze, decode, sha, numeric, integer
 
-TOKEN_FIELDS = ("started_ms", "cycles", "last_start_ms", "last_end_ms", "cycle_running", "exec_mode", "portfolio", "last_ok", "open_positions")
+TOKEN_FIELDS = ("started_ms", "cycles", "last_start_ms", "last_end_ms", "cycle_running", "exec_mode", "portfolio", "last_ok", "open_positions", "version")
 
 
 def read_bytes(path):
@@ -62,7 +62,7 @@ def read_consistent(root, portfolio, now_ms, *, max_heartbeat_age_ms=120000, max
         raise Freeze("state_heartbeat_disagree")
     if not isinstance(state["main"].get("closed"), list):
         raise Freeze("closed_schema")
-    token = {k: first[k] for k in TOKEN_FIELDS}
+    token = {k: first.get(k) for k in TOKEN_FIELDS}
     run_key = f"{portfolio}:{run}:{run_start}"
     cycle_key = sha([run_key, token])
     # Ignore the frequently refreshed ts in deterministic records; age was checked.
