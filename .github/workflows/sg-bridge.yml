@@ -1,0 +1,97 @@
+name: SuperBot - Ritiro del ponte (Singapore)
+
+# Ritiro REVERSIBILE del "ponte" temporaneo del 18/10 (container superbot-desk-api + chiave SSH del tunnel).
+# Strumento: deploy/scripts/bridge_retire.py (provato con deploy/scripts/test_bridge_retire.py).
+# Non cancella dati, backup ne' container di rollback; non tocca HI-TV; non riavvia app, bot o pool.
+#
+# Azione dalla riga "azione=..." di deploy/sg-bridge.trigger:
+#   controllo : SOLA LETTURA. Stato del ponte, righe di authorized_keys (solo tipo, impronta e nome delle opzioni),
+#               stato del backup esterno, stato di app e bot. Stampa l'impronta della chiave del tunnel.
+#   ritira    : serve anche la riga "chiave=SHA256:..." (l'impronta stampata dal controllo) e parte solo se il
+#               primo backup esterno e' verificato. Copia di sicurezza, ferma e RINOMINA il container, toglie
+#               SOLO quella riga da authorized_keys, controllo finale; se qualcosa non torna rimette tutto com'era.
+#   ripristina: rimette il ponte com'era (riga della chiave, nome e riavvio del container) dalla copia di sicurezza.
+# Il risultato va in deploy/sg-bridge-output.txt.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/sg-bridge.trigger"
+
+concurrency:
+  group: superbot-app-singapore
+  cancel-in-progress: false
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Esegui l'azione richiesta sul VPS
+        id: act
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -e
+          ACT="$(grep -E '^azione=' deploy/sg-bridge.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          case "$ACT" in
+            controllo) CMD=check ;;
+            ritira) CMD=retire ;;
+            ripristina) CMD=restore ;;
+            *) echo "ERRORE: nel file trigger serve una riga azione=controllo|ritira|ripristina"; exit 1 ;;
+          esac
+          echo "azione=$ACT" >> "$GITHUB_OUTPUT"
+          FP="$(grep -E '^chiave=' deploy/sg-bridge.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          if [ "$ACT" = ritira ]; then
+            if ! printf '%s' "$FP" | grep -Eq '^SHA256:[A-Za-z0-9+/]{43}$'; then
+              echo "ERRORE: per ritirare serve una riga chiave=SHA256:... (l'impronta stampata dal controllo)"; exit 1
+            fi
+          else
+            FP=""
+          fi
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          # Chiavi pubbliche del server Singapore (non sono segrete). Se il server
+          # presenta una chiave diversa, la connessione viene rifiutata.
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          51.79.205.82 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
+          KH
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools && chmod 700 /opt/superbot-tools'
+          scp $SSHO deploy/scripts/bridge_retire.py root@51.79.205.82:/opt/superbot-tools/
+          set +e
+          ssh $SSHO root@51.79.205.82 "/usr/bin/python3 -I /opt/superbot-tools/bridge_retire.py $CMD ${FP:+--fingerprint $FP}" > /tmp/bridge_remote.txt 2>&1
+          RC=$?
+          echo "uscita remota: $RC" >> /tmp/bridge_remote.txt
+          rm -f ~/.ssh/id_sg
+          cat /tmp/bridge_remote.txt
+          # il workflow diventa rosso se l'azione sul VPS non e' riuscita (il risultato viene scritto comunque)
+          exit $RC
+
+      - name: Scrivi il risultato
+        if: always()
+        run: |
+          OUT=deploy/sg-bridge-output.txt
+          {
+            echo "### Ponte - azione ${{ steps.act.outputs.azione }} - $(date -u +%FT%TZ)"
+            echo
+            cat /tmp/bridge_remote.txt 2>/dev/null || echo "(nessun output dal VPS)"
+          } > "$OUT"
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add "$OUT"
+          git diff --staged --quiet || git commit -m "check: ponte [skip ci]"
+          git pull --rebase origin rule-pool
+          git push origin rule-pool

@@ -504,5 +504,45 @@ class ExtBackupWorkflowTests(unittest.TestCase):
         self.assertRegex(body, r"(?m)^age1[0-9a-z]{58}$")
 
 
+class BridgeWorkflowTests(unittest.TestCase):
+    """sg-bridge.yml: tre azioni, impronta validata prima di arrivare al server, host verificato, niente cancellazioni."""
+
+    def wf(self):
+        with open(os.path.join(REPO, ".github", "workflows", "sg-bridge.yml")) as f:
+            return f.read()
+
+    def test_only_three_actions_and_fingerprint_is_validated_before_use(self):
+        t = self.wf()
+        for a in ("controllo) CMD=check", "ritira) CMD=retire", "ripristina) CMD=restore"):
+            self.assertIn(a, t)
+        self.assertIn("azione=controllo|ripristina|ritira".replace("ripristina|ritira", "ritira|ripristina"), t)
+        self.assertIn("grep -Eq '^SHA256:[A-Za-z0-9+/]{43}$'", t)
+        # fuori da "ritira" l'impronta viene azzerata: non arriva mai al server
+        self.assertIn('else\n            FP=""', t)
+        self.assertIn("${FP:+--fingerprint $FP}", t)
+
+    def test_runs_only_on_its_trigger_and_is_serialized_with_app_deploys(self):
+        t = self.wf()
+        self.assertRegex(t, r'paths:\s*\n\s*- "deploy/sg-bridge.trigger"')
+        self.assertIn("group: superbot-app-singapore", t)
+        self.assertIn("cancel-in-progress: false", t)
+
+    def test_server_identity_is_verified_and_the_ssh_key_is_removed(self):
+        t = self.wf()
+        self.assertIn("StrictHostKeyChecking=yes", t)
+        self.assertNotIn("StrictHostKeyChecking=no", t)
+        self.assertNotIn("accept-new", t)
+        self.assertIn("rm -f ~/.ssh/id_sg", t)
+        self.assertIn("/usr/bin/python3 -I /opt/superbot-tools/bridge_retire.py", t)
+
+    def test_the_workflow_itself_never_deletes_or_touches_other_things(self):
+        # solo le righe eseguibili: nei commenti si puo' spiegare cosa fa lo strumento
+        t = "\n".join(l for l in self.wf().splitlines() if not l.strip().startswith("#"))
+        for bad in ("docker rm", "docker system", "docker volume", "rm -rf", "hitv", "authorized_keys"):
+            self.assertNotIn(bad, t.lower() if bad.islower() else t)
+        self.assertEqual(t.count("root@51.79.205.82"), 3)       # mkdir, scp, esecuzione: nient'altro
+        self.assertNotIn("51.91.109.45", t)                      # Strasburgo (HI-TV) non viene mai contattato
+
+
 if __name__ == "__main__":
     unittest.main()
