@@ -55,6 +55,8 @@ jobs:
           BITGET_BULL_PASSPHRASE: ${{ secrets.BITGET_BULL_PASSPHRASE }}
         with:
           host: 51.79.205.82
+          # Impronta ECDSA del server Singapore: se cambia, la connessione viene rifiutata.
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           connect_timeout: 90s
