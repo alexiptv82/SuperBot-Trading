@@ -1,0 +1,164 @@
+name: Passaggio finale a Singapore (parte da solo quando il DNS cambia)
+
+# Aspetta che superbot-trading.duckdns.org punti a Singapore (51.79.205.82).
+# SOLO DOPO, e solo se l'app su Singapore risponde bene via HTTPS:
+#   1. ferma (senza rimuovere) l'app e il tunnel a Strasburgo
+#   2. ricopia il DB dell'app (ora fermo, quindi consistente) su Singapore
+#   3. emette il certificato HTTPS definitivo su Singapore (rinnovo automatico)
+#   4. verifica tutto col dominio vero e avvisa su Telegram
+# Se il DNS non cambia entro il tempo massimo, NON modifica nulla.
+# NON tocca Hawk/Bull, i file del cervello, HI-TV o nginx di Strasburgo.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/sg-cutover.trigger"
+
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attendi il DNS e fai il passaggio
+        env:
+          STR_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SG_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh /tmp/cut
+          echo "$STR_KEY" > ~/.ssh/id_str; chmod 600 ~/.ssh/id_str
+          echo "$SG_KEY"  > ~/.ssh/id_sg;  chmod 600 ~/.ssh/id_sg
+          OPT="-o StrictHostKeyChecking=no -o ConnectTimeout=30"
+          S="ssh -i $HOME/.ssh/id_str $OPT root@51.91.109.45"
+          G="ssh -i $HOME/.ssh/id_sg $OPT root@51.79.205.82"
+          DOM=superbot-trading.duckdns.org
+          SGIP=51.79.205.82
+          OUT=deploy/sg-cutover-output.txt
+          tg() { [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] && curl -s -m 20 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d "chat_id=${TG_CHAT}" --data-urlencode "text=$1" >/dev/null 2>&1 || true; }
+          resolve() { curl -s -m 15 "$1" -H 'accept: application/dns-json' | jq -r '.Answer[]? | select(.type==1) | .data' | head -1; }
+
+          run_all() {
+          set -e
+          echo "### Passaggio finale $(date -u +%FT%TZ)"
+
+          echo; echo "== 1. Attesa del cambio DNS di $DOM -> $SGIP (controllo ogni 30 s, max 2 ore) =="
+          OK=0
+          for i in $(seq 1 240); do
+            A=$(resolve "https://cloudflare-dns.com/dns-query?name=$DOM&type=A")
+            B=$(resolve "https://dns.google/resolve?name=$DOM&type=A")
+            if [ "$A" = "$SGIP" ] && [ "$B" = "$SGIP" ]; then OK=1; echo "DNS passato a Singapore dopo $((i*30)) s (cloudflare=$A google=$B)"; break; fi
+            [ $((i % 20)) -eq 1 ] && echo "ancora in attesa... (cloudflare=${A:-?} google=${B:-?})"
+            sleep 30
+          done
+          if [ $OK -ne 1 ]; then echo "TEMPO SCADUTO: il DNS non e' passato a Singapore. NIENTE e' stato modificato."; exit 3; fi
+          sleep 45   # margine per cache DNS
+
+          echo; echo "== 2. Controllo che Singapore risponda bene COL DOMINIO (prima di fermare Strasburgo) =="
+          H=$(curl -s -m 20 https://$DOM/api/health)
+          echo "health: $H"
+          echo "$H" | grep -q '"status":"ok"' || { echo "ERRORE: l'app su Singapore non risponde via HTTPS. Strasburgo NON viene fermata."; exit 4; }
+          echo "$H" | grep -q '"desk_mode":"paper"' || { echo "ERRORE: modalita' non paper. Mi fermo."; exit 4; }
+          for P in desk/health desk/bull/health; do
+            R=$(curl -s -m 20 https://$DOM/api/$P); echo "$P: $R" | cut -c1-200
+            echo "$R" | grep -q '"bot_online":true' || { echo "ERRORE: bot non online. Strasburgo NON viene fermata."; exit 4; }
+          done
+
+          echo; echo "== 3. Strasburgo: stop (reversibile) di app e tunnel verso Singapore =="
+          $S 'docker update --restart=no superbot superbot-api-tunnel-net >/dev/null; docker stop -t 20 superbot superbot-api-tunnel-net'
+          $S 'systemctl disable --now superbot-api-tunnel.service 2>&1 || true'
+          $S 'docker ps -a --format "{{.Names}} | {{.Status}}" | grep -E "superbot|hitv"'
+
+          echo; echo "== 4. Copia finale del DB app (Strasburgo ora fermo) =="
+          $S 'bash -s' <<'REMOTE'
+          set -e
+          python3 - <<'PY'
+          import sqlite3, os
+          src="/opt/superbot/data/superbot.db"; dst="/tmp/superbot-mig.db"
+          if os.path.exists(dst): os.remove(dst)
+          s=sqlite3.connect(src); d=sqlite3.connect(dst); s.backup(d); d.close(); s.close()
+          c=sqlite3.connect(dst)
+          print("Strasburgo integrity_check:", c.execute("pragma integrity_check").fetchone()[0])
+          PY
+          chmod 600 /tmp/superbot-mig.db
+          REMOTE
+          $S "cat /tmp/superbot-mig.db" > /tmp/cut/superbot.db
+          $S "rm -f /tmp/superbot-mig.db"
+          [ "$(stat -c %s /tmp/cut/superbot.db)" -gt 8192 ] && [ "$(head -c 15 /tmp/cut/superbot.db)" = "SQLite format 3" ] || { echo "ERRORE: DB ricevuto non valido, NON lo installo (l'app resta col DB di prima)"; exit 5; }
+          echo "DB ricevuto: sha256=$(sha256sum /tmp/cut/superbot.db | cut -c1-16)..."
+          cat /tmp/cut/superbot.db | $G "umask 077; cat > /tmp/superbot-mig.db"
+          $G 'bash -s' <<'REMOTE'
+          set -e
+          TS=$(date +%Y%m%d-%H%M%S)
+          python3 -c "import sqlite3,sys; s=sqlite3.connect(sys.argv[1]); d=sqlite3.connect(sys.argv[2]); s.backup(d); d.close(); s.close()" /opt/superbot/data/superbot.db /opt/superbot-backups/superbot-pre-cutover-$TS.db
+          chmod 600 /opt/superbot-backups/superbot-pre-cutover-$TS.db
+          docker stop superbot >/dev/null
+          rm -f /opt/superbot/data/superbot.db-wal /opt/superbot/data/superbot.db-shm
+          install -m 600 /tmp/superbot-mig.db /opt/superbot/data/superbot.db
+          rm -f /tmp/superbot-mig.db
+          python3 -c "import sqlite3; print('Singapore integrity_check:', sqlite3.connect('/opt/superbot/data/superbot.db').execute('pragma integrity_check').fetchone()[0])"
+          docker start superbot >/dev/null
+          sleep 8
+          curl -s -m 8 http://127.0.0.1:8002/api/health && echo " <- app riavviata col DB finale"
+          REMOTE
+
+          echo; echo "== 5. Certificato HTTPS definitivo su Singapore =="
+          $G 'bash -s' <<'REMOTE' || echo "(certificato definitivo non emesso: resta in uso quello ponte, valido fino a gennaio)"
+          set -e
+          DOM=superbot-trading.duckdns.org
+          apt-get install -y certbot >/dev/null 2>&1
+          mkdir -p /opt/superbot-web/build/.well-known/acme-challenge
+          certbot certonly --webroot -w /opt/superbot-web/build -d $DOM --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring --deploy-hook "systemctl reload nginx" > /tmp/certbot.log 2>&1 || { tail -n 15 /tmp/certbot.log; exit 1; }
+          [ -s /etc/letsencrypt/live/$DOM/fullchain.pem ]
+          sed -i "s#/etc/ssl/superbot-bridge#/etc/letsencrypt/live/$DOM#g" /etc/nginx/sites-available/superbot
+          nginx -t && systemctl reload nginx
+          rm -rf /etc/ssl/superbot-bridge
+          openssl x509 -in /etc/letsencrypt/live/$DOM/fullchain.pem -noout -subject -enddate
+          systemctl is-enabled certbot.timer 2>&1 || true
+          certbot certificates 2>&1 | grep -E "Certificate Name|Expiry" || true
+          REMOTE
+
+          echo; echo "== 6. Verifica finale col dominio vero =="
+          sleep 5
+          curl -s -m 20 -o /dev/null -w "frontend: HTTP %{http_code}, certificato valido=%{ssl_verify_result} (0=ok)\n" https://$DOM/
+          echo -n "api/health: "; curl -s -m 20 https://$DOM/api/health; echo
+          for P in desk/health desk/bull/health; do echo -n "$P: "; curl -s -m 20 https://$DOM/api/$P | cut -c1-160; echo; done
+          echo -n "senza login /api/desk/status (atteso 401): "; curl -s -m 20 -o /dev/null -w "HTTP %{http_code}\n" https://$DOM/api/desk/status
+          echo "scadenza certificato servito: $(echo | openssl s_client -connect $SGIP:443 -servername $DOM 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null)"
+          echo "conflitti Telegram nei log dell'app: $($G "docker logs --tail 300 superbot 2>&1 | grep -ci -E 'conflict|409'")"
+          $G 'docker ps --format "{{.Names}} | {{.Status}}"'
+          echo "== PASSAGGIO COMPLETATO =="
+          }
+          set +e
+          ( run_all ) > $OUT 2>&1
+          RC=$?
+          case $RC in
+            0) tg "SuperBot: passaggio a Singapore COMPLETATO. App, bot e pool girano su Singapore (paper). Strasburgo fermata (non cancellata).";;
+            3) tg "SuperBot: ho aspettato il cambio IP su DuckDNS ma non e' arrivato. Nulla e' stato modificato. Quando vuoi, cambia l'IP in 51.79.205.82 e avvisami.";;
+            *) tg "SuperBot: il passaggio finale si e' fermato (codice $RC). Controlla l'esito nel repo: deploy/sg-cutover-output.txt";;
+          esac
+          rm -rf /tmp/cut ~/.ssh/id_str ~/.ssh/id_sg
+          cat $OUT
+          exit $RC
+
+      - name: Committa esito (nessun dato sensibile)
+        if: always()
+        run: |
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add deploy/sg-cutover-output.txt
+          git diff --staged --quiet || git commit -m "cutover: esito [skip ci]"
+          for i in 1 2 3 4 5; do
+            git pull -q --rebase origin rule-pool && git push origin rule-pool && break
+            sleep 5
+          done
