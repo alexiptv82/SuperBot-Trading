@@ -23,6 +23,7 @@ jobs:
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           command_timeout: 150s
+          host_public_key_check: false
           script: |
             for P in hawk bull; do
               python3 -I - "$P" > /tmp/superbot_diag_$P.txt 2>&1 <<'PYEOF' || echo "(diagnosi $P non riuscita)" >> /tmp/superbot_diag_$P.txt
@@ -247,13 +248,13 @@ jobs:
           chmod 600 ~/.ssh/id_desk
           for P in hawk bull; do
             ssh -T -i ~/.ssh/id_desk \
-              -o StrictHostKeyChecking=accept-new \
+              -o StrictHostKeyChecking=no \
               -o ConnectTimeout=15 \
               root@51.79.205.82 \
               "cat /tmp/superbot_diag_$P.txt" 2>/dev/null > diag_$P.txt || true
           done
           ssh -T -i ~/.ssh/id_desk \
-            -o StrictHostKeyChecking=accept-new \
+            -o StrictHostKeyChecking=no \
             -o ConnectTimeout=15 \
             root@51.79.205.82 \
             'cat /tmp/superbot_diag_smoke.txt' 2>/dev/null > diag_smoke.txt || true

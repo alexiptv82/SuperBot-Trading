@@ -18,6 +18,7 @@ jobs:
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           command_timeout: 90s
+          host_public_key_check: false
           script: |
             OUT=/tmp/superbot_status.txt
             echo "=== TUTTI I CONTAINER ===" > $OUT
@@ -162,12 +163,12 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
           chmod 600 ~/.ssh/id_desk
           ssh -T -i ~/.ssh/id_desk \
-            -o StrictHostKeyChecking=accept-new \
+            -o StrictHostKeyChecking=no \
             -o ConnectTimeout=15 \
             root@51.79.205.82 \
             'cat /tmp/superbot_status.txt' 2>/dev/null > out.txt || true
           ssh -T -i ~/.ssh/id_desk \
-            -o StrictHostKeyChecking=accept-new \
+            -o StrictHostKeyChecking=no \
             -o ConnectTimeout=15 \
             root@51.79.205.82 \
             'cat /tmp/superbot_data.txt' 2>/dev/null > data.txt || true
