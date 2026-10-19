@@ -1,0 +1,44 @@
+### Migrazione pool 2026-10-19T06:29:48Z
+Warning: Permanently added '51.79.205.82' (ED25519) to the list of known hosts.
+Singapore: memoria disponibile 3060 MB, disco libero 35 GB
+
+== Strasburgo: stop ordinato del pool (reversibile) ==
+Warning: Permanently added '51.91.109.45' (ED25519) to the list of known hosts.
+superbot-pool
+superbot-pool fermato (non rimosso)
+/opt/superbot-pool-data:
+total 88
+drwxr-xr-x  3 root root  4096 2026-10-19 06:30 .
+drwxr-xr-x 12 root root  4096 2026-10-18 10:19 ..
+drwxr-xr-x  2 root root  4096 2026-10-19 06:30 candles
+-rw-r--r--  1 root root 73728 2026-10-19 06:30 pool.db
+
+/opt/superbot-pool-data/candles:
+total 16008
+drwxr-xr-x 2 root root    4096 2026-10-19 06:30 .
+drwxr-xr-x 3 root root    4096 2026-10-19 06:30 ..
+-rw-r--r-- 1 root root 1636544 2026-10-19 06:30 ADA_15m.npy
+-rw-r--r-- 1 root root 1636544 2026-10-19 06:30 AVAX_15m.npy
+-rw-r--r-- 1 root root 1636544 2026-10-19 06:30 BNB_15m.npy
+-rw-r--r-- 1 root root 1636544 2026-10-19 06:30 BTC_15m.npy
+-rw-r--r-- 1 root root 1636544 2026-10-19 06:30 DOGE_15m.npy
+-rw-r--r-- 1 root root 1636544 2026-10-19 06:30 ETH_15m.npy
+-rw-r--r-- 1 root root 1636544 2026-10-19 06:30 LINK_15m.npy
+-rw-r--r-- 1 root root 1636544 2026-10-19 06:30 LTC_15m.npy
+-rw-r--r-- 1 root root 1636544 2026-10-19 06:30 SOL_15m.npy
+file totali: 11
+archivio dati: 16455680 byte, leggibile
+
+== Singapore: ripristino dati ==
+Singapore ha 11 file; Strasburgo ne aveva 11
+pool.db sha256 Strasburgo=70b93cee494a3f12 Singapore=70b93cee494a3f12
+
+== Verifica pool su Singapore (dopo avvio) ==
+superbot-pool | Up About a minute (healthy)
+salute docker: healthy
+SANO: ultimo giro riuscito 1 minuti fa 
+
+--- log (ultimi 10) ---
+pool avviato; telegram=si; dati in /app/data/pool
+[2026-10-19 06:31:15Z] giro fatto; allarme=False; dati: ok; barre: ADA=34092@10-19 06:15, AVAX=34092@10-19 06:15, BNB=34092@10-19 06:15, BTC=34092@10-19 06:15, DOGE=34092@10-19 06:15, ETH=34092@10-19 06:15, LINK=34092@10-19 06:15, LTC=34092
+uso: cpu=0.00% mem=55.52MiB / 768MiB
