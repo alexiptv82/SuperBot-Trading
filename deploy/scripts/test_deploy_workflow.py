@@ -41,6 +41,13 @@ def text():
         return f.read()
 
 
+def read_text(path):
+    if not os.path.exists(path):
+        return ""
+    with open(path) as f:
+        return f.read()
+
+
 def get_block(src, anchor, key):
     """Testo (senza l'indentazione YAML) del blocco `key: |` che segue la prima riga con `anchor`."""
     lines = src.split("\n")
@@ -511,7 +518,7 @@ class ExtBackupWorkflowTests(unittest.TestCase):
                        GITHUB_OUTPUT=os.path.join(t, "out"), GH_TOKEN="x")
             p = subprocess.run(["bash", "-e", "-c", script], cwd=t, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL,
                                timeout=60)
-            calls = open(log).read() if os.path.exists(log) else ""
+            calls = read_text(log)
         for leftover in ("/tmp/extbackup_remote.txt", "/tmp/known_hosts_github"):   # file del runner GitHub
             if os.path.exists(leftover):
                 os.remove(leftover)
@@ -585,6 +592,146 @@ class BridgeWorkflowTests(unittest.TestCase):
             self.assertNotIn(bad, t.lower() if bad.islower() else t)
         self.assertEqual(t.count("root@51.79.205.82"), 3)       # mkdir, scp, esecuzione: nient'altro
         self.assertNotIn("51.91.109.45", t)                      # Strasburgo (HI-TV) non viene mai contattato
+
+
+class PinnedBotPoolDeployTests(unittest.TestCase):
+    """desk-deploy e pool-deploy distribuiscono ESATTAMENTE il commit approvato (19/10, sì dell'utente)."""
+
+    WF = {"desk": "desk-deploy.yml", "pool": "pool-deploy.yml"}
+    TRIG = {"desk": "deploy/desk-deploy.trigger", "pool": "deploy/pool-deploy.trigger"}
+
+    def wf(self, k):
+        with open(os.path.join(REPO, ".github", "workflows", self.WF[k])) as f:
+            return f.read()
+
+    def git(self, cwd, *a):
+        p = subprocess.run(["git", "-C", cwd, "-c", "user.name=t", "-c", "user.email=t@t"] + list(a),
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return p.stdout.strip()
+
+    def repo(self, t, k):
+        """Remoto con rule-pool (c1, c2) e un ramo estraneo (x1); clone di lavoro su c2 come il checkout."""
+        bare = os.path.join(t, "remote.git")
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "rule-pool", bare], check=True)
+        work = os.path.join(t, "work")
+        subprocess.run(["git", "clone", "-q", bare, work], check=True, capture_output=True)
+        os.makedirs(os.path.join(work, "deploy"), exist_ok=True)
+        shas = {}
+        for name in ("c1", "c2"):
+            with open(os.path.join(work, "f.txt"), "w") as f:
+                f.write(name)
+            self.git(work, "add", "-A")
+            self.git(work, "commit", "-q", "-m", name)
+            shas[name] = self.git(work, "rev-parse", "HEAD")
+        self.git(work, "push", "-q", "origin", "HEAD:rule-pool")
+        self.git(work, "checkout", "-q", "-b", "altro")
+        with open(os.path.join(work, "f.txt"), "w") as f:
+            f.write("x1")
+        self.git(work, "commit", "-q", "-am", "x1")
+        shas["x1"] = self.git(work, "rev-parse", "HEAD")
+        self.git(work, "push", "-q", "origin", "altro")
+        self.git(work, "checkout", "-q", "--detach", shas["c2"])
+        return work, shas
+
+    def approve(self, k, trigger_body):
+        with tempfile.TemporaryDirectory() as t:
+            work, shas = self.repo(t, k)
+            with open(os.path.join(work, self.TRIG[k]), "w") as f:
+                f.write(trigger_body(shas))
+            script = get_block(self.wf(k), "id: approved", "run").replace("${{ github.sha }}", shas["c2"])
+            out = os.path.join(t, "out")
+            p = subprocess.run(["bash", "-e", "-c", script], cwd=work, capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, GITHUB_OUTPUT=out), stdin=subprocess.DEVNULL)
+            got = read_text(out)
+            head = subprocess.run(["git", "-C", work, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+            return p.returncode, p.stdout + p.stderr, got, head, shas
+
+    def test_default_is_the_commit_that_carries_the_trigger(self):
+        for k in self.WF:
+            with self.subTest(k=k):
+                rc, out, got, head, shas = self.approve(k, lambda s: "rilascio\n")
+                self.assertEqual(rc, 0, out)
+                self.assertEqual(got.strip(), "sha=" + shas["c2"])
+                self.assertEqual(head, shas["c2"])
+
+    def test_explicit_sha_on_rule_pool_is_used_and_checked_out(self):
+        for k in self.WF:
+            with self.subTest(k=k):
+                rc, out, got, head, shas = self.approve(k, lambda s: "rilascio\nsha=%s\n" % s["c1"])
+                self.assertEqual(rc, 0, out)
+                self.assertEqual(got.strip(), "sha=" + shas["c1"])
+                self.assertEqual(head, shas["c1"])          # anche gli strumenti copiati vengono da quel commit
+
+    def test_bad_or_foreign_sha_stops_before_anything(self):
+        for k in self.WF:
+            for label, body in (("corto", lambda s: "sha=%s\n" % s["c1"][:12]),
+                                ("non esadecimale", lambda s: "sha=%s\n" % ("z" * 40)),
+                                ("inesistente", lambda s: "sha=%s\n" % ("e" * 40)),
+                                ("fuori da rule-pool", lambda s: "sha=%s\n" % s["x1"])):
+                with self.subTest(k=k, caso=label):
+                    rc, out, got, _, _ = self.approve(k, body)
+                    self.assertEqual(rc, 1, out)
+                    self.assertEqual(got, "")
+
+    def test_server_script_uses_only_the_approved_commit_and_checks_it_first(self):
+        for k in self.WF:
+            with self.subTest(k=k):
+                t = self.wf(k)
+                script = get_block(t, "uses: appleboy/ssh-action", "script")
+                self.assertNotIn("reset --hard origin/rule-pool", script)
+                self.assertIn('git reset --hard "$APPROVED_SHA"', script)
+                self.assertIn('[ "$(git rev-parse HEAD)" != "$APPROVED_SHA" ]', script)
+                first_check = script.index("grep -Eq '^[0-9a-f]{40}$'")
+                backup = script.index("backup_brain.py" if k == "desk" else "backup_app_db.py")
+                self.assertLess(first_check, backup)               # niente si tocca con una versione non valida
+                self.assertIn("APPROVED_SHA: ${{ steps.approved.outputs.sha }}", t)
+                self.assertRegex(t, r"envs: [^\n]*APPROVED_SHA")
+                self.assertIn('--label "superbot.sha=${APPROVED_SHA}"', script)
+                self.assertIn("/opt/superbot-deploys/", script)
+
+    def test_backup_mode_is_read_from_the_trigger_commit(self):
+        t = self.wf("desk")
+        self.assertIn('git show "${{ github.sha }}:deploy/desk-deploy.trigger" | grep -qx \'backup=bot_fermo\'', t)
+        self.assertLess(t.index("id: approved"), t.index("id: bk"))
+
+    def single_instance(self, mounts_by_container):
+        """Esegue il vero blocco 'una sola istanza' dei bot con un docker finto."""
+        script = get_block(self.wf("desk"), "uses: appleboy/ssh-action", "script")
+        a = script.index("# == Una sola istanza per bot")
+        b = script.index("# == I bot devono dichiarare")
+        block = script[a:b]
+        with tempfile.TemporaryDirectory() as t:
+            bind = os.path.join(t, "bin")
+            os.makedirs(bind)
+            spec = os.path.join(t, "spec.json")
+            with open(spec, "w") as f:
+                json.dump(mounts_by_container, f)
+            with open(os.path.join(bind, "docker"), "w") as f:
+                f.write("#!/usr/bin/env python3\nimport json,sys\nd=json.load(open(%r))\na=sys.argv[1:]\n"
+                        "if a[0]=='ps': print('\\n'.join(d))\n"
+                        "else: print('\\n'.join(d[a[-1]]))\n" % spec)
+            os.chmod(os.path.join(bind, "docker"), 0o755)
+            p = subprocess.run(["bash", "-e", "-c", block], capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, PATH=bind + ":" + os.environ["PATH"]), stdin=subprocess.DEVNULL)
+            return p.returncode, p.stdout + p.stderr
+
+    def test_single_instance_check_passes_with_one_container_per_bot(self):
+        rc, out = self.single_instance({"h": ["/opt/superbot-desk-data/hawk"], "b": ["/opt/superbot-desk-data/bull"],
+                                        "app": ["/opt/superbot/data"]})
+        self.assertEqual(rc, 0, out)
+        self.assertIn("una sola istanza per bull: ok", out)
+
+    def test_single_instance_check_fails_with_a_second_writer(self):
+        rc, out = self.single_instance({"h": ["/opt/superbot-desk-data/hawk"], "b": ["/opt/superbot-desk-data/bull"],
+                                        "vecchio": ["/opt/superbot-desk-data/hawk"]})
+        self.assertEqual(rc, 1, out)
+        self.assertIn("2 container in esecuzione usano i dati di hawk", out)
+
+    def test_single_instance_check_fails_with_no_instance(self):
+        rc, out = self.single_instance({"h": ["/opt/superbot-desk-data/hawk"]})
+        self.assertEqual(rc, 1, out)
+        self.assertIn("0 container in esecuzione usano i dati di bull", out)
 
 
 if __name__ == "__main__":

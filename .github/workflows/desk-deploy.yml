@@ -18,6 +18,10 @@ name: Sala segnali - deploy (Hawk + Bull, container separati, paper)
 # PROVA del fermo sui container (docker inspect: superbot-desk-hawk e superbot-desk-bull non in esecuzione,
 # ricontrollata a copia finita) e rifiuta se un bot risulta vivo. Senza quella riga non cambia nulla.
 
+# Versione: si distribuisce ESATTAMENTE il commit approvato (quello del file trigger, oppure la riga
+# "sha=<40 caratteri>"), mai "l'ultimo del ramo"; a fine corsa si verifica una sola istanza per bot e che i
+# bot dichiarino quel commit nel loro battito; manifesto in /opt/superbot-deploys/bot-*.json.
+
 on:
   push:
     branches: [rule-pool]
@@ -34,13 +38,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Versione ESATTA da distribuire, decisa una volta sola: il commit che contiene il file trigger
+      # (cio' che era su rule-pool quando e' stato approvato il rilascio) oppure la riga "sha=<40 caratteri>"
+      # del file trigger, che deve far parte di rule-pool. Commit arrivati dopo NON vengono distribuiti.
+      - name: Versione approvata (commit esatto da distribuire)
+        id: approved
+        run: |
+          set -e
+          WANT="$(grep -E '^sha=' deploy/desk-deploy.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          if [ -n "$WANT" ]; then
+            if ! printf '%s' "$WANT" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "ERRORE: sha= deve essere uno SHA completo di 40 caratteri esadecimali"; exit 1
+            fi
+            git fetch -q origin rule-pool
+            if ! git cat-file -e "${WANT}^{commit}" 2>/dev/null; then echo "ERRORE: il commit $WANT non esiste"; exit 1; fi
+            if ! git merge-base --is-ancestor "$WANT" origin/rule-pool; then
+              echo "ERRORE: il commit $WANT non fa parte di rule-pool"; exit 1
+            fi
+            SHA="$WANT"
+          else
+            SHA="${{ github.sha }}"
+          fi
+          git checkout -q --detach "$SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "VERSIONE APPROVATA: $SHA"
 
       - name: Modalita' del backup (bot fermo solo se scritto nel file trigger)
         id: bk
         run: |
           set -e
           MODE=""
-          if grep -qx 'backup=bot_fermo' deploy/desk-deploy.trigger; then MODE="--bot-stopped"; fi
+          # il file trigger si legge dal commit che ha avviato il rilascio (non da una versione piu' vecchia scelta con sha=)
+          if git show "${{ github.sha }}:deploy/desk-deploy.trigger" | grep -qx 'backup=bot_fermo'; then MODE="--bot-stopped"; fi
           echo "extra=$MODE" >> "$GITHUB_OUTPUT"
           echo "modalita' backup: ${MODE:-normale (confine di ciclo verificato)}"
 
@@ -67,6 +99,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.0
         env:
           BACKUP_EXTRA: ${{ steps.bk.outputs.extra }}
+          APPROVED_SHA: ${{ steps.approved.outputs.sha }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -96,9 +129,14 @@ jobs:
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           connect_timeout: 90s
           command_timeout: 30m
-          envs: BACKUP_EXTRA,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
+          envs: BACKUP_EXTRA,APPROVED_SHA,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
           script: |
             set -e
+            # --- Versione approvata: 40 caratteri esadecimali, altrimenti non si tocca niente
+            if ! printf '%s' "$APPROVED_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "ERRORE: versione approvata mancante o non valida: nessuna modifica"; exit 1
+            fi
+            DEPLOY_START_MS=$(($(date +%s) * 1000))
             # --- Verifica preliminare (sola lettura)
             AVAIL_MB=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
             DISK_GB=$(df -BG --output=avail /opt | tail -1 | tr -dc '0-9')
@@ -124,12 +162,19 @@ jobs:
             docker images --format '{{.Tag}}' superbot-desk | grep '^rollback-' | sort -r | tail -n +4 | xargs -r -I{} docker rmi superbot-desk:{} || true
             echo "ROLLBACK: immagine precedente = superbot-desk:${RB}"
 
-            # --- Aggiorna codice
+            # --- Codice: ESATTAMENTE il commit approvato (non "l'ultimo del ramo")
             if [ -d "/opt/superbot-desk/.git" ]; then
-              cd /opt/superbot-desk && git fetch origin rule-pool && git reset --hard origin/rule-pool
+              cd /opt/superbot-desk && git fetch origin rule-pool
             else
               git clone -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-desk
               cd /opt/superbot-desk
+            fi
+            if ! git cat-file -e "${APPROVED_SHA}^{commit}"; then
+              echo "ERRORE: il commit approvato ${APPROVED_SHA} non e' sul server: nessun container sostituito"; exit 1
+            fi
+            git reset --hard "$APPROVED_SHA"
+            if [ "$(git rev-parse HEAD)" != "$APPROVED_SHA" ]; then
+              echo "ERRORE: il codice non e' sul commit approvato: nessun container sostituito"; exit 1
             fi
 
             # --- Volume dati separati per ogni portfolio (sopravvivono ai deploy)
@@ -140,7 +185,8 @@ jobs:
             cd /opt/superbot-desk
             CODE_VERSION=$(git rev-parse --short HEAD)
             echo "VERSIONE CODICE: ${CODE_VERSION}"
-            docker build -t superbot-desk -f Dockerfile.desk .
+            SHA12=$(printf '%s' "$APPROVED_SHA" | cut -c1-12)
+            docker build -t superbot-desk -t "superbot-desk:sha-${SHA12}" --label "superbot.sha=${APPROVED_SHA}" -f Dockerfile.desk .
 
             # ── HAWK ─────────────────────────────────────────────────────────
             docker stop superbot-desk-hawk 2>/dev/null || true
@@ -195,4 +241,37 @@ jobs:
                 exit 1
               fi
             done
-            echo "DEPLOY OK: Hawk e Bull in funzione. Backup del cervello in /opt/superbot-backups."
+            # == Una sola istanza per bot: un solo container IN ESECUZIONE usa i dati di ciascun portafoglio ==
+            for P in hawk bull; do
+              N=0
+              for C in $(docker ps -q); do
+                if docker inspect -f '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P"; then
+                  N=$((N + 1))
+                fi
+              done
+              if [ "$N" -ne 1 ]; then
+                echo "ERRORE: $N container in esecuzione usano i dati di $P (deve essere esattamente 1)"; exit 1
+              fi
+              echo "una sola istanza per $P: ok"
+            done
+            # == I bot devono dichiarare il commit approvato, da un processo partito ADESSO (fino a 2 minuti) ==
+            for P in hawk bull; do
+              OKV=""
+              for i in $(seq 1 24); do
+                R=$(python3 -c "import json,sys; h=json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')); print(h.get('version',''), int(h.get('started_ms') or 0))" 2>/dev/null || true)
+                V=$(echo "$R" | cut -d' ' -f1); S=$(echo "$R" | cut -d' ' -f2)
+                if [ "$V" = "$CODE_VERSION" ] && [ "${S:-0}" -ge "$DEPLOY_START_MS" ]; then OKV=1; break; fi
+                sleep 5
+              done
+              if [ -z "$OKV" ]; then
+                echo "ERRORE: $P non dichiara ancora la versione approvata ${CODE_VERSION} (letto: '${V}'). I container sono"
+                echo "        avviati: controllare con desk-status prima di qualunque altra azione."; exit 1
+              fi
+              echo "versione dichiarata da $P: $V (= commit approvato, processo nuovo)"
+            done
+            # == Manifesto del rilascio ==
+            mkdir -p /opt/superbot-deploys
+            printf '{"componente":"bot","sha":"%s","versione":"%s","immagine":"%s","creato":"%s","rollback":"superbot-desk:%s","backup":"%s"}\n' \
+              "$APPROVED_SHA" "$CODE_VERSION" "$(docker inspect -f '{{.Id}}' superbot-desk)" "$(date -u +%FT%TZ)" "$RB" \
+              "${BACKUP_EXTRA:-confine_di_ciclo}" > "/opt/superbot-deploys/bot-$(date -u +%Y%m%d-%H%M%S).json"
+            echo "DEPLOY OK: Hawk e Bull in funzione sul commit approvato ${APPROVED_SHA}. Backup del cervello in /opt/superbot-backups."

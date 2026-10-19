@@ -9,6 +9,9 @@ name: Pool di regole - deploy del runner paper (container separato)
 # Prima di fare qualsiasi cosa controlla (sola lettura) che il server abbia memoria e disco liberi.
 # L'esito si legge col workflow pool-status (l'azione SSH in uso non restituisce l'output del server).
 
+# Versione: si distribuisce ESATTAMENTE il commit approvato (quello del file trigger, oppure la riga
+# "sha=<40 caratteri>"); a fine corsa una sola istanza e manifesto in /opt/superbot-deploys/pool-*.json.
+
 on:
   push:
     branches: [rule-pool]
@@ -25,6 +28,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Versione ESATTA da distribuire, decisa una volta sola: il commit che contiene il file trigger
+      # (cio' che era su rule-pool quando e' stato approvato il rilascio) oppure la riga "sha=<40 caratteri>"
+      # del file trigger, che deve far parte di rule-pool. Commit arrivati dopo NON vengono distribuiti.
+      - name: Versione approvata (commit esatto da distribuire)
+        id: approved
+        run: |
+          set -e
+          WANT="$(grep -E '^sha=' deploy/pool-deploy.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          if [ -n "$WANT" ]; then
+            if ! printf '%s' "$WANT" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "ERRORE: sha= deve essere uno SHA completo di 40 caratteri esadecimali"; exit 1
+            fi
+            git fetch -q origin rule-pool
+            if ! git cat-file -e "${WANT}^{commit}" 2>/dev/null; then echo "ERRORE: il commit $WANT non esiste"; exit 1; fi
+            if ! git merge-base --is-ancestor "$WANT" origin/rule-pool; then
+              echo "ERRORE: il commit $WANT non fa parte di rule-pool"; exit 1
+            fi
+            SHA="$WANT"
+          else
+            SHA="${{ github.sha }}"
+          fi
+          git checkout -q --detach "$SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "VERSIONE APPROVATA: $SHA"
 
       - name: Copia strumenti di backup sul VPS (chiave del server verificata)
         env:
@@ -50,6 +80,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          APPROVED_SHA: ${{ steps.approved.outputs.sha }}
         with:
           host: 51.79.205.82
           username: root
@@ -59,9 +90,13 @@ jobs:
           # si ferma invece di mandare i segreti a un server sconosciuto.
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           command_timeout: 30m
-          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID
+          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,APPROVED_SHA
           script: |
             set -e
+            # --- Versione approvata: 40 caratteri esadecimali, altrimenti non si tocca niente
+            if ! printf '%s' "$APPROVED_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "ERRORE: versione approvata mancante o non valida: nessuna modifica"; exit 1
+            fi
             # --- Verifica preliminare (sola lettura)
             AVAIL_MB=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
             DISK_GB=$(df -BG --output=avail /opt | tail -1 | tr -dc '0-9')
@@ -83,16 +118,25 @@ jobs:
 
             # --- Codice del ramo in una cartella SEPARATA da quella del bot (/opt/superbot)
             if [ -d "/opt/superbot-pool/.git" ]; then
-              cd /opt/superbot-pool && git fetch origin rule-pool && git reset --hard origin/rule-pool
+              cd /opt/superbot-pool && git fetch origin rule-pool
             else
               git clone -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-pool
               cd /opt/superbot-pool
+            fi
+            # ESATTAMENTE il commit approvato (non "l'ultimo del ramo")
+            if ! git cat-file -e "${APPROVED_SHA}^{commit}"; then
+              echo "ERRORE: il commit approvato ${APPROVED_SHA} non e' sul server: container non sostituito"; exit 1
+            fi
+            git reset --hard "$APPROVED_SHA"
+            if [ "$(git rev-parse HEAD)" != "$APPROVED_SHA" ]; then
+              echo "ERRORE: il codice non e' sul commit approvato: container non sostituito"; exit 1
             fi
             # Dati FUORI dal checkout: sopravvivono a ogni aggiornamento del codice
             mkdir -p /opt/superbot-pool-data
 
             # --- Immagine e container dedicati: si ferma/rimuove SOLO "superbot-pool"
-            docker build -t superbot-pool -f Dockerfile.pool .
+            SHA12=$(printf '%s' "$APPROVED_SHA" | cut -c1-12)
+            docker build -t superbot-pool -t "superbot-pool:sha-${SHA12}" --label "superbot.sha=${APPROVED_SHA}" -f Dockerfile.pool .
             docker stop superbot-pool 2>/dev/null || true
             docker rm superbot-pool 2>/dev/null || true
             docker run -d \
@@ -107,3 +151,20 @@ jobs:
             echo "CONTENITORE: $(docker ps --filter name=superbot-pool --format '{{.Names}} {{.Status}}')"
             echo "LOG: $(docker logs --tail 6 superbot-pool 2>&1 | tr '\n' '|' | cut -c1-500)"
             echo "ALTRI CONTENITORI (devono restare in funzione): $(docker ps --format '{{.Names}} {{.Status}}' | grep -v superbot-pool | tr '\n' '|' | cut -c1-300)"
+            # == Una sola istanza: un solo container IN ESECUZIONE usa i dati del pool ==
+            N=0
+            for C in $(docker ps -q); do
+              if docker inspect -f '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' "$C" | grep -qx "/opt/superbot-pool-data"; then
+                N=$((N + 1))
+              fi
+            done
+            if [ "$N" -ne 1 ]; then echo "ERRORE: $N container in esecuzione usano i dati del pool (deve essere 1)"; exit 1; fi
+            if [ -z "$(docker ps --filter name=^superbot-pool$ --filter status=running -q)" ]; then
+              echo "ERRORE: superbot-pool non e' in funzione dopo il deploy"; exit 1
+            fi
+            # == Manifesto del rilascio ==
+            mkdir -p /opt/superbot-deploys
+            printf '{"componente":"pool","sha":"%s","immagine":"%s","creato":"%s"}\n' \
+              "$APPROVED_SHA" "$(docker inspect -f '{{.Id}}' superbot-pool)" "$(date -u +%FT%TZ)" \
+              > "/opt/superbot-deploys/pool-$(date -u +%Y%m%d-%H%M%S).json"
+            echo "DEPLOY OK: pool in funzione sul commit approvato ${APPROVED_SHA}"
