@@ -1,6 +1,6 @@
 # STATO di SuperBot Trading
 
-**Aggiornato:** lunedì 19 ottobre 2026, ~14:05 (ora di Roma) — da Claude.
+**Aggiornato:** lunedì 19 ottobre 2026, ~14:45 (ora di Roma) — da Claude.
 **In corso:** nessuno. (Chi comincia a lavorare su un componente scrive qui sotto: "In corso: <chi> su <componente> dalle <ora>", e lo toglie a fine lavoro.)
 
 ## In una frase
@@ -37,7 +37,7 @@ Il bot di trading su futures Bitget (due portafogli, Hawk e Bull, più un pool d
 10. **Prossima fase: "Evoluzione del Cervello Professionale"** — promemoria dell'utente del 19/10 in `SPECIFICA-EVOLUZIONE-CERVELLO.md` (Profit Manager dinamico per Hawk e poi Bull, riconoscimento delle inversioni, cervello come osservatore/consigliere, rischio deterministico, Turbo Scalp in seguito). **Da valutare insieme all'utente e a ChatGPT; nessuna modifica autorizzata.** Il passo richiesto è un piano tecnico in 12 punti (nessun deploy, nessun cambio di strategia, rischio, prompt o slot). Dei 13 passi di implementazione, i primi tre (backup/rollback, snapshot coerente a fine ciclo, merge separato dal deploy) sono in gran parte fatti il 19/10; restano lacune rispetto alla specifica: controllo semantico dello stato (non solo hash), prova di ripristino isolata, verifica di una sola istanza operativa, deploy dei bot su un commit preciso e approvato. Resta da chiarire cosa intende per "20/30%" (Turbo Scalp / scalping).
 
 ## Prossimo passo suggerito
-Piano tecnico in 12 punti di "Evoluzione del Cervello Professionale": **pronto** in `PIANO-TECNICO-CERVELLO-PROFESSIONALE.md` (proposta, nessuna modifica). Da discutere con l'utente e ChatGPT. Contiene quattro difetti trovati nel codice dei bot (il primo, chiusure retroattive dopo un cambio di TP, dimostrato con l'engine vero) e propone come primo intervento solo osservabilità: replay offline delle correzioni e Profit Manager in ombra. Infrastruttura, separata e non urgente: deploy di bot e pool agganciati a uno SHA preciso (ChatGPT favorevole); avvisi del backup esterno (primo fallimento + ultimo successo troppo vecchio, controllato anche dall'esterno del server); rotazione della chiave di recupero con l'utente. Nota: la cartella `/opt/superbot-desk` (`a47ea40`) non coincide con la versione dichiarata dai bot in esecuzione (`b4709d1`): normale finché i deploy non sono agganciati a uno SHA.
+Discutere con l'utente e ChatGPT il piano tecnico `PIANO-TECNICO-CERVELLO-PROFESSIONALE.md` (proposta; primo intervento suggerito: replay offline delle correzioni A-D e Profit Manager puro con prove, nessun deploy). Fatto il 19/10 pomeriggio su decisione dell'utente: **deploy di bot e pool agganciati al commit approvato** (non ancora usati da un deploy vero) e **sentinella del backup esterno con avvisi Telegram** (attiva dalla notte del 20/10; prova del 19/10 14:40 partita, arrivo da confermare dall'utente). La chiave di recupero resta quella attuale (decisione dell'utente).
 
 ## Dove trovare i dettagli
 - Come si lavora: `MANUALE-OPERATIVO.md`.
