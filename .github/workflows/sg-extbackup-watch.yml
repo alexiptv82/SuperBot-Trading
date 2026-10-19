@@ -1,0 +1,101 @@
+name: SuperBot - Sentinella del backup esterno (avvisi Telegram)
+
+# Controllo FUORI dal server, una volta al giorno dopo il backup notturno (03:20 UTC): legge in SOLA LETTURA
+# lo stato del backup esterno sul server Singapore e manda un avviso Telegram se:
+#   - l'ultimo backup e' fallito (primo fallimento, e ogni giorno finche' dura);
+#   - l'ultimo backup riuscito ha piu' di 36 ore (timer fermo, server spento, ...);
+#   - il server non risponde o lo stato e' illeggibile.
+# Se va tutto bene non manda niente. Con un avviso il workflow diventa anche rosso (GitHub manda la sua email).
+# Decisione dell'utente: 19/10/2026 14:11 ("si' ad entrambi", avvisi su Telegram).
+#
+# GitHub esegue i controlli programmati SOLO dal ramo principale (main): il file vive su main e, identico,
+# su rule-pool, dove si puo' lanciare a mano scrivendo deploy/sg-extbackup-watch.trigger. Con la riga
+# "prova=telegram" nel trigger manda comunque un messaggio di PROVA (per verificare che arrivi).
+# Nessun segreto viene stampato: il token Telegram passa solo a curl.
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "40 4 * * *"
+  workflow_dispatch:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/sg-extbackup-watch.trigger"
+
+concurrency:
+  group: superbot-extbackup-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Leggi lo stato del backup esterno (sola lettura) e decidi
+        id: check
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          # Chiavi pubbliche del server Singapore (non sono segrete). Se il server
+          # presenta una chiave diversa, la connessione viene rifiutata.
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          51.79.205.82 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
+          KH
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          # unica azione sul server: leggere il file di stato (se il server non risponde il file resta vuoto)
+          ssh $SSHO root@51.79.205.82 'cat /opt/superbot-extbackup/status.json' > /tmp/status.json 2>/dev/null || : > /tmp/status.json
+          rm -f ~/.ssh/id_sg
+          set +e
+          python3 -I deploy/scripts/extbackup_watch.py --status /tmp/status.json --max-age-h 36 > /tmp/verdict.txt
+          RC=$?
+          set -e
+          cat /tmp/verdict.txt
+          PROVA=""
+          if [ -f deploy/sg-extbackup-watch.trigger ] && grep -qx 'prova=telegram' deploy/sg-extbackup-watch.trigger \
+             && [ "${{ github.event_name }}" = push ]; then PROVA=1; fi
+          ALERT=0
+          if [ "$RC" = 2 ]; then ALERT=1; fi
+          if [ "$RC" != 0 ] && [ "$RC" != 2 ]; then
+            echo "Problema della sentinella stessa (uscita $RC): lo tratto come avviso" > /tmp/verdict.txt
+            ALERT=1
+          fi
+          echo "alert=$ALERT" >> "$GITHUB_OUTPUT"
+          echo "prova=${PROVA:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Avviso Telegram
+        if: steps.check.outputs.alert == '1' || steps.check.outputs.prova == '1'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ALERT: ${{ steps.check.outputs.alert }}
+        run: |
+          if [ "$ALERT" = 1 ]; then
+            HEAD="⚠️ SuperBot — BACKUP ESTERNO: serve attenzione"
+            TAIL="Controllo automatico da GitHub (fuori dal server). Riguarda solo le copie di sicurezza: i bot non sono toccati."
+          else
+            HEAD="✅ SuperBot — messaggio di PROVA della sentinella del backup esterno"
+            TAIL="Se leggi questo, gli avvisi arrivano. Nessun problema in corso."
+          fi
+          TEXT="$(printf '%s\n\n%s\n\n%s' "$HEAD" "$(cat /tmp/verdict.txt)" "$TAIL")"
+          CODE=$(curl -sS -o /tmp/tg.json -w '%{http_code}' --max-time 20 \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=${TEXT}" 2>/dev/null || echo 000)
+          echo "Telegram: HTTP $CODE"
+          if [ "$CODE" != 200 ]; then echo "ATTENZIONE: il messaggio Telegram non e' partito"; fi
+          rm -f /tmp/tg.json
+
+      - name: Esito (rosso se serve attenzione)
+        if: steps.check.outputs.alert == '1'
+        run: |
+          echo "AVVISO: $(cat /tmp/verdict.txt)"
+          exit 1
