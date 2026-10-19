@@ -1,0 +1,94 @@
+name: SuperBot - Controllo bot H24 e osservatore ombra (sola lettura)
+
+# Solo lettura: stato dei bot (battito, cicli, posizioni, orari, flag) e dell'osservatore (contenitore,
+# stato, registro). Non modifica niente, non riavvia nulla. Nessun importo del conto Bitget, nessun segreto.
+# Risultato in deploy/sg-ombra-check-output.txt. Chiave del server verificata.
+permissions:
+  contents: write
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/sg-ombra-check.trigger"]
+concurrency:
+  group: sg-ombra-check
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Controlli (solo lettura)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          awk '$1=="PUB" {print "51.79.205.82 " $3 " " $4}' deploy/sg-hardening-check-output.txt > ~/.ssh/known_hosts_sg
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          OUT=deploy/sg-ombra-check-output.txt
+          {
+            echo "### Controllo bot e osservatore $(date -u +%FT%TZ)"
+            ssh $SSHO root@51.79.205.82 'bash -s' <<'REMOTE'
+          echo "## Container"
+          docker ps -a --format '{{.Names}} | {{.Status}} | {{.Image}}' | grep -E "superbot-(desk|sidecar)" 
+          python3 -I - <<'PY'
+          import glob, json, os, time
+          now = time.time()
+          def rj(p):
+              try: return json.load(open(p))
+              except Exception: return {}
+          def iso(ms):
+              try: return time.strftime("%m-%d %H:%M:%S", time.gmtime(float(ms)/1000)) + "Z"
+              except Exception: return "-"
+          for b in ("hawk", "bull"):
+              d = "/opt/superbot-desk-data/" + b
+              st, hb = rj(d + "/state_v2.json"), rj(d + "/heartbeat.json")
+              main = st.get("main") or {}
+              pos = main.get("positions") or {}
+              print("\n=== BOT %s ===" % b)
+              print("battito: eta=%ds mode=%s cycles=%s cycle_running=%s ultimo_ciclo_fine=%s prossimo=%s" % (
+                  now - os.path.getmtime(d + "/heartbeat.json"), hb.get("mode"), hb.get("cycles"), hb.get("cycle_running"),
+                  iso(hb.get("last_end_ms")), iso(hb.get("next_cycle_ms"))))
+              print("run_no=%s avviato=%s versione=%s exec_mode=%s trading_enabled=%s pause_requested=%s" % (
+                  st.get("run_no"), iso(st.get("run_started_ms")), hb.get("version"), hb.get("exec_mode"), hb.get("trading_enabled"), hb.get("pause_requested")))
+              print("posizioni aperte: %d %s | chiuse nel run: %d" % (len(pos), sorted(pos), len(main.get("closed") or [])))
+              print("equity/cassa non stampati; halt=%s" % st.get("halt"))
+              for k in ("hours", "macro", "claude_schedule"):
+                  v = hb.get(k)
+                  if isinstance(v, dict):
+                      print("battito.%s: %s" % (k, json.dumps({kk: vv for kk, vv in v.items() if not isinstance(vv, (dict, list))}, ensure_ascii=False)[:260]))
+              for f in ("pause.flag", "reset_portfolio.flag", "trading_hours.json", "trading_enabled.json"):
+                  print("  file %s: %s" % (f, "presente" if os.path.exists(d + "/" + f) else "assente"))
+          for b in ("hawk", "bull"):
+              d = "/opt/superbot-sidecar-data/" + b
+              print("\n=== OMBRA %s ===" % b)
+              s = rj(d + "/status.json")
+              print("status: eta=%s s %s" % (int(now - os.path.getmtime(d + "/status.json")) if os.path.exists(d + "/status.json") else "?", json.dumps(s)[:300]))
+              files = sorted(glob.glob(d + "/events-*.jsonl"))
+              n = cyc = fr = 0; last = None; reasons = {}; npos = 0; outc = 0; cps = 0
+              for f in files:
+                  for line in open(f):
+                      try: e = json.loads(line)
+                      except Exception: continue
+                      body = e.get("body", e); n += 1
+                      if body.get("ev") == "cycle":
+                          cyc += 1; last = body; npos = len(body.get("positions", [])); outc += len(body.get("outcomes", []))
+                          cps += sum(1 for p in body.get("positions", []) if (p.get("roi") or {}).get("checkpoint"))
+                      elif body.get("ev") == "freeze":
+                          fr += 1; reasons[body.get("reason")] = reasons.get(body.get("reason"), 0) + 1
+              print("registro: file=%d righe=%d cicli=%d freeze=%d %s" % (len(files), n, cyc, fr, json.dumps(reasons)[:200]))
+              if last:
+                  print("ultimo ciclo osservato: cycle=%s asof=%s posizioni=%d freezes_pos=%s uscite_reali_totali=%d checkpoint_25=%d applied=%s" % (
+                      last.get("cycle"), iso(last.get("asof_ms")), npos, json.dumps(last.get("freezes"))[:200], outc, cps, last.get("applied")))
+          PY
+          echo "## log osservatore (ultime 8 righe)"
+          docker logs --tail 8 superbot-sidecar 2>&1 | cut -c1-200
+          REMOTE
+          } > "$OUT" 2>&1 || true
+          rm -f ~/.ssh/id_sg
+          git config user.name "ombra-check"; git config user.email "noreply@users.noreply.github.com"
+          git add "$OUT"; git commit -m "Controllo bot e osservatore (sola lettura)" || true
+          for i in 1 2 3; do git pull -q --rebase origin rule-pool && git push origin HEAD:rule-pool && break; sleep 3; done
