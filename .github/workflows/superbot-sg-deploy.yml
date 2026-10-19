@@ -1,8 +1,12 @@
 name: SuperBot App - Deploy su Singapore
 
-# Deploy del container FastAPI + frontend su Singapore (51.79.205.82).
-# Completamente separato da Strasburgo.
-# NON tocca i bot hawk/bull né i loro dati.
+# Deploy del container FastAPI "superbot" + frontend sul VPS Singapore
+# (51.79.205.82), indipendente da Strasburgo. Replica fedelmente il deploy
+# originale (deploy.yml): stesse porte, stessi volumi, stesse variabili.
+#
+# NON tocca superbot-desk-hawk / superbot-desk-bull (nessun redeploy dei bot).
+# NON modifica i file del cervello: l'app li monta come faceva a Strasburgo.
+# TRADING_MODE dell'app e' fisso a "paper" (come nell'originale).
 
 on:
   push:
@@ -23,6 +27,8 @@ jobs:
           yarn install --frozen-lockfile 2>/dev/null || yarn install
           REACT_APP_BACKEND_URL="" yarn build
 
+      # Il frontend va FUORI dal repo git del VPS (/opt/superbot): un
+      # "git reset --hard" lo sostituirebbe con la vecchia build tracciata.
       - name: Copia frontend build sul VPS Singapore
         env:
           SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
@@ -30,114 +36,80 @@ jobs:
           mkdir -p ~/.ssh
           echo "$SG_SSH_KEY" > ~/.ssh/id_sg
           chmod 600 ~/.ssh/id_sg
-          # Crea directory destinazione
           ssh -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
-            root@51.79.205.82 'mkdir -p /opt/superbot/frontend/build'
-          # Copia build frontend
+            root@51.79.205.82 'mkdir -p /opt/superbot-web/build && rm -rf /opt/superbot-web/build/*'
           scp -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -r \
-            frontend/build/. root@51.79.205.82:/opt/superbot/frontend/build/
+            frontend/build/. root@51.79.205.82:/opt/superbot-web/build/
           rm -f ~/.ssh/id_sg
 
       - name: Deploy FastAPI + nginx su Singapore
         uses: appleboy/ssh-action@v1.0.0
         env:
-          BITGET_API_KEY:        ${{ secrets.BITGET_API_KEY }}
-          BITGET_SECRET_KEY:     ${{ secrets.BITGET_SECRET_KEY }}
-          BITGET_PASSPHRASE:     ${{ secrets.BITGET_PASSPHRASE }}
-          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
-          DASHBOARD_PASSWORD:    ${{ secrets.DASHBOARD_PASSWORD }}
-          TRADING_MODE:          ${{ secrets.DESK_MODE || 'paper' }}
-          SG_DOMAIN:             ${{ secrets.SG_DOMAIN || '51.79.205.82' }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+          DASHBOARD_PASSWORD:  ${{ secrets.DASHBOARD_PASSWORD }}
+          DESK_MODE:           ${{ secrets.DESK_MODE }}
+          DESK_HAWK_CAPITAL:   ${{ secrets.DESK_HAWK_CAPITAL }}
+          DESK_BULL_CAPITAL:   ${{ secrets.DESK_BULL_CAPITAL }}
+          DESK_DAILY_LOSS_PCT: ${{ secrets.DESK_DAILY_LOSS_PCT }}
+          SG_DOMAIN:           ${{ secrets.SG_DOMAIN }}
         with:
           host: 51.79.205.82
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           command_timeout: 15m
-          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD,TRADING_MODE,SG_DOMAIN
+          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD,DESK_MODE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,SG_DOMAIN
           script: |
             set -e
 
-            # ── Guardia: TRADING_MODE rimane 'paper' se non impostato ──────────
-            : "${TRADING_MODE:=paper}"
-            echo "TRADING_MODE attivo: $TRADING_MODE"
-
-            # ── Dipendenze ───────────────────────────────────────────────────────
-            apt-get update -qq
-            apt-get install -y --no-install-recommends docker.io git nginx curl 2>/dev/null || true
-            systemctl start docker 2>/dev/null || true
-            systemctl enable docker 2>/dev/null || true
-
-            # ── Clone / aggiorna repo ────────────────────────────────────────────
-            if [ -d "/opt/superbot/.git" ]; then
-              cd /opt/superbot && git fetch origin rule-pool && git reset --hard origin/rule-pool
-            else
-              git clone -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot
+            # Password iniziale dashboard: senza, ci si ferma qui.
+            if [ -z "$DASHBOARD_PASSWORD" ]; then
+              echo "ERRORE: GitHub Secret DASHBOARD_PASSWORD mancante."
+              exit 1
             fi
-            cd /opt/superbot
 
-            # ── Backup DB se esiste ──────────────────────────────────────────────
+            apt-get update -qq 2>/dev/null || true
+            apt-get install -y docker.io git nginx curl 2>/dev/null || true
+            systemctl start docker 2>/dev/null || true
+
+            # == Repo (git init se la cartella esiste gia' senza .git) ==
+            mkdir -p /opt/superbot
+            cd /opt/superbot
+            if [ ! -d .git ]; then
+              git init -q
+              git remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            fi
+            git fetch origin rule-pool
+            git reset --hard origin/rule-pool
+
+            # == Database: backup prima di ogni deploy (ultime 10 copie) ==
             DB_LIVE=/opt/superbot/data/superbot.db
-            mkdir -p /opt/superbot-backups /opt/superbot/data
+            mkdir -p /opt/superbot/data /opt/superbot-backups
             if [ -s "$DB_LIVE" ]; then
               cp "$DB_LIVE" "/opt/superbot-backups/superbot-$(date +%Y%m%d-%H%M%S).db"
               ls -1t /opt/superbot-backups/superbot-*.db 2>/dev/null | tail -n +11 | xargs -r rm -f
-              echo "DB: backup fatto"
+              echo "DB: copia di sicurezza fatta"
             fi
 
-            # ── Scrivi .env ───────────────────────────────────────────────────────
-            PASS_B64=$(printf '%s' "$DASHBOARD_PASSWORD" | base64 -w0)
+            # == .env dell'app (modalita' fissa: paper, come l'originale) ==
             RP_DOMAIN="${SG_DOMAIN:-51.79.205.82}"
-            # Se dominio reale usa https, altrimenti http
-            if echo "$RP_DOMAIN" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            if echo "$RP_DOMAIN" | grep -qE '^[0-9.]+$'; then
               ORIGIN="http://${RP_DOMAIN}"
             else
               ORIGIN="https://${RP_DOMAIN}"
             fi
+            printf "BITGET_API_KEY=\nBITGET_SECRET_KEY=\nBITGET_PASSPHRASE=\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD_B64=%s\nWEBAUTHN_RP_ID=%s\nWEBAUTHN_ORIGIN=%s\nWEBAUTHN_RP_NAME=SuperBot\nDB_PATH=./data/superbot.db\n" \
+              "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" \
+              "$(printf %s "$DASHBOARD_PASSWORD" | base64 -w0)" \
+              "$RP_DOMAIN" "$ORIGIN" > backend/.env
 
-            cat > /opt/superbot/backend/.env <<EOF
-            BITGET_API_KEY=${BITGET_API_KEY}
-            BITGET_SECRET_KEY=${BITGET_SECRET_KEY}
-            BITGET_PASSPHRASE=${BITGET_PASSPHRASE}
-            TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-            TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-            TRADING_MODE=${TRADING_MODE}
-            INITIAL_CAPITAL=1000
-            MAX_LEVERAGE=10
-            MAX_DAILY_LOSS_PERCENT=5
-            MAX_OPEN_POSITIONS=3
-            TRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT
-            BACKEND_PORT=8002
-            DASHBOARD_PASSWORD_B64=${PASS_B64}
-            WEBAUTHN_RP_ID=${RP_DOMAIN}
-            WEBAUTHN_ORIGIN=${ORIGIN}
-            WEBAUTHN_RP_NAME=SuperBot
-            DB_PATH=./data/superbot.db
-            EOF
-
-            # ── Build immagine Docker ────────────────────────────────────────────
-            docker build -t superbot:singapore -f /opt/superbot/Dockerfile /opt/superbot
-
-            # ── Stop e rimuovi vecchio container (se esiste) ─────────────────────
-            docker stop superbot 2>/dev/null || true
-            docker rm   superbot 2>/dev/null || true
-
-            # ── Avvia container ───────────────────────────────────────────────────
-            docker run -d \
-              --name superbot \
-              --restart unless-stopped \
-              -p 127.0.0.1:8002:8002 \
-              -v /opt/superbot/data:/app/data \
-              -v /opt/superbot/backend/.env:/app/backend/.env:ro \
-              superbot:singapore
-
-            # ── Nginx: crea vhost Singapore ──────────────────────────────────────
+            # == Nginx: solo il vhost di questa app, non tocco altri siti ==
             cat > /etc/nginx/sites-available/superbot <<'NGINX'
             server {
                 listen 80;
-                server_name 51.79.205.82 _;
+                server_name 51.79.205.82;
 
-                root /opt/superbot/frontend/build;
+                root /opt/superbot-web/build;
                 index index.html;
 
                 location /.well-known/acme-challenge/ {
@@ -154,26 +126,42 @@ jobs:
                     proxy_set_header Upgrade $http_upgrade;
                     proxy_set_header Connection 'upgrade';
                     proxy_set_header Host $host;
-                    proxy_read_timeout 60s;
                     proxy_cache_bypass $http_upgrade;
                 }
             }
             NGINX
-
             ln -sf /etc/nginx/sites-available/superbot /etc/nginx/sites-enabled/superbot
-            # Rimuovi default nginx se interferisce
-            rm -f /etc/nginx/sites-enabled/default
+            nginx -t && systemctl reload nginx || systemctl restart nginx || true
 
-            nginx -t && systemctl reload nginx || systemctl restart nginx
-            systemctl enable nginx 2>/dev/null || true
+            # == Container superbot (come l'originale: -p 8002:8001) ==
+            docker build -t superbot /opt/superbot
+            docker stop superbot 2>/dev/null || true
+            docker rm superbot 2>/dev/null || true
+            docker run -d \
+              --name superbot \
+              --restart always \
+              -p 127.0.0.1:8002:8001 \
+              -v /opt/superbot/data:/app/data \
+              -v /opt/superbot/backend/.env:/app/backend/.env \
+              -v /opt/superbot-desk-data/hawk:/opt/superbot-desk-data/hawk \
+              -v /opt/superbot-desk-data/bull:/opt/superbot-desk-data/bull \
+              -e DESK_DATA_DIR=/opt/superbot-desk-data/hawk \
+              -e DESK_DATA_DIR_BULL=/opt/superbot-desk-data/bull \
+              -e DESK_MODE="${DESK_MODE:-paper}" \
+              -e DESK_HAWK_CAPITAL="${DESK_HAWK_CAPITAL:-1000}" \
+              -e DESK_BULL_CAPITAL="${DESK_BULL_CAPITAL:-1000}" \
+              -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
+              superbot
 
-            # ── Health check ──────────────────────────────────────────────────────
-            echo "=== Attesa avvio container (10s) ==="
             sleep 10
-            echo "=== Stato container ==="
-            docker ps --filter name=^superbot$ --format "{{.Names}} | {{.Status}} | {{.Ports}}"
-            echo "=== Health API ==="
-            curl -sf http://127.0.0.1:8002/api/health 2>/dev/null && echo " OK" || echo " NON risponde ancora (normale se il DB si sta inizializzando)"
-            echo "=== Log ultimi 30 righe ==="
+            echo "=== Container ==="
+            docker ps -a --filter name=^superbot --format "{{.Names}} | {{.Status}} | {{.Ports}}"
+            echo "=== Health API (locale) ==="
+            curl -s http://127.0.0.1:8002/api/health && echo " <- API OK" || echo "API NON risponde"
+            echo "=== Health via nginx (porta 80) ==="
+            curl -s -o /dev/null -w "frontend HTTP %{http_code}\n" http://127.0.0.1/ -H "Host: 51.79.205.82"
+            curl -s http://127.0.0.1/api/health -H "Host: 51.79.205.82" && echo " <- /api via nginx OK" || echo "/api via nginx NON risponde"
+            echo "=== Bot (non toccati) ==="
+            docker ps --filter name=superbot-desk --format "{{.Names}} | {{.Status}}"
+            echo "=== Log superbot (ultimi 30) ==="
             docker logs --tail 30 superbot 2>&1
-            echo "=== DEPLOY COMPLETATO ==="
