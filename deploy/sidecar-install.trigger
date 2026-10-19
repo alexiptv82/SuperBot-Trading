@@ -1,2 +1,2 @@
-# Quinto tentativo: backup corretto per bot in pausa.
-sha=b99926cc65c90fa7d9a8a2ab7f23326d52ecb890
+# Sesto tentativo: lettura come root senza capability.
+sha=ad8d0bddbbda12103441b12b61bcbd46e20c9a02
