@@ -18,7 +18,6 @@ jobs:
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           command_timeout: 90s
-          host_public_key_check: false
           script: |
             OUT=/tmp/superbot_status.txt
             echo "=== TUTTI I CONTAINER ===" > $OUT

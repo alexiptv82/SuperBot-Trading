@@ -45,7 +45,6 @@ jobs:
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           connect_timeout: 90s
-          host_public_key_check: false
           command_timeout: 30m
           envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
           script: |
