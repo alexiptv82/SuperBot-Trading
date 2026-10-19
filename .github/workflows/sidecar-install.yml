@@ -107,10 +107,8 @@ jobs:
           KH
           ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30 root@51.79.205.82 'tail -n 120 /opt/superbot-sidecar-install.log 2>/dev/null' > deploy/sidecar-install.output.txt || echo "log non leggibile" > deploy/sidecar-install.output.txt
           rm -f ~/.ssh/id_sg
-          git config user.name "sidecar-install"; git config user.email "noreply@users.noreply.github.com"
-          git add deploy/sidecar-install.output.txt
-          git commit -m "Esito installazione osservatore" || true
-          git push origin HEAD:refs/heads/sidecar-output-${{ github.run_id }} || true
+          MSG=$(sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' deploy/sidecar-install.output.txt | cut -c1-6000)
+          echo "::notice title=esito installazione osservatore::${MSG}"
       - name: Esito
         if: steps.inst.outcome != 'success'
         run: exit 1
