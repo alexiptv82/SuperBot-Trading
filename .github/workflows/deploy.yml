@@ -4,7 +4,10 @@ name: Deploy SuperBot app su Singapore
 # (51.79.205.82). Sostituisce il vecchio deploy per Strasburgo, che era stato
 # bloccato di proposito dopo il collegamento privato del 18 ottobre.
 #
-# - Parte a ogni push su main, oppure a mano (Run workflow).
+# - NON parte piu' da solo a ogni merge su main (cambiato il 19/10): integrare il codice e
+#   rilasciarlo sono due atti distinti. Si lancia a mano (Actions -> Run workflow) oppure con il
+#   percorso ufficiale per le AI: push di deploy/superbot-sg-deploy.trigger sul ramo rule-pool
+#   (workflow superbot-sg-deploy.yml, stessa procedura e stesso gruppo di concorrenza, deploya main).
 # - NON tocca Hawk/Bull (i bot si rilasciano con desk-deploy, dal ramo rule-pool)
 #   ne' i file del cervello: l'app li monta come faceva prima.
 # - TRADING_MODE dell'app e' fisso a "paper". Il live dei bot si decide solo
@@ -19,12 +22,6 @@ name: Deploy SuperBot app su Singapore
 # - Se l'app non risponde a fine deploy, il workflow diventa rosso.
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'deploy/**'
-      - '**.md'
   workflow_dispatch:
 
 # Un solo deploy alla volta: due deploy insieme si calpesterebbero.
