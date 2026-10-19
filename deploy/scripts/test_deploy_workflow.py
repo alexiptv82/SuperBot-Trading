@@ -457,5 +457,52 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertNotRegex(d, r"backup_brain\.py[^\n]*--bot-stopped")   # mai fisso nella riga di comando
 
 
+class ExtBackupWorkflowTests(unittest.TestCase):
+    """sg-extbackup.yml: niente segreti stampati, chiavi dei server verificate, azioni ammesse solo tre."""
+
+    def wf(self):
+        with open(os.path.join(REPO, ".github", "workflows", "sg-extbackup.yml")) as f:
+            return f.read()
+
+    def test_private_deploy_key_is_never_printed_and_hosts_are_verified(self):
+        t = self.wf()
+        for m in re.finditer(r"cat[^\n]*superbot_backup_ed25519([^\n]*)", t):
+            self.assertTrue(m.group(0).split("superbot_backup_ed25519")[1].startswith(".pub")
+                            or "$KEY.pub" in m.group(0), m.group(0))
+        self.assertIn('cat "$KEY.pub"', t)
+        self.assertNotRegex(t, r"cat \"?\$KEY\"?\s*$")
+        self.assertNotIn("StrictHostKeyChecking=no", t)
+        self.assertNotIn("accept-new", t)
+        self.assertIn("StrictHostKeyChecking=yes", t)
+        self.assertIn("UserKnownHostsFile=$HOME/.ssh/known_hosts_sg", t)
+        self.assertIn("gh api meta", t)                  # le chiavi di GitHub vengono da GitHub, non da ssh-keyscan
+        self.assertNotIn("ssh-keyscan", t)
+
+    def test_only_three_actions_are_accepted(self):
+        t = self.wf()
+        self.assertIn("setup|run|status) ;;", t)
+        self.assertIn("*) echo \"ERRORE: nel file trigger serve una riga azione=setup|run|status\"; exit 1 ;;", t)
+
+    def test_service_uses_the_dedicated_key_and_the_private_repo_only(self):
+        t = self.wf()
+        self.assertEqual(t.count("git@github.com:alexiptv82/superbot-backups.git"), 1)
+        self.assertIn("--ssh-key /root/.ssh/superbot_backup_ed25519 --known-hosts /opt/superbot-extbackup/known_hosts", t)
+        self.assertIn("--recipient-file /opt/superbot-extbackup/recipient.txt", t)
+        self.assertIn("OnCalendar=*-*-* 03:20:00 UTC", t)
+        self.assertIn("Persistent=true", t)
+
+    def test_no_secret_goes_to_the_repository_by_name(self):
+        for dp, dn, fn in os.walk(os.path.join(REPO, "deploy")):
+            for f in fn:
+                path = os.path.join(dp, f)
+                with open(path, "rb") as fh:
+                    # una vera chiave privata age: prefisso + 58 caratteri bech32 (le semplici citazioni del nome non contano)
+                    found = re.search(rb"AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}", fh.read())
+                    self.assertIsNone(found, "chiave privata in " + path)
+        with open(os.path.join(REPO, "deploy", "extbackup", "recipient.txt")) as f:
+            body = f.read()
+        self.assertRegex(body, r"(?m)^age1[0-9a-z]{58}$")
+
+
 if __name__ == "__main__":
     unittest.main()

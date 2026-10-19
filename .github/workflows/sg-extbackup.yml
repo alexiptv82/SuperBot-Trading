@@ -1,0 +1,174 @@
+name: SuperBot - Backup esterno cifrato (Singapore)
+
+# Backup ESTERNO cifrato: copie fresche e verificate di database app, database pool e cervello di
+# Hawk e Bull, cifrate con age e inviate al repository GitHub PRIVATO separato alexiptv82/superbot-backups.
+# Non ferma, riavvia ne' ricrea nessun container e non modifica nessun dato dei bot (sola lettura).
+#
+# Azione dalla riga "azione=..." di deploy/sg-extbackup.trigger:
+#   setup  : installa age (se manca), crea sul VPS la chiave di deploy dedicata al solo repository dei backup
+#            (stampa la parte PUBBLICA), installa strumenti, timer giornaliero (03:20 UTC) e known_hosts di GitHub.
+#   run    : fa subito un backup esterno e lo verifica (riscarica da GitHub e ricalcola lo SHA-256).
+#   status : mostra timer, ultimo stato e ultime righe del registro. Sola lettura.
+#
+# Segreti: la chiave di deploy privata resta sul VPS (/root/.ssh/superbot_backup_ed25519) e non viene mai
+# stampata. La chiave di cifratura e' PUBBLICA (deploy/extbackup/recipient.txt); la privata di recupero e'
+# dell'utente, fuori da GitHub e fuori dal server. Il risultato va in deploy/sg-extbackup-output.txt.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/sg-extbackup.trigger"
+
+concurrency:
+  group: superbot-extbackup-singapore
+  cancel-in-progress: false
+
+jobs:
+  extbackup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Esegui l'azione richiesta sul VPS
+        id: act
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          ACT="$(grep -E '^azione=' deploy/sg-extbackup.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          case "$ACT" in
+            setup|run|status) ;;
+            *) echo "ERRORE: nel file trigger serve una riga azione=setup|run|status"; exit 1 ;;
+          esac
+          echo "azione=$ACT" >> "$GITHUB_OUTPUT"
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          # Chiavi pubbliche del server Singapore (non sono segrete). Se il server
+          # presenta una chiave diversa, la connessione viene rifiutata.
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          51.79.205.82 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
+          KH
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          # Chiavi pubbliche di GitHub, lette da GitHub stesso (API meta): servono al VPS per riconoscere GitHub.
+          gh api meta --jq '.ssh_keys[]' | sed 's/^/github.com /' > /tmp/known_hosts_github
+          test -s /tmp/known_hosts_github
+          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools /opt/superbot-extbackup && chmod 700 /opt/superbot-tools /opt/superbot-extbackup'
+          scp $SSHO deploy/scripts/backup_app_db.py deploy/scripts/backup_brain.py deploy/scripts/external_backup.py root@51.79.205.82:/opt/superbot-tools/
+          scp $SSHO deploy/extbackup/recipient.txt root@51.79.205.82:/opt/superbot-extbackup/recipient.txt
+          scp $SSHO /tmp/known_hosts_github root@51.79.205.82:/opt/superbot-extbackup/known_hosts
+          set +e
+          ssh $SSHO root@51.79.205.82 "ACT=$ACT bash -s" > /tmp/extbackup_remote.txt 2>&1 <<'REMOTE'
+          set -u
+          W=/opt/superbot-extbackup
+          KEY=/root/.ssh/superbot_backup_ed25519
+          show_status() {
+            echo "--- stato ---"
+            cat "$W/status.json" 2>/dev/null || echo "(nessuno stato: nessun backup esterno ancora tentato)"
+            echo "--- timer ---"
+            systemctl list-timers superbot-extbackup.timer --no-pager 2>/dev/null | head -4 || true
+          }
+          if [ "$ACT" = setup ]; then
+            echo "## SETUP backup esterno"
+            . /etc/os-release 2>/dev/null && echo "sistema: $PRETTY_NAME"
+            if ! command -v age >/dev/null 2>&1; then
+              apt-get update -qq 2>/dev/null || true
+              apt-get install -y age >/dev/null 2>&1 || true
+            fi
+            if command -v age >/dev/null 2>&1; then echo "age: $(age --version 2>&1 | head -1)"; else echo "ERRORE: age non installabile con apt su questo sistema"; exit 1; fi
+            mkdir -p /root/.ssh && chmod 700 /root/.ssh
+            if [ ! -f "$KEY" ]; then
+              ssh-keygen -q -t ed25519 -N '' -C 'superbot-backup-vps' -f "$KEY"
+              echo "chiave di deploy CREATA"
+            else
+              echo "chiave di deploy gia' presente (non toccata)"
+            fi
+            chmod 600 "$KEY"
+            echo "CHIAVE PUBBLICA DI DEPLOY (da aggiungere al repository dei backup, con accesso in scrittura):"
+            cat "$KEY.pub"
+            echo "impronta: $(ssh-keygen -lf "$KEY.pub" -E sha256 | awk '{print $2}')"
+            cat > "$W/run.sh" <<'RUNSH'
+          #!/bin/sh
+          exec /usr/bin/python3 -I /opt/superbot-tools/external_backup.py \
+            --root /opt/superbot-desk-data --app-db /opt/superbot/data/superbot.db \
+            --pool-db /opt/superbot-pool-data/pool.db --tools /opt/superbot-tools --work /opt/superbot-extbackup \
+            --remote git@github.com:alexiptv82/superbot-backups.git --recipient-file /opt/superbot-extbackup/recipient.txt \
+            --ssh-key /root/.ssh/superbot_backup_ed25519 --known-hosts /opt/superbot-extbackup/known_hosts
+          RUNSH
+            chmod 700 "$W/run.sh"
+            cat > /etc/systemd/system/superbot-extbackup.service <<'UNIT'
+          [Unit]
+          Description=SuperBot backup esterno cifrato
+          After=network-online.target docker.service
+          Wants=network-online.target
+
+          [Service]
+          Type=oneshot
+          Nice=10
+          IOSchedulingClass=idle
+          TimeoutStartSec=45min
+          ExecStart=/opt/superbot-extbackup/run.sh
+          UNIT
+            cat > /etc/systemd/system/superbot-extbackup.timer <<'UNIT'
+          [Unit]
+          Description=SuperBot backup esterno cifrato - ogni giorno
+
+          [Timer]
+          OnCalendar=*-*-* 03:20:00 UTC
+          RandomizedDelaySec=600
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+          UNIT
+            systemctl daemon-reload
+            systemctl enable --now superbot-extbackup.timer
+            show_status
+          elif [ "$ACT" = run ]; then
+            echo "## RUN backup esterno ($(date -u +%FT%TZ))"
+            "$W/run.sh"
+            RC=$?
+            echo "uscita: $RC"
+            show_status
+            exit $RC
+          else
+            echo "## STATUS backup esterno ($(date -u +%FT%TZ))"
+            show_status
+            echo "--- registro del servizio (ultime righe) ---"
+            journalctl -u superbot-extbackup.service -n 15 --no-pager 2>/dev/null | cut -c1-200 || true
+            ls -la "$W" | sed 's/^/  /'
+          fi
+          REMOTE
+          RC=$?
+          echo "uscita remota: $RC" >> /tmp/extbackup_remote.txt
+          rm -f ~/.ssh/id_sg
+          cat /tmp/extbackup_remote.txt
+          # il workflow diventa rosso se l'azione sul VPS non e' riuscita (il risultato viene scritto comunque)
+          exit $RC
+
+      - name: Scrivi il risultato
+        if: always()
+        run: |
+          OUT=deploy/sg-extbackup-output.txt
+          {
+            echo "### Backup esterno cifrato - azione ${{ steps.act.outputs.azione }} - $(date -u +%FT%TZ)"
+            echo
+            cat /tmp/extbackup_remote.txt 2>/dev/null || echo "(nessun output dal VPS)"
+          } > "$OUT"
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add "$OUT"
+          git diff --staged --quiet || git commit -m "check: backup esterno cifrato [skip ci]"
+          git pull --rebase origin rule-pool
+          git push origin rule-pool

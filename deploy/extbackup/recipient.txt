@@ -1,0 +1,3 @@
+# chiave PUBBLICA age dei backup esterni (creata il 2026-10-19).
+# La chiave PRIVATA di recupero non e' in nessun repository: la custodisce l'utente.
+age142uj5c8xx4d9csj2dsy2uvda6e0kt9y8xln3xpetemzhts6ljaqq40qy6u
