@@ -37,6 +37,18 @@ jobs:
             curl -s -m 15 -o /dev/null -w "frontend /           : HTTP %{http_code}\n" http://51.79.205.82/ || echo "frontend: NON raggiungibile"
             echo -n "API /api/health         : "; curl -s -m 15 http://51.79.205.82/api/health || echo "NON raggiungibile"
             echo
+            echo
+            echo "## 1b. HTTPS col DOMINIO VERO, forzato su Singapore (prova prima del cambio DNS)"
+            D=superbot-trading.duckdns.org
+            R="--resolve $D:443:51.79.205.82 --resolve $D:80:51.79.205.82"
+            curl -s -m 15 $R -o /dev/null -w "frontend https://$D/            : HTTP %{http_code}, certificato valido=%{ssl_verify_result} (0=ok)\n" https://$D/ || echo "HTTPS frontend: NON raggiungibile"
+            echo -n "API https://$D/api/health : "; curl -s -m 15 $R https://$D/api/health || echo "NON raggiungibile"
+            echo
+            echo -n "desk/health (hawk)      : "; curl -s -m 15 $R https://$D/api/desk/health | cut -c1-200; echo
+            echo -n "desk/bull/health (bull) : "; curl -s -m 15 $R https://$D/api/desk/bull/health | cut -c1-200; echo
+            echo -n "senza login /api/desk/status deve dare 401/403: "; curl -s -m 15 $R -o /dev/null -w "HTTP %{http_code}\n" https://$D/api/desk/status
+            echo "scadenza certificato servito: $(echo | openssl s_client -connect 51.79.205.82:443 -servername $D 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null)"
+            echo
             echo "## 2. Sul VPS"
             ssh -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@51.79.205.82 'bash -s' <<'REMOTE'
           echo "--- container (tutti) ---"
@@ -54,6 +66,8 @@ jobs:
           docker exec superbot env 2>/dev/null | grep -E '^(DESK_|TRADING_MODE)' || echo "(non leggibile)"
           echo; echo "--- cartelle cervello montate nel container (solo elenco) ---"
           docker exec superbot ls /opt/superbot-desk-data/hawk /opt/superbot-desk-data/bull 2>&1 | head -30
+          echo; echo "--- variabili BitGet sola lettura presenti nel container (solo nomi) ---"
+          docker exec superbot env 2>/dev/null | cut -d= -f1 | grep -E '^BITGET_RO' | tr '\n' ' '; echo
           echo; echo "--- log superbot (ultimi 40) ---"
           docker logs --tail 40 superbot 2>&1
           echo; echo "--- firewall ufw / porte in ascolto ---"
