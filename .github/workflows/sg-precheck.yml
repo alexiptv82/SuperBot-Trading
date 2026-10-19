@@ -1,0 +1,92 @@
+name: Pre-controllo migrazione completa (sola lettura)
+
+# Raccoglie i fatti che servono per portare tutto su Singapore. NON modifica
+# nulla e NON stampa valori di variabili d'ambiente, password o chiavi:
+# solo NOMI delle variabili e presenza/assenza di file.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/sg-precheck.trigger"
+
+jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Raccolta (sola lettura)
+        env:
+          STR_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SG_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$STR_KEY" > ~/.ssh/id_str; chmod 600 ~/.ssh/id_str
+          echo "$SG_KEY"  > ~/.ssh/id_sg;  chmod 600 ~/.ssh/id_sg
+          OUT=deploy/sg-precheck-output.txt
+          cat > /tmp/str.sh <<'REMOTE'
+          echo "--- DNS dominio (da Strasburgo) ---"
+          getent hosts superbot-trading.duckdns.org
+          echo; echo "--- nomi variabili d'ambiente del container superbot (SENZA valori) ---"
+          docker inspect superbot --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | cut -d= -f1 | sort | tr '\n' ' '; echo
+          echo; echo "--- mount del container superbot ---"
+          docker inspect superbot --format '{{range .Mounts}}{{.Source}} -> {{.Destination}} ({{if .RW}}rw{{else}}ro{{end}}){{println}}{{end}}' 2>/dev/null
+          echo "--- porte / rete / restart policy ---"
+          docker inspect superbot --format 'rete={{.HostConfig.NetworkMode}} restart={{.HostConfig.RestartPolicy.Name}} ports={{json .HostConfig.PortBindings}}' 2>/dev/null
+          echo; echo "--- nginx vhost superbot (Strasburgo) ---"
+          cat /etc/nginx/sites-available/superbot 2>&1
+          echo; echo "--- certbot: file di rinnovo (solo chiavi non sensibili) ---"
+          grep -E "^(authenticator|webroot_path|account|server|renew_before)|^\[\[webroot_map\]\]|duckdns" /etc/letsencrypt/renewal/superbot-trading.duckdns.org.conf 2>&1 | sed -E 's#(account = ).*#\1<omesso>#'
+          ls /etc/letsencrypt/live/ /etc/letsencrypt/archive/ 2>&1
+          echo; echo "--- acme.sh: esiste una configurazione DuckDNS? (solo presenza) ---"
+          for f in /root/.acme.sh/account.conf /root/.acme.sh/*duckdns*/* /root/.acme.sh/dns_duckdns.sh; do [ -e "$f" ] && echo "presente: $f"; done 2>/dev/null
+          grep -c -i "duckdns_token" /root/.acme.sh/account.conf 2>/dev/null | sed 's/^/righe con DuckDNS_Token in account.conf: /'
+          echo; echo "--- servizio tunnel verso Singapore ---"
+          systemctl is-active superbot-api-tunnel.service 2>&1; systemctl is-enabled superbot-api-tunnel.service 2>&1
+          echo; echo "--- pool: dimensioni e ultimo aggiornamento ---"
+          du -sh /opt/superbot-pool-data; ls -la --time-style=long-iso /opt/superbot-pool-data | head -12
+          docker inspect superbot-pool --format 'restart={{.HostConfig.RestartPolicy.Name}} mem={{.HostConfig.Memory}} nanocpus={{.HostConfig.NanoCpus}}' 2>/dev/null
+          docker inspect superbot-pool --format '{{range .Mounts}}{{.Source}} -> {{.Destination}} ({{if .RW}}rw{{else}}ro{{end}}){{println}}{{end}}' 2>/dev/null
+          docker inspect superbot-pool --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | cut -d= -f1 | sort | tr '\n' ' '; echo
+          REMOTE
+          cat > /tmp/sg.sh <<'REMOTE'
+          echo "--- risorse Singapore ---"
+          free -m | sed -n 1,2p; df -h / | tail -1; nproc
+          echo; echo "--- docker stats (una lettura) ---"
+          docker stats --no-stream --format '{{.Name}}: cpu={{.CPUPerc}} mem={{.MemUsage}}' 2>/dev/null
+          echo; echo "--- certbot installato? ---"
+          command -v certbot || echo "certbot non installato"
+          echo; echo "--- nomi variabili d'ambiente del container superbot (SENZA valori) ---"
+          docker inspect superbot --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | cut -d= -f1 | sort | tr '\n' ' '; echo
+          echo; echo "--- log app: errori Telegram/conflitti recenti ---"
+          docker logs --tail 200 superbot 2>&1 | grep -i -E "telegram|conflict|409|error|warn" | tail -8 || true
+          echo; echo "--- health desk senza login (come l'app) ---"
+          curl -s -m 8 -o /dev/null -w "desk/health HTTP %{http_code}\n" http://127.0.0.1:8002/api/desk/health
+          curl -s -m 8 -o /dev/null -w "desk/bull/health HTTP %{http_code}\n" http://127.0.0.1:8002/api/desk/bull/health
+          curl -s -m 8 http://127.0.0.1:8002/api/desk/health | cut -c1-300; echo
+          REMOTE
+          {
+            echo "### Pre-controllo $(date -u +%FT%TZ)"
+            echo; echo "################ STRASBURGO ################"
+            ssh -i ~/.ssh/id_str -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@51.91.109.45 'bash -s' < <(sed 's/^          //' /tmp/str.sh) || echo "!!! SSH Strasburgo fallito"
+            echo; echo "################ SINGAPORE ################"
+            ssh -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@51.79.205.82 'bash -s' < <(sed 's/^          //' /tmp/sg.sh) || echo "!!! SSH Singapore fallito"
+          } > $OUT 2>&1
+          rm -f ~/.ssh/id_str ~/.ssh/id_sg
+          cat $OUT
+
+      - name: Committa risultato
+        run: |
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add deploy/sg-precheck-output.txt
+          git diff --staged --quiet || git commit -m "precheck migrazione [skip ci]"
+          git push origin rule-pool
