@@ -1,0 +1,143 @@
+### Inventario 2026-10-19T06:18:12Z
+
+################ STRASBURGO (51.91.109.45) ################
+Warning: Permanently added '51.91.109.45' (ED25519) to the list of known hosts.
+host: vps-ed34e4ce  uptime: up 18 hours, 19 minutes
+
+--- container ---
+hitv-backend | Up 18 hours (healthy) | hitv-backend:local
+superbot | Up 18 hours | 53bd4d2fee69
+superbot-api-tunnel-net | Up 18 hours | 53bd4d2fee69
+superbot-desk-bull | Exited (137) 31 hours ago | superbot-desk
+superbot-desk-hawk | Exited (137) 31 hours ago | superbot-desk
+superbot-work-rollback-r39119231791a1 | Exited (0) 20 hours ago | superbot
+superbot-desk | Exited (137) 6 days ago | 3334ae4fc6b7
+superbot-pool | Up 18 hours (healthy) | superbot-pool
+superbot-staging | Up 18 hours | superbot-staging
+
+--- /opt ---
+12K	/opt/containerd
+430M	/opt/superbot
+324K	/opt/superbot-app-link
+12M	/opt/superbot-backups
+12M	/opt/superbot-desk
+6.8M	/opt/superbot-desk-data
+6.9M	/opt/superbot-pool
+16M	/opt/superbot-pool-data
+416M	/opt/superbot-staging
+296M	/opt/superbot-venv
+
+--- DB app ---
+total 72
+drwxr-xr-x  2 root root  4096 2026-10-18 10:43 .
+drwxr-xr-x 10 root root  4096 2026-10-14 15:48 ..
+-rw-r--r--  1 root root 65536 2026-10-18 10:43 superbot.db
+  tabella audit_log: 8 righe
+  tabella auth_settings: 1 righe
+  tabella market_snapshots: 0 righe
+  tabella risk_settings: 1 righe
+  tabella trades: 0 righe
+  tabella webauthn_credentials: 1 righe
+
+--- cervello (righe / ultima modifica) ---
+  hawk/trade_history.jsonl: 105 righe, 2026-10-17 22:47:49
+  hawk/learning_log.jsonl: 1730 righe, 2026-10-17 23:18:36
+  hawk/lessons.md: 14 righe, 2026-10-17 00:05:05
+  hawk/errors.md: assente
+  hawk/heartbeat.json: 0 righe, 2026-10-17 23:18:56
+  bull/trade_history.jsonl: 41 righe, 2026-10-17 22:47:50
+  bull/learning_log.jsonl: 2344 righe, 2026-10-17 23:18:42
+  bull/lessons.md: 20 righe, 2026-10-17 00:51:40
+  bull/errors.md: assente
+  bull/heartbeat.json: 0 righe, 2026-10-17 23:18:57
+
+--- nginx ---
+hitvprime
+superbot
+superbot-staging
+    server_name 51.91.109.45 superbot-trading.duckdns.org;
+    server_name 51.91.109.45;
+    server_name hitvprime.duckdns.org;
+    server_name superbot-trading.duckdns.org;
+
+--- certificati ---
+  Certificate Name: superbot-trading.duckdns.org
+    Domains: superbot-trading.duckdns.org
+    Expiry Date: 2027-01-06 06:51:34+00:00 (VALID: 79 days)
+
+--- cron e timer ---
+57 4,10,16,22 * * * "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" > /dev/null
+NEXT                            LEFT LAST                              PASSED UNIT                           ACTIVATES
+Mon 2026-10-19 06:20:00 UTC 1min 39s Mon 2026-10-19 06:10:06 UTC     8min ago sysstat-collect.timer          sysstat-collect.service
+Mon 2026-10-19 06:34:55 UTC    16min Sun 2026-10-18 06:23:21 UTC            - apt-daily-upgrade.timer        apt-daily-upgrade.service
+Mon 2026-10-19 06:57:42 UTC    39min Mon 2026-10-19 05:49:14 UTC    29min ago fwupd-refresh.timer            fwupd-refresh.service
+Mon 2026-10-19 09:48:56 UTC 3h 30min Sun 2026-10-18 15:11:54 UTC      15h ago certbot.timer                  certbot.service
+Mon 2026-10-19 12:03:31 UTC 5h 45min Sun 2026-10-18 12:03:31 UTC      18h ago update-notifier-download.timer update-notifier-download.service
+Mon 2026-10-19 12:13:27 UTC 5h 55min Sun 2026-10-18 12:13:27 UTC      18h ago systemd-tmpfiles-clean.timer   systemd-tmpfiles-clean.service
+Mon 2026-10-19 13:13:46 UTC       6h Mon 2026-10-19 03:52:00 UTC 2h 26min ago motd-news.timer                motd-news.service
+
+################ SINGAPORE (51.79.205.82) ################
+Warning: Permanently added '51.79.205.82' (ED25519) to the list of known hosts.
+host: vps-a06df2a7  uptime: up 2 hours, 8 minutes
+
+--- container ---
+superbot | Up 23 minutes | superbot
+superbot-desk-api | Up 2 hours (unhealthy) | superbot-work-desk-api:r39119231791a1
+superbot-desk-api-retained-r39119231791a1 | Exited (0) 20 hours ago | superbot-work-desk-api:r39118924914a1
+superbot-desk-bull | Up 2 hours (healthy) | superbot-desk:singapore
+superbot-desk-hawk | Up 2 hours (healthy) | superbot-desk:singapore
+
+--- /opt ---
+12K	/opt/containerd
+15M	/opt/superbot
+332K	/opt/superbot-app-link
+132K	/opt/superbot-backups
+7.2M	/opt/superbot-desk
+6.2M	/opt/superbot-desk-data
+5.3M	/opt/superbot-prestart-backups
+1.8M	/opt/superbot-web
+
+--- DB app ---
+total 72
+drwxr-xr-x  2 root root  4096 2026-10-17 23:26 .
+drwxr-xr-x 10 root root  4096 2026-10-19 05:50 ..
+-rw-------  1 root root 65536 2026-10-17 23:26 superbot.db
+  tabella audit_log: 8 righe
+  tabella auth_settings: 1 righe
+  tabella market_snapshots: 0 righe
+  tabella risk_settings: 1 righe
+  tabella trades: 0 righe
+  tabella webauthn_credentials: 1 righe
+
+--- cervello (righe / ultima modifica) ---
+  hawk/trade_history.jsonl: 112 righe, 2026-10-19 06:16:13
+  hawk/learning_log.jsonl: 2083 righe, 2026-10-19 06:16:13
+  hawk/lessons.md: 21 righe, 2026-10-19 06:16:18
+  hawk/errors.md: assente
+  hawk/heartbeat.json: 0 righe, 2026-10-19 06:18:18
+  bull/trade_history.jsonl: 47 righe, 2026-10-19 06:01:15
+  bull/learning_log.jsonl: 2708 righe, 2026-10-19 06:01:15
+  bull/lessons.md: 28 righe, 2026-10-19 06:01:20
+  bull/errors.md: assente
+  bull/heartbeat.json: 0 righe, 2026-10-19 06:18:20
+
+--- nginx ---
+default
+superbot
+	server_name _;
+    server_name 51.79.205.82;
+#	server_name example.com;
+
+--- certificati ---
+(nessun certificato / certbot assente)
+
+--- cron e timer ---
+no crontab for root
+NEXT                            LEFT LAST                              PASSED UNIT                           ACTIVATES
+Mon 2026-10-19 06:20:00 UTC 1min 36s Mon 2026-10-19 06:10:00 UTC     8min ago sysstat-collect.timer          sysstat-collect.service
+Mon 2026-10-19 06:35:26 UTC    17min Mon 2026-10-19 05:45:00 UTC    33min ago fwupd-refresh.timer            fwupd-refresh.service
+Mon 2026-10-19 06:47:59 UTC    29min Sun 2026-10-18 06:21:55 UTC            - apt-daily-upgrade.timer        apt-daily-upgrade.service
+Mon 2026-10-19 14:51:14 UTC       8h Sun 2026-10-18 22:55:16 UTC            - apt-daily.timer                apt-daily.service
+Mon 2026-10-19 22:31:24 UTC      16h Mon 2026-10-19 00:52:32 UTC            - motd-news.timer                motd-news.service
+Tue 2026-10-20 00:00:00 UTC      17h Mon 2026-10-19 00:00:01 UTC            - dpkg-db-backup.timer           dpkg-db-backup.service
+Tue 2026-10-20 00:00:00 UTC      17h Mon 2026-10-19 00:00:01 UTC            - logrotate.timer                logrotate.service
