@@ -437,6 +437,34 @@ class BrainTests(unittest.TestCase):
         self.heartbeat("hawk", cycle_running=True)
         self.assertEqual(mod.boundary_state(base, 1)[0], mod.WAIT)
 
+    PAUSED = {"mode": "paused", "pause_requested": True, "open_positions": 0, "next_cycle_ms": 0}
+
+    def test_fully_paused_bot_is_a_valid_boundary(self):
+        mod = load(BRAIN, "bk_brain_idle")
+        base = os.path.join(self.root, "hawk")
+        self.heartbeat("hawk", **self.PAUSED)
+        self.assertEqual(mod.boundary_state(base, 1)[0], mod.OK)
+        for p in ("hawk", "bull"):
+            self.heartbeat(p, **self.PAUSED)
+        self.assertEqual(self.go()[0], 0)
+        self.assertEqual(len(self.finished()), 1)
+
+    def test_paused_exception_is_narrow(self):
+        mod = load(BRAIN, "bk_brain_idle2")
+        base = os.path.join(self.root, "hawk")
+        for over in ({"mode": "running"},                      # next_cycle_ms 0 senza pausa: ciclo imminente
+                     {"mode": "draining", "open_positions": 2},  # in pausa ma sta chiudendo posizioni
+                     {"open_positions": 1},                    # posizioni aperte
+                     {"open_positions": True},                 # tipo sbagliato
+                     {"pause_requested": False},
+                     {"next_cycle_ms": int((time.time() + 10) * 1000)},  # ciclo programmato tra 10 s
+                     {"cycle_running": True},                  # ciclo in corso
+                     {"last_end_ms": int(time.time() * 1000)}):  # ultimo ciclo appena finito
+            self.heartbeat("hawk", **{**self.PAUSED, **over})
+            self.assertEqual(mod.boundary_state(base, 1)[0], mod.WAIT, over)
+        self.heartbeat("hawk", age=600, **self.PAUSED)         # battito vecchio: niente eccezioni
+        self.assertEqual(mod.boundary_state(base, 1)[0], mod.NO)
+
     # modalita' separata ed esplicita per un bot davvero fermo: il fermo si DIMOSTRA sul container
 
     def test_bot_stopped_mode_works_only_for_a_really_stopped_bot_and_says_so(self):

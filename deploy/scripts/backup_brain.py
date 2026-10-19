@@ -208,8 +208,17 @@ def boundary_state(base, quiet, margin=30.0):
     end_ms, next_ms = hb.get("last_end_ms"), hb.get("next_cycle_ms")
     if isinstance(end_ms, (int, float)) and now - end_ms / 1000.0 < quiet:
         return WAIT, "ultimo ciclo finito da meno di %g s" % quiet
-    if isinstance(next_ms, (int, float)) and next_ms / 1000.0 - now < margin:
+    # Bot FERMO DAVVERO dal battito: in pausa, senza posizioni, nessun ciclo programmato (next_cycle_ms == 0).
+    # Non fa cicli da solo (riparte solo se l'utente preme Avvia) e il battito e' fresco. Qui lo 0 non vuol dire
+    # "ciclo imminente": senza questa eccezione il backup aspettava per sempre dopo un reset. Restano obbligatori
+    # la quiete dei file centrali (wait_ready) e la ricontrollo prima/dopo la copia.
+    idle = (hb.get("mode") == "paused" and hb.get("pause_requested") is True and
+            type(hb.get("open_positions")) is int and hb.get("open_positions") == 0 and
+            type(next_ms) is int and next_ms == 0)
+    if not idle and isinstance(next_ms, (int, float)) and next_ms / 1000.0 - now < margin:
         return WAIT, "il prossimo ciclo parte tra meno di %g s" % margin
+    if idle:
+        return OK, "in pausa, senza posizioni e senza cicli programmati (cicli fatti %s)" % hb.get("cycles")
     nxt = ("%d s" % int(next_ms / 1000.0 - now)) if isinstance(next_ms, (int, float)) else "?"
     return OK, "tra due cicli (cicli fatti %s, prossimo tra %s)" % (hb.get("cycles"), nxt)
 

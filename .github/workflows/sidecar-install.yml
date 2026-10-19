@@ -29,6 +29,18 @@ jobs:
           git merge-base --is-ancestor "$WANT" origin/rule-pool || { echo "ERRORE: commit non in rule-pool"; exit 1; }
           git checkout -q --detach "$WANT"
           echo "sha=$WANT" >> "$GITHUB_OUTPUT"
+      - name: Copia lo strumento di backup aggiornato sul VPS (chiave del server verificata)
+        env: {SG_SSH_KEY: "${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}"}
+        run: |
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools && chmod 700 /opt/superbot-tools'
+          scp $SSHO deploy/scripts/backup_brain.py root@51.79.205.82:/opt/superbot-tools/
+          rm -f ~/.ssh/id_sg
       - name: Installazione sul VPS
         id: inst
         continue-on-error: true
