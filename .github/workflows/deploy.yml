@@ -9,8 +9,14 @@ name: Deploy SuperBot app su Singapore
 #   ne' i file del cervello: l'app li monta come faceva prima.
 # - TRADING_MODE dell'app e' fisso a "paper". Il live dei bot si decide solo
 #   con il secret DESK_MODE e solo per scelta esplicita dell'utente.
-# - Il database dell'app (/opt/superbot/data) non viene mai sovrascritto:
-#   prima di ogni deploy se ne fa una copia consistente.
+# - Il database dell'app (/opt/superbot/data) non viene mai sovrascritto.
+#   Prima di ogni deploy: backup con l'API di SQLite, controllo di integrita' e
+#   prova di ripristino (deploy/scripts/backup_app_db.py). Se fallisce, il
+#   deploy si ferma prima di cambiare qualunque cosa.
+# - La chiave del server SSH e' verificata (impronta fissa): niente piu'
+#   "accetta qualunque chiave". Se il server cambia chiave, il deploy si ferma.
+# - L'immagine precedente resta come superbot:prev per tornare indietro.
+# - Se l'app non risponde a fine deploy, il workflow diventa rosso.
 
 on:
   push:
@@ -43,17 +49,27 @@ jobs:
 
       # Il frontend va FUORI dal repo git del VPS (/opt/superbot): un
       # "git reset --hard" lo sostituirebbe con la vecchia build tracciata.
-      - name: Copia frontend build sul VPS Singapore
+      - name: Copia frontend build e strumenti di backup sul VPS Singapore
         env:
           SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SG_SSH_KEY" > ~/.ssh/id_sg
           chmod 600 ~/.ssh/id_sg
-          ssh -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
-            root@51.79.205.82 'mkdir -p /opt/superbot-web/build && rm -rf /opt/superbot-web/build/*'
-          scp -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -r \
-            frontend/build/. root@51.79.205.82:/opt/superbot-web/build/
+          # Chiavi pubbliche del server Singapore (non sono segrete). Se il server
+          # presenta una chiave diversa, la connessione viene rifiutata.
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          51.79.205.82 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
+          KH
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools /opt/superbot-web/build.new && chmod 700 /opt/superbot-tools && rm -rf /opt/superbot-web/build.new/*'
+          scp $SSHO deploy/scripts/backup_app_db.py root@51.79.205.82:/opt/superbot-tools/
+          # Il frontend si copia in una cartella nuova e si scambia solo a copia
+          # finita: se la copia si interrompe, il sito in uso resta quello di prima.
+          scp $SSHO -r frontend/build/. root@51.79.205.82:/opt/superbot-web/build.new/
+          ssh $SSHO root@51.79.205.82 'set -e; test -s /opt/superbot-web/build.new/index.html; rm -rf /opt/superbot-web/build.old; if [ -d /opt/superbot-web/build ]; then mv /opt/superbot-web/build /opt/superbot-web/build.old; fi; mv /opt/superbot-web/build.new /opt/superbot-web/build; rm -rf /opt/superbot-web/build.old'
           rm -f ~/.ssh/id_sg
 
       - name: Deploy FastAPI + nginx su Singapore
@@ -78,6 +94,10 @@ jobs:
           host: 51.79.205.82
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          # Impronta della chiave ECDSA del server: e' quella che ssh-action negozia
+          # (provato il 19/10 con il workflow sg-hardening-check). Se cambia, il deploy
+          # si ferma invece di mandare i segreti a un server sconosciuto.
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           command_timeout: 15m
           envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD,DESK_MODE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,SG_DOMAIN,BITGET_RO_HAWK_API_KEY,BITGET_RO_HAWK_SECRET_KEY,BITGET_RO_HAWK_PASSPHRASE,BITGET_RO_BULL_API_KEY,BITGET_RO_BULL_SECRET_KEY,BITGET_RO_BULL_PASSPHRASE
           script: |
@@ -93,6 +113,18 @@ jobs:
             apt-get install -y docker.io git nginx curl 2>/dev/null || true
             systemctl start docker 2>/dev/null || true
 
+            # == Database: backup verificato PRIMA di toccare qualunque cosa ==
+            # API di backup di SQLite (non un semplice cp), controllo di integrita',
+            # prova di ripristino. Se non riesce, il deploy si ferma qui.
+            mkdir -p /opt/superbot /opt/superbot/data /opt/superbot-backups
+            if [ ! -f /opt/superbot-tools/backup_app_db.py ]; then
+              echo "ERRORE: strumenti di backup mancanti sul VPS (/opt/superbot-tools)."
+              exit 1
+            fi
+            python3 -I /opt/superbot-tools/backup_app_db.py \
+              --src /opt/superbot/data/superbot.db --dir /opt/superbot-backups \
+              --prefix superbot-deploy --keep 10
+
             # == Repo (git init se la cartella esiste gia' senza .git) ==
             mkdir -p /opt/superbot
             cd /opt/superbot
@@ -102,15 +134,6 @@ jobs:
             fi
             git fetch origin main
             git reset --hard origin/main
-
-            # == Database: backup prima di ogni deploy (ultime 10 copie) ==
-            DB_LIVE=/opt/superbot/data/superbot.db
-            mkdir -p /opt/superbot/data /opt/superbot-backups
-            if [ -s "$DB_LIVE" ]; then
-              cp "$DB_LIVE" "/opt/superbot-backups/superbot-$(date +%Y%m%d-%H%M%S).db"
-              ls -1t /opt/superbot-backups/superbot-*.db 2>/dev/null | tail -n +11 | xargs -r rm -f
-              echo "DB: copia di sicurezza fatta"
-            fi
 
             # == .env dell'app (modalita' fissa: paper, come l'originale) ==
             RP_DOMAIN="${SG_DOMAIN:-51.79.205.82}"
@@ -193,6 +216,8 @@ jobs:
             nginx -t && systemctl reload nginx || systemctl restart nginx || true
 
             # == Container superbot (come l'originale: -p 8002:8001) ==
+            # L'immagine in uso resta come superbot:prev, per poter tornare indietro.
+            docker image inspect superbot >/dev/null 2>&1 && docker tag superbot superbot:prev || true
             docker build -t superbot /opt/superbot
             docker stop superbot 2>/dev/null || true
             docker rm superbot 2>/dev/null || true
@@ -230,3 +255,16 @@ jobs:
             docker ps --filter name=superbot-desk --format "{{.Names}} | {{.Status}}"
             echo "=== Log superbot (ultimi 30) ==="
             docker logs --tail 30 superbot 2>&1
+
+            # == Esito: se l'app non risponde, il workflow diventa rosso ==
+            OK=0
+            for i in 1 2 3 4 5 6; do
+              if curl -fsS -m 5 http://127.0.0.1:8002/api/health >/dev/null; then OK=1; break; fi
+              sleep 5
+            done
+            if [ "$OK" != "1" ]; then
+              echo "ERRORE: l'app non risponde dopo il deploy."
+              echo "Per tornare indietro: docker rm -f superbot, poi docker run con l'immagine superbot:prev (stessi parametri), oppure rilanciare il deploy dal commit precedente."
+              exit 1
+            fi
+            echo "DEPLOY OK: l'app risponde. Immagine precedente conservata come superbot:prev."
