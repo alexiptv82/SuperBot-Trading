@@ -1,7 +1,7 @@
 # STATO di SuperBot Trading
 
 **Aggiornato:** lunedì 19 ottobre 2026, ~14:45 (ora di Roma) — da Claude.
-**In corso:** fase 1 Profit Manager consegnata da ChatGPT per revisione Claude, ramo `work/profit-manager`, commit `9d5fab5`. Moduli puri e replay decisionale offline; 54 test PM locali verdi (28 nuovi + 26 preesistenti). Input reali e confronto esecutivo ancora da validare. Nessun aggancio o deploy.
+**In corso:** ChatGPT, fase replay PM su `work/profit-manager`. Estrattore prove offline pronto al commit `67735f3`, da revisionare con Claude PRIMA dell'uso su dati reali. Ombra prevista su entrambi; nessuna integrazione/deploy ancora eseguita.
 
 ## In una frase
 Il bot di trading su futures Bitget (due portafogli, Hawk e Bull, più un pool di regole) e la sua app girano **tutti su un unico server a Singapore, in modalità paper** (soldi finti). La migrazione da Strasburgo è finita il 19 ottobre. Il live con soldi veri non è attivo e non è in programma finché l'utente non lo decide.
