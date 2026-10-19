@@ -1,2 +1,2 @@
-2026-10-19 backup esterno cifrato: prima installazione
-azione=setup
+2026-10-19 backup esterno cifrato: primo backup
+azione=run
