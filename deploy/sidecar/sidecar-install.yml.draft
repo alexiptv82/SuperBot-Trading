@@ -1,0 +1,102 @@
+name: Osservatore ombra - installazione (container separato, sola lettura)
+
+# BOZZA (non attiva: per attivarla va copiata in .github/workflows/ su rule-pool).
+# Installa SOLO il container "superbot-sidecar". NON ferma, NON ricrea, NON riavvia superbot-desk-hawk/bull.
+# Nessun segreto passa al container (nessuna -e). Parte solo quando cambia deploy/sidecar-install.trigger
+# e il file contiene la riga "sha=<40 caratteri>" di un commit che fa parte di rule-pool.
+# Si ferma SENZA toccare nulla se: backup non riuscito, bot non in pausa, posizioni aperte, run non nuovo.
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/sidecar-install.trigger"]
+concurrency:
+  group: superbot-desk-singapore
+  cancel-in-progress: false
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Versione approvata
+        id: approved
+        run: |
+          set -e
+          WANT="$(grep -E '^sha=' deploy/sidecar-install.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          printf '%s' "$WANT" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: serve sha= di 40 caratteri"; exit 1; }
+          git fetch -q origin rule-pool
+          git merge-base --is-ancestor "$WANT" origin/rule-pool || { echo "ERRORE: commit non in rule-pool"; exit 1; }
+          git checkout -q --detach "$WANT"
+          echo "sha=$WANT" >> "$GITHUB_OUTPUT"
+      - name: Copia strumenti di backup (chiave del server verificata)
+        env: {SG_SSH_KEY: "${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}"}
+        run: |
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          # le stesse chiavi pubbliche del server di desk-deploy.yml vanno copiate qui all'attivazione
+          cp .github/workflows/desk-deploy.yml /dev/null
+          echo "BOZZA: completare known_hosts_sg come in desk-deploy.yml"; exit 1
+      - name: Installazione sul VPS
+        uses: appleboy/ssh-action@v1.0.0
+        env: {APPROVED_SHA: "${{ steps.approved.outputs.sha }}"}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: APPROVED_SHA
+          command_timeout: 20m
+          script: |
+            set -e
+            printf '%s' "$APPROVED_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: sha"; exit 1; }
+            # 1) Condizioni sui bot (sola lettura): in pausa, nessuna posizione aperta, run recente
+            for P in hawk bull; do
+              python3 -I - "$P" <<'PY'
+            import json, sys, time
+            p = sys.argv[1]
+            d = "/opt/superbot-desk-data/" + p
+            s = json.load(open(d + "/state_v2.json")); h = json.load(open(d + "/heartbeat.json"))
+            n = len(s["main"]["positions"])
+            print(p, "run", s.get("run_no"), "posizioni", n, "in_pausa", h.get("paused"))
+            if n: sys.exit("ERRORE: %s ha posizioni aperte" % p)
+            if not h.get("paused"): sys.exit("ERRORE: %s non e' in pausa" % p)
+            if time.time()*1000 - int(s["run_started_ms"]) > 3*3600*1000: sys.exit("ERRORE: %s: il run non e' appena partito (reset non fatto?)" % p)
+            PY
+            done
+            # 2) Backup verificato PRIMA di qualsiasi cosa
+            test -f /opt/superbot-tools/backup_brain.py || { echo "ERRORE: strumenti di backup mancanti"; exit 1; }
+            python3 -I /opt/superbot-tools/backup_brain.py --root /opt/superbot-desk-data --dir /opt/superbot-backups --keep 10 --tag sidecar
+            # 3) Codice sul commit esatto
+            if [ -d /opt/superbot-sidecar-src/.git ]; then cd /opt/superbot-sidecar-src && git fetch origin rule-pool
+            else git clone -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-sidecar-src && cd /opt/superbot-sidecar-src; fi
+            git cat-file -e "${APPROVED_SHA}^{commit}"; git reset --hard "$APPROVED_SHA"
+            test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
+            SHA12=$(printf '%s' "$APPROVED_SHA" | cut -c1-12)
+            docker build -t "superbot-sidecar:sha-${SHA12}" --label "superbot.sha=${APPROVED_SHA}" -f Dockerfile.sidecar .
+            # 4) Cartella di uscita propria (uid 10001), mai dentro i dati dei bot
+            mkdir -p /opt/superbot-sidecar-data && chown 10001:10001 /opt/superbot-sidecar-data && chmod 700 /opt/superbot-sidecar-data
+            # 5) Prova di lettura con lo stesso utente, in sola lettura, prima di installare
+            for P in hawk bull; do
+              docker run --rm --user 10001:10001 --read-only --cap-drop ALL -v /opt/superbot-desk-data:/data:ro \
+                "superbot-sidecar:sha-${SHA12}" python -c "import json,sys; json.load(open('/data/$P/state_v2.json')); json.load(open('/data/$P/heartbeat.json')); print('lettura ok $P')"
+            done
+            # 6) Avvio (container nuovo e separato; i bot non vengono toccati)
+            docker stop superbot-sidecar 2>/dev/null || true; docker rm superbot-sidecar 2>/dev/null || true
+            docker run -d --name superbot-sidecar --restart unless-stopped --user 10001:10001 \
+              --read-only --tmpfs /tmp:size=16m --cap-drop ALL --security-opt no-new-privileges \
+              --memory 128m --cpus 0.25 --pids-limit 64 \
+              -e SIDECAR_SHA="$APPROVED_SHA" \
+              -v /opt/superbot-desk-data:/data:ro -v /opt/superbot-sidecar-data:/out \
+              "superbot-sidecar:sha-${SHA12}"
+            # 7) Verifiche: un solo sidecar, stato recente, nessun errore, bot intatti
+            sleep 40
+            test "$(docker ps --filter name=^superbot-sidecar$ --filter status=running -q | wc -l)" = 1
+            for P in hawk bull; do
+              python3 -I - "$P" <<'PY'
+            import json, sys, time
+            s = json.load(open("/opt/superbot-sidecar-data/%s/status.json" % sys.argv[1]))
+            print(sys.argv[1], "status", s)
+            if time.time()*1000 - s["ts_ms"] > 120000: sys.exit("ERRORE: stato non recente")
+            PY
+            done
+            docker ps --format '{{.Names}} | {{.Status}}' | grep superbot-desk
+            echo "OSSERVATORE INSTALLATO sul commit ${APPROVED_SHA}. Bot non toccati. Uscita: /opt/superbot-sidecar-data"
