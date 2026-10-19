@@ -1,12 +1,23 @@
-### Controllo 2026-10-19T05:55:25Z
+### Controllo 2026-10-19T06:28:25Z
 
 ## 1. Dall'ESTERNO (runner GitHub -> Singapore, porta 80)
 frontend /           : HTTP 200
 API /api/health         : {"status":"ok","mode":"paper","version":"1.0.0","desk_mode":"paper","build":"2026-10-15-live-needs-live-bot"}
+
+## 1b. HTTPS col DOMINIO VERO, forzato su Singapore (prova prima del cambio DNS)
+frontend https://superbot-trading.duckdns.org/            : HTTP 200, certificato valido=0 (0=ok)
+API https://superbot-trading.duckdns.org/api/health : {"status":"ok","mode":"paper","version":"1.0.0","desk_mode":"paper","build":"2026-10-15-live-needs-live-bot"}
+desk/health (hawk)      : {"available":true,"portfolio":"hawk","bot_online":true,"bot_mode":"running","halt":null,"version":"b4709d1","last_ok":true}
+
+desk/bull/health (bull) : {"available":true,"portfolio":"bull","bot_online":true,"bot_mode":"running","halt":null,"version":"b4709d1","last_ok":true}
+
+senza login /api/desk/status deve dare 401/403: HTTP 401
+scadenza certificato servito: notAfter=Jan  6 06:51:34 2027 GMT
+
 ## 2. Sul VPS
 Warning: Permanently added '51.79.205.82' (ED25519) to the list of known hosts.
 --- container (tutti) ---
-superbot | Up 38 seconds | 127.0.0.1:8002->8001/tcp | superbot
+superbot | Up 40 seconds | 127.0.0.1:8002->8001/tcp | superbot
 superbot-desk-api | Up 2 hours (unhealthy) | 127.0.0.1:18002->8001/tcp | superbot-work-desk-api:r39119231791a1
 superbot-desk-api-retained-r39119231791a1 | Exited (0) 20 hours ago |  | superbot-work-desk-api:r39118924914a1
 superbot-desk-bull | Up 2 hours (healthy) |  | superbot-desk:singapore
@@ -20,36 +31,36 @@ nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
 nginx: configuration file /etc/nginx/nginx.conf test is successful
 active
 total 8
-drwxr-xr-x 2 root root 4096 Oct 19 05:54 .
+drwxr-xr-x 2 root root 4096 Oct 19 06:27 .
 drwxr-xr-x 8 root root 4096 Oct 19 04:44 ..
 lrwxrwxrwx 1 root root   34 Oct 19 04:44 default -> /etc/nginx/sites-available/default
-lrwxrwxrwx 1 root root   35 Oct 19 05:54 superbot -> /etc/nginx/sites-available/superbot
+lrwxrwxrwx 1 root root   35 Oct 19 06:27 superbot -> /etc/nginx/sites-available/superbot
 
 --- frontend build ---
 total 36
-drwxr-xr-x 4 root root 4096 Oct 19 05:54 .
+drwxr-xr-x 4 root root 4096 Oct 19 06:27 .
 drwxr-xr-x 3 root root 4096 Oct 19 05:49 ..
--rw-r--r-- 1 root root  369 Oct 19 05:54 asset-manifest.json
--rw-r--r-- 1 root root  511 Oct 19 05:54 favicon.png
-drwxr-xr-x 2 root root 4096 Oct 19 05:54 icons
--rw-r--r-- 1 root root  897 Oct 19 05:54 index.html
--rw-r--r-- 1 root root  718 Oct 19 05:54 manifest.json
--rw-r--r-- 1 root root 3637 Oct 19 05:54 service-worker.js
-drwxr-xr-x 4 root root 4096 Oct 19 05:54 static
+-rw-r--r-- 1 root root  369 Oct 19 06:27 asset-manifest.json
+-rw-r--r-- 1 root root  511 Oct 19 06:27 favicon.png
+drwxr-xr-x 2 root root 4096 Oct 19 06:27 icons
+-rw-r--r-- 1 root root  897 Oct 19 06:27 index.html
+-rw-r--r-- 1 root root  718 Oct 19 06:27 manifest.json
+-rw-r--r-- 1 root root 3637 Oct 19 06:27 service-worker.js
+drwxr-xr-x 4 root root 4096 Oct 19 06:27 static
 
 --- dati app ---
 total 72
-drwxr-xr-x  2 root root  4096 Oct 17 23:26 .
+drwxr-xr-x  2 root root  4096 Oct 19 06:25 .
 drwxr-xr-x 10 root root  4096 Oct 19 05:50 ..
--rw-------  1 root root 65536 Oct 17 23:26 superbot.db
+-rw-------  1 root root 65536 Oct 19 06:25 superbot.db
 
 --- DESK_* dentro il container superbot ---
+DESK_DATA_DIR=/opt/superbot-desk-data/hawk
 DESK_DATA_DIR_BULL=/opt/superbot-desk-data/bull
+DESK_DAILY_LOSS_PCT=40
 DESK_MODE=paper
 DESK_HAWK_CAPITAL=1000
 DESK_BULL_CAPITAL=1000
-DESK_DAILY_LOSS_PCT=40
-DESK_DATA_DIR=/opt/superbot-desk-data/hawk
 
 --- cartelle cervello montate nel container (solo elenco) ---
 /opt/superbot-desk-data/bull:
@@ -72,18 +83,27 @@ macro_events.json
 state_v2.json
 trade_history.jsonl
 
+--- variabili BitGet sola lettura presenti nel container (solo nomi) ---
+BITGET_RO_BULL_API_KEY BITGET_RO_BULL_SECRET_KEY BITGET_RO_BULL_PASSPHRASE BITGET_RO_HAWK_API_KEY BITGET_RO_HAWK_SECRET_KEY BITGET_RO_HAWK_PASSPHRASE 
+
 --- log superbot (ultimi 40) ---
 INFO:     Started server process [1]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
-INFO:     172.17.0.1:47090 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     172.17.0.1:47102 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     172.17.0.1:35658 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     172.17.0.1:35668 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:51158 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:51166 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:51174 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:36238 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:36244 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:36254 - "GET /api/desk/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:36268 - "GET /api/desk/bull/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:36282 - "GET /api/desk/status HTTP/1.1" 401 Unauthorized
+INFO:     172.17.0.1:49844 - "GET /api/health HTTP/1.1" 200 OK
 
 --- firewall ufw / porte in ascolto ---
 Status: inactive
-LISTEN 0      511          0.0.0.0:80         0.0.0.0:*    users:(("nginx",pid=11818,fd=5),("nginx",pid=11817,fd=5),("nginx",pid=5445,fd=5))
-LISTEN 0      4096       127.0.0.1:8002       0.0.0.0:*    users:(("docker-proxy",pid=12128,fd=7))                                          
-LISTEN 0      511             [::]:80            [::]:*    users:(("nginx",pid=11818,fd=6),("nginx",pid=11817,fd=6),("nginx",pid=5445,fd=6))
+LISTEN 0      511          0.0.0.0:80         0.0.0.0:*    users:(("nginx",pid=15324,fd=5),("nginx",pid=15323,fd=5),("nginx",pid=5445,fd=5))   
+LISTEN 0      511          0.0.0.0:443        0.0.0.0:*    users:(("nginx",pid=15324,fd=13),("nginx",pid=15323,fd=13),("nginx",pid=5445,fd=13))
+LISTEN 0      4096       127.0.0.1:8002       0.0.0.0:*    users:(("docker-proxy",pid=15573,fd=7))                                             
+LISTEN 0      511             [::]:80            [::]:*    users:(("nginx",pid=15324,fd=6),("nginx",pid=15323,fd=6),("nginx",pid=5445,fd=6))   
