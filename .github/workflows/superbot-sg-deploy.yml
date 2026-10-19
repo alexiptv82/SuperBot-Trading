@@ -19,7 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # L'app (backend + frontend) si deploya da MAIN, come a Strasburgo.
+      # Il branch rule-pool serve solo ai bot desk (hawk/bull).
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Build frontend
         run: |
@@ -79,8 +83,8 @@ jobs:
               git init -q
               git remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
             fi
-            git fetch origin rule-pool
-            git reset --hard origin/rule-pool
+            git fetch origin main
+            git reset --hard origin/main
 
             # == Database: backup prima di ogni deploy (ultime 10 copie) ==
             DB_LIVE=/opt/superbot/data/superbot.db
