@@ -14,9 +14,9 @@ jobs:
       - name: Raccolta stato + auto-restart superbot se fermo
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: 51.91.109.45
+          host: 51.79.205.82
           username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           command_timeout: 90s
           script: |
             OUT=/tmp/superbot_status.txt
@@ -156,7 +156,7 @@ jobs:
 
       - name: Pubblica output come step summary
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
@@ -164,12 +164,12 @@ jobs:
           ssh -T -i ~/.ssh/id_desk \
             -o StrictHostKeyChecking=accept-new \
             -o ConnectTimeout=15 \
-            root@51.91.109.45 \
+            root@51.79.205.82 \
             'cat /tmp/superbot_status.txt' 2>/dev/null > out.txt || true
           ssh -T -i ~/.ssh/id_desk \
             -o StrictHostKeyChecking=accept-new \
             -o ConnectTimeout=15 \
-            root@51.91.109.45 \
+            root@51.79.205.82 \
             'cat /tmp/superbot_data.txt' 2>/dev/null > data.txt || true
           rm -f ~/.ssh/id_desk
           # pubblica nel job summary (leggibile via API)
