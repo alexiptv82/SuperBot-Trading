@@ -244,8 +244,73 @@ class BrainTests(unittest.TestCase):
         self.assertEqual(self.finished(), [])
 
     def test_missing_allowed_only_with_flag(self):
-        rc, out = run(BRAIN, "--root", os.path.join(self.td.name, "nulla"), "--dir", self.dir, "--allow-missing")
+        rc, out = run(BRAIN, "--root", os.path.join(self.td.name, "nulla"), "--dir", self.dir, "--first-install")
         self.assertEqual(rc, 0, out)
+        # la vecchia opzione generica non esiste piu': un comando vecchio fallisce invece di passare
+        rc, _ = run(BRAIN, "--root", os.path.join(self.td.name, "nulla"), "--dir", self.dir, "--allow-missing")
+        self.assertNotEqual(rc, 0)
+
+    # ---- caso 1 di ChatGPT (19/10, terzo giro): file irrinunciabili obbligatori ----
+
+    def test_every_required_file_is_mandatory(self):
+        mod = load(BRAIN, "bk_brain_req")
+        self.assertEqual(set(mod.REQUIRED),
+                         {"state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md"})
+        for p in ("hawk", "bull"):
+            for name in mod.REQUIRED:
+                with self.subTest(portfolio=p, file=name):
+                    self.tearDown()
+                    self.setUp()                                   # cartelle nuove per ogni caso
+                    os.remove(os.path.join(self.root, p, name))
+                    rc, out = self.go()
+                    self.assertEqual(rc, 1, out)
+                    self.assertIn("%s/%s" % (p, name), out)
+                    self.assertEqual(self.finished(), [])          # nessuna copia "buona" rimasta
+
+    def test_empty_portfolio_folder_fails(self):
+        for n in os.listdir(os.path.join(self.root, "bull")):
+            if n != "heartbeat.json":
+                os.remove(os.path.join(self.root, "bull", n))      # cartella con solo il battito
+        rc, out = self.go()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("irrinunciabili", out)
+        self.assertEqual(self.finished(), [])
+
+    def test_required_state_cannot_be_empty_or_a_symlink(self):
+        path = os.path.join(self.root, "hawk", "state_v2.json")
+        open(path, "w").close()
+        self.assertEqual(self.go()[0], 1)
+        os.remove(path)
+        os.symlink(os.path.join(self.root, "bull", "state_v2.json"), path)   # la copia non segue i collegamenti
+        rc, out = self.go()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("hawk/state_v2.json", out)
+
+    def test_errors_md_is_optional(self):                          # sul server di oggi non esiste
+        for p in ("hawk", "bull"):
+            os.remove(os.path.join(self.root, p, "errors.md"))
+        rc, out = self.go()
+        self.assertEqual(rc, 0, out)
+
+    def test_first_install_is_an_explicit_and_recorded_exception(self):
+        for n in os.listdir(os.path.join(self.root, "bull")):
+            if n != "heartbeat.json":
+                os.remove(os.path.join(self.root, "bull", n))
+        self.assertEqual(self.go()[0], 1)                          # senza opzione: errore
+        rc, out = self.go("--first-install")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PRIMA INSTALLAZIONE", out)
+        (name,) = self.finished()
+        man = load_json(os.path.join(self.dir, name, "MANIFEST.json"))
+        self.assertTrue(man["prima_installazione"]["ammessa"])
+        self.assertIn("bull/state_v2.json", man["prima_installazione"]["file_irrinunciabili_assenti"])
+
+    def test_normal_backup_records_that_no_exception_was_used(self):
+        self.assertEqual(self.go()[0], 0)
+        (name,) = self.finished()
+        man = load_json(os.path.join(self.dir, name, "MANIFEST.json"))
+        self.assertFalse(man["prima_installazione"]["ammessa"])
+        self.assertEqual(man["prima_installazione"]["file_irrinunciabili_assenti"], [])
 
     def test_cycle_running_blocks_the_backup(self):  # punto 4: confine di ciclo
         self.heartbeat("hawk", cycle_running=True)
@@ -282,23 +347,141 @@ class BrainTests(unittest.TestCase):
         self.assertIn("non e' dimostrabile", out)
         self.assertEqual(self.finished(), [])                         # nessuna copia incoerente rimasta
 
-    def test_stopped_bot_old_heartbeat_ok_but_not_verified(self):
+    # ---- caso 3 di ChatGPT: nel percorso di deploy il confine di ciclo VERIFICATO e' obbligatorio ----
+
+    def test_stale_heartbeat_fails_in_the_deploy_path(self):
         for p in ("hawk", "bull"):
             self.heartbeat(p, age=600, cycle_running=True)
         rc, out = self.go()
-        self.assertEqual(rc, 0, out)
-        (name,) = self.finished()
-        man = load_json(os.path.join(self.dir, name, "MANIFEST.json"))
-        self.assertFalse(man["coerenza"]["confine_di_ciclo_verificato"])
+        self.assertEqual(rc, 1, out)
+        self.assertIn("--bot-stopped", out)                        # dice come procedere se e' davvero fermo
+        self.assertEqual(self.finished(), [])
 
-    def test_old_bot_without_cycle_running_is_flagged_unverified(self):
+    def test_missing_cycle_running_fails_in_the_deploy_path(self):
         for p in ("hawk", "bull"):
             self.heartbeat(p, cycle_running=None)
         rc, out = self.go()
-        self.assertEqual(rc, 0, out)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("cycle_running", out)
+        self.assertEqual(self.finished(), [])
+
+    def test_one_unverifiable_bot_is_enough_to_fail(self):
+        self.heartbeat("bull", age=600)
+        self.assertEqual(self.go()[0], 1)
+        self.assertEqual(self.finished(), [])
+
+    def test_unverifiable_fails_fast_without_retrying(self):
+        for p in ("hawk", "bull"):
+            self.heartbeat(p, age=600)
+        t = time.time()
+        rc, out = run(BRAIN, "--root", self.root, "--dir", self.dir, "--quiet-secs", "1", "--attempts", "5",
+                      "--wait", "5", "--quiet-timeout", "60")
+        self.assertEqual(rc, 1, out)
+        self.assertLess(time.time() - t, 10)                       # non aspetta minuti per qualcosa che non cambiera'
+        self.assertNotIn("tentativo 2", out)
+
+    def test_default_manifest_always_says_verified(self):
+        self.assertEqual(self.go()[0], 0)
         (name,) = self.finished()
-        man = load_json(os.path.join(self.dir, name, "MANIFEST.json"))
-        self.assertFalse(man["coerenza"]["confine_di_ciclo_verificato"])
+        c = load_json(os.path.join(self.dir, name, "MANIFEST.json"))["coerenza"]
+        self.assertTrue(c["confine_di_ciclo_verificato"])
+        self.assertEqual(c["modalita"], "ciclo_verificato")
+
+    def test_boundary_state_classification(self):
+        mod = load(BRAIN, "bk_brain_bs")
+        base = os.path.join(self.root, "hawk")
+        self.assertEqual(mod.boundary_state(base, 1)[0], mod.OK)
+        self.heartbeat("hawk", age=600)
+        self.assertEqual(mod.boundary_state(base, 1)[0], mod.NO)
+        self.heartbeat("hawk", cycle_running=None)
+        self.assertEqual(mod.boundary_state(base, 1)[0], mod.NO)
+        self.heartbeat("hawk", cycle_running=True)
+        self.assertEqual(mod.boundary_state(base, 1)[0], mod.WAIT)
+
+    # modalita' separata ed esplicita per un bot davvero fermo
+
+    def test_bot_stopped_mode_works_only_for_a_really_stopped_bot_and_says_so(self):
+        for p in ("hawk", "bull"):
+            self.heartbeat(p, age=600, cycle_running=True)
+        rc, out = self.go("--bot-stopped")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("BOT FERMO", out)
+        (name,) = self.finished()
+        c = load_json(os.path.join(self.dir, name, "MANIFEST.json"))["coerenza"]
+        self.assertEqual(c["modalita"], "bot_fermo")
+        self.assertFalse(c["confine_di_ciclo_verificato"])         # non spaccia la copia per verificata
+
+    def test_bot_stopped_mode_is_refused_when_a_bot_is_alive(self):
+        self.assertEqual(self.go("--bot-stopped")[0], 1)           # battito fresco su entrambi
+        self.heartbeat("hawk", age=600)
+        rc, out = self.go("--bot-stopped")                         # uno fermo, uno vivo
+        self.assertEqual(rc, 1, out)
+        self.assertIn("ATTIVO", out)
+        self.assertEqual(self.finished(), [])
+
+    def test_bot_stopped_mode_still_needs_quiet_files_and_required_files(self):
+        for p in ("hawk", "bull"):
+            self.heartbeat(p, age=600)
+        os.utime(os.path.join(self.root, "hawk", "state_v2.json"))          # scritto adesso
+        self.assertEqual(self.go("--bot-stopped", "--quiet-secs", "30")[0], 1)
+        old = time.time() - 300
+        os.utime(os.path.join(self.root, "hawk", "state_v2.json"), (old, old))
+        os.remove(os.path.join(self.root, "bull", "lessons.md"))
+        rc, out = self.go("--bot-stopped")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("bull/lessons.md", out)
+
+    # ---- caso 2 di ChatGPT: riga finale troncata = corruzione ----
+
+    def write_jsonl(self, p, name, body):
+        path = os.path.join(self.root, p, name)
+        with open(path, "wb") as f:
+            f.write(body)
+        old = time.time() - 300
+        os.utime(path, (old, old))
+        return path
+
+    def test_truncated_last_line_without_newline_blocks_deploy(self):
+        rows = b'{"i": 1}\n{"i": 2}\n'
+        for name in ("trade_history.jsonl", "learning_log.jsonl"):
+            with self.subTest(file=name):
+                self.tearDown()
+                self.setUp()
+                self.write_jsonl("bull", name, rows + b'{"i": 3, "net"')          # scrittura interrotta
+                rc, out = self.go()
+                self.assertEqual(rc, 1, out)
+                self.assertIn("incompleta", out)
+                self.assertEqual([n for n in self.finished() if "INCOMPLETO" not in n], [])
+                self.assertTrue(any("INCOMPLETO" in n for n in os.listdir(self.dir)))
+
+    def test_complete_json_without_final_newline_is_also_incomplete(self):
+        self.write_jsonl("hawk", "trade_history.jsonl", b'{"i": 1}\n{"i": 2}')     # riga valida ma senza a capo
+        rc, out = self.go()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("senza a capo", out)
+
+    def test_jsonl_problem_cases(self):
+        mod = load(BRAIN, "bk_brain_jl")
+        path = os.path.join(self.td.name, "x.jsonl")
+        cases = [
+            (b"", None),                                           # vuoto: nessuna riga, nessun problema
+            (b'{"a":1}\n', None),
+            (b'{"a":1}\n\n{"b":2}\n', None),                      # riga vuota in mezzo non e' corruzione
+            (b'{"a":1}\n{"b":2}', "incompleta"),                    # manca l'a capo finale
+            (b'{"a":1}\n{"b":', "incompleta"),
+            (b'{"a":1}\n{rotto\n{"b":2}\n', "riga 2"),             # corruzione in mezzo
+            (b'{"a":1}\n\xff\xfe\n', "riga 2"),                   # byte non UTF-8
+        ]
+        for body, expect in cases:
+            with self.subTest(body=body):
+                with open(path, "wb") as f:
+                    f.write(body)
+                got = mod.jsonl_problem(path)
+                if expect is None:
+                    self.assertIsNone(got)
+                else:
+                    self.assertIn(expect, got)
+                self.assertEqual(mod.jsonl_ok(path), expect is None)
 
     def test_corrupted_jsonl_or_state_fails_and_is_marked_incomplete(self):
         path = os.path.join(self.root, "bull", "trade_history.jsonl")
