@@ -1,0 +1,84 @@
+name: Inventario Strasburgo vs Singapore (sola lettura)
+
+# Elenca cosa gira ancora a Strasburgo e lo confronta con Singapore.
+# NON modifica nulla, NON stampa password/chiavi/variabili d'ambiente.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/strasburgo-inventory.trigger"
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Inventario (sola lettura)
+        env:
+          STR_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SG_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$STR_KEY" > ~/.ssh/id_str; chmod 600 ~/.ssh/id_str
+          echo "$SG_KEY"  > ~/.ssh/id_sg;  chmod 600 ~/.ssh/id_sg
+          OUT=deploy/strasburgo-inventory-output.txt
+          cat > /tmp/inv.sh <<'REMOTE'
+          echo "host: $(hostname)  uptime: $(uptime -p)"
+          echo; echo "--- container ---"
+          docker ps -a --format "{{.Names}} | {{.Status}} | {{.Image}}"
+          echo; echo "--- /opt ---"
+          du -sh /opt/* 2>/dev/null
+          echo; echo "--- DB app ---"
+          ls -la --time-style=long-iso /opt/superbot/data/ 2>&1
+          python3 - <<'PY'
+          import sqlite3, os
+          p="/opt/superbot/data/superbot.db"
+          if os.path.exists(p):
+              c=sqlite3.connect("file:"+p+"?mode=ro", uri=True)
+              for (t,) in c.execute("select name from sqlite_master where type='table' order by 1"):
+                  n=c.execute(f'select count(*) from "{t}"').fetchone()[0]
+                  print(f"  tabella {t}: {n} righe")
+          else:
+              print("  DB non trovato")
+          PY
+          echo; echo "--- cervello (righe / ultima modifica) ---"
+          for b in hawk bull; do
+            for f in trade_history.jsonl learning_log.jsonl lessons.md errors.md heartbeat.json; do
+              P=/opt/superbot-desk-data/$b/$f
+              [ -e $P ] && echo "  $b/$f: $(wc -l < $P) righe, $(stat -c %y $P | cut -c1-19)" || echo "  $b/$f: assente"
+            done
+          done
+          echo; echo "--- nginx ---"
+          ls /etc/nginx/sites-enabled/ 2>&1
+          grep -h "server_name" /etc/nginx/sites-enabled/* 2>/dev/null | sort -u
+          echo; echo "--- certificati ---"
+          certbot certificates 2>&1 | grep -E "Certificate Name|Domains|Expiry" || echo "(nessun certificato / certbot assente)"
+          echo; echo "--- cron e timer ---"
+          crontab -l 2>&1 | grep -v '^#' | head; systemctl list-timers --no-pager 2>/dev/null | head -8
+          REMOTE
+          {
+            echo "### Inventario $(date -u +%FT%TZ)"
+            echo; echo "################ STRASBURGO (51.91.109.45) ################"
+            ssh -i ~/.ssh/id_str -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@51.91.109.45 'bash -s' < <(sed 's/^          //' /tmp/inv.sh) || echo "!!! SSH a Strasburgo FALLITO (exit $?)"
+            echo; echo "################ SINGAPORE (51.79.205.82) ################"
+            ssh -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@51.79.205.82 'bash -s' < <(sed 's/^          //' /tmp/inv.sh) || echo "!!! SSH a Singapore FALLITO (exit $?)"
+          } > $OUT 2>&1
+          rm -f ~/.ssh/id_str ~/.ssh/id_sg
+          cat $OUT
+
+      - name: Committa risultato
+        run: |
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add deploy/strasburgo-inventory-output.txt
+          git diff --staged --quiet || git commit -m "inventario: Strasburgo vs Singapore [skip ci]"
+          git push origin rule-pool
