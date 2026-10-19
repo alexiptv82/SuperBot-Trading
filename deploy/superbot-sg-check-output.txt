@@ -1,48 +1,41 @@
-### Controllo 2026-10-19T05:52:20Z
+### Controllo 2026-10-19T05:55:25Z
 
 ## 1. Dall'ESTERNO (runner GitHub -> Singapore, porta 80)
 frontend /           : HTTP 200
-API /api/health         : <html>
-<head><title>502 Bad Gateway</title></head>
-<body>
-<center><h1>502 Bad Gateway</h1></center>
-<hr><center>nginx/1.24.0 (Ubuntu)</center>
-</body>
-</html>
-
+API /api/health         : {"status":"ok","mode":"paper","version":"1.0.0","desk_mode":"paper","build":"2026-10-15-live-needs-live-bot"}
 ## 2. Sul VPS
 Warning: Permanently added '51.79.205.82' (ED25519) to the list of known hosts.
 --- container (tutti) ---
-superbot | Restarting (1) 4 seconds ago |  | superbot
+superbot | Up 38 seconds | 127.0.0.1:8002->8001/tcp | superbot
 superbot-desk-api | Up 2 hours (unhealthy) | 127.0.0.1:18002->8001/tcp | superbot-work-desk-api:r39119231791a1
 superbot-desk-api-retained-r39119231791a1 | Exited (0) 20 hours ago |  | superbot-work-desk-api:r39118924914a1
 superbot-desk-bull | Up 2 hours (healthy) |  | superbot-desk:singapore
 superbot-desk-hawk | Up 2 hours (healthy) |  | superbot-desk:singapore
 
 --- API locale ---
-
+{"status":"ok","mode":"paper","version":"1.0.0","desk_mode":"paper","build":"2026-10-15-live-needs-live-bot"}
 
 --- nginx ---
 nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
 nginx: configuration file /etc/nginx/nginx.conf test is successful
 active
 total 8
-drwxr-xr-x 2 root root 4096 Oct 19 05:50 .
+drwxr-xr-x 2 root root 4096 Oct 19 05:54 .
 drwxr-xr-x 8 root root 4096 Oct 19 04:44 ..
 lrwxrwxrwx 1 root root   34 Oct 19 04:44 default -> /etc/nginx/sites-available/default
-lrwxrwxrwx 1 root root   35 Oct 19 05:50 superbot -> /etc/nginx/sites-available/superbot
+lrwxrwxrwx 1 root root   35 Oct 19 05:54 superbot -> /etc/nginx/sites-available/superbot
 
 --- frontend build ---
 total 36
-drwxr-xr-x 4 root root 4096 Oct 19 05:50 .
+drwxr-xr-x 4 root root 4096 Oct 19 05:54 .
 drwxr-xr-x 3 root root 4096 Oct 19 05:49 ..
--rw-r--r-- 1 root root  369 Oct 19 05:50 asset-manifest.json
--rw-r--r-- 1 root root  511 Oct 19 05:50 favicon.png
-drwxr-xr-x 2 root root 4096 Oct 19 05:49 icons
--rw-r--r-- 1 root root  897 Oct 19 05:50 index.html
--rw-r--r-- 1 root root  718 Oct 19 05:49 manifest.json
--rw-r--r-- 1 root root 3637 Oct 19 05:49 service-worker.js
-drwxr-xr-x 4 root root 4096 Oct 19 05:49 static
+-rw-r--r-- 1 root root  369 Oct 19 05:54 asset-manifest.json
+-rw-r--r-- 1 root root  511 Oct 19 05:54 favicon.png
+drwxr-xr-x 2 root root 4096 Oct 19 05:54 icons
+-rw-r--r-- 1 root root  897 Oct 19 05:54 index.html
+-rw-r--r-- 1 root root  718 Oct 19 05:54 manifest.json
+-rw-r--r-- 1 root root 3637 Oct 19 05:54 service-worker.js
+drwxr-xr-x 4 root root 4096 Oct 19 05:54 static
 
 --- dati app ---
 total 72
@@ -51,54 +44,46 @@ drwxr-xr-x 10 root root  4096 Oct 19 05:50 ..
 -rw-------  1 root root 65536 Oct 17 23:26 superbot.db
 
 --- DESK_* dentro il container superbot ---
-(non leggibile)
+DESK_DATA_DIR_BULL=/opt/superbot-desk-data/bull
+DESK_MODE=paper
+DESK_HAWK_CAPITAL=1000
+DESK_BULL_CAPITAL=1000
+DESK_DAILY_LOSS_PCT=40
+DESK_DATA_DIR=/opt/superbot-desk-data/hawk
 
 --- cartelle cervello montate nel container (solo elenco) ---
-Error response from daemon: Container e157419244b172b0bd5178b4330c4ba47fb8121da7534a07c2c4ff418bbdc6b3 is restarting, wait until the container is running
+/opt/superbot-desk-data/bull:
+archive
+claude_schedule.pretest-20261016.json
+heartbeat.json
+learning_log.jsonl
+lessons.md
+macro_events.json
+state_v2.json
+trade_history.jsonl
+
+/opt/superbot-desk-data/hawk:
+archive
+claude_schedule.pretest-20261016.json
+heartbeat.json
+learning_log.jsonl
+lessons.md
+macro_events.json
+state_v2.json
+trade_history.jsonl
 
 --- log superbot (ultimi 40) ---
-  File "/usr/local/lib/python3.11/site-packages/click/core.py", line 910, in invoke
-    return callback(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 418, in main
-    run(
-  File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 587, in run
-    server.run()
-  File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 62, in run
-    return asyncio.run(self.serve(sockets=sockets))
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.11/asyncio/runners.py", line 190, in run
-    return runner.run(main)
-           ^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
-    return future.result()
-           ^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 69, in serve
-    config.load()
-  File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 458, in load
-    self.loaded_app = import_from_string(self.app)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 21, in import_from_string
-    module = importlib.import_module(module_str)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
-  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
-  File "/app/backend/server.py", line 895, in <module>
-    async def desk_reset_budget(request: Request, session=Depends(require_session)):
-                                         ^^^^^^^
-NameError: name 'Request' is not defined
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     172.17.0.1:47090 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:47102 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:35658 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     172.17.0.1:35668 - "GET /api/health HTTP/1.1" 200 OK
 
 --- firewall ufw / porte in ascolto ---
 Status: inactive
-LISTEN 0      511          0.0.0.0:80         0.0.0.0:*    users:(("nginx",pid=9170,fd=5),("nginx",pid=9169,fd=5),("nginx",pid=5445,fd=5))
-LISTEN 0      511             [::]:80            [::]:*    users:(("nginx",pid=9170,fd=6),("nginx",pid=9169,fd=6),("nginx",pid=5445,fd=6))
+LISTEN 0      511          0.0.0.0:80         0.0.0.0:*    users:(("nginx",pid=11818,fd=5),("nginx",pid=11817,fd=5),("nginx",pid=5445,fd=5))
+LISTEN 0      4096       127.0.0.1:8002       0.0.0.0:*    users:(("docker-proxy",pid=12128,fd=7))                                          
+LISTEN 0      511             [::]:80            [::]:*    users:(("nginx",pid=11818,fd=6),("nginx",pid=11817,fd=6),("nginx",pid=5445,fd=6))
