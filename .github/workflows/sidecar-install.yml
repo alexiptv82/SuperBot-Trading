@@ -8,6 +8,8 @@ on:
   push:
     branches: [rule-pool]
     paths: ["deploy/sidecar-install.trigger"]
+permissions:
+  contents: write
 concurrency:
   group: superbot-desk-singapore
   cancel-in-progress: false
@@ -28,6 +30,8 @@ jobs:
           git checkout -q --detach "$WANT"
           echo "sha=$WANT" >> "$GITHUB_OUTPUT"
       - name: Installazione sul VPS
+        id: inst
+        continue-on-error: true
         uses: appleboy/ssh-action@v1.0.0
         env: {APPROVED_SHA: "${{ steps.approved.outputs.sha }}"}
         with:
@@ -39,6 +43,7 @@ jobs:
           command_timeout: 20m
           script: |
             set -e
+            exec > >(tee /opt/superbot-sidecar-install.log) 2>&1
             printf '%s' "$APPROVED_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: sha"; exit 1; }
             # 1) Condizioni sui bot (sola lettura): in pausa, nessuna posizione aperta, run recente
             for P in hawk bull; do
@@ -92,3 +97,20 @@ jobs:
             done
             docker ps --format '{{.Names}} | {{.Status}}' | grep superbot-desk
             echo "OSSERVATORE INSTALLATO sul commit ${APPROVED_SHA}. Bot non toccati. Uscita: /opt/superbot-sidecar-data"
+      - name: Esito pubblicato nel repository (solo testo dello script, nessun segreto)
+        env: {SG_SSH_KEY: "${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}"}
+        run: |
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30 root@51.79.205.82 'tail -n 120 /opt/superbot-sidecar-install.log 2>/dev/null' > deploy/sidecar-install.output.txt || echo "log non leggibile" > deploy/sidecar-install.output.txt
+          rm -f ~/.ssh/id_sg
+          git config user.name "sidecar-install"; git config user.email "noreply@users.noreply.github.com"
+          git add deploy/sidecar-install.output.txt
+          git commit -m "Esito installazione osservatore" || true
+          git push origin HEAD:rule-pool || true
+      - name: Esito
+        if: steps.inst.outcome != 'success'
+        run: exit 1
