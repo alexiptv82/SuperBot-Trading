@@ -1,0 +1,156 @@
+### Pre-controllo 2026-10-19T06:22:19Z
+
+################ STRASBURGO ################
+Warning: Permanently added '51.91.109.45' (ED25519) to the list of known hosts.
+--- DNS dominio (da Strasburgo) ---
+51.91.109.45    superbot-trading.duckdns.org
+
+--- nomi variabili d'ambiente del container superbot (SENZA valori) ---
+ BITGET_RO_BULL_API_KEY BITGET_RO_BULL_PASSPHRASE BITGET_RO_BULL_SECRET_KEY BITGET_RO_HAWK_API_KEY BITGET_RO_HAWK_PASSPHRASE BITGET_RO_HAWK_SECRET_KEY DESK_BULL_CAPITAL DESK_DAILY_LOSS_PCT DESK_DATA_DIR DESK_DATA_DIR_BULL DESK_HAWK_CAPITAL DESK_MODE DESK_REMOTE_BASE_URL GPG_KEY LANG PATH PYTHONPATH PYTHON_SHA256 PYTHON_VERSION 
+
+--- mount del container superbot ---
+/opt/superbot-app-link/releases/r39119231791a1 -> /app/app_link (ro)
+/opt/superbot/backend/.env -> /app/backend/.env (rw)
+/opt/superbot/data -> /app/data (rw)
+/opt/superbot-desk-data/bull -> /opt/superbot-desk-data/bull (rw)
+/opt/superbot-desk-data/hawk -> /opt/superbot-desk-data/hawk (rw)
+
+--- porte / rete / restart policy ---
+rete=bridge restart=always ports={"8001/tcp":[{"HostIp":"","HostPort":"8002"}]}
+
+--- nginx vhost superbot (Strasburgo) ---
+server {
+    listen 80;
+    # L'IP resta per compatibilita'/debug diretto (resta solo HTTP, non
+    # c'e' un certificato per l'IP). Il dominio DuckDNS serve perche' nginx
+    # smisti correttamente le richieste a questo vhost invece di farle
+    # cadere nel server block di un altro sito sulla stessa VPS (es.
+    # hitvprime, che ha un default_server implicito e redirige tutto cio'
+    # che non riconosce). Niente redirect forzato a HTTPS qui: lasciamo
+    # che Let's Encrypt possa sempre verificare il dominio via HTTP per i
+    # rinnovi automatici, senza la complessita' di un redirect condizionale.
+    server_name 51.91.109.45 superbot-trading.duckdns.org;
+
+    root /opt/superbot/frontend/build;
+    index index.html;
+
+    # Richiesto da Let's Encrypt (metodo webroot) per verificare il
+    # dominio, sia per l'emissione iniziale che per i rinnovi automatici.
+    location /.well-known/acme-challenge/ {
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://localhost:8002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name superbot-trading.duckdns.org;
+
+    ssl_certificate     /etc/letsencrypt/live/superbot-trading.duckdns.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/superbot-trading.duckdns.org/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    root /opt/superbot/frontend/build;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://localhost:8002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+--- certbot: file di rinnovo (solo chiavi non sensibili) ---
+archive_dir = /etc/letsencrypt/archive/superbot-trading.duckdns.org
+cert = /etc/letsencrypt/live/superbot-trading.duckdns.org/cert.pem
+privkey = /etc/letsencrypt/live/superbot-trading.duckdns.org/privkey.pem
+chain = /etc/letsencrypt/live/superbot-trading.duckdns.org/chain.pem
+fullchain = /etc/letsencrypt/live/superbot-trading.duckdns.org/fullchain.pem
+account = <omesso>
+authenticator = webroot
+webroot_path = /opt/superbot/frontend/build,
+server = https://acme-v02.api.letsencrypt.org/directory
+[[webroot_map]]
+superbot-trading.duckdns.org = /opt/superbot/frontend/build
+/etc/letsencrypt/archive/:
+superbot-trading.duckdns.org
+
+/etc/letsencrypt/live/:
+README
+superbot-trading.duckdns.org
+
+--- acme.sh: esiste una configurazione DuckDNS? (solo presenza) ---
+presente: /root/.acme.sh/account.conf
+presente: /root/.acme.sh/hitvprime.duckdns.org/backup
+presente: /root/.acme.sh/hitvprime.duckdns.org/ca.cer
+presente: /root/.acme.sh/hitvprime.duckdns.org/fullchain.cer
+presente: /root/.acme.sh/hitvprime.duckdns.org/hitvprime.duckdns.org.cer
+presente: /root/.acme.sh/hitvprime.duckdns.org/hitvprime.duckdns.org.conf
+presente: /root/.acme.sh/hitvprime.duckdns.org/hitvprime.duckdns.org.csr
+presente: /root/.acme.sh/hitvprime.duckdns.org/hitvprime.duckdns.org.csr.conf
+presente: /root/.acme.sh/hitvprime.duckdns.org/hitvprime.duckdns.org.key
+righe con DuckDNS_Token in account.conf: 0
+
+--- servizio tunnel verso Singapore ---
+active
+enabled
+
+--- pool: dimensioni e ultimo aggiornamento ---
+16M	/opt/superbot-pool-data
+total 88
+drwxr-xr-x  3 root root  4096 2026-10-19 06:15 .
+drwxr-xr-x 12 root root  4096 2026-10-18 10:19 ..
+drwxr-xr-x  2 root root  4096 2026-10-19 06:15 candles
+-rw-r--r--  1 root root 73728 2026-10-19 06:15 pool.db
+restart=unless-stopped mem=805306368 nanocpus=500000000
+/opt/superbot/data -> /app/botdata (ro)
+/opt/superbot-pool-data -> /app/data/pool (rw)
+
+ GPG_KEY LANG PATH PYTHONPATH PYTHONUNBUFFERED PYTHON_SHA256 PYTHON_VERSION TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID 
+
+################ SINGAPORE ################
+Warning: Permanently added '51.79.205.82' (ED25519) to the list of known hosts.
+--- risorse Singapore ---
+               total        used        free      shared  buff/cache   available
+Mem:            3819         743        1814           1        1515        3075
+/dev/sda1        38G  3.6G   35G  10% /
+2
+
+--- docker stats (una lettura) ---
+superbot: cpu=0.17% mem=122.6MiB / 3.73GiB
+superbot-desk-api: cpu=0.19% mem=80.88MiB / 512MiB
+superbot-desk-bull: cpu=0.00% mem=34.04MiB / 3.73GiB
+superbot-desk-hawk: cpu=0.00% mem=41.86MiB / 3.73GiB
+
+--- certbot installato? ---
+certbot non installato
+
+--- nomi variabili d'ambiente del container superbot (SENZA valori) ---
+ DESK_BULL_CAPITAL DESK_DAILY_LOSS_PCT DESK_DATA_DIR DESK_DATA_DIR_BULL DESK_HAWK_CAPITAL DESK_MODE GPG_KEY LANG PATH PYTHONPATH PYTHON_SHA256 PYTHON_VERSION 
+
+--- log app: errori Telegram/conflitti recenti ---
+
+--- health desk senza login (come l'app) ---
+desk/health HTTP 200
+desk/bull/health HTTP 200
+{"available":true,"portfolio":"hawk","bot_online":true,"bot_mode":"running","halt":null,"version":"b4709d1","last_ok":true}
+
