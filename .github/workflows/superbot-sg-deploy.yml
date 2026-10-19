@@ -20,8 +20,8 @@ jobs:
       - name: Build frontend
         run: |
           cd frontend
-          npm ci --prefer-offline 2>/dev/null || npm install
-          REACT_APP_BACKEND_URL="" npm run build
+          yarn install --frozen-lockfile 2>/dev/null || yarn install
+          REACT_APP_BACKEND_URL="" yarn build
 
       - name: Copia frontend build sul VPS Singapore
         env:
