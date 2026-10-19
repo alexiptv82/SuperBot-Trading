@@ -1,0 +1,18 @@
+### Backup esterno cifrato - azione setup - 2026-10-19T10:25:14Z
+
+## SETUP backup esterno
+sistema: Ubuntu 24.04.4 LTS
+age: 1.1.1
+chiave di deploy CREATA
+CHIAVE PUBBLICA DI DEPLOY (da aggiungere al repository dei backup, con accesso in scrittura):
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ46W948Zp3D7U+71eVdCSpi3LxNhs71WdE7z9ykRK49 superbot-backup-vps
+impronta: SHA256:D0A1OASOWd74xoXiPtFk+1t8L9IKCjiH7OrdJKiaPq8
+Created symlink /etc/systemd/system/timers.target.wants/superbot-extbackup.timer → /etc/systemd/system/superbot-extbackup.timer.
+--- stato ---
+(nessuno stato: nessun backup esterno ancora tentato)
+--- timer ---
+NEXT                        LEFT LAST PASSED UNIT                     ACTIVATES
+Tue 2026-10-20 03:21:40 UTC  16h -         - superbot-extbackup.timer superbot-extbackup.service
+
+1 timers listed.
+uscita remota: 0
