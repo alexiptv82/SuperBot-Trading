@@ -13,7 +13,7 @@ Scritto il 19/10/2026 da Claude, verificato sul repository e sul server in quel 
 
 | Ramo | A cosa serve | Regola |
 |------|--------------|--------|
-| `main` | **App** (backend FastAPI in `backend/`, frontend React in `frontend/`) e il suo deploy (`.github/workflows/deploy.yml`) | Un push su `main` fa partire il deploy dell'app, **tranne** se tocca solo `.github/workflows/**`, `deploy/**` o file `.md` |
+| `main` | **App** (backend FastAPI in `backend/`, frontend React in `frontend/`) e il suo deploy manuale (`.github/workflows/deploy.yml`) | Un push su `main` **non rilascia niente** (dal 19/10 integrare il codice e rilasciarlo sono due atti distinti). L'app si rilascia con `deploy/superbot-sg-deploy.trigger` su `rule-pool` oppure a mano da GitHub → Actions → Run workflow |
 | `rule-pool` | **Bot Hawk/Bull** (`backend/desk/`), pool di regole, e **tutti i workflow operativi** con i loro file trigger in `deploy/` | Qui si lavora per i bot e per i controlli |
 | `diario` | Questo diario | Nessun workflow parte da qui |
 | `work/backend-singapore-audit` | Archivio del lavoro di ChatGPT sulla migrazione parziale (17–18/10) | **Non unire. Non rilanciare i workflow `work-app-link-*`** |
@@ -21,7 +21,7 @@ Scritto il 19/10/2026 da Claude, verificato sul repository e sul server in quel 
 | `v0.5` | Vecchia versione | Mai toccare |
 | altri (`pwa-dashboard`, `risk-profiles`, ecc.) | Vecchi lavori | Lasciare stare. `pwa-dashboard` alimenta lo staging a Strasburgo |
 
-`main` e `rule-pool` hanno **storie diverse** (46 commit solo su `main`, 100 solo su `rule-pool`): non fare merge tra i due senza averlo concordato con l'utente. In `rule-pool` `backend/server.py` ha un bug (manca l'import di `Request`): **l'app si distribuisce sempre dal codice di `main`**, e anche il workflow `superbot-sg-deploy.yml` di `rule-pool` fa il checkout di `main`.
+`main` e `rule-pool` hanno **storie diverse** (il 19/10 sera: circa 50 commit solo su `main` e oltre 130 solo su `rule-pool`; il numero cambia, misurarlo con `git rev-list --left-right --count origin/main...origin/rule-pool`): non fare merge tra i due senza averlo concordato con l'utente. In `rule-pool` `backend/server.py` ha un bug (manca l'import di `Request`): **l'app si distribuisce sempre dal codice di `main`**, e anche il workflow `superbot-sg-deploy.yml` di `rule-pool` fa il checkout di `main`.
 
 ## 3. Come funzionano i workflow
 
@@ -40,7 +40,7 @@ Scritto il 19/10/2026 da Claude, verificato sul repository e sul server in quel 
   2. altri pubblicano **annotazioni** nel run (es. `desk-status`, `desk-diag`): `gh api repos/alexiptv82/superbot-trading/check-runs/<id>/annotations`;
   3. i log completi dei job spesso **non sono scaricabili** dagli ambienti delle AI: per questo i nostri workflow scrivono l'esito in un file.
 - **Collegamento SSH sicuro:** i workflow rinforzati usano una chiave host verificata. Per `ssh`/`scp`: `known_hosts` costruito dalle righe `PUB ...` di `deploy/sg-hardening-check-output.txt`, con `StrictHostKeyChecking=yes`. Per `appleboy/ssh-action`: `fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s` (è l'impronta **ECDSA**: le impronte ED25519 e RSA non funzionano con quell'azione). Se il server cambia chiave, i deploy si fermano: non è un guasto, va rigenerata l'impronta con `sg-hardening-check`.
-- **Concorrenza:** solo `deploy.yml` (app, su `main`) ha un gruppo di concorrenza. Per tutti gli altri deploy (bot, pool, `superbot-sg-deploy`) **non lanciarne due insieme e non lanciarne uno mentre un altro è in corso**: controllare prima i run attivi.
+- **Concorrenza:** i deploy hanno un gruppo di concorrenza per componente (app: `superbot-app-singapore`, condiviso da `deploy.yml` e `superbot-sg-deploy.yml`; bot: `superbot-desk-singapore`; pool: `superbot-pool-singapore`): due rilasci dello stesso componente non girano insieme. In più i due script di backup si bloccano a vicenda sul server (file `.backup.lock`). Controllare comunque i run attivi prima di lanciarne uno.
 
 ## 4. Il catalogo dei workflow (cosa si può lanciare)
 
@@ -50,8 +50,8 @@ Classificazione fatta da nomi e intestazioni il 19/10. **Prima di lanciarne uno 
 `superbot-sg-check` (app, nginx, HTTPS, bot, log), `sg-bots-check` (stato dei bot, pagine, test chiavi Bitget di lettura senza importi), `sg-hardening-check` (riavvii, chiavi host, prova dei backup; lascia copie di backup vere sul server), `desk-status`, `desk-diag`, `desk-mode-check` (conferma che i bot sono in paper), `desk-attivita`, `desk-claude-finestra`, `desk-confronto`, `desk-analista`, `desk-esaminatore`, `desk-macro-effect`, `desk-calendario-check`, `pool-status`, `pool-probe`, `strasburgo-inventory`, `sg-precheck`, `vps-capacity-audit`, `vps-diagnostics-readonly`. I laboratori di ricerca (`breadth-lab`, `crosssec-lab`, `funding-lab`, `strategy-lab`, `edge-scan`, `risk-sim`, ecc.) girano su GitHub senza toccare il server.
 
 **B. Con effetto — serve l'OK esplicito dell'utente (in chat) prima di lanciarli:**
-- `desk-deploy` (trigger `deploy/desk-deploy.trigger`): **redeploy di Hawk e Bull**. Fa prima un backup verificato del cervello (`deploy/scripts/backup_brain.py`; se fallisce non tocca niente), tiene l'immagine precedente come `superbot-desk:rollback-<data>` e controlla a fine corsa che i due bot siano su. **Regola inviolabile n. 1.**
-- App: `deploy.yml` su `main` (push o "Run workflow") **oppure** `superbot-sg-deploy.yml` (trigger `deploy/superbot-sg-deploy.trigger` su `rule-pool`): entrambi costruiscono e distribuiscono l'app dal codice di `main`. Backup SQLite verificato prima; immagine precedente tenuta come `superbot:prev`; controllo di salute a fine corsa (diventa rosso se l'app non risponde). Pochi secondi di indisponibilità. Non tocca i bot né il cervello. `TRADING_MODE` è fisso a `paper`.
+- `desk-deploy` (trigger `deploy/desk-deploy.trigger`): **redeploy di Hawk e Bull**. Fa prima un backup verificato del cervello (`deploy/scripts/backup_brain.py`: copia a fine ciclo usando il battito del bot, se mancano i dati o la coerenza non è dimostrabile fallisce e non tocca niente), tiene l'immagine precedente come `superbot-desk:rollback-<data>` e controlla a fine corsa che i due bot siano su. **Regola inviolabile n. 1.**
+- App: **percorso ufficiale** `superbot-sg-deploy.yml` (trigger `deploy/superbot-sg-deploy.trigger` su `rule-pool`); `deploy.yml` su `main` è solo manuale (Run workflow). Entrambi costruiscono e distribuiscono l'app dal codice di `main`. **Un merge su `main` non rilascia più da solo.** Backup SQLite verificato prima; immagine precedente tenuta come `superbot:prev`; controllo di salute a fine corsa (diventa rosso se l'app non risponde). Pochi secondi di indisponibilità. Non tocca i bot né il cervello. `TRADING_MODE` è fisso a `paper`.
 - `pool-deploy` (runner paper del pool; backup verificato di `pool.db` prima).
 - `desk-schedule` (modifica `deploy/claude-schedule.json`, il calendario delle finestre in cui il bot può consultare l'API di Claude; nessun riavvio).
 - `superbot-restart`, `desk-remove-pause`, `desk-snapshot`, `webauthn-reset` (azzera le credenziali dell'impronta digitale: l'utente dovrà registrarla di nuovo), `desk-stop-legacy`.
@@ -78,7 +78,7 @@ Classificazione fatta da nomi e intestazioni il 19/10. **Prima di lanciarne uno 
 
 **Controllare che tutto sia sano** (sola lettura): trigger `deploy/superbot-sg-check.trigger` → leggere `deploy/superbot-sg-check-output.txt`; poi `deploy/sg-bots-check.trigger` → `deploy/sg-bots-check-output.txt`. Cosa guardare: container `Up`/healthy, `/api/health` ok in paper, bot online con cicli recenti, `DESK_MODE=paper` su entrambi, nessun errore nuovo nei log.
 
-**Rilasciare una modifica all'app** (con OK dell'utente se cambia il comportamento): modificare su un ramo di lavoro, verificare i test, unire in `main` (push), seguire il run di `deploy.yml`, poi lanciare `superbot-sg-check` per verificare. Ritorno indietro: ricreare il container dall'immagine `superbot:prev`.
+**Rilasciare una modifica all'app** (con OK dell'utente se cambia il comportamento): modificare su un ramo di lavoro, verificare i test, unire in `main` (non rilascia), poi scrivere `deploy/superbot-sg-deploy.trigger` su `rule-pool`, seguire il run e lanciare `superbot-sg-check` per verificare. Ritorno indietro: ricreare il container dall'immagine `superbot:prev`.
 
 **Rilasciare una modifica ai bot** (sempre con OK esplicito): modificare in `rule-pool`, far passare la CI (`desk-ci`), poi scrivere `deploy/desk-deploy.trigger`; a fine corsa verificare con `desk-status`/`sg-bots-check` che i due bot siano in paper, la versione sia quella attesa e le posizioni intatte. Ritorno indietro: immagine `superbot-desk:rollback-<data>` o punto stabile (`stable/bot-2026-10-12`); i dati si ripristinano solo se serve e con l'utente, partendo da `/opt/superbot-backups/bots-*`.
 
@@ -90,6 +90,7 @@ Classificazione fatta da nomi e intestazioni il 19/10. **Prima di lanciarne uno 
 - Le chiavi Bitget sono limitate a un IP: da un server nuovo Bitget risponde "Invalid IP" (errore 40018). Si aggiunge l'IP nella gestione delle chiavi su Bitget (lo fa l'utente).
 - La pagina Live dell'app in paper mostra volutamente zeri e non legge il saldo (guardia introdotta il 15/10: i numeri veri solo se server e bot sono davvero in live).
 - `StrictHostKeyChecking=no` e `cp` di un database SQLite in uso sono due errori già corretti: si usano la chiave host verificata e l'API di backup di SQLite (`deploy/scripts/backup_app_db.py`).
-- Un check che non può fallire non verifica niente: provare ogni controllo anche con un caso che deve fallire.
+- Un check che non può fallire non verifica niente: provare ogni controllo anche con un caso che deve fallire (le prove sono in `deploy/scripts/test_backup_scripts.py`: `python3 -m unittest deploy/scripts/test_backup_scripts.py`).
+- Un backup che tratta "database assente" come successo non è una barriera: oggi database o cartelle mancanti sono un errore e fermano il deploy (`--allow-missing` solo per un primo deploy su server vuoto).
 - Dopo qualunque modifica ai workflow: validare lo YAML e controllare che non ci siano trigger che partano da soli per sbaglio.
 - Un workflow di SSL per `hitvprime` ha già lasciato una configurazione in nginx: **non toccare mai domini e nginx di HI-TV**.

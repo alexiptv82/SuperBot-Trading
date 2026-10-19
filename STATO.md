@@ -1,6 +1,6 @@
 # STATO di SuperBot Trading
 
-**Aggiornato:** lunedì 19 ottobre 2026, ~11:40 (ora di Roma) — da Claude.
+**Aggiornato:** lunedì 19 ottobre 2026, ~12:05 (ora di Roma) — da Claude.
 **In corso:** nessuno. (Chi comincia a lavorare su un componente scrive qui sotto: "In corso: <chi> su <componente> dalle <ora>", e lo toglie a fine lavoro.)
 
 ## In una frase
@@ -25,13 +25,13 @@ Il bot di trading su futures Bitget (due portafogli, Hawk e Bull, più un pool d
 - 19/10: l'utente vuole che **ChatGPT e Claude possano sostituirsi a vicenda** (scrivere, commit, push, rami, deploy come l'altra AI) e che esista questo diario → creato.
 
 ## Cose aperte (in ordine di importanza)
-1. **Verificare per intero i nuovi deploy rinforzati** (app: backup verificato, controllo finale di salute, ritorno indietro; bot: backup del cervello). Finora sono stati provati solo i singoli passi. Il deploy dell'app dura pochi secondi di indisponibilità. Il deploy dei bot richiede l'OK esplicito dell'utente.
+1. **Verificare per intero i nuovi deploy rinforzati** (app: backup verificato, controllo finale di salute, ritorno indietro; bot: backup del cervello). Finora sono stati provati solo i singoli passi (compresi, dal 19/10 ~11:45, i due script di backup corretti, provati sul server con dati veri: vedi `diario/2026-10-19_claude.md`). Il rilascio dell'app ora si fa solo con `deploy/superbot-sg-deploy.trigger` su `rule-pool` (un merge su `main` non rilascia più). Il deploy dell'app dura pochi secondi di indisponibilità. Il deploy dei bot richiede l'OK esplicito dell'utente.
 2. **Ponte temporaneo del 18/10** (`superbot-desk-api` + una chiave SSH limitata per il tunnel): non serve più perché app e bot stanno sullo stesso server. Da ritirare, ma solo con OK dell'utente. Non influisce sulla capacità delle AI di lavorare (che passa dal repository).
 3. **Staging a Strasburgo** (`superbot-staging`): decidere se spegnerlo.
 4. **Credenziali usate durante la migrazione**: ruotare la chiave SSH di Singapore, il token GitHub e il token DuckDNS (comparsi in chat o in screenshot). Da fare con l'utente.
 5. **Repository pubblico**: l'utente deve decidere se renderlo privato. Prima i server hanno bisogno di una chiave di sola lettura per scaricare il codice, altrimenti i deploy si fermano.
 6. **Backup fuori dal server**: oggi le copie stanno sullo stesso server. Manca una copia esterna aggiornata di database app, pool e cervello.
-7. **Riallineare `main` e `rule-pool`** (hanno storie diverse: 46 commit solo su main, 100 solo su rule-pool) e correggere in `rule-pool` il bug del `Request` mancante in `backend/server.py` (per questo l'app si distribuisce sempre da `main`).
+7. **Riallineare `main` e `rule-pool`** (hanno storie diverse: il 19/10 sera circa 50 commit solo su main e oltre 130 solo su rule-pool; misurare con `git rev-list --left-right --count origin/main...origin/rule-pool`) e correggere in `rule-pool` il bug del `Request` mancante in `backend/server.py` (per questo l'app si distribuisce sempre da `main`).
 8. **Dati di mercato mancanti**: due endpoint Bitget (open interest, rapporto long/short) rispondono 404, quindi quelle feature sono a zero. Correggerli cambia ciò che vede Claude, quindi serve l'OK dell'utente.
 9. **Una ventina di workflow di sola diagnosi** usano ancora ssh senza verifica rigorosa della chiave del server (non mandano segreti di trading).
 10. **Prossima fase (P2)**: nuove strategie e scalping con ingressi e riingressi rapidi, H24. Prima va chiarito con l'utente cosa intende con "20/30%". Si parte solo in modalità ombra/paper e dopo una sua decisione.
