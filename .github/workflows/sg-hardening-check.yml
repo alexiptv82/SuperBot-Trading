@@ -1,0 +1,179 @@
+name: SuperBot - Prova backup e chiave host (Singapore)
+
+# Prova, prima di usarli nei deploy, gli strumenti di sicurezza dei prossimi
+# rilasci. NON ferma, riavvia ne' ricrea nessun container, non tocca i file
+# del cervello (li legge soltanto) e non cambia nessuna configurazione.
+#
+#  A. riavvii: da quando e' acceso il VPS e da quando girano i container
+#  B. chiavi pubbliche del server SSH (non sono segrete) e loro impronte
+#  C. dimensioni dei dati e spazio libero
+#  D. backup SQLite verificato del DB dell'app e del DB del pool
+#  E. backup verificato del cervello di Hawk e Bull (sola lettura sull'origine)
+#  F. verifica della chiave host: con ssh normale e con appleboy/ssh-action
+#
+# Lascia sul VPS, in /opt/superbot-backups, le copie di prova: sono backup veri.
+# Il risultato va in deploy/sg-hardening-check-output.txt.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/sg-hardening-check.trigger"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Raccolta e prove sul VPS
+        id: collect
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          OUT=/tmp/hc_remote.txt
+          # Primo contatto: qui la chiave del server si legge soltanto, non si verifica ancora.
+          SSHO="-i $HOME/.ssh/id_sg -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30"
+          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools && chmod 700 /opt/superbot-tools'
+          scp $SSHO deploy/scripts/backup_app_db.py deploy/scripts/backup_brain.py root@51.79.205.82:/opt/superbot-tools/
+          ssh $SSHO root@51.79.205.82 'bash -s' <<'REMOTE' > "$OUT" 2>&1 || true
+          echo "## A. Riavvii"
+          echo "VPS acceso dal: $(uptime -s)  (ora: $(date -u +%FT%TZ))"
+          echo "Ultimi riavvii/spegnimenti registrati:"
+          last -x reboot shutdown 2>/dev/null | head -6 || true
+          echo "Container (avvio, riavvii automatici, memoria esaurita):"
+          docker inspect -f '  {{.Name}} avviato={{.State.StartedAt}} riavvii={{.RestartCount}} oom={{.State.OOMKilled}}' $(docker ps -aq) 2>/dev/null
+          echo
+          echo "## B. Chiavi pubbliche SSH del server"
+          for t in ecdsa ed25519 rsa; do
+            f=/etc/ssh/ssh_host_${t}_key.pub
+            if [ -s "$f" ]; then
+              echo "FP $t $(ssh-keygen -lf $f -E sha256 | awk '{print $2}')"
+              echo "PUB $t $(cut -d' ' -f1,2 $f)"
+            fi
+          done
+          echo
+          echo "## C. Dimensioni e spazio"
+          du -sh /opt/superbot-desk-data/hawk /opt/superbot-desk-data/bull /opt/superbot-pool-data /opt/superbot/data /opt/superbot-backups 2>/dev/null
+          df -h / | tail -1
+          echo
+          echo "## D. Backup DB (app e pool)"
+          python3 -I /opt/superbot-tools/backup_app_db.py --src /opt/superbot/data/superbot.db --dir /opt/superbot-backups --prefix superbot-deploy --keep 10; echo "uscita app: $?"
+          python3 -I /opt/superbot-tools/backup_app_db.py --src /opt/superbot-pool-data/pool.db --dir /opt/superbot-backups --prefix pool --keep 10; echo "uscita pool: $?"
+          echo
+          echo "## E. Backup cervello Hawk e Bull"
+          python3 -I /opt/superbot-tools/backup_brain.py --root /opt/superbot-desk-data --dir /opt/superbot-backups --keep 10 --tag prova; echo "uscita cervello: $?"
+          echo
+          echo "## E2. Bot dopo la prova (devono essere invariati)"
+          docker ps --filter name=superbot-desk --format '  {{.Names}} | {{.Status}}'
+          REMOTE
+          cat "$OUT"
+          fp() { awk -v t="$1" '$1=="FP" && $2==t {print $3}' "$OUT" | head -1; }
+          echo "ecdsa=$(fp ecdsa)" >> "$GITHUB_OUTPUT"
+          echo "ed25519=$(fp ed25519)" >> "$GITHUB_OUTPUT"
+          echo "rsa=$(fp rsa)" >> "$GITHUB_OUTPUT"
+          # known_hosts per le prove con ssh normale
+          awk '$1=="PUB" {print "51.79.205.82 " $3 " " $4}' "$OUT" > /tmp/kh_real
+          ssh-keygen -q -t ed25519 -N "" -f /tmp/fake_key
+          echo "51.79.205.82 $(cut -d' ' -f1,2 /tmp/fake_key.pub)" > /tmp/kh_fake
+
+      - name: F1. ssh normale con chiave host verificata
+        run: |
+          set +e +o pipefail
+          {
+            echo "## F1. ssh normale con chiave host verificata (known_hosts)"
+            for ALG in ssh-ed25519 ecdsa-sha2-nistp256; do
+              if grep -q " $ALG " /tmp/kh_real; then
+                R=$(ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/tmp/kh_real \
+                  -o HostKeyAlgorithms=$ALG -o ConnectTimeout=30 root@51.79.205.82 'echo OK-chiave-verificata' 2>&1)
+                echo "  [$ALG] uscita=$? | $R"
+              fi
+            done
+            echo "Controprova con una chiave SBAGLIATA (deve rifiutare la connessione):"
+            R=$(ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/tmp/kh_fake \
+              -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=30 root@51.79.205.82 'echo CONNESSO-ERRORE' 2>&1)
+            echo "  uscita=$? | $R"
+          } > /tmp/hc_f1.txt 2>&1
+          cat /tmp/hc_f1.txt
+
+      - name: F2a. appleboy/ssh-action con impronta ECDSA
+        id: pin_ecdsa
+        if: steps.collect.outputs.ecdsa != ''
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: ${{ steps.collect.outputs.ecdsa }}
+          script: echo PIN_OK
+
+      - name: F2b. appleboy/ssh-action con impronta ED25519
+        id: pin_ed25519
+        if: steps.collect.outputs.ed25519 != ''
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: ${{ steps.collect.outputs.ed25519 }}
+          script: echo PIN_OK
+
+      - name: F2c. appleboy/ssh-action con impronta RSA
+        id: pin_rsa
+        if: steps.collect.outputs.rsa != ''
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: ${{ steps.collect.outputs.rsa }}
+          script: echo PIN_OK
+
+      - name: F2d. appleboy/ssh-action con impronta SBAGLIATA (deve fallire)
+        id: pin_wrong
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          script: echo CONNESSO-ERRORE
+
+      - name: Scrivi il risultato
+        if: always()
+        run: |
+          OUT=deploy/sg-hardening-check-output.txt
+          {
+            echo "### Prova sicurezza deploy $(date -u +%FT%TZ)"
+            echo
+            cat /tmp/hc_remote.txt 2>/dev/null || echo "(raccolta sul VPS non riuscita)"
+            echo
+            cat /tmp/hc_f1.txt 2>/dev/null || true
+            echo
+            echo "## F2. appleboy/ssh-action: esito per ogni impronta"
+            echo "  ECDSA   : ${{ steps.pin_ecdsa.outcome }}"
+            echo "  ED25519 : ${{ steps.pin_ed25519.outcome }}"
+            echo "  RSA     : ${{ steps.pin_rsa.outcome }}"
+            echo "  SBAGLIATA (deve fallire): ${{ steps.pin_wrong.outcome }}"
+          } > "$OUT"
+          rm -f ~/.ssh/id_sg
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add "$OUT"
+          git diff --staged --quiet || git commit -m "check: prova backup e chiave host Singapore [skip ci]"
+          git pull --rebase origin rule-pool
+          git push origin rule-pool
