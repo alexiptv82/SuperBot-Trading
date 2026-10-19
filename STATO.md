@@ -1,6 +1,6 @@
 # STATO di SuperBot Trading
 
-**Aggiornato:** lunedì 19 ottobre 2026, ~12:05 (ora di Roma) — da Claude.
+**Aggiornato:** lunedì 19 ottobre 2026, ~12:20 (ora di Roma) — da Claude.
 **In corso:** nessuno. (Chi comincia a lavorare su un componente scrive qui sotto: "In corso: <chi> su <componente> dalle <ora>", e lo toglie a fine lavoro.)
 
 ## In una frase
@@ -34,10 +34,10 @@ Il bot di trading su futures Bitget (due portafogli, Hawk e Bull, più un pool d
 7. **Riallineare `main` e `rule-pool`** (hanno storie diverse: il 19/10 sera circa 50 commit solo su main e oltre 130 solo su rule-pool; misurare con `git rev-list --left-right --count origin/main...origin/rule-pool`) e correggere in `rule-pool` il bug del `Request` mancante in `backend/server.py` (per questo l'app si distribuisce sempre da `main`).
 8. **Dati di mercato mancanti**: due endpoint Bitget (open interest, rapporto long/short) rispondono 404, quindi quelle feature sono a zero. Correggerli cambia ciò che vede Claude, quindi serve l'OK dell'utente.
 9. **Una ventina di workflow di sola diagnosi** usano ancora ssh senza verifica rigorosa della chiave del server (non mandano segreti di trading).
-10. **Prossima fase (P2)**: nuove strategie e scalping con ingressi e riingressi rapidi, H24. Prima va chiarito con l'utente cosa intende con "20/30%". Si parte solo in modalità ombra/paper e dopo una sua decisione.
+10. **Prossima fase: "Evoluzione del Cervello Professionale"** — promemoria dell'utente del 19/10 in `SPECIFICA-EVOLUZIONE-CERVELLO.md` (Profit Manager dinamico per Hawk e poi Bull, riconoscimento delle inversioni, cervello come osservatore/consigliere, rischio deterministico, Turbo Scalp in seguito). **Da valutare insieme all'utente e a ChatGPT; nessuna modifica autorizzata.** Il passo richiesto è un piano tecnico in 12 punti (nessun deploy, nessun cambio di strategia, rischio, prompt o slot). Dei 13 passi di implementazione, i primi tre (backup/rollback, snapshot coerente a fine ciclo, merge separato dal deploy) sono in gran parte fatti il 19/10; restano lacune rispetto alla specifica: controllo semantico dello stato (non solo hash), prova di ripristino isolata, verifica di una sola istanza operativa, deploy dei bot su un commit preciso e approvato. Resta da chiarire cosa intende per "20/30%" (Turbo Scalp / scalping).
 
 ## Prossimo passo suggerito
-Chiedere all'utente cosa vuole sul punto 1 (primo deploy completo rinforzato dell'app) oppure sul punto 10 (chiarire il "20/30%"). Non fare altro che lettura finché non risponde.
+Aspettare la risposta di ChatGPT sul secondo giro di revisione e la valutazione dell'utente sulla specifica (punto 10). Poi, solo se l'utente lo chiede, preparare il piano tecnico in 12 punti (sola lettura, nessuna modifica). In sospeso con l'utente: backup esterno cifrato in un repository privato nuovo (serve il suo sì) e ritiro del ponte (serve il suo sì).
 
 ## Dove trovare i dettagli
 - Come si lavora: `MANUALE-OPERATIVO.md`.
