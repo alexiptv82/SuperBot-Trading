@@ -1,0 +1,179 @@
+name: SuperBot App - Deploy su Singapore
+
+# Deploy del container FastAPI + frontend su Singapore (51.79.205.82).
+# Completamente separato da Strasburgo.
+# NON tocca i bot hawk/bull né i loro dati.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/superbot-sg-deploy.trigger"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci --prefer-offline 2>/dev/null || npm install
+          REACT_APP_BACKEND_URL="" npm run build
+
+      - name: Copia frontend build sul VPS Singapore
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          # Crea directory destinazione
+          ssh -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+            root@51.79.205.82 'mkdir -p /opt/superbot/frontend/build'
+          # Copia build frontend
+          scp -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -r \
+            frontend/build/. root@51.79.205.82:/opt/superbot/frontend/build/
+          rm -f ~/.ssh/id_sg
+
+      - name: Deploy FastAPI + nginx su Singapore
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          BITGET_API_KEY:        ${{ secrets.BITGET_API_KEY }}
+          BITGET_SECRET_KEY:     ${{ secrets.BITGET_SECRET_KEY }}
+          BITGET_PASSPHRASE:     ${{ secrets.BITGET_PASSPHRASE }}
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          DASHBOARD_PASSWORD:    ${{ secrets.DASHBOARD_PASSWORD }}
+          TRADING_MODE:          ${{ secrets.DESK_MODE || 'paper' }}
+          SG_DOMAIN:             ${{ secrets.SG_DOMAIN || '51.79.205.82' }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          command_timeout: 15m
+          envs: BITGET_API_KEY,BITGET_SECRET_KEY,BITGET_PASSPHRASE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD,TRADING_MODE,SG_DOMAIN
+          script: |
+            set -e
+
+            # ── Guardia: TRADING_MODE rimane 'paper' se non impostato ──────────
+            : "${TRADING_MODE:=paper}"
+            echo "TRADING_MODE attivo: $TRADING_MODE"
+
+            # ── Dipendenze ───────────────────────────────────────────────────────
+            apt-get update -qq
+            apt-get install -y --no-install-recommends docker.io git nginx curl 2>/dev/null || true
+            systemctl start docker 2>/dev/null || true
+            systemctl enable docker 2>/dev/null || true
+
+            # ── Clone / aggiorna repo ────────────────────────────────────────────
+            if [ -d "/opt/superbot/.git" ]; then
+              cd /opt/superbot && git fetch origin rule-pool && git reset --hard origin/rule-pool
+            else
+              git clone -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot
+            fi
+            cd /opt/superbot
+
+            # ── Backup DB se esiste ──────────────────────────────────────────────
+            DB_LIVE=/opt/superbot/data/superbot.db
+            mkdir -p /opt/superbot-backups /opt/superbot/data
+            if [ -s "$DB_LIVE" ]; then
+              cp "$DB_LIVE" "/opt/superbot-backups/superbot-$(date +%Y%m%d-%H%M%S).db"
+              ls -1t /opt/superbot-backups/superbot-*.db 2>/dev/null | tail -n +11 | xargs -r rm -f
+              echo "DB: backup fatto"
+            fi
+
+            # ── Scrivi .env ───────────────────────────────────────────────────────
+            PASS_B64=$(printf '%s' "$DASHBOARD_PASSWORD" | base64 -w0)
+            RP_DOMAIN="${SG_DOMAIN:-51.79.205.82}"
+            # Se dominio reale usa https, altrimenti http
+            if echo "$RP_DOMAIN" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+              ORIGIN="http://${RP_DOMAIN}"
+            else
+              ORIGIN="https://${RP_DOMAIN}"
+            fi
+
+            cat > /opt/superbot/backend/.env <<EOF
+            BITGET_API_KEY=${BITGET_API_KEY}
+            BITGET_SECRET_KEY=${BITGET_SECRET_KEY}
+            BITGET_PASSPHRASE=${BITGET_PASSPHRASE}
+            TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+            TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+            TRADING_MODE=${TRADING_MODE}
+            INITIAL_CAPITAL=1000
+            MAX_LEVERAGE=10
+            MAX_DAILY_LOSS_PERCENT=5
+            MAX_OPEN_POSITIONS=3
+            TRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT
+            BACKEND_PORT=8002
+            DASHBOARD_PASSWORD_B64=${PASS_B64}
+            WEBAUTHN_RP_ID=${RP_DOMAIN}
+            WEBAUTHN_ORIGIN=${ORIGIN}
+            WEBAUTHN_RP_NAME=SuperBot
+            DB_PATH=./data/superbot.db
+            EOF
+
+            # ── Build immagine Docker ────────────────────────────────────────────
+            docker build -t superbot:singapore -f /opt/superbot/Dockerfile /opt/superbot
+
+            # ── Stop e rimuovi vecchio container (se esiste) ─────────────────────
+            docker stop superbot 2>/dev/null || true
+            docker rm   superbot 2>/dev/null || true
+
+            # ── Avvia container ───────────────────────────────────────────────────
+            docker run -d \
+              --name superbot \
+              --restart unless-stopped \
+              -p 127.0.0.1:8002:8002 \
+              -v /opt/superbot/data:/app/data \
+              -v /opt/superbot/backend/.env:/app/backend/.env:ro \
+              superbot:singapore
+
+            # ── Nginx: crea vhost Singapore ──────────────────────────────────────
+            cat > /etc/nginx/sites-available/superbot <<'NGINX'
+            server {
+                listen 80;
+                server_name 51.79.205.82 _;
+
+                root /opt/superbot/frontend/build;
+                index index.html;
+
+                location /.well-known/acme-challenge/ {
+                    try_files $uri =404;
+                }
+
+                location / {
+                    try_files $uri $uri/ /index.html;
+                }
+
+                location /api {
+                    proxy_pass http://127.0.0.1:8002;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host $host;
+                    proxy_read_timeout 60s;
+                    proxy_cache_bypass $http_upgrade;
+                }
+            }
+            NGINX
+
+            ln -sf /etc/nginx/sites-available/superbot /etc/nginx/sites-enabled/superbot
+            # Rimuovi default nginx se interferisce
+            rm -f /etc/nginx/sites-enabled/default
+
+            nginx -t && systemctl reload nginx || systemctl restart nginx
+            systemctl enable nginx 2>/dev/null || true
+
+            # ── Health check ──────────────────────────────────────────────────────
+            echo "=== Attesa avvio container (10s) ==="
+            sleep 10
+            echo "=== Stato container ==="
+            docker ps --filter name=^superbot$ --format "{{.Names}} | {{.Status}} | {{.Ports}}"
+            echo "=== Health API ==="
+            curl -sf http://127.0.0.1:8002/api/health 2>/dev/null && echo " OK" || echo " NON risponde ancora (normale se il DB si sta inizializzando)"
+            echo "=== Log ultimi 30 righe ==="
+            docker logs --tail 30 superbot 2>&1
+            echo "=== DEPLOY COMPLETATO ==="
