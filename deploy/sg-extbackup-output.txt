@@ -1,18 +1,26 @@
-### Backup esterno cifrato - azione setup - 2026-10-19T10:25:14Z
+### Backup esterno cifrato - azione run - 2026-10-19T11:11:46Z
 
-## SETUP backup esterno
-sistema: Ubuntu 24.04.4 LTS
-age: 1.1.1
-chiave di deploy CREATA
-CHIAVE PUBBLICA DI DEPLOY (da aggiungere al repository dei backup, con accesso in scrittura):
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ46W948Zp3D7U+71eVdCSpi3LxNhs71WdE7z9ykRK49 superbot-backup-vps
-impronta: SHA256:D0A1OASOWd74xoXiPtFk+1t8L9IKCjiH7OrdJKiaPq8
-Created symlink /etc/systemd/system/timers.target.wants/superbot-extbackup.timer → /etc/systemd/system/superbot-extbackup.timer.
+## RUN backup esterno (2026-10-19T11:11:43Z)
+copia verificata del database app ...
+  BACKUP DB OK: app-20261019-111143.db
+copia verificata del database pool ...
+  BACKUP DB OK: pool-20261019-111144.db
+copia verificata del cervello (tentativo 1) ...
+creo l'archivio e lo cifro con age ...
+ERRORE BACKUP ESTERNO: comando fallito (git clone -q): git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+RISULTATO: FALLITO. Nessun archivio e' stato considerato inviato.
+uscita: 1
 --- stato ---
-(nessuno stato: nessun backup esterno ancora tentato)
---- timer ---
+{
+ "ultimo_errore": "comando fallito (git clone -q): git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.",
+ "ultimo_tentativo": "2026-10-19T11:11:43Z"
+}--- timer ---
 NEXT                        LEFT LAST PASSED UNIT                     ACTIVATES
 Tue 2026-10-20 03:21:40 UTC  16h -         - superbot-extbackup.timer superbot-extbackup.service
 
 1 timers listed.
-uscita remota: 0
+uscita remota: 1
