@@ -54,9 +54,9 @@ jobs:
           BITGET_BULL_SECRET_KEY: ${{ secrets.BITGET_BULL_SECRET_KEY }}
           BITGET_BULL_PASSPHRASE: ${{ secrets.BITGET_BULL_PASSPHRASE }}
         with:
-          host: 51.91.109.45
+          host: 51.79.205.82
           username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           connect_timeout: 90s
           command_timeout: 20m
           envs: SELFTEST_BOT,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE
@@ -89,13 +89,13 @@ jobs:
 
       - name: Porta il rapporto nel repo
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           BOT: ${{ steps.bot.outputs.bot }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_tmp
           chmod 600 ~/.ssh/id_tmp
-          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 "cat /tmp/live_selftest_${BOT}.txt 2>/dev/null || echo 'nessun rapporto prodotto'; rm -f /tmp/live_selftest_${BOT}.txt /tmp/selftest_build.txt" > "deploy/live-selftest-output-${BOT}.txt"
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.79.205.82 "cat /tmp/live_selftest_${BOT}.txt 2>/dev/null || echo 'nessun rapporto prodotto'; rm -f /tmp/live_selftest_${BOT}.txt /tmp/selftest_build.txt" > "deploy/live-selftest-output-${BOT}.txt"
           rm -f ~/.ssh/id_tmp
           git config user.email "ci@superbot"
           git config user.name "SuperBot CI"

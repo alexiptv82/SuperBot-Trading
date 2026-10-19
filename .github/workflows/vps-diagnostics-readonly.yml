@@ -23,9 +23,9 @@ jobs:
       - name: Read-only VPS resource indicators
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: 51.91.109.45
+          host: 51.79.205.82
           username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           command_timeout: 45s
           script: |
             echo '=== HOST ==='

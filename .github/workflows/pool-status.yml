@@ -16,13 +16,13 @@ jobs:
     steps:
       - name: Leggi lo stato dal server
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_pool
           chmod 600 ~/.ssh/id_pool
           ssh -i ~/.ssh/id_pool -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
-            root@51.91.109.45 'bash -s' > status_out.txt 2>&1 <<'REMOTE' || true
+            root@51.79.205.82 'bash -s' > status_out.txt 2>&1 <<'REMOTE' || true
           echo "CONTENITORE: $(docker ps -a --filter name=superbot-pool --format '{{.Names}} {{.Status}}')"
           echo "SALUTE DOCKER: $(docker inspect -f '{{.State.Health.Status}}' superbot-pool 2>&1 | head -1)"
           echo "ALTRI CONTENITORI: $(docker ps --format '{{.Names}} {{.Status}}' | grep -v superbot-pool | tr '\n' '|' | cut -c1-300)"

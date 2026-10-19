@@ -36,16 +36,16 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
+          printf '%s\n' "${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -H 51.91.109.45 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H 51.79.205.82 >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Obtain certificate on VPS
         env:
           DOMAIN: ${{ inputs.domain }}
           LE_EMAIL: ${{ inputs.email }}
         run: |
-          ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 root@51.91.109.45 \
+          ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 root@51.79.205.82 \
             "DOMAIN='${DOMAIN}' LE_EMAIL='${LE_EMAIL}' bash -s" <<'REMOTE'
           set +e
           # Nota: GitHub mostra al massimo 10 annotazioni per check run, quindi
@@ -56,10 +56,10 @@ jobs:
           apt-get update -y >/tmp/apt.log 2>&1
           apt-get install -y certbot >>/tmp/apt.log 2>&1
 
-          mkdir -p /opt/superbot/frontend/build/.well-known/acme-challenge
+          mkdir -p /opt/superbot-web/build/.well-known/acme-challenge
 
           certbot certonly \
-            --webroot -w /opt/superbot/frontend/build \
+            --webroot -w /opt/superbot-web/build \
             -d "$DOMAIN" \
             --non-interactive --agree-tos \
             -m "$LE_EMAIL" \

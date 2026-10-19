@@ -21,14 +21,14 @@ jobs:
 
       - name: Verifica end-to-end (sul VPS; prova Pausa/Riprendi su Bull e lo lascia in funzione)
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_tmp
           chmod 600 ~/.ssh/id_tmp
-          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 deploy/diag-e2e.sh root@51.91.109.45:/tmp/diag-e2e.sh
-          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 'bash /tmp/diag-e2e.sh; rm -f /tmp/diag-e2e.sh'
-          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new root@51.91.109.45:/tmp/diag_e2e.txt deploy/diag-output.txt
+          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 deploy/diag-e2e.sh root@51.79.205.82:/tmp/diag-e2e.sh
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.79.205.82 'bash /tmp/diag-e2e.sh; rm -f /tmp/diag-e2e.sh'
+          scp -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new root@51.79.205.82:/tmp/diag_e2e.txt deploy/diag-output.txt
           rm -f ~/.ssh/id_tmp
 
       - name: Committa nel repo

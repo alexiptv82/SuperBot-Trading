@@ -27,7 +27,7 @@ jobs:
 
       - name: Verifica memoria e disco su Singapore, poi ferma il pool a Strasburgo e copia i dati
         env:
-          STR_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          STR_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           SG_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           umask 077
@@ -35,7 +35,7 @@ jobs:
           echo "$STR_KEY" > ~/.ssh/id_str; chmod 600 ~/.ssh/id_str
           echo "$SG_KEY"  > ~/.ssh/id_sg;  chmod 600 ~/.ssh/id_sg
           OPT="-o StrictHostKeyChecking=no -o ConnectTimeout=30"
-          S="ssh -i $HOME/.ssh/id_str $OPT root@51.91.109.45"
+          S="ssh -i $HOME/.ssh/id_str $OPT root@51.79.205.82"
           G="ssh -i $HOME/.ssh/id_sg $OPT root@51.79.205.82"
           OUT=deploy/sg-pool-migrate-output.txt
           run_all() {

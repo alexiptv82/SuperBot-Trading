@@ -25,7 +25,7 @@ jobs:
 
       - name: Raccolta (sola lettura)
         env:
-          STR_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          STR_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           SG_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
@@ -76,7 +76,7 @@ jobs:
           {
             echo "### Pre-controllo $(date -u +%FT%TZ)"
             echo; echo "################ STRASBURGO ################"
-            ssh -i ~/.ssh/id_str -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@51.91.109.45 'bash -s' < <(sed 's/^          //' /tmp/str.sh) || echo "!!! SSH Strasburgo fallito"
+            ssh -i ~/.ssh/id_str -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@51.79.205.82 'bash -s' < <(sed 's/^          //' /tmp/str.sh) || echo "!!! SSH Strasburgo fallito"
             echo; echo "################ SINGAPORE ################"
             ssh -i ~/.ssh/id_sg -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@51.79.205.82 'bash -s' < <(sed 's/^          //' /tmp/sg.sh) || echo "!!! SSH Singapore fallito"
           } > $OUT 2>&1

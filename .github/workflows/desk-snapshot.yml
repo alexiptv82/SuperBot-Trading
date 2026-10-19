@@ -20,9 +20,9 @@ jobs:
       - name: Copia dati dei bot + etichette immagini
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: 51.91.109.45
+          host: 51.79.205.82
           username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           command_timeout: 180s
           script: |
             STAMP=2026-10-12
@@ -82,7 +82,7 @@ jobs:
 
       - name: Pubblica il risultato
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
@@ -90,7 +90,7 @@ jobs:
           ssh -T -i ~/.ssh/id_desk \
             -o StrictHostKeyChecking=accept-new \
             -o ConnectTimeout=15 \
-            root@51.91.109.45 \
+            root@51.79.205.82 \
             'cat /tmp/superbot_snapshot.txt' 2>/dev/null > snap.txt || true
           rm -f ~/.ssh/id_desk
           OUT=$(head -80 snap.txt | tr '\n' '|' | sed 's/%/%25/g')

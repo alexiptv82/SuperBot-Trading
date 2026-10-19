@@ -17,9 +17,9 @@ jobs:
       - name: Esegui contabile sul server e salva in /tmp
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: 51.91.109.45
+          host: 51.79.205.82
           username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           command_timeout: 150s
           script: |
             python3 -I - hawk=/opt/superbot-desk-data/hawk bull=/opt/superbot-desk-data/bull > /tmp/analista_out.txt 2>&1 <<'PYEOF'
@@ -201,7 +201,7 @@ jobs:
 
       - name: Pubblica risultati come notice
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_analista
@@ -209,7 +209,7 @@ jobs:
           ssh -T -i ~/.ssh/id_analista \
             -o StrictHostKeyChecking=accept-new \
             -o ConnectTimeout=15 \
-            root@51.91.109.45 \
+            root@51.79.205.82 \
             'cat /tmp/analista_out.txt' 2>/dev/null > analista_out.txt || true
           rm -f ~/.ssh/id_analista
 

@@ -19,12 +19,12 @@ jobs:
 
       - name: Esegui l'esaminatore sul server
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_esam
           chmod 600 ~/.ssh/id_esam
-          SSH="ssh -T -i $HOME/.ssh/id_esam -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR -o ConnectTimeout=15 root@51.91.109.45"
+          SSH="ssh -T -i $HOME/.ssh/id_esam -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR -o ConnectTimeout=15 root@51.79.205.82"
           set +e
           echo "python sul server: $($SSH 'python3 --version 2>&1')" > esaminatore_out.txt
           cat backend/desk/analyst.py deploy/esaminatore_run.py > script_completo.py

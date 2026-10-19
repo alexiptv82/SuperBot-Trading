@@ -13,12 +13,12 @@ jobs:
     steps:
       - name: Rimuovi pause.flag da hawk e bull
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_tmp
           chmod 600 ~/.ssh/id_tmp
-          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.91.109.45 \
+          ssh -i ~/.ssh/id_tmp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 root@51.79.205.82 \
             'rm -f /opt/superbot-desk-data/hawk/pause.flag && echo "HAWK: pause.flag rimosso" || echo "HAWK: nessun flag"
              rm -f /opt/superbot-desk-data/bull/pause.flag && echo "BULL: pause.flag rimosso" || echo "BULL: nessun flag"'
           rm -f ~/.ssh/id_tmp
