@@ -56,13 +56,20 @@ jobs:
           DESK_HAWK_CAPITAL:   ${{ secrets.DESK_HAWK_CAPITAL }}
           DESK_BULL_CAPITAL:   ${{ secrets.DESK_BULL_CAPITAL }}
           DESK_DAILY_LOSS_PCT: ${{ secrets.DESK_DAILY_LOSS_PCT }}
-          SG_DOMAIN:           ${{ secrets.SG_DOMAIN }}
+          SG_DOMAIN:           ${{ secrets.SG_DOMAIN || 'superbot-trading.duckdns.org' }}
+          # Chiavi BitGet di SOLA LETTURA, solo per i saldi nella pagina Live.
+          BITGET_RO_HAWK_API_KEY:    ${{ secrets.BITGET_RO_HAWK_API_KEY }}
+          BITGET_RO_HAWK_SECRET_KEY: ${{ secrets.BITGET_RO_HAWK_SECRET_KEY }}
+          BITGET_RO_HAWK_PASSPHRASE: ${{ secrets.BITGET_RO_HAWK_PASSPHRASE }}
+          BITGET_RO_BULL_API_KEY:    ${{ secrets.BITGET_RO_BULL_API_KEY }}
+          BITGET_RO_BULL_SECRET_KEY: ${{ secrets.BITGET_RO_BULL_SECRET_KEY }}
+          BITGET_RO_BULL_PASSPHRASE: ${{ secrets.BITGET_RO_BULL_PASSPHRASE }}
         with:
           host: 51.79.205.82
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           command_timeout: 15m
-          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD,DESK_MODE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,SG_DOMAIN
+          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD,DESK_MODE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,SG_DOMAIN,BITGET_RO_HAWK_API_KEY,BITGET_RO_HAWK_SECRET_KEY,BITGET_RO_HAWK_PASSPHRASE,BITGET_RO_BULL_API_KEY,BITGET_RO_BULL_SECRET_KEY,BITGET_RO_BULL_PASSPHRASE
           script: |
             set -e
 
@@ -107,11 +114,19 @@ jobs:
               "$(printf %s "$DASHBOARD_PASSWORD" | base64 -w0)" \
               "$RP_DOMAIN" "$ORIGIN" > backend/.env
 
-            # == Nginx: solo il vhost di questa app, non tocco altri siti ==
+            # == Nginx: solo i vhost di questa app, non tocco altri siti ==
+            # Certificato: quello nativo di Let's Encrypt se esiste, altrimenti il
+            # certificato "ponte" copiato dalla migrazione.
+            CERT_DIR=""
+            if [ -s "/etc/letsencrypt/live/${RP_DOMAIN}/fullchain.pem" ]; then
+              CERT_DIR="/etc/letsencrypt/live/${RP_DOMAIN}"
+            elif [ -s /etc/ssl/superbot-bridge/fullchain.pem ]; then
+              CERT_DIR="/etc/ssl/superbot-bridge"
+            fi
             cat > /etc/nginx/sites-available/superbot <<'NGINX'
             server {
                 listen 80;
-                server_name 51.79.205.82;
+                server_name 51.79.205.82 __DOMAIN__;
 
                 root /opt/superbot-web/build;
                 index index.html;
@@ -134,6 +149,36 @@ jobs:
                 }
             }
             NGINX
+            if [ -n "$CERT_DIR" ]; then
+              cat >> /etc/nginx/sites-available/superbot <<'NGINX'
+
+            server {
+                listen 443 ssl;
+                server_name __DOMAIN__;
+
+                ssl_certificate     __CERT__/fullchain.pem;
+                ssl_certificate_key __CERT__/privkey.pem;
+                ssl_protocols TLSv1.2 TLSv1.3;
+
+                root /opt/superbot-web/build;
+                index index.html;
+
+                location / {
+                    try_files $uri $uri/ /index.html;
+                }
+
+                location /api {
+                    proxy_pass http://127.0.0.1:8002;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host $host;
+                    proxy_cache_bypass $http_upgrade;
+                }
+            }
+            NGINX
+            fi
+            sed -i "s#__DOMAIN__#${RP_DOMAIN}#g; s#__CERT__#${CERT_DIR}#g" /etc/nginx/sites-available/superbot
             ln -sf /etc/nginx/sites-available/superbot /etc/nginx/sites-enabled/superbot
             nginx -t && systemctl reload nginx || systemctl restart nginx || true
 
@@ -155,6 +200,8 @@ jobs:
               -e DESK_HAWK_CAPITAL="${DESK_HAWK_CAPITAL:-1000}" \
               -e DESK_BULL_CAPITAL="${DESK_BULL_CAPITAL:-1000}" \
               -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
+              -e BITGET_RO_HAWK_API_KEY -e BITGET_RO_HAWK_SECRET_KEY -e BITGET_RO_HAWK_PASSPHRASE \
+              -e BITGET_RO_BULL_API_KEY -e BITGET_RO_BULL_SECRET_KEY -e BITGET_RO_BULL_PASSPHRASE \
               superbot
 
             sleep 10
@@ -165,6 +212,10 @@ jobs:
             echo "=== Health via nginx (porta 80) ==="
             curl -s -o /dev/null -w "frontend HTTP %{http_code}\n" http://127.0.0.1/ -H "Host: 51.79.205.82"
             curl -s http://127.0.0.1/api/health -H "Host: 51.79.205.82" && echo " <- /api via nginx OK" || echo "/api via nginx NON risponde"
+            if [ -n "$CERT_DIR" ]; then
+              echo "=== HTTPS col dominio (risolto in locale su questo server) ==="
+              curl -s -m 10 --resolve ${RP_DOMAIN}:443:127.0.0.1 https://${RP_DOMAIN}/api/health && echo " <- HTTPS OK" || echo "HTTPS NON risponde"
+            fi
             echo "=== Bot (non toccati) ==="
             docker ps --filter name=superbot-desk --format "{{.Names}} | {{.Status}}"
             echo "=== Log superbot (ultimi 30) ==="

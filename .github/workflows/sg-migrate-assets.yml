@@ -1,0 +1,129 @@
+name: Migrazione Strasburgo -> Singapore (certificato ponte + database app)
+
+# 1) Copia il certificato HTTPS esistente del dominio come "certificato ponte"
+#    (cosi' Singapore serve HTTPS col dominio vero appena il DNS passa).
+# 2) Copia una versione CONSISTENTE (API di backup di SQLite) del database
+#    dell'app (password, impostazioni, impronta, storico) su Singapore.
+#    Prima di sostituirlo, fa una copia di sicurezza del DB di Singapore.
+#
+# Ripetibile. NON tocca Hawk/Bull ne' i file del cervello. NON stampa mai
+# password, chiavi o contenuto del database (solo esito e numero di righe).
+# Le copie transitano solo nel runner effimero e non vengono committate.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/sg-migrate-assets.trigger"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copia certificato ponte e database
+        env:
+          STR_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SG_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -e
+          umask 077
+          mkdir -p ~/.ssh /tmp/mig
+          echo "$STR_KEY" > ~/.ssh/id_str; chmod 600 ~/.ssh/id_str
+          echo "$SG_KEY"  > ~/.ssh/id_sg;  chmod 600 ~/.ssh/id_sg
+          OPT="-o StrictHostKeyChecking=no -o ConnectTimeout=30"
+          S="ssh -i $HOME/.ssh/id_str $OPT root@51.91.109.45"
+          G="ssh -i $HOME/.ssh/id_sg $OPT root@51.79.205.82"
+          DOM=superbot-trading.duckdns.org
+          OUT=deploy/sg-migrate-assets-output.txt
+          run_all() {
+          set -e
+          echo "### Migrazione asset $(date -u +%FT%TZ)"
+
+          echo; echo "== 1. Certificato ponte =="
+          $S "cat /etc/letsencrypt/live/$DOM/fullchain.pem" > /tmp/mig/fullchain.pem
+          $S "cat /etc/letsencrypt/live/$DOM/privkey.pem"   > /tmp/mig/privkey.pem
+          [ -s /tmp/mig/fullchain.pem ] && [ -s /tmp/mig/privkey.pem ] || { echo "ERRORE: certificato o chiave vuoti"; exit 1; }
+          openssl x509 -in /tmp/mig/fullchain.pem -noout -subject -enddate
+          A=$(openssl x509 -in /tmp/mig/fullchain.pem -noout -pubkey | sha256sum | cut -c1-16)
+          B=$(openssl pkey -in /tmp/mig/privkey.pem -pubout | sha256sum | cut -c1-16)
+          [ "$A" = "$B" ] && echo "chiave e certificato corrispondono" || { echo "ERRORE: chiave e certificato NON corrispondono"; exit 1; }
+          $G "umask 077; mkdir -p /etc/ssl/superbot-bridge"
+          cat /tmp/mig/fullchain.pem | $G "umask 077; cat > /etc/ssl/superbot-bridge/fullchain.pem"
+          cat /tmp/mig/privkey.pem   | $G "umask 077; cat > /etc/ssl/superbot-bridge/privkey.pem"
+          echo "certificato ponte installato su Singapore (/etc/ssl/superbot-bridge)"
+
+          echo; echo "== 2. Database app: copia consistente da Strasburgo =="
+          $S 'bash -s' <<'REMOTE'
+          set -e
+          python3 - <<'PY'
+          import sqlite3, os
+          src="/opt/superbot/data/superbot.db"; dst="/tmp/superbot-mig.db"
+          if os.path.exists(dst): os.remove(dst)
+          s=sqlite3.connect(src); d=sqlite3.connect(dst); s.backup(d); d.close(); s.close()
+          c=sqlite3.connect(dst)
+          print("Strasburgo integrity_check:", c.execute("pragma integrity_check").fetchone()[0])
+          for (t,) in c.execute("select name from sqlite_master where type='table' order by 1"):
+              print("  ", t, c.execute('select count(*) from "%s"' % t).fetchone()[0])
+          PY
+          chmod 600 /tmp/superbot-mig.db
+          REMOTE
+          $S "cat /tmp/superbot-mig.db" > /tmp/mig/superbot.db
+          $S "rm -f /tmp/superbot-mig.db"
+          [ "$(stat -c %s /tmp/mig/superbot.db)" -gt 8192 ] || { echo "ERRORE: database ricevuto troppo piccolo, non lo installo"; exit 1; }
+          [ "$(head -c 15 /tmp/mig/superbot.db)" = "SQLite format 3" ] || { echo "ERRORE: il file ricevuto non e' un database SQLite, non lo installo"; exit 1; }
+          H=$(sha256sum /tmp/mig/superbot.db | cut -c1-16)
+          echo "copia ricevuta nel runner: $(stat -c %s /tmp/mig/superbot.db) byte, sha256=$H..."
+          cat /tmp/mig/superbot.db | $G "umask 077; cat > /tmp/superbot-mig.db"
+
+          echo; echo "== 3. Installazione su Singapore (con copia di sicurezza) =="
+          $G 'bash -s' <<'REMOTE'
+          set -e
+          TS=$(date +%Y%m%d-%H%M%S)
+          mkdir -p /opt/superbot-backups /opt/superbot/data
+          if [ -s /opt/superbot/data/superbot.db ]; then
+            python3 -c "import sqlite3,sys; s=sqlite3.connect(sys.argv[1]); d=sqlite3.connect(sys.argv[2]); s.backup(d); d.close(); s.close()" /opt/superbot/data/superbot.db /opt/superbot-backups/superbot-pre-migrazione-$TS.db
+            chmod 600 /opt/superbot-backups/superbot-pre-migrazione-$TS.db
+            echo "copia di sicurezza del DB di Singapore: superbot-pre-migrazione-$TS.db"
+          fi
+          docker stop superbot 2>/dev/null || true
+          rm -f /opt/superbot/data/superbot.db-wal /opt/superbot/data/superbot.db-shm
+          install -m 600 /tmp/superbot-mig.db /opt/superbot/data/superbot.db
+          rm -f /tmp/superbot-mig.db
+          echo "sha256 installato: $(sha256sum /opt/superbot/data/superbot.db | cut -c1-16)..."
+          python3 - <<'PY'
+          import sqlite3
+          c=sqlite3.connect("/opt/superbot/data/superbot.db")
+          print("Singapore integrity_check:", c.execute("pragma integrity_check").fetchone()[0])
+          for (t,) in c.execute("select name from sqlite_master where type='table' order by 1"):
+              print("  ", t, c.execute('select count(*) from "%s"' % t).fetchone()[0])
+          PY
+          docker start superbot
+          sleep 8
+          curl -s -m 8 http://127.0.0.1:8002/api/health && echo " <- app riavviata col DB migrato"
+          REMOTE
+          }
+          set +e
+          ( run_all ) > $OUT 2>&1
+          RC=$?
+          [ $RC -ne 0 ] && echo "!!! ERRORE: migrazione interrotta (codice $RC), NIENTE e' stato installato dopo l'errore" >> $OUT
+          rm -rf /tmp/mig ~/.ssh/id_str ~/.ssh/id_sg
+          cat $OUT
+          exit $RC
+
+      - name: Committa esito (nessun dato sensibile)
+        if: always()
+        run: |
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add deploy/sg-migrate-assets-output.txt
+          git diff --staged --quiet || git commit -m "migrazione asset: esito [skip ci]"
+          git push origin rule-pool
