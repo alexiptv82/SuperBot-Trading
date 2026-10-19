@@ -1,0 +1,33 @@
+### Migrazione asset 2026-10-19T06:25:15Z
+
+== 1. Certificato ponte ==
+Warning: Permanently added '51.91.109.45' (ED25519) to the list of known hosts.
+subject=CN = superbot-trading.duckdns.org
+notAfter=Jan  6 06:51:34 2027 GMT
+chiave e certificato corrispondono
+Warning: Permanently added '51.79.205.82' (ED25519) to the list of known hosts.
+certificato ponte installato su Singapore (/etc/ssl/superbot-bridge)
+
+== 2. Database app: copia consistente da Strasburgo ==
+Strasburgo integrity_check: ok
+   audit_log 8
+   auth_settings 1
+   market_snapshots 0
+   risk_settings 1
+   trades 0
+   webauthn_credentials 1
+copia ricevuta nel runner: 65536 byte, sha256=369613638a3e0fdd...
+
+== 3. Installazione su Singapore (con copia di sicurezza) ==
+copia di sicurezza del DB di Singapore: superbot-pre-migrazione-20261019-062538.db
+superbot
+sha256 installato: 369613638a3e0fdd...
+Singapore integrity_check: ok
+   audit_log 8
+   auth_settings 1
+   market_snapshots 0
+   risk_settings 1
+   trades 0
+   webauthn_credentials 1
+superbot
+{"status":"ok","mode":"paper","version":"1.0.0","desk_mode":"paper","build":"2026-10-15-live-needs-live-bot"} <- app riavviata col DB migrato
