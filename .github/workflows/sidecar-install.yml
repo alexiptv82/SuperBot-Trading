@@ -110,7 +110,7 @@ jobs:
           git config user.name "sidecar-install"; git config user.email "noreply@users.noreply.github.com"
           git add deploy/sidecar-install.output.txt
           git commit -m "Esito installazione osservatore" || true
-          git push origin HEAD:rule-pool || true
+          git push origin HEAD:refs/heads/sidecar-output-${{ github.run_id }} || true
       - name: Esito
         if: steps.inst.outcome != 'success'
         run: exit 1

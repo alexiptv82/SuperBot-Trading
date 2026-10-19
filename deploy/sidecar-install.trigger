@@ -1,3 +1,2 @@
-# Installazione osservatore ombra (autorizzata dall utente il 19/10/2026). Solo container separato, sola lettura; bot non toccati.
-# Secondo tentativo: il primo si e fermato (esito non leggibile), ora l esito viene pubblicato in deploy/sidecar-install.output.txt
-sha=6b82e619ea8e5bbaabf1e90a777eee5a6d4b5320
+# Terzo tentativo: l esito va su un ramo a parte (sidecar-output-<run>), perche il checkout e su un commit fisso.
+sha=9994ffa635c5d646ff791334f06ae39c73caf322
