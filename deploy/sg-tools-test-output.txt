@@ -1,0 +1,13 @@
+### Prova passo strumenti 2026-10-19T08:46:24Z
+passo 'Copia strumenti di backup' eseguito senza errori (chiave host verificata)
+riga variante app: uscita=0
+total 28
+drwx------  2 root root 4096 Oct 19 08:42 .
+drwxr-xr-x 13 root root 4096 Oct 19 08:42 ..
+-rw-r--r--  1 root root 5130 Oct 19 08:46 backup_app_db.py
+-rw-r--r--  1 root root 8823 Oct 19 08:46 backup_brain.py
+build.new di prova rimossa
+/opt/superbot-web/build
+asset-manifest.json
+favicon.png
+icons
