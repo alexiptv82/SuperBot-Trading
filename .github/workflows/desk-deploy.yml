@@ -5,6 +5,11 @@ name: Sala segnali - deploy (Hawk + Bull, container separati, paper)
 #   superbot-desk-bull  → Portafoglio Bull ($350/trade, max 3)
 # NON tocca "superbot", nginx, DNS, app HI-TV.
 # Parte SOLO quando cambia deploy/desk-deploy.trigger.
+# Prima di sostituire i container: backup verificato del cervello di Hawk e Bull
+# (deploy/scripts/backup_brain.py, sola lettura sull'origine). Se il backup non
+# riesce, il deploy si ferma e non viene toccato nulla. L'immagine in uso resta
+# come superbot-desk:rollback-<data> per tornare indietro. La chiave del server
+# SSH e' verificata (impronta fissa).
 
 on:
   push:
@@ -17,6 +22,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Copia strumenti di backup sul VPS (chiave del server verificata)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          # Chiavi pubbliche del server Singapore (non sono segrete). Se il server
+          # presenta una chiave diversa, la connessione viene rifiutata.
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          51.79.205.82 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
+          KH
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools && chmod 700 /opt/superbot-tools'
+          scp $SSHO deploy/scripts/backup_brain.py deploy/scripts/backup_app_db.py root@51.79.205.82:/opt/superbot-tools/
+          rm -f ~/.ssh/id_sg
 
       - name: Deploy Hawk + Bull sul VPS
         uses: appleboy/ssh-action@v1.0.0
@@ -44,6 +68,10 @@ jobs:
           host: 51.79.205.82
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          # Impronta della chiave ECDSA del server: e' quella che ssh-action negozia
+          # (provato il 19/10 con il workflow sg-hardening-check). Se cambia, il deploy
+          # si ferma invece di mandare i segreti a un server sconosciuto.
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           connect_timeout: 90s
           command_timeout: 30m
           envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
@@ -57,6 +85,21 @@ jobs:
             if [ "${DISK_GB:-0}" -lt 3 ]; then echo "ERRORE: disco insufficiente (${DISK_GB} GB)"; exit 1; fi
             apt-get install -y docker.io git 2>/dev/null || true
             systemctl start docker 2>/dev/null || true
+
+            # --- Backup verificato del cervello PRIMA di toccare i container.
+            # Se non riesce, ci si ferma qui: nessun container viene sostituito.
+            if [ ! -f /opt/superbot-tools/backup_brain.py ]; then
+              echo "ERRORE: strumenti di backup mancanti sul VPS (/opt/superbot-tools)."
+              exit 1
+            fi
+            python3 -I /opt/superbot-tools/backup_brain.py \
+              --root /opt/superbot-desk-data --dir /opt/superbot-backups --keep 10 --tag deploy
+            # --- Immagine in uso: tenuta per tornare indietro (ultime 3)
+            RB="rollback-$(date +%Y%m%d-%H%M%S)"
+            IMG=$(docker inspect -f '{{.Image}}' superbot-desk-hawk 2>/dev/null || true)
+            if [ -n "$IMG" ]; then docker tag "$IMG" "superbot-desk:${RB}" || true; fi
+            docker images --format '{{.Tag}}' superbot-desk | grep '^rollback-' | sort -r | tail -n +4 | xargs -r -I{} docker rmi superbot-desk:{} || true
+            echo "ROLLBACK: immagine precedente = superbot-desk:${RB}"
 
             # --- Aggiorna codice
             if [ -d "/opt/superbot-desk/.git" ]; then
@@ -121,3 +164,12 @@ jobs:
             docker logs --tail 6 superbot-desk-bull 2>&1 | tr '\n' '|' | cut -c1-500
             echo "=== ALTRI CONTAINER ==="
             docker ps --format '{{.Names}} {{.Status}}' | grep -v superbot-desk | tr '\n' '|' | cut -c1-300
+
+            # == Esito: tutti e due i bot devono girare, altrimenti il workflow e' rosso ==
+            for N in superbot-desk-hawk superbot-desk-bull; do
+              if [ -z "$(docker ps --filter name=^${N}$ --filter status=running -q)" ]; then
+                echo "ERRORE: ${N} non e' in funzione dopo il deploy. Immagine precedente: superbot-desk:${RB}"
+                exit 1
+              fi
+            done
+            echo "DEPLOY OK: Hawk e Bull in funzione. Backup del cervello in /opt/superbot-backups."

@@ -1,0 +1,66 @@
+name: TEMP prova passo strumenti di backup (chiave host verificata)
+
+# Prova temporanea, poi si cancella. Esegue ESATTAMENTE il passo dei deploy che
+# copia gli strumenti di backup con la chiave del server verificata, e prova la
+# prima riga della variante dell'app. Nessun container toccato.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/sg-tools-test.trigger"
+
+jobs:
+  prova:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copia strumenti di backup sul VPS (chiave del server verificata)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          # Chiavi pubbliche del server Singapore (non sono segrete). Se il server
+          # presenta una chiave diversa, la connessione viene rifiutata.
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          51.79.205.82 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
+          KH
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools && chmod 700 /opt/superbot-tools'
+          scp $SSHO deploy/scripts/backup_brain.py deploy/scripts/backup_app_db.py root@51.79.205.82:/opt/superbot-tools/
+          rm -f ~/.ssh/id_sg
+
+      - name: Prova riga variante app + pulizia + scrittura esito
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          {
+            echo "### Prova passo strumenti $(date -u +%FT%TZ)"
+            echo "passo 'Copia strumenti di backup' eseguito senza errori (chiave host verificata)"
+            ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools /opt/superbot-web/build.new && chmod 700 /opt/superbot-tools && rm -rf /opt/superbot-web/build.new/*'
+            echo "riga variante app: uscita=$?"
+            ssh $SSHO root@51.79.205.82 'ls -la /opt/superbot-tools/; rmdir /opt/superbot-web/build.new && echo "build.new di prova rimossa"; ls -d /opt/superbot-web/build* ; ls /opt/superbot-web/build | head -3'
+          } > deploy/sg-tools-test-output.txt 2>&1
+          rm -f ~/.ssh/id_sg
+          cat deploy/sg-tools-test-output.txt
+          git config user.email "ci@superbot"
+          git config user.name "SuperBot CI"
+          git add deploy/sg-tools-test-output.txt
+          git diff --staged --quiet || git commit -m "check: prova passo strumenti di backup [skip ci]"
+          git pull --rebase origin rule-pool
+          git push origin rule-pool
