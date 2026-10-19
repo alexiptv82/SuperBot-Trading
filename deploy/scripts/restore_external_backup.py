@@ -15,7 +15,14 @@ Passi (qualunque difetto = uscita 1, e --out resta per l'esame):
   4. manifesto interno: ogni file presente, con la dimensione e lo SHA-256 dichiarati, nessun file in piu';
   5. database: integrity_check "ok" e conteggio righe per tabella;
   6. cervello di Hawk e Bull: file irrinunciabili presenti, JSONL completi, state_v2.json valido, hash e
-     righe uguali al manifesto del backup del cervello.
+     righe uguali al manifesto del backup del cervello;
+  7. la copia del cervello deve avere il CONFINE DI CICLO VERIFICATO, oppure un'eccezione esplicita e
+     ammessa scritta nel suo manifesto (bot fermo, prima installazione), che viene dichiarata nell'esito;
+  8. coerenza SEMANTICA per ogni portafoglio: i trade chiusi nello stato coincidono (id, apertura, chiusura,
+     risultato) con le righe dello storico della stessa run; nessun id oltre next_id; nessuna chiusura prima
+     dell'apertura; nessuna run futura nello storico o nel registro di apprendimento; contabilita': senza
+     posizioni aperte cassa = capitale iniziale + somma dei risultati (tolleranza 1 centesimo), con
+     posizioni aperte la cassa non puo' superare quella somma.
 """
 import argparse
 import gzip
@@ -144,6 +151,17 @@ def check_brain(out, problems):
         if base == "state_v2.json" and not brain.json_ok(path):
             problems.add("cervello: %s non e' un JSON valido" % m["file"])
     c = man.get("coerenza", {})
+    mode = c.get("modalita")
+    first = (man.get("prima_installazione") or {}).get("ammessa")
+    if c.get("confine_di_ciclo_verificato") and mode == "ciclo_verificato":
+        print("  confine di ciclo: VERIFICATO")
+    elif mode == "bot_fermo":
+        print("  ECCEZIONE AMMESSA dichiarata nel manifesto: copia con i bot FERMI (nessun confine di ciclo)")
+    elif first:
+        print("  ECCEZIONE AMMESSA dichiarata nel manifesto: PRIMA INSTALLAZIONE")
+    else:
+        problems.add("la copia del cervello non ha il confine di ciclo verificato ne' un'eccezione ammessa "
+                     "(modalita' %s)" % mode)
     print("  cervello: %d file | coerenza %s | confine di ciclo %s | modalita' %s"
           % (len(man.get("file", [])), "dichiarata" if c.get("consistente") else "NON dichiarata",
              "VERIFICATO" if c.get("confine_di_ciclo_verificato") else "non verificato", c.get("modalita")))
@@ -151,6 +169,86 @@ def check_brain(out, problems):
         problems.add("il manifesto del cervello non dichiara la coerenza")
     for p, st in (man.get("stato_copiato") or {}).items():
         print("  stato %s: %s" % (p, st))
+    for p in ("hawk", "bull"):
+        if os.path.isdir(os.path.join(snap, p)):
+            check_semantics(os.path.join(snap, p), p, problems)
+
+
+def _num(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def check_semantics(base, name, problems):
+    """Coerenza tra stato, posizioni, storico e contabilita' di un portafoglio (vedi punto 8 in testa)."""
+    try:
+        with open(os.path.join(base, "state_v2.json")) as f:
+            st = json.load(f)
+        with open(os.path.join(base, "trade_history.jsonl")) as f:
+            hist = [json.loads(line) for line in f if line.strip()]
+        with open(os.path.join(base, "learning_log.jsonl")) as f:
+            learn = [json.loads(line) for line in f if line.strip()]
+    except (OSError, ValueError) as e:
+        problems.add("%s: stato o registri illeggibili per il controllo di coerenza (%s)" % (name, e))
+        return
+    m = st.get("main") if isinstance(st, dict) else None
+    run = st.get("run_no") if isinstance(st, dict) else None
+    if not isinstance(m, dict) or not isinstance(run, int) or not _num(m.get("cash")) \
+            or not isinstance(m.get("positions"), dict) or not isinstance(m.get("closed"), list) \
+            or not isinstance(m.get("next_id"), int):
+        problems.add("%s: stato senza i campi essenziali (run_no, main.cash, main.positions, main.closed, "
+                     "main.next_id)" % name)
+        return
+    before = len(problems)
+    closed, positions, next_id = m["closed"], m["positions"], m["next_id"]
+
+    def key(r):
+        return (r.get("id"), r.get("open_ms"), r.get("close_ms"), round(float(r.get("net") or 0), 6))
+
+    from collections import Counter
+    in_run = [r for r in hist if r.get("run_no") == run]
+    a, b = Counter(key(r) for r in in_run), Counter(key(c) for c in closed)
+    if a != b:
+        problems.add("%s: i trade chiusi nello stato (%d) non coincidono con lo storico della run %d (%d): "
+                     "%d solo nello stato, %d solo nello storico"
+                     % (name, len(closed), run, len(in_run), sum((b - a).values()), sum((a - b).values())))
+    ids = [c.get("id") for c in closed] + [pos.get("id", k) if isinstance(pos, dict) else k
+                                           for k, pos in positions.items()]
+    bad = [i for i in ids if isinstance(i, int) and i >= next_id]
+    if bad:
+        problems.add("%s: id %s oltre next_id=%d" % (name, bad[:5], next_id))
+    back = [r.get("id") for r in hist if _num(r.get("open_ms")) and _num(r.get("close_ms"))
+            and r["close_ms"] < r["open_ms"]]
+    if back:
+        problems.add("%s: %d trade chiusi prima di essere aperti (id %s)" % (name, len(back), back[:5]))
+    fut = sum(1 for r in hist if isinstance(r.get("run_no"), int) and r["run_no"] > run)
+    fut += sum(1 for r in learn if isinstance(r.get("run_no"), int) and r["run_no"] > run)
+    if fut:
+        problems.add("%s: %d righe di storico/apprendimento di una run successiva a quella dello stato (%d)"
+                     % (name, fut, run))
+    other = sum(1 for r in learn if r.get("portfolio") not in (None, name))
+    if other:
+        problems.add("%s: %d righe del registro di apprendimento di un altro portafoglio" % (name, other))
+    start = (m.get("limits") or {}).get("start_equity")
+    if not _num(start):
+        starts = {r.get("start_equity") for r in in_run if _num(r.get("start_equity"))}
+        start = starts.pop() if len(starts) == 1 else None
+    total = sum(float(c.get("net") or 0) for c in closed)
+    if start is None:
+        problems.add("%s: capitale iniziale della run sconosciuto: contabilita' non verificabile" % name)
+        acct = "non verificabile"
+    elif not positions:
+        diff = m["cash"] - (start + total)
+        if abs(diff) > 0.01:
+            problems.add("%s: contabilita' incoerente: cassa %.4f, capitale iniziale + risultati %.4f (diff %.4f)"
+                         % (name, m["cash"], start + total, diff))
+        acct = "cassa = capitale iniziale + risultati (diff %.6f)" % diff
+    else:
+        if m["cash"] > start + total + 0.01:
+            problems.add("%s: con posizioni aperte la cassa (%.4f) supera capitale iniziale + risultati (%.4f)"
+                         % (name, m["cash"], start + total))
+        acct = "posizioni aperte %d: cassa <= capitale iniziale + risultati" % len(positions)
+    print("  coerenza %s: run %d | %d trade chiusi = storico della run | %d posizioni aperte | %s | %s"
+          % (name, run, len(closed), len(positions), acct, "OK" if len(problems) == before else "PROBLEMI"))
 
 
 def main(argv=None):

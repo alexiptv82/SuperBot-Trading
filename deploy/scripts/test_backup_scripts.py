@@ -29,6 +29,26 @@ def load(path, name):
     return mod
 
 
+FAKE_DOCKER = """#!/usr/bin/env python3
+import os, sys
+D = %r
+a = sys.argv[1:]
+if a[:3] != ["inspect", "-f", "{{.State.Running}}"]:
+    sys.exit(2)
+path = os.path.join(D, a[3])
+if not os.path.exists(path):
+    print("Error: No such object: " + a[3], file=sys.stderr)
+    sys.exit(1)
+calls = D + ".calls"
+n = int(open(calls).read()) + 1 if os.path.exists(calls) else 1
+open(calls, "w").write(str(n))
+if os.path.exists(D + ".flip") and n > int(open(D + ".flip").read()):
+    print("true")                      # il container "riparte" dopo N chiamate
+else:
+    print(open(path).read().strip())
+"""
+
+
 def run(script, *args):
     p = subprocess.run([sys.executable, "-I", script, *args], capture_output=True, text=True, timeout=120)
     return p.returncode, p.stdout + p.stderr
@@ -173,9 +193,28 @@ class BrainTests(unittest.TestCase):
         self.dir = os.path.join(self.td.name, "bk")
         for p in ("hawk", "bull"):
             self.make_portfolio(p)
+        self.cdir = os.path.join(self.td.name, "containers")
+        os.makedirs(self.cdir)
+        self.docker = os.path.join(self.td.name, "docker")
+        with open(self.docker, "w") as f:
+            f.write(FAKE_DOCKER % self.cdir)
+        os.chmod(self.docker, 0o755)
 
     def tearDown(self):
         self.td.cleanup()
+
+    def container(self, portfolio, running):
+        """Stato del finto container superbot-desk-<portafoglio>: True/False, None = assente."""
+        path = os.path.join(self.cdir, "superbot-desk-" + portfolio)
+        if running is None:
+            if os.path.exists(path):
+                os.remove(path)
+            return
+        with open(path, "w") as f:
+            f.write("true" if running else "false")
+
+    def stopped(self, *extra):
+        return self.go("--bot-stopped", "--docker-bin", self.docker, *extra)
 
     def make_portfolio(self, p, big=0):
         d = os.path.join(self.root, p)
@@ -398,38 +437,96 @@ class BrainTests(unittest.TestCase):
         self.heartbeat("hawk", cycle_running=True)
         self.assertEqual(mod.boundary_state(base, 1)[0], mod.WAIT)
 
-    # modalita' separata ed esplicita per un bot davvero fermo
+    # modalita' separata ed esplicita per un bot davvero fermo: il fermo si DIMOSTRA sul container
 
     def test_bot_stopped_mode_works_only_for_a_really_stopped_bot_and_says_so(self):
         for p in ("hawk", "bull"):
             self.heartbeat(p, age=600, cycle_running=True)
-        rc, out = self.go("--bot-stopped")
+            self.container(p, False)
+        rc, out = self.stopped()
         self.assertEqual(rc, 0, out)
         self.assertIn("BOT FERMO", out)
         (name,) = self.finished()
         c = load_json(os.path.join(self.dir, name, "MANIFEST.json"))["coerenza"]
         self.assertEqual(c["modalita"], "bot_fermo")
         self.assertFalse(c["confine_di_ciclo_verificato"])         # non spaccia la copia per verificata
+        self.assertIn("docker inspect", c["metodo"])
+        for p in ("hawk", "bull"):                                  # il manifesto riporta la prova, container per container
+            self.assertIn("superbot-desk-%s fermo" % p, c["stato_del_confine"][p])
 
-    def test_bot_stopped_mode_is_refused_when_a_bot_is_alive(self):
-        self.assertEqual(self.go("--bot-stopped")[0], 1)           # battito fresco su entrambi
-        self.heartbeat("hawk", age=600)
-        rc, out = self.go("--bot-stopped")                         # uno fermo, uno vivo
+    def test_stale_heartbeat_alone_does_not_prove_a_bot_is_stopped(self):
+        """Caso 2 di ChatGPT: un processo bloccato ha il battito vecchio ma puo' ancora scrivere."""
+        for p in ("hawk", "bull"):
+            self.heartbeat(p, age=600)
+            self.container(p, True)                                 # container ancora in esecuzione
+        rc, out = self.stopped()
         self.assertEqual(rc, 1, out)
+        self.assertIn("IN ESECUZIONE", out)
         self.assertIn("ATTIVO", out)
         self.assertEqual(self.finished(), [])
+
+    def test_bot_stopped_mode_is_refused_when_one_bot_is_alive(self):
+        for p in ("hawk", "bull"):
+            self.heartbeat(p, age=600)
+            self.container(p, False)
+        self.container("bull", True)                                # uno fermo, uno vivo
+        rc, out = self.stopped()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("superbot-desk-bull IN ESECUZIONE", out)
+        self.assertEqual(self.finished(), [])
+
+    def test_bot_stopped_mode_is_refused_when_docker_cannot_prove_it(self):
+        for p in ("hawk", "bull"):
+            self.heartbeat(p, age=600)
+        rc, out = self.go("--bot-stopped", "--docker-bin", os.path.join(self.td.name, "non-esiste"))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("richiede la prova del fermo", out)
+        self.assertEqual(self.finished(), [])
+
+    def test_stopped_container_with_a_fresh_heartbeat_is_a_contradiction_not_a_pass(self):
+        for p in ("hawk", "bull"):
+            self.container(p, False)                                # fermi, ma il battito e' di adesso
+        rc, out = self.stopped()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("ancora fresco", out)
+        self.assertEqual(self.finished(), [])
+
+    def test_absent_container_with_old_heartbeat_is_accepted_and_reported(self):
+        for p in ("hawk", "bull"):
+            self.heartbeat(p, age=600)
+        rc, out = self.stopped()
+        self.assertEqual(rc, 0, out)
+        (name,) = self.finished()
+        c = load_json(os.path.join(self.dir, name, "MANIFEST.json"))["coerenza"]
+        self.assertIn("assente", c["stato_del_confine"]["hawk"])
 
     def test_bot_stopped_mode_still_needs_quiet_files_and_required_files(self):
         for p in ("hawk", "bull"):
             self.heartbeat(p, age=600)
+            self.container(p, False)
         os.utime(os.path.join(self.root, "hawk", "state_v2.json"))          # scritto adesso
-        self.assertEqual(self.go("--bot-stopped", "--quiet-secs", "30")[0], 1)
+        self.assertEqual(self.stopped("--quiet-secs", "30")[0], 1)
         old = time.time() - 300
         os.utime(os.path.join(self.root, "hawk", "state_v2.json"), (old, old))
         os.remove(os.path.join(self.root, "bull", "lessons.md"))
-        rc, out = self.go("--bot-stopped")
+        rc, out = self.stopped()
         self.assertEqual(rc, 1, out)
         self.assertIn("bull/lessons.md", out)
+
+    def test_a_bot_that_restarts_during_the_copy_discards_the_backup(self):
+        for p in ("hawk", "bull"):
+            self.heartbeat(p, age=600)
+            self.container(p, False)
+        with open(self.cdir + ".flip", "w") as f:
+            f.write("2")                       # le prime 2 chiamate (una per bot) dicono "fermo", poi "in esecuzione"
+        rc, out = self.stopped()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("ripartito", out)
+        self.assertEqual(self.finished(), [])
+
+    def test_normal_mode_never_calls_docker(self):
+        rc, out = self.go("--docker-bin", os.path.join(self.td.name, "non-esiste"))
+        self.assertEqual(rc, 0, out)                                # il percorso normale non dipende da docker
 
     # ---- caso 2 di ChatGPT: riga finale troncata = corruzione ----
 

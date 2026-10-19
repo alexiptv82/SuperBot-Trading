@@ -196,6 +196,8 @@ def clean_stage_locks(stage):
 # ---- archivio ------------------------------------------------------------------
 
 def code_versions(a):
+    """Versioni: commit delle cartelle git sul server, MA ANCHE quello che gira davvero (le cartelle possono
+    differire dai container): immagine di ogni container e versione dichiarata dai bot nel loro battito."""
     out = {}
     for label, path in (("codice_app", a.app_repo), ("codice_bot", a.bots_repo)):
         try:
@@ -204,6 +206,28 @@ def code_versions(a):
             out[label] = sha if p.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", sha) else "sconosciuto"
         except (OSError, subprocess.SubprocessError):
             out[label] = "sconosciuto"
+    images = {}
+    for name in [c for c in a.containers.split(",") if c]:
+        try:
+            p = subprocess.run([a.docker_bin, "inspect", "-f", "{{.Image}}|{{.Config.Image}}|{{.State.Running}}", name],
+                               capture_output=True, text=True, timeout=30)
+            parts = p.stdout.strip().split("|")
+            if p.returncode == 0 and len(parts) == 3:
+                images[name] = {"id_immagine": parts[0], "nome_immagine": parts[1], "in_esecuzione": parts[2] == "true"}
+            else:
+                images[name] = "sconosciuto"
+        except (OSError, subprocess.SubprocessError):
+            images[name] = "sconosciuto"
+    out["immagini_in_esecuzione"] = images
+    declared = {}
+    for pf in ("hawk", "bull"):
+        try:
+            with open(os.path.join(a.root, pf, "heartbeat.json")) as f:
+                hb = json.load(f)
+            declared[pf] = {"versione": hb.get("version", "sconosciuta"), "avviato_ms": hb.get("started_ms")}
+        except (OSError, ValueError, AttributeError):
+            declared[pf] = "sconosciuta"
+    out["versione_dichiarata_dai_bot"] = declared
     return out
 
 
@@ -300,15 +324,45 @@ class Repo:
         return True
 
     def verify_remote(self, relpath, expect_sha):
-        """Riscarica da GitHub il file appena inviato e ricalcola lo SHA-256."""
-        self.git("fetch", "-q", "origin")
-        head, remote = self.git("rev-parse", "HEAD"), self.git("rev-parse", "refs/remotes/origin/main")
-        if head != remote:
-            raise Fail("dopo il push la punta remota (%s) non coincide con la locale (%s)" % (remote[:10], head[:10]))
-        p = self.git("show", "refs/remotes/origin/main:" + relpath, binary=True)
-        if sha256_bytes(p.stdout) != expect_sha:
-            raise Fail("il file riscaricato da GitHub ha uno SHA-256 diverso da quello inviato")
+        """Verifica INDIPENDENTE: un clone nuovo da GitHub in una cartella vuota (nessun oggetto gia' presente
+        in locale puo' essere riusato), stessa punta del push, file presente e SHA-256 ricalcolato."""
+        tmp = os.path.join(self.a.work, "verifica-%d" % os.getpid())
+        shutil.rmtree(tmp, ignore_errors=True)
+        try:
+            p = subprocess.run(["git", "clone", "-q", "--no-local", "--depth", "1", "--branch", "main",
+                                self.a.remote, tmp], env=self.env, capture_output=True, timeout=600)
+            if p.returncode != 0:
+                raise Fail("verifica: clone nuovo da GitHub non riuscito: %s"
+                           % (p.stdout + p.stderr).decode(errors="replace").strip()[-300:])
+            fresh = subprocess.run(["git", "-C", tmp, "rev-parse", "HEAD"], capture_output=True, text=True,
+                                   timeout=60).stdout.strip()
+            head = self.git("rev-parse", "HEAD")
+            if fresh != head:
+                raise Fail("verifica: la punta scaricata (%s) non e' quella appena inviata (%s)" % (fresh[:10], head[:10]))
+            path = os.path.join(tmp, *relpath.split("/"))
+            if not os.path.isfile(path):
+                raise Fail("verifica: l'archivio non c'e' nel clone nuovo")
+            if sha256_file(path) != expect_sha:
+                raise Fail("il file riscaricato da GitHub ha uno SHA-256 diverso da quello inviato")
+            mpath = os.path.join(os.path.dirname(path), manifest_name(os.path.basename(path)))
+            if not os.path.isfile(mpath):
+                raise Fail("verifica: manca il manifesto accanto all'archivio nel clone nuovo")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
         return True
+
+
+def repo_size(repo_dir):
+    """(byte occupati da .git, numero di archivi visibili): la retention limita i file visibili, NON lo spazio
+    ne' la durata della storia git (che conserva anche gli archivi tolti). Va misurata nel tempo."""
+    total = 0
+    for dp, _dn, fn in os.walk(os.path.join(repo_dir, ".git")):
+        for f in fn:
+            try:
+                total += os.lstat(os.path.join(dp, f)).st_size
+            except OSError:
+                pass
+    return total, len(archives_in(repo_dir))
 
 
 def prune(repo, keep_recent, keep_weeks, keep_months):
@@ -396,6 +450,7 @@ def execute(a):
         removed = prune(repo, a.keep_recent, a.keep_weeks, a.keep_months)
         repo.publish("backup cifrato %s%s" % (name, (" (tolti %d vecchi)" % len(removed)) if removed else ""))
         repo.verify_remote((rel_dir + "/" + name).replace(os.sep, "/"), digest)
+        git_bytes, n_archives = repo_size(repo.dir)
     finally:
         try:
             os.unlink(cipher)
@@ -404,8 +459,11 @@ def execute(a):
     say("RISULTATO: OK  archivio %s  %d byte  sha256 %s" % (name, size, digest))
     if removed:
         say("  tolti dalla punta del ramo per la retention: %s" % ", ".join(removed))
+    say("  repository dei backup: %d archivi visibili, storia git %.1f MB (la retention non riduce la storia)"
+        % (n_archives, git_bytes / 1e6))
     write_status(a.work, ultimo_successo=created, archivio=name, sha256=digest, dimensione=size,
-                 ultimo_errore=None)
+                 ultimo_errore=None, repo_git_byte=git_bytes, archivi_visibili=n_archives,
+                 verifica="clone nuovo e indipendente da GitHub")
     return 0
 
 
@@ -422,6 +480,9 @@ def main(argv=None):
     ap.add_argument("--known-hosts", default="", help="known_hosts con la chiave di GitHub (solo per remote SSH)")
     ap.add_argument("--app-repo", default="/opt/superbot")
     ap.add_argument("--bots-repo", default="/opt/superbot-desk")
+    ap.add_argument("--docker-bin", default="docker")
+    ap.add_argument("--containers", default="superbot,superbot-desk-hawk,superbot-desk-bull,superbot-pool",
+                    help="container di cui registrare l'immagine in esecuzione")
     ap.add_argument("--keep-recent", type=int, default=14)
     ap.add_argument("--keep-weeks", type=int, default=8)
     ap.add_argument("--keep-months", type=int, default=6)

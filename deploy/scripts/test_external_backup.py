@@ -97,12 +97,20 @@ class ExternalBackupTests(unittest.TestCase):
     def make_portfolio(self, p):
         d = os.path.join(self.root, p)
         os.makedirs(d, exist_ok=True)
-        rows = "".join(json.dumps({"i": i, "nota": M_TRADE}) + "\n" for i in range(40))
+        # forma reale (19/10): i trade chiusi della run stanno sia nello stato (main.closed) sia nello storico;
+        # cassa = capitale iniziale + somma dei risultati quando non ci sono posizioni aperte
+        t0 = 1760000000000
+        trades = [{"id": i + 1, "run_no": 3, "open_ms": t0 + i * 60000, "close_ms": t0 + i * 60000 + 30000,
+                   "net": round((i % 5 - 2) * 1.25, 4), "nota": M_TRADE} for i in range(40)]
+        rows = "".join(json.dumps(t) + "\n" for t in trades)
+        learn = "".join(json.dumps({"i": i, "run_no": 3, "portfolio": p, "nota": M_TRADE}) + "\n" for i in range(40))
+        state = {"run_no": 3, "cycle": 5, "note": M_STATE,
+                 "main": {"cash": 1000.0 + sum(t["net"] for t in trades), "positions": {}, "closed": trades,
+                          "next_id": 41, "limits": {"start_equity": 1000.0}}}
         old = time.time() - 300
-        for name, body in (("trade_history.jsonl", rows), ("learning_log.jsonl", rows), ("errors.md", "# e\n"),
+        for name, body in (("trade_history.jsonl", rows), ("learning_log.jsonl", learn), ("errors.md", "# e\n"),
                            ("lessons.md", "# %s\n" % M_LESSONS),
-                           ("state_v2.json", json.dumps({"run_no": 3, "cycle": 5, "note": M_STATE,
-                                                         "main": {"positions": {}}}))):
+                           ("state_v2.json", json.dumps(state))):
             path = os.path.join(d, name)
             with open(path, "w") as f:
                 f.write(body)
@@ -425,6 +433,135 @@ class ExternalBackupTests(unittest.TestCase):
         self.assertTrue(repo.publish("c"))
         clone = self.clone_remote()
         self.assertEqual(sorted(n for n in os.listdir(clone) if n.endswith(".txt")), ["a.txt", "b.txt", "c.txt"])
+
+    # ---- casi 3 e 4 di ChatGPT (19/10 pomeriggio) ----
+
+    def test_remote_verification_uses_a_fresh_clone_not_local_objects(self):
+        """Se GitHub NON avesse davvero l'archivio, la verifica deve accorgersene anche se in locale c'e'."""
+        self.assertEqual(self.backup()[0], 0)
+        ext = load(EXT, "ext_mod_verify")
+
+        class A:
+            work, remote, ssh_key, known_hosts = self.work, self.remote, "", ""
+
+        repo = ext.Repo(A)
+        clone = self.clone_remote()
+        (arc,) = self.archives(clone)
+        rel = os.path.relpath(arc, clone).replace(os.sep, "/")
+        digest = hashlib.sha256(get(arc)).hexdigest()
+        self.assertTrue(repo.verify_remote(rel, digest))               # caso buono
+        blob = sh("git", "-C", repo.dir, "rev-parse", "HEAD:" + rel).stdout.strip()
+        loose = os.path.join(self.remote, "objects", blob[:2], blob[2:])
+        self.assertTrue(os.path.exists(loose))
+        os.remove(loose)                                               # il "server" perde l'archivio
+        # il vecchio metodo (oggetti locali) direbbe ancora di si'...
+        sh("git", "-C", repo.dir, "fetch", "-q", "origin")
+        self.assertEqual(hashlib.sha256(subprocess.run(["git", "-C", repo.dir, "show", "origin/main:" + rel],
+                                                       capture_output=True).stdout).hexdigest(), digest)
+        # ...la verifica con clone nuovo no
+        with self.assertRaises(ext.Fail):
+            repo.verify_remote(rel, digest)
+        self.assertFalse([d for d in os.listdir(self.work) if d.startswith("verifica-")])   # niente avanzi
+
+    def test_manifest_records_running_images_and_declared_bot_versions_and_status_has_size(self):
+        for pf in ("hawk", "bull"):
+            self.heartbeat(pf, version="abc1234-" + pf)
+        fake = os.path.join(self.td.name, "docker")
+        put(fake, "#!/bin/sh\necho \"sha256:img-$4|superbot-desk:singapore|true\"\n")
+        os.chmod(fake, 0o755)
+        rc, out = self.backup("--docker-bin", fake)
+        self.assertEqual(rc, 0, out)
+        clone = self.clone_remote()
+        (arc,) = self.archives(clone)
+        with open(arc[: -len(".tar.gz.age")] + ".manifest.json") as f:
+            v = json.load(f)["versioni"]
+        self.assertEqual(v["versione_dichiarata_dai_bot"]["hawk"]["versione"], "abc1234-hawk")
+        self.assertEqual(v["versione_dichiarata_dai_bot"]["bull"]["versione"], "abc1234-bull")
+        imgs = v["immagini_in_esecuzione"]
+        self.assertEqual(sorted(imgs), ["superbot", "superbot-desk-bull", "superbot-desk-hawk", "superbot-pool"])
+        self.assertEqual(imgs["superbot-desk-hawk"]["id_immagine"], "sha256:img-superbot-desk-hawk")
+        self.assertTrue(imgs["superbot-desk-hawk"]["in_esecuzione"])
+        with open(os.path.join(self.work, "status.json")) as f:
+            st = json.load(f)
+        self.assertGreater(st["repo_git_byte"], 0)
+        self.assertEqual(st["archivi_visibili"], 1)
+        self.assertEqual(st["verifica"], "clone nuovo e indipendente da GitHub")
+
+    # ---- caso 5 di ChatGPT: confine di ciclo obbligatorio e coerenza semantica nel ripristino ----
+
+    def brain_snapshot(self):
+        """Una copia vera del cervello fatta da backup_brain.py, in una cartella come quella del ripristino."""
+        out = os.path.join(self.td.name, "rip")
+        cerv = os.path.join(out, "dati", "cervello")
+        os.makedirs(cerv)
+        p = subprocess.run([sys.executable, "-I", os.path.join(HERE, "backup_brain.py"), "--root", self.root,
+                            "--dir", cerv, "--quiet-secs", "1", "--attempts", "2", "--wait", "0.1",
+                            "--quiet-timeout", "2"], capture_output=True, text=True, timeout=120)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        (snap,) = [d for d in os.listdir(cerv) if d.startswith("bots-")]
+        return out, os.path.join(cerv, snap)
+
+    def check(self, out):
+        mod = load(RESTORE, "restore_mod_%d" % int(time.time() * 1e6))
+        probs = mod.Problems()
+        buf = io.StringIO()
+        old, sys.stdout = sys.stdout, buf
+        try:
+            mod.check_brain(out, probs)
+        finally:
+            sys.stdout = old
+        return list(probs), buf.getvalue()
+
+    def edit_state(self, p, fn):
+        path = os.path.join(self.root, p, "state_v2.json")
+        with open(path) as f:
+            st = json.load(f)
+        fn(st)
+        put(path, json.dumps(st).encode())
+        old = time.time() - 300
+        os.utime(path, (old, old))
+
+    def test_semantic_check_passes_on_coherent_data(self):
+        out, _ = self.brain_snapshot()
+        probs, text = self.check(out)
+        self.assertEqual(probs, [], text)
+        self.assertIn("coerenza hawk: run 3 | 40 trade chiusi = storico della run", text)
+
+    def test_restore_requires_verified_boundary_or_declared_exception(self):
+        out, snap = self.brain_snapshot()
+        mpath = os.path.join(snap, "MANIFEST.json")
+        with open(mpath) as f:
+            man = json.load(f)
+        man["coerenza"]["confine_di_ciclo_verificato"] = False
+        man["coerenza"]["modalita"] = "sconosciuta"
+        put(mpath, json.dumps(man).encode())
+        probs, _ = self.check(out)
+        self.assertTrue(any("confine di ciclo verificato" in x for x in probs), probs)
+        man["coerenza"]["modalita"] = "bot_fermo"                      # eccezione ammessa: passa e lo dice
+        put(mpath, json.dumps(man).encode())
+        probs, text = self.check(out)
+        self.assertEqual(probs, [], text)
+        self.assertIn("ECCEZIONE AMMESSA", text)
+
+    def test_semantic_check_catches_state_and_history_out_of_sync(self):
+        self.edit_state("hawk", lambda st: st["main"]["closed"].pop())        # un trade sparito dallo stato
+        out, _ = self.brain_snapshot()
+        probs, _ = self.check(out)
+        self.assertTrue(any("hawk: i trade chiusi nello stato (39)" in x for x in probs), probs)
+
+    def test_semantic_check_catches_wrong_accounting(self):
+        self.edit_state("bull", lambda st: st["main"].__setitem__("cash", st["main"]["cash"] + 5))
+        out, _ = self.brain_snapshot()
+        probs, _ = self.check(out)
+        self.assertTrue(any("bull: contabilita' incoerente" in x for x in probs), probs)
+
+    def test_semantic_check_catches_ids_beyond_next_id_and_future_runs(self):
+        self.edit_state("hawk", lambda st: st["main"].__setitem__("next_id", 10))
+        self.edit_state("bull", lambda st: st.__setitem__("run_no", 2))      # storico della run 3 = "futura"
+        out, _ = self.brain_snapshot()
+        probs, _ = self.check(out)
+        self.assertTrue(any("hawk: id" in x and "oltre next_id=10" in x for x in probs), probs)
+        self.assertTrue(any("bull:" in x and "run successiva" in x for x in probs), probs)
 
     def test_retention_policy_unit(self):
         ext = load(EXT, "ext_mod2")

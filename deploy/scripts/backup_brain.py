@@ -25,8 +25,13 @@ Coerenza (il bot scrive mentre noi copiamo):
   Il percorso normale (quello dei deploy) RICHIEDE il confine di ciclo
   verificato: battito vecchio o senza `cycle_running` = FALLITO subito, non
   "ok ma non verificato". Per un bot davvero fermo esiste una modalita'
-  separata ed esplicita, --bot-stopped: ammessa solo se il battito e' vecchio
-  (altrimenti il bot e' vivo e si rifiuta); il manifesto dice "bot_fermo".
+  separata ed esplicita, --bot-stopped. Il fermo si DIMOSTRA sul container
+  (docker inspect: nessun container del portafoglio in esecuzione) e il
+  battito deve essere vecchio o assente; un battito vecchio da solo non basta
+  (un processo bloccato ha il battito vecchio ma puo' ancora scrivere).
+  Container in esecuzione, docker non utilizzabile o container fermo con
+  battito ancora fresco = si rifiuta. Il manifesto dice "bot_fermo" e riporta
+  lo stato di ogni container.
 
 Per ogni file dei portafogli:
   - i quattro del cervello crescono soltanto, quindi la copia deve essere
@@ -51,6 +56,7 @@ import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import time
 
@@ -208,17 +214,50 @@ def boundary_state(base, quiet, margin=30.0):
     return OK, "tra due cicli (cicli fatti %s, prossimo tra %s)" % (hb.get("cycles"), nxt)
 
 
-def stopped_state(base):
-    """Modalita' --bot-stopped: ammessa solo se il bot e' davvero fermo (battito vecchio o assente)."""
+def container_state(docker_bin, name):
+    """('running'|'stopped'|'absent'|'unknown', descrizione) letto da docker, mai dedotto dai file."""
+    try:
+        p = subprocess.run([docker_bin, "inspect", "-f", "{{.State.Running}}", name],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return "unknown", "docker non utilizzabile (%s)" % type(e).__name__
+    out = (p.stdout + p.stderr).strip()
+    if p.returncode == 0:
+        if p.stdout.strip() == "true":
+            return "running", "container %s IN ESECUZIONE" % name
+        if p.stdout.strip() == "false":
+            return "stopped", "container %s fermo (docker inspect)" % name
+        return "unknown", "risposta di docker illeggibile per %s" % name
+    if "no such" in out.lower():
+        return "absent", "container %s assente (nessun processo docker per questo bot)" % name
+    return "unknown", "stato del container %s non verificabile: %s" % (name, out[:100])
+
+
+def default_container(base, prefix="superbot-desk-"):
+    return prefix + os.path.basename(base.rstrip(os.sep))
+
+
+def stopped_state(base, container="", docker_bin="docker"):
+    """Modalita' --bot-stopped: ammessa solo se il bot e' DAVVERO fermo, dimostrato sul container (docker) e
+    con il battito vecchio o assente. Un battito vecchio da solo non dimostra niente: un processo bloccato
+    ha il battito vecchio ma puo' ancora scrivere."""
+    if not container:
+        return NO, "nome del container sconosciuto: il fermo non e' dimostrabile"
+    cs, desc = container_state(docker_bin, container)
+    if cs == "running":
+        return NO, ("%s: il bot risulta ATTIVO, la modalita' --bot-stopped non e' ammessa; usare il backup "
+                    "normale" % desc)
+    if cs == "unknown":
+        return NO, desc + ": la modalita' --bot-stopped richiede la prova del fermo"
     p = os.path.join(base, "heartbeat.json")
     try:
         age = time.time() - os.stat(p).st_mtime
     except FileNotFoundError:
-        return OK, "nessun battito: bot mai avviato o fermo da tempo (modalita' bot fermo)"
+        return OK, "%s; nessun battito (mai avviato o fermo da tempo)" % desc
     if age <= HB_STALE:
-        return NO, ("battito recente (%d s): il bot risulta ATTIVO, la modalita' --bot-stopped non e' ammessa; "
-                    "usare il backup normale" % int(age))
-    return OK, "bot fermo (battito vecchio di %d s; modalita' bot fermo, confine di ciclo non applicabile)" % int(age)
+        return WAIT, ("%s ma il battito e' ancora fresco (%d s): aspetto che invecchi; se non succede "
+                      "qualcun altro sta scrivendo" % (desc, int(age)))
+    return OK, "%s; battito vecchio di %d s" % (desc, int(age))
 
 
 def hb_marker(base):
@@ -228,7 +267,7 @@ def hb_marker(base):
     return (hb.get("cycles"), hb.get("last_start_ms"), hb.get("last_end_ms"), hb.get("cycle_running"))
 
 
-def wait_ready(bases, quiet, timeout, stopped=False):
+def wait_ready(bases, quiet, timeout, stopped=False, docker_bin="docker", container_for=default_container):
     """Aspetta la finestra buona: bot tra due cicli (o, con stopped, davvero fermo) e nessun file centrale
     scritto negli ultimi `quiet` secondi. Restituisce (esito, secondi di quiete, descrizioni) con esito
     'ok', 'attesa_scaduta' oppure 'non_verificabile' (inutile aspettare: si ferma subito)."""
@@ -242,7 +281,8 @@ def wait_ready(bases, quiet, timeout, stopped=False):
                 except FileNotFoundError:
                     pass
         age = time.time() - newest
-        states = [(stopped_state(b) if stopped else boundary_state(b, quiet)) for b in bases]
+        states = [(stopped_state(b, container_for(b), docker_bin) if stopped else boundary_state(b, quiet))
+                  for b in bases]
         descs = [s[1] for s in states]
         if any(s[0] == NO for s in states):
             return "non_verificabile", None, descs
@@ -363,8 +403,12 @@ def main():
                     help="ECCEZIONE esplicita: cartelle o file irrinunciabili ancora assenti perche' i bot non "
                          "hanno mai girato (di norma sono un errore e il deploy si ferma)")
     ap.add_argument("--bot-stopped", action="store_true",
-                    help="modalita' separata per un bot DAVVERO fermo: salta il confine di ciclo ma rifiuta se "
-                         "il battito e' recente (il bot e' vivo)")
+                    help="modalita' separata per un bot DAVVERO fermo: salta il confine di ciclo ma richiede la "
+                         "prova del fermo sul container (docker inspect) e rifiuta se un container e' in "
+                         "esecuzione")
+    ap.add_argument("--docker-bin", default="docker", help="programma docker (cambia solo nelle prove)")
+    ap.add_argument("--container-prefix", default="superbot-desk-",
+                    help="prefisso del nome dei container: <prefisso><portafoglio>")
     ap.add_argument("--attempts", type=int, default=5, help="tentativi di finestra stabile")
     ap.add_argument("--wait", type=float, default=10.0, help="secondi tra un tentativo e l'altro")
     ap.add_argument("--quiet-secs", type=float, default=10.0,
@@ -432,7 +476,9 @@ def run(a, present, missing):
     absent_ok = []
     for attempt in range(1, a.attempts + 1):
         used = attempt
-        outcome, quiet_age, boundary_info = wait_ready(bases, a.quiet_secs, a.quiet_timeout, a.bot_stopped)
+        outcome, quiet_age, boundary_info = wait_ready(
+            bases, a.quiet_secs, a.quiet_timeout, a.bot_stopped, a.docker_bin,
+            lambda b: default_container(b, a.container_prefix))
         if outcome == "non_verificabile":
             for p, info in zip(present, boundary_info):
                 print("  %s: %s" % (p, info))
@@ -444,6 +490,8 @@ def run(a, present, missing):
         if outcome != "ok":
             print("  tentativo %d: nessuna finestra di fine ciclo entro %g s (ciclo in corso o file "
                   "scritti di continuo), riprovo" % (attempt, a.quiet_timeout))
+            for pp, info in zip(present, boundary_info):
+                print("    %s: %s" % (pp, info))
             time.sleep(a.wait)
             continue
         verified = not a.bot_stopped
@@ -457,6 +505,17 @@ def run(a, present, missing):
         os.makedirs(part, mode=0o700)
         manifest, problems, warnings, skipped = copy_tree(present, a.root, part)
         after = ([core_fp(b) for b in bases], [hb_marker(b) for b in bases])
+        if a.bot_stopped:
+            # il fermo deve valere ANCHE a copia finita: se un container e' ripartito durante la copia, si scarta
+            again = [stopped_state(b, default_container(b, a.container_prefix), a.docker_bin) for b in bases]
+            if any(st[0] == NO for st in again):
+                shutil.rmtree(part, ignore_errors=True)
+                for pp, st in zip(present, again):
+                    print("  %s: %s" % (pp, st[1]))
+                print("ERRORE BACKUP CERVELLO: un bot e' ripartito (o il suo stato non e' piu' verificabile) "
+                      "durante la copia: copia scartata.")
+                print("RISULTATO: FALLITO. Non si deve sostituire nessun container.")
+                return 1
         if before == after:
             consistent = True
             break
@@ -492,8 +551,9 @@ def run(a, present, missing):
         "metodo": ("finestra di fine ciclo (battito del bot) + nessuna scrittura sui file centrali negli "
                    "ultimi %g s + nessuna modifica (inode, dimensione, istante) ne' variazione del "
                    "contatore dei cicli durante la copia" % a.quiet_secs) if not a.bot_stopped else
-                  ("bot fermo (battito vecchio o assente) + nessuna scrittura sui file centrali negli "
-                   "ultimi %g s + nessuna modifica (inode, dimensione, istante) durante la copia" % a.quiet_secs),
+                  ("bot fermo (prova sul container con docker inspect + battito vecchio o assente) + nessuna "
+                   "scrittura sui file centrali negli ultimi %g s + nessuna modifica (inode, dimensione, "
+                   "istante) durante la copia, con il fermo ricontrollato a copia finita" % a.quiet_secs),
         "tentativi": used,
         "quiete_osservata_s": round(quiet_age, 1) if quiet_age is not None else None,
         "file_centrali": list(CORE),

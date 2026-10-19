@@ -491,6 +491,49 @@ class ExtBackupWorkflowTests(unittest.TestCase):
         self.assertIn("OnCalendar=*-*-* 03:20:00 UTC", t)
         self.assertIn("Persistent=true", t)
 
+    def run_step(self, action):
+        """Esegue davvero il passo del workflow con ssh/scp/gh FINTI che registrano le chiamate."""
+        script = get_block(self.wf(), "id: act", "run")
+        with tempfile.TemporaryDirectory() as t:
+            log = os.path.join(t, "log")
+            bind = os.path.join(t, "bin")
+            os.makedirs(bind)
+            for name, body in (("ssh", 'echo "ssh $*" >> %s; cat >/dev/null; exit 0' % log),
+                               ("scp", 'echo "scp $*" >> %s; exit 0' % log),
+                               ("gh", 'echo "gh $*" >> %s; echo "ssh-ed25519 AAAA"' % log)):
+                with open(os.path.join(bind, name), "w") as f:
+                    f.write("#!/bin/sh\n" + body + "\n")
+                os.chmod(os.path.join(bind, name), 0o755)
+            os.makedirs(os.path.join(t, "deploy"))
+            with open(os.path.join(t, "deploy", "sg-extbackup.trigger"), "w") as f:
+                f.write("prova\nazione=%s\n" % action)
+            env = dict(os.environ, PATH=bind + ":" + os.environ["PATH"], HOME=t, SG_SSH_KEY="finta",
+                       GITHUB_OUTPUT=os.path.join(t, "out"), GH_TOKEN="x")
+            p = subprocess.run(["bash", "-e", "-c", script], cwd=t, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                               timeout=60)
+            calls = open(log).read() if os.path.exists(log) else ""
+        for leftover in ("/tmp/extbackup_remote.txt", "/tmp/known_hosts_github"):   # file del runner GitHub
+            if os.path.exists(leftover):
+                os.remove(leftover)
+        return p.returncode, calls
+
+    def test_status_writes_nothing_on_the_server(self):
+        """Caso 1 di ChatGPT (19/10 pomeriggio): un controllo di stato deve solo leggere."""
+        rc, calls = self.run_step("status")
+        self.assertEqual(rc, 0, calls)
+        self.assertNotIn("scp ", calls)
+        self.assertNotIn("mkdir", calls)
+        self.assertNotIn("gh api", calls)
+        self.assertEqual(calls.count("ssh "), 1)                 # una sola connessione: quella che legge
+
+    def test_setup_and_run_install_the_tools(self):
+        for action in ("setup", "run"):
+            with self.subTest(action=action):
+                rc, calls = self.run_step(action)
+                self.assertEqual(rc, 0, calls)
+                self.assertEqual(calls.count("scp "), 3)
+                self.assertIn("mkdir -p /opt/superbot-tools", calls)
+
     def test_no_secret_goes_to_the_repository_by_name(self):
         for dp, dn, fn in os.walk(os.path.join(REPO, "deploy")):
             for f in fn:

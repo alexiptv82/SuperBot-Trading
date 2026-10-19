@@ -14,8 +14,9 @@ name: Sala segnali - deploy (Hawk + Bull, container separati, paper)
 # Backup del cervello nel percorso normale = confine di ciclo VERIFICATO obbligatorio (battito del bot
 # recente, con cycle_running) e file irrinunciabili presenti. Se un bot e' DAVVERO fermo (battito vecchio)
 # il backup normale fallisce di proposito. Solo in quel caso, e solo scrivendolo nel file trigger con
-# la riga esatta "backup=bot_fermo", il backup usa la modalita' separata --bot-stopped (che rifiuta
-# comunque se un bot risulta vivo). Senza quella riga non cambia nulla.
+# la riga esatta "backup=bot_fermo", il backup usa la modalita' separata --bot-stopped, che richiede la
+# PROVA del fermo sui container (docker inspect: superbot-desk-hawk e superbot-desk-bull non in esecuzione,
+# ricontrollata a copia finita) e rifiuta se un bot risulta vivo. Senza quella riga non cambia nulla.
 
 on:
   push:

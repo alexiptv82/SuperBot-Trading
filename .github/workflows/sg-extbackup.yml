@@ -8,7 +8,8 @@ name: SuperBot - Backup esterno cifrato (Singapore)
 #   setup  : installa age (se manca), crea sul VPS la chiave di deploy dedicata al solo repository dei backup
 #            (stampa la parte PUBBLICA), installa strumenti, timer giornaliero (03:20 UTC) e known_hosts di GitHub.
 #   run    : fa subito un backup esterno e lo verifica (riscarica da GitHub e ricalcola lo SHA-256).
-#   status : mostra timer, ultimo stato e ultime righe del registro. Sola lettura.
+#   status : mostra timer, ultimo stato, dimensione del repository locale e ultime righe del registro.
+#            SOLA LETTURA: non copia strumenti, chiavi o known_hosts e non scrive niente sul server.
 #
 # Segreti: la chiave di deploy privata resta sul VPS (/root/.ssh/superbot_backup_ed25519) e non viene mai
 # stampata. La chiave di cifratura e' PUBBLICA (deploy/extbackup/recipient.txt); la privata di recupero e'
@@ -61,13 +62,17 @@ jobs:
           51.79.205.82 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
           KH
           SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
-          # Chiavi pubbliche di GitHub, lette da GitHub stesso (API meta): servono al VPS per riconoscere GitHub.
-          gh api meta --jq '.ssh_keys[]' | sed 's/^/github.com /' > /tmp/known_hosts_github
-          test -s /tmp/known_hosts_github
-          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools /opt/superbot-extbackup && chmod 700 /opt/superbot-tools /opt/superbot-extbackup'
-          scp $SSHO deploy/scripts/backup_app_db.py deploy/scripts/backup_brain.py deploy/scripts/external_backup.py root@51.79.205.82:/opt/superbot-tools/
-          scp $SSHO deploy/extbackup/recipient.txt root@51.79.205.82:/opt/superbot-extbackup/recipient.txt
-          scp $SSHO /tmp/known_hosts_github root@51.79.205.82:/opt/superbot-extbackup/known_hosts
+          # Installazione/aggiornamento degli strumenti, della chiave PUBBLICA age e delle chiavi di GitHub:
+          # SOLO per setup e run. "status" non scrive niente sul server (sola lettura).
+          if [ "$ACT" != status ]; then
+            # Chiavi pubbliche di GitHub, lette da GitHub stesso (API meta): servono al VPS per riconoscere GitHub.
+            gh api meta --jq '.ssh_keys[]' | sed 's/^/github.com /' > /tmp/known_hosts_github
+            test -s /tmp/known_hosts_github
+            ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools /opt/superbot-extbackup && chmod 700 /opt/superbot-tools /opt/superbot-extbackup'
+            scp $SSHO deploy/scripts/backup_app_db.py deploy/scripts/backup_brain.py deploy/scripts/external_backup.py root@51.79.205.82:/opt/superbot-tools/
+            scp $SSHO deploy/extbackup/recipient.txt root@51.79.205.82:/opt/superbot-extbackup/recipient.txt
+            scp $SSHO /tmp/known_hosts_github root@51.79.205.82:/opt/superbot-extbackup/known_hosts
+          fi
           set +e
           ssh $SSHO root@51.79.205.82 "ACT=$ACT bash -s" > /tmp/extbackup_remote.txt 2>&1 <<'REMOTE'
           set -u
