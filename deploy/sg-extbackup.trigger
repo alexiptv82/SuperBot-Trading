@@ -1,2 +1,2 @@
-2026-10-19 backup esterno cifrato: primo backup (secondo tentativo, repository e chiave creati)
-azione=run
+2026-10-19 backup esterno: status dopo le correzioni (deve solo leggere)
+azione=status
