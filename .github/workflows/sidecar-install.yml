@@ -1,6 +1,5 @@
 name: Osservatore ombra - installazione (container separato, sola lettura)
 
-# BOZZA (non attiva: per attivarla va copiata in .github/workflows/ su rule-pool).
 # Installa SOLO il container "superbot-sidecar". NON ferma, NON ricrea, NON riavvia superbot-desk-hawk/bull.
 # Nessun segreto passa al container (nessuna -e). Parte solo quando cambia deploy/sidecar-install.trigger
 # e il file contiene la riga "sha=<40 caratteri>" di un commit che fa parte di rule-pool.
@@ -28,13 +27,6 @@ jobs:
           git merge-base --is-ancestor "$WANT" origin/rule-pool || { echo "ERRORE: commit non in rule-pool"; exit 1; }
           git checkout -q --detach "$WANT"
           echo "sha=$WANT" >> "$GITHUB_OUTPUT"
-      - name: Copia strumenti di backup (chiave del server verificata)
-        env: {SG_SSH_KEY: "${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}"}
-        run: |
-          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
-          # le stesse chiavi pubbliche del server di desk-deploy.yml vanno copiate qui all'attivazione
-          cp .github/workflows/desk-deploy.yml /dev/null
-          echo "BOZZA: completare known_hosts_sg come in desk-deploy.yml"; exit 1
       - name: Installazione sul VPS
         uses: appleboy/ssh-action@v1.0.0
         env: {APPROVED_SHA: "${{ steps.approved.outputs.sha }}"}
@@ -56,9 +48,9 @@ jobs:
             d = "/opt/superbot-desk-data/" + p
             s = json.load(open(d + "/state_v2.json")); h = json.load(open(d + "/heartbeat.json"))
             n = len(s["main"]["positions"])
-            print(p, "run", s.get("run_no"), "posizioni", n, "in_pausa", h.get("paused"))
-            if n: sys.exit("ERRORE: %s ha posizioni aperte" % p)
-            if not h.get("paused"): sys.exit("ERRORE: %s non e' in pausa" % p)
+            print(p, "run", s.get("run_no"), "posizioni", n, "modo", h.get("mode"), "aperte(hb)", h.get("open_positions"))
+            if n or h.get("open_positions"): sys.exit("ERRORE: %s ha posizioni aperte" % p)
+            if h.get("mode") != "paused": sys.exit("ERRORE: %s non e' in pausa (modo: %s)" % (p, h.get("mode")))
             if time.time()*1000 - int(s["run_started_ms"]) > 3*3600*1000: sys.exit("ERRORE: %s: il run non e' appena partito (reset non fatto?)" % p)
             PY
             done
