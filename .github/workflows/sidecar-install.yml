@@ -81,16 +81,17 @@ jobs:
             test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
             SHA12=$(printf '%s' "$APPROVED_SHA" | cut -c1-12)
             docker build -t "superbot-sidecar:sha-${SHA12}" --label "superbot.sha=${APPROVED_SHA}" -f Dockerfile.sidecar .
-            # 4) Cartella di uscita propria (uid 10001), mai dentro i dati dei bot
-            mkdir -p /opt/superbot-sidecar-data && chown 10001:10001 /opt/superbot-sidecar-data && chmod 700 /opt/superbot-sidecar-data
+            # 4) Cartella di uscita propria, mai dentro i dati dei bot. I file dei bot sono 0600 di root: il sidecar gira come root
+            #    ma senza nessuna capability (--cap-drop ALL), con filesystem in sola lettura e dati montati :ro.
+            mkdir -p /opt/superbot-sidecar-data && chown 0:0 /opt/superbot-sidecar-data && chmod 700 /opt/superbot-sidecar-data
             # 5) Prova di lettura con lo stesso utente, in sola lettura, prima di installare
             for P in hawk bull; do
-              docker run --rm --user 10001:10001 --read-only --cap-drop ALL -v /opt/superbot-desk-data:/data:ro \
+              docker run --rm --user 0:0 --read-only --cap-drop ALL -v /opt/superbot-desk-data:/data:ro \
                 "superbot-sidecar:sha-${SHA12}" python -c "import json,sys; json.load(open('/data/$P/state_v2.json')); json.load(open('/data/$P/heartbeat.json')); print('lettura ok $P')"
             done
             # 6) Avvio (container nuovo e separato; i bot non vengono toccati)
             docker stop superbot-sidecar 2>/dev/null || true; docker rm superbot-sidecar 2>/dev/null || true
-            docker run -d --name superbot-sidecar --restart unless-stopped --user 10001:10001 \
+            docker run -d --name superbot-sidecar --restart unless-stopped --user 0:0 \
               --read-only --tmpfs /tmp:size=16m --cap-drop ALL --security-opt no-new-privileges \
               --memory 128m --cpus 0.25 --pids-limit 64 \
               -e SIDECAR_SHA="$APPROVED_SHA" \
