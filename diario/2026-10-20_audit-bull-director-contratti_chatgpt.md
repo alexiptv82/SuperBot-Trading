@@ -56,3 +56,7 @@ Ramo creato esplicitamente da `work/salto-qualita`, che contiene entrambi i comm
 5. Non sviluppare ancora l'integrazione Bull+Turbo o LIVE; il contratto Director non implica tali decisioni.
 
 **STATO:** file del Director nuovi su ramo `work/director-chatgpt`, pronti per revisione Claude; file di audit separato in `diario`; nessun merge, deploy, trigger, modifica bot o compromissione delle chiavi. 
+
+## 6. Integrazione successiva — fonte ufficiale Alibaba sulla privacy (letta ora)
+
+FAQ ufficiale Alibaba Model Studio: https://help.aliyun.com/en/model-studio/faq-about-alibaba-cloud-model-studio (domanda n. 7, `Does Alibaba Cloud Model Studio save data generated during model calls?`). Il fornitore **dichiara che non usa i dati del cliente per addestrare i modelli**, ma **conserva dati generati dalle chiamate** secondo accordo e normativa. La distinzione è essenziale: "non usati per training" NON equivale a zero retention. Informativa riassuntiva anche su https://help.aliyun.com/en/model-studio/what-is-model-studio . Riserva: verificare i termini applicabili all'account, alla regione Singapore e alle tipologie di dati inviati prima del provider adapter. Contratti Director e paper non devono inviare secrets in ogni caso.
