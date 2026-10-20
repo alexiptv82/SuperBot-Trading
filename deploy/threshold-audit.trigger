@@ -1,1 +1,1 @@
-2026-10-20 final read-only measurement: preserve original candidate SL/TP absolute levels
+2026-10-20 preserve original planned risk denominator for comparable net R
