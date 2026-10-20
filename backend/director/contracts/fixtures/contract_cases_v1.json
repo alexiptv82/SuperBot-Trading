@@ -1,0 +1,38 @@
+{
+  "fixture_version": 1,
+  "market_frame": {
+    "frame_id": "frame:BTC:1800000300000:5m:v1", "symbol": "BTC", "market_type": "USDT_PERPETUAL",
+    "asof_ms": 1800000300000, "bar_ms": 300000, "last_closed_open_ms": 1800000000000,
+    "observed_price": 100.0, "price_asof_ms": 1800000300000,
+    "regime": "RANGE", "quality": {"status": "OK", "source": "public_bitget", "gaps": 0, "stale_ms": 0},
+    "levels": [{"kind": "SUPPORT", "price": 99.0, "touched": 3, "confirmed_at_ms": 1800000000000,
+                "tolerance_bp": 8.0, "evidence_id": "swing:1"}],
+    "features": {"adx14": 16.2}
+  },
+  "candidate": {
+    "candidate_id": "cand:BTC:1800000000000:L4:long", "frame_id": "frame:BTC:1800000300000:5m:v1",
+    "symbol": "BTC", "strategy_id": "L4-range", "strategy_version": "1.0.0",
+    "params_hash": "abcdef0123456789", "side": "LONG", "signal_bar_open_ms": 1800000000000,
+    "bar_ms": 300000, "earliest_entry_ms": 1800000300000, "proposed_entry": 100.0,
+    "stop": 99.0, "target": 102.0, "time_exit_bars": 24, "cost_bp_roundtrip": 16.0,
+    "evidence_ids": ["swing:1"], "regime_match": true, "estimated_net_r": null,
+    "calibrated_win_prob": null, "calibration_n": 0
+  },
+  "director_hold": {
+    "advice_id": "advice:1", "frame_id": "frame:BTC:1800000300000:5m:v1", "portfolio_id": "director-hawk",
+    "asof_ms": 1800000300000, "provider_id": "shadow", "model_id": "fixture", "prompt_version": "1",
+    "action": "HOLD", "thesis": "support intact", "counterthesis": "risk of breakout",
+    "invalidate_if": "close below 99", "uncertainty_0_1": 0.4, "evaluated_candidate_ids": [],
+    "position_key": "director-hawk:1:BTC", "hold_conviction_0_100": 72,
+    "review_after_bars": 2, "review_timeframe_ms": 300000
+  },
+  "portfolio_bull": {
+    "portfolio_id": "director-bull", "run_key": "director-bull:paper:1", "asof_ms": 1800000300000,
+    "start_equity_usd": 1000.0, "equity_usd": 1000.0, "cash_usd": 850.0,
+    "margin_used_usd": 150.0, "max_margin_total_usd": 1000.0,
+    "max_margin_trade_usd": 350.0, "max_open": 10,
+    "positions": [{"position_key": "director-bull:1:BTC", "symbol": "BTC", "side": "LONG", "trade_type": "medio",
+                  "entry_price": 100.0, "stop": 99.0, "margin_usd": 150.0, "open_ms": 1800000000000}],
+    "halted": false
+  }
+}
