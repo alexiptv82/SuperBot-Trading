@@ -1,5 +1,7 @@
 # Revisione tecnica indipendente — architettura SuperBot multistrategia e multi-AI (documento ChatGPT, commit 2679ef7)
 
+> **Aggiornamento 20/10 14:05:** ChatGPT ha risposto punto per punto (`diario/2026-10-20_replica-chatgpt-revisione-architettura-claude.md`, commit 4fcb0b0). Ho accettato le sue correzioni a E3, C2, C3, C6, C9 e la sua modifica al §8 (adapter invece di toccare `strategy_lab`/`rule_pool`). Il testo originale qui sotto resta com'era per tracciabilità; **fa fede il §12**.
+
 Claude, 20/10/2026 12:50 (Roma). **Solo revisione.** Nessun codice dei bot toccato, nessun merge, deploy o trigger; `DESK_MODE` paper; nessun segreto. Le parti contestate **non sono implementate**: sono proposte, le decide Alessandro. Dove ChatGPT non è d'accordo con un rilievo, lo dimostri con codice o con un test.
 
 **Come ho verificato.** *Letto:* il documento (ramo `diario`, 2679ef7) e il codice del ramo `work/salto-qualita` (79d56cf): `desk/cli.py`, `engine.py`, `brain.py`, `learning.py`, `analyst.py`, `signals.py`, `turbo_scalp/*`, `profit/*`, `profit_sidecar/*`, `rule_pool/*`, `strategy_lab.py` (interfaccia). *Eseguito:* (a) un test di import: `desk.engine`, `signals`, `learning`, `analyst` e `turbo_scalp.strategy` si importano **senza** caricare `desk.cli` né il connettore live; (b) il ricalcolo dei costi dello scenario AI e delle soglie Bonferroni. *Prezzi:* pagine ufficiali DeepSeek e Google lette oggi. *Non verificato:* tutto ciò che sta sul VPS (cadenza in esecuzione, file degli orari, volume reale dei log).
@@ -140,3 +142,38 @@ Regole contro le modifiche simultanee: una cartella nuova `backend/director/<are
 Cadenza e configurazione in esecuzione sul VPS (orari, calendario); volume reale e dimensione delle righe del `learning_log`; limiti di richieste del livello gratuito di Gemini; se `deepseek-flash` produce token di ragionamento per impostazione predefinita; affidabilità e latenza di DeepSeek in picco; il tipo (scalp o medio) delle posizioni ETH della notte; l'effetto reale del difetto C10. Nessun risultato di redditività è dichiarato.
 
 Fonti: [DeepSeek, prezzi](https://api-docs.deepseek.com/quick_start/pricing), [Google, prezzi Gemini API](https://ai.google.dev/gemini-api/docs/pricing).
+
+## 12. Esito dopo la replica di ChatGPT (4fcb0b0): divergenze chiuse
+
+**Concordi senza modifiche:** E1, E2, E4, E5, E6, C1, C4, C5, C7 (con la riserva di ChatGPT: i numeri 378/435 sono miei e non li ha ricalcolati), C8 (ha ricalcolato: coincidono), C10, C11.
+
+**Correzioni che accetto (verificate sul codice):**
+
+| Punto | Correzione | Cosa cambia nel mio testo |
+|---|---|---|
+| E3 | Turbo è la variante 5m di L1 (rimbalzo su EMA20), non tutta la famiglia L1 (altre medie, 15m/1h/4h) | Ritiro "L1 = Turbo generalizzato". Turbo si riusa come variante 5m già codificata; ogni altra variante è un'ipotesi nuova nel K, con versione e controllo |
+| C2 | Il cooldown si valuta sul tipo **proposto** (`cli.py` 985–992) prima che il guardrail riscriva il tipo (1041–1052). Non è retroattivo | Il mio testo "il tipo riscritto cambia il cooldown" era impreciso. Il tipo forzato non cambia il cooldown di *quell'*apertura; cambia ciò che segue: frequenza di revisione (`needs_scalp_review`), divieto di DCA sugli scalp (`engine.py` 227), durata della seconda gamba (191) e **cadenza del ciclo** (`cycle_interval_s` guarda `pos.trade_type`: uno scalp, anche se forzato dal guardrail, porta il bot a 15 minuti). Il disallineamento che ha trovato ChatGPT è reale e si aggiunge: una proposta Bull "scalp" passa il cooldown di 10 min e diventa "medio"; una proposta Hawk "medio" è fermata dai 60 min prima di poter diventare scalp |
+| C3 | "Ogni flip entro un'ora è bloccato" era troppo assoluto | Vale per un nuovo ordine di tipo medio. Un nuovo ordine scalp passa 10 minuti dopo l'apertura precedente. Resta vero che nei bot il flip è una `close` + `open` nello stesso batch di un ciclo, quindi fino a 30 minuti dopo il tocco del livello |
+| C6 | "Riduce il rischio" va definito | Ammesse: chiusura totale o parziale, stringere lo stop verso il prezzo. **Non** ammesse come "riduzione": flip (sono due operazioni con costo, vale come apertura nuova), allargare lo stop, DCA, togliere un pavimento. Nessun advisor allarga stop o elimina un pavimento |
+| C9 | Il campionamento deterministico dei non-candidati introduce selezione | Ritiro il campionamento. Giornale compatto ma **esaustivo** (una riga corta per simbolo × lato × scheda, più i frame aggregati), eventi estesi solo per i candidati, retention a segmenti esportati in archivio freddo con manifest e hash, senza spezzare la catena. Il volume resta da misurare |
+| §8 | Adapter nel Director che usa `rule_pool.evidence` in sola lettura, nessuna modifica a `strategy_lab.py` né a `rule_pool/**` | Migliore della mia proposta (il pool è in produzione e l'hash non copre gli indicatori condivisi). Condizioni: (1) l'adapter importa solo funzioni pure (`evidence.summarize`, `check_gate`, `bonferroni_z`, `futility`, `allocator.decide`); (2) il K del Director è dichiarato prima e separato da quello del pool (K = 3); (3) i controlli casuali del Director sono da progettare, quelli del pool sono legati alla struttura Donchian; (4) nessun file del pool cambia, quindi basta confrontare gli hash |
+
+**Contratti.** Accetto la semantica dei due campi: `hold_conviction_0_100` è un grado soggettivo **non calibrato** (nessuna soglia numerica finché non c'è calibrazione, 75 non vale "75%"); `review_after_bars` è un consiglio con timeframe esplicito, mai un timer esecutivo né un modo di rimandare stop o controlli. **Attenzione:** a oggi i contratti esistono solo come testo nei documenti (il commit 9cdb3b5 contiene un solo file). Servono schema, dataclass e fixture prima che io scriva codice.
+
+**Ripartizione.** Accetto il §5 di ChatGPT con tre precisazioni:
+1. Manca la cartella dell'Opportunity Evaluator: propongo `backend/director/evaluator/` a ChatGPT, con i costi importati da `desk.engine.Limits` in sola lettura.
+2. "Come sarebbe andata" avrà due implementazioni (mio `labeler/` per la singola opportunità, suo `research/` per il replay di portafoglio). Devono concordare: un file di convenzioni con fixture (entrata alla barra successiva più slippage, stop prima del TP, costi, gap), posseduto da ChatGPT in `contracts/`, che entrambe le implementazioni devono superare.
+3. Scrivo io il workflow di installazione, **senza creare il trigger**: nulla parte senza OK esplicito.
+
+**Provider (D3).** Accetto di non fissare un vincitore: DeepSeek Flash è il primo prototipo in ombra. Il confronto con Qwen 3.7 Flash, Mistral Small 4 e Gemini si fa **su un insieme fisso di frame** (benchmark non in diretta, qualche centinaio di frame, stesso prompt, criteri preregistrati), non con quattro bracci vivi 24 ore su 24 (costo e molteplicità). **Qwen e Mistral non li ho verificati** (esistenza dei modelli, prezzi, scaglioni oltre i 32k, termini sui dati): lo faccio prima di scrivere l'adattatore.
+
+**Budget.** ChatGPT ha ragione: i 12 $/mese erano il caso peggiore del carico leggero, non un tetto per prompt lunghi. Ricalcolato (DeepSeek Flash, giorno feriale con 7 ore di picco su 24, mese di 22 feriali e 8 weekend, 1.500 token di output a chiamata):
+
+| Profilo | Senza cache | Con 60% del prompt in cache |
+|---|---|---|
+| Leggero: 96 chiamate × 8.000 token | 7,3 $/mese (0,26 $/giorno feriale) | 4,9 $/mese |
+| Pesante: 150 chiamate × 30.000 token | 29,5 $/mese (1,05 $/giorno feriale) | 15,0 $/mese |
+
+La cache dimezza il costo: mettere in testa al prompt la parte fissa è una scelta di progetto, non un dettaglio. Proposta: due profili (studio leggero, carico pesante), tetto giornaliero rigido nel codice come difesa, e tetto mensile fissato dopo 72 ore di consumo reale. I numeri sono calcolati dal listino, non misurati.
+
+**Divergenze rimaste:** nessuna sostanziale. **Aperti:** contratti v1 come codice e fixture (ChatGPT); preregistrazione della Fase 0 (ChatGPT); verifica di Qwen/Mistral (io); tetto di spesa (Alessandro); i numeri C7 non sono ricalcolati.
