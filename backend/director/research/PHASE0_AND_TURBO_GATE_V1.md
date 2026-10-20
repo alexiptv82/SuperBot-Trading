@@ -1,0 +1,25 @@
+# Preregistrazione Fase 0: range causali e decisione su Turbo Scalp
+
+**Stato 20/10/2026: preregistrazione da far revisionare a Claude prima di scaricare e analizzare risultati di mercato.** Fonte macchina `phase0_preregistration_v1.json`, che va congelata prima dei risultati; successive correzioni sono una nuova versione, non un miglioramento retroattivo. Solo mercato pubblico, niente ordini o trading LIVE.
+
+## Fase 0: come evitiamo di vedere il futuro
+
+- **Universo:** 26 mercati del Desk (6 Turbo compresi), timeframe 5m e 15m; per ogni asset verificare listing, product type, assenza di buchi, uptime, copertura, orari per XAU/XAG. Non interpolare dati mancanti.
+- **Sviluppo:** 2025-08-21 00:00 UTC fino a 2026-08-21 escluso, solo dove esiste copertura. **Holdout blind:** ultimi 60 giorni, dal 2026-08-21 fino al 2026-10-20 escluso. Durante la Fase 0 accettiamo soltanto metadati di integrità, non statistiche o grafici del periodo blind. Il test finale va aperto una sola volta dopo i gate.
+- **Range detector causale:** a t usare soltanto barre *già chiuse prima* di t; finestra di 8 ore = 96 x 5m oppure 32 x 15m. Bordi dai quantili p10 lows / p90 highs precedenti, non wick futura. Due tocchi separati per lato, almeno tre barre di separazione, tolleranza max(2bp; 0,10 x ATR14 in bp), ampiezza >=60bp e ADX14 dell'ultima 1h chiusa <20. Episodio solo dopo conferma completa, limiti congelati; termina a breakout confermato o dopo 48 barre5m/16 barre15m senza tocchi, senza sovrapporre episodi uguali.
+- **Misure:** percentili p10/p25/p50/p75/p90 delle ampiezze e della **parte raggiungibile** dopo la conferma, numero di visite ai bordi, durata, rotture prima del ritorno, MAE/MFE, breakdown long/short, simbolo/timeframe/regime, quota dati mancanti. Un high-low da 200bp senza rimbalzo non è un ping-pong.
+- **Costi:** round trip 12,16,20 bp e stress30, comprensivi di slippage e commissioni una sola volta; funding baseline long 1bp/8h, scenario con funding firmato per entrambi i lati quando si hanno dati. Entrata open barra successiva, stop prima del TP nella stessa OHLC, gap stop al prezzo di apertura peggiore. Gli episodi correlati si raggruppano per giorno UTC/shock, bootstrap a blocchi 2000 campioni seed 20261020. Fase 0 misura fattibilità, **non** prova redditività.
+
+## Gate preregistrato per scegliere se usare Turbo
+
+**Versioni:** Turbo reale `desk.turbo_scalp.strategy.step` su sei simboli BTC/ETH/SOL/XRP/DOGE/BNB, max tre posizioni, setup identico; si confrontano **cooldown=2 e cooldown=3 barre intere** (K=2 per questo confronto predefinito, ma aggiungere strategie o sottoinsiemi selezionati aumenta K). Usare la funzione reale; nessuna ricostruzione parallela con segnali leggermente diversi.
+
+**Screening**: minimo 90 giorni 5m per diagnosticare segnali e costi, **non sufficiente per promozione**. Per considerare una futura integrazione: >=300 trade CHIUSI distribuiti in >=6 mesi, nessuna singola moneta >40% delle operazioni, e almeno 30 trade descrittivi per ognuna delle monete selezionate. Netto medio >0 con stress **20bp** sia globalmente sia in entrambe le metà cronologiche; gate `rule_pool.evidence` (t sia per trade sia per mese, correzione Bonferroni K=2); maggiore netto rispetto al controllo casuale abbinato; intervallo bootstrap a blocchi giorno al 95% con limite inferiore del vantaggio netto >0. Costi 12/16/30bp solo sensibilità; i risultati a 20bp sono preregistrati per decidere. Il controllo usa stessi simboli, orari, regimi ammessi, distribuzione dei lati, slot, uscite e costi; seed congelato prima dell'analisi. Risultati per ogni simbolo, long/short, trade/giorno, netto bp e R, win, drawdown, uscite stop/TP/tempo, gap e barra ambigua, CI per giorno e differenza dal controllo.
+
+**Rischio e conto:** oggi Turbo calcola operazioni teoriche a margine 100$ leva20 max 3 ma NON ha un conto con cassa. Il pilot dovrà usare PaperAccount in un libro virtuale separato e imporre max_open3, stop giornaliero, cassa/fee e kill switch; non attribuire al backtest senza conto drawdown o capacità di spesa verificati. Finché i gate non passano Turbo rimane in ombra.
+
+**Decisione futura** da separare dai test: confrontare stesso capitale e motore in due scenari, (A) sottoconto Turbo indipendente, (B) condivisione Bull; riportare conflitti simbolo, latenza 5m vs 30m, margine minimo Bull 150$, guardrail, libero/slippage e rischio. L'idea **5 Bull + 5 Turbo / 1500$** (1000+500) non è decisa né approvata: non cambiare limiti ora. Non equiparare i risultati teorici Turbo al P&L di Bull.
+
+## Regole di reporting e rifiuto
+
+Una scheda che non supera i gate resta candidata, non viene promossa anche se fa molti trade; l'AI selector è esso stesso un'ipotesi statistica da correggere. Non usare dati dei 60 giorni blind per ottimizzare threshold/simboli; non scegliere retroattivamente la singola moneta migliore. Registro con parametri, versioni/hashes, tempi di disponibilità del dato, decisioni prese e scartate, costi, regime, qualità; in GitHub **solo aggregati pubblici**. Nessun avvio senza nuova autorizzazione esplicita.
