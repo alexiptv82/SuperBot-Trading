@@ -428,6 +428,10 @@ class PaperAccount:
         pos = self.positions.get(symbol)
         # Si giudicano le barre che FINISCONO dopo l'apertura, compresa quella in cui la posizione e' nata
         # (prima veniva saltata: per i primi minuti stop e TP non esistevano). Ogni barra una volta sola.
+        # APPROSSIMAZIONE DICHIARATA: la barra d'apertura contiene anche prezzi precedenti all'ingresso (la candela
+        # non dice quando) e il suo massimo/minimo puo' far scattare stop o TP per movimenti avvenuti prima
+        # dell'apertura; lo stop prevale sempre sul TP. Una chiusura su quella barra si riconosce dal record:
+        # hold_min <= durata della barra (15 min). Quanto pesa si misura sui trade, non si stima.
         if pos is None or t + bar_ms <= pos.open_ms or t <= pos.last_bar_ms:
             return None
         pos.last_bar_ms = t

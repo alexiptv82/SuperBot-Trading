@@ -68,6 +68,20 @@ def test_entry_bar_stop_is_checked():
     assert rec["close_ms"] == T0 + BAR
 
 
+def test_entry_bar_closures_are_recognisable_from_the_record():
+    """Le chiusure sulla barra d'apertura (approssimazione dichiarata) si contano dai record con hold_min <= 15,
+    senza campi nuovi: la prima barra chiude entro la durata della barra, le successive oltre."""
+    a = PaperAccount(Limits())
+    long_btc(a)
+    first = a.on_bar("BTC", T0, 100, 100.2, 94.0, 94.5, BAR)
+    assert first["hold_min"] <= BAR / 60_000
+    b = PaperAccount(Limits())
+    long_btc(b)
+    assert b.on_bar("BTC", T0, 100, 100.4, 99.6, 100.1, BAR) is None
+    later = b.on_bar("BTC", T0 + BAR, 100.1, 100.2, 94.0, 94.5, BAR)
+    assert later["hold_min"] > BAR / 60_000
+
+
 def test_bar_at_time_zero_is_judged():
     a = PaperAccount(Limits())
     a.open("BTC", 1, 100, 10, 100.0, 95.0, None, 0, {})

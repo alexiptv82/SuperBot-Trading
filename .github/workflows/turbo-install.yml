@@ -2,6 +2,7 @@ name: Turbo Scalp ombra - installazione (container separato, nessun ordine)
 
 # Installa SOLO il container "superbot-turbo". NON tocca superbot-desk-hawk/bull ne' superbot-sidecar e NON monta i
 # dati dei bot (il Turbo Scalp scarica solo candele pubbliche). Nessun segreto passa al container.
+# Controllo di salute proprio (desk.turbo_scalp.healthcheck): battito E dati, non solo battito.
 # Parte solo quando cambia deploy/turbo-install.trigger con la riga "sha=<40 caratteri>" di un commit di rule-pool.
 on:
   push:
@@ -55,6 +56,8 @@ jobs:
             docker run -d --name superbot-turbo --restart unless-stopped --user 0:0 \
               --read-only --tmpfs /tmp:size=16m --cap-drop ALL --security-opt no-new-privileges \
               --memory 128m --cpus 0.25 --pids-limit 64 \
+              --health-cmd "python -m desk.turbo_scalp.healthcheck" --health-interval 2m --health-timeout 15s \
+              --health-start-period 3m --health-retries 3 \
               -e SIDECAR_BOTS=turbo -e TURBO_SHA="$APPROVED_SHA" \
               -v /opt/superbot-turbo-data:/out \
               "superbot-sidecar:sha-${SHA12}" python -m desk.turbo_scalp.runner --out-root /out
@@ -64,9 +67,10 @@ jobs:
             python3 -I - <<'PY'
             import json, sys, time
             s = json.load(open("/opt/superbot-turbo-data/turbo/status.json"))
-            print("status", {k: s.get(k) for k in ("ts_ms", "mode", "applied", "symbols_ok", "errors", "algo")})
+            print("status", {k: s.get(k) for k in ("ts_ms", "last_success_ms", "mode", "applied", "symbols_ok", "symbols_total", "errors", "algo")})
             if time.time() * 1000 - s["ts_ms"] > 180000: sys.exit("ERRORE: stato non recente")
             if s.get("applied") is not False or s.get("mode") != "ombra": sys.exit("ERRORE: non in ombra")
+            if not s.get("symbols_ok"): sys.exit("ERRORE: nessun simbolo scaricato (ombra cieca)")
             PY
             BOTS_AFTER=$(docker ps --filter name=superbot-desk --format '{{.Names}} {{.ID}}' | sort)
             test "$BOTS_BEFORE" = "$BOTS_AFTER" || { echo "ERRORE: i container dei bot sono cambiati"; exit 1; }

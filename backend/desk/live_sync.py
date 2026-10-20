@@ -37,8 +37,14 @@ def snapshot_position(acc, sym: str):
 
 
 def restore_position(acc, sym: str, snap) -> None:
+    """Rimette la posizione com'era nell'istantanea. Il cursore delle barre giudicate NON torna mai indietro:
+    se l'istantanea precede `on_bar`, la barra e' stata comunque giudicata una volta e non va rigiudicata."""
     if snap is not None:
-        acc.positions[sym] = snap[0]
+        pos = snap[0]
+        cur = acc.positions.get(sym)
+        if cur is not None:
+            pos.last_bar_ms = max(pos.last_bar_ms, cur.last_bar_ms)
+        acc.positions[sym] = pos
         acc.cash = snap[1]
 
 
@@ -79,7 +85,7 @@ def after_bar(live, acc, sym: str, before, result: Optional[dict],
 
     - il motore ha CHIUSO (stop, take profit, liquidazione): si chiude quel che resta sull'exchange;
     - il motore ha eseguito la SECONDA GAMBA: si aggiungono i contratti; se l'exchange rifiuta il motore
-      torna indietro (la gamba restera' in attesa e si riprovera' al ciclo dopo).
+      torna indietro e la gamba si ANNULLA (non si ritenta); la barra resta giudicata (cursore invariato).
     Ritorna una nota testuale solo se qualcosa va guardato."""
     if not live._live:
         return None

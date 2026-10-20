@@ -184,6 +184,38 @@ def test_rejected_second_leg_is_undone_and_not_retried_every_candle():
     assert p.qty == qty1 and acc.cash == cash1 and p.legs == 1 and p.pending_split is None
 
 
+def test_rejected_second_leg_does_not_rewind_the_bar_cursor():
+    """L'istantanea precede on_bar: il ripristino non deve far tornare indietro il cursore delle barre, o la
+    stessa barra verrebbe giudicata una seconda volta."""
+    acc, conn, fake, alerts = world()
+    open_btc(acc, conn, split={"retrace_pct": 0.005, "first_frac": 0.5})
+    before = ls.snapshot_position(acc, "BTC")
+    rec = acc.on_bar("BTC", NOW, 60000, 60010, 59600, 59650, BAR)
+    fake.errors["create_order"] = [ccxt.ExchangeError("rifiutato")]
+    note = ls.after_bar(conn, acc, "BTC", before, rec, alert=alerts.append, now_ms=NOW)
+    assert note and "annullata" in note
+    p = acc.positions["BTC"]
+    assert p.legs == 1 and p.pending_split is None
+    assert p.last_bar_ms == NOW                      # la barra resta giudicata
+    # la stessa barra (stesso orario) non si giudica di nuovo, nemmeno con estremi che toccherebbero lo stop
+    assert acc.on_bar("BTC", NOW, 60000, 60010, 50000, 50100, BAR) is None
+    assert "BTC" in acc.positions
+
+
+def test_restore_keeps_the_cursor_for_a_rejected_dca_too():
+    acc, conn, fake, _ = world()
+    open_btc(acc, conn, margin=100)
+    acc.positions["BTC"].trade_type = "medio"
+    acc.on_bar("BTC", NOW, 60000, 60010, 59900, 59950, BAR)
+    cursor = acc.positions["BTC"].last_bar_ms
+    before = ls.snapshot_position(acc, "BTC")
+    pos, msg = acc.add_dca("BTC", 58500.0, None, NOW + BAR, {"BTC": 59000.0}, "test")
+    assert pos, msg
+    fake.errors["create_order"] = [ccxt.ExchangeError("rifiutato")]
+    ok, _ = ls.dca_on_exchange(conn, acc, "BTC", before, 59000.0)
+    assert not ok and acc.positions["BTC"].dca_count == 0 and acc.positions["BTC"].last_bar_ms == cursor
+
+
 def test_stop_and_second_leg_in_the_same_candle_closes_the_real_position():
     acc, conn, fake, alerts = world()
     open_btc(acc, conn, split={"retrace_pct": 0.005, "first_frac": 0.5})

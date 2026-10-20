@@ -12,7 +12,9 @@ Regola v0 (ipotesi da validare, NON una strategia approvata). Rimbalzo sulla med
     Il minimo 0,4% esiste per i costi: ~16 bp di andata e ritorno su uno stop dello 0,2% valgono 0,8R.
   Obiettivo a 1,5R. Uscita a tempo dopo 24 barre (2 ore) al prezzo di chiusura.
   Se nella stessa barra si toccano stop e obiettivo vale lo stop (ipotesi pessimistica, come l'engine).
-  Massimo 3 posizioni insieme, una per simbolo; 3 barre di pausa sul simbolo dopo ogni uscita.
+  Massimo 3 posizioni insieme, una per simbolo. Dopo ogni uscita il simbolo resta fermo sulla barra di uscita
+  e per `cooldown_bars` barre INTERE successive (2 = 10 minuti): il primo segnale possibile e' alla chiusura della
+  barra successiva a queste.
 Il funding non e' contato (detenzione massima 2 ore: effetto trascurabile, dichiarato).
 """
 from __future__ import annotations
@@ -39,7 +41,7 @@ class Config:
     sl_max: float = 0.015
     tp_r: float = 1.5
     max_bars: int = 24
-    cooldown_bars: int = 3
+    cooldown_bars: int = 2         # barre INTERE di pausa dopo la barra di uscita (la barra di uscita e' sempre saltata)
     max_open: int = 3
     fee_bp: float = 6.0
     slip_bp: float = 2.0
@@ -200,7 +202,8 @@ def step(state: dict, bars_by_symbol: dict, cfg: Config) -> tuple:
             pos, ev = _manage(sym, pos, bar, cfg)
             if pos is None:
                 st["open"].pop(sym)
-                st["cooldown_until_ms"][sym] = t + cfg.cooldown_bars * cfg.bar_ms
+                # barra di uscita (t) + cooldown_bars barre intere restano bloccate: libero da t + (N + 1) barre
+                st["cooldown_until_ms"][sym] = t + (cfg.cooldown_bars + 1) * cfg.bar_ms
                 events.append(ev)
             else:
                 st["open"][sym] = pos

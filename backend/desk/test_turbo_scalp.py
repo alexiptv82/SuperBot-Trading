@@ -4,8 +4,9 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
-from desk.turbo_scalp import report, runner, strategy
+from desk.turbo_scalp import healthcheck, report, runner, strategy
 from desk.turbo_scalp.strategy import Config
 
 BAR = 300_000
@@ -128,6 +129,30 @@ class Simulation(unittest.TestCase):
         ex = [e for e in ev if e["ev"] == "exit"][0]
         self.assertEqual(st["cooldown_until_ms"]["BTC"], ex["exit_bar_ms"] + 3 * BAR)
 
+    def _first_signal_after_exit(self, cfg):
+        """Posizione che esce alla prima barra nuova (max_bars=1); segnale sempre presente. Ritorna di quante
+        barre il primo segnale successivo segue la barra di uscita."""
+        bars = [(T + i * BAR, 100.0, 100.2, 99.8, 100.0) for i in range(14)]
+        st = strategy.new_state(cfg)
+        st["last_bar_ms"]["BTC"] = bars[0][0]
+        st["open"]["BTC"] = {"side": 1, "entry": 100.0, "dist": 0.01, "entry_bar_ms": bars[0][0], "bars": 0,
+                             "sl": 50.0, "tp": 150.0}
+        sig = {"side": 1, "dist": 0.01, "atr_pct": 0.01, "why": "prova"}
+        with mock.patch.object(strategy, "signal", lambda upto, c: sig):
+            _, ev = strategy.step(st, {"BTC": bars}, cfg)
+        exit_ms = [e for e in ev if e["ev"] == "exit"][0]["exit_bar_ms"]
+        first = [e for e in ev if e["ev"] == "signal"][0]["bar_ms"]
+        return (first - exit_ms) // BAR
+
+    def test_pause_counts_whole_bars_after_the_exit_bar(self):
+        # la barra di uscita e' sempre saltata; poi N barre intere di pausa; il segnale torna alla barra N + 1
+        for n in (0, 1, 2, 3):
+            self.assertEqual(self._first_signal_after_exit(Config(max_bars=1, cooldown_bars=n)), n + 1, n)
+
+    def test_default_pause_is_two_whole_bars(self):
+        self.assertEqual(Config().cooldown_bars, 2)
+        self.assertEqual(self._first_signal_after_exit(Config(max_bars=1)), 3)
+
     def test_max_open_is_global(self):
         cfg = Config(max_open=1)
         seq, _ = signal_then([(1.0, 1.0005, 0.9995, 1.0)] * 3)
@@ -210,6 +235,39 @@ class Runner(unittest.TestCase):
             status = json.load(open(os.path.join(d, "status.json")))
             self.assertIn("ETH", status["errors"])
 
+    def test_blind_cycle_does_not_advance_last_success(self):
+        cfg = Config(symbols=("BTC", "ETH"))
+        seq = uptrend(140)
+        now1 = seq[-1][0] + BAR + 1
+        now2 = now1 + BAR
+
+        def down(sym, now, c):
+            raise ValueError("giu'")
+        with tempfile.TemporaryDirectory() as d:
+            runner.run_once(d, cfg, now1, fetch=down)            # primo ciclo cieco: nessun successo mai
+            s1 = json.load(open(os.path.join(d, "status.json")))
+            self.assertEqual((s1["ts_ms"], s1["last_success_ms"], s1["symbols_ok"]), (now1, None, 0))
+            runner.run_once(d, cfg, now1 + BAR, fetch=lambda s, n, c: seq)
+            runner.run_once(d, cfg, now2 + BAR, fetch=down)       # poi cieco di nuovo: il battito avanza, il successo no
+            s2 = json.load(open(os.path.join(d, "status.json")))
+            self.assertEqual(s2["ts_ms"], now2 + BAR)
+            self.assertEqual(s2["last_success_ms"], now1 + BAR)
+            self.assertEqual((s2["symbols_ok"], s2["symbols_total"]), (0, 2))
+
+    def test_partial_failure_still_counts_as_success(self):
+        cfg = Config(symbols=("BTC", "ETH"))
+        seq = uptrend(140)
+        now = seq[-1][0] + BAR + 1
+
+        def fetch(sym, n, c):
+            if sym == "ETH":
+                raise ValueError("giu'")
+            return seq
+        with tempfile.TemporaryDirectory() as d:
+            runner.run_once(d, cfg, now, fetch=fetch)
+            s = json.load(open(os.path.join(d, "status.json")))
+            self.assertEqual((s["last_success_ms"], s["symbols_ok"]), (now, 1))
+
     def test_config_change_restarts_cleanly(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "state.json")
@@ -239,6 +297,43 @@ class Runner(unittest.TestCase):
         self.assertEqual(len(bars), 9)
         with self.assertRaises(ValueError):
             runner.fetch_closed_bars("BTC", now + 3 * BAR, cfg, opener=lambda r, timeout: Resp(rows))
+
+
+class Health(unittest.TestCase):
+    def _write(self, root, **status):
+        os.makedirs(os.path.join(root, "turbo"), exist_ok=True)
+        with open(os.path.join(root, "turbo", "status.json"), "w") as f:
+            json.dump(status, f)
+
+    def test_healthy_needs_fresh_heartbeat_and_fresh_data(self):
+        now = T + 10 * BAR
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, ts_ms=now - 60_000, last_success_ms=now - 60_000)
+            self.assertTrue(healthcheck.healthy(d, now))
+            self._write(d, ts_ms=now - 60_000, last_success_ms=now - healthcheck.DATA_MS - 1)
+            self.assertFalse(healthcheck.healthy(d, now))        # gira ma non arrivano dati da troppo
+            self._write(d, ts_ms=now - 60_000, last_success_ms=None)
+            self.assertFalse(healthcheck.healthy(d, now))        # mai un ciclo con dati
+            self._write(d, ts_ms=now - healthcheck.HEARTBEAT_MS - 1, last_success_ms=now - healthcheck.HEARTBEAT_MS - 1)
+            self.assertFalse(healthcheck.healthy(d, now))        # ciclo fermo
+
+    def test_missing_or_corrupt_status_is_unhealthy(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(healthcheck.healthy(d, T))
+            os.makedirs(os.path.join(d, "turbo"))
+            open(os.path.join(d, "turbo", "status.json"), "w").write("{troncato")
+            self.assertFalse(healthcheck.healthy(d, T))
+
+    def test_runner_output_feeds_the_healthcheck(self):
+        cfg = Config(symbols=("BTC",))
+        seq = uptrend(140)
+        now = seq[-1][0] + BAR + 1
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "turbo")
+            runner.run_once(out, cfg, now, fetch=lambda s, n, c: seq)
+            self.assertTrue(healthcheck.healthy(d, now + 30_000))
+            runner.run_once(out, cfg, now + 20 * 60_000, fetch=lambda s, n, c: (_ for _ in ()).throw(ValueError("giu'")))
+            self.assertFalse(healthcheck.healthy(d, now + 20 * 60_000 + 1000))
 
 
 if __name__ == "__main__":

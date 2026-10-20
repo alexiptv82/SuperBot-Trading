@@ -6,7 +6,7 @@ Uscita in <out-root>/turbo/:
                            processo cade tra il registro e lo stato, al riavvio un evento puo' ripetersi e chi
                            legge deduplica per id)
   state.json               posizioni e segnali ipotetici aperti, ultima barra per simbolo (scrittura atomica)
-  status.json              battito: ts_ms, ultimo ciclo riuscito, errori per simbolo (per il healthcheck)
+  status.json              battito: ts_ms (ciclo vivo), last_success_ms (ultimo ciclo con dati), errori per simbolo
 """
 import argparse
 import json
@@ -57,6 +57,16 @@ def _atomic_json(path, obj):
     os.replace(tmp, path)
 
 
+def _previous_success(path):
+    """Ultimo ciclo con dati, letto dal battito precedente (None se non c'e' o e' illeggibile)."""
+    try:
+        with open(path) as f:
+            v = json.load(f).get("last_success_ms")
+        return int(v) if v is not None else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
 def load_state(path, cfg):
     try:
         with open(path) as f:
@@ -92,10 +102,14 @@ def run_once(out_dir, cfg, now_ms, fetch=fetch_closed_bars):
             f.flush()
             os.fsync(f.fileno())
     _atomic_json(state_path, new)
-    _atomic_json(os.path.join(out_dir, "status.json"),
-                 {"ts_ms": now_ms, "last_success_ms": now_ms, "algo": strategy.algo(cfg), "mode": "ombra",
+    status_path = os.path.join(out_dir, "status.json")
+    # ts_ms = il ciclo gira. last_success_ms = l'ultimo ciclo che ha scaricato dati: se NESSUN simbolo risponde
+    # non avanza, cosi' un'ombra cieca non sembra sana (vedi healthcheck.py).
+    last_ok = now_ms if bars else _previous_success(status_path)
+    _atomic_json(status_path,
+                 {"ts_ms": now_ms, "last_success_ms": last_ok, "algo": strategy.algo(cfg), "mode": "ombra",
                   "applied": False, "open": len(new["open"]), "pending": len(new["pending"]),
-                  "symbols_ok": len(bars), "errors": errors})
+                  "symbols_ok": len(bars), "symbols_total": len(cfg.symbols), "errors": errors})
     return new, events
 
 
