@@ -1,1 +1,1 @@
-2026-10-16T17:00:00Z controllo diagnostico sola lettura ChatGPT Hawk Bull
+2026-10-20T02:56:02Z controllo diagnostico sola lettura Claude: perche' i bot aprono poco dal reset
