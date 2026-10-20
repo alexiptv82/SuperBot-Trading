@@ -60,6 +60,9 @@ class PortfolioConfig:
     # OPZIONE A (decisione di Alexander, 20/10/2026 16:30): se il margine realmente disponibile e' sotto
     # guardrail_min_margin l'apertura si RIFIUTA invece di essere ridimensionata dal motore (30-149 $). Solo Bull.
     refuse_below_min_margin: bool = False
+    # OPZIONE B (decisione di Alexander, 20/10/2026 17:58): la leva proposta dal motore non puo' superare
+    # max_leverage. Se supera, l'apertura si rifiuta. None = nessun limite (valore predefinito).
+    max_leverage: Optional[int] = None
 
 
 def _make_hawk_config() -> PortfolioConfig:
@@ -82,6 +85,7 @@ def _make_hawk_config() -> PortfolioConfig:
         guardrail_lev_forced=15,
         guardrail_type_forced="scalp",
         description="Hawk — max $100/trade, 10 posizioni, budget $1000",
+        max_leverage=20,   # OPZIONE B: leva max x20 per Hawk (scalp: protegge da liquidazioni rapide)
     )
 
 
@@ -106,6 +110,7 @@ def _make_bull_config() -> PortfolioConfig:
         guardrail_type_forced="medio",
         description="Bull — max $350/trade, 10 posizioni, budget $1000, TP≥5%",
         refuse_below_min_margin=True,
+        max_leverage=15,   # OPZIONE B: leva max x15 per Bull (medio: margini piu' alti, meno rischio liquidazione)
     )
 
 
@@ -718,6 +723,19 @@ def margin_gate(acc, pg) -> Optional[str]:
     return None
 
 
+def leverage_gate(dec: dict, pg) -> Optional[str]:
+    """Opzione B di Alexander. Ritorna None se la leva proposta e' ammessa, altrimenti il motivo del rifiuto.
+    Si guarda la leva CHE IL MOTORE userebbe (quella nel dec, dopo il guardrail), non la raw di Claude.
+    Se max_leverage e' None (default per un portfolio senza limite esplicito) il controllo non scatta mai."""
+    if pg.max_leverage is None:
+        return None
+    lev = int(dec.get("leverage", 0))
+    if lev > pg.max_leverage:
+        return (f"leva proposta {lev}x supera il massimo {pg.max_leverage}x "
+                f"di {pg.name}: nessuna apertura con leva eccessiva")
+    return None
+
+
 def account_snapshot(acc, equity: float, halt) -> dict:
     """Riassunto del conto per il prompt di Claude. Tetto di margine e numero di posizioni sono quelli VERI del
     portafoglio (Hawk e Bull hanno limiti diversi): prima il prompt diceva a tutti '/2000$' e '/10'."""
@@ -1120,6 +1138,12 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 print(f"[SKIP:{pg.name.upper()}] {sym} {act}: {why_margin}", flush=True)
                 _candidate("rifiutata:margine_sotto_minimo", dec, px)
                 continue
+            # ── OPZIONE B: leva proposta sopra il massimo -> si rifiuta ────────────────────────────────
+            why_lev = leverage_gate(dec, pg)
+            if why_lev:
+                print(f"[SKIP:{pg.name.upper()}] {sym} {act}: {why_lev}", flush=True)
+                _candidate("rifiutata:leva_sopra_massimo", dec, px)
+                continue
             split_cfg = None
             if is_split:
                 retr = float(dec.get("split_retrace_pct") or 0.0)   # frazione (0.005 = 0,5%)
@@ -1358,7 +1382,8 @@ def run_params() -> dict:
         "entry_score_tier_c": TIER_C_ENTRY_SCORE,
         "guardrail": {"min_margin": p.guardrail_min_margin, "min_lev": p.guardrail_min_lev,
                       "margin_forced": p.guardrail_margin_forced, "lev_forced": p.guardrail_lev_forced,
-                      "type_forced": p.guardrail_type_forced},
+                      "type_forced": p.guardrail_type_forced,
+                      "max_leverage": p.max_leverage},   # OPZIONE B
         "daily_cap_usd": DAILY_CAP,
         "split": {"first_frac": 0.5, "default_retrace_pct": 0.5, "min_retrace_pct": 0.15,
                   "max_of_stop_distance": 0.6, "ttl_scalp_h": 3, "ttl_medio_h": 12},
