@@ -5,7 +5,7 @@ from statistics import NormalDist
 
 
 def minimum_detectable_edge_bp(sd_bp: float, n_effective: float, *,
-                                family_k: int = 2, power: float = 0.80) -> float:
+                                family_k: int = 10, power: float = 0.80) -> float:
     """One-sided Bonferroni alpha=.05, normal approximation.
 
     MDE = (z_{1-alpha/K}+z_{power}) * SD / sqrt(n_effective).
