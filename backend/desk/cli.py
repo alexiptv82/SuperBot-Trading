@@ -57,6 +57,9 @@ class PortfolioConfig:
     guardrail_type_forced: str
     # max trade con cui il bot apre (superiore viene cappato al max_margin_trade del Limits)
     description: str
+    # OPZIONE A (decisione di Alexander, 20/10/2026 16:30): se il margine realmente disponibile e' sotto
+    # guardrail_min_margin l'apertura si RIFIUTA invece di essere ridimensionata dal motore (30-149 $). Solo Bull.
+    refuse_below_min_margin: bool = False
 
 
 def _make_hawk_config() -> PortfolioConfig:
@@ -102,6 +105,7 @@ def _make_bull_config() -> PortfolioConfig:
         guardrail_lev_forced=15,
         guardrail_type_forced="medio",
         description="Bull — max $350/trade, 10 posizioni, budget $1000, TP≥5%",
+        refuse_below_min_margin=True,
     )
 
 
@@ -690,6 +694,30 @@ def process_closed_bars(state: dict, acc, closed_map: dict, now_ms: int, bar_ms:
     flush_events(state, acc)
 
 
+def margin_room(acc) -> float:
+    """Margine che il motore concederebbe a una nuova apertura: STESSA formula di PaperAccount.open
+    (engine.py: room = min(max_margin_trade, max_margin_total - margine in uso, cassa*0.95))."""
+    L = acc.limits
+    return min(L.max_margin_trade, L.max_margin_total - acc.margin_in_use(), acc.cash * 0.95)
+
+
+MARGIN_EPS = 1e-9   # tolleranza in dollari per l'aritmetica in virgola mobile: esattamente 150,00 e' ammesso
+
+
+def margin_gate(acc, pg) -> Optional[str]:
+    """Opzione A di Alexander. Ritorna None se l'apertura puo' procedere, altrimenti il motivo del rifiuto.
+    Si guarda il margine disponibile PRIMA di un eventuale split (la richiesta complessiva, non la prima gamba).
+    Una taglia ridotta dal motore ma ancora >= minimo e' ammessa. Solo per i portafogli con
+    refuse_below_min_margin (Bull); Hawk resta com'era."""
+    if not pg.refuse_below_min_margin:
+        return None
+    room = margin_room(acc)
+    if room < pg.guardrail_min_margin - MARGIN_EPS:
+        return (f"margine disponibile {room:.2f}$ sotto il minimo {pg.guardrail_min_margin:.0f}$ "
+                f"di {pg.name}: nessun ridimensionamento sotto il minimo")
+    return None
+
+
 def account_snapshot(acc, equity: float, halt) -> dict:
     """Riassunto del conto per il prompt di Claude. Tetto di margine e numero di posizioni sono quelli VERI del
     portafoglio (Hawk e Bull hanno limiti diversi): prima il prompt diceva a tutti '/2000$' e '/10'."""
@@ -1086,6 +1114,12 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 _candidate("live_bloccato", dec, px)
                 continue
             # ─────────────────────────────────────────────────────────────────
+            # ── OPZIONE A (Bull): margine disponibile sotto il minimo -> si rifiuta, non si ridimensiona ──
+            why_margin = margin_gate(acc, pg)
+            if why_margin:
+                print(f"[SKIP:{pg.name.upper()}] {sym} {act}: {why_margin}", flush=True)
+                _candidate("rifiutata:margine_sotto_minimo", dec, px)
+                continue
             split_cfg = None
             if is_split:
                 retr = float(dec.get("split_retrace_pct") or 0.0)   # frazione (0.005 = 0,5%)

@@ -83,17 +83,22 @@ def test_eleventh_position_is_refused_for_slots_when_margin_is_small():
     assert "troppe posizioni" in res[10][2]
 
 
-def test_seventh_bull_request_is_reduced_below_the_150_minimum_not_refused_DECISION_PENDING():
-    """CARATTERIZZAZIONE del comportamento di oggi (segnalato da ChatGPT, riprodotto da Claude 20/10/2026):
-    con budget 1000 $, leva 10 e richieste da 150 $, i primi 6 ingressi sono da 150 $, il 7mo NON e' rifiutato
-    ma ridotto dal motore (room = min(350, 1000 - margine in uso, cassa*0.95)) a circa 89,9 $, SOTTO il minimo
-    di 150 $ che il prompt promette e che il guardrail del cli applica alle proposte. L'8vo e' rifiutato.
-    Alexander deve scegliere: (A) rifiutare se il margine rimasto e' sotto il minimo del bot, oppure (B) lasciare
-    cosi'. Se sceglie A questo test va rovesciato (7mo rifiutato). Non e' una regola voluta: e' la fotografia."""
-    limits = cli._make_bull_config().limits
-    a, res = _open_many(limits, 150, 8)
+def test_direct_engine_call_still_reduces_below_the_minimum_by_design_the_cli_gate_is_the_policy():
+    """CHIAMATA DIRETTA AL MOTORE (PaperAccount.open), non il ciclo del bot. Il motore NON e' cambiato: con budget
+    1000 $, leva 10 e richieste da 150 $ i primi 6 ingressi sono da 150 $, il 7mo e' ridotto dal motore a ~89,9 $ e
+    l'8vo e' rifiutato. Resta cosi' per progetto, perche' Hawk e Turbo usano lo stesso motore e non cambiano.
+    La DECISIONE di Alexander (opzione A, 20/10/2026 16:30) e' applicata dal ciclo del bot: cli.margin_gate rifiuta
+    l'apertura di Bull quando il margine disponibile e' sotto 150 $ (vedi test_bull_margin_gate_2026_10_20.py)."""
+    cfg = cli._make_bull_config()
+    a, res = _open_many(cfg.limits, 150, 8)
     margins = [p.total_margin if p is not None else None for _, p, _ in res]
     assert margins[:6] == [150.0] * 6
-    assert margins[6] is not None and 85.0 < margins[6] < 95.0 and margins[6] < cli._make_bull_config().guardrail_min_margin
+    assert margins[6] is not None and 85.0 < margins[6] < 95.0 and margins[6] < cfg.guardrail_min_margin
     assert margins[7] is None and "margine" in res[7][2]
-    assert a.cash < 10.0                                           # la cassa e' praticamente esaurita
+    assert a.cash < 10.0
+    # la politica di Bull e' invece quella del ciclo: prima del 7mo ingresso il cancello dice di no
+    b = PaperAccount(cfg.limits)
+    for s in SYMS[:6]:
+        assert cli.margin_gate(b, cfg) is None
+        b.open(s, 1, 150, 10, 100.0, 97.0, 110.0, T, {}, trade_type="medio")
+    assert cli.margin_gate(b, cfg) is not None
