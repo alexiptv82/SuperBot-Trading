@@ -49,10 +49,15 @@ class Rig:
         world = td._world(n=700)
         self.fake = None
         self._mc = _mc
-        self._saved = (cli.fetch_candles, _mc.fetch_all_context, brain.call_claude, cli.call_claude, cli.PORTFOLIO,
+        self._saved = (cli.fetch_candles, cli.fetch_all_context, _mc.fetch_all_context, brain.call_claude, cli.call_claude, cli.PORTFOLIO,
                        cli.LIVE, cli.STATE_FILE, cli.DATA_DIR, cli._TRADING_ENABLED_FILE, cli._DAILY_LOSS_LIMIT)
         cli.fetch_candles = lambda sym, bar="15m", limit=300: (world.get(sym, np.zeros((0, 6)))[-limit:].tolist())
-        _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
+        # patch sia sul modulo market_context sia sul riferimento importato in cli
+        # (cli.py fa "from desk.market_context import fetch_all_context" a livello di modulo:
+        # patchare solo _mc.fetch_all_context NON aggiorna il nome gia' legato in cli)
+        _ctx_stub = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
+        _mc.fetch_all_context = _ctx_stub
+        cli.fetch_all_context = _ctx_stub
         self.decisions = decisions
 
         def stub(system, user, max_tokens=1100, timeout=60):
@@ -89,7 +94,7 @@ class Rig:
         return [r for r in rows if r.get("ev") == name]
 
     def close(self):
-        (cli.fetch_candles, self._mc.fetch_all_context, brain.call_claude, cli.call_claude, cli.PORTFOLIO,
+        (cli.fetch_candles, cli.fetch_all_context, self._mc.fetch_all_context, brain.call_claude, cli.call_claude, cli.PORTFOLIO,
          cli.LIVE, cli.STATE_FILE, cli.DATA_DIR, cli._TRADING_ENABLED_FILE, cli._DAILY_LOSS_LIMIT) = self._saved
         os.environ.pop("ANTHROPIC_API_KEY", None)
 
@@ -223,7 +228,11 @@ def test_cycle_split_with_a_total_of_at_least_150_is_not_rejected_for_a_first_le
         acc = rig.acc()
         assert "BTC" in acc.positions and _gate_refusals(rig) == []
         p = acc.positions["BTC"]
-        assert p.total_margin <= 200.0 and (p.pending_split or p.total_margin == 200.0)
+        # lo split first_frac=0.5 deve aprire la 1a gamba a 100$ con la 2a in pending_split a 100$;
+        # non e' sufficiente "qualcosa si e' aperto": lo split non deve essere ignorato
+        assert p.pending_split is not None, "lo split non e' stato applicato: pending_split e' None"
+        assert abs(p.total_margin - 100.0) < 1e-9, f"prima gamba attesa 100$, ottenuta {p.total_margin}"
+        assert abs(p.pending_split["margin"] - 100.0) < 1e-9, f"seconda gamba pending attesa 100$, ottenuta {p.pending_split['margin']}"
     finally:
         rig.close()
 
