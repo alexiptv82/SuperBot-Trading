@@ -126,10 +126,11 @@ SYSTEM = PORTFOLIO.system_prompt
 _ENTRY_SCORE_BASE = int(os.getenv("DESK_ENTRY_SCORE", "60"))
 
 # Tier A/B: BTC, ETH, XAU, XAG → soglia 60
-# Tier C: tutti gli altri altcoin → soglia 65 (era 70; abbassata il 20/10/2026 su decisione dell'utente)
+# Tier C: tutti gli altri altcoin → soglia 63 (era 70; 65 la mattina del 20/10, poi 63 su decisione dell'utente,
+# valida per Hawk e Bull)
 _TIER_AB = {"BTC", "ETH", "XAU", "XAG"}
 TIER_AB_ENTRY_SCORE = 60
-TIER_C_ENTRY_SCORE = 65
+TIER_C_ENTRY_SCORE = 63
 
 
 def tier_entry_score(symbol: str) -> int:

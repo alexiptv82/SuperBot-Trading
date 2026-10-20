@@ -229,7 +229,17 @@ from desk import cli  # noqa: E402
 
 def test_tier_thresholds():
     assert cli.tier_entry_score("BTC") == 60 and cli.tier_entry_score("eth") == 60
-    assert cli.tier_entry_score("SOL") == 65
+    assert cli.tier_entry_score("SOL") == 63
+
+
+def test_prompts_state_the_same_altcoin_threshold_as_the_code():
+    """Il testo dato a Claude (Hawk e Bull) non deve mai dire una soglia diversa da quella applicata dal codice."""
+    from desk import brain
+    thr = cli.TIER_C_ENTRY_SCORE
+    for prompt in (brain.SYSTEM, brain.SYSTEM_BULL):
+        assert f"TIER C (altcoin, tutto il resto): confidenza >= {thr}/100" in prompt
+    assert f"apri solo se confidenza >= {thr} per altcoin" in brain.SYSTEM_BULL
+    assert "confidenza >= 65/100" not in brain.SYSTEM and "confidenza >= 70 per altcoin" not in brain.SYSTEM_BULL
 
 
 def test_closed_bars_drops_forming_bar():
