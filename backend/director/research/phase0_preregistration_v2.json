@@ -1,0 +1,236 @@
+{
+  "spec_version": "phase0-2026-10-20-v2",
+  "status": "DRAFT_REVIEW_REQUIRED_NOT_FROZEN_NO_MARKET_RESULTS_INSPECTED",
+  "freeze_rule": "Freeze this new version ONLY after Claude/user review and BEFORE real OHLC performance inspection. Holdout must remain blind, and any post-freeze change requires fresh confirmatory data.",
+  "universe": [
+    "BTC",
+    "ETH",
+    "BNB",
+    "XRP",
+    "SOL",
+    "ADA",
+    "DOGE",
+    "AVAX",
+    "DOT",
+    "LINK",
+    "UNI",
+    "ATOM",
+    "LTC",
+    "BCH",
+    "APT",
+    "ARB",
+    "OP",
+    "NEAR",
+    "FIL",
+    "INJ",
+    "SUI",
+    "TIA",
+    "RUNE",
+    "STX",
+    "XAU",
+    "XAG"
+  ],
+  "turbo_universe": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "XRP",
+    "DOGE",
+    "BNB"
+  ],
+  "market_type": "USDT_PERPETUAL",
+  "candidate_timeframes_ms": [
+    300000,
+    900000
+  ],
+  "study_start_utc": "2025-08-21T00:00:00Z",
+  "development_end_exclusive_utc": "2026-08-21T00:00:00Z",
+  "sealed_holdout_start_utc": "2026-08-21T00:00:00Z",
+  "sealed_holdout_end_exclusive_utc": "2026-10-20T00:00:00Z",
+  "holdout_policy": "No OHLC distributions, regime summaries, thresholds, equity plots or decisions for holdout until the development gates are fixed and passed. Dataset integrity / timestamps / listings only. One final test use.",
+  "range_detector": {
+    "canonical_implementation": "backend/director/research/range_detector_v2.py freeze_levels/detect_confirmation; full nonoverlapping research scanner not yet implemented",
+    "lookback_bars": {
+      "300000": 96,
+      "900000": 32
+    },
+    "frozen_bounds_calculated_from": "Last eight hours of FULLY CLOSED bars BEFORE separate qualification window; no in-window refitting",
+    "boundary_low": "linear_interpolation_quantile_p10(prior_lows)",
+    "boundary_high": "linear_interpolation_quantile_p90(prior_highs)",
+    "qualification_bars": {
+      "300000": 48,
+      "900000": 16
+    },
+    "qualification_requires": "Four alternating confirmed rejections S-R-S-R or R-S-R-S. A touch needs a following completed candle within 2 bars closing >= support+2*tolerance for S, or <= resistance-2*tolerance for R. Two per edge, >=3 bar spacing between same-side confirmations.",
+    "touch_support": "low<=frozen_support+tolerance AND touch.close>=frozen_support",
+    "touch_resistance": "high>=frozen_resistance-tolerance AND touch.close<=frozen_resistance",
+    "touch_tolerance": "max(reference_close*2/10000,0.10*ATR14(prior)) in price units",
+    "minimum_width_bp": 60,
+    "trend_gate": "Last fully closed 1h ADX14<20 as-of end of reference AND abs(last_reference_close-first_reference_close)<=0.5*(frozen_resistance-frozen_support)",
+    "breakout_invalidates": "First CLOSED candle closing outside support-tolerance or resistance+tolerance cancels qualification/active episode.",
+    "activation": "Only next candle OPEN AFTER fourth confirmed rejection, never retroactively on reference window.",
+    "max_episode_after_activation_bars": {
+      "300000": 48,
+      "900000": 16
+    },
+    "boundaries_static": true,
+    "episode_dedup": "Greedy chronological non-overlap per symbol+timeframe; qualification from one reference cannot run concurrently with another; after activation no overlap until breakout/expiry.",
+    "no_future_relabel": true,
+    "stale_1h_regime": "If fully closed 1h ADX is unavailable at reference end, no signal; never use unclosed 1h bar.",
+    "falsification": "Same detector must run on volatility/session-matched placebo walks and block-permuted development returns; synthetic unit results are NOT empirical market evidence."
+  },
+  "cost_scenarios_bp_roundtrip": [
+    12,
+    16,
+    20,
+    30
+  ],
+  "reference_cost_bp": 16,
+  "roundtrip_includes": "One round-trip amount for both fees and adverse slippage; 16bp descriptive reference, 20bp PRIMARY PROMOTION/DETECTOR DECISION.",
+  "entry": "next completed bar OPEN after signal; no same-bar hindsight",
+  "exit_priority": [
+    "stop_including_gap",
+    "take_profit",
+    "time"
+  ],
+  "gap": "stop adverse fill at next bar OPEN when beyond stop; TP never gets a favorable gap improvement",
+  "funding_assumption": "1 bp / 8h for long; 0 for short, plus separate signed-funding sensitivity if data permits",
+  "report": [
+    "coverage_by_symbol_and_tf",
+    "gaps_and_delistings",
+    "range_width_percentiles_10_25_50_75_90",
+    "episode_duration_distribution",
+    "separate_touches_per_edge",
+    "breakout_before_return_rate",
+    "net_captureable_move_after_costs",
+    "long_short_symmetry",
+    "range_vs_trend",
+    "day_block_bootstrap_95pct"
+  ],
+  "episode_bootstrap": {
+    "unit": "utc_day_or_correlated_market_shock",
+    "iterations": 2000,
+    "fixed_seed": 20261020
+  },
+  "turbo_prespec": {
+    "strategy_code": "desk.turbo_scalp.strategy.step (no reimplementation)",
+    "timeframe_ms": 300000,
+    "symbols": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "XRP",
+      "DOGE",
+      "BNB"
+    ],
+    "variants_cooldown_bars": [
+      2,
+      3
+    ],
+    "min_screening_days": 90,
+    "min_promotion_months": 6,
+    "min_promotion_closed_trades": 300,
+    "min_descriptive_closed_trades_per_symbol": 30,
+    "max_single_symbol_fraction_of_trades": 0.4,
+    "required_cost_stress_bp_roundtrip": 20,
+    "other_cost_scenarios_bp_roundtrip": [
+      12,
+      30
+    ],
+    "promotion_checks": [
+      "At least 300 closed trades over >=6 eligible months, per promoted symbol >=30, no one symbol >40% of pooled trades; report any symbol without evidence.",
+      "Pooled net mean >0 at DECISION COST 20bp on development and both chronological halves, and report holdout positive/inconclusive outcomes without model selection on holdout.",
+      "Pooled paired net_R/bp advantage vs matched random control >0; daily-block bootstrap lower 95% CI for DEVELOPMENT paired advantage >0, holdout advantage and CI reported ONCE.",
+      "rule_pool.evidence check_gate on trade and month groups with Bonferroni K=10 one-sided alpha=.05; raise K for any additional variants or cherry-picked symbol subset.",
+      "Portfolio risk/drawdown, gaps, correlation shock and schedule/slot execution cost acceptable, separate user approval always required."
+    ],
+    "random_control": "same symbols, bar calendar, regime eligibility, side exposure, max_open3 and exits/costs, with deterministic pre-registered seeds; compare paired net R and bp; never re-randomize to select favorable result",
+    "report_by_symbol": [
+      "closed_trades",
+      "trades_per_day",
+      "long_short",
+      "gross_bp",
+      "net_bp_12_16_20_30",
+      "net_r",
+      "win_rate",
+      "max_drawdown_usd",
+      "exit_stop_target_time",
+      "ambiguous_same_bar",
+      "bootstrap_day_ci",
+      "control_excess_bp",
+      "timeframe_data_coverage",
+      "net_vs_matched_random",
+      "confidence_interval_95pct",
+      "raw_n_vs_effective_n"
+    ],
+    "initial_virtual_portfolio": "independent Turbo research book max_open3 margin100 leverage20, no real account and no appropriation of Bull funds",
+    "integration_decision": "Only after confirmed gates and separate approval: compare separate subaccount vs shared Bull via identical fill/risk engine; no auto move to Bull; 5+5 and 1500 USD are a future idea NOT APPROVED",
+    "reference_cost_bp_roundtrip": 16,
+    "decision_cost_bp_roundtrip": 20,
+    "internal_cooldown_comparison_k": 2,
+    "familywise_k_primary": 10,
+    "familywise_k_reason": "Conservative familywise correction for 8 earlier S4 pullback tests and 2 new frozen Turbo cooldown variants; if new hyperparams or symbol subsets are searched, increase K.",
+    "prior_exploration_disclosed": "Claude's 9 Oct 2026 pullback 15m S4 BTC/ETH 2019–2026: eight prior variants, gross approx -1.8..+1.0bp, net around -16bp, none passed. Read from Claude, NOT recomputed here. Turbo 5m is a new timeframe hypothesis in the related family.",
+    "parameters_frozen": "Unmodified desk.turbo_scalp.strategy.step with existing EMA20/50, slope lookback6, ATR stop1.2, TP1.5R, max hold24 bars, cooldown2 vs3. Never optimize on holdout.",
+    "confirmatory_stages": [
+      "A: one locked DEVELOPMENT evaluation 2025-08-21..2026-08-20, no parameter tuning, chronological halves, paired control, empirical power.",
+      "B: exactly ONE sealed 60-day HOLDOUT evaluation after freeze; primary 20bp net and paired placebo; results cannot be reused to tune.",
+      "C: >=30 FUTURE days of zero-money shadow observation after user authorization, with data failures/latency/cost reported.",
+      "D: only then separate user-approved virtual-paper pilot max_open3. No automatic Bull sharing or 5+5/1500 change."
+    ],
+    "power_method": "Report observed SD_net_bp and n_effective independent days/shock blocks. One-sided MDE_80pct=(NormalDist.inv_cdf(1-.05/K)+NormalDist.inv_cdf(.8))*SD/sqrt(n_effective). Raw n300/1000/3000 are NOT n_effective unless proven."
+  },
+  "replaces_for_future_research": "phase0-2026-10-20-v1",
+  "change_reason": "Claude audit 42e5dde: circular touches, missing placebo/net capture, cost ambiguity, previous search, coverage/power",
+  "data_integrity_gate": {
+    "source": "Public historical OHLC only, canonical symbol and consistent market type; no trading/private API keys",
+    "expected_granularity_ms": [
+      300000,
+      900000
+    ],
+    "coverage_report_fields": [
+      "symbol",
+      "exchange_market_id",
+      "market_type",
+      "contract_multiplier",
+      "first_available_utc",
+      "last_available_utc",
+      "bars_expected_in_open_sessions",
+      "bars_observed",
+      "missing_bars",
+      "duplicate_timestamps",
+      "misordered_bars",
+      "nonpositive_prices",
+      "unsupported_market_hours"
+    ],
+    "coverage_rule": "Require >=99.5% of expected bars during known-open market sessions; signal and fill paths must be consecutive with NO missing bars; no interpolation.",
+    "metal_hours_rule": "For XAU/XAG respect published sessions/holidays; if unavailable mark UNKNOWN and exclude unreliable windows.",
+    "no_holdout_lookahead": "In sealed 60-day holdout inspect ONLY listing, timestamp continuity, duplicates/validity and availability; never OHLC distribution, edges, strategy or P&L metrics.",
+    "minimum_history": "90 days 5m for diagnosis; >=6 eligible months for proposed promotion. Document unavailable markets."
+  },
+  "net_captureable_move_after_costs": {
+    "definition": "Realized NET bp of trades causally generated only AFTER a valid four-touch range activation; never width or max(high)-min(low) using future prices.",
+    "candidate_trigger": "On support confirmed rejection propose LONG, on resistance confirmed rejection propose SHORT; fourth qualification confirmation itself can propose only from NEXT bar; no simultaneous opposite trades per symbol.",
+    "entry": "First eligible later OPEN with complete closed OHLC sequence via outcomes_v1_1.evaluate_candidate_path; missing bars UNRESOLVED/ineligible.",
+    "stop": "LONG frozen_support-tolerance; SHORT frozen_resistance+tolerance",
+    "take_profit": "LONG frozen_resistance-tolerance; SHORT frozen_support+tolerance; skip if target/stop invalid relative to actual entry",
+    "time_exit": "Max 48 bars 5m or 16 bars 15m or earlier breakout/expiry, with precise forced-exit priority set in replay implementation before real data.",
+    "execution": "Stop first if both stop+TP in one OHLC; adverse gap at next OPEN; no positive gap target improvement; cost roundtrip once including slippage.",
+    "metric": "Mean actual net_bp across eligible post-activation closed trades, median net_bp, net_R, win fraction, net after 16bp report and 20bp decision costs; 95% block CI; report episode count and proportion with NO eligible entry as null not phantom zero.",
+    "no_trade_if": "stale or gapped, target invalid, missing book margin, no legal next open."
+  },
+  "reference_cost_bp_roundtrip": 16,
+  "decision_cost_bp_roundtrip": 20,
+  "placebo_prereg": {
+    "types": [
+      "independent random walk with matched development volatility/session timetable, 200 replicates per symbol/timeframe",
+      "block-permuted past development returns preserving volatility/session regime, 200 replicates per symbol/timeframe"
+    ],
+    "fixed_seed": 20261020,
+    "match": "same market sessions, bars, symbol/timeframe, eligibility filters, entry/exit clock and costs; reconstruct valid OHLC and do not interpolate gaps",
+    "primary_comparison": "paired per-symbol/regime real-minus-placebo episode-level mean NET-capture_bp at cost 20bp plus qualified episodes per eligible day",
+    "pass_condition": "development paired net capture excess >0 with day-block 95% confidence lower bound>0 AND both chronological halves positive; otherwise reject range edge even if it finds many episodes",
+    "synthetic_local_only": "100 windows per class, forced favorable ADX=14: 0/100 random walk, 0/100 drift trend, 100/100 ideal sine oscillator qualify; NOT real-market evidence"
+  },
+  "selection_prereg": "The future AI multistrategy selector is a separate statistical hypothesis and requires its own confirmatory testing/multiplicity budget."
+}
