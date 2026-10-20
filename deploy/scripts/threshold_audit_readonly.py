@@ -456,7 +456,10 @@ def simulate(c,bars,now):
     if start not in by: return None,'missing_first_closed_bar'
     # Explicit delayed-entry scenario, not an exact reconstruction of an unexecuted fill.
     price=by[start][1]; entry=price*(1+side*.0002)
-    stop=price*(1-side*sl); take=price*(1+side*tp)
+    original=float(c.get('price') or 0)
+    if not math.isfinite(original) or original<=0: return None,'missing_candidate_price'
+    stop=original*(1-side*sl); take=original*(1+side*tp)
+    if side*(price-stop)<=0 or side*(take-price)<=0: return None,'levels_crossed_before_delayed_entry'
     lev=min(max(1,lev),45 if c['symbol'] in ('BTC','XAU','XAG') else 30 if c['symbol']=='ETH' else 25)
     dist=abs(entry-stop)/entry
     if dist>.75*(1/lev-.005): return None,'engine_liquidation_guard'
@@ -529,6 +532,6 @@ def measure_main():
             v=real.setdefault(key,dict(r=0,final=False,day=time.strftime('%Y-%m-%d',time.gmtime(e.get('ts',0)/1000)),side=e.get('side')))
             v['r']+=e['net_r']; v['final'] |= not e.get('partial',False)
     complete=[v for v in real.values() if v['final']]
-    print(json.dumps(dict(kind='threshold_measurement',asof_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_sha256=hashes,bad_rows=bad,raw_target_counts=dict(coverage),deduped=len(uniq),excluded=dict(excluded),ambiguous_sl_first=ambiguous,groups={k:stats(v) for k,v in groups.items()},long_scores_oct18=longs,executed_complete=stats(complete),executed_to_oct15=stats([v for v in complete if v['day']<='2026-10-15']),executed_excluded=dict(realexcluded),executed_sides_to_oct15={str(s):sum(v['side']==s for v in complete if v['day']<='2026-10-15') for s in (1,-1)},method='delayed first-next-15m-open; fixed SL/TP; fee6bp/side slip2bp/side long funding1bp/8h; no DCA/trailing/AI/split; horizons6h/24h; regime BTC trailing24h +/-1% known at decision; dedup4h per bot/run/symbol/side/status; day-cluster bootstrap1500; not portfolio P&L',candle_counts={s:len(v) for s,v in candles.items()}),sort_keys=True))
+    print(json.dumps(dict(kind='threshold_measurement',asof_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_sha256=hashes,bad_rows=bad,raw_target_counts=dict(coverage),deduped=len(uniq),excluded=dict(excluded),ambiguous_sl_first=ambiguous,groups={k:stats(v) for k,v in groups.items()},long_scores_oct18=longs,executed_complete=stats(complete),executed_to_oct15=stats([v for v in complete if v['day']<='2026-10-15']),executed_excluded=dict(realexcluded),executed_sides_to_oct15={str(s):sum(v['side']==s for v in complete if v['day']<='2026-10-15') for s in (1,-1)},method='delayed first-next-15m-open; original candidate SL/TP levels; fee6bp/side slip2bp/side long funding1bp/8h; no DCA/trailing/AI/split; horizons6h/24h; regime BTC trailing24h +/-1% known at decision; dedup4h per bot/run/symbol/side/status; day-cluster bootstrap1500; not portfolio P&L',candle_counts={s:len(v) for s,v in candles.items()}),sort_keys=True))
 
 measure_main()
