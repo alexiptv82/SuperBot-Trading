@@ -119,7 +119,6 @@ Regole di onesta' (dette anche nel rapporto):
 
 Solo libreria standard e nessuna sintassi recente: gira anche con il python di sistema del server.
 """
-from __future__ import annotations
 
 import json
 import math

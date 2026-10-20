@@ -1,1 +1,1 @@
-2026-10-20 independent read-only research; no bot changes
+2026-10-20 read-only retry: assembled script future-import corrected
