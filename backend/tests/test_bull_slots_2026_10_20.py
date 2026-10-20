@@ -81,3 +81,19 @@ def test_eleventh_position_is_refused_for_slots_when_margin_is_small():
     a, res = _open_many(limits, 60, 11)
     assert sum(1 for _, p, _ in res if p is not None) == 10
     assert "troppe posizioni" in res[10][2]
+
+
+def test_seventh_bull_request_is_reduced_below_the_150_minimum_not_refused_DECISION_PENDING():
+    """CARATTERIZZAZIONE del comportamento di oggi (segnalato da ChatGPT, riprodotto da Claude 20/10/2026):
+    con budget 1000 $, leva 10 e richieste da 150 $, i primi 6 ingressi sono da 150 $, il 7mo NON e' rifiutato
+    ma ridotto dal motore (room = min(350, 1000 - margine in uso, cassa*0.95)) a circa 89,9 $, SOTTO il minimo
+    di 150 $ che il prompt promette e che il guardrail del cli applica alle proposte. L'8vo e' rifiutato.
+    Alexander deve scegliere: (A) rifiutare se il margine rimasto e' sotto il minimo del bot, oppure (B) lasciare
+    cosi'. Se sceglie A questo test va rovesciato (7mo rifiutato). Non e' una regola voluta: e' la fotografia."""
+    limits = cli._make_bull_config().limits
+    a, res = _open_many(limits, 150, 8)
+    margins = [p.total_margin if p is not None else None for _, p, _ in res]
+    assert margins[:6] == [150.0] * 6
+    assert margins[6] is not None and 85.0 < margins[6] < 95.0 and margins[6] < cli._make_bull_config().guardrail_min_margin
+    assert margins[7] is None and "margine" in res[7][2]
+    assert a.cash < 10.0                                           # la cassa e' praticamente esaurita
