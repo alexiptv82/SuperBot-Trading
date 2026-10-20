@@ -133,7 +133,7 @@ LEVA MASSIMA PER ASSET (applicata automaticamente dal codice):
 SOGLIA MINIMA CONFIDENZA PER APRIRE:
 - Asset TIER A (BTC, ETH, XAU, XAG): confidenza >= 60/100
 - Asset TIER C (altcoin, tutto il resto): confidenza >= 63/100
-- Con max 3 trade devi essere selettivissimo: apri solo se confidenza >= 63 per altcoin, >= 65 per TIER A.
+- Con max 3 trade devi essere selettivissimo: apri solo se confidenza >= 63 per altcoin, >= 60 per TIER A.
 
 REGOLA CRITICA — MAX 3 POSIZIONI:
 - Hai slot per SOLO 3 trade contemporanei. Scegli i migliori setup in assoluto.

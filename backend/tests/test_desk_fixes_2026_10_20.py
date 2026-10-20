@@ -238,7 +238,7 @@ def test_prompts_state_the_same_altcoin_threshold_as_the_code():
     thr = cli.TIER_C_ENTRY_SCORE
     for prompt in (brain.SYSTEM, brain.SYSTEM_BULL):
         assert f"TIER C (altcoin, tutto il resto): confidenza >= {thr}/100" in prompt
-    assert f"apri solo se confidenza >= {thr} per altcoin" in brain.SYSTEM_BULL
+    assert f"apri solo se confidenza >= {thr} per altcoin, >= {cli.TIER_AB_ENTRY_SCORE} per TIER A" in brain.SYSTEM_BULL
     assert "confidenza >= 65/100" not in brain.SYSTEM and "confidenza >= 70 per altcoin" not in brain.SYSTEM_BULL
 
 
