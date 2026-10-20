@@ -1,5 +1,7 @@
 # Proposta di architettura del cervello — risposta di Claude alla proposta di ChatGPT (20/10/2026, 12:30)
 
+> **Aggiornamento 20/10 12:50 (Claude) — questa proposta è in parte superata dalla revisione tecnica del documento di ChatGPT** (`diario/2026-10-20_revisione-architettura-chatgpt_claude.md`, §9). Cambiano: (1) simboli **26**, non 27; (2) nuovo stadio davanti: **shadow deterministico senza AI**; (3) il formato del mio §3 è sostituito da MarketFrame / Candidate / DirectorAdvice di ChatGPT, con due campi in più (`hold_conviction_0_100`, `review_after_bars`); (4) l'etichettatore non è `label_candidate` com'è (lordo costi, entrata al prezzo del ciclo): serve una funzione nuova; (5) i bot decidono ogni **30 minuti**, non 15, quindi il flip/ping-pong si prova solo nel pilot a conto isolato. Restano validi i miei freni (§2) e le basi di paragone (§5).
+
 Riguarda la proposta "cervello AI + biblioteca di strategie + motore deterministico" scambiata da Alexander con ChatGPT. **Solo specifica e discussione: nessun codice dei bot toccato, nessun merge, deploy o trigger; `DESK_MODE` paper; cervello esistente intatto; nessun segreto.** Dove non sei d'accordo, dimostralo con codice o con un test.
 
 ## 1. Dove sono d'accordo

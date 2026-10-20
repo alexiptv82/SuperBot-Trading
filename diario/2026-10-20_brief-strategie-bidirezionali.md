@@ -1,5 +1,7 @@
 # Brief per ChatGPT — strategie su entrambi i lati, range e inversione (20/10/2026)
 
+> **Correzione 20/10 12:50 (Claude):** i simboli dei bot sono **26**, non 27 (`desk/cli.py` `SYMBOLS`: BTC, ETH, BNB, XRP, SOL, ADA, DOGE, AVAX, DOT, LINK, UNI, ATOM, LTC, BCH, APT, ARB, OP, NEAR, FIL, INJ, SUI, TIA, RUNE, STX, XAU, XAG). I 6 del Turbo ne fanno parte. Inoltre i bot **decidono ogni 30 minuti** (15 solo con scalp aperto), non ogni 15: vedi `diario/2026-10-20_revisione-architettura-chatgpt_claude.md`.
+
 Scritto da Claude su richiesta di Alexander. **Solo analisi e specifica: nessun merge, nessun deploy, nessun trigger, `DESK_MODE` paper, cervello intatto, nessun segreto nel repository.** Proprietà dei file nuovi: ChatGPT (specifica e backtest); Claude non li tocca mentre li scrivi. Se non sei d'accordo con qualcosa, dimostralo con codice o con un test.
 
 ## 1. La visione di Alexander (riassunta, non sostituita)
@@ -16,7 +18,7 @@ Scritto da Claude su richiesta di Alexander. **Solo analisi e specifica: nessun 
 - **Costi**: a 6+2 bp per lato un giro costa ~16 bp sul nozionale = ~2,4% del margine a leva 15x. Un'inversione paga due operazioni.
 
 ## 3. Che cosa ti chiedo (in tre fasi, ciascuna con un risultato scritto nel diario)
-**Fase 0 — misura prima di costruire.** Per ciascuno dei 27 simboli attuali (e per i 6 del Turbo): quanto è ampio un rimbalzo tipico fra due livelli nei periodi di range, rispetto ai costi? Distribuzione (percentili) delle ampiezze dei range sulle barre 5m/15m, durata dei range, frequenza delle rotture. Se l'ampiezza tipica non supera nettamente i 16 bp (meglio: un multiplo), il ping-pong non può pagare e lo dici subito.
+**Fase 0 — misura prima di costruire.** Per ciascuno dei 26 simboli attuali (e per i 6 del Turbo): quanto è ampio un rimbalzo tipico fra due livelli nei periodi di range, rispetto ai costi? Distribuzione (percentili) delle ampiezze dei range sulle barre 5m/15m, durata dei range, frequenza delle rotture. Se l'ampiezza tipica non supera nettamente i 16 bp (meglio: un multiplo), il ping-pong non può pagare e lo dici subito.
 
 **Fase 1 — schede da specificare** (regole numeriche fisse, una per riga, lato specchiato dove ha senso, ognuna con il suo controllo casuale):
 1. L1 rimbalzo su media importante nel trend (pullback; esiste S4: lordo ≈ 0, parti da lì e dalla sua inversione).
@@ -27,7 +29,7 @@ Scritto da Claude su richiesta di Alexander. **Solo analisi e specifica: nessun 
 6. L6 triangoli/bandiere con adattamento di linee di tendenza: ultima priorità, la più rumorosa.
 Per ciascuna: timeframe, simboli ammessi, stop, obiettivo, uscita a tempo, massimo posizioni, regime in cui è ammessa.
 
-**Fase 2 — backtest e piano per l'ombra.** Storico dei 27 simboli (verifica quanto ne abbiamo: il laboratorio ha 53 coppie con ≥365 giorni di 1h; per i 5m verifica la disponibilità). Poi il piano per misurare le stesse schede **in avanti** in ombra, accanto all'AI.
+**Fase 2 — backtest e piano per l'ombra.** Storico dei 26 simboli (verifica quanto ne abbiamo: il laboratorio ha 53 coppie con ≥365 giorni di 1h; per i 5m verifica la disponibilità). Poi il piano per misurare le stesse schede **in avanti** in ombra, accanto all'AI.
 
 ## 4. Criteri fissati PRIMA dei risultati (cambiarli dopo averli visti non vale)
 - Costi: scenari round trip 12 / 16 / 20 bp; funding secondo il motore. Ingresso all'**apertura della barra successiva** al segnale; solo barre **chiuse**; **stop prima del TP** nella stessa barra; una posizione per simbolo.
