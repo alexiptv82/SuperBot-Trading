@@ -1,5 +1,11 @@
 # STATO di SuperBot Trading
 
+## Aggiornamento 20/10/2026 05:18 Roma — audit ChatGPT
+
+Verifica nuova in sola lettura: Hawk run4/Bull run3 PAPER, ciclo15m, una posizione ciascuno, nessun blocco globale; 30 scarti confidenza ciascuno e una guardia liquidazione Hawk. Budget AI nuovamente disponibile. Soglie60/70 invariate dal12/10. Misura candidati con costi: risultati di ricerca incompleti, nessuna modifica di soglia approvata. Dettagli e numeri finali in diario/2026-10-20_chatgpt.md. Review backup:46test passano ma missing last_end_ms/cycles e NaN accettati, correzione proposta non applicata. Nessun deploy, reset, cambio strategia, rischio o PM. Restano aperti vista ombra, backup journal e difetti precedentemente segnalati.
+
+Le sezioni seguenti sono storiche; questo aggiornamento prevale.
+
 **Aggiornato:** 19/10/2026, sera — ChatGPT; esito server disponibile delle 21:39 italiane.
 **In corso:** ombra installata da Claude su Hawk run 4 e Bull run 3. ChatGPT ha verificato l'esito salvato delle 21:39 e rilevato problemi di congelamento ROI/ordine ambiguo e validazione heartbeat backup. Dettagli nella voce ChatGPT del 19/10; nessun nuovo deploy.
 
