@@ -1,18 +1,18 @@
-### Controllo bot e osservatore 2026-10-19T22:01:07Z
+### Controllo bot e osservatore 2026-10-20T01:01:09Z
 ## Container
-superbot-sidecar | Up 3 hours (healthy) | superbot-sidecar:sha-ad8d0bddbbda
-superbot-desk-api-retired-20261019 | Exited (0) 11 hours ago | superbot-work-desk-api:r39119231791a1
-superbot-desk-api-retained-r39119231791a1 | Exited (0) 36 hours ago | superbot-work-desk-api:r39118924914a1
-superbot-desk-bull | Up 18 hours (healthy) | superbot-desk:singapore
-superbot-desk-hawk | Up 18 hours (healthy) | superbot-desk:singapore
+superbot-sidecar | Up 6 hours (healthy) | superbot-sidecar:sha-ad8d0bddbbda
+superbot-desk-api-retired-20261019 | Exited (0) 14 hours ago | superbot-work-desk-api:r39119231791a1
+superbot-desk-api-retained-r39119231791a1 | Exited (0) 39 hours ago | superbot-work-desk-api:r39118924914a1
+superbot-desk-bull | Up 21 hours (healthy) | superbot-desk:singapore
+superbot-desk-hawk | Up 21 hours (healthy) | superbot-desk:singapore
 
 === BOT hawk ===
-battito: eta=1s mode=running cycles=45 cycle_running=False ultimo_ciclo_fine=10-19 21:39:29Z prossimo=10-19 22:09:29Z
+battito: eta=2s mode=running cycles=56 cycle_running=False ultimo_ciclo_fine=10-20 00:57:20Z prossimo=10-20 01:12:20Z
 run_no=4 avviato=10-19 17:36:50Z versione=b4709d1 exec_mode=paper trading_enabled=True pause_requested=False
-posizioni aperte: 0 [] | chiuse nel run: 0
+posizioni aperte: 1 ['ETH'] | chiuse nel run: 0
 equity/cassa non stampati; halt=None
 battito.hours: {"mode": "off", "enabled": false, "allowed": true, "blocked": false, "tz": null, "next_change_ms": null, "error": ""}
-battito.macro: {"regime": "calmo", "blackout": false, "blackout_until_ms": null, "conf_bonus": 0, "n_events": 8, "fetched_ms": 1792438681788, "stale": false, "error": "", "enforce": false}
+battito.macro: {"regime": "calmo", "blackout": false, "blackout_until_ms": null, "conf_bonus": 0, "n_events": 8, "fetched_ms": 1792449587345, "stale": false, "error": "", "enforce": false}
 battito.claude_schedule: {"mode": "none", "allowed": true, "window_end_ms": null, "next_start_ms": null, "n_future": 0, "error": ""}
   file pause.flag: assente
   file reset_portfolio.flag: assente
@@ -20,12 +20,12 @@ battito.claude_schedule: {"mode": "none", "allowed": true, "window_end_ms": null
   file trading_enabled.json: assente
 
 === BOT bull ===
-battito: eta=4s mode=running cycles=36 cycle_running=False ultimo_ciclo_fine=10-19 21:39:31Z prossimo=10-19 22:09:31Z
+battito: eta=2s mode=running cycles=47 cycle_running=False ultimo_ciclo_fine=10-20 00:57:20Z prossimo=10-20 01:12:20Z
 run_no=3 avviato=10-19 17:37:17Z versione=b4709d1 exec_mode=paper trading_enabled=True pause_requested=False
-posizioni aperte: 0 [] | chiuse nel run: 0
+posizioni aperte: 1 ['ETH'] | chiuse nel run: 0
 equity/cassa non stampati; halt=None
 battito.hours: {"mode": "off", "enabled": false, "allowed": true, "blocked": false, "tz": null, "next_change_ms": null, "error": ""}
-battito.macro: {"regime": "calmo", "blackout": false, "blackout_until_ms": null, "conf_bonus": 0, "n_events": 8, "fetched_ms": 1792438688719, "stale": false, "error": "", "enforce": false}
+battito.macro: {"regime": "calmo", "blackout": false, "blackout_until_ms": null, "conf_bonus": 0, "n_events": 8, "fetched_ms": 1792449588360, "stale": false, "error": "", "enforce": false}
 battito.claude_schedule: {"mode": "none", "allowed": true, "window_end_ms": null, "next_start_ms": null, "n_future": 0, "error": ""}
   file pause.flag: assente
   file reset_portfolio.flag: assente
@@ -33,12 +33,12 @@ battito.claude_schedule: {"mode": "none", "allowed": true, "window_end_ms": null
   file trading_enabled.json: assente
 
 === OMBRA hawk ===
-status: eta=16 s {"freeze": null, "last_success_ms": 1792445994652, "mode": "ombra", "portfolio": "hawk", "sequence": 7, "ts_ms": 1792447254729}
-registro: file=1 righe=7 cicli=5 freeze=2 {"stale_heartbeat_or_cycle": 1, "cycle_unfinished_or_failed": 1}
-ultimo ciclo osservato: cycle=45 asof=10-19 21:39:29Z posizioni=0 freezes_pos=[] uscite_reali_totali=0 checkpoint_25=0 applied=False
+status: eta=12 s {"freeze": null, "last_success_ms": 1792457879241, "mode": "ombra", "portfolio": "hawk", "sequence": 21, "ts_ms": 1792458059667}
+registro: file=1 righe=21 cicli=16 freeze=5 {"stale_heartbeat_or_cycle": 1, "cycle_unfinished_or_failed": 4}
+ultimo ciclo osservato: cycle=56 asof=10-20 00:57:20Z posizioni=1 freezes_pos=[] uscite_reali_totali=0 checkpoint_25=0 applied=False
 
 === OMBRA bull ===
-status: eta=16 s {"freeze": null, "last_success_ms": 1792445994652, "mode": "ombra", "portfolio": "bull", "sequence": 7, "ts_ms": 1792447254729}
-registro: file=1 righe=7 cicli=5 freeze=2 {"stale_heartbeat_or_cycle": 1, "cycle_unfinished_or_failed": 1}
-ultimo ciclo osservato: cycle=36 asof=10-19 21:39:31Z posizioni=0 freezes_pos=[] uscite_reali_totali=0 checkpoint_25=0 applied=False
+status: eta=12 s {"freeze": null, "last_success_ms": 1792457879241, "mode": "ombra", "portfolio": "bull", "sequence": 21, "ts_ms": 1792458059667}
+registro: file=1 righe=21 cicli=16 freeze=5 {"stale_heartbeat_or_cycle": 1, "cycle_unfinished_or_failed": 4}
+ultimo ciclo osservato: cycle=47 asof=10-20 00:57:20Z posizioni=1 freezes_pos=[] uscite_reali_totali=0 checkpoint_25=0 applied=False
 ## log osservatore (ultime 8 righe)
