@@ -281,3 +281,126 @@ def test_live_mocked_refused_proposal_sends_no_order_to_the_exchange():
         assert _gate_refusals(rig) == ["ADA"]
     finally:
         rig.close()
+
+
+# ---- difesa NaN/inf (rilievo ChatGPT, audit e7c5f03) -----------------------------------
+# Python min(350.0, 1000.0, float('nan')) == 350.0: NaN non produce il minimo atteso.
+# margin_gate deve rifiutare PRIMA di valutare margin_room quando lo stato contabile e' non finito.
+
+def _nonfiniti():
+    """Coppie (nome_campo, account_factory) che rendono lo stato non finito.
+    Ogni factory crea un account fresco con una sola anomalia, senza modificare BULL.limits."""
+    import math
+    from dataclasses import replace as _replace
+
+    def _cash_nan():
+        a = PaperAccount(BULL.limits)
+        a.cash = float("nan")
+        return a
+
+    def _cash_inf():
+        a = PaperAccount(BULL.limits)
+        a.cash = math.inf
+        return a
+
+    def _cash_minf():
+        a = PaperAccount(BULL.limits)
+        a.cash = -math.inf
+        return a
+
+    def _trade_nan():
+        lim = _replace(BULL.limits, max_margin_trade=float("nan"))
+        return PaperAccount(lim)
+
+    def _total_inf():
+        lim = _replace(BULL.limits, max_margin_total=math.inf)
+        return PaperAccount(lim)
+
+    return [
+        ("cash NaN",              _cash_nan),
+        ("cash +inf",             _cash_inf),
+        ("cash -inf",             _cash_minf),
+        ("max_margin_trade NaN",  _trade_nan),
+        ("max_margin_total +inf", _total_inf),
+    ]
+
+
+def test_margin_gate_refuses_nan_cash():
+    """acc.cash=NaN: senza la guardia margin_room restituisce 350 e il gate dice 'ammesso'."""
+    a = PaperAccount(BULL.limits)
+    a.cash = float("nan")
+    motivo = cli.margin_gate(a, BULL)
+    assert motivo is not None, "NaN in cassa deve essere rifiutato"
+    assert "non finito" in motivo and "cassa" in motivo
+
+
+def test_margin_gate_refuses_inf_cash():
+    import math
+    a = PaperAccount(BULL.limits)
+    a.cash = math.inf
+    motivo = cli.margin_gate(a, BULL)
+    assert motivo is not None, "+inf in cassa deve essere rifiutato"
+    assert "non finito" in motivo
+
+
+def test_margin_gate_refuses_nan_limit():
+    """Limite monetario NaN: il min() con NaN restituisce il primo operando, non NaN."""
+    from dataclasses import replace as _replace
+    lim = _replace(BULL.limits, max_margin_trade=float("nan"))
+    a = PaperAccount(lim)
+    motivo = cli.margin_gate(a, BULL)
+    assert motivo is not None, "NaN in limite_per_trade deve essere rifiutato"
+    assert "non finito" in motivo
+
+
+def test_margin_gate_refuses_inf_margin_total_limit():
+    import math
+    from dataclasses import replace as _replace
+    lim = _replace(BULL.limits, max_margin_total=math.inf)
+    a = PaperAccount(lim)
+    motivo = cli.margin_gate(a, BULL)
+    assert motivo is not None, "+inf in limite_totale deve essere rifiutato"
+    assert "non finito" in motivo
+
+
+def test_margin_gate_refuses_nan_margin_in_use():
+    """margin_in_use() restituisce NaN se un position.total_margin e' NaN.
+    Position richiede 'liq' (liquidation price) come argomento posizionale."""
+    a = PaperAccount(BULL.limits)
+    # inietta una posizione con total_margin=NaN senza passare dal motore
+    from desk.engine import Position
+    fake_pos = Position(id=9999, symbol="FAKE", side=1, margin=150.0, leverage=10,
+                        entry=100.0, qty=15.0, sl=99.0, tp=102.5,
+                        open_ms=T, liq=0.0, confidence=80, reason="test", source="test",
+                        fee_open=0.0, last_review_ms=T, review_price=100.0,
+                        dca_levels=[], total_margin=float("nan"), trade_type="medio",
+                        dca_count=0, features={}, risk_plan_usd=0.0,
+                        r_dist=0.01, entry0=100.0, px_hi=100.0, px_lo=100.0, legs=1)
+    a.positions["FAKE"] = fake_pos
+    motivo = cli.margin_gate(a, BULL)
+    assert motivo is not None, "NaN in margin_in_use deve essere rifiutato"
+    assert "non finito" in motivo
+
+
+def test_margin_gate_all_nonfinite_values_produce_refusal():
+    """Parametrizzato: ogni valore non finito iniettato produce un rifiuto con causale.
+    Ogni factory crea un account fresco: non si modifica BULL.limits tra i test."""
+    for nome, factory in _nonfiniti():
+        a = factory()
+        motivo = cli.margin_gate(a, BULL)
+        assert motivo is not None, f"{nome}: atteso rifiuto, ottenuto None"
+        assert "non finito" in motivo, f"{nome}: causale mancante 'non finito' in '{motivo}'"
+
+
+def test_margin_gate_hawk_ignores_nonfinite_as_before():
+    """Hawk non ha refuse_below_min_margin: il gate ritorna None anche con stato non finito (invariato)."""
+    a = PaperAccount(HAWK.limits)
+    a.cash = float("nan")
+    assert cli.margin_gate(a, HAWK) is None, "Hawk non deve essere toccato dalla guardia NaN"
+
+
+def test_margin_gate_normal_state_still_passes():
+    """Sanity check: conto sano (1000$ iniziali, nessuna posizione) non viene bloccato dalla guardia NaN."""
+    a = PaperAccount(BULL.limits)
+    # cash iniziale = start_equity = 1000$, nessuna posizione: room = min(350, 1000, 950) = 350 >= 150
+    assert cli.margin_gate(a, BULL) is None

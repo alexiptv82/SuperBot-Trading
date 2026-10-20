@@ -713,9 +713,26 @@ def margin_gate(acc, pg) -> Optional[str]:
     """Opzione A di Alexander. Ritorna None se l'apertura puo' procedere, altrimenti il motivo del rifiuto.
     Si guarda il margine disponibile PRIMA di un eventuale split (la richiesta complessiva, non la prima gamba).
     Una taglia ridotta dal motore ma ancora >= minimo e' ammessa. Solo per i portafogli con
-    refuse_below_min_margin (Bull); Hawk resta com'era."""
+    refuse_below_min_margin (Bull); Hawk resta com'era.
+
+    Difesa-in-profondita' (rilievo ChatGPT, audit e7c5f03): se cassa, margini in uso o limiti monetari
+    contengono NaN o infiniti, Python min() restituisce risultati inaffidabili (NaN e' sempre 'non minore',
+    inf altera il calcolo della room). Il controllo precede margin_room per evitare falsi 'ammesso'."""
     if not pg.refuse_below_min_margin:
         return None
+    # ── guardia NaN/inf sui valori contabili usati da margin_room ────────────────────────────────
+    import math as _math
+    L = acc.limits
+    _contabili = {
+        "cassa":             acc.cash,
+        "margine_in_uso":    acc.margin_in_use(),
+        "limite_per_trade":  L.max_margin_trade,
+        "limite_totale":     L.max_margin_total,
+    }
+    for nome, val in _contabili.items():
+        if not _math.isfinite(val):
+            return (f"stato contabile non finito ({nome}={val}): apertura Bull rifiutata per sicurezza")
+    # ─────────────────────────────────────────────────────────────────────────────────────────────
     room = margin_room(acc)
     if room < pg.guardrail_min_margin - MARGIN_EPS:
         return (f"margine disponibile {room:.2f}$ sotto il minimo {pg.guardrail_min_margin:.0f}$ "
