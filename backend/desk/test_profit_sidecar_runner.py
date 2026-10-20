@@ -50,14 +50,15 @@ def bars_for(price_path):
     return make
 
 
-def engine_account(side):
+def engine_account(side, dca=True):
     acc = PaperAccount()
     t0 = BASE - 5 * HOUR
     adverse = 98.0 if side == 1 else 102.0
     pos, msg = acc.open("BTC", side, 100, 10, 100.0, 95.0 if side == 1 else 105.0, None, t0, {"BTC": 100.0})
     assert pos, msg
-    pos2, msg = acc.add_dca("BTC", 94.0 if side == 1 else 106.0, None, t0 + HOUR, {"BTC": adverse})
-    assert pos2, msg
+    if dca:
+        pos2, msg = acc.add_dca("BTC", 94.0 if side == 1 else 106.0, None, t0 + HOUR, {"BTC": adverse})
+        assert pos2, msg
     assert acc.partial_close("BTC", 105.0 if side == 1 else 95.0, t0 + 2 * HOUR, .4)
     return acc
 
@@ -125,6 +126,9 @@ class RoiVariants(unittest.TestCase):
         self.assertEqual(d["checkpoint"], "CHIUDI_O_PARZIALE")
         s, d = roi_variants.step(roi_variants.RoiState(), roi=27, eval_ms=1, credible_reversal=False, features_valid=False, policy=self.P)
         self.assertEqual(d["checkpoint"], "DATI_NON_VALIDI")
+        self.assertEqual(s, roi_variants.RoiState())          # congelato: niente e' stato consumato o aggiornato
+        _, d = roi_variants.step(s, roi=27, eval_ms=2, credible_reversal=False, features_valid=True, policy=self.P)
+        self.assertEqual(d["checkpoint"], "LASCIA_CORRERE")   # il checkpoint scatta al primo istante con dati validi
 
     def test_floor_is_monotone_on_random_paths(self):
         rng = random.Random(7)
@@ -138,6 +142,24 @@ class RoiVariants(unittest.TestCase):
         self.assertEqual(again, s)
         with self.assertRaises(ValueError): roi_variants.RoiPolicy(first_floor_roi=20, arm_roi=15)
         with self.assertRaises(ValueError): roi_variants.RoiPolicy(giveback_pp=float("nan"))
+
+
+class InvalidFeaturesFreeze(unittest.TestCase):
+    P = roi_variants.RoiPolicy()
+
+    def test_invalid_features_do_not_trigger_floor_exit_or_move_state(self):
+        # controesempio riprodotto da ChatGPT (20/10): pavimento 25, ROI 20, dati non validi => prima dava EXIT_FLOOR
+        st = roi_variants.RoiState(peak_roi=30, armed=True, floor_roi=25, last_eval_ms=1)
+        after, d = roi_variants.step(st, roi=20, eval_ms=2, credible_reversal=False, features_valid=False, policy=self.P)
+        self.assertEqual((d["a"], d["b"], d["frozen"]), ("HOLD", "HOLD", "features_invalid"))
+        self.assertEqual(after, st)
+        _, d = roi_variants.step(after, roi=20, eval_ms=3, credible_reversal=False, features_valid=True, policy=self.P)
+        self.assertEqual(d["a"], "EXIT_FLOOR")                # con dati validi il pavimento torna a valere
+
+    def test_invalid_features_never_lower_or_raise_peak(self):
+        st = roi_variants.RoiState(peak_roi=18, armed=True, floor_roi=13, last_eval_ms=1)
+        after, _ = roi_variants.step(st, roi=40, eval_ms=2, credible_reversal=True, features_valid=False, policy=self.P)
+        self.assertEqual(after.peak_roi, 18)
 
 
 class FetchBars(unittest.TestCase):
@@ -185,7 +207,7 @@ class Cycle(unittest.TestCase):
         return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.source.iterdir()}
 
     def test_cycle_is_shadow_deduplicated_restart_safe_and_source_untouched(self):
-        acc = engine_account(1)
+        acc = engine_account(1, dca=False)
         now = write_source(self.source, acc, price=110.0, cycles=2)
         before = self.tree()
         with Journal(self.out) as j:
@@ -212,8 +234,22 @@ class Cycle(unittest.TestCase):
             self.assertEqual(body["cycles_skipped"], 0)
             self.assertGreater(body["positions"][0]["roi"]["peak_roi"] or -1e9, -1e9)
 
+    def test_ambiguous_dca_and_partial_freeze_the_evaluation_but_keep_the_state(self):
+        acc = engine_account(1)                                    # DCA e parziale: l'ordine non e' dimostrabile
+        now = write_source(self.source, acc, price=110.0, cycles=2)
+        with Journal(self.out) as j:
+            self.assertTrue(process_cycle(j, read_consistent(self.source, "hawk", now), portfolio="hawk",
+                                          bars_for=bars_for(100.0), code_version="t"))
+            body = json.loads(next(self.out.glob("events-*.jsonl")).read_text().splitlines()[0])["body"]
+        rec = body["positions"][0]
+        self.assertEqual(rec["frozen"], "ambiguous_order")
+        self.assertNotIn("pm_eval", rec)
+        self.assertNotIn("roi", rec)
+        self.assertTrue(rec["snapshot"]["ambiguous_order"])
+        self.assertEqual(body["freezes"][0]["reason"], "ambiguous_order")
+
     def test_stale_or_foreign_mark_price_freezes_position_not_the_bot(self):
-        acc = engine_account(1)
+        acc = engine_account(1, dca=False)
         now = write_source(self.source, acc, price=110.0, price_ms=T_EVAL)
         state = json.loads((self.source / "state_v2.json").read_text())
         state["last_prices_ms"] = T_EVAL - 600_000      # price older than this cycle (download failed)
@@ -226,7 +262,7 @@ class Cycle(unittest.TestCase):
         self.assertEqual(body["freezes"][0]["reason"], "mark_price_not_from_this_cycle")
 
     def test_bad_candles_congela_the_pm_but_still_logs_the_snapshot(self):
-        acc = engine_account(1)
+        acc = engine_account(1, dca=False)
         now = write_source(self.source, acc, price=110.0)
 
         def broken(symbol, asof):
@@ -240,7 +276,7 @@ class Cycle(unittest.TestCase):
         self.assertIsNotNone(rec["liquidable_now"]["roi_pct"])
 
     def test_new_run_resets_cache_and_closed_outcomes_are_journaled(self):
-        acc = engine_account(1)
+        acc = engine_account(1, dca=False)
         now = write_source(self.source, acc, price=110.0)
         with Journal(self.out) as j:
             process_cycle(j, read_consistent(self.source, "hawk", now), portfolio="hawk", bars_for=bars_for(100.0), code_version="t")
@@ -260,7 +296,7 @@ class Cycle(unittest.TestCase):
             self.assertTrue(j.cache["hawk"]["run_key"].endswith(str(T_EVAL + 3_000_000)))
 
     def test_poll_reports_transient_freeze_once_and_writes_only_its_own_directory(self):
-        acc = engine_account(1)
+        acc = engine_account(1, dca=False)
         now = write_source(self.source, acc, price=110.0, running=True)
         before = self.tree()
         memo = {}
@@ -273,7 +309,7 @@ class Cycle(unittest.TestCase):
         self.assertEqual(before, self.tree())
 
     def test_unexpected_exception_is_reported_by_class_only(self):
-        acc = engine_account(1)
+        acc = engine_account(1, dca=False)
         now = write_source(self.source, acc, price=110.0)
         memo = {}
 

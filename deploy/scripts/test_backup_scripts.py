@@ -465,6 +465,27 @@ class BrainTests(unittest.TestCase):
         self.heartbeat("hawk", age=600, **self.PAUSED)         # battito vecchio: niente eccezioni
         self.assertEqual(mod.boundary_state(base, 1)[0], mod.NO)
 
+    def test_incomplete_or_invalid_cycle_times_are_never_a_boundary(self):
+        """Rapporto ChatGPT 20/10: campi assenti, NaN, futuro o non ordinati non devono dare OK (ne' normale ne' in pausa)."""
+        mod = load(BRAIN, "bk_brain_times")
+        base = os.path.join(self.root, "hawk")
+        now = time.time()
+        for paused in (False, True):
+            ok = dict(self.PAUSED) if paused else {}
+            bad_cases = ({"last_end_ms": None}, {"cycles": None}, {"last_start_ms": None},
+                         {"last_end_ms": float("nan")}, {"last_start_ms": float("inf")},
+                         {"cycles": 0}, {"cycles": True}, {"cycles": 2.0}, {"cycles": "12"},
+                         {"last_end_ms": int((now + 600) * 1000), "last_start_ms": int((now + 590) * 1000)},
+                         {"last_start_ms": int((now - 10) * 1000), "last_end_ms": int((now - 60) * 1000)},
+                         {"last_start_ms": 0}, {"next_cycle_ms": float("nan")})
+            for over in bad_cases:
+                if paused and over.get("next_cycle_ms") != over.get("next_cycle_ms"):
+                    continue    # NaN in pausa: gia' coperto dal controllo di tipo dell'eccezione
+                self.heartbeat("hawk", **{**ok, **over})
+                self.assertEqual(mod.boundary_state(base, 1)[0], mod.WAIT, (paused, over))
+            self.heartbeat("hawk", **ok)                      # i valori normali restano OK
+            self.assertEqual(mod.boundary_state(base, 1)[0], mod.OK, paused)
+
     # modalita' separata ed esplicita per un bot davvero fermo: il fermo si DIMOSTRA sul container
 
     def test_bot_stopped_mode_works_only_for_a_really_stopped_bot_and_says_so(self):

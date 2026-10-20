@@ -59,6 +59,13 @@ def step(state, *, roi, eval_ms, credible_reversal, features_valid, policy):
         raise ValueError("invalid roi step input")
     if eval_ms <= state.last_eval_ms:
         return state, {"a": "HOLD", "b": "HOLD", "note": "evaluation already done", "checkpoint": None}
+    if not features_valid:
+        # Dati non validi = CONGELATO: nessun massimo, pavimento, uscita o checkpoint viene consumato o aggiornato.
+        # Se il ROI e' gia' sopra il checkpoint lo si segnala solo come informazione (non consuma il checkpoint).
+        return state, {"a": "HOLD" if state.a_exit_ms is None else "DONE", "b": "HOLD" if state.b_exit_ms is None else "DONE",
+                       "roi": round(roi, 4), "peak_roi": state.peak_roi, "floor_roi": state.floor_roi, "armed": state.armed,
+                       "frozen": "features_invalid",
+                       "checkpoint": "DATI_NON_VALIDI" if state.checkpoint_ms is None and roi >= policy.checkpoint_roi else None}
     peak = roi if state.peak_roi is None else max(state.peak_roi, roi)
     prior_floor = state.floor_roi
     breach = prior_floor is not None and roi <= prior_floor
@@ -78,10 +85,7 @@ def step(state, *, roi, eval_ms, credible_reversal, features_valid, policy):
     checkpoint_ms = state.checkpoint_ms
     if checkpoint_ms is None and roi >= policy.checkpoint_roi:
         checkpoint_ms = eval_ms
-        if not features_valid:
-            checkpoint = "DATI_NON_VALIDI"
-        else:
-            checkpoint = "CHIUDI_O_PARZIALE" if credible_reversal else "LASCIA_CORRERE"
+        checkpoint = "CHIUDI_O_PARZIALE" if credible_reversal else "LASCIA_CORRERE"
     new = replace(state, peak_roi=peak, armed=armed, floor_roi=floor, last_eval_ms=eval_ms,
                   a_exit_ms=a_exit, b_exit_ms=b_exit, checkpoint_ms=checkpoint_ms)
     return new, {"a": a, "b": b, "roi": round(roi, 4), "peak_roi": round(peak, 4),

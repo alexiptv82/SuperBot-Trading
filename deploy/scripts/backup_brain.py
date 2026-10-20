@@ -52,6 +52,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -189,6 +190,28 @@ def read_hb(base):
         return None, None
 
 
+def _finite(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def hb_times_problem(hb, now):
+    """None se il battito descrive un ultimo ciclo CONCLUSO in modo coerente; altrimenti il motivo (in italiano).
+    Richiede contatore intero >= 1, inizio e fine ciclo finiti e ordinati, fine non nel futuro (tolleranza 5 s),
+    e, se presente, next_cycle_ms finito. Non si inventa una fine ciclo che il bot non ha dichiarato."""
+    c, s, e = hb.get("cycles"), hb.get("last_start_ms"), hb.get("last_end_ms")
+    if type(c) is not int or c < 1:
+        return "battito senza contatore di cicli valido (nessun ciclo concluso?)"
+    if not (_finite(s) and _finite(e)):
+        return "battito senza orari di inizio/fine ciclo validi"
+    if not (0 < s <= e):
+        return "orari del ciclo non in ordine (inizio dopo la fine)"
+    if e / 1000.0 > now + 5:
+        return "fine ciclo nel futuro rispetto all'orologio del server"
+    if "next_cycle_ms" in hb and not _finite(hb.get("next_cycle_ms")):
+        return "next_cycle_ms non valido"
+    return None
+
+
 def boundary_state(base, quiet, margin=30.0):
     """(esito, descrizione): il bot e' tra due cicli?
     OK = confine di ciclo VERIFICATO e finestra buona; WAIT = riprovare tra poco (ciclo in corso, appena
@@ -205,8 +228,11 @@ def boundary_state(base, quiet, margin=30.0):
         return NO, "nel battito manca cycle_running (bot vecchio): confine di ciclo non verificabile"
     if hb.get("cycle_running") is not False:
         return WAIT, "ciclo in corso"
+    problem = hb_times_problem(hb, now)
+    if problem:
+        return WAIT, problem
     end_ms, next_ms = hb.get("last_end_ms"), hb.get("next_cycle_ms")
-    if isinstance(end_ms, (int, float)) and now - end_ms / 1000.0 < quiet:
+    if now - end_ms / 1000.0 < quiet:
         return WAIT, "ultimo ciclo finito da meno di %g s" % quiet
     # Bot FERMO DAVVERO dal battito: in pausa, senza posizioni, nessun ciclo programmato (next_cycle_ms == 0).
     # Non fa cicli da solo (riparte solo se l'utente preme Avvia) e il battito e' fresco. Qui lo 0 non vuol dire

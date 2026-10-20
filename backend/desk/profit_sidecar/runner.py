@@ -33,6 +33,10 @@ def _invalid_features(snap, reason):
 
 
 def _evaluate_position(portfolio, run_no, pos, snap, view, costs, prudent, cached, *, pm_policy, roi_policy, bars_for, code_version):
+    if snap["ambiguous_order"]:
+        # DCA e parziale nella stessa finestra (o prima osservazione con entrambi): l'ordine non e' dimostrabile,
+        # quindi l'aggregato puo' essere sbagliato. Si registra lo snapshot, NON si valuta, si conserva lo stato.
+        return {"snapshot": snap, "frozen": "ambiguous_order"}, (cached or {})
     side = pos["side"]
     machine_before = State(**cached["pm"]) if cached and cached.get("pm") else State()
     roi_before = roi_variants.RoiState(**cached["roi"]) if cached and cached.get("roi") else roi_variants.RoiState()
@@ -92,6 +96,8 @@ def process_cycle(journal, obs, *, portfolio, bars_for, code_version, pm_policy=
                                                    pm_policy=pm_policy, roi_policy=roi_policy, bars_for=bars_for, code_version=code_version)
             positions.append(record)
             new_cache_positions[key] = new_state
+            if record.get("frozen"):
+                freezes.append({"position_key": key, "symbol": str(symbol), "reason": record["frozen"]})
         except (Freeze, ValueError) as exc:
             freezes.append({"position_key": key, "symbol": str(symbol), "reason": str(exc) if isinstance(exc, Freeze) else "invalid_input"})
             if cached:
