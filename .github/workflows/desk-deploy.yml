@@ -2,7 +2,7 @@ name: Sala segnali - deploy (Hawk + Bull, container separati, paper)
 
 # Deploy di DUE container separati:
 #   superbot-desk-hawk  → Portafoglio Hawk ($100/trade, max 10)
-#   superbot-desk-bull  → Portafoglio Bull ($350/trade, max 3)
+#   superbot-desk-bull  → Portafoglio Bull ($350/trade, max 10)
 # NON tocca "superbot", nginx, DNS, app HI-TV.
 # Parte SOLO quando cambia deploy/desk-deploy.trigger.
 # Prima di sostituire i container: backup verificato del cervello di Hawk e Bull

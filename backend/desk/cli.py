@@ -90,8 +90,8 @@ def _make_bull_config() -> PortfolioConfig:
         limits=Limits(
             start_equity=1000.0,
             max_margin_trade=350.0,   # BULL: max $350 per trade
-            max_margin_total=1050.0,  # max 3 × 350$
-            max_open=3,               # max 3 posizioni
+            max_margin_total=1050.0,  # tetto sul margine totale (invariato); il vincolo reale e' la cassa: engine.open usa anche cash*0.95
+            max_open=10,              # max 10 posizioni (era 3; decisione dell'utente, 20/10/2026 13:56). Non devono essere tutte piene
             kill_equity=450.0,
             daily_stop=0.12,
         ),
@@ -101,7 +101,7 @@ def _make_bull_config() -> PortfolioConfig:
         guardrail_margin_forced=200.0,
         guardrail_lev_forced=15,
         guardrail_type_forced="medio",
-        description="Bull — max $350/trade, 3 posizioni, budget $1000, TP≥5%",
+        description="Bull — max $350/trade, 10 posizioni, budget $1000, TP≥5%",
     )
 
 
