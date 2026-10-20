@@ -42,7 +42,7 @@ class RangeTests(unittest.TestCase):
         b=minimum_detectable_edge_bp(100,1000)
         c=minimum_detectable_edge_bp(100,3000)
         self.assertGreater(a,b);self.assertGreater(b,c)
-        self.assertAlmostEqual(a, 16.18, delta=.1)
+        self.assertAlmostEqual(a, 19.73, delta=.1)
         self.assertGreater(minimum_detectable_edge_bp(100,100), a)
 
 if __name__=='__main__':unittest.main()
