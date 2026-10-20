@@ -90,7 +90,7 @@ def _make_bull_config() -> PortfolioConfig:
         limits=Limits(
             start_equity=1000.0,
             max_margin_trade=350.0,   # BULL: max $350 per trade
-            max_margin_total=1050.0,  # tetto sul margine totale (invariato); il vincolo reale e' la cassa: engine.open usa anche cash*0.95
+            max_margin_total=1000.0,  # budget $1000, come Hawk (decisione dell'utente, 20/10/2026 14:11; era 1050); engine.open usa anche cash*0.95
             max_open=10,              # max 10 posizioni (era 3; decisione dell'utente, 20/10/2026 13:56). Non devono essere tutte piene
             kill_equity=450.0,
             daily_stop=0.12,
@@ -690,6 +690,17 @@ def process_closed_bars(state: dict, acc, closed_map: dict, now_ms: int, bar_ms:
     flush_events(state, acc)
 
 
+def account_snapshot(acc, equity: float, halt) -> dict:
+    """Riassunto del conto per il prompt di Claude. Tetto di margine e numero di posizioni sono quelli VERI del
+    portafoglio (Hawk e Bull hanno limiti diversi): prima il prompt diceva a tutti '/2000$' e '/10'."""
+    return {
+        "equity": equity, "cash": acc.cash, "margin": acc.margin_in_use(),
+        "n_open": len(acc.positions), "day_pnl": equity - acc.day_start_equity,
+        "halt": halt,
+        "max_margin": acc.limits.max_margin_total, "max_open": acc.limits.max_open,
+    }
+
+
 def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     """Un ciclo di mercato.
 
@@ -803,12 +814,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     # snapshot conto per il prompt
     eq = acc.equity(prices)
-    margin_used = acc.margin_in_use()
-    snap = {
-        "equity": eq, "cash": acc.cash, "margin": margin_used,
-        "n_open": len(acc.positions), "day_pnl": eq - acc.day_start_equity,
-        "halt": halt,
-    }
+    snap = account_snapshot(acc, eq, halt)
 
     # posizioni aperte con info aggiornate
     pos_info = [position_info(pos, prices.get(sym, pos.entry), readings_map, now_ms)

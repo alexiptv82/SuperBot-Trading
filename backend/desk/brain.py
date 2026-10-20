@@ -314,9 +314,13 @@ def diagnose_reply(text: str) -> str:
 # ---------------- prompt V2
 def build_prompt(snapshot: dict, readings: list, positions: list, headlines: list,
                  lessons: str, ctx: dict | None = None, symbol_stats: str = "", macro_lines: str = "") -> str:
+    # tetti veri del portafoglio (passati da cli.account_snapshot); se mancano non si inventa nessuna cifra
+    mm, mo = snapshot.get("max_margin"), snapshot.get("max_open")
+    margin_txt = f"{snapshot['margin']:.0f}/{mm:.0f}$" if mm is not None else f"{snapshot['margin']:.0f}$"
+    open_txt = f"{snapshot['n_open']}/{mo}" if mo is not None else f"{snapshot['n_open']}"
     lines = [
         f"CONTO: capitale {snapshot['equity']:.0f}$, cassa {snapshot['cash']:.0f}$, "
-        f"margine in uso {snapshot['margin']:.0f}/2000$, posizioni {snapshot['n_open']}/10, "
+        f"margine in uso {margin_txt}, posizioni {open_txt}, "
         f"P&L oggi {snapshot['day_pnl']:+.1f}$"
         + (f", STOP: {snapshot['halt']}" if snapshot.get("halt") else "")
     ]

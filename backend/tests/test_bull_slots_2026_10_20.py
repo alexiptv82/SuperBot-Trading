@@ -28,7 +28,8 @@ def test_bull_has_ten_slots_and_hawk_is_unchanged():
     b, h = cli._make_bull_config(), cli._make_hawk_config()
     assert b.limits.max_open == 10 and h.limits.max_open == 10
     assert b.limits.max_margin_trade == 350.0 and h.limits.max_margin_trade == 100.0
-    assert b.limits.max_margin_total == 1050.0 and h.limits.max_margin_total == 1000.0   # tetti invariati
+    assert b.limits.max_margin_total == 1000.0 and h.limits.max_margin_total == 1000.0   # budget $1000 per bot (utente, 20/10 14:11)
+    assert b.limits.start_equity == 1000.0 and h.limits.start_equity == 1000.0
     assert b.guardrail_min_margin == 150.0 and b.guardrail_margin_forced == 200.0        # guardrail invariato
     assert "10 posizioni" in b.description
 
