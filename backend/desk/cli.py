@@ -675,7 +675,8 @@ def process_closed_bars(state: dict, acc, closed_map: dict, now_ms: int, bar_ms:
             before = None
             if LIVE._live and sym in acc.positions and acc.positions[sym].pending_split:
                 before = live_sync.snapshot_position(acc, sym)
-            result = acc.on_bar(sym, ts, o, h, l, c, bar_ms)
+            # LIVE: la seconda gamba parte sull'exchange dopo la candela; se la candela chiude la posizione non esiste
+            result = acc.on_bar(sym, ts, o, h, l, c, bar_ms, exit_first=bool(LIVE._live))
             if LIVE._live:
                 note = live_sync.after_bar(LIVE, acc, sym, before, result, alert=notify_live_alert, now_ms=now_ms)
                 if note:

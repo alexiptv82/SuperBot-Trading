@@ -424,7 +424,18 @@ class PaperAccount:
         self.closed.append(rec)
         return rec
 
-    def on_bar(self, symbol: str, t: int, o: float, h: float, l: float, c: float, bar_ms: int) -> Optional[dict]:
+    @staticmethod
+    def _exit_touched(pos: Position, h: float, l: float) -> bool:
+        """La barra tocca liquidazione, stop o TP con i livelli ATTUALI della posizione (prima gamba)."""
+        if pos.side == 1:
+            return l <= pos.liq or l <= pos.sl or (pos.tp is not None and h >= pos.tp)
+        return h >= pos.liq or h >= pos.sl or (pos.tp is not None and l <= pos.tp)
+
+    def on_bar(self, symbol: str, t: int, o: float, h: float, l: float, c: float, bar_ms: int,
+               exit_first: bool = False) -> Optional[dict]:
+        """Giudica una barra chiusa. `exit_first=True` e' solo per il LIVE: la seconda gamba parte sull'exchange
+        DOPO la candela (ordine a mercato), quindi se la candela chiude comunque la posizione quella gamba non e'
+        mai esistita e non si contabilizza. Con il valore predefinito (paper) l'ipotesi resta quella di sempre."""
         pos = self.positions.get(symbol)
         # Si giudicano le barre che FINISCONO dopo l'apertura, compresa quella in cui la posizione e' nata
         # (prima veniva saltata: per i primi minuti stop e TP non esistevano). Ogni barra una volta sola.
@@ -442,12 +453,16 @@ class PaperAccount:
         # seconda gamba dell'entrata diversificata. Se nella stessa barra tocca anche lo stop, il prezzo
         # ha attraversato prima il livello del ritracciamento (piu' vicino): la gamba si esegue e poi
         # scatta lo stop. E' l'ipotesi piu' sfavorevole, quella corretta per un test onesto.
+        # (Questo vale in PAPER. In LIVE, con exit_first, vale l'opposto: la gamba parte sull'exchange dopo la candela.)
         ps = pos.pending_split
         if ps:
             if t >= ps["expire_ms"]:
                 self._cancel_split(pos, "scaduta senza ritracciamento", end)
             elif (pos.side == 1 and l <= ps["trigger"]) or (pos.side == -1 and h >= ps["trigger"]):
-                self._fill_split(pos, end)
+                # LIVE (exit_first): l'uscita si valuta sui livelli della prima gamba, prima della mediazione;
+                # la gamba pendente la annulla _close con l'evento "posizione chiusa".
+                if not (exit_first and self._exit_touched(pos, h, l)):
+                    self._fill_split(pos, end)
         if pos.side == 1:
             if l <= pos.liq:
                 return self._close(pos, pos.liq, end, "liquidazione")

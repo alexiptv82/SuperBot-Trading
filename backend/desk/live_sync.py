@@ -31,21 +31,29 @@ def _noop(*_a, **_k) -> None:
 # ── istantanea / ripristino del conto (per tornare indietro se l'exchange rifiuta) ────────────
 
 def snapshot_position(acc, sym: str):
-    """Copia della posizione e della cassa prima di un'azione che potrebbe dover essere annullata."""
+    """Copia della posizione, della cassa e della lunghezza del registro eventi prima di un'azione che potrebbe
+    dover essere annullata: (posizione, cassa, numero di eventi)."""
     pos = acc.positions.get(sym)
-    return None if pos is None else (copy.deepcopy(pos), acc.cash)
+    return None if pos is None else (copy.deepcopy(pos), acc.cash, len(acc.events))
 
 
 def restore_position(acc, sym: str, snap) -> None:
-    """Rimette la posizione com'era nell'istantanea. Il cursore delle barre giudicate NON torna mai indietro:
-    se l'istantanea precede `on_bar`, la barra e' stata comunque giudicata una volta e non va rigiudicata."""
+    """Annulla gli effetti CONTABILI di un'azione rifiutata dall'exchange: posizione, cassa e gli eventi nati
+    DOPO l'istantanea (non devono finire nel registro ne' in Telegram). NON annulla cio' che il MERCATO ha fatto
+    vedere: il cursore delle barre giudicate e gli estremi toccati (px_hi/px_lo) restano, perche' la barra e'
+    stata comunque vista e non va rigiudicata. Il valore 0 di px_hi/px_lo significa "non tracciato" (stati
+    vecchi): non diventa mai un falso minimo."""
     if snap is not None:
         pos = snap[0]
         cur = acc.positions.get(sym)
         if cur is not None:
             pos.last_bar_ms = max(pos.last_bar_ms, cur.last_bar_ms)
+            if min(pos.px_hi, pos.px_lo, cur.px_hi, cur.px_lo) > 0:
+                pos.px_hi, pos.px_lo = max(pos.px_hi, cur.px_hi), min(pos.px_lo, cur.px_lo)
         acc.positions[sym] = pos
         acc.cash = snap[1]
+        if len(snap) > 2:
+            del acc.events[snap[2]:]
 
 
 def rollback_open(acc, pos) -> None:
