@@ -1,0 +1,37 @@
+name: SuperBot - Independent threshold audit (read only)
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/threshold-audit.trigger"]
+permissions:
+  contents: write
+concurrency:
+  group: threshold-audit-readonly
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aggregate diagnostics over verified SSH
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SG_SSH_KEY" > ~/.ssh/id_entry_audit
+          trap 'rm -f ~/.ssh/id_entry_audit' EXIT
+          awk '$1=="PUB" {print "51.79.205.82 " $3 " " $4}' deploy/sg-hardening-check-output.txt > ~/.ssh/known_hosts_entry_audit
+          test -s ~/.ssh/known_hosts_entry_audit
+          ssh -i ~/.ssh/id_entry_audit -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts_entry_audit" -o ConnectTimeout=30 root@51.79.205.82 'python3 -I -' < deploy/scripts/threshold_audit_readonly.py > deploy/threshold-audit-output.jsonl
+          python -c "import json,pathlib; rows=[json.loads(x) for x in pathlib.Path('deploy/threshold-audit-output.jsonl').read_text().splitlines()]; assert len(rows)==4"
+          git config user.name "SuperBot entry audit"
+          git config user.email "ci@superbot"
+          git add deploy/threshold-audit-output.jsonl
+          git commit -m "audit: aggregate entry restrictions [skip ci]"
+          for i in 1 2 3; do
+            if git pull --rebase origin rule-pool && git push origin HEAD:rule-pool; then exit 0; fi
+          done
+          exit 1
