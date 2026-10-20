@@ -89,9 +89,14 @@ class Position:
     legs: int = 1                # ingressi principali effettivamente eseguiti (2 con entrata diversificata)
     # ---- entrata diversificata: seconda gamba in attesa (None = nessuna)
     pending_split: Optional[dict] = None
+    # ---- barre gia' giudicate (orario di APERTURA dell'ultima barra elaborata; 0 = nessuna). Ogni barra si
+    # giudica UNA volta sola, con gli stop/TP in vigore in quel momento: un livello cambiato dopo (DCA,
+    # chiusura parziale) vale solo per le barre successive, mai per quelle gia' passate (difetto A). -1 = nessuna.
+    last_bar_ms: int = -1
 
 
-SPLIT_FIRST_FRAC = 0.5          # quota di margine della prima gamba
+LEGACY_BAR_MS = 900_000         # barra dei bot (15m): serve solo a caricare posizioni salvate prima di last_bar_ms
+SPLIT_FIRST_FRAC = 0.5         # quota di margine della prima gamba
 SPLIT_MIN_RETRACE = 0.0015      # sotto lo 0,15% la seconda gamba non ha senso: ingresso unico
 SPLIT_STOP_FRAC = 0.6           # il ritracciamento non supera il 60% della distanza dello stop
 SPLIT_TTL_MS = {"scalp": 3 * 3_600_000, "medio": 12 * 3_600_000}
@@ -229,6 +234,10 @@ class PaperAccount:
             return None, "prezzo non ancora sceso per DCA long"
         if pos.side == -1 and px <= pos.entry:
             return None, "prezzo non ancora salito per DCA short"
+        # lo stop non si allarga mai (difetto D): il DCA puo' solo tenerlo uguale o avvicinarlo
+        tight_sl = max(pos.sl, float(new_sl)) if pos.side == 1 else min(pos.sl, float(new_sl))
+        if (pos.side == 1 and tight_sl >= px) or (pos.side == -1 and tight_sl <= px):
+            return None, "stop gia' raggiunto: niente DCA"
         # calcola margine DCA
         fracs = [0.40, 0.25]  # frazioni del margine principale per DCA 1/2 (max 2 ingressi extra)
         dca_mar = round(pos.margin * fracs[pos.dca_count], 2)
@@ -253,7 +262,8 @@ class PaperAccount:
         pos.qty += new_qty
         pos.total_margin += dca_mar
         pos.fee_open += fee
-        pos.sl = float(new_sl)
+        widened = tight_sl != float(new_sl)
+        pos.sl = tight_sl
         if new_tp is not None:
             pos.tp = float(new_tp)
         # ricalcola liquidazione sul nuovo entry medio
@@ -262,7 +272,8 @@ class PaperAccount:
         pos.dca_levels.append({"margin": dca_mar, "entry": fill, "qty": new_qty,
                                 "fee": fee, "added_ms": now_ms, "trigger_pct": round(trigger_pct, 4)})
         pos.dca_count += 1
-        pos.reason = (pos.reason[:200] + f" | DCA{pos.dca_count} @{fill:.5g}: {reason[:80]}")[:300]
+        pos.reason = (pos.reason[:200] + f" | DCA{pos.dca_count} @{fill:.5g}"
+                      + (" (stop non allargato)" if widened else "") + f": {reason[:80]}")[:300]
         self.cash -= dca_mar + fee
         self._cancel_split(pos, "DCA eseguito", now_ms)   # un DCA sostituisce la seconda gamba
         return pos, "ok"
@@ -415,8 +426,11 @@ class PaperAccount:
 
     def on_bar(self, symbol: str, t: int, o: float, h: float, l: float, c: float, bar_ms: int) -> Optional[dict]:
         pos = self.positions.get(symbol)
-        if pos is None or t < pos.open_ms:
+        # Si giudicano le barre che FINISCONO dopo l'apertura, compresa quella in cui la posizione e' nata
+        # (prima veniva saltata: per i primi minuti stop e TP non esistevano). Ogni barra una volta sola.
+        if pos is None or t + bar_ms <= pos.open_ms or t <= pos.last_bar_ms:
             return None
+        pos.last_bar_ms = t
         end = t + bar_ms
         # estremi toccati dall'apertura (per MAE/MFE): prima dei controlli, cosi' includono la barra di uscita
         if pos.px_hi > 0 and pos.px_lo > 0:
@@ -465,5 +479,8 @@ class PaperAccount:
             v.setdefault("total_margin", v.get("margin", 0))
             v.setdefault("trade_type", "medio")
             v.setdefault("dca_count", 0)
+            # posizione salvata da una versione precedente: la barra d'apertura conta come gia' giudicata,
+            # cosi' al primo ciclo dopo l'aggiornamento non si riesamina nulla che prima veniva saltato
+            v.setdefault("last_bar_ms", int(v.get("open_ms", 0)) // LEGACY_BAR_MS * LEGACY_BAR_MS)
             a.positions[k] = Position(**v)
         return a

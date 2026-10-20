@@ -70,8 +70,12 @@ def test_dca_is_mirrored_and_exchange_stops_follow_the_engine():
     assert ok, detail
     assert abs(fake.leg("BTC", 1)["qty"] - acc.positions["BTC"].qty) <= 0.0004
     levels = {(p["planType"], p["triggerPrice"]) for p in fake.plans}
-    assert ("pos_loss", 57000.0) in levels and ("pos_profit", 64000.0) in levels
-    assert not any(t == "loss_plan" and v == pos.sl for t, v in levels)   # niente vecchio stop rimasto
+    # dal 20/10/2026 il DCA non allarga lo stop: resta quello del motore (piu' stretto di 57000)
+    sl = acc.positions["BTC"].sl
+    assert sl > 57000.0
+    assert ("pos_loss", sl) in levels and ("pos_profit", 64000.0) in levels
+    assert not any(v == 57000.0 for t, v in levels)                       # lo stop piu' largo non arriva mai
+    assert not any(t == "loss_plan" for t, v in levels)                  # niente vecchio stop di apertura
 
 
 def test_rejected_dca_restores_the_engine_exactly():

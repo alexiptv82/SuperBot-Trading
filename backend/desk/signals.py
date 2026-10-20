@@ -98,14 +98,41 @@ class Reading:
     trade_type: str = "medio"   # "scalp" se segnale su 15m/1h, "medio" se su 4h/1d
 
 
-def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None) -> Reading | None:
+DAILY_MIN_BARS = 200  # EMA50 contro EMA200 su barre 1d vere: con meno storia il trend 1d resta ASSENTE
+
+
+def closed_daily(rows, now_ms: int) -> np.ndarray:
+    """Barre giornaliere CHIUSE da righe BitGet [ts_apertura, o, h, l, c, vol].
+
+    Tiene solo una serie regolare: passo esatto di 1 giorno, nessun buco, nessun duplicato. La barra del
+    giorno in corso (ts + 1 giorno > now_ms) viene tolta. Qualunque anomalia -> array vuoto: il trend 1d
+    resta assente come prima, invece di essere calcolato su dati sbagliati."""
+    try:
+        arr = np.array([[float(x) for x in r[:6]] for r in rows], dtype=float)
+    except (TypeError, ValueError, IndexError):
+        return np.empty((0, 6))
+    if arr.ndim != 2 or len(arr) == 0 or not np.isfinite(arr).all():
+        return np.empty((0, 6))
+    arr = arr[np.argsort(arr[:, 0], kind="stable")]
+    arr = arr[arr[:, 0] + H1D <= now_ms]
+    if len(arr) == 0:
+        return np.empty((0, 6))
+    if len(arr) > 1 and not (np.diff(arr[:, 0]) == H1D).all():
+        return np.empty((0, 6))
+    return arr
+
+
+def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
+                daily: np.ndarray | None = None, price: float | None = None) -> Reading | None:
+    """`arr15`: barre 15m CHIUSE. `daily`: barre 1d chiuse (vedi `closed_daily`); senza, il 1d si ricava dalle
+    15m come prima (con ~10 giorni di storia resta assente). `price`: ultimo prezzo (barra in formazione)."""
     b1 = resample(arr15, H1)
     b4 = resample(arr15, H4)
-    b1d = resample(arr15, H1D)
+    b1d = daily if daily is not None and len(daily) >= DAILY_MIN_BARS else resample(arr15, H1D)
     if len(b1) < 60 or len(b4) < 60:
         return None
     c1, c4 = b1[:, 4], b4[:, 4]
-    price = float(arr15[-1, 4])
+    price = float(arr15[-1, 4]) if price is None else float(price)
     e20, e50 = ema(c1, 20)[-1], ema(c1, 50)[-1]
     e50_4, e200_4 = ema(c4, 50)[-1], ema(c4, min(200, len(c4) - 1))[-1]
     r1h = rsi(c1)
@@ -117,10 +144,12 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None) -> Re
     # --- timeframe 1d (contesto di lungo)
     daily_trend = 0
     daily_note = ""
-    if len(b1d) >= 30:
+    # Servono almeno DAILY_MIN_BARS giorni. Prima bastavano 30: con 30-49 barre EMA200 coincideva con EMA50 e
+    # il trend risultava sempre "bear" (difetto latente); con 50-199 si confrontavano due medie quasi uguali.
+    if len(b1d) >= DAILY_MIN_BARS:
         cd = b1d[:, 4]
-        e50d = ema(cd, min(50, len(cd) - 1))[-1]
-        e200d = ema(cd, min(200, len(cd) - 1))[-1] if len(cd) >= 50 else e50d
+        e50d = ema(cd, 50)[-1]
+        e200d = ema(cd, 200)[-1]
         r1d = rsi(cd)
         daily_trend = 1 if e50d > e200d else -1
         daily_note = f"trend 1d {'bull' if daily_trend == 1 else 'bear'}, RSI1d {r1d:.0f}"

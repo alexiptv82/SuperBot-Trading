@@ -1,0 +1,89 @@
+name: Turbo Scalp ombra - installazione (container separato, nessun ordine)
+
+# Installa SOLO il container "superbot-turbo". NON tocca superbot-desk-hawk/bull ne' superbot-sidecar e NON monta i
+# dati dei bot (il Turbo Scalp scarica solo candele pubbliche). Nessun segreto passa al container.
+# Parte solo quando cambia deploy/turbo-install.trigger con la riga "sha=<40 caratteri>" di un commit di rule-pool.
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/turbo-install.trigger"]
+permissions:
+  contents: read
+concurrency:
+  group: superbot-desk-singapore
+  cancel-in-progress: false
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Versione approvata
+        id: approved
+        run: |
+          set -e
+          WANT="$(grep -E '^sha=' deploy/turbo-install.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          printf '%s' "$WANT" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: serve sha= di 40 caratteri"; exit 1; }
+          git fetch -q origin rule-pool
+          git merge-base --is-ancestor "$WANT" origin/rule-pool || { echo "ERRORE: commit non in rule-pool"; exit 1; }
+          echo "sha=$WANT" >> "$GITHUB_OUTPUT"
+      - name: Installazione sul VPS
+        id: inst
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.0
+        env: {APPROVED_SHA: "${{ steps.approved.outputs.sha }}"}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: APPROVED_SHA
+          command_timeout: 20m
+          script: |
+            set -e
+            exec > >(tee /opt/superbot-turbo-install.log) 2>&1
+            printf '%s' "$APPROVED_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: sha"; exit 1; }
+            BOTS_BEFORE=$(docker ps --filter name=superbot-desk --format '{{.Names}} {{.ID}}' | sort)
+            if [ -d /opt/superbot-turbo-src/.git ]; then cd /opt/superbot-turbo-src && git fetch origin rule-pool
+            else git clone -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-turbo-src && cd /opt/superbot-turbo-src; fi
+            git cat-file -e "${APPROVED_SHA}^{commit}"; git reset --hard "$APPROVED_SHA"
+            test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
+            SHA12=$(printf '%s' "$APPROVED_SHA" | cut -c1-12)
+            docker build -t "superbot-sidecar:sha-${SHA12}" --label "superbot.sha=${APPROVED_SHA}" -f Dockerfile.sidecar .
+            mkdir -p /opt/superbot-turbo-data && chown 0:0 /opt/superbot-turbo-data && chmod 700 /opt/superbot-turbo-data
+            docker stop superbot-turbo 2>/dev/null || true; docker rm superbot-turbo 2>/dev/null || true
+            docker run -d --name superbot-turbo --restart unless-stopped --user 0:0 \
+              --read-only --tmpfs /tmp:size=16m --cap-drop ALL --security-opt no-new-privileges \
+              --memory 128m --cpus 0.25 --pids-limit 64 \
+              -e SIDECAR_BOTS=turbo -e TURBO_SHA="$APPROVED_SHA" \
+              -v /opt/superbot-turbo-data:/out \
+              "superbot-sidecar:sha-${SHA12}" python -m desk.turbo_scalp.runner --out-root /out
+            # Verifiche: un solo container turbo, battito recente (il primo ciclo parte subito), bot non toccati
+            sleep 60
+            test "$(docker ps --filter name=^superbot-turbo$ --filter status=running -q | wc -l)" = 1
+            python3 -I - <<'PY'
+            import json, sys, time
+            s = json.load(open("/opt/superbot-turbo-data/turbo/status.json"))
+            print("status", {k: s.get(k) for k in ("ts_ms", "mode", "applied", "symbols_ok", "errors", "algo")})
+            if time.time() * 1000 - s["ts_ms"] > 180000: sys.exit("ERRORE: stato non recente")
+            if s.get("applied") is not False or s.get("mode") != "ombra": sys.exit("ERRORE: non in ombra")
+            PY
+            BOTS_AFTER=$(docker ps --filter name=superbot-desk --format '{{.Names}} {{.ID}}' | sort)
+            test "$BOTS_BEFORE" = "$BOTS_AFTER" || { echo "ERRORE: i container dei bot sono cambiati"; exit 1; }
+            echo "$BOTS_AFTER"
+            echo "TURBO SCALP OMBRA INSTALLATO sul commit ${APPROVED_SHA}. Bot non toccati. Uscita: /opt/superbot-turbo-data/turbo"
+      - name: Esito (solo testo dello script, nessun segreto)
+        env: {SG_SSH_KEY: "${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}"}
+        run: |
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30 root@51.79.205.82 'tail -n 60 /opt/superbot-turbo-install.log 2>/dev/null' > /tmp/out.txt || echo "log non leggibile" > /tmp/out.txt
+          rm -f ~/.ssh/id_sg
+          MSG=$(sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' /tmp/out.txt | cut -c1-6000)
+          echo "::notice title=esito installazione turbo::${MSG}"
+      - name: Esito
+        if: steps.inst.outcome != 'success'
+        run: exit 1

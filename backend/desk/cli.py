@@ -126,13 +126,15 @@ SYSTEM = PORTFOLIO.system_prompt
 _ENTRY_SCORE_BASE = int(os.getenv("DESK_ENTRY_SCORE", "60"))
 
 # Tier A/B: BTC, ETH, XAU, XAG → soglia 60
-# Tier C: tutti gli altri altcoin → soglia 70
+# Tier C: tutti gli altri altcoin → soglia 65 (era 70; abbassata il 20/10/2026 su decisione dell'utente)
 _TIER_AB = {"BTC", "ETH", "XAU", "XAG"}
+TIER_AB_ENTRY_SCORE = 60
+TIER_C_ENTRY_SCORE = 65
 
 
 def tier_entry_score(symbol: str) -> int:
     """Restituisce la soglia di confidenza minima per aprire un trade su questo simbolo."""
-    return 60 if symbol.upper() in _TIER_AB else 70
+    return TIER_AB_ENTRY_SCORE if symbol.upper() in _TIER_AB else TIER_C_ENTRY_SCORE
 HOUR_MS = 3_600_000
 HALF_HOUR_MS = 1_800_000
 SCALP_REVIEW_MS = 900_000    # scalp revisionati ogni 15 minuti
@@ -359,6 +361,33 @@ def fetch_candles(symbol: str, bar: str = "15m", limit: int = 1000) -> list:
         return [[float(x) for x in row[:6]] for row in sorted(raw, key=lambda r: float(r[0]))]
     except Exception:
         return []
+
+
+BAR15_MS = 900_000
+DAILY_LIMIT = 260
+_DAILY_CACHE: dict = {}   # simbolo -> (giorno UTC dello scarico, barre 1d chiuse)
+
+
+def closed_bars(arr, now_ms: int, bar_ms: int = BAR15_MS):
+    """Solo barre CHIUSE: BitGet mette per ultima la barra ancora in formazione (massimo/minimo parziali).
+    Indicatori e controlli di stop/TP usano solo barre definitive (difetto B)."""
+    if arr is None or len(arr) == 0:
+        return arr
+    return arr[arr[:, 0] + bar_ms <= now_ms]
+
+
+def daily_bars(symbol: str, now_ms: int):
+    """Barre 1d chiuse per il trend di lungo (EMA50/EMA200 giornaliere). Un solo scarico per simbolo al giorno.
+    Se lo scarico fallisce o la serie non e' regolare il trend 1d resta assente, come prima della correzione."""
+    from desk.signals import closed_daily
+    day = int(now_ms) // 86_400_000
+    hit = _DAILY_CACHE.get(symbol)
+    if hit is not None and hit[0] == day:
+        return hit[1]
+    arr = closed_daily(fetch_candles(symbol, "1D", DAILY_LIMIT), now_ms)
+    if len(arr):
+        _DAILY_CACHE[symbol] = (day, arr)
+    return arr
 
 
 def load_state(path: str) -> dict:
@@ -632,6 +661,33 @@ def apply_claude_schedule(state: dict, now_ms: int, day: str) -> bool:
         return False
 
 
+def process_closed_bars(state: dict, acc, closed_map: dict, now_ms: int, bar_ms: int = BAR15_MS) -> None:
+    """Stop, liquidazioni, take profit e seconda gamba al ritracciamento sulle barre CHIUSE non ancora giudicate.
+    L'engine ricorda l'ultima barra elaborata per ogni posizione: ogni barra si giudica una volta sola, con i
+    livelli in vigore in quel momento."""
+    for sym, pos in list(acc.positions.items()):
+        arr = closed_map.get(sym)
+        if arr is None:
+            continue
+        for row in arr:
+            ts, o, h, l, c = int(row[0]), row[1], row[2], row[3], row[4]
+            # LIVE: con una seconda gamba in attesa la barra puo' farla scattare: serve poter tornare indietro
+            before = None
+            if LIVE._live and sym in acc.positions and acc.positions[sym].pending_split:
+                before = live_sync.snapshot_position(acc, sym)
+            result = acc.on_bar(sym, ts, o, h, l, c, bar_ms)
+            if LIVE._live:
+                note = live_sync.after_bar(LIVE, acc, sym, before, result, alert=notify_live_alert, now_ms=now_ms)
+                if note:
+                    print(f"[LIVE] {note}", flush=True)
+            if result:
+                print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
+                notify_close(sym, result["net"], result.get("why", ""), result["why"])
+                record_close(state, result)
+                break
+    flush_events(state, acc)
+
+
 def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     """Un ciclo di mercato.
 
@@ -643,7 +699,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     acc = make_account(state)
     day = time.strftime("%Y-%m-%d", time.gmtime(now_ms / 1000))
-    acc.roll_day(day, {})
     claude_ok = apply_claude_schedule(state, now_ms, day)
 
     # ── LIVE: stato dell'exchange a inizio ciclo (decide se si possono aprire nuove posizioni) ──
@@ -660,11 +715,23 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         write_heartbeat(state, force=False)   # il ciclo puo' durare un minuto: il bot resta "vivo"
 
     print(f"[DESK V2] candles ok: {len(candles_map)}/{len(SYMBOLS)} simboli", flush=True)
-    prices = get_prices(SYMBOLS, candles_map)
+    prices = get_prices(SYMBOLS, candles_map)   # ultimo prezzo: la barra in formazione serve solo a questo
+    closed_map = {s: closed_bars(a, now_ms) for s, a in candles_map.items()}
     # ultimi prezzi noti: la dashboard li usa come ripiego per il P&L live delle posizioni
     if prices:
         state["last_prices"] = {s: p for s, p in prices.items()}
         state["last_prices_ms"] = now_ms
+    # cambio di giorno con i prezzi veri: il P&L aperto entra nella base dello stop giornaliero (difetto C)
+    acc.roll_day(day, prices)
+
+    # In pausa (o fuori orario) non entra nulla di nuovo: nemmeno la seconda gamba di un'entrata diversificata.
+    early_why = drain_reason(now_ms)
+    if drain or early_why:
+        for s in list(acc.positions):
+            acc.cancel_split(s, "fuori dagli orari di trading" if early_why == "orari" else "bot in pausa", now_ms)
+    # Barre chiuse PRIMA delle decisioni (difetto A): stop, liquidazioni e TP scattati dall'ultimo ciclo si
+    # contano con i livelli che erano in vigore; le decisioni di questo ciclo valgono solo per le barre future.
+    process_closed_bars(state, acc, closed_map, now_ms)
     halt = acc.halted(prices)
     if halt:
         # Invia l'alert HALT una sola volta per sessione (evita loop di messaggi)
@@ -717,10 +784,14 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     readings_list = []
     readings_map: dict = {}
     for sym in SYMBOLS:
-        arr = candles_map.get(sym)
+        arr = closed_map.get(sym)
         if arr is None or len(arr) < 80:
             continue
-        r = read_symbol(sym, arr, now_ms)
+        try:
+            dly = daily_bars(sym, now_ms)
+        except Exception:
+            dly = None
+        r = read_symbol(sym, arr, now_ms, daily=dly, price=prices.get(sym))
         if r is not None:
             readings_list.append(r)
             readings_map[sym] = r
@@ -1072,29 +1143,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         for s in list(acc.positions):
             acc.cancel_split(s, why_txt, now_ms)
 
-    # ---- processa barre (stop, liq, tp automatici; seconda gamba al ritracciamento)
-    import numpy as np
-    for sym, pos in list(acc.positions.items()):
-        arr = candles_map.get(sym)
-        if arr is None:
-            continue
-        bar_ms = 900_000  # 15m
-        for row in arr:
-            ts, o, h, l, c = int(row[0]), row[1], row[2], row[3], row[4]
-            # LIVE: con una seconda gamba in attesa la barra puo' farla scattare: serve poter tornare indietro
-            before = None
-            if LIVE._live and sym in acc.positions and acc.positions[sym].pending_split:
-                before = live_sync.snapshot_position(acc, sym)
-            result = acc.on_bar(sym, ts, o, h, l, c, bar_ms)
-            if LIVE._live:
-                note = live_sync.after_bar(LIVE, acc, sym, before, result, alert=notify_live_alert, now_ms=now_ms)
-                if note:
-                    print(f"[LIVE] {note}", flush=True)
-            if result:
-                print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
-                notify_close(sym, result["net"], result.get("why", ""), result["why"])
-                record_close(state, result)
-                break
     flush_events(state, acc)
 
     # ── LIVE: riallinea il motore all'exchange (la verita') e aggiorna il blocco aperture ──────
@@ -1264,7 +1312,8 @@ def run_params() -> dict:
     p = PORTFOLIO
     return {
         "portfolio": p.name, "code_version": CODE_VERSION, "limits": asdict(p.limits),
-        "entry_score_base": _ENTRY_SCORE_BASE, "entry_score_tier_ab": 60, "entry_score_tier_c": 70,
+        "entry_score_base": _ENTRY_SCORE_BASE, "entry_score_tier_ab": TIER_AB_ENTRY_SCORE,
+        "entry_score_tier_c": TIER_C_ENTRY_SCORE,
         "guardrail": {"min_margin": p.guardrail_min_margin, "min_lev": p.guardrail_min_lev,
                       "margin_forced": p.guardrail_margin_forced, "lev_forced": p.guardrail_lev_forced,
                       "type_forced": p.guardrail_type_forced},
@@ -1607,7 +1656,7 @@ def main() -> None:
     _learning.STAMP["code_version"] = CODE_VERSION
     print(f"[DESK V2] avvio [{PORTFOLIO.name.upper()}] versione {CODE_VERSION} — {PORTFOLIO.description}")
     print(f"[DESK V2] simboli: {len(SYMBOLS)}  "
-          f"entry_score=60(TIER_AB)/70(TIER_C)  "
+          f"entry_score={TIER_AB_ENTRY_SCORE}(TIER_AB)/{TIER_C_ENTRY_SCORE}(TIER_C)  "
           f"daily_cap={DAILY_CAP}$  data={DATA_DIR}")
     ctl = {"next_cycle_ms": 0, "prev_paused": None}
     while True:

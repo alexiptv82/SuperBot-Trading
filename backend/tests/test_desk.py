@@ -172,14 +172,14 @@ def test_dca_adds_entry_and_updates_weighted_average():
     a = acct()
     p, _ = a.open("BTC", 1, 100, 5, 100.0, 95.0, None, 0, {}, trade_type="medio")
     assert p is not None
-    # prezzo scende a 97: DCA con nuovo SL a 94
+    # prezzo scende a 97: DCA con nuovo SL a 94 (piu' lontano: dal 20/10/2026 lo stop non si allarga, resta 95)
     prices = {"BTC": 97.0}
     new_sl = 94.0
     result, msg = a.add_dca("BTC", new_sl, None, BAR, prices, "test dca")
     assert result is not None, f"DCA fallito: {msg}"
     assert result.dca_count == 1
     assert result.entry < 100.0   # entry media deve essere tra 97 e 100
-    assert result.sl == new_sl
+    assert result.sl == 95.0
     assert result.total_margin > 100   # margine aumentato
 
 

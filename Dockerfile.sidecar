@@ -1,6 +1,8 @@
 # Osservatore "ombra" del Profit Manager: processo SEPARATO dai bot.
 # Solo libreria standard di Python. Nessuna chiave, nessuna porta aperta, nessun ordine.
 # Legge i dati dei bot in SOLA LETTURA (mount :ro) e scrive soltanto nella propria cartella.
+# La stessa immagine fa girare anche l'ombra Turbo Scalp (container separato):
+#   CMD python -m desk.turbo_scalp.runner --out-root /out, SIDECAR_BOTS=turbo, senza il mount dei dati dei bot.
 # Va avviato con: --read-only --cap-drop ALL --security-opt no-new-privileges, -v <dati>:/data:ro, -v <uscita>:/out
 FROM python:3.11-slim
 
@@ -10,6 +12,7 @@ ENV PYTHONPATH=/app/backend PYTHONUNBUFFERED=1 SIDECAR_OUT=/out SIDECAR_BOTS=haw
 COPY backend/desk/__init__.py ./backend/desk/__init__.py
 COPY backend/desk/profit ./backend/desk/profit
 COPY backend/desk/profit_sidecar ./backend/desk/profit_sidecar
+COPY backend/desk/turbo_scalp ./backend/desk/turbo_scalp
 
 HEALTHCHECK --interval=2m --timeout=15s --start-period=3m --retries=3 \
   CMD python -m desk.profit_sidecar.healthcheck

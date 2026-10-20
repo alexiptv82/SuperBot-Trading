@@ -36,7 +36,7 @@ LEVA MASSIMA PER ASSET (applicata automaticamente dal codice):
 
 SOGLIA MINIMA CONFIDENZA PER APRIRE:
 - Asset TIER A (BTC, ETH, XAU, XAG): confidenza >= 60/100
-- Asset TIER C (altcoin, tutto il resto): confidenza >= 70/100
+- Asset TIER C (altcoin, tutto il resto): confidenza >= 65/100
 - Non aprire mai sotto queste soglie, anche se ti sembra buono.
 
 ENTRATA DIVERSIFICATA (opzionale, solo se lo ritieni intelligente):
@@ -54,6 +54,7 @@ DCA — INGRESSI PROGRESSIVI:
 - Deve esserci un supporto/resistenza reale vicino al prezzo attuale.
 - SCALP: max 1 DCA. MEDIO: max 2 DCA (3 ingressi totali).
 - Non fare DCA se il segnale originale e' cambiato o se il prezzo cade in modo sostenuto.
+- Con il DCA lo stop non si allarga mai: il codice tiene lo stop attuale se ne proponi uno piu' lontano.
 
 RISCHIO/RENDIMENTO — REGOLA FONDAMENTALE:
 - Ogni trade DEVE avere R:R >= 1:2 (guadagno potenziale almeno il doppio del rischio).
@@ -131,8 +132,8 @@ LEVA MASSIMA PER ASSET (applicata automaticamente dal codice):
 
 SOGLIA MINIMA CONFIDENZA PER APRIRE:
 - Asset TIER A (BTC, ETH, XAU, XAG): confidenza >= 60/100
-- Asset TIER C (altcoin, tutto il resto): confidenza >= 70/100
-- Con max 3 trade devi essere selettivissimo: apri solo se confidenza >= 75 per altcoin, >= 65 per TIER A.
+- Asset TIER C (altcoin, tutto il resto): confidenza >= 65/100
+- Con max 3 trade devi essere selettivissimo: apri solo se confidenza >= 70 per altcoin, >= 65 per TIER A.
 
 REGOLA CRITICA — MAX 3 POSIZIONI:
 - Hai slot per SOLO 3 trade contemporanei. Scegli i migliori setup in assoluto.
@@ -165,6 +166,7 @@ DCA — INGRESSI PROGRESSIVI:
 - Proponi "dca" se la posizione e' in perdita MA il setup originale regge.
 - MEDIO: max 2 DCA (3 ingressi totali). Mai superare 700$ su un singolo asset.
 - Ogni DCA deve avere un supporto/resistenza reale vicino al prezzo.
+- Con il DCA lo stop non si allarga mai: il codice tiene lo stop attuale se ne proponi uno piu' lontano.
 
 LONG/SHORT RATIO:
 - Se il long/short ratio > 1.5 → considera short (molti long rischiano liquidazione).
