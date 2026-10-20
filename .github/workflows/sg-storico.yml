@@ -1,0 +1,83 @@
+name: SuperBot - Storico aperture contro mercato, giorno per giorno (sola lettura)
+
+# Solo lettura: dal registro di apprendimento dei due bot (giorni UTC) conta aperture, chiusure, candidati e
+# motivi di scarto; dalle candele giornaliere pubbliche di Bitget calcola quanto si e' mosso il mercato.
+# Non modifica niente, nessun segreto, nessun importo del conto. Esito in deploy/sg-storico-output.txt e come annotazione.
+permissions:
+  contents: write
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/sg-storico.trigger"]
+concurrency:
+  group: sg-storico
+  cancel-in-progress: false
+jobs:
+  storico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rule-pool
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Analisi (solo lettura)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          awk '$1=="PUB" {print "51.79.205.82 " $3 " " $4}' deploy/sg-hardening-check-output.txt > ~/.ssh/known_hosts_sg
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          OUT=deploy/sg-storico-output.txt
+          {
+            echo "### Storico aperture e mercato $(date -u +%FT%TZ)"
+            ssh $SSHO root@51.79.205.82 'python3 -I -' <<'PYEOF'
+          import collections, json, statistics, time, urllib.request
+          def day(ms): return time.strftime("%m-%d", time.gmtime(ms / 1000))
+          for b in ("hawk", "bull"):
+              per = collections.defaultdict(lambda: {"open": 0, "L": 0, "S": 0, "close": 0, "cand": 0, "st": collections.Counter(), "conf": []})
+              first = None
+              for line in open("/opt/superbot-desk-data/%s/learning_log.jsonl" % b, encoding="utf-8"):
+                  try: r = json.loads(line)
+                  except ValueError: continue
+                  ts = r.get("ts")
+                  if not isinstance(ts, (int, float)): continue
+                  first = ts if first is None else min(first, ts)
+                  p = per[day(ts)]; ev = r.get("ev")
+                  if ev == "open":
+                      p["open"] += 1; p["L" if r.get("side") == 1 else "S"] += 1
+                  elif ev == "close": p["close"] += 1
+                  elif ev == "candidate":
+                      p["cand"] += 1; p["st"][str(r.get("status")).split(":")[0]] += 1
+                      c = (r.get("features") or {}).get("conf")
+                      if str(r.get("status")).startswith("conf_bassa") and isinstance(c, (int, float)): p["conf"].append(c)
+              print("== %s (primo evento %s) ==" % (b.upper(), time.strftime("%m-%d %H:%M", time.gmtime(first / 1000)) if first else "-"))
+              print("giorno UTC: aperture(L/S) chiusure | candidati: stati | conf scartata: mediana / p90 / max")
+              for k in sorted(per):
+                  p = per[k]; c = sorted(p["conf"])
+                  cs = "%s/%s/%s" % (round(statistics.median(c), 1), round(c[int(len(c) * 0.9) - 1], 1) if len(c) > 1 else c[0], c[-1]) if c else "-"
+                  print("  %s: %3d(%d/%d) %3d | %4d: %s | %s" % (k, p["open"], p["L"], p["S"], p["close"], p["cand"], " ".join("%s=%d" % x for x in p["st"].most_common(4)), cs))
+          SY = ["BTC","ETH","BNB","XRP","SOL","ADA","DOGE","AVAX","DOT","LINK","UNI","ATOM","LTC","BCH","APT","ARB","OP","NEAR","FIL","INJ","SUI","TIA","RUNE","STX","XAU","XAG"]
+          D = collections.defaultdict(dict)
+          for s in SY:
+              try:
+                  req = urllib.request.Request("https://api.bitget.com/api/v2/mix/market/candles?symbol=%sUSDT&productType=USDT-FUTURES&granularity=1D&limit=20" % s, headers={"User-Agent": "Mozilla/5.0"})
+                  rows = sorted(json.loads(urllib.request.urlopen(req, timeout=10).read()).get("data", []), key=lambda q: float(q[0]))
+                  for i in range(1, len(rows)):
+                      D[day(float(rows[i][0]))][s] = (float(rows[i][4]) / float(rows[i - 1][4]) - 1) * 100
+              except Exception as e:
+                  print("  %s errore %s" % (s, str(e)[:50]))
+              time.sleep(0.05)
+          print("== MERCATO per giorno UTC: BTC ETH | mediana 26 | movimento medio assoluto | giu >2%% | su >2%% ==")
+          for k in sorted(D):
+              v = list(D[k].values())
+              if len(v) < 20: continue
+              print("  %s: BTC %+.1f ETH %+.1f | med %+.1f | |mov| %.1f | giu %d su %d (%d)" % (k, D[k].get("BTC", 0), D[k].get("ETH", 0), statistics.median(v), statistics.mean(abs(x) for x in v), sum(x < -2 for x in v), sum(x > 2 for x in v), len(v)))
+          PYEOF
+          } > "$OUT" 2>&1 || true
+          rm -f ~/.ssh/id_sg
+          MSG=$(sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' "$OUT" | cut -c1-9000)
+          echo "::notice title=esito storico::${MSG}"
+          git config user.name "storico"; git config user.email "noreply@users.noreply.github.com"
+          git add "$OUT"; git commit -q -m "Storico aperture e mercato (sola lettura)" || true
+          for i in 1 2 3; do git pull -q --rebase origin rule-pool && git push -q origin HEAD:rule-pool && break; sleep 3; done
