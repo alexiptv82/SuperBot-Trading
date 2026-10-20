@@ -81,6 +81,16 @@ def main():
         report['margin_total_limit_reached']=used>=limits.get('max_margin_total',1e99)
         report['minimum_margin_available']=min(limits.get('max_margin_trade',0),limits.get('max_margin_total',0)-used,account.get('cash',0)*.95)>=limits.get('min_margin',0)
         report['active_cooldowns']={str(window):sum(now-t<window for t in (state.get('last_open_ms') or {}).values() if isinstance(t,(int,float))) for window in (600000,3600000)}
+        statuses=collections.Counter()
+        with (root/'learning_log.jsonl').open() as stream:
+            for line in stream:
+                try: row=json.loads(line)
+                except ValueError: continue
+                if row.get('ev')=='candidate' and row.get('ts',0)>=run_start:
+                    reason=str(row.get('status','')).split(':',1)[-1]
+                    known={"troppe posizioni aperte","margine disponibile troppo basso","stop troppo lontano (liquidazione verrebbe prima)","cassa insufficiente","capitale sotto la soglia minima","stop giornaliero raggiunto","stop loss obbligatorio","stop dal lato sbagliato","posizione gia' aperta su questa coppia"}
+                    if str(row.get('status','')).startswith('rifiutata:'): statuses[reason if reason in known else 'other_redacted']+=1
+        report['account_rejection_reasons']=dict(statuses)
         report['since_run_start']=count_events(root/'learning_log.jsonl',run_start,now+1)
         report['daily_utc']={}
         for day in range(12,21):
@@ -497,7 +507,7 @@ def measure_main():
         side='long' if c['side']==1 else 'short'; typ=f.get('dec_type','unknown')
         row=dict(lab,day=time.strftime('%Y-%m-%d',time.gmtime(c['ts']/1000)))
         ambiguous+=lab['ambiguous']
-        for key in ('ALL',c['band'],'bot:'+c['bot'],'regime:'+regime,'side:'+side,'type:'+typ,'cross:'+regime+'/'+side+'/'+typ): groups[key].append(row)
+        for key in ('ALL',c['band'],'score:'+('60-64' if f.get('conf',0)<65 else '65-69'),'bot:'+c['bot'],'regime:'+regime,'side:'+side,'type:'+typ,'cross:'+regime+'/'+side+'/'+typ): groups[key].append(row)
     longs={}
     for bot,evs in events.items():
         per=collections.defaultdict(list)
@@ -519,6 +529,6 @@ def measure_main():
             v=real.setdefault(key,dict(r=0,final=False,day=time.strftime('%Y-%m-%d',time.gmtime(e.get('ts',0)/1000)),side=e.get('side')))
             v['r']+=e['net_r']; v['final'] |= not e.get('partial',False)
     complete=[v for v in real.values() if v['final']]
-    print(json.dumps(dict(kind='threshold_measurement',asof_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_sha256=hashes,bad_rows=bad,raw_target_counts=dict(coverage),deduped=len(uniq),excluded=dict(excluded),ambiguous_sl_first=ambiguous,groups={k:stats(v) for k,v in groups.items()},long_scores_oct18=longs,executed_complete=stats(complete),executed_to_oct15=stats([v for v in complete if v['day']<='2026-10-15']),executed_excluded=dict(realexcluded),method='delayed first-next-15m-open; fixed SL/TP; fee6bp/side slip2bp/side long funding1bp/8h; no DCA/trailing/AI/split; horizons6h/24h; regime BTC trailing24h +/-1% known at decision; dedup4h per bot/run/symbol/side/status; day-cluster bootstrap1500; not portfolio P&L',candle_counts={s:len(v) for s,v in candles.items()}),sort_keys=True))
+    print(json.dumps(dict(kind='threshold_measurement',asof_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_sha256=hashes,bad_rows=bad,raw_target_counts=dict(coverage),deduped=len(uniq),excluded=dict(excluded),ambiguous_sl_first=ambiguous,groups={k:stats(v) for k,v in groups.items()},long_scores_oct18=longs,executed_complete=stats(complete),executed_to_oct15=stats([v for v in complete if v['day']<='2026-10-15']),executed_excluded=dict(realexcluded),executed_sides_to_oct15={str(s):sum(v['side']==s for v in complete if v['day']<='2026-10-15') for s in (1,-1)},method='delayed first-next-15m-open; fixed SL/TP; fee6bp/side slip2bp/side long funding1bp/8h; no DCA/trailing/AI/split; horizons6h/24h; regime BTC trailing24h +/-1% known at decision; dedup4h per bot/run/symbol/side/status; day-cluster bootstrap1500; not portfolio P&L',candle_counts={s:len(v) for s,v in candles.items()}),sort_keys=True))
 
 measure_main()

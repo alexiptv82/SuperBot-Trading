@@ -1,1 +1,1 @@
-2026-10-20 read-only retry: assembled script future-import corrected
+2026-10-20 read-only: classify account refusal and threshold subgroups
