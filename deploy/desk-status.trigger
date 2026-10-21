@@ -1,1 +1,1 @@
-2026-10-19T04:13:00Z vps-attivo-test-finale
+2026-10-21T03:12:08Z verifica dopo deploy b6b9911 (sola lettura)
