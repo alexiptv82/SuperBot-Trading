@@ -345,3 +345,115 @@ def test_real_stop_loss_exit_bar_is_included_for_floor_rules():
     res = R.run_stop_rule(t, bars, 1.0, 0)
     assert res is not None and res[1] == bars[j][0] + B           # il pavimento, piu' vicino dello stop, scatta nella stessa barra
     assert res[0] > R.exit_net(t, 99.0, t["close_ms"])            # e salva piu' dello stop iniziale
+
+
+# ------------------------------------------------------------------ parziale a +N R: confronto con il motore
+
+def _path(seed, side):
+    rnd = random.Random(seed * 11 + (1 if side == 1 else 2))
+    px, closes = 100.0, [100.0]
+    drift = rnd.choice([0.0, 0.0008, 0.0015, -0.0004])
+    for _ in range(60):
+        px *= 1 + drift + rnd.gauss(0, 0.0035)
+        closes.append(px)
+    closes += [closes[-1] * (1 - side * 0.03)] * 3             # chiude con un crollo: l'uscita "vera" c'e' sempre
+    return bars_from(closes, spread=0.0008)
+
+
+def _engine_unmanaged(side, bars, open_i):
+    acc = PaperAccount(Limits())
+    px = bars[open_i][4]
+    pos, _ = acc.open("BTCUSDT", side, 100.0, 10, px, px * (1 - side * 0.012), None, bars[open_i][0] + 60_000, {})
+    for k in range(open_i, len(bars)):
+        rec = acc.on_bar("BTCUSDT", *bars[k], B)
+        if rec:
+            return rec
+    return None
+
+
+@pytest.mark.parametrize("seed", range(30))
+@pytest.mark.parametrize("side", [1, -1])
+@pytest.mark.parametrize("be_rest", [False, True])
+def test_partial_matches_engine_partial_close(seed, side, be_rest):
+    bars, open_i, level_r, frac = _path(seed, side), 4, 1.0, 0.5
+    rec0 = _engine_unmanaged(side, bars, open_i)
+    if rec0 is None:
+        pytest.skip("nessuna uscita")
+    # il trade "vero" e' quello senza gestione
+    t = trade_dict(side=side, entry=rec0["entry"], margin=rec0["margin"], lev=rec0["leverage"], r_dist=rec0["r_dist"],
+                   open_ms=rec0["open_ms"], close_ms=rec0["close_ms"], why=rec0["why"], net=rec0["net"])
+    t["qty"] = t["margin"] * t["lev"] / t["entry"]
+    limit = R.decision_limit_ms(t)
+    # stesso trade gestito nel motore: parziale a +level_r R poi (opzionale) stop a pareggio+costi sul resto
+    acc = PaperAccount(Limits())
+    px = bars[open_i][4]
+    pos, _ = acc.open("BTCUSDT", side, 100.0, 10, px, px * (1 - side * 0.012), None, bars[open_i][0] + 60_000, {})
+    level = pos.entry + side * level_r * pos.entry * pos.r_dist
+    be = pos.entry + side * pos.entry * (2 * R.FEE_BP + 2 * R.SLIP_BP) / 1e4
+    part = None
+    total = None
+    for k in range(open_i, len(bars)):
+        ts, o, h, l, c = bars[k]
+        end = ts + B
+        rec = acc.on_bar("BTCUSDT", ts, o, h, l, c, B)
+        if rec is not None:
+            total = rec["net"] + (part["net"] if part else 0.0)
+            break
+        if part is None and k > open_i and end <= limit and ((h >= level) if side == 1 else (l <= level)):
+            part = acc.partial_close("BTCUSDT", level, end, frac)
+            if be_rest:
+                p = acc.positions["BTCUSDT"]
+                p.sl = max(p.sl, be) if side == 1 else min(p.sl, be)
+    res = R.run_partial(t, bars, level_r, frac, be_rest)
+    if part is None:
+        assert res is None
+    else:
+        assert res is not None
+        assert res[0] == pytest.approx(total, abs=2e-3)
+        assert res[1] == part["close_ms"]
+
+
+def test_partial_never_triggers_in_or_after_real_exit_bar_and_skips_entry_bar():
+    bars = _flat_bars(14)
+    bars[3][2] = 105.0                                            # barra d'ingresso con massimo +5% precedente
+    j = 9
+    bars[j] = [bars[j][0], 100.0, 103.0, 99.0, 99.0]              # la barra d'uscita (stop) tocca anche +1R
+    t = trade_dict(side=1, entry=100.0, r_dist=0.01, open_ms=bars[3][0] + 14 * 60_000, close_ms=bars[j][0] + B,
+                   why="stop loss", net=-12.0)
+    assert R.run_partial(t, bars, 1.0, 0.5, True) is None
+
+
+def test_partial_breakeven_floor_applies_from_the_next_bar_only():
+    bars = _flat_bars(16)
+    m = 5
+    bars[m] = [bars[m][0], 100.0, 101.5, 99.8, 101.0]             # tocca +1R (101) e scende sotto il pareggio nella STESSA barra
+    for k in range(6, 12):
+        bars[k] = [bars[k][0], 101.0, 101.3, 100.8, 101.0]        # poi resta sopra il pareggio
+    j = 12
+    bars[j] = [bars[j][0], 101.0, 101.0, 98.0, 98.5]              # l'uscita vera (stop) crolla
+    t = trade_dict(side=1, entry=100.0, r_dist=0.01, open_ms=bars[2][0] + 60_000, close_ms=bars[j][0] + B,
+                   why="stop loss", net=-15.0)
+    net, ts, why = R.run_partial(t, bars, 1.0, 0.5, True)
+    assert ts == bars[m][0] + B                                   # il parziale e' nella barra m
+    assert why == "parziale+pareggio"
+    assert bars[j][0] + B == ts + (j - m) * B                     # il pareggio colpisce solo alla barra del crollo (j), non in m
+    # con pareggio sul resto: il resto esce alla barra j al pareggio+costi, non nella barra m
+    part = R._scaled(t, 0.5)
+    rest = R._scaled(t, 0.5)
+    be = 100.0 + 100.0 * (2 * R.FEE_BP + 2 * R.SLIP_BP) / 1e4
+    assert net == pytest.approx(R.exit_net(part, 101.0, ts) + R.stop_net(rest, be, bars[j][1], bars[j][0] + B))
+
+
+def test_take_profit_exit_bar_convention_engine_vs_favourable():
+    bars = _flat_bars(14)
+    bars[4] = [bars[4][0], 100.0, 102.0, 100.0, 102.0]            # arma il pavimento (pareggio ~100.16)
+    for k in (5, 6, 7):
+        bars[k] = [bars[k][0], 102.0, 102.5, 101.5, 102.0]
+    j = 8
+    bars[j] = [bars[j][0], 102.0, 104.0, 100.0, 103.5]            # barra del take profit: il minimo tocca anche il pavimento
+    t = trade_dict(side=1, entry=100.0, r_dist=0.01, open_ms=bars[2][0] + 60_000, close_ms=bars[j][0] + B,
+                   why="take profit", net=30.0)
+    eng = R.run_stop_rule(t, bars, 1.0, 0)                        # convenzione dell'engine: lo stop prevale sul TP
+    fav = R.run_stop_rule(t, bars, 1.0, 0, tp_bar=False)          # ipotesi favorevole alla regola: barra esclusa
+    assert eng is not None and eng[1] == bars[j][0] + B and eng[0] < t["net"]
+    assert fav is None

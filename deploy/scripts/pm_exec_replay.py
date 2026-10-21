@@ -164,7 +164,7 @@ def decision_limit_ms(t):
 
 # ------------------------------------------------------------------ regole a pavimento di prezzo
 
-def run_stop_rule(t, bars, arm_r, give_r):
+def run_stop_rule(t, bars, arm_r, give_r, tp_bar=True):
     """Pavimento sul prezzo, in unita' di R (R = distanza dello stop iniziale). Quando il massimo favorevole (barre CHIUSE
     dopo l'ingresso) raggiunge `arm_r`, il pavimento sale a pareggio+costi; con `give_r` non nullo insegue il massimo a
     distanza give_r x R (mai sotto pareggio+costi). Un livello nuovo vale dalla barra dopo. Ritorna (netto, ms uscita,
@@ -173,7 +173,9 @@ def run_stop_rule(t, bars, arm_r, give_r):
     rd = entry * t["r_dist"]
     cost = entry * (2 * FEE_BP + 2 * SLIP_BP) / 1e4           # costo andata e ritorno in prezzo
     be = entry + side * cost
-    last_end = t["close_ms"] if t["why"] in BAR_EXITS else decision_limit_ms(t)
+    # barra d'uscita vera: inclusa per lo stop loss (il pavimento scatta prima o insieme); per il take profit dipende da
+    # `tp_bar`: True = convenzione dell'engine (lo stop prevale), False = ipotesi favorevole alla regola (barra esclusa)
+    last_end = t["close_ms"] if (t["why"] == "stop loss" or (t["why"] == "take profit" and tp_bar)) else decision_limit_ms(t)
     floor, best = None, None
     for ts, o, h, l, c in bars:
         end = ts + BAR_MS
@@ -193,6 +195,41 @@ def run_stop_rule(t, bars, arm_r, give_r):
                 cand = max(be, best - give_r * rd) if side == 1 else min(be, best + give_r * rd)
             floor = cand if floor is None else (max(floor, cand) if side == 1 else min(floor, cand))
     return None
+
+
+# ------------------------------------------------------------------ chiusura parziale a +N R (+ pareggio sul resto)
+
+def _scaled(t, frac):
+    return dict(t, margin=t["margin"] * frac, qty=t["qty"] * frac)
+
+
+def run_partial(t, bars, level_r, frac, be_rest):
+    """Ordine limite che chiude la frazione `frac` quando il prezzo tocca +level_r R (fill al livello con le regole
+    dell'engine). Con `be_rest` il resto ha da quel momento un pavimento a pareggio+costi (vale dalla barra dopo).
+    Il resto, se il pavimento non scatta prima, finisce come l'uscita vera (il netto e' proporzionale alla quantita').
+    Ritorna (netto totale, ms della prima azione, motivo) solo se il parziale e' scattato PRIMA dell'uscita vera."""
+    side, entry = t["side"], t["entry"]
+    level = entry + side * level_r * entry * t["r_dist"]
+    be = entry + side * entry * (2 * FEE_BP + 2 * SLIP_BP) / 1e4
+    part, rest = _scaled(t, frac), _scaled(t, 1.0 - frac)
+    limit = decision_limit_ms(t)                                   # il parziale solo in barre che finiscono prima dell'uscita vera
+    part_end = None
+    for ts, o, h, l, c in bars:
+        end = ts + BAR_MS
+        if end <= t["open_ms"]:
+            continue
+        if end > t["close_ms"]:
+            break
+        if part_end is None:
+            if end > limit or ts <= t["open_ms"] < end:            # barra d'ingresso: estremi in parte precedenti
+                continue
+            if (h >= level) if side == 1 else (l <= level):
+                part_end = end
+        elif be_rest and (l <= be if side == 1 else h >= be):
+            return exit_net(part, level, part_end) + stop_net(rest, be, o, end), part_end, "parziale+pareggio"
+    if part_end is None:
+        return None
+    return exit_net(part, level, part_end) + (1.0 - frac) * t["net"], part_end, "parziale"
 
 
 # ------------------------------------------------------------------ regole di ChatGPT (desk.profit) a barra chiusa
@@ -274,6 +311,13 @@ def evaluate_policy(trades, bars_by_trade, runner):
     return rows, errors
 
 
+def halves(rows):
+    """Differenza (regola - vero) nella prima e nella seconda meta' dei trade, in ordine di chiusura: e' stabile?"""
+    rs = sorted(rows, key=lambda r: r["t"]["close_ms"])
+    h = len(rs) // 2
+    return sum(r["delta"] for r in rs[:h]), sum(r["delta"] for r in rs[h:])
+
+
 def summarize(rows, errors=0):
     n = len(rows)
     if not n:
@@ -289,10 +333,39 @@ def summarize(rows, errors=0):
     wins_b = sum(1 for r in rows if r["t"]["net"] > 0)
     wins_a = sum(1 for r in rows if r["alt"] > 0)
     return ("n=%d | vero %+.0f$ -> regola %+.0f$ (diff %+.0f$) | scatta %d: meglio %d (%+.0f$), peggio %d (%+.0f$; di cui %d erano vincenti) | "
-            "vincenti %d%% -> %d%% | persi dopo +1R: %d, girati in utile %d%s" % (
+            "vincenti %d%% -> %d%% | meta' %+.0f$/%+.0f$ | persi dopo +1R: %d, girati in utile %d%s" % (
                 n, base, alt, alt - base, len(ch), len(up), sum(r["delta"] for r in up), len(dn),
-                sum(r["delta"] for r in dn), len(cut_w), round(100 * wins_b / n), round(100 * wins_a / n), len(gb), gb_fix,
+                sum(r["delta"] for r in dn), len(cut_w), round(100 * wins_b / n), round(100 * wins_a / n), halves(rows)[0], halves(rows)[1], len(gb), gb_fix,
                 (" | errori %d" % errors) if errors else ""))
+
+
+def r_multiple(t, px):
+    return t["side"] * (px - t["entry"]) / (t["entry"] * t["r_dist"])
+
+
+def distribution(trades):
+    """Dove si trovano i profitti: quanti trade toccano +1R e come finiscono (per tipo di uscita)."""
+    out = []
+    reached = [t for t in trades if t["mfe_r"] >= 1.0]
+    out.append("toccano +1R: %d di %d" % (len(reached), len(trades)))
+    for lab, grp in (("take profit", [t for t in reached if t["why"] == "take profit"]),
+                     ("stop loss", [t for t in reached if t["why"] == "stop loss"]),
+                     ("chiusura Claude/manuale", [t for t in reached if t["why"] not in BAR_EXITS])):
+        if grp:
+            out.append("  finiti con %s: %d, netto %+.0f$ (medio %+.1f$)" % (lab, len(grp), sum(t["net"] for t in grp),
+                                                                              sum(t["net"] for t in grp) / len(grp)))
+    tps = sorted(r_multiple(t, t["exit"]) for t in trades if t["why"] == "take profit")
+    sls = sorted(r_multiple(t, t["exit"]) for t in trades if t["why"] == "stop loss")
+    q = lambda a, p: a[min(len(a) - 1, int(p * len(a)))]
+    if tps:
+        out.append("take profit in R: min %.2f mediana %.2f max %.2f (n=%d)" % (tps[0], q(tps, .5), tps[-1], len(tps)))
+    if sls:
+        out.append("stop loss in R: min %.2f mediana %.2f max %.2f (n=%d)" % (sls[0], q(sls, .5), sls[-1], len(sls)))
+    lost = [t for t in trades if t["net"] < 0 and t["mfe_r"] >= 1.0]
+    if lost:
+        out.append("persi dopo +1R: %d, netto %+.0f$ (se fossero usciti a pareggio: %+.0f$)" % (
+            len(lost), sum(t["net"] for t in lost), sum(exit_net(t, t["entry"], t["close_ms"]) for t in lost)))
+    return out
 
 
 def build_runners(bot):
@@ -309,6 +382,12 @@ def build_runners(bot):
     for arm, give in ((0.75, 0), (1.0, 0), (1.5, 0), (1.0, 0.75), (1.0, 1.0), (1.5, 1.0), (1.5, 0.75), (2.0, 1.0), (2.0, 1.5)):
         lab = "pareggio dopo +%gR" % arm if not give else "insegue %gR dopo +%gR" % (give, arm)
         runners["stop: " + lab] = (lambda t, b, a=arm, g=give: run_stop_rule(t, b, a, g))
+    for arm, give in ((1.0, 0), (1.0, 0.75), (0.75, 0)):
+        lab = "pareggio dopo +%gR" % arm if not give else "insegue %gR dopo +%gR" % (give, arm)
+        runners["stop (barra TP esclusa): " + lab] = (lambda t, b, a=arm, g=give: run_stop_rule(t, b, a, g, False))
+    for lvl, frac, be in ((1.0, 0.5, False), (1.0, 0.5, True), (1.0, 0.33, True), (0.75, 0.5, True), (1.5, 0.5, True)):
+        runners["parziale %d%% a +%gR%s" % (round(frac * 100), lvl, " + pareggio sul resto" if be else "")] = (
+            lambda t, b, l=lvl, f=frac, e=be: run_partial(t, b, l, f, e))
     return runners
 
 
@@ -357,6 +436,8 @@ def main(argv=None):
         runnable = [t for t in trades if id(t) in bars_by]
         why = collections.Counter(t["why"] for t in runnable)
         print("uscite vere: %s" % dict(why.most_common(6)), flush=True)
+        for line in distribution(runnable):
+            print(line, flush=True)
         print("BASE (uscita vera): n=%d netto %+.0f$ vincenti %d%% | persi dopo +1R: %d" % (
             len(runnable), sum(t["net"] for t in runnable),
             round(100 * sum(1 for t in runnable if t["net"] > 0) / max(1, len(runnable))),
