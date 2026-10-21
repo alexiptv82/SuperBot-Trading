@@ -1,8 +1,19 @@
 # STATO di SuperBot Trading
 
-## 21/10/2026 — Claude riprende il lavoro su richiesta di Alessandro
+## 21/10/2026 ~22:00 — Claude: daily_stop 10% + 4 fix integrità replay
 
-ChatGPT consegna e interrompe l'implementazione concorrente. Codice pronto per review: `work/research-integrity` @ `b229963`. Solo preparazione di ricerca: nessun nuovo risultato economico, nessun merge, trigger o deploy. Passaggio completo, limiti e sequenza dei lavori in `diario/2026-10-21_chatgpt.md`, sezione «Passaggio operativo da ChatGPT a Claude». Prima completare l'integrità del replay, poi dati verificati e misura regime/lato; A/B stagionalità consegnata misura solo punteggi. PM resta in ombra. Lo stato del VPS non è stato ricontrollato. Questo aggiornamento sostituisce la precedente assegnazione del lavoro a ChatGPT.
+**Decisioni utente applicate:**
+- `daily_stop` abbassato da 12% a 10% (Hawk + Bull). Commit `9e14a25` su `work/director-claude`. Redeploy in attesa di "via".
+- Redeploy `880c4a4` (1d trend su 26 coin, attesa di "via") ancora in coda.
+
+**Ricerca — integrità replay completata:**
+Ripresi da b229963 (ChatGPT) e completati i 4 fix aperti: (1) snapshot immutabile + JSON invalidi conteggiati; (2) tolleranza riconciliazione 0.05$ non 0.50$; (3) MFE intrabar dichiarato upper bound; (4) workflow exit code propagato. Commit `701e840` su `work/director-claude`. Test: 184 passed, 44 skipped. Nessun merge in rule-pool, nessun trigger.
+
+**Prossimi passi (sequenza ChatGPT step 3-6):**
+3. Copia PAPER verificata con hash (senza dati grezzi nel repo).
+4. R per regime (down/flat/up) e lato (long/short) sui trade eseguiti.
+5. A/B stagionalità sui punteggi registrati (seasonality_audit.py pronto).
+6. Replay economico controllato delle varianti.
 
 ## 21/10/2026 17:31 — ChatGPT: preparazione ricerca, nessun deploy
 
