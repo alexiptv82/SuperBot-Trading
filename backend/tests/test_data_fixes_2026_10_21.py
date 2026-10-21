@@ -76,6 +76,11 @@ def day_start(ms):
 
 
 _REAL_FETCH = cli.fetch_daily_history      # l'originale: i test lo ripassano con un opener finto
+NOSLEEP = lambda s: None                    # noqa: E731  (nei test non si aspetta davvero)
+
+
+def fetch(sym, now_ms, opener):
+    return cli.fetch_daily_history(sym, now_ms, opener=opener, sleep=NOSLEEP)
 
 
 # ---------------------------------------------------------------- trend 1d: scarico a finestre
@@ -90,7 +95,7 @@ def test_history_gives_a_regular_series_of_at_least_200_closed_bars():
             for newest in (False, True):
                 log = []
                 op = make_history_opener(400, today, inc_s, inc_e, newest, log=log)
-                rows = cli.fetch_daily_history("SOL", NOW, opener=op)
+                rows = fetch("SOL", NOW, op)
                 arr = signals.closed_daily(rows, NOW)
                 assert len(log) == cli.DAILY_WINDOWS == 4
                 assert len(arr) >= signals.DAILY_MIN_BARS, (inc_s, inc_e, newest, len(arr))
@@ -99,7 +104,7 @@ def test_history_gives_a_regular_series_of_at_least_200_closed_bars():
 
 def test_history_windows_are_never_wider_than_85_days():
     log = []
-    cli.fetch_daily_history("BTC", NOW, opener=make_history_opener(400, day_start(NOW), log=log))
+    fetch("BTC", NOW, make_history_opener(400, day_start(NOW), log=log))
     assert log and all(end - start <= 85 * DAY for start, end in log)
     # la prima finestra arriva fino a domani (compreso il giorno in corso), le altre scendono senza buchi
     assert log[0][1] == day_start(NOW) + DAY
@@ -110,7 +115,7 @@ def test_history_windows_are_never_wider_than_85_days():
 def test_history_young_coin_stops_early_and_stays_short():
     log = []
     op = make_history_opener(120, day_start(NOW), log=log)
-    rows = cli.fetch_daily_history("NEWCOIN", NOW, opener=op)
+    rows = fetch("NEWCOIN", NOW, op)
     assert 100 <= len(rows) <= 121 and len(log) == 3          # la terza finestra e' vuota: si smette di scendere
     assert len(signals.closed_daily(rows, NOW)) < signals.DAILY_MIN_BARS     # il trend 1d resta assente
 
@@ -126,7 +131,7 @@ def test_history_bad_answers_raise():
         raise urllib.error.HTTPError(req.full_url, 429, "Too Many", {}, io.BytesIO(b""))
     for op in (bad, junk, http):
         try:
-            cli.fetch_daily_history("BTC", NOW, opener=op)
+            fetch("BTC", NOW, op)
         except Exception:
             continue
         raise AssertionError("una risposta sbagliata non deve diventare una serie vuota silenziosa")
@@ -134,7 +139,7 @@ def test_history_bad_answers_raise():
 
 def test_history_gap_inside_series_means_trend_absent():
     today = day_start(NOW)
-    rows = cli.fetch_daily_history("SOL", NOW, opener=make_history_opener(400, today))
+    rows = fetch("SOL", NOW, make_history_opener(400, today))
     holed = rows[:150] + rows[151:]
     assert len(signals.closed_daily(holed, NOW)) == 0
 
@@ -145,18 +150,24 @@ class _DailyEnv:
     def __enter__(self):
         self.env = os.environ.get("DESK_DAILY_FETCH")
         self.orig = cli.fetch_daily_history
+        self.sleep = cli._daily_sleep
         os.environ["DESK_DAILY_FETCH"] = "1"
-        cli._DAILY_CACHE.clear()
-        cli._DAILY_PAUSE["until_ms"] = 0
-        cli._DAILY_CYCLE.update(now_ms=None, t0=0.0)
+        cli._daily_sleep = NOSLEEP
+        self.reset()
         return self
+
+    @staticmethod
+    def reset():
+        cli._DAILY_CACHE.clear()
+        cli._DAILY_FAILED.clear()
+        cli._DAILY_PAUSE.update(until_ms=0, streak=0)
+        cli._DAILY_CYCLE.update(now_ms=None, t0=0.0)
 
     def __exit__(self, *a):
         cli.fetch_daily_history = self.orig
+        cli._daily_sleep = self.sleep
         os.environ["DESK_DAILY_FETCH"] = self.env
-        cli._DAILY_CACHE.clear()
-        cli._DAILY_PAUSE["until_ms"] = 0
-        cli._DAILY_CYCLE.update(now_ms=None, t0=0.0)
+        self.reset()
 
 
 def test_daily_bars_env_guard_never_downloads():
@@ -171,22 +182,165 @@ def test_daily_bars_env_guard_never_downloads():
         os.environ["DESK_DAILY_FETCH"] = env
 
 
-def test_daily_bars_failure_pauses_all_downloads_for_five_minutes():
+def test_daily_bars_one_failing_symbol_does_not_stop_the_others():
     calls = []
     with _DailyEnv():
-        def boom(sym, now_ms, **kw):
+        good = make_history_opener(400, day_start(NOW))
+
+        def fake(sym, now_ms, **kw):
             calls.append(sym)
+            if sym == "BAD":
+                raise OSError("rete")
+            return _REAL_FETCH(sym, now_ms, opener=good, sleep=NOSLEEP)
+        cli.fetch_daily_history = fake
+        assert len(cli.daily_bars("BAD", NOW)) == 0
+        assert len(cli.daily_bars("ETH", NOW + 1000)) >= 200                  # un solo errore: gli altri vanno avanti
+        assert len(cli.daily_bars("BAD", NOW + 2000)) == 0 and calls == ["BAD", "ETH"]   # BAD non si insiste per 5 minuti
+        assert len(cli.daily_bars("BAD", NOW + cli.DAILY_PAUSE_MS + 1)) == 0
+        assert calls == ["BAD", "ETH", "BAD"]                                 # passati 5 minuti si riprova
+
+
+def test_daily_bars_three_failures_in_a_row_pause_everything_and_success_resets_the_count():
+    calls = []
+    with _DailyEnv():
+        good = make_history_opener(400, day_start(NOW))
+
+        def fake(sym, now_ms, **kw):
+            calls.append(sym)
+            if sym.startswith("BAD"):
+                raise OSError("rete")
+            return _REAL_FETCH(sym, now_ms, opener=good, sleep=NOSLEEP)
+        cli.fetch_daily_history = fake
+        cli.daily_bars("BAD1", NOW)
+        cli.daily_bars("BAD2", NOW)
+        cli.daily_bars("OK", NOW)                                             # un successo azzera la serie di errori
+        assert cli._DAILY_PAUSE["streak"] == 0
+        cli.daily_bars("BAD3", NOW)
+        cli.daily_bars("BAD4", NOW)
+        assert cli._DAILY_PAUSE["until_ms"] == 0
+        cli.daily_bars("BAD5", NOW)                                           # terzo errore di fila: stop a tutti
+        assert cli._DAILY_PAUSE["until_ms"] == NOW + cli.DAILY_PAUSE_MS
+        n = len(calls)
+        assert len(cli.daily_bars("ETH", NOW + 1000)) == 0 and len(calls) == n
+        assert len(cli.daily_bars("ETH", NOW + cli.DAILY_PAUSE_MS)) >= 200
+
+
+def test_daily_bars_falls_back_to_yesterdays_series_when_the_refresh_fails():
+    with _DailyEnv():
+        good = make_history_opener(400, day_start(NOW))
+        cli.fetch_daily_history = lambda sym, now_ms, **kw: _REAL_FETCH(sym, now_ms, opener=good, sleep=NOSLEEP)
+        yesterday = cli.daily_bars("SOL", NOW)
+        assert len(yesterday) >= 200
+
+        def boom(sym, now_ms, **kw):
             raise OSError("rete")
         cli.fetch_daily_history = boom
-        assert len(cli.daily_bars("SOL", NOW)) == 0
-        assert len(cli.daily_bars("ETH", NOW + 1000)) == 0           # in pausa: niente nuova chiamata
-        assert calls == ["SOL"]
-        assert len(cli.daily_bars("ETH", NOW + cli.DAILY_PAUSE_MS - 1)) == 0 and calls == ["SOL"]
+        tomorrow = NOW + DAY
+        got = cli.daily_bars("SOL", tomorrow)                                  # l'indomani il rinnovo fallisce
+        assert len(got) == len(yesterday) and (got == yesterday).all()
+        too_old = NOW + (cli.DAILY_STALE_DAYS + 1) * DAY
+        cli._DAILY_FAILED.clear()
+        assert len(cli.daily_bars("SOL", too_old)) == 0                        # oltre i giorni ammessi non vale piu'
+
+
+def test_daily_bars_budget_returns_yesterdays_series_for_deferred_symbols():
+    clock = {"t": 1000.0}
+    real_mono = cli.time.monotonic
+    with _DailyEnv():
         good = make_history_opener(400, day_start(NOW))
-        cli.fetch_daily_history = lambda sym, now_ms, **kw: calls.append(sym) or _REAL_FETCH(sym, now_ms, opener=good)
-        later = NOW + cli.DAILY_PAUSE_MS
-        assert len(cli.daily_bars("ETH", later)) >= signals.DAILY_MIN_BARS
-        assert calls == ["SOL", "ETH"]
+        cli.fetch_daily_history = lambda sym, now_ms, **kw: _REAL_FETCH(sym, now_ms, opener=good, sleep=NOSLEEP)
+        cli.daily_bars("C", NOW)                                               # serie di "ieri"
+        cli.time.monotonic = lambda: clock["t"]
+        try:
+            nxt = NOW + DAY
+            cli.daily_bars("A", nxt)                                           # apre il ciclo e parte il cronometro
+            clock["t"] += cli.DAILY_CYCLE_BUDGET_S + 1
+            assert len(cli.daily_bars("C", nxt)) >= 200                        # budget finito: resta quella di ieri
+            assert "C" in cli._DAILY_CACHE and cli._DAILY_CACHE["C"][0] == day_start(NOW) // DAY
+        finally:
+            cli.time.monotonic = real_mono
+
+
+def test_fetch_retries_on_429_then_gives_up_and_never_retries_other_errors():
+    waits = []
+    ok = make_history_opener(400, day_start(NOW))
+
+    def flaky(n_fail, code=429):
+        state = {"n": 0}
+
+        def op(req, timeout=10):
+            state["n"] += 1
+            if state["n"] <= n_fail:
+                raise urllib.error.HTTPError(req.full_url, code, "x", {}, io.BytesIO(b"{}"))
+            return ok(req, timeout)
+        op.state = state
+        return op
+    rec = lambda w: waits.append(w)                                                # noqa: E731
+    op = flaky(2)
+    rows = cli.fetch_daily_history("SOL", NOW, opener=op, sleep=rec)
+    assert len(signals.closed_daily(rows, NOW)) >= 200
+    assert waits[:2] == [2.0, 4.0]                                                 # attese crescenti dopo i due 429
+    # tre 429 di fila sulla stessa finestra: si arrende
+    waits.clear()
+    op = flaky(99)
+    try:
+        cli.fetch_daily_history("SOL", NOW, opener=op, sleep=rec)
+        raise AssertionError("doveva sollevare")
+    except urllib.error.HTTPError as e:
+        assert e.code == 429 and op.state["n"] == 3 and waits == [2.0, 4.0]
+    # un errore diverso (500) non si ritenta
+    waits.clear()
+    op = flaky(99, code=500)
+    try:
+        cli.fetch_daily_history("SOL", NOW, opener=op, sleep=rec)
+        raise AssertionError("doveva sollevare")
+    except urllib.error.HTTPError as e:
+        assert e.code == 500 and op.state["n"] == 1 and waits == []
+
+
+def test_fetch_429_in_the_body_is_retried_too():
+    state = {"n": 0}
+    ok = make_history_opener(400, day_start(NOW))
+
+    def op(req, timeout=10):
+        state["n"] += 1
+        if state["n"] == 1:
+            return _Resp('{"code":"429","msg":"Too Many Requests","data":null}')
+        return ok(req, timeout)
+    rows = cli.fetch_daily_history("SOL", NOW, opener=op, sleep=NOSLEEP)
+    assert len(signals.closed_daily(rows, NOW)) >= 200
+
+
+def test_fetch_pauses_between_calls_to_stay_under_the_rate_limit():
+    waits = []
+    cli.fetch_daily_history("SOL", NOW, opener=make_history_opener(400, day_start(NOW)), sleep=waits.append)
+    assert waits == [cli.DAILY_CALL_GAP_S] * (cli.DAILY_WINDOWS - 1)
+
+
+def test_warm_up_loads_every_symbol_without_time_limit_and_retries_the_failed_ones():
+    calls = []
+    clock = {"t": 1000.0}
+    real_mono = cli.time.monotonic
+    with _DailyEnv():
+        good = make_history_opener(400, day_start(NOW))
+        fails = {"B": 1}
+
+        def fake(sym, now_ms, **kw):
+            calls.append(sym)
+            clock["t"] += 50.0                                                     # ogni simbolo costa 50 s
+            if fails.get(sym, 0) > 0:
+                fails[sym] -= 1
+                raise OSError("rete")
+            return _REAL_FETCH(sym, now_ms, opener=good, sleep=NOSLEEP)
+        cli.fetch_daily_history = fake
+        cli.time.monotonic = lambda: clock["t"]
+        try:
+            n = cli.warm_daily_cache(["A", "B", "C", "D"], NOW)
+        finally:
+            cli.time.monotonic = real_mono
+        assert n == 4, "tutti pronti: B dopo la seconda passata"
+        assert calls == ["A", "B", "C", "D", "B"]                                  # nessun tetto di tempo, B ritentato
+        assert cli.warm_daily_cache(["A", "B", "C", "D"], NOW) == 4 and len(calls) == 5   # niente di nuovo da scaricare
 
 
 def test_daily_bars_caches_short_series_for_the_day():
@@ -223,14 +377,14 @@ def test_daily_bars_cycle_budget_defers_remaining_symbols_to_next_cycle():
 
         def fetch(sym, now_ms, **kw):
             calls.append(sym)
-            clock["t"] += 40.0                                        # ogni scarico costa 40 s
+            clock["t"] += 50.0                                        # ogni scarico costa 50 s
             return _REAL_FETCH(sym, now_ms, opener=good)
         cli.fetch_daily_history = fetch
         cli.time.monotonic = lambda: clock["t"]
         try:
-            assert len(cli.daily_bars("A", NOW)) >= 200               # 40 s spesi
-            assert len(cli.daily_bars("B", NOW)) >= 200               # a 40 s si parte ancora (limite 60)
-            assert len(cli.daily_bars("C", NOW)) == 0                 # 80 s: budget finito, C aspetta
+            assert len(cli.daily_bars("A", NOW)) >= 200               # 50 s spesi
+            assert len(cli.daily_bars("B", NOW)) >= 200               # a 50 s si parte ancora (limite 90)
+            assert len(cli.daily_bars("C", NOW)) == 0                 # 100 s: budget finito, C aspetta
             assert calls == ["A", "B"]
             nxt = NOW + 15 * 60_000                                   # ciclo successivo: il tempo riparte
             assert len(cli.daily_bars("C", nxt)) >= 200
@@ -493,3 +647,37 @@ def test_portfolio_reset_keeps_the_oi_history():
             assert state["oi_hist"] == {"BTC": [[NOW, 5.0]]}
     finally:
         cli.DATA_DIR, cli.STATE_FILE = saved
+
+
+def test_main_warms_the_daily_cache_before_the_first_cycle_and_survives_its_failure():
+    order = []
+    saved = (cli.warm_daily_cache, cli.loop_step, cli.DATA_DIR, cli.STATE_FILE, sys.argv[:])
+
+    def stop(state, ctl):
+        order.append("ciclo")
+        raise SystemExit(0)
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            cli.DATA_DIR = d
+            cli.STATE_FILE = os.path.join(d, "state_v2.json")
+            sys.argv = ["cli"]
+            cli.loop_step = stop
+            cli.warm_daily_cache = lambda syms, now: order.append("caldo") or 26
+            try:
+                cli.main()
+            except SystemExit:
+                pass
+            assert order == ["caldo", "ciclo"], order
+            order.clear()
+
+            def broken(syms, now):
+                order.append("caldo")
+                raise RuntimeError("rete")
+            cli.warm_daily_cache = broken
+            try:
+                cli.main()
+            except SystemExit:
+                pass
+            assert order == ["caldo", "ciclo"], "un guasto del precaricamento non deve fermare l'avvio"
+    finally:
+        cli.warm_daily_cache, cli.loop_step, cli.DATA_DIR, cli.STATE_FILE, sys.argv[:] = saved

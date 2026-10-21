@@ -18,6 +18,7 @@ import os
 import sys
 import time
 import traceback
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Optional
@@ -380,29 +381,55 @@ DAY_MS = 86_400_000
 # ma rifiuta finestre larghe (HTTP 400 a 200 giorni): 4 finestre da 85 giorni = 340 giorni.
 DAILY_WINDOW_DAYS = 85
 DAILY_WINDOWS = 4
-DAILY_PAUSE_MS = 300_000           # dopo uno scarico fallito (rete) si smette di insistere per 5 minuti
-DAILY_CYCLE_BUDGET_S = 60.0        # tempo massimo per ciclo speso a scaricare barre giornaliere
+DAILY_CALL_GAP_S = 0.4             # pausa tra una chiamata e l'altra: Bitget risponde 429 (troppe richieste) se si corre
+DAILY_RETRY_WAITS_S = (2.0, 4.0)   # dopo un 429 si aspetta e si riprova (provato dal vivo il 21/10: 4 simboli su 26 davano 429)
+DAILY_PAUSE_MS = 300_000           # dopo uno scarico fallito per un simbolo non si insiste per 5 minuti
+DAILY_STREAK_PAUSE = 3             # 3 simboli di fila falliti = rete in difficolta': stop a tutti per 5 minuti
+DAILY_STALE_DAYS = 3               # se non si riesce a riscaricare, la serie di ieri vale ancora (EMA50/200 non cambiano)
+DAILY_CYCLE_BUDGET_S = 90.0        # tempo massimo per ciclo speso a scaricare barre giornaliere
 _DAILY_CACHE: dict = {}   # simbolo -> (giorno UTC dello scarico, barre 1d chiuse; anche vuote: serie corta o irregolare)
-_DAILY_PAUSE = {"until_ms": 0}
+_DAILY_FAILED: dict = {}  # simbolo -> ms fino a cui non si riprova
+_DAILY_PAUSE = {"until_ms": 0, "streak": 0}
 _DAILY_CYCLE = {"now_ms": None, "t0": 0.0}
+_daily_sleep = time.sleep
 
 
-def fetch_daily_history(symbol: str, now_ms: int, opener=urllib.request.urlopen) -> list:
+def _fetch_daily_window(url: str, opener, sleep) -> dict:
+    """Una finestra: con HTTP 429 aspetta e riprova (DAILY_RETRY_WAITS_S), poi solleva. Altri errori: subito."""
+    for wait in DAILY_RETRY_WAITS_S + (None,):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with opener(req, timeout=10) as r:
+                d = json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or wait is None:
+                raise
+            sleep(wait)
+            continue
+        if isinstance(d, dict) and str(d.get("code")) == "429" and wait is not None:
+            sleep(wait)
+            continue
+        return d
+    raise ValueError("troppe richieste (429)")
+
+
+def fetch_daily_history(symbol: str, now_ms: int, opener=urllib.request.urlopen, sleep=None) -> list:
     """Righe grezze [ts, o, h, l, c, vol] dei ~340 giorni piu' recenti (compreso il giorno in corso, che
     `closed_daily` toglie). Solleva se la rete o il formato non vanno: chi chiama decide cosa fare.
     Le finestre si sovrappongono di un giorno e i doppioni si tolgono: nessun buco al confine."""
+    sleep = sleep or _daily_sleep
     sym = symbol.upper()
     if not sym.endswith("USDT"):
         sym += "USDT"
     rows: dict = {}
     end = (int(now_ms) // DAY_MS + 1) * DAY_MS
-    for _ in range(DAILY_WINDOWS):
+    for k in range(DAILY_WINDOWS):
+        if k:
+            sleep(DAILY_CALL_GAP_S)
         start = end - DAILY_WINDOW_DAYS * DAY_MS
         url = (f"{BITGET_BASE}/api/v2/mix/market/history-candles?symbol={sym}&productType=USDT-FUTURES"
                f"&granularity=1D&startTime={start}&endTime={end}&limit=200")
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with opener(req, timeout=10) as r:
-            d = json.loads(r.read())
+        d = _fetch_daily_window(url, opener, sleep)
         if not isinstance(d, dict) or d.get("code") != "00000" or not isinstance(d.get("data"), list):
             raise ValueError("risposta 1d rifiutata")
         if not d["data"]:
@@ -421,10 +448,11 @@ def closed_bars(arr, now_ms: int, bar_ms: int = BAR15_MS):
     return arr[arr[:, 0] + bar_ms <= now_ms]
 
 
-def daily_bars(symbol: str, now_ms: int):
+def daily_bars(symbol: str, now_ms: int, budget: bool = True):
     """Barre 1d chiuse per il trend di lungo (EMA50/EMA200 giornaliere). Un solo scarico per simbolo al giorno.
-    Se lo scarico fallisce o la serie non e' regolare il trend 1d resta assente, come prima della correzione.
-    Una serie corta (moneta giovane) o irregolare si ricorda per il giorno: niente scarichi ripetuti a ogni ciclo."""
+    Se lo scarico non riesce (rete, limite di richieste, tempo del ciclo finito) vale la serie di ieri (al massimo
+    DAILY_STALE_DAYS giorni): il trend 1d non sparisce e non salta a mezzanotte. Senza nessuna serie il trend 1d resta
+    assente, come prima della correzione. Una serie corta (moneta giovane) o irregolare si ricorda per il giorno."""
     import numpy as np
     from desk.signals import closed_daily
     empty = np.empty((0, 6))
@@ -434,21 +462,47 @@ def daily_bars(symbol: str, now_ms: int):
     hit = _DAILY_CACHE.get(symbol)
     if hit is not None and hit[0] == day:
         return hit[1]
-    if now_ms < _DAILY_PAUSE["until_ms"]:
-        return empty                                  # rete in difficolta': si riprova tra poco
+    stale = hit[1] if hit is not None and day - hit[0] <= DAILY_STALE_DAYS else empty
+    if now_ms < _DAILY_PAUSE["until_ms"] or now_ms < _DAILY_FAILED.get(symbol, 0):
+        return stale                                  # rete in difficolta' o simbolo appena fallito: si riprova tra poco
     if _DAILY_CYCLE["now_ms"] != now_ms:              # nuovo ciclo: il tempo a disposizione riparte
         _DAILY_CYCLE.update(now_ms=now_ms, t0=time.monotonic())
-    if time.monotonic() - _DAILY_CYCLE["t0"] > DAILY_CYCLE_BUDGET_S:
-        return empty                                  # budget del ciclo finito: i simboli restanti al prossimo ciclo
+    if budget and time.monotonic() - _DAILY_CYCLE["t0"] > DAILY_CYCLE_BUDGET_S:
+        return stale                                  # budget del ciclo finito: i simboli restanti al prossimo ciclo
     try:
         arr = closed_daily(fetch_daily_history(symbol, now_ms), now_ms)
     except Exception as e:
-        _DAILY_PAUSE["until_ms"] = int(now_ms) + DAILY_PAUSE_MS
-        print(f"[DAILY] scarico 1d {symbol} fallito ({type(e).__name__}): trend 1d assente, riprovo tra 5 minuti",
-              flush=True)
-        return empty
+        code = getattr(e, "code", "")
+        _DAILY_FAILED[symbol] = int(now_ms) + DAILY_PAUSE_MS
+        _DAILY_PAUSE["streak"] += 1
+        if _DAILY_PAUSE["streak"] >= DAILY_STREAK_PAUSE:
+            _DAILY_PAUSE["until_ms"] = int(now_ms) + DAILY_PAUSE_MS
+        print(f"[DAILY] scarico 1d {symbol} fallito ({type(e).__name__} {code}): "
+              f"{'uso la serie di ieri' if len(stale) else 'trend 1d assente'}, riprovo tra 5 minuti", flush=True)
+        return stale
+    _DAILY_PAUSE["streak"] = 0
     _DAILY_CACHE[symbol] = (day, arr)
     return arr
+
+
+def warm_daily_cache(symbols, now_ms: int) -> int:
+    """All'avvio, prima del primo ciclo: scarica le barre 1d di tutti i simboli SENZA tetto di tempo (circa 1-2 minuti),
+    cosi' il primo ciclo ha il trend 1d completo e non a pezzi. Seconda passata per chi ha dato errore. Ritorna quanti
+    simboli hanno una serie lunga abbastanza per il trend (>= DAILY_MIN_BARS barre)."""
+    from desk.signals import DAILY_MIN_BARS
+    for passo in range(2):
+        for sym in symbols:
+            h = _DAILY_CACHE.get(sym)
+            if h is None or h[0] != int(now_ms) // DAY_MS:
+                daily_bars(sym, now_ms, budget=False)
+        if all((_DAILY_CACHE.get(s) or (None,))[0] == int(now_ms) // DAY_MS for s in symbols):
+            break
+        _daily_sleep(3.0)
+        _DAILY_FAILED.clear()
+        _DAILY_PAUSE.update(until_ms=0, streak=0)
+    n = sum(1 for s in symbols if _DAILY_CACHE.get(s) and len(_DAILY_CACHE[s][1]) >= DAILY_MIN_BARS)
+    print(f"[DAILY] barre 1d pronte: {n}/{len(symbols)} simboli con almeno {DAILY_MIN_BARS} barre", flush=True)
+    return n
 
 
 def load_state(path: str) -> dict:
@@ -1796,6 +1850,10 @@ def main() -> None:
           f"entry_score={TIER_AB_ENTRY_SCORE}(TIER_AB)/{TIER_C_ENTRY_SCORE}(TIER_C)  "
           f"daily_cap={DAILY_CAP}$  data={DATA_DIR}")
     ctl = {"next_cycle_ms": 0, "prev_paused": None}
+    try:      # il trend 1d completo gia' al primo ciclo; se non riesce il bot parte lo stesso (trend 1d assente)
+        warm_daily_cache(SYMBOLS, int(time.time() * 1000))
+    except Exception:
+        traceback.print_exc()
     while True:
         try:
             loop_step(state, ctl)
