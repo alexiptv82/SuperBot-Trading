@@ -1,1 +1,1 @@
-2026-10-21T03:56:37Z controllo dell'utente ~50 min dopo il deploy b6b9911 (sola lettura)
+2026-10-21T06:15:56Z controllo dopo il deploy fa3e220 (sola lettura)
