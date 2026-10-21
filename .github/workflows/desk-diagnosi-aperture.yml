@@ -1,0 +1,173 @@
+name: Sala segnali - diagnosi aperture, punteggi e soglie (sola lettura)
+
+# Legge soltanto il registro di apprendimento dei bot e le candele pubbliche. Confronta i primi giorni (12-14/10) con
+# le ultime 24 ore: aperture, chiamate a Claude, candidati scartati per confidenza (quanti punti mancavano) e quanti
+# trade in piu' darebbe ogni soglia. Poi legge il mercato ADESSO con il codice dei bot in esecuzione, comprese le barre
+# giornaliere vere (il controllo "desk-attivita" non le usa ed e' fermo alle vecchie soglie).
+# NON scrive nulla, NON riavvia nulla, NON apre ordini, NON cambia nessuna soglia.
+# Parte SOLO quando cambia deploy/desk-diagnosi-aperture.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-diagnosi-aperture.trigger"
+
+jobs:
+  diagnosi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Analisi
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          # Impronta ECDSA del server Singapore: se cambia, la connessione viene rifiutata.
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          command_timeout: 240s
+          script: |
+            OUT=/tmp/superbot_diagnosi.txt
+            : > $OUT
+            for P in hawk bull; do
+              python3 -I - /opt/superbot-desk-data/$P $P >> $OUT 2>&1 <<'PYEOF' || echo "($P: analisi non riuscita)" >> $OUT
+            import collections, json, os, sys, time
+            d, name = sys.argv[1], sys.argv[2]
+            AB = {"BTC", "ETH", "XAU", "XAG"}
+            now = time.time() * 1000
+            def uday(ms):
+                return time.strftime("%d/%m", time.gmtime(ms / 1000))
+            rows = []
+            for line in open(os.path.join(d, "learning_log.jsonl"), encoding="utf-8"):
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    pass
+            rows = [r for r in rows if isinstance(r.get("ts"), (int, float))]
+            print("=== %s: %d righe, dal %s al %s (giorni UTC)" % (name.upper(), len(rows), uday(min(r["ts"] for r in rows)), uday(max(r["ts"] for r in rows))))
+            # A) per giorno: aperture, chiamate a Claude, candidati per stato
+            per = collections.defaultdict(lambda: {"open": 0, "src": collections.Counter(), "cok": 0, "cko": 0, "cand": 0, "st": collections.Counter(), "cyc": set()})
+            fails = collections.Counter()
+            for r in rows:
+                k = uday(r["ts"]); p = per[k]; ev = r.get("ev")
+                if ev == "open":
+                    p["open"] += 1; p["src"][str(r.get("source", "?"))] += 1
+                elif ev == "claude_call":
+                    if r.get("ok"):
+                        p["cok"] += 1
+                    else:
+                        p["cko"] += 1; fails[str(r.get("fail_reason"))[:30]] += 1
+                elif ev == "candidate":
+                    p["cand"] += 1; p["cyc"].add(r["ts"] // 600000); p["st"][str(r.get("status")).split(":")[0]] += 1
+            print("A) giorno UTC | aperture (da chi) | chiamate Claude ok/ko | candidati (cicli) | stati")
+            for k in sorted(per, key=lambda s: (s[3:5], s[0:2])):
+                p = per[k]
+                print("  %s | open %2d %s | claude %d/%d | cand %3d (%d cicli) | %s" % (k, p["open"], dict(p["src"]), p["cok"], p["cko"], p["cand"], len(p["cyc"]),
+                      " ".join("%s=%d" % kv for kv in p["st"].most_common(4))))
+            if fails:
+                print("   motivi chiamate Claude fallite:", dict(fails.most_common(4)))
+            # B) quanti punti mancavano ai candidati scartati per confidenza (soglia: 60 BTC/ETH/XAU/XAG, 63 gli altri)
+            def hist(sel):
+                h = collections.Counter()
+                for r in rows:
+                    if r.get("ev") == "candidate" and str(r.get("status")).startswith("conf_bassa") and sel(r):
+                        c = (r.get("features") or {}).get("conf")
+                        if isinstance(c, (int, float)):
+                            h[int(c)] += 1
+                return h
+            first = lambda r: uday(r["ts"]) in ("12/10", "13/10", "14/10")
+            last24 = lambda r: r["ts"] > now - 86400000
+            print("B) confidenza dei candidati scartati (conf: quanti righe-ciclo)")
+            for lab, sel in (("primi giorni 12-14/10", first), ("ultime 24h", last24)):
+                h = hist(sel)
+                print("  %-22s %s" % (lab, " ".join("%d:%d" % (c, h[c]) for c in sorted(h)) or "-"))
+            # C) episodi distinti (stessa moneta e lato nella stessa ora) scartati per soli 1-3 punti: sono i trade in piu' con soglia 60 per tutti
+            def episodes(sel, lo, hi, tier):
+                ep = set()
+                for r in rows:
+                    if r.get("ev") != "candidate" or not str(r.get("status")).startswith("conf_bassa") or not sel(r):
+                        continue
+                    s = r.get("symbol"); c = (r.get("features") or {}).get("conf")
+                    if not isinstance(c, (int, float)) or (s in AB) != tier or not (lo <= c < hi):
+                        continue
+                    ep.add((s, r.get("side"), int(r["ts"] // 3600000)))
+                return ep
+            print("C) trade in piu' se la soglia delle altcoin scendesse da 63 a 60 (episodi distinti, stessa moneta/lato/ora)")
+            for lab, sel in (("primi giorni 12-14/10", first), ("ultime 24h", last24)):
+                ep = episodes(sel, 60, 63, False)
+                lg = sum(1 for e in ep if e[1] == 1)
+                print("  %-22s altcoin con conf 60-62: %d episodi (long %d, short %d) su %d monete" % (lab, len(ep), lg, len(ep) - lg, len({e[0] for e in ep})))
+            for lab, sel in (("primi giorni 12-14/10", first), ("ultime 24h", last24)):
+                ep = episodes(sel, 63, 70, False)
+                print("  %-22s altcoin con conf 63-69 scartate comunque: %d episodi" % (lab, len(ep)))
+            # D) stati delle ultime 24h, per esteso
+            st = collections.Counter(str(r.get("status")) for r in rows if r.get("ev") == "candidate" and r["ts"] > now - 86400000)
+            print("D) candidati ultime 24h per stato:", dict(st.most_common(8)))
+            PYEOF
+            done
+            echo "=== E) MERCATO ADESSO con il codice dei bot (barre giornaliere vere) ===" >> $OUT
+            docker exec -i superbot-desk-hawk python - >> $OUT 2>&1 <<'PYEOF' || echo "(lettura mercato non riuscita)" >> $OUT
+            import json, time, urllib.request
+            import numpy as np
+            from desk.signals import read_symbol, closed_daily
+            SY = ["BTC","ETH","BNB","XRP","SOL","ADA","DOGE","AVAX","DOT","LINK","UNI","ATOM","LTC","BCH","APT","ARB","OP","NEAR","FIL","INJ","SUI","TIA","RUNE","STX","XAU","XAG"]
+            AB = {"BTC","ETH","XAU","XAG"}
+            def fetch(sym, gran, limit):
+                url = "https://api.bitget.com/api/v2/mix/market/candles?symbol=%sUSDT&productType=USDT-FUTURES&granularity=%s&limit=%d" % (sym, gran, limit)
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    dd = json.loads(r.read())
+                return [[float(x) for x in row[:6]] for row in sorted(dd.get("data", []), key=lambda q: float(q[0]))]
+            now = int(time.time() * 1000)
+            res = []
+            for s in SY:
+                try:
+                    a = np.array(fetch(s, "15m", 1000))
+                    a = a[a[:, 0] + 900000 <= now]
+                    dly = closed_daily(fetch(s, "1D", 260), now)
+                    r1 = read_symbol(s, a, now, daily=dly, price=float(a[-1, 4]))
+                    r0 = read_symbol(s, a, now, price=float(a[-1, 4]))
+                    if r1 is not None:
+                        res.append((r1, r0, len(dly)))
+                except Exception as e:
+                    print("  %s errore %s" % (s, str(e)[:60]))
+                time.sleep(0.05)
+            res.sort(key=lambda t: -t[0].score)
+            n1d = sum(1 for r1, r0, n in res if r1.facts.get("daily_trend"))
+            print("simboli letti %d | con trend 1d attivo (>=200 barre giornaliere): %d" % (len(res), n1d))
+            sc1 = [r1.score for r1, r0, n in res]; sc0 = [r0.score for r1, r0, n in res]
+            print("punteggio medio: con trend 1d %.1f | senza (come prima del 21/10) %.1f" % (sum(sc1) / len(sc1), sum(sc0) / len(sc0)))
+            thr = lambda r: 60 if r.symbol in AB else 63
+            print("passerebbero adesso: soglie attuali (60 BTC/ETH/XAU/XAG, 63 altre) %d | 60 per tutte %d | 55 per tutte %d | 50 per tutte %d" % (
+                sum(1 for r1, r0, n in res if r1.side and r1.score >= thr(r1)), sum(1 for r1, r0, n in res if r1.side and r1.score >= 60),
+                sum(1 for r1, r0, n in res if r1.side and r1.score >= 55), sum(1 for r1, r0, n in res if r1.side and r1.score >= 50)))
+            print("distribuzione: >=70:%d 60-69:%d 55-59:%d 50-54:%d 40-49:%d <40:%d" % tuple(
+                sum(1 for x in sc1 if lo <= x < hi) for lo, hi in ((70, 101), (60, 70), (55, 60), (50, 55), (40, 50), (0, 40))))
+            print("primi 12 (simbolo lato punteggio | long/short | senza 1d | barre 1d | perche'):")
+            for r1, r0, n in res[:12]:
+                print("  %-5s %2d %3d | L%3d S%3d | senza1d %3d | %3d barre | %s" % (r1.symbol, r1.side, r1.score, r1.long_score, r1.short_score, r0.score, n, "; ".join(r1.why[:4])[:110]))
+            # quanti lati lunghi/corti nei punteggi: il bot e' sbilanciato?
+            print("lato dominante: long %d, short %d" % (sum(1 for r1, r0, n in res if r1.side == 1), sum(1 for r1, r0, n in res if r1.side == -1)))
+            PYEOF
+            echo "DONE" >> $OUT
+
+      - name: Pubblica output
+        env:
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+            root@51.79.205.82 'cat /tmp/superbot_diagnosi.txt' 2>/dev/null > out.txt || true
+          rm -f ~/.ssh/id_desk
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          split -l 12 -d out.txt part_
+          for f in part_*; do
+            OUT=$(cut -c1-400 "$f" | tr '\n' '~' | sed 's/%/%25/g')
+            echo "::notice title=Diagnosi ${f#part_}::${OUT}"
+          done
+          cat out.txt
