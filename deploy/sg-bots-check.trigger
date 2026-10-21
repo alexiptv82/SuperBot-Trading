@@ -1,1 +1,1 @@
-2026-10-21T03:07:37Z pre-deploy 12 commit salto-qualita (b6b9911): stato bot, solo lettura
+2026-10-21T03:10:31Z stato bot dopo deploy fallito (sola lettura)
