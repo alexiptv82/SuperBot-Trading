@@ -12,6 +12,29 @@ now = int(time.time() * 1000)
 syms = list(cli.SYMBOLS)
 print("simboli:", len(syms))
 
+# 0) diagnosi simbolo per simbolo: codice HTTP e inizio della risposta se Bitget rifiuta
+import urllib.error
+t0 = time.time()
+bad = {}
+for s in syms:
+    t1 = time.time()
+    try:
+        rows = cli.fetch_daily_history(s, now)
+        print("DIAG %-5s barre %3d  %.1fs" % (s, len(rows), time.time() - t1))
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read()[:140].decode("utf-8", "replace")
+        except Exception:
+            pass
+        bad[s] = e.code
+        print("DIAG %-5s HTTP %s %.1fs %s" % (s, e.code, time.time() - t1, body))
+    except Exception as e:
+        bad[s] = type(e).__name__
+        print("DIAG %-5s ERRORE %s %s %.1fs" % (s, type(e).__name__, str(e)[:100], time.time() - t1))
+print("DIAG: falliti %d su %d in %.1fs: %s" % (len(bad), len(syms), time.time() - t0, bad))
+cli._DAILY_PAUSE["until_ms"] = 0
+
 # 1) trend giornaliero: tempo e risultato per tutti i simboli, esattamente come lo fa il ciclo del bot
 t0 = time.time()
 ok = short = 0
