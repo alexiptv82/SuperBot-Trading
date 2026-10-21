@@ -34,6 +34,7 @@ for _mod in ("desk.brain", "desk.market_context", "desk.live_connector",
 # stub fetch_all_context
 _mctx = sys.modules["desk.market_context"]
 _mctx.fetch_all_context = lambda *a, **kw: {"funding": {}, "oi": {}, "ls_ratio": {}, "news": [], "ts": 0}
+_mctx.apply_oi_history = lambda *a, **kw: None      # cli lo importa: il modulo finto deve averlo
 
 # stub minimale brain
 _brain = sys.modules["desk.brain"]

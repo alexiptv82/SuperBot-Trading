@@ -28,7 +28,7 @@ from desk.brain import (DAILY_CAP, build_prompt, call_claude,
                         can_call, diagnose_reply, parse_decisions, record_spend, rules_decisions,
                         update_lessons, append_trade_history, load_symbol_stats, stats_summary,
                         SYSTEM as SYSTEM_HAWK, SYSTEM_BULL)
-from desk.market_context import fetch_all_context
+from desk.market_context import apply_oi_history, fetch_all_context
 from desk import learning as _learning
 from desk import macro_calendar
 from desk import trading_hours
@@ -374,8 +374,43 @@ def fetch_candles(symbol: str, bar: str = "15m", limit: int = 1000) -> list:
 
 
 BAR15_MS = 900_000
-DAILY_LIMIT = 260
-_DAILY_CACHE: dict = {}   # simbolo -> (giorno UTC dello scarico, barre 1d chiuse)
+DAY_MS = 86_400_000
+# Barre 1d per il trend di lungo. /candles con granularity=1D ne restituisce solo ~89 (difetto trovato il 21/10:
+# il trend 1d restava sempre assente, servono 200 barre). /history-candles con startTime/endTime le da' tutte,
+# ma rifiuta finestre larghe (HTTP 400 a 200 giorni): 4 finestre da 85 giorni = 340 giorni.
+DAILY_WINDOW_DAYS = 85
+DAILY_WINDOWS = 4
+DAILY_PAUSE_MS = 300_000           # dopo uno scarico fallito (rete) si smette di insistere per 5 minuti
+DAILY_CYCLE_BUDGET_S = 60.0        # tempo massimo per ciclo speso a scaricare barre giornaliere
+_DAILY_CACHE: dict = {}   # simbolo -> (giorno UTC dello scarico, barre 1d chiuse; anche vuote: serie corta o irregolare)
+_DAILY_PAUSE = {"until_ms": 0}
+_DAILY_CYCLE = {"now_ms": None, "t0": 0.0}
+
+
+def fetch_daily_history(symbol: str, now_ms: int, opener=urllib.request.urlopen) -> list:
+    """Righe grezze [ts, o, h, l, c, vol] dei ~340 giorni piu' recenti (compreso il giorno in corso, che
+    `closed_daily` toglie). Solleva se la rete o il formato non vanno: chi chiama decide cosa fare.
+    Le finestre si sovrappongono di un giorno e i doppioni si tolgono: nessun buco al confine."""
+    sym = symbol.upper()
+    if not sym.endswith("USDT"):
+        sym += "USDT"
+    rows: dict = {}
+    end = (int(now_ms) // DAY_MS + 1) * DAY_MS
+    for _ in range(DAILY_WINDOWS):
+        start = end - DAILY_WINDOW_DAYS * DAY_MS
+        url = (f"{BITGET_BASE}/api/v2/mix/market/history-candles?symbol={sym}&productType=USDT-FUTURES"
+               f"&granularity=1D&startTime={start}&endTime={end}&limit=200")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with opener(req, timeout=10) as r:
+            d = json.loads(r.read())
+        if not isinstance(d, dict) or d.get("code") != "00000" or not isinstance(d.get("data"), list):
+            raise ValueError("risposta 1d rifiutata")
+        if not d["data"]:
+            break                                    # moneta piu' giovane della finestra: niente di piu' vecchio
+        for row in d["data"]:
+            rows[int(float(row[0]))] = [float(x) for x in row[:6]]
+        end = start + DAY_MS
+    return [rows[k] for k in sorted(rows)]
 
 
 def closed_bars(arr, now_ms: int, bar_ms: int = BAR15_MS):
@@ -388,15 +423,31 @@ def closed_bars(arr, now_ms: int, bar_ms: int = BAR15_MS):
 
 def daily_bars(symbol: str, now_ms: int):
     """Barre 1d chiuse per il trend di lungo (EMA50/EMA200 giornaliere). Un solo scarico per simbolo al giorno.
-    Se lo scarico fallisce o la serie non e' regolare il trend 1d resta assente, come prima della correzione."""
+    Se lo scarico fallisce o la serie non e' regolare il trend 1d resta assente, come prima della correzione.
+    Una serie corta (moneta giovane) o irregolare si ricorda per il giorno: niente scarichi ripetuti a ogni ciclo."""
+    import numpy as np
     from desk.signals import closed_daily
-    day = int(now_ms) // 86_400_000
+    empty = np.empty((0, 6))
+    if os.environ.get("DESK_DAILY_FETCH") == "0":    # i test non scaricano mai dati veri
+        return empty
+    day = int(now_ms) // DAY_MS
     hit = _DAILY_CACHE.get(symbol)
     if hit is not None and hit[0] == day:
         return hit[1]
-    arr = closed_daily(fetch_candles(symbol, "1D", DAILY_LIMIT), now_ms)
-    if len(arr):
-        _DAILY_CACHE[symbol] = (day, arr)
+    if now_ms < _DAILY_PAUSE["until_ms"]:
+        return empty                                  # rete in difficolta': si riprova tra poco
+    if _DAILY_CYCLE["now_ms"] != now_ms:              # nuovo ciclo: il tempo a disposizione riparte
+        _DAILY_CYCLE.update(now_ms=now_ms, t0=time.monotonic())
+    if time.monotonic() - _DAILY_CYCLE["t0"] > DAILY_CYCLE_BUDGET_S:
+        return empty                                  # budget del ciclo finito: i simboli restanti al prossimo ciclo
+    try:
+        arr = closed_daily(fetch_daily_history(symbol, now_ms), now_ms)
+    except Exception as e:
+        _DAILY_PAUSE["until_ms"] = int(now_ms) + DAILY_PAUSE_MS
+        print(f"[DAILY] scarico 1d {symbol} fallito ({type(e).__name__}): trend 1d assente, riprovo tra 5 minuti",
+              flush=True)
+        return empty
+    _DAILY_CACHE[symbol] = (day, arr)
     return arr
 
 
@@ -831,6 +882,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 "ls_ratio": {k: vars(v) for k, v in ctx.get("ls_ratio", {}).items()},
                 "news": ctx["news"], "ts": ctx["ts"],
             }
+            # BitGet non da' lo storico dell'OI: la variazione 24h si calcola dalle letture del bot (nello stato)
+            apply_oi_history(ctx_serial["oi"], state.setdefault("oi_hist", {}), now_ms)
             state["market_ctx"] = ctx_serial
             state["last_ctx_ts"] = now_ms
         except Exception:
@@ -1586,7 +1639,7 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
         # Nessun file del cervello viene rimosso o svuotato: trade_history.jsonl, lessons.md, errors.md e
         # learning_log.jsonl restano intatti. L'app mostra solo i trade della run attuale (run_started_ms).
         now_ms = int(time.time() * 1000)
-        keep = {k: state[k] for k in ("budget", "last_call_ms", "market_ctx", "last_ctx_ts",
+        keep = {k: state[k] for k in ("budget", "last_call_ms", "market_ctx", "last_ctx_ts", "oi_hist",
                                       "last_report_day", "last_prices", "last_prices_ms")
                 if k in state}
         if not clear_lessons and "lessons_day" in state:

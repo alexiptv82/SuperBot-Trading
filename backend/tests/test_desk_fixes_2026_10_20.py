@@ -253,19 +253,21 @@ def test_daily_bars_cached_once_per_day():
     calls = []
     now = T0 + 20_000
     rows = daily_rows(260, (now // DAY - 260) * DAY, 0.001)
-    orig = cli.fetch_candles
+    orig, env = cli.fetch_daily_history, os.environ.get("DESK_DAILY_FETCH")
 
-    def fake(sym, bar="15m", limit=300):
-        calls.append((sym, bar))
+    def fake(sym, now_ms, **kw):
+        calls.append(sym)
         return rows
-    cli.fetch_candles = fake
+    cli.fetch_daily_history = fake
+    os.environ["DESK_DAILY_FETCH"] = "1"
     cli._DAILY_CACHE.clear()
     try:
         assert len(cli.daily_bars("SOL", now)) == 260
         assert len(cli.daily_bars("SOL", now + 3_600_000)) == 260
-        assert calls == [("SOL", "1D")]
+        assert calls == ["SOL"]
     finally:
-        cli.fetch_candles = orig
+        cli.fetch_daily_history = orig
+        os.environ["DESK_DAILY_FETCH"] = env
         cli._DAILY_CACHE.clear()
 
 
