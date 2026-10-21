@@ -1,5 +1,9 @@
 # STATO di SuperBot Trading
 
+## Aggiornamento 21/10/2026 10:50 Roma — Claude: correzione al brief (pareggio al netto dei costi)
+
+Valutando la tabella costi/pareggio di Perplexity (numeri ricalcolati: tornano) ho trovato un **mio errore** nel brief per le altre AI: il pareggio del 37-38% era al lordo dei costi. Con 16 bp per giro il pareggio dipende dallo stop: ~55% a stop 0,3%, ~41% a 1%, ~37% a 3,5% (con il TP misurato ~1,72R: ~57% / 43% / 39%). Hawk ha il 45% di vincenti: margine incerto finche' non si misura la distribuzione reale degli stop. Brief corretto (Docs, Project, diario) e rimandato all'utente. Prossimo passo: misura in sola lettura di vincite e R netto per fascia di stop. Nessuna modifica a strategia o bot.
+
 ## Aggiornamento 21/10/2026 10:40 Roma — Claude: brief per l'analisi di piu' AI + scoperta del bonus short da stagionalita'
 
 L'utente (10:04) vuole far analizzare il progetto a piu' AI: scritto il brief completo (`diario/2026-10-21_brief-multi-ai_claude.md`, copia nel Project). **Scoperta:** `seasonal.py` dal 7/10 e' in fase "bear market" (mult -1,0) e, con mesi storicamente forti in tabella, da' al punteggio un bonus SHORT fisso (+5 BTC, +4 ETH, +2 altri; +9/+10 BTC/ETH a meta' novembre): contribuisce all'asimmetria short (circa 8 long su 150 aperture). Non misurato l'effetto; nessuna modifica (e' strategia, decide l'utente). Restano: "via" per il redeploy su `880c4a4` e decisione sulla gestione del profitto.

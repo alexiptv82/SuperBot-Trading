@@ -80,7 +80,7 @@ Il bot trasforma 26 grafici in due punteggi (long e short) a ogni ciclo (ogni 30
 | Voce | Valore |
 | --- | --- |
 | Stop loss | 1,2 × ATR(1h), limitato tra 0,3% e 3,5% del prezzo |
-| Take profit | 1,8 × lo stop; misurato sui trade veri ≈ +1,7R contro −1,02R dello stop |
+| Take profit | 1,8 × lo stop; misurato sui trade veri ≈ +1,7R contro −1,02R dello stop (al lordo dei costi) |
 | Leva | cresce con il punteggio: da 15x (punteggio 60) a 45x (100) per gli scalp, da 5x a 25x per i trade "medi"; tetto per simbolo: BTC, oro, argento 45x; ETH 30x; altri 25x. Quasi tutti i trade sono scalp (punteggio ≥ 55). Leva media reale: Hawk circa 22x |
 | Margine per trade | Hawk 100 $; Bull 150–350 $ |
 | Posizioni contemporanee | Hawk 10; Bull 6 |
@@ -181,7 +181,7 @@ Il bot ha guadagnato molto nei primi quattro giorni e poi ha smesso, con lo stes
 
 Circa 150 aperture, circa 8 long. Le raffiche coincidono con i giorni di calo diffuso; il 14/10 (rialzo, 12 simboli su oltre 2%) ha comunque 23 short su 24. Il bot guadagna quando le monete scendono con decisione e perde nei rimbalzi e nei laterali.
 
-**Perché la matematica dei trade lascia poco margine.** Take profit a circa +1,7R e stop a −1,02R (R = rischio iniziale): per stare in pareggio serve circa il 37–38% di trade vincenti (nostro calcolo). Hawk ne ha il 45%, ma su 142 trade l'intervallo di confidenza al 95% del risultato medio va da −0,19R a +0,60R: non possiamo escludere zero.
+**Perché la matematica dei trade lascia poco margine.** Take profit a circa +1,7R e stop a −1,02R, misurati al lordo dei costi (R = rischio iniziale in prezzo). I costi simulati sono circa 16 punti base per giro (commissioni e slippage) e pesano di più quando lo stop è stretto. La percentuale di vincite necessaria per il pareggio dipende quindi dalla larghezza dello stop: con TP a 1,8 volte lo stop è circa 55% con stop allo 0,3%, 41% all'1% e 37% al 3,5%; con il TP effettivamente misurato (circa 1,72R) sale a circa 57%, 43% e 39% (ricalcolo nostro, confermato da una tabella di un'altra AI; funding sui long e slippage extra sugli stop non inclusi). Gli stop reali dei bot dipendono dall'ATR (tra 0,3% e 3,5%) e la loro distribuzione sui trade chiusi non è ancora misurata: finché non lo è, non sappiamo se il 45% di vincite di Hawk sia sopra o sotto il pareggio. Su 142 trade l'intervallo di confidenza al 95% del risultato medio va da −0,19R a +0,60R: non possiamo escludere zero.
 
 ### 6.2 Il laboratorio storico (9 ottobre)
 
@@ -302,7 +302,7 @@ Vogliamo sapere se l'impianto ha un vantaggio, dove sta, e che cosa cambierebbe 
 
 **B. Su come viene usato (il sospetto di Alexander)**
 
-3. **Se l'idea è buona ma applicata male, che cosa è sbagliato nella costruzione, non nei parametri?** Candidati nostri, da ordinare per probabilità e da smentire se puoi: punteggio composito molto collineare; take profit fisso a 1,8 volte lo stop di 1,2 ATR; leva che cresce con il punteggio (15x→45x) senza che la calibrazione del punteggio sia stata verificata; raffiche di posizioni correlate; una decisione ogni 30 minuti su candele a 15; un modello linguistico limitato alle uscite. Aggiungi quelli che non abbiamo visto.
+3. **Se l'idea è buona ma applicata male, che cosa è sbagliato nella costruzione, non nei parametri?** Candidati nostri, da ordinare per probabilità e da smentire se puoi: punteggio composito molto collineare; take profit fisso a 1,8 volte lo stop di 1,2 ATR; stop spesso stretti rispetto ai costi (con stop dello 0,5% il costo di 16 bp vale circa un terzo del rischio e il pareggio richiede circa il 49% di vincenti); leva che cresce con il punteggio (15x→45x) senza che la calibrazione del punteggio sia stata verificata; raffiche di posizioni correlate; una decisione ogni 30 minuti su candele a 15; un modello linguistico limitato alle uscite. Aggiungi quelli che non abbiamo visto.
 4. **Il punteggio ha potere predittivo monotono?** Cioè: i candidati con punteggio più alto hanno un R medio più alto, a parità di regime? I dati per rispondere sono nel registro. Se non è monotono, la leva legata al punteggio è un errore; dicci come lo verificheresti.
 5. **Gestione del profitto.** Il replay (§6.4) dice che nessuna regola meccanica tra +1R e +1,7R migliora il totale. Quale impostazione diversa varrebbe la pena provare: lasciar correre oltre il take profit (possiamo estendere le candele dopo l'uscita), un take profit più lontano con stop più stretto, uscita basata su un modello di continuazione, uscita a tempo? Con quale metrica sulla distribuzione di MFE/MAE decideresti prima di guardare i risultati?
 6. **Il trader AI.** Come costruiresti un trader AI che abbia una probabilità reale di un vantaggio (dati forniti, frequenza, ruolo dell'arbitro, uso di più modelli, memoria delle decisioni)? Che cosa dovremmo misurare nelle prime 2–3 settimane per decidere se tenerlo, con quanti trade, contro quali basi di confronto? Cosa non potremo concludere con quel campione?
