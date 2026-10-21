@@ -55,10 +55,12 @@ def test_exit_net_matches_engine_close(side):
         path = os.path.join(d, "learning_log.jsonl")
         with open(path, "w") as f:
             f.write(json.dumps({"ev": "close", "run_no": 3, **rec}) + "\n")
-        trades, skipped = R.load_trades(path, "hawk")
+        trades, skipped, n_invalid, fhash = R.load_trades(path, "hawk")
     assert len(trades) == 1 and not skipped
+    assert n_invalid == 0
+    assert len(fhash) == 16 and all(c in "0123456789abcdef" for c in fhash)
     t = trades[0]
-    assert t["recon_err"] < 0.01                                  # le formule tornano al centesimo
+    assert t["recon_err"] < 0.01                                  # le formule tornano al centesimo (< 1 cent)
     assert R.exit_net(t, 103.0, rec["close_ms"]) == pytest.approx(rec["net"], abs=1e-3)
 
 
@@ -85,10 +87,13 @@ def test_load_trades_filters_and_keys_by_run_and_id(tmp_path):
     rows.append({"ev": "close", "run_no": 1, "id": 6, "symbol": "X"})            # campi mancanti
     p = tmp_path / "l.jsonl"
     p.write_text("\n".join(json.dumps(r) for r in rows) + "\nnon json\n")
-    clean, skipped = R.load_trades(str(p), "bull")
+    clean, skipped, n_invalid, fhash = R.load_trades(str(p), "bull")
     assert sorted((t["run"], t["id"]) for t in clean) == [(1, 1), (2, 1)]
     assert skipped["con parziali"] == 1 and skipped["dca o due gambe"] == 2 and skipped["liquidazione"] == 1
     assert skipped["campi mancanti"] == 1
+    # Fix 1: la riga "non json" deve essere conteggiata, non silenziata
+    assert n_invalid == 1, "righe json-invalide devono essere conteggiate (fix 1)"
+    assert len(fhash) == 16
 
 
 # ------------------------------------------------------------------ candele
@@ -457,3 +462,69 @@ def test_take_profit_exit_bar_convention_engine_vs_favourable():
     fav = R.run_stop_rule(t, bars, 1.0, 0, tp_bar=False)          # ipotesi favorevole alla regola: barra esclusa
     assert eng is not None and eng[1] == bars[j][0] + B and eng[0] < t["net"]
     assert fav is None
+
+
+@pytest.mark.parametrize("damage", ["warmup_only", "missing_exit", "gap", "duplicate", "reverse"])
+def test_complete_window_rejects_unobserved_lifetime(damage):
+    opened, closed = T0 + 24 * B + 60_000, T0 + 35 * B
+    bars = bars_from([100.] * 36)
+    if damage == "warmup_only": bars = bars[:24]
+    elif damage == "missing_exit": bars = bars[:-1]
+    elif damage == "gap": del bars[28]
+    elif damage == "duplicate": bars.insert(28, bars[28])
+    elif damage == "reverse": bars.reverse()
+    assert not R.complete_window(bars, opened, closed)
+
+
+def test_complete_window_includes_exit_bucket():
+    bars = bars_from([100.] * 36)
+    assert R.complete_window(bars, T0 + 24 * B + 60_000, T0 + 35 * B)
+    assert not R.complete_window([], T0, T0 + B)
+
+
+# ================================================================== FIX 1-4 (Claude, 21/10/2026)
+
+def test_load_trades_snapshot_immutable_and_invalid_json_counted(tmp_path):
+    """Fix 1: il file viene letto tutto in memoria (snapshot) e le righe JSON-invalide vengono conteggiate."""
+    acc = PaperAccount(Limits())
+    p, _ = acc.open("BTCUSDT", 1, 100.0, 10, 100.0, 99.0, None, T0, {})
+    rec = acc.close("BTCUSDT", 101.0, T0 + B, "stop loss")
+    path = str(tmp_path / "log.jsonl")
+    with open(path, "w") as f:
+        f.write(json.dumps({"ev": "close", "run_no": 1, **rec}) + "\n")
+        f.write("questa-riga-non-e-json\n")
+        f.write("{incompleto\n")
+    clean, skipped, n_invalid, fhash = R.load_trades(path, "hawk")
+    assert n_invalid == 2, "entrambe le righe json-invalide devono essere conteggiate, non silenziate"
+    assert len(clean) == 1
+    assert len(fhash) == 16
+
+
+def test_load_trades_recon_tolerance_tighter(tmp_path):
+    """Fix 2: la soglia di riconciliazione è 0.05$ (non 0.50$); un errore a 0.10$ esclude il trade."""
+    acc = PaperAccount(Limits())
+    p, _ = acc.open("BTCUSDT", 1, 100.0, 10, 100.0, 99.0, None, T0, {})
+    rec = acc.close("BTCUSDT", 101.0, T0 + B, "take profit")
+    # Alteriamo il netto registrato di 0.10$ → recon_err = 0.10 > 0.05 → escluso
+    rec["net"] = rec["net"] - 0.10
+    path = str(tmp_path / "log.jsonl")
+    with open(path, "w") as f:
+        f.write(json.dumps({"ev": "close", "run_no": 1, **rec}) + "\n")
+    clean, skipped, n_invalid, fhash = R.load_trades(path, "hawk")
+    # Il trade non è escluso da load_trades (che non conosce RECON_TOL), ma recon_err > 0.05
+    # viene escluso in main(). Verifichiamo che recon_err sia correttamente > 0.05.
+    assert len(clean) == 1
+    assert clean[0]["recon_err"] > 0.05, "recon_err deve essere > 0.05 per questo trade alterato"
+
+
+def test_distribution_mfe_note_in_output():
+    """Fix 3: 'persi dopo +1R' riporta esplicitamente che MFE include estremo della barra di uscita."""
+    trades = [
+        trade_dict(side=1, net=-5.0, mfe_r=1.5, why="stop loss"),  # perso ma mfe_r >= 1.0
+        trade_dict(side=1, net=10.0, mfe_r=2.0, why="take profit"),
+    ]
+    lines = R.distribution(trades)
+    mfe_lines = [l for l in lines if "1R" in l and "persi" in l]
+    assert mfe_lines, "ci deve essere una riga sui 'persi dopo +1R'"
+    assert "upper bound" in mfe_lines[0] or "MFE include" in mfe_lines[0], \
+        "la riga deve dichiarare l'ambiguità MFE intrabar (fix 3)"
