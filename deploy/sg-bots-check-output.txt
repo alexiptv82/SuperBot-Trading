@@ -1,81 +1,92 @@
-### Stato bot e pagina Live 2026-10-19T09:02:53Z
+### Stato bot e pagina Live 2026-10-21T03:07:45Z
 
 ## 1. Cartelle dati e stato dei bot (lettura diretta dei file)
 === hawk ===
-file: claude_schedule.pretest-20261016.json(516B,2016m), heartbeat.json(2222B,0m), learning_log.jsonl(2630626B,13m), lessons.md(124B,166m), macro_events.json(1025B,13m), state_v2.json(26231B,13m), trade_history.jsonl(62554B,166m)
-stato: chiavi=['budget', 'claude_window', 'last_action', 'last_call_ms', 'last_ctx_ts', 'last_open_ms', 'last_prices', 'last_prices_ms', 'last_report_day', 'lessons_day', 'main', 'market_ctx', 'mode', 'paused', 'run_no', 'run_started_ms']
+file: claude_schedule.pretest-20261016.json(516B,4541m), heartbeat.json(2223B,0m), learning_log.jsonl(3042989B,19m), lessons.md(124B,2691m), macro_events.json(1025B,50m), state_v2.json(11147B,19m), trade_history.jsonl(69026B,777m)
+stato: chiavi=['budget', 'last_action', 'last_call_ms', 'last_ctx_ts', 'last_open_ms', 'last_prices', 'last_prices_ms', 'last_report_day', 'lessons_day', 'main', 'market_ctx', 'mode', 'paused', 'run_no', 'run_started_ms']
 conto: chiavi=['cash', 'closed', 'day', 'day_start_equity', 'limits', 'name', 'next_id', 'positions']
 posizioni aperte nel bot: 0 []
-run_no=3 run_started=10-16 02:49Z cycle=None halt=None
-ultimo comando: tipo=reset_portfolio ok=True ts=10-16 02:49Z
-battito: {"started_ms": 1792383000378, "version": "b4709d1", "pid": 1, "cycles": 12, "last_start_ms": 1792399735140, "last_end_ms": 1792399770113, "last_ok": true, "last_error": "", "next_cycle_ms": 1792401570114, "reset_keeps_brain": true, "close_position": true, "cycle_running": false, "pause_requested": false, "open_positions": 0, "mode": "running", "portfolio": "hawk", "daily_cap_usd": 0.7, "trading_enabled": true, "exec_mode": "paper", "capital_usd": 1000.0, "capital_scale": 1.0, "ts": 1792400575.3119845}
+run_no=4 run_started=10-19 17:36Z cycle=None halt=None
+ultimo comando: tipo=reset_portfolio ok=True ts=10-19 17:36Z
+battito: {"started_ms": 1792383000378, "version": "b4709d1", "pid": 1, "cycles": 133, "last_start_ms": 1792550852371, "last_end_ms": 1792550869233, "last_ok": true, "last_error": "", "next_cycle_ms": 1792552669233, "reset_keeps_brain": true, "close_position": true, "cycle_running": false, "pause_requested": false, "open_positions": 0, "mode": "running", "portfolio": "hawk", "daily_cap_usd": 0.7, "trading_enabled": true, "exec_mode": "paper", "capital_usd": 1000.0, "capital_scale": 1.0, "ts": 1792552064.5314429}
 battito.hours: {"mode": "off", "enabled": false, "allowed": true, "blocked": false, "tz": null, "next_change_ms": null, "error": ""}
-battito.macro: {"regime": "calmo", "blackout": false, "blackout_until_ms": null, "conf_bonus": 0, "n_events": 8, "fetched_ms": 1792399735140, "stale": false, "error": "", "enforce": false}
+battito.macro: {"regime": "calmo", "blackout": false, "blackout_until_ms": null, "conf_bonus": 0, "n_events": 8, "fetched_ms": 1792549027414, "stale": false, "error": "", "enforce": false}
 flag pause.flag: assente
 flag reset.flag: assente
 flag reset_portfolio.flag: assente
 flag trading_enabled.json: assente
 flag trading_hours.json: assente
-trade chiusi in storico: 112
-  chiuso 10-18 00:40Z BTC lato=-1 motivo=None net=-2.2227
-  chiuso 10-18 01:11Z SUI lato=-1 motivo=None net=-42.3811
-  chiuso 10-18 01:41Z ETH lato=-1 motivo=None net=-17.8419
-  chiuso 10-18 03:45Z SUI lato=-1 motivo=None net=-39.5461
-  chiuso 10-18 06:45Z ATOM lato=-1 motivo=None net=-33.8221
-  chiuso 10-19 06:14Z XAU lato=1 motivo=None net=-5.0184
-trade chiusi dopo il riavvio del VPS (04:09 UTC): 1
+trade chiusi in storico: 123
+  chiuso 10-20 14:00Z BTC lato=-1 motivo=None net=-10.777
+  chiuso 10-20 14:00Z UNI lato=-1 motivo=None net=-37.9948
+  chiuso 10-20 14:00Z AVAX lato=-1 motivo=None net=-30.9529
+  chiuso 10-20 14:00Z STX lato=-1 motivo=None net=-47.1377
+  chiuso 10-20 14:15Z ETH lato=-1 motivo=None net=-18.6029
+  chiuso 10-20 14:15Z NEAR lato=-1 motivo=None net=-101.5
+trade chiusi dopo il riavvio del VPS (04:09 UTC): 12
 === bull ===
-file: claude_schedule.pretest-20261016.json(516B,2016m), heartbeat.json(2222B,0m), learning_log.jsonl(3436722B,28m), lessons.md(726B,181m), macro_events.json(1025B,28m), state_v2.json(15801B,28m), trade_history.jsonl(27623B,181m)
-stato: chiavi=['budget', 'claude_window', 'last_action', 'last_call_ms', 'last_ctx_ts', 'last_open_ms', 'last_prices', 'last_prices_ms', 'last_report_day', 'lessons_day', 'main', 'market_ctx', 'mode', 'paused', 'run_no', 'run_started_ms']
+file: claude_schedule.pretest-20261016.json(516B,4541m), heartbeat.json(2224B,0m), learning_log.jsonl(3888380B,4m), lessons.md(726B,2706m), macro_events.json(1025B,65m), state_v2.json(8321B,4m), trade_history.jsonl(30567B,702m)
+stato: chiavi=['budget', 'last_action', 'last_call_ms', 'last_ctx_ts', 'last_open_ms', 'last_prices', 'last_prices_ms', 'last_report_day', 'lessons_day', 'main', 'market_ctx', 'mode', 'paused', 'run_no', 'run_started_ms']
 conto: chiavi=['cash', 'closed', 'day', 'day_start_equity', 'limits', 'name', 'next_id', 'positions']
 posizioni aperte nel bot: 0 []
-run_no=2 run_started=10-16 02:50Z cycle=None halt=None
-ultimo comando: tipo=reset_portfolio ok=True ts=10-16 02:50Z
-battito: {"started_ms": 1792383000381, "version": "b4709d1", "pid": 1, "cycles": 11, "last_start_ms": 1792398842192, "last_end_ms": 1792398878120, "last_ok": true, "last_error": "", "next_cycle_ms": 1792400678120, "reset_keeps_brain": true, "close_position": true, "cycle_running": false, "pause_requested": false, "open_positions": 0, "mode": "running", "portfolio": "bull", "daily_cap_usd": 0.7, "trading_enabled": true, "exec_mode": "paper", "capital_usd": 1000.0, "capital_scale": 1.0, "ts": 1792400573.521318}
+run_no=3 run_started=10-19 17:37Z cycle=None halt=None
+ultimo comando: tipo=reset_portfolio ok=True ts=10-19 17:37Z
+battito: {"started_ms": 1792383000381, "version": "b4709d1", "pid": 1, "cycles": 125, "last_start_ms": 1792551758613, "last_end_ms": 1792551791508, "last_ok": true, "last_error": "", "next_cycle_ms": 1792553591509, "reset_keeps_brain": true, "close_position": true, "cycle_running": false, "pause_requested": false, "open_positions": 0, "mode": "running", "portfolio": "bull", "daily_cap_usd": 0.7, "trading_enabled": true, "exec_mode": "paper", "capital_usd": 1000.0, "capital_scale": 1.0, "ts": 1792552066.5784554}
 battito.hours: {"mode": "off", "enabled": false, "allowed": true, "blocked": false, "tz": null, "next_change_ms": null, "error": ""}
-battito.macro: {"regime": "calmo", "blackout": false, "blackout_until_ms": null, "conf_bonus": 0, "n_events": 8, "fetched_ms": 1792398842192, "stale": false, "error": "", "enforce": false}
+battito.macro: {"regime": "calmo", "blackout": false, "blackout_until_ms": null, "conf_bonus": 0, "n_events": 8, "fetched_ms": 1792548117467, "stale": false, "error": "", "enforce": false}
 flag pause.flag: assente
 flag reset.flag: assente
 flag reset_portfolio.flag: assente
 flag trading_enabled.json: assente
 flag trading_hours.json: assente
-trade chiusi in storico: 47
-  chiuso 10-18 00:15Z XRP lato=-1 motivo=None net=-39.8848
-  chiuso 10-18 01:01Z ETH lato=-1 motivo=None net=-16.6829
-  chiuso 10-18 01:47Z BTC lato=-1 motivo=None net=-19.7281
-  chiuso 10-18 04:00Z SUI lato=-1 motivo=None net=-70.392
-  chiuso 10-18 06:45Z ATOM lato=-1 motivo=None net=-60.8797
+trade chiusi in storico: 52
   chiuso 10-19 05:59Z XAU lato=1 motivo=None net=-3.9844
-trade chiusi dopo il riavvio del VPS (04:09 UTC): 1
+  chiuso 10-19 17:37Z XAU lato=-1 motivo=None net=-6.3159
+  chiuso 10-20 14:00Z BTC lato=-1 motivo=None net=-16.7043
+  chiuso 10-20 14:00Z UNI lato=-1 motivo=None net=-71.4301
+  chiuso 10-20 14:15Z ETH lato=-1 motivo=None net=-29.3926
+  chiuso 10-20 15:30Z INJ lato=1 motivo=None net=-194.88
+trade chiusi dopo il riavvio del VPS (04:09 UTC): 6
 
 ## 2. Che cosa ha fatto il bot dopo il riavvio (conteggio dei segnali nel log)
 --- hawk ---
-     12 [SLEEP]
-      4 [CONF_LOW]
-      1 [OPEN]
+    271 [CONF_LOW]
+    133 [SLEEP]
+     20 [HALT]
+     16 [CAP:HAWK]
+     12 [OPEN]
+      4 [SKIP]
+      2 [MODO]
+      1 [PAUSA]
       1 [LIVE_CONNECTOR]
+      1 [LIQUIDAZIONE]
       1 [CLOSE]
       1 [CAPITAL]
-      1 [CAP:HAWK]
 ultimo ciclo: [SLEEP] prossimo ciclo tra 30 min [SLEEP] prossimo ciclo tra 30 min 
 --- bull ---
-     11 [SLEEP]
-      3 [CONF_LOW]
-      1 [OPEN]
+    273 [CONF_LOW]
+    125 [SLEEP]
+     37 [SKIP]
+     18 [HALT]
+      6 [OPEN]
+      3 [MODO]
+      2 [PAUSA]
       1 [LIVE_CONNECTOR]
+      1 [LIQUIDAZIONE]
       1 [CLOSE]
       1 [CAPITAL]
+      1 [AVVIO]
 ultimo ciclo: [SLEEP] prossimo ciclo tra 30 min [SLEEP] prossimo ciclo tra 30 min 
 
 ## 3. Che cosa restituisce l'app (stesse funzioni delle pagine) e chiavi di sola lettura
 DESK_MODE dell'app: paper | TRADING_MODE: None
 === hawk (cartella /opt/superbot-desk-data/hawk) ===
-pagina Hawk: {'bot_mode': 'running', 'paused': False, 'bot_online': True, 'exec_mode': 'paper', 'open_positions': 0, 'total_closed': 36, 'run_no': 3, 'halt': None, 'cash': 738.89, 'equity': 738.89, 'day_pnl': -5.02}
+pagina Hawk: {'bot_mode': 'running', 'paused': False, 'bot_online': True, 'exec_mode': 'paper', 'open_positions': 0, 'total_closed': 9, 'run_no': 4, 'halt': None, 'cash': 789.81, 'equity': 789.81, 'day_pnl': 0.0}
 pagina Live: {'paper_mode': True, 'real_data': False, 'bot_mode': 'paper', 'bot_online': True, 'open_positions': 0, 'trading_enabled': False}
 variabili sola lettura (presenti e non vuote): {'BITGET_RO_HAWK_API_KEY': True, 'BITGET_RO_HAWK_SECRET_KEY': True, 'BITGET_RO_HAWK_PASSPHRASE': True}
 === bull (cartella /opt/superbot-desk-data/bull) ===
-pagina Bull: {'bot_mode': 'running', 'paused': False, 'bot_online': True, 'exec_mode': 'paper', 'open_positions': 0, 'total_closed': 17, 'run_no': 2, 'halt': None, 'cash': 861.64, 'equity': 861.64, 'day_pnl': -3.98}
+pagina Bull: {'bot_mode': 'running', 'paused': False, 'bot_online': True, 'exec_mode': 'paper', 'open_positions': 0, 'total_closed': 4, 'run_no': 3, 'halt': None, 'cash': 687.59, 'equity': 687.59, 'day_pnl': 0.0}
 pagina Live: {'paper_mode': True, 'real_data': False, 'bot_mode': 'paper', 'bot_online': True, 'open_positions': 0, 'trading_enabled': False}
 variabili sola lettura (presenti e non vuote): {'BITGET_RO_BULL_API_KEY': True, 'BITGET_RO_BULL_SECRET_KEY': True, 'BITGET_RO_BULL_PASSPHRASE': True}
-Bitget hawk sola lettura: ERRORE PermissionDenied: bitget {"code":"40018","msg":"Invalid IP,Current request IP 51.79.205.82","requestTime":1792400582205,"data":null}
-Bitget bull sola lettura: ERRORE PermissionDenied: bitget {"code":"40018","msg":"Invalid IP,Current request IP 51.79.205.82","requestTime":1792400585750,"data":null}
+Bitget hawk sola lettura: ERRORE PermissionDenied: bitget {"code":"40018","msg":"Invalid IP,Current request IP 51.79.205.82","requestTime":1792552072168,"data":null}
+Bitget bull sola lettura: ERRORE PermissionDenied: bitget {"code":"40018","msg":"Invalid IP,Current request IP 51.79.205.82","requestTime":1792552074666,"data":null}
