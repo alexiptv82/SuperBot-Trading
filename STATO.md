@@ -1,5 +1,9 @@
 # STATO di SuperBot Trading
 
+## Aggiornamento 21/10/2026 05:20 Roma — Claude: DEPLOY dei bot fatto (b6b9911)
+
+Su OK esplicito dell'utente (04:57) sono stati distribuiti **tutti e 12 i commit di `work/salto-qualita`**: gate A margine minimo Bull 150 $ + guardia NaN/inf, gate B leva massima (Hawk x20, Bull x15), soglia altcoin 63, Bull a 10 posizioni (150-350 $), correzioni motore A-E, trend 1d, soglia tier C 65, prompt allineati. **Hawk e Bull girano su `b6b9911`, PAPER** (`DESK_MODE=paper`, `exec_mode=paper`), online, un solo container per bot; cervello intatto, backup pre-deploy fatto. Turbo Scalp: codice presente, **non installato**. Gate B visto all'opera (Bull ha rifiutato una leva 17x). **Il workflow `desk-deploy` risulta ROSSO** per un probabile difetto del controllo finale "una sola istanza" (conta anche l'app `superbot`, che monta le stesse cartelle): i bot sono sani, il manifesto del rilascio non è stato scritto. Dettagli e cose aperte in `diario/2026-10-21_claude.md`. Il resto di questo file è storico: questo aggiornamento prevale.
+
 ## Aggiornamento 20/10/2026 05:18 Roma — audit ChatGPT
 
 Verifica nuova in sola lettura: Hawk run4/Bull run3 PAPER, ciclo15m, una posizione ciascuno, nessun blocco globale; 30 scarti confidenza ciascuno e una guardia liquidazione Hawk. Budget AI nuovamente disponibile. Soglie60/70 invariate dal12/10. Misura candidati con costi: risultati di ricerca incompleti, nessuna modifica di soglia approvata. Dettagli e numeri finali in diario/2026-10-20_chatgpt.md. Review backup:46test passano ma missing last_end_ms/cycles e NaN accettati, correzione proposta non applicata. Nessun deploy, reset, cambio strategia, rischio o PM. Restano aperti vista ombra, backup journal e difetti precedentemente segnalati.
