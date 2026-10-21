@@ -1,0 +1,73 @@
+name: AI in ombra - test (nessun deploy, nessun segreto, nessuna rete)
+
+# Prove dell'AI in ombra (backend/director/ai_shadow). Non installa nulla, non usa segreti e non chiama il modello:
+# i test usano un mondo di candele finto e un modello finto. La costruzione dell'immagine serve solo a controllare che
+# contenga tutto cio' che serve (e niente di piu') e che parta in sola lettura.
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - ".github/workflows/ai-shadow-ci.yml"
+      - "Dockerfile.aishadow"
+      - "backend/director/ai_shadow/**"
+      - "backend/desk/engine.py"
+      - "backend/tests/ai_shadow_helpers.py"
+      - "backend/tests/test_ai_shadow_*.py"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Installa pytest (l'AI in ombra usa solo la libreria standard)
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+      - name: Prove di unita (spesa, arbitro, dimensionamento, risposta del modello)
+        run: python -m pytest tests/test_ai_shadow_units.py -v --tb=short
+      - name: Prove di ciclo (ordini all'apertura successiva, tetto di spesa, riavvio, chiave mai nei file)
+        run: python -m pytest tests/test_ai_shadow_pilot.py -v --tb=short
+      - name: Isolamento - solo motore e libreria standard, nessun altro modulo dei bot
+        working-directory: .
+        run: |
+          set -e
+          rm -rf /tmp/iso && mkdir -p /tmp/iso/backend/desk /tmp/iso/backend/director
+          cp backend/desk/__init__.py backend/desk/engine.py /tmp/iso/backend/desk/
+          cp -r backend/director/ai_shadow /tmp/iso/backend/director/ai_shadow
+          cd /tmp/iso
+          PYTHONPATH=/tmp/iso/backend python -I -c "
+          import sys
+          sys.path.insert(0, '/tmp/iso/backend')
+          import director.ai_shadow.runner, director.ai_shadow.report, director.ai_shadow.healthcheck
+          bad = sorted(m for m in sys.modules if m.split('.')[0] in ('ccxt', 'pandas', 'numpy', 'requests', 'httpx'))
+          assert not bad, 'dipendenze esterne caricate: %s' % bad
+          mods = sorted(m for m in sys.modules if m.startswith('desk.'))
+          assert mods == ['desk.engine'], 'moduli dei bot caricati: %s' % mods
+          print('isolamento ok:', mods)
+          "
+          # Nessuna chiave scritta nel codice: niente stringhe "sk-" lunghe come una chiave vera.
+          if grep -rEn "sk-[A-Za-z0-9]{20,}" backend/director/ai_shadow Dockerfile.aishadow; then echo "ERRORE: chiave nel codice"; exit 1; fi
+      - name: Immagine - si costruisce, parte in sola lettura, nessun file dei bot dentro
+        working-directory: .
+        run: |
+          set -e
+          docker build -t aishadow-ci -f Dockerfile.aishadow .
+          docker run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --network none \
+            aishadow-ci python -c "import director.ai_shadow.runner, director.ai_shadow.report, director.ai_shadow.healthcheck; print('import ok')"
+          # senza cartella dati o con cartella vuota il controllo di salute deve dire "non sano" (codice 1), mai "sano"
+          set +e
+          docker run --rm --read-only --tmpfs /tmp --cap-drop ALL --network none aishadow-ci python -m director.ai_shadow.healthcheck
+          RC=$?
+          set -e
+          test "$RC" = 1 || { echo "ERRORE: il controllo di salute doveva dare 1 senza dati, ha dato $RC"; exit 1; }
+          docker run --rm aishadow-ci sh -c 'ls /app/backend/desk; ls /app/backend/director; test ! -e /app/backend/desk/cli.py && test ! -e /app/backend/desk/brain.py'

@@ -1,0 +1,92 @@
+name: AI in ombra (DeepSeek) - report e interruttori
+
+# Legge lo stato dell'AI in ombra o la ferma/riparte. NON installa nulla, NON tocca i bot e NON cancella dati.
+# Parte quando cambia deploy/ai-shadow-control.trigger. La riga "action=" sceglie cosa fare:
+#   report  -> riepilogo in sola lettura (trade, spesa, scarti dell'arbitro, ultime letture del mercato)
+#   pause   -> crea pause.flag: niente nuove chiamate al modello (le posizioni aperte restano gestite da stop e take profit)
+#   resume  -> toglie pause.flag
+#   stop    -> ferma il container (i dati restano)
+#   start   -> riavvia il container fermato
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/ai-shadow-control.trigger"]
+permissions:
+  contents: read
+concurrency:
+  group: superbot-desk-singapore
+  cancel-in-progress: false
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azione richiesta
+        id: act
+        run: |
+          set -e
+          A="$(grep -E '^action=' deploy/ai-shadow-control.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          case "$A" in report|pause|resume|stop|start) ;; *) echo "ERRORE: action= deve essere report, pause, resume, stop o start"; exit 1;; esac
+          echo "action=$A" >> "$GITHUB_OUTPUT"
+      - name: Esecuzione sul VPS
+        id: run
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.0
+        env: {AI_ACTION: "${{ steps.act.outputs.action }}"}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: AI_ACTION
+          command_timeout: 5m
+          script: |
+            set -e
+            exec > >(tee /opt/superbot-ai-control.log) 2>&1
+            case "$AI_ACTION" in report|pause|resume|stop|start) ;; *) echo "ERRORE: azione"; exit 1;; esac
+            echo "azione: $AI_ACTION"
+            case "$AI_ACTION" in
+              pause)  touch /opt/superbot-ai-data/ai/pause.flag; echo "pausa attivata: nessuna nuova chiamata al modello" ;;
+              resume) rm -f /opt/superbot-ai-data/ai/pause.flag; echo "pausa tolta: le chiamate riprendono alla prossima barra" ;;
+              stop)   docker stop superbot-ai; echo "container fermato (dati intatti)" ;;
+              start)  docker start superbot-ai; sleep 5; echo "container riavviato" ;;
+            esac
+            echo "=== CONTAINER ==="
+            docker ps -a --filter name=^superbot-ai$ --format '{{.Names}} | {{.Status}} | {{.Image}}'
+            docker inspect -f 'salute: {{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}} | riavvii: {{.RestartCount}}' superbot-ai 2>/dev/null || true
+            test -e /opt/superbot-ai-data/ai/pause.flag && echo "PAUSA ATTIVA" || echo "pausa non attiva"
+            echo "=== RIEPILOGO ==="
+            if [ -n "$(docker ps --filter name=^superbot-ai$ --filter status=running -q)" ]; then
+              docker exec superbot-ai python -m director.ai_shadow.report
+            else
+              echo "container non in esecuzione: riepilogo dai file"
+              python3 -I - <<'PY'
+            import json
+            try:
+                s = json.load(open("/opt/superbot-ai-data/ai/status.json"))
+                print({k: s.get(k) for k in ("ts_ms", "equity", "open", "closed_total", "model", "spend")})
+            except Exception as e:
+                print("status.json non leggibile:", type(e).__name__)
+            PY
+            fi
+            echo "=== ULTIME RIGHE DEL LOG ==="
+            docker logs --tail 6 superbot-ai 2>&1 | cut -c1-260 || true
+            echo "=== SPAZIO ==="
+            du -sh /opt/superbot-ai-data 2>/dev/null || true
+            echo "=== BOT (non toccati) ==="
+            docker ps --filter name=superbot-desk --format '{{.Names}} | {{.Status}}'
+      - name: Esito (solo testo dello script, nessun segreto)
+        env: {SG_SSH_KEY: "${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}"}
+        run: |
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30 root@51.79.205.82 'tail -n 70 /opt/superbot-ai-control.log 2>/dev/null' > /tmp/out.txt || echo "log non leggibile" > /tmp/out.txt
+          rm -f ~/.ssh/id_sg
+          MSG=$(sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' /tmp/out.txt | cut -c1-6000)
+          echo "::notice title=AI in ombra - ${{ steps.act.outputs.action }}::${MSG}"
+      - name: Esito
+        if: steps.run.outcome != 'success'
+        run: exit 1

@@ -1,0 +1,17 @@
+# AI in ombra (DeepSeek): processo SEPARATO dai bot. Solo libreria standard di Python.
+# Nessun dato dei bot, nessuna chiave di trading, nessuna porta aperta, nessun ordine. Scrive solo nella propria cartella.
+# La chiave del modello (DEEPSEEK_API_KEY) arriva dall'ambiente al momento dell'avvio e non e' nell'immagine.
+# Va avviato con: --read-only --cap-drop ALL --security-opt no-new-privileges, -v <dati>:/out
+FROM python:3.11-slim
+
+WORKDIR /app
+ENV PYTHONPATH=/app/backend PYTHONUNBUFFERED=1 AI_OUT=/out
+
+COPY backend/desk/__init__.py ./backend/desk/__init__.py
+COPY backend/desk/engine.py ./backend/desk/engine.py
+COPY backend/director/ai_shadow ./backend/director/ai_shadow
+
+HEALTHCHECK --interval=2m --timeout=15s --start-period=3m --retries=3 \
+  CMD python -m director.ai_shadow.healthcheck
+
+CMD ["python", "-m", "director.ai_shadow.runner", "--out-root", "/out"]

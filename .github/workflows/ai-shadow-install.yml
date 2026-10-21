@@ -1,0 +1,136 @@
+name: AI in ombra (DeepSeek) - installazione (container separato, nessun ordine)
+
+# Installa SOLO il container "superbot-ai". NON tocca superbot-desk-hawk/bull, ne' superbot-sidecar, ne' superbot-turbo, e
+# NON monta i dati dei bot (scarica solo candele pubbliche). Nessuna chiave di trading nel container.
+# L'unico segreto che passa e' DEEPSEEK_API_KEY (chiave del modello, con tetto di spesa nel codice): arriva come variabile
+# d'ambiente del container, non finisce in nessun file, in nessun log e in nessuna riga di comando.
+# Controllo di salute proprio (director.ai_shadow.healthcheck): battito E dati, non solo battito.
+# Parte solo quando cambia deploy/ai-shadow-install.trigger con la riga "sha=<40 caratteri>" di un commit di rule-pool.
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/ai-shadow-install.trigger"]
+permissions:
+  contents: read
+concurrency:
+  group: superbot-desk-singapore
+  cancel-in-progress: false
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Versione approvata
+        id: approved
+        run: |
+          set -e
+          WANT="$(grep -E '^sha=' deploy/ai-shadow-install.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          printf '%s' "$WANT" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: serve sha= di 40 caratteri"; exit 1; }
+          git fetch -q origin rule-pool
+          git merge-base --is-ancestor "$WANT" origin/rule-pool || { echo "ERRORE: commit non in rule-pool"; exit 1; }
+          echo "sha=$WANT" >> "$GITHUB_OUTPUT"
+      - name: La chiave del modello c'e' (senza mostrarla)
+        env: {DEEPSEEK_API_KEY: "${{ secrets.DEEPSEEK_API_KEY }}"}
+        run: |
+          set -e
+          K="$(printf '%s' "$DEEPSEEK_API_KEY" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"      # un a-capo finale incollato per sbaglio non e' un errore
+          [ -n "$K" ] || { echo "ERRORE: il Secret DEEPSEEK_API_KEY non esiste o e' vuoto (Settings > Secrets and variables > Actions)"; exit 1; }
+          case "$K" in sk-*) ;; *) echo "ERRORE: il Secret DEEPSEEK_API_KEY non ha la forma di una chiave (deve iniziare con sk-)"; exit 1;; esac
+          case "$K" in *[[:space:]]*) echo "ERRORE: il Secret DEEPSEEK_API_KEY contiene spazi o a-capo in mezzo (va incollata da sola, su una riga)"; exit 1;; esac
+          [ "${#K}" -ge 20 ] || { echo "ERRORE: il Secret DEEPSEEK_API_KEY e' troppo corto per essere una chiave"; exit 1; }
+          echo "chiave presente (${#K} caratteri), forma corretta"
+      - name: Installazione sul VPS
+        id: inst
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          APPROVED_SHA: "${{ steps.approved.outputs.sha }}"
+          DEEPSEEK_API_KEY: "${{ secrets.DEEPSEEK_API_KEY }}"
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: APPROVED_SHA,DEEPSEEK_API_KEY
+          command_timeout: 25m
+          script: |
+            set -e
+            exec > >(tee /opt/superbot-ai-install.log) 2>&1
+            printf '%s' "$APPROVED_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: sha"; exit 1; }
+            [ -n "$DEEPSEEK_API_KEY" ] || { echo "ERRORE: chiave del modello non arrivata"; exit 1; }
+            BOTS_BEFORE=$(docker ps --filter name=superbot-desk --format '{{.Names}} {{.ID}}' | sort)
+            OTHERS_BEFORE=$(docker ps --format '{{.Names}} {{.ID}}' | grep -v 'superbot-ai' | sort)
+            if [ -d /opt/superbot-ai-src/.git ]; then cd /opt/superbot-ai-src && git fetch origin rule-pool
+            else git clone -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-ai-src && cd /opt/superbot-ai-src; fi
+            git cat-file -e "${APPROVED_SHA}^{commit}"; git reset --hard "$APPROVED_SHA"
+            test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
+            SHA12=$(printf '%s' "$APPROVED_SHA" | cut -c1-12)
+            docker build -t "superbot-aishadow:sha-${SHA12}" --label "superbot.sha=${APPROVED_SHA}" -f Dockerfile.aishadow .
+            # cartella dei dati dell'AI in ombra: propria, solo root. Non si cancella mai (spesa, conto virtuale, trade, prompt).
+            mkdir -p /opt/superbot-ai-data && chown 0:0 /opt/superbot-ai-data && chmod 700 /opt/superbot-ai-data
+            docker stop superbot-ai 2>/dev/null || true; docker rm superbot-ai 2>/dev/null || true
+            # -e DEEPSEEK_API_KEY senza valore: Docker legge la variabile dall'ambiente di questo script, la chiave non compare nella riga di comando
+            docker run -d --name superbot-ai --restart unless-stopped --user 0:0 \
+              --read-only --tmpfs /tmp:size=16m --cap-drop ALL --security-opt no-new-privileges \
+              --memory 192m --cpus 0.25 --pids-limit 64 \
+              --health-cmd "python -m director.ai_shadow.healthcheck" --health-interval 2m --health-timeout 15s \
+              --health-start-period 5m --health-retries 3 \
+              -e DEEPSEEK_API_KEY -e AI_SHA="$APPROVED_SHA" \
+              -v /opt/superbot-ai-data:/out \
+              "superbot-aishadow:sha-${SHA12}" python -m director.ai_shadow.runner --out-root /out
+            # Verifiche: un solo container, primo ciclo completo (candele + chiamata al modello), bot e altri container non toccati.
+            # Il primo ciclo parte subito: scarica le candele (circa 1 minuto) e chiama il modello (qualche secondo).
+            test "$(docker ps --filter name=^superbot-ai$ --filter status=running -q | wc -l)" = 1
+            python3 -I - <<'PY'
+            import json, sys, time
+            path = "/opt/superbot-ai-data/ai/status.json"
+            s = None
+            deadline = time.time() + 420
+            while time.time() < deadline:
+                time.sleep(10)
+                try:
+                    s = json.load(open(path))
+                except (OSError, ValueError):
+                    continue
+                m = s.get("model") or {}
+                if (m.get("calls_ok", 0) + m.get("calls_failed", 0)) >= 1 or (s.get("last_cycle") or {}).get("skip"):
+                    break
+            if s is None:
+                sys.exit("ERRORE: nessun status.json dopo 7 minuti")
+            m, sp = s.get("model") or {}, s.get("spend") or {}
+            print("status", {k: s.get(k) for k in ("ts_ms", "last_success_ms", "mode", "applied", "symbols_ok", "symbols_total", "algo", "equity", "open")})
+            print("modello", m)
+            print("spesa", sp)
+            print("ultimo ciclo", s.get("last_cycle"), "errori candele", s.get("errors"))
+            if time.time() * 1000 - s["ts_ms"] > 300000: sys.exit("ERRORE: stato non recente")
+            if s.get("applied") is not False or s.get("mode") != "ombra": sys.exit("ERRORE: non in ombra")
+            if not s.get("symbols_total") or s.get("symbols_ok", 0) * 10 < s["symbols_total"] * 8:
+                sys.exit("ERRORE: troppe poche candele scaricate (ombra cieca)")
+            if m.get("calls_ok", 0) < 1:
+                sys.exit("ERRORE: la prima chiamata al modello non e' riuscita: %s (ultimo ciclo: %s)" % (m.get("last_error"), s.get("last_cycle")))
+            if sp.get("day_usd", 0) <= 0: sys.exit("ERRORE: spesa non registrata")
+            if sp.get("day_usd", 0) > sp.get("daily_cap", 0): sys.exit("ERRORE: spesa oltre il tetto")
+            PY
+            BOTS_AFTER=$(docker ps --filter name=superbot-desk --format '{{.Names}} {{.ID}}' | sort)
+            OTHERS_AFTER=$(docker ps --format '{{.Names}} {{.ID}}' | grep -v 'superbot-ai' | sort)
+            test "$BOTS_BEFORE" = "$BOTS_AFTER" || { echo "ERRORE: i container dei bot sono cambiati"; exit 1; }
+            test "$OTHERS_BEFORE" = "$OTHERS_AFTER" || { echo "ERRORE: altri container sono cambiati"; exit 1; }
+            echo "$BOTS_AFTER"
+            docker logs --tail 8 superbot-ai 2>&1 | cut -c1-300
+            echo "AI IN OMBRA (DeepSeek) INSTALLATA sul commit ${APPROVED_SHA}. Bot non toccati. Uscita: /opt/superbot-ai-data/ai"
+      - name: Esito (solo testo dello script, nessun segreto)
+        env: {SG_SSH_KEY: "${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}"}
+        run: |
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30 root@51.79.205.82 'tail -n 60 /opt/superbot-ai-install.log 2>/dev/null' > /tmp/out.txt || echo "log non leggibile" > /tmp/out.txt
+          rm -f ~/.ssh/id_sg
+          MSG=$(sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' /tmp/out.txt | cut -c1-6000)
+          echo "::notice title=esito installazione AI in ombra::${MSG}"
+      - name: Esito
+        if: steps.inst.outcome != 'success'
+        run: exit 1
