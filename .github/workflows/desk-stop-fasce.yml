@@ -1,0 +1,60 @@
+name: Vincite e R netto per larghezza dello stop (SOLA LETTURA, nessun bot toccato)
+
+# Misura, sui trade GIA' CHIUSI di Hawk e Bull, la distribuzione della larghezza dello stop e le vincite / il R netto
+# medio per fascia di stop (con i costi di 16 bp il pareggio dipende dallo stop). Legge solo learning_log.jsonl.
+# Gira in un contenitore usa-e-getta dell'immagine dei bot SENZA RETE: il codice del commit e' montato in sola lettura, il
+# registro dei bot (/opt/superbot-desk-data) e' montato SOLO IN LETTURA, nessuna chiave, nessun ordine. Non riavvia nulla.
+# Parte SOLO quando cambia deploy/desk-stop-fasce.trigger con la riga "sha=<40 caratteri>".
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/desk-stop-fasce.trigger"]
+permissions:
+  contents: read
+jobs:
+  misura:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Commit da usare
+        id: sha
+        run: |
+          set -e
+          WANT="$(grep -E '^sha=' deploy/desk-stop-fasce.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          printf '%s' "$WANT" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: serve sha= di 40 caratteri"; exit 1; }
+          git fetch -q origin rule-pool
+          git merge-base --is-ancestor "$WANT" origin/rule-pool || { echo "ERRORE: commit non in rule-pool"; exit 1; }
+          echo "sha=$WANT" >> "$GITHUB_OUTPUT"
+      - name: Misura sul VPS
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set +e
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          sg() { ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30 root@51.79.205.82 "$@"; }
+          : > out.txt
+          {
+            echo "=== MISURA STOP CON IL COMMIT $SHA ==="
+            sg "set -e; D=/opt/superbot-probe-src; [ -d \$D/.git ] || git clone -q -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git \$D; cd \$D; git fetch -q origin rule-pool; git reset -q --hard $SHA; test \"\$(git rev-parse HEAD)\" = $SHA; echo codice pronto" 2>&1
+            sg 'docker run -i --rm --name superbot-stopfasce --network none --read-only --tmpfs /tmp:size=64m --cap-drop ALL --cap-add DAC_READ_SEARCH --security-opt no-new-privileges --memory 512m --cpus 1 --pids-limit 64 -v /opt/superbot-probe-src/backend:/app/backend:ro -v /opt/superbot-desk-data:/data:ro -e PYTHONDONTWRITEBYTECODE=1 superbot-desk timeout 300 python - --data-root /data --bots hawk,bull' < deploy/scripts/stop_buckets.py 2>&1
+            echo "uscita dello script: $?"
+            echo "=== BOT (non toccati) ==="
+            sg 'docker ps --filter name=superbot-desk --format "{{.Names}} | {{.Status}} | {{.Image}}"'
+            echo FINE
+          } >> out.txt 2>&1
+          rm -f ~/.ssh/id_sg
+          cat out.txt
+          { echo '```'; cat out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          split -l 18 -d out.txt part_
+          for f in part_*; do
+            MSG=$(cut -c1-700 "$f" | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' | cut -c1-6500)
+            echo "::notice title=Stop fasce ${f#part_}::${MSG}"
+          done
+          grep -q '^FINE' out.txt || exit 1
