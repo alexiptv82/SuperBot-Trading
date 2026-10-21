@@ -154,8 +154,8 @@ jobs:
             print("=== F) con trend 1d VERO (barre giornaliere dall'endpoint storico) ===")
             def hist_daily(sym):
                 rows, end = {}, now
-                for _ in range(3):
-                    start = end - 200 * 86400000
+                for _ in range(4):
+                    start = end - 85 * 86400000
                     url = "https://api.bitget.com/api/v2/mix/market/history-candles?symbol=%sUSDT&productType=USDT-FUTURES&granularity=1D&startTime=%d&endTime=%d&limit=200" % (sym, start, end)
                     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
                     with urllib.request.urlopen(req, timeout=10) as r:
@@ -176,7 +176,13 @@ jobs:
                     if rr is not None:
                         res2.append((rr, r1))
                 except Exception as e:
-                    print("  %s errore storico %s" % (r1.symbol, str(e)[:70]))
+                    body = ""
+                    try:
+                        body = e.read().decode()[:120]
+                    except Exception:
+                        pass
+                    print("  %s errore storico %s %s" % (r1.symbol, str(e)[:50], body))
+                    break
             if res2:
                 res2.sort(key=lambda t: -t[0].score)
                 act = [t for t in res2 if t[0].facts.get("daily_trend")]

@@ -1,1 +1,1 @@
-2026-10-21T06:30:48Z diagnosi aperture v2 con trend 1d vero (sola lettura)
+2026-10-21T06:32:05Z diagnosi aperture v3 trend 1d con finestre da 85 giorni (sola lettura)
