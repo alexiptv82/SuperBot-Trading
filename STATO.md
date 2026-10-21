@@ -1,5 +1,9 @@
 # STATO di SuperBot Trading
 
+## Aggiornamento 21/10/2026 11:10 Roma — Claude: valutata la risposta di Gemini al brief
+
+Gemini: (b) nessun vantaggio 70%, (a) 20%, (c) 10%; 3 proposte. Giudizio: meno rigorosa di DeepSeek. Smentita dal brief l'affermazione che i profitti 'si azzerano nei laterali' (controfattuale: +0,16R, 49% vincenti nel piatto); etichetta 'Verificato' errata; la proposta di uscita parziale a +1,5R e' il replay gia' fatto (neutro: +3 $ Hawk, -10 $ Bull come variazione); la proposta di protocollo con quattro basi e' gia' in DeepSeek, con piu' rigore; il modulo AI e' gia' separato. L'accordo tra le AI su (b) non e' indipendente (leggono lo stesso brief). Da misurare: R per regime di mercato e per lato sui trade eseguiti. Nessuna modifica ai bot. Dettagli: `diario/2026-10-21_claude.md`.
+
 ## Aggiornamento 21/10/2026 11:15 Roma — Claude: valutata la risposta di DeepSeek al brief
 
 Probabilita' di DeepSeek: 25% idea buona/applicata male, 65% nessun vantaggio (regime), 10% altro; 5 proposte (ablazione del punteggio, leva fissa finche' il punteggio non e' monotono, 'lascia correre' oltre il TP, funding carry, protocollo per il trader AI). Verificato: i denominatori del brief (142 contro 151) non tornavano e il '+0,23R su 142 trade' non e' riproducibile dal registro (124 trade chiusi Hawk, 36 Bull); corretto con le misure nostre (Hawk +0,16R su 121, Bull -0,07R su 30). Chiariti nel brief anche '+226 bp/settimana' (media del book, quasi tutta prezzo del 2021), stop giornaliero 12% (non e' un tetto di perdita), funding simulato (short non pagano ne' ricevono). Registro: i candidati non eseguiti non hanno l'esito (va ricostruito con le candele). Nessuna modifica ai bot. Dettagli: `diario/2026-10-21_claude.md`.
