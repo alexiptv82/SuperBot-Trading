@@ -51,3 +51,10 @@ rows = {k: dict(vars(v)) for k, v in ctx["oi"].items()}
 hist = {k: [[now - 24 * 3_600_000, v["oi_usd"] * 0.95]] for k, v in rows.items()}
 mc.apply_oi_history(rows, hist, now)
 print("OI-STORICO (simulato +5.3%%):", {k: rows[k]["oi_change_24h"] for k in list(rows)[:4]})
+
+# 4) long/short: quali simboli copre davvero Bitget? risposta grezza per simboli che oggi risultano senza dato
+for s in ("DOGE", "BNB", "ADA", "LINK", "XRP", "SOL"):
+    for ep in ("account-long-short", "long-short", "position-long-short"):
+        raw = mc._get("%s/api/v2/mix/market/%s?symbol=%sUSDT&period=1h" % (mc.BITGET_BASE, ep, s))
+        print("LS-RAW %-5s %-20s %s" % (s, ep, (raw or b"None")[:150].decode("utf-8", "replace")))
+        time.sleep(0.3)
