@@ -1,1 +1,1 @@
-2026-10-21T06:28:51Z diagnosi aperture dopo il rilascio fa3e220 (sola lettura)
+2026-10-21T06:30:48Z diagnosi aperture v2 con trend 1d vero (sola lettura)
