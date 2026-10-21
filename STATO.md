@@ -1,5 +1,9 @@
 # STATO di SuperBot Trading
 
+## Aggiornamento 21/10/2026 11:15 Roma — Claude: sintesi delle analisi AI pronta per ChatGPT
+
+L'utente passa l'analisi comparativa a ChatGPT. Preparata la sintesi (`diario/2026-10-21_sintesi-ai-per-chatgpt_claude.md`): fatti, misure di Claude (stop reali, pareggio al netto dei costi, bonus di stagionalita', errori corretti), valutazione di Perplexity, DeepSeek e Gemini, confronto, otto misure ancora da fare in sola lettura, decisioni che spettano all'utente (redeploy `880c4a4`, gestione del profitto, stagionalita'/leva/soglie, funding carry) e le domande per ChatGPT. Nessuna modifica ai bot.
+
 ## Aggiornamento 21/10/2026 11:10 Roma — Claude: valutata la risposta di Gemini al brief
 
 Gemini: (b) nessun vantaggio 70%, (a) 20%, (c) 10%; 3 proposte. Giudizio: meno rigorosa di DeepSeek. Smentita dal brief l'affermazione che i profitti 'si azzerano nei laterali' (controfattuale: +0,16R, 49% vincenti nel piatto); etichetta 'Verificato' errata; la proposta di uscita parziale a +1,5R e' il replay gia' fatto (neutro: +3 $ Hawk, -10 $ Bull come variazione); la proposta di protocollo con quattro basi e' gia' in DeepSeek, con piu' rigore; il modulo AI e' gia' separato. L'accordo tra le AI su (b) non e' indipendente (leggono lo stesso brief). Da misurare: R per regime di mercato e per lato sui trade eseguiti. Nessuna modifica ai bot. Dettagli: `diario/2026-10-21_claude.md`.
