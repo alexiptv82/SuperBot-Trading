@@ -1,0 +1,133 @@
+name: Sala segnali - confronto per periodo (aperture, esiti, rifiuti; sola lettura)
+
+# Legge soltanto il registro di apprendimento dei due bot e li riassume per periodo (inizio 12-15/10, 16-19/10, da 20/10),
+# per lato, per origine (regole/Claude), per leva e per motivo di rifiuto. NON scrive nulla, NON riavvia nulla, NON apre ordini.
+# Parte SOLO quando cambia deploy/desk-periodi.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-periodi.trigger"
+
+jobs:
+  periodi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Analisi
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          # Impronta ECDSA del server Singapore: se cambia, la connessione viene rifiutata.
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          command_timeout: 180s
+          script: |
+            OUT=/tmp/superbot_periodi.txt
+            : > $OUT
+            for P in hawk bull; do
+              python3 -I - /opt/superbot-desk-data/$P $P >> $OUT 2>&1 <<'PYEOF' || echo "($P: analisi non riuscita)" >> $OUT
+            import collections, json, os, sys, time
+            d, name = sys.argv[1], sys.argv[2]
+            rows = []
+            for line in open(os.path.join(d, "learning_log.jsonl"), encoding="utf-8"):
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    pass
+            def dy(ms):
+                return time.strftime("%m-%d", time.gmtime(ms / 1000))
+            def per(day):
+                return "A inizio 12-15/10" if day < "10-16" else ("B 16-19/10" if day < "10-20" else "C da 20/10")
+            opens = [r for r in rows if r.get("ev") == "open" and r.get("ts")]
+            closes = [r for r in rows if r.get("ev") == "close" and (r.get("close_ms") or r.get("ts"))]
+            cands = [r for r in rows if r.get("ev") == "candidate" and r.get("ts")]
+            def cts(r):
+                return r.get("close_ms") or r.get("ts")
+            def net(r):
+                try:
+                    return float(r.get("net") or 0)
+                except (TypeError, ValueError):
+                    return 0.0
+            def summ(lst):
+                n = len(lst)
+                if not n:
+                    return "n=0"
+                w = sum(1 for r in lst if net(r) > 0)
+                tot = sum(net(r) for r in lst)
+                return "n=%d utile=%d%% netto=%+.0f$ medio=%+.1f$" % (n, round(100.0 * w / n), tot, tot / n)
+            print("=== %s ===" % name.upper())
+            print("1) APERTURE per giorno UTC: n (L/S) | origine | leva media | margine medio")
+            D = collections.defaultdict(list)
+            for r in opens:
+                D[dy(r["ts"])].append(r)
+            for k in sorted(D):
+                v = D[k]
+                L = sum(1 for r in v if r.get("side") == 1)
+                src = collections.Counter(str(r.get("source")) for r in v)
+                lev = sum(float(r.get("leverage") or 0) for r in v) / len(v)
+                mar = sum(float(r.get("margin_first") or 0) for r in v) / len(v)
+                print("  %s: %2d (%d/%d) | %s | x%.1f | %.0f$" % (k, len(v), L, len(v) - L, dict(src), lev, mar))
+            print("2) CHIUSURE per giorno UTC (parziali inclusi): n | in utile | netto | motivi")
+            C = collections.defaultdict(list)
+            for r in closes:
+                C[dy(cts(r))].append(r)
+            for k in sorted(C):
+                v = C[k]
+                why = collections.Counter(str(r.get("why")) for r in v).most_common(4)
+                print("  %s: %2d | %2d | %+7.0f$ | %s" % (k, len(v), sum(1 for r in v if net(r) > 0), sum(net(r) for r in v), why))
+            print("3) ESITO per periodo e lato")
+            for p in ("A inizio 12-15/10", "B 16-19/10", "C da 20/10"):
+                sel = [r for r in closes if per(dy(cts(r))) == p]
+                sh = [r for r in sel if r.get("side") == -1]
+                lo = [r for r in sel if r.get("side") == 1]
+                print("  %s | tutti %s" % (p, summ(sel)))
+                print("      short %s | long %s" % (summ(sh), summ(lo)))
+            print("4) ESITO per origine (rules/claude) e periodo")
+            for p in ("A inizio 12-15/10", "B 16-19/10", "C da 20/10"):
+                sel = [r for r in closes if per(dy(cts(r))) == p]
+                for s in sorted(set(str(r.get("source")) for r in sel)):
+                    print("  %s | %s | %s" % (p, s, summ([r for r in sel if str(r.get("source")) == s])))
+            print("5) ESITO per leva (tutto il periodo)")
+            for lo_, hi_, lab in ((0, 15, "<=15x"), (16, 20, "16-20x"), (21, 99, ">=21x")):
+                sel = [r for r in closes if lo_ <= int(r.get("leverage") or 0) <= hi_]
+                print("  %s %s" % (lab, summ(sel)))
+            print("6) MOTIVI DI RIFIUTO dei candidati (primi 38 caratteri) per periodo")
+            R = collections.defaultdict(collections.Counter)
+            for r in cands:
+                st = str(r.get("status"))
+                if st.startswith("rifiutata"):
+                    R[per(dy(r["ts"]))][st[:38]] += 1
+            for p in sorted(R):
+                print("  %s: %s" % (p, R[p].most_common(6)))
+            print("7) PERDITE GROSSE (netto < -25$): giorno ora UTC | simbolo | lato | leva | margine | motivo | netto")
+            big = sorted([r for r in closes if net(r) < -25 and dy(cts(r)) >= "10-17"], key=cts)
+            for r in big[-14:]:
+                t = time.gmtime(cts(r) / 1000)
+                print("  %s %02d:%02d | %s | %s | x%s | %.0f$ | %s | %+.0f$" % (dy(cts(r)), t.tm_hour, t.tm_min, r.get("symbol"),
+                      "L" if r.get("side") == 1 else "S", r.get("leverage"), float(r.get("margin") or 0), r.get("why"), net(r)))
+            PYEOF
+            done
+            echo "DONE" >> $OUT
+
+      - name: Pubblica output
+        env:
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+            root@51.79.205.82 'cat /tmp/superbot_periodi.txt' 2>/dev/null > out.txt || true
+          rm -f ~/.ssh/id_desk
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          split -l 18 -d out.txt part_
+          for f in part_*; do
+            OUT=$(cut -c1-300 "$f" | tr '\n' '~' | sed 's/%/%25/g')
+            echo "::notice title=Periodi ${f#part_}::${OUT}"
+          done
+          cat out.txt
