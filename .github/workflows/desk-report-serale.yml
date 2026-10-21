@@ -1,0 +1,56 @@
+name: Resoconto serale - bot, AI in ombra, Turbo, spesa (SOLA LETTURA)
+
+# Raccoglie in un colpo solo i numeri per il resoconto della sera: Hawk e Bull (aperture, chiusure, vincenti, costo di Claude,
+# confronto con i primi giorni), AI in ombra (DeepSeek: conto virtuale e spesa), Turbo Scalp in ombra, osservatore del
+# Profit Manager. NON scrive nulla sul VPS, NON riavvia nulla, NON apre ordini, NON usa chiavi di trading.
+# Tutti i conti sono di prova (paper). Parte SOLO quando cambia deploy/report-serale.trigger.
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/report-serale.trigger"]
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Raccolta (ssh in sola lettura)
+        env: {SG_SSH_KEY: "${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}"}
+        run: |
+          set +e
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          sg() { ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30 root@51.79.205.82 "$@"; }
+          : > out.txt
+          {
+            echo "=== ORA (UTC) ==="; sg 'date -u "+%Y-%m-%d %H:%M"'
+            echo "=== CONTENITORI ==="
+            sg 'for C in $(docker ps -a --format "{{.Names}}" | grep ^superbot); do docker inspect -f "{{.Name}} | {{.State.Status}} | salute {{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}} | riavvii {{.RestartCount}} | {{.Config.Image}}" $C; done' 2>&1
+            for P in hawk bull; do
+              sg "python3 -I - /opt/superbot-desk-data/$P $P" < deploy/scripts/report_serale.py 2>&1 || echo "($P: resoconto non riuscito)"
+            done
+            echo "=== AI IN OMBRA (DeepSeek) ==="
+            sg 'docker exec superbot-ai python -m director.ai_shadow.report' 2>&1 | cut -c1-400 || echo "(AI in ombra: report non riuscito)"
+            echo "=== TURBO SCALP IN OMBRA ==="
+            sg 'cat /opt/superbot-turbo-data/turbo/status.json 2>/dev/null | cut -c1-500; echo; docker exec superbot-turbo python -m desk.turbo_scalp.report /out/turbo' 2>&1 | cut -c1-900 || echo "(Turbo: report non riuscito)"
+            echo "=== OSSERVATORE PROFIT MANAGER (stato) ==="
+            sg 'for B in hawk bull; do echo "$B:"; cat /opt/superbot-sidecar-data/$B/status.json 2>/dev/null | cut -c1-500; echo; done' 2>&1
+            echo "=== SPAZIO DISCO ==="
+            sg 'df -h / | tail -1; du -sh /opt/superbot-desk-data /opt/superbot-ai-data /opt/superbot-turbo-data /opt/superbot-sidecar-data 2>/dev/null'
+            echo "FINE"
+          } >> out.txt 2>&1
+          rm -f ~/.ssh/id_sg
+          cat out.txt
+          { echo '```'; cat out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          # notice a pezzi (le righe lunghe sono accorciate); i segreti non passano di qui
+          split -l 40 -d out.txt part_
+          for f in part_*; do
+            MSG=$(cut -c1-420 "$f" | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' | cut -c1-6500)
+            echo "::notice title=Resoconto serale ${f#part_}::${MSG}"
+          done
+          grep -q '^FINE' out.txt || exit 1
