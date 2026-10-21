@@ -1,5 +1,9 @@
 # STATO di SuperBot Trading
 
+## Aggiornamento 21/10/2026 09:00 Roma — Claude: check-up aperture (sola lettura)
+
+Dopo il rilascio il mercato e' fermo: 0 monete su 26 sopra soglia (soglie 60 per BTC/ETH/oro/argento, 63 per le altre; nei primi giorni 70). Nessun blocco tecnico; Claude non frena. **Difetto trovato:** il trend 1d "corretto" il 20/10 non si attiva (Bitget restituisce 89 barre giornaliere, ne servono 200); con barre vere +15 punti al lato concorde, bot piu' verso i long. Nessuna modifica fatta; opzioni in `claude/checkup-aperture-trade-2026-10-21.md` e `diario/2026-10-21_claude.md`, in attesa della decisione dell'utente. AI in ombra: 2 cicli, 1 posizione virtuale aperta, spesa 0,004 $.
+
 ## Aggiornamento 21/10/2026 08:20 Roma — Claude: punto 1 RILASCIATO e AI in ombra INSTALLATA
 
 Su "via" esplicito dell'utente (08:13): (1) **bot rilasciati su `fa3e220`** (`desk-deploy` VERDE, run 39554172699, per la prima volta dopo la correzione del controllo "una sola istanza"): Hawk e Bull **senza tetto di leva del bot**, **Bull 6 posizioni e 1050 $**, 150-350 $ per trade e opzione A invariati, tutto il resto invariato; paper (`DESK_MODE=paper`, `exec_mode=paper`), un container per bot, battito sano; le posizioni aperte di Hawk sono state conservate dal riavvio; il manifesto del rilascio dovrebbe ora esistere. (2) **AI in ombra DeepSeek installata** (`53111b3`, run 39554436472): container separato `superbot-ai`, conto virtuale, nessun ordine reale, nessuna chiave di trading, dati in `/opt/superbot-ai-data`; primo ciclo completo riuscito (26/26 candele, prima chiamata al modello riuscita, spesa registrata sotto il tetto 0,50 $/giorno e 12 $/mese); container di Hawk, Bull e gli altri verificati identici a prima. Interruttori e report: `deploy/ai-shadow-control.trigger` (`action=report|pause|resume|stop|start`). Turbo Scalp: ancora non installato. Dettagli: `diario/2026-10-21_claude.md`.
