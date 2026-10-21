@@ -1,1 +1,1 @@
-# controllo 03:00 2026-10-20T01:01:00Z
+2026-10-21T04:40:56Z osservatore in ombra: dati freschi (sola lettura)
