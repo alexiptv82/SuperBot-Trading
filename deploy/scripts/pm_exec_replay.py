@@ -47,16 +47,31 @@ def _f(v, d=0.0):
 
 
 def load_trades(path, bot):
-    """Trade puliti: una sola chiusura finale, nessun parziale, nessun DCA, una gamba. Ritorna (puliti, scartati)."""
+    """Trade puliti: una sola chiusura finale, nessun parziale, nessun DCA, una gamba.
+
+    Il file viene letto per intero in memoria prima di processarlo (snapshot immutabile):
+    evita inconsistenze se il logger ruota il file durante la lettura.
+    Le righe JSON non valide vengono conteggiate (non silenziate).
+    Ritorna (puliti, skipped_counter, n_righe_json_invalide, sha256_primieri_16_char).
+    """
+    import hashlib
+    with open(path, "rb") as f:
+        raw = f.read()
+    file_hash = hashlib.sha256(raw).hexdigest()[:16]
+    lines = raw.decode("utf-8", errors="replace").splitlines()
     groups = collections.defaultdict(list)
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            try:
-                r = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(r, dict) and r.get("ev") == "close" and r.get("id") is not None:
-                groups[(r.get("run_no"), r["id"])].append(r)
+    n_invalid_json = 0
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+        except ValueError:
+            n_invalid_json += 1
+            continue
+        if isinstance(r, dict) and r.get("ev") == "close" and r.get("id") is not None:
+            groups[(r.get("run_no"), r["id"])].append(r)
     clean, skipped = [], collections.Counter()
     for (run, i), recs in groups.items():
         if len(recs) != 1 or recs[0].get("partial"):
@@ -85,9 +100,14 @@ def load_trades(path, bot):
         t["qty"] = t["margin"] * t["lev"] / t["entry"]
         # coerenza: il netto ricalcolato con le formule dell'engine deve coincidere con quello registrato
         gross = t["side"] * (t["exit"] - t["entry"]) * t["qty"]
+        # Fix 2: tolleranza riconciliazione a 0.05$ (era 0.50$, non "al centesimo").
+        # Verifica: gross_registrato (da prezzo/qty) - costi_registrati == netto_registrato.
+        # Questo confronta costi registrati, NON ricalcolati indipendentemente.
+        # Una discrepanza > 0.05$ segnala incoerenza interna del log (arrotondamenti engine
+        # producono max ~0.02$; oltre 0.05$ è un vero difetto).
         t["recon_err"] = abs(gross - t["fees"] - t["funding"] - t["net"])
         clean.append(t)
-    return clean, skipped
+    return clean, skipped, n_invalid_json, file_hash
 
 
 # ------------------------------------------------------------------ candele 15m vere
@@ -130,6 +150,23 @@ def fetch_bars(symbol, start_ms, end_ms, now_ms=None, opener=urllib.request.urlo
         w0 = w1
         sleep(0.4)
     return [rows[k] for k in sorted(rows)]
+
+
+def complete_window(bars, open_ms, close_ms):
+    """Require warmup AND every bar through the exit timestamp bucket.
+
+    Conservative: includes a full bar starting exactly at close_ms when aligned,
+    so next-open execution has a price. Recent exits may need one additional bar.
+    Missing tail is never interpreted as a HOLD decision.
+    """
+    if not bars or close_ms < open_ms:
+        return False
+    start = open_ms // BAR_MS * BAR_MS - WARMUP_BARS * BAR_MS
+    last = close_ms // BAR_MS * BAR_MS
+    required = [b for b in bars if start <= b[0] <= last]
+    return (len(required) == (last - start) // BAR_MS + 1
+            and required[0][0] == start and required[-1][0] == last
+            and regular(required))
 
 
 def regular(bars):
@@ -363,7 +400,12 @@ def distribution(trades):
         out.append("stop loss in R: min %.2f mediana %.2f max %.2f (n=%d)" % (sls[0], q(sls, .5), sls[-1], len(sls)))
     lost = [t for t in trades if t["net"] < 0 and t["mfe_r"] >= 1.0]
     if lost:
-        out.append("persi dopo +1R: %d, netto %+.0f$ (se fossero usciti a pareggio: %+.0f$)" % (
+        # Fix 3 (MFE intrabar): mfe_r viene dal log (estremo barra); sulla barra di uscita
+        # l'high potrebbe precedere o seguire il trigger dello stop. "Persi dopo +1R" è
+        # una stima superiore (upper bound): il prezzo potrebbe NON aver raggiunto +1R
+        # prima che lo stop scattasse. Dichiarato esplicitamente nell'output.
+        out.append("persi dopo +1R [upper bound, MFE include estremo barra uscita]: "
+                   "%d, netto %+.0f$ (se usciti a pareggio: %+.0f$)" % (
             len(lost), sum(t["net"] for t in lost), sum(exit_net(t, t["entry"], t["close_ms"]) for t in lost)))
     return out
 
@@ -400,15 +442,19 @@ def main(argv=None):
     cache = {}
     for bot in args.bots.split(","):
         path = os.path.join(args.data_root, bot, "learning_log.jsonl")
-        trades, skipped = load_trades(path, bot)
-        print("=== %s: trade puliti %d | scartati %s" % (bot.upper(), len(trades), dict(skipped)), flush=True)
-        bad = [t for t in trades if t["recon_err"] > 0.5]
-        print("coerenza formule engine: %d su %d tornano al centesimo (|diff|<=0.5$), %d no (esclusi)" % (
-            len(trades) - len(bad), len(trades), len(bad)), flush=True)
+        trades, skipped, n_invalid, file_hash = load_trades(path, bot)
+        print("=== %s: file sha256 ...%s | righe json-invalide %d | trade puliti %d | scartati %s" % (
+            bot.upper(), file_hash, n_invalid, len(trades), dict(skipped)), flush=True)
+        # Fix 2: soglia a 0.05$ (era 0.50$); non è una validazione indipendente dei costi
+        RECON_TOL = 0.05
+        bad = [t for t in trades if t["recon_err"] > RECON_TOL]
+        print("coerenza log (|gross-fees-funding-net|<=%.2f$): %d su %d ok, %d esclusi" % (
+            RECON_TOL, len(trades) - len(bad), len(trades), len(bad)), flush=True)
         if bad:
-            print("  esempi non coerenti: " + "; ".join("%s %s net %.2f diff %.2f" % (
+            print("  NOTA: recon controlla costi registrati, non ricalcolati indipendentemente")
+            print("  esempi non coerenti: " + "; ".join("%s %s net %.2f diff %.4f" % (
                 t["symbol"], t["why"], t["net"], t["recon_err"]) for t in bad[:3]), flush=True)
-        trades = [t for t in trades if t["recon_err"] <= 0.5]
+        trades = [t for t in trades if t["recon_err"] <= RECON_TOL]
         by_sym = collections.defaultdict(list)
         for t in trades:
             by_sym[t["symbol"]].append(t)
@@ -428,7 +474,7 @@ def main(argv=None):
                 a = t["open_ms"] // BAR_MS * BAR_MS - WARMUP_BARS * BAR_MS
                 z = t["close_ms"] // BAR_MS * BAR_MS + TAIL_BARS * BAR_MS
                 seg = [b for b in allb if a <= b[0] <= z]
-                if len(seg) >= WARMUP_BARS and regular(seg) and seg[0][0] == a:
+                if complete_window(seg, t["open_ms"], t["close_ms"]) and regular(seg):
                     bars_by[id(t)] = seg
                 else:
                     miss += 1
