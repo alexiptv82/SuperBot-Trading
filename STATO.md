@@ -1,5 +1,9 @@
 # STATO di SuperBot Trading
 
+## Aggiornamento 21/10/2026 11:15 Roma — Claude: valutata la risposta di DeepSeek al brief
+
+Probabilita' di DeepSeek: 25% idea buona/applicata male, 65% nessun vantaggio (regime), 10% altro; 5 proposte (ablazione del punteggio, leva fissa finche' il punteggio non e' monotono, 'lascia correre' oltre il TP, funding carry, protocollo per il trader AI). Verificato: i denominatori del brief (142 contro 151) non tornavano e il '+0,23R su 142 trade' non e' riproducibile dal registro (124 trade chiusi Hawk, 36 Bull); corretto con le misure nostre (Hawk +0,16R su 121, Bull -0,07R su 30). Chiariti nel brief anche '+226 bp/settimana' (media del book, quasi tutta prezzo del 2021), stop giornaliero 12% (non e' un tetto di perdita), funding simulato (short non pagano ne' ricevono). Registro: i candidati non eseguiti non hanno l'esito (va ricostruito con le candele). Nessuna modifica ai bot. Dettagli: `diario/2026-10-21_claude.md`.
+
 ## Aggiornamento 21/10/2026 10:57 Roma — Claude: misurati gli stop reali (sola lettura)
 
 Workflow `desk-stop-fasce` (codice `91c8d21`, CI verde, senza rete, bot non toccati). **Hawk (121 trade):** stop mediano 1,11% (solo 5 trade sotto lo 0,5%); vincenti 45,5% contro pareggio al netto dei costi ~39-41%; R netto medio +0,16 [-0,08/+0,39], non esclude zero; guadagna dalla fascia di stop 1-2% (67 trade, +0,35R), perde sotto lo 0,5% (n=5) e sopra il 2% (n=7). **Bull (30 trade):** stop mediano 0,80%; vincenti 36,7% contro pareggio ~39-43%; R medio -0,07 [-0,51/+0,38]. Quindi l'errore del brief sul pareggio era reale ma per Hawk piccolo; Bull non ha margine. Campioni piccoli: indizi, non prove. Brief per le altre AI aggiornato (Docs, Project, diario). Dettagli in `diario/2026-10-21_claude.md`. Nessuna modifica a strategia o bot.
