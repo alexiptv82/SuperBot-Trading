@@ -1,2 +1,2 @@
-# prova dal vivo (sola lettura) del codice nuovo trend 1d + OI/long-short, con diagnosi per simbolo
-sha=b9c5ed6f4c8fe8c5f1cd73127624eb75252de22c
+# prova dal vivo (sola lettura) del codice nuovo con precaricamento e limiti di richieste
+sha=880c4a4ae226815f8686f20c14e5bebdc5bff322

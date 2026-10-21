@@ -12,33 +12,11 @@ now = int(time.time() * 1000)
 syms = list(cli.SYMBOLS)
 print("simboli:", len(syms))
 
-# 0) diagnosi simbolo per simbolo: codice HTTP e inizio della risposta se Bitget rifiuta
-import urllib.error
+# 1) trend giornaliero come lo fa il bot: precaricamento all'avvio (senza tetto di tempo), poi lettura dalla cache
 t0 = time.time()
-bad = {}
-for s in syms:
-    t1 = time.time()
-    try:
-        rows = cli.fetch_daily_history(s, now)
-        print("DIAG %-5s barre %3d  %.1fs" % (s, len(rows), time.time() - t1))
-    except urllib.error.HTTPError as e:
-        body = ""
-        try:
-            body = e.read()[:140].decode("utf-8", "replace")
-        except Exception:
-            pass
-        bad[s] = e.code
-        print("DIAG %-5s HTTP %s %.1fs %s" % (s, e.code, time.time() - t1, body))
-    except Exception as e:
-        bad[s] = type(e).__name__
-        print("DIAG %-5s ERRORE %s %s %.1fs" % (s, type(e).__name__, str(e)[:100], time.time() - t1))
-print("DIAG: falliti %d su %d in %.1fs: %s" % (len(bad), len(syms), time.time() - t0, bad))
-cli._DAILY_PAUSE["until_ms"] = 0
-
-# 1) trend giornaliero: tempo e risultato per tutti i simboli, esattamente come lo fa il ciclo del bot
-t0 = time.time()
-ok = short = 0
-bull = bear = 0
+n_ready = cli.warm_daily_cache(syms, now)
+warm_s = time.time() - t0
+ok = bull = bear = 0
 lens = []
 for s in syms:
     arr = cli.daily_bars(s, now)
@@ -50,14 +28,12 @@ for s in syms:
             bull += 1
         else:
             bear += 1
-    else:
-        short += 1
-print("1D: simboli con >=%d barre chiuse: %d su %d | corti/assenti: %d | trend bull %d bear %d | tempo %.1fs" % (
-    signals.DAILY_MIN_BARS, ok, len(syms), short, bull, bear, time.time() - t0))
+print("1D: precaricamento %.1fs | simboli con >=%d barre chiuse: %d su %d | trend bull %d bear %d" % (
+    warm_s, signals.DAILY_MIN_BARS, ok, len(syms), bull, bear))
 print("1D: barre per simbolo:", dict(zip(syms, lens)))
 t1 = time.time()
 cli.daily_bars(syms[0], now)
-print("1D: seconda lettura dalla cache: %.3fs" % (time.time() - t1))
+print("1D: seconda lettura dalla cache: %.3fs | falliti da ricordare: %s" % (time.time() - t1, sorted(cli._DAILY_FAILED)))
 
 # 2) OI e long/short, esattamente come li scarica il bot ogni 30 minuti
 t0 = time.time()
