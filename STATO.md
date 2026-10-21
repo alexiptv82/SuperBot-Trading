@@ -1,5 +1,9 @@
 # STATO di SuperBot Trading
 
+## Aggiornamento 21/10/2026 11:30 Roma — Claude: misurati gli stop reali (sola lettura)
+
+Workflow `desk-stop-fasce` (codice `91c8d21`, CI verde, senza rete, bot non toccati). **Hawk (121 trade):** stop mediano 1,11% (solo 5 trade sotto lo 0,5%); vincenti 45,5% contro pareggio al netto dei costi ~39-41%; R netto medio +0,16 [-0,08/+0,39], non esclude zero; guadagna dalla fascia di stop 1-2% (67 trade, +0,35R), perde sotto lo 0,5% (n=5) e sopra il 2% (n=7). **Bull (30 trade):** stop mediano 0,80%; vincenti 36,7% contro pareggio ~39-43%; R medio -0,07 [-0,51/+0,38]. Quindi l'errore del brief sul pareggio era reale ma per Hawk piccolo; Bull non ha margine. Campioni piccoli: indizi, non prove. Brief per le altre AI aggiornato (Docs, Project, diario). Dettagli in `diario/2026-10-21_claude.md`. Nessuna modifica a strategia o bot.
+
 ## Aggiornamento 21/10/2026 10:50 Roma — Claude: correzione al brief (pareggio al netto dei costi)
 
 Valutando la tabella costi/pareggio di Perplexity (numeri ricalcolati: tornano) ho trovato un **mio errore** nel brief per le altre AI: il pareggio del 37-38% era al lordo dei costi. Con 16 bp per giro il pareggio dipende dallo stop: ~55% a stop 0,3%, ~41% a 1%, ~37% a 3,5% (con il TP misurato ~1,72R: ~57% / 43% / 39%). Hawk ha il 45% di vincenti: margine incerto finche' non si misura la distribuzione reale degli stop. Brief corretto (Docs, Project, diario) e rimandato all'utente. Prossimo passo: misura in sola lettura di vincite e R netto per fascia di stop. Nessuna modifica a strategia o bot.
