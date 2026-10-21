@@ -1,2 +1,2 @@
-2026-10-21T06:49:21Z report AI in ombra (sola lettura)
+# report 21/10 08:00
 action=report
