@@ -1,1 +1,1 @@
-2026-10-21T07:25:00Z prima prova resoconto serale (sola lettura)
+2026-10-21T07:07:08Z resoconto serale con tabella chiusure (sola lettura)

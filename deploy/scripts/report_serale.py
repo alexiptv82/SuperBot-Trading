@@ -139,6 +139,14 @@ def section_log(rows, now_ms):
     last = win(trades, lambda t: t["ts"], *t24)
     why = collections.Counter(t["why"] for t in last)
     print("motivi di uscita (24h): %s" % dict(why.most_common(6)))
+    rec24 = sorted(win(closes, close_ts, *t24), key=close_ts)
+    print("chiusure delle ultime 24h (ora UTC | simbolo lato leva | P=parziale | motivo | netto | netto in R | massimo in R):")
+    for r in rec24[-16:]:
+        t = time.gmtime(close_ts(r) / 1000)
+        print("  %02d:%02d | %s %s x%s | %s | %s | %+.1f$ | %s | %s" % (
+            t.tm_hour, t.tm_min, r.get("symbol"), "L" if r.get("side") == 1 else "S", r.get("leverage"),
+            "P" if r.get("partial") else "-", str(r.get("why"))[:22], _f(r.get("net")),
+            r.get("net_r"), r.get("mfe_r")))
     # profitto restituito: arrivato a +1R di massimo favorevole e finito in perdita
     for thr in (0.5, 1.0):
         hit = [t for t in last if t["mfe"] >= thr]
