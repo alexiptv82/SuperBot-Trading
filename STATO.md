@@ -1,5 +1,9 @@
 # STATO di SuperBot Trading
 
+## 21/10/2026 — Claude riprende il lavoro su richiesta di Alessandro
+
+ChatGPT consegna e interrompe l'implementazione concorrente. Codice pronto per review: `work/research-integrity` @ `b229963`. Solo preparazione di ricerca: nessun nuovo risultato economico, nessun merge, trigger o deploy. Passaggio completo, limiti e sequenza dei lavori in `diario/2026-10-21_chatgpt.md`, sezione «Passaggio operativo da ChatGPT a Claude». Prima completare l'integrità del replay, poi dati verificati e misura regime/lato; A/B stagionalità consegnata misura solo punteggi. PM resta in ombra. Lo stato del VPS non è stato ricontrollato. Questo aggiornamento sostituisce la precedente assegnazione del lavoro a ChatGPT.
+
 ## 21/10/2026 17:31 — ChatGPT: preparazione ricerca, nessun deploy
 
 Utente: ChatGPT prosegue il lavoro; Claude interviene quando necessario. Autorizzata
