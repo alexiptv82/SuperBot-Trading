@@ -1,5 +1,39 @@
 # STATO di SuperBot Trading
 
+## 21/10/2026 17:31 — ChatGPT: preparazione ricerca, nessun deploy
+
+Utente: ChatGPT prosegue il lavoro; Claude interviene quando necessario. Autorizzata
+preparazione di analisi e test, non modifiche operative. Raccolti anche i report Kimi
+(con rettifiche) e Nemotron: non costituiscono validazioni indipendenti dei dati.
+
+Ramo work/research-integrity, commit b229963, base e7866bf. Nessun merge in rule-pool,
+nessun trigger o deploy. work/director-chatgpt e dati bot intatti.
+- Nuovo seasonality_audit.py: sola sensibilita dei punteggi registrati con/senza
+  bonus, nessuna stima di ordini o P&L; soglia scenario esplicita, versioni ammesse
+  solo dopo revisione storica; input hashato, JSON rigoroso, righe duplicate contate,
+  conflitti fermano il calcolo, saturazione a 100 con bonus esclusa.
+- Limite verificato nel logger: candidate non sono tutto il mercato e cessano
+  oltre MAX_BYTES_CANDIDATES. Non dichiarare universo completo.
+- pm_exec_replay.py: complete_window richiede copertura continua fino alla barra
+  del timestamp di uscita; recente uscita senza barra disponibile viene esclusa.
+  Correzione conservativa, non una modifica alle policy del PM.
+- Protocollo in docs/research/seasonality-ab-20261021.md: separa sensibilita di
+  punteggio, replica storica ed esperimento di portafoglio.
+- Test Python 3.11.17: 193 passati, 44 saltati; 3 errori deliberati rilevati (bonus
+  ignorato, saturazione invertita, vecchia copertura insufficiente). Nessuna prova
+  nuova sul server o sui registri privati; nessun nuovo risultato economico.
+
+Restano: revisione prima di eseguire sui dati veri; ottenere copia PAPER verificata
+con hash; verificare le versioni storiche ammesse; completare correzioni input,
+riconciliazione, MFE e workflow del replay. Non usare la sola copertura corretta
+come validazione finale. Stato operativo del server NON ricontrollato: diario
+riporta ancora correzione 880c4a4 in attesa di via, non inferire installazione.
+
+Nota metodologica: analisi per regime/lato non distingue DA SOLA applicazione
+errata da effetto di mercato. Il PM resta in ombra. I difetti di copertura possono
+alterare i risultati: il loro effetto numerico non e' ancora quantificato.
+
+
 ## Aggiornamento 21/10/2026 11:25 Roma — Claude: valutato report ChatGPT sul replay PM — quadro completo
 
 ChatGPT (commit 69c4fba, run 39565485402, Python 3.11.17, 175 test passati): **giudizio favorevole al replay come strumento di ricerca, non all'attivazione del PM**. Ha identificato 5 difetti tecnici nel codice: (1) copertura candele incompleta (controlla ≥24 barre all'ingresso ma non fino all'uscita); (2) riconciliazione con tolleranza 0,50 $ non 0,01 $, usando fee registrate non ricalcolate; (3) MFE registrato include l'estrema intrabar d'uscita — "ha raggiunto +1R prima di perdere" non e' sempre dimostrato; (4) `set +e` + `echo FINE` incondizionato → job verde anche se il replay fallisce; (5) righe JSON ignorate permissivamente, `:ro` non congela il registro mentre il bot scrive. Nessuno di questi difetti invalida i risultati, ma vanno corretti prima di una validazione conclusiva. Calibrazione: propone confronto appaiato per trade in R netto, raggruppando giorni e trade contemporanei (non indipendenza fittizia). Soglia per il PM: con esiti binari TP/stop, serve p > 74,1% dopo aver raggiunto +1R per giustificare il non-intervento — il massimo gia' raggiunto da solo non basta. Stessa conclusione pratica di DeepSeek e Gemini: ombra in produzione, nessuna attivazione. **Il quadro delle 4 AI e' completo (Perplexity, DeepSeek, Gemini, ChatGPT).** Nessuna modifica ai bot. Dettagli: `diario/2026-10-21_claude.md`.
