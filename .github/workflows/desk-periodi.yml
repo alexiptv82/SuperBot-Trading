@@ -122,6 +122,36 @@ jobs:
                     if per(dy(cts(r))) == p:
                         K[kind(r)].append(r)
                 print("  %s: %s" % (p, " | ".join("%s %d/%+.0f$" % (k, len(v), sum(net(r) for r in v)) for k, v in sorted(K.items()))))
+            print("9) PROFITTO RESTITUITO (per trade, id): toccato almeno +0.5R / +1R e poi chiuso in perdita; quanto dei massimi incassano i vincenti")
+            T = {}
+            for r in closes:
+                i = r.get("id")
+                if i is None:
+                    continue
+                t = T.setdefault(i, {"net": 0.0, "netr": 0.0, "mfe": 0.0, "ts": 0})
+                t["net"] += net(r)
+                try:
+                    t["netr"] += float(r.get("net_r") or 0)
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    t["mfe"] = max(t["mfe"], float(r.get("mfe_r") or 0))
+                except (TypeError, ValueError):
+                    pass
+                t["ts"] = max(t["ts"], cts(r))
+            for p in ("A inizio 12-15/10", "B 16-19/10", "C da 20/10", "TUTTO"):
+                sel = [t for t in T.values() if p == "TUTTO" or per(dy(t["ts"])) == p]
+                if not sel:
+                    print("  %s: n=0" % p)
+                    continue
+                out = []
+                for thr in (0.5, 1.0):
+                    hit = [t for t in sel if t["mfe"] >= thr]
+                    lost = [t for t in hit if t["net"] < 0]
+                    out.append("+%.1fR: %d/%d toccato, %d finiti in perdita (%+.0f$)" % (thr, len(hit), len(sel), len(lost), sum(t["net"] for t in lost)))
+                win = [t for t in sel if t["net"] > 0 and t["mfe"] > 0]
+                cap = (sum(t["netr"] for t in win) / sum(t["mfe"] for t in win)) if win else 0
+                print("  %s: %s | vincenti: incassano %.0f%% del massimo toccato (R)" % (p, " | ".join(out), 100 * cap))
             PYEOF
             done
             echo "DONE" >> $OUT
