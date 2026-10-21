@@ -41,7 +41,7 @@ class Limits:
     funding_bp_8h_long: float = 1.0
     maint: float = 0.005
     sl_liq_frac: float = 0.75        # V2: leggermente più morbido (era 0.8)
-    daily_stop: float = 0.12         # V2: 12% (era 10%)
+    daily_stop: float = 0.10         # V2.1: riallineato a 10% (era 12%, utente 21/10/2026)
     kill_equity: float = 450.0       # V2: abbassato da 500 a 450
 
 
