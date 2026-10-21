@@ -1,1 +1,1 @@
-2026-10-20T02:56:02Z controllo diagnostico sola lettura Claude: perche' i bot aprono poco dal reset
+2026-10-21T06:25:35Z attivita' dopo il rilascio fa3e220: perche' non si aprono trade (sola lettura)
