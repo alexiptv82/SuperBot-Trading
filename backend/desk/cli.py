@@ -77,7 +77,7 @@ def _make_hawk_config() -> PortfolioConfig:
             max_margin_total=1000.0,  # budget totale $1000
             max_open=10,              # max 10 posizioni
             kill_equity=450.0,
-            daily_stop=0.12,
+            daily_stop=0.10,   # utente 21/10/2026: abbassato da 12% a 10%
         ),
         system_prompt=SYSTEM_HAWK,
         guardrail_min_margin=50.0,
@@ -101,7 +101,7 @@ def _make_bull_config() -> PortfolioConfig:
             max_margin_total=1050.0,  # budget 1050 = 3 x 350 (utente, 21/10/2026: torna come all'inizio; era 1000 dal 20/10 14:11); engine.open usa anche cash*0.95
             max_open=6,               # max 6 posizioni (utente, 21/10/2026; era 10 dal 20/10 13:56, 3 all'inizio). Non devono essere tutte piene
             kill_equity=450.0,
-            daily_stop=0.12,
+            daily_stop=0.10,   # utente 21/10/2026: abbassato da 12% a 10%
         ),
         system_prompt=SYSTEM_BULL,
         guardrail_min_margin=150.0,
