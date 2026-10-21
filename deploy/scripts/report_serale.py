@@ -45,10 +45,11 @@ def close_ts(r):
 
 
 def trades_from_closes(closes):
-    """Raggruppa le chiusure per id: un trade e' CHIUSO quando ha almeno una chiusura non parziale."""
+    """Raggruppa le chiusure per (run, id): un trade e' CHIUSO quando ha almeno una chiusura non parziale."""
     T = {}
     for n, r in enumerate(closes):
-        key = r.get("id") if r.get("id") is not None else "senza-id-%d" % n
+        # gli id dei trade ripartono da 1 a ogni azzeramento del conto (run_no): la chiave e' (run, id)
+        key = (r.get("run_no"), r.get("id")) if r.get("id") is not None else ("senza-id", n)
         t = T.setdefault(key, {"net": 0.0, "ts": 0, "final": False, "mfe": 0.0, "side": r.get("side"),
                                "symbol": r.get("symbol"), "why": None, "lev": r.get("leverage")})
         t["net"] += _f(r.get("net"))

@@ -125,7 +125,7 @@ jobs:
             print("9) PROFITTO RESTITUITO (per trade, id): toccato almeno +0.5R / +1R e poi chiuso in perdita; quanto dei massimi incassano i vincenti")
             T = {}
             for r in closes:
-                i = r.get("id")
+                i = (r.get("run_no"), r.get("id")) if r.get("id") is not None else None    # gli id ripartono da 1 a ogni azzeramento: chiave (run, id)
                 if i is None:
                     continue
                 t = T.setdefault(i, {"net": 0.0, "netr": 0.0, "mfe": 0.0, "ts": 0})

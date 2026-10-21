@@ -1,1 +1,1 @@
-2026-10-21T07:07:08Z resoconto serale con tabella chiusure (sola lettura)
+2026-10-21T07:08:26Z resoconto serale con chiave (run, id) (sola lettura)
