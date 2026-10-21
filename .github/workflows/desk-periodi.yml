@@ -108,6 +108,20 @@ jobs:
                 t = time.gmtime(cts(r) / 1000)
                 print("  %s %02d:%02d | %s | %s | x%s | %.0f$ | %s | %+.0f$" % (dy(cts(r)), t.tm_hour, t.tm_min, r.get("symbol"),
                       "L" if r.get("side") == 1 else "S", r.get("leverage"), float(r.get("margin") or 0), r.get("why"), net(r)))
+            print("8) NETTO per tipo di uscita e periodo: tipo n/netto")
+            def kind(r):
+                w = str(r.get("why"))
+                if r.get("partial"):
+                    return "parziale"
+                if w in ("take profit", "stop loss", "liquidazione", "chiusura Claude", "chiusura manuale"):
+                    return w
+                return "altro(testo)"
+            for p in ("A inizio 12-15/10", "B 16-19/10", "C da 20/10"):
+                K = collections.defaultdict(list)
+                for r in closes:
+                    if per(dy(cts(r))) == p:
+                        K[kind(r)].append(r)
+                print("  %s: %s" % (p, " | ".join("%s %d/%+.0f$" % (k, len(v), sum(net(r) for r in v)) for k, v in sorted(K.items()))))
             PYEOF
             done
             echo "DONE" >> $OUT
