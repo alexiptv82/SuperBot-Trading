@@ -457,3 +457,21 @@ def test_take_profit_exit_bar_convention_engine_vs_favourable():
     fav = R.run_stop_rule(t, bars, 1.0, 0, tp_bar=False)          # ipotesi favorevole alla regola: barra esclusa
     assert eng is not None and eng[1] == bars[j][0] + B and eng[0] < t["net"]
     assert fav is None
+
+
+@pytest.mark.parametrize("damage", ["warmup_only", "missing_exit", "gap", "duplicate", "reverse"])
+def test_complete_window_rejects_unobserved_lifetime(damage):
+    opened, closed = T0 + 24 * B + 60_000, T0 + 35 * B
+    bars = bars_from([100.] * 36)
+    if damage == "warmup_only": bars = bars[:24]
+    elif damage == "missing_exit": bars = bars[:-1]
+    elif damage == "gap": del bars[28]
+    elif damage == "duplicate": bars.insert(28, bars[28])
+    elif damage == "reverse": bars.reverse()
+    assert not R.complete_window(bars, opened, closed)
+
+
+def test_complete_window_includes_exit_bucket():
+    bars = bars_from([100.] * 36)
+    assert R.complete_window(bars, T0 + 24 * B + 60_000, T0 + 35 * B)
+    assert not R.complete_window([], T0, T0 + B)

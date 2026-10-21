@@ -132,6 +132,23 @@ def fetch_bars(symbol, start_ms, end_ms, now_ms=None, opener=urllib.request.urlo
     return [rows[k] for k in sorted(rows)]
 
 
+def complete_window(bars, open_ms, close_ms):
+    """Require warmup AND every bar through the exit timestamp bucket.
+
+    Conservative: includes a full bar starting exactly at close_ms when aligned,
+    so next-open execution has a price. Recent exits may need one additional bar.
+    Missing tail is never interpreted as a HOLD decision.
+    """
+    if not bars or close_ms < open_ms:
+        return False
+    start = open_ms // BAR_MS * BAR_MS - WARMUP_BARS * BAR_MS
+    last = close_ms // BAR_MS * BAR_MS
+    required = [b for b in bars if start <= b[0] <= last]
+    return (len(required) == (last - start) // BAR_MS + 1
+            and required[0][0] == start and required[-1][0] == last
+            and regular(required))
+
+
 def regular(bars):
     return all(b[0] - a[0] == BAR_MS for a, b in zip(bars, bars[1:]))
 
@@ -428,7 +445,7 @@ def main(argv=None):
                 a = t["open_ms"] // BAR_MS * BAR_MS - WARMUP_BARS * BAR_MS
                 z = t["close_ms"] // BAR_MS * BAR_MS + TAIL_BARS * BAR_MS
                 seg = [b for b in allb if a <= b[0] <= z]
-                if len(seg) >= WARMUP_BARS and regular(seg) and seg[0][0] == a:
+                if complete_window(seg, t["open_ms"], t["close_ms"]) and regular(seg):
                     bars_by[id(t)] = seg
                 else:
                     miss += 1
