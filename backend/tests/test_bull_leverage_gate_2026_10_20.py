@@ -1,8 +1,11 @@
-"""Test opzione B: limite di leva massima (decisione di Alexander, 20/10/2026 17:58).
+"""Cancello della leva massima (opzione B, decisione di Alexander del 20/10/2026 17:58),
+SPENTO il 21/10/2026 per decisione dell'utente ("tornare come all'inizio": nessun tetto del bot).
 
-Hawk  max_leverage=20 — scalp con leva alta bloccati sopra x20.
-Bull  max_leverage=15 — medio/scalp bloccati sopra x15.
-None  (default PortfolioConfig) — nessun limite, mai bloccato.
+Il cancello resta nel codice e funziona: lo si riaccende mettendo max_leverage nella configurazione.
+Oggi Hawk e Bull hanno max_leverage=None, quindi non rifiutano mai per la leva; restano solo i tetti
+per asset del motore (45x BTC/XAU/XAG, 30x ETH, 25x gli altri), che non sono cambiati.
+I test sul cancello usano configurazioni con il tetto messo ESPLICITAMENTE (x20 / x15) per provare che
+funziona quando e' acceso; i test sulla configurazione vera provano che oggi e' spento.
 
 Struttura analoga a test_bull_margin_gate_2026_10_20.py.
 """
@@ -130,6 +133,12 @@ def _pg(max_lev: Optional[int]):
     )
 
 
+def _hawk_con_tetto(n: int = 20):
+    """Configurazione Hawk vera, con il tetto riacceso ESPLICITAMENTE (oggi in produzione e' spento)."""
+    from dataclasses import replace
+    return replace(cli._make_hawk_config(), max_leverage=n)
+
+
 def _dec(lev: int) -> dict:
     return {"leverage": lev, "margin_usd": 100.0, "symbol": "ETH",
             "action": "open_short", "confidence": 70,
@@ -244,7 +253,7 @@ def test_run_cycle_leva_sopra_blocca():
     orig_data_dir = cli.DATA_DIR
     import tempfile, os as _os
     tmpdir = tempfile.mkdtemp()
-    hawk_pg = cli._make_hawk_config()
+    hawk_pg = _hawk_con_tetto(20)   # tetto riacceso esplicitamente: in produzione oggi e' spento
     hawk_pg.data_dir = tmpdir
     cli.PORTFOLIO = hawk_pg
     cli.DATA_DIR = tmpdir
@@ -346,7 +355,7 @@ def test_mutation_gate_spento():
     """Se max_leverage viene ignorato (gate restituisce sempre None),
     il test_run_cycle_leva_sopra_blocca fallisce: la leva x25 aprirebbe."""
     # verifichiamo che la funzione originale blocchi x25 su Hawk (max 20)
-    pg = cli._make_hawk_config()
+    pg = _hawk_con_tetto(20)
     assert cli.leverage_gate(_dec(25), pg) is not None, \
         "Il gate con max_leverage=20 deve bloccare x25"
     # e che non blocchi x20
@@ -356,7 +365,7 @@ def test_mutation_gate_spento():
 
 def test_mutation_soglia_invertita():
     """Se il confronto fosse >= invece di >, x20 sarebbe bloccata — sbagliato."""
-    pg = cli._make_hawk_config()
+    pg = _hawk_con_tetto(20)
     # x20 deve passare
     assert cli.leverage_gate(_dec(20), pg) is None
     # x21 deve essere bloccata
@@ -371,13 +380,89 @@ def test_mutation_nessun_portfolio_senza_limite():
             f"max_leverage=None non deve bloccare leva x{lev}"
 
 
-def test_hawk_config_ha_limite():
-    """Il portfolio Hawk deve avere max_leverage=20."""
+def test_hawk_config_senza_tetto():
+    """21/10/2026 (utente): nessun tetto del bot su Hawk. Il cancello esiste ma e' spento."""
     pg = cli._make_hawk_config()
-    assert pg.max_leverage == 20
+    assert pg.max_leverage is None
 
 
-def test_bull_config_ha_limite():
-    """Il portfolio Bull deve avere max_leverage=15."""
+def test_bull_config_senza_tetto():
+    """21/10/2026 (utente): nessun tetto del bot su Bull. Il cancello esiste ma e' spento."""
     pg = cli._make_bull_config()
-    assert pg.max_leverage == 15
+    assert pg.max_leverage is None
+
+
+def test_config_vere_non_rifiutano_mai_per_la_leva():
+    """Con le configurazioni vere di oggi nessuna leva (fino al massimo del motore, 45x) viene rifiutata dal cancello."""
+    for pg in (cli._make_hawk_config(), cli._make_bull_config()):
+        for lev in (5, 15, 17, 20, 25, 30, 45):
+            assert cli.leverage_gate(_dec(lev), pg) is None, (pg.name, lev)
+
+
+def test_riaccendere_il_tetto_riporta_il_rifiuto():
+    """Il cancello e' ancora nel codice: rimettere il tetto in configurazione lo riattiva (x21 sopra x20, x20 no)."""
+    pg = _hawk_con_tetto(20)
+    assert cli.leverage_gate(_dec(21), pg) is not None
+    assert cli.leverage_gate(_dec(20), pg) is None
+
+
+def test_run_cycle_senza_tetto_apre_anche_a_x25():
+    """CICLO VERO con la configurazione vera di Hawk (tetto spento): la stessa proposta x25 che con il tetto
+    x20 veniva rifiutata (test_run_cycle_leva_sopra_blocca) ora apre. Prova che l'effetto e' quello voluto."""
+    import numpy as np
+    import time as _time
+
+    now_ms = int(_time.time() * 1000)
+    bar_ms = 900_000
+    n = 200
+    ts_start = now_ms - n * bar_ms - bar_ms * 2
+    prices_val = [2400.0 + i * 0.01 for i in range(n)]
+    candles = [[ts_start + i * bar_ms, p - 1, p + 2, p - 2, p, 1000.0]
+               for i, p in enumerate(prices_val)]
+
+    original_fetch = cli.fetch_candles
+    cli.fetch_candles = lambda sym, bar="15m", limit=1000: candles if sym == "ETH" else []
+    original_daily = cli.daily_bars
+    cli.daily_bars = lambda sym, now: np.zeros((0, 6))
+
+    from desk.signals import Reading as _Reading
+    orig_read_symbol = cli.read_symbol
+    def _fake_read(sym, arr, now_ms_=None, **_kw):
+        if sym != "ETH":
+            return None
+        return _Reading(symbol="ETH", price=2400.0, side=-1, score=70,
+                        short_score=70, sl_pct=0.02, tp_pct=0.04, trade_type="scalp")
+    cli.read_symbol = _fake_read
+
+    orig_rules = cli.rules_decisions
+    cli.rules_decisions = lambda *a, **kw: [{
+        "action": "open_short", "symbol": "ETH",
+        "confidence": 75, "margin_usd": 100.0, "leverage": 25,
+        "stop_loss_pct": 0.02, "take_profit_pct": 0.04,
+        "trade_type": "scalp", "reason": "test senza tetto",
+    }]
+
+    orig_portfolio = cli.PORTFOLIO
+    orig_data_dir = cli.DATA_DIR
+    import tempfile
+    tmpdir = tempfile.mkdtemp()
+    hawk_pg = cli._make_hawk_config()          # configurazione VERA, senza tetto
+    hawk_pg.data_dir = tmpdir
+    cli.PORTFOLIO = hawk_pg
+    cli.DATA_DIR = tmpdir
+
+    state = {}
+    try:
+        cli.run_cycle(state, now_ms)
+    except Exception:
+        pass
+    finally:
+        cli.fetch_candles = original_fetch
+        cli.daily_bars = original_daily
+        cli.read_symbol = orig_read_symbol
+        cli.rules_decisions = orig_rules
+        cli.PORTFOLIO = orig_portfolio
+        cli.DATA_DIR = orig_data_dir
+
+    positions = (state.get("main") or {}).get("positions") or {}
+    assert len(positions) == 1, f"Senza tetto la proposta x25 deve aprire: trovate {len(positions)} posizioni"

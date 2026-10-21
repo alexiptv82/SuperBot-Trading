@@ -1,5 +1,6 @@
 """La riga CONTO del prompt dice a Claude i limiti VERI di ciascun bot (prima: '/2000$, /10' per tutti e due).
-Decisione dell'utente 20/10/2026 14:11: budget $1000 per bot."""
+Hawk: budget $1000 e 10 posizioni (utente, 20/10/2026 14:11). Bull: budget $1050 e 6 posizioni (utente, 21/10/2026,
+"tornare come all'inizio" nella gestione di leve e puntate)."""
 import os
 import sys
 
@@ -20,12 +21,12 @@ def _conto_line(cfg, margin_open=0):
     return next(l for l in text.splitlines() if l.startswith("CONTO:"))
 
 
-def test_both_bots_have_a_thousand_dollar_budget_and_ten_slots():
-    for cfg in (cli._make_hawk_config(), cli._make_bull_config()):
+def test_each_bot_tells_claude_its_own_budget_and_slots():
+    for cfg, budget, slots in ((cli._make_hawk_config(), 1000, 10), (cli._make_bull_config(), 1050, 6)):
         line = _conto_line(cfg)
-        assert "margine in uso 0/1000$" in line, line
-        assert "posizioni 0/10" in line, line
-        assert "2000" not in line, line
+        assert f"margine in uso 0/{budget}$" in line, (cfg.name, line)
+        assert f"posizioni 0/{slots}" in line, (cfg.name, line)
+        assert "2000" not in line, (cfg.name, line)
 
 
 def test_line_follows_the_real_limits_of_each_portfolio():
@@ -39,7 +40,7 @@ def test_line_follows_the_real_limits_of_each_portfolio():
 
 def test_line_shows_margin_in_use():
     line = _conto_line(cli._make_bull_config(), margin_open=200)
-    assert "margine in uso 200/1000$" in line and "posizioni 1/10" in line, line
+    assert "margine in uso 200/1050$" in line and "posizioni 1/6" in line, line
 
 
 def test_snapshot_without_limits_invents_no_numbers():
@@ -98,8 +99,8 @@ def _run_real_cycle_and_get_prompt(cfg):
 
 
 def test_real_run_cycle_sends_claude_the_real_limits_of_each_bot():
-    for cfg in (cli._make_hawk_config(), cli._make_bull_config()):
+    for cfg, budget, slots in ((cli._make_hawk_config(), 1000, 10), (cli._make_bull_config(), 1050, 6)):
         prompts = _run_real_cycle_and_get_prompt(cfg)
         assert prompts, f"{cfg.name}: Claude non e' stato chiamato (il test non verifica nulla)"
         line = next(l for l in prompts[-1].splitlines() if l.startswith("CONTO:"))
-        assert "margine in uso 0/1000$" in line and "posizioni 0/10" in line and "2000" not in line, (cfg.name, line)
+        assert f"margine in uso 0/{budget}$" in line and f"posizioni 0/{slots}" in line and "2000" not in line, (cfg.name, line)

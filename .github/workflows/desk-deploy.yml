@@ -241,10 +241,13 @@ jobs:
                 exit 1
               fi
             done
-            # == Una sola istanza per bot: un solo container IN ESECUZIONE usa i dati di ciascun portafoglio ==
+            # == Una sola istanza per bot: un solo container-bot IN ESECUZIONE usa i dati di ciascun portafoglio ==
+            # Il container dell'app (nome esatto "superbot") monta le stesse cartelle dati per mostrarle nella dashboard
+            # (deploy.yml / superbot-sg-deploy.yml): non e' un secondo bot e non va contato (21/10/2026: contarlo
+            # faceva finire il rilascio rosso anche con i due bot sani).
             for P in hawk bull; do
               N=0
-              for C in $(docker ps -q); do
+              for C in $(docker ps --format '{{.Names}}' | grep -vx 'superbot' || true); do
                 if docker inspect -f '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P"; then
                   N=$((N + 1))
                 fi

@@ -734,5 +734,35 @@ class PinnedBotPoolDeployTests(unittest.TestCase):
         self.assertIn("0 container in esecuzione usano i dati di bull", out)
 
 
+    def test_single_instance_check_ignores_the_app_container_that_mounts_the_same_folders(self):
+        """CASO REALE (21/10/2026): il container dell'app `superbot` monta in lettura/scrittura le stesse cartelle
+        dati dei bot (/opt/superbot-desk-data/hawk e /bull, vedi deploy.yml e sg-precheck). Il controllo le contava
+        come seconda istanza e il rilascio finiva rosso pur con i due bot sani. Non e' un secondo bot: va escluso."""
+        rc, out = self.single_instance({
+            "superbot-desk-hawk": ["/opt/superbot-desk-data/hawk"],
+            "superbot-desk-bull": ["/opt/superbot-desk-data/bull"],
+            "superbot": ["/opt/superbot/data", "/opt/superbot-desk-data/hawk", "/opt/superbot-desk-data/bull"],
+        })
+        self.assertEqual(rc, 0, out)
+        self.assertIn("una sola istanza per hawk: ok", out)
+        self.assertIn("una sola istanza per bull: ok", out)
+
+    def test_single_instance_check_still_fails_with_a_second_bot_even_when_the_app_is_present(self):
+        rc, out = self.single_instance({
+            "superbot-desk-hawk": ["/opt/superbot-desk-data/hawk"],
+            "superbot-desk-bull": ["/opt/superbot-desk-data/bull"],
+            "superbot": ["/opt/superbot-desk-data/hawk", "/opt/superbot-desk-data/bull"],
+            "superbot-desk-hawk-vecchio": ["/opt/superbot-desk-data/hawk"],
+        })
+        self.assertEqual(rc, 1, out)
+        self.assertIn("2 container in esecuzione usano i dati di hawk", out)
+
+    def test_single_instance_check_fails_when_only_the_app_is_left(self):
+        """Se i bot sono spariti e resta solo l'app, i container dei bot sono 0: il controllo deve restare rosso."""
+        rc, out = self.single_instance({"superbot": ["/opt/superbot-desk-data/hawk", "/opt/superbot-desk-data/bull"]})
+        self.assertEqual(rc, 1, out)
+        self.assertIn("0 container in esecuzione usano i dati di hawk", out)
+
+
 if __name__ == "__main__":
     unittest.main()

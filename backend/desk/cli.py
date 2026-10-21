@@ -85,7 +85,7 @@ def _make_hawk_config() -> PortfolioConfig:
         guardrail_lev_forced=15,
         guardrail_type_forced="scalp",
         description="Hawk — max $100/trade, 10 posizioni, budget $1000",
-        max_leverage=20,   # OPZIONE B: leva max x20 per Hawk (scalp: protegge da liquidazioni rapide)
+        max_leverage=None,   # nessun tetto del bot (utente, 21/10/2026: torna come all'inizio). Il cancello resta nel codice ma spento; restano i tetti per asset del motore (45x BTC/XAU/XAG, 30x ETH, 25x altri)
     )
 
 
@@ -97,8 +97,8 @@ def _make_bull_config() -> PortfolioConfig:
         limits=Limits(
             start_equity=1000.0,
             max_margin_trade=350.0,   # BULL: max $350 per trade
-            max_margin_total=1000.0,  # budget $1000, come Hawk (decisione dell'utente, 20/10/2026 14:11; era 1050); engine.open usa anche cash*0.95
-            max_open=10,              # max 10 posizioni (era 3; decisione dell'utente, 20/10/2026 13:56). Non devono essere tutte piene
+            max_margin_total=1050.0,  # budget 1050 = 3 x 350 (utente, 21/10/2026: torna come all'inizio; era 1000 dal 20/10 14:11); engine.open usa anche cash*0.95
+            max_open=6,               # max 6 posizioni (utente, 21/10/2026; era 10 dal 20/10 13:56, 3 all'inizio). Non devono essere tutte piene
             kill_equity=450.0,
             daily_stop=0.12,
         ),
@@ -108,9 +108,9 @@ def _make_bull_config() -> PortfolioConfig:
         guardrail_margin_forced=200.0,
         guardrail_lev_forced=15,
         guardrail_type_forced="medio",
-        description="Bull — max $350/trade, 10 posizioni, budget $1000, TP≥5%",
+        description="Bull — max $350/trade, 6 posizioni, budget $1050, TP≥5%",
         refuse_below_min_margin=True,
-        max_leverage=15,   # OPZIONE B: leva max x15 per Bull (medio: margini piu' alti, meno rischio liquidazione)
+        max_leverage=None,   # nessun tetto del bot (utente, 21/10/2026: torna come all'inizio). Il cancello resta nel codice ma spento; restano i tetti per asset del motore
     )
 
 
