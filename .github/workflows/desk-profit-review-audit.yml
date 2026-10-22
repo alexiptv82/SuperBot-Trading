@@ -1,0 +1,121 @@
+name: Profit review evidence audit — read only, review required
+
+# No trigger file is included in this proposal. Merge alone cannot execute it.
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/desk-profit-review-audit.trigger"]
+permissions:
+  contents: read
+concurrency:
+  group: superbot-profit-review-audit
+  cancel-in-progress: false
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate frozen analysis commit
+        id: frozen
+        shell: bash
+        env:
+          LOADED_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          SHA="$(sed -n 's/^sha=//p' deploy/desk-profit-review-audit.trigger)"
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch -q origin rule-pool
+          git merge-base --is-ancestor "$SHA" origin/rule-pool
+          # A checkout cannot replace the YAML GitHub has already loaded.
+          [[ "$LOADED_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse "$LOADED_WORKFLOW_SHA:.github/workflows/desk-profit-review-audit.yml")" = \
+               "$(git rev-parse "$SHA:.github/workflows/desk-profit-review-audit.yml")"
+          git checkout --detach "$SHA"
+          python -m unittest discover -s backend/tests -p test_profit_review_audit.py -v
+          python -m py_compile deploy/scripts/profit_review_audit.py
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+      - name: Read-only analysis on Singapore
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          SHA: ${{ steps.frozen.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          trap 'rm -f ~/.ssh/id_sg /tmp/remote-profit-audit.sh' EXIT
+          printf '%s\n' "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          cat > /tmp/remote-profit-audit.sh <<'REMOTE'
+          set -euo pipefail
+          inspect_bots() {
+            docker inspect --format '{{.Name}}|{{.Id}}|{{.Image}}|{{.State.StartedAt}}' superbot-desk-hawk superbot-desk-bull
+          }
+          before="$(inspect_bots)"
+          D="$(mktemp -d /tmp/superbot-profit-audit.XXXXXX)"
+          finish() {
+            rc=$?
+            trap - EXIT
+            after="$(inspect_bots)" || rc=1
+            for bot in hawk bull; do
+              mode_env="$(docker inspect "superbot-desk-$bot" --format '{{range .Config.Env}}{{println .}}{{end}}')" || rc=1
+              grep -qx 'DESK_MODE=paper' <<< "$mode_env" || rc=1
+            done
+            if [ "$before" = "$after" ]; then
+              echo BOT_CONTAINER_INVARIANCE=PASS
+            else
+              echo BOT_CONTAINER_INVARIANCE=FAIL
+              rc=1
+            fi
+            rm -rf "$D"
+            exit "$rc"
+          }
+          trap finish EXIT
+          for bot in hawk bull; do
+            mode_env="$(docker inspect "superbot-desk-$bot" --format '{{range .Config.Env}}{{println .}}{{end}}')"
+            grep -qx 'DESK_MODE=paper' <<< "$mode_env"
+            test "$(realpath "/opt/superbot-desk-data/$bot")" = "/opt/superbot-desk-data/$bot"
+          done
+          test "$(realpath /opt/superbot-desk-data)" = /opt/superbot-desk-data
+          for path in /opt/superbot-sidecar-data /opt/superbot-ai-data; do
+            test "$(realpath "$path")" = "$path"
+          done
+          git clone -q -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git "$D"
+          cd "$D"
+          git merge-base --is-ancestor SHA_TOKEN origin/rule-pool
+          git reset -q --hard SHA_TOKEN
+          test "$(git rev-parse HEAD)" = SHA_TOKEN
+          image="$(docker inspect --format '{{.Image}}' superbot-desk-hawk)"
+          docker run --rm --name superbot-profit-audit-RUN_TOKEN \
+            --network none --read-only --tmpfs /tmp:size=64m \
+            --cap-drop ALL --cap-add DAC_READ_SEARCH --security-opt no-new-privileges \
+            --memory 512m --cpus 1 --pids-limit 64 \
+            -v "$D:/src:ro" -v /opt/superbot-desk-data:/data:ro \
+            -v /opt/superbot-sidecar-data:/sidecar:ro -v /opt/superbot-ai-data:/ai:ro \
+            -e PYTHONDONTWRITEBYTECODE=1 "$image" \
+            timeout 600 python /src/deploy/scripts/profit_review_audit.py \
+            --data-root /data --sidecar-root /sidecar --ai-root /ai
+          REMOTE
+          sed -i -e "s/SHA_TOKEN/$SHA/g" -e "s/RUN_TOKEN/$RUN_ID/g" /tmp/remote-profit-audit.sh
+          OUT="$(ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts_sg" -o ConnectTimeout=30 \
+            root@51.79.205.82 "$(cat /tmp/remote-profit-audit.sh)")"
+          printf '%s\n' "$OUT" | grep -qx 'BOT_CONTAINER_INVARIANCE=PASS'
+          printf '%s\n' "$OUT" | head -n 1 > profit-audit-report.json
+          python -c 'import json,os; d=json.load(open("profit-audit-report.json")); assert d["scope"] == "profit_review_evidence_aggregate_only"; assert d["applied"] is False; d.update(bot_container_invariance="PASS", frozen_commit=os.environ["SHA"]); json.dump(d,open("profit-audit-report.json","w"),allow_nan=False,sort_keys=True)'
+          echo 'BOT_CONTAINER_INVARIANCE=PASS. Aggregate report available as artifact.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: profit-audit-aggregates-${{ github.run_id }}
+          path: profit-audit-report.json
+          if-no-files-found: error
+          retention-days: 30
