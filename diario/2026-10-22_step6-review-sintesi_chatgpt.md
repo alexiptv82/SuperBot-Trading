@@ -1,5 +1,8 @@
 # Step 6 — revisione indipendente e sintesi delle review
 
+Aggiornamento implementativo: commit `4c1645e3` su work/director-chatgpt;
+sezione 12 per le correzioni successive alla review di fe50c2ff. Piano ancora draft.
+
 Data: 22/10/2026. Oggetto: `fe50c2ff2f459e4260d7f2f4907ad0f7c590a478`.
 Autore: ChatGPT. Stato: **revisione propria completata; sintesi esterna provvisoria**.
 
@@ -395,3 +398,43 @@ approvato, con inizio futuro rispetto al commit di registrazione.
 
 Aggiornata esclusivamente documentazione sul ramo diario. Nessun cambio
 funzionale, merge, trigger, esecuzione VPS o push su stable/*.
+
+
+## 12. Correzioni autorizzate dopo le revisioni — 4c1645e3
+
+L'utente autorizza la preparazione della versione corretta, senza merge o VPS.
+La proposta completa sostitutiva e' deploy/STEP6-REVIEW.md sul commit
+4c1645e33bdf744817e87e06cbbcc401e6531d72 di work/director-chatgpt.
+
+| Rilievo originario | Riscontro sulla nuova proposta | Cosa resta prima di approved |
+| --- | --- | --- |
+| R1 | Rimossa dipendenza dei test dallo stato di consegna. Suite eseguita con draft e approved sintetico. Preflight approved prima dell'SSH. | CI 3.11 e review. |
+| R2 | Tutti i tipi di evento concorrono al version gate; richiede anche ledger di continuita' configurazione/versione/PAPER. Dati mancanti => nessun supporto. | Collector/procedura, fonte, schema canonico dei fingerprint e completezza del ledger non verificati operativamente. |
+| R3 | Richiede 30 episodi/25 episodi attivati oltre a 100 trade/50 interventi; mancanza distingue inconclusivo da negativo. | Soglie euristiche da approvare, nessuna potenza garantita. |
+| R4 | Ingressi in [S,S+42g), valutazione finale S+56g. Effetti nascosti prima del termine, no recupero con dati oltre scadenza. Posizioni non chiuse rendono inconclusivo. | Procedura di snapshot immutabile e registrazione prima di osservare gli esiti; nessuna estensione dopo il risultato. |
+| R5 | Direzione e proxy BTC d'ingresso, R/win rate/profit factor, costi/durata baseline, esclusioni e censura per lato. | Verifica rappresentativita' e limiti; nessuna analisi per singolo run in questa versione. |
+| R6 | Confronto del blob YAML caricato da GitHub con quello nel commit congelato, prima del checkout e dell'SSH; prova negativa locale su mismatch. | Review del workflow e verifica CI. |
+
+Due confronti primari pooled per bot, target media per trade del mix osservato.
+Direzioni/regimi/scenari stress descrittivi. Nessun cambio di obiettivo a pesi
+50/50 o quattro test primari. Conservato Bonferroni; bootstrap per episodi interi
+su delta appaiati (invariati inclusi), 10000 repliche con seed 20261022 e 20261023,
+convenzione quantili esplicita e tolleranza proposta 0,02R fra endpoint.
+Aggiunta sensibilita' leave-one-episode-out. IC approssimati e dipendenza residua
+restano limiti; soglie di episodi e tolleranza Monte Carlo non sono leggi universali.
+
+La fonte operativa del ledger NON e' stata verificata: il runner ne valida le
+dichiarazioni e gli hash, non ne prova l'autenticita'. Nemmeno lo snapshot finale
+immutabile e' creato da questo workflow. Non dichiarare R2/R4 operativamente
+chiusi soltanto perche' esistono ora gate e schema. Nessun collector distribuito.
+Fissare queste procedure e confermare la baseline prima della registrazione.
+
+Verifiche: Python 3.12.14, 33/33 test con draft e 33/33 con piano temporaneamente
+approved sintetico (ripristinato draft), py_compile, YAML/bash e diff senza
+errori di spaziatura. Test shell effettiva con git/docker simulati per invarianti
+e propagazione degli errori. Nessuna esecuzione CI 3.11 o operativa attestata.
+
+Conclusione aggiornata: codice corretto consegnato per review; piano ancora
+draft/null, fingerprint configurazioni nulli. Non pronto a eseguire o promuovere.
+Claude deve revisionare la nuova versione e le scelte proposte; Alessandro
+approvera' separatamente ogni merge/esecuzione. Nessun merge, trigger o VPS.

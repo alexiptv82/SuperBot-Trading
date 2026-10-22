@@ -31,7 +31,7 @@
 
 ## Rami
 - `work/director-claude` HEAD: `40157c3` (Claude, non unire senza OK)
-- `work/director-chatgpt` HEAD: `c626c40c` (solo documentazione della review; codice esaminato `fe50c2ff`, non unito)
+- `work/director-chatgpt` HEAD: `4c1645e3` (Step 6 corretto, piano draft; attende review Claude, non unito)
 - `work/research-integrity` HEAD: `b229963` (ChatGPT, non unire)
 - `rule-pool` HEAD: `7a5e795` (merge PR #1 stagionalità)
 
@@ -203,3 +203,17 @@ su work/director-chatgpt, mantenendo draft e data OOS nulla. Proposta da
 sottoporre a Claude prima di approvazione/esecuzione. Nessun merge o accesso VPS.
 Obiettivi: R1-R6, report direzionale, bootstrap 10000, coorte e maturazione
 fisse, requisito di evidenza della continuita' operativa. Nessuna modifica ai bot.
+
+
+## 22/10/2026 — Step 6 corretto su ramo dedicato, pronto per review
+
+- Commit 4c1645e33bdf744817e87e06cbbcc401e6531d72 su work/director-chatgpt, successivo a c626c40c. Cinque file modificati: runner, piano, workflow read-only, test e deploy/STEP6-REVIEW.md. Nessuna modifica al motore o al ramo Claude.
+- R1: suite compatibile con piano approved; preflight approvazione prima dell'SSH. R6: verifica blob YAML caricato/congelato prima del checkout. PAPER ricontrollato anche nel trap finale.
+- R2: controllo versione esteso a ogni tipo di evento e gate su ledger esterno di deploy/configurazione. Assenza o lacune non permettono supporto alla variante. L'autenticita' e la copertura del ledger restano un prerequisito operativo da revisionare: nessun collector installato.
+- R3/R4: campione fisso, ingressi 42 giorni e maturazione 14; effetti OOS nascosti prima del termine. Minimi proposti 100 trade, 50 interventi, 30 episodi e 25 episodi attivati. Insufficienza alla scadenza = inconclusivo, senza estensione. Eventi e candele post-scadenza non recuperano il campione.
+- Bootstrap 10000 repliche per seed, due seed fissi e tolleranza proposta 0,02R fra endpoint. Quantile empirico inverso; Bonferroni sui due primari pooled per bot, senza Holm/BCa improvvisati. Sensibilita' leave-one-episode-out oltre alle verifiche precedenti.
+- R5: long/short e direzione x regime BTC all'ingresso, risultati in R, win rate, profit factor con null se denominatore zero, durata baseline/leva/stop/costi, censura e conteggi di esclusione per coorte/direzione. Diagnostiche descrittive, nessuna decisione automatica per lato. Stratificazione per singolo run non implementata.
+- Contabilita' PAPER, inverso dello slippage e candidato a barra chiusa mantenuti. Nessuna correzione applicata sulla base dei falsi bug delle review esterne.
+- Verifiche locali Python 3.12.14: 33/33 test su piano draft e 33/33 con il file di piano temporaneamente approved sintetico, poi ripristinato draft/null; py_compile, YAML, bash -n e git diff --check passati. Shell effettiva con git/docker simulati: mismatch YAML, errore analisi, cambio container e PAPER rilevati. CI Python 3.11 non eseguita.
+- Piano pubblicato schema 2, status draft, oos_start_utc null e fingerprint configurazioni null. Nessun trigger presente. Nessun merge, run Actions/VPS, deploy, modifica al cervello o push stable/*.
+- Review richiesta a Claude sul nuovo commit e sulle soglie proposte. Prima di approved: conferma baseline reale, archivio OHLC/capacita' (tetto attuale 16MiB per file), snapshot finali immutabili, definizione/provenienza/continuita' ledger, CI e OK esplicito utente. Nessuna data OOS fissata.
