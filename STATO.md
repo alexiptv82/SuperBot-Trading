@@ -39,15 +39,14 @@
 - [x] 1. Review codice — fatto
 - [x] 2. Integrità: complete_window, snapshot, RECON_TOL 0.05$, MFE upper bound, exit code — fatto (commit eab355d)
 - [x] 3. Manifesto/hash learning_log (sola lettura, nessun dato grezzo) — fatto (commit 40157c3)
-- [ ] 4. R per regime (down/flat/up) e lato (long/short) — richiede manifesto attivato sul VPS
+- [x] 4. R per regime BTC proxy e lato — Actions run 39741314265; risultati/limiti nel diario ChatGPT
 - [ ] 5. Stagionalità A/B su score only (seasonality_audit.py già pronto)
 - [ ] 6. Replay economico + validazione out-of-sample → raccomandazione all'utente
 
-## Per attivare il manifesto (step 4)
-1. Merge `40157c3` da work/director-claude in rule-pool (come deploy precedenti)
-2. Aggiornare `deploy/desk-manifest.trigger` con sha del commit in rule-pool
-3. Push su rule-pool → GitHub Actions gira il manifesto (sola lettura VPS)
-4. Hash + conteggi visibili nelle annotations — usarli come verifica per step 4
+## Manifesto e step 4
+- Manifesto `learning_log` attivato in sola lettura; schema event-aware verificato nel lavoro dello step 4.
+- Misura step 4 completata in Actions run `39741314265`; non riavvia i bot. Risultati e limiti in `diario/2026-10-22_chatgpt.md`.
+- Prossimi: step 5 stagionalità A/B in sola lettura; step 6 replay economico e validazione fuori campione.
 
 ## Regole inviolabili (sempre valide)
 1. Nessun redeploy senza OK esplicito utente
