@@ -1,189 +1,200 @@
-# Step 6 — proposta per review Claude
+# Step 6 — versione corretta proposta per review Claude
 
-Stato: codice di ricerca, piano **draft**. Nessun trigger, merge o esecuzione VPS.
-I riferimenti nel diario sono stati letti; il ramo sorgente effettivo era
-`work/director-chatgpt` a `11a9c62`, successivo al riferimento `9255093` del prompt.
-
-## Domanda e perimetro
-
-Una sola ipotesi primaria per bot: un overlay di uscita migliora il R netto medio
-dei trade puliti rispetto alle uscite registrate? Non cambia ingressi, punteggi,
-soglie o configurazioni dei bot. Non misura l'effetto economico della stagionalità:
-il test 5 descrive i punteggi; non ricostruisce la confidenza finale di Claude né
-le aperture controfattuali. Non simula slot liberati, rientri, equity, drawdown del
-conto o trader AI. Nessuna conclusione di redditività del bot è derivabile da solo.
-
-## Candidato proposto, da approvare prima della misura
-
-1. Usa barre 15m interamente successive all'ingresso. Quando una **chiusura**
-   raggiunge almeno +1,5R di prezzo, decide di chiudere il 50%.
-2. Esegue all'apertura della barra successiva con slippage avverso. Non presume
-   un ordine limite eseguito esattamente a +1,5R.
-3. Dopo l'esecuzione, se una barra chiude con liquidazione del residuo non
-   positiva (commissioni e funding inclusi), chiude il residuo alla prossima apertura.
-   È una regola a barra chiusa: gap, costi e ritardo possono produrre una perdita.
-4. L'uscita baseline è un confine terminale. Nessuna azione alternativa può
-   essere eseguita nella barra dello stop/TP baseline o dopo quel confine.
-   Se il residuo non esce prima, gli viene attribuita metà della baseline.
-   Le decisioni discrezionali baseline restano esogene: questo limita il controfattuale.
-
-È una specifica più prudente e diversa dalla precedente variante intrabar al
-livello esatto +1,5R. Non si possono confrontare i due report come se fossero la
-stessa regola. Questa scelta è una **proposta**, non una strategia approvata.
-
-## Dati, riconciliazione e esclusioni
-
-- Legge `/data/{hawk,bull}/learning_log.jsonl`; non usa lo stato finale come
-  sostituto della storia. Chiave esatta `(bot, run_no, id)`.
-- JSON rigoroso: newline finale, niente righe vuote, duplicate key o NaN/Infinity;
-  limiti di dimensione. Le eccezioni non stampano righe, simboli o percorsi.
-- Esige un open e un close finale, una gamba, nessun DCA, split o parziale;
-  esclude liquidazioni, identità/orari incoerenti e versioni non revisionate.
-- Riconcilia gross, fee e funding **ricalcolati** e netto con tolleranza contabile
-  0,05 (unità interna, mai stampata). Verifica anche rischio iniziale e net_r.
-  Usa `open.r_dist` non arrotondato; quello nel close è arrotondato a 5 decimali.
-- Modello PAPER: fee 6 bp per lato, slippage 2 bp, funding 1 bp/8h solo long.
-  Non è una misura di fill o funding reali. La fee d'ingresso è suddivisa fra le
-  due metà una sola volta; funding fino all'uscita di ciascuna quantità.
-- Confronti appaiati sugli stessi trade: slippage uscita 2/4/8 bp e ritardo
-  aggiuntivo di una barra (2 e 8 bp). Entrata storica fissa. Anche la baseline
-  viene ricalcolata con il medesimo slippage di uscita dello scenario.
-- Una lacuna OHLC esclude il trade con conteggio esplicito; mai trasformata in HOLD.
-  È richiesta una serie completa dall'ingresso al bucket di uscita, incluso
-  quest'ultimo interamente chiuso. Questa scelta esclude prudentemente uscite recenti.
-
-## Archivio OHLC offline: prerequisito ancora da predisporre
-
-Il vecchio `pm_exec_replay.py` scarica candele via rete. Non è riusato: sarebbe
-incompatibile con `--network none`. Il nuovo runner richiede un archivio locale
-separato `/opt/superbot-step6-market/`, montato in sola lettura. **Non è stato
-verificato che esista sul VPS.** Nessun collector è installato o eseguito qui.
-L'acquisizione pubblica e il suo schema vanno revisionati separatamente prima
-dell'esecuzione; i dati grezzi non vanno nel repository né negli artifact.
-
-`candles.jsonl`: una riga per `(symbol, open_ms)`, symbol identico a quello del log.
-Campi: `schema=1`, `symbol`, `open_ms`, `open`, `high`, `low`, `close`.
-Timestamp di apertura UTC in millisecondi, multiplo di 900000; solo barre chiuse.
-Duplicati, prezzi non finiti e ordine OHLC invalido falliscono.
-
-`manifest.json`: `schema=1`, `source="bitget_public_15m"`,
-`timestamp_semantics="open_ms"`, `interval_ms=900000`, `asof_ms` intero UTC,
-`bars_sha256` completo. Gli hash attestano i byte, non l'autenticità della fonte.
-Ogni file ha un tetto di 16 MiB; se il campione cresce oltre il tetto si deve
-revisionare una lettura streaming o uno snapshot selezionato, non troncare input.
-
-## Protocollo fuori campione proposto
-
-`deploy/step6-plan.json` contiene status draft e data nulla: lo script lo rifiuta.
-Dopo review, approvazione e congelamento del codice, fissare una data futura
-`oos_start_utc` e `status=approved`. La data deve essere successiva al timestamp
-del **commit congelato completo** (script + piano) passato dal workflow.
-Un cambiamento successivo richiede un nuovo commit e una nuova data futura.
-Il timestamp Git non è un'autorità temporale indipendente: commit e decisione
-vanno registrati nel diario prima del periodo, senza retrodatazioni.
-
-- Trade iniziati e finiti prima del confine: storico esplorativo, mai OOS.
-- Trade aperti prima e chiusi dopo: esclusi dal confronto (purge).
-- Trade aperti dopo: campione prospettico; sola baseline `4aabeb8`, da confermare
-  in review. Una diversa versione negli eventi successivi invalida il gate;
-  non viene nascosta eliminando semplicemente quei trade.
-- Proposta per bot: almeno 42 giorni trascorsi, 100 trade puliti chiusi e 50
-  interventi simulati. Non sono garanzie di potenza statistica o indipendenza.
-- Delta medio minimo proposto +0,10R; intervallo bootstrap per episodio con
-  limite inferiore >0; segno positivo in entrambe le metà temporali, togliendo
-  i tre delta migliori, e in tutti gli scenari di costo/ritardo.
-- Episodi: si raggruppano trade dello stesso giorno e intervalli sovrapposti,
-  anche fra giorni. IC omesso con meno di 5 episodi. Può risultare un unico
-  episodio: non si forza una falsa precisione. La dipendenza seriale residua
-  del mercato resta un limite.
-- IC 97,5% per ciascuno dei due confronti primari (Bonferroni su Hawk/Bull).
-  Sensibilità non usate per scegliere a posteriori la variante vincente.
-- Output del gate: pending / invalidated / not_supported /
-  supports_further_shadow_review. **Mai promozione automatica o autorizzazione deploy.**
-
-Le soglie sono da approvare con Claude e Alessandro, prima di osservare i nuovi esiti.
-Un cambio di strategia o baseline chiude questa coorte: nessun risultato prospettico
-positivo vale per una configurazione diversa. Le esclusioni limitano la conclusione
-ai trade puliti e possono introdurre distorsione di selezione.
-
-## Workflow e review richiesta
-
-`desk-step6-economic.yml` parte solo da `deploy/desk-step6.trigger` su rule-pool;
-**il trigger non è incluso**. Il codice sul ramo di lavoro non ha accesso al VPS.
-Un futuro trigger deve indicare `sha=<40 caratteri>` già in rule-pool.
-Il workflow esegue prima test e py_compile sul commit fissato.
-
-Sul VPS crea solo un checkout temporaneo usa-e-getta; nessun reset del checkout
-dei bot. Controlla PAPER dai container, usa l'immagine Hawk già presente fissata
-all'ID (non un tag mutabile), rete disabilitata, filesystem read-only,
-capability ridotte, mount codice/dati/mercato ro, RAM/CPU/pid e timeout limitati.
-Il trap confronta ID/immagine/StartedAt di Hawk/Bull anche se la misura fallisce;
-non stampa quei valori. Nessun docker stop/restart, build, ordine o scrittura
-nei dati. Le snapshot dei file vengono rilette e confrontate prima dell'output;
-un append contemporaneo fallisce e richiede una nuova misura.
-
-Output solo aggregati in R, conteggi e hash, salvato come artifact JSON completo
-con retention 30 giorni. Nessun importo, simbolo o riga grezza. Il workflow fallisce
-se un bot non ha trade appaiati; non può dare un risultato verde senza misura.
-Il gate OOS può restare pending mentre lo storico è calcolabile.
-
-Per Claude: controllare contabilità delle due metà, orari next-open/ritardo,
-confine stop/TP, rischio non arrotondato, riconciliazione indipendente, esclusioni,
-provenienza OHLC, congelamento temporale, invalidazione versioni, bootstrap e
-privacy artifact. Poi decidere se questa specifica è il primo esperimento utile.
-Nessun merge o esecuzione prima dell'OK richiesto dall'utente.
-
-## Revisione indipendente del 22/10/2026 — approvazione ancora sospesa
-
-Oggetto verificato: commit fe50c2ff. Il rapporto completo e la matrice delle
-revisioni sono nel ramo diario, file
+22/10/2026, ChatGPT. Stato **draft**, data OOS nulla, nessun trigger.
+Questa proposta sostituisce il protocollo del commit fe50c2ff; la cronologia
+delle revisioni resta nel ramo diario, in
 `diario/2026-10-22_step6-review-sintesi_chatgpt.md`.
-La sintesi esterna resta aperta: le review Step 6 originali di Claude,
-DeepSeek e Kimi K3 non sono ancora disponibili nel contesto o nel diario letto.
 
-La suite attuale passa 19 test, ma il test
-`test_plan_shipped_as_non_executable_draft` obbliga status draft e data nulla:
-il workflow lo eseguirebbe anche dopo l'approvazione, bloccando il piano approved.
-Occorre separare il controllo di consegna draft dai test del runner approvato.
-Il gate statistico deve anche distinguere pochi episodi indipendenti da un esito
-negativo: con 100 trade e un episodio l'IC manca, ma ora produce not_supported.
-La versione baseline e' controllata solo negli eventi open/close: un cambio
-registrato in altri eventi non invalida il gate. Il periodo e la configurazione
-congelata richiedono una prova di continuita' piu' ampia.
+## Obiettivo e confini
 
-Prima dell'approvazione definire inoltre una sola valutazione finale o un
-protocollo sequenziale esplicito: le soglie minime correnti non fissano una data
-finale e Bonferroni sui due bot non copre controlli ripetuti nel tempo.
-Il workflow effettivamente eseguito deve corrispondere al workflow del commit
-congelato; un checkout del codice non prova da solo questa corrispondenza.
+Due confronti primari: differenza appaiata di R netto medio, uno per Hawk e uno
+per Bull. Target: trade puliti della coorte registrata, pesati allo stesso modo,
+con il mix direzionale osservato. Nessuna standardizzazione 50/50 implicita.
+Long/short e regime BTC all'ingresso sono diagnostiche descrittive, non nuovi
+test primari. Non si sceglie a posteriori il lato sul quale adottare la variante.
 
-## Analisi obbligatoria per direzione prima di approvare
+Il candidato resta identico: dopo una **chiusura** 15m interamente post-ingresso
+ad almeno +1,5R di prezzo, uscita di meta' alla prossima apertura; dopo questa
+attivazione, uscita del residuo alla prossima apertura se la sua valutazione
+netta a chiusura barra e' non positiva. `liquidation()` significa valutazione
+netta dell'uscita, non liquidazione forzata a margine. Low/high non sostituiscono
+il close. Resta il confine terminale dell'uscita baseline, con esclusione della
+sua barra SL/TP per ambiguita' intrabarra. Nessun fill oltre quel confine.
 
-L'utente segnala short spesso positivi e long perdenti nei trade del 22 ottobre.
-E' un'osservazione riportata: questa review non legge registri operativi e non
-verifica il risultato della giornata. Un giorno e posizioni correlate non
-dimostrano un difetto strutturale; lo storico Step 4 riportava gia' pochi long
-negativi, quindi la domanda merita una misura dedicata.
+Non e' un replay di portafoglio: ingressi e uscita terminale registrati sono
+esogeni. Non simula reingressi, slot, equity, saldo, drawdown del conto o
+stagionalita' economica. Un long che non raggiunge +1,5R non viene protetto.
+Non fornisce una diagnosi causale certa di bug vs regime di mercato.
 
-Il runner attuale gestisce entrambi i lati nei calcoli ma li aggrega per bot:
-non permette di osservare separatamente long e short. Se un long non raggiunge
-mai la soglia +1,5R di chiusura, l'overlay non interviene e non ne corregge l'ingresso.
+## Correzioni rispetto a fe50c2ff
 
-Prima della registrazione aggiungere al disegno del report, per bot e coorte:
+| Rilievo | Implementazione proposta | Stato residuo |
+| --- | --- | --- |
+| R1: test obbligava draft | Suite valida entrambe le fasi; preflight `--check-plan` prima dell'SSH rifiuta draft e approvazioni incomplete. | Confermare suite anche in CI Python 3.11. |
+| R2: controllo versione limitato a open/close | Tutti i tipi di evento con timestamp nel periodo; versione assente/diversa invalida. Richiesto anche ledger esterno per continuita' della configurazione. | Origine e completezza del ledger da revisionare, non dimostrate dai soli log. |
+| R3: pochi episodi apparivano esito negativo | Almeno 30 episodi e 25 episodi con intervento, oltre a 100 trade e 50 interventi; altrimenti inconclusivo. | Soglie euristiche proposte, non garanzia di precisione o potenza. |
+| R4: arresto/valutazione non fissati | Ingressi su 42 giorni, maturazione di 14, una valutazione finale; effetti OOS nascosti prima del termine. | Registrazione e congelamento operativo prima dell'avvio. |
+| R5: manca long/short | Metriche, censura, esclusioni per coorte/direzione, incrocio descrittivo con regime BTC. | Verificare rappresentativita' e conteggi su archivio autorizzato. |
+| R6: checkout non fissa YAML caricato | Uguaglianza dei blob YAML fra `github.workflow_sha` e commit congelato, prima del checkout e dell'SSH. | Review del workflow corretto e normale controllo dei permessi del repo. |
 
-- Risultati long/short: numerosita', giorni, episodi, interventi, R medio baseline,
-  R medio candidato, delta appaiato, win rate baseline/candidato, vincita e perdita
-  media in R e conteggi delle esclusioni per lato.
-- Durata, leva, distanza stop e costo in R; se serve confrontare il dimensionamento,
-  usare rapporti di rischio aggregati e normalizzati, senza importi pubblici.
-- Aperte/non ancora chiuse e trade a cavallo del confine per direzione, cosi' una
-  differenza di durata non viene scambiata per superiorita' di un lato.
-- Incrocio descrittivo con regime BTC noto all'ingresso e versione/run, segnalando
-  campioni piccoli. Per la giornata usare un confine temporale locale dichiarato;
-  non confondere giorno di apertura con giorno di chiusura.
+Nessuna modifica al motore, alle soglie operative o ai prompt. Il modello PAPER
+resta fee 6bp/lato, slippage 2bp base, funding 1bp/8h solo long. Corrisponde alla
+contabilita' revisionata; non rappresenta funding reale. La divisione 50/50
+ripartisce entry fee una volta, exit fee per fill e funding per durata di ciascuna
+meta'. L'inverso `exit/(1-side*2/10000)` e' coerente con lo slippage d'uscita.
 
-La segmentazione e' proposta come diagnostica predefinita. Non aggiunge quattro
-test confermativi ai due test primari senza ridefinire potenza, correzione per
-confronti multipli e criteri di decisione. Non si sceglie il lato vincente a posteriori.
-Questa integrazione documenta il requisito: i gruppi direzionali non sono ancora
-implementati nello script fe50c2ff. Status del piano ancora draft, data OOS nulla.
+## Registrazione e valutazione unica
+
+Piano schema 2. `draft` deve avere data OOS e fingerprint configurazione nulli;
+non e' eseguibile. Dopo review e OK separato, `approved` deve indicare:
+
+- un inizio futuro a mezzanotte UTC, successivo al commit congelato completo;
+- baseline confermata e fingerprint non segreti per entrambi i bot;
+- tutti i parametri proposti, identici a quelli accettati dal runner.
+
+`baseline_version=4aabeb8` resta un riferimento documentale da confermare prima
+dell'approvazione: il HEAD rule-pool 7a5e795 non prova quale immagine sia attiva.
+Versioni storiche revisionate: 5818aee, b4709d1, b6b9911, fa3e220, 4aabeb8.
+Questa sessione non ha verificato container o configurazioni sul VPS.
+
+Sia S l'inizio registrato. Ingressi OOS: S <= open < S+42 giorni.
+Scadenza finale F=S+56 giorni; chiusure ammesse solo fino a F. Nessun prolungamento
+per raggiungere significativita'. Trade iniziati prima di S e chiusi dopo S sono
+purgati; quelli aperti da S+42 in poi non entrano. Una posizione della coorte
+non univocamente chiusa a F rende il gate inconclusivo, anziche' sparire dal
+campione. Il vincolo sui soli trade puliti mantiene comunque un rischio di selezione.
+
+Prima di F: conteggi di raccolta e qualita', nessun delta, attivazione o risultato
+prospettico. Storico pre-S descrittivo separato. A F: una valutazione su snapshot
+immutabili da archiviare prima di leggere gli esiti, senza pubblicare dati grezzi.
+Il workflow non crea l'archivio o un registro immutabile di valutazioni: questa
+procedura deve essere organizzata e verificata prima dell'approvazione.
+Gli hash di tutti gli input sono nel report; una ripetizione tecnica deve usare
+quegli stessi byte, non una coorte aggiornata. La finestra di candele e gli eventi
+sono comunque tagliati a F anche con manifest successivi; dati post-F non
+possono recuperare lacune oltre la scadenza. Una revisione dei dati pre-F puo'
+cambiare il risultato: occorre conservare lo snapshot originale e dichiararla.
+
+Una modifica di baseline/configurazione durante [S,F] invalida la coorte.
+Il timestamp Git non e' un'autorita' temporale indipendente: approvazione e
+registrazione vanno documentate prima di S. Nessuna retrodatazione.
+
+## Statistica proposta, da approvare
+
+- Minimi per bot: 42 giorni di ingressi, maturazione 14 giorni; 100 trade puliti,
+  50 interventi, 30 episodi, 25 episodi con almeno un intervento. Si combinano,
+  non si sostituiscono. Una scadenza insufficiente da' inconclusivo, non estensione.
+- Episodi: giorni UTC espansi e sovrapposizioni transitive delle posizioni.
+  Uno stesso episodio puo' contenere entrambi i lati: non viene spezzato.
+- Bootstrap del delta appaiato, includendo gli invariati con delta zero.
+  Ricampiona episodi interi e ricalcola la media per trade (non media delle medie).
+  10000 repliche, seed principale 20261022 e ripetizione diagnostica 20261023.
+  Implementazione stdlib su somme e numerosita' degli episodi.
+- IC percentile 97,5% per ognuno dei due confronti primari, Bonferroni. Quantile
+  empirico inverso: indice Python ceil(B*p)-1. Nessun passaggio a Holm senza
+  implementare e revisionare test/p-value validi; nessuna selezione automatica BCa.
+- Differenza massima fra endpoint dei due seed <=0,02R; altrimenti inconclusivo.
+  Anche questa tolleranza e' una proposta. Non aumentare B fino a ottenere l'esito
+  desiderato. Piu' repliche non risolvono pochi episodi o dipendenza di regime.
+- Per supportare ulteriore shadow review: limite inferiore IC >0, delta medio
+  >=0,10R, delta positivo in entrambe le meta' temporali della finestra fissa,
+  togliendo i tre migliori trade e togliendo separatamente ogni episodio.
+- Scenari di stress predefiniti: slippage 2/4/8bp con ritardo zero e 2/8bp con
+  ritardo aggiuntivo di una barra. Delta medio positivo in tutti; non si sceglie
+  lo scenario vincente. IC solo sul primario slip2/delay0; sensibilita' descrittive.
+- Il bootstrap e' approssimato: Bonferroni non garantisce da solo copertura in
+  presenza di pochi cluster, dipendenza residua o cambi di regime.
+
+Esiti distinti: pending_fixed_final, invalidated_baseline_change,
+inconclusive_sample_or_coverage, inconclusive_runtime_evidence,
+inconclusive_bootstrap_precision, not_supported, supports_further_shadow_review.
+Nessun esito autorizza deploy o cambi ai bot; automatic_promotion resta false.
+
+## Diagnostica per direzione e regime
+
+Per ogni bot/coorte/scenario: n, giorni di ingresso, episodi, episodi attivati,
+interventi, R medio baseline/candidato/delta, win rate, media vincite e perdite,
+profit factor in R, durata baseline, leva, distanza stop e costo baseline in R.
+Il profit factor e' somma R positivi / valore assoluto somma R negativi; se il
+denominatore e' zero restituisce null e un flag, mai Infinity. E' un rapporto di
+R normalizzati, non necessariamente il profit factor monetario del conto.
+
+Le durate riportate sono quelle baseline, non holding time della variante.
+Episodi dei sottogruppi contati sul partizionamento congiunto, senza IC
+indipendenti per lato. Incrocio direzione x proxy BTC noto all'ingresso:
+down <-1%, up >+1%, flat altrimenti; unknown se assente. Non e' il regime del
+singolo asset o una diagnosi strutturale. Il campione OOS impone una versione;
+lo storico aggrega versioni revisionate, senza stima causale dei loro effetti.
+Nessuna stratificazione per singolo run implementata in questa versione.
+
+Conteggi per direzione di aperture, non ancora chiuse univocamente, ingressi
+pre-OOS ancora esposti e ingressi oltre la finestra. Esclusioni del parser e
+della copertura per coorte/direzione, piu' classe unattributable. Identita'
+invalide restano conteggiate globalmente, senza inventare un lato. Le classi di
+esclusione possono sovrapporsi; non sommarle come partizione dei trade.
+
+## Input offline e continuita' operativa
+
+Read-only: learning_log.jsonl da /data/{hawk,bull}; candele e manifest da
+/market, sul VPS /opt/superbot-step6-market. Nessun collector installato qui.
+Archivio e provenienza non verificati. Nessun download nel container senza rete.
+JSON rigoroso, hash/rilettura input, symlink finali e directory non canoniche
+rifiutati. Limite per file 16MiB e 200000 righe: oltre il limite si blocca,
+non tronca. Prima di registrare 56 giorni verificare capacita' e procedura di
+snapshot; una soluzione streaming/archivio diversa richiede review separata.
+
+Candele JSONL: schema=1, symbol, open_ms, open/high/low/close; multipli 900000,
+solo barre complete. Manifest schema=1, source=bitget_public_15m,
+timestamp_semantics=open_ms, interval_ms=900000, asof_ms, bars_sha256.
+Necessaria copertura continua fino al bucket d'uscita interamente chiuso.
+Una chiusura esattamente a F puo' quindi risultare senza copertura; non viene
+recuperata usando la barra successiva a F.
+
+Nuovo input locale opzionale /market/runtime-ledger.json. Assente/incompleto:
+nessun esito favorevole. Schema esatto:
+
+- root: schema=1, source=reviewed_deployment_config_ledger, bots={hawk:[],bull:[]};
+- ogni segmento: from_ms, to_ms (interi, from<to), code_version,
+  config_sha256, paper=true, source_sha256 (64 hex);
+- segmenti ordinati, non sovrapposti, senza lacune nell'intervallo da attestare;
+- versione/configurazione coincidenti con piano approvato e modalita' paper.
+
+La fonte deve essere un registro revisionato di deploy E cambi di configurazione,
+non una sola fotografia finale. source_sha256 identifica i documenti operativi
+sanificati sottostanti, da conservare fuori dal repo pubblico. Non inventare
+segmenti per colmare assenze. Un file con dichiarazioni e hash non dimostra
+l'autenticita' o che nessun evento sia stato omesso: il gate dice esplicitamente
+attested_continuity_manual_review_required.
+
+Prima dell'approvazione definire con Claude il documento canonico di configurazione
+non segreta (configurazione effettiva bot/limiti, regole, prompt/calendario e altre
+fonti modificabili che influenzano la baseline), serializzazione, raccolta e
+copertura del registro. Non includere credenziali o hash di segreti. La memoria
+che cresce naturalmente non va azzerata o congelata: resta parte dell'ingresso
+registrato ed e' un limite del controfattuale. Nessun esportatore/collector di
+questa evidenza viene installato da questa proposta.
+
+## Workflow, verifica e consegna
+
+Solo push del futuro deploy/desk-step6.trigger su rule-pool; file assente.
+Confronto blob YAML caricato/congelato, test, py_compile e preflight approved
+prima di caricare chiavi SSH. Sul VPS checkout temporaneo, PAPER prima e dopo,
+invarianza ID/immagine/StartedAt in trap anche su errore. Immagine Hawk fissata
+all'ID, --network none --read-only, mount :ro, capability ridotte e risorse limitate.
+Output solo aggregati/hash, artifact, errori fissi senza traceback o dati grezzi.
+
+Verifiche locali: 33/33 test con piano draft e 33/33 con piano sintetico approved
+(ripristinato poi draft/null); regressioni di approvazione, finestra fissa,
+pochi episodi, versione non-trade, evidenza runtime, privacy e bootstrap;
+script shell effettivi con git/docker simulati per mismatch YAML, errori,
+riavvii e cambio PAPER. Sintassi YAML/bash e py_compile.
+Riferimento GitHub per il commit del workflow caricato:
+https://docs.github.com/en/actions/reference/workflows-and-actions/contexts
+
+Python locale 3.12.14; CI 3.11 predisposta su PR, non attestata in questa sessione.
+Nessuna esecuzione operativa.
+
+Per Claude: review indipendente di questa versione e decisione sulle soglie
+proposte. Prima di approved restano conferma baseline, piano dati/snapshot,
+provenienza e completezza ledger, evidenza CI e approvazione esplicita dell'utente.
+Nessun merge, trigger o VPS finche' non arriva un OK separato.

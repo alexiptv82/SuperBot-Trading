@@ -21,15 +21,24 @@ jobs:
       - name: Validate frozen analysis commit
         id: frozen
         shell: bash
+        env:
+          LOADED_WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
           SHA="$(sed -n 's/^sha=//p' deploy/desk-step6.trigger)"
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
           git fetch -q origin rule-pool
           git merge-base --is-ancestor "$SHA" origin/rule-pool
+          # A checkout cannot replace the YAML GitHub has already loaded.
+          [[ "$LOADED_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse "$LOADED_WORKFLOW_SHA:.github/workflows/desk-step6-economic.yml")" = \
+               "$(git rev-parse "$SHA:.github/workflows/desk-step6-economic.yml")"
           git checkout --detach "$SHA"
           python -m unittest discover -s backend/tests -p test_step6_economic_replay.py -v
           python -m py_compile deploy/scripts/step6_economic_replay.py
+          registered_ms="$(( $(git show -s --format=%ct "$SHA") * 1000 ))"
+          python deploy/scripts/step6_economic_replay.py --check-plan \
+            --plan deploy/step6-plan.json --registered-ms "$registered_ms"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
       - name: Read-only analysis on Singapore
         env:
@@ -60,6 +69,10 @@ jobs:
             rc=$?
             trap - EXIT
             after="$(inspect_bots)" || rc=1
+            for bot in hawk bull; do
+              mode_env="$(docker inspect "superbot-desk-$bot" --format '{{range .Config.Env}}{{println .}}{{end}}')" || rc=1
+              grep -qx 'DESK_MODE=paper' <<< "$mode_env" || rc=1
+            done
             if [ "$before" = "$after" ]; then
               echo BOT_CONTAINER_INVARIANCE=PASS
             else

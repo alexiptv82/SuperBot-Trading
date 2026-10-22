@@ -1,11 +1,34 @@
 {
-  "schema": 1,
+  "schema": 2,
   "status": "draft",
-  "candidate": "half_after_close_1.5R_then_nonpositive_remainder",
   "oos_start_utc": null,
   "baseline_version": "4aabeb8",
-  "reviewed_versions": ["5818aee", "b4709d1", "b6b9911", "fa3e220", "4aabeb8"],
-  "min_days": 42,
+  "reviewed_versions": [
+    "5818aee",
+    "b4709d1",
+    "b6b9911",
+    "fa3e220",
+    "4aabeb8"
+  ],
+  "baseline_config_sha256": {
+    "hawk": null,
+    "bull": null
+  },
+  "candidate": "half_after_close_1.5R_then_nonpositive_remainder",
+  "enrollment_days": 42,
+  "maturation_days": 14,
   "min_trades": 100,
-  "min_changed": 50
+  "min_changed": 50,
+  "min_episodes": 30,
+  "min_changed_episodes": 25,
+  "bootstrap_replicates": 10000,
+  "bootstrap_seeds": [
+    20261022,
+    20261023
+  ],
+  "bootstrap_endpoint_tolerance_R": 0.02,
+  "quantile_method": "inverse_empirical_cdf",
+  "primary_family": "two_pooled_bot_means_bonferroni",
+  "directional_inference": "descriptive_only",
+  "min_mean_delta_R": 0.1
 }
