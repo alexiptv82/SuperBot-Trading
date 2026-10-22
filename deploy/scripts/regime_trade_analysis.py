@@ -18,7 +18,6 @@ import math
 import os
 import random
 import statistics
-import sys
 from collections import Counter, defaultdict
 from typing import Any
 
@@ -206,7 +205,6 @@ def analyze(events_by_bot: dict[str, list[dict]], hashes: dict[str, str]) -> dic
     report = {"kind": "executed_trade_r_by_entry_btc_regime_and_side",
               "method": "actual closed trades; sum additive close.net_r by bot/run/id; regime from open.features.btc_roc24h; down<-1%, up>+1%, flat otherwise; cluster bootstrap by UTC entry date; descriptive, not causal",
               "sources_sha256": hashes, "bots": {}, "groups": {}}
-    all_trades = []
     report["stratified_groups"] = {}
     for bot, events in events_by_bot.items():
         trades, excluded = build_trades(events, bot)
@@ -214,7 +212,6 @@ def analyze(events_by_bot: dict[str, list[dict]], hashes: dict[str, str]) -> dic
                                "runs": dict(Counter(t["run"] for t in trades)),
                                "code_versions": dict(Counter(t["code_version"] for t in trades)),
                                "overall": summarize(trades)}
-        all_trades.extend((bot, t) for t in trades)
         for regime in ("down", "flat", "up"):
             for side in ("long", "short"):
                 rows = [t for t in trades if t["regime"] == regime and t["side"] == side]
