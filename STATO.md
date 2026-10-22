@@ -15,14 +15,14 @@
 - Workflow di sola lettura: Hawk e Bull risultavano in esecuzione senza riavvii osservati. Nessuna strategia, database o stato dei bot modificati.
 - Rami: `rule-pool` `8b0fcaa`; `work/director-claude` `40157c3`; `work/director-chatgpt` `9255093`; questo aggiornamento documenta il limite emerso.
 
-# STATO SuperBot — aggiornato 2026-10-22 06:00 Roma (Claude)
+# STATO SuperBot — aggiornato 2026-10-22 sera (Claude)
 
 ## Ultima azione
 **Commit `40157c3`** su `work/director-claude`:
 - Step 3 ricerca: `learning_log_manifest.py` + workflow `desk-manifest.yml` + 11 test
 - Nessun dato grezzo nel repo pubblico; solo sha256 + conteggi
 
-## Deploy attivo (rule-pool HEAD: 4aabeb8 / trigger pushato stamani)
+## Deploy attivo (rule-pool HEAD: 7a5e795 / merge PR #1 stagionalità)
 - `4eaaf67` — daily_stop 12% → 10% (Hawk + Bull) ← **nuovo**, riavvio gestito da desk-deploy.yml
 - `880c4a4` — fix barre 1d (pause/retry 429, serie ieri come riserva)
 - `eab355d` — 4 fix integrità replay (snapshot, tolleranza 0.05$, MFE upper bound, exit code reale)
@@ -33,14 +33,14 @@
 - `work/director-claude` HEAD: `40157c3` (Claude, non unire senza OK)
 - `work/director-chatgpt` HEAD: `9255093` (ChatGPT, non toccare)
 - `work/research-integrity` HEAD: `b229963` (ChatGPT, non unire)
-- `rule-pool` HEAD: `4aabeb8` (merge + trigger pushato 22/10)
+- `rule-pool` HEAD: `7a5e795` (merge PR #1 stagionalità)
 
 ## Sequenza ricerca (ChatGPT → Claude)
 - [x] 1. Review codice — fatto
 - [x] 2. Integrità: complete_window, snapshot, RECON_TOL 0.05$, MFE upper bound, exit code — fatto (commit eab355d)
 - [x] 3. Manifesto/hash learning_log (sola lettura, nessun dato grezzo) — fatto (commit 40157c3)
 - [x] 4. R per regime BTC proxy e lato — Actions run 39741314265; risultati/limiti nel diario ChatGPT
-- [ ] 5. Stagionalità A/B su score only (seasonality_audit.py già pronto)
+- [x] 5. Stagionalità A/B su score only — Actions run 39752709258; BOT_CONTAINER_INVARIANCE=PASS; risultati nel diario Claude 22/10
 - [ ] 6. Replay economico + validazione out-of-sample → raccomandazione all'utente
 
 ## Manifesto e step 4
@@ -48,6 +48,17 @@
 - Misura step 4 completata in Actions run `39741314265`; non riavvia i bot. Risultati e limiti in `diario/2026-10-22_chatgpt.md`.
 - Prossimi: step 5 stagionalità A/B in sola lettura; step 6 replay economico e validazione fuori campione.
 
+
+## Step 5 stagionalità A/B — risultati (Actions run 39752709258)
+- BOT_CONTAINER_INVARIANCE=PASS (ID/immagine/StartedAt Hawk e Bull invariati prima/dopo le 4 analisi)
+- Soglia 60: Hawk unique=1078, eligible_A=1078, eligible_B=798, changed=280, side_changed=0; Bull unique=1365, eligible_A=1365, eligible_B=1058, changed=307, side_changed=0
+- Soglia 63: Hawk eligible_A=686, eligible_B=519, changed=167, side_changed=0; Bull eligible_A=893, eligible_B=677, changed=216, side_changed=0
+- side_changed=0 in tutti e 4 i casi: il bonus stagionale non inverte mai la direzione di selezione (long/short)
+- Riduzione eligibilità ~22-26% a soglia 60, ~24% a soglia 63 rimuovendo il bonus stagionale (formula B)
+- Hawk log sha256: `b14dc35aae8fa64fd1865c4a535888c03e56efb1dcedbaa6fbfbecdcaa466c26`; Bull: `10fa7558abe79195f53fe3f68868f5f063c878d164f691ab8cf37fd605bd9cbb`
+- seasonal_sha256: `47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7` (identico 4 run)
+- ~50% delle righe (recorded) escluse per code_version non revisionata (excluded_unreviewed)
+- Nessun dato grezzo pubblicato; nessun bot modificato o riavviato
 ## Regole inviolabili (sempre valide)
 1. Nessun redeploy senza OK esplicito utente
 2. DESK_MODE=paper finché utente non dice live
@@ -86,7 +97,7 @@
 - PR #1 stagionalità A/B unita in `rule-pool`: merge commit `7a5e79536c2fb8cf9fdb930e7b7a70d5f824372e`; CI head `39747560290` success.
 - Review Claude positiva; nota non bloccante: aggiornare `--reviewed-code-version` alle future versioni bot prima di includerle nell'analisi.
 - Il report sul VPS e l'invarianza dei container restano da attestare: il connettore disponibile non mostra le run Actions avviate da push.
-  ## Aggiornamento 22/10/2026 — step 5 COMPLETATO (Claude — sera)
+## Aggiornamento 22/10/2026 — step 5 COMPLETATO (Claude — sera)
 
 - Review Claude PR #1 positiva: splitlines(), PAPER verificato a livello Docker, tripla sha256, scope attestato, 4 container --network none --read-only, invarianza bot verificata.
 - Merge PR #1 in rule-pool commit 7a5e795; CI 12/12 test success (run 39747560290).
