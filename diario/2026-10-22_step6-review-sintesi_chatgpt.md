@@ -325,3 +325,73 @@ version gate; gate campionario senza requisito di episodi; arresto e valutazione
 OOS non congelati; diagnostica direzionale assente; equivalenza workflow
 eseguito/revisionato non verificata. Confermata la raccomandazione: status
 draft, oos_start_utc nulla. Nessun merge, esecuzione VPS o modifica funzionale.
+
+
+## 11. Revisione Gemini — valutazione conclusiva delle revisioni ricevute
+
+Attribuzione: Gemini, come indicato dall'utente. Il testo dichiara di non aver
+letto il repository; costituisce un commento metodologico, non una verifica
+indipendente del codice. La motivazione "protetto/non indicizzato" non prova
+una restrizione del repo: questo e' pubblico e il sorgente e' stato letto
+tramite GitHub al commit immutabile. Non confondere accesso dello strumento
+del revisore con disponibilita' del file.
+
+| Punto Gemini | Riscontro sul sorgente fe50c2ff | Decisione |
+| --- | --- | --- |
+| Allocazione entry fee, exit fee e funding per meta' e durata | Le due valutazioni pesate .5 ricalcolano le fee e usano tempi distinti; l'entry registrata resta fissa. | Principio condiviso, implementazione gia' coerente con PAPER. Non aggiungere due volte lo slippage d'ingresso incorporato nel prezzo. |
+| close e at + BAR sottostimano liquidazioni | liquidation() restituisce il netto di un'uscita ipotetica; il candidato usa intenzionalmente chiusure di barra e fill alla prossima apertura. | Non confermato. Una regola intrabarra sarebbe un candidato diverso; OHLC non identifica il momento esatto di un attraversamento. |
+| Aggiungere controllo fill_i e forced close | Il controllo esiste alle righe 252-253; il fallback alle righe 262-263 mantiene la baseline per il residuo. | Nessun IndexError dimostrato. Forced close all'ultima close cambierebbe il confronto. |
+| Segno errato in baseline_ref | Riga 228: fill=ref*(1-side*slip/10000). Riga 203 divide esattamente per lo stesso fattore con slip=2. | Rilievo errato per questa convenzione di uscita. Una convenzione d'ingresso non ne determina il segno. |
+| Bootstrap per episodi e 10000 repliche | Raggruppa giorni UTC e sovrapposizioni; preserva quella dipendenza, non ogni dipendenza seriale fra episodi. | Utile aumentare B e verificare Monte Carlo; non garantisce copertura o adeguatezza dei pochi episodi. NumPy non e' una dipendenza del runner stdlib attuale. |
+| Bonferroni garantisce rigorosamente FWER | Correzione per due confronti prevista, ma gli IC sono bootstrap approssimati; esistono problemi di dipendenza residua, pochi cluster e arresto/peeking. | Correzione valida condizionatamente alla validita' dei test/IC marginali; non garanzia incondizionata di questo runner. |
+| Metriche per Hawk/Bull x long/short | Non ancora implementate. | Necessarie prima di approvare, come gia' richiesto in R5. |
+
+### Verifica algebrica dello slippage
+
+Esempio sintetico senza dati operativi: ref=100, slip=2 bp.
+Long: fill=99.98, quindi 99.98/(1-0.0002)=100.
+Short: fill=100.02, quindi 100.02/(1+0.0002)=100.
+Il segno peggiora correttamente l'uscita di entrambi i lati. Dividere con il
+segno opposto non invertirebbe questa funzione. Si confronta la formula
+effettivamente usata nei log, non una convenzione "comune" ipotetica.
+
+### Cosa aggiungere all'analisi direzionale
+
+Accolta la proposta di win rate, R medio e profit factor per bot e direzione,
+sempre insieme a n, giorni, episodi, attivazioni, esclusioni e costi in R.
+Pre-specificare il profit factor (somma R positivi / valore assoluto somma R
+negativi), riportando null e un indicatore quando il denominatore e' zero.
+Non serializzare Infinity, importi reali, saldi, simboli o singoli trade.
+Rendere esplicito che PF su R normalizzati descrive questo target e non
+necessariamente il profit factor monetario del conto. Segmentazione descrittiva
+e famiglia di confronti confermativi restano distinte come in sezione 9.
+
+Non accolta l'affermazione di "risposta inequivocabile" o diagnosi istantanea:
+questo runner non produce una curva equity di portafoglio, non simula rientri
+e non separa causalmente bug, regime, selezione o esecuzione. Una curva negativa
+in periodi rialzisti non dimostra da sola un errore di segno; una curva coerente
+col regime non esclude errori. Servono controlli indipendenti su codice, coorti
+e dati. Non sono stati letti i trade odierni durante questa sintesi.
+
+### Sintesi finale dopo Gemini
+
+Accordo osservabile fra contributi ricevuti: contabilita' per quantita' e
+durata, confronti appaiati, bootstrap dell'unita' dipendente e diagnostica
+long/short. Non attribuiamo questo accordo a una review Claude Step 6 non
+disponibile; gli autori dei precedenti testi non sono stati confermati.
+
+Divergenze risolte sul codice: nessun errore dimostrato nel segno dello
+slippage, nella valutazione a close del candidato o nel guard sull'ultima
+barra. La proposta 25/1975 non e' una correzione necessaria. Funding reale
+resta fuori dal target PAPER dichiarato. Restano da scegliere e validare
+B/metodo IC, requisiti sugli episodi, famiglia dei test e protocollo OOS.
+
+Gemini non aggiunge nuovi bug verificati. Il piano NON e' pronto per approved:
+risolvere R1-R6, verificare archivio OHLC e provenienza/configurazione della
+baseline, congelare coorte, maturazione, arresto e analisi finale, e sottoporre
+il codice modificato a test e review. Nessuna data OOS proposta retroattivamente:
+oos_start_utc resta null fino alla registrazione di un piano completo e
+approvato, con inizio futuro rispetto al commit di registrazione.
+
+Aggiornata esclusivamente documentazione sul ramo diario. Nessun cambio
+funzionale, merge, trigger, esecuzione VPS o push su stable/*.
