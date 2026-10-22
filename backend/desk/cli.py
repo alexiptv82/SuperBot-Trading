@@ -695,17 +695,44 @@ def flush_events(state: dict, acc: PaperAccount) -> None:
             print(f"[SPLIT ANNULLATO] {ev.get('symbol')}: {ev.get('reason')}", flush=True)
 
 
-def position_info(pos, price: float, readings: dict, now_ms: int) -> dict:
+_FOUR_HOUR_CACHE = {}
+
+
+def four_hour_bars(symbol, now_ms):
+    from desk.signals import closed_four_hour, H4
+    key = now_ms // H4
+    cached = _FOUR_HOUR_CACHE.get(symbol)
+    if cached and cached[0] == key:
+        return cached[1]
+    if cached and now_ms-cached[2] < 300000:
+        return cached[1]
+    try:
+        result = closed_four_hour(fetch_candles(symbol, "4H", limit=300), now_ms)
+    except (ValueError, TypeError):
+        result = []
+    if len(result) >= 200:
+        _FOUR_HOUR_CACHE[symbol] = (key,result,now_ms)
+        return result
+    # Do not carry a stale trend forward as if it were a fresh 4h observation.
+    _FOUR_HOUR_CACHE[symbol] = (None,None,now_ms)
+    return None
+
+
+def position_info(pos, price: float, readings: dict, now_ms: int, closed=(), limits=None) -> dict:
+    from desk.position_card import metrics
     r = readings.get(pos.symbol)
+    extra = metrics(pos, price, now_ms, closed, limits or Limits())
     return {
+        **extra,
         "split_pending": pos.pending_split,
         "symbol": pos.symbol, "side": pos.side, "leverage": pos.leverage,
-        "margin": pos.margin, "total_margin": pos.total_margin,
+        "margin": pos.total_margin, "total_margin": pos.total_margin,
         "trade_type": pos.trade_type, "dca_count": pos.dca_count,
         "entry": pos.entry, "price": price, "sl": pos.sl,
         "pnl": pos.side * (price - pos.entry) * pos.qty,
         "hours": (now_ms - pos.open_ms) / 3_600_000,
-        "score_now": r.score if r else 0,
+        "score_now": (r.long_score if pos.side == 1 else r.short_score) if r else None,
+        "score_opposite": (r.short_score if pos.side == 1 else r.long_score) if r else None,
         "reason": pos.reason,
     }
 
@@ -974,7 +1001,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             dly = daily_bars(sym, now_ms)
         except Exception:
             dly = None
-        r = read_symbol(sym, arr, now_ms, daily=dly, price=prices.get(sym))
+        r = read_symbol(sym, arr, now_ms, daily=dly, price=prices.get(sym),
+                        four_hour=four_hour_bars(sym, now_ms))
         if r is not None:
             readings_list.append(r)
             readings_map[sym] = r
@@ -987,7 +1015,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     snap = account_snapshot(acc, eq, halt)
 
     # posizioni aperte con info aggiornate
-    pos_info = [position_info(pos, prices.get(sym, pos.entry), readings_map, now_ms)
+    pos_info = [position_info(pos, prices.get(sym, pos.entry), readings_map, now_ms, acc.closed, acc.limits)
                 for sym, pos in acc.positions.items()]
 
     # notizie dal ctx
