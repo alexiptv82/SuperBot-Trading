@@ -31,7 +31,7 @@
 
 ## Rami
 - `work/director-claude` HEAD: `40157c3` (Claude, non unire senza OK)
-- `work/director-chatgpt` HEAD: `9255093` (ChatGPT, non toccare)
+- `work/director-chatgpt` HEAD: `fe50c2ff` (ChatGPT, step 6 preparato per review; non unito)
 - `work/research-integrity` HEAD: `b229963` (ChatGPT, non unire)
 - `rule-pool` HEAD: `7a5e795` (merge PR #1 stagionalità)
 
@@ -110,3 +110,14 @@
 L'utente autorizza preparazione e push sul ramo work/director-chatgpt di script, workflow e test per replay economico e protocollo prospettico. Nessun merge, trigger o accesso VPS autorizzato in questa fase; review Claude prima dell'esecuzione. Componente step 6 assegnato a ChatGPT.
 
 Il replay sara' offline con OHLC locale verificato: il runner precedente usa rete e non puo' essere eseguito nel container --network none richiesto. Piano e soglie saranno una proposta draft; nessuna modifica ai bot. Ramo realmente letto: work/director-chatgpt 11a9c62 (il riferimento 9255093 nel prompt e' superato).
+
+
+## 22/10/2026 — Step 6 preparato, attende review Claude
+
+- Codice su work/director-chatgpt: fe50c2ff2f459e4260d7f2f4907ad0f7c590a478. Sei file nuovi; nessuna modifica al motore o ai trigger dei bot. work/director-claude non toccato.
+- Proposta dettagliata: deploy/STEP6-REVIEW.md. Script autonomo offline, workflow VPS isolato, CI sintetica, test e piano draft.
+- Ipotesi proposta: parziale 50% dopo chiusura a +1,5R, eseguito al next-open; residuo protetto con segnale a barra chiusa. Non equivale al vecchio limite intrabar e non e' un replay di portafoglio o della stagionalita' economica.
+- Verifiche locali: Python 3.12.14, 19 test passati, py_compile, YAML e bash -n passati. Test shell reale con git/docker simulati: errore analisi propagato e riavvio container rilevato. CI Python 3.11 predisposta ma non eseguita.
+- Stato di esecuzione: nessun merge, nessun trigger creato, nessun accesso/esecuzione VPS. Piano draft con data OOS nulla: blocca l'analisi.
+- Prerequisiti da approvare: candidato e criteri prospettici, data futura successiva al commit congelato, baseline, archivio OHLC offline con manifest verificato. Esistenza dell'archivio VPS non verificata; nessun collector installato.
+- Step 6 resta APERTO: codice preparato per review, nessun risultato economico nuovo.
