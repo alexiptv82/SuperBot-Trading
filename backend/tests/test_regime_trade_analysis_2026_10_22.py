@@ -81,3 +81,10 @@ def test_report_contains_aggregates_not_position_values():
     walk(report)
     assert report["groups"]["hawk/up/long"]["n"]==1
     assert report["stratified_groups"]["hawk/run-1/v-unknown/up/long"]["n"]==1
+
+
+def test_valid_snapshot_with_trailing_newline_is_accepted():
+    data = b'{"ev":"open"}\n{"ev":"close"}\n'
+    events, counts = mod.parse_snapshot(data)
+    assert len(events) == 2
+    assert counts["rows"] == 2
