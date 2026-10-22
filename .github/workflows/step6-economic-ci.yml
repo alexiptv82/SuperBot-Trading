@@ -1,0 +1,22 @@
+name: Step 6 synthetic tests
+on:
+  pull_request:
+    branches: [rule-pool]
+    paths:
+      - deploy/scripts/step6_economic_replay.py
+      - deploy/step6-plan.json
+      - backend/tests/test_step6_economic_replay.py
+      - .github/workflows/desk-step6-economic.yml
+      - .github/workflows/step6-economic-ci.yml
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m unittest discover -s backend/tests -p test_step6_economic_replay.py -v
+      - run: python -m py_compile deploy/scripts/step6_economic_replay.py

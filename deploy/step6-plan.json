@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "status": "draft",
+  "candidate": "half_after_close_1.5R_then_nonpositive_remainder",
+  "oos_start_utc": null,
+  "baseline_version": "4aabeb8",
+  "reviewed_versions": ["5818aee", "b4709d1", "b6b9911", "fa3e220", "4aabeb8"],
+  "min_days": 42,
+  "min_trades": 100,
+  "min_changed": 50
+}
