@@ -1,0 +1,68 @@
+name: R netto per regime e lato (sola lettura)
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/desk-regime-trades.trigger"]
+permissions:
+  contents: read
+jobs:
+  misura:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Verifica SHA del codice
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          WANT="$(grep -E '^sha=' deploy/desk-regime-trades.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          [[ "$WANT" =~ ^[0-9a-f]{40}$ ]]
+          git fetch -q origin rule-pool
+          git merge-base --is-ancestor "$WANT" origin/rule-pool
+          echo "sha=$WANT" >> "$GITHUB_OUTPUT"
+      - name: Analisi aggregata sul VPS (nessun dato grezzo)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          trap 'rm -f ~/.ssh/id_sg /tmp/remote-regime.sh' EXIT
+          printf '%s\n' "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          ssh_sg() { ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts_sg" -o ConnectTimeout=30 root@51.79.205.82 "$@"; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          cat > /tmp/remote-regime.sh <<'REMOTE'
+          set -euo pipefail
+          D="$(mktemp -d /tmp/superbot-regime-analysis.XXXXXX)"
+          trap 'rm -rf "$D"' EXIT
+          git clone -q -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git "$D"
+          cd "$D"
+          git fetch -q origin rule-pool
+          git merge-base --is-ancestor SHA_TOKEN origin/rule-pool
+          git reset -q --hard SHA_TOKEN
+          test "$(git rev-parse HEAD)" = SHA_TOKEN
+          before="$(docker inspect --format '{{.Name}}|{{.Id}}|{{.Image}}|{{.State.StartedAt}}' superbot-desk-hawk superbot-desk-bull)"
+          out="$(docker run --rm --name superbot-regime-analysis-RUN_ID_TOKEN --network none --read-only --tmpfs /tmp:size=64m --cap-drop ALL --cap-add DAC_READ_SEARCH --security-opt no-new-privileges --memory 512m --cpus 1 --pids-limit 64 -v /opt/superbot-desk-data:/data:ro -v "$D/deploy/scripts:/scripts:ro" -e PYTHONDONTWRITEBYTECODE=1 superbot-desk python /scripts/regime_trade_analysis.py --data-root /data --bots hawk,bull --json)"
+          after="$(docker inspect --format '{{.Name}}|{{.Id}}|{{.Image}}|{{.State.StartedAt}}' superbot-desk-hawk superbot-desk-bull)"
+          test "$before" = "$after"
+          printf '%s\n' "$out"
+          REMOTE
+          sed -i -e "s/SHA_TOKEN/$SHA/g" -e "s/RUN_ID_TOKEN/$RUN_ID/g" /tmp/remote-regime.sh
+          OUT="$(ssh_sg "$(cat /tmp/remote-regime.sh)")"
+          rm -f /tmp/remote-regime.sh
+          printf '%s\n' "$OUT" >> "$GITHUB_STEP_SUMMARY"
+          echo "$OUT" | while IFS= read -r line; do
+            safe="$(printf '%s' "$line" | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' | cut -c1-6000)"
+            echo "::notice title=R per regime e lato::$safe"
+          done
+          printf '%s\n' "$OUT" | python -c 'import json,sys; d=json.load(sys.stdin); sys.exit(1 if d.get("error") else 0)'
