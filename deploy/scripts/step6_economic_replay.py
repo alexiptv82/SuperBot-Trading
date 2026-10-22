@@ -40,6 +40,9 @@ PROTOCOL = {
     "primary_family": "two_pooled_bot_means_bonferroni",
     "directional_inference": "descriptive_only",
     "min_mean_delta_R": .10,
+    "reference_C": {"name": "closed_bar_price_R_trailing", "arm_R": 1.5,
+                    "distance_R": 1.0, "quantity_fraction": 1.0,
+                    "inference": "descriptive_only", "duration_strata": "baseline_holding_time"},
 }
 
 
@@ -290,6 +293,56 @@ def replay(t, bars, slip, delay):
     return base / t["risk"], alt / t["risk"], partial is not None
 
 
+def replay_C(t, bars, slip, delay):
+    """Full-quantity mechanical reference: closed-bar 1R trailing after +1.5R.
+
+    Uses the OLD floor for each signal, then updates its peak/floor for later
+    evaluations. Fill is the next open (+ delay), bounded by the baseline.
+    No standing intrabar stop and no partial; these constants are in the plan.
+    """
+    base = liquidation(t, t["baseline_ref"], t["closed"], slip) / t["risk"]
+    limit = t["closed"]-BAR if t.get("why") in ("stop loss", "take profit") else t["closed"]
+    peak, floor = None, None
+    for i,(at,_,_,_,close) in enumerate(bars):
+        fill_i=i+1+delay
+        if at<t["opened"] or fill_i>=len(bars):continue
+        fill_at,fill_ref=bars[fill_i][:2]
+        if fill_at>=limit:break
+        value=t["side"]*(close-t["entry"])/(t["entry"]*t["r_dist"])
+        if floor is not None and value<=floor:
+            return base,liquidation(t,fill_ref,fill_at,slip)/t["risk"],True
+        peak=value if peak is None else max(peak,value)
+        if peak>=1.5:
+            floor=peak-1.0 if floor is None else max(floor,peak-1.0)
+    return base,base,False
+
+
+def distribution(values):
+    ordered=sorted(values)
+    return {"n":len(values),"mean":statistics.mean(values) if values else None,
+            "median":statistics.median(values) if values else None,
+            "q05":empirical_quantile(ordered,.05) if values else None,
+            "q25":empirical_quantile(ordered,.25) if values else None,
+            "q75":empirical_quantile(ordered,.75) if values else None,
+            "q95":empirical_quantile(ordered,.95) if values else None,
+            "min":min(values) if values else None,"max":max(values) if values else None,
+            "positive":sum(v>0 for v in values),"negative":sum(v<0 for v in values),
+            "zero":sum(v==0 for v in values)}
+
+
+def summarize_C(rows):
+    def duration(row):
+        hours=(row["closed"]-row["opened"])/3600000
+        return "under_1h" if hours<1 else "1_to_6h" if hours<6 else "6_to_24h" if hours<24 else "24h_plus"
+    return {"inference":"descriptive_only_no_CI_no_gate", "n":len(rows),
+            "exits_before_baseline":sum(r["changed"] for r in rows),
+            "delta_R_C_minus_baseline":distribution([r["delta"] for r in rows]),
+            "by_direction_and_baseline_duration":{
+                side:{band:distribution([r["delta"] for r in rows if r["side"]==value and duration(r)==band])
+                      for band in ("under_1h","1_to_6h","6_to_24h","24h_plus")}
+                for side,value in (("long",1),("short",-1))}}
+
+
 def episodes(pairs):
     """Whole UTC-day-expanded overlap components, never split by direction."""
     clusters, end = [], -1
@@ -501,6 +554,7 @@ def analyze(events_by_bot, index, asof, plan, registered_ms, runtime_evidence=No
               "market_asof_ms": asof, "enrollment_end_ms": end, "final_evaluation_ms": final,
               "evaluation_phase": "fixed_final" if is_final else "accrual_effects_withheld",
               "primary_family": plan["primary_family"], "directional_inference": "descriptive_only",
+              "reference_C_protocol":plan["reference_C"],
               "limitations": ["Clean closed trades only; exclusions can bias the sample.",
                   "Recorded entries and baseline exit boundary are fixed; no reentries or equity simulation.",
                   "Closed-bar signal with next-open fills, not a standing limit or margin liquidation.",
@@ -545,8 +599,13 @@ def analyze(events_by_bot, index, asof, plan, registered_ms, runtime_evidence=No
             cases = {}
             for slip, delay in CASES:
                 pairs = []
+                reference_rows = []
                 for trade, candles in items:
                     base, alt, changed = replay(trade, candles, slip, delay)
+                    cbase,cvalue,cchanged=replay_C(trade,candles,slip,delay)
+                    require(abs(cbase-base)<1e-9,"reference_baseline_mismatch")
+                    reference_rows.append({"opened":trade["opened"],"closed":trade["closed"],
+                                           "side":trade["side"],"delta":cvalue-cbase,"changed":cchanged})
                     fill = trade["baseline_ref"] * (1-trade["side"]*slip/10000)
                     gross = trade["side"]*(fill-trade["entry"])*trade["qty"]
                     pairs.append({"opened": trade["opened"], "closed": trade["closed"],
@@ -557,6 +616,7 @@ def analyze(events_by_bot, index, asof, plan, registered_ms, runtime_evidence=No
                 cases[f"slip{slip}bp_delay{delay}bar"] = summarize(
                     pairs, plan, start+(end-start)/2 if group == "prospective" else None,
                     inference=group == "prospective" and (slip, delay) == (2, 0))
+                cases[f"slip{slip}bp_delay{delay}bar"]["reference_C"]=summarize_C(reference_rows)
             groups[group] = cases
         version = version_gate(events, start, cutoff, plan["baseline_version"])
         continuity = continuity_gate(runtime_evidence, bot, start, cutoff, plan) if cutoff > start else "not_started"

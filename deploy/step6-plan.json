@@ -30,5 +30,13 @@
   "quantile_method": "inverse_empirical_cdf",
   "primary_family": "two_pooled_bot_means_bonferroni",
   "directional_inference": "descriptive_only",
-  "min_mean_delta_R": 0.1
+  "min_mean_delta_R": 0.1,
+  "reference_C": {
+    "name": "closed_bar_price_R_trailing",
+    "arm_R": 1.5,
+    "distance_R": 1.0,
+    "quantity_fraction": 1.0,
+    "inference": "descriptive_only",
+    "duration_strata": "baseline_holding_time"
+  }
 }

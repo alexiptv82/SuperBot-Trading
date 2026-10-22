@@ -198,3 +198,46 @@ Per Claude: review indipendente di questa versione e decisione sulle soglie
 proposte. Prima di approved restano conferma baseline, piano dati/snapshot,
 provenienza e completezza ledger, evidenza CI e approvazione esplicita dell'utente.
 Nessun merge, trigger o VPS finche' non arriva un OK separato.
+
+## Baseline C — riferimento meccanico descrittivo (decisione serale 22/10)
+
+Piano sempre draft/null. C e' un riferimento contro cui confrontare in futuro
+la gestione AI, non una riscrittura di Step 6 per imitare quella gestione.
+Una sola regola proposta prima di S, senza griglia o ricerca dei valori migliori:
+
+- tutta la quantita' originale, nessun parziale;
+- attivazione quando una barra 15m chiusa interamente post-ingresso raggiunge
+  +1,5R DI PREZZO, con rischio/distante stop iniziale del trade;
+- picco dei soli close favorevoli, floor = picco -1R, monotono;
+- il floor precedente viene giudicato prima dell'aggiornamento di quella barra;
+- un close <=floor segnala uscita alla prossima apertura, piu' l'eventuale
+  ritardo dello scenario. E' un trailing A BARRA CHIUSA, non stop intrabarra;
+- nessun fill nella barra SL/TP baseline o oltre il confine terminale, come B;
+- se l'uscita alternativa non e' eseguibile in tempo, rimane la baseline;
+- baseline, fee, funding PAPER e slippage usano le stesse funzioni e lo stesso
+  campione riconciliato, senza modifiche al funding solo-long.
+
+Costanti nel campo reference_C del piano e validate dal runner. Non sono
+state selezionate per migliorare i risultati dei trade di oggi. Cambiarle dopo
+S richiede un nuovo esperimento, non una versione retroattiva di questa coorte.
+Conservare lo snapshot iniziale e il commit registrato.
+
+Per ogni bot/coorte/scenario il report aggiunge reference_C con distribuzione
+aggregata di R_C-R_baseline: n, media, mediana, q05/q25/q75/q95, min/max e
+conteggi positivo/negativo/zero. Suddivisione per lato e durata BASELINE
+(<1h, 1-6h, 6-24h, >=24h), scelta per non stratificare sulla durata modificata
+post-trattamento. Nessun trade/simbolo grezzo e nessun importo pubblicato.
+Anche C resta nascosta prima della scadenza fissa finale F.
+
+C non riceve IC, test o gate. Famiglia primaria invariata: due confronti
+pooled per bot della variante B contro baseline, IC97,5% Bonferroni. Test di
+regressione forza delta C fortemente negativi e verifica che ogni metrica/gate
+primario resti identico. Un domani rendere inferenziale C aggiungerebbe due
+confronti: famiglia 4, IC98,75% e preregistrazione/precisione nuova, prima di S.
+Non adottare C perche' appare vincente in queste tabelle descrittive.
+
+Test addizionali: fill next-open, ritardo, confine baseline, niente armamento
+su massimo intrabarra, entrambe le direzioni e distribuzioni per durata.
+Prerequisiti operativi (OHLC, runtime-ledger, baseline reale e snapshot) restano
+aperti. Prima di S, un solo deploy dei fix approvati e aggiornamento baseline;
+un cambio versione durante [S,F] invalida la coorte. Nessun deploy eseguito.

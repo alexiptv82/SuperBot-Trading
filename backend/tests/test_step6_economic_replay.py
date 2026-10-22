@@ -402,7 +402,10 @@ class Step6Tests(unittest.TestCase):
 
     def test_final_negative_result_is_distinct_from_inconclusive(self):
         events, index = self.final_fixture()
-        with patch.object(m, "replay", return_value=(-1., -1.5, True)):
+        def negative_variant(t, bars_, slip, delay):
+            base=m.liquidation(t,t['baseline_ref'],t['closed'],slip)/t['risk']
+            return base,base-.5,True
+        with patch.object(m, "replay", side_effect=negative_variant):
             report = m.analyze(events, index, START+56*m.DAY, plan(), START-1, ledger())
         self.assertEqual(report["bots"]["hawk"]["hypothesis_gate"], "not_supported")
         with patch.object(m, "bootstrap_ci", side_effect=lambda c, n, seed:
@@ -470,6 +473,57 @@ class Step6Tests(unittest.TestCase):
         audit = m.exclusion_audit(events, "hawk", START+m.DAY, plan(), START, START+42*m.DAY)
         self.assertEqual(audit["prospective"]["long"]["identity_or_time_mismatch"], 1)
         self.assertEqual(audit["prospective"]["short"], {})
+
+    def test_reference_C_full_quantity_trailing_next_open_and_mirror(self):
+        for side in (1,-1):
+            t,_=trade(side)
+            closes=[100,102,103,101.9,100,99,99,99,99]
+            if side==-1:closes=[200-v for v in closes]
+            series=bars(t,closes)
+            base,alt,changed=m.replay_C(t,series,2,0)
+            self.assertTrue(changed)
+            self.assertAlmostEqual(alt,m.liquidation(t,series[4][1],series[4][0],2)/t['risk'])
+            self.assertAlmostEqual(base,m.replay(t,series,2,0)[0])
+
+    def test_reference_C_never_arms_on_intrabar_high(self):
+        t,_=trade();series=bars(t,[100]*9)
+        series[1]=(series[1][0],100,200,99,100)
+        base,alt,changed=m.replay_C(t,series,2,0)
+        self.assertEqual(base,alt);self.assertFalse(changed)
+
+    def test_reference_C_terminal_boundary_and_delay(self):
+        t,_=trade();series=bars(t,[100,102,103,101.9,100,99,99,99,99])
+        self.assertNotEqual(m.replay_C(t,series,2,0)[1],m.replay_C(t,series,2,1)[1])
+        t['closed']=t['opened']+5*m.BAR
+        base,alt,changed=m.replay_C(t,series,2,0)
+        self.assertFalse(changed);self.assertEqual(base,alt)
+
+    def test_reference_C_descriptive_has_no_gate_or_CI(self):
+        rows=[dict(opened=START,closed=START+2*m.DAY,side=1,delta=.2,changed=True),
+              dict(opened=START,closed=START+m.BAR,side=-1,delta=-.1,changed=True)]
+        result=m.summarize_C(rows)
+        self.assertAlmostEqual(result['delta_R_C_minus_baseline']['mean'],.05)
+        self.assertEqual(result['by_direction_and_baseline_duration']['long']['24h_plus']['n'],1)
+        self.assertNotIn('episode_ci975_delta_R',result)
+        self.assertNotIn('hypothesis_gate',result)
+
+    def test_reference_C_cannot_change_primary_hypothesis_family_or_gate(self):
+        events,index=self.final_fixture()
+        ordinary=m.analyze(events,index,START+56*m.DAY,plan(),START-1,ledger())
+        original=m.replay_C
+        def bad_C(t,bars_,slip,delay):
+            base,_,_=original(t,bars_,slip,delay)
+            return base,base-999,True
+        with patch.object(m,'replay_C',side_effect=bad_C):
+            terrible=m.analyze(events,index,START+56*m.DAY,plan(),START-1,ledger())
+        self.assertEqual(terrible['primary_family'],'two_pooled_bot_means_bonferroni')
+        for bot in ('hawk','bull'):
+            self.assertEqual(ordinary['bots'][bot]['hypothesis_gate'],terrible['bots'][bot]['hypothesis_gate'])
+            for cohort in ('historical_exploratory','prospective'):
+                for key,value in ordinary['bots'][bot]['groups'][cohort].items():
+                    other=terrible['bots'][bot]['groups'][cohort][key]
+                    self.assertEqual({k:v for k,v in value.items() if k!='reference_C'},
+                                     {k:v for k,v in other.items() if k!='reference_C'})
 
     def test_workflow_remote_trap_propagates_failure_and_detects_restart(self):
         # Execute the actual remote shell with stubbed git/docker, no SSH/network.
