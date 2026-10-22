@@ -200,6 +200,7 @@ def audit_bot(events, state, heartbeat, bodies, now):
         ratio = spent/cap
         current_budget_state = "below_90pct" if ratio < .90 else "90_to_95pct" if ratio < .95 else "95_to_100pct" if ratio <= 1 else "over_100pct"
     current = state.get("main", {}).get("positions", {})
+    need(heartbeat.get("open_positions")==len(current),"state_heartbeat_position_mismatch")
     current_roi_counts = Counter(); verified_hold_lower_bound = 0
     call_times = {r["ts"] for r in calls if r.get("ok") is True}
     for p in current.values():
@@ -292,6 +293,14 @@ def run(data_root,sidecar_root,ai_root,now):
                                [r for k,v in raw.items() if k.startswith("ai_trades_") for r in jsonl(v)],now)
     out["input_sha256"]={k:sha(v) for k,v in raw.items()}
     for k,p in paths.items(): need(read(p)==raw[k],"input_changed_during_audit")
+    # A rotation/new daily file can leave all old bytes unchanged: detect it too.
+    for bot in ("hawk","bull"):
+        expected={p.name for k,p in paths.items() if k.startswith(bot+"_sidecar_")}
+        need({p.name for p in (Path(sidecar_root)/bot).glob("events-*.jsonl")}==expected,"input_manifest_changed")
+    for kind in ("cycles","trades"):
+        for day in ("2026-10-21","2026-10-22"):
+            path=ai_folder/f"{kind}-{day}.jsonl"
+            need((path.exists() or path.is_symlink()) == (f"ai_{kind}_{day}" in paths),"input_manifest_changed")
     return out
 
 

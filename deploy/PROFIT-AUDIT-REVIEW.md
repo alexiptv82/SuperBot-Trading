@@ -49,7 +49,8 @@ nei bot, stop/restart, chiave API o accesso a Bitget. Scrive solo artifact JSON
 aggregato sul runner e cartella temporanea del checkout. Non legge prompts AI
 con testo libero, non usa docker.sock. Errori a codici fissi, niente traceback.
 
-Snapshot byte-identici prima/dopo per ogni input; append durante l'audit blocca
+Snapshot byte-identici e manifest dei segmenti/file identico prima/dopo;
+coerenza del conteggio posizioni fra stato e heartbeat; append durante l'audit blocca
 la misura. JSONL rigoroso e symlink/canonicalita' controllati. Limiti 32 MiB per
 file e 64 MiB totali: oltre limite fallisce, non tronca. Nessun writer Journal
 importato/istanziato, nessuna rotazione o riparazione dei registri.

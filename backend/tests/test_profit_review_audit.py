@@ -21,7 +21,7 @@ def fixture():
     st=dict(run_no=1,budget={'day':'2026-10-22','spent':.68},last_prices={'PRIVATE_ASSET':94},last_prices_ms=NOW,
             main={'positions':{'PRIVATE_ASSET':p},'closed':[],'limits':limits})
     hb=dict(exec_mode='paper',portfolio='hawk',cycle_running=False,last_ok=True,ts=NOW/1000,
-            mode='running',daily_cap_usd=.7,claude_schedule={'allowed':True})
+            mode='running',open_positions=1,daily_cap_usd=.7,claude_schedule={'allowed':True})
     return [o],st,hb
 
 
@@ -122,12 +122,23 @@ class AuditTests(unittest.TestCase):
             r=a.run(root/"data",root/"sidecar",root/"ai",NOW)
             self.assertEqual(r["scope"],a.SCOPE)
             self.assertIn("ai_cycles_2026-10-21",r["missing_sources"])
+            original_bodies=a.sidecar_bodies
+            def rotate(raws):
+                (root/'sidecar'/'hawk'/'events-00000001.jsonl').write_bytes(b'{}\n')
+                return original_bodies(raws)
+            with patch.object(a,'sidecar_bodies',side_effect=rotate),self.assertRaises(a.Blocked):
+                a.run(root/'data',root/'sidecar',root/'ai',NOW)
+            (root/'sidecar'/'hawk'/'events-00000001.jsonl').unlink()
             original=a.read;calls={}
             def mutate(p):
                 key=str(p);calls[key]=calls.get(key,0)+1
                 return original(p)+(b" " if calls[key]>1 else b"")
             with patch.object(a,"read",side_effect=mutate),self.assertRaises(a.Blocked):
                 a.run(root/"data",root/"sidecar",root/"ai",NOW)
+
+    def test_state_heartbeat_mismatch_blocks(self):
+        ev,st,hb=fixture();hb['open_positions']=2
+        with self.assertRaises(a.Blocked):a.audit_bot(ev,st,hb,[],NOW)
 
     def test_workflow_isolated_no_activation(self):
         s=(ROOT/'.github/workflows/desk-profit-review-audit.yml').read_text()
