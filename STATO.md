@@ -31,7 +31,7 @@
 
 ## Rami
 - `work/director-claude` HEAD: `40157c3` (Claude, non unire senza OK)
-- `work/director-chatgpt` HEAD: `fe50c2ff` (ChatGPT, step 6 preparato per review; non unito)
+- `work/director-chatgpt` HEAD: `c626c40c` (solo documentazione della review; codice esaminato `fe50c2ff`, non unito)
 - `work/research-integrity` HEAD: `b229963` (ChatGPT, non unire)
 - `rule-pool` HEAD: `7a5e795` (merge PR #1 stagionalità)
 
@@ -121,3 +121,13 @@ Il replay sara' offline con OHLC locale verificato: il runner precedente usa ret
 - Stato di esecuzione: nessun merge, nessun trigger creato, nessun accesso/esecuzione VPS. Piano draft con data OOS nulla: blocca l'analisi.
 - Prerequisiti da approvare: candidato e criteri prospettici, data futura successiva al commit congelato, baseline, archivio OHLC offline con manifest verificato. Esistenza dell'archivio VPS non verificata; nessun collector installato.
 - Step 6 resta APERTO: codice preparato per review, nessun risultato economico nuovo.
+
+## 22/10/2026 — Revisione indipendente Step 6 completata, sintesi esterna aperta
+
+- Oggetto esaminato: fe50c2ff. Relazione strutturata: diario/2026-10-22_step6-review-sintesi_chatgpt.md.
+- Raccomandazione: mantenere draft e oos_start_utc=null. Il test che obbliga draft impedisce la futura esecuzione approved; gate versione incompleto; IC assente per pochi episodi classificato come not_supported. Riproduzioni sintetiche locali registrate.
+- Da definire prima dell'approvazione: coorte e valutazione finale senza test ripetuti non controllati, continuita' della configurazione, identita' del workflow congelato ed eseguito, archivio OHLC offline.
+- Aggiunto a STEP6-REVIEW.md il requisito di report long/short (commit documentale c626c40c); lo script non lo implementa ancora. Osservazione dei trade di oggi riportata dall'utente, non verificata sui registri in questa sessione.
+- Contabilita' delle due meta' confermata con calcolo indipendente; 19/19 test originali e py_compile passati con Python 3.12.14. Nessuna run Actions o esecuzione VPS.
+- Review Step 6 originali di Claude, DeepSeek e Kimi K3 ancora da ricevere: accordi/divergenze e novita' rispetto a Claude non determinabili. Sintesi provvisoria, non conclusa.
+- Solo documentazione aggiornata su work/director-chatgpt e diario. Nessun merge, modifica al piano/codice operativo o push a stable/*.
