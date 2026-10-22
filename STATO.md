@@ -80,3 +80,10 @@
 - Workflow dedicato è sola lettura, esegue cutoffs tecnici 60/63 per descrivere l'effetto sul punteggio. Non equivale alla confidenza Claude e non misura redditività.
 - Nessun merge o run sul VPS. Attende review Claude sul workflow server-side; dopo il merge il trigger dedicato eseguirà il report aggregato.
 - Diario dettagliato: `diario/2026-10-22_chatgpt.md` (commit 142cc297).
+
+
+## Aggiornamento 22/10/2026 — step 5 unito, run Actions da verificare
+- PR #1 stagionalità A/B unita in `rule-pool`: merge commit `7a5e79536c2fb8cf9fdb930e7b7a70d5f824372e`; CI head `39747560290` success.
+- Review Claude positiva; nota non bloccante: aggiornare `--reviewed-code-version` alle future versioni bot prima di includerle nell'analisi.
+- Il report sul VPS e l'invarianza dei container restano da attestare: il connettore disponibile non mostra le run Actions avviate da push.
+- Step 5 non chiuso: esito aggregato da recuperare. Nessuna modifica manuale o redeploy dei bot.
