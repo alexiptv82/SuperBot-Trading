@@ -26,6 +26,7 @@ rule-pool 7a5e795. Nessun accesso al VPS o esecuzione di Actions.
 | Revisione | Disponibilita' | Uso nella sintesi |
 |---|---|---|
 | ChatGPT su fe50c2ff | Completa, codice letto e prove sintetiche locali | Rilievi verificati sotto |
+| E1, autore non indicato | Ricevuto successivamente; dichiara assenza del sorgente | Riscontro critico in sezione 8, nessuna attribuzione nominativa |
 | Claude su Step 6 | Testo non presente nel diario letto o nei messaggi ricevuti | In attesa; la review PR #1 riguarda Step 5 e non e' sostitutiva |
 | DeepSeek su Step 6 | Non ancora ricevuta | In attesa |
 | Kimi K3 su Step 6 | Non ancora ricevuta | In attesa |
@@ -162,3 +163,38 @@ Nessuna run Actions o esecuzione sul VPS.
 
 Le prove aggiuntive sono dimostrazioni sintetiche, non una nuova misura dei bot.
 La chiusura della sintesi e' subordinata alla ricezione dei tre report Step 6.
+
+
+## 8. Primo contributo esterno ricevuto — E1, autore non indicato
+
+Il messaggio del 22/10 dichiara esplicitamente di non aver ricevuto il sorgente.
+E' un'analisi condizionale delle specifiche, non una verifica indipendente delle
+righe del commit. L'autore non e' indicato: non viene attribuito a DeepSeek o Kimi.
+Resta da ricevere una revisione con accesso al codice, oltre alle altre review.
+
+| Punto di E1 | Riscontro sul commit fe50c2ff | Esito per la sintesi |
+|---|---|---|
+| Ripartire entry fee/funding e separare exit fee | liquidation calcola il costo dell'intera posizione alla durata richiesta; replay ne prende meta' per ciascuna uscita. Le quote si sommano senza duplicare il costo iniziale. Gia' verificato con calcolo indipendente. | Principio condiviso; nessun nuovo bug di doppio addebito dimostrato. |
+| Controllare low/high per la liquidazione forzata | La funzione liquidation e' una valorizzazione netta d'uscita, non il controllo del margine o del prezzo di liquidazione. I trade baseline con why=liquidazione sono esclusi. Il close e at+BAR indicano la valorizzazione al termine della barra del segnale; il fill usa l'open successivo. | Rilievo inapplicabile alla funzione presente. Non sostituirla con la formula exchange proposta. Rinominare la funzione puo' ridurre l'ambiguita' documentale. |
+| All'ultimo indice scartare l'episodio o forzare una chiusura | window richiede gia' una serie completa fino al bucket baseline; replay conserva il trade e il risultato baseline, o meta' baseline se il parziale e' gia' eseguito. Non elimina l'episodio per fill_i fuori finestra. Il confine baseline vieta uscite successive. | Nessun difetto dimostrato dal solo controllo di indice. Una lacuna prima del confine e' invece un'esclusione conteggiata. Forzare l'ultima chiusura cambierebbe la specifica. |
+| Inverso dello slippage dipende dalla convenzione | engine._close usa exit_fill=exit_ref*(1-side*2/10000), con i default revisionati; l'inverso nel runner e' coerente per long e short. | Conferma condizionale verificata nel nostro motore PAPER; non e' un'affermazione sullo slippage reale di Bitget. |
+| Bootstrap a episodi e Bonferroni sui due confronti | Il delta delle due meta' e' gia' riunito per trade; gli episodi raggruppano poi piu' trade dello stesso giorno/sovrapposti. Vengono ricampionati interi episodi. IC 97,5% nominale per bot coerente con due confronti prefissati. | Principio condiviso. Non risolve pochi episodi, dipendenza seriale, campione selezionato o controlli ripetuti. |
+| 2000 repliche sarebbero sufficienti | Un numero di repliche non garantisce validita' o precisione. Con code all'1,25%, ogni coda contiene circa 25 repliche attese; serve valutare stabilita' Monte Carlo e soprattutto numero/dipendenza degli episodi. | Giudizio generale di E1 troppo forte; nessuna certificazione di adeguatezza statistica. |
+| Un giorno non prova asimmetria strutturale; segmentare | Coerente con l'analisi gia' registrata. L'output fe50c2ff aggrega i lati e l'overlay non interviene se non si raggiunge +1,5R. | Accordo metodologico con ChatGPT, non ancora consenso fra tutte le review esterne. |
+| Mancata riproduzione implica problema live; persistenza storica implica difetto strutturale | I bot sono PAPER. Gruppi assenti, esclusioni, diversi orari/coorti, rischio e regime possono spiegare differenze nel confronto. Una persistenza descrittiva non identifica da sola una causa. | Deduzioni causali non giustificate da E1. Nessuna diagnosi nuova sul bot. |
+| Usare funding storico exchange | Il runner riproduce il modello PAPER 1 bp/8h solo long; short a zero. Anche le uscite candidate sono modellate a mercato con fee 6 bp, non una miscela di ordini maker/taker. | Funding storico e altre fee sono estensioni di realismo da studiare separatamente; non correzioni automatiche del confronto col modello esistente. |
+
+Le formule, tariffe correnti Bitget e il caso Freqtrade citati da E1 non vengono
+convalidati da questa integrazione: non sono necessari per il riscontro sul
+codice PAPER e non vengono usati come prova di un difetto. Nessun parametro
+dei bot o del runner viene cambiato in base a queste affermazioni.
+
+Accordi identificabili finora: E1 e ChatGPT condividono proporzionalita' dei costi,
+unita' di ricampionamento aggregata, cautela sul singolo giorno e segmentazione.
+Divergenze: significato di liquidation, gestione della fine finestra, adeguatezza
+di 2000 repliche e inferenze su live/strutturalita'. Nessun nuovo bug concreto
+riprodotto a partire da E1. I rilievi R1-R6 restano aperti; E1 non li verifica.
+
+Raccomandazione invariata: draft e oos_start_utc=null. Matrice Claude/DeepSeek/Kimi
+ancora aperta: E1 non riempie una colonna nominativa senza attribuzione dell'autore.
+Solo documentazione aggiornata, nessuna nuova esecuzione sui dati dei bot.

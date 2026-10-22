@@ -131,3 +131,13 @@ Il replay sara' offline con OHLC locale verificato: il runner precedente usa ret
 - Contabilita' delle due meta' confermata con calcolo indipendente; 19/19 test originali e py_compile passati con Python 3.12.14. Nessuna run Actions o esecuzione VPS.
 - Review Step 6 originali di Claude, DeepSeek e Kimi K3 ancora da ricevere: accordi/divergenze e novita' rispetto a Claude non determinabili. Sintesi provvisoria, non conclusa.
 - Solo documentazione aggiornata su work/director-chatgpt e diario. Nessun merge, modifica al piano/codice operativo o push a stable/*.
+
+
+## 22/10/2026 — Integrazione contributo esterno E1 (senza sorgente)
+
+- Ricevuto un report che dichiara assenza del codice; autore non indicato, quindi non attribuito a DeepSeek/Kimi.
+- Confrontato con fe50c2ff: liquidation e' una valorizzazione netta d'uscita, non liquidazione forzata; gestione della finestra conserva baseline, non elimina automaticamente il trade; inverso slippage coerente col motore PAPER.
+- Accordi utili: contabilita' proporzionale, aggregazione per episodio, cautela sul singolo giorno e segmentazione long/short. Non confermate adeguatezza universale di 2000 repliche o deduzioni causali live/strutturali.
+- Funding e fee exchange reali non sostituiscono senza decisione il modello PAPER; nessuna formula/tariffa esterna usata come prova. Nessun bug aggiuntivo riprodotto dal report.
+- Relazione strutturata aggiornata, sezione 8. R1-R6 ancora aperti; piano draft, data OOS nulla. Review nominative Step 6 e attribuzione di E1 ancora da completare.
+- Solo aggiornamento documentale sul ramo diario; nessuna run Actions/VPS, modifica funzionale o merge.
