@@ -53,7 +53,7 @@ def test_regime_cutoffs_are_asymmetric_only_at_strict_edges():
 
 
 def test_malformed_or_unterminated_snapshot_fails_closed():
-    for data in (b'{"ev":"open"}', b'{bad}\n', b'{"ev":"open","ev":"close"}\n', b'\n'):
+    for data in (b'{"ev":"open"}', b'{bad}\n', b'{"ev":"open","ev":"close"}\n', b'\n', b''):
         try:
             mod.parse_snapshot(data)
         except ValueError:
@@ -80,3 +80,4 @@ def test_report_contains_aggregates_not_position_values():
             for value in x: walk(value)
     walk(report)
     assert report["groups"]["hawk/up/long"]["n"]==1
+    assert report["stratified_groups"]["hawk/run-1/v-unknown/up/long"]["n"]==1

@@ -57,7 +57,9 @@ def read_snapshot(path: str) -> tuple[bytes, str]:
 
 def parse_snapshot(data: bytes) -> tuple[list[dict], dict]:
     """Strictly parse one byte snapshot; reject blank, malformed, or unterminated rows."""
-    if data and not data.endswith(b"\n"):
+    if not data:
+        raise ValueError("registro vuoto")
+    if not data.endswith(b"\n"):
         raise ValueError("registro senza newline finale: possibile append troncato")
     events = []
     counts = Counter()
@@ -121,7 +123,7 @@ def build_trades(events: list[dict], bot: str) -> tuple[list[dict], dict]:
 
     trades = []
     all_keys = set(opens) | set(closes)
-    for key in all_keys:
+    for key in sorted(all_keys, key=lambda k: (str(k[0]), str(k[1]), str(k[2]))):
         op = opens.get(key, [])
         cs = closes.get(key, [])
         if len(op) != 1:
@@ -163,6 +165,7 @@ def build_trades(events: list[dict], bot: str) -> tuple[list[dict], dict]:
         trades.append({"r": sum(float(c["net_r"]) for c in cs),
                        "side": "long" if side == 1 else "short",
                        "regime": regime, "day": day,
+                       "run": str(o.get("run_no")), "code_version": str(o.get("code_version") or "unknown"),
                        "partials": sum(bool(c.get("partial", False)) for c in cs)})
     excluded["other_event_types"] = sum(other_events.values())
     excluded["other_event_kinds"] = len(other_events)
@@ -204,9 +207,12 @@ def analyze(events_by_bot: dict[str, list[dict]], hashes: dict[str, str]) -> dic
               "method": "actual closed trades; sum additive close.net_r by bot/run/id; regime from open.features.btc_roc24h; down<-1%, up>+1%, flat otherwise; cluster bootstrap by UTC entry date; descriptive, not causal",
               "sources_sha256": hashes, "bots": {}, "groups": {}}
     all_trades = []
+    report["stratified_groups"] = {}
     for bot, events in events_by_bot.items():
         trades, excluded = build_trades(events, bot)
         report["bots"][bot] = {"eligible_closed_trades": len(trades), "exclusions": excluded,
+                               "runs": dict(Counter(t["run"] for t in trades)),
+                               "code_versions": dict(Counter(t["code_version"] for t in trades)),
                                "overall": summarize(trades)}
         all_trades.extend((bot, t) for t in trades)
         for regime in ("down", "flat", "up"):
@@ -214,6 +220,11 @@ def analyze(events_by_bot: dict[str, list[dict]], hashes: dict[str, str]) -> dic
                 rows = [t for t in trades if t["regime"] == regime and t["side"] == side]
                 if rows:
                     report["groups"][f"{bot}/{regime}/{side}"] = summarize(rows)
+        stratified = defaultdict(list)
+        for t in trades:
+            stratified[(t["run"], t["code_version"], t["regime"], t["side"])].append(t)
+        for (run, version, regime, side), rows in sorted(stratified.items()):
+            report["stratified_groups"][f"{bot}/run-{run}/v-{version}/{regime}/{side}"] = summarize(rows)
     report["market_proxy_note"] = "btc_roc24h misurato all'apertura; non e' la mediana dei 26 simboli. Risultati per singolo trade; bootstrap per giorno non corregge pienamente trade sovrapposti tra giorni."
     return report
 
@@ -248,6 +259,9 @@ def main(argv=None):
             print(f"{bot.upper()}: n={s['n']} giorni={s['days']} R medio={s['mean_net_R']} win={s['win_rate']} IC_cluster={s['cluster_bootstrap95']} esclusioni={data['exclusions']}", flush=True)
         for key, s in report["groups"].items():
             print(f"{key}: n={s['n']} giorni={s['days']} R medio={s['mean_net_R']} win={s['win_rate']} IC_cluster={s['cluster_bootstrap95']} ({s['ci_note']})", flush=True)
+        print("STRATIFICATO PER RUN E VERSIONE:", flush=True)
+        for key, s in report["stratified_groups"].items():
+            print(f"{key}: n={s['n']} R medio={s['mean_net_R']} win={s['win_rate']} IC_cluster={s['cluster_bootstrap95']}", flush=True)
         print(report["market_proxy_note"], flush=True)
     return 0
 
