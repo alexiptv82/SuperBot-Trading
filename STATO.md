@@ -59,3 +59,11 @@
 7. Repo pubblico: nessun segreto, nessun importo/saldo reale
 8. Mai git push --force; non unire work/backend-singapore-audit; no push su stable/* e v0.5
 9. Un solo autore alla volta per componente
+
+
+## Aggiornamento 22/10/2026 — step 4 avviato, output Actions da recuperare
+
+- Review Claude di `work/director-chatgpt` `ed3c65c` recepita: newline finale esplicitamente testato; `sys` e `all_trades` inutilizzati rimossi. 8 test manuali e `py_compile` passati.
+- In `rule-pool`: analisi read-only (script `3c5853e`, test `27062d6`, workflow `a589635`); trigger dedicato in `595c032` che fissa il codice allo SHA `3c5853e`. Nessun trigger/deploy dei bot modificato.
+- L'esecuzione di step 4 è stata attivata, ma il connettore GitHub qui non espone le run Actions da push né il loro riepilogo. Conteggi, hash letti e controllo d'invarianza dei container restano da confermare dall'output Actions/run ID. Non considerare ancora completata la misura.
+- Diario dettagliato: `diario/2026-10-22_chatgpt.md` (commit `a7ab54b`).
