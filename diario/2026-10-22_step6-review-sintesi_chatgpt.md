@@ -255,3 +255,73 @@ Esito: nessuna approvazione automatica. R1-R6, protocollo di valutazione finale,
 archivio OHLC e segmentazione implementata restano da risolvere. Draft e data
 OOS nulla confermati. Le proposte E2 non sono ancora state applicate al codice.
 Le attribuzioni nominative e la review Claude Step 6 restano da completare.
+
+
+## 10. Replica esterna con lettura del sorgente dichiarata
+
+Ricevuto un ulteriore messaggio che dichiara la lettura di fe50c2ff e include
+gran parte dello script. Autore e indipendenza rispetto a E1 non attestati:
+questo messaggio non prova un ulteriore revisore indipendente. I numeri di riga
+citati non corrispondono al file immutabile di 415 righe; di seguito uso quelli
+del commit verificato. Il testo incollato termina troncato, ma il sorgente
+integrale e' disponibile al permalink gia' indicato.
+
+| Rilievo ricevuto | Verifica sul commit fe50c2ff | Esito |
+| --- | --- | --- |
+| Funding solo long, bug grave | Righe 206 e 231: riproduce la stessa convenzione del motore PAPER gia' verificata; riga 312 dichiara che non e' funding reale. | Limite del modello, non nuovo errore di replica. |
+| Liquidazione su close e at + BAR | Righe 227-232 e 260: valutazione netta ipotetica a chiusura barra, segnale di uscita alla prossima apertura. Non calcola una liquidazione forzata a margine. | Cambiare a low/high cambierebbe il candidato predefinito. |
+| fill_i fuori finestra scarta l'episodio | Righe 252-263: continue salta solo la possibile decisione della barra; il trade ritorna comunque baseline oppure mezza uscita piu' mezza baseline. | Rilievo non confermato. La selezione dei soli trade chiusi resta un limite distinto. |
+| Inversione slippage | Riga 203 e formula riga 228: inverse coerenti con la convenzione PAPER. | Accordo confermato. |
+| IC: 24/1974 da sostituire con 25/1975 | Riga 290: 24 e 1974 sono gli indici Python corretti del quantile empirico inverso ai livelli 0.0125 e 0.9875, con B=2000. | Nessun off-by-one dimostrato; esplicitare la convenzione. |
+
+### Funding e direzione: cosa si puo' concludere
+
+Il funding long-only puo' influenzare le differenze fra direzioni nel modello
+PAPER. Non e' pero' una distorsione introdotta dal solo replay: il runner deve
+riconciliare la contabilita' registrata prima di confrontare le uscite. Nemmeno
+si puo' affermare che il funding si cancelli sempre nel confronto appaiato:
+uscite anticipate cambiano la durata esposta al costo, quindi anche delta_R.
+
+Per studiare funding reale occorre un diverso modello coerente per entrambi
+i bracci, con serie storiche, segno, tempi di addebito e quantita' residua.
+Cambiare soltanto liquidation() romperebbe la coerenza con la riconciliazione
+e con il target PAPER. L'osservazione odierna non e' stata misurata sui log in
+questa sessione: non attribuiamo le perdite long al funding senza evidenza.
+
+L'assenza di asimmetria nel replay non dimostrerebbe un bug di esecuzione:
+coorte selezionata, copertura temporale, esposizioni e regole del modello
+possono differire. La persistenza su piu' settimane non basta, da sola, a
+dimostrare causalita' strutturale. Serve la segmentazione gia' richiesta in R5,
+con numerosita', attivazioni, esclusioni, costi e risultati in R per direzione.
+
+### Quantili: verifica riproducibile, non correzione arbitraria
+
+Per il quantile empirico inverso, indice Python = ceil(B * p) - 1:
+- B=2000, p=0.0125: indice 24;
+- B=2000, p=0.9875: indice 1974.
+
+La documentazione primaria R distingue nove convenzioni. Il tipo 1 e'
+l'inverso della distribuzione empirica; il tipo 7 interpola invece alle
+posizioni Python 24.9875 e 1974.0125. Non impone gli indici 25/1975.
+Fonte: https://stat.ethz.ch/R-manual/R-devel/library/stats/html/quantile.html
+
+Spostare entrambi gli endpoint di un posto verso l'alto non rende
+necessariamente l'intervallo piu' ampio: su samples=range(2000), [24,1974]
+e [25,1975] hanno la stessa ampiezza e diversa posizione. Con spaziature
+irregolari l'ampiezza puo' aumentare o diminuire. La convenzione deve essere
+esplicitata e verificata quando si parametrizzera' B; il problema dei pochi
+episodi e della precisione Monte Carlo resta separato.
+
+### Esito della replica
+
+Nessun nuovo bug grave confermato da questo messaggio. Restano validi la
+ripartizione proporzionale delle due meta', lo slippage inverso e il bootstrap
+per episodi, con i limiti statistici gia' discussi in sezione 9. Non adottare
+le correzioni proposte su funding, estremi intrabarra o indici senza cambiare
+esplicitamente obiettivo e protocollo.
+
+R1-R6 restano aperti: test incompatibile con piano approved; copertura del
+version gate; gate campionario senza requisito di episodi; arresto e valutazione
+OOS non congelati; diagnostica direzionale assente; equivalenza workflow
+eseguito/revisionato non verificata. Confermata la raccomandazione: status
+draft, oos_start_utc nulla. Nessun merge, esecuzione VPS o modifica funzionale.
