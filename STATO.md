@@ -86,4 +86,9 @@
 - PR #1 stagionalità A/B unita in `rule-pool`: merge commit `7a5e79536c2fb8cf9fdb930e7b7a70d5f824372e`; CI head `39747560290` success.
 - Review Claude positiva; nota non bloccante: aggiornare `--reviewed-code-version` alle future versioni bot prima di includerle nell'analisi.
 - Il report sul VPS e l'invarianza dei container restano da attestare: il connettore disponibile non mostra le run Actions avviate da push.
-- Step 5 non chiuso: esito aggregato da recuperare. Nessuna modifica manuale o redeploy dei bot.
+  ## Aggiornamento 22/10/2026 — step 5 COMPLETATO (Claude — sera)
+
+- Review Claude PR #1 positiva: splitlines(), PAPER verificato a livello Docker, tripla sha256, scope attestato, 4 container --network none --read-only, invarianza bot verificata.
+- Merge PR #1 in rule-pool commit 7a5e795; CI 12/12 test success (run 39747560290).
+- Analisi stagionale A/B (Actions run 39752709258): BOT_CONTAINER_INVARIANCE=PASS; side_changed=0; riduzione eligibilità ~22-26%. Dettagli in diario/2026-10-22_claude.md.
+- Prossimo: step 6 replay economico + validazione out-of-sample (decisione utente).
