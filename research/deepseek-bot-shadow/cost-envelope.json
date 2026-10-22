@@ -1,0 +1,19 @@
+{
+  "model": "deepseek-flash",
+  "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+  "checked_on": "2026-10-22",
+  "input_token_bound": 8000,
+  "output_token_cap": 2200,
+  "all_peak_no_cache": true,
+  "safety": 1.25,
+  "max_calls_proposed": 39,
+  "per_call_estimate_usd": 0.0063,
+  "daily_bot_shadow_estimate_usd": 0.2457,
+  "virtual_account_allocation_proposed_usd": 0.15,
+  "combined_30_day_estimate_usd": 11.871,
+  "combined_31_day_estimate_usd": 12.2667,
+  "daily_global_hard_cap_usd": 0.5,
+  "monthly_global_hard_cap_usd": 12,
+  "not_measured_spend": true,
+  "allocation_requires_user_decision": true
+}

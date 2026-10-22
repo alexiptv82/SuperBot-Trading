@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bot position shadow decision proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "input_sha256", "input_frozen_ms", "received_ms", "applied", "decisions"],
+  "properties": {
+    "schema": {"const": 1},
+    "input_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "input_frozen_ms": {"type": "integer", "minimum": 1},
+    "received_ms": {"type": "integer", "minimum": 1},
+    "applied": {"const": false},
+    "decisions": {
+      "type": "array", "maxItems": 16,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["position_ref", "action", "fraction", "thesis", "invalidate_if", "evidence", "applied"],
+        "properties": {
+          "position_ref": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "action": {"enum": ["HOLD", "PARTIAL_CLOSE", "CLOSE", "NOT_DECIDED"]},
+          "fraction": {"enum": [0, 0.5, 1]},
+          "thesis": {"type": "string", "maxLength": 120},
+          "invalidate_if": {"type": "string", "maxLength": 100},
+          "evidence": {"type": "array", "uniqueItems": true, "maxItems": 5,
+                       "items": {"enum": ["structure", "trend", "momentum", "volume", "data_invalid"]}},
+          "applied": {"const": false}
+        },
+        "allOf": [
+          {"if": {"properties": {"action": {"const": "PARTIAL_CLOSE"}}}, "then": {"properties": {"fraction": {"const": 0.5}}}},
+          {"if": {"properties": {"action": {"const": "CLOSE"}}}, "then": {"properties": {"fraction": {"const": 1}}}},
+          {"if": {"properties": {"action": {"enum": ["HOLD", "NOT_DECIDED"]}}}, "then": {"properties": {"fraction": {"const": 0}}}}
+        ]
+      }
+    }
+  }
+}
