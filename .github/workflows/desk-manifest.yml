@@ -1,0 +1,60 @@
+name: Manifesto hash learning_log (SOLA LETTURA, nessun dato grezzo)
+
+# Legge /opt/superbot-desk-data/{hawk,bull}/learning_log.jsonl sul VPS,
+# calcola sha256 e statistiche di integrità (conteggi, simboli, range ts).
+# NON stampa mai righe di testo dei trade: repo pubblico, zero dati grezzi.
+# Gira in un contenitore usa-e-getta read-only, nessun ordine, nessuna chiave.
+# Si attiva con deploy/desk-manifest.trigger contenente "sha=<40 caratteri>".
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/desk-manifest.trigger"]
+permissions:
+  contents: read
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Commit da usare
+        id: sha
+        run: |
+          set -e
+          WANT="$(grep -E '^sha=' deploy/desk-manifest.trigger | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          printf '%s' "$WANT" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: serve sha= di 40 caratteri"; exit 1; }
+          git fetch -q origin rule-pool
+          git merge-base --is-ancestor "$WANT" origin/rule-pool || { echo "ERRORE: commit non in rule-pool"; exit 1; }
+          echo "sha=$WANT" >> "$GITHUB_OUTPUT"
+      - name: Manifesto sul VPS
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set +e
+          mkdir -p ~/.ssh; echo "$SG_SSH_KEY" > ~/.ssh/id_sg; chmod 600 ~/.ssh/id_sg
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          sg() { ssh -i ~/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30 root@51.79.205.82 "$@"; }
+          : > out.txt
+          {
+            echo "=== MANIFESTO learning_log — commit $SHA ===" &&
+            sg "set -e; D=/opt/superbot-probe-src; [ -d \$D/.git ] || git clone -q -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git \$D; cd \$D; git fetch -q origin rule-pool; git reset -q --hard $SHA; test \"\$(git rev-parse HEAD)\" = $SHA; echo codice pronto" 2>&1 &&
+            sg 'docker run -i --rm --name superbot-manifest --read-only --tmpfs /tmp:size=16m --cap-drop ALL --cap-add DAC_READ_SEARCH --security-opt no-new-privileges --memory 256m --cpus 0.5 --pids-limit 32 -v /opt/superbot-probe-src/backend:/app/backend:ro -v /opt/superbot-desk-data:/data:ro -e PYTHONDONTWRITEBYTECODE=1 superbot-desk timeout 120 python - --data-root /data --bots hawk,bull' < deploy/scripts/learning_log_manifest.py 2>&1 &&
+            echo "=== BOT (non toccati) ===" &&
+            sg 'docker ps --filter name=superbot-desk --format "{{.Names}} | {{.Status}} | {{.Image}}"' &&
+            echo FINE || echo "ERRORE: uno o più comandi sopra hanno fallito (exit code non zero)"
+          } >> out.txt 2>&1
+          rm -f ~/.ssh/id_sg
+          cat out.txt
+          { echo '```'; cat out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          # Annota con il manifesto (split se lungo)
+          split -l 18 -d out.txt mpart_
+          for f in mpart_*; do
+            MSG=$(cut -c1-700 "$f" | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g' | cut -c1-6500)
+            echo "::notice title=Manifesto ${f#mpart_}::${MSG}"
+          done
+          grep -q '^FINE$' out.txt || { echo "ERRORE: FINE non trovato — manifesto non completato"; exit 1; }
