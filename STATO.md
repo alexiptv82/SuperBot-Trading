@@ -103,3 +103,10 @@
 - Merge PR #1 in rule-pool commit 7a5e795; CI 12/12 test success (run 39747560290).
 - Analisi stagionale A/B (Actions run 39752709258): BOT_CONTAINER_INVARIANCE=PASS; side_changed=0; riduzione eligibilità ~22-26%. Dettagli in diario/2026-10-22_claude.md.
 - Prossimo: step 6 replay economico + validazione out-of-sample (decisione utente).
+
+
+## 22/10/2026 — Step 6 in preparazione (ChatGPT)
+
+L'utente autorizza preparazione e push sul ramo work/director-chatgpt di script, workflow e test per replay economico e protocollo prospettico. Nessun merge, trigger o accesso VPS autorizzato in questa fase; review Claude prima dell'esecuzione. Componente step 6 assegnato a ChatGPT.
+
+Il replay sara' offline con OHLC locale verificato: il runner precedente usa rete e non puo' essere eseguito nel container --network none richiesto. Piano e soglie saranno una proposta draft; nessuna modifica ai bot. Ramo realmente letto: work/director-chatgpt 11a9c62 (il riferimento 9255093 nel prompt e' superato).
