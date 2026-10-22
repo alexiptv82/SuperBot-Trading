@@ -1,3 +1,11 @@
+## Aggiornamento 22/10/2026 — ChatGPT: analisi step 4 preparata, in attesa di revisione
+
+- Ramo `work/director-chatgpt` HEAD `ed3c65c`: aggiunti `deploy/scripts/regime_trade_analysis.py`, workflow `desk-regime-trades.yml` e 7 test sintetici. Il ramo non contiene un trigger attivo.
+- Regole di calcolo: chiave `(bot, run_no, id)`; una sola apertura; trade incluso solo con una chiusura finale; `net_r` additivo sommato su tutte le chiusure, parziali incluse; lato e BTC `roc24h` presi dall'evento di apertura. Down <−1%, up >+1%, flat negli altri casi. Report aggregato stratificato anche per run e versione.
+- Il report non stampa simboli, ID, prezzi o PnL in dollari. Il workflow previsto è usa-e-getta, rete disabilitata nel container, volume dati `:ro`, snapshot SHA-256 e controllo che ID/immagine/start-time dei container Hawk/Bull non cambino durante la misura.
+- Verifiche locali: `py_compile`, YAML parse e 7 test manuali passati con Python 3.12.14. `pytest` e Python 3.11 non sono disponibili in questo ambiente. Nessuna esecuzione sul server e nessun merge del workflow.
+- **Gate prima del merge:** revisione di Claude, poiché il workflow accede al VPS; poi attivazione esplicita del trigger di sola lettura e controllo che i due bot non siano stati riavviati.
+
 ## Aggiornamento 22/10/2026 — ChatGPT: step 3 attivato, incompatibilità dello schema rilevata
 
 - Merge manifest in `rule-pool`: `0cc1f035`; trigger aggiornato al commit `8b0fcaa`. Nessun deploy dei bot.
