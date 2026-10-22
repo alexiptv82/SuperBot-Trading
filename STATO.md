@@ -1,3 +1,12 @@
+## Aggiornamento 22/10/2026 — ChatGPT: step 3 attivato, incompatibilità dello schema rilevata
+
+- Merge manifest in `rule-pool`: `0cc1f035`; trigger aggiornato al commit `8b0fcaa`. Nessun deploy dei bot.
+- Workflow `desk-manifest` run `39719909269` completato. Hash dei registri verificati: Hawk `87b7e871…ef443c7` (2.483 righe), Bull `d273b2e4…d1ac261` (3.107 righe); JSON invalidi 0.
+- Il parser si aspetta record di trade (`symbol`, `side`, `entry_ts`, `exit_ts`, `net`, `gross`, `fees`), ma `learning_log.jsonl` è un registro di eventi (`ev=open/close/candidate`, dati annidati in `features`, `net_r` sulle chiusure). Risultato: righe valide 0; il workflow ha comunque stampato “MANIFESTO OK” perché considera fatale solo il file mancante. Gli hash attestano i byte letti, non la validità semantica.
+- Step 4 (R per regime e lato) non ancora calcolato. Serve parser event-aware che unisca `open`/`close` per `(bot, run_no, id)`, sommi `net_r` delle chiusure e classifichi il regime usando solo dati d’ingresso. La classificazione disponibile nel log è BTC `roc24h` (<−1% down, >+1% up, altrimenti flat), quindi va etichettata come proxy BTC; la mediana cross-section dei 26 simboli non è direttamente registrata come singola feature.
+- Workflow di sola lettura: Hawk e Bull risultavano in esecuzione senza riavvii osservati. Nessuna strategia, database o stato dei bot modificati.
+- Rami: `rule-pool` `8b0fcaa`; `work/director-claude` `40157c3`; `work/director-chatgpt` `9255093`; questo aggiornamento documenta il limite emerso.
+
 # STATO SuperBot — aggiornato 2026-10-22 06:00 Roma (Claude)
 
 ## Ultima azione
