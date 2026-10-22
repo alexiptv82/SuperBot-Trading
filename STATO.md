@@ -67,3 +67,10 @@
 - In `rule-pool`: analisi read-only (script `3c5853e`, test `27062d6`, workflow `a589635`); trigger dedicato in `595c032` che fissa il codice allo SHA `3c5853e`. Nessun trigger/deploy dei bot modificato.
 - L'esecuzione di step 4 è stata attivata, ma il connettore GitHub qui non espone le run Actions da push né il loro riepilogo. Conteggi, hash letti e controllo d'invarianza dei container restano da confermare dall'output Actions/run ID. Non considerare ancora completata la misura.
 - Diario dettagliato: `diario/2026-10-22_chatgpt.md` (commit `a7ab54b`).
+
+## Aggiornamento 22/10/2026 — step 4 misurato (Actions run 39741314265)
+
+- Workflow read-only concluso con success. SHA codice verificato: 3c5853e2f7463957199e4dc524395ebb24aa0a09. Controllo prima/dopo container Hawk/Bull passato: nessun cambio ID/immagine/StartedAt.
+- Hawk: 130 trade eleggibili, 11 giorni, media +0,10594 R, IC bootstrap per giorno UTC 95% [−0,56208; +0,71016]. Bull: 36 trade, 11 giorni, +0,00500 R, IC [−0,50208; +0,56903]. Intervalli entrambi includono zero.
+- Report regime/lato e limiti completi in diario/2026-10-22_chatgpt.md. La stratificazione per run/versione non è recuperabile dal log, troncato da GitHub; niente conclusioni per-run da questo output.
+- Nessuna modifica o riavvio dei bot. Nessun dato grezzo pubblicato.
