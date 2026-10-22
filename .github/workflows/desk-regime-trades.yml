@@ -41,10 +41,12 @@ jobs:
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
           cat > /tmp/remote-regime.sh <<'REMOTE'
           set -euo pipefail
-          D=/opt/superbot-probe-src
-          if [ ! -d "$D/.git" ]; then git clone -q -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git "$D"; fi
+          D="$(mktemp -d /tmp/superbot-regime-analysis.XXXXXX)"
+          trap 'rm -rf "$D"' EXIT
+          git clone -q -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git "$D"
           cd "$D"
           git fetch -q origin rule-pool
+          git merge-base --is-ancestor SHA_TOKEN origin/rule-pool
           git reset -q --hard SHA_TOKEN
           test "$(git rev-parse HEAD)" = SHA_TOKEN
           before="$(docker inspect --format '{{.Name}}|{{.Id}}|{{.Image}}|{{.State.StartedAt}}' superbot-desk-hawk superbot-desk-bull)"
