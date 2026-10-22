@@ -73,3 +73,10 @@
 - Hawk: 130 trade eleggibili, 11 giorni, media +0,10594 R, IC bootstrap per giorno UTC 95% [−0,56208; +0,71016]. Bull: 36 trade, 11 giorni, +0,00500 R, IC [−0,50208; +0,56903]. Intervalli entrambi includono zero.
 - Report regime/lato e limiti completi in diario/2026-10-22_chatgpt.md. La stratificazione per run/versione non è recuperabile dal log, troncato da GitHub; niente conclusioni per-run da questo output.
 - Nessuna modifica o riavvio dei bot. Nessun dato grezzo pubblicato.
+
+## Aggiornamento 22/10/2026 — step 5 preparato
+- PR #1 `work/seasonality-audit`: https://github.com/alexiptv82/SuperBot-Trading/pull/1
+- CI test Python 3.11: success (Actions run 39747560290); test locale 12/12 e YAML workflow validati.
+- Workflow dedicato è sola lettura, esegue cutoffs tecnici 60/63 per descrivere l'effetto sul punteggio. Non equivale alla confidenza Claude e non misura redditività.
+- Nessun merge o run sul VPS. Attende review Claude sul workflow server-side; dopo il merge il trigger dedicato eseguirà il report aggregato.
+- Diario dettagliato: `diario/2026-10-22_chatgpt.md` (commit 142cc297).
