@@ -57,8 +57,9 @@ jobs:
 
           before="$(docker inspect --format '{{.Name}}|{{.Id}}|{{.Image}}|{{.State.StartedAt}}' superbot-desk-hawk superbot-desk-bull)"
           for bot in hawk bull; do
-            docker inspect "$([ "$bot" = hawk ] && echo superbot-desk-hawk || echo superbot-desk-bull)" \
-              --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -qx 'DESK_MODE=paper'
+            container="superbot-desk-$bot"
+            mode_env="$(docker inspect "$container" --format '{{range .Config.Env}}{{println .}}{{end}}')"
+            grep -qx 'DESK_MODE=paper' <<< "$mode_env"
             input="/opt/superbot-desk-data/$bot/learning_log.jsonl"
             test -f "$input" && test ! -L "$input"
             input_sha="$(sha256sum "$input" | cut -d' ' -f1)"
