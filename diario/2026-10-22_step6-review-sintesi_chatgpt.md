@@ -27,6 +27,7 @@ rule-pool 7a5e795. Nessun accesso al VPS o esecuzione di Actions.
 |---|---|---|
 | ChatGPT su fe50c2ff | Completa, codice letto e prove sintetiche locali | Rilievi verificati sotto |
 | E1, autore non indicato | Ricevuto successivamente; dichiara assenza del sorgente | Riscontro critico in sezione 8, nessuna attribuzione nominativa |
+| E2, autore non indicato | Ricevuto contributo metodologico su bootstrap, Holm e direzione | Riscontro in sezione 9; nessuna attribuzione nominativa senza conferma |
 | Claude su Step 6 | Testo non presente nel diario letto o nei messaggi ricevuti | In attesa; la review PR #1 riguarda Step 5 e non e' sostitutiva |
 | DeepSeek su Step 6 | Non ancora ricevuta | In attesa |
 | Kimi K3 su Step 6 | Non ancora ricevuta | In attesa |
@@ -198,3 +199,59 @@ riprodotto a partire da E1. I rilievi R1-R6 restano aperti; E1 non li verifica.
 Raccomandazione invariata: draft e oos_start_utc=null. Matrice Claude/DeepSeek/Kimi
 ancora aperta: E1 non riempie una colonna nominativa senza attribuzione dell'autore.
 Solo documentazione aggiornata, nessuna nuova esecuzione sui dati dei bot.
+
+
+## 9. Secondo contributo esterno — E2, metodologia statistica
+
+Ricevuto il 22/10/2026, autore non indicato nel messaggio. Viene conservato come
+E2 e non attribuito automaticamente a Kimi K3. Non certifica la lettura del
+sorgente ne' verifica i bug operativi R1/R2/R6. Questa sezione distingue le
+proposte metodologiche dai cambiamenti implementati: nessuna modifica al runner.
+
+| Proposta o affermazione E2 | Valutazione rispetto al nostro disegno | Decisione proposta prima della registrazione |
+|---|---|---|
+| Bootstrap episodi e delta appaiato per trade | Accordo. Il codice calcola gia' candidate_R-baseline_R per trade prima di riunire gli episodi. | Conservare questa struttura; riportare numerosita', dimensioni e concentrazione degli episodi. |
+| Aumentare B a 10.000 e controllare semi | Ragionevole per ridurre errore Monte Carlo; non aumenta l'informazione del campione originale. | Proposta accolta per revisione, con semi e tolleranza degli endpoint predefiniti; verificare durata/RAM nel limite del container. Non ancora implementata. |
+| Passare automaticamente a BCa se la distribuzione e' asimmetrica | Non e' una garanzia generale. BCa richiede stime di influenza/accelerazione coerenti con l'unita' cluster; pochi episodi, cluster sbilanciati o degenerazione possono renderlo instabile. | Fissare in anticipo metodo principale, diagnostiche e gestione di IC non calcolabili. Eventuale jackknife rimuove episodi interi. Evitare selezione del metodo in base al risultato favorevole. |
+| Sostituire Bonferroni con Holm | Holm controlla FWER con dipendenza arbitraria fra test validi ed e' almeno altrettanto potente. Il runner pero' produce IC percentile, non p-value da test calibrati sotto H0. | Non e' una sostituzione meccanica del livello degli IC. Se scelto Holm, definire H0, test cluster e p-value validi, famiglia e report IC coerente prima dell'OOS. Bonferroni resta utilizzabile finche' non viene approvato tale ridisegno. |
+| Rimpiazzare minimi di trade con 30-40 episodi e 25-30 episodi attivati | Il numero di cluster e' essenziale; non e' pero' una misura esatta universale dell'effettiva informazione, che dipende anche da dimensioni, pesi e dipendenza residua. Quelle soglie sono proposte euristiche. | Aggiungere requisiti su episodi ed episodi attivati, senza cancellare automaticamente requisiti di durata, trade/esposizione ed interventi. Numeri finali da calibrare su precisione/potenza e fattibilita', non ancora approvati. |
+| L'episodio cattura solo sovrapposizione diretta | Il codice raggruppa anche stesso giorno UTC e sovrapposizioni transitive attraverso piu' giorni. Resta vero che non cattura tutta la dipendenza di regime fra episodi. | Correggere la descrizione; misurare quanti episodi si ottengono davvero. Non presumere che 42 giorni forniscano 30-40 cluster o piu' regimi. |
+| Influence check per episodio | Accordo, e' piu' coerente con l'unita' inferenziale del solo rimuovere tre trade migliori. | Aggiungere leave-one-episode-out, concentrazione dei pesi e variazione dell'effetto. Registrare cosa fare se un episodio determina la conclusione. Nessuna soglia scelta dopo aver osservato il risultato. |
+| Il mix direzionale confonde necessariamente la differenza appaiata | Formulazione troppo forte. Il confronto corrente include tutti i trade ammessi, anche quelli senza intervento (delta=0). Non confronta campioni diversi fra bracci. L'effetto medio puo' comunque cambiare quando cambiano mix direzionale o effetti per lato. | Distinguere effetto sulla popolazione realmente osservata da trasferibilita' ad altri mix. Evitare l'analisi limitata a posteriori ai soli trade attivati. |
+| I long che vanno male attiverebbero piu' spesso il parziale | Ipotesi non dimostrata. La regola richiede prima un close >=+1,5R: un long sempre sfavorevole non riceve alcun intervento. | Misurare tassi di attivazione, opportunita' di profitto e delta per lato; non assumere che l'overlay corregga perdite persistenti senza precedente profitto. |
+| Pesi fissi long/short per i due test primari | Possibile, ma cambia il parametro stimato rispetto alla media naturale per trade. Richiede supporto sufficiente in entrambi i lati e pesi decisi prima. | Esplicitare popolazione obiettivo e gestione di uno strato scarso/assente. Non imporre automaticamente 50/50 a un sistema quasi solo short. |
+| Bootstrap stratificato per bot x direzione | Va preservata la dipendenza dell'episodio. Un episodio puo' contenere long e short, e anche posizioni dei due bot. Ricampionare i lati in modo indipendente la distruggerebbe. | Ricampionare congiuntamente episodi interi, mantenere tutte le osservazioni e stimare gli effetti direzionali dentro la replica. Eventuale combinazione con pesi fissi. Repliche con strati assenti non vanno eliminate silenziosamente. |
+| Bias da esecuzione live come spiegazione odierna | I bot studiati sono PAPER; non abbiamo letto i trade di oggi. L'affermazione non dimostra un guasto di esecuzione reale. | Mantenere la distinzione fra osservazione utente, modello PAPER, regime e verifiche tecniche; nessuna diagnosi causale aggiuntiva. |
+
+Le percentuali precise di copertura 93,6-94,6% / 94,6-95,4% riportate da E2 non
+sono accompagnate da una fonte identificabile nel messaggio e non vengono
+adottate come risultati universali per Step 6. Sono diversi errore Monte Carlo
+degli endpoint ed errore di copertura dovuto a campione/metodo/dipendenza.
+Con B=2000 le code all'1,25% contengono circa 25 repliche attese; con B=10000 circa
+125. Questo calcolo non dimostra che la copertura sia corretta.
+
+Fonti primarie consultate per verificare i punti metodologici:
+
+- R stats, p.adjust: https://stat.ethz.ch/R-manual/R-devel/library/stats/html/p.adjust.html — input p-value, FWER di Holm/Bonferroni e validita' con dipendenza arbitraria fra test marginalmente validi.
+- R boot, boot.ci: https://stat.ethz.ch/R-manual/R-devel/library/boot/html/boot.ci.html — distingue percentile, studentizzato e BCa, con requisiti diversi.
+- R boot, print.bootci: https://stat.ethz.ch/R-manual/R-devel/library/boot/help/print.bootci.html — diagnostica di instabilita' per endpoint estremi.
+- Cameron, Gelbach, Miller, Bootstrap-Based Improvements for Inference with Clustered Errors: https://www.nber.org/papers/t0344 — evidenzia problemi con pochi cluster in regressione. Non stabilisce una soglia universale valida per il nostro overlay.
+
+Convergenze ora osservabili fra ChatGPT, E1 ed E2: confronto appaiato, rispetto
+della dipendenza, prudenza sul singolo giorno e diagnostica long/short.
+Divergenza E1/E2: E1 considerava 2000 repliche generalmente adeguate; E2 propone
+10000. ChatGPT propone piu' repliche e verifica Monte Carlo, senza equipararle a
+piu' dati o a copertura garantita. E2 aggiunge proposte utili su episodi attivati,
+influenza e metodo di correzione, ma non sostituisce una review del codice.
+
+Per i confronti confermativi restano due opzioni da scegliere prima dell'OOS:
+(a) due effetti primari per bot con target/mix esplicito e direzioni descrittive;
+(b) quattro effetti primari bot x lato con nuova famiglia, correzione e precisione
+richiesta per ciascuno. Non si passa da (a) a (b) dopo aver visto i risultati.
+Un effetto eterogeneo non rende falsa la media aggregata per il suo target, ma
+puo' renderla insufficiente per decidere dove applicare la variante.
+
+Esito: nessuna approvazione automatica. R1-R6, protocollo di valutazione finale,
+archivio OHLC e segmentazione implementata restano da risolvere. Draft e data
+OOS nulla confermati. Le proposte E2 non sono ancora state applicate al codice.
+Le attribuzioni nominative e la review Claude Step 6 restano da completare.

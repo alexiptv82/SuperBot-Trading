@@ -141,3 +141,14 @@ Il replay sara' offline con OHLC locale verificato: il runner precedente usa ret
 - Funding e fee exchange reali non sostituiscono senza decisione il modello PAPER; nessuna formula/tariffa esterna usata come prova. Nessun bug aggiuntivo riprodotto dal report.
 - Relazione strutturata aggiornata, sezione 8. R1-R6 ancora aperti; piano draft, data OOS nulla. Review nominative Step 6 e attribuzione di E1 ancora da completare.
 - Solo aggiornamento documentale sul ramo diario; nessuna run Actions/VPS, modifica funzionale o merge.
+
+
+## 22/10/2026 — Integrazione metodologica E2
+
+- Ricevuto secondo contributo esterno, autore non indicato; valutato come E2 nella sezione 9 della relazione Step 6.
+- Proposte utili da validare: B=10000 con diagnostica Monte Carlo, requisiti su episodi/episodi attivati e leave-one-episode-out. Non sostituire automaticamente numerosita' e durata con una soglia euristica di cluster.
+- Holm e' una scelta FWER valida su p-value validi; il runner attuale produce IC percentile e non implementa quei test. Nessuna sostituzione automatica o passaggio automatico a BCa.
+- Segmentazione: mantenere episodi interi nelle repliche con long e short congiunti; eventuali pesi fissi cambiano il target e richiedono supporto per entrambi i lati. Il mix non invalida da solo il confronto appaiato sugli stessi trade.
+- Corretto l'assunto sull'attivazione: un long sempre perdente non raggiunge necessariamente +1,5R e quindi non viene protetto dall'overlay. Osservazione odierna ancora non misurata sui registri.
+- Fonti primarie R/ricerca cluster consultate; percentuali di copertura specifiche citate da E2 non adottate senza fonte e condizioni. Piano ancora draft, oos_start_utc nulla, R1-R6 aperti.
+- Aggiornata solo documentazione sul ramo diario. Nessuna modifica al runner, al piano o ai workflow; nessun merge o esecuzione VPS.
