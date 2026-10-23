@@ -114,7 +114,7 @@ def test_recovery_from_interrupted_temp_rename(tmp_path,monkeypatch):
     st["capital"]=initial_capital(st["main"],
                                    datetime.now(timezone.utc).strftime("%Y-%m-%d"))
     cli.save_state(st,cli.STATE_FILE)
-    (tmp_path/"state_v2.json").write_bytes(_canonical(base)+b"\\n")
+    (tmp_path/"state_v2.json").write_bytes(_canonical(base)+b"\n")
     temp=tmp_path/"state_v2.json.capital-v1-tmp"
     temp.write_text("{partial")
     assert cli.load_state(cli.STATE_FILE)==st
