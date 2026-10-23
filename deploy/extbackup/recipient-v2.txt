@@ -1,0 +1,3 @@
+# PUBLIC age recipient for isolated backup-and-restore verification v2.
+# Private age identity must be in GitHub Actions Secret SUPERBOT_AGE_RECOVERY_KEY_V2.
+age1dkwnnrng0a04v4g5rt0zd6wgcvzkgy07uqyvfw4pjv85utzpwdlskw3ael
