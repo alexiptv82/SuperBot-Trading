@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { botAPI, deskAPI } from '../api';
 import ChartModal from '../components/ChartModal';
+import CapitalPanel from '../components/CapitalPanel';
 import ProfileBadge, { profileColor } from '../components/ProfileBadge';
 
 // Formatta un numero in modo sicuro: converte stringhe, gestisce null/undefined.
@@ -354,6 +355,10 @@ export default function Dashboard() {
         prices={prices}
         onSymbolClick={(sym) => openChart(sym)}
       />
+
+      {/* Capital V1 guarded panels (visible only when the PAPER bots advertise READY). */}
+      <CapitalPanel portfolio="hawk" />
+      <CapitalPanel portfolio="bull" />
 
       {/* ── Sezione V2 Bot Desk (paper trading con Claude) ── */}
       {deskStatus && (

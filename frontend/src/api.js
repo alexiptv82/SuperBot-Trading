@@ -80,6 +80,13 @@ export const deskAPI = {
   getPerformance: () => API.get('/api/desk/performance'),
   getLogs:        () => API.get('/api/desk/logs'),
   health:         () => API.get('/api/desk/health'),
+  // Capital Management V1 is invisible until each PAPER bot reports ready.
+  getCapital: () => API.get('/api/desk/capital'),
+  withdrawFromVault: (body) => API.post('/api/desk/capital/vault/withdraw', body),
+  getCapitalTransfer: (id) => API.get(`/api/desk/capital/vault/transfer/${encodeURIComponent(id)}`),
+  getBullCapital: () => API.get('/api/desk/bull/capital'),
+  withdrawFromBullVault: (body) => API.post('/api/desk/bull/capital/vault/withdraw', body),
+  getBullCapitalTransfer: (id) => API.get(`/api/desk/bull/capital/vault/transfer/${encodeURIComponent(id)}`),
   // Bull
   getBullStatus:      () => API.get('/api/desk/bull/status'),
   getBullTrades:      (limit = 100) => API.get(`/api/desk/bull/trades?limit=${limit}`),

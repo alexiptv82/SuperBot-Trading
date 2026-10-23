@@ -2,13 +2,14 @@ import json
 import secrets
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import os
+import capital_view as capital_v1_view
 
 import webauthn
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
@@ -1389,6 +1390,75 @@ async def bull_trading_disable(session=Depends(require_session)):
     """Disabilita il trading live per il portafoglio Bull (nessuna nuova apertura)."""
     _write_trading_enabled(_DESK_DATA_BULL, False)
     return {"ok": True, "portfolio": "bull", "trading_enabled": False}
+
+
+
+# Capital V1 dashboard. PAPER-only handoff; the API never changes cash/vault.
+# The bot is the only writer, with a durable receipt for retries.
+def _capital_api_error(exc, *, transfer=False):
+    if transfer and exc.code == "not_found":
+        return HTTPException(status_code=404, detail=exc.message)
+    code = 409 if exc.code in ("busy", "not_ready", "not_paper",
+                              "stale_revision", "insufficient_vault") else 400
+    return HTTPException(status_code=code, detail=exc.message)
+
+
+@app.get("/api/desk/capital")
+async def hawk_capital_status(session=Depends(require_session)):
+    try:
+        return capital_v1_view.status(_DESK_DATA, "hawk")
+    except capital_v1_view.CapitalUnavailable as exc:
+        raise _capital_api_error(exc)
+
+
+@app.get("/api/desk/bull/capital")
+async def bull_capital_status(session=Depends(require_session)):
+    try:
+        return capital_v1_view.status(_DESK_DATA_BULL, "bull")
+    except capital_v1_view.CapitalUnavailable as exc:
+        raise _capital_api_error(exc)
+
+
+@app.post("/api/desk/capital/vault/withdraw")
+async def hawk_capital_withdraw(request: Request, session=Depends(require_session)):
+    try:
+        return capital_v1_view.queue_manual_withdraw(
+            _DESK_DATA, "hawk", await request.json())
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Richiesta non valida")
+    except capital_v1_view.CapitalUnavailable as exc:
+        raise _capital_api_error(exc)
+    except OSError:
+        raise HTTPException(status_code=503, detail="Bot non raggiungibile")
+
+
+@app.post("/api/desk/bull/capital/vault/withdraw")
+async def bull_capital_withdraw(request: Request, session=Depends(require_session)):
+    try:
+        return capital_v1_view.queue_manual_withdraw(
+            _DESK_DATA_BULL, "bull", await request.json())
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Richiesta non valida")
+    except capital_v1_view.CapitalUnavailable as exc:
+        raise _capital_api_error(exc)
+    except OSError:
+        raise HTTPException(status_code=503, detail="Bot non raggiungibile")
+
+
+@app.get("/api/desk/capital/vault/transfer/{event_id}")
+async def hawk_capital_transfer_status(event_id: str, session=Depends(require_session)):
+    try:
+        return capital_v1_view.transfer_status(_DESK_DATA, event_id)
+    except capital_v1_view.CapitalUnavailable as exc:
+        raise _capital_api_error(exc, transfer=True)
+
+
+@app.get("/api/desk/bull/capital/vault/transfer/{event_id}")
+async def bull_capital_transfer_status(event_id: str, session=Depends(require_session)):
+    try:
+        return capital_v1_view.transfer_status(_DESK_DATA_BULL, event_id)
+    except capital_v1_view.CapitalUnavailable as exc:
+        raise _capital_api_error(exc, transfer=True)
 
 
 if __name__ == '__main__':
