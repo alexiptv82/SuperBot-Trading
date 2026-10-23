@@ -405,6 +405,25 @@ def _capital_enabled() -> bool:
     return os.getenv("DESK_CAPITAL_V1", "").lower() == "paper" and not LIVE._live
 
 
+_CAPITAL_WRITER_LOCK = None
+
+
+def _acquire_capital_writer_lock() -> None:
+    """Prevent two bot instances from writing to the same PAPER capital ledger."""
+    global _CAPITAL_WRITER_LOCK
+    if not _capital_enabled() or _CAPITAL_WRITER_LOCK is not None:
+        return
+    import fcntl
+    lock_path=os.path.join(DATA_DIR,".capital-writer.lock")
+    fd=open(lock_path,"a+")
+    try:
+        fcntl.flock(fd.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except OSError:
+        fd.close()
+        raise RuntimeError("Seconda istanza capital V1: accesso negato, dati protetti")
+    _CAPITAL_WRITER_LOCK=fd
+
+
 def _capital_journal():
     from desk.capital_journal import PaperCapitalJournal
     return PaperCapitalJournal(DATA_DIR, PORTFOLIO.name)
@@ -1914,6 +1933,7 @@ def loop_step(state: dict, ctl: dict) -> bool:
 
 def main() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
+    _acquire_capital_writer_lock()
     ensure_live_since()          # solo in live: ricorda il momento della prima partenza
     state = load_state(STATE_FILE)
     if _capital_enabled() and state and "capital" not in state:
