@@ -17,6 +17,7 @@ on:
       - "backend/tests/test_capital_cli_wiring_v1.py"
       - ".github/workflows/capital-management-v1-ci.yml"
   workflow_dispatch:
+# Offline-only validation at final V1 candidate; no SSH, secrets or deploy.
 permissions:
   contents: read
 jobs:
