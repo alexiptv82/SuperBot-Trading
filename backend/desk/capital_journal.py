@@ -156,7 +156,7 @@ class PaperCapitalJournal:
         event["checksum"] = _hash(event)
         self.root.mkdir(parents=True, exist_ok=True)
         with self.journal_path.open("ab") as fp:
-            fp.write(_canonical(event) + b"\\n")
+            fp.write(_canonical(event) + b"\n")
             fp.flush()
             os.fsync(fp.fileno())
         _sync_directory(self.root)
