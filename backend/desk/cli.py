@@ -454,7 +454,7 @@ def _append_close_once(path: str, record: dict, event_id: str) -> None:
                 except (ValueError,AttributeError):
                     continue
     with open(path,"a",encoding="utf8") as dest:
-        dest.write(json.dumps(record,default=str,allow_nan=False)+"\\n")
+        dest.write(json.dumps(record,default=str,allow_nan=False)+"\n")
         dest.flush()
         os.fsync(dest.fileno())
 
