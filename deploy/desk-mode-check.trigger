@@ -1,1 +1,1 @@
-2026-10-21T06:15:56Z controllo dopo il deploy fa3e220 (sola lettura)
+2026-10-23 preflight read-only before authorized fix A deployment
