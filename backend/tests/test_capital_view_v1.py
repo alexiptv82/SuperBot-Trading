@@ -82,3 +82,17 @@ def test_stale_revision_cannot_queue(tmp_path):
         queue_manual_withdraw(str(tmp_path),"hawk",
             {"idempotency_key":KEY,"amount":"20","expected_revision":2})
     assert not (tmp_path/"vault_transfer_request.json").exists()
+
+
+def test_stale_open_position_quote_disables_withdrawal(tmp_path):
+    setup_account(tmp_path)
+    source=tmp_path/"state_v2.json"
+    st=json.loads(source.read_text())
+    st["main"]["positions"]={"BTC":{"total_margin":100,"entry":100,"qty":10,"side":1}}
+    st["main"]["cash"]=800
+    st["capital"]["valuation"]={"fresh":True,"unrealized":"25","valuation_ms":1}
+    source.write_text(json.dumps(st))
+    result=status(str(tmp_path),"hawk")
+    assert result["valuation_fresh"] is False
+    assert result["operating_equity"] is None
+    assert result["can_withdraw"] is False
