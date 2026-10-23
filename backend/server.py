@@ -1424,10 +1424,10 @@ async def hawk_capital_withdraw(request: Request, session=Depends(require_sessio
     try:
         return capital_v1_view.queue_manual_withdraw(
             _DESK_DATA, "hawk", await request.json())
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Richiesta non valida")
     except capital_v1_view.CapitalUnavailable as exc:
         raise _capital_api_error(exc)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Richiesta non valida")
     except OSError:
         raise HTTPException(status_code=503, detail="Bot non raggiungibile")
 
@@ -1437,10 +1437,10 @@ async def bull_capital_withdraw(request: Request, session=Depends(require_sessio
     try:
         return capital_v1_view.queue_manual_withdraw(
             _DESK_DATA_BULL, "bull", await request.json())
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Richiesta non valida")
     except capital_v1_view.CapitalUnavailable as exc:
         raise _capital_api_error(exc)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Richiesta non valida")
     except OSError:
         raise HTTPException(status_code=503, detail="Bot non raggiungibile")
 
