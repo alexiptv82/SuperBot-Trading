@@ -1448,6 +1448,21 @@ def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms:
     return rec, ""
 
 
+def _settle_vault_after_user_close(state: dict, prices: dict, now_ms: int) -> None:
+    """Never move vault money in the same journal commit as a trade close."""
+    if not _capital_enabled() or (state.get("capital") or {}).get("status")!="READY":
+        return
+    from desk.capital_runtime import settle_after_close
+    # Only remaining open positions require market quotes. No historical estimate.
+    positions=(state.get("main") or {}).get("positions") or {}
+    remaining={k:prices[k] for k in positions if k in prices}
+    try:
+        if settle_after_close(state,remaining,event_id=f"close:settlement:{now_ms}"):
+            save_state(state,STATE_FILE)
+    except Exception as exc:
+        print(f"[CAPITAL] accantonamento dopo chiusura rinviato: {type(exc).__name__}",flush=True)
+
+
 def _check_close_all_flag(state: dict) -> bool:
     """reset.flag = 'chiudi tutto': chiude ogni posizione al PREZZO DI MERCATO, con commissioni,
     slippage e funding reali, e registra i trade nello storico. Se per un simbolo non c'e' un
@@ -1483,6 +1498,7 @@ def _check_close_all_flag(state: dict) -> bool:
             detail += f"; prezzo non disponibile per {', '.join(skipped)}: ancora aperte, riprova"
         _set_last_action(state, "close_all", not skipped, detail, closed=closed_n, skipped=skipped)
         save_state(state, STATE_FILE)
+        _settle_vault_after_user_close(state,prices,now_ms)
         print(f"[CHIUDI TUTTO] {detail}", flush=True)
         return True
     except Exception as e:
@@ -1645,6 +1661,7 @@ def _check_close_position_flag(state: dict) -> bool:
         _set_last_action(state, "close_position", not failed, detail, closed=closed,
                          skipped=[s for s, _ in failed])
         save_state(state, STATE_FILE)
+        _settle_vault_after_user_close(state,prices,now_ms)
         print(f"[CHIUDI POSIZIONE] {detail}", flush=True)
         return True
     except Exception as e:
@@ -1831,8 +1848,12 @@ def loop_step(state: dict, ctl: dict) -> bool:
             if not ((state.get("main") or {}).get("positions") or {}):
                 if rollover_today(state,now_ms,{}):
                     save_state(state,STATE_FILE)
-            else:
-                ctl["next_cycle_ms"]=0  # resolve midnight using 15m historical bars
+            elif state["capital"].get("status")!="RECONCILIATION_REQUIRED":
+                # Retry near UTC rollover at most once per minute (not 27 API
+                # downloads every 3s while Bitget finalizes the closing bar).
+                if now_ms >= ctl.get("capital_retry_after_ms",0):
+                    ctl["next_cycle_ms"]=0
+                    ctl["capital_retry_after_ms"]=now_ms+60_000
     process_flags(state)
     paused = os.path.exists(_flag("pause.flag"))
     if paused != ctl.get("prev_paused"):
