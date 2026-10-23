@@ -130,7 +130,9 @@ def rollover_today(state: dict, now_ms: int, candles: dict,
         return True
 
 
-def update_market_risk(state: dict, prices: dict) -> bool:
+def update_market_risk(state: dict, prices: dict, *, now_ms: int | None = None) -> bool:
+    if now_ms is None:
+        now_ms=int(time.time()*1000)
     capital=state.get("capital") or {}
     if capital.get("status")!="READY":
         return False
@@ -141,14 +143,14 @@ def update_market_risk(state: dict, prices: dict) -> bool:
         capital["valuation"]={"fresh":False,"unrealized":"0"}
         return True
     day=DayReference.from_dict(capital["day"])
-    if day.utc_day != utc_day(int(time.time()*1000)):
+    if day.utc_day != utc_day(now_ms):
         # No risk unlocking with a stale day; caller handles rollover.
         capital["status"]="ROLLOVER_PENDING"
         return True
     new=latch_risk(day,eq)
     capital["day"]=new.to_dict()
     capital["valuation"]={"fresh":True,"unrealized":str(unrealized),
-                          "valuation_ms":int(time.time()*1000)}
+                          "valuation_ms":now_ms}
     return True
 
 
