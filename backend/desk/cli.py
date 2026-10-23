@@ -505,22 +505,138 @@ def warm_daily_cache(symbols, now_ms: int) -> int:
     return n
 
 
+def _capital_enabled() -> bool:
+    # Off by default. HARD PAPER-only gate; no real exchange movements.
+    return os.getenv("DESK_CAPITAL_V1", "").lower() == "paper" and not LIVE._live
+
+
+_CAPITAL_WRITER_LOCK = None
+
+
+def _acquire_capital_writer_lock() -> None:
+    """Prevent two bot instances from writing to the same PAPER capital ledger."""
+    global _CAPITAL_WRITER_LOCK
+    if not _capital_enabled() or _CAPITAL_WRITER_LOCK is not None:
+        return
+    import fcntl
+    lock_path=os.path.join(DATA_DIR,".capital-writer.lock")
+    fd=open(lock_path,"a+")
+    try:
+        fcntl.flock(fd.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except OSError:
+        fd.close()
+        raise RuntimeError("Seconda istanza capital V1: accesso negato, dati protetti")
+    _CAPITAL_WRITER_LOCK=fd
+
+
+_CAPITAL_JOURNAL_INSTANCE=None
+
+
+def _capital_journal():
+    global _CAPITAL_JOURNAL_INSTANCE
+    from desk.capital_journal import PaperCapitalJournal
+    from pathlib import Path
+    if (_CAPITAL_JOURNAL_INSTANCE is None or
+            _CAPITAL_JOURNAL_INSTANCE.root != Path(DATA_DIR) or
+            _CAPITAL_JOURNAL_INSTANCE.bot != PORTFOLIO.name):
+        _CAPITAL_JOURNAL_INSTANCE=PaperCapitalJournal(DATA_DIR,PORTFOLIO.name)
+    return _CAPITAL_JOURNAL_INSTANCE
+
+
 def load_state(path: str) -> dict:
+    if _capital_enabled() and path == STATE_FILE and os.path.exists(_capital_journal().journal_path):
+        # Corrupt journal MUST fail closed, not silently recreate a $1000 account.
+        return _capital_journal().recover()
     if os.path.exists(path):
         try:
             with open(path) as f:
                 return json.load(f)
         except Exception:
-            pass
+            if _capital_enabled() and path == STATE_FILE:
+                raise
     return {}
 
 
+def _append_close_once(path: str, record: dict, event_id: str) -> None:
+    """Fail closed on corrupted JSONL; append+fsync only after full validation.
+
+    The durable outbox is replayable, but appending after a truncated row would
+    permanently destroy the trade/learning history. Validate every old row,
+    including rows AFTER a matching event ID, before acknowledging delivery.
+    """
+    from desk.capital_manager import CapitalInvariantError
+    seen = False
+    if os.path.exists(path):
+        with open(path,"rb") as old:
+            old.seek(0, os.SEEK_END)
+            size = old.tell()
+            if size:
+                old.seek(-1, os.SEEK_END)
+                if old.read(1) != b"\n":
+                    raise CapitalInvariantError("truncated historical JSONL; manual recovery required")
+                old.seek(0)
+                for line in old:
+                    try:
+                        item = json.loads(line)
+                    except (ValueError, UnicodeDecodeError, TypeError) as exc:
+                        raise CapitalInvariantError("corrupted historical JSONL; manual recovery required") from exc
+                    if not isinstance(item, dict):
+                        raise CapitalInvariantError("historical JSONL row is not an object")
+                    if item.get("capital_event_id") == event_id:
+                        seen = True
+    if seen:
+        return
+    with open(path,"a",encoding="utf8") as dest:
+        dest.write(json.dumps(record,default=str,allow_nan=False)+"\n")
+        dest.flush()
+        os.fsync(dest.fileno())
+
+
+def _flush_capital_close_outbox(state: dict) -> None:
+    cap=state.get("capital") or {}
+    if not _capital_enabled() or not cap.get("close_outbox"):
+        return
+    for event in list(cap["close_outbox"]):
+        ident=event["event_id"]
+        _append_close_once(_flag("trade_history.jsonl"),event["trade"],ident)
+        _append_close_once(_flag("learning_log.jsonl"),event["learning"],ident)
+    cap["close_outbox"]=[]
+    # A second journalled snapshot ACKs delivery. If interrupted, replay
+    # deduplicates existing sidecar records using the stable event ID.
+    save_state(state,STATE_FILE)
+
+
 def save_state(state: dict, path: str) -> None:
+    if _capital_enabled() and path == STATE_FILE and (state.get("capital") or {}).get("schema_version")==1:
+        from desk.capital_manager import dec
+        disk=_capital_journal().recover()
+        if disk == state:
+            return
+        before=disk.get("capital") or {}
+        after=state["capital"]
+        old_v=dec((before.get("vault") or {}).get("balance",0))
+        new_v=dec((after.get("vault") or {}).get("balance",0))
+        if old_v != new_v:
+            if (before.get("day") or {}).get("utc_day") != (after.get("day") or {}).get("utc_day"):
+                kind="rollover"
+            elif len(after.get("receipts") or {}) > len(before.get("receipts") or {}):
+                kind="withdraw"
+            else:
+                kind="settle"
+            event_id=f"capital:{kind}:{time.time_ns()}"
+        else:
+            event_id=f"snapshot:{time.time_ns()}"
+        result=_capital_journal().commit_snapshot(state,event_id=event_id)
+        state.clear()
+        state.update(result)
+        if state.get("capital",{}).get("close_outbox"):
+            _flush_capital_close_outbox(state)
+        return
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(state, f, default=str)
-    os.replace(tmp, path)
+    tmp=path+".tmp"
+    with open(tmp,"w") as f:
+        json.dump(state,f,default=str)
+    os.replace(tmp,path)
 
 
 def load_lessons() -> str:
@@ -543,6 +659,23 @@ def make_account(state: dict) -> PaperAccount:
         # I parametri vivono nel codice: i limiti salvati nello stato sarebbero rimasti quelli
         # del giorno in cui il conto e' nato e un cambio di parametri non avrebbe avuto effetto.
         acc.limits = PORTFOLIO.limits
+        if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+            from desk.capital_manager import DayReference
+            from dataclasses import replace
+            cap=state["capital"]
+            ref=DayReference.from_dict(cap["day"])
+            if cap.get("status") != "READY":
+                ref=replace(ref,day_budget=0,stop_latched=True)
+            elif acc.positions:
+                val=cap.get("valuation") or {}
+                try:
+                    ms=int(val.get("valuation_ms",0))
+                except (ValueError,TypeError):
+                    ms=0
+                # A stale or missing quote cannot authorize fresh exposure.
+                if val.get("fresh") is not True or not 0 <= int(time.time()*1000)-ms <= 120000:
+                    ref=replace(ref,stop_latched=True)
+            acc.set_capital_policy(PORTFOLIO.name,ref.day_budget,ref)
         return acc
     return PaperAccount(PORTFOLIO.limits, "main")
 
@@ -581,6 +714,8 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
     HB["exec_mode"] = "live" if LIVE._live else "paper"   # come gira DAVVERO il bot (l'app lo mostra)
     HB["capital_usd"] = _PORTFOLIO_CAPITAL                 # capitale assegnato
     HB["capital_scale"] = CAPITAL_SCALE                    # ordini veri = importi del motore x scala
+    HB["capital_v1"] = bool(_capital_enabled() and state and
+                            (state.get("capital") or {}).get("status")=="READY")
     if LIVE._live:
         HB["live_since_ms"] = LIVE_SINCE_MS                # da quando i trade contano come veri
     if LIVE._live:   # stato del collegamento con l'exchange: l'app mostra il blocco aperture se c'e'
@@ -635,7 +770,23 @@ def history_row(state: dict, rec: dict) -> dict:
 
 
 def record_close(state: dict, rec: dict) -> None:
-    """Ogni chiusura (finale o parziale) va nello storico dei trade e nel registro di apprendimento."""
+    """Persistent-close outbox in PAPER V1; unchanged append logic in legacy."""
+    if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+        import hashlib
+        sig=f"{PORTFOLIO.name}:{state.get('run_no',1)}:{rec.get('id')}:{rec.get('close_ms')}:{rec.get('margin')}:{rec.get('net')}"
+        key=hashlib.sha256(sig.encode()).hexdigest()
+        row=history_row(state,rec)
+        row["capital_event_id"]=key
+        event={"ev":"close","ts":rec.get("close_ms"),"portfolio":PORTFOLIO.name,
+               "run_no":state.get("run_no",1),**dict(rec)}
+        event["reason"]=str(event.get("reason",""))[:200]
+        clean=_learning._clean({"schema":_learning.SCHEMA,**_learning.STAMP,**event})
+        clean.setdefault("logged_ms",int(time.time()*1000))
+        clean["capital_event_id"]=key
+        pending=state["capital"].setdefault("close_outbox",[])
+        if not any(x["event_id"]==key for x in pending):
+            pending.append({"event_id":key,"trade":row,"learning":clean})
+        return
     append_trade_history(DATA_DIR, history_row(state, rec))
     row = dict(rec)
     row["reason"] = str(row.get("reason", ""))[:200]
@@ -924,13 +1075,35 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     print(f"[DESK V2] candles ok: {len(candles_map)}/{len(SYMBOLS)} simboli", flush=True)
     prices = get_prices(SYMBOLS, candles_map)   # ultimo prezzo: la barra in formazione serve solo a questo
+    if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+        acc._capital_latest_prices=prices
     closed_map = {s: closed_bars(a, now_ms) for s, a in candles_map.items()}
     # ultimi prezzi noti: la dashboard li usa come ripiego per il P&L live delle posizioni
     if prices:
         state["last_prices"] = {s: p for s, p in prices.items()}
         state["last_prices_ms"] = now_ms
-    # cambio di giorno con i prezzi veri: il P&L aperto entra nella base dello stop giornaliero (difetto C)
-    acc.roll_day(day, prices)
+    capital_mode = _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1
+    if capital_mode:
+        from desk.capital_runtime import rollover_today
+        if (state["capital"].get("day") or {}).get("utc_day") != day:
+            # Apply all completed bars prior to the 00:00 UTC boundary FIRST.
+            boundary_ms=(now_ms // 86400000)*86400000
+            old_bars={sym:arr[arr[:,0]+BAR15_MS<=boundary_ms]
+                      for sym,arr in closed_map.items()}
+            process_closed_bars(state,acc,old_bars,now_ms)
+            save_account(acc,state)
+            save_state(state,STATE_FILE)
+            rollover_today(state,now_ms,candles_map)
+            save_state(state,STATE_FILE)
+            acc=make_account(state)
+            acc._capital_latest_prices=prices
+            closed_map={sym:arr[arr[:,0]+BAR15_MS>boundary_ms]
+                        for sym,arr in closed_map.items()}
+        if state["capital"].get("status")!="READY":
+            drain=True
+    else:
+        # Legacy 12% behavior remains intact with feature disabled.
+        acc.roll_day(day,prices)
 
     # In pausa (o fuori orario) non entra nulla di nuovo: nemmeno la seconda gamba di un'entrata diversificata.
     early_why = drain_reason(now_ms)
@@ -1013,6 +1186,14 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # snapshot conto per il prompt
     eq = acc.equity(prices)
     snap = account_snapshot(acc, eq, halt)
+    if capital_mode and state["capital"].get("status")=="READY":
+        from desk.position_sizer import cap_for
+        ref=state["capital"]["day"]
+        cap_margin=cap_for(PORTFOLIO.name,ref["day_budget"])
+        snap["capital_v1"]=True
+        snap["day_budget"]=float(ref["day_budget"])
+        snap["max_margin_trade"]=float(cap_margin)
+        snap["max_margin"]=min(acc.limits.max_margin_total,float(ref["day_budget"]))
 
     # posizioni aperte con info aggiornate
     pos_info = [position_info(pos, prices.get(sym, pos.entry), readings_map, now_ms, acc.closed, acc.limits)
@@ -1042,7 +1223,18 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats,
                                   macro_lines="\n".join(macro_calendar.prompt_lines(macro)))
             max_tok, timeout_s = claude_limits(LIVE._live)
-            text, usage = call_claude(SYSTEM, prompt, max_tokens=max_tok, timeout=timeout_s)
+            system_for_call = SYSTEM
+            if snap.get("capital_v1"):
+                system_for_call += (
+                    "\n\nREGOLA DI CAPITALE V1 PAPER APPROVATA (sostituisce tutti i margini fissi "
+                    "menzionati nelle istruzioni sopra): budget operativo di inizio UTC "
+                    f"${snap['day_budget']:.2f}; margine MASSIMO dell'INTERA posizione "
+                    f"(ingresso+split+DCA) ${snap['max_margin_trade']:.2f} "
+                    f"({10 if PORTFOLIO.name=='hawk' else 25}% del budget). "
+                    "Non forzare minimi incompatibili: proponi skip. "
+                    "Non utilizzare denaro nel salvadanaio o profitto in attesa."
+                )
+            text, usage = call_claude(system_for_call, prompt, max_tokens=max_tok, timeout=timeout_s)
             cost = record_spend(state, day, usage)
             state["last_call_ms"] = now_ms
             parsed = parse_decisions(text)
@@ -1396,9 +1588,19 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         )
     state["last_report_day"] = day
 
-    # ---- salva
-    save_account(acc, state)
-    save_state(state, STATE_FILE)
+    # ---- salva in due transazioni distinte: prima tutti i trade, poi il vault
+    save_account(acc,state)
+    if capital_mode:
+        from desk.capital_runtime import update_market_risk,settle_after_close
+        update_market_risk(state,prices,now_ms=now_ms)
+    save_state(state,STATE_FILE)
+    if capital_mode and state["capital"].get("status")=="READY":
+        try:
+            if settle_after_close(state, {sym:prices[sym] for sym in acc.positions if sym in prices},
+                                  event_id=f"settle:cycle:{now_ms}"):
+                save_state(state,STATE_FILE)
+        except Exception as exc:
+            print(f"[CAPITAL] pending rinviato: {type(exc).__name__}",flush=True)
 
     # ---- report
     print(render_report(acc, prices, now_ms))
@@ -1479,6 +1681,21 @@ def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms:
     return rec, ""
 
 
+def _settle_vault_after_user_close(state: dict, prices: dict, now_ms: int) -> None:
+    """Never move vault money in the same journal commit as a trade close."""
+    if not _capital_enabled() or (state.get("capital") or {}).get("status")!="READY":
+        return
+    from desk.capital_runtime import settle_after_close
+    # Only remaining open positions require market quotes. No historical estimate.
+    positions=(state.get("main") or {}).get("positions") or {}
+    remaining={k:prices[k] for k in positions if k in prices}
+    try:
+        if settle_after_close(state,remaining,event_id=f"close:settlement:{now_ms}"):
+            save_state(state,STATE_FILE)
+    except Exception as exc:
+        print(f"[CAPITAL] accantonamento dopo chiusura rinviato: {type(exc).__name__}",flush=True)
+
+
 def _check_close_all_flag(state: dict) -> bool:
     """reset.flag = 'chiudi tutto': chiude ogni posizione al PREZZO DI MERCATO, con commissioni,
     slippage e funding reali, e registra i trade nello storico. Se per un simbolo non c'e' un
@@ -1514,6 +1731,7 @@ def _check_close_all_flag(state: dict) -> bool:
             detail += f"; prezzo non disponibile per {', '.join(skipped)}: ancora aperte, riprova"
         _set_last_action(state, "close_all", not skipped, detail, closed=closed_n, skipped=skipped)
         save_state(state, STATE_FILE)
+        _settle_vault_after_user_close(state,prices,now_ms)
         print(f"[CHIUDI TUTTO] {detail}", flush=True)
         return True
     except Exception as e:
@@ -1676,6 +1894,7 @@ def _check_close_position_flag(state: dict) -> bool:
         _set_last_action(state, "close_position", not failed, detail, closed=closed,
                          skipped=[s for s, _ in failed])
         save_state(state, STATE_FILE)
+        _settle_vault_after_user_close(state,prices,now_ms)
         print(f"[CHIUDI POSIZIONE] {detail}", flush=True)
         return True
     except Exception as e:
@@ -1705,6 +1924,11 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
             print("[RESET PORTAFOGLIO] richiesta di cancellare gli appunti IGNORATA: il cervello non si cancella",
                   flush=True)
         clear_lessons = False        # mai: il cervello non si cancella da nessun comando
+        if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+            _set_last_action(state,"reset_portfolio",False,
+                             "rifiutato: salvadanaio V1 richiede procedura di migrazione separata")
+            save_state(state,STATE_FILE)
+            return False
         if not os.path.exists(_flag("pause.flag")):
             _set_last_action(state, "reset_portfolio", False, "rifiutato: il bot non e' in pausa")
             save_state(state, STATE_FILE)
@@ -1752,8 +1976,56 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
         _remove(path)
 
 
+def _process_vault_request(state: dict) -> bool:
+    """Only the PAPER bot consumes the app's manual withdraw request.
+
+    ACK and debit are committed in one journalled snapshot before unlinking
+    the request. A crash after commit is recovered through the receipt.
+    """
+    from desk.capital_runtime import withdraw_request, utc_day
+    from desk.capital_manager import CapitalInvariantError
+    path=_flag("vault_transfer_request.json")
+    if not os.path.exists(path):
+        return False
+    cap=state.get("capital") or {}
+    if cap.get("status")!="READY" or (cap.get("day") or {}).get("utc_day")!=utc_day(int(time.time()*1000)):
+        return False  # leave queued while midnight reconciliation is pending
+    if LIVE._live:
+        return False
+    try:
+        with open(path,encoding="utf8") as fh:
+            request=json.load(fh)
+        if not isinstance(request,dict):
+            return False
+        key=request.get("idempotency_key")
+        if not isinstance(key,str) or len(key)>64:
+            return False
+        try:
+            receipt=withdraw_request(state,request,bot=PORTFOLIO.name)
+        except (CapitalInvariantError,KeyError,ValueError,TypeError) as e:
+            # An ID reused with different amount cannot rewrite the original
+            # successful receipt: preserve the journal's historical truth.
+            existing=(state["capital"].get("receipts") or {}).get(key)
+            if existing:
+                print("[CAPITAL] richiesta con ID esistente rifiutata, ACK originale intatto",flush=True)
+                os.unlink(path)
+                return False
+            receipt={"status":"rejected","amount":str(request.get("amount",0)),
+                     "reason":type(e).__name__}
+            state["capital"].setdefault("receipts",{})[key]=receipt
+        save_state(state,STATE_FILE)
+        os.unlink(path)
+        print(f"[CAPITAL] trasferimento {receipt['status']} ({PORTFOLIO.name})",flush=True)
+        return True
+    except Exception as exc:
+        print(f"[CAPITAL] richiesta rimane pendente per recovery: {type(exc).__name__}",flush=True)
+        return False
+
+
 def process_flags(state: dict) -> None:
-    """Esegue i comandi arrivati dall'app. L'ordine conta: budget, chiudi tutto, chiudi singola, reset conto."""
+    """Esegue comandi app; il bot PAPER e' l'unico autore dei saldi."""
+    if _capital_enabled():
+        _process_vault_request(state)
     _check_budget_reset_flag(state)
     _check_close_all_flag(state)
     _check_close_position_flag(state)
@@ -1808,6 +2080,20 @@ def loop_step(state: dict, ctl: dict) -> bool:
     - premere Pausa o Avvia fa partire un ciclo immediato (non si aspetta il prossimo giro);
     - in pausa il bot continua a girare finche' ha posizioni aperte (svuotamento), poi si ferma da solo.
     """
+    if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+        from desk.capital_runtime import utc_day, rollover_today
+        now_ms=int(time.time()*1000)
+        day=utc_day(now_ms)
+        if (state["capital"].get("day") or {}).get("utc_day")!=day:
+            if not ((state.get("main") or {}).get("positions") or {}):
+                if rollover_today(state,now_ms,{}):
+                    save_state(state,STATE_FILE)
+            elif state["capital"].get("status")!="RECONCILIATION_REQUIRED":
+                # Retry near UTC rollover at most once per minute (not 27 API
+                # downloads every 3s while Bitget finalizes the closing bar).
+                if now_ms >= ctl.get("capital_retry_after_ms",0):
+                    ctl["next_cycle_ms"]=0
+                    ctl["capital_retry_after_ms"]=now_ms+60_000
     process_flags(state)
     paused = os.path.exists(_flag("pause.flag"))
     if paused != ctl.get("prev_paused"):
@@ -1849,8 +2135,16 @@ def loop_step(state: dict, ctl: dict) -> bool:
 
 def main() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
+    _acquire_capital_writer_lock()
     ensure_live_since()          # solo in live: ricorda il momento della prima partenza
     state = load_state(STATE_FILE)
+    if _capital_enabled() and state and "capital" not in state:
+        from desk.capital_runtime import initial_capital,utc_day
+        state["capital"]=initial_capital(state.get("main") or {},utc_day(int(time.time()*1000)))
+        save_state(state,STATE_FILE)
+        print("[CAPITAL] migrazione PAPER additiva; nessuna apertura fino al rollover validato",flush=True)
+    if _capital_enabled() and state and (state.get("capital") or {}).get("close_outbox"):
+        _flush_capital_close_outbox(state)
 
     # ── LIVE: riconciliazione posizioni al riavvio ────────────────────────────
     if LIVE._live:

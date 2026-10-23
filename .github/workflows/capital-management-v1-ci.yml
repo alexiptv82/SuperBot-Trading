@@ -1,0 +1,56 @@
+name: Capital Management V1 - offline safety tests (no deploy)
+on:
+  push:
+    branches: [work/capital-management-v1, work/capital-v1-rule-pool-integration, rule-pool]
+    paths:
+      - "backend/desk/capital_manager.py"
+      - "backend/desk/vault_manager.py"
+      - "backend/desk/position_sizer.py"
+      - "backend/desk/engine.py"
+      - "backend/desk/cli.py"
+      - "backend/desk/capital_runtime.py"
+      - "backend/desk/capital_journal.py"
+      - "backend/tests/test_capital_management_v1.py"
+      - "backend/tests/test_capital_engine_integration_v1.py"
+      - "backend/tests/test_capital_journal_v1.py"
+      - "backend/tests/test_capital_runtime_v1.py"
+      - "backend/tests/test_capital_cli_wiring_v1.py"
+      - ".github/workflows/capital-management-v1-ci.yml"
+  workflow_dispatch:
+# Offline-only validation at final V1 candidate; no SSH, secrets or deploy.
+permissions:
+  contents: read
+jobs:
+  python_offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install isolated pytest only
+        run: python -m pip install pytest==8.4.2
+      - name: Compile new accounting modules
+        run: python -m py_compile backend/desk/capital_manager.py backend/desk/vault_manager.py backend/desk/position_sizer.py backend/desk/capital_journal.py backend/desk/capital_runtime.py backend/desk/cli.py backend/desk/engine.py backend/tests/test_capital_engine_integration_v1.py backend/tests/test_capital_management_v1.py backend/tests/test_capital_journal_v1.py backend/tests/test_capital_runtime_v1.py
+      - name: Run synthetic contract suite without API/network or VPS
+        env:
+          PYTHONPATH: backend
+          DESK_MODE: paper
+        run: python -m pytest -q backend/tests/test_capital_management_v1.py backend/tests/test_capital_journal_v1.py backend/tests/test_capital_runtime_v1.py backend/tests/test_capital_engine_integration_v1.py
+
+  legacy_engine_suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install legacy PAPER bot test dependencies
+        run: python -m pip install "ccxt==4.2.95" numpy pandas pytest==8.4.2
+      - name: Baseline PAPER bot regressions plus CLI/ledger crash-and-recovery checks
+        env:
+          PYTHONPATH: backend
+          DESK_MODE: paper
+        run: python -m pytest -q backend/tests/test_desk.py backend/tests/test_capital_cli_wiring_v1.py
