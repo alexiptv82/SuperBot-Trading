@@ -195,9 +195,29 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
 
     equity = cash + margin_used + unrealized
     day_start = _f(acc.get("day_start_equity"), start_equity)
+    cap_v1 = state.get("capital") or {}
+    capital_active = (cap_v1.get("schema_version")==1 and cap_v1.get("status")=="READY"
+                      and (hb or {}).get("capital_v1") is True
+                      and (hb or {}).get("exec_mode")=="paper")
+    vault_balance = 0.0
+    max_trade = limits.get("max_margin_trade")
+    total_equity = equity
+    day_pnl = equity - day_start
+    if capital_active:
+        cday=cap_v1.get("day") or {}
+        vault_balance=_f((cap_v1.get("vault") or {}).get("balance"))
+        total_equity=equity+vault_balance
+        day_start=_f(cday.get("equity_at_boundary"))
+        day_pnl=equity-day_start-_f(cday.get("net_manual_and_vault_flow"))
+        day_budget=_f(cday.get("day_budget"))
+        max_trade=round(day_budget*(0.10 if portfolio=="hawk" else 0.25),2)
     halt = ""
     if limits and equity <= _f(limits.get("kill_equity"), 0.0):
         halt = "capitale sotto la soglia minima"
+    elif capital_active:
+        cday=cap_v1.get("day") or {}
+        if bool(cday.get("stop_latched")) or (day_budget>0 and day_pnl<=-0.20*day_budget):
+            halt="stop giornaliero raggiunto"
     elif limits and day_start and equity <= day_start * (1 - _f(limits.get("daily_stop"), 0.0)):
         halt = "stop giornaliero raggiunto"
 
@@ -227,6 +247,8 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
         can_reset, reset_reason = False, f"Ci sono {n_open} posizioni ancora aperte: aspetta che si chiudano oppure usa Chiudi tutto."
     elif not reset_keeps_brain(hb):
         can_reset, reset_reason = False, RESET_OLD_BOT_MESSAGE
+    if capital_active:
+        can_reset,reset_reason=False,"Salvadanaio attivo: reset del conto disabilitato per proteggere il capitale."
 
     run_started = state.get("run_started_ms")
     return {
@@ -243,11 +265,14 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
         },
         "cash": round(cash, 2), "margin_used": round(margin_used, 2),
         "unrealized_pnl": round(unrealized, 2), "equity": round(equity, 2),
-        "start_equity": start_equity, "pnl_total": round(equity - start_equity, 2),
-        "pnl_total_pct": round((equity - start_equity) / start_equity * 100, 2) if start_equity else 0.0,
-        "day_pnl": round(equity - day_start, 2), "day": acc.get("day", ""),
+        "start_equity": start_equity, "pnl_total": round(total_equity - start_equity, 2),
+        "pnl_total_pct": round((total_equity - start_equity) / start_equity * 100, 2) if start_equity else 0.0,
+        "day_pnl": round(day_pnl, 2), "day": acc.get("day", ""),
+        "capital_v1": capital_active, "vault_balance": round(vault_balance,2),
+        "total_equity_with_vault": round(total_equity,2),
+        "daily_stop_pct": 20 if capital_active else round(_f(limits.get("daily_stop"))*100,2),
         "open_positions": n_open, "positions": pos_list,
-        "max_open": limits.get("max_open"), "max_margin_trade": limits.get("max_margin_trade"),
+        "max_open": limits.get("max_open"), "max_margin_trade": max_trade,
         "total_closed": len(closed_records(data_dir, state)),
         "halt": halt or None,
         "budget_spent_usd": round(spent, 4), "budget_daily_cap_usd": cap,
