@@ -8,6 +8,7 @@ on:
       - "backend/tests/test_capital_view_v1.py"
       - "frontend/src/**"
       - ".github/workflows/capital-dashboard-v1-ci.yml"
+# Offline-only validation at final V1 candidate; no SSH, secrets or deploy.
 permissions:
   contents: read
 jobs:
