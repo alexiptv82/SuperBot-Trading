@@ -453,15 +453,34 @@ def load_state(path: str) -> dict:
 
 
 def _append_close_once(path: str, record: dict, event_id: str) -> None:
-    """Append+fsync once, even if crash happens before journalled ACK."""
+    """Fail closed on corrupted JSONL; append+fsync only after full validation.
+
+    The durable outbox is replayable, but appending after a truncated row would
+    permanently destroy the trade/learning history. Validate every old row,
+    including rows AFTER a matching event ID, before acknowledging delivery.
+    """
+    from desk.capital_manager import CapitalInvariantError
+    seen = False
     if os.path.exists(path):
-        with open(path,encoding="utf8") as old:
-            for line in old:
-                try:
-                    if json.loads(line).get("capital_event_id")==event_id:
-                        return
-                except (ValueError,AttributeError):
-                    continue
+        with open(path,"rb") as old:
+            old.seek(0, os.SEEK_END)
+            size = old.tell()
+            if size:
+                old.seek(-1, os.SEEK_END)
+                if old.read(1) != b"\n":
+                    raise CapitalInvariantError("truncated historical JSONL; manual recovery required")
+                old.seek(0)
+                for line in old:
+                    try:
+                        item = json.loads(line)
+                    except (ValueError, UnicodeDecodeError, TypeError) as exc:
+                        raise CapitalInvariantError("corrupted historical JSONL; manual recovery required") from exc
+                    if not isinstance(item, dict):
+                        raise CapitalInvariantError("historical JSONL row is not an object")
+                    if item.get("capital_event_id") == event_id:
+                        seen = True
+    if seen:
+        return
     with open(path,"a",encoding="utf8") as dest:
         dest.write(json.dumps(record,default=str,allow_nan=False)+"\n")
         dest.flush()
