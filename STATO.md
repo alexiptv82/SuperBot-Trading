@@ -1,3 +1,19 @@
+## Stato 23/10/2026 — fix A: deploy BLOCCATO per differenza sorgenti/runtime
+
+
+
+## 23/10/2026 — Verifica pre-deploy fix A nella chat ordinaria: BLOCCO DI SICUREZZA
+
+Alessandro rinnova qui l'autorizzazione a un unico deploy Hawk/Bull della sola fix A, con invarianti: PAPER, prompt d'ingresso sostanzialmente invariato salvo aritmetica Bull, soglie/limiti di rischio/strategia invariati, niente fix B/DeepSeek/Step 6.
+
+Controllato il ramo rule-pool HEAD 0b72fa3626bcfe33bc6565bf7f89a108910613a0. La patch A e le guardie sono già state integrate nel commit 782c471866e987afe44657882550fbdbbec6494e. CI GitHub Actions run 39909419762: tests e image success, inclusi 9 test A e 44 test workflow. Lettura runtime dal run 39909533806 (23/10 ore 06:07 UTC): entrambi i bot running, DESK_MODE=paper, heartbeat code_version fa3e220. Non c'è un run desk-deploy successivo nelle ultime run lette; nessun nuovo deploy avviato in questa chat.
+
+Rilevato blocker NON risolto: commit runtime fa3e220f1fba86c3426fb0da69348035084167a4 e baseline sorgente di deploy 8efc0a9d907fbfc5103cc766f77b3a47a25dd964 differiscono nei file backend/desk/{cli,engine,market_context}. In particolare engine.py fa3e220 imposta Limits.daily_stop=0.12, mentre sul ramo rule-pool e nel target fix A =0.10. Sono presenti oltre 40 commit non distribuiti tra quelle versioni. La guardia in desk-deploy.yml confronta SHA256 dei sorgenti runtime con 8efc0a9: non potrebbe passare senza chiarire/allineare la baseline. Un deploy del target così com'è includerebbe cambiamenti estranei alla fix A rispetto al runtime, contro il vincolo appena dato. Il valore del limite effettivo salvato nel conto PAPER non è stato interrogato con una nuova misura, quindi il confronto riguarda il DEFAULT nel codice.
+
+DECISIONE DI SICUREZZA: nessun trigger desk-deploy, nessun deploy, nessuna modifica codice/strategia/rischio, nessun riavvio. code_version confermata prima del deploy = fa3e220, nuova code_version NON ESISTE. Per continuare: riconciliare rigorosamente la differenza fra sorgenti runtime e codice preparato, costruire un artefatto che comprenda solo A sopra la baseline reale, testarlo e riverificare invarianti prima di un singolo deploy; non disabilitare la guardia. Step 6 rimane draft, S non fissata. AI: chatgpt.
+
+---
+
 ## Aggiornamento 22/10/2026 — ChatGPT: analisi step 4 preparata, in attesa di revisione
 
 - Ramo `work/director-chatgpt` HEAD `ed3c65c`: aggiunti `deploy/scripts/regime_trade_analysis.py`, workflow `desk-regime-trades.yml` e 7 test sintetici. Il ramo non contiene un trigger attivo.
