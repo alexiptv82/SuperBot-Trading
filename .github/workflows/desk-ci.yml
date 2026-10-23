@@ -93,9 +93,11 @@ jobs:
           for f in test_bull_slots_2026_10_20 test_bull_margin_gate_2026_10_20 test_bull_leverage_gate_2026_10_20 test_prompt_account_line_2026_10_20 test_desk_fixes_2026_10_20 test_data_fixes_2026_10_21 test_pm_exec_replay_2026_10_21 test_stop_buckets_2026_10_21; do
             python -m pytest tests/$f.py -q -p no:cacheprovider
           done
+      - name: Fix A regression tests
+        run: python -m unittest discover -s tests -p test_profit_correctness_proposals.py -v
       - name: Prove del workflow di rilascio dei bot (docker finto, nessun server)
         working-directory: .
-        run: python -m unittest deploy/scripts/test_deploy_workflow.py
+        run: python -m unittest deploy/scripts/test_deploy_workflow.py deploy/scripts/test_fix_a_deploy_guards.py
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 20

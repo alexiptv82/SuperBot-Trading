@@ -136,6 +136,19 @@ jobs:
             if ! printf '%s' "$APPROVED_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
               echo "ERRORE: versione approvata mancante o non valida: nessuna modifica"; exit 1
             fi
+            # Preserve runtime risk configuration; never print environment values.
+            [ "${DESK_MODE:-paper}" = paper ] || { echo DEPLOY_BLOCKED=paper_required; exit 1; }
+            for P in hawk bull; do
+              CURRENT_ENV="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P")"
+              printf '%s\n' "$CURRENT_ENV" | grep -qx 'DESK_MODE=paper' || { echo DEPLOY_BLOCKED=runtime_not_paper; exit 1; }
+              CURRENT_LOSS="$(printf '%s\n' "$CURRENT_ENV" | sed -n 's/^DESK_DAILY_LOSS_PCT=//p')"
+              [ "$CURRENT_LOSS" = "${DESK_DAILY_LOSS_PCT:-25}" ] || { echo DEPLOY_BLOCKED=risk_environment_mismatch; exit 1; }
+              if [ "$P" = hawk ]; then KEY=DESK_HAWK_CAPITAL; TARGET="${DESK_HAWK_CAPITAL:-1000}"; else KEY=DESK_BULL_CAPITAL; TARGET="${DESK_BULL_CAPITAL:-1000}"; fi
+              CURRENT_CAPITAL="$(printf '%s\n' "$CURRENT_ENV" | sed -n "s/^${KEY}=//p")"
+              [ "$CURRENT_CAPITAL" = "$TARGET" ] || { echo DEPLOY_BLOCKED=capital_environment_mismatch; exit 1; }
+            done
+            unset CURRENT_ENV CURRENT_LOSS CURRENT_CAPITAL TARGET
+            echo PAPER_AND_RISK_ENVIRONMENT=PASS
             DEPLOY_START_MS=$(($(date +%s) * 1000))
             # --- Verifica preliminare (sola lettura)
             AVAIL_MB=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
@@ -176,6 +189,19 @@ jobs:
             if [ "$(git rev-parse HEAD)" != "$APPROVED_SHA" ]; then
               echo "ERRORE: il codice non e' sul commit approvato: nessun container sostituito"; exit 1
             fi
+
+            # Fix A must not silently deploy unrelated differences from the running image.
+            for P in hawk bull; do
+              for F in cli engine signals brain market_context; do
+                EXPECTED_HASH="$(git show 8efc0a9d907fbfc5103cc766f77b3a47a25dd964:backend/desk/$F.py | sha256sum | cut -d' ' -f1)"
+                ACTUAL_HASH="$(docker exec "superbot-desk-$P" sha256sum "/app/backend/desk/$F.py" | cut -d' ' -f1)"
+                if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
+                  echo "DEPLOY_BLOCKED=runtime_source_mismatch bot=$P component=$F"
+                  exit 1
+                fi
+              done
+            done
+            echo RUNTIME_BASELINE_SOURCE=PASS
 
             # --- Volume dati separati per ogni portfolio (sopravvivono ai deploy)
             mkdir -p /opt/superbot-desk-data/hawk
@@ -227,12 +253,11 @@ jobs:
             sleep 25
             echo "=== STATO CONTAINER ==="
             docker ps --filter name=superbot-desk --format '{{.Names}} | {{.Status}}'
-            echo "=== LOG HAWK (ultimi 6) ==="
-            docker logs --tail 6 superbot-desk-hawk 2>&1 | tr '\n' '|' | cut -c1-500
-            echo "=== LOG BULL (ultimi 6) ==="
-            docker logs --tail 6 superbot-desk-bull 2>&1 | tr '\n' '|' | cut -c1-500
-            echo "=== ALTRI CONTAINER ==="
-            docker ps --format '{{.Names}} {{.Status}}' | grep -v superbot-desk | tr '\n' '|' | cut -c1-300
+            # Public logs contain only status/version checks, never raw bot logs.
+            for P in hawk bull; do
+              docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P" | grep -qx 'DESK_MODE=paper'
+            done
+            echo PAPER_AFTER_DEPLOY=PASS
 
             # == Esito: tutti e due i bot devono girare, altrimenti il workflow e' rosso ==
             for N in superbot-desk-hawk superbot-desk-bull; do

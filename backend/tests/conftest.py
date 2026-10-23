@@ -9,3 +9,14 @@ import os
 
 os.environ["DESK_MACRO_FETCH"] = "0"
 os.environ["DESK_DAILY_FETCH"] = "0"
+
+# Unit tests use synthetic responses: fail closed before any real socket connection.
+import sys
+
+
+def _block_test_network(event, args):
+    if event in ("socket.connect", "socket.getaddrinfo"):
+        raise OSError("TEST_NETWORK_DISABLED")
+
+
+sys.addaudithook(_block_test_network)

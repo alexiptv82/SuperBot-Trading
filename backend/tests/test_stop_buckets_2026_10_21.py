@@ -162,7 +162,10 @@ def test_load_trades_matches_replay_loader_and_engine_net_r(tmp_path):
         rows.append({"ev": "close", "run_no": 1, **r})
     p = write_ledger(tmp_path, rows)
     mine, sk1 = S.load_trades(p, "hawk")
-    ref, sk2 = R.load_trades(p, "hawk")
+    ref, sk2, invalid_json, file_hash = R.load_trades(p, "hawk")
+    assert invalid_json == 0
+    import hashlib
+    assert file_hash == hashlib.sha256(open(p, "rb").read()).hexdigest()[:16]
     assert dict(sk1) == dict(sk2) == {}
     key = lambda t: (t["run"], t["id"])
     mine, ref = sorted(mine, key=key), sorted(ref, key=key)
