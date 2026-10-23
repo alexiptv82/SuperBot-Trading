@@ -11,6 +11,9 @@ L'utente è Alessandro (account GitHub `alexiptv82`). Parla italiano e vuole il 
 | File | Che cos'è | Quando si aggiorna |
 |------|-----------|--------------------|
 | `STATO.md` | Fotografia di oggi: cosa gira, cosa è stato deciso, cosa è aperto, prossimo passo | A fine di ogni sessione di lavoro (si riscrive, resta corta) |
+| `SINCRONIZZAZIONE-WORK-CHAT.md` | Regole obbligatorie per tenere coerenti Work, chat normale e Claude (checkpoint GitHub, un solo autore per componente) | Si legge a inizio sessione, si cambia se cambia il protocollo |
+| `CAPITAL-MANAGEMENT-V1-HANDOFF.md` | Decisioni utente e design tecnico per capitale, vault, margini percentuali e dashboard | Si aggiorna dopo nuove decisioni/verifiche e a ogni passaggio di mano |
+| `ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md` | Copia immutata del vecchio stato lungo, prima della nuova fotografia breve | Solo archivio |
 | `MANUALE-OPERATIVO.md` | Come si lavora sul progetto: rami, workflow, trigger, deploy, controlli, cose da non fare | Quando cambia il modo di lavorare |
 | `diario/AAAA-MM-GG_<chi>.md` | Cronologia: cosa è stato fatto, perché, con quale esito (una voce per giorno e per autore) | Durante e a fine sessione (si aggiunge, non si cancella) |
 | `STORIA-FINO-AL-19-OTTOBRE.md` | Riassunto di come si è arrivati qui (9–19 ottobre 2026) | Non si tocca |
@@ -38,6 +41,14 @@ Sono decisioni dell'utente. Nessuna AI le cambia da sola.
 4. Le regole inviolabili restano identiche. L'OK dell'utente che serve per un'azione la dà lui, nella chat in cui sta lavorando in quel momento.
 5. Quando l'altra AI torna, **non riprende a memoria**: legge prima tutto quello che è stato scritto nel frattempo. Se c'è stato un cambio importante, lo si rivede con l'utente.
 6. Quando entrambe sono disponibili, l'utente decide chi guida e chi collabora (rilettura, controlli, seconda opinione). Non si lavora in due sullo stesso componente nello stesso momento.
+
+## Coordinamento di Work e chat normale (regola dal 23/10/2026)
+
+Il protocollo completo è in `SINCRONIZZAZIONE-WORK-CHAT.md`. Si applica a Work, chat normale e, se partecipa, Claude: **leggere STATO e l'handoff su GitHub prima di agire; prenotare i componenti; registrare subito autorizzazioni e risultati con commit; rileggere quando si riprende**. Un OK di analisi/design non è un OK all'implementazione o al deploy.
+
+Questo è un sistema di sincronizzazione **a checkpoint**, non una conversazione in tempo reale fra chat inattive. Se una chat non ha letto l'ultimo commit del ramo `diario`, non è aggiornata. Non dare mai per scontata una sincronizzazione automatica non verificata.
+
+Il vecchio messaggio di avvio in fondo al documento vale per il caso di AI mancante; per il passaggio Work/chat normale utilizzare il messaggio aggiornato in `SINCRONIZZAZIONE-WORK-CHAT.md`.
 
 ## Come si scrive nel diario
 
