@@ -5,6 +5,7 @@ on:
       - work/fix-a-release-verification-20261023
     paths:
       - ".github/workflows/fix-a-release-syntax-ci.yml"
+      - ".github/workflows/desk-fix-a-isolated-deploy.yml"
 permissions:
   contents: read
 jobs:
