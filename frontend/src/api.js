@@ -75,6 +75,9 @@ export const botAPI = {
 // Hawk: max $100/trade, max 10 posizioni. Bull: max $350/trade, max 3 posizioni.
 const makeDeskAPI = (prefix) => ({
   getStatus:      () => API.get(`${prefix}/status`),
+  getCapital:     () => API.get(`${prefix}/capital`),
+  withdrawFromVault: (body) => API.post(`${prefix}/capital/vault/withdraw`, body),
+  getCapitalTransfer: (id) => API.get(`${prefix}/capital/vault/transfer/${encodeURIComponent(id)}`),
   getTrades:      (limit = 100) => API.get(`${prefix}/trades?limit=${limit}`),
   getPerformance: () => API.get(`${prefix}/performance`),
   getDiary:       () => API.get(`${prefix}/diary`),
