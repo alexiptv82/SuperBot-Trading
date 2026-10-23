@@ -1,0 +1,40 @@
+name: Fix A isolated fa3e220 — offline verification only
+on:
+  push:
+    branches:
+      - work/fix-a-ci-validation-20261023
+    paths:
+      - ".github/workflows/fix-a-isolated-validation.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fix_a_tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies (no broker secrets)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ccxt==4.2.95 pandas numpy pytest
+      - name: Compile Fix A modules
+        run: |
+          python -m py_compile backend/desk/{signals,brain,cli,position_card}.py
+      - name: Fix A focused regressions
+        run: |
+          python -m unittest discover -s backend/tests -p test_profit_correctness_isolated.py -v
+      - name: Baseline desk tests
+        working-directory: backend
+        env:
+          DESK_MACRO_FETCH: "0"
+          DESK_DAILY_FETCH: "0"
+        run: |
+          python -m pytest tests/test_desk.py tests/test_desk_macro.py tests/test_desk_hours.py tests/test_desk_analyst.py -q --tb=short
+      - name: Build exact candidate (never deploy)
+        run: |
+          docker build -t fix-a-isolated-validation -f Dockerfile.desk .
+          docker run --rm --network none fix-a-isolated-validation python -c "from desk import signals, brain, cli, position_card; from desk.engine import Limits; assert Limits().daily_stop == 0.12; print('PAPER baseline risk: 12%, imports: PASS')"
