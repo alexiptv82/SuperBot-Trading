@@ -475,6 +475,14 @@ def make_account(state: dict) -> PaperAccount:
         # I parametri vivono nel codice: i limiti salvati nello stato sarebbero rimasti quelli
         # del giorno in cui il conto e' nato e un cambio di parametri non avrebbe avuto effetto.
         acc.limits = PORTFOLIO.limits
+        if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+            from desk.capital_manager import DayReference
+            from dataclasses import replace
+            cap=state["capital"]
+            ref=DayReference.from_dict(cap["day"])
+            if cap.get("status") != "READY":
+                ref=replace(ref,day_budget=0,stop_latched=True)
+            acc.set_capital_policy(PORTFOLIO.name,ref.day_budget,ref)
         return acc
     return PaperAccount(PORTFOLIO.limits, "main")
 
@@ -513,6 +521,8 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
     HB["exec_mode"] = "live" if LIVE._live else "paper"   # come gira DAVVERO il bot (l'app lo mostra)
     HB["capital_usd"] = _PORTFOLIO_CAPITAL                 # capitale assegnato
     HB["capital_scale"] = CAPITAL_SCALE                    # ordini veri = importi del motore x scala
+    HB["capital_v1"] = bool(_capital_enabled() and state and
+                            (state.get("capital") or {}).get("status")=="READY")
     if LIVE._live:
         HB["live_since_ms"] = LIVE_SINCE_MS                # da quando i trade contano come veri
     if LIVE._live:   # stato del collegamento con l'exchange: l'app mostra il blocco aperture se c'e'
@@ -861,8 +871,27 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     if prices:
         state["last_prices"] = {s: p for s, p in prices.items()}
         state["last_prices_ms"] = now_ms
-    # cambio di giorno con i prezzi veri: il P&L aperto entra nella base dello stop giornaliero (difetto C)
-    acc.roll_day(day, prices)
+    capital_mode = _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1
+    if capital_mode:
+        from desk.capital_runtime import rollover_today
+        if (state["capital"].get("day") or {}).get("utc_day") != day:
+            # Apply all completed bars prior to the 00:00 UTC boundary FIRST.
+            boundary_ms=(now_ms // 86400000)*86400000
+            old_bars={sym:arr[arr[:,0]+BAR15_MS<=boundary_ms]
+                      for sym,arr in closed_map.items()}
+            process_closed_bars(state,acc,old_bars,now_ms)
+            save_account(acc,state)
+            save_state(state,STATE_FILE)
+            rollover_today(state,now_ms,candles_map)
+            save_state(state,STATE_FILE)
+            acc=make_account(state)
+            closed_map={sym:arr[arr[:,0]+BAR15_MS>boundary_ms]
+                        for sym,arr in closed_map.items()}
+        if state["capital"].get("status")!="READY":
+            drain=True
+    else:
+        # Legacy 12% behavior remains intact with feature disabled.
+        acc.roll_day(day,prices)
 
     # In pausa (o fuori orario) non entra nulla di nuovo: nemmeno la seconda gamba di un'entrata diversificata.
     early_why = drain_reason(now_ms)
@@ -1635,6 +1664,11 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
             print("[RESET PORTAFOGLIO] richiesta di cancellare gli appunti IGNORATA: il cervello non si cancella",
                   flush=True)
         clear_lessons = False        # mai: il cervello non si cancella da nessun comando
+        if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+            _set_last_action(state,"reset_portfolio",False,
+                             "rifiutato: salvadanaio V1 richiede procedura di migrazione separata")
+            save_state(state,STATE_FILE)
+            return False
         if not os.path.exists(_flag("pause.flag")):
             _set_last_action(state, "reset_portfolio", False, "rifiutato: il bot non e' in pausa")
             save_state(state, STATE_FILE)
@@ -1781,6 +1815,11 @@ def main() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
     ensure_live_since()          # solo in live: ricorda il momento della prima partenza
     state = load_state(STATE_FILE)
+    if _capital_enabled() and state and "capital" not in state:
+        from desk.capital_runtime import initial_capital,utc_day
+        state["capital"]=initial_capital(state.get("main") or {},utc_day(int(time.time()*1000)))
+        save_state(state,STATE_FILE)
+        print("[CAPITAL] migrazione PAPER additiva; nessuna apertura fino al rollover validato",flush=True)
 
     # ── LIVE: riconciliazione posizioni al riavvio ────────────────────────────
     if LIVE._live:
