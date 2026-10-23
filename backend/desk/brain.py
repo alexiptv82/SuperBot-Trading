@@ -148,7 +148,7 @@ TAKE PROFIT ESTESO (filosofia Bull):
 
 RISCHIO/RENDIMENTO:
 - R:R minimo 1:2.5. Ideale 1:4 o 1:5 per trade medio.
-- Esempio: margin 300$, SL 2% = 60$ rischio → TP deve valere almeno 150$ (5% con leva 20x).
+- Esempio: margin 300$, SL 2% = 120$ rischio → TP deve valere almeno 300$ (5% con leva 20x).
 - Non aprire mai con R:R < 1:2. Preferisci 1:3 o meglio.
 
 TAKE PROFIT SCALABILE:
@@ -338,7 +338,10 @@ def build_prompt(snapshot: dict, readings: list, positions: list, headlines: lis
                 f"{p.get('trade_type', 'medio').upper()} lev {p['leverage']}x "
                 f"margine {p['margin']:.0f}${dca_info} ingresso {p['entry']:.5g} "
                 f"ora {p['price']:.5g} P&L {p['pnl']:+.1f}$ stop {p['sl']:.5g} "
-                f"da {p['hours']:.1f}h score_ora {p['score_now']}. "
+                f"da {p['hours']:.1f}h score_lato {p['score_now']} score_opposto {p.get('score_opposite')}. "
+                f"TP {p.get('tp')} R_netto {p.get('r_net')} ROI_netto% {p.get('roi_net_pct')} "
+                f"ROI_base=iniziale+DCA_non_ridotta_dai_parziali MFE_R_limite {p.get('mfe_price_R_upper_bound')} "
+                f"giveback_R_limite {p.get('giveback_price_R_upper_bound')} (estremi barra, non picco netto eseguibile). "
                 f"Motivo: {p['reason'][:120]}"
             )
             # contesto di mercato sulla posizione aperta
