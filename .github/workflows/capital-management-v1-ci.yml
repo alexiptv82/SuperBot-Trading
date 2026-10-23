@@ -31,7 +31,7 @@ jobs:
       - name: Install isolated pytest only
         run: python -m pip install pytest==8.4.2
       - name: Compile new accounting modules
-        run: python -m py_compile backend/desk/capital_manager.py backend/desk/vault_manager.py backend/desk/position_sizer.py backend/desk/capital_journal.py backend/desk/capital_runtime.py backend/desk/cli.py backend/desk/engine.py backend/tests/test_capital_engine_integration_v1.py backend/tests/test_capital_management_v1.py backend/tests/test_capital_journal_v1.py backend/tests/test_capital_runtime_v1.py backend/tests/test_capital_cli_wiring_v1.py backend/tests/test_capital_engine_integration_v1.py
+        run: python -m py_compile backend/desk/capital_manager.py backend/desk/vault_manager.py backend/desk/position_sizer.py backend/desk/capital_journal.py backend/desk/capital_runtime.py backend/desk/cli.py backend/desk/engine.py backend/tests/test_capital_engine_integration_v1.py backend/tests/test_capital_management_v1.py backend/tests/test_capital_journal_v1.py backend/tests/test_capital_runtime_v1.py
       - name: Run synthetic contract suite without API/network or VPS
         env:
           PYTHONPATH: backend
@@ -48,7 +48,7 @@ jobs:
           python-version: "3.11"
       - name: Install legacy PAPER bot test dependencies
         run: python -m pip install "ccxt==4.2.95" numpy pandas pytest==8.4.2
-      - name: Baseline PAPER bot regressions, no VPS or API
+      - name: Baseline PAPER bot regressions plus CLI/ledger crash-and-recovery checks
         env:
           PYTHONPATH: backend
           DESK_MODE: paper
