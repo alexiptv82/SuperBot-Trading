@@ -1,0 +1,84 @@
+"""Capital dashboard/queue tests. Synthetic temp files only; no user or VPS data."""
+import json
+from pathlib import Path
+import pytest
+from capital_view import (status, queue_manual_withdraw, transfer_status,
+                          CapitalUnavailable)
+
+
+KEY="123e4567-e89b-42d3-a456-426614174000"
+
+
+def setup_account(root, *, enabled=True, balance="120"):
+    state={
+        "main":{"cash":900.0,"positions":{}},
+        "capital":{"schema_version":1,"status":"READY","revision":3,
+                   "day":{"utc_day":"2026-10-24","day_budget":"900",
+                          "equity_at_boundary":"900","stop_latched":False},
+                   "vault":{"balance":balance,"pending":[]},
+                   "valuation":{"fresh":True,"unrealized":"0"},"receipts":{}}
+    }
+    hb={"version":"x123abc","capital_v1":enabled,"exec_mode":"paper"}
+    (root/"state_v2.json").write_text(json.dumps(state))
+    (root/"heartbeat.json").write_text(json.dumps(hb))
+
+
+def test_fails_closed_without_bot_support(tmp_path):
+    assert status(str(tmp_path),"hawk")["available"] is False
+    setup_account(tmp_path,enabled=False)
+    assert status(str(tmp_path),"hawk")["available"] is False
+    with pytest.raises(CapitalUnavailable):
+        queue_manual_withdraw(str(tmp_path),"hawk",
+                             {"idempotency_key":KEY,"amount":"20","expected_revision":3})
+
+
+def test_read_only_snapshot_and_bull_margin_percent(tmp_path):
+    setup_account(tmp_path)
+    st=status(str(tmp_path),"bull")
+    assert st["operating_equity"]=="900"
+    assert st["vault_balance"]=="120"
+    assert st["total_equity"]=="1020"
+    assert st["position_cap_pct"]=="25"
+    assert st["day_budget"]=="900"
+    assert st["can_withdraw"]
+
+
+def test_request_queues_but_never_modifies_money(tmp_path,monkeypatch):
+    setup_account(tmp_path)
+    monkeypatch.setenv("DESK_MODE","paper")
+    request={"idempotency_key":KEY,"amount":"50.00","expected_revision":3}
+    a=queue_manual_withdraw(str(tmp_path),"hawk",request)
+    assert a["queued"] and a["status"]=="pending"
+    assert transfer_status(str(tmp_path),KEY)["status"]=="pending"
+    assert status(str(tmp_path),"hawk")["vault_balance"]=="120"
+    b=queue_manual_withdraw(str(tmp_path),"hawk",request)
+    assert b==a
+    with pytest.raises(CapitalUnavailable):
+        queue_manual_withdraw(str(tmp_path),"hawk",
+            {"idempotency_key":"123e4567-e89b-42d3-a456-426614174001","amount":"40",
+             "expected_revision":3})
+
+
+@pytest.mark.parametrize("amount",[-1,0,"NaN","Infinity","1.001","200","garbage"])
+def test_bad_amount_rejected(tmp_path,monkeypatch,amount):
+    setup_account(tmp_path)
+    monkeypatch.setenv("DESK_MODE","paper")
+    with pytest.raises(CapitalUnavailable):
+        queue_manual_withdraw(str(tmp_path),"hawk",
+            {"idempotency_key":KEY,"amount":amount,"expected_revision":3})
+
+
+def test_live_mode_is_unsafe_even_with_capital_v1(tmp_path,monkeypatch):
+    setup_account(tmp_path)
+    monkeypatch.setenv("DESK_MODE","live")
+    with pytest.raises(CapitalUnavailable):
+        queue_manual_withdraw(str(tmp_path),"hawk",
+            {"idempotency_key":KEY,"amount":"20","expected_revision":3})
+
+
+def test_stale_revision_cannot_queue(tmp_path):
+    setup_account(tmp_path)
+    with pytest.raises(CapitalUnavailable):
+        queue_manual_withdraw(str(tmp_path),"hawk",
+            {"idempotency_key":KEY,"amount":"20","expected_revision":2})
+    assert not (tmp_path/"vault_transfer_request.json").exists()
