@@ -972,6 +972,14 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # snapshot conto per il prompt
     eq = acc.equity(prices)
     snap = account_snapshot(acc, eq, halt)
+    if capital_mode and state["capital"].get("status")=="READY":
+        from desk.position_sizer import cap_for
+        ref=state["capital"]["day"]
+        cap_margin=cap_for(PORTFOLIO.name,ref["day_budget"])
+        snap["capital_v1"]=True
+        snap["day_budget"]=float(ref["day_budget"])
+        snap["max_margin_trade"]=float(cap_margin)
+        snap["max_margin"]=min(acc.limits.max_margin_total,float(ref["day_budget"]))
 
     # posizioni aperte con info aggiornate
     pos_info = [position_info(pos, prices.get(sym, pos.entry), readings_map, now_ms, acc.closed, acc.limits)
@@ -1001,7 +1009,18 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats,
                                   macro_lines="\n".join(macro_calendar.prompt_lines(macro)))
             max_tok, timeout_s = claude_limits(LIVE._live)
-            text, usage = call_claude(SYSTEM, prompt, max_tokens=max_tok, timeout=timeout_s)
+            system_for_call = SYSTEM
+            if snap.get("capital_v1"):
+                system_for_call += (
+                    "\\n\\nREGOLA DI CAPITALE V1 PAPER APPROVATA (sostituisce tutti i margini fissi "
+                    "menzionati nelle istruzioni sopra): budget operativo di inizio UTC "
+                    f"${snap['day_budget']:.2f}; margine MASSIMO dell'INTERA posizione "
+                    f"(ingresso+split+DCA) ${snap['max_margin_trade']:.2f} "
+                    f"({10 if PORTFOLIO.name=='hawk' else 25}% del budget). "
+                    "Non forzare minimi incompatibili: proponi skip. "
+                    "Non utilizzare denaro nel salvadanaio o profitto in attesa."
+                )
+            text, usage = call_claude(system_for_call, prompt, max_tokens=max_tok, timeout=timeout_s)
             cost = record_spend(state, day, usage)
             state["last_call_ms"] = now_ms
             parsed = parse_decisions(text)
