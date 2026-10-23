@@ -443,6 +443,36 @@ def load_state(path: str) -> dict:
     return {}
 
 
+def _append_close_once(path: str, record: dict, event_id: str) -> None:
+    """Append+fsync once, even if crash happens before journalled ACK."""
+    if os.path.exists(path):
+        with open(path,encoding="utf8") as old:
+            for line in old:
+                try:
+                    if json.loads(line).get("capital_event_id")==event_id:
+                        return
+                except (ValueError,AttributeError):
+                    continue
+    with open(path,"a",encoding="utf8") as dest:
+        dest.write(json.dumps(record,default=str,allow_nan=False)+"\\n")
+        dest.flush()
+        os.fsync(dest.fileno())
+
+
+def _flush_capital_close_outbox(state: dict) -> None:
+    cap=state.get("capital") or {}
+    if not _capital_enabled() or not cap.get("close_outbox"):
+        return
+    for event in list(cap["close_outbox"]):
+        ident=event["event_id"]
+        _append_close_once(_flag("trade_history.jsonl"),event["trade"],ident)
+        _append_close_once(_flag("learning_log.jsonl"),event["learning"],ident)
+    cap["close_outbox"]=[]
+    # A second journalled snapshot ACKs delivery. If interrupted, replay
+    # deduplicates existing sidecar records using the stable event ID.
+    save_state(state,STATE_FILE)
+
+
 def save_state(state: dict, path: str) -> None:
     if _capital_enabled() and path == STATE_FILE and (state.get("capital") or {}).get("schema_version")==1:
         from desk.capital_manager import dec
@@ -466,6 +496,8 @@ def save_state(state: dict, path: str) -> None:
         result=_capital_journal().commit_snapshot(state,event_id=event_id)
         state.clear()
         state.update(result)
+        if state.get("capital",{}).get("close_outbox"):
+            _flush_capital_close_outbox(state)
         return
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp=path+".tmp"
@@ -596,7 +628,23 @@ def history_row(state: dict, rec: dict) -> dict:
 
 
 def record_close(state: dict, rec: dict) -> None:
-    """Ogni chiusura (finale o parziale) va nello storico dei trade e nel registro di apprendimento."""
+    """Persistent-close outbox in PAPER V1; unchanged append logic in legacy."""
+    if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+        import hashlib
+        sig=f"{PORTFOLIO.name}:{state.get('run_no',1)}:{rec.get('id')}:{rec.get('close_ms')}:{rec.get('margin')}:{rec.get('net')}"
+        key=hashlib.sha256(sig.encode()).hexdigest()
+        row=history_row(state,rec)
+        row["capital_event_id"]=key
+        event={"ev":"close","ts":rec.get("close_ms"),"portfolio":PORTFOLIO.name,
+               "run_no":state.get("run_no",1),**dict(rec)}
+        event["reason"]=str(event.get("reason",""))[:200]
+        clean=_learning._clean({"schema":_learning.SCHEMA,**_learning.STAMP,**event})
+        clean.setdefault("logged_ms",int(time.time()*1000))
+        clean["capital_event_id"]=key
+        pending=state["capital"].setdefault("close_outbox",[])
+        if not any(x["event_id"]==key for x in pending):
+            pending.append({"event_id":key,"trade":row,"learning":clean})
+        return
     append_trade_history(DATA_DIR, history_row(state, rec))
     row = dict(rec)
     row["reason"] = str(row.get("reason", ""))[:200]
@@ -1948,6 +1996,8 @@ def main() -> None:
         state["capital"]=initial_capital(state.get("main") or {},utc_day(int(time.time()*1000)))
         save_state(state,STATE_FILE)
         print("[CAPITAL] migrazione PAPER additiva; nessuna apertura fino al rollover validato",flush=True)
+    if _capital_enabled() and state and (state.get("capital") or {}).get("close_outbox"):
+        _flush_capital_close_outbox(state)
 
     # ── LIVE: riconciliazione posizioni al riavvio ────────────────────────────
     if LIVE._live:
