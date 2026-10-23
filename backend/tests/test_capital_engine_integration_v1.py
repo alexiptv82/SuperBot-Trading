@@ -65,6 +65,7 @@ def test_second_leg_must_fit_remaining_position_cap():
                  split={"retrace_pct":0.005,"first_frac":0.5})
     assert p is not None,msg
     assert p.pending_split["margin"]==45
+    a._capital_latest_prices={"BTC":100}
     result=a._fill_split(p,3)
     assert result is not None
     assert p.total_margin==90
