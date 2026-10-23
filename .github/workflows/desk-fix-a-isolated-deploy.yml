@@ -54,11 +54,7 @@ jobs:
           [ "$(git rev-parse "refs/remotes/origin/work/fix-a-only-fa3e220-20261023")" = "$SHA" ] || { echo "BLOCK: candidate branch changed"; exit 1; }
           [ "$(git rev-parse "$SHA^")" = "$BASE" ] || { echo "BLOCK: unexpected baseline parent"; exit 1; }
           ACTUAL="$(git diff --name-only "$BASE" "$SHA" | LC_ALL=C sort)"
-          EXPECTED="backend/desk/brain.py
-backend/desk/cli.py
-backend/desk/position_card.py
-backend/desk/signals.py
-backend/tests/test_profit_correctness_isolated.py"
+          EXPECTED="$(printf '%s\\n' backend/desk/brain.py backend/desk/cli.py backend/desk/position_card.py backend/desk/signals.py backend/tests/test_profit_correctness_isolated.py | LC_ALL=C sort)"
           [ "$ACTUAL" = "$EXPECTED" ] || { echo "BLOCK: extra changed files"; exit 1; }
           for F in backend/desk/engine.py backend/desk/market_context.py Dockerfile.desk; do
             [ "$(git rev-parse "$BASE:$F")" = "$(git rev-parse "$SHA:$F")" ] || { echo "BLOCK: unexpected core change"; exit 1; }
