@@ -1,3 +1,30 @@
+# ATTUALE — 23/10/2026: Fix A SU HAWK+BULL, code_version f87f2d6 (PAPER)
+
+## 23/10/2026, 10:10 Roma — Fix A deployata una sola volta, confermata runtime su Hawk/Bull
+
+**Autorizzazione in chat:** OK esplicito al deploy della fix A isolata, sola versione `f87f2d6` dal ramo `work/fix-a-only-fa3e220-20261023`; escludere ogni altra modifica, mantenere PAPER.
+
+**Codice eseguito:** `f87f2d63c5849b177dbd33ee43c5be05ca58c8ed` (figlio diretto di `fa3e220f1fba86c3426fb0da69348035084167a4`); 5 file, 4 runtime (brain, cli, position_card, signals) e 1 test; engine, market_context e tutti gli altri file identici alla base. Il default daily_stop nel codice resta 0.12. Fix B, budget DeepSeek e Step 6 restano invariati; S non fissata.
+
+**Rilascio unico:** workflow dedicato aggiunto a `rule-pool` con commit inerte `f541ddcfd1969d04bd5764e8e159cdaf7a3c62bf` ([skip ci]); eseguito **un solo trigger** `deploy/desk-fix-a-isolated.trigger` su `rule-pool`, commit `de9e32ffb1af2239b0e5b58405e0dab7b110ad05`. Run [39922453846](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/39922453846): **SUCCESS** 23/10 circa 08:08:53 UTC.
+- `CANDIDATE_ALLOWLIST=PASS`
+- `RUNTIME_VERSION_BASELINE=PASS` (entrambi dichiaravano fa3e220 prima del deploy).
+- `PAPER_AND_RISK_ENVIRONMENT=PASS`
+- Backup cervello creato **prima** della sostituzione: `bots-20261023-080755-deploy` (server Singapore, /opt/superbot-backups).
+- Immagine di rollback `superbot-desk:rollback-20261023-080755` preservata.
+- `RUNTIME_BASELINE_SOURCE=PASS` per cli, engine, signals, brain, market_context sui due bot.
+- `VERSIONE CODICE: f87f2d6`, `PAPER_AFTER_DEPLOY=PASS`; una sola istanza per hawk e bull.
+- **Heartbeat post-deploy, versione dichiarata da hawk=f87f2d6 e bull=f87f2d6**, processo nuovo per entrambi. `DEPLOY OK`.
+
+**Verifica INDIPENDENTE post-deploy:** aggiornato unicamente il trigger di controllo read-only `deploy/desk-mode-check.trigger` su rule-pool al commit `875cc0fb01ffe2f57052c35884aca4cf3b168aa2`; run [39922740438](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/39922740438) **SUCCESS**. Lettura del 23/10 ore 08:10:19 UTC:
+- Hawk: container `running`, avviato 08:08:16 UTC, `DESK_MODE=paper`, heartbeat `exec_mode=paper`, `versione=f87f2d6`, `modalita_app=running`.
+- Bull: container `running`, avviato 08:08:26 UTC, `DESK_MODE=paper`, heartbeat `exec_mode=paper`, `versione=f87f2d6`, `modalita_app=running`.
+- Per entrambi il log del connettore conferma `modalità PAPER — nessun ordine reale`.
+
+**Stato:** Fix A deployata e verificata, `f87f2d6` NUOVA BASELINE effettiva di Hawk e Bull dal 23/10/2026. Nessun secondo deploy, nessuna modifica a HI-TV, nessun reset del cervello o dei portafogli. Le differenze di risk/cli/market_context escluse restano decisioni separate, non reinstallarle accidentalmente. Step 6 ancora draft; non fissare S senza decisione e monitoraggio successivo. AI: chatgpt.
+
+---
+
 # Stato aggiornato: fix A isolata, non distribuita (23/10/2026)
 
 ## 23/10/2026 — Fix A isolata e testata, nessun deploy (chat normale)
