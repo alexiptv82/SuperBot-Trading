@@ -19,8 +19,8 @@
 - La discussione separata sul pulsante "Azzera budget AI" è stata diagnosticata read-only: bot riceve ed esegue reset; messaggio `stop giornaliero raggiunto` deriva da rischio trading, indipendente dal budget API. Non è stata applicata alcuna fix al reset.
 
 ## IN_CORSO — prenotazione componente (un autore alla volta)
-- **Autore attivo: ChatGPT Work.** Capital/Vault/Sizer, ledger e integrazione bot/test: `work/capital-management-v1`, base `f87f2d63c5849b177dbd33ee43c5be05ca58c8ed`. Dashboard/API/test: `work/capital-dashboard-v1`, base main `1cdfd6a230125d627ad3baf3126c1e7033debe46`. File `backend/desk/*`, relativi test e documentazione; app `backend/desk_api.py`, `backend/desk_view.py`, moduli capitali e frontend. Chat normale/Claude: sola review su questi componenti fino al passaggio.
-- Implementazione in corso su rami separati; nessuna modifica a rule-pool/main o ai container autorizzata.
+- **Autore attivo dal nuovo passaggio: ChatGPT chat normale**, perché l'utente torna qui da Work (limiti di utilizzo) e affida implementazione della specifica già autorizzata. Work NON ha pubblicato rami codice, PR o run: sono presenti solo la specifica e il diario, come verificato tramite GitHub. Componenti assegnati ora alla chat normale: bot Capital/Vault/Sizer e relativi test su `work/capital-management-v1` da `f87f2d63c5849b177dbd33ee43c5be05ca58c8ed`; app Dashboard/API e test su `work/capital-dashboard-v1` da main `1cdfd6a230125d627ad3baf3126c1e7033debe46`. Work/Claude fanno sola lettura/review finché non c'è nuovo passaggio di mano.
+- Implementazione autorizzata SOLO su rami work separati; non ancora pubblicata all'inizio di questo passaggio. Nessuna modifica a rule-pool/main o ai container autorizzata.
 - Prima di iniziare un componente, assegnare qui autore corrente (Work/chat/Claude), file, branch e SHA. L'altro non modifica lo stesso componente in contemporanea; eventualmente fa sola lettura/review.
 - Nessun deploy autorizzato. Nessun aggiornamento a code_version autorizzato.
 
@@ -35,4 +35,4 @@
 - Storico della vecchia pagina STATO: `ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md`.
 
 ## Ultimo checkpoint
-23/10: utente autorizza implementazione della specifica dopo approvazione A/B/C. Work prenota i quattro componenti; note precedenti di sola progettazione sono superate da questa autorizzazione. Nessun deploy o nuova baseline runtime.
+23/10 ore circa 12:28 Roma: l'utente torna da Work per limiti di uso, gira qui il prompt autorizzativo A/B/C e chiede di riprendere. Check GitHub: Work ha pubblicato la sola specifica tecnica e l'owner; non risultano rami capital-management/dashboard, PR né test implementazione. La chat normale subentra come writer unico, per rami separati da runtime/main; nessun deploy autorizzato, baseline runtime f87f2d6 invariata.
