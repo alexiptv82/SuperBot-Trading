@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { deskAPI, bullAPI, errMsg } from '../api';
 import { fmtClock, fmtDateTime, fmtDuration, signed, pnlColor, botState, macroNote } from '../deskUi';
 import ChartModal from '../components/ChartModal';
+import CapitalPanel from '../components/CapitalPanel';
 import { CloseControl } from '../components/LiveParts';
 
 // Helper: API giusta per portfolio
@@ -244,6 +245,8 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
           <span style={{ color: '#64748b' }}>Oggi <strong style={{ color: pnlColor(status.day_pnl) }}>{signed(status.day_pnl)}$</strong></span>
         </div>
       </Card>
+
+      <CapitalPanel portfolio={portfolio} />
 
       {/* KPI secondari */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
