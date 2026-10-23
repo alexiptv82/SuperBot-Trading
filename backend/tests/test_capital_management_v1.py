@@ -93,7 +93,7 @@ def test_manual_withdraw_only_paper_and_balanced_journal():
                            expected_revision=2,paper_mode=True)
     assert result.state.balance==70 and result.cash_delta==50
     rec=journal_record(result,bot="hawk",previous_revision=2,account_cash_before=900)
-    assert rec["cash_after"]=="950" and rec["vault"]["balance"]=="70"
+    assert Decimal(rec["cash_after"])==950 and Decimal(rec["vault"]["balance"])==70
     with pytest.raises(CapitalInvariantError):
         manual_withdraw(vault,30,event_id="X",expected_revision=2,paper_mode=False)
     with pytest.raises(CapitalInvariantError):
@@ -140,3 +140,42 @@ def test_validation_rejects_bad_numbers():
     with pytest.raises(CapitalInvariantError):
         rollover(VaultState(),utc_day="2026-10-24",equity=1120,cash=100,
                  committed_margin=0,unrealized=0)
+
+
+def test_idempotent_manual_withdrawal_receipt():
+    vault=VaultState(balance=Decimal("120"),revision=2)
+    first=manual_withdraw(vault,50,event_id="user:withdraw-A",
+                          expected_revision=2,paper_mode=True)
+    again=manual_withdraw(first.state,50,event_id="user:withdraw-A",
+                          expected_revision=2,paper_mode=True)
+    assert again.reason=="already_applied" and again.cash_delta==0
+    assert again.state==first.state
+    with pytest.raises(CapitalInvariantError):
+        manual_withdraw(first.state,60,event_id="user:withdraw-A",
+                        expected_revision=3,paper_mode=True)
+
+
+def test_manual_deposit_not_a_new_earned_surplus():
+    r=rollover(VaultState(),utc_day="2026-10-24",
+               equity=1050,cash=1050,committed_margin=0,unrealized=0,
+               excluded_external_funds=50)
+    assert r.cash_delta==0
+    assert r.state.balance==0 and r.state.pending_total==0
+    r2=rollover(VaultState(),utc_day="2026-10-24",
+                equity=1200,cash=1050,committed_margin=0,unrealized=150,
+                excluded_external_funds=50)
+    assert r2.cash_delta==0 and r2.state.pending_total==150
+
+
+def test_pending_close_idempotent_and_no_duplicate_claim_on_next_day():
+    start=rollover(VaultState(),utc_day="2026-10-24",
+                   equity=1150,cash=1000,committed_margin=0,unrealized=150)
+    nextday=rollover(start.state,utc_day="2026-10-25",
+                     equity=1150,cash=1000,committed_margin=0,unrealized=150)
+    assert nextday.state.pending_total==150
+    assert len(nextday.state.pending)==1
+    close=settle_pending(nextday.state,equity=1120,cash=1120,
+                         committed_margin=0,unrealized=0,event_id="close:abc")
+    again=settle_pending(close.state,equity=1120,cash=1000,
+                         committed_margin=0,unrealized=120,event_id="close:abc")
+    assert again.cash_delta==0 and again.state==close.state
