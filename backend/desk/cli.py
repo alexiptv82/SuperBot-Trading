@@ -1012,7 +1012,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             system_for_call = SYSTEM
             if snap.get("capital_v1"):
                 system_for_call += (
-                    "\\n\\nREGOLA DI CAPITALE V1 PAPER APPROVATA (sostituisce tutti i margini fissi "
+                    "\n\nREGOLA DI CAPITALE V1 PAPER APPROVATA (sostituisce tutti i margini fissi "
                     "menzionati nelle istruzioni sopra): budget operativo di inizio UTC "
                     f"${snap['day_budget']:.2f}; margine MASSIMO dell'INTERA posizione "
                     f"(ingresso+split+DCA) ${snap['max_margin_trade']:.2f} "
