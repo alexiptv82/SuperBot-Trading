@@ -1,0 +1,3 @@
+sha=bc8fcef49b72fbe692700147e692f78870097aff
+requested_date=2026-10-23
+reason=user_authorized_read_only_profit_evidence_audit_after_claude_review
