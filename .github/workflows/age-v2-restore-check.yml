@@ -1,0 +1,115 @@
+name: SuperBot age v2 - isolated encrypted backup and full restore proof
+
+# PAPER data only. This workflow NEVER deploys, restarts bots, or touches rule-pool.
+# Run only after SUPERBOT_AGE_RECOVERY_KEY_V2 was stored as an Actions secret.
+on:
+  workflow_dispatch:
+  push:
+    branches: [safety/pre-capital-rule-pool-after-backup-20261023]
+    paths:
+      - "deploy/extbackup/age-v2-restore.trigger"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superbot-age-v2-restore-isolated
+  cancel-in-progress: false
+
+jobs:
+  fresh-backup-and-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      AGE_RECOVERY_KEY_V2: ${{ secrets.SUPERBOT_AGE_RECOVERY_KEY_V2 }}
+      SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate preconditions, age key, and recipient (no secrets printed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AGE_RECOVERY_KEY_V2" || { echo "BLOCKED: missing SUPERBOT_AGE_RECOVERY_KEY_V2 secret"; exit 1; }
+          test -n "$SG_SSH_KEY" || { echo "BLOCKED: missing Singapore SSH secret"; exit 1; }
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          umask 077
+          printf '%s\n' "$AGE_RECOVERY_KEY_V2" > "$RUNNER_TEMP/age-v2-identity"
+          age-keygen -y "$RUNNER_TEMP/age-v2-identity" > "$RUNNER_TEMP/age-v2-derived-pub"
+          grep -v '^#' deploy/extbackup/recipient-v2.txt | grep -v '^$' > "$RUNNER_TEMP/age-v2-expected-pub"
+          cmp -s "$RUNNER_TEMP/age-v2-expected-pub" "$RUNNER_TEMP/age-v2-derived-pub" || {
+            echo "BLOCKED: stored private key does not match staged public recipient"; exit 1;
+          }
+          echo "AGE_V2_KEY_MATCH=PASS"
+
+      - name: Create fresh external backup with v2 recipient (no bot restart)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$SG_SSH_KEY" > "$RUNNER_TEMP/sg-ssh"
+          cat > "$RUNNER_TEMP/sg-known-hosts" <<'HOST'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOST
+          chmod 600 "$RUNNER_TEMP/sg-ssh" "$RUNNER_TEMP/sg-known-hosts"
+          SSHOPTS=(-i "$RUNNER_TEMP/sg-ssh" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/sg-known-hosts" -o ConnectTimeout=30)
+          ssh "${SSHOPTS[@]}" root@51.79.205.82 \
+            'mkdir -p /opt/superbot-tools-age-v2 /opt/superbot-extbackup/age-v2-once && chmod 700 /opt/superbot-tools-age-v2 /opt/superbot-extbackup/age-v2-once'
+          scp "${SSHOPTS[@]}" deploy/scripts/backup_app_db.py deploy/scripts/backup_brain.py \
+              deploy/scripts/external_backup.py root@51.79.205.82:/opt/superbot-tools-age-v2/
+          scp "${SSHOPTS[@]}" "$RUNNER_TEMP/age-v2-expected-pub" \
+              root@51.79.205.82:/opt/superbot-extbackup/age-v2-once/recipient.txt
+          ssh "${SSHOPTS[@]}" root@51.79.205.82 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          for P in hawk bull; do
+            docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P" | grep -qx 'DESK_MODE=paper' || {
+              echo "BLOCKED: bot $P is not PAPER"; exit 1;
+            }
+          done
+          python3 -I /opt/superbot-tools-age-v2/external_backup.py \
+            --root /opt/superbot-desk-data \
+            --app-db /opt/superbot/data/superbot.db \
+            --pool-db /opt/superbot-pool-data/pool.db \
+            --tools /opt/superbot-tools-age-v2 \
+            --work /opt/superbot-extbackup/age-v2-once \
+            --remote git@github.com:alexiptv82/superbot-backups.git \
+            --recipient-file /opt/superbot-extbackup/age-v2-once/recipient.txt \
+            --ssh-key /root/.ssh/superbot_backup_ed25519 \
+            --known-hosts /opt/superbot-extbackup/known_hosts \
+            --keep-recent 999 --keep-weeks 999 --keep-months 999
+          REMOTE
+          echo "AGE_V2_FRESH_ENCRYPTED_BACKUP=PASS"
+
+      - name: Retrieve encrypted archive only, decrypt and validate in isolated runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSHOPTS=(-i "$RUNNER_TEMP/sg-ssh" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/sg-known-hosts" -o ConnectTimeout=30)
+          NAME=$(ssh "${SSHOPTS[@]}" root@51.79.205.82 \
+            "python3 -I -c 'import json;print(json.load(open(\"/opt/superbot-extbackup/age-v2-once/status.json\"))[\"archivio\"])'")
+          [[ "$NAME" =~ ^superbot-backup-[0-9]{8}T[0-9]{6}Z\.tar\.gz\.age$ ]] || {
+            echo "BLOCKED: invalid archive filename"; exit 1;
+          }
+          STAMP=${NAME#superbot-backup-}
+          YEAR=${STAMP:0:4}
+          MONTH=${STAMP:4:2}
+          SRC="/opt/superbot-extbackup/age-v2-once/repo/archives/$YEAR/$MONTH"
+          MANIFEST="${NAME%.tar.gz.age}.manifest.json"
+          mkdir -p "$RUNNER_TEMP/encrypted"
+          scp "${SSHOPTS[@]}" "root@51.79.205.82:$SRC/$NAME" "$RUNNER_TEMP/encrypted/$NAME"
+          scp "${SSHOPTS[@]}" "root@51.79.205.82:$SRC/$MANIFEST" "$RUNNER_TEMP/encrypted/$MANIFEST"
+          python3 -I deploy/scripts/restore_external_backup.py \
+            --archive "$RUNNER_TEMP/encrypted/$NAME" \
+            --manifest "$RUNNER_TEMP/encrypted/$MANIFEST" \
+            --identity "$RUNNER_TEMP/age-v2-identity" \
+            --out "$RUNNER_TEMP/restored"
+          echo "AGE_V2_FULL_RESTORE=PASS"
+          echo "Restored and checked Hawk, Bull, trade history, learning logs, application and pool DB."
+
+      - name: Remove temporary secrets and decrypted content
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/age-v2-identity" "$RUNNER_TEMP/sg-ssh" "$RUNNER_TEMP/age-v2-derived-pub" || true
+          rm -rf "$RUNNER_TEMP/restored" "$RUNNER_TEMP/encrypted" || true
