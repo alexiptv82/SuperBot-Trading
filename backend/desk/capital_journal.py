@@ -103,6 +103,12 @@ class PaperCapitalJournal:
         # Never blindly overwrite an unrelated or more recent state.
         last = records[-1]
         h = _hash(state)
+        # Crash during fsynced temp->rename may leave an uncommitted tmp file.
+        # Verified journal is authoritative; never load/guess from the temp.
+        temp=self.state_path.with_name(self.state_path.name+".capital-v1-tmp")
+        if h in (last["pre_hash"],last["post_hash"]) and temp.exists():
+            temp.unlink()
+            _sync_directory(self.state_path.parent)
         if h == last["post_hash"]:
             return state
         if h == last["pre_hash"]:
