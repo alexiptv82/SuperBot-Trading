@@ -400,22 +400,59 @@ def daily_bars(symbol: str, now_ms: int):
     return arr
 
 
+def _capital_enabled() -> bool:
+    # Off by default. HARD PAPER-only gate; no real exchange movements.
+    return os.getenv("DESK_CAPITAL_V1", "").lower() == "paper" and not LIVE._live
+
+
+def _capital_journal():
+    from desk.capital_journal import PaperCapitalJournal
+    return PaperCapitalJournal(DATA_DIR, PORTFOLIO.name)
+
+
 def load_state(path: str) -> dict:
+    if _capital_enabled() and path == STATE_FILE and os.path.exists(_capital_journal().journal_path):
+        # Corrupt journal MUST fail closed, not silently recreate a $1000 account.
+        return _capital_journal().recover()
     if os.path.exists(path):
         try:
             with open(path) as f:
                 return json.load(f)
         except Exception:
-            pass
+            if _capital_enabled() and path == STATE_FILE:
+                raise
     return {}
 
 
 def save_state(state: dict, path: str) -> None:
+    if _capital_enabled() and path == STATE_FILE and (state.get("capital") or {}).get("schema_version")==1:
+        from desk.capital_manager import dec
+        disk=_capital_journal().recover()
+        if disk == state:
+            return
+        before=disk.get("capital") or {}
+        after=state["capital"]
+        old_v=dec((before.get("vault") or {}).get("balance",0))
+        new_v=dec((after.get("vault") or {}).get("balance",0))
+        if old_v != new_v:
+            if (before.get("day") or {}).get("utc_day") != (after.get("day") or {}).get("utc_day"):
+                kind="rollover"
+            elif len(after.get("receipts") or {}) > len(before.get("receipts") or {}):
+                kind="withdraw"
+            else:
+                kind="settle"
+            event_id=f"capital:{kind}:{time.time_ns()}"
+        else:
+            event_id=f"snapshot:{time.time_ns()}"
+        result=_capital_journal().commit_snapshot(state,event_id=event_id)
+        state.clear()
+        state.update(result)
+        return
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(state, f, default=str)
-    os.replace(tmp, path)
+    tmp=path+".tmp"
+    with open(tmp,"w") as f:
+        json.dump(state,f,default=str)
+    os.replace(tmp,path)
 
 
 def load_lessons() -> str:
