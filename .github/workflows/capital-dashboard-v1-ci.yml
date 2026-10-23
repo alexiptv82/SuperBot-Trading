@@ -1,0 +1,50 @@
+name: Capital Dashboard V1 - offline app tests (no deploy)
+on:
+  push:
+    branches: [work/capital-dashboard-v1]
+    paths:
+      - "backend/capital_view.py"
+      - "backend/desk_api.py"
+      - "backend/tests/test_capital_view_v1.py"
+      - "frontend/src/**"
+      - ".github/workflows/capital-dashboard-v1-ci.yml"
+permissions:
+  contents: read
+jobs:
+  backend_tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install isolated pytest
+        run: python -m pip install pytest==8.4.2
+      - name: Compile modified app code
+        run: python -m py_compile backend/capital_view.py backend/desk_api.py backend/tests/test_capital_view_v1.py
+      - name: Synthetic app status and queue test
+        env:
+          PYTHONPATH: backend
+          DESK_MODE: paper
+        run: python -m pytest -q backend/tests/test_capital_view_v1.py
+  frontend_build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install dependencies without modifying lock file
+        working-directory: frontend
+        run: |
+          corepack enable
+          yarn install --frozen-lockfile --non-interactive
+      - name: React production build (no deploy)
+        working-directory: frontend
+        env:
+          CI: "true"
+        run: yarn build
