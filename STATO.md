@@ -259,3 +259,9 @@ diario/2026-10-22_consegna-serale-per-claude_chatgpt.md.
 - Prerequisiti: review Claude, definizione ROI/DCA comune, decisioni B e budget, acquisizione OHLC/snapshot, runtime-ledger/provenienza, conferma nuova baseline. Un solo deploy dei fix approvati PRIMA di S, poi baseline aggiornata; cambio versione fra S/F invalida coorte.
 - Python locale 3.12.14; py_compile, YAML/bash del nuovo workflow e diff check passati. Nessuna CI 3.11 attestata.
 - Nessun merge, trigger, deploy, installazione, run VPS o chiamata API modello. Rete usata solo per lettura repository/fonti e candele pubbliche per mirror; nessun dato grezzo pubblicato. Installazione ombra solo con OK esplicito successivo.
+
+
+## 23/10/2026 — Audit VPS autorizzato dopo review Claude
+
+Alessandro riferisce approvazione Claude dei quattro rami e autorizza esplicitamente il merge del solo work/profit-audit-readonly bc8fcef49b72fbe692700147e692f78870097aff e il trigger desk-profit-review-audit.yml. Nessun deploy o modifica bot. Gli altri tre rami restano proposte non unite; Step 6 draft, nessuna data S.
+Verificati quattro soli file audit in diff, 14 test e py_compile passati; nessuna run operativa concorrente nelle ultime run lette. Avvio previsto sulla finestra UTC [2026-10-21T22:00Z, 2026-10-22T22:00Z), con runtime osservato separatamente. Risultati e invarianza ancora da verificare.
