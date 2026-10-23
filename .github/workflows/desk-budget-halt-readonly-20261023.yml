@@ -1,0 +1,117 @@
+name: Read-only paper budget reset and account halt diagnosis
+on:
+  push:
+    branches: [work/budget-halt-readonly-20261023]
+    paths: [".github/workflows/desk-budget-halt-readonly-20261023.yml"]
+permissions:
+  contents: read
+jobs:
+  readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect read-only budget flags, state, risk halt and recent redacted logs
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 150s
+          script: |
+            set -eu
+            python3 -I - <<'PY'
+            import datetime, json, os, re, subprocess, time
+            root = "/opt/superbot-desk-data"
+            now = time.time()
+            today = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).strftime("%Y-%m-%d")
+            print("CHECK_UTC="+datetime.datetime.fromtimestamp(now, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), flush=True)
+            def load(p):
+                try:
+                    with open(p, encoding="utf-8") as f:
+                        d = json.load(f)
+                    return d if isinstance(d, dict) else {}
+                except Exception as e:
+                    print("READ_ERROR="+type(e).__name__)
+                    return {}
+            def loglines(name, window="4h"):
+                # The full content stays in memory. Never print raw log lines, prices, account balances, keys or text.
+                r=subprocess.run(["docker","logs","--timestamps","--since",window,name],capture_output=True,text=True,timeout=40)
+                return (r.stdout+"\n"+r.stderr).splitlines() if r.returncode == 0 else []
+            def status(name):
+                p=subprocess.run(["docker","inspect","--format","{{.State.Status}}",name],capture_output=True,text=True,timeout=10)
+                return p.stdout.strip() if p.returncode==0 else "NOT_FOUND"
+            print("APP_CONTAINER_STATUS="+status("superbot"))
+            try:
+                a=subprocess.run(["docker","inspect","superbot"],capture_output=True,text=True,timeout=10)
+                obj=json.loads(a.stdout)[0] if a.returncode==0 else {}
+                mounts=[m.get("Source","") for m in obj.get("Mounts",[])]
+                env=obj.get("Config",{}).get("Env",[])
+                hawk=next((v.split("=",1)[1] for v in env if v.startswith("DESK_DATA_DIR=")), "")
+                bull=next((v.split("=",1)[1] for v in env if v.startswith("DESK_DATA_DIR_BULL=")), "")
+                print("APP_MOUNT_HAWK="+str(any(v=="/opt/superbot-desk-data/hawk" for v in mounts)))
+                print("APP_MOUNT_BULL="+str(any(v=="/opt/superbot-desk-data/bull" for v in mounts)))
+                print("APP_DATA_DIR_HAWK_KNOWN="+str(hawk in ("/opt/superbot-desk-data/hawk","/app/data/desk/hawk")))
+                print("APP_DATA_DIR_BULL_KNOWN="+str(bull in ("/opt/superbot-desk-data/bull","/app/data/desk/bull")))
+            except Exception as e:
+                print("APP_MOUNT_CHECK_ERROR="+type(e).__name__)
+            app_logs=loglines("superbot")
+            for p in ("hawk","bull"):
+                prefix="/api/desk/reset-budget" if p=="hawk" else "/api/desk/bull/reset-budget"
+                req=[x for x in app_logs if "POST " in x and prefix in x]
+                statuses={}
+                for x in req:
+                    m=re.search(r'HTTP/[0-9.]+"?\s+(\d{3})',x)
+                    k=m.group(1) if m else "unknown"
+                    statuses[k]=statuses.get(k,0)+1
+                print("APP_POST_RESET_"+p.upper()+"_COUNT="+str(len(req))+" HTTP_STATUS_COUNTS="+str(statuses),flush=True)
+            for p in ("hawk","bull"):
+                d=os.path.join(root,p)
+                s=load(d+"/state_v2.json")
+                hb=load(d+"/heartbeat.json")
+                acc=s.get("main") or {}
+                lim=acc.get("limits") or {}
+                b=s.get("budget") or {}
+                px=s.get("last_prices") or {}
+                pos=acc.get("positions") or {}
+                try:
+                    cash=float(acc.get("cash") or 0)
+                    msum=sum(float(v.get("total_margin",v.get("margin",0))) for v in pos.values())
+                    ur=sum(int(v.get("side",0))*(float(px.get(sym,v.get("entry",0)))-float(v.get("entry",0)))*float(v.get("qty",0)) for sym,v in pos.items())
+                    eq=cash+msum+ur
+                    ds=float(acc.get("day_start_equity") or 0)
+                    stop=float(lim.get("daily_stop") or 0)
+                    dd=(1-eq/ds)*100 if ds>0 else None
+                    halt="daily_stop" if ds>0 and eq<=ds*(1-stop) else "kill_equity" if eq<=float(lim.get("kill_equity") or 0) else "none"
+                    print(p.upper()+"_ACCOUNT: day="+str(acc.get("day",""))+
+                          " day_utc_matches="+str(acc.get("day")==today)+
+                          " open_count="+str(len(pos))+
+                          " drawdown_from_day_start_pct="+str(round(dd,2) if dd is not None else "NA")+
+                          " daily_stop_pct="+str(round(stop*100,2))+
+                          " account_halt="+halt,flush=True)
+                except Exception as e:
+                    print(p.upper()+"_ACCOUNT_RECONSTRUCTION_ERROR="+type(e).__name__)
+                print(p.upper()+"_BUDGET: day="+str(b.get("day",""))+
+                      " today="+str(b.get("day")==today)+
+                      " spent_usd="+str(round(float(b.get("spent") or 0),5))+
+                      " calls="+str(b.get("calls"))+
+                      " flag_pending="+str(os.path.exists(d+"/budget_reset.flag"))+
+                      " last_action_type="+str((s.get("last_action") or {}).get("type"))+
+                      " hb_version="+str(hb.get("version"))+
+                      " hb_exec_mode="+str(hb.get("exec_mode"))+
+                      " hb_age_seconds="+str(round(now-float(hb.get("ts") or 0),1))+
+                      " container="+status("superbot-desk-"+p),flush=True)
+                ls=loglines("superbot-desk-"+p)
+                success=[x for x in ls if "[BUDGET_RESET]" in x]
+                error=[x for x in ls if "[BUDGET_RESET ERROR]" in x]
+                halt=[x for x in ls if "[HALT] stop giornaliero raggiunto" in x]
+                def last_ts(seq):
+                    if not seq:return "none"
+                    m=re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)",seq[-1])
+                    return m.group(1)+"Z" if m else "unavailable"
+                print(p.upper()+"_LOG_4H: reset_success_count="+str(len(success))+
+                      " reset_last_utc="+last_ts(success)+
+                      " reset_error_count="+str(len(error))+
+                      " halt_count="+str(len(halt)),flush=True)
+            print("READONLY_DIAG_DONE",flush=True)
+            PY
