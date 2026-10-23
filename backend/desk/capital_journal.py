@@ -113,6 +113,56 @@ class PaperCapitalJournal:
             return new
         raise CapitalInvariantError("account state diverges from durable journal")
 
+    def commit_snapshot(self, state_after: Mapping, *, event_id: str, paper_mode: bool = True) -> dict:
+        """Atomic journal+snapshot for every bot state mutation (trades included).
+
+        One running PAPER bot is the exclusive writer. Each persisted state is
+        journaled, so a trade cannot race ahead of a vault transfer on disk.
+        A money transfer must conserve cash+vault, and cannot alter positions.
+        """
+        if not paper_mode:
+            raise CapitalInvariantError("journal V1 is PAPER-only")
+        if not isinstance(state_after, dict) or not event_id or len(event_id) > 128:
+            raise CapitalInvariantError("invalid transaction")
+        before = self.recover()
+        previous = (before.get("capital") or {})
+        after = copy.deepcopy(dict(state_after))
+        capital = after.get("capital")
+        if not isinstance(capital, dict) or capital.get("schema_version") != 1:
+            raise CapitalInvariantError("missing capital schema")
+        previous_revision = int(previous.get("revision", 0))
+        capital["revision"] = previous_revision + 1
+        after["capital"] = capital
+        old_v = dec((previous.get("vault") or {}).get("balance", 0))
+        new_v = dec((capital.get("vault") or {}).get("balance", 0))
+        old_main, new_main = before.get("main") or {}, after.get("main") or {}
+        if new_v != old_v:
+            if not event_id.startswith(("capital:rollover:", "capital:settle:", "capital:withdraw:")):
+                raise CapitalInvariantError("vault balance changed outside authorized transfer")
+            old_cash = dec(old_main.get("cash", 0))
+            new_cash = dec(new_main.get("cash", 0))
+            if new_cash - old_cash != -(new_v - old_v):
+                raise CapitalInvariantError("transfer violates cash + vault conservation")
+            if old_main.get("positions") != new_main.get("positions") or old_main.get("closed") != new_main.get("closed"):
+                raise CapitalInvariantError("transfer mutated trade state")
+        records = self._records()
+        if any(rec.get("event_id") == event_id for rec in records):
+            raise CapitalInvariantError("duplicate event: explicit receipt required")
+        event = {"schema": 1, "bot": self.bot, "event_id": event_id,
+                 "revision_from": previous_revision, "revision_to": previous_revision + 1,
+                 "prev_hash": records[-1]["checksum"] if records else "GENESIS",
+                 "pre_hash": _hash(before), "post_hash": _hash(after),
+                 "post_state": after}
+        event["checksum"] = _hash(event)
+        self.root.mkdir(parents=True, exist_ok=True)
+        with self.journal_path.open("ab") as fp:
+            fp.write(_canonical(event) + b"\\n")
+            fp.flush()
+            os.fsync(fp.fileno())
+        _sync_directory(self.root)
+        _replace_json(self.state_path, after)
+        return after
+
     def commit(self, state_before: Mapping, state_after: Mapping,
                *, event_id: str, expected_revision: int) -> dict:
         if not event_id or len(event_id) > 128 or any(c.isspace() for c in event_id):
