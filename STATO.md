@@ -34,5 +34,10 @@
 - Cronologia per giorno/autore: `diario/YYYY-MM-DD_*.md`.
 - Storico della vecchia pagina STATO: `ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md`.
 
+## IMPLEMENTAZIONE WIP — chat normale (23/10, no deploy)
+- Dopo il controllo, Work risultava fermo alla specifica. Creati rami `work/capital-management-v1` (baseline f87f2d6, WIP `a1f2e4f`) e `work/capital-dashboard-v1` (base main 1cdfd6a, WIP `e65f16e`).
+- Capital/Vault/Sizer/journal **prototipi** + engine opt-in; app API/status/prelievo in coda con fallimento sicuro + pannello invisibile finché bot non segnala `capital_v1` e contabilità READY. CI bot 39941245956 pass (29 nuovi test), CI app 39940918023 pass (backend + React). Nuova suite base bot 39941386448 ancora da verificare.
+- **Non deployabile:** transazione comune tra tutti writer del conto e vault, rollover UTC, connessione CLI, ACK e migrazione non ancora integrati. `CAPITAL-V1-WIP-REVIEW.md` sul ramo bot elenca le attività bloccanti. Nessun merge, deploy o nuova versione runtime.
+
 ## Ultimo checkpoint
 23/10 ore circa 12:28 Roma: l'utente torna da Work per limiti di uso, gira qui il prompt autorizzativo A/B/C e chiede di riprendere. Check GitHub: Work ha pubblicato la sola specifica tecnica e l'owner; non risultano rami capital-management/dashboard, PR né test implementazione. La chat normale subentra come writer unico, per rami separati da runtime/main; nessun deploy autorizzato, baseline runtime f87f2d6 invariata.
