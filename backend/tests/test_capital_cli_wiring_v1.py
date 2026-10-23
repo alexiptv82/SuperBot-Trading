@@ -119,3 +119,66 @@ def test_recovery_from_interrupted_temp_rename(tmp_path,monkeypatch):
     temp.write_text("{partial")
     assert cli.load_state(cli.STATE_FILE)==st
     assert not temp.exists()
+
+def test_history_outbox_crash_between_sidecars_recovers_without_duplicates(tmp_path,monkeypatch):
+    configure(monkeypatch,tmp_path)
+    st=cli.load_state(cli.STATE_FILE)
+    st["capital"]=initial_capital(st["main"],
+                                  datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    cli.save_state(st,cli.STATE_FILE)
+    event={"id":11,"close_ms":int(time.time()*1000),"margin":70,"net":15,
+           "symbol":"ETH","reason":"synthetic crash"}
+    cli.record_close(st,event)
+    original=cli._append_close_once
+
+    def crash_after_first_sidecar(path,record,event_id):
+        if path.endswith("learning_log.jsonl"):
+            raise OSError("simulated crash between two outbox deliveries")
+        return original(path,record,event_id)
+
+    monkeypatch.setattr(cli,"_append_close_once",crash_after_first_sidecar)
+    with pytest.raises(OSError,match="simulated crash"):
+        cli.save_state(st,cli.STATE_FILE)
+    th=tmp_path/"trade_history.jsonl"
+    lh=tmp_path/"learning_log.jsonl"
+    assert len(th.read_text().splitlines())==1
+    assert not lh.exists()
+    # Restart restores the durable journaled outbox, never a guessed state.
+    recovered=cli.load_state(cli.STATE_FILE)
+    assert len(recovered["capital"]["close_outbox"])==1
+    monkeypatch.setattr(cli,"_append_close_once",original)
+    cli._flush_capital_close_outbox(recovered)
+    assert len(th.read_text().splitlines())==1
+    assert len(lh.read_text().splitlines())==1
+    assert not cli.load_state(cli.STATE_FILE)["capital"]["close_outbox"]
+
+
+def test_history_outbox_refuses_corrupt_tail_even_when_event_was_delivered(tmp_path,monkeypatch):
+    configure(monkeypatch,tmp_path)
+    st=cli.load_state(cli.STATE_FILE)
+    st["capital"]=initial_capital(st["main"],
+                                  datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    cli.save_state(st,cli.STATE_FILE)
+    event={"id":12,"close_ms":int(time.time()*1000),"margin":80,"net":7,
+           "symbol":"BTC","reason":"synthetic close"}
+    cli.record_close(st,event)
+    cli.save_state(st,cli.STATE_FILE)
+    th=tmp_path/"trade_history.jsonl"
+    with th.open("ab") as fp:
+        fp.write(b'{"incomplete":')
+    original=th.read_bytes()
+    cli.record_close(st,event)
+    with pytest.raises(CapitalInvariantError,match="truncated historical JSONL"):
+        cli.save_state(st,cli.STATE_FILE)
+    assert th.read_bytes()==original
+    # Journal preserves the pending outbox for safe manual recovery.
+    assert len(cli.load_state(cli.STATE_FILE)["capital"]["close_outbox"])==1
+
+
+def test_history_outbox_refuses_malformed_complete_jsonl(tmp_path,monkeypatch):
+    configure(monkeypatch,tmp_path)
+    th=tmp_path/"trade_history.jsonl"
+    th.write_bytes(b'{"malformed"\n')
+    with pytest.raises(CapitalInvariantError,match="corrupted historical JSONL"):
+        cli._append_close_once(str(th),{"capital_event_id":"event"},"event")
+    assert th.read_bytes()==b'{"malformed"\n'
