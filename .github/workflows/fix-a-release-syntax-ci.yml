@@ -1,0 +1,44 @@
+name: Verify isolated Fix A release script (no SSH and no deploy)
+on:
+  push:
+    branches:
+      - work/fix-a-release-verification-20261023
+    paths:
+      - ".github/workflows/fix-a-release-syntax-ci.yml"
+permissions:
+  contents: read
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install YAML parser
+        run: python -m pip install pyyaml
+      - name: Validate one-off release workflow syntax and safeguards (no server)
+        run: |
+          python - <<'PY'
+          import yaml, subprocess
+          from pathlib import Path
+          s=Path(".github/workflows/desk-fix-a-isolated-deploy.yml").read_text()
+          wf=yaml.safe_load(s)
+          on=wf.get('on',wf.get(True))
+          assert on['push']['branches']==['rule-pool'], on
+          assert on['push']['paths']==['deploy/desk-fix-a-isolated.trigger'], on
+          assert wf['concurrency']['group']=='superbot-desk-singapore'
+          steps=wf['jobs']['deploy']['steps']
+          version=next(x for x in steps if x.get('id')=='approved')['run']
+          assert 'f87f2d63c5849b177dbd33ee43c5be05ca58c8ed' in version
+          assert 'CANDIDATE_ALLOWLIST=PASS' in version
+          ssh=next(x for x in steps if x.get('uses','').startswith('appleboy/ssh-action@'))
+          script=ssh['with']['script']
+          for guard in ('DEPLOY_BLOCKED=runtime_version_changed','DEPLOY_BLOCKED=runtime_source_mismatch','PAPER_AND_RISK_ENVIRONMENT=PASS','RUNTIME_BASELINE_SOURCE=PASS','PAPER_AFTER_DEPLOY=PASS','DEPLOY OK:'):
+              assert guard in script,guard
+          for item in [version,script]:
+              p=subprocess.run(['bash','-n'],input=item,text=True,capture_output=True)
+              assert p.returncode==0,p.stderr
+          assert not Path('deploy/desk-fix-a-isolated.trigger').exists()
+          print('CI release syntax & guards PASS; no SSH, no trigger, no deploy')
+          PY
