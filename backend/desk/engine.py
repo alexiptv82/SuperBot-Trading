@@ -123,6 +123,41 @@ class PaperAccount:
         # eventi prodotti dal motore (seconda gamba eseguita/annullata): li legge e svuota cli.py.
         # Non fanno parte dello stato salvato.
         self.events: list = []
+        # V1 percentage policies are opt-in: legacy accounts behave identically until
+        # a validated PAPER capital-day snapshot enables them.
+        self._capital_bot = None
+        self._capital_day_budget = None
+        self._capital_reference = None
+
+    def set_capital_policy(self, bot: str, day_budget, reference=None) -> None:
+        from .position_sizer import cap_for
+        self._capital_day_budget = float(day_budget)
+        cap_for(bot, self._capital_day_budget)  # checks bot, finite, 0..1000
+        self._capital_bot = bot
+        self._capital_reference = reference
+
+    def _capital_size(self, symbol: str, proposed: float, lev: int,
+                      *, new_position: bool, release_split: bool = False):
+        if self._capital_day_budget is None:
+            return None
+        from .position_sizer import size_request
+        total = 0.0
+        for k, p in self.positions.items():
+            total += p.total_margin
+            if p.pending_split and not (k == symbol and release_split):
+                total += float(p.pending_split.get("margin", 0))
+        own = self.positions.get(symbol)
+        own_margin = own.total_margin if own else 0.0
+        own_pending = (float(own.pending_split.get("margin", 0)) if own and own.pending_split
+                       and not release_split else 0.0)
+        return size_request(bot=self._capital_bot, day_budget=self._capital_day_budget,
+                            already_in_position=own_margin,
+                            pending_same_position=own_pending,
+                            total_committed_margin=total, available_cash=self.cash,
+                            reserved_cash=0, request=proposed,
+                            minimum_executable=self.limits.min_margin,
+                            fee_fraction=lev * self.limits.fee_bp_side / 10000,
+                            n_open=len(self.positions), is_new=new_position)
 
     def margin_in_use(self) -> float:
         return sum(p.total_margin for p in self.positions.values())
@@ -139,6 +174,14 @@ class PaperAccount:
 
     def halted(self, prices: dict) -> str:
         eq = self.equity(prices)
+        if self._capital_reference is not None:
+            from .capital_manager import risk_view
+            view = risk_view(self._capital_reference, eq, kill_equity=self.limits.kill_equity)
+            if view.reason == "kill_equity":
+                return "capitale sotto la soglia minima"
+            if view.stop_latched:
+                return "stop giornaliero raggiunto"
+            return ""
         if eq <= self.limits.kill_equity:
             return "capitale sotto la soglia minima"
         if eq <= self.day_start_equity * (1 - self.limits.daily_stop):
@@ -174,6 +217,11 @@ class PaperAccount:
         lev = int(max(1, min(int(leverage), tier_max)))
         room = min(L.max_margin_trade, L.max_margin_total - self.margin_in_use(), self.cash * 0.95)
         mar = min(float(margin), room)
+        gate = self._capital_size(symbol, mar, lev, new_position=True)
+        if gate is not None:
+            if not gate.approved:
+                return None, "capitale percentuale: " + gate.reason
+            mar = float(gate.amount)
         if mar < L.min_margin:
             return None, "margine disponibile troppo basso"
         fill = price * (1 + side * L.slip_bp_side / 1e4)
@@ -248,6 +296,12 @@ class PaperAccount:
             dca_mar = L.max_dca_total - pos.total_margin
         if dca_mar < L.min_margin:
             return None, "tetto DCA raggiunto"
+        gate = self._capital_size(symbol, dca_mar, pos.leverage,
+                                  new_position=False, release_split=True)
+        if gate is not None:
+            if not gate.approved:
+                return None, "capitale percentuale DCA: " + gate.reason
+            dca_mar = float(gate.amount)
         if dca_mar > self.cash * 0.95:
             return None, "cassa insufficiente per DCA"
         fill = px * (1 + pos.side * L.slip_bp_side / 1e4)
@@ -306,6 +360,13 @@ class PaperAccount:
         room = min(L.max_margin_trade - pos.total_margin, L.max_margin_total - self.margin_in_use(),
                    self.cash * 0.95)
         mar = min(float(ps["margin"]), room)
+        gate = self._capital_size(pos.symbol, mar, pos.leverage, new_position=False)
+        if gate is not None:
+            if not gate.approved:
+                self.events.append({"ev": "split_cancel", "id": pos.id, "symbol": pos.symbol,
+                                    "ts": now_ms, "reason": "capitale percentuale: " + gate.reason})
+                return None
+            mar = float(gate.amount)
         trig = float(ps["trigger"])
         fill = trig * (1 + pos.side * L.slip_bp_side / 1e4)
         notional = mar * pos.leverage
