@@ -83,3 +83,39 @@ def test_cli_recover_corrupt_journal_fails_closed(tmp_path,monkeypatch):
     with pytest.raises(CapitalInvariantError):
         cli.load_state(cli.STATE_FILE)
     assert (tmp_path/"state_v2.json").exists()
+
+
+def test_close_history_outbox_is_durable_idempotent(tmp_path,monkeypatch):
+    configure(monkeypatch,tmp_path)
+    st=cli.load_state(cli.STATE_FILE)
+    st["capital"]=initial_capital(st["main"],
+                                   datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    cli.save_state(st,cli.STATE_FILE)
+    event={"id":3,"close_ms":int(time.time()*1000),"margin":70,"net":15,
+           "symbol":"BTC","reason":"synthetic stop"}
+    cli.record_close(st,event)
+    assert len(st["capital"]["close_outbox"])==1
+    cli.save_state(st,cli.STATE_FILE)
+    assert st["capital"]["close_outbox"]==[]
+    th=tmp_path/"trade_history.jsonl"
+    lh=tmp_path/"learning_log.jsonl"
+    assert len(th.read_text().splitlines())==1
+    assert len(lh.read_text().splitlines())==1
+    cli.record_close(st,event)  # a repeated delivery cannot duplicate sidecars
+    cli.save_state(st,cli.STATE_FILE)
+    assert len(th.read_text().splitlines())==1
+    assert len(lh.read_text().splitlines())==1
+    assert cli.load_state(cli.STATE_FILE)==st
+
+
+def test_recovery_from_interrupted_temp_rename(tmp_path,monkeypatch):
+    base=configure(monkeypatch,tmp_path)
+    st=copy.deepcopy(base)
+    st["capital"]=initial_capital(st["main"],
+                                   datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    cli.save_state(st,cli.STATE_FILE)
+    (tmp_path/"state_v2.json").write_bytes(_canonical(base)+b"\\n")
+    temp=tmp_path/"state_v2.json.capital-v1-tmp"
+    temp.write_text("{partial")
+    assert cli.load_state(cli.STATE_FILE)==st
+    assert not temp.exists()
