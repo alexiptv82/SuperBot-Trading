@@ -1808,6 +1808,13 @@ def _process_vault_request(state: dict) -> bool:
         try:
             receipt=withdraw_request(state,request,bot=PORTFOLIO.name)
         except (CapitalInvariantError,KeyError,ValueError,TypeError) as e:
+            # An ID reused with different amount cannot rewrite the original
+            # successful receipt: preserve the journal's historical truth.
+            existing=(state["capital"].get("receipts") or {}).get(key)
+            if existing:
+                print("[CAPITAL] richiesta con ID esistente rifiutata, ACK originale intatto",flush=True)
+                os.unlink(path)
+                return False
             receipt={"status":"rejected","amount":str(request.get("amount",0)),
                      "reason":type(e).__name__}
             state["capital"].setdefault("receipts",{})[key]=receipt
