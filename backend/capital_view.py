@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import time
 
 EVENT_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 REQUEST_FILE = "vault_transfer_request.json"
@@ -74,9 +75,15 @@ def status(data_dir, portfolio):
     actual=money(acc.get("cash",0))+sum((money(x.get("total_margin",0)) for x in
                                          (acc.get("positions") or {}).values()),Decimal("0"))
     unrealized=money((capital.get("valuation") or {}).get("unrealized",0))
-    # Only mark actual equity as trusted if valuation is declared fresh by the bot.
+    # Only the bot may declare valuation fresh. For open positions this must
+    # also be a recent timestamp; an old 30-minute candle is not "live".
     val=capital.get("valuation") or {}
-    is_fresh=val.get("fresh") is True
+    has_positions=bool(acc.get("positions"))
+    try:
+        age_ms=int(time.time()*1000)-int(val.get("valuation_ms",0))
+    except (ValueError,TypeError):
+        age_ms=999999999
+    is_fresh=(not has_positions) or (val.get("fresh") is True and 0<=age_ms<=120000)
     equity=actual+unrealized if is_fresh else None
     return {"available":True,"portfolio":portfolio,"ready":True,
             "version":hb.get("version"),"revision":capital.get("revision"),
