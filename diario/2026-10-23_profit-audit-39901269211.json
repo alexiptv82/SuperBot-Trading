@@ -1,0 +1,226 @@
+{
+  "ai_shadow": {
+    "applied_to_bots": false,
+    "called": 96,
+    "closed_rows": 11,
+    "contribution_to_hawk_bull": "none_by_architecture",
+    "cycles": 96,
+    "virtual_fills_by_side": {
+      "long": 14
+    },
+    "virtual_management_events": {
+      "exit": 11,
+      "stop_spostato": 5
+    },
+    "winning_closed_rows": 0
+  },
+  "applied": false,
+  "bot_container_invariance": "PASS",
+  "bots": {
+    "bull": {
+      "budget_block_start_ms": null,
+      "call_opportunities_per_position_bands": {
+        "0": 13,
+        "2_plus": 2
+      },
+      "causal_budget_reason": "historical_skip_and_per_position_review_log_missing",
+      "claude_calls": 17,
+      "claude_calls_parsed": 17,
+      "current_above50_and_below_call_reserve_cooccurrence": 0,
+      "current_positions_roi_bands": {},
+      "current_positions_with_timestamp_matched_hold_lower_bound": 0,
+      "exact_historical_management_actions": null,
+      "exact_omitted_positions": null,
+      "exit_events_do_not_identify_decider": "source_on_close_is_entry_source",
+      "last_recorded_claude_call_ms": 1792644748122,
+      "no_review_caused_by_budget": null,
+      "opens": [
+        {
+          "bonus_evidence": {
+            "reconstructed_not_directly_logged": 14
+          },
+          "long_score_bands": {
+            "under_40": 14
+          },
+          "n": 14,
+          "nominal_bonus_reconstruction": {
+            "1_to_4": 12,
+            "5_to_9": 2
+          },
+          "short_score_bands": {
+            "63_to_70": 11,
+            "70_to_100": 3
+          },
+          "side": "short",
+          "source": "rules",
+          "version": "fa3e220"
+        }
+      ],
+      "positions_above_50_without_recorded_structured_claude_review": null,
+      "positions_active_during_window": 15,
+      "positions_observed_at_or_above_50pct": 3,
+      "recorded_exit_events_actor_unknown": {
+        "close": 9,
+        "partial": 2
+      },
+      "roi_definition": "sidecar_lifecycle_net_over_initial_plus_DCA_reference_margin",
+      "runtime_budget_band": "below_90pct",
+      "runtime_budget_day_matches_utc_today": true,
+      "runtime_calendar_allowed": true,
+      "runtime_mode": "running",
+      "runtime_observation_within_window": false,
+      "sidecar_checkpoint_bands": [
+        {
+          "decision": "DATI_NON_VALIDI",
+          "local_day_hour_offset": 15,
+          "n": 1,
+          "roi_band": "50_to_100"
+        },
+        {
+          "decision": "LASCIA_CORRERE",
+          "local_day_hour_offset": 10,
+          "n": 1,
+          "roi_band": "25_to_50"
+        },
+        {
+          "decision": "LASCIA_CORRERE",
+          "local_day_hour_offset": 15,
+          "n": 1,
+          "roi_band": "25_to_50"
+        },
+        {
+          "decision": "LASCIA_CORRERE",
+          "local_day_hour_offset": 18,
+          "n": 1,
+          "roi_band": "25_to_50"
+        },
+        {
+          "decision": "LASCIA_CORRERE",
+          "local_day_hour_offset": 5,
+          "n": 1,
+          "roi_band": "25_to_50"
+        },
+        {
+          "decision": "LASCIA_CORRERE",
+          "local_day_hour_offset": 9,
+          "n": 2,
+          "roi_band": "25_to_50"
+        }
+      ],
+      "sidecar_distinct_positions_by_roi_band": {
+        "0_to_25": 12,
+        "25_to_50": 6,
+        "50_to_100": 3,
+        "negative": 15
+      },
+      "unidentifiable_reason": "successful_per_position_decisions_not_persisted"
+    },
+    "hawk": {
+      "budget_block_start_ms": null,
+      "call_opportunities_per_position_bands": {
+        "0": 28,
+        "2_plus": 1
+      },
+      "causal_budget_reason": "historical_skip_and_per_position_review_log_missing",
+      "claude_calls": 13,
+      "claude_calls_parsed": 13,
+      "current_above50_and_below_call_reserve_cooccurrence": 0,
+      "current_positions_roi_bands": {},
+      "current_positions_with_timestamp_matched_hold_lower_bound": 0,
+      "exact_historical_management_actions": null,
+      "exact_omitted_positions": null,
+      "exit_events_do_not_identify_decider": "source_on_close_is_entry_source",
+      "last_recorded_claude_call_ms": 1792646432576,
+      "no_review_caused_by_budget": null,
+      "opens": [
+        {
+          "bonus_evidence": {
+            "reconstructed_not_directly_logged": 29
+          },
+          "long_score_bands": {
+            "under_40": 29
+          },
+          "n": 29,
+          "nominal_bonus_reconstruction": {
+            "1_to_4": 27,
+            "5_to_9": 2
+          },
+          "short_score_bands": {
+            "60_to_63": 1,
+            "63_to_70": 18,
+            "70_to_100": 10
+          },
+          "side": "short",
+          "source": "rules",
+          "version": "fa3e220"
+        }
+      ],
+      "positions_above_50_without_recorded_structured_claude_review": null,
+      "positions_active_during_window": 29,
+      "positions_observed_at_or_above_50pct": 2,
+      "recorded_exit_events_actor_unknown": {
+        "close": 19
+      },
+      "roi_definition": "sidecar_lifecycle_net_over_initial_plus_DCA_reference_margin",
+      "runtime_budget_band": "below_90pct",
+      "runtime_budget_day_matches_utc_today": true,
+      "runtime_calendar_allowed": true,
+      "runtime_mode": "running",
+      "runtime_observation_within_window": false,
+      "sidecar_checkpoint_bands": [
+        {
+          "decision": "LASCIA_CORRERE",
+          "local_day_hour_offset": 10,
+          "n": 3,
+          "roi_band": "25_to_50"
+        },
+        {
+          "decision": "LASCIA_CORRERE",
+          "local_day_hour_offset": 15,
+          "n": 1,
+          "roi_band": "25_to_50"
+        },
+        {
+          "decision": "LASCIA_CORRERE",
+          "local_day_hour_offset": 18,
+          "n": 3,
+          "roi_band": "25_to_50"
+        },
+        {
+          "decision": "LASCIA_CORRERE",
+          "local_day_hour_offset": 22,
+          "n": 1,
+          "roi_band": "25_to_50"
+        }
+      ],
+      "sidecar_distinct_positions_by_roi_band": {
+        "0_to_25": 18,
+        "25_to_50": 8,
+        "50_to_100": 2,
+        "negative": 29
+      },
+      "unidentifiable_reason": "successful_per_position_decisions_not_persisted"
+    }
+  },
+  "frozen_commit": "bc8fcef49b72fbe692700147e692f78870097aff",
+  "input_sha256": {
+    "ai_cycles_2026-10-21": "31db7bc5d709e13b64c8949be9ff704ef496b85175d1c1c320e45a33b97a5173",
+    "ai_cycles_2026-10-22": "ffcdc1c17e365460a0cccd2dffebdc48335b7301f7e4b426f2be854be8736114",
+    "ai_trades_2026-10-21": "92fade6496674ad0236f1a33eb7c62f2c0f3fa36d2bc86fc4e3cedadddf806a3",
+    "ai_trades_2026-10-22": "3256550e4ac5c8b49a639b1f01e32f0314f299f17d5f727447d8f28d517be698",
+    "bull_heartbeat.json": "f845b8bb013ea8b0a82d978bb9103a90ed226ed39e3105ed371540a884628cbb",
+    "bull_learning_log.jsonl": "882a8ff5d1f3282ce1f583ce0cbd2a04be94c51c42a645b44fbaa8454958c9ed",
+    "bull_sidecar_1": "27e4c8f4afb821fadea9176a2fd4ecd69184c18ad334cc4b3cc540e3d8ba4899",
+    "bull_state_v2.json": "7664cb1c8fa65cfd1dbb11f5bc7ce2cc0b421aeede26cb9b3a599030922579ef",
+    "hawk_heartbeat.json": "f02d8989ed7cd78aa8d3795af4a7e7afb8472346e81dfaab2478fd90c2550a0a",
+    "hawk_learning_log.jsonl": "973a0de189b9e2b820c93a366884e7f769514a8439249db00d9e7ce8f916e3a2",
+    "hawk_sidecar_1": "1300012024b32ed346a03f0219a00f4451bb58d4a3d8a0e1ae3fd89ab5c0d3e7",
+    "hawk_state_v2.json": "557ef8a3377548d818d924cce62f95f30f88a4679fe2f314c847109698c0f41b"
+  },
+  "missing_sources": [],
+  "observed_until_ms": 1792706400000,
+  "schema": 1,
+  "scope": "profit_review_evidence_aggregate_only",
+  "window_end_ms": 1792706400000,
+  "window_start_ms": 1792620000000
+}

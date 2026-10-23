@@ -33,7 +33,7 @@
 - `work/director-claude` HEAD: `40157c3` (Claude, non unire senza OK)
 - `work/director-chatgpt` HEAD: `4c1645e3` (Step 6 corretto, piano draft; attende review Claude, non unito)
 - `work/research-integrity` HEAD: `b229963` (ChatGPT, non unire)
-- `rule-pool` HEAD: `2b491cd` (trigger resoconto serale; non implica un nuovo deploy bot)
+- `rule-pool` HEAD: `8efc0a9` (audit profitto read-only unito e trigger eseguito; nessun nuovo deploy bot)
 
 ## Sequenza ricerca (ChatGPT → Claude)
 - [x] 1. Review codice — fatto
@@ -265,3 +265,12 @@ diario/2026-10-22_consegna-serale-per-claude_chatgpt.md.
 
 Alessandro riferisce approvazione Claude dei quattro rami e autorizza esplicitamente il merge del solo work/profit-audit-readonly bc8fcef49b72fbe692700147e692f78870097aff e il trigger desk-profit-review-audit.yml. Nessun deploy o modifica bot. Gli altri tre rami restano proposte non unite; Step 6 draft, nessuna data S.
 Verificati quattro soli file audit in diff, 14 test e py_compile passati; nessuna run operativa concorrente nelle ultime run lette. Avvio previsto sulla finestra UTC [2026-10-21T22:00Z, 2026-10-22T22:00Z), con runtime osservato separatamente. Risultati e invarianza ancora da verificare.
+
+
+## 23/10/2026 — Audit profitto eseguito con successo
+
+Run 39901269211 success; audit bc8fcef unito fast-forward, trigger 8efc0a9. PAPER prima/dopo e BOT_CONTAINER_INVARIANCE=PASS. Nessun deploy o modifica bot. 14 test passati anche su Actions.
+Giornata completa Roma 22/10: Hawk 29 e Bull 14 aperture, tutte short/rules/versione fa3e220. Score long sempre <40; bonus ricostruito da codice revisionato, non log diretto. Ultime chiamate Claude 07:20:32 Hawk e 06:52:28 Bull Roma; 28/29 posizioni Hawk e 13/15 Bull senza opportunita' di chiamata durante la vita registrata. Non sono conteggi di review effettive; causa budget non identificabile.
+Sidecar: 2 Hawk e 3 Bull osservate >=50% ROI; 14 checkpoint LASCIA_CORRERE in fascia 25–50, uno DATI_NON_VALIDI a 50–100, zero CHIUDI_O_PARZIALE. Applied=false. Conto AI separato: 96 chiamate, 14 fill long, 11 chiusure finali e zero righe vincenti nella finestra.
+Runtime 23/10 circa 06:37 Roma: entrambi running/PAPER, calendario allowed, budget <90% e zero posizioni nello snapshot coerente; non descrive il budget storico del 22/10. Dettagli e limiti in diario/2026-10-23_chatgpt.md, JSON aggregato diario/2026-10-23_profit-audit-39901269211.json. Nessuna fonte prevista mancante; snapshot/hash chain verificati.
+Restano all'utente fix B, allocazione budget DeepSeek e data S; gli altri rami non uniti, Step 6 draft.
