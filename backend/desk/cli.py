@@ -424,9 +424,18 @@ def _acquire_capital_writer_lock() -> None:
     _CAPITAL_WRITER_LOCK=fd
 
 
+_CAPITAL_JOURNAL_INSTANCE=None
+
+
 def _capital_journal():
+    global _CAPITAL_JOURNAL_INSTANCE
     from desk.capital_journal import PaperCapitalJournal
-    return PaperCapitalJournal(DATA_DIR, PORTFOLIO.name)
+    from pathlib import Path
+    if (_CAPITAL_JOURNAL_INSTANCE is None or
+            _CAPITAL_JOURNAL_INSTANCE.root != Path(DATA_DIR) or
+            _CAPITAL_JOURNAL_INSTANCE.bot != PORTFOLIO.name):
+        _CAPITAL_JOURNAL_INSTANCE=PaperCapitalJournal(DATA_DIR,PORTFOLIO.name)
+    return _CAPITAL_JOURNAL_INSTANCE
 
 
 def load_state(path: str) -> dict:
