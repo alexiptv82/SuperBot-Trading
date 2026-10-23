@@ -26,7 +26,7 @@
 
 ## PASSAGGIO Work / chat normale
 - Chat normale ha creato e pubblicato **solo documentazione** sul ramo `diario`: `SINCRONIZZAZIONE-WORK-CHAT.md`, `CAPITAL-MANAGEMENT-V1-HANDOFF.md`, questa fotografia e cronologia 23/10. Nessuna modifica ai bot.
-- **Prossimo passo:** quando l'utente apre Work, Work legge prima la fonte comune, conferma lo stato e aspetta istruzioni operative; può preparare implementazione solo dopo relativo OK. A fine checkpoint scrive su questo ramo i risultati per l'altra chat.
+- **Presa in carico Work (23/10):** letti LEGGIMI, STATO, protocollo di sincronizzazione, handoff Capital Management e ultime voci del diario al checkpoint `b1baf5552194aebdb59c92b776edccbca359a3e4`. Confermata la ripresa della sola progettazione; nessun autore di codice prenotato e nessuna implementazione avviata. Restano aperti i punti A/B/C del handoff; codice e deploy richiedono le rispettive autorizzazioni.
 - **Aggiornamento non continuo:** lo stato diventa visibile all'altra chat solo dopo il commit sul diario e una sua successiva lettura. Le chat inattive non si scambiano messaggi automaticamente.
 
 ## Riferimenti
