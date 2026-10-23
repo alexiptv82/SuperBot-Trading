@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -21,7 +23,7 @@ jobs:
       - name: Validate one-off release workflow syntax and safeguards (no server)
         run: |
           python - <<'PY'
-          import yaml, subprocess
+          import yaml, subprocess, tempfile, os
           from pathlib import Path
           s=Path(".github/workflows/desk-fix-a-isolated-deploy.yml").read_text()
           wf=yaml.safe_load(s)
@@ -41,5 +43,11 @@ jobs:
               p=subprocess.run(['bash','-n'],input=item,text=True,capture_output=True)
               assert p.returncode==0,p.stderr
           assert not Path('deploy/desk-fix-a-isolated.trigger').exists()
-          print('CI release syntax & guards PASS; no SSH, no trigger, no deploy')
+          with tempfile.NamedTemporaryFile() as out:
+              env=dict(os.environ, GITHUB_OUTPUT=out.name)
+              run=subprocess.run(['bash','-e','-c',version],env=env,capture_output=True,text=True)
+              assert run.returncode==0,run.stdout+run.stderr
+              assert 'CANDIDATE_ALLOWLIST=PASS' in run.stdout,run.stdout
+              assert 'sha=f87f2d63c5849b177dbd33ee43c5be05ca58c8ed' in open(out.name).read()
+          print('CI release syntax, actual candidate allowlist & guards PASS; no SSH, no trigger, no deploy')
           PY
