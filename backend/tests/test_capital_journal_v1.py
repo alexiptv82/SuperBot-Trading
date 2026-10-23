@@ -75,3 +75,33 @@ def test_journal_blocks_corruption_or_unrelated_state_change(tmp_path):
     (tmp_path/"capital-v1-journal.jsonl").write_text("garbage\n")
     with pytest.raises(CapitalInvariantError):
         j.recover()
+
+
+def test_capital_backup_requires_complete_journal(tmp_path):
+    """Legacy backups remain unchanged; V1 backups must contain a sound journal."""
+    import importlib.util
+    from pathlib import Path
+    script=Path(__file__).resolve().parents[2]/"deploy"/"scripts"/"backup_brain.py"
+    spec=importlib.util.spec_from_file_location("capital_backup_brain_test",script)
+    backup=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(backup)
+
+    root=tmp_path/"bots"
+    folder=root/"hawk"
+    folder.mkdir(parents=True)
+    for name in ("trade_history.jsonl","learning_log.jsonl"):
+        (folder/name).write_text("{}\\n".replace("\\n","\n"),encoding="utf8")
+    (folder/"lessons.md").write_text("unchanged",encoding="utf8")
+    snapshot={"main":{"cash":1000,"positions":{}},"capital":{"schema_version":1}}
+    (folder/"state_v2.json").write_text(json.dumps(snapshot),encoding="utf8")
+    assert "hawk/capital-v1-journal.jsonl" in backup.required_missing(str(root),["hawk"])
+    journal=folder/"capital-v1-journal.jsonl"
+    journal.write_text(json.dumps({"schema":1,"event_id":"test"})+"\n",encoding="utf8")
+    assert backup.required_missing(str(root),["hawk"])==[]
+    assert "capital-v1-journal.jsonl" in backup.CORE
+    journal.write_bytes(b'{"incomplete":')
+    assert "hawk/capital-v1-journal.jsonl (journal incompleto)" in backup.required_missing(str(root),["hawk"])
+    snapshot.pop("capital")
+    (folder/"state_v2.json").write_text(json.dumps(snapshot),encoding="utf8")
+    journal.unlink()
+    assert backup.required_missing(str(root),["hawk"])==[]
