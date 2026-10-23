@@ -156,6 +156,15 @@ class PaperAccount:
                        and not release_split else 0.0)
         # A DCA or second leg is new risk: never bypass a latched daily stop.
         blocked = bool(self._capital_reference and self._capital_reference.stop_latched)
+        if self._capital_reference is not None and self.positions:
+            quote_map=getattr(self,"_capital_latest_prices",{})
+            if not all(sym in quote_map for sym in self.positions):
+                blocked=True  # no new exposure from incomplete marks
+            else:
+                from .capital_manager import risk_view
+                blocked=blocked or risk_view(self._capital_reference,
+                                            self.equity(quote_map),
+                                            kill_equity=self.limits.kill_equity).reason!=""
         return size_request(bot=self._capital_bot, day_budget=self._capital_day_budget,
                             already_in_position=own_margin,
                             pending_same_position=own_pending,
@@ -182,6 +191,8 @@ class PaperAccount:
     def halted(self, prices: dict) -> str:
         eq = self.equity(prices)
         if self._capital_reference is not None:
+            if any(sym not in prices for sym in self.positions):
+                return "prezzi di mercato incompleti"
             from .capital_manager import risk_view
             view = risk_view(self._capital_reference, eq, kill_equity=self.limits.kill_equity)
             if view.reason == "kill_equity":
