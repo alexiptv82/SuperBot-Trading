@@ -274,3 +274,9 @@ Giornata completa Roma 22/10: Hawk 29 e Bull 14 aperture, tutte short/rules/vers
 Sidecar: 2 Hawk e 3 Bull osservate >=50% ROI; 14 checkpoint LASCIA_CORRERE in fascia 25–50, uno DATI_NON_VALIDI a 50–100, zero CHIUDI_O_PARZIALE. Applied=false. Conto AI separato: 96 chiamate, 14 fill long, 11 chiusure finali e zero righe vincenti nella finestra.
 Runtime 23/10 circa 06:37 Roma: entrambi running/PAPER, calendario allowed, budget <90% e zero posizioni nello snapshot coerente; non descrive il budget storico del 22/10. Dettagli e limiti in diario/2026-10-23_chatgpt.md, JSON aggregato diario/2026-10-23_profit-audit-39901269211.json. Nessuna fonte prevista mancante; snapshot/hash chain verificati.
 Restano all'utente fix B, allocazione budget DeepSeek e data S; gli altri rami non uniti, Step 6 draft.
+
+
+## 23/10/2026 — Deploy fix A autorizzato
+
+Alessandro autorizza un unico deploy Hawk/Bull dei fix A revisionati: EMA200 su barre 4h native, score direzionale nella scheda, TP/ROI netto/MFE-giveback dichiarati, uguaglianze/RSI piatto neutrali, sola correzione aritmetica esempio Bull. Istruzioni di ingresso, soglie, rischio e fix B invariati. Step 6 resta draft e S non fissata; registrare nuova versione solo dopo verifica runtime.
+Preparazione su base rule-pool 8efc0a9 e proposta ed36f4f. Rilevato e ripristinato il controllo preesistente di storia minima; aggiornato test storico del parser alla sua API attuale. Workflow rinforzato: blocco se PAPER/configurazione rischio o sorgenti runtime divergono, rimozione spezzoni di log bot dagli output pubblici. Test di rete isolati: un tentativo di suite e' stato bloccato dall'auto-review per possibile accesso API; aggiunto blocco delle connessioni nei test. Nessuna chiamata modello richiesta o autorizzata per le prove. Deploy non ancora avviato.
