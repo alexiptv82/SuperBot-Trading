@@ -68,8 +68,17 @@ class PaperCapitalJournal:
         self.state_path = self.root / "state_v2.json"
         self.journal_path = self.root / "capital-v1-journal.jsonl"
         self.bot = bot
+        self._cached_records = None
+        self._cached_stat = None
 
     def _records(self) -> list:
+        try:
+            stat=self.journal_path.stat()
+            signature=(stat.st_ino,stat.st_size,stat.st_mtime_ns)
+        except FileNotFoundError:
+            signature=None
+        if self._cached_records is not None and signature==self._cached_stat:
+            return self._cached_records
         try:
             with self.journal_path.open("rb") as f:
                 raw = f.read()
@@ -91,7 +100,12 @@ class PaperCapitalJournal:
                 raise CapitalInvariantError("journal hash chain mismatch")
             rec["checksum"] = digest
             prev_hash = digest
+            # Only the last record needs its full post_state for crash recovery.
+            if events:
+                events[-1].pop("post_state",None)
             events.append(rec)
+        self._cached_records=events
+        self._cached_stat=signature
         return events
 
     def recover(self) -> dict:
@@ -167,6 +181,14 @@ class PaperCapitalJournal:
             os.fsync(fp.fileno())
         _sync_directory(self.root)
         _replace_json(self.state_path, after)
+        # Keep the hot single-writer cache coherent; avoid quadratic full-journal
+        # rereads at every market state save. Startup still verifies full chain.
+        if records:
+            records[-1].pop("post_state",None)
+        records.append(event)
+        stat=self.journal_path.stat()
+        self._cached_records=records
+        self._cached_stat=(stat.st_ino,stat.st_size,stat.st_mtime_ns)
         return after
 
     def commit(self, state_before: Mapping, state_after: Mapping,
