@@ -942,6 +942,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     print(f"[DESK V2] candles ok: {len(candles_map)}/{len(SYMBOLS)} simboli", flush=True)
     prices = get_prices(SYMBOLS, candles_map)   # ultimo prezzo: la barra in formazione serve solo a questo
+    if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+        acc._capital_latest_prices=prices
     closed_map = {s: closed_bars(a, now_ms) for s, a in candles_map.items()}
     # ultimi prezzi noti: la dashboard li usa come ripiego per il P&L live delle posizioni
     if prices:
@@ -961,6 +963,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             rollover_today(state,now_ms,candles_map)
             save_state(state,STATE_FILE)
             acc=make_account(state)
+            acc._capital_latest_prices=prices
             closed_map={sym:arr[arr[:,0]+BAR15_MS>boundary_ms]
                         for sym,arr in closed_map.items()}
         if state["capital"].get("status")!="READY":
