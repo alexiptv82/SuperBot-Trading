@@ -6,7 +6,9 @@ on:
       - "backend/desk/capital_manager.py"
       - "backend/desk/vault_manager.py"
       - "backend/desk/position_sizer.py"
+      - "backend/desk/capital_journal.py"
       - "backend/tests/test_capital_management_v1.py"
+      - "backend/tests/test_capital_journal_v1.py"
       - ".github/workflows/capital-management-v1-ci.yml"
   workflow_dispatch:
 permissions:
@@ -23,9 +25,9 @@ jobs:
       - name: Install isolated pytest only
         run: python -m pip install pytest==8.4.2
       - name: Compile new accounting modules
-        run: python -m py_compile backend/desk/capital_manager.py backend/desk/vault_manager.py backend/desk/position_sizer.py backend/tests/test_capital_management_v1.py
+        run: python -m py_compile backend/desk/capital_manager.py backend/desk/vault_manager.py backend/desk/position_sizer.py backend/desk/capital_journal.py backend/tests/test_capital_management_v1.py backend/tests/test_capital_journal_v1.py
       - name: Run synthetic contract suite without API/network or VPS
         env:
           PYTHONPATH: backend
           DESK_MODE: paper
-        run: python -m pytest -q backend/tests/test_capital_management_v1.py
+        run: python -m pytest -q backend/tests/test_capital_management_v1.py backend/tests/test_capital_journal_v1.py
