@@ -154,6 +154,8 @@ class PaperAccount:
         own_margin = own.total_margin if own else 0.0
         own_pending = (float(own.pending_split.get("margin", 0)) if own and own.pending_split
                        and not release_split else 0.0)
+        # A DCA or second leg is new risk: never bypass a latched daily stop.
+        blocked = bool(self._capital_reference and self._capital_reference.stop_latched)
         return size_request(bot=self._capital_bot, day_budget=self._capital_day_budget,
                             already_in_position=own_margin,
                             pending_same_position=own_pending,
@@ -161,7 +163,8 @@ class PaperAccount:
                             reserved_cash=0, request=proposed,
                             minimum_executable=self.limits.min_margin,
                             fee_fraction=lev * self.limits.fee_bp_side / 10000,
-                            n_open=len(self.positions), is_new=new_position)
+                            n_open=len(self.positions), is_new=new_position,
+                            risk_reason="daily_stop" if blocked else "")
 
     def margin_in_use(self) -> float:
         return sum(p.total_margin for p in self.positions.values())
@@ -270,6 +273,8 @@ class PaperAccount:
         Il margine del DCA è proporzionale a quello già investito (50% primo, 30% secondo, 20% terzo).
         """
         L = self.limits
+        if self._capital_reference is not None and self.halted(prices):
+            return None, "stop giornaliero raggiunto: DCA bloccato"
         pos = self.positions.get(symbol)
         if pos is None:
             return None, "nessuna posizione"
