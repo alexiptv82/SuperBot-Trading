@@ -148,3 +148,15 @@ def test_daily_stop_latched_and_vault_topup_does_not_unlock():
     withdraw_request(st,req,bot="hawk")
     assert DayReference.from_dict(st["capital"]["day"]).stop_latched
     assert risk_view(DayReference.from_dict(st["capital"]["day"]),850).stop_latched
+
+
+def test_missing_midnight_mark_then_close_cannot_invent_midnight_equity():
+    st=migrate(state(900,{"BTC":position()}))
+    today=millis("2026-10-24")
+    assert rollover_today(st,today+1000,{})
+    assert st["capital"]["status"]=="ROLLOVER_PENDING"
+    st["main"]["cash"]=1120  # later close, AFTER unpriced boundary
+    st["main"]["positions"]={}
+    assert rollover_today(st,today+60000,{})
+    assert st["capital"]["status"]=="RECONCILIATION_REQUIRED"
+    assert st["capital"]["vault"]["balance"]=="0"
