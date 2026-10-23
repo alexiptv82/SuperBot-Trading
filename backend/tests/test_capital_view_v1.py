@@ -96,3 +96,32 @@ def test_stale_open_position_quote_disables_withdrawal(tmp_path):
     assert result["valuation_fresh"] is False
     assert result["operating_equity"] is None
     assert result["can_withdraw"] is False
+
+
+def test_existing_desk_status_uses_v1_daily_risk_not_legacy_12pct(tmp_path):
+    import desk_view as dv
+    setup_account(tmp_path)
+    source=tmp_path/"state_v2.json"
+    st=json.loads(source.read_text())
+    st["main"].update(cash=850,day_start_equity=1000,limits={
+        "start_equity":1000,"daily_stop":0.12,"kill_equity":450,
+        "max_margin_trade":350,"max_open":6})
+    st["capital"]["day"].update(day_budget="1000",
+         equity_at_boundary="1000",net_manual_and_vault_flow="0",
+         stop_latched=False)
+    source.write_text(json.dumps(st))
+    hb=tmp_path/"heartbeat.json"
+    hbdata=json.loads(hb.read_text())
+    hbdata.update(capital_v1=True,exec_mode="paper",ts=9999999999)
+    hb.write_text(json.dumps(hbdata))
+    status=dv.build_status(str(tmp_path),"bull",now=9999999999)
+    assert status["capital_v1"] is True
+    assert status["halt"] is None  # -15% is not the newly approved 20% stop
+    assert status["max_margin_trade"]==250
+    assert status["can_reset"] is False
+    assert status["vault_balance"]==120
+    assert status["day_pnl"]==-150
+    st["main"]["cash"]=790
+    source.write_text(json.dumps(st))
+    next_status=dv.build_status(str(tmp_path),"bull",now=9999999999)
+    assert next_status["halt"]=="stop giornaliero raggiunto"
