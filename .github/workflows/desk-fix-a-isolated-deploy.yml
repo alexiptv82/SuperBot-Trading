@@ -1,0 +1,312 @@
+name: Deploy isolato fix A (Hawk + Bull PAPER, richiede trigger e OK)
+
+# Deploy di DUE container separati:
+#   superbot-desk-hawk  → Portafoglio Hawk ($100/trade, max 10)
+#   superbot-desk-bull  → Portafoglio Bull ($350/trade, max 10)
+# NON tocca "superbot", nginx, DNS, app HI-TV.
+# Parte SOLO quando cambia deploy/desk-fix-a-isolated.trigger.
+# Prima di sostituire i container: backup verificato del cervello di Hawk e Bull
+# (deploy/scripts/backup_brain.py, sola lettura sull'origine). Se il backup non
+# riesce, il deploy si ferma e non viene toccato nulla. L'immagine in uso resta
+# come superbot-desk:rollback-<data> per tornare indietro. La chiave del server
+# SSH e' verificata (impronta fissa).
+#
+# Backup del cervello nel percorso normale = confine di ciclo VERIFICATO obbligatorio (battito del bot
+# recente, con cycle_running) e file irrinunciabili presenti. Se un bot e' DAVVERO fermo (battito vecchio)
+# il backup normale fallisce di proposito. Solo in quel caso, e solo scrivendolo nel file trigger con
+# la riga esatta "backup=bot_fermo", il backup usa la modalita' separata --bot-stopped, che richiede la
+# PROVA del fermo sui container (docker inspect: superbot-desk-hawk e superbot-desk-bull non in esecuzione,
+# ricontrollata a copia finita) e rifiuta se un bot risulta vivo. Senza quella riga non cambia nulla.
+
+# Versione: si distribuisce ESATTAMENTE il commit approvato (quello del file trigger, oppure la riga
+# "sha=<40 caratteri>"), mai "l'ultimo del ramo"; a fine corsa si verifica una sola istanza per bot e che i
+# bot dichiarino quel commit nel loro battito; manifesto in /opt/superbot-deploys/bot-*.json.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-fix-a-isolated.trigger"
+
+# Un solo rilascio alla volta (stesso gruppo anche tra workflow diversi dello stesso componente).
+concurrency:
+  group: superbot-desk-singapore
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Versione ESATTA da distribuire, decisa una volta sola: il commit che contiene il file trigger
+      # (cio' che era su rule-pool quando e' stato approvato il rilascio) oppure la riga "sha=<40 caratteri>"
+      # del file trigger, che deve far parte di rule-pool. Commit arrivati dopo NON vengono distribuiti.
+      - name: SHA isolato e inventario file (prima di qualsiasi SSH)
+        id: approved
+        run: |
+          set -e
+          SHA="f87f2d63c5849b177dbd33ee43c5be05ca58c8ed"
+          BASE="fa3e220f1fba86c3426fb0da69348035084167a4"
+          git fetch -q origin "refs/heads/work/fix-a-only-fa3e220-20261023:refs/remotes/origin/work/fix-a-only-fa3e220-20261023"
+          [ "$(git rev-parse "refs/remotes/origin/work/fix-a-only-fa3e220-20261023")" = "$SHA" ] || { echo "BLOCK: candidate branch changed"; exit 1; }
+          [ "$(git rev-parse "$SHA^")" = "$BASE" ] || { echo "BLOCK: unexpected baseline parent"; exit 1; }
+          ACTUAL="$(git diff --name-only "$BASE" "$SHA" | LC_ALL=C sort)"
+          EXPECTED="backend/desk/brain.py
+backend/desk/cli.py
+backend/desk/position_card.py
+backend/desk/signals.py
+backend/tests/test_profit_correctness_isolated.py"
+          [ "$ACTUAL" = "$EXPECTED" ] || { echo "BLOCK: extra changed files"; exit 1; }
+          for F in backend/desk/engine.py backend/desk/market_context.py Dockerfile.desk; do
+            [ "$(git rev-parse "$BASE:$F")" = "$(git rev-parse "$SHA:$F")" ] || { echo "BLOCK: unexpected core change"; exit 1; }
+          done
+          echo "CANDIDATE_ALLOWLIST=PASS"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Modalita' del backup (bot fermo solo se scritto nel file trigger)
+        id: bk
+        run: |
+          set -e
+          MODE=""
+          # il file trigger si legge dal commit che ha avviato il rilascio (non da una versione piu' vecchia scelta con sha=)
+          if git show "${{ github.sha }}:deploy/desk-fix-a-isolated.trigger" | grep -qx 'backup=bot_fermo'; then MODE="--bot-stopped"; fi
+          echo "extra=$MODE" >> "$GITHUB_OUTPUT"
+          echo "modalita' backup: ${MODE:-normale (confine di ciclo verificato)}"
+
+      - name: Copia strumenti di backup sul VPS (chiave del server verificata)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          # Chiavi pubbliche del server Singapore (non sono segrete). Se il server
+          # presenta una chiave diversa, la connessione viene rifiutata.
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          51.79.205.82 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
+          KH
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools && chmod 700 /opt/superbot-tools'
+          scp $SSHO deploy/scripts/backup_brain.py deploy/scripts/backup_app_db.py root@51.79.205.82:/opt/superbot-tools/
+          rm -f ~/.ssh/id_sg
+
+      - name: Deploy Hawk + Bull sul VPS
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          BACKUP_EXTRA: ${{ steps.bk.outputs.extra }}
+          APPROVED_SHA: ${{ steps.approved.outputs.sha }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Variabili live Bitget — lasciate vuote in paper mode (DESK_MODE=paper di default)
+          # Per passare a live: imposta DESK_MODE=live. OGNI bot ha il SUO sub-account Bitget e la SUA chiave di
+          # trading: Hawk usa BITGET_HAWK_*, Bull usa BITGET_BULL_*. NESSUN ripiego sulla vecchia chiave
+          # condivisa (BITGET_API_KEY...): se manca una chiave, quel bot in live non parte.
+          DESK_MODE: ${{ secrets.DESK_MODE }}
+          BITGET_HAWK_API_KEY: ${{ secrets.BITGET_HAWK_API_KEY }}
+          BITGET_HAWK_SECRET_KEY: ${{ secrets.BITGET_HAWK_SECRET_KEY }}
+          BITGET_HAWK_PASSPHRASE: ${{ secrets.BITGET_HAWK_PASSPHRASE }}
+          BITGET_BULL_API_KEY: ${{ secrets.BITGET_BULL_API_KEY }}
+          BITGET_BULL_SECRET_KEY: ${{ secrets.BITGET_BULL_SECRET_KEY }}
+          BITGET_BULL_PASSPHRASE: ${{ secrets.BITGET_BULL_PASSPHRASE }}
+          # Capitale allocato per portfolio e limite perdita giornaliera
+          # Default: 1500$ per bot, max 25% di perdita al giorno
+          DESK_HAWK_CAPITAL: ${{ secrets.DESK_HAWK_CAPITAL }}
+          DESK_BULL_CAPITAL: ${{ secrets.DESK_BULL_CAPITAL }}
+          DESK_DAILY_LOSS_PCT: ${{ secrets.DESK_DAILY_LOSS_PCT }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          # Impronta della chiave ECDSA del server: e' quella che ssh-action negozia
+          # (provato il 19/10 con il workflow sg-hardening-check). Se cambia, il deploy
+          # si ferma invece di mandare i segreti a un server sconosciuto.
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          connect_timeout: 90s
+          command_timeout: 30m
+          envs: BACKUP_EXTRA,APPROVED_SHA,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT
+          script: |
+            set -e
+            # --- Versione approvata: 40 caratteri esadecimali, altrimenti non si tocca niente
+            if ! printf '%s' "$APPROVED_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "ERRORE: versione approvata mancante o non valida: nessuna modifica"; exit 1
+            fi
+            [ "$APPROVED_SHA" = "f87f2d63c5849b177dbd33ee43c5be05ca58c8ed" ] || { echo "DEPLOY_BLOCKED=wrong_candidate"; exit 1; }
+            for P in hawk bull; do
+              V="$(python3 -I -c "import json; print(json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')).get('version',''))" 2>/dev/null || true)"
+              [ "$V" = "fa3e220" ] || { echo "DEPLOY_BLOCKED=runtime_version_changed bot=$P"; exit 1; }
+            done
+            echo RUNTIME_VERSION_BASELINE=PASS
+            # Preserve runtime risk configuration; never print environment values.
+            [ "${DESK_MODE:-paper}" = paper ] || { echo DEPLOY_BLOCKED=paper_required; exit 1; }
+            for P in hawk bull; do
+              CURRENT_ENV="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P")"
+              printf '%s\n' "$CURRENT_ENV" | grep -qx 'DESK_MODE=paper' || { echo DEPLOY_BLOCKED=runtime_not_paper; exit 1; }
+              CURRENT_LOSS="$(printf '%s\n' "$CURRENT_ENV" | sed -n 's/^DESK_DAILY_LOSS_PCT=//p')"
+              [ "$CURRENT_LOSS" = "${DESK_DAILY_LOSS_PCT:-25}" ] || { echo DEPLOY_BLOCKED=risk_environment_mismatch; exit 1; }
+              if [ "$P" = hawk ]; then KEY=DESK_HAWK_CAPITAL; TARGET="${DESK_HAWK_CAPITAL:-1000}"; else KEY=DESK_BULL_CAPITAL; TARGET="${DESK_BULL_CAPITAL:-1000}"; fi
+              CURRENT_CAPITAL="$(printf '%s\n' "$CURRENT_ENV" | sed -n "s/^${KEY}=//p")"
+              [ "$CURRENT_CAPITAL" = "$TARGET" ] || { echo DEPLOY_BLOCKED=capital_environment_mismatch; exit 1; }
+            done
+            unset CURRENT_ENV CURRENT_LOSS CURRENT_CAPITAL TARGET
+            echo PAPER_AND_RISK_ENVIRONMENT=PASS
+            DEPLOY_START_MS=$(($(date +%s) * 1000))
+            # --- Verifica preliminare (sola lettura)
+            AVAIL_MB=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
+            DISK_GB=$(df -BG --output=avail /opt | tail -1 | tr -dc '0-9')
+            echo "PREFLIGHT: memoria ${AVAIL_MB} MB, disco ${DISK_GB} GB"
+            if [ "${AVAIL_MB:-0}" -lt 700 ]; then echo "ERRORE: memoria insufficiente (${AVAIL_MB} MB)"; exit 1; fi
+            if [ "${DISK_GB:-0}" -lt 3 ]; then echo "ERRORE: disco insufficiente (${DISK_GB} GB)"; exit 1; fi
+            apt-get install -y docker.io git 2>/dev/null || true
+            systemctl start docker 2>/dev/null || true
+
+            # --- Backup verificato del cervello PRIMA di toccare i container.
+            # Se non riesce, ci si ferma qui: nessun container viene sostituito.
+            if [ ! -f /opt/superbot-tools/backup_brain.py ]; then
+              echo "ERRORE: strumenti di backup mancanti sul VPS (/opt/superbot-tools)."
+              exit 1
+            fi
+            # BACKUP_EXTRA e' vuoto oppure esattamente "--bot-stopped" (deciso dal file trigger, vedi sopra).
+            python3 -I /opt/superbot-tools/backup_brain.py \
+              --root /opt/superbot-desk-data --dir /opt/superbot-backups --keep 10 --tag deploy $BACKUP_EXTRA
+            # --- Immagine in uso: tenuta per tornare indietro (ultime 3)
+            RB="rollback-$(date +%Y%m%d-%H%M%S)"
+            IMG=$(docker inspect -f '{{.Image}}' superbot-desk-hawk 2>/dev/null || true)
+            if [ -n "$IMG" ]; then docker tag "$IMG" "superbot-desk:${RB}" || true; fi
+            docker images --format '{{.Tag}}' superbot-desk | grep '^rollback-' | sort -r | tail -n +4 | xargs -r -I{} docker rmi superbot-desk:{} || true
+            echo "ROLLBACK: immagine precedente = superbot-desk:${RB}"
+
+            # --- Codice: ESATTAMENTE il commit approvato (non "l'ultimo del ramo")
+            if [ -d "/opt/superbot-desk/.git" ]; then
+              cd /opt/superbot-desk && git fetch origin rule-pool && git fetch origin "refs/heads/work/fix-a-only-fa3e220-20261023:refs/remotes/origin/work/fix-a-only-fa3e220-20261023"
+            else
+              git clone -b rule-pool https://github.com/alexiptv82/SuperBot-Trading.git /opt/superbot-desk
+              git -C /opt/superbot-desk fetch origin "refs/heads/work/fix-a-only-fa3e220-20261023:refs/remotes/origin/work/fix-a-only-fa3e220-20261023"
+              cd /opt/superbot-desk
+            fi
+            if ! git cat-file -e "${APPROVED_SHA}^{commit}"; then
+              echo "ERRORE: il commit approvato ${APPROVED_SHA} non e' sul server: nessun container sostituito"; exit 1
+            fi
+            git reset --hard "$APPROVED_SHA"
+            if [ "$(git rev-parse HEAD)" != "$APPROVED_SHA" ]; then
+              echo "ERRORE: il codice non e' sul commit approvato: nessun container sostituito"; exit 1
+            fi
+
+            # Fix A must not silently deploy unrelated differences from the running image.
+            for P in hawk bull; do
+              for F in cli engine signals brain market_context; do
+                EXPECTED_HASH="$(git show fa3e220f1fba86c3426fb0da69348035084167a4:backend/desk/$F.py | sha256sum | cut -d' ' -f1)"
+                ACTUAL_HASH="$(docker exec "superbot-desk-$P" sha256sum "/app/backend/desk/$F.py" | cut -d' ' -f1)"
+                if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
+                  echo "DEPLOY_BLOCKED=runtime_source_mismatch bot=$P component=$F"
+                  exit 1
+                fi
+              done
+            done
+            echo RUNTIME_BASELINE_SOURCE=PASS
+
+            # --- Volume dati separati per ogni portfolio (sopravvivono ai deploy)
+            mkdir -p /opt/superbot-desk-data/hawk
+            mkdir -p /opt/superbot-desk-data/bull
+
+            # --- Build immagine comune (una sola build, due container)
+            cd /opt/superbot-desk
+            CODE_VERSION=$(git rev-parse --short HEAD)
+            echo "VERSIONE CODICE: ${CODE_VERSION}"
+            SHA12=$(printf '%s' "$APPROVED_SHA" | cut -c1-12)
+            docker build -t superbot-desk -t "superbot-desk:sha-${SHA12}" --label "superbot.sha=${APPROVED_SHA}" -f Dockerfile.desk .
+
+            # ── HAWK ─────────────────────────────────────────────────────────
+            docker stop superbot-desk-hawk 2>/dev/null || true
+            docker rm   superbot-desk-hawk 2>/dev/null || true
+            docker run -d \
+              --name superbot-desk-hawk \
+              --restart unless-stopped \
+              --memory 768m --cpus 0.5 \
+              -e TELEGRAM_BOT_TOKEN -e TELEGRAM_CHAT_ID -e ANTHROPIC_API_KEY \
+              -e DESK_PORTFOLIO=hawk \
+              -e DESK_CODE_VERSION="${CODE_VERSION}" \
+              -e DESK_DATA_DIR=/app/data/desk/hawk \
+              -e DESK_MODE="${DESK_MODE:-paper}" \
+              -e BITGET_API_KEY="${BITGET_HAWK_API_KEY}" -e BITGET_SECRET_KEY="${BITGET_HAWK_SECRET_KEY}" -e BITGET_PASSPHRASE="${BITGET_HAWK_PASSPHRASE}" \
+              -e DESK_HAWK_CAPITAL="${DESK_HAWK_CAPITAL:-1000}" \
+              -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
+              -v /opt/superbot-desk-data/hawk:/app/data/desk/hawk \
+              superbot-desk
+
+            # ── BULL ─────────────────────────────────────────────────────────
+            docker stop superbot-desk-bull 2>/dev/null || true
+            docker rm   superbot-desk-bull 2>/dev/null || true
+            docker run -d \
+              --name superbot-desk-bull \
+              --restart unless-stopped \
+              --memory 768m --cpus 0.5 \
+              -e TELEGRAM_BOT_TOKEN -e TELEGRAM_CHAT_ID -e ANTHROPIC_API_KEY \
+              -e DESK_PORTFOLIO=bull \
+              -e DESK_CODE_VERSION="${CODE_VERSION}" \
+              -e DESK_DATA_DIR=/app/data/desk/bull \
+              -e DESK_MODE="${DESK_MODE:-paper}" \
+              -e BITGET_API_KEY="${BITGET_BULL_API_KEY}" -e BITGET_SECRET_KEY="${BITGET_BULL_SECRET_KEY}" -e BITGET_PASSPHRASE="${BITGET_BULL_PASSPHRASE}" \
+              -e DESK_BULL_CAPITAL="${DESK_BULL_CAPITAL:-1000}" \
+              -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
+              -v /opt/superbot-desk-data/bull:/app/data/desk/bull \
+              superbot-desk
+
+            sleep 25
+            echo "=== STATO CONTAINER ==="
+            docker ps --filter name=superbot-desk --format '{{.Names}} | {{.Status}}'
+            # Public logs contain only status/version checks, never raw bot logs.
+            for P in hawk bull; do
+              docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P" | grep -qx 'DESK_MODE=paper'
+            done
+            echo PAPER_AFTER_DEPLOY=PASS
+
+            # == Esito: tutti e due i bot devono girare, altrimenti il workflow e' rosso ==
+            for N in superbot-desk-hawk superbot-desk-bull; do
+              if [ -z "$(docker ps --filter name=^${N}$ --filter status=running -q)" ]; then
+                echo "ERRORE: ${N} non e' in funzione dopo il deploy. Immagine precedente: superbot-desk:${RB}"
+                exit 1
+              fi
+            done
+            # == Una sola istanza per bot: un solo container-bot IN ESECUZIONE usa i dati di ciascun portafoglio ==
+            # Il container dell'app (nome esatto "superbot") monta le stesse cartelle dati per mostrarle nella dashboard
+            # (deploy.yml / superbot-sg-deploy.yml): non e' un secondo bot e non va contato (21/10/2026: contarlo
+            # faceva finire il rilascio rosso anche con i due bot sani).
+            for P in hawk bull; do
+              N=0
+              for C in $(docker ps --format '{{.Names}}' | grep -vx 'superbot' || true); do
+                if docker inspect -f '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P"; then
+                  N=$((N + 1))
+                fi
+              done
+              if [ "$N" -ne 1 ]; then
+                echo "ERRORE: $N container in esecuzione usano i dati di $P (deve essere esattamente 1)"; exit 1
+              fi
+              echo "una sola istanza per $P: ok"
+            done
+            # == I bot devono dichiarare il commit approvato, da un processo partito ADESSO (fino a 2 minuti) ==
+            for P in hawk bull; do
+              OKV=""
+              for i in $(seq 1 24); do
+                R=$(python3 -c "import json,sys; h=json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')); print(h.get('version',''), int(h.get('started_ms') or 0))" 2>/dev/null || true)
+                V=$(echo "$R" | cut -d' ' -f1); S=$(echo "$R" | cut -d' ' -f2)
+                if [ "$V" = "$CODE_VERSION" ] && [ "${S:-0}" -ge "$DEPLOY_START_MS" ]; then OKV=1; break; fi
+                sleep 5
+              done
+              if [ -z "$OKV" ]; then
+                echo "ERRORE: $P non dichiara ancora la versione approvata ${CODE_VERSION} (letto: '${V}'). I container sono"
+                echo "        avviati: controllare con desk-status prima di qualunque altra azione."; exit 1
+              fi
+              echo "versione dichiarata da $P: $V (= commit approvato, processo nuovo)"
+            done
+            # == Manifesto del rilascio ==
+            mkdir -p /opt/superbot-deploys
+            printf '{"componente":"bot","sha":"%s","versione":"%s","immagine":"%s","creato":"%s","rollback":"superbot-desk:%s","backup":"%s"}\n' \
+              "$APPROVED_SHA" "$CODE_VERSION" "$(docker inspect -f '{{.Id}}' superbot-desk)" "$(date -u +%FT%TZ)" "$RB" \
+              "${BACKUP_EXTRA:-confine_di_ciclo}" > "/opt/superbot-deploys/bot-$(date -u +%Y%m%d-%H%M%S).json"
+            echo "DEPLOY OK: Hawk e Bull in funzione sul commit approvato ${APPROVED_SHA}. Backup del cervello in /opt/superbot-backups."
