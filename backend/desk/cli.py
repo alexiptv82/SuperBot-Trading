@@ -1355,9 +1355,19 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         )
     state["last_report_day"] = day
 
-    # ---- salva
-    save_account(acc, state)
-    save_state(state, STATE_FILE)
+    # ---- salva in due transazioni distinte: prima tutti i trade, poi il vault
+    save_account(acc,state)
+    if capital_mode:
+        from desk.capital_runtime import update_market_risk,settle_after_close
+        update_market_risk(state,prices,now_ms=now_ms)
+    save_state(state,STATE_FILE)
+    if capital_mode and state["capital"].get("status")=="READY":
+        try:
+            if settle_after_close(state, {sym:prices[sym] for sym in acc.positions if sym in prices},
+                                  event_id=f"settle:cycle:{now_ms}"):
+                save_state(state,STATE_FILE)
+        except Exception as exc:
+            print(f"[CAPITAL] pending rinviato: {type(exc).__name__}",flush=True)
 
     # ---- report
     print(render_report(acc, prices, now_ms))
@@ -1716,8 +1726,49 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
         _remove(path)
 
 
+def _process_vault_request(state: dict) -> bool:
+    """Only the PAPER bot consumes the app's manual withdraw request.
+
+    ACK and debit are committed in one journalled snapshot before unlinking
+    the request. A crash after commit is recovered through the receipt.
+    """
+    from desk.capital_runtime import withdraw_request, utc_day
+    from desk.capital_manager import CapitalInvariantError
+    path=_flag("vault_transfer_request.json")
+    if not os.path.exists(path):
+        return False
+    cap=state.get("capital") or {}
+    if cap.get("status")!="READY" or (cap.get("day") or {}).get("utc_day")!=utc_day(int(time.time()*1000)):
+        return False  # leave queued while midnight reconciliation is pending
+    if LIVE._live:
+        return False
+    try:
+        with open(path,encoding="utf8") as fh:
+            request=json.load(fh)
+        if not isinstance(request,dict):
+            return False
+        key=request.get("idempotency_key")
+        if not isinstance(key,str) or len(key)>64:
+            return False
+        try:
+            receipt=withdraw_request(state,request,bot=PORTFOLIO.name)
+        except (CapitalInvariantError,KeyError,ValueError,TypeError) as e:
+            receipt={"status":"rejected","amount":str(request.get("amount",0)),
+                     "reason":type(e).__name__}
+            state["capital"].setdefault("receipts",{})[key]=receipt
+        save_state(state,STATE_FILE)
+        os.unlink(path)
+        print(f"[CAPITAL] trasferimento {receipt['status']} ({PORTFOLIO.name})",flush=True)
+        return True
+    except Exception as exc:
+        print(f"[CAPITAL] richiesta rimane pendente per recovery: {type(exc).__name__}",flush=True)
+        return False
+
+
 def process_flags(state: dict) -> None:
-    """Esegue i comandi arrivati dall'app. L'ordine conta: budget, chiudi tutto, chiudi singola, reset conto."""
+    """Esegue comandi app; il bot PAPER e' l'unico autore dei saldi."""
+    if _capital_enabled():
+        _process_vault_request(state)
     _check_budget_reset_flag(state)
     _check_close_all_flag(state)
     _check_close_position_flag(state)
@@ -1772,6 +1823,16 @@ def loop_step(state: dict, ctl: dict) -> bool:
     - premere Pausa o Avvia fa partire un ciclo immediato (non si aspetta il prossimo giro);
     - in pausa il bot continua a girare finche' ha posizioni aperte (svuotamento), poi si ferma da solo.
     """
+    if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
+        from desk.capital_runtime import utc_day, rollover_today
+        now_ms=int(time.time()*1000)
+        day=utc_day(now_ms)
+        if (state["capital"].get("day") or {}).get("utc_day")!=day:
+            if not ((state.get("main") or {}).get("positions") or {}):
+                if rollover_today(state,now_ms,{}):
+                    save_state(state,STATE_FILE)
+            else:
+                ctl["next_cycle_ms"]=0  # resolve midnight using 15m historical bars
     process_flags(state)
     paused = os.path.exists(_flag("pause.flag"))
     if paused != ctl.get("prev_paused"):
