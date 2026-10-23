@@ -110,9 +110,18 @@ def rollover_today(state: dict, now_ms: int, candles: dict,
         px=boundary_prices(candles,positions,ms)
         cash,m,u,e=account_components(acc,px)
         vault=VaultState.from_dict(capital["vault"])
+        # Pending split legs are commitments, not withdrawable cash.
+        fee_bp=dec((acc.get("limits") or {}).get("fee_bp_side",6))
+        committed=Decimal("0")
+        for pos in positions.values():
+            split=pos.get("pending_split") or {}
+            if split:
+                amount=dec(split.get("margin",0))
+                leverage=dec(pos.get("leverage",1))
+                committed += amount*(1+leverage*fee_bp/Decimal("10000"))
         tr=rollover(vault,utc_day=today,equity=e,cash=cash,
                     committed_margin=m,unrealized=u,
-                    reserved_cash=reserved_cash,
+                    reserved_cash=dec(reserved_cash)+committed,
                     excluded_external_funds=capital.get("excluded_external_funds",0))
         acc["cash"]=float(cash+tr.cash_delta)
         cap_ref=start_day(today,e+tr.cash_delta)
