@@ -72,7 +72,9 @@ def boundary_prices(candles: dict, positions: dict, boundary_ms: int) -> dict:
     """Only *closed* 15m candles ending exactly at midnight UTC are acceptable."""
     result={}
     for sym in positions:
-        arr=candles.get(sym) or []
+        arr=candles.get(sym)
+        if arr is None:
+            arr=[]
         candidates=[x for x in arr if int(x[0])==boundary_ms-BAR_MS
                     and int(x[0])+BAR_MS==boundary_ms and dec(x[4])>0]
         if len(candidates)!=1:
