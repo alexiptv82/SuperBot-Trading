@@ -8,6 +8,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 import desk_view as dv
+import capital_view as cv
 
 # prezzo live per simbolo: (istante monotonic, prezzo). Condiviso da /prices e da /status.
 _ticker_cache: dict = {}
@@ -60,6 +61,37 @@ def make_router(portfolio: str, data_dir: str, require_session, get_ticker) -> A
     async def status(session=Depends(require_session)):
         prices = await live_prices(dv.open_symbols(data_dir), get_ticker)
         return dv.build_status(data_dir, portfolio, prices)
+
+    # Capital V1 endpoints are fail-closed until the PAPER bot advertises capability.
+    @r.get("/capital")
+    async def capital_status(session=Depends(require_session)):
+        try:
+            return cv.status(data_dir, portfolio)
+        except cv.CapitalUnavailable as e:
+            raise HTTPException(status_code=409, detail=e.message)
+
+    @r.post("/capital/vault/withdraw")
+    async def capital_withdraw(request: Request, session=Depends(require_session)):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        try:
+            return cv.queue_manual_withdraw(data_dir, portfolio, body)
+        except cv.CapitalUnavailable as e:
+            code = 409 if e.code in ("busy", "not_ready", "not_paper",
+                                   "stale_revision", "insufficient_vault") else 400
+            raise HTTPException(status_code=code, detail=e.message)
+        except OSError as e:
+            raise _flag_error(e)
+
+    @r.get("/capital/vault/transfer/{event_id}")
+    async def capital_transfer_status(event_id: str, session=Depends(require_session)):
+        try:
+            return cv.transfer_status(data_dir, event_id)
+        except cv.CapitalUnavailable as e:
+            code = 404 if e.code == "not_found" else 409 if e.code == "not_ready" else 400
+            raise HTTPException(status_code=code, detail=e.message)
 
     @r.get("/trades")
     async def trades(limit: int = 100, session=Depends(require_session)):
