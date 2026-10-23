@@ -35,9 +35,9 @@ def test_fails_closed_without_bot_support(tmp_path):
 def test_read_only_snapshot_and_bull_margin_percent(tmp_path):
     setup_account(tmp_path)
     st=status(str(tmp_path),"bull")
-    assert st["operating_equity"]=="900"
+    assert float(st["operating_equity"])==900
     assert st["vault_balance"]=="120"
-    assert st["total_equity"]=="1020"
+    assert float(st["total_equity"])==1020
     assert st["position_cap_pct"]=="25"
     assert st["day_budget"]=="900"
     assert st["can_withdraw"]
