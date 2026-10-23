@@ -68,6 +68,13 @@ def account_components(account: dict, prices: dict) -> tuple[Decimal, Decimal, D
     return cash,margin,unrealized,cash+margin+unrealized
 
 
+def _position_signature(positions: dict) -> list:
+    # Exactly the quantity and cost basis at the first failed boundary attempt.
+    return sorted((str(sym),str(p.get("id")),str(p.get("qty")),
+                   str(p.get("total_margin",p.get("margin"))),
+                   str(p.get("entry"))) for sym,p in positions.items())
+
+
 def boundary_prices(candles: dict, positions: dict, boundary_ms: int) -> dict:
     """Only *closed* 15m candles ending exactly at midnight UTC are acceptable."""
     result={}
@@ -106,6 +113,13 @@ def rollover_today(state: dict, now_ms: int, candles: dict,
     ms=int(boundary.timestamp()*1000)
     acc=state.get("main") or {}
     positions=acc.get("positions") or {}
+    previous_positions=capital.get("boundary_pending_signature")
+    if previous_positions is not None and previous_positions!=_position_signature(positions):
+        # A trade closed/changed AFTER an unpriced UTC boundary. Never
+        # rebase tomorrow's capital on its post-boundary cash by accident.
+        capital["status"]="RECONCILIATION_REQUIRED"
+        capital["valuation"]={"fresh":False,"unrealized":"0"}
+        return True
     try:
         px=boundary_prices(candles,positions,ms)
         cash,m,u,e=account_components(acc,px)
@@ -127,6 +141,7 @@ def rollover_today(state: dict, now_ms: int, candles: dict,
         cap_ref=start_day(today,e+tr.cash_delta)
         capital["vault"]=tr.state.to_dict()
         capital["day"]=cap_ref.to_dict()
+        capital.pop("boundary_pending_signature",None)
         capital["status"]="READY"
         capital["valuation"]={"fresh":True,"unrealized":str(u),
                               "boundary_ms":ms}
@@ -134,6 +149,7 @@ def rollover_today(state: dict, now_ms: int, candles: dict,
         acc["day_start_equity"]=float(e+tr.cash_delta)
         return True
     except CapitalInvariantError:
+        capital.setdefault("boundary_pending_signature",_position_signature(positions))
         capital["status"]="ROLLOVER_PENDING"
         capital["valuation"]={"fresh":False,"unrealized":"0"}
         return True
