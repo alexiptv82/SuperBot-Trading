@@ -14,12 +14,12 @@
 - Ogni bot ha vault virtuale indipendente; a **00:00 UTC** trasferire eccedenza sopra $1000 se effettivamente coperta da liquidità realizzata; altrimenti `pending` fino a chiusura posizioni, senza forzare chiusure e senza recupero automatico dal vault sotto $1000.
 - Prelievo dal vault al portafoglio **soltanto manuale** con autenticazione/registro/idempotenza, mai automaticamente. In futura live nessuna movimentazione Bitget automatica.
 - Sizer: Hawk **10%**, Bull **25%** del budget operativo giornaliero; max slot **10/6**; protezioni PAPER e rischio esistenti fino a nuovo deploy autorizzato.
-- Componenti da progettare/preparare dopo OK implementazione: Capital Manager, Vault Manager, Position Sizer, Dashboard Capitali. **Specifica/handoff completo:** `CAPITAL-MANAGEMENT-V1-HANDOFF.md`.
+- L'utente ha riconfermato 10%/25%, 00:00 UTC, pending e protezione 450 e autorizzato la progettazione tecnica. **Piano dettagliato pubblicato:** `CAPITAL-MANAGEMENT-V1-SPECIFICA.md`; handoff: `CAPITAL-MANAGEMENT-V1-HANDOFF.md`. Nessun codice o deploy autorizzato.
 - Da esplicitare prima di codice: (A) tetto complessivo incluso DCA/split, (B) versamento manuale neutrale rispetto a stop/sizer fino al nuovo UTC, (C) equity temporaneamente >1000 con posizioni aperte e pending. Raccomandazioni scritte nel handoff; evitare di trattarle come deploy approvato.
 - La discussione separata sul pulsante "Azzera budget AI" è stata diagnosticata read-only: bot riceve ed esegue reset; messaggio `stop giornaliero raggiunto` deriva da rischio trading, indipendente dal budget API. Non è stata applicata alcuna fix al reset.
 
 ## IN_CORSO — prenotazione componente (un autore alla volta)
-- **Capital Manager / Vault Manager / Position Sizer / Dashboard:** nessun autore ha iniziato implementazione; in attesa di OK per scrivere codice. Work previsto come ambiente pratico di lavoro, chat normale disponibile a stessa responsabilità per review/continuità.
+- **Capital Manager / Vault Manager / Position Sizer / Dashboard:** Work ha completato la specifica tecnica per review. Nessun autore ha iniziato implementazione; prossimo passo review e decisione A/B/C, poi eventuale OK separato al codice. Chat normale/Claude possono revisionare; nessuna modifica concorrente allo stesso componente.
 - **Ramo futuro proposto** `work/capital-management-v1` dalla baseline runtime `f87f2d63c5849b177dbd33ee43c5be05ca58c8ed`; non ancora creato.
 - Prima di iniziare un componente, assegnare qui autore corrente (Work/chat/Claude), file, branch e SHA. L'altro non modifica lo stesso componente in contemporanea; eventualmente fa sola lettura/review.
 - Nessun deploy autorizzato. Nessun aggiornamento a code_version autorizzato.

@@ -49,3 +49,7 @@ C. Se posizioni aperte generano patrimonio temporaneamente >1000: nuovi ingressi
 
 ## Stato aggiornato
 **Nessun ramo/commit di codice creato; nessun deploy autorizzato.** L'utente ora chiede coordinamento fra Work e chat normale. Questo handoff esiste soltanto sul ramo `diario`.
+
+
+## Specifica dettagliata successiva — ChatGPT Work, 23/10
+L'utente riconferma le cinque decisioni e autorizza la progettazione tecnica definitiva. Piano consegnato in [CAPITAL-MANAGEMENT-V1-SPECIFICA.md](CAPITAL-MANAGEMENT-V1-SPECIFICA.md): contabilità, rollover, pending, writer unico, persistenza/recovery, sizer, API/UI, migrazione, rollback e test previsti. A/B/C sono raccomandazioni da approvare esplicitamente; nessuna implementazione, nuovo ramo di codice o deploy in questo checkpoint.
