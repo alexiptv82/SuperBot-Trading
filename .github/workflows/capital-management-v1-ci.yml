@@ -1,0 +1,31 @@
+name: Capital Management V1 - offline safety tests (no deploy)
+on:
+  push:
+    branches: [work/capital-management-v1]
+    paths:
+      - "backend/desk/capital_manager.py"
+      - "backend/desk/vault_manager.py"
+      - "backend/desk/position_sizer.py"
+      - "backend/tests/test_capital_management_v1.py"
+      - ".github/workflows/capital-management-v1-ci.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  python_offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install isolated pytest only
+        run: python -m pip install pytest==8.4.2
+      - name: Compile new accounting modules
+        run: python -m py_compile backend/desk/capital_manager.py backend/desk/vault_manager.py backend/desk/position_sizer.py backend/tests/test_capital_management_v1.py
+      - name: Run synthetic contract suite without API/network or VPS
+        env:
+          PYTHONPATH: backend
+          DESK_MODE: paper
+        run: python -m pytest -q backend/tests/test_capital_management_v1.py
