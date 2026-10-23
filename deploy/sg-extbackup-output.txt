@@ -1,29 +1,29 @@
-### Backup esterno cifrato - azione run - 2026-10-19T11:57:35Z
+### Backup esterno cifrato - azione run - 2026-10-23T18:18:14Z
 
-## RUN backup esterno (2026-10-19T11:57:24Z)
+## RUN backup esterno (2026-10-23T18:18:01Z)
 copia verificata del database app ...
-  BACKUP DB OK: app-20261019-115724.db
+  BACKUP DB OK: app-20261023-181801.db
 copia verificata del database pool ...
-  BACKUP DB OK: pool-20261019-115724.db
+  BACKUP DB OK: pool-20261023-181801.db
 copia verificata del cervello (tentativo 1) ...
 creo l'archivio e lo cifro con age ...
-RISULTATO: OK  archivio superbot-backup-20261019T115724Z.tar.gz.age  380274 byte  sha256 ce28838d40e672efc9f4b2d3e177fbb384f30e51b1ca1e07bfe2d7f2d28b0642
-  repository dei backup: 2 archivi visibili, storia git 0.8 MB (la retention non riduce la storia)
+RISULTATO: OK  archivio superbot-backup-20261023T181801Z.tar.gz.age  579122 byte  sha256 5f956ddf8507be0ee04eef30bd957986ce00b3497c8b4eb14de33569f780e465
+  repository dei backup: 7 archivi visibili, storia git 3.3 MB (la retention non riduce la storia)
 uscita: 0
 --- stato ---
 {
- "archivi_visibili": 2,
- "archivio": "superbot-backup-20261019T115724Z.tar.gz.age",
- "dimensione": 380274,
- "repo_git_byte": 791296,
- "sha256": "ce28838d40e672efc9f4b2d3e177fbb384f30e51b1ca1e07bfe2d7f2d28b0642",
+ "archivi_visibili": 7,
+ "archivio": "superbot-backup-20261023T181801Z.tar.gz.age",
+ "dimensione": 579122,
+ "repo_git_byte": 3278892,
+ "sha256": "5f956ddf8507be0ee04eef30bd957986ce00b3497c8b4eb14de33569f780e465",
  "ultimo_errore": null,
- "ultimo_successo": "2026-10-19T11:57:24Z",
- "ultimo_tentativo": "2026-10-19T11:57:24Z",
+ "ultimo_successo": "2026-10-23T18:18:01Z",
+ "ultimo_tentativo": "2026-10-23T18:18:01Z",
  "verifica": "clone nuovo e indipendente da GitHub"
 }--- timer ---
-NEXT                        LEFT LAST PASSED UNIT                     ACTIVATES
-Tue 2026-10-20 03:21:40 UTC  15h -         - superbot-extbackup.timer superbot-extbackup.service
+NEXT                        LEFT LAST                         PASSED UNIT                     ACTIVATES
+Sat 2026-10-24 03:26:44 UTC   9h Fri 2026-10-23 03:28:13 UTC 14h ago superbot-extbackup.timer superbot-extbackup.service
 
 1 timers listed.
 uscita remota: 0
