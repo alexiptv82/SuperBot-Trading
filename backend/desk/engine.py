@@ -10,6 +10,7 @@ Classi di asset e leva massima:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import os
 from typing import Optional
 
 # ---- asset tier (leva massima)
@@ -130,6 +131,9 @@ class PaperAccount:
         self._capital_reference = None
 
     def set_capital_policy(self, bot: str, day_budget, reference=None) -> None:
+        # Hard fail-closed: Capital Management V1 is intentionally PAPER-only.
+        if os.getenv("DESK_MODE", "paper").strip().lower() != "paper":
+            raise ValueError("Capital V1 policy must never run in live mode")
         from .position_sizer import cap_for
         self._capital_day_budget = float(day_budget)
         cap_for(bot, self._capital_day_budget)  # checks bot, finite, 0..1000
