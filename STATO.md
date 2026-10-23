@@ -9,18 +9,18 @@
 - Credenziali, importi reali Bitget e chiavi **mai** nel repo pubblico. Non toccare Strasburgo / HI-TV.
 
 ## Decisioni recenti dell'utente: Capital Management V1
-**Design e parametri confermati; implementazione e deploy NON autorizzati.**
+**Specifica e punti A/B/C approvati; implementazione AUTORIZZATA su work/*; merge operativo e deploy NON autorizzati.**
 - Stop giornaliero futuro: **20%** del budget operativo di inizio giornata; protezione assoluta $450 invariata.
 - Ogni bot ha vault virtuale indipendente; a **00:00 UTC** trasferire eccedenza sopra $1000 se effettivamente coperta da liquidità realizzata; altrimenti `pending` fino a chiusura posizioni, senza forzare chiusure e senza recupero automatico dal vault sotto $1000.
 - Prelievo dal vault al portafoglio **soltanto manuale** con autenticazione/registro/idempotenza, mai automaticamente. In futura live nessuna movimentazione Bitget automatica.
 - Sizer: Hawk **10%**, Bull **25%** del budget operativo giornaliero; max slot **10/6**; protezioni PAPER e rischio esistenti fino a nuovo deploy autorizzato.
 - L'utente ha riconfermato 10%/25%, 00:00 UTC, pending e protezione 450 e autorizzato la progettazione tecnica. **Piano dettagliato pubblicato:** `CAPITAL-MANAGEMENT-V1-SPECIFICA.md`; handoff: `CAPITAL-MANAGEMENT-V1-HANDOFF.md`. Nessun codice o deploy autorizzato.
-- Da esplicitare prima di codice: (A) tetto complessivo incluso DCA/split, (B) versamento manuale neutrale rispetto a stop/sizer fino al nuovo UTC, (C) equity temporaneamente >1000 con posizioni aperte e pending. Raccomandazioni scritte nel handoff; evitare di trattarle come deploy approvato.
+- **A/B/C APPROVATI:** cap totale incluso DCA/split; trasferimenti manuali senza aumento del riferimento intraday né reset stop; equity temporaneamente sopra target distinta da budget e pending.
 - La discussione separata sul pulsante "Azzera budget AI" è stata diagnosticata read-only: bot riceve ed esegue reset; messaggio `stop giornaliero raggiunto` deriva da rischio trading, indipendente dal budget API. Non è stata applicata alcuna fix al reset.
 
 ## IN_CORSO — prenotazione componente (un autore alla volta)
-- **Capital Manager / Vault Manager / Position Sizer / Dashboard:** Work ha completato la specifica tecnica per review. Nessun autore ha iniziato implementazione; prossimo passo review e decisione A/B/C, poi eventuale OK separato al codice. Chat normale/Claude possono revisionare; nessuna modifica concorrente allo stesso componente.
-- **Ramo futuro proposto** `work/capital-management-v1` dalla baseline runtime `f87f2d63c5849b177dbd33ee43c5be05ca58c8ed`; non ancora creato.
+- **Autore attivo: ChatGPT Work.** Capital/Vault/Sizer, ledger e integrazione bot/test: `work/capital-management-v1`, base `f87f2d63c5849b177dbd33ee43c5be05ca58c8ed`. Dashboard/API/test: `work/capital-dashboard-v1`, base main `1cdfd6a230125d627ad3baf3126c1e7033debe46`. File `backend/desk/*`, relativi test e documentazione; app `backend/desk_api.py`, `backend/desk_view.py`, moduli capitali e frontend. Chat normale/Claude: sola review su questi componenti fino al passaggio.
+- Implementazione in corso su rami separati; nessuna modifica a rule-pool/main o ai container autorizzata.
 - Prima di iniziare un componente, assegnare qui autore corrente (Work/chat/Claude), file, branch e SHA. L'altro non modifica lo stesso componente in contemporanea; eventualmente fa sola lettura/review.
 - Nessun deploy autorizzato. Nessun aggiornamento a code_version autorizzato.
 
@@ -33,3 +33,6 @@
 - Regole inviolabili: `LEGGIMI.md`; prassi GitHub/SSH/backup: `MANUALE-OPERATIVO.md`.
 - Cronologia per giorno/autore: `diario/YYYY-MM-DD_*.md`.
 - Storico della vecchia pagina STATO: `ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md`.
+
+## Ultimo checkpoint
+23/10: utente autorizza implementazione della specifica dopo approvazione A/B/C. Work prenota i quattro componenti; note precedenti di sola progettazione sono superate da questa autorizzazione. Nessun deploy o nuova baseline runtime.
