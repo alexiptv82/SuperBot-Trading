@@ -35,6 +35,7 @@ class VaultState:
     pending: tuple[PendingLot, ...] = ()
     revision: int = 0
     last_rollover_day: str = ""
+    processed: tuple[tuple[str, str], ...] = ()  # idempotent manual and close commands
 
     def __post_init__(self):
         nonnegative(self.balance)
@@ -43,6 +44,9 @@ class VaultState:
         keys = [x.key for x in self.pending]
         if len(keys) != len(set(keys)):
             raise CapitalInvariantError("duplicate pending key")
+        ids = [x[0] for x in self.processed]
+        if len(ids) != len(set(ids)):
+            raise CapitalInvariantError("duplicate event receipt")
 
     @property
     def pending_total(self) -> Decimal:
@@ -51,14 +55,16 @@ class VaultState:
     def to_dict(self):
         return {"balance": str(self.balance),
                 "pending": [x.to_dict() for x in self.pending],
-                "revision": self.revision, "last_rollover_day": self.last_rollover_day}
+                "revision": self.revision, "last_rollover_day": self.last_rollover_day,
+                "processed": [list(x) for x in self.processed]}
 
     @classmethod
     def from_dict(cls, d: dict) -> "VaultState":
         return cls(dec(d.get("balance", 0)),
                    tuple(PendingLot(str(x["key"]), str(x["utc_day"]), dec(x["remaining"]))
                          for x in d.get("pending", [])),
-                   int(d.get("revision", 0)), str(d.get("last_rollover_day", "")))
+                   int(d.get("revision", 0)), str(d.get("last_rollover_day", "")),
+                   tuple((str(a), str(b)) for a, b in d.get("processed", [])))
 
 
 @dataclass(frozen=True)
@@ -74,17 +80,19 @@ class VaultTransition:
 
 
 def _room(equity: object, cash: object, committed_margin: object, unrealized: object,
-          reserved_cash: object = Decimal("0")) -> Decimal:
+          reserved_cash: object = Decimal("0"),
+          excluded_external_funds: object = Decimal("0")) -> Decimal:
     """Never treat returned principal, margin or unrealized profit as distributable."""
-    eq, ca, m, u, reserve = [dec(x) for x in
-                             (equity, cash, committed_margin, unrealized, reserved_cash)]
-    if ca < 0 or m < 0 or reserve < 0:
+    eq, ca, m, u, reserve, external = [dec(x) for x in
+                             (equity, cash, committed_margin, unrealized,
+                              reserved_cash, excluded_external_funds)]
+    if ca < 0 or m < 0 or reserve < 0 or external < 0:
         raise CapitalInvariantError("invalid cash, margin or reservation")
     # Reconcile: the account must not invent equity relative to its component parts.
     if abs(eq - (ca + m + u)) > Decimal("0.02"):
         raise CapitalInvariantError("equity reconciliation mismatch")
     surplus = max(Decimal("0"), eq - TARGET)
-    realized_surplus = max(Decimal("0"), (ca + m) - TARGET)
+    realized_surplus = max(Decimal("0"), (ca + m) - TARGET - external)
     return max(Decimal("0"), min(surplus, realized_surplus, ca - reserve))
 
 
@@ -115,15 +123,17 @@ def _trim_lots(lots: tuple[PendingLot, ...], max_pending: Decimal) -> tuple[Pend
 
 def rollover(vault: VaultState, *, utc_day: str, equity: object, cash: object,
              committed_margin: object, unrealized: object,
-             reserved_cash: object = Decimal("0")) -> VaultTransition:
+             reserved_cash: object = Decimal("0"),
+             excluded_external_funds: object = Decimal("0")) -> VaultTransition:
     if vault.last_rollover_day == utc_day:
         return VaultTransition(vault, Decimal("0"), "rollover:" + utc_day, "already_applied")
     if vault.last_rollover_day and utc_day < vault.last_rollover_day:
         raise CapitalInvariantError("backdated rollover")
     eq = dec(equity)
-    eligible = cents(_room(eq, cash, committed_margin, unrealized, reserved_cash))
+    eligible = cents(_room(eq, cash, committed_margin, unrealized,
+                           reserved_cash, excluded_external_funds))
     t = max(Decimal("0"), eligible)
-    surplus_remaining = max(Decimal("0"), cents(eq - t - TARGET))
+    surplus_remaining = max(Decimal("0"), cents(eq - t - TARGET - nonnegative(excluded_external_funds)))
     existing = _trim_lots(vault.pending, surplus_remaining)
     covered = sum((x.remaining for x in existing), Decimal("0"))
     new_claim = max(Decimal("0"), surplus_remaining - covered)
@@ -137,18 +147,24 @@ def rollover(vault: VaultState, *, utc_day: str, equity: object, cash: object,
 
 def settle_pending(vault: VaultState, *, equity: object, cash: object,
                    committed_margin: object, unrealized: object,
-                   reserved_cash: object = Decimal("0"), event_id: str) -> VaultTransition:
+                   reserved_cash: object = Decimal("0"), event_id: str,
+                   excluded_external_funds: object = Decimal("0")) -> VaultTransition:
     if not event_id:
         raise CapitalInvariantError("missing event identifier")
+    prior = dict(vault.processed)
+    if event_id in prior:
+        if prior[event_id] != "settlement":
+            raise CapitalInvariantError("event id reused for different operation")
+        return VaultTransition(vault, Decimal("0"), event_id, "already_applied")
     eq = dec(equity)
-    claims = _trim_lots(vault.pending, max(Decimal("0"), cents(eq - TARGET)))
+    claims = _trim_lots(vault.pending, max(Decimal("0"), cents(eq - TARGET - nonnegative(excluded_external_funds))))
     payable = min(sum((x.remaining for x in claims), Decimal("0")),
-                  cents(_room(eq, cash, committed_margin, unrealized, reserved_cash)))
+                  cents(_room(eq, cash, committed_margin, unrealized,
+                              reserved_cash, excluded_external_funds)))
     adjusted = _reduce_lots(claims, payable)
-    if payable == 0 and adjusted == vault.pending:
-        return VaultTransition(vault, Decimal("0"), event_id, "no_transfer")
     new = replace(vault, balance=vault.balance + payable,
-                  pending=adjusted, revision=vault.revision + 1)
+                  pending=adjusted, revision=vault.revision + 1,
+                  processed=vault.processed + ((event_id, "settlement"),))
     return VaultTransition(new, -payable, event_id, "pending_reconciled")
 
 
@@ -157,17 +173,23 @@ def manual_withdraw(vault: VaultState, amount: object, *, event_id: str,
     """Only an authenticated app command may reach this method. No bot-initiated call."""
     if not paper_mode:
         raise CapitalInvariantError("vault transfers disabled outside PAPER")
-    if expected_revision != vault.revision:
-        raise CapitalInvariantError("stale vault revision")
     a = cents(amount)
     if a <= 0 or a != dec(amount):
         raise CapitalInvariantError("amount must be positive and precise to cents")
-    if a > vault.balance:
-        raise CapitalInvariantError("insufficient vault balance")
     if not event_id:
         raise CapitalInvariantError("missing idempotency key")
+    previous = dict(vault.processed)
+    if event_id in previous:
+        if previous[event_id] != str(a):
+            raise CapitalInvariantError("event id reused with different amount")
+        return VaultTransition(vault, Decimal("0"), event_id, "already_applied")
+    if expected_revision != vault.revision:
+        raise CapitalInvariantError("stale vault revision")
+    if a > vault.balance:
+        raise CapitalInvariantError("insufficient vault balance")
     return VaultTransition(replace(vault, balance=vault.balance - a,
-                                   revision=vault.revision + 1),
+                                   revision=vault.revision + 1,
+                                   processed=vault.processed + ((event_id, str(a)),)),
                            a, event_id, "manual_withdraw")
 
 
