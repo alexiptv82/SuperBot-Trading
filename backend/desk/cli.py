@@ -533,6 +533,15 @@ def make_account(state: dict) -> PaperAccount:
             ref=DayReference.from_dict(cap["day"])
             if cap.get("status") != "READY":
                 ref=replace(ref,day_budget=0,stop_latched=True)
+            elif acc.positions:
+                val=cap.get("valuation") or {}
+                try:
+                    ms=int(val.get("valuation_ms",0))
+                except (ValueError,TypeError):
+                    ms=0
+                # A stale or missing quote cannot authorize fresh exposure.
+                if val.get("fresh") is not True or not 0 <= int(time.time()*1000)-ms <= 120000:
+                    ref=replace(ref,stop_latched=True)
             acc.set_capital_policy(PORTFOLIO.name,ref.day_budget,ref)
         return acc
     return PaperAccount(PORTFOLIO.limits, "main")
