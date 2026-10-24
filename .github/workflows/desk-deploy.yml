@@ -341,7 +341,7 @@ jobs:
               docker exec "superbot-desk-$P" python -c 'from desk import capital_journal, capital_manager, capital_runtime, vault_manager, position_sizer' || {
                 echo "DEPLOY_BLOCKED=capital_code_missing bot=$P"; exit 1;
               }
-              python3 -I -c "import json; h=json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')); cv1=h.get('capital_v1'); assert cv1 is not None, 'capital_v1 missing from heartbeat'; assert not (cv1 is True and '$'+'{DESK_CAPITAL_V1:-off}'=='off'), 'capital_v1 must be false for rollback'" || {
+              python3 -I -c "import json,os; h=json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')); cv1=h.get('capital_v1'); assert type(cv1) is bool, 'capital_v1 missing or invalid'; assert os.getenv('DESK_CAPITAL_V1','off') != 'off' or cv1 is False, 'capital_v1 must be false for rollback'" || {
                 echo "DEPLOY_BLOCKED=capital_v1_inconsistent bot=$P"; exit 1;
               }
               echo "CAPITAL_V1_REPORTED bot=$P PASS"
