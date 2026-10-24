@@ -1,0 +1,36 @@
+name: Read-only DeepSeek shadow decisions and PAPER trade audit 2026-10-23
+# Metadata-only audit, no orders, no writes/restarts on Singapore VPS.
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/shadow-20261023-audit.trigger"]
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read-only audit over pinned-key SSH
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/sg-audit"
+          chmod 600 "$HOME/.ssh/sg-audit"
+          cat > "$HOME/.ssh/sg-audit-hosts" <<'HOSTS'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTS
+          ssh -T -i "$HOME/.ssh/sg-audit" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/sg-audit-hosts" \
+            -o ConnectTimeout=20 root@51.79.205.82 'python3 -I -' \
+            < deploy/scripts/shadow_20261023_audit.py | tee audit.log
+          grep -qx 'AUDIT_COMPLETE_2026_10_23' audit.log
+          { echo '## Shadow DeepSeek vs Hawk/Bull, 23 Oct 2026 UTC'; cat audit.log; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove ephemeral SSH key
+        if: always()
+        shell: bash
+        run: rm -f "$HOME/.ssh/sg-audit" "$HOME/.ssh/sg-audit-hosts"
