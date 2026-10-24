@@ -65,6 +65,15 @@ for bot in ("hawk","bull"):
                 print("SIDECAR",bot,"BODY_SCHEMA",json.dumps({k:(list(v.keys())[:20] if isinstance(v,dict) else type(v).__name__) for k,v in body.items()},sort_keys=True)[:2600])
                 for key in ("ts_ms","cycle_ts","asof_ms","cycle_end_ms","timestamp","run_no","portfolio","type","mode"):
                     if key in body:print("SIDECAR",bot,"BODY_META",key,str(body[key])[:60])
+                if isinstance(body.get("positions"),list):
+                    print("SIDECAR",bot,"POS_COUNT",len(body["positions"]))
+                    if body["positions"]:
+                        x=body["positions"][0]
+                        print("SIDECAR",bot,"POSITION_STRUCTURE",json.dumps({k:(list(v.keys())[:22] if isinstance(v,dict) else type(v).__name__) for k,v in x.items()},sort_keys=True)[:2800])
+                        if isinstance(x.get("roi"),dict):
+                            print("SIDECAR",bot,"ROI_STRUCTURE",json.dumps({k:type(v).__name__ for k,v in x["roi"].items()},sort_keys=True))
+            dates=collections.Counter(stamp((x.get("body") or {}).get("asof_ms",0)) for x in arr if (x.get("body") or {}).get("ev")=="cycle")
+            print("SIDECAR",bot,"CYCLE_DATES",json.dumps(dict(sorted(dates.items())),sort_keys=True))
                 if isinstance(body.get("evaluations"),list) and body["evaluations"]:
                     print("SIDECAR",bot,"EVAL_META",json.dumps({k:type(v).__name__ for k,v in body["evaluations"][0].items()},sort_keys=True))
                 if isinstance(body.get("records"),list) and body["records"]:
