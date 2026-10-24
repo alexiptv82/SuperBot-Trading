@@ -74,6 +74,11 @@ jobs:
           # il file trigger si legge dal commit che ha avviato il rilascio (non da una versione piu' vecchia scelta con sha=)
           if git show "${{ github.sha }}:deploy/desk-deploy.trigger" | grep -qx 'backup=bot_fermo'; then MODE="--bot-stopped"; fi
           echo "extra=$MODE" >> "$GITHUB_OUTPUT"
+          # For an explicit Capital V1 activation, fail BEFORE touching containers
+          # if the GitHub Secret is absent or not exactly "paper".
+          if git show "${{ github.sha }}:deploy/desk-deploy.trigger" | grep -qx 'capital=paper'; then
+            echo "capital_activation=paper" >> "$GITHUB_OUTPUT"
+          fi
           echo "modalita' backup: ${MODE:-normale (confine di ciclo verificato)}"
 
       - name: Copia strumenti di backup sul VPS (chiave del server verificata)
@@ -120,6 +125,7 @@ jobs:
           DESK_BULL_CAPITAL: ${{ secrets.DESK_BULL_CAPITAL }}
           DESK_DAILY_LOSS_PCT: ${{ secrets.DESK_DAILY_LOSS_PCT }}
           DESK_CAPITAL_V1: ${{ secrets.DESK_CAPITAL_V1 }}
+          REQUIRE_CAPITAL_ACTIVATION: ${{ steps.bk.outputs.capital_activation }}
         with:
           host: 51.79.205.82
           username: root
@@ -130,7 +136,7 @@ jobs:
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           connect_timeout: 90s
           command_timeout: 30m
-          envs: BACKUP_EXTRA,APPROVED_SHA,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,DESK_CAPITAL_V1
+          envs: BACKUP_EXTRA,APPROVED_SHA,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,DESK_CAPITAL_V1,REQUIRE_CAPITAL_ACTIVATION
           script: |
             set -e
             # --- Versione approvata: 40 caratteri esadecimali, altrimenti non si tocca niente
@@ -139,6 +145,10 @@ jobs:
             fi
             # Preserve runtime risk configuration; never print environment values.
             [ "${DESK_MODE:-paper}" = paper ] || { echo DEPLOY_BLOCKED=paper_required; exit 1; }
+            if [ "${REQUIRE_CAPITAL_ACTIVATION:-}" = paper ] && [ "${DESK_CAPITAL_V1:-off}" != paper ]; then
+              echo DEPLOY_BLOCKED=capital_secret_not_paper; exit 1
+            fi
+            case "${DESK_CAPITAL_V1:-off}" in off|paper) ;; *) echo DEPLOY_BLOCKED=invalid_capital_secret; exit 1 ;; esac
             for P in hawk bull; do
               CURRENT_ENV="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P")"
               printf '%s\n' "$CURRENT_ENV" | grep -qx 'DESK_MODE=paper' || { echo DEPLOY_BLOCKED=runtime_not_paper; exit 1; }
