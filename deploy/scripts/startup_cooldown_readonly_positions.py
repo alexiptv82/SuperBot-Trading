@@ -80,8 +80,8 @@ def metric(p,price,now,closed,lim):
     funding=qty*entry*fund_bp/10000*max(0,now-pos_open)/28_800_000 if side==1 else 0.
     realized=0.
     for x in closed:
-        if x.get("id")==p.get("id") and x.get("symbol")==p.get("symbol") and
-          x.get("open_ms")==p.get("open_ms") and x.get("partial") is True:
+        if (x.get("id")==p.get("id") and x.get("symbol")==p.get("symbol") and
+            x.get("open_ms")==p.get("open_ms") and x.get("partial") is True):
             realized+=float(x.get("net") or 0)
     net=realized+side*(fill-entry)*qty-fee_open-qty*fill*fee_bp/10000-funding
     return round(net/ref*100,2),round(net,2),round(ref,2)
