@@ -1,1 +1,2 @@
-2026-10-24 pre-deploy read-only verification: mode, heartbeat version, no bot modification. Target commit 297b126ea5f0b26bea281bdcdb330739d9fc2fe2
+2026-10-24 06:36Z independent post-deploy read-only verification.
+Expected both PAPER bots running version 297b126; Capital V1 explicitly off per deploy run 40070696611.
