@@ -74,11 +74,13 @@ jobs:
           # il file trigger si legge dal commit che ha avviato il rilascio (non da una versione piu' vecchia scelta con sha=)
           if git show "${{ github.sha }}:deploy/desk-deploy.trigger" | grep -qx 'backup=bot_fermo'; then MODE="--bot-stopped"; fi
           echo "extra=$MODE" >> "$GITHUB_OUTPUT"
-          # For an explicit Capital V1 activation, fail BEFORE touching containers
-          # if the GitHub Secret is absent or not exactly "paper".
-          if git show "${{ github.sha }}:deploy/desk-deploy.trigger" | grep -qx 'capital=paper'; then
-            echo "capital_activation=paper" >> "$GITHUB_OUTPUT"
-          fi
+          # Explicit Capital gate from trigger. Default is safely OFF; reject typos.
+          CAPITAL_MODE="$(git show "${{ github.sha }}:deploy/desk-deploy.trigger" | sed -n 's/^capital=//p' | head -n1)"
+          case "$CAPITAL_MODE" in
+            paper) echo "capital_mode=paper" >> "$GITHUB_OUTPUT"; echo "capital_activation=paper" >> "$GITHUB_OUTPUT" ;;
+            off|"") echo "capital_mode=off" >> "$GITHUB_OUTPUT" ;;
+            *) echo DEPLOY_BLOCKED=invalid_trigger_capital_mode; exit 1 ;;
+          esac
           echo "modalita' backup: ${MODE:-normale (confine di ciclo verificato)}"
 
       - name: Copia strumenti di backup sul VPS (chiave del server verificata)
@@ -124,7 +126,9 @@ jobs:
           DESK_HAWK_CAPITAL: ${{ secrets.DESK_HAWK_CAPITAL }}
           DESK_BULL_CAPITAL: ${{ secrets.DESK_BULL_CAPITAL }}
           DESK_DAILY_LOSS_PCT: ${{ secrets.DESK_DAILY_LOSS_PCT }}
-          DESK_CAPITAL_V1: ${{ secrets.DESK_CAPITAL_V1 }}
+          # OFF is a deliberate rollback and must override the still-paper GitHub Secret.
+          # Re-enabling requires a future explicit capital=paper trigger AND a valid Secret.
+          DESK_CAPITAL_V1: ${{ steps.bk.outputs.capital_mode == 'paper' && secrets.DESK_CAPITAL_V1 || 'off' }}
           REQUIRE_CAPITAL_ACTIVATION: ${{ steps.bk.outputs.capital_activation }}
         with:
           host: 51.79.205.82
@@ -291,9 +295,9 @@ jobs:
             # Public logs contain only status/version checks, never raw bot logs.
             for P in hawk bull; do
               docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P" | grep -qx 'DESK_MODE=paper'
-              docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P" | grep -qE '^DESK_CAPITAL_V1=(off|paper)$'
+              docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P" | grep -qx "DESK_CAPITAL_V1=${DESK_CAPITAL_V1:-off}"
             done
-            echo PAPER_AND_CAPITAL_V1_DISABLED_AFTER_DEPLOY=PASS
+            echo PAPER_AND_CAPITAL_ENV_VERIFIED_AFTER_DEPLOY=PASS
 
             # == Esito: tutti e due i bot devono girare, altrimenti il workflow e' rosso ==
             for N in superbot-desk-hawk superbot-desk-bull; do
@@ -337,8 +341,8 @@ jobs:
               docker exec "superbot-desk-$P" python -c 'from desk import capital_journal, capital_manager, capital_runtime, vault_manager, position_sizer' || {
                 echo "DEPLOY_BLOCKED=capital_code_missing bot=$P"; exit 1;
               }
-              python3 -I -c "import json; h=json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')); cv1=h.get('capital_v1'); assert cv1 is not None, 'capital_v1 missing from heartbeat'" || {
-                echo "DEPLOY_BLOCKED=capital_v1_unreported bot=$P"; exit 1;
+              python3 -I -c "import json; h=json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')); cv1=h.get('capital_v1'); assert cv1 is not None, 'capital_v1 missing from heartbeat'; assert not (cv1 is True and '$'+'{DESK_CAPITAL_V1:-off}'=='off'), 'capital_v1 must be false for rollback'" || {
+                echo "DEPLOY_BLOCKED=capital_v1_inconsistent bot=$P"; exit 1;
               }
               echo "CAPITAL_V1_REPORTED bot=$P PASS"
             done
