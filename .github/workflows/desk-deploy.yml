@@ -248,6 +248,18 @@ jobs:
               -v /opt/superbot-desk-data/hawk:/app/data/desk/hawk \
               superbot-desk
 
+            # Sequential restart gate: never stop Bull until the new Hawk is alive,
+            # still PAPER and explicitly has the capital feature switched OFF.
+            sleep 12
+            [ "$(docker inspect -f '{{.State.Running}}' superbot-desk-hawk)" = true ] || {
+              echo DEPLOY_BLOCKED=new_hawk_not_running_keep_bull_untouched; exit 1;
+            }
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' superbot-desk-hawk |
+              grep -qx 'DESK_MODE=paper' || { echo DEPLOY_BLOCKED=hawk_not_paper; exit 1; }
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' superbot-desk-hawk |
+              grep -qx 'DESK_CAPITAL_V1=off' || { echo DEPLOY_BLOCKED=hawk_capital_active; exit 1; }
+            echo HAWK_STARTED_SAFE_BULL_UNTOUCHED=PASS
+
             # ── BULL ─────────────────────────────────────────────────────────
             docker stop superbot-desk-bull 2>/dev/null || true
             docker rm   superbot-desk-bull 2>/dev/null || true
