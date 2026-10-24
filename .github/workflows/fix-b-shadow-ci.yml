@@ -1,0 +1,45 @@
+name: Fix B AI Profit Guardian V1 shadow-only CI (NO DEPLOY)
+on:
+  push:
+    branches: [work/fix-b-profit-guardian]
+    paths:
+      - "backend/desk/profit_guardian.py"
+      - "backend/desk/portfolio_alert.py"
+      - "backend/tests/test_fix_b_guardian.py"
+      - "backend/tests/test_fix_b_portfolio_alert.py"
+      - ".github/workflows/fix-b-shadow-ci.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Syntax check (offline)
+        run: |
+          python -m py_compile backend/desk/profit_guardian.py backend/desk/portfolio_alert.py \
+            backend/tests/test_fix_b_guardian.py backend/tests/test_fix_b_portfolio_alert.py
+      - name: Isolated shadow-only regressions (no API keys, network or runtime)
+        env:
+          PYTHONPATH: backend
+          DESK_MODE: paper
+          DESK_CAPITAL_V1: "off"
+        run: python -m unittest discover -v -s backend/tests -p "test_fix_b_*.py"
+      - name: Ensure no operational imports from shadow modules
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import ast
+          for path in (Path("backend/desk/profit_guardian.py"),Path("backend/desk/portfolio_alert.py")):
+              tree=ast.parse(path.read_text())
+              banned=("desk.cli","desk.engine","desk.live_connector","director.ai_shadow","requests","urllib")
+              imports=[n.module or "" for n in ast.walk(tree) if isinstance(n,ast.ImportFrom)]
+              imports += [alias.name for n in ast.walk(tree) if isinstance(n,ast.Import) for alias in n.names]
+              assert not any(s == b or s.startswith(b+".") for s in imports for b in banned), (path,imports)
+              print(path,"PAPER_SHADOW_ISOLATED=PASS")
+          PY
