@@ -1,4 +1,4 @@
-name: Fix B historical replay phase 1: paper ROI checkpoints (NO DEPLOY)
+name: "Fix B historical replay phase 1 - paper ROI checkpoints (NO DEPLOY)"
 on:
   push:
     branches: [work/fix-b-profit-guardian]
