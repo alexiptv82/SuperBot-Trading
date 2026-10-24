@@ -1,1 +1,1 @@
-2026-10-23T08:09:30Z independent read-only post-Fix-A deployment confirmation: PAPER, heartbeat versions f87f2d6 for both bots. No bot modifications.
+Pre-deploy read-only check on 2026-10-24 for approved pinned bot code 297b126. No deployment or container change.
