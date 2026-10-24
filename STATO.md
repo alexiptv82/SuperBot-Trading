@@ -1,43 +1,28 @@
-# STATO CORRENTE SuperBot-Trading — 23 ottobre 2026
-**Fonte comune Work / chat normale / Claude:** branch `diario`, `SINCRONIZZAZIONE-WORK-CHAT.md`. Leggere anche `LEGGIMI.md`, `MANUALE-OPERATIVO.md`, ultimi diario e l'handoff tecnico specifico. Questa pagina è una fotografia attuale, non uno storico.
+# STATO CORRENTE SuperBot-Trading — 24 ottobre 2026
+Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico precedente consultare i commit di questo file e ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md. Protocollo: SINCRONIZZAZIONE-WORK-CHAT.md.
 
-## Ambiente operativo
-- Hawk e Bull: esclusivamente **PAPER**, runtime **`code_version=f87f2d6`** (SHA completo `f87f2d63c5849b177dbd33ee43c5be05ca58c8ed`), confermato 23/10/2026 con controllo indipendente GitHub Actions **39922740438** dopo il deploy isolato Fix A run **39922453846**.
-- VPS Singapore; una sola istanza per bot. Ultimo rilascio verificato: Fix A soltanto. Default stop operativo attuale **12%**, non ancora 20%. Risorse e stati live da ricontrollare prima di future operazioni.
-- Salvaguardia: backup cervello del deploy `bots-20261023-080755-deploy`; rollback immagine `superbot-desk:rollback-20261023-080755`. Non cancellare memoria, trade, lessons o DB.
-- `rule-pool` è ramo operativo con storia diversa da `main` (app); SHA `rule-pool` **non coincide necessariamente con il codice dei container**. Non eseguire deploy ordinario di `rule-pool` supponendo sia identico a f87f2d6.
-- Credenziali, importi reali Bitget e chiavi **mai** nel repo pubblico. Non toccare Strasburgo / HI-TV.
+## Runtime PAPER (NON toccare senza nuova autorizzazione)
+- Hawk + Bull in PAPER sul VPS Singapore, codice dichiarato e verificato 297b126ea5f0b26bea281bdcdb330739d9fc2fe2 (versione 297b126). Deploy autorizzato e riuscito: GitHub Actions 40070696611, avvio sequenziale Hawk→Bull, un solo writer per bot; controllo indipendente 40070871034: processi running, heartbeat fresco, exec_mode=paper e nessun ordine reale.
+- Capital Management V1 integrato in rule-pool e INSTALLATO sul VPS ma con DESK_CAPITAL_V1=off, non abilitare senza OK dell'utente. Trading mantiene comportamento pre-abilitazione. Nessun reset portafogli né dati storici.
+- Backup pre-deploy cifrato con nuova chiave age V2: superbot-backup-20261024T062811Z.tar.gz.age; prova di decifratura/restore riuscita e dati Hawk/Bull intatti, 43 file verificati in Actions 40010394710 (tentativo 2), comprese posizioni aperte al momento del snapshot, più backup locale e immagine rollback del deploy. Nessuna chiave privata nei file del repository.
+- rule-pool è un ramo operativo di codice e workflow: il suo HEAD può cambiare per audit/test senza cambiare l'immagine deployata 297b126. main/altre app sono entità separate. Non toccare Strasburgo/HiTV.
 
-## Decisioni recenti dell'utente: Capital Management V1
-**Specifica e punti A/B/C approvati; implementazione AUTORIZZATA su work/*; merge operativo e deploy NON autorizzati.**
-- Stop giornaliero futuro: **20%** del budget operativo di inizio giornata; protezione assoluta $450 invariata.
-- Ogni bot ha vault virtuale indipendente; a **00:00 UTC** trasferire eccedenza sopra $1000 se effettivamente coperta da liquidità realizzata; altrimenti `pending` fino a chiusura posizioni, senza forzare chiusure e senza recupero automatico dal vault sotto $1000.
-- Prelievo dal vault al portafoglio **soltanto manuale** con autenticazione/registro/idempotenza, mai automaticamente. In futura live nessuna movimentazione Bitget automatica.
-- Sizer: Hawk **10%**, Bull **25%** del budget operativo giornaliero; max slot **10/6**; protezioni PAPER e rischio esistenti fino a nuovo deploy autorizzato.
-- L'utente ha riconfermato 10%/25%, 00:00 UTC, pending e protezione 450 e autorizzato la progettazione tecnica. **Piano dettagliato pubblicato:** `CAPITAL-MANAGEMENT-V1-SPECIFICA.md`; handoff: `CAPITAL-MANAGEMENT-V1-HANDOFF.md`. Nessun codice o deploy autorizzato.
-- **A/B/C APPROVATI:** cap totale incluso DCA/split; trasferimenti manuali senza aumento del riferimento intraday né reset stop; equity temporaneamente sopra target distinta da budget e pending.
-- La discussione separata sul pulsante "Azzera budget AI" è stata diagnosticata read-only: bot riceve ed esegue reset; messaggio `stop giornaliero raggiunto` deriva da rischio trading, indipendente dal budget API. Non è stata applicata alcuna fix al reset.
+## NUOVO PROGETTO — FIX B AI PROFIT GUARDIAN V1 (SOLO SHADOW)
+- Utente ha autorizzato il 24/10 branch isolato, moduli e test, e pubblicazione di una SPECIFICA sul diario. Esplicitamente **vietati merge su rule-pool, deploy e riavvio Hawk/Bull** finché non arriva un ulteriore OK.
+- Branch di lavoro: work/fix-b-profit-guardian; base di partenza rule-pool 91132ec230200f921d08674b0508163eab4d6e7d; HEAD finale del lavoro f212d4140adae4c48f8657aa7ceb0e481ac585d8.
+- Implementati SOLO moduli indipendenti backend/desk/profit_guardian.py e backend/desk/portfolio_alert.py, tre file test e workflow CI no-deploy. Pipeline CI run 40075723911 SUCCESS: 21 test unitari offline, py_compile e isolamento import. Nessuna chiamata AI reale/runner/esecuzione, nessuna modifica motore attivo. ChatGPT è writer dei componenti Fix B; Claude è revisore incrociato paritario e non deve scrivere contemporaneamente negli stessi file senza accordo.
+- Parametri approvati: watch ROI netto 12%, review 20%; CLOSE_FULL, TAKE_PARTIAL 50% (stop residuo valido o intera operazione rifiutata), HOLD_TP; budget separato 0,10 $/giorno UTC condiviso Hawk+Bull, intervallo minimo 30 minuti per posizione; prompt Claude Fix B dedicato con ROI/MFE/distanza TP in R.
+- Portfolio Trend Alert: SHORT aperte + BTC/ETH, 3+ inversioni simultanee su barre 1h chiuse EMA20/50 + RSI + volume -> rivalutazione Claude priorità massima, anche ROI sotto 20%, senza chiusure automatiche. In cooldown si registra subito e si differisce la revisione alla prima scadenza.
+- Tre corsie comparative da registrare per evento: candidato Claude operativo NON eseguito; seconda proposta Claude shadow; output DeepSeek già esistente, applied=false, indipendente e mai co-decisore. Se i dati DeepSeek non sono comparabili, lo si dichiara, mai inventare. I moduli consentono registrazione append-only in directory separata, senza scrittura bot/DeepSeek.
+- **Specifica vincolante:** FIX-B-PROFIT-GUARDIAN-V1-SPECIFICA.md nel ramo diario. Handoff e report del giorno: diario/2026-10-24_chatgpt.md.
 
-## IN_CORSO — prenotazione componente (un autore alla volta)
-- **Autore attivo dal nuovo passaggio: ChatGPT chat normale**, perché l'utente torna qui da Work (limiti di utilizzo) e affida implementazione della specifica già autorizzata. Work NON ha pubblicato rami codice, PR o run: sono presenti solo la specifica e il diario, come verificato tramite GitHub. Componenti assegnati ora alla chat normale: bot Capital/Vault/Sizer e relativi test su `work/capital-management-v1` da `f87f2d63c5849b177dbd33ee43c5be05ca58c8ed`; app Dashboard/API e test su `work/capital-dashboard-v1` da main `1cdfd6a230125d627ad3baf3126c1e7033debe46`. Work/Claude fanno sola lettura/review finché non c'è nuovo passaggio di mano.
-- Implementazione autorizzata SOLO su rami work separati; non ancora pubblicata all'inizio di questo passaggio. Nessuna modifica a rule-pool/main o ai container autorizzata.
-- Prima di iniziare un componente, assegnare qui autore corrente (Work/chat/Claude), file, branch e SHA. L'altro non modifica lo stesso componente in contemporanea; eventualmente fa sola lettura/review.
-- Nessun deploy autorizzato. Nessun aggiornamento a code_version autorizzato.
-
-## PASSAGGIO Work / chat normale
-- Chat normale ha creato e pubblicato **solo documentazione** sul ramo `diario`: `SINCRONIZZAZIONE-WORK-CHAT.md`, `CAPITAL-MANAGEMENT-V1-HANDOFF.md`, questa fotografia e cronologia 23/10. Nessuna modifica ai bot.
-- **Presa in carico Work (23/10):** letti LEGGIMI, STATO, protocollo di sincronizzazione, handoff Capital Management e ultime voci del diario al checkpoint `b1baf5552194aebdb59c92b776edccbca359a3e4`. Confermata la ripresa della sola progettazione; nessun autore di codice prenotato e nessuna implementazione avviata. Restano aperti i punti A/B/C del handoff; codice e deploy richiedono le rispettive autorizzazioni.
-- **Aggiornamento non continuo:** lo stato diventa visibile all'altra chat solo dopo il commit sul diario e una sua successiva lettura. Le chat inattive non si scambiano messaggi automaticamente.
+## Altre informazioni operative
+- DeepSeek è shadow indipendente e non cambia in questo progetto; resoconto storico 23/10: 96 chiamate valide/222 decisioni applied=false, comparazione con Hawk/Bull in sola lettura (Action 40072633461).
+- Capital Management V1: specifica originale CAPITAL-MANAGEMENT-V1-SPECIFICA.md; backup/restore V2 certificato; merge e deploy già conclusi in precedenza. Non confondere con Fix B.
+- Vincoli immutabili: nessuna istanza LIVE, nessun doppio processo, preservare DB, trade_history, learning_log, AI memory, vault e journal, non esporre credenziali, backup verificato e rollback prima di ogni intervento.
+- Prossimo passo Fix B: revisione incrociata con Claude, replay offline, test di convalida con dati reali, poi richiedere esplicito OK per merge e successivo deploy. **Nessuna attivazione permessa ora.**
 
 ## Riferimenti
-- Regole inviolabili: `LEGGIMI.md`; prassi GitHub/SSH/backup: `MANUALE-OPERATIVO.md`.
-- Cronologia per giorno/autore: `diario/YYYY-MM-DD_*.md`.
-- Storico della vecchia pagina STATO: `ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md`.
-
-## IMPLEMENTAZIONE WIP — chat normale (23/10, no deploy)
-- Dopo il controllo, Work risultava fermo alla specifica. Creati rami `work/capital-management-v1` (baseline f87f2d6, WIP `a1f2e4f`) e `work/capital-dashboard-v1` (base main 1cdfd6a, WIP `e65f16e`).
-- Capital/Vault/Sizer/journal **prototipi** + engine opt-in; app API/status/prelievo in coda con fallimento sicuro + pannello invisibile finché bot non segnala `capital_v1` e contabilità READY. CI bot 39941245956 pass (29 nuovi test), CI app 39940918023 pass (backend + React). Nuova suite base bot 39941386448 ancora da verificare.
-- **Non deployabile:** transazione comune tra tutti writer del conto e vault, rollover UTC, connessione CLI, ACK e migrazione non ancora integrati. `CAPITAL-V1-WIP-REVIEW.md` sul ramo bot elenca le attività bloccanti. Nessun merge, deploy o nuova versione runtime.
-
-## Ultimo checkpoint
-23/10 ore circa 12:28 Roma: l'utente torna da Work per limiti di uso, gira qui il prompt autorizzativo A/B/C e chiede di riprendere. Check GitHub: Work ha pubblicato la sola specifica tecnica e l'owner; non risultano rami capital-management/dashboard, PR né test implementazione. La chat normale subentra come writer unico, per rami separati da runtime/main; nessun deploy autorizzato, baseline runtime f87f2d6 invariata.
+- LEGGIMI.md, MANUALE-OPERATIVO.md, SINCRONIZZAZIONE-WORK-CHAT.md.
+- FIX-B-PROFIT-GUARDIAN-V1-SPECIFICA.md e diario/2026-10-24_chatgpt.md.
+- ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md e cronologia Git del precedente STATO.
