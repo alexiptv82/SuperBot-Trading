@@ -63,7 +63,7 @@ def main():
                             "current_symbols":{sym:side(x) for sym,x in p.items()},
                             "history_day_close_rows":sum(LO<=ct(x)<HI for x in hist),
                             "history_day_net":round(sum(n(x.get("net")) for x in hist if LO<=ct(x)<HI),4)})
-        out("BOT_DAY_"+bot,d);out("BOT_24H_"+bot,rolling)
+        out("BOT_DAY_"+bot,d);out("BOT_ITALY_DAY_"+bot,period(rows,LO-7200000,HI-7200000));out("BOT_24H_"+bot,rolling)
         out("BOT_DAY_ACTIONS_"+bot,{"opens":[{"t":stamp(t(r)),"symbol":r.get("symbol"),"side":side(r)} for r in rows if r.get("ev")=="open" and LO<=t(r)<HI],
               "closes":[{"t":stamp(ct(r)),"symbol":r.get("symbol"),"side":side(r),"net":round(n(r.get("net")),3),"partial":bool(r.get("partial"))} for r in rows if r.get("ev")=="close" and LO<=ct(r)<HI]})
         bots[bot]=rows
@@ -110,6 +110,7 @@ def main():
     out("SHADOW_PICKS_SUMMARY",{"decisions":len(picks),"actions":dict(cc),"accepted":dict(accepted),
         "rejected":dict(rejected),"prompt_parse_errors":parsebad})
     out("SHADOW_PICKS_DETAIL",picks[:130])
+    out("SHADOW_ACCEPTED_OPENS",[{"t":x["t"],"symbol":x["sym"],"action":x["action"],"conviction":x["conviction"]} for x in picks if x["accepted"] is True and x["action"] in ("OPEN_LONG","OPEN_SHORT")])
     out("SHADOW_MARKET_READS",[{"t":stamp(t(c)),"read":str(c["decision"].get("market_read") or "")[:160]} for c in called if c.get("decision",{}).get("market_read")][-6:])
     for bot,rows in bots.items():
         events=[r for r in rows if r.get("ev") in ("open","close") and LO<=t(r)<HI]
