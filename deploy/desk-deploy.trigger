@@ -1,2 +1,4 @@
-2026-10-22 03:00 UTC deploy: daily_stop 10% (era 12%), fix barre 1d/OI/429, integrità replay. OK esplicito utente 22/10/2026. Paper.
-sha=ba0acd7942400d061e4869dca5614f725c582bbb
+2026-10-24 approved deploy: install Capital Management V1 code WITHOUT enabling the feature.
+User authorized controlled sequential restart of Hawk then Bull, both strictly PAPER.
+Target must remain EXACTLY 297b126ea5f0b26bea281bdcdb330739d9fc2fe2. No Capital V1 activation.
+sha=297b126ea5f0b26bea281bdcdb330739d9fc2fe2
