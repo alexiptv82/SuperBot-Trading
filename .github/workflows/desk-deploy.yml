@@ -156,8 +156,10 @@ jobs:
             echo "PREFLIGHT: memoria ${AVAIL_MB} MB, disco ${DISK_GB} GB"
             if [ "${AVAIL_MB:-0}" -lt 700 ]; then echo "ERRORE: memoria insufficiente (${AVAIL_MB} MB)"; exit 1; fi
             if [ "${DISK_GB:-0}" -lt 3 ]; then echo "ERRORE: disco insufficiente (${DISK_GB} GB)"; exit 1; fi
-            apt-get install -y docker.io git 2>/dev/null || true
-            systemctl start docker 2>/dev/null || true
+            # A running PAPER bot must not have Docker/packages reinstalled or restarted by the deployment.
+            command -v docker >/dev/null && command -v git >/dev/null || {
+              echo DEPLOY_BLOCKED=required_tools_missing; exit 1;
+            }
 
             # --- Backup verificato del cervello PRIMA di toccare i container.
             # Se non riesce, ci si ferma qui: nessun container viene sostituito.
@@ -190,10 +192,23 @@ jobs:
               echo "ERRORE: il codice non e' sul commit approvato: nessun container sostituito"; exit 1
             fi
 
-            # Fix A must not silently deploy unrelated differences from the running image.
+            # Fix A is the approved CURRENT runtime baseline (independently confirmed
+            # on both PAPER containers on 2026-10-24). The former 8efc0a9 baseline is stale.
+            # Fetch its source only if absent from the server's git object database.
+            CURRENT_PAPER_BASE=f87f2d63c5849b177dbd33ee43c5be05ca58c8ed
+            if ! git cat-file -e "${CURRENT_PAPER_BASE}^{commit}" 2>/dev/null; then
+              git fetch -q origin work/fix-a-only-fa3e220-20261023
+            fi
+            git cat-file -e "${CURRENT_PAPER_BASE}^{commit}" || {
+              echo DEPLOY_BLOCKED=expected_runtime_base_missing; exit 1;
+            }
             for P in hawk bull; do
+              V="$(python3 -I -c "import json; print(json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')).get('version',''))" 2>/dev/null || true)"
+              [ "$V" = f87f2d6 ] || {
+                echo "DEPLOY_BLOCKED=runtime_version_mismatch bot=$P"; exit 1;
+              }
               for F in cli engine signals brain market_context; do
-                EXPECTED_HASH="$(git show 8efc0a9d907fbfc5103cc766f77b3a47a25dd964:backend/desk/$F.py | sha256sum | cut -d' ' -f1)"
+                EXPECTED_HASH="$(git show "${CURRENT_PAPER_BASE}:backend/desk/$F.py" | sha256sum | cut -d' ' -f1)"
                 ACTUAL_HASH="$(docker exec "superbot-desk-$P" sha256sum "/app/backend/desk/$F.py" | cut -d' ' -f1)"
                 if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
                   echo "DEPLOY_BLOCKED=runtime_source_mismatch bot=$P component=$F"
@@ -226,6 +241,7 @@ jobs:
               -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/hawk \
               -e DESK_MODE="${DESK_MODE:-paper}" \
+              -e DESK_CAPITAL_V1=off \
               -e BITGET_API_KEY="${BITGET_HAWK_API_KEY}" -e BITGET_SECRET_KEY="${BITGET_HAWK_SECRET_KEY}" -e BITGET_PASSPHRASE="${BITGET_HAWK_PASSPHRASE}" \
               -e DESK_HAWK_CAPITAL="${DESK_HAWK_CAPITAL:-1000}" \
               -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
@@ -244,6 +260,7 @@ jobs:
               -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/bull \
               -e DESK_MODE="${DESK_MODE:-paper}" \
+              -e DESK_CAPITAL_V1=off \
               -e BITGET_API_KEY="${BITGET_BULL_API_KEY}" -e BITGET_SECRET_KEY="${BITGET_BULL_SECRET_KEY}" -e BITGET_PASSPHRASE="${BITGET_BULL_PASSPHRASE}" \
               -e DESK_BULL_CAPITAL="${DESK_BULL_CAPITAL:-1000}" \
               -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
@@ -256,8 +273,9 @@ jobs:
             # Public logs contain only status/version checks, never raw bot logs.
             for P in hawk bull; do
               docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P" | grep -qx 'DESK_MODE=paper'
+              docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P" | grep -qx 'DESK_CAPITAL_V1=off'
             done
-            echo PAPER_AFTER_DEPLOY=PASS
+            echo PAPER_AND_CAPITAL_V1_DISABLED_AFTER_DEPLOY=PASS
 
             # == Esito: tutti e due i bot devono girare, altrimenti il workflow e' rosso ==
             for N in superbot-desk-hawk superbot-desk-bull; do
@@ -300,6 +318,6 @@ jobs:
             # == Manifesto del rilascio ==
             mkdir -p /opt/superbot-deploys
             printf '{"componente":"bot","sha":"%s","versione":"%s","immagine":"%s","creato":"%s","rollback":"superbot-desk:%s","backup":"%s"}\n' \
-              "$APPROVED_SHA" "$CODE_VERSION" "$(docker inspect -f '{{.Id}}' superbot-desk)" "$(date -u +%FT%TZ)" "$RB" \
+              "$APPROVED_SHA" "$CODE_VERSION" "$(docker inspect -f '{{.Image}}' superbot-desk-hawk)" "$(date -u +%FT%TZ)" "$RB" \
               "${BACKUP_EXTRA:-confine_di_ciclo}" > "/opt/superbot-deploys/bot-$(date -u +%Y%m%d-%H%M%S).json"
             echo "DEPLOY OK: Hawk e Bull in funzione sul commit approvato ${APPROVED_SHA}. Backup del cervello in /opt/superbot-backups."
