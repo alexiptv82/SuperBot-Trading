@@ -1,0 +1,42 @@
+name: "Startup Cooldown: position and stop audit (READ ONLY)"
+on:
+  push:
+    branches: [ops/capital-v1-readonly-check-20261024]
+    paths:
+      - "deploy/startup-cooldown-audit.trigger"
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check read-only audit
+        run: python -m py_compile deploy/scripts/startup_cooldown_readonly_positions.py
+      - name: Read current PAPER positions and stop history on Singapore
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/startup-ro-key"
+          chmod 600 "$HOME/.ssh/startup-ro-key"
+          cat > "$HOME/.ssh/startup-ro-hosts" <<'HOSTS'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTS
+          ssh -T -i "$HOME/.ssh/startup-ro-key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/startup-ro-hosts" \
+            -o ConnectTimeout=20 root@51.79.205.82 'python3 -I -' \
+            < deploy/scripts/startup_cooldown_readonly_positions.py | tee startup-position-audit.log
+          grep -qx 'STARTUP_POSITION_AUDIT_COMPLETE' startup-position-audit.log
+          {
+            echo '## Startup position audit — PAPER, read only'
+            echo '~~~'
+            cat startup-position-audit.log
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Delete ephemeral SSH key
+        if: always()
+        run: rm -f "$HOME/.ssh/startup-ro-key" "$HOME/.ssh/startup-ro-hosts"
