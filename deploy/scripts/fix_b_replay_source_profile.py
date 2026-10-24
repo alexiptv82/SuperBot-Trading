@@ -60,6 +60,15 @@ for bot in ("hawk","bull"):
             print("SIDECAR",bot,"LAST_KEYS",json.dumps({k:type(v).__name__ for k,v in arr[-1].items()},sort_keys=True))
             print("SIDECAR",bot,"FIRST_META",json.dumps({k:v for k,v in arr[0].items() if k in ("ts_ms","cycle_ts","asof_ms","schema","type","kind","portfolio","code_version")},sort_keys=True))
             print("SIDECAR",bot,"LAST_META",json.dumps({k:v for k,v in arr[-1].items() if k in ("ts_ms","cycle_ts","asof_ms","schema","type","kind","portfolio","code_version")},sort_keys=True))
+            for sample in (arr[0],arr[min(50,len(arr)-1)],arr[-1]):
+                body=sample.get("body") or {}
+                print("SIDECAR",bot,"BODY_SCHEMA",json.dumps({k:(list(v.keys())[:20] if isinstance(v,dict) else type(v).__name__) for k,v in body.items()},sort_keys=True)[:2600])
+                for key in ("ts_ms","cycle_ts","asof_ms","cycle_end_ms","timestamp","run_no","portfolio","type","mode"):
+                    if key in body:print("SIDECAR",bot,"BODY_META",key,str(body[key])[:60])
+                if isinstance(body.get("evaluations"),list) and body["evaluations"]:
+                    print("SIDECAR",bot,"EVAL_META",json.dumps({k:type(v).__name__ for k,v in body["evaluations"][0].items()},sort_keys=True))
+                if isinstance(body.get("records"),list) and body["records"]:
+                    print("SIDECAR",bot,"RECORD_META",json.dumps({k:type(v).__name__ for k,v in body["records"][0].items()},sort_keys=True))
             exemplars=[x for x in arr if (x.get("evaluations") or x.get("positions") or x.get("observations"))]
             if exemplars:
                 rec=exemplars[0]
