@@ -1,0 +1,46 @@
+name: "Record Startup Lesson in PAPER brain (lessons.md ONLY)"
+on:
+  push:
+    branches: [ops/capital-v1-readonly-check-20261024]
+    paths: ["deploy/append-startup-lesson.trigger"]
+permissions:
+  contents: read
+concurrency:
+  group: lessons-startup-vps-20261024
+  cancel-in-progress: false
+jobs:
+  update-lessons-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate safety and Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile deploy/scripts/append_startup_lesson_v1.py
+          ! grep -q 'docker stop\|docker run\|kill -\|subprocess' deploy/scripts/append_startup_lesson_v1.py
+      - name: Append approved lesson to Hawk and Bull (SSH, no reboot, no trading actions)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/lesson-ssh"
+          chmod 600 "$HOME/.ssh/lesson-ssh"
+          cat > "$HOME/.ssh/lesson-known-hosts" <<'HOSTS'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTS
+          SSH_OPTS="-T -i $HOME/.ssh/lesson-ssh -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/lesson-known-hosts -o ConnectTimeout=20"
+          ssh $SSH_OPTS root@51.79.205.82 'python3 -I - --dry-run' \
+            < deploy/scripts/append_startup_lesson_v1.py | tee lesson-preflight.log
+          grep -qx 'LESSON_PREFLIGHT_DONE' lesson-preflight.log
+          ssh $SSH_OPTS root@51.79.205.82 'python3 -I - --apply' \
+            < deploy/scripts/append_startup_lesson_v1.py | tee lesson-applied.log
+          grep -qx 'LESSONS_HAWK_BULL_COMPLETE' lesson-applied.log
+          test "$(grep -c '^LESSON_UPDATED ' lesson-applied.log)" -eq 2
+          { echo '## lesson.md-only PAPER brain update 2026-10-24'; echo '~~~'; cat lesson-applied.log; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Destroy ephemeral runner-only SSH identity
+        if: always()
+        run: rm -f "$HOME/.ssh/lesson-ssh" "$HOME/.ssh/lesson-known-hosts"
