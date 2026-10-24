@@ -326,6 +326,15 @@ jobs:
                 echo "        avviati: controllare con desk-status prima di qualunque altra azione."; exit 1
               fi
               echo "versione dichiarata da $P: $V (= commit approvato, processo nuovo)"
+              # Modules must exist in the new image but the active behaviour
+              # must remain legacy (Capital V1 feature gate is explicitly OFF).
+              docker exec "superbot-desk-$P" python -I -c                 'from desk import capital_journal, capital_manager, capital_runtime, vault_manager, position_sizer' || {
+                echo "DEPLOY_BLOCKED=capital_code_missing bot=$P"; exit 1;
+              }
+              python3 -I -c "import json; h=json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')); assert h.get('capital_v1') is False" || {
+                echo "DEPLOY_BLOCKED=capital_feature_enabled_or_unreported bot=$P"; exit 1;
+              }
+              echo "CAPITAL_V1_PRESENT_BUT_DISABLED bot=$P PASS"
             done
             # == Manifesto del rilascio ==
             mkdir -p /opt/superbot-deploys
