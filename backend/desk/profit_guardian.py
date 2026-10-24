@@ -274,3 +274,186 @@ def comparison_event(p: dict, *, now_ms: int, review: Review,
             "claude_operational_candidate": op, "claude_shadow": sh,
             "deepseek_shadow": ds, "claude_self_comparison": agreement,
             "execution_result": None}
+
+
+# The following optional persistence helpers are only for an isolated shadow
+# output directory. They are NEVER imported or called by the operational bot.
+import datetime as _dt
+import fcntl as _fcntl
+from pathlib import Path as _Path
+
+
+def _shadow_root(root: str) -> _Path:
+    path = _Path(root).resolve()
+    if path.name != "fix-b-shadow-data":
+        raise GuardianError("Fix B writes ONLY to a distinct fix-b-shadow-data directory")
+    if any(part in ("superbot-desk-data", "superbot-ai-data", "superbot-sidecar-data") for part in path.parts):
+        raise GuardianError("refuse to write in bot or DeepSeek data directories")
+    return path
+
+
+def _append_fsynced(file, row: dict) -> None:
+    file.seek(0, 2)
+    file.write(json.dumps(row, separators=(",", ":"), sort_keys=True, allow_nan=False) + "\n")
+    file.flush()
+    __import__("os").fsync(file.fileno())
+
+
+def append_shadow_record(root: str, event: dict) -> bool:
+    """Idempotent append-only evidence for all THREE lanes in one coherent row.
+
+    NEVER publishes an execution command; data directory is separate from bots.
+    Corrupt prior JSONL fails closed; this method cannot repair or reset it.
+    """
+    if event.get("applied") is not False or event.get("executed") is not False:
+        raise GuardianError("not a safe shadow event")
+    event_id = event.get("event_id")
+    if not isinstance(event_id, str) or not event_id:
+        raise GuardianError("missing event id")
+    directory = _shadow_root(root)
+    directory.mkdir(parents=True, exist_ok=True)
+    with open(directory/"fix-b-decisions.jsonl", "a+", encoding="utf-8") as file:
+        _fcntl.flock(file.fileno(), _fcntl.LOCK_EX)
+        file.seek(0)
+        for line in file:
+            try:
+                prev = json.loads(line)
+            except ValueError as exc:
+                raise GuardianError("shadow log corrupted; refuse append") from exc
+            if prev.get("event_id") == event_id:
+                return False
+        _append_fsynced(file, event)
+    return True
+
+
+def comparison_portfolio_alert(alert: dict, positions: list[dict], *,
+                               now_ms: int,
+                               operational_by_key: dict | None = None,
+                               shadow_by_key: dict | None = None,
+                               deepseek_by_symbol: dict | None = None) -> dict:
+    """Three-lane comparative ALARM record; no execute and no model calls.
+
+    Future adapters inject model replies. Missing DeepSeek data remain explicitly
+    missing; an independent account is never mistaken for Hawk/Bull's position.
+    """
+    if alert.get("active") is not True or alert.get("applied") is not False:
+        raise GuardianError("not a valid shadow portfolio alert")
+    from desk.profit_guardian import eligibility as _eligibility
+    op = operational_by_key or {}
+    sh = shadow_by_key or {}
+    ds = deepseek_by_symbol or {}
+    rows = []
+    for p in positions:
+        if _side(p) != -1:
+            continue
+        key = position_key(p)
+        if key not in alert.get("position_keys", []):
+            continue
+        review = _eligibility(p, now_ms=now_ms, alert=alert)
+        rows.append(comparison_event(
+            p, now_ms=now_ms, review=review,
+            operational_claude=op.get(key), claude_shadow=sh.get(key),
+            deepseek_record=ds.get(str(p["symbol"]).upper()),
+            alert_id=alert.get("event_id")))
+    return {"schema": 1,"event_id": "portfolio:" + str(alert["event_id"]),
+            "ts_ms": now_ms,"mode": "ombra","applied": False,"executed": False,
+            "status": "ALERT_AND_PROPOSALS_ONLY_NO_EXECUTOR",
+            "priority": "MAX","portfolio_alert": alert,
+            "position_comparisons": rows,"execution_result": None}
+
+
+class ShadowBudgetLedger:
+    """Durable shared UTC $0.10/day budget for optional FUTURE Claude adapter.
+
+    The SAME root must be mounted to Hawk and Bull to enforce one shared bucket.
+    Reservation before a call prevents double admission; failed/crashed calls keep
+    their reservation until explicitly settled, never auto-refunded on restart.
+    """
+    def __init__(self, root: str, cap_usd: float = DAILY_SHARED_BUDGET):
+        self.root = _shadow_root(root)
+        self.cap = _float(cap_usd, "cap")
+        if self.cap <= 0:
+            raise GuardianError("budget cap must be positive")
+
+    def _with_lock(self, operation):
+        self.root.mkdir(parents=True, exist_ok=True)
+        with open(self.root/"budget-v1.jsonl", "a+", encoding="utf-8") as file:
+            _fcntl.flock(file.fileno(), _fcntl.LOCK_EX)
+            file.seek(0)
+            rows = []
+            for line in file:
+                try:
+                    row = json.loads(line)
+                except ValueError as exc:
+                    raise GuardianError("budget journal corrupt; refuse changes") from exc
+                if not isinstance(row, dict) or row.get("kind") not in ("reserve", "settle"):
+                    raise GuardianError("invalid budget event")
+                rows.append(row)
+            return operation(file, rows)
+
+    @staticmethod
+    def _day(ts_ms: int) -> str:
+        if type(ts_ms) is not int or ts_ms <= 0:
+            raise GuardianError("invalid UTC budget time")
+        return _dt.datetime.fromtimestamp(ts_ms/1000, _dt.timezone.utc).date().isoformat()
+
+    @staticmethod
+    def _state(rows: list[dict], day: str) -> tuple[float,float,dict]:
+        reservation = {}
+        spent = 0.0
+        for row in rows:
+            if row["day"] != day:
+                continue
+            ident = row["id"]
+            if row["kind"] == "reserve":
+                if ident in reservation:
+                    raise GuardianError("duplicate reservation in ledger")
+                reservation[ident] = {"reserved": float(row["usd"]), "settled": False}
+            else:
+                if ident not in reservation or reservation[ident]["settled"]:
+                    raise GuardianError("orphan or duplicate settlement")
+                reservation[ident]["settled"] = True
+                spent += float(row["usd"])
+        held = sum(x["reserved"] for x in reservation.values() if not x["settled"])
+        return spent, held, reservation
+
+    def reserve(self, *, ts_ms: int, event_id: str, worst_usd: float) -> bool:
+        day = self._day(ts_ms)
+        cost = _float(worst_usd, "worst case cost")
+        if not isinstance(event_id,str) or not event_id or cost <= 0:
+            raise GuardianError("bad budget reservation")
+        def work(file, rows):
+            spent, held, entries = self._state(rows, day)
+            if event_id in entries:
+                return False  # idempotent
+            if not budget_admission(spent_usd=spent,reserved_usd=held,
+                                    worst_case_call_usd=cost,cap_usd=self.cap):
+                return False
+            _append_fsynced(file, {"kind":"reserve","day":day,"id":event_id,"usd":cost})
+            return True
+        return self._with_lock(work)
+
+    def settle(self, *, ts_ms: int, event_id: str, actual_usd: float) -> bool:
+        day = self._day(ts_ms)
+        actual = _float(actual_usd,"actual cost")
+        if actual < 0:
+            raise GuardianError("negative actual cost")
+        def work(file,rows):
+            _, _, entries = self._state(rows,day)
+            reservation = entries.get(event_id)
+            if reservation is None:
+                raise GuardianError("settlement without reservation")
+            if reservation["settled"]:
+                return False
+            if actual > reservation["reserved"] + 1e-9:
+                raise GuardianError("actual cost exceeds conservative reservation")
+            _append_fsynced(file,{"kind":"settle","day":day,"id":event_id,"usd":actual})
+            return True
+        return self._with_lock(work)
+
+    def remaining(self, *, ts_ms: int) -> float:
+        day=self._day(ts_ms)
+        def work(file,rows):
+            spent,held,_=self._state(rows,day)
+            return max(0.0,round(self.cap-spent-held,8))
+        return self._with_lock(work)
