@@ -155,11 +155,14 @@ def report(bot):
         first=hits[0]
         peaknet=max(x["net"] for x in history)
         giveback_vs_peak=peaknet-tr["actual"]
-        if giveback_vs_peak>.01:stats["observed_peak_net_given_back_vs_final"]+=1
+        if giveback_vs_peak>.01:
+            stats["observed_peak_net_given_back_vs_final"]+=1
+            stats["total_observed_giveback_vs_peak_cents"]+=round(giveback_vs_peak*100)
         if tr["actual_roi_pct"] < 20:stats["final_net_roi_below_20"]+=1
         if "take profit" in tr["final_reason"]:
             stats["tp_reached_after_observed_20"]+=1
         stats["sum_baseline_net_cents"]+=round(tr["actual"]*100)
+        if first["prudent"] is None: stats["prudent_estimate_missing"]+=1
         stats["sum_signal_prudent_cents"]+=round((first["prudent"] if first["prudent"] is not None else first["net"])*100)
         if tr["plain"] and first["prudent"] is not None:
             stats["plain_with_prudent_signal"]+=1
