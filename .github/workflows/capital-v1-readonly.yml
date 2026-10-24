@@ -1,0 +1,33 @@
+name: "Independent PAPER Capital V1 status check (NO DEPLOY)"
+on:
+  push:
+    branches: [ops/capital-v1-readonly-check-20261024]
+    paths: ["deploy/capital-v1-readonly.trigger"]
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Independent read-only check on Singapore
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/cap-ro-key"
+          chmod 600 "$HOME/.ssh/cap-ro-key"
+          cat > "$HOME/.ssh/cap-ro-hosts" <<'HOSTS'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTS
+          ssh -T -i "$HOME/.ssh/cap-ro-key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/cap-ro-hosts" \
+            -o ConnectTimeout=20 root@51.79.205.82 'python3 -I -' \
+            < deploy/scripts/capital_v1_readonly_check.py | tee capital-status.log
+          grep -qx 'CAPITAL_READONLY_COMPLETE' capital-status.log
+          { echo '## Capital Management V1 independent read-only verification'; echo '~~~'; cat capital-status.log; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Delete ephemeral SSH identity
+        if: always()
+        run: rm -f "$HOME/.ssh/cap-ro-key" "$HOME/.ssh/cap-ro-hosts"
