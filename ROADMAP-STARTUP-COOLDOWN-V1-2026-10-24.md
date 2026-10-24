@@ -6,7 +6,7 @@
 Dopo manutenzione e riavvio dei due bot PAPER sul codice `297b126`, l'assenza di un periodo di stabilizzazione ha portato a un'esposizione sincrona SHORT. Audit VPS sola lettura al 24/10/2026 18:54 UTC: 10 posizioni Hawk e 6 Bull, tutte SHORT e a ROI netto stimato negativo. Dai journal: **12 aperture Hawk + 8 Bull** dall'ultimo avvio, con **2 chiusure stop loss per bot** (XRP e SOL), **16 posizioni residue**. Le 20 aperture storiche non sono 20 posizioni contemporaneamente aperte, ma il fenomeno di riempimento/rimpiazzo slot permane. Gli SL sono presenti su tutte le posizioni; non erano attraversati ai prezzi contemporanei registrati. Sei cicli completati per bot senza errori. Fonte: https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40122819557
 
 ## Obiettivo
-Impedire che, dopo un arresto qualsiasi (deploy, rollback, manutenzione, crash, riavvio host, nuova istanza), Hawk e Bull saturino subito gli slot con segnali potenzialmente cambiati. **Nessuna chiusura forzata delle posizioni esistenti.** Continuare stop, liquidazioni, TP e gestione delle posizioni durante il blocco di nuova esposizione.
+Garantire che, dopo qualsiasi arresto (deploy, rollback, manutenzione, crash, riavvio host, nuova istanza), Hawk e Bull **rivalutino da zero il mercato e la validità di ogni ingresso**, senza riutilizzare in massa segnali stantii o occupare slot solo perché liberi. L'attività 24/7 resta voluta: il problema è la qualità e il tempismo delle decisioni, **non** il numero di ore operative. **Uno slot vuoto è una scelta intelligente.** Nessuna chiusura forzata delle posizioni esistenti: stop, liquidazioni, TP e gestione delle posizioni devono proseguire durante il blocco di nuova esposizione.
 
 ## Requisiti utenti da preservare
 1. Periodo minimo di attesa **15–30 minuti** senza nuove posizioni.
@@ -42,3 +42,23 @@ Impedire che, dopo un arresto qualsiasi (deploy, rollback, manutenzione, crash, 
 
 ## Vincoli correnti
 **Nessuna modifica al codice `297b126`, nessun redeploy, nessun merge su `rule-pool` e nessuna azione sulle posizioni** a seguito di questa annotazione. Fix B rimane sul branch separato in shadow; Capital Management V1 resta OFF. Questo è un requisito di roadmap, non una feature operativa.
+
+
+## Addendum 24/10/2026 — Regola fondamentale di trading professionale (prioritaria)
+
+**Correzione esplicita dell'utente:** il problema non è che il bot lavora 24/7 o che riapre dopo uno stop; è che non può aprire *senza rivalutare se il momento è adatto*. Non si persegue il riempimento degli slot. Un'opportunità valida può occupare uno slot liberato anche dopo SL, TP o futura uscita Fix B; se non c'è opportunità, si resta fuori dal mercato. Il tempo senza esposizione è una decisione legittima e spesso razionale.
+
+### Procedura ideale per ogni nuova esposizione (proposta AI, non implementata oggi)
+- Riesaminare al momento della decisione regime, trend aggiornato, possibile inversione, volatilità, volumi, liquidità, asimmetria del rischio, qualità del segnale e costi, come fosse la prima analisi del simbolo.
+- Verificare anche opportunità **inverse** sul simbolo liberato (per es. da SHORT a LONG dopo un rimbalzo confermato), ma **non effettuare inversioni automatiche** e non riusare il segnale precedente.
+- Evitare il bias di riempimento slot, il bias da capitale disponibile, l'inseguimento dopo SL e le trappole di mercato.
+- Istruzione da includere esplicitamente nella **futura revisione del prompt Claude**, dopo approvazione e test: **«Puoi raccomandare di non aprire nessuna posizione. Slot vuoto = scelta valida.»**
+- Lo **Startup Cooldown** rimane una protezione meccanica di difesa in profondità, NON il sostituto della capacità di decidere quando **non** fare trading.
+
+### KPI della selezione degli ingressi — target, non garanzia
+- Obiettivo strutturale utente: **70–80% delle posizioni definitivamente chiuse in profitto netto**, **20–30% o meno chiuse per stop loss**.
+- Misurare con denominatori espliciti: tutti i trade definitivamente chiusi nel periodo; distinguere TP, Fix B intelligente, SL, liquidazione, chiusura manuale, parziali e costi. Segmentare per Hawk/Bull, regime di mercato e dimensione del campione, includendo intervalli d'incertezza.
+- Affiancare al win rate valore atteso netto per operazione, payoff medio win/loss, perdita massima, drawdown, costi e concentrazione di esposizione: un 80% di vittorie può essere comunque perdente se le perdite residue sono troppo grandi. **Mai inseguire il KPI falsando la classificazione delle chiusure.**
+- **Episodio odierno:** alle 18:54 UTC del 24/10 erano aperte 16 posizioni SHORT tutte con ROI netto stimato negativo; i journal mostravano quattro chiusure effettive per SL (due per bot), quindi **0 trade profittevoli su quelle quattro chiusure**. Il **0%** riguarda esclusivamente tale sottocampione di trade già chiusi, **non** il risultato finale delle 16 posizioni ancora aperte. La lettura causale «non è stata rivalutata la direzione/regime a sufficienza» è un'ipotesi di qualità da verificare col replay, non una prova che gli algoritmi non abbiano calcolato alcun segnale.
+
+**Stato decisione:** questa è una lezione approvata per il cervello PAPER e un requisito di roadmap, **non** autorizzazione a cambiare ora `build_prompt`, `SYSTEM`, soglie, ingressi, strategie o limiti. Nessun deploy o ordine sul VPS. Capital V1 OFF; Fix B solo branch separato shadow; runtime `297b126` invariato.
