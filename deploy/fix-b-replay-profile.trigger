@@ -3,3 +3,4 @@ read_only=true
 sidecar_coverage=true
 sidecar_body_schema=true
 position_roi_coverage=true
+retry_indentation_fixed=true
