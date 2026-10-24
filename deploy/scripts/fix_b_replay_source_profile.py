@@ -74,12 +74,4 @@ for bot in ("hawk","bull"):
                             print("SIDECAR",bot,"ROI_STRUCTURE",json.dumps({k:type(v).__name__ for k,v in x["roi"].items()},sort_keys=True))
             dates=collections.Counter(stamp((x.get("body") or {}).get("asof_ms",0)) for x in arr if (x.get("body") or {}).get("ev")=="cycle")
             print("SIDECAR",bot,"CYCLE_DATES",json.dumps(dict(sorted(dates.items())),sort_keys=True))
-                if isinstance(body.get("evaluations"),list) and body["evaluations"]:
-                    print("SIDECAR",bot,"EVAL_META",json.dumps({k:type(v).__name__ for k,v in body["evaluations"][0].items()},sort_keys=True))
-                if isinstance(body.get("records"),list) and body["records"]:
-                    print("SIDECAR",bot,"RECORD_META",json.dumps({k:type(v).__name__ for k,v in body["records"][0].items()},sort_keys=True))
-            exemplars=[x for x in arr if (x.get("evaluations") or x.get("positions") or x.get("observations"))]
-            if exemplars:
-                rec=exemplars[0]
-                print("SIDECAR",bot,"NESTED_KEYS",json.dumps({k:(list(v.keys())[:20] if isinstance(v,dict) else [list(z.keys()) for z in v[:1] if isinstance(z,dict)] if isinstance(v,list) else type(v).__name__) for k,v in rec.items()},sort_keys=True)[:2200])
 print("SOURCE_PROFILE_COMPLETE")
