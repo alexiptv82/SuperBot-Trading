@@ -52,4 +52,16 @@ for bot in ("hawk","bull"):info(bot)
 for bot in ("hawk","bull"):
     p=os.path.join(SIDE,bot)
     print("SIDECAR",bot,"FILES",json.dumps(sorted(os.path.basename(x) for x in glob.glob(p+"/*"))[:45]))
+    for fp in sorted(glob.glob(p+"/events-*.jsonl")):
+        arr,bad=records(fp)
+        print("SIDECAR",bot,"PATH",os.path.basename(fp),"rows",len(arr),"bad",bad)
+        if arr:
+            print("SIDECAR",bot,"FIRST_KEYS",json.dumps({k:type(v).__name__ for k,v in arr[0].items()},sort_keys=True))
+            print("SIDECAR",bot,"LAST_KEYS",json.dumps({k:type(v).__name__ for k,v in arr[-1].items()},sort_keys=True))
+            print("SIDECAR",bot,"FIRST_META",json.dumps({k:v for k,v in arr[0].items() if k in ("ts_ms","cycle_ts","asof_ms","schema","type","kind","portfolio","code_version")},sort_keys=True))
+            print("SIDECAR",bot,"LAST_META",json.dumps({k:v for k,v in arr[-1].items() if k in ("ts_ms","cycle_ts","asof_ms","schema","type","kind","portfolio","code_version")},sort_keys=True))
+            exemplars=[x for x in arr if (x.get("evaluations") or x.get("positions") or x.get("observations"))]
+            if exemplars:
+                rec=exemplars[0]
+                print("SIDECAR",bot,"NESTED_KEYS",json.dumps({k:(list(v.keys())[:20] if isinstance(v,dict) else [list(z.keys()) for z in v[:1] if isinstance(z,dict)] if isinstance(v,list) else type(v).__name__) for k,v in rec.items()},sort_keys=True)[:2200])
 print("SOURCE_PROFILE_COMPLETE")
