@@ -7,6 +7,7 @@ on:
       - "backend/desk/portfolio_alert.py"
       - "backend/tests/test_fix_b_guardian.py"
       - "backend/tests/test_fix_b_portfolio_alert.py"
+      - "backend/tests/test_fix_b_shadow_persistence.py"
       - ".github/workflows/fix-b-shadow-ci.yml"
   workflow_dispatch:
 permissions:
@@ -23,7 +24,8 @@ jobs:
       - name: Syntax check (offline)
         run: |
           python -m py_compile backend/desk/profit_guardian.py backend/desk/portfolio_alert.py \
-            backend/tests/test_fix_b_guardian.py backend/tests/test_fix_b_portfolio_alert.py
+            backend/tests/test_fix_b_guardian.py backend/tests/test_fix_b_portfolio_alert.py \
+            backend/tests/test_fix_b_shadow_persistence.py
       - name: Isolated shadow-only regressions (no API keys, network or runtime)
         env:
           PYTHONPATH: backend
