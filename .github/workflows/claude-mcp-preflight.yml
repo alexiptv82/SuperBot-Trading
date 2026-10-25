@@ -56,6 +56,21 @@ jobs:
           print("TARGET_DIRECTORY_EXISTS",Path("/opt/superbot-claude-mcp-readonly").exists())
           print("PAPER_HAWK",Path("/opt/superbot-desk-data/hawk/state_v2.json").is_file())
           print("PAPER_BULL",Path("/opt/superbot-desk-data/bull/state_v2.json").is_file())
+          for bot in ("hawk","bull"):
+              for name in ("","heartbeat.json","state_v2.json","lessons.md","learning_log.jsonl"):
+                  p=Path("/opt/superbot-desk-data")/bot/name
+                  if p.exists():
+                      s=p.stat()
+                      print("SOURCE_FILE_PERMISSION",bot,name or "data_dir",
+                            "mode",oct(s.st_mode&0o777),"uid",s.st_uid,"gid",s.st_gid)
+          p=Path("/opt/superbot-ai-data/ai")
+          for name in ("","status.json"):
+              q=p/name
+              if q.exists():
+                  s=q.stat()
+                  print("SOURCE_FILE_PERMISSION","shadow",name or "data_dir",
+                        "mode",oct(s.st_mode&0o777),"uid",s.st_uid,"gid",s.st_gid)
+
           print("SHADOW_STATUS",Path("/opt/superbot-ai-data/ai/status.json").is_file())
           c,v,e=run(["docker","ps","--format","{{.Names}} {{.Ports}}"])
           print("CONTAINER_PORTS_OK",c==0)
