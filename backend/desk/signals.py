@@ -186,15 +186,15 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
         sc[side_name] += pts
         comp[side_name].append(f"{why} (+{pts})")
 
-    # trend 4h: 20 punti
+    # trend 4h: 14 punti
     if trend4:
-        add("long" if trend4 == 1 else "short", 20, "trend 4h")
+        add("long" if trend4 == 1 else "short", 14, "trend 4h")
     # trend 1h: 15 punti
     if direction(e20,e50):
         add("long" if direction(e20,e50)==1 else "short", 15, "trend 1h")
-    # trend 1d: 15 punti (se disponibile)
+    # trend 1d: 10 punti (se disponibile)
     if daily_trend != 0:
-        add("long" if daily_trend == 1 else "short", 15, "trend 1d")
+        add("long" if daily_trend == 1 else "short", 10, "trend 1d")
     # prezzo vs EMA50 1h: 8 punti
     if direction(price,e50):
         add("long" if direction(price,e50)==1 else "short", 8, "prezzo vs EMA50")
@@ -212,6 +212,11 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
         add("long", 8, f"RSI {r1h:.0f}")
     elif 30 <= r1h < 50:
         add("short", 8, f"RSI {r1h:.0f}")
+    # rimbalzo intraday: RSI ipervenduto 1h + momentum positivo recente
+    c1_short = c1[-5:] if len(c1) >= 5 else c1
+    momentum_1h = float(c1_short[-1] / c1_short[0] - 1) if len(c1_short) > 1 else 0.0
+    if r1h < 35 and momentum_1h > 0.003:
+        add("long", 10, f"rimbalzo RSI {r1h:.0f} mom1h {momentum_1h:+.2%}")
     # volume: 4 punti
     if vol_ratio > 1.3 and direction(c1[-1],b1[-1,1]):
         add("long" if c1[-1] >= b1[-1, 1] else "short", 4, f"volumi x{vol_ratio:.1f}")
