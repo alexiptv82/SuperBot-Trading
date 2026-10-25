@@ -391,7 +391,8 @@ def _ctx_lines(ctx: dict, symbol: str) -> list:
 
 
 # ---------------- ripiego a sole regole
-def rules_decisions(readings: list, positions: list, open_symbols: set, entry_score: int = 70) -> list:
+def rules_decisions(readings: list, positions: list, open_symbols: set, entry_score: int = 70,
+                    only_manage: bool = False) -> list:
     out = []
     by = {r.symbol: r for r in readings}
     for p in positions:
@@ -423,6 +424,8 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
                     "take_profit_pct": r.tp_pct,
                     "reason": "; ".join(r.why[:3]),
                     "dca_sl_pct": 0, "dca_tp_pct": 0})
+    if only_manage:
+        out = [d for d in out if d.get("action") not in ("open_long", "open_short")]
     return out
 
 

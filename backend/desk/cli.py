@@ -1212,6 +1212,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     decisions = []
     source = "rules"
+    _claude_responded = False  # True se Claude ha risposto (anche con 0 decisioni)
     if halt:
         print(f"[HALT] {halt}")
     elif drain and not acc.positions:
@@ -1243,6 +1244,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             if parsed:
                 decisions = parsed["decisions"]
                 source = "claude"
+                _claude_responded = True
                 print(f"[Claude] {len(decisions)} decisioni  costo {cost:.4f}$  "
                       f"budget usato {state['budget']['spent']:.3f}$ / {DAILY_CAP}$")
                 if parsed.get("note"):
@@ -1252,8 +1254,18 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             log_claude_error(now_ms, state, e, len(acc.positions), urgent_scalp)
 
     if not decisions:
-        decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
-        source = "rules"
+        if _claude_responded:
+            # Claude ha risposto ma ha scelto di non aprire nulla: rispettiamo la sua scelta.
+            # Le regole gestiscono solo le posizioni già aperte (close/manage), NON aprono nuovi trade.
+            decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE,
+                                       only_manage=True)
+            source = "rules_manage_only"
+            print("[Claude] 0 aperture: Claude ha scelto hold. Regole solo per gestione posizioni aperte.")
+        else:
+            # Claude non era disponibile (errore, budget, fuori finestra): le regole decidono tutto.
+            decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
+            source = "rules"
+            print("[Fallback] Claude non disponibile: decisioni affidate alle regole.")
 
     why = drain_reason(now_ms)   # "pausa" | "orari" | "" ; la pausa premuta a ciclo in corso vale da subito
     if why:
