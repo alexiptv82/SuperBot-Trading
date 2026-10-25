@@ -151,6 +151,36 @@ def sums(rr):
       "hold":sum(x["action"]=="HOLD" for x in rr)}
 focus_dec=[x for x in decisions if inwin(x["ts"],PM_START,PM_END)]
 last75=decisions[-75:]
+# Independent virtual-account outcomes, not a simulated switch of the real bots.
+vtrades=[];vtfiles=[]
+for day in ("2026-10-24","2026-10-25"):
+    ts,err=rows(ROOT/("trades-"+day+".jsonl"))
+    vtrades.extend(ts)
+    vtfiles.append({"utc_day":day,"records":len(ts),"bad":err["bad"]})
+vclose=[x for x in vtrades if inwin(num(x.get("close_ms") or x.get("ts")),DAY_START,DAY_END)]
+vfocus=[x for x in vclose if inwin(num(x.get("close_ms") or x.get("ts")),PM_START,PM_END)]
+def vmetrics(xs):
+    net=[num(x.get("net")) or 0 for x in xs]
+    return {"close_rows":len(xs),"positive_close_rows":sum(n>0 for n in net),
+            "negative_close_rows":sum(n<0 for n in net),
+            "net_usd":round(sum(net),2),
+            "by_side":dict(collections.Counter(side(x) for x in xs)),
+            "by_reason":dict(collections.Counter(str(x.get("why") or "?") for x in xs)),
+            "recent_exits":[{"when":when(x.get("close_ms") or x.get("ts")),
+               "symbol":x.get("symbol"),"side":side(x),
+               "net":round(num(x.get("net")) or 0,2),"why":str(x.get("why") or "")[:60]}
+                for x in xs[-12:]]}
+virtual_fills=[]
+for c in cycles:
+    for ev in c.get("events") or []:
+        if isinstance(ev,dict) and ev.get("ev")=="fill":
+            virtual_fills.append({"when":when(c.get("ts_ms")),"symbol":ev.get("symbol"),
+                                  "side":side(ev)})
+report("SHADOW_VIRTUAL_PNL_TODAY",{"files":vtfiles,"today":vmetrics(vclose),
+   "from_11_to_1530":vmetrics(vfocus),
+   "virtual_fills_today":len(virtual_fills),"virtual_fills_by_side":dict(collections.Counter(x["side"] for x in virtual_fills)),
+   "virtual_fill_examples":virtual_fills[-15:]})
+
 report("SHADOW_ACTIONS_TODAY",{"prompt_records":prompts_today,"parse_bad":parse_bad,"no_matching_cycle":missing_cycle,**sums(decisions)})
 report("SHADOW_ACTIONS_11_TO_1530",sums(focus_dec))
 report("SHADOW_LAST_75_ACTIONS",{"count":len(last75),**sums(last75),
