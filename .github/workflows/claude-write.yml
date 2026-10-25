@@ -1,0 +1,140 @@
+name: Claude Write - operazioni Git autonome di Claude
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "claude/claude-write.trigger"
+
+concurrency:
+  group: claude-write-ops
+  cancel-in-progress: false
+
+jobs:
+  claude-write:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout rule-pool
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CLAUDE_WRITE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Leggi trigger
+        id: trigger
+        run: |
+          set -e
+          TRIGGER_FILE="claude/claude-write.trigger"
+          if [ ! -f "$TRIGGER_FILE" ]; then
+            echo "ERRORE: file trigger non trovato"; exit 1
+          fi
+          OP="$(grep -E '^op=' "$TRIGGER_FILE" | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          SRC="$(grep -E '^src=' "$TRIGGER_FILE" | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          DST="$(grep -E '^dst=' "$TRIGGER_FILE" | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          MSG="$(grep -E '^msg=' "$TRIGGER_FILE" | head -n1 | sed 's/^msg=//')"
+          SKIP_CI="$(grep -E '^skip_ci=' "$TRIGGER_FILE" | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
+          echo "op=$OP" >> "$GITHUB_OUTPUT"
+          echo "src=$SRC" >> "$GITHUB_OUTPUT"
+          echo "dst=$DST" >> "$GITHUB_OUTPUT"
+          echo "msg=$MSG" >> "$GITHUB_OUTPUT"
+          echo "skip_ci=$SKIP_CI" >> "$GITHUB_OUTPUT"
+          echo "=== TRIGGER LETTO ==="
+          echo "op=$OP src=$SRC dst=$DST msg=$MSG skip_ci=$SKIP_CI"
+          case "$OP" in
+            merge|push-diario|diario) ;;
+            *) echo "ERRORE: operazione non riconosciuta: '$OP'"; exit 1 ;;
+          esac
+          for PROTECTED in main stable v0.5; do
+            if [ "$DST" = "$PROTECTED" ] || echo "$DST" | grep -qE "^(stable|v0\.5)/"; then
+              echo "ERRORE: branch protetto non modificabile: $DST"; exit 1
+            fi
+          done
+
+      - name: Configura git
+        run: |
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
+
+      - name: Merge branch work/* in rule-pool
+        if: steps.trigger.outputs.op == 'merge'
+        env:
+          SRC: ${{ steps.trigger.outputs.src }}
+          DST: ${{ steps.trigger.outputs.dst }}
+          MSG: ${{ steps.trigger.outputs.msg }}
+          SKIP_CI: ${{ steps.trigger.outputs.skip_ci }}
+        run: |
+          set -e
+          if ! echo "$SRC" | grep -qE '^work/|^fix-'; then
+            echo "ERRORE: src deve essere un branch work/* o fix-*: $SRC"; exit 1
+          fi
+          if [ "$DST" != "rule-pool" ]; then
+            echo "ERRORE: merge consentito solo verso rule-pool, non $DST"; exit 1
+          fi
+          git fetch origin "$SRC" "$DST"
+          SHA_SRC=$(git rev-parse "origin/$SRC")
+          SHA_DST_BEFORE=$(git rev-parse "origin/$DST")
+          git checkout "$DST"
+          git reset --hard "origin/$DST"
+          COMMIT_MSG="${MSG:-merge: $SRC in $DST}"
+          if [ "${SKIP_CI:-yes}" = "yes" ]; then
+            COMMIT_MSG="$COMMIT_MSG [skip ci]"
+          fi
+          git merge --no-ff "origin/$SRC" -m "$COMMIT_MSG"
+          SHA_DST_AFTER=$(git rev-parse HEAD)
+          echo "=== MERGE OK === SHA dopo: $SHA_DST_AFTER"
+          git push origin "$DST"
+
+      - name: Push file nel branch diario
+        if: steps.trigger.outputs.op == 'push-diario'
+        env:
+          SRC: ${{ steps.trigger.outputs.src }}
+          DST: ${{ steps.trigger.outputs.dst }}
+          MSG: ${{ steps.trigger.outputs.msg }}
+        run: |
+          set -e
+          if [ "$DST" != "diario" ]; then
+            echo "ERRORE: push-diario scrive solo nel branch diario, non $DST"; exit 1
+          fi
+          git fetch origin "$DST" "$SRC"
+          git checkout "$DST"
+          git reset --hard "origin/$DST"
+          SHA_DIARIO_BEFORE=$(git rev-parse HEAD)
+          git checkout "origin/$SRC" -- STATO.md 2>/dev/null || true
+          FILES_DIARIO=$(git ls-tree -r --name-only origin/$SRC | grep '^diario/' || true)
+          if [ -n "$FILES_DIARIO" ]; then
+            echo "$FILES_DIARIO" | xargs git checkout "origin/$SRC" -- 2>/dev/null || true
+          fi
+          if git diff --cached --quiet && git diff --quiet; then
+            echo "Nessuna modifica"; exit 0
+          fi
+          COMMIT_MSG="${MSG:-diario: aggiornamento Claude $(date +%Y-%m-%d)} [skip ci]"
+          git add -A && git commit -m "$COMMIT_MSG"
+          git push origin "$DST"
+          echo "=== PUSH DIARIO OK ==="
+
+      - name: Scrivi diario direttamente dal trigger
+        if: steps.trigger.outputs.op == 'diario'
+        env:
+          DST: ${{ steps.trigger.outputs.dst }}
+          MSG: ${{ steps.trigger.outputs.msg }}
+        run: |
+          set -e
+          if [ "$DST" != "diario" ]; then
+            echo "ERRORE: operazione diario scrive solo nel branch diario"; exit 1
+          fi
+          git fetch origin diario rule-pool
+          git checkout diario
+          git reset --hard "origin/diario"
+          SHA_BEFORE=$(git rev-parse HEAD)
+          git checkout "origin/rule-pool" -- STATO.md 2>/dev/null || true
+          VOCE="$(git ls-tree -r --name-only origin/rule-pool | grep '^diario/.*_claude\.md$' | sort | tail -n1)"
+          if [ -n "$VOCE" ]; then
+            git checkout "origin/rule-pool" -- "$VOCE" 2>/dev/null || true
+          fi
+          if git diff --cached --quiet && git diff --quiet; then
+            echo "Nessuna modifica"; exit 0
+          fi
+          COMMIT_MSG="${MSG:-diario: Claude $(date +%Y-%m-%d)} [skip ci]"
+          git add -A && git commit -m "$COMMIT_MSG"
+          git push origin diario
+          echo "=== DIARIO AGGIORNATO ==="
