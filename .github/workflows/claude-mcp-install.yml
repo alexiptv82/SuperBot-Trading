@@ -111,4 +111,5 @@ jobs:
           echo 'Installed new container locally. Token is never output; no changes to PAPER bots.'
       - name: Check safety if previous step fails
         if: failure()
-        run: echo 'MCP deployment failed: inspect isolated service only; do not touch Hawk/Bull/DeepSeek.'
+        run: |
+          echo 'MCP deployment failed: inspect isolated service only; do not touch Hawk/Bull/DeepSeek.'
