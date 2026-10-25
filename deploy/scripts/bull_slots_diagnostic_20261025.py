@@ -34,7 +34,7 @@ def num(v):
 def docker(*args):
     x=subprocess.run(["docker",*args],text=True,capture_output=True,timeout=22)
     if x.returncode:raise RuntimeError("docker "+args[0]+" failed")
-    return x.stdout
+    return x.stdout+x.stderr if args[0]=="logs" else x.stdout
 def events(path):
     with open(path,encoding="utf-8") as f:
         for line in f:
