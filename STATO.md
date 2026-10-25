@@ -22,6 +22,9 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Vincoli immutabili: nessuna istanza LIVE, nessun doppio processo, preservare DB, trade_history, learning_log, AI memory, vault e journal, non esporre credenziali, backup verificato e rollback prima di ogni intervento.
 - Prossimo passo Fix B: revisione incrociata con Claude, replay offline, test di convalida con dati reali, poi richiedere esplicito OK per merge e successivo deploy. **Nessuna attivazione permessa ora.**
 
+## Claude — collaboratore permanente (25/10)
+- Claude (Claude Code) attivo come collaboratore permanente con mandato utente: solo PAPER, sola lettura sul VPS, correzioni su rami separati, nessun deploy/riavvio senza OK. Collegamento GitHub→VPS verificato con desk-mode-check (Actions 40217006058): Hawk e Bull PAPER, versione 297b126. Dettagli e punti aperti: diario/2026-10-25_claude.md.
+
 ## Riferimenti
 - LEGGIMI.md, MANUALE-OPERATIVO.md, SINCRONIZZAZIONE-WORK-CHAT.md.
 - FIX-B-PROFIT-GUARDIAN-V1-SPECIFICA.md e diario/2026-10-24_chatgpt.md.
