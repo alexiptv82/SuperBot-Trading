@@ -1,0 +1,64 @@
+name: MCP Singapore readonly deployment preflight
+on:
+  push:
+    branches: [ops/claude-chat-mcp-readonly-20261025]
+    paths: ["integrations/claude_mcp_readonly/deploy-preflight.trigger"]
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check existing tailscale/docker/network safely via SSH (no server mutations)
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/mcp-ro-key"
+          chmod 600 "$HOME/.ssh/mcp-ro-key"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOME/.ssh/mcp-ro-hosts"
+          ssh -T -i "$HOME/.ssh/mcp-ro-key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/mcp-ro-hosts" \
+            -o ConnectTimeout=20 root@51.79.205.82 'python3 -I -' <<'PY'
+          import os,shutil,json,subprocess
+          from pathlib import Path
+          def run(a):
+              try:
+                  p=subprocess.run(a,capture_output=True,text=True,timeout=8)
+                  return p.returncode,p.stdout.strip(),p.stderr.strip()
+              except Exception as e:return 99,"",type(e).__name__
+          print("MCP_PREFLIGHT_BEGIN")
+          print("USER_IS_ROOT",os.geteuid()==0)
+          print("DOCKER_INSTALLED",bool(shutil.which("docker")))
+          ret,s,err=run(["docker","ps","--format","{{.Names}}"])
+          names=set(s.splitlines())
+          print("DOCKER_PS_OK",ret==0,"BOT_HAWK_RUNNING","superbot-desk-hawk" in names,
+                "BOT_BULL_RUNNING","superbot-desk-bull" in names,"SHADOW_RUNNING","superbot-ai" in names)
+          print("TAILSCALE_INSTALLED",bool(shutil.which("tailscale")))
+          if shutil.which("tailscale"):
+              c,s,err=run(["tailscale","status","--json"])
+              if c==0:
+                  try:
+                      j=json.loads(s)
+                      self_=j.get("Self") or {}
+                      print("TAILSCALE_BACKEND",j.get("BackendState"),
+                            "TAILSCALE_SELF_DNS",self_.get("DNSName"),
+                            "TAILSCALE_ONLINE",self_.get("Online"))
+                  except ValueError:print("TAILSCALE_STATUS_PARSE_FAILED")
+              else:
+                  print("TAILSCALE_STATUS_EXIT",c,"REASON",err[:110])
+              c,v,e=run(["tailscale","version"])
+              print("TAILSCALE_VERSION",v.splitlines()[0][:90] if v else "?")
+          print("TARGET_DIRECTORY_EXISTS",Path("/opt/superbot-claude-mcp-readonly").exists())
+          print("PAPER_HAWK",Path("/opt/superbot-desk-data/hawk/state_v2.json").is_file())
+          print("PAPER_BULL",Path("/opt/superbot-desk-data/bull/state_v2.json").is_file())
+          print("SHADOW_STATUS",Path("/opt/superbot-ai-data/ai/status.json").is_file())
+          c,v,e=run(["docker","ps","--format","{{.Names}} {{.Ports}}"])
+          print("CONTAINER_PORTS_OK",c==0)
+          print("MCP_PREFLIGHT_READONLY_DONE")
+          PY
+          rm -f "$HOME/.ssh/mcp-ro-key" "$HOME/.ssh/mcp-ro-hosts"
