@@ -1,0 +1,92 @@
+name: MCP Tailscale Singapore enroll authorized
+on:
+  push:
+    branches: [ops/claude-chat-mcp-readonly-20261025]
+    paths: ["integrations/claude_mcp_readonly/tailscale-enroll.trigger"]
+permissions:
+  contents: read
+concurrency:
+  group: singapore-mcp-tailscale-enroll
+  cancel-in-progress: false
+jobs:
+  enroll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install official Tailscale Linux package without changing bot configs
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          TSKEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$TSKEY" ] || { echo 'TAILSCALE_AUTH_KEY secret missing'; exit 1; }
+          [[ "$TSKEY" == tskey-auth-* ]] || { echo 'TAILSCALE_AUTH_KEY is not a Tailscale auth key'; exit 1; }
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/singapore-mcp-enroll-key"
+          chmod 600 "$HOME/.ssh/singapore-mcp-enroll-key"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOME/.ssh/singapore-mcp-enroll-hosts"
+          SSH_OPTS=(-i "$HOME/.ssh/singapore-mcp-enroll-key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/singapore-mcp-enroll-hosts" -o ConnectTimeout=20)
+          # Never print the secret, never pass it in SSH command arguments, never put it in git.
+          ssh "${SSH_OPTS[@]}" root@51.79.205.82 'bash -se' <<'INSTALL'
+          set -euo pipefail
+          . /etc/os-release
+          case "${ID:-}" in ubuntu|debian) ;; *) echo "TAILSCALE_UNSUPPORTED_DISTRO"; exit 1;; esac
+          for c in superbot-desk-hawk superbot-desk-bull superbot-ai; do
+            docker inspect -f '{{.State.Running}}' "$c" | grep -qx true || { echo "PRECHECK_BOT_STOPPED=$c"; exit 1; }
+          done
+          if command -v tailscale >/dev/null 2>&1; then
+            echo "TAILSCALE_ALREADY_INSTALLED"
+          else
+            echo "TAILSCALE_INSTALL_BEGIN"
+            curl -fsSL --connect-timeout 20 https://tailscale.com/install.sh |
+              sh >/dev/null 2>&1 || { echo "TAILSCALE_INSTALL_FAILED"; exit 1; }
+            echo "TAILSCALE_INSTALLED"
+          fi
+          systemctl is-active --quiet tailscaled ||
+            systemctl start tailscaled
+          systemctl is-active --quiet tailscaled && echo "TAILSCALED_RUNNING"
+          INSTALL
+          # The only source of the auth key is GitHub Secret.
+          # It is sent over pinned SSH stdin and placed in RAM-only /dev/shm for one CLI call.
+          # Tailscale supports the file: form, keeping the key out of process argv.
+          printf '%s\n' "$TSKEY" |
+            ssh "${SSH_OPTS[@]}" root@51.79.205.82 'bash -c '"'"'
+              set -euo pipefail
+              set +x
+              umask 077
+              read -r KEY
+              [ -n "$KEY" ] || { echo "TAILSCALE_EMPTY_KEY"; exit 1; }
+              p="$(mktemp /dev/shm/.mcp-ts-auth.XXXXXXXX)"
+              trap "rm -f \"$p\"; unset KEY" EXIT
+              printf "%s" "$KEY" > "$p"
+              unset KEY
+              if ! timeout 95 tailscale up --auth-key="file:$p" --accept-dns=false --accept-routes=false --advertise-exit-node=false --ssh=false --netfilter-mode=off --hostname=superbot-mcp-sg >/dev/null 2>&1; then
+                echo "TAILSCALE_ENROLL_FAILED"; exit 1
+              fi
+              echo "TAILSCALE_ENROLL_SUCCESS"
+            '"'"'
+          unset TSKEY
+          ssh "${SSH_OPTS[@]}" root@51.79.205.82 'python3 -I -' <<'VERIFY'
+          import json,subprocess
+          res=subprocess.run(["tailscale","status","--json"],capture_output=True,text=True,timeout=14,check=True)
+          data=json.loads(res.stdout)
+          self_=data.get("Self") or {}
+          name=str(self_.get("DNSName") or "").rstrip(".")
+          assert data.get("BackendState")=="Running","Tailscale backend not running"
+          assert self_.get("Online") is True,"Tailscale node is not online"
+          assert name.endswith(".ts.net"),"Assigned DNS hostname invalid"
+          print("TAILSCALE_VPS_CONNECTED=PASS")
+          print("TAILSCALE_DNS_NAME="+name)
+          print("TAILSCALE_FUNNEL_STATUS=NOT_ENABLED")
+          for c in ("superbot-desk-hawk","superbot-desk-bull","superbot-ai"):
+              out=subprocess.run(["docker","inspect","-f","{{.State.Running}}",c],
+                capture_output=True,text=True,timeout=8,check=True)
+              assert out.stdout.strip()=="true",c+" stopped"
+          print("BOT_CONTAINERS_STILL_RUNNING=PASS")
+          VERIFY
+          rm -f "$HOME/.ssh/singapore-mcp-enroll-key" "$HOME/.ssh/singapore-mcp-enroll-hosts"
+      - name: Result notes
+        if: always()
+        run: echo "Only Tailscale daemon/device enrollment authorized here; MCP and Funnel remain separate."
