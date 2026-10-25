@@ -3,3 +3,4 @@ vps=51.79.205.82
 mode=new_container_local_only
 secret=openssl_rand_hex_32_vps_only
 paper_bots_unchanged=true
+retry=workflow_yaml_validated
