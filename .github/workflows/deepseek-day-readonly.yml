@@ -1,0 +1,41 @@
+name: DeepSeek Oct25 decisions READ ONLY
+on:
+  push:
+    branches: [ops/deepseek-day-review-20261025]
+    paths: ["deploy/deepseek-day-readonly.trigger"]
+permissions:
+  contents: read
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax validate local audit script
+        run: python3 -m py_compile deploy/scripts/deepseek_day_readonly_20261025.py
+      - name: SSH read persisted shadow and PAPER journals ONLY
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/ro-shadow-key"
+          chmod 600 "$HOME/.ssh/ro-shadow-key"
+          cat > "$HOME/.ssh/ro-shadow-hosts" <<'HOSTS'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTS
+          ssh -T -i "$HOME/.ssh/ro-shadow-key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/ro-shadow-hosts" \
+            -o ConnectTimeout=20 root@51.79.205.82 'python3 -I -' \
+            < deploy/scripts/deepseek_day_readonly_20261025.py | tee shadow-review.txt
+          grep -qx 'DEEPSEEK_DAY_READONLY_AUDIT_DONE' shadow-review.txt
+          {
+            echo '## DeepSeek decision audit 25 Oct 2026 — no writes/restarts/deploy'
+            echo '~~~'
+            cat shadow-review.txt
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove runner-only SSH identity
+        if: always()
+        run: rm -f "$HOME/.ssh/ro-shadow-key" "$HOME/.ssh/ro-shadow-hosts"
