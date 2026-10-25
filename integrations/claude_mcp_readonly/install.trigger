@@ -1,0 +1,5 @@
+authorized_by_user=true
+vps=51.79.205.82
+mode=new_container_local_only
+secret=openssl_rand_hex_32_vps_only
+paper_bots_unchanged=true
