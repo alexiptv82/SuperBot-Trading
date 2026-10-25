@@ -188,7 +188,28 @@ def deepseek_recent_decisions(count: int=50) -> dict:
 
 # Enforce bearer token before any HTTP request reaches the MCP implementation.
 # Do not log supplied token, headers or request bodies.
-inner = mcp.streamable_http_app(stateless_http=True, json_response=True)
+# Exact host allowlist: Tailscale Funnel forwards its public .ts.net hostname.
+# Set MCP_PUBLIC_HOST only after tailnet device enrollment; no wildcards accepted.
+import re
+from mcp.server.transport_security import TransportSecuritySettings
+
+public_host = os.environ.get("MCP_PUBLIC_HOST", "").strip().lower()
+if public_host and not re.fullmatch(r"[a-z0-9-]+(?:\\.[a-z0-9-]+)+\\.ts\\.net", public_host):
+    raise RuntimeError("MCP_PUBLIC_HOST must be the exact assigned *.ts.net hostname")
+_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+if public_host:
+    _hosts += [public_host, public_host + ":*"]
+inner = mcp.streamable_http_app(
+    stateless_http=True,
+    json_response=True,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_hosts,
+        allowed_origins=["http://127.0.0.1:*", "http://localhost:*",
+                         "https://" + public_host] if public_host else
+                        ["http://127.0.0.1:*", "http://localhost:*"],
+    ),
+)
 async def app(scope, receive, send):
     if scope["type"]=="http":
         headers=dict(scope.get("headers") or ())
