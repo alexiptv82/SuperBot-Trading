@@ -194,7 +194,7 @@ import re
 from mcp.server.transport_security import TransportSecuritySettings
 
 public_host = os.environ.get("MCP_PUBLIC_HOST", "").strip().lower()
-if public_host and not re.fullmatch(r"[a-z0-9-]+(?:\\.[a-z0-9-]+)+\\.ts\\.net", public_host):
+if public_host and not re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+\.ts\.net", public_host):
     raise RuntimeError("MCP_PUBLIC_HOST must be the exact assigned *.ts.net hostname")
 _hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
 if public_host:
