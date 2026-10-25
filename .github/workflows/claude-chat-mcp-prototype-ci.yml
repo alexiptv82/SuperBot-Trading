@@ -32,7 +32,7 @@ jobs:
           from server import app
           async def check():
               async with LifespanManager(app):
-               async with AsyncClient(transport=ASGITransport(app=app),base_url="http://example.test") as c:
+               async with AsyncClient(transport=ASGITransport(app=app),base_url="http://127.0.0.1:8765") as c:
                   for headers in ({}, {"Authorization":"Bearer wrong-key"},):
                       response=await c.post("/mcp", headers=headers, json={"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})
                       assert response.status_code==401, (headers,response.status_code)
