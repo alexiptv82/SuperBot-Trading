@@ -1,2 +1,1 @@
-2026-10-24 06:36Z independent post-deploy read-only verification.
-Expected both PAPER bots running version 297b126; Capital V1 explicitly off per deploy run 40070696611.
+2026-10-25T17:32:57Z claude: verifica collegamenti, conferma PAPER (sola lettura)
