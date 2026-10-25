@@ -1,0 +1,114 @@
+name: MCP readonly Singapore installation — authorized, isolated
+on:
+  push:
+    branches: [ops/claude-chat-mcp-readonly-20261025]
+    paths: ["integrations/claude_mcp_readonly/install.trigger"]
+permissions:
+  contents: read
+concurrency:
+  group: singapore-mcp-readonly-install
+  cancel-in-progress: false
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and locally run isolated MCP with VPS-generated nonlogged token
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/mcp-deploy-key"
+          chmod 600 "$HOME/.ssh/mcp-deploy-key"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOME/.ssh/mcp-deploy-hosts"
+          SSH_OPTS="-i $HOME/.ssh/mcp-deploy-key -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/mcp-deploy-hosts -o ConnectTimeout=20"
+          # Preflight is read-only and refuses deployment if non-root cannot read the existing PAPER data.
+          ssh $SSH_OPTS root@51.79.205.82 'python3 -I -' <<'PY'
+          import os,stat,subprocess
+          from pathlib import Path
+          print("MCP_INSTALL_PREFLIGHT_BEGIN")
+          target=Path("/opt/superbot-claude-mcp-readonly")
+          if target.exists():
+              raise RuntimeError("MCP_TARGET_DIRECTORY_ALREADY_EXISTS; refuse to overwrite")
+          paths=[]
+          for bot in ("hawk","bull"):
+              d=Path("/opt/superbot-desk-data")/bot
+              paths += [d,d/"heartbeat.json",d/"state_v2.json",d/"lessons.md",d/"learning_log.jsonl"]
+          paths += [Path("/opt/superbot-ai-data/ai"),Path("/opt/superbot-ai-data/ai/status.json")]
+          for p in paths:
+              if not p.exists() or p.is_symlink():raise RuntimeError("MCP_INVALID_BIND_SOURCE "+str(p))
+              mode=p.stat().st_mode
+              if p.is_dir() and not (mode & stat.S_IXOTH):raise RuntimeError("NONROOT_NO_TRAVERSE "+str(p))
+              if p.is_file() and not (mode & stat.S_IROTH):raise RuntimeError("NONROOT_NO_READ "+str(p))
+          if not os.path.isfile("/usr/bin/openssl") and not __import__("shutil").which("openssl"):
+              raise RuntimeError("OPENSSL_NOT_INSTALLED")
+          r=subprocess.run(["docker","ps","--format","{{.Names}}"],capture_output=True,text=True,timeout=12,check=True)
+          names=set(r.stdout.splitlines())
+          assert {"superbot-desk-hawk","superbot-desk-bull","superbot-ai"}<=names, "bot_container_missing"
+          assert "superbot-claude-mcp-ro" not in names,"MCP_ALREADY_RUNNING"
+          r=subprocess.run(["sh","-c","ss -lnt | grep -q ':8765 ' "],capture_output=True,timeout=6)
+          assert r.returncode!=0,"PORT_8765_ALREADY_LISTENING"
+          st=__import__("shutil").disk_usage("/")
+          assert st.free>2_000_000_000,"LOW_DISK"
+          print("MCP_INSTALL_PREFLIGHT_PASS",flush=True)
+          PY
+          # Only new directory under /opt. Does not alter the existing repo or bot data.
+          tar -C integrations/claude_mcp_readonly -cf - Dockerfile server.py |
+            ssh $SSH_OPTS root@51.79.205.82 'install -d -m 700 /opt/superbot-claude-mcp-readonly && tar -xf - -C /opt/superbot-claude-mcp-readonly'
+          ssh $SSH_OPTS root@51.79.205.82 'bash -se' <<'SH'
+          set -euo pipefail
+          cd /opt/superbot-claude-mcp-readonly
+          docker build --pull -t superbot-claude-mcp-ro:20261025 .
+          export MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
+          [ "${#MCP_BEARER_TOKEN}" -eq 64 ]
+          # Port is bound to host LOOPBACK only; all sources mounted read-only.
+          docker run -d --name superbot-claude-mcp-ro --restart unless-stopped \
+            --read-only --user 65534:65534 --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit=96 --memory=384m --cpus=0.5 \
+            --tmpfs /tmp:rw,nosuid,noexec,size=32m \
+            -p 127.0.0.1:8765:8765 \
+            -v /opt/superbot-desk-data/hawk:/data/desk/hawk:ro \
+            -v /opt/superbot-desk-data/bull:/data/desk/bull:ro \
+            -v /opt/superbot-ai-data/ai:/data/shadow/ai:ro \
+            -e MCP_BEARER_TOKEN -e MCP_PUBLIC_HOST="" \
+            superbot-claude-mcp-ro:20261025 >/dev/null
+          unset MCP_BEARER_TOKEN
+          python3 -I - <<'PY'
+          import json,subprocess,time,urllib.request,urllib.error
+          port="http://127.0.0.1:8765/mcp"
+          init={"jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"mcp-install-selftest","version":"0.1"},"capabilities":{}}}
+          raw=json.dumps(init).encode()
+          def call(token):
+              headers={"Accept":"application/json, text/event-stream","Content-Type":"application/json"}
+              if token:headers["Authorization"]="Bearer "+token
+              req=urllib.request.Request(port,raw,headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=5) as r:return r.status,r.read(15000)
+              except urllib.error.HTTPError as e:return e.code,e.read(1000)
+          for n in range(45):
+              try:
+                  unauth,_=call(None)
+                  if unauth==401:break
+              except Exception:
+                  pass
+              time.sleep(2)
+          else:raise RuntimeError("MCP_HTTP_NOT_READY")
+          env=json.loads(subprocess.check_output(["docker","inspect","superbot-claude-mcp-ro"],text=True))[0]["Config"]["Env"]
+          secret=next((x.split("=",1)[1] for x in env if x.startswith("MCP_BEARER_TOKEN=")),None)
+          if not secret or len(secret)!=64:raise RuntimeError("MCP_TOKEN_INVALID")
+          status,data=call(secret)
+          if status!=200 or b"protocolVersion" not in data:
+              raise RuntimeError("MCP_AUTH_HANDSHAKE_FAILED_HTTP_"+str(status))
+          print("MCP_LOCAL_ONLY=PASS TOKEN_IN_VPS_CONTAINER_ENV_ONLY=PASS UNAUTHENTICATED_REQUESTS_401=PASS AUTHENTICATED_HANDSHAKE=PASS")
+          print("MCP_TUNNEL=NOT_YET_CONFIGURED")
+          PY
+          SH
+          rm -f "$HOME/.ssh/mcp-deploy-key" "$HOME/.ssh/mcp-deploy-hosts"
+          echo 'Installed new container locally. Token is never output; no changes to PAPER bots.'
+      - name: Check safety if previous step fails
+        if: failure()
+        run: echo 'MCP deployment failed: inspect isolated service only; do not touch Hawk/Bull/DeepSeek.'
