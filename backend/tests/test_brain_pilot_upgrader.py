@@ -218,6 +218,7 @@ class UpgraderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as copied:
             probe=Path(copied);up.clone_data(f.data,probe);manifest=up.file_manifest(probe)
             subprocess.run(["docker","run","--rm","--read-only","--cap-drop","ALL","--network","none",
+                "--user",str(os.getuid())+":"+str(os.getgid()),
                 "--env","DESK_MODE=paper","--mount","type=bind,src="+str(probe)+",dst=/out",
                 os.environ["BRAIN_TEST_IMAGE"],"python","-c",
                 "from director.brain_pilot.pilot import Pilot; p=Pilot('/out','',None); p.checkpoint([{'kind':'ci_migration_probe'}]); p.close()"],check=True,timeout=120)

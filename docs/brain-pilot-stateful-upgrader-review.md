@@ -31,6 +31,8 @@ La strategia/immagine target non vengono cambiate per aggiungere il deploy tool.
    e snapshot SQLite tramite backup API (include WAL COMMITTATO).
 5. Prova l'immagine reale sulla COPIA: no rete, nessuna API key, solo costruttore
    Pilot+checkpoint, mai run_once. Confronta account/posizioni/cash/ID/stops/DCA,
+   Il probe usa UID/GID del proprietario host della copia, senza DAC_OVERRIDE:
+   funziona anche con cartella privata0700 e cap-drop ALL, senza aprire permessi.
    prefisso eventi storici, log e spesa. Ammesse solo migrazione policy20%,
    metadata additive e filtro dei pending legacy di NUOVA esposizione. Pending
    protettivi devono rimanere; nessuna posizione può sparire durante la prova.

@@ -233,6 +233,7 @@ def upgrade(repo,sha,previous,helper=None):
                       "p=Pilot('/out','',None); "
                       "p.checkpoint([{'kind':'upgrade_migration_probe'}]); p.close()")
                 helper.run(["docker","run","--rm","--network","none","--read-only","--cap-drop","ALL",
+                            "--user",str(os.getuid())+":"+str(os.getgid()),
                             "--security-opt","no-new-privileges","--memory","384m","--cpus","0.5",
                             "--tmpfs","/tmp:rw,nosuid,noexec,size=32m","--env","DESK_MODE=paper",
                             "--mount","type=bind,src="+str(probe)+",dst=/out",
