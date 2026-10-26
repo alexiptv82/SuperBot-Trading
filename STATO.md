@@ -95,3 +95,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Trigger install e repair disarmati (action=none/approved=no). Hawk/Bull e vecchio pilot NON rideployati o modificati; sidecar invariato. Runtime Hawk/Bull resta quello documentato sopra.
 - Diario risultato `be84dda9dc09b6f7638be0fcda7390dba3f4f59b`.
 - Prossimo: osservazione PAPER, verificare primi fill al ciclo successivo e motivazioni/performance. Nessuna evidenza ancora di miglioramento P&L.
+
+## IN_CORSO — Brain cinque upgrade approvati
+- ChatGPT Work, work/brain-pilot-v1 da rule-pool 33427f596edcbf80a7f73e94fdeffb39fac81ddd. Autorizzati debate, invalidazione strutturata, ATR1.5/.8, contesto funding/OI/F&G e DAILY STOP20% persistente UTC (decisione esplicita utente).
+- Solo sviluppo/test/review; nessun deploy o modifica runtime. Nessun reset capitale/storico.
