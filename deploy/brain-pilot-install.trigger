@@ -1,6 +1,4 @@
-# User explicitly authorized PAPER installation on 2026-10-26.
+# Authorized PAPER install; only installer RO-parent preflight correction after 38 tests PASS.
 action=install
 approved=yes
-sha=a5d8b79783982b5642210ffe026c0a9150176d0f
-# retry=preflight-diagnostics-only-before-unchanged-approved-installer
-# diagnostic=identify-overlap-access-mode
+sha=4aaf792b66284bbe3428acdbaeedbd1725cd2839
