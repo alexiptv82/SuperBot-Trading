@@ -104,3 +104,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Merge `e83a28c437f1c4bd672db3c1ab4a0d674a5171d5` verificato su rule-pool, due parent; branch lavoro conservato.
 - [skip ci] sul merge, trigger install action=none/approved=no: nessun workflow operativo avviato dal merge.
 - Installazione NON eseguita. Prossimo: OK separato utente per install, prevista a Claude Code; codice approvato `a5d8b79783982b5642210ffe026c0a9150176d0f`. Diario merge `47257309bd4cbb701bbdc78a6c902ac09437586d`.
+
+## IN_CORSO — Installazione Brain Pilot PAPER autorizzata
+- Utente: «Autorizzo l’installazione PAPER». ChatGPT esegue il workflow già revisionato sul commit immutabile a5d8b79783982b5642210ffe026c0a9150176d0f.
+- Solo nuovo container superbot-brain-pilot e cartella brain; nessun intervento Hawk/Bull/vecchio pilot. In attesa di esito workflow.
