@@ -85,3 +85,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Implementazione dalla specifica: sorgente completo DeepSeek non fornito. Soglie proposte documentate; non certificato pronto alla produzione.
 - Prossimo: review Claude, cablaggio cli.py per candele e contesto, copertura aperture AI/split/DCA, replay PAPER. Patch attuale protegge ingressi a regole quando collegata; gestione posizioni preservata.
 - Nessun merge/deploy/riavvio o modifica dati. Proprietà sviluppo ceduta a review Claude.
+
+## IN_CORSO — Brain Pilot V1
+- ChatGPT Work: nuovo componente `backend/director/brain_pilot/`, branch `work/brain-pilot-v1`, base `502107209f9e42d38e4421ac70df188c823dc315`.
+- Brief completo utente autorizza sviluppo e test; review Claude prima del deploy. Conto PAPER separato; nessuna modifica Hawk/Bull o pilot esistente.
