@@ -1,1 +1,1 @@
-2026-10-26T17:55:32Z snapshot pre-deploy fix segnali V2 (sola lettura)
+2026-10-26T18:36:25Z snapshot post-deploy fix segnali V2 (sola lettura)
