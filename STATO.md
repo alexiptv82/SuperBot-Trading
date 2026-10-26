@@ -204,3 +204,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Riferimenti1–5min e5–15min, con possibilità di proseguire oltre se il trade resta valido; evitare ore di attesa. Questi tempi non sono chiusure automatiche o modifiche di Bull.
 - Brain: profitto netto, slancio residuo e rischio guidano continuazione/uscita; stop e uscita da tesi invalidata restano attivi anche in perdita. Nessun profitto garantito, attesa indefinita o soglia numerica nuova approvata.
 - Aggiornato docs/brain-scalp-realignment.md su work/brain-scalp-design. Solo design; nessun cambio runtime, deploy o riavvio.
+
+## Nuova richiesta — margine Brain simile Bull e dashboard visibile
+- Utente chiede margini significativi sul contoPAPER1000, riferimentoBull. Verificata configurazioneBull: minimo150/max350USD; Brainattuale cap100USD e budgetstop1%×size×conviction. Riferimento registrato nel design, nessuna variazione numerica di rischio/levа applicata.
+- PR#13 verificata ancoraAPERTA/nonmerged: UI margine/levа/esposizione/ROI non è live. Richiesto rilascio concreto come prossimo passo; resta il vincolo iniziale nessun deploy senzaOK specifico. Nessun merge/deploy/riavvio in questa verifica.
