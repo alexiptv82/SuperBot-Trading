@@ -61,6 +61,10 @@ app = FastAPI(title='SuperBot Trading API', version='1.0.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True,
                    allow_methods=['*'], allow_headers=['*'])
 
+# Observation only; register before the React SPA catch-all. No trading imports.
+from desk.brain_view import register_fastapi as register_brain_view
+register_brain_view(app, require_session)
+
 # Stato temporaneo delle challenge WebAuthn in corso (registrazione o login),
 # in memoria di processo: vive solo per la manciata di secondi tra la
 # richiesta delle "options" e la verifica della risposta del dispositivo.
@@ -1464,3 +1468,4 @@ async def bull_capital_transfer_status(event_id: str, session=Depends(require_se
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run('backend.server:app', host='0.0.0.0', port=config.BACKEND_PORT, reload=True)
+

@@ -39,6 +39,10 @@ API.interceptors.response.use(
   }
 );
 
+export const brainAPI = {
+  getStatus: (signal) => API.get('/api/brain/status', { signal }),
+};
+
 export const botAPI = {
   getStatus: () => API.get('/api/bot/status'),
   getConfig: () => API.get('/api/bot/config'),
@@ -102,3 +106,4 @@ export const deskAPI = {
 };
 
 export default API;
+
