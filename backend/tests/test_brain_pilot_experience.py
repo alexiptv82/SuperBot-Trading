@@ -207,6 +207,11 @@ class ValidationTests(Fixture):
         path.write_bytes(ex.canonical(b))
         self.assertEqual(ex.load_view(self.dest,SUMMARIES,EXPORTED)["status"],"unavailable")
 
+    def test_deeply_corrupted_seed_returns_unavailable(self):
+        path=self.dest/"experience_seed.json"
+        path.write_text('['*2000+'0'+']'*2000)
+        self.assertEqual(ex.load_view(self.dest,SUMMARIES,EXPORTED)["status"],"unavailable")
+
     def test_even_rehashed_extra_text_or_duplicate_id_is_rejected(self):
         spec=self.snapshot();b=self.bundle([spec]);path=self.store(b,[spec])
         for target in ("source","episode"):

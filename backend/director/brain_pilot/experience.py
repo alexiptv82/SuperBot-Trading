@@ -68,7 +68,7 @@ def read_rows(path):
                 hasher.update(line)
                 try:
                     row = json.loads(line, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
-                except (ValueError, UnicodeError):
+                except (ValueError, UnicodeError, RecursionError):
                     raise IntakeError("SOURCE_INVALID_JSON") from None
                 if not isinstance(row, dict) or len(rows) >= MAX_ROWS:
                     raise IntakeError("SOURCE_ROWS_INVALID_OR_TOO_MANY")
@@ -383,7 +383,7 @@ def load_view(root, summaries, now_ms):
     try:
         if path.is_symlink():raise IntakeError("BUNDLE_SYMLINK")
         return view(read_bundle(path),summaries,now_ms)
-    except (OSError,ValueError,TypeError,KeyError,AttributeError,OverflowError):
+    except (OSError,ValueError,TypeError,KeyError,AttributeError,OverflowError,RecursionError):
         return {"status":"unavailable","lessons":[],"cases":[]}
 
 
@@ -402,7 +402,7 @@ def main():
                             paper_confirmed=args.confirm_paper)
         write_bundle(bundle,args.output,specs)
         print(json.dumps({"status":"prepared_for_review","bundle_id":bundle["sha256"],"sources":bundle["payload"]["sources"]}))
-    except (OSError,ValueError,TypeError,KeyError):
+    except (OSError,ValueError,TypeError,KeyError,RecursionError):
         raise SystemExit("EXPERIENCE_INTAKE_FAILED") from None
 
 
