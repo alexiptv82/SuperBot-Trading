@@ -18,7 +18,7 @@ from director.ai_shadow import deepseek, journal
 from director.ai_shadow.budget import Budget
 from director.ai_shadow.config import Config
 from director.ai_shadow.market import BarCache
-from . import VERSION, prompt_builder, learning
+from . import VERSION, prompt_builder, learning, experience, knowledge
 from .portfolio import Portfolio, number
 from .context import ContextCollector
 
@@ -229,7 +229,10 @@ class Pilot:
         if self.state.get("learning_status") != "ok":
             return {"version": learning.VERSION, "status": "unavailable", "lessons": [], "cases": []}
         try:
-            return learning.build_view(self.state.get("learning", learning.empty()), summaries, now_ms)
+            result = learning.build_view(self.state.get("learning", learning.empty()), summaries, now_ms)
+            result["transferred_experience"] = experience.load_view(self.store.root, summaries, now_ms)
+            result["engineering_research_notes"] = knowledge.catalog(now_ms)
+            return result
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
             return {"version": learning.VERSION, "status": "unavailable", "lessons": [], "cases": []}
 
@@ -346,6 +349,7 @@ class Pilot:
         snapshot=self.portfolio.snapshot(prices,cutoff)
         can_expose=("BTC" in summaries and all(s in summaries for s in self.portfolio.account.positions))
         result={"kind":"cycle","ts_ms":now_ms,"bar_t":bar_t,"called":False,"symbols":len(summaries)}
+        intake_events = []
         if st["last_attempt"]==bar_t:
             result["skip"]="already_attempted"
         elif not self.key or not can_expose or len(summaries)<self.cfg.min_symbols_ok:
@@ -360,7 +364,16 @@ class Pilot:
                     pass  # optional sources never block protective decisions
             memory = self.memory_view(summaries, cutoff)
             references = [lesson["id"] for lesson in memory["lessons"]]
+            transferred = memory.get("transferred_experience", {})
+            external_references = [lesson["id"] for lesson in transferred.get("lessons", [])]
+            artifact = transferred.get("bundle_id")
+            if artifact and artifact != st.get("experience_artifact"):
+                intake_events.append({"kind": "experience_intake", "bundle_id": artifact,
+                    "previous_bundle_id": st.get("experience_artifact"), "quality": transferred["quality"],
+                    "validation_start_ms": transferred["validation_start_ms"], "ts_ms": now_ms})
+                st["experience_artifact"] = artifact
             result["learning"] = {"status": memory["status"], "lesson_ids": references,
+                                  "external_lesson_ids": external_references, "experience_bundle_id": artifact,
                                   "context_digest": learning.digest(memory),
                                   "audit_projection": "unavailable" if self.store.learning_export_error else "ok"}
             user=prompt_builder.build_user(cutoff,summaries,snapshot,st["recent"],
@@ -369,7 +382,8 @@ class Pilot:
             if not ok: result["skip"]="budget_cap"
             else:
                 # Persist attempt BEFORE charging/calling. After a crash this bar is not retried.
-                st["last_attempt"]=bar_t; self.checkpoint([{"kind":"model_attempt","bar_t":bar_t,"ts_ms":now_ms,"learning":result["learning"],"episodic_memory":memory}])
+                st["last_attempt"]=bar_t; self.checkpoint(intake_events + [{"kind":"model_attempt","bar_t":bar_t,"ts_ms":now_ms,"learning":result["learning"],"episodic_memory":memory}])
+                intake_events = []
                 # Reserve worst-case spend before network, even on failure. No undercount on crash.
                 self.budget.record(self.cfg.model,now_ms,0,0,0,False,"worst_case_reservation",est_cost=worst)
                 result["called"]=True
@@ -393,15 +407,19 @@ class Pilot:
                         # Private provenance always comes from code, never provider JSON.
                         d.pop("_learning_model", None)
                         d.pop("_learning_refs", None)
+                        d.pop("_experience_refs", None)
+                        d.pop("_experience_bundle", None)
                         if self.learning_enabled:
                             d["_learning_model"] = self.cfg.model
                             d["_learning_refs"] = references
+                            d["_experience_refs"] = external_references
+                            d["_experience_bundle"] = artifact
                         d.update(execute_t=bar_t+BAR,context=summaries.get(d["symbol"],{}))
                         st["pending"].append(d)
                     result["pending"]=len(st["pending"])
                 except (deepseek.ModelError,ValueError,KeyError,TypeError):
                     result["error"]="model_or_response_failed"  # never persist provider text/key
-        self.checkpoint([result])
+        self.checkpoint(intake_events + [result])
         journal.atomic_json(str(self.store.root/"status.json"),
             {"ts_ms":now_ms,"mode":"paper","applied":False,"version":VERSION,
              "equity":snapshot["equity"],"open":len(snapshot["positions"]),"last_cycle":result})

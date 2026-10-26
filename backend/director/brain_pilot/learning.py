@@ -29,7 +29,7 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()[:20]
 
 
-def entry_context(summary, model="unknown", references=()):
+def entry_context(summary, model="unknown", references=(), external_references=(), experience_bundle_id=None):
     """Whitelist factual entry features; never infer old regimes from today's data."""
     trends = summary.get("trend", {})
     daily, four = trends.get("1d"), trends.get("4h")
@@ -37,7 +37,9 @@ def entry_context(summary, model="unknown", references=()):
         "mixed" if daily in ("up", "down", "flat") and four in ("up", "down", "flat") else "unknown")
     model = model if isinstance(model, str) and re.fullmatch(r"[A-Za-z0-9_.:/-]{1,100}", model) else "unknown"
     return {"policy": POLICY, "regime": regime, "model": model,
-            "lesson_ids": [v for v in references if isinstance(v, str) and re.fullmatch(r"[a-f0-9]{20}", v)][:6]}
+            "lesson_ids": [v for v in references if isinstance(v, str) and re.fullmatch(r"[a-f0-9]{20}", v)][:6],
+            "external_lesson_ids": [v for v in external_references if isinstance(v, str) and re.fullmatch(r"[a-f0-9]{20}", v)][:2],
+            "experience_bundle_id": experience_bundle_id if isinstance(experience_bundle_id,str) and re.fullmatch(r"[a-f0-9]{64}",experience_bundle_id) else None}
 
 
 def context(value):
@@ -48,7 +50,7 @@ def context(value):
         return {"policy": "legacy_unknown", "regime": "unknown", "model": "unknown", "lesson_ids": []}
     # Reuse the whitelist; do not relay AI reasoning/free text as memory instructions.
     return entry_context({"trend": {"1d": regime, "4h": regime}} if regime != "mixed" else
-                         {"trend": {"1d": "up", "4h": "down"}}, value.get("model"), value.get("lesson_ids", []))
+                         {"trend": {"1d": "up", "4h": "down"}}, value.get("model"), value.get("lesson_ids", []), value.get("external_lesson_ids", []), value.get("experience_bundle_id"))
 
 
 def empty():
@@ -109,7 +111,7 @@ def ingest(memory, row):
         # Reasons are classified, never copied verbatim into a future prompt.
         why = row.get("why", "")
         part["exit"] = "ai_close" if isinstance(why, str) and why.startswith("brain:") else (
-            "stop_loss" if why in ("SL", "stop_loss") else "take_profit" if why in ("TP", "take_profit") else "other")
+            "stop_loss" if why in ("SL", "stop_loss", "stop loss") else "take_profit" if why in ("TP", "take_profit", "take profit") else "other")
         memory["pending"].pop(key)
         memory["episodes"].append(part)
         memory["episodes"].sort(key=lambda e: (e["close_ms"], e["id"]))

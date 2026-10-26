@@ -79,7 +79,15 @@ not permission to increase risk. Small/correlated samples and chronological
 holdout can mislead. insufficient_data/backfilling/unavailable means no supported
 lesson, never a directional signal. No LONG/SHORT quotas. Protective exits and
 all deterministic risk limits always take precedence. Never claim retraining
-or guaranteed learning from these statistics."""
+or guaranteed learning from these statistics.
+transferred_experience comes from Hawk/Bull PAPER snapshots. Its strategy,
+entry trend definitions, runs and code revisions differ from Brain. Keep it
+separate from Brain performance; treat validated patterns as hypotheses only.
+Cases deliberately show both outcomes and are not an unbiased performance sample.
+engineering_research_notes describe documented intentions/source findings, not
+proof a fix is active or profitable. Unknown entry context stays unknown.
+Never promote Research Console microstructure results to a 15m direction rule.
+Do not override protection or force trades based on any transferred lesson."""
 
 
 def closed_bars(rows, tf, now_ms):

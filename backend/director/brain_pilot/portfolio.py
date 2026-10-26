@@ -101,7 +101,7 @@ class Portfolio:
                      features={"invalidation":decision["invalidation"],"market_phase":decision.get("market_phase",""),
                                "bull_scenario":decision.get("bull_scenario"),"bear_scenario":decision.get("bear_scenario"),
                                "verdict":decision.get("verdict"),
-                               "learning_context":entry_context(context or {}, decision["_learning_model"], decision.get("_learning_refs", []))
+                               "learning_context":entry_context(context or {}, decision["_learning_model"], decision.get("_learning_refs", []), decision.get("_experience_refs", []), decision.get("_experience_bundle"))
                                    if "_learning_model" in decision else {}})
         if p is None:
             raise ValueError(msg)

@@ -43,3 +43,8 @@ These thresholds are experimental engineering defaults for review and PAPER eval
 Offline suite covers legacy migration, full-history catch-up, replay/restart, partial aggregation, duplicate protection, risk normalization, sample minimums, later validation failure, purge against temporal overlap, future/stale/regime/model isolation, bounded retrieval, atomic rollback, append-only source preservation, learning and optional-export failures, provenance spoofing, same-bar close and unchanged risk limits. CI includes Python 3.10/3.11, Docker smoke import and the existing real-container five-position migration probe.
 
 Review before merge: checkpoint atomicity, episode identity, legacy unknown handling, temporal purge and failure isolation. Before any deployment: inspect actual source-record quality and data coverage read-only; back up, use a frozen application SHA and preserve open positions/history. Later assess chronological PAPER outcomes versus a frozen baseline; aggregate `subsequent_exposed_outcomes` alone cannot establish improvement. A/B execution and PWA learning cards are separate future work.
+
+
+## Extension: Research methods and classical-bot experience
+
+PR#12 also adds `experience.py`, `knowledge.py`, dedicated tests and `docs/brain-experience-transfer-review.md`. Source evidence lives in a separately reviewed immutable seed file, never in the Brain's own win-rate/cash/history. Includes source provenance/quality, fixed research/validation boundary, factual cases, source-scoped historical lessons, engineering notes and bundle-selection audit. See the extension document for capacity, mode attestation, missing-data and non-causal limitations. The live source archives have not been collected/imported and no seed has been installed.
