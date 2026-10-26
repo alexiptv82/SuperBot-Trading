@@ -1,0 +1,79 @@
+name: Banco di prova di Hawk - controllo di fedelta' (sola lettura)
+
+# Confronta il banco di prova storico con le aperture VERE di Hawk (paper) dal 12 ottobre: stessi segnali? stessi esiti?
+# Legge dal server SOLO learning_log.jsonl di Hawk (sola lettura, nessun bot toccato, nessun riavvio, nessuna scrittura)
+# e lo porta sul runner; il confronto gira li' sui dati gia' in cache. Nel log escono solo statistiche aggregate (paper).
+# Parte SOLO quando cambia deploy/desk-fedelta.trigger (righe: ref=<ramo con gli script>  data=<etichetta cache>).
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-fedelta.trigger"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desk-fedelta
+  cancel-in-progress: false
+
+jobs:
+  fedelta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Leggi il file trigger
+        id: cfg
+        run: |
+          set -e
+          g() { grep -E "^$1=" deploy/desk-fedelta.trigger | head -n1 | cut -d= -f2- | tr -d '[:space:]'; }
+          REF="$(g ref)"; DATA="$(g data)"; FROM="$(g from)"
+          REF="${REF:-rule-pool}"; DATA="${DATA:-d1}"; FROM="${FROM:-2026-10-12}"
+          echo "$REF" | grep -Eq '^[A-Za-z0-9._/-]+$' || { echo "ref non valido"; exit 1; }
+          echo "$DATA" | grep -Eq '^[A-Za-z0-9_.-]+$' || { echo "data non valido"; exit 1; }
+          echo "$FROM" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || { echo "from non valido"; exit 1; }
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"; echo "data=$DATA" >> "$GITHUB_OUTPUT"; echo "from=$FROM" >> "$GITHUB_OUTPUT"
+      - name: Codice da provare
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.cfg.outputs.ref }}
+          path: code
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Dipendenze
+        run: python -m pip install --upgrade pip numpy
+      - name: Dati in cache (gli stessi del banco)
+        uses: actions/cache/restore@v4
+        with:
+          path: bt-cache
+          key: bt-data-90-${{ steps.cfg.outputs.data }}
+          fail-on-cache-miss: true
+      - name: Leggi le aperture vere di Hawk (sola lettura)
+        env:
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          FROM: ${{ steps.cfg.outputs.from }}
+        run: |
+          set -e
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_fedelta
+          chmod 600 ~/.ssh/id_fedelta
+          ssh-keyscan -t ecdsa 51.79.205.82 2>/dev/null > ~/.ssh/known_hosts_fedelta
+          ssh-keygen -lf ~/.ssh/known_hosts_fedelta | grep -q "SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s" \
+            || { echo "impronta del server diversa dal previsto: mi fermo"; exit 1; }
+          ssh -i ~/.ssh/id_fedelta -o UserKnownHostsFile=$HOME/.ssh/known_hosts_fedelta -o StrictHostKeyChecking=yes \
+              -o BatchMode=yes -o ConnectTimeout=20 root@51.79.205.82 \
+              "python3 -I - /opt/superbot-desk-data/hawk $FROM" < code/deploy/scripts/desk_fedelta_leggi.py > real.jsonl
+          rm -f ~/.ssh/id_fedelta
+          wc -l real.jsonl
+      - name: Confronto
+        run: python code/deploy/scripts/desk_fedelta.py --cache bt-cache --real real.jsonl 2>&1 | grep -v '^\[DATI\]' | tee out.txt
+      - name: Riepilogo
+        if: always()
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat out.txt >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
