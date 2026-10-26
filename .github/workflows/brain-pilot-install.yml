@@ -75,7 +75,15 @@ jobs:
             print('BRAIN_PREFLIGHT_MODEL_KEY_PRESENT=' + str(bool(os.getenv('DEEPSEEK_API_KEY'))))
             print('BRAIN_PREFLIGHT_CANONICAL_DATA=' + str(mod.DATA.resolve() == mod.DATA))
             try:
-                mod.reject_conflicts(mod.inspect_all())
+                containers = mod.inspect_all()
+                for item in containers:
+                    for mount in item.get('Mounts', []):
+                        if mount.get('Type') == 'bind':
+                            source = pathlib.Path(mount['Source']).resolve()
+                            target = mod.DATA.resolve()
+                            if source == target or source in target.parents or target in source.parents:
+                                print('BRAIN_OVERLAP_CONTAINER=' + item.get('Name', '').lstrip('/') + ' RW=' + str(mount.get('RW')) + ' SOURCE=' + str(source))
+                mod.reject_conflicts(containers)
                 print('BRAIN_PREFLIGHT_MOUNT_CONFLICT=NONE')
             except ValueError as exc:
                 allowed = {'existing_brain_container_no_replacement', 'data_mounted_by_another_container'}
