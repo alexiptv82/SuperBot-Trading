@@ -22,16 +22,18 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - `chatgpt/README.md` creato: guida onboarding ChatGPT.
 - MANUALE-OPERATIVO.md aggiornato con sezione 3 (AI Write) e sezione 8 (passaggio di turno).
 
-## Director V1 — IN CORSO (26/10/2026)
-- Contratti v1 + v1.1: `work/director-chatgpt` (ChatGPT) — pronti.
-- AI Shadow (pilot DeepSeek): `work/director-claude` (Claude) — pronti.
-- **Arbitro V1 scritto**: `backend/director/arbitro.py` su `work/director-claude` (commit `ea60acc`).
-  - Riceve `DirectorAdvice` (v1.1) + `PortfolioSnapshot` + candidati → valida legality → chiama `size_position`.
-  - 10 test in `backend/tests/test_director_arbitro.py` (commit `f06e8e3`).
-- **Prossimo passo**: creare `work/director-v1-unified` con:
-  - `contracts/` (da director-chatgpt) + `ai_shadow/` (da director-claude) + `arbitro.py`
-  - Verificare che i test del contratto v1_1 + i test dell'arbitro girino tutti insieme
-  - Decidere con utente: il Pilot usa l'Arbitro o l'Arbitro è solo per il Director esterno?
+## Director V1 — COMPLETATO (26/10/2026)
+- Branch unificato: **`work/director-v1-unified`**, commit `d2b351e0`.
+- Struttura completa:
+  - `backend/director/contracts/` — v1.py + v1_1.py + outcomes.py + outcomes_v1_1.py + CONVENTIONS_V1.md + CONVENTIONS_V1_1.md + fixtures/ (3 JSON)
+  - `backend/director/ai_shadow/` — 13 file (DeepSeek pilot, decisions.py con size_position)
+  - `backend/director/arbitro.py` — bridge DirectorAdvice → ordini eseguibili
+  - `backend/tests/test_director_arbitro.py` — 10 unit test
+  - `backend/tests/test_director_contracts_v1_1.py` — 8 unit test
+- Tutti gli import risolvono localmente (no dipendenze cross-branch).
+- Regole C1-C5 da CONVENTIONS_V1_1.md integrate; Rule C2: l'Arbitro decide la size, non l'AI.
+- DESK_MODE=paper immutabile, DESK_CAPITAL_V1=off.
+- **Prossimo**: review/test da Claude o ChatGPT, poi Punto 4 (DeepSeek shadow).
 
 ## Storico deploy
 | Data | Versione | Contenuto |
@@ -40,13 +42,13 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 | 26/10/2026 | **63641f70** | Fix B (AI Profit Guardian V1) |
 
 ## Task aperti (in ordine di priorità)
-1. **Director V1 — unificazione**: creare `work/director-v1-unified`, integrare contratti+shadow+arbitro, run test completo
-2. **Osservazione Fix B**: finestra 24-48h in paper (sola lettura, desk-status)
-3. **Punto 4** — DeepSeek shadow design (`work/deepseek-bot-shadow-design`)
-4. **Punto 5** — Capital Dashboard V1 (`work/capital-dashboard-v1`)
-5. **Punto 6** — Profit audit read-only (`work/profit-audit-readonly`) — pronto, serve review + OK utente
-6. **Punto 7** — A/B proposals (`work/profit-correctness-proposals`)
-7. **Punto 8** — Capital Management V1 activation (decisione utente)
+1. **Osservazione Fix B**: finestra 24-48h in paper (sola lettura, desk-status)
+2. **Punto 4** — DeepSeek shadow design (`work/deepseek-bot-shadow-design`)
+3. **Punto 5** — Capital Dashboard V1 (`work/capital-dashboard-v1`)
+4. **Punto 6** — Profit audit read-only (`work/profit-audit-readonly`) — pronto, serve review + OK utente
+5. **Punto 7** — A/B proposals (`work/profit-correctness-proposals`)
+6. **Punto 8** — Capital Management V1 activation (decisione utente)
+7. **Director V1 review**: run test su `work/director-v1-unified`, decidere integrazione Pilot↔Arbitro
 
 ## Claude — collaboratore permanente (25/10)
 - Claude (Claude Code, Sonnet 4.6) attivo come collaboratore permanente.
