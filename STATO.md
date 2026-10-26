@@ -108,6 +108,19 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
      Conviene solo proteggere dopo picchi molto alti (>=80%: +449$). Il guadagno di liberare slot (rotazione) NON e' misurato.
   Decisioni in attesa dell'utente: togliere/alzare il tetto 160$ di Bull; carta d'intenti per Claude (scalp, molte posizioni, long quando gira);
   motore long/regime; perche' Claude non apre (stop vs liquidazione); quale "brain" intende (Brain Pilot?).
+- **LAVORO IN CORSO: regime di mercato per Hawk e Bull (richiesta dell'utente 26/10 sera; NON deployato)**.
+  Decisioni dell'utente: tetto Bull 160$ -> 250$; priorita' a Hawk; Hawk e Bull devono tornare ad aprire quasi di continuo, con logica
+  migliore di apertura e gestione: niente short a ripetizione quando il mercato gira, aprire long quando gira al rialzo, non perdere i
+  long quando il mercato torna ribassista, gestire meglio il profitto. Stessa metodologia scalp per entrambi (Hawk piu' aggressivo).
+  Scoperte tecniche: le regole (`brain.rules_decisions`) aprivano il lato col punteggio piu' alto simbolo per simbolo, senza guardare il
+  mercato, e gestivano solo con "chiudi se il segnale si ribalta"; i moduli salva-profitto/inversione (`desk/profit/*`,
+  `profit_guardian`) NON sono collegati al ciclo dei bot (solo ricerca/ombra). Nessuna protezione del profitto era attiva.
+  Costruito sul ramo `work/hawk-regime-v1` (base rule-pool): `desk/regime.py` (regime da BTC/ETH + ampiezza + momento BTC, con
+  inversione; filtro dei lati; stop che sale a pareggio e poi segue il prezzo, solo paper; uscita se il mercato gira), integrazione in
+  `rules_decisions` e `cli.py`, interruttore `DESK_REGIME_V1=0`, tetto Bull 250. 57 test nuovi/aggiornati verdi (regime 30, guardrail Bull).
+  Banco di prova storico `deploy/scripts/desk_backtest.py` (motore e regole vere su candele pubbliche Bitget, molte varianti) + workflow
+  `desk-backtest` (trigger `deploy/desk-backtest.trigger`, legge `ref=` dal file): prima esecuzione in corso.
+  I parametri vanno scelti dai risultati (robusti sui terzi del periodo), poi si chiede l'OK dell'utente al deploy.
 - Nota sul tetto Bull (precisazione): il tetto limita il RISCHIO SL totale (160$), non il numero di posizioni. Con 350$ x 15x x
   3% (157$) passa una sola posizione; con le dimensioni attuali del fallback (165$ x 20x x ~1,5% = ~51$) ne passano fino a tre.
 - Da osservare: da domani i candidati rifiutati dal Bull compaiono nel registro come `rifiutata:rischio_aperto_bull` e
