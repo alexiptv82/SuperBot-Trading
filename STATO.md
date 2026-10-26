@@ -6,7 +6,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Fix B AI Profit Guardian V1 attivo: `profit_guardian.py` + `portfolio_alert.py` in produzione.
 - Capital Management V1 integrato ma con DESK_CAPITAL_V1=off, non abilitare senza OK dell'utente.
 - Vincolo immutabile: nessun reset di trade_history, learning_log, lessons.md, errors.md.
-- rule-pool HEAD: `e83a28c437f1c4bd672db3c1ab4a0d674a5171d5` (merge Brain Pilot V1, non installato).
+- rule-pool HEAD: `33427f596edcbf80a7f73e94fdeffb39fac81ddd` (Brain Pilot PAPER installato e verificato).
 
 ## AI IN OMBRA (DeepSeek) — ATTIVO DAL 21/10/2026
 - Container `superbot-ai` su VPS Singapore, **Up 5 days (healthy)**, riavvii: 0.
@@ -86,25 +86,12 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Prossimo: review Claude, cablaggio cli.py per candele e contesto, copertura aperture AI/split/DCA, replay PAPER. Patch attuale protegge ingressi a regole quando collegata; gestione posizioni preservata.
 - Nessun merge/deploy/riavvio o modifica dati. Proprietà sviluppo ceduta a review Claude.
 
-## Brain Pilot V1 — REVIEW ACCETTATA, MERGE COMPLETATO
-- Branch `work/brain-pilot-v1`, base `502107209f9e42d38e4421ac70df188c823dc315`, codice `a5d8b79783982b5642210ffe026c0a9150176d0f`.
-- PR #6 unita con merge normale: https://github.com/alexiptv82/SuperBot-Trading/pull/6. Handoff: `docs/brain-pilot-v1-review.md` sul branch.
-- Sei comportamenti, prompt strutturale macro/fib/BTC, nuovo conto PAPER1000 isolato, rischio allo stop cap1% proporzionale, persistenza SQLite+outbox JSONL.
-- 37/37 test locali PASS; Actions40328264317 SUCCESS su Python3.10/3.11. Installer con Docker simulato; build/install/replay reali non verificati.
-- Diario consegna: `7003086a69cbb901f312247c876f50087ea310ee`.
-- Prossimo: Claude review PR, verifica Docker e interpretazioni del brief; deploy solo Claude Code dopo nuovo OK utente. Nessun merge/deploy o modifica del vecchio pilot/Hawk/Bull eseguiti. Proprietà ceduta a review Claude.
-
-### Follow-up installer — pronto per nuova review Claude
-- Installer ora incluso: .github/workflows/brain-pilot-install.yml + deploy/scripts/brain_pilot_install.py; trigger INERTE action=none/approved=no.
-- SHA approvato, volume esclusivo brain, backup hash verificato, lock, health/heartbeat nuovo, nessuna sostituzione container. Nessuna esecuzione sul VPS.
-- Cadenza15m invariata dal brief; next_check_minutes=15, pausa15–120 sono distinti. Non applicata la modifica parser proposta nella review.
-- Handoff/PR#6 aggiornati, diario `12faf1a0c9247abe739b68599268500fc622be64`. Prossimo: Claude review installer; merge e deploy solo con autorizzazione pertinente.
-
-### Checkpoint merge Brain Pilot
-- Merge `e83a28c437f1c4bd672db3c1ab4a0d674a5171d5` verificato su rule-pool, due parent; branch lavoro conservato.
-- [skip ci] sul merge, trigger install action=none/approved=no: nessun workflow operativo avviato dal merge.
-- Installazione NON eseguita. Prossimo: OK separato utente per install, prevista a Claude Code; codice approvato `a5d8b79783982b5642210ffe026c0a9150176d0f`. Diario merge `47257309bd4cbb701bbdc78a6c902ac09437586d`.
-
-## IN_CORSO — Installazione Brain Pilot PAPER autorizzata
-- Utente: «Autorizzo l’installazione PAPER». ChatGPT esegue il workflow già revisionato sul commit immutabile a5d8b79783982b5642210ffe026c0a9150176d0f.
-- Solo nuovo container superbot-brain-pilot e cartella brain; nessun intervento Hawk/Bull/vecchio pilot. In attesa di esito workflow.
+## Brain Pilot V1 — PAPER OPERATIVO (26/10/2026)
+- Autorizzazione esplicita utente: «Autorizzo l’installazione PAPER».
+- Container separato `superbot-brain-pilot`, healthy; SHA installato `2c977c46ec786e3ca08c95f0b79f9729b4c12a53`. Stato+storico in `/opt/superbot-desk-data/brain` preservati, nessun reset.
+- Install iniziale Actions40330889295 e repair daily40332092345 SUCCESS, backup hash verificato e gate PAPER/isolation/health/heartbeat PASS.
+- Report finale40332379367 SUCCESS:26 simboli validi, prima chiamata DeepSeek called=True/error=None;3 decisioni pendenti,0 posizioni aperte al momento della verifica. https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40332379367.
+- Fix operativi PR#7/#8: sidecar sul genitore READ-ONLY consentito (writer/esatto/figlio sempre bloccati); daily nativa Bitget16UTC accettata con continuità24h invariata. Nessuna modifica engine/sizing/schema.42 test PASS su Python3.10/3.11.
+- Trigger install e repair disarmati (action=none/approved=no). Hawk/Bull e vecchio pilot NON rideployati o modificati; sidecar invariato. Runtime Hawk/Bull resta quello documentato sopra.
+- Diario risultato `be84dda9dc09b6f7638be0fcda7390dba3f4f59b`.
+- Prossimo: osservazione PAPER, verificare primi fill al ciclo successivo e motivazioni/performance. Nessuna evidenza ancora di miglioramento P&L.
