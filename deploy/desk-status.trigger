@@ -1,1 +1,1 @@
-2026-10-26T08:00:00Z check stato post-deploy P1+P2
+2026-10-26T17:55:32Z snapshot pre-deploy fix segnali V2 (sola lettura)
