@@ -59,6 +59,10 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## Riferimenti
 - LEGGIMI.md, MANUALE-OPERATIVO.md, SINCRONIZZAZIONE-WORK-CHAT.md.
 
-## IN_CORSO — Market Regime + Episode Memory
-- ChatGPT Work: implementazione autorizzata dall'utente su `work/market-regime-episode-memory`, base `dbddc2403bfd5fd9c7444b97185ae60071f81ee5`.
-- Due moduli, test offline e patch proposta brain.py; review Claude prima di integrazione/deploy. Nessun intervento VPS.
+## Market Regime + Episode Memory — PRONTO PER REVIEW CLAUDE
+- Branch `work/market-regime-episode-memory`, commit `79add5c0b4d4433342fddec1e83c48abf0ef19f4`; base `dbddc2403bfd5fd9c7444b97185ae60071f81ee5`.
+- Due moduli isolati + sole aggiunte brain.py in `docs/brain_regime_additions.py`; 22/22 test locali PASS, sintassi Python 3.10 verificata. Nessuna CI/replay storico.
+- Review: `docs/market-regime-review.md`; diario commit `d184085a867f1a53d47242803228df953133438d`.
+- Implementazione dalla specifica: sorgente completo DeepSeek non fornito. Soglie proposte documentate; non certificato pronto alla produzione.
+- Prossimo: review Claude, cablaggio cli.py per candele e contesto, copertura aperture AI/split/DCA, replay PAPER. Patch attuale protegge ingressi a regole quando collegata; gestione posizioni preservata.
+- Nessun merge/deploy/riavvio o modifica dati. Proprietà sviluppo ceduta a review Claude.
