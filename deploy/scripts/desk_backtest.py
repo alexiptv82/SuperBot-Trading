@@ -38,6 +38,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "backend")))
 from desk import regime as rg  # noqa: E402
 from desk import seasonal_v1 as sea_v1  # noqa: E402
 from desk import signals as sig_mod  # noqa: E402
+from desk import signals_pre_p1 as sig_old  # noqa: E402
 from desk.brain import rules_decisions  # noqa: E402
 from desk.engine import Limits, PaperAccount  # noqa: E402
 from desk.signals import closed_daily, closed_four_hour, read_symbol  # noqa: E402
@@ -193,7 +194,8 @@ class Variant:
         self.sea = "v1" if "v1" in tok else "v2"                 # "@v1" = stagionalita' vecchia, come sui bot fino al 26/10
         self.mode = ("nd4" if "nd4" in tok else "nd" if "nd" in tok else "mix" if "mix" in tok else "full")
         # "@nd" = senza barre 1d; "@nd4" = senza 1d e 4h; "@mix" = senza 1d fino al 23/10 mezzogiorno UTC, poi con 1d
-        self.key = (self.sea, self.mode)
+        self.score = "old" if "old" in tok else "new"            # "@old" = punteggi di prima della modifica P1 del 25/10 (trend 4h 20, 1d 15)
+        self.key = (self.sea, self.mode, self.score)
         self.acc = PaperAccount(Limits(**HAWK_LIMITS), name)
         self.hist: list = []
         self.last_open: dict = {}
@@ -226,7 +228,8 @@ def make_variants(only=None):
     }
     v.update(sweeps)
     if only:
-        # nome@suffissi: stessi parametri del nome base, con altri dati (@v1 stagionalita' vecchia, @nd senza 1d, @nd4 senza 1d e 4h)
+        # nome@suffissi: stessi parametri del nome base, con altri dati (@v1 stagionalita' vecchia, @nd senza 1d, @nd4 senza 1d e 4h,
+        # @mix storia dei dati di trend dei bot, @old punteggi di prima della modifica P1 del 25/10)
         out = {}
         for name in only:
             base = name.split("@")[0]
@@ -306,8 +309,9 @@ def replay(data, variants: dict, t_start: int, t_end: int, step: int):
             b = data["BTC"]["a15"]
             btc_ret3 = float(b[i_btc, 4] / b[i_btc - 288, 4] - 1.0)
         for key in keys:
-            sea, mode = key
-            sig_mod.get_seasonal = sea_v1_compat if sea == "v1" else SEA_V2
+            sea, mode, score = key
+            scorer = sig_old if score == "old" else sig_mod
+            scorer.get_seasonal = sea_v1_compat if sea == "v1" else SEA_V2
             readings = []
             for sym in syms:
                 i = pos_idx[sym].get(t)
@@ -325,13 +329,15 @@ def replay(data, variants: dict, t_start: int, t_end: int, step: int):
                 if mode == "nd4":
                     fh = None
                 try:
-                    r = read_symbol(sym, win, end, daily=dl, price=prices[sym], four_hour=fh, btc_return_3d=btc_ret3)
+                    kw = {} if scorer is sig_old else {"btc_return_3d": btc_ret3}     # la copia vecchia non conosce questo argomento
+                    r = scorer.read_symbol(sym, win, end, daily=dl, price=prices[sym], four_hour=fh, **kw)
                 except Exception:
                     r = None
                 if r is not None:
                     readings.append(r)
             readings_by[key] = readings
         sig_mod.get_seasonal = SEA_V2
+        sig_old.get_seasonal = SEA_V2
         if not any(readings_by.values()):
             continue
         n_steps += 1

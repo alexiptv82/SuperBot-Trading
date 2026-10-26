@@ -25,6 +25,7 @@ sys.path.insert(0, HERE)
 import desk_backtest as bt  # noqa: E402
 from desk.engine import Limits, PaperAccount  # noqa: E402
 from desk.learning import _sign  # noqa: E402
+from desk import signals_pre_p1 as sig_old  # noqa: E402
 from desk.signals import closed_daily, closed_four_hour, read_symbol  # noqa: E402
 
 BAR, H4, DAY = bt.BAR, bt.H4, bt.DAY
@@ -49,7 +50,7 @@ def pct(x, p):
     return s[min(len(s) - 1, max(0, int(round(p / 100 * (len(s) - 1)))))]
 
 
-def reading_at(data, pos_idx, sym, end, btc_ret3, sea, mode="full"):
+def reading_at(data, pos_idx, sym, end, btc_ret3, sea, mode="full", score="new"):
     """mode: full = tutti i dati; nd = senza barre 1d (trend giornaliero assente); nd4 = senza 1d e senza 4h."""
     i = pos_idx[sym].get(end - BAR)
     if i is None:
@@ -61,17 +62,19 @@ def reading_at(data, pos_idx, sym, end, btc_ret3, sea, mode="full"):
     fh = closed_four_hour(d["a4"][max(0, n4 - 300): n4], end) if n4 else []
     nd = int(np.searchsorted(d["ad"][:, 0] + DAY, end, side="right")) if len(d["ad"]) else 0
     dl = closed_daily(d["ad"][max(0, nd - 340): nd], end) if nd else None
-    if mode in ("nd", "nd4"):
+    if mode in ("nd", "nd4") or (mode == "mix" and end < bt.DAILY_FROM_MS):
         dl = None
     if mode == "nd4":
         fh = None
-    bt.sig_mod.get_seasonal = bt.sea_v1_compat if sea == "v1" else bt.SEA_V2
+    scorer = sig_old if score == "old" else bt.sig_mod
+    scorer.get_seasonal = bt.sea_v1_compat if sea == "v1" else bt.SEA_V2
     try:
-        r = read_symbol(sym, win, end, daily=dl, price=price, four_hour=fh, btc_return_3d=btc_ret3)
+        kw = {} if scorer is sig_old else {"btc_return_3d": btc_ret3}      # la copia vecchia non conosce questo argomento
+        r = scorer.read_symbol(sym, win, end, daily=dl, price=price, four_hour=fh, **kw)
     except Exception:
         r = None
     finally:
-        bt.sig_mod.get_seasonal = bt.SEA_V2
+        scorer.get_seasonal = bt.SEA_V2
     return r, price
 
 
@@ -100,7 +103,7 @@ def comp_report(real, bank, n):
         print(f"      {k[:34]:<34} {len(a):>4} / {len(b):<4} su {n}    punti {ma:+5.1f} / {mb:+5.1f}")
 
 
-def signals_report(data, pos_idx, real, sea, mode="full"):
+def signals_report(data, pos_idx, real, sea, mode="full", score="new", verbose=False):
     """A) punteggi e fattori: banco contro bot."""
     diff_side, n = 0, 0
     comp_real, comp_bank = defaultdict(list), defaultdict(list)
@@ -115,7 +118,7 @@ def signals_report(data, pos_idx, real, sea, mode="full"):
             by_sym_missing[sym] += 1
             continue
         end = (ts // BAR) * BAR
-        r, price = reading_at(data, pos_idx, sym, end, btc_ret(data, pos_idx, end), sea, mode)
+        r, price = reading_at(data, pos_idx, sym, end, btc_ret(data, pos_idx, end), sea, mode, score)
         if r is None:
             miss += 1
             continue
@@ -160,7 +163,8 @@ def signals_report(data, pos_idx, real, sea, mode="full"):
     print(f"   confrontati {n} trade veri (non confrontabili: {miss})")
     if not n:
         return
-    comp_report(comp_real, comp_bank, n)
+    if verbose:
+        comp_report(comp_real, comp_bank, n)
     print(f"   lato del banco = lato del bot:            {100 * diff_side / n:5.1f}%")
     print(f"   punteggio del lato aperto (banco - bot):  mediana {med(d_score):+.1f}   10%/90% {pct(d_score, 10):+.0f}/{pct(d_score, 90):+.0f}   "
           f"|diff|<=3 nel {100 * sum(1 for x in d_score if abs(x) <= 3) / max(1, len(d_score)):.0f}%")
@@ -300,12 +304,25 @@ def main():
     for k in sorted(byday):
         n, dd, h4 = byday[k]
         print(f"   {k}  aperture {n:>3}   trend 1d presente {100 * dd / n:3.0f}%   trend 4h presente {100 * h4 / n:3.0f}%")
-    for sea, mode, nm in (("v1", "full", "stagionalita' vecchia, dati completi"),
-                          ("v1", "nd", "stagionalita' vecchia, SENZA trend 1d"),
-                          ("v1", "nd4", "stagionalita' vecchia, SENZA trend 1d e 4h"),
-                          ("v2", "full", "stagionalita' nuova V2, dati completi")):
+    print("\n=== QUANDO SONO CAMBIATI I PESI DEL PUNTEGGIO NEI BOT (voce 'trend 4h': 20 punti prima, 14 dopo la modifica P1) ===")
+    wk = defaultdict(lambda: [0, 0, 0, 0])
+    for t in rules:
+        k = bt.time.strftime("%m-%d", bt.time.gmtime(t["ts"] / 1000))
+        for w in (t["f"] or {}).get("why") or []:
+            m = re.match(r"^trend 4h \(\+(\d+)\)", str(w))
+            if m:
+                wk[k][0] += 1
+                wk[k][1 if int(m.group(1)) == 20 else 2 if int(m.group(1)) == 14 else 3] += 1
+    for k in sorted(wk):
+        n4, a20, a14, oth = wk[k]
+        print(f"   {k}  aperture con trend 4h {n4:>3}   a 20 punti {a20:>3}   a 14 punti {a14:>3}   altro {oth}")
+    for sea, mode, score, verb, nm in (
+            ("v1", "mix", "old", True, "punteggi VECCHI (prima di P1), stagionalita' vecchia, trend 1d come nei bot"),
+            ("v1", "mix", "new", False, "punteggi NUOVI (P1), stagionalita' vecchia, trend 1d come nei bot"),
+            ("v2", "full", "new", False, "COME GIRA OGGI: punteggi P1 + stagionalita' V2 + dati completi"),
+            ("v2", "full", "old", False, "punteggi vecchi + stagionalita' V2 + dati completi")):
         print(f"\n=== A) SEGNALI - {nm} ===")
-        signals_report(data, pos_idx, rules, sea, mode)
+        signals_report(data, pos_idx, rules, sea, mode, score, verb)
     print("\n=== B) ESITI - trade veri rifatti sulle candele del banco ===")
     outcomes_report(data, pos_idx, rules)
 
