@@ -46,6 +46,17 @@ class InstallerTests(unittest.TestCase):
         install.verify_container(container(),SHA)
         bad=container();bad["Config"]["Env"]=["DESK_MODE=live"]
         with self.assertRaises(ValueError):install.verify_container(bad,SHA)
+
+    def test_readonly_parent_observer_is_not_a_writer(self):
+        item={"Name":"/superbot-sidecar","Mounts":[{"Type":"bind","Source":"/opt/superbot-desk-data","RW":False}]}
+        install.reject_conflicts([item])
+        for writable in (True,None):
+            item["Mounts"][0]["RW"]=writable
+            with self.assertRaises(ValueError):install.reject_conflicts([item])
+        item["Mounts"][0].update(Source=str(install.DATA),RW=False)
+        with self.assertRaises(ValueError):install.reject_conflicts([item])
+        item["Mounts"][0]["Source"]=str(install.DATA/"child")
+        with self.assertRaises(ValueError):install.reject_conflicts([item])
         bad=container();bad["Mounts"].append({"Type":"bind","Source":"/opt/other","Destination":"/bad"})
         with self.assertRaises(ValueError):install.verify_container(bad,SHA)
         bad=container();bad["HostConfig"]["Privileged"]=True
