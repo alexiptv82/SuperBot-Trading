@@ -75,7 +75,7 @@ jobs:
           set -o pipefail
           ARGS="--cache bt-cache --real real.jsonl"
           if [ -n "${{ steps.cfg.outputs.match }}" ]; then ARGS="$ARGS --match ${{ steps.cfg.outputs.match }}"; fi
-          if [ "${{ steps.cfg.outputs.overlay }}" = "1" ]; then ARGS="$ARGS --overlay"; fi
+          if echo "${{ steps.cfg.outputs.overlay }}" | grep -Eq '^[1-9]$'; then ARGS="$ARGS --overlay ${{ steps.cfg.outputs.overlay }}"; fi
           python code/deploy/scripts/desk_fedelta.py $ARGS 2>&1 | grep -v '^\[DATI\]' | tee out.txt
       - name: Riepilogo
         if: always()
