@@ -108,6 +108,9 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Retry3 7c859391 non ha generato nuova run: [skip ci] ancora presente nel corpo del messaggio. Il flag deve mancare dall'intero commit.
 - Pausa operatore NON ferma stop/TP/on_bar, ma sospende nuove esposizioni e chiamateAI. Evitare retry ciechi; serve updater per conto con posizioni o drenaggio controllato. Questa verifica è stata solo in lettura sul VPS.
 
-## IN_CORSO — Upgrader Brain PAPER con posizioni
-- ChatGPT Work, branch work/brain-pilot-stateful-upgrader da 7c859391a79700b8de71f5d3c0b97159e1e5e9dc. Nuovo updater con backup/prova migrazione/rollback compatibile, senza conto flat.
-- Solo preparazione e test; nessun deploy, nessun bypass del repair e nessuna modifica runtime. Target applicativo resta1f2edeb6, precedente2c977c46.
+## Upgrader Brain con posizioni — PRONTO PER REVIEW, NON ESEGUITO
+- Branch work/brain-pilot-stateful-upgrader, commit `d54a64d8d1f9311fdcf214475619772b6f7c617e`, PR draft#10 https://github.com/alexiptv82/SuperBot-Trading/pull/10.
+- Nuovo script distinto dal repair; targetapp resta1f2edeb6, precedente2c977c46. ControllerSHA distinto da applicationSHA.
+- Backup verificato + prova immagine su copiaSQLite/WAL con5posizioni, preservazione stato/storico/budget, controllo postavvio e rollback solo se dati invariati; altrimenti candidato fermo e dati conservati, mai rewind finanziario.
+- 71 test offline PASS su3.10/3.11 + testDocker reale migrazione PASS; Actions40342412357 SUCCESS. Handoff docs/brain-pilot-stateful-upgrader-review.md.
+- Trigger disarmato nel branch; nessun merge/deploy/riavvio eseguito. Su rule-pool resta il trigger precedente di Claude: non considerare upgrade completato. Prossimo: Claude review PR10, poi autorizzazione pertinente per merge/esecuzione.
