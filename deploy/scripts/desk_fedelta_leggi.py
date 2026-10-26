@@ -13,7 +13,7 @@ def main():
     folder = sys.argv[1] if len(sys.argv) > 1 else "."
     since = sys.argv[2] if len(sys.argv) > 2 else "2026-10-12"
     since_ms = int(time.mktime(time.strptime(since, "%Y-%m-%d")) * 1000)
-    opens, trades = {}, {}
+    opens, trades, cands = {}, {}, []
     with open(folder.rstrip("/") + "/learning_log.jsonl", encoding="utf-8") as fh:
         for line in fh:
             try:
@@ -23,6 +23,15 @@ def main():
             if not isinstance(e, dict):
                 continue
             k = (e.get("run_no"), e.get("id"))
+            if e.get("ev") == "candidate":
+                if (e.get("ts") or 0) >= since_ms:
+                    cands.append({"k": "cand", "ts": e.get("ts"), "sym": e.get("symbol"), "side": e.get("side"),
+                                  "st": str(e.get("status") or "")[:48], "src": e.get("source")})
+                continue
+            if e.get("ev") == "claude_call":
+                if (e.get("ts") or 0) >= since_ms:
+                    cands.append({"k": "cc", "ts": e.get("ts"), "ok": e.get("ok"), "n": e.get("n_decisions")})
+                continue
             if e.get("ev") == "open":
                 opens[k] = e
             elif e.get("ev") == "close":
@@ -52,7 +61,9 @@ def main():
                "why": (t or {}).get("why") if t and t.get("done") else None}
         print(json.dumps(row, separators=(",", ":")))
         n += 1
-    sys.stderr.write(f"[LETTURA] {n} aperture dal {since}\n")
+    for c in cands:
+        print(json.dumps(c, separators=(",", ":")))
+    sys.stderr.write(f"[LETTURA] {n} aperture e {len(cands)} candidate/chiamate dal {since}\n")
 
 
 main()

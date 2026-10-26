@@ -232,11 +232,85 @@ def outcomes_report(data, pos_idx, real):
             print(f"   {nm:<5} n={len(sel):<4} vero {sum(r['t']['net'] for r in sel):+8.0f}$   banco {sum(r['sim']['net'] for r in sel):+8.0f}$")
 
 
+def matching_report(data, rules, extra, name):
+    """Rifa' il periodo con la variante `name` e dice, per ogni apertura del banco, che cosa ha fatto il bot nello stesso momento."""
+    t0 = min(t["ts"] for t in rules)
+    t_start = (t0 // DAY) * DAY - 2 * DAY
+    end_ms = max(int(d["a15"][-1, 0]) for d in data.values()) + BAR
+    vs = bt.replay(data, bt.make_variants({name}), t_start, end_ms, 1)
+    v = vs[name]
+    bank = [c for c in v.acc.closed if not c.get("partial")]
+    for p in v.acc.positions.values():                 # ancora aperte a fine periodo
+        bank.append({"symbol": p.symbol, "side": p.side, "open_ms": p.open_ms, "why": "aperta", "net": 0.0})
+    bank = [c for c in bank if c["open_ms"] >= t0 - 3600_000]
+    real_open = defaultdict(list)
+    for t in rules:
+        real_open[t["sym"]].append(t)
+    cand = defaultdict(list)
+    cc = []
+    for e in extra:
+        if e["k"] == "cand":
+            cand[e["sym"]].append(e)
+        else:
+            cc.append(e)
+    W = 20 * 60_000
+    res = defaultdict(lambda: defaultdict(int))
+    stat_by = defaultdict(lambda: defaultdict(int))
+    for c in bank:
+        side = "LONG" if c["side"] == 1 else "SHORT"
+        sym, ts = c["symbol"], c["open_ms"]
+        near_open = [t for t in real_open.get(sym, []) if abs(t["ts"] - ts) <= W]
+        if near_open:
+            res[side]["il bot ha aperto lo stesso simbolo (+-20 min)"] += 1
+            continue
+        near_c = [e for e in cand.get(sym, []) if abs(e["ts"] - ts) <= W]
+        if near_c:
+            res[side]["il bot l'ha scartata"] += 1
+            for e in near_c[:1]:
+                stat_by[side][e["st"]] += 1
+            continue
+        in_claude = any(abs(e["ts"] - ts) <= 10 * 60_000 for e in cc)
+        res[side]["nessun evento dal bot" + (" (ciclo con chiamata a Claude)" if in_claude else "")] += 1
+    for side in ("LONG", "SHORT"):
+        tot = sum(res[side].values())
+        print(f"   {side}: aperture del banco = {tot}")
+        for k, n in sorted(res[side].items(), key=lambda x: -x[1]):
+            print(f"      {n:>4}  {k}")
+        for k, n in sorted(stat_by[side].items(), key=lambda x: -x[1])[:8]:
+            print(f"            motivo dello scarto: {k}  x{n}")
+    # uscite
+    mix = defaultdict(int)
+    for c in bank:
+        mix[exit_class(c.get("why"))] += 1
+    print("   uscite del banco: " + "  ".join(f"{k}:{n}" for k, n in sorted(mix.items(), key=lambda x: -x[1])))
+    rm = defaultdict(int)
+    for t in rules:
+        if t.get("why"):
+            rm[exit_class(t["why"])] += 1
+    print("   uscite dei bot:   " + "  ".join(f"{k}:{n}" for k, n in sorted(rm.items(), key=lambda x: -x[1])))
+    # per giorno
+    pd_b, pd_r = defaultdict(int), defaultdict(int)
+    for c in bank:
+        pd_b[bt.time.strftime("%m-%d", bt.time.gmtime(c["open_ms"] / 1000))] += 1
+    for t in rules:
+        pd_r[bt.time.strftime("%m-%d", bt.time.gmtime(t["ts"] / 1000))] += 1
+    print("   aperture per giorno (banco / bot): " + "  ".join(f"{k}:{pd_b.get(k, 0)}/{pd_r.get(k, 0)}" for k in sorted(set(pd_b) | set(pd_r)) if k >= "10-12"))
+    # stato dei candidati del bot in generale
+    st = defaultdict(int)
+    for e in extra:
+        if e["k"] == "cand":
+            st[e["st"]] += 1
+    print("   candidate del bot per motivo: " + "  ".join(f"{k}:{n}" for k, n in sorted(st.items(), key=lambda x: -x[1])[:10]))
+    ccs = [e for e in cc]
+    print(f"   chiamate a Claude registrate: {len(ccs)}   (con 0 decisioni: {sum(1 for e in ccs if e.get('n') == 0)}, senza risposta valida: {sum(1 for e in ccs if not e.get('ok'))})")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", required=True)
     ap.add_argument("--real", required=True)
     ap.add_argument("--days", type=int, default=90)
+    ap.add_argument("--match", default=None, help="nome della variante del banco da confrontare con le aperture vere (es. base@old@v1@mix)")
     a = ap.parse_args()
     meta = json.load(open(os.path.join(a.cache, "meta.json")))
     data = bt.load_data(bt.SYMBOLS, a.days, a.cache, int(meta["end_ms"]))
@@ -303,14 +377,15 @@ def main():
                 if all(abs(x / y - 1) < 1e-6 for x, y in zip(r[1:5], agg2)):
                     shift_ok += 1
         print(f"   {sym:<5} barre 4h uguali alle 15m aggregate: {ok}/{tot_n}   se spostate di 4 ore: {shift_ok}/{tot_n}")
-    real = []
+    real, extra = [], []
     for line in open(a.real, encoding="utf-8"):
         line = line.strip()
         if line.startswith("{"):
             try:
-                real.append(json.loads(line))
+                obj = json.loads(line)
             except ValueError:
-                pass
+                continue
+            (extra if obj.get("k") in ("cand", "cc") else real).append(obj)
     rules = [t for t in real if str(t.get("src")) == "rules"]
     print(f"[FEDELTA] aperture vere lette: {len(real)}, di cui decise dalle regole: {len(rules)}")
     day0 = min((t["ts"] for t in real), default=0)
@@ -367,6 +442,9 @@ def main():
         signals_report(data, pos_idx, rules, sea, mode, score, verb)
     print("\n=== B) ESITI - trade veri rifatti sulle candele del banco ===")
     outcomes_report(data, pos_idx, rules)
+    if a.match:
+        print("\n=== C) LE APERTURE DEL BANCO CONTRO QUELLE DEI BOT (stessa configurazione dei bot di allora) ===")
+        matching_report(data, rules, extra, a.match)
 
 
 if __name__ == "__main__":
