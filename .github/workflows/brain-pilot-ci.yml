@@ -5,10 +5,13 @@ on:
     paths:
       - "backend/director/brain_pilot/**"
       - "backend/tests/test_brain_pilot_v1.py"
+      - "backend/tests/test_brain_pilot_install.py"
+      - "deploy/scripts/brain_pilot_install.py"
+      - ".github/workflows/brain-pilot-install.yml"
       - ".github/workflows/brain-pilot-ci.yml"
   pull_request:
     branches: [rule-pool]
-    paths: ["backend/director/brain_pilot/**", "backend/tests/test_brain_pilot_v1.py"]
+    paths: ["backend/director/brain_pilot/**", "backend/tests/test_brain_pilot*.py", "deploy/scripts/brain_pilot_install.py", ".github/workflows/brain-pilot-install.yml"]
 permissions:
   contents: read
 jobs:
@@ -27,4 +30,4 @@ jobs:
         env:
           PYTHONPATH: backend
           DESK_MODE: paper
-        run: python -m unittest discover -s backend/tests -p test_brain_pilot_v1.py -v
+        run: python -m unittest discover -s backend/tests -p 'test_brain_pilot*.py' -v

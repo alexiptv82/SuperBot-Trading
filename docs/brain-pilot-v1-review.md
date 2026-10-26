@@ -100,5 +100,44 @@ storico con DeepSeek reale né prova di miglioramento economico.
    distribuzione long/short condizionata al regime. Non usare il solo win rate.
 
 Il workflow controllo richiede approved=yes per azioni con effetto; il trigger
-iniziale report/approved=no non avvia il container. Nessun installer incluso:
-deploy resta compito di Claude Code secondo il brief e con OK esplicito.
+iniziale report/approved=no non avvia il container. Deploy resta compito di
+Claude Code secondo il brief e con OK esplicito.
+
+## Follow-up alla review Claude — installer aggiunto, nessuna esecuzione
+`brain-pilot-install.yml` + `deploy/scripts/brain_pilot_install.py` mostrano ora
+l'intera prima installazione tracciabile. Trigger distinto inizialmente INERTE:
+`action=none`, `approved=no`, `sha=`. Nessun cambio del file workflow stesso
+innesca l'installazione. Per attivarlo DOPO review e OK: su rule-pool impostare
+action=install, approved=yes e SHA completo appartenente alla storia rule-pool.
+Lo SHA deve includere l'installer; il checkout remoto è esattamente quel commit.
+
+Il comando docker run completo è nella funzione docker_args: solo container
+superbot-brain-pilot, bind /opt/superbot-desk-data/brain:/out, nessuna porta,
+DESK_MODE=paper, DEEPSEEK_API_KEY passata per nome dall'ambiente (non nell'argv),
+restart unless-stopped, root read-only, tmpfs /tmp, cap-drop ALL,
+no-new-privileges, CPU .5, memoria384MiB, pids128, log limitati. Fingerprint SSH
+invariata. La build non riceve la chiave con build-arg né la copia nell'immagine.
+
+Prima installazione soltanto: se il nome container esiste, RIFIUTA; se altro
+container monta brain o un suo genitore/discendente, RIFIUTA. Nessun update
+automatico o sostituzione. Lock install + writer, backup della sola directory
+brain verificato rileggendo l'archivio e confrontando ogni hash. Symlink nei dati
+rifiutati. Docker inspect post-creazione verifica paper, SHA, mount e sandbox;
+attesa health fino7m + status fresco paper/applied=false. Manifesto SHA/backup
+salvato in /opt/superbot-brain-backups. In caso di errore si ferma SOLO il nuovo
+container etichettato con quello SHA; container e dati restano per diagnosi.
+La build e la prima chiamata modello richiedono sempre il futuro OK di deploy;
+non sono state eseguite in questa sessione.
+
+37/37 test locali PASS:30 del pilot +7 installer offline con Docker simulato;
+CI estesa a entrambe le suite su Python3.10/3.11. Build Docker e install reale
+restano da verificare. I test simulati non certificano un deploy effettuato.
+
+Precisazioni sulla review: next_check_minutes è espressamente15 nello schema e
+nel brief originale (loop15m). Il SYSTEM attuale NON promette next_check15–120:
+15–120 riguarda pause_minutes. Cambiare soltanto il parser a15–120 lascerebbe
+il loop invariato; un intervallo adattivo richiederebbe scheduler persistente e
+test, preservando gestione15m. Cadenza invariata in questo follow-up.
+Conviction60 produce un fattore .60, non0: il rapporto60/90=2/3 è il test reale.
+Gli errori modello hanno fallback; errori di persistenza/corruzione possono
+fermare deliberatamente il processo (fail-closed), come documentato e testato.

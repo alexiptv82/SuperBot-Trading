@@ -1,0 +1,69 @@
+name: Brain Pilot PAPER - first install only (explicit approval)
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/brain-pilot-install.trigger"]
+permissions:
+  contents: read
+concurrency:
+  group: superbot-brain-pilot-singapore
+  cancel-in-progress: false
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate explicit approval and immutable SHA
+        id: trigger
+        run: |
+          python - <<'PY'
+          import os, re, subprocess
+          from pathlib import Path
+          pairs = {}
+          for line in Path('deploy/brain-pilot-install.trigger').read_text().splitlines():
+              if not line.strip() or line.lstrip().startswith('#'):
+                  continue
+              key, value = line.split('=', 1)
+              if key in pairs:
+                  raise SystemExit('duplicate key')
+              pairs[key] = value.strip()
+          action = pairs.get('action')
+          if action == 'none':
+              raise SystemExit(0)
+          sha = pairs.get('sha', '')
+          if action != 'install' or pairs.get('approved') != 'yes' or not re.fullmatch('[0-9a-f]{40}', sha):
+              raise SystemExit('install requires approved=yes and full sha')
+          subprocess.run(['git', 'merge-base', '--is-ancestor', sha, 'HEAD'], check=True)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('install=yes\nsha=' + sha + '\n')
+          PY
+      - name: First installation on Singapore (own container and volume only)
+        if: steps.trigger.outputs.install == 'yes'
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          BRAIN_SHA: ${{ steps.trigger.outputs.sha }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: BRAIN_SHA,DEEPSEEK_API_KEY
+          command_timeout: 22m
+          script: |
+            set -eu
+            umask 077
+            test -n "$DEEPSEEK_API_KEY"
+            test "${#BRAIN_SHA}" = 40
+            BUILD_DIR=$(mktemp -d /opt/superbot-brain-build.XXXXXXXX)
+            trap 'rm -rf "$BUILD_DIR"' EXIT
+            git init -q "$BUILD_DIR"
+            git -C "$BUILD_DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$BUILD_DIR" fetch -q --depth=1 origin "$BRAIN_SHA"
+            git -C "$BUILD_DIR" checkout -q --detach FETCH_HEAD
+            test "$(git -C "$BUILD_DIR" rev-parse HEAD)" = "$BRAIN_SHA"
+            export BRAIN_INSTALL_APPROVED=yes
+            python3 "$BUILD_DIR/deploy/scripts/brain_pilot_install.py" --sha "$BRAIN_SHA" --repo "$BUILD_DIR"
