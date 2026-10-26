@@ -87,12 +87,15 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Nessun merge/deploy/riavvio o modifica dati. Proprietà sviluppo ceduta a review Claude.
 
 ## Brain Pilot V1 — PRONTO PER REVIEW CLAUDE
-- Branch `work/brain-pilot-v1`, base `502107209f9e42d38e4421ac70df188c823dc315`, codice `b1aff794f8ccf5159345f506854bf832847776c2`.
+- Branch `work/brain-pilot-v1`, base `502107209f9e42d38e4421ac70df188c823dc315`, codice `a5d8b79783982b5642210ffe026c0a9150176d0f`.
 - PR draft #6: https://github.com/alexiptv82/SuperBot-Trading/pull/6. Handoff: `docs/brain-pilot-v1-review.md` sul branch.
 - Sei comportamenti, prompt strutturale macro/fib/BTC, nuovo conto PAPER1000 isolato, rischio allo stop cap1% proporzionale, persistenza SQLite+outbox JSONL.
-- 30/30 test locali PASS; Actions 40323046877 SUCCESS su Python3.10/3.11. Docker build e replay con modello reale non verificati.
+- 37/37 test locali PASS; Actions40328264317 SUCCESS su Python3.10/3.11. Installer con Docker simulato; build/install/replay reali non verificati.
 - Diario consegna: `7003086a69cbb901f312247c876f50087ea310ee`.
 - Prossimo: Claude review PR, verifica Docker e interpretazioni del brief; deploy solo Claude Code dopo nuovo OK utente. Nessun merge/deploy o modifica del vecchio pilot/Hawk/Bull eseguiti. Proprietà ceduta a review Claude.
 
-## IN_CORSO — follow-up review Brain Pilot
-- ChatGPT Work: prepara installer verificabile su work/brain-pilot-v1, senza esecuzione. Cadenza 15m invariata come da brief; review riaperta limitatamente al pacchetto install.
+### Follow-up installer — pronto per nuova review Claude
+- Installer ora incluso: .github/workflows/brain-pilot-install.yml + deploy/scripts/brain_pilot_install.py; trigger INERTE action=none/approved=no.
+- SHA approvato, volume esclusivo brain, backup hash verificato, lock, health/heartbeat nuovo, nessuna sostituzione container. Nessuna esecuzione sul VPS.
+- Cadenza15m invariata dal brief; next_check_minutes=15, pausa15–120 sono distinti. Non applicata la modifica parser proposta nella review.
+- Handoff/PR#6 aggiornati, diario `12faf1a0c9247abe739b68599268500fc622be64`. Prossimo: Claude review installer; merge e deploy solo con autorizzazione pertinente.
