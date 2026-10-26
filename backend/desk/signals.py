@@ -142,7 +142,8 @@ def closed_four_hour(rows, now_ms):
 
 def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
                 daily: np.ndarray | None = None, price: float | None = None,
-                four_hour: np.ndarray | None = None) -> Reading | None:
+                four_hour: np.ndarray | None = None,
+                btc_return_3d: float | None = None) -> Reading | None:
     """`arr15`: barre 15m CHIUSE. `daily`: barre 1d chiuse (vedi `closed_daily`); senza, il 1d si ricava dalle
     15m come prima (con ~10 giorni di storia resta assente). `price`: ultimo prezzo (barra in formazione)."""
     b1 = resample(arr15, H1)
@@ -177,7 +178,7 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
     pat = doji_pattern(b1)
 
     # --- stagionalità
-    sea = get_seasonal(symbol, now_ms)
+    sea = get_seasonal(symbol, now_ms, btc_return_3d=btc_return_3d)
 
     comp = {"long": [], "short": []}
     sc = {"long": 0, "short": 0}

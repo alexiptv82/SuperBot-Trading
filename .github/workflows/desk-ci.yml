@@ -90,7 +90,7 @@ jobs:
         # sostituiscono moduli in sys.modules.
         run: |
           set -e
-          for f in test_bull_slots_2026_10_20 test_bull_margin_gate_2026_10_20 test_bull_leverage_gate_2026_10_20 test_prompt_account_line_2026_10_20 test_desk_fixes_2026_10_20 test_data_fixes_2026_10_21 test_pm_exec_replay_2026_10_21 test_stop_buckets_2026_10_21; do
+          for f in test_bull_slots_2026_10_20 test_bull_margin_gate_2026_10_20 test_bull_leverage_gate_2026_10_20 test_prompt_account_line_2026_10_20 test_desk_fixes_2026_10_20 test_desk_fixes_2026_10_26 test_bull_guards_2026_10_26 test_data_fixes_2026_10_21 test_pm_exec_replay_2026_10_21 test_stop_buckets_2026_10_21; do
             python -m pytest tests/$f.py -q -p no:cacheprovider
           done
       - name: Fix A regression tests

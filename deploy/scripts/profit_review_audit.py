@@ -135,7 +135,7 @@ def seasonal_bonus(row):
     # Reconstruction is conditional on a reviewed historical version and pinned source.
     if row.get("code_version") not in {"5818aee","b4709d1","b6b9911","fa3e220","4aabeb8"}:
         return None, "unreviewed_version"
-    source = Path(__file__).resolve().parents[2]/"backend/desk/seasonal.py"
+    source = Path(__file__).resolve().parents[2]/"backend/desk/seasonal_v1.py"
     if sha(source.read_bytes()) != "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7":
         return None, "source_not_pinned"
     spec = importlib.util.spec_from_file_location("audit_seasonal",source)

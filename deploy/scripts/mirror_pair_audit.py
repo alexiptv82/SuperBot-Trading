@@ -26,7 +26,7 @@ def exact_mcnemar(b,c):
 
 def run_series(module,items,seasonal):
     original=module.get_seasonal
-    if not seasonal:module.get_seasonal=lambda *_:SimpleNamespace(long_bonus=0,short_bonus=0,note='')
+    if not seasonal:module.get_seasonal=lambda *_,**__:SimpleNamespace(long_bonus=0,short_bonus=0,note='')
     pairs=[]
     try:
         for item in items:
