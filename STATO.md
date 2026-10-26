@@ -77,3 +77,14 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Dati visibili: equity $992.12, cash $669.37, P&L -$7.88 (-0.79%), 15 cicli, 4 posizioni SHORT aperte.
 - Sviluppo: ChatGPT Work (rule-pool PR#11) → port controllato su main + deploy: Claude Sonnet 4.6.
 - CI brain-view-ci.yml: reader Python 3.10/3.11 (26 test) + pwa React (4 test + build) su main.
+
+## Chiarimento Brain — autonomia e apprendimento (26/10/2026)
+- Verifica codice1f2edeb6: unico conto PAPER, decisioni DeepSeek vincolate da prompt e guardrail; engine condiviso, selettore Hawk/Bull non usato.
+- Storico persistente, ma solo ultimi10 realizzi forniti al modello; apprendimento automatico/lezioni persistenti non implementati nel Brain.
+- Mitigazione bias bull/bear attiva secondo runtime documentato; efficacia da misurare con trade post-upgrade e regime. Quattro SHORT non certificano la correzione. Nessun intervento runtime.
+
+## IN_CORSO — Brain Learning V1 (ChatGPT Work, 26/10/2026)
+- Implementazione pronta per review sul branch work/brain-learning-v1, base f76c5b108300b8b2efe37e2dfb99811ba61499cc. PR draft#12, SHA e871ccff819e7d5afb54e5c4a498a58e9a1e2c00.
+- Memoria episodica persistente, aggregazione parziali, lezioni con supporto storico/validazione cronologica, recupero nel prompt e audit delle lezioni inviate. Nessun retraining o modifica automatica dei limiti.
+- Test locali104PASS+1Docker skip,26regressioni dashboard PASS; primo CI40361218746 SUCCESS; CI finale da verificare.
+- Prossimo: Claude review docs/brain-learning-v1-review.md; componente in review, un autore alla volta. Nessun merge/deploy autorizzato. Runtime invariato rispetto allo stato documentato, non riverificato sulVPS in questa sessione.
