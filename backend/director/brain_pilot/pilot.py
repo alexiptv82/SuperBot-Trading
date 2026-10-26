@@ -20,6 +20,7 @@ from director.ai_shadow.config import Config
 from director.ai_shadow.market import BarCache
 from . import VERSION, prompt_builder
 from .portfolio import Portfolio, number
+from .context import ContextCollector
 
 BAR = 900000
 MANAGEMENT = {"close","save_profit","partial_close","move_stop","hold"}
@@ -28,7 +29,23 @@ ACTIONS = MANAGEMENT | {"open_long","open_short","average","pause","resume"}
 
 def config():
     return replace(Config(), name="brain-paper", bars_4h=240,bars_1d=120,
-                   max_tokens=4000,prompt_version=VERSION)
+                   max_tokens=4000,daily_stop=.20,prompt_version=VERSION+"-upgrades-v1")
+
+
+def validate_thesis(d):
+    for key in ("bull_scenario","bear_scenario","verdict"):
+        if not isinstance(d.get(key),str) or not d[key].strip():
+            raise ValueError("missing_"+key)
+        d[key]=d[key].strip()[:600]
+    inv=d.get("invalidation")
+    if not isinstance(inv,dict) or not isinstance(inv.get("description"),str) or not inv["description"].strip():
+        raise ValueError("invalid_invalidation_description")
+    if inv.get("timeframe") not in prompt_builder.TF_MS or inv.get("condition") not in ("close_below","close_above"):
+        raise ValueError("invalid_invalidation_condition")
+    if isinstance(inv.get("level"),bool) or not isinstance(inv.get("level"),(int,float)):
+        raise ValueError("invalidation_level_must_be_json_number")
+    d["invalidation"]={"description":inv["description"].strip()[:600],"timeframe":inv["timeframe"],
+                       "condition":inv["condition"],"level":number(inv.get("level"),1e-12,1e15)}
 
 
 def parse_response(text, universe, summaries, key=""):
@@ -64,17 +81,20 @@ def parse_response(text, universe, summaries, key=""):
                     if sym not in summaries or "BTC" not in summaries: raise ValueError("missing_macro")
                     d["size_pct"]=number(d.get("size_pct"),.01,1)
                     d["conviction"]=number(d.get("conviction"),60,100)
-                    if not isinstance(d.get("invalidation"),str) or not d["invalidation"].strip():
-                        raise ValueError("missing_invalidation")
-                    d["invalidation"]=d["invalidation"][:300]
+                    validate_thesis(d)
+                    atr=number(summaries[sym].get("atr14_1h"),1e-12,1e15)
+                    d["_atr_1h"]=atr
                     if action=="average": d["support_level"]=number(d.get("support_level"),1e-12,1e15)
                     else:
-                        stop=number(d.get("sl_pct"),.0025,.08)
+                        requested=number(d.get("sl_pct"),1e-7,.08)
+                        stop=max(requested,.8*atr/summaries[sym]["price"])
+                        if stop>.08:raise ValueError("atr_stop_out_of_bounds")
                         target=number(d.get("tp_pct"),.0001,.5)
                         if target/stop<1.5: raise ValueError("rr_below_1_5")
                         side=1 if action=="open_long" else -1
                         px=summaries[sym]["price"]
-                        d.update(sl=px*(1-side*stop),tp=px*(1+side*target))
+                        d.update(sl=px*(1-side*stop),tp=px*(1+side*target),
+                                 _requested_sl=px*(1-side*requested),_atr_adjusted=stop>requested)
                 if action=="move_stop": d["new_stop"]=number(d.get("new_stop"),1e-12,1e15)
                 if action=="partial_close" and "close_fraction" in d:
                     number(d["close_fraction"],.5,.5)
@@ -141,9 +161,10 @@ class Store:
 
 
 class Pilot:
-    def __init__(self,root,api_key,cache,model_call=deepseek.call,cfg=None):
+    def __init__(self,root,api_key,cache,model_call=deepseek.call,cfg=None,context=None):
         if os.getenv("DESK_MODE","paper")!="paper": raise ValueError("paper_required")
         self.cfg=cfg or config(); self.key=api_key; self.cache=cache; self.call=model_call
+        self.context=context
         self.store=Store(root)
         try:
             self.store.export()
@@ -152,6 +173,17 @@ class Pilot:
                 "pause_start":0,"pause_epoch":-1,"epoch":0,"pause_reason":"","reentry_condition":""}
             if self.state["version"]!=VERSION: raise ValueError("unsupported_state_version")
             self.portfolio=Portfolio(self.state["account"])
+            # Retain protective pending exits, reject legacy exposure that lacks
+            # the new thesis/ATR contract. No historical trade is rewritten.
+            pending=[];rejected=0
+            for order in self.state["pending"]:
+                try:
+                    if order["action"] not in MANAGEMENT:
+                        validate_thesis(order);number(order.get("_atr_1h"),1e-12,1e15)
+                    pending.append(order)
+                except (ValueError,TypeError,KeyError):rejected+=1
+            self.state["pending"]=pending
+            self.migration_rejected=rejected
             self.budget=Budget(str(self.store.root/"spend.jsonl"),self.cfg.daily_cap_usd,self.cfg.monthly_cap_usd)
             if self.budget.bad_lines: raise ValueError("corrupt_budget_ledger")
         except Exception:
@@ -161,6 +193,15 @@ class Pilot:
 
     def checkpoint(self,events):
         a=self.portfolio.account; all_events=[]
+        events=list(events)
+        if self.migration_rejected:
+            events.append({"kind":"legacy_pending_exposure_rejected","count":self.migration_rejected})
+            self.migration_rejected=0
+        daily=self.portfolio.daily
+        if daily.get("stopped") and not daily.get("stop_logged"):
+            events.append({"kind":"daily_stop","reason":"daily_equity_drawdown_20pct",
+                           "utc_day":daily["day"],"resume":"next_UTC_day","management_active":True})
+            daily["stop_logged"]=True
         for row in a.closed:
             all_events.append(("trade",dict(row,run_no=1,start_equity=1000)))
             self.state["recent"].append({k:row.get(k) for k in ("symbol","side","net","why","close_ms")})
@@ -203,7 +244,7 @@ class Pilot:
             opens={s:float(b[1]) for s,b in current.items() if b is not None}
             prices={**prior,**opens}
             if all(s in opens for s in self.portfolio.account.positions):
-                self.portfolio.account.roll_day(journal.day_of(t),prices)
+                self.portfolio.roll_day(t,prices)
             due=[o for o in st["pending"] if o["execute_t"]==t]
             st["pending"]=[o for o in st["pending"] if o["execute_t"]>t]
             for order in sorted(due,key=lambda o:0 if o["action"] in MANAGEMENT else 1):
@@ -211,6 +252,8 @@ class Pilot:
                 try:
                     if sym not in opens: raise ValueError("missing_execution_bar")
                     if order["action"] not in MANAGEMENT:
+                        validate_thesis(order)
+                        if self.portfolio.halted(prices,t):raise ValueError("daily_or_risk_halt")
                         if t<st["pause_until"]: raise ValueError("paused")
                         if (self.store.root/"pause.flag").exists(): raise ValueError("operator_pause")
                         if "BTC" not in opens: raise ValueError("missing_btc_at_execution")
@@ -219,9 +262,10 @@ class Pilot:
                         prompt_builder.summarize("BTC",macro,t)
                     # Averaging macro is rechecked using ONLY bars closed at execution.
                     ctx=order.get("context",{})
-                    if order["action"]=="average":
+                    if order["action"] not in MANAGEMENT:
                         historical={tf:[b for b in data[sym][tf] if b[0]+ms<=t] for tf,ms in prompt_builder.TF_MS.items()}
                         ctx=prompt_builder.summarize(sym,historical,t)
+                        order["_atr_1h"]=ctx["atr14_1h"]
                     result=self.portfolio.apply(order,opens[sym],t,prices,ctx)
                     events.append(dict(result,ts_ms=t))
                     if result["kind"]=="open": st["epoch"]+=1
@@ -232,6 +276,8 @@ class Pilot:
                     self.portfolio.account.on_bar(sym,t,*map(float,b[1:5]),BAR)
                     prior[sym]=float(b[4])
             st["last_bar"]=t
+            if all(s in current and current[s] is not None for s in self.portfolio.account.positions):
+                self.portfolio.roll_day(t+BAR-1,prior)
         # Expire absent target bars; never execute a stale order at a later price.
         expired=[o for o in st["pending"] if o["execute_t"]<=bar_t]
         st["pending"]=[o for o in st["pending"] if o["execute_t"]>bar_t]
@@ -239,6 +285,8 @@ class Pilot:
         prices=dict(st.get("last_prices",{}))
         prices.update({sym:float(rows[-1,4]) for sym,rows in bars.items()})
         st["last_prices"]=prices
+        if all(s in bars for s in self.portfolio.account.positions):
+            self.portfolio.roll_day(cutoff-1,prices)
         self.checkpoint(events)
         snapshot=self.portfolio.snapshot(prices,cutoff)
         can_expose=("BTC" in summaries and all(s in summaries for s in self.portfolio.account.positions))
@@ -249,8 +297,14 @@ class Pilot:
             result["skip"]="missing_key_or_macro_data"
         elif (self.store.root/"pause.flag").exists(): result["skip"]="operator_pause"
         else:
+            context={"availability":"non disponibile"}
+            if self.context is not None:
+                try:
+                    context=self.context.collect(list(summaries),now_ms,st.setdefault("market_context",{}))
+                except Exception:
+                    pass  # optional sources never block protective decisions
             user=prompt_builder.build_user(cutoff,summaries,snapshot,st["recent"],
-                {"until_ms":st["pause_until"],"reason":st["pause_reason"],"reentry_condition":st["reentry_condition"]})
+                {"until_ms":st["pause_until"],"reason":st["pause_reason"],"reentry_condition":st["reentry_condition"]},context)
             ok,why,worst=self.budget.check(self.cfg.model,now_ms,len(prompt_builder.SYSTEM)+len(user),self.cfg.max_tokens)
             if not ok: result["skip"]="budget_cap"
             else:
@@ -272,7 +326,7 @@ class Pilot:
                     for d in orders:
                         if d["action"] in ("pause","resume","hold"):continue
                         exposure=d["action"].startswith("open_") or d["action"]=="average"
-                        if exposure and (cutoff<st["pause_until"] or not can_expose):continue
+                        if exposure and (cutoff<st["pause_until"] or not can_expose or snapshot["halted"]):continue
                         if d["action"].startswith("open_"):
                             if opened>=3:continue
                             opened+=1
@@ -295,7 +349,7 @@ def main():
         status=journal.read_json(str(Path(args.out)/"status.json")) or {}
         if status.get("mode")!="paper" or time.time()*1000-status.get("ts_ms",0)>2700000:raise SystemExit(1)
         return
-    cfg=config();pilot=Pilot(args.out,os.getenv("DEEPSEEK_API_KEY",""),BarCache(cfg),cfg=cfg)
+    cfg=config();pilot=Pilot(args.out,os.getenv("DEEPSEEK_API_KEY",""),BarCache(cfg),cfg=cfg,context=ContextCollector())
     try:
         while True:
             now=int(time.time()*1000);pilot.run_once(now)

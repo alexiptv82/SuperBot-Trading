@@ -46,7 +46,9 @@ class Model:
 def decision(action="open_long",**kw):
     return dict(symbol="ETH",action=action,size_pct=.8,conviction=75,
                 sl=98.,tp=105.,sl_pct=.02,tp_pct=.05,
-                reason="support tested",invalidation="hourly close below support",**kw)
+                reason="support tested",_atr_1h=1.,
+                bull_scenario="support held",bear_scenario="resistance may reject",verdict="support thesis wins",
+                invalidation={"description":"hourly close below support","timeframe":"1h","condition":"close_below","level":98},**kw)
 
 
 def reply(*ds):return {"market_view":"Daily and 4h confirmed, level tested","next_check_minutes":15,"decisions":list(ds)}
@@ -133,7 +135,7 @@ class PortfolioTests(unittest.TestCase):
 
     def test_ten_slots(self):
         p=Portfolio()
-        for i in range(10):p.apply(decision()|{"symbol":str(i)},100,NOW,{str(i):100},{})
+        for i in range(10):p.apply(decision()|{"symbol":str(i)},100,NOW,{str(k):100 for k in range(i+1)},{})
         before=p.to_dict()
         with self.assertRaises(ValueError):p.apply(decision()|{"symbol":"11"},100,NOW,{"11":100},{})
         self.assertEqual(p.to_dict(),before)

@@ -1,6 +1,7 @@
 """Independent virtual account using the existing paper engine and close schema."""
 import copy
 import math
+import time
 from desk.engine import Limits, PaperAccount, max_leverage_for
 
 
@@ -18,12 +19,33 @@ class Portfolio:
         self.account = PaperAccount.from_dict(copy.deepcopy(state)) if state is not None else PaperAccount(
             Limits(start_equity=1000,max_open=10,max_margin_trade=100,max_margin_total=1000,
                    max_dca_total=100,min_margin=1,fee_bp_side=6,slip_bp_side=2,
-                   daily_stop=.12,kill_equity=450), "brain-paper")
+                   daily_stop=.20,kill_equity=450), "brain-paper")
         if self.account.name != "brain-paper" or self.account.limits.fee_bp_side != 6:
             raise ValueError("foreign_portfolio_state")
+        # Explicit policy migration: stored Limits(.12) must not undo user .20.
+        self.account.limits.daily_stop=.20
+        self.daily=copy.deepcopy((state or {}).get("brain_daily",{}))
 
     def to_dict(self):
-        return self.account.to_dict()
+        return dict(self.account.to_dict(),brain_daily=copy.deepcopy(self.daily))
+
+    def roll_day(self,now_ms,prices):
+        a=self.account
+        if any(s not in prices or not math.isfinite(float(prices[s])) or prices[s]<=0 for s in a.positions):
+            return "daily_valuation_missing"
+        day=time.strftime("%Y-%m-%d",time.gmtime(now_ms/1000))
+        equity=a.equity(prices)
+        if not self.daily or day>self.daily["day"]:
+            reference=a.day_start_equity if not self.daily and a.day==day else equity
+            self.daily={"policy_version":2,"day":day,"start_equity":reference,"stopped":False,"stop_logged":False}
+        # Backwards clocks never release an existing latch.
+        a.day=self.daily["day"];a.day_start_equity=self.daily["start_equity"]
+        if equity<=self.daily["start_equity"]*.8:
+            self.daily["stopped"]=True
+        return "daily_stop_20pct" if self.daily["stopped"] else ""
+
+    def halted(self,prices,now_ms):
+        return self.roll_day(now_ms,prices) or self.account.halted(prices)
 
     def risk_at_stop(self, p):
         a = self.account
@@ -45,7 +67,8 @@ class Portfolio:
                          "risk_at_stop":self.risk_at_stop(p),"averages":p.dca_count,
                          "invalidation":p.features.get("invalidation","")})
         return {"equity":a.equity(prices),"cash":a.cash,"max_slots":10,"positions":rows,
-                "halted":a.halted(prices),"risk_max_pct":1,"fee_each_side":.0006}
+                "halted":self.halted(prices,now_ms),"daily":copy.deepcopy(self.daily),
+                "risk_max_pct":1,"fee_each_side":.0006}
 
     def open(self, sym, decision, px, now_ms, prices):
         a=self.account; side=1 if decision["action"]=="open_long" else -1
@@ -54,6 +77,12 @@ class Portfolio:
         fill=px*(1+side*.0002)
         if not (sl<fill<tp if side==1 else tp<fill<sl):
             raise ValueError("gap_invalid_levels")
+        atr=number(decision.get("_atr_1h"),1e-12,1e15)
+        original_sl=sl
+        if abs(px-sl)<.8*atr:
+            sl=px-side*.8*atr
+        if sl<=0 or abs(px-sl)/px>.08:
+            raise ValueError("atr_stop_out_of_bounds")
         if abs(tp-fill)/abs(fill-sl)<1.5:
             raise ValueError("rr_below_1_5")
         exit_fill=sl*(1-side*.0002)
@@ -68,10 +97,14 @@ class Portfolio:
         p,msg=a.open(sym,side,margin,lev,px,sl,tp,now_ms,prices,
                      confidence=int(decision["conviction"]),reason=decision["reason"],
                      source="brain-deepseek",trade_type="medio",
-                     features={"invalidation":decision["invalidation"],"market_phase":decision.get("market_phase","")})
+                     features={"invalidation":decision["invalidation"],"market_phase":decision.get("market_phase",""),
+                               "bull_scenario":decision.get("bull_scenario"),"bear_scenario":decision.get("bear_scenario"),
+                               "verdict":decision.get("verdict")})
         if p is None:
             raise ValueError(msg)
-        return {"kind":"open","symbol":sym,"risk":self.risk_at_stop(p),"position_id":p.id}
+        return {"kind":"open","symbol":sym,"risk":self.risk_at_stop(p),"position_id":p.id,
+                "sl_requested":decision.get("_requested_sl",original_sl),"sl_applied":sl,
+                "atr_adjusted":decision.get("_atr_adjusted",False) or sl!=original_sl}
 
     def average(self,sym,decision,px,now_ms,prices,context):
         a=self.account; p=a.positions.get(sym)
@@ -80,6 +113,9 @@ class Portfolio:
         trend="up" if p.side==1 else "down"
         if context.get("trend",{}).get("4h")!=trend or context.get("trend",{}).get("1d")!=trend:
             raise ValueError("average_macro_unconfirmed")
+        atr=number(context.get("atr14_1h",decision.get("_atr_1h")),1e-12,1e15)
+        if abs(px-p.sl)<.8*atr:
+            raise ValueError("average_atr_floor_would_require_wider_stop")
         support=number(decision["support_level"],1e-12,1e15)
         observed=context["support_20h" if p.side==1 else "resistance_20h"]
         if abs(support-observed)/observed>.001 or abs(px-support)/px>.015:
@@ -94,15 +130,20 @@ class Portfolio:
             raise ValueError(msg)
         if added.total_margin>100 or candidate.margin_in_use()>1000:
             raise ValueError("average_margin_cap")
-        trial=Portfolio(candidate.to_dict())
+        trial=Portfolio(dict(candidate.to_dict(),brain_daily=self.daily))
         # All legs share the original stop budget. No hidden risk multiplication.
         if trial.risk_at_stop(added)>a.equity(prices)*.01*size+1e-8:
             raise ValueError("average_total_risk_cap")
         self.account=candidate
+        added.features["invalidation"]=copy.deepcopy(decision["invalidation"])
         return {"kind":"average","symbol":sym,"risk":trial.risk_at_stop(added)}
 
     def apply(self,decision,px,now_ms,prices,context):
         # Transactional candidate: any rejection leaves the whole account unchanged.
+        action=decision["action"]
+        if action.startswith("open_") or action=="average":
+            if self.halted(prices,now_ms):
+                raise ValueError("exposure_halted")
         trial=Portfolio(self.to_dict()); a=trial.account
         sym=decision["symbol"]; action=decision["action"]; p=a.positions.get(sym)
         if action.startswith("open_"):
