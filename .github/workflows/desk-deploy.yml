@@ -207,14 +207,14 @@ jobs:
               echo "ERRORE: il codice non e' sul commit approvato: nessun container sostituito"; exit 1
             fi
 
-            # Pre-deploy source baseline: already-running 297b126, never old f87.
-            CURRENT_PAPER_BASE=297b126ea5f0b26bea281bdcdb330739d9fc2fe2
+            # Pre-deploy source baseline: already-running 886b30f, never old 297b126.
+            CURRENT_PAPER_BASE=886b30f0fd6299dc424bb5df13415b138b77a0da
             git cat-file -e "${CURRENT_PAPER_BASE}^{commit}" || {
               echo DEPLOY_BLOCKED=expected_runtime_base_missing; exit 1;
             }
             for P in hawk bull; do
               V="$(python3 -I -c "import json; print(json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')).get('version',''))" 2>/dev/null || true)"
-              [ "$V" = 297b126 ] || {
+              [ "$V" = 886b30f ] || {
                 echo "DEPLOY_BLOCKED=runtime_version_mismatch bot=$P"; exit 1;
               }
               for F in cli engine signals brain market_context; do
@@ -239,7 +239,7 @@ jobs:
             SHA12=$(printf '%s' "$APPROVED_SHA" | cut -c1-12)
             docker build -t superbot-desk -t "superbot-desk:sha-${SHA12}" --label "superbot.sha=${APPROVED_SHA}" -f Dockerfile.desk .
 
-            # ── HAWK ─────────────────────────────────────────────────────────
+            # ── HAWK ────────────────────────────────────────────────────
             docker stop superbot-desk-hawk 2>/dev/null || true
             docker rm   superbot-desk-hawk 2>/dev/null || true
             docker run -d \
@@ -270,7 +270,7 @@ jobs:
               grep -qE '^DESK_CAPITAL_V1=(off|paper)$' || { echo DEPLOY_BLOCKED=hawk_capital_invalid; exit 1; }
             echo HAWK_STARTED_SAFE_BULL_UNTOUCHED=PASS
 
-            # ── BULL ─────────────────────────────────────────────────────────
+            # ── BULL ────────────────────────────────────────────────────
             docker stop superbot-desk-bull 2>/dev/null || true
             docker rm   superbot-desk-bull 2>/dev/null || true
             docker run -d \
