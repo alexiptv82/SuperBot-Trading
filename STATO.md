@@ -127,3 +127,10 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## IN_CORSO — Recupero Research + esperienza Hawk/Bull (ChatGPT Work)
 - OK utente 26/10: implementazione recupero selettivo qualità/provenienza/validazione e ponte storico verso Brain. Componente riservato a ChatGPT Work su work/brain-learning-v1 (PR#12, base e871ccff819e7d5afb54e5c4a498a58e9a1e2c00).
 - Fonti lette soltanto, modelli/versioni separati, nessun merge/deploy/trigger o avvio collector. Il diario di correzioni documenta intenzioni, non certifica profitti. Prossimo checkpoint: codice/test e handoff review.
+
+## Recupero Research + esperienza Hawk/Bull — implementato per review
+- PR#12 aggiornata su work/brain-learning-v1, commit a175ae6d455f694f8c24149eb6daa1422520c819. Componente ChatGPT Work; prossimo ruolo Claude review.
+- experience.py: builder offline readonly su copie PAPER, hash/provenienza e QA, identità bot/run/versione, parziali aggregati, confine ricerca/validazione fisso e pacchetto immutabile atomico. Runtime legge solo esperienza preparata nella propria cartella, senza accesso ai dati Hawk/Bull.
+- knowledge.py: note documentate separate da esiti; catalogo iniziale3note (contratto bull/bear, Profit Guardian fonte SHADOW ONLY, limiti ricerca microstruttura). Nessuna efficacia presunta o segnale ricostruito.
+- Test locali135PASS+1Docker skip,26regressioni dashboard PASS; CI40380945666 in corso sul commit finale. Nessuno storico reale acquisito/importato, seed installato o interventoVPS. Nessun merge/deploy/riavvio/trigger operativo.
+- Review: docs/brain-experience-transfer-review.md. Dopo review: acquisizione readonly di copie PAPER con provenienza, preparazione/controllo seed e deploy Brain separatamente autorizzato; i dati mancanti non vanno inventati.
