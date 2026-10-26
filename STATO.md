@@ -107,3 +107,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Actions40337116365 FAIL: wrapper upgrade usa ancora script flat-only. Ultimo report40337116177 alle14:10UTC: healthy/paper, runtime2c977c46,5posizioni/0pending; nessun upgrade al20% verificato.
 - Retry3 7c859391 non ha generato nuova run: [skip ci] ancora presente nel corpo del messaggio. Il flag deve mancare dall'intero commit.
 - Pausa operatore NON ferma stop/TP/on_bar, ma sospende nuove esposizioni e chiamateAI. Evitare retry ciechi; serve updater per conto con posizioni o drenaggio controllato. Questa verifica è stata solo in lettura sul VPS.
+
+## IN_CORSO — Upgrader Brain PAPER con posizioni
+- ChatGPT Work, branch work/brain-pilot-stateful-upgrader da 7c859391a79700b8de71f5d3c0b97159e1e5e9dc. Nuovo updater con backup/prova migrazione/rollback compatibile, senza conto flat.
+- Solo preparazione e test; nessun deploy, nessun bypass del repair e nessuna modifica runtime. Target applicativo resta1f2edeb6, precedente2c977c46.
