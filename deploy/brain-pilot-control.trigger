@@ -1,3 +1,3 @@
-# Prepared only; no installation or startup. Change on rule-pool only after review.
 action=report
 approved=no
+# verify-first-cycle-after-authorized-install-2026-10-26
