@@ -138,3 +138,10 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## IN_CORSO — Dettagli posizioni BRAIN PWA (ChatGPT Work)
 - Mandato utente: mostrare margine e leva per capire il dimensionamento. Riservati brain_view.py, BrainDashboard.js e relativi test su work/brain-position-details da main a9df40e87c1cdb4b3b3fbb1e78813397223e0b6f.
 - Sola osservazione: nessuna modifica rischio/size/leva dei bot, nessun deploy o trigger. Verifica sizing dal codice Brain installato documentato1f2edeb6; valori live non ancora riletti.
+
+## Dettagli posizioni BRAIN PWA — pronti per review
+- Branch work/brain-position-details da main a9df40e8; PR draft#13, commit7a3348fbf5b827aaf1295aa077153a36ab451298. Componente ChatGPT Work, separato dalla PR#12 Brain Learning.
+- API reader aggiunge margin(total_margin), leverage salvata, notional_entry(entry×qty), floating_margin_roi_pct e margin_in_use totale. UI mostra margine/levа/esposizione/ROI lordo. Mancanti non inventati; DCA e parziali usano margine/quantità residui.
+- Locale:31testreader/API+7componenti PASS, buildReact PASS; sintassi3.10 e byte pubblicati verificati. CI40382342014 in corso.
+- Analisi sizing dal codice1f2edeb6: budget stop1%equity ×size_pct ×conviction/100, poi cap/fee/slippage/liquidazione. Margine100$ è un tetto, non importo fisso. Nessun valore posizione live rilevato; perdita1$ da sola non prova sottodimensionamento.
+- Nessuna modifica size/rischio/leva/strategia, bot, dati, deploy o trigger operativo. Nessun merge o riavvio. Prossimo: review e rilascio app separato dal runtime bot.
