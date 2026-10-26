@@ -48,7 +48,8 @@ def pct(x, p):
     return s[min(len(s) - 1, max(0, int(round(p / 100 * (len(s) - 1)))))]
 
 
-def reading_at(data, pos_idx, sym, end, btc_ret3, sea):
+def reading_at(data, pos_idx, sym, end, btc_ret3, sea, mode="full"):
+    """mode: full = tutti i dati; nd = senza barre 1d (trend giornaliero assente); nd4 = senza 1d e senza 4h."""
     i = pos_idx[sym].get(end - BAR)
     if i is None:
         return None, None
@@ -59,6 +60,10 @@ def reading_at(data, pos_idx, sym, end, btc_ret3, sea):
     fh = closed_four_hour(d["a4"][max(0, n4 - 300): n4], end) if n4 else []
     nd = int(np.searchsorted(d["ad"][:, 0] + DAY, end, side="right")) if len(d["ad"]) else 0
     dl = closed_daily(d["ad"][max(0, nd - 340): nd], end) if nd else None
+    if mode in ("nd", "nd4"):
+        dl = None
+    if mode == "nd4":
+        fh = None
     bt.sig_mod.get_seasonal = bt.sea_v1_compat if sea == "v1" else bt.SEA_V2
     try:
         r = read_symbol(sym, win, end, daily=dl, price=price, four_hour=fh, btc_return_3d=btc_ret3)
@@ -77,7 +82,7 @@ def btc_ret(data, pos_idx, end):
     return float(b[i, 4] / b[i - 288, 4] - 1.0)
 
 
-def signals_report(data, pos_idx, real, sea):
+def signals_report(data, pos_idx, real, sea, mode="full"):
     """A) punteggi e fattori: banco contro bot."""
     diff_side, n = 0, 0
     d_score, d_long, d_short, d_px, d_rsi, d_roc, d_atr, d_sl = [], [], [], [], [], [], [], []
@@ -91,7 +96,7 @@ def signals_report(data, pos_idx, real, sea):
             by_sym_missing[sym] += 1
             continue
         end = (ts // BAR) * BAR
-        r, price = reading_at(data, pos_idx, sym, end, btc_ret(data, pos_idx, end), sea)
+        r, price = reading_at(data, pos_idx, sym, end, btc_ret(data, pos_idx, end), sea, mode)
         if r is None:
             miss += 1
             continue
@@ -215,9 +220,22 @@ def main():
     print(f"[FEDELTA] aperture vere lette: {len(real)}, di cui decise dalle regole: {len(rules)}")
     day0 = min((t["ts"] for t in real), default=0)
     print(f"[FEDELTA] lato: long {sum(1 for t in real if t['side'] == 1)}, short {sum(1 for t in real if t['side'] == -1)}")
-    for sea, nm in (("v1", "stagionalita' VECCHIA (come girava sui bot)"), ("v2", "stagionalita' NUOVA (V2)")):
+    print("\n=== DATI DI TREND NEL REGISTRO DEI BOT: quota di aperture con il trend presente, per giorno ===")
+    byday = defaultdict(lambda: [0, 0, 0])
+    for t in rules:
+        k = bt.time.strftime("%m-%d", bt.time.gmtime(t["ts"] / 1000))
+        byday[k][0] += 1
+        byday[k][1] += int(bool((t["f"] or {}).get("daily_trend")))
+        byday[k][2] += int(bool((t["f"] or {}).get("ema50_200_4h")))
+    for k in sorted(byday):
+        n, dd, h4 = byday[k]
+        print(f"   {k}  aperture {n:>3}   trend 1d presente {100 * dd / n:3.0f}%   trend 4h presente {100 * h4 / n:3.0f}%")
+    for sea, mode, nm in (("v1", "full", "stagionalita' vecchia, dati completi"),
+                          ("v1", "nd", "stagionalita' vecchia, SENZA trend 1d"),
+                          ("v1", "nd4", "stagionalita' vecchia, SENZA trend 1d e 4h"),
+                          ("v2", "full", "stagionalita' nuova V2, dati completi")):
         print(f"\n=== A) SEGNALI - {nm} ===")
-        signals_report(data, pos_idx, rules, sea)
+        signals_report(data, pos_idx, rules, sea, mode)
     print("\n=== B) ESITI - trade veri rifatti sulle candele del banco ===")
     outcomes_report(data, pos_idx, rules)
 
