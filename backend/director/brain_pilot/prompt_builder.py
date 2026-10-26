@@ -2,7 +2,7 @@
 import json
 import math
 import numpy as np
-from desk.signals import ema, rsi, doji_pattern
+from desk.signals import ema, rsi, doji_pattern, atr
 
 TF_MS = {"15m": 900000, "1h": 3600000, "4h": 14400000, "1d": 86400000}
 
@@ -11,6 +11,10 @@ Reason top-down, not as an indicator checklist. First identify the observed
 daily/4h structure and BTC context. Then distinguish continuation, pullback,
 range, or a reversal hypothesis. A 15m bounce alone does not establish a daily
 reversal. LONG and SHORT are equally eligible; neither has a quota.
+Before new exposure, compare bull_scenario and bear_scenario using observed
+structure and levels, then give a verdict explaining why the chosen case wins
+and its contrary evidence. All three nonempty strings are mandatory on opens
+and averaging. Protective exits remain possible without those entry fields.
 For each action explain phase, key level, trigger, invalidation and verdict.
 Phase estimates are heuristics, NOT proof of accumulation/distribution. Fibonacci
 levels are derived from an explicitly bounded daily range, NOT confirmed cycles.
@@ -35,6 +39,15 @@ size_pct is a FRACTION (0..1), not percent points: 0.8 means 80% of a maximum
 1%-equity all-in stop risk. Code scales it further by conviction/100. Code chooses
 leverage and margin. Max 10 slots. Fees 0.06% each side plus 0.02% slippage each
 side and engine funding. sl_pct/tp_pct are price fractions, e.g. .012/.025.
+ATR14 comes from CLOSED 1h bars. Suggested initial stop distance is 1.5*ATR14;
+minimum is .8*ATR14. Code raises too-tight initial stops to that floor, reduces
+position size at constant capital risk, then rechecks R/R and liquidation.
+Existing stops never widen, including averaging. Funding context separates
+recent observations from actual settled payments; positive funding is long
+payment pressure, not proof of reversal. Missing 4h OI history is unavailable,
+never zero. Alternative.me Fear & Greed is BTC/macro context, not an alt signal.
+A daily equity drawdown >=20% latches no new opens/averaging until next UTC day,
+including across restart; protective management continues and capital never resets.
 Stops cannot widen; partial_close is fixed .5; maximum 2 averaging additions and
 aggregate position risk remains capped at 1% equity. Stop and target remain active
 when you hold, pause, fail or exhaust API budget. Decisions execute next 15m open,
@@ -45,7 +58,12 @@ Return ONE JSON object only:
  "next_check_minutes":15,"decisions":[
  {"symbol":"ETHUSDT","action":"open_short","size_pct":0.8,
   "sl_pct":0.012,"tp_pct":0.025,"conviction":75,
-  "market_phase":"distribution_candidate","invalidation":"observed level",
+  "market_phase":"distribution_candidate",
+  "bull_scenario":"support held and reclaim could invalidate the downtrend",
+  "bear_scenario":"daily lower highs and observed resistance rejection",
+  "verdict":"short after rejection, invalidate above the observed resistance",
+  "invalidation":{"description":"hourly close above resistance cancels the short thesis",
+                  "timeframe":"1h","condition":"close_above","level":2500},
   "reason":"structure and trigger","session_horizon_minutes":120}]}
 Actions: open_long, open_short, close, partial_close, save_profit, move_stop,
 average, hold, pause, resume. For move_stop supply new_stop (absolute price).
@@ -93,7 +111,9 @@ def summarize(symbol, frames, now_ms):
     elif trends["1d"] == trends["4h"] == "up":
         phase = "bullish_structure_pullback" if trends["15m"]=="down" else "bullish_continuation"
     distance = (px-dlo)/(dhi-dlo) if dhi>dlo else .5
+    atr14=float(atr(h,14))
     return {"symbol":symbol+"USDT", "price":px, "trend":trends, "phase_estimate":phase,
+            "atr14_1h":atr14,"atr_reference_sl_pct":1.5*atr14/px,"atr_min_sl_pct":.8*atr14/px,
             "daily_range_location":distance, "discount_candidate":distance<.382,
             "rsi_1h":float(rsi(h[:,4])), "momentum_24h":float(h[-1,4]/h[-25,4]-1),
             "pattern_1h":doji_pattern(h), "volume_ratio":float(m[-1,5]/max(1e-9,m[-21:-1,5].mean())),
@@ -103,10 +123,11 @@ def summarize(symbol, frames, now_ms):
                    "bounce_down_0618":dlo+.618*(dhi-dlo),"bounce_down_0786":dlo+.786*(dhi-dlo)}}
 
 
-def build_user(now_ms, summaries, portfolio, recent, pause):
+def build_user(now_ms, summaries, portfolio, recent, pause, market_context=None):
     # BTC appears exactly once, outside symbol rows; sorted JSON is reproducible.
     body = {"as_of_ms":now_ms,"btc_context":summaries.get("BTC"),
             "markets":[summaries[s] for s in sorted(summaries) if s!="BTC"],
             "portfolio":portfolio,"recent_realized":recent[-10:],"pause":pause,
+            "derivatives_context":market_context or {"availability":"non disponibile"},
             "missing_macro": "No weekly series, chart-cycle labels or ETH/BTC ratio supplied"}
     return json.dumps(body,sort_keys=True,separators=(",",":"),allow_nan=False)

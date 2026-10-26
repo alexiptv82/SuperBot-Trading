@@ -8,10 +8,11 @@ on:
       - "backend/tests/test_brain_pilot_install.py"
       - "deploy/scripts/brain_pilot_install.py"
       - ".github/workflows/brain-pilot-install.yml"
+      - "Dockerfile.brainpilot"
       - ".github/workflows/brain-pilot-ci.yml"
   pull_request:
     branches: [rule-pool]
-    paths: ["backend/director/brain_pilot/**", "backend/tests/test_brain_pilot*.py", "deploy/scripts/brain_pilot_install.py", ".github/workflows/brain-pilot-install.yml"]
+    paths: ["backend/director/brain_pilot/**", "backend/tests/test_brain_pilot*.py", "deploy/scripts/brain_pilot_install.py", ".github/workflows/brain-pilot-install.yml", "Dockerfile.brainpilot"]
 permissions:
   contents: read
 jobs:
@@ -31,3 +32,8 @@ jobs:
           PYTHONPATH: backend
           DESK_MODE: paper
         run: python -m unittest discover -s backend/tests -p 'test_brain_pilot*.py' -v
+      - name: Docker build and isolated import smoke test (no keys, no network calls)
+        if: matrix.python-version == '3.11'
+        run: |
+          docker build -f Dockerfile.brainpilot -t brain-pilot-ci:test .
+          docker run --rm --read-only --cap-drop ALL --network none brain-pilot-ci:test python -c "from director.brain_pilot.pilot import config; from director.brain_pilot.portfolio import Portfolio; assert config().daily_stop == .20; assert Portfolio().account.name == 'brain-paper'"
