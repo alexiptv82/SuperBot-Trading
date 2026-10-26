@@ -68,6 +68,8 @@ jobs:
             if path.exists():
                 s = json.loads(path.read_text())
                 print({k: s.get(k) for k in ('ts_ms', 'mode', 'version', 'open')})
+                cycle = s.get('last_cycle') or {}
+                print('CYCLE', {k: cycle.get(k) for k in ('bar_t', 'called', 'symbols', 'skip', 'error', 'pending')})
             else:
                 print('Brain pilot not installed or no status yet')
             PY
