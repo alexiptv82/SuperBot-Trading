@@ -8,8 +8,8 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Vincolo immutabile: nessun reset di trade_history, learning_log, lessons.md, errors.md.
 - rule-pool HEAD: `f76c5b108300b8b2efe37e2dfb99811ba61499cc` (trigger deploy Brain, 26/10/2026 17:xx UTC).
 
-## App Dashboard — DEPLOY TAB BRAIN (26/10/2026, SHA a9df40e8)
-- **SHA deployato**: `a9df40e87c1cdb4b3b3fbb1e78813397223e0b6f` (main, 26/10/2026)
+## App Dashboard — margini/leva Brain LIVE (26/10/2026, SHA d4865ddc)
+- **SHA deployato**: `d4865ddcf1c3dece3cd7d7336e4bfcbcb29b28cc` (main, PR#13; deploy e verifica readonly riusciti).
 - Deploy confermato dall'utente: tab 🧠 BRAIN visibile e funzionante nell'app.
 - Commit su main: 9559ee5c (brain_view.py + BrainDashboard.js) + a9df40e8 (test, CI, server, frontend).
 - Mount aggiunto in run_app(): `-v /opt/superbot-desk-data/brain:/opt/superbot-desk-data/brain:ro` + `-e BRAIN_DATA_DIR=...`
@@ -213,3 +213,16 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Utente risponde sì alla richiesta esplicita: integrare PR#13 e pubblicare solo aggiornamento app. Autorizzati merge main e deploy app; Hawk/Bull/Brain Pilot e loro strategia/rischio restano fuori dal rilascio.
 - Target revisionato PR#13:7a3348fbf5b827aaf1295aa077153a36ab451298,31testreader+7React e CI40382342014 verdi. Deploy tramite workflowufficiale con SHA fissato, backup DB e rollback immagine/frontend.
 - Ulteriore mandato: BrainPilot deve applicare l'idea trading dell'utente e usare esperienza/metodo del botclassico con la propria analisi. Specifica da rendere esplicita; non interpretare come deploy del nuovo motore scalp o aumento numerico del rischio.
+
+## Rilascio PR#13 — dashboard margine/leva LIVE e verificata
+- Autorizzazione utente: sì alla pubblicazioneapp. PR#13 integrata main con SHA d4865ddcf1c3dece3cd7d7336e4bfcbcb29b28cc; trigger rule-pool b54296d0c6774658bb0abce42c90d507a0f50ce2.
+- Deploy40392367666 SUCCESS: backupSQLiteapp e prova ripristino PASS, immagine/frontendprecedenti conservati, saluteAPI/frontend/HTTPS PASS. Rilascioapp completato20:06UTC(21:06Roma).
+- Verifica readonly40393188194 SUCCESS: SHAapp e labelUI PASS, campi reader presenti. Alle21:10Roma4SHORT: DOGE margine78.98 leva2x; ETH85.63/3x; XAG85.24/2x; XRP77.19/3x. Totale margine327.04PAPER. Nessun saldo reale letto.
+- Hawk/Bull healthy SHA35f08cf8d16097d8ca365892a3f9a9ef23996709; Brain healthy1f2edeb6182029adc96ba7218ad145a7503472a3; tuttiPAPER, restartcount0, started_at antecedente alrilascioapp. Nessun deploy/controllooperativo dei bot.
+- Nuovo workflowbrain-dashboard-verify.yml e trigger(784154c387b7d1f3aab76ed92c67f0811c9a5bf6) eseguono soloinspect/reader/etichettefrontend, nessun ordine o scrittura alle sorgenti.
+
+## Mandato operatore Brain — implementato nel candidato, NON live
+- PR#12 SHA db3a45897a572a3eca64c355c9cc00acde9fc04b, CI40394126770 SUCCESS. mandate.py passa operator_mandate versionato, obiettivoutente/classicalexperience e capacità realmenteattive. Snapshotmandato neljournal primaAPI.
+- Prompt candidato: presa profittonetto quando indebolisce la prosecuzione; rimossa preferenza25–30%ROI/vincenteanziana. Modifica qualitativa richiesta dall'utente, non solo memoria passiva. Politicaversionata e coorti separate.
+- Limiti numerici/cadenza15m/ATR1h/classificazione medio restano; readiness=full_scalp_engine_not_implemented, fast_exit_supervisor=false, marginiBull come riferimento NONapplicato, segnali classici live not_connected, storico reale not_imported. Nessuna dichiarazione falsa di scalprapido giàattivo.
+- Locale140testPASS+1Docker skip; CI Python3.10/3.11+Docker/probe5posizioni verdi. Nessun merge/deployBrain. Prossimo: reviewPR#12 e completamento dati/uscite/sizing scalp, conservando storico e posizioni.
