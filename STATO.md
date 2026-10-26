@@ -102,3 +102,6 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 |---|---|---|
 | 26/10/2026 ~13:30 | 2c977c46 | Installazione PAPER iniziale |
 | 26/10/2026 14:55 | **1f2edeb6** | Upgrade stateful (ATR, 20% stop, debate, context) |
+
+## IN_CORSO — Brain Portfolio Dashboard
+- Proprietario: ChatGPT Work; branch work/brain-portfolio-view da 6d7fbb0cc18a546b09cfe2d3ce1f0a3000e660ee. UI cli.py + nuovo reader brain_view.py + test/CI offline. Mandato utente: sola osservazione, nessun deploy/trigger/restart; PAPER/LIVE e motore invariati. Claude revisore sul componente fino alla consegna.
