@@ -1,0 +1,34 @@
+name: "Fix B historical replay phase 1 - paper ROI checkpoints (NO DEPLOY)"
+on:
+  push:
+    branches: [work/fix-b-profit-guardian]
+    paths: ["deploy/fix-b-replay-phase1.trigger"]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replay 14 completed UTC days from historical journals and sidecar
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/fixb-audit"
+          chmod 600 "$HOME/.ssh/fixb-audit"
+          cat > "$HOME/.ssh/fixb-hosts" <<'HOSTS'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTS
+          ssh -T -i "$HOME/.ssh/fixb-audit" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/fixb-hosts" \
+            -o ConnectTimeout=20 root@51.79.205.82 'python3 -I -' \
+            < deploy/scripts/fix_b_historical_replay_v1.py | tee fixb-replay.log
+          grep -qx 'FIX_B_REPLAY_COMPLETE' fixb-replay.log
+          { echo '## Fix B replay 2026-10-10—23 UTC — point-in-time observed vs upper-bound'; echo '~~~'; cat fixb-replay.log; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Destroy ephemeral runner-only SSH key
+        if: always()
+        run: rm -f "$HOME/.ssh/fixb-audit" "$HOME/.ssh/fixb-hosts"
