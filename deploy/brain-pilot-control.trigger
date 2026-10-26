@@ -1,5 +1,3 @@
 action=report
 approved=no
-# verify-first-cycle-after-authorized-install-2026-10-26
-# diagnostic=public-BTC-closed-bar-validation
-# daily=anchor-and-gap-count
+# final-functional-check-after-native-daily-fix-2026-10-26
