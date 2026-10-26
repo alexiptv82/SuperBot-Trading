@@ -2,42 +2,39 @@
 Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico precedente consultare i commit di questo file e ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md. Protocollo: SINCRONIZZAZIONE-WORK-CHAT.md.
 
 ## Runtime PAPER (NON toccare senza nuova autorizzazione)
-- Hawk + Bull in PAPER sul VPS Singapore, codice **886b30f** (deploy 25/10/2026 21:13 UTC — Actions 40234289443, SUCCESS).
-- Deploy P1+P2 eseguito con OK esplicito dell'utente: Fix P1 (sbias LONG, signals.py) e Fix P2 (smart Claude fallback, cli.py+brain.py) attivi sui bot.
-- Backup cervello pre-deploy verificato: `bots-20261025-211129-deploy` — hawk 250 trade, bull 129 trade, intatti.
+- Hawk + Bull in PAPER sul VPS Singapore. Deploy Fix B avviato il 26/10/2026 (trigger 6f73e800).
+- APPROVED_SHA deploy Fix B: `63641f7059a977368f8bb8aecc517f7a7c74cbce` (merge commit Fix B su rule-pool).
+- Deploy P1+P2 precedente (25/10): Actions 40234289443, versione 886b30f, DEPLOY OK.
 - Capital Management V1 integrato ma con DESK_CAPITAL_V1=off, non abilitare senza OK dell'utente.
 - Vincolo immutabile: nessun reset di trade_history, learning_log, lessons.md, errors.md.
-- rule-pool è un ramo operativo: il suo HEAD può cambiare per audit/fix senza cambiare l'immagine deployata 886b30f. Non toccare Strasburgo/HiTV.
+- rule-pool è un ramo operativo. Non toccare Strasburgo/HiTV.
 
-## Fix P1 e P2 — DEPLOYATI (25/10/2026)
-- **P1 sbias LONG** (commit 635b964, merge 4ec05f4): `backend/desk/signals.py` — ridotto peso trend HTF, aggiunto rimbalzo RSI 1h (RSI<35 + mom>0.003 → +10 punti LONG). Revisione Claude: basso rischio, monitorare ingressi LONG.
-- **P2 smart fallback** (commit 5e1ee2a + 017dd07): `backend/desk/cli.py` + `brain.py` — flag `_claude_responded`; se Claude risponde con 0: regole solo `only_manage=True`; se Claude non disponibile: fallback completo. Revisione Claude: correzione importante, risolve SHORT spurii.
-- **Versione attiva: 886b30f** (trigger deploy). Actions run 40234289443, log: PAPER_AND_RISK_ENVIRONMENT=PASS, RUNTIME_BASELINE_SOURCE=PASS, PAPER_AND_CAPITAL_ENV_VERIFIED_AFTER_DEPLOY=PASS, DEPLOY OK.
+## Fix P1 e P2 — DEPLOYATI (25/10/2026, versione 886b30f)
+- **P1 sbias LONG** (commit 635b964, merge 4ec05f4): `backend/desk/signals.py` — rimbalzo RSI 1h.
+- **P2 smart fallback** (commit 5e1ee2a + 017dd07): `backend/desk/cli.py` + `brain.py` — flag `_claude_responded`.
 
-## PROGETTO — FIX B AI PROFIT GUARDIAN V1
-- Branch `work/fix-b-profit-guardian` **MERGIATO su `rule-pool`** il 26/10/2026 con OK esplicito utente (PR #5, merge commit 63641f70).
-- Moduli integrati: `backend/desk/profit_guardian.py` e `backend/desk/portfolio_alert.py`. 21 test unitari CI pass.
-- Parametri: watch ROI netto 12% (TAKE_PARTIAL 50%), review 20% (CLOSE_FULL), budget 0,10 $/g UTC condiviso Hawk+Bull, intervallo minimo 30 min.
-- **Versione rule-pool corrente: 63641f70** — NON ancora deployata sui bot.
-- **Prossimo passo Fix B:** OK utente per deploy Fix B in PAPER (trigger desk-deploy.yml con APPROVED_SHA=63641f70).
-- Specifica vincolante: FIX-B-PROFIT-GUARDIAN-V1-SPECIFICA.md nel ramo diario.
-- Verdetto revisione: `claude/revisione-fix-b-2026-10-26.md`.
+## Fix B AI PROFIT GUARDIAN V1 — DEPLOY IN CORSO (26/10/2026)
+- Branch `work/fix-b-profit-guardian` mergiato su `rule-pool` il 26/10 (PR #5, merge 63641f70).
+- Deploy avviato: trigger `6f73e800`, APPROVED_SHA=`63641f70`, Actions in esecuzione.
+- Baseline workflow aggiornato da 297b126 a 886b30f (commit 280f9c58) prima del trigger.
+- Moduli: `backend/desk/profit_guardian.py`, `backend/desk/portfolio_alert.py`.
+- Parametri: watch 12% TAKE_PARTIAL, review 20% CLOSE_FULL, budget 0,10$/g UTC, intervallo 30 min.
+- Da aggiornare quando Actions completa: versione attiva e stato deploy.
 
 ## Altre informazioni operative
-- DeepSeek è shadow indipendente: 96 chiamate valide/222 decisioni applied=false (storico 23/10, Action 40072633461).
-- Capital Management V1: specifica CAPITAL-MANAGEMENT-V1-SPECIFICA.md; backup/restore V2 certificato; merge e deploy già conclusi. Non confondere con Fix B.
-- Vincoli immutabili: nessuna istanza LIVE, nessun doppio processo, preservare DB, trade_history, learning_log, AI memory, vault e journal, non esporre credenziali.
+- DeepSeek shadow indipendente: applied=false.
+- Capital Management V1: DESK_CAPITAL_V1=off, non attivo.
+- Vincoli immutabili: nessuna istanza LIVE, nessun doppio processo, preservare cervello bot.
 
 ## Claude — collaboratore permanente (25/10)
-- Claude (Claude Code, Sonnet 4.6) attivo come collaboratore permanente. Mandato: solo PAPER, controllo VPS via workflow, correzioni su rami separati, nessun deploy/riavvio senza OK.
-- Deploy P1+P2 eseguito il 25/10 con OK utente (Actions 40234289443). Versione attiva: 886b30f.
-- Merge Fix B eseguito il 26/10 con OK utente (PR #5, commit 63641f70). Deploy Fix B in attesa di OK.
-- Dettagli sessione: diario/2026-10-25_claude.md.
+- Claude (Claude Code, Sonnet 4.6) attivo come collaboratore permanente.
+- Deploy P1+P2: 25/10 OK utente; Deploy Fix B: 26/10 OK utente, trigger avviato.
+- Dettagli sessioni: diario/2026-10-25_claude.md.
 
 ## Documenti di riferimento AI
-- `claude/protocollo-collaborazione-ai.md` — regole di collaborazione ChatGPT+Claude, onboarding, cosa può fare ogni AI autonomamente
-- `claude/stato-roadmap-completa.md` — roadmap aggiornata al 26/10, stato runtime, prossimi passi
-- `claude/revisione-fix-b-2026-10-26.md` — verdetto revisione Fix B (APPROVATO, mergiato 26/10, deploy in attesa OK)
+- `claude/protocollo-collaborazione-ai.md` — regole collaborazione ChatGPT+Claude
+- `claude/stato-roadmap-completa.md` — roadmap al 26/10 (da aggiornare post-deploy Fix B)
+- `claude/revisione-fix-b-2026-10-26.md` — verdetto revisione Fix B
 
 ## Riferimenti
 - LEGGIMI.md, MANUALE-OPERATIVO.md, SINCRONIZZAZIONE-WORK-CHAT.md.
