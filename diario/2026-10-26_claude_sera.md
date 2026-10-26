@@ -112,3 +112,12 @@ segnalato dall'utente era questo stop del motore che funzionava.
   workflow calendario run #4 OK, nessun riavvio. Claude ha ripreso a decidere subito su entrambi i bot.
 - Da fare entro l'8/11: rinnovare il calendario, altrimenti Claude resta spento.
 - Da valutare con l'utente: limite di posizioni nella stessa direzione (oggi 3 SHORT correlati su ciascun bot) e finestre spezzate per coprire le 8 ore.
+
+## Analisi dello storico (richiesta dell'utente: perche' certi giorni vanno bene e altri no)
+- Creato il workflow di sola lettura `desk-storico` (giorno per giorno, durata, lato x direzione di BTC, chiusure parziali, simulazione
+  "chiudo al X% di ROI", proposte di apertura per fonte). Risultati sintetici in STATO.md. Nessun importo reale, nessuna scrittura sul server.
+- Sintesi: sistema quasi solo short; funziona con discesa regolare di BTC; long mai funzionati (15 trade, 1 vincente); tutte le aperture
+  vengono dalle regole; un tetto ROI al 35-40% non migliora; i profitti vengono da trade che durano oltre 6h.
+- L'utente ha espresso la sua idea di trading: scalp con rotazione, molte posizioni, stessa metodologia su Hawk e Bull (uno piu' aggressivo,
+  l'altro piu' prudente), long quando il mercato gira, tornare al comportamento dei primi giorni con i fix dei long, l'AI deve realizzare
+  la sua ideologia (da scrivere come "carta d'intenti"). Il tetto 160$ su Bull "non e' l'idea voluta". Nessuna modifica applicata.

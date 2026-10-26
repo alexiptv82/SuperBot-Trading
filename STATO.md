@@ -93,6 +93,21 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Osservazione 19:17 UTC: Hawk e Bull hanno entrambi 3 SHORT scalp aperti dalle regole (DOT, APT, OP; stessa direzione, correlati);
   Claude li ha lasciati ("tre short correlati gia' aperti: nessun nuovo ingresso"). Il tetto di rischio Bull (160$) non li ferma perche'
   ognuno vale ~50$ di rischio a stop. Possibile ritocco (decisione dell'utente): limite di posizioni nella stessa direzione.
+- **ANALISI STORICO 12-26/10 (357 trade chiusi, paper; workflow di sola lettura `desk-storico`, trigger `deploy/desk-storico.trigger`, rieseguibile)**:
+  1) 96% SHORT (338 su 353); i LONG sono 15, 1 sola vincente, netto circa -514$: il lato long non ha mai funzionato.
+  2) Giorni buoni (Hawk 12/10 +515$, 15/10 +309$, 14/10 +260$, 24/10 +245$): BTC in discesa regolare (-1..-2% a 24h), tante uscite a TP.
+     Giorni cattivi: BTC piatto o in rimbalzo, o dopo un crollo (short con BTC < -3% a 24h: 15 trade, 13% vinte, -267$). Bull 25/10 -392$, 26/10 -286$.
+  3) TUTTE le aperture eseguite sono decise dalle REGOLE (Hawk 245, Bull 114), nessuna da Claude. Le proposte di apertura di Claude vengono
+     rifiutate dal motore con "stop troppo lontano (liquidazione verrebbe prima)" (Hawk 73, Bull 8). Claude incide solo sulle chiusure.
+  4) Perche' aprono poco: Hawk 1077 candidati rifiutati per "troppe posizioni aperte"; Bull 1510 per "margine sotto minimo" + 402 posizioni piene;
+     stop giornaliero 352/298; il grosso resta "confidenza sotto soglia" (2281/2832). Tenuta media ~6h: gli slot restano pieni.
+  5) Durata: trade chiusi entro 6h = 239, netto -2457$ (vincenti ~30%); oltre 6h = 114, netto +2705$ (vincenti ~60%). I profitti vengono dai trade
+     che durano, non dagli scalp veloci (la durata e' anche effetto: gli SL scattano presto).
+  6) Chiudere al 35-40% di ROI (simulazione ottimistica col picco di profitto): NON migliora: a 35% -72$ contro +248$ reali, a 40% +149$;
+     Hawk migliora (+352 -> +440/+573), Bull peggiora molto (-105 -> -511/-424). Rinuncia a 1,4-1,8k$ di code destra (67 trade con ROI>=40% = +4611$).
+     Conviene solo proteggere dopo picchi molto alti (>=80%: +449$). Il guadagno di liberare slot (rotazione) NON e' misurato.
+  Decisioni in attesa dell'utente: togliere/alzare il tetto 160$ di Bull; carta d'intenti per Claude (scalp, molte posizioni, long quando gira);
+  motore long/regime; perche' Claude non apre (stop vs liquidazione); quale "brain" intende (Brain Pilot?).
 - Nota sul tetto Bull (precisazione): il tetto limita il RISCHIO SL totale (160$), non il numero di posizioni. Con 350$ x 15x x
   3% (157$) passa una sola posizione; con le dimensioni attuali del fallback (165$ x 20x x ~1,5% = ~51$) ne passano fino a tre.
 - Da osservare: da domani i candidati rifiutati dal Bull compaiono nel registro come `rifiutata:rischio_aperto_bull` e
