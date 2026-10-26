@@ -1,4 +1,5 @@
-action=none
-approved=no
-sha=
-previous_sha=
+# Complete authorized PAPER installation; native daily candle data compatibility only.
+action=repair
+approved=yes
+sha=2c977c46ec786e3ca08c95f0b79f9729b4c12a53
+previous_sha=4aaf792b66284bbe3428acdbaeedbd1725cd2839
