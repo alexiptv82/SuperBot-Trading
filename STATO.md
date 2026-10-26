@@ -239,3 +239,9 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Prompt candidato: presa profittonetto quando indebolisce la prosecuzione; rimossa preferenza25–30%ROI/vincenteanziana. Modifica qualitativa richiesta dall'utente, non solo memoria passiva. Politicaversionata e coorti separate.
 - Limiti numerici/cadenza15m/ATR1h/classificazione medio restano; readiness=full_scalp_engine_not_implemented, fast_exit_supervisor=false, marginiBull come riferimento NONapplicato, segnali classici live not_connected, storico reale not_imported. Nessuna dichiarazione falsa di scalprapido giàattivo.
 - Locale140testPASS+1Docker skip; CI Python3.10/3.11+Docker/probe5posizioni verdi. Nessun merge/deployBrain. Prossimo: reviewPR#12 e completamento dati/uscite/sizing scalp, conservando storico e posizioni.
+
+
+## IN_CORSO — Brain dimensionamento Bull di riferimento (ChatGPT Work)
+- Mandato utente: cambiare metodo Brain, margini/leva attuali troppo contenuti. Componente Brain Pilot riservato a ChatGPT Work su work/brain-learning-v1; nessun intervento Hawk/Bull in parallelo.
+- Implementazione candidata: profilo sizing distinto dal legacy1%, riferimento margine150–350USD/levа15x(min10), controlli stop/liquidazione/costi/cassa e budget rischio aggregato esplicito. Nessun budget numerico Brain inventato come autorizzato: parametro obbligatorio prima dell'attivazione del profilo. Non copiare il tettoBull160 contestato dall'utente o il250 in sviluppo come nuova regolaBrain.
+- Nessun deploy/riavvio/merge o aumento delle posizioni esistenti. Il profilo sizing non costituisce pieno motore scalp; dati e uscite rapide ancora da completare. Test e review prima di ogni rilascio separato.
