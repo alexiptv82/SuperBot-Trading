@@ -392,7 +392,14 @@ def _ctx_lines(ctx: dict, symbol: str) -> list:
 
 # ---------------- ripiego a sole regole
 def rules_decisions(readings: list, positions: list, open_symbols: set, entry_score: int = 70,
-                    only_manage: bool = False) -> list:
+                    only_manage: bool = False, regime=None, rparams=None, tier_fn=None) -> list:
+    """Decisioni delle regole. Senza `regime` si comporta come sempre. Con `regime` (desk.regime.Regime):
+    - apre solo il lato che il mercato consente (si guarda anche il lato col punteggio piu' basso se il primo e'
+      bloccato e il secondo supera comunque la soglia);
+    - chiude le posizioni contro il mercato (flip_exit).
+    `tier_fn(symbol)` = soglia di confidenza del simbolo (se manca vale `entry_score`)."""
+    from desk import regime as _rg
+    rp = rparams or _rg.DEFAULT
     out = []
     by = {r.symbol: r for r in readings}
     for p in positions:
@@ -401,20 +408,42 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
             continue
         mine = r.long_score if p["side"] == 1 else r.short_score
         theirs = r.short_score if p["side"] == 1 else r.long_score
+        why = None
         if mine < 35 or theirs >= 60:
+            why = f"segnale sceso a {mine}"
+        elif regime is not None:
+            why = _rg.flip_exit(p["side"], p["symbol"], float(p.get("cur_r") or 0.0), regime, rp)
+        if why:
             out.append({"symbol": p["symbol"], "action": "close", "trade_type": "medio",
                         "confidence": 0, "leverage": 1, "margin_usd": 0,
                         "stop_loss_pct": 0, "take_profit_pct": 0,
-                        "reason": f"segnale sceso a {mine}", "dca_sl_pct": 0, "dca_tp_pct": 0})
+                        "reason": why, "dca_sl_pct": 0, "dca_tp_pct": 0})
     for r in readings:
-        if r.symbol in open_symbols or r.side == 0 or r.score < entry_score:
+        if r.symbol in open_symbols or r.side == 0:
             continue
-        frac = min(1.0, max(0.0, (r.score - 60) / 40))
+        thr = tier_fn(r.symbol) if tier_fn else entry_score
+        side, score, extra = r.side, r.score, 0
+        reason = "; ".join(r.why[:3])
+        if regime is not None:
+            pick = None
+            for sc, sd in sorted(((r.long_score, 1), (r.short_score, -1)), reverse=True):
+                ok, ex = _rg.entry_gate(sd, r.symbol, regime, rp)
+                if ok and sc >= thr + ex and sc >= entry_score:
+                    pick = (sc, sd, ex)
+                    break
+            if pick is None:
+                continue
+            score, side, extra = pick
+            if side != r.side:
+                reason = f"mercato {regime.state}: lato {'long' if side == 1 else 'short'} consentito, punteggio {score}"
+        elif score < entry_score:
+            continue
+        frac = min(1.0, max(0.0, (score - 60) / 40))
         is_scalp = r.trade_type == "scalp"
         out.append({"symbol": r.symbol,
-                    "action": "open_long" if r.side == 1 else "open_short",
+                    "action": "open_long" if side == 1 else "open_short",
                     "trade_type": r.trade_type,
-                    "confidence": r.score,
+                    "confidence": score,
                     # Leva scalp: 15x (score 60) → 45x (score 100), rispettando tier asset.
                     # Leva medio: 5x (score 60) → 25x (score 100).
                     # engine.py applica il cap tier (BTC/XAU/XAG 45x, ETH 30x, altri 25x).
@@ -422,7 +451,7 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
                     "margin_usd": round(150 + frac * 100, 0) if is_scalp else round(80 + frac * 170, 0),
                     "stop_loss_pct": r.sl_pct,
                     "take_profit_pct": r.tp_pct,
-                    "reason": "; ".join(r.why[:3]),
+                    "reason": reason,
                     "dca_sl_pct": 0, "dca_tp_pct": 0})
     if only_manage:
         out = [d for d in out if d.get("action") not in ("open_long", "open_short")]
