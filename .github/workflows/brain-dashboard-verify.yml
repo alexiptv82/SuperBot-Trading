@@ -1,0 +1,82 @@
+name: Brain dashboard - verify deployed read-only fields
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - deploy/brain-dashboard-verify.trigger
+      - .github/workflows/brain-dashboard-verify.yml
+permissions:
+  contents: read
+concurrency:
+  group: brain-dashboard-readonly-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read expected app SHA
+        run: |
+          expected="$(sed -n 's/^sha=//p' deploy/brain-dashboard-verify.trigger)"
+          test "${#expected}" = 40
+          printf '%s' "$expected" | grep -Eq '^[0-9a-f]{40}$'
+          echo "EXPECTED_APP_SHA=$expected" >> "$GITHUB_ENV"
+      - name: Read deployed app, frontend labels and PAPER bot metadata
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          EXPECTED_APP_SHA: ${{ env.EXPECTED_APP_SHA }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 3m
+          envs: EXPECTED_APP_SHA
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import json, os, subprocess
+            from pathlib import Path
+            
+            def inspect(name):
+                return json.loads(subprocess.check_output(["docker","inspect",name], text=True))[0]
+            
+            expected=os.environ["EXPECTED_APP_SHA"]
+            app=inspect("superbot")
+            assert app["Config"].get("Labels",{}).get("superbot.sha")==expected, "APP_SHA_MISMATCH"
+            env=dict(x.split("=",1) for x in app["Config"].get("Env",[]) if "=" in x)
+            assert env.get("DESK_MODE")=="paper", "APP_NOT_PAPER"
+            print("APP_SHA_VERIFIED="+expected)
+            for name in ("superbot-desk-hawk","superbot-desk-bull","superbot-brain-pilot"):
+                item=inspect(name)
+                config=item["Config"]
+                mode=dict(x.split("=",1) for x in config.get("Env",[]) if "=" in x).get("DESK_MODE")
+                assert mode=="paper", "BOT_NOT_PAPER"
+                assert item["State"]["Running"], "BOT_NOT_RUNNING"
+                print("BOT_READONLY_STATUS="+json.dumps({
+                    "container":name,"health":item["State"].get("Health",{}).get("Status","unknown"),
+                    "started_at":item["State"].get("StartedAt"),"restarts":item.get("RestartCount"),
+                    "sha":config.get("Labels",{}).get("superbot.sha")},sort_keys=True))
+            source='''import json,sys
+            sys.path.insert(0,"/app/backend")
+            from desk.brain_view import read_status
+            value=read_status()
+            assert value.get("status")=="ok", "BRAIN_READER_UNAVAILABLE"
+            assert value.get("mode")=="paper" and value.get("read_only") is True, "BRAIN_READER_NOT_READONLY_PAPER"
+            required=("margin","leverage","notional_entry","floating_margin_roi_pct")
+            assert all(all(k in row for k in required) for row in value["positions"]), "BRAIN_FIELDS_MISSING"
+            print(json.dumps({"fields_present":True,"open_positions":len(value["positions"]),
+             "margin_in_use":value["portfolio"]["margin_in_use"],
+             "positions":[{k:row.get(k) for k in ("symbol","side")+required} for row in value["positions"]]},allow_nan=False))
+            '''
+            result=subprocess.check_output(["docker","exec","-i","superbot","python","-"],input=source,text=True)
+            safe=json.loads(result)
+            print("BRAIN_PAPER_POSITION_FIELDS="+json.dumps(safe,allow_nan=False,sort_keys=True))
+            bundles=list(Path("/opt/superbot-web/build/static/js").glob("main.*.js"))
+            assert bundles, "FRONTEND_BUNDLE_MISSING"
+            labels=("Margine impegnato","Leva effettiva","Valore posizione (entry)")
+            assert any(all(label in p.read_text() for label in labels) for p in bundles), "FRONTEND_LABELS_MISSING"
+            print("FRONTEND_BRAIN_LABELS=PASS")
+            print("BRAIN_DASHBOARD_READONLY_VERIFICATION=PASS")
+            PY
