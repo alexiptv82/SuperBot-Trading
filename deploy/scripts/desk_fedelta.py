@@ -232,13 +232,30 @@ def outcomes_report(data, pos_idx, real):
             print(f"   {nm:<5} n={len(sel):<4} vero {sum(r['t']['net'] for r in sel):+8.0f}$   banco {sum(r['sim']['net'] for r in sel):+8.0f}$")
 
 
-def overlay_report(data, rules):
+def overlay_report(data, rules, which=1):
     """D) Il regime applicato ai trade VERI di Hawk (gli stessi che i bot hanno aperto): quanto cambierebbe il risultato?
     Per ogni trade vero il filtro decide se aprirlo (con il mercato noto un attimo prima); se lo apre, protezione e uscita per
     inversione lo gestiscono barra per barra. I trade sono gli stessi dei bot, quindi la scelta delle aperture non pesa:
     pesa solo l'effetto del regime. (Non puo' dire nulla sui trade che il filtro farebbe aprire in piu'.)"""
     from desk import regime as rg
     P = rg.RegimeParams
+    F = dict(ratchet=False, flip_exit=False)           # solo filtro sugli ingressi
+    variants2 = {
+        "nessun overlay": None,
+        "filtro": P(**F),
+        "filtro, capitolazione -2%": P(**F, capitulation_roc=-0.02),
+        "filtro, capitolazione -4%": P(**F, capitulation_roc=-0.04),
+        "filtro, senza capitolazione": P(**F, capitulation_roc=None),
+        "filtro, laterale extra 0": P(**F, range_extra=0),
+        "filtro, laterale extra 6": P(**F, range_extra=6),
+        "filtro, soglia 0.15": P(**F, state_thr=0.15),
+        "filtro, soglia 0.35": P(**F, state_thr=0.35),
+        "filtro, short anche in salita": P(**F, block_short_in_up=False),
+        "filtro, long anche se non sale": P(**F, long_needs_up=False),
+        "filtro + uscita inversione": P(ratchet=False),
+        "filtro + pareggio a 1.5R": P(flip_exit=False, be_at_r=1.5, trail_at_r=99.0),
+        "filtro + pareggio 1.3R e traino 2.0R": P(flip_exit=False, be_at_r=1.3, trail_at_r=2.0),
+    }
     variants = {
         "nessun overlay": None,
         "solo filtro": P(ratchet=False, flip_exit=False),
@@ -254,6 +271,8 @@ def overlay_report(data, rules):
         "completo trail 1.2": P(trail_at_r=1.2),
         "completo trail 1.7": P(trail_at_r=1.7),
     }
+    if which == 2:
+        variants = variants2
     trades = sorted([t for t in rules if t.get("net") is not None and t["sym"] in data and not t.get("split")],
                     key=lambda t: t["ts"])
     if not trades:
@@ -422,7 +441,7 @@ def main():
     ap.add_argument("--cache", required=True)
     ap.add_argument("--real", required=True)
     ap.add_argument("--days", type=int, default=90)
-    ap.add_argument("--overlay", action="store_true", help="applica il regime ai trade veri e confronta")
+    ap.add_argument("--overlay", type=int, default=0, help="applica il regime ai trade veri e confronta (1 = prima serie, 2 = filtro e dintorni)")
     ap.add_argument("--match", default=None, help="nome della variante del banco da confrontare con le aperture vere (es. base@old@v1@mix)")
     a = ap.parse_args()
     meta = json.load(open(os.path.join(a.cache, "meta.json")))
@@ -557,7 +576,7 @@ def main():
     outcomes_report(data, pos_idx, rules)
     if a.overlay:
         print("\n=== D) IL REGIME APPLICATO AI TRADE VERI DI HAWK (stessi trade dei bot, effetto del solo regime) ===")
-        overlay_report(data, rules)
+        overlay_report(data, rules, a.overlay)
     if a.match:
         print("\n=== C) LE APERTURE DEL BANCO CONTRO QUELLE DEI BOT (stessa configurazione dei bot di allora) ===")
         matching_report(data, rules, extra, a.match)
