@@ -337,6 +337,27 @@ def main():
     for k in sorted(wk):
         n4, a20, a14, oth = wk[k]
         print(f"   {k}  aperture con trend 4h {n4:>3}   a 20 punti {a20:>3}   a 14 punti {a14:>3}   altro {oth}")
+    print("\n=== TREND 4h: con quante barre il banco ritrova il segno scritto dai bot? ===")
+    from desk.signals import ema as _ema, direction as _dir
+    for L in (200, 205, 220, 250, 300, 400):
+        agree = n_t = 0
+        for t in rules:
+            sym = t["sym"]
+            if sym not in data:
+                continue
+            end = (t["ts"] // BAR) * BAR
+            a4 = data[sym]["a4"]
+            n4 = int(np.searchsorted(a4[:, 0] + H4, end, side="right"))
+            if n4 < L:
+                continue
+            x = a4[n4 - L: n4, 4]
+            sg = _dir(_ema(x, 50)[-1], _ema(x, 200)[-1])
+            real_sg = (t["f"] or {}).get("ema50_200_4h")
+            if real_sg is None:
+                continue
+            n_t += 1
+            agree += int(sg == int(real_sg))
+        print(f"   ultime {L:>3} barre: segno uguale nel {100 * agree / max(1, n_t):5.1f}% dei {n_t} trade")
     for sea, mode, score, verb, nm in (
             ("v1", "mix", "old", True, "punteggi VECCHI (prima di P1), stagionalita' vecchia, trend 1d come nei bot"),
             ("v1", "mix", "new", False, "punteggi NUOVI (P1), stagionalita' vecchia, trend 1d come nei bot"),
