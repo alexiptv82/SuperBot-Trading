@@ -118,3 +118,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Collector multi-venue100ms solo candidato ricerca futura: orizzonti100ms–30s, diverso dal Brain15m. FrozenAnalysisEngine NOT_CONFIGURED; harness riproduzione ancora placeholder;11449righe golden pending. Report36h respinge alpha direzionale sotto hurdle15bps; candidati execution non strategie certificate.
 - DB committato letto mode=ro:23sessioni(11OLD36_REFERENCE+12NEW36),36QA runs. Nessun raw ZIP/Parquet nel checkout. Registri QA non equivalgono a storico trading né conferma indipendente dei risultati.
 - Prossimo: concordare recupero selettivo insieme al ponte storico Hawk/Bull→Brain; nessuna nuova implementazione richiesta in questa analisi. Runtime e PR#12 invariati.
+
+## IN_CORSO — Recupero Research + esperienza Hawk/Bull (ChatGPT Work)
+- OK utente 26/10: implementazione recupero selettivo qualità/provenienza/validazione e ponte storico verso Brain. Componente riservato a ChatGPT Work su work/brain-learning-v1 (PR#12, base e871ccff819e7d5afb54e5c4a498a58e9a1e2c00).
+- Fonti lette soltanto, modelli/versioni separati, nessun merge/deploy/trigger o avvio collector. Il diario di correzioni documenta intenzioni, non certifica profitti. Prossimo checkpoint: codice/test e handoff review.
