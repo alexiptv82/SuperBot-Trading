@@ -2,12 +2,20 @@ name: Brain dashboard - offline tests (no deploy)
 
 on:
   push:
-    branches: [main]
+    branches: [main, work/brain-position-details]
     paths:
       - backend/desk/brain_view.py
       - backend/tests/test_brain_view.py
       - backend/server.py
       - frontend/**
+      - .github/workflows/brain-view-ci.yml
+
+  pull_request:
+    branches: [main]
+    paths:
+      - backend/desk/brain_view.py
+      - backend/tests/test_brain_view.py
+      - frontend/src/pages/BrainDashboard*
       - .github/workflows/brain-view-ci.yml
 
 permissions:

@@ -12,6 +12,8 @@ const Card = ({ title, children }) => (
 );
 const fmt = (value, digits = 2) => Number.isFinite(value) ? value.toFixed(digits) : '—';
 const money = value => Number.isFinite(value) ? `$${fmt(value)}` : '—';
+const leverage = value => Number.isFinite(value) && value > 0 ? `${fmt(value, 2).replace(/\.?0+$/, '')}×` : '—';
+const percent = value => Number.isFinite(value) ? `${fmt(value)}%` : '—';
 const date = ms => Number.isFinite(ms) ? new Date(ms).toLocaleString('it-IT') : 'Non disponibile';
 const color = value => Number.isFinite(value) ? (value < 0 ? '#f87171' : '#4ade80') : '#94a3b8';
 const noteStyle = { color: '#94a3b8', fontSize: '12px', lineHeight: 1.5 };
@@ -36,6 +38,7 @@ export function BrainCards({ data }) {
       <Card title="Portafoglio">
         <Row label="Equity attuale">{money(portfolio.equity)}</Row>
         <Row label="Cash disponibile">{money(portfolio.cash)}</Row>
+        <Row label="Margine totale impegnato">{money(portfolio.margin_in_use)}</Row>
         <Row label="P&L da $1000 PAPER"><span style={{ color: color(portfolio.pnl) }}>{money(portfolio.pnl)} · {fmt(portfolio.pnl_pct)}%</span></Row>
         <Row label="Cicli completati">{portfolio.cycles ?? '—'}</Row>
         <p style={noteStyle}>Valutazione alle {date(portfolio.valued_ms)}. {portfolio.stale ? 'Dati non aggiornati.' : 'Prezzi dell’ultimo ciclo, aggiornati ogni 15 minuti.'}</p>
@@ -44,13 +47,17 @@ export function BrainCards({ data }) {
         {positions.map(position => (
           <div key={position.symbol} style={{ borderBottom: '1px solid #334155', padding: '8px 0' }}>
             <Row label={position.symbol}><strong style={{ color: position.side === 'LONG' ? '#4ade80' : '#f87171' }}>{position.side}</strong></Row>
+            <Row label="Margine impegnato">{money(position.margin)}</Row>
+            <Row label="Leva effettiva">{leverage(position.leverage)}</Row>
+            <Row label="Valore posizione (entry)">{money(position.notional_entry)}</Row>
             <Row label="Entry">{fmt(position.entry, 6)}</Row>
-            <Row label="P&L floating"><span style={{ color: color(position.floating_pnl) }}>{money(position.floating_pnl)}</span></Row>
+            <Row label="P&L floating lordo"><span style={{ color: color(position.floating_pnl) }}>{money(position.floating_pnl)}</span></Row>
+            <Row label="Rendimento lordo sul margine"><span style={{ color: color(position.floating_margin_roi_pct) }}>{percent(position.floating_margin_roi_pct)}</span></Row>
             {position.stale && <div style={noteStyle}>Prezzo non aggiornato · {date(position.valued_ms)}</div>}
           </div>
         ))}
         {!positions.length && <p style={noteStyle}>{available ? 'Nessuna posizione aperta' : 'Posizioni non disponibili'}</p>}
-        <p style={noteStyle}>Floating lordo ai prezzi dell’ultimo ciclo; commissioni di uscita e funding futuri esclusi.</p>
+        <p style={noteStyle}>Il margine è il capitale PAPER impegnato, inclusi eventuali DCA; il valore posizione è quantità × entry media. La leva è quella salvata dal pilot, non il massimo consentito. Floating e rendimento sul margine sono lordi: commissioni e funding non detratti.</p>
       </Card>
       <Card title="Ultimi trade chiusi">
         {trades.map((trade, index) => (

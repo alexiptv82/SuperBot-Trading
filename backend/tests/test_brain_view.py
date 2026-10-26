@@ -68,6 +68,62 @@ class BrainViewTests(unittest.TestCase):
         self.assertEqual([p['floating_pnl'] for p in value['positions']], [20, 15])
         self.assertEqual([p['side'] for p in value['positions']], ['LONG', 'SHORT'])
 
+    def test_position_margin_leverage_exposure_and_gross_roi(self):
+        self.state['account']['positions']['BTC']['leverage'] = 2
+        self.state['account']['positions']['ETH'].update(qty=6, leverage=3)
+        self.save()
+        result = self.read()
+        long, short = result['positions']
+        self.assertEqual(long['margin'], 100)
+        self.assertEqual(long['leverage'], 2)
+        self.assertEqual(long['notional_entry'], 200)
+        self.assertEqual(long['floating_margin_roi_pct'], 20)
+        self.assertEqual(short['leverage'], 3)
+        self.assertEqual(short['notional_entry'], 300)
+        self.assertEqual(short['floating_margin_roi_pct'], 30)
+        self.assertEqual(result['portfolio']['margin_in_use'], 200)
+
+    def test_missing_leverage_never_inferred_from_margin_and_exposure(self):
+        value = self.read()['positions'][0]
+        self.assertIsNone(value['leverage'])
+        self.assertEqual(value['notional_entry'], 200)
+        for bad in (True, 0, -1, float('nan'), float('inf'), '30'):
+            self.state['account']['positions']['BTC']['leverage'] = bad
+            self.save()
+            self.assertIsNone(self.read()['positions'][0]['leverage'])
+
+    def test_dca_total_margin_and_partial_remaining_exposure(self):
+        position = self.state['account']['positions']['BTC']
+        position.update(margin=50, total_margin=80, qty=1.6, leverage=2)
+        self.save()
+        value = self.read()['positions'][0]
+        self.assertEqual(value['margin'], 80)
+        self.assertEqual(value['notional_entry'], 160)
+        self.assertAlmostEqual(value['floating_margin_roi_pct'], 20)
+        position.update(total_margin=40, qty=.8)
+        self.save()
+        value = self.read()['positions'][0]
+        self.assertEqual(value['margin'], 40)
+        self.assertEqual(value['notional_entry'], 80)
+        self.assertAlmostEqual(value['floating_margin_roi_pct'], 20)
+
+    def test_zero_margin_and_missing_price_do_not_fabricate_roi(self):
+        self.state['account']['positions']['BTC']['total_margin'] = 0
+        self.save()
+        self.assertIsNone(self.read()['positions'][0]['floating_margin_roi_pct'])
+        self.state['account']['positions']['BTC']['total_margin'] = 100
+        del self.state['last_prices']['BTC']
+        self.save()
+        value = self.read()['positions'][0]
+        self.assertIsNone(value['floating_margin_roi_pct'])
+        self.assertEqual(value['margin'], 100)
+        self.assertEqual(value['notional_entry'], 200)
+
+    def test_negative_margin_is_not_displayed_as_valid_capital(self):
+        self.state['account']['positions']['BTC']['total_margin'] = -1
+        self.save()
+        self.assertEqual(self.read()['status'], 'unavailable')
+
     def test_missing_database_no_creation(self):
         root = self.root / 'does-not-exist'
         self.assertEqual(view.read_status(root)['reason'], 'missing_database')
