@@ -1,0 +1,10 @@
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONPATH=/app/backend PYTHONUNBUFFERED=1 DESK_MODE=paper
+RUN pip install --no-cache-dir numpy==2.2.6
+COPY backend/desk/__init__.py backend/desk/engine.py backend/desk/signals.py backend/desk/seasonal.py ./backend/desk/
+COPY backend/director/ai_shadow ./backend/director/ai_shadow
+COPY backend/director/brain_pilot ./backend/director/brain_pilot
+HEALTHCHECK --interval=2m --timeout=15s --start-period=5m --retries=3 \
+  CMD python -m director.brain_pilot.pilot --out /out --healthcheck
+CMD ["python", "-m", "director.brain_pilot.pilot", "--out", "/out"]
