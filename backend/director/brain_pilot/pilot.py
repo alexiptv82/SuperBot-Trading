@@ -18,7 +18,7 @@ from director.ai_shadow import deepseek, journal
 from director.ai_shadow.budget import Budget
 from director.ai_shadow.config import Config
 from director.ai_shadow.market import BarCache
-from . import VERSION, prompt_builder, learning, experience, knowledge
+from . import VERSION, prompt_builder, learning, experience, knowledge, mandate
 from .portfolio import Portfolio, number
 from .context import ContextCollector
 
@@ -29,7 +29,7 @@ ACTIONS = MANAGEMENT | {"open_long","open_short","average","pause","resume"}
 
 def config():
     return replace(Config(), name="brain-paper", bars_4h=240,bars_1d=120,
-                   max_tokens=4000,daily_stop=.20,prompt_version=VERSION+"-upgrades-v1")
+                   max_tokens=4000,daily_stop=.20,prompt_version=VERSION+"-"+mandate.VERSION)
 
 
 def validate_thesis(d):
@@ -347,6 +347,13 @@ class Pilot:
             self.portfolio.roll_day(cutoff-1,prices)
         self.checkpoint(events)
         snapshot=self.portfolio.snapshot(prices,cutoff)
+        snapshot["execution_capabilities"] = {
+            "status": "current_15m_engine", "decision_interval_minutes": BAR // 60000,
+            "entry_execution": "next_15m_open", "fast_exit_supervisor": False,
+            "atr_timeframe": "1h", "trade_classification": "medio",
+            "max_margin_per_position": self.portfolio.account.limits.max_margin_trade,
+            "risk_max_pct": snapshot["risk_max_pct"],
+        }
         can_expose=("BTC" in summaries and all(s in summaries for s in self.portfolio.account.positions))
         result={"kind":"cycle","ts_ms":now_ms,"bar_t":bar_t,"called":False,"symbols":len(summaries)}
         intake_events = []
@@ -382,7 +389,7 @@ class Pilot:
             if not ok: result["skip"]="budget_cap"
             else:
                 # Persist attempt BEFORE charging/calling. After a crash this bar is not retried.
-                st["last_attempt"]=bar_t; self.checkpoint(intake_events + [{"kind":"model_attempt","bar_t":bar_t,"ts_ms":now_ms,"learning":result["learning"],"episodic_memory":memory}])
+                st["last_attempt"]=bar_t; self.checkpoint(intake_events + [{"kind":"model_attempt","bar_t":bar_t,"ts_ms":now_ms,"learning":result["learning"],"episodic_memory":memory,"operator_mandate":mandate.build(snapshot,memory)}])
                 intake_events = []
                 # Reserve worst-case spend before network, even on failure. No undercount on crash.
                 self.budget.record(self.cfg.model,now_ms,0,0,0,False,"worst_case_reservation",est_cost=worst)

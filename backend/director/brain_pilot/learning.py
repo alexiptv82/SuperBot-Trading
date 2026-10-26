@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import re
+from .mandate import VERSION as OPERATOR_VERSION
 
 VERSION = 1
 POLICY = "brain-learning-v1"
@@ -36,7 +37,7 @@ def entry_context(summary, model="unknown", references=(), external_references=(
     regime = daily if daily == four and daily in ("up", "down") else (
         "mixed" if daily in ("up", "down", "flat") and four in ("up", "down", "flat") else "unknown")
     model = model if isinstance(model, str) and re.fullmatch(r"[A-Za-z0-9_.:/-]{1,100}", model) else "unknown"
-    return {"policy": POLICY, "regime": regime, "model": model,
+    return {"policy": POLICY, "regime": regime, "model": model, "operator_policy_version": OPERATOR_VERSION,
             "lesson_ids": [v for v in references if isinstance(v, str) and re.fullmatch(r"[a-f0-9]{20}", v)][:6],
             "external_lesson_ids": [v for v in external_references if isinstance(v, str) and re.fullmatch(r"[a-f0-9]{20}", v)][:2],
             "experience_bundle_id": experience_bundle_id if isinstance(experience_bundle_id,str) and re.fullmatch(r"[a-f0-9]{64}",experience_bundle_id) else None}
@@ -49,8 +50,10 @@ def context(value):
     if policy != POLICY or regime not in ("up", "down", "mixed"):
         return {"policy": "legacy_unknown", "regime": "unknown", "model": "unknown", "lesson_ids": []}
     # Reuse the whitelist; do not relay AI reasoning/free text as memory instructions.
-    return entry_context({"trend": {"1d": regime, "4h": regime}} if regime != "mixed" else
+    result = entry_context({"trend": {"1d": regime, "4h": regime}} if regime != "mixed" else
                          {"trend": {"1d": "up", "4h": "down"}}, value.get("model"), value.get("lesson_ids", []), value.get("external_lesson_ids", []), value.get("experience_bundle_id"))
+    result["operator_policy_version"] = OPERATOR_VERSION if value.get("operator_policy_version")==OPERATOR_VERSION else "unknown"
+    return result
 
 
 def empty():
@@ -178,11 +181,11 @@ def build_view(memory, summaries, now_ms):
     for e in rows:
         ctx = e["context"]
         if ctx["regime"] != "unknown" and finite(e["net_r"]) and abs(e["net_r"]) <= 10000:
-            groups[(e["side"], ctx["regime"], ctx["policy"], ctx["model"])].append(e)
+            groups[(e["side"], ctx["regime"], ctx["policy"], ctx["model"], ctx.get("operator_policy_version","unknown"))].append(e)
     relevant = {entry_context(s)["regime"] for s in summaries.values()} - {"unknown"}
     candidates = []
     for cohort, episodes in sorted(groups.items()):
-        side, regime, policy, model = cohort
+        side, regime, policy, model, operator_version = cohort
         if regime not in relevant or len(episodes) < MIN_SAMPLE or now_ms-episodes[-1]["close_ms"] > FRESH:
             continue
         split = len(episodes)*2//3
@@ -203,7 +206,7 @@ def build_view(memory, summaries, now_ms):
         used = train + holdout
         identity = digest([cohort, [e["id"] for e in used]])
         candidates.append({"id": identity, "side": "LONG" if side == 1 else "SHORT", "regime": regime,
-            "policy": policy, "model": model, "finding": "historical_weakness" if harmful else "historical_strength",
+            "policy": policy, "model": model, "operator_policy_version":operator_version, "finding": "historical_weakness" if harmful else "historical_strength",
             "instruction": "Recheck current supporting AND contrary evidence; never force a direction or override risk limits.",
             "training": training, "later_validation": validation, "last_close_ms": episodes[-1]["close_ms"],
             "expires_ms": episodes[-1]["close_ms"]+FRESH,

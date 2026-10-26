@@ -48,3 +48,14 @@ Review before merge: checkpoint atomicity, episode identity, legacy unknown hand
 ## Extension: Research methods and classical-bot experience
 
 PR#12 also adds `experience.py`, `knowledge.py`, dedicated tests and `docs/brain-experience-transfer-review.md`. Source evidence lives in a separately reviewed immutable seed file, never in the Brain's own win-rate/cash/history. Includes source provenance/quality, fixed research/validation boundary, factual cases, source-scoped historical lessons, engineering notes and bundle-selection audit. See the extension document for capacity, mode attestation, missing-data and non-causal limitations. The live source archives have not been collected/imported and no seed has been installed.
+
+
+## Operator mandate extension — user clarification 26 October
+
+The user explicitly requests that Brain apply their trading idea using classical Hawk/Bull experience: adaptive short trades, useful net profit capture, capital rotation, and meaningful margin with Bull as reference. `mandate.py` now supplies a versioned `operator_mandate` in each model input, with source-experience availability and actual execution capabilities. The exact mandate is journaled before the model call. This is a prepared candidate change, not a production Brain release.
+
+The discretionary exit prompt no longer asks to wait for about 25–30% margin ROI or an aged winner before considering profit protection. It asks for useful estimated net profit when continuation weakens, while allowing evidence-based extensions. This **is an authorized qualitative prompt behavior change**, beyond passive learning; it needs review as such. No numeric profit target, holding deadline, risk, margin or leverage limit is raised. The requested Bull margin reference is labeled not applied.
+
+The existing 15m decision/execution cadence, 1h ATR and medio engine classification remain explicitly reported as active capabilities. `readiness=full_scalp_engine_not_implemented` and `fast_exit_supervisor=false` prevent a false claim of 1–5min supervision. Live classical signal inputs remain not connected; historical experience remains not imported until a reviewed real seed is prepared. Full adaptive-scalp data/exit/sizing implementation is still outstanding and requires dedicated tests before deployment.
+
+The new operator policy version is tracked in entry context and learning cohorts; missing old version is unknown rather than retroactively assigned. Old/new operator mandates cannot pool statistical evidence. This change does not claim the new operational objective is already achieved or profitable.
