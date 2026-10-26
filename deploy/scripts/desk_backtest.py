@@ -35,9 +35,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "backend")))
 
 from desk import regime as rg  # noqa: E402
+from desk import seasonal_v1 as sea_v1  # noqa: E402
+from desk import signals as sig_mod  # noqa: E402
 from desk.brain import rules_decisions  # noqa: E402
 from desk.engine import Limits, PaperAccount  # noqa: E402
 from desk.signals import closed_daily, closed_four_hour, read_symbol  # noqa: E402
+
+SEA_V2 = sig_mod.get_seasonal
+
+
+def sea_v1_compat(symbol, now_ms=None, btc_return_3d=None):
+    """La stagionalita' di prima del 26/10 (quella che girava sui bot nel periodo reale 12-26 ottobre)."""
+    return sea_v1.get_seasonal(symbol, now_ms)
+
 
 BASE = "https://api.bitget.com"
 BAR = 900_000
@@ -174,6 +184,7 @@ def synthetic_data(days: int, end_ms: int):
 class Variant:
     def __init__(self, name: str, params):
         self.name, self.params = name, params           # params None = regole di oggi, senza regime
+        self.sea = "v1" if name.endswith("@v1") else "v2"      # "@v1" = stagionalita' vecchia, come sui bot fino al 26/10
         self.acc = PaperAccount(Limits(**HAWK_LIMITS), name)
         self.hist: list = []
         self.last_open: dict = {}
@@ -205,6 +216,8 @@ def make_variants(only=None):
         "completo_senza_flip": P(flip_exit=False),
     }
     v.update(sweeps)
+    for k in ("base", "completo", "solo_filtro", "solo_uscita_inversione"):
+        v[k + "@v1"] = v[k]
     if only:
         v = {k: x for k, x in v.items() if k in only}
     return v
@@ -255,6 +268,7 @@ def replay(data, variants: dict, t_start: int, t_end: int, step: int):
     syms = list(data)
     pos_idx = {s: {int(t): i for i, t in enumerate(data[s]["a15"][:, 0])} for s in syms}
     vs = {name: Variant(name, p) for name, p in variants.items()}
+    seas = sorted({v.sea for v in vs.values()})
     grid = list(range(t_start, t_end, BAR))
     n_steps = 0
     t_wall = time.time()
@@ -270,37 +284,45 @@ def replay(data, variants: dict, t_start: int, t_end: int, step: int):
                 var.acc.on_bar(sym, int(t), float(row[1]), float(row[2]), float(row[3]), float(row[4]), BAR)
         if k % step:
             continue
-        # 2) segnali: una volta sola per passo
-        readings = []
+        # 2) segnali: una volta sola per passo (e per ogni stagionalita' usata dalle varianti)
         prices = {}
+        readings_by = {}
         btc_ret3 = None
         i_btc = pos_idx.get("BTC", {}).get(t)
         if i_btc is not None and i_btc > 288:
             b = data["BTC"]["a15"]
             btc_ret3 = float(b[i_btc, 4] / b[i_btc - 288, 4] - 1.0)
-        for sym in syms:
-            i = pos_idx[sym].get(t)
-            if i is None:
-                continue
-            d = data[sym]
-            win = d["a15"][max(0, i - 999): i + 1]
-            prices[sym] = float(win[-1, 4])
-            n4 = int(np.searchsorted(d["a4"][:, 0] + H4, end, side="right"))
-            fh = closed_four_hour(d["a4"][max(0, n4 - 300): n4], end) if n4 else []
-            nd = int(np.searchsorted(d["ad"][:, 0] + DAY, end, side="right")) if len(d["ad"]) else 0
-            dl = closed_daily(d["ad"][max(0, nd - 340): nd], end) if nd else None
-            try:
-                r = read_symbol(sym, win, end, daily=dl, price=prices[sym], four_hour=fh, btc_return_3d=btc_ret3)
-            except Exception:
-                r = None
-            if r is not None:
-                readings.append(r)
-        if not readings:
+        for sea in seas:
+            sig_mod.get_seasonal = sea_v1_compat if sea == "v1" else SEA_V2
+            readings = []
+            for sym in syms:
+                i = pos_idx[sym].get(t)
+                if i is None:
+                    continue
+                d = data[sym]
+                win = d["a15"][max(0, i - 999): i + 1]
+                prices[sym] = float(win[-1, 4])
+                n4 = int(np.searchsorted(d["a4"][:, 0] + H4, end, side="right"))
+                fh = closed_four_hour(d["a4"][max(0, n4 - 300): n4], end) if n4 else []
+                nd = int(np.searchsorted(d["ad"][:, 0] + DAY, end, side="right")) if len(d["ad"]) else 0
+                dl = closed_daily(d["ad"][max(0, nd - 340): nd], end) if nd else None
+                try:
+                    r = read_symbol(sym, win, end, daily=dl, price=prices[sym], four_hour=fh, btc_return_3d=btc_ret3)
+                except Exception:
+                    r = None
+                if r is not None:
+                    readings.append(r)
+            readings_by[sea] = readings
+        sig_mod.get_seasonal = SEA_V2
+        if not readings_by.get("v2") and not readings_by.get("v1"):
             continue
         n_steps += 1
         day = time.strftime("%Y-%m-%d", time.gmtime(end / 1000))
         # 3) ogni variante decide con i suoi parametri
         for var in vs.values():
+            readings = readings_by[var.sea]
+            if not readings:
+                continue
             acc = var.acc
             acc.roll_day(day, prices)
             regime = None
@@ -420,6 +442,7 @@ def main():
     ap.add_argument("--only", default=None, help="elenco di varianti separate da virgola")
     ap.add_argument("--out", default=None)
     ap.add_argument("--synthetic", action="store_true")
+    ap.add_argument("--from-date", default=None, help="parti da questa data UTC (YYYY-MM-DD): prova rapida su un periodo corto")
     ap.add_argument("--compare-from", default="2026-10-12", help="data (UTC) da cui confrontare col periodo reale dei bot")
     a = ap.parse_args()
 
@@ -435,6 +458,8 @@ def main():
     if "BTC" not in data:
         raise SystemExit("BTC mancante: impossibile calcolare il regime")
     t_start = end_ms - a.days * DAY
+    if a.from_date:
+        t_start = max(t_start, int(time.mktime(time.strptime(a.from_date, "%Y-%m-%d")) * 1000))
     only = set(a.only.split(",")) if a.only else None
     variants = make_variants(only)
     print(f"[PROVA] {len(data)} simboli, {a.days} giorni, {len(variants)} varianti, passo {a.step * 15} min", flush=True)
