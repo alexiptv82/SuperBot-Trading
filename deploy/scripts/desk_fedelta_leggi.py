@@ -6,7 +6,7 @@ import sys
 import time
 
 KEEP = ("sig_side", "sig_score", "sig_long", "sig_short", "atr_pct", "sig_sl_pct", "sig_tp_pct", "rsi1h", "roc24h",
-        "vol_ratio", "ema20_50_1h", "ema50_200_4h", "daily_trend", "price", "conf", "dec_sl_pct", "dec_tp_pct")
+        "vol_ratio", "ema20_50_1h", "ema50_200_4h", "daily_trend", "price", "conf", "dec_sl_pct", "dec_tp_pct", "why", "seasonal")
 
 
 def main():

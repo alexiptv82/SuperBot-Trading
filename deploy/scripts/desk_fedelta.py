@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import os
 import statistics as st
 import sys
@@ -82,9 +83,27 @@ def btc_ret(data, pos_idx, end):
     return float(b[i, 4] / b[i - 288, 4] - 1.0)
 
 
+def norm_label(text: str) -> str:
+    t = re.sub(r"\s*mom1h.*$", "", str(text))
+    t = re.sub(r"x\d+(\.\d+)?", "x#", t)
+    return re.sub(r"\s[-+]?\d+(\.\d+)?%?$", "", t).strip()
+
+
+def comp_report(real, bank, n):
+    """Le voci che compongono il punteggio del lato aperto: quante volte compaiono (bot contro banco) e quanti punti danno."""
+    labels = sorted(set(real) | set(bank), key=lambda k: -abs(len(real.get(k, [])) - len(bank.get(k, []))))
+    print("   voci del punteggio (compare nel bot / nel banco su n trade; punti medi bot / banco):")
+    for k in labels[:14]:
+        a, b = real.get(k, []), bank.get(k, [])
+        ma = sum(a) / len(a) if a else 0.0
+        mb = sum(b) / len(b) if b else 0.0
+        print(f"      {k[:34]:<34} {len(a):>4} / {len(b):<4} su {n}    punti {ma:+5.1f} / {mb:+5.1f}")
+
+
 def signals_report(data, pos_idx, real, sea, mode="full"):
     """A) punteggi e fattori: banco contro bot."""
     diff_side, n = 0, 0
+    comp_real, comp_bank = defaultdict(list), defaultdict(list)
     d_score, d_long, d_short, d_px, d_rsi, d_roc, d_atr, d_sl = [], [], [], [], [], [], [], []
     agree = defaultdict(lambda: [0, 0])
     miss = 0
@@ -102,6 +121,15 @@ def signals_report(data, pos_idx, real, sea, mode="full"):
             continue
         f = t["f"]
         n += 1
+        for src, store in ((f.get("why") or [], comp_real), (getattr(r, "why", None) or [], comp_bank)):
+            for w in src:
+                m = re.match(r"^(.*?)\s*\(([+-]?\d+)\)\s*$", str(w))
+                if m:
+                    store[norm_label(m.group(1))].append(int(m.group(2)))
+                else:
+                    m = re.match(r"^(stagionalit\S*)\s+\S+\s+\+(\d+)\s*$", str(w))
+                    if m:
+                        store["stagionalita'"].append(int(m.group(2)))
         if f.get("sig_side") is not None and int(f["sig_side"]) == int(r.side):
             diff_side += 1
         side = int(t["side"])
@@ -132,6 +160,7 @@ def signals_report(data, pos_idx, real, sea, mode="full"):
     print(f"   confrontati {n} trade veri (non confrontabili: {miss})")
     if not n:
         return
+    comp_report(comp_real, comp_bank, n)
     print(f"   lato del banco = lato del bot:            {100 * diff_side / n:5.1f}%")
     print(f"   punteggio del lato aperto (banco - bot):  mediana {med(d_score):+.1f}   10%/90% {pct(d_score, 10):+.0f}/{pct(d_score, 90):+.0f}   "
           f"|diff|<=3 nel {100 * sum(1 for x in d_score if abs(x) <= 3) / max(1, len(d_score)):.0f}%")
@@ -222,6 +251,33 @@ def main():
         ok4 = bool(len(a4) >= 200 and not np.any(np.diff(a4[:, 0]) != H4) and not np.any(a4[:, 0] % H4))
         print(f"   {sym:<5} buchi " + "  ".join(row) + f"   ultime 300 barre 4h accettate dal bot: {'si' if ok4 else 'NO'}")
     print(f"   totale buchi: 15m={tot['a15']} 4h={tot['a4']} 1d={tot['ad']}")
+    b = data["BTC"]["a15"]
+    gi = np.where(np.diff(b[:, 0]) != BAR)[0]
+    for i in gi[:3]:
+        print(f"   buco 15m BTC: tra {bt.time.strftime('%Y-%m-%d %H:%M', bt.time.gmtime(b[i, 0] / 1000))} e "
+              f"{bt.time.strftime('%Y-%m-%d %H:%M', bt.time.gmtime(b[i + 1, 0] / 1000))} UTC")
+    print("\n=== COERENZA DELLE BARRE 4h CON LE 15m (stesso scaricamento) ===")
+    for sym in ("BTC", "ETH", "SOL", "DOGE"):
+        d = data[sym]
+        a15, a4 = d["a15"], d["a4"]
+        key = (a15[:, 0] // H4).astype(np.int64)
+        ok = tot_n = 0
+        shift_ok = 0
+        for r in a4[-120:]:
+            g = a15[key == int(r[0] // H4)]
+            if len(g) != H4 // BAR:
+                continue
+            tot_n += 1
+            agg = (g[0, 1], g[:, 2].max(), g[:, 3].min(), g[-1, 4])
+            if all(abs(x / y - 1) < 1e-6 for x, y in zip(r[1:5], agg)):
+                ok += 1
+            # ipotesi: l'orario della barra 4h e' quello di CHIUSURA (spostato di 4 ore)
+            g2 = a15[key == int(r[0] // H4) - 1]
+            if len(g2) == H4 // BAR:
+                agg2 = (g2[0, 1], g2[:, 2].max(), g2[:, 3].min(), g2[-1, 4])
+                if all(abs(x / y - 1) < 1e-6 for x, y in zip(r[1:5], agg2)):
+                    shift_ok += 1
+        print(f"   {sym:<5} barre 4h uguali alle 15m aggregate: {ok}/{tot_n}   se spostate di 4 ore: {shift_ok}/{tot_n}")
     real = []
     for line in open(a.real, encoding="utf-8"):
         line = line.strip()
