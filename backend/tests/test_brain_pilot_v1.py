@@ -76,6 +76,13 @@ class FeatureTests(unittest.TestCase):
             if mode=="duplicate":f["4h"][10][0]=f["4h"][9][0]
             with self.assertRaises(ValueError):pb.summarize("ETH",f,NOW)
 
+    def test_native_daily_utc8_anchor_is_valid_but_gaps_still_fail(self):
+        f=frames()
+        for b in f["1d"]:b[0]-=8*3600000
+        self.assertEqual(pb.summarize("BTC",f,NOW)["trend"]["1d"],"up")
+        f["1d"].pop(20)
+        with self.assertRaises(ValueError):pb.summarize("BTC",f,NOW)
+
 
 class ParseTests(unittest.TestCase):
     def setUp(self):self.s={sym:pb.summarize(sym,frames(),NOW) for sym in ("ETH","BTC")}
