@@ -105,3 +105,10 @@ segnalato dall'utente era questo stop del motore che funzionava.
   1 posizione aperta ciascuno (DOT SHORT SCALP, fonte `rules`). Registro di apprendimento non azzerato (contatori in crescita).
 - Osservazione: i bot lavorano col fallback a regole ("Claude non disponibile"); causa da verificare in sola lettura.
 - Precisazione sul tetto Bull: e' un tetto di rischio SL aggregato (160$), non di numero di posizioni.
+
+## Calendario di Claude 14-22 (richiesta dell'utente)
+- Diagnosi: budget giornaliero di Claude (0,70$ a bot) esaurito di notte; dopo, solo regole (desk-claude-finestra #3).
+- Applicato il calendario 14:00-22:00 ora svizzera per 14 giorni (fino all'8/11), ramo `work/claude-finestra-14-22`, merge `e70c474`,
+  workflow calendario run #4 OK, nessun riavvio. Claude ha ripreso a decidere subito su entrambi i bot.
+- Da fare entro l'8/11: rinnovare il calendario, altrimenti Claude resta spento.
+- Da valutare con l'utente: limite di posizioni nella stessa direzione (oggi 3 SHORT correlati su ciascun bot) e finestre spezzate per coprire le 8 ore.

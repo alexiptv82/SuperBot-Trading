@@ -80,6 +80,19 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Opzioni in discussione con l'utente (nessuna applicata): (A) finestre/tetto di Claude (operativo, `desk-schedule`, senza riavvio:
   es. una finestra nelle ore di mercato invece di spendere il budget di notte); (B) alleggerire il peso della stagionalita';
   (C) decisioni diverse tra Hawk e Bull anche in fallback; (D) rilevamento del cambio di mercato (backlog: Market Regime + Episode Memory).
+- **Calendario di Claude APPLICATO (26/10 ~19:17 UTC, scelta dell'utente "va bene cosi")**: una finestra al giorno 14:00-22:00 ora svizzera,
+  uguale per Hawk e Bull, 14 giorni (26/10 - **8/11**). Ramo `work/claude-finestra-14-22` unito in `rule-pool` col merge `e70c474`;
+  workflow `calendario di Claude` run #4 = SUCCESS (file scritto nei dati di entrambi i bot, 14 finestre, i bot lo leggono:
+  `mode: calendar`). Nessun riavvio, nessuna modifica a strategia/soglie/prompt. Verifica (desk-claude-finestra #4): "[FINESTRA] inizia
+  una finestra di Claude: budget azzerato" e prima chiamata a Claude riuscita su entrambi (Hawk 6 decisioni, Bull 5).
+  **DOPO L'8/11 CLAUDE RESTA SPENTO finche' non si aggiunge un nuovo calendario**: rinnovare prima (file `deploy/claude-schedule.json`,
+  si applica da solo al merge in `rule-pool`). Ogni finestra ha il suo budget da 0,70$ a bot (~14 chiamate = ~3,5h a cicli di 15 min):
+  la parte finale delle 8 ore puo' restare alle regole; opzione per coprirla: due finestre consecutive 14-18 e 18-22 (fino a 1,40$/bot/giorno).
+  Correzioni: il "giorno" del budget senza calendario e' UTC (reset 01:00 ora svizzera invernale); lo script desk-claude-finestra mostra
+  l'ora svizzera con +1h di troppo dal cambio d'ora del 25/10 (CH=7200 fisso).
+- Osservazione 19:17 UTC: Hawk e Bull hanno entrambi 3 SHORT scalp aperti dalle regole (DOT, APT, OP; stessa direzione, correlati);
+  Claude li ha lasciati ("tre short correlati gia' aperti: nessun nuovo ingresso"). Il tetto di rischio Bull (160$) non li ferma perche'
+  ognuno vale ~50$ di rischio a stop. Possibile ritocco (decisione dell'utente): limite di posizioni nella stessa direzione.
 - Nota sul tetto Bull (precisazione): il tetto limita il RISCHIO SL totale (160$), non il numero di posizioni. Con 350$ x 15x x
   3% (157$) passa una sola posizione; con le dimensioni attuali del fallback (165$ x 20x x ~1,5% = ~51$) ne passano fino a tre.
 - Da osservare: da domani i candidati rifiutati dal Bull compaiono nel registro come `rifiutata:rischio_aperto_bull` e
