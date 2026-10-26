@@ -1,0 +1,261 @@
+name: Sala segnali - storico giorno per giorno (sola lettura)
+
+# Legge learning_log.jsonl di Hawk e Bull in SOLA LETTURA (nessun bot toccato, nessun dato scritto, nessun riavvio)
+# e stampa nel log: giorno per giorno, durata dei trade, lato contro direzione di BTC, chi decide l'apertura.
+# Importi PAPER aggregati. Parte SOLO quando cambia deploy/desk-storico.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-storico.trigger"
+
+jobs:
+  storico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Analisi dello storico (sola lettura)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          # Impronta ECDSA del server Singapore: se cambia, la connessione viene rifiutata.
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          command_timeout: 120s
+          script: |
+            python3 -I - hawk=/opt/superbot-desk-data/hawk bull=/opt/superbot-desk-data/bull <<'PYEOF'
+            """Storico giorno per giorno di Hawk e Bull (SOLA LETTURA): legge learning_log.jsonl, non scrive nulla.
+            Uso: python3 -I - hawk=<cartella> bull=<cartella>
+            Risponde a: perche' certi giorni vanno bene e altri no? (lato, direzione di BTC, durata dei trade, chi decide)."""
+            import json
+            import os
+            import sys
+            import time
+            from collections import defaultdict
+
+            MIN_N = 20
+
+
+            def read_jsonl(path):
+                out = []
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        for line in fh:
+                            try:
+                                row = json.loads(line)
+                            except ValueError:
+                                continue
+                            if isinstance(row, dict):
+                                out.append(row)
+                except OSError:
+                    pass
+                return out
+
+
+            def num(x, d=0.0):
+                try:
+                    v = float(x)
+                    return v if v == v and abs(v) != float("inf") else d
+                except (TypeError, ValueError):
+                    return d
+
+
+            def exit_class(why):
+                w = str(why or "").lower()
+                for key, name in (("stop", "SL"), ("take profit", "TP"), ("liquid", "LIQ"), ("manual", "man"),
+                                  ("bitget", "bitget"), ("claude", "Claude")):
+                    if key in w:
+                        return name
+                return "altro"
+
+
+            def build(bot, evs):
+                opens = {(e.get("run_no"), e.get("id")): e for e in evs if e.get("ev") == "open"}
+                trades = {}
+                for e in evs:
+                    if e.get("ev") != "close":
+                        continue
+                    k = (e.get("run_no"), e.get("id"))
+                    t = trades.setdefault(k, {"bot": bot, "net": 0.0, "margin": 0.0, "n_partial": 0, "partial_net": 0.0,
+                                              "final_net": None, "done": False})
+                    net = num(e.get("net"))
+                    t["net"] += net
+                    t["margin"] += num(e.get("margin"))
+                    if e.get("partial"):
+                        t["n_partial"] += 1
+                        t["partial_net"] += net
+                    else:
+                        t["final_net"], t["done"] = net, True
+                        t["close_ms"] = e.get("close_ms") or e.get("ts")
+                        t["exit"] = exit_class(e.get("why"))
+                    t.setdefault("side", e.get("side"))
+                    t.setdefault("symbol", e.get("symbol"))
+                    o = opens.get(k)
+                    if o and "open_ms" not in t:
+                        t["open_ms"] = o.get("ts")
+                        t["feat"] = o.get("features") or {}
+                        t["source"] = str(o.get("source") or "?")
+                out = [t for t in trades.values() if t["done"] and t.get("close_ms")]
+                for t in out:
+                    if t.get("open_ms") and t["close_ms"] >= t["open_ms"]:
+                        t["hold_min"] = (t["close_ms"] - t["open_ms"]) / 60000.0
+                    t["roi"] = (t["net"] / t["margin"] * 100.0) if t["margin"] > 0 else None
+                return out, opens
+
+
+            def day(ms):
+                return time.strftime("%m-%d", time.gmtime(ms / 1000.0))
+
+
+            def pct(k, n):
+                return f"{100.0 * k / n:3.0f}%" if n else "  - "
+
+
+            def line(ts):
+                n = len(ts)
+                if not n:
+                    return "n=0"
+                w = sum(1 for t in ts if t["net"] > 0)
+                net = sum(t["net"] for t in ts)
+                flag = " [IND]" if n < MIN_N else ""
+                return f"n={n:<4} vinc={pct(w, n)} netto={net:+8.1f}$ medio={net / n:+6.2f}${flag}"
+
+
+            def bucket(x, edges, labels):
+                for i, e in enumerate(edges):
+                    if x < e:
+                        return labels[i]
+                return labels[len(edges)]
+
+
+            def report(trades_by_bot, opens_by_bot):
+                allt = [t for ts in trades_by_bot.values() for t in ts]
+                if not allt:
+                    print("nessun trade chiuso nello storico")
+                    return
+                d0, d1 = day(min(t["close_ms"] for t in allt)), day(max(t["close_ms"] for t in allt))
+                print(f"STORICO: {len(allt)} trade chiusi, dal {d0} al {d1} (giorni UTC). [IND] = campione piccolo (n<{MIN_N})")
+                print("Netto = somma di tutte le chiusure del trade (parziali comprese). Tutti importi PAPER.\n")
+
+                print("== A) GIORNO PER GIORNO ==")
+                print("giorno  bot   chiusi vinc%  netto$   | LONG n/netto    | SHORT n/netto   | aperti (Claude%) | tenuta min (vinc/perd) | BTC24h medio | uscite TP/SL/Claude")
+                for bot, ts in trades_by_bot.items():
+                    days = defaultdict(list)
+                    for t in ts:
+                        days[day(t["close_ms"])].append(t)
+                    op_day = defaultdict(list)
+                    for e in opens_by_bot[bot].values():
+                        if e.get("ts"):
+                            op_day[day(e["ts"])].append(e)
+                    for d in sorted(days):
+                        g = days[d]
+                        n = len(g)
+                        w = sum(1 for t in g if t["net"] > 0)
+                        lg = [t for t in g if t.get("side") == 1]
+                        sh = [t for t in g if t.get("side") == -1]
+                        ops = op_day.get(d, [])
+                        cl = sum(1 for e in ops if str(e.get("source") or "").lower() not in ("rules", "?", ""))
+                        hw = [t["hold_min"] for t in g if "hold_min" in t and t["net"] > 0]
+                        hl = [t["hold_min"] for t in g if "hold_min" in t and t["net"] <= 0]
+                        btc = [num((t.get("feat") or {}).get("btc_roc24h"), None) for t in g if (t.get("feat") or {}).get("btc_roc24h") is not None]
+                        btc = [b for b in btc if b is not None]
+                        ex = defaultdict(int)
+                        for t in g:
+                            ex[t.get("exit")] += 1
+                        print(f"{d}  {bot:<5} {n:>4} {pct(w, n)} {sum(t['net'] for t in g):+8.1f} | "
+                              f"{len(lg):>3}/{sum(t['net'] for t in lg):+8.1f} | {len(sh):>3}/{sum(t['net'] for t in sh):+8.1f} | "
+                              f"{len(ops):>3} ({pct(cl, len(ops))}) | "
+                              f"{(sum(hw) / len(hw) if hw else 0):6.0f}/{(sum(hl) / len(hl) if hl else 0):6.0f} | "
+                              f"{(100 * sum(btc) / len(btc) if btc else 0):+6.1f}% | {ex.get('TP', 0)}/{ex.get('SL', 0)}/{ex.get('Claude', 0)}")
+                print()
+
+                print("== B) QUANTO TIENE APERTO: durata del trade -> esito ==")
+                edges = [30, 60, 180, 360, 720]
+                labels = ["<30m", "30m-1h", "1-3h", "3-6h", "6-12h", "12h+"]
+                for scope, sel in (("TUTTI", lambda t: True), ("SHORT", lambda t: t.get("side") == -1), ("LONG", lambda t: t.get("side") == 1)):
+                    print(f"  [{scope}]")
+                    gr = defaultdict(list)
+                    for t in allt:
+                        if "hold_min" in t and sel(t):
+                            gr[bucket(t["hold_min"], edges, labels)].append(t)
+                    for lb in labels:
+                        if lb in gr:
+                            print(f"    {lb:<8} {line(gr[lb])}")
+                print()
+
+                print("== C) PROFITTO ALLA CHIUSURA: ROI sul margine (netto/margine) ==")
+                redges = [-30, -10, 0, 10, 25, 40]
+                rlabels = ["<-30%", "-30..-10%", "-10..0%", "0..10%", "10..25%", "25..40%", "40%+"]
+                gr = defaultdict(list)
+                for t in allt:
+                    if t.get("roi") is not None:
+                        gr[bucket(t["roi"], redges, rlabels)].append(t)
+                for lb in rlabels:
+                    if lb in gr:
+                        print(f"    {lb:<10} {line(gr[lb])}")
+                print()
+
+                print("== D) DOPO LA CHIUSURA PARZIALE: il residuo che 'lascio correre' guadagna o restituisce? ==")
+                par = [t for t in allt if t["n_partial"] > 0 and t["final_net"] is not None]
+                solo = [t for t in allt if t["n_partial"] == 0]
+                if par:
+                    pn = sum(t["partial_net"] for t in par)
+                    fn = sum(t["final_net"] for t in par)
+                    neg = sum(1 for t in par if t["final_net"] <= 0)
+                    hold = [t["hold_min"] for t in par if "hold_min" in t]
+                    print(f"    con parziale: n={len(par)}  incassato con i parziali={pn:+.1f}$  residuo (chiusura finale)={fn:+.1f}$  "
+                          f"residuo in perdita o 0 nel {pct(neg, len(par))} dei casi  tenuta media={(sum(hold) / len(hold) if hold else 0):.0f} min")
+                if solo:
+                    hold = [t["hold_min"] for t in solo if "hold_min" in t]
+                    print(f"    senza parziale: {line(solo)}  tenuta media={(sum(hold) / len(hold) if hold else 0):.0f} min")
+                print()
+
+                print("== E) LATO x DIREZIONE DI BTC (BTC nelle 24h prima dell'apertura) ==")
+                bedges = [-0.03, -0.01, 0.01, 0.03]
+                blabels = ["BTC <-3%", "BTC -3..-1%", "BTC -1..+1%", "BTC +1..+3%", "BTC >+3%"]
+                for side, nm in ((-1, "SHORT"), (1, "LONG")):
+                    print(f"  [{nm}]")
+                    gr = defaultdict(list)
+                    for t in allt:
+                        r = (t.get("feat") or {}).get("btc_roc24h")
+                        if t.get("side") == side and r is not None:
+                            gr[bucket(num(r), bedges, blabels)].append(t)
+                    for lb in blabels:
+                        if lb in gr:
+                            hold = [t["hold_min"] for t in gr[lb] if "hold_min" in t]
+                            print(f"    {lb:<12} {line(gr[lb])}  tenuta={(sum(hold) / len(hold) if hold else 0):.0f}m")
+                print()
+
+                print("== F) CHI HA DECISO L'APERTURA (regole o Claude) ==")
+                for src_name, sel in (("regole", lambda t: t.get("source") == "rules"), ("Claude/altro", lambda t: t.get("source") not in ("rules", None, "?"))):
+                    g = [t for t in allt if sel(t)]
+                    if g:
+                        print(f"    {src_name:<13} {line(g)}")
+                print()
+
+                print("== G) I 5 GIORNI MIGLIORI E I 5 PEGGIORI (per bot, netto) ==")
+                for bot, ts in trades_by_bot.items():
+                    days = defaultdict(float)
+                    cnt = defaultdict(int)
+                    for t in ts:
+                        days[day(t["close_ms"])] += t["net"]
+                        cnt[day(t["close_ms"])] += 1
+                    rank = sorted(days.items(), key=lambda kv: kv[1])
+                    if rank:
+                        print(f"    {bot}: peggiori " + ", ".join(f"{d} {v:+.0f}$({cnt[d]})" for d, v in rank[:5]))
+                        print(f"    {bot}: migliori " + ", ".join(f"{d} {v:+.0f}$({cnt[d]})" for d, v in rank[::-1][:5]))
+
+
+            def main():
+                dirs = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
+                tb, ob = {}, {}
+                for bot, d in dirs.items():
+                    evs = read_jsonl(os.path.join(d, "learning_log.jsonl"))
+                    tb[bot], ob[bot] = build(bot, evs)
+                report(tb, ob)
+
+
+            main()
+            PYEOF
