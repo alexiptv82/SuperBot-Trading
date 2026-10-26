@@ -1,17 +1,18 @@
-name: Claude Write - operazioni Git autonome di Claude
+name: AI Write - operazioni Git autonome di Claude e ChatGPT
 
 on:
   push:
     branches: [rule-pool]
     paths:
       - "claude/claude-write.trigger"
+      - "chatgpt/chatgpt-write.trigger"
 
 concurrency:
-  group: claude-write-ops
+  group: ai-write-ops
   cancel-in-progress: false
 
 jobs:
-  claude-write:
+  ai-write:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout rule-pool
@@ -20,13 +21,34 @@ jobs:
           token: ${{ secrets.CLAUDE_WRITE_TOKEN }}
           fetch-depth: 0
 
+      - name: Rileva AI e file trigger
+        id: detect
+        run: |
+          set -e
+          CHANGED=$(git diff-tree --no-commit-id -r --name-only HEAD)
+          echo "File modificati nel commit:"
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -qF "claude/claude-write.trigger"; then
+            echo "trigger_file=claude/claude-write.trigger" >> "$GITHUB_OUTPUT"
+            echo "ai_author=Claude" >> "$GITHUB_OUTPUT"
+            echo "ai_email=noreply@anthropic.com" >> "$GITHUB_OUTPUT"
+            echo "ai_lower=claude" >> "$GITHUB_OUTPUT"
+          elif echo "$CHANGED" | grep -qF "chatgpt/chatgpt-write.trigger"; then
+            echo "trigger_file=chatgpt/chatgpt-write.trigger" >> "$GITHUB_OUTPUT"
+            echo "ai_author=ChatGPT" >> "$GITHUB_OUTPUT"
+            echo "ai_email=noreply@openai.com" >> "$GITHUB_OUTPUT"
+            echo "ai_lower=chatgpt" >> "$GITHUB_OUTPUT"
+          else
+            echo "ERRORE: nessun file trigger riconosciuto nei file modificati"; exit 1
+          fi
+
       - name: Leggi trigger
         id: trigger
         run: |
           set -e
-          TRIGGER_FILE="claude/claude-write.trigger"
+          TRIGGER_FILE="${{ steps.detect.outputs.trigger_file }}"
           if [ ! -f "$TRIGGER_FILE" ]; then
-            echo "ERRORE: file trigger non trovato"; exit 1
+            echo "ERRORE: file trigger non trovato: $TRIGGER_FILE"; exit 1
           fi
           OP="$(grep -E '^op=' "$TRIGGER_FILE" | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
           SRC="$(grep -E '^src=' "$TRIGGER_FILE" | head -n1 | cut -d= -f2 | tr -d '[:space:]')"
@@ -52,8 +74,8 @@ jobs:
 
       - name: Configura git
         run: |
-          git config user.name "Claude"
-          git config user.email "noreply@anthropic.com"
+          git config user.name "${{ steps.detect.outputs.ai_author }}"
+          git config user.email "${{ steps.detect.outputs.ai_email }}"
 
       - name: Merge branch work/* in rule-pool
         if: steps.trigger.outputs.op == 'merge'
@@ -62,6 +84,7 @@ jobs:
           DST: ${{ steps.trigger.outputs.dst }}
           MSG: ${{ steps.trigger.outputs.msg }}
           SKIP_CI: ${{ steps.trigger.outputs.skip_ci }}
+          AI_AUTHOR: ${{ steps.detect.outputs.ai_author }}
         run: |
           set -e
           if ! echo "$SRC" | grep -qE '^work/|^fix-'; then
@@ -75,13 +98,14 @@ jobs:
           SHA_DST_BEFORE=$(git rev-parse "origin/$DST")
           git checkout "$DST"
           git reset --hard "origin/$DST"
-          COMMIT_MSG="${MSG:-merge: $SRC in $DST}"
+          COMMIT_MSG="${MSG:-merge: $SRC in $DST ($AI_AUTHOR)}"
           if [ "${SKIP_CI:-yes}" = "yes" ]; then
             COMMIT_MSG="$COMMIT_MSG [skip ci]"
           fi
           git merge --no-ff "origin/$SRC" -m "$COMMIT_MSG"
           SHA_DST_AFTER=$(git rev-parse HEAD)
-          echo "=== MERGE OK === SHA dopo: $SHA_DST_AFTER"
+          echo "=== MERGE OK ==="
+          echo "src=$SHA_SRC dst_prima=$SHA_DST_BEFORE dst_dopo=$SHA_DST_AFTER"
           git push origin "$DST"
 
       - name: Push file nel branch diario
@@ -90,6 +114,7 @@ jobs:
           SRC: ${{ steps.trigger.outputs.src }}
           DST: ${{ steps.trigger.outputs.dst }}
           MSG: ${{ steps.trigger.outputs.msg }}
+          AI_AUTHOR: ${{ steps.detect.outputs.ai_author }}
         run: |
           set -e
           if [ "$DST" != "diario" ]; then
@@ -107,7 +132,7 @@ jobs:
           if git diff --cached --quiet && git diff --quiet; then
             echo "Nessuna modifica"; exit 0
           fi
-          COMMIT_MSG="${MSG:-diario: aggiornamento Claude $(date +%Y-%m-%d)} [skip ci]"
+          COMMIT_MSG="${MSG:-diario: aggiornamento $AI_AUTHOR $(date +%Y-%m-%d)} [skip ci]"
           git add -A && git commit -m "$COMMIT_MSG"
           git push origin "$DST"
           echo "=== PUSH DIARIO OK ==="
@@ -117,6 +142,8 @@ jobs:
         env:
           DST: ${{ steps.trigger.outputs.dst }}
           MSG: ${{ steps.trigger.outputs.msg }}
+          AI_LOWER: ${{ steps.detect.outputs.ai_lower }}
+          AI_AUTHOR: ${{ steps.detect.outputs.ai_author }}
         run: |
           set -e
           if [ "$DST" != "diario" ]; then
@@ -127,14 +154,14 @@ jobs:
           git reset --hard "origin/diario"
           SHA_BEFORE=$(git rev-parse HEAD)
           git checkout "origin/rule-pool" -- STATO.md 2>/dev/null || true
-          VOCE="$(git ls-tree -r --name-only origin/rule-pool | grep '^diario/.*_claude\.md$' | sort | tail -n1)"
+          VOCE="$(git ls-tree -r --name-only origin/rule-pool | grep "^diario/.*_${AI_LOWER}\.md$" | sort | tail -n1)"
           if [ -n "$VOCE" ]; then
             git checkout "origin/rule-pool" -- "$VOCE" 2>/dev/null || true
           fi
           if git diff --cached --quiet && git diff --quiet; then
             echo "Nessuna modifica"; exit 0
           fi
-          COMMIT_MSG="${MSG:-diario: Claude $(date +%Y-%m-%d)} [skip ci]"
+          COMMIT_MSG="${MSG:-diario: $AI_AUTHOR $(date +%Y-%m-%d)} [skip ci]"
           git add -A && git commit -m "$COMMIT_MSG"
           git push origin diario
           echo "=== DIARIO AGGIORNATO ==="
