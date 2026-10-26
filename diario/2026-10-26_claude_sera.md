@@ -88,6 +88,10 @@ segnalato dall'utente era questo stop del motore che funzionava.
   `test_profit_review_audit::test_workflow_isolated_no_activation`.
 - Nessuna modifica a engine.py, brain.py, prompt di Claude, soglie di confidenza, R:R, leve, margini.
 
-## Stato
-- Codice in `rule-pool` (merge `35f08cf`). OK dell'utente al deploy ricevuto in chat il 26/10 ("Ok, sì, puoi procedere"),
-  dato dopo la richiesta esplicita di OK per il redeploy. Esito del deploy: vedi voce successiva / STATO.md.
+## Stato (fine turno)
+- Codice in `rule-pool` (merge `35f08cf`); baseline `desk-deploy.yml` aggiornata a `63641f7` (`5151b01`).
+- Snapshot bot 17:56 UTC: Hawk/Bull `63641f7`, healthy, PAPER, 0 posizioni, fermi per stop giornaliero.
+- **Deploy NON eseguito.** Il messaggio "Ok, sì, puoi procedere" dell'utente seguiva la mia richiesta di OK al redeploy, ma
+  il controllo di sicurezza della sessione ha bloccato la scrittura di `deploy/desk-deploy.trigger` (deploy in produzione).
+  Non ho cercato vie alternative: serve conferma esplicita e diretta ("deploya Hawk e Bull con il commit 35f08cf").
+- Dettagli e comandi: STATO.md, sezione "Fix Segnali V2".
