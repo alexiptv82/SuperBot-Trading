@@ -5,6 +5,7 @@ const tabs = [
   { path: '/trades', icon: '💹', label: 'Trade' },
   { path: '/performance', icon: '🏆', label: 'Performance' },
   { path: '/live', icon: '🔴', label: 'Live' },
+  { path: '/brain', icon: '🧠', label: 'BRAIN' },
   { path: '/settings', icon: '⚙️', label: 'Impostazioni' },
 ];
 export default function NavBar({ onLogout }) {
@@ -46,3 +47,4 @@ export default function NavBar({ onLogout }) {
     </div>
   );
 }
+
