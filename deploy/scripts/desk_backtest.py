@@ -20,6 +20,7 @@ Uso:  python3 deploy/scripts/desk_backtest.py --days 90 [--cache DIR] [--step 1]
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import math
 import os
@@ -48,6 +49,10 @@ def sea_v1_compat(symbol, now_ms=None, btc_return_3d=None):
     """La stagionalita' di prima del 26/10 (quella che girava sui bot nel periodo reale 12-26 ottobre)."""
     return sea_v1.get_seasonal(symbol, now_ms)
 
+
+# Nei bot reali il trend giornaliero (barre 1d) era ASSENTE fino al 22/10 e presente dal 24/10 (lo dice il registro dei
+# bot: 0% di aperture con trend 1d il 20-22/10, 80% il 24/10, 100% il 25-26/10). "@mix" riproduce questa storia.
+DAILY_FROM_MS = calendar.timegm((2026, 10, 23, 12, 0, 0)) * 1000
 
 BASE = "https://api.bitget.com"
 BAR = 900_000
@@ -184,7 +189,11 @@ def synthetic_data(days: int, end_ms: int):
 class Variant:
     def __init__(self, name: str, params):
         self.name, self.params = name, params           # params None = regole di oggi, senza regime
-        self.sea = "v1" if name.endswith("@v1") else "v2"      # "@v1" = stagionalita' vecchia, come sui bot fino al 26/10
+        tok = name.split("@")[1:]
+        self.sea = "v1" if "v1" in tok else "v2"                 # "@v1" = stagionalita' vecchia, come sui bot fino al 26/10
+        self.mode = ("nd4" if "nd4" in tok else "nd" if "nd" in tok else "mix" if "mix" in tok else "full")
+        # "@nd" = senza barre 1d; "@nd4" = senza 1d e 4h; "@mix" = senza 1d fino al 23/10 mezzogiorno UTC, poi con 1d
+        self.key = (self.sea, self.mode)
         self.acc = PaperAccount(Limits(**HAWK_LIMITS), name)
         self.hist: list = []
         self.last_open: dict = {}
@@ -216,10 +225,14 @@ def make_variants(only=None):
         "completo_senza_flip": P(flip_exit=False),
     }
     v.update(sweeps)
-    for k in ("base", "completo", "solo_filtro", "solo_uscita_inversione"):
-        v[k + "@v1"] = v[k]
     if only:
-        v = {k: x for k, x in v.items() if k in only}
+        # nome@suffissi: stessi parametri del nome base, con altri dati (@v1 stagionalita' vecchia, @nd senza 1d, @nd4 senza 1d e 4h)
+        out = {}
+        for name in only:
+            base = name.split("@")[0]
+            if base in v:
+                out[name] = v[base]
+        return out
     return v
 
 
@@ -268,7 +281,7 @@ def replay(data, variants: dict, t_start: int, t_end: int, step: int):
     syms = list(data)
     pos_idx = {s: {int(t): i for i, t in enumerate(data[s]["a15"][:, 0])} for s in syms}
     vs = {name: Variant(name, p) for name, p in variants.items()}
-    seas = sorted({v.sea for v in vs.values()})
+    keys = sorted({v.key for v in vs.values()})
     grid = list(range(t_start, t_end, BAR))
     n_steps = 0
     t_wall = time.time()
@@ -292,7 +305,8 @@ def replay(data, variants: dict, t_start: int, t_end: int, step: int):
         if i_btc is not None and i_btc > 288:
             b = data["BTC"]["a15"]
             btc_ret3 = float(b[i_btc, 4] / b[i_btc - 288, 4] - 1.0)
-        for sea in seas:
+        for key in keys:
+            sea, mode = key
             sig_mod.get_seasonal = sea_v1_compat if sea == "v1" else SEA_V2
             readings = []
             for sym in syms:
@@ -306,21 +320,25 @@ def replay(data, variants: dict, t_start: int, t_end: int, step: int):
                 fh = closed_four_hour(d["a4"][max(0, n4 - 300): n4], end) if n4 else []
                 nd = int(np.searchsorted(d["ad"][:, 0] + DAY, end, side="right")) if len(d["ad"]) else 0
                 dl = closed_daily(d["ad"][max(0, nd - 340): nd], end) if nd else None
+                if mode in ("nd", "nd4") or (mode == "mix" and end < DAILY_FROM_MS):
+                    dl = None
+                if mode == "nd4":
+                    fh = None
                 try:
                     r = read_symbol(sym, win, end, daily=dl, price=prices[sym], four_hour=fh, btc_return_3d=btc_ret3)
                 except Exception:
                     r = None
                 if r is not None:
                     readings.append(r)
-            readings_by[sea] = readings
+            readings_by[key] = readings
         sig_mod.get_seasonal = SEA_V2
-        if not readings_by.get("v2") and not readings_by.get("v1"):
+        if not any(readings_by.values()):
             continue
         n_steps += 1
         day = time.strftime("%Y-%m-%d", time.gmtime(end / 1000))
         # 3) ogni variante decide con i suoi parametri
         for var in vs.values():
-            readings = readings_by[var.sea]
+            readings = readings_by[var.key]
             if not readings:
                 continue
             acc = var.acc
