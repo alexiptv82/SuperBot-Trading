@@ -92,11 +92,14 @@ jobs:
                         t["exit"] = exit_class(e.get("why"))
                     t.setdefault("side", e.get("side"))
                     t.setdefault("symbol", e.get("symbol"))
+                    if not e.get("partial"):
+                        t["mfe_r"] = e.get("mfe_r")
                     o = opens.get(k)
                     if o and "open_ms" not in t:
                         t["open_ms"] = o.get("ts")
                         t["feat"] = o.get("features") or {}
                         t["source"] = str(o.get("source") or "?")
+                        t["risk_plan"] = num(o.get("risk_plan_usd"))
                 out = [t for t in trades.values() if t["done"] and t.get("close_ms")]
                 for t in out:
                     if t.get("open_ms") and t["close_ms"] >= t["open_ms"]:
@@ -130,7 +133,7 @@ jobs:
                 return labels[len(edges)]
 
 
-            def report(trades_by_bot, opens_by_bot):
+            def report(trades_by_bot, opens_by_bot, cands_by_bot):
                 allt = [t for ts in trades_by_bot.values() for t in ts]
                 if not allt:
                     print("nessun trade chiuso nello storico")
@@ -235,6 +238,49 @@ jobs:
                         print(f"    {src_name:<13} {line(g)}")
                 print()
 
+                print("== H) SE CHIUDESSI SUBITO AL X% DI ROI? (stima OTTIMISTICA: usa il picco di profitto raggiunto da ogni trade) ==")
+                print("   picco ROI% = MFE(R) x 1R($) / margine. Se il picco >= X il trade si considera chiuso a X% (meno 3% di costi); altrimenti resta com'e'.")
+                sim = [t for t in allt if t.get("mfe_r") is not None and t.get("risk_plan", 0) > 0 and t["margin"] > 0]
+                for t in sim:
+                    t["peak"] = num(t["mfe_r"]) * t["risk_plan"] / t["margin"] * 100.0
+                if sim:
+                    real = sum(t["net"] for t in sim)
+                    print(f"    trade con dati di picco: {len(sim)} su {len(allt)}   netto reale={real:+.1f}$")
+                    for x in (15, 20, 25, 30, 35, 40, 50, 60, 80):
+                        hit = [t for t in sim if t["peak"] >= x]
+                        new_net = sum((x / 100.0 * t["margin"] * 0.97) if t["peak"] >= x else t["net"] for t in sim)
+                        saved = sum(1 for t in hit if t["net"] <= 0)
+                        gain_lost = sum(max(0.0, t["net"] - x / 100.0 * t["margin"] * 0.97) for t in hit if t["net"] > 0)
+                        print(f"    X={x:>2}%: toccano il picco {len(hit):>3}  netto simulato={new_net:+9.1f}$ (diff {new_net - real:+8.1f}$)  "
+                              f"perdenti trasformati in vincenti={saved:>3}  profitto oltre X rinunciato={gain_lost:7.1f}$")
+                    for bot in trades_by_bot:
+                        sb = [t for t in sim if t["bot"] == bot]
+                        if sb:
+                            r0 = sum(t["net"] for t in sb)
+                            r35 = sum((0.35 * t["margin"] * 0.97) if t["peak"] >= 35 else t["net"] for t in sb)
+                            r40 = sum((0.40 * t["margin"] * 0.97) if t["peak"] >= 40 else t["net"] for t in sb)
+                            print(f"    {bot}: reale={r0:+.1f}$  chiudendo a 35%={r35:+.1f}$  a 40%={r40:+.1f}$  (n={len(sb)})")
+                else:
+                    print("    dati di picco (mfe_r / risk_plan_usd) non disponibili")
+                print()
+
+                print("== I) PROPOSTE DI APERTURA: chi le fa e che fine fanno ==")
+                for bot, evs in cands_by_bot.items():
+                    cnt = defaultdict(int)
+                    for e in evs:
+                        src = "regole" if str(e.get("source")) == "rules" else ("Claude" if str(e.get("source")) == "claude" else str(e.get("source")))
+                        st = str(e.get("status") or "?")
+                        st = st[:46]
+                        cnt[(src, st)] += 1
+                    tot_open = sum(1 for e in opens_by_bot[bot].values())
+                    srcs = defaultdict(int)
+                    for e in opens_by_bot[bot].values():
+                        srcs[str(e.get("source"))] += 1
+                    print(f"  [{bot}] aperture eseguite per fonte: {dict(srcs)}")
+                    for (src, st), n in sorted(cnt.items(), key=lambda kv: -kv[1])[:9]:
+                        print(f"      candidati {src:<8} {st:<46} {n}")
+                print()
+
                 print("== G) I 5 GIORNI MIGLIORI E I 5 PEGGIORI (per bot, netto) ==")
                 for bot, ts in trades_by_bot.items():
                     days = defaultdict(float)
@@ -250,11 +296,12 @@ jobs:
 
             def main():
                 dirs = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
-                tb, ob = {}, {}
+                tb, ob, cb = {}, {}, {}
                 for bot, d in dirs.items():
                     evs = read_jsonl(os.path.join(d, "learning_log.jsonl"))
                     tb[bot], ob[bot] = build(bot, evs)
-                report(tb, ob)
+                    cb[bot] = [e for e in evs if e.get("ev") == "candidate"]
+                report(tb, ob, cb)
 
 
             main()
