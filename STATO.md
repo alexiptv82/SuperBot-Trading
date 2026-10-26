@@ -86,5 +86,5 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## IN_CORSO — Brain Learning V1 (ChatGPT Work, 26/10/2026)
 - Implementazione pronta per review sul branch work/brain-learning-v1, base f76c5b108300b8b2efe37e2dfb99811ba61499cc. PR draft#12, SHA e871ccff819e7d5afb54e5c4a498a58e9a1e2c00.
 - Memoria episodica persistente, aggregazione parziali, lezioni con supporto storico/validazione cronologica, recupero nel prompt e audit delle lezioni inviate. Nessun retraining o modifica automatica dei limiti.
-- Test locali104PASS+1Docker skip,26regressioni dashboard PASS; primo CI40361218746 SUCCESS; CI finale da verificare.
+- Test locali104PASS+1Docker skip,26regressioni dashboard PASS; CI finale40361447734 SUCCESS (Python3.10/3.11+Docker+probe migrazione5posizioni).
 - Prossimo: Claude review docs/brain-learning-v1-review.md; componente in review, un autore alla volta. Nessun merge/deploy autorizzato. Runtime invariato rispetto allo stato documentato, non riverificato sulVPS in questa sessione.
