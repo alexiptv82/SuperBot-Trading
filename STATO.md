@@ -96,9 +96,14 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Diario risultato `be84dda9dc09b6f7638be0fcda7390dba3f4f59b`.
 - Prossimo: osservazione PAPER, verificare primi fill al ciclo successivo e motivazioni/performance. Nessuna evidenza ancora di miglioramento P&L.
 
-## Brain cinque upgrade — PRONTO PER REVIEW CLAUDE, NON DEPLOYATO
+## Brain cinque upgrade — MERGE CLAUDE COMPLETATO, UPGRADE NON VERIFICATO
 - Utente approva esplicitamente daily stop20% UTC persistente (solo Brain), debate, invalidazione strutturata, ATR e contesto funding/OI/F&G.
-- Branch work/brain-pilot-v1 da rule-pool33427f596edcbf80a7f73e94fdeffb39fac81ddd, commit `1f2edeb6182029adc96ba7218ad145a7503472a3`; PR draft#9 https://github.com/alexiptv82/SuperBot-Trading/pull/9.
+- Branch work/brain-pilot-v1 da rule-pool33427f596edcbf80a7f73e94fdeffb39fac81ddd, commit `1f2edeb6182029adc96ba7218ad145a7503472a3`; PR#9 integrata da Claude: merge4d3241b3de2db69b726a76c6c3af843e4ae2df0d. https://github.com/alexiptv82/SuperBot-Trading/pull/9.
 - 59/59 test locali e Python3.10/3.11 PASS; Docker build+smoke senza rete/key PASS. Actions40334975500 SUCCESS.
 - Tesi bull/bear+verdetto e invalidazione obbligatori sulle esposizioni; ATRfloor.8 con rischio invariato; dati pubblici opzionali timestamped; latch20% migra limiti salvati senza reset e preserva gestione protettiva.
 - Handoff: docs/brain-pilot-upgrades-v1-review.md. Prossimo Claude review; nessun merge/deploy. Runtime2c977c46 invariato: daily20% NON ancora attivo su VPS.
+
+### Checkpoint verifica upgrade Claude
+- Actions40337116365 FAIL: wrapper upgrade usa ancora script flat-only. Ultimo report40337116177 alle14:10UTC: healthy/paper, runtime2c977c46,5posizioni/0pending; nessun upgrade al20% verificato.
+- Retry3 7c859391 non ha generato nuova run: [skip ci] ancora presente nel corpo del messaggio. Il flag deve mancare dall'intero commit.
+- Pausa operatore NON ferma stop/TP/on_bar, ma sospende nuove esposizioni e chiamateAI. Evitare retry ciechi; serve updater per conto con posizioni o drenaggio controllato. Questa verifica è stata solo in lettura sul VPS.
