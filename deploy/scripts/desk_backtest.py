@@ -49,10 +49,12 @@ TIER_AB = {"BTC", "ETH", "XAU", "XAG"}
 SCALP_COOLDOWN_MS = 600_000
 MEDIO_COOLDOWN_MS = 3_600_000
 ENTRY_SCORE_BASE = 60
-# kill_equity spento: in produzione l'utente azzera il portafoglio quando scende; nel banco, invece, il motore si
-# bloccherebbe per sempre sotto 450$ e il resto del periodo non verrebbe mai provato (errore trovato alla prima prova).
-HAWK_LIMITS = dict(start_equity=1000.0, max_margin_trade=100.0, max_margin_total=1000.0, max_open=10,
-                   kill_equity=-1e9, daily_stop=0.10)
+# Capitale FISSO: il conto parte da 100000$ cosi' non si esaurisce mai (alla seconda prova il conto da 1000$ era finito in
+# quattro settimane e le altre nove non venivano provate). Il margine per operazione (100$), il margine totale (1000$) e
+# le posizioni massime (10) restano quelli di Hawk. Lo stop giornaliero e' 0.1% di 100000$ = 100$ al giorno, come il 10%
+# di un conto da 1000$. kill_equity spento: in produzione l'utente azzera il portafoglio quando scende.
+HAWK_LIMITS = dict(start_equity=100000.0, max_margin_trade=100.0, max_margin_total=1000.0, max_open=10,
+                   kill_equity=-1e9, daily_stop=0.001)
 HAWK_MIN_MARGIN, HAWK_MIN_LEV, HAWK_FORCED_MARGIN, HAWK_FORCED_LEV = 50.0, 10, 60.0, 15
 
 
@@ -188,7 +190,8 @@ def make_variants(only=None):
          "solo_protezione": P(gate=False, flip_exit=False),
          "solo_filtro": P(ratchet=False, flip_exit=False),
          "filtro+protezione": P(flip_exit=False),
-         "completo": P()}
+         "completo": P(),
+         "solo_uscita_inversione": P(gate=False, ratchet=False)}
     sweeps = {
         "completo_soglia0.15": P(state_thr=0.15), "completo_soglia0.35": P(state_thr=0.35),
         "completo_inv0.25": P(turn_delta=0.25), "completo_inv0.50": P(turn_delta=0.50),
