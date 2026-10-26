@@ -96,6 +96,9 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Diario risultato `be84dda9dc09b6f7638be0fcda7390dba3f4f59b`.
 - Prossimo: osservazione PAPER, verificare primi fill al ciclo successivo e motivazioni/performance. Nessuna evidenza ancora di miglioramento P&L.
 
-## IN_CORSO — Brain cinque upgrade approvati
-- ChatGPT Work, work/brain-pilot-v1 da rule-pool 33427f596edcbf80a7f73e94fdeffb39fac81ddd. Autorizzati debate, invalidazione strutturata, ATR1.5/.8, contesto funding/OI/F&G e DAILY STOP20% persistente UTC (decisione esplicita utente).
-- Solo sviluppo/test/review; nessun deploy o modifica runtime. Nessun reset capitale/storico.
+## Brain cinque upgrade — PRONTO PER REVIEW CLAUDE, NON DEPLOYATO
+- Utente approva esplicitamente daily stop20% UTC persistente (solo Brain), debate, invalidazione strutturata, ATR e contesto funding/OI/F&G.
+- Branch work/brain-pilot-v1 da rule-pool33427f596edcbf80a7f73e94fdeffb39fac81ddd, commit `1f2edeb6182029adc96ba7218ad145a7503472a3`; PR draft#9 https://github.com/alexiptv82/SuperBot-Trading/pull/9.
+- 59/59 test locali e Python3.10/3.11 PASS; Docker build+smoke senza rete/key PASS. Actions40334975500 SUCCESS.
+- Tesi bull/bear+verdetto e invalidazione obbligatori sulle esposizioni; ATRfloor.8 con rischio invariato; dati pubblici opzionali timestamped; latch20% migra limiti salvati senza reset e preserva gestione protettiva.
+- Handoff: docs/brain-pilot-upgrades-v1-review.md. Prossimo Claude review; nessun merge/deploy. Runtime2c977c46 invariato: daily20% NON ancora attivo su VPS.
