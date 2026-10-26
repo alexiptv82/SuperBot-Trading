@@ -134,3 +134,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - knowledge.py: note documentate separate da esiti; catalogo iniziale3note (contratto bull/bear, Profit Guardian fonte SHADOW ONLY, limiti ricerca microstruttura). Nessuna efficacia presunta o segnale ricostruito.
 - Test locali135PASS+1Docker skip,26regressioni dashboard PASS; CI40380945666 SUCCESS sul commit finale (Python3.10/3.11, build/smoke Docker e probe migrazione5posizioni). Nessuno storico reale acquisito/importato, seed installato o interventoVPS. Nessun merge/deploy/riavvio/trigger operativo.
 - Review: docs/brain-experience-transfer-review.md. Dopo review: acquisizione readonly di copie PAPER con provenienza, preparazione/controllo seed e deploy Brain separatamente autorizzato; i dati mancanti non vanno inventati.
+
+## IN_CORSO — Dettagli posizioni BRAIN PWA (ChatGPT Work)
+- Mandato utente: mostrare margine e leva per capire il dimensionamento. Riservati brain_view.py, BrainDashboard.js e relativi test su work/brain-position-details da main a9df40e87c1cdb4b3b3fbb1e78813397223e0b6f.
+- Sola osservazione: nessuna modifica rischio/size/leva dei bot, nessun deploy o trigger. Verifica sizing dal codice Brain installato documentato1f2edeb6; valori live non ancora riletti.
