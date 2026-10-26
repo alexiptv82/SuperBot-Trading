@@ -6,7 +6,15 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Fix B AI Profit Guardian V1 attivo: `profit_guardian.py` + `portfolio_alert.py` in produzione.
 - Capital Management V1 integrato ma con DESK_CAPITAL_V1=off, non abilitare senza OK dell'utente.
 - Vincolo immutabile: nessun reset di trade_history, learning_log, lessons.md, errors.md.
-- rule-pool HEAD: `aca2305c1ac6138fced97d4e83f96e91b9025ac6` (brain portfolio dashboard mergiata, PR#11, 26/10/2026 15:28 UTC).
+- rule-pool HEAD: `f76c5b108300b8b2efe37e2dfb99811ba61499cc` (trigger deploy Brain, 26/10/2026 17:xx UTC).
+
+## App Dashboard — DEPLOY TAB BRAIN (26/10/2026, SHA a9df40e8)
+- **SHA deployato**: `a9df40e87c1cdb4b3b3fbb1e78813397223e0b6f` (main, 26/10/2026)
+- Deploy confermato dall'utente: tab 🧠 BRAIN visibile e funzionante nell'app.
+- Commit su main: 9559ee5c (brain_view.py + BrainDashboard.js) + a9df40e8 (test, CI, server, frontend).
+- Mount aggiunto in run_app(): `-v /opt/superbot-desk-data/brain:/opt/superbot-desk-data/brain:ro` + `-e BRAIN_DATA_DIR=...`
+- Tab BRAIN in PAPER_TABS (sola lettura, 6 card, polling 30s). LIVE_TABS non modificato.
+- Endpoint: GET `/api/brain/status` (autenticato, no-cache, SQLite :ro, deadline 2s).
 
 ## AI IN OMBRA (DeepSeek) — ATTIVO DAL 21/10/2026
 - Container `superbot-ai` su VPS Singapore, **Up 5 days (healthy)**, riavvii: 0.
@@ -14,17 +22,10 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Modalità: **ombra pura** (`applied: False`, nessun ordine reale né virtuale verso exchange).
 - Conto virtuale separato (`PaperAccount`): equity di partenza 1000 $.
 - Report 26/10 ore 12:01 UTC (workflow run #5, SUCCESS):
-  - **Cicli completati:** 504 (ogni 15 min, ~5 gg)
-  - **Chiamate DeepSeek:** 504 ok / 0 fallite
-  - **Spesa modello:** 0.0808 $/0.50 oggi | 0.5931 $/12.00 mese
+  - **Cicli completati:** 504 | **Chiamate DeepSeek:** 504 ok / 0 fallite
   - **Equity virtuale:** 724.78 $ (partenza 1000 $, -275.22 $ = -27.5%)
   - **Trade chiusi:** 97 (+ 7 parziali) | vincenti: 30/97 (31%) | netto: -274.97 $
-  - **Long:** 18 vinte / 65 totali (-203.5 $) | **Short:** 12 vinte / 32 totali (-86.3 $)
-  - **Uscite:** stop loss 64, AI chiusura 26, take profit 7
-  - **Proposte scartate:** rr_basso 112, stop_non_stringe 49, livelli_sbagliati 2, già_aperta 1, stop_mancante 1
-  - **Posizioni aperte:** 1
-  - **Lettura mercato 11:45:** "Alts bouncing on 15m but 1d/4h still bearish; most stalling at resistance. XAU grinding near 24h high, hold long. Only RUNE shows real volume breakout."
-- Nota analisi: win rate 31%, bias LONG forte (65 long vs 32 short), R/R filtering attivo (112 rifiutati per R/R basso). Da monitorare se il modello impara a ridurre stop troppo larghi.
+  - Win rate 31%, bias LONG forte (65 long vs 32 short). Da monitorare.
 
 ## Fix P1 e P2 — DEPLOYATI (25/10/2026, inclusi in 63641f70)
 - **P1 sbias LONG**: `backend/desk/signals.py` — rimbalzo RSI 1h.
@@ -36,77 +37,43 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 
 ## AI Write unificato — 26/10/2026
 - `claude-write.yml` rinominato "AI Write": supporta `claude/claude-write.trigger` e `chatgpt/chatgpt-write.trigger`.
-- Autore git automatico: Claude = noreply@anthropic.com, ChatGPT = noreply@openai.com.
-- `chatgpt/README.md` creato: guida onboarding ChatGPT.
-- MANUALE-OPERATIVO.md aggiornato con sezione 3 (AI Write) e sezione 8 (passaggio di turno).
 
 ## Director V1 — COMPLETATO (26/10/2026)
-- Branch unificato: **`work/director-v1-unified`**, commit `d2b351e0`.
-- Struttura completa:
-  - `backend/director/contracts/` — v1.py + v1_1.py + outcomes.py + outcomes_v1_1.py + CONVENTIONS_V1.md + CONVENTIONS_V1_1.md + fixtures/ (3 JSON)
-  - `backend/director/ai_shadow/` — 13 file (DeepSeek pilot, decisions.py con size_position)
-  - `backend/director/arbitro.py` — bridge DirectorAdvice → ordini eseguibili
-  - `backend/tests/test_director_arbitro.py` — 10 unit test
-  - `backend/tests/test_director_contracts_v1_1.py` — 8 unit test
-- Tutti gli import risolvono localmente (no dipendenze cross-branch).
-- Regole C1-C5 da CONVENTIONS_V1_1.md integrate; Rule C2: l'Arbitro decide la size, non l'AI.
-- DESK_MODE=paper immutabile, DESK_CAPITAL_V1=off.
-
-## Storico deploy
-| Data | Versione | Contenuto |
-|---|---|---|
-| 25/10/2026 | 886b30f | Fix P1 (sbias LONG) + Fix P2 (smart Claude fallback) |
-| 26/10/2026 | **63641f70** | Fix B (AI Profit Guardian V1) |
+- Branch: **`work/director-v1-unified`**, commit `d2b351e0`.
 
 ## Task aperti (in ordine di priorità)
-1. **Brain Portfolio dashboard**: MERGIATA su rule-pool (PR#11, 26/10/2026 15:28 UTC). Tab BRAIN disponibile nel prossimo rilascio app (richiede port controllato su main + mount Brain read-only su VPS). Deploy non ancora eseguito.
-2. **Osservazione Fix B**: finestra 24-48h in paper (sola lettura, desk-status)
-3. **Punto 4 — AI shadow**: in osservazione, già attivo. Analisi dati disponibile (504 cicli, 5 gg). Decidere se aggiungere integrazione Arbitro dopo altro periodo di osservazione.
-4. **Punto 5** — Capital Dashboard V1 (`work/capital-dashboard-v1`)
-5. **Punto 6** — Profit audit read-only (`work/profit-audit-readonly`) — pronto, serve review + OK utente
-6. **Punto 7** — A/B proposals (`work/profit-correctness-proposals`)
-7. **Punto 8** — Capital Management V1 activation (decisione utente)
-8. **Director V1 review**: run test su `work/director-v1-unified`, decidere integrazione Pilot↔Arbitro
+1. **Osservazione Fix B**: finestra 24-48h in paper (sola lettura, desk-status)
+2. **Punto 4 — AI shadow**: in osservazione. Analisi dati disponibile (504 cicli, 5 gg).
+3. **Punto 5** — Capital Dashboard V1 (`work/capital-dashboard-v1`)
+4. **Punto 6** — Profit audit read-only (`work/profit-audit-readonly`) — pronto, serve review + OK utente
+5. **Punto 7** — A/B proposals (`work/profit-correctness-proposals`)
+6. **Punto 8** — Capital Management V1 activation (decisione utente)
+7. **Director V1 review**: run test su `work/director-v1-unified`, decidere integrazione Pilot↔Arbitro
+8. **Market Regime + Episode Memory**: review Claude su `work/market-regime-episode-memory`
 
 ## Claude — collaboratore permanente (25/10)
 - Claude (Claude Code, Sonnet 4.6) attivo come collaboratore permanente.
 
 ## Documenti di riferimento AI
 - `claude/protocollo-collaborazione-ai.md` — regole collaborazione ChatGPT+Claude, onboarding
-- `claude/revisione-fix-b-2026-10-26.md` — verdetto revisione Fix B
 - MANUALE-OPERATIVO.md (sezione 8: passaggio di turno tra AI)
 
 ## Riferimenti
 - LEGGIMI.md, MANUALE-OPERATIVO.md, SINCRONIZZAZIONE-WORK-CHAT.md.
 
-## Market Regime + Episode Memory — PRONTO PER REVIEW CLAUDE
-- Branch `work/market-regime-episode-memory`, commit `79add5c0b4d4433342fddec1e83c48abf0ef19f4`; base `dbddc2403bfd5fd9c7444b97185ae60071f81ee5`.
-- Due moduli isolati + sole aggiunte brain.py in `docs/brain_regime_additions.py`; 22/22 test locali PASS, sintassi Python 3.10 verificata. Nessuna CI/replay storico.
-- Review: `docs/market-regime-review.md`; diario commit `d184085a867f1a53d47242803228df953133438d`.
-- Implementazione dalla specifica: sorgente completo DeepSeek non fornito. Soglie proposte documentate; non certificato pronto alla produzione.
-- Prossimo: review Claude, cablaggio cli.py per candele e contesto, copertura aperture AI/split/DCA, replay PAPER. Patch attuale protegge ingressi a regole quando collegata; gestione posizioni preservata.
-- Nessun merge/deploy/riavvio o modifica dati. Proprietà sviluppo ceduta a review Claude.
-
-## Brain Pilot V1 — UPGRADE 1f2edeb6 COMPLETATO (26/10/2026 14:55 UTC)
-- SHA attivo: **`1f2edeb6182029adc96ba7218ad145a7503472a3`** (ATR sizing, daily stop 20%, thesis debate, context.py).
-- Upgrade eseguito con posizioni aperte — nessun reset di stato/storico/budget.
-- Tutti i checkpoint PASS: IMAGE_BUILT | BACKUP_VERIFIED | MIGRATION_PROBE | PAPER_STATE_HISTORY_HEALTH.
-- Upgrader (PR#10, `brain_pilot_upgrade.py`): build → stop → writer lock → backup → probe su copia → rename old → avvio nuovo → health gate → history validation. Rollback automatico non attivato (dati immutati al momento del probe).
-- Autorizzazione utente: OK esplicito 26/10/2026. Review Claude approvata.
-- Trigger disarmato (action=none, commit `6d7fbb0c` su rule-pool).
-- Hawk/Bull NON toccati; runtime resta `63641f70`.
-
-## Storico Brain Pilot
-| Data | SHA container | Evento |
+## Storico deploy
+| Data | SHA | Contenuto |
 |---|---|---|
-| 26/10/2026 ~13:30 | 2c977c46 | Installazione PAPER iniziale |
-| 26/10/2026 14:55 | **1f2edeb6** | Upgrade stateful (ATR, 20% stop, debate, context) |
+| 25/10/2026 | 886b30f | Fix P1 (sbias LONG) + Fix P2 (smart Claude fallback) |
+| 26/10/2026 | 63641f70 | Fix B (AI Profit Guardian V1) |
+| 26/10/2026 | **a9df40e8** | Tab 🧠 BRAIN live (port su main + mount brain :ro) |
 
-## Brain Portfolio Dashboard — MERGIATA SU RULE-POOL (26/10/2026 15:28 UTC)
-- Autore: ChatGPT Work (commit `931c499`); review e merge: Claude Sonnet 4.6.
-- PR#11 `work/brain-portfolio-view` → `rule-pool`, merge commit `aca2305c`.
-- Adattamento React/FastAPI: tab 🧠 BRAIN con sei card + GET `/api/brain/status` autenticato.
-- CLI.py, PAPER, LIVE e motore invariati. SQLite URI ro, deadline 2s, nessun checkpoint. JSONL solo lettura dalla coda (ultimi 256 KiB). Fonte: `brain.sqlite3` schema nativo (state/events), non state_json.
-- CI SUCCESS su tutti e 6 i job: reader Python 3.10/3.11 (26 test offline) + pwa React (4 test + build produzione) su entrambi i run `40348943392` / `40348952563`.
-- Review Claude: codice conforme ai vincoli CLAUDE.md. Test verificano esplicitamente che i byte dei file cervello restano invariati dopo la lettura.
-- **Prossimo**: il tab BRAIN sarà visibile dopo il prossimo rilascio app. Richiede: port controllato su main (non merge intera storia rule-pool) + mount Brain read-only su VPS (`/opt/superbot-desk-data/brain`). Finché non montato, endpoint risponde `{"status":"unavailable"}`.
+## Brain Pilot V1 — SHA 1f2edeb6 ATTIVO (26/10/2026)
+- SHA container: `1f2edeb6182029adc96ba7218ad145a7503472a3` (ATR sizing, daily stop 20%, thesis debate, context.py).
+- Upgrade autorizzato utente 26/10. Hawk/Bull NON toccati.
+
+## Brain Portfolio Dashboard — LIVE (26/10/2026 ~17:16 UTC)
+- Tab 🧠 BRAIN visibile e funzionante nell'app. Confermato dall'utente alle 17:16.
+- Dati visibili: equity $992.12, cash $669.37, P&L -$7.88 (-0.79%), 15 cicli, 4 posizioni SHORT aperte.
+- Sviluppo: ChatGPT Work (rule-pool PR#11) → port controllato su main + deploy: Claude Sonnet 4.6.
+- CI brain-view-ci.yml: reader Python 3.10/3.11 (26 test) + pwa React (4 test + build) su main.
