@@ -1,0 +1,75 @@
+name: Banco di prova storico di Hawk (nessun server, nessun segreto, solo rete pubblica)
+
+# Rifa' la storia con il motore e le regole vere (desk.engine + desk.signals + desk.brain) su candele pubbliche di Bitget
+# e confronta le varianti del regime di mercato (desk/regime.py). NON usa chiavi, NON tocca il server, NON scrive nel
+# repository. Parte SOLO quando cambia deploy/desk-backtest.trigger. Il file contiene le righe:
+#   ref=<ramo da provare>   days=<giorni di storia>   step=<barre da 15 min tra due decisioni>   only=<varianti>   data=<etichetta cache>
+# Cambiare "data=" riscarica i dati; con la stessa etichetta si riusano gli stessi dati (confronti onesti tra esecuzioni).
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-backtest.trigger"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desk-backtest
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - name: Leggi il file trigger
+        id: cfg
+        run: |
+          set -e
+          g() { grep -E "^$1=" deploy/desk-backtest.trigger | head -n1 | cut -d= -f2- | tr -d '[:space:]'; }
+          REF="$(g ref)"; DAYS="$(g days)"; STEP="$(g step)"; ONLY="$(g only)"; DATA="$(g data)"
+          REF="${REF:-rule-pool}"; DAYS="${DAYS:-90}"; STEP="${STEP:-1}"; DATA="${DATA:-d1}"
+          echo "$REF" | grep -Eq '^[A-Za-z0-9._/-]+$' || { echo "ref non valido"; exit 1; }
+          echo "$DAYS" | grep -Eq '^[0-9]{1,3}$' || { echo "days non valido"; exit 1; }
+          echo "$STEP" | grep -Eq '^[0-9]{1,2}$' || { echo "step non valido"; exit 1; }
+          echo "$ONLY" | grep -Eq '^[A-Za-z0-9_.,+-]*$' || { echo "only non valido"; exit 1; }
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"; echo "days=$DAYS" >> "$GITHUB_OUTPUT"
+          echo "step=$STEP" >> "$GITHUB_OUTPUT"; echo "only=$ONLY" >> "$GITHUB_OUTPUT"; echo "data=$DATA" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF days=$DAYS step=$STEP only=$ONLY data=$DATA"
+      - name: Codice da provare
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.cfg.outputs.ref }}
+          path: code
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Dipendenze
+        run: python -m pip install --upgrade pip numpy
+      - name: Dati in cache (stessa etichetta = stessi dati)
+        uses: actions/cache@v4
+        with:
+          path: bt-cache
+          key: bt-data-${{ steps.cfg.outputs.days }}-${{ steps.cfg.outputs.data }}
+      - name: Prova storica
+        run: |
+          set -o pipefail
+          ARGS="--days ${{ steps.cfg.outputs.days }} --step ${{ steps.cfg.outputs.step }} --cache bt-cache --out result.json"
+          if [ -n "${{ steps.cfg.outputs.only }}" ]; then ARGS="$ARGS --only ${{ steps.cfg.outputs.only }}"; fi
+          python code/deploy/scripts/desk_backtest.py $ARGS 2>&1 | tee out.txt
+      - name: Riepilogo
+        if: always()
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          sed -n '/=== TUTTO IL PERIODO/,$p' out.txt >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: risultati-backtest
+          path: |
+            out.txt
+            result.json
