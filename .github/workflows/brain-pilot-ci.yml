@@ -1,0 +1,33 @@
+name: Brain Pilot V1 offline tests
+on:
+  push:
+    branches: [work/brain-pilot-v1]
+    paths:
+      - "backend/director/brain_pilot/**"
+      - "backend/tests/test_brain_pilot_v1.py"
+      - "backend/tests/test_brain_pilot_install.py"
+      - "deploy/scripts/brain_pilot_install.py"
+      - ".github/workflows/brain-pilot-install.yml"
+      - ".github/workflows/brain-pilot-ci.yml"
+  pull_request:
+    branches: [rule-pool]
+    paths: ["backend/director/brain_pilot/**", "backend/tests/test_brain_pilot*.py", "deploy/scripts/brain_pilot_install.py", ".github/workflows/brain-pilot-install.yml"]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install numpy==2.2.6
+      - name: Offline unit and integration tests
+        env:
+          PYTHONPATH: backend
+          DESK_MODE: paper
+        run: python -m unittest discover -s backend/tests -p 'test_brain_pilot*.py' -v

@@ -1,0 +1,73 @@
+name: Brain Pilot PAPER - report e interruttori
+on:
+  push:
+    branches: [rule-pool]
+    paths: ["deploy/brain-pilot-control.trigger"]
+permissions:
+  contents: read
+concurrency:
+  group: superbot-brain-pilot-singapore
+  cancel-in-progress: false
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate trigger
+        id: trigger
+        run: |
+          set -eu
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          pairs = {}
+          for line in Path('deploy/brain-pilot-control.trigger').read_text().splitlines():
+              if not line.strip() or line.lstrip().startswith('#'):
+                  continue
+              key, value = line.split('=', 1)
+              if key in pairs:
+                  raise SystemExit('duplicate trigger key')
+              pairs[key] = value.strip()
+          action = pairs.get('action')
+          if action not in ('report', 'pause', 'resume', 'stop', 'start'):
+              raise SystemExit('invalid action')
+          if action != 'report' and pairs.get('approved') != 'yes':
+              raise SystemExit('explicit approved=yes required after user OK')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('action=' + action + '\n')
+          PY
+      - name: Control only the independent brain container
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          BRAIN_ACTION: ${{ steps.trigger.outputs.action }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: BRAIN_ACTION
+          command_timeout: 3m
+          script: |
+            set -eu
+            DATA=/opt/superbot-desk-data/brain
+            case "$BRAIN_ACTION" in
+              report) ;;
+              pause) test -d "$DATA"; touch "$DATA/pause.flag" ;;
+              resume) test -d "$DATA"; rm -f "$DATA/pause.flag" ;;
+              stop) docker stop superbot-brain-pilot ;;
+              start)
+                test "$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' superbot-brain-pilot | sed -n '/^DESK_MODE=/p')" = DESK_MODE=paper
+                docker start superbot-brain-pilot ;;
+              *) exit 1 ;;
+            esac
+            docker ps -a --filter name=^superbot-brain-pilot$ --format '{{.Names}} | {{.Status}} | {{.Image}}'
+            python3 -I - <<'PY'
+            import json
+            from pathlib import Path
+            path = Path('/opt/superbot-desk-data/brain/status.json')
+            if path.exists():
+                s = json.loads(path.read_text())
+                print({k: s.get(k) for k in ('ts_ms', 'mode', 'version', 'open')})
+            else:
+                print('Brain pilot not installed or no status yet')
+            PY
