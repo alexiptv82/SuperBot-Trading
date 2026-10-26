@@ -62,6 +62,15 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
   dopo il primo fallimento (inclusi i test nuovi per-file) vengono saltati: rieseguiti a mano con Python 3.11 = verdi.
 - Verifica post-deploy (desk-status 18:36 UTC): primo ciclo dei bot col nuovo codice completato 18:33 UTC, 0 posizioni aperte,
   conti e storico del giorno invariati, Hawk e Bull ancora fermi per stop giornaliero (si sblocca col nuovo giorno UTC).
+- **Reset portafogli + riavvio bot (utente, 26/10 ~18:30-18:55 UTC, dopo il deploy)**: Hawk e Bull ripartiti da 1000 in un nuovo
+  run, su `35f08cf`, healthy, PAPER. Cervello intatto: `learning_log.jsonl` continua a crescere (nessun azzeramento) e
+  `trade_history`/lessons non toccati. Primo ciclo 18:55 UTC: entrambi hanno aperto **DOT SHORT SCALP** (conf 66, 20x,
+  stop ~1,5%), `source=rules`. In entrambi i log: "[Fallback] Claude non disponibile: decisioni affidate alle regole" =
+  in questo momento decidono le REGOLE, non Claude. La prova della nuova stagionalita' vale quindi per punteggi e regole,
+  non per il giudizio di Claude. Causa non ancora verificata (ipotesi: tetto giornaliero `DESK_DAILY_CAP_USD`, finestra del
+  calendario Claude, o chiave): controllo di sola lettura disponibile con `desk-claude-finestra` / `desk-diag`.
+- Nota sul tetto Bull (precisazione): il tetto limita il RISCHIO SL totale (160$), non il numero di posizioni. Con 350$ x 15x x
+  3% (157$) passa una sola posizione; con le dimensioni attuali del fallback (165$ x 20x x ~1,5% = ~51$) ne passano fino a tre.
 - Da osservare: da domani i candidati rifiutati dal Bull compaiono nel registro come `rifiutata:rischio_aperto_bull` e
   `rifiutata:veto_short_rimbalzo_btc`; il bonus stagionale compare nel `why` dei segnali ("stagionalità long/short +N").
   Nota gia' presente prima del deploy: "[Fallback] Claude non disponibile: decisioni affidate alle regole" nei log di entrambi.

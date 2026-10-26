@@ -98,3 +98,10 @@ segnalato dall'utente era questo stop del motore che funzionava.
 - Nessun importo di Bitget nel diario; le cifre del paper non sono riportate.
 - Prossimo: osservazione 24-48h; poi eventuali ritocchi decisi dall'utente (soglia 160$ del tetto, soglia 2% del veto).
 - Dettagli e comandi: STATO.md, sezione "Fix Segnali V2".
+
+## Dopo il deploy: reset dei portafogli (utente) e verifica
+- L'utente ha azzerato i portafogli e riavviato i bot per vedere subito il comportamento col fix.
+- Verifica di sola lettura (desk-status #52, 18:57 UTC): Hawk e Bull su `35f08cf`, healthy, PAPER, nuovo run con 0 chiusure,
+  1 posizione aperta ciascuno (DOT SHORT SCALP, fonte `rules`). Registro di apprendimento non azzerato (contatori in crescita).
+- Osservazione: i bot lavorano col fallback a regole ("Claude non disponibile"); causa da verificare in sola lettura.
+- Precisazione sul tetto Bull: e' un tetto di rischio SL aggregato (160$), non di numero di posizioni.
