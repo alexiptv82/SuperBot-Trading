@@ -208,6 +208,20 @@ def main():
     meta = json.load(open(os.path.join(a.cache, "meta.json")))
     data = bt.load_data(bt.SYMBOLS, a.days, a.cache, int(meta["end_ms"]))
     pos_idx = {s: {int(t): i for i, t in enumerate(data[s]["a15"][:, 0])} for s in data}
+    print("\n=== QUALITA' DEI DATI SCARICATI (buchi nelle serie) ===")
+    tot = {"a15": 0, "a4": 0, "ad": 0}
+    for sym, d in data.items():
+        row = []
+        for key, step in (("a15", BAR), ("a4", H4), ("ad", DAY)):
+            arr = d[key]
+            gaps = int(np.sum(np.diff(arr[:, 0]) != step)) if len(arr) > 1 else 0
+            tot[key] += gaps
+            row.append(f"{key}:{gaps}")
+        # il controllo severo del bot sulle barre 4h: sulle ultime 300 barre ci deve essere nessun buco
+        a4 = d["a4"][-300:]
+        ok4 = bool(len(a4) >= 200 and not np.any(np.diff(a4[:, 0]) != H4) and not np.any(a4[:, 0] % H4))
+        print(f"   {sym:<5} buchi " + "  ".join(row) + f"   ultime 300 barre 4h accettate dal bot: {'si' if ok4 else 'NO'}")
+    print(f"   totale buchi: 15m={tot['a15']} 4h={tot['a4']} 1d={tot['ad']}")
     real = []
     for line in open(a.real, encoding="utf-8"):
         line = line.strip()
