@@ -208,3 +208,8 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## Nuova richiesta — margine Brain simile Bull e dashboard visibile
 - Utente chiede margini significativi sul contoPAPER1000, riferimentoBull. Verificata configurazioneBull: minimo150/max350USD; Brainattuale cap100USD e budgetstop1%×size×conviction. Riferimento registrato nel design, nessuna variazione numerica di rischio/levа applicata.
 - PR#13 verificata ancoraAPERTA/nonmerged: UI margine/levа/esposizione/ROI non è live. Richiesto rilascio concreto come prossimo passo; resta il vincolo iniziale nessun deploy senzaOK specifico. Nessun merge/deploy/riavvio in questa verifica.
+
+## AUTORIZZAZIONE — rilascio dashboard margini/leva Brain
+- Utente risponde sì alla richiesta esplicita: integrare PR#13 e pubblicare solo aggiornamento app. Autorizzati merge main e deploy app; Hawk/Bull/Brain Pilot e loro strategia/rischio restano fuori dal rilascio.
+- Target revisionato PR#13:7a3348fbf5b827aaf1295aa077153a36ab451298,31testreader+7React e CI40382342014 verdi. Deploy tramite workflowufficiale con SHA fissato, backup DB e rollback immagine/frontend.
+- Ulteriore mandato: BrainPilot deve applicare l'idea trading dell'utente e usare esperienza/metodo del botclassico con la propria analisi. Specifica da rendere esplicita; non interpretare come deploy del nuovo motore scalp o aumento numerico del rischio.
