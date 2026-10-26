@@ -260,6 +260,27 @@ def main():
     for i in gi[:3]:
         print(f"   buco 15m BTC: tra {bt.time.strftime('%Y-%m-%d %H:%M', bt.time.gmtime(b[i, 0] / 1000))} e "
               f"{bt.time.strftime('%Y-%m-%d %H:%M', bt.time.gmtime(b[i + 1, 0] / 1000))} UTC")
+    print("\n=== BARRE 4h CHE IL BOT SCARTEREBBE (controllo severo di closed_four_hour) ===")
+    nbad_tot = 0
+    for sym, d in data.items():
+        a4 = d["a4"]
+        bad_hl = np.where((a4[:, 3] > np.minimum(a4[:, 1], a4[:, 4])) | (a4[:, 2] < np.maximum(a4[:, 1], a4[:, 4])))[0]
+        bad_pos = np.where(np.any(a4[:, 1:5] <= 0, axis=1))[0]
+        nbad_tot += len(bad_hl) + len(bad_pos)
+        if len(bad_hl) or len(bad_pos):
+            ex = bad_hl[0] if len(bad_hl) else bad_pos[0]
+            print(f"   {sym:<5} massimo/minimo incoerenti: {len(bad_hl):>3}   valori <=0: {len(bad_pos):>3}   esempio "
+                  f"{bt.time.strftime('%Y-%m-%d %H:%M', bt.time.gmtime(a4[ex, 0] / 1000))} O/H/L/C={a4[ex, 1]:.6g}/{a4[ex, 2]:.6g}/{a4[ex, 3]:.6g}/{a4[ex, 4]:.6g}")
+    print(f"   totale barre 4h incoerenti: {nbad_tot}")
+    # quante letture (una al giorno, sul periodo del confronto) hanno la serie 4h accettata dal bot
+    acc_n = acc_ok = 0
+    for sym, d in data.items():
+        a4 = d["a4"]
+        for k in range(len(a4) - 60, len(a4), 6):
+            win = a4[max(0, k - 300): k]
+            acc_n += 1
+            acc_ok += int(len(closed_four_hour(win, int(win[-1, 0]) + H4)) >= 200)
+    print(f"   finestre da 300 barre accettate dal bot: {acc_ok}/{acc_n}")
     print("\n=== COERENZA DELLE BARRE 4h CON LE 15m (stesso scaricamento) ===")
     for sym in ("BTC", "ETH", "SOL", "DOGE"):
         d = data[sym]
