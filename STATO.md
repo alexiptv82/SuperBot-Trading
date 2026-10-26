@@ -6,7 +6,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Fix B AI Profit Guardian V1 attivo: `profit_guardian.py` + `portfolio_alert.py` in produzione.
 - Capital Management V1 integrato ma con DESK_CAPITAL_V1=off, non abilitare senza OK dell'utente.
 - Vincolo immutabile: nessun reset di trade_history, learning_log, lessons.md, errors.md.
-- rule-pool HEAD: `502107209` (AI ombra report 26/10).
+- rule-pool HEAD: `e83a28c437f1c4bd672db3c1ab4a0d674a5171d5` (merge Brain Pilot V1, non installato).
 
 ## AI IN OMBRA (DeepSeek) — ATTIVO DAL 21/10/2026
 - Container `superbot-ai` su VPS Singapore, **Up 5 days (healthy)**, riavvii: 0.
@@ -86,9 +86,9 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Prossimo: review Claude, cablaggio cli.py per candele e contesto, copertura aperture AI/split/DCA, replay PAPER. Patch attuale protegge ingressi a regole quando collegata; gestione posizioni preservata.
 - Nessun merge/deploy/riavvio o modifica dati. Proprietà sviluppo ceduta a review Claude.
 
-## Brain Pilot V1 — PRONTO PER REVIEW CLAUDE
+## Brain Pilot V1 — REVIEW ACCETTATA, MERGE COMPLETATO
 - Branch `work/brain-pilot-v1`, base `502107209f9e42d38e4421ac70df188c823dc315`, codice `a5d8b79783982b5642210ffe026c0a9150176d0f`.
-- PR draft #6: https://github.com/alexiptv82/SuperBot-Trading/pull/6. Handoff: `docs/brain-pilot-v1-review.md` sul branch.
+- PR #6 unita con merge normale: https://github.com/alexiptv82/SuperBot-Trading/pull/6. Handoff: `docs/brain-pilot-v1-review.md` sul branch.
 - Sei comportamenti, prompt strutturale macro/fib/BTC, nuovo conto PAPER1000 isolato, rischio allo stop cap1% proporzionale, persistenza SQLite+outbox JSONL.
 - 37/37 test locali PASS; Actions40328264317 SUCCESS su Python3.10/3.11. Installer con Docker simulato; build/install/replay reali non verificati.
 - Diario consegna: `7003086a69cbb901f312247c876f50087ea310ee`.
@@ -99,3 +99,8 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - SHA approvato, volume esclusivo brain, backup hash verificato, lock, health/heartbeat nuovo, nessuna sostituzione container. Nessuna esecuzione sul VPS.
 - Cadenza15m invariata dal brief; next_check_minutes=15, pausa15–120 sono distinti. Non applicata la modifica parser proposta nella review.
 - Handoff/PR#6 aggiornati, diario `12faf1a0c9247abe739b68599268500fc622be64`. Prossimo: Claude review installer; merge e deploy solo con autorizzazione pertinente.
+
+### Checkpoint merge Brain Pilot
+- Merge `e83a28c437f1c4bd672db3c1ab4a0d674a5171d5` verificato su rule-pool, due parent; branch lavoro conservato.
+- [skip ci] sul merge, trigger install action=none/approved=no: nessun workflow operativo avviato dal merge.
+- Installazione NON eseguita. Prossimo: OK separato utente per install, prevista a Claude Code; codice approvato `a5d8b79783982b5642210ffe026c0a9150176d0f`. Diario merge `47257309bd4cbb701bbdc78a6c902ac09437586d`.
