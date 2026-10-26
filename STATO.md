@@ -21,7 +21,8 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Parametri approvati: watch ROI netto 12%, review 20%; CLOSE_FULL, TAKE_PARTIAL 50%; budget separato 0,10 $/giorno UTC condiviso Hawk+Bull, intervallo minimo 30 minuti per posizione.
 - ChatGPT è writer dei componenti Fix B; Claude è revisore incrociato paritario.
 - **Specifica vincolante:** FIX-B-PROFIT-GUARDIAN-V1-SPECIFICA.md nel ramo diario. Report: diario/2026-10-24_chatgpt.md.
-- **Prossimo passo Fix B:** revisione incrociata con Claude, replay offline, test di convalida, poi OK utente per merge e deploy.
+- **Revisione Claude (26/10): APPROVATO** — nessun blocco critico, pronto per merge previo OK utente. Verdetto: `claude/revisione-fix-b-2026-10-26.md`.
+- **Prossimo passo Fix B:** OK utente per merge su rule-pool e deploy in PAPER.
 
 ## Altre informazioni operative
 - DeepSeek è shadow indipendente: 96 chiamate valide/222 decisioni applied=false (storico 23/10, Action 40072633461).
@@ -32,6 +33,11 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Claude (Claude Code, Sonnet 4.6) attivo come collaboratore permanente. Mandato: solo PAPER, controllo VPS via workflow, correzioni su rami separati, nessun deploy/riavvio senza OK.
 - Deploy P1+P2 eseguito il 25/10 con OK utente (Actions 40234289443). Versione attiva: 886b30f.
 - Dettagli sessione: diario/2026-10-25_claude.md.
+
+## Documenti di riferimento AI
+- `claude/protocollo-collaborazione-ai.md` — regole di collaborazione ChatGPT+Claude, onboarding, cosa può fare ogni AI autonomamente
+- `claude/stato-roadmap-completa.md` — roadmap aggiornata al 26/10, stato runtime, prossimi passi
+- `claude/revisione-fix-b-2026-10-26.md` — verdetto revisione Fix B (APPROVATO, attende OK utente per merge)
 
 ## Riferimenti
 - LEGGIMI.md, MANUALE-OPERATIVO.md, SINCRONIZZAZIONE-WORK-CHAT.md.
