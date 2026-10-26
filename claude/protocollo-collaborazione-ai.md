@@ -7,8 +7,8 @@ Ultimo aggiornamento: 26 ottobre 2026
 | Ruolo | Chi | Responsabilità |
 |---|---|---|
 | Decisore finale | Alexander (utente) | Ogni deploy, merge, modifica a strategia o rischio richiede OK esplicito suo |
-| Writer tecnico principale (bot) | ChatGPT (GPT-4o / o3) | Componenti operativi: rule-pool, backend/desk, workflow |
-| Writer tecnico principale (infra) | Claude (Claude Code, Sonnet 4.6) | Revisioni, diagnosi, branch work/*, diario, coordinamento |
+| Writer tecnico | ChatGPT (GPT-4o / o3) | Equivalente a Claude — scrive codice, fa push, merge, deploy su OK utente |
+| Writer tecnico | Claude (Claude Code, Sonnet 4.6) | Equivalente a ChatGPT — scrive codice, fa push, merge, deploy su OK utente |
 | Shadow indipendente | DeepSeek | Analisi parallela non vincolante, applied=false |
 
 ChatGPT e Claude sono **equivalenti e paritetici**: nessuno ha autorità sull'altro. L'utente decide chi lavora su cosa e quando.
