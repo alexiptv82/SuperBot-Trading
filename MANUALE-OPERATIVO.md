@@ -1,11 +1,12 @@
 # Manuale operativo — come si lavora su SuperBot Trading
 
-Scritto il 19/10/2026 da Claude, verificato sul repository e sul server in quel giorno. Serve a **qualunque AI** (ChatGPT o Claude) per lavorare da sola, con gli stessi strumenti dell'altra. Leggi prima `LEGGIMI.md` (regole inviolabili) e `STATO.md`. Se qualcosa qui non coincide con ciò che vedi dal vivo, vale ciò che vedi: correggi il manuale.
+Scritto il 19/10/2026 da Claude, aggiornato il 26/10/2026. Serve a **qualunque AI** (ChatGPT o Claude) per lavorare da sola, con gli stessi strumenti dell'altra. Leggi prima `LEGGIMI.md` (regole inviolabili) e `STATO.md`. Se qualcosa qui non coincide con ciò che vedi dal vivo, vale ciò che vedi: correggi il manuale.
 
 ## 1. Chi ha accesso a cosa
 
 - **Repository:** `alexiptv82/superbot-trading` su GitHub, **pubblico**. Ramo predefinito `main`. **Nessuna protezione dei rami**: chi ha scrittura può fare push ovunque, quindi le regole le rispettiamo noi.
 - **Chi scrive:** i commit di Claude hanno autore "Claude"; quelli di ChatGPT risultano a nome dell'account dell'utente (`alexiptv82`); i workflow committano come "SuperBot CI". Per capire chi ha fatto cosa: i commit di Claude portano in fondo il trailer `Co-Authored-By: Claude ...`; **i commit di ChatGPT portano in fondo la riga `AI: chatgpt`**; e il diario riporta sempre l'autore.
+- **AI Write (meccanismo unificato):** sia Claude che ChatGPT possono fare merge di branch di lavoro e aggiornare il diario in modo autonomo, senza che l'utente intervenga. Claude usa `claude/claude-write.trigger`, ChatGPT usa `chatgpt/chatgpt-write.trigger`. Stesso formato, stesso workflow (`claude-write.yml`, nome visualizzato: "AI Write"), stesso token (`CLAUDE_WRITE_TOKEN`). Il workflow rileva automaticamente quale AI ha scritto il trigger e imposta l'autore git di conseguenza (Claude <noreply@anthropic.com> o ChatGPT <noreply@openai.com>). Vedere sezione 3 e 8 per i dettagli.
 - **Il server:** una AI non entra direttamente sul server. Lavora **solo tramite i workflow di GitHub Actions**, che si collegano a Singapore con il Secret `SINGAPORE_SSH_PRIVATE_KEY` (il contenuto della chiave non si legge mai). Quindi: *scrivere un workflow o un file trigger e fare push = poter agire sul server*. Questa è la "stessa abilità" di cui parla l'utente, ed è identica per le due AI.
 - **Secret esistenti (solo i nomi):** `SINGAPORE_SSH_PRIVATE_KEY`, `SSH_PRIVATE_KEY` (Strasburgo, solo per HI-TV/inventario: non usare per SuperBot), `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ANTHROPIC_API_KEY`, `DESK_MODE` (deve restare `paper`), `DESK_DAILY_LOSS_PCT`, e le chiavi Bitget per bot (`BITGET_HAWK_*`, `BITGET_BULL_*` di trading; `BITGET_RO_HAWK_*`, `BITGET_RO_BULL_*` di sola lettura). **Non si stampano mai.**
 
@@ -42,6 +43,42 @@ Scritto il 19/10/2026 da Claude, verificato sul repository e sul server in quel 
 - **Collegamento SSH sicuro:** i workflow rinforzati usano una chiave host verificata. Per `ssh`/`scp`: `known_hosts` costruito dalle righe `PUB ...` di `deploy/sg-hardening-check-output.txt`, con `StrictHostKeyChecking=yes`. Per `appleboy/ssh-action`: `fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s` (è l'impronta **ECDSA**: le impronte ED25519 e RSA non funzionano con quell'azione). Se il server cambia chiave, i deploy si fermano: non è un guasto, va rigenerata l'impronta con `sg-hardening-check`.
 - **Concorrenza:** i deploy hanno un gruppo di concorrenza per componente (app: `superbot-app-singapore`, condiviso da `deploy.yml` e `superbot-sg-deploy.yml`; bot: `superbot-desk-singapore`; pool: `superbot-pool-singapore`): due rilasci dello stesso componente non girano insieme. In più i due script di backup si bloccano a vicenda sul server (file `.backup.lock`). Controllare comunque i run attivi prima di lanciarne uno.
 
+### AI Write — merge e diario autonomi (senza intervento dell'utente)
+
+Questo meccanismo permette a Claude e ChatGPT di fare merge di branch di lavoro e aggiornare il diario **completamente in autonomia**, senza che l'utente debba fare nulla.
+
+**Claude usa:** `claude/claude-write.trigger` su branch `rule-pool`
+**ChatGPT usa:** `chatgpt/chatgpt-write.trigger` su branch `rule-pool`
+
+Formato del file trigger (identico per entrambe le AI):
+```
+op=<operazione>
+src=<branch sorgente>     # obbligatorio per merge e push-diario
+dst=<branch destinazione>
+msg=<messaggio di commit>
+skip_ci=yes               # opzionale, default yes per merge
+```
+
+Operazioni disponibili:
+- `op=merge` — merge da `work/*` o `fix-*` in `rule-pool` (solo rule-pool come dst)
+- `op=push-diario` — copia STATO.md e tutti i file `diario/` dal branch `src` al branch `diario`
+- `op=diario` — aggiorna il diario da rule-pool: cerca STATO.md e l'ultima voce `diario/YYYY-MM-DD_claude.md` (per Claude) o `diario/YYYY-MM-DD_chatgpt.md` (per ChatGPT)
+
+Il workflow (`claude-write.yml`) rileva automaticamente chi ha scritto il trigger e imposta l'autore git di conseguenza. Il commit di merge risulta autore "Claude" o "ChatGPT" in base a chi ha triggherato.
+
+**Guardie di sicurezza invariate:** nessun push su `main`, `stable/*`, `v0.5`; merge solo da `work/*` o `fix-*`; nessun deploy dei bot senza OK dell'utente.
+
+**Esempio d'uso per ChatGPT** (merge di un branch di lavoro completato):
+```
+# file: chatgpt/chatgpt-write.trigger
+op=merge
+src=work/mio-branch
+dst=rule-pool
+msg=merge: work/mio-branch — descrizione della feature
+skip_ci=yes
+```
+Push su `rule-pool` → il workflow si attiva → merge eseguito → ChatGPT legge il risultato dal log del run.
+
 ## 4. Il catalogo dei workflow (cosa si può lanciare)
 
 Classificazione fatta da nomi e intestazioni il 19/10. **Prima di lanciarne uno che non conosci, leggi l'intestazione del file.**
@@ -56,7 +93,7 @@ Classificazione fatta da nomi e intestazioni il 19/10. **Prima di lanciarne uno 
 - `sg-extbackup` con `azione=setup` (installa age, chiave di deploy e timer sul server; già fatto il 19/10) e `sg-bridge` con `azione=ripristina` (rimette il ponte del 18/10; non serve più).
 - `desk-schedule` (modifica `deploy/claude-schedule.json`, il calendario delle finestre in cui il bot può consultare l'API di Claude; nessun riavvio).
 - `superbot-restart`, `desk-remove-pause`, `desk-snapshot`, `webauthn-reset` (azzera le credenziali dell'impronta digitale: l'utente dovrà registrarla di nuovo), `desk-stop-legacy`.
-- **Emergenza**, da usare se qualcosa va storto: `desk-pause-now` (scrive il flag di pausa, come il tasto Pausa dell'app: niente nuove aperture, le posizioni aperte si chiudono da sole) e `desk-stop-containers` (ferma i container senza rimuoverli, si riavviano con `desk-deploy`). Se i bot fossero in live e andasse male, ferma l'utente dalla app; poi se ne parla.
+- **Emergenza**, da usare se qualcosa va male: `desk-pause-now` (scrive il flag di pausa, come il tasto Pausa dell'app: niente nuove aperture, le posizioni aperte si chiudono da sole) e `desk-stop-containers` (ferma i container senza rimuoverli, si riavviano con `desk-deploy`). Se i bot fossero in live e andasse male, ferma l'utente dalla app; poi se ne parla.
 
 **C. Mai senza ordine esplicito e ripetuto dell'utente:**
 `live-selftest` (apre posizioni con **soldi veri** su Bitget, importo minimo), qualsiasi cambio di `DESK_MODE`, qualunque modifica a strategia, soglie, limiti di rischio, prompt, o ai file del cervello.
@@ -99,3 +136,54 @@ Classificazione fatta da nomi e intestazioni il 19/10. **Prima di lanciarne uno 
 - Il repository è pubblico: nei controlli sulle chiavi SSH stampare solo tipo, impronta e nome delle opzioni, mai commenti, indirizzi o comandi delle chiavi altrui.
 - Dopo qualunque modifica ai workflow: validare lo YAML e controllare che non ci siano trigger che partano da soli per sbaglio.
 - Un workflow di SSL per `hitvprime` ha già lasciato una configurazione in nginx: **non toccare mai domini e nginx di HI-TV**.
+- `[skip ci]` nel messaggio del commit blocca TUTTI i workflow, incluso AI Write. Se si usa `[skip ci]` su un commit che modifica un trigger file, il workflow non parte. Per farlo partire, fare un commit successivo senza `[skip ci]` che tocchi di nuovo il trigger file.
+
+## 8. Passaggio del turno tra AI
+
+L'utente decide quando cambiare AI (per limiti di utilizzo, preferenza o altri motivi). Claude è AI primaria per default; ChatGPT è secondaria e prende il turno quando Claude non è disponibile. Le regole inviolabili valgono per entrambe indipendentemente dal turno.
+
+### AI uscente — cosa deve fare prima di cedere il turno
+
+1. **Aggiorna `STATO.md`** nel branch `diario` con: versione attiva dei bot, task aperti (con branch di lavoro se ci sono), prossimo passo concreto, e chi lo deve fare.
+2. **Scrive una voce del giorno** `diario/YYYY-MM-DD_<claude|chatgpt>.md` che riassume cosa ha fatto nella sessione e cosa resta aperto.
+3. **Branch di lavoro aperti non ancora uniti**: li elenca in STATO.md con il branch name e lo stato (in corso / pronto per merge / bloccato da cosa).
+4. **Usa `op=diario`** via AI Write per sincronizzare tutto nel branch `diario` prima di chiudere.
+
+### AI entrante — protocollo di onboarding (obbligatorio all'inizio di ogni sessione)
+
+```
+git fetch origin diario
+git show origin/diario:STATO.md          # versione attiva, task aperti, prossimo passo
+git show origin/diario:MANUALE-OPERATIVO.md   # regole e meccanismi
+git show origin/diario:LEGGIMI.md        # regole inviolabili
+# + ultime 3 voci del diario (ordinate per data):
+git ls-tree origin/diario diario/ | sort | tail -6
+```
+
+Poi legge CLAUDE.md nel branch di lavoro corrente (sempre valido) e prosegue dal punto esatto dove l'altra si è fermata, senza ricominciare da zero.
+
+### Regole del turno
+
+- **Una AI alla volta per componente** (regola 9 del CLAUDE.md). Se Claude ha un branch aperto su un componente, ChatGPT non tocca quel componente finché il branch non è chiuso o esplicitamente ceduto nel diario.
+- **Il diario è la memoria condivisa**: tutto ciò che una AI decide, scopre o blocca va scritto lì prima di cedere il turno.
+- **Non servono spiegazioni extra**: l'AI entrante legge il diario e sa esattamente cosa fare. L'utente non deve fare da tramite.
+- **I deploy restano bloccati senza OK esplicito** anche quando si cambia AI: la regola inviolabile n. 1 non passa con il turno.
+- **Autonomia completa** su: push su `work/*`, branch di lavoro, lettura di qualsiasi file, merge via AI Write, aggiornamento del diario, lettura dei log dei workflow di sola lettura.
+- **Richiede OK utente**: deploy dei bot, cambio di strategia/soglie/prompt, passaggio a live, qualsiasi modifica al cervello.
+
+### Cosa ChatGPT può fare da solo (checklist operativa)
+
+```
+✅ git push origin work/<branch>          # push branch di lavoro
+✅ chatgpt/chatgpt-write.trigger op=merge # merge work/* → rule-pool
+✅ chatgpt/chatgpt-write.trigger op=diario # aggiorna diario
+✅ deploy/sg-bots-check.trigger           # controlla stato bot (sola lettura)
+✅ deploy/superbot-sg-check.trigger       # controlla stato app (sola lettura)
+✅ deploy/desk-status.trigger             # stato dettagliato bot
+✅ Leggere qualsiasi file del repository  # sola lettura ovunque
+✅ Creare branch work/* e fare push       # sviluppo
+✅ Aprire PR da work/* verso rule-pool    # proposta di merge
+❌ deploy/desk-deploy.trigger             # NO senza OK utente
+❌ Modificare DESK_MODE, strategia, prompt, cervello  # mai
+❌ Push su main, stable/*, v0.5           # mai
+```
