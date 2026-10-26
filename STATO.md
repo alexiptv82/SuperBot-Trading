@@ -6,7 +6,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Fix B AI Profit Guardian V1 attivo: `profit_guardian.py` + `portfolio_alert.py` in produzione.
 - Capital Management V1 integrato ma con DESK_CAPITAL_V1=off, non abilitare senza OK dell'utente.
 - Vincolo immutabile: nessun reset di trade_history, learning_log, lessons.md, errors.md.
-- rule-pool HEAD: `33427f596edcbf80a7f73e94fdeffb39fac81ddd` (Brain Pilot PAPER installato e verificato).
+- rule-pool HEAD: `6d7fbb0cc18a546b09cfe2d3ce1f0a3000e660ee` (trigger upgrade disarmato, upgrade completato).
 
 ## AI IN OMBRA (DeepSeek) — ATTIVO DAL 21/10/2026
 - Container `superbot-ai` su VPS Singapore, **Up 5 days (healthy)**, riavvii: 0.
@@ -59,13 +59,14 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 | 26/10/2026 | **63641f70** | Fix B (AI Profit Guardian V1) |
 
 ## Task aperti (in ordine di priorità)
-1. **Osservazione Fix B**: finestra 24-48h in paper (sola lettura, desk-status)
-2. **Punto 4 — AI shadow**: in osservazione, già attivo. Analisi dati disponibile (504 cicli, 5 gg). Decidere se aggiungere integrazione Arbitro dopo altro periodo di osservazione.
-3. **Punto 5** — Capital Dashboard V1 (`work/capital-dashboard-v1`)
-4. **Punto 6** — Profit audit read-only (`work/profit-audit-readonly`) — pronto, serve review + OK utente
-5. **Punto 7** — A/B proposals (`work/profit-correctness-proposals`)
-6. **Punto 8** — Capital Management V1 activation (decisione utente)
-7. **Director V1 review**: run test su `work/director-v1-unified`, decidere integrazione Pilot↔Arbitro
+1. **Brain Pilot dual-portfolio**: implementare confronto Bot classico vs Bot+Brain, $1000 PAPER ciascuno. Utente ha approvato (26/10/2026).
+2. **Osservazione Fix B**: finestra 24-48h in paper (sola lettura, desk-status)
+3. **Punto 4 — AI shadow**: in osservazione, già attivo. Analisi dati disponibile (504 cicli, 5 gg). Decidere se aggiungere integrazione Arbitro dopo altro periodo di osservazione.
+4. **Punto 5** — Capital Dashboard V1 (`work/capital-dashboard-v1`)
+5. **Punto 6** — Profit audit read-only (`work/profit-audit-readonly`) — pronto, serve review + OK utente
+6. **Punto 7** — A/B proposals (`work/profit-correctness-proposals`)
+7. **Punto 8** — Capital Management V1 activation (decisione utente)
+8. **Director V1 review**: run test su `work/director-v1-unified`, decidere integrazione Pilot↔Arbitro
 
 ## Claude — collaboratore permanente (25/10)
 - Claude (Claude Code, Sonnet 4.6) attivo come collaboratore permanente.
@@ -86,31 +87,18 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Prossimo: review Claude, cablaggio cli.py per candele e contesto, copertura aperture AI/split/DCA, replay PAPER. Patch attuale protegge ingressi a regole quando collegata; gestione posizioni preservata.
 - Nessun merge/deploy/riavvio o modifica dati. Proprietà sviluppo ceduta a review Claude.
 
-## Brain Pilot V1 — PAPER OPERATIVO (26/10/2026)
-- Autorizzazione esplicita utente: «Autorizzo l’installazione PAPER».
-- Container separato `superbot-brain-pilot`, healthy; SHA installato `2c977c46ec786e3ca08c95f0b79f9729b4c12a53`. Stato+storico in `/opt/superbot-desk-data/brain` preservati, nessun reset.
-- Install iniziale Actions40330889295 e repair daily40332092345 SUCCESS, backup hash verificato e gate PAPER/isolation/health/heartbeat PASS.
-- Report finale40332379367 SUCCESS:26 simboli validi, prima chiamata DeepSeek called=True/error=None;3 decisioni pendenti,0 posizioni aperte al momento della verifica. https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40332379367.
-- Fix operativi PR#7/#8: sidecar sul genitore READ-ONLY consentito (writer/esatto/figlio sempre bloccati); daily nativa Bitget16UTC accettata con continuità24h invariata. Nessuna modifica engine/sizing/schema.42 test PASS su Python3.10/3.11.
-- Trigger install e repair disarmati (action=none/approved=no). Hawk/Bull e vecchio pilot NON rideployati o modificati; sidecar invariato. Runtime Hawk/Bull resta quello documentato sopra.
-- Diario risultato `be84dda9dc09b6f7638be0fcda7390dba3f4f59b`.
-- Prossimo: osservazione PAPER, verificare primi fill al ciclo successivo e motivazioni/performance. Nessuna evidenza ancora di miglioramento P&L.
+## Brain Pilot V1 — UPGRADE 1f2edeb6 COMPLETATO (26/10/2026 14:55 UTC)
+- SHA attivo: **`1f2edeb6182029adc96ba7218ad145a7503472a3`** (ATR sizing, daily stop 20%, thesis debate, context.py).
+- Upgrade eseguito con posizioni aperte — nessun reset di stato/storico/budget.
+- Tutti i checkpoint PASS: IMAGE_BUILT | BACKUP_VERIFIED | MIGRATION_PROBE | PAPER_STATE_HISTORY_HEALTH.
+- Upgrader (PR#10, `brain_pilot_upgrade.py`): build → stop → writer lock → backup → probe su copia → rename old → avvio nuovo → health gate → history validation. Rollback automatico non attivato (dati immutati al momento del probe).
+- Autorizzazione utente: OK esplicito 26/10/2026. Review Claude approvata.
+- Trigger disarmato (action=none, commit `6d7fbb0c` su rule-pool).
+- Hawk/Bull NON toccati; runtime resta `63641f70`.
+- Prossimo: osservare prime decisioni con nuove feature (debate + ATR); implementare dual-portfolio.
 
-## Brain cinque upgrade — MERGE CLAUDE COMPLETATO, UPGRADE NON VERIFICATO
-- Utente approva esplicitamente daily stop20% UTC persistente (solo Brain), debate, invalidazione strutturata, ATR e contesto funding/OI/F&G.
-- Branch work/brain-pilot-v1 da rule-pool33427f596edcbf80a7f73e94fdeffb39fac81ddd, commit `1f2edeb6182029adc96ba7218ad145a7503472a3`; PR#9 integrata da Claude: merge4d3241b3de2db69b726a76c6c3af843e4ae2df0d. https://github.com/alexiptv82/SuperBot-Trading/pull/9.
-- 59/59 test locali e Python3.10/3.11 PASS; Docker build+smoke senza rete/key PASS. Actions40334975500 SUCCESS.
-- Tesi bull/bear+verdetto e invalidazione obbligatori sulle esposizioni; ATRfloor.8 con rischio invariato; dati pubblici opzionali timestamped; latch20% migra limiti salvati senza reset e preserva gestione protettiva.
-- Handoff: docs/brain-pilot-upgrades-v1-review.md. Prossimo Claude review; nessun merge/deploy. Runtime2c977c46 invariato: daily20% NON ancora attivo su VPS.
-
-### Checkpoint verifica upgrade Claude
-- Actions40337116365 FAIL: wrapper upgrade usa ancora script flat-only. Ultimo report40337116177 alle14:10UTC: healthy/paper, runtime2c977c46,5posizioni/0pending; nessun upgrade al20% verificato.
-- Retry3 7c859391 non ha generato nuova run: [skip ci] ancora presente nel corpo del messaggio. Il flag deve mancare dall'intero commit.
-- Pausa operatore NON ferma stop/TP/on_bar, ma sospende nuove esposizioni e chiamateAI. Evitare retry ciechi; serve updater per conto con posizioni o drenaggio controllato. Questa verifica è stata solo in lettura sul VPS.
-
-## Upgrader Brain con posizioni — PRONTO PER REVIEW, NON ESEGUITO
-- Branch work/brain-pilot-stateful-upgrader, commit `d54a64d8d1f9311fdcf214475619772b6f7c617e`, PR draft#10 https://github.com/alexiptv82/SuperBot-Trading/pull/10.
-- Nuovo script distinto dal repair; targetapp resta1f2edeb6, precedente2c977c46. ControllerSHA distinto da applicationSHA.
-- Backup verificato + prova immagine su copiaSQLite/WAL con5posizioni, preservazione stato/storico/budget, controllo postavvio e rollback solo se dati invariati; altrimenti candidato fermo e dati conservati, mai rewind finanziario.
-- 71 test offline PASS su3.10/3.11 + testDocker reale migrazione PASS; Actions40342412357 SUCCESS. Handoff docs/brain-pilot-stateful-upgrader-review.md.
-- Trigger disarmato nel branch; nessun merge/deploy/riavvio eseguito. Su rule-pool resta il trigger precedente di Claude: non considerare upgrade completato. Prossimo: Claude review PR10, poi autorizzazione pertinente per merge/esecuzione.
+## Storico Brain Pilot
+| Data | SHA container | Evento |
+|---|---|---|
+| 26/10/2026 ~13:30 | 2c977c46 | Installazione PAPER iniziale |
+| 26/10/2026 14:55 | **1f2edeb6** | Upgrade stateful (ATR, 20% stop, debate, context) |
