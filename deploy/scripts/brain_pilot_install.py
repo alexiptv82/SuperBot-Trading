@@ -48,7 +48,12 @@ def reject_conflicts(containers, data=DATA):
                 continue
             source=Path(mount["Source"]).resolve()
             if source==target or source in target.parents or target in source.parents:
-                raise ValueError("data_mounted_by_another_container")
+                # Existing monitoring sidecar reads the parent directory. It
+                # cannot write into brain and needs no restart/reconfiguration.
+                # Exact brain mounts (even RO), children and any writable parent
+                # still conflict; absent RW metadata is never assumed read-only.
+                if not (mount.get("RW") is False and source in target.parents):
+                    raise ValueError("data_mounted_by_another_container")
 
 
 def verify_container(item, sha):
