@@ -101,3 +101,10 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Memoria episodica persistente, aggregazione parziali, lezioni con supporto storico/validazione cronologica, recupero nel prompt e audit delle lezioni inviate. Nessun retraining o modifica automatica dei limiti.
 - Test locali104PASS+1Docker skip,26regressioni dashboard PASS; CI finale40361447734 SUCCESS (Python3.10/3.11+Docker+probe migrazione5posizioni).
 - Prossimo: Claude review docs/brain-learning-v1-review.md; componente in review, un autore alla volta. Nessun merge/deploy autorizzato. Runtime invariato rispetto allo stato documentato, non riverificato sulVPS in questa sessione.
+
+## Research Console — valutazione recupero (ChatGPT Work, 26/10/2026)
+- Analizzato alexiptv82/SuperBot-Research-Console, main bd9b04277dda8ed6a1ab310220a9b96e6234a0ed. Solo lettura; nessuna integrazione o avvio collector.
+- Recupero consigliato: controlli qualità/provenienza, separazione ricerca-validazione, registro esperimenti/report. Riutilizzo selettivo adattato a Brain, senza duplicare journal/dedup già presenti nella PR#12.
+- Collector multi-venue100ms solo candidato ricerca futura: orizzonti100ms–30s, diverso dal Brain15m. FrozenAnalysisEngine NOT_CONFIGURED; harness riproduzione ancora placeholder;11449righe golden pending. Report36h respinge alpha direzionale sotto hurdle15bps; candidati execution non strategie certificate.
+- DB committato letto mode=ro:23sessioni(11OLD36_REFERENCE+12NEW36),36QA runs. Nessun raw ZIP/Parquet nel checkout. Registri QA non equivalgono a storico trading né conferma indipendente dei risultati.
+- Prossimo: concordare recupero selettivo insieme al ponte storico Hawk/Bull→Brain; nessuna nuova implementazione richiesta in questa analisi. Runtime e PR#12 invariati.
