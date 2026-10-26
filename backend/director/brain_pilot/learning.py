@@ -104,7 +104,8 @@ def ingest(memory, row):
     if not row.get("partial", False):
         part.pop("fingerprints")
         part["close_ms"] = row["close_ms"]
-        part["net_r"] = part["net"] / part["risk"] if part["risk"] else None
+        normalized = part["net"] / part["risk"] if part["risk"] else None
+        part["net_r"] = normalized if finite(normalized) and abs(normalized) <= 10000 else None
         # Reasons are classified, never copied verbatim into a future prompt.
         why = row.get("why", "")
         part["exit"] = "ai_close" if isinstance(why, str) and why.startswith("brain:") else (

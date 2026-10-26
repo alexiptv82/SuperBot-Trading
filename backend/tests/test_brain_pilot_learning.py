@@ -159,6 +159,13 @@ class AggregationTests(unittest.TestCase):
         self.assertEqual(m["episodes"][0]["net"],-10)
         self.assertEqual(m["duplicates"],2)
 
+    def test_tiny_risk_cannot_poison_persisted_memory_with_infinity(self):
+        with tempfile.TemporaryDirectory() as root:
+            s=Store(root);state={"account":{"cash":999}}
+            s.commit(state,[("trade",trade(risk_plan_usd=1e-320))])
+            self.assertIsNone(s.load()["learning"]["episodes"][0]["net_r"])
+            self.assertEqual(s.load()["account"]["cash"],999);s.close()
+
     def test_same_id_with_different_open_time_is_a_new_position(self):
         m = lm.empty();r = trade()
         lm.ingest(m,r);lm.ingest(m,dict(r,open_ms=r["open_ms"]+1))
