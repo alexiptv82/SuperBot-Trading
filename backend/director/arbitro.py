@@ -11,16 +11,12 @@ Design rules (C1-C5 from CONVENTIONS_V1_1.md):
   - MOVE_STOP is not in contracts v1/v1.1: the AI cannot request it.
   - Monotone risk: no advice can widen a stop or increase position size.
   - This module never connects to any exchange or reads env secrets.
-
-Imports from backend.director.contracts (work/director-chatgpt) resolve
-after the two branches are merged into work/director-v1-unified.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
 
-# NOTE: contracts live in work/director-chatgpt; resolve after merge.
 from backend.director.contracts import v1_1 as c
 from backend.director.ai_shadow.decisions import size_position
 

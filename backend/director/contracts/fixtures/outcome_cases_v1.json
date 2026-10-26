@@ -1,0 +1,26 @@
+{
+  "fixture_version": 1,
+  "description": "Mandatory shared cases: research replay and Claude labeler MUST return the same labels, prices, net_bp, net_r and flags.",
+  "signal_open_ms": 1800000000000,
+  "bar_ms": 300000,
+  "cost_bp_roundtrip": 16.0,
+  "funding_bp_8h_long": 0.0,
+  "cases": [
+    {"id": "long_target", "side": "LONG", "stop": 99, "target": 102, "max_hold_bars": 2,
+     "bars": [[1800000300000,100,103,99.5,102.1]], "expected": {"reason":"TARGET","exit":102,"gross_bp":200,"net_bp":184,"net_r":1.84,"stop_target_ambiguous":false,"gap_through_stop":false}},
+    {"id": "long_both_stop_first", "side":"LONG", "stop":99, "target":102, "max_hold_bars":2,
+     "bars": [[1800000300000,100,103,98.9,100.2]], "expected":{"reason":"STOP","exit":99,"gross_bp":-100,"net_bp":-116,"net_r":-1.16,"stop_target_ambiguous":true,"gap_through_stop":false}},
+    {"id": "long_stop_gap", "side":"LONG", "stop":99, "target":102, "max_hold_bars":3,
+     "bars": [[1800000300000,100,100.5,99.5,100],[1800000600000,97,99,96,98]], "expected":{"reason":"STOP","exit":97,"gross_bp":-300,"net_bp":-316,"net_r":-3.16,"stop_target_ambiguous":false,"gap_through_stop":true}},
+    {"id": "short_target", "side":"SHORT", "stop":101, "target":98, "max_hold_bars":2,
+     "bars": [[1800000300000,100,100.6,97.8,98.4]], "expected":{"reason":"TARGET","exit":98,"gross_bp":200,"net_bp":184,"net_r":1.84,"stop_target_ambiguous":false,"gap_through_stop":false}},
+    {"id": "short_both_stop_first", "side":"SHORT", "stop":101, "target":98, "max_hold_bars":2,
+     "bars": [[1800000300000,100,101.5,97.2,100.1]], "expected":{"reason":"STOP","exit":101,"gross_bp":-100,"net_bp":-116,"net_r":-1.16,"stop_target_ambiguous":true,"gap_through_stop":false}},
+    {"id": "short_stop_gap", "side":"SHORT", "stop":101, "target":98, "max_hold_bars":3,
+     "bars": [[1800000300000,100,100.5,99.3,100],[1800000600000,103,104,102,103]], "expected":{"reason":"STOP","exit":103,"gross_bp":-300,"net_bp":-316,"net_r":-3.16,"stop_target_ambiguous":false,"gap_through_stop":true}},
+    {"id": "long_time_close", "side":"LONG", "stop":99, "target":102, "max_hold_bars":2,
+     "bars": [[1800000300000,100,100.3,99.5,100.1],[1800000600000,100.1,101.1,100.1,101]], "expected":{"reason":"TIME","exit":101,"gross_bp":100,"net_bp":84,"net_r":0.84,"stop_target_ambiguous":false,"gap_through_stop":false}},
+    {"id": "unfinished_is_unresolved", "side":"LONG", "stop":99, "target":102, "max_hold_bars":2,
+     "bars": [[1800000300000,100,100.3,99.5,100.1]], "expected":{"reason":"UNRESOLVED","exit":null,"gross_bp":null,"net_bp":null,"net_r":null,"stop_target_ambiguous":false,"gap_through_stop":false}}
+  ]
+}
