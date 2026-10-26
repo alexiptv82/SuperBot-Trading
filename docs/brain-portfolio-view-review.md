@@ -38,7 +38,8 @@ committed DB snapshot; cards are observations of those separate sources.
 
 - Equity follows native cash + total_margin + gross floating. P&L vs1000 PAPER.
   Prices are last closed15m-bar marks, timestamp/staleness explicit; never called
-  live ticks. Missing mark gives null equity/floating, not invented entry price.
+  live ticks. Per-position last_bar_ms prevents a fresh global cycle from hiding
+  an older symbol mark. Missing mark gives null equity/floating, not entry price.
 - Statistics cover committed full event history, group native symbol/id/open_ms.
   Partials contribute to net; only fully closed positions count in trade count,
   win rate and per-trade average. All realized events contribute realized_pnl.
@@ -63,7 +64,7 @@ committed DB snapshot; cards are observations of those separate sources.
 
 ## Validation and delivery
 
-25 offline Python tests with native synthetic SQLite, including committed WAL,
+26 offline Python tests with native synthetic SQLite, including committed WAL,
 multiple readers during uncommitted writer transaction, no reset/hash changes,
 timeout/lock/corruption, schema/isolation, all-history stats, tail and auth.
 React tests cover six cards, values, escaped model text, empty/unavailable states,

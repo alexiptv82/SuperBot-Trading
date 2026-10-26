@@ -135,6 +135,9 @@ def read_status(data_dir=None, *, now_ms=None):
             _check(deadline)
         closed = [v['net'] for v in groups.values() if v['closed']]
         prices = state.get('last_prices', {})
+        last_bar = state.get('last_bar')
+        valued_ms = _number(last_bar) + 900000 if last_bar is not None else None
+        mark_times = []
         positions = []
         margin = 0
         floating = 0
@@ -156,8 +159,14 @@ def read_status(data_dir=None, *, now_ms=None):
                 pnl = side * (price - entry) * qty
                 floating += pnl
             margin += _number(pos['total_margin'])
+            mark = pos.get('last_bar_ms', last_bar)
+            mark_ms = _number(mark) + 900000 if mark is not None else None
+            if mark_ms is not None:
+                mark_times.append(mark_ms)
             positions.append({'symbol': symbol, 'side': 'LONG' if side == 1 else 'SHORT',
-                              'entry': entry, 'price': price, 'floating_pnl': pnl})
+                              'entry': entry, 'price': price, 'floating_pnl': pnl,
+                              'valued_ms': mark_ms,
+                              'stale': mark_ms is None or not -5000 <= now - mark_ms <= FRESH_MS})
             features = pos.get('features') or {}
             if features.get('bull_scenario') and features.get('bear_scenario'):
                 thesis.append((pos['open_ms'], symbol, features, 'open_position'))
@@ -166,8 +175,8 @@ def read_status(data_dir=None, *, now_ms=None):
                 thesis.append((order['execute_t'], order['symbol'], order, 'pending_decision'))
         cash = _number(account['cash'])
         equity = cash + margin + floating if priced else None
-        valued_ms = state.get('last_bar')
-        valued_ms = _number(valued_ms) + 900000 if valued_ms is not None else None
+        if mark_times and valued_ms is not None:
+            valued_ms = min(valued_ms, *mark_times)
         age = now - valued_ms if valued_ms is not None else None
         stale = age is None or age < -5000 or age > FRESH_MS
         daily = account.get('brain_daily') or {}

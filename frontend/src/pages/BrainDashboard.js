@@ -46,6 +46,7 @@ export function BrainCards({ data }) {
             <Row label={position.symbol}><strong style={{ color: position.side === 'LONG' ? '#4ade80' : '#f87171' }}>{position.side}</strong></Row>
             <Row label="Entry">{fmt(position.entry, 6)}</Row>
             <Row label="P&L floating"><span style={{ color: color(position.floating_pnl) }}>{money(position.floating_pnl)}</span></Row>
+            {position.stale && <div style={noteStyle}>Prezzo non aggiornato · {date(position.valued_ms)}</div>}
           </div>
         ))}
         {!positions.length && <p style={noteStyle}>{available ? 'Nessuna posizione aperta' : 'Posizioni non disponibili'}</p>}

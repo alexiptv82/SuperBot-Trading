@@ -185,6 +185,14 @@ class BrainViewTests(unittest.TestCase):
         self.state['last_bar'] -= view.FRESH_MS + 1; self.save()
         self.assertTrue(self.read()['portfolio']['stale'])
 
+    def test_one_symbol_old_mark_not_hidden_by_fresh_global_cycle(self):
+        self.state['account']['positions']['ETH']['last_bar_ms'] = NOW - view.FRESH_MS - 1800000
+        self.save()
+        value = self.read()
+        self.assertTrue(value['positions'][1]['stale'])
+        self.assertTrue(value['portfolio']['stale'])
+        self.assertFalse(value['positions'][0]['stale'])
+
     def test_exclusive_lock_bounded_no_reset(self):
         self.writer.execute('BEGIN EXCLUSIVE')
         started = time.monotonic()
