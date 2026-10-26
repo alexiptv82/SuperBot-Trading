@@ -27,7 +27,7 @@ Queste scelte non realizzano il comportamento scalp richiesto. Cambiare soltanto
 9. Dashboard: margine/leva/ROI (PR#13), durata del trade e motivo di uscita; in seguito statistiche di rotazione, costi per trade e profitto netto per periodo, non solo numero operazioni/win rate.
 
 ## Parametri ancora da definire, non autorizzati per inferenza
-- Durata desiderata e tempo massimo di permanenza.
+- Regola di rivalutazione/stagnazione e criteri di prosecuzione: la durata è adattiva, senza chiusura automatica a 5 o 15 minuti.
 - Frequenza dei controlli locali, dei dati brevi e delle rivalutazioni AI entro budget.
 - Soglia di profitto netto utile e protezione dal ritorno del profitto.
 - Politica temporale/di uscita per trade senza sviluppo.
@@ -36,4 +36,9 @@ Queste scelte non realizzano il comportamento scalp richiesto. Cambiare soltanto
 Non assegnare numeri definitivi senza valutazione e confronto con l'utente. La richiesta di scalp non autorizza automaticamente maggiore rischio o una soglia di profitto specifica.
 
 ## Consegna e stato
-Documento di riallineamento, non implementazione runtime. Conservare storico, posizioni, budget e memoria esistenti. Nessun reset, merge o deploy; nessuna chiusura forzata o riavvio. Prossimo passo: tradurre la durata e il profitto netto desiderati in specifica verificabile e implementare su ramo separato con test/review prima di un rilascio PAPER autorizzato.
+Documento di riallineamento, non implementazione runtime. Conservare storico, posizioni, budget e memoria esistenti. Nessun reset, merge o deploy; nessuna chiusura forzata o riavvio. Prossimo passo: tradurre la durata adattiva e il profitto netto utile in criteri verificabili e implementare su ramo separato con test/review prima di un rilascio PAPER autorizzato.
+
+## Precisazione utente: durata adattiva
+L'utente chiarisce che Bull, più aggressivo, può operare per 1–5 minuti, 5–15 minuti o oltre quando ne vale la pena. L'obiettivo non è uno scalp necessariamente fulmineo né una permanenza di ore in attesa. Per il Brain questi intervalli sono riferimenti, non timer obbligatori o nuove impostazioni per Bull.
+
+Criterio da implementare: continuare quando esistono ancora evidenze favorevoli e una ragione concreta per la prosecuzione; rivalutare e proteggere il profitto netto quando il movimento rallenta, si esaurisce o compare un'invalidazione. Il trascorrere del tempo da solo non impone la chiusura a 5/15 minuti, ma una posizione stagnante non deve diventare automaticamente un'operazione lunga. Stop e gestione delle perdite restano necessari: non attendere indefinitamente il ritorno in profitto. Ogni prosecuzione deve essere spiegabile nel journal. Le soglie numeriche di profitto, stallo e protezione non sono state assegnate dall'utente.
