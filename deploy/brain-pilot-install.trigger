@@ -1,4 +1,4 @@
-# Authorized PAPER install; only installer RO-parent preflight correction after 38 tests PASS.
-action=install
-approved=yes
+# Installation succeeded in Actions 40330889295; disarmed after use.
+action=none
+approved=no
 sha=4aaf792b66284bbe3428acdbaeedbd1725cd2839
