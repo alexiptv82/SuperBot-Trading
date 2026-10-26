@@ -1,7 +1,7 @@
-2026-10-26 prova con la storia vera dei dati di trend: senza trend 1d fino al 23/10 (come i bot), poi con
+2026-10-26 prova con i punteggi di prima di P1 e la storia vera dei dati: il banco riproduce Hawk dal 12/10?
 ref=work/hawk-regime-v1
 days=90
 step=1
 data=d1
 from=2026-10-10
-only=base@v1@mix,base@mix,completo@mix,base,completo,solo_filtro@mix
+only=base@old@v1@mix,base@old@mix,base,completo@old@v1@mix,completo@old@mix,completo,solo_filtro@old@v1@mix
