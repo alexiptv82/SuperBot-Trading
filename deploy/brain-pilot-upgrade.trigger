@@ -1,7 +1,5 @@
-action=upgrade
-approved=yes
+# Prepared for review only. No runtime operation is authorized by this file.
+action=none
+approved=no
 sha=1f2edeb6182029adc96ba7218ad145a7503472a3
 previous_sha=2c977c46ec786e3ca08c95f0b79f9729b4c12a53
-# Brain-five-upgrades: ATR, 20pct daily stop, thesis debate, context.py
-# User OK: 2026-10-26 — Review approvata Claude
-# Retry-3: retry-2 aveva [skip ci] e non ha triggerato nessun workflow
