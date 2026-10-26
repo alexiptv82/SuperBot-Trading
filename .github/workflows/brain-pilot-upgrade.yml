@@ -1,4 +1,4 @@
-name: Brain Pilot PAPER - code upgrade (explicit approval)
+name: Brain Pilot PAPER - state-preserving upgrade (explicit approval)
 on:
   push:
     branches: [rule-pool]
@@ -50,13 +50,14 @@ jobs:
         env:
           BRAIN_SHA: ${{ steps.trigger.outputs.sha }}
           BRAIN_PREVIOUS: ${{ steps.trigger.outputs.previous }}
+          BRAIN_CONTROL: ${{ github.sha }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         with:
           host: 51.79.205.82
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
-          envs: BRAIN_SHA,BRAIN_PREVIOUS,DEEPSEEK_API_KEY
+          envs: BRAIN_SHA,BRAIN_PREVIOUS,BRAIN_CONTROL,DEEPSEEK_API_KEY
           command_timeout: 22m
           script: |
             set -eu
@@ -64,13 +65,17 @@ jobs:
             test -n "$DEEPSEEK_API_KEY"
             test "${#BRAIN_SHA}" = 40
             test "${#BRAIN_PREVIOUS}" = 40
-            BUILD_DIR=$(mktemp -d /opt/superbot-brain-build.XXXXXXXX)
-            trap 'rm -rf "$BUILD_DIR"' EXIT
-            git init -q "$BUILD_DIR"
-            git -C "$BUILD_DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
-            git -C "$BUILD_DIR" fetch -q --depth=1 origin "$BRAIN_PREVIOUS" "$BRAIN_SHA"
-            git -C "$BUILD_DIR" checkout -q --detach "$BRAIN_SHA"
-            test "$(git -C "$BUILD_DIR" rev-parse HEAD)" = "$BRAIN_SHA"
+            CONTROL_DIR=$(mktemp -d /opt/superbot-brain-upgrader.XXXXXXXX)
+            APP_DIR=$(mktemp -d /opt/superbot-brain-target.XXXXXXXX)
+            trap 'rm -rf "$CONTROL_DIR" "$APP_DIR"' EXIT
+            git init -q "$CONTROL_DIR"
+            git -C "$CONTROL_DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$CONTROL_DIR" fetch -q --depth=1 origin "$BRAIN_PREVIOUS" "$BRAIN_SHA" "$BRAIN_CONTROL"
+            git -C "$CONTROL_DIR" checkout -q --detach "$BRAIN_CONTROL"
+            test "$(git -C "$CONTROL_DIR" rev-parse HEAD)" = "$BRAIN_CONTROL"
+            git -C "$CONTROL_DIR" worktree add -q --detach "$APP_DIR" "$BRAIN_SHA"
+            test "$(git -C "$APP_DIR" rev-parse HEAD)" = "$BRAIN_SHA"
             export BRAIN_INSTALL_APPROVED=yes
-            python3 "$BUILD_DIR/deploy/scripts/brain_pilot_repair_daily.py" \
-              --sha "$BRAIN_SHA" --previous "$BRAIN_PREVIOUS" --repo "$BUILD_DIR"
+            python3 "$CONTROL_DIR/deploy/scripts/brain_pilot_upgrade.py" \
+              --sha "$BRAIN_SHA" --previous "$BRAIN_PREVIOUS" --repo "$APP_DIR"
+
