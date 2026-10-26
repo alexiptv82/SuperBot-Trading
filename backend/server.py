@@ -60,9 +60,6 @@ app = FastAPI(title='SuperBot Trading API', version='1.0.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True,
                    allow_methods=['*'], allow_headers=['*'])
 
-# Stato temporaneo delle challenge WebAuthn in corso (registrazione o login),
-# in memoria di processo: vive solo per la manciata di secondi tra la
-# richiesta delle "options" e la verifica della risposta del dispositivo.
 _pending_challenges: dict = {}
 
 WEBAUTHN_USER_ID = b"superbot-owner"
@@ -83,8 +80,6 @@ class RiskConfigUpdate(BaseModel):
     max_leverage: float
     max_daily_loss_percent: float
     max_open_positions: float
-    # Opzionale: i client vecchi (app in cache) non lo mandano e la
-    # modalita' di rischio resta quella attuale.
     risk_mode: Optional[str] = None
 
 class WebAuthnRegisterVerifyRequest(BaseModel):
@@ -97,11 +92,9 @@ class WebAuthnLoginVerifyRequest(BaseModel):
     credential: dict
 
 
-# ── Autenticazione ───────────────────────────────────────────────────────────
+# ── Autenticazione ───────────────────────────────────────────────────────────────────────
 
 def _login_response(state: str) -> dict:
-    """state: 'ok' | 'first_login' | 'expired'. Se la password va cambiata
-    si rilascia solo il token limitato, che apre solo /api/auth/change-password."""
     if state == 'ok':
         return {'success': True, 'token': create_session_token('full'), 'must_change': None}
     return {'success': True, 'token': create_session_token('change_only'), 'must_change': state}
@@ -109,17 +102,13 @@ def _login_response(state: str) -> dict:
 
 @app.post('/api/auth/login')
 async def login(req: LoginRequest):
-    """Login con password. Restituisce un token di sessione da usare come
-    header `Authorization: Bearer <token>` su tutte le altre chiamate. Al
-    primo accesso (password iniziale) o a password scaduta restituisce un
-    token limitato e `must_change`: il frontend deve far cambiare la password."""
     check_login_allowed()
     if not password_login_available():
         raise HTTPException(status_code=503, detail='Password iniziale non configurata sul server')
     state = authenticate_password(req.password)
     if state is None:
         register_failure()
-        await asyncio.sleep(0.8)  # rallenta chi prova a indovinare
+        await asyncio.sleep(0.8)
         bot._log('auth_failed', message='Tentativo di login con password errata')
         raise HTTPException(status_code=401, detail='Password errata')
     register_success()
@@ -128,9 +117,6 @@ async def login(req: LoginRequest):
 
 @app.post('/api/auth/change-password')
 async def change_password_endpoint(body: ChangePasswordRequest, session=Depends(require_change_session)):
-    """Cambia la password (serve quella attuale, o quella iniziale al primo
-    accesso). Salva solo l'hash, invalida tutte le sessioni precedenti e
-    restituisce un nuovo token completo."""
     check_login_allowed()
     try:
         change_password(body.old_password, body.new_password)
@@ -146,9 +132,6 @@ async def change_password_endpoint(body: ChangePasswordRequest, session=Depends(
 
 @app.post('/api/auth/forgot')
 async def forgot_password():
-    """Password dimenticata, passo 1: manda un codice monouso (8 cifre,
-    valido 10 minuti) sul Telegram del proprietario. Non serve essere
-    autenticati, ma il codice arriva solo su Telegram, mai nella risposta."""
     if not notifier.enabled:
         raise HTTPException(status_code=503, detail='Il recupero password via Telegram non è configurato sul server')
     code = request_recovery_code()
@@ -167,14 +150,11 @@ async def forgot_password():
 
 @app.post('/api/auth/forgot/confirm')
 async def forgot_password_confirm(body: ForgotConfirmRequest):
-    """Password dimenticata, passo 2: con il codice ricevuto su Telegram si
-    sceglie la nuova password. Chiude tutte le sessioni precedenti e
-    restituisce subito una sessione completa."""
     try:
         recover_password(body.code, body.new_password)
     except HTTPException as e:
         if e.status_code == 401:
-            await asyncio.sleep(0.8)  # rallenta chi prova a indovinare il codice
+            await asyncio.sleep(0.8)
         raise
     register_success()
     bot._log('auth_recovery_done', message='Password dashboard recuperata con codice Telegram')
@@ -187,15 +167,11 @@ async def forgot_password_confirm(body: ForgotConfirmRequest):
 
 @app.get('/api/auth/password-status')
 async def password_status_endpoint(session=Depends(require_session)):
-    """Giorni rimasti alla scadenza della password, per il banner di avviso."""
     return password_status()
 
 
 @app.get('/api/auth/webauthn/status')
 async def webauthn_status(db: Session = Depends(get_db)):
-    """Dice al frontend se esiste già almeno una credenziale biometrica
-    registrata, per decidere se mostrare il pulsante 'Sblocca con impronta'
-    nella schermata di login (prima ancora di autenticarsi)."""
     has_credentials = len(get_all_credentials(db)) > 0
     return {'available': has_credentials, 'has_credentials': has_credentials, 'rp_id': config.WEBAUTHN_RP_ID}
 
@@ -204,9 +180,6 @@ async def webauthn_status(db: Session = Depends(get_db)):
 async def webauthn_register_options(
     session=Depends(require_session), db: Session = Depends(get_db)
 ):
-    """Step 1 della registrazione di una nuova credenziale biometrica.
-    Richiede una sessione già valida (quindi va fatta una volta, subito
-    dopo un login con password)."""
     existing = get_all_credentials(db)
     options = webauthn.generate_registration_options(
         rp_id=config.WEBAUTHN_RP_ID,
@@ -235,7 +208,6 @@ async def webauthn_register_verify(
     session=Depends(require_session),
     db: Session = Depends(get_db),
 ):
-    """Step 2: verifica la risposta del dispositivo e salva la credenziale."""
     challenge = _pending_challenges.pop(body.state_id, None)
     if not challenge:
         raise HTTPException(status_code=400, detail='Richiesta scaduta, riprova')
@@ -261,7 +233,6 @@ async def webauthn_register_verify(
 
 @app.get('/api/auth/webauthn/credentials')
 async def webauthn_list_credentials(session=Depends(require_session), db: Session = Depends(get_db)):
-    """Elenco dei dispositivi con impronta registrata (per Impostazioni)."""
     return {'credentials': [
         {
             'id': c.id,
@@ -274,8 +245,6 @@ async def webauthn_list_credentials(session=Depends(require_session), db: Sessio
 
 @app.delete('/api/auth/webauthn/credentials/{cred_id}')
 async def webauthn_delete_credential(cred_id: int, session=Depends(require_session), db: Session = Depends(get_db)):
-    """Rimuove l'impronta di un dispositivo (cambio telefono, impronta
-    cambiata, o semplicemente non la si vuole piu')."""
     removed = delete_credential_by_id(db, cred_id)
     if removed is None:
         raise HTTPException(status_code=404, detail='Impronta non trovata')
@@ -285,8 +254,6 @@ async def webauthn_delete_credential(cred_id: int, session=Depends(require_sessi
 
 @app.post('/api/auth/webauthn/login/options')
 async def webauthn_login_options(db: Session = Depends(get_db)):
-    """Step 1 del login biometrico: NON richiede una sessione (è proprio
-    il modo per ottenerne una nuova senza reinserire la password)."""
     existing = get_all_credentials(db)
     if not existing:
         raise HTTPException(status_code=400, detail='Nessuna impronta registrata su questo bot')
@@ -307,8 +274,6 @@ async def webauthn_login_options(db: Session = Depends(get_db)):
 async def webauthn_login_verify(
     body: WebAuthnLoginVerifyRequest, db: Session = Depends(get_db)
 ):
-    """Step 2: verifica l'impronta e, se corretta, rilascia un token di
-    sessione -- stesso risultato del login con password."""
     challenge = _pending_challenges.pop(body.state_id, None)
     if not challenge:
         raise HTTPException(status_code=400, detail='Richiesta scaduta, riprova')
@@ -335,7 +300,7 @@ async def webauthn_login_verify(
     return _login_response(session_state_after_biometric())
 
 
-# ── Endpoint bot/trading (tutti protetti da sessione) ───────────────────────
+# ── Endpoint bot/trading (tutti protetti da sessione) ────────────────────────
 
 @app.post('/api/bot/start')
 async def start_bot(session=Depends(require_session)):
@@ -351,7 +316,6 @@ async def get_status(session=Depends(require_session)):
 
 @app.get('/api/bot/config')
 async def get_bot_config(session=Depends(require_session)):
-    """Parametri di rischio correnti, per la pagina Impostazioni."""
     return {
         'trading_mode': config.TRADING_MODE,
         'initial_capital': config.INITIAL_CAPITAL,
@@ -360,8 +324,6 @@ async def get_bot_config(session=Depends(require_session)):
         'max_open_positions': config.MAX_OPEN_POSITIONS,
         'trading_pairs': config.TRADING_PAIRS,
         'risk_bounds': {k: {'min': v['min'], 'max': v['max']} for k, v in RISK_BOUNDS.items()},
-        # Profili di rischio: la modalita' scelta, quella effettivamente in
-        # uso (in reale solo 'conservative') e i parametri dei due profili.
         'risk_mode': current_mode(),
         'effective_risk_mode': current_mode() if config.IS_PAPER else 'conservative',
         'risk_modes': list(RISK_MODES),
@@ -377,8 +339,6 @@ async def get_bot_config(session=Depends(require_session)):
 
 @app.put('/api/bot/config/risk')
 async def update_risk_config(body: RiskConfigUpdate, session=Depends(require_session)):
-    """Salva i parametri di rischio modificati dall'app. Validati contro
-    RISK_BOUNDS, persistiti in DB e applicati subito al bot (nessun riavvio)."""
     data = body.dict()
     mode = data.pop('risk_mode', None)
     try:
@@ -442,7 +402,6 @@ async def get_performance(session=Depends(require_session), db: Session = Depend
             'time': (t.close_time or t.open_time).isoformat(),
             'equity': round(running, 2),
         })
-    # Curva del capitale separata per profilo (ognuno ha il suo portafoglio).
     equity_by_profile = {}
     running_by_profile = {}
     for t in ordered:
@@ -458,12 +417,7 @@ async def get_performance(session=Depends(require_session), db: Session = Depend
         by_symbol[t.symbol] += (t.pnl or 0)
     gross_profit = sum(t.pnl for t in trades if t.pnl and t.pnl > 0)
     gross_loss = abs(sum(t.pnl for t in trades if t.pnl and t.pnl < 0))
-    # Profit factor: utile lordo / perdita lorda. Senza perdite, non è infinito
-    # per convenzione del settore ma "N/A" se non c'è nemmeno un trade perdente
-    # da confrontare (coerente con "non inventare metriche").
     profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else None
-    # Dettaglio per profilo di rischio: netto (dopo commissioni), lordo e
-    # commissioni, per confrontare Conservativo e Aggressivo.
     by_profile = {}
     for t in trades:
         key = t.profile or 'legacy'
@@ -508,6 +462,9 @@ async def health():
         'build': '2026-10-15-live-needs-live-bot',
     }
 
+from desk.brain_view import register_fastapi as register_brain_view
+register_brain_view(app, require_session)
+
 # Serve frontend React se la cartella build esiste
 frontend_build = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'build')
 if os.path.exists(frontend_build):
@@ -524,7 +481,7 @@ if os.path.exists(frontend_build):
             return FileResponse(file_path)
         return FileResponse(os.path.join(frontend_build, 'index.html'))
 
-# ── Kill switch Telegram (comandi bidirezionali) ────────────────────────────
+# ── Kill switch Telegram (comandi bidirezionali) ──────────────────────────────────────────────
 # Il polling gira indipendentemente da bot.is_running, cosi' /resume
 # funziona anche a bot fermo. Registrato qui (non in telegram_notifier.py)
 # per evitare un import circolare notifier<->bot_engine.
@@ -580,17 +537,12 @@ notifier.register_command('resetpassword', _cmd_resetpassword)
 
 @app.on_event('startup')
 async def _on_startup():
-    # Riapplica gli override di rischio salvati dall'app (sopravvivono a
-    # riavvii e redeploy perche' stanno nel DB, non in .env).
     load_overrides()
     init_auth()
-    # Il listener dei comandi Telegram parte sempre, a prescindere dal bot --
-    # è l'unico modo per cui /resume possa funzionare se il bot è fermo o il
-    # processo è appena stato riavviato.
     asyncio.create_task(notifier.poll_commands())
 
 
-# ── Portafogli desk (Hawk e Bull) ────────────────────────────────────────────
+# ── Portafogli desk (Hawk e Bull) ───────────────────────────────────────────────────────────────────────
 # I bot girano nei container superbot-desk-hawk / -bull e scrivono nei loro volumi; qui si
 # legge e si mandano i comandi (file-flag). Tutta la logica sta in desk_view.py / desk_api.py:
 # un solo codice per i due portafogli, cosi' non possono piu' divergere.
@@ -606,7 +558,7 @@ app.include_router(desk_api.make_router("bull", _DESK_DATA_BULL, require_session
 
 _prices_cache: dict = {}
 _prices_cache_ts: float = 0.0
-_PRICES_CACHE_TTL = 30.0   # secondi: refresh max ogni 30s, non ad ogni richiesta
+_PRICES_CACHE_TTL = 30.0
 
 V2_SYMBOLS = [
     'BTC', 'ETH', 'BNB', 'XRP', 'SOL', 'ADA', 'DOGE', 'AVAX',
@@ -618,9 +570,6 @@ V2_SYMBOLS = [
 
 @app.get("/api/desk/prices")
 async def desk_prices(session=Depends(require_session)):
-    """Prezzi live dei 27 simboli (carosello del mercato). Cache server-side 30s: il frontend puo'
-    fare polling frequente senza sommergere l'exchange. Alimenta anche la cache dei prezzi usata
-    per il P&L live delle posizioni aperte."""
     global _prices_cache, _prices_cache_ts
     import time as _time
     now = _time.monotonic()
@@ -643,17 +592,14 @@ async def desk_prices(session=Depends(require_session)):
     return prices
 
 
-# ── Pagina Live: saldo reale BitGet, P&L e limite di perdita, interruttore trading ─────────────
-# La logica dei numeri sta in live_view.py (testata a parte). Qui: il saldo (ccxt) e le rotte.
+# ── Pagina Live: saldo reale BitGet, P&L e limite di perdita, interruttore trading ─────────────────
 import live_view
 
 
 def _fetch_bitget_wallet(bot: str) -> dict:
-    """Saldo reale del sub-account BitGet di un bot (sola lettura). Solo se DESK_MODE=live e le chiavi di
-    sola lettura di quel bot sono presenti nell'ambiente di questo container; altrimenti dice perche' non c'e'."""
     if os.environ.get("DESK_MODE", "paper").strip().lower() != "live":
         return {"available": False, "error": "modalita' paper: nessun saldo reale da mostrare"}
-    creds = live_view.wallet_credentials(os.environ, bot)   # solo la chiave di SOLA LETTURA di questo bot
+    creds = live_view.wallet_credentials(os.environ, bot)
     if creds is None:
         names = live_view.wallet_key_names(bot)
         return {"available": False,
@@ -676,17 +622,14 @@ def _fetch_bitget_wallet(bot: str) -> dict:
         return {"available": False, "error": str(e)[:120]}
 
 
-_bitget_ro_clients: dict = {}      # un client ccxt per bot, riusato: i mercati si caricano una volta sola
+_bitget_ro_clients: dict = {}
 _bitget_ro_locks: dict = {}
 
 
 def _fetch_bitget_positions(bot: str) -> dict:
-    """Posizioni VERE aperte sul sub-account BitGet di un bot, lette con la chiave di SOLA LETTURA (la stessa
-    del saldo). Mai un errore verso l'esterno: se non si puo' leggere si dice perche' e la pagina Live ripiega
-    sui numeri del bot. Le posizioni in uscita sono gia' nel formato della pagina (live_view.normalize_real_positions)."""
     if os.environ.get("DESK_MODE", "paper").strip().lower() != "live":
         return {"available": False, "positions": [], "error": "modalita' paper: nessuna posizione reale da mostrare"}
-    creds = live_view.wallet_credentials(os.environ, bot)   # solo la chiave di SOLA LETTURA di questo bot
+    creds = live_view.wallet_credentials(os.environ, bot)
     if creds is None:
         return {"available": False, "positions": [],
                 "error": f"chiave BitGet di sola lettura di {bot.capitalize()} non configurata nell'app"}
@@ -708,7 +651,6 @@ def _fetch_bitget_positions(bot: str) -> dict:
 
 
 async def _fetch_wallets() -> dict:
-    """Saldi dei due sub-account (Hawk e Bull) letti in parallelo, piu' il totale se entrambi sono leggibili."""
     bots = live_view.WALLET_BOTS
     results = await asyncio.gather(*(asyncio.to_thread(_fetch_bitget_wallet, b) for b in bots))
     return live_view.combine_wallets(dict(zip(bots, results)))
@@ -721,7 +663,6 @@ async def live_wallet(session=Depends(require_session)):
 
 @app.get("/api/desk/live/overview")
 async def live_overview(session=Depends(require_session)):
-    """Saldo BitGet + posizioni vere + stato di Hawk e Bull in una sola chiamata (pagina Live)."""
     import time as _time
     bots = live_view.WALLET_BOTS
     wallet, hawk_real, bull_real = await asyncio.gather(

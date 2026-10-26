@@ -11,6 +11,7 @@ import NavBar from './components/NavBar';
 import LiveDashboard from './pages/LiveDashboard';
 import LiveTrades from './pages/LiveTrades';
 import LivePerformance from './pages/LivePerformance';
+import BrainDashboard from './pages/BrainDashboard';
 
 // Error boundary globale: cattura qualsiasi crash di render nell'albero React
 // e mostra un messaggio utile invece della schermata nera.
@@ -23,12 +24,10 @@ class AppErrorBoundary extends React.Component {
     return { hasError: true, error };
   }
   componentDidCatch(error, info) {
-    // Salva il messaggio di errore nel titolo così è visibile anche senza devtools
     try { document.title = '❌ ' + (error?.message || 'crash'); } catch (_) {}
     console.error('[AppErrorBoundary]', error, info?.componentStack);
   }
   handleReload() {
-    // Pulisce tutto e ricarica forzando il service worker a scaricare la versione fresca
     try { sessionStorage.clear(); } catch (_) {}
     window.location.reload(true);
   }
@@ -87,8 +86,6 @@ function PasswordBanner() {
 }
 
 export default function App() {
-  // sessionStorage: si svuota alla chiusura del tab/app → l'auth viene richiesta
-  // ad ogni apertura (sicurezza biometrica obbligatoria ad ogni avvio).
   const [auth, setAuth] = useState(!!sessionStorage.getItem('sb_token'));
   if (!auth) return (
     <AppErrorBoundary>
@@ -111,6 +108,7 @@ export default function App() {
               <Route path="/live" element={<LiveDashboard />} />
               <Route path="/live/trades" element={<LiveTrades />} />
               <Route path="/live/performance" element={<LivePerformance />} />
+              <Route path="/brain" element={<BrainDashboard />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </div>

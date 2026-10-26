@@ -81,20 +81,19 @@ const makeDeskAPI = (prefix) => ({
   getRuns:        () => API.get(`${prefix}/runs`),
   getLogs:        () => API.get(`${prefix}/logs`),
   health:         () => API.get(`${prefix}/health`),
-  pause:          () => API.post(`${prefix}/pause`),      // svuota: finisce le posizioni, niente nuovi trade
-  resume:         () => API.post(`${prefix}/resume`),     // avvia / riprende
-  closeAll:       () => API.post(`${prefix}/close-all`),  // chiude tutto a prezzo di mercato
-  closePosition:  (symbol) => API.post(`${prefix}/close-position`, { symbol }),  // chiude UNA posizione a prezzo di mercato
+  pause:          () => API.post(`${prefix}/pause`),
+  resume:         () => API.post(`${prefix}/resume`),
+  closeAll:       () => API.post(`${prefix}/close-all`),
+  closePosition:  (symbol) => API.post(`${prefix}/close-position`, { symbol }),
   resetBudget:    () => API.post(`${prefix}/reset-budget`),
-  resetPortfolio: () => API.post(`${prefix}/reset-portfolio`, { clear_lessons: false }),   // il cervello non si cancella mai
-  getHours:       () => API.get(`${prefix}/hours`),                 // orari di trading: impostazione + stato dal bot
-  setHours:       (cfg) => API.post(`${prefix}/hours`, cfg),        // {enabled, tz, windows:[{days,start,end}]}
+  resetPortfolio: () => API.post(`${prefix}/reset-portfolio`, { clear_lessons: false }),
+  getHours:       () => API.get(`${prefix}/hours`),
+  setHours:       (cfg) => API.post(`${prefix}/hours`, cfg),
 });
 
 export const deskAPI = {
   ...makeDeskAPI('/api/desk'),
-  getPrices: () => API.get('/api/desk/prices'),   // 27 simboli, comune ai due portafogli
-  // Pagina Live: saldo BitGet + P&L/limite di perdita + interruttore "trading acceso/spento"
+  getPrices: () => API.get('/api/desk/prices'),
   getLiveWallet:      () => API.get('/api/desk/live/wallet'),
   getLiveOverview:    () => API.get('/api/desk/live/overview'),
   enableHawkTrading:  () => API.post('/api/desk/hawk/trading/enable'),
@@ -103,6 +102,9 @@ export const deskAPI = {
   disableBullTrading: () => API.post('/api/desk/bull/trading/disable'),
 };
 export const bullAPI = makeDeskAPI('/api/desk/bull');
+export const brainAPI = {
+  getStatus: (signal) => API.get('/api/brain/status', { signal }),
+};
 
 // Messaggio leggibile da un errore axios (usa il testo del server se c'e')
 export const errMsg = (e) => e?.response?.data?.detail || e?.response?.data?.message || e?.message || String(e);

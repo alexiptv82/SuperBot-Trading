@@ -7,6 +7,7 @@ const PAPER_TABS = [
   { path: '/',            icon: '📊', label: 'Dashboard' },
   { path: '/trades',      icon: '💹', label: 'Trade' },
   { path: '/performance', icon: '🏆', label: 'Performance' },
+  { path: '/brain',       icon: '🧠', label: 'BRAIN' },
 ];
 
 // Tab per modalità LIVE
@@ -24,13 +25,12 @@ export default function NavBar({ onLogout }) {
   const isLive = mode === 'live';
   const tabs = isLive ? LIVE_TABS : PAPER_TABS;
 
-  // Quando si switcha modalità, naviga alla home della modalità target
   const handleToggle = () => {
     toggleMode();
     if (isLive) {
-      nav('/');          // passa a paper → Dashboard paper
+      nav('/');
     } else {
-      nav('/live');      // passa a live → Dashboard live
+      nav('/live');
     }
   };
 
@@ -45,8 +45,6 @@ export default function NavBar({ onLogout }) {
       paddingTop: '4px',
       transition: 'background 0.3s, border-color 0.3s',
     }}>
-      {/* Tab sinistra + destra con toggle al centro */}
-      {/* Tab 1 e 2 */}
       {tabs.slice(0, 2).map(t => {
         const active = loc.pathname === t.path;
         return (
@@ -105,7 +103,7 @@ export default function NavBar({ onLogout }) {
         </span>
       </button>
 
-      {/* Tab 3 */}
+      {/* Tab 3+ */}
       {tabs.slice(2).map(t => {
         const active = loc.pathname === t.path;
         return (
