@@ -922,7 +922,6 @@ def position_info(pos, price: float, readings: dict, now_ms: int, closed=(), lim
     from desk.position_card import metrics
     r = readings.get(pos.symbol)
     extra = metrics(pos, price, now_ms, closed, limits or Limits())
-    cur_r, peak_r = regime_mod.r_metrics(pos.side, pos.entry, price, regime_mod.peak_price(pos), regime_mod.r_unit(pos))
     return {
         **extra,
         "split_pending": pos.pending_split,
@@ -935,7 +934,6 @@ def position_info(pos, price: float, readings: dict, now_ms: int, closed=(), lim
         "score_now": (r.long_score if pos.side == 1 else r.short_score) if r else None,
         "score_opposite": (r.short_score if pos.side == 1 else r.long_score) if r else None,
         "reason": pos.reason,
-        "cur_r": cur_r, "peak_r": peak_r,
     }
 
 
@@ -1267,6 +1265,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # posizioni aperte con info aggiornate
     pos_info = [position_info(pos, prices.get(sym, pos.entry), readings_map, now_ms, acc.closed, acc.limits)
                 for sym, pos in acc.positions.items()]
+    for pi, (sym, pos) in zip(pos_info, acc.positions.items()):      # R attuali e di picco, per regole e regime
+        pi["cur_r"], pi["peak_r"] = regime_mod.r_metrics(pos.side, pos.entry, prices.get(sym, pos.entry),
+                                                          regime_mod.peak_price(pos), regime_mod.r_unit(pos))
 
     # stop che si alza: pareggio dopo +1R, poi segue il prezzo; mai indietro. Solo PAPER. Se il prezzo e' gia' tornato
     # oltre il livello da proteggere si chiude subito (protect_closes).
