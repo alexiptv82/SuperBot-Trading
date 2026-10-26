@@ -98,7 +98,8 @@ class Reading:
     trade_type: str = "medio"   # "scalp" se segnale su 15m/1h, "medio" se su 4h/1d
 
 
-def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None) -> Reading | None:
+def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
+                btc_return_3d: float | None = None) -> Reading | None:
     b1 = resample(arr15, H1)
     b4 = resample(arr15, H4)
     b1d = resample(arr15, H1D)
@@ -129,7 +130,7 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None) -> Re
     pat = doji_pattern(b1)
 
     # --- stagionalità
-    sea = get_seasonal(symbol, now_ms)
+    sea = get_seasonal(symbol, now_ms, btc_return_3d=btc_return_3d)
 
     comp = {"long": [], "short": []}
     sc = {"long": 0, "short": 0}

@@ -180,6 +180,12 @@ _PORTFOLIO_CAPITAL = float(os.getenv(
 _DAILY_LOSS_PCT = float(os.getenv("DESK_DAILY_LOSS_PCT", "25")) / 100.0
 _DAILY_LOSS_LIMIT = _PORTFOLIO_CAPITAL * _DAILY_LOSS_PCT
 
+# In paper mode usa start_equity come baseline (non la variabile env di capitale live)
+_PAPER_DAILY_LOSS_LIMIT = PORTFOLIO.limits.start_equity * _DAILY_LOSS_PCT
+
+# Limite rischio SL aperto per Bull: ~1 SL pieno ($157.50); blocca la 2a posizione tipicamente
+BULL_MAX_OPEN_RISK_USD = float(os.getenv("DESK_BULL_MAX_OPEN_RISK", "160"))
+
 print(f"[CAPITAL] {PORTFOLIO.name.upper()} capitale={_PORTFOLIO_CAPITAL:.0f}$ "
       f"limite_perdita_giornaliero={_DAILY_LOSS_LIMIT:.0f}$ ({_DAILY_LOSS_PCT*100:.0f}%)", flush=True)
 
@@ -223,17 +229,24 @@ def _daily_realized_pnl(acc) -> float:
     )
 
 
+def _open_sl_risk(acc) -> float:
+    """Stima perdita totale se tutte le posizioni aperte colpiscono il proprio SL."""
+    total = 0.0
+    for pos in acc.positions.values():
+        if pos.sl and pos.entry and pos.entry > 0:
+            sl_dist_pct = abs(pos.entry - pos.sl) / pos.entry
+            total += pos.total_margin * pos.leverage * sl_dist_pct
+    return total
+
+
 def _daily_loss_exceeded(acc) -> bool:
-    """
-    True se la perdita realizzata oggi supera il limite configurato.
-    Attivo solo in modalità live — in paper mode non blocca mai.
-    """
-    if not LIVE._live:
-        return False
+    """True se la perdita realizzata oggi supera il limite configurato.
+    Attivo sia in live che in paper (in paper usa start_equity come baseline)."""
+    limit = _DAILY_LOSS_LIMIT if LIVE._live else _PAPER_DAILY_LOSS_LIMIT
     pnl = _daily_realized_pnl(acc)
-    if pnl <= -_DAILY_LOSS_LIMIT:
+    if pnl <= -limit:
         print(f"[DAILY LOSS LIMIT] {PORTFOLIO.name.upper()} perdita oggi={pnl:+.2f}$ "
-              f"≥ limite {_DAILY_LOSS_LIMIT:.0f}$ — nessuna nuova apertura per oggi", flush=True)
+              f"≥ limite {limit:.0f}$ — nessuna nuova apertura per oggi", flush=True)
         return True
     return False
 
@@ -562,6 +575,15 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     if state.get("market_ctx"):
         ctx_for_prompt = state["market_ctx"]
 
+    # Ritorno BTC 3 giorni per il market_factor del modulo seasonal
+    _btc_arr = candles_map.get("BTC")
+    _btc_return_3d: float | None = None
+    if _btc_arr is not None and len(_btc_arr) > 288:   # 288 barre 15m = 3 giorni
+        try:
+            _btc_return_3d = float(_btc_arr[-1][4]) / float(_btc_arr[-289][4]) - 1.0
+        except (IndexError, ZeroDivisionError):
+            pass
+
     # segnali tecnici
     readings_list = []
     readings_map: dict = {}
@@ -569,7 +591,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         arr = candles_map.get(sym)
         if arr is None or len(arr) < 80:
             continue
-        r = read_symbol(sym, arr, now_ms)
+        r = read_symbol(sym, arr, now_ms, btc_return_3d=_btc_return_3d)
         if r is not None:
             readings_list.append(r)
             readings_map[sym] = r
@@ -660,6 +682,14 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                                            readings_map.get("BTC")),
             }, candidate=True)
         except Exception:
+            pass
+
+    # Ritorno BTC 24h per il veto direzionale Bull SHORT
+    _btc_ret_24h: float | None = None
+    if PORTFOLIO.name == "bull" and _btc_arr is not None and len(_btc_arr) > 96:
+        try:
+            _btc_ret_24h = float(_btc_arr[-1][4]) / float(_btc_arr[-97][4]) - 1.0
+        except (IndexError, ZeroDivisionError):
             pass
 
     for dec in decisions:
@@ -800,10 +830,25 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                       flush=True)
                 _candidate("trading_disabilitato", dec, px)
                 continue
-            # ── DAILY LOSS LIMIT (solo live) ────────────────────────────────
+            # ── DAILY LOSS LIMIT ─────────────────────────────────────────────
             if _daily_loss_exceeded(acc):
                 _candidate("daily_loss_limit", dec, px)
                 continue
+            # ── GUARDRAIL BULL: limite rischio SL aperto contemporaneo ───────
+            if PORTFOLIO.name == "bull":
+                planned_risk = dec["margin_usd"] * dec["leverage"] * sl_pct
+                current_risk = _open_sl_risk(acc)
+                if current_risk + planned_risk > BULL_MAX_OPEN_RISK_USD:
+                    print(f"[RISK_CAP:BULL] {sym}: open_risk {current_risk:.0f}$"
+                          f" + planned {planned_risk:.0f}$ > {BULL_MAX_OPEN_RISK_USD:.0f}$ — skip", flush=True)
+                    _candidate("risk_cap_bull", dec, px)
+                    continue
+            # ── VETO BULL SHORT: no SHORT se BTC rimbalza forte ───────────────
+            if PORTFOLIO.name == "bull" and side == -1:
+                if _btc_ret_24h is not None and _btc_ret_24h > 0.02:
+                    print(f"[VETO_BULL_SHORT] {sym}: BTC {_btc_ret_24h:+.1%}/24h → no SHORT Bull", flush=True)
+                    _candidate("veto_bull_short", dec, px)
+                    continue
             # ─────────────────────────────────────────────────────────────────
             split_cfg = None
             if is_split:
