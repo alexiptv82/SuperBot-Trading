@@ -2,7 +2,7 @@
 Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico precedente consultare i commit di questo file e ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md. Protocollo: SINCRONIZZAZIONE-WORK-CHAT.md.
 
 ## Runtime PAPER (NON toccare senza nuova autorizzazione)
-- Hawk + Bull in PAPER sul VPS Singapore, codice **63641f70** (deploy 26/10/2026 — trigger 6f73e800, DEPLOY OK).
+- Hawk + Bull in PAPER sul VPS Singapore, codice **35f08cf** (deploy 26/10/2026 sera — trigger fcea423, run #42, DEPLOY OK). Precedente: 63641f70 (Fix B).
 - Fix B AI Profit Guardian V1 attivo: `profit_guardian.py` + `portfolio_alert.py` in produzione.
 - Capital Management V1 integrato ma con DESK_CAPITAL_V1=off, non abilitare senza OK dell'utente.
 - Vincolo immutabile: nessun reset di trade_history, learning_log, lessons.md, errors.md.
@@ -41,30 +41,35 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## Director V1 — COMPLETATO (26/10/2026)
 - Branch: **`work/director-v1-unified`**, commit `d2b351e0`.
 
-## Fix Segnali V2 — IN rule-pool, DEPLOY NON ESEGUITO (26/10/2026 sera)
-- Codice: ramo `work/fix-segnali-v2` (commit `b93196b`), unito in `rule-pool` col merge **`35f08cf`**. Il vecchio commit
-  `767bee0` sul ramo `ccr-999de027-0stnyt` era basato su `main` (codice bot vecchio): NON usarlo, NON unirlo.
+## Fix Segnali V2 — DEPLOYATO (26/10/2026 sera, 18:31-18:33 UTC)
+- OK esplicito dell'utente al redeploy: "ok, procedi con il deploy" (dopo un primo tentativo bloccato dal controllo di sicurezza
+  della sessione, che chiedeva una conferma diretta).
+- Deploy: trigger `fcea423` (`sha=35f08cf8d16097d8ca365892a3f9a9ef23996709`), workflow `Sala segnali - deploy` run #42 = SUCCESS.
+  Esito dal log: PAPER_AND_RISK_ENVIRONMENT=PASS, RUNTIME_BASELINE_SOURCE=PASS, backup del cervello verificato, hawk e bull
+  healthy, una sola istanza per bot, versione dichiarata `35f08cf` da entrambi, PAPER_AND_CAPITAL_ENV_VERIFIED_AFTER_DEPLOY=PASS.
+- Codice: ramo `work/fix-segnali-v2` (commit `b93196b`) unito in `rule-pool` col merge `35f08cf`. Il commit `767bee0` sul ramo
+  `ccr-999de027-0stnyt` era basato su `main` (codice bot vecchio): NON usarlo, NON unirlo.
 - Contenuto: `seasonal.py` formula additiva (0.60 mensile + 0.40 ciclo), curva del ciclo morbida (mese 30 = -0.40), freno
   di mercato (`btc_return_3d`); `seasonal_v1.py` = vecchia formula byte-identica per gli script di audit;
-  `signals.py` passa `btc_return_3d`; `cli.py` solo Bull: tetto rischio SL aperto 160$ (prima posizione sempre ammessa) e
+  `signals.py` passa `btc_return_3d`; `cli.py` solo Bull: tetto rischio SL aperto 160$ (la prima posizione passa sempre) e
   nessun nuovo SHORT se BTC +2% in 24h. BTC ott 2026: da 5 SHORT a 5 LONG; 1 nov BTC/ETH: da 9/10 SHORT a 6 LONG.
-- NON cambiato: `_daily_loss_exceeded` (in paper lo stop giornaliero e' quello del motore, equity -10%; test lo fissa).
-- CI `desk-ci` run 91 su `35f08cf`: stesso unico fallimento gia' presente sul codice live (`test_uptrend_scores_long_and_downtrend_scores_short`);
-  gli step dopo il fallimento (inclusi i test per-file nuovi) vengono sempre saltati: rieseguiti a mano con Python 3.11 = verdi
-  salvo `test_daily_trend_present_with_real_daily_bars` (gia' rosso sul baseline). "Capital Management V1" CI: stessi due test.
-- Baseline del workflow di deploy aggiornata a `63641f7` (commit `5151b01`): la guardia `runtime_version_mismatch`
-  pretende che i bot in esecuzione siano alla versione indicata; senza questo passaggio il deploy si ferma (in sicurezza).
-- Stato bot alle 17:56 UTC (desk-status): Hawk e Bull su `63641f7`, healthy, PAPER, 0 posizioni aperte, entrambi fermi per
-  stop giornaliero. `deploy/desk-deploy.trigger` e' ancora quello di Fix B (`sha=63641f70...`): **nessun redeploy fatto**.
-- Il tentativo di scrivere il trigger di deploy e' stato bloccato dal controllo di sicurezza della sessione (deploy in
-  produzione): serve un OK esplicito e diretto dell'utente al redeploy di Hawk/Bull.
-- Per deployare (dopo OK): scrivere su `rule-pool` `deploy/desk-deploy.trigger` con `sha=35f08cf8d16097d8ca365892a3f9a9ef23996709`
-  (commit senza `[skip ci]`), seguire il run `Sala segnali - deploy`, poi `desk-status`/`sg-bots-check`.
-  Rollback: immagine `superbot-desk:rollback-<data>` (creata dal deploy) o trigger con `sha=63641f7059a977368f8bb8aecc517f7a7c74cbce`
-  (in quel caso rimettere la baseline del workflow a quella corrispondente).
+- NON cambiato: `_daily_loss_exceeded` (in paper lo stop giornaliero e' quello del motore, equity -10%; un test lo fissa);
+  engine, brain, prompt di Claude, soglie di confidenza, R:R, leve, margini, DESK_MODE (paper).
+- Baseline del workflow di deploy aggiornata a `63641f7` prima del deploy (commit `5151b01`); la prossima volta andra'
+  riportata a `35f08cf` (la guardia `runtime_version_mismatch` pretende la versione in esecuzione).
+- CI: `desk-ci` run 91 e "Capital Management V1" su `35f08cf` falliscono solo sui test gia' rossi sul codice live prima del
+  fix (`test_uptrend_scores_long_and_downtrend_scores_short`, `test_daily_trend_present_with_real_daily_bars`); gli step
+  dopo il primo fallimento (inclusi i test nuovi per-file) vengono saltati: rieseguiti a mano con Python 3.11 = verdi.
+- Verifica post-deploy (desk-status 18:36 UTC): primo ciclo dei bot col nuovo codice completato 18:33 UTC, 0 posizioni aperte,
+  conti e storico del giorno invariati, Hawk e Bull ancora fermi per stop giornaliero (si sblocca col nuovo giorno UTC).
+- Da osservare: da domani i candidati rifiutati dal Bull compaiono nel registro come `rifiutata:rischio_aperto_bull` e
+  `rifiutata:veto_short_rimbalzo_btc`; il bonus stagionale compare nel `why` dei segnali ("stagionalità long/short +N").
+  Nota gia' presente prima del deploy: "[Fallback] Claude non disponibile: decisioni affidate alle regole" nei log di entrambi.
+- Rollback: immagine `superbot-desk:rollback-<data>` creata dal deploy, oppure trigger con
+  `sha=63641f7059a977368f8bb8aecc517f7a7c74cbce` (rimettere prima la baseline del workflow a `35f08cf`).
 
 ## Task aperti (in ordine di priorità)
-0. **Deploy Fix Segnali V2** — `rule-pool` @ `35f08cf` (baseline deploy gia' aggiornata). Serve OK esplicito dell'utente.
+0. **Osservazione Fix Segnali V2** (24-48h in paper): segnali LONG/SHORT di Bull e Hawk, rifiuti `rifiutata:*` di Bull, nessun nuovo errore nei log (desk-status).
 1. **Osservazione Fix B**: finestra 24-48h in paper (sola lettura, desk-status)
 2. **Punto 4 — AI shadow**: in osservazione. Analisi dati disponibile (504 cicli, 5 gg).
 3. **Punto 5** — Capital Dashboard V1 (`work/capital-dashboard-v1`)

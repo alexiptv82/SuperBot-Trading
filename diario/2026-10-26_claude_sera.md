@@ -89,9 +89,12 @@ segnalato dall'utente era questo stop del motore che funzionava.
 - Nessuna modifica a engine.py, brain.py, prompt di Claude, soglie di confidenza, R:R, leve, margini.
 
 ## Stato (fine turno)
-- Codice in `rule-pool` (merge `35f08cf`); baseline `desk-deploy.yml` aggiornata a `63641f7` (`5151b01`).
-- Snapshot bot 17:56 UTC: Hawk/Bull `63641f7`, healthy, PAPER, 0 posizioni, fermi per stop giornaliero.
-- **Deploy NON eseguito.** Il messaggio "Ok, sì, puoi procedere" dell'utente seguiva la mia richiesta di OK al redeploy, ma
-  il controllo di sicurezza della sessione ha bloccato la scrittura di `deploy/desk-deploy.trigger` (deploy in produzione).
-  Non ho cercato vie alternative: serve conferma esplicita e diretta ("deploya Hawk e Bull con il commit 35f08cf").
+- Codice in `rule-pool` (merge `35f08cf`), baseline `desk-deploy.yml` portata a `63641f7` (`5151b01`) prima del deploy.
+- Primo tentativo di scrivere il trigger di deploy bloccato dal controllo di sicurezza della sessione (serviva conferma diretta).
+  Dopo "ok, procedi con il deploy" dell'utente: trigger `fcea423` (`sha=35f08cf...`), run `Sala segnali - deploy` #42 = SUCCESS.
+- Esito: Hawk e Bull healthy, una sola istanza per bot, versione `35f08cf` dichiarata da entrambi, PAPER, backup del cervello
+  verificato prima di toccare i container. Posizioni 0 prima e dopo (i bot erano fermi per lo stop giornaliero): niente da
+  migrare. Primo ciclo col nuovo codice 18:33 UTC regolare; desk-status 18:36 UTC conferma.
+- Nessun importo di Bitget nel diario; le cifre del paper non sono riportate.
+- Prossimo: osservazione 24-48h; poi eventuali ritocchi decisi dall'utente (soglia 160$ del tetto, soglia 2% del veto).
 - Dettagli e comandi: STATO.md, sezione "Fix Segnali V2".
