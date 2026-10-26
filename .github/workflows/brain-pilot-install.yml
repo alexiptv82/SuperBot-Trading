@@ -66,4 +66,20 @@ jobs:
             git -C "$BUILD_DIR" checkout -q --detach FETCH_HEAD
             test "$(git -C "$BUILD_DIR" rev-parse HEAD)" = "$BRAIN_SHA"
             export BRAIN_INSTALL_APPROVED=yes
+            python3 - "$BUILD_DIR" <<'PY'
+            import importlib.util, os, pathlib, sys
+            repo = pathlib.Path(sys.argv[1])
+            spec = importlib.util.spec_from_file_location('brain_install', repo/'deploy/scripts/brain_pilot_install.py')
+            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+            print('BRAIN_PREFLIGHT_APPROVAL=' + str(os.getenv('BRAIN_INSTALL_APPROVED') == 'yes'))
+            print('BRAIN_PREFLIGHT_MODEL_KEY_PRESENT=' + str(bool(os.getenv('DEEPSEEK_API_KEY'))))
+            print('BRAIN_PREFLIGHT_CANONICAL_DATA=' + str(mod.DATA.resolve() == mod.DATA))
+            try:
+                mod.reject_conflicts(mod.inspect_all())
+                print('BRAIN_PREFLIGHT_MOUNT_CONFLICT=NONE')
+            except ValueError as exc:
+                allowed = {'existing_brain_container_no_replacement', 'data_mounted_by_another_container'}
+                print('BRAIN_PREFLIGHT_REJECT=' + (str(exc) if str(exc) in allowed else type(exc).__name__))
+                raise SystemExit(1)
+            PY
             python3 "$BUILD_DIR/deploy/scripts/brain_pilot_install.py" --sha "$BRAIN_SHA" --repo "$BUILD_DIR"
