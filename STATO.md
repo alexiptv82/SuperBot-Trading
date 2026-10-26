@@ -199,3 +199,8 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Verifica codice: trade_type=medio, ciclo/esecuzione15m, riferimento uscita25–30%ROI, ATR1h. Serve riallineamento di dati/motore/uscite oltre al prompt.
 - Design salvato: work/brain-scalp-design @6988c7a435eb61edafe0465839bbd50691e4469d, docs/brain-scalp-realignment.md. Nessuna implementazione runtime, merge/deploy/riavvio, nessuna modifica Hawk/Bull.
 - Direzione strategica chiarita; durata precisa, profitto netto minimo e altri parametri restano da definire. Nessun aumento implicito rischio/leva/margine. Memoria e statistiche dei futuri scalp da separare dal Brain medio e dalle fonti classiche.
+
+## Precisazione utente — scalp a durata adattiva
+- Riferimenti1–5min e5–15min, con possibilità di proseguire oltre se il trade resta valido; evitare ore di attesa. Questi tempi non sono chiusure automatiche o modifiche di Bull.
+- Brain: profitto netto, slancio residuo e rischio guidano continuazione/uscita; stop e uscita da tesi invalidata restano attivi anche in perdita. Nessun profitto garantito, attesa indefinita o soglia numerica nuova approvata.
+- Aggiornato docs/brain-scalp-realignment.md su work/brain-scalp-design. Solo design; nessun cambio runtime, deploy o riavvio.
