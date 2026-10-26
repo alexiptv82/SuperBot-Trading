@@ -1,5 +1,6 @@
 """Regime di mercato (desk/regime.py) e sua integrazione in rules_decisions. Funzioni pure: nessuna rete."""
 import os
+import pytest
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -9,7 +10,14 @@ from desk import regime as rg  # noqa: E402
 from desk.brain import rules_decisions  # noqa: E402
 from desk.signals import Reading  # noqa: E402
 
-P = rg.DEFAULT
+P = rg.FULL
+
+
+@pytest.fixture(autouse=True)
+def _full_profile(monkeypatch):
+    """I test provano ogni funzione: si parte dal profilo COMPLETO; il profilo di produzione ha un test suo."""
+    monkeypatch.setattr(rg, "DEFAULT", rg.FULL)
+
 
 
 def rd(sym, ls, ss, roc=0.0, score=None, trade_type="scalp"):
@@ -226,3 +234,17 @@ def test_signal_flip_close_still_works_with_regime():
 def test_only_manage_never_opens():
     decs = rules_decisions([rd("SOL", 20, 80)], [], set(), 60, only_manage=True, regime=R("down", smooth=-0.5))
     assert decs == []
+
+
+def test_production_profile_is_filter_only(monkeypatch):
+    import importlib
+    for k in ("DESK_REGIME_RATCHET", "DESK_REGIME_FLIP", "DESK_REGIME_RANGE_EXTRA"):
+        monkeypatch.delenv(k, raising=False)
+    d = importlib.reload(rg).DEFAULT
+    assert d.gate is True and d.ratchet is False and d.flip_exit is False and d.range_extra == 0
+    assert d.capitulation_roc == -0.03 and d.long_needs_up is True and d.block_short_in_up is True
+    # con il profilo di produzione lo stop non si muove e non ci sono chiusure per inversione
+    assert rg.ratchet(1, 100.0, 99.0, 102.0, 103.0, 1.0, d) == ("none", 0.0)
+    assert rg.flip_exit(1, "SOL", 0.4, R("down"), d) is None
+    # il banco di prova usa il profilo completo
+    assert rg.FULL.ratchet is True and rg.FULL.flip_exit is True and rg.FULL.range_extra == 3

@@ -16,6 +16,7 @@ Le soglie sono in RegimeParams. Nessun valore qui e' stato approvato in produzio
 (deploy/scripts/desk_backtest.py) per come sono state scelte."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
@@ -54,7 +55,20 @@ class RegimeParams:
     flip_min_r: float = -0.5      # esco per inversione se la posizione non e' peggio di questo (in R)
 
 
-DEFAULT = RegimeParams()
+FULL = RegimeParams()          # tutte le funzioni accese: banco di prova storico e test
+
+
+def _env_on(name: str, default: str) -> bool:
+    return os.getenv(name, default).strip().lower() in ("1", "true", "on", "si", "yes")
+
+
+# Profilo di PRODUZIONE. Scelto con il banco "regime applicato ai trade veri di Hawk" (12-26 ottobre, stessi trade dei bot):
+# il solo filtro sugli ingressi migliora, lo stop che segue il profitto (ratchet) PEGGIORA perche' accorcia le vincite
+# grosse, l'uscita per inversione non cambia nulla; nel laterale i punti in piu' richiesti all'ingresso bloccano short
+# vincenti. Quindi: filtro acceso, ratchet e uscita per inversione SPENTI (si accendono con DESK_REGIME_RATCHET=1 e
+# DESK_REGIME_FLIP=1), nessun punto in piu' nel laterale (DESK_REGIME_RANGE_EXTRA).
+DEFAULT = RegimeParams(ratchet=_env_on("DESK_REGIME_RATCHET", "0"), flip_exit=_env_on("DESK_REGIME_FLIP", "0"),
+                       range_extra=int(os.getenv("DESK_REGIME_RANGE_EXTRA", "0") or 0))
 
 
 @dataclass(frozen=True)
@@ -77,8 +91,9 @@ def _clip(x: float, lo: float, hi: float) -> float:
     return lo if x < lo else hi if x > hi else x
 
 
-def compute(readings: Sequence, hist: Sequence[float], p: RegimeParams = DEFAULT) -> Regime:
+def compute(readings: Sequence, hist: Sequence[float], p: Optional[RegimeParams] = None) -> Regime:
     """Regime dai punteggi dell'ultimo ciclo. `hist` = valori smorzati dei cicli precedenti (piu' recente per ultimo)."""
+    p = p or DEFAULT
     by = {r.symbol: r for r in readings}
     lead_vals = [(by[s].long_score - by[s].short_score) / 100.0 for s in LEADERS if s in by]
     lead = sum(lead_vals) / len(lead_vals) if lead_vals else 0.0
@@ -112,8 +127,9 @@ def push_hist(hist: Sequence[float], regime: Regime) -> list:
 
 
 # ---------------------------------------------------------------- ingressi
-def entry_gate(side: int, symbol: str, regime: Regime, p: RegimeParams = DEFAULT) -> tuple:
+def entry_gate(side: int, symbol: str, regime: Regime, p: Optional[RegimeParams] = None) -> tuple:
     """(consentito, punti_in_piu_richiesti_al_punteggio). Le materie prime non sono filtrate."""
+    p = p or DEFAULT
     if symbol in COMMODITIES or not p.gate:
         return True, 0
     if side == -1:
@@ -142,8 +158,9 @@ def against_regime(side: int, regime: Regime) -> bool:
     return False
 
 
-def flip_exit(side: int, symbol: str, cur_r: float, regime: Regime, p: RegimeParams = DEFAULT) -> Optional[str]:
+def flip_exit(side: int, symbol: str, cur_r: float, regime: Regime, p: Optional[RegimeParams] = None) -> Optional[str]:
     """Motivo di uscita se il mercato e' girato contro la posizione (e la perdita non e' gia' oltre flip_min_r)."""
+    p = p or DEFAULT
     if not p.flip_exit or symbol in COMMODITIES:
         return None
     if against_regime(side, regime) and cur_r >= p.flip_min_r:
@@ -152,9 +169,10 @@ def flip_exit(side: int, symbol: str, cur_r: float, regime: Regime, p: RegimePar
 
 
 def ratchet(side: int, entry: float, sl: float, price: float, peak_price: float, r_unit: float,
-            p: RegimeParams = DEFAULT) -> tuple:
+            p: Optional[RegimeParams] = None) -> tuple:
     """Stop che si alza (mai si abbassa). Ritorna ("none", 0) | ("sl", nuovo_stop) | ("close", livello).
     `r_unit` = 1R in prezzo (distanza dello stop iniziale); `peak_price` = massimo (long) o minimo (short) toccato."""
+    p = p or DEFAULT
     if not p.ratchet or r_unit <= 0 or entry <= 0:
         return "none", 0.0
     peak_r = side * (peak_price - entry) / r_unit
@@ -192,9 +210,10 @@ def peak_price(pos) -> float:
     return float(best) if best and best > 0 else float(pos.entry)
 
 
-def apply_ratchet(positions: dict, prices: dict, p: RegimeParams = DEFAULT, log=None) -> dict:
+def apply_ratchet(positions: dict, prices: dict, p: Optional[RegimeParams] = None, log=None) -> dict:
     """Alza lo stop delle posizioni (mai indietro). Ritorna {simbolo: livello} per quelle da chiudere subito
     perche' il prezzo e' gia' tornato oltre il livello da proteggere."""
+    p = p or DEFAULT
     protect_closes: dict = {}
     for sym, pos in list(positions.items()):
         try:
@@ -211,9 +230,10 @@ def apply_ratchet(positions: dict, prices: dict, p: RegimeParams = DEFAULT, log=
 
 
 def management_closes(pos_info: Sequence, decisions: Sequence, regime: Regime, protect_closes: dict,
-                      p: RegimeParams = DEFAULT) -> list:
+                      p: Optional[RegimeParams] = None) -> list:
     """Chiusure da AGGIUNGERE alle decisioni (di Claude o delle regole): profitto protetto e mercato girato,
     solo per le posizioni su cui non c'e' gia' una chiusura, un parziale o un DCA."""
+    p = p or DEFAULT
     targeted = {d.get("symbol") for d in decisions if d.get("action") in ("close", "partial_close", "dca")}
     out = []
     for pi in pos_info:
