@@ -69,6 +69,17 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
   in questo momento decidono le REGOLE, non Claude. La prova della nuova stagionalita' vale quindi per punteggi e regole,
   non per il giudizio di Claude. Causa non ancora verificata (ipotesi: tetto giornaliero `DESK_DAILY_CAP_USD`, finestra del
   calendario Claude, o chiave): controllo di sola lettura disponibile con `desk-claude-finestra` / `desk-diag`.
+- **Perche' i bot sembrano "frenati" (diagnosi 26/10 sera, desk-claude-finestra #3, sola lettura)**: il tetto giornaliero di Claude
+  (0,70$ a bot, ~0,05$ a chiamata = ~14 chiamate) e' stato consumato tra le 03:33 e le 05:35 ora svizzera (Hawk 0,67$, Bull 0,68$):
+  da allora, per tutto il giorno, decidono le REGOLE (soglie 63 altcoin / 60 BTC-ETH). Calendario Claude = nessuno (`mode: none`).
+  Il reset dei portafogli NON azzera il budget (conto per giorno). Hawk e Bull con le regole prendono le stesse decisioni
+  (stesso DOT SHORT, stesso prezzo e stop; cambia solo il margine: Hawk 100$ cappato, Bull 165$): le differenze vengono dai prompt.
+- Effetto della stagionalita' V2 sui punteggi (calcolo offline, 26/10): altcoin SHORT +2 -> LONG +1 (SHORT perde 2 punti);
+  BTC SHORT +5 -> LONG +5, ETH SHORT +4 -> LONG +4. Dal 3/11: altcoin SHORT +3 -> LONG +2; BTC SHORT +9 -> LONG +6; ETH SHORT +10 -> LONG +6.
+  Esempio reale: APT 62 contro soglia 63 (con la vecchia formula sarebbe stato 64). E' un freno secondario sugli SHORT, voluto dal fix.
+- Opzioni in discussione con l'utente (nessuna applicata): (A) finestre/tetto di Claude (operativo, `desk-schedule`, senza riavvio:
+  es. una finestra nelle ore di mercato invece di spendere il budget di notte); (B) alleggerire il peso della stagionalita';
+  (C) decisioni diverse tra Hawk e Bull anche in fallback; (D) rilevamento del cambio di mercato (backlog: Market Regime + Episode Memory).
 - Nota sul tetto Bull (precisazione): il tetto limita il RISCHIO SL totale (160$), non il numero di posizioni. Con 350$ x 15x x
   3% (157$) passa una sola posizione; con le dimensioni attuali del fallback (165$ x 20x x ~1,5% = ~51$) ne passano fino a tre.
 - Da osservare: da domani i candidati rifiutati dal Bull compaiono nel registro come `rifiutata:rischio_aperto_bull` e
