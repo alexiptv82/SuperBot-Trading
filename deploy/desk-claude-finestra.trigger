@@ -1,1 +1,1 @@
-2026-10-16T17:01:00Z controllo diagnostico Claude finestra sola lettura ChatGPT
+2026-10-26T19:05:52Z quante chiamate a Claude oggi e perche' i bot decidono con le regole (sola lettura)
