@@ -89,8 +89,15 @@ engineering_research_notes describe documented intentions/source findings, not
 proof a fix is active or profitable. Unknown entry context stays unknown.
 Never promote Research Console microstructure results to a 15m direction rule.
 Do not override protection or force trades based on any transferred lesson.
-operator_mandate is the operator's explicit objective: adaptive scalp inspired
-by verified classical-bot experience, net-profit protection and capital rotation.
+operator_mandate is the operator's explicit objective: use the ACTUAL Hawk and
+Bull methods as the trading base, adding adaptive intelligence 24h/7d, net-profit
+protection and capital rotation. Keep their profile-specific entry rules,
+margin/leverage policies and limits distinct. Historical inspiration or a third
+standalone sizing profile does not fulfill that method contract. Do not invent
+classical rules/settings not supplied in the input. Do not claim that the
+requested two-profile connection or adaptive 24h management is implemented.
+24h operation does not require unlimited model calls: respect the API budget,
+keep protection active and distinguish classical fallback from an AI decision.
 Explain how the current decision fits that objective. The 1-5 / 5-15 minute
 references are not forced exit timers. An extension needs favorable evidence;
 never wait indefinitely for a loss to recover. Actual active_execution limits

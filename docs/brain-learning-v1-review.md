@@ -59,3 +59,24 @@ The discretionary exit prompt no longer asks to wait for about 25–30% margin R
 The existing 15m decision/execution cadence, 1h ATR and medio engine classification remain explicitly reported as active capabilities. `readiness=full_scalp_engine_not_implemented` and `fast_exit_supervisor=false` prevent a false claim of 1–5min supervision. Live classical signal inputs remain not connected; historical experience remains not imported until a reviewed real seed is prepared. Full adaptive-scalp data/exit/sizing implementation is still outstanding and requires dedicated tests before deployment.
 
 The new operator policy version is tracked in entry context and learning cohorts; missing old version is unknown rather than retroactively assigned. Old/new operator mandates cannot pool statistical evidence. This change does not claim the new operational objective is already achieved or profitable.
+
+## Clarification: actual Hawk/Bull methods plus adaptive intelligence H24
+
+The final operator instruction supersedes the narrower idea of a separate Bull-like sizing profile: **use the actual Hawk and Bull methods, with adaptive intelligence 24h/7d**. The new mandate version is `operator-classical-adaptive-h24-20261026`. It requires both named profiles and preserves their individual rules, size/leverage policies and executable controls. It does not fabricate a second running account or silently import a risk cap from another profile's development work.
+
+The standalone sizing prototype was discarded before integration: no new sizing module, environment switch, margin/leverage/risk value or account migration is included in this extension. The current production and candidate execution path remain the single Brain account. Prompt/mandate changes alone do not deliver the requested architecture.
+
+The implementation still required is concrete:
+
+| Component | Required behavior | Current candidate |
+|---|---|---|
+| Classical method adapter | Consume the actual versioned Hawk/Bull readings, decisions and profile configuration; reuse the classical implementation instead of a third sizing formula | Not connected |
+| Adaptive decision layer | Explain a continuation, entry adjustment or exit against both current market evidence and the selected classical profile; deterministic controls arbitrate | Operator intent only |
+| Profile/account routing | Keep the two profiles' capital, positions, risk, history and provenance separate; preserve the existing Brain account without resetting or duplicating capital | Not implemented |
+| H24 execution and protection | Evaluate opportunities and manage exposure around the clock, subject to valid data, pauses and risk stops; fast exits independent of API availability | Existing 15m engine only |
+| Model availability | Budgeted API calls distributed over the day; explicit AI/fallback provenance; no implicit spend increase or false claim of continuous model coverage | Existing API caps unchanged |
+| Validation | Causal PAPER replay with fees/slippage, both directions, outages/restarts and fresh data; compare each classical profile to its adaptive counterpart | Future integration tests |
+
+The existing `work/director-v1-unified` (`d2b351e0`, `backend/director/arbitro.py` and contracts) is a source to review for arbitration, not an already-connected component. Classical runtime/fixes are evolving on separate branches; use a pinned, reviewed version at integration, never this older learning branch's copied classical files as an assertion of the latest method. No decision here promotes the pending Hawk/Bull regime implementation to a deployed or profitable strategy.
+
+This version records requested continuous coverage separately from `adaptive_h24_status=not_implemented`. H24 does not mean forced entries or an API call on every tick. The mandate requires protective management during API failure and labels classical fallback honestly. The new operator version also separates old/new learning cohorts. No merge, restart or deployment is included.

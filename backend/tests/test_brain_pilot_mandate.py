@@ -46,6 +46,26 @@ class OperatorMandateTests(unittest.TestCase):
         self.assertEqual(m["classical_basis"]["history_status"],"not_imported")
         self.assertEqual(mandate.build({}, {"transferred_experience":{"status":"unavailable"}})["classical_basis"]["history_status"],"unavailable")
 
+    def test_classical_methods_are_required_base_for_both_profiles_not_inspiration_only(self):
+        m=mandate.build({},None)
+        contract=m["method_contract"]
+        self.assertEqual(contract["base"],"shared_classical_hawk_and_bull_method")
+        self.assertEqual(contract["profiles"],["hawk","bull"])
+        self.assertEqual(contract["connection_status"],"not_implemented")
+        self.assertEqual(contract["standalone_bull_sizing_profile"],"not_the_requested_architecture")
+        self.assertIn("ACTUAL Hawk",pb.SYSTEM)
+        # No made-up numerical risk settings or phantom second account.
+        self.assertNotIn("max_open_stop_risk_usd",contract)
+        self.assertEqual(m["active_execution"],{"status":"unknown"})
+
+    def test_continuous_operation_separates_coverage_api_budget_and_actual_status(self):
+        continuous=mandate.build({},None)["continuous_operation"]
+        self.assertEqual(continuous["requested_coverage"],"24h_7d")
+        self.assertEqual(continuous["adaptive_h24_status"],"not_implemented")
+        self.assertIn("not imply an API call at every tick",continuous["model_calls"])
+        self.assertIn("never label fallback as an AI decision",continuous["degradation"])
+        self.assertIn("respect the API budget",pb.SYSTEM)
+
     def test_legacy_context_does_not_gain_new_operator_version(self):
         ctx=lm.entry_context({"trend":{"1d":"down","4h":"down"}},"test-model")
         ctx.pop("operator_policy_version")
