@@ -1,5 +1,5 @@
 op=merge
-src=work/fix-segnali-v2
+src=work/claude-finestra-14-22
 dst=rule-pool
-msg=merge: work/fix-segnali-v2 - stagionalita V2 (formula additiva) + tetto rischio e veto SHORT Bull. OK utente 26/10/2026
+msg=merge: work/claude-finestra-14-22 - calendario di Claude 14:00-22:00 ora svizzera, 14 giorni. OK utente 26/10/2026
 skip_ci=no
