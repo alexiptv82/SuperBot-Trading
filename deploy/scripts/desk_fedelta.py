@@ -232,6 +232,118 @@ def outcomes_report(data, pos_idx, real):
             print(f"   {nm:<5} n={len(sel):<4} vero {sum(r['t']['net'] for r in sel):+8.0f}$   banco {sum(r['sim']['net'] for r in sel):+8.0f}$")
 
 
+def overlay_report(data, rules):
+    """D) Il regime applicato ai trade VERI di Hawk (gli stessi che i bot hanno aperto): quanto cambierebbe il risultato?
+    Per ogni trade vero il filtro decide se aprirlo (con il mercato noto un attimo prima); se lo apre, protezione e uscita per
+    inversione lo gestiscono barra per barra. I trade sono gli stessi dei bot, quindi la scelta delle aperture non pesa:
+    pesa solo l'effetto del regime. (Non puo' dire nulla sui trade che il filtro farebbe aprire in piu'.)"""
+    from desk import regime as rg
+    P = rg.RegimeParams
+    variants = {
+        "nessun overlay": None,
+        "solo filtro": P(ratchet=False, flip_exit=False),
+        "solo protezione": P(gate=False, flip_exit=False),
+        "solo uscita inversione": P(gate=False, ratchet=False),
+        "completo": P(),
+        "completo soglia 0.15": P(state_thr=0.15),
+        "completo soglia 0.35": P(state_thr=0.35),
+        "completo senza capitolazione": P(capitulation_roc=None),
+        "completo laterale extra 0": P(range_extra=0),
+        "completo be 0.8": P(be_at_r=0.8),
+        "completo be 1.3": P(be_at_r=1.3),
+        "completo trail 1.2": P(trail_at_r=1.2),
+        "completo trail 1.7": P(trail_at_r=1.7),
+    }
+    trades = sorted([t for t in rules if t.get("net") is not None and t["sym"] in data and not t.get("split")],
+                    key=lambda t: t["ts"])
+    if not trades:
+        print("   nessun trade")
+        return
+    syms = list(data)
+    pos_idx = {s: {int(t): i for i, t in enumerate(data[s]["a15"][:, 0])} for s in syms}
+    lim = {**bt.HAWK_LIMITS, "max_open": 99, "max_margin_total": 1e12, "daily_stop": 1.0}
+    st = {n: {"acc": PaperAccount(Limits(**lim), n), "hist": [], "regime": None, "blocked": [], "ids": {}} for n in variants}
+    t_first = (trades[0]["ts"] // BAR) * BAR - 2 * DAY
+    t_end = min(max(int(d["a15"][-1, 0]) for d in data.values()) + BAR, max(t["cts"] for t in trades) + 2 * BAR)
+    ptr = 0
+    for t in range(t_first, t_end, BAR):
+        end = t + BAR
+        while ptr < len(trades) and trades[ptr]["ts"] < end:
+            tr = trades[ptr]
+            ptr += 1
+            sym, side, px = tr["sym"], int(tr["side"]), float(tr["px"])
+            for name, s_ in st.items():
+                prm, reg = variants[name], s_["regime"]
+                if prm is not None and reg is not None:
+                    ok, extra = rg.entry_gate(side, sym, reg, prm)
+                    if (not ok) or (extra and int(tr.get("conf") or 0) < bt.tier(sym) + extra):
+                        s_["blocked"].append(tr)
+                        continue
+                pos, _m = s_["acc"].open(sym, side, float(tr["mar"]), int(tr["lev"]), px, float(tr["sl"]),
+                                         float(tr["tp"]) if tr.get("tp") else None, int(tr["ts"]), {sym: px},
+                                         confidence=int(tr.get("conf") or 0), source="rules", trade_type=tr.get("type") or "scalp")
+                if pos:
+                    s_["ids"][pos.id] = tr
+        for s_ in st.values():
+            acc = s_["acc"]
+            for sym in list(acc.positions):
+                i = pos_idx[sym].get(t)
+                if i is not None:
+                    row = data[sym]["a15"][i]
+                    acc.on_bar(sym, int(t), float(row[1]), float(row[2]), float(row[3]), float(row[4]), BAR)
+        # segnali e regime a fine barra (punteggi di prima di P1, stagionalita' vecchia, trend 1d come nei bot)
+        b3 = btc_ret(data, pos_idx, end)
+        readings, prices = [], {}
+        for sym in syms:
+            r, price = reading_at(data, pos_idx, sym, end, b3, "v1", "mix", "old")
+            if price is not None:
+                prices[sym] = price
+            if r is not None:
+                readings.append(r)
+        if not readings:
+            continue
+        for name, s_ in st.items():
+            prm = variants[name]
+            if prm is None:
+                continue
+            reg = rg.compute(readings, s_["hist"], prm)
+            s_["hist"] = rg.push_hist(s_["hist"], reg)
+            s_["regime"] = reg
+            acc = s_["acc"]
+            protect = rg.apply_ratchet(acc.positions, prices, prm)
+            info = []
+            for sym, pos in acc.positions.items():
+                pxs = prices.get(sym, pos.entry)
+                cur_r, _pk = rg.r_metrics(pos.side, pos.entry, pxs, rg.peak_price(pos), rg.r_unit(pos))
+                info.append({"symbol": sym, "side": pos.side, "trade_type": pos.trade_type, "cur_r": cur_r})
+            for d in rg.management_closes(info, [], reg, protect, prm):
+                if d["symbol"] in acc.positions and d["symbol"] in prices:
+                    acc.close(d["symbol"], prices[d["symbol"]], end, d.get("close_why") or "chiusura regime")
+    third = (t_end - trades[0]["ts"]) / 3.0
+    print(f"   {'variante':<30}{'aperti':>7}{'bloccati':>9}{'netto$':>9}{'diff$':>8}{'vinc%':>6}  {'long':<12}{'short':<12}terzi del periodo")
+    base_net = None
+    for name, s_ in st.items():
+        done = {}
+        for c in s_["acc"].closed:
+            g = done.setdefault(c["id"], {"net": 0.0, "side": c["side"], "cm": None})
+            g["net"] += float(c.get("net") or 0.0)
+            if not c.get("partial"):
+                g["cm"] = c.get("close_ms")
+        fin = [g for g in done.values() if g["cm"] is not None]
+        net = sum(g["net"] for g in fin)
+        if base_net is None:
+            base_net = net
+        wins = sum(1 for g in fin if g["net"] > 0)
+        lg = [g for g in fin if g["side"] == 1]
+        sh = [g for g in fin if g["side"] == -1]
+        th = [sum(g["net"] for g in fin if trades[0]["ts"] + i * third <= g["cm"] < trades[0]["ts"] + (i + 1) * third + 1) for i in range(3)]
+        bl = len(s_["blocked"])
+        bll = sum(1 for b_ in s_["blocked"] if int(b_["side"]) == 1)
+        print(f"   {name:<30}{len(fin):>7}{bl:>6}({bll}L){net:>9.0f}{net - base_net:>+8.0f}{100 * wins / max(1, len(fin)):>6.0f}  "
+              f"{len(lg)}/{sum(g['net'] for g in lg):+.0f}$".ljust(12) + f"  {len(sh)}/{sum(g['net'] for g in sh):+.0f}$".ljust(14)
+              + " [" + ", ".join(f"{x:+.0f}" for x in th) + "]")
+
+
 def matching_report(data, rules, extra, name):
     """Rifa' il periodo con la variante `name` e dice, per ogni apertura del banco, che cosa ha fatto il bot nello stesso momento."""
     t0 = min(t["ts"] for t in rules)
@@ -310,6 +422,7 @@ def main():
     ap.add_argument("--cache", required=True)
     ap.add_argument("--real", required=True)
     ap.add_argument("--days", type=int, default=90)
+    ap.add_argument("--overlay", action="store_true", help="applica il regime ai trade veri e confronta")
     ap.add_argument("--match", default=None, help="nome della variante del banco da confrontare con le aperture vere (es. base@old@v1@mix)")
     a = ap.parse_args()
     meta = json.load(open(os.path.join(a.cache, "meta.json")))
@@ -442,6 +555,9 @@ def main():
         signals_report(data, pos_idx, rules, sea, mode, score, verb)
     print("\n=== B) ESITI - trade veri rifatti sulle candele del banco ===")
     outcomes_report(data, pos_idx, rules)
+    if a.overlay:
+        print("\n=== D) IL REGIME APPLICATO AI TRADE VERI DI HAWK (stessi trade dei bot, effetto del solo regime) ===")
+        overlay_report(data, rules)
     if a.match:
         print("\n=== C) LE APERTURE DEL BANCO CONTRO QUELLE DEI BOT (stessa configurazione dei bot di allora) ===")
         matching_report(data, rules, extra, a.match)
