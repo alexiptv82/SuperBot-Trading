@@ -1,3 +1,3 @@
 action=report
 approved=no
-# disarmed — upgrade in corso
+# pre-upgrade-status-check 2026-10-26T14:11Z
