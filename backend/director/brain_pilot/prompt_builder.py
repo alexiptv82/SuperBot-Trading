@@ -63,7 +63,9 @@ def closed_bars(rows, tf, now_ms):
     a = a[:, :6]
     if not np.isfinite(a).all() or np.any(a[:, 1:5] <= 0) or np.any(a[:, 5] < 0):
         raise ValueError("invalid_" + tf)
-    if np.any(np.diff(a[:,0]) != ms) or np.any(a[:,0] % ms):
+    # Native Bitget 1D uses UTC+8 (16:00 UTC open). A daily grid need not
+    # start at UTC midnight; exact 24h spacing still rejects gaps/anchor shifts.
+    if np.any(np.diff(a[:,0]) != ms) or (tf != "1d" and np.any(a[:,0] % ms)):
         raise ValueError("irregular_" + tf)
     if a[-1,0]+ms > now_ms or now_ms-(a[-1,0]+ms) >= ms:
         raise ValueError("stale_or_open_" + tf)
