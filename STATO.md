@@ -41,7 +41,20 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## Director V1 — COMPLETATO (26/10/2026)
 - Branch: **`work/director-v1-unified`**, commit `d2b351e0`.
 
+## Fix Segnali V2 — PRONTO, IN ATTESA DEPLOY (26/10/2026 sera)
+- Branch: **`ccr-999de027-0stnyt`**, commit `767bee0`.
+- **NON deployato**: richiede OK esplicito utente (Regola 1).
+- Modifica `seasonal.py`: formula additiva (0.60×monthly + 0.40×smooth_cycle).
+  BTC ottobre 2026: da 5 SHORT → 5 LONG (swing 10pt). Curva ciclo smooth (mese 30 = −0.40).
+  market_factor: se BTC va >3% contro il prior, bonus azzerato.
+- Modifica `cli.py`: daily stop attivo in paper (usa start_equity come baseline);
+  `BULL_MAX_OPEN_RISK_USD=160$` blocca la 2a posizione Bull; VETO_BULL_SHORT (BTC +2%).
+- Modifica `signals.py`: passa `btc_return_3d` a `get_seasonal`.
+- Sintassi OK, formula verificata con test inline.
+- Per deployare: OK utente → rebuild immagine Docker con commit `767bee0`.
+
 ## Task aperti (in ordine di priorità)
+0. **Deploy Fix Segnali V2** — branch `ccr-999de027-0stnyt`, commit `767bee0`. Richiede OK utente.
 1. **Osservazione Fix B**: finestra 24-48h in paper (sola lettura, desk-status)
 2. **Punto 4 — AI shadow**: in osservazione. Analisi dati disponibile (504 cicli, 5 gg).
 3. **Punto 5** — Capital Dashboard V1 (`work/capital-dashboard-v1`)
