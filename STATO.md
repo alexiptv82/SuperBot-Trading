@@ -6,7 +6,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Fix B AI Profit Guardian V1 attivo: `profit_guardian.py` + `portfolio_alert.py` in produzione.
 - Capital Management V1 integrato ma con DESK_CAPITAL_V1=off, non abilitare senza OK dell'utente.
 - Vincolo immutabile: nessun reset di trade_history, learning_log, lessons.md, errors.md.
-- rule-pool HEAD: `6d7fbb0cc18a546b09cfe2d3ce1f0a3000e660ee` (trigger upgrade disarmato, upgrade completato).
+- rule-pool HEAD: `aca2305c1ac6138fced97d4e83f96e91b9025ac6` (brain portfolio dashboard mergiata, PR#11, 26/10/2026 15:28 UTC).
 
 ## AI IN OMBRA (DeepSeek) — ATTIVO DAL 21/10/2026
 - Container `superbot-ai` su VPS Singapore, **Up 5 days (healthy)**, riavvii: 0.
@@ -59,7 +59,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 | 26/10/2026 | **63641f70** | Fix B (AI Profit Guardian V1) |
 
 ## Task aperti (in ordine di priorità)
-1. **Brain Pilot dual-portfolio**: implementare confronto Bot classico vs Bot+Brain, $1000 PAPER ciascuno. Utente ha approvato (26/10/2026).
+1. **Brain Portfolio dashboard**: MERGIATA su rule-pool (PR#11, 26/10/2026 15:28 UTC). Tab BRAIN disponibile nel prossimo rilascio app (richiede port controllato su main + mount Brain read-only su VPS). Deploy non ancora eseguito.
 2. **Osservazione Fix B**: finestra 24-48h in paper (sola lettura, desk-status)
 3. **Punto 4 — AI shadow**: in osservazione, già attivo. Analisi dati disponibile (504 cicli, 5 gg). Decidere se aggiungere integrazione Arbitro dopo altro periodo di osservazione.
 4. **Punto 5** — Capital Dashboard V1 (`work/capital-dashboard-v1`)
@@ -95,7 +95,6 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Autorizzazione utente: OK esplicito 26/10/2026. Review Claude approvata.
 - Trigger disarmato (action=none, commit `6d7fbb0c` su rule-pool).
 - Hawk/Bull NON toccati; runtime resta `63641f70`.
-- Prossimo: osservare prime decisioni con nuove feature (debate + ATR); implementare dual-portfolio.
 
 ## Storico Brain Pilot
 | Data | SHA container | Evento |
@@ -103,12 +102,11 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 | 26/10/2026 ~13:30 | 2c977c46 | Installazione PAPER iniziale |
 | 26/10/2026 14:55 | **1f2edeb6** | Upgrade stateful (ATR, 20% stop, debate, context) |
 
-
-## Brain Portfolio Dashboard — PRONTA PER REVIEW, NON DISTRIBUITA
-- Consegna ChatGPT Work a review Claude: branch `work/brain-portfolio-view`, PR #11 https://github.com/alexiptv82/SuperBot-Trading/pull/11.
-- Commit finale `aaf4e2bbe835d29cd2f7b95e23320e761a7a0735`; base `6d7fbb0cc18a546b09cfe2d3ce1f0a3000e660ee`.
-- Adattamento React/FastAPI autorizzato («adatta pwa»): tab BRAIN con sei card e GET /api/brain/status autenticato. cli.py, PAPER/LIVE e motore invariati. SQLite URI ro, deadline query 2s, nessun checkpoint; JSONL solo lettura dalla coda.
-- CI `40348943392` SUCCESS: 26 test offline Python 3.10/3.11, 4 React e build PWA. Solo dati sintetici.
-- Limiti: Docker health/SHA/uptime assenti dai file → unknown/non disponibile. Reasoning = ultima tesi conservata con origine/data; ultima chiamata indica il tentativo. Handoff: docs/brain-portfolio-view-review.md.
-- Prossimo: review PR #11. Futuro rilascio app richiede port controllato su main e mount Brain read-only. Non unire le intere storie rule-pool/main.
-- Nessun merge/deploy, trigger operativo, riavvio, accesso VPS o modifica dati. Runtime del diario invariato, non riverificato qui.
+## Brain Portfolio Dashboard — MERGIATA SU RULE-POOL (26/10/2026 15:28 UTC)
+- Autore: ChatGPT Work (commit `931c499`); review e merge: Claude Sonnet 4.6.
+- PR#11 `work/brain-portfolio-view` → `rule-pool`, merge commit `aca2305c`.
+- Adattamento React/FastAPI: tab 🧠 BRAIN con sei card + GET `/api/brain/status` autenticato.
+- CLI.py, PAPER, LIVE e motore invariati. SQLite URI ro, deadline 2s, nessun checkpoint. JSONL solo lettura dalla coda (ultimi 256 KiB). Fonte: `brain.sqlite3` schema nativo (state/events), non state_json.
+- CI SUCCESS su tutti e 6 i job: reader Python 3.10/3.11 (26 test offline) + pwa React (4 test + build produzione) su entrambi i run `40348943392` / `40348952563`.
+- Review Claude: codice conforme ai vincoli CLAUDE.md. Test verificano esplicitamente che i byte dei file cervello restano invariati dopo la lettura.
+- **Prossimo**: il tab BRAIN sarà visibile dopo il prossimo rilascio app. Richiede: port controllato su main (non merge intera storia rule-pool) + mount Brain read-only su VPS (`/opt/superbot-desk-data/brain`). Finché non montato, endpoint risponde `{"status":"unavailable"}`.
