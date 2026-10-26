@@ -103,5 +103,9 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 | 26/10/2026 ~13:30 | 2c977c46 | Installazione PAPER iniziale |
 | 26/10/2026 14:55 | **1f2edeb6** | Upgrade stateful (ATR, 20% stop, debate, context) |
 
-## IN_CORSO — Brain Portfolio Dashboard
-- Proprietario: ChatGPT Work; branch work/brain-portfolio-view da 6d7fbb0cc18a546b09cfe2d3ce1f0a3000e660ee. UI cli.py + nuovo reader brain_view.py + test/CI offline. Mandato utente: sola osservazione, nessun deploy/trigger/restart; PAPER/LIVE e motore invariati. Claude revisore sul componente fino alla consegna.
+## Brain Portfolio Dashboard — PRONTA PER REVIEW, NON DISTRIBUITA
+- Proprietario sviluppo: ChatGPT Work; ora consegna a review Claude. Branch work/brain-portfolio-view da6d7fbb0c, PR#11: https://github.com/alexiptv82/SuperBot-Trading/pull/11. Commit finale aaf4e2bbe835d29cd2f7b95e23320e761a7a0735 (iniziale931c499715587ff9e0d42e291c4f16079502f73a).
+- Adattamento React/FastAPI autorizzato dall’utente («adatta pwa»): tab BRAIN sei card + GET/api/brain/status autenticato. cli.py, PAPER/LIVE, motore, prompt e rischi invariati. SQLite nativo URIro, deadline query2s, no checkpoint; JSONL lettura coda limitata.
+- 26 testoffline PASS su Python3.10/3.11 +4React +buildPWA: Actions40348943392 SUCCESS. Dati sintetici, nessun VPS/Docker/rete trading nei test.
+- Limiti espliciti: Dockerhealth/SHA/uptime non esposti dai file attuali → unknown/non disponibile. Reasoning=ultima tesi conservata con origine/data; timestampultima chiamata=tentativo. Nessun dato inventato. docs/brain-portfolio-view-review.md.
+- Prossimo: review PR#11; futuro rilascio app richiede port controllato su main e mount brain read-only. Nessun merge automatico di storie rule-pool/main. Nessun deploy, trigger operativo, riavvio, accessoVPS o modifica dati effettuati. Stato runtime del diario resta invariato, non riverificato qui.
