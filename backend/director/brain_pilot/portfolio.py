@@ -3,6 +3,7 @@ import copy
 import math
 import time
 from desk.engine import Limits, PaperAccount, max_leverage_for
+from .learning import entry_context
 
 
 def number(value, low, high):
@@ -70,7 +71,7 @@ class Portfolio:
                 "halted":self.halted(prices,now_ms),"daily":copy.deepcopy(self.daily),
                 "risk_max_pct":1,"fee_each_side":.0006}
 
-    def open(self, sym, decision, px, now_ms, prices):
+    def open(self, sym, decision, px, now_ms, prices, context=None):
         a=self.account; side=1 if decision["action"]=="open_long" else -1
         size=number(decision["size_pct"],.01,1)*number(decision["conviction"],60,100)/100
         sl=number(decision["sl"],1e-12,1e15); tp=number(decision["tp"],1e-12,1e15)
@@ -99,7 +100,9 @@ class Portfolio:
                      source="brain-deepseek",trade_type="medio",
                      features={"invalidation":decision["invalidation"],"market_phase":decision.get("market_phase",""),
                                "bull_scenario":decision.get("bull_scenario"),"bear_scenario":decision.get("bear_scenario"),
-                               "verdict":decision.get("verdict")})
+                               "verdict":decision.get("verdict"),
+                               "learning_context":entry_context(context or {}, decision["_learning_model"], decision.get("_learning_refs", []))
+                                   if "_learning_model" in decision else {}})
         if p is None:
             raise ValueError(msg)
         return {"kind":"open","symbol":sym,"risk":self.risk_at_stop(p),"position_id":p.id,
@@ -147,7 +150,7 @@ class Portfolio:
         trial=Portfolio(self.to_dict()); a=trial.account
         sym=decision["symbol"]; action=decision["action"]; p=a.positions.get(sym)
         if action.startswith("open_"):
-            event=trial.open(sym,decision,px,now_ms,prices)
+            event=trial.open(sym,decision,px,now_ms,prices,context)
         elif action=="average":
             event=trial.average(sym,decision,px,now_ms,prices,context)
         elif action in ("close","save_profit","partial_close"):

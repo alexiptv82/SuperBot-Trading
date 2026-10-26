@@ -1,10 +1,10 @@
 name: Brain Pilot V1 offline tests
 on:
   push:
-    branches: [work/brain-pilot-v1, work/brain-pilot-stateful-upgrader]
+    branches: [work/brain-pilot-v1, work/brain-pilot-stateful-upgrader, work/brain-learning-v1]
     paths:
       - "backend/director/brain_pilot/**"
-      - "backend/tests/test_brain_pilot_v1.py"
+      - "backend/tests/test_brain_pilot*.py"
       - "backend/tests/test_brain_pilot_install.py"
       - "deploy/scripts/brain_pilot_install.py"
       - "deploy/scripts/brain_pilot_upgrade.py"

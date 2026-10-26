@@ -18,7 +18,7 @@ from director.ai_shadow import deepseek, journal
 from director.ai_shadow.budget import Budget
 from director.ai_shadow.config import Config
 from director.ai_shadow.market import BarCache
-from . import VERSION, prompt_builder
+from . import VERSION, prompt_builder, learning
 from .portfolio import Portfolio, number
 from .context import ContextCollector
 
@@ -106,7 +106,8 @@ def parse_response(text, universe, summaries, key=""):
 
 
 class Store:
-    def __init__(self, root):
+    def __init__(self, root, learning_enabled=True):
+        self.learning_enabled = learning_enabled
         self.root=Path(root).resolve()
         # Explicit own directory; never permit known sibling bot directories.
         if self.root.name in {"hawk","bull","ai","superbot-ai-data"} or any(p in {"hawk","bull"} for p in self.root.parts):
@@ -139,22 +140,45 @@ class Store:
         with self.db:
             for kind,row in events:
                 self.db.execute("INSERT INTO events(kind,body) VALUES (?,?)",(kind,json.dumps(row,allow_nan=False)))
+            if self.learning_enabled:
+                try:
+                    before = state.get("learning", {}).get("cursor", 0)
+                    memory = learning.advance(self.db, state.get("learning"))
+                    state["learning"] = memory
+                    state["learning_status"] = "ok"
+                    if memory["cursor"] != before:
+                        audit = {"kind": "learning_update", "cursor": memory["cursor"],
+                                 "completed_total": memory["completed_total"], "invalid": memory["invalid"],
+                                 "caught_up": memory["caught_up"], "version": learning.VERSION}
+                        self.db.execute("INSERT INTO events(kind,body) VALUES ('learning',?)", (json.dumps(audit),))
+                except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+                    state["learning_status"] = "unavailable"
             self.db.execute("INSERT OR REPLACE INTO state VALUES (1,?)",(json.dumps(state,allow_nan=False),))
         self.export()
 
     def export(self):
-        for kind,filename in (("journal","journal.jsonl"),("trade","trade_history.jsonl")):
-            path=self.root/filename; seen=set()
-            if path.exists():
-                with path.open("rb") as f:
-                    for line in f:
-                        if not line.endswith(b"\n"):
-                            raise ValueError("torn_export_requires_recovery")
-                        row=json.loads(line); seen.add(row["brain_event_id"])
-            for seq,body in self.db.execute("SELECT seq,body FROM events WHERE kind=? ORDER BY seq",(kind,)):
-                ident="brain-"+str(seq)
-                if ident not in seen:
-                    journal.append_jsonl(str(path),dict(json.loads(body),brain_event_id=ident))
+        for kind, filename in (("journal", "journal.jsonl"), ("trade", "trade_history.jsonl")):
+            self.export_kind(kind, filename)
+        # Learning audit is authoritative in SQLite. A damaged optional JSONL
+        # projection must not stop protective trading or rewrite that file.
+        self.learning_export_error = False
+        try:
+            self.export_kind("learning", "brain_learning.jsonl")
+        except (OSError, ValueError, TypeError, KeyError):
+            self.learning_export_error = True
+
+    def export_kind(self, kind, filename):
+        path=self.root/filename; seen=set()
+        if path.exists():
+            with path.open("rb") as f:
+                for line in f:
+                    if not line.endswith(b"\n"):
+                        raise ValueError("torn_export_requires_recovery")
+                    row=json.loads(line); seen.add(row["brain_event_id"])
+        for seq,body in self.db.execute("SELECT seq,body FROM events WHERE kind=? ORDER BY seq",(kind,)):
+            ident="brain-"+str(seq)
+            if ident not in seen:
+                journal.append_jsonl(str(path),dict(json.loads(body),brain_event_id=ident))
 
     def close(self):
         self.db.close(); self.lock.close()
@@ -165,7 +189,8 @@ class Pilot:
         if os.getenv("DESK_MODE","paper")!="paper": raise ValueError("paper_required")
         self.cfg=cfg or config(); self.key=api_key; self.cache=cache; self.call=model_call
         self.context=context
-        self.store=Store(root)
+        self.learning_enabled = os.getenv("BRAIN_LEARNING_ENABLED", "1") == "1"
+        self.store=Store(root, learning_enabled=self.learning_enabled)
         try:
             self.store.export()
             self.state=self.store.load() or {"version":VERSION,"account":Portfolio().to_dict(),
@@ -191,6 +216,23 @@ class Pilot:
 
     def close(self): self.store.close()
 
+    def remember_position(self, position):
+        ctx = position.features.get("learning_context")
+        if ctx:
+            key = learning.position_key({"account": "brain-paper", "id": position.id,
+                                        "symbol": position.symbol, "side": position.side, "open_ms": position.open_ms})
+            self.state.setdefault("learning_open_contexts", {})[key] = ctx
+
+    def memory_view(self, summaries, now_ms):
+        if not self.learning_enabled:
+            return {"version": learning.VERSION, "status": "disabled", "lessons": [], "cases": []}
+        if self.state.get("learning_status") != "ok":
+            return {"version": learning.VERSION, "status": "unavailable", "lessons": [], "cases": []}
+        try:
+            return learning.build_view(self.state.get("learning", learning.empty()), summaries, now_ms)
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+            return {"version": learning.VERSION, "status": "unavailable", "lessons": [], "cases": []}
+
     def checkpoint(self,events):
         a=self.portfolio.account; all_events=[]
         events=list(events)
@@ -202,8 +244,17 @@ class Pilot:
             events.append({"kind":"daily_stop","reason":"daily_equity_drawdown_20pct",
                            "utc_day":daily["day"],"resume":"next_UTC_day","management_active":True})
             daily["stop_logged"]=True
+        for position in a.positions.values():
+            self.remember_position(position)
+        contexts = self.state.setdefault("learning_open_contexts", {})
         for row in a.closed:
-            all_events.append(("trade",dict(row,run_no=1,start_equity=1000)))
+            key = learning.position_key(row)
+            enriched = dict(row,run_no=1,start_equity=1000)
+            if key in contexts:
+                enriched["learning_context"] = contexts[key]
+            all_events.append(("trade",enriched))
+            if not row.get("partial", False):
+                contexts.pop(key, None)
             self.state["recent"].append({k:row.get(k) for k in ("symbol","side","net","why","close_ms")})
             if row["net"]<0: self.state["epoch"]+=1
         a.closed=[]
@@ -266,7 +317,11 @@ class Pilot:
                         historical={tf:[b for b in data[sym][tf] if b[0]+ms<=t] for tf,ms in prompt_builder.TF_MS.items()}
                         ctx=prompt_builder.summarize(sym,historical,t)
                         order["_atr_1h"]=ctx["atr14_1h"]
+                    if sym in self.portfolio.account.positions:
+                        self.remember_position(self.portfolio.account.positions[sym])
                     result=self.portfolio.apply(order,opens[sym],t,prices,ctx)
+                    if result["kind"] == "open":
+                        self.remember_position(self.portfolio.account.positions[sym])
                     events.append(dict(result,ts_ms=t))
                     if result["kind"]=="open": st["epoch"]+=1
                 except (ValueError,TypeError,KeyError):
@@ -303,13 +358,18 @@ class Pilot:
                     context=self.context.collect(list(summaries),now_ms,st.setdefault("market_context",{}))
                 except Exception:
                     pass  # optional sources never block protective decisions
+            memory = self.memory_view(summaries, cutoff)
+            references = [lesson["id"] for lesson in memory["lessons"]]
+            result["learning"] = {"status": memory["status"], "lesson_ids": references,
+                                  "context_digest": learning.digest(memory),
+                                  "audit_projection": "unavailable" if self.store.learning_export_error else "ok"}
             user=prompt_builder.build_user(cutoff,summaries,snapshot,st["recent"],
-                {"until_ms":st["pause_until"],"reason":st["pause_reason"],"reentry_condition":st["reentry_condition"]},context)
+                {"until_ms":st["pause_until"],"reason":st["pause_reason"],"reentry_condition":st["reentry_condition"]},context,memory)
             ok,why,worst=self.budget.check(self.cfg.model,now_ms,len(prompt_builder.SYSTEM)+len(user),self.cfg.max_tokens)
             if not ok: result["skip"]="budget_cap"
             else:
                 # Persist attempt BEFORE charging/calling. After a crash this bar is not retried.
-                st["last_attempt"]=bar_t; self.checkpoint([{"kind":"model_attempt","bar_t":bar_t,"ts_ms":now_ms}])
+                st["last_attempt"]=bar_t; self.checkpoint([{"kind":"model_attempt","bar_t":bar_t,"ts_ms":now_ms,"learning":result["learning"],"episodic_memory":memory}])
                 # Reserve worst-case spend before network, even on failure. No undercount on crash.
                 self.budget.record(self.cfg.model,now_ms,0,0,0,False,"worst_case_reservation",est_cost=worst)
                 result["called"]=True
@@ -330,6 +390,12 @@ class Pilot:
                         if d["action"].startswith("open_"):
                             if opened>=3:continue
                             opened+=1
+                        # Private provenance always comes from code, never provider JSON.
+                        d.pop("_learning_model", None)
+                        d.pop("_learning_refs", None)
+                        if self.learning_enabled:
+                            d["_learning_model"] = self.cfg.model
+                            d["_learning_refs"] = references
                         d.update(execute_t=bar_t+BAR,context=summaries.get(d["symbol"],{}))
                         st["pending"].append(d)
                     result["pending"]=len(st["pending"])
