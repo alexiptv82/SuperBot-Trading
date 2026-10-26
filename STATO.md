@@ -58,3 +58,7 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 
 ## Riferimenti
 - LEGGIMI.md, MANUALE-OPERATIVO.md, SINCRONIZZAZIONE-WORK-CHAT.md.
+
+## IN_CORSO — Market Regime + Episode Memory
+- ChatGPT Work: implementazione autorizzata dall'utente su `work/market-regime-episode-memory`, base `dbddc2403bfd5fd9c7444b97185ae60071f81ee5`.
+- Due moduli, test offline e patch proposta brain.py; review Claude prima di integrazione/deploy. Nessun intervento VPS.
