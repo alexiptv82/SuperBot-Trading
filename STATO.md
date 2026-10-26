@@ -41,6 +41,37 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## Director V1 — COMPLETATO (26/10/2026)
 - Branch: **`work/director-v1-unified`**, commit `d2b351e0`.
 
+## Regime di mercato per Hawk e Bull — ramo `work/hawk-regime-v1` (NON deployato, 26/10 notte)
+- Stato: codice pronto e testato (31 test del regime verdi; nel resto della suite restano solo i 2 test gia' rossi sul codice live
+  `test_uptrend_scores_long_and_downtrend_scores_short` e `test_daily_trend_present_with_real_daily_bars`, probabilmente fermi ai pesi
+  di prima di P1). NIENTE merge in `rule-pool` e NIENTE deploy senza OK esplicito dell'utente. Interruttore: `DESK_REGIME_V1=0`.
+- Contenuto del ramo: `regime.py` (regime su/giu'/laterale/inversione da BTC+ETH, ampiezza, momento BTC 24h), filtro dei lati in
+  apertura (short non in salita ne' dopo un crollo BTC < -3%/24h; long solo se il mercato sale o gira al rialzo), tetto Bull 250 (era 160),
+  `signals_pre_p1.py` (copia congelata dei punteggi di prima di P1, usata SOLO da banco e audit).
+  **Profilo di produzione = solo filtro** (ratchet e uscita per inversione spenti, laterale senza punti extra); si riaccendono con
+  `DESK_REGIME_RATCHET=1`, `DESK_REGIME_FLIP=1`, `DESK_REGIME_RANGE_EXTRA=n`.
+- **Scoperte della serata (da non perdere)**:
+  1. La modifica **P1** (commit `635b964`, 25/10 19:38 +01, "sbias scoring LONG") e' in produzione dal deploy `63641f7` (NON dal deploy
+     `35f08cf`): trend 4h da 20 a 14 punti, trend 1d da 15 a 10, +10 ai long per "rimbalzo RSI". Nel registro dei bot il trend 4h vale 20
+     fino al 25/10 sera e 14 da tutte le aperture del 26/10. I giorni buoni di Hawk (12-24/10) sono con i pesi vecchi.
+  2. Il trend 1d era ASSENTE nei bot fino al 22/10 (0% delle aperture; le barre 1d vere sono arrivate col fix del 21/10 e
+     si vedono dal 24/10: 80%, poi 100%). Il banco storico lo ha sempre avuto.
+  3. Hawk 12-26/10: 247 aperture, 13 long e 234 short. Rifacendo col banco i trade veri (stessi prezzi, stop, TP, leva, margine) il risultato
+     e' praticamente lo stesso (85% di uscite uguali): il MOTORE e' fedele. Le APERTURE del banco invece non coincidono con quelle dei bot
+     (solo ~15% in comune): pesano le chiamate a Claude (nei cicli in cui risponde le regole non aprono; 221 chiamate in 14 giorni),
+     i candidati scartati dal bot (confidenza bassa, troppe posizioni, stop giornaliero) e un trend 4h che differisce nel 25% dei casi.
+     Il banco NON si usa per valori assoluti ne' per "cosa aprirebbe il bot".
+  4. Regime applicato ai trade VERI di Hawk (stessi 228 trade, effetto del solo regime): solo filtro **+266**; filtro con laterale senza punti
+     extra **+420**; blocco degli short dopo un crollo vale +250 a -3% (a -2%: piu' alto, ma e' un solo episodio); protezione dello stop
+     (pareggio a 1R + traino) **-340** (accorcia le vincite grosse); uscita per inversione ~0; long anche se il mercato non sale: peggio.
+     Il filtro non riduce molto le aperture (-7%). Limite: non misura i long che il filtro farebbe aprire in piu' (si vedono solo in paper).
+- Strumenti di sola lettura creati (workflow su `rule-pool`, partono solo cambiando il file `deploy/*.trigger`):
+  `desk-backtest` (banco storico su candele pubbliche), `desk-fedelta` (legge in SOLA LETTURA il `learning_log.jsonl` di Hawk via SSH con
+  impronta del server verificata e lo confronta col banco; opzioni `match=` e `overlay=1|2`). Script in `deploy/scripts/desk_backtest.py`,
+  `desk_fedelta.py`, `desk_fedelta_leggi.py`.
+- **Decisioni che spettano all'utente**: (1) pesi del punteggio: classici (prima di P1) oppure P1; (2) deploy del regime "solo filtro";
+  (3) tetto Bull 250 (nel ramo); (4) rinnovo del calendario di Claude prima dell'8/11 (dopo, Claude resta spento).
+
 ## Fix Segnali V2 — DEPLOYATO (26/10/2026 sera, 18:31-18:33 UTC)
 - OK esplicito dell'utente al redeploy: "ok, procedi con il deploy" (dopo un primo tentativo bloccato dal controllo di sicurezza
   della sessione, che chiedeva una conferma diretta).
