@@ -30,6 +30,13 @@ def _number(value):
     return value
 
 
+def _positive_optional(value):
+    # New display-only fields may be absent in legacy records. Never guess leverage.
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return None
+    return value
+
+
 def _text(value):
     return value[:4000] if isinstance(value, str) else None
 
@@ -158,13 +165,19 @@ def read_status(data_dir=None, *, now_ms=None):
                     raise Unavailable('invalid_data')
                 pnl = side * (price - entry) * qty
                 floating += pnl
-            margin += _number(pos['total_margin'])
+            position_margin = _number(pos['total_margin'])
+            if position_margin < 0:
+                raise Unavailable('invalid_data')
+            margin += position_margin
             mark = pos.get('last_bar_ms', last_bar)
             mark_ms = _number(mark) + 900000 if mark is not None else None
             if mark_ms is not None:
                 mark_times.append(mark_ms)
             positions.append({'symbol': symbol, 'side': 'LONG' if side == 1 else 'SHORT',
                               'entry': entry, 'price': price, 'floating_pnl': pnl,
+                              'margin': position_margin, 'leverage': _positive_optional(pos.get('leverage')),
+                              'notional_entry': entry * qty,
+                              'floating_margin_roi_pct': pnl / position_margin * 100 if pnl is not None and position_margin > 0 else None,
                               'valued_ms': mark_ms,
                               'stale': mark_ms is None or not -5000 <= now - mark_ms <= FRESH_MS})
             features = pos.get('features') or {}
@@ -207,7 +220,7 @@ def read_status(data_dir=None, *, now_ms=None):
                   'portfolio': {'equity': equity, 'cash': cash, 'starting_equity': 1000,
                                 'pnl': equity - 1000 if equity is not None else None,
                                 'pnl_pct': (equity / 1000 - 1) * 100 if equity is not None else None,
-                                'cycles': cycles, 'valued_ms': valued_ms, 'stale': stale},
+                                'cycles': cycles, 'margin_in_use': margin, 'valued_ms': valued_ms, 'stale': stale},
                   'positions': positions, 'trades': trades, 'trades_coverage': coverage,
                   'stats': {'closed_trades': len(closed),
                             'win_rate_pct': 100 * sum(n > 0 for n in closed) / len(closed) if closed else None,
