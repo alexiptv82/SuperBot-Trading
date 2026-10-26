@@ -73,3 +73,22 @@ jobs:
             else:
                 print('Brain pilot not installed or no status yet')
             PY
+            if [ "$BRAIN_ACTION" = report ]; then
+              docker exec -i superbot-brain-pilot python - <<'PY'
+            import time
+            from director.ai_shadow.market import fetch_bars
+            from director.brain_pilot.prompt_builder import closed_bars
+            now = int(time.time()*1000)
+            for tf in ('15m','1h','4h','1d'):
+                try:
+                    bars = fetch_bars('BTC',tf,120,now)
+                    try:
+                        closed_bars(bars,tf,now)
+                        result = 'valid'
+                    except ValueError as exc:
+                        result = str(exc)
+                    print('BTC_DATA',tf,'bars',len(bars),'validation',result)
+                except Exception as exc:
+                    print('BTC_DATA',tf,type(exc).__name__)
+            PY
+            fi
