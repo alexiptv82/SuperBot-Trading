@@ -49,8 +49,10 @@ TIER_AB = {"BTC", "ETH", "XAU", "XAG"}
 SCALP_COOLDOWN_MS = 600_000
 MEDIO_COOLDOWN_MS = 3_600_000
 ENTRY_SCORE_BASE = 60
+# kill_equity spento: in produzione l'utente azzera il portafoglio quando scende; nel banco, invece, il motore si
+# bloccherebbe per sempre sotto 450$ e il resto del periodo non verrebbe mai provato (errore trovato alla prima prova).
 HAWK_LIMITS = dict(start_equity=1000.0, max_margin_trade=100.0, max_margin_total=1000.0, max_open=10,
-                   kill_equity=450.0, daily_stop=0.10)
+                   kill_equity=-1e9, daily_stop=0.10)
 HAWK_MIN_MARGIN, HAWK_MIN_LEV, HAWK_FORCED_MARGIN, HAWK_FORCED_LEV = 50.0, 10, 60.0, 15
 
 
@@ -350,13 +352,17 @@ def summarize(var: Variant, t_start: int, t_end: int, since_ms: int | None = Non
     net = sum(t["net"] for t in ts)
     gl = -sum(loss)
     eq = [e for (tm, e) in var.equity if since_ms is None or tm >= since_ms]
-    peak, dd = 0.0, 0.0
+    peak, dd = -1e18, 0.0
     for e in eq:
         peak = max(peak, e)
-        dd = max(dd, (peak - e) / peak if peak > 0 else 0.0)
+        dd = max(dd, peak - e)                       # drawdown massimo in dollari (il capitale puo' scendere sotto 450$)
     span_days = max(1e-9, ((t_end - (since_ms or t_start)) / DAY))
     third = (t_end - t_start) / 3.0
     thirds = [sum(t["net"] for t in ts if t_start + i * third <= (t.get("close_ms") or 0) < t_start + (i + 1) * third + 1) for i in range(3)]
+    weeks: dict = defaultdict(float)
+    for t in ts:
+        weeks[int(((t.get("close_ms") or 0) - t_start) // (7 * DAY))] += t["net"]
+    n_weeks = max(1, int(math.ceil((t_end - max(t_start, since_ms or t_start)) / (7 * DAY))))
     longs = [t for t in ts if t["side"] == 1]
     shorts = [t for t in ts if t["side"] == -1]
     holds = [t["hold_min"] for t in ts if t.get("hold_min") is not None]
@@ -364,19 +370,33 @@ def summarize(var: Variant, t_start: int, t_end: int, since_ms: int | None = Non
             "medio": round(net / n, 2) if n else 0.0, "PF": round(sum(wins) / gl, 2) if gl > 0 else None,
             "vinc_medio": round(sum(wins) / len(wins), 1) if wins else 0.0,
             "perd_medio": round(sum(loss) / len(loss), 1) if loss else 0.0,
-            "dd%": round(100 * dd, 1), "aperture/giorno": round(len(ts) / span_days, 1),
+            "dd$": round(dd, 0), "aperture/giorno": round(len(ts) / span_days, 1),
             "tenuta_min": round(sum(holds) / len(holds), 0) if holds else 0,
             "slot_medi": round(sum(var.slots) / len(var.slots), 1) if var.slots else 0.0,
             "long": f"{len(longs)}/{sum(t['net'] for t in longs):+.0f}$", "short": f"{len(shorts)}/{sum(t['net'] for t in shorts):+.0f}$",
-            "terzi": [round(x, 0) for x in thirds], "bloccate": var.blocked}
+            "terzi": [round(x, 0) for x in thirds],
+            "sett+": f"{sum(1 for v in weeks.values() if v > 0)}/{n_weeks}", "bloccate": var.blocked}
 
 
 def print_table(rows, title):
     print(f"\n=== {title} ===")
-    print(f"{'variante':<30}{'trade':>6}{'netto$':>9}{'vinc%':>6}{'medio':>7}{'PF':>6}{'DD%':>6}{'ap/g':>6}{'tenuta':>7}{'slot':>5}  {'long':<11}{'short':<11} terzi del periodo")
+    print(f"{'variante':<30}{'trade':>6}{'netto$':>9}{'vinc%':>6}{'medio':>7}{'PF':>6}{'DD$':>6}{'ap/g':>6}{'tenuta':>7}{'slot':>5}  {'long':<11}{'short':<11}{'sett+':>6}  terzi del periodo")
     for r in rows:
         print(f"{r['nome']:<30}{r['trade']:>6}{r['netto']:>9.1f}{r['vinc%']:>6.0f}{r['medio']:>7.2f}{(r['PF'] if r['PF'] is not None else 0):>6.2f}"
-              f"{r['dd%']:>6.1f}{r['aperture/giorno']:>6.1f}{r['tenuta_min']:>7.0f}{r['slot_medi']:>5.1f}  {r['long']:<11}{r['short']:<11} {r['terzi']}")
+              f"{r['dd$']:>6.0f}{r['aperture/giorno']:>6.1f}{r['tenuta_min']:>7.0f}{r['slot_medi']:>5.1f}  {r['long']:<11}{r['short']:<11}{r['sett+']:>6}  {r['terzi']}")
+
+
+def weekly(var: Variant, t_start: int, t_end: int):
+    n = int(math.ceil((t_end - t_start) / (7 * DAY)))
+    w = [0.0] * n
+    c = [0] * n
+    for t in trades_of(var):
+        k = int(((t.get("close_ms") or 0) - t_start) // (7 * DAY))
+        if 0 <= k < n:
+            w[k] += t["net"]
+            c[k] += 1
+    print(f"   {var.name:<30} netto per settimana: " + " ".join(f"{x:+.0f}" for x in w))
+    print(f"   {'':<30} trade per settimana : " + " ".join(f"{x}" for x in c))
 
 
 def by_regime(var: Variant):
@@ -426,6 +446,9 @@ def main():
     if since and since > t_start:
         rows2 = [summarize(v, t_start, end_ms, since) for v in vs.values()]
         print_table(rows2, f"SOLO DAL {a.compare_from} (periodo reale dei bot: Hawk reale ~ +350$ netti con ~245 aperture)")
+    print("\n--- andamento per settimana (dalla piu' vecchia alla piu' recente) ---")
+    for v in vs.values():
+        weekly(v, t_start, end_ms)
     for name in ("base", "completo"):
         if name in vs:
             by_regime(vs[name])
