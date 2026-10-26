@@ -1,6 +1,6 @@
 # Diario Claude — 26 ottobre 2026 (turno sera)
 
-## Contesto: diagnosi performance e fix segnali
+## Contesto: diagnosi performance e fix segnali (voce corretta a fine turno)
 
 L'utente ha segnalato che Bull ha perso molto oggi: ha aperto solo SHORT in una giornata
 di rimbalzo. Ha anche segnalato che un portafoglio si è fermato per limite di perdita
@@ -42,55 +42,52 @@ Punti di sintesi adottati:
 - market_factor (Grok): se BTC va contro il prior, riduce/azzera il bonus
 - DailyGuard + open risk cap (DeepSeek + Kimi): blocca la 2a posizione Bull
 
-## Implementazione (branch `ccr-999de027-0stnyt`, commit `767bee0`)
+## Implementazione (corretta dopo verifica sul codice live)
 
-### `backend/desk/seasonal.py` — riscrittura formula
+Il primo tentativo (commit `767bee0` sul ramo `ccr-999de027-0stnyt`) era basato su `main`, che contiene una versione
+**vecchia** di `cli.py`/`signals.py` (il codice dei bot vive su `rule-pool`): non e' deployabile e non va unito.
+Il lavoro vero e' sul ramo `work/fix-segnali-v2` (base `rule-pool`), commit `b93196b`, unito in `rule-pool` da AI Write
+con il merge `35f08cf` (il ramo `ccr-...` resta come traccia, da non usare).
 
-Nuovi meccanismi:
-1. **Formula additiva**: `effective = 0.60 × tanh(monthly/22) + 0.40 × smooth_cycle(months)`
-2. **Curva ciclo smoothed** (`_CYCLE_ANCHORS`): interpolazione lineare su 12 ancore.
-   Mese 30 = −0.40 (era −1.0); mai un singolo valore -1.0 che inverte tutto.
-3. **market_factor**: se `btc_return_3d` va >3% contro il prior → bonus azzerato;
-   >1.5% → dimezzato.
-4. Retrocompatibile: `get_seasonal(symbol, now_ms)` invariato.
+### `backend/desk/seasonal.py` (identico tra main e rule-pool, riscritto)
+1. Formula additiva: `0.60 * tanh(bias_mensile/22) + 0.40 * curva_ciclo` (prima: bias mensile x moltiplicatore di fase).
+2. Curva del ciclo interpolata (`_CYCLE_ANCHORS`): mese 30 = -0.40 (prima -1.0 a gradino).
+3. Freno di mercato: `btc_return_3d` contro il prior di >=1,5% dimezza il bonus, di >=3% lo azzera.
+4. `get_seasonal(symbol, now_ms)` invariata; `btc_return_3d` e' opzionale.
+Esiti: BTC ottobre 2026 da 5 SHORT a 5 LONG; BTC/ETH 1 novembre da 9/10 SHORT a 6 LONG; mesi storicamente deboli
+(mag, ago, set) restano SHORT (3, 3, 5).
 
-Risultato ottobre 2026: **5 LONG** (era 5 SHORT) — swing di 10 punti sul segnale.
+### `backend/desk/seasonal_v1.py` (nuovo, byte-identico al vecchio `seasonal.py`)
+SHA-256 `47c12da1...` uguale al valore fissato in `deploy/scripts/profit_review_audit.py`. Serve agli script di audit
+(`seasonality_audit.py`, `profit_review_audit.py`) che ricostruiscono i bonus applicati nelle righe storiche: con la V2
+avrebbero ricostruito bonus sbagliati. `mirror_pair_audit.py` ora accetta anche argomenti keyword.
 
-### `backend/desk/signals.py` — passaggio market_factor
+### `backend/desk/signals.py`
+`read_symbol(..., btc_return_3d=None)` passa il valore a `get_seasonal`.
 
-`read_symbol(symbol, arr15, now_ms, btc_return_3d=None)` — parametro opzionale.
-`get_seasonal(symbol, now_ms, btc_return_3d=btc_return_3d)` — attiva il market_factor.
+### `backend/desk/cli.py` (solo Bull)
+- `bull_entry_gate()`: tetto al rischio SL aggregato `BULL_MAX_OPEN_RISK_USD=160` (env `DESK_BULL_MAX_OPEN_RISK`).
+  La prima posizione passa sempre; le successive solo se rischio aperto + nuovo <= 160$.
+  Con 350$ x 15x e stop ~1,5-3% (84-157$ a posizione) di fatto blocca la seconda posizione finche' la prima e' aperta.
+- Nessun nuovo SHORT se BTC sale piu' del 2% in 24h (`DESK_BULL_SHORT_VETO_BTC_24H`); candidati registrati come
+  `rifiutata:rischio_aperto_bull` e `rifiutata:veto_short_rimbalzo_btc`.
+- `_open_sl_risk()`: uno stop gia' in profitto conta zero.
 
-### `backend/desk/cli.py` — guardrail Bull + daily stop paper
+### Ritirato: "daily stop attivo in paper"
+Nel piano iniziale avevo indicato come bug che `_daily_loss_exceeded` non blocca in paper. **Non e' un bug**: e' una scelta
+di progetto (commit `bc6c635`, test `test_daily_loss_limit_never_blocks_in_paper`) e in paper lo stop giornaliero c'e'
+gia' nel motore (equity -10% dall'inizio giornata, scelta dell'utente del 21/10). Un limite sul realizzato al 25% non
+sarebbe mai raggiungibile prima. `_daily_loss_exceeded` NON e' stato modificato. Il "portafoglio fermo per troppa perdita"
+segnalato dall'utente era questo stop del motore che funzionava.
 
-1. **`_daily_loss_exceeded`**: rimosso bypass paper mode.
-   Usa `_PAPER_DAILY_LOSS_LIMIT = start_equity × daily_loss_pct` in paper.
-2. **`_open_sl_risk(acc)`**: calcola perdita stimata SL aggregata delle posizioni aperte.
-3. **`BULL_MAX_OPEN_RISK_USD = 160$`** (env `DESK_BULL_MAX_OPEN_RISK`):
-   blocca la 2a apertura Bull se open_risk + planned_risk > 160$.
-   ($350 × 15x × 3% SL ≈ $157.50 → 1 posizione piena già vicina alla soglia.)
-4. **VETO_BULL_SHORT**: nessun nuovo SHORT su Bull se BTC +2% nelle 24h.
-5. **`_btc_return_3d`** e **`_btc_ret_24h`** calcolati da candele BTC in `run_cycle`.
+## Verifica
+- Test nuovi: `test_desk_fixes_2026_10_26` (19: formula, curva, freno, gate) e `test_bull_guards_2026_10_26` (6 cicli
+  completi Bull in paper, con controlli che mostrano che e' la guardia a fermare). Aggiunti al ciclo per-file di `desk-ci`.
+- Batteria CI in locale su base `rule-pool` pulita vs modificata: nessuna regressione. Fallimenti gia' presenti prima
+  (identici nei due alberi): `test_uptrend_scores_long_and_downtrend_scores_short`, `test_daily_trend_present_with_real_daily_bars`,
+  `test_profit_review_audit::test_workflow_isolated_no_activation`.
+- Nessuna modifica a engine.py, brain.py, prompt di Claude, soglie di confidenza, R:R, leve, margini.
 
-## Verifica sintattica e test formula
-
-```
-python -m py_compile backend/desk/seasonal.py  → OK
-python -m py_compile backend/desk/signals.py   → OK
-python -m py_compile backend/desk/cli.py       → OK
-
-BTC ottobre 2026: long_bonus=5, short_bonus=0 (era short_bonus=5)
-BTC oct + BTC -4% 3gg: long_bonus=0, short_bonus=0 (market_factor attivo)
-```
-
-## Stato dopo implementazione
-
-- Branch: `ccr-999de027-0stnyt`, commit `767bee0`
-- **NON deployato**: richiede OK esplicito utente (Regola 1)
-- Nessuna modifica a engine.py, brain.py, prompt Claude
-- Nessuna modifica a soglie R:R, confidence, leverage
-
-## Task ancora aperti
-
-Vedi STATO.md per lista aggiornata. Il punto successivo logico è il deploy del fix
-(Regola 1: nessun redeploy senza OK utente).
+## Stato
+- Codice in `rule-pool` (merge `35f08cf`). OK dell'utente al deploy ricevuto in chat il 26/10 ("Ok, sì, puoi procedere"),
+  dato dopo la richiesta esplicita di OK per il redeploy. Esito del deploy: vedi voce successiva / STATO.md.
