@@ -13,7 +13,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'backend'))
-from desk.seasonal import get_seasonal
+from desk.seasonal_v1 import get_seasonal   # formula in vigore nelle versioni di codice auditate (pre-V2)
 
 
 def finite(value):

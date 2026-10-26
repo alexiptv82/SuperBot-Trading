@@ -262,6 +262,12 @@ set_context(PORTFOLIO.name, LIVE._live, CAPITAL_SCALE)   # intestazione LIVE / N
 _DAILY_LOSS_PCT = float(os.getenv("DESK_DAILY_LOSS_PCT", "25")) / 100.0
 _DAILY_LOSS_LIMIT = _PORTFOLIO_CAPITAL * _DAILY_LOSS_PCT
 
+# Bull: massimo rischio SL aggregato (USDT del motore) con piu' posizioni aperte. Con 350$ x 15x x 3% = 157,5$
+# per posizione, la soglia lascia aprire la prima e blocca la seconda finche' la prima e' aperta.
+BULL_MAX_OPEN_RISK_USD = float(os.getenv("DESK_BULL_MAX_OPEN_RISK", "160"))
+# Bull: niente nuovi SHORT se BTC sale piu' di questa frazione in 24h (rimbalzo)
+BULL_SHORT_VETO_BTC_24H = float(os.getenv("DESK_BULL_SHORT_VETO_BTC_24H", "0.02"))
+
 print(f"[CAPITAL] {PORTFOLIO.name.upper()} capitale={_PORTFOLIO_CAPITAL:.0f}$ scala={CAPITAL_SCALE:g} "
       f"limite_perdita_giornaliero={_DAILY_LOSS_LIMIT:.0f}$ ({_DAILY_LOSS_PCT*100:.0f}%)", flush=True)
 
@@ -352,6 +358,45 @@ def _daily_loss_exceeded(acc) -> bool:
               f"≥ limite {_DAILY_LOSS_LIMIT:.0f}$ — nessuna nuova apertura per oggi", flush=True)
         return True
     return False
+
+
+def _open_sl_risk(acc) -> float:
+    """Perdita stimata (USDT del motore) se tutte le posizioni aperte toccano lo stop attuale.
+    Uno stop gia' oltre il prezzo d'ingresso (profitto protetto) conta zero."""
+    total = 0.0
+    for pos in acc.positions.values():
+        if not pos.sl or not pos.entry or pos.entry <= 0:
+            continue
+        loss_frac = max(0.0, pos.side * (pos.entry - pos.sl) / pos.entry)
+        total += (pos.total_margin or pos.margin) * pos.leverage * loss_frac
+    return total
+
+
+def bull_entry_gate(acc, pg, dec, sl_pct, side, btc_ret_24h):
+    """Solo Bull. None se l'apertura puo' proseguire, altrimenti (stato_candidato, motivo).
+    1) rischio SL aggregato: la prima posizione passa sempre, le successive solo se il totale resta sotto soglia;
+    2) nessun nuovo SHORT mentre BTC rimbalza (rendimento 24h sopra soglia)."""
+    if pg.name != "bull":
+        return None
+    cur = _open_sl_risk(acc)
+    new = dec["margin_usd"] * dec["leverage"] * sl_pct
+    if cur > 0 and cur + new > BULL_MAX_OPEN_RISK_USD:
+        return ("rifiutata:rischio_aperto_bull",
+                f"rischio SL aperto {cur:.0f}$ + nuovo {new:.0f}$ > {BULL_MAX_OPEN_RISK_USD:.0f}$")
+    if side == -1 and btc_ret_24h is not None and btc_ret_24h > BULL_SHORT_VETO_BTC_24H:
+        return ("rifiutata:veto_short_rimbalzo_btc",
+                f"BTC {btc_ret_24h:+.1%} in 24h > {BULL_SHORT_VETO_BTC_24H:.1%}: nessun nuovo SHORT")
+    return None
+
+
+def _bars_return(arr, bars: int):
+    """Rendimento della chiusura sulle ultime `bars` barre; None se i dati non bastano."""
+    if arr is None or len(arr) <= bars:
+        return None
+    try:
+        return float(arr[-1][4]) / float(arr[-1 - bars][4]) - 1.0
+    except (IndexError, ZeroDivisionError, ValueError):
+        return None
 
 
 # ---- candles dal BitGet
@@ -1163,6 +1208,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         print(f"[MACRO] calendario non disponibile ({macro.get('error') or 'nessun dato'}): il bot lavora come prima",
               flush=True)
 
+    # rendimento di BTC su 3 giorni (288 barre 15m chiuse): frena il bonus stagionale se il mercato lo contraddice
+    _btc_closed = closed_map.get("BTC")
+    _btc_return_3d = _bars_return(_btc_closed, 288)
+
     # segnali tecnici
     readings_list = []
     readings_map: dict = {}
@@ -1175,7 +1224,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         except Exception:
             dly = None
         r = read_symbol(sym, arr, now_ms, daily=dly, price=prices.get(sym),
-                        four_hour=four_hour_bars(sym, now_ms))
+                        four_hour=four_hour_bars(sym, now_ms), btc_return_3d=_btc_return_3d)
         if r is not None:
             readings_list.append(r)
             readings_map[sym] = r
@@ -1297,6 +1346,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             }, candidate=True)
         except Exception:
             pass
+
+    _btc_ret_24h = _bars_return(_btc_closed, 96) if PORTFOLIO.name == "bull" else None   # 96 barre 15m = 24h
 
     for dec in decisions:
         sym = dec["symbol"]
@@ -1499,6 +1550,12 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             if why_lev:
                 print(f"[SKIP:{pg.name.upper()}] {sym} {act}: {why_lev}", flush=True)
                 _candidate("rifiutata:leva_sopra_massimo", dec, px)
+                continue
+            bull_stop = bull_entry_gate(acc, pg, dec, sl_pct, side, _btc_ret_24h)
+            if bull_stop:
+                _status, _why = bull_stop
+                print(f"[SKIP:{pg.name.upper()}] {sym} {act}: {_why}", flush=True)
+                _candidate(_status, dec, px)
                 continue
             split_cfg = None
             if is_split:
