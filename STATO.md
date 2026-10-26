@@ -178,3 +178,9 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - Locale:31testreader/API+7componenti PASS, buildReact PASS; sintassi3.10 e byte pubblicati verificati. CI40382342014 SUCCESS: readerPython3.10/3.11,7testReact e buildPWA verdi.
 - Analisi sizing dal codice1f2edeb6: budget stop1%equity ×size_pct ×conviction/100, poi cap/fee/slippage/liquidazione. Margine100$ è un tetto, non importo fisso. Nessun valore posizione live rilevato; perdita1$ da sola non prova sottodimensionamento.
 - Nessuna modifica size/rischio/leva/strategia, bot, dati, deploy o trigger operativo. Nessun merge o riavvio. Prossimo: review e rilascio app separato dal runtime bot.
+
+## Direttiva utente — Brain orientato allo SCALP (26/10)
+- L'utente chiarisce che l'obiettivo è operazioni brevi, profitti netti utili e rotazione del capitale, evitando ore di attesa per target elevati. Il Brain attuale non rispecchia questa impostazione.
+- Verifica codice: trade_type=medio, ciclo/esecuzione15m, riferimento uscita25–30%ROI, ATR1h. Serve riallineamento di dati/motore/uscite oltre al prompt.
+- Design salvato: work/brain-scalp-design @6988c7a435eb61edafe0465839bbd50691e4469d, docs/brain-scalp-realignment.md. Nessuna implementazione runtime, merge/deploy/riavvio, nessuna modifica Hawk/Bull.
+- Direzione strategica chiarita; durata precisa, profitto netto minimo e altri parametri restano da definire. Nessun aumento implicito rischio/leva/margine. Memoria e statistiche dei futuri scalp da separare dal Brain medio e dalle fonti classiche.
