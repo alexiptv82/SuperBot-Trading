@@ -14,15 +14,14 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 - **P2 smart fallback** (commit 5e1ee2a + 017dd07): `backend/desk/cli.py` + `brain.py` — flag `_claude_responded`; se Claude risponde con 0: regole solo `only_manage=True`; se Claude non disponibile: fallback completo. Revisione Claude: correzione importante, risolve SHORT spurii.
 - **Versione attiva: 886b30f** (trigger deploy). Actions run 40234289443, log: PAPER_AND_RISK_ENVIRONMENT=PASS, RUNTIME_BASELINE_SOURCE=PASS, PAPER_AND_CAPITAL_ENV_VERIFIED_AFTER_DEPLOY=PASS, DEPLOY OK.
 
-## PROGETTO — FIX B AI PROFIT GUARDIAN V1 (SOLO SHADOW)
-- Utente ha autorizzato il 24/10 branch isolato, moduli e test, e pubblicazione di una SPECIFICA sul diario. Esplicitamente **vietati merge su rule-pool, deploy e riavvio Hawk/Bull** finché non arriva un ulteriore OK.
-- Branch di lavoro: work/fix-b-profit-guardian; base di partenza rule-pool 91132ec; HEAD finale f212d41.
-- Implementati SOLO moduli indipendenti backend/desk/profit_guardian.py e backend/desk/portfolio_alert.py, tre file test e workflow CI no-deploy. CI run 40075723911 SUCCESS: 21 test unitari. Nessuna modifica motore attivo.
-- Parametri approvati: watch ROI netto 12%, review 20%; CLOSE_FULL, TAKE_PARTIAL 50%; budget separato 0,10 $/giorno UTC condiviso Hawk+Bull, intervallo minimo 30 minuti per posizione.
-- ChatGPT è writer dei componenti Fix B; Claude è revisore incrociato paritario.
-- **Specifica vincolante:** FIX-B-PROFIT-GUARDIAN-V1-SPECIFICA.md nel ramo diario. Report: diario/2026-10-24_chatgpt.md.
-- **Revisione Claude (26/10): APPROVATO** — nessun blocco critico, pronto per merge previo OK utente. Verdetto: `claude/revisione-fix-b-2026-10-26.md`.
-- **Prossimo passo Fix B:** OK utente per merge su rule-pool e deploy in PAPER.
+## PROGETTO — FIX B AI PROFIT GUARDIAN V1
+- Branch `work/fix-b-profit-guardian` **MERGIATO su `rule-pool`** il 26/10/2026 con OK esplicito utente (PR #5, merge commit 63641f70).
+- Moduli integrati: `backend/desk/profit_guardian.py` e `backend/desk/portfolio_alert.py`. 21 test unitari CI pass.
+- Parametri: watch ROI netto 12% (TAKE_PARTIAL 50%), review 20% (CLOSE_FULL), budget 0,10 $/g UTC condiviso Hawk+Bull, intervallo minimo 30 min.
+- **Versione rule-pool corrente: 63641f70** — NON ancora deployata sui bot.
+- **Prossimo passo Fix B:** OK utente per deploy Fix B in PAPER (trigger desk-deploy.yml con APPROVED_SHA=63641f70).
+- Specifica vincolante: FIX-B-PROFIT-GUARDIAN-V1-SPECIFICA.md nel ramo diario.
+- Verdetto revisione: `claude/revisione-fix-b-2026-10-26.md`.
 
 ## Altre informazioni operative
 - DeepSeek è shadow indipendente: 96 chiamate valide/222 decisioni applied=false (storico 23/10, Action 40072633461).
@@ -32,12 +31,13 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## Claude — collaboratore permanente (25/10)
 - Claude (Claude Code, Sonnet 4.6) attivo come collaboratore permanente. Mandato: solo PAPER, controllo VPS via workflow, correzioni su rami separati, nessun deploy/riavvio senza OK.
 - Deploy P1+P2 eseguito il 25/10 con OK utente (Actions 40234289443). Versione attiva: 886b30f.
+- Merge Fix B eseguito il 26/10 con OK utente (PR #5, commit 63641f70). Deploy Fix B in attesa di OK.
 - Dettagli sessione: diario/2026-10-25_claude.md.
 
 ## Documenti di riferimento AI
 - `claude/protocollo-collaborazione-ai.md` — regole di collaborazione ChatGPT+Claude, onboarding, cosa può fare ogni AI autonomamente
 - `claude/stato-roadmap-completa.md` — roadmap aggiornata al 26/10, stato runtime, prossimi passi
-- `claude/revisione-fix-b-2026-10-26.md` — verdetto revisione Fix B (APPROVATO, attende OK utente per merge)
+- `claude/revisione-fix-b-2026-10-26.md` — verdetto revisione Fix B (APPROVATO, mergiato 26/10, deploy in attesa OK)
 
 ## Riferimenti
 - LEGGIMI.md, MANUALE-OPERATIVO.md, SINCRONIZZAZIONE-WORK-CHAT.md.
