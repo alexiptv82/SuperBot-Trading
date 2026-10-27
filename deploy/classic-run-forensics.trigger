@@ -1,2 +1,3 @@
 mode=paper
 operation=readonly_forensic_export
+include=entry_levels_and_public_hourly_context
