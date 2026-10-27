@@ -1,0 +1,38 @@
+name: Classic PAPER - forensic run analysis readonly
+on:
+  push:
+    branches: [rule-pool]
+    paths: ['deploy/classic-run-forensics.trigger']
+permissions:
+  contents: read
+concurrency:
+  group: classic-run-forensics-readonly
+  cancel-in-progress: false
+jobs:
+  readonly-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Read allowlisted PAPER archives; no flags, writes or restarts
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          BRAIN_PREFLIGHT_CONTROL: ${{ github.sha }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: BRAIN_PREFLIGHT_CONTROL
+          command_timeout: 10m
+          script: |
+            set -eu
+            umask 077
+            test "${#BRAIN_PREFLIGHT_CONTROL}" = 40
+            CONTROL_DIR=$(mktemp -d /opt/superbot-brain-preflight.XXXXXXXX)
+            trap 'rm -rf "$CONTROL_DIR"' EXIT
+            git init -q "$CONTROL_DIR"
+            git -C "$CONTROL_DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$CONTROL_DIR" fetch -q --depth=1 origin "$BRAIN_PREFLIGHT_CONTROL"
+            git -C "$CONTROL_DIR" checkout -q --detach "$BRAIN_PREFLIGHT_CONTROL"
+            test "$(git -C "$CONTROL_DIR" rev-parse HEAD)" = "$BRAIN_PREFLIGHT_CONTROL"
+            python3 -I "$CONTROL_DIR/deploy/scripts/classic_run_forensics.py"
