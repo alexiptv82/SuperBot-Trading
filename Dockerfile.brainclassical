@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+LABEL org.opencontainers.image.description="Candidate isolated PAPER Hawk/Bull methods with asynchronous adaptive Brain"
+WORKDIR /app
+ENV PYTHONPATH=/app/backend PYTHONUNBUFFERED=1 DESK_MODE=paper
+RUN pip install --no-cache-dir numpy==2.2.6
+COPY backend/desk ./backend/desk
+COPY backend/director ./backend/director
+HEALTHCHECK --interval=1m --timeout=10s --start-period=5m --retries=3 \
+  CMD python -m director.classical_adaptive.runtime --out /out --profile "$BRAIN_PROFILE" --healthcheck
+ENTRYPOINT ["python", "-m", "director.classical_adaptive.runtime"]
+# Starting the image alone cannot initialize a wallet or contact a model.
+CMD ["--help"]

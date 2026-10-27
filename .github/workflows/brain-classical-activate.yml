@@ -1,0 +1,71 @@
+name: Brain adaptive - explicit PAPER paired rollout
+on:
+  push:
+    branches: [rule-pool]
+    paths: ['deploy/brain-classical-activate.trigger']
+permissions:
+  contents: read
+concurrency:
+  group: superbot-brain-pilot-singapore
+  cancel-in-progress: false
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate approved PAPER action and immutable source/app/baseline SHAs
+        id: approved
+        run: |
+          python - <<'PY'
+          import os,re,subprocess
+          from pathlib import Path
+          values={}
+          for line in Path('deploy/brain-classical-activate.trigger').read_text().splitlines():
+              if not line.strip() or line.lstrip().startswith('#'):continue
+              k,v=line.split('=',1)
+              if k in values:raise SystemExit('duplicate trigger field')
+              values[k]=v.strip()
+          if values.get('action')=='none':raise SystemExit(0)
+          if values.get('action')!='activate' or values.get('approved')!='yes':raise SystemExit('explicit PAPER approval required')
+          for k in ('sha','legacy_sha','classic_sha','app_sha'):
+              if not re.fullmatch('[a-f0-9]{40}',values.get(k,'')):raise SystemExit('full SHAs required')
+          subprocess.run(['git','merge-base','--is-ancestor',values['sha'],'HEAD'],check=True)
+          subprocess.run(['git','diff','--exit-code',values['classic_sha'],values['sha'],'--','backend/desk'],check=True)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write('run=yes\n')
+              for k in ('sha','legacy_sha','classic_sha','app_sha'):out.write(k+'='+values[k]+'\n')
+          PY
+      - name: Backup, protect old positions, carry spending, warm paused profiles and activate PAPER
+        if: steps.approved.outputs.run == 'yes'
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          BRAIN_TARGET: ${{ steps.approved.outputs.sha }}
+          BRAIN_OLD: ${{ steps.approved.outputs.legacy_sha }}
+          BRAIN_CLASSIC: ${{ steps.approved.outputs.classic_sha }}
+          BRAIN_APP: ${{ steps.approved.outputs.app_sha }}
+          BRAIN_CONTROL: ${{ github.sha }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: BRAIN_TARGET,BRAIN_OLD,BRAIN_CLASSIC,BRAIN_APP,BRAIN_CONTROL,DEEPSEEK_API_KEY
+          command_timeout: 37m
+          script: |
+            set -eu
+            umask 077
+            CONTROL_DIR=$(mktemp -d /opt/superbot-adaptive-control.XXXXXXXX)
+            APP_DIR=$(mktemp -d /opt/superbot-adaptive-source.XXXXXXXX)
+            trap 'rm -rf "$CONTROL_DIR" "$APP_DIR"' EXIT
+            git init -q "$CONTROL_DIR"
+            git -C "$CONTROL_DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$CONTROL_DIR" fetch -q --depth=1 origin "$BRAIN_CONTROL" "$BRAIN_TARGET" "$BRAIN_CLASSIC"
+            git -C "$CONTROL_DIR" checkout -q --detach "$BRAIN_CONTROL"
+            git -C "$CONTROL_DIR" worktree add -q --detach "$APP_DIR" "$BRAIN_TARGET"
+            export BRAIN_CLASSICAL_ACTIVATE_APPROVED="paper:$BRAIN_TARGET"
+            python3 "$CONTROL_DIR/deploy/scripts/brain_classical_activate.py" \
+              --sha "$BRAIN_TARGET" --legacy-sha "$BRAIN_OLD" --classic-sha "$BRAIN_CLASSIC" --app-sha "$BRAIN_APP" --repo "$APP_DIR"
