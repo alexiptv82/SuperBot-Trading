@@ -963,5 +963,7 @@
       "win": true,
       "quality_label": "lucky_win"
     }
-  ]
+  ],
+  "filename": "backtest_seed.json",
+  "note": "Backtest sintetico RSI5+EMA20/50 su dati Binance 5m 2023-2024. Provenienza: Grok. NON sono episodi PAPER reali."
 }

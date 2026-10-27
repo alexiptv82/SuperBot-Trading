@@ -572,13 +572,13 @@ def load_symbol_stats(data_dir: str, last_n: int = 200) -> dict:
 
 
 def load_experience_seed(data_dir: str) -> str:
-    """Legge experience_seed.json e restituisce un blocco testo compatto per il prompt.
+    """Legge backtest_seed.json e restituisce un blocco testo compatto per il prompt.
     
     Il file viene scritto da build_experience_seed.py (backtest sintetico 2023-2024)
-    e copiato in /opt/superbot-desk-data/{hawk,bull}/experience_seed.json.
+    e copiato in /opt/superbot-brain-adaptive/brain-{hawk,bull}/backtest_seed.json.
     Se assente, restituisce stringa vuota senza errori.
     """
-    path = os.path.join(data_dir, "experience_seed.json")
+    path = os.path.join(data_dir, "backtest_seed.json")
     if not os.path.exists(path):
         return ""
     try:
@@ -587,7 +587,7 @@ def load_experience_seed(data_dir: str) -> str:
     except Exception:
         return ""
     
-    lines = ["MEMORIA STORICA (backtest 2023-2024, 8 simboli, dati reali Binance 5m):"]
+    lines = ["CONTESTO BACKTEST (2023-2024, fonte dichiarata sintetica/non verificata; non trade operativi PAPER):"]
     
     # Statistiche globali
     wr = s.get("win_rate", 0)
