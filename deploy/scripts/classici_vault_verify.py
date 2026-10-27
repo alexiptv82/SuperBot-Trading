@@ -53,7 +53,11 @@ def preflight():
  for p in ('hawk','bull'):
   protected={}
   for f in FILES:
-   data=(backup/p/f).read_bytes();protected[f]={'size':len(data),'sha256':sha(data)}
+   path=backup/p/f
+   if not path.exists():
+    assert f=='errors.md','REQUIRED_HISTORY_MISSING'
+    protected[f]=None;continue
+   data=path.read_bytes();protected[f]={'size':len(data),'sha256':sha(data)}
   saved['profiles'][p]={'state':json.loads((backup/p/'state_v2.json').read_text()),'protected':protected}
  SAVED.parent.mkdir(exist_ok=True)
  fd=os.open(str(SAVED),os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
@@ -74,6 +78,7 @@ def postflight():
   assert inv[n]['RestartCount']==0,'RESTARTED'
   assert env(inv[n]).get('DESK_CAPITAL_V1')=='off','CAPITAL_V1_ENABLED'
   for f,m in saved['profiles'][p]['protected'].items():
+   if m is None:continue  # No historical bytes existed before rollout.
    path=ROOT/p/f
    with path.open('rb') as fp:data=fp.read(m['size'])
    assert path.stat().st_size>=m['size'] and sha(data)==m['sha256'],'PROTECTED_PREFIX_CHANGED:'+p+':'+f
