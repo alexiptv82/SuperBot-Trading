@@ -104,6 +104,7 @@ export const deskAPI = {
 export const bullAPI = makeDeskAPI('/api/desk/bull');
 export const brainAPI = {
   getStatus: (signal) => API.get('/api/brain/status', { signal }),
+  getProfiles: (signal) => API.get('/api/brain/profiles', { signal }),
 };
 
 // Messaggio leggibile da un errore axios (usa il testo del server se c'e')

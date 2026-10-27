@@ -318,7 +318,7 @@ class BrainViewTests(unittest.TestCase):
             self.assertEqual(response.headers['cache-control'], 'no-store')
             self.assertEqual(response.json()['mode'], 'paper')
             self.assertEqual(client.post('/api/brain/status').status_code, 405)
-        self.assertEqual([r.path for r in app.routes if r.path.startswith('/api/')], ['/api/brain/status'])
+        self.assertEqual([r.path for r in app.routes if r.path.startswith('/api/')], ['/api/brain/status', '/api/brain/profiles'])
 
 
 if __name__ == '__main__':
