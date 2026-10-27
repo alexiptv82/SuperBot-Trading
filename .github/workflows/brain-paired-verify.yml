@@ -22,17 +22,21 @@ jobs:
           test "${#expected}" = 40
           printf '%s' "$expected" | grep -Eq '^[0-9a-f]{40}$'
           echo "EXPECTED_APP_SHA=$expected" >> "$GITHUB_ENV"
+          phase="$(sed -n 's/^phase=//p' deploy/brain-paired-verify.trigger)"
+          test "$phase" = final || test "$phase" = warmup
+          echo "VERIFY_PHASE=$phase" >> "$GITHUB_ENV"
       - name: Read deployed app, frontend labels and PAPER bot metadata
         uses: appleboy/ssh-action@v1.0.0
         env:
           EXPECTED_APP_SHA: ${{ env.EXPECTED_APP_SHA }}
+          VERIFY_PHASE: ${{ env.VERIFY_PHASE }}
         with:
           host: 51.79.205.82
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           command_timeout: 3m
-          envs: EXPECTED_APP_SHA
+          envs: EXPECTED_APP_SHA,VERIFY_PHASE
           script: |
             set -eu
             python3 - <<'PY'
@@ -86,7 +90,21 @@ jobs:
               print('PAIRED_BUDGET='+json.dumps(rows))
              print('PAIRED_READONLY_VERIFICATION=PASS')
             
-            try:main()
+            def progress():
+             for name in ('superbot-brain-pilot','superbot-brain-hawk','superbot-brain-bull'):
+              p=subprocess.run(['docker','inspect',name],capture_output=True,text=True,timeout=20)
+              if p.returncode:print('PAIRED_PROGRESS='+json.dumps({'name':name,'exists':False}));continue
+              d=json.loads(p.stdout)[0]
+              mode=dict(x.split('=',1) for x in d['Config'].get('Env',[]) if '=' in x).get('DESK_MODE')
+              assert mode=='paper','PAPER_REQUIRED'
+              print('PAIRED_PROGRESS='+json.dumps({'name':name,'exists':True,'running':d['State'].get('Running'),'health':d['State'].get('Health',{}).get('Status'),'restarts':d.get('RestartCount')}))
+             root=Path('/opt/superbot-brain-adaptive');old=Path('/opt/superbot-desk-data/brain')
+             for profile,folder in (('legacy',old),('hawk',root/'brain-hawk'),('bull',root/'brain-bull')):
+              path=folder/'status.json';r=json.loads(path.read_text()) if path.is_file() else {}
+              print('PAIRED_PROGRESS='+json.dumps({'profile':profile,'pause_flag':(folder/'pause.flag').is_file(),'ts_ms':r.get('ts_ms'),'mode':r.get('mode'),'fresh_fast_data':r.get('fresh_fast_data'),'last_cycle':{k:r.get('last_cycle',{}).get(k) for k in ('called','skip')},'baseline_exists':(root/'api_budget_baseline.json').is_file()}))
+            try:
+             if os.getenv("VERIFY_PHASE")=="warmup":progress()
+             else:main()
             except Exception as exc:
              print('PAIRED_READONLY_VERIFICATION_FAILED='+type(exc).__name__)
              raise SystemExit(1)
