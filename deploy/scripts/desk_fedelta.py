@@ -273,6 +273,30 @@ def overlay_report(data, rules, which=1):
     }
     if which == 2:
         variants = variants2
+    rules3 = {}
+    if which == 3:
+        # regole di PROFITTO (nessun regime): roi = % del margine, after_h = ore minime di vita, partial = frazione chiusa
+        rules3 = {
+            "nessuna regola": None,
+            "subito ROI>=25%": {"roi": 25.0},
+            "subito ROI>=35%": {"roi": 35.0},
+            "subito ROI>=45%": {"roi": 45.0},
+            "dopo 2h ROI>=20%": {"roi": 20.0, "after_h": 2},
+            "dopo 4h ROI>=15%": {"roi": 15.0, "after_h": 4},
+            "dopo 4h ROI>=20%": {"roi": 20.0, "after_h": 4},
+            "dopo 4h ROI>=25%": {"roi": 25.0, "after_h": 4},
+            "dopo 6h ROI>=10%": {"roi": 10.0, "after_h": 6},
+            "dopo 6h ROI>=15%": {"roi": 15.0, "after_h": 6},
+            "dopo 6h ROI>=20%": {"roi": 20.0, "after_h": 6},
+            "dopo 8h ROI>=5%": {"roi": 5.0, "after_h": 8},
+            "dopo 8h ROI>=15%": {"roi": 15.0, "after_h": 8},
+            "dopo 8h chiudi sempre": {"roi": -1e9, "after_h": 8},
+            "dopo 12h chiudi sempre": {"roi": -1e9, "after_h": 12},
+            "meta' a ROI>=25%, il resto va": {"roi": 25.0, "partial": 0.5},
+            "meta' a ROI>=35%, il resto va": {"roi": 35.0, "partial": 0.5},
+            "meta' dopo 4h se ROI>=15%": {"roi": 15.0, "after_h": 4, "partial": 0.5},
+        }
+        variants = {n: None for n in rules3}
     trades = sorted([t for t in rules if t.get("net") is not None and t["sym"] in data and not t.get("split")],
                     key=lambda t: t["ts"])
     if not trades:
@@ -280,7 +304,7 @@ def overlay_report(data, rules, which=1):
         return
     syms = list(data)
     pos_idx = {s: {int(t): i for i, t in enumerate(data[s]["a15"][:, 0])} for s in syms}
-    lim = {**bt.HAWK_LIMITS, "max_open": 99, "max_margin_total": 1e12, "daily_stop": 1.0}
+    lim = {**bt.HAWK_LIMITS, "max_open": 99, "max_margin_total": 1e12, "max_margin_trade": 1e9, "daily_stop": 1.0}
     st = {n: {"acc": PaperAccount(Limits(**lim), n), "hist": [], "regime": None, "blocked": [], "ids": {}} for n in variants}
     t_first = (trades[0]["ts"] // BAR) * BAR - 2 * DAY
     t_end = min(max(int(d["a15"][-1, 0]) for d in data.values()) + BAR, max(t["cts"] for t in trades) + 2 * BAR)
@@ -311,19 +335,45 @@ def overlay_report(data, rules, which=1):
                     row = data[sym]["a15"][i]
                     acc.on_bar(sym, int(t), float(row[1]), float(row[2]), float(row[3]), float(row[4]), BAR)
         # segnali e regime a fine barra (punteggi di prima di P1, stagionalita' vecchia, trend 1d come nei bot)
-        b3 = btc_ret(data, pos_idx, end)
+        need_regime = any(v is not None for v in variants.values())
+        b3 = btc_ret(data, pos_idx, end) if need_regime else None
         readings, prices = [], {}
         for sym in syms:
-            r, price = reading_at(data, pos_idx, sym, end, b3, "v1", "mix", "old")
+            if need_regime:
+                r, price = reading_at(data, pos_idx, sym, end, b3, "v1", "mix", "old")
+                if r is not None:
+                    readings.append(r)
+            else:
+                i = pos_idx[sym].get(t)
+                price = float(data[sym]["a15"][i, 4]) if i is not None else None
             if price is not None:
                 prices[sym] = price
-            if r is not None:
-                readings.append(r)
-        if not readings:
+        if need_regime and not readings:
             continue
+        # regole di profitto (serie 3)
+        for name, rl in rules3.items():
+            if not rl:
+                continue
+            acc = st[name]["acc"]
+            for sym, pos in list(acc.positions.items()):
+                pxs = prices.get(sym)
+                if pxs is None:
+                    continue
+                roi = pos.side * (pxs - pos.entry) / pos.entry * pos.leverage * 100.0
+                held_h = (end - pos.open_ms) / 3_600_000.0
+                if held_h < rl.get("after_h", 0) or roi < rl["roi"]:
+                    continue
+                frac = rl.get("partial")
+                if frac:
+                    if getattr(pos, "_pp_done", False) or pos.id in st[name].setdefault("pp", set()):
+                        continue
+                    st[name]["pp"].add(pos.id)
+                    acc.partial_close(sym, pxs, end, frac, why="profitto parziale")
+                else:
+                    acc.close(sym, pxs, end, "chiusura profitto")
         for name, s_ in st.items():
             prm = variants[name]
-            if prm is None:
+            if prm is None or not need_regime:
                 continue
             reg = rg.compute(readings, s_["hist"], prm)
             s_["hist"] = rg.push_hist(s_["hist"], reg)
