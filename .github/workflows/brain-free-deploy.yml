@@ -1,0 +1,52 @@
+name: Brain AI libero - guarded PAPER cutover
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/brain-free.trigger]
+permissions:
+  contents: read
+concurrency:
+  group: brain-free-singapore
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require a separate approved deployment trigger
+        run: |
+          test "$(sed -n 's/^action=//p' deploy/brain-free.trigger)" = apply
+          test "$(sed -n 's/^approved=//p' deploy/brain-free.trigger)" = yes
+          for key in sha app_sha; do
+            value=$(sed -n "s/^${key}=//p" deploy/brain-free.trigger)
+            printf '%s' "$value" | grep -Eq '^[0-9a-f]{40}$'
+            echo "BRAIN_FREE_${key}=$value" >> "$GITHUB_ENV"
+          done
+      - name: Approved isolated rollout through verified Singapore host
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BRAIN_FREE_sha: ${{ env.BRAIN_FREE_sha }}
+          BRAIN_FREE_app_sha: ${{ env.BRAIN_FREE_app_sha }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: DEEPSEEK_API_KEY,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,BRAIN_FREE_sha,BRAIN_FREE_app_sha
+          command_timeout: 22m
+          script: |
+            set -eu
+            umask 077
+            DIR=$(mktemp -d /opt/brain-free-release.XXXXXXXX)
+            trap 'rm -rf "$DIR"' EXIT
+            git init -q "$DIR"
+            git -C "$DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$DIR" fetch -q --depth=1 origin "$BRAIN_FREE_sha"
+            git -C "$DIR" checkout -q --detach "$BRAIN_FREE_sha"
+            cd "$DIR"
+            test "$(git rev-parse HEAD)" = "$BRAIN_FREE_sha"
+            DESK_MODE=paper python3 -I deploy/scripts/brain_free_rollout.py --action apply --approved yes --sha "$BRAIN_FREE_sha" --app-sha "$BRAIN_FREE_app_sha"
