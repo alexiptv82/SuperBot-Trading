@@ -55,7 +55,8 @@ Ramo `work/classici-salvadanaio-dashboard-20261027` basato su main `4cf41d23bb94
 - 317 controlli bot e sicurezza rilascio: 138 base/macro/orari/journal, 49 rollback/correzioni, 86 adattatori simulati/rule pool, 44 guardie deploy.
 - 43 test lettore app; 3 prove React SSR sul componente; bundling sintattico dell'intero grafo frontend con dipendenze esterne.
 - Test CI del nuovo contratto aggiornati: gli assert delle successive policy dismesse non rappresentano il metodo approvato. Conservati test delle correzioni motore.
-- Build CRA completa, image build e suite CI da verificare dopo il push: non dichiarate eseguite localmente. Nessun test invia ordini reali.
+- GitHub Actions: build CRA completa, test React, 43 test reader, build immagine bot e import sanity superati. Anche suite bot/sicurezza superata (317 controlli). Nessun test invia ordini reali.
+- CI verificata: https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40558479403 e https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40558483663 .
 - Workflow sui due rami di lavoro: solo test/build, nessun deploy automatico. Nessuna modifica ai trigger del deploy operativo.
 
 ## Condizione prima del rilascio
