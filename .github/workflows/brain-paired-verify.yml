@@ -69,7 +69,7 @@ jobs:
              r=v['profiles'][p]
              assert r['status']=='ok','READER_UNAVAILABLE'
              assert r['system']['heartbeat']=='fresh','HEARTBEAT_STALE'
-              assert (r['execution']['last_cycle_ms'] or 0)>=1793108080000,'POSTRELEASE_COMPLETED_CYCLE_MISSING'
+             assert (r['execution']['last_cycle_ms'] or 0)>=1793108080000,'POSTRELEASE_COMPLETED_CYCLE_MISSING'
              assert not r['execution']['operator_paused'],'NEW_PROFILE_PAUSED'
              print(json.dumps({'profile':p,'portfolio':r['portfolio'],'execution':r['execution'],'api_budget':r['api_budget'],'stats':r['stats'],'positions':[{k:x.get(k) for k in ('symbol','side','margin','leverage','notional_entry','floating_pnl','net_close_estimate','age_minutes','decision_source','stale')} for x in r['positions']]}))
             r=v['legacy']
