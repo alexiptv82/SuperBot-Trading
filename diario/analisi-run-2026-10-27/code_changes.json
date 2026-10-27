@@ -1,0 +1,2043 @@
+[
+  {
+    "from": "43c79cf",
+    "to": "a0afc63",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/43c79cf...a0afc63",
+    "files": [
+      {
+        "file": "backend/desk/brain.py"
+      },
+      {
+        "file": "backend/desk/cli.py"
+      },
+      {
+        "file": "backend/desk/healthcheck.py"
+      }
+    ],
+    "scope": "initial predecessor; first Bull opening falls in deployment transition"
+  },
+  {
+    "from": "a0afc63",
+    "to": "7ced3a6",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/a0afc63...7ced3a6",
+    "files": [
+      {
+        "file": "backend/desk/brain.py",
+        "changed_top_level_ast_nodes": [
+          "build_prompt",
+          "global@11",
+          "global@12",
+          "parse_decisions"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "_check_close_all_flag",
+          "flush_events",
+          "global@14",
+          "global@15",
+          "global@19",
+          "global@20",
+          "global@21",
+          "global@22",
+          "global@23",
+          "global@24",
+          "global@25",
+          "global@26",
+          "global@27",
+          "global@28",
+          "global@29",
+          "global@30",
+          "global@31",
+          "global@32",
+          "global@33",
+          "global@34",
+          "global@35",
+          "global@36",
+          "global@37",
+          "global@38",
+          "global@39",
+          "global@40",
+          "global@41",
+          "global@46",
+          "global@47",
+          "global@48",
+          "global@55",
+          "global@58",
+          "global@72",
+          "global@75",
+          "position_info",
+          "record_close",
+          "run_cycle",
+          "run_params"
+        ]
+      },
+      {
+        "file": "backend/desk/engine.py",
+        "changed_top_level_ast_nodes": [
+          "PaperAccount",
+          "Position",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13"
+        ]
+      },
+      {
+        "file": "backend/desk/learning.py",
+        "changed_top_level_ast_nodes": [
+          "_clean",
+          "_num",
+          "_sign",
+          "build_features",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "log_event",
+          "read_events",
+          "tier_of"
+        ]
+      },
+      {
+        "file": "backend/desk/notifier.py",
+        "changed_top_level_ast_nodes": [
+          "notify_split"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "7ced3a6",
+    "to": "5a4e383",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/7ced3a6...5a4e383",
+    "files": [
+      {
+        "file": "backend/desk/brain.py",
+        "changed_top_level_ast_nodes": [
+          "call_claude",
+          "diagnose_reply"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "global@12",
+          "global@54",
+          "global@58",
+          "global@61",
+          "global@75",
+          "global@78",
+          "log_claude_call",
+          "log_claude_error",
+          "run_cycle"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "5a4e383",
+    "to": "9fa667f",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/5a4e383...9fa667f",
+    "files": [
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "apply_claude_schedule",
+          "global@0",
+          "global@14",
+          "global@15",
+          "global@16",
+          "global@17",
+          "global@20",
+          "global@21",
+          "global@22",
+          "global@23",
+          "global@24",
+          "global@25",
+          "global@26",
+          "global@27",
+          "global@28",
+          "global@29",
+          "global@30",
+          "global@31",
+          "global@32",
+          "global@33",
+          "global@34",
+          "global@35",
+          "global@36",
+          "global@37",
+          "global@38",
+          "global@39",
+          "global@40",
+          "global@41",
+          "global@42",
+          "global@43",
+          "global@47",
+          "global@48",
+          "global@49",
+          "global@50",
+          "global@54",
+          "global@56",
+          "global@61",
+          "global@63",
+          "global@78",
+          "global@81",
+          "loop_step",
+          "run_cycle",
+          "write_heartbeat"
+        ]
+      },
+      {
+        "file": "backend/desk/learning.py",
+        "changed_top_level_ast_nodes": [
+          "global@11",
+          "log_event"
+        ]
+      },
+      {
+        "file": "backend/desk/schedule.py",
+        "changed_top_level_ast_nodes": [
+          "_load",
+          "_to_ms",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "parse_windows",
+          "reset_cache",
+          "schedule_state",
+          "summary"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "9fa667f",
+    "to": "5818aee",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/9fa667f...5818aee",
+    "files": [
+      {
+        "file": "backend/desk/analyst.py",
+        "changed_top_level_ast_nodes": [
+          "_day",
+          "_http_get",
+          "conf_bucket",
+          "dedupe",
+          "examine",
+          "fetch_range",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "group_by",
+          "label_candidate",
+          "read_jsonl",
+          "status_head",
+          "summarize",
+          "verdict",
+          "wilson"
+        ]
+      },
+      {
+        "file": "backend/desk/brain.py",
+        "changed_top_level_ast_nodes": [
+          "build_prompt"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "_check_close_all_flag",
+          "_check_close_position_flag",
+          "_check_portfolio_reset_flag",
+          "_close_for_user",
+          "_daily_loss_exceeded",
+          "_daily_realized_pnl",
+          "_sane_tp",
+          "claude_limits",
+          "drain_reason",
+          "ensure_live_since",
+          "global@111",
+          "global@15",
+          "global@16",
+          "global@17",
+          "global@18",
+          "global@19",
+          "global@20",
+          "global@21",
+          "global@22",
+          "global@23",
+          "global@24",
+          "global@25",
+          "global@26",
+          "global@27",
+          "global@28",
+          "global@29",
+          "global@30",
+          "global@31",
+          "global@32",
+          "global@33",
+          "global@34",
+          "global@35",
+          "global@36",
+          "global@37",
+          "global@38",
+          "global@39",
+          "global@40",
+          "global@41",
+          "global@42",
+          "global@43",
+          "global@46",
+          "global@47",
+          "global@49",
+          "global@50",
+          "global@51",
+          "global@52",
+          "global@53",
+          "global@54",
+          "global@55",
+          "global@56",
+          "global@57",
+          "global@58",
+          "global@59",
+          "global@60",
+          "global@61",
+          "global@62",
+          "global@63",
+          "global@64",
+          "global@66",
+          "global@76",
+          "global@77",
+          "global@81",
+          "global@84",
+          "global@91",
+          "history_row",
+          "hours_blocked",
+          "is_trading_enabled",
+          "loop_step",
+          "main",
+          "process_flags",
+          "record_close",
+          "run_cycle",
+          "set_trading_enabled",
+          "write_heartbeat"
+        ]
+      },
+      {
+        "file": "backend/desk/learning.py",
+        "changed_top_level_ast_nodes": [
+          "build_features"
+        ]
+      },
+      {
+        "file": "backend/desk/live_connector.py",
+        "changed_top_level_ast_nodes": [
+          "LiveConnector",
+          "LiveError",
+          "_base",
+          "_check_credentials",
+          "_check_scale",
+          "_f",
+          "_new_client_order_id",
+          "_retryable",
+          "_symbol_ccxt",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13",
+          "global@14",
+          "global@15",
+          "global@16",
+          "global@17",
+          "global@18",
+          "global@19",
+          "global@2",
+          "global@20",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9"
+        ]
+      },
+      {
+        "file": "backend/desk/live_selftest.py",
+        "changed_top_level_ast_nodes": [
+          "_cleanup",
+          "_plans",
+          "global@0",
+          "global@1",
+          "global@14",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "main",
+          "say",
+          "step"
+        ]
+      },
+      {
+        "file": "backend/desk/live_sync.py",
+        "changed_top_level_ast_nodes": [
+          "_noop",
+          "_set",
+          "after_bar",
+          "dca_on_exchange",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "open_on_exchange",
+          "partial_on_exchange",
+          "restore_position",
+          "rollback_open",
+          "snapshot_position",
+          "sync"
+        ]
+      },
+      {
+        "file": "backend/desk/macro_calendar.py",
+        "changed_top_level_ast_nodes": [
+          "MacroConfig",
+          "_empty_source",
+          "_fmt_min",
+          "_http_get",
+          "_neutral",
+          "_nth_sunday",
+          "current",
+          "evaluate",
+          "features",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13",
+          "global@14",
+          "global@15",
+          "global@16",
+          "global@17",
+          "global@18",
+          "global@19",
+          "global@2",
+          "global@20",
+          "global@21",
+          "global@22",
+          "global@24",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "heartbeat_view",
+          "hm_utc",
+          "load_cache",
+          "parse_bls_ics",
+          "parse_ff",
+          "prompt_lines",
+          "refresh_if_due",
+          "save_cache",
+          "us_eastern_offset_h"
+        ]
+      },
+      {
+        "file": "backend/desk/notifier.py",
+        "changed_top_level_ast_nodes": [
+          "_header",
+          "_k",
+          "_tag",
+          "global@6",
+          "global@7",
+          "notify_close",
+          "notify_daily_report",
+          "notify_dca",
+          "notify_halt",
+          "notify_live_alert",
+          "notify_open",
+          "notify_split",
+          "set_context"
+        ]
+      },
+      {
+        "file": "backend/desk/trading_hours.py",
+        "changed_top_level_ast_nodes": [
+          "_allowed_at",
+          "_boundaries",
+          "_hm_to_min",
+          "_last_sunday",
+          "_load",
+          "_offset_min",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "hours_state",
+          "parse",
+          "rome_offset_min",
+          "summary"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "5818aee",
+    "to": "18d145f",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/5818aee...18d145f",
+    "files": [
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "run_cycle"
+        ]
+      },
+      {
+        "file": "backend/desk/macro_calendar.py",
+        "changed_top_level_ast_nodes": [
+          "MacroConfig",
+          "evaluate",
+          "event_tier",
+          "features",
+          "global@0",
+          "global@23",
+          "global@24",
+          "global@27",
+          "prompt_lines"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "18d145f",
+    "to": "b4709d1",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/18d145f...b4709d1",
+    "files": [
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "run_cycle"
+        ]
+      },
+      {
+        "file": "backend/desk/macro_calendar.py",
+        "changed_top_level_ast_nodes": [
+          "current",
+          "enforcing",
+          "features",
+          "global@0",
+          "global@12",
+          "global@13",
+          "global@14",
+          "global@15",
+          "global@16",
+          "global@17",
+          "global@18",
+          "global@19",
+          "global@20",
+          "global@21",
+          "global@22",
+          "global@23",
+          "global@24",
+          "global@25",
+          "global@27",
+          "global@28",
+          "heartbeat_view",
+          "prompt_lines"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "b4709d1",
+    "to": "b6b9911",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/b4709d1...b6b9911",
+    "files": [
+      {
+        "file": "backend/desk/brain.py",
+        "changed_top_level_ast_nodes": [
+          "build_prompt",
+          "global@11",
+          "global@12"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "PortfolioConfig",
+          "_make_bull_config",
+          "_make_hawk_config",
+          "account_snapshot",
+          "closed_bars",
+          "daily_bars",
+          "global@102",
+          "global@111",
+          "global@124",
+          "global@31",
+          "global@32",
+          "global@33",
+          "global@34",
+          "global@35",
+          "global@36",
+          "global@37",
+          "global@38",
+          "global@39",
+          "global@40",
+          "global@41",
+          "global@42",
+          "global@43",
+          "global@46",
+          "global@47",
+          "global@48",
+          "global@49",
+          "global@50",
+          "global@51",
+          "global@52",
+          "global@53",
+          "global@54",
+          "global@55",
+          "global@56",
+          "global@57",
+          "global@58",
+          "global@59",
+          "global@60",
+          "global@61",
+          "global@62",
+          "global@63",
+          "global@64",
+          "global@65",
+          "global@66",
+          "global@68",
+          "global@74",
+          "global@75",
+          "global@76",
+          "global@77",
+          "global@83",
+          "global@84",
+          "global@91",
+          "global@98",
+          "leverage_gate",
+          "main",
+          "margin_gate",
+          "margin_room",
+          "process_closed_bars",
+          "run_cycle",
+          "run_params",
+          "tier_entry_score"
+        ]
+      },
+      {
+        "file": "backend/desk/engine.py",
+        "changed_top_level_ast_nodes": [
+          "PaperAccount",
+          "Position",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13",
+          "global@14"
+        ]
+      },
+      {
+        "file": "backend/desk/extract_replay_input.py",
+        "changed_top_level_ast_nodes": [
+          "coverage",
+          "digest",
+          "extract",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@17",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "main",
+          "rows",
+          "strict_json"
+        ]
+      },
+      {
+        "file": "backend/desk/live_sync.py",
+        "changed_top_level_ast_nodes": [
+          "after_bar",
+          "restore_position",
+          "snapshot_position"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/README.md",
+        "changed_top_level_ast_nodes": []
+      },
+      {
+        "file": "backend/desk/profit/REPLAY_HANDOFF.md",
+        "changed_top_level_ast_nodes": []
+      },
+      {
+        "file": "backend/desk/profit/__init__.py",
+        "changed_top_level_ast_nodes": [
+          "global@0",
+          "global@1"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/features.py",
+        "changed_top_level_ast_nodes": [
+          "Bar",
+          "Features",
+          "extract",
+          "global@0",
+          "global@1",
+          "global@2"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/ledger.py",
+        "changed_top_level_ast_nodes": [
+          "evaluation",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "outcome",
+          "serialize"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/liquidable.py",
+        "changed_top_level_ast_nodes": [
+          "Costs",
+          "Leg",
+          "Liquidation",
+          "PositionView",
+          "evaluate",
+          "finite",
+          "global@0",
+          "global@1",
+          "global@2"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/machine.py",
+        "changed_top_level_ast_nodes": [
+          "Decision",
+          "State",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "step"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/policy.py",
+        "changed_top_level_ast_nodes": [
+          "Policy",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/policy_bull.py",
+        "changed_top_level_ast_nodes": [
+          "global@0",
+          "research_policy"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/policy_hawk.py",
+        "changed_top_level_ast_nodes": [
+          "global@0",
+          "research_policy"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/reversal.py",
+        "changed_top_level_ast_nodes": [
+          "Reversal",
+          "assess",
+          "global@0",
+          "global@1"
+        ]
+      },
+      {
+        "file": "backend/desk/profit/slot_value.py",
+        "changed_top_level_ast_nodes": [
+          "SwapDecision",
+          "compare",
+          "global@0",
+          "global@1",
+          "global@2"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_manager_collect_offline.py",
+        "changed_top_level_ast_nodes": [
+          "collect",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@8",
+          "main"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_manager_monitor.py",
+        "changed_top_level_ast_nodes": [
+          "check_output",
+          "global@0",
+          "global@1",
+          "global@12",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "main",
+          "run_once"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_manager_replay.py",
+        "changed_top_level_ast_nodes": [
+          "ReplayEvent",
+          "ShadowReplay",
+          "Snapshot",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_manager_report.py",
+        "changed_top_level_ast_nodes": [
+          "analyze_lines",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@8",
+          "main"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_manager_shadow.py",
+        "changed_top_level_ast_nodes": [
+          "ProfitConfig",
+          "ShadowDecision",
+          "assess",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_manager_state_adapter.py",
+        "changed_top_level_ast_nodes": [
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "read_state_file",
+          "snapshots_from_state"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_replay_v1.py",
+        "changed_top_level_ast_nodes": [
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@14",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "main",
+          "replay"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_sidecar/__init__.py",
+        "changed_top_level_ast_nodes": [
+          "global@0"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_sidecar/accounting.py",
+        "changed_top_level_ast_nodes": [
+          "closed_records",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "identity",
+          "matching",
+          "snapshot"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_sidecar/candles.py",
+        "changed_top_level_ast_nodes": [
+          "fetch_bars",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_sidecar/common.py",
+        "changed_top_level_ast_nodes": [
+          "Freeze",
+          "canonical",
+          "decode",
+          "global@0",
+          "global@1",
+          "global@2",
+          "integer",
+          "numeric",
+          "sha"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_sidecar/healthcheck.py",
+        "changed_top_level_ast_nodes": [
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@7",
+          "healthy"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_sidecar/journal.py",
+        "changed_top_level_ast_nodes": [
+          "Journal",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_sidecar/reader.py",
+        "changed_top_level_ast_nodes": [
+          "Observation",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "read_bytes",
+          "read_consistent"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_sidecar/roi_variants.py",
+        "changed_top_level_ast_nodes": [
+          "RoiPolicy",
+          "RoiState",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "step"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_sidecar/runner.py",
+        "changed_top_level_ast_nodes": [
+          "_evaluate_position",
+          "_invalid_features",
+          "_write_status",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13",
+          "global@14",
+          "global@15",
+          "global@16",
+          "global@17",
+          "global@18",
+          "global@2",
+          "global@25",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "main",
+          "poll_once",
+          "process_cycle"
+        ]
+      },
+      {
+        "file": "backend/desk/signals.py",
+        "changed_top_level_ast_nodes": [
+          "closed_daily",
+          "global@12",
+          "read_symbol"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_extraction.py",
+        "changed_top_level_ast_nodes": [
+          "ExtractionTests",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@7"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_manager_monitor.py",
+        "changed_top_level_ast_nodes": [
+          "MonitorTests",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@7"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_manager_replay.py",
+        "changed_top_level_ast_nodes": [
+          "ReplayTests",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@4"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_manager_report.py",
+        "changed_top_level_ast_nodes": [
+          "ReportTests",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@5"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_manager_shadow.py",
+        "changed_top_level_ast_nodes": [
+          "ShadowProfitMathTests",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@5"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_manager_state_adapter.py",
+        "changed_top_level_ast_nodes": [
+          "AdapterTests",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@4"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_sidecar_contract.py",
+        "changed_top_level_ast_nodes": [
+          "SidecarContractTests",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@4"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_sidecar_io.py",
+        "changed_top_level_ast_nodes": [
+          "SidecarIOTests",
+          "fixture",
+          "global@0",
+          "global@1",
+          "global@11",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_sidecar_runner.py",
+        "changed_top_level_ast_nodes": [
+          "Cycle",
+          "FetchBars",
+          "GoldenAgainstEngine",
+          "InvalidFeaturesFreeze",
+          "RoiVariants",
+          "bars_for",
+          "engine_account",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13",
+          "global@14",
+          "global@15",
+          "global@16",
+          "global@17",
+          "global@18",
+          "global@19",
+          "global@2",
+          "global@20",
+          "global@29",
+          "global@3",
+          "global@30",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "write_source"
+        ]
+      },
+      {
+        "file": "backend/desk/test_profit_v1.py",
+        "changed_top_level_ast_nodes": [
+          "ProfitTests",
+          "bars",
+          "feature",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13",
+          "global@17",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9"
+        ]
+      },
+      {
+        "file": "backend/desk/test_turbo_scalp.py",
+        "changed_top_level_ast_nodes": [
+          "Health",
+          "Runner",
+          "Signal",
+          "Simulation",
+          "global@0",
+          "global@1",
+          "global@18",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "run_steps",
+          "signal_then",
+          "uptrend",
+          "with_pullback_bounce"
+        ]
+      },
+      {
+        "file": "backend/desk/turbo_scalp/__init__.py",
+        "changed_top_level_ast_nodes": [
+          "global@0"
+        ]
+      },
+      {
+        "file": "backend/desk/turbo_scalp/healthcheck.py",
+        "changed_top_level_ast_nodes": [
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@8",
+          "healthy"
+        ]
+      },
+      {
+        "file": "backend/desk/turbo_scalp/report.py",
+        "changed_top_level_ast_nodes": [
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@8",
+          "main",
+          "read_exits"
+        ]
+      },
+      {
+        "file": "backend/desk/turbo_scalp/runner.py",
+        "changed_top_level_ast_nodes": [
+          "_atomic_json",
+          "_previous_success",
+          "fetch_closed_bars",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@17",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "load_state",
+          "main",
+          "run_once"
+        ]
+      },
+      {
+        "file": "backend/desk/turbo_scalp/strategy.py",
+        "changed_top_level_ast_nodes": [
+          "Config",
+          "_exit_record",
+          "_fill",
+          "_manage",
+          "algo",
+          "atr_last",
+          "config_hash",
+          "ema_last",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "new_state",
+          "regular",
+          "signal",
+          "step",
+          "summarize"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "b6b9911",
+    "to": "fa3e220",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/b6b9911...fa3e220",
+    "files": [
+      {
+        "file": "backend/desk/brain.py",
+        "changed_top_level_ast_nodes": [
+          "global@12"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "_make_bull_config",
+          "_make_hawk_config"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "fa3e220",
+    "to": "f87f2d6",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/fa3e220...f87f2d6",
+    "files": [
+      {
+        "file": "backend/desk/brain.py",
+        "changed_top_level_ast_nodes": [
+          "build_prompt",
+          "global@12"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "four_hour_bars",
+          "global@100",
+          "global@102",
+          "global@104",
+          "global@124",
+          "global@126",
+          "global@95",
+          "global@98",
+          "position_info",
+          "run_cycle"
+        ]
+      },
+      {
+        "file": "backend/desk/position_card.py",
+        "changed_top_level_ast_nodes": [
+          "global@0",
+          "global@1",
+          "metrics"
+        ]
+      },
+      {
+        "file": "backend/desk/signals.py",
+        "changed_top_level_ast_nodes": [
+          "closed_four_hour",
+          "direction",
+          "read_symbol",
+          "rsi"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "f87f2d6",
+    "to": "297b126",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/f87f2d6...297b126",
+    "files": [
+      {
+        "file": "backend/desk/capital_journal.py",
+        "changed_top_level_ast_nodes": [
+          "PaperCapitalJournal",
+          "_canonical",
+          "_hash",
+          "_load_json",
+          "_replace_json",
+          "_sync_directory",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8"
+        ]
+      },
+      {
+        "file": "backend/desk/capital_manager.py",
+        "changed_top_level_ast_nodes": [
+          "CapitalInvariantError",
+          "DayReference",
+          "RiskView",
+          "add_capital_flow",
+          "cents",
+          "dec",
+          "eligible_rollover",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "latch_risk",
+          "nonnegative",
+          "risk_view",
+          "start_day"
+        ]
+      },
+      {
+        "file": "backend/desk/capital_runtime.py",
+        "changed_top_level_ast_nodes": [
+          "_position_signature",
+          "account_components",
+          "boundary_prices",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "initial_capital",
+          "rollover_today",
+          "settle_after_close",
+          "update_market_risk",
+          "utc_day",
+          "withdraw_request"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "_acquire_capital_writer_lock",
+          "_append_close_once",
+          "_capital_enabled",
+          "_capital_journal",
+          "_check_close_all_flag",
+          "_check_close_position_flag",
+          "_check_portfolio_reset_flag",
+          "_fetch_daily_window",
+          "_flush_capital_close_outbox",
+          "_make_bull_config",
+          "_make_hawk_config",
+          "_process_vault_request",
+          "_settle_vault_after_user_close",
+          "daily_bars",
+          "fetch_daily_history",
+          "global@10",
+          "global@100",
+          "global@104",
+          "global@106",
+          "global@107",
+          "global@11",
+          "global@114",
+          "global@118",
+          "global@12",
+          "global@123",
+          "global@126",
+          "global@127",
+          "global@13",
+          "global@14",
+          "global@15",
+          "global@151",
+          "global@16",
+          "global@17",
+          "global@18",
+          "global@19",
+          "global@20",
+          "global@21",
+          "global@22",
+          "global@26",
+          "global@27",
+          "global@28",
+          "global@29",
+          "global@30",
+          "global@31",
+          "global@32",
+          "global@33",
+          "global@34",
+          "global@35",
+          "global@36",
+          "global@37",
+          "global@38",
+          "global@39",
+          "global@40",
+          "global@41",
+          "global@42",
+          "global@43",
+          "global@44",
+          "global@48",
+          "global@49",
+          "global@50",
+          "global@51",
+          "global@52",
+          "global@53",
+          "global@54",
+          "global@55",
+          "global@56",
+          "global@57",
+          "global@58",
+          "global@59",
+          "global@60",
+          "global@61",
+          "global@62",
+          "global@63",
+          "global@64",
+          "global@65",
+          "global@66",
+          "global@67",
+          "global@68",
+          "global@69",
+          "global@7",
+          "global@74",
+          "global@75",
+          "global@76",
+          "global@77",
+          "global@78",
+          "global@79",
+          "global@8",
+          "global@80",
+          "global@81",
+          "global@82",
+          "global@83",
+          "global@84",
+          "global@85",
+          "global@86",
+          "global@87",
+          "global@88",
+          "global@89",
+          "global@9",
+          "global@91",
+          "global@95",
+          "global@96",
+          "global@98",
+          "load_state",
+          "loop_step",
+          "main",
+          "make_account",
+          "process_flags",
+          "record_close",
+          "run_cycle",
+          "save_state",
+          "warm_daily_cache",
+          "write_heartbeat"
+        ]
+      },
+      {
+        "file": "backend/desk/engine.py",
+        "changed_top_level_ast_nodes": [
+          "Limits",
+          "PaperAccount",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13",
+          "global@14",
+          "global@15",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6"
+        ]
+      },
+      {
+        "file": "backend/desk/market_context.py",
+        "changed_top_level_ast_nodes": [
+          "OIInfo",
+          "_oi_note",
+          "_usdt_sym",
+          "apply_oi_history",
+          "fetch_all_context",
+          "fetch_ls_ratio",
+          "fetch_open_interest",
+          "fetch_tickers",
+          "global@22",
+          "global@23",
+          "global@24"
+        ]
+      },
+      {
+        "file": "backend/desk/position_sizer.py",
+        "changed_top_level_ast_nodes": [
+          "SizeDecision",
+          "can_fill_split_or_dca",
+          "cap_for",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "size_request"
+        ]
+      },
+      {
+        "file": "backend/desk/vault_manager.py",
+        "changed_top_level_ast_nodes": [
+          "PendingLot",
+          "VaultState",
+          "VaultTransition",
+          "_reduce_lots",
+          "_room",
+          "_trim_lots",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "journal_record",
+          "manual_withdraw",
+          "rollover",
+          "settle_pending"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "297b126",
+    "to": "886b30f",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/297b126...886b30f",
+    "files": [
+      {
+        "file": "backend/desk/brain.py",
+        "changed_top_level_ast_nodes": [
+          "rules_decisions"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "run_cycle"
+        ]
+      },
+      {
+        "file": "backend/desk/signals.py",
+        "changed_top_level_ast_nodes": [
+          "read_symbol"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "886b30f",
+    "to": "63641f7",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/886b30f...63641f7",
+    "files": [
+      {
+        "file": "backend/desk/portfolio_alert.py",
+        "changed_top_level_ast_nodes": [
+          "AlertInputError",
+          "_ema",
+          "_num",
+          "_rsi_at",
+          "detect_portfolio_alert",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "reversal_evidence"
+        ]
+      },
+      {
+        "file": "backend/desk/profit_guardian.py",
+        "changed_top_level_ast_nodes": [
+          "GuardianError",
+          "Review",
+          "ShadowBudgetLedger",
+          "_append_fsynced",
+          "_claude_lane",
+          "_float",
+          "_shadow_root",
+          "_side",
+          "append_shadow_record",
+          "budget_admission",
+          "build_prompt",
+          "comparison_event",
+          "comparison_portfolio_alert",
+          "eligibility",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@2",
+          "global@26",
+          "global@27",
+          "global@28",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "parse_proposal",
+          "position_key",
+          "residual_breakeven",
+          "tp_distance_r"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "63641f7",
+    "to": "35f08cf",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/63641f7...35f08cf",
+    "files": [
+      {
+        "file": "backend/desk/brain_view.py",
+        "changed_top_level_ast_nodes": [
+          "Unavailable",
+          "_check",
+          "_json",
+          "_number",
+          "_tail",
+          "_text",
+          "_trade",
+          "global@0",
+          "global@1",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "read_status",
+          "register_fastapi"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "_bars_return",
+          "_open_sl_risk",
+          "bull_entry_gate",
+          "global@101",
+          "global@103",
+          "global@106",
+          "global@107",
+          "global@111",
+          "global@112",
+          "global@114",
+          "global@118",
+          "global@119",
+          "global@123",
+          "global@127",
+          "global@128",
+          "global@132",
+          "global@151",
+          "global@156",
+          "global@65",
+          "global@66",
+          "global@67",
+          "global@68",
+          "global@69",
+          "global@71",
+          "global@75",
+          "global@76",
+          "global@77",
+          "global@78",
+          "global@79",
+          "global@80",
+          "global@81",
+          "global@82",
+          "global@83",
+          "global@84",
+          "global@85",
+          "global@86",
+          "global@87",
+          "global@88",
+          "global@89",
+          "global@90",
+          "global@91",
+          "global@92",
+          "global@93",
+          "global@94",
+          "global@96",
+          "global@98",
+          "run_cycle"
+        ]
+      },
+      {
+        "file": "backend/desk/seasonal.py",
+        "changed_top_level_ast_nodes": [
+          "_smooth_cycle_mult",
+          "get_seasonal",
+          "global@0",
+          "global@10",
+          "global@11",
+          "global@12",
+          "global@13",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9"
+        ]
+      },
+      {
+        "file": "backend/desk/seasonal_v1.py",
+        "changed_top_level_ast_nodes": [
+          "SeasonalContext",
+          "get_seasonal",
+          "global@0",
+          "global@1",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6"
+        ]
+      },
+      {
+        "file": "backend/desk/signals.py",
+        "changed_top_level_ast_nodes": [
+          "read_symbol"
+        ]
+      }
+    ]
+  },
+  {
+    "from": "35f08cf",
+    "to": "89b0dca",
+    "compare": "https://github.com/alexiptv82/SuperBot-Trading/compare/35f08cf...89b0dca",
+    "files": [
+      {
+        "file": "backend/desk/brain.py",
+        "changed_top_level_ast_nodes": [
+          "rules_decisions"
+        ]
+      },
+      {
+        "file": "backend/desk/cli.py",
+        "changed_top_level_ast_nodes": [
+          "global@101",
+          "global@103",
+          "global@105",
+          "global@111",
+          "global@112",
+          "global@113",
+          "global@114",
+          "global@119",
+          "global@121",
+          "global@123",
+          "global@125",
+          "global@128",
+          "global@130",
+          "global@132",
+          "global@134",
+          "global@156",
+          "global@158",
+          "global@18",
+          "global@19",
+          "global@20",
+          "global@21",
+          "global@22",
+          "global@23",
+          "global@27",
+          "global@28",
+          "global@29",
+          "global@30",
+          "global@31",
+          "global@32",
+          "global@33",
+          "global@34",
+          "global@35",
+          "global@36",
+          "global@37",
+          "global@38",
+          "global@39",
+          "global@40",
+          "global@41",
+          "global@42",
+          "global@43",
+          "global@44",
+          "global@45",
+          "global@49",
+          "global@50",
+          "global@51",
+          "global@52",
+          "global@53",
+          "global@54",
+          "global@55",
+          "global@56",
+          "global@57",
+          "global@58",
+          "global@59",
+          "global@60",
+          "global@61",
+          "global@62",
+          "global@63",
+          "global@64",
+          "global@65",
+          "global@66",
+          "global@67",
+          "global@68",
+          "global@69",
+          "global@70",
+          "global@71",
+          "global@73",
+          "global@80",
+          "global@81",
+          "global@82",
+          "global@83",
+          "global@84",
+          "global@85",
+          "global@86",
+          "global@87",
+          "global@88",
+          "global@89",
+          "global@90",
+          "global@91",
+          "global@92",
+          "global@93",
+          "global@94",
+          "global@95",
+          "global@96",
+          "run_cycle"
+        ]
+      },
+      {
+        "file": "backend/desk/regime.py",
+        "changed_top_level_ast_nodes": [
+          "Regime",
+          "RegimeParams",
+          "_clip",
+          "_env_on",
+          "against_regime",
+          "apply_ratchet",
+          "compute",
+          "entry_gate",
+          "flip_exit",
+          "global@0",
+          "global@1",
+          "global@11",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@9",
+          "management_closes",
+          "peak_price",
+          "push_hist",
+          "r_metrics",
+          "r_unit",
+          "ratchet"
+        ]
+      },
+      {
+        "file": "backend/desk/signals.py",
+        "changed_top_level_ast_nodes": [
+          "global@12",
+          "global@16",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "global@6",
+          "global@7",
+          "global@8",
+          "global@9",
+          "read_symbol"
+        ]
+      },
+      {
+        "file": "backend/desk/signals_pre_p1.py",
+        "changed_top_level_ast_nodes": [
+          "Reading",
+          "atr",
+          "closed_daily",
+          "closed_four_hour",
+          "direction",
+          "doji_pattern",
+          "ema",
+          "global@0",
+          "global@1",
+          "global@12",
+          "global@2",
+          "global@3",
+          "global@4",
+          "global@5",
+          "read_symbol",
+          "resample",
+          "rsi"
+        ]
+      }
+    ]
+  }
+]

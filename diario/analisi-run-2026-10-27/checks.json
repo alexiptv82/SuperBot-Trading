@@ -1,0 +1,26 @@
+{
+  "archived_positions": 357,
+  "all_realizations": 427,
+  "archived_realizations": 404,
+  "all_entry_sources": {
+    "rules": 357
+  },
+  "entry_log_coverage": 353,
+  "source_checks": [
+    {
+      "bot": "hawk",
+      "root_history_rows": 278,
+      "all_state_realizations": 278,
+      "root_state_exact_row_multiset_match": true,
+      "parse_errors": []
+    },
+    {
+      "bot": "bull",
+      "root_history_rows": 149,
+      "all_state_realizations": 149,
+      "root_state_exact_row_multiset_match": true,
+      "parse_errors": []
+    }
+  ],
+  "protected_stat_unchanged": true
+}

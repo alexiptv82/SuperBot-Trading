@@ -1,0 +1,3467 @@
+[
+  {
+    "positions": 0,
+    "wins": 0,
+    "wr_pct": null,
+    "wr_ci95_wilson": null,
+    "net": 0,
+    "net_mean": null,
+    "avg_win_net": null,
+    "avg_loss_abs_net": null,
+    "profit_factor": null,
+    "fees": 0,
+    "funding": 0,
+    "gross": 0,
+    "net_plus_fees": 0,
+    "duration_mean_h": null,
+    "duration_median_h": null,
+    "bot": "hawk",
+    "run_no": 1,
+    "start_ms": 1791816683724,
+    "end_ms": 1791816683724,
+    "start_utc": "2026-10-12T14:51:23+00:00",
+    "end_utc": "2026-10-12T14:51:23+00:00",
+    "dashboard_realizations": 0,
+    "dashboard_wr": 0.0,
+    "dashboard_ci95": null,
+    "partial_rows": 0,
+    "params_at_archive": {
+      "entry_score_base": 60,
+      "entry_score_tier_ab": 60,
+      "entry_score_tier_c": 70,
+      "daily_cap_usd": 0.7,
+      "code_version": "a0afc63",
+      "portfolio": "hawk",
+      "limits": {
+        "start_equity": 1000.0,
+        "max_leverage": 45,
+        "max_margin_trade": 100.0,
+        "max_margin_total": 1000.0,
+        "max_open": 10,
+        "max_dca_total": 700.0,
+        "min_margin": 30.0,
+        "fee_bp_side": 6.0,
+        "slip_bp_side": 2.0,
+        "funding_bp_8h_long": 1.0,
+        "maint": 0.005,
+        "sl_liq_frac": 0.75,
+        "daily_stop": 0.12,
+        "kill_equity": 450.0
+      },
+      "guardrail": {
+        "min_margin": 50.0,
+        "min_lev": 10,
+        "margin_forced": 60.0,
+        "lev_forced": 15
+      }
+    },
+    "long_short": {
+      "-1": {
+        "positions": 0,
+        "wins": 0,
+        "wr_pct": null,
+        "wr_ci95_wilson": null,
+        "net": 0,
+        "net_mean": null,
+        "avg_win_net": null,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 0,
+        "funding": 0,
+        "gross": 0,
+        "net_plus_fees": 0,
+        "duration_mean_h": null,
+        "duration_median_h": null
+      },
+      "1": {
+        "positions": 0,
+        "wins": 0,
+        "wr_pct": null,
+        "wr_ci95_wilson": null,
+        "net": 0,
+        "net_mean": null,
+        "avg_win_net": null,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 0,
+        "funding": 0,
+        "gross": 0,
+        "net_plus_fees": 0,
+        "duration_mean_h": null,
+        "duration_median_h": null
+      }
+    },
+    "sources": {},
+    "exits": {},
+    "exit_metrics": {},
+    "entry_log_coverage": 0,
+    "code_coverage": 0,
+    "scores": {
+      "A/B": {
+        "n": 0,
+        "quantiles": {},
+        "confidence_all": {}
+      },
+      "C": {
+        "n": 0,
+        "quantiles": {},
+        "confidence_all": {}
+      }
+    },
+    "early_stops": {
+      "1": 0,
+      "2": 0,
+      "4": 0
+    },
+    "negative_duration_count": 0,
+    "leverage": {},
+    "margin_realized": {},
+    "feature_summary": {
+      "btc_roc24h": {
+        "n": 0,
+        "quantiles": {}
+      },
+      "roc24h": {
+        "n": 0,
+        "quantiles": {}
+      },
+      "atr_pct": {
+        "n": 0,
+        "quantiles": {}
+      },
+      "dec_sl_pct": {
+        "n": 0,
+        "quantiles": {}
+      },
+      "dec_rr": {
+        "n": 0,
+        "quantiles": {}
+      },
+      "daily_trend": {
+        "n": 0,
+        "quantiles": {}
+      },
+      "ema50_200_4h": {
+        "n": 0,
+        "quantiles": {}
+      },
+      "sig_long": {
+        "n": 0,
+        "quantiles": {}
+      },
+      "sig_short": {
+        "n": 0,
+        "quantiles": {}
+      }
+    },
+    "component_coverage": {},
+    "occupancy_hours": {
+      "0": 0.0
+    },
+    "mean_open_slots": null,
+    "positions_per_day": null,
+    "symbols": {}
+  },
+  {
+    "positions": 76,
+    "wins": 46,
+    "wr_pct": 60.526315789473685,
+    "wr_ci95_wilson": [
+      49.28629663895887,
+      70.75341735966987
+    ],
+    "net": 1090.6136,
+    "net_mean": 14.350178947368423,
+    "avg_win_net": 44.841117391304344,
+    "avg_loss_abs_net": 32.40259333333333,
+    "profit_factor": 2.1219406512524,
+    "fees": 203.0336,
+    "funding": 0.0902,
+    "gross": 1293.7375,
+    "net_plus_fees": 1293.6471999999999,
+    "duration_mean_h": 5.95455595760234,
+    "duration_median_h": 3.0871779166666666,
+    "bot": "hawk",
+    "run_no": 2,
+    "start_ms": 1791816683726,
+    "end_ms": 1792118989578,
+    "start_utc": "2026-10-12T14:51:23+00:00",
+    "end_utc": "2026-10-16T02:49:49+00:00",
+    "dashboard_realizations": 76,
+    "dashboard_wr": 60.5,
+    "dashboard_ci95": [
+      49.28629663895887,
+      70.75341735966987
+    ],
+    "partial_rows": 0,
+    "params_at_archive": {
+      "entry_score_base": 60,
+      "entry_score_tier_ab": 60,
+      "entry_score_tier_c": 70,
+      "daily_cap_usd": 0.7,
+      "code_version": "5818aee",
+      "portfolio": "hawk",
+      "limits": {
+        "start_equity": 1000.0,
+        "max_leverage": 45,
+        "max_margin_trade": 100.0,
+        "max_margin_total": 1000.0,
+        "max_open": 10,
+        "max_dca_total": 700.0,
+        "min_margin": 30.0,
+        "fee_bp_side": 6.0,
+        "slip_bp_side": 2.0,
+        "funding_bp_8h_long": 1.0,
+        "maint": 0.005,
+        "sl_liq_frac": 0.75,
+        "daily_stop": 0.12,
+        "kill_equity": 450.0
+      },
+      "guardrail": {
+        "min_margin": 50.0,
+        "min_lev": 10,
+        "margin_forced": 60.0,
+        "lev_forced": 15
+      },
+      "split": {
+        "first_frac": 0.5,
+        "default_retrace_pct": 0.5,
+        "min_retrace_pct": 0.15,
+        "max_of_stop_distance": 0.6,
+        "ttl_scalp_h": 3,
+        "ttl_medio_h": 12
+      }
+    },
+    "long_short": {
+      "-1": {
+        "positions": 74,
+        "wins": 46,
+        "wr_pct": 62.16216216216216,
+        "wr_ci95_wilson": [
+          50.77145897601385,
+          72.35246530893897
+        ],
+        "net": 1222.0464,
+        "net_mean": 16.51414054054054,
+        "avg_win_net": 44.841117391304344,
+        "avg_loss_abs_net": 30.02303571428572,
+        "profit_factor": 2.45370090823118,
+        "fees": 197.349,
+        "funding": 0.0,
+        "gross": 1419.3953000000001,
+        "net_plus_fees": 1419.3953999999999,
+        "duration_mean_h": 6.074450165165165,
+        "duration_median_h": 3.6686959722222223
+      },
+      "1": {
+        "positions": 2,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          65.76197724933344
+        ],
+        "net": -131.4328,
+        "net_mean": -65.7164,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 65.7164,
+        "profit_factor": 0.0,
+        "fees": 5.6846,
+        "funding": 0.0902,
+        "gross": -125.65780000000001,
+        "net_plus_fees": -125.74819999999998,
+        "duration_mean_h": 1.5184702777777779,
+        "duration_median_h": 1.5184702777777779
+      }
+    },
+    "sources": {
+      "rules": 76
+    },
+    "exits": {
+      "model_or_rule_close_labeled_claude": 2,
+      "SL": 29,
+      "TP": 45
+    },
+    "exit_metrics": {
+      "model_or_rule_close_labeled_claude": {
+        "positions": 2,
+        "wins": 1,
+        "wr_pct": 50.0,
+        "wr_ci95_wilson": [
+          9.453120573423456,
+          90.54687942657654
+        ],
+        "net": -2.7461,
+        "net_mean": -1.37305,
+        "avg_win_net": 0.1167,
+        "avg_loss_abs_net": 2.8628,
+        "profit_factor": 0.040764286712309625,
+        "fees": 4.5589,
+        "funding": 0.0,
+        "gross": 1.8129000000000002,
+        "net_plus_fees": 1.8128000000000002,
+        "duration_mean_h": 11.79952875,
+        "duration_median_h": 11.79952875
+      },
+      "SL": {
+        "positions": 29,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          11.696979849973506
+        ],
+        "net": -969.215,
+        "net_mean": -33.42120689655172,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 33.42120689655172,
+        "profit_factor": 0.0,
+        "fees": 76.345,
+        "funding": 0.0902,
+        "gross": -892.7801000000001,
+        "net_plus_fees": -892.87,
+        "duration_mean_h": 5.210069195402299,
+        "duration_median_h": 2.2581280555555554
+      },
+      "TP": {
+        "positions": 45,
+        "wins": 45,
+        "wr_pct": 100.0,
+        "wr_ci95_wilson": [
+          92.13484012671157,
+          100.0
+        ],
+        "net": 2062.5747,
+        "net_mean": 45.83499333333334,
+        "avg_win_net": 45.83499333333334,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 122.1297,
+        "funding": 0.0,
+        "gross": 2184.7047000000002,
+        "net_plus_fees": 2184.7044,
+        "duration_mean_h": 6.174559746913579,
+        "duration_median_h": 4.907017222222223
+      }
+    },
+    "entry_log_coverage": 74,
+    "code_coverage": 0,
+    "scores": {
+      "A/B": {
+        "n": 23,
+        "quantiles": {
+          "min": 60.0,
+          "p25": 61.5,
+          "median": 63.0,
+          "p75": 72.5,
+          "max": 77.0
+        },
+        "confidence_all": {
+          "min": 60.0,
+          "p25": 61.75,
+          "median": 64.0,
+          "p75": 72.25,
+          "max": 77.0
+        }
+      },
+      "C": {
+        "n": 51,
+        "quantiles": {
+          "min": 70.0,
+          "p25": 71.0,
+          "median": 71.0,
+          "p75": 73.0,
+          "max": 79.0
+        },
+        "confidence_all": {
+          "min": 70.0,
+          "p25": 71.0,
+          "median": 71.0,
+          "p75": 73.0,
+          "max": 79.0
+        }
+      }
+    },
+    "early_stops": {
+      "1": 0,
+      "2": 0,
+      "4": 5
+    },
+    "negative_duration_count": 0,
+    "leverage": {
+      "min": 15.0,
+      "p25": 22.0,
+      "median": 23.0,
+      "p75": 25.0,
+      "max": 28.0
+    },
+    "margin_realized": {
+      "min": 83.31500000000004,
+      "p25": 100.0,
+      "median": 100.0,
+      "p75": 100.0,
+      "max": 100.0
+    },
+    "feature_summary": {
+      "btc_roc24h": {
+        "n": 74,
+        "quantiles": {
+          "min": -0.03,
+          "p25": -0.023,
+          "median": -0.0155,
+          "p75": -0.0055,
+          "max": 0.0139
+        }
+      },
+      "roc24h": {
+        "n": 74,
+        "quantiles": {
+          "min": -0.1004,
+          "p25": -0.044950000000000004,
+          "median": -0.0303,
+          "p75": -0.016675,
+          "max": 0.097
+        }
+      },
+      "atr_pct": {
+        "n": 74,
+        "quantiles": {
+          "min": 0.00459,
+          "p25": 0.0072625,
+          "median": 0.009940000000000001,
+          "p75": 0.012315,
+          "max": 0.02237
+        }
+      },
+      "dec_sl_pct": {
+        "n": 74,
+        "quantiles": {
+          "min": 0.00551,
+          "p25": 0.008715,
+          "median": 0.011925,
+          "p75": 0.0147825,
+          "max": 0.02684
+        }
+      },
+      "dec_rr": {
+        "n": 74,
+        "quantiles": {
+          "min": 1.8,
+          "p25": 1.8,
+          "median": 1.8,
+          "p75": 1.8,
+          "max": 1.8
+        }
+      },
+      "daily_trend": {
+        "n": 74,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 0.0
+        }
+      },
+      "ema50_200_4h": {
+        "n": 74,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": -1.0,
+          "p75": -1.0,
+          "max": 1.0
+        }
+      },
+      "sig_long": {
+        "n": 74,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 77.0
+        }
+      },
+      "sig_short": {
+        "n": 74,
+        "quantiles": {
+          "min": 2.0,
+          "p25": 70.0,
+          "median": 71.0,
+          "p75": 73.0,
+          "max": 79.0
+        }
+      }
+    },
+    "component_coverage": {
+      "RSI": {
+        "n": 43,
+        "mean": 8.0
+      },
+      "hammer": {
+        "n": 1,
+        "mean": 8.0
+      },
+      "momento 24h": {
+        "n": 74,
+        "mean": 9.64864864864865
+      },
+      "prezzo vs EMA50": {
+        "n": 74,
+        "mean": 8.0
+      },
+      "rottura massimi": {
+        "n": 1,
+        "mean": 10.0
+      },
+      "rottura minimi": {
+        "n": 53,
+        "mean": 10.0
+      },
+      "shooting star": {
+        "n": 10,
+        "mean": 8.0
+      },
+      "trend 1h": {
+        "n": 73,
+        "mean": 15.0
+      },
+      "trend 4h": {
+        "n": 74,
+        "mean": 20.0
+      },
+      "volumi": {
+        "n": 53,
+        "mean": 4.0
+      }
+    },
+    "occupancy_hours": {
+      "0": 16.755528055555555,
+      "1": 7.995489166666667,
+      "2": 1.986922777777778,
+      "3": 0.9891294444444444,
+      "4": 2.8014030555555554,
+      "5": 7.183786944444444,
+      "6": 13.579341111111109,
+      "7": 1.4539363888888888,
+      "8": 1.4929102777777778,
+      "9": 10.46590638888889,
+      "10": 19.269494166666664
+    },
+    "mean_open_slots": 5.389133221278164,
+    "positions_per_day": 21.721048258106496,
+    "symbols": {
+      "XAG": 5,
+      "BTC": 7,
+      "UNI": 4,
+      "LTC": 3,
+      "RUNE": 3,
+      "DOGE": 6,
+      "BCH": 1,
+      "SUI": 3,
+      "ADA": 4,
+      "ETH": 12,
+      "BNB": 5,
+      "SOL": 5,
+      "XRP": 5,
+      "LINK": 4,
+      "AVAX": 5,
+      "ARB": 1,
+      "OP": 2,
+      "DOT": 1
+    }
+  },
+  {
+    "positions": 38,
+    "wins": 10,
+    "wr_pct": 26.31578947368421,
+    "wr_ci95_wilson": [
+      14.971621254798375,
+      42.008846187465906
+    ],
+    "net": -284.8728,
+    "net_mean": -7.496652631578947,
+    "avg_win_net": 33.25363,
+    "avg_loss_abs_net": 22.050325000000004,
+    "profit_factor": 0.5385996092380239,
+    "fees": 105.3928,
+    "funding": 0.2824,
+    "gross": -179.1979,
+    "net_plus_fees": -179.48,
+    "duration_mean_h": 6.343331461988304,
+    "duration_median_h": 2.8440780555555554,
+    "bot": "hawk",
+    "run_no": 3,
+    "start_ms": 1792118989589,
+    "end_ms": 1792431410107,
+    "start_utc": "2026-10-16T02:49:49+00:00",
+    "end_utc": "2026-10-19T17:36:50+00:00",
+    "dashboard_realizations": 38,
+    "dashboard_wr": 26.3,
+    "dashboard_ci95": [
+      14.971621254798375,
+      42.008846187465906
+    ],
+    "partial_rows": 0,
+    "params_at_archive": {
+      "entry_score_base": 60,
+      "entry_score_tier_ab": 60,
+      "entry_score_tier_c": 70,
+      "daily_cap_usd": 0.7,
+      "code_version": "b4709d1",
+      "portfolio": "hawk",
+      "limits": {
+        "start_equity": 1000.0,
+        "max_leverage": 45,
+        "max_margin_trade": 100.0,
+        "max_margin_total": 1000.0,
+        "max_open": 10,
+        "max_dca_total": 700.0,
+        "min_margin": 30.0,
+        "fee_bp_side": 6.0,
+        "slip_bp_side": 2.0,
+        "funding_bp_8h_long": 1.0,
+        "maint": 0.005,
+        "sl_liq_frac": 0.75,
+        "daily_stop": 0.12,
+        "kill_equity": 450.0
+      },
+      "guardrail": {
+        "min_margin": 50.0,
+        "min_lev": 10,
+        "margin_forced": 60.0,
+        "lev_forced": 15
+      },
+      "split": {
+        "first_frac": 0.5,
+        "default_retrace_pct": 0.5,
+        "min_retrace_pct": 0.15,
+        "max_of_stop_distance": 0.6,
+        "ttl_scalp_h": 3,
+        "ttl_medio_h": 12
+      }
+    },
+    "long_short": {
+      "-1": {
+        "positions": 35,
+        "wins": 10,
+        "wr_pct": 28.571428571428573,
+        "wr_ci95_wilson": [
+          16.326536236434958,
+          45.054934863182154
+        ],
+        "net": -250.6866,
+        "net_mean": -7.162474285714285,
+        "avg_win_net": 33.25363,
+        "avg_loss_abs_net": 23.328916,
+        "profit_factor": 0.5701701699298845,
+        "fees": 98.4489,
+        "funding": 0.0,
+        "gross": -152.238,
+        "net_plus_fees": -152.23770000000002,
+        "duration_mean_h": 6.576877158730158,
+        "duration_median_h": 2.6524358333333335
+      },
+      "1": {
+        "positions": 3,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          56.1497031755032
+        ],
+        "net": -34.1862,
+        "net_mean": -11.3954,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 11.3954,
+        "profit_factor": 0.0,
+        "fees": 6.9439,
+        "funding": 0.2824,
+        "gross": -26.9599,
+        "net_plus_fees": -27.2423,
+        "duration_mean_h": 3.618631666666667,
+        "duration_median_h": 4.064039722222223
+      }
+    },
+    "sources": {
+      "rules": 38
+    },
+    "exits": {
+      "model_or_rule_close_labeled_claude": 10,
+      "TP": 10,
+      "SL": 16,
+      "manual": 2
+    },
+    "exit_metrics": {
+      "model_or_rule_close_labeled_claude": {
+        "positions": 10,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          2.7755575615628914e-15,
+          27.753279986287815
+        ],
+        "net": -123.27680000000001,
+        "net_mean": -12.32768,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 12.32768,
+        "profit_factor": 0.0,
+        "fees": 25.846,
+        "funding": 0.1178,
+        "gross": -97.3131,
+        "net_plus_fees": -97.4308,
+        "duration_mean_h": 7.292310027777776,
+        "duration_median_h": 4.469021250000001
+      },
+      "TP": {
+        "positions": 10,
+        "wins": 10,
+        "wr_pct": 100.0,
+        "wr_ci95_wilson": [
+          72.24672001371218,
+          99.99999999999999
+        ],
+        "net": 332.5363,
+        "net_mean": 33.25363,
+        "avg_win_net": 33.25363,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 28.181,
+        "funding": 0.0,
+        "gross": 360.7171,
+        "net_plus_fees": 360.71729999999997,
+        "duration_mean_h": 13.39829638888889,
+        "duration_median_h": 13.490335
+      },
+      "SL": {
+        "positions": 16,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          19.36076805344279
+        ],
+        "net": -470.3713,
+        "net_mean": -29.39820625,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 29.39820625,
+        "profit_factor": 0.0,
+        "fees": 46.2146,
+        "funding": 0.0,
+        "gross": -424.1568,
+        "net_plus_fees": -424.1567,
+        "duration_mean_h": 1.6721883333333332,
+        "duration_median_h": 1.0200969444444445
+      },
+      "manual": {
+        "positions": 2,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          65.76197724933344
+        ],
+        "net": -23.761,
+        "net_mean": -11.8805,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 11.8805,
+        "profit_factor": 0.0,
+        "fees": 5.1512,
+        "funding": 0.1646,
+        "gross": -18.4451,
+        "net_plus_fees": -18.6098,
+        "duration_mean_h": 3.692759027777778,
+        "duration_median_h": 3.692759027777778
+      }
+    },
+    "entry_log_coverage": 38,
+    "code_coverage": 38,
+    "scores": {
+      "A/B": {
+        "n": 9,
+        "quantiles": {
+          "min": 60.0,
+          "p25": 65.0,
+          "median": 66.0,
+          "p75": 66.0,
+          "max": 75.0
+        },
+        "confidence_all": {
+          "min": 60.0,
+          "p25": 65.0,
+          "median": 66.0,
+          "p75": 66.0,
+          "max": 75.0
+        }
+      },
+      "C": {
+        "n": 29,
+        "quantiles": {
+          "min": 70.0,
+          "p25": 71.0,
+          "median": 74.0,
+          "p75": 78.0,
+          "max": 79.0
+        },
+        "confidence_all": {
+          "min": 70.0,
+          "p25": 71.0,
+          "median": 74.0,
+          "p75": 78.0,
+          "max": 79.0
+        }
+      }
+    },
+    "early_stops": {
+      "1": 0,
+      "2": 0,
+      "4": 8
+    },
+    "negative_duration_count": 0,
+    "leverage": {
+      "min": 15.0,
+      "p25": 22.0,
+      "median": 24.5,
+      "p75": 25.0,
+      "max": 26.0
+    },
+    "margin_realized": {
+      "min": 98.57720032128354,
+      "p25": 100.0,
+      "median": 100.0,
+      "p75": 100.0,
+      "max": 100.0
+    },
+    "feature_summary": {
+      "btc_roc24h": {
+        "n": 38,
+        "quantiles": {
+          "min": -0.0152,
+          "p25": -0.0072,
+          "median": -0.0066,
+          "p75": -0.0022,
+          "max": 0.012
+        }
+      },
+      "roc24h": {
+        "n": 38,
+        "quantiles": {
+          "min": -0.0528,
+          "p25": -0.027725,
+          "median": -0.0199,
+          "p75": -0.013025,
+          "max": 0.0708
+        }
+      },
+      "atr_pct": {
+        "n": 38,
+        "quantiles": {
+          "min": 0.00213,
+          "p25": 0.005615,
+          "median": 0.008005,
+          "p75": 0.0094275,
+          "max": 0.01756
+        }
+      },
+      "dec_sl_pct": {
+        "n": 38,
+        "quantiles": {
+          "min": 0.003,
+          "p25": 0.00674,
+          "median": 0.00961,
+          "p75": 0.0113125,
+          "max": 0.02107
+        }
+      },
+      "dec_rr": {
+        "n": 38,
+        "quantiles": {
+          "min": 1.8,
+          "p25": 1.8,
+          "median": 1.8,
+          "p75": 1.8,
+          "max": 1.8
+        }
+      },
+      "daily_trend": {
+        "n": 38,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 0.0
+        }
+      },
+      "ema50_200_4h": {
+        "n": 38,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": -1.0,
+          "p75": -1.0,
+          "max": 1.0
+        }
+      },
+      "sig_long": {
+        "n": 38,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 71.0
+        }
+      },
+      "sig_short": {
+        "n": 38,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 70.0,
+          "median": 72.5,
+          "p75": 75.75,
+          "max": 79.0
+        }
+      }
+    },
+    "component_coverage": {
+      "RSI": {
+        "n": 35,
+        "mean": 8.0
+      },
+      "hammer": {
+        "n": 2,
+        "mean": 8.0
+      },
+      "momento 24h": {
+        "n": 38,
+        "mean": 8.0
+      },
+      "prezzo vs EMA50": {
+        "n": 38,
+        "mean": 8.0
+      },
+      "rottura massimi": {
+        "n": 1,
+        "mean": 10.0
+      },
+      "rottura minimi": {
+        "n": 29,
+        "mean": 10.0
+      },
+      "shooting star": {
+        "n": 4,
+        "mean": 8.0
+      },
+      "trend 1h": {
+        "n": 38,
+        "mean": 15.0
+      },
+      "trend 4h": {
+        "n": 38,
+        "mean": 20.0
+      },
+      "volumi": {
+        "n": 27,
+        "mean": 4.0
+      }
+    },
+    "occupancy_hours": {
+      "0": 38.286775,
+      "1": 12.87459861111111,
+      "2": 3.965902777777778,
+      "3": 2.053833888888889,
+      "4": 2.6155769444444443,
+      "5": 4.166096666666667,
+      "6": 1.459168611111111,
+      "7": 10.3859075,
+      "8": 0.75,
+      "9": 6.926637777777778,
+      "10": 3.298979444444445
+    },
+    "mean_open_slots": 2.7775632328988076,
+    "positions_per_day": 10.508912862118743,
+    "symbols": {
+      "XAU": 3,
+      "DOGE": 3,
+      "XAG": 1,
+      "RUNE": 1,
+      "ETH": 4,
+      "LINK": 2,
+      "BNB": 2,
+      "ADA": 3,
+      "XRP": 2,
+      "AVAX": 3,
+      "LTC": 2,
+      "SOL": 2,
+      "BCH": 1,
+      "NEAR": 1,
+      "ATOM": 3,
+      "SUI": 3,
+      "BTC": 1,
+      "ARB": 1
+    }
+  },
+  {
+    "positions": 18,
+    "wins": 3,
+    "wr_pct": 16.666666666666668,
+    "wr_ci95_wilson": [
+      5.836576805861604,
+      39.22203810391503
+    ],
+    "net": -335.601,
+    "net_mean": -18.6445,
+    "avg_win_net": 33.87696666666667,
+    "avg_loss_abs_net": 29.14879333333333,
+    "profit_factor": 0.23244164023713731,
+    "fees": 43.4467,
+    "funding": 0.3129,
+    "gross": -280.894,
+    "net_plus_fees": -292.1543,
+    "duration_mean_h": 4.018133070987655,
+    "duration_median_h": 3.5322295833333333,
+    "bot": "hawk",
+    "run_no": 4,
+    "start_ms": 1792431410111,
+    "end_ms": 1792649433389,
+    "start_utc": "2026-10-19T17:36:50+00:00",
+    "end_utc": "2026-10-22T06:10:33+00:00",
+    "dashboard_realizations": 18,
+    "dashboard_wr": 16.7,
+    "dashboard_ci95": [
+      5.836576805861604,
+      39.22203810391503
+    ],
+    "partial_rows": 0,
+    "params_at_archive": {
+      "entry_score_base": 60,
+      "entry_score_tier_ab": 60,
+      "entry_score_tier_c": 63,
+      "daily_cap_usd": 0.7,
+      "code_version": "fa3e220",
+      "portfolio": "hawk",
+      "limits": {
+        "start_equity": 1000.0,
+        "max_leverage": 45,
+        "max_margin_trade": 100.0,
+        "max_margin_total": 1000.0,
+        "max_open": 10,
+        "max_dca_total": 700.0,
+        "min_margin": 30.0,
+        "fee_bp_side": 6.0,
+        "slip_bp_side": 2.0,
+        "funding_bp_8h_long": 1.0,
+        "maint": 0.005,
+        "sl_liq_frac": 0.75,
+        "daily_stop": 0.12,
+        "kill_equity": 450.0
+      },
+      "guardrail": {
+        "min_margin": 50.0,
+        "min_lev": 10,
+        "margin_forced": 60.0,
+        "lev_forced": 15
+      },
+      "split": {
+        "first_frac": 0.5,
+        "default_retrace_pct": 0.5,
+        "min_retrace_pct": 0.15,
+        "max_of_stop_distance": 0.6,
+        "ttl_scalp_h": 3,
+        "ttl_medio_h": 12
+      }
+    },
+    "long_short": {
+      "-1": {
+        "positions": 14,
+        "wins": 3,
+        "wr_pct": 21.428571428571427,
+        "wr_ci95_wilson": [
+          7.571386712693395,
+          47.58923058659955
+        ],
+        "net": -191.3434,
+        "net_mean": -13.667385714285714,
+        "avg_win_net": 33.87696666666667,
+        "avg_loss_abs_net": 26.63402727272727,
+        "profit_factor": 0.3468935671149312,
+        "fees": 34.2876,
+        "funding": 0.0,
+        "gross": -146.10829999999999,
+        "net_plus_fees": -157.0558,
+        "duration_mean_h": 4.17464886904762,
+        "duration_median_h": 3.902390416666667
+      },
+      "1": {
+        "positions": 4,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          48.98908364545835
+        ],
+        "net": -144.2576,
+        "net_mean": -36.0644,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 36.0644,
+        "profit_factor": 0.0,
+        "fees": 9.1591,
+        "funding": 0.3129,
+        "gross": -134.7857,
+        "net_plus_fees": -135.0985,
+        "duration_mean_h": 3.470327777777778,
+        "duration_median_h": 1.7549627777777776
+      }
+    },
+    "sources": {
+      "rules": 18
+    },
+    "exits": {
+      "TP": 1,
+      "SL": 11,
+      "liquidation": 1,
+      "model_or_rule_close_labeled_claude": 1,
+      "manual": 4
+    },
+    "exit_metrics": {
+      "TP": {
+        "positions": 1,
+        "wins": 1,
+        "wr_pct": 100.0,
+        "wr_ci95_wilson": [
+          20.654931437724645,
+          99.99999999999999
+        ],
+        "net": 70.6488,
+        "net_mean": 70.6488,
+        "avg_win_net": 70.6488,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 2.9558,
+        "funding": 0.0,
+        "gross": 73.6046,
+        "net_plus_fees": 73.60459999999999,
+        "duration_mean_h": 3.6568475,
+        "duration_median_h": 3.6568475
+      },
+      "SL": {
+        "positions": 11,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          25.883296696802116
+        ],
+        "net": -299.0848,
+        "net_mean": -27.189527272727275,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 27.189527272727275,
+        "profit_factor": 0.0,
+        "fees": 26.6772,
+        "funding": 0.12329999999999999,
+        "gross": -272.2844,
+        "net_plus_fees": -272.4076,
+        "duration_mean_h": 4.473842929292929,
+        "duration_median_h": 4.1479333333333335
+      },
+      "liquidation": {
+        "positions": 1,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          79.34506856227534
+        ],
+        "net": -101.5,
+        "net_mean": -101.5,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 101.5,
+        "profit_factor": 0.0,
+        "fees": 3.0525,
+        "funding": 0.0,
+        "gross": -87.5,
+        "net_plus_fees": -98.4475,
+        "duration_mean_h": 5.412308055555555,
+        "duration_median_h": 5.412308055555555
+      },
+      "model_or_rule_close_labeled_claude": {
+        "positions": 1,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          79.34506856227534
+        ],
+        "net": -31.8771,
+        "net_mean": -31.8771,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 31.8771,
+        "profit_factor": 0.0,
+        "fees": 2.0222,
+        "funding": 0.1896,
+        "gross": -29.6653,
+        "net_plus_fees": -29.854899999999997,
+        "duration_mean_h": 8.923993333333334,
+        "duration_median_h": 8.923993333333334
+      },
+      "manual": {
+        "positions": 4,
+        "wins": 2,
+        "wr_pct": 50.0,
+        "wr_ci95_wilson": [
+          15.00389891521544,
+          84.99610108478456
+        ],
+        "net": 26.2121,
+        "net_mean": 6.553024999999999,
+        "avg_win_net": 15.49105,
+        "avg_loss_abs_net": 2.385,
+        "profit_factor": 6.495199161425577,
+        "fees": 8.739,
+        "funding": 0.0,
+        "gross": 34.9511,
+        "net_plus_fees": 34.9511,
+        "duration_mean_h": 1.2802435416666669,
+        "duration_median_h": 0.57171
+      }
+    },
+    "entry_log_coverage": 18,
+    "code_coverage": 18,
+    "scores": {
+      "A/B": {
+        "n": 4,
+        "quantiles": {
+          "min": 60.0,
+          "p25": 61.5,
+          "median": 62.0,
+          "p75": 62.25,
+          "max": 63.0
+        },
+        "confidence_all": {
+          "min": 60.0,
+          "p25": 61.5,
+          "median": 62.0,
+          "p75": 62.25,
+          "max": 63.0
+        }
+      },
+      "C": {
+        "n": 14,
+        "quantiles": {
+          "min": 63.0,
+          "p25": 64.25,
+          "median": 69.0,
+          "p75": 75.0,
+          "max": 75.0
+        },
+        "confidence_all": {
+          "min": 63.0,
+          "p25": 64.25,
+          "median": 69.0,
+          "p75": 75.0,
+          "max": 75.0
+        }
+      }
+    },
+    "early_stops": {
+      "1": 0,
+      "2": 0,
+      "4": 0
+    },
+    "negative_duration_count": 0,
+    "leverage": {
+      "min": 15.0,
+      "p25": 17.0,
+      "median": 19.0,
+      "p75": 24.5,
+      "max": 25.0
+    },
+    "margin_realized": {
+      "min": 100.0,
+      "p25": 100.0,
+      "median": 100.0,
+      "p75": 100.0,
+      "max": 100.0
+    },
+    "feature_summary": {
+      "btc_roc24h": {
+        "n": 18,
+        "quantiles": {
+          "min": -0.0167,
+          "p25": -0.015025,
+          "median": 0.0013,
+          "p75": 0.0089,
+          "max": 0.0223
+        }
+      },
+      "roc24h": {
+        "n": 18,
+        "quantiles": {
+          "min": -0.1015,
+          "p25": -0.034374999999999996,
+          "median": -0.0234,
+          "p75": 0.008425,
+          "max": 0.0624
+        }
+      },
+      "atr_pct": {
+        "n": 18,
+        "quantiles": {
+          "min": 0.0023,
+          "p25": 0.0080275,
+          "median": 0.011720000000000001,
+          "p75": 0.015605,
+          "max": 0.02799
+        }
+      },
+      "dec_sl_pct": {
+        "n": 18,
+        "quantiles": {
+          "min": 0.003,
+          "p25": 0.00963,
+          "median": 0.014065000000000001,
+          "p75": 0.01873,
+          "max": 0.03359
+        }
+      },
+      "dec_rr": {
+        "n": 18,
+        "quantiles": {
+          "min": 1.8,
+          "p25": 1.8,
+          "median": 1.8,
+          "p75": 1.8,
+          "max": 1.8
+        }
+      },
+      "daily_trend": {
+        "n": 18,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 0.0
+        }
+      },
+      "ema50_200_4h": {
+        "n": 18,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": -1.0,
+          "p75": -1.0,
+          "max": 1.0
+        }
+      },
+      "sig_long": {
+        "n": 18,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 12.5,
+          "max": 71.0
+        }
+      },
+      "sig_short": {
+        "n": 18,
+        "quantiles": {
+          "min": 2.0,
+          "p25": 60.5,
+          "median": 63.5,
+          "p75": 74.0,
+          "max": 75.0
+        }
+      }
+    },
+    "component_coverage": {
+      "RSI": {
+        "n": 17,
+        "mean": 8.0
+      },
+      "hammer": {
+        "n": 1,
+        "mean": 8.0
+      },
+      "momento 24h": {
+        "n": 17,
+        "mean": 10.352941176470589
+      },
+      "prezzo vs EMA50": {
+        "n": 18,
+        "mean": 8.0
+      },
+      "rottura minimi": {
+        "n": 7,
+        "mean": 10.0
+      },
+      "shooting star": {
+        "n": 2,
+        "mean": 8.0
+      },
+      "trend 1h": {
+        "n": 17,
+        "mean": 15.0
+      },
+      "trend 4h": {
+        "n": 18,
+        "mean": 20.0
+      },
+      "volumi": {
+        "n": 5,
+        "mean": 4.0
+      }
+    },
+    "occupancy_hours": {
+      "0": 30.797721388888892,
+      "1": 15.2191,
+      "2": 6.94971111111111,
+      "3": 1.863238611111111,
+      "4": 0.8254030555555556,
+      "5": 0.0,
+      "6": 1.0089141666666666,
+      "7": 2.9204066666666666,
+      "8": 0.9775266666666667
+    },
+    "mean_open_slots": 1.1942533172994492,
+    "positions_per_day": 7.13318327412727,
+    "symbols": {
+      "STX": 2,
+      "LTC": 1,
+      "BTC": 1,
+      "UNI": 1,
+      "XAU": 2,
+      "AVAX": 2,
+      "ETH": 1,
+      "NEAR": 1,
+      "INJ": 2,
+      "BCH": 2,
+      "ARB": 1,
+      "OP": 1,
+      "DOT": 1
+    }
+  },
+  {
+    "positions": 112,
+    "wins": 42,
+    "wr_pct": 37.5,
+    "wr_ci95_wilson": [
+      29.088774297484456,
+      46.740259379189084
+    ],
+    "net": -50.809299999999986,
+    "net_mean": -0.4536544642857142,
+    "avg_win_net": 37.18771666666667,
+    "avg_loss_abs_net": 23.038477142857143,
+    "profit_factor": 0.9684941353390546,
+    "fees": 276.9825,
+    "funding": 0.11099999999999999,
+    "gross": 226.28380000000004,
+    "net_plus_fees": 226.17320000000004,
+    "duration_mean_h": 4.9668049255952385,
+    "duration_median_h": 4.211612638888889,
+    "bot": "hawk",
+    "run_no": 5,
+    "start_ms": 1792649433393,
+    "end_ms": 1793040945799,
+    "start_utc": "2026-10-22T06:10:33+00:00",
+    "end_utc": "2026-10-26T18:55:45+00:00",
+    "dashboard_realizations": 131,
+    "dashboard_wr": 46.6,
+    "dashboard_ci95": [
+      38.242820059083904,
+      55.08267487495726
+    ],
+    "partial_rows": 19,
+    "params_at_archive": {
+      "entry_score_base": 60,
+      "entry_score_tier_ab": 60,
+      "entry_score_tier_c": 63,
+      "daily_cap_usd": 0.7,
+      "code_version": "35f08cf",
+      "portfolio": "hawk",
+      "limits": {
+        "start_equity": 1000.0,
+        "max_leverage": 45,
+        "max_margin_trade": 100.0,
+        "max_margin_total": 1000.0,
+        "max_open": 10,
+        "max_dca_total": 700.0,
+        "min_margin": 30.0,
+        "fee_bp_side": 6.0,
+        "slip_bp_side": 2.0,
+        "funding_bp_8h_long": 1.0,
+        "maint": 0.005,
+        "sl_liq_frac": 0.75,
+        "daily_stop": 0.1,
+        "kill_equity": 450.0
+      },
+      "guardrail": {
+        "min_margin": 50.0,
+        "min_lev": 10,
+        "margin_forced": 60.0,
+        "lev_forced": 15
+      },
+      "split": {
+        "first_frac": 0.5,
+        "default_retrace_pct": 0.5,
+        "min_retrace_pct": 0.15,
+        "max_of_stop_distance": 0.6,
+        "ttl_scalp_h": 3,
+        "ttl_medio_h": 12
+      }
+    },
+    "long_short": {
+      "-1": {
+        "positions": 110,
+        "wins": 41,
+        "wr_pct": 37.27272727272727,
+        "wr_ci95_wilson": [
+          28.809596287362282,
+          46.59479479295459
+        ],
+        "net": -105.02009999999999,
+        "net_mean": -0.9547281818181814,
+        "avg_win_net": 36.58007317073171,
+        "avg_loss_abs_net": 23.258015942028987,
+        "profit_factor": 0.9345588876292673,
+        "fees": 271.9068,
+        "funding": 0.0,
+        "gross": 166.88630000000003,
+        "net_plus_fees": 166.8867,
+        "duration_mean_h": 5.017666573232324,
+        "duration_median_h": 4.3818118055555555
+      },
+      "1": {
+        "positions": 2,
+        "wins": 1,
+        "wr_pct": 50.0,
+        "wr_ci95_wilson": [
+          9.453120573423456,
+          90.54687942657654
+        ],
+        "net": 54.210800000000006,
+        "net_mean": 27.105400000000003,
+        "avg_win_net": 62.1011,
+        "avg_loss_abs_net": 7.8903,
+        "profit_factor": 7.870562589508638,
+        "fees": 5.075699999999999,
+        "funding": 0.11099999999999999,
+        "gross": 59.3975,
+        "net_plus_fees": 59.286500000000004,
+        "duration_mean_h": 2.1694143055555557,
+        "duration_median_h": 2.1694143055555557
+      }
+    },
+    "sources": {
+      "rules": 112
+    },
+    "exits": {
+      "SL": 59,
+      "TP": 36,
+      "model_or_rule_close_labeled_claude": 16,
+      "manual": 1
+    },
+    "exit_metrics": {
+      "SL": {
+        "positions": 59,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          6.1129370526785225
+        ],
+        "net": -1439.8299,
+        "net_mean": -24.403896610169493,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 24.403896610169493,
+        "profit_factor": 0.0,
+        "fees": 149.5566,
+        "funding": 0.0,
+        "gross": -1290.2730999999999,
+        "net_plus_fees": -1290.2732999999998,
+        "duration_mean_h": 3.2403390819209044,
+        "duration_median_h": 1.8983555555555556
+      },
+      "TP": {
+        "positions": 36,
+        "wins": 36,
+        "wr_pct": 100.0,
+        "wr_ci95_wilson": [
+          90.3581371405541,
+          99.99999999999999
+        ],
+        "net": 1470.6506,
+        "net_mean": 40.85140555555556,
+        "avg_win_net": 40.85140555555556,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 85.0291,
+        "funding": 0.0279,
+        "gross": 1555.7071,
+        "net_plus_fees": 1555.6797,
+        "duration_mean_h": 6.069442800925926,
+        "duration_median_h": 5.6065875
+      },
+      "model_or_rule_close_labeled_claude": {
+        "positions": 16,
+        "wins": 5,
+        "wr_pct": 31.25,
+        "wr_ci95_wilson": [
+          14.164643854782351,
+          55.5956441652587
+        ],
+        "net": -85.1155,
+        "net_mean": -5.31971875,
+        "avg_win_net": 17.5496,
+        "avg_loss_abs_net": 15.714863636363635,
+        "profit_factor": 0.507614389388159,
+        "fees": 40.9402,
+        "funding": 0.0831,
+        "gross": -44.0923,
+        "net_plus_fees": -44.1753,
+        "duration_mean_h": 8.191953975694444,
+        "duration_median_h": 5.856762222222223
+      },
+      "manual": {
+        "positions": 1,
+        "wins": 1,
+        "wr_pct": 100.0,
+        "wr_ci95_wilson": [
+          20.654931437724645,
+          99.99999999999999
+        ],
+        "net": 3.4855,
+        "net_mean": 3.4855,
+        "avg_win_net": 3.4855,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 1.4566,
+        "funding": 0.0,
+        "gross": 4.9421,
+        "net_plus_fees": 4.9421,
+        "duration_mean_h": 15.53094138888889,
+        "duration_median_h": 15.53094138888889
+      }
+    },
+    "entry_log_coverage": 112,
+    "code_coverage": 112,
+    "scores": {
+      "A/B": {
+        "n": 19,
+        "quantiles": {
+          "min": 60.0,
+          "p25": 61.5,
+          "median": 63.0,
+          "p75": 67.0,
+          "max": 78.0
+        },
+        "confidence_all": {
+          "min": 60.0,
+          "p25": 61.5,
+          "median": 63.0,
+          "p75": 67.0,
+          "max": 78.0
+        }
+      },
+      "C": {
+        "n": 93,
+        "quantiles": {
+          "min": 63.0,
+          "p25": 65.0,
+          "median": 68.0,
+          "p75": 75.0,
+          "max": 94.0
+        },
+        "confidence_all": {
+          "min": 63.0,
+          "p25": 65.0,
+          "median": 68.0,
+          "p75": 75.0,
+          "max": 94.0
+        }
+      }
+    },
+    "early_stops": {
+      "1": 4,
+      "2": 4,
+      "4": 9
+    },
+    "negative_duration_count": 0,
+    "leverage": {
+      "min": 15.0,
+      "p25": 19.0,
+      "median": 20.0,
+      "p75": 25.0,
+      "max": 28.0
+    },
+    "margin_realized": {
+      "min": 38.685779130824116,
+      "p25": 100.0,
+      "median": 100.0,
+      "p75": 100.0,
+      "max": 100.000025
+    },
+    "feature_summary": {
+      "btc_roc24h": {
+        "n": 112,
+        "quantiles": {
+          "min": -0.0402,
+          "p25": -0.016675,
+          "median": -0.0112,
+          "p75": -0.0035,
+          "max": 0.0105
+        }
+      },
+      "roc24h": {
+        "n": 112,
+        "quantiles": {
+          "min": -0.0829,
+          "p25": -0.0377,
+          "median": -0.02805,
+          "p75": -0.018475,
+          "max": 0.0515
+        }
+      },
+      "atr_pct": {
+        "n": 112,
+        "quantiles": {
+          "min": 0.00107,
+          "p25": 0.006425,
+          "median": 0.008885,
+          "p75": 0.01126,
+          "max": 0.01915
+        }
+      },
+      "dec_sl_pct": {
+        "n": 112,
+        "quantiles": {
+          "min": 0.003,
+          "p25": 0.0077125,
+          "median": 0.010665000000000001,
+          "p75": 0.01351,
+          "max": 0.02298
+        }
+      },
+      "dec_rr": {
+        "n": 112,
+        "quantiles": {
+          "min": 1.8,
+          "p25": 1.8,
+          "median": 1.8,
+          "p75": 1.8,
+          "max": 1.8
+        }
+      },
+      "daily_trend": {
+        "n": 112,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": 0.0,
+          "p75": 1.0,
+          "max": 1.0
+        }
+      },
+      "ema50_200_4h": {
+        "n": 112,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": -1.0,
+          "p75": -1.0,
+          "max": 1.0
+        }
+      },
+      "sig_long": {
+        "n": 112,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 15.0,
+          "max": 69.0
+        }
+      },
+      "sig_short": {
+        "n": 112,
+        "quantiles": {
+          "min": 2.0,
+          "p25": 65.0,
+          "median": 67.0,
+          "p75": 74.0,
+          "max": 94.0
+        }
+      }
+    },
+    "component_coverage": {
+      "RSI": {
+        "n": 100,
+        "mean": 8.0
+      },
+      "momento 24h": {
+        "n": 108,
+        "mean": 10.101851851851851
+      },
+      "prezzo vs EMA50": {
+        "n": 111,
+        "mean": 8.0
+      },
+      "rottura massimi": {
+        "n": 1,
+        "mean": 10.0
+      },
+      "rottura minimi": {
+        "n": 19,
+        "mean": 10.0
+      },
+      "shooting star": {
+        "n": 3,
+        "mean": 8.0
+      },
+      "trend 1d": {
+        "n": 39,
+        "mean": 14.23076923076923
+      },
+      "trend 1h": {
+        "n": 111,
+        "mean": 15.0
+      },
+      "trend 4h": {
+        "n": 112,
+        "mean": 19.410714285714285
+      },
+      "volumi": {
+        "n": 29,
+        "mean": 4.0
+      }
+    },
+    "occupancy_hours": {
+      "0": 24.843736944444444,
+      "1": 14.952101944444443,
+      "2": 8.4250625,
+      "3": 4.575651944444445,
+      "4": 3.817848888888889,
+      "5": 0.9539025,
+      "6": 1.14803,
+      "7": 2.617378611111111,
+      "8": 1.4664038888888888,
+      "9": 5.762289444444443,
+      "10": 40.19103944444445
+    },
+    "mean_open_slots": 5.115076087780472,
+    "positions_per_day": 24.71645815484069,
+    "symbols": {
+      "ATOM": 5,
+      "SOL": 8,
+      "ADA": 9,
+      "ARB": 3,
+      "FIL": 5,
+      "AVAX": 3,
+      "STX": 1,
+      "OP": 6,
+      "BTC": 9,
+      "BNB": 6,
+      "LINK": 6,
+      "ETH": 9,
+      "UNI": 5,
+      "SUI": 2,
+      "DOGE": 9,
+      "DOT": 9,
+      "XRP": 5,
+      "LTC": 2,
+      "APT": 4,
+      "XAU": 1,
+      "BCH": 3,
+      "NEAR": 1,
+      "INJ": 1
+    }
+  },
+  {
+    "positions": 17,
+    "wins": 12,
+    "wr_pct": 70.58823529411765,
+    "wr_ci95_wilson": [
+      46.86688993346079,
+      86.72001038970448
+    ],
+    "net": 770.7485,
+    "net_mean": 45.33814705882352,
+    "avg_win_net": 79.47245000000001,
+    "avg_loss_abs_net": 36.584179999999996,
+    "profit_factor": 5.2135617089135255,
+    "fees": 80.1655,
+    "funding": 0.0,
+    "gross": 850.914,
+    "net_plus_fees": 850.914,
+    "duration_mean_h": 11.857154395424837,
+    "duration_median_h": 3.8803425,
+    "bot": "bull",
+    "run_no": 1,
+    "start_ms": 1791816524501,
+    "end_ms": 1792119048667,
+    "start_utc": "2026-10-12T14:48:44+00:00",
+    "end_utc": "2026-10-16T02:50:48+00:00",
+    "dashboard_realizations": 30,
+    "dashboard_wr": 80.0,
+    "dashboard_ci95": [
+      62.69430358685227,
+      90.49489282270994
+    ],
+    "partial_rows": 13,
+    "params_at_archive": {
+      "entry_score_base": 60,
+      "entry_score_tier_ab": 60,
+      "entry_score_tier_c": 70,
+      "daily_cap_usd": 0.7,
+      "code_version": "5818aee",
+      "portfolio": "bull",
+      "limits": {
+        "start_equity": 1000.0,
+        "max_leverage": 45,
+        "max_margin_trade": 350.0,
+        "max_margin_total": 1050.0,
+        "max_open": 3,
+        "max_dca_total": 700.0,
+        "min_margin": 30.0,
+        "fee_bp_side": 6.0,
+        "slip_bp_side": 2.0,
+        "funding_bp_8h_long": 1.0,
+        "maint": 0.005,
+        "sl_liq_frac": 0.75,
+        "daily_stop": 0.12,
+        "kill_equity": 450.0
+      },
+      "guardrail": {
+        "min_margin": 150.0,
+        "min_lev": 10,
+        "margin_forced": 200.0,
+        "lev_forced": 15
+      },
+      "split": {
+        "first_frac": 0.5,
+        "default_retrace_pct": 0.5,
+        "min_retrace_pct": 0.15,
+        "max_of_stop_distance": 0.6,
+        "ttl_scalp_h": 3,
+        "ttl_medio_h": 12
+      }
+    },
+    "long_short": {
+      "-1": {
+        "positions": 17,
+        "wins": 12,
+        "wr_pct": 70.58823529411765,
+        "wr_ci95_wilson": [
+          46.86688993346079,
+          86.72001038970448
+        ],
+        "net": 770.7485,
+        "net_mean": 45.33814705882352,
+        "avg_win_net": 79.47245000000001,
+        "avg_loss_abs_net": 36.584179999999996,
+        "profit_factor": 5.2135617089135255,
+        "fees": 80.1655,
+        "funding": 0.0,
+        "gross": 850.914,
+        "net_plus_fees": 850.914,
+        "duration_mean_h": 11.857154395424837,
+        "duration_median_h": 3.8803425
+      },
+      "1": {
+        "positions": 0,
+        "wins": 0,
+        "wr_pct": null,
+        "wr_ci95_wilson": null,
+        "net": 0,
+        "net_mean": null,
+        "avg_win_net": null,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 0,
+        "funding": 0,
+        "gross": 0,
+        "net_plus_fees": 0,
+        "duration_mean_h": null,
+        "duration_median_h": null
+      }
+    },
+    "sources": {
+      "rules": 17
+    },
+    "exits": {
+      "SL": 5,
+      "model_or_rule_close_labeled_claude": 2,
+      "manual": 1,
+      "TP": 9
+    },
+    "exit_metrics": {
+      "SL": {
+        "positions": 5,
+        "wins": 1,
+        "wr_pct": 20.0,
+        "wr_ci95_wilson": [
+          3.6224108632431697,
+          62.446537023746515
+        ],
+        "net": 57.82710000000001,
+        "net_mean": 11.565420000000003,
+        "avg_win_net": 202.7981,
+        "avg_loss_abs_net": 36.24275,
+        "profit_factor": 1.3988873636796324,
+        "fees": 20.7729,
+        "funding": 0.0,
+        "gross": 78.60000000000002,
+        "net_plus_fees": 78.60000000000001,
+        "duration_mean_h": 7.661999111111112,
+        "duration_median_h": 1.8357369444444445
+      },
+      "model_or_rule_close_labeled_claude": {
+        "positions": 2,
+        "wins": 1,
+        "wr_pct": 50.0,
+        "wr_ci95_wilson": [
+          9.453120573423456,
+          90.54687942657654
+        ],
+        "net": -36.471,
+        "net_mean": -18.2355,
+        "avg_win_net": 1.4789,
+        "avg_loss_abs_net": 37.9499,
+        "profit_factor": 0.0389697996569161,
+        "fees": 6.697100000000001,
+        "funding": 0.0,
+        "gross": -29.773899999999998,
+        "net_plus_fees": -29.773899999999998,
+        "duration_mean_h": 3.7309102777777774,
+        "duration_median_h": 3.7309102777777774
+      },
+      "manual": {
+        "positions": 1,
+        "wins": 1,
+        "wr_pct": 100.0,
+        "wr_ci95_wilson": [
+          20.654931437724645,
+          99.99999999999999
+        ],
+        "net": 69.3886,
+        "net_mean": 69.3886,
+        "avg_win_net": 69.3886,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 5.5950999999999995,
+        "funding": 0.0,
+        "gross": 74.9837,
+        "net_plus_fees": 74.9837,
+        "duration_mean_h": 70.94795305555556,
+        "duration_median_h": 70.94795305555556
+      },
+      "TP": {
+        "positions": 9,
+        "wins": 9,
+        "wr_pct": 100.0,
+        "wr_ci95_wilson": [
+          70.08549515804674,
+          100.0
+        ],
+        "net": 680.0038,
+        "net_mean": 75.55597777777777,
+        "avg_win_net": 75.55597777777777,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 47.1004,
+        "funding": 0.0,
+        "gross": 727.1042,
+        "net_plus_fees": 727.1042,
+        "duration_mean_h": 9.427983950617284,
+        "duration_median_h": 10.916864444444444
+      }
+    },
+    "entry_log_coverage": 15,
+    "code_coverage": 0,
+    "scores": {
+      "A/B": {
+        "n": 11,
+        "quantiles": {
+          "min": 60.0,
+          "p25": 63.0,
+          "median": 73.0,
+          "p75": 74.0,
+          "max": 77.0
+        },
+        "confidence_all": {
+          "min": 60.0,
+          "p25": 62.75,
+          "median": 69.0,
+          "p75": 74.0,
+          "max": 77.0
+        }
+      },
+      "C": {
+        "n": 4,
+        "quantiles": {
+          "min": 72.0,
+          "p25": 72.0,
+          "median": 72.5,
+          "p75": 73.5,
+          "max": 75.0
+        },
+        "confidence_all": {
+          "min": 72.0,
+          "p25": 72.0,
+          "median": 73.0,
+          "p75": 73.0,
+          "max": 75.0
+        }
+      }
+    },
+    "early_stops": {
+      "1": 0,
+      "2": 0,
+      "4": 1
+    },
+    "negative_duration_count": 0,
+    "leverage": {
+      "min": 15.0,
+      "p25": 18.0,
+      "median": 25.0,
+      "p75": 25.0,
+      "max": 28.0
+    },
+    "margin_realized": {
+      "min": 150.0,
+      "p25": 160.0,
+      "median": 182.0,
+      "p75": 185.0,
+      "max": 192.0
+    },
+    "feature_summary": {
+      "btc_roc24h": {
+        "n": 15,
+        "quantiles": {
+          "min": -0.03,
+          "p25": -0.01845,
+          "median": -0.0114,
+          "p75": -0.0075,
+          "max": 0.0114
+        }
+      },
+      "roc24h": {
+        "n": 15,
+        "quantiles": {
+          "min": -0.0573,
+          "p25": -0.0296,
+          "median": -0.0244,
+          "p75": -0.0133,
+          "max": -0.0094
+        }
+      },
+      "atr_pct": {
+        "n": 15,
+        "quantiles": {
+          "min": 0.00524,
+          "p25": 0.0060999999999999995,
+          "median": 0.00856,
+          "p75": 0.010405000000000001,
+          "max": 0.01469
+        }
+      },
+      "dec_sl_pct": {
+        "n": 15,
+        "quantiles": {
+          "min": 0.00629,
+          "p25": 0.00732,
+          "median": 0.01027,
+          "p75": 0.01248,
+          "max": 0.01763
+        }
+      },
+      "dec_rr": {
+        "n": 15,
+        "quantiles": {
+          "min": 1.8,
+          "p25": 1.8,
+          "median": 1.8,
+          "p75": 1.8,
+          "max": 1.8
+        }
+      },
+      "daily_trend": {
+        "n": 15,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 0.0
+        }
+      },
+      "ema50_200_4h": {
+        "n": 15,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": -1.0,
+          "p75": -1.0,
+          "max": -1.0
+        }
+      },
+      "sig_long": {
+        "n": 15,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 8.0
+        }
+      },
+      "sig_short": {
+        "n": 15,
+        "quantiles": {
+          "min": 60.0,
+          "p25": 64.5,
+          "median": 73.0,
+          "p75": 74.0,
+          "max": 77.0
+        }
+      }
+    },
+    "component_coverage": {
+      "RSI": {
+        "n": 10,
+        "mean": 8.0
+      },
+      "momento 24h": {
+        "n": 15,
+        "mean": 8.866666666666667
+      },
+      "prezzo vs EMA50": {
+        "n": 15,
+        "mean": 8.0
+      },
+      "rottura minimi": {
+        "n": 9,
+        "mean": 10.0
+      },
+      "shooting star": {
+        "n": 3,
+        "mean": 8.0
+      },
+      "trend 1h": {
+        "n": 15,
+        "mean": 15.0
+      },
+      "trend 4h": {
+        "n": 15,
+        "mean": 20.0
+      },
+      "volumi": {
+        "n": 8,
+        "mean": 4.0
+      }
+    },
+    "occupancy_hours": {
+      "0": 11.052961388888889,
+      "1": 2.747336388888889,
+      "2": 11.878289999999996,
+      "3": 58.355902777777786
+    },
+    "mean_open_slots": 2.3986772977336304,
+    "positions_per_day": 4.855149323839472,
+    "symbols": {
+      "UNI": 1,
+      "XAG": 1,
+      "LTC": 1,
+      "BTC": 6,
+      "ETH": 5,
+      "AVAX": 1,
+      "ADA": 1,
+      "SOL": 1
+    }
+  },
+  {
+    "positions": 15,
+    "wins": 4,
+    "wr_pct": 26.666666666666668,
+    "wr_ci95_wilson": [
+      10.897453325692636,
+      51.950434055979876
+    ],
+    "net": -144.6762,
+    "net_mean": -9.64508,
+    "avg_win_net": 38.440200000000004,
+    "avg_loss_abs_net": 27.13063636363636,
+    "profit_factor": 0.5152202977512842,
+    "fees": 67.07509999999999,
+    "funding": 0.2202,
+    "gross": -77.38130000000001,
+    "net_plus_fees": -77.6011,
+    "duration_mean_h": 6.693390777777777,
+    "duration_median_h": 2.3442302777777777,
+    "bot": "bull",
+    "run_no": 2,
+    "start_ms": 1792119048671,
+    "end_ms": 1792431437089,
+    "start_utc": "2026-10-16T02:50:48+00:00",
+    "end_utc": "2026-10-19T17:37:17+00:00",
+    "dashboard_realizations": 18,
+    "dashboard_wr": 38.9,
+    "dashboard_ci95": [
+      20.305246572164005,
+      61.380958397761546
+    ],
+    "partial_rows": 3,
+    "params_at_archive": {
+      "entry_score_base": 60,
+      "entry_score_tier_ab": 60,
+      "entry_score_tier_c": 70,
+      "daily_cap_usd": 0.7,
+      "code_version": "b4709d1",
+      "portfolio": "bull",
+      "limits": {
+        "start_equity": 1000.0,
+        "max_leverage": 45,
+        "max_margin_trade": 350.0,
+        "max_margin_total": 1050.0,
+        "max_open": 3,
+        "max_dca_total": 700.0,
+        "min_margin": 30.0,
+        "fee_bp_side": 6.0,
+        "slip_bp_side": 2.0,
+        "funding_bp_8h_long": 1.0,
+        "maint": 0.005,
+        "sl_liq_frac": 0.75,
+        "daily_stop": 0.12,
+        "kill_equity": 450.0
+      },
+      "guardrail": {
+        "min_margin": 150.0,
+        "min_lev": 10,
+        "margin_forced": 200.0,
+        "lev_forced": 15
+      },
+      "split": {
+        "first_frac": 0.5,
+        "default_retrace_pct": 0.5,
+        "min_retrace_pct": 0.15,
+        "max_of_stop_distance": 0.6,
+        "ttl_scalp_h": 3,
+        "ttl_medio_h": 12
+      }
+    },
+    "long_short": {
+      "-1": {
+        "positions": 13,
+        "wins": 4,
+        "wr_pct": 30.76923076923077,
+        "wr_ci95_wilson": [
+          12.680703655710825,
+          57.63065681945029
+        ],
+        "net": -122.94519999999999,
+        "net_mean": -9.457323076923076,
+        "avg_win_net": 38.440200000000004,
+        "avg_loss_abs_net": 30.745111111111115,
+        "profit_factor": 0.5556829270055583,
+        "fees": 60.472,
+        "funding": 0.0,
+        "gross": -62.473600000000005,
+        "net_plus_fees": -62.473199999999984,
+        "duration_mean_h": 7.27001534188034,
+        "duration_median_h": 2.3442302777777777
+      },
+      "1": {
+        "positions": 2,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          65.76197724933344
+        ],
+        "net": -21.731,
+        "net_mean": -10.8655,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 10.8655,
+        "profit_factor": 0.0,
+        "fees": 6.6030999999999995,
+        "funding": 0.2202,
+        "gross": -14.9077,
+        "net_plus_fees": -15.127900000000002,
+        "duration_mean_h": 2.945331111111111,
+        "duration_median_h": 2.945331111111111
+      }
+    },
+    "sources": {
+      "rules": 15
+    },
+    "exits": {
+      "model_or_rule_close_labeled_claude": 6,
+      "TP": 4,
+      "SL": 4,
+      "manual": 1
+    },
+    "exit_metrics": {
+      "model_or_rule_close_labeled_claude": {
+        "positions": 6,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          39.033428790215225
+        ],
+        "net": -102.2152,
+        "net_mean": -17.035866666666667,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 17.035866666666667,
+        "profit_factor": 0.0,
+        "fees": 24.6261,
+        "funding": 0.2202,
+        "gross": -77.369,
+        "net_plus_fees": -77.5891,
+        "duration_mean_h": 8.131868287037038,
+        "duration_median_h": 3.716945972222222
+      },
+      "TP": {
+        "positions": 4,
+        "wins": 4,
+        "wr_pct": 100.0,
+        "wr_ci95_wilson": [
+          51.01091635454165,
+          100.0
+        ],
+        "net": 153.76080000000002,
+        "net_mean": 38.440200000000004,
+        "avg_win_net": 38.440200000000004,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 19.6361,
+        "funding": 0.0,
+        "gross": 173.3967,
+        "net_plus_fees": 173.39690000000002,
+        "duration_mean_h": 10.627281597222222,
+        "duration_median_h": 9.190124861111112
+      },
+      "SL": {
+        "positions": 4,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          48.98908364545835
+        ],
+        "net": -189.9059,
+        "net_mean": -47.47647499999999,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 47.47647499999999,
+        "profit_factor": 0.0,
+        "fees": 18.8515,
+        "funding": 0.0,
+        "gross": -171.0545,
+        "net_plus_fees": -171.0544,
+        "duration_mean_h": 2.043957777777778,
+        "duration_median_h": 1.448182638888889
+      },
+      "manual": {
+        "positions": 1,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          79.34506856227534
+        ],
+        "net": -6.3159,
+        "net_mean": -6.3159,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 6.3159,
+        "profit_factor": 0.0,
+        "fees": 3.9614,
+        "funding": 0.0,
+        "gross": -2.3545,
+        "net_plus_fees": -2.3545000000000003,
+        "duration_mean_h": 0.9246944444444445,
+        "duration_median_h": 0.9246944444444445
+      }
+    },
+    "entry_log_coverage": 15,
+    "code_coverage": 15,
+    "scores": {
+      "A/B": {
+        "n": 8,
+        "quantiles": {
+          "min": 60.0,
+          "p25": 64.0,
+          "median": 66.0,
+          "p75": 66.25,
+          "max": 75.0
+        },
+        "confidence_all": {
+          "min": 60.0,
+          "p25": 64.0,
+          "median": 66.0,
+          "p75": 66.25,
+          "max": 75.0
+        }
+      },
+      "C": {
+        "n": 7,
+        "quantiles": {
+          "min": 70.0,
+          "p25": 70.5,
+          "median": 72.0,
+          "p75": 73.0,
+          "max": 76.0
+        },
+        "confidence_all": {
+          "min": 70.0,
+          "p25": 70.5,
+          "median": 72.0,
+          "p75": 73.0,
+          "max": 76.0
+        }
+      }
+    },
+    "early_stops": {
+      "1": 0,
+      "2": 0,
+      "4": 1
+    },
+    "negative_duration_count": 0,
+    "leverage": {
+      "min": 15.0,
+      "p25": 20.0,
+      "median": 22.0,
+      "p75": 24.5,
+      "max": 26.0
+    },
+    "margin_realized": {
+      "min": 150.0,
+      "p25": 165.0,
+      "median": 175.0,
+      "p75": 181.0,
+      "max": 190.0
+    },
+    "feature_summary": {
+      "btc_roc24h": {
+        "n": 15,
+        "quantiles": {
+          "min": -0.0152,
+          "p25": -0.01,
+          "median": -0.0053,
+          "p75": 0.0014,
+          "max": 0.012
+        }
+      },
+      "roc24h": {
+        "n": 15,
+        "quantiles": {
+          "min": -0.0275,
+          "p25": -0.01685,
+          "median": -0.0134,
+          "p75": -0.0081,
+          "max": 0.0097
+        }
+      },
+      "atr_pct": {
+        "n": 15,
+        "quantiles": {
+          "min": 0.00213,
+          "p25": 0.0037300000000000002,
+          "median": 0.00572,
+          "p75": 0.00763,
+          "max": 0.01298
+        }
+      },
+      "dec_sl_pct": {
+        "n": 15,
+        "quantiles": {
+          "min": 0.003,
+          "p25": 0.00447,
+          "median": 0.00686,
+          "p75": 0.00916,
+          "max": 0.01558
+        }
+      },
+      "dec_rr": {
+        "n": 15,
+        "quantiles": {
+          "min": 1.8,
+          "p25": 1.8,
+          "median": 1.8,
+          "p75": 1.8,
+          "max": 1.8
+        }
+      },
+      "daily_trend": {
+        "n": 15,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 0.0
+        }
+      },
+      "ema50_200_4h": {
+        "n": 15,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": -1.0,
+          "p75": -1.0,
+          "max": 1.0
+        }
+      },
+      "sig_long": {
+        "n": 15,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 65.0
+        }
+      },
+      "sig_short": {
+        "n": 15,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 66.0,
+          "median": 70.0,
+          "p75": 72.5,
+          "max": 76.0
+        }
+      }
+    },
+    "component_coverage": {
+      "RSI": {
+        "n": 14,
+        "mean": 8.0
+      },
+      "hammer": {
+        "n": 1,
+        "mean": 8.0
+      },
+      "momento 24h": {
+        "n": 15,
+        "mean": 5.4
+      },
+      "prezzo vs EMA50": {
+        "n": 15,
+        "mean": 8.0
+      },
+      "rottura massimi": {
+        "n": 1,
+        "mean": 10.0
+      },
+      "rottura minimi": {
+        "n": 8,
+        "mean": 10.0
+      },
+      "shooting star": {
+        "n": 3,
+        "mean": 8.0
+      },
+      "trend 1h": {
+        "n": 15,
+        "mean": 15.0
+      },
+      "trend 4h": {
+        "n": 15,
+        "mean": 20.0
+      },
+      "volumi": {
+        "n": 9,
+        "mean": 4.0
+      }
+    },
+    "occupancy_hours": {
+      "0": 42.33228833333333,
+      "1": 10.746698611111112,
+      "2": 11.432557777777777,
+      "3": 22.26301583333333
+    },
+    "mean_open_slots": 1.1570310586866892,
+    "positions_per_day": 4.148681338115423,
+    "symbols": {
+      "XAU": 3,
+      "XRP": 2,
+      "BNB": 2,
+      "ETH": 4,
+      "SOL": 1,
+      "BTC": 1,
+      "SUI": 1,
+      "ATOM": 1
+    }
+  },
+  {
+    "positions": 4,
+    "wins": 0,
+    "wr_pct": 0.0,
+    "wr_ci95_wilson": [
+      0.0,
+      48.98908364545835
+    ],
+    "net": -312.407,
+    "net_mean": -78.10175,
+    "avg_win_net": null,
+    "avg_loss_abs_net": 78.10175,
+    "profit_factor": 0.0,
+    "fees": 17.5618,
+    "funding": 0.0197,
+    "gross": -273.6245,
+    "net_plus_fees": -294.8452,
+    "duration_mean_h": 6.813440763888889,
+    "duration_median_h": 5.6691529166666665,
+    "bot": "bull",
+    "run_no": 3,
+    "start_ms": 1792431437092,
+    "end_ms": 1792555085990,
+    "start_utc": "2026-10-19T17:37:17+00:00",
+    "end_utc": "2026-10-21T03:58:05+00:00",
+    "dashboard_realizations": 4,
+    "dashboard_wr": 0.0,
+    "dashboard_ci95": [
+      0.0,
+      48.98908364545835
+    ],
+    "partial_rows": 0,
+    "params_at_archive": {
+      "entry_score_base": 60,
+      "entry_score_tier_ab": 60,
+      "entry_score_tier_c": 63,
+      "daily_cap_usd": 0.7,
+      "code_version": "b6b9911",
+      "portfolio": "bull",
+      "limits": {
+        "start_equity": 1000.0,
+        "max_leverage": 45,
+        "max_margin_trade": 350.0,
+        "max_margin_total": 1000.0,
+        "max_open": 10,
+        "max_dca_total": 700.0,
+        "min_margin": 30.0,
+        "fee_bp_side": 6.0,
+        "slip_bp_side": 2.0,
+        "funding_bp_8h_long": 1.0,
+        "maint": 0.005,
+        "sl_liq_frac": 0.75,
+        "daily_stop": 0.12,
+        "kill_equity": 450.0
+      },
+      "guardrail": {
+        "min_margin": 150.0,
+        "min_lev": 10,
+        "margin_forced": 200.0,
+        "lev_forced": 15,
+        "max_leverage": 15
+      },
+      "split": {
+        "first_frac": 0.5,
+        "default_retrace_pct": 0.5,
+        "min_retrace_pct": 0.15,
+        "max_of_stop_distance": 0.6,
+        "ttl_scalp_h": 3,
+        "ttl_medio_h": 12
+      }
+    },
+    "long_short": {
+      "-1": {
+        "positions": 3,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          56.1497031755032
+        ],
+        "net": -117.527,
+        "net_mean": -39.175666666666665,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 39.175666666666665,
+        "profit_factor": 0.0,
+        "fees": 11.9026,
+        "funding": 0.0,
+        "gross": -105.6245,
+        "net_plus_fees": -105.62440000000001,
+        "duration_mean_h": 8.9749575,
+        "duration_median_h": 6.176070833333333
+      },
+      "1": {
+        "positions": 1,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          79.34506856227534
+        ],
+        "net": -194.88,
+        "net_mean": -194.88,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 194.88,
+        "profit_factor": 0.0,
+        "fees": 5.6592,
+        "funding": 0.0197,
+        "gross": -168.0,
+        "net_plus_fees": -189.2208,
+        "duration_mean_h": 0.3288905555555556,
+        "duration_median_h": 0.3288905555555556
+      }
+    },
+    "sources": {
+      "rules": 4
+    },
+    "exits": {
+      "SL": 3,
+      "liquidation": 1
+    },
+    "exit_metrics": {
+      "SL": {
+        "positions": 3,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          56.1497031755032
+        ],
+        "net": -117.527,
+        "net_mean": -39.175666666666665,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 39.175666666666665,
+        "profit_factor": 0.0,
+        "fees": 11.9026,
+        "funding": 0.0,
+        "gross": -105.6245,
+        "net_plus_fees": -105.62440000000001,
+        "duration_mean_h": 8.9749575,
+        "duration_median_h": 6.176070833333333
+      },
+      "liquidation": {
+        "positions": 1,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          79.34506856227534
+        ],
+        "net": -194.88,
+        "net_mean": -194.88,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 194.88,
+        "profit_factor": 0.0,
+        "fees": 5.6592,
+        "funding": 0.0197,
+        "gross": -168.0,
+        "net_plus_fees": -189.2208,
+        "duration_mean_h": 0.3288905555555556,
+        "duration_median_h": 0.3288905555555556
+      }
+    },
+    "entry_log_coverage": 4,
+    "code_coverage": 4,
+    "scores": {
+      "A/B": {
+        "n": 2,
+        "quantiles": {
+          "min": 62.0,
+          "p25": 62.25,
+          "median": 62.5,
+          "p75": 62.75,
+          "max": 63.0
+        },
+        "confidence_all": {
+          "min": 62.0,
+          "p25": 62.25,
+          "median": 62.5,
+          "p75": 62.75,
+          "max": 63.0
+        }
+      },
+      "C": {
+        "n": 2,
+        "quantiles": {
+          "min": 75.0,
+          "p25": 75.5,
+          "median": 76.0,
+          "p75": 76.5,
+          "max": 77.0
+        },
+        "confidence_all": {
+          "min": 75.0,
+          "p25": 75.5,
+          "median": 76.0,
+          "p75": 76.5,
+          "max": 77.0
+        }
+      }
+    },
+    "early_stops": {
+      "1": 0,
+      "2": 0,
+      "4": 0
+    },
+    "negative_duration_count": 0,
+    "leverage": {
+      "min": 16.0,
+      "p25": 16.75,
+      "median": 21.0,
+      "p75": 25.0,
+      "max": 25.0
+    },
+    "margin_realized": {
+      "min": 155.0,
+      "p25": 157.25,
+      "median": 173.0,
+      "p75": 189.0,
+      "max": 192.0
+    },
+    "feature_summary": {
+      "btc_roc24h": {
+        "n": 4,
+        "quantiles": {
+          "min": -0.0168,
+          "p25": -0.01485,
+          "median": -0.002,
+          "p75": 0.01055,
+          "max": 0.0116
+        }
+      },
+      "roc24h": {
+        "n": 4,
+        "quantiles": {
+          "min": -0.04,
+          "p25": -0.02065,
+          "median": -0.00035000000000000135,
+          "p75": 0.019275,
+          "max": 0.0366
+        }
+      },
+      "atr_pct": {
+        "n": 4,
+        "quantiles": {
+          "min": 0.00428,
+          "p25": 0.006905,
+          "median": 0.00955,
+          "p75": 0.0131275,
+          "max": 0.01855
+        }
+      },
+      "dec_sl_pct": {
+        "n": 4,
+        "quantiles": {
+          "min": 0.00513,
+          "p25": 0.00828,
+          "median": 0.011455,
+          "p75": 0.01575,
+          "max": 0.02226
+        }
+      },
+      "dec_rr": {
+        "n": 4,
+        "quantiles": {
+          "min": 1.8,
+          "p25": 1.8,
+          "median": 1.8,
+          "p75": 1.8,
+          "max": 1.8
+        }
+      },
+      "daily_trend": {
+        "n": 4,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 0.0,
+          "max": 0.0
+        }
+      },
+      "ema50_200_4h": {
+        "n": 4,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": -1.0,
+          "p75": -0.5,
+          "max": 1.0
+        }
+      },
+      "sig_long": {
+        "n": 4,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 2.5,
+          "p75": 23.0,
+          "max": 77.0
+        }
+      },
+      "sig_short": {
+        "n": 4,
+        "quantiles": {
+          "min": 2.0,
+          "p25": 47.0,
+          "median": 62.5,
+          "p75": 66.0,
+          "max": 75.0
+        }
+      }
+    },
+    "component_coverage": {
+      "RSI": {
+        "n": 4,
+        "mean": 8.0
+      },
+      "momento 24h": {
+        "n": 3,
+        "mean": 10.0
+      },
+      "prezzo vs EMA50": {
+        "n": 4,
+        "mean": 8.0
+      },
+      "rottura massimi": {
+        "n": 1,
+        "mean": 10.0
+      },
+      "rottura minimi": {
+        "n": 1,
+        "mean": 10.0
+      },
+      "shooting star": {
+        "n": 1,
+        "mean": 8.0
+      },
+      "trend 1h": {
+        "n": 4,
+        "mean": 15.0
+      },
+      "trend 4h": {
+        "n": 4,
+        "mean": 20.0
+      },
+      "volumi": {
+        "n": 1,
+        "mean": 4.0
+      }
+    },
+    "occupancy_hours": {
+      "0": 18.43145888888889,
+      "1": 9.739386388888889,
+      "2": 1.0138358333333333,
+      "3": 5.162235
+    },
+    "mean_open_slots": 0.793485009466077,
+    "positions_per_day": 2.795010756990329,
+    "symbols": {
+      "BTC": 1,
+      "UNI": 1,
+      "ETH": 1,
+      "INJ": 1
+    }
+  },
+  {
+    "positions": 77,
+    "wins": 28,
+    "wr_pct": 36.36363636363637,
+    "wr_ci95_wilson": [
+      26.505432493168712,
+      47.51779728726125
+    ],
+    "net": -214.02439999999999,
+    "net_mean": -2.779537662337662,
+    "avg_win_net": 59.660810714285695,
+    "avg_loss_abs_net": 38.45973673469388,
+    "profit_factor": 0.8864307125113775,
+    "fees": 330.2532,
+    "funding": 0.7341,
+    "gross": 116.96369999999999,
+    "net_plus_fees": 116.2288,
+    "duration_mean_h": 5.192179220779222,
+    "duration_median_h": 4.074788333333333,
+    "bot": "bull",
+    "run_no": 4,
+    "start_ms": 1792555085993,
+    "end_ms": 1793040946717,
+    "start_utc": "2026-10-21T03:58:05+00:00",
+    "end_utc": "2026-10-26T18:55:46+00:00",
+    "dashboard_realizations": 89,
+    "dashboard_wr": 44.9,
+    "dashboard_ci95": [
+      35.03238810420166,
+      55.27366684762559
+    ],
+    "partial_rows": 12,
+    "params_at_archive": {
+      "entry_score_base": 60,
+      "entry_score_tier_ab": 60,
+      "entry_score_tier_c": 63,
+      "daily_cap_usd": 0.7,
+      "code_version": "35f08cf",
+      "portfolio": "bull",
+      "limits": {
+        "start_equity": 1000.0,
+        "max_leverage": 45,
+        "max_margin_trade": 350.0,
+        "max_margin_total": 1050.0,
+        "max_open": 6,
+        "max_dca_total": 700.0,
+        "min_margin": 30.0,
+        "fee_bp_side": 6.0,
+        "slip_bp_side": 2.0,
+        "funding_bp_8h_long": 1.0,
+        "maint": 0.005,
+        "sl_liq_frac": 0.75,
+        "daily_stop": 0.1,
+        "kill_equity": 450.0
+      },
+      "guardrail": {
+        "min_margin": 150.0,
+        "min_lev": 10,
+        "margin_forced": 200.0,
+        "lev_forced": 15
+      },
+      "split": {
+        "first_frac": 0.5,
+        "default_retrace_pct": 0.5,
+        "min_retrace_pct": 0.15,
+        "max_of_stop_distance": 0.6,
+        "ttl_scalp_h": 3,
+        "ttl_medio_h": 12
+      }
+    },
+    "long_short": {
+      "-1": {
+        "positions": 76,
+        "wins": 28,
+        "wr_pct": 36.8421052631579,
+        "wr_ci95_wilson": [
+          26.875422603103743,
+          48.07493489861033
+        ],
+        "net": -171.9114,
+        "net_mean": -2.2619921052631575,
+        "avg_win_net": 59.660810714285695,
+        "avg_loss_abs_net": 38.38362708333333,
+        "profit_factor": 0.906692312005211,
+        "fees": 326.2436,
+        "funding": 0.0,
+        "gross": 154.33309999999997,
+        "net_plus_fees": 154.33220000000003,
+        "duration_mean_h": 5.030525464181286,
+        "duration_median_h": 3.972558888888889
+      },
+      "1": {
+        "positions": 1,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          79.34506856227534
+        ],
+        "net": -42.113,
+        "net_mean": -42.113,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 42.113,
+        "profit_factor": 0.0,
+        "fees": 4.0096,
+        "funding": 0.7341,
+        "gross": -37.3694,
+        "net_plus_fees": -38.1034,
+        "duration_mean_h": 17.477864722222222,
+        "duration_median_h": 17.477864722222222
+      }
+    },
+    "sources": {
+      "rules": 77
+    },
+    "exits": {
+      "SL": 44,
+      "TP": 25,
+      "model_or_rule_close_labeled_claude": 8
+    },
+    "exit_metrics": {
+      "SL": {
+        "positions": 44,
+        "wins": 0,
+        "wr_pct": 0.0,
+        "wr_ci95_wilson": [
+          0.0,
+          8.029560375847659
+        ],
+        "net": -1764.7313,
+        "net_mean": -40.10752954545455,
+        "avg_win_net": null,
+        "avg_loss_abs_net": 40.10752954545455,
+        "profit_factor": 0.0,
+        "fees": 195.2253,
+        "funding": 0.7341,
+        "gross": -1568.7711,
+        "net_plus_fees": -1569.5059999999999,
+        "duration_mean_h": 3.6807550063131305,
+        "duration_median_h": 2.8703294444444443
+      },
+      "TP": {
+        "positions": 25,
+        "wins": 25,
+        "wr_pct": 100.0,
+        "wr_ci95_wilson": [
+          86.68077490609579,
+          100.0
+        ],
+        "net": 1573.5839,
+        "net_mean": 62.943356,
+        "avg_win_net": 62.943356,
+        "avg_loss_abs_net": null,
+        "profit_factor": null,
+        "fees": 101.6383,
+        "funding": 0.0,
+        "gross": 1675.2221,
+        "net_plus_fees": 1675.2222000000002,
+        "duration_mean_h": 5.786465477777778,
+        "duration_median_h": 5.225774166666667
+      },
+      "model_or_rule_close_labeled_claude": {
+        "positions": 8,
+        "wins": 3,
+        "wr_pct": 37.5,
+        "wr_ci95_wilson": [
+          13.684428582360114,
+          69.42576053973659
+        ],
+        "net": -22.877000000000002,
+        "net_mean": -2.8596250000000003,
+        "avg_win_net": 32.306266666666666,
+        "avg_loss_abs_net": 23.95916,
+        "profit_factor": 0.8090333717876587,
+        "fees": 33.3896,
+        "funding": 0.0,
+        "gross": 10.5127,
+        "net_plus_fees": 10.512599999999999,
+        "duration_mean_h": 11.647867847222221,
+        "duration_median_h": 8.488969027777777
+      }
+    },
+    "entry_log_coverage": 77,
+    "code_coverage": 77,
+    "scores": {
+      "A/B": {
+        "n": 17,
+        "quantiles": {
+          "min": 60.0,
+          "p25": 61.0,
+          "median": 63.0,
+          "p75": 68.0,
+          "max": 78.0
+        },
+        "confidence_all": {
+          "min": 60.0,
+          "p25": 61.0,
+          "median": 63.0,
+          "p75": 68.0,
+          "max": 78.0
+        }
+      },
+      "C": {
+        "n": 60,
+        "quantiles": {
+          "min": 63.0,
+          "p25": 65.0,
+          "median": 68.0,
+          "p75": 75.0,
+          "max": 84.0
+        },
+        "confidence_all": {
+          "min": 63.0,
+          "p25": 65.0,
+          "median": 68.0,
+          "p75": 75.0,
+          "max": 84.0
+        }
+      }
+    },
+    "early_stops": {
+      "1": 3,
+      "2": 4,
+      "4": 10
+    },
+    "negative_duration_count": 0,
+    "leverage": {
+      "min": 15.0,
+      "p25": 18.0,
+      "median": 20.0,
+      "p75": 25.0,
+      "max": 28.0
+    },
+    "margin_realized": {
+      "min": 150.0,
+      "p25": 160.0,
+      "median": 165.0,
+      "p75": 180.0,
+      "max": 210.0
+    },
+    "feature_summary": {
+      "btc_roc24h": {
+        "n": 77,
+        "quantiles": {
+          "min": -0.0402,
+          "p25": -0.0164,
+          "median": -0.0111,
+          "p75": -0.0028,
+          "max": 0.0196
+        }
+      },
+      "roc24h": {
+        "n": 77,
+        "quantiles": {
+          "min": -0.0654,
+          "p25": -0.034,
+          "median": -0.0256,
+          "p75": -0.0164,
+          "max": 0.0482
+        }
+      },
+      "atr_pct": {
+        "n": 77,
+        "quantiles": {
+          "min": 0.00312,
+          "p25": 0.00537,
+          "median": 0.00777,
+          "p75": 0.0104,
+          "max": 0.0191
+        }
+      },
+      "dec_sl_pct": {
+        "n": 77,
+        "quantiles": {
+          "min": 0.00374,
+          "p25": 0.00644,
+          "median": 0.00932,
+          "p75": 0.01247,
+          "max": 0.02293
+        }
+      },
+      "dec_rr": {
+        "n": 77,
+        "quantiles": {
+          "min": 1.8,
+          "p25": 1.8,
+          "median": 1.8,
+          "p75": 1.8,
+          "max": 1.8
+        }
+      },
+      "daily_trend": {
+        "n": 77,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": 0.0,
+          "p75": 1.0,
+          "max": 1.0
+        }
+      },
+      "ema50_200_4h": {
+        "n": 77,
+        "quantiles": {
+          "min": -1.0,
+          "p25": -1.0,
+          "median": -1.0,
+          "p75": -1.0,
+          "max": 1.0
+        }
+      },
+      "sig_long": {
+        "n": 77,
+        "quantiles": {
+          "min": 0.0,
+          "p25": 0.0,
+          "median": 0.0,
+          "p75": 15.0,
+          "max": 67.0
+        }
+      },
+      "sig_short": {
+        "n": 77,
+        "quantiles": {
+          "min": 2.0,
+          "p25": 64.0,
+          "median": 66.0,
+          "p75": 74.0,
+          "max": 84.0
+        }
+      }
+    },
+    "component_coverage": {
+      "RSI": {
+        "n": 71,
+        "mean": 8.0
+      },
+      "momento 24h": {
+        "n": 71,
+        "mean": 9.816901408450704
+      },
+      "prezzo vs EMA50": {
+        "n": 77,
+        "mean": 8.0
+      },
+      "rottura minimi": {
+        "n": 11,
+        "mean": 10.0
+      },
+      "shooting star": {
+        "n": 4,
+        "mean": 8.0
+      },
+      "trend 1d": {
+        "n": 29,
+        "mean": 13.96551724137931
+      },
+      "trend 1h": {
+        "n": 76,
+        "mean": 15.0
+      },
+      "trend 4h": {
+        "n": 77,
+        "mean": 19.22077922077922
+      },
+      "volumi": {
+        "n": 14,
+        "mean": 4.0
+      }
+    },
+    "occupancy_hours": {
+      "0": 32.660133611111114,
+      "1": 24.934305833333333,
+      "2": 13.158354166666665,
+      "3": 6.240283333333332,
+      "4": 5.129009166666666,
+      "5": 7.725457499999999,
+      "6": 45.11376861111111
+    },
+    "mean_open_slots": 2.962314113704733,
+    "positions_per_day": 13.692812922248063,
+    "symbols": {
+      "BCH": 2,
+      "OP": 4,
+      "FIL": 1,
+      "AVAX": 2,
+      "BNB": 5,
+      "BTC": 9,
+      "ETH": 8,
+      "ARB": 1,
+      "UNI": 3,
+      "DOT": 6,
+      "ADA": 9,
+      "LINK": 2,
+      "XRP": 4,
+      "LTC": 1,
+      "ATOM": 6,
+      "SOL": 6,
+      "DOGE": 6,
+      "APT": 2
+    }
+  }
+]

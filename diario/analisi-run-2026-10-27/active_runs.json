@@ -1,0 +1,30 @@
+[
+  {
+    "bot": "hawk",
+    "run_no": 6,
+    "start_utc": "2026-10-26T18:55:45.815Z",
+    "snapshot_utc": "2026-10-27T14:30:30.415Z",
+    "realizations": 15,
+    "completed_positions": 15,
+    "realized_net": -232.4399,
+    "open_positions": 3,
+    "versions": [
+      "35f08cf",
+      "89b0dca"
+    ]
+  },
+  {
+    "bot": "bull",
+    "run_no": 5,
+    "start_utc": "2026-10-26T18:55:46.738Z",
+    "snapshot_utc": "2026-10-27T14:30:30.415Z",
+    "realizations": 8,
+    "completed_positions": 6,
+    "realized_net": -113.3109,
+    "open_positions": 3,
+    "versions": [
+      "35f08cf",
+      "89b0dca"
+    ]
+  }
+]

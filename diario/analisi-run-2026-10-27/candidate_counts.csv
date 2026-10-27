@@ -1,0 +1,78 @@
+bot,run_no,code_version,source,status,n
+hawk,2,,rules,conf_bassa,1011
+hawk,2,,rules,troppe posizioni aperte,63
+hawk,2,,rules,stop troppo lontano,14
+hawk,3,5818aee,rules,macro_blocco,8
+hawk,3,5818aee,rules,conf_bassa,4
+hawk,3,18d145f,rules,conf_bassa,7
+hawk,3,b4709d1,rules,conf_bassa,609
+hawk,3,b4709d1,claude,stop troppo lontano,7
+hawk,3,b4709d1,rules,stop troppo lontano,3
+hawk,3,b4709d1,rules,troppe posizioni aperte,17
+hawk,3,b4709d1,rules,stop giornaliero,65
+hawk,4,b4709d1,rules,conf_bassa,229
+hawk,4,b4709d1,claude,stop troppo lontano,1
+hawk,4,b4709d1,rules,stop troppo lontano,1
+hawk,4,b4709d1,rules,stop giornaliero,2
+hawk,4,fa3e220,rules,conf_bassa,12
+hawk,4,fa3e220,claude,stop troppo lontano,29
+hawk,4,fa3e220,rules,stop giornaliero,14
+hawk,5,fa3e220,rules,conf_bassa,100
+hawk,5,fa3e220,rules,troppe posizioni aperte,297
+hawk,5,fa3e220,claude,stop troppo lontano,5
+hawk,5,fa3e220,rules,stop giornaliero,85
+hawk,5,f87f2d6,rules,stop giornaliero,86
+hawk,5,f87f2d6,rules,conf_bassa,51
+hawk,5,f87f2d6,claude,stop troppo lontano,27
+hawk,5,f87f2d6,rules,troppe posizioni aperte,28
+hawk,5,297b126,rules,troppe posizioni aperte,672
+hawk,5,297b126,rules,conf_bassa,190
+hawk,5,297b126,rules,stop giornaliero,50
+hawk,5,886b30f,rules,conf_bassa,49
+hawk,5,886b30f,rules,stop giornaliero,29
+hawk,5,886b30f,claude,stop troppo lontano,4
+hawk,5,63641f7,rules,stop giornaliero,20
+hawk,5,63641f7,rules,conf_bassa,15
+hawk,5,35f08cf,rules,stop giornaliero,1
+hawk,5,35f08cf,rules,conf_bassa,2
+hawk,6,35f08cf,rules,conf_bassa,3
+hawk,6,89b0dca,rules,stop giornaliero,12
+hawk,6,89b0dca,rules,rifiutata,18
+bull,1,,rules,conf_bassa,1257
+bull,1,,rules,troppe posizioni aperte,273
+bull,1,,rules,stop troppo lontano,10
+bull,2,5818aee,rules,macro_blocco,7
+bull,2,5818aee,rules,conf_bassa,4
+bull,2,18d145f,rules,conf_bassa,7
+bull,2,b4709d1,rules,conf_bassa,835
+bull,2,b4709d1,claude,stop troppo lontano,2
+bull,2,b4709d1,rules,troppe posizioni aperte,92
+bull,2,b4709d1,rules,stop troppo lontano,3
+bull,2,b4709d1,rules,stop giornaliero,67
+bull,3,b4709d1,rules,conf_bassa,246
+bull,3,b4709d1,rules,troppe posizioni aperte,37
+bull,3,b6b9911,rules,rifiutata,2
+bull,4,b6b9911,rules,rifiutata,4
+bull,4,fa3e220,rules,conf_bassa,131
+bull,4,fa3e220,claude,stop troppo lontano,3
+bull,4,fa3e220,rules,rifiutata,449
+bull,4,fa3e220,rules,stop giornaliero,57
+bull,4,f87f2d6,rules,stop giornaliero,86
+bull,4,f87f2d6,rules,conf_bassa,44
+bull,4,f87f2d6,claude,stop troppo lontano,3
+bull,4,f87f2d6,rules,rifiutata,52
+bull,4,297b126,rules,rifiutata,987
+bull,4,297b126,rules,conf_bassa,247
+bull,4,297b126,rules,stop giornaliero,56
+bull,4,886b30f,rules,conf_bassa,49
+bull,4,886b30f,rules,stop giornaliero,19
+bull,4,886b30f,rules,rifiutata,17
+bull,4,63641f7,rules,rifiutata,5
+bull,4,63641f7,rules,conf_bassa,8
+bull,4,63641f7,rules,stop giornaliero,12
+bull,4,35f08cf,rules,stop giornaliero,1
+bull,4,35f08cf,rules,conf_bassa,2
+bull,5,35f08cf,rules,conf_bassa,15
+bull,5,35f08cf,rules,rischio_aperto_bull,24
+bull,5,89b0dca,rules,rifiutata,88
+bull,5,89b0dca,claude,rifiutata,1
