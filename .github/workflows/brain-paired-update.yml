@@ -1,0 +1,47 @@
+name: Brain adaptive - state-preserving paired update
+on:
+  push:
+    branches: [rule-pool]
+    paths: ['deploy/brain-paired-update.trigger']
+permissions:
+  contents: read
+concurrency:
+  group: superbot-brain-pilot-singapore
+  cancel-in-progress: false
+jobs:
+  paired-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Pinned PAPER preflight or guarded paired update
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          BRAIN_PREFLIGHT_CONTROL: ${{ github.sha }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: BRAIN_PREFLIGHT_CONTROL,DEEPSEEK_API_KEY
+          command_timeout: 27m
+          script: |
+            set -eu
+            umask 077
+            test "${#BRAIN_PREFLIGHT_CONTROL}" = 40
+            CONTROL_DIR=$(mktemp -d /opt/superbot-paired-control.XXXXXXXX)
+            SOURCE_DIR=$(mktemp -d /opt/superbot-paired-source.XXXXXXXX)
+            OLD_DIR=$(mktemp -d /opt/superbot-paired-old.XXXXXXXX)
+            trap 'rm -rf "$CONTROL_DIR" "$SOURCE_DIR" "$OLD_DIR"' EXIT
+            git init -q "$CONTROL_DIR"
+            git -C "$CONTROL_DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$CONTROL_DIR" fetch -q --depth=1 origin "$BRAIN_PREFLIGHT_CONTROL" 129547ed43a9aaec935df31102bb4e8016c38e7c 5024fbdfe3a9719098f905b28eac5d0feb9848e6
+            git -C "$CONTROL_DIR" checkout -q --detach "$BRAIN_PREFLIGHT_CONTROL"
+            git -C "$CONTROL_DIR" worktree add -q --detach "$SOURCE_DIR" 129547ed43a9aaec935df31102bb4e8016c38e7c
+            git -C "$CONTROL_DIR" worktree add -q --detach "$OLD_DIR" 5024fbdfe3a9719098f905b28eac5d0feb9848e6
+            ACTION=$(sed -n 's/^action=//p' "$CONTROL_DIR/deploy/brain-paired-update.trigger")
+            APPROVED=$(sed -n 's/^approved=//p' "$CONTROL_DIR/deploy/brain-paired-update.trigger")
+            test "$APPROVED" = yes
+            case "$ACTION" in preflight|apply) ;; *) exit 1 ;; esac
+            export BRAIN_UPDATE_APPROVED=paper:129547ed43a9aaec935df31102bb4e8016c38e7c
+            python3 "$CONTROL_DIR/deploy/scripts/brain_paired_update.py" --repo "$SOURCE_DIR" --old-repo "$OLD_DIR" --action "$ACTION"
