@@ -524,3 +524,9 @@ Fotografia aggiornata alle 13:39 UTC (14:39 Zurigo). Per lo storico consultare l
 ## Checkpoint preflight deploy approvato — 27/10
 - Run40564193487: sorgenti runtime89b0dca verificati per sei moduli, PAPER, istanza singola, Hawk2/Bull3posizioni; app4cf/Brain129/legacy1f2 confermati. Backup bots-20261027-185400-classici_vault_preflight e DBclassici-vault-app-20261027-185401.db: hash/integrità/restore PASS. Nessuno stop o restart.
 - Verifier fallisce successivamente per FileNotFoundError: errors.md opzionale assente nel backup (non richiesto dal backup ufficiale). Corretto SOLO verificatore per memorizzare assenza e non creare/scrivere il file. Nuovo preflight avviato. Nessun dubbio su dati da sanare per tentativi; memoria operativa intatta.
+
+
+## Pre-deploy rollback classici — autorizzazione eseguita in sequenza
+- Preflight40564354802 SUCCESS18:55UTC: sei moduli89b0dca verificati, entrambiPAPER/healthy/istanza singola; Hawk2/Bull3posizioni. Backup bots-20261027-185504-classici_vault_preflight e classici-vault-app-20261027-185505.db con restoreverificato. Snapshot privato continuità suVPS, nessun saldo pubblico.
+- Integrato ramo bot con merge3abf1f808b09bf9066d96a1d16f945d65601ba02 su rule-pool [skipci]; codice trading identico al diff27d2 approvato. Sole aggiunte ops: guardia sorgente89verificata, verifierpre/post e backup journalSalvadanaio obbligatorio invece diV1quando policyvault-only. Test91backup/deployguard +1selector/danneggiamentojournal PASS, oltre317+43+3 giàverdi.
+- Appmain avanzato fast-forward a56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace; nessun merge tra main/rule-pool. Pushmain nonrilascia. Imminente triggerdesk con sha3abf e capital=off: stop/restartsequenziale soli classici, backup ulteriore e immagini rollback; poi apppinnata56dc. Brain adattivi elegacy intoccati. OKutente esplicito inquestachat, PAPER/noreset.
