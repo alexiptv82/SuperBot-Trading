@@ -1,4 +1,3 @@
-mode=paper
-operation=readonly_forensic_export
-include=entry_levels_and_public_hourly_context
 metadata=1
+scope=readonly-public-market-SOL-BNB-XRP
+nonce=2026-10-27-final-market-coverage
