@@ -1,0 +1,41 @@
+name: Classic rollback - verified PAPER preflight and postflight
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/classici-vault-verify.trigger]
+permissions:
+  contents: read
+concurrency:
+  group: classici-vault-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify runtime, immutable source and backup restoration
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          CONTROL_SHA: ${{ github.sha }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: CONTROL_SHA
+          command_timeout: 12m
+          script: |
+            set -eu
+            umask 077
+            DIR=$(mktemp -d /opt/classici-vault-check.XXXXXXXX)
+            trap 'rm -rf "$DIR"' EXIT
+            git init -q "$DIR"
+            git -C "$DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$DIR" fetch -q --depth=1 origin "$CONTROL_SHA" 89b0dca3e259c548ed82754c2301c7b024d18ff5
+            git -C "$DIR" checkout -q --detach "$CONTROL_SHA"
+            test "$(git -C "$DIR" rev-parse HEAD)" = "$CONTROL_SHA"
+            cd "$DIR"
+            PHASE=$(sed -n 's/^phase=//p' deploy/classici-vault-verify.trigger)
+            test "$PHASE" = preflight || test "$PHASE" = postflight
+            export PHASE
+            python3 -I deploy/scripts/classici_vault_verify.py
