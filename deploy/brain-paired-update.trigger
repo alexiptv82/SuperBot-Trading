@@ -1,3 +1,3 @@
-action=preflight
+action=apply
 approved=yes
 target=129547ed43a9aaec935df31102bb4e8016c38e7c
