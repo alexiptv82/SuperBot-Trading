@@ -657,7 +657,10 @@ def command_reset_portfolio(data_dir: str, clear_lessons: bool = False, reset_va
     has_vault = build_view(state, read_heartbeat(data_dir), time.time()).get("available")
     if has_vault and (reset_vault is not True or not read_heartbeat(data_dir).get("reset_with_vault")):
         return False, 409, {"ok": False, "message": "Conferma esplicitamente il reset del Salvadanaio e aggiorna il bot."}
-    _write_flag(data_dir, "reset_portfolio.flag", json.dumps({"clear_lessons": False, "reset_vault": bool(has_vault and reset_vault)}))
+    payload = {"clear_lessons": False}
+    if has_vault:
+        payload["reset_vault"] = True
+    _write_flag(data_dir, "reset_portfolio.flag", json.dumps(payload))
     return True, 200, {"ok": True, "queued": True,
                        "message": "Azzeramento richiesto: la run attuale viene archiviata e il conto riparte da 1000$. "
                                    "Il Salvadanaio e i pending vengono azzerati solo se confermati. Il cervello (storico dei trade, appunti, registro) non si tocca. "
