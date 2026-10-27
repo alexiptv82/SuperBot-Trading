@@ -164,9 +164,10 @@ jobs:
             if [ "${#APPROVED_SHA}" != 40 ]; then echo "ERRORE: APPROVED_SHA deve avere 40 caratteri."; exit 1; fi
             echo "SHA APPROVATO: ${APPROVED_SHA}"
 
-            apt-get update -qq 2>/dev/null || true
-            apt-get install -y docker.io git nginx curl 2>/dev/null || true
-            systemctl start docker 2>/dev/null || true
+            # Existing host only: never install/upgrade Docker or restart unrelated workers.
+            for tool in docker git nginx curl; do
+              command -v "$tool" >/dev/null || { echo APP_DEPLOY_BLOCKED=missing_host_tool; exit 1; }
+            done
 
             WEB=/opt/superbot-web
             PROMOTED=0
@@ -382,7 +383,8 @@ jobs:
 
             # == 7. Container superbot (come l'originale: -p 8002:8001) ==
             # L'immagine in uso resta come superbot:prev, per poter tornare indietro.
-            docker image inspect superbot >/dev/null 2>&1 && docker tag superbot superbot:prev || true
+            CURRENT_APP_IMAGE="$(docker inspect -f '{{.Image}}' superbot)"
+            docker tag "$CURRENT_APP_IMAGE" superbot:prev
             docker build --label "superbot.sha=${APPROVED_SHA}" -t superbot /opt/superbot
             CONTAINER_REPLACED=1
             docker stop superbot 2>/dev/null || true
