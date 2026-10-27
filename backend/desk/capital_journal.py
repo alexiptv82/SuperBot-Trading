@@ -161,7 +161,7 @@ class PaperCapitalJournal:
                 raise CapitalInvariantError("vault balance changed outside authorized transfer")
             old_cash = dec(old_main.get("cash", 0))
             new_cash = dec(new_main.get("cash", 0))
-            if new_cash - old_cash != -(new_v - old_v):
+            if abs((new_cash - old_cash) + (new_v - old_v)) > dec("0.000000001"):
                 raise CapitalInvariantError("transfer violates cash + vault conservation")
             if old_main.get("positions") != new_main.get("positions") or old_main.get("closed") != new_main.get("closed"):
                 raise CapitalInvariantError("transfer mutated trade state")

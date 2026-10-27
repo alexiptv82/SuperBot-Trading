@@ -37,5 +37,9 @@ jobs:
             cd "$DIR"
             PHASE=$(sed -n 's/^phase=//p' deploy/classici-vault-verify.trigger)
             test "$PHASE" = preflight || test "$PHASE" = postflight
-            export PHASE
+            EXPECTED_BOT_SHA=$(sed -n 's/^bot_sha=//p' deploy/classici-vault-verify.trigger)
+            if [ "$PHASE" = postflight ]; then
+              printf '%s' "$EXPECTED_BOT_SHA" | grep -Eq '^[0-9a-f]{40}$'
+            fi
+            export PHASE EXPECTED_BOT_SHA
             python3 -I deploy/scripts/classici_vault_verify.py

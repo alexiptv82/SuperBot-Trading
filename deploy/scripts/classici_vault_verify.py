@@ -3,7 +3,7 @@ import hashlib,json,os,subprocess,time,urllib.request
 from pathlib import Path
 BASE='89b0dca3e259c548ed82754c2301c7b024d18ff5'
 OLD_APP='4cf41d23bb94f7a868b25dd1c89b3e4e8993d9a8'
-BOT='27d2bf03fa2fba22f5021ec99f3c6720807d8583'
+BOT=os.environ.get('EXPECTED_BOT_SHA','27d2bf03fa2fba22f5021ec99f3c6720807d8583')
 APP='56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace'
 SAVED=Path('/opt/superbot-deploys/classici-vault-20261027-preflight.json')
 ROOT=Path('/opt/superbot-desk-data')

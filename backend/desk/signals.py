@@ -5,7 +5,6 @@ Punteggio 0-100 per il lato indicato + bonus stagionalità da seasonal.py.
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -13,15 +12,6 @@ import numpy as np
 from desk.seasonal import get_seasonal
 
 H1, H4, H1D = 3_600_000, 14_400_000, 86_400_000
-
-# Profilo dei pesi del punteggio, deciso dall'utente il 27/10/2026 dopo il banco sui trade veri di Hawk:
-#   "classic" (predefinito) = pesi di prima della modifica P1 del 25/10: trend 4h 20 punti, trend 1d 15 punti, nessun bonus
-#                             di rimbalzo per i long (sono i pesi con cui Hawk ha lavorato dal 12 al 25 ottobre);
-#   "p1"                    = pesi del 25/10: trend 4h 14, trend 1d 10, +10 ai long con RSI 1h < 35 e momento positivo.
-# Si cambia con DESK_SCORE_PROFILE (serve il riavvio del bot).
-SCORE_PROFILE = os.getenv("DESK_SCORE_PROFILE", "classic").strip().lower()
-W_TREND_4H, W_TREND_1D = (14, 10) if SCORE_PROFILE == "p1" else (20, 15)
-BOUNCE_LONG_ON = SCORE_PROFILE == "p1"
 
 
 def resample(arr: np.ndarray, tf_ms: int, bar_ms: int = 900_000) -> np.ndarray:
@@ -152,8 +142,7 @@ def closed_four_hour(rows, now_ms):
 
 def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
                 daily: np.ndarray | None = None, price: float | None = None,
-                four_hour: np.ndarray | None = None,
-                btc_return_3d: float | None = None) -> Reading | None:
+                four_hour: np.ndarray | None = None) -> Reading | None:
     """`arr15`: barre 15m CHIUSE. `daily`: barre 1d chiuse (vedi `closed_daily`); senza, il 1d si ricava dalle
     15m come prima (con ~10 giorni di storia resta assente). `price`: ultimo prezzo (barra in formazione)."""
     b1 = resample(arr15, H1)
@@ -188,7 +177,7 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
     pat = doji_pattern(b1)
 
     # --- stagionalità
-    sea = get_seasonal(symbol, now_ms, btc_return_3d=btc_return_3d)
+    sea = get_seasonal(symbol, now_ms)
 
     comp = {"long": [], "short": []}
     sc = {"long": 0, "short": 0}
@@ -197,15 +186,15 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
         sc[side_name] += pts
         comp[side_name].append(f"{why} (+{pts})")
 
-    # trend 4h: 20 punti (14 col profilo p1)
+    # trend 4h: 20 punti
     if trend4:
-        add("long" if trend4 == 1 else "short", W_TREND_4H, "trend 4h")
+        add("long" if trend4 == 1 else "short", 20, "trend 4h")
     # trend 1h: 15 punti
     if direction(e20,e50):
         add("long" if direction(e20,e50)==1 else "short", 15, "trend 1h")
-    # trend 1d: 15 punti (10 col profilo p1), se disponibile
+    # trend 1d: 15 punti (se disponibile)
     if daily_trend != 0:
-        add("long" if daily_trend == 1 else "short", W_TREND_1D, "trend 1d")
+        add("long" if daily_trend == 1 else "short", 15, "trend 1d")
     # prezzo vs EMA50 1h: 8 punti
     if direction(price,e50):
         add("long" if direction(price,e50)==1 else "short", 8, "prezzo vs EMA50")
@@ -223,12 +212,6 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
         add("long", 8, f"RSI {r1h:.0f}")
     elif 30 <= r1h < 50:
         add("short", 8, f"RSI {r1h:.0f}")
-    # rimbalzo intraday (solo profilo p1): RSI ipervenduto 1h + momentum positivo recente
-    if BOUNCE_LONG_ON:
-        c1_short = c1[-5:] if len(c1) >= 5 else c1
-        momentum_1h = float(c1_short[-1] / c1_short[0] - 1) if len(c1_short) > 1 else 0.0
-        if r1h < 35 and momentum_1h > 0.003:
-            add("long", 10, f"rimbalzo RSI {r1h:.0f} mom1h {momentum_1h:+.2%}")
     # volume: 4 punti
     if vol_ratio > 1.3 and direction(c1[-1],b1[-1,1]):
         add("long" if c1[-1] >= b1[-1, 1] else "short", 4, f"volumi x{vol_ratio:.1f}")

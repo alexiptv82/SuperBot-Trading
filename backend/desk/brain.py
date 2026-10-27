@@ -36,7 +36,7 @@ LEVA MASSIMA PER ASSET (applicata automaticamente dal codice):
 
 SOGLIA MINIMA CONFIDENZA PER APRIRE:
 - Asset TIER A (BTC, ETH, XAU, XAG): confidenza >= 60/100
-- Asset TIER C (altcoin, tutto il resto): confidenza >= 63/100
+- Asset TIER C (altcoin, tutto il resto): confidenza >= 70/100
 - Non aprire mai sotto queste soglie, anche se ti sembra buono.
 
 ENTRATA DIVERSIFICATA (opzionale, solo se lo ritieni intelligente):
@@ -116,11 +116,11 @@ Per posizioni aperte: hold, close, partial_close o dca. Per nuovi ingressi: open
 # ──────────────────────────────────────────────────────────────────────────────
 SYSTEM_BULL = """Sei il cervello di un trader professionista di futures crypto — PAPER TRADING con $1000 finti.
 
-MISSIONE: gestire il PORTAFOGLIO BULL — fino a 6 posizioni contemporanee, margine da $150 a $350 per trade.
+MISSIONE: gestire il PORTAFOGLIO BULL — massimo 3 posizioni contemporanee, margine fino a $350 per trade.
 Operi come un trader di posizione che cerca movimenti importanti (5-20%), con leva moderata e holding piu' lungo.
 
 STRATEGIA PRINCIPALE — POSIZIONI MEDIE (MEDIO):
-- MEDIO (trade_type=medio): PRIORITA'. Leva 5-20x, margine 150-350$ (piu' alta la convinzione, piu' margine).
+- MEDIO (trade_type=medio): PRIORITA'. Leva 5-20x, margine 200-350$.
   TP da 5% in su (puoi tenerlo aperto se il trend continua), SL 1-3%, durata ore-giorni.
   Seleziona solo setup con altissima probabilita': confluence su piu' timeframe, momentum forte, volume.
   Se il trend continua oltre il tuo TP originale → proponi "hold" o aggiorna TP piu' lontano.
@@ -132,12 +132,12 @@ LEVA MASSIMA PER ASSET (applicata automaticamente dal codice):
 
 SOGLIA MINIMA CONFIDENZA PER APRIRE:
 - Asset TIER A (BTC, ETH, XAU, XAG): confidenza >= 60/100
-- Asset TIER C (altcoin, tutto il resto): confidenza >= 63/100
-- Non e' obbligatorio riempire gli slot: apri solo se confidenza >= 63 per altcoin, >= 60 per TIER A.
+- Asset TIER C (altcoin, tutto il resto): confidenza >= 70/100
+- Con max 3 trade devi essere selettivissimo: apri solo se confidenza >= 75 per altcoin, >= 65 per TIER A.
 
-SLOT E CAPITALE — FINO A 6 POSIZIONI:
-- Hai fino a 6 slot, ma il capitale e' $1000: con margini alti ne stanno pochi. Non e' obbligatorio riempirli.
-- Quando il margine disponibile e' finito il conto rifiuta nuove aperture (skip): man mano che le posizioni si chiudono, si libera margine.
+REGOLA CRITICA — MAX 3 POSIZIONI:
+- Hai slot per SOLO 3 trade contemporanei. Scegli i migliori setup in assoluto.
+- Se hai gia' 3 posizioni aperte, non aprire nuovi trade (skip tutto).
 - Meglio aspettare il momento giusto che aprire trade mediocri.
 
 TAKE PROFIT ESTESO (filosofia Bull):
@@ -179,7 +179,7 @@ GESTIONE POSIZIONI APERTE:
 - "dca" solo se: setup regge E supporto reale presente.
 
 REGOLE DURE (il codice le applica comunque):
-- Stop loss SEMPRE obbligatorio. Margine per trade max 350$. Posizioni max 6.
+- Stop loss SEMPRE obbligatorio. Margine per trade max 350$. Posizioni max 3.
 
 APPRENDIMENTO:
 - STORICO SIMBOLI: win rate e P&L per asset. Evita simboli con WR < 40%.
@@ -391,15 +391,7 @@ def _ctx_lines(ctx: dict, symbol: str) -> list:
 
 
 # ---------------- ripiego a sole regole
-def rules_decisions(readings: list, positions: list, open_symbols: set, entry_score: int = 70,
-                    only_manage: bool = False, regime=None, rparams=None, tier_fn=None) -> list:
-    """Decisioni delle regole. Senza `regime` si comporta come sempre. Con `regime` (desk.regime.Regime):
-    - apre solo il lato che il mercato consente (si guarda anche il lato col punteggio piu' basso se il primo e'
-      bloccato e il secondo supera comunque la soglia);
-    - chiude le posizioni contro il mercato (flip_exit).
-    `tier_fn(symbol)` = soglia di confidenza del simbolo (se manca vale `entry_score`)."""
-    from desk import regime as _rg
-    rp = rparams or _rg.DEFAULT
+def rules_decisions(readings: list, positions: list, open_symbols: set, entry_score: int = 70) -> list:
     out = []
     by = {r.symbol: r for r in readings}
     for p in positions:
@@ -408,42 +400,20 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
             continue
         mine = r.long_score if p["side"] == 1 else r.short_score
         theirs = r.short_score if p["side"] == 1 else r.long_score
-        why = None
         if mine < 35 or theirs >= 60:
-            why = f"segnale sceso a {mine}"
-        elif regime is not None:
-            why = _rg.flip_exit(p["side"], p["symbol"], float(p.get("cur_r") or 0.0), regime, rp)
-        if why:
             out.append({"symbol": p["symbol"], "action": "close", "trade_type": "medio",
                         "confidence": 0, "leverage": 1, "margin_usd": 0,
                         "stop_loss_pct": 0, "take_profit_pct": 0,
-                        "reason": why, "dca_sl_pct": 0, "dca_tp_pct": 0})
+                        "reason": f"segnale sceso a {mine}", "dca_sl_pct": 0, "dca_tp_pct": 0})
     for r in readings:
-        if r.symbol in open_symbols or r.side == 0:
+        if r.symbol in open_symbols or r.side == 0 or r.score < entry_score:
             continue
-        thr = tier_fn(r.symbol) if tier_fn else entry_score
-        side, score, extra = r.side, r.score, 0
-        reason = "; ".join(r.why[:3])
-        if regime is not None:
-            pick = None
-            for sc, sd in sorted(((r.long_score, 1), (r.short_score, -1)), reverse=True):
-                ok, ex = _rg.entry_gate(sd, r.symbol, regime, rp)
-                if ok and sc >= thr + ex and sc >= entry_score:
-                    pick = (sc, sd, ex)
-                    break
-            if pick is None:
-                continue
-            score, side, extra = pick
-            if side != r.side:
-                reason = f"mercato {regime.state}: lato {'long' if side == 1 else 'short'} consentito, punteggio {score}"
-        elif score < entry_score:
-            continue
-        frac = min(1.0, max(0.0, (score - 60) / 40))
+        frac = min(1.0, max(0.0, (r.score - 60) / 40))
         is_scalp = r.trade_type == "scalp"
         out.append({"symbol": r.symbol,
-                    "action": "open_long" if side == 1 else "open_short",
+                    "action": "open_long" if r.side == 1 else "open_short",
                     "trade_type": r.trade_type,
-                    "confidence": score,
+                    "confidence": r.score,
                     # Leva scalp: 15x (score 60) → 45x (score 100), rispettando tier asset.
                     # Leva medio: 5x (score 60) → 25x (score 100).
                     # engine.py applica il cap tier (BTC/XAU/XAG 45x, ETH 30x, altri 25x).
@@ -451,10 +421,8 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
                     "margin_usd": round(150 + frac * 100, 0) if is_scalp else round(80 + frac * 170, 0),
                     "stop_loss_pct": r.sl_pct,
                     "take_profit_pct": r.tp_pct,
-                    "reason": reason,
+                    "reason": "; ".join(r.why[:3]),
                     "dca_sl_pct": 0, "dca_tp_pct": 0})
-    if only_manage:
-        out = [d for d in out if d.get("action") not in ("open_long", "open_short")]
     return out
 
 

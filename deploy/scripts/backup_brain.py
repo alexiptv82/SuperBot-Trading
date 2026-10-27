@@ -61,7 +61,7 @@ import subprocess
 import sys
 import time
 
-CRITICAL = ("trade_history.jsonl", "lessons.md", "errors.md", "learning_log.jsonl", "capital-v1-journal.jsonl")
+CRITICAL = ("trade_history.jsonl", "lessons.md", "errors.md", "learning_log.jsonl", "capital-v1-journal.jsonl", "salvadanaio-journal.jsonl")
 CORE = CRITICAL + ("state_v2.json",)
 # Irrinunciabili in ogni portafoglio: senza anche uno solo non c'e' un backup utile.
 REQUIRED = ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")
@@ -335,22 +335,25 @@ def required_missing(root, portfolios):
     for p in portfolios:
         state_path = os.path.join(root, p, "state_v2.json")
         capital_v1 = False
+        vault_only = False
         if os.path.isfile(state_path) and not os.path.islink(state_path):
             try:
                 with open(state_path, encoding="utf8") as fp:
                     snapshot = json.load(fp)
                 capital = snapshot.get("capital") if isinstance(snapshot, dict) else None
                 capital_v1 = isinstance(capital, dict) and capital.get("schema_version") == 1
+                vault_only = capital_v1 and capital.get("policy") == "salvadanaio-only-v1"
             except (OSError, ValueError, UnicodeError):
                 out.append("%s/state_v2.json (non leggibile)" % p)
-        required = REQUIRED + (("capital-v1-journal.jsonl",) if capital_v1 else ())
+        journal = "salvadanaio-journal.jsonl" if vault_only else "capital-v1-journal.jsonl"
+        required = REQUIRED + ((journal,) if capital_v1 else ())
         for n in required:
             path = os.path.join(root, p, n)
             if os.path.islink(path) or not os.path.isfile(path):
                 out.append("%s/%s" % (p, n))
             elif n == "state_v2.json" and os.path.getsize(path) == 0:
                 out.append("%s/%s (vuoto)" % (p, n))
-            elif n == "capital-v1-journal.jsonl" and jsonl_problem(path):
+            elif n in ("capital-v1-journal.jsonl", "salvadanaio-journal.jsonl") and jsonl_problem(path):
                 out.append("%s/%s (journal incompleto)" % (p, n))
     return out
 
