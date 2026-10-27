@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { deskAPI, bullAPI, errMsg } from '../api';
 import { fmtClock, fmtDateTime, fmtDuration, signed, pnlColor, botState, macroNote } from '../deskUi';
 import ChartModal from '../components/ChartModal';
+import Salvadanaio from '../components/Salvadanaio';
 import { CloseControl } from '../components/LiveParts';
 
 // Helper: API giusta per portfolio
@@ -235,7 +236,7 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
         </div>
         <div style={{ fontSize: '36px', fontWeight: 'bold', color: equityColor }}>${fmt(status.equity)}</div>
         <div style={{ fontSize: '13px', fontWeight: 'bold', color: pnlColor(pnlTotal), marginTop: '2px' }}>
-          {signed(pnlTotal)}$ ({signed(status.pnl_total_pct)}%) da ${fmt(status.start_equity, 0)}
+          {signed(pnlTotal)}$ ({signed(status.pnl_total_pct)}%) da ${fmt(status.start_equity, 0)}{status.salvadanaio?.available ? " · incluso Salvadanaio" : ""}
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: '8px', fontSize: '12px', flexWrap: 'wrap' }}>
           <span style={{ color: '#64748b' }}>Cassa <strong style={{ color: '#cbd5e1' }}>${fmt(status.cash)}</strong></span>
@@ -244,6 +245,8 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
           <span style={{ color: '#64748b' }}>Oggi <strong style={{ color: pnlColor(status.day_pnl) }}>{signed(status.day_pnl)}$</strong></span>
         </div>
       </Card>
+
+      <Salvadanaio data={status.salvadanaio} />
 
       {/* KPI secondari */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>

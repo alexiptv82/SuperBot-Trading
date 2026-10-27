@@ -228,6 +228,12 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
     elif not reset_keeps_brain(hb):
         can_reset, reset_reason = False, RESET_OLD_BOT_MESSAGE
 
+    from salvadanaio_view import build_view
+    vault = build_view(state, hb, now)
+    vault_balance = float(vault["balance"]) if vault.get("available") else 0.0
+    total_equity = equity + vault_balance
+    if vault.get("available"):
+        can_reset, reset_reason = False, "Salvadanaio attivo: reset del conto non previsto; storico e saldo sono conservati."
     run_started = state.get("run_started_ms")
     return {
         "available": True, "portfolio": portfolio, "mode": "paper",
@@ -241,10 +247,11 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
             "last_ok": (hb or {}).get("last_ok"), "last_error": (hb or {}).get("last_error") or "",
             "next_cycle_ms": (hb or {}).get("next_cycle_ms") or None,
         },
+        "salvadanaio": vault, "total_equity": round(total_equity, 2),
         "cash": round(cash, 2), "margin_used": round(margin_used, 2),
         "unrealized_pnl": round(unrealized, 2), "equity": round(equity, 2),
-        "start_equity": start_equity, "pnl_total": round(equity - start_equity, 2),
-        "pnl_total_pct": round((equity - start_equity) / start_equity * 100, 2) if start_equity else 0.0,
+        "start_equity": start_equity, "pnl_total": round(total_equity - start_equity, 2),
+        "pnl_total_pct": round((total_equity - start_equity) / start_equity * 100, 2) if start_equity else 0.0,
         "day_pnl": round(equity - day_start, 2), "day": acc.get("day", ""),
         "open_positions": n_open, "positions": pos_list,
         "max_open": limits.get("max_open"), "max_margin_trade": limits.get("max_margin_trade"),

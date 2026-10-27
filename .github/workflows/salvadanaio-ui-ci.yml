@@ -1,0 +1,35 @@
+name: Salvadanaio dashboard - tests only
+on:
+  push:
+    branches: [work/classici-salvadanaio-dashboard-20261027]
+permissions:
+  contents: read
+jobs:
+  reader:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest
+      - run: python -m pytest -q tests/test_salvadanaio_view.py tests/test_desk_view.py
+        working-directory: backend
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: corepack enable
+      - run: yarn install --frozen-lockfile --non-interactive
+      - run: yarn react-scripts test --watchAll=false --runInBand Salvadanaio.test.js
+        env:
+          CI: 'true'
+      - run: yarn build
+        env:
+          CI: 'true'
