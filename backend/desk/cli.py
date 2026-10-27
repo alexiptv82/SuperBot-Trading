@@ -510,7 +510,9 @@ def save_state(state: dict, path: str) -> None:
         old_v=dec((before.get("vault") or {}).get("balance",0))
         new_v=dec((after.get("vault") or {}).get("balance",0))
         if old_v != new_v:
-            if (before.get("day") or {}).get("utc_day") != (after.get("day") or {}).get("utc_day"):
+            if after.get("capital", {}).get("reset_epoch_ms") != before.get("capital", {}).get("reset_epoch_ms"):
+                kind="reset"
+            elif (before.get("day") or {}).get("utc_day") != (after.get("day") or {}).get("utc_day"):
                 kind="rollover"
             elif len(after.get("receipts") or {}) > len(before.get("receipts") or {}):
                 kind="withdraw"
@@ -560,6 +562,7 @@ HB: dict = {"started_ms": int(time.time() * 1000), "version": CODE_VERSION, "pid
             # Dice all'app che in questa versione il reset del portafoglio NON cancella il cervello (storico dei
             # trade, appunti, registro). Senza questo campo l'app tiene bloccato il pulsante di azzeramento.
             "reset_keeps_brain": True,
+            "reset_with_vault": True,
             # Dice all'app che questa versione sa chiudere una singola posizione su richiesta dell'utente.
             # Con un bot piu' vecchio il tasto non appare (il comando resterebbe in attesa e scatterebbe dopo).
             "close_position": True}
@@ -1745,10 +1748,17 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
             print("[RESET PORTAFOGLIO] richiesta di cancellare gli appunti IGNORATA: il cervello non si cancella",
                   flush=True)
         clear_lessons = False        # mai: il cervello non si cancella da nessun comando
-        if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
-            _set_last_action(state,"reset_portfolio",False,
-                             "rifiutato: salvadanaio V1 richiede procedura di migrazione separata")
-            save_state(state,STATE_FILE)
+        cap_before = state.get("capital") or {}
+        vault_reset = _capital_enabled() and cap_before.get("schema_version") == 1
+        if vault_reset and (cap_before.get("policy") != "salvadanaio-only-v1" or opts.get("reset_vault") is not True):
+            _set_last_action(state, "reset_portfolio", False,
+                             "rifiutato: reset Salvadanaio richiede conferma esplicita e policy supportata")
+            save_state(state, STATE_FILE)
+            return False
+        if vault_reset and cap_before.get("status") != "READY":
+            _set_last_action(state, "reset_portfolio", False,
+                             "rifiutato: Salvadanaio non riconciliato")
+            save_state(state, STATE_FILE)
             return False
         if not os.path.exists(_flag("pause.flag")):
             _set_last_action(state, "reset_portfolio", False, "rifiutato: il bot non e' in pausa")
@@ -1775,6 +1785,18 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
         state.clear()
         state.update(keep)
         state["main"] = PaperAccount(PORTFOLIO.limits, "main").to_dict()
+        if vault_reset:
+            from desk.vault_manager import VaultState
+            from desk.salvadanaio import utc_day
+            cap = dict(cap_before)
+            cap.update(vault=VaultState().to_dict(), deposits=[], receipts={},
+                       day={"utc_day": utc_day(now_ms)}, status="READY",
+                       valuation={"fresh": False, "unrealized": "0"},
+                       reset_epoch_ms=now_ms)
+            cap.pop("boundary_pending_signature", None)
+            cap.pop("excluded_external_funds", None)
+            state["capital"] = cap
+
         state.update(run_no=run_no, run_started_ms=now_ms, paused=True, mode="paused")
         _set_last_action(state, "reset_portfolio", True,
                          f"portafoglio ripartito da {PORTFOLIO.limits.start_equity:.0f}$; run precedente archiviata; "
