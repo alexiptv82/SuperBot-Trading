@@ -49,7 +49,7 @@ jobs:
              return p.stdout
             
             def main():
-             expected={'superbot':os.environ['EXPECTED_APP_SHA'],'superbot-brain-hawk':'5024fbdfe3a9719098f905b28eac5d0feb9848e6','superbot-brain-bull':'5024fbdfe3a9719098f905b28eac5d0feb9848e6','superbot-brain-pilot':'1f2edeb6182029adc96ba7218ad145a7503472a3','superbot-desk-hawk':'89b0dca3e259c548ed82754c2301c7b024d18ff5','superbot-desk-bull':'89b0dca3e259c548ed82754c2301c7b024d18ff5'}
+             expected={'superbot':os.environ['EXPECTED_APP_SHA'],'superbot-brain-hawk':'129547ed43a9aaec935df31102bb4e8016c38e7c','superbot-brain-bull':'129547ed43a9aaec935df31102bb4e8016c38e7c','superbot-brain-pilot':'1f2edeb6182029adc96ba7218ad145a7503472a3','superbot-desk-hawk':'89b0dca3e259c548ed82754c2301c7b024d18ff5','superbot-desk-bull':'89b0dca3e259c548ed82754c2301c7b024d18ff5'}
              for name,sha in expected.items():
               item=json.loads(call(['docker','inspect',name]))[0]
               mode=dict(x.split('=',1) for x in item['Config'].get('Env',[]) if '=' in x).get('DESK_MODE')
@@ -69,6 +69,7 @@ jobs:
              r=v['profiles'][p]
              assert r['status']=='ok','READER_UNAVAILABLE'
              assert r['system']['heartbeat']=='fresh','HEARTBEAT_STALE'
+              assert (r['execution']['last_cycle_ms'] or 0)>=1793108080000,'POSTRELEASE_COMPLETED_CYCLE_MISSING'
              assert not r['execution']['operator_paused'],'NEW_PROFILE_PAUSED'
              print(json.dumps({'profile':p,'portfolio':r['portfolio'],'execution':r['execution'],'api_budget':r['api_budget'],'stats':r['stats'],'positions':[{k:x.get(k) for k in ('symbol','side','margin','leverage','notional_entry','floating_pnl','net_close_estimate','age_minutes','decision_source','stale')} for x in r['positions']]}))
             r=v['legacy']
@@ -77,6 +78,11 @@ jobs:
             """
              result=call(['docker','exec','-e','PYTHONDONTWRITEBYTECODE=1','-i','superbot','python','-'],input=code)
              for line in result.splitlines():print('PAIRED_READER='+json.dumps(json.loads(line),allow_nan=False))
+             expected_seeds={'hawk':'0951c98abc9be15e49cd569ef87b10ea6600fef362354f0db1381fe60f955e27','bull':'1775f52c99999f0c3e1f526ec5a4ba762d048fe054d23394f70cbb2e3a98f288'}
+             for profile,digest in expected_seeds.items():
+              seed_code="import hashlib,json;from pathlib import Path;from desk.brain import load_experience_seed;p=Path('/out/brain-"+profile+"');assert hashlib.sha256((p/'backtest_seed.json').read_bytes()).hexdigest()=='"+digest+"';s=load_experience_seed(str(p));assert s.startswith('CONTESTO BACKTEST') and 'dati reali' not in s;print(json.dumps({'profile':'"+profile+"','prompt_context_present':True,'seed_sha256':'"+digest+"','context_characters':len(s)}))"
+              seed_result=call(['docker','exec','-e','PYTHONDONTWRITEBYTECODE=1','superbot-brain-'+profile,'python','-c',seed_code])
+              print('PAIRED_SEED='+json.dumps(json.loads(seed_result)))
              root=Path('/opt/superbot-brain-adaptive');old=Path('/opt/superbot-desk-data/brain')
              baseline=json.loads((root/'api_budget_baseline.json').read_text())
              assert (old/'pause.flag').is_file(),'OLD_NEW_EXPOSURE_NOT_PAUSED'
