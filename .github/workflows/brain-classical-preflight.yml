@@ -1,0 +1,39 @@
+name: Brain adaptive - readonly inventory and verified backup
+on:
+  push:
+    branches: [rule-pool]
+    paths: ['deploy/brain-classical-preflight.trigger']
+permissions:
+  contents: read
+concurrency:
+  group: superbot-brain-pilot-singapore
+  cancel-in-progress: false
+jobs:
+  readonly-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inventory and backup only; no flags, orders, restarts or activation
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          BRAIN_PREFLIGHT_CONTROL: ${{ github.sha }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: BRAIN_PREFLIGHT_CONTROL
+          command_timeout: 8m
+          script: |
+            set -eu
+            umask 077
+            test "${#BRAIN_PREFLIGHT_CONTROL}" = 40
+            CONTROL_DIR=$(mktemp -d /opt/superbot-brain-preflight.XXXXXXXX)
+            trap 'rm -rf "$CONTROL_DIR"' EXIT
+            git init -q "$CONTROL_DIR"
+            git -C "$CONTROL_DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$CONTROL_DIR" fetch -q --depth=1 origin "$BRAIN_PREFLIGHT_CONTROL"
+            git -C "$CONTROL_DIR" checkout -q --detach "$BRAIN_PREFLIGHT_CONTROL"
+            test "$(git -C "$CONTROL_DIR" rev-parse HEAD)" = "$BRAIN_PREFLIGHT_CONTROL"
+            python3 "$CONTROL_DIR/deploy/scripts/brain_classical_preflight.py" \
+              --expected-legacy-sha 1f2edeb6182029adc96ba7218ad145a7503472a3
