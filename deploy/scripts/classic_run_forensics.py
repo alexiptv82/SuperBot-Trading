@@ -2,10 +2,10 @@
 Only fixed, allowlisted fields leave the server; raw prompts/keys/text never do.
 Protected source files opened O_RDONLY/O_NOFOLLOW; running bot may append.
 """
-import base64,collections,gzip,hashlib,json,math,os,re,subprocess,time
+import base64,collections,gzip,hashlib,json,math,os,re,subprocess,time,datetime,urllib.request,urllib.parse
 from pathlib import Path
 ROOT=Path('/opt/superbot-desk-data')
-NUMS=('id','run_no','ts','logged_ms','open_ms','close_ms','side','entry','exit','qty','margin','leverage','net','gross','fees','funding','confidence','dca_count','risk_plan_usd','net_r','mfe_r','mae_r','hold_ms','fraction','code_version')
+NUMS=('id','run_no','ts','logged_ms','open_ms','close_ms','side','entry','exit','qty','margin','leverage','net','gross','fees','funding','confidence','dca_count','risk_plan_usd','net_r','mfe_r','mae_r','hold_ms','fraction','code_version','sl','tp','margin_first','r_dist','hold_min','legs')
 FEATURES=('sig_side','sig_score','sig_long','sig_short','atr_pct','sig_sl_pct','sig_tp_pct','rsi1h','roc24h','vol_ratio','ema20_50_1h','ema50_200_4h','daily_trend','price','funding_rate','btc_roc24h','btc_score','btc_side','hour_utc','dow','conf','dec_lev','dec_margin','dec_sl_pct','dec_tp_pct','dec_rr','bars_4h','slow_4h_period','proposed_margin','proposed_lev')
 LIMITS=('start_equity','max_margin_trade','max_margin_total','max_open','max_dca','kill_equity','daily_stop','fee_bp_side','slip_bp_side','funding_bp_8h_long')
 PARAMS=('portfolio','code_version','entry_score_base','entry_score_tier_ab','entry_score_tier_c','daily_cap_usd','max_open','daily_loss_pct')
@@ -70,6 +70,27 @@ def params(r):
   if isinstance(r.get(section),dict):out[section]={k:v for k,v in r[section].items() if finite(v) or isinstance(v,bool)}
  return out
 
+def public_market():
+ windows=[('2026-10-12','2026-10-17'),('2026-10-16','2026-10-21'),('2026-10-21','2026-10-27')]
+ output=[]
+ for symbol in ('BTC','ETH','DOGE','ADA','DOT','XAU','XAG'):
+  for start,end in windows:
+   a=int(datetime.datetime.fromisoformat(start).replace(tzinfo=datetime.timezone.utc).timestamp()*1000)
+   b=int(datetime.datetime.fromisoformat(end).replace(tzinfo=datetime.timezone.utc).timestamp()*1000)
+   params=urllib.parse.urlencode({'symbol':symbol+'USDT','productType':'USDT-FUTURES','granularity':'1H','startTime':a,'endTime':b,'limit':200})
+   item={'symbol':symbol,'start_ms':a,'end_ms':b,'source':'Bitget public history-candles 1H','rows':[]}
+   try:
+    request=urllib.request.Request('https://api.bitget.com/api/v2/mix/market/history-candles?'+params,headers={'User-Agent':'SuperBot-ReadOnly-RunAudit/1.0'})
+    with urllib.request.urlopen(request,timeout=15) as response:payload=json.load(response)
+    if payload.get('code')!='00000':raise ValueError('PUBLIC_API_REJECTED')
+    rows={int(float(r[0])):[float(v) for v in r[:6]] for r in payload.get('data',[])}
+    item['rows']=[r for ts,r in sorted(rows.items()) if a<=ts<b and len(r)==6 and all(math.isfinite(v) for v in r)]
+    if not item['rows']:item['error']='NO_CANDLES'
+   except Exception as exc:item['error']=type(exc).__name__
+   output.append(item);time.sleep(.15)
+ return output
+
+
 def main():
  result={'captured_ms':int(time.time()*1000),'mode':'paper','source_read_only':True,'bots':{},'deploy_manifests':[],'protected_files':[]}
  for bot in ('hawk','bull'):
@@ -130,6 +151,7 @@ def main():
    elif isinstance(x,list):
     for v in x:walk(v)
   walk(r);result['deploy_manifests'].append({'file':path.name,'fields':fields})
+ result['public_market']=public_market()
  payload=json.dumps(result,allow_nan=False,separators=(',',':')).encode();encoded=base64.b64encode(gzip.compress(payload)).decode()
  print('AUDIT_META='+json.dumps({'mode':'paper','read_only':True,'payload_bytes':len(payload),'gzip_base64_bytes':len(encoded),'sha256':hashlib.sha256(payload).hexdigest(),'counts':{p:{k:len(d[k]) for k in ('history','opens','closes','summaries','version_ranges')} for p,d in result['bots'].items()}}))
  for i in range(0,len(encoded),12000):print('AUDIT_CHUNK='+encoded[i:i+12000])
