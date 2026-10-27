@@ -40,7 +40,7 @@ jobs:
           script: |
             set -eu
             python3 - <<'PY'
-            import hashlib,json,os,sqlite3,subprocess
+            import hashlib,json,os,re,sqlite3,subprocess,urllib.request
             from pathlib import Path
             
             def call(args,**kwargs):
@@ -56,8 +56,10 @@ jobs:
               assert mode=='paper' and item['State']['Running'],'NOT_RUNNING_PAPER'
               assert item['Config'].get('Labels',{}).get('superbot.sha')==sha,'SHA_MISMATCH'
               health=item['State'].get('Health',{}).get('Status','unknown')
-              assert health=='healthy','NOT_HEALTHY'
+              if name!='superbot':assert health=='healthy','NOT_HEALTHY'
               print('PAIRED_RUNTIME='+json.dumps({'name':name,'sha':sha,'health':health,'started_at':item['State']['StartedAt'],'restarts':item.get('RestartCount')}))
+             with urllib.request.urlopen("http://127.0.0.1:8002/api/health",timeout=5) as response:
+              assert response.status==200,"APP_HEALTH_FAILED"
              code="""import json,sys
             sys.path.insert(0,'/app/backend')
             from desk.brain_profiles_view import read_profiles
@@ -106,6 +108,7 @@ jobs:
              if os.getenv("VERIFY_PHASE")=="warmup":progress()
              else:main()
             except Exception as exc:
-             print('PAIRED_READONLY_VERIFICATION_FAILED='+type(exc).__name__)
+             code=str(exc) if isinstance(exc,(AssertionError,ValueError)) and re.fullmatch('[A-Z_]+',str(exc)) else type(exc).__name__
+             print('PAIRED_READONLY_VERIFICATION_FAILED='+code)
              raise SystemExit(1)
             PY
