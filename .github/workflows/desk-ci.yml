@@ -22,6 +22,8 @@ on:
       - "backend/tests/test_pm_exec_replay_*.py"
       - "deploy/scripts/pm_exec_replay.py"
       - "backend/tests/test_stop_buckets_*.py"
+      - "backend/tests/test_regime_*.py"
+      - "backend/tests/test_score_profile_*.py"
       - "deploy/scripts/stop_buckets.py"
       - ".github/workflows/desk-deploy.yml"
       - "deploy/scripts/test_deploy_workflow.py"
@@ -90,7 +92,7 @@ jobs:
         # sostituiscono moduli in sys.modules.
         run: |
           set -e
-          for f in test_bull_slots_2026_10_20 test_bull_margin_gate_2026_10_20 test_bull_leverage_gate_2026_10_20 test_prompt_account_line_2026_10_20 test_desk_fixes_2026_10_20 test_desk_fixes_2026_10_26 test_bull_guards_2026_10_26 test_data_fixes_2026_10_21 test_pm_exec_replay_2026_10_21 test_stop_buckets_2026_10_21; do
+          for f in test_bull_slots_2026_10_20 test_bull_margin_gate_2026_10_20 test_bull_leverage_gate_2026_10_20 test_prompt_account_line_2026_10_20 test_desk_fixes_2026_10_20 test_desk_fixes_2026_10_26 test_bull_guards_2026_10_26 test_regime_v1 test_regime_cycle_v1 test_score_profile_2026_10_27 test_data_fixes_2026_10_21 test_pm_exec_replay_2026_10_21 test_stop_buckets_2026_10_21; do
             python -m pytest tests/$f.py -q -p no:cacheprovider
           done
       - name: Fix A regression tests
