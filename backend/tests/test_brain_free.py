@@ -287,3 +287,10 @@ def test_report_counts_partial_realization_and_paid_entry_fees_once(tmp_path):
     report=reports.build(r.store,r.store.load(),NOW+2000)
     assert report['realized_net']==pytest.approx(e[0]['net'])
     assert report['fees']==pytest.approx(e[0]['fees']);r.close()
+
+
+def test_closing_notification_keeps_entry_thesis_and_labels_aggregate_pnl():
+    s,_=execute(account(),decision());s,e=execute(s,decision('close'),{'BTC':quote(101,NOW+1000)},NOW+1000)
+    text=event_text(e[0])
+    assert '[BRAIN]' in text and 'Tesi di apertura: synthetic evidence' in text
+    assert 'parziali incluse' in text and 'NETTO' in text

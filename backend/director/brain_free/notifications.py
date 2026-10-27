@@ -7,9 +7,11 @@ def event_text(event):
     side='LONG' if event.get('side')==1 else 'SHORT'
     text=f"[BRAIN] {event['kind']} #{event.get('position_id','—')} {event.get('symbol','')} {side} · PAPER"
     if 'margin' in event:text+=f"\nMargine ${event['margin']:.2f} · leva {event.get('leverage',0):.2f}x"
-    if 'qty' in event:text+=f" · quantità {event['qty']:.8g}"
+    if 'qty' in event:text+=f" · quantità {event.get('segment',event)['qty']:.8g}"
     if 'notional' in event:text+=f" · esposizione ${event['notional']:.2f}"
     text+='\nMotivo: '+str(event.get('reason',''))
+    if event.get('entry_reason'):text+='\nTesi di apertura: '+event['entry_reason']
+    if event.get('kind')=='trade_closed':text+='\nRisultato complessivo della posizione, parziali incluse.'
     if 'net' in event:text+=f"\nLordo ${event['gross']:.2f} · fee ${event['fees']:.2f} · funding ${event['funding']:.2f} · NETTO ${event['net']:.2f}"
     if event.get('adapted'):text+='\nSize/leva adattate ai vincoli fisici; proposta conservata nel registro.'
     return text
