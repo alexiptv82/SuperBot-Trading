@@ -1,0 +1,9 @@
+FROM python:3.11-slim
+LABEL org.opencontainers.image.description="Isolated AI-only PAPER Brain, 2000 virtual USD, no classical gates"
+WORKDIR /app
+ENV PYTHONPATH=/app/backend PYTHONUNBUFFERED=1 DESK_MODE=paper
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+COPY backend/director/brain_free ./backend/director/brain_free
+HEALTHCHECK --interval=30s --timeout=5s --start-period=1m --retries=3 CMD python -m director.brain_free.runtime --root /out --healthcheck
+ENTRYPOINT ["python", "-m", "director.brain_free.runtime"]
+CMD ["--help"]

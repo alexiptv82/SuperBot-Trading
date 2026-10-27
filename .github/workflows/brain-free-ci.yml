@@ -1,0 +1,26 @@
+name: Brain AI libero - offline contracts and image
+on:
+  push:
+    branches: [work/brain-ai-libero]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_free.py backend/tests/test_brain_free_rollout.py
+      - name: Verify classical and existing Brain code unchanged
+        run: |
+          git fetch --depth=1 origin 129547ed43a9aaec935df31102bb4e8016c38e7c
+          test -z "$(git diff --name-only 129547ed43a9aaec935df31102bb4e8016c38e7c HEAD -- backend/desk backend/director/classical_adaptive backend/director/brain_pilot)"
+      - run: docker build -f Dockerfile.brainfree -t brain-free-offline .
+      - name: No network or provider key needed for initialization and restart
+        run: |
+          mkdir "$RUNNER_TEMP/free-data"
+          docker run --rm --network none -v "$RUNNER_TEMP/free-data:/out" brain-free-offline --root /out --initialize
+          docker run --rm --network none --entrypoint python -v "$RUNNER_TEMP/free-data:/out" brain-free-offline -c "from director.brain_free.runtime import Runtime; r=Runtime('/out'); assert r.store.load()['cash']==2000; assert r.store.load()['verified_start_ms'] is None; import time; r.step({}, {}, {}, int(time.time()*1000)); r.close()"
