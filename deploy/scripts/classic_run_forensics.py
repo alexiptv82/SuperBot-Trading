@@ -2,7 +2,7 @@
 Only fixed, allowlisted fields leave the server; raw prompts/keys/text never do.
 Protected source files opened O_RDONLY/O_NOFOLLOW; running bot may append.
 """
-import base64,collections,gzip,hashlib,json,math,os,re,subprocess,time,datetime,urllib.request,urllib.parse
+import base64,collections,gzip,hashlib,json,math,os,re,subprocess,time,sys,datetime,urllib.request,urllib.parse
 from pathlib import Path
 ROOT=Path('/opt/superbot-desk-data')
 NUMS=('id','run_no','ts','logged_ms','open_ms','close_ms','side','entry','exit','qty','margin','leverage','net','gross','fees','funding','confidence','dca_count','risk_plan_usd','net_r','mfe_r','mae_r','hold_ms','fraction','code_version','sl','tp','margin_first','r_dist','hold_min','legs')
@@ -157,6 +157,34 @@ def main():
  for i in range(0,len(encoded),12000):print('AUDIT_CHUNK='+encoded[i:i+12000])
  print('AUDIT_EXPORT=PASS')
 
+
+def metadata_only():
+ out={'mode':'paper','source_read_only':True,'bots':{}}
+ for bot in ('hawk','bull'):
+  container=json.loads(command(['docker','inspect','superbot-desk-'+bot]))[0]
+  env=dict(x.split('=',1) for x in container['Config'].get('Env',[]) if '=' in x)
+  if env.get('DESK_MODE')!='paper':raise ValueError('PAPER_REQUIRED')
+  raw,manifest=read(ROOT/bot/'learning_log.jsonl');calls={};events=collections.Counter();schemas={};open_meta=[]
+  for line in raw.splitlines():
+   r=json.loads(line);ev=r.get('ev');events[ev]+=1
+   schemas.setdefault(ev,set()).update((r.get('features') or {}).keys())
+   if ev=='claude_call':
+    v=calls.setdefault(r.get('run_no'),{'n':0,'ok':0,'cost_usd':0.,'first_ms':r.get('ts'),'last_ms':r.get('ts'),'decisions':0})
+    v['n']+=1;v['ok']+=r.get('ok') is True;v['cost_usd']+=r.get('cost_usd',0) if finite(r.get('cost_usd')) else 0.;v['decisions']+=r.get('n_decisions',0) if finite(r.get('n_decisions')) else 0
+    if finite(r.get('ts')):v['first_ms']=min(v['first_ms'],r['ts']);v['last_ms']=max(v['last_ms'],r['ts'])
+   if ev=='open':
+    f=r.get('features') or {};v={k:r[k] for k in ('run_no','id','symbol','ts') if k in r}
+    v['macro']={k:f[k] for k in ('macro_blackout','macro_bonus','macro_min_next','macro_enforced') if k in f and (finite(f[k]) or isinstance(f[k],bool))}
+    if f.get('macro_regime') in ('basso','medio','alto','nd','calmo','osservazione'):v['macro']['macro_regime']=f['macro_regime']
+    open_meta.append(v)
+  out['bots'][bot]={'calls_by_run':calls,'event_counts':dict(events),'feature_fields_union':{k:sorted(v) for k,v in schemas.items()},'open_macro':open_meta,'protected_existence':{name:(ROOT/bot/name).is_file() for name in ('trade_history.jsonl','learning_log.jsonl','lessons.md','errors.md')},'manifest':manifest}
+ raw=json.dumps(out,separators=(',',':'),allow_nan=False).encode();s=base64.b64encode(gzip.compress(raw)).decode()
+ print('AUDIT_META='+json.dumps({'kind':'metadata','sha256':hashlib.sha256(raw).hexdigest(),'payload_bytes':len(raw)}))
+ for i in range(0,len(s),12000):print('AUDIT_CHUNK='+s[i:i+12000])
+ print('AUDIT_EXPORT=PASS')
+
 if __name__=='__main__':
- try:main()
+ try:
+  if "--metadata-only" in sys.argv:metadata_only()
+  else:main()
  except Exception as exc:print('AUDIT_FAILED='+type(exc).__name__);raise SystemExit(1)
