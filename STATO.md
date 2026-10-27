@@ -1,26 +1,26 @@
 # STATO CORRENTE SuperBot-Trading — 27 ottobre 2026
-Fotografia aggiornata alle 13:39 UTC (14:39 Zurigo). Per lo storico consultare le sezioni sottostanti e diario/2026-10-27_chatgpt.md. Protocollo: SINCRONIZZAZIONE-WORK-CHAT.md.
+Fotografia runtime verificata alle **20:02 Roma / 19:02 UTC**, postflight40565394446 SUCCESS. Fonte: workflow e verifiche dirette sul VPS, non HEAD del ramo assunto come runtime.
 
-## Runtime PAPER attuali — verificati sul VPS Singapore
-- **Classici Hawk e Bull:** SHA `89b0dca3e259c548ed82754c2301c7b024d18ff5`, deploy Claude 27/10 03:59UTC. Entrambi healthy/PAPER, restart0; started_at Hawk03:59:19.624UTC e Bull03:59:42.179UTC. Il rilascio Brain non li ha riavviati. Pesi classici e filtro regime approvati; Bull rischio SL aggregato250; DESK_CAPITAL_V1=off.
-- **Hawk + Brain / Bull + Brain LIVE PAPER:** due processi `superbot-brain-hawk`/`superbot-brain-bull`, SHA `129547ed43a9aaec935df31102bb4e8016c38e7c`, healthy/restart0, partiti27/10 13:31:39UTC. Upgrade40512553461 SUCCESS13:34:41UTC, migrazione stato da5024 con backup/restoreverificati, nessun reset. Metodi/limiti classici distinti, supervisione1m H24, AI asincrona entro budget. Nuove aperture riabilitate; tuttoPAPER.
-- Verifica readonly40513939339 SUCCESS13:39:31UTC: Hawk504cicli/Bull505, cash/equity1000PAPER ciascuno, margine0/nessuna posizione/nessun tradechiuso; feed freschi, coverage integra, nessun entry_cycle_failed e pausefalse. Seed letti dal codice nei duecontainer,1463caratteri di contesto ciascuno, SHA256 identici ai file pubblicati. Source attuale classical_rules/provider paced_profile_allowance; non etichettare fallback come AI.
-- **Brain precedente** `superbot-brain-pilot` SHA1f2edeb6182029adc96ba7218ad145a7503472a3, healthy/PAPER/restart0, partito26/10 14:54:27UTC. Le4posizioni restano gestite e visibili nel conto precedente; SOLO nuove aperture/chiamate AI in pausa tramite pause.flag. Dati/storico/memoria non azzerati.
-- Budget Brain CONDIVISO0.50USD/giorno e12/mese, invariato: snapshot13:39UTC riservato giorno0.286987/mese0.387787; profiloHawk0.015525/Bull0.015348, spesa legacy conservata. Ledger e baseline verificati senza reset. Supervisione/fallback H24; AI soggetta a pacing, non continua.
-- Dati nuovi: /opt/superbot-brain-adaptive/brain-hawk e brain-bull; ledger parent brain-api-budget.sqlite3. Identità metodo persistente: futuri aggiornamenti codice richiedono migrazione conservativa esplicita, nessun reset per aggirare la guardia.
-- Storico classico reale NON ancora importato come experience_seed.json. Memoria nuovi esiti predisposta/persistente, nessun retraining dichiarato; euristica uscita su profitto netto/indebolimento sperimentale PAPER. LONG/up e SHORT/down e veti opposti testati; non prova della redditività LONG.
-- Trigger inizializzazione e aggiornamento DISARMATI: iniziale3333e62c e upgrade6937021f (action=none/approved=no). Vecchi container adattivi conservati FERMI con suffisso -previous-20261027T133014Z; nessun primoavvio/reset su dati esistenti.
+## IN_CORSO
+Nessun rilascio in corso. ChatGPT Work ha concluso rollback classici e dashboard approvati dall'utente. Prossimo passo: osservazione, incluso primo rollover Salvadanaio alle00:00UTC. Nuovi deploy richiedono un nuovo OK.
 
-## App Dashboard — tre conti Brain LIVE
-- SHA `4cf41d23bb94f7a868b25dd1c89b3e4e8993d9a8`, main PR15, deploy40452932435 SUCCESS05:02:43UTC. Frontend/SHA/API/nginx/HTTPS e backup/restore DB verificati. App non ha Docker HEALTHCHECK: endpoint HTTP /api/health verificato200; non inventare Docker healthy.
-- Tab BRAIN: **Hawk + Brain / Bull + Brain / Brain precedente**. Margine, leva effettiva, esposizione, floating e netto stimato, età/stop/target, origine AI/regole e proposte separate dalle esecuzioni; nessun saldo fittizio se profilo assente, nessuna somma dei conti.
-- GET /api/brain/profiles autenticato/no-store; reader SQLite mode=ro/query_only con deadline, parent /opt/superbot-brain-adaptive montato:ro e BRAIN_ADAPTIVE_DATA_DIR. GET /api/brain/status compatibile, vecchio root brain:ro/BRAIN_DATA_DIR mantenuto.
-- Postflight ha interrogato reader reale dentro app e controllato tutti gli SHA/PAPER/health dei5worker, pause/feed/ledger/vecchie4posizioni. Il primo postflight40454569926 fallì per asserzione erronea Docker health app; corretto SOLO verifier con controllo HTTP, nessun redeploy/riavvio correttivo.
-- Backup preflight: /opt/superbot-backups/brain-adaptive-preflight-20261027T042052Z (integrity+restore comparato PASS). Backup finale preattivazione: /opt/superbot-backups/brain-before-adaptive-20261027T050607Z. Backup DBapp: /opt/superbot-backups/superbot-deploy-20261027-050221.db (restore comparato PASS); rollback immagine/frontend conservati.
-- CI runtime finale40452483812/40452479075 e legacy40452483743 SUCCESS;32testnuovi,142regressioni+Docker5posizioni. App41testreader/API+10React+build, CI40451305609/40451300902 e main40452532496 SUCCESS.
+## Runtime classici e app — LIVE PAPER
+- **Hawk e Bull classici**: SHA `3abf1f808b09bf9066d96a1d16f945d65601ba02`, code_version `3abf1f8`, healthy/restart0, istanza singola, PAPER. Rollback selettivo5818 con anti-biasLONG/SHORT e bugfixmotore (barre chiuse, ingresso, DCAstopnonallargato); soglieA/B60,C70; Hawk10slot/Bull3; stopgiornaliero12%; sizingstorico. P1/regime/Guardianavanzato esclusi. Posizioni2Hawk/3Bull conservate, run invariata.
+- **Salvadanaio**: policy `salvadanaio-only-v1` READY in entrambi, CapitalV1OFF; eccedenza netta oltre1000operativi, no reintegroperdite, pending escluso dal saldo protetto. Journal separato, vecchioV1intatto. Primaattivazione senza credito retroattivo inventato; primo rollover live non ancora osservato. Dashboard mostra saldo/accreditigiornalieri/pending in sola lettura.
+- **App**: SHA `56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace`, main; HTTPAPI/frontend200, manifestocodice/frontend coerente, readerSalvadanaio realePASS. Non ha DockerHEALTHCHECK.
+- Deploybot40564697020 e app40565004065 SUCCESS; postflight40565394446 SUCCESS: sourcehash, archiviprefixhash, run e budget preservati; backup nuovo journal con prova restorePASS. Nessunreset.
+- Backup botpredeploy `/opt/superbot-backups/bots-20261027-185733-deploy`, postflight `bots-20261027-190211-classici_vault_postflight`; DBapp `superbot-deploy-20261027-190057.db`. Rollbackimmagine `superbot-desk:rollback-20261027-185733`, app `superbot:prev`, frontend `build.prev`. Ripristinare dati richiede decisione, non usarlo come reset.
+- HEADrule-pool `183fdb7b1bf25140d2d236c98e50262b5cd3411b` contiene trigger/verifier successivi: **runtimebot resta3abf**. Main56dc. Triggerverifier disarmato, nessun forcepush o merge tra main/rule-pool.
 
+## Brain e altri servizi — NON TOCCATI
+- Brain adattivi Hawk/Bull: SHA `129547ed43a9aaec935df31102bb4e8016c38e7c`; Brain precedente `1f2edeb6182029adc96ba7218ad145a7503472a3`. Healthy/PAPER. IDcontainer e StartedAt uguali al preflight: nessun riavvio. Stesso confronto passato per tutti gli altri container non coinvolti.
+- Datiadattivi `/opt/superbot-brain-adaptive/brain-{hawk,bull}`, ledger condiviso e budget invariati; seed backtest sintetici/nonverificati restano contesto distinto dall'esperienzaoperativa. Storico classico non importato automaticamente, nessun retraining dichiarato.
+- TabBRAIN e mountRO dell'app conservati. HI-TV mai contattato. Segreti, DESK_MODE e conti reali non modificati.
 
-- Seed backtest separati LIVE: /opt/superbot-brain-adaptive/brain-{hawk,bull}/backtest_seed.json, fonte dichiarata sintetica/nonverificata; non sono trade PAPER né bundle experience_seed. Backup upgrade /opt/superbot-backups/brain-paired-update-20261027T133014Z. Profit-first85/PR16 resta separato e non incluso nel source129.
+Dettagli: `diario/2026-10-27_chatgpt.md` e `diario/ROLLBACK-CLASSICI-2026-10-27-DIFF-FINALE.md`.
+
+---
+**ARCHIVIO DI CONTINUITÀ:** le sezioni sottostanti sono cronologia conservata. Le descrizioni vecchie di codice attivo, Guardian, P1/P2 e stato deploy sono superate dalla fotografia sopra; non usarle come istruzioni operative correnti.
 
 ## AI IN OMBRA (DeepSeek) — ATTIVO DAL 21/10/2026
 - Container `superbot-ai` su VPS Singapore, **Up 5 days (healthy)**, riavvii: 0.
@@ -540,3 +540,15 @@ Fotografia aggiornata alle 13:39 UTC (14:39 Zurigo). Per lo storico consultare l
 ## Dashboard Salvadanaio deploy SUCCESS — postflight in corso
 - App40565004065/job122403831134 SUCCESS19:01UTC, SHA56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace; codice/server/frontend coerenti, HTTPAPI e frontend200. Backup DBsuperbot-deploy-20261027-190057.db verificato con restore; rollbackappsuperbot:prev e frontendbuild.prev conservati. Nessun riavvio dei worker previsto dal workflow app.
 - Avviata verifica indipendente postflight: sorgenti/policy/health classici, prefixhash archivi precedenti, run/posizioni/budget, identità immutata di tutti i container non coinvolti (Brain inclusi), reader reale dashboard e manifestofrontend, backup nuovo journalSalvadanaio con restore. In attesa esito, non dichiarare ancora continuità finale provata.
+
+
+## ROLLBACK CLASSICI + SALVADANAIO LIVE PAPER — 27/10, 20:02 Roma (19:02 UTC)
+- OK deploy esplicito utente eseguito. Classici Hawk/Bull su3abf1f808b09bf9066d96a1d16f945d65601ba02, heartbeat3abf1f8, healthy/restart0/PAPER, istanza singola. Metodo5818 selettivo come diff approvato, anti-biasLONG/SHORT e bugfixmotore mantenuti, P1/regime/Guardianavanzato esclusi. CapitalV1off, policySalvadanaioonlyREADY.
+- App su56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace, HTTP200, codiceserver/frontend/manifesto coerenti. Bundle frontend contiene Salvadanaio e reader reale installato restituisce available/ready per Hawk/Bull. App non ha DockerHEALTHCHECK: verificato HTTP, non inventare healthy.
+- Deployclassici40564697020 SUCCESS18:58UTC; backupbots-20261027-185733-deploy + immagine superbot-desk:rollback-20261027-185733. Deployapp40565004065 SUCCESS19:01UTC; backupSQLite superbot-deploy-20261027-190057.db con restorePASS, superbot:prev e build.prev preservati.
+- Postflight indipendente40565394446/job122405174661 SUCCESS19:02:12UTC: sorgenti sette moduli classici hashidentici al codice approvato, nuovi heartbeat/cicli riusciti; archivi protetti prefixhashidentici al preflight (append consentito), run_no/run_started_ms invariati, budgettotale non diminuito. Tutte le posizioni precedenti conservate:2Hawk/3Bull. Nessun reset o ricostruzione account; nessuna modifica manuale a memoria/storico/flag.
+- Nuovo backupbots-20261027-190211-classici_vault_postflight: include salvadanaio-journal.jsonl (2righe ciascuno), hash/JSON/ripristinoPASS; vecchi journalV1 intatti (11Hawk/8Bull). Tradehistory279Hawk/152Bull, lessons45/54righe; learningcresce normalmente. errors.md assente prima non creato dal deploy. Nessun importo reale esposto.
+- Tutti i container non coinvolti, inclusi Brain129547ed e legacy1f2edeb6, hanno stessoID/StartedAt del preflight: nessun riavvio o cambiamento. HI-TV mai contattato. Nessun ordine live.
+- Salvadanaio: primaattivazione senza accreditare profitto passato fittizio. Eccedenza netta realizzata sopra1000 al rollover00:00UTC, residuo dopo perdite, nessun reintegro né prelievo dal vault. Pending distinto, nessuna chiusura forzata. Primo rollover live ancora da osservare: testofflinePASS non equivale a evento già avvenuto.
+- Opsdi rilascio: guardiasorgente89misurata; backup riconosce journalSalvadanaio come critico/obbligatorio al postoV1quando policyvault-only.91testbackup/deployguard +1testselezionejournal/corruzionePASS; nessuna modifica aggiuntiva a strategia. Primo preflightfallito perverifiererrorsopzionale giàdocumentato, nessun restartcorrettivo.
+- HEADrule-pool ora183fdb7b1bf25140d2d236c98e50262b5cd3411b (ultimi commit solo trigger/verifier), main56dc; differiscono dal codice botdistribuito3abf intenzionalmente. Trigger verifier disarmato phase=none approved=no [skipci], vecchi backup/immagini conservati. Riserva rilascio ChatGPT conclusa. Prossimo: osservare prima giornata/rollover senza modificare parametri; nuovi deploy richiedono nuovoOK.

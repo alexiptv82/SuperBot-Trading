@@ -1,3 +1,21 @@
+# AGGIORNAMENTO — rilasciato e verificato 27/10/2026, 20:02 Roma
+
+
+## ROLLBACK CLASSICI + SALVADANAIO LIVE PAPER — 27/10, 20:02 Roma (19:02 UTC)
+- OK deploy esplicito utente eseguito. Classici Hawk/Bull su3abf1f808b09bf9066d96a1d16f945d65601ba02, heartbeat3abf1f8, healthy/restart0/PAPER, istanza singola. Metodo5818 selettivo come diff approvato, anti-biasLONG/SHORT e bugfixmotore mantenuti, P1/regime/Guardianavanzato esclusi. CapitalV1off, policySalvadanaioonlyREADY.
+- App su56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace, HTTP200, codiceserver/frontend/manifesto coerenti. Bundle frontend contiene Salvadanaio e reader reale installato restituisce available/ready per Hawk/Bull. App non ha DockerHEALTHCHECK: verificato HTTP, non inventare healthy.
+- Deployclassici40564697020 SUCCESS18:58UTC; backupbots-20261027-185733-deploy + immagine superbot-desk:rollback-20261027-185733. Deployapp40565004065 SUCCESS19:01UTC; backupSQLite superbot-deploy-20261027-190057.db con restorePASS, superbot:prev e build.prev preservati.
+- Postflight indipendente40565394446/job122405174661 SUCCESS19:02:12UTC: sorgenti sette moduli classici hashidentici al codice approvato, nuovi heartbeat/cicli riusciti; archivi protetti prefixhashidentici al preflight (append consentito), run_no/run_started_ms invariati, budgettotale non diminuito. Tutte le posizioni precedenti conservate:2Hawk/3Bull. Nessun reset o ricostruzione account; nessuna modifica manuale a memoria/storico/flag.
+- Nuovo backupbots-20261027-190211-classici_vault_postflight: include salvadanaio-journal.jsonl (2righe ciascuno), hash/JSON/ripristinoPASS; vecchi journalV1 intatti (11Hawk/8Bull). Tradehistory279Hawk/152Bull, lessons45/54righe; learningcresce normalmente. errors.md assente prima non creato dal deploy. Nessun importo reale esposto.
+- Tutti i container non coinvolti, inclusi Brain129547ed e legacy1f2edeb6, hanno stessoID/StartedAt del preflight: nessun riavvio o cambiamento. HI-TV mai contattato. Nessun ordine live.
+- Salvadanaio: primaattivazione senza accreditare profitto passato fittizio. Eccedenza netta realizzata sopra1000 al rollover00:00UTC, residuo dopo perdite, nessun reintegro né prelievo dal vault. Pending distinto, nessuna chiusura forzata. Primo rollover live ancora da osservare: testofflinePASS non equivale a evento già avvenuto.
+- Opsdi rilascio: guardiasorgente89misurata; backup riconosce journalSalvadanaio come critico/obbligatorio al postoV1quando policyvault-only.91testbackup/deployguard +1testselezionejournal/corruzionePASS; nessuna modifica aggiuntiva a strategia. Primo preflightfallito perverifiererrorsopzionale giàdocumentato, nessun restartcorrettivo.
+- HEADrule-pool ora183fdb7b1bf25140d2d236c98e50262b5cd3411b (ultimi commit solo trigger/verifier), main56dc; differiscono dal codice botdistribuito3abf intenzionalmente. Trigger verifier disarmato phase=none approved=no [skipci], vecchi backup/immagini conservati. Riserva rilascio ChatGPT conclusa. Prossimo: osservare prima giornata/rollover senza modificare parametri; nuovi deploy richiedono nuovoOK.
+
+
+---
+## Documento di revisione conservato (precedente al deploy)
+
 # Rollback selettivo classici — diff da approvare prima del deploy
 
 Stato: codice preparato, nessun deploy. Solo PAPER. Autorizzazione operatore del 27 ottobre 2026.
