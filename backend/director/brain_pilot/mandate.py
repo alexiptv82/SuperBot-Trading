@@ -1,5 +1,5 @@
 """Versioned operator intent, distinct from the execution capabilities in service."""
-VERSION = "operator-classical-adaptive-h24-20261026"
+VERSION = "operator-classical-adaptive-h24-20261027"
 
 
 def build(portfolio, memory):
@@ -7,8 +7,32 @@ def build(portfolio, memory):
     return {
         "version": VERSION,
         "authority": "explicit_user_trading_objective",
+        "primary_objective": {
+            "mandate": "NET_PROFIT",
+            "priority": "PRIMARY_WITHIN_HARD_CONTROLS",
+            "statement": (
+                "Seek sustainable NET profit after fees, slippage and funding using the actual Hawk/Bull methods as a base. "
+                "Evaluate, skip or prioritize executable signals using current evidence and verified outcomes. "
+                "Profit is the primary performance objective, subject to capital preservation and hard execution controls. "
+                "A losing day is possible: never force recovery trades, increase risk or bypass stops to meet a daily target. "
+                "Trade frequency is not a target; retain adaptive scalp and capital rotation when valid opportunities exist. "
+                "Treat apparent winning or losing patterns as hypotheses until adequate, separated evidence supports them."
+            ),
+            "secondary_objectives": ["capital_preservation", "learning_from_own_outcomes", "reducing_repeat_errors"],
+            "not_objectives": [
+                "following_rules_for_their_own_sake",
+                "maximizing_trade_count",
+                "proving_a_directional_bias",
+                "matching_historical_run_parameters_exactly",
+            ],
+            "success_metric": "daily_net_pnl_positive_after_costs",
+            "learning_mandate": (
+                "After each session, evaluate: what worked, what did not, what you would do differently. "
+                "Use verified outcomes to propose adaptations within the selected profile; do not rewrite rules or risk limits autonomously."
+            ),
+        },
         "requested_style": "adaptive_scalp",
-        "objective": "Use the actual Hawk and Bull trading methods as the base, adding adaptive intelligence continuously, 24 hours a day.",
+        "objective": "Primary: sustainable net profit after costs. Method: classical Hawk/Bull as base plus adaptive intelligence H24.",
         "method_contract": {
             "base": "shared_classical_hawk_and_bull_method",
             "profiles": ["hawk", "bull"],

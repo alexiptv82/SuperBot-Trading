@@ -299,11 +299,36 @@ class RuntimeTests(Fixture):
             self.assertNotIn("experience_artifact",p.state)
 
     def test_engineering_notes_do_not_claim_a_successful_fix_or_trained_model(self):
-        notes=knowledge.catalog()
+        notes=[n for n in knowledge.catalog() if n["kind"] in ("documented_code_change","documented_code","historical_research_not_reproduced")]
         self.assertEqual(len(notes),3)
         self.assertTrue(all("evidence" in n and "effectiveness" in n for n in notes))
         self.assertIn("SHADOW ONLY",next(n for n in notes if n["topic"]=="profit_protection")["fact"])
         self.assertFalse(knowledge.catalog(0))
+
+    def test_curated_run_and_hypotheses_are_unique_dated_and_not_trade_evidence(self):
+        notes=knowledge.catalog()
+        self.assertEqual(len({n['id'] for n in notes}),11)
+        run=next(n for n in notes if n['topic']=='best_observed_run')
+        self.assertEqual(run['kind'],'operator_reported_case_study')
+        self.assertFalse(run['evidence']['trade_archive_imported'])
+        self.assertIn('unverified',run['effectiveness'])
+        hypotheses=[n for n in notes if n['kind']=='research_hypothesis_not_validated']
+        self.assertEqual(len(hypotheses),7)
+        stamp=run['available_after_ms']
+        self.assertEqual(len(knowledge.catalog(stamp-1)),3)
+        self.assertEqual(len(knowledge.catalog(stamp)),11)
+        self.assertGreater(stamp,1793059200000)  # 27 October 2026 UTC
+
+    def test_profit_objective_preserves_hard_controls_and_honest_capabilities(self):
+        from director.brain_pilot import mandate
+        m=mandate.build({}, {})
+        objective=m['primary_objective']
+        self.assertEqual(objective['mandate'],'NET_PROFIT')
+        self.assertEqual(objective['priority'],'PRIMARY_WITHIN_HARD_CONTROLS')
+        self.assertIn('never force recovery',objective['statement'])
+        self.assertIn('cannot silently',m['method_contract']['rule_changes'])
+        self.assertFalse(m['duration']['fixed_exit_timer'])
+        self.assertEqual(m['active_execution'],{'status':'unknown'})
 
 
 if __name__=="__main__":unittest.main()
