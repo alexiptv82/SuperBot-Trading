@@ -17,6 +17,7 @@ from director.classical_adaptive.feeds import Feeds
 
 profile=sys.argv[1]
 side=sys.argv[2] if len(sys.argv)>2 else "long"
+market_side=sys.argv[3] if len(sys.argv)>3 else side
 NOW=1793102400000+15000
 
 with tempfile.TemporaryDirectory() as root:
@@ -30,8 +31,9 @@ with tempfile.TemporaryDirectory() as root:
         end=clock[0]//ms*ms
         return [[end-(99-i)*ms,price[0],price[0]+.001,price[0]-.001,price[0],100] for i in range(100)]
     def reading(sym,*args,**kw):
-        return SimpleNamespace(symbol=sym,price=price[0],side=1,score=59,long_score=59,short_score=10,trade_type="scalp",
-            sl_pct=.004,tp_pct=.008,atr_pct=.003,why=["synthetic"],seasonal_note="",pattern="",facts={"daily_trend":"trend 1d bull","ema50_200_4h":"su"})
+        long=market_side=='long'
+        return SimpleNamespace(symbol=sym,price=price[0],side=1 if long else -1,score=59,long_score=59 if long else 10,short_score=10 if long else 59,trade_type="scalp",
+            sl_pct=.004,tp_pct=.008,atr_pct=.003,why=["synthetic"],seasonal_note="",pattern="",facts={"daily_trend":"trend 1d bull" if long else "trend 1d bear","ema50_200_4h":"su" if long else "giu"})
     answer={"decisions":[{"symbol":"ETH","action":"open_"+side,"margin_usd":200,"leverage":15,"confidence":95,
         "stop_loss_pct":.004,"take_profit_pct":.008,"reason":"synthetic current evidence","trade_type":"scalp"}]}
     def fake(*_):
@@ -62,7 +64,16 @@ with tempfile.TemporaryDirectory() as root:
             clock[0]+=60000;s.step(clock[0])
             events=[json.loads(r[0]) for r in s.store.db.execute("SELECT body FROM events WHERE kind='journal'")]
             assert not [e for e in events if e.get("kind")=="entry_cycle_failed"],events[-3:]
-            a=cli.make_account(s.state["desk"]);p=a.positions["ETH"]
+            a=cli.make_account(s.state["desk"])
+            if side!=market_side:
+                assert 'ETH' not in a.positions,a.positions
+                assert cli.REGIME_ON
+                assert cli.HB['regime']['state']==('up' if market_side=='long' else 'down'),cli.HB['regime']
+                assert any(e.get('kind')=='adaptive_advice' and e['decisions'][0]['action']=='open_'+side for e in events)
+                print('REGIME_ENTRY_VETO=PASS')
+                print('CLASSICAL_ADAPTIVE_PROBE=PASS')
+                raise SystemExit(0)
+            p=a.positions["ETH"]
             assert p.total_margin==(100 if profile=="hawk" else 200),p
             assert p.leverage==15,p
             assert p.source=="brain-deepseek",p

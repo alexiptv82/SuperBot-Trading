@@ -6,6 +6,8 @@ Alessandro explicitly requires the actual Hawk and Bull methods, with adaptive i
 
 This feature includes the candidate learning/transfer/mandate dependency from PR#12 `41161f42`. It does not merge or deploy either PR. Director V1's Arbitro was inspected: its 1%-risk sizing/four-slot defaults would recreate a different method, so it is not substituted for the classical executor.
 
+**Current baseline update,27October:** while preparing the paired app, rule-pool advanced through the separately user-approved regime/classic-score integration `89b0dca` and deploy trigger `dd7c71d`, then read-only audits to `e0efa6e7b6b19bb9ab3760d06fd844c1f8cca083`. This candidate incorporates that current classical source unchanged. The earlier35f08cf/e5 baseline description above is historical. The current inherited policy uses classic score weights, the production regime entry filter (ratchet/flip off by default) and Bull250 risk cap. No independent threshold was chosen for Brain. The PR merge test correctly vetoed the old SHORT-in-uptrend fixture; fixtures now test valid SHORT/down and LONG/up plus explicit opposite-regime vetoes, without disabling the real filter. Runtime method identity includes actual score/regime configuration, not source files alone. Actual VPS version/settings must still be verified by the preflight.
+
 ## Two isolated profiles, actual limits
 
 | Setting inherited from classical code | Brain Hawk | Brain Bull |
@@ -20,7 +22,7 @@ This feature includes the candidate learning/transfer/mandate dependency from PR
 | Daily equity stop | 10% | 10% |
 | Absolute kill equity | $450 | $450 |
 
-These are the selected **classical** policies, not newly selected risk parameters. The old single Brain's 20% stop and 1%-risk sizing remain unchanged in its original runtime; they are not presented as the policies of these profiles. Classical guardrail forcing can change a low proposal to Hawk scalp or Bull medio; native cooldowns, split/DCA rules, confidence thresholds, R/R, leverage tiers, liquidation checks and Bull's current 160 risk/2% BTC-short veto remain inherited. Bull 250 is a separate pending decision/change, not part of this candidate.
+These are the selected **classical** policies, not newly selected risk parameters. The old single Brain's20% stop and1%-risk sizing remain unchanged in its original runtime; they are not presented as the policies of these profiles. Classical guardrail forcing can change a low proposal to Hawk scalp or Bull medio; native cooldowns, split/DCA rules, confidence thresholds, R/R, leverage tiers, liquidation checks, the approved Bull250 risk/2% BTC-short veto and regime filter remain inherited from the synchronized classical source.
 
 DeepSeek proposes the classical JSON schema; the native executor can refuse it. The real rule fallback proposes its original margin/leverage formula. There is no artificial small 1%-risk rescaling of an admitted classical trade. Tests demonstrate the same 200 margin/15x proposal becomes Hawk 100/15x and Bull 200/15x through native controls. Higher exposure increases losses as well as profits; no profit/turnover claim follows from the synthetic tests.
 

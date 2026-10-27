@@ -214,9 +214,9 @@ class BudgetProviderTests(unittest.TestCase):
 class RealClassicalProcessTests(unittest.TestCase):
     def test_real_hawk_and_bull_cycles_ai_size_stop_recovery_and_rollback(self):
         # Profile selection happens at import, exactly like the actual bots.
-        for profile,side in (("hawk","long"),("bull","long"),("hawk","short"),("bull","short")):
+        for profile,side,market in (("hawk","long","long"),("bull","long","long"),("hawk","short","short"),("bull","short","short"),("hawk","short","long"),("bull","long","short")):
             env=dict(os.environ,DESK_MODE="paper",DESK_MACRO_FETCH="0",DESK_DAILY_FETCH="0",PYTHONPATH="backend:backend/tests")
-            result=subprocess.run([sys.executable,"backend/tests/brain_classical_probe.py",profile,side],env=env,text=True,capture_output=True,timeout=30)
+            result=subprocess.run([sys.executable,"backend/tests/brain_classical_probe.py",profile,side,market],env=env,text=True,capture_output=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout[-4000:]+result.stderr[-2000:])
             self.assertIn("CLASSICAL_ADAPTIVE_PROBE=PASS",result.stdout)
 

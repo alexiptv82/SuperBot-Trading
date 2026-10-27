@@ -121,10 +121,12 @@ def test_long_is_never_vetoed_by_the_rally():
         rig.close()
 
 
-def test_second_position_is_refused_by_the_risk_cap_but_not_the_first():
+def test_third_position_is_refused_by_the_risk_cap_but_the_first_two_open():
+    """Tetto 250$ (utente 26/10): con ~84$ di rischio SL a posizione passano due posizioni, la terza (252$) no."""
     rig = Rig()
     try:
-        # sl 1,6% con TP 2,5% (R:R 1,56) -> con 350$ x 15x il rischio SL e' ~84$ a posizione: due superano 160$
+        assert cli.BULL_MAX_OPEN_RISK_USD == 250.0
+        # sl 1,6% con TP 2,5% (R:R 1,56) -> con 350$ x 15x il rischio SL e' ~84$ a posizione
         rig.claude(action="open_long", symbol="BTC", sl=0.016, lev=15, margin=350)
         rig.cycle(0)
         rig.cycle(1)
@@ -133,7 +135,10 @@ def test_second_position_is_refused_by_the_risk_cap_but_not_the_first():
         assert 0 < risk < cli.BULL_MAX_OPEN_RISK_USD, risk
         rig.claude(action="open_long", symbol="ETH", sl=0.016, lev=15, margin=350)
         rig.cycle(2)
-        assert rig.positions() == {"BTC"}, "la seconda posizione doveva essere rifiutata dal tetto di rischio"
+        assert rig.positions() == {"BTC", "ETH"}, "con 250$ la seconda posizione deve passare"
+        rig.claude(action="open_long", symbol="SOL", sl=0.016, lev=15, margin=350)
+        rig.cycle(3)
+        assert rig.positions() == {"BTC", "ETH"}, "la terza deve essere rifiutata dal tetto di rischio"
         assert "rifiutata:rischio_aperto_bull" in rig.candidate_statuses()
     finally:
         rig.close()

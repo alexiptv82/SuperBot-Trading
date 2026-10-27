@@ -39,6 +39,9 @@ def inventory(name):
     result={'name':name,'mode':'paper','sha':sha,'running':item['State'].get('Running') is True,
             'health':item['State'].get('Health',{}).get('Status','unknown'),
             'restarts':item.get('RestartCount'),'started_at':item['State'].get('StartedAt')}
+    controls=('DESK_CAPITAL_V1','DESK_SCORE_PROFILE','DESK_REGIME_V1','DESK_REGIME_RATCHET','DESK_REGIME_FLIP',
+              'DESK_REGIME_RANGE_EXTRA','DESK_BULL_MAX_OPEN_RISK','DESK_BULL_SHORT_VETO_BTC_24H','DESK_ENTRY_SCORE')
+    result['policy_environment']={k:env[k] for k in controls if k in env}
     if name==LEGACY:
         if not any(m.get('Source')==str(SOURCE) and m.get('Destination')=='/out' for m in item.get('Mounts',[])):
             raise ValueError('LEGACY_SOURCE_MOUNT_MISMATCH')

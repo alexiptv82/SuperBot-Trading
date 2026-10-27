@@ -1,5 +1,5 @@
 op=merge
-src=work/claude-finestra-14-22
+src=work/hawk-regime-v1
 dst=rule-pool
-msg=merge: work/claude-finestra-14-22 - calendario di Claude 14:00-22:00 ora svizzera, 14 giorni. OK utente 26/10/2026
+msg=merge: work/hawk-regime-v1 - regime di mercato (solo filtro) per Hawk e Bull, tetto Bull 250, pesi del punteggio classici (profilo predefinito), banco storico e controlli di fedelta. OK utente 27/10/2026
 skip_ci=no

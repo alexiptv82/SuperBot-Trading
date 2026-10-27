@@ -62,6 +62,9 @@ def method_digest(cli):
     guards={"bull_open_risk":cli.BULL_MAX_OPEN_RISK_USD,"bull_short_veto":cli.BULL_SHORT_VETO_BTC_24H,
             "tier_ab_entry_score":cli.TIER_AB_ENTRY_SCORE,"tier_c_entry_score":cli.TIER_C_ENTRY_SCORE,
             "fallback_entry_score":cli._ENTRY_SCORE_BASE}
+    if hasattr(cli,'regime_mod'):
+        guards.update(regime_enabled=cli.REGIME_ON,regime_parameters=asdict(cli.regime_mod.DEFAULT),
+                      score_profile=getattr(importlib.import_module('desk.signals'),'SCORE_PROFILE','unknown'))
     return hashlib.sha256(json.dumps([sources,adaptive,profile,guards],sort_keys=True).encode()).hexdigest()
 
 
