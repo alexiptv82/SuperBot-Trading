@@ -535,3 +535,8 @@ Fotografia aggiornata alle 13:39 UTC (14:39 Zurigo). Per lo storico consultare l
 ## Classici deploy SUCCESS — dashboard successiva
 - Workflow40564697020/job122402718915 SUCCESS: SHA3abf1f808b09bf9066d96a1d16f945d65601ba02 su entrambi classici, heartbeat3abf1f8, processi nuovi e istanza singola, PAPER e CapitalV1off verificati; backup obbligatorio prima dei riavvii, immagine rollback conservata. Nessun reset. Verifica indipendente continuità/vault ancora da eseguire dopo app.
 - Imminente deploy ufficiale app da56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace per rendere visibile il Salvadanaio. OKutente medesimo rilascio, backupSQLite/restore e immagine/frontend precedenti conservati dal workflow. Non interviene sui workerclassici né Brain.
+
+
+## Dashboard Salvadanaio deploy SUCCESS — postflight in corso
+- App40565004065/job122403831134 SUCCESS19:01UTC, SHA56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace; codice/server/frontend coerenti, HTTPAPI e frontend200. Backup DBsuperbot-deploy-20261027-190057.db verificato con restore; rollbackappsuperbot:prev e frontendbuild.prev conservati. Nessun riavvio dei worker previsto dal workflow app.
+- Avviata verifica indipendente postflight: sorgenti/policy/health classici, prefixhash archivi precedenti, run/posizioni/budget, identità immutata di tutti i container non coinvolti (Brain inclusi), reader reale dashboard e manifestofrontend, backup nuovo journalSalvadanaio con restore. In attesa esito, non dichiarare ancora continuità finale provata.
