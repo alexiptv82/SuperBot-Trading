@@ -86,7 +86,7 @@ const makeDeskAPI = (prefix) => ({
   closeAll:       () => API.post(`${prefix}/close-all`),
   closePosition:  (symbol) => API.post(`${prefix}/close-position`, { symbol }),
   resetBudget:    () => API.post(`${prefix}/reset-budget`),
-  resetPortfolio: () => API.post(`${prefix}/reset-portfolio`, { clear_lessons: false }),
+  resetPortfolio: (resetVault = false) => API.post(`${prefix}/reset-portfolio`, { clear_lessons: false, reset_vault: resetVault }),
   getHours:       () => API.get(`${prefix}/hours`),
   setHours:       (cfg) => API.post(`${prefix}/hours`, cfg),
 });
