@@ -1,5 +1,6 @@
-2026-10-26 undicesima prova: varianti del solo filtro sui trade veri di Hawk (capitolazione, soglie, laterale)
+2026-10-27 regole di profitto (ore + ROI) sui trade veri di Hawk
 ref=work/hawk-regime-v1
 data=d1
 from=2026-10-12
-overlay=2
+overlay=3
+bot=hawk

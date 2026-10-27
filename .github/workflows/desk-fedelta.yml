@@ -29,13 +29,14 @@ jobs:
         run: |
           set -e
           g() { grep -E "^$1=" deploy/desk-fedelta.trigger | head -n1 | cut -d= -f2- | tr -d '[:space:]'; }
-          REF="$(g ref)"; DATA="$(g data)"; FROM="$(g from)"; MATCH="$(g match)"; OVERLAY="$(g overlay)"
+          REF="$(g ref)"; DATA="$(g data)"; FROM="$(g from)"; MATCH="$(g match)"; OVERLAY="$(g overlay)"; BOT="$(g bot)"; BOT="${BOT:-hawk}"
           REF="${REF:-rule-pool}"; DATA="${DATA:-d1}"; FROM="${FROM:-2026-10-12}"
           echo "$REF" | grep -Eq '^[A-Za-z0-9._/-]+$' || { echo "ref non valido"; exit 1; }
           echo "$DATA" | grep -Eq '^[A-Za-z0-9_.-]+$' || { echo "data non valido"; exit 1; }
           echo "$FROM" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || { echo "from non valido"; exit 1; }
+          echo "$BOT" | grep -Eq '^(hawk|bull)$' || { echo "bot non valido"; exit 1; }
           echo "$MATCH" | grep -Eq '^[A-Za-z0-9_.@+-]*$' || { echo "match non valido"; exit 1; }
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"; echo "data=$DATA" >> "$GITHUB_OUTPUT"; echo "from=$FROM" >> "$GITHUB_OUTPUT"; echo "match=$MATCH" >> "$GITHUB_OUTPUT"; echo "overlay=$OVERLAY" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"; echo "data=$DATA" >> "$GITHUB_OUTPUT"; echo "from=$FROM" >> "$GITHUB_OUTPUT"; echo "match=$MATCH" >> "$GITHUB_OUTPUT"; echo "overlay=$OVERLAY" >> "$GITHUB_OUTPUT"; echo "bot=$BOT" >> "$GITHUB_OUTPUT"
       - name: Codice da provare
         uses: actions/checkout@v4
         with:
@@ -56,6 +57,7 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           FROM: ${{ steps.cfg.outputs.from }}
+          BOT: ${{ steps.cfg.outputs.bot }}
         run: |
           set -e
           umask 077
@@ -67,7 +69,7 @@ jobs:
             || { echo "impronta del server diversa dal previsto: mi fermo"; exit 1; }
           ssh -i ~/.ssh/id_fedelta -o UserKnownHostsFile=$HOME/.ssh/known_hosts_fedelta -o StrictHostKeyChecking=yes \
               -o BatchMode=yes -o ConnectTimeout=20 root@51.79.205.82 \
-              "python3 -I - /opt/superbot-desk-data/hawk $FROM" < code/deploy/scripts/desk_fedelta_leggi.py > real.jsonl
+              "python3 -I - /opt/superbot-desk-data/$BOT $FROM" < code/deploy/scripts/desk_fedelta_leggi.py > real.jsonl
           rm -f ~/.ssh/id_fedelta
           wc -l real.jsonl
       - name: Confronto
