@@ -5,7 +5,7 @@ import { act } from 'react-dom/test-utils';
 import BrainDashboard, { BrainCards } from './BrainDashboard';
 import { brainAPI } from '../api';
 
-jest.mock('../api', () => ({ brainAPI: { getStatus: jest.fn() } }));
+jest.mock('../api', () => ({ brainAPI: { getStatus: jest.fn(), getFreeStatus: jest.fn().mockResolvedValue({ data: { available: false, status: 'not_started' } }) } }));
 
 const sample = {
   status: 'ok', portfolio: { equity: 1035, cash: 800, margin_in_use: 200, pnl: 35, pnl_pct: 3.5, cycles: 5 },

@@ -1,0 +1,34 @@
+name: Brain AI libero - read-only dashboard contracts
+on:
+  push:
+    branches: [work/brain-ai-libero-dashboard]
+permissions:
+  contents: read
+jobs:
+  reader:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest fastapi==0.110.0 httpx==0.27.0
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_free_view.py backend/tests/test_brain_profiles_view.py backend/tests/test_brain_view.py backend/tests/test_desk_view.py backend/tests/test_salvadanaio_view.py
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: corepack enable
+      - run: yarn install --frozen-lockfile --non-interactive
+      - run: yarn react-scripts test --watchAll=false --runInBand BrainFreePanel.test.js BrainDashboard.test.js Salvadanaio.test.js
+        env:
+          CI: 'true'
+      - run: yarn build
+        env:
+          CI: 'true'

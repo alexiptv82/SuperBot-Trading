@@ -1,0 +1,436 @@
+name: Brain AI libero - app deploy with isolated read-only account mount
+
+# Deploy del container FastAPI "superbot" + frontend sul VPS Singapore
+# (51.79.205.82), indipendente da Strasburgo. Replica fedelmente il deploy
+# originale (deploy.yml): stesse porte, stessi volumi, stesse variabili.
+#
+# PERCORSO UFFICIALE per rilasciare l'app (dal 19/10): il merge su main NON rilascia piu' da solo.
+# NON tocca superbot-desk-hawk / superbot-desk-bull (nessun redeploy dei bot).
+# NON modifica i file del cervello: l'app li monta come faceva a Strasburgo.
+# TRADING_MODE dell'app e' fisso a "paper" (come nell'originale).
+#
+# UN SOLO SHA PER TUTTO (19/10, terzo giro di revisione):
+#   lo SHA da rilasciare si decide UNA volta all'inizio. Se deploy/brain-free-app.trigger contiene
+#   una riga "sha=<40 caratteri esadecimali>" si rilascia esattamente quello (deve far parte della storia
+#   di main); altrimenti si risolve la punta di main in quel momento e basta. Quello stesso SHA e':
+#   il checkout, la build del frontend (con marcatore sul server), il fetch e il reset sul VPS, l'etichetta
+#   dell'immagine Docker e il manifesto del rilascio. Se nel frattempo main avanza non cambia niente:
+#   il rilascio resta quello approvato. Il server non segue mai la punta del ramo: si ferma sullo SHA.
+#
+# ORDINE (19/10, terzo giro): prima TUTTI i backup obbligatori (database dell'app), solo dopo si cambia
+# qualcosa. Il frontend nuovo viene preparato in build.new e promosso a backup riuscito; la build vecchia
+# resta come build.prev (e l'immagine vecchia come superbot:prev) fino al controllo finale di salute: se
+# qualcosa fallisce dopo la promozione si torna indietro da soli (frontend + container) e il workflow
+# diventa rosso. Chiave del server SSH verificata.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/brain-free-app.trigger"
+
+# Un solo rilascio alla volta (stesso gruppo anche tra workflow diversi dello stesso componente).
+concurrency:
+  group: superbot-app-singapore
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      # 1. Lo SHA approvato si risolve UNA volta. Da qui in poi nessun passo guarda piu' "main".
+      - name: Risolvi lo SHA approvato (una volta sola)
+        id: approved
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_REPOSITORY"
+          # se la lettura del file trigger fallisce ci si ferma (non si ripiega su main in silenzio)
+          TRIG="$(gh api -H 'Accept: application/vnd.github.raw' "repos/$REPO/contents/deploy/brain-free-app.trigger?ref=$TRIGGER_COMMIT")"
+          printf '%s\n' "$TRIG" | grep -qx 'approved=yes'
+          printf '%s\n' "$TRIG" | grep -qx 'action=apply'
+          LINE="$(printf '%s\n' "$TRIG" | grep -E '^sha=' | head -n1 || true)"
+          if [ -n "$LINE" ]; then
+            REQ="${LINE#sha=}"
+            printf '%s' "$REQ" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: la riga sha= del file trigger non e' uno SHA di 40 caratteri esadecimali"; exit 1; }
+            SHA="$REQ"
+            echo "SHA richiesto nel file trigger: $SHA"
+          else
+            SHA="$(gh api "repos/$REPO/commits/main" --jq .sha)"
+            echo "Nessun sha= nel file trigger: risolta la punta di main ORA: $SHA"
+          fi
+          printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERRORE: SHA non valido"; exit 1; }
+          # lo SHA deve far parte della storia di main (l'app si rilascia solo da main)
+          STATUS="$(gh api "repos/$REPO/compare/main...$SHA" --jq .status)"
+          case "$STATUS" in
+            identical|behind) ;;
+            *) echo "ERRORE: lo SHA $SHA non fa parte della storia di main (stato: $STATUS)"; exit 1 ;;
+          esac
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "SHA APPROVATO PER IL RILASCIO: $SHA"
+
+      # 2. Il codice e' esattamente quello SHA (non il ramo main di adesso).
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.approved.outputs.sha }}
+
+      - name: Verifica che il checkout sia lo SHA approvato
+        env:
+          APPROVED_SHA: ${{ steps.approved.outputs.sha }}
+        run: |
+          set -e
+          test "$(git rev-parse HEAD)" = "$APPROVED_SHA" || { echo "ERRORE: il checkout non e' lo SHA approvato"; exit 1; }
+          echo "checkout = $APPROVED_SHA"
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile 2>/dev/null || yarn install
+          REACT_APP_BACKEND_URL="" yarn build
+
+      # 3. Il frontend va FUORI dal repo git del VPS (/opt/superbot) e in una cartella NUOVA (build.new):
+      #    qui non si promuove niente. La promozione avviene sul server solo dopo i backup obbligatori.
+      - name: Copia frontend (in build.new) e strumenti di backup sul VPS Singapore
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          APPROVED_SHA: ${{ steps.approved.outputs.sha }}
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          echo "$SG_SSH_KEY" > ~/.ssh/id_sg
+          chmod 600 ~/.ssh/id_sg
+          # Chiavi pubbliche del server Singapore (non sono segrete). Se il server
+          # presenta una chiave diversa, la connessione viene rifiutata.
+          cat > ~/.ssh/known_hosts_sg <<'KH'
+          51.79.205.82 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDeMovQlEMs3Omccc1vMwPER3OkPLAtPltv11PjcbjSLDmutufUUwzqsRErqSo4XItzxdT3Z8nKCGZ/6zIFnQi4=
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          51.79.205.82 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCwO0uEkIO5WYEylkoEx/weUt/ZaqkS7bCsd4B9hfibHXhadN568dm7OQVGXXYis/9G7tvtAtElexi9aDEcFdyiBkZ/GWZeuLmxuYJiOsraQ6u9D2bx9RzIxWRO3708/usgjdTn4O/6+cprig2hki55Xn8f5iNvJALEi775qXFoNTtBN4bXOAr4ZBttsSpaWE1zRmAEIoAGFY1Hat3FyV7mmx+kQbovxTSxW9/xzQw5tI/ZjfcUE0/flMMdd9yzwa3QZiPpUNDTUY6loY6IhMmLoHtKsrs1uf4LDWYMPOqhclKXcol9j8jTVB1LyesKGmWWx4oBLdflUQwZp4zktPZdUFrdWnKFQKDreideCtDRQN/jYJlobjtpMYOZ0jRPwG75GhiYWBTiJR+n4063ouK+5E6VdbkvDvBBGFt2WxQA1PuYrAVcuYZsuqQAOyvLOPaNbCkp1pyOXgdzbcHSfs6aDfP3w7h/p3NjWZH8fPyTdBaBuwJtstAauDw9dQqqKB8=
+          KH
+          SSHO="-i $HOME/.ssh/id_sg -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_sg -o ConnectTimeout=30"
+          ssh $SSHO root@51.79.205.82 'mkdir -p /opt/superbot-tools /opt/superbot-web && chmod 700 /opt/superbot-tools && rm -rf /opt/superbot-web/build.new /opt/superbot-web/build.new.sha && mkdir -p /opt/superbot-web/build.new'
+          scp $SSHO deploy/scripts/backup_app_db.py root@51.79.205.82:/opt/superbot-tools/
+          scp $SSHO -r frontend/build/. root@51.79.205.82:/opt/superbot-web/build.new/
+          # marcatore scritto per ultimo: dice con quale SHA e' stata costruita la cartella (la promozione lo controlla)
+          ssh $SSHO root@51.79.205.82 "test -s /opt/superbot-web/build.new/index.html && printf %s '${APPROVED_SHA}' > /opt/superbot-web/build.new.sha"
+          rm -f ~/.ssh/id_sg
+
+      - name: Deploy FastAPI + nginx su Singapore
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          APPROVED_SHA:        ${{ steps.approved.outputs.sha }}
+          DEPLOY_RUN:          ${{ github.run_id }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+          DASHBOARD_PASSWORD:  ${{ secrets.DASHBOARD_PASSWORD }}
+          DESK_MODE:           ${{ secrets.DESK_MODE }}
+          DESK_HAWK_CAPITAL:   ${{ secrets.DESK_HAWK_CAPITAL }}
+          DESK_BULL_CAPITAL:   ${{ secrets.DESK_BULL_CAPITAL }}
+          DESK_DAILY_LOSS_PCT: ${{ secrets.DESK_DAILY_LOSS_PCT }}
+          SG_DOMAIN:           ${{ secrets.SG_DOMAIN || 'superbot-trading.duckdns.org' }}
+          # Chiavi BitGet di SOLA LETTURA, solo per i saldi nella pagina Live.
+          BITGET_RO_HAWK_API_KEY:    ${{ secrets.BITGET_RO_HAWK_API_KEY }}
+          BITGET_RO_HAWK_SECRET_KEY: ${{ secrets.BITGET_RO_HAWK_SECRET_KEY }}
+          BITGET_RO_HAWK_PASSPHRASE: ${{ secrets.BITGET_RO_HAWK_PASSPHRASE }}
+          BITGET_RO_BULL_API_KEY:    ${{ secrets.BITGET_RO_BULL_API_KEY }}
+          BITGET_RO_BULL_SECRET_KEY: ${{ secrets.BITGET_RO_BULL_SECRET_KEY }}
+          BITGET_RO_BULL_PASSPHRASE: ${{ secrets.BITGET_RO_BULL_PASSPHRASE }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          # Impronta della chiave ECDSA del server: e' quella che ssh-action negozia
+          # (provato il 19/10 con il workflow sg-hardening-check). Se cambia, il deploy
+          # si ferma invece di mandare i segreti a un server sconosciuto.
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 15m
+          envs: APPROVED_SHA,DEPLOY_RUN,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_PASSWORD,DESK_MODE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,SG_DOMAIN,BITGET_RO_HAWK_API_KEY,BITGET_RO_HAWK_SECRET_KEY,BITGET_RO_HAWK_PASSPHRASE,BITGET_RO_BULL_API_KEY,BITGET_RO_BULL_SECRET_KEY,BITGET_RO_BULL_PASSPHRASE
+          script: |
+            set -e
+
+            # == 0. Controlli che non toccano niente ==
+            if [ -z "$DASHBOARD_PASSWORD" ]; then
+              echo "ERRORE: GitHub Secret DASHBOARD_PASSWORD mancante."
+              exit 1
+            fi
+            case "$APPROVED_SHA" in
+              ""|*[!0-9a-f]*) echo "ERRORE: APPROVED_SHA mancante o non valido."; exit 1 ;;
+            esac
+            if [ "${#APPROVED_SHA}" != 40 ]; then echo "ERRORE: APPROVED_SHA deve avere 40 caratteri."; exit 1; fi
+            echo "SHA APPROVATO: ${APPROVED_SHA}"
+
+            # Existing host only: never install/upgrade Docker or restart unrelated workers.
+            for tool in docker git nginx curl; do
+              command -v "$tool" >/dev/null || { echo APP_DEPLOY_BLOCKED=missing_host_tool; exit 1; }
+            done
+
+            WEB=/opt/superbot-web
+            PROMOTED=0
+            CONTAINER_REPLACED=0
+            DONE=0
+
+            # Avvio del container dell'app: una sola definizione, usata dal rilascio e dal ritorno indietro.
+            run_app() {
+              docker run -d \
+                --name superbot \
+                --restart always \
+                -p 127.0.0.1:8002:8001 \
+                -v /opt/superbot/data:/app/data \
+                -v /opt/superbot/backend/.env:/app/backend/.env \
+                -v /opt/superbot-desk-data/hawk:/opt/superbot-desk-data/hawk \
+                -v /opt/superbot-desk-data/bull:/opt/superbot-desk-data/bull \
+                -v /opt/superbot-desk-data/brain:/opt/superbot-desk-data/brain:ro \
+                -e BRAIN_DATA_DIR=/opt/superbot-desk-data/brain \
+                -v /opt/superbot-brain-adaptive:/opt/superbot-brain-adaptive:ro \
+                -e BRAIN_ADAPTIVE_DATA_DIR=/opt/superbot-brain-adaptive \
+                -v /opt/superbot-brain-free:/opt/superbot-brain-free:ro \
+                -e BRAIN_FREE_DATA_DIR=/opt/superbot-brain-free \
+                -e DESK_DATA_DIR=/opt/superbot-desk-data/hawk \
+                -e DESK_DATA_DIR_BULL=/opt/superbot-desk-data/bull \
+                -e DESK_MODE="${DESK_MODE:-paper}" \
+                -e DESK_HAWK_CAPITAL="${DESK_HAWK_CAPITAL:-1000}" \
+                -e DESK_BULL_CAPITAL="${DESK_BULL_CAPITAL:-1000}" \
+                -e DESK_DAILY_LOSS_PCT="${DESK_DAILY_LOSS_PCT:-25}" \
+                -e BITGET_RO_HAWK_API_KEY -e BITGET_RO_HAWK_SECRET_KEY -e BITGET_RO_HAWK_PASSPHRASE \
+                -e BITGET_RO_BULL_API_KEY -e BITGET_RO_BULL_SECRET_KEY -e BITGET_RO_BULL_PASSPHRASE \
+                "$1"
+            }
+
+            # Ritorno indietro automatico: se dopo la promozione qualcosa fallisce, si ripristinano frontend e container.
+            rollback() {
+              echo "=== RITORNO INDIETRO ==="
+              if [ "$CONTAINER_REPLACED" = 1 ]; then
+                if docker image inspect superbot:prev >/dev/null 2>&1; then
+                  docker rm -f superbot 2>/dev/null || true
+                  if run_app superbot:prev; then
+                    docker tag superbot:prev superbot || true
+                    echo "container ripristinato dall'immagine precedente (superbot:prev)"
+                  else
+                    echo "ATTENZIONE: il container precedente NON e' ripartito: intervento manuale (docker run con superbot:prev)."
+                  fi
+                else
+                  echo "ATTENZIONE: nessuna immagine superbot:prev (primo rilascio?): niente da ripristinare per il container."
+                fi
+              fi
+              if [ "$PROMOTED" = 1 ]; then
+                if [ -d "$WEB/build.prev" ]; then
+                  rm -rf "$WEB/build.failed"
+                  mv "$WEB/build" "$WEB/build.failed" || true
+                  mv "$WEB/build.prev" "$WEB/build"
+                  echo "frontend ripristinato dalla build precedente (la build scartata e' in build.failed)"
+                else
+                  echo "ATTENZIONE: nessuna build precedente da ripristinare (primo rilascio?)."
+                fi
+              fi
+              sleep 5
+              curl -fsS -m 5 http://127.0.0.1:8002/api/health >/dev/null 2>&1 \
+                && echo "dopo il ritorno indietro l'app RISPONDE" \
+                || echo "ATTENZIONE: dopo il ritorno indietro l'app NON risponde"
+            }
+
+            finish() {
+              rc=$?
+              trap - EXIT
+              set +e
+              if [ "$rc" -ne 0 ] && [ "$DONE" != 1 ]; then
+                echo "ERRORE: rilascio non riuscito (codice $rc)."
+                if [ "$PROMOTED" = 1 ] || [ "$CONTAINER_REPLACED" = 1 ]; then
+                  rollback
+                else
+                  echo "Nessuna modifica era stata fatta (frontend e container in uso intatti): niente da ripristinare."
+                fi
+              fi
+              exit "$rc"
+            }
+            trap finish EXIT
+
+            # == 1. TUTTI i backup obbligatori, PRIMA di cambiare qualunque cosa (frontend compreso) ==
+            # API di backup di SQLite (non un semplice cp), controllo di integrita', prova di ripristino.
+            # Se non riesce, il deploy si ferma qui: la build in uso e il container non sono toccati.
+            mkdir -p /opt/superbot /opt/superbot/data /opt/superbot-backups /opt/superbot-deploys
+            if [ ! -f /opt/superbot-tools/backup_app_db.py ]; then
+              echo "ERRORE: strumenti di backup mancanti sul VPS (/opt/superbot-tools)."
+              exit 1
+            fi
+            python3 -I /opt/superbot-tools/backup_app_db.py \
+              --src /opt/superbot/data/superbot.db --dir /opt/superbot-backups \
+              --prefix superbot-deploy --keep 10
+            DB_BACKUP="$(ls -1t /opt/superbot-backups/superbot-deploy-*.db 2>/dev/null | head -n1)"
+            echo "backup del database dell'app: ${DB_BACKUP:-?}"
+
+            # == 2. Il frontend preparato deve essere quello dello SHA approvato ==
+            if [ ! -s "$WEB/build.new/index.html" ] || [ "$(cat "$WEB/build.new.sha" 2>/dev/null)" != "$APPROVED_SHA" ]; then
+              echo "ERRORE: il frontend preparato (build.new) manca o non e' stato costruito dallo SHA approvato."
+              exit 1
+            fi
+            FRONTEND_SHA="$(cat "$WEB/build.new.sha")"
+
+            # == 3. Codice: ESATTAMENTE lo SHA approvato (non si segue main) ==
+            # (git init se la cartella esiste gia' senza .git)
+            mkdir -p /opt/superbot
+            cd /opt/superbot
+            if [ ! -d .git ]; then
+              git init -q
+              git remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            fi
+            PREV_SHA="$(git rev-parse --verify -q HEAD 2>/dev/null || echo nessuno)"
+            if ! git fetch --no-tags origin "$APPROVED_SHA"; then
+              echo "fetch diretto dello SHA non riuscito: scarico la storia di main e verifico che lo SHA ci sia"
+              git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+            fi
+            git cat-file -e "${APPROVED_SHA}^{commit}"
+            git reset --hard "$APPROVED_SHA"
+            SERVER_SHA="$(git rev-parse HEAD)"
+            if [ "$SERVER_SHA" != "$APPROVED_SHA" ] || [ "$FRONTEND_SHA" != "$APPROVED_SHA" ]; then
+              echo "ERRORE: SHA diversi (approvato=$APPROVED_SHA, server=$SERVER_SHA, frontend=$FRONTEND_SHA)."
+              exit 1
+            fi
+            echo "codice sul server e frontend = SHA approvato"
+
+            # == 4. Promozione del frontend (a backup riuscito). La build vecchia resta come build.prev. ==
+            rm -rf "$WEB/build.prev"
+            if [ -d "$WEB/build" ]; then mv "$WEB/build" "$WEB/build.prev"; fi
+            mv "$WEB/build.new" "$WEB/build"
+            rm -f "$WEB/build.new.sha"
+            PROMOTED=1
+            echo "frontend promosso (build precedente conservata in build.prev fino al controllo finale)"
+
+            # == 5. .env dell'app (modalita' fissa: paper, come l'originale) ==
+            RP_DOMAIN="${SG_DOMAIN:-51.79.205.82}"
+            if echo "$RP_DOMAIN" | grep -qE '^[0-9.]+$'; then
+              ORIGIN="http://${RP_DOMAIN}"
+            else
+              ORIGIN="https://${RP_DOMAIN}"
+            fi
+            printf "BITGET_API_KEY=\nBITGET_SECRET_KEY=\nBITGET_PASSPHRASE=\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nTRADING_MODE=paper\nINITIAL_CAPITAL=1000\nMAX_LEVERAGE=10\nMAX_DAILY_LOSS_PERCENT=5\nMAX_OPEN_POSITIONS=3\nTRADING_PAIRS=BTCUSDT,ETHUSDT,XAUUSDT,XAGUSDT\nBACKEND_PORT=8001\nDASHBOARD_PASSWORD_B64=%s\nWEBAUTHN_RP_ID=%s\nWEBAUTHN_ORIGIN=%s\nWEBAUTHN_RP_NAME=SuperBot\nDB_PATH=./data/superbot.db\n" \
+              "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" \
+              "$(printf %s "$DASHBOARD_PASSWORD" | base64 -w0)" \
+              "$RP_DOMAIN" "$ORIGIN" > backend/.env
+
+            # == 6. Nginx: solo i vhost di questa app, non tocco altri siti ==
+            # Certificato: quello nativo di Let's Encrypt se esiste, altrimenti il
+            # certificato "ponte" copiato dalla migrazione.
+            CERT_DIR=""
+            if [ -s "/etc/letsencrypt/live/${RP_DOMAIN}/fullchain.pem" ]; then
+              CERT_DIR="/etc/letsencrypt/live/${RP_DOMAIN}"
+            elif [ -s /etc/ssl/superbot-bridge/fullchain.pem ]; then
+              CERT_DIR="/etc/ssl/superbot-bridge"
+            fi
+            cat > /etc/nginx/sites-available/superbot <<'NGINX'
+            server {
+                listen 80;
+                server_name 51.79.205.82 __DOMAIN__;
+
+                root /opt/superbot-web/build;
+                index index.html;
+
+                location /.well-known/acme-challenge/ {
+                    try_files $uri =404;
+                }
+
+                location / {
+                    try_files $uri $uri/ /index.html;
+                }
+
+                location /api {
+                    proxy_pass http://127.0.0.1:8002;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host $host;
+                    proxy_cache_bypass $http_upgrade;
+                }
+            }
+            NGINX
+            if [ -n "$CERT_DIR" ]; then
+              cat >> /etc/nginx/sites-available/superbot <<'NGINX'
+
+            server {
+                listen 443 ssl;
+                server_name __DOMAIN__;
+
+                ssl_certificate     __CERT__/fullchain.pem;
+                ssl_certificate_key __CERT__/privkey.pem;
+                ssl_protocols TLSv1.2 TLSv1.3;
+
+                root /opt/superbot-web/build;
+                index index.html;
+
+                location / {
+                    try_files $uri $uri/ /index.html;
+                }
+
+                location /api {
+                    proxy_pass http://127.0.0.1:8002;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host $host;
+                    proxy_cache_bypass $http_upgrade;
+                }
+            }
+            NGINX
+            fi
+            sed -i "s#__DOMAIN__#${RP_DOMAIN}#g; s#__CERT__#${CERT_DIR}#g" /etc/nginx/sites-available/superbot
+            sed -i "s#__DOMAIN__#${RP_DOMAIN}#g; s#__CERT__#${CERT_DIR}#g" /etc/nginx/sites-available/superbot
+            ln -sf /etc/nginx/sites-available/superbot /etc/nginx/sites-enabled/superbot
+            nginx -t && systemctl reload nginx || systemctl restart nginx || true
+
+            # == 7. Container superbot (come l'originale: -p 8002:8001) ==
+            # L'immagine in uso resta come superbot:prev, per poter tornare indietro.
+            CURRENT_APP_IMAGE="$(docker inspect -f '{{.Image}}' superbot)"
+            docker tag "$CURRENT_APP_IMAGE" superbot:prev
+            docker build --label "superbot.sha=${APPROVED_SHA}" -t superbot /opt/superbot
+            CONTAINER_REPLACED=1
+            docker stop superbot 2>/dev/null || true
+            docker rm superbot 2>/dev/null || true
+            run_app superbot
+
+            sleep 10
+            echo "=== Container ==="
+            docker ps -a --filter name=^superbot --format "{{.Names}} | {{.Status}} | {{.Ports}}"
+            echo "=== Health API (locale) ==="
+            curl -s http://127.0.0.1:8002/api/health && echo " <- API OK" || echo "API NON risponde"
+            echo "=== Health via nginx (porta 80) ==="
+            curl -s -o /dev/null -w "frontend HTTP %{http_code}\n" http://127.0.0.1/ -H "Host: 51.79.205.82"
+            curl -s http://127.0.0.1/api/health -H "Host: 51.79.205.82" && echo " <- /api via nginx OK" || echo "/api via nginx NON risponde"
+            if [ -n "$CERT_DIR" ]; then
+              echo "=== HTTPS col dominio (risolto in locale su questo server) ==="
+              curl -s -m 10 --resolve ${RP_DOMAIN}:443:127.0.0.1 https://${RP_DOMAIN}/api/health && echo " <- HTTPS OK" || echo "HTTPS NON risponde"
+            fi
+            echo "=== Bot (non toccati) ==="
+            docker ps --filter name=superbot-desk --format "{{.Names}} | {{.Status}}"
+            echo "=== Log superbot (ultimi 30) ==="
+            docker logs --tail 30 superbot 2>&1
+
+            # == 8. Controllo finale: se l'app non risponde, ritorno indietro automatico e workflow rosso ==
+            OK=0
+            for i in 1 2 3 4 5 6; do
+              if curl -fsS -m 5 http://127.0.0.1:8002/api/health >/dev/null; then OK=1; break; fi
+              sleep 5
+            done
+            if [ "$OK" != "1" ]; then
+              echo "ERRORE: l'app non risponde dopo il deploy."
+              exit 1
+            fi
+            FRONT_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/ -H 'Host: 51.79.205.82' || true)"
+            if [ "$FRONT_CODE" != "200" ]; then
+              echo "ERRORE: il frontend via nginx risponde HTTP $FRONT_CODE invece di 200."
+              exit 1
+            fi
+
+            # == 9. Rilascio riuscito: manifesto con lo SHA, poi si chiude ==
+            DONE=1
+            IMG_ID="$(docker inspect -f '{{.Id}}' superbot 2>/dev/null || echo sconosciuta)"
+            NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            MAN="/opt/superbot-deploys/app-$(date -u +%Y%m%d-%H%M%S)-$(printf %s "$APPROVED_SHA" | cut -c1-12).json"
+            printf '{\n "tipo": "app",\n "creato": "%s",\n "sha_approvato": "%s",\n "sha_sul_server": "%s",\n "sha_frontend": "%s",\n "sha_precedente": "%s",\n "immagine": "%s",\n "backup_database": "%s",\n "run_github": "%s"\n}\n' \
+              "$NOW" "$APPROVED_SHA" "$SERVER_SHA" "$FRONTEND_SHA" "$PREV_SHA" "$IMG_ID" "${DB_BACKUP:-}" "${DEPLOY_RUN:-}" > "$MAN"
+            cp "$MAN" /opt/superbot-deploys/app-last.json
+            echo "manifesto del rilascio: $MAN"
+            echo "DEPLOY OK: l'app risponde. SHA ${APPROVED_SHA}. Immagine precedente = superbot:prev, frontend precedente = ${WEB}/build.prev (conservati fino al prossimo rilascio)."
