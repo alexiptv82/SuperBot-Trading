@@ -57,8 +57,15 @@ with tempfile.TemporaryDirectory() as root:
             return fast,entry
         def close(self):pass
     with patch("time.sleep",lambda *_:None),patch("time.time",lambda:clock[0]/1000):
+        profile_root=Path(root)/('brain-'+profile);profile_root.mkdir()
+        (profile_root/'pause.flag').write_text('release-warmup')
         s=Session(root,profile,cli,initialize=True,call=fake,feeds=Inline())
         try:
+            clock[0]-=60000;s.step(clock[0])
+            assert s.state['operator_paused'] is True
+            assert not cli.make_account(s.state['desk']).positions
+            assert s.provider.pending is None
+            (profile_root/'pause.flag').unlink();clock[0]+=60000
             s.step(clock[0]);assert s.provider.pending is not None
             s.provider.pending["future"].result(2)
             clock[0]+=60000;s.step(clock[0])
@@ -78,7 +85,7 @@ with tempfile.TemporaryDirectory() as root:
             assert p.leverage==15,p
             assert p.source=="brain-deepseek",p
             assert s.state['desk']['last_price_times']['ETH']==clock[0]
-            assert s.state['steps_completed']==2
+            assert s.state['steps_completed']==3
             assert any(e.get('kind')=='adaptive_advice' and e['decisions'][0]['symbol']=='ETH' for e in events),events[-3:]
             assert p.features["learning_context"]["strategy_version"].startswith("classical-"+profile)
             assert a.name=="brain-"+profile

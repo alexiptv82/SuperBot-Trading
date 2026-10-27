@@ -92,7 +92,7 @@ class Session:
         self.cfg=cfg or replace(Config(),name="brain-"+profile,max_tokens=3000)
         self.store=None;self.provider=None;self.feeds=None;self.saved={}
         exists=(self.root/"brain.sqlite3").exists()
-        if not exists and (not initialize or self.root.exists() and any(self.root.iterdir())):
+        if not exists and (not initialize or self.root.exists() and any(p.name!='pause.flag' for p in self.root.iterdir())):
             raise ValueError("explicit_empty_paper_initialization_required")
         try:
             self.store=Store(self.root)
@@ -291,6 +291,7 @@ class Session:
         self.required=required
         fast_data,self.entry_data=self.feeds.poll(c.SYMBOLS,required,self.now_ms)
         valid=set();paused=(self.root/"pause.flag").exists()
+        self.current['operator_paused']=paused
         for sym in sorted(required):
             try:
                 item=fast_data.get(sym,{})

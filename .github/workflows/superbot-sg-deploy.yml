@@ -183,6 +183,8 @@ jobs:
                 -v /opt/superbot-desk-data/bull:/opt/superbot-desk-data/bull \
                 -v /opt/superbot-desk-data/brain:/opt/superbot-desk-data/brain:ro \
                 -e BRAIN_DATA_DIR=/opt/superbot-desk-data/brain \
+                -v /opt/superbot-brain-adaptive:/opt/superbot-brain-adaptive:ro \
+                -e BRAIN_ADAPTIVE_DATA_DIR=/opt/superbot-brain-adaptive \
                 -e DESK_DATA_DIR=/opt/superbot-desk-data/hawk \
                 -e DESK_DATA_DIR_BULL=/opt/superbot-desk-data/bull \
                 -e DESK_MODE="${DESK_MODE:-paper}" \

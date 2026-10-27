@@ -2,10 +2,10 @@ name: Brain classical adaptive offline tests
 on:
   push:
     branches: [work/brain-classical-adaptive-h24]
-    paths: ['backend/director/**', 'backend/tests/*brain*', 'deploy/scripts/brain_classical_preflight.py', 'Dockerfile.brainclassical', '.github/workflows/brain-classical-ci.yml']
+    paths: ['backend/director/**', 'backend/tests/*brain*', 'deploy/scripts/brain_classical*.py', 'Dockerfile.brainclassical', '.github/workflows/brain-classical-*.yml']
   pull_request:
     branches: [rule-pool]
-    paths: ['backend/director/classical_adaptive/**', 'backend/tests/*brain_classical*', 'Dockerfile.brainclassical', '.github/workflows/brain-classical-ci.yml']
+    paths: ['backend/director/classical_adaptive/**', 'backend/tests/*brain_classical*', 'deploy/scripts/brain_classical*.py', 'Dockerfile.brainclassical', '.github/workflows/brain-classical-*.yml']
 permissions:
   contents: read
 jobs:
