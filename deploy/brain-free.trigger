@@ -2,3 +2,4 @@ action=apply
 approved=yes
 sha=a914803a15c2d8a5fa01021f11c4def4caf82a76
 app_sha=33e9cdd4589c0e105f748511ddcc2b7dcbd5039f
+retry=2
