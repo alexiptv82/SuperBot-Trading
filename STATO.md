@@ -330,3 +330,8 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## Rilascio avviato — PR#14/#15 integrate e trigger app (27/10)
 - PR#14 mergedrule-pool b17e79a72ff01233f65867d2aca8c306455855d5 dahead5024fbdf verificato; PR#12dipendenza inclusa. CIfinali40452483812/40452479075 SUCCESS (32testnuovi+Docker) e40452483743 SUCCESS(legacy/Docker5posizioni). Sorgenteclassica invariata rispetto89b0dca. Controlloattivazione ancora non armatosenzaappverificata.
 - PR#15 mergedmain4cf41d23; CImergemain40452532496 SUCCESS. Triggerapp87e0886eb03fe023fd898b8187969958a8c83a2a fissasha4cf41d23; workflowufficiale backupDB+restore automatico, rollback frontend/immagine, nuoviRootreadonly. Nessuntriggerdi redeploydei classici; nessunresetstorici.
+
+
+## App paired Brain LIVE; attivazione PAPER due profili (27/10)
+- Deployapp40452932435 SUCCESS, target4cf41d23, terminato05:02:43UTC(06:02Roma). BackupDBapp /opt/superbot-backups/superbot-deploy-20261027-050221.db integrity/restoreverificato, frontend eSHA/API/nginx/HTTPSPASS; rollbackimmagine/buildprecedenti conservati. Nuovo mountparentprofili readonly. Trebotprecedenti risultanohealthy senza riavvio delrilascioapp; poolunhealthy preesistente non toccato.
+- Ora trigger specificoattivazionePAPER con source5024fbdfe3a9719098f905b28eac5d0feb9848e6, vecchio1f2edeb6182029adc96ba7218ad145a7503472a3, classici89b0dca3e259c548ed82754c2301c7b024d18ff5, app4cf41d23bb94f7a868b25dd1c89b3e4e8993d9a8. Controlloimpone backupaggiuntivo, quiescenzaAPIlegacy, ledgerconservato,warmuppausato, readerapp/zerofee-esposizione, solopoi nuoviingressi. Iquattrotradeprecedenti restanogestiti dalvecchio container; classici nonstoppati/riavviati. TuttoPAPER, attivazioneesito ancora da verificare.
