@@ -115,3 +115,60 @@ test('negative floating returns render clearly and fractional saved leverage is 
   expect(html).toContain('-4.00%');
   expect(html).not.toMatch(/<button|<form|onClick/);
 });
+
+test('paired cards distinguish actual position, AI proposal, local supervision and real daily limit', () => {
+  const data = { ...sample, runtime: 'classical-adaptive-v1', profile: 'bull', daily_stop: { limit_pct: 10 },
+    execution: { decision_source: 'classical_rules', provider_status: 'model_pending', fresh_fast_data: true },
+    reasoning: { advice: { ts_ms: 100, decisions: [{ symbol: 'ETH', action: 'close', reason: '<script>PROPOSAL</script>' }] }, note: 'Ultima proposta AI: non certifica esecuzione.' } };
+  const html = renderToStaticMarkup(<BrainCards data={data} />);
+  expect(html).toContain('limite 10%');
+  expect(html).not.toContain('limite 20%');
+  expect(html).toContain('Regole classiche');
+  expect(html).toContain('AI in elaborazione');
+  expect(html).toContain('Ultima proposta AI');
+  expect(html).toContain('&lt;script&gt;PROPOSAL&lt;/script&gt;');
+  expect(html).not.toContain('<script>');
+  expect(html).toContain('Netto stimato alla chiusura');
+  expect(html).not.toMatch(/<button|<form|onClick/);
+});
+
+test('profile navigation keeps three balances separate and performs GET polling only', async () => {
+  jest.useFakeTimers(); global.IS_REACT_ACT_ENVIRONMENT = true;
+  const hawk = { ...sample, runtime: 'classical-adaptive-v1', profile: 'hawk', portfolio: { equity: 1011, cash: 711 } };
+  const bull = { ...hawk, profile: 'bull', portfolio: { equity: 982, cash: 500 } };
+  brainAPI.getProfiles = jest.fn().mockResolvedValue({ data: { status: 'ok', profiles: { hawk, bull }, legacy: sample } });
+  const host = document.createElement('div'); const root = createRoot(host);
+  try {
+    await act(async () => { root.render(<BrainDashboard />); });
+    expect(host.textContent).toContain('$1011.00');
+    expect(host.textContent).not.toContain('$982.00');
+    await act(async () => { host.querySelector('[data-profile="bull"]').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(host.textContent).toContain('$982.00');
+    expect(host.textContent).not.toContain('$1011.00');
+    await act(async () => { host.querySelector('[data-profile="legacy"]').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(host.textContent).toContain('$1035.00');
+    expect(brainAPI.getProfiles).toHaveBeenCalledTimes(1);
+    expect(brainAPI.getStatus).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => { root.unmount(); });
+    delete brainAPI.getProfiles; jest.useRealTimers();
+  }
+});
+
+test('not-started profile shows no fictional wallet and unknown source text cannot break rendering', async () => {
+  jest.useFakeTimers(); global.IS_REACT_ACT_ENVIRONMENT = true;
+  brainAPI.getProfiles = jest.fn().mockResolvedValue({ data: { status: 'ok', profiles: { hawk: { status: 'not_started', runtime: 'classical-adaptive-v1', profile: 'hawk' } }, legacy: sample } });
+  const host = document.createElement('div'); const root = createRoot(host);
+  try {
+    await act(async () => { root.render(<BrainDashboard />); });
+    await act(async () => { host.querySelector('[data-profile="hawk"]').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(host.textContent).toContain('Profilo non ancora avviato');
+    expect(host.textContent).not.toContain('$1000.00');
+    expect(host.textContent).not.toContain('$1035.00');
+    const html = renderToStaticMarkup(<BrainCards data={{ runtime: 'classical-adaptive-v1', execution: { decision_source: '__proto__', provider_status: 'constructor' } }} />);
+    expect(html).toContain('Non disponibile');
+  } finally {
+    await act(async () => { root.unmount(); });
+    delete brainAPI.getProfiles; jest.useRealTimers();
+  }
+});

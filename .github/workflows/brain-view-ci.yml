@@ -2,10 +2,12 @@ name: Brain dashboard - offline tests (no deploy)
 
 on:
   push:
-    branches: [main, work/brain-position-details]
+    branches: [main, work/brain-position-details, work/brain-paired-dashboard]
     paths:
       - backend/desk/brain_view.py
+      - backend/desk/brain_profiles_view.py
       - backend/tests/test_brain_view.py
+      - backend/tests/test_brain_profiles_view.py
       - backend/server.py
       - frontend/**
       - .github/workflows/brain-view-ci.yml
@@ -14,7 +16,9 @@ on:
     branches: [main]
     paths:
       - backend/desk/brain_view.py
+      - backend/desk/brain_profiles_view.py
       - backend/tests/test_brain_view.py
+      - backend/tests/test_brain_profiles_view.py
       - frontend/src/pages/BrainDashboard*
       - .github/workflows/brain-view-ci.yml
 
@@ -37,9 +41,9 @@ jobs:
       - name: Offline SQLite, WAL, timeout, auth and preservation tests
         env:
           PYTHONPATH: backend
-        run: python -m unittest discover -s backend/tests -p test_brain_view.py -v
+        run: python -m unittest discover -s backend/tests -p 'test_brain*view*.py' -v
       - name: Check Python syntax (do not import bot/server runtime)
-        run: python -m py_compile backend/desk/brain_view.py backend/server.py
+        run: python -m py_compile backend/desk/brain_view.py backend/desk/brain_profiles_view.py backend/server.py
   pwa:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -257,3 +257,8 @@ def register_fastapi(app, require_session):
     @app.get('/api/brain/status')
     def brain_status(session=Depends(require_session)):
         return JSONResponse(read_status(), headers={'Cache-Control': 'no-store'})
+
+    @app.get('/api/brain/profiles')
+    def brain_profiles(session=Depends(require_session)):
+        from .brain_profiles_view import read_profiles
+        return JSONResponse(read_profiles(), headers={'Cache-Control': 'no-store'})
