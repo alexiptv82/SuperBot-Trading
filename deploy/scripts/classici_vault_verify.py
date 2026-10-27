@@ -83,7 +83,12 @@ def postflight():
    with path.open('rb') as fp:data=fp.read(m['size'])
    assert path.stat().st_size>=m['size'] and sha(data)==m['sha256'],'PROTECTED_PREFIX_CHANGED:'+p+':'+f
   before=saved['profiles'][p]['state'];after=state(p)
-  assert after.get('run_started_ms')==before.get('run_started_ms'),'RUN_RESET'
+  assert after.get('run_started_ms')==before.get('run_started_ms') and after.get('run_no')==before.get('run_no'),'RUN_RESET'
+  assert float((after.get('budget')or{}).get('total_spent',0))>=float((before.get('budget')or{}).get('total_spent',0)),'BUDGET_RESET'
+  for f in ('cli','engine','signals','brain','market_context','seasonal','salvadanaio'):
+   expected=sha(Path('backend/desk/'+f+'.py').read_bytes())
+   actual=call(['docker','exec',n,'sha256sum','/app/backend/desk/'+f+'.py']).split()[0]
+   assert actual==expected,'NEW_SOURCE_HASH:'+p+':'+f
   cap=after['capital'];assert cap['policy']=='salvadanaio-only-v1' and cap['status']=='READY','VAULT_NOT_READY'
   oldpos=before['main'].get('positions',{})
   for sym,pos in oldpos.items():
@@ -96,7 +101,12 @@ def postflight():
  code="import desk_view; " + "; ".join("s=desk_view.build_status('/opt/superbot-desk-data/"+p+"','"+p+"'); assert s['salvadanaio']['available'] and s['salvadanaio']['ready']" for p in ('hawk','bull')) + "; print('SALVADANAIO_READER=PASS')"
  result=call(['docker','exec','superbot','python','-c',code])
  assert 'SALVADANAIO_READER=PASS' in result,'READER_FAILED'
+ manifest=json.loads(Path('/opt/superbot-deploys/app-last.json').read_text())
+ assert manifest['sha_approvato']==manifest['sha_sul_server']==manifest['sha_frontend']==APP,'FRONTEND_SHA'
+ assert any('Salvadanaio' in p.read_text() for p in Path('/opt/superbot-web/build/static/js').glob('main.*.js')),'FRONTEND_VAULT_MISSING'
  print('APP_HTTP_AND_VAULT_READER=PASS')
+ subprocess.run(['python3','-I','deploy/scripts/backup_brain.py','--root',str(ROOT),'--dir','/opt/superbot-backups','--keep','10','--tag','classici_vault_postflight'],check=True)
+ print('NEW_VAULT_JOURNAL_BACKUP_RESTORE=PASS')
  print('POSTFLIGHT=PASS')
 
 if __name__=='__main__':

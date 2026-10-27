@@ -1,3 +1,4 @@
-phase=preflight
-attempt=2-optional-errors-absence
+phase=postflight
+bot_sha=3abf1f808b09bf9066d96a1d16f945d65601ba02
+app_sha=56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace
 approved=2026-10-27-user-deploy-ok
