@@ -14,4 +14,4 @@ jobs:
           python-version: '3.11'
       - run: pip install pytest
       - run: python -m compileall -q backend/desk/cli.py backend/desk/capital_journal.py
-      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_salvadanaio.py backend/tests/test_capital_journal.py
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_classic_rollback_vault.py backend/tests/test_capital_journal_v1.py
