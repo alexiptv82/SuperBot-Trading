@@ -133,7 +133,7 @@ def make_router(portfolio: str, data_dir: str, require_session, get_ticker) -> A
             body = {}
         clear = bool(body.get("clear_lessons")) if isinstance(body, dict) else False
         try:
-            ok, code, payload = dv.command_reset_portfolio(data_dir, clear)
+            ok, code, payload = dv.command_reset_portfolio(data_dir, clear, reset_vault=bool(body.get('reset_vault') is True) if isinstance(body, dict) else False)
         except OSError as e:
             raise _flag_error(e)
         if not ok:
