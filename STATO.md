@@ -1,20 +1,23 @@
-# STATO CORRENTE SuperBot-Trading — 26 ottobre 2026
-Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico precedente consultare i commit di questo file e ARCHIVIO-STATO-PRE-SYNC-2026-10-23.md. Protocollo: SINCRONIZZAZIONE-WORK-CHAT.md.
+# STATO CORRENTE SuperBot-Trading — 27 ottobre 2026
+Fotografia aggiornata alle 05:19 UTC (06:19 Roma). Per lo storico consultare le sezioni sottostanti e diario/2026-10-27_chatgpt.md. Protocollo: SINCRONIZZAZIONE-WORK-CHAT.md.
 
-## Runtime PAPER (NON toccare senza nuova autorizzazione)
-- Hawk + Bull in PAPER sul VPS Singapore, codice **35f08cf** (deploy 26/10/2026 sera — trigger fcea423, run #42, DEPLOY OK). Precedente: 63641f70 (Fix B).
-- Fix B AI Profit Guardian V1 attivo: `profit_guardian.py` + `portfolio_alert.py` in produzione.
-- Capital Management V1 integrato ma con DESK_CAPITAL_V1=off, non abilitare senza OK dell'utente.
-- Vincolo immutabile: nessun reset di trade_history, learning_log, lessons.md, errors.md.
-- rule-pool HEAD: `f76c5b108300b8b2efe37e2dfb99811ba61499cc` (trigger deploy Brain, 26/10/2026 17:xx UTC).
+## Runtime PAPER attuali — verificati sul VPS Singapore
+- **Classici Hawk e Bull:** SHA `89b0dca3e259c548ed82754c2301c7b024d18ff5`, deploy Claude 27/10 03:59UTC. Entrambi healthy/PAPER, restart0; started_at Hawk03:59:19.624UTC e Bull03:59:42.179UTC. Il rilascio Brain non li ha riavviati. Pesi classici e filtro regime approvati; Bull rischio SL aggregato250; DESK_CAPITAL_V1=off.
+- **Hawk + Brain / Bull + Brain LIVE PAPER:** due processi `superbot-brain-hawk`/`superbot-brain-bull`, SHA `5024fbdfe3a9719098f905b28eac5d0feb9848e6`, healthy/restart0, partiti05:15:31UTC. Attivazione40453369414 SUCCESS05:17:42UTC; source PR14, merge operativo b17e79a7. Ciascuno conto separato1000PAPER; metodo classico corrente e relativi limiti, supervisione locale1m H24, segnali15m/cooldown nativi, AI asincrona entro budget. Nessun ordine LIVE.
+- Verifica readonly40454674575 SUCCESS05:19:46UTC: 5cicli ciascuno, equity/cash1000, margine0, nessuna posizione ancora aperta, nessun entry_cycle_failed, feed freschi/coverage integra, pause nuove rimosse. Origine attuale classical_rules; provider paced_profile_allowance. Non dichiarare già verificati trade eseguiti o redditività.
+- **Brain precedente** `superbot-brain-pilot` SHA1f2edeb6182029adc96ba7218ad145a7503472a3, healthy/PAPER/restart0, partito26/10 14:54:27UTC. Le4posizioni restano gestite e visibili nel conto precedente; SOLO nuove aperture/chiamate AI in pausa tramite pause.flag. Dati/storico/memoria non azzerati.
+- Budget Brain CONDIVISO0.50USD/giorno e12/mese, non raddoppiato. Spesa legacy conservata e checksum congelato verificato: riservato giorno0.256114/mese0.356914; nessuna prenotazione nuova al controllo. AI al momento limitata dal pacing e consumo precedente; supervisione e fallback regole attivi. Non aumentare budget implicitamente.
+- Dati nuovi: /opt/superbot-brain-adaptive/brain-hawk e brain-bull; ledger parent brain-api-budget.sqlite3. Identità metodo persistente: futuri aggiornamenti codice richiedono migrazione conservativa esplicita, nessun reset per aggirare la guardia.
+- Storico classico reale NON ancora importato come experience_seed.json. Memoria nuovi esiti predisposta/persistente, nessun retraining dichiarato; euristica uscita su profitto netto/indebolimento sperimentale PAPER. LONG/up e SHORT/down e veti opposti testati; non prova della redditività LONG.
+- Trigger attivazione DISARMATO (action=none/approved=no, commit3333e62c); non rilanciare primo avvio su dati esistenti. Tutti gli archivi classici e precedenti restano intatti.
 
-## App Dashboard — margini/leva Brain LIVE (26/10/2026, SHA d4865ddc)
-- **SHA deployato**: `d4865ddcf1c3dece3cd7d7336e4bfcbcb29b28cc` (main, PR#13; deploy e verifica readonly riusciti).
-- Deploy confermato dall'utente: tab 🧠 BRAIN visibile e funzionante nell'app.
-- Commit su main: 9559ee5c (brain_view.py + BrainDashboard.js) + a9df40e8 (test, CI, server, frontend).
-- Mount aggiunto in run_app(): `-v /opt/superbot-desk-data/brain:/opt/superbot-desk-data/brain:ro` + `-e BRAIN_DATA_DIR=...`
-- Tab BRAIN in PAPER_TABS (sola lettura, 6 card, polling 30s). LIVE_TABS non modificato.
-- Endpoint: GET `/api/brain/status` (autenticato, no-cache, SQLite :ro, deadline 2s).
+## App Dashboard — tre conti Brain LIVE
+- SHA `4cf41d23bb94f7a868b25dd1c89b3e4e8993d9a8`, main PR15, deploy40452932435 SUCCESS05:02:43UTC. Frontend/SHA/API/nginx/HTTPS e backup/restore DB verificati. App non ha Docker HEALTHCHECK: endpoint HTTP /api/health verificato200; non inventare Docker healthy.
+- Tab BRAIN: **Hawk + Brain / Bull + Brain / Brain precedente**. Margine, leva effettiva, esposizione, floating e netto stimato, età/stop/target, origine AI/regole e proposte separate dalle esecuzioni; nessun saldo fittizio se profilo assente, nessuna somma dei conti.
+- GET /api/brain/profiles autenticato/no-store; reader SQLite mode=ro/query_only con deadline, parent /opt/superbot-brain-adaptive montato:ro e BRAIN_ADAPTIVE_DATA_DIR. GET /api/brain/status compatibile, vecchio root brain:ro/BRAIN_DATA_DIR mantenuto.
+- Postflight ha interrogato reader reale dentro app e controllato tutti gli SHA/PAPER/health dei5worker, pause/feed/ledger/vecchie4posizioni. Il primo postflight40454569926 fallì per asserzione erronea Docker health app; corretto SOLO verifier con controllo HTTP, nessun redeploy/riavvio correttivo.
+- Backup preflight: /opt/superbot-backups/brain-adaptive-preflight-20261027T042052Z (integrity+restore comparato PASS). Backup finale preattivazione: /opt/superbot-backups/brain-before-adaptive-20261027T050607Z. Backup DBapp: /opt/superbot-backups/superbot-deploy-20261027-050221.db (restore comparato PASS); rollback immagine/frontend conservati.
+- CI runtime finale40452483812/40452479075 e legacy40452483743 SUCCESS;32testnuovi,142regressioni+Docker5posizioni. App41testreader/API+10React+build, CI40451305609/40451300902 e main40452532496 SUCCESS.
 
 ## AI IN OMBRA (DeepSeek) — ATTIVO DAL 21/10/2026
 - Container `superbot-ai` su VPS Singapore, **Up 5 days (healthy)**, riavvii: 0.
@@ -335,3 +338,9 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## App paired Brain LIVE; attivazione PAPER due profili (27/10)
 - Deployapp40452932435 SUCCESS, target4cf41d23, terminato05:02:43UTC(06:02Roma). BackupDBapp /opt/superbot-backups/superbot-deploy-20261027-050221.db integrity/restoreverificato, frontend eSHA/API/nginx/HTTPSPASS; rollbackimmagine/buildprecedenti conservati. Nuovo mountparentprofili readonly. Trebotprecedenti risultanohealthy senza riavvio delrilascioapp; poolunhealthy preesistente non toccato.
 - Ora trigger specificoattivazionePAPER con source5024fbdfe3a9719098f905b28eac5d0feb9848e6, vecchio1f2edeb6182029adc96ba7218ad145a7503472a3, classici89b0dca3e259c548ed82754c2301c7b024d18ff5, app4cf41d23bb94f7a868b25dd1c89b3e4e8993d9a8. Controlloimpone backupaggiuntivo, quiescenzaAPIlegacy, ledgerconservato,warmuppausato, readerapp/zerofee-esposizione, solopoi nuoviingressi. Iquattrotradeprecedenti restanogestiti dalvecchio container; classici nonstoppati/riavviati. TuttoPAPER, attivazioneesito ancora da verificare.
+
+## Esito finale rilascio Brain paired (27/10, ChatGPT Work)
+- Autorizzazione OKutente eseguita: PR14/PR15 integrate, app e due nuovi motori PAPER rilasciati e verificati; dettagli attuali in testa. Ultimo source operativo33... è solo disarmo/ops, non modifica source dei container.
+- Attivazione40453369414 SUCCESS, nuovi profili healthy e reader app effettivo; vecchio Brain con4posizioni protette e API/nuove aperture in pausa. Backup finale e spesa legacy conservati, classici89b0dca invariati.
+- Warmup readonly40454443967 SUCCESS ha osservato vecchio ciclo quiescente e nuovi processi ancora in pausa, nessuna mutazione. Primo postflight40454569926 fallito per guardia Docker app non prevista: corretto verifier9fd449e9, rerun readonly40454674575 SUCCESS. Nessun errore motore riscontrato, nessun reset o redeploy correttivo.
+- Al05:19UTC5cicli,0posizioni,1000PAPER ciascuno; non ancora campione operativo per valutare scalp/LONG/profitti. AI attuale paced_profile_allowance (legacy già0.256114/giorno); regole classiche e protezione locale attive.
