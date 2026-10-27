@@ -325,3 +325,8 @@ Fotografia sintetica per ChatGPT Work, chat normale e Claude. Per lo storico pre
 ## Rilascio in corso — app integrata, motore finale in verifica (27/10)
 - PR#15 mergedmain4cf41d23bb94f7a868b25dd1c89b3e4e8993d9a8 dahead795cf31 verde; mergecodice nonèdeploy. Targetappfisso4cf41d23. PR#14 headfinale5024fbdfe3a9719098f905b28eac5d0feb9848e6,32nuovitestlocaliPASS inclwarmuppausato/controllorollout/failure/outboxincrementale; nessunparametroclassicocambiato.
 - Si completano gli stepdi rilascioPAPER oggettodell'OK: integrazionebot solo aCIfinaleverde, triggerapp conbackupDBautomatico, poi attivazione tramitecontrollospecializzato conSHA esatti. OldBrain1f2edeb6 da conservare in gestione4posizioni, nuoviingressi/APIlegacyinpausa dopo backup. Classici89b0dca invariati e senza riavvii daquestorilascio. Nuovibudget condivisi comprendonospesavecchia, nessunreset.
+
+
+## Rilascio avviato — PR#14/#15 integrate e trigger app (27/10)
+- PR#14 mergedrule-pool b17e79a72ff01233f65867d2aca8c306455855d5 dahead5024fbdf verificato; PR#12dipendenza inclusa. CIfinali40452483812/40452479075 SUCCESS (32testnuovi+Docker) e40452483743 SUCCESS(legacy/Docker5posizioni). Sorgenteclassica invariata rispetto89b0dca. Controlloattivazione ancora non armatosenzaappverificata.
+- PR#15 mergedmain4cf41d23; CImergemain40452532496 SUCCESS. Triggerapp87e0886eb03fe023fd898b8187969958a8c83a2a fissasha4cf41d23; workflowufficiale backupDB+restore automatico, rollback frontend/immagine, nuoviRootreadonly. Nessuntriggerdi redeploydei classici; nessunresetstorici.
