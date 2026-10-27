@@ -8,7 +8,6 @@ from datetime import date, datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ["DESK_MACRO_FETCH"] = "0"   # come conftest.py: mai rete vera nei test
-os.environ["DESK_MACRO_ENFORCE"] = "1"  # i test del blocco provano il modo "frena"; l'osservazione ha i suoi test in fondo
 
 import test_desk as td  # noqa: E402   (riuso del mondo di candele, dello sandbox e dello stub di Claude)
 from desk import cli, learning, macro_calendar as mc  # noqa: E402
@@ -75,15 +74,15 @@ def test_blackout_window_boundaries_and_regime_by_time():
     t = _utc_ms(2026, 10, 15, 12, 30)
     evs = [_ev(t)]
     at = lambda delta_min: mc.evaluate(evs, t + delta_min * MIN)
-    assert at(-7 * 60)["regime"] == "calmo"                      # oltre le 6 ore di anticipo (evento grande)
-    assert at(-5 * 60)["regime"] == "alto" and not at(-5 * 60)["blackout"]
+    assert at(-13 * 60)["regime"] == "calmo"                     # oltre le 12 ore di anticipo
+    assert at(-11 * 60)["regime"] == "alto" and not at(-11 * 60)["blackout"]
     assert at(-61)["blackout"] is False and at(-61)["regime"] == "alto"
     assert at(-60)["blackout"] is True                            # da 60 minuti prima (incluso)
     assert at(119)["blackout"] is True
     assert at(120)["blackout"] is False and at(120)["regime"] == "alto"   # fine blocco (escluso), ancora regime alto
     assert at(181)["regime"] == "calmo"                           # oltre le 3 ore dopo
     assert at(-60)["blackout_until_ms"] == t + 120 * MIN
-    assert at(-30)["conf_bonus"] == mc.CFG.conf_bonus_alto == 3 and at(-7 * 60)["conf_bonus"] == 0
+    assert at(-30)["conf_bonus"] == mc.CFG.conf_bonus_alto == 5 and at(-13 * 60)["conf_bonus"] == 0
 
 
 def test_medium_only_day_is_informational_and_next_event_is_reported():
@@ -191,9 +190,7 @@ def test_prompt_lines_only_when_there_is_something_to_say():
     assert mc.prompt_lines(mc.evaluate([_ev(t + 30 * HOUR)], t)) == []      # evento oltre 24 ore: nessuna riga
     lines = "\n".join(mc.prompt_lines(mc.evaluate([_ev(t)], t - 30 * MIN)))
     assert "CALENDARIO MACRO" in lines and "ALTO" in lines and "CPI m/m" in lines and "12:30 UTC" in lines
-    assert "ORA ATTIVO fino alle 14:30 UTC" in lines and "+3" in lines and "[grande]" in lines
-    small = "\n".join(mc.prompt_lines(mc.evaluate([_ev(t, title="Fed Chairman Warsh Speaks")], t - 10 * MIN)))
-    assert "Warsh Speaks [secondario]" in small and "ORA ATTIVO fino alle 13:00 UTC" in small
+    assert "ORA ATTIVO fino alle 14:30 UTC" in lines and "+5" in lines
     assert "Usciti da poco" in "\n".join(mc.prompt_lines(mc.evaluate([_ev(t)], t + 20 * MIN)))
 
 
@@ -237,8 +234,8 @@ def test_cycle_blackout_blocks_new_opening_and_logs_a_candidate():
         cands = learning.read_events(d, "candidate")
         assert cands and all(c["status"] == "macro_blocco" for c in cands)
         f = cands[0]["features"]
-        assert f["macro_regime"] == "alto" and f["macro_blackout"] is True and f["macro_bonus"] == 3
-        assert f["macro_min_next"] == 10 and f["macro_tier_next"] == "grande"
+        assert f["macro_regime"] == "alto" and f["macro_blackout"] is True and f["macro_bonus"] == 5
+        assert f["macro_min_next"] == 10
         assert any("CALENDARIO MACRO" in p and "ORA ATTIVO" in p for p in prompts), "Claude deve saperlo"
         assert cli.HB["macro"]["blackout"] is True and cli.HB["macro"]["regime"] == "alto"
 
@@ -272,14 +269,14 @@ def test_cycle_when_calendar_is_unavailable_the_bot_works_as_before():
         assert learning.read_events(d, "open")[0]["features"]["macro_regime"] == "nd"
 
 
-def test_cycle_high_regime_raises_required_confidence_by_three():
-    event = [_ev(NOW + 5 * HOUR)]                                    # nelle prossime 6 ore ma fuori dal blocco
+def test_cycle_high_regime_raises_required_confidence_by_five():
+    event = [_ev(NOW + 8 * HOUR)]                                    # nelle prossime 12 ore ma fuori dal blocco
     with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=62))) as (d, calls):
-        _write_cache(d, event)                                       # BTC richiede 60: 62 passa di solito, con +3 no
+        _write_cache(d, event)                                       # BTC richiede 60: 62 passa di solito, con +5 no
         assert "BTC" not in _cycle({}, NOW).positions
         assert {c["status"] for c in learning.read_events(d, "candidate")} == {"conf_bassa_macro"}
-    with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=64))) as (d, calls):
-        _write_cache(d, event)                                       # 64 >= 63: apre, e il registro dice in che regime
+    with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=66))) as (d, calls):
+        _write_cache(d, event)                                       # 66 >= 65: apre, e il registro dice in che regime
         assert "BTC" in _cycle({}, NOW).positions
         assert learning.read_events(d, "open")[0]["features"]["macro_regime"] == "alto"
     with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=62))) as (d, calls):
@@ -288,7 +285,7 @@ def test_cycle_high_regime_raises_required_confidence_by_three():
 
 def test_cycle_low_confidence_in_high_regime_keeps_the_old_status():
     with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=55))) as (d, calls):
-        _write_cache(d, [_ev(NOW + 5 * HOUR)])
+        _write_cache(d, [_ev(NOW + 8 * HOUR)])
         assert "BTC" not in _cycle({}, NOW).positions
         assert {c["status"] for c in learning.read_events(d, "candidate")} == {"conf_bassa"}   # sotto soglia anche senza macro
 
@@ -335,142 +332,3 @@ def test_cycle_rules_only_path_is_also_blocked_by_the_calendar():
         assert not blocked
         if calm:
             assert any(c["status"] == "macro_blocco" for c in learning.read_events(d, "candidate"))
-
-
-# ---------------------------------------------------------------- due livelli: eventi grandi e secondari
-def test_event_tier_separates_big_releases_from_minor_ones():
-    big = ["CPI m/m", "Core CPI y/y", "PPI m/m", "Core PPI m/m", "Non-Farm Employment Change", "Unemployment Rate",
-           "FOMC Statement", "FOMC Press Conference", "Federal Funds Rate", "Core PCE Price Index m/m"]
-    minor = ["Retail Sales m/m", "Core Retail Sales m/m", "Fed Chairman Warsh Speaks", "FOMC Member Williams Speaks",
-             "Advance GDP q/q", "ADP Non-Farm Employment Change", "Fed Chair Powell Testifies", "ISM Services PMI"]
-    assert all(mc.event_tier({"title": t, "src": "ff"}) == "grande" for t in big)
-    assert all(mc.event_tier({"title": t, "src": "ff"}) == "secondario" for t in minor)
-    assert mc.event_tier({"title": "qualunque", "src": "bls"}) == "grande"      # calendario ufficiale: sempre grande
-
-
-def test_minor_event_has_a_short_block_and_never_raises_the_threshold():
-    t = _utc_ms(2026, 10, 16, 3, 30)
-    evs = [_ev(t, title="Fed Chairman Warsh Speaks")]
-    at = lambda delta_min: mc.evaluate(evs, t + delta_min * MIN)
-    assert at(-16)["blackout"] is False and at(-15)["blackout"] is True       # da 15 minuti prima (incluso)
-    assert at(29)["blackout"] is True and at(30)["blackout"] is False         # fino a 30 minuti dopo (escluso)
-    assert at(-15)["blackout_until_ms"] == t + 30 * MIN
-    assert all(at(x)["conf_bonus"] == 0 and at(x)["regime"] != "alto" for x in (-300, -60, -15, 0, 29, 60, 170))
-    assert at(-120)["regime"] == "medio"                                      # solo informazione
-    assert at(-7 * 60)["regime"] == "calmo"
-
-
-def test_big_and_minor_events_together_use_the_longest_block():
-    t = _utc_ms(2026, 10, 15, 12, 30)
-    evs = [_ev(t, title="CPI m/m"), _ev(t, title="Retail Sales m/m")]         # stesso istante, come giovedi' scorso
-    m = mc.evaluate(evs, t - 30 * MIN)
-    assert m["blackout"] and m["blackout_until_ms"] == t + 120 * MIN and m["regime"] == "alto" and m["conf_bonus"] == 3
-    only_minor = mc.evaluate([_ev(t, title="Retail Sales m/m")], t + 60 * MIN)
-    assert only_minor["blackout"] is False and only_minor["conf_bonus"] == 0
-    assert [u["tier"] for u in mc.evaluate(evs, t - 5 * MIN)["upcoming"]] == ["grande", "secondario"]
-
-
-def test_cycle_minor_event_blocks_briefly_and_does_not_raise_confidence():
-    with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=62))) as (d, calls):
-        _write_cache(d, [_ev(NOW + 2 * HOUR, title="Retail Sales m/m")])      # secondario tra 2 ore: nessun +bonus
-        assert "BTC" in _cycle({}, NOW).positions
-        assert learning.read_events(d, "open")[0]["features"]["macro_bonus"] == 0
-    with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=80))) as (d, calls):
-        _write_cache(d, [_ev(NOW + 10 * MIN, title="Retail Sales m/m")])      # secondario tra 10 minuti: blocco corto
-        assert "BTC" not in _cycle({}, NOW).positions
-        assert {c["status"] for c in learning.read_events(d, "candidate")} == {"macro_blocco"}
-
-
-def test_cycle_blackout_counts_as_macro_block_only_if_it_would_have_passed_the_normal_threshold():
-    with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=55))) as (d, calls):
-        _write_cache(d, [_ev(NOW + 10 * MIN)])                                # blocco attivo, ma 55 < 60 comunque
-        assert "BTC" not in _cycle({}, NOW).positions
-        assert {c["status"] for c in learning.read_events(d, "candidate")} == {"conf_bassa"}
-    with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=60))) as (d, calls):
-        _write_cache(d, [_ev(NOW + 10 * MIN)])                                # 60 >= 60: senza blocco aprirebbe
-        assert "BTC" not in _cycle({}, NOW).positions
-        assert {c["status"] for c in learning.read_events(d, "candidate")} == {"macro_blocco"}
-
-
-# ---------------------------------------------------------------- modalita' osservazione (predefinita): registra, non frena
-import contextlib  # noqa: E402
-
-
-@contextlib.contextmanager
-def _observation():
-    """Toglie DESK_MACRO_ENFORCE per la durata del test: e' il comportamento predefinito del bot."""
-    saved = os.environ.pop("DESK_MACRO_ENFORCE", None)
-    try:
-        yield
-    finally:
-        if saved is not None:
-            os.environ["DESK_MACRO_ENFORCE"] = saved
-
-
-def test_observation_is_the_default_and_the_flag_or_env_turn_blocking_on():
-    with _observation(), tempfile.TemporaryDirectory() as d:
-        assert mc.enforcing(d) is False
-        open(os.path.join(d, mc.ENFORCE_FLAG), "w").close()
-        assert mc.enforcing(d) is True                                # file nella cartella dati: nessun riavvio
-        os.remove(os.path.join(d, mc.ENFORCE_FLAG))
-        os.environ["DESK_MACRO_ENFORCE"] = "1"
-        try:
-            assert mc.enforcing(d) is True
-        finally:
-            del os.environ["DESK_MACRO_ENFORCE"]
-        t = _utc_ms(2026, 10, 15, 12, 30)
-        _write_cache(d, [_ev(t)], ts=t)
-        m = mc.current(d, t)
-        assert m["enforce"] is False and m["blackout"] is True        # la lettura vera c'e', la decisione di frenare no
-
-
-def test_heartbeat_in_observation_does_not_claim_that_openings_are_suspended():
-    t = _utc_ms(2026, 10, 15, 12, 30)
-    m = dict(mc.evaluate([_ev(t)], t - 10 * MIN), enforce=False)
-    v = mc.heartbeat_view(m)
-    assert v["enforce"] is False and v["blackout"] is False and v["conf_bonus"] == 0 and v["regime"] == "osservazione"
-    assert v["observed"]["blackout"] is True and v["observed"]["regime"] == "alto" and v["observed"]["conf_bonus"] == 3
-    on = mc.heartbeat_view(dict(mc.evaluate([_ev(t)], t - 10 * MIN), enforce=True))
-    assert on["enforce"] is True and on["blackout"] is True and on["regime"] == "alto" and "observed" not in on
-
-
-def test_prompt_lines_in_observation_say_that_the_code_does_not_block():
-    t = _utc_ms(2026, 10, 15, 12, 30)
-    m = dict(mc.evaluate([_ev(t)], t - 10 * MIN), enforce=False)
-    lines = "\n".join(mc.prompt_lines(m))
-    assert "OSSERVAZIONE" in lines and "NON blocca" in lines and "blocca le NUOVE aperture" not in lines
-
-
-def test_cycle_in_observation_opens_during_the_blackout_and_logs_what_the_filter_would_have_done():
-    with _observation():
-        prompts = []
-        stub = _recording(td._decisions_stub(td._dec("BTC", "open_long", confidence=62)), prompts)
-        with td._sandbox(stub) as (d, calls):
-            _write_cache(d, [_ev(NOW + 10 * MIN)])                   # CPI tra 10 minuti: con il filtro acceso sarebbe bloccato
-            acc = _cycle({}, NOW)
-            assert "BTC" in acc.positions, "in osservazione il bot lavora come prima"
-            f = learning.read_events(d, "open")[0]["features"]
-            assert f["macro_regime"] == "alto" and f["macro_blackout"] is True and f["macro_bonus"] == 3
-            assert f["macro_enforced"] is False                        # cosi' l'analista separa osservato da applicato
-            assert not any(c["status"] in ("macro_blocco", "conf_bassa_macro") for c in learning.read_events(d, "candidate"))
-            assert cli.HB["macro"]["blackout"] is False and cli.HB["macro"]["observed"]["blackout"] is True
-            assert any("OSSERVAZIONE" in p for p in prompts), "Claude deve sapere che il codice non frena"
-
-
-def test_cycle_in_observation_ignores_the_confidence_bonus():
-    with _observation():
-        with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=62))) as (d, calls):
-            _write_cache(d, [_ev(NOW + 5 * HOUR)])                   # regime alto, ma fuori dal blocco: sarebbe +3
-            assert "BTC" in _cycle({}, NOW).positions                # 62 >= 60: apre come sempre
-            assert learning.read_events(d, "open")[0]["features"]["macro_bonus"] == 3
-
-
-def test_cycle_enforce_flag_file_turns_blocking_back_on_without_restart():
-    with _observation():
-        with td._sandbox(td._decisions_stub(td._dec("BTC", "open_long", confidence=62))) as (d, calls):
-            _write_cache(d, [_ev(NOW + 10 * MIN)])
-            open(os.path.join(d, mc.ENFORCE_FLAG), "w").close()
-            assert "BTC" not in _cycle({}, NOW).positions
-            assert {c["status"] for c in learning.read_events(d, "candidate")} == {"macro_blocco"}
-            os.remove(os.path.join(d, mc.ENFORCE_FLAG))
-            assert "BTC" in _cycle({}, NOW).positions                # tolto il file: torna a non frenare

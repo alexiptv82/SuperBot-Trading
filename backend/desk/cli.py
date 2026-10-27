@@ -29,11 +29,10 @@ from desk.brain import (DAILY_CAP, build_prompt, call_claude,
                         can_call, diagnose_reply, parse_decisions, record_spend, rules_decisions,
                         update_lessons, append_trade_history, load_symbol_stats, stats_summary,
                         SYSTEM as SYSTEM_HAWK, SYSTEM_BULL)
-from desk.market_context import apply_oi_history, fetch_all_context
+from desk.market_context import fetch_all_context
 from desk import learning as _learning
 from desk import macro_calendar
 from desk import trading_hours
-from desk import regime as regime_mod
 from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
@@ -78,7 +77,7 @@ def _make_hawk_config() -> PortfolioConfig:
             max_margin_total=1000.0,  # budget totale $1000
             max_open=10,              # max 10 posizioni
             kill_equity=450.0,
-            daily_stop=0.10,   # utente 21/10/2026: abbassato da 12% a 10%
+            daily_stop=0.12,
         ),
         system_prompt=SYSTEM_HAWK,
         guardrail_min_margin=50.0,
@@ -87,7 +86,6 @@ def _make_hawk_config() -> PortfolioConfig:
         guardrail_lev_forced=15,
         guardrail_type_forced="scalp",
         description="Hawk — max $100/trade, 10 posizioni, budget $1000",
-        max_leverage=None,   # nessun tetto del bot (utente, 21/10/2026: torna come all'inizio). Il cancello resta nel codice ma spento; restano i tetti per asset del motore (45x BTC/XAU/XAG, 30x ETH, 25x altri)
     )
 
 
@@ -99,10 +97,10 @@ def _make_bull_config() -> PortfolioConfig:
         limits=Limits(
             start_equity=1000.0,
             max_margin_trade=350.0,   # BULL: max $350 per trade
-            max_margin_total=1050.0,  # budget 1050 = 3 x 350 (utente, 21/10/2026: torna come all'inizio; era 1000 dal 20/10 14:11); engine.open usa anche cash*0.95
-            max_open=6,               # max 6 posizioni (utente, 21/10/2026; era 10 dal 20/10 13:56, 3 all'inizio). Non devono essere tutte piene
+            max_margin_total=1050.0,  # max 3 × 350$
+            max_open=3,               # max 3 posizioni
             kill_equity=450.0,
-            daily_stop=0.10,   # utente 21/10/2026: abbassato da 12% a 10%
+            daily_stop=0.12,
         ),
         system_prompt=SYSTEM_BULL,
         guardrail_min_margin=150.0,
@@ -110,9 +108,7 @@ def _make_bull_config() -> PortfolioConfig:
         guardrail_margin_forced=200.0,
         guardrail_lev_forced=15,
         guardrail_type_forced="medio",
-        description="Bull — max $350/trade, 6 posizioni, budget $1050, TP≥5%",
-        refuse_below_min_margin=True,
-        max_leverage=None,   # nessun tetto del bot (utente, 21/10/2026: torna come all'inizio). Il cancello resta nel codice ma spento; restano i tetti per asset del motore
+        description="Bull — max $350/trade, 3 posizioni, budget $1000, TP≥5%",
     )
 
 
@@ -137,11 +133,10 @@ SYSTEM = PORTFOLIO.system_prompt
 _ENTRY_SCORE_BASE = int(os.getenv("DESK_ENTRY_SCORE", "60"))
 
 # Tier A/B: BTC, ETH, XAU, XAG → soglia 60
-# Tier C: tutti gli altri altcoin → soglia 63 (era 70; 65 la mattina del 20/10, poi 63 su decisione dell'utente,
-# valida per Hawk e Bull)
+# Tier C: baseline 5818 restored: 70 for both classical profiles.
 _TIER_AB = {"BTC", "ETH", "XAU", "XAG"}
 TIER_AB_ENTRY_SCORE = 60
-TIER_C_ENTRY_SCORE = 63
+TIER_C_ENTRY_SCORE = 70
 
 
 def tier_entry_score(symbol: str) -> int:
@@ -254,6 +249,8 @@ CAPITAL_SCALE = _PORTFOLIO_CAPITAL / CAPITAL_REF if CAPITAL_REF > 0 else 1.0
 
 # Connettore live — no-op in paper mode, attivo se DESK_MODE=live
 # Lancia ValueError all'avvio se le chiavi API mancano o la scala non e' valida in modalità live
+if os.getenv("DESK_MODE", "paper").strip().lower() != "paper":
+    raise ValueError("Classical rollback is PAPER-only")
 LIVE = LiveConnector(data_dir=DATA_DIR, scale=CAPITAL_SCALE)
 set_context(PORTFOLIO.name, LIVE._live, CAPITAL_SCALE)   # intestazione LIVE / NON REALE nei messaggi Telegram
 
@@ -262,15 +259,6 @@ set_context(PORTFOLIO.name, LIVE._live, CAPITAL_SCALE)   # intestazione LIVE / N
 # Esempio: capitale $1000, pct 25% → massima perdita $250/giorno (reali: il confronto usa la scala).
 _DAILY_LOSS_PCT = float(os.getenv("DESK_DAILY_LOSS_PCT", "25")) / 100.0
 _DAILY_LOSS_LIMIT = _PORTFOLIO_CAPITAL * _DAILY_LOSS_PCT
-
-# Bull: massimo rischio SL aggregato (USDT del motore) con piu' posizioni aperte (utente, 26/10/2026: 250$, era 160$).
-# La prima posizione passa sempre; le successive solo se il totale resta sotto la soglia.
-BULL_MAX_OPEN_RISK_USD = float(os.getenv("DESK_BULL_MAX_OPEN_RISK", "250"))
-# Regime di mercato (desk/regime.py): filtro dei lati in apertura, stop che segue il profitto, uscita se il mercato gira.
-# DESK_REGIME_V1=0 lo spegne. Lo spostamento dello stop vale solo in PAPER (in live lo stop sta sull'exchange).
-REGIME_ON = os.getenv("DESK_REGIME_V1", "1").strip().lower() not in ("0", "off", "false", "no")
-# Bull: niente nuovi SHORT se BTC sale piu' di questa frazione in 24h (rimbalzo)
-BULL_SHORT_VETO_BTC_24H = float(os.getenv("DESK_BULL_SHORT_VETO_BTC_24H", "0.02"))
 
 print(f"[CAPITAL] {PORTFOLIO.name.upper()} capitale={_PORTFOLIO_CAPITAL:.0f}$ scala={CAPITAL_SCALE:g} "
       f"limite_perdita_giornaliero={_DAILY_LOSS_LIMIT:.0f}$ ({_DAILY_LOSS_PCT*100:.0f}%)", flush=True)
@@ -364,43 +352,13 @@ def _daily_loss_exceeded(acc) -> bool:
     return False
 
 
-def _open_sl_risk(acc) -> float:
-    """Perdita stimata (USDT del motore) se tutte le posizioni aperte toccano lo stop attuale.
-    Uno stop gia' oltre il prezzo d'ingresso (profitto protetto) conta zero."""
-    total = 0.0
-    for pos in acc.positions.values():
-        if not pos.sl or not pos.entry or pos.entry <= 0:
-            continue
-        loss_frac = max(0.0, pos.side * (pos.entry - pos.sl) / pos.entry)
-        total += (pos.total_margin or pos.margin) * pos.leverage * loss_frac
-    return total
 
 
-def bull_entry_gate(acc, pg, dec, sl_pct, side, btc_ret_24h):
-    """Solo Bull. None se l'apertura puo' proseguire, altrimenti (stato_candidato, motivo).
-    1) rischio SL aggregato: la prima posizione passa sempre, le successive solo se il totale resta sotto soglia;
-    2) nessun nuovo SHORT mentre BTC rimbalza (rendimento 24h sopra soglia)."""
-    if pg.name != "bull":
-        return None
-    cur = _open_sl_risk(acc)
-    new = dec["margin_usd"] * dec["leverage"] * sl_pct
-    if cur > 0 and cur + new > BULL_MAX_OPEN_RISK_USD:
-        return ("rifiutata:rischio_aperto_bull",
-                f"rischio SL aperto {cur:.0f}$ + nuovo {new:.0f}$ > {BULL_MAX_OPEN_RISK_USD:.0f}$")
-    if side == -1 and btc_ret_24h is not None and btc_ret_24h > BULL_SHORT_VETO_BTC_24H:
-        return ("rifiutata:veto_short_rimbalzo_btc",
-                f"BTC {btc_ret_24h:+.1%} in 24h > {BULL_SHORT_VETO_BTC_24H:.1%}: nessun nuovo SHORT")
-    return None
 
 
-def _bars_return(arr, bars: int):
-    """Rendimento della chiusura sulle ultime `bars` barre; None se i dati non bastano."""
-    if arr is None or len(arr) <= bars:
-        return None
-    try:
-        return float(arr[-1][4]) / float(arr[-1 - bars][4]) - 1.0
-    except (IndexError, ZeroDivisionError, ValueError):
-        return None
+
+
+
 
 
 # ---- candles dal BitGet
@@ -424,71 +382,6 @@ def fetch_candles(symbol: str, bar: str = "15m", limit: int = 1000) -> list:
 
 
 BAR15_MS = 900_000
-DAY_MS = 86_400_000
-# Barre 1d per il trend di lungo. /candles con granularity=1D ne restituisce solo ~89 (difetto trovato il 21/10:
-# il trend 1d restava sempre assente, servono 200 barre). /history-candles con startTime/endTime le da' tutte,
-# ma rifiuta finestre larghe (HTTP 400 a 200 giorni): 4 finestre da 85 giorni = 340 giorni.
-DAILY_WINDOW_DAYS = 85
-DAILY_WINDOWS = 4
-DAILY_CALL_GAP_S = 0.4             # pausa tra una chiamata e l'altra: Bitget risponde 429 (troppe richieste) se si corre
-DAILY_RETRY_WAITS_S = (2.0, 4.0)   # dopo un 429 si aspetta e si riprova (provato dal vivo il 21/10: 4 simboli su 26 davano 429)
-DAILY_PAUSE_MS = 300_000           # dopo uno scarico fallito per un simbolo non si insiste per 5 minuti
-DAILY_STREAK_PAUSE = 3             # 3 simboli di fila falliti = rete in difficolta': stop a tutti per 5 minuti
-DAILY_STALE_DAYS = 3               # se non si riesce a riscaricare, la serie di ieri vale ancora (EMA50/200 non cambiano)
-DAILY_CYCLE_BUDGET_S = 90.0        # tempo massimo per ciclo speso a scaricare barre giornaliere
-_DAILY_CACHE: dict = {}   # simbolo -> (giorno UTC dello scarico, barre 1d chiuse; anche vuote: serie corta o irregolare)
-_DAILY_FAILED: dict = {}  # simbolo -> ms fino a cui non si riprova
-_DAILY_PAUSE = {"until_ms": 0, "streak": 0}
-_DAILY_CYCLE = {"now_ms": None, "t0": 0.0}
-_daily_sleep = time.sleep
-
-
-def _fetch_daily_window(url: str, opener, sleep) -> dict:
-    """Una finestra: con HTTP 429 aspetta e riprova (DAILY_RETRY_WAITS_S), poi solleva. Altri errori: subito."""
-    for wait in DAILY_RETRY_WAITS_S + (None,):
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with opener(req, timeout=10) as r:
-                d = json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            if e.code != 429 or wait is None:
-                raise
-            sleep(wait)
-            continue
-        if isinstance(d, dict) and str(d.get("code")) == "429" and wait is not None:
-            sleep(wait)
-            continue
-        return d
-    raise ValueError("troppe richieste (429)")
-
-
-def fetch_daily_history(symbol: str, now_ms: int, opener=urllib.request.urlopen, sleep=None) -> list:
-    """Righe grezze [ts, o, h, l, c, vol] dei ~340 giorni piu' recenti (compreso il giorno in corso, che
-    `closed_daily` toglie). Solleva se la rete o il formato non vanno: chi chiama decide cosa fare.
-    Le finestre si sovrappongono di un giorno e i doppioni si tolgono: nessun buco al confine."""
-    sleep = sleep or _daily_sleep
-    sym = symbol.upper()
-    if not sym.endswith("USDT"):
-        sym += "USDT"
-    rows: dict = {}
-    end = (int(now_ms) // DAY_MS + 1) * DAY_MS
-    for k in range(DAILY_WINDOWS):
-        if k:
-            sleep(DAILY_CALL_GAP_S)
-        start = end - DAILY_WINDOW_DAYS * DAY_MS
-        url = (f"{BITGET_BASE}/api/v2/mix/market/history-candles?symbol={sym}&productType=USDT-FUTURES"
-               f"&granularity=1D&startTime={start}&endTime={end}&limit=200")
-        d = _fetch_daily_window(url, opener, sleep)
-        if not isinstance(d, dict) or d.get("code") != "00000" or not isinstance(d.get("data"), list):
-            raise ValueError("risposta 1d rifiutata")
-        if not d["data"]:
-            break                                    # moneta piu' giovane della finestra: niente di piu' vecchio
-        for row in d["data"]:
-            rows[int(float(row[0]))] = [float(x) for x in row[:6]]
-        end = start + DAY_MS
-    return [rows[k] for k in sorted(rows)]
-
-
 def closed_bars(arr, now_ms: int, bar_ms: int = BAR15_MS):
     """Solo barre CHIUSE: BitGet mette per ultima la barra ancora in formazione (massimo/minimo parziali).
     Indicatori e controlli di stop/TP usano solo barre definitive (difetto B)."""
@@ -497,66 +390,15 @@ def closed_bars(arr, now_ms: int, bar_ms: int = BAR15_MS):
     return arr[arr[:, 0] + bar_ms <= now_ms]
 
 
-def daily_bars(symbol: str, now_ms: int, budget: bool = True):
-    """Barre 1d chiuse per il trend di lungo (EMA50/EMA200 giornaliere). Un solo scarico per simbolo al giorno.
-    Se lo scarico non riesce (rete, limite di richieste, tempo del ciclo finito) vale la serie di ieri (al massimo
-    DAILY_STALE_DAYS giorni): il trend 1d non sparisce e non salta a mezzanotte. Senza nessuna serie il trend 1d resta
-    assente, come prima della correzione. Una serie corta (moneta giovane) o irregolare si ricorda per il giorno."""
-    import numpy as np
-    from desk.signals import closed_daily
-    empty = np.empty((0, 6))
-    if os.environ.get("DESK_DAILY_FETCH") == "0":    # i test non scaricano mai dati veri
-        return empty
-    day = int(now_ms) // DAY_MS
-    hit = _DAILY_CACHE.get(symbol)
-    if hit is not None and hit[0] == day:
-        return hit[1]
-    stale = hit[1] if hit is not None and day - hit[0] <= DAILY_STALE_DAYS else empty
-    if now_ms < _DAILY_PAUSE["until_ms"] or now_ms < _DAILY_FAILED.get(symbol, 0):
-        return stale                                  # rete in difficolta' o simbolo appena fallito: si riprova tra poco
-    if _DAILY_CYCLE["now_ms"] != now_ms:              # nuovo ciclo: il tempo a disposizione riparte
-        _DAILY_CYCLE.update(now_ms=now_ms, t0=time.monotonic())
-    if budget and time.monotonic() - _DAILY_CYCLE["t0"] > DAILY_CYCLE_BUDGET_S:
-        return stale                                  # budget del ciclo finito: i simboli restanti al prossimo ciclo
-    try:
-        arr = closed_daily(fetch_daily_history(symbol, now_ms), now_ms)
-    except Exception as e:
-        code = getattr(e, "code", "")
-        _DAILY_FAILED[symbol] = int(now_ms) + DAILY_PAUSE_MS
-        _DAILY_PAUSE["streak"] += 1
-        if _DAILY_PAUSE["streak"] >= DAILY_STREAK_PAUSE:
-            _DAILY_PAUSE["until_ms"] = int(now_ms) + DAILY_PAUSE_MS
-        print(f"[DAILY] scarico 1d {symbol} fallito ({type(e).__name__} {code}): "
-              f"{'uso la serie di ieri' if len(stale) else 'trend 1d assente'}, riprovo tra 5 minuti", flush=True)
-        return stale
-    _DAILY_PAUSE["streak"] = 0
-    _DAILY_CACHE[symbol] = (day, arr)
-    return arr
 
 
-def warm_daily_cache(symbols, now_ms: int) -> int:
-    """All'avvio, prima del primo ciclo: scarica le barre 1d di tutti i simboli SENZA tetto di tempo (circa 1-2 minuti),
-    cosi' il primo ciclo ha il trend 1d completo e non a pezzi. Seconda passata per chi ha dato errore. Ritorna quanti
-    simboli hanno una serie lunga abbastanza per il trend (>= DAILY_MIN_BARS barre)."""
-    from desk.signals import DAILY_MIN_BARS
-    for passo in range(2):
-        for sym in symbols:
-            h = _DAILY_CACHE.get(sym)
-            if h is None or h[0] != int(now_ms) // DAY_MS:
-                daily_bars(sym, now_ms, budget=False)
-        if all((_DAILY_CACHE.get(s) or (None,))[0] == int(now_ms) // DAY_MS for s in symbols):
-            break
-        _daily_sleep(3.0)
-        _DAILY_FAILED.clear()
-        _DAILY_PAUSE.update(until_ms=0, streak=0)
-    n = sum(1 for s in symbols if _DAILY_CACHE.get(s) and len(_DAILY_CACHE[s][1]) >= DAILY_MIN_BARS)
-    print(f"[DAILY] barre 1d pronte: {n}/{len(symbols)} simboli con almeno {DAILY_MIN_BARS} barre", flush=True)
-    return n
+
+
 
 
 def _capital_enabled() -> bool:
-    # Off by default. HARD PAPER-only gate; no real exchange movements.
-    return os.getenv("DESK_CAPITAL_V1", "").lower() == "paper" and not LIVE._live
+    """Vault-only accounting, never V1 percentage sizing or its 20% stop."""
+    return not LIVE._live
 
 
 _CAPITAL_WRITER_LOCK = None
@@ -589,6 +431,8 @@ def _capital_journal():
             _CAPITAL_JOURNAL_INSTANCE.root != Path(DATA_DIR) or
             _CAPITAL_JOURNAL_INSTANCE.bot != PORTFOLIO.name):
         _CAPITAL_JOURNAL_INSTANCE=PaperCapitalJournal(DATA_DIR,PORTFOLIO.name)
+        from pathlib import Path
+        _CAPITAL_JOURNAL_INSTANCE.journal_path = Path(DATA_DIR) / "salvadanaio-journal.jsonl"
     return _CAPITAL_JOURNAL_INSTANCE
 
 
@@ -703,30 +547,10 @@ def load_lessons() -> str:
 
 
 def make_account(state: dict) -> PaperAccount:
-    if state.get("main"):
-        acc = PaperAccount.from_dict(state["main"])
-        # I parametri vivono nel codice: i limiti salvati nello stato sarebbero rimasti quelli
-        # del giorno in cui il conto e' nato e un cambio di parametri non avrebbe avuto effetto.
-        acc.limits = PORTFOLIO.limits
-        if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
-            from desk.capital_manager import DayReference
-            from dataclasses import replace
-            cap=state["capital"]
-            ref=DayReference.from_dict(cap["day"])
-            if cap.get("status") != "READY":
-                ref=replace(ref,day_budget=0,stop_latched=True)
-            elif acc.positions:
-                val=cap.get("valuation") or {}
-                try:
-                    ms=int(val.get("valuation_ms",0))
-                except (ValueError,TypeError):
-                    ms=0
-                # A stale or missing quote cannot authorize fresh exposure.
-                if val.get("fresh") is not True or not 0 <= int(time.time()*1000)-ms <= 120000:
-                    ref=replace(ref,stop_latched=True)
-            acc.set_capital_policy(PORTFOLIO.name,ref.day_budget,ref)
-        return acc
-    return PaperAccount(PORTFOLIO.limits, "main")
+    acc = PaperAccount.from_dict(state["main"]) if state.get("main") else PaperAccount(PORTFOLIO.limits, "main")
+    acc.limits = PORTFOLIO.limits
+    # Keep modern Position/cursor compatibility; fixed baseline sizing only.
+    return acc
 
 
 # ---- heartbeat: dice all'app (e al healthcheck) che il bot e' vivo e cosa sta facendo
@@ -763,8 +587,8 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
     HB["exec_mode"] = "live" if LIVE._live else "paper"   # come gira DAVVERO il bot (l'app lo mostra)
     HB["capital_usd"] = _PORTFOLIO_CAPITAL                 # capitale assegnato
     HB["capital_scale"] = CAPITAL_SCALE                    # ordini veri = importi del motore x scala
-    HB["capital_v1"] = bool(_capital_enabled() and state and
-                            (state.get("capital") or {}).get("status")=="READY")
+    HB["capital_v1"] = False
+    HB["salvadanaio"] = bool(_capital_enabled() and state and (state.get("capital") or {}).get("policy") == "salvadanaio-only-v1")
     if LIVE._live:
         HB["live_since_ms"] = LIVE_SINCE_MS                # da quando i trade contano come veri
     if LIVE._live:   # stato del collegamento con l'exchange: l'app mostra il blocco aperture se c'e'
@@ -1133,7 +957,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         state["last_prices_ms"] = now_ms
     capital_mode = _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1
     if capital_mode:
-        from desk.capital_runtime import rollover_today
+        from desk.salvadanaio import rollover_today
         if (state["capital"].get("day") or {}).get("utc_day") != day:
             # Apply all completed bars prior to the 00:00 UTC boundary FIRST.
             boundary_ms=(now_ms // 86400000)*86400000
@@ -1162,6 +986,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # Barre chiuse PRIMA delle decisioni (difetto A): stop, liquidazioni e TP scattati dall'ultimo ciclo si
     # contano con i livelli che erano in vigore; le decisioni di questo ciclo valgono solo per le barre future.
     process_closed_bars(state, acc, closed_map, now_ms)
+    if acc.day != day:
+        acc.roll_day(day, prices)
     halt = acc.halted(prices)
     if halt:
         # Invia l'alert HALT una sola volta per sessione (evita loop di messaggi)
@@ -1185,8 +1011,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 "ls_ratio": {k: vars(v) for k, v in ctx.get("ls_ratio", {}).items()},
                 "news": ctx["news"], "ts": ctx["ts"],
             }
-            # BitGet non da' lo storico dell'OI: la variazione 24h si calcola dalle letture del bot (nello stato)
-            apply_oi_history(ctx_serial["oi"], state.setdefault("oi_hist", {}), now_ms)
             state["market_ctx"] = ctx_serial
             state["last_ctx_ts"] = now_ms
         except Exception:
@@ -1212,10 +1036,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         print(f"[MACRO] calendario non disponibile ({macro.get('error') or 'nessun dato'}): il bot lavora come prima",
               flush=True)
 
-    # rendimento di BTC su 3 giorni (288 barre 15m chiuse): frena il bonus stagionale se il mercato lo contraddice
-    _btc_closed = closed_map.get("BTC")
-    _btc_return_3d = _bars_return(_btc_closed, 288)
-
     # segnali tecnici
     readings_list = []
     readings_map: dict = {}
@@ -1223,12 +1043,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         arr = closed_map.get(sym)
         if arr is None or len(arr) < 80:
             continue
-        try:
-            dly = daily_bars(sym, now_ms)
-        except Exception:
-            dly = None
-        r = read_symbol(sym, arr, now_ms, daily=dly, price=prices.get(sym),
-                        four_hour=four_hour_bars(sym, now_ms), btc_return_3d=_btc_return_3d)
+        r = read_symbol(sym, arr, now_ms, price=prices.get(sym),
+                        four_hour=four_hour_bars(sym, now_ms))
         if r is not None:
             readings_list.append(r)
             readings_map[sym] = r
@@ -1236,45 +1052,12 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     print(f"[DESK V2] readings validi: {len(readings_list)}/{len(SYMBOLS)} simboli", flush=True)
     open_symbols = set(acc.positions)
 
-    # regime di mercato: dai punteggi appena calcolati. Non solleva mai: se qualcosa va storto non c'e' filtro.
-    regime = None
-    if REGIME_ON and readings_list:
-        try:
-            regime = regime_mod.compute(readings_list, state.get("regime_hist") or [])
-            state["regime_hist"] = regime_mod.push_hist(state.get("regime_hist") or [], regime)
-            HB["regime"] = {"state": regime.state, "turn": regime.turn, "indice": regime.smooth,
-                            "guida": regime.lead, "ampiezza": regime.breadth, "btc_24h": regime.roc}
-            macro_feats = {**macro_feats, "reg_state": regime.state, "reg_turn": regime.turn, "reg_idx": regime.smooth}
-            print(f"[REGIME] {regime.label()}", flush=True)
-        except Exception as e:
-            print(f"[REGIME ERRORE] {e}: nessun filtro di regime in questo ciclo", flush=True)
-            regime = None
-
     # snapshot conto per il prompt
     eq = acc.equity(prices)
     snap = account_snapshot(acc, eq, halt)
-    if capital_mode and state["capital"].get("status")=="READY":
-        from desk.position_sizer import cap_for
-        ref=state["capital"]["day"]
-        cap_margin=cap_for(PORTFOLIO.name,ref["day_budget"])
-        snap["capital_v1"]=True
-        snap["day_budget"]=float(ref["day_budget"])
-        snap["max_margin_trade"]=float(cap_margin)
-        snap["max_margin"]=min(acc.limits.max_margin_total,float(ref["day_budget"]))
-
     # posizioni aperte con info aggiornate
     pos_info = [position_info(pos, prices.get(sym, pos.entry), readings_map, now_ms, acc.closed, acc.limits)
                 for sym, pos in acc.positions.items()]
-    for pi, (sym, pos) in zip(pos_info, acc.positions.items()):      # R attuali e di picco, per regole e regime
-        pi["cur_r"], pi["peak_r"] = regime_mod.r_metrics(pos.side, pos.entry, prices.get(sym, pos.entry),
-                                                          regime_mod.peak_price(pos), regime_mod.r_unit(pos))
-
-    # stop che si alza: pareggio dopo +1R, poi segue il prezzo; mai indietro. Solo PAPER. Se il prezzo e' gia' tornato
-    # oltre il livello da proteggere si chiude subito (protect_closes).
-    protect_closes: dict = {}
-    if regime is not None and not LIVE._live:
-        protect_closes = regime_mod.apply_ratchet(acc.positions, prices, log=lambda m: print(m, flush=True))
-
     # notizie dal ctx
     headlines = ctx_for_prompt.get("news", []) if ctx_for_prompt else []
 
@@ -1288,7 +1071,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     decisions = []
     source = "rules"
-    _claude_responded = False  # True se Claude ha risposto (anche con 0 decisioni)
     if halt:
         print(f"[HALT] {halt}")
     elif drain and not acc.positions:
@@ -1298,21 +1080,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     elif call_due and can_call(state, day):
         try:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats,
-                                  macro_lines="\n".join(macro_calendar.prompt_lines(macro)
-                                                    + ([f"REGIME DI MERCATO (calcolato dal bot): {regime.label()}"] if regime else [])))
+                                  macro_lines="\n".join(macro_calendar.prompt_lines(macro)))
             max_tok, timeout_s = claude_limits(LIVE._live)
-            system_for_call = SYSTEM
-            if snap.get("capital_v1"):
-                system_for_call += (
-                    "\n\nREGOLA DI CAPITALE V1 PAPER APPROVATA (sostituisce tutti i margini fissi "
-                    "menzionati nelle istruzioni sopra): budget operativo di inizio UTC "
-                    f"${snap['day_budget']:.2f}; margine MASSIMO dell'INTERA posizione "
-                    f"(ingresso+split+DCA) ${snap['max_margin_trade']:.2f} "
-                    f"({10 if PORTFOLIO.name=='hawk' else 25}% del budget). "
-                    "Non forzare minimi incompatibili: proponi skip. "
-                    "Non utilizzare denaro nel salvadanaio o profitto in attesa."
-                )
-            text, usage = call_claude(system_for_call, prompt, max_tokens=max_tok, timeout=timeout_s)
+            text, usage = call_claude(SYSTEM, prompt, max_tokens=max_tok, timeout=timeout_s)
             cost = record_spend(state, day, usage)
             state["last_call_ms"] = now_ms
             parsed = parse_decisions(text)
@@ -1321,7 +1091,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             if parsed:
                 decisions = parsed["decisions"]
                 source = "claude"
-                _claude_responded = True
                 print(f"[Claude] {len(decisions)} decisioni  costo {cost:.4f}$  "
                       f"budget usato {state['budget']['spent']:.3f}$ / {DAILY_CAP}$")
                 if parsed.get("note"):
@@ -1331,22 +1100,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             log_claude_error(now_ms, state, e, len(acc.positions), urgent_scalp)
 
     if not decisions:
-        if _claude_responded:
-            # Claude ha risposto ma ha scelto di non aprire nulla: rispettiamo la sua scelta.
-            # Le regole gestiscono solo le posizioni già aperte (close/manage), NON aprono nuovi trade.
-            decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE,
-                                       only_manage=True, regime=regime, tier_fn=tier_entry_score)
-            source = "rules_manage_only"
-            print("[Claude] 0 aperture: Claude ha scelto hold. Regole solo per gestione posizioni aperte.")
-        else:
-            # Claude non era disponibile (errore, budget, fuori finestra): le regole decidono tutto.
-            decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE,
-                                       regime=regime, tier_fn=tier_entry_score)
-            source = "rules"
-            print("[Fallback] Claude non disponibile: decisioni affidate alle regole.")
-
-    if regime is not None:
-        decisions = list(decisions) + regime_mod.management_closes(pos_info, decisions, regime, protect_closes)
+        decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
+        source = "rules"
 
     why = drain_reason(now_ms)   # "pausa" | "orari" | "" ; la pausa premuta a ciclo in corso vale da subito
     if why:
@@ -1379,7 +1134,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         except Exception:
             pass
 
-    _btc_ret_24h = _bars_return(_btc_closed, 96) if PORTFOLIO.name == "bull" else None   # 96 barre 15m = 24h
 
     for dec in decisions:
         sym = dec["symbol"]
@@ -1484,30 +1238,12 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 continue
             if sym in acc.positions:
                 continue
-            # ── CALENDARIO MACRO: nessuna NUOVA apertura attorno a un evento ad alto impatto ──────────────
-            # (le posizioni gia' aperte non vengono toccate: stop, take profit, DCA e chiusure restano come sempre)
-            # soglia confidenza tier-aware, piu' il bonus del regime macro (0 se calmo o calendario non disponibile)
-            base_thr = tier_entry_score(sym)
-            # MODALITA' OSSERVAZIONE (predefinita): il calendario si legge e si registra ma non frena. Blocco e bonus
-            # si applicano solo se l'utente ha acceso `macro_enforce.flag` (vedi macro_calendar).
-            macro_on = bool(macro.get("enforce", True))
-            m_block = bool(macro["blackout"]) and macro_on
-            m_bonus = macro["conf_bonus"] if macro_on else 0
-            # "macro_blocco" si registra solo per chi avrebbe superato la soglia NORMALE: chi non la supera si ferma
-            # comunque piu' sotto per confidenza bassa, e contarlo come bloccato dalla macro gonfierebbe l'effetto.
-            if m_block and dec["confidence"] >= base_thr:
-                print(f"[MACRO_BLOCCO] {sym}: nuova apertura sospesa fino alle "
-                      f"{macro_calendar.hm_utc(macro['blackout_until_ms'])} UTC (evento macro)", flush=True)
+            # Baseline 5818: macro is enforced; no later observation-mode override.
+            if macro["blackout"]:
                 _candidate("macro_blocco", dec, px)
                 continue
-            if macro["blackout"] and not macro_on and dec["confidence"] >= base_thr:
-                print(f"[MACRO_OSSERVATO] {sym}: dentro una finestra a rischio (fino alle "
-                      f"{macro_calendar.hm_utc(macro['blackout_until_ms'])} UTC) ma in osservazione: non frena", flush=True)
-            thr = base_thr + m_bonus
-            if dec["confidence"] < thr:
-                print(f"[CONF_LOW] {sym} conf={dec['confidence']} < soglia={thr}"
-                      + (f" ({base_thr}+{m_bonus} macro)" if m_bonus else ""))
-                _candidate("conf_bassa_macro" if dec["confidence"] >= base_thr else "conf_bassa", dec, px)
+            if dec["confidence"] < tier_entry_score(sym) + macro["conf_bonus"]:
+                _candidate("conf_bassa_macro" if dec["confidence"] >= tier_entry_score(sym) else "conf_bassa", dec, px)
                 continue
             # filtro R:R minimo 1.5 — se SL e TP sono entrambi definiti
             sl_pct = dec.get("stop_loss_pct", 0)
@@ -1520,18 +1256,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     continue
             act = base_act  # usa open_long / open_short da qui in poi
             side = 1 if act == "open_long" else -1
-            if regime is not None:
-                reg_ok, reg_extra = regime_mod.entry_gate(side, sym, regime)
-                if not reg_ok:
-                    print(f"[REGIME] {sym} {act}: lato non consentito dal mercato ({regime.state}"
-                          f"{'/' + regime.turn if regime.turn else ''})", flush=True)
-                    _candidate("rifiutata:regime", dec, px)
-                    continue
-                if reg_extra and dec["confidence"] < tier_entry_score(sym) + reg_extra:
-                    print(f"[REGIME] {sym} conf={dec['confidence']} < soglia={tier_entry_score(sym)}+{reg_extra} "
-                          f"(mercato laterale)", flush=True)
-                    _candidate("conf_bassa_regime", dec, px)
-                    continue
             sl_pct = dec.get("stop_loss_pct", 0)
             if sl_pct <= 0:
                 r = readings_map.get(sym)
@@ -1584,24 +1308,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 _candidate("live_bloccato", dec, px)
                 continue
             # ─────────────────────────────────────────────────────────────────
-            # ── OPZIONE A (Bull): margine disponibile sotto il minimo -> si rifiuta, non si ridimensiona ──
-            why_margin = margin_gate(acc, pg)
-            if why_margin:
-                print(f"[SKIP:{pg.name.upper()}] {sym} {act}: {why_margin}", flush=True)
-                _candidate("rifiutata:margine_sotto_minimo", dec, px)
-                continue
-            # ── OPZIONE B: leva proposta sopra il massimo -> si rifiuta ────────────────────────────────
-            why_lev = leverage_gate(dec, pg)
-            if why_lev:
-                print(f"[SKIP:{pg.name.upper()}] {sym} {act}: {why_lev}", flush=True)
-                _candidate("rifiutata:leva_sopra_massimo", dec, px)
-                continue
-            bull_stop = bull_entry_gate(acc, pg, dec, sl_pct, side, _btc_ret_24h)
-            if bull_stop:
-                _status, _why = bull_stop
-                print(f"[SKIP:{pg.name.upper()}] {sym} {act}: {_why}", flush=True)
-                _candidate(_status, dec, px)
-                continue
             split_cfg = None
             if is_split:
                 retr = float(dec.get("split_retrace_pct") or 0.0)   # frazione (0.005 = 0,5%)
@@ -1705,7 +1411,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # ---- salva in due transazioni distinte: prima tutti i trade, poi il vault
     save_account(acc,state)
     if capital_mode:
-        from desk.capital_runtime import update_market_risk,settle_after_close
+        from desk.salvadanaio import update_market_risk,settle_after_close
         update_market_risk(state,prices,now_ms=now_ms)
     save_state(state,STATE_FILE)
     if capital_mode and state["capital"].get("status")=="READY":
@@ -1717,6 +1423,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             print(f"[CAPITAL] pending rinviato: {type(exc).__name__}",flush=True)
 
     # ---- report
+    acc = make_account(state)
     print(render_report(acc, prices, now_ms))
 
 
@@ -1799,7 +1506,7 @@ def _settle_vault_after_user_close(state: dict, prices: dict, now_ms: int) -> No
     """Never move vault money in the same journal commit as a trade close."""
     if not _capital_enabled() or (state.get("capital") or {}).get("status")!="READY":
         return
-    from desk.capital_runtime import settle_after_close
+    from desk.salvadanaio import settle_after_close
     # Only remaining open positions require market quotes. No historical estimate.
     positions=(state.get("main") or {}).get("positions") or {}
     remaining={k:prices[k] for k in positions if k in prices}
@@ -2090,56 +1797,9 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
         _remove(path)
 
 
-def _process_vault_request(state: dict) -> bool:
-    """Only the PAPER bot consumes the app's manual withdraw request.
-
-    ACK and debit are committed in one journalled snapshot before unlinking
-    the request. A crash after commit is recovered through the receipt.
-    """
-    from desk.capital_runtime import withdraw_request, utc_day
-    from desk.capital_manager import CapitalInvariantError
-    path=_flag("vault_transfer_request.json")
-    if not os.path.exists(path):
-        return False
-    cap=state.get("capital") or {}
-    if cap.get("status")!="READY" or (cap.get("day") or {}).get("utc_day")!=utc_day(int(time.time()*1000)):
-        return False  # leave queued while midnight reconciliation is pending
-    if LIVE._live:
-        return False
-    try:
-        with open(path,encoding="utf8") as fh:
-            request=json.load(fh)
-        if not isinstance(request,dict):
-            return False
-        key=request.get("idempotency_key")
-        if not isinstance(key,str) or len(key)>64:
-            return False
-        try:
-            receipt=withdraw_request(state,request,bot=PORTFOLIO.name)
-        except (CapitalInvariantError,KeyError,ValueError,TypeError) as e:
-            # An ID reused with different amount cannot rewrite the original
-            # successful receipt: preserve the journal's historical truth.
-            existing=(state["capital"].get("receipts") or {}).get(key)
-            if existing:
-                print("[CAPITAL] richiesta con ID esistente rifiutata, ACK originale intatto",flush=True)
-                os.unlink(path)
-                return False
-            receipt={"status":"rejected","amount":str(request.get("amount",0)),
-                     "reason":type(e).__name__}
-            state["capital"].setdefault("receipts",{})[key]=receipt
-        save_state(state,STATE_FILE)
-        os.unlink(path)
-        print(f"[CAPITAL] trasferimento {receipt['status']} ({PORTFOLIO.name})",flush=True)
-        return True
-    except Exception as exc:
-        print(f"[CAPITAL] richiesta rimane pendente per recovery: {type(exc).__name__}",flush=True)
-        return False
-
-
 def process_flags(state: dict) -> None:
     """Esegue comandi app; il bot PAPER e' l'unico autore dei saldi."""
-    if _capital_enabled():
-        _process_vault_request(state)
+    # Salvadanaio is read-only from the app: no automatic/manual reinvestment.
     _check_budget_reset_flag(state)
     _check_close_all_flag(state)
     _check_close_position_flag(state)
@@ -2195,7 +1855,7 @@ def loop_step(state: dict, ctl: dict) -> bool:
     - in pausa il bot continua a girare finche' ha posizioni aperte (svuotamento), poi si ferma da solo.
     """
     if _capital_enabled() and (state.get("capital") or {}).get("schema_version")==1:
-        from desk.capital_runtime import utc_day, rollover_today
+        from desk.salvadanaio import utc_day, rollover_today
         now_ms=int(time.time()*1000)
         day=utc_day(now_ms)
         if (state["capital"].get("day") or {}).get("utc_day")!=day:
@@ -2252,11 +1912,16 @@ def main() -> None:
     _acquire_capital_writer_lock()
     ensure_live_since()          # solo in live: ricorda il momento della prima partenza
     state = load_state(STATE_FILE)
-    if _capital_enabled() and state and "capital" not in state:
-        from desk.capital_runtime import initial_capital,utc_day
-        state["capital"]=initial_capital(state.get("main") or {},utc_day(int(time.time()*1000)))
-        save_state(state,STATE_FILE)
-        print("[CAPITAL] migrazione PAPER additiva; nessuna apertura fino al rollover validato",flush=True)
+    if not state:
+        if os.path.exists(STATE_FILE):
+            raise ValueError("Empty existing account state: manual reconciliation required")
+        # First installation only. Never recreate an existing empty/corrupt account.
+        save_account(make_account(state), state)
+        save_state(state, STATE_FILE)
+    if _capital_enabled() and state:
+        from desk.salvadanaio import activate
+        if activate(state, int(time.time() * 1000)):
+            save_state(state, STATE_FILE)
     if _capital_enabled() and state and (state.get("capital") or {}).get("close_outbox"):
         _flush_capital_close_outbox(state)
 
@@ -2286,10 +1951,6 @@ def main() -> None:
           f"entry_score={TIER_AB_ENTRY_SCORE}(TIER_AB)/{TIER_C_ENTRY_SCORE}(TIER_C)  "
           f"daily_cap={DAILY_CAP}$  data={DATA_DIR}")
     ctl = {"next_cycle_ms": 0, "prev_paused": None}
-    try:      # il trend 1d completo gia' al primo ciclo; se non riesce il bot parte lo stesso (trend 1d assente)
-        warm_daily_cache(SYMBOLS, int(time.time() * 1000))
-    except Exception:
-        traceback.print_exc()
     while True:
         try:
             loop_step(state, ctl)

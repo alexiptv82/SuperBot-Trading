@@ -5,22 +5,13 @@ Cosa fa (e SOLO questo):
 - scarica il calendario (feed settimanale in formato Forex Factory; ripiego: calendario ufficiale BLS per CPI,
   PPI e occupazione) e lo tiene in cache nella cartella dati del bot (macro_events.json);
 - calcola il "regime" del momento: calmo / medio / alto;
-- distingue gli eventi ad alto impatto in due livelli: GRANDI (CPI, PPI, occupazione/NFP, FOMC, PCE) e SECONDARI
-  (discorsi, vendite al dettaglio, PIL...);
-- BLOCCA le NUOVE aperture: attorno a un evento GRANDE da `block_before_min` minuti prima a `block_after_min` dopo,
-  attorno a un SECONDARIO solo da `minor_block_before_min` a `minor_block_after_min` (finestra corta);
-- in regime alto (solo per gli eventi GRANDI) alza di `conf_bonus_alto` punti la confidenza richiesta per aprire;
-  i secondari non alzano mai la soglia;
+- BLOCCA le NUOVE aperture da `block_before_min` minuti prima a `block_after_min` dopo ogni evento ad alto impatto;
+- in regime alto alza di `conf_bonus_alto` punti la confidenza richiesta per aprire;
 - offre righe di testo per Claude e campi per il registro di apprendimento.
 
 Cosa NON fa: non tocca le posizioni gia' aperte (stop, take profit, DCA, seconda gamba, chiusure), non cambia mai
 la strategia, non decide nulla se non c'e' un dato. Se il calendario non e' disponibile, o qualsiasi cosa va
 storta, il bot lavora esattamente come prima (regime "nd", nessun blocco, nessun bonus).
-
-MODALITA' OSSERVAZIONE (predefinita, scelta dell'utente del 16 ottobre): il calendario viene letto e REGISTRATO
-(regime, blocco che ci sarebbe stato, bonus che ci sarebbe stato) ma NON frena il bot: nessun blocco, nessun +confidenza.
-Serve a confrontare con i dati "con calendario" e "senza" prima di decidere. Per far FRENARE davvero il bot (blocco e
-bonus applicati) basta creare il file `macro_enforce.flag` nella cartella dati (nessun riavvio) oppure DESK_MACRO_ENFORCE=1.
 
 Interruttori: variabile DESK_MACRO=0 (spegne tutto), file `macro_off.flag` nella cartella dati (spegne il filtro
 senza riavviare), DESK_MACRO_FETCH=0 (niente rete: usa solo la cache; serve ai test).
@@ -38,7 +29,6 @@ from typing import Callable, Optional
 
 CACHE_FILE = "macro_events.json"
 OFF_FLAG = "macro_off.flag"
-ENFORCE_FLAG = "macro_enforce.flag"      # presente = il calendario FRENA (blocco e bonus); assente = solo osservazione
 
 FF_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 BLS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
@@ -57,40 +47,16 @@ BLS_KEEP = (("consumer price index", "CPI (BLS)"), ("producer price index", "PPI
             ("employment situation", "Occupazione/NFP (BLS)"))
 
 
-# Classificazione dei titoli: sono "grandi" le uscite che muovono davvero il mercato. Tutto il resto ad alto impatto
-# e' "secondario". I dati del calendario ufficiale BLS (CPI, PPI, occupazione) sono sempre grandi.
-_GRANDE_RE = re.compile(r"\b(cpi|ppi|pce|fomc)\b|non-?farm|federal funds|unemployment rate", re.I)
-
-
-_DISCORSO_RE = re.compile(r"speaks|speech|testif|remarks", re.I)
-
-
-def event_tier(e: dict) -> str:
-    """'grande' | 'secondario' per un evento ad alto impatto."""
-    if e.get("src") == "bls":
-        return "grande"
-    title = str(e.get("title") or "")
-    if title.lower().startswith("adp"):          # ADP anticipa l'occupazione ma non e' l'uscita ufficiale
-        return "secondario"
-    if _DISCORSO_RE.search(title):                # discorsi e audizioni (anche dei membri FOMC): secondari
-        return "secondario"
-    return "grande" if _GRANDE_RE.search(title) else "secondario"
-
-
 @dataclass(frozen=True)
 class MacroConfig:
     """PARAMETRI DEL FILTRO. Sono decisioni dell'utente: valori proposti, da approvare prima del riavvio."""
     countries: tuple = ("USD",)        # valute degli eventi che contano
-    # --- eventi GRANDI (CPI, PPI, occupazione, FOMC, PCE)
-    block_before_min: int = 60         # niente nuove aperture da 60 minuti PRIMA di un evento grande...
+    block_before_min: int = 60         # niente nuove aperture da 60 minuti PRIMA di un evento ad alto impatto...
     block_after_min: int = 120         # ...fino a 120 minuti DOPO
-    lookahead_h: int = 6               # regime "alto" se c'e' un evento grande nelle prossime 6 ore (era 12)...
+    lookahead_h: int = 12              # regime "alto" se c'e' un evento alto nelle prossime 12 ore...
     lookback_h: int = 3                # ...o c'e' stato nelle ultime 3
-    conf_bonus_alto: int = 3           # in regime alto: +3 punti di confidenza richiesta per aprire (era +5)
+    conf_bonus_alto: int = 5           # in regime alto: +5 punti di confidenza richiesta per aprire
     conf_bonus_medio: int = 0          # in regime medio: solo informazione (nessun bonus)
-    # --- eventi SECONDARI (gli altri ad alto impatto: discorsi, vendite al dettaglio, PIL...)
-    minor_block_before_min: int = 15   # blocco corto: da 15 minuti prima...
-    minor_block_after_min: int = 30    # ...a 30 minuti dopo; nessun aumento di soglia
 
 
 CFG = MacroConfig()
@@ -224,42 +190,27 @@ def _neutral(regime: str, error: str = "") -> dict:
 
 def evaluate(events: list, now_ms: int, cfg: MacroConfig = CFG, fetched_ms: int = 0, error: str = "") -> dict:
     high = sorted((e for e in events if e.get("impact") == "High"), key=lambda e: e["ts"])
-    big = [e for e in high if event_tier(e) == "grande"]
-    minor = [e for e in high if event_tier(e) != "grande"]
     medium = [e for e in events if e.get("impact") == "Medium"]
     look = (now_ms - cfg.lookback_h * HOUR_MS, now_ms + cfg.lookahead_h * HOUR_MS)
-    inside = [e for e in big if look[0] <= e["ts"] <= look[1]]
-    blocking_big = [e for e in big
-                    if e["ts"] - cfg.block_before_min * MIN_MS <= now_ms < e["ts"] + cfg.block_after_min * MIN_MS]
-    blocking_minor = [e for e in minor
-                      if e["ts"] - cfg.minor_block_before_min * MIN_MS <= now_ms < e["ts"] + cfg.minor_block_after_min * MIN_MS]
-    ends = [e["ts"] + cfg.block_after_min * MIN_MS for e in blocking_big] + \
-           [e["ts"] + cfg.minor_block_after_min * MIN_MS for e in blocking_minor]
-    if inside or blocking_big:
+    inside = [e for e in high if look[0] <= e["ts"] <= look[1]]
+    blocking = [e for e in high if e["ts"] - cfg.block_before_min * MIN_MS <= now_ms < e["ts"] + cfg.block_after_min * MIN_MS]
+    if inside or blocking:
         regime, bonus = "alto", cfg.conf_bonus_alto
-    elif blocking_minor or any(look[0] <= e["ts"] <= look[1] for e in medium + minor):
-        regime, bonus = "medio", cfg.conf_bonus_medio     # solo informazione (i secondari non alzano la soglia)
+    elif any(look[0] <= e["ts"] <= look[1] for e in medium):
+        regime, bonus = "medio", cfg.conf_bonus_medio
     else:
         regime, bonus = "calmo", 0
 
     def view(e: dict) -> dict:
-        return {"title": e["title"], "ts": e["ts"], "min": int(round((e["ts"] - now_ms) / MIN_MS)), "src": e.get("src"),
-                "tier": event_tier(e)}
+        return {"title": e["title"], "ts": e["ts"], "min": int(round((e["ts"] - now_ms) / MIN_MS)), "src": e.get("src")}
 
     upcoming = [view(e) for e in high if e["ts"] >= now_ms][:4]
     recent = [view(e) for e in high if look[0] <= e["ts"] < now_ms][-3:]
-    return {"regime": regime, "blackout": bool(ends),
-            "blackout_until_ms": max(ends) if ends else None,
+    return {"regime": regime, "blackout": bool(blocking),
+            "blackout_until_ms": max(e["ts"] + cfg.block_after_min * MIN_MS for e in blocking) if blocking else None,
             "conf_bonus": bonus, "next": upcoming[0] if upcoming else None, "upcoming": upcoming, "recent": recent,
             "n_events": len(events), "fetched_ms": fetched_ms,
             "stale": bool(fetched_ms) and (now_ms - fetched_ms) > STALE_MS, "error": error}
-
-
-def enforcing(data_dir: str) -> bool:
-    """True se il calendario deve frenare davvero il bot. Predefinito: NO (osservazione, solo registro)."""
-    if os.getenv("DESK_MACRO_ENFORCE", "") == "1":
-        return True
-    return os.path.exists(os.path.join(data_dir, ENFORCE_FLAG))
 
 
 def current(data_dir: str, now_ms: int, fetch: Optional[Callable] = None, cfg: MacroConfig = CFG) -> dict:
@@ -276,9 +227,7 @@ def current(data_dir: str, now_ms: int, fetch: Optional[Callable] = None, cfg: M
             return _neutral("nd", err)
         events = cache["ff"]["events"] + cache["bls"]["events"]
         err = "; ".join(f"{k}: {cache[k]['error']}" for k in ("ff", "bls") if cache[k]["error"])
-        m = evaluate(events, now_ms, cfg, fetched_ms=max(s["ts"] for s in have), error=err)
-        m["enforce"] = enforcing(data_dir)
-        return m
+        return evaluate(events, now_ms, cfg, fetched_ms=max(s["ts"] for s in have), error=err)
     except Exception as e:                                # qualunque imprevisto: il bot lavora come prima
         return _neutral("nd", f"errore interno: {type(e).__name__}")
 
@@ -302,25 +251,16 @@ def prompt_lines(m: dict, cfg: MacroConfig = CFG) -> list:
     recent = m.get("recent", [])
     if m["regime"] == "calmo" and not near and not recent:
         return []
-    ev = "; ".join(f"{hm_utc(u['ts'])} UTC {u['title']} [{u.get('tier', 'grande')}] (tra {_fmt_min(u['min'])})"
-                   for u in near) or "nessuno nelle prossime 24h"
+    ev = "; ".join(f"{hm_utc(u['ts'])} UTC {u['title']} (tra {_fmt_min(u['min'])})" for u in near) or "nessuno nelle prossime 24h"
     head = f"CALENDARIO MACRO (USA, impatto alto): regime {m['regime'].upper()}. Prossimi: {ev}."
     if recent:
-        head += (" Usciti da poco: " + "; ".join(f"{hm_utc(u['ts'])} UTC {u['title']} [{u.get('tier', 'grande')}] "
-                                                 f"({_fmt_min(u['min'])} fa)" for u in recent) + ".")
-    if not m.get("enforce", True):
-        rule = ("MODALITA' OSSERVAZIONE: il codice NON blocca nulla e NON alza la soglia di confidenza per il calendario; "
-                "usalo solo come informazione per giudicare il rischio di volatilita'")
-        if m["blackout"]:
-            rule += f" (siamo dentro una finestra a rischio, fino alle {hm_utc(m['blackout_until_ms'])} UTC)"
-        return [head, rule + "."]
+        head += " Usciti da poco: " + "; ".join(f"{hm_utc(u['ts'])} UTC {u['title']} ({_fmt_min(u['min'])} fa)" for u in recent) + "."
     rule = (f"Il codice blocca le NUOVE aperture da {cfg.block_before_min} min prima a {cfg.block_after_min} min dopo "
-            f"ogni evento [grande] (CPI, PPI, occupazione, FOMC, PCE) e da {cfg.minor_block_before_min} min prima a "
-            f"{cfg.minor_block_after_min} min dopo ogni evento [secondario]")
+            f"ogni evento")
     if m["blackout"]:
         rule += f" (ORA ATTIVO fino alle {hm_utc(m['blackout_until_ms'])} UTC)"
     if m["conf_bonus"]:
-        rule += f"; in regime alto (eventi grandi) richiede +{m['conf_bonus']} di confidenza per aprire"
+        rule += f" e in regime alto richiede +{m['conf_bonus']} di confidenza per aprire"
     return [head, rule + ". Le posizioni gia' aperte non vengono toccate dal filtro."]
 
 
@@ -328,18 +268,9 @@ def features(m: dict) -> dict:
     """Campi per il registro di apprendimento (feature d'ingresso): servono all'analista per misurare l'effetto."""
     nxt = m.get("next")
     return {"macro_regime": m.get("regime"), "macro_blackout": bool(m.get("blackout")),
-            "macro_bonus": int(m.get("conf_bonus") or 0), "macro_min_next": nxt["min"] if nxt else None,
-            "macro_tier_next": nxt.get("tier") if nxt else None,
-            "macro_enforced": bool(m.get("enforce", True))}
+            "macro_bonus": int(m.get("conf_bonus") or 0), "macro_min_next": nxt["min"] if nxt else None}
 
 
 def heartbeat_view(m: dict) -> dict:
-    v = {k: m.get(k) for k in ("regime", "blackout", "blackout_until_ms", "conf_bonus", "next", "upcoming",
-                               "recent", "n_events", "fetched_ms", "stale", "error")}
-    v["enforce"] = bool(m.get("enforce", True))
-    if not v["enforce"]:
-        # in osservazione il bot NON frena: l'app non deve mostrare «aperture sospese». La lettura vera resta in `observed`.
-        v["observed"] = {k: v[k] for k in ("regime", "blackout", "blackout_until_ms", "conf_bonus")}
-        v.update(regime="osservazione" if v["regime"] in ("medio", "alto") else v["regime"],
-                 blackout=False, blackout_until_ms=None, conf_bonus=0)
-    return v
+    return {k: m.get(k) for k in ("regime", "blackout", "blackout_until_ms", "conf_bonus", "next", "upcoming",
+                                  "recent", "n_events", "fetched_ms", "stale", "error")}

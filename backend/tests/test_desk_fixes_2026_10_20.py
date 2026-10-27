@@ -229,7 +229,7 @@ from desk import cli  # noqa: E402
 
 def test_tier_thresholds():
     assert cli.tier_entry_score("BTC") == 60 and cli.tier_entry_score("eth") == 60
-    assert cli.tier_entry_score("SOL") == 63
+    assert cli.tier_entry_score("SOL") == 70
 
 
 def test_prompts_state_the_same_altcoin_threshold_as_the_code():
@@ -238,8 +238,8 @@ def test_prompts_state_the_same_altcoin_threshold_as_the_code():
     thr = cli.TIER_C_ENTRY_SCORE
     for prompt in (brain.SYSTEM, brain.SYSTEM_BULL):
         assert f"TIER C (altcoin, tutto il resto): confidenza >= {thr}/100" in prompt
-    assert f"apri solo se confidenza >= {thr} per altcoin, >= {cli.TIER_AB_ENTRY_SCORE} per TIER A" in brain.SYSTEM_BULL
-    assert "confidenza >= 65/100" not in brain.SYSTEM and "confidenza >= 70 per altcoin" not in brain.SYSTEM_BULL
+    assert "apri solo se confidenza >= 75 per altcoin, >= 65 per TIER A" in brain.SYSTEM_BULL
+    assert "confidenza >= 65/100" not in brain.SYSTEM
 
 
 def test_closed_bars_drops_forming_bar():
@@ -249,26 +249,11 @@ def test_closed_bars_drops_forming_bar():
     assert len(cli.closed_bars(arr, T0 + BAR)) == 10
 
 
-def test_daily_bars_cached_once_per_day():
-    calls = []
-    now = T0 + 20_000
-    rows = daily_rows(260, (now // DAY - 260) * DAY, 0.001)
-    orig, env = cli.fetch_daily_history, os.environ.get("DESK_DAILY_FETCH")
-
-    def fake(sym, now_ms, **kw):
-        calls.append(sym)
-        return rows
-    cli.fetch_daily_history = fake
-    os.environ["DESK_DAILY_FETCH"] = "1"
-    cli._DAILY_CACHE.clear()
-    try:
-        assert len(cli.daily_bars("SOL", now)) == 260
-        assert len(cli.daily_bars("SOL", now + 3_600_000)) == 260
-        assert calls == ["SOL"]
-    finally:
-        cli.fetch_daily_history = orig
-        os.environ["DESK_DAILY_FETCH"] = env
-        cli._DAILY_CACHE.clear()
+def test_classical_cycle_does_not_fetch_native_daily_history():
+    # Golden baseline used the short 15m-derived daily context; no added 1d feed.
+    import inspect
+    assert "daily_bars(" not in inspect.getsource(cli.run_cycle)
+    assert not hasattr(cli, "daily_bars")
 
 
 def test_cycle_judges_bars_before_decisions():
