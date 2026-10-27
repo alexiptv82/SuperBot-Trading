@@ -1,0 +1,17 @@
+name: Manual Salvadanaio reset - bot offline tests
+on:
+  push:
+    branches: [work/manual-reset-vault-bot-20261027]
+permissions:
+  contents: read
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest
+      - run: python -m compileall -q backend/desk/cli.py backend/desk/capital_journal.py
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_salvadanaio.py backend/tests/test_capital_journal.py
