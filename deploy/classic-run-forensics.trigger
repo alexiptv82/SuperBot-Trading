@@ -1,0 +1,2 @@
+mode=paper
+operation=readonly_forensic_export
