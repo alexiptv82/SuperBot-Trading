@@ -1750,7 +1750,7 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
         clear_lessons = False        # mai: il cervello non si cancella da nessun comando
         cap_before = state.get("capital") or {}
         vault_reset = _capital_enabled() and cap_before.get("schema_version") == 1
-        if vault_reset and (cap_before.get("policy") != "salvadanaio-only-v1" or opts.get("reset_vault") is not True):
+        if vault_reset and (cap_before.get("policy") != "salvadanaio-only-v1" or not isinstance(opts, dict) or opts.get("reset_vault") is not True):
             _set_last_action(state, "reset_portfolio", False,
                              "rifiutato: reset Salvadanaio richiede conferma esplicita e policy supportata")
             save_state(state, STATE_FILE)
