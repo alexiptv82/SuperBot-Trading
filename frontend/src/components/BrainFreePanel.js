@@ -45,9 +45,22 @@ export default function BrainFreePanel({ data, error }) {
       <small>Fear &amp; Greed: Alternative.me, ultimo valore pubblicato. Notizie, sentiment e dominanza sono dati per l’AI, senza filtri automatici.</small>
     </section>
     <section style={card}><h2>Ultimi trade completati</h2>{d.trades?.map(t => <p key={t.position_id}>{t.symbol} · {t.side === 1 ? 'LONG' : 'SHORT'} · netto {money(t.net)} · fee {money(t.fees)}<br />{t.reason}</p>)}</section>
+    <section style={card}><h2>Ultimo report serale</h2>
+      {!d.latest_report ? <p>Il primo report verrà prodotto alle 22:00 italiane.</p> : <>
+        <p>Giorno dati: {d.latest_report.today_utc} UTC · aperture {d.latest_report.opens_today}</p>
+        <p>Netto realizzato {money(d.latest_report.realized_net)} · fee pagate {money(d.latest_report.fees)}</p>
+        <p>WR {Number.isFinite(d.latest_report.win_rate) ? `${(d.latest_report.win_rate * 100).toFixed(1)}%` : 'Non disponibile'} · PF {Number.isFinite(d.latest_report.profit_factor) ? d.latest_report.profit_factor.toFixed(2) : 'Non definito'}</p>
+        <p>Durata media {Number.isFinite(d.latest_report.mean_duration_minutes) ? d.latest_report.mean_duration_minutes.toFixed(1) : '—'} min · senza posizioni {d.latest_report.empty_minutes?.toFixed(1)} min</p>
+        <p>Slot medi {Number.isFinite(d.latest_report.slot_occupancy) ? `${(d.latest_report.slot_occupancy * 100).toFixed(1)}%` : '—'} · non osservato {d.latest_report.unobserved_minutes?.toFixed(1)} min</p>
+        <details><summary>Aperture per ora UTC e confronto descrittivo con i classici</summary>
+          <p>{JSON.stringify(d.latest_report.opens_per_hour_utc)}</p><p>{JSON.stringify(d.latest_report.comparators)}</p>
+          <p>Conti e capitali differenti: il confronto non dimostra una causa o una strategia migliore.</p>
+        </details>
+      </>}
+    </section>
     <section style={card}><h2>Test di 168 ore</h2><p>Avvio verificato: {date(d.experiment_start_ms)}</p>
       <p>{Number.isFinite(d.elapsed_hours) ? d.elapsed_hours.toFixed(1) : '—'} / 168 ore · prompt e guardrail congelati salvo bug</p>
-      <small>Report alle 22:00 italiane. Hash configurazione: {d.config_hash}</small>
+      <small style={{wordBreak: 'break-all'}}>Report alle 22:00 italiane. Hash configurazione: {d.config_hash}</small>
     </section>
   </main>;
 }
