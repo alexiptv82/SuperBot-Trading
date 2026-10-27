@@ -70,10 +70,10 @@ def params(r):
   if isinstance(r.get(section),dict):out[section]={k:v for k,v in r[section].items() if finite(v) or isinstance(v,bool)}
  return out
 
-def public_market():
+def public_market(symbols=('BTC','ETH','DOGE','ADA','DOT','XAU','XAG')):
  windows=[('2026-10-12','2026-10-17'),('2026-10-16','2026-10-21'),('2026-10-21','2026-10-27')]
  output=[]
- for symbol in ('BTC','ETH','DOGE','ADA','DOT','XAU','XAG'):
+ for symbol in symbols:
   for start,end in windows:
    a=int(datetime.datetime.fromisoformat(start).replace(tzinfo=datetime.timezone.utc).timestamp()*1000)
    b=int(datetime.datetime.fromisoformat(end).replace(tzinfo=datetime.timezone.utc).timestamp()*1000)
@@ -178,6 +178,7 @@ def metadata_only():
     if f.get('macro_regime') in ('basso','medio','alto','nd','calmo','osservazione'):v['macro']['macro_regime']=f['macro_regime']
     open_meta.append(v)
   out['bots'][bot]={'calls_by_run':calls,'event_counts':dict(events),'feature_fields_union':{k:sorted(v) for k,v in schemas.items()},'open_macro':open_meta,'protected_existence':{name:(ROOT/bot/name).is_file() for name in ('trade_history.jsonl','learning_log.jsonl','lessons.md','errors.md')},'manifest':manifest}
+ out['public_market_extra']=public_market(('SOL','BNB','XRP'))
  raw=json.dumps(out,separators=(',',':'),allow_nan=False).encode();s=base64.b64encode(gzip.compress(raw)).decode()
  print('AUDIT_META='+json.dumps({'kind':'metadata','sha256':hashlib.sha256(raw).hexdigest(),'payload_bytes':len(raw)}))
  for i in range(0,len(s),12000):print('AUDIT_CHUNK='+s[i:i+12000])
