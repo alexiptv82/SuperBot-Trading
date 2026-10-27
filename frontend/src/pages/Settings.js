@@ -72,11 +72,14 @@ function PortfolioControl({ portfolio }) {
       `• Il conto riparte da ${status?.start_equity ?? 1000}$ con i parametri del codice (quelli mostrati qui sotto).\n` +
       `• Il cervello del bot (storico dei trade, appunti di Claude, registro di apprendimento) NON viene toccato: continua a imparare.\n` +
       `• Il bot resta in pausa finché non premi Avvia nella Dashboard.`;
-    if (!window.confirm(text)) return;
+    const vaultActive = status?.salvadanaio?.available === true;
+    const warning = vaultActive ? "\n\n⚠️ ATTENZIONE: anche il Salvadanaio sarà AZZERATO (saldo e somme in attesa). I movimenti precedenti restano archiviati. Il cervello non sarà cancellato." : "";
+    if (!window.confirm(text + warning)) return;
+    if (vaultActive && !window.confirm(`SECONDA CONFERMA: azzerare conto e Salvadanaio di ${name}? Operazione non annullabile.`)) return;
     setBusy('portfolio'); setMsg(null);
     const runBefore = status?.run_no;
     try {
-      const { data } = await apiFor(portfolio).resetPortfolio();
+      const { data } = await apiFor(portfolio).resetPortfolio(vaultActive);
       setMsg({ ok: true, text: data.message });
       // il bot esegue il comando entro pochi secondi: aspetto che il numero di run cambi
       for (let i = 0; i < 12; i += 1) {
@@ -135,7 +138,7 @@ function PortfolioControl({ portfolio }) {
             <div style={{ fontSize: '12px', color: MUTED, margin: '8px 0' }}>
               <strong style={{ color: '#cbd5e1' }}>Azzera portafoglio</strong> — riparte da {status.start_equity ?? 1000}$ per provare
               nuovi parametri. Si può fare solo con il bot <em>in pausa</em> e <em>senza posizioni aperte</em>;
-              la run attuale viene archiviata per il confronto. Il cervello del bot (storico, appunti, registro) non si cancella mai.
+              la run attuale viene archiviata per il confronto. Se il Salvadanaio è attivo, vengono azzerati anche saldo e somme in attesa, dopo doppia conferma. Il cervello del bot (storico, appunti, registro) non si cancella mai.
             </div>
             <button onClick={resetPortfolio} disabled={!canReset} style={bigBtn(canReset, '#fca5a5', 'rgba(239,68,68,0.1)')}>
               {busy === 'portfolio' ? '⏳ Azzeramento…' : status.reset_pending ? '⏳ Azzeramento in corso…' : `🗑️ Azzera ${name} a ${status.start_equity ?? 1000}$`}
