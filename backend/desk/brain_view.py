@@ -233,6 +233,7 @@ def read_status(data_dir=None, *, now_ms=None):
                                  'used_limit_pct': drawdown / 20 * 100 if drawdown is not None else None},
                   'reasoning': reasoning,
                   'system': {'container': 'superbot-brain-pilot', 'health': 'unknown',
+                             'operator_paused': (root / 'pause.flag').is_file(),
                              'sha': None, 'uptime_seconds': None, 'heartbeat_ms': heartbeat,
                              'heartbeat': ('fresh' if -5000 <= now - heartbeat <= FRESH_MS else 'stale') if heartbeat is not None else 'unknown',
                              'first_recorded_cycle_ms': first_cycle,

@@ -96,6 +96,7 @@ export function BrainCards({ data }) {
         <Row label="Ultima chiamata tentata">{date(reasoning.last_call_ms)}</Row>
         {paired ? <>
           <Row label="Fonte ultimo ciclo">{source(data?.execution?.decision_source)}</Row>
+          <Row label="Nuovi ingressi">{data?.execution?.operator_paused === true ? 'In pausa · protezioni attive' : available ? 'Consentiti dai controlli del profilo' : 'Non disponibile'}</Row>
           <Row label="Ultimo stato AI">{provider(data?.execution?.provider_status)}</Row>
           <Row label="Feed rapido">{data?.execution?.fresh_fast_data === true ? 'Disponibile' : available ? 'Non aggiornato · nuovi ingressi sospesi' : 'Non disponibile'}</Row>
           {data?.execution?.coverage_unresolved && <p style={{ ...noteStyle, color: '#fbbf24' }}>Intervallo dati incompleto: nuovi ingressi sospesi, verifica necessaria.</p>}
@@ -127,6 +128,7 @@ export function BrainCards({ data }) {
         <Row label="Uptime">{system.uptime_seconds == null ? 'Non disponibile' : `${fmt(system.uptime_seconds / 3600, 1)} h`}</Row>
         <Row label="Heartbeat">{system.heartbeat || 'unknown'}</Row>
         <Row label="Ultimo heartbeat">{date(system.heartbeat_ms)}</Row>
+        {!paired && typeof system.operator_paused === 'boolean' && <Row label="Nuovi ingressi">{system.operator_paused ? 'In pausa · protezioni attive' : 'Nessuna pausa operatore'}</Row>}
         {paired && <Row label="Versione metodo">{system.method_version ? `${system.method_version.slice(0, 12)}…` : 'Non disponibile'}</Row>}
         <p style={noteStyle}>{system.note}</p>
       </Card>

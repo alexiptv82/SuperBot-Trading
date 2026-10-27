@@ -126,6 +126,7 @@ def read_profile(parent,profile,now,deadline):
                               'stopped':dd>=limit if dd is not None else None,'drawdown_pct':dd,'used_limit_pct':dd/limit*100 if dd is not None else None},
                 'reasoning':{'last_call_ms':last_input,'advice':advice,'note':'Ultima proposta AI: non certifica esecuzione. Le posizioni mostrano gli ingressi effettivi.'},
                 'execution':{'last_cycle_ms':_number(cycle['ts_ms']) if cycle else None,
+                             'operator_paused':(root/'pause.flag').is_file(),
                              'decision_source':_text((cycle or {}).get('decision_source')),'provider_status':provider,
                              'fresh_fast_data':(cycle or {}).get('fresh_fast_data') is True,
                              'coverage_unresolved':state.get('coverage_unresolved') is True,
