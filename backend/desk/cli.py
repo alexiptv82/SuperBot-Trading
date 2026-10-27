@@ -510,7 +510,7 @@ def save_state(state: dict, path: str) -> None:
         old_v=dec((before.get("vault") or {}).get("balance",0))
         new_v=dec((after.get("vault") or {}).get("balance",0))
         if old_v != new_v:
-            if after.get("capital", {}).get("reset_epoch_ms") != before.get("capital", {}).get("reset_epoch_ms"):
+            if after.get("reset_epoch_ms") != before.get("reset_epoch_ms"):
                 kind="reset"
             elif (before.get("day") or {}).get("utc_day") != (after.get("day") or {}).get("utc_day"):
                 kind="rollover"
