@@ -2,7 +2,7 @@ name: Brain classical adaptive offline tests
 on:
   push:
     branches: [work/brain-classical-adaptive-h24]
-    paths: ['backend/director/**', 'backend/tests/*brain*', 'Dockerfile.brainclassical', '.github/workflows/brain-classical-ci.yml']
+    paths: ['backend/director/**', 'backend/tests/*brain*', 'deploy/scripts/brain_classical_preflight.py', 'Dockerfile.brainclassical', '.github/workflows/brain-classical-ci.yml']
   pull_request:
     branches: [rule-pool]
     paths: ['backend/director/classical_adaptive/**', 'backend/tests/*brain_classical*', 'Dockerfile.brainclassical', '.github/workflows/brain-classical-ci.yml']
@@ -26,7 +26,7 @@ jobs:
           DESK_MODE: paper
           DESK_MACRO_FETCH: '0'
           DESK_DAILY_FETCH: '0'
-        run: python -m unittest discover -s backend/tests -p 'test_brain_classical_adaptive.py' -v
+        run: python -m unittest discover -s backend/tests -p 'test_brain_classical*.py' -v
       - name: Existing Brain memory, transfer, mandate and migration regressions
         env:
           PYTHONPATH: backend

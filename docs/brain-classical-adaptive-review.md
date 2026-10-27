@@ -63,3 +63,11 @@ Activation requires a **verified copy of the old Brain `spend.jsonl`**. `budget.
 5. Rollback must preserve all new account outcomes and spending. Pause/drain new exposure using the retained image if needed, keep protection active for open PAPER positions, and reconcile spending before re-enabling another model worker. Never restore an older financial snapshot over newer trade history.
 
 No VPS change, runtime upgrade, live trade, reset, collector startup, or dashboard deployment is performed by this PR.
+
+## Review extension and paired app preparation
+
+App PR#15 adds a separate authenticated reader/UI for the two profiles and the previous Brain, without merging app/bot histories. This runtime extension records per-symbol actual quote receipt times, prefers a newer fast quote when valuing existing exposure, counts completed steps and journals AI advice as a **proposal**, separately from execution. An event-kind index supports the read-only views. Native account/risk/entry policies are unchanged; the real-image probes assert the timestamp/counter/advice contract.
+
+`brain_classical_preflight.py` and its trigger-only `brain-classical-preflight.yml` provide **inventory and verified backup only**. They validate PAPER container/source identity and immutable legacy SHA, use the already-tested online SQLite backup helper, actually restore/reopen a separate copy and compare state/events, copy append-only exports and create a private verification manifest. Container metadata must remain identical before/after. Only a new protected backup and temporary control checkout are written; no pause flag, account/budget source, container, key or trading state is changed. The script never prints Docker environments or raw provider errors. The source can continue running, so this backup is explicitly **not a frozen activation-spend baseline**. Unit tests cover source-byte preservation, real restore, private permissions, no overwrite and PAPER/secret filtering.
+
+The workflow is unarmed on the feature branch: only a specific trigger-file push on rule-pool runs the read-only backup. Installing/running that control does not authorize activation. New-runtime deployment must still acquire a quiescent verified old spend ledger and retain management for all old positions. The PWA source and actual activation are separate reviewable artifacts.

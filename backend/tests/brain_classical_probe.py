@@ -66,6 +66,9 @@ with tempfile.TemporaryDirectory() as root:
             assert p.total_margin==(100 if profile=="hawk" else 200),p
             assert p.leverage==15,p
             assert p.source=="brain-deepseek",p
+            assert s.state['desk']['last_price_times']['ETH']==clock[0]
+            assert s.state['steps_completed']==2
+            assert any(e.get('kind')=='adaptive_advice' and e['decisions'][0]['symbol']=='ETH' for e in events),events[-3:]
             assert p.features["learning_context"]["strategy_version"].startswith("classical-"+profile)
             assert a.name=="brain-"+profile
             before=copy.deepcopy(s.state)

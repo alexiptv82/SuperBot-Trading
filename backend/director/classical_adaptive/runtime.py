@@ -106,6 +106,8 @@ class Session:
                 self.state={"version":VERSION,"profile":profile,"method":self.method,
                             "desk":{"main":acc.to_dict(),"run_no":1},"contexts":{}}
                 self.store.commit(self.state,[("journal",{"kind":"profile_initialized","profile":profile,"method":self.method,"mode":"paper"})])
+            self.store.db.execute("CREATE INDEX IF NOT EXISTS events_kind_seq ON events(kind,seq)")
+            self.store.db.commit()
             seed=self.parent/"api_budget_baseline.json"
             if seed.is_symlink():raise ValueError("symlink_spend_baseline")
             baseline=json.loads(seed.read_text()) if seed.exists() else None
@@ -203,6 +205,8 @@ class Session:
         result=self.provider.request(system,user,self.current["desk"],{r.symbol:r.price for r in self.readings},self.now_ms,set(self.cli.SYMBOLS))
         self.ai_actions={d["symbol"]:d["action"] for d in json.loads(result[0])["decisions"]}
         self.model_used=True
+        self.audit({"kind":"adaptive_advice","ts_ms":self.now_ms,"decisions":json.loads(result[0])["decisions"],
+                    "meaning":"proposal_not_execution"})
         return result
 
     def install(self):
@@ -242,6 +246,20 @@ class Session:
                     return []
             return rows
         self.patch("fetch_candles",fetch)
+        original_prices=c.get_prices
+        def prices(symbols,arrays):
+            result=original_prices(symbols,arrays)
+            times=self.current["desk"].setdefault("last_price_times",{})
+            for sym in result:
+                item=self.entry_data.get("markets",{}).get(sym,{})
+                if Feeds.fresh(item,self.now_ms):times[sym]=item["received_ms"]
+            # The more recent protection snapshot wins for existing exposure.
+            for sym,rows in self.fast.items():
+                fast_time=self.fast_times.get(sym,0)
+                if sym in result and fast_time>=times.get(sym,0):
+                    result[sym]=rows[-1][4];times[sym]=fast_time
+            return result
+        self.patch("get_prices",prices)
         self.patch("daily_bars",lambda sym,*_a,**_k:self.entry_data.get("markets",{}).get(sym,{}).get("daily",[]))
         self.patch("four_hour_bars",lambda sym,*_a,**_k:self.entry_data.get("markets",{}).get(sym,{}).get("four",[]))
         def context(*_):
@@ -262,6 +280,7 @@ class Session:
         self.state=self.store.load()
         if now_ms<self.state.get("last_step_ms",0):raise ValueError("backwards_execution_clock")
         self.current=copy.deepcopy(self.state);self.events=[];self.now_ms=int(now_ms);self.fast={}
+        self.fast_times={}
         self.phase="protection";self.model_used=False;self.ai_actions={}
         self.current["last_step_ms"]=self.now_ms
         desk=self.current["desk"];c=self.cli;acc=c.make_account(desk)
@@ -276,12 +295,14 @@ class Session:
                 rows=item["rows"]
                 rows=protection.series(rows,self.now_ms)
                 self.fast[sym]=rows;valid.add(sym)
+                self.fast_times[sym]=item["received_ms"]
                 result=protection.manage(acc,sym,rows,self.now_ms,paused=paused)
                 if result:
                     if result.get("coverage_gap"):self.current["coverage_unresolved"]=True
                     if result.get("trade"):c.record_close(desk,result["trade"])
                     if result.get("coverage_gap"):self.audit({"kind":"fast_coverage_gap","symbol":sym,"ts_ms":self.now_ms})
                 desk.setdefault("last_prices",{})[sym]=rows[-1][4]
+                desk.setdefault("last_price_times",{})[sym]=item["received_ms"]
             except (ValueError,TypeError,IndexError):
                 self.audit({"kind":"fast_data_unavailable","symbol":sym,"ts_ms":self.now_ms})
         c.flush_events(desk,acc);c.save_account(acc,desk)
@@ -307,6 +328,7 @@ class Session:
             self.current=self.store.load();self.events=[]
             self.store.commit(self.current,[("journal",{"kind":"entry_cycle_failed","ts_ms":self.now_ms,"mode":"paper","error_type":type(exc).__name__})])
         self.state=self.store.load()
+        self.state["steps_completed"]=self.state.get("steps_completed",0)+1
         budget_view=self.budget.view(self.now_ms,self.profile)
         self.state["api_budget_checkpoint"]={"day":time.strftime("%Y-%m-%d",time.gmtime(self.now_ms/1000)),"monthly_reserved":budget_view["monthly_reserved"]}
         self.store.commit(self.state,[])
