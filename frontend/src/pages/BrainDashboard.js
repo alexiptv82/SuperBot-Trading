@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { brainAPI } from '../api';
+import BrainFreePanel from '../components/BrainFreePanel';
 
 // Same card, typography and palette as Dashboard. Observation only.
 const Card = ({ title, children }) => (
@@ -136,7 +137,7 @@ export function BrainCards({ data }) {
   );
 }
 
-export default function BrainDashboard() {
+function LegacyBrainDashboard() {
   const [data, setData] = useState(null);
   const [selection, setSelection] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -184,4 +185,31 @@ export default function BrainDashboard() {
       <BrainCards data={current} />
     </main>
   );
+}
+
+
+export default function BrainDashboard() {
+  const [free, setFree] = useState(null);
+  const [error, setError] = useState(false);
+  const [archive, setArchive] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController(); let timer;
+    const poll = async () => {
+      try {
+        const r = await brainAPI.getFreeStatus(controller.signal);
+        if (!controller.signal.aborted) {
+          if (r.data.status === 'retired') setFree(null);
+          else if (r.data.available || r.data.status === 'unavailable') setFree(r.data);
+          setError(!r.data.available && !['not_started', 'retired'].includes(r.data.status));
+        }
+      } catch (_) { if (!controller.signal.aborted) setError(true); }
+      if (!controller.signal.aborted) timer = setTimeout(poll, 15000);
+    };
+    poll(); return () => { controller.abort(); clearTimeout(timer); };
+  }, []);
+  if (!free) return <LegacyBrainDashboard />;
+  return <><div style={{ padding: 12, textAlign: 'center' }}>
+    <button type="button" onClick={() => setArchive(!archive)}>{archive ? 'Torna al Brain AI libero' : 'Consulta archivio dei tre Brain precedenti'}</button>
+    {archive && <p>Archivio separato: questi risultati non fanno parte della nuova run da 2.000$.</p>}
+  </div>{archive ? <LegacyBrainDashboard /> : <BrainFreePanel data={free} error={error} />}</>;
 }
