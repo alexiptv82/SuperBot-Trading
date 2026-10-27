@@ -35,4 +35,9 @@ jobs:
             git -C "$CONTROL_DIR" fetch -q --depth=1 origin "$BRAIN_PREFLIGHT_CONTROL"
             git -C "$CONTROL_DIR" checkout -q --detach "$BRAIN_PREFLIGHT_CONTROL"
             test "$(git -C "$CONTROL_DIR" rev-parse HEAD)" = "$BRAIN_PREFLIGHT_CONTROL"
-            python3 -I "$CONTROL_DIR/deploy/scripts/classic_run_forensics.py"
+            MODE=$(sed -n 's/^metadata=//p' "$CONTROL_DIR/deploy/classic-run-forensics.trigger")
+            if [ "$MODE" = 1 ]; then
+              python3 -I "$CONTROL_DIR/deploy/scripts/classic_run_forensics.py" --metadata-only
+            else
+              python3 -I "$CONTROL_DIR/deploy/scripts/classic_run_forensics.py"
+            fi
