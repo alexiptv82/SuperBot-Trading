@@ -1,2 +1,2 @@
-2026-10-26T18:31:40Z Fix segnali V2: stagionalita additiva + guardie Bull (tetto rischio SL, veto SHORT in rimbalzo BTC). OK utente esplicito 26/10/2026.
-sha=35f08cf8d16097d8ca365892a3f9a9ef23996709
+2026-10-27 Regime di mercato (solo filtro) + pesi del punteggio classici + tetto Bull 250 su Hawk e Bull (paper). OK esplicito utente 27/10/2026 (pacchetto classici+filtro+Bull 250, poi "procedi con il deploy").
+sha=89b0dca3e259c548ed82754c2301c7b024d18ff5
