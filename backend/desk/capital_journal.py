@@ -157,13 +157,22 @@ class PaperCapitalJournal:
         new_v = dec((capital.get("vault") or {}).get("balance", 0))
         old_main, new_main = before.get("main") or {}, after.get("main") or {}
         if new_v != old_v:
-            if not event_id.startswith(("capital:rollover:", "capital:settle:", "capital:withdraw:")):
+            if event_id.startswith("capital:reset:"):
+                if (old_main.get("positions") or {} or new_main.get("positions") or {}):
+                    raise CapitalInvariantError("reset requires zero positions")
+                if new_v != 0 or dec(new_main.get("cash", 0)) != dec((new_main.get("limits") or {}).get("start_equity", 1000)):
+                    raise CapitalInvariantError("reset requires empty vault and original PAPER principal")
+                if (capital.get("vault") or {}).get("pending") or capital.get("deposits"):
+                    raise CapitalInvariantError("reset must clear pending and current-run deposits")
+                if int(after.get("run_no", 0)) != int(before.get("run_no", 1)) + 1:
+                    raise CapitalInvariantError("reset must start a new run")
+            elif not event_id.startswith(("capital:rollover:", "capital:settle:", "capital:withdraw:")):
                 raise CapitalInvariantError("vault balance changed outside authorized transfer")
             old_cash = dec(old_main.get("cash", 0))
             new_cash = dec(new_main.get("cash", 0))
-            if abs((new_cash - old_cash) + (new_v - old_v)) > dec("0.000000001"):
+            if not event_id.startswith("capital:reset:") and abs((new_cash - old_cash) + (new_v - old_v)) > dec("0.000000001"):
                 raise CapitalInvariantError("transfer violates cash + vault conservation")
-            if old_main.get("positions") != new_main.get("positions") or old_main.get("closed") != new_main.get("closed"):
+            if not event_id.startswith("capital:reset:") and (old_main.get("positions") != new_main.get("positions") or old_main.get("closed") != new_main.get("closed")):
                 raise CapitalInvariantError("transfer mutated trade state")
         records = self._records()
         if any(rec.get("event_id") == event_id for rec in records):
