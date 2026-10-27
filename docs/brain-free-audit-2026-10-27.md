@@ -19,3 +19,6 @@ Branch verificato: `work/brain-ai-libero` (`b197cdc79c9fa1932dcf190b822769eca833
 
 ## Esito
 **REVIEW IN CORSO — DEPLOY NON AUTORIZZATO**. Nessun merge, nessun trigger, nessun accesso o intervento VPS eseguito in questa revisione. Un precedente confronto a livello file mostra 30 percorsi modificati/aggiunti nel branch del candidato; fare review della patch effettiva dopo una strategia esplicita di integrazione, senza portare accidentalmente commit estranei.
+
+## CI della revisione
+Questo aggiornamento documentale innesca una nuova esecuzione del workflow offline sul commit di revisione. Non autorizza rollout o deploy.
