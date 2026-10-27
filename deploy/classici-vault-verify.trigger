@@ -1,4 +1,5 @@
-phase=postflight
+phase=none
+approved=no
+completed_postflight=40565394446
 bot_sha=3abf1f808b09bf9066d96a1d16f945d65601ba02
 app_sha=56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace
-approved=2026-10-27-user-deploy-ok
