@@ -5,7 +5,7 @@ from .config import Config,number
 ACTIONS={'open_long','open_short','close','partial_close','dca','move_stop','move_target','hold'}
 def validate(text,symbols):
     d=json.loads(text,parse_constant=lambda _:(_ for _ in ()).throw(ValueError('nonfinite_json')))
-    if not isinstance(d,dict) or not isinstance(d.get('decisions'),list) or len(d['decisions'])>len(symbols):raise ValueError('invalid_schema')
+    if not isinstance(d,dict) or not isinstance(d.get('decisions'),list) or len(d['decisions'])>3*len(symbols):raise ValueError('invalid_schema')
     if not isinstance(d.get('summary',''),str) or len(d.get('summary',''))>4000:raise ValueError('invalid_summary')
     assessments=d.get('assessments',[])
     if not isinstance(assessments,list) or len(assessments)>len(symbols):raise ValueError('invalid_assessments')
@@ -17,8 +17,8 @@ def validate(text,symbols):
             if not isinstance(item.get(key),str) or len(item[key])>2000:raise ValueError('invalid_assessment')
     seen=set()
     for row in d['decisions']:
-        if not isinstance(row,dict) or row.get('symbol') not in symbols or row['symbol'] in seen or row.get('action') not in ACTIONS:raise ValueError('invalid_decision')
-        seen.add(row['symbol'])
+        if not isinstance(row,dict) or row.get('symbol') not in symbols or (row['symbol'],row.get('action')) in seen or row.get('action') not in ACTIONS:raise ValueError('invalid_decision')
+        seen.add((row['symbol'],row['action']))
         if not isinstance(row.get('reason'),str) or not 1<=len(row['reason'].strip())<=4000:raise ValueError('missing_reason')
         if row['action'] in ('open_long','open_short','dca'):
             for key in ('margin','leverage'):number(row.get(key),1e-12)

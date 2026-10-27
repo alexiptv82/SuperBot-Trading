@@ -294,3 +294,13 @@ def test_closing_notification_keeps_entry_thesis_and_labels_aggregate_pnl():
     text=event_text(e[0])
     assert '[BRAIN]' in text and 'Tesi di apertura: synthetic evidence' in text
     assert 'parziali incluse' in text and 'NETTO' in text
+
+
+def test_ai_can_close_and_reverse_without_a_symbol_cooldown():
+    s,_=execute(account(),decision())
+    decisions=validate(json.dumps({'decisions':[decision('close'),decision('open_short')]}),CFG.symbols)['decisions']
+    original=s['positions']['BTC']['id']
+    for d in decisions:s,_=execute(s,d)
+    assert s['positions']['BTC']['side']==-1 and s['positions']['BTC']['id']!=original
+    with pytest.raises(ValueError,match='invalid_decision'):
+        validate(json.dumps({'decisions':[decision(),decision()]}),CFG.symbols)
