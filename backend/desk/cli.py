@@ -1,16 +1,3 @@
-"""Loop principale V2: DCA, contesto di mercato, scalp vs medio, top-30 CMC.
-
-Differenze chiave rispetto a V1:
-- Simboli espansi (fino a 30 top-CMC + XAU/XAG)
-- Contesto di mercato (funding/OI/notizie) aggiornato ogni 30 minuti
-- Logica DCA: se Claude propone "dca" su una posizione aperta, si esegue
-- Scalp vs medio: scalp ha cooldown ridotto e revisione più frequente
-- Claude chiamato ogni ora (o prima per scalp)
-- Budget giornaliero 0.70$ con DAILY_CAP dalla variabile d'ambiente
-- Calendario di Claude (claude_schedule.json): se presente, Claude e' consultato solo nelle finestre indicate,
-  ognuna con il suo budget; fuori finestra decidono le regole. Senza file vale il budget giornaliero di sempre.
-- Dual portfolio: --portfolio hawk (default) | bull
-"""
 from __future__ import annotations
 
 import json
@@ -28,6 +15,7 @@ from desk.signals import read_symbol
 from desk.brain import (DAILY_CAP, build_prompt, call_claude,
                         can_call, diagnose_reply, parse_decisions, record_spend, rules_decisions,
                         update_lessons, append_trade_history, load_symbol_stats, stats_summary,
+                        load_experience_seed,
                         SYSTEM as SYSTEM_HAWK, SYSTEM_BULL)
 from desk.market_context import apply_oi_history, fetch_all_context
 from desk import learning as _learning
@@ -1280,6 +1268,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     lessons = load_lessons()
     sym_stats = stats_summary(load_symbol_stats(DATA_DIR))
+    experience_seed = load_experience_seed(DATA_DIR)
 
     last_call = state.get("last_call_ms", 0)
     # determina se qualche scalp richiede review urgente
@@ -1299,7 +1288,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         try:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats,
                                   macro_lines="\n".join(macro_calendar.prompt_lines(macro)
-                                                    + ([f"REGIME DI MERCATO (calcolato dal bot): {regime.label()}"] if regime else [])))
+                                                    + ([f"REGIME DI MERCATO (calcolato dal bot): {regime.label()}"] if regime else [])),
+                                  experience_seed=experience_seed)
             max_tok, timeout_s = claude_limits(LIVE._live)
             system_for_call = SYSTEM
             if snap.get("capital_v1"):

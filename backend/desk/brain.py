@@ -313,7 +313,8 @@ def diagnose_reply(text: str) -> str:
 
 # ---------------- prompt V2
 def build_prompt(snapshot: dict, readings: list, positions: list, headlines: list,
-                 lessons: str, ctx: dict | None = None, symbol_stats: str = "", macro_lines: str = "") -> str:
+                 lessons: str, ctx: dict | None = None, symbol_stats: str = "", macro_lines: str = "",
+                 experience_seed: str = "") -> str:
     # tetti veri del portafoglio (passati da cli.account_snapshot); se mancano non si inventa nessuna cifra
     mm, mo = snapshot.get("max_margin"), snapshot.get("max_open")
     margin_txt = f"{snapshot['margin']:.0f}/{mm:.0f}$" if mm is not None else f"{snapshot['margin']:.0f}$"
@@ -375,6 +376,9 @@ def build_prompt(snapshot: dict, readings: list, positions: list, headlines: lis
 
     if symbol_stats.strip():
         lines.append(symbol_stats.strip())
+
+    if experience_seed.strip():
+        lines.append(experience_seed.strip())
 
     if lessons.strip():
         lines.append("APPUNTI ERRORI RICORRENTI (applica queste correzioni):\n" + lessons.strip()[-1500:])
@@ -564,6 +568,68 @@ def load_symbol_stats(data_dir: str, last_n: int = 200) -> dict:
         return stats
     except Exception:
         return {}
+
+
+
+def load_experience_seed(data_dir: str) -> str:
+    """Legge experience_seed.json e restituisce un blocco testo compatto per il prompt.
+    
+    Il file viene scritto da build_experience_seed.py (backtest sintetico 2023-2024)
+    e copiato in /opt/superbot-desk-data/{hawk,bull}/experience_seed.json.
+    Se assente, restituisce stringa vuota senza errori.
+    """
+    path = os.path.join(data_dir, "experience_seed.json")
+    if not os.path.exists(path):
+        return ""
+    try:
+        with open(path) as f:
+            s = json.load(f)
+    except Exception:
+        return ""
+    
+    lines = ["MEMORIA STORICA (backtest 2023-2024, 8 simboli, dati reali Binance 5m):"]
+    
+    # Statistiche globali
+    wr = s.get("win_rate", 0)
+    pf = s.get("profit_factor", 0)
+    tot = s.get("total_trades", 0)
+    avg = s.get("avg_pnl_per_trade_usd", 0)
+    lines.append(f"- Totale: {tot} trade, WR {wr:.0%}, PF {pf:.2f}, avg PnL {avg:+.2f}$/trade")
+    
+    # Per regime
+    by_reg = s.get("by_regime", {})
+    for reg, v in by_reg.items():
+        l_wr = v.get("long_wr", 0)
+        s_wr = v.get("short_wr", 0)
+        lines.append(f"- Regime {reg}: LONG WR {l_wr:.0%} | SHORT WR {s_wr:.0%} ({v.get('trades',0)} trade)")
+    
+    # BTC aligned
+    btc = s.get("btc_aligned_vs_counter", {})
+    if btc:
+        a = btc.get("aligned", {})
+        c = btc.get("counter", {})
+        lines.append(
+            f"- Allineato BTC: WR {a.get('win_rate',0):.0%} ({a.get('trades',0)} trade) | "
+            f"Contro BTC: WR {c.get('win_rate',0):.0%} ({c.get('trades',0)} trade)"
+        )
+    
+    # Simboli migliori/peggiori
+    by_sym = s.get("by_symbol", {})
+    if by_sym:
+        ranked = sorted(by_sym.items(), key=lambda x: x[1].get("win_rate", 0), reverse=True)
+        best = ranked[0]
+        worst = ranked[-1]
+        lines.append(
+            f"- Migliore: {best[0]} WR {best[1]['win_rate']:.0%} avg {best[1]['avg_pnl']:+.2f}$ | "
+            f"Peggiore: {worst[0]} WR {worst[1]['win_rate']:.0%} avg {worst[1]['avg_pnl']:+.2f}$"
+        )
+    
+    # Key findings (prime 4)
+    findings = s.get("key_findings", [])
+    for f_line in findings[:4]:
+        lines.append(f"- {f_line}")
+    
+    return "\n".join(lines)
 
 
 def stats_summary(stats: dict, top_n: int = 8) -> str:
