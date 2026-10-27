@@ -466,3 +466,14 @@ Fotografia aggiornata alle 13:39 UTC (14:39 Zurigo). Per lo storico consultare l
 - Ribaltati da lordo positivo a netto negativo:0/2/0/0 posizioni; Hawk5ATOMid64-0,6522 eXAUid75-2,2288, funding0. Totale-2,8810: non spiegano tutto il rosso; nessun casoBull4.
 - Proposta NON implementata: valutazione/filtro valore atteso netto (probabilità calibrata su dati, mai score=probabilità), costi completi senza doppio slippage, prima misurazione in ombra PAPER; netto visibile per prese di profitto discrezionali, mai blocco a uscite protettive. Nessun nuovo parametro numerico arbitrario o aumento size/leva.
 - Nessun cambio di strategia, soglie, prompt, limiti, dati memoria o modalità; nessun redeploy, reset o force push. Attendere OK utente per qualsiasi implementazione.
+
+## Confronto condizioni d'ingresso — run positive e tarde
+- Analisi richiesta dall'utente, nessuna autorizzazione a implementare filtri: confronto282posizioni, score disponibile278/282; dataset precedente PAPER, nessun accesso operativo aggiuntivo.
+- Rapporto: [ENTRIES.md](diario/analisi-run-2026-10-27/ENTRIES.md), dettagli413raggruppamenti in entry_groups.csv. Partizioni per score/tier/direzione/simbolo/ora/giorno/batch/versione riconciliate.
+- Score medio Hawk2→5:70,57→69,29; Bull1→4:70,00→68,82. TierC Hawk52/76→93/112, Bull5/17→60/77; direzione quasi tuttaSHORT in entrambe le fasi. Peggiorano anche stessi tier e stessi simboli, non soltanto mix.
+- Ricetta score cambiata: breakout Hawk54/74→20/112,Bull9/15→11/77; contributo volume53/74→29/112 e8/15→14/77; daily0→39/112 e0→29/77. Score75+ tarda molto diverso da golden. WR75+Hawk83,3→32,0%,Bull100%(solo3casi)→29,4%; non dimostra utilità ritorno70.
+- Controprova: breakout+volume nelle tardeWR12,5%Hawk(16posizioni) e20%Bull(10). Non imporre questo filtro dai soli dati osservati. Inputvolume non omogenei tra versioni (1hricampionata ancheincompleta,15mchiusi/formazione).
+- Orario migliore si inverte: golden12–24UTC, tarde00–06UTC. Un batchHawk24/10 04:00UTC9posizioni+460,03 supera tutto il nettofascia+432,42; Bull04:30UTC5posizioni+358,69 su+459,62. Nessun vantaggio orario stabile; dipendenza tra asset/profili, non repliche indipendenti.
+- Pista esplorativa ATR1h/prezzo1% (NON soglia approvata/ottimizzata): tardeATR<1%Hawk68posizioni-607,49,Bull52-937,97; ATR>=1%Hawk44+556,68,Bull25+723,94. Differenza ricorre22/24/25perdataapertura,26entrambigruppiperdono; golden non mostrano stesso vantaggio. Associazione di regime da validare, non causa dimostrata o filtro pronto.
+- Limiti: solo4run, goldenBull17posizioni con5Cvincenti~80%profitto; sottogruppi ex-post e dati/log incompleti, PnLdipende dauscite successive; non attribuire capacitàpredittiva alle condizioni senza verifica fuoricampione.
+- Nessuna modifica a strategia/soglie/prompt/rischio/orari/memoria, nessun redeploy/reset/forcepush. Proposte precedenti restano non implementate. Solo rapporto e diario [skip ci].
