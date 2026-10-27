@@ -33,6 +33,7 @@ from desk.market_context import apply_oi_history, fetch_all_context
 from desk import learning as _learning
 from desk import macro_calendar
 from desk import trading_hours
+from desk import regime as regime_mod
 from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
@@ -262,9 +263,12 @@ set_context(PORTFOLIO.name, LIVE._live, CAPITAL_SCALE)   # intestazione LIVE / N
 _DAILY_LOSS_PCT = float(os.getenv("DESK_DAILY_LOSS_PCT", "25")) / 100.0
 _DAILY_LOSS_LIMIT = _PORTFOLIO_CAPITAL * _DAILY_LOSS_PCT
 
-# Bull: massimo rischio SL aggregato (USDT del motore) con piu' posizioni aperte. Con 350$ x 15x x 3% = 157,5$
-# per posizione, la soglia lascia aprire la prima e blocca la seconda finche' la prima e' aperta.
-BULL_MAX_OPEN_RISK_USD = float(os.getenv("DESK_BULL_MAX_OPEN_RISK", "160"))
+# Bull: massimo rischio SL aggregato (USDT del motore) con piu' posizioni aperte (utente, 26/10/2026: 250$, era 160$).
+# La prima posizione passa sempre; le successive solo se il totale resta sotto la soglia.
+BULL_MAX_OPEN_RISK_USD = float(os.getenv("DESK_BULL_MAX_OPEN_RISK", "250"))
+# Regime di mercato (desk/regime.py): filtro dei lati in apertura, stop che segue il profitto, uscita se il mercato gira.
+# DESK_REGIME_V1=0 lo spegne. Lo spostamento dello stop vale solo in PAPER (in live lo stop sta sull'exchange).
+REGIME_ON = os.getenv("DESK_REGIME_V1", "1").strip().lower() not in ("0", "off", "false", "no")
 # Bull: niente nuovi SHORT se BTC sale piu' di questa frazione in 24h (rimbalzo)
 BULL_SHORT_VETO_BTC_24H = float(os.getenv("DESK_BULL_SHORT_VETO_BTC_24H", "0.02"))
 
@@ -1232,6 +1236,20 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     print(f"[DESK V2] readings validi: {len(readings_list)}/{len(SYMBOLS)} simboli", flush=True)
     open_symbols = set(acc.positions)
 
+    # regime di mercato: dai punteggi appena calcolati. Non solleva mai: se qualcosa va storto non c'e' filtro.
+    regime = None
+    if REGIME_ON and readings_list:
+        try:
+            regime = regime_mod.compute(readings_list, state.get("regime_hist") or [])
+            state["regime_hist"] = regime_mod.push_hist(state.get("regime_hist") or [], regime)
+            HB["regime"] = {"state": regime.state, "turn": regime.turn, "indice": regime.smooth,
+                            "guida": regime.lead, "ampiezza": regime.breadth, "btc_24h": regime.roc}
+            macro_feats = {**macro_feats, "reg_state": regime.state, "reg_turn": regime.turn, "reg_idx": regime.smooth}
+            print(f"[REGIME] {regime.label()}", flush=True)
+        except Exception as e:
+            print(f"[REGIME ERRORE] {e}: nessun filtro di regime in questo ciclo", flush=True)
+            regime = None
+
     # snapshot conto per il prompt
     eq = acc.equity(prices)
     snap = account_snapshot(acc, eq, halt)
@@ -1247,6 +1265,15 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # posizioni aperte con info aggiornate
     pos_info = [position_info(pos, prices.get(sym, pos.entry), readings_map, now_ms, acc.closed, acc.limits)
                 for sym, pos in acc.positions.items()]
+    for pi, (sym, pos) in zip(pos_info, acc.positions.items()):      # R attuali e di picco, per regole e regime
+        pi["cur_r"], pi["peak_r"] = regime_mod.r_metrics(pos.side, pos.entry, prices.get(sym, pos.entry),
+                                                          regime_mod.peak_price(pos), regime_mod.r_unit(pos))
+
+    # stop che si alza: pareggio dopo +1R, poi segue il prezzo; mai indietro. Solo PAPER. Se il prezzo e' gia' tornato
+    # oltre il livello da proteggere si chiude subito (protect_closes).
+    protect_closes: dict = {}
+    if regime is not None and not LIVE._live:
+        protect_closes = regime_mod.apply_ratchet(acc.positions, prices, log=lambda m: print(m, flush=True))
 
     # notizie dal ctx
     headlines = ctx_for_prompt.get("news", []) if ctx_for_prompt else []
@@ -1271,7 +1298,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     elif call_due and can_call(state, day):
         try:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats,
-                                  macro_lines="\n".join(macro_calendar.prompt_lines(macro)))
+                                  macro_lines="\n".join(macro_calendar.prompt_lines(macro)
+                                                    + ([f"REGIME DI MERCATO (calcolato dal bot): {regime.label()}"] if regime else [])))
             max_tok, timeout_s = claude_limits(LIVE._live)
             system_for_call = SYSTEM
             if snap.get("capital_v1"):
@@ -1307,14 +1335,18 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             # Claude ha risposto ma ha scelto di non aprire nulla: rispettiamo la sua scelta.
             # Le regole gestiscono solo le posizioni già aperte (close/manage), NON aprono nuovi trade.
             decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE,
-                                       only_manage=True)
+                                       only_manage=True, regime=regime, tier_fn=tier_entry_score)
             source = "rules_manage_only"
             print("[Claude] 0 aperture: Claude ha scelto hold. Regole solo per gestione posizioni aperte.")
         else:
             # Claude non era disponibile (errore, budget, fuori finestra): le regole decidono tutto.
-            decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
+            decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE,
+                                       regime=regime, tier_fn=tier_entry_score)
             source = "rules"
             print("[Fallback] Claude non disponibile: decisioni affidate alle regole.")
+
+    if regime is not None:
+        decisions = list(decisions) + regime_mod.management_closes(pos_info, decisions, regime, protect_closes)
 
     why = drain_reason(now_ms)   # "pausa" | "orari" | "" ; la pausa premuta a ciclo in corso vale da subito
     if why:
@@ -1367,12 +1399,13 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                         print(f"[LIVE CLOSE FALLITA] {sym}: {live_detail} — posizione resta aperta")
                         continue   # non chiudere in memoria se Bitget ha fallito
             # ─────────────────────────────────────────────────────────────────
-            closed = acc.close(sym, px, now_ms, "chiusura Claude")
+            close_why = dec.get("close_why") or "chiusura Claude"
+            closed = acc.close(sym, px, now_ms, close_why)
             if closed:
                 if LIVE._live and LIVE.last_fill:
                     closed["live"] = dict(LIVE.last_fill)   # prezzo/quantita'/fee REALI accanto a quelli simulati
                 print(f"[CLOSE] {sym} net {closed['net']:+.2f}$  motivo: {dec['reason'][:60]}")
-                notify_close(sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
+                notify_close(sym, closed["net"], dec.get("reason", "")[:100], close_why)
                 record_close(state, closed)
 
         elif act == "partial_close":
@@ -1487,6 +1520,18 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     continue
             act = base_act  # usa open_long / open_short da qui in poi
             side = 1 if act == "open_long" else -1
+            if regime is not None:
+                reg_ok, reg_extra = regime_mod.entry_gate(side, sym, regime)
+                if not reg_ok:
+                    print(f"[REGIME] {sym} {act}: lato non consentito dal mercato ({regime.state}"
+                          f"{'/' + regime.turn if regime.turn else ''})", flush=True)
+                    _candidate("rifiutata:regime", dec, px)
+                    continue
+                if reg_extra and dec["confidence"] < tier_entry_score(sym) + reg_extra:
+                    print(f"[REGIME] {sym} conf={dec['confidence']} < soglia={tier_entry_score(sym)}+{reg_extra} "
+                          f"(mercato laterale)", flush=True)
+                    _candidate("conf_bassa_regime", dec, px)
+                    continue
             sl_pct = dec.get("stop_loss_pct", 0)
             if sl_pct <= 0:
                 r = readings_map.get(sym)
