@@ -97,6 +97,9 @@ class Runtime:
         if now<state['last_ms']:raise ValueError('backward_clock')
         dt=min(now-state['last_ms'],60000) if state['verified_start_ms'] is not None else 0;state['last_ms']=now
         state['metrics']['observed_ms']+=dt
+        if state['verified_start_ms'] is not None:
+            state['metrics']['unobserved_ms']=state['metrics'].get('unobserved_ms',0)+max(0,now-state.get('last_observed_ms',now)-60000)
+        state['last_observed_ms']=now
         state['metrics']['slot_ms']+=dt*len(state['positions'])
         if not state['positions']:state['metrics']['empty_ms']+=dt
         was_paused=state['paused'];state['paused']=(self.store.root/'pause.flag').exists()
