@@ -67,7 +67,7 @@ class Provider:
     def close(self):
         self.pool.shutdown(wait=True,cancel_futures=True)
 
-    def request(self, system, user, state, readings, now_ms, symbols):
+    def request(self, system, user, state, readings, now_ms, symbols, before_submit=None):
         current=fingerprint(state)
         if self.pending:
             job=self.pending
@@ -94,6 +94,7 @@ class Provider:
         allowed,why,cost=self.budget.reserve(self.profile,now_ms,len(system.encode())+len(user.encode()),self.cfg.max_tokens)
         if not allowed:
             self.last_status=why;raise Unavailable(why)
+        if before_submit is not None:before_submit()
         self.pending={"future":self.pool.submit(self.call,replace(self.cfg),self.key,system,user),
                       "ts":now_ms,"fingerprint":current,"prices":copy.deepcopy(readings),"cost":cost,"id":why}
         self.last_status="model_pending"

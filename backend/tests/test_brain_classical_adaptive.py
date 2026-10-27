@@ -20,6 +20,7 @@ from director.classical_adaptive.provider import Provider, Unavailable, validate
 from director.classical_adaptive.protection import manage, series, close_estimate
 from director.classical_adaptive.feeds import Feeds
 from director.classical_adaptive.runtime import safe_root
+from director.classical_adaptive.outbox import CachedStore
 from director.brain_pilot import learning as lm
 
 NOW=1793102400000
@@ -126,6 +127,16 @@ class BudgetProviderTests(unittest.TestCase):
             self.assertEqual(p.last_status,"adaptive_ai")
         finally:ready.set();p.close()
 
+    def test_failed_pre_call_audit_blocks_api_but_never_refunds_uncertain_reservation(self):
+        calls=[]
+        p=Provider('hawk',self.cfg,'fake',self.budget,lambda *_:calls.append(True))
+        def fail():raise OSError('synthetic audit failure')
+        try:
+            with self.assertRaises(OSError):p.request('s','u',{}, {},NOW,set(),fail)
+            self.assertFalse(calls);self.assertIsNone(p.pending)
+            self.assertGreater(self.budget.view(NOW,'hawk')['profile_reserved'],0)
+        finally:p.close()
+
     def test_expired_or_changed_exposure_result_is_rejected(self):
         for changed in (False,True):
             p=Provider("bull",self.cfg,"fake",self.budget,lambda *_:{"content":'{"decisions":[]}'})
@@ -219,6 +230,45 @@ class RealClassicalProcessTests(unittest.TestCase):
             result=subprocess.run([sys.executable,"backend/tests/brain_classical_probe.py",profile,side,market],env=env,text=True,capture_output=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout[-4000:]+result.stderr[-2000:])
             self.assertIn("CLASSICAL_ADAPTIVE_PROBE=PASS",result.stdout)
+
+
+class IncrementalOutboxTests(unittest.TestCase):
+    def test_minute_exports_append_without_rereading_history_and_restart_deduplicates(self):
+        with tempfile.TemporaryDirectory() as root:
+            s=CachedStore(root,learning_enabled=False)
+            try:
+                s.commit({'value':0},[('journal',{'kind':'first'})])
+                original=Path.open;reads=[]
+                def observed(path,*args,**kwargs):
+                    if args and args[0]=='rb':reads.append(str(path))
+                    return original(path,*args,**kwargs)
+                from unittest.mock import patch
+                with patch.object(Path,'open',observed):
+                    for i in range(1,10):s.commit({'value':i},[('journal',{'kind':'next','value':i})])
+                self.assertFalse(reads)
+                before=(Path(root)/'journal.jsonl').read_bytes()
+            finally:s.close()
+            s=CachedStore(root,learning_enabled=False)
+            try:
+                s.export();self.assertEqual((Path(root)/'journal.jsonl').read_bytes(),before)
+                s.commit({'value':10},[('journal',{'kind':'last'})])
+                after=(Path(root)/'journal.jsonl').read_bytes()
+                self.assertTrue(after.startswith(before))
+                rows=[json.loads(line) for line in after.splitlines()]
+                self.assertEqual(len({r['brain_event_id'] for r in rows}),11)
+            finally:s.close()
+    def test_external_torn_projection_is_not_repaired_or_overwritten(self):
+        with tempfile.TemporaryDirectory() as root:
+            s=CachedStore(root,learning_enabled=False)
+            try:
+                s.commit({'value':1},[('journal',{'kind':'first'})])
+                path=Path(root)/'journal.jsonl'
+                with path.open('ab') as f:f.write(b'{')
+                before=path.read_bytes()
+                with self.assertRaises(ValueError):s.export()
+                self.assertEqual(path.read_bytes(),before)
+                self.assertEqual(s.load()['value'],1)
+            finally:s.close()
 
 
 if __name__=="__main__":unittest.main()

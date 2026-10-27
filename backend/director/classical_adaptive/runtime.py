@@ -19,12 +19,12 @@ from dataclasses import asdict, replace
 
 from director.ai_shadow.config import Config
 from director.ai_shadow import journal
-from director.brain_pilot.pilot import Store
 from director.brain_pilot import learning, experience, knowledge, mandate
 from . import VERSION
 from .budget import SharedBudget
 from .provider import Provider
 from .feeds import Feeds
+from .outbox import CachedStore
 from . import protection
 
 
@@ -95,7 +95,7 @@ class Session:
         if not exists and (not initialize or self.root.exists() and any(p.name!='pause.flag' for p in self.root.iterdir())):
             raise ValueError("explicit_empty_paper_initialization_required")
         try:
-            self.store=Store(self.root)
+            self.store=CachedStore(self.root)
             self.store.export()
             loaded=self.store.load()
             if exists and loaded is None:raise ValueError("missing_authoritative_account")
@@ -196,7 +196,6 @@ class Session:
         payload={"classical_prompt":base,"operator_mandate":m,"episodic_memory":memory,
                  "recent_1m":{s:rows[-6:] for s,rows in self.fast.items()},
                  "source_semantics":"Classical EMA50/200, not old Brain EMA20/50. Profiles and strategy versions are separate."}
-        self.audit({"kind":"adaptive_input","ts_ms":self.now_ms,"input":payload})
         return json.dumps(payload,sort_keys=True,allow_nan=False)
 
     def call(self,system,user,max_tokens=3000,timeout=120):
@@ -204,8 +203,10 @@ class Session:
         # Persist the exact selected input before an API worker can start.
         # Only the already-committed protective account is saved here, never
         # an in-progress optional entry candidate.
-        self.store.commit(self.state,self.events);self.events=[]
-        result=self.provider.request(system,user,self.current["desk"],{r.symbol:r.price for r in self.readings},self.now_ms,set(self.cli.SYMBOLS))
+        def before_submit():
+            self.audit({"kind":"adaptive_input","ts_ms":self.now_ms,"input":{"system":system,"user":user}})
+            self.store.commit(self.state,self.events);self.events=[]
+        result=self.provider.request(system,user,self.current["desk"],{r.symbol:r.price for r in self.readings},self.now_ms,set(self.cli.SYMBOLS),before_submit)
         self.ai_actions={d["symbol"]:d["action"] for d in json.loads(result[0])["decisions"]}
         self.model_used=True
         self.audit({"kind":"adaptive_advice","ts_ms":self.now_ms,"decisions":json.loads(result[0])["decisions"],

@@ -42,7 +42,8 @@ with tempfile.TemporaryDirectory() as root:
         import sqlite3
         with sqlite3.connect(Path(root)/("brain-"+profile)/"brain.sqlite3") as db:
             records=[json.loads(row[0]) for row in db.execute("SELECT body FROM events WHERE kind='journal'")]
-        assert any(r.get("kind")=="adaptive_input" for r in records),records
+        inputs=[r['input'] for r in records if r.get('kind')=='adaptive_input']
+        assert inputs and inputs[-1]['system']==_[2] and inputs[-1]['user']==_[3]
         return {"content":json.dumps(answer),"usage":{"hit":0,"miss":1,"out":1}}
     cli.fetch_candles=candles
     cli.read_symbol=reading
