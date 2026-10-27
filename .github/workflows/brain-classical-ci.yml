@@ -1,0 +1,48 @@
+name: Brain classical adaptive offline tests
+on:
+  push:
+    branches: [work/brain-classical-adaptive-h24]
+    paths: ['backend/director/**', 'backend/tests/*brain*', 'Dockerfile.brainclassical', '.github/workflows/brain-classical-ci.yml']
+  pull_request:
+    branches: [rule-pool]
+    paths: ['backend/director/classical_adaptive/**', 'backend/tests/*brain_classical*', 'Dockerfile.brainclassical', '.github/workflows/brain-classical-ci.yml']
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install numpy==2.2.6
+      - name: Actual classical profiles, both sides, atomic recovery and nonblocking protection
+        env:
+          PYTHONPATH: backend
+          DESK_MODE: paper
+          DESK_MACRO_FETCH: '0'
+          DESK_DAILY_FETCH: '0'
+        run: python -m unittest discover -s backend/tests -p 'test_brain_classical_adaptive.py' -v
+      - name: Existing Brain memory, transfer, mandate and migration regressions
+        env:
+          PYTHONPATH: backend
+          DESK_MODE: paper
+        run: python -m unittest discover -s backend/tests -p 'test_brain_pilot*.py' -v
+      - name: Build isolated image, no exchange SDK or keys
+        if: matrix.python-version == '3.11'
+        run: |
+          docker build -f Dockerfile.brainclassical -t brain-classical-ci:test .
+          docker run --rm --read-only --network none brain-classical-ci:test --help
+          docker run --rm --read-only --network none --entrypoint python brain-classical-ci:test -c "from director.classical_adaptive.runtime import safe_root; from director.classical_adaptive.provider import validate; import importlib.util; assert importlib.util.find_spec('ccxt') is None"
+      - name: Real image runs both native profiles offline, without exchange or model network
+        if: matrix.python-version == '3.11'
+        run: |
+          for profile in hawk bull; do
+            for side in long short; do
+              docker run --rm --read-only --network none --cap-drop ALL --tmpfs /tmp -e DESK_MODE=paper -e DESK_MACRO_FETCH=0 -e DESK_DAILY_FETCH=0 -v "$PWD/backend/tests:/tests:ro" --entrypoint python brain-classical-ci:test /tests/brain_classical_probe.py "$profile" "$side"
+            done
+          done

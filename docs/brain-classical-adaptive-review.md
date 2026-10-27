@@ -1,0 +1,65 @@
+# Brain: actual Hawk/Bull methods with adaptive intelligence H24 — candidate
+
+## Operator objective and implemented scope
+
+Alessandro explicitly requires the actual Hawk and Bull methods, with adaptive intelligence 24h/7d, adaptive scalp, useful net profit capture and capital rotation. A third sizing formula or a prompt-only instruction does not satisfy this. This candidate adds a dedicated runtime that calls **the real `desk.cli.run_cycle`**, real profile factories, `read_symbol`, `rules_decisions`, account engine and admission controls. **No `backend/desk/*` file changes.** This branch starts from rule-pool `e5d45f9`; its classical files are byte-identical to the documented deployed `35f08cf8d16097d8ca365892a3f9a9ef23996709`. The pending regime/P1 alternatives and Bull 250 cap on Claude's development branch are not silently adopted.
+
+This feature includes the candidate learning/transfer/mandate dependency from PR#12 `41161f42`. It does not merge or deploy either PR. Director V1's Arbitro was inspected: its 1%-risk sizing/four-slot defaults would recreate a different method, so it is not substituted for the classical executor.
+
+## Two isolated profiles, actual limits
+
+| Setting inherited from classical code | Brain Hawk | Brain Bull |
+|---|---:|---:|
+| Explicit fresh PAPER initialization | $1,000 | $1,000 |
+| Maximum margin/position | $100 | $350 |
+| Guardrail minimum proposal margin | $50 | $150 |
+| Guardrail minimum proposed leverage | 10x | 10x |
+| Guardrail forced margin/leverage | $60 / 15x | $200 / 15x |
+| Maximum positions | 10 | 6 |
+| Maximum total margin, still limited by actual cash | $1,000 | $1,050 |
+| Daily equity stop | 10% | 10% |
+| Absolute kill equity | $450 | $450 |
+
+These are the selected **classical** policies, not newly selected risk parameters. The old single Brain's 20% stop and 1%-risk sizing remain unchanged in its original runtime; they are not presented as the policies of these profiles. Classical guardrail forcing can change a low proposal to Hawk scalp or Bull medio; native cooldowns, split/DCA rules, confidence thresholds, R/R, leverage tiers, liquidation checks and Bull's current 160 risk/2% BTC-short veto remain inherited. Bull 250 is a separate pending decision/change, not part of this candidate.
+
+DeepSeek proposes the classical JSON schema; the native executor can refuse it. The real rule fallback proposes its original margin/leverage formula. There is no artificial small 1%-risk rescaling of an admitted classical trade. Tests demonstrate the same 200 margin/15x proposal becomes Hawk 100/15x and Bull 200/15x through native controls. Higher exposure increases losses as well as profits; no profit/turnover claim follows from the synthetic tests.
+
+## Execution and adaptation
+
+- A dedicated process selects exactly one profile before importing `desk.cli`; process-local adapters leave the classic bots' entrypoint unchanged. The code rejects live mode before importing the connector. The image has no exchange SDK, keys or notifications; no hidden Anthropic call or Telegram send. A caller cannot reuse an already imported CLI with a different profile.
+- Each worker targets a 60-second iteration continuously, with no 14–22 calendar copied from the classic accounts. Native entry signals still come from 15m/native macro data; this is **not** a newly validated 1m entry alpha. Native entry cooldowns still constrain repeat entries. H24 does not mean forced trades.
+- Fast 1m protection and slow public entry/macro history downloads use separate workers. Financial state has one writer. The writer never waits for a pending model or public-data request; stale/missing required BTC/ETH/position data drains new exposure, rather than inventing a price.
+- Closed 1m bars go through the real paper engine, with its conservative stop-first OHLC approximation. The minute containing entry is excluded to avoid using pre-entry extremes. Observed latest-candle prices can trigger protection at the observed price with native costs. Data snapshots and model results expire after 120 seconds. This is polling, **not tick execution, a latency guarantee, or a bid/ask liquidity simulation**.
+- Experimental local profit protection closes a useful net winner when two completed minute returns fail to advance in its direction. Estimated net proceeds must exceed estimated costs (entry/exit fees, exit slippage and accrued engine funding). Strong continuation can run; neither 5 nor 15 minutes forces an exit, and no fixed high ROI is required. This deterministic heuristic is identified separately from an AI decision and needs chronological PAPER observation; it is not a learned/proven optimal exit rule. Entry slippage is already in the engine entry price. Protective SL/TP remains active regardless of profitability.
+- DeepSeek runs asynchronously. Pending/error/budget exhaustion uses explicit classical fallback. A completed result is rejected after 120 seconds, changed cash/exposure/levels, invalid numbers/schema, or entry price drift beyond half the requested stop (capped at 0.5%). No repeated paid call in the same profile/minute, including after restart.
+- The AI gets the actual classical prompt/profile settings, both directional scores, recent available fast bars, versioned operator objective, own episodic evidence and any separately verified transferred seed. It is asked to protect useful net profit and explain continuation/extension. Missing transferred history stays `not_imported`; **no production history was collected/imported by this implementation**.
+
+Public-feed outages can make supervision unavailable; status says so. A missing interval beyond the available history sets a persistent coverage-unresolved flag: no new exposure and no statistical lessons from those realizations. The account is not silently reset or its missing path reconstructed. An operator recovery review is required to resolve that flag. A backwards execution clock is rejected.
+
+## State, evidence and spending preservation
+
+The parent directory must be separate from known classic/legacy Brain paths. Accounts live in `brain-hawk/` and `brain-bull/`, each with its own locked SQLite WAL state/events and append-only journal/trade projections. Unknown nonempty directories require recovery, not initialization. The old Brain database and Hawk/Bull volumes are never opened or modified. New PAPER capital requires `--initialize-paper` on an empty profile directory; restart loads the existing account. This implementation does not convert or split the old Brain balance.
+
+The existing Store commits account, close events and derived learning in one transaction. Native file writes are captured into that transaction; the CLI's JSON file is not authoritative here. Protective changes commit before optional entry evaluation; a failed entry cycle cannot revert them. Outbox exports replay on restart. An actual SQL abort test proves no close or changed balance survives a rejected close transaction, then the same observation closes exactly once after recovery.
+
+Memory accepts the distinct account identities `brain-hawk`/`brain-bull`, and adds a whitelisted strategy-version cohort. The classical trend semantics are explicitly EMA50/200, not the old Brain EMA20/50; snapshots and entry context carry the actual method/profile version and decision provider. Old/missing strategy versions stay unknown, and different versions cannot pool lessons. The account, code/config identity and raw outcome source persist. This is bounded statistical memory, not model retraining or evidence of profitability.
+
+**One shared API ledger** caps both workers together at the existing Brain defaults ($0.50/day, $12/month), with conservative pre-call reservations, fair per-profile pacing over UTC day and pacing over the calendar month. No implicit increase, restart reset, refund after uncertain billing, or claim that this allowance funds continuous model reasoning. Fixed-budget H24 means local protection/classical operation is continuous; AI calls are intermittent and honestly labeled.
+
+Activation requires a **verified copy of the old Brain `spend.jsonl`**. `budget.baseline_from_spend(copy_path)` reads it, validates complete records and produces `{version, mode, source_sha256, by_day}` for `api_budget_baseline.json` in the new parent. It does not overwrite the source. Copy provenance/mode must be independently verified; the hash only checks integrity. The shared ledger imports that prior spend once. Missing/invalid baseline fails, rather than restoring a free budget. Per-profile state checkpoints detect a rolled-back/recreated shared ledger. The baseline and new reservations remain across restarts. The existing tariff estimator is reused; reservations are not provider invoices or proof a future tariff will remain unchanged.
+
+## Test evidence and packaging
+
+`test_brain_classical_adaptive.py` covers both profiles and both directions using the actual CLI and synthetic data/model responses in separate processes. It verifies native sizing, source identity, stop costs, same-minute causality, useful net exits/continuation, partial-entry cancellation, stale data, async API/feed failure isolation, schema/price/exposure rejection, budget concurrency/pacing/import/restart, no empty-directory reset, SQL rollback, recovery and learning separation. Healthcheck is read-only and cannot initialize a wallet. Existing Brain learning/transfer/mandate/upgrader tests remain in CI.
+
+`Dockerfile.brainclassical` starts with help by default, has no exchange SDK and needs an explicit profile/output/initialization flag. CI builds the real image and runs the native Hawk/Bull LONG/SHORT probes with **network disabled**, a read-only image and temporary fixture storage. No deploy workflow, SSH action, server control or production key is added.
+
+## Release gates still outstanding
+
+1. Review the process-local CLI adapters, async result validity, transaction interception, local profit heuristic and statistical cohort separation. Current source/runtime equivalence is an integration baseline, not an efficacy backtest.
+2. Run chronological PAPER observation against each frozen classical baseline, including cost/slippage sensitivity and denied opportunities. No historical profitability comparison is claimed here.
+3. Prepare a separately authorized deployment with verified backup/restore and exact image SHA. Freeze old Brain API/exposure through its existing pause mechanism while retaining management, acquire the verified spend baseline, and preserve its original account/history. Do not launch two instances on one profile directory.
+4. The PWA currently shows the **old single Brain**; a dedicated paired-profile reader/UI and explicit display of archived versus candidate accounts are a separate app change before a user-visible paired rollout. Do not relabel old data as new profiles.
+5. Rollback must preserve all new account outcomes and spending. Pause/drain new exposure using the retained image if needed, keep protection active for open PAPER positions, and reconcile spending before re-enabling another model worker. Never restore an older financial snapshot over newer trade history.
+
+No VPS change, runtime upgrade, live trade, reset, collector startup, or dashboard deployment is performed by this PR.
