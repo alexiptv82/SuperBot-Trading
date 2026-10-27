@@ -1,2 +1,2 @@
-sha=d4865ddcf1c3dece3cd7d7336e4bfcbcb29b28cc
-2026-10-26T20:04:19.353Z app-only release authorized by user: Brain margin, leverage, exposure and gross ROI (PR13)
+sha=4cf41d23bb94f7a868b25dd1c89b3e4e8993d9a8
+reason=paired Brain PAPER dashboard rollout after user OK; separate profiles and previous account preserved; authenticated readonly views
