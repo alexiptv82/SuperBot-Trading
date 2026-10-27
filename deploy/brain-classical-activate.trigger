@@ -1,0 +1,6 @@
+action=activate
+approved=yes
+sha=5024fbdfe3a9719098f905b28eac5d0feb9848e6
+legacy_sha=1f2edeb6182029adc96ba7218ad145a7503472a3
+classic_sha=89b0dca3e259c548ed82754c2301c7b024d18ff5
+app_sha=4cf41d23bb94f7a868b25dd1c89b3e4e8993d9a8
