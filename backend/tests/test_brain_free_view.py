@@ -9,7 +9,7 @@ def database(root,**updates):
     state={'mode':'paper','account_id':'brain-free-paper','cash':2000,'positions':{},
            'verified_start_ms':NOW-1000,'heartbeat_ms':NOW,'config_hash':'synthetic',**updates}
     with sqlite3.connect(root/'brain.sqlite3') as db:
-        db.executescript('CREATE TABLE state(id INTEGER,body TEXT); CREATE TABLE requests(ts INTEGER,body TEXT); CREATE TABLE events(seq INTEGER,kind TEXT,body TEXT);')
+        db.executescript('CREATE TABLE state(id INTEGER,body TEXT); CREATE TABLE requests(ts INTEGER,body TEXT); CREATE TABLE events(seq INTEGER,kind TEXT,ts INTEGER,body TEXT);')
         db.execute('INSERT INTO state VALUES(1,?)',(json.dumps(state),))
     return state
 
@@ -56,3 +56,21 @@ def test_authenticated_get_only_and_no_store(tmp_path,monkeypatch):
     with TestClient(app) as client:
         r=client.get('/api/brain/free');assert r.status_code==200 and r.headers['cache-control']=='no-store'
         assert client.post('/api/brain/free').status_code==405
+
+
+def test_v2_display_dynamic_limits_and_keep_old_run_out_of_pnl(tmp_path):
+    database(tmp_path,cash=1910.0,verified_start_ms=NOW-1000,
+             runtime_capacity={'max_slots':5,'max_margin':1750.0},
+             v2_start_equity=1890.0)
+    with sqlite3.connect(tmp_path/'brain.sqlite3') as db:
+        db.execute('INSERT INTO requests VALUES(?,?)',(NOW-3000,json.dumps({'billing':{'cost':1.25}})))
+        db.execute('INSERT INTO requests VALUES(?,?)',(NOW,json.dumps({'billing':{'cost':.2}})))
+        db.execute('INSERT INTO events VALUES(?,?,?,?)',(1,'daily_report',NOW-3000,
+            json.dumps({'today_utc':'V1','realized_net':-90})))
+    data=view.read(tmp_path,NOW)
+    assert data['available']
+    assert data['max_slots']==5 and data['margin_limit']==1750
+    assert data['pnl']==20.0 and data['pnl_since_original_start']==-90.0
+    assert data['spend']['current_run_usd']==pytest.approx(.2)
+    assert data['spend']['total_usd']==pytest.approx(1.45)
+    assert data['latest_report'] is None

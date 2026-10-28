@@ -16,3 +16,18 @@ test('stale or missing equity never becomes a made-up zero', () => {
   const html=renderToStaticMarkup(<BrainFreePanel data={{online:false,positions:[]}} />);
   expect(html).toContain('Non disponibile');expect(html).not.toContain('$0.00');
 });
+
+test('Brain V2 shows new five-slot capacity, margin ceiling and separate run PnL', () => {
+  const html=renderToStaticMarkup(<BrainFreePanel data={{
+    available:true,online:true,equity:1910,cash:1910,margin:0,
+    pnl:20,pnl_since_original_start:-90,run_start_equity:1890,
+    margin_limit:1750,max_slots:5,paused:true,
+    positions:[],spend:{today_usd:.1,total_usd:3,current_run_usd:.2}
+  }} />);
+  expect(html).toContain('5 slot');
+  expect(html).toContain('$1750.00');
+  expect(html).toContain('P&amp;L run attuale');
+  expect(html).toContain('P&amp;L cumulato dalla V1');
+  expect(html).toContain('Spesa AI run attuale');
+  expect(html).toContain('Nuove esposizioni in pausa');
+});
