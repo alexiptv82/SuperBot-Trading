@@ -1,0 +1,35 @@
+name: Brain Scalp dual PAPER - offline only
+on:
+  push:
+    branches: [work/brain-scalp-dual-20261028]
+    paths:
+      - 'backend/director/brain_scalp/**'
+      - 'backend/tests/test_brain_scalp_dual.py'
+      - '.github/workflows/brain-scalp-dual-ci.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Syntax and offline unit tests (no network, no keys)
+        run: |
+          python -m compileall -q backend/director/brain_scalp
+          PYTHONPATH=backend python -m unittest -v backend.tests.test_brain_scalp_dual
+      - name: Guard immutable classical bots and original Brain
+        run: |
+          test -z "$(git diff --name-only e0021488b47e8b245954a708b139bc4785a4b644 HEAD -- backend/desk backend/director/brain_free)"
+      - name: Ensure no deployment files changed
+        run: |
+          test -z "$(git diff --name-only e0021488b47e8b245954a708b139bc4785a4b644 HEAD -- deploy Dockerfile.brainfree .github/workflows/brain-free-v2-cutover.yml)"
