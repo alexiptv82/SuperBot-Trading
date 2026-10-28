@@ -58,6 +58,8 @@ class PaperWallet:
         state=self.store.load()
         if now<state['last_ms']: raise ValueError('backward_clock')
         state['last_ms']=now
+        state['heartbeat_ms']=now
+        state['last_prices']={s:m['quote'] for s,m in markets.items() if m.get('quote')}
         state,events=protect(state,markets,contracts,now,self.cfg)
         quotes={sym:m['quote'] for sym,m in markets.items() if m.get('quote')}
         for symbol,d in list(state['plans'].items()):
