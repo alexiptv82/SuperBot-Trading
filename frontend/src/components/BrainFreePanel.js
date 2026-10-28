@@ -6,7 +6,7 @@ export default function BrainFreePanel({ data, error }) {
   const d = data || {}, spend = d.spend || {};
   return <main style={{ maxWidth: 640, margin: 'auto', padding: 16, color: '#f1f5f9' }}>
     <h1>🧠 Brain AI libero · PAPER</h1>
-    <p>Unico conto PAPER · {d.max_slots ?? 10} slot · decisioni DeepSeek</p>
+    <p>Unico conto virtuale da 2.000$ · {d.max_slots ?? 10} slot · decisioni DeepSeek</p>
     {(error || !d.online) && <p role="status" style={{ color: '#fbbf24' }}>Connessione o Brain non aggiornato. Visualizzati gli ultimi dati disponibili.</p>}
     <section style={card}><h2>Portafoglio</h2>
       <p>Equity {money(d.equity)} · P&amp;L run attuale {money(d.pnl)}</p>
