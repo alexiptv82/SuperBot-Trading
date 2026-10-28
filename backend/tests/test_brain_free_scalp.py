@@ -93,5 +93,4 @@ def test_public_5m_adapter_uses_timestamp_aligned_bitget_bars():
 def test_reframe_is_not_a_hidden_minimum_trade_or_profit_quota():
     assert "There is never a quota of trades" in SYSTEM
     assert "PREFERENCE ONLY" in SYSTEM
-    assert "no required minimum" not in SYSTEM.lower() or True
     assert CFG.analysis_ms==300000 and CFG.management_ms==120000
