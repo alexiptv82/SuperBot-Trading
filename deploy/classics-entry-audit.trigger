@@ -3,3 +3,4 @@ purpose=Hawk_Bull_post_rollback_no_entries_gates_and_Claude_schedule
 compare_archive_sources=1
 
 read_only_recheck=after_deepseek_2026_10_28
+inspection_run=2
