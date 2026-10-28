@@ -1,0 +1,66 @@
+name: AI provider cost audit - read only
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/ai-provider-cost-audit.trigger]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read actual DeepSeek and Claude cost ledgers without credentials
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import sqlite3,json,time,os,pathlib,collections,datetime
+            now=time.time();today=time.strftime('%Y-%m-%d',time.gmtime(now))
+            print('COST_AUDIT_UTC',datetime.datetime.now(datetime.timezone.utc).isoformat())
+            root=pathlib.Path('/opt/superbot-brain-free')
+            if (root/'brain.sqlite3').is_file():
+                db=sqlite3.connect((root/'brain.sqlite3').resolve().as_uri()+'?mode=ro',uri=True)
+                db.execute('PRAGMA query_only=ON')
+                state=json.loads(db.execute('SELECT body FROM state WHERE id=1').fetchone()[0])
+                rows=db.execute('SELECT ts,status,body FROM requests ORDER BY ts').fetchall()
+                print('BRAIN_STATUS',json.dumps({'paused':state.get('paused'),'open':len(state.get('positions') or {}),'run_start_utc':datetime.datetime.fromtimestamp(state.get('verified_start_ms',0)/1000,datetime.timezone.utc).isoformat(),'last_ai_status':state.get('provider_status'),'requests':len(rows)}))
+                for hours in (3,6,12,24,9999):
+                    recent=[(ts,status,json.loads(body)) for ts,status,body in rows if ts/1000>=now-hours*3600]
+                    costs=[x['billing']['cost'] for _,_,x in recent if isinstance(x.get('billing'),dict) and isinstance(x['billing'].get('cost'),(int,float))]
+                    counts=collections.Counter()
+                    for _,_,x in recent:
+                        b=x.get('billing') or {}
+                        for name in ('hit','miss','output','reasoning'):
+                            if isinstance(b.get(name),int):counts[name]+=b[name]
+                    print('BRAIN_USAGE_WINDOW',json.dumps({'hours':hours,'requests':len(recent),'cost_known':len(costs),'unknown_requests':len(recent)-len(costs),'cost_sum_usd':round(sum(costs),5),'tokens':dict(counts)}))
+                db.close()
+            for name in ('hawk','bull'):
+                root=pathlib.Path('/opt/superbot-desk-data')/name
+                try:
+                    st=json.loads((root/'state_v2.json').read_text())
+                    hb=json.loads((root/'heartbeat.json').read_text())
+                    b=st.get('budget') or {}
+                    print('CLASSIC_BUDGET',json.dumps({'portfolio':name,'day':b.get('day'),'window_id_set':bool(st.get('claude_window')),'today_or_window_spend_usd':b.get('spent'),'calls_in_window':b.get('calls'),'cumulative_spend_usd':b.get('total_spent'),'daily_cap_usd':hb.get('daily_cap_usd'),'claude_allowed':(hb.get('claude_schedule') or {}).get('allowed'),'claude_schedule_mode':(hb.get('claude_schedule') or {}).get('mode')}))
+                except Exception as exc:print('CLASSIC_BUDGET_UNAVAILABLE',name,type(exc).__name__)
+            root=pathlib.Path('/opt/superbot-ai-data/ai')
+            try:
+                status=json.loads((root/'status.json').read_text())
+                sp=status.get('spend') or {}
+                print('SHADOW_DEEPSEEK',json.dumps({'enabled':True,'applied':status.get('applied'),'last_model':(status.get('model') or {}).get('calls_ok'),'spend':{k:sp.get(k) for k in ('day_usd','month_usd','daily_cap','monthly_cap','total_usd')}}))
+                ledger=root/'spend.jsonl'
+                if ledger.is_file():
+                    entries=[]
+                    for line in ledger.open():
+                        try:entries.append(json.loads(line))
+                        except (ValueError,TypeError):continue
+                    print('SHADOW_SPEND_LEDGER',json.dumps({'calls':len(entries),'today_usd':round(sum(x.get('cost',0) for x in entries if x.get('day')==today),5),'cumulative_usd':round(sum(x.get('cost',0) for x in entries),5)}))
+            except Exception as exc:print('SHADOW_DATA_UNAVAILABLE',type(exc).__name__)
+            print('READ_ONLY_AI_COST_AUDIT=PASS')
+            PY
