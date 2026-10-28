@@ -1,0 +1,95 @@
+name: Hawk Bull - entry gate and rollback audit READ ONLY
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/classics-entry-audit.trigger]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Inspect current PAPER entry decisions, gates, schedules and prior-run archives
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 160s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import os,json,time,datetime,collections,pathlib,subprocess
+            from zoneinfo import ZoneInfo
+            now=time.time()
+            print('AUDIT_UTC',datetime.datetime.fromtimestamp(now,datetime.timezone.utc).isoformat())
+            for p in ('hawk','bull'):
+                root=pathlib.Path('/opt/superbot-desk-data')/p
+                print('\n==== CLASSIC',p.upper(),'====')
+                def read(f):
+                    try:return json.loads((root/f).read_text())
+                    except (ValueError,OSError):return {}
+                hb=read('heartbeat.json');st=read('state_v2.json');a=st.get('main') or {}
+                cp=st.get('capital') or {};bud=st.get('budget') or {}
+                try:
+                    x=json.loads(subprocess.check_output(['docker','inspect','superbot-desk-'+p],text=True,timeout=8))[0]
+                    env=dict(kv.split('=',1) for kv in x['Config'].get('Env',[]) if '=' in kv)
+                    print('CONTAINER',json.dumps({'healthy':(x['State'].get('Health') or {}).get('Status'),'running':x['State']['Running'],'version':x['Config'].get('Labels',{}).get('superbot.sha'),'started':x['State']['StartedAt'],'mode':env.get('DESK_MODE'),'capital':env.get('DESK_CAPITAL_V1'),'score_env':env.get('DESK_ENTRY_SCORE'),'daily_cap_env':env.get('DESK_DAILY_CAP_USD')}))
+                except Exception as exc:print('CONTAINER_UNAVAILABLE',type(exc).__name__)
+                status={k:hb.get(k) for k in ('ts','cycles','last_ok','last_error','last_start_ms','last_end_ms','next_cycle_ms','entry_score','tier_c_entry_score','claude_schedule','macro','daily_cap_usd','mode','exec_mode','paused')}
+                print('HEARTBEAT',json.dumps(status,ensure_ascii=False,default=str)[:2500])
+                try:print('HEARTBEAT_AGE_SEC',round(now-float(hb.get('ts') or 0),1))
+                except:pass
+                print('ACCOUNT',json.dumps({'run_no':st.get('run_no'),'run_started_ms':st.get('run_started_ms'),'cash':a.get('cash'),'positions':len(a.get('positions') or {}),'closed_count':len(a.get('closed') or []),'day_start_equity':a.get('day_start_equity'),'last_action':st.get('last_action'),'capital_status':cp.get('status'),'capital_policy':cp.get('policy'),'vault_balance':(cp.get('vault') or {}).get('balance'),'budget':{k:bud.get(k) for k in ('day','spent','calls','total_spent')},'last_call_ms':st.get('last_call_ms')},ensure_ascii=False,default=str)[:3200])
+                for flag in ('pause.flag','reset_portfolio.flag','reset.flag','trading_hours.json'):
+                    print('CONTROL',flag,(root/flag).exists())
+                sch=read('claude_schedule.json')
+                wins=sch.get('windows') or []
+                active=[]
+                for w in wins:
+                    try:
+                        start=int(datetime.datetime.fromisoformat(w['start'].replace('Z','+00:00')).timestamp())
+                        stop=int(datetime.datetime.fromisoformat(w['end'].replace('Z','+00:00')).timestamp())
+                        if start<=now<stop:active.append((w['start'],w['end']))
+                    except:pass
+                print('CLAUDE_WINDOWS',json.dumps({'total':len(wins),'active':active,'next':next((x for x in wins if (x.get('start') or '')>datetime.datetime.now(datetime.timezone.utc).isoformat()),None)},ensure_ascii=False)[:950])
+                learn=root/'learning_log.jsonl'
+                if learn.exists():
+                    hist=[]
+                    for line in learn.open(encoding='utf-8'):
+                        try:
+                            o=json.loads(line)
+                            t=float(o.get('ts_ms') or o.get('ts') or 0)
+                            if t<1e11:t*=1000
+                            if now*1000-t<=48*3600*1000 and t>0:hist.append(o)
+                        except (ValueError,TypeError,OverflowError):pass
+                    ev=collections.Counter(str(x.get('ev')) for x in hist)
+                    cand=[x for x in hist if x.get('ev')=='candidate']
+                    print('LEARN_48H',json.dumps({'count':len(hist),'events':dict(ev),'candidate_status':dict(collections.Counter(str(x.get('status')) for x in cand)),'candidate_run':dict(collections.Counter(str(x.get('run_no')) for x in cand))},ensure_ascii=False)[:2000])
+                    print('CANDIDATE_LATEST',json.dumps([{'ts':x.get('ts'),'status':x.get('status'),'symbol':x.get('symbol'),'source':x.get('source'),'run_no':x.get('run_no')} for x in cand[-8:]],ensure_ascii=False)[:1800])
+                try:
+                    logs=subprocess.check_output(['docker','logs','--timestamps','--since','12h','--tail','10000','superbot-desk-'+p],stderr=subprocess.STDOUT,text=True,timeout=16).splitlines()
+                    classes={'[OPEN]':'open','[SKIP]':'account_skip','[RR_LOW]':'rr_reject','[COOLDOWN]':'cooldown','[GUARDRAIL':'sizing','[CLAUDE]':'claude','[WARN]':'warning','[FINESTRA]':'claude_out_of_window','[HALT]':'halt','[PAUSA]':'paused','[ORARI]':'hours','[SLEEP]':'cycles','readings validi:':'readings','candles ok:':'candles','[DESK V2]':'cycle_header','[CLOSE]':'close','[ERROR]':'error'}
+                    counts={name:sum(marker.lower() in x.lower() for x in logs) for marker,name in classes.items()}
+                    print('LOG_COUNTS_12H',json.dumps(counts))
+                    filter_terms=['[OPEN]','[SKIP]','[RR_LOW]','[HALT]','[WARN]','[FINESTRA]','[SLEEP]','readings validi:','candles ok:','[CLAUDE]','[ERROR]']
+                    selected=[x[:260] for x in logs if any(t.lower() in x.lower() for t in filter_terms)]
+                    print('LOG_RECENT',json.dumps(selected[-45:],ensure_ascii=False)[:10000])
+                    first=[x[:240] for x in logs if 'readings validi:' in x.lower() or '[FINESTRA]' in x]
+                    print('LOG_FIRST',json.dumps(first[:8],ensure_ascii=False)[:1600])
+                except Exception as exc:print('LOGS_UNAVAILABLE',type(exc).__name__)
+                archive=root/'archive'
+                if archive.exists():
+                    candidates=[]
+                    for f in sorted(archive.rglob('state_v2.json'),key=lambda f:f.stat().st_mtime,reverse=True)[:4]:
+                        try:
+                            old=json.loads(f.read_text())
+                            candidates.append({'mtime_utc':datetime.datetime.fromtimestamp(f.stat().st_mtime,datetime.timezone.utc).isoformat(),
+                                               'run_no':old.get('run_no'),'closed':len((old.get('main') or {}).get('closed') or []),
+                                               'cash':(old.get('main') or {}).get('cash')})
+                        except (ValueError,OSError):pass
+                    print('PREVIOUS_RUN_ARCHIVES',json.dumps(candidates))
+            print('READ_ONLY_ENTRY_AUDIT_COMPLETE')
+            PY
