@@ -1,0 +1,54 @@
+name: Brain AI Libero V2 - approved same-account PAPER restart
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/brain-free-v2-cutover.trigger]
+permissions:
+  contents: read
+concurrency:
+  group: brain-free-singapore
+  cancel-in-progress: false
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Approval, frozen target and offline preservation tests
+        run: |
+          test "$(sed -n 's/^approved=//p' deploy/brain-free-v2-cutover.trigger)" = yes
+          test "$(sed -n 's/^action=//p' deploy/brain-free-v2-cutover.trigger)" = apply
+          git fetch --depth=1 origin e0021488b47e8b245954a708b139bc4785a4b644
+          git worktree add --detach /tmp/brain-v2-target FETCH_HEAD
+          python -m pip install pytest
+          PYTHONPATH=/tmp/brain-v2-target/backend python -m pytest -q /tmp/brain-v2-target/backend/tests/test_brain_free.py /tmp/brain-v2-target/backend/tests/test_brain_free_rollout.py /tmp/brain-v2-target/backend/tests/test_brain_free_scalp.py /tmp/brain-v2-target/backend/tests/test_brain_free_reframe.py backend/tests/test_brain_free_v2_operator_cutover.py
+          python -m py_compile deploy/scripts/brain_free_v2_cutover.py
+          docker build -f /tmp/brain-v2-target/Dockerfile.brainfree -t brain-free-v2-validated /tmp/brain-v2-target
+      - name: Back up, record authorized close, migrate and restart one Brain only
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          CONTROL_SHA: ${{ github.sha }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: CONTROL_SHA
+          command_timeout: 18m
+          script: |
+            set -eu
+            umask 077
+            DIR=$(mktemp -d /opt/brain-v2-approved.XXXXXXXX)
+            trap 'rm -rf "$DIR"' EXIT
+            git init -q "$DIR"
+            git -C "$DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$DIR" fetch -q --depth=1 origin "$CONTROL_SHA"
+            git -C "$DIR" checkout -q --detach "$CONTROL_SHA"
+            cp "$DIR/deploy/scripts/brain_free_v2_cutover.py" "$DIR/cutover.py"
+            git -C "$DIR" fetch -q --depth=1 origin e0021488b47e8b245954a708b139bc4785a4b644
+            git -C "$DIR" checkout -q --detach e0021488b47e8b245954a708b139bc4785a4b644
+            cd "$DIR"
+            DESK_MODE=paper python3 -I "$DIR/cutover.py" --approved yes --control-script "$DIR/cutover.py"
