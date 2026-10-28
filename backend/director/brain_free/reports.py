@@ -4,10 +4,13 @@ from zoneinfo import ZoneInfo
 import json,math
 from .execution import equity,margin
 from .spend import view
+from .config import Config
 
 def build(store,state,now):
-    trades=[json.loads(r[0]) for r in store.db.execute("SELECT body FROM events WHERE kind='trade_closed'")]
-    executed=[json.loads(r[0]) for r in store.db.execute("SELECT body FROM events WHERE kind IN ('open','dca','partial_trade','trade_closed')")]
+    start=int(state.get('verified_start_ms') or 0)
+    # Only the current V2 run enters this report; previous run events remain in SQLite for memory.
+    trades=[json.loads(r[0]) for r in store.db.execute("SELECT body FROM events WHERE kind='trade_closed' AND ts>=?",(start,))]
+    executed=[json.loads(r[0]) for r in store.db.execute("SELECT body FROM events WHERE kind IN ('open','dca','partial_trade','trade_closed') AND ts>=?",(start,))]
     realized=sum(t.get('segment',t).get('net',0) for t in executed if t['kind'] in ('partial_trade','trade_closed'))
     paid_fees=sum(t.get('fee_paid',0) for t in executed)
     prices=state.get('last_prices',{});eq,complete=equity(state,prices)
@@ -15,7 +18,7 @@ def build(store,state,now):
     metrics=state['metrics'];duration=sum(t['duration_minutes'] for t in trades)
     today=datetime.fromtimestamp(now/1000,timezone.utc).strftime('%Y-%m-%d')
     today_trades=[t for t in executed if t['kind'] in ('partial_trade','trade_closed') and datetime.fromtimestamp(t['close_ms']/1000,timezone.utc).strftime('%Y-%m-%d')==today]
-    open_rows=list(store.db.execute("SELECT ts,body FROM events WHERE kind='open' AND ts>=?",(int(datetime.fromtimestamp(now/1000,timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0).timestamp()*1000),)))
+    open_rows=list(store.db.execute("SELECT ts,body FROM events WHERE kind='open' AND ts>=?",(max(start,int(datetime.fromtimestamp(now/1000,timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0).timestamp()*1000)),)))
     opens=[json.loads(row[1]) for row in open_rows]
     by_hour={}
     for ts,_ in open_rows:
@@ -30,7 +33,7 @@ def build(store,state,now):
       'profit_factor':sum(wins)/-sum(losses) if losses else None,
       'mean_duration_minutes':duration/len(trades) if trades else None,
       'open_long':sum(p['side']==1 for p in state['positions'].values()),'open_short':sum(p['side']==-1 for p in state['positions'].values()),'long':sum(t['side']==1 for t in trades),'short':sum(t['side']==-1 for t in trades),
-      'empty_minutes':metrics['empty_ms']/60000,'slot_occupancy':metrics['slot_ms']/max(1,metrics['observed_ms']*10),
+      'empty_minutes':metrics['empty_ms']/60000,'slot_occupancy':metrics['slot_ms']/max(1,metrics['observed_ms']*Config().max_slots),
       'spend':view(store.db,now),'experiment_start_ms':state['verified_start_ms'],
       'elapsed_hours':(now-state['verified_start_ms'])/3600000 if state['verified_start_ms'] else None,
       'prices_complete':complete,'comparators':state.get('classic_comparison',{'status':'unavailable','note':'No read access configured; not zero performance.'})}
@@ -51,13 +54,13 @@ def schedule(store,state,now,cfg):
     events=[];messages=[]
     if state['verified_start_ms'] is None:return events,messages
     if d.hour>=cfg.report_hour and state.get('last_report_day')!=date:
-        report=build(store,state,now);ident='report:'+date
+        report=build(store,state,now);ident='report:'+state.get('experiment_id','legacy')+':'+date
         events.append((ident,'daily_report',now,report));messages.append((ident,text(report)))
         state['last_report_day']=date
     start=state['verified_start_ms']
     if start and now-start>=cfg.experiment_ms and not state.get('final_report_done'):
-        report=build(store,state,now);events.append(('experiment-final','final_report',now,report))
-        messages.append(('experiment-final','[BRAIN] Completate 168 ore. '+text(report).replace('[BRAIN] ','')))
+        report=build(store,state,now);events.append(('experiment-final:'+state.get('experiment_id','legacy'),'final_report',now,report))
+        messages.append(('experiment-final:'+state.get('experiment_id','legacy'),'[BRAIN] Completate 168 ore. '+text(report).replace('[BRAIN] ','')))
         state['final_report_done']=True # No automatic stop or strategy change.
     return events,messages
 
