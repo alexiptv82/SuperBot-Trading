@@ -1,3 +1,13 @@
+## Direzione richiesta: Hawk/Bull scalp operativo 1m/5m — valutazione chat normale 28 ottobre
+
+Il proprietario vuole ripartire dai due portafogli Hawk e Bull: ricerca H24 di opportunità long e short 1m/5m, ingressi/uscite in minuti/ore, slot utilizzati quando ci sono setup, gestione del profitto *netto* e diagnosi visibile di margine, leva, aperture, chiusure e veti. La frequenza è un requisito da misurare, non una quota di ordini forzati. Report/valutazione prima del rendimento. Top30 market cap come possibile universo filtrato su strumenti/liquidità Bitget. **Solo valutazione e specifica; NESSUN nuovo deploy o cambio strategia approvato**. Baseline GitHub rule-pool c1a7c91924, runtime classici dc16e01 e Brain V2 e002148 da verifiche Work precedenti; nessuna verifica VPS live in questa ripresa.
+
+La specifica e la proposta di separazione lavori ChatGPT/Claude sono in `diario/2026-10-28_VALUTAZIONE-HAWK-BULL-SCALP.md`. Anche il piano tecnico Work rimane in `diario/SCALP-1M-5M-PIANO-2026-10-28.md`. Prima di iniziare codice: riservare componenti distinti e branch non sovrapposti, confronto A/B; niente doppio writer, reset, modifica dei conti, merge operativo o deploy senza nuova approvazione.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## Scalp1m/5m — nuova analisi richiesta dal proprietario,28ottobre14:14Roma
 
 Utente insoddisfatto di entrambi i sistemi: vuole ingressi1m/5m,più opportunità contemporanee,gestione in minuti/ore e preferenza20–40%ROI netto senza trasformarla in obbligo. Eseguita diagnosi readonly,NON ulteriore cambio strategia/reset/deploy. RuntimeBrain e002148 eclassici dc16e01 invariati.
