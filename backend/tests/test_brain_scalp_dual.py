@@ -151,3 +151,45 @@ class Scanner(unittest.TestCase):
 
 
 if __name__=='__main__': unittest.main()
+
+
+class PairRouting(unittest.TestCase):
+    def test_shared_candidate_does_not_share_money_or_position_data(self):
+        from director.brain_scalp.coordinator import BrainPair
+        with tempfile.TemporaryDirectory() as root:
+            pair=BrainPair(root,initialize=True,now_ms=NOW)
+            try:
+                snapshot=market()
+                shortlist={'candidates':[{'symbol':'BTC','side':1,'score':10}]}
+                r=pair.accept_ai_plans('hawk',{'plans':[plan()]},
+                                       shortlist,snapshot,CONTRACT,NOW)
+                self.assertEqual(len(r['accepted']),1)
+                self.assertEqual(pair.bull.store.load()['plans'],{})
+                result=pair.tick(snapshot,CONTRACT,NOW+1000)
+                self.assertEqual((result['hawk']['positions'],result['bull']['positions']),(1,0))
+            finally:
+                pair.close()
+
+    def test_hallucinated_opposite_direction_is_rejected(self):
+        from director.brain_scalp.coordinator import BrainPair
+        with tempfile.TemporaryDirectory() as root:
+            pair=BrainPair(root,initialize=True,now_ms=NOW)
+            try:
+                shortlist={'candidates':[{'symbol':'BTC','side':1,'score':10}]}
+                r=pair.accept_ai_plans('hawk',{'plans':[plan(side=-1)]},
+                                       shortlist,market(),CONTRACT,NOW)
+                self.assertEqual(r['accepted'],[])
+                self.assertEqual(r['rejected'][0]['why'],'not_a_matching_fresh_candidate')
+                self.assertEqual(pair.hawk.store.load()['plans'],{})
+            finally:
+                pair.close()
+
+    def test_identical_market_data_does_not_cause_duplicate_wallet_writer(self):
+        from director.brain_scalp.coordinator import BrainPair
+        with tempfile.TemporaryDirectory() as root:
+            pair=BrainPair(root,initialize=True,now_ms=NOW)
+            try:
+                with self.assertRaisesRegex(ValueError,'wallet_writer_already_active'):
+                    BrainPair(root)
+            finally:
+                pair.close()
