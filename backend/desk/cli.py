@@ -74,19 +74,21 @@ def _make_hawk_config() -> PortfolioConfig:
         data_dir=data_dir,
         limits=Limits(
             start_equity=1000.0,
-            max_margin_trade=100.0,   # HAWK: max $100 per trade
+            max_margin_trade=250.0,   # HAWK: operator requested $100-$250 per new trade
             max_margin_total=1000.0,  # budget totale $1000
             max_open=10,              # max 10 posizioni
             kill_equity=450.0,
             daily_stop=0.12,
+            min_initial_margin=100.0,
+            min_initial_leverage=20,
         ),
         system_prompt=SYSTEM_HAWK,
-        guardrail_min_margin=50.0,
-        guardrail_min_lev=10,
-        guardrail_margin_forced=60.0,
-        guardrail_lev_forced=15,
+        guardrail_min_margin=100.0,
+        guardrail_min_lev=20,
+        guardrail_margin_forced=100.0,
+        guardrail_lev_forced=20,
         guardrail_type_forced="scalp",
-        description="Hawk — max $100/trade, 10 posizioni, budget $1000",
+        description="Hawk — $100-$250 nuove aperture, 10 slot, budget $1000",
     )
 
 
@@ -102,12 +104,14 @@ def _make_bull_config() -> PortfolioConfig:
             max_open=3,               # max 3 posizioni
             kill_equity=450.0,
             daily_stop=0.12,
+            min_initial_margin=150.0,
+            min_initial_leverage=20,
         ),
         system_prompt=SYSTEM_BULL,
         guardrail_min_margin=150.0,
-        guardrail_min_lev=10,
-        guardrail_margin_forced=200.0,
-        guardrail_lev_forced=15,
+        guardrail_min_lev=20,
+        guardrail_margin_forced=150.0,
+        guardrail_lev_forced=20,
         guardrail_type_forced="medio",
         description="Bull — max $350/trade, 3 posizioni, budget $1000, TP≥5%",
     )
@@ -1104,6 +1108,16 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons,
                                       ctx_for_prompt, sym_stats,
                                       macro_lines="\\n".join(macro_calendar.prompt_lines(macro)))
+                prompt += (f"\\nOPERATIVITA' PORTAFOGLIO {PORTFOLIO.name.upper()}: "
+                           f"nuovo ingresso con margine >= {PORTFOLIO.guardrail_min_margin:.0f}$ "
+                           f"e <= {PORTFOLIO.limits.max_margin_trade:.0f}$, "
+                           f"leva >= {PORTFOLIO.guardrail_min_lev}x se compatibile con "
+                           "strumento, stop e liquidazione. Non forzare trade: "
+                           "quando non si puo' rispettare la fascia, SKIP. "
+                           "Il motore rifiuta, non aumenta, richieste sotto il minimo. "
+                           "Per uno split anche la PRIMA gamba deve rispettare il minimo. "
+                           "Stima il profitto NETTO dopo 0.16% di costi sul nozionale; "
+                           "leva e size aumentano anche il rischio di perdita.")
                 # Levels from strictly completed 1-hour candles: context only,
                 # and a different quantity from the AI's own confidence.
                 levels = [
@@ -1376,22 +1390,22 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             sl = px * (1 - side * sl_pct)
             tp_pct = dec.get("take_profit_pct", 0)
             tp = _sane_tp(sym, px * (1 + side * tp_pct), "apertura") if tp_pct > 0 else None
-            # ── GUARDRAIL portfolio-aware ────────────────────────────────────
-            # Se Claude propone valori troppo bassi rispetto al portfolio corrente,
-            # forziamo i minimi del portfolio selezionato.
+            # USER-APPROVED ENTRY DIRECTION (PAPER): NEVER increase the AI's
+            # requested margin or leverage in the name of a guardrail.
+            # A too-small proposal is rejected and logged. The engine
+            # independently enforces the REAL executed leg after cash/fees,
+            # per-instrument leverage and optional split calculations.
             raw_margin = dec["margin_usd"]
-            raw_lev    = dec["leverage"]
+            raw_lev = dec["leverage"]
             pg = PORTFOLIO
             if raw_margin < pg.guardrail_min_margin or raw_lev < pg.guardrail_min_lev:
-                print(f"[GUARDRAIL:{pg.name.upper()}] {sym} Claude proposto "
-                      f"margin={raw_margin:.0f}$ lev={raw_lev}x "
-                      f"→ forzato margin={pg.guardrail_margin_forced:.0f}$ "
-                      f"lev={pg.guardrail_lev_forced}x {pg.guardrail_type_forced}")
-                dec = dict(dec, margin_usd=pg.guardrail_margin_forced,
-                           leverage=pg.guardrail_lev_forced,
-                           trade_type=pg.guardrail_type_forced)
-                trade_type = pg.guardrail_type_forced
-            # Cappato al massimo margine del portfolio
+                print(f"[SIZE_REJECT:{pg.name.upper()}] {sym} "
+                      f"proposto margin={raw_margin:.2f}$ leva={raw_lev}x, "
+                      f"minimi margin={pg.guardrail_min_margin:.0f}$ "
+                      f"leva={pg.guardrail_min_lev}x; NON aumento il rischio", flush=True)
+                _candidate("sizing_sotto_minimo", dec, px)
+                continue
+            # Upper cap: only REDUCE margin, never increase it.
             if dec["margin_usd"] > pg.limits.max_margin_trade:
                 print(f"[CAP:{pg.name.upper()}] {sym} margin {dec['margin_usd']:.0f}$ "
                       f"→ cappato a {pg.limits.max_margin_trade:.0f}$")
@@ -1404,7 +1418,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             except Exception:
                 feats = {}   # la registrazione non deve mai impedire un'apertura
             feats.update(proposed_margin=raw_margin, proposed_lev=raw_lev, split_requested=is_split,
-                          guardrail_forced=bool(raw_margin != dec["margin_usd"] or raw_lev != dec["leverage"]))
+                          guardrail_forced=False,
+                          entry_floor_margin=pg.guardrail_min_margin,
+                          entry_floor_leverage=pg.guardrail_min_lev,
+                          margin_capped=bool(raw_margin > dec["margin_usd"]))
             # ── INTERRUTTORE MANUALE (solo live) ────────────────────────────
             if not is_trading_enabled():
                 print(f"[TRADING DISABILITATO] {sym}: trading live disabilitato — premi 'Avvia trading' nell'app",
