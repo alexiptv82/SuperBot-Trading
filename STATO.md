@@ -1,3 +1,15 @@
+## Screenshot classici — Hawk #7 e Bull #6, 28/10/2026 21:56 Italia
+
+DUE screenshot Performance/Run inviati dall'utente, dati PAPER visibili, non ancora verificati su registri operativi VPS. Hawk run #7 in corso dal 28/10 04:47: equity 878,79 USD, variazione -121,21 da 1000; 6 trade chiusi, 1 vincente / 5 perdenti, WR 16,7%; netto trade -103,79; best +51,26, worst -55,40; PF 0,33, drawdown massimo -151,48. Delta equity rispetto al netto chiuso -17,42: potenziale floating o altro, non diagnosticabile dallo screenshot. Parametri mostrati: 250 max trade, 10 slot, 1000 margine totale, score60/70, daily stop 12%, kill equity450, min leva10x, min margine100, Claude0,7/giorno, codice dc16e01.
+
+Bull run #6 in corso dal 28/10 04:47: equity 879,16 USD, variazione -120,84; 4 trade chiusi 0 vincenti/4 perdenti, WR 0%, netto -120,84; best -5,36, worst -76,63; PF 0, drawdown massimo -120,84. Parametri: 350 max trade,3 slot,1050 margine totale,score60/70, daily stop12%,kill equity450,min leva10x,min margine150,Claude0,7/giorno,codice dc16e01.
+
+Il codice storico effettivamente deployato dc16e01 (backend/desk/engine.py PaperAccount.halted / cli.py run_cycle) lega lo stop giornaliero al valore equity iniziale del giorno UTC e **impedisce nuove aperture**: non chiude automaticamente posizioni esistenti, quindi circa 12,1% di drawdown da base1000 NON prova un bug del gate. Occorrono log e file di conto per sapere il riferimento equity di mezzanotte, se ci siano posizioni aperte, eventuali entrate DOPO halt e cause delle uscite. Non dedurre causalità dai soli 10 trade chiusi; valutare direzioni, correlazioni, fee, prezzi, MFE/MAE e motivazioni. NON toccare i classici né interrompere Brain originale. Nessun reset/deploy/stop eseguito da questa chat; revisione Claude Brain Scalp in corso.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## Osservazione utente — run #7 classici negative (28 ottobre sera, ora italiana)
 
 L'utente segnala di aver verificato la **run 7 di Hawk e Bull classici** e di giudicare **entrambi i risultati molto negativi**. Nessun dato quantitativo, trade o screenshot della run #7 è stato fornito o verificato da questa chat; NON dichiararne P&L/causa senza acquisire le statistiche specifiche. Per confronto, audit storico immutabile precedente (`diario/analisi-run-2026-10-27/REPORT.md`, `FEES.md`, `ENTRIES.md`): run Hawk #5 e Bull #4 avevano lordo medio per posizione rispettivamente +2,02 e +1,52 USD, contro fee medie 2,47/4,29: peggioramento del lordo medio/edge apparente, non soltanto dimensione o aumento delle fee. Non generalizzare automaticamente alla run #7, non innalzare leva o imporre trade come risposta. **Classici assolutamente invariati**, nessun reset/deploy/stop; l'utente sta aspettando audit Claude su nuovo Brain Scalp. Prossimo passo diagnostico: screenshot/export run 7 di entrambi, trade e motivi delle chiusure, net/gross/fee, long-short, MFE/MAE e versioni runtime, confronto senza lookahead.
