@@ -5,14 +5,14 @@ import hashlib,json
 SYMBOLS=tuple('BTC ETH BNB XRP SOL ADA DOGE AVAX DOT LINK UNI ATOM LTC BCH APT ARB OP NEAR FIL INJ SUI TIA RUNE STX XAU XAG'.split())
 @dataclass(frozen=True)
 class Config:
-    version:str='brain-free-v1'
+    version:str='brain-free-v2-scalp'
     start_cash:float=2000.0
-    max_margin:float=1600.0
-    max_slots:int=10
+    max_margin:float=1750.0
+    max_slots:int=5
     price_age_ms:int=30000
     bar_age_ms:int=90000
-    analysis_ms:int=900000
-    management_ms:int=300000
+    analysis_ms:int=300000
+    management_ms:int=120000
     poll_s:float=5.0
     experiment_ms:int=168*3600000
     model:str='deepseek-flash'
