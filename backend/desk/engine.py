@@ -44,6 +44,10 @@ class Limits:
     sl_liq_frac: float = 0.75        # V2: leggermente più morbido (era 0.8)
     daily_stop: float = 0.12         # Approved rollback: historical 5818 daily stop, vault-only policy.
     kill_equity: float = 450.0       # V2: abbassato da 500 a 450
+    # Restrict NEW entries only; never upscale AI margin/leverage to satisfy the floor.
+    # Existing positions, closures and ordinary DCA management retain their semantics.
+    min_initial_margin: float = 0.0
+    min_initial_leverage: int = 1
 
 
 @dataclass
@@ -233,6 +237,9 @@ class PaperAccount:
         # leva: rispetta il tier dell'asset
         tier_max = max_leverage_for(symbol)
         lev = int(max(1, min(int(leverage), tier_max)))
+        if lev < L.min_initial_leverage:
+            return None, (f"leva eseguibile {lev}x sotto il minimo per nuova posizione "
+                          f"{L.min_initial_leverage}x (cap strumento {tier_max}x)")
         room = min(L.max_margin_trade, L.max_margin_total - self.margin_in_use(), self.cash * 0.95)
         mar = min(float(margin), room)
         gate = self._capital_size(symbol, mar, lev, new_position=True)
@@ -240,8 +247,9 @@ class PaperAccount:
             if not gate.approved:
                 return None, "capitale percentuale: " + gate.reason
             mar = float(gate.amount)
-        if mar < L.min_margin:
-            return None, "margine disponibile troppo basso"
+        if mar < max(L.min_margin, L.min_initial_margin) - 1e-8:
+            return None, ("margine disponibile sotto il minimo per nuova posizione "
+                          f"{L.min_initial_margin:.0f}$; non aumentare la size proposta")
         fill = price * (1 + side * L.slip_bp_side / 1e4)
         dist = abs(fill - sl) / fill
         if dist > L.sl_liq_frac * (1 / lev - L.maint):
@@ -253,6 +261,9 @@ class PaperAccount:
             first = round(mar * float(split.get("first_frac", SPLIT_FIRST_FRAC)), 2)
             second = round(mar - first, 2)
             if retr >= SPLIT_MIN_RETRACE and first >= L.min_margin and second >= L.min_margin:
+                if first < L.min_initial_margin - 1e-8:
+                    return None, ("prima gamba split sotto il minimo per nuova posizione "
+                                  f"{L.min_initial_margin:.0f}$")
                 mar = first
                 ttl = int(split.get("ttl_ms") or SPLIT_TTL_MS.get(trade_type, SPLIT_TTL_MS["medio"]))
                 pending = {"trigger": price * (1 - side * retr), "margin": second,
