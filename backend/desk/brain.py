@@ -398,7 +398,8 @@ def _ctx_lines(ctx: dict, symbol: str) -> list:
 
 
 # ---------------- ripiego a sole regole
-def rules_decisions(readings: list, positions: list, open_symbols: set, entry_score: int = 70) -> list:
+def rules_decisions(readings: list, positions: list, open_symbols: set, entry_score: int = 70,
+                    min_leverage: int = 1, min_margin: float = 0) -> list:
     out = []
     by = {r.symbol: r for r in readings}
     for p in positions:
@@ -424,8 +425,13 @@ def rules_decisions(readings: list, positions: list, open_symbols: set, entry_sc
                     # Leva scalp: 15x (score 60) → 45x (score 100), rispettando tier asset.
                     # Leva medio: 5x (score 60) → 25x (score 100).
                     # engine.py applica il cap tier (BTC/XAU/XAG 45x, ETH 30x, altri 25x).
-                    "leverage": int(round(15 + frac * 30)) if is_scalp else int(round(5 + frac * 20)),
-                    "margin_usd": round(150 + frac * 100, 0) if is_scalp else round(80 + frac * 170, 0),
+                    # Deterministic fallback may GENERATE a compliant new
+                    # proposal. This is not a post-hoc increase of AI risk.
+                    # Executor still refuses if stop/liquidation is unsafe.
+                    "leverage": max(min_leverage, int(round(15 + frac * 30)) if is_scalp
+                                    else int(round(5 + frac * 20))),
+                    "margin_usd": max(min_margin, round(150 + frac * 100, 0) if is_scalp
+                                      else round(80 + frac * 170, 0)),
                     "stop_loss_pct": r.sl_pct,
                     "take_profit_pct": r.tp_pct,
                     "reason": "; ".join(r.why[:3]),
