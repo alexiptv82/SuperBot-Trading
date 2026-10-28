@@ -1,3 +1,17 @@
+## Scalp1m/5m — nuova analisi richiesta dal proprietario,28ottobre14:14Roma
+
+Utente insoddisfatto di entrambi i sistemi: vuole ingressi1m/5m,più opportunità contemporanee,gestione in minuti/ore e preferenza20–40%ROI netto senza trasformarla in obbligo. Eseguita diagnosi readonly,NON ulteriore cambio strategia/reset/deploy. RuntimeBrain e002148 eclassici dc16e01 invariati.
+
+Audit40694516987 SUCCESS(controlc1a7c91924c92ff7a2a48988dfa0c3bda96aad48):classici ultimo ciclo3candidati sopra soglia numerica ciascuno ma selectedvuoto per vetiAI/Claude; non è prova che avrebbero superato rischio o guadagnato. Macroenginepassivo maAIcita attesaFOMC~5h. Motoreclassici15min/indicatori1h4h e salva-profitto dinamico solo per ciclo sono troppo lenti per l’obiettivo espresso. Brainfull~78.6ktoken/20–30sec,4–5valutazioni documentate su26inviati; gestione1BTC~29.7ktoken/15–20sec. Nessuna prova causale definitiva di sovraccarico cognitivo.
+
+BTC299.92margine20x,entry80732.14,target81250→nettomodello30.05USD(~10%ROI),non30%. Per30%netto stessaesposizione servequote82057.20(+1325USD). Memoria/costi e limiti non cancellati per forzare il risultato. Prova locale decisioniopen+skip sullo stessoARB→nessun ingresso; nel cicloeffettivo ARBgiàvetatoClaude,nessuna causalità unica dedotta.
+
+Piano tecnico completo salvato in diario/SCALP-1M-5M-PIANO-2026-10-28.md:contrattoAI/coerenzacosti,shortlist1m5m con tuttiimercaticontrassegnati,piani condizionaliAI+esecutore rapido1–5sec,tutela netta e invalidazione frequenti,riesamevetoopinabileClaude e gestione slot/rischiocorrelato. Proposta,NON codice distribuito; separare test stesso input da attivazione,non promettere profitti né riempimento obbligatorio. Nessuna automazione di monitoraggio creata.
+
+AI: chatgpt
+
+---
+
 ## Brain AI Libero V2 operativo PAPER — 28 ottobre 2026, 13:49 Roma
 
 Autorizzazione esplicita nuova dell’utente: chiudere l’ultima posizione e implementare/riavviare Brain con gli accordi V2; reset offerto come alternativa, ma accettata conservazione dati. Scelta eseguita: nessun top-up, nessuna perdita di memoria/storici; nuova run sullo stesso conto SQLite e stesso unico nome/container operativo.
