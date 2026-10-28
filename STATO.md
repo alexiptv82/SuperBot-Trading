@@ -1,3 +1,11 @@
+## Osservazione utente — run #7 classici negative (28 ottobre sera, ora italiana)
+
+L'utente segnala di aver verificato la **run 7 di Hawk e Bull classici** e di giudicare **entrambi i risultati molto negativi**. Nessun dato quantitativo, trade o screenshot della run #7 è stato fornito o verificato da questa chat; NON dichiararne P&L/causa senza acquisire le statistiche specifiche. Per confronto, audit storico immutabile precedente (`diario/analisi-run-2026-10-27/REPORT.md`, `FEES.md`, `ENTRIES.md`): run Hawk #5 e Bull #4 avevano lordo medio per posizione rispettivamente +2,02 e +1,52 USD, contro fee medie 2,47/4,29: peggioramento del lordo medio/edge apparente, non soltanto dimensione o aumento delle fee. Non generalizzare automaticamente alla run #7, non innalzare leva o imporre trade come risposta. **Classici assolutamente invariati**, nessun reset/deploy/stop; l'utente sta aspettando audit Claude su nuovo Brain Scalp. Prossimo passo diagnostico: screenshot/export run 7 di entrambi, trade e motivi delle chiusure, net/gross/fee, long-short, MFE/MAE e versioni runtime, confronto senza lookahead.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## RISULTATI sviluppo Brain Scalp doppio wallet — 28 ottobre, chat normale
 
 Utente ha autorizzato «procedi!» per sviluppo isolato dopo scelta B; **no deploy/stop/reset**. Codice pubblicato su `work/brain-scalp-dual-20261028` (base e0021488 Brain Free V2): package **backend/director/brain_scalp/**, due wallet PAPER da 1000 USD autonomi (Hawk10/Bull3), scanner breakout 1m/5m, piani AI condizionali, slot/margine pending, guardie fisiche e profitto netto, dati e SQLite isolati; modello DeepSeek/H24 e feed live NON ancora collegati. CI offline Python3.10/3.11 success `40709722381` e `40710090248`; test heartbeat incluso su punta d96d171, CI **40711229803 SUCCESS** su Python3.10/3.11.
