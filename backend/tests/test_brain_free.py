@@ -71,7 +71,7 @@ def test_slots_and_stale_are_real_execution_limits():
     for sym in CFG.symbols[:CFG.max_slots]:
         s,_=apply(s,decision(symbol=sym,margin=10),{sym:quote()},{sym:contract()},NOW)
     with pytest.raises(ValueError,match='slots_full'):
-        apply(s,decision(symbol=CFG.symbols[CFG.max_slots]),{CFG.symbols[10]:quote()},{CFG.symbols[10]:contract()},NOW)
+        apply(s,decision(symbol=CFG.symbols[CFG.max_slots]),{CFG.symbols[CFG.max_slots]:quote()},{CFG.symbols[CFG.max_slots]:contract()},NOW)
     with pytest.raises(ValueError,match='stale_price'):execute(account(),decision(),{'BTC':quote(ts=NOW-31000)})
 
 
