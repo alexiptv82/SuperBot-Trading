@@ -1,0 +1,3 @@
+read_only_postflight=true
+expected_sha=73e9242164a2cf5c5710fa47109c51a6765364a6
+verify_hawk_and_bull_news_without_macro_gates=true
