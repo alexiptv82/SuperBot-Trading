@@ -87,6 +87,12 @@ jobs:
             off|"") echo "deepseek_mode=off" >> "$GITHUB_OUTPUT" ;;
             *) echo DEPLOY_BLOCKED=invalid_deepseek_mode; exit 1 ;;
           esac
+          MACRO_POLICY="$(git show "${{ github.sha }}:deploy/desk-deploy.trigger" | sed -n 's/^macro_policy=//p' | head -n1)"
+          case "$MACRO_POLICY" in
+            observe) echo "macro_policy=observe" >> "$GITHUB_OUTPUT" ;;
+            enforce|"") echo "macro_policy=enforce" >> "$GITHUB_OUTPUT" ;;
+            *) echo DEPLOY_BLOCKED=invalid_macro_policy; exit 1 ;;
+          esac
           echo "modalita' backup: ${MODE:-normale (confine di ciclo verificato)}"
 
       - name: Copia strumenti di backup sul VPS (chiave del server verificata)
@@ -118,6 +124,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DESK_DEEPSEEK_CLASSICS: ${{ steps.bk.outputs.deepseek_mode }}
+          DESK_MACRO_POLICY: ${{ steps.bk.outputs.macro_policy }}
           # Variabili live Bitget — lasciate vuote in paper mode (DESK_MODE=paper di default)
           # Per passare a live: imposta DESK_MODE=live. OGNI bot ha il SUO sub-account Bitget e la SUA chiave di
           # trading: Hawk usa BITGET_HAWK_*, Bull usa BITGET_BULL_*. NESSUN ripiego sulla vecchia chiave
@@ -148,7 +155,7 @@ jobs:
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           connect_timeout: 90s
           command_timeout: 30m
-          envs: BACKUP_EXTRA,APPROVED_SHA,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DEEPSEEK_API_KEY,DESK_DEEPSEEK_CLASSICS,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,DESK_CAPITAL_V1,REQUIRE_CAPITAL_ACTIVATION
+          envs: BACKUP_EXTRA,APPROVED_SHA,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DEEPSEEK_API_KEY,DESK_DEEPSEEK_CLASSICS,DESK_MACRO_POLICY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,DESK_CAPITAL_V1,REQUIRE_CAPITAL_ACTIVATION
           script: |
             set -e
             # --- Versione approvata: 40 caratteri esadecimali, altrimenti non si tocca niente
@@ -162,6 +169,7 @@ jobs:
             if [ "${DESK_DEEPSEEK_CLASSICS:-off}" = paper ] && [ -z "${DEEPSEEK_API_KEY:-}" ]; then
               echo DEPLOY_BLOCKED=deepseek_key_missing; exit 1
             fi
+            [ "${DESK_MACRO_POLICY:-enforce}" = observe ] || [ "${DESK_MACRO_POLICY:-enforce}" = enforce ] || { echo DEPLOY_BLOCKED=invalid_macro_policy; exit 1; }
             # Preserve runtime risk configuration; never print environment values.
             [ "${DESK_MODE:-paper}" = paper ] || { echo DEPLOY_BLOCKED=paper_required; exit 1; }
             if [ "${REQUIRE_CAPITAL_ACTIVATION:-}" = paper ] && [ "${DESK_CAPITAL_V1:-off}" != paper ]; then
@@ -223,13 +231,13 @@ jobs:
             fi
 
             # Pre-deploy source baseline verified on 27/10 before the approved selective rollback.
-            CURRENT_PAPER_BASE=ba633b098cb28feace0b400cc3bbbbfa6da7b331
+            CURRENT_PAPER_BASE=ef0f596c41b8cda208dc9c9a79b7bb364640f6f7
             git cat-file -e "${CURRENT_PAPER_BASE}^{commit}" || {
               echo DEPLOY_BLOCKED=expected_runtime_base_missing; exit 1;
             }
             for P in hawk bull; do
               V="$(python3 -I -c "import json; print(json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')).get('version',''))" 2>/dev/null || true)"
-              [ "$V" = ba633b0 ] || {
+              [ "$V" = ef0f596 ] || {
                 echo "DEPLOY_BLOCKED=runtime_version_mismatch bot=$P"; exit 1;
               }
               for F in cli engine signals brain market_context; do
@@ -263,6 +271,7 @@ jobs:
               --memory 768m --cpus 0.5 \
               -e TELEGRAM_BOT_TOKEN -e TELEGRAM_CHAT_ID -e ANTHROPIC_API_KEY -e DEEPSEEK_API_KEY \
               -e DESK_DEEPSEEK_CLASSICS="${DESK_DEEPSEEK_CLASSICS:-off}" \
+              -e DESK_MACRO_POLICY="${DESK_MACRO_POLICY:-enforce}" \
               -e DESK_PORTFOLIO=hawk \
               -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/hawk \
@@ -295,6 +304,7 @@ jobs:
               --memory 768m --cpus 0.5 \
               -e TELEGRAM_BOT_TOKEN -e TELEGRAM_CHAT_ID -e ANTHROPIC_API_KEY -e DEEPSEEK_API_KEY \
               -e DESK_DEEPSEEK_CLASSICS="${DESK_DEEPSEEK_CLASSICS:-off}" \
+              -e DESK_MACRO_POLICY="${DESK_MACRO_POLICY:-enforce}" \
               -e DESK_PORTFOLIO=bull \
               -e DESK_CODE_VERSION="${CODE_VERSION}" \
               -e DESK_DATA_DIR=/app/data/desk/bull \
@@ -320,6 +330,13 @@ jobs:
                   echo DEPLOY_BLOCKED=deepseek_mode_mismatch; exit 1;
                 }
             done
+            for P in hawk bull; do
+              docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "superbot-desk-$P" |
+                grep -qx "DESK_MACRO_POLICY=${DESK_MACRO_POLICY:-enforce}" || {
+                  echo DEPLOY_BLOCKED=macro_policy_mismatch; exit 1;
+                }
+            done
+            echo MACRO_POLICY_VERIFIED_AFTER_DEPLOY=PASS
             echo PAPER_AND_CAPITAL_ENV_VERIFIED_AFTER_DEPLOY=PASS
 
             # == Esito: tutti e due i bot devono girare, altrimenti il workflow e' rosso ==
