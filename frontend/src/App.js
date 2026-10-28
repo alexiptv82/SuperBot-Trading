@@ -12,6 +12,7 @@ import LiveDashboard from './pages/LiveDashboard';
 import LiveTrades from './pages/LiveTrades';
 import LivePerformance from './pages/LivePerformance';
 import BrainDashboard from './pages/BrainDashboard';
+import BrainScalpDashboard from './pages/BrainScalpDashboard';
 
 // Error boundary globale: cattura qualsiasi crash di render nell'albero React
 // e mostra un messaggio utile invece della schermata nera.
@@ -109,6 +110,7 @@ export default function App() {
               <Route path="/live/trades" element={<LiveTrades />} />
               <Route path="/live/performance" element={<LivePerformance />} />
               <Route path="/brain" element={<BrainDashboard />} />
+              <Route path="/brain/scalp" element={<BrainScalpDashboard />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </div>
