@@ -88,7 +88,9 @@ jobs:
                             old=json.loads(f.read_text())
                             candidates.append({'mtime_utc':datetime.datetime.fromtimestamp(f.stat().st_mtime,datetime.timezone.utc).isoformat(),
                                                'run_no':old.get('run_no'),'closed':len((old.get('main') or {}).get('closed') or []),
-                                               'cash':(old.get('main') or {}).get('cash')})
+                                               'cash':(old.get('main') or {}).get('cash'),
+                                               'sources':dict(collections.Counter(str(c.get('source','unknown')) for c in ((old.get('main') or {}).get('closed') or []))),
+                                               'trade_type':dict(collections.Counter(str(c.get('trade_type','unknown')) for c in ((old.get('main') or {}).get('closed') or [])))})
                         except (ValueError,OSError):pass
                     print('PREVIOUS_RUN_ARCHIVES',json.dumps(candidates))
             print('READ_ONLY_ENTRY_AUDIT_COMPLETE')
