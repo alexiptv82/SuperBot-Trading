@@ -1,0 +1,68 @@
+name: Hawk Bull PAPER - read-only actual entry sizing audit
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/classics-sizing-audit.trigger]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect opened trade margin, requested margin, split and model source
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import subprocess,json,os,datetime,time,collections,pathlib
+            print('SIZING_AUDIT_UTC',datetime.datetime.now(datetime.timezone.utc).isoformat())
+            now=time.time()
+            for p in ('hawk','bull'):
+                root=pathlib.Path('/opt/superbot-desk-data')/p
+                st=json.loads((root/'state_v2.json').read_text())
+                a=st.get('main') or {}
+                print('PORTFOLIO',p,'RUN',st.get('run_no'),'CASH',a.get('cash'),'POS',len(a.get('positions') or {}))
+                positions=a.get('positions') or {}
+                if isinstance(positions,list):positions={x.get('symbol'):x for x in positions if isinstance(x,dict)}
+                for sym,v in positions.items():
+                    f=v.get('features') or {}
+                    keep=['id','symbol','side','total_margin','margin','leverage','source','trade_type','confidence','risk_plan_usd','r_dist','reason','fee_open','pending_split','open_ms']
+                    d={k:v.get(k) for k in keep}
+                    d['features']={k:f.get(k) for k in ('proposed_margin','proposed_lev','guardrail_forced','split_requested','macro_bonus','macro_enforce') if k in f}
+                    print('OPEN_POSITION',p,json.dumps(d,ensure_ascii=False,default=str)[:2000])
+                learn=root/'learning_log.jsonl'
+                if learn.is_file():
+                    evs=[]
+                    for line in learn.open(encoding='utf-8'):
+                        try:
+                            x=json.loads(line)
+                            ts=float(x.get('ts') or x.get('ts_ms') or 0)
+                            if ts<1e11:ts*=1000
+                            if ts>=(now-8*3600)*1000 and x.get('ev') in ('open','close','candidate','deepseek_call'):
+                                evs.append(x)
+                        except Exception:pass
+                    print('RECENT_COUNTS',p,dict(collections.Counter((x.get('ev'),x.get('source')) for x in evs)))
+                    for x in evs[-30:]:
+                        if x.get('ev')=='open':
+                            f=x.get('features') or {}
+                            print('OPEN_RECORD',p,json.dumps({k:x.get(k) for k in
+                                  ('ts','symbol','side','source','leverage','margin_first','risk_plan_usd','confidence','trade_type','split_plan')}
+                                  |{'proposal':{k:f.get(k) for k in ('proposed_margin','proposed_lev','guardrail_forced','split_requested')}},
+                                  ensure_ascii=False,default=str)[:1700])
+                        elif x.get('ev')=='deepseek_call':
+                            print('MODEL_CALL',p,json.dumps({k:x.get(k) for k in ('ts','ok','decisions','fail_reason')},ensure_ascii=False))
+                try:
+                    logs=subprocess.check_output(['docker','logs','--since','8h','--tail','14000','superbot-desk-'+p],
+                         stderr=subprocess.STDOUT,text=True,timeout=12).splitlines()
+                    selected=[x[-450:] for x in logs if any(y in x for y in ('[OPEN]','[GUARDRAIL:', '[CAP:', '[DeepSeek]', '[SKIP]', '[RR_LOW]'))]
+                    print('ENTRY_LOG_TAIL',p,json.dumps(selected[-24:],ensure_ascii=False)[:5600])
+                except Exception as exc:print('LOG_UNAVAILABLE',p,type(exc).__name__)
+            print('SIZING_AUDIT_READ_ONLY=PASS')
+            PY
