@@ -208,13 +208,13 @@ jobs:
             fi
 
             # Pre-deploy source baseline verified on 27/10 before the approved selective rollback.
-            CURRENT_PAPER_BASE=89b0dca3e259c548ed82754c2301c7b024d18ff5
+            CURRENT_PAPER_BASE=3abf1f808b09bf9066d96a1d16f945d65601ba02
             git cat-file -e "${CURRENT_PAPER_BASE}^{commit}" || {
               echo DEPLOY_BLOCKED=expected_runtime_base_missing; exit 1;
             }
             for P in hawk bull; do
               V="$(python3 -I -c "import json; print(json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')).get('version',''))" 2>/dev/null || true)"
-              [ "$V" = 89b0dca ] || {
+              [ "$V" = 3abf1f8 ] || {
                 echo "DEPLOY_BLOCKED=runtime_version_mismatch bot=$P"; exit 1;
               }
               for F in cli engine signals brain market_context; do
