@@ -1225,7 +1225,11 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             log_claude_error(now_ms, state, e, len(acc.positions), urgent_scalp)
 
     if not decisions and not deepseek_decision_received:
-        decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
+        decisions = rules_decisions(
+            readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE,
+            min_leverage=PORTFOLIO.guardrail_min_lev,
+            min_margin=PORTFOLIO.guardrail_min_margin,
+        )
         source = "rules"
     state["last_decision_source"] = source
 
