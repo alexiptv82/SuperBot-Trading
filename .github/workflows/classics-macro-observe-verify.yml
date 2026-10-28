@@ -1,0 +1,62 @@
+name: Hawk Bull macro-news observation - read-only verification
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/classics-macro-observe-verify.trigger]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Confirm PAPER bots see macro news but have zero macro veto and zero extra confidence
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 120s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import json,os,time,subprocess,pathlib,datetime
+            EXPECTED='73e9242164a2cf5c5710fa47109c51a6765364a6'
+            now=time.time()
+            for p in ('hawk','bull'):
+                name='superbot-desk-'+p
+                root=pathlib.Path('/opt/superbot-desk-data')/p
+                j=json.loads(subprocess.check_output(['docker','inspect',name],text=True))[0]
+                assert j['State']['Running'],(p,'stopped')
+                assert j['Config']['Labels']['superbot.sha']==EXPECTED,(p,'unexpected_sha')
+                e=dict(x.split('=',1) for x in j['Config']['Env'] if '=' in x)
+                assert e.get('DESK_MODE')=='paper',(p,'not_paper')
+                assert e.get('DESK_DEEPSEEK_CLASSICS')=='paper',(p,'deepseek_changed')
+                assert e.get('DESK_MACRO_POLICY')=='observe',(p,'macro_not_observe')
+                assert e.get('DESK_CAPITAL_V1')=='off',(p,'capital_changed')
+                hb=json.loads((root/'heartbeat.json').read_text())
+                st=json.loads((root/'state_v2.json').read_text())
+                assert now-float(hb['ts'])<300,(p,'heartbeat_stale')
+                assert hb.get('last_ok') is True,(p,'last_cycle_failed')
+                assert hb.get('version')==EXPECTED[:7],(p,'heartbeat_version_wrong')
+                m=hb.get('macro') or {}
+                assert m.get('enforce') is False,(p,'macro_veto_still_enabled')
+                assert m.get('blackout') is False,(p,'macro_blackout')
+                assert int(m.get('conf_bonus') or 0)==0,(p,'macro_bonus')
+                assert m.get('regime') in ('alto','medio','calmo','nd','off'),(p,'macro_regime_invalid')
+                assert 'raw_blackout' in m and 'raw_conf_bonus' in m,(p,'lost_raw_audit')
+                assert m.get('n_events',0)>0,(p,'news_missing')
+                assert st.get('capital',{}).get('policy')=='salvadanaio-only-v1',(p,'vault_policy_changed')
+                assert (root/'learning_log.jsonl').is_file() and (root/'trade_history.jsonl').is_file(),(p,'memory_file_missing')
+                ds=hb.get('deepseek_classics') or {}
+                assert ds.get('enabled') is True,(p,'deepseek_unexpectedly_off')
+                print('MACRO_NEWS_ONLY_PASS',json.dumps({'portfolio':p,'sha':hb['version'],
+                    'regime':m.get('regime'),'raw_conf_bonus':m.get('raw_conf_bonus'),
+                    'effective_conf_bonus':m.get('conf_bonus'),
+                    'raw_blackout':m.get('raw_blackout'),'effective_blackout':m.get('blackout'),
+                    'news_count':m.get('n_events'),'run_no':st.get('run_no'),
+                    'cash':(st.get('main') or {}).get('cash'),
+                    'open':len((st.get('main') or {}).get('positions') or {})},ensure_ascii=False))
+            print('MACRO_READ_ONLY_POSTFLIGHT=PASS')
+            PY
