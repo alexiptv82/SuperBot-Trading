@@ -1,3 +1,11 @@
+## Nuova priorità utente — Brain Scalp DUE portafogli, classici INVARIATI (28 ottobre)
+
+Utente ordina di **non toccare Hawk e Bull classici**: vuole osservarli qualche ora fino a 1–2 giorni, perché hanno ripreso ad aprire. Richiede invece variante **Brain Scalp** con due portafogli indipendenti (Brain Hawk / Brain Bull) e pipeline scanner1m5m + AI H24 + esecutore/profit manager rapido. Da paragonare ai due classici. Documento completo: `diario/2026-10-28_BRAIN-SCALP-DOPPIO-PORTAFOGLIO-PROPOSTA.md`. Da chiarire: Brain originale $2000 deve restare come baseline intatta più due nuovi conti ($1000 ciascuno proposti) oppure va trasformato/sostituito con due portafogli da $1000? In attesa di risposta: **solo valutazione, NESSUN codice/deploy/reset/riavvio/posizioni modificati**. ChatGPT e Claude su componenti distinti dopo prenotazione. Nessun controllo VPS nuovo eseguito in questa sessione.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## Direzione richiesta: Hawk/Bull scalp operativo 1m/5m — valutazione chat normale 28 ottobre
 
 Il proprietario vuole ripartire dai due portafogli Hawk e Bull: ricerca H24 di opportunità long e short 1m/5m, ingressi/uscite in minuti/ore, slot utilizzati quando ci sono setup, gestione del profitto *netto* e diagnosi visibile di margine, leva, aperture, chiusure e veti. La frequenza è un requisito da misurare, non una quota di ordini forzati. Report/valutazione prima del rendimento. Top30 market cap come possibile universo filtrato su strumenti/liquidità Bitget. **Solo valutazione e specifica; NESSUN nuovo deploy o cambio strategia approvato**. Baseline GitHub rule-pool c1a7c91924, runtime classici dc16e01 e Brain V2 e002148 da verifiche Work precedenti; nessuna verifica VPS live in questa ripresa.
