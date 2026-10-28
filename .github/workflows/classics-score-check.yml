@@ -1,0 +1,57 @@
+name: Hawk Bull - read-only public market signal scores
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/classics-score-check.trigger]
+permissions:
+  contents: read
+jobs:
+  signals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Analyze Bitget public candles without running bot logic
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 150s
+          script: |
+            set -eu
+            docker exec -i superbot-desk-hawk python - <<'PY'
+            from concurrent.futures import ThreadPoolExecutor
+            from desk.signals import read_symbol,closed_four_hour
+            import numpy as np,json,time,urllib.request
+            SYMS=["BTC","ETH","BNB","XRP","SOL","ADA","DOGE","AVAX","DOT","LINK","UNI","ATOM","LTC","BCH","APT","ARB","OP","NEAR","FIL","INJ","SUI","TIA","RUNE","STX","XAU","XAG"]
+            now_ms=int(time.time()*1000)
+            def fetch(sym,tf,limit):
+                url="https://api.bitget.com/api/v2/mix/market/candles?symbol="+sym+"USDT&productType=USDT-FUTURES&granularity="+tf+"&limit="+str(limit)
+                with urllib.request.urlopen(urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"}),timeout=10) as h:
+                    d=json.load(h)
+                if d.get("code")!="00000":raise ValueError("public_market_api_failure")
+                return np.array([[float(x) for x in row[:6]] for row in sorted(d["data"],key=lambda x:float(x[0]))],dtype=float)
+            def evaluate(sym):
+                try:
+                    a=fetch(sym,"15m",1000)
+                    a=a[a[:,0]+900000<=now_ms]
+                    b=closed_four_hour(fetch(sym,"4H",300),now_ms)
+                    r=read_symbol(sym,a,now_ms,price=float(a[-1][4]),four_hour=b if len(b)>=200 else None)
+                    if r is None:return (sym,"no_signal",None,None,None,None)
+                    tier=60 if sym in ("BTC","ETH","XAU","XAG") else 70
+                    return (sym,"valid",int(r.score),int(r.long_score),int(r.short_score),int(tier))
+                except Exception as ex:
+                    return (sym,"feed_error:"+type(ex).__name__,None,None,None,None)
+            with ThreadPoolExecutor(max_workers=5) as pool:
+                rows=list(pool.map(evaluate,SYMS))
+            ok=[v for v in rows if v[1]=="valid"]
+            eligible=[v for v in ok if v[2]>=max(60,v[5])]
+            proposed=[v for v in ok if v[2]>=60]
+            print("MARKET_SCORE_CHECK_UTC",now_ms)
+            print("VALID",len(ok),"FEED_ERRORS",len(rows)-len(ok),"RULE_PROPOSALS_60",len(proposed),"ELIGIBLE_TIER_GATE",len(eligible))
+            print("SCORE_RANKING",json.dumps(sorted(ok,key=lambda x:x[2],reverse=True)[:16]))
+            print("ELIGIBLE",json.dumps(eligible))
+            print("INCOMPLETE",json.dumps([v for v in rows if v[1]!="valid"]))
+            print("MARKET_SCORE_CHECK_READ_ONLY_PASS")
+            PY
