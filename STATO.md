@@ -1,3 +1,11 @@
+## IN_CORSO — sviluppo isolato Brain Scalp doppio wallet (chat normale, 28 ottobre)
+
+Autorizzazione utente: «procedi!» dopo scelta B raccomandata; interpretata come **implementazione e test OFFLINE isolati**, non come consenso a chiudere/fermare il Brain originale, reset, deploy/merge, cambiamenti a Hawk/Bull classici o app operativa. Prenotazione ChatGPT: nuovo codice `backend/director/brain_scalp/` e test `backend/tests/test_brain_scalp_*.py` su ramo `work/brain-scalp-dual-20261028`, base immutabile Brain V2 **e0021488b47e8b245954a708b139bc4785a4b644**; evitare modifiche al package operativo `brain_free`. **Claude review/read-only su questi componenti**; può sviluppare replay long/short e audit indipendente su branch/file differenti previo accordo. Brain originale e classici PAPER non modificati. Da completare: prototipo, test, verifica diff, preparazione disegno app/archivio, documentare blocker e prima della futura attivazione serviranno nuova autorizzazione e backup/restore.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## Preferenza aggiornata 28/10 — Brain: scelta B consigliata, NON eseguita
 
 L'utente propende per **B**: non tenere Brain originale e due clone operativi insieme (costi AI/sovraccarico). ChatGPT consiglia archiviazione completa/backup+restore del Brain Free V2 originale, ritiro del suo processo solo con autorizzazione e gestione corretta delle eventuali posizioni, e nuova prova **Brain Hawk + Brain Bull** con 1.000 USD PAPER *nuovi* per conto, identificativi/database/budget indipendenti, scanner e feed condivisi e shortlist compatte per AI; non conteggiare il reset virtuale come recupero delle perdite. **Hawk/Bull classici non si toccano.** Qui solo raccomandazione/progetto, nessun deploy/reset/stop/chiusura autorizzato o effettuato. Specifica aggiornata in `diario/2026-10-28_BRAIN-SCALP-DOPPIO-PORTAFOGLIO-PROPOSTA.md`.
