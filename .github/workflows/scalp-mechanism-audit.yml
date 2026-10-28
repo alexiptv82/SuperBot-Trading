@@ -1,0 +1,69 @@
+name: Scalping mechanism audit - read only classics and Brain
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/scalp-mechanism-audit.trigger]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read actual opportunities, AI latency, targets and rejection reasons
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import json,sqlite3,pathlib,time,collections,statistics,subprocess
+            now=int(time.time()*1000)
+            print('SCALP_AUDIT_UTC',time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()))
+            for profile in ('hawk','bull'):
+                root=pathlib.Path('/opt/superbot-desk-data')/profile
+                st=json.loads((root/'state_v2.json').read_text());hb=json.loads((root/'heartbeat.json').read_text());acct=st.get('main') or {}
+                print('CLASSIC_CURRENT',json.dumps({'portfolio':profile,'sha':hb.get('version'),'run':st.get('run_no'),'macro':{k:(hb.get('macro')or{}).get(k) for k in ('enforce','blackout','conf_bonus')},'positions':len(acct.get('positions')or{}),'opportunity_cycle':st.get('last_opportunity_cycle')},ensure_ascii=False))
+                events=[]
+                for line in (root/'learning_log.jsonl').open():
+                    try:r=json.loads(line)
+                    except ValueError:continue
+                    if r.get('run_no')==st.get('run_no') and r.get('ev') in ('candidate','opportunity_cycle','claude_call','deepseek_call'):
+                        ts=r.get('ts_ms',r.get('ts',0))
+                        if isinstance(ts,(int,float)) and ts<1e11:ts*=1000
+                        if ts>=1793188800000:events.append(r)
+                counts=collections.Counter(r.get('status') for r in events if r.get('ev')=='candidate')
+                print('CLASSIC_SINCE_RELEASE',json.dumps({'portfolio':profile,'candidate_statuses':dict(counts),'cycles':[{'ts':r.get('ts'),'rule_proposals':r.get('rule_proposals'),'eligible':r.get('rule_eligible'),'vetoes':r.get('explicit_vetoes'),'ai_choices':r.get('ai_choices'),'selected':r.get('selected')} for r in events if r.get('ev')=='opportunity_cycle'][-4:]},ensure_ascii=False))
+                for row in [r for r in events if r.get('ev')=='candidate'][-5:]:
+                    print('CLASSIC_REJECTION',json.dumps({'portfolio':profile,**{k:row.get(k) for k in ('ts','symbol','status','confidence','reason','source','features')}},ensure_ascii=False)[:2200])
+            root=pathlib.Path('/opt/superbot-brain-free')
+            db=sqlite3.connect((root/'brain.sqlite3').as_uri()+'?mode=ro',uri=True);db.execute('PRAGMA query_only=ON');db.execute('BEGIN')
+            s=json.loads(db.execute('SELECT body FROM state WHERE id=1').fetchone()[0]);start=s['verified_start_ms']
+            print('BRAIN_CURRENT',json.dumps({k:s.get(k) for k in ('build_sha','paused','cycles','provider_status','runtime_capacity','v2_start_equity','last_full_ms','last_manage_ms')}))
+            for sym,p in s['positions'].items():
+                out={'symbol':sym,**{k:p.get(k) for k in ('side','entry','margin','leverage','qty','stop','target','open_ms','reason','invalidation')}}
+                side=p['side'];qty=p['qty'];entry=p['entry'];margin=p['margin'];const=-side*entry*qty-p['entry_fees']-p['funding'];coef=qty*(side-.0006)*(1-side*.0002)
+                if p.get('target'):
+                    out['target_net_estimate']=coef*p['target']+const;out['target_net_roi_pct']=out['target_net_estimate']/margin*100
+                out['price_for_30pct_net_roi']=(.3*margin-const)/coef;out['move_for_30pct_net_roi_usd']=abs(out['price_for_30pct_net_roi']-entry)
+                out['move_for_30pct_net_roi_pct']=out['move_for_30pct_net_roi_usd']/entry*100
+                print('BRAIN_POSITION_MATH',json.dumps(out,ensure_ascii=False))
+            reqs=db.execute('SELECT id,ts,status,body FROM requests WHERE ts>=? ORDER BY ts',(start,)).fetchall();latencies=[];tokens=[]
+            for ident,ts,status,raw in reqs[-10:]:
+                body=json.loads(raw);bill=body.get('billing') or {};tokens.append(bill.get('hit',0)+bill.get('miss',0))
+                inp=db.execute('SELECT ts,body FROM events WHERE id=?',(ident+':input',)).fetchone();end=db.execute('SELECT ts,body FROM events WHERE id=?',(ident+':thesis',)).fetchone()
+                if end:latencies.append((end[0]-ts)/1000)
+                p=json.loads(inp[1]) if inp else {};user=p.get('user') or {}
+                print('BRAIN_CALL',json.dumps({'ts':ts,'status':status,'input_tokens':tokens[-1],'output_tokens':bill.get('output'),'latency_s':(end[0]-ts)/1000 if end else None,'input_chars':len(json.dumps(p)),'kind':user.get('kind'),'markets':len(user.get('markets',{})),'assessment_count':len(json.loads(end[1]).get('assessments',[])) if end else None}))
+            print('BRAIN_CALL_AGGREGATE',json.dumps({'v2_requests':len(reqs),'measured_last':len(latencies),'median_latency_s':statistics.median(latencies) if latencies else None,'median_input_tokens':statistics.median(tokens) if tokens else None}))
+            for ts,raw in db.execute("SELECT ts,body FROM events WHERE kind='ai_decision' AND ts>=? ORDER BY seq DESC LIMIT 2",(start,)):
+                d=json.loads(raw)
+                print('BRAIN_AI_DECISION',json.dumps({'ts':ts,'summary':d.get('summary'),'decisions':d.get('decisions'),'unassessed':d.get('unassessed_symbols'),'assessments':d.get('assessments')},ensure_ascii=False)[:15500])
+            counts=dict(db.execute('SELECT kind,count(*) FROM events WHERE ts>=? GROUP BY kind',(start,)).fetchall());print('BRAIN_EVENTS_V2',json.dumps(counts))
+            for raw, in db.execute("SELECT body FROM events WHERE kind='execution_rejected' AND ts>=? ORDER BY seq DESC LIMIT 8",(start,)):print('BRAIN_REJECT',raw[:1200])
+            db.close();print('READ_ONLY_SCALP_AUDIT_COMPLETE')
+            PY
