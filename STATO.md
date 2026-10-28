@@ -1,3 +1,15 @@
+## RISULTATI sviluppo Brain Scalp doppio wallet — 28 ottobre, chat normale
+
+Utente ha autorizzato «procedi!» per sviluppo isolato dopo scelta B; **no deploy/stop/reset**. Codice pubblicato su `work/brain-scalp-dual-20261028` (base e0021488 Brain Free V2): package **backend/director/brain_scalp/**, due wallet PAPER da 1000 USD autonomi (Hawk10/Bull3), scanner breakout 1m/5m, piani AI condizionali, slot/margine pending, guardie fisiche e profitto netto, dati e SQLite isolati; modello DeepSeek/H24 e feed live NON ancora collegati. CI offline Python3.10/3.11 success `40709722381` e `40710090248`; nuovo test heartbeat su punta d96d171, CI in attesa verifica.
+
+App in `work/brain-scalp-dual-app-20261028` (base main2283bfb): API read-only autenticata `/api/brain/scalp`, reader due SQLite e PWA `/brain/scalp` con motivi, margini, leve, pending, storico. CI backend+frontend **40710835022 SUCCESS**. Nessun rilascio app eseguito. Diff confrontati con basi: solo moduli nuovi, reader/router e nuova UI; classici e Brain originale identici.
+
+Documento completo: `diario/2026-10-28_brain-scalp-implementazione-chatnormale.md`, review Claude in `docs/brain-scalp-dual-review.md` sul ramo Brain. Restano BLOCCANTI: supervisor/WS/fonte top30 filtrata, API DeepSeek con budget crash-safe, replay bidirezionale e setup oltre breakout, integrazione/CI end-to-end, piano di archiviazione completo e autorizzazione separata per fermare l'originale. **Hawk e Bull classici continuano invariati; Brain Free V2 attuale non toccato.** Non unire il ramo Brain V2 divergente automaticamente a rule-pool.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## IN_CORSO — sviluppo isolato Brain Scalp doppio wallet (chat normale, 28 ottobre)
 
 Autorizzazione utente: «procedi!» dopo scelta B raccomandata; interpretata come **implementazione e test OFFLINE isolati**, non come consenso a chiudere/fermare il Brain originale, reset, deploy/merge, cambiamenti a Hawk/Bull classici o app operativa. Prenotazione ChatGPT: nuovo codice `backend/director/brain_scalp/` e test `backend/tests/test_brain_scalp_*.py` su ramo `work/brain-scalp-dual-20261028`, base immutabile Brain V2 **e0021488b47e8b245954a708b139bc4785a4b644**; evitare modifiche al package operativo `brain_free`. **Claude review/read-only su questi componenti**; può sviluppare replay long/short e audit indipendente su branch/file differenti previo accordo. Brain originale e classici PAPER non modificati. Da completare: prototipo, test, verifica diff, preparazione disegno app/archivio, documentare blocker e prima della futura attivazione serviranno nuova autorizzazione e backup/restore.
