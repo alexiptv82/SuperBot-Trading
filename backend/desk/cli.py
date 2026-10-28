@@ -1103,6 +1103,20 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons,
                                       ctx_for_prompt, sym_stats,
                                       macro_lines="\\n".join(macro_calendar.prompt_lines(macro)))
+                # Levels from strictly completed 1-hour candles: context only,
+                # and a different quantity from the AI's own confidence.
+                levels = [
+                    {"symbol":v.symbol,"rule_score":v.score,
+                     "long_score":v.long_score,"short_score":v.short_score,
+                     "support_prev_20h":v.facts.get("support_prev_20h"),
+                     "resistance_prev_20h":v.facts.get("resistance_prev_20h")}
+                    for v in readings_list
+                ]
+                prompt += "\\n\\nLIVELLI_CALCOLATI_SU_CIUSURE_ORARIE_PRECEDENTI: " + json.dumps(
+                    levels,ensure_ascii=False,separators=(",",":"))
+                prompt += ("\\nCosto stimato roundtrip taker/slippage:"
+                           " ~0.16% del nozionale prima di funding/spread."
+                           " Confidence AI e rule_score sono distinti.")
                 # Reserve + persist before request: even a crash cannot reset API spend.
                 if _ds.reserve(state, now_ms, lambda st: save_state(st, STATE_FILE)):
                     ds_usage = None
