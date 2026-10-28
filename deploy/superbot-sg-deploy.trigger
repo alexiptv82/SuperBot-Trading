@@ -1,2 +1,3 @@
-2026-10-27 User-approved Salvadanaio dashboard rollout. App only; no Brain/desk restarts; PAPER.
-sha=56dc4bb62f64024d1ea7e5bc84602fbf52ea4ace
+sha=7c913bbcfbf2d255edf72e2d87ef42fe60aa4c9a
+reason=approved-brain-v2-restart-dashboard-capacity-and-retained-history
+macro_notice=observational-no-trading-gate
