@@ -1,3 +1,20 @@
+# Checkpoint ChatGPT Work — 28 ottobre 2026
+
+## PR #22 — audit offline concluso, nessun rilascio autorizzato
+
+- ChatGPT Work ha completato la fase codice/test dei classici, incaricata esplicitamente dall'utente. Branch `work/classics-sizing-direction-20261028`, PR #22 aperta e non mergiata. Commit verificato: `dd04cc6c017c779f4fd45b12c985bb2936cb58c1`, parent `0640bc5ac522dad6278bb58707781bd1b096cce8`; base PR `rule-pool` a `835a4f25a676f0bcab38a28b75e23402cefe298b`.
+- Nuove aperture richieste: Hawk 100–250 USD e massimo 10 slot; Bull 150–350 USD e massimo 3 slot. Leva minima desiderata 20x, subordinata a stop/liquidazione e limiti tecnici. Proposte sotto minimo rifiutate e motivate, mai maggiorate automaticamente. Nessuna quota obbligatoria di trade.
+- Risolte le fixture incompatibili: nuove proposte conformi; posizioni storiche a 10x conservate nei test di gestione. Verificati caricamento, DCA, parziali, stop, split pendenti, memoria e Salvadanaio.
+- Corretti difetti preesistenti: parametri di ingresso non finiti; overflow della leva nel parser; rispetto congiunto di tetto globale e tier; margine complessivo anche per DCA; blocco di nuova esposizione DCA/split dopo stop giornaliero o kill-equity.
+- Risultati: **346 test pertinenti PASS + 91 test backup/ripristino/guardie PASS**, compile/diff/YAML PASS. CI Python 3.11, run `40675333384`, job `122772168497`: SUCCESS, inclusi build Docker e controllo dei file Brain invariati. L'intera suite backend non è certificata: la raccolta generale include dipendenze app assenti localmente e un riferimento preesistente a `fetch_daily_history` rimosso.
+- Ultime prove runtime lette nei log GitHub, non nuove misurazioni VPS: run `40661841445`, 28/10 alle 10:07 Roma (09:07 UTC), classici `73e9242`, PAPER e macro osservazionale; run `40641318508`, 07:01 Roma (06:01 UTC), Brain `a914803`, PAPER, pausa attiva e 3 posizioni. Non dedurre da queste prove lo stato minuto corrente.
+- Nessun intervento su VPS, database, memoria AI, storici o posizioni. Nessun reset, doppia istanza, modifica Brain, merge o deploy. PAPER obbligatorio. Gli esiti offline non provano redditività futura.
+- L'utente ha autorizzato espressamente la pubblicazione di questo checkpoint dopo il precedente blocco automatico del push al diario. Tale OK riguarda **solo il diario**, non merge o deploy.
+- Prossimo passo: revisione dell'utente. Merge e futuro deploy richiedono OK esplicito separato; prima di qualsiasi rilascio servono controllo runtime e backup verificato. Brain richiede sempre autorizzazione distinta.
+
+---
+## Archivio storico — fotografia del 27 ottobre, non stato attuale certificato
+
 # STATO CORRENTE SuperBot-Trading — 27 ottobre 2026
 Fotografia runtime verificata alle **20:02 Roma / 19:02 UTC**, postflight40565394446 SUCCESS. Fonte: workflow e verifiche dirette sul VPS, non HEAD del ramo assunto come runtime.
 
