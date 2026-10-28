@@ -1,3 +1,11 @@
+## Confronto golden vs successive run negative — audit 28/10 sera
+
+L'utente ha mostrato screenshot delle uniche run positive (Hawk #2 +1090,61 USD; Bull #1 +770,75 USD) e chiesto cosa sia stato sbagliato. Analisi storico documentale consolidata: `diario/2026-10-28_confronto-golden-classici-vs-negative.md` (fonti audit forense `diario/analisi-run-2026-10-27/`). Prima crisi **Hawk #3/Bull #2** dal 16/10 con punteggio e SL ancora baseline; segue cambio di regime BTC e disponibilità/parsabilità Claude, ma le aperture restano source=rules e non si prova causalità delle chiusure. Run tarde segnali meno breakout/volume, più 1d, lordo medio/trade quasi azzerato e fee non più coperte; senza replay non attribuire un singolo colpevole. Errore di governance: modifiche multiple senza esperimento controllato/frozen golden. **Non consigliare rollback diretto alla SHA 5818aee** (codice golden non unico e run già negative attraversano la stessa versione). Classici invariati, nuovo Brain Scalp in revisione Claude, nessun deploy/stop/reset.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## Screenshot classici — Hawk #7 e Bull #6, 28/10/2026 21:56 Italia
 
 DUE screenshot Performance/Run inviati dall'utente, dati PAPER visibili, non ancora verificati su registri operativi VPS. Hawk run #7 in corso dal 28/10 04:47: equity 878,79 USD, variazione -121,21 da 1000; 6 trade chiusi, 1 vincente / 5 perdenti, WR 16,7%; netto trade -103,79; best +51,26, worst -55,40; PF 0,33, drawdown massimo -151,48. Delta equity rispetto al netto chiuso -17,42: potenziale floating o altro, non diagnosticabile dallo screenshot. Parametri mostrati: 250 max trade, 10 slot, 1000 margine totale, score60/70, daily stop 12%, kill equity450, min leva10x, min margine100, Claude0,7/giorno, codice dc16e01.
