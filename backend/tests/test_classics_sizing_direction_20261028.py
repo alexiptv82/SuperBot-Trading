@@ -125,3 +125,71 @@ def test_prompt_is_coherent_with_new_sizing_direction():
     assert "Nuove aperture Hawk: margine 100-250$" in deepseek_collab.SYSTEM
     assert "Bull: margine 150-350$" in deepseek_collab.SYSTEM
     assert "non aumentare" in deepseek_collab.SYSTEM.lower() or "Non aumentare" in deepseek_collab.SYSTEM
+
+
+def test_automatic_rule_fallback_generates_compliant_proposals_without_legacy_behavior_change():
+    from types import SimpleNamespace
+    from desk.brain import rules_decisions
+    r=SimpleNamespace(symbol="ETH",side=1,score=60,trade_type="scalp",
+                      sl_pct=.004,tp_pct=.008,why=["valid 1h breakout"])
+    legacy=rules_decisions([r],[],set(),entry_score=60)
+    assert legacy and legacy[0]['leverage']==15
+    next_hawk=rules_decisions([r],[],set(),entry_score=60,
+                              min_leverage=20,min_margin=100)
+    assert next_hawk and next_hawk[0]['leverage']>=20
+    assert 100<=next_hawk[0]['margin_usd']<=250
+    r2=SimpleNamespace(symbol="SOL",side=-1,score=70,trade_type="medio",
+                       sl_pct=.005,tp_pct=.01,why=["structure rejected resistance"])
+    next_bull=rules_decisions([r2],[],set(),entry_score=60,
+                              min_leverage=20,min_margin=150)
+    assert next_bull and next_bull[0]['leverage']>=20
+    assert next_bull[0]['margin_usd']>=150
+
+
+def test_existing_10x_trade_survives_new_rules_and_can_close_with_fee_accounting():
+    # Open a legacy position FIRST; its leverage must not change merely
+    # because new openings after a deploy must be >= 20x.
+    from desk.engine import Limits
+    old=PaperAccount(Limits(start_equity=1000))
+    legacy,why=old.open("BTC",1,50,10,100,99,102,T,{},
+                        source="deepseek",trade_type="scalp")
+    assert legacy and legacy.margin==50 and legacy.leverage==10
+    saved=old.to_dict()
+    newer=PaperAccount.from_dict(saved)
+    newer.limits=cli._make_hawk_config().limits
+    still=newer.positions["BTC"]
+    assert still.margin==50 and still.leverage==10
+    rec=newer.close("BTC",102,T+60000,"test legacy protection")
+    assert rec and not newer.positions
+    assert rec["net"]<rec["gross"]
+    assert len(newer.closed)==1
+
+
+def test_saved_legacy_account_reloads_with_new_limits_without_clearing_run():
+    original=PaperAccount()
+    p,why=original.open("BTC",1,75,10,100,99,102,T,{},trade_type="medio")
+    assert p is not None
+    state={"main":original.to_dict(),"run_no":7,"deepseek_budget":{"spent":.15},
+           "some_other_history":"preserve"}
+    from unittest.mock import patch
+    with patch.object(cli,"PORTFOLIO",cli._make_hawk_config()):
+        recovered=cli.make_account(state)
+    assert recovered.positions["BTC"].margin==75
+    assert recovered.positions["BTC"].leverage==10
+    assert recovered.limits.min_initial_leverage==20
+    assert recovered.limits.min_initial_margin==100
+    assert state["run_no"]==7
+    assert state["deepseek_budget"]["spent"]==.15
+    assert state["some_other_history"]=="preserve"
+    # New request below minimum is rejected, older trade is untouched.
+    pos,why=open_position(recovered,"SOL",99,20)
+    assert pos is None and "sotto il minimo" in why
+    assert "BTC" in recovered.positions
+
+
+def test_no_unsafe_new_opening_when_stop_too_wide_at_20x():
+    a=start(cli._make_hawk_config())
+    pos,reason=a.open("BTC",1,250,20,100,95,107,T,{},
+                       trade_type="scalp",source="deepseek")
+    assert pos is None and "liquidazione" in reason
+    assert a.cash==1000 and not a.positions
