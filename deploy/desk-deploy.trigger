@@ -1,3 +1,3 @@
-2026-10-27 Approved selective rollback 5818 + engine fixes + Salvadanaio only. Explicit user deploy OK. PAPER, no reset, no adaptive Brain changes.
-sha=3abf1f808b09bf9066d96a1d16f945d65601ba02
+2026-10-28 Approved manual reset-with-Salvadanaio capability rollout. NO reset, preserve all data. Both classics PAPER.
+sha=ba633b098cb28feace0b400cc3bbbbfa6da7b331
 capital=off
