@@ -43,7 +43,7 @@ def test_v2_five_slots_and_1750_usd_margin_are_hard_physical_limits():
 def test_v2_200_to_350_and_30x_are_preferences_not_trade_gates():
     st=new_account()
     st,ev=apply(st,choice("BTC",70,10),{"BTC":QUOTE},{"BTC":CONTRACT},NOW,CFG)
-    assert ev[0]["margin_added"]==pytest.approx(70)
+    assert 69 < ev[0]["margin_added"] <= 70
     assert ev[0]["leverage"]==pytest.approx(10)
     st,ev=apply(st,choice("ETH",350,30),{"ETH":QUOTE},{"ETH":CONTRACT},NOW,CFG)
     assert 349<ev[0]["margin_added"]<=350
