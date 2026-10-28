@@ -1,0 +1,2 @@
+inspection=read-only
+reason=hawk_bull_no_trade_after_rollback
