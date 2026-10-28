@@ -45,7 +45,13 @@ jobs:
               for C in $(docker ps --format '{{.Names}}'); do
                 if docker inspect -f '{{range .Mounts}}{{if .RW}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P"; then COUNT=$((COUNT+1)); fi
               done
-              test "$COUNT" -eq 1 || { echo "MULTIPLE_WRITERS_$P=$COUNT"; exit 1; }
+              if [ "$COUNT" -ne 1 ]; then
+                echo "MOUNT_DIAGNOSTIC_$P=$COUNT"
+                for C in $(docker ps --format '{{.Names}}'); do
+                  docker inspect -f '{{range .Mounts}}{{if .RW}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P" && echo "WRITE_MOUNT_CONTAINER=$C" || true
+                done
+                exit 1
+              fi
               echo "SINGLE_WRITER_PASS=$P"
             done
             echo MANUAL_RESET_CAPABILITY_POSTFLIGHT=PASS
