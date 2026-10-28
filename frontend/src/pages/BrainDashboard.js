@@ -207,8 +207,8 @@ export default function BrainDashboard() {
     };
     poll(); return () => { controller.abort(); clearTimeout(timer); };
   }, []);
-  if (!free) return <LegacyBrainDashboard />;
-  return <><div style={{ padding: 12, textAlign: 'center' }}>
+  if (!free) return <><div style={{ padding: 12, textAlign: 'center' }}><a href="/brain/scalp" style={{color:'#38bdf8'}}>Brain Hawk / Brain Bull · nuovi portafogli PAPER</a></div><LegacyBrainDashboard /></>;
+  return <><div style={{ padding: 12, textAlign: 'center' }}><a href="/brain/scalp" style={{color:'#38bdf8'}}>Brain Hawk / Brain Bull · nuovi portafogli PAPER</a><p />
     <button type="button" onClick={() => setArchive(!archive)}>{archive ? 'Torna al Brain AI libero' : 'Consulta archivio dei tre Brain precedenti'}</button>
     {archive && <p>Archivio separato: questi risultati non fanno parte della nuova run da 2.000$.</p>}
   </div>{archive ? <LegacyBrainDashboard /> : <BrainFreePanel data={free} error={error} />}</>;
