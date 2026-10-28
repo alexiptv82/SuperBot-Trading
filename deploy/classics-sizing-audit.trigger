@@ -1,0 +1,2 @@
+read_only=true
+inspect_current_hawk_bull_margin_leverage_and_proposal=true
