@@ -213,6 +213,25 @@ def evaluate(events: list, now_ms: int, cfg: MacroConfig = CFG, fetched_ms: int 
             "stale": bool(fetched_ms) and (now_ms - fetched_ms) > STALE_MS, "error": error}
 
 
+def apply_policy(m: dict, mode: str = "enforce") -> dict:
+    """News remain real observations; only an explicitly selected mode governs trade gates.
+
+    - enforce (legacy): preserve the original macro blackout and +5 confidence bonus.
+    - observe (operator choice, 28/10/2026): no macro veto or confidence adjustment;
+      event title/time, regime, raw impact and would-block diagnostics are preserved.
+    No change to daily stop, margin, stop-loss, entry score or other protections.
+    """
+    if mode not in ("observe", "enforce"):
+        raise ValueError("invalid_macro_policy")
+    raw_blackout = bool(m.get("blackout"))
+    raw_bonus = int(m.get("conf_bonus") or 0)
+    return {**m, "enforce": mode == "enforce",
+            "raw_blackout": raw_blackout, "raw_conf_bonus": raw_bonus,
+            "blackout": raw_blackout if mode == "enforce" else False,
+            "conf_bonus": raw_bonus if mode == "enforce" else 0,
+            "blackout_until_ms": m.get("blackout_until_ms") if mode == "enforce" else None}
+
+
 def current(data_dir: str, now_ms: int, fetch: Optional[Callable] = None, cfg: MacroConfig = CFG) -> dict:
     """Stato macro del momento. NON SOLLEVA MAI: in caso di problemi ritorna uno stato neutro (nessun effetto)."""
     try:
@@ -227,7 +246,9 @@ def current(data_dir: str, now_ms: int, fetch: Optional[Callable] = None, cfg: M
             return _neutral("nd", err)
         events = cache["ff"]["events"] + cache["bls"]["events"]
         err = "; ".join(f"{k}: {cache[k]['error']}" for k in ("ff", "bls") if cache[k]["error"])
-        return evaluate(events, now_ms, cfg, fetched_ms=max(s["ts"] for s in have), error=err)
+        result = evaluate(events, now_ms, cfg, fetched_ms=max(s["ts"] for s in have), error=err)
+        mode = os.getenv("DESK_MACRO_POLICY", "enforce").strip().lower()
+        return apply_policy(result, mode)
     except Exception as e:                                # qualunque imprevisto: il bot lavora come prima
         return _neutral("nd", f"errore interno: {type(e).__name__}")
 
@@ -257,6 +278,11 @@ def prompt_lines(m: dict, cfg: MacroConfig = CFG) -> list:
         head += " Usciti da poco: " + "; ".join(f"{hm_utc(u['ts'])} UTC {u['title']} ({_fmt_min(u['min'])} fa)" for u in recent) + "."
     rule = (f"Il codice blocca le NUOVE aperture da {cfg.block_before_min} min prima a {cfg.block_after_min} min dopo "
             f"ogni evento")
+    if m.get("enforce") is False:
+        return [head, "EVENTI MACRO SOLO INFORMATIVI: l'evento e il regime di volatilita' "
+                "NON bloccano aperture e NON aggiungono punti alla soglia di ingresso. "
+                "Valuta autonomamente liquidita', spread, slippage, rischio e direzione; "
+                "non trattare la notizia come un ordine di entrare o restare fuori."]
     if m["blackout"]:
         rule += f" (ORA ATTIVO fino alle {hm_utc(m['blackout_until_ms'])} UTC)"
     if m["conf_bonus"]:
@@ -268,9 +294,13 @@ def features(m: dict) -> dict:
     """Campi per il registro di apprendimento (feature d'ingresso): servono all'analista per misurare l'effetto."""
     nxt = m.get("next")
     return {"macro_regime": m.get("regime"), "macro_blackout": bool(m.get("blackout")),
-            "macro_bonus": int(m.get("conf_bonus") or 0), "macro_min_next": nxt["min"] if nxt else None}
+            "macro_bonus": int(m.get("conf_bonus") or 0), "macro_min_next": nxt["min"] if nxt else None,
+            "macro_enforce": m.get("enforce", True),
+            "macro_would_blackout": bool(m.get("raw_blackout", m.get("blackout"))),
+            "macro_would_bonus": int(m.get("raw_conf_bonus",m.get("conf_bonus") or 0))}
 
 
 def heartbeat_view(m: dict) -> dict:
-    return {k: m.get(k) for k in ("regime", "blackout", "blackout_until_ms", "conf_bonus", "next", "upcoming",
+    return {k: m.get(k) for k in ("regime", "enforce", "blackout", "raw_blackout", "blackout_until_ms",
+                                  "conf_bonus", "raw_conf_bonus", "next", "upcoming",
                                   "recent", "n_events", "fetched_ms", "stale", "error")}
