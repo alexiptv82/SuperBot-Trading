@@ -42,6 +42,13 @@ export function macroNote(macro) {
   if (!macro || macro.regime !== 'alto') return null;
   const nxt = macro.next || (macro.upcoming && macro.upcoming[0]) || null;
   const ev = nxt ? `${nxt.title} alle ${fmtClock(nxt.ts)}` : null;
+  if (macro.enforce === false) {
+    return {
+      title: '📅 Calendario macro: solo informativo',
+      lines: [ev ? `Prossimo evento: ${ev}.` : 'Evento ad alto impatto vicino.',
+              'Le notizie restano disponibili alle AI. Il calendario non sospende le aperture e non aumenta la soglia di confidenza.'],
+    };
+  }
   if (macro.blackout) {
     return {
       title: `📅 Evento macro: nuove aperture sospese fino alle ${fmtClock(macro.blackout_until_ms)}`,
@@ -52,7 +59,7 @@ export function macroNote(macro) {
   return {
     title: '📅 Giornata a rischio macro',
     lines: [ev ? `Prossimo evento: ${ev}.` : 'Evento ad alto impatto vicino.',
-            `Il bot chiede ${macro.conf_bonus ? `+${macro.conf_bonus} di confidenza` : 'più cautela'} per aprire e si ferma un'ora prima dell'evento.`],
+            macro.conf_bonus ? `Soglia di ingresso aumentata di ${macro.conf_bonus} punti. Nessun blocco macro attivo al momento.` : 'Nessun blocco macro né incremento della soglia di confidenza attivo al momento.'],
   };
 }
 
