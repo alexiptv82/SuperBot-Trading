@@ -23,8 +23,8 @@ def test_oct12_stable_core_params_remain_in_place():
     assert cli._make_hawk_config().limits.daily_stop==pytest.approx(.12)
     assert cli._make_bull_config().limits.daily_stop==pytest.approx(.12)
     assert cli.CYCLE_S==1800
-    assert cli._make_hawk_config().guardrail_min_lev==20
-    assert cli._make_bull_config().guardrail_min_lev==20
+    assert cli._make_hawk_config().guardrail_min_lev==10
+    assert cli._make_bull_config().guardrail_min_lev==10
 
 @pytest.mark.parametrize('minute_delta',[-11*60,-1,0,60,120,180])
 def test_observe_never_changes_any_entry_gate(minute_delta):

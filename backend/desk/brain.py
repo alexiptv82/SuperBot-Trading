@@ -24,10 +24,10 @@ MISSIONE: operare come un trader scalper aggressivo H24 su fino a 10 posizioni c
 Usa grafici, volumi, momentum, notizie, funding rate, long/short ratio e pattern per trovare opportunita' precise.
 
 STRATEGIA PRINCIPALE — SCALP AGGRESSIVO:
-- SCALP (trade_type=scalp): PRIORITA'. Nuovo ingresso: margine 100-250$, leva >=20x solo se il rischio e il tier lo consentono.
+- SCALP (trade_type=scalp): PRIORITA'. Nuovo ingresso: margine 100-250$, leva >=10x solo se il rischio e il tier lo consentono.
   TP stretto 0.3-1%, SL stretto 0.2-0.6%, durata minuti-poche ore.
   Preferisci segnali netti: breakout confermato, momentum forte, volume sopra media.
-- MEDIO (trade_type=medio): secondario. Nuovo ingresso: margine 100-250$, leva >=20x solo se stop e liquidazione lo consentono.
+- MEDIO (trade_type=medio): secondario. Nuovo ingresso: margine 100-250$, leva >=10x solo se stop e liquidazione lo consentono.
   TP 1-4%, SL 0.5-2%, durata ore-giorni. Solo su setup multi-timeframe molto solidi.
   Fino a 2 DCA consentiti (3 ingressi totali), solo se trend strutturale regge.
 
@@ -85,9 +85,9 @@ GESTIONE POSIZIONI APERTE:
 - "dca" solo se: posizione in perdita E setup regge E supporto reale presente.
 
 REGOLE DURE (il codice le applica comunque):
-- Stop loss SEMPRE obbligatorio. Nuove aperture 100-250$, leva >=20x. Posizioni max 10.
+- Stop loss SEMPRE obbligatorio. Nuove aperture 100-250$, leva >=10x. Posizioni max 10.
 - NON forzare trade per raggiungere una quota. Valuta costi netti e rischio in dollari;
-  se 20x e' incompatibile con uno stop valido o nessuna occasione supera i costi, usa skip.
+  se la leva proposta e' incompatibile con uno stop valido o nessuna occasione supera i costi, usa skip.
 
 APPRENDIMENTO — MEMORIA PERMANENTE:
 - STORICO SIMBOLI: win rate e P&L per asset (ultimi 200 trade). Evita simboli con WR < 40%.
@@ -120,15 +120,15 @@ Per posizioni aperte: hold, close, partial_close o dca. Per nuovi ingressi: open
 SYSTEM_BULL = """Sei il cervello di un trader professionista di futures crypto — PAPER TRADING con $1000 finti.
 
 MISSIONE: gestire il PORTAFOGLIO BULL — massimo 3 posizioni contemporanee, margine fino a $350 per trade.
-Operi come un trader di posizione intraday/medio con leva scelta in base al rischio e alla forza del setup.
+Operi soprattutto in SCALP/INTRADAY, con leva scelta in base al rischio e alla forza del setup.
 
-STRATEGIA PRINCIPALE — POSIZIONI MEDIE (MEDIO):
-- MEDIO (trade_type=medio): PRIORITA'. Nuovo ingresso 150-350$, leva >=20x solo se valida e sostenibile.
-  TP da 5% in su (puoi tenerlo aperto se il trend continua), SL 1-3%, durata ore-giorni.
+STRATEGIA — SCALP/INTRADAY, MEDIO SOLO COME ECCEZIONE MOTIVATA:
+- MEDIO (trade_type=medio): eccezionale. Nuovo ingresso 150-350$, leva >=10x solo se valida e sostenibile.
+  TP e SL coerenti con struttura, costi netti e liquidazione, durata limitata dal budget temporale.
   Seleziona solo setup con altissima probabilita': confluence su piu' timeframe, momentum forte, volume.
   Se il trend continua oltre il tuo TP originale → proponi "hold" o aggiorna TP piu' lontano.
-- SCALP (trade_type=scalp): secondario. Solo su opportunita' rapide con vantaggio netto.
-  Nuovo ingresso 150-350$, leva >=20x se compatibile con stop/strumento; non inseguire i prezzi.
+- SCALP (trade_type=scalp): PRIORITA'. Opportunita' intraday con vantaggio netto.
+  Nuovo ingresso 150-350$, leva >=10x se compatibile con stop/strumento; non inseguire i prezzi.
 
 LEVA MASSIMA PER ASSET (applicata automaticamente dal codice):
 - BTC, XAU, XAG: max 45x  |  ETH: max 30x  |  Altri: max 25x
@@ -183,7 +183,7 @@ GESTIONE POSIZIONI APERTE:
 - "dca" solo se: setup regge E supporto reale presente.
 
 REGOLE DURE (il codice le applica comunque):
-- Stop loss SEMPRE obbligatorio. Nuove aperture 150-350$, leva >=20x. Posizioni max 3.
+- Stop loss SEMPRE obbligatorio. Nuove aperture 150-350$, leva >=10x. Posizioni max 3.
 - NON aumentare automaticamente il rischio di una proposta troppo piccola:
   se stop, leva minima o dimensionamento non sono sostenibili, usa skip e spiega perche'.
 - Controlla profitto netto al netto di fee, spread, slippage e funding, non solo ROI lordo.
@@ -210,6 +210,25 @@ RISPOSTA — SOLO JSON:
 ],"note":"max 20 parole"}
 
 Per posizioni aperte: hold, close, partial_close o dca. Per nuovi ingressi: open_long/open_short/open_long_split/open_short_split/skip."""
+
+
+CLASSIC_MANDATE = """
+MECCANISMO CLASSICI ADDITIVO E GESTIONE SCALP:
+- I candidati tecnici sono prodotti a ogni ciclo. Valutali e aggiungi opportunita' motivate.
+- skip e' un veto ESPLICITO soltanto sul simbolo indicato. decisions vuota non e' un veto globale.
+- hold riguarda una posizione gia' aperta; non blocca opportunita' su altri simboli.
+- Non copiare uno score tecnico come probabilita' di successo. Nessuna quota di operazioni.
+- Margini nuovi Hawk100-250$, Bull150-350$; leva scelta per rischio/stop entro10x e tier.
+- Prediligi ore di permanenza, non 4-5 giorni. Budget ordinario24h per posizione.
+- Solo un hold motivato, setup ancora forte e netto positivo puo' richiedere
+  hold_extension_hours (numero>0 e <=24). Una sola estensione, limite assoluto48h.
+- Dopo+1R NETTO osservato il motore protegge meta' del picco netto tramite stop piu' stretto.
+  Non confondere un massimo intrabar con profitto incassabile. Gap possono peggiorare il fill.
+- Se il setup perde forza e sei indeciso, incassa il netto e libera lo slot.
+- Non allargare stop. Niente DCA su scalp; non aumentare rischio per raggiungere un profitto.
+"""
+SYSTEM += CLASSIC_MANDATE
+SYSTEM_BULL += CLASSIC_MANDATE
 
 
 # ---------------- spesa
@@ -290,6 +309,7 @@ def parse_decisions(text: str) -> dict | None:
                 "reason": str(x.get("reason", ""))[:300],
                 "dca_sl_pct": float(x.get("dca_sl_pct", 0)),
                 "dca_tp_pct": float(x.get("dca_tp_pct", 0)),
+                "hold_extension_hours": float(x.get("hold_extension_hours", 0) or 0),
                 # ritracciamento della seconda gamba: Claude lo scrive in percentuale (0.5 = 0,5%)
                 "split_retrace_pct": float(x.get("split_retrace_pct", 0) or 0) / 100.0,
             })

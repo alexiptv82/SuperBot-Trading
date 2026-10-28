@@ -23,9 +23,9 @@ def test_hawk_requested_bounds_10_slots_and_risk_protection_unchanged():
     assert h.limits.max_margin_total==1000
     assert h.limits.max_margin_trade==250
     assert h.limits.min_initial_margin==100
-    assert h.limits.min_initial_leverage==20
+    assert h.limits.min_initial_leverage==10
     assert h.guardrail_min_margin==100
-    assert h.guardrail_min_lev==20
+    assert h.guardrail_min_lev==10
     assert h.limits.daily_stop==pytest.approx(.12)
     assert h.limits.kill_equity==450
 
@@ -36,9 +36,9 @@ def test_bull_requested_bounds_3_slots_and_risk_protection_unchanged():
     assert b.limits.max_margin_total==1050
     assert b.limits.max_margin_trade==350
     assert b.limits.min_initial_margin==150
-    assert b.limits.min_initial_leverage==20
+    assert b.limits.min_initial_leverage==10
     assert b.guardrail_min_margin==150
-    assert b.guardrail_min_lev==20
+    assert b.guardrail_min_lev==10
     assert b.limits.daily_stop==pytest.approx(.12)
     assert b.limits.kill_equity==450
 
@@ -61,10 +61,10 @@ def test_new_margin_floor_is_never_auto_upscaled(name,under,exact,maximum):
 @pytest.mark.parametrize("name,minimum",[
     ("hawk",100),("bull",150)
 ])
-def test_20x_minimum_is_a_refusal_not_hidden_multiplier(name,minimum):
+def test_flexible_10x_floor_is_a_refusal_not_hidden_multiplier(name,minimum):
     cfg=cli._make_hawk_config() if name=="hawk" else cli._make_bull_config()
     a=start(cfg)
-    pos,why=open_position(a,"BTC",minimum,10)
+    pos,why=open_position(a,"BTC",minimum,9)
     assert pos is None and "leva eseguibile" in why
     assert a.positions=={}
     pos,why=open_position(a,"BTC",minimum,20)
@@ -176,7 +176,7 @@ def test_saved_legacy_account_reloads_with_new_limits_without_clearing_run():
         recovered=cli.make_account(state)
     assert recovered.positions["BTC"].margin==75
     assert recovered.positions["BTC"].leverage==10
-    assert recovered.limits.min_initial_leverage==20
+    assert recovered.limits.min_initial_leverage==10
     assert recovered.limits.min_initial_margin==100
     assert state["run_no"]==7
     assert state["deepseek_budget"]["spent"]==.15
@@ -258,10 +258,10 @@ def test_invalid_numeric_proposals_cannot_corrupt_account(field, bad):
 
 def test_configured_leverage_ceiling_cannot_be_bypassed_by_asset_tier():
     from dataclasses import replace
-    limits = replace(cli._make_hawk_config().limits, max_leverage=15)
+    limits = replace(cli._make_hawk_config().limits, max_leverage=8)
     a = PaperAccount(limits)
     p, why = open_position(a, 'BTC', 100, 45)
-    assert p is None and 'leva eseguibile 15x' in why
+    assert p is None and 'leva eseguibile 8x' in why
     assert a.cash == 1000
 
 
@@ -303,7 +303,7 @@ def test_parser_discards_overflowing_leverage_instead_of_crashing_cycle():
 
 
 @pytest.mark.parametrize('name,margin,leverage', [
-    ('hawk', 99, 20), ('hawk', 150, 19), ('bull', 149, 20), ('bull', 200, 10),
+    ('hawk', 99, 20), ('hawk', 150, 9), ('bull', 149, 20), ('bull', 200, 9),
 ])
 def test_cycle_logs_small_ai_proposal_without_upscaling_or_fallback(name, margin, leverage, monkeypatch):
     from test_desk import _sandbox, _decisions_stub, _dec, NOW

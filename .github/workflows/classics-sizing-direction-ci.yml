@@ -19,6 +19,8 @@ jobs:
       - name: Full active classical regression suite (network blocked by conftest)
         run: >-
           PYTHONPATH=backend python -m pytest -q
+          backend/tests/test_classic_opportunities_scalp.py
+          backend/tests/test_classics_release_verify.py
           backend/tests/test_classics_sizing_direction_20261028.py
           backend/tests/test_classics_deepseek_collab.py
           backend/tests/test_classics_macro_observation_12oct.py

@@ -36,6 +36,7 @@ from desk import trading_hours
 from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
 from desk import deepseek_collab as _ds
+from desk import classic_opportunities as _classic
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
                            notify_halt, notify_daily_report, notify_live_alert, set_context)
 from desk.live_connector import LiveConnector
@@ -80,13 +81,13 @@ def _make_hawk_config() -> PortfolioConfig:
             kill_equity=450.0,
             daily_stop=0.12,
             min_initial_margin=100.0,
-            min_initial_leverage=20,
+            min_initial_leverage=10,
         ),
         system_prompt=SYSTEM_HAWK,
         guardrail_min_margin=100.0,
-        guardrail_min_lev=20,
+        guardrail_min_lev=10,
         guardrail_margin_forced=100.0,
-        guardrail_lev_forced=20,
+        guardrail_lev_forced=10,
         guardrail_type_forced="scalp",
         description="Hawk — $100-$250 nuove aperture, 10 slot, budget $1000",
     )
@@ -105,15 +106,15 @@ def _make_bull_config() -> PortfolioConfig:
             kill_equity=450.0,
             daily_stop=0.12,
             min_initial_margin=150.0,
-            min_initial_leverage=20,
+            min_initial_leverage=10,
         ),
         system_prompt=SYSTEM_BULL,
         guardrail_min_margin=150.0,
-        guardrail_min_lev=20,
+        guardrail_min_lev=10,
         guardrail_margin_forced=150.0,
-        guardrail_lev_forced=20,
+        guardrail_lev_forced=10,
         guardrail_type_forced="medio",
-        description="Bull — max $350/trade, 3 posizioni, budget $1000, TP≥5%",
+        description="Bull — scalp/intraday $150-$350, 3 slot, budget $1000",
     )
 
 
@@ -1091,7 +1092,18 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     urgent_scalp = any(needs_scalp_review(pos, now_ms) for pos in acc.positions.values())
     call_due = (now_ms - last_call) >= HOUR_MS or urgent_scalp
 
+    # Technical opportunities are generated in EVERY cycle, independently of
+    # whether the adviser returns a management-only or empty response.
+    technical = rules_decisions(
+        readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE,
+        min_leverage=PORTFOLIO.guardrail_min_lev,
+        min_margin=PORTFOLIO.guardrail_min_margin,
+    )
+    technical_prompt = "\nCANDIDATI_TECNICI_DA_VALUTARE: " + json.dumps(
+        [d for d in technical if str(d.get("action", "")).startswith("open_")],
+        ensure_ascii=False, separators=(",", ":"))
     decisions = []
+    review_vetoes = set()
     deepseek_decision_received = False
     source = "rules"
     if halt:
@@ -1108,6 +1120,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons,
                                       ctx_for_prompt, sym_stats,
                                       macro_lines="\\n".join(macro_calendar.prompt_lines(macro)))
+                prompt += technical_prompt
                 prompt += (f"\\nOPERATIVITA' PORTAFOGLIO {PORTFOLIO.name.upper()}: "
                            f"nuovo ingresso con margine >= {PORTFOLIO.guardrail_min_margin:.0f}$ "
                            f"e <= {PORTFOLIO.limits.max_margin_trade:.0f}$, "
@@ -1177,6 +1190,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                                                 len(acc.positions),urgent_scalp,max_tok)
                                 if cv:
                                     decisions,vetoes=_ds.apply_claude_review(decisions,cv["decisions"])
+                                    review_vetoes.update(vetoes)
                                     for veto in vetoes:
                                         log_event(DATA_DIR,{"ev":"candidate","ts":now_ms,
                                             "portfolio":PORTFOLIO.name,"run_no":state.get("run_no",1),
@@ -1206,6 +1220,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         try:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats,
                                   macro_lines="\\n".join(macro_calendar.prompt_lines(macro)))
+            prompt += technical_prompt
             max_tok, timeout_s = claude_limits(LIVE._live)
             text, usage = call_claude(SYSTEM, prompt, max_tokens=max_tok, timeout=timeout_s)
             cost = record_spend(state, day, usage)
@@ -1224,13 +1239,36 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             print(f"[WARN] Claude non disponibile: {e}")
             log_claude_error(now_ms, state, e, len(acc.positions), urgent_scalp)
 
-    if not decisions and not deepseek_decision_received:
-        decisions = rules_decisions(
-            readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE,
-            min_leverage=PORTFOLIO.guardrail_min_lev,
-            min_margin=PORTFOLIO.guardrail_min_margin,
-        )
-        source = "rules"
+    ai_source = source
+    decisions, opportunity_audit = _classic.combine(
+        technical, decisions if source != "rules" else [], open_symbols,
+        ai_source=ai_source, vetoes=review_vetoes)
+    # Record both sides of arbitration; counts of model decisions alone cannot
+    # explain why a valid technical candidate never reached the executor.
+    opportunity_audit.update(ev="opportunity_cycle", ts=now_ms,
+        portfolio=PORTFOLIO.name, run_no=state.get("run_no", 1),
+        rule_eligible=sum(d["action"] in _classic.OPEN_ACTIONS
+                          and d.get("confidence", 0) >= tier_entry_score(d["symbol"])
+                          for d in technical),
+        ai_response_received=deepseek_decision_received or ai_source == "claude")
+    try:
+        log_event(DATA_DIR, opportunity_audit)
+    except Exception:
+        pass  # Diagnostics must not disable entries or protective management.
+    state["last_opportunity_cycle"] = opportunity_audit
+    decisions, lifecycle_events = _classic.manage(
+        acc, prices, readings_map, decisions, state, now_ms, tier_entry_score)
+    for event in lifecycle_events:
+        try:
+            log_event(DATA_DIR, dict(event, ts=now_ms, portfolio=PORTFOLIO.name,
+                                   run_no=state.get("run_no", 1)))
+        except Exception:
+            pass
+    # Exits release risk/slots before evaluating new exposure in the same cycle.
+    decisions.sort(key=lambda d: 0 if d["action"] in ("close", "partial_close")
+                   else 2 if d["action"] in _classic.OPEN_ACTIONS else 1)
+    sources = {d.get("_decision_source", "rules") for d in decisions}
+    source = next(iter(sources)) if len(sources) == 1 else "mixed" if sources else "rules"
     state["last_decision_source"] = source
 
     why = drain_reason(now_ms)   # "pausa" | "orari" | "" ; la pausa premuta a ciclo in corso vale da subito
@@ -1266,6 +1304,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
 
     for dec in decisions:
+        source = dec.get("_decision_source", source)
         sym = dec["symbol"]
         act = dec["action"]
         px = prices.get(sym)
@@ -1703,6 +1742,8 @@ def run_params() -> dict:
     p = PORTFOLIO
     return {
         "portfolio": p.name, "code_version": CODE_VERSION, "limits": asdict(p.limits),
+        "classic_mechanism": _classic.VERSION,
+        "scalp_time_budget_hours": 24, "scalp_max_extended_hours": 48,
         "entry_score_base": _ENTRY_SCORE_BASE, "entry_score_tier_ab": TIER_AB_ENTRY_SCORE,
         "entry_score_tier_c": TIER_C_ENTRY_SCORE,
         "guardrail": {"min_margin": p.guardrail_min_margin, "min_lev": p.guardrail_min_lev,

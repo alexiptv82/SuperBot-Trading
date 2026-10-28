@@ -99,7 +99,7 @@ def test_fixed_baseline_config_not_v1_percentages_or_regime(monkeypatch):
     a=cli.make_account(st)
     assert a._capital_reference is None and a._capital_day_budget is None
     assert a.limits.max_margin_trade==250
-    assert a.limits.min_initial_margin==100 and a.limits.min_initial_leverage==20
+    assert a.limits.min_initial_margin==100 and a.limits.min_initial_leverage==10
 
 
 def test_journal_recovery_and_fractional_cash_conservation(tmp_path,monkeypatch):
