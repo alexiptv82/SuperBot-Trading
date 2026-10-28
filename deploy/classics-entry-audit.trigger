@@ -1,0 +1,2 @@
+inspection=read-only
+purpose=Hawk_Bull_post_rollback_no_entries_gates_and_Claude_schedule
