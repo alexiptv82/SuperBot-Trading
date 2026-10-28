@@ -1,0 +1,77 @@
+name: Brain Free PAPER - protected pause for reframe
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/brain-free-reframe-pause.trigger]
+permissions:
+  contents: read
+concurrency:
+  group: brain-free-singapore
+  cancel-in-progress: false
+jobs:
+  pause:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Backup and pause new AI exposure, never stop local protection
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 120s
+          script: |
+            set -eu
+            umask 077
+            NAME=superbot-brain-free
+            ROOT=/opt/superbot-brain-free
+            EXPECTED=a914803a15c2d8a5fa01021f11c4def4caf82a76
+            test "$(docker inspect -f '{{.State.Running}}' "$NAME")" = true
+            test "$(docker inspect -f '{{index .Config.Labels "superbot.sha"}}' "$NAME")" = "$EXPECTED"
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME" | grep -qx DESK_MODE=paper
+            test -d "$ROOT" && test ! -L "$ROOT"
+            test -f "$ROOT/brain.sqlite3" && test ! -L "$ROOT/brain.sqlite3"
+            SNAP=/opt/superbot-backups/brain-free-reframe-$(date -u +%Y%m%dT%H%M%SZ)
+            mkdir -m 700 "$SNAP"
+            python3 - "$ROOT" "$SNAP" <<'PY'
+            import sqlite3,sys,json,hashlib,pathlib
+            root=pathlib.Path(sys.argv[1]);dest=pathlib.Path(sys.argv[2])
+            src=sqlite3.connect((root/'brain.sqlite3').resolve().as_uri()+'?mode=ro',uri=True)
+            with sqlite3.connect(dest/'brain.sqlite3') as target:
+                src.backup(target)
+                assert target.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+                assert target.execute('SELECT COUNT(*) FROM events').fetchone()[0]==src.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+                assert target.execute('SELECT COUNT(*) FROM requests').fetchone()[0]==src.execute('SELECT COUNT(*) FROM requests').fetchone()[0]
+                state=json.loads(target.execute('SELECT body FROM state WHERE id=1').fetchone()[0])
+                assert state['mode']=='paper' and state['build_sha']=='a914803a15c2d8a5fa01021f11c4def4caf82a76'
+                print('BACKUP_VERIFIED=PASS','open_count='+str(len(state['positions'])),'cycles='+str(state['cycles']))
+            src.close()
+            check=sqlite3.connect(dest/'brain.sqlite3')
+            assert check.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+            check.close()
+            for name in ('activate.flag',):
+                p=root/name
+                if p.is_file() and not p.is_symlink():
+                    (dest/name).write_bytes(p.read_bytes())
+            (dest/'BACKUP_SHA256').write_text(hashlib.sha256((dest/'brain.sqlite3').read_bytes()).hexdigest()+'  brain.sqlite3\n')
+            print('HISTORY_PRESERVED_IN_BACKUP=YES')
+            PY
+            touch "$ROOT/pause.flag"
+            for I in $(seq 1 15); do
+              if python3 - "$ROOT/brain.sqlite3" <<'PY'
+            import sqlite3,json,sys,time
+            with sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True) as db:
+                st=json.loads(db.execute('SELECT body FROM state WHERE id=1').fetchone()[0])
+            assert st['paused'] is True
+            assert time.time()*1000-st.get('heartbeat_ms',0)<30000
+            PY
+              then
+                echo BRAIN_FREE_NEW_ENTRIES_PAUSED=PASS
+                echo LOCAL_STOPS_TARGETS_CONTAINER_RUNNING=PASS
+                exit 0
+              fi
+              sleep 2
+            done
+            echo BRAIN_FREE_PAUSE_NOT_CONFIRMED
+            exit 1
