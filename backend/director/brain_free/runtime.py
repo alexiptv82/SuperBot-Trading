@@ -36,7 +36,7 @@ class Runtime:
         if not self.key or not any(fresh(m.get('quote'),now,self.cfg) for m in markets.values()):raise ValueError('verification_requires_key_and_fresh_quotes')
         state['verified_start_ms']=now
         self.store.commit(state,[('experiment-start','experiment_started',now,{'config_hash':self.digest,'start_ms':now})],
-             [('experiment-start','[BRAIN] Avvio verificato: conto PAPER 2000$, 10 slot. Inizio test 168 ore.')])
+             [('experiment-start',f'[BRAIN] Avvio verificato: PAPER {self.cfg.start_cash:.0f}$, {self.cfg.max_slots} slot, margine massimo {self.cfg.max_margin:.0f}$. Inizio test 168 ore.')])
     def record_events(self,state,events,now,prefix):
         rows=[];messages=[]
         for i,e in enumerate(events):
@@ -117,6 +117,7 @@ class Runtime:
         state['context']=context
         updated,events=protect(state,markets,contracts,now,self.cfg)
         updated['cycles']+=1;updated['heartbeat_ms']=now
+        updated['runtime_capacity']={'max_slots':self.cfg.max_slots,'max_margin':self.cfg.max_margin}
         updated['instrument_count']=len(contracts)
         updated['fresh_quote_count']=sum(fresh(m.get('quote'),now,self.cfg) for m in markets.values())
         self.record_events(updated,events,now,'protection:'+str(now))
