@@ -1,7 +1,7 @@
-2026-10-28 Operator-approved daytime DeepSeek analysis for Hawk/Bull PAPER only.
-phase=classics-deepseek-0800-2000
-sha=ef0f596c41b8cda208dc9c9a79b7bb364640f6f7
+2026-10-28 Operator-approved classic macro NEWS-ONLY policy; reuse Oct12 strategy baseline.
+sha=73e9242164a2cf5c5710fa47109c51a6765364a6
 capital=off
 deepseek=paper
+macro_policy=observe
 no_portfolio_reset=true
-preserve_brain_free=true
+preserve_histories_and_brain=true
