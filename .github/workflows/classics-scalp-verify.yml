@@ -1,0 +1,45 @@
+name: Classics scalp PAPER - verified preflight and continuity postflight
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/classics-scalp-verify.trigger]
+permissions:
+  contents: read
+concurrency:
+  group: classics-scalp-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify source, backup restoration and untouched Brain/app containers
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          CONTROL_SHA: ${{ github.sha }}
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          envs: CONTROL_SHA
+          command_timeout: 12m
+          script: |
+            set -eu
+            umask 077
+            DIR=$(mktemp -d /opt/classics-scalp-check.XXXXXXXX)
+            trap 'rm -rf "$DIR"' EXIT
+            git init -q "$DIR"
+            git -C "$DIR" remote add origin https://github.com/alexiptv82/SuperBot-Trading.git
+            git -C "$DIR" fetch -q --depth=1 origin "$CONTROL_SHA"
+            git -C "$DIR" checkout -q --detach "$CONTROL_SHA"
+            cd "$DIR"
+            PHASE=$(sed -n 's/^phase=//p' deploy/classics-scalp-verify.trigger)
+            TARGET_SHA=$(sed -n 's/^target_sha=//p' deploy/classics-scalp-verify.trigger)
+            BASE_SHA=$(sed -n 's/^base_sha=//p' deploy/classics-scalp-verify.trigger)
+            test "$PHASE" = preflight || test "$PHASE" = postflight
+            printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
+            printf '%s' "$BASE_SHA" | grep -Eq '^[0-9a-f]{40}$'
+            git fetch -q --depth=1 origin "$TARGET_SHA" "$BASE_SHA"
+            export PHASE TARGET_SHA BASE_SHA
+            python3 -I deploy/scripts/classics_scalp_verify.py

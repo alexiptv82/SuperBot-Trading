@@ -230,14 +230,14 @@ jobs:
               echo "ERRORE: il codice non e' sul commit approvato: nessun container sostituito"; exit 1
             fi
 
-            # Pre-deploy source baseline verified on 27/10 before the approved selective rollback.
-            CURRENT_PAPER_BASE=ef0f596c41b8cda208dc9c9a79b7bb364640f6f7
+            # Pre-deploy source baseline independently verified on 28/10; fail closed if it changes.
+            CURRENT_PAPER_BASE=73e9242164a2cf5c5710fa47109c51a6765364a6
             git cat-file -e "${CURRENT_PAPER_BASE}^{commit}" || {
               echo DEPLOY_BLOCKED=expected_runtime_base_missing; exit 1;
             }
             for P in hawk bull; do
               V="$(python3 -I -c "import json; print(json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')).get('version',''))" 2>/dev/null || true)"
-              [ "$V" = ef0f596 ] || {
+              [ "$V" = 73e9242 ] || {
                 echo "DEPLOY_BLOCKED=runtime_version_mismatch bot=$P"; exit 1;
               }
               for F in cli engine signals brain market_context; do

@@ -20,3 +20,26 @@ def _block_test_network(event, args):
 
 
 sys.addaudithook(_block_test_network)
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolated_classic_cycles(request, monkeypatch):
+    """Old cycle tests stub the source module but CLI holds an imported copy.
+
+    Keep those integration fixtures offline and avoid API pacing sleeps. Explicit
+    per-test context stubs can still replace this default; network remains blocked.
+    """
+    if request.module.__name__ not in {
+        "test_desk", "test_desk_macro", "test_desk_hours",
+        "test_desk_fixes_2026_10_20", "test_classic_rollback_vault",
+    }:
+        return
+    from desk import cli
+    monkeypatch.setattr(cli.time, "sleep", lambda _: None)
+    monkeypatch.setattr(cli, "fetch_all_context", lambda symbols, now: {
+        "funding": {}, "oi": {}, "news": [], "ts": now})
+    monkeypatch.setenv("DESK_DEEPSEEK_CLASSICS", "0")
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)

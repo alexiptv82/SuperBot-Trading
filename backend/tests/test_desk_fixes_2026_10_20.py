@@ -225,6 +225,7 @@ def test_live_price_is_used_for_price_checks():
 # ---------------- cli: soglia, barre chiuse, cache giornaliera, ordine del ciclo
 
 from desk import cli  # noqa: E402
+from test_desk import _legacy_open
 
 
 def test_tier_thresholds():
@@ -292,7 +293,7 @@ def test_cycle_judges_bars_before_decisions():
             cli.DATA_DIR = d
             state = cli.load_state(cli.STATE_FILE)
             acc = cli.make_account(state)
-            pos, msg = acc.open("BTC", 1, 100, 10, 100.0, 95.0, 110.0, OPEN, {}, trade_type="medio")
+            pos, msg = _legacy_open(acc, "BTC", 1, 100, 10, 100.0, 95.0, 110.0, OPEN, {}, trade_type="medio")
             assert pos is not None, msg
             state["main"] = acc.to_dict()
             state["last_call_ms"] = 0
@@ -335,7 +336,7 @@ def test_cycle_day_change_uses_open_pnl():
             cli.DATA_DIR = d
             state = cli.load_state(cli.STATE_FILE)
             acc = cli.make_account(state)
-            pos, msg = acc.open("BTC", 1, 100, 3, 100.0, 80.0, None, T0 - 70 * BAR, {}, trade_type="medio")
+            pos, msg = _legacy_open(acc, "BTC", 1, 100, 3, 100.0, 80.0, None, T0 - 70 * BAR, {}, trade_type="medio")
             assert pos is not None, msg
             acc.day = "2000-01-01"
             flat = acc.equity({})

@@ -50,15 +50,30 @@ INVARIATE. Gli eventi macro sono INFORMAZIONE di contesto, non veto
 automatico ne' bonus obbligatorio di confidenza. Valuta l'impatto con
 autonomia e attenzione a liquidita', costi e volatilita'. Non allentare
 gli stop, R:R, margini, daily stop e limiti di posizioni. Non inventare livelli di supporto/resistenza.
-Hawk e Bull hanno vincoli e dimensionamento differenti: rispetta i
+Hawk e Bull hanno vincoli differenti. Nuove aperture Hawk: margine 100-250$;
+Bull: margine 150-350$. Entrambi: leva scelta fra 10x e i massimi del tier SOLO se il setup,
+lo stop, la liquidazione e il limite dello strumento lo consentono.
+Non aumentare margine/leva solo per superare un minimo: se non e'
+sostenibile, SKIP. Uno split e' valido solo se la prima gamba rispetta
+il minimo (Hawk >=100$, Bull >=150$). Questi sono limiti fisici di
+NUOVE aperture, non si applicano retroattivamente alle posizioni aperte.
+I limiti di leva attualmente verificati dal motore sono BTC/XAU/XAG 45x,
+ETH 30x, altre coppie 25x: NON inventare leve massime disponibili.
+In ogni proposta calcola perdita a stop in $ e guadagno NETTO
+ipotetico dopo fee/slippage, prima di aprire. Rispetta i
 limiti REALI scritti nel prompt, non usare taglie di altri portafogli.
+I candidati tecnici vengono valutati sempre: aggiungi opportunita' e veto skip solo per simbolo.
+Una lista vuota non blocca tutte le regole; hold vale per posizioni aperte.
+Gestione scalp: budget24h, un solo hold_extension_hours fino a24h aggiuntive
+con ragione specifica, netto positivo e setup forte; massimo assoluto48h.
+Dopo+1R netto osservato il motore protegge meta' del picco, senza allargare stop.
 Non aprire se attesa netta sfavorevole; in assenza di segnali valida
 le alternative e proponi skip/hold. Non aprire piu' simboli solo per
 dimostrare attivita'. Includi una motivazione specifica e verificabile.
 
 Rispondi SOLO JSON con schema:
 {"decisions":[{"symbol":"BTC","action":"open_long","trade_type":"scalp",
-"confidence":75,"leverage":15,"margin_usd":90,"stop_loss_pct":0.004,
+"confidence":75,"leverage":20,"margin_usd":150,"stop_loss_pct":0.004,
 "take_profit_pct":0.009,"reason":"tesi e invalidazione netta"}],
 "note":"breve contesto"}
 

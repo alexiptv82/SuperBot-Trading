@@ -36,6 +36,7 @@ from desk import trading_hours
 from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
 from desk import deepseek_collab as _ds
+from desk import classic_opportunities as _classic
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
                            notify_halt, notify_daily_report, notify_live_alert, set_context)
 from desk.live_connector import LiveConnector
@@ -74,19 +75,21 @@ def _make_hawk_config() -> PortfolioConfig:
         data_dir=data_dir,
         limits=Limits(
             start_equity=1000.0,
-            max_margin_trade=100.0,   # HAWK: max $100 per trade
+            max_margin_trade=250.0,   # HAWK: operator requested $100-$250 per new trade
             max_margin_total=1000.0,  # budget totale $1000
             max_open=10,              # max 10 posizioni
             kill_equity=450.0,
             daily_stop=0.12,
+            min_initial_margin=100.0,
+            min_initial_leverage=10,
         ),
         system_prompt=SYSTEM_HAWK,
-        guardrail_min_margin=50.0,
+        guardrail_min_margin=100.0,
         guardrail_min_lev=10,
-        guardrail_margin_forced=60.0,
-        guardrail_lev_forced=15,
+        guardrail_margin_forced=100.0,
+        guardrail_lev_forced=10,
         guardrail_type_forced="scalp",
-        description="Hawk — max $100/trade, 10 posizioni, budget $1000",
+        description="Hawk — $100-$250 nuove aperture, 10 slot, budget $1000",
     )
 
 
@@ -102,14 +105,16 @@ def _make_bull_config() -> PortfolioConfig:
             max_open=3,               # max 3 posizioni
             kill_equity=450.0,
             daily_stop=0.12,
+            min_initial_margin=150.0,
+            min_initial_leverage=10,
         ),
         system_prompt=SYSTEM_BULL,
         guardrail_min_margin=150.0,
         guardrail_min_lev=10,
-        guardrail_margin_forced=200.0,
-        guardrail_lev_forced=15,
+        guardrail_margin_forced=150.0,
+        guardrail_lev_forced=10,
         guardrail_type_forced="medio",
-        description="Bull — max $350/trade, 3 posizioni, budget $1000, TP≥5%",
+        description="Bull — scalp/intraday $150-$350, 3 slot, budget $1000",
     )
 
 
@@ -1087,7 +1092,18 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     urgent_scalp = any(needs_scalp_review(pos, now_ms) for pos in acc.positions.values())
     call_due = (now_ms - last_call) >= HOUR_MS or urgent_scalp
 
+    # Technical opportunities are generated in EVERY cycle, independently of
+    # whether the adviser returns a management-only or empty response.
+    technical = rules_decisions(
+        readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE,
+        min_leverage=PORTFOLIO.guardrail_min_lev,
+        min_margin=PORTFOLIO.guardrail_min_margin,
+    )
+    technical_prompt = "\nCANDIDATI_TECNICI_DA_VALUTARE: " + json.dumps(
+        [d for d in technical if str(d.get("action", "")).startswith("open_")],
+        ensure_ascii=False, separators=(",", ":"))
     decisions = []
+    review_vetoes = set()
     deepseek_decision_received = False
     source = "rules"
     if halt:
@@ -1104,6 +1120,17 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons,
                                       ctx_for_prompt, sym_stats,
                                       macro_lines="\\n".join(macro_calendar.prompt_lines(macro)))
+                prompt += technical_prompt
+                prompt += (f"\\nOPERATIVITA' PORTAFOGLIO {PORTFOLIO.name.upper()}: "
+                           f"nuovo ingresso con margine >= {PORTFOLIO.guardrail_min_margin:.0f}$ "
+                           f"e <= {PORTFOLIO.limits.max_margin_trade:.0f}$, "
+                           f"leva >= {PORTFOLIO.guardrail_min_lev}x se compatibile con "
+                           "strumento, stop e liquidazione. Non forzare trade: "
+                           "quando non si puo' rispettare la fascia, SKIP. "
+                           "Il motore rifiuta, non aumenta, richieste sotto il minimo. "
+                           "Per uno split anche la PRIMA gamba deve rispettare il minimo. "
+                           "Stima il profitto NETTO dopo 0.16% di costi sul nozionale; "
+                           "leva e size aumentano anche il rischio di perdita.")
                 # Levels from strictly completed 1-hour candles: context only,
                 # and a different quantity from the AI's own confidence.
                 levels = [
@@ -1163,6 +1190,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                                                 len(acc.positions),urgent_scalp,max_tok)
                                 if cv:
                                     decisions,vetoes=_ds.apply_claude_review(decisions,cv["decisions"])
+                                    review_vetoes.update(vetoes)
                                     for veto in vetoes:
                                         log_event(DATA_DIR,{"ev":"candidate","ts":now_ms,
                                             "portfolio":PORTFOLIO.name,"run_no":state.get("run_no",1),
@@ -1192,6 +1220,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         try:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats,
                                   macro_lines="\\n".join(macro_calendar.prompt_lines(macro)))
+            prompt += technical_prompt
             max_tok, timeout_s = claude_limits(LIVE._live)
             text, usage = call_claude(SYSTEM, prompt, max_tokens=max_tok, timeout=timeout_s)
             cost = record_spend(state, day, usage)
@@ -1210,9 +1239,36 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             print(f"[WARN] Claude non disponibile: {e}")
             log_claude_error(now_ms, state, e, len(acc.positions), urgent_scalp)
 
-    if not decisions and not deepseek_decision_received:
-        decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
-        source = "rules"
+    ai_source = source
+    decisions, opportunity_audit = _classic.combine(
+        technical, decisions if source != "rules" else [], open_symbols,
+        ai_source=ai_source, vetoes=review_vetoes)
+    # Record both sides of arbitration; counts of model decisions alone cannot
+    # explain why a valid technical candidate never reached the executor.
+    opportunity_audit.update(ev="opportunity_cycle", ts=now_ms,
+        portfolio=PORTFOLIO.name, run_no=state.get("run_no", 1),
+        rule_eligible=sum(d["action"] in _classic.OPEN_ACTIONS
+                          and d.get("confidence", 0) >= tier_entry_score(d["symbol"])
+                          for d in technical),
+        ai_response_received=deepseek_decision_received or ai_source == "claude")
+    try:
+        log_event(DATA_DIR, opportunity_audit)
+    except Exception:
+        pass  # Diagnostics must not disable entries or protective management.
+    state["last_opportunity_cycle"] = opportunity_audit
+    decisions, lifecycle_events = _classic.manage(
+        acc, prices, readings_map, decisions, state, now_ms, tier_entry_score)
+    for event in lifecycle_events:
+        try:
+            log_event(DATA_DIR, dict(event, ts=now_ms, portfolio=PORTFOLIO.name,
+                                   run_no=state.get("run_no", 1)))
+        except Exception:
+            pass
+    # Exits release risk/slots before evaluating new exposure in the same cycle.
+    decisions.sort(key=lambda d: 0 if d["action"] in ("close", "partial_close")
+                   else 2 if d["action"] in _classic.OPEN_ACTIONS else 1)
+    sources = {d.get("_decision_source", "rules") for d in decisions}
+    source = next(iter(sources)) if len(sources) == 1 else "mixed" if sources else "rules"
     state["last_decision_source"] = source
 
     why = drain_reason(now_ms)   # "pausa" | "orari" | "" ; la pausa premuta a ciclo in corso vale da subito
@@ -1248,6 +1304,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
 
     for dec in decisions:
+        source = dec.get("_decision_source", source)
         sym = dec["symbol"]
         act = dec["action"]
         px = prices.get(sym)
@@ -1376,22 +1433,22 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             sl = px * (1 - side * sl_pct)
             tp_pct = dec.get("take_profit_pct", 0)
             tp = _sane_tp(sym, px * (1 + side * tp_pct), "apertura") if tp_pct > 0 else None
-            # ── GUARDRAIL portfolio-aware ────────────────────────────────────
-            # Se Claude propone valori troppo bassi rispetto al portfolio corrente,
-            # forziamo i minimi del portfolio selezionato.
+            # USER-APPROVED ENTRY DIRECTION (PAPER): NEVER increase the AI's
+            # requested margin or leverage in the name of a guardrail.
+            # A too-small proposal is rejected and logged. The engine
+            # independently enforces the REAL executed leg after cash/fees,
+            # per-instrument leverage and optional split calculations.
             raw_margin = dec["margin_usd"]
-            raw_lev    = dec["leverage"]
+            raw_lev = dec["leverage"]
             pg = PORTFOLIO
             if raw_margin < pg.guardrail_min_margin or raw_lev < pg.guardrail_min_lev:
-                print(f"[GUARDRAIL:{pg.name.upper()}] {sym} Claude proposto "
-                      f"margin={raw_margin:.0f}$ lev={raw_lev}x "
-                      f"→ forzato margin={pg.guardrail_margin_forced:.0f}$ "
-                      f"lev={pg.guardrail_lev_forced}x {pg.guardrail_type_forced}")
-                dec = dict(dec, margin_usd=pg.guardrail_margin_forced,
-                           leverage=pg.guardrail_lev_forced,
-                           trade_type=pg.guardrail_type_forced)
-                trade_type = pg.guardrail_type_forced
-            # Cappato al massimo margine del portfolio
+                print(f"[SIZE_REJECT:{pg.name.upper()}] {sym} "
+                      f"proposto margin={raw_margin:.2f}$ leva={raw_lev}x, "
+                      f"minimi margin={pg.guardrail_min_margin:.0f}$ "
+                      f"leva={pg.guardrail_min_lev}x; NON aumento il rischio", flush=True)
+                _candidate("sizing_sotto_minimo", dec, px)
+                continue
+            # Upper cap: only REDUCE margin, never increase it.
             if dec["margin_usd"] > pg.limits.max_margin_trade:
                 print(f"[CAP:{pg.name.upper()}] {sym} margin {dec['margin_usd']:.0f}$ "
                       f"→ cappato a {pg.limits.max_margin_trade:.0f}$")
@@ -1404,7 +1461,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             except Exception:
                 feats = {}   # la registrazione non deve mai impedire un'apertura
             feats.update(proposed_margin=raw_margin, proposed_lev=raw_lev, split_requested=is_split,
-                          guardrail_forced=bool(raw_margin != dec["margin_usd"] or raw_lev != dec["leverage"]))
+                          guardrail_forced=False,
+                          entry_floor_margin=pg.guardrail_min_margin,
+                          entry_floor_leverage=pg.guardrail_min_lev,
+                          margin_capped=bool(raw_margin > dec["margin_usd"]))
             # ── INTERRUTTORE MANUALE (solo live) ────────────────────────────
             if not is_trading_enabled():
                 print(f"[TRADING DISABILITATO] {sym}: trading live disabilitato — premi 'Avvia trading' nell'app",
@@ -1682,6 +1742,8 @@ def run_params() -> dict:
     p = PORTFOLIO
     return {
         "portfolio": p.name, "code_version": CODE_VERSION, "limits": asdict(p.limits),
+        "classic_mechanism": _classic.VERSION,
+        "scalp_time_budget_hours": 24, "scalp_max_extended_hours": 48,
         "entry_score_base": _ENTRY_SCORE_BASE, "entry_score_tier_ab": TIER_AB_ENTRY_SCORE,
         "entry_score_tier_c": TIER_C_ENTRY_SCORE,
         "guardrail": {"min_margin": p.guardrail_min_margin, "min_lev": p.guardrail_min_lev,
