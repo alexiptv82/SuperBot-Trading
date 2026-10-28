@@ -313,7 +313,7 @@ jobs:
             for P in hawk bull; do
               N=0
               for C in $(docker ps --format '{{.Names}}' | grep -vx 'superbot' || true); do
-                if docker inspect -f '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P"; then
+                if docker inspect -f '{{range .Mounts}}{{if .RW}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P"; then
                   N=$((N + 1))
                 fi
               done
