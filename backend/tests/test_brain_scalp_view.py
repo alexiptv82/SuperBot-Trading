@@ -77,3 +77,29 @@ class BrainScalpReader(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class BrainScalpEndpoint(unittest.TestCase):
+    def test_only_authenticated_get_is_available(self):
+        from fastapi import FastAPI,HTTPException
+        from fastapi.testclient import TestClient
+        from brain_scalp_api import register
+        with tempfile.TemporaryDirectory() as base:
+            import os
+            old=os.environ.get('BRAIN_SCALP_DATA_DIR')
+            os.environ['BRAIN_SCALP_DATA_DIR']=base
+            try:
+                app=FastAPI()
+                def deny(): raise HTTPException(status_code=401)
+                register(app,deny)
+                with TestClient(app) as c:
+                    self.assertEqual(c.get('/api/brain/scalp').status_code,401)
+                app2=FastAPI();register(app2,lambda:True)
+                with TestClient(app2) as c:
+                    resp=c.get('/api/brain/scalp')
+                    self.assertEqual(resp.status_code,200)
+                    self.assertEqual(resp.headers['cache-control'],'no-store')
+                    self.assertEqual(c.post('/api/brain/scalp').status_code,405)
+            finally:
+                if old is None:os.environ.pop('BRAIN_SCALP_DATA_DIR',None)
+                else:os.environ['BRAIN_SCALP_DATA_DIR']=old
