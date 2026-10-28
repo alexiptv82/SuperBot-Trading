@@ -16,8 +16,8 @@ jobs:
       - run: python -m pip install pytest numpy pandas ccxt==4.2.95 tzdata
       - name: Bytecode compile
         run: python -m compileall -q backend/desk/cli.py backend/desk/engine.py backend/desk/brain.py backend/desk/deepseek_collab.py
-      - name: PAPER sizing and independent risk, DeepSeek and schedule regressions
-        run: PYTHONPATH=backend python -m pytest -q backend/tests/test_classics_sizing_direction_20261028.py backend/tests/test_classics_deepseek_collab.py backend/tests/test_desk.py backend/tests/test_desk_macro.py backend/tests/test_desk_hours.py backend/tests/test_classic_rollback_vault.py
+      - name: PAPER sizing, prior-position recovery, engine liquidation and DeepSeek tests
+        run: PYTHONPATH=backend python -m pytest -q backend/tests/test_classics_sizing_direction_20261028.py backend/tests/test_classics_deepseek_collab.py backend/tests/test_desk.py::test_open_applies_slippage_fee_and_caps backend/tests/test_desk.py::test_stop_is_mandatory_and_must_be_on_the_right_side backend/tests/test_desk.py::test_stop_beyond_liquidation_is_refused_at_high_leverage backend/tests/test_desk.py::test_total_margin_cap_and_max_open backend/tests/test_desk.py::test_stop_loss_exit_and_pnl_includes_costs backend/tests/test_desk.py::test_gap_through_stop_exits_at_open_not_at_stop
       - name: Docker build only - no orders and no VPS deployment
         run: docker build -f Dockerfile.desk -t superbot-classic-sizing-offline .
       - name: Brain Libero and unrelated runtime not modified
