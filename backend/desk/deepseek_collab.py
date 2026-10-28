@@ -159,7 +159,7 @@ def call(api_key: str, user_prompt: str, system: str = SYSTEM,
         raise RuntimeError("deepseek_"+type(exc).__name__) from None
 
 
-def review_requested(decisions, threshold, has_open_positions=False):
+def review_requested(decisions, threshold):
     # Claude gets an occasional second opinion on ambiguous/high-exposure entries;
     # never a second independent executor and never all cycles.
     openings=[d for d in decisions if str(d.get("action","")).startswith("open_")]
@@ -167,3 +167,18 @@ def review_requested(decisions, threshold, has_open_positions=False):
         d.get("confidence",0) <= threshold(str(d.get("symbol","")))+6
         or int(d.get("leverage",0)) >= 25
         for d in openings))
+
+def apply_claude_review(proposals, review):
+    """Explicit Claude veto only for reviewed entry symbols, never an extra order."""
+    by={str(x.get("symbol","")).upper():x for x in (review or [])}
+    kept=[];vetoed=[]
+    for d in proposals:
+        a=str(d.get("action",""))
+        sym=str(d.get("symbol","")).upper()
+        r=by.get(sym)
+        if a.startswith("open_") and r:
+            ra=str(r.get("action",""))
+            if ra=="skip" or (ra.startswith("open_") and ra.replace("_split","")!=a.replace("_split","")):
+                vetoed.append(sym);continue
+        kept.append(d)
+    return kept,vetoed
