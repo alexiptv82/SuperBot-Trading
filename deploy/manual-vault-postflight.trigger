@@ -1,3 +1,4 @@
 phase=read-only-postflight
 expected_sha=ba633b098cb28feace0b400cc3bbbbfa6da7b331
 diag=rw_mount_names
+verification=exclude_dashboard_app_command_mount
