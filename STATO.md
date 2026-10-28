@@ -1,3 +1,26 @@
+# Classici operativi PAPER — rilascio 28 ottobre 2026 concluso
+
+## Stato verificato dopo il riavvio autorizzato
+
+- Hawk e Bull su **dc16e0169932c3885908625ce5be321a33b09a0f**, heartbeat **dc16e01**, healthy/PAPER, restart count0, istanza singola, primo ciclo riuscito. Run **7 Hawk / 6 Bull**, una posizione ciascuno al postflight. Nessun reset di conto, run, budget, storico o memoria.
+- Meccanismo **classics-additive-scalp-v1**: candidati tecnici a ogni ciclo; AI aggiunge opportunità e può opporre skip esplicito per simbolo; risposta vuota/hold non blocca globalmente le regole. Una proposta AI troppo piccola non è sostituita con una più grande sullo stesso simbolo. Veto Claude conservato. Uscite prima di nuovi ingressi.
+- Nuove aperture: Hawk100–250 PAPER/max10 slot; Bull150–350/max3. Leva scelta per rischio entro10x e tier45/30/25: minimo20x rimosso su autorizzazione aggiornata. Nessuna maggiorazione automatica; posizioni precedenti valide e gestibili.
+- Scalp/intraday: budget24h, una sola estensione AI motivata con netto positivo e setup forte, fino al limite assoluto48h. Dopo+1R netto osservato, stop stringibile per proteggere metà del picco; netto include fee/slippage/funding e parziali. Setup indebolito e gestione indecisa possono far incassare il profitto e liberare lo slot. Stop non allargati. I gap possono peggiorare il fill; non è una garanzia di rendimento.
+- Macro osservazione invariata, DeepSeek08–20 Roma e Claude secondo parere, CapitalV1off e Salvadanaio READY. Brain non modificato/riattivato; app e tutti gli altri container hanno ID/StartedAt invariati rispetto al preflight.
+
+## Verifiche e ripristino
+
+- PR22 aggiornata alla direzione utente e mergiata con SHA fissato, dopo CI verde **40683471150**:373 test pertinenti+91 backup/guardie, build Docker e Brain invariato. Ulteriori8 test del verificatore correttivo PASS. CI baseline su rule-pool **40684067921** PASS (test e immagine).
+- Preflight **40684067922/job122801827478 SUCCESS**: sorgenti73e9242 verificati, singolo worker, backup **bots-20261028-115842-classic_scalp_preflight**, coerenza e restore PASS.
+- Deploy **40684340840/job122802752256 SUCCESS**: ulteriore backup **bots-20261028-120057-deploy** con restore; immagine precedente **superbot-desk:rollback-20261028-120058** conservata. Riavvio sequenziale dei soli classici.
+- Postflight indipendente **40684636333/job122803735853 SUCCESS**: hash sorgenti target, salute/ciclo, parametri nuovi attivi, run/budget/posizioni, vecchi closed e prefix hash degli archivi protetti preservati; Salvadanaio READY/non diminuito; nessun riavvio di Brain/app/altri servizi. Nuovo backup **bots-20261028-120259-classic_scalp_postflight** con restore PASS.
+- Il primo preflight40683768788 si era fermato PRIMA del backup e dei riavvii: il nuovo checker contava anche il mount RW dell'app per dashboard/comandi. Corretto SOLO il verificatore con la stessa eccezione esatta superbot del deploy ufficiale; test negativo mantiene blocco per qualunque worker RW aggiuntivo. Il secondo preflight ha confermato app+un worker per profilo. Nessuna barriera trading rimossa.
+- HEADrule-pool **352eb35d091742e73af5c7c4611ec4ec88131e21** contiene controlli successivi; runtime resta **dc16e01**, non dedurlo dalla punta del ramo. Il prossimo rilascio richiede nuova autorizzazione, misura della baseline e backup verificato; la guardia del deploy non va aggiornata senza misura.
+- Fase conclusa. Prossimo: osservare opportunità, motivi di veto/rifiuto, gestione e netto su operazioni effettive. Nessun risultato economico della nuova versione ancora certificato. Breakout resta non integrato e Brain escluso.
+
+---
+## Archivio dei checkpoint precedenti
+
 # IN_CORSO — rilascio classici autorizzato il 28 ottobre 2026
 
 ChatGPT Work prenota backend/desk classici, test e procedura di rilascio sul branch work/classics-sizing-direction-20261028, base dd04cc6. L'utente ha autorizzato esplicitamente: «adesso sistema, riavvia, falli partire bene». Sono autorizzati implementazione, test, integrazione e riavvio/deploy dei SOLI Hawk/Bull PAPER, subordinati a backup verificato e controlli di continuità. Nessuna autorizzazione Brain o reset.
