@@ -1,0 +1,80 @@
+name: Brain V2 independent PAPER and dashboard verification
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/brain-free-v2-verify.trigger]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Read-only account, source, preservation and dashboard checks
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 120s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import json,sqlite3,subprocess,pathlib,time,hashlib
+            ROOT=pathlib.Path('/opt/superbot-brain-free');ARCHIVE=pathlib.Path('/opt/superbot-backups/brain-free-v2-20261028T124146Z')
+            TARGET='e0021488b47e8b245954a708b139bc4785a4b644';APP='7c913bbcfbf2d255edf72e2d87ef42fe60aa4c9a'
+            def run(args):return subprocess.check_output(args,text=True,timeout=20)
+            def inspect(name):return json.loads(run(['docker','inspect',name]))[0]
+            brain=inspect('superbot-brain-free');app=inspect('superbot')
+            assert brain['State']['Running'] and brain['RestartCount']==0
+            assert (brain['State'].get('Health') or {}).get('Status')=='healthy'
+            assert brain['Config']['Labels']['superbot.sha']==TARGET
+            assert brain['State']['StartedAt']=='2026-10-28T12:44:19.402885788Z'
+            assert app['Config']['Labels']['superbot.sha']==APP
+            assert any(m['Source']==str(ROOT) and m['RW'] is False for m in app['Mounts'])
+            assert not (ROOT/'pause.flag').exists()
+            with sqlite3.connect((ROOT/'brain.sqlite3').as_uri()+'?mode=ro',uri=True) as db,sqlite3.connect(ARCHIVE/'final-v1/brain.sqlite3') as old:
+                db.execute('PRAGMA query_only=ON');db.execute('BEGIN')
+                s=json.loads(db.execute('SELECT body FROM state WHERE id=1').fetchone()[0])
+                assert s['build_sha']==TARGET and s['mode']=='paper' and s['paused'] is False
+                assert s['runtime_capacity']=={'max_slots':5,'max_margin':1750.0}
+                assert 0<=time.time()*1000-s['heartbeat_ms']<30000
+                assert s.get('fresh_quote_count',0)>=20
+                assert len(s['positions'])<=5 and sum(p['margin'] for p in s['positions'].values())<=1750.00001
+                assert s['v2_start_equity']==1931.7412392842637
+                for table in ('events','requests'):
+                    current=db.execute('SELECT * FROM '+table+' ORDER BY 1').fetchall()
+                    assert all(row in current for row in old.execute('SELECT * FROM '+table+' ORDER BY 1'))
+                assert all(row in db.execute('SELECT id,body FROM outbox').fetchall() for row in old.execute('SELECT id,body FROM outbox'))
+                closes=[json.loads(r[0]) for r in db.execute("SELECT body FROM events WHERE kind='trade_closed'")]
+                assert any(e.get('source')=='operator' and e['symbol']=='BTC' and abs(e['net']-(-4.750247040229295))<1e-9 for e in closes)
+                count=db.execute("SELECT count(*) FROM events WHERE kind='ai_decision' AND ts>=?",(s['verified_start_ms'],)).fetchone()[0];assert count>0
+                latest=json.loads(db.execute("SELECT body FROM events WHERE kind='ai_input' AND ts>=? ORDER BY seq DESC LIMIT 1",(s['verified_start_ms'],)).fetchone()[0])
+                assert latest['user']['execution_costs']['estimate_net_pnl_before_entry'] is True
+                report={'mode':s['mode'],'sha':s['build_sha'],'paused':s['paused'],'cash':s['cash'],'v2_base':s['v2_start_equity'],'capacity':s['runtime_capacity'],'ai_decisions':count,'positions':[{'symbol':sym,'margin':p['margin'],'leverage':p['leverage'],'side':p['side']} for sym,p in s['positions'].items()]}
+            old_inventory=json.loads((ARCHIVE/'before-inventory.json').read_text())
+            for name,before in old_inventory.items():
+                if name in ('superbot','superbot-brain-free'):continue
+                current=inspect(name);assert current['Id']==before['Id'] and current['State']['StartedAt']==before['StartedAt']
+            assert not inspect('superbot-brain-free-v1-20261028T124146Z')['State']['Running']
+            for name in run(['docker','ps','--format','{{.Names}}']).splitlines():
+                if name=='superbot-brain-free':continue
+                assert not any(m['Source']==str(ROOT) and m['RW'] for m in inspect(name)['Mounts'])
+            view=json.loads(run(['docker','exec','superbot','python','-c',"import json;from brain_free_view import read;d=read('/opt/superbot-brain-free');print(json.dumps({k:d.get(k) for k in ('available','online','max_slots','margin_limit','run_start_equity','pnl','pnl_since_original_start','build_sha','paused')}))"]))
+            assert view['available'] and view['online'] and view['max_slots']==5 and view['margin_limit']==1750
+            assert view['run_start_equity']==s['v2_start_equity'] and view['build_sha']==TARGET and not view['paused']
+            manifest=json.loads(pathlib.Path('/opt/superbot-deploys/app-last.json').read_text())
+            assert manifest['sha_approvato']==APP and manifest['sha_frontend']==APP
+            bundles=list(pathlib.Path('/opt/superbot-web/build/static/js').glob('main.*.js'))
+            assert bundles and any('solo informativo' in p.read_text() for p in bundles)
+            for profile in ('hawk','bull'):
+                hb=json.loads((pathlib.Path('/opt/superbot-desk-data')/profile/'heartbeat.json').read_text())
+                assert hb['version']=='dc16e01' and hb['macro']['enforce'] is False and not hb['macro']['blackout'] and hb['macro']['conf_bonus']==0
+            expected={'config.py': 'b52d03bd73357210a41562e3799f70605d65dfc60f59534ff444be1593b39e70', 'runtime.py': 'ee10b74c8ce73313ea71378d5e943588d547a8a8ed4e8b8af82a18387b949841', 'mandate.py': '415e5a28d2b4e42fcb2bd53693857c94d2d97fef864ebf39374c8071cca3d022', 'prompt_builder.py': '8a8accc0eb27e5cffd8757d46c361bb651cc3c46d19d193b50ccf7a2937d95ab', 'reframe.py': '65dd2f870c1a8c227180153a4bdabff3a8c28b03ca5d2e7929c3c1eb2a13a40d', 'execution.py': '20bcd680473cdb75b53dff79bf98adf77dd1ab96bc6ffb928b8b84ee90b88bbb'}
+            code="import hashlib,pathlib,json;root=pathlib.Path('/app/backend/director/brain_free');expected="+repr(expected)+";assert all(hashlib.sha256((root/f).read_bytes()).hexdigest()==v for f,v in expected.items());print('SOURCE_HASHES_PASS')"
+            assert 'SOURCE_HASHES_PASS' in run(['docker','exec','superbot-brain-free','python','-c',code])
+            print('BRAIN_V2_INDEPENDENT_VERIFY_PASS',json.dumps(report))
+            print('APP_V2_READONLY_PROJECTION_PASS',json.dumps(view))
+            print('HISTORIES_UNRELATED_CONTAINERS_AND_PASSIVE_MACRO_PASS')
+            PY
