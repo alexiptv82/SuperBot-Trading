@@ -48,8 +48,14 @@ def verify_runtime(inv, revision):
         assert e.get('DESK_CAPITAL_V1') == 'off', 'CAPITAL_MODE_CHANGED:'+p
         assert e.get('DESK_DEEPSEEK_CLASSICS') == 'paper', 'ADVISER_MODE_CHANGED:'+p
         assert e.get('DESK_MACRO_POLICY') == 'observe', 'MACRO_MODE_CHANGED:'+p
-        writers = [name for name, obj in inv.items() if any(
+        # The exact application container also mounts classic folders for
+        # dashboard/command flags. It is not a second trading worker; the
+        # official deploy applies the same explicit exception. All other RW
+        # mounts remain subject to the single-writer barrier.
+        access = [name for name, obj in inv.items() if any(
             m.get('RW') and m['Source'] == str(ROOT/p) for m in obj.get('Mounts', []))]
+        print('CLASSIC_RW_ACCESS', p, ','.join(sorted(access)))
+        writers = [name for name in access if name != 'superbot']
         assert writers == [n], 'DUPLICATE_WRITER:'+p
 
 

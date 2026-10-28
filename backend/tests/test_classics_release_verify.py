@@ -48,3 +48,20 @@ def test_historical_prefix_accepts_append_but_refuses_rewrite(tmp_path):
     path.write_bytes(b'{"old":2}\n'+b'{"new":2}\n')
     with pytest.raises(AssertionError, match='PROTECTED_PREFIX_CHANGED'):
         verify.check_prefix(path, saved)
+
+
+def test_app_command_mount_is_not_a_worker_but_other_writers_are_blocked():
+    revision = 'a'*40
+    env = ['DESK_MODE=paper', 'DESK_CAPITAL_V1=off',
+           'DESK_DEEPSEEK_CLASSICS=paper', 'DESK_MACRO_POLICY=observe']
+    inv = {}
+    for bot in ('hawk', 'bull'):
+        inv['superbot-desk-'+bot] = {
+            'State':{'Running':True},
+            'Config':{'Env':env,'Labels':{'superbot.sha':revision}},
+            'Mounts':[{'RW':True,'Source':str(verify.ROOT/bot)}]}
+    inv['superbot'] = {'Mounts':[{'RW':True,'Source':str(verify.ROOT/b)} for b in ('hawk','bull')]}
+    verify.verify_runtime(inv, revision)
+    inv['rogue-worker'] = {'Mounts':[{'RW':True,'Source':str(verify.ROOT/'hawk')}]}
+    with pytest.raises(AssertionError, match='DUPLICATE_WRITER'):
+        verify.verify_runtime(inv, revision)
