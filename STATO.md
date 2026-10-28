@@ -1,3 +1,11 @@
+## Preferenza aggiornata 28/10 — Brain: scelta B consigliata, NON eseguita
+
+L'utente propende per **B**: non tenere Brain originale e due clone operativi insieme (costi AI/sovraccarico). ChatGPT consiglia archiviazione completa/backup+restore del Brain Free V2 originale, ritiro del suo processo solo con autorizzazione e gestione corretta delle eventuali posizioni, e nuova prova **Brain Hawk + Brain Bull** con 1.000 USD PAPER *nuovi* per conto, identificativi/database/budget indipendenti, scanner e feed condivisi e shortlist compatte per AI; non conteggiare il reset virtuale come recupero delle perdite. **Hawk/Bull classici non si toccano.** Qui solo raccomandazione/progetto, nessun deploy/reset/stop/chiusura autorizzato o effettuato. Specifica aggiornata in `diario/2026-10-28_BRAIN-SCALP-DOPPIO-PORTAFOGLIO-PROPOSTA.md`.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## Nuova priorità utente — Brain Scalp DUE portafogli, classici INVARIATI (28 ottobre)
 
 Utente ordina di **non toccare Hawk e Bull classici**: vuole osservarli qualche ora fino a 1–2 giorni, perché hanno ripreso ad aprire. Richiede invece variante **Brain Scalp** con due portafogli indipendenti (Brain Hawk / Brain Bull) e pipeline scanner1m5m + AI H24 + esecutore/profit manager rapido. Da paragonare ai due classici. Documento completo: `diario/2026-10-28_BRAIN-SCALP-DOPPIO-PORTAFOGLIO-PROPOSTA.md`. Da chiarire: Brain originale $2000 deve restare come baseline intatta più due nuovi conti ($1000 ciascuno proposti) oppure va trasformato/sostituito con due portafogli da $1000? In attesa di risposta: **solo valutazione, NESSUN codice/deploy/reset/riavvio/posizioni modificati**. ChatGPT e Claude su componenti distinti dopo prenotazione. Nessun controllo VPS nuovo eseguito in questa sessione.
