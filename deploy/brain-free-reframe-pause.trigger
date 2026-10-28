@@ -1,0 +1,3 @@
+action=pause-new-exposures
+purpose=protect_experiment_data_for_ai_libero_scalp_reframe
+expected_sha=a914803a15c2d8a5fa01021f11c4def4caf82a76
