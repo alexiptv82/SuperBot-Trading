@@ -42,12 +42,12 @@ jobs:
             print('CLASSIC_PAPER_POSTFLIGHT_PASS',p,hb['version'],'run',st.get('run_no'), 'vault',st['capital']['vault']['balance'])
             PY
               COUNT=0
-              for C in $(docker ps --format '{{.Names}}'); do
+              for C in $(docker ps --format '{{.Names}}' | grep -vx 'superbot' || true); do
                 if docker inspect -f '{{range .Mounts}}{{if .RW}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P"; then COUNT=$((COUNT+1)); fi
               done
               if [ "$COUNT" -ne 1 ]; then
                 echo "MOUNT_DIAGNOSTIC_$P=$COUNT"
-                for C in $(docker ps --format '{{.Names}}'); do
+                for C in $(docker ps --format '{{.Names}}' | grep -vx 'superbot' || true); do
                   docker inspect -f '{{range .Mounts}}{{if .RW}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P" && echo "WRITE_MOUNT_CONTAINER=$C" || true
                 done
                 exit 1
