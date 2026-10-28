@@ -1,2 +1,3 @@
 read_only=true
 inspect_current_hawk_bull_margin_leverage_and_proposal=true
+run=2026-10-28T09:31Z
