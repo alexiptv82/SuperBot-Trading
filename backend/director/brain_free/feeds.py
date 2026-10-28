@@ -41,7 +41,7 @@ def quotes(fetcher=get,symbols=Config().symbols):
 def candles(symbol,frame,limit=120,fetcher=get):
     payload=fetcher('/api/v2/mix/market/candles?symbol='+symbol+'USDT&productType=USDT-FUTURES&granularity='+frame+'&limit='+str(limit))
     rows=sorted([[float(v) for v in x[:6]] for x in payload['data']],key=lambda b:b[0])
-    duration={'1m':60000,'15m':900000,'1H':3600000,'4H':14400000}[frame]
+    duration={'1m':60000,'5m':300000,'15m':900000,'1H':3600000,'4H':14400000}[frame]
     previous=None
     for b in rows:
         if len(b)!=6 or not all(math.isfinite(x) for x in b) or b[0]%duration or min(b[1:5])<=0 or b[5]<0 or b[2]<max(b[1],b[4]) or b[3]>min(b[1],b[4]) or previous is not None and b[0]<=previous:raise ValueError('bad_market_bar')
@@ -58,8 +58,19 @@ def summary(rows,now,duration):
         delta=[close[i]-close[i-1] for i in range(len(close)-14,len(close))]
         up=sum(max(0,d) for d in delta);down=sum(max(0,-d) for d in delta)
         rsi=50 if up==down==0 else 100 if down==0 else 100-100/(1+up/down)
+    recent=rows[-24:]
+    total_volume=sum(b[5] for b in recent)
+    # OHLCV typical-price proxy, not a real trade-tick VWAP.
+    vwap24=(sum(((b[2]+b[3]+b[4])/3)*b[5] for b in recent)/total_volume
+            if total_volume>0 else None)
     return {'status':'available','last_close_ms':rows[-1][0]+duration,'atr14':atr,'rsi14':rsi,
-            'change_pct':(close[-1]/close[0]-1)*100,'recent_closed':rows[-6:]}
+            'change_pct':(close[-1]/close[0]-1)*100,'recent_closed':rows[-6:],
+            'structure_24_closed_bars':{
+                'support_low':min(b[3] for b in recent),
+                'resistance_high':max(b[2] for b in recent),
+                'typical_price_vwap_approx':vwap24,
+                'bars':len(recent),
+                'volume_total':total_volume}}
 
 class Feeds:
     def __init__(self,cfg=Config(),fetcher=get,context_fetch=fetch_context):
@@ -73,7 +84,7 @@ class Feeds:
         limits=self.contract_cache;out={}
         def one(sym):
             row={'bars':{},'summary':{},'funding':[]}
-            for frame,duration in (('1m',60000),('15m',900000),('1H',3600000),('4H',14400000)):
+            for frame,duration in (('1m',60000),('5m',300000),('15m',900000),('1H',3600000),('4H',14400000)):
                 try:
                     key=(sym,frame);cached=self.bar_cache.get(key)
                     interval=15000 if frame=='1m' and sym in positions else 60000 if frame=='1m' else duration
