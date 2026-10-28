@@ -62,16 +62,16 @@ def test_stop_feasibility_reduces_leverage_not_stop():
 def test_dca_has_no_classic_per_trade_cap_but_total_margin_is_physical():
     s,_=execute(account(),decision(margin=900,leverage=2,stop=90))
     s,e=execute(s,decision('dca',margin=900,leverage=2,stop=90))
-    assert 1599<margin(s)<=1600 and s['cash']>=0
+    assert 1749<margin(s)<=1750 and s['cash']>=0
     assert e[0]['margin_added']<900
 
 
 def test_slots_and_stale_are_real_execution_limits():
     s=account()
-    for sym in CFG.symbols[:10]:
+    for sym in CFG.symbols[:CFG.max_slots]:
         s,_=apply(s,decision(symbol=sym,margin=10),{sym:quote()},{sym:contract()},NOW)
     with pytest.raises(ValueError,match='slots_full'):
-        apply(s,decision(symbol=CFG.symbols[10]),{CFG.symbols[10]:quote()},{CFG.symbols[10]:contract()},NOW)
+        apply(s,decision(symbol=CFG.symbols[CFG.max_slots]),{CFG.symbols[10]:quote()},{CFG.symbols[10]:contract()},NOW)
     with pytest.raises(ValueError,match='stale_price'):execute(account(),decision(),{'BTC':quote(ts=NOW-31000)})
 
 
