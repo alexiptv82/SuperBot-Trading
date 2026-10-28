@@ -1,0 +1,26 @@
+name: Classic DeepSeek 08-20 - PAPER offline regression
+on:
+  push:
+    branches: [work/classics-deepseek-0800-2000-20261028]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest numpy pandas ccxt==4.2.95
+      - name: Compile all modified modules
+        run: python -m compileall -q backend/desk/cli.py backend/desk/deepseek_collab.py
+      - name: Classical engine + new provider regression
+        run: PYTHONPATH=backend python -m pytest -q backend/tests/test_classics_deepseek_collab.py backend/tests/test_desk.py backend/tests/test_desk_macro.py backend/tests/test_desk_hours.py backend/tests/test_classic_rollback_vault.py backend/tests/test_capital_journal_v1.py
+      - name: Build Hawk/Bull image, without deploy
+        run: docker build -f Dockerfile.desk -t classics-deepseek-offline .
+      - name: Ensure Brain Free and other independent engines untouched
+        run: |
+          git fetch --depth=1 origin 73c8eba8d6b6e2636bdf594be6e61c0d64e4b0c4
+          test -z "$(git diff --name-only 73c8eba8d6b6e2636bdf594be6e61c0d64e4b0c4 HEAD -- backend/director/brain_free backend/director/brain_pilot backend/director/brain_classical)"

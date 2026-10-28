@@ -35,6 +35,7 @@ from desk import macro_calendar
 from desk import trading_hours
 from desk.learning import build_features, log_event
 from desk.schedule import schedule_state, summary as schedule_summary
+from desk import deepseek_collab as _ds
 from desk.notifier import (notify_open, notify_close, notify_dca, notify_split,
                            notify_halt, notify_daily_report, notify_live_alert, set_context)
 from desk.live_connector import LiveConnector
@@ -586,6 +587,15 @@ def write_heartbeat(state: Optional[dict] = None, force: bool = True, **extra) -
         HB["mode"] = compute_mode(paused, n_open)
     HB["portfolio"] = PORTFOLIO.name
     HB["daily_cap_usd"] = DAILY_CAP
+    HB["deepseek_classics"] = {
+        "enabled":_ds.configured(),
+        "active_window":_ds.configured() and _ds.in_window(int(now*1000)),
+        "window_rome":"08:00-20:00",
+        "budget_day_cap_usd":_ds.DAILY_CAP,
+        "budget":_ds.budget_state(state,int(now*1000)) if state else {},
+        "last_success_ms":(state or {}).get("deepseek_last_success_ms"),
+        "decision_source":(state or {}).get("last_decision_source"),
+    }
     HB["trading_enabled"] = is_trading_enabled()
     HB["exec_mode"] = "live" if LIVE._live else "paper"   # come gira DAVVERO il bot (l'app lo mostra)
     HB["capital_usd"] = _PORTFOLIO_CAPITAL                 # capitale assegnato
@@ -935,6 +945,11 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     acc = make_account(state)
     day = time.strftime("%Y-%m-%d", time.gmtime(now_ms / 1000))
     claude_ok = apply_claude_schedule(state, now_ms, day)
+    deepseek_active = _ds.configured() and _ds.in_window(now_ms)
+    if _ds.configured():
+        # Claude is SECOND OPINION only in the 08-20 DeepSeek window; outside it
+        # the PAPER classical fallback rules retain full ownership.
+        claude_ok = claude_ok and deepseek_active
 
     # ── LIVE: stato dell'exchange a inizio ciclo (decide se si possono aprire nuove posizioni) ──
     if LIVE._live:
@@ -1073,17 +1088,110 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     call_due = (now_ms - last_call) >= HOUR_MS or urgent_scalp
 
     decisions = []
+    deepseek_decision_received = False
     source = "rules"
     if halt:
         print(f"[HALT] {halt}")
     elif drain and not acc.positions:
-        pass   # in pausa e senza posizioni non c'e' nulla da gestire: niente chiamate a Claude
+        pass
+    elif _ds.configured():
+        # Never route DeepSeek through a second trade executor. Both providers
+        # submit proposals to the existing single-writer portfolio risk gates.
+        if deepseek_active:
+            if not os.getenv("DEEPSEEK_API_KEY"):
+                print("[DeepSeek] chiave assente, fallback alle regole", flush=True)
+            else:
+                prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons,
+                                      ctx_for_prompt, sym_stats,
+                                      macro_lines="\\n".join(macro_calendar.prompt_lines(macro)))
+                # Levels from strictly completed 1-hour candles: context only,
+                # and a different quantity from the AI's own confidence.
+                levels = [
+                    {"symbol":v.symbol,"rule_score":v.score,
+                     "long_score":v.long_score,"short_score":v.short_score,
+                     "support_prev_20h":v.facts.get("support_prev_20h"),
+                     "resistance_prev_20h":v.facts.get("resistance_prev_20h")}
+                    for v in readings_list
+                ]
+                prompt += "\\n\\nLIVELLI_CALCOLATI_SU_CIUSURE_ORARIE_PRECEDENTI: " + json.dumps(
+                    levels,ensure_ascii=False,separators=(",",":"))
+                prompt += ("\\nCosto stimato roundtrip taker/slippage:"
+                           " ~0.16% del nozionale prima di funding/spread."
+                           " Confidence AI e rule_score sono distinti.")
+                # Reserve + persist before request: even a crash cannot reset API spend.
+                if _ds.reserve(state, now_ms, lambda st: save_state(st, STATE_FILE)):
+                    ds_usage = None
+                    try:
+                        ds_text, ds_usage = _ds.call(os.getenv("DEEPSEEK_API_KEY",""), prompt)
+                        ds_parsed = parse_decisions(ds_text)
+                        if ds_parsed is None:
+                            raise ValueError("invalid_ai_proposal")
+                        decisions = ds_parsed["decisions"]
+                        deepseek_decision_received = True
+                        source = "deepseek"
+                        state["deepseek_last_success_ms"] = now_ms
+                        cost = _ds.settle(state, now_ms, ds_usage,
+                                          lambda st: save_state(st, STATE_FILE), success=True)
+                        log_event(DATA_DIR, {"ev":"deepseek_call","ts":now_ms,
+                            "portfolio":PORTFOLIO.name,"run_no":state.get("run_no",1),
+                            "ok":True,"decisions":len(decisions),
+                            "input_tokens":ds_usage.get("prompt_tokens"),
+                            "output_tokens":ds_usage.get("completion_tokens"),
+                            "cost_est_usd":round(cost,6),
+                            "net_trade_objective":True})
+                        print(f"[DeepSeek] {len(decisions)} proposte, costo stimato {cost:.4f}$",flush=True)
+                        if (_ds.review_requested(decisions,tier_entry_score)
+                                and claude_ok and call_due and can_call(state,day)):
+                            # Claude reviews ONLY the proposed risk-bearing entries;
+                            # no new orders can originate from Claude's review.
+                            try:
+                                review_prompt = prompt + (
+                                    "\\n\\nSECONDO PARERE SU PROPOSTE DEEPSEEK (non aprire trade nuovi):\\n"
+                                    + json.dumps([d for d in decisions if
+                                        str(d.get("action","")).startswith("open_")],
+                                        ensure_ascii=False)[:5000]
+                                    + "\\nRestituisci decisioni JSON SOLO sui simboli proposti."
+                                    + " Se setup contrario o non sostenibile: action=skip."
+                                    + " Se approvi: stessa action open_long/open_short."
+                                    + " Se non valutabile: decisions vuota.")
+                                max_tok,timeout_s=claude_limits(LIVE._live)
+                                ct,cu=call_claude(SYSTEM,review_prompt,max_tokens=max_tok,timeout=timeout_s)
+                                cc=record_spend(state,day,cu)
+                                state["last_call_ms"]=now_ms
+                                cv=parse_decisions(ct)
+                                log_claude_call(now_ms,state,ct,cu,cc,cv,len(review_prompt),
+                                                len(acc.positions),urgent_scalp,max_tok)
+                                if cv:
+                                    decisions,vetoes=_ds.apply_claude_review(decisions,cv["decisions"])
+                                    for veto in vetoes:
+                                        log_event(DATA_DIR,{"ev":"candidate","ts":now_ms,
+                                            "portfolio":PORTFOLIO.name,"run_no":state.get("run_no",1),
+                                            "status":"claude_second_opinion_veto",
+                                            "symbol":veto,"source":"deepseek"})
+                                    print(f"[Claude REVIEW] parere su {len(cv['decisions'])} simboli, "
+                                          f"veto={len(vetoes)}",flush=True)
+                            except Exception as exc:
+                                log_claude_error(now_ms,state,exc,len(acc.positions),urgent_scalp)
+                                print(f"[WARN] secondo parere Claude non disponibile: "
+                                      f"{type(exc).__name__}",flush=True)
+                    except Exception as exc:
+                        _ds.settle(state,now_ms,ds_usage,
+                                   lambda st: save_state(st,STATE_FILE),success=False)
+                        log_event(DATA_DIR,{"ev":"deepseek_call","ts":now_ms,
+                            "portfolio":PORTFOLIO.name,"run_no":state.get("run_no",1),
+                            "ok":False,"fail_reason":type(exc).__name__,
+                            "fallback":"rules"})
+                        print(f"[WARN] DeepSeek non disponibile ({type(exc).__name__}): "
+                              "regole automatiche",flush=True)
+                else:
+                    print("[DeepSeek] budget giornaliero esaurito: regole automatiche",flush=True)
+        # Outside 08-20: deterministic rules; NO independent Claude entry calls.
     elif call_due and not claude_ok:
         print("[FINESTRA] fuori dal calendario: Claude non viene consultato, decidono le regole", flush=True)
     elif call_due and can_call(state, day):
         try:
             prompt = build_prompt(snap, readings_list, pos_info, headlines, lessons, ctx_for_prompt, sym_stats,
-                                  macro_lines="\n".join(macro_calendar.prompt_lines(macro)))
+                                  macro_lines="\\n".join(macro_calendar.prompt_lines(macro)))
             max_tok, timeout_s = claude_limits(LIVE._live)
             text, usage = call_claude(SYSTEM, prompt, max_tokens=max_tok, timeout=timeout_s)
             cost = record_spend(state, day, usage)
@@ -1102,9 +1210,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             print(f"[WARN] Claude non disponibile: {e}")
             log_claude_error(now_ms, state, e, len(acc.positions), urgent_scalp)
 
-    if not decisions:
+    if not decisions and not deepseek_decision_received:
         decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
         source = "rules"
+    state["last_decision_source"] = source
 
     why = drain_reason(now_ms)   # "pausa" | "orari" | "" ; la pausa premuta a ciclo in corso vale da subito
     if why:
@@ -1849,6 +1958,8 @@ def iteration(state: dict, drain: bool = False) -> bool:
 def cycle_interval_s(state: dict, paused: bool) -> int:
     """Pausa con posizioni aperte (svuotamento) o scalp aperto: si guarda piu' spesso."""
     acc = make_account(state)
+    if _ds.configured() and _ds.in_window(int(time.time()*1000)) and not paused:
+        return _ds.AI_INTERVAL_S
     if any(p.trade_type == "scalp" for p in acc.positions.values()):
         return CYCLE_FAST_S
     if paused and acc.positions:
@@ -1907,6 +2018,13 @@ def loop_step(state: dict, ctl: dict) -> bool:
             ctl["next_cycle_ms"] = 0   # entrando in una fascia si parte subito, senza aspettare il prossimo ciclo
         ctl["prev_off_hours"] = off_hours
     drain = paused or off_hours
+    ds_window = _ds.configured() and _ds.in_window(int(time.time()*1000))
+    if ds_window != ctl.get("prev_deepseek_window"):
+        if ctl.get("prev_deepseek_window") is not None:
+            print("[DeepSeek] finestra 08:00-20:00 "
+                  + ("iniziata" if ds_window else "terminata"),flush=True)
+            ctl["next_cycle_ms"] = 0
+        ctl["prev_deepseek_window"] = ds_window
     try:   # all'inizio di una finestra di Claude il ciclo parte subito (non si aspetta il prossimo giro)
         w = schedule_state(DATA_DIR, int(time.time() * 1000)).get("window")
         wid = w["id"] if w else None
