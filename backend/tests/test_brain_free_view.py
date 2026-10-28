@@ -9,7 +9,7 @@ def database(root,**updates):
     state={'mode':'paper','account_id':'brain-free-paper','cash':2000,'positions':{},
            'verified_start_ms':NOW-1000,'heartbeat_ms':NOW,'config_hash':'synthetic',**updates}
     with sqlite3.connect(root/'brain.sqlite3') as db:
-        db.executescript('CREATE TABLE state(id INTEGER,body TEXT); CREATE TABLE requests(ts INTEGER,body TEXT); CREATE TABLE events(seq INTEGER,kind TEXT,body TEXT);')
+        db.executescript('CREATE TABLE state(id INTEGER,body TEXT); CREATE TABLE requests(ts INTEGER,body TEXT); CREATE TABLE events(seq INTEGER,kind TEXT,ts INTEGER,body TEXT);')
         db.execute('INSERT INTO state VALUES(1,?)',(json.dumps(state),))
     return state
 
