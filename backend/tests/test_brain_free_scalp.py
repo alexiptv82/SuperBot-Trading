@@ -94,3 +94,16 @@ def test_reframe_is_not_a_hidden_minimum_trade_or_profit_quota():
     assert "There is never a quota of trades" in SYSTEM
     assert "PREFERENCE ONLY" in SYSTEM
     assert CFG.analysis_ms==300000 and CFG.management_ms==120000
+
+
+def test_source_labelled_research_is_nonbinding_and_available_to_ai():
+    from pathlib import Path
+    from director.brain_free.memory import seeds
+    library=Path(__file__).parents[1]/'director'/'brain_free'/'seeds'
+    notes=seeds(library)
+    research=[item for item in notes if item.get('profile')=='research-hypotheses']
+    assert len(research)==1
+    assert research[0]['provenance']=='user_supplied_unverified_nonbinding_not_live_trades'
+    assert research[0]['data']['evidence_grade'].startswith('Research notes')
+    assert len(research[0]['data']['candidate_models'])>=3
+    assert 'Unverified published backtests' in SYSTEM
