@@ -1,4 +1,4 @@
-action=apply
-approved=yes
-sha=7c913bbcfbf2d255edf72e2d87ef42fe60aa4c9a
-reason=retain-dedicated-brain-free-readonly-mount-and-verify-v2-dashboard
+action=none
+approved=no
+completed_sha=7c913bbcfbf2d255edf72e2d87ef42fe60aa4c9a
+completed_run=40690643826
