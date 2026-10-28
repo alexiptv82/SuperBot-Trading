@@ -1,3 +1,20 @@
+# Audit tecnico classici — 28 ottobre 2026, checkpoint successivo
+
+## Fase conclusa: analisi della prima run e della scarsa attività attuale
+
+- Richiesta utente: capire cosa distingue la prima run positiva e recuperare il comportamento operativo; Breakout sospeso come priorità. Eseguita analisi, nessuna modifica ai parametri o al trading.
+- Ricalcolati 357 gruppi posizione dal dataset forense 27/10: Hawk positiva è #2 (+1090,6136 PAPER,76 posizioni), Bull #1 (+770,7485,17 posizioni); Hawk #1 è snapshot vuoto. La V2 era già nel codice l'11/10. Ingressi golden attribuiti soprattutto a7ced3a6/9fa667f, nessuno a5818aee; attribuzioni iniziali inferite dai deploy.
+- Job readonly esistenti rieseguiti senza push su rule-pool: run40655263204 attempt2/job122787111578 e run40634091693 attempt2/job122788147538 SUCCESS. Alle12:24 Roma: entrambi73e9242 healthy/PAPER,1 posizione ciascuno,nessuna chiusura della run,macro senza veto,nessuna pausa/orario/HALT nei log attuali.
+- Alle12:27 Roma snapshot pubblico26/26 valide,0errori,0segnali sopra soglia tier; NEAR63/TIA62 contro70. Fotografia singola,non replay identico al ciclo.
+- Differenza verificata:357/357 ingressi storici source=rules; oggi DeepSeek sostituisce il percorso regole nella sua fascia quando la risposta è valida, anche vuota/hold/skip. Prova locale sul codice73e9242: stesso segnale sintetico85 apre con sole regole o AI indisponibile, non con AI valida vuota/hold/skip. Non quantificato il profitto o il numero di occasioni realmente escluse oggi.
+- PR22dd04cc6 rimane non distribuita. Minimo20x incompatibile con le due aperture odierne identiche(ETH10x/XAG15x); non equivale a tornare alla prima run. Non applicare insieme variazioni sizing e selettore senza separarne gli effetti.
+- Rapporto tecnico completo consegnato all'utente con fonti,riconciliazioni e piano: confronto su stessi snapshot tra generatore storico,generatore corretto e selettoreAI; candidati tecnici sempre osservabili e opportunitàAI additive,senza aggirare veto/limiti. Architettura proposta,non implementata.
+- Nessuna causa unica dimostrata del crollo storico. Prime perdite precedono FixA/P1/DeepSeek; run tarde talvolta più attive ma lordo medio molto inferiore. Non abbassate soglie e non reintrodotti vecchi difetti contabili per replicare i profitti.
+- Prossima fase: eventuale preparazione di confronto osservazionale/pipeline candidati sul ramo di lavoro,dopo revisione del rapporto. Merge/deploy richiedono sempre OK esplicito; Brain intatto, nessun reset o doppia istanza.
+
+---
+## Checkpoint precedente: audit PR22
+
 # Checkpoint ChatGPT Work — 28 ottobre 2026
 
 ## PR #22 — audit offline concluso, nessun rilascio autorizzato
