@@ -1,3 +1,12 @@
+# IN_CORSO — rilascio classici autorizzato il 28 ottobre 2026
+
+ChatGPT Work prenota backend/desk classici, test e procedura di rilascio sul branch work/classics-sizing-direction-20261028, base dd04cc6. L'utente ha autorizzato esplicitamente: «adesso sistema, riavvia, falli partire bene». Sono autorizzati implementazione, test, integrazione e riavvio/deploy dei SOLI Hawk/Bull PAPER, subordinati a backup verificato e controlli di continuità. Nessuna autorizzazione Brain o reset.
+
+Direzione: candidati tecnici continui come nelle prime run, AI con opportunità additive e veto esplicito per simbolo; nessun silenzio AI che blocchi globalmente la ricerca. Conservati minimi margine Hawk100/Bull150 e massimi250/350, slot10/3. Il minimo20x non è più obbligatorio: leva scelta in funzione di stop/rischio entro tier, senza aumentare proposte troppo piccole. Gestione scalp in ore, riferimento24h e prolungamenti motivati limitati; tutela del netto e liberazione slot, senza imporre leva35–40x o quota di trade. Le cifre di profitto citate dall'utente sono esempi, non target garantiti.
+
+Prima si completano codice/test e diff; poi preflight, backup/restore, deploy con SHA fissato e postflight. Baseline ultima misurata73e9242, PR22 ancora non distribuita al momento dell'autorizzazione. Brain e archivi intatti.
+
+---
 # Audit tecnico classici — 28 ottobre 2026, checkpoint successivo
 
 ## Fase conclusa: analisi della prima run e della scarsa attività attuale
