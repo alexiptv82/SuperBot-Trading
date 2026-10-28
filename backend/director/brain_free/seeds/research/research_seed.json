@@ -1,0 +1,44 @@
+{
+  "title": "Optional hypotheses for independent Brain AI Libero V2 PAPER study",
+  "provenance": "User-provided Report_Scalping_Crypto_Futures_GitHub_2026.pdf (11 pages) and Report_Integrativo_Strategie_Intraday_Crypto_Futures_2026.pdf (12 pages), dated 2026-10-28",
+  "evidence_grade": "Research notes and author-stated backtests, NOT independent verified profits; no external backtest rerun; never mandatory rules",
+  "methodological_warning": "No preset win rate, no copy-paste thresholds, no cross-exchange parameter transfer, no fabricated support/resistance or order-flow. Prefer experiments with net fees, slippage, funding, OOS and rejection logs.",
+  "candidate_models": [
+    {
+      "id": "M1",
+      "name": "Selective 5m price momentum",
+      "hypothesis": "Closed 5m impulse with confirmation from 15m/1h structure, taker flow/volume if available; consider rejection/breakout levels, and net reward versus friction.",
+      "evidence": "SingleB FixedRR MOM-only historical backtest author reported 14,008 trades, 55.6% winners, +$8,814; different trailing variant had losing paper outcome. No independent forward proof of fixed RR variant.",
+      "test": "Compare fixed-RR and ATR/structure exits net of Bitget fees; don't force any R:R or number of trades."
+    },
+    {
+      "id": "M2",
+      "name": "Selective mean reversion near support/resistance or VWAP",
+      "hypothesis": "In a demonstrated range, identify completed-bar price rejection from a defensible support/resistance area or VWAP deviation; avoid blind countertrend entry.",
+      "evidence": "Research hypothesis, not individually validated strategy; maker fill and adverse selection can erase profits.",
+      "test": "Observe realistic taker/maker fill probability, trend/regime invalidation and spread."
+    },
+    {
+      "id": "M3",
+      "name": "Price x open interest x aggressive volume 5m-15m",
+      "hypothesis": "Assess whether move is supported by fresh positioning and taker flow or is a short-covering/long-liquidation squeeze. A decline in OI is not intrinsically a side signal.",
+      "evidence": "Methodology and code from public research; some 15m funding MR OOS gains were very small and not independently audited.",
+      "test": "Verify timestamp availability, native Bitget definition, separate contribution to net PnL versus price-only baseline."
+    },
+    {
+      "id": "L1",
+      "name": "BTC-to-liquid-alt leader/follower",
+      "hypothesis": "BTC 5m/15m impulse may precede ETH/SOL under stable recent correlation; trade only if causal delay is empirically present.",
+      "evidence": "Published lead-lag 1m 31 OOS trades with +6.78% claim; incomplete signal code, insufficient sample and no independent verification.",
+      "test": "Out-of-sample lead/lag effect by asset, cost and volatility regime."
+    }
+  ],
+  "negative_evidence": [
+    "Momentum 1m models can appear profitable before trading costs yet fail when commissions and leverage are included.",
+    "High win rate alone does not imply net profit; trailing can underperform fixed exits on a particular historical sample.",
+    "Simple OHLCV backtests may assume ideal stop/target order inside the same candle and ignore late data."
+  ],
+  "operator_example": {
+    "BTCUSDT_short_2026-08-12": "User-provided illustrative personal trade: short 45x isolated, 64,200 -> 63,398.1, open to close about 193min, reported +253.77 USDT and 52.64% ROI. Do NOT copy direction, leverage, margin, target or expected gain. It illustrates desired intraday discretion and profit capture, not predictive performance."
+  }
+}
