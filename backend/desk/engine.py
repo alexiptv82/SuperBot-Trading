@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import os
+import math
 from typing import Optional
 
 # ---- asset tier (leva massima)
@@ -232,10 +233,19 @@ class PaperAccount:
             return None, "stop loss obbligatorio"
         if (side == 1 and sl >= price) or (side == -1 and sl <= price):
             return None, "stop dal lato sbagliato"
+        # Refuse invalid proposals before min/max can hide NaN or infinity.
+        try:
+            values = [margin, leverage, price, sl]
+            if tp is not None:
+                values.append(tp)
+            if not all(math.isfinite(float(v)) for v in values):
+                return None, "parametri apertura non finiti"
+        except (TypeError, ValueError, OverflowError):
+            return None, "parametri apertura non validi"
         if tp is not None and ((side == 1 and tp <= price) or (side == -1 and tp >= price)):
             tp = None
-        # leva: rispetta il tier dell'asset
-        tier_max = max_leverage_for(symbol)
+        # Both configured ceiling and asset tier are physical limits.
+        tier_max = min(L.max_leverage, max_leverage_for(symbol))
         lev = int(max(1, min(int(leverage), tier_max)))
         if lev < L.min_initial_leverage:
             return None, (f"leva eseguibile {lev}x sotto il minimo per nuova posizione "
@@ -295,8 +305,9 @@ class PaperAccount:
         Il margine del DCA è proporzionale a quello già investito (50% primo, 30% secondo, 20% terzo).
         """
         L = self.limits
-        if self._capital_reference is not None and self.halted(prices):
-            return None, "stop giornaliero raggiunto: DCA bloccato"
+        halt = self.halted(prices)
+        if halt:
+            return None, halt + ": DCA bloccato"
         pos = self.positions.get(symbol)
         if pos is None:
             return None, "nessuna posizione"
@@ -322,6 +333,10 @@ class PaperAccount:
         dca_mar = round(pos.margin * fracs[pos.dca_count], 2)
         if dca_mar < L.min_margin:
             dca_mar = L.min_margin
+        # Added exposure must also fit the portfolio's aggregate margin cap.
+        dca_mar = min(dca_mar, L.max_margin_total - self.margin_in_use())
+        if dca_mar < L.min_margin:
+            return None, "tetto margine totale: DCA bloccato"
         # verifica tetto DCA totale
         if pos.total_margin + dca_mar > L.max_dca_total:
             dca_mar = L.max_dca_total - pos.total_margin
@@ -387,6 +402,12 @@ class PaperAccount:
         if not ps:
             return None
         L = self.limits
+        marks = dict(getattr(self, "_capital_latest_prices", {}))
+        marks[pos.symbol] = float(ps["trigger"])
+        halt = self.halted(marks)
+        if halt:
+            self._cancel_split(pos, halt + ": seconda gamba bloccata", now_ms)
+            return None
         pos.pending_split = None     # consumata in ogni caso: o eseguita o annullata
         room = min(L.max_margin_trade - pos.total_margin, L.max_margin_total - self.margin_in_use(),
                    self.cash * 0.95)

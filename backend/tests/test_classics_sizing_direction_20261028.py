@@ -193,3 +193,153 @@ def test_no_unsafe_new_opening_when_stop_too_wide_at_20x():
                        trade_type="scalp",source="deepseek")
     assert pos is None and "liquidazione" in reason
     assert a.cash==1000 and not a.positions
+
+
+@pytest.mark.parametrize('name,minimum', [('hawk', 100), ('bull', 150)])
+@pytest.mark.parametrize('side', [1, -1])
+def test_legacy_management_dca_partial_and_stop_survive_new_entry_floors(name, minimum, side):
+    from desk.engine import Limits
+    old = PaperAccount(Limits())
+    p, why = old.open('BTC', side, 75, 10, 100, 100-side*3, 100+side*6,
+                      T, {}, trade_type='medio')
+    assert p, why
+    # Simulate a JSON state written before the new Limits fields existed.
+    import json
+    saved = old.to_dict()
+    saved['limits'].pop('min_initial_margin')
+    saved['limits'].pop('min_initial_leverage')
+    saved = json.loads(json.dumps(saved))
+    cfg = cli._make_hawk_config() if name == 'hawk' else cli._make_bull_config()
+    from unittest.mock import patch
+    with patch.object(cli, 'PORTFOLIO', cfg):
+        a = cli.make_account({'main': saved})
+    p = a.positions['BTC']
+    result, why = a.add_dca('BTC', 100-side*5, None, T+1000, {'BTC': 100-side})
+    assert result is p, why
+    assert p.leverage == 10 and p.sl == 100-side*3
+    assert p.dca_levels[-1]['margin'] == 30 < minimum
+    rec = a.partial_close('BTC', 100, T+2000, .5)
+    assert rec and p.total_margin < minimum
+    # The remaining historical position must still close on a protective stop.
+    bar = (T//900000+1)*900000
+    rec = a.on_bar('BTC', bar, 100, 104, 96, 100, 900000)
+    assert rec and rec['why'] == 'stop loss'
+    assert not a.positions
+    assert a.cash == pytest.approx(1000 + sum(r['net'] for r in a.closed), abs=.001)
+
+
+@pytest.mark.parametrize('side', [1, -1])
+def test_legacy_pending_split_below_new_floor_can_still_fill(side):
+    from desk.engine import Limits
+    a = PaperAccount(Limits())
+    p, why = a.open('BTC', side, 100, 10, 100, 100-side*2, 100+side*4,
+                    T, {}, split={'retrace_pct': .005, 'first_frac': .5})
+    assert p, why
+    a = PaperAccount.from_dict(a.to_dict())
+    a.limits = cli._make_bull_config().limits
+    p = a.positions['BTC']
+    ev = a._fill_split(p, T+1000)
+    assert ev and p.total_margin == 100 and p.leverage == 10
+    assert p.pending_split is None
+
+
+@pytest.mark.parametrize('field', ['margin', 'leverage', 'price', 'sl', 'tp'])
+@pytest.mark.parametrize('bad', [float('nan'), float('inf'), -float('inf')])
+def test_invalid_numeric_proposals_cannot_corrupt_account(field, bad):
+    a = start(cli._make_hawk_config())
+    before = a.to_dict()
+    args = dict(symbol='BTC', side=1, margin=100, leverage=20, price=100,
+                sl=99, tp=102, now_ms=T, prices={})
+    args[field] = bad
+    p, why = a.open(**args)
+    assert p is None and why
+    assert a.to_dict() == before
+
+
+def test_configured_leverage_ceiling_cannot_be_bypassed_by_asset_tier():
+    from dataclasses import replace
+    limits = replace(cli._make_hawk_config().limits, max_leverage=15)
+    a = PaperAccount(limits)
+    p, why = open_position(a, 'BTC', 100, 45)
+    assert p is None and 'leva eseguibile 15x' in why
+    assert a.cash == 1000
+
+
+def test_dca_cannot_exceed_portfolio_margin_even_when_cash_has_grown():
+    from dataclasses import replace
+    a = PaperAccount(replace(cli._make_hawk_config().limits, max_margin_total=250))
+    a.cash = 1500
+    p, why = a.open('BTC', 1, 250, 20, 100, 98, 104, T, {}, trade_type='medio')
+    assert p, why
+    before = a.to_dict()
+    result, why = a.add_dca('BTC', 98, None, T+1, {'BTC': 99})
+    assert result is None and 'tetto margine totale' in why
+    assert a.to_dict() == before
+
+
+@pytest.mark.parametrize('method', ['dca', 'split'])
+def test_daily_stop_blocks_added_risk_but_never_blocks_exits(method):
+    a = start(cli._make_hawk_config())
+    p, why = a.open('BTC', 1, 200, 20, 100, 98, 104, T, {},
+                    trade_type='medio', split={'retrace_pct': .005} if method=='split' else None)
+    assert p, why
+    a.cash -= 130  # realized loss elsewhere, same trading day
+    before_margin = a.margin_in_use()
+    if method == 'dca':
+        result, why = a.add_dca('BTC', 98, None, T+1, {'BTC': 99.5})
+        assert result is None and 'stop giornaliero' in why
+    else:
+        assert a._fill_split(p, T+1) is None
+        assert p.pending_split is None
+        assert 'stop giornaliero' in a.events[-1]['reason']
+    assert a.margin_in_use() == before_margin
+    assert a.close('BTC', 99.5, T+2)
+
+
+def test_parser_discards_overflowing_leverage_instead_of_crashing_cycle():
+    answer = brain.parse_decisions('{"decisions":[{"symbol":"BTC","action":"open_long",'
+                                    '"leverage":1e999,"margin_usd":100}]}')
+    assert answer == {'decisions': [], 'note': ''}
+
+
+@pytest.mark.parametrize('name,margin,leverage', [
+    ('hawk', 99, 20), ('hawk', 150, 19), ('bull', 149, 20), ('bull', 200, 10),
+])
+def test_cycle_logs_small_ai_proposal_without_upscaling_or_fallback(name, margin, leverage, monkeypatch):
+    from test_desk import _sandbox, _decisions_stub, _dec, NOW
+    from desk import learning
+    cfg = cli._make_hawk_config() if name=='hawk' else cli._make_bull_config()
+    monkeypatch.setattr(cli, 'PORTFOLIO', cfg)
+    monkeypatch.setattr(cli.time, 'sleep', lambda _: None)
+    monkeypatch.setenv('DESK_DEEPSEEK_CLASSICS', '0')
+    proposal = _dec('BTC', 'open_long', margin_usd=margin, leverage=leverage)
+    with _sandbox(_decisions_stub(proposal)) as (directory, calls):
+        state = {'run_no': 7, 'memo': 'keep'}
+        cli.run_cycle(state, NOW)
+        account = cli.make_account(state)
+        assert account.cash == 1000 and not account.positions
+        assert state['memo'] == 'keep' and state['run_no'] == 7
+        events = learning.read_events(directory, 'candidate')
+        assert len(events) == 1 and events[0]['status'] == 'sizing_sotto_minimo'
+        assert events[0]['features']['dec_margin'] == margin
+        assert events[0]['features']['dec_lev'] == leverage
+        assert not learning.read_events(directory, 'open')
+        assert len(calls) == 1
+
+
+@pytest.mark.parametrize('name,minimum', [('hawk',100),('bull',150)])
+def test_cash_reduction_below_floor_is_atomic(name, minimum):
+    a = start(cli._make_hawk_config() if name=='hawk' else cli._make_bull_config())
+    # Lower cash but keep equity through an existing legacy position; this
+    # specifically exercises sizing rather than the equity kill/daily stop.
+    from desk.engine import Limits
+    old = PaperAccount(Limits())
+    p, why = old.open('ETH', 1, 400, 10, 100, 98, 104, T, {})
+    assert p, why
+    a.positions = old.positions
+    a.cash = minimum
+    a.day_start_equity = 400 + minimum
+    before = a.to_dict()
+    result, why = open_position(a, 'BTC', minimum, 20)
+    assert result is None and 'sotto il minimo' in why
+    assert a.to_dict() == before

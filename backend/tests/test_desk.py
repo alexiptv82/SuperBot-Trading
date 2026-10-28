@@ -374,7 +374,7 @@ def _patch_ctx(monkeypatch_dict):
     return original, _mc
 
 
-def _claude_stub(action="open_long", symbol="BTC", conf=85, lev=10, margin=150, sl=0.01):
+def _claude_stub(action="open_long", symbol="BTC", conf=85, lev=20, margin=150, sl=0.01):
     """Ritorna una funzione call_claude che risponde con una decisione fissa."""
     def call(system, user, max_tokens=1100, timeout=60):
         body = {"decisions": [{"symbol": symbol, "action": action, "confidence": conf,
@@ -421,7 +421,7 @@ def test_full_cycle_v2_opens_position_and_saves_state():
             acc = cli.make_account(state)
             assert "BTC" in acc.positions, f"BTC dovrebbe essere aperto, posizioni: {list(acc.positions)}"
             pos = acc.positions["BTC"]
-            pg = _c.PORTFOLIO   # i minimi dipendono dal portafoglio (Hawk 50$/10x, Bull 150$/10x)
+            pg = _c.PORTFOLIO   # i minimi dipendono dal portafoglio (Hawk 100$/20x, Bull 150$/20x)
             assert pos.leverage >= pg.guardrail_min_lev, f"lev sotto il minimo del portafoglio: {pos.leverage}"
             assert pg.guardrail_min_margin <= pos.total_margin <= pg.limits.max_margin_trade, \
                 f"margine fuori dai limiti del portafoglio {pg.name}: {pos.total_margin}"
@@ -482,7 +482,7 @@ def test_cycle_v2_dca_execution():
         if call_n[0] == 1:
             # primo ciclo: apre BTC
             body = {"decisions": [{"symbol": "BTC", "action": "open_long", "confidence": 85,
-                                   "leverage": 8, "margin_usd": 100, "stop_loss_pct": 0.015,
+                                   "leverage": 20, "margin_usd": 150, "stop_loss_pct": 0.015,
                                    "take_profit_pct": 0.03, "reason": "test", "trade_type": "medio",
                                    "dca_sl_pct": 0, "dca_tp_pct": 0}], "note": ""}
         else:
@@ -538,6 +538,18 @@ def test_render_report_v2():
         assert "Equity" in txt or "equity" in txt.lower()
 
 
+def _legacy_open(account, *args, **kwargs):
+    """Seed a previously opened position; the runtime must still manage it."""
+    current = account.limits
+    try:
+        account.limits = Limits()
+        position, reason = account.open(*args, **kwargs)
+        assert position is not None, reason
+        return position, reason
+    finally:
+        account.limits = current
+
+
 def test_adaptive_sleep_shorter_with_open_scalp():
     """Con uno scalp aperto il sleep deve essere 900s, altrimenti 1800s."""
     with tempfile.TemporaryDirectory() as d:
@@ -549,7 +561,7 @@ def test_adaptive_sleep_shorter_with_open_scalp():
         sleep_no_pos = 900 if any(p.trade_type == "scalp" for p in acc.positions.values()) else 1800
         assert sleep_no_pos == 1800
         # con scalp aperto
-        acc.open("BTC", 1, 100, 10, 100.0, 95.0, None, 0, {}, trade_type="scalp")
+        _legacy_open(acc, "BTC", 1, 100, 10, 100.0, 95.0, None, 0, {}, trade_type="scalp")
         sleep_with_scalp = 900 if any(p.trade_type == "scalp" for p in acc.positions.values()) else 1800
         assert sleep_with_scalp == 900
 
@@ -612,7 +624,7 @@ def _decisions_stub(*decs):
 
 
 def _dec(symbol, action, **kw):
-    base = {"symbol": symbol, "action": action, "confidence": 85, "leverage": 10, "margin_usd": 100,
+    base = {"symbol": symbol, "action": action, "confidence": 85, "leverage": 20, "margin_usd": 150,
             "stop_loss_pct": 0.015, "take_profit_pct": 0.03, "reason": "test", "trade_type": "medio",
             "dca_sl_pct": 0.012, "dca_tp_pct": 0.025}
     base.update(kw)
@@ -716,7 +728,7 @@ def test_budget_reset_flag_touches_only_the_budget():
     with _sandbox() as (d, calls):
         state = {}
         acc = cli.make_account(state)
-        acc.open("BTC", 1, 100, 10, 100.0, 95.0, None, NOW, {})
+        _legacy_open(acc, "BTC", 1, 100, 10, 100.0, 95.0, None, NOW, {})
         cli.save_account(acc, state)
         state["budget"] = {"day": "2026-10-12", "spent": 0.66, "calls": 9}
         flag = os.path.join(d, "budget_reset.flag")
@@ -732,7 +744,7 @@ def test_budget_reset_flag_touches_only_the_budget():
 def _state_with_position(price_entry=100.0):
     state = {}
     acc = cli.make_account(state)
-    pos, msg = acc.open("BTC", 1, 100, 10, price_entry, price_entry * 0.95, None, NOW, {})
+    pos, msg = _legacy_open(acc, "BTC", 1, 100, 10, price_entry, price_entry * 0.95, None, NOW, {})
     assert pos, msg
     cli.save_account(acc, state)
     return state
@@ -770,7 +782,7 @@ def _state_with_two_positions():
     state = {}
     acc = cli.make_account(state)
     for sym in ("BTC", "ETH"):
-        pos, msg = acc.open(sym, 1, 100, 10, 100.0, 95.0, None, NOW, {})
+        pos, msg = _legacy_open(acc, sym, 1, 100, 10, 100.0, 95.0, None, NOW, {})
         assert pos, msg
     cli.save_account(acc, state)
     return state
@@ -877,7 +889,7 @@ def _closed_trade_state(d, n=3):
     acc = cli.make_account(state)
     px = 100.0
     for i in range(n):
-        acc.open("BTC", 1, 100, 10, px, px * 0.95, None, NOW + i * 1000, {})
+        _legacy_open(acc, "BTC", 1, 100, 10, px, px * 0.95, None, NOW + i * 1000, {})
         rec = acc.close("BTC", px * (1.02 if i % 2 == 0 else 0.99), NOW + i * 1000 + 500, "take profit")
         cli.append_trade_history(d, rec)
     cli.save_account(acc, state)
@@ -982,7 +994,7 @@ def test_history_rows_carry_run_and_starting_capital_and_engine_record_is_untouc
     with _sandbox() as (d, calls):
         state = {"run_no": 3}
         acc = cli.make_account(state)
-        acc.open("BTC", 1, 100, 10, 100.0, 95.0, None, NOW, {})
+        _legacy_open(acc, "BTC", 1, 100, 10, 100.0, 95.0, None, NOW, {})
         rec = acc.close("BTC", 102.0, NOW + 500, "take profit")
         keys_before = set(rec)
         cli.record_close(state, rec)
@@ -1003,7 +1015,7 @@ def test_brain_keeps_reading_old_runs_after_a_reset_and_new_trades_join_them():
         stats = cli.load_symbol_stats(d)
         assert stats["BTC"]["wins"] + stats["BTC"]["losses"] == 3
         acc = cli.make_account(state)
-        acc.open("BTC", 1, 100, 10, 100.0, 95.0, None, NOW + 10_000, {})
+        _legacy_open(acc, "BTC", 1, 100, 10, 100.0, 95.0, None, NOW + 10_000, {})
         cli.record_close(state, acc.close("BTC", 103.0, NOW + 10_500, "take profit"))
         stats = cli.load_symbol_stats(d)
         assert stats["BTC"]["wins"] + stats["BTC"]["losses"] == 4
@@ -1303,7 +1315,7 @@ def test_parse_decisions_reads_split_retrace_in_percent():
 
 
 def _split_stub(**kw):
-    return _decisions_stub(_dec("BTC", "open_long_split", margin_usd=200, leverage=15,
+    return _decisions_stub(_dec("BTC", "open_long_split", margin_usd=200, leverage=20,
                                 split_retrace_pct=0.5, **kw))
 
 
@@ -1791,7 +1803,7 @@ def test_claude_limits_paper_is_larger_live_is_unchanged():
 def _stub(calls, action, tp_pct):
     def call(system, user, max_tokens=1100, timeout=60):
         calls.append({"max_tokens": max_tokens, "timeout": timeout})
-        body = {"decisions": [{"symbol": "BTC", "action": action, "confidence": 85, "leverage": 10,
+        body = {"decisions": [{"symbol": "BTC", "action": action, "confidence": 85, "leverage": 20,
                                "margin_usd": 150, "stop_loss_pct": 0.01, "take_profit_pct": tp_pct,
                                "reason": "test", "trade_type": "medio", "dca_sl_pct": 0, "dca_tp_pct": 0}],
                 "note": "test"}

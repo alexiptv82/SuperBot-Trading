@@ -98,7 +98,8 @@ def test_fixed_baseline_config_not_v1_percentages_or_regime(monkeypatch):
     st=state(1000);activate(st,ms('2026-10-27T12:00'))
     a=cli.make_account(st)
     assert a._capital_reference is None and a._capital_day_budget is None
-    assert a.limits.max_margin_trade==100
+    assert a.limits.max_margin_trade==250
+    assert a.limits.min_initial_margin==100 and a.limits.min_initial_leverage==20
 
 
 def test_journal_recovery_and_fractional_cash_conservation(tmp_path,monkeypatch):
@@ -145,7 +146,8 @@ def test_cycle_protective_close_before_midnight_sweeps_net_once_and_preserves_me
     for name in ['notify_close','notify_daily_report','notify_halt','notify_split']:
         monkeypatch.setattr(cli,name,lambda *a,**k:None)
     # A short closes at TP on the bar ending at UTC midnight.
-    a=PaperAccount(cli.PORTFOLIO.limits);a.day='2026-10-27';a.day_start_equity=1000
+    # Seed a historical 10x position before applying current limits.
+    a=PaperAccount();a.day='2026-10-27';a.day_start_equity=1000
     p,_=a.open('BTC',-1,100,10,100,102,98,ms('2026-10-27T23:00'),{},source='rules')
     st={'main':a.to_dict(),'run_no':7,'last_ctx_ts':now,'budget':{'spent':.21},'memo':'keep'}
     Path(cli.STATE_FILE).write_text(json.dumps(st))

@@ -293,7 +293,7 @@ def parse_decisions(text: str) -> dict | None:
                 # ritracciamento della seconda gamba: Claude lo scrive in percentuale (0.5 = 0,5%)
                 "split_retrace_pct": float(x.get("split_retrace_pct", 0) or 0) / 100.0,
             })
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             continue
     return {"decisions": out, "note": str(d.get("note", ""))[:200]}
 
