@@ -1,3 +1,4 @@
 action=apply
 approved=yes
-sha=33e9cdd4589c0e105f748511ddcc2b7dcbd5039f
+sha=9be9469b4a917790275b8461faf052511babaaa0
+reason=manual-reset-ui
