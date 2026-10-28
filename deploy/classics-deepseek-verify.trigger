@@ -1,0 +1,3 @@
+inspection=read-only
+expected_sha=ef0f596c41b8cda208dc9c9a79b7bb364640f6f7
+check=first_DSite_and_single_writer
