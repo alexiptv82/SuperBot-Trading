@@ -93,5 +93,19 @@ jobs:
                                                'trade_type':dict(collections.Counter(str(c.get('trade_type','unknown')) for c in ((old.get('main') or {}).get('closed') or [])))})
                         except (ValueError,OSError):pass
                     print('PREVIOUS_RUN_ARCHIVES',json.dumps(candidates))
+            for p in ('hawk','bull'):
+                root=pathlib.Path('/opt/superbot-desk-data')/p
+                events=[]
+                with (root/'learning_log.jsonl').open(encoding='utf-8') as fh:
+                    for line in fh:
+                        try:
+                            ev=json.loads(line)
+                            t=float(ev.get('ts') or ev.get('ts_ms') or 0)
+                            if t<1e11:t*=1000
+                            if t>=((now-5*3600)*1000) and ev.get('ev') in ('deepseek_call','candidate','open'):
+                                fields=('ev','status','symbol','source','ok','n_decisions','decisions','fail_reason','cost_est_usd','confidence','run_no')
+                                events.append({k:ev.get(k) for k in fields if k in ev})
+                        except (ValueError,TypeError):pass
+                print('DEEPSEEK_POST_ROLLBACK_'+p.upper(),json.dumps(events[-35:],ensure_ascii=False)[:6500])
             print('READ_ONLY_ENTRY_AUDIT_COMPLETE')
             PY
