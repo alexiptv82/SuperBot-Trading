@@ -1,4 +1,4 @@
 action=apply
 approved=yes
-sha=9be9469b4a917790275b8461faf052511babaaa0
-reason=manual-reset-ui
+sha=7c913bbcfbf2d255edf72e2d87ef42fe60aa4c9a
+reason=retain-dedicated-brain-free-readonly-mount-and-verify-v2-dashboard
