@@ -39,24 +39,30 @@ def read(root,now=None):
                 'floating_gross':gross,'net_close_estimate':gross-p.get('entry_fees',0)-p.get('funding',0)-q['price']*p['qty']*(.0006+.0002) if valid else None,'reason':p['reason'],'invalidation':p['invalidation'],
                 'age_minutes':max(0,(now-p['open_ms'])/60000),'source':p['source']})
         today=datetime.fromtimestamp(now/1000,timezone.utc).strftime('%Y-%m-%d')
-        daily=total=0.;unknown=0
+        daily=total=current_run=0.;unknown=0
         for ts,body in db.execute('SELECT ts,body FROM requests'):
             b=json.loads(body);cost=(b.get('billing')or{}).get('cost')
             if cost is None:unknown+=1;continue
             if not math.isfinite(cost) or cost<0:raise ValueError('invalid_cost')
             total+=cost
+            if ts>=s['verified_start_ms']:current_run+=cost
             if datetime.fromtimestamp(ts/1000,timezone.utc).strftime('%Y-%m-%d')==today:daily+=cost
         trades=[json.loads(x[0]) for x in db.execute("SELECT body FROM events WHERE kind='trade_closed' ORDER BY seq DESC LIMIT 10")]
-        rejections=[json.loads(x[0]) for x in db.execute("SELECT body FROM events WHERE kind='execution_rejected' ORDER BY seq DESC LIMIT 10")]
-        latest=db.execute("SELECT body FROM events WHERE kind='daily_report' ORDER BY seq DESC LIMIT 1").fetchone()
+        rejections=[json.loads(x[0]) for x in db.execute("SELECT body FROM events WHERE kind='execution_rejected' AND ts>=? ORDER BY seq DESC LIMIT 10",(s['verified_start_ms'],))]
+        latest=db.execute("SELECT body FROM events WHERE kind='daily_report' AND ts>=? ORDER BY seq DESC LIMIT 1",(s['verified_start_ms'],)).fetchone()
+        capacity=s.get('runtime_capacity') or {}
+        margin_limit=capacity.get('max_margin',1600)
+        max_slots=capacity.get('max_slots',10)
+        run_start_equity=s.get('v2_start_equity',2000)
         eq=cash+total_margin+floating if prices_fresh else None
         if not math.isfinite(cash) or cash<0 or not math.isfinite(total_margin):raise ValueError('invalid_account')
         return {'available':True,'status':'ok','paper':True,'account_id':s['account_id'],
             'online':0<=now-s.get('heartbeat_ms',0)<60000,'heartbeat_ms':s.get('heartbeat_ms'),
-            'equity':eq,'cash':cash,'margin':total_margin,'margin_limit':1600,'max_slots':10,
-            'pnl':eq-2000 if eq is not None else None,'positions':positions,'trades':trades,
+            'equity':eq,'cash':cash,'margin':total_margin,'margin_limit':margin_limit,'max_slots':max_slots,'run_start_equity':run_start_equity,
+            'pnl':eq-run_start_equity if eq is not None else None,
+            'pnl_since_original_start':eq-2000 if eq is not None else None,'positions':positions,'trades':trades,
             'execution_rejections':rejections,'decision':s.get('last_decision'),'provider_status':s.get('provider_status'),
-            'spend':{'today_usd':daily,'total_usd':total,'uncertain_requests':unknown,'today_utc':today,'budget_gate':False},
+            'spend':{'today_usd':daily,'current_run_usd':current_run,'total_usd':total,'uncertain_requests':unknown,'today_utc':today,'budget_gate':False},
             'market_context':s.get('context',{}),'paused':s.get('paused',False),'coverage_gaps':s.get('coverage_gaps',[]),
             'experiment_start_ms':s['verified_start_ms'],'elapsed_hours':(now-s['verified_start_ms'])/3600000,
             'config_hash':s['config_hash'],'build_sha':s.get('build_sha'),'latest_report':json.loads(latest[0]) if latest else None}
