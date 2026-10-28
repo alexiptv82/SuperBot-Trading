@@ -4,3 +4,4 @@ compare_archive_sources=1
 
 read_only_recheck=after_deepseek_2026_10_28
 inspection_run=2
+deepseek_proposals_vs_macro_rejections=1
