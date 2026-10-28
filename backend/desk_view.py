@@ -232,8 +232,8 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
     vault = build_view(state, hb, now)
     vault_balance = float(vault["balance"]) if vault.get("available") else 0.0
     total_equity = equity + vault_balance
-    if vault.get("available"):
-        can_reset, reset_reason = False, "Salvadanaio attivo: reset del conto non previsto; storico e saldo sono conservati."
+    if vault.get("available") and not (hb and hb.get("reset_with_vault") is True):
+        can_reset, reset_reason = False, "Aggiorna prima il bot: reset Salvadanaio manuale non ancora supportato."
     run_started = state.get("run_started_ms")
     return {
         "available": True, "portfolio": portfolio, "mode": "paper",
@@ -636,7 +636,7 @@ def reset_keeps_brain(hb: Optional[dict]) -> bool:
     return bool(hb and hb.get("reset_keeps_brain") is True)
 
 
-def command_reset_portfolio(data_dir: str, clear_lessons: bool = False) -> tuple:
+def command_reset_portfolio(data_dir: str, clear_lessons: bool = False, reset_vault: bool = False) -> tuple:
     """(ok, http_status, risposta). Regole: solo in pausa e senza posizioni aperte; anche il bot le
     ricontrolla, qui si evita di accodare un comando che verrebbe rifiutato.
     `clear_lessons` e' accettato per compatibilita' ma NON ha effetto: il cervello non si cancella mai."""
@@ -653,10 +653,17 @@ def command_reset_portfolio(data_dir: str, clear_lessons: bool = False) -> tuple
         return True, 200, {"ok": True, "queued": True, "message": "Azzeramento già richiesto: il bot lo sta eseguendo."}
     if not reset_keeps_brain(read_heartbeat(data_dir)):
         return False, 409, {"ok": False, "message": RESET_OLD_BOT_MESSAGE}
-    _write_flag(data_dir, "reset_portfolio.flag", json.dumps({"clear_lessons": False}))
+    from salvadanaio_view import build_view
+    has_vault = build_view(state, read_heartbeat(data_dir), time.time()).get("available")
+    if has_vault and (reset_vault is not True or not read_heartbeat(data_dir).get("reset_with_vault")):
+        return False, 409, {"ok": False, "message": "Conferma esplicitamente il reset del Salvadanaio e aggiorna il bot."}
+    payload = {"clear_lessons": False}
+    if has_vault:
+        payload["reset_vault"] = True
+    _write_flag(data_dir, "reset_portfolio.flag", json.dumps(payload))
     return True, 200, {"ok": True, "queued": True,
                        "message": "Azzeramento richiesto: la run attuale viene archiviata e il conto riparte da 1000$. "
-                                  "Il cervello (storico dei trade, appunti, registro) non si tocca. "
+                                   "Il Salvadanaio e i pending vengono azzerati solo se confermati. Il cervello (storico dei trade, appunti, registro) non si tocca. "
                                   "Il bot resta in pausa finché non premi Avvia."}
 
 

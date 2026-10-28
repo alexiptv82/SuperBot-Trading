@@ -1,0 +1,29 @@
+name: Manual Salvadanaio reset - app offline tests
+on:
+  push:
+    branches: [work/manual-reset-vault-app-20261027]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_desk_view.py backend/tests/test_salvadanaio_view.py
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: corepack enable
+      - run: yarn install --frozen-lockfile --non-interactive
+      - run: CI=true yarn build
