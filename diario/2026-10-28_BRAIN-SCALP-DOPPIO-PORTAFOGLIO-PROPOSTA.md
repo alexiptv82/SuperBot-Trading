@@ -22,3 +22,11 @@ Stato: richiesta/proposta progettuale; NON autorizzati implementation, merge, re
 Chiarire destinazione del Brain originale e del capitale di test. Poi specifica frozen, prenotazione componenti, codifica offline e suite/replay, app read-only, backup e restore prima di qualsiasi futura attivazione. Deploy sempre con OK separato, PAPER only.
 
 AI: chatgpt (chat normale)
+
+
+## 28 ottobre — preferenza aggiornata e raccomandazione (chat normale)
+Il proprietario manifesta netta preferenza per opzione **B**, non mantenere tre Brain attivi: Brain Free V2 attuale è un test che non soddisfa per frequenza, risultati e leva; teme spesa API, carico dati e riduzione qualità se lasciato operativo accanto a due nuovi Brain. Chiede un consiglio; non è ancora un'autorizzazione ad arresto, chiusura posizioni, reset o deploy.
+**Raccomandazione ChatGPT: B con archivio, non distruzione.** Alla futura autorizzazione: misurare conto/posizioni attuali, interrompere nuove aperture (se necessario lasciare gestione protettiva delle aperte fino a chiusura tracciata), backup completo SQLite via API e restore verificato, preservare log decisioni, richieste, spese, memoria, foto delle versioni e report; ritirare il processo originale, senza riavviarlo in parallelo. Creare separatamente Brain Hawk e Brain Bull PAPER da **1.000 USD nuovi di prova ciascuno**, con id, database, volumi, budget/spesa e writer distinti: nuova baseline di esperimento virtuale da etichettare apertamente, senza spacciare la ricostituzione del capitale per recupero delle perdite del vecchio Brain. Il precedente equity/saldo rimane congelato nel report di archivio. Uno scanner e feed di mercato condivisi, due valutazioni AI su shortlist compatte invece di analisi duplicate dell'intero universo, due esecutori e conti indipendenti; protezioni locali 1–5s, budget AI con limiti e metriche di token/latenza/costi per wallet. Memoria precedente usata solo come dataset storico attribuito, non iniettata integralmente nei prompt di entrata; nessun veto direzionale permanente basato su vecchie perdite.
+**Classici Hawk/Bull invariati** per osservazione 1–2 giorni. Stato: proposta/suggerimento, non modifica tecnica. Decisione operativa/deploy da richiedere separatamente.
+
+AI: chatgpt (chat normale)
