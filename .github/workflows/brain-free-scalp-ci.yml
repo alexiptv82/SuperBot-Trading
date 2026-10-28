@@ -1,0 +1,27 @@
+name: Brain Free V2 - offline scalping regression
+on:
+  push:
+    branches: [work/brain-free-scalp-reframe-20261028]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install pytest
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_free.py backend/tests/test_brain_free_rollout.py backend/tests/test_brain_free_scalp.py
+      - name: Ensure isolated Brain modifications, not Hawk/Bull
+        run: |
+          git fetch --depth=1 origin a914803a15c2d8a5fa01021f11c4def4caf82a76
+          test -z "$(git diff --name-only a914803a15c2d8a5fa01021f11c4def4caf82a76 HEAD -- backend/desk backend/director/classical_adaptive backend/director/brain_pilot)"
+      - run: docker build -f Dockerfile.brainfree -t brain-free-v2-offline .
+      - name: Offline init V2 on an empty directory, no network, no orders
+        run: |
+          mkdir "$RUNNER_TEMP/new-paper"
+          docker run --rm --network none -e DESK_MODE=paper -v "$RUNNER_TEMP/new-paper:/out" brain-free-v2-offline --root /out --initialize
+          docker run --rm --network none -e DESK_MODE=paper -v "$RUNNER_TEMP/new-paper:/out" --entrypoint python brain-free-v2-offline -c "from director.brain_free.runtime import Runtime; r=Runtime('/out'); s=r.store.load(); assert s['cash']==2000 and not s['positions']; r.close()"
