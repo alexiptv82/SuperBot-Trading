@@ -1,3 +1,13 @@
+## Controllo calendario richiesto dall’utente — 28 ottobre, 13:32 Roma
+
+Audit VPS esclusivamente in lettura: run40655263204 attempt3/job122817338025. Entrambi classici dc16e01 healthy/PAPER, macro.enforce=false, blackout=false, conf_bonus=0; regime alto e raw_conf_bonus=5 sono osservazioni, non gate. Feed26/26; cicli regolari ogni15min. Ultimi candidati rifiutati conf_bassa, non macro_blocco/conf_bassa_macro. Nessuna prova di blocco automatico nove ore prima della notizia. Una chiusura per bot, zero posizioni al campionamento; non attribuita causalmente la perdita al calendario. Calendario finestre Claude distinto: allowed=false limita quel consulto, non regole/DeepSeek.
+
+Bug UI confermato in main frontend/src/deskUi.js: macroNote ignorava enforce=false e annunciava sempre sospensione un’ora prima quando regime=alto. Correzione pronta nel branch work/macro-observe-ui-20261028, commit00d1bbed2f8eb25abc99cb52f2a0b338d0f65c29, PR23 verso main. Mostra solo informativo, preserva news e veri blackout legacy/enforced, elimina previsione incondizionata di sospensione. 31test macro offline PASS e asserzioni Node sulle uscite UI PASS. Nessun merge/deploy app o bot, nessun riavvio, nessuna modifica Brain/dati/soglie/prompt. Runtime rimane dc16e01; avviso app operativa ancora vecchio fino al rilascio della correzione frontend. Non abbassare soglie come rimedio al calendario già passivo.
+
+AI: chatgpt
+
+---
+
 # Classici operativi PAPER — rilascio 28 ottobre 2026 concluso
 
 ## Stato verificato dopo il riavvio autorizzato
