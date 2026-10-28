@@ -193,3 +193,17 @@ class PairRouting(unittest.TestCase):
                     BrainPair(root)
             finally:
                 pair.close()
+
+
+class DashboardBridge(unittest.TestCase):
+    def test_latest_observed_quotes_and_heartbeat_are_persisted(self):
+        with tempfile.TemporaryDirectory() as root:
+            wallet=PaperWallet(Path(root)/'hawk','hawk',initialize=True,now_ms=NOW)
+            try:
+                wallet.tick(market(price=101.,ts=NOW+2000),CONTRACT,NOW+2000)
+                state=wallet.store.load()
+                self.assertEqual(state['heartbeat_ms'],NOW+2000)
+                self.assertEqual(state['last_prices']['BTC']['price'],101.)
+                self.assertEqual(state['account_id'],'brain-scalp-hawk-paper')
+            finally:
+                wallet.close()
