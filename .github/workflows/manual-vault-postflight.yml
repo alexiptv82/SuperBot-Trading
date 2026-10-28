@@ -1,0 +1,51 @@
+name: Classic manual vault reset - read-only postflight
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/manual-vault-postflight.trigger]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check actual PAPER bot versions, vault and single writer
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 100s
+          script: |
+            set -eu
+            for P in hawk bull; do
+              N="superbot-desk-$P"
+              test "$(docker inspect -f '{{.State.Running}}' "$N")" = true
+              test "$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$N" | grep '^DESK_MODE=')" = DESK_MODE=paper
+              docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$N" | grep -qx 'DESK_CAPITAL_V1=off'
+              test "$(docker inspect -f '{{index .Config.Labels "superbot.sha"}}' "$N")" = ba633b098cb28feace0b400cc3bbbbfa6da7b331
+              python3 - "$P" <<'PY'
+            import json,sys,time,os
+            p=sys.argv[1];root='/opt/superbot-desk-data/'+p
+            hb=json.load(open(root+'/heartbeat.json'))
+            st=json.load(open(root+'/state_v2.json'))
+            assert hb['version']=='ba633b0',(p,'version',hb.get('version'))
+            assert hb.get('reset_with_vault') is True,(p,'capability absent')
+            assert hb.get('reset_keeps_brain') is True,(p,'brain retention flag absent')
+            assert time.time()-float(hb['ts'])<300,(p,'stale heartbeat')
+            assert st['capital']['policy']=='salvadanaio-only-v1'
+            assert os.path.isfile(root+'/salvadanaio-journal.jsonl')
+            for f in ('learning_log.jsonl','trade_history.jsonl'):
+                assert os.path.isfile(root+'/'+f),(p,'missing memory file',f)
+            print('CLASSIC_PAPER_POSTFLIGHT_PASS',p,hb['version'],'run',st.get('run_no'), 'vault',st['capital']['vault']['balance'])
+            PY
+              COUNT=0
+              for C in $(docker ps --format '{{.Names}}'); do
+                if docker inspect -f '{{range .Mounts}}{{if .RW}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$C" | grep -qx "/opt/superbot-desk-data/$P"; then COUNT=$((COUNT+1)); fi
+              done
+              test "$COUNT" -eq 1 || { echo "MULTIPLE_WRITERS_$P=$COUNT"; exit 1; }
+              echo "SINGLE_WRITER_PASS=$P"
+            done
+            echo MANUAL_RESET_CAPABILITY_POSTFLIGHT=PASS
