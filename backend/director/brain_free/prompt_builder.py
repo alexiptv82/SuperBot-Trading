@@ -13,7 +13,16 @@ def build(state,markets,contracts,context,recent,seeds,kind,now,cfg=Config()):
     readings={s:{k:v for k,v in markets.get(s,{'status':'unavailable'}).items() if k!='bars'} for s in symbols}
     physical={s:{**contracts.get(s,{}),'operator_max_leverage':max_leverage(s),
                  'liquidation_buffer':cfg.liquidation_buffer} for s in symbols}
-    payload={'ts_ms':now,'kind':kind,'account':{'cash':state['cash'],'equity':eq if complete else None,
+    payload={'ts_ms':now,'kind':kind,
+        'execution_costs':{'taker_fee_per_side':cfg.fee_rate,
+                           'slippage_assumption_per_side':cfg.slippage,
+                           'roundtrip_friction_on_notional':2*(cfg.fee_rate+cfg.slippage),
+                           'additional_spread_and_funding':'unknown_not_zero',
+                           'estimate_net_pnl_before_entry':True},
+        'sizing_preference_nonbinding':{'typical_margin_usd':[200,350],
+            'leverage':'choose from actual risk and instrument limits; no required minimum',
+            'objective':'net trading profit after costs, not a trade quota'},
+        'account':{'cash':state['cash'],'equity':eq if complete else None,
         'margin':margin(state),'margin_remaining':cfg.max_margin-margin(state),
         'free_slots':cfg.max_slots-len(state['positions']),'positions':state['positions']},
         'markets':readings,'instrument_constraints':physical,'market_context_nonbinding':context,
