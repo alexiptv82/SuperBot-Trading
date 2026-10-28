@@ -1,0 +1,75 @@
+"""AI conditional proposal contract. A plan is not an order."""
+from dataclasses import dataclass
+import math
+from director.brain_free.config import max_leverage
+
+
+def finite(value, minimum=None, maximum=None):
+    if isinstance(value,bool) or not isinstance(value,(float,int)) or not math.isfinite(value):
+        raise ValueError('nonfinite_plan_number')
+    if minimum is not None and value<minimum or maximum is not None and value>maximum:
+        raise ValueError('plan_number_outside_bounds')
+    return float(value)
+
+
+@dataclass(frozen=True)
+class Plan:
+    plan_id: str
+    symbol: str
+    side: int
+    created_ms: int
+    expires_ms: int
+    trigger: str
+    trigger_price: float
+    stop: float
+    target: float
+    margin: float
+    leverage: int
+    hold_max_ms: int
+    protect_after_usd: float
+    take_net_usd: float
+    reason: str
+    invalidation: str
+
+
+def parse_plan(raw,spec,now,whitelist):
+    if not isinstance(raw,dict): raise ValueError('plan_not_object')
+    symbol=raw.get('symbol')
+    if symbol not in whitelist or not isinstance(symbol,str): raise ValueError('unknown_symbol')
+    plan_id=raw.get('plan_id')
+    if not isinstance(plan_id,str) or not 8<=len(plan_id)<=100 or any(ch.isspace() for ch in plan_id):
+        raise ValueError('invalid_plan_id')
+    created=int(finite(raw.get('created_ms'),0))
+    expires=int(finite(raw.get('expires_ms'),0))
+    if created>now or now-created>spec.max_plan_age_ms or not now<expires<=created+spec.max_plan_lifetime_ms:
+        raise ValueError('stale_or_overlong_plan')
+    side=int(finite(raw.get('side'),-1,1))
+    if side not in (-1,1): raise ValueError('invalid_side')
+    trigger=raw.get('trigger')
+    if trigger not in ('break_above','break_below','touch'): raise ValueError('invalid_trigger')
+    px=finite(raw.get('trigger_price'),1e-12)
+    stop=finite(raw.get('stop'),1e-12)
+    target=finite(raw.get('target'),1e-12)
+    if side*(px-stop)<=0 or side*(target-px)<=0: raise ValueError('stop_target_wrong_side')
+    if (side==1 and trigger=='break_below') or (side==-1 and trigger=='break_above'):
+        raise ValueError('contradictory_trigger')
+    margin=finite(raw.get('margin'),spec.min_margin,spec.max_margin_trade)
+    lev=int(finite(raw.get('leverage'),1,max_leverage(symbol)))
+    hold=int(finite(raw.get('hold_max_ms'),60000,14400000))
+    protect=finite(raw.get('protect_after_usd'),0,500)
+    take=finite(raw.get('take_net_usd'),0,1000)
+    reason,invalidation=raw.get('reason'),raw.get('invalidation')
+    if not isinstance(reason,str) or len(reason.strip())<12 or not isinstance(invalidation,str) or len(invalidation.strip())<8:
+        raise ValueError('missing_thesis_or_invalidation')
+    return Plan(plan_id,symbol,side,created,expires,trigger,px,stop,target,margin,lev,
+                hold,protect,take,reason.strip(),invalidation.strip())
+
+
+def triggered(plan,quote,now):
+    if now>=plan.expires_ms: return False
+    try: price,ts=finite(quote['price'],1e-12),int(finite(quote['ts_ms'],0))
+    except (KeyError,ValueError,TypeError): return False
+    if not 0<=now-ts<=30000: return False
+    if plan.trigger=='break_above': return price>=plan.trigger_price
+    if plan.trigger=='break_below': return price<=plan.trigger_price
+    return abs(price/plan.trigger_price-1)<=0.001
