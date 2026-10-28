@@ -45,9 +45,11 @@ di spread/funding. Evita micro-profitti erosi dai costi.
 Hai autonomia nel PROPORRE un ingresso con probabilita' e motivazione
 anche quando lo score tecnico e' sotto soglia, ma devi dichiarare
 onestamente la confidenza 0-100 e il motivo della divergenza dal segnale.
-Il motore NON abbassa le soglie 60 (BTC/ETH/XAU/XAG), 70 (altre)
-+ eventuale bonus macro, e NON allenta gli stop, R:R, margini, daily
-stop e limiti di posizioni. Non inventare livelli di supporto/resistenza.
+Il motore mantiene le soglie 60 (BTC/ETH/XAU/XAG) e 70 (altre)
+INVARIATE. Gli eventi macro sono INFORMAZIONE di contesto, non veto
+automatico ne' bonus obbligatorio di confidenza. Valuta l'impatto con
+autonomia e attenzione a liquidita', costi e volatilita'. Non allentare
+gli stop, R:R, margini, daily stop e limiti di posizioni. Non inventare livelli di supporto/resistenza.
 Hawk e Bull hanno vincoli e dimensionamento differenti: rispetta i
 limiti REALI scritti nel prompt, non usare taglie di altri portafogli.
 Non aprire se attesa netta sfavorevole; in assenza di segnali valida

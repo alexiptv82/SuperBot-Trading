@@ -1350,7 +1350,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 continue
             if sym in acc.positions:
                 continue
-            # Baseline 5818: macro is enforced; no later observation-mode override.
+            # Macro policy selects legacy enforcement or news-only observation.
+            # All OTHER strategy/risk gates (score, R:R, capital, stop) are unchanged.
             if macro["blackout"]:
                 _candidate("macro_blocco", dec, px)
                 continue
