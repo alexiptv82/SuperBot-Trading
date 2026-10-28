@@ -1088,6 +1088,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     call_due = (now_ms - last_call) >= HOUR_MS or urgent_scalp
 
     decisions = []
+    deepseek_decision_received = False
     source = "rules"
     if halt:
         print(f"[HALT] {halt}")
@@ -1126,6 +1127,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                         if ds_parsed is None:
                             raise ValueError("invalid_ai_proposal")
                         decisions = ds_parsed["decisions"]
+                        deepseek_decision_received = True
                         source = "deepseek"
                         state["deepseek_last_success_ms"] = now_ms
                         cost = _ds.settle(state, now_ms, ds_usage,
@@ -1208,7 +1210,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             print(f"[WARN] Claude non disponibile: {e}")
             log_claude_error(now_ms, state, e, len(acc.positions), urgent_scalp)
 
-    if not decisions:
+    if not decisions and not deepseek_decision_received:
         decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
         source = "rules"
     state["last_decision_source"] = source
