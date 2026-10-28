@@ -1,2 +1,3 @@
 inspect=read_only
 purpose=assess_brain_v1_losses_fees_and_open_positions
+recheck_after_pause=2026-10-28
