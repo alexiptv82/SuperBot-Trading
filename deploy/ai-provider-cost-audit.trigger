@@ -1,0 +1,2 @@
+read_only=true
+purpose=estimate_brain24h_and_classics12h_api_cost
