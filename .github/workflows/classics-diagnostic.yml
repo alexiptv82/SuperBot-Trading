@@ -1,0 +1,87 @@
+name: Hawk Bull - read-only diagnostic (no restart)
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/classics-diagnostic.trigger]
+permissions:
+  contents: read
+jobs:
+  diagnosis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect PAPER bot heartbeat, pause, schedules, risk and cycle markers
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 120s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import os,json,datetime,time,subprocess,collections,re
+            now=time.time()
+            print("DIAG_UTC",datetime.datetime.now(datetime.timezone.utc).isoformat())
+            for p in ('hawk','bull'):
+                root='/opt/superbot-desk-data/'+p
+                name='superbot-desk-'+p
+                print("\n===== "+p.upper()+" =====")
+                try:
+                    j=json.loads(subprocess.check_output(['docker','inspect',name],text=True,timeout=8))[0]
+                    env=dict(x.split('=',1) for x in j['Config']['Env'] if '=' in x)
+                    print('CONTAINER',dict(running=j['State']['Running'],status=j['State']['Status'],health=(j['State'].get('Health') or {}).get('Status'),start=j['State']['StartedAt'],sha=j['Config'].get('Labels',{}).get('superbot.sha'),mode=env.get('DESK_MODE'),capital_switch=env.get('DESK_CAPITAL_V1'),portfolio=env.get('DESK_PORTFOLIO'),version=env.get('DESK_CODE_VERSION')))
+                except Exception as e:
+                    print('CONTAINER_ERROR',type(e).__name__)
+                try:
+                    hb=json.load(open(root+'/heartbeat.json'))
+                    keys=['ts','version','mode','pause_requested','open_positions','cycles','cycle_running','last_start_ms','last_end_ms','last_ok','last_error','next_cycle_ms','hours','macro','daily_cap_usd','capital_v1','reset_with_vault']
+                    h={k:hb.get(k) for k in keys}
+                    print('HEARTBEAT',json.dumps(h,ensure_ascii=False,default=str)[:2500])
+                    print('HEARTBEAT_AGE_SEC',round(now-float(hb.get('ts',0)),1))
+                except Exception as e:
+                    print('HEARTBEAT_ERROR',type(e).__name__)
+                for flag in ['pause.flag','reset.flag','reset_portfolio.flag','budget_reset.flag','close_position.flag','stop.flag']:
+                    path=os.path.join(root,flag)
+                    print('FLAG',flag,os.path.exists(path), 'age_sec',int(now-os.path.getmtime(path)) if os.path.exists(path) else '-')
+                for fn in ['trading_hours.json','claude_schedule.json']:
+                    path=os.path.join(root,fn)
+                    if os.path.exists(path):
+                        try:
+                            obj=json.load(open(path))
+                            print('SCHEDULE',fn,json.dumps(obj,ensure_ascii=False)[:900])
+                        except Exception as e:print('SCHEDULE_ERROR',fn,type(e).__name__)
+                    else:print('SCHEDULE',fn,'absent')
+                try:
+                    st=json.load(open(root+'/state_v2.json'))
+                    a=st.get('main') or {}
+                    cap=st.get('capital') or {}
+                    budget=st.get('budget') or {}
+                    print('STATE',json.dumps(dict(run_no=st.get('run_no'),mode=st.get('mode'),paused=st.get('paused'),cash=a.get('cash'),open=len(a.get('positions') or {}),closed=len(a.get('closed') or []),day=a.get('day'),day_start_equity=a.get('day_start_equity'),budget=budget,last_call_ms=st.get('last_call_ms'),last_prices_ms=st.get('last_prices_ms'),last_action=st.get('last_action'),capital_status=cap.get('status'),capital_policy=cap.get('policy'),vault_balance=(cap.get('vault') or {}).get('balance')),ensure_ascii=False,default=str)[:3500])
+                except Exception as e:print('STATE_ERROR',type(e).__name__)
+                hist=root+'/learning_log.jsonl'
+                if os.path.isfile(hist):
+                    try:
+                        from collections import deque
+                        with open(hist,encoding='utf-8') as file:
+                            last=list(deque(file,maxlen=1000))
+                        evs=[]
+                        for line in last:
+                            try:
+                                x=json.loads(line)
+                                evs.append((x.get('ev') or x.get('type'),x.get('ts_ms') or x.get('ts'),x.get('decision') or x.get('action')))
+                            except Exception:pass
+                        print('LEARNING_EVENTS_TAIL',len(evs),dict(collections.Counter(str(x[0]) for x in evs)))
+                        print('LATEST_EVENT_TYPES',evs[-8:])
+                    except Exception as e:print('LEARNING_ERROR',type(e).__name__)
+                try:
+                    logs=subprocess.check_output(['docker','logs','--since','4h','--tail','3000',name],stderr=subprocess.STDOUT,text=True,timeout=12).splitlines()
+                    categories=['PAUSA','AVVIO','HALT','ERROR','ERRORE','SLEEP','BUDGET','CLAUDE','CYCLE','CICLO','ORARI','STOP','APERT','NO_TRADE','SIGNAL','SEGNAL','AI']
+                    counts={c:sum(c in line.upper() for line in logs) for c in categories}
+                    selected=[line for line in logs if any(q in line.upper() for q in ('[PAUSA]','[AVVIO]','[HALT]','[ORARI]','[DESK V2]','[SLEEP]','[ERROR]','[ERRORE]'))]
+                    print('LOG_COUNTS_4H',dict(counts))
+                    print('LOG_STATUS_TAIL',json.dumps([line[:220] for line in selected[-16:]],ensure_ascii=False)[:3800])
+                except Exception as e:print('LOG_ERROR',type(e).__name__)
+            print('DIAGNOSTIC_READ_ONLY_COMPLETE')
+            PY
