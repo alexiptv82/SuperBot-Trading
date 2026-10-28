@@ -1,0 +1,53 @@
+name: Brain Free PAPER - read-only trade cost diagnosis
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/brain-free-cost-diagnostic.trigger]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect independent Brain account without any mutation
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import sqlite3,json,os,time,collections,subprocess,statistics
+            d='/opt/superbot-brain-free'
+            print('DIAG_BRAIN_FREE_READ_ONLY_UTC',time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()))
+            print('DATA_ROOT_EXISTS',os.path.isdir(d))
+            print('PAUSE_FLAG',os.path.isfile(d+'/pause.flag'))
+            try:
+                j=json.loads(subprocess.check_output(['docker','inspect','superbot-brain-free'],text=True,timeout=8))[0]
+                E=dict(x.split('=',1) for x in j['Config'].get('Env',[]) if '=' in x)
+                print('CONTAINER',json.dumps({'running':j['State']['Running'],'status':j['State']['Status'],'started':j['State']['StartedAt'],'sha':j['Config'].get('Labels',{}).get('superbot.sha'),'desk_mode':E.get('DESK_MODE')}))
+            except Exception as e:print('CONTAINER_ERROR',type(e).__name__)
+            con=sqlite3.connect('file:'+d+'/brain.sqlite3?mode=ro',uri=True)
+            con.execute('PRAGMA query_only=ON')
+            s=json.loads(con.execute('SELECT body FROM state WHERE id=1').fetchone()[0])
+            print('ACCOUNT',json.dumps({'mode':s.get('mode'),'created_ms':s.get('created_ms'),'verified_start_ms':s.get('verified_start_ms'),'paused':s.get('paused'),'cash':round(s.get('cash',0),2),'open_count':len(s.get('positions',{})),'cycles':s.get('cycles'),'heartbeat_age_s':round(time.time()-s.get('heartbeat_ms',0)/1000,1),'provider_status':s.get('provider_status'),'build_sha':s.get('build_sha'),'config_hash':s.get('config_hash')},default=str))
+            for sym,p in s.get('positions',{}).items():
+                print('OPEN_POSITION',json.dumps({'symbol':sym,'side':p.get('side'),'margin':round(p.get('margin',0),2),'leverage':round(p.get('leverage',0),2),'age_min':round((time.time()*1000-p.get('open_ms',0))/60000,1),'entry_fees':round(p.get('entry_fees',0),3),'funding':round(p.get('funding',0),3),'stop':p.get('stop'),'target':p.get('target'),'requested_margin':(p.get('requested') or {}).get('margin'),'requested_leverage':(p.get('requested') or {}).get('leverage')},default=str))
+            ev=con.execute('SELECT kind,body FROM events ORDER BY seq DESC LIMIT 1000').fetchall()
+            print('EVENT_COUNTS_LAST1000',json.dumps(dict(collections.Counter(x[0] for x in ev))))
+            closed=[json.loads(x[1]) for x in ev if x[0]=='trade_closed'][:40]
+            print('CLOSED_TOTAL_LATEST40',json.dumps({'count':len(closed),'gross':round(sum(x.get('gross',0) for x in closed),3),'fees':round(sum(x.get('fees',0) for x in closed),3),'funding':round(sum(x.get('funding',0) for x in closed),3),'net':round(sum(x.get('net',0) for x in closed),3),'winners':sum(x.get('net',0)>0 for x in closed)}))
+            for x in closed[:15]:
+                print('CLOSED',json.dumps({k:round(x[k],3) if isinstance(x.get(k),float) else x.get(k) for k in ('symbol','side','margin','leverage','gross','fees','funding','net','duration_minutes','source','reason')} ,default=str)[:350])
+            opens=[json.loads(x[1]) for x in ev if x[0]=='open'][:30]
+            for x in opens[:12]:
+                print('OPEN_EXECUTED',json.dumps({k:round(x[k],3) if isinstance(x.get(k),float) else x.get(k) for k in ('symbol','requested_margin','margin_added','requested_leverage','leverage','fee_paid','adapted')},default=str))
+            rejected=[json.loads(x[1]) for x in ev if x[0]=='execution_rejected']
+            print('REJECT_CODES',json.dumps(dict(collections.Counter(x.get('code') for x in rejected))))
+            con.close()
+            print('READ_ONLY_DIAG_COMPLETE')
+            PY
