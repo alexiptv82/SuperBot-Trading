@@ -1,0 +1,26 @@
+name: PAPER classical sizing direction - isolated offline validation
+on:
+  push:
+    branches: [work/classics-sizing-direction-20261028]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install pytest numpy pandas ccxt==4.2.95 tzdata
+      - name: Bytecode compile
+        run: python -m compileall -q backend/desk/cli.py backend/desk/engine.py backend/desk/brain.py backend/desk/deepseek_collab.py
+      - name: PAPER sizing and independent risk, DeepSeek and schedule regressions
+        run: PYTHONPATH=backend python -m pytest -q backend/tests/test_classics_sizing_direction_20261028.py backend/tests/test_classics_deepseek_collab.py backend/tests/test_desk.py backend/tests/test_desk_macro.py backend/tests/test_desk_hours.py backend/tests/test_classic_rollback_vault.py
+      - name: Docker build only - no orders and no VPS deployment
+        run: docker build -f Dockerfile.desk -t superbot-classic-sizing-offline .
+      - name: Brain Libero and unrelated runtime not modified
+        run: |
+          git fetch --depth=1 origin 835a4f25a676f0bcab38a28b75e23402cefe298b
+          test -z "$(git diff --name-only 835a4f25a676f0bcab38a28b75e23402cefe298b HEAD -- backend/director/brain_free backend/director/brain_pilot backend/director/brain_classical)"
