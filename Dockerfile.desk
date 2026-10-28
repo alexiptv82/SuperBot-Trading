@@ -5,7 +5,7 @@ FROM python:3.11-slim
 WORKDIR /app
 ENV PYTHONPATH=/app/backend PYTHONUNBUFFERED=1
 
-RUN pip install --no-cache-dir "ccxt==4.2.95" "numpy>=1.26.0" "pandas>=2.2.0"
+RUN pip install --no-cache-dir "ccxt==4.2.95" "numpy>=1.26.0" "pandas>=2.2.0" "tzdata>=2025.2"
 
 COPY backend/strategy_lab.py ./backend/strategy_lab.py
 COPY backend/rule_pool ./backend/rule_pool
