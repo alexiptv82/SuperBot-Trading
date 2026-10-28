@@ -1,0 +1,75 @@
+name: Hawk Bull DeepSeek - read-only live verification
+on:
+  push:
+    branches: [rule-pool]
+    paths: [deploy/classics-deepseek-verify.trigger]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Verify two PAPER containers, model access, daily cost and intact accounts
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 190s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import json,os,subprocess,time,datetime,pathlib,collections
+            from zoneinfo import ZoneInfo
+            expected='ef0f596c41b8cda208dc9c9a79b7bb364640f6f7'
+            now=time.time();rome=datetime.datetime.fromtimestamp(now,ZoneInfo('Europe/Rome'))
+            active=8<=rome.hour<20
+            print('POSTFLIGHT_NOW_ROME',rome.isoformat(),'ACTIVE_WINDOW',active)
+            for p in ('hawk','bull'):
+                name='superbot-desk-'+p;root=pathlib.Path('/opt/superbot-desk-data')/p
+                j=json.loads(subprocess.check_output(['docker','inspect',name],text=True,timeout=8))[0]
+                env=dict(x.split('=',1) for x in j['Config']['Env'] if '=' in x)
+                assert j['State']['Running'],(p,'not_running')
+                assert j['Config']['Labels'].get('superbot.sha')==expected,(p,'wrong_build')
+                assert env.get('DESK_MODE')=='paper',(p,'not_paper')
+                assert env.get('DESK_DEEPSEEK_CLASSICS')=='paper',(p,'missing_feature')
+                assert env.get('DESK_CAPITAL_V1')=='off',(p,'capital_mode_changed')
+                assert (j['State'].get('Health') or {}).get('Status')=='healthy',(p,'not_healthy')
+                hb=json.loads((root/'heartbeat.json').read_text())
+                state=json.loads((root/'state_v2.json').read_text())
+                assert now-float(hb['ts'])<300,(p,'heartbeat_stale')
+                assert hb.get('last_ok') is True,(p,'last_cycle_failed')
+                ds=hb.get('deepseek_classics') or {}
+                assert ds.get('enabled') is True,(p,'model_not_enabled')
+                assert ds.get('active_window')==active,(p,'timezone_window_wrong')
+                assert 0<=float((ds.get('budget') or {}).get('spent') or 0)<=.25+1e-6,(p,'budget_violation')
+                assert (state.get('capital') or {}).get('policy')=='salvadanaio-only-v1'
+                model=collections.Counter();open_sources=collections.Counter()
+                recent=[]
+                with (root/'learning_log.jsonl').open(encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            e=json.loads(line)
+                            t=float(e.get('ts') or e.get('ts_ms') or 0)
+                            if t<1e11:t*=1000
+                            if t>=(now-3*3600)*1000:
+                                if e.get('ev')=='deepseek_call':
+                                    model['calls']+=1
+                                    if e.get('ok'):model['ok']+=1
+                                    else:model[str(e.get('fail_reason'))]+=1
+                                if e.get('ev')=='open':
+                                    open_sources[str(e.get('source'))]+=1
+                        except (ValueError,TypeError):pass
+                print('POSTFLIGHT_BOT',json.dumps({'portfolio':p,'version':hb.get('version'),
+                    'run_no':state.get('run_no'),'cash':(state.get('main') or {}).get('cash'),
+                    'positions':len((state.get('main') or {}).get('positions') or {}),
+                    'deepseek':ds,'model_last3h':dict(model),'open_sources_last3h':dict(open_sources)},
+                    ensure_ascii=False,default=str)[:1900])
+                if active:
+                    assert (ds.get('last_success_ms') or 0)>0,(p,'no_deepseek_success_yet')
+                    assert model['ok']>=1,(p,'no_logged_deepseek_response')
+                print('POSTFLIGHT_PAPER_BOT_PASS',p)
+            print('CLASSICS_DEEPSEEK_READ_ONLY_POSTFLIGHT=PASS')
+            PY
