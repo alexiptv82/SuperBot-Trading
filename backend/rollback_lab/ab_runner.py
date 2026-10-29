@@ -102,7 +102,8 @@ def main():
     if "BTC" not in symbols or any(s not in bt.SYMBOLS for s in symbols):
         raise SystemExit("invalid_universe")
     if args.synthetic:
-        data=bt.synthetic_data(args.days,end_ms)
+        # Synthetic smoke also needs >=200 closed 4h bars for the modern scorer.
+        data=bt.synthetic_data(max(args.days,37),end_ms)
         data={s:data[s] for s in symbols}
     else:
         data=bt.load_data(symbols,args.days,args.cache,end_ms)
