@@ -1,0 +1,54 @@
+name: Classics exit lab (Claude) - offline
+on:
+  push:
+    branches: [work/classics-exit-lab-claude-20261029]
+    paths:
+      - 'backend/exit_lab_claude/**'
+      - '.github/workflows/classics-exit-lab-claude.yml'
+permissions:
+  contents: write
+concurrency:
+  group: classics-exit-lab-claude
+  cancel-in-progress: true
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy pandas
+      - name: Unit tests simulator
+        working-directory: backend/exit_lab_claude
+        run: python -m unittest -v test_lab_sim
+      - name: Synthetic smoke (negative control, no edge)
+        working-directory: backend/exit_lab_claude
+        run: python run_lab.py --entries data/real_entries.csv --synthetic --out /tmp/synth0 | tail -n 12
+      - name: Confirm no production files altered
+        run: |
+          test -z "$(git diff --name-only c1a7c91 HEAD -- backend/desk deploy frontend .github/workflows/desk-deploy.yml)"
+      - name: Fetch real Bitget candles (public read-only endpoints)
+        working-directory: backend/exit_lab_claude
+        run: python fetch_candles.py --entries data/real_entries.csv --out /tmp/cache --granularity auto
+      - name: Run lab on real entries
+        working-directory: backend/exit_lab_claude
+        run: python run_lab.py --entries data/real_entries.csv --cache /tmp/cache --out results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exit-lab-claude-results
+          path: |
+            backend/exit_lab_claude/results
+            /tmp/cache/meta.json
+      - name: Commit results to the lab branch only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/exit_lab_claude/results
+          git diff --cached --quiet || git commit -m "exit-lab: risultati su candele reali [skip ci]"
+          git pull --rebase origin work/classics-exit-lab-claude-20261029
+          git push origin HEAD:work/classics-exit-lab-claude-20261029
