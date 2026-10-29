@@ -1,3 +1,11 @@
+## 29/10 — BRAIN SCALP: GRUPPO 2 COMPLETATO (attesa OK Gruppo 3)
+
+User «ok procediamo» dopo Gruppo 1; ChatGPT ha implementato solo nel ramo `work/brain-scalp-dual-20261028` le correzioni **I2** (TP netto oltre doppio costo roundtrip, check sia submit sia fill), **I3** (ridimensionamento margin/leverage entro budget rischio e min margin, evento `plan_resized`, nessun aumento di rischio), **B2** (backfill OHLC 1m causale, funzione provider iniettata senza rete, copertura in fail-closed). **CI GitHub 40841694288 SUCCESS** Python3.10 e 3.11, **42/42 test per versione** (84 pass). No Bitget HTTP aggiunto, supervisore live assente: il backfill è un'interfaccia da collegare nella futura integrazione offline. Se una posizione ha già attraversato un buco non osservato, la sua copertura resta in quarantena fino a reconciliation; non viene sbloccata per semplice backfill tardivo. Report per Claude: `diario/2026-10-29_brain-scalp-gruppo2-chatgpt.md`. **Nessun merge, deploy, reset, VPS né modifiche a Brain Free, classici o app**; risultato confermato da confronto Git e gate CI. **Fermarsi qui in attesa di autorizzazione per Gruppo 3 (I5/I1)**. Gruppo 6 A/B/C resta da scegliere. Non è provata alcuna redditività.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 29/10 — BRAIN SCALP: GRUPPO 1 COMPLETATO OFFLINE (attesa OK Gruppo 2)
 
 Letto integralmente il prompt Claude `claude/prompt-chatgpt-brain-scalp-completo-2026-10-29.md`; applicate quattro correzioni di sicurezza (B3a quote None/NaN→equity incompleta e niente nuove aperture; B3b clock indietro→protezioni comunque e 500ms tolleranza; B3c tick Hawk/Bull isolati e log errore; I4 quote ingresso max 3s, quote protezione max 10s, evento fill/slippage). Solo `work/brain-scalp-dual-20261028` (`backend/director/brain_scalp/**`, tests e workflow CI dedicato), **nessuna modifica a brain_free, desk, app, VPS o classici**. GitHub Actions `40836245846` **SUCCESS Python 3.10/3.11, 28/28 test ciascuno**; nessun deploy/merge. Report dettagliato: `diario/2026-10-29_brain-scalp-gruppo1-chatgpt.md`. **Fermarsi qui**; Gruppo 2 (I2/I3/B2) soltanto dopo approvazione esplicita utente. I8 opzione A/B/C non scelta. Claude continua consultazione report classici; Hawk/Bull classici in pausa secondo ultimi screenshot 08:07 (Bull con 1 posizione aperta, non aggiornato live).
