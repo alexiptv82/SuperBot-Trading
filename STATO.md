@@ -1012,3 +1012,15 @@ AI: chatgpt
 - GestioneBE netto/parziali/trailing/giveback giàpresente; provider/routing/supervisore ancora da costruire. Nessuna nuova macchina o raddoppio size introdotto.
 - Sintesi dei report: usare perildisegno audit sizing pervincolo, schemi con snapshot/versione/evidenze, memoria pertinente append-only, routing misurabile e valutazioni causali su stessi input; politicheconfidence/ATR/DD/nuoviscore e presetuscite rimangono esperimenti separati.
 - SoloSTATO e diario[skip ci]; nessun codice/parametro, merge/deploy/VPS/datooperativo modificato.
+
+
+## 29/10/2026 — Nuovo indirizzo utente: portafoglio unico e profitti netti frequenti
+- Utente chiede di superare il progetto con due wallet da1000 e orientarsi a un solo portafoglio PAPER da2000USDT, richiamando positivamente la gestione delBrain attivo. Questa è una modifica del mandato progettuale rispetto aldualScalp: nessuna fusione/reset/migrazione conti o modificaVPS eseguita.
+- Obiettivo riferito: margini e leve più consistenti, maggiore rischio rispetto all'attuale, prese di profitto più ravvicinate e flessibili; esempi20–30–40USDT pertrade, senza numero fisso obbligatorio di operazioni o targetgiornaliero garantito. Apprezza gestione esistente; non richiede sostituzione indiscriminata delle uscite.
+- Evitare interpretazione come promessa di chiusure sempre positive. Risultato da valutare netto di fee/slippage/funding e sottraendo perdite; frequenza o size da sole non dimostrano edge.
+- TP più vicino e SL meno stretto richiedono verifica congiunta: non stringere target sotto i costi né allargare stop aumentando perdita senza limite deciso. Il rischio50 delprototipo è una soglia esistente, NON una nuova scelta per il walletunico; rischio pertrade/aggregato, budget margine/slot, leva minima e soglie finanziarie delnuovo mandato restano da rendere espliciti prima dell'implementazione.
+- Cambio secondo parere già espresso dall'utente nella conversazione: usare Claude disponibile con DeepSeek; Sol non disponibile al momento. Ruoli desiderati DeepSeek principale/Claude selettivo; nessuna simulazione Sol spacciata per sue decisioni reali, nessun provider o servizio attivato.
+- Fonti ufficiali consultate sui costi: https://www.bitget.com/asia/support/articles/12560603828198 ; commissioni proporzionali alvalore dellaposizione, funding distinto. A parità di margine più leva aumenta nozionale e costi, oltre alPnL. Per gli esempi usare ipotesi dichiarate delsimulatore, non tariffa effettiva dell'account nonverificata.
+- Prossimo artefatto tecnico deve descrivere un walletunico senza duplicare ilBrainattivo, con archivi esistenti preservati, profitto netto chiudendoora visibile e compatibilità snapshot/PWA. Nessun codice dual oBrainFree cambiato in questa sessione: baseline856a5ed095d4 ePWA9251e6dd preservate come ripristino.
+- Solo aggiornamentoSTATO/diario[skip ci]. Nessun merge/deploy/reset, APIAI, ordine, VPS o filememoria toccato.
+AI: chatgpt
