@@ -61,6 +61,35 @@ class BrainPair:
                 result['rejected'].append({'symbol':sym,'why':str(e)[:100]})
         return result
 
+    def tick_with_backfill(self,markets,contracts,now,fetch_missing):
+        """Offline injected backfill provider. Never silently clear unresolved gaps."""
+        repaired={}
+        for symbol,market in markets.items():
+            entry=dict(market)
+            bars=dict(entry.get('bars') or {})
+            series=list(bars.get('1m') or [])
+            if series:
+                start=min(series,key=lambda x:x[0])[0]
+                end=max(series,key=lambda x:x[0])[0]
+                by_start={row[0]:row for row in series}
+                missing=[ts for ts in range(start,end+60000,60000) if ts not in by_start]
+                if missing:
+                    try:
+                        supplied=fetch_missing(symbol,missing)
+                        for row in supplied:
+                            if row[0] in missing and len(row)>=6:
+                                by_start[row[0]]=row
+                        if all(ts in by_start for ts in missing):
+                            bars['1m']=[by_start[ts] for ts in sorted(by_start)]
+                            entry['bars']=bars
+                            _LOG.info('gap_backfilled %s %s',symbol,len(missing))
+                        else:
+                            _LOG.warning('gap_unresolvable %s',symbol)
+                    except Exception:
+                        _LOG.exception('gap_backfill_failed %s',symbol)
+            repaired[symbol]=entry
+        return self.tick(repaired,contracts,now)
+
     def tick(self,markets,contracts,now):
         """One wallet error must never prevent protections in the other.
 
