@@ -281,9 +281,11 @@ class PaperWallet:
         opening_allowed=(delta_ms<=500 and complete and
                          all(fresh(quotes.get(sym),now,self.entry_cfg) for sym in state['positions']))
         today=now//86400000
+        fully_marked=(complete and all(
+            fresh(quotes.get(sym),now,self.protect_cfg)
+            for sym in state['positions']))
         if today!=state['daily']['utc']:
-            if complete and all(fresh(quotes.get(sym),now,self.protect_cfg)
-                                for sym in state['positions']):
+            if fully_marked:
                 # Rollover is only safe when every open position is valued
                 # from a recent, valid quote; never use partial equity.
                 state['daily']={'utc':today,'start_equity':capital}
@@ -293,7 +295,7 @@ class PaperWallet:
                                'reference_equity':capital})
             else:
                 opening_allowed=False
-        if complete and today==state['daily']['utc']:
+        if fully_marked and today==state['daily']['utc']:
             baseline=state['daily']['start_equity']
             if capital<=baseline*(1-self.spec.daily_stop_pct):
                 if not state['daily_stop_triggered']:
@@ -376,7 +378,9 @@ class PaperWallet:
             threshold=policy.get('breakeven_after_usd')
             if threshold is None:
                 threshold=policy.get('protect_after_usd',0)
-            if threshold>0 and peak>=threshold and not policy.get('breakeven_set'):
+            if threshold>0 and (peak>=threshold or policy.get('breakeven_set')):
+                # Funding can accrue after the initial activation. Recompute
+                # the required quote each tick and tighten monotonically.
                 threshold_quote=_breakeven_observed_quote(p,self.cfg)
                 status=_protect_stop_with_quote(
                     p,symbol,px,threshold_quote,now,contracts,
