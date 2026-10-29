@@ -1,0 +1,55 @@
+name: Classics October recovery - historical universe A/B (no VPS)
+on:
+  push:
+    branches: [work/classics-12oct-selective-lab-20261029]
+    paths: ['.github/workflows/classics-12oct-universe-ab.yml']
+permissions:
+  contents: read
+jobs:
+  universe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy
+      - name: Set declared 26-symbol universe
+        run: echo 'SYMBOLS=BTC,ETH,BNB,XRP,SOL,ADA,DOGE,AVAX,DOT,LINK,UNI,ATOM,LTC,BCH,APT,ARB,OP,NEAR,FIL,INJ,SUI,TIA,RUNE,STX,XAU,XAG' >> "$GITHUB_ENV"
+      - name: Reproduce Hawk on public Bitget historical candles
+        run: python backend/rollback_lab/ab_runner.py --days 17 --end-ms 1793232000000 --portfolio hawk --step 2 --symbols "$SYMBOLS" --cache historical-cache --output hawk_universe.json >hawk_universe.log 2>&1 || { tail -n 70 hawk_universe.log; exit 1; }
+      - name: Reproduce Bull on identical historical candles
+        run: python backend/rollback_lab/ab_runner.py --days 17 --end-ms 1793232000000 --portfolio bull --step 2 --symbols "$SYMBOLS" --cache historical-cache --output bull_universe.json >bull_universe.log 2>&1 || { tail -n 70 bull_universe.log; exit 1; }
+      - name: Verify same feed, report universe gaps and calendar windows
+        run: |
+          python - <<'PY'
+          import json,os
+          h=json.load(open('hawk_universe.json')); b=json.load(open('bull_universe.json'))
+          assert h['market_data_sha256']==b['market_data_sha256']
+          print('SAME_SHA',h['market_data_sha256'],'UNIVERSE',h['symbols'])
+          for d in [h,b]:
+            print('PORTFOLIO',d['portfolio'],'LOADED',len(d['symbols']),'COVERAGE',d['symbols'])
+            print('ALL',[(x['nome'],x['trade'],x['netto'],x['dd$']) for x in d['variants']])
+            for name,parts in d['periods'].items():
+              print('PERIOD',d['portfolio'],name,[(x['variant'],x['n'],x['net']) for x in parts])
+            with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('\n## '+d['portfolio']+' historical A/B\n')
+              f.write('Read from Bitget '+str(len(d['symbols']))+' symbols (requested 26), period 12–29 Oct 2026; controls excludes AI.\n')
+              for x in d['variants']:
+                f.write(f"\n- {x['nome']}: trades {x['trade']}, net {x['netto']}, DD {x['dd$']}")
+          PY
+      - name: Verify untouched production files
+        run: test -z "$(git diff --name-only dc16e0169932c3885908625ce5be321a33b09a0f HEAD -- backend/desk deploy frontend .github/workflows/desk-deploy.yml)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: classics-12oct-historical-universe
+          path: |
+            hawk_universe.json
+            bull_universe.json
+            hawk_universe.log
+            bull_universe.log
+          retention-days: 30
