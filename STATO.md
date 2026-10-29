@@ -951,10 +951,27 @@ Dettagli: `diario/2026-10-27_chatgpt.md` e `diario/ROLLBACK-CLASSICI-2026-10-27-
 AI: chatgpt
 
 
-## 29/10/2026 — Brain Scalp Gruppo 6 e svolta: implementazione autorizzata, IN CORSO
+## 29/10/2026 — Brain Scalp Gruppo 6: autorizzazione iniziale (conclusa, esito sotto)
 - Briefing utente: classici/base13 accantonati come sviluppo; focus Brain. Esiti edge lab sono quelli riferiti da Claude nel suo rapporto, non nuova verifica di redditività Brain. Nessun intervento operativo/stop sui classici autorizzato in questa sessione.
 - Utente delega esplicitamente scelta A/B/C e implementazione Gruppo 6; questa autorizzazione supera l'attesa scelta utente del prompt precedente.
 - Scelta ChatGPT: C, capitale/margini/rischio invariati (PAPER 1000 per wallet, cap950, Hawk100–250/10slot, Bull150–350/3slot). Slot massimi, non obiettivo da riempire. Sizing: preservare margine proposto e ridurre prima leva nei limiti del piano/rischio; ridurre margine solo se necessario, mai sotto minimo operativo salvo polvere di arrotondamento dichiarata. Prenotazioni cash comprensive fee e verifiche post-normalizzazione.
 - Autore ChatGPT su brain_scalp e test/docs/workflow offline ramo work/brain-scalp-dual-20261028 da f097801b1836; ramo PWA9251e6dd invariato salvo necessità dimostrata. Claude rimane su edge lab/infrastruttura. Snapshot/metriche esistenti riutilizzati.
 - Verifica API nelle fonti ufficiali: DeepSeek deepseek-flash + thinking enabled/reasoning_effort high; alias deepseek-chat/reasoner ritirati24luglio2026. Modello secondo livello gpt-6.1-sol documentato. Brain Scalp non ha ancora provider/chiamate di rete; architettura a due livelli resta proposta da integrare col futuro supervisore, nessuna attivazione dichiarata.
 - Solo implementazione/test offline/push di sviluppo/diario. Nessun merge/deploy, VPS, reset/migrazione, memoria/storici o dati operativi. Ripristino codice: commit f097801b1836; nessun force push.
+
+
+## Gruppo 6 e sizing — COMPLETATO offline, CI verde
+- Ramo work/brain-scalp-dual-20261028 HEAD856a5ed095d4066840a5b05d71817c1c35aea4e8, base f097801b1836a3864807811c5f9c9e731a4cc789.
+- CI https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40922920500 SUCCESS:114 test Python3.10 e114 Python3.11 (228 esecuzioni). Guardie classici, Brain Free e deploy PASS.12 nuove regressioni Gruppo6; sintassi locale e114 test locali Python3.12 PASS.
+- Scelta C documentata: capitale1000/wallet, budget margine950, Hawk100–250/10slot e Bull150–350/3slot, rischio50/trade e150 aggregato invariati. Slot massimi, non obiettivo. L'utente aveva delegato esplicitamente la scelta all'AI.
+- Sizing corretto in PaperWallet/BrainPair: priorità massimo margine proposto finanziabile, poi leva maggiore compatibile; mai aumento della richiesta AI. Riduzione del margine solo quando serve. Prenotazioni cumulative includono le fee d'ingresso, senza doppio utilizzo della cassa; terza propostaBull350 viene allocata250 dopo350+350. BrainPair comunica quantità di margine/leve allocate.
+- Esempio sintetico LONG/SHORT richiesta250 a45x, quote100, stop98/102: mantiene250 di margine prima della normalizzazione, abbassa leva a9x entro il limite rischio50. Non è un trade reale o prova della causa del sizing del Brain attivo. Leva minima del contratto attuale resta1x: nessun nuovo floor20x introdotto implicitamente. Se si richiederanno insieme250 e almeno20x, bisognerà verificare la fattibilità entro il rischio50; nessun bypass del rischio.
+- Post-normalizzazione rifiuta margine sotto il minimo oltre un centesimo di polvere: nessun open/fee persistito per una proposta diventata troppo piccola. Budget aggregato calcolato sulle posizioni reali; eventoentry_fill include margine, leva e rischio stimato effettivi.
+- Prova locale engine -> snapshot esistente -> lettore PWA esistente PASS dopo writer chiuso; Bull tre posizioni ~249,9944/349,9866/349,9866, Hawk vuoto. Dati totalmente sintetici PAPER, nessuna API AI/mercato.
+- Config scalp isolata: deepseek-flash/high; ID escalation gpt-6.1-sol predisposto. Fonti ufficiali29/10: https://api-docs.deepseek.com/quick_start/pricing e /guides/thinking_mode/; alias deepseek-chat/reasoner ritirati24luglio2026 secondo /news/news260424/; https://developers.openai.com/api/docs/models/gpt-6.1-sol. Nessun provider attivo nello scalp, nessun uso di nomi deprecati trovato in questo componente, Brain Free invariato.
+- Rapporto tecnico completo: docs/brain-scalp-group6-sizing-review.md sul ramo motore. Il briefing dell'utente in questa sessione è la fonte della svolta: classici accantonati come progetto, prioritàBrain; non dichiarare indipendentemente certificati i report diClaude o una redditività delBrain.
+- Modificati SOLO6file: config.py/engine.py/coordinator.py in brain_scalp; nuovo test_gruppo6; CI isolata e documento review. Nessuna modifica PWA (HEAD9251e6ddf2d68b607fffd73b8383da8f00c687fa), main/rule-pool, classici, Brain Free, deploy, VPS, credenziali, memoria o dati operativi. Nessun reset, migrazione, merge, ordine o forcepush.
+- Prossimo lavoro separato: definizione e implementazione provider/routing dei casi contraddittori, supervisoreH24 con feed e chiamata al publisher esistente, misure latenza/spesa e test end-to-end, poi eventuale autorizzazione rilascio. Architettura DeepSeek+Sol in valutazione, NON già funzionante. Report di altreAI da valutare al loro arrivo, nessuna accettazione automatica di parametri o promesse di edge.
+- Prenotazione ChatGPT di questa sessione CONCLUSA. Ripristino codice con nuovo revert della commit856a, mai reset dei dati o forcepush.
+
+AI: chatgpt
