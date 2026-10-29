@@ -1,0 +1,51 @@
+name: Classics 12 October archived trade fidelity gate (offline)
+on:
+  push:
+    branches: [work/classics-12oct-selective-lab-20261029]
+    paths:
+      - 'backend/rollback_lab/tape_audit.py'
+      - 'backend/tests/test_classics_tape_audit.py'
+      - '.github/workflows/classics-12oct-tape-ci.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Confirm diary history is locally available
+        run: git show origin/diario:diario/analisi-run-2026-10-27/positions.csv | head -c 30
+      - name: Compile, run forensic regression tests
+        run: |
+          python -m compileall -q backend/rollback_lab/tape_audit.py
+          PYTHONPATH=backend python -m unittest -v backend.tests.test_classics_tape_audit
+      - name: Produce reproducible read-only tape audit
+        run: python backend/rollback_lab/tape_audit.py --output tape_audit.json
+      - name: Publish non-attribution finding in run summary
+        run: |
+          python - <<'PY'
+          import json,os
+          t=json.load(open('tape_audit.json'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+            f.write('## Archived PAPER trade-level attribution audit\n')
+            f.write('Source SHA256: `'+t['export_sha256']+'`\n\n')
+            f.write('| Run group | Positions | Net | TP | SL | Model-or-rule labeled |\n|---|---:|---:|---:|---:|---:|\n')
+            for name,item in t['groups'].items():
+              s=item['all']; e=s['exits']
+              f.write(f"| {name} | {s['positions']} | {s['net_usd']} | {e.get('TP',{}).get('n',0)} | {e.get('SL',{}).get('n',0)} | {e.get('model_or_rule_close_labeled_claude',{}).get('n',0)} |\n")
+            f.write('\n**Cannot attribute labeled exits to Claude without original decision/outbox logs.**\n')
+          PY
+      - name: Verify production, dashboard, VPS and workflows untouched
+        run: |
+          test -z "$(git diff --name-only dc16e0169932c3885908625ce5be321a33b09a0f HEAD -- backend/desk frontend deploy .github/workflows/desk-deploy.yml)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: classics-12oct-trade-fidelity-audit
+          path: tape_audit.json
+          retention-days: 30
