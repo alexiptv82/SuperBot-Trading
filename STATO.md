@@ -1,3 +1,11 @@
+## 29/10 — BRAIN SCALP: GRUPPO 1 COMPLETATO OFFLINE (attesa OK Gruppo 2)
+
+Letto integralmente il prompt Claude `claude/prompt-chatgpt-brain-scalp-completo-2026-10-29.md`; applicate quattro correzioni di sicurezza (B3a quote None/NaN→equity incompleta e niente nuove aperture; B3b clock indietro→protezioni comunque e 500ms tolleranza; B3c tick Hawk/Bull isolati e log errore; I4 quote ingresso max 3s, quote protezione max 10s, evento fill/slippage). Solo `work/brain-scalp-dual-20261028` (`backend/director/brain_scalp/**`, tests e workflow CI dedicato), **nessuna modifica a brain_free, desk, app, VPS o classici**. GitHub Actions `40836245846` **SUCCESS Python 3.10/3.11, 28/28 test ciascuno**; nessun deploy/merge. Report dettagliato: `diario/2026-10-29_brain-scalp-gruppo1-chatgpt.md`. **Fermarsi qui**; Gruppo 2 (I2/I3/B2) soltanto dopo approvazione esplicita utente. I8 opzione A/B/C non scelta. Claude continua consultazione report classici; Hawk/Bull classici in pausa secondo ultimi screenshot 08:07 (Bull con 1 posizione aperta, non aggiornato live).
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 29/10 — HANDOFF CLAUDE: report completo problemi classici disponibile
 
 ChatGPT ha pubblicato su diario **`diario/2026-10-29_REPORT-COMPLETO-CLASSICI-HAWK-BULL-PER-CLAUDE.md`** (commit `c9ce0fa4cebc02dc014efb8c48821bbe7225a5d7`) una relazione tecnica completa con numeri, cronologia, contesto di mercato, fees, scoring, limiti di attribuzione AI, rischio stop legacy non-latched, fotografia PAUSA del 29/10, replay offline 7/26 asset con gate di fedeltà fallito e programma di esperimenti. **Richiesta a Claude:** lettura integrale e seconda opinione indipendente anche con proposte alternative concrete; NO code edit classici, no deploy, no reset, no VPS, no modifica Brain. Hawk #7 paused/flat e Bull #6 pausa in corso con 1 SHORT BTC PAPER all'ultimo screenshot 08:07; Salvadanaio 0 entrambi, equity 698,86/673,48. Le informazioni sono snapshot, non live. In parallelo Claude prepara il documento Brain Scalp e ChatGPT lo leggerà quando pubblicato.
