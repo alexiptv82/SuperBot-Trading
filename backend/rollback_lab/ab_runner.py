@@ -47,6 +47,14 @@ def prepare(repo,tmp):
     def compatible_rules(readings,positions,opened,entry_score,**unused):
         return original_rules(readings,positions,opened,entry_score)
     bt.rules_decisions=compatible_rules
+    # The current regime utility expects modern Position tracking fields.
+    # In this no-regime experiment, R values only populate diagnostic pos_info.
+    original_peak=bt.rg.peak_price
+    original_unit=bt.rg.r_unit
+    bt.rg.peak_price=lambda pos: (original_peak(pos) if hasattr(pos,"px_hi")
+                                  else float(pos.entry))
+    bt.rg.r_unit=lambda pos: (original_unit(pos) if hasattr(pos,"r_dist")
+                              else abs(float(pos.entry)-float(pos.sl)))
     return oldeng
 
 def variants(old_engine,portfolio):
