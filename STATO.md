@@ -1001,3 +1001,14 @@ AI: chatgpt
 - Errore numerico: bufferBE0,05–0,08% sotto le sole feeA/R attuali~0,12%. Conservare solverBE contabile. GestioneBE/parziali/trailing giàpresente, nonduplicare.
 - Trattenere memoria pertinente/evidenze sintetiche e prove pervarianti, riusando stato e log attuali. ReportChatGPT esterno resta finora traccia progettuale piùcompatibile, senza adozione automatica dei parametri.
 - Solo analisi/diario, nessuna modifica codice/parametri/deploy/VPS/dati operativi. BrainScalp856a5ed095d4/PWA9251e6dd invariati.
+
+
+## 29/10/2026 — Messaggio Claude sulla svolta e sizing: riallineamento
+- Ricevuto testoClaude inoltrato dall'utente. Direzione confermata: classici accantonati come sviluppo; focusBrain. Nessuna nuova autorizzazione deploy, stopclassici o modificaVPS.
+- Commit40aacdd citato daClaude è precedente ai checkpoint di questa chat; diario verificato prima della presente voce f34e964fbf2be7597a3e994ef35e53a75a821cc7. Il prompt claude/prompt-chatgpt-brain-miglioramento-2026-10-29.md non è presente sul ramoGitHub diario consultato (404); potrebbe esistere soltanto nel progettoClaude. Valutato il testo inoltrato, non dichiarata lettura di quel file.
+- Correzione economica: con costi proporzionali a nozionale, aumentare la quantità scala sia profitto lordo sia commissioni e non migliora automaticamente il rapporto frai due. Possono esistere effetti di costifissi/minimi/arrotondamenti/marketimpact, da misurare; nessuna evidenza qui che siano la causa. Winrate55% da solo non dimostra edge o copertura costi: servono vincita/perdita media netta e frequenza.
+- Confidence0,85 auto-dichiarata non equivale a probabilità calibrata85% e non giustifica size2x. Il rapporto tra moltiplicatori deve essere validato fuori campione mantenendo minimi, rischio50/trade150aggregato, capitale e capacità. Un layer sopraWalletEngine non rende il cambiamento automaticamente senza impatto su Plan/BrainPair/contabilità/TTL.
+- SizingScalp già corretto in856a5ed095d4: priorità margine richiesto prima della leva, fee sulle prenotazioni, minimo effettivo dopo normalizzazione.114test perPython3.10/3.11 PASS. Non è una correzione già distribuita alBrainattivo.
+- GestioneBE netto/parziali/trailing/giveback giàpresente; provider/routing/supervisore ancora da costruire. Nessuna nuova macchina o raddoppio size introdotto.
+- Sintesi dei report: usare perildisegno audit sizing pervincolo, schemi con snapshot/versione/evidenze, memoria pertinente append-only, routing misurabile e valutazioni causali su stessi input; politicheconfidence/ATR/DD/nuoviscore e presetuscite rimangono esperimenti separati.
+- SoloSTATO e diario[skip ci]; nessun codice/parametro, merge/deploy/VPS/datooperativo modificato.
