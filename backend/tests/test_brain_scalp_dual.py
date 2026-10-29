@@ -93,11 +93,14 @@ class DualWallet(unittest.TestCase):
         res=self.h.tick(market(price=101,ts=NOW-31000),CONTRACT,NOW+1000)
         self.assertEqual((res['positions'],res['pending']),(0,1))
 
-    def test_risk_cap_rejects_excess_leverage(self):
+    def test_risk_cap_downsizes_excess_leverage(self):
         self.h.submit(plan(margin=250.,leverage=45,stop=98.),NOW,CONTRACT,quote_map())
         out=self.h.tick(market(),CONTRACT,NOW+1000)
-        self.assertEqual(out['positions'],0)
-        self.assertTrue(any(e.get('why')=='stop_risk_budget' for e in out['events']))
+        self.assertEqual(out['positions'],1)
+        self.assertTrue(any(e.get('kind')=='plan_resized' for e in out['events']))
+        p=self.h.store.load()['positions']['BTC']
+        self.assertGreaterEqual(p['margin'],self.h.spec.min_margin-1e-6)
+        self.assertLessEqual(p['leverage'],45)
 
     def test_backup_and_reopen_persist(self):
         self.h.submit(plan(),NOW,CONTRACT,quote_map())
