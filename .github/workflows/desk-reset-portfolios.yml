@@ -2,7 +2,8 @@ name: Sala segnali - chiudi posizioni e riporta i portafogli a 1000$ (PAPER, bot
 
 # Fa le stesse due cose dei tasti dell'app "Chiudi" e "Azzera portafoglio", ma senza passare dall'app:
 #   1) chiude a prezzo di mercato le posizioni ancora aperte (close_position.flag),
-#   2) azzera il CONTO e riparte da 1000$ (reset_portfolio.flag).
+#   2) azzera il CONTO e riparte da 1000$ (reset_portfolio.flag con reset_vault=true: il codice in esecuzione lo
+#      richiede quando il Salvadanaio e' attivo; lo stato della run precedente, Salvadanaio compreso, resta archiviato).
 # Il bot resta IN PAUSA: l'avvio lo preme l'utente. Il cervello (storico trade, appunti, errori, registro di
 # apprendimento) non viene toccato: lo garantisce il bot stesso, che archivia la run e non cancella nulla.
 # Sicurezze: solo PAPER (si controlla l'ambiente dei container), solo bot gia' in pausa, nessuna scrittura finche'
@@ -133,7 +134,7 @@ jobs:
             # ---- 4) azzeramento del conto (il bot lo rifiuta da solo se non e' in pausa o ha posizioni)
             for p in BOTS:
                 t_req = int(time.time() * 1000)
-                put(f"{BASE}/{p}/reset_portfolio.flag", {})
+                put(f"{BASE}/{p}/reset_portfolio.flag", {"reset_vault": True})   # il codice in esecuzione lo pretende: azzera anche il Salvadanaio (la run precedente resta archiviata)
                 def done(p=p, t_req=t_req):
                     la = state(p).get("last_action") or {}
                     return la.get("type") == "reset_portfolio" and int(la.get("ts", 0)) >= t_req
