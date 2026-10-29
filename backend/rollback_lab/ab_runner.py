@@ -33,9 +33,20 @@ def prepare(repo,tmp):
     class OldAdapter:
         @staticmethod
         def read_symbol(symbol,win,now_ms,**unused):
+            oldsig.get_seasonal=oldsea.get_seasonal
             return oldsig.read_symbol(symbol,win,now_ms)
+    original_modern=bt.sig_mod
+    class ModernAdapter:
+        @staticmethod
+        def read_symbol(symbol,win,now_ms,btc_return_3d=None,**kwargs):
+            return original_modern.read_symbol(symbol,win,now_ms,**kwargs)
     bt.sig_old=OldAdapter
+    bt.sig_mod=ModernAdapter
     bt.sea_v1_compat=oldsea.get_seasonal
+    original_rules=bt.rules_decisions
+    def compatible_rules(readings,positions,opened,entry_score,**unused):
+        return original_rules(readings,positions,opened,entry_score)
+    bt.rules_decisions=compatible_rules
     return oldeng
 
 def variants(old_engine,portfolio):
