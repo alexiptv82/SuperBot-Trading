@@ -5,9 +5,11 @@ A supervisor must supply the identical market snapshot to both accounts.
 """
 from pathlib import Path
 import logging
+import math
+from uuid import uuid4
 
 _LOG=logging.getLogger(__name__)
-from .engine import PaperWallet,PlanCostError
+from .engine import PaperWallet,PlanCostError,PlanGuardError
 from .scanner import scan, _closed
 from .gap_repair import repair_markets
 
@@ -32,36 +34,80 @@ class BrainPair:
         return scan(markets,now,limit=limit)
 
     def accept_ai_plans(self,wallet,raw,shortlist,markets,contracts,now):
-        """Reject hallucinated or contradictory directions before slot reservation."""
+        """Admit independent AI proposals; mint all IDs and timestamps here.
+
+        Untrusted plans cannot supply identity or clock. Invalid entries are
+        rejected individually, without logging the raw model payload.
+        Reservation, actual fill and protective exits remain PAPER-only.
+        """
         if wallet not in ('hawk','bull'): raise ValueError('unknown_wallet')
         if not isinstance(raw,dict) or not isinstance(raw.get('plans'),list):
             raise ValueError('model_response_wrong_schema')
-        permitted={c['symbol']:c for c in shortlist.get('candidates',[])}
-        if len(raw['plans'])>len(permitted): raise ValueError('too_many_model_plans')
+        proposals=raw['plans']
+        if len(proposals)>32:
+            raise ValueError('model_response_plan_limit')
+        candidates=shortlist.get('candidates',[]) if isinstance(shortlist,dict) else []
+        permitted={c['symbol']:c for c in candidates
+                   if isinstance(c,dict) and isinstance(c.get('symbol'),str)
+                   and c.get('side') in (-1,1)}
         seen=set()
         result={'accepted':[],'rejected':[]}
-        for item in raw['plans']:
-            if not isinstance(item,dict):
-                result['rejected'].append({'symbol':None,'why':'plan_not_object'})
+        audit=[]
+        wallet_engine=getattr(self,wallet)
+        quotes={sym:m.get('quote') for sym,m in markets.items()
+                if isinstance(sym,str) and isinstance(m,dict)}
+        for item in proposals:
+            sym=item.get('symbol') if isinstance(item,dict) else None
+            if not isinstance(sym,str):
+                sym=None
+                why='invalid_symbol_type' if isinstance(item,dict) else 'plan_not_object'
+                result['rejected'].append({'symbol':None,'why':why})
+                audit.append({'kind':'ai_plan_rejected','wallet':wallet,'why':why})
                 continue
-            sym=item.get('symbol')
+            side=item.get('side')
             if sym in seen:
-                result['rejected'].append({'symbol':sym,'why':'duplicate_symbol'})
-                continue
-            seen.add(sym)
-            candidate=permitted.get(sym)
-            if candidate is None or item.get('side')!=candidate['side']:
-                result['rejected'].append({'symbol':sym,'why':'not_a_matching_fresh_candidate'})
-                continue
-            try:
-                plan=getattr(self,wallet).submit(item,now,contracts.keys(),
-                                   {s:m['quote'] for s,m in markets.items() if m.get('quote')})
-                result['accepted'].append({'symbol':sym,'plan_id':plan.plan_id})
-            except (ValueError,KeyError,TypeError) as e:
-                rejected={'symbol':sym,'why':str(e)[:100]}
-                if isinstance(e,PlanCostError):
-                    rejected.update(e.details)
-                result['rejected'].append(rejected)
+                rejection={'symbol':sym,'why':'duplicate_symbol'}
+            elif (isinstance(side,bool) or not isinstance(side,(float,int))
+                  or not math.isfinite(side) or side not in (-1,1)
+                  or sym not in permitted or side!=permitted[sym]['side']):
+                rejection={'symbol':sym,'why':'not_a_matching_fresh_candidate'}
+            else:
+                try:
+                    # The model may propose a TTL, but never an absolute
+                    # timestamp, plan_id, or day-long replay of a stale plan.
+                    if 'ttl_ms' in item:
+                        ttl=item['ttl_ms']
+                    elif 'created_ms' in item and 'expires_ms' in item:
+                        ttl=item['expires_ms']-item['created_ms']
+                    else:
+                        ttl=120000
+                    if (isinstance(ttl,bool) or not isinstance(ttl,(int,float))
+                        or not math.isfinite(ttl) or ttl!=int(ttl)
+                        or not 1000<=ttl<=wallet_engine.spec.max_plan_lifetime_ms):
+                        raise ValueError('invalid_plan_ttl')
+                    normalized=dict(item)
+                    normalized['plan_id']=uuid4().hex
+                    normalized['created_ms']=int(now)
+                    normalized['expires_ms']=int(now)+int(ttl)
+                    normalized.pop('ttl_ms',None)
+                    plan=wallet_engine.submit(
+                        normalized,now,contracts.keys(),quotes)
+                    result['accepted'].append({'symbol':sym,'plan_id':plan.plan_id})
+                    seen.add(sym)
+                    continue
+                except (ValueError,KeyError,TypeError,OverflowError) as e:
+                    rejection={'symbol':sym,'why':str(e)[:100]}
+                    if isinstance(e,(PlanCostError,PlanGuardError)):
+                        rejection.update(e.details)
+            result['rejected'].append(rejection)
+            audit.append({'kind':'ai_plan_rejected','wallet':wallet,
+                          'symbol':sym,'why':rejection['why']})
+        audit.append({'kind':'ai_response_processed','wallet':wallet,
+                      'accepted':len(result['accepted']),
+                      'rejected':len(result['rejected'])})
+        # Keep a bounded durable summary, but never journal untrusted raw text.
+        state=wallet_engine.store.load()
+        wallet_engine.store.commit(state,max(int(now),state['last_ms']),audit)
         return result
 
     def tick_with_backfill(self,markets,contracts,now,fetch_missing):
