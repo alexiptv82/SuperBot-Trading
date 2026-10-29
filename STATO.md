@@ -1,3 +1,11 @@
+## 29 ottobre — prova offline del comportamento 12 ottobre
+
+Utente autorizza preparazione e test offline della strategia storica. ChatGPT lavora soltanto sul ramo `work/classics-12oct-selective-lab-20261029` con nuovi moduli di laboratorio. Nessuna modifica ai classici, Brain, workflow di produzione, dati, capitale, posizioni o VPS; nessun deploy. Claude continua revisione Brain Scalp su componenti diversi. Prima di qualsiasi rilascio occorrono autorizzazione separata e backup con verifica del ripristino.
+
+AI: chatgpt
+
+---
+
 ## 29/10 — richiesta di valutazione rollback classici al 12 ottobre (non autorizzato)
 
 L'utente domanda se si possa fare un «rollback pulito al 12 ottobre», dopo le run negative. Analisi read-only del repo GitHub: GOLDEN 12–16 attraversa più SHA, dall'`a0afc63` del 12/10 e `7ced3a6` alla versione finale schermata `5818aee`. Il vecchio codice FORZAVA margine/leva minimi, il loader JSON ritornava `{}` su problemi lettura e l'antico workflow deploy era su infrastruttura precedente; non deve essere eseguito sul VPS Singapore e non deve leggere in scrittura i nuovi formati stato/posizione/journal. La prima crisi iniziò già 16/10, prima di Fix A/CapitalV1/soglia63/P1/P2: non è provato che il restore 12/10 possa funzionare adesso.
