@@ -10,9 +10,15 @@ import unittest
 from director.brain_scalp.coordinator import BrainPair
 from director.brain_scalp.engine import PaperWallet,_risk
 from director.brain_scalp.gap_repair import repair_markets
-from backend.tests.test_brain_scalp_group1 import NOW,CONTRACTS,plan,quote,market
+from backend.tests.test_brain_scalp_group1 import NOW,CONTRACTS,plan as base_plan,quote,market
 
 MINUTE=60000
+
+
+def plan(**overrides):
+    raw=base_plan()
+    raw.update(overrides)
+    return raw
 
 
 def bar(ts,low=99.9,high=100.1):
