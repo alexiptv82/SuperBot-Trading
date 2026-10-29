@@ -3,8 +3,17 @@
 Never infer closed P&L from running equity, never count aggregate close twice.
 No network, DB queries, global clock or changes to trading decisions.
 """
-from director.brain_free.execution import margin
-from .engine import _safe_equity, _valid_quote
+from director.brain_free.execution import margin, fresh
+
+
+def _observed_equity(state,quotes,now,cfg):
+    result=state['cash']+margin(state)
+    for sym,p in state['positions'].items():
+        q=quotes.get(sym)
+        if not fresh(q,now,cfg):
+            return None
+        result+=p['side']*(q['price']-p['entry'])*p['qty']
+    return result
 
 
 def build_metrics(state, events, now, spec, quotes, price_cfg, opening_allowed,
@@ -43,10 +52,8 @@ def build_metrics(state, events, now, spec, quotes, price_cfg, opening_allowed,
                     ev.get('duration_minutes',0.))
     state['scalp_metrics_counters']=counters
 
-    equity,complete,_=_safe_equity(state,quotes)
-    from director.brain_free.execution import fresh
-    complete=(complete and all(fresh(quotes.get(sym),now,price_cfg)
-                               for sym in state['positions']))
+    equity=_observed_equity(state,quotes,now,price_cfg)
+    complete=equity is not None
     m=margin(state)
     n=len(state['positions'])
     pending=sum(p['margin'] for p in state['plans'].values())
