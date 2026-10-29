@@ -140,18 +140,25 @@ class PaperWallet:
         # Gaps not filled before this tick cannot be silently ignored.
         # Once an OPEN position was exposed to an unknown historical minute,
         # its coverage remains flagged until explicit audited reconciliation.
+        recoverable_gaps=set()
         for event in market_events:
             if event['kind'] in ('gap_unresolvable','gap_backfill_failed'):
                 symbol=event['symbol']
                 if symbol not in state['coverage_gaps']:
                     state['coverage_gaps'].append(symbol)
                 if symbol in state['positions']:
-                    state['positions'][symbol]['coverage_complete']=False
-            elif (event['kind']=='gap_backfilled'
-                  and event['symbol'] not in state['positions']):
+                    position=state['positions'][symbol]
+                    # Preserve the last fully checked closed bar. Never
+                    # reclassify pre-patch unknown gaps as automatically safe.
+                    position.setdefault('scalp_gap_cursor_ms',position['last_bar_ms'])
+                    position['coverage_complete']=False
+            elif event['kind']=='gap_backfilled':
                 symbol=event['symbol']
-                if symbol in state['coverage_gaps']:
-                    state['coverage_gaps'].remove(symbol)
+                if symbol not in state['positions']:
+                    if symbol in state['coverage_gaps']:
+                        state['coverage_gaps'].remove(symbol)
+                elif 'scalp_gap_cursor_ms' in state['positions'][symbol]:
+                    recoverable_gaps.add(symbol)
         original_now=now
         delta_ms=max(0,state['last_ms']-now)
         if delta_ms:
@@ -161,6 +168,31 @@ class PaperWallet:
         state['last_prices']={s:m['quote'] for s,m in markets.items() if _valid_quote(m.get('quote'))}
         state,events=protect(state,markets,contracts,now,self.protect_cfg)
         events=list(market_events)+events
+        # A quarantined position can be restored only after the actual
+        # missing candles have been validated and replayed by protect().
+        for symbol in recoverable_gaps:
+            position=state['positions'].get(symbol)
+            if position is None:
+                if symbol in state['coverage_gaps']:
+                    state['coverage_gaps'].remove(symbol)
+                events.append({'kind':'gap_recovered_verified','symbol':symbol,
+                               'result':'position_closed_on_replay'})
+                continue
+            original=position.get('scalp_gap_cursor_ms')
+            latest=position.get('last_bar_ms')
+            candles=(markets.get(symbol,{}).get('bars') or {}).get('1m',[])
+            observed={row[0] for row in candles if isinstance(row,(list,tuple))
+                      and len(row)>=6 and isinstance(row[0],int)}
+            if (isinstance(original,int) and isinstance(latest,int)
+                    and latest>original and all(
+                        t in observed for t in range(
+                            original+60000,latest+60000,60000))):
+                position['coverage_complete']=True
+                del position['scalp_gap_cursor_ms']
+                if symbol in state['coverage_gaps']:
+                    state['coverage_gaps'].remove(symbol)
+                events.append({'kind':'gap_recovered_verified','symbol':symbol,
+                               'result':'continuous_replay'})
         if delta_ms:
             events.insert(0,{'kind':'clock_adjusted','delta_ms':delta_ms,
                              'original_now_ms':original_now})
