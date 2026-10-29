@@ -3,7 +3,10 @@ on:
   push:
     branches: [work/ritorno-9fa667f-claude-20261029]
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: classics-rollback-9fa-claude
+  cancel-in-progress: true
 jobs:
   verifica:
     runs-on: ubuntu-latest
@@ -15,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install pytest numpy pandas "ccxt==4.2.95" tzdata pyyaml
+      - run: python -m pip install pytest pytest-timeout numpy pandas "ccxt==4.2.95" tzdata pyyaml
       - name: Perimetro - cambia solo cio' che e' dichiarato
         run: |
           set -e
@@ -34,12 +37,17 @@ jobs:
           echo "engine.py = 9fa667f + solo l'adattatore di lettura dichiarato"
       - name: Suite del 13/10 e compatibilita' dello stato attuale
         run: |
-          set -e
           mkdir -p /tmp/cur
           git archive c1a7c91924c92ff7a2a48988dfa0c3bda96aad48 backend/desk backend/rule_pool backend/strategy_lab.py | tar -x -C /tmp/cur
           cd backend
-          CURRENT_BACKEND_DIR=/tmp/cur/backend python -m pytest tests_rollback_9fa -q -p no:cacheprovider -rs 2>&1 | tail -40
-          test "${PIPESTATUS[0]}" = 0
+          set +e
+          CURRENT_BACKEND_DIR=/tmp/cur/backend timeout 1200 python -m pytest tests_rollback_9fa -v --timeout=90 --timeout-method=thread -p no:cacheprovider -rfEs --durations=15 > /tmp/pytest_out.txt 2>&1
+          RC=$?
+          tail -70 /tmp/pytest_out.txt
+          mkdir -p ../deploy/ritorno-9fa667f
+          cp /tmp/pytest_out.txt ../deploy/ritorno-9fa667f/ci-pytest-output.txt
+          echo "pytest exit code: $RC"
+          exit $RC
       - name: Guardie del deploy dei bot e YAML
         run: |
           set -e
@@ -54,3 +62,12 @@ jobs:
           docker run --rm --entrypoint python desk-rollback-test -c "from desk import capital_journal, capital_manager, capital_runtime, vault_manager, position_sizer; print('moduli capitale importabili')" || echo "moduli capitale NON importabili con il codice del 13/10 (atteso: il profilo legacy_13oct salta quel controllo)"
       - name: Impronte dei file runtime (per il confronto con il deploy)
         run: sha256sum backend/desk/cli.py backend/desk/engine.py backend/desk/signals.py backend/desk/brain.py backend/desk/learning.py backend/desk/notifier.py
+      - name: Salva l'esito sul ramo di lavoro (solo documenti, [skip ci])
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/ritorno-9fa667f/ci-pytest-output.txt || true
+          git diff --cached --quiet || git commit -m "ritorno-9fa: esito pytest in CI [skip ci]"
+          git pull --rebase origin work/ritorno-9fa667f-claude-20261029 || true
+          git push origin HEAD:work/ritorno-9fa667f-claude-20261029 || true
