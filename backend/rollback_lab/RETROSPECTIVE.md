@@ -32,3 +32,15 @@ Il ripristino del comportamento 12 ottobre resta una **ipotesi da testare** e NO
 **Sviluppo isolato**: work/classics-12oct-selective-lab-20261029. **Nessun cambiamento** ai bot, conti, portafogli, trading, dashboard, Brain o VPS. Test o deploy operativi: non eseguiti.
 
 AI: chatgpt (chat normale)
+
+## Verifica automatica su GitHub Actions
+
+Workflow offline **40815650805 = SUCCESS**. Eseguito su runner GitHub senza chiavi, SSH o VPS: 
+- L'oggetto Git del file `backend/desk/signals.py` è **lo stesso identico blob** (`57b524e75593b0fe6f3a0712af1a0b2f14bd4a75`) in `a0afc63`, `7ced3a6`, `5818aee`, `18d145f` e `b4709d1` (12/10 fino alla prima crisi 16/10).
+- Il blob in `dc16e01` è diverso (`869fc2ecb3bf6f4fffd7bcc86581d1f473e35627`). Il ritorno al file `signals.py` 12/10 da solo non ricrea il successo golden, perché la crisi è iniziata con lo stesso file.
+- Le due guardie dell'Action confermano che i file operativi e di deploy originali non sono cambiati nel ramo di studio.
+- Il backtest preesistente `deploy/scripts/desk_backtest.py` applica `tier=63` alle altcoin e `start_equity=100000` nel conto simulato, mentre la golden usava `tier=70` e conti PAPER da1000 USD. Inoltre `signals_pre_p1.py` è una versione 25/10, non la snapshot esatta 12/10. Non usarlo come prova fedele del rollback senza correggere separatamente tali condizioni e ricontrollare gestione e uscite.
+
+Risultato: **prova di provenienza e retrospettiva superate**, non test di rendimento del rollback. Il replay A/B causale su identico feed 15m con modello dei fill e stessa configurazione originale resta non eseguito.
+
+Nota infrastruttura: il branch di laboratorio nasce da `dc16e01` e non deve essere unito indiscriminatamente a `rule-pool` o distribuito. Nessuna nuova autorizzazione operativa richiesta o ricevuta.
