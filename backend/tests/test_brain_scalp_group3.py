@@ -231,5 +231,23 @@ class Group3Wallet(unittest.TestCase):
         self.assertGreaterEqual(_net_at_quote(p,p['stop'],self.w.cfg),-1e-5)
 
 
+    def test_i5_latches_after_exit_fees_before_opening_another_trade(self):
+        self._open(hold_max_ms=60000,take_net_usd=999.,
+                   protect_after_usd=500.)
+        state=self.w.store.load()
+        p=state['positions']['BTC']
+        # Marked portfolio equity is just ABOVE the 20% loss limit before
+        # the time exit; exit slippage/fees push it BELOW 800 USD.
+        state['cash']=800.2-p['margin']-p['side']*(100.-p['entry'])*p['qty']
+        self.w.store.commit(state,NOW+1000)
+        out=self.w.tick(market(price=100.,ts=NOW+62000),
+                        CONTRACTS,NOW+62000)
+        self.assertEqual(out['positions'],0)
+        self.assertLess(self.w.store.load()['cash'],800.)
+        self.assertFalse(out['opening_allowed'])
+        self.assertTrue(self.w.store.load()['daily_stop_triggered'])
+        self.assertTrue(any(e['kind']=='daily_stop_latched' for e in out['events']))
+
+
 if __name__=='__main__':
     unittest.main()
