@@ -9,10 +9,12 @@ import logging
 _LOG=logging.getLogger(__name__)
 from .engine import PaperWallet
 from .scanner import scan
+from .gap_repair import repair_markets
 
 
 class BrainPair:
-    def __init__(self,base,initialize=False,now_ms=None):
+    def __init__(self,base,initialize=False,now_ms=None,candle_backfill=None):
+        self.candle_backfill=candle_backfill
         base=Path(base).absolute()
         self.hawk=PaperWallet(base/'hawk','hawk',initialize=initialize,now_ms=now_ms)
         try:
