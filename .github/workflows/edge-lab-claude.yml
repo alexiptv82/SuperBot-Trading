@@ -1,0 +1,66 @@
+name: Edge lab (Claude) - offline, nessun bot toccato
+on:
+  push:
+    branches: [work/edge-lab-claude-20261029]
+    paths:
+      - 'backend/edge_lab_claude/**'
+      - '!backend/edge_lab_claude/results/**'
+      - '.github/workflows/edge-lab-claude.yml'
+permissions:
+  contents: write
+concurrency:
+  group: edge-lab-claude
+  cancel-in-progress: true
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy
+      - name: Perimetro - nessun file di produzione toccato
+        run: |
+          set -e
+          changed="$(git diff --name-only fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7 HEAD \
+            | grep -v -E '^(backend/edge_lab_claude/|backend/long_lab_claude/|\.github/workflows/edge-lab-claude\.yml$)' \
+            || true)"
+          echo "fuori perimetro: [$changed]"
+          test -z "$changed"
+      - name: Test unitari (funzioni matematiche, nessuna dipendenza esterna)
+        working-directory: backend/edge_lab_claude
+        run: python -m unittest -v tests.test_edge 2>&1 | tail -n 30
+      - name: Prova su dati sintetici
+        working-directory: backend/edge_lab_claude
+        run: python edge_run.py --synthetic --days 30 --out /tmp/edge-synth --workers 4 --end 2026-10-29 | tail -n 15
+      - name: Cache candele (riusa quella del laboratorio P1)
+        uses: actions/cache@v4
+        with:
+          path: /tmp/long-lab-cache
+          key: long-lab-candles-20261029-540-v1
+      - name: Laboratorio su candele reali Bitget (endpoint pubblici, sola lettura)
+        working-directory: backend/edge_lab_claude
+        run: >
+          python edge_run.py
+          --days 540
+          --cache /tmp/long-lab-cache
+          --out results
+          --end 2026-10-29
+          --workers 4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: edge-lab-claude-results
+          path: backend/edge_lab_claude/results
+      - name: Salva i risultati sul ramo del laboratorio (mai su rule-pool)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/edge_lab_claude/results
+          git diff --cached --quiet || git commit -m "edge-lab: risultati su candele reali [skip ci]"
+          git pull --rebase origin work/edge-lab-claude-20261029
+          git push origin HEAD:work/edge-lab-claude-20261029
