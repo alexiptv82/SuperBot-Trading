@@ -4,6 +4,9 @@ No model requests, API keys, runtime daemons or exchange orders here.
 A supervisor must supply the identical market snapshot to both accounts.
 """
 from pathlib import Path
+import logging
+
+_LOG=logging.getLogger(__name__)
 from .engine import PaperWallet
 from .scanner import scan
 
@@ -57,6 +60,27 @@ class BrainPair:
         return result
 
     def tick(self,markets,contracts,now):
-        """Same feed; independent state, fees, risk and events in two databases."""
-        return {'hawk':self.hawk.tick(markets,contracts,now),
-                'bull':self.bull.tick(markets,contracts,now)}
+        """One wallet error must never prevent protections in the other.
+
+        A failed wallet gets a best-effort durable error event. The event
+        contains a type, not potentially sensitive exception arguments.
+        """
+        results={}
+        for name,wallet in (('hawk',self.hawk),('bull',self.bull)):
+            try:
+                results[name]=wallet.tick(markets,contracts,now)
+            except Exception as error:
+                _LOG.exception('Brain Scalp wallet tick failed: %s',name)
+                event={'kind':'wallet_tick_error','wallet':name,
+                       'error_type':type(error).__name__}
+                try:
+                    state=wallet.store.load()
+                    wallet.store.commit(state,max(int(now),state['last_ms']),[event])
+                    persisted=True
+                except Exception:
+                    _LOG.exception('Failed to persist wallet error: %s',name)
+                    persisted=False
+                results[name]={'status':'error','wallet':name,
+                               'error_type':type(error).__name__,
+                               'event_persisted':persisted,'events':[event]}
+        return results
