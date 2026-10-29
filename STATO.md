@@ -1,3 +1,11 @@
+## 29/10 (14:30) — LABORATORIO MODIFICA LONG (P1): NON RILASCIABILE, NESSUNA v2 PASSA I CRITERI — il 13/10 resta com'e'
+
+Laboratorio offline (ramo `work/long-lab-claude-20261029`, mai unito a `rule-pool`, nessun bot toccato) sul codice del 13/10 con ~18 mesi di candele reali, criteri G1–G9 scritti prima dei risultati. Esito: il bonus rimbalzo di P1 non cambia alcuna decisione (0 nuovi long); il peso 4h a 14 dimezza solo le aperture (stesso effetto di soglie +6 o di un placebo); nessuna delle varianti nuove (`g_long`, `t_bonus`, `t_bonus_g`, `r_reb`, `ref_gate`) passa. **P1 resta in stand-by.** Limite: la replica sottostima i giorni d'oro (R +0,06 contro +0,54 reale): i confronti tra varianti valgono, i valori assoluti no. Proposto (serve decisione utente): test di fedelta' a 1 minuto e laboratorio "dove guadagna il bot". Lo screenshot dell'utente conferma che `9fa667f` e' il codice di oggi. Dettagli: `diario/2026-10-29_claude-laboratorio-modifica-long.md`, `backend/long_lab_claude/RAPPORTO.md` (commit `1231c98`).
+
+AI: claude
+
+---
+
 ## 29/10 (12:30) — CLASSICI: RITORNO AL CODICE DEL 13/10 (9fa667f) DEPLOYATO, BOT IN PAUSA — aspetta l'Avvia dell'utente
 
 Su ordine esplicito dell'utente: rule-pool a `0ad6893` (ff), deploy `sha=0ad68935c1ec12e514a1652f6a43d09d4a23aa75` con `profile=legacy_13oct`, `capital=off`, `deepseek=off`, backup del cervello verificato. **Prima del deploy** i portafogli sono stati riportati a 1000$ (Falco run 8, Toro run 7, vault azzerato e archiviato, cervello intatto). Ora: PAPER, **in pausa**, versione `0ad6893`, 0 riavvii. Claude a **finestre da 4 ore** (29/10 14:30-18:30, 30/10 00:00-04:00, 31/10 08:00-12:00, ora svizzera), senza DeepSeek, fix bias LONG lasciato fuori. L'avvio lo preme l'utente. CI del ramo: 86 test del 13/10 verdi. **Rinomina fatta nell'app** (Falco/Toro, `main` `6116d54`, app rilasciata; pagine Brain da fare a ChatGPT). Con il codice del 13/10 l'app disabilita Azzera e Chiudi-singola (voluto); Avvia/Pausa funzionano.
