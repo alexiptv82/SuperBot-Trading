@@ -1,1 +1,1 @@
-2026-10-25T17:32:57Z claude: verifica collegamenti, conferma PAPER (sola lettura)
+2026-10-29T11:26:23Z lettura modalita' e battito dei bot prima del deploy del ritorno al 13/10 (sola lettura)
