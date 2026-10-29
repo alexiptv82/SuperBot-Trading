@@ -98,15 +98,29 @@ class BrainPair:
         """
         results={}
         anchors={}
+        quarantined=set()
         for wallet in (self.hawk,self.bull):
             try:
                 for symbol,position in wallet.store.load()['positions'].items():
                     ts=position['last_bar_ms']
                     anchors[symbol]=min(anchors.get(symbol,ts),ts)
+                    if 'scalp_gap_cursor_ms' in position:
+                        quarantined.add(symbol)
             except Exception:
                 _LOG.exception('Cannot load cursor for gap repair')
         repaired,gap_events=repair_markets(
             markets,now,fetcher=self.candle_backfill,anchors=anchors)
+        # A live feed may already contain all the previously missing candles.
+        # Do NOT clear the quarantine here: merely request a replay in each
+        # affected wallet. The wallet checks continuous historical coverage
+        # AFTER running protect() and only then clears its own gap flag.
+        unresolved_symbols={e['symbol'] for e in gap_events
+                            if e['kind'] in ('gap_unresolvable','gap_backfill_failed')}
+        backfilled_symbols={e['symbol'] for e in gap_events
+                            if e['kind']=='gap_backfilled'}
+        for symbol in sorted(quarantined-unresolved_symbols-backfilled_symbols):
+            if symbol in repaired:
+                gap_events.append({'kind':'gap_history_complete','symbol':symbol})
         # An unresolved historical minute is an unknown stop/target event.
         # Never let the shared protector advance past that minute. Keep only
         # the *contiguous* closed-bar prefix following the stored cursor.
