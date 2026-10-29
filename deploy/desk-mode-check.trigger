@@ -1,1 +1,1 @@
-2026-10-29T11:26:23Z lettura modalita' e battito dei bot prima del deploy del ritorno al 13/10 (sola lettura)
+2026-10-29T11:47:12Z lettura modalita' e avvio dei container dopo il rilascio dell'app (sola lettura)
