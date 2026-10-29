@@ -87,11 +87,17 @@ class PaperWallet:
     def tick(self,markets,contracts,now):
         """Protect open positions first, then close/expire, then execute pending."""
         state=self.store.load()
-        if now<state['last_ms']: raise ValueError('backward_clock')
+        original_now=now
+        delta_ms=max(0,state['last_ms']-now)
+        if delta_ms:
+            now=state['last_ms']
         state['last_ms']=now
         state['heartbeat_ms']=now
         state['last_prices']={s:m['quote'] for s,m in markets.items() if _valid_quote(m.get('quote'))}
         state,events=protect(state,markets,contracts,now,self.cfg)
+        if delta_ms:
+            events.insert(0,{'kind':'clock_adjusted','delta_ms':delta_ms,
+                             'original_now_ms':original_now})
         quotes={sym:m['quote'] for sym,m in markets.items() if m.get('quote')}
         for symbol,d in list(state['plans'].items()):
             if now>=d['expires_ms']:
@@ -101,7 +107,8 @@ class PaperWallet:
         for symbol in unmarked:
             events.append({'kind':'equity_unavailable','symbol':symbol,
                            'reason':'invalid_or_missing_mark'})
-        opening_allowed=complete and all(fresh(quotes.get(sym),now,self.cfg) for sym in state['positions'])
+        opening_allowed=(delta_ms<=500 and complete and
+                         all(fresh(quotes.get(sym),now,self.cfg) for sym in state['positions']))
         today=now//86400000
         if today!=state['daily']['utc'] and opening_allowed:
             state['daily']={'utc':today,'start_equity':capital}
