@@ -18,3 +18,29 @@ NON ripristinare direttamente il software 12/10, NON giudicare la redditività d
 **Nessuna modifica al ramo rule-pool/main, nessun deploy o evento su VPS Singapore.** Claude revisiona in parallelo Brain Scalp su rami diversi.
 
 AI: chatgpt (chat normale)
+
+
+## Aggiornamento conclusivo: universo storico completo (26 mercati)
+
+**Actions 40822151627 SUCCESS**, su Bitget pubblico 12–29 ottobre, identica impronta SHA256 Hawk/Bull `1e9b32793bb965513c53a4098456542b4d2ec94243286a032d25410fd1629dff`. Sono stati caricati tutti e 26 i mercati richiesti (inclusi XAU/XAG). Tutte le combinazioni dello stesso scanner storico o moderno con motore OHLC storico/moderno hanno ottenuto **lo stesso netto** all'interno della stessa ricetta d'ingresso su questo campione, NON prova equivalenza gestione AI/DCA/split reale.
+
+| Portfolio | Scoring/contesto | Chiusure | P&L netto simulato | WR | Max DD simulato |
+|---|---|---:|---:|---:|---:|
+| Hawk | 12 ottobre | 22 | -550,10 USD | 18% | 610 USD |
+| Hawk | moderno | 70 | -273,70 USD | 36% | 756 USD |
+| Bull | 12 ottobre | 7 | -585,70 USD | 0% | 590 USD |
+| Bull | moderno | 56 | -3,80 USD | 41% | 492 USD |
+
+Nella versione storica simulata **le uscite e perdite della finestra 12–16 ottobre provocano già il blocco delle successive aperture**: zero ulteriori chiusure simulate 16–29 ottobre, circa 957/991 proposte bloccate rispettivamente Hawk/Bull. Non leggere gli zero successivi come giorni di successo o mancanza di segnali. Il motore storico simula 5 LONG/17 SHORT Hawk, 4 LONG/3 SHORT Bull, in forte contrasto con le run golden vere (Hawk74 SHORT/2 LONG, Bull17 SHORT): **forte fallimento di fedeltà direzionale e di conteggio, oltre che P&L**.
+
+Modern scoring a 26 mercati: Hawk26 LONG con -469 USD e 44 SHORT con +196 USD (netto -273,70); Bull16 LONG con -380 USD e 40 SHORT con +376 USD (netto -3,80). Questi aggregati indicano dove indagare, **non autorizzano a vietare i LONG**: il test non riproduce decisioni AI, input/costi reali completi e gestione posizioni della produzione. Il max drawdown resta elevato anche nel modello moderno.
+
+Nel solo periodo golden12–16 il nuovo benchmark senza AI (26 simboli) produce Hawk15 operazioni +167,13 USD e Bull14 +196,53 USD, contro storico vero Hawk76 +1090,61 e Bull17 +770,75, quindi **nessun replay con idoneità a scegliere un rollback**.
+
+**Verdetto:** non eseguire alcun rollback a 12/10 né introdurre nuovi filtri ora. Prima costruire un replay ancora più fedele alle operazioni effettivamente registrate: percorso delle decisioni Claude / fallback, campioni market point-in-time, margine/leva, take/stop, gestione e contabilità, stesso orario di ingresso, stesso calendario. Separare in moduli entry ed exit e testare intervalli indipendenti con conto nuovo, verificando che la golden reale sia riprodotta entro tolleranze concordate. Una volta ottenuta fedeltà, verificare ai periodi di prima crisi e recenti senza ottimizzare sul campione test.
+
+**Nessun change** a branch rule-pool/main, dati o container; CI su ramo isolato e archivio dati JSON/artifacts nel run GitHub. Consultabili:
+- https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40822151627
+- https://github.com/alexiptv82/SuperBot-Trading/tree/work/classics-12oct-selective-lab-20261029
+
+AI: chatgpt (chat normale)
