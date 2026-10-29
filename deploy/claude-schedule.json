@@ -1,75 +1,8 @@
 {
-  "nota": "Calendario di Claude per Hawk e Bull. Gli orari sono in ORA SVIZZERA: il passaggio a UTC (e il cambio d'ora) lo fa il workflow. Se 'alle' e' uguale o prima di 'dalle', la finestra finisce il giorno dopo. Ogni finestra ha il suo budget (0,70$ per bot): all'inizio di ogni finestra il budget riparte da zero. Fuori dalle finestre Claude non viene consultato: decidono le regole. 26/10/2026 (scelta dell'utente): una finestra al giorno, 14:00-22:00 ora svizzera, per 14 giorni (26/10-8/11), uguale per Hawk e Bull. ATTENZIONE: dopo l'ultima finestra (8 novembre) Claude resta spento finche' non si aggiunge un nuovo calendario. Togliere il file dai dati dei bot riporta il budget giornaliero di sempre (Claude quando serve, tetto 0,70$ al giorno, giorno UTC).",
+  "nota": "Calendario di Claude per Hawk e Bull (ritorno al 13/10: tre finestre da 4 ore, come allora). Gli orari sono in ORA SVIZZERA: il passaggio a UTC lo fa il workflow. Se 'alle' e' uguale o prima di 'dalle', la finestra finisce il giorno dopo. Ogni finestra ha il suo budget (0,70$ per bot). Fuori dalle finestre Claude non viene consultato: decidono le regole. Togliere il file dai dati dei bot riporta il budget giornaliero di sempre.",
   "windows": [
-    {
-      "giorno": "2026-10-26",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-10-27",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-10-28",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-10-29",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-10-30",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-10-31",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-11-01",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-11-02",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-11-03",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-11-04",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-11-05",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-11-06",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-11-07",
-      "dalle": "14:00",
-      "alle": "22:00"
-    },
-    {
-      "giorno": "2026-11-08",
-      "dalle": "14:00",
-      "alle": "22:00"
-    }
+    {"giorno": "2026-10-29", "dalle": "14:30", "alle": "18:30"},
+    {"giorno": "2026-10-30", "dalle": "00:00", "alle": "04:00"},
+    {"giorno": "2026-10-31", "dalle": "08:00", "alle": "12:00"}
   ]
 }
