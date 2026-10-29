@@ -93,7 +93,8 @@ class BrainPair:
                     normalized.pop('ttl_ms',None)
                     plan=wallet_engine.submit(
                         normalized,now,contracts.keys(),quotes)
-                    result['accepted'].append({'symbol':sym,'plan_id':plan.plan_id})
+                    result['accepted'].append({'symbol':sym,'plan_id':plan.plan_id,
+                                               'margin':plan.margin,'leverage':plan.leverage})
                     seen.add(sym)
                     continue
                 except (ValueError,KeyError,TypeError,OverflowError) as e:
@@ -245,3 +246,4 @@ class BrainPair:
                                'event_persisted':persisted,'events':[event]}
         results['market_events']=gap_events
         return results
+

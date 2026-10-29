@@ -19,32 +19,37 @@ def _risk(position,cfg):
 
 
 def _resize_for_budget(plan,fill,state,spec,cfg,risk_used):
-    """Reduce margin/leverage only; NEVER exceed the original AI request.
+    """Preserve proposed margin first, then the highest feasible leverage.
 
     Estimate one full round-trip including the planned stop, fees/slippage.
-    Pending reservations from OTHER plans are preserved. Return None when
-    even minimum margin at 1x cannot satisfy all hard constraints.
+    Never increase either AI request. Other pending cash includes entry fees.
+    risk_used=None is admission-only capital reservation; risk is rechecked
+    after protective exits at the actual trigger, as before.
     """
     cost=2*(cfg.fee_rate+cfg.slippage)
     risk_per_notional=abs(fill-plan.stop)/fill+cost
-    allowed_risk=min(spec.risk_trade_usd,spec.risk_portfolio_usd-risk_used)
-    other_pending=sum(x['margin'] for sym,x in state['plans'].items()
-                      if sym!=plan.symbol)
+    allowed_risk=(float('inf') if risk_used is None else
+                  min(spec.risk_trade_usd,spec.risk_portfolio_usd-risk_used))
+    other=[x for sym,x in state['plans'].items() if sym!=plan.symbol]
+    other_pending=sum(x['margin'] for x in other)
+    other_cash=sum(x['margin']*(1+x['leverage']*cfg.fee_rate) for x in other)
+    cash_available=max(0.,state['cash']-other_cash)
     capacity=spec.max_margin_total-margin(state)-other_pending
     if allowed_risk<=0 or capacity<spec.min_margin:
         return None
+    best=None
     for lev in range(plan.leverage,0,-1):
         max_by_risk=allowed_risk/(lev*risk_per_notional)
-        max_by_cash=state['cash']/(1+lev*cfg.fee_rate)
+        max_by_cash=cash_available/(1+lev*cfg.fee_rate)
         candidate=min(plan.margin,capacity,max_by_cash,max_by_risk)
         # Round DOWN to cents to keep estimated loss within risk cap.
         size=math.floor((candidate+1e-10)*100)/100
         if size+1e-9<spec.min_margin:
             continue
         estimated=size*lev*risk_per_notional
-        if estimated<=allowed_risk+1e-8:
-            return size,lev,estimated
-    return None
+        if estimated<=allowed_risk+1e-8 and (best is None or size>best[0]+1e-9):
+            best=(size,lev,estimated)
+    return best
 
 
 def _target_cost_guard(side,entry,target,cfg):
@@ -208,7 +213,7 @@ class PaperWallet:
     def close(self): self.store.close()
 
     def submit(self,raw,now,whitelist,quotes):
-        """Reserve one slot and requested margin. NEVER execute in submit."""
+        """Reserve a feasible slot/margin including fees. Never execute here."""
         plan=parse_plan(raw,self.spec,now,whitelist)
         state=self.store.load()
         # Reservations are risk commitments too. Never accept a plan while a
@@ -251,14 +256,26 @@ class PaperWallet:
             raise ValueError('symbol_already_reserved')
         if len(state['positions'])+len(state['plans'])>=self.spec.slots:
             raise ValueError('all_slots_reserved')
-        if margin(state)+sum(p['margin'] for p in state['plans'].values())+plan.margin>self.spec.max_margin_total:
-            raise ValueError('reserved_margin_exceeded')
-        if state['cash']<plan.margin*(1+plan.leverage*self.cfg.fee_rate):
-            raise ValueError('cash_not_available')
+        sizing=_resize_for_budget(plan,plan.trigger_price,state,self.spec,self.cfg,None)
+        if sizing is None:
+            raise PlanGuardError('insufficient_capital_for_min_margin',{
+                'min_margin':self.spec.min_margin,
+                'margin_available':max(0.,self.spec.max_margin_total-margin(state)-
+                    sum(p['margin'] for p in state['plans'].values()))})
+        allocated_margin,allocated_leverage,_=sizing
+        events=[]
+        if allocated_margin<plan.margin-1e-8 or allocated_leverage<plan.leverage:
+            events.append({'kind':'plan_reservation_resized','symbol':plan.symbol,
+                           'plan_id':plan.plan_id,'original_margin':plan.margin,
+                           'new_margin':allocated_margin,
+                           'original_leverage':plan.leverage,
+                           'new_leverage':allocated_leverage})
+            plan=replace(plan,margin=allocated_margin,leverage=allocated_leverage)
         state['plans'][plan.symbol]=asdict(plan)
         state['plan_ids'].append(plan.plan_id)
-        self.store.commit(state,now,[{'kind':'plan_reserved','symbol':plan.symbol,
+        self.store.commit(state,now,events+[{'kind':'plan_reserved','symbol':plan.symbol,
                                      'plan_id':plan.plan_id,'side':plan.side,
+                                     'margin':plan.margin,'leverage':plan.leverage,
                                      'expires_ms':plan.expires_ms}])
         return plan
 
@@ -555,6 +572,16 @@ class PaperWallet:
                 continue
             # Applying the contract may only REDUCE size/leverage. Verify
             # actual post-normalization risk, not just the plan estimate.
+            actual_position=state2['positions'][symbol]
+            # Permit at most one cent of quantity-rounding dust at the floor;
+            # a coarse lot must not turn an approved minimum into a tiny trade.
+            if actual_position['margin']<self.spec.min_margin-.01-1e-8:
+                del state['plans'][symbol]
+                events.append({'kind':'plan_rejected','symbol':symbol,
+                               'why':'margin_below_min_after_execution_normalization',
+                               'actual_margin':actual_position['margin'],
+                               'min_margin':self.spec.min_margin})
+                continue
             actual_risk=_risk(state2['positions'][symbol],self.cfg)
             if actual_risk>self.spec.risk_trade_usd+1e-7 or (
                     actual_risk+risk_used>self.spec.risk_portfolio_usd+1e-7):
@@ -585,10 +612,14 @@ class PaperWallet:
             events.append({'kind':'entry_fill','symbol':symbol,'plan_id':p.plan_id,
                            'trigger_price':p.trigger_price,'observed_price':px,
                            'fill_price':actual_fill,
+                           'reserved_margin':p.margin,
+                           'actual_margin':state['positions'][symbol]['margin'],
+                           'actual_leverage':state['positions'][symbol]['leverage'],
+                           'estimated_stop_risk_usd':actual_risk,
                            'slippage_pct':abs(actual_fill-p.trigger_price)/p.trigger_price*100,
                            'execution_slippage_pct':abs(actual_fill-px)/px*100,
                            'quote_age_ms':now-q['ts_ms']})
-            risk_used+=estimated
+            risk_used+=actual_risk
         metrics=build_metrics(state,events,now,self.spec,quotes,self.protect_cfg,
                               opening_allowed,delta_ms)
         self.store.commit(state,now,events)
@@ -597,3 +628,4 @@ class PaperWallet:
                 'opening_allowed':metrics['opening_allowed'],
                 'block_reason':metrics['block_reason'],
                 'metrics':metrics,'events':events}
+

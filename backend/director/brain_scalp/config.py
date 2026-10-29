@@ -6,6 +6,11 @@ from director.brain_free.config import Config as BrainConfig
 ENTRY_PRICE_AGE_MS = 3000
 PROTECT_PRICE_AGE_MS = 10000
 
+# Verified official model IDs. This offline module does not call either API.
+SCANNER_MODEL = 'deepseek-flash'
+SCANNER_REASONING_EFFORT = 'high'
+ESCALATION_MODEL = 'gpt-6.1-sol'
+
 
 @dataclass(frozen=True)
 class WalletSpec:
@@ -25,9 +30,14 @@ class WalletSpec:
 
     def brain_config(self) -> BrainConfig:
         return replace(BrainConfig(), start_cash=self.start_cash,
-                       max_margin=self.max_margin_total, max_slots=self.slots)
+                       max_margin=self.max_margin_total, max_slots=self.slots,
+                       model=SCANNER_MODEL,thinking=SCANNER_REASONING_EFFORT)
 
 
+# Group 6 option C: slots are upper bounds, not capital allocations.
+# Hawk can reserve at most nine minimum-size trades under the 950 budget;
+# Bull can reserve 350 + 350 + 250, never three simultaneous 350 margins.
 HAWK = WalletSpec('hawk', 'brain-scalp-hawk-paper', 10, 100, 250)
 BULL = WalletSpec('bull', 'brain-scalp-bull-paper', 3, 150, 350)
 SPECS = {'hawk': HAWK, 'bull': BULL}
+
