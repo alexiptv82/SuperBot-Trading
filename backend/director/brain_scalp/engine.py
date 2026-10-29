@@ -47,14 +47,27 @@ def _resize_for_budget(plan,fill,state,spec,cfg,risk_used):
 
 
 def _target_cost_guard(side,entry,target,cfg):
-    """A gross target must pay round-trip costs AND the same net reward.
-
-    Conservative: account for two-sided fee + modeled slippage even when
-    the entry fill is already adjusted by modeled slippage.
-    """
+    """Require projected net target of at least one full round-trip cost."""
     cost=2*(cfg.fee_rate+cfg.slippage)
     gross=side*(target-entry)/entry
     return gross>=2*cost-1e-12
+
+
+def _target_cost_feedback(side,entry,target,cfg):
+    """Explain the conservative gross target required, without changing it."""
+    cost=2*(cfg.fee_rate+cfg.slippage)
+    net=side*(target-entry)/entry-cost
+    return {'costs_pct':round(cost*100,4),
+            'net_at_target_pct':round(net*100,4),
+            'min_required_pct':round(cost*100,4),
+            'min_target_price':round(entry*(1+side*2*cost),8)}
+
+
+class PlanCostError(ValueError):
+    """A cost-rejected plan also carries safe structured AI feedback."""
+    def __init__(self,details):
+        super().__init__('target_below_costs')
+        self.details=details
 
 
 def _net_at_quote(position,quote_price,cfg):
@@ -108,16 +121,14 @@ class PaperWallet:
         """Reserve one slot and requested margin. NEVER execute in submit."""
         plan=parse_plan(raw,self.spec,now,whitelist)
         state=self.store.load()
-        cost=2*(self.cfg.fee_rate+self.cfg.slippage)
-        if plan.side*(plan.target-plan.trigger_price)/plan.trigger_price < 2*cost:
-            raise ValueError('target_below_costs')
+        if not _target_cost_guard(plan.side,plan.trigger_price,plan.target,self.cfg):
+            raise PlanCostError(_target_cost_feedback(
+                plan.side,plan.trigger_price,plan.target,self.cfg))
         q=quotes.get(plan.symbol)
         if not fresh(q,now,self.entry_cfg):
             if fresh(q,now,self.cfg):
                 raise ValueError('quote_too_stale_for_entry')
             raise ValueError('stale_plan_quote')
-        if not _target_cost_guard(plan.side,plan.trigger_price,plan.target,self.cfg):
-            raise ValueError('target_below_costs')
         if plan.plan_id in state['plan_ids']: raise ValueError('duplicate_plan_id')
         if plan.symbol in state['positions'] or plan.symbol in state['plans']:
             raise ValueError('symbol_already_reserved')
@@ -244,15 +255,11 @@ class PaperWallet:
                 events.append({'kind':'plan_rejected','symbol':symbol,'why':'already_open'})
                 continue
             px=q['price'];fill=px*(1+p.side*self.cfg.slippage)
-            cost=2*(self.cfg.fee_rate+self.cfg.slippage)
-            if p.side*(p.target-fill)/fill < 2*cost:
-                del state['plans'][symbol]
-                events.append({'kind':'plan_rejected','symbol':symbol,'why':'target_below_costs'})
-                continue
             if not _target_cost_guard(p.side,fill,p.target,self.cfg):
                 del state['plans'][symbol]
                 events.append({'kind':'plan_rejected','symbol':symbol,
-                               'why':'target_below_costs'})
+                               'why':'target_below_costs',
+                               **_target_cost_feedback(p.side,fill,p.target,self.cfg)})
                 continue
             if p.side*(fill-p.stop)<=0 or p.side*(p.target-fill)<=0:
                 del state['plans'][symbol]
