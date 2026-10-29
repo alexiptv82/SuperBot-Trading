@@ -19,6 +19,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Assert CI has no exchange credentials
+        run: |
+          test -z "${BITGET_API_KEY:-}"
+          test -z "${DEEPSEEK_API_KEY:-}"
       - name: Confirm diary history is locally available
         run: git show origin/diario:diario/analisi-run-2026-10-27/positions.csv | head -c 30
       - name: Compile, run forensic regression tests
