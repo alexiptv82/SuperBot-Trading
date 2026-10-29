@@ -105,6 +105,14 @@ jobs:
                 before[p]["brain"] = {f: (os.path.getsize(f"{BASE}/{p}/{f}") if os.path.isfile(f"{BASE}/{p}/{f}") else None)
                                       for f in ("trade_history.jsonl", "lessons.md", "errors.md", "learning_log.jsonl")}
                 print(f"[{p}] run {before[p]['run_no']}, posizioni aperte: {before[p]['open'] or 'nessuna'}", flush=True)
+                try:
+                    hb = json.load(open(f"{BASE}/{p}/heartbeat.json"))
+                    rc = sh(["docker", "inspect", "-f", "{{.RestartCount}}", "superbot-desk-" + p]).stdout.strip()
+                    print(f"[{p}] conto {float((st.get('main') or {}).get('cash', -1)):.2f}$, modo stato={st.get('mode')}, "
+                          f"battito: versione={hb.get('version')} eta={time.time() - float(hb.get('ts', 0)):.0f}s, "
+                          f"riavvii container={rc}", flush=True)
+                except Exception as e:
+                    print(f"[{p}] lettura battito non riuscita: {e}", flush=True)
             print("CONTROLLI_SUPERATI=PASS (paper, container attivi, bot in pausa)", flush=True)
             if os.environ.get("RESET_DRY") == "1":
                 print("PROVA_A_SECCO: solo controlli, nessuna scrittura, nessun comando ai bot", flush=True)
