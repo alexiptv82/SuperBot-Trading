@@ -27,3 +27,9 @@ L'utente aveva chiesto di partire dal Gruppo 1 dopo pubblicazione del prompt. Mo
 - Branch: https://github.com/alexiptv82/SuperBot-Trading/tree/work/brain-scalp-dual-20261028
 
 AI: ChatGPT (chat normale)
+
+## Nota critica sulla break-even math del documento Claude (NON cambia i parametri)
+La tabella del prompt Claude indica BE WR 38,7% / 28,6% / 20,0% con target 0,32%/0,48%/0,80%, stop 0,16% e costi roundtrip 0,16%. **Questi valori non sono coerenti con la definizione di target/stop come escursione lorda di prezzo**. Per un esito binario ideale senza funding, con stop e target su prezzi lordi e costo roundtrip fisso `c`, la condizione di profitto è:
+`p * (target - c) - (1-p) * (stop + c) = 0` → `p_BE=(stop+c)/(target+stop)`.
+Se `c=0,16%`, i valori diventano rispettivamente **66,67%**, **50,00%**, **33,33%**. Con fee/slippage dipendenti dal prezzo di uscita i risultati cambiano leggermente. Se Claude intendeva distanze *già nette dei costi*, occorre esplicitarlo e ricavare la formula corrispondente. **Non utilizzare i tassi BE del prompt per scegliere parametri o dichiarare edge prima di questa riconciliazione**. Il Gruppo 1 non modifica la strategia, quindi non richiede correzione del codice su questa base.
+
