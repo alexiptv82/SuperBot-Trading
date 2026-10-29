@@ -68,7 +68,8 @@ class DualWallet(unittest.TestCase):
         self.h.submit(plan(),NOW,CONTRACT,quote_map())
         out=self.h.tick(market(),CONTRACT,NOW+1000)
         self.assertEqual((out['positions'],out['pending']),(1,0))
-        self.assertEqual(out['events'][-1]['kind'],'open')
+        self.assertTrue(any(e['kind']=='open' for e in out['events']))
+        self.assertTrue(any(e['kind']=='entry_fill' for e in out['events']))
         self.assertEqual(self.b.store.load()['cash'],1000.)
         self.assertEqual(self.h.store.load()['positions']['BTC']['side'],1)
 
