@@ -204,5 +204,32 @@ class Group3Wallet(unittest.TestCase):
                 parse_plan(item,HAWK,NOW,CONTRACTS)
 
 
+    def test_i5_stale_open_mark_does_not_create_fake_daily_latch(self):
+        self._open(protect_after_usd=999.)
+        stale=self.w.tick(market(price=60.,ts=NOW-20000),
+                          CONTRACTS,NOW+2000)
+        self.assertFalse(stale['opening_allowed'])
+        self.assertFalse(self.w.store.load()['daily_stop_triggered'])
+        refreshed=self.w.tick(market(price=100.,ts=NOW+3000),
+                              CONTRACTS,NOW+3000)
+        self.assertFalse(self.w.store.load()['daily_stop_triggered'])
+        self.assertTrue(refreshed['opening_allowed'])
+
+    def test_i1_breakeven_is_recalculated_when_funding_increases(self):
+        self._open(protect_after_usd=3.5,take_net_usd=999.)
+        self.w.tick(market(price=100.8,ts=NOW+2000),CONTRACTS,NOW+2000)
+        old=self.w.store.load()['positions']['BTC']['stop']
+        state=self.w.store.load()
+        state['positions']['BTC']['funding']+=0.50
+        state['cash']-=0.50
+        self.w.store.commit(state,NOW+2000)
+        after=self.w.tick(market(price=100.9,ts=NOW+3000),
+                          CONTRACTS,NOW+3000)
+        self.assertEqual(after['positions'],1)
+        p=self.w.store.load()['positions']['BTC']
+        self.assertGreater(p['stop'],old)
+        self.assertGreaterEqual(_net_at_quote(p,p['stop'],self.w.cfg),-1e-5)
+
+
 if __name__=='__main__':
     unittest.main()
