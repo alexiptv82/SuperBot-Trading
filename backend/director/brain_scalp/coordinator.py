@@ -7,7 +7,7 @@ from pathlib import Path
 import logging
 
 _LOG=logging.getLogger(__name__)
-from .engine import PaperWallet
+from .engine import PaperWallet,PlanCostError
 from .scanner import scan
 from .gap_repair import repair_markets
 
@@ -58,7 +58,10 @@ class BrainPair:
                                    {s:m['quote'] for s,m in markets.items() if m.get('quote')})
                 result['accepted'].append({'symbol':sym,'plan_id':plan.plan_id})
             except (ValueError,KeyError,TypeError) as e:
-                result['rejected'].append({'symbol':sym,'why':str(e)[:100]})
+                rejected={'symbol':sym,'why':str(e)[:100]}
+                if isinstance(e,PlanCostError):
+                    rejected.update(e.details)
+                result['rejected'].append(rejected)
         return result
 
     def tick_with_backfill(self,markets,contracts,now,fetch_missing):
