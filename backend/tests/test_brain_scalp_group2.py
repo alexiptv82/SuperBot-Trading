@@ -306,5 +306,94 @@ class CandleBackfill(unittest.TestCase):
 
 
 
+
+class Group2AdditionalInvariants(unittest.TestCase):
+    def test_i2_ai_rejection_includes_min_target_price_and_costs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                bad=plan(target=100.05)
+                shortlist={'candidates':[{'symbol':'BTC','side':1}]}
+                result=pair.accept_ai_plans('hawk',{'plans':[bad]},
+                    shortlist,market(),CONTRACTS,NOW)
+                self.assertEqual(result['accepted'],[])
+                refusal=result['rejected'][0]
+                self.assertEqual(refusal['why'],'target_below_costs')
+                self.assertAlmostEqual(refusal['costs_pct'],0.16)
+                self.assertAlmostEqual(refusal['min_required_pct'],0.16)
+                self.assertAlmostEqual(refusal['min_target_price'],100.32)
+                self.assertLess(refusal['net_at_target_pct'],0)
+                self.assertEqual(pair.hawk.store.load()['plans'],{})
+            finally:
+                pair.close()
+
+    def test_i2_fill_rerejection_persists_target_feedback(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.hawk.submit(plan(target=100.35),NOW,CONTRACTS,
+                                 {'BTC':quote()})
+                out=pair.tick(market(price=100.25,ts=NOW+1000),
+                              CONTRACTS,NOW+1000)
+                rejects=[e for e in out['hawk']['events']
+                         if e.get('why')=='target_below_costs']
+                self.assertEqual(len(rejects),1)
+                self.assertGreater(rejects[0]['min_target_price'],100.25)
+                self.assertGreater(rejects[0]['costs_pct'],0)
+                self.assertEqual(out['hawk']['positions'],0)
+            finally:
+                pair.close()
+
+    def test_b2_flat_symbol_with_gap_rejects_new_reservation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.tick(incomplete_market(NOW+4*MINUTE),CONTRACTS,
+                          NOW+4*MINUTE)
+                self.assertIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                now=NOW+4*MINUTE
+                with self.assertRaisesRegex(ValueError,'symbol_coverage_gap_unresolved'):
+                    pair.hawk.submit(plan(created_ms=now,expires_ms=now+240000),
+                                     now,CONTRACTS,{'BTC':quote(ts=now)})
+                self.assertEqual(pair.hawk.store.load()['plans'],{})
+            finally:
+                pair.close()
+
+    def test_b2_pending_plan_cannot_open_during_unresolved_gap(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.hawk.submit(plan(expires_ms=NOW+300000),NOW,CONTRACTS,
+                                 {'BTC':quote()})
+                out=pair.tick(incomplete_market(NOW+4*MINUTE),
+                              CONTRACTS,NOW+4*MINUTE)
+                self.assertEqual((out['hawk']['positions'],out['hawk']['pending']),
+                                 (0,1))
+                self.assertTrue(any(e.get('kind')=='plan_deferred' and
+                                    e.get('why')=='symbol_coverage_gap_unresolved'
+                                    for e in out['hawk']['events']))
+            finally:
+                pair.close()
+
+    def test_b2_backfilled_gap_releases_pending_plan_safely(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.hawk.submit(plan(expires_ms=NOW+300000),NOW,CONTRACTS,
+                                 {'BTC':quote()})
+                pair.tick(incomplete_market(NOW+4*MINUTE),CONTRACTS,
+                          NOW+4*MINUTE)
+                self.assertIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                pair.candle_backfill=lambda symbol,start,end: [
+                    bar(ts) for ts in range(start,end,MINUTE)]
+                out=pair.tick(incomplete_market(NOW+4*MINUTE),CONTRACTS,
+                              NOW+4*MINUTE)
+                self.assertNotIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                self.assertEqual((out['hawk']['positions'],out['hawk']['pending']),
+                                 (1,0))
+            finally:
+                pair.close()
+
+
 if __name__=='__main__':
     unittest.main()
