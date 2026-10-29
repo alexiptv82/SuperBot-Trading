@@ -1,3 +1,11 @@
+## 29/10 — Brain Scalp Gruppo 2: audit supplementare B2 e CI aggiornata
+
+**Aggiornamento della precedente voce Gruppo 2:** ci siamo accorti che, quando il backfill 1m falliva, le protezioni potevano saltare un minuto ancora ignoto e avanzare il cursore. Corretto sul ramo isolato `work/brain-scalp-dual-20261028`: `coordinator.py` passa solo barre storiche contigue fino al primo gap, `engine.py` conserva il cursore del gap e rimuove il blocco solo dopo replay integrale verificato. Nuovi test coprono stop nascosto nel minuto mancante, mancato avanzamento cursor e ripristino coerente dopo backfill. **CI finale GitHub Actions `40859967271`: SUCCESS 45/45 test Python 3.10 e 45/45 Python 3.11 (90 PASS); HEAD `0dfb2350e6875f728f84fd9b127256895d6b7467`.** Report di Claude aggiornato in `diario/2026-10-29_brain-scalp-gruppo2-chatgpt.md`. Nessun merge/deploy, niente rete/Bitget, nessun accesso VPS, classici e Brain Free intatti. Non dichiarare redditività né integrazione reale completa. **In attesa OK utente Gruppo 3**; gruppo 6 A/B/C in sospeso.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 29/10 — BRAIN SCALP: GRUPPO 2 COMPLETATO (attesa OK Gruppo 3)
 
 User «ok procediamo» dopo Gruppo 1; ChatGPT ha implementato solo nel ramo `work/brain-scalp-dual-20261028` le correzioni **I2** (TP netto oltre doppio costo roundtrip, check sia submit sia fill), **I3** (ridimensionamento margin/leverage entro budget rischio e min margin, evento `plan_resized`, nessun aumento di rischio), **B2** (backfill OHLC 1m causale, funzione provider iniettata senza rete, copertura in fail-closed). **CI GitHub 40841694288 SUCCESS** Python3.10 e 3.11, **42/42 test per versione** (84 pass). No Bitget HTTP aggiunto, supervisore live assente: il backfill è un'interfaccia da collegare nella futura integrazione offline. Se una posizione ha già attraversato un buco non osservato, la sua copertura resta in quarantena fino a reconciliation; non viene sbloccata per semplice backfill tardivo. Report per Claude: `diario/2026-10-29_brain-scalp-gruppo2-chatgpt.md`. **Nessun merge, deploy, reset, VPS né modifiche a Brain Free, classici o app**; risultato confermato da confronto Git e gate CI. **Fermarsi qui in attesa di autorizzazione per Gruppo 3 (I5/I1)**. Gruppo 6 A/B/C resta da scegliere. Non è provata alcuna redditività.
