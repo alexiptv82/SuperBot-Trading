@@ -69,6 +69,41 @@ class PlanCostError(ValueError):
         super().__init__('target_below_costs')
         self.details=details
 
+# Absolute deviation from the requested conditional trigger in the direction
+# of entry. This is an execution safety guard, not a profitability parameter.
+MAX_ENTRY_OVERSHOOT=0.0005
+
+
+class PlanGuardError(ValueError):
+    """A rejected plan carries structured, safe, actionable diagnostics."""
+    def __init__(self,code,details):
+        super().__init__(code)
+        self.details=details
+
+
+def _trigger_overshoot(side,trigger,observed):
+    if side==1 and observed>trigger*(1+MAX_ENTRY_OVERSHOOT):
+        drift=(observed-trigger)/trigger
+    elif side==-1 and observed<trigger*(1-MAX_ENTRY_OVERSHOOT):
+        drift=(trigger-observed)/trigger
+    else:
+        return None
+    return {'trigger':trigger,'current':observed,
+            'overshoot_pct':round(drift*100,4),
+            'max_overshoot_pct':MAX_ENTRY_OVERSHOOT*100}
+
+
+def _stop_noise(side,entry,stop,cfg):
+    stop_pct=side*(entry-stop)/entry
+    cost_pct=2*(cfg.fee_rate+cfg.slippage)
+    if stop_pct>=cost_pct-1e-12:
+        return None
+    return {'stop_pct':round(stop_pct*100,4),
+            'cost_pct':round(cost_pct*100,4),
+            'ratio':round(cost_pct/max(stop_pct,1e-15),2),
+            'min_stop_pct':round(cost_pct*100,4)}
+
+
 
 def _net_at_quote(position,quote_price,cfg):
     fill=quote_price*(1-position['side']*cfg.slippage)
@@ -181,6 +216,22 @@ class PaperWallet:
             raise ValueError('daily_rollover_tick_required')
         if state['daily_stop_triggered']:
             raise ValueError('daily_stop_latched')
+        if state.get('paused'):
+            raise ValueError('opening_not_allowed:paused')
+        # The prior tick may have been valid while the next observed mark is
+        # below the daily stop. Do not reserve new risk before the next tick.
+        current_capital,complete,_=_safe_equity(state,quotes)
+        if (not complete or
+            any(not fresh(quotes.get(sym),now,self.entry_cfg)
+                for sym in state['positions'])):
+            raise ValueError('opening_not_allowed:unverified_equity')
+        if current_capital<=self.spec.kill_equity:
+            raise ValueError('opening_not_allowed:kill_equity')
+        if current_capital<=state['daily']['start_equity']*(1-self.spec.daily_stop_pct):
+            raise ValueError('opening_not_allowed:daily_stop_threshold')
+        noise=_stop_noise(plan.side,plan.trigger_price,plan.stop,self.cfg)
+        if noise:
+            raise PlanGuardError('stop_inside_noise',noise)
         if not _target_cost_guard(plan.side,plan.trigger_price,plan.target,self.cfg):
             raise PlanCostError(_target_cost_feedback(
                 plan.side,plan.trigger_price,plan.target,self.cfg))
@@ -189,6 +240,9 @@ class PaperWallet:
             if fresh(q,now,self.cfg):
                 raise ValueError('quote_too_stale_for_entry')
             raise ValueError('stale_plan_quote')
+        overshoot=_trigger_overshoot(plan.side,plan.trigger_price,q['price'])
+        if overshoot:
+            raise PlanGuardError('trigger_already_breached',overshoot)
         if plan.plan_id in state['plan_ids']: raise ValueError('duplicate_plan_id')
         if plan.symbol in state.get('coverage_gaps',[]):
             raise ValueError('symbol_coverage_gap_unresolved')
@@ -450,6 +504,25 @@ class PaperWallet:
                 events.append({'kind':'plan_rejected','symbol':symbol,'why':'already_open'})
                 continue
             px=q['price'];fill=px*(1+p.side*self.cfg.slippage)
+            overshoot=_trigger_overshoot(p.side,p.trigger_price,px)
+            if overshoot:
+                del state['plans'][symbol]
+                events.append({'kind':'plan_rejected','symbol':symbol,
+                               'why':'trigger_already_breached',**overshoot})
+                continue
+            # A fill-adjusted stop can be within the cost noise even when
+            # the submitted trigger was well positioned.
+            if p.side*(fill-p.stop)<=0 or p.side*(p.target-fill)<=0:
+                del state['plans'][symbol]
+                events.append({'kind':'plan_rejected','symbol':symbol,
+                               'why':'levels_invalid_at_trigger'})
+                continue
+            noise=_stop_noise(p.side,fill,p.stop,self.cfg)
+            if noise:
+                del state['plans'][symbol]
+                events.append({'kind':'plan_rejected','symbol':symbol,
+                               'why':'stop_inside_noise',**noise})
+                continue
             if not _target_cost_guard(p.side,fill,p.target,self.cfg):
                 del state['plans'][symbol]
                 events.append({'kind':'plan_rejected','symbol':symbol,
