@@ -1,5 +1,6 @@
 """Strict, separate SQLite state per PAPER wallet. No existing Brain migration."""
 import fcntl
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -9,6 +10,19 @@ from .config import SPECS
 
 
 def encode(v): return json.dumps(v,sort_keys=True,separators=(',',':'),allow_nan=False)
+
+
+def wallet_spec_digest(spec):
+    """Fingerprint parameters affecting risk, exposure and plan lifetime.
+
+    Changes require an explicit reviewed migration with verified backup:
+    never reset or silently alter a persisted PAPER experiment.
+    """
+    keys=('slots','min_margin','max_margin_trade','start_cash',
+          'max_margin_total','risk_trade_usd','risk_portfolio_usd',
+          'daily_stop_pct','kill_equity','max_plan_age_ms',
+          'max_plan_lifetime_ms')
+    return hashlib.sha256(encode({k:getattr(spec,k) for k in keys}).encode()).hexdigest()[:16]
 
 
 class WalletStore:
@@ -43,10 +57,11 @@ CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,id TEXT UNIQUE NOT NUL
             if initialize:
                 now=int(now_ms) if now_ms is not None else 0
                 if now<=0: raise ValueError('initial_timestamp_required')
-                state=initial(now,'brain-scalp-dual-v0.1:'+name)
+                state=initial(now,wallet_spec_digest(self.spec))
                 state.update(account_id=self.spec.account_id,cash=self.spec.start_cash,
                              verified_start_ms=now,plans={},plan_ids=[],
                              daily={'utc':now//86400000,'start_equity':self.spec.start_cash},
+                             daily_stop_triggered=False,daily_stop_day=now//86400000,
                              experiment_id=str(uuid4()),runtime_capacity={'max_slots':self.spec.slots,
                              'max_margin':self.spec.max_margin_total})
                 self.db.execute('INSERT INTO state VALUES(1,0,?)',(encode(state),))
@@ -67,8 +82,12 @@ CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,id TEXT UNIQUE NOT NUL
         state=json.loads(row[1]);state['_version']=row[0]
         if state.get('mode')!='paper' or state.get('account_id')!=self.spec.account_id:
             raise ValueError('wrong_wallet_identity')
-        if state.get('config_hash')!='brain-scalp-dual-v0.1:'+self.spec.name:
-            raise ValueError('explicit_migration_required')
+        current=wallet_spec_digest(self.spec)
+        if state.get('config_hash')!=current:
+            raise ValueError('explicit_config_migration_required')
+        # Old offline wallets must be backed up and explicitly migrated.
+        if 'daily_stop_triggered' not in state or 'daily_stop_day' not in state:
+            raise ValueError('explicit_daily_stop_migration_required')
         return state
 
     def commit(self,state,now,events=()):
