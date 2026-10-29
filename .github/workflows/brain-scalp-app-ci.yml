@@ -42,6 +42,10 @@ jobs:
           node-version: '20'
       - run: corepack enable
       - run: yarn install --frozen-lockfile --non-interactive
+      - run: yarn react-scripts test --watchAll=false --runInBand --runTestsByPath src/pages/BrainScalpDashboard.test.js
+        env:
+          CI: 'true'
       - run: yarn build
         env:
           CI: 'true'
+

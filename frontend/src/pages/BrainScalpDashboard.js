@@ -7,14 +7,14 @@ const card = {border:'1px solid #334155',background:'#1e293b',borderRadius:14,pa
 const label = {color:'#94a3b8',fontSize:12};
 const fmtTime = n => Number.isFinite(n) ? new Date(n).toLocaleString('it-IT') : '—';
 
-function Wallet({name,data}) {
+function Wallet({name,data,historical}) {
   const d=data || {}, ready=d.status==='ok';
   return <section style={card}>
     <h2 style={{margin:'0 0 6px',fontSize:19}}>🧠 Brain {name==='hawk'?'Hawk':'Bull'}</h2>
     <p style={label}>Conto PAPER separato · base di prova 1.000 $ · {name==='hawk'?10:3} slot</p>
     {!ready ? <p role="status" style={{color:'#fbbf24'}}>Portafoglio non ancora avviato o dati non leggibili. Nessun saldo ricostruito.</p> : <>
-      <p>{d.online ? '🟢 Online' : '🟠 Dati non aggiornati'} · {d.paused?'Aperture in pausa':'H24 previsto'}</p>
-      {d.snapshot_stale && <p role="status" style={{color:'#fbbf24'}}>Ultimo stato salvato: il motore non aggiorna più lo snapshot. I valori sono storici, non quotazioni correnti.</p>}
+      <p>{d.online && !historical ? '🟢 Online' : '🟠 Dati non aggiornati'} · {d.paused?'Aperture in pausa':'H24 previsto'}</p>
+      {(d.snapshot_stale || historical) && <p role="status" style={{color:'#fbbf24'}}>Aggiornamento non disponibile: i valori mostrati sono storici, non quotazioni correnti.</p>}
       <p>Equity <strong>{money(d.equity)}</strong> · P&amp;L {money(d.net_pnl_vs_initial)}</p>
       {d.metrics && <p style={label}>Trade oggi: {d.metrics.trades_today ?? '—'} · Chiusi: {d.metrics.trades_closed ?? '—'} · Fee cumulative: {money(d.metrics.fee_paid_usd)} · Motivo blocco: {d.metrics.block_reason || 'nessuno'}</p>}
       <p>Disponibile {money(d.cash)} · Margine {money(d.margin)} / {money(d.margin_limit)}</p>
@@ -45,29 +45,50 @@ function Wallet({name,data}) {
 }
 
 export default function BrainScalpDashboard() {
-  const [data,setData]=useState(null);
+  const [received,setReceived]=useState(null);
+  const [clock,setClock]=useState(()=>performance.now());
   const [error,setError]=useState(false);
   useEffect(()=>{
     const controller=new AbortController();let timer;
+    // Age the last response even if the next GET hangs or the phone goes offline.
+    const ageTimer=setInterval(()=>setClock(performance.now()),1000);
     const poll=async()=>{
       try{
         const r=await brainAPI.getScalpStatus(controller.signal);
-        if(!controller.signal.aborted){setData(r.data);setError(false);}
+        if(!controller.signal.aborted){
+          const at=performance.now();
+          setReceived({data:r.data,at,wall:Date.now()});setClock(at);setError(false);
+        }
       }catch(_){if(!controller.signal.aborted)setError(true);}
       if(!controller.signal.aborted)timer=setTimeout(poll,15000);
     };
     poll();
-    return ()=>{controller.abort();clearTimeout(timer);};
+    return ()=>{controller.abort();clearTimeout(timer);clearInterval(ageTimer);};
   },[]);
+  const data=received?.data;
+  const elapsed=received ? Math.max(0,clock-received.at) : 0;
+  const snapshotAge=Number.isFinite(data?.snapshot_age_ms) ? data.snapshot_age_ms : 0;
+  const historical=error || elapsed>=60000 || Boolean(data?.snapshot_stale) ||
+    (data?.source==='snapshot' && snapshotAge+elapsed>60000);
+  const walletHistorical=name=>{
+    const d=data?.profiles?.[name];
+    if(historical || !Number.isFinite(d?.heartbeat_ms)) return true;
+    // Snapshot time + server-reported age avoids depending on phone clock skew.
+    const observedNow=data.source==='snapshot' && Number.isFinite(data.snapshot_ts_ms)
+      ? data.snapshot_ts_ms+snapshotAge : received.wall;
+    const heartbeatAge=observedNow-d.heartbeat_ms+elapsed;
+    return heartbeatAge<0 || heartbeatAge>=60000;
+  };
   return <main style={{maxWidth:650,margin:'auto',padding:16,color:'#f1f5f9'}}>
     <h1>🧠 Brain Scalp · PAPER</h1>
     <p style={label}>Due portafogli indipendenti, stesso scanner 1m/5m. Sola osservazione, nessun comando di trading.</p>
     <p><Link style={{color:'#38bdf8'}} to="/brain">Consulta archivio Brain precedente</Link></p>
-    {error && <p role="status" style={{color:'#fbbf24'}}>Connessione non disponibile; non mostrare dati inventati.</p>}
-    {data?.source==='snapshot' && <p style={label}>Fonte: snapshot PAPER {data.snapshot_stale ? '(non aggiornato)' : '(ultimo aggiornamento verificato)'} · {fmtTime(data.snapshot_ts_ms)}</p>}
+    {error && <p role="status" style={{color:'#fbbf24'}}>Connessione non disponibile; gli ultimi valori ricevuti restano solo come storico.</p>}
+    {data?.source==='snapshot' && <p style={label}>Fonte: snapshot PAPER {historical ? '(non aggiornato)' : '(ultimo aggiornamento verificato)'} · {fmtTime(data.snapshot_ts_ms)}</p>}
     {data?.status==='unavailable' && <p role="status" style={{color:'#fbbf24'}}>Snapshot non leggibile o non valido: saldi non disponibili.</p>}
-    <Wallet name="hawk" data={data?.profiles?.hawk}/>
-    <Wallet name="bull" data={data?.profiles?.bull}/>
+    <Wallet name="hawk" data={data?.profiles?.hawk} historical={walletHistorical('hawk')}/>
+    <Wallet name="bull" data={data?.profiles?.bull} historical={walletHistorical('bull')}/>
     <p style={label}>Saldo e risultati PAPER; costi AI non disponibili finché il nuovo provider non sarà collegato e misurato.</p>
   </main>;
 }
+

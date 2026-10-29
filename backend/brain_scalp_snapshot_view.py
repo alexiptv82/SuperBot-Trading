@@ -27,8 +27,10 @@ def read_published_snapshot(path,now):
         if path.is_symlink() or path.parent.is_symlink() or path.stat().st_size>2000000:
             raise ValueError('unsafe_snapshot')
         obj=json.loads(path.read_text(encoding='utf-8'))
-        if (obj.get('schema_version')!=1 or obj.get('paper') is not True
+        if (not isinstance(obj,dict) or
+                obj.get('schema_version')!=1 or obj.get('paper') is not True
                 or obj.get('read_only') is not True
+                or not isinstance(obj.get('profiles'),dict)
                 or set(obj.get('profiles',{}))!=set(IDS)
                 or not _valid_number(obj.get('ts_ms'))):
             raise ValueError('schema')
@@ -39,10 +41,17 @@ def read_published_snapshot(path,now):
         profiles={}
         for name in IDS:
             src=obj['profiles'][name]
-            if (src.get('account_id')!=IDS[name] or src.get('paper') is not True
+            if (not isinstance(src,dict) or
+                    src.get('account_id')!=IDS[name] or src.get('paper') is not True
                     or src.get('status')!='ok' or
                     not _valid_number(src.get('cash')) or src['cash']<0):
                 raise ValueError('foreign_or_invalid_wallet')
+            if src.get('metrics') is not None and not isinstance(src['metrics'],dict):
+                raise ValueError('invalid_metrics')
+            for key in ('positions','pending','trades','rejections','latest_events'):
+                rows=src.get(key,[])
+                if not isinstance(rows,list) or any(not isinstance(row,dict) for row in rows):
+                    raise ValueError('invalid_wallet_rows')
             equity=src.get('equity')
             if equity is not None and not _valid_number(equity):
                 raise ValueError('invalid_equity')
@@ -57,5 +66,6 @@ def read_published_snapshot(path,now):
                 'status':'stale' if stale else 'ok',
                 'snapshot_stale':stale,'snapshot_age_ms':age,
                 'snapshot_ts_ms':obj['ts_ms'],'profiles':profiles}
-    except (ValueError,TypeError,KeyError,OSError,OverflowError,IndexError):
+    except (ValueError,TypeError,KeyError,OSError,OverflowError,IndexError,RecursionError):
         return unavailable
+

@@ -129,6 +129,37 @@ class ScalpSnapshotReader(unittest.TestCase):
             self.assertEqual(read_all(root,NOW,snapshot_path=alias)['status'],
                              'unavailable')
 
+    def test_wrong_json_container_types_fail_closed_without_db_fallback(self):
+        with tempfile.TemporaryDirectory() as root:
+            seed(root,'hawk')
+            path=self.sample(root)
+            valid=json.loads(path.read_text())
+            cases=[[],None,True,42,'snapshot',
+                   dict(valid,profiles=['hawk','bull']),
+                   dict(valid,profiles={'hawk':[],'bull':valid['profiles']['bull']})]
+            for bad in cases:
+                with self.subTest(payload=bad):
+                    path.write_text(json.dumps(bad),encoding='utf-8')
+                    before=path.read_bytes()
+                    data=read_all(root,NOW,snapshot_path=path)
+                    self.assertEqual(data['source'],'snapshot')
+                    self.assertEqual(data['status'],'unavailable')
+                    self.assertFalse(data['profiles']['hawk']['available'])
+                    self.assertEqual(path.read_bytes(),before)
+
+    def test_wrong_wallet_collection_types_fail_closed(self):
+        with tempfile.TemporaryDirectory() as root:
+            for key,value in [('metrics',[]),('positions',{}),('positions',[None]),
+                              ('pending','BTC'),('trades',[42]),
+                              ('rejections',{}),('latest_events',[[]])]:
+                with self.subTest(key=key,value=value):
+                    path=self.sample(root)
+                    obj=json.loads(path.read_text())
+                    obj['profiles']['hawk'][key]=value
+                    path.write_text(json.dumps(obj),encoding='utf-8')
+                    self.assertEqual(read_all(root,NOW,snapshot_path=path)['status'],
+                                     'unavailable')
+
     def test_absent_snapshot_preserves_legacy_readonly_reader(self):
         with tempfile.TemporaryDirectory() as root:
             seed(root,'hawk',cash=910.)
@@ -165,3 +196,4 @@ class BrainScalpEndpoint(unittest.TestCase):
             finally:
                 if old is None:os.environ.pop('BRAIN_SCALP_DATA_DIR',None)
                 else:os.environ['BRAIN_SCALP_DATA_DIR']=old
+
