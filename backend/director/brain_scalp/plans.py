@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import math
 from director.brain_free.config import max_leverage
+from .config import ENTRY_PRICE_AGE_MS
 
 
 def finite(value, minimum=None, maximum=None):
@@ -69,7 +70,7 @@ def triggered(plan,quote,now):
     if now>=plan.expires_ms: return False
     try: price,ts=finite(quote['price'],1e-12),int(finite(quote['ts_ms'],0))
     except (KeyError,ValueError,TypeError): return False
-    if not 0<=now-ts<=30000: return False
+    if not 0<=now-ts<=ENTRY_PRICE_AGE_MS: return False
     if plan.trigger=='break_above': return price>=plan.trigger_price
     if plan.trigger=='break_below': return price<=plan.trigger_price
     return abs(price/plan.trigger_price-1)<=0.001
