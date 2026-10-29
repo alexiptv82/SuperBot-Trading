@@ -31,6 +31,10 @@ class Plan:
     take_net_usd: float
     reason: str
     invalidation: str
+    breakeven_after_usd: float | None = None
+    trail_bps: int | None = None
+    scale_out: list | None = None
+    invalidate_price: float | None = None
 
 
 def parse_plan(raw,spec,now,whitelist):
@@ -62,8 +66,42 @@ def parse_plan(raw,spec,now,whitelist):
     reason,invalidation=raw.get('reason'),raw.get('invalidation')
     if not isinstance(reason,str) or len(reason.strip())<12 or not isinstance(invalidation,str) or len(invalidation.strip())<8:
         raise ValueError('missing_thesis_or_invalidation')
+    breakeven=raw.get('breakeven_after_usd')
+    if breakeven is not None:
+        breakeven=finite(breakeven,0,500)
+    trail=raw.get('trail_bps')
+    if trail is not None:
+        trail_int=int(finite(trail,1,1000))
+        if trail_int!=trail: raise ValueError('trail_bps_not_integer')
+        trail=trail_int
+    invalidate=raw.get('invalidate_price')
+    if invalidate is not None:
+        invalidate=finite(invalidate,1e-12)
+        if side*(px-invalidate)<=0:
+            raise ValueError('invalid_invalidation_side')
+    steps=raw.get('scale_out')
+    if steps is not None:
+        if not isinstance(steps,list) or len(steps)>3:
+            raise ValueError('invalid_scale_out')
+        checked=[]
+        total=0.
+        previous=0.
+        for step in steps:
+            if not isinstance(step,dict) or set(step)!={'net_usd','fraction'}:
+                raise ValueError('invalid_scale_out_step')
+            net=finite(step['net_usd'],0.01,1000)
+            fraction=finite(step['fraction'],1e-8,1)
+            if net<=previous:
+                raise ValueError('scale_out_requires_increasing_thresholds')
+            total+=fraction
+            if total>1+1e-9:
+                raise ValueError('scale_out_exceeds_one')
+            checked.append({'net_usd':net,'fraction':fraction})
+            previous=net
+        steps=checked
     return Plan(plan_id,symbol,side,created,expires,trigger,px,stop,target,margin,lev,
-                hold,protect,take,reason.strip(),invalidation.strip())
+                hold,protect,take,reason.strip(),invalidation.strip(),
+                breakeven,trail,steps,invalidate)
 
 
 def triggered(plan,quote,now):
