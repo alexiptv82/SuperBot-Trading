@@ -89,3 +89,14 @@ un vantaggio proprio, a prescindere da come il bot lo usa.
   singole aperture rispetto ai bot veri e' parziale (misurata in passato: ~15% di aperture sovrapposte, ~85% di uscite
   uguali): conta il confronto tra varianti sullo stesso banco, non il valore assoluto del netto.
 - I long reali del 12–26/10 sono solo 13 su 247 aperture: il campione reale e' troppo piccolo per qualunque conclusione.
+
+## Errata e aggiunte (scritte DOPO il primo risultato, dichiarate qui)
+
+1. **Placebo di famiglia sbagliata.** Nella prima esecuzione il controllo G7 per `g_long`, `t_bonus`, `r_reb` e `ref_gate`
+   usava i placebo di `t_bonus_g` (che includono sia il bonus sia il filtro). Il criterio resta "il secondo miglior Δ dei
+   12 placebo della sua famiglia": ogni variante che legge il regime ha ora i suoi 12 placebo a regime spostato.
+   Stessi criteri, nessuna soglia cambiata.
+2. **Controlli aggiunti dopo il primo risultato** (non cambiano i criteri, servono a capire): costi zero (lordo),
+   soglie +6 per confrontare P1 con "aprire meno", esito per fascia di punteggio, finestre reali di ottobre per
+   calibrare la replica, diagnostica del bonus di P1 (quante decisioni cambia).
+3. P1 ha un placebo proprio (`pl_p1_*`: peso 4h a 14 + bonus rimbalzo a caso), perche' il suo effetto include il peso.

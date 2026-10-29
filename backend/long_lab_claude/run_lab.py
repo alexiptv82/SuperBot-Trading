@@ -26,6 +26,7 @@ import labrun as lr  # noqa: E402
 from labfeat import extract_symbol, now_ms_str  # noqa: E402
 
 _G: dict = {}
+PL_VARIANTS = ["t_bonus_g", "g_long", "t_bonus", "r_reb", "ref_gate"]
 
 
 def _features(args):
@@ -39,7 +40,7 @@ def _job(job):
     R = REG[mode]
     if kind == "placebo_shift":
         R = lr.shift_regime(R, shift)
-    spec = (dict(lr.SPECS["t_bonus_g"]) if kind == "placebo_shift"
+    spec = (dict(lr.SPECS[name.split("|")[1]]) if kind == "placebo_shift"
             else dict(lr.SPECS["p1_reb"], extra="p1reb_placebo") if kind == "placebo_reb"
             else dict(lr.SPECS["p1"], extra="p1reb_placebo") if kind == "placebo_p1" else lr.SPECS[name])
     res = lr.replay(M, name, spec, R, mode, cost_mult=cm, thr_other=thr, seed=seed, thr_ab=thr_ab)
@@ -124,7 +125,8 @@ def main():
             jobs.append(("placebo_reb", f"pl_reb_{k}", "S2", 1.0, 70, 1000 + k, 0, 60))
             jobs.append(("placebo_p1", f"pl_p1_{k}", "S2", 1.0, 70, 2000 + k, 0, 60))
             d = int(rng.integers(5, 61)) * (1 if k % 2 == 0 else -1)
-            jobs.append(("placebo_shift", f"pl_shift_{k}", "S2", 1.0, 70, None, d, 60))
+            for var in PL_VARIANTS:                       # un placebo per ogni variante che legge il regime, della sua stessa famiglia
+                jobs.append(("placebo_shift", f"pl_shift|{var}|{k}", "S2", 1.0, 70, None, d, 60))
     print(f"[RIPRODUZIONE] {len(jobs)} prove su {a.workers} processi", flush=True)
     with ctx.Pool(a.workers) as pool:
         done = pool.map(_job, jobs, chunksize=1)
@@ -149,12 +151,12 @@ def main():
         base_tr = trades[(mode, "base13")]
         pl_reb = [v["netto"] - base_s["netto"] for k, v in summ[f"{mode}|c1.0|t70"].items() if k.startswith("pl_reb_")]
         pl_p1 = [v["netto"] - base_s["netto"] for k, v in summ[f"{mode}|c1.0|t70"].items() if k.startswith("pl_p1_")]
-        pl_sh = [v["netto"] - base_s["netto"] for k, v in summ[f"{mode}|c1.0|t70"].items() if k.startswith("pl_shift_")]
+        pl_by = {n_: [v["netto"] - base_s["netto"] for k, v in summ[f"{mode}|c1.0|t70"].items() if k.startswith(f"pl_shift|{n_}|")]
+                 for n_ in PL_VARIANTS}
         gate_out[mode] = {}
         for n in lr.CANDIDATES + ["ref_gate"]:
             v = summ[f"{mode}|c1.0|t70"][n]
-            pl = (pl_reb if n == "p1_reb" else pl_p1 if n == "p1"
-                  else pl_sh if n in ("t_bonus_g", "g_long", "t_bonus", "r_reb", "ref_gate") else None)
+            pl = (pl_reb if n == "p1_reb" else pl_p1 if n == "p1" else pl_by.get(n) or None)
             if mode != "S2":
                 pl = None                     # i placebo girano solo con la stagionalita' di oggi (S2)
             cdelta = None
