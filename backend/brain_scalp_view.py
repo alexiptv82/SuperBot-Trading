@@ -90,6 +90,14 @@ def read_wallet(base,name,now=None):
         if db is not None:db.close()
 
 
-def read_all(base,now=None):
-    return {'paper':True,'read_only':True,
+def read_all(base,now=None,snapshot_path=None):
+    from brain_scalp_snapshot_view import read_published_snapshot
+    now=int(time.time()*1000) if now is None else now
+    path=(Path(snapshot_path) if snapshot_path else
+          Path(base)/'brain_scalp_snapshot.json')
+    published=read_published_snapshot(path,now)
+    if published is not None:
+        # A bad existing JSON fails closed; never silently switch sources.
+        return published
+    return {'paper':True,'read_only':True,'source':'sqlite_legacy',
             'profiles':{n:read_wallet(base,n,now) for n in ('hawk','bull')}}
