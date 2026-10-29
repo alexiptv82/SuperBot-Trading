@@ -1,0 +1,14 @@
+{
+ "n": 353,
+ "skipped": 4,
+ "no_cov": 0,
+ "granularity": "1m",
+ "sha256": "f39ef20a857b565052c6a82753650c3cb93aeb2b921575c2368060c7b4ef2082",
+ "gate": {
+  "n": 290,
+  "agree": 0.9862068965517241,
+  "net_gap": 0.010227105845568997,
+  "passed": true
+ },
+ "candidates": []
+}
