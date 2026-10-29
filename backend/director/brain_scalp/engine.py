@@ -4,7 +4,8 @@ A future supervisor submits vetted AI plans and calls tick with observed data.
 This module cannot touch the original Brain or classical portfolios.
 """
 from dataclasses import asdict
-from director.brain_free.execution import apply,close,equity,fresh,margin,protect
+import math
+from director.brain_free.execution import apply,close,fresh,margin,protect
 from .config import SPECS
 from .plans import Plan,parse_plan,triggered
 from .store import WalletStore
@@ -21,6 +22,36 @@ def _net_at_quote(position,quote_price,cfg):
     return (position['side']*(fill-position['entry'])*position['qty'] -
             position['entry_fees']-position.get('funding',0) -
             position['qty']*fill*cfg.fee_rate)
+
+
+
+def _safe_equity(state,quotes):
+    """Never value malformed marks, and fail closed to new openings.
+
+    Protective OHLC checks still execute before valuation. Incomplete marking
+    reports incomplete=True rather than treating missing unrealized P&L as zero.
+    Shared Brain Free execution.py is deliberately unchanged.
+    """
+    unrealized=0.0
+    missing=[]
+    for symbol,p in state['positions'].items():
+        q=quotes.get(symbol)
+        price=q.get('price') if isinstance(q,dict) else None
+        if (isinstance(price,bool) or not isinstance(price,(int,float))
+                or not math.isfinite(price) or price<=0):
+            missing.append(symbol)
+            continue
+        unrealized+=p['side']*(float(price)-p['entry'])*p['qty']
+    return state['cash']+margin(state)+unrealized,not bool(missing),missing
+
+
+def _valid_quote(q):
+    """Reject invalid prices before persisting snapshots as strict JSON."""
+    if not isinstance(q,dict):
+        return False
+    price=q.get('price')
+    return (not isinstance(price,bool) and isinstance(price,(int,float))
+            and math.isfinite(price) and price>0)
 
 
 class PaperWallet:
@@ -59,14 +90,17 @@ class PaperWallet:
         if now<state['last_ms']: raise ValueError('backward_clock')
         state['last_ms']=now
         state['heartbeat_ms']=now
-        state['last_prices']={s:m['quote'] for s,m in markets.items() if m.get('quote')}
+        state['last_prices']={s:m['quote'] for s,m in markets.items() if _valid_quote(m.get('quote'))}
         state,events=protect(state,markets,contracts,now,self.cfg)
         quotes={sym:m['quote'] for sym,m in markets.items() if m.get('quote')}
         for symbol,d in list(state['plans'].items()):
             if now>=d['expires_ms']:
                 del state['plans'][symbol]
                 events.append({'kind':'plan_expired','symbol':symbol,'plan_id':d['plan_id']})
-        capital,complete=equity(state,quotes)
+        capital,complete,unmarked=_safe_equity(state,quotes)
+        for symbol in unmarked:
+            events.append({'kind':'equity_unavailable','symbol':symbol,
+                           'reason':'invalid_or_missing_mark'})
         opening_allowed=complete and all(fresh(quotes.get(sym),now,self.cfg) for sym in state['positions'])
         today=now//86400000
         if today!=state['daily']['utc'] and opening_allowed:
