@@ -1,3 +1,13 @@
+## 29/10 (12:50) — CLASSICI: RITORNO AL CODICE DEL 13/10 (9fa667f) DEPLOYATO, BOT IN PAUSA — aspetta l'Avvia dell'utente
+
+Su ordine esplicito dell'utente: rule-pool a `0ad6893` (ff), deploy `sha=0ad68935c1ec12e514a1652f6a43d09d4a23aa75` con `profile=legacy_13oct`, `capital=off`, `deepseek=off`, backup del cervello verificato. **Prima del deploy** i portafogli sono stati riportati a 1000$ (Falco run 8, Toro run 7, vault azzerato e archiviato, cervello intatto). Ora: PAPER, **in pausa**, versione `0ad6893`, 0 riavvii. Claude a **finestre da 4 ore** (29/10 14:30-18:30, 30/10 00:00-04:00, 31/10 08:00-12:00, ora svizzera), senza DeepSeek, fix bias LONG lasciato fuori. L'avvio lo preme l'utente. CI del ramo: 86 test del 13/10 verdi.
+
+**Attenzione:** il controllo di baseline di `desk-deploy.yml` pretende ora `dc16e01` e blocca ogni deploy futuro finché non si aggiorna al nuovo runtime. Dettagli, workflow nuovo `desk-reset-portfolios.yml` e cosa resta aperto: `diario/2026-10-29_claude-ritorno-al-13-ottobre-deploy.md`. Questa voce sostituisce le righe precedenti su `dc16e01` come versione in esecuzione.
+
+AI: claude
+
+---
+
 ## 29/10 — Brain Scalp Gruppo 2: audit supplementare B2 e CI aggiornata
 
 **Aggiornamento della precedente voce Gruppo 2:** ci siamo accorti che, quando il backfill 1m falliva, le protezioni potevano saltare un minuto ancora ignoto e avanzare il cursore. Corretto sul ramo isolato `work/brain-scalp-dual-20261028`: `coordinator.py` passa solo barre storiche contigue fino al primo gap, `engine.py` conserva il cursore del gap e rimuove il blocco solo dopo replay integrale verificato. Nuovi test coprono stop nascosto nel minuto mancante, mancato avanzamento cursor e ripristino coerente dopo backfill. **CI finale GitHub Actions `40859967271`: SUCCESS 45/45 test Python 3.10 e 45/45 Python 3.11 (90 PASS); HEAD `0dfb2350e6875f728f84fd9b127256895d6b7467`.** Report di Claude aggiornato in `diario/2026-10-29_brain-scalp-gruppo2-chatgpt.md`. Nessun merge/deploy, niente rete/Bitget, nessun accesso VPS, classici e Brain Free intatti. Non dichiarare redditività né integrazione reale completa. **In attesa OK utente Gruppo 3**; gruppo 6 A/B/C in sospeso.
