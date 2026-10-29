@@ -108,8 +108,13 @@ class Group4AI(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'model_response_wrong_schema'):
             self.pair.accept_ai_plans('hawk',{'plans':None},self.allowed,
                                       markets(),contracts(),NOW)
-        with self.assertRaisesRegex(ValueError,'model_response_plan_limit'):
-            self.accept([plan()]*33)
+        result=self.accept([plan()]*33)
+        self.assertEqual(len(result['accepted']),1)
+        self.assertEqual(result['rejected'][-1]['why'],'model_response_plan_limit')
+        self.assertEqual(result['rejected'][-1]['skipped_count'],1)
+        events=[row[0] for row in self.pair.hawk.store.db.execute(
+            "SELECT body FROM events WHERE kind='ai_response_processed'")]
+        self.assertTrue(any('"skipped":1' in event for event in events))
 
     def test_i6_cost_feedback_survives_partial_rejection(self):
         out=self.accept([plan('BTC',target=100.05),plan('ETH')])
