@@ -306,25 +306,107 @@ class PaperWallet:
             opening_allowed=False
         if capital<=self.spec.kill_equity:
             opening_allowed=False
-        # Observe profits from fresh quotes, never from historical bar extremes.
+        # Profit policy is based on observed fresh quotes, not future extrema.
+        # The shared physical protector has already checked closed candles.
         for symbol,p in list(state['positions'].items()):
             q=quotes.get(symbol)
             if not fresh(q,now,self.protect_cfg): continue
+            if symbol in state['coverage_gaps'] or not p.get('coverage_complete',True):
+                continue
             policy=p.get('scalp_policy') or {}
-            net=_net_at_quote(p,q['price'],self.cfg)
-            peak=max(policy.get('peak_net',0),net)
+            px=q['price']
+            net=_net_at_quote(p,px,self.cfg)
+            peak=max(policy.get('peak_net',0.),net)
             policy['peak_net']=peak
+            best=policy.get('best_observed_quote',px)
+            best=max(best,px) if p['side']==1 else min(best,px)
+            policy['best_observed_quote']=best
             p['scalp_policy']=policy
-            reason=None
+            if _invalidation_hit(p['side'],px,policy.get('invalidate_price')):
+                events.append(close(state,symbol,px,now,
+                                    'scalp_invalidation_observed',cfg=self.cfg))
+                continue
             if policy.get('take_net_usd',0)>0 and net>=policy['take_net_usd']:
-                reason='scalp_net_target_observed'
-            elif (policy.get('protect_after_usd',0)>0 and peak>=policy['protect_after_usd']
-                  and net>0 and net<=peak*.65):
-                reason='scalp_net_giveback_observed'
-            elif policy.get('hold_max_ms') and now-p['open_ms']>=policy['hold_max_ms']:
-                reason='scalp_time_limit_observed'
-            if reason:
-                events.append(close(state,symbol,q['price'],now,reason,cfg=self.cfg))
+                events.append(close(state,symbol,px,now,
+                                    'scalp_net_target_observed',cfg=self.cfg))
+                continue
+            if (policy.get('protect_after_usd',0)>0 and
+                    peak>=policy['protect_after_usd'] and net<=peak*.65):
+                events.append(close(state,symbol,px,now,
+                                    'scalp_net_giveback_observed',cfg=self.cfg))
+                continue
+            if policy.get('hold_max_ms') and now-p['open_ms']>=policy['hold_max_ms']:
+                events.append(close(state,symbol,px,now,
+                                    'scalp_time_limit_observed',cfg=self.cfg))
+                continue
+            steps=policy.get('scale_out') or []
+            done=policy.setdefault('scale_out_done',[])
+            for index,step in enumerate(steps):
+                if index in done or net<step['net_usd']: continue
+                fraction=step['fraction']
+                c=contracts.get(symbol,p.get('contract',{}))
+                qty_step=c.get('qty_step',0)
+                min_qty=c.get('min_qty',0)
+                min_notional=c.get('min_notional',0)
+                qty=p['qty']*fraction
+                remainder=p['qty']-qty
+                if (qty_step<=0 or qty<min_qty or qty*px<min_notional or
+                        (fraction<1 and (remainder<min_qty or
+                         remainder*px<min_notional))):
+                    events.append({'kind':'scale_out_deferred','symbol':symbol,
+                                   'index':index,'reason':'contract_minimum'})
+                    break
+                events.append(close(state,symbol,px,now,
+                                    'scalp_scale_out_observed',fraction=1. if
+                                    fraction>=1 else fraction,cfg=self.cfg))
+                done.append(index)
+                events.append({'kind':'scale_out_executed','symbol':symbol,
+                               'index':index,'fraction_of_remaining':fraction})
+                if symbol in state['positions']:
+                    p=state['positions'][symbol]
+                    policy=p['scalp_policy']
+                    # Absolute USD peak changes with quantity after partial.
+                    policy['peak_net']=max(0.,peak*(1-fraction))
+                    net=_net_at_quote(p,px,self.cfg)
+                    peak=policy['peak_net']
+                break
+            if symbol not in state['positions']: continue
+            p=state['positions'][symbol]
+            policy=p['scalp_policy']
+            threshold=policy.get('breakeven_after_usd')
+            if threshold is None:
+                threshold=policy.get('protect_after_usd',0)
+            if threshold>0 and peak>=threshold and not policy.get('breakeven_set'):
+                threshold_quote=_breakeven_observed_quote(p,self.cfg)
+                status=_protect_stop_with_quote(
+                    p,symbol,px,threshold_quote,now,contracts,
+                    events,'breakeven_set')
+                if status=='crossed':
+                    events.append(close(state,symbol,px,now,
+                                        'scalp_breakeven_crossed',cfg=self.cfg))
+                    continue
+                if status or p['side']*(p['stop']-threshold_quote)>=0:
+                    policy['breakeven_set']=True
+            trail=policy.get('trail_bps')
+            if trail is not None and peak>0 and peak>=threshold:
+                # Best is an actual observed quote, not a look-ahead bar high.
+                trail_price=policy['best_observed_quote']*(
+                    1-p['side']*trail/10000)
+                status=_protect_stop_with_quote(
+                    p,symbol,px,trail_price,now,contracts,
+                    events,'scalp_trail_tightened')
+                if status=='crossed':
+                    events.append(close(state,symbol,px,now,
+                                        'scalp_trail_crossed',cfg=self.cfg))
+        # Invalidation must also be checked when opening is disabled or paused.
+        for symbol,raw in list(state['plans'].items()):
+            p=Plan(**raw)
+            q=quotes.get(symbol)
+            if (fresh(q,now,self.protect_cfg) and
+                    _invalidation_hit(p.side,q['price'],p.invalidate_price)):
+                del state['plans'][symbol]
+                events.append({'kind':'plan_invalidated','symbol':symbol,
+                               'plan_id':p.plan_id,'observed_price':q['price']})
         risk_used=sum(_risk(p,self.cfg) for p in state['positions'].values())
         for symbol,raw in list(state['plans'].items()):
             if not opening_allowed or state.get('paused'): break
@@ -393,7 +475,12 @@ class PaperWallet:
                                    self.spec.risk_portfolio_usd-risk_used))})
             state['positions'][symbol]['scalp_policy']={'hold_max_ms':p.hold_max_ms,
                         'protect_after_usd':p.protect_after_usd,
-                        'take_net_usd':p.take_net_usd,'peak_net':0.,'plan_id':p.plan_id}
+                        'take_net_usd':p.take_net_usd,'peak_net':0.,'plan_id':p.plan_id,
+                        'breakeven_after_usd':p.breakeven_after_usd,
+                        'breakeven_set':False,'trail_bps':p.trail_bps,
+                        'scale_out':p.scale_out or [],'scale_out_done':[],
+                        'invalidate_price':p.invalidate_price,
+                        'best_observed_quote':px}
             events.extend(opened)
             actual_fill=state['positions'][symbol]['entry']
             events.append({'kind':'entry_fill','symbol':symbol,'plan_id':p.plan_id,
