@@ -107,6 +107,35 @@ class BrainPair:
                 _LOG.exception('Cannot load cursor for gap repair')
         repaired,gap_events=repair_markets(
             markets,now,fetcher=self.candle_backfill,anchors=anchors)
+        # An unresolved historical minute is an unknown stop/target event.
+        # Never let the shared protector advance past that minute. Keep only
+        # the *contiguous* closed-bar prefix following the stored cursor.
+        unresolved={e['symbol'] for e in gap_events
+                    if e['kind'] in ('gap_unresolvable','gap_backfill_failed')}
+        for symbol in unresolved:
+            data=repaired.get(symbol)
+            if not isinstance(data,dict):
+                continue
+            source=(data.get('bars') or {}).get('1m',[])
+            anchor=anchors.get(symbol)
+            kept=[]
+            if anchor is not None:
+                expected=anchor+60000
+                try:
+                    for row in sorted(source,key=lambda row:row[0]):
+                        if row[0]<expected:
+                            continue
+                        if (row[0]!=expected or row[0]+60000>now or
+                            len(row)<6):
+                            break
+                        kept.append(row)
+                        expected+=60000
+                except (TypeError,ValueError,IndexError,KeyError):
+                    kept=[]
+            cleaned=dict(data)
+            cleaned['bars']=dict(data.get('bars') or {})
+            cleaned['bars']['1m']=kept
+            repaired[symbol]=cleaned
         for name,wallet in (('hawk',self.hawk),('bull',self.bull)):
             try:
                 results[name]=wallet.tick(repaired,contracts,now,market_events=gap_events)
