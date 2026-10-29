@@ -1,3 +1,11 @@
+## 29/10 — Brain Scalp Gruppo 2: controllo finale B2 upstream-restored e CI 94/94 PASS
+
+Oltre a 45 test precedenti, audit supplementare sul ramo motore `work/brain-scalp-dual-20261028` identifica e corregge un caso di quarantena non rimossa dopo ritorno spontaneo della serie 1m completa dal provider senza chiamate di backfill. `engine.py` + `coordinator.py` fanno replay *prima* di riconciliare; test provano sia il ripristino corretto del flag sia l'uscita protettiva su stop storico. Nuovi commit `0fd36a36`, `fc0ca0da`, `c5345f2b`; CI `40883165583` **SUCCESS Python 3.10 e 3.11, 47 test ciascuno = 94 PASS**. Report: `diario/2026-10-29_brain-scalp-gruppo2-chatgpt.md` (appendice). Nessun intervento ai classici, Brain Free V2, app, VPS, trading, reset, deploy o merge **nell'attività Brain Scalp**. **In attesa di nuovo OK utente per Gruppo 3.** Lo stato operativo dei classici è quello registrato da Claude nelle voci successive, non il vecchio screenshot delle 08:07.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 29/10 (14:30) — LABORATORIO MODIFICA LONG (P1): NON RILASCIABILE, NESSUNA v2 PASSA I CRITERI — il 13/10 resta com'e'
 
 Laboratorio offline (ramo `work/long-lab-claude-20261029`, mai unito a `rule-pool`, nessun bot toccato) sul codice del 13/10 con ~18 mesi di candele reali, criteri G1–G9 scritti prima dei risultati. Esito: il bonus rimbalzo di P1 non cambia alcuna decisione (0 nuovi long); il peso 4h a 14 dimezza solo le aperture (stesso effetto di soglie +6 o di un placebo); nessuna delle varianti nuove (`g_long`, `t_bonus`, `t_bonus_g`, `r_reb`, `ref_gate`) passa. **P1 resta in stand-by.** Limite: la replica sottostima i giorni d'oro (R +0,06 contro +0,54 reale): i confronti tra varianti valgono, i valori assoluti no. Proposto (serve decisione utente): test di fedelta' a 1 minuto e laboratorio "dove guadagna il bot". Lo screenshot dell'utente conferma che `9fa667f` e' il codice di oggi. Dettagli: `diario/2026-10-29_claude-laboratorio-modifica-long.md`, `backend/long_lab_claude/RAPPORTO.md` (commit `1231c98`).
