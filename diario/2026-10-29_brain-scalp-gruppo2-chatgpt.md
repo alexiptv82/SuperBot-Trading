@@ -66,3 +66,19 @@ La verifica successiva ha trovato un ulteriore caso limite B2 dopo i 45 test PAS
 **Nessun merge, deploy, modifica alla VPS, classici, Brain Free, portafogli PAPER o worker.** Nessuna connessione HTTP/Bitget/Claude API aggiunta. I2/I3/B2 sono finiti sotto il perimetro offline. **Gruppo 3 (I5/I1) non avviato: richiede un nuovo OK esplicito utente.**
 
 AI: ChatGPT (chat normale)
+
+---
+
+## Aggiornamento di verifica integrativa — 29/10, nuova autorizzazione utente
+
+L'utente ha autorizzato nuovamente «Okay, adesso procedi a gruppo 2». Durante l'ispezione il ramo motore conteneva **già** il Gruppo 2 sopra descritto (HEAD precedente `c5345f2b`, CI `40883165583` verde, 47 test per Python). Invece di replicare o sovrascrivere il lavoro esistente, ChatGPT ne ha revisionato i contratti e aggiunto le seguenti due **correzioni mancanti** nel medesimo ramo isolato:
+
+1. **I2: feedback economico all'AI**: `engine.py` genera l'eccezione specifica `PlanCostError` con `costs_pct`, `net_at_target_pct`, `min_required_pct`, `min_target_price`, senza modificare stop/target e senza arrotondare il rischio per eccesso; `coordinator.accept_ai_plans` inoltra i valori alla futura AI. Il medesimo feedback viene scritto nell'evento `plan_rejected` se il target diventa insufficiente al fill dopo un movimento di prezzo. Commit `00b98a8` e `2bec7fa`.
+2. **B2: quarantena effettiva dei nuovi ingressi**: `PaperWallet.submit` rifiuta la prenotazione su simboli in `coverage_gaps` e `PaperWallet.tick` differisce i piani già prenotati fino a recupero/expiry, senza perdere la prenotazione o inventare candele. `BrainPair.tick` riconosce anche simboli quarantinati su wallet *flat* e li libera soltanto con 18 candele 1m e 22 candele 5m chiuse, contigue e recenti, o backfill causale verificato; posizioni aperte restano soggette alla verifica di replay puntuale dal cursore. Commit `cf883c2`, `c2cb4b3`.
+3. **Test di regressione aggiuntivi** nel file `backend/tests/test_brain_scalp_group2.py`: metadati di rifiuto I2 su submit e trigger, blocco delle nuove prenotazioni in quarantena B2, differimento e successivo sblocco di un piano preesistente dopo backfill, recupero di wallet flat con feed completo e mancato sblocco con feed vuoto. Commit `57b596c`, `5d3ebb7`.
+
+**CI finale aggiornata: [Actions 40894428513](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40894428513) — SUCCESS Python 3.10 e 3.11, 54/54 test su ciascuna versione, 108 esecuzioni totali**, inclusi i controlli di immutabilità di `backend/desk`, `backend/director/brain_free`, file deploy, Docker e workflow originali.
+
+**Esclusioni:** non esiste ancora worker Bitget H24 né provider di backfill REST realmente collegato; il codice è simulato e con fetcher iniettato, non prova disponibilità o rendimento. Il ridimensionamento I3 può ridurre la leva fino a 1× rispettando il limite di rischio: scelta del motore del laboratorio, non la futura policy aggressiva da approvare. Nessun deploy, reset, merge, stop o intervento su classici, Brain o dati VPS.
+
+**Stato:** Gruppo 2 completato **offline**; **Gruppo 3 (I5/I1) richiede nuovo OK separato**. I8 opzione A/B/C ancora non decisa.
