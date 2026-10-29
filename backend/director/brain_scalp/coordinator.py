@@ -8,7 +8,7 @@ import logging
 
 _LOG=logging.getLogger(__name__)
 from .engine import PaperWallet,PlanCostError
-from .scanner import scan
+from .scanner import scan, _closed
 from .gap_repair import repair_markets
 
 
@@ -102,13 +102,17 @@ class BrainPair:
         results={}
         anchors={}
         quarantined=set()
+        quarantined_with_positions=set()
         for wallet in (self.hawk,self.bull):
             try:
-                for symbol,position in wallet.store.load()['positions'].items():
+                existing=wallet.store.load()
+                quarantined.update(existing.get('coverage_gaps',[]))
+                for symbol,position in existing['positions'].items():
                     ts=position['last_bar_ms']
                     anchors[symbol]=min(anchors.get(symbol,ts),ts)
                     if 'scalp_gap_cursor_ms' in position:
                         quarantined.add(symbol)
+                        quarantined_with_positions.add(symbol)
             except Exception:
                 _LOG.exception('Cannot load cursor for gap repair')
         repaired,gap_events=repair_markets(
@@ -122,7 +126,22 @@ class BrainPair:
         backfilled_symbols={e['symbol'] for e in gap_events
                             if e['kind']=='gap_backfilled'}
         for symbol in sorted(quarantined-unresolved_symbols-backfilled_symbols):
-            if symbol in repaired:
+            data=repaired.get(symbol)
+            if not isinstance(data,dict):
+                continue
+            if symbol in quarantined_with_positions:
+                # Position recovery is verified in-engine against its exact
+                # cursor; never release it on the supervisor's word alone.
+                gap_events.append({'kind':'gap_history_complete','symbol':symbol})
+                continue
+            # A flat wallet has no stop exposure to old unavailable minutes.
+            # Still demand a fully continuous recent scanner window before
+            # re-enabling fresh plans; never clear on an empty/partial feed.
+            bars=data.get('bars') or {}
+            one=_closed(bars.get('1m',[]),now,60000,18)
+            five=_closed(bars.get('5m',[]),now,300000,22)
+            if (one and five and now-(one[-1][0]+60000)<=90000
+                    and now-(five[-1][0]+300000)<=360000):
                 gap_events.append({'kind':'gap_history_complete','symbol':symbol})
         # An unresolved historical minute is an unknown stop/target event.
         # Never let the shared protector advance past that minute. Keep only
