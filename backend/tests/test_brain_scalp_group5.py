@@ -85,3 +85,102 @@ class Group5Metrics(unittest.TestCase):
         self.assertEqual(out['metrics']['block_reason'],'paused')
         self.assertEqual(out['metrics']['pending_plans'],1)
         self.assertEqual(out['metrics']['margin_available'],850.)
+
+
+from director.brain_scalp.coordinator import BrainPair
+from director.brain_scalp.snapshot import (
+    SnapshotPublisher,atomic_write,read_snapshot,build_snapshot)
+
+
+class Group5Snapshots(unittest.TestCase):
+    def test_i7_both_wallets_atomic_publication_and_throttle(self):
+        with tempfile.TemporaryDirectory() as root:
+            pair=BrainPair(root,initialize=True,now_ms=NOW)
+            try:
+                path=Path(root)/'scalp_dashboard.json'
+                publisher=SnapshotPublisher(path)
+                pair.tick(market(),CONTRACTS,NOW+1000)
+                self.assertTrue(publisher.publish_if_due(pair,NOW+1000))
+                before=path.read_bytes()
+                self.assertFalse(publisher.publish_if_due(pair,NOW+2000))
+                self.assertEqual(path.read_bytes(),before)
+                self.assertTrue(publisher.publish_if_due(pair,NOW+6000))
+                data=read_snapshot(path,NOW+6000)
+                self.assertEqual(data['status'],'ok')
+                self.assertEqual(data['profiles']['hawk']['account_id'],
+                                 'brain-scalp-hawk-paper')
+                self.assertEqual(data['profiles']['bull']['account_id'],
+                                 'brain-scalp-bull-paper')
+                self.assertEqual(data['profiles']['hawk']['metrics']['equity'],1000)
+                self.assertTrue(data['read_only'])
+            finally:
+                pair.close()
+
+    def test_i7_stopped_writer_shows_stale_not_online(self):
+        with tempfile.TemporaryDirectory() as root:
+            pair=BrainPair(root,initialize=True,now_ms=NOW)
+            try:
+                path=Path(root)/'status.json'
+                pair.tick(market(),CONTRACTS,NOW+1000)
+                publisher=SnapshotPublisher(path)
+                publisher.publish_if_due(pair,NOW+1000)
+            finally:
+                pair.close()
+            still=read_snapshot(path,NOW+1000+90000)
+            self.assertTrue(still['available'])
+            self.assertTrue(still['stale'])
+            self.assertEqual(still['status'],'stale')
+            self.assertFalse(still['profiles']['hawk']['online'])
+            self.assertFalse(still['profiles']['bull']['online'])
+
+    def test_i7_corrupt_snapshot_fails_closed(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=Path(root)/'status.json'
+            path.write_text('not-json',encoding='utf-8')
+            self.assertEqual(read_snapshot(path,NOW)['status'],'unavailable')
+            path.unlink()
+            self.assertEqual(read_snapshot(path,NOW)['status'],'not_started')
+
+    def test_i7_refuses_foreign_wallet_and_preserves_existing_snapshot(self):
+        with tempfile.TemporaryDirectory() as root:
+            pair=BrainPair(root,initialize=True,now_ms=NOW)
+            try:
+                output=Path(root)/'snapshot.json'
+                pair.tick(market(),CONTRACTS,NOW+1000)
+                pub=SnapshotPublisher(output)
+                pub.publish_if_due(pair,NOW+1000)
+                original=output.read_bytes()
+                state=pair.hawk.store.load()
+                state['account_id']='brain-free-paper'
+                with self.assertRaisesRegex(ValueError,'foreign_wallet'):
+                    build_snapshot(state,pair.bull.store.load(),NOW+2000)
+                self.assertEqual(output.read_bytes(),original)
+            finally:
+                pair.close()
+
+    def test_i7_refuses_snapshot_symlink(self):
+        with tempfile.TemporaryDirectory() as root:
+            target=Path(root)/'other.json'
+            target.write_text('keep',encoding='utf-8')
+            link=Path(root)/'link.json'
+            link.symlink_to(target)
+            with self.assertRaisesRegex(ValueError,'invalid_snapshot_path'):
+                atomic_write(link,{'paper':True})
+            self.assertEqual(target.read_text(encoding='utf-8'),'keep')
+
+    def test_i7_snapshot_contains_no_api_key_or_untrusted_thesis(self):
+        with tempfile.TemporaryDirectory() as root:
+            pair=BrainPair(root,initialize=True,now_ms=NOW)
+            try:
+                raw=plan()
+                raw['reason']='PRIVATE THESIS DO NOT PUBLISH'
+                pair.hawk.submit(raw,NOW,CONTRACTS,{'BTC':quote()})
+                pair.tick(market(),CONTRACTS,NOW+1000)
+                output=Path(root)/'snapshot.json'
+                SnapshotPublisher(output).publish_if_due(pair,NOW+1000)
+                text=output.read_text(encoding='utf-8')
+                self.assertNotIn('PRIVATE THESIS',text)
+                self.assertNotIn('plan_ids',text)
+                self.assertEqual(read_snapshot(output,NOW+1000)['profiles']['hawk']['positions'][0]['symbol'],'BTC')
+            finally:
+                pair.close()
