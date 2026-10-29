@@ -993,3 +993,11 @@ AI: chatgpt
 - Verificato codice: BEattuale protegge quantitàresidua; BEinteraoperazione includendo parziali è variante diversa, nonbug giàdimostrato. Nonallargare stopraggiunti. Gestione persistente giàpresente: nessunaduplicazione.
 - Esempio138,24USD su8640chiamate corretto soloalle ipotesi token/tariffe delreport, nonpreventivo delBrain. ProviderH24 resta da implementare/misurare.
 - Nessun codice/parametro cambiato; baseline856a5ed095d4, PWA9251e6dd invariati. Solo diario, confronto deireport ancoraaperto.
+
+
+## 29/10/2026 — Report Grok valutato, baseline invariata
+- Analisi: diario/2026-10-29_valutazione-report-grok-brain-chatgpt.md.
+- Non adottati: rischio base calcolato dalcap e poi moltiplicato1,8 (può superarlo); confidence noncalibrata; unitàDD ambigue; filtriWR/RR e pesi scanner arbitrari; escalation8–15% e costi20–35USD senza misure; fallbackFlash per conflitto nonrisolto.
+- Errore numerico: bufferBE0,05–0,08% sotto le sole feeA/R attuali~0,12%. Conservare solverBE contabile. GestioneBE/parziali/trailing giàpresente, nonduplicare.
+- Trattenere memoria pertinente/evidenze sintetiche e prove pervarianti, riusando stato e log attuali. ReportChatGPT esterno resta finora traccia progettuale piùcompatibile, senza adozione automatica dei parametri.
+- Solo analisi/diario, nessuna modifica codice/parametri/deploy/VPS/dati operativi. BrainScalp856a5ed095d4/PWA9251e6dd invariati.
