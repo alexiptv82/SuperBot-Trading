@@ -32,22 +32,27 @@ jobs:
           BOTS="$(sed -n 's/^bots=//p' "$T" | head -n1 | tr -d '[:space:]')"
           case "$BOTS" in hawk,bull|hawk|bull) ;; *) echo "RESET_BLOCKED=bots_non_validi"; exit 1 ;; esac
           echo "bots=$BOTS" >> "$GITHUB_OUTPUT"
-          echo "Richiesta valida: bot=$BOTS"
+          DRY="$(sed -n 's/^dry_run=//p' "$T" | head -n1 | tr -d '[:space:]')"
+          case "$DRY" in 1|si) echo "dry=1" >> "$GITHUB_OUTPUT" ;; *) echo "dry=0" >> "$GITHUB_OUTPUT" ;; esac
+          echo "Richiesta valida: bot=$BOTS prova_a_secco=${DRY:-no}"
       - name: Chiudi le posizioni aperte e azzera il conto (VPS Singapore)
         uses: appleboy/ssh-action@v1.0.0
         env:
           RESET_BOTS: ${{ steps.req.outputs.bots }}
+          RESET_DRY: ${{ steps.req.outputs.dry }}
         with:
           host: 51.79.205.82
           # Impronta ECDSA del server Singapore: se cambia, la connessione viene rifiutata.
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           username: root
           key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
-          envs: RESET_BOTS
+          envs: RESET_BOTS,RESET_DRY
           command_timeout: 15m
           script: |
             set -e
-            python3 -I - <<'PY'
+            set -o pipefail
+            : > /tmp/desk_reset_out.txt
+            python3 -I - 2>&1 <<'PY' | tee -a /tmp/desk_reset_out.txt
             import json, os, shutil, subprocess, sys, time
             BASE = "/opt/superbot-desk-data"
             BOTS = [b for b in os.environ.get("RESET_BOTS", "").split(",") if b in ("hawk", "bull")]
@@ -100,6 +105,9 @@ jobs:
                                       for f in ("trade_history.jsonl", "lessons.md", "errors.md", "learning_log.jsonl")}
                 print(f"[{p}] run {before[p]['run_no']}, posizioni aperte: {before[p]['open'] or 'nessuna'}", flush=True)
             print("CONTROLLI_SUPERATI=PASS (paper, container attivi, bot in pausa)", flush=True)
+            if os.environ.get("RESET_DRY") == "1":
+                print("PROVA_A_SECCO: solo controlli, nessuna scrittura, nessun comando ai bot", flush=True)
+                raise SystemExit(0)
 
             # ---- 2) copia di sicurezza dei file di stato (solo lettura sull'origine)
             stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
@@ -154,3 +162,21 @@ jobs:
                         raise SystemExit(f"RESET_VERIFICA_FALLITA {p}: il file del cervello {f} e' diminuito")
             print("RESET_OK: portafogli a 1000$, bot in pausa, cervello intatto", flush=True)
             PY
+
+      - name: Pubblica l'esito (resoconto letto dal server, nessun segreto)
+        if: always()
+        env:
+          SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_desk
+          chmod 600 ~/.ssh/id_desk
+          ssh -T -i ~/.ssh/id_desk -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+            root@51.79.205.82 'cat /tmp/desk_reset_out.txt' 2>/dev/null > out.txt || true
+          rm -f ~/.ssh/id_desk
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat out.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          OUT=$(head -40 out.txt | cut -c1-300 | tr '\n' '|' | sed 's/%/%25/g')
+          echo "::notice title=Azzeramento portafogli::${OUT}"
+          cat out.txt

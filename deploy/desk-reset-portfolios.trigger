@@ -1,3 +1,4 @@
-2026-10-29 OK dell'utente (chat del 29/10): prima del deploy del ritorno al 13/10, chiudere le posizioni ancora aperte e riportare i portafogli di Hawk e Bull a 1000$ ciascuno. Solo paper, bot in pausa, cervello intatto, avvio lasciato all'utente.
+2026-10-29 PROVA A SECCO (solo controlli e resoconto leggibile, nessuna scrittura): serve a capire perche' il primo tentativo si e' fermato. Il vero azzeramento ha l'OK dell'utente del 29/10.
 confirm=paper-reset-1000
 bots=hawk,bull
+dry_run=1
