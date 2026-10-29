@@ -38,3 +38,15 @@ Link: https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40841694288
 Branch: https://github.com/alexiptv82/SuperBot-Trading/tree/work/brain-scalp-dual-20261028
 
 AI: ChatGPT (chat normale)
+
+
+## Aggiornamento test di sicurezza B2 — 29/10 (dopo prima CI verde)
+Dopo la prima certificazione a 42 test, è stato individuato e corretto un rischio ulteriore: su un backfill non risolto, il lettore di barre protettive **poteva avanzare il cursore oltre il minuto ignoto**, precludendo la verifica retrospettiva dello stop. In `coordinator.py` ora si passa al motore soltanto il prefisso di barre chiuse **contiguo** fino al primo buco (commit `ba91eb2e`); in `engine.py` viene conservato `scalp_gap_cursor_ms` e la quarantena può essere rimossa **solo dopo** il replay consecutivo di tutte le barre mancanti, o la chiusura protettiva prodotta dal replay (commit `554873a3`). Non si liberano posizioni già marcate UNKNOWN in passato senza il nuovo cursore di quarantena.
+
+Aggiunti 3 test nuovi nel file `backend/tests/test_brain_scalp_group2.py` (commit `0dfb2350`): (1) backfill fallito NON fa saltare il minuto, (2) riparazione tardiva ripercorre il minuto con uno stop reale e chiude il PAPER, (3) riparazione verificata senza stop ripristina la copertura soltanto al termine del replay.
+
+**Nuova CI certificata:** [GitHub Actions 40859967271](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40859967271) — **SUCCESS Python 3.10 e 3.11, 45/45 test per interprete, 90 esecuzioni in totale**. Gate invarianti del workflow (classici, Brain Free, deploy) entrambi PASS. HEAD verificato del branch di laboratorio `0dfb2350e6875f728f84fd9b127256895d6b7467`. Il vecchio report riferito a 42/42 è superato da questa nuova prova, non va usato come CI finale.
+
+**Limiti:** test su dati sintetici in runner isolati (no rete), non sostituiscono replay Bitget DEV/VAL/TEST o test d'integrazione con REST/backfill reale, API Claude e reale worker. La connessione al feed non è stata implementata e nessun deploy è autorizzato. Chiedere OK per il Gruppo 3 (I5/I1) soltanto dopo presentazione dei risultati.
+
+AI: ChatGPT (chat normale)
