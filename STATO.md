@@ -1,4 +1,4 @@
-## 29/10 (12:50) — CLASSICI: RITORNO AL CODICE DEL 13/10 (9fa667f) DEPLOYATO, BOT IN PAUSA — aspetta l'Avvia dell'utente
+## 29/10 (12:30) — CLASSICI: RITORNO AL CODICE DEL 13/10 (9fa667f) DEPLOYATO, BOT IN PAUSA — aspetta l'Avvia dell'utente
 
 Su ordine esplicito dell'utente: rule-pool a `0ad6893` (ff), deploy `sha=0ad68935c1ec12e514a1652f6a43d09d4a23aa75` con `profile=legacy_13oct`, `capital=off`, `deepseek=off`, backup del cervello verificato. **Prima del deploy** i portafogli sono stati riportati a 1000$ (Falco run 8, Toro run 7, vault azzerato e archiviato, cervello intatto). Ora: PAPER, **in pausa**, versione `0ad6893`, 0 riavvii. Claude a **finestre da 4 ore** (29/10 14:30-18:30, 30/10 00:00-04:00, 31/10 08:00-12:00, ora svizzera), senza DeepSeek, fix bias LONG lasciato fuori. L'avvio lo preme l'utente. CI del ramo: 86 test del 13/10 verdi.
 
