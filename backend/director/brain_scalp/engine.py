@@ -108,6 +108,9 @@ class PaperWallet:
         """Reserve one slot and requested margin. NEVER execute in submit."""
         plan=parse_plan(raw,self.spec,now,whitelist)
         state=self.store.load()
+        cost=2*(self.cfg.fee_rate+self.cfg.slippage)
+        if plan.side*(plan.target-plan.trigger_price)/plan.trigger_price < 2*cost:
+            raise ValueError('target_below_costs')
         q=quotes.get(plan.symbol)
         if not fresh(q,now,self.entry_cfg):
             if fresh(q,now,self.cfg):
@@ -209,6 +212,11 @@ class PaperWallet:
                 events.append({'kind':'plan_rejected','symbol':symbol,'why':'already_open'})
                 continue
             px=q['price'];fill=px*(1+p.side*self.cfg.slippage)
+            cost=2*(self.cfg.fee_rate+self.cfg.slippage)
+            if p.side*(p.target-fill)/fill < 2*cost:
+                del state['plans'][symbol]
+                events.append({'kind':'plan_rejected','symbol':symbol,'why':'target_below_costs'})
+                continue
             if not _target_cost_guard(p.side,fill,p.target,self.cfg):
                 del state['plans'][symbol]
                 events.append({'kind':'plan_rejected','symbol':symbol,
