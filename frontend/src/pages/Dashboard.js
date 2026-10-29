@@ -181,7 +181,7 @@ function StateBanner({ status, isBull }) {
   else if (cyc.next_cycle_ms) lines.push(`Prossimo controllo del mercato alle ${fmtClock(cyc.next_cycle_ms)}` +
     (cyc.last_end_ms ? ` · ultimo alle ${fmtClock(cyc.last_end_ms)}` : ''));
   if (cyc.last_ok === false) lines.push(`⚠️ L'ultimo ciclo è fallito (${cyc.last_error || 'errore'}): riprovo tra pochi minuti.`);
-  return box('#4ade80', `🟢 ${isBull ? 'Bull' : 'Hawk'} in funzione`, lines);
+  return box('#4ade80', `🟢 ${isBull ? 'Toro' : 'Falco'} in funzione`, lines);
 }
 
 // Sezione KPI per un portafoglio
@@ -190,13 +190,13 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
 
   if (!status) return (
     <Card style={{ marginBottom: '16px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
-      ⏳ Connessione al portafoglio {isBull ? '🐂 Bull' : '🦅 Hawk'}...
+      ⏳ Connessione al portafoglio {isBull ? '🐂 Toro' : '🦅 Falco'}...
     </Card>
   );
 
   if (status.available !== true) return (
     <Card style={{ marginBottom: '16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-      🔴 {isBull ? '🐂 Bull' : '🦅 Hawk'} — {status.message || 'nessun dato disponibile, riprovo tra pochi secondi'}
+      🔴 {isBull ? '🐂 Toro' : '🦅 Falco'} — {status.message || 'nessun dato disponibile, riprovo tra pochi secondi'}
     </Card>
   );
 
@@ -232,7 +232,7 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
       {/* Equity hero */}
       <Card style={{ marginBottom: '12px', textAlign: 'center', borderColor: equityColor + '55' }}>
         <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-          Equity — {isBull ? '🐂 Bull' : '🦅 Hawk'} · run #{status.run_no ?? 1}
+          Equity — {isBull ? '🐂 Toro' : '🦅 Falco'} · run #{status.run_no ?? 1}
         </div>
         <div style={{ fontSize: '36px', fontWeight: 'bold', color: equityColor }}>${fmt(status.equity)}</div>
         <div style={{ fontSize: '13px', fontWeight: 'bold', color: pnlColor(pnlTotal), marginTop: '2px' }}>
@@ -544,8 +544,8 @@ export default function Dashboard() {
 
       {/* Stato dei due bot */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-        {chip('hawk', '🦅 Hawk', '#38bdf8')}
-        {chip('bull', '🐂 Bull', '#a78bfa')}
+        {chip('hawk', '🦅 Falco', '#38bdf8')}
+        {chip('bull', '🐂 Toro', '#a78bfa')}
       </div>
 
       {/* Selettore portafoglio */}
@@ -553,7 +553,7 @@ export default function Dashboard() {
         display: 'flex', gap: '6px', marginBottom: '14px',
         background: '#1e293b', borderRadius: '12px', padding: '4px', border: '1px solid #334155'
       }}>
-        {[['hawk', '🦅 Hawk', '#38bdf8'], ['bull', '🐂 Bull', '#7c3aed']].map(([id, label, color]) => (
+        {[['hawk', '🦅 Falco', '#38bdf8'], ['bull', '🐂 Toro', '#7c3aed']].map(([id, label, color]) => (
           <button key={id} onClick={() => setPortfolio(id)}
             style={{
               flex: 1, padding: '10px', border: 'none', borderRadius: '10px',

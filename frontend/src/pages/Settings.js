@@ -38,7 +38,7 @@ const bigBtn = (enabled, color, bg) => ({
 // Stato + comandi di un portafoglio (Hawk o Bull)
 function PortfolioControl({ portfolio }) {
   const isBull = portfolio === 'bull';
-  const name = isBull ? 'Bull' : 'Hawk';
+  const name = isBull ? 'Toro' : 'Falco';
   const icon = isBull ? '🐂' : '🦅';
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -170,7 +170,7 @@ const draftFrom = (cfg) => ({
 
 function HoursControl({ portfolio }) {
   const isBull = portfolio === 'bull';
-  const name = isBull ? 'Bull' : 'Hawk';
+  const name = isBull ? 'Toro' : 'Falco';
   const icon = isBull ? '🐂' : '🦅';
   const [info, setInfo] = useState(null);       // {config, state, supported} come lo vede il server
   const [draft, setDraft] = useState(null);     // cio' che stai modificando
@@ -330,8 +330,8 @@ function ParamsCard() {
         Sono i valori con cui il bot sta davvero girando. Per cambiarli chiedi a Claude: la modifica passa dal codice e
         vale dal riavvio del bot. Poi azzera il portafoglio qui sopra, così la nuova run parte pulita e puoi confrontarla con la precedente in Performance → Run.
       </div>
-      {block('🦅 HAWK', '#38bdf8', params.hawk)}
-      {block('🐂 BULL', '#a78bfa', params.bull)}
+      {block('🦅 FALCO', '#38bdf8', params.hawk)}
+      {block('🐂 TORO', '#a78bfa', params.bull)}
       <div style={{
         marginTop: '12px', padding: '8px 10px', borderRadius: '8px',
         background: 'rgba(56,189,248,0.07)', border: '1px solid rgba(56,189,248,0.2)',

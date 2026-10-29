@@ -370,7 +370,7 @@ export default function Performance() {
 
       {/* Selettore portfolio */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', background: SURF, borderRadius: '12px', padding: '4px', border: `1px solid ${BORDER}` }}>
-        {[['hawk', '🦅 Hawk'], ['bull', '🐂 Bull']].map(([id, label]) => (
+        {[['hawk', '🦅 Falco'], ['bull', '🐂 Toro']].map(([id, label]) => (
           <button key={id} onClick={() => setPortfolio(id)}
             style={{
               flex: 1, padding: '10px', border: 'none', borderRadius: '10px',

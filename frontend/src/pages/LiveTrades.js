@@ -4,8 +4,8 @@ import { signed, pnlColor } from '../deskUi';
 import { MUTED, liveBotStatus, PositionCard, RecentTrades, CloseResultNote, closePositionRequest } from '../components/LiveParts';
 
 const BOTS = [
-  { key: 'hawk', label: '🦅 Hawk', color: '#0ea5e9' },
-  { key: 'bull', label: '🐂 Bull', color: '#f59e0b' },
+  { key: 'hawk', label: '🦅 Falco', color: '#0ea5e9' },
+  { key: 'bull', label: '🐂 Toro', color: '#f59e0b' },
 ];
 
 function BotSection({ bot, data, serverIsLive, onClosePosition }) {

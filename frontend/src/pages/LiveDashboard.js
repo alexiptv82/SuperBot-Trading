@@ -4,8 +4,8 @@ import { fmtClock, signed, pnlColor } from '../deskUi';
 import { MUTED, money, relTime, liveBotStatus, PositionCard, RecentTrades, CloseResultNote, closePositionRequest } from '../components/LiveParts';
 
 const BOTS = [
-  { key: 'hawk', name: 'Hawk', emoji: '🦅', color: '#0ea5e9' },
-  { key: 'bull', name: 'Bull', emoji: '🐂', color: '#f59e0b' },
+  { key: 'hawk', name: 'Falco', emoji: '🦅', color: '#0ea5e9' },
+  { key: 'bull', name: 'Toro', emoji: '🐂', color: '#f59e0b' },
 ];
 
 const LABEL = { fontSize: '10px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' };
@@ -58,8 +58,8 @@ function WalletSection({ wallet, mode }) {
         <span style={{ fontSize: '11px', color: '#475569' }}>un sub-account per bot</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
-        <WalletTile title="🦅 Hawk" w={per.hawk} />
-        <WalletTile title="🐂 Bull" w={per.bull} />
+        <WalletTile title="🦅 Falco" w={per.hawk} />
+        <WalletTile title="🐂 Toro" w={per.bull} />
         {wallet?.available && <WalletTile title="Totale" w={wallet} />}
       </div>
     </div>

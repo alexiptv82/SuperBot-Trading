@@ -100,7 +100,7 @@ export default function Trades() {
 
       {/* Portafoglio */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', background: SURFACE, borderRadius: '12px', padding: '4px', border: `1px solid ${BORDER}` }}>
-        {[['hawk', '🦅 Hawk', ACCENT], ['bull', '🐂 Bull', '#7c3aed']].map(([id, label, color]) => (
+        {[['hawk', '🦅 Falco', ACCENT], ['bull', '🐂 Toro', '#7c3aed']].map(([id, label, color]) => (
           <button key={id} onClick={() => setPortfolio(id)} style={{
             flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
             background: portfolio === id ? color : 'transparent',

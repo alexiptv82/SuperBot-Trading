@@ -91,8 +91,8 @@ function BotPerfCard({ bot, data }) {
 }
 
 const BOTS = [
-  { key: 'hawk', label: 'Hawk', emoji: '🦅' },
-  { key: 'bull', label: 'Bull', emoji: '🐂' },
+  { key: 'hawk', label: 'Falco', emoji: '🦅' },
+  { key: 'bull', label: 'Toro', emoji: '🐂' },
 ];
 
 export default function LivePerformance() {
@@ -165,7 +165,7 @@ export default function LivePerformance() {
               position: 'relative', overflow: 'hidden',
             }}>
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #0ea5e9, transparent)' }} />
-              <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Saldo reale BitGet — Hawk + Bull</div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Saldo reale BitGet — Falco + Toro</div>
               <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '3px' }}>TOTALE</div>
