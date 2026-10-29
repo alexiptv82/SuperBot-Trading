@@ -1,3 +1,13 @@
+## 29/10 — richiesta di valutazione rollback classici al 12 ottobre (non autorizzato)
+
+L'utente domanda se si possa fare un «rollback pulito al 12 ottobre», dopo le run negative. Analisi read-only del repo GitHub: GOLDEN 12–16 attraversa più SHA, dall'`a0afc63` del 12/10 e `7ced3a6` alla versione finale schermata `5818aee`. Il vecchio codice FORZAVA margine/leva minimi, il loader JSON ritornava `{}` su problemi lettura e l'antico workflow deploy era su infrastruttura precedente; non deve essere eseguito sul VPS Singapore e non deve leggere in scrittura i nuovi formati stato/posizione/journal. La prima crisi iniziò già 16/10, prima di Fix A/CapitalV1/soglia63/P1/P2: non è provato che il restore 12/10 possa funzionare adesso.
+
+Raccomandazione solo progettuale: **esperimento di strategia baseline 12 ottobre su ramo isolato + replay A/B identico**, preservando motore, dati, journal/vault, controlli e deploy moderni. Prima di futuro cutover backup consistente+restore indipendente, verifica posizioni, scelta esplicita continuità conto vs reset PAPER archiviato, nuova autorizzazione deploy e postflight. Documento: `diario/2026-10-29_proposta-rollback-pulito-12-ottobre.md`. **Nessun deploy, codice operativo, stato bot, database, pausa, conto, posizione modificato**; Claude revisiona Brain Scalp separatamente.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## Confronto golden vs successive run negative — audit 28/10 sera
 
 L'utente ha mostrato screenshot delle uniche run positive (Hawk #2 +1090,61 USD; Bull #1 +770,75 USD) e chiesto cosa sia stato sbagliato. Analisi storico documentale consolidata: `diario/2026-10-28_confronto-golden-classici-vs-negative.md` (fonti audit forense `diario/analisi-run-2026-10-27/`). Prima crisi **Hawk #3/Bull #2** dal 16/10 con punteggio e SL ancora baseline; segue cambio di regime BTC e disponibilità/parsabilità Claude, ma le aperture restano source=rules e non si prova causalità delle chiusure. Run tarde segnali meno breakout/volume, più 1d, lordo medio/trade quasi azzerato e fee non più coperte; senza replay non attribuire un singolo colpevole. Errore di governance: modifiche multiple senza esperimento controllato/frozen golden. **Non consigliare rollback diretto alla SHA 5818aee** (codice golden non unico e run già negative attraversano la stessa versione). Classici invariati, nuovo Brain Scalp in revisione Claude, nessun deploy/stop/reset.
