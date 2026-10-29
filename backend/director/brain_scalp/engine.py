@@ -107,6 +107,60 @@ def _valid_quote(q):
             and math.isfinite(price) and price>0)
 
 
+
+def _price_tick(price,step,side):
+    """Tighten a protective stop to the next conservative exchange tick."""
+    from decimal import Decimal,ROUND_CEILING,ROUND_FLOOR
+    p=Decimal(str(price))
+    tick=Decimal(str(step))
+    if not (p.is_finite() and tick.is_finite() and p>0 and tick>0):
+        raise ValueError('invalid_protection_price_tick')
+    mode=ROUND_CEILING if side==1 else ROUND_FLOOR
+    return float((p/tick).to_integral_value(rounding=mode)*tick)
+
+
+def _breakeven_observed_quote(position,cfg):
+    """Quote that would cover modeled entry/exit fee, slippage and funding.
+
+    Assumes fill at observed quote +/- modeled exit slippage. A real future
+    gap can still fill worse; this is not a guaranteed floor on realized P&L.
+    """
+    side=position['side']
+    qty=position['qty']
+    if qty<=0: raise ValueError('invalid_position_quantity')
+    numerator=side*position['entry']+(
+        position['entry_fees']+position.get('funding',0))/qty
+    denominator=side-cfg.fee_rate
+    if abs(denominator)<1e-9: raise ValueError('invalid_fee_model')
+    return numerator/denominator/(1-side*cfg.slippage)
+
+
+def _invalidation_hit(side,price,invalidate_price):
+    return invalidate_price is not None and side*(price-invalidate_price)<=0
+
+
+def _protect_stop_with_quote(position,symbol,quote,candidate,now,contracts,events,kind):
+    """Only tighten stops at a valid tick; never loosen protective risk."""
+    side=position['side']
+    c=contracts.get(symbol,position.get('contract',{}))
+    step=c.get('price_step')
+    if not isinstance(step,(int,float)) or isinstance(step,bool) or step<=0:
+        events.append({'kind':'protection_deferred','symbol':symbol,
+                       'reason':'missing_price_step'})
+        return False
+    desired=_price_tick(candidate,step,side)
+    if side*(desired-position['stop'])<=1e-9:
+        return False
+    if side*(quote-desired)<=1e-9:
+        # The candidate is already reached: caller must close at observed quote.
+        return 'crossed'
+    position['stop']=desired
+    position['levels_ms']=now
+    events.append({'kind':kind,'symbol':symbol,'stop_price':desired,
+                   'observed_price':quote})
+    return True
+
+
 class PaperWallet:
     def __init__(self,root,name,initialize=False,now_ms=None):
         self.spec=SPECS[name]
