@@ -121,6 +121,12 @@ class PaperWallet:
         """Reserve one slot and requested margin. NEVER execute in submit."""
         plan=parse_plan(raw,self.spec,now,whitelist)
         state=self.store.load()
+        # Reservations are risk commitments too. Never accept a plan while a
+        # daily latch is active or before an accurate UTC rollover tick.
+        if now//86400000!=state['daily']['utc']:
+            raise ValueError('daily_rollover_tick_required')
+        if state['daily_stop_triggered']:
+            raise ValueError('daily_stop_latched')
         if not _target_cost_guard(plan.side,plan.trigger_price,plan.target,self.cfg):
             raise PlanCostError(_target_cost_feedback(
                 plan.side,plan.trigger_price,plan.target,self.cfg))
@@ -221,11 +227,30 @@ class PaperWallet:
         opening_allowed=(delta_ms<=500 and complete and
                          all(fresh(quotes.get(sym),now,self.entry_cfg) for sym in state['positions']))
         today=now//86400000
-        if today!=state['daily']['utc'] and opening_allowed:
-            state['daily']={'utc':today,'start_equity':capital}
         if today!=state['daily']['utc']:
+            if complete and all(fresh(quotes.get(sym),now,self.protect_cfg)
+                                for sym in state['positions']):
+                # Rollover is only safe when every open position is valued
+                # from a recent, valid quote; never use partial equity.
+                state['daily']={'utc':today,'start_equity':capital}
+                state['daily_stop_day']=today
+                state['daily_stop_triggered']=False
+                events.append({'kind':'daily_stop_reset_utc','day_utc':today,
+                               'reference_equity':capital})
+            else:
+                opening_allowed=False
+        if complete and today==state['daily']['utc']:
+            baseline=state['daily']['start_equity']
+            if capital<=baseline*(1-self.spec.daily_stop_pct):
+                if not state['daily_stop_triggered']:
+                    state['daily_stop_triggered']=True
+                    state['daily_stop_day']=today
+                    events.append({'kind':'daily_stop_latched','day_utc':today,
+                                   'drawdown_pct':round(100*(1-capital/baseline),4),
+                                   'limit_pct':100*self.spec.daily_stop_pct})
+        if state['daily_stop_triggered'] or today!=state['daily']['utc']:
             opening_allowed=False
-        if capital<=self.spec.kill_equity or capital<=state['daily']['start_equity']*(1-self.spec.daily_stop_pct):
+        if capital<=self.spec.kill_equity:
             opening_allowed=False
         # Observe profits from fresh quotes, never from historical bar extremes.
         for symbol,p in list(state['positions'].items()):
