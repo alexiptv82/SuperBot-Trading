@@ -9,6 +9,7 @@ from director.brain_free.execution import apply,close,fresh,margin,protect
 from .config import SPECS,ENTRY_PRICE_AGE_MS,PROTECT_PRICE_AGE_MS
 from .plans import Plan,parse_plan,triggered
 from .store import WalletStore
+from .metrics import build_metrics
 
 
 def _risk(position,cfg):
@@ -588,7 +589,11 @@ class PaperWallet:
                            'execution_slippage_pct':abs(actual_fill-px)/px*100,
                            'quote_age_ms':now-q['ts_ms']})
             risk_used+=estimated
+        metrics=build_metrics(state,events,now,self.spec,quotes,self.protect_cfg,
+                              opening_allowed,delta_ms)
         self.store.commit(state,now,events)
         return {'account_id':self.spec.account_id,'positions':len(state['positions']),
                 'pending':len(state['plans']),'cash':state['cash'],
-                'opening_allowed':opening_allowed,'events':events}
+                'opening_allowed':metrics['opening_allowed'],
+                'block_reason':metrics['block_reason'],
+                'metrics':metrics,'events':events}
