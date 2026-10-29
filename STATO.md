@@ -1,3 +1,11 @@
+## 29/10 — Brain Scalp Gruppo 2: verifica integrativa conclusa, CI verde (no deploy)
+
+Dopo autorizzazione utente «Okay, adesso procedi a gruppo 2», il ramo `work/brain-scalp-dual-20261028` conteneva già I2/I3/B2 da sviluppo precedente e CI verde 47 test/interprete. ChatGPT ha svolto revisione indipendente, colmando due lacune: feedback strutturato I2 ai piani rifiutati (`costs_pct`, `min_target_price`, net target; anche al fill) e blocco B2 dei **nuovi/pending** ingressi mentre il simbolo ha `coverage_gaps`, con ritorno operativo automatico del wallet flat solo dopo sufficiente serie continua 1m+5m recente. La protezione delle posizioni aperte continua a richiedere replay verificato dello storico mancante. **Actions 40894428513 SUCCESS, 54 test Python 3.10 + 54 Python 3.11; gate classici, Brain Free e deploy immutati**. Rapporto `diario/2026-10-29_brain-scalp-gruppo2-chatgpt.md` aggiornato con dettagli e commit. Il supervisore, API DeepSeek e Bitget REST/WS non sono ancora collegati. **NESSUN merge, deploy, reset, avvio, operazione o modifica ai classici/VPS/app/Brain originale**. Attendere OK utente per Gruppo 3 (I5/I1); scelta I8 A/B/C ancora aperta.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 29/10 — Brain Scalp Gruppo 2: controllo finale B2 upstream-restored e CI 94/94 PASS
 
 Oltre a 45 test precedenti, audit supplementare sul ramo motore `work/brain-scalp-dual-20261028` identifica e corregge un caso di quarantena non rimossa dopo ritorno spontaneo della serie 1m completa dal provider senza chiamate di backfill. `engine.py` + `coordinator.py` fanno replay *prima* di riconciliare; test provano sia il ripristino corretto del flag sia l'uscita protettiva su stop storico. Nuovi commit `0fd36a36`, `fc0ca0da`, `c5345f2b`; CI `40883165583` **SUCCESS Python 3.10 e 3.11, 47 test ciascuno = 94 PASS**. Report: `diario/2026-10-29_brain-scalp-gruppo2-chatgpt.md` (appendice). Nessun intervento ai classici, Brain Free V2, app, VPS, trading, reset, deploy o merge **nell'attività Brain Scalp**. **In attesa di nuovo OK utente per Gruppo 3.** Lo stato operativo dei classici è quello registrato da Claude nelle voci successive, non il vecchio screenshot delle 08:07.
