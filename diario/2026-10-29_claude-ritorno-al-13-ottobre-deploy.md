@@ -23,7 +23,17 @@ Falco run 8 e Toro run 7: conto 1000.00$, **in pausa**, PAPER, versione `0ad6893
 - Il Brain Scalp è un altro componente (ChatGPT): non toccato; i suoi nomi restano suoi.
 - Il laboratorio delle uscite (ramo `work/classics-exit-lab-claude-20261029`, solo lettura, nessun file di produzione) è disponibile: vedere `backend/exit_lab_claude/results/report.md`.
 
+## Rinomina Hawk → Falco, Bull → Toro (fatta, solo app) — 29/10 pomeriggio
+Ordine dell'utente ("ok procedi alla rinomina"). Nei bot i nomi non compaiono nei messaggi (il notificatore non porta il nome del portafoglio): **nessun bot toccato o riavviato**. I nomi sono solo nell'app:
+- Ramo `work/rinomina-falco-toro-claude-20261029` da `main` (2283bfb), 21 righe in 7 file di `frontend/src/pages/` (Dashboard, Settings, Trades, Performance, LiveDashboard, LivePerformance, LiveTrades): solo testi mostrati. **Identificatori, chiavi, rotte (`hawk`/`bull`, `/api/desk/hawk/...`) invariati.**
+- Integrazione GitHub senza permesso di aprire PR: fast-forward diretto in `main` → `6116d54`. CI su main: Brain dashboard offline tests + build PWA di produzione verdi.
+- Rilascio **solo app** con `deploy/superbot-sg-deploy.trigger` (`sha=6116d5409d9f3826a410c71d1403278a8bac8cee`): backup DB dell'app, build, deploy, tutto verde. Verifica read-only dopo: container dei bot avviati alle 11:28 UTC (deploy bot), 0 riavvii, ancora in pausa, 1000$, versione `0ad6893`.
+- **NON rinominate le pagine Brain** (`BrainDashboard.js`: "Hawk + Brain", "Bull + Brain", titolo) e `BrainScalpDashboard.js`: sono nel ramo app di ChatGPT (`work/brain-scalp-dual-app-20261028`, tocca `server.py`, `api.js`, `App.js`, `BrainDashboard.js`). **Per ChatGPT:** applicare lì la stessa sostituzione di sole etichette (Hawk→Falco, Bull→Toro), senza toccare chiavi/rotte.
+
+## Con il codice del 13/10 l'app blocca di proposito alcuni pulsanti
+Il battito del bot del 13/10 non dichiara `reset_keeps_brain` né `close_position`: l'app quindi disabilita **"Azzera portafoglio"** (il vecchio reset accettava `clear_lessons`, cioè poteva toccare il cervello) e **"Chiudi singola posizione"**. Restano attivi **Avvia/Pausa** (pause.flag), **Chiudi tutto** e il budget. Non aggirare il blocco: se serve un nuovo azzeramento, prima decidere con l'utente (il workflow `desk-reset-portfolios.yml` scrive solo `{"reset_vault": true}`, ma il vecchio handler resta più permissivo del corrente).
+
 ## Aperto
-Rinominare Hawk→Falco e Bull→Toro come etichette (solo app/Telegram, nessuna cartella o container); rivedere e reintegrare il fix del bias LONG; laboratorio di strategie nuove (obiettivo dell'utente: giorni buoni da ~100$, senza perdere la base); latch sullo stop giornaliero legacy; log VPS del 29/10.
+Rinominare le pagine Brain (ChatGPT, vedi sopra); rivedere e reintegrare il fix del bias LONG; laboratorio di strategie nuove (obiettivo dell'utente: giorni buoni da ~100$, senza perdere la base); latch sullo stop giornaliero legacy; log VPS del 29/10.
 
 AI: claude
