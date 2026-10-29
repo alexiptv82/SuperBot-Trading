@@ -1,3 +1,11 @@
+## 29/10 — classici: primo A/B su candele reali completato, fedeltà NON certificata
+
+Utente autorizza solo lavoro offline. Codice e workflow `backend/rollback_lab/ab_runner.py` sul branch isolato `work/classics-12oct-selective-lab-20261029`. CI sintetico PASS (`40821596306`). Esperimento reale 7 simboli BTC ETH SOL ADA DOGE BNB XRP, 12–29 ottobre, step30m, no AI/DCA/split: **Actions 40821658014 SUCCESS**, stessa SHA dati per entrambi. Vecchio scorer + vecchio/nuovo engine: Hawk115 chiuse -443,70 PAPER, Bull69 -585,40; scorer moderno + vecchio/nuovo engine: Hawk14 -10, Bull14 -20,40. **Non sono le run reali**; nella stessa finestra golden, per quei 7 simboli lo storico vero era Hawk44 trade +390,83, Bull13 +359,85, mentre simulazione vecchia 46 +25,83 e23 -136,61: **GATE FEDELTÀ FALLITO**. Non dichiarare una versione migliore o pronta al rollback, priorità riconciliare ingressi reali/uscite Claude e timing. Documento: `diario/2026-10-29_chatgpt-classici-laboratorio-ab.md`. CI sull'intero universo 26 simboli avviato come analisi supplementare `40822151627`, risultato al momento non certificato. Classici, Brain, VPS, stato, journal, deploy, UI immutati. Claude prosegue Brain Scalp su altro ramo.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 29/10 — eseguita prima prova offline rollback 12 ottobre, NO deploy
 
 Su autorizzazione utente «ok proviamo», creato ramo `work/classics-12oct-selective-lab-20261029` basato su runtime `dc16e01` (senza toccare classici/Brain/VPS); report tecnico `backend/rollback_lab/RETROSPECTIVE.md` e workflow nuovo CI di provenienza.
