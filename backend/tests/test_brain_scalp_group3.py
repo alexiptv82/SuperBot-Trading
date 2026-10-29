@@ -11,7 +11,13 @@ from director.brain_scalp.engine import PaperWallet,_net_at_quote
 from director.brain_scalp.plans import parse_plan
 from director.brain_scalp.config import HAWK
 from director.brain_scalp.store import wallet_spec_digest
-from backend.tests.test_brain_scalp_group1 import NOW,CONTRACTS,plan,quote,market
+from backend.tests.test_brain_scalp_group1 import NOW,CONTRACTS,plan as group1_plan,quote,market
+
+
+def plan(**changes):
+    raw=group1_plan()
+    raw.update(changes)
+    return raw
 
 DAY=86400000
 
