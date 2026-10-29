@@ -130,6 +130,8 @@ class PaperWallet:
                 raise ValueError('quote_too_stale_for_entry')
             raise ValueError('stale_plan_quote')
         if plan.plan_id in state['plan_ids']: raise ValueError('duplicate_plan_id')
+        if plan.symbol in state.get('coverage_gaps',[]):
+            raise ValueError('symbol_coverage_gap_unresolved')
         if plan.symbol in state['positions'] or plan.symbol in state['plans']:
             raise ValueError('symbol_already_reserved')
         if len(state['positions'])+len(state['plans'])>=self.spec.slots:
@@ -248,6 +250,13 @@ class PaperWallet:
         for symbol,raw in list(state['plans'].items()):
             if not opening_allowed or state.get('paused'): break
             p=Plan(**raw)
+            if symbol in state.get('coverage_gaps',[]):
+                # Keep the reservation (until it expires) but NEVER open a
+                # symbol whose historical stop/target coverage is unknown.
+                events.append({'kind':'plan_deferred','symbol':symbol,
+                               'plan_id':p.plan_id,
+                               'why':'symbol_coverage_gap_unresolved'})
+                continue
             q=quotes.get(symbol)
             if not triggered(p,q,now): continue
             if symbol in state['positions']:
