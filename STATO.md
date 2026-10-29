@@ -2,6 +2,8 @@
 
 Laboratorio offline (ramo `work/long-lab-claude-20261029`, mai unito a `rule-pool`, nessun bot toccato) sul codice del 13/10 con ~18 mesi di candele reali, criteri G1–G9 scritti prima dei risultati. Esito: il bonus rimbalzo di P1 non cambia alcuna decisione (0 nuovi long); il peso 4h a 14 dimezza solo le aperture (stesso effetto di soglie +6 o di un placebo); nessuna delle varianti nuove (`g_long`, `t_bonus`, `t_bonus_g`, `r_reb`, `ref_gate`) passa. **P1 resta in stand-by.** Limite: la replica sottostima i giorni d'oro (R +0,06 contro +0,54 reale): i confronti tra varianti valgono, i valori assoluti no. Proposto (serve decisione utente): test di fedelta' a 1 minuto e laboratorio "dove guadagna il bot". Lo screenshot dell'utente conferma che `9fa667f` e' il codice di oggi. Dettagli: `diario/2026-10-29_claude-laboratorio-modifica-long.md`, `backend/long_lab_claude/RAPPORTO.md` (commit `1231c98`).
 
+**Decisione dell'utente (29/10, 14:24): P1 CHIUSA** (non si rilascia, non si riprende). Per i long si cambia approccio in un secondo momento, con una soluzione nuova (nessuna modifica a strategia/soglie ora). L'utente ha appena avviato i bot (paper, codice `0ad6893`): le prime aperture sono tutte short, coerente con il 13/10; finestra Claude 14:30–18:30 invariata.
+
 AI: claude
 
 ---
