@@ -17,6 +17,35 @@ def _risk(position,cfg):
             position['entry']*qty*(2*cfg.fee_rate+2*cfg.slippage))
 
 
+def _resize_for_budget(plan,fill,state,spec,cfg,risk_used):
+    """Reduce margin/leverage only; NEVER exceed the original AI request.
+
+    Estimate one full round-trip including the planned stop, fees/slippage.
+    Pending reservations from OTHER plans are preserved. Return None when
+    even minimum margin at 1x cannot satisfy all hard constraints.
+    """
+    cost=2*(cfg.fee_rate+cfg.slippage)
+    risk_per_notional=abs(fill-plan.stop)/fill+cost
+    allowed_risk=min(spec.risk_trade_usd,spec.risk_portfolio_usd-risk_used)
+    other_pending=sum(x['margin'] for sym,x in state['plans'].items()
+                      if sym!=plan.symbol)
+    capacity=spec.max_margin_total-margin(state)-other_pending
+    if allowed_risk<=0 or capacity<spec.min_margin:
+        return None
+    for lev in range(plan.leverage,0,-1):
+        max_by_risk=allowed_risk/(lev*risk_per_notional)
+        max_by_cash=state['cash']/(1+lev*cfg.fee_rate)
+        candidate=min(plan.margin,capacity,max_by_cash,max_by_risk)
+        # Round DOWN to cents to keep estimated loss within risk cap.
+        size=math.floor((candidate+1e-10)*100)/100
+        if size+1e-9<spec.min_margin:
+            continue
+        estimated=size*lev*risk_per_notional
+        if estimated<=allowed_risk+1e-8:
+            return size,lev,estimated
+    return None
+
+
 def _target_cost_guard(side,entry,target,cfg):
     """A gross target must pay round-trip costs AND the same net reward.
 
@@ -173,21 +202,44 @@ class PaperWallet:
                 del state['plans'][symbol]
                 events.append({'kind':'plan_rejected','symbol':symbol,'why':'levels_invalid_at_trigger'})
                 continue
-            estimated=p.margin*p.leverage*(abs(fill-p.stop)/fill+2*(self.cfg.fee_rate+self.cfg.slippage))
-            if estimated>self.spec.risk_trade_usd or estimated+risk_used>self.spec.risk_portfolio_usd:
+            sizing=_resize_for_budget(p,fill,state,self.spec,self.cfg,risk_used)
+            if sizing is None:
                 del state['plans'][symbol]
-                events.append({'kind':'plan_rejected','symbol':symbol,'why':'stop_risk_budget'})
+                events.append({'kind':'plan_rejected','symbol':symbol,
+                               'why':'below_min_margin_after_resize',
+                               'remaining_risk_usd':max(0.,min(
+                                   self.spec.risk_trade_usd,
+                                   self.spec.risk_portfolio_usd-risk_used))})
                 continue
+            sized_margin,sized_leverage,estimated=sizing
             decision={'symbol':symbol,'action':'open_long' if p.side==1 else 'open_short',
                       'reason':'AI: '+p.reason,'invalidation':p.invalidation,'stop':p.stop,
-                      'target':p.target,'margin':p.margin,'leverage':p.leverage}
+                      'target':p.target,'margin':sized_margin,'leverage':sized_leverage}
             try:
                 state2,opened=apply(state,decision,quotes,contracts,now,self.entry_cfg)
             except (ValueError,KeyError,TypeError) as ex:
                 del state['plans'][symbol]
                 events.append({'kind':'plan_rejected','symbol':symbol,'why':str(ex)[:100]})
                 continue
+            # Applying the contract may only REDUCE size/leverage. Verify
+            # actual post-normalization risk, not just the plan estimate.
+            actual_risk=_risk(state2['positions'][symbol],self.cfg)
+            if actual_risk>self.spec.risk_trade_usd+1e-7 or (
+                    actual_risk+risk_used>self.spec.risk_portfolio_usd+1e-7):
+                del state['plans'][symbol]
+                events.append({'kind':'plan_rejected','symbol':symbol,
+                               'why':'risk_after_execution_normalization'})
+                continue
             state=state2;del state['plans'][symbol]
+            if sized_margin<p.margin-1e-8 or sized_leverage<p.leverage:
+                events.append({'kind':'plan_resized','symbol':symbol,
+                               'plan_id':p.plan_id,'original_margin':p.margin,
+                               'new_margin':sized_margin,
+                               'original_leverage':p.leverage,
+                               'new_leverage':sized_leverage,
+                               'risk_budget_usd':max(0.,min(
+                                   self.spec.risk_trade_usd,
+                                   self.spec.risk_portfolio_usd-risk_used))})
             state['positions'][symbol]['scalp_policy']={'hold_max_ms':p.hold_max_ms,
                         'protect_after_usd':p.protect_after_usd,
                         'take_net_usd':p.take_net_usd,'peak_net':0.,'plan_id':p.plan_id}
