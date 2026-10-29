@@ -395,5 +395,43 @@ class Group2AdditionalInvariants(unittest.TestCase):
                 pair.close()
 
 
+    def test_b2_flat_quarantine_releases_after_complete_fresh_1m_5m(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.tick(incomplete_market(NOW+4*MINUTE),CONTRACTS,
+                          NOW+4*MINUTE)
+                self.assertIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                now=NOW+120*MINUTE
+                restored={'BTC':{'quote':quote(ts=now),'bars':{
+                    '1m':[bar(ts) for ts in
+                          range(now-18*MINUTE,now,MINUTE)],
+                    '5m':[[ts,100.,100.1,99.9,100.,80.]
+                          for ts in range(now-110*MINUTE,now,5*MINUTE)]},
+                    'funding':[]}}
+                out=pair.tick(restored,CONTRACTS,now)
+                self.assertNotIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                self.assertNotIn('BTC',pair.bull.store.load()['coverage_gaps'])
+                self.assertTrue(any(e['kind']=='gap_history_complete'
+                                    for e in out['market_events']))
+            finally:
+                pair.close()
+
+    def test_b2_empty_feed_never_releases_flat_quarantine(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.tick(incomplete_market(NOW+4*MINUTE),
+                          CONTRACTS,NOW+4*MINUTE)
+                out=pair.tick({'BTC':{'quote':quote(ts=NOW+5*MINUTE),
+                           'bars':{'1m':[],'5m':[]},'funding':[]}},
+                           CONTRACTS,NOW+5*MINUTE)
+                self.assertIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                self.assertFalse(any(e['kind']=='gap_history_complete'
+                                      for e in out['market_events']))
+            finally:
+                pair.close()
+
+
 if __name__=='__main__':
     unittest.main()
