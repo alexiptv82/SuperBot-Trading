@@ -50,3 +50,19 @@ Aggiunti 3 test nuovi nel file `backend/tests/test_brain_scalp_group2.py` (commi
 **Limiti:** test su dati sintetici in runner isolati (no rete), non sostituiscono replay Bitget DEV/VAL/TEST o test d'integrazione con REST/backfill reale, API Claude e reale worker. La connessione al feed non è stata implementata e nessun deploy è autorizzato. Chiedere OK per il Gruppo 3 (I5/I1) soltanto dopo presentazione dei risultati.
 
 AI: ChatGPT (chat normale)
+
+
+## Verifica indipendente del 29/10 — chiusura definitiva Gruppo 2, recupero feed ripristinato
+
+La verifica successiva ha trovato un ulteriore caso limite B2 dopo i 45 test PASS: quando una posizione PAPER era stata quarantinata per dati 1m mancanti e il feed upstream forniva poi **direttamente** la serie completa, senza invocare il provider di backfill, nessun evento `gap_backfilled` veniva emesso e il flag `scalp_gap_cursor_ms` poteva restare presente indefinitamente nonostante i dati fossero disponibili.
+
+**Corretto solo nel motore Brain Scalp:**
+- `engine.py` accetta anche `gap_history_complete` come **candidato a recovery**, non come permesso automatico di apertura; verifica che le barre successive al cursor originale siano contigue e siano state percorse da `protect()` **prima** di togliere la quarantena. Commit `0fd36a36`.
+- `coordinator.py` riconosce le posizioni in quarantena e un feed ripristinato già verificato da `repair_markets`, genera l'evento `gap_history_complete` solo se non sono presenti errori/gap irrisolti. Il wallet conserva la verifica finale sulla sequenza reale. Commit `fc0ca0da`.
+- Due nuovi test offline `test_b2_upstream_feed_restores_full_history_without_fetcher` e `test_b2_upstream_restored_stop_bar_is_replayed_before_unquarantine`: uno prova sblocco dopo replay senza attraversamento stop; il secondo prova la **chiusura protettiva** della posizione se lo stop risultava colpito nella candela recuperata. Commit `c5345f2b`.
+
+**CI finale valida:** [GitHub Actions 40883165583](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40883165583), **SUCCESS Python 3.10 + 3.11, 47/47 test su ciascuno, totale 94 esecuzioni**. Inclusi i gate di immutabilità `backend/desk`, `backend/director/brain_free` e deploy. Supera i risultati precedenti di 42 e 45 test. Branch HEAD verificato `c5345f2b2f8dd12e5593d36df8aaadd6dd78c7ec`.
+
+**Nessun merge, deploy, modifica alla VPS, classici, Brain Free, portafogli PAPER o worker.** Nessuna connessione HTTP/Bitget/Claude API aggiunta. I2/I3/B2 sono finiti sotto il perimetro offline. **Gruppo 3 (I5/I1) non avviato: richiede un nuovo OK esplicito utente.**
+
+AI: ChatGPT (chat normale)
