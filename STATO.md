@@ -975,3 +975,12 @@ AI: chatgpt
 - Prenotazione ChatGPT di questa sessione CONCLUSA. Ripristino codice con nuovo revert della commit856a, mai reset dei dati o forcepush.
 
 AI: chatgpt
+
+
+## 29/10/2026 — Report DeepSeek valutato, nessuna modifica strategica
+- Revisione completa: diario/2026-10-29_valutazione-report-deepseek-brain-chatgpt.md.
+- Trattenuti per il disegno futuro: JSON validato/evidenze sintetiche, memoria pertinente equilibrata, routingFlash/Sol motivato, metriche token/latency e prove causali.
+- Non adottati senza esperimenti: rischio0,5% (a1000 riduce budgettrade a5 prima dei moltiplicatori e può produrre margini sotto100/150); confidence auto-dichiarata come rischio; filtriSQS/ADX/ATR e preset1R/2R/35%; timeoutSol con apertura automatica50%. sqrt(confidence) tra0e1 aumenta il moltiplicatore, non lo riduce.
+- Gestione attiva giàpresente nel codice (BE netto/parziali/trailing/giveback): non duplicare. Scanner giàordina conscore, ma copre breakout; valutare copertura/setup. I540giorni15m dei classici non sono un replay completo dello scalp1m/5m.
+- API ufficiale conferma deepseek-flash e reasoning_effort high con thinking enabled; nessuna adozione suffissi non documentati o stime mensili prive di token misurati.
+- Motore resta856a5ed095d4; PWA9251e6ddf2d6. Solo analisi e diario, nessun cambio codice/parametri, deploy, merge, VPS, memoria o datioperativi. In attesa degli altri report per il confronto.
