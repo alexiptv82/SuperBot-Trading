@@ -1,0 +1,55 @@
+name: Classics October recovery - public historical A/B (no VPS)
+on:
+  push:
+    branches: [work/classics-12oct-selective-lab-20261029]
+    paths: ['.github/workflows/classics-12oct-real-ab.yml']
+permissions:
+  contents: read
+jobs:
+  real-candles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy
+      - name: Real Bitget public candles Hawk (7 symbols, 17 days)
+        run: python backend/rollback_lab/ab_runner.py --days 17 --end-ms 1793232000000 --portfolio hawk --step 2 --symbols BTC,ETH,SOL,ADA,DOGE,BNB,XRP --cache lab-real-cache --output hawk_real.json >hawk.log 2>&1 || { tail -n 70 hawk.log; exit 1; }
+      - name: Real Bitget public candles Bull (same source data and dates)
+        run: python backend/rollback_lab/ab_runner.py --days 17 --end-ms 1793232000000 --portfolio bull --step 2 --symbols BTC,ETH,SOL,ADA,DOGE,BNB,XRP --cache lab-real-cache --output bull_real.json >bull.log 2>&1 || { tail -n 70 bull.log; exit 1; }
+      - name: Report and ensure input checksums agree
+        run: |
+          python - <<'PY'
+          import json
+          h=json.load(open('hawk_real.json')); b=json.load(open('bull_real.json'))
+          assert h['data']==b['data']=='Bitget_public_15m_4h_1d'
+          assert h['market_data_sha256']==b['market_data_sha256']
+          assert h['symbols']==b['symbols']
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as f:
+            f.write('### Same point-in-time public Bitget market feed (7 symbols; not full production)\n')
+            for obj in (h,b):
+              f.write('\n**'+obj['portfolio']+'** ('+obj['market_data_sha256'][:16]+')\n\n')
+              f.write('| Entry / exit | Trades | Net USD | WR % | PF |\n|---|---:|---:|---:|---:|\n')
+              for x in obj['variants']:
+                f.write(f"| {x['nome']} | {x['trade']} | {x['netto']} | {x['vinc%']} | {x['PF']} |\n")
+            f.write('\nNot an AI-live replica, out-of-sample proof or profit guarantee.\n')
+          print('SAME_FEED_SHA256',h['market_data_sha256'])
+          print('HAWK',[(x['nome'],x['netto'],x['trade']) for x in h['variants']])
+          print('BULL',[(x['nome'],x['netto'],x['trade']) for x in b['variants']])
+          PY
+      - name: Confirm original services and deploy config untouched
+        run: test -z "$(git diff --name-only dc16e0169932c3885908625ce5be321a33b09a0f HEAD -- backend/desk deploy frontend .github/workflows/desk-deploy.yml)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: classics-12oct-bitget-7-symbol-ab
+          path: |
+            hawk_real.json
+            bull_real.json
+            hawk.log
+            bull.log
+          retention-days: 30
