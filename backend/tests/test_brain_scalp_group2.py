@@ -55,7 +55,7 @@ class Group2Wallet(unittest.TestCase):
 
     def test_i2_recheck_target_after_price_moves(self):
         self.hawk.submit(plan(target=100.35),NOW,CONTRACTS,{'BTC':quote()})
-        result=self.hawk.tick(market(price=100.25,ts=NOW+1000),
+        result=self.hawk.tick(market(price=100.04,ts=NOW+1000),
                               CONTRACTS,NOW+1000)
         self.assertEqual(result['positions'],0)
         self.assertEqual(result['pending'],0)
@@ -333,7 +333,7 @@ class Group2AdditionalInvariants(unittest.TestCase):
             try:
                 pair.hawk.submit(plan(target=100.35),NOW,CONTRACTS,
                                  {'BTC':quote()})
-                out=pair.tick(market(price=100.25,ts=NOW+1000),
+                out=pair.tick(market(price=100.04,ts=NOW+1000),
                               CONTRACTS,NOW+1000)
                 rejects=[e for e in out['hawk']['events']
                          if e.get('why')=='target_below_costs']
