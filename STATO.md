@@ -1,3 +1,17 @@
+## 29/10 — eseguita prima prova offline rollback 12 ottobre, NO deploy
+
+Su autorizzazione utente «ok proviamo», creato ramo `work/classics-12oct-selective-lab-20261029` basato su runtime `dc16e01` (senza toccare classici/Brain/VPS); report tecnico `backend/rollback_lab/RETROSPECTIVE.md` e workflow nuovo CI di provenienza.
+
+**GitHub Actions 40815650805 SUCCESS**: `backend/desk/signals.py` identico Git blob `57b524e75593b0fe6f3a0712af1a0b2f14bd4a75` nelle versioni 12/10 a0afc63, 7ced3a6, 15/10 5818aee e prime negative 16/10 18d145f/b4709d1. Il primo crollo non nasce da differenze nel file di scoring; tornare solo a quello non garantisce alcun recupero. Verificato che i file classici operativi, deploy, frontend, Brain sono invariati. Retrospettiva dati run archiviate: Hawk #3 lordo -179,20 e Bull #2 lordo -77,38 già prima fee.
+
+**Blocco replay fedele:** lo script backtest già disponibile `deploy/scripts/desk_backtest.py` usa C63 anziché C70, capitale di conto 100.000 anziché 1.000, e modulo score preP1 invece dell'oggetto storico 12/10. Non lanciarlo come se replicasse la golden. Mancano replay confrontabili con candele 15m point-in-time, stessi setup/rischi, costi, gestione AI e fondatezza delle chiusure. Pubblicazione di un modulo Python sperimentale di replay non completata per blocco dell'operazione di scrittura; nessun test Python/replay P&L dichiarato superato.
+
+**Nessun merge, deploy, stop, reset, modifica limiti/strategie, nessuna chiusura posizione o operazione VPS.** CI storico solo runner GitHub senza segreti. Claude continua revisione Brain Scalp su rami separati. Per eventuale attivazione selettiva occorrono prima replay corretto, backup/restore e consenso nuovo.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 29 ottobre — prova offline del comportamento 12 ottobre
 
 Utente autorizza preparazione e test offline della strategia storica. ChatGPT lavora soltanto sul ramo `work/classics-12oct-selective-lab-20261029` con nuovi moduli di laboratorio. Nessuna modifica ai classici, Brain, workflow di produzione, dati, capitale, posizioni o VPS; nessun deploy. Claude continua revisione Brain Scalp su componenti diversi. Prima di qualsiasi rilascio occorrono autorizzazione separata e backup con verifica del ripristino.
