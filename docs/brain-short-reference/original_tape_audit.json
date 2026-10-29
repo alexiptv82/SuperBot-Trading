@@ -1,0 +1,648 @@
+{
+  "kind": "ARCHIVED_PAPER_TRADE_PROVENANCE_NOT_REPLAY",
+  "source": "diario/analisi-run-2026-10-27/positions.csv",
+  "export_sha256": "0d1252e15d5d07c7dc7fa61789648e0a45d9383e7efc783852439ceaf95ff281",
+  "source_record_count": 357,
+  "groups": {
+    "golden": {
+      "all": {
+        "positions": 93,
+        "net_usd": 1861.3621,
+        "gross_usd": 2144.6515,
+        "fees_usd": 283.1991,
+        "direction_counts": {
+          "LONG": 2,
+          "SHORT": 91
+        },
+        "opening_sources": {
+          "rules": 93
+        },
+        "entry_commit_counts": {
+          "(unknown)": 1,
+          "7ced3a6": 35,
+          "9fa667f": 51,
+          "a0afc63": 6
+        },
+        "missing_fields": {
+          "entry_fill": 4,
+          "entry_log": 4,
+          "entry_sl": 4,
+          "entry_tp": 4,
+          "exit_code": 93,
+          "features_json": 4,
+          "score": 4
+        },
+        "exits": {
+          "SL": {
+            "n": 34,
+            "net_usd": -911.3879,
+            "gross_usd": -814.1801,
+            "fees_usd": 97.1179
+          },
+          "TP": {
+            "n": 54,
+            "net_usd": 2742.5785,
+            "gross_usd": 2911.8089,
+            "fees_usd": 169.2301
+          },
+          "manual": {
+            "n": 1,
+            "net_usd": 69.3886,
+            "gross_usd": 74.9837,
+            "fees_usd": 5.5951
+          },
+          "model_or_rule_close_labeled_claude": {
+            "n": 4,
+            "net_usd": -39.2171,
+            "gross_usd": -27.961,
+            "fees_usd": 11.256
+          }
+        }
+      },
+      "portfolios": {
+        "hawk#2": {
+          "positions": 76,
+          "net_usd": 1090.6136,
+          "gross_usd": 1293.7375,
+          "fees_usd": 203.0336,
+          "direction_counts": {
+            "LONG": 2,
+            "SHORT": 74
+          },
+          "opening_sources": {
+            "rules": 76
+          },
+          "entry_commit_counts": {
+            "7ced3a6": 30,
+            "9fa667f": 42,
+            "a0afc63": 4
+          },
+          "missing_fields": {
+            "entry_fill": 2,
+            "entry_log": 2,
+            "entry_sl": 2,
+            "entry_tp": 2,
+            "exit_code": 76,
+            "features_json": 2,
+            "score": 2
+          },
+          "exits": {
+            "SL": {
+              "n": 29,
+              "net_usd": -969.215,
+              "gross_usd": -892.7801,
+              "fees_usd": 76.345
+            },
+            "TP": {
+              "n": 45,
+              "net_usd": 2062.5747,
+              "gross_usd": 2184.7047,
+              "fees_usd": 122.1297
+            },
+            "model_or_rule_close_labeled_claude": {
+              "n": 2,
+              "net_usd": -2.7461,
+              "gross_usd": 1.8129,
+              "fees_usd": 4.5589
+            }
+          }
+        },
+        "bull#1": {
+          "positions": 17,
+          "net_usd": 770.7485,
+          "gross_usd": 850.914,
+          "fees_usd": 80.1655,
+          "direction_counts": {
+            "SHORT": 17
+          },
+          "opening_sources": {
+            "rules": 17
+          },
+          "entry_commit_counts": {
+            "(unknown)": 1,
+            "7ced3a6": 5,
+            "9fa667f": 9,
+            "a0afc63": 2
+          },
+          "missing_fields": {
+            "entry_fill": 2,
+            "entry_log": 2,
+            "entry_sl": 2,
+            "entry_tp": 2,
+            "exit_code": 17,
+            "features_json": 2,
+            "score": 2
+          },
+          "exits": {
+            "SL": {
+              "n": 5,
+              "net_usd": 57.8271,
+              "gross_usd": 78.6,
+              "fees_usd": 20.7729
+            },
+            "TP": {
+              "n": 9,
+              "net_usd": 680.0038,
+              "gross_usd": 727.1042,
+              "fees_usd": 47.1004
+            },
+            "manual": {
+              "n": 1,
+              "net_usd": 69.3886,
+              "gross_usd": 74.9837,
+              "fees_usd": 5.5951
+            },
+            "model_or_rule_close_labeled_claude": {
+              "n": 2,
+              "net_usd": -36.471,
+              "gross_usd": -29.7739,
+              "fees_usd": 6.6971
+            }
+          }
+        }
+      }
+    },
+    "first_crisis": {
+      "all": {
+        "positions": 53,
+        "net_usd": -429.549,
+        "gross_usd": -256.5792,
+        "fees_usd": 172.4679,
+        "direction_counts": {
+          "LONG": 5,
+          "SHORT": 48
+        },
+        "opening_sources": {
+          "rules": 53
+        },
+        "entry_commit_counts": {
+          "5818aee": 2,
+          "b4709d1": 51
+        },
+        "missing_fields": {},
+        "exits": {
+          "SL": {
+            "n": 20,
+            "net_usd": -660.2772,
+            "gross_usd": -595.2113,
+            "fees_usd": 65.0661
+          },
+          "TP": {
+            "n": 14,
+            "net_usd": 486.2971,
+            "gross_usd": 534.1138,
+            "fees_usd": 47.8171
+          },
+          "manual": {
+            "n": 3,
+            "net_usd": -30.0769,
+            "gross_usd": -20.7996,
+            "fees_usd": 9.1126
+          },
+          "model_or_rule_close_labeled_claude": {
+            "n": 16,
+            "net_usd": -225.492,
+            "gross_usd": -174.6821,
+            "fees_usd": 50.4721
+          }
+        }
+      },
+      "portfolios": {
+        "hawk#3": {
+          "positions": 38,
+          "net_usd": -284.8728,
+          "gross_usd": -179.1979,
+          "fees_usd": 105.3928,
+          "direction_counts": {
+            "LONG": 3,
+            "SHORT": 35
+          },
+          "opening_sources": {
+            "rules": 38
+          },
+          "entry_commit_counts": {
+            "5818aee": 1,
+            "b4709d1": 37
+          },
+          "missing_fields": {},
+          "exits": {
+            "SL": {
+              "n": 16,
+              "net_usd": -470.3713,
+              "gross_usd": -424.1568,
+              "fees_usd": 46.2146
+            },
+            "TP": {
+              "n": 10,
+              "net_usd": 332.5363,
+              "gross_usd": 360.7171,
+              "fees_usd": 28.181
+            },
+            "manual": {
+              "n": 2,
+              "net_usd": -23.761,
+              "gross_usd": -18.4451,
+              "fees_usd": 5.1512
+            },
+            "model_or_rule_close_labeled_claude": {
+              "n": 10,
+              "net_usd": -123.2768,
+              "gross_usd": -97.3131,
+              "fees_usd": 25.846
+            }
+          }
+        },
+        "bull#2": {
+          "positions": 15,
+          "net_usd": -144.6762,
+          "gross_usd": -77.3813,
+          "fees_usd": 67.0751,
+          "direction_counts": {
+            "LONG": 2,
+            "SHORT": 13
+          },
+          "opening_sources": {
+            "rules": 15
+          },
+          "entry_commit_counts": {
+            "5818aee": 1,
+            "b4709d1": 14
+          },
+          "missing_fields": {},
+          "exits": {
+            "SL": {
+              "n": 4,
+              "net_usd": -189.9059,
+              "gross_usd": -171.0545,
+              "fees_usd": 18.8515
+            },
+            "TP": {
+              "n": 4,
+              "net_usd": 153.7608,
+              "gross_usd": 173.3967,
+              "fees_usd": 19.6361
+            },
+            "manual": {
+              "n": 1,
+              "net_usd": -6.3159,
+              "gross_usd": -2.3545,
+              "fees_usd": 3.9614
+            },
+            "model_or_rule_close_labeled_claude": {
+              "n": 6,
+              "net_usd": -102.2152,
+              "gross_usd": -77.369,
+              "fees_usd": 24.6261
+            }
+          }
+        }
+      }
+    }
+  },
+  "ambiguous_exits": [
+    {
+      "portfolio": "bull",
+      "run_no": 1,
+      "position_id": "1",
+      "symbol": "XAG",
+      "side": "-1",
+      "open_ms": 1791816524501,
+      "close_ms": 1791829417822,
+      "net_usd": 1.4789,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "",
+      "exit_code": null,
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 2,
+      "position_id": "1",
+      "symbol": "XAG",
+      "side": "-1",
+      "open_ms": 1791816828758,
+      "close_ms": 1791835935107,
+      "net_usd": 0.1167,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "a0afc63",
+      "exit_code": null,
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "bull",
+      "run_no": 1,
+      "position_id": "9",
+      "symbol": "ETH",
+      "side": "-1",
+      "open_ms": 1791889026298,
+      "close_ms": 1791902995531,
+      "net_usd": -37.9499,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "9fa667f",
+      "exit_code": null,
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 2,
+      "position_id": "35",
+      "symbol": "ETH",
+      "side": "-1",
+      "open_ms": 1791885240975,
+      "close_ms": 1791951091233,
+      "net_usd": -2.8628,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "9fa667f",
+      "exit_code": null,
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "bull",
+      "run_no": 1,
+      "position_id": "3",
+      "symbol": "LTC",
+      "side": "-1",
+      "open_ms": 1791823845375,
+      "close_ms": 1792079258006,
+      "net_usd": 69.3886,
+      "exit_kind": "manual",
+      "entry_code": "a0afc63",
+      "exit_code": null,
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "1",
+      "symbol": "XAU",
+      "side": "1",
+      "open_ms": 1792137372903,
+      "close_ms": 1792152003446,
+      "net_usd": -9.7029,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "5818aee",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "bull",
+      "run_no": 2,
+      "position_id": "1",
+      "symbol": "XAU",
+      "side": "1",
+      "open_ms": 1792137388537,
+      "close_ms": 1792155711319,
+      "net_usd": -17.7466,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "5818aee",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "10",
+      "symbol": "XAG",
+      "side": "-1",
+      "open_ms": 1792177926864,
+      "close_ms": 1792195473274,
+      "net_usd": -6.3562,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "6",
+      "symbol": "DOGE",
+      "side": "-1",
+      "open_ms": 1792168559444,
+      "close_ms": 1792195473274,
+      "net_usd": -3.5434,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "bull",
+      "run_no": 2,
+      "position_id": "5",
+      "symbol": "ETH",
+      "side": "-1",
+      "open_ms": 1792178849850,
+      "close_ms": 1792198249411,
+      "net_usd": -4.1884,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "8",
+      "symbol": "RUNE",
+      "side": "-1",
+      "open_ms": 1792168559444,
+      "close_ms": 1792199217019,
+      "net_usd": -4.3914,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "9",
+      "symbol": "ETH",
+      "side": "-1",
+      "open_ms": 1792177926864,
+      "close_ms": 1792201091140,
+      "net_usd": -9.7093,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "bull",
+      "run_no": 2,
+      "position_id": "10",
+      "symbol": "XRP",
+      "side": "-1",
+      "open_ms": 1792274086873,
+      "close_ms": 1792282526102,
+      "net_usd": -39.8848,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "25",
+      "symbol": "XRP",
+      "side": "-1",
+      "open_ms": 1792274088112,
+      "close_ms": 1792283085631,
+      "net_usd": -22.1095,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "2",
+      "symbol": "BTC",
+      "side": "-1",
+      "open_ms": 1792168559444,
+      "close_ms": 1792284009879,
+      "net_usd": -2.2227,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "bull",
+      "run_no": 2,
+      "position_id": "11",
+      "symbol": "ETH",
+      "side": "-1",
+      "open_ms": 1792278170329,
+      "close_ms": 1792285309564,
+      "net_usd": -16.6829,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "32",
+      "symbol": "SUI",
+      "side": "-1",
+      "open_ms": 1792274088112,
+      "close_ms": 1792285866160,
+      "net_usd": -42.3811,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "33",
+      "symbol": "ETH",
+      "side": "-1",
+      "open_ms": 1792278169554,
+      "close_ms": 1792287718323,
+      "net_usd": -17.8419,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "bull",
+      "run_no": 2,
+      "position_id": "2",
+      "symbol": "BTC",
+      "side": "-1",
+      "open_ms": 1792168611576,
+      "close_ms": 1792288075522,
+      "net_usd": -19.7281,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "bull",
+      "run_no": 2,
+      "position_id": "14",
+      "symbol": "XAU",
+      "side": "1",
+      "open_ms": 1792386660243,
+      "close_ms": 1792389543845,
+      "net_usd": -3.9844,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "36",
+      "symbol": "XAU",
+      "side": "1",
+      "open_ms": 1792386661154,
+      "close_ms": 1792390496910,
+      "net_usd": -5.0184,
+      "exit_kind": "model_or_rule_close_labeled_claude",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "37",
+      "symbol": "ARB",
+      "side": "1",
+      "open_ms": 1792410769920,
+      "close_ms": 1792431384843,
+      "net_usd": -19.4649,
+      "exit_kind": "manual",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "hawk",
+      "run_no": 3,
+      "position_id": "38",
+      "symbol": "XAU",
+      "side": "-1",
+      "open_ms": 1792425411901,
+      "close_ms": 1792431384843,
+      "net_usd": -4.2961,
+      "exit_kind": "manual",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    },
+    {
+      "portfolio": "bull",
+      "run_no": 2,
+      "position_id": "15",
+      "symbol": "XAU",
+      "side": "-1",
+      "open_ms": 1792428098056,
+      "close_ms": 1792431426956,
+      "net_usd": -6.3159,
+      "exit_kind": "manual",
+      "entry_code": "b4709d1",
+      "exit_code": "b4709d1",
+      "attribution": "UNKNOWN_NOT_PROVEN_CLAUDE"
+    }
+  ],
+  "cautions": [
+    "Opening source=rules does NOT identify the closing agent.",
+    "model_or_rule_close_labeled_claude does NOT establish Claude caused the close.",
+    "Entry code inferred from deployment timestamps can be uncertain.",
+    "Missing exit_code and missing raw market snapshots block faithful counterfactual exits.",
+    "This is a pre-existing PAPER export, not live VPS status.",
+    "No source code/market replay or prediction is performed."
+  ]
+}

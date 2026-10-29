@@ -1,0 +1,33 @@
+name: Brain classical reference - offline only
+on:
+  push:
+    branches: [work/brain-short-reference-20261029]
+    paths:
+      - 'backend/director/brain_scalp/legacy_reference.py'
+      - 'backend/tests/test_brain_scalp_reference.py'
+      - 'research/brain_short_reference/**'
+      - '.github/workflows/brain-short-reference-ci.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Offline tests with no keys or market network
+        run: |
+          python -m compileall -q backend/director/brain_scalp
+          PYTHONPATH=backend python -m unittest -v backend.tests.test_brain_scalp_dual backend.tests.test_brain_scalp_group1 backend.tests.test_brain_scalp_group2 backend.tests.test_brain_scalp_group3 backend.tests.test_brain_scalp_group4 backend.tests.test_brain_scalp_group5 backend.tests.test_brain_scalp_group6 backend.tests.test_brain_scalp_reference
+      - name: Protect active bots, original Brain and deployments
+        run: |
+          test -z "$(git diff --name-only 856a5ed095d4066840a5b05d71817c1c35aea4e8 HEAD -- backend/desk backend/director/brain_free deploy frontend Dockerfile.brainfree)"

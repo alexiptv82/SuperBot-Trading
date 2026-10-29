@@ -1,0 +1,187 @@
+{
+  "source_sha256": "0d1252e15d5d07c7dc7fa61789648e0a45d9383e7efc783852439ceaf95ff281",
+  "groups": {
+    "golden": {
+      "SHORT": {
+        "n": 91,
+        "wins": 58,
+        "net": 1992.7949,
+        "wr": 63.74,
+        "feature_n": 87,
+        "components": {
+          "RSI": 51,
+          "momento 24h": 87,
+          "prezzo vs EMA50": 87,
+          "trend 1h": 86,
+          "trend 4h": 87,
+          "rottura minimi": 62,
+          "shooting star": 13,
+          "volumi": 60
+        },
+        "median": {
+          "leverage": 23.0,
+          "entry_margin": 100.0,
+          "entry_r_dist": 0.01192859487223116,
+          "duration_h": 3.8803425
+        },
+        "entry_code": {
+          "a0afc63": 6,
+          "7ced3a6": 35,
+          "9fa667f": 49,
+          "unknown": 1
+        },
+        "symbols": {
+          "XAG": 6,
+          "BTC": 13,
+          "UNI": 5,
+          "LTC": 4,
+          "RUNE": 3,
+          "DOGE": 6,
+          "BCH": 1,
+          "SUI": 3,
+          "ADA": 5,
+          "ETH": 17,
+          "BNB": 5,
+          "SOL": 6,
+          "XRP": 5,
+          "LINK": 4,
+          "AVAX": 6,
+          "ARB": 1,
+          "DOT": 1
+        }
+      },
+      "LONG": {
+        "n": 2,
+        "wins": 0,
+        "net": -131.4328,
+        "wr": 0.0,
+        "feature_n": 2,
+        "components": {
+          "RSI": 2,
+          "momento 24h": 2,
+          "prezzo vs EMA50": 2,
+          "rottura massimi": 1,
+          "trend 1h": 2,
+          "trend 4h": 2,
+          "volumi": 1,
+          "hammer": 1
+        },
+        "median": {
+          "leverage": 24.0,
+          "entry_margin": 100.0,
+          "entry_r_dist": 0.02602605950516381,
+          "duration_h": 1.5184702777777779
+        },
+        "entry_code": {
+          "9fa667f": 2
+        },
+        "symbols": {
+          "OP": 2
+        }
+      }
+    },
+    "crisis": {
+      "SHORT": {
+        "n": 48,
+        "wins": 14,
+        "net": -373.6318,
+        "wr": 29.17,
+        "feature_n": 48,
+        "components": {
+          "RSI": 44,
+          "momento 24h": 48,
+          "prezzo vs EMA50": 48,
+          "rottura minimi": 37,
+          "trend 1h": 48,
+          "trend 4h": 48,
+          "volumi": 36,
+          "shooting star": 7
+        },
+        "median": {
+          "leverage": 24.0,
+          "entry_margin": 100.0,
+          "entry_r_dist": 0.00926059603503153,
+          "duration_h": 2.5674920833333337
+        },
+        "entry_code": {
+          "b4709d1": 48
+        },
+        "symbols": {
+          "DOGE": 3,
+          "XAG": 1,
+          "RUNE": 1,
+          "ETH": 8,
+          "LINK": 2,
+          "BNB": 4,
+          "ADA": 3,
+          "XRP": 4,
+          "AVAX": 3,
+          "LTC": 2,
+          "SOL": 3,
+          "BCH": 1,
+          "NEAR": 1,
+          "ATOM": 4,
+          "SUI": 4,
+          "BTC": 2,
+          "XAU": 2
+        }
+      },
+      "LONG": {
+        "n": 5,
+        "wins": 0,
+        "net": -55.9172,
+        "wr": 0.0,
+        "feature_n": 5,
+        "components": {
+          "RSI": 5,
+          "momento 24h": 5,
+          "prezzo vs EMA50": 5,
+          "rottura massimi": 2,
+          "trend 1h": 5,
+          "trend 4h": 5,
+          "hammer": 3
+        },
+        "median": {
+          "leverage": 19.0,
+          "entry_margin": 100.0,
+          "entry_r_dist": 0.003621593128823379,
+          "duration_h": 4.064039722222223
+        },
+        "entry_code": {
+          "5818aee": 2,
+          "b4709d1": 3
+        },
+        "symbols": {
+          "XAU": 4,
+          "ARB": 1
+        }
+      }
+    }
+  },
+  "fingerprints": {
+    "a0afc63": {
+      "signals.py": "3c398e4be0335896b30f09426e5d8567cefd064907290b71b13860b8d54ec5bf",
+      "seasonal.py": "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7"
+    },
+    "7ced3a6": {
+      "signals.py": "3c398e4be0335896b30f09426e5d8567cefd064907290b71b13860b8d54ec5bf",
+      "seasonal.py": "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7"
+    },
+    "9fa667f": {
+      "signals.py": "3c398e4be0335896b30f09426e5d8567cefd064907290b71b13860b8d54ec5bf",
+      "seasonal.py": "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7"
+    },
+    "5818aee": {
+      "signals.py": "3c398e4be0335896b30f09426e5d8567cefd064907290b71b13860b8d54ec5bf",
+      "seasonal.py": "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7"
+    },
+    "b4709d1": {
+      "signals.py": "3c398e4be0335896b30f09426e5d8567cefd064907290b71b13860b8d54ec5bf",
+      "seasonal.py": "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7"
+    },
+    "rollback0ad": {
+      "signals.py": "3c398e4be0335896b30f09426e5d8567cefd064907290b71b13860b8d54ec5bf",
+      "seasonal.py": "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7"
+    }
+  }
+}
