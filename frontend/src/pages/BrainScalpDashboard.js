@@ -14,7 +14,9 @@ function Wallet({name,data}) {
     <p style={label}>Conto PAPER separato · base di prova 1.000 $ · {name==='hawk'?10:3} slot</p>
     {!ready ? <p role="status" style={{color:'#fbbf24'}}>Portafoglio non ancora avviato o dati non leggibili. Nessun saldo ricostruito.</p> : <>
       <p>{d.online ? '🟢 Online' : '🟠 Dati non aggiornati'} · {d.paused?'Aperture in pausa':'H24 previsto'}</p>
+      {d.snapshot_stale && <p role="status" style={{color:'#fbbf24'}}>Ultimo stato salvato: il motore non aggiorna più lo snapshot. I valori sono storici, non quotazioni correnti.</p>}
       <p>Equity <strong>{money(d.equity)}</strong> · P&amp;L {money(d.net_pnl_vs_initial)}</p>
+      {d.metrics && <p style={label}>Trade oggi: {d.metrics.trades_today ?? '—'} · Chiusi: {d.metrics.trades_closed ?? '—'} · Fee cumulative: {money(d.metrics.fee_paid_usd)} · Motivo blocco: {d.metrics.block_reason || 'nessuno'}</p>}
       <p>Disponibile {money(d.cash)} · Margine {money(d.margin)} / {money(d.margin_limit)}</p>
       <p>Slot occupati {d.positions?.length ?? 0}/{d.max_slots ?? '—'} · Piani in attesa {d.pending?.length ?? 0}</p>
       {d.equity===null && <p style={label}>Prezzi non aggiornati: equity e P&amp;L non vengono inventati.</p>}
@@ -30,7 +32,7 @@ function Wallet({name,data}) {
       {!d.pending?.length && <p style={label}>Nessun ordine simulato in attesa.</p>}
       {d.pending?.map(p=><p key={p.symbol}>{p.symbol} {p.side} · {p.trigger} {p.price} · scade {fmtTime(p.expires_ms)}</p>)}
       <h3>Ultime chiusure</h3>
-      {!d.trades?.length && <p style={label}>Nessuna chiusura registrata.</p>}
+      {!d.trades?.length && <p style={label}>{d.trades_summary_only ? 'Snapshot di riepilogo: le singole chiusure restano nello storico SQLite.' : 'Nessuna chiusura registrata.'}</p>}
       {d.trades?.map((t,i)=><p key={t.position_id+'-'+i}>
         {t.symbol} · {t.side===1?'LONG':'SHORT'} · netto {money(t.net)} · {t.reason}
       </p>)}
@@ -62,6 +64,8 @@ export default function BrainScalpDashboard() {
     <p style={label}>Due portafogli indipendenti, stesso scanner 1m/5m. Sola osservazione, nessun comando di trading.</p>
     <p><Link style={{color:'#38bdf8'}} to="/brain">Consulta archivio Brain precedente</Link></p>
     {error && <p role="status" style={{color:'#fbbf24'}}>Connessione non disponibile; non mostrare dati inventati.</p>}
+    {data?.source==='snapshot' && <p style={label}>Fonte: snapshot PAPER {data.snapshot_stale ? '(non aggiornato)' : '(ultimo aggiornamento verificato)'} · {fmtTime(data.snapshot_ts_ms)}</p>}
+    {data?.status==='unavailable' && <p role="status" style={{color:'#fbbf24'}}>Snapshot non leggibile o non valido: saldi non disponibili.</p>}
     <Wallet name="hawk" data={data?.profiles?.hawk}/>
     <Wallet name="bull" data={data?.profiles?.bull}/>
     <p style={label}>Saldo e risultati PAPER; costi AI non disponibili finché il nuovo provider non sarà collegato e misurato.</p>
