@@ -137,3 +137,22 @@ def summarize_events(M: Market, R: dict, RL, RS, boot: int = 3000, seed: int = 5
                     "ic90_diff": [round(float(np.nanpercentile(diffs, 5)), 4), round(float(np.nanpercentile(diffs, 95)), 4)],
                     "R_per_terzo": thirds})
     return out
+
+
+def score_buckets(M: Market, RL, RS, mode_scores) -> list:
+    """Il punteggio ha capacita' predittiva? R medio del long/short simulato per fascia di punteggio del lato scelto."""
+    L, S, side, score = mode_scores
+    ab = np.array([s in ("BTC", "ETH", "XAU", "XAG") for s in M.syms])[None, :]
+    rows = []
+    edges = [(60, 64), (65, 69), (70, 74), (75, 79), (80, 100)]
+    base = M.valid & M.even30[:, None]
+    for lab, grp in (("BTC/ETH/XAU/XAG", ab), ("altcoin", ~ab)):
+        for sd, Rm in ((1, RL), (-1, RS)):
+            for lo, hi in edges:
+                with np.errstate(invalid="ignore"):
+                    m = base & grp & (side == sd) & (score >= lo) & (score <= hi) & np.isfinite(Rm)
+                n = int(m.sum())
+                if n >= 30:
+                    rows.append({"gruppo": lab, "lato": "long" if sd == 1 else "short", "fascia": f"{lo}-{hi}", "n": n,
+                                 "R_medio": round(float(Rm[m].mean()), 3), "vinc_pct": round(100 * float((Rm[m] > 0).mean()), 1)})
+    return rows

@@ -34,7 +34,7 @@ def _features(args):
 
 
 def _job(job):
-    kind, name, mode, cm, thr, seed, shift = job
+    kind, name, mode, cm, thr, seed, shift, thr_ab = job
     M, REG = _G["M"], _G["REG"]
     R = REG[mode]
     if kind == "placebo_shift":
@@ -42,10 +42,10 @@ def _job(job):
     spec = (dict(lr.SPECS["t_bonus_g"]) if kind == "placebo_shift"
             else dict(lr.SPECS["p1_reb"], extra="p1reb_placebo") if kind == "placebo_reb"
             else dict(lr.SPECS["p1"], extra="p1reb_placebo") if kind == "placebo_p1" else lr.SPECS[name])
-    res = lr.replay(M, name, spec, R, mode, cost_mult=cm, thr_other=thr, seed=seed)
+    res = lr.replay(M, name, spec, R, mode, cost_mult=cm, thr_other=thr, seed=seed, thr_ab=thr_ab)
     t0, t1 = int(M.grid[0]), int(M.end[-1])
     summ = lr.summarize(res, t0, t1)
-    keep = kind == "main" and cm == 1.0 and thr == 70
+    keep = kind == "main" and cm == 1.0 and thr == 70 and thr_ab == 60
     return job, summ, (res["trades"] if keep else None), (lr.by_regime_table(res) if keep and name == "base13" else None)
 
 
@@ -111,17 +111,20 @@ def main():
     jobs = []
     for mode in ("S2", "S1"):
         for n in names:
-            jobs.append(("main", n, mode, 1.0, 70, None, 0))
+            jobs.append(("main", n, mode, 1.0, 70, None, 0, 60))
     for n in ["base13"] + lr.CANDIDATES + ["ref_gate"]:
-        jobs.append(("main", n, "S2", 1.5, 70, None, 0))          # costi x1,5
-        jobs.append(("main", n, "S2", 1.0, 63, None, 0))          # soglia 63 per le altcoin (informativo)
+        jobs.append(("main", n, "S2", 1.5, 70, None, 0, 60))          # costi x1,5
+        jobs.append(("main", n, "S2", 1.0, 63, None, 0, 60))          # soglia 63 per le altcoin (informativo)
+        jobs.append(("main", n, "S2", 0.0, 70, None, 0, 60))          # senza commissioni ne' scivolamento (lordo)
+    jobs.append(("main", "base13", "S2", 1.0, 76, None, 0, 66))       # controllo: soglie +6 (= togliere 6 punti a entrambi i lati)
+    jobs.append(("main", "base13", "S1", 1.0, 76, None, 0, 66))
     if not a.no_placebo:
         rng = np.random.default_rng(2026)
         for k in range(lr.N_PLACEBO):
-            jobs.append(("placebo_reb", f"pl_reb_{k}", "S2", 1.0, 70, 1000 + k, 0))
-            jobs.append(("placebo_p1", f"pl_p1_{k}", "S2", 1.0, 70, 2000 + k, 0))
+            jobs.append(("placebo_reb", f"pl_reb_{k}", "S2", 1.0, 70, 1000 + k, 0, 60))
+            jobs.append(("placebo_p1", f"pl_p1_{k}", "S2", 1.0, 70, 2000 + k, 0, 60))
             d = int(rng.integers(5, 61)) * (1 if k % 2 == 0 else -1)
-            jobs.append(("placebo_shift", f"pl_shift_{k}", "S2", 1.0, 70, None, d))
+            jobs.append(("placebo_shift", f"pl_shift_{k}", "S2", 1.0, 70, None, d, 60))
     print(f"[RIPRODUZIONE] {len(jobs)} prove su {a.workers} processi", flush=True)
     with ctx.Pool(a.workers) as pool:
         done = pool.map(_job, jobs, chunksize=1)
@@ -131,7 +134,7 @@ def main():
     trades: dict = {}
     base_regime_table = None
     for job, s, tr, brt in done:
-        kind, name, mode, cm, thr, _, _ = job
+        kind, name, mode, cm, thr, _, _, thr_ab = job
         key = f"{mode}|c{cm}|t{thr}"
         summ.setdefault(key, {})[name] = s
         if tr is not None:
@@ -162,15 +165,56 @@ def main():
             odelta = o_s[n]["netto"] - o_s["base13"]["netto"]
             gate_out[mode][n] = lr.gates(base_s, v, base_tr, trades[(mode, n)], t0, t1, pl, cdelta, odelta)
 
+    # ---- calibrazione: finestre reali, mesi, mercato, diagnostica P1, fasce di punteggio
+    import calendar as _cal
+    def ms(y, m, d, h=0):
+        return _cal.timegm((y, m, d, h, 0, 0)) * 1000
+    WINDOWS = {"reale 12-26/10/2026": (ms(2026, 10, 12), ms(2026, 10, 27)),
+               "giorni d'oro 13-15/10/2026": (ms(2026, 10, 13), ms(2026, 10, 16)),
+               "20-26/10/2026": (ms(2026, 10, 20), ms(2026, 10, 27)),
+               "ultimi 30 giorni": (t1 - 30 * lr.DAY, t1)}
+    windows = {}
+    monthly = {}
+    for mode in ("S1", "S2"):
+        for n in names:
+            tr = trades[(mode, n)]
+            windows[f"{mode}|{n}"] = {w: lr.window_net(tr, a, b) for w, (a, b) in WINDOWS.items()}
+            monthly[f"{mode}|{n}"] = lr.monthly_net(tr, t0, t1)
+    btc = data["BTC"]
+    btc_m = {}
+    for row in btc[btc[:, 0] >= t0]:
+        tm = time.gmtime(row[0] / 1000)
+        k_ = f"{tm.tm_year}-{tm.tm_mon:02d}"
+        o = btc_m.setdefault(k_, [row[1], row[4]])
+        o[1] = row[4]
+    btc_month = {k_: round(100 * (v[1] / v[0] - 1), 1) for k_, v in btc_m.items()}
+    d1 = diag1 = None
+    try:
+        d1 = {m: lr.diag_p1(M, REG[m], m) for m in ("S1", "S2")}
+    except Exception as e:
+        print(f"[DIAG] errore: {e}", flush=True)
+    for (mode, n), tr in trades.items():
+        if mode in ("S1", "S2"):
+            import gzip
+            with gzip.open(os.path.join(a.out, f"trades_{mode}_{n}.csv.gz"), "wt") as f:
+                f.write("id,symbol,side,open_ms,close_ms,net,net_r,why,reg_state,reg_turn\n")
+                for t in tr:
+                    f.write(",".join(str(x) for x in t) + "\n")
+
     ev_rows = []
+    buckets = []
     try:
         RL, RS = ev.outcomes(M)
         ev_rows = ev.summarize_events(M, REG["S2"], RL, RS)
+        sl_, ss_ = M.seasonal("S2")
+        L_, S_, side_, score_, _, _ = lr.points(M.F, 20, None, None, sl_, ss_)
+        buckets = ev.score_buckets(M, RL, RS, (L_, S_, side_, score_))
     except Exception as e:                       # l'esperimento sugli eventi non deve far perdere il resto
         print(f"[EVENTI] errore: {e}", flush=True)
 
     out = {"periodo": [now_ms_str(t0), now_ms_str(t1)], "simboli": M.syms, "barre_valide": cover,
            "riassunti": summ, "criteri": gate_out, "regime_base13_S2": base_regime_table, "eventi": ev_rows,
+           "finestre": windows, "mensile": monthly, "btc_mensile_pct": btc_month, "diag_p1": d1, "fasce_punteggio": buckets,
            "secondi": round(time.time() - t_wall)}
     json.dump(out, open(os.path.join(a.out, "summary.json"), "w"), ensure_ascii=False, indent=1, default=str)
 
@@ -185,6 +229,29 @@ def main():
                         "Sensibilita': costi ×1,5 (S2)"))
     md.append(fmt_table([summ["S2|c1.0|t63"][n] for n in ["base13"] + lr.CANDIDATES + ["ref_gate"]],
                         "Sensibilita': soglia 63 per le altcoin (S2)"))
+    md.append(fmt_table([summ["S2|c0.0|t70"][n] for n in ["base13"] + lr.CANDIDATES + ["ref_gate"]],
+                        "Sensibilita': SENZA commissioni ne' scivolamento (lordo, S2)"))
+    md.append(fmt_table([summ["S2|c1.0|t70"]["base13"], dict(summ["S2|c1.0|t76"]["base13"], nome="base13 soglie +6 (AB 66, altre 76)"),
+                         summ["S2|c1.0|t70"]["p1_w"]], "Controllo: P1 (peso 4h a 14) contro semplici soglie piu' alte di 6 punti (S2)"))
+    md.append("\n### Finestre reali (netto $ / n trade; S1 = stagionalita' del periodo)\n")
+    wn = list(WINDOWS)
+    md.append("| variante | " + " | ".join(wn) + " |\n|---|" + "---|" * len(wn))
+    for n in names:
+        row = windows[f"S1|{n}"]
+        md.append(f"| {n} | " + " | ".join(f"{row[w]['netto']:+.0f} / {row[w]['n']} (L {row[w]['long_n']} S {row[w]['short_n']})" for w in wn) + " |")
+    md.append("\n### Netto per mese di chiusura (base13) e rendimento di BTC nel mese\n")
+    md.append("| mese | BTC % | base13 S1 n / $ | base13 S2 n / $ | p1 S2 n / $ |\n|---|---:|---|---|---|")
+    for mth in sorted(monthly["S2|base13"]):
+        g1 = monthly["S1|base13"].get(mth, [0, 0.0])
+        g2 = monthly["S2|base13"].get(mth, [0, 0.0])
+        g3 = monthly["S2|p1"].get(mth, [0, 0.0])
+        md.append(f"| {mth} | {btc_month.get(mth, '')} | {g1[0]} / {g1[1]:+.0f} | {g2[0]} / {g2[1]:+.0f} | {g3[0]} / {g3[1]:+.0f} |")
+    if d1:
+        md.append("\n### Il bonus rimbalzo di P1 cambia davvero le decisioni?\n")
+        for m_, d_ in d1.items():
+            md.append(f"- {m_}: scatti {d_['scatti']}, decisioni cambiate {d_['decisioni_cambiate']}, nuovi long aperti {d_['nuovi_long_aperti']}; "
+                      f"punteggio long mediano quando scatta {d_['L_base_mediano_quando_scatta']} (max {d_['L_base_max_quando_scatta']}), "
+                      f"short mediano {d_['S_base_mediano_quando_scatta']}")
     for mode in ("S2", "S1"):
         md.append(f"\n### Criteri G1–G9 ({mode})\n")
         md.append("| variante | Δ netto | Δ terzi | G1 | G2 | G3 | G4 | G5 | G6 | G7 | G8 | G9 | TUTTI |")
@@ -203,6 +270,11 @@ def main():
         md.append("| regime | lato | n | vinc % | netto $ | R medio |\n|---|---|---:|---:|---:|---:|")
         for r in base_regime_table:
             md.append(f"| {r['regime']} | {r['lato']} | {r['n']} | {r['vinc_pct']:.0f} | {r['netto']:+.0f} | {r['R_medio']:+.3f} |")
+    if buckets:
+        md.append("\n### Il punteggio ha potere predittivo? R medio del trade simulato per fascia di punteggio (S2, costi 16 bp)\n")
+        md.append("| gruppo | lato | fascia | n | R medio | vinc % |\n|---|---|---|---:|---:|---:|")
+        for r in buckets:
+            md.append(f"| {r['gruppo']} | {r['lato']} | {r['fascia']} | {r['n']} | {r['R_medio']:+.3f} | {r['vinc_pct']:.0f} |")
     if ev_rows:
         md.append("\n### Esperimento sugli eventi (R per trade simulato, costi 16 bp)\n")
         md.append("| categoria | lato | n | R medio | vinc % | R tutte | differenza | IC90 differenza | R per terzo |\n|---|---|---:|---:|---:|---:|---:|---|---|")

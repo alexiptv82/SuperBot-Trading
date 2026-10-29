@@ -166,7 +166,7 @@ def score_variant(M: Market, spec: dict, R: dict, mode: str, seed=None):
 
 # ------------------------------------------------------------------ riproduzione
 def replay(M: Market, name: str, spec: dict, R: dict, mode: str, cost_mult: float = 1.0, thr_other: int = 70,
-           seed=None, rscore=None) -> dict:
+           seed=None, rscore=None, thr_ab: int = 60) -> dict:
     L, S, side, score, slp = rscore if rscore is not None else score_variant(M, spec, R, mode, seed)
     acc = PaperAccount(limits(cost_mult), name)
     gate = spec.get("gate")
@@ -224,7 +224,7 @@ def replay(M: Market, name: str, spec: dict, R: dict, mode: str, cost_mult: floa
                     continue
             if end - last_open.get(sym, 0) < SCALP_COOLDOWN_MS or sym in acc.positions:
                 continue
-            if dec["confidence"] < (60 if sym in TIER_AB else thr_other):
+            if dec["confidence"] < (thr_ab if sym in TIER_AB else thr_other):
                 continue
             sl_pct, tp_pct = dec["stop_loss_pct"], dec["take_profit_pct"]
             if sl_pct > 0 and tp_pct > 0 and tp_pct / sl_pct < 1.5:
@@ -358,3 +358,44 @@ def by_regime_table(res: dict) -> list:
         rows.append({"regime": rgm, "lato": sd, "n": len(v), "vinc_pct": round(100 * sum(1 for x in nets if x > 0) / len(v), 0),
                      "netto": round(sum(nets), 1), "R_medio": round(float(np.mean([x[6] for x in v])), 3)})
     return rows
+
+
+# ------------------------------------------------------------------ finestre, mesi, diagnostica
+def window_net(trades, a: int, b: int) -> dict:
+    sel = [t for t in trades if a <= t[4] < b]
+    return {"n": len(sel), "netto": round(sum(t[5] for t in sel), 1),
+            "long_n": sum(1 for t in sel if t[2] == 1), "short_n": sum(1 for t in sel if t[2] == -1),
+            "long_netto": round(sum(t[5] for t in sel if t[2] == 1), 1),
+            "short_netto": round(sum(t[5] for t in sel if t[2] == -1), 1),
+            "R_medio": round(float(np.mean([t[6] for t in sel])), 3) if sel else 0.0}
+
+
+def monthly_net(trades, t0: int, t1: int) -> dict:
+    import calendar
+    out = {}
+    for t in trades:
+        tm = time.gmtime(t[4] / 1000)
+        key = f"{tm.tm_year}-{tm.tm_mon:02d}"
+        o = out.setdefault(key, [0, 0.0])
+        o[0] += 1
+        o[1] += t[5]
+    return {k: [v[0], round(v[1], 1)] for k, v in sorted(out.items())}
+
+
+def diag_p1(M: Market, R: dict, mode: str, thr_other: int = 70) -> dict:
+    """Quante volte il bonus rimbalzo di P1 cambia una decisione? (scatta, porta un long sopra soglia, ribalta il lato)."""
+    sl_, ss_ = M.seasonal(mode)
+    el = p1_extra_long(M.F)
+    L0, S0, side0, sc0, _, ok = points(M.F, 20, None, None, sl_, ss_)
+    L1, S1, side1, sc1, _, _ = points(M.F, 20, el, None, sl_, ss_)
+    thr = np.where(M.is_comm[None, :] | np.array([s in TIER_AB for s in M.syms])[None, :], 60, thr_other)
+    fire = (el > 0) & ok & M.even30[:, None]
+    open0 = (side0 != 0) & (sc0 >= thr)
+    open1 = (side1 != 0) & (sc1 >= thr)
+    chg = fire & ((open0 != open1) | (side0 != side1))
+    long_new = fire & (side1 == 1) & (L1 >= thr) & ~((side0 == 1) & (L0 >= thr))
+    return {"scatti": int(fire.sum()), "decisioni_cambiate": int(chg.sum()), "nuovi_long_aperti": int(long_new.sum()),
+            "L_base_mediano_quando_scatta": float(np.median(L0[fire])) if fire.any() else None,
+            "L_base_max_quando_scatta": int(L0[fire].max()) if fire.any() else None,
+            "S_base_mediano_quando_scatta": float(np.median(S0[fire])) if fire.any() else None,
+            "scatti_con_long_gia_sopra_soglia": int((fire & (side0 == 1) & (L0 >= thr)).sum())}
