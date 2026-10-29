@@ -257,6 +257,54 @@ class CandleBackfill(unittest.TestCase):
                 pair.close()
 
 
+    def test_b2_upstream_feed_restores_full_history_without_fetcher(self):
+        """An existing quarantine must be recoverable without a REST callback."""
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.hawk.submit(plan(),NOW,CONTRACTS,{'BTC':quote()})
+                pair.tick(market(ts=NOW+1000),CONTRACTS,NOW+1000)
+                pair.tick(incomplete_market(NOW+4*MINUTE),
+                          CONTRACTS,NOW+4*MINUTE)
+                self.assertIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                fully_restored=incomplete_market(NOW+4*MINUTE)
+                fully_restored['BTC']['bars']['1m'].insert(
+                    1,bar(NOW+2*MINUTE))
+                out=pair.tick(fully_restored,CONTRACTS,NOW+4*MINUTE)
+                self.assertEqual(out['hawk']['positions'],1)
+                self.assertNotIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                self.assertTrue(pair.hawk.store.load()['positions']['BTC']['coverage_complete'])
+                self.assertTrue(any(e['kind']=='gap_history_complete'
+                                    for e in out['market_events']))
+                self.assertTrue(any(e['kind']=='gap_recovered_verified'
+                                    for e in out['hawk']['events']))
+            finally:
+                pair.close()
+
+    def test_b2_upstream_restored_stop_bar_is_replayed_before_unquarantine(self):
+        """Complete feed may reveal a stop: close, never silently release."""
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.hawk.submit(plan(),NOW,CONTRACTS,{'BTC':quote()})
+                pair.tick(market(ts=NOW+1000),CONTRACTS,NOW+1000)
+                pair.tick(incomplete_market(NOW+4*MINUTE),
+                          CONTRACTS,NOW+4*MINUTE)
+                fully_restored=incomplete_market(NOW+4*MINUTE)
+                fully_restored['BTC']['bars']['1m'].insert(
+                    1,bar(NOW+2*MINUTE,low=99.0))
+                out=pair.tick(fully_restored,CONTRACTS,NOW+4*MINUTE)
+                self.assertEqual(out['hawk']['positions'],0)
+                self.assertNotIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                self.assertTrue(any(e['kind']=='trade_closed' and
+                                    e['reason']=='stop_closed_bar'
+                                    for e in out['hawk']['events']))
+                self.assertTrue(any(e['kind']=='gap_history_complete'
+                                    for e in out['market_events']))
+            finally:
+                pair.close()
+
+
 
 if __name__=='__main__':
     unittest.main()
