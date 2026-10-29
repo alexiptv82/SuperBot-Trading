@@ -205,7 +205,7 @@ class Group3Wallet(unittest.TestCase):
 
 
     def test_i5_stale_open_mark_does_not_create_fake_daily_latch(self):
-        self._open(protect_after_usd=999.)
+        self._open(protect_after_usd=500.)
         stale=self.w.tick(market(price=60.,ts=NOW-20000),
                           CONTRACTS,NOW+2000)
         self.assertFalse(stale['opening_allowed'])
