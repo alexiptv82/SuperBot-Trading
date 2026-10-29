@@ -131,9 +131,24 @@ class PaperWallet:
                                      'expires_ms':plan.expires_ms}])
         return plan
 
-    def tick(self,markets,contracts,now):
-        """Protect open positions first, then close/expire, then execute pending."""
+    def tick(self,markets,contracts,now,market_events=()):
+        """Repair audit first, then protect, expire, and execute pending plans."""
         state=self.store.load()
+        # Gaps not filled before this tick cannot be silently ignored.
+        # Once an OPEN position was exposed to an unknown historical minute,
+        # its coverage remains flagged until explicit audited reconciliation.
+        for event in market_events:
+            if event['kind'] in ('gap_unresolvable','gap_backfill_failed'):
+                symbol=event['symbol']
+                if symbol not in state['coverage_gaps']:
+                    state['coverage_gaps'].append(symbol)
+                if symbol in state['positions']:
+                    state['positions'][symbol]['coverage_complete']=False
+            elif (event['kind']=='gap_backfilled'
+                  and event['symbol'] not in state['positions']):
+                symbol=event['symbol']
+                if symbol in state['coverage_gaps']:
+                    state['coverage_gaps'].remove(symbol)
         original_now=now
         delta_ms=max(0,state['last_ms']-now)
         if delta_ms:
@@ -142,6 +157,7 @@ class PaperWallet:
         state['heartbeat_ms']=now
         state['last_prices']={s:m['quote'] for s,m in markets.items() if _valid_quote(m.get('quote'))}
         state,events=protect(state,markets,contracts,now,self.protect_cfg)
+        events=list(market_events)+events
         if delta_ms:
             events.insert(0,{'kind':'clock_adjusted','delta_ms':delta_ms,
                              'original_now_ms':original_now})
