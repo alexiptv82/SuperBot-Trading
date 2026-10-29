@@ -927,3 +927,10 @@ Dettagli: `diario/2026-10-27_chatgpt.md` e `diario/ROLLBACK-CLASSICI-2026-10-27-
 ## IN_CORSO — Brain AI libero IMPLEMENTAZIONE autorizzata, NO DEPLOY
 - Utente conferma10slot e implementazione/testoffline, aspetta diffprima del deploy. Piano893ef387 approvato: contoPAPER2000nuovo, margine1600, AIonly/no gate strategici/no budgetcap, memoria10, contesto opzionale, Telegram[BRAIN], report22Roma,168hdaavvioverificato.
 - ChatGPTWork prenota backend/director/brain_free, nuovi ops/test su work/brain-ai-libero da129547ed; dashboard/reader nuovi su work/brain-ai-libero-dashboard da main56dc. Non modificare desk/*, classical_adaptive/*, brain_pilot/*; classici/Salvadanaio/Brainoperativi intatti. Nessun reset effettivo, stop, migrazione o deploy autorizzati ora. Altro autore solo revisione.
+
+
+## 29/10/2026 — Gruppo 5: correzioni post-audit autorizzate, in corso
+- Utente: «sei autorizzato», dopo audit in sola lettura. ChatGPT Work prende in carico esclusivamente robustezza dei lettori snapshot contro strutture JSON errate e scadenza/indicatore Online nella PWA senza connessione, con test di regressione.
+- Rami esistenti: motore work/brain-scalp-dual-20261028 da 1f7a67906024; app work/brain-scalp-dual-app-20261028 da 0587c081e874. Nessuna duplicazione del publisher o delle metriche già presenti.
+- Supervisore H24, provider, merge, deploy, VPS, classici e Brain Free esclusi. Nessun reset/migrazione o modifica dati operativi. I rami e commit iniziali costituiscono i punti di ripristino codice.
+- Stato: IN CORSO; esiti CI e SHA finali da aggiungere al termine. Unico autore ChatGPT sui file di questa correzione.

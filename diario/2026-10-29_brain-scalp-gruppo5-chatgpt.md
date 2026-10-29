@@ -42,3 +42,10 @@
 6. Claude può effettuare review indipendente e proporre test, ma per modificare il ramo operativo o attivare il supervisore sono necessarie autorizzazione utente e certificazione separata.
 
 **AI: ChatGPT (chat normale).**
+
+
+## 29/10/2026 — Gruppo 5: correzioni post-audit autorizzate, in corso
+- Utente: «sei autorizzato», dopo audit in sola lettura. ChatGPT Work prende in carico esclusivamente robustezza dei lettori snapshot contro strutture JSON errate e scadenza/indicatore Online nella PWA senza connessione, con test di regressione.
+- Rami esistenti: motore work/brain-scalp-dual-20261028 da 1f7a67906024; app work/brain-scalp-dual-app-20261028 da 0587c081e874. Nessuna duplicazione del publisher o delle metriche già presenti.
+- Supervisore H24, provider, merge, deploy, VPS, classici e Brain Free esclusi. Nessun reset/migrazione o modifica dati operativi. I rami e commit iniziali costituiscono i punti di ripristino codice.
+- Stato: IN CORSO; esiti CI e SHA finali da aggiungere al termine. Unico autore ChatGPT sui file di questa correzione.
