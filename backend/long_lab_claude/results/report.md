@@ -1,6 +1,6 @@
 # Laboratorio modifica long — risultati
 
-Periodo: 2025-05-07 00:00 → 2026-10-29 00:00 UTC, 26 simboli, barre da 15 minuti. Calcolato in 309 s.
+Periodo: 2025-05-07 00:00 → 2026-10-29 00:00 UTC, 26 simboli, barre da 15 minuti. Calcolato in 465 s.
 
 
 ### Varianti — stagionalita' di oggi congelata (S2, giudizio principale)
@@ -131,18 +131,18 @@ Periodo: 2025-05-07 00:00 → 2026-10-29 00:00 UTC, 26 simboli, barre da 15 minu
 | p1_w | +9894 | [2195.3, 4999.7, 2699.2] | sì | sì | sì | sì | NO | sì | — | sì | sì | no |
 | p1_reb | +0 | [0.0, 0.0, 0.0] | sì | sì | sì | sì | sì | sì | NO | sì | sì | no |
 | g_long | +1712 | [248.5, 719.5, 743.7] | sì | sì | sì | sì | sì | sì | NO | sì | sì | no |
-| t_bonus | +912 | [1400.7, -730.5, 189.9] | sì | sì | NO | sì | sì | sì | NO | sì | NO | no |
+| t_bonus | +912 | [1400.7, -730.5, 189.9] | sì | sì | NO | sì | sì | sì | sì | sì | NO | no |
 | t_bonus_g | +1243 | [354.2, -77.0, 913.4] | sì | sì | NO | sì | sì | sì | NO | sì | NO | no |
 | r_reb | -357 | [-933.0, 69.3, 506.6] | NO | sì | NO | sì | sì | sì | NO | sì | NO | no |
 | ref_gate | +1561 | [829.1, 474.3, 258.1] | sì | sì | NO | NO | sì | sì | NO | sì | NO | no |
 - p1: bootstrap Δ medio +10244$, 90% [+3568, +16691], P(Δ<0)=0.01; placebo Δ: mediana +9696, secondo +10295, max +10308
 - p1_w: bootstrap Δ medio +10244$, 90% [+3568, +16691], P(Δ<0)=0.01
 - p1_reb: bootstrap Δ medio +0$, 90% [+0, +0], P(Δ<0)=0.00; placebo Δ: mediana -525, secondo +621, max +858
-- g_long: bootstrap Δ medio +1750$, 90% [-243, +3658], P(Δ<0)=0.08; placebo Δ: mediana +5178, secondo +7418, max +7544
-- t_bonus: bootstrap Δ medio +1070$, 90% [-2946, +5202], P(Δ<0)=0.33; placebo Δ: mediana +5178, secondo +7418, max +7544
+- g_long: bootstrap Δ medio +1750$, 90% [-243, +3658], P(Δ<0)=0.08; placebo Δ: mediana +6817, secondo +8135, max +8318
+- t_bonus: bootstrap Δ medio +1070$, 90% [-2946, +5202], P(Δ<0)=0.33; placebo Δ: mediana -1783, secondo +224, max +1466
 - t_bonus_g: bootstrap Δ medio +1420$, 90% [-2454, +5392], P(Δ<0)=0.27; placebo Δ: mediana +5178, secondo +7418, max +7544
-- r_reb: bootstrap Δ medio -376$, 90% [-2991, +1914], P(Δ<0)=0.58; placebo Δ: mediana +5178, secondo +7418, max +7544
-- ref_gate: bootstrap Δ medio +1450$, 90% [-3721, +5825], P(Δ<0)=0.29; placebo Δ: mediana +5178, secondo +7418, max +7544
+- r_reb: bootstrap Δ medio -376$, 90% [-2991, +1914], P(Δ<0)=0.58; placebo Δ: mediana -221, secondo +322, max +1062
+- ref_gate: bootstrap Δ medio +1450$, 90% [-3721, +5825], P(Δ<0)=0.29; placebo Δ: mediana +8595, secondo +11879, max +13721
 
 ### Criteri G1–G9 (S1)
 
