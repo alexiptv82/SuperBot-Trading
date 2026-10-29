@@ -1,0 +1,113 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.17, pytest-9.2.0, pluggy-1.7.0 -- /opt/hostedtoolcache/Python/3.11.17/x64/bin/python
+rootdir: /home/runner/work/SuperBot-Trading/SuperBot-Trading/backend
+plugins: timeout-2.4.0
+timeout: 90.0s
+timeout method: thread
+timeout func_only: False
+collecting ... collected 86 items
+
+tests_rollback_9fa/test_desk_9fa.py::test_open_applies_slippage_fee_and_caps PASSED [  1%]
+tests_rollback_9fa/test_desk_9fa.py::test_stop_is_mandatory_and_must_be_on_the_right_side PASSED [  2%]
+tests_rollback_9fa/test_desk_9fa.py::test_stop_beyond_liquidation_is_refused_at_high_leverage PASSED [  3%]
+tests_rollback_9fa/test_desk_9fa.py::test_total_margin_cap_and_max_open PASSED [  4%]
+tests_rollback_9fa/test_desk_9fa.py::test_stop_loss_exit_and_pnl_includes_costs PASSED [  5%]
+tests_rollback_9fa/test_desk_9fa.py::test_gap_through_stop_exits_at_open_not_at_stop PASSED [  6%]
+tests_rollback_9fa/test_desk_9fa.py::test_stop_wins_when_stop_and_target_touch_in_the_same_bar PASSED [  8%]
+tests_rollback_9fa/test_desk_9fa.py::test_short_take_profit_and_funding_only_on_long PASSED [  9%]
+tests_rollback_9fa/test_desk_9fa.py::test_liquidation_loses_the_whole_margin_and_never_more PASSED [ 10%]
+tests_rollback_9fa/test_desk_9fa.py::test_bars_before_entry_are_ignored PASSED [ 11%]
+tests_rollback_9fa/test_desk_9fa.py::test_daily_stop_and_kill_switch_block_new_trades PASSED [ 12%]
+tests_rollback_9fa/test_desk_9fa.py::test_state_roundtrip PASSED         [ 13%]
+tests_rollback_9fa/test_desk_9fa.py::test_state_roundtrip_with_v2_fields PASSED [ 15%]
+tests_rollback_9fa/test_desk_9fa.py::test_dca_adds_entry_and_updates_weighted_average PASSED [ 16%]
+tests_rollback_9fa/test_desk_9fa.py::test_dca_not_allowed_on_scalp PASSED [ 17%]
+tests_rollback_9fa/test_desk_9fa.py::test_dca_max_2_entries PASSED       [ 18%]
+tests_rollback_9fa/test_desk_9fa.py::test_resample_drops_incomplete_bars_and_aggregates PASSED [ 19%]
+tests_rollback_9fa/test_desk_9fa.py::test_uptrend_scores_long_and_downtrend_scores_short PASSED [ 20%]
+tests_rollback_9fa/test_desk_9fa.py::test_short_history_gives_no_reading PASSED [ 22%]
+tests_rollback_9fa/test_desk_9fa.py::test_parse_decisions_tolerates_text_around_json_and_drops_garbage PASSED [ 23%]
+tests_rollback_9fa/test_desk_9fa.py::test_parse_decisions_includes_dca_fields PASSED [ 24%]
+tests_rollback_9fa/test_desk_9fa.py::test_budget_blocks_calls_when_cap_reached_and_resets_next_day PASSED [ 25%]
+tests_rollback_9fa/test_desk_9fa.py::test_error_message_never_contains_the_key PASSED [ 26%]
+tests_rollback_9fa/test_desk_9fa.py::test_rules_fallback_sizes_with_score_and_closes_weak_positions PASSED [ 27%]
+tests_rollback_9fa/test_desk_9fa.py::test_full_cycle_v2_opens_position_and_saves_state PASSED [ 29%]
+tests_rollback_9fa/test_desk_9fa.py::test_cycle_v2_without_key_uses_rules PASSED [ 30%]
+tests_rollback_9fa/test_desk_9fa.py::test_cycle_v2_dca_execution PASSED  [ 31%]
+tests_rollback_9fa/test_desk_9fa.py::test_render_report_v2 PASSED        [ 32%]
+tests_rollback_9fa/test_desk_9fa.py::test_adaptive_sleep_shorter_with_open_scalp PASSED [ 33%]
+tests_rollback_9fa/test_desk_9fa.py::test_pause_drain_blocks_new_entries_and_dca_but_keeps_positions PASSED [ 34%]
+tests_rollback_9fa/test_desk_9fa.py::test_pause_drain_still_allows_exits_decided_by_the_bot PASSED [ 36%]
+tests_rollback_9fa/test_desk_9fa.py::test_pause_without_positions_does_not_call_claude_or_open PASSED [ 37%]
+tests_rollback_9fa/test_desk_9fa.py::test_pause_pressed_mid_cycle_applies_immediately PASSED [ 38%]
+tests_rollback_9fa/test_desk_9fa.py::test_resume_cycle_opens_again PASSED [ 39%]
+tests_rollback_9fa/test_desk_9fa.py::test_limits_come_from_code_not_from_saved_state PASSED [ 40%]
+tests_rollback_9fa/test_desk_9fa.py::test_compute_mode PASSED            [ 41%]
+tests_rollback_9fa/test_desk_9fa.py::test_budget_reset_flag_touches_only_the_budget PASSED [ 43%]
+tests_rollback_9fa/test_desk_9fa.py::test_close_all_closes_at_market_price_with_real_costs PASSED [ 44%]
+tests_rollback_9fa/test_desk_9fa.py::test_close_all_without_price_keeps_position_open_and_says_so PASSED [ 45%]
+tests_rollback_9fa/test_desk_9fa.py::test_portfolio_reset_refused_if_not_paused PASSED [ 46%]
+tests_rollback_9fa/test_desk_9fa.py::test_portfolio_reset_refused_with_open_positions PASSED [ 47%]
+tests_rollback_9fa/test_desk_9fa.py::test_portfolio_reset_archives_run_and_restarts_from_1000_in_pause PASSED [ 48%]
+tests_rollback_9fa/test_desk_9fa.py::test_portfolio_reset_can_clear_lessons PASSED [ 50%]
+tests_rollback_9fa/test_desk_9fa.py::test_second_reset_does_not_overwrite_first_archive PASSED [ 51%]
+tests_rollback_9fa/test_desk_9fa.py::test_loop_step_pause_drain_then_paused_then_resume PASSED [ 52%]
+tests_rollback_9fa/test_desk_9fa.py::test_failed_cycle_retries_soon_and_reports_error PASSED [ 53%]
+tests_rollback_9fa/test_desk_9fa.py::test_heartbeat_and_healthcheck PASSED [ 54%]
+tests_rollback_9fa/test_desk_9fa.py::test_symbol_stats_ignore_legacy_list_records PASSED [ 55%]
+tests_rollback_9fa/test_desk_9fa.py::test_heartbeat_carries_real_params_and_cap PASSED [ 56%]
+tests_rollback_9fa/test_desk_9fa.py::test_split_opens_first_leg_only_then_fills_on_retrace PASSED [ 58%]
+tests_rollback_9fa/test_desk_9fa.py::test_split_second_leg_expires_without_retrace PASSED [ 59%]
+tests_rollback_9fa/test_desk_9fa.py::test_split_is_cancelled_by_partial_close_dca_and_close PASSED [ 60%]
+tests_rollback_9fa/test_desk_9fa.py::test_split_falls_back_to_single_entry_when_it_makes_no_sense PASSED [ 61%]
+tests_rollback_9fa/test_desk_9fa.py::test_split_trigger_and_stop_in_same_bar_fills_then_stops_out PASSED [ 62%]
+tests_rollback_9fa/test_desk_9fa.py::test_split_state_roundtrip_and_old_state_still_loads PASSED [ 63%]
+tests_rollback_9fa/test_desk_9fa.py::test_close_records_carry_additive_net_r_and_excursions PASSED [ 65%]
+tests_rollback_9fa/test_desk_9fa.py::test_learning_log_never_raises_drops_nan_and_caps_candidates PASSED [ 66%]
+tests_rollback_9fa/test_desk_9fa.py::test_build_features_is_tolerant_and_json_safe PASSED [ 67%]
+tests_rollback_9fa/test_desk_9fa.py::test_parse_decisions_reads_split_retrace_in_percent PASSED [ 68%]
+tests_rollback_9fa/test_desk_9fa.py::test_cycle_split_open_logs_features_and_waits_for_second_leg PASSED [ 69%]
+tests_rollback_9fa/test_desk_9fa.py::test_cycle_pause_cancels_pending_second_leg_but_keeps_first PASSED [ 70%]
+tests_rollback_9fa/test_desk_9fa.py::test_cycle_second_leg_fills_when_market_retraces_and_is_logged PASSED [ 72%]
+tests_rollback_9fa/test_desk_9fa.py::test_cycle_close_is_logged_with_net_r_and_reset_keeps_the_learning_log PASSED [ 73%]
+tests_rollback_9fa/test_desk_9fa.py::test_a_failure_in_feature_logging_never_blocks_an_entry PASSED [ 74%]
+tests_rollback_9fa/test_desk_9fa.py::test_call_claude_reports_stop_reason_without_changing_the_cost PASSED [ 75%]
+tests_rollback_9fa/test_desk_9fa.py::test_diagnose_reply_names_the_reason_and_agrees_with_parse_decisions PASSED [ 76%]
+tests_rollback_9fa/test_desk_9fa.py::test_cycle_logs_a_discarded_claude_reply_with_its_text_and_reason PASSED [ 77%]
+tests_rollback_9fa/test_desk_9fa.py::test_cycle_logs_a_readable_claude_reply_without_its_text PASSED [ 79%]
+tests_rollback_9fa/test_desk_9fa.py::test_logging_claude_calls_does_not_change_decisions_budget_or_fallback PASSED [ 80%]
+tests_rollback_9fa/test_desk_9fa.py::test_cycle_logs_a_failed_claude_call_and_still_falls_back_to_rules PASSED [ 81%]
+tests_rollback_9fa/test_desk_9fa.py::test_a_failure_while_logging_a_claude_reply_never_blocks_the_cycle PASSED [ 82%]
+tests_rollback_9fa/test_desk_9fa.py::test_discarded_reply_longer_than_the_limit_is_stored_shortened PASSED [ 83%]
+tests_rollback_9fa/test_desk_9fa.py::test_calendar_file_is_validated_all_or_nothing PASSED [ 84%]
+tests_rollback_9fa/test_desk_9fa.py::test_schedule_state_edges_hot_reload_and_broken_file PASSED [ 86%]
+tests_rollback_9fa/test_desk_9fa.py::test_claude_is_called_only_inside_a_window_and_rules_decide_outside PASSED [ 87%]
+tests_rollback_9fa/test_desk_9fa.py::test_each_window_has_its_own_budget_and_midnight_utc_does_not_reset_it PASSED [ 88%]
+tests_rollback_9fa/test_desk_9fa.py::test_without_a_calendar_nothing_changes PASSED [ 89%]
+tests_rollback_9fa/test_desk_9fa.py::test_calendar_changes_only_when_claude_is_asked_not_what_happens PASSED [ 90%]
+tests_rollback_9fa/test_desk_9fa.py::test_lessons_call_follows_the_calendar PASSED [ 91%]
+tests_rollback_9fa/test_desk_9fa.py::test_broken_calendar_keeps_claude_off_and_never_blocks_the_cycle PASSED [ 93%]
+tests_rollback_9fa/test_desk_9fa.py::test_a_window_start_triggers_an_immediate_cycle_and_the_heartbeat_shows_the_schedule PASSED [ 94%]
+tests_rollback_9fa/test_state_compat_9fa.py::test_old_loader_rejects_nothing_synthetic PASSED [ 95%]
+tests_rollback_9fa/test_state_compat_9fa.py::test_old_loader_reads_state_written_by_current_code PASSED [ 96%]
+tests_rollback_9fa/test_state_compat_9fa.py::test_limits_come_from_code_not_from_saved_state[_make_hawk_config-100.0-10-1000.0] PASSED [ 97%]
+tests_rollback_9fa/test_state_compat_9fa.py::test_limits_come_from_code_not_from_saved_state[_make_bull_config-350.0-3-1050.0] PASSED [ 98%]
+tests_rollback_9fa/test_state_compat_9fa.py::test_round_trip_does_not_drop_core_fields PASSED [100%]
+
+============================= slowest 15 durations =============================
+57.64s call     tests_rollback_9fa/test_desk_9fa.py::test_logging_claude_calls_does_not_change_decisions_budget_or_fallback
+56.49s call     tests_rollback_9fa/test_desk_9fa.py::test_each_window_has_its_own_budget_and_midnight_utc_does_not_reset_it
+42.32s call     tests_rollback_9fa/test_desk_9fa.py::test_claude_is_called_only_inside_a_window_and_rules_decide_outside
+29.20s call     tests_rollback_9fa/test_desk_9fa.py::test_full_cycle_v2_opens_position_and_saves_state
+29.06s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_close_is_logged_with_net_r_and_reset_keeps_the_learning_log
+28.92s call     tests_rollback_9fa/test_desk_9fa.py::test_pause_drain_still_allows_exits_decided_by_the_bot
+28.82s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_v2_dca_execution
+28.78s call     tests_rollback_9fa/test_desk_9fa.py::test_lessons_call_follows_the_calendar
+28.43s call     tests_rollback_9fa/test_desk_9fa.py::test_resume_cycle_opens_again
+28.32s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_second_leg_fills_when_market_retraces_and_is_logged
+28.04s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_pause_cancels_pending_second_leg_but_keeps_first
+28.01s call     tests_rollback_9fa/test_desk_9fa.py::test_without_a_calendar_nothing_changes
+27.87s call     tests_rollback_9fa/test_desk_9fa.py::test_pause_drain_blocks_new_entries_and_dca_but_keeps_positions
+27.80s call     tests_rollback_9fa/test_desk_9fa.py::test_calendar_changes_only_when_claude_is_asked_not_what_happens
+16.90s call     tests_rollback_9fa/test_desk_9fa.py::test_loop_step_pause_drain_then_paused_then_resume
+======================== 86 passed in 658.27s (0:10:58) ========================
