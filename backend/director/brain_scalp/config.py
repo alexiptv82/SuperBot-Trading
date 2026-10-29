@@ -2,6 +2,10 @@
 from dataclasses import dataclass, replace
 from director.brain_free.config import Config as BrainConfig
 
+# Separate scalp quote freshness; never change the active Brain Free config.
+ENTRY_PRICE_AGE_MS = 3000
+PROTECT_PRICE_AGE_MS = 10000
+
 
 @dataclass(frozen=True)
 class WalletSpec:
