@@ -95,19 +95,19 @@ tests_rollback_9fa/test_state_compat_9fa.py::test_limits_come_from_code_not_from
 tests_rollback_9fa/test_state_compat_9fa.py::test_round_trip_does_not_drop_core_fields PASSED [100%]
 
 ============================= slowest 15 durations =============================
-57.64s call     tests_rollback_9fa/test_desk_9fa.py::test_logging_claude_calls_does_not_change_decisions_budget_or_fallback
-56.49s call     tests_rollback_9fa/test_desk_9fa.py::test_each_window_has_its_own_budget_and_midnight_utc_does_not_reset_it
-42.32s call     tests_rollback_9fa/test_desk_9fa.py::test_claude_is_called_only_inside_a_window_and_rules_decide_outside
-29.20s call     tests_rollback_9fa/test_desk_9fa.py::test_full_cycle_v2_opens_position_and_saves_state
-29.06s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_close_is_logged_with_net_r_and_reset_keeps_the_learning_log
-28.92s call     tests_rollback_9fa/test_desk_9fa.py::test_pause_drain_still_allows_exits_decided_by_the_bot
-28.82s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_v2_dca_execution
-28.78s call     tests_rollback_9fa/test_desk_9fa.py::test_lessons_call_follows_the_calendar
-28.43s call     tests_rollback_9fa/test_desk_9fa.py::test_resume_cycle_opens_again
-28.32s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_second_leg_fills_when_market_retraces_and_is_logged
-28.04s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_pause_cancels_pending_second_leg_but_keeps_first
-28.01s call     tests_rollback_9fa/test_desk_9fa.py::test_without_a_calendar_nothing_changes
-27.87s call     tests_rollback_9fa/test_desk_9fa.py::test_pause_drain_blocks_new_entries_and_dca_but_keeps_positions
-27.80s call     tests_rollback_9fa/test_desk_9fa.py::test_calendar_changes_only_when_claude_is_asked_not_what_happens
-16.90s call     tests_rollback_9fa/test_desk_9fa.py::test_loop_step_pause_drain_then_paused_then_resume
-======================== 86 passed in 658.27s (0:10:58) ========================
+54.62s call     tests_rollback_9fa/test_desk_9fa.py::test_each_window_has_its_own_budget_and_midnight_utc_does_not_reset_it
+54.45s call     tests_rollback_9fa/test_desk_9fa.py::test_logging_claude_calls_does_not_change_decisions_budget_or_fallback
+42.04s call     tests_rollback_9fa/test_desk_9fa.py::test_claude_is_called_only_inside_a_window_and_rules_decide_outside
+27.73s call     tests_rollback_9fa/test_desk_9fa.py::test_pause_drain_still_allows_exits_decided_by_the_bot
+27.70s call     tests_rollback_9fa/test_desk_9fa.py::test_full_cycle_v2_opens_position_and_saves_state
+27.69s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_pause_cancels_pending_second_leg_but_keeps_first
+27.57s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_second_leg_fills_when_market_retraces_and_is_logged
+27.54s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_close_is_logged_with_net_r_and_reset_keeps_the_learning_log
+27.49s call     tests_rollback_9fa/test_desk_9fa.py::test_without_a_calendar_nothing_changes
+27.49s call     tests_rollback_9fa/test_desk_9fa.py::test_pause_drain_blocks_new_entries_and_dca_but_keeps_positions
+27.42s call     tests_rollback_9fa/test_desk_9fa.py::test_cycle_v2_dca_execution
+27.40s call     tests_rollback_9fa/test_desk_9fa.py::test_lessons_call_follows_the_calendar
+27.26s call     tests_rollback_9fa/test_desk_9fa.py::test_resume_cycle_opens_again
+27.06s call     tests_rollback_9fa/test_desk_9fa.py::test_calendar_changes_only_when_claude_is_asked_not_what_happens
+16.58s call     tests_rollback_9fa/test_desk_9fa.py::test_loop_step_pause_drain_then_paused_then_resume
+======================== 86 passed in 634.27s (0:10:34) ========================
