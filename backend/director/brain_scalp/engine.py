@@ -17,6 +17,17 @@ def _risk(position,cfg):
             position['entry']*qty*(2*cfg.fee_rate+2*cfg.slippage))
 
 
+def _target_cost_guard(side,entry,target,cfg):
+    """A gross target must pay round-trip costs AND the same net reward.
+
+    Conservative: account for two-sided fee + modeled slippage even when
+    the entry fill is already adjusted by modeled slippage.
+    """
+    cost=2*(cfg.fee_rate+cfg.slippage)
+    gross=side*(target-entry)/entry
+    return gross>=2*cost-1e-12
+
+
 def _net_at_quote(position,quote_price,cfg):
     fill=quote_price*(1-position['side']*cfg.slippage)
     return (position['side']*(fill-position['entry'])*position['qty'] -
@@ -73,6 +84,8 @@ class PaperWallet:
             if fresh(q,now,self.cfg):
                 raise ValueError('quote_too_stale_for_entry')
             raise ValueError('stale_plan_quote')
+        if not _target_cost_guard(plan.side,plan.trigger_price,plan.target,self.cfg):
+            raise ValueError('target_below_costs')
         if plan.plan_id in state['plan_ids']: raise ValueError('duplicate_plan_id')
         if plan.symbol in state['positions'] or plan.symbol in state['plans']:
             raise ValueError('symbol_already_reserved')
@@ -151,6 +164,11 @@ class PaperWallet:
                 events.append({'kind':'plan_rejected','symbol':symbol,'why':'already_open'})
                 continue
             px=q['price'];fill=px*(1+p.side*self.cfg.slippage)
+            if not _target_cost_guard(p.side,fill,p.target,self.cfg):
+                del state['plans'][symbol]
+                events.append({'kind':'plan_rejected','symbol':symbol,
+                               'why':'target_below_costs'})
+                continue
             if p.side*(fill-p.stop)<=0 or p.side*(p.target-fill)<=0:
                 del state['plans'][symbol]
                 events.append({'kind':'plan_rejected','symbol':symbol,'why':'levels_invalid_at_trigger'})
