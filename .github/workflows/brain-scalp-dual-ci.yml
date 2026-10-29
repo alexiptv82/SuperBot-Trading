@@ -6,6 +6,7 @@ on:
       - 'backend/director/brain_scalp/**'
       - 'backend/tests/test_brain_scalp_dual.py'
       - 'backend/tests/test_brain_scalp_group1.py'
+      - 'backend/tests/test_brain_scalp_group2.py'
       - '.github/workflows/brain-scalp-dual-ci.yml'
 permissions:
   contents: read
@@ -27,7 +28,7 @@ jobs:
       - name: Syntax and offline unit tests (no network, no keys)
         run: |
           python -m compileall -q backend/director/brain_scalp
-          PYTHONPATH=backend python -m unittest -v backend.tests.test_brain_scalp_dual backend.tests.test_brain_scalp_group1
+          PYTHONPATH=backend python -m unittest -v backend.tests.test_brain_scalp_dual backend.tests.test_brain_scalp_group1 backend.tests.test_brain_scalp_group2
       - name: Guard immutable classical bots and original Brain
         run: |
           test -z "$(git diff --name-only e0021488b47e8b245954a708b139bc4785a4b644 HEAD -- backend/desk backend/director/brain_free)"
