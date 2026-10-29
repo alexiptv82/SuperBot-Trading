@@ -76,6 +76,68 @@ class BrainScalpReader(unittest.TestCase):
             self.assertEqual(read_wallet(base,'hawk',NOW)['status'],'not_started')
 
 
+
+class ScalpSnapshotReader(unittest.TestCase):
+    def sample(self,root,ts=NOW):
+        path=Path(root)/'status.json'
+        profiles={n:{'status':'ok','available':True,'paper':True,'account_id':
+            'brain-scalp-'+n+'-paper','heartbeat_ms':ts,'cash':800. if n=='hawk' else 900.,
+            'equity':800. if n=='hawk' else 900.,'positions':[],'pending':[],
+            'metrics':{'equity':800. if n=='hawk' else 900.,'trades_today':2}}
+            for n in ('hawk','bull')}
+        path.write_text(json.dumps({'schema_version':1,'paper':True,'read_only':True,
+            'ts_ms':ts,'profiles':profiles}),encoding='utf-8')
+        return path
+
+    def test_snapshot_preferred_without_sqlite(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=self.sample(root);old=path.read_bytes()
+            data=read_all(root,NOW,snapshot_path=path)
+            self.assertEqual(data['source'],'snapshot')
+            self.assertEqual(data['profiles']['hawk']['equity'],800.)
+            self.assertEqual(data['profiles']['bull']['equity'],900.)
+            self.assertEqual(path.read_bytes(),old)
+            self.assertFalse((Path(root)/'hawk').exists())
+
+    def test_writer_stopped_snapshot_remains_visible_but_offline(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=self.sample(root)
+            data=read_all(root,NOW+90000,snapshot_path=path)
+            self.assertTrue(data['snapshot_stale'])
+            self.assertFalse(data['profiles']['hawk']['online'])
+            self.assertEqual(data['profiles']['hawk']['status'],'ok')
+
+    def test_corrupt_or_foreign_snapshot_fails_closed_even_with_db(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=self.sample(root);seed(root,'hawk')
+            path.write_text('CORRUPT',encoding='utf-8')
+            self.assertFalse(read_all(root,NOW,snapshot_path=path)
+                             ['profiles']['hawk']['available'])
+            path=self.sample(root)
+            obj=json.loads(path.read_text(encoding='utf-8'))
+            obj['profiles']['bull']['account_id']='brain-free-paper'
+            path.write_text(json.dumps(obj),encoding='utf-8')
+            self.assertFalse(read_all(root,NOW,snapshot_path=path)
+                             ['profiles']['hawk']['available'])
+
+    def test_future_time_and_symlink_fail_closed(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=self.sample(root,NOW+2000)
+            self.assertEqual(read_all(root,NOW,snapshot_path=path)['status'],
+                             'unavailable')
+            alias=Path(root)/'alias.json';alias.symlink_to(path)
+            self.assertEqual(read_all(root,NOW,snapshot_path=alias)['status'],
+                             'unavailable')
+
+    def test_absent_snapshot_preserves_legacy_readonly_reader(self):
+        with tempfile.TemporaryDirectory() as root:
+            seed(root,'hawk',cash=910.)
+            data=read_all(root,NOW,snapshot_path=Path(root)/'missing.json')
+            self.assertEqual(data['source'],'sqlite_legacy')
+            self.assertEqual(data['profiles']['hawk']['equity'],910.)
+
+
+
 if __name__=='__main__':unittest.main()
 
 
