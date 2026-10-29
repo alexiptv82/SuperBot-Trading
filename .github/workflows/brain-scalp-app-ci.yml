@@ -4,6 +4,7 @@ on:
     branches: [work/brain-scalp-dual-app-20261028]
     paths:
       - 'backend/brain_scalp_view.py'
+      - 'backend/brain_scalp_snapshot_view.py'
       - 'backend/brain_scalp_api.py'
       - 'backend/server.py'
       - 'backend/tests/test_brain_scalp_view.py'
@@ -24,7 +25,7 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install fastapi==0.110.0 httpx==0.27.0
       - run: PYTHONPATH=backend python -m unittest -v backend.tests.test_brain_scalp_view
-      - run: python -m compileall -q backend/brain_scalp_api.py backend/brain_scalp_view.py backend/server.py
+      - run: python -m compileall -q backend/brain_scalp_api.py backend/brain_scalp_view.py backend/brain_scalp_snapshot_view.py backend/server.py
       - name: Guard classical bot, legacy reader and deploy
         run: |
           test -z "$(git diff --name-only 2283bfb1c63959015658904a75d68d6587cca314 HEAD -- backend/desk backend/brain_free_view.py backend/brain_free_api.py deploy .github/workflows/deploy.yml)"
