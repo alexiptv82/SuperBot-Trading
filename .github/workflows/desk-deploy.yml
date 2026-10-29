@@ -93,6 +93,15 @@ jobs:
             enforce|"") echo "macro_policy=enforce" >> "$GITHUB_OUTPUT" ;;
             *) echo DEPLOY_BLOCKED=invalid_macro_policy; exit 1 ;;
           esac
+          # Profilo di rilascio. "current" (predefinito) = controlli di oggi. "legacy_13oct" = ritorno al codice del
+          # 13/10 (9fa667f), che non conosce Capitale V1 / Salvadanaio: salta SOLO i due controlli che pretendono quei
+          # moduli e il campo capital_v1 nel battito. Tutto il resto (paper, backup, una sola istanza, versione) resta.
+          PROFILE="$(git show "${{ github.sha }}:deploy/desk-deploy.trigger" | sed -n 's/^profile=//p' | head -n1)"
+          case "$PROFILE" in
+            legacy_13oct) echo "release_profile=legacy_13oct" >> "$GITHUB_OUTPUT" ;;
+            current|"") echo "release_profile=current" >> "$GITHUB_OUTPUT" ;;
+            *) echo DEPLOY_BLOCKED=invalid_release_profile; exit 1 ;;
+          esac
           echo "modalita' backup: ${MODE:-normale (confine di ciclo verificato)}"
 
       - name: Copia strumenti di backup sul VPS (chiave del server verificata)
@@ -125,6 +134,7 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DESK_DEEPSEEK_CLASSICS: ${{ steps.bk.outputs.deepseek_mode }}
           DESK_MACRO_POLICY: ${{ steps.bk.outputs.macro_policy }}
+          DESK_RELEASE_PROFILE: ${{ steps.bk.outputs.release_profile }}
           # Variabili live Bitget — lasciate vuote in paper mode (DESK_MODE=paper di default)
           # Per passare a live: imposta DESK_MODE=live. OGNI bot ha il SUO sub-account Bitget e la SUA chiave di
           # trading: Hawk usa BITGET_HAWK_*, Bull usa BITGET_BULL_*. NESSUN ripiego sulla vecchia chiave
@@ -155,7 +165,7 @@ jobs:
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           connect_timeout: 90s
           command_timeout: 30m
-          envs: BACKUP_EXTRA,APPROVED_SHA,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DEEPSEEK_API_KEY,DESK_DEEPSEEK_CLASSICS,DESK_MACRO_POLICY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,DESK_CAPITAL_V1,REQUIRE_CAPITAL_ACTIVATION
+          envs: BACKUP_EXTRA,APPROVED_SHA,DESK_RELEASE_PROFILE,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,ANTHROPIC_API_KEY,DEEPSEEK_API_KEY,DESK_DEEPSEEK_CLASSICS,DESK_MACRO_POLICY,DESK_MODE,BITGET_HAWK_API_KEY,BITGET_HAWK_SECRET_KEY,BITGET_HAWK_PASSPHRASE,BITGET_BULL_API_KEY,BITGET_BULL_SECRET_KEY,BITGET_BULL_PASSPHRASE,DESK_HAWK_CAPITAL,DESK_BULL_CAPITAL,DESK_DAILY_LOSS_PCT,DESK_CAPITAL_V1,REQUIRE_CAPITAL_ACTIVATION
           script: |
             set -e
             # --- Versione approvata: 40 caratteri esadecimali, altrimenti non si tocca niente
@@ -231,13 +241,13 @@ jobs:
             fi
 
             # Pre-deploy source baseline independently verified on 28/10; fail closed if it changes.
-            CURRENT_PAPER_BASE=73e9242164a2cf5c5710fa47109c51a6765364a6
+            CURRENT_PAPER_BASE=dc16e0169932c3885908625ce5be321a33b09a0f
             git cat-file -e "${CURRENT_PAPER_BASE}^{commit}" || {
               echo DEPLOY_BLOCKED=expected_runtime_base_missing; exit 1;
             }
             for P in hawk bull; do
               V="$(python3 -I -c "import json; print(json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')).get('version',''))" 2>/dev/null || true)"
-              [ "$V" = 73e9242 ] || {
+              [ "$V" = dc16e01 ] || {
                 echo "DEPLOY_BLOCKED=runtime_version_mismatch bot=$P"; exit 1;
               }
               for F in cli engine signals brain market_context; do
@@ -376,15 +386,19 @@ jobs:
                 echo "        avviati: controllare con desk-status prima di qualunque altra azione."; exit 1
               fi
               echo "versione dichiarata da $P: $V (= commit approvato, processo nuovo)"
-              # Modules must exist in the new image but the active behaviour
-              # must remain legacy (Capital V1 feature gate is explicitly OFF).
-              docker exec "superbot-desk-$P" python -c 'from desk import capital_journal, capital_manager, capital_runtime, vault_manager, position_sizer' || {
-                echo "DEPLOY_BLOCKED=capital_code_missing bot=$P"; exit 1;
-              }
-              python3 -I -c "import json,os; h=json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')); cv1=h.get('capital_v1'); assert type(cv1) is bool, 'capital_v1 missing or invalid'; assert os.getenv('DESK_CAPITAL_V1','off') != 'off' or cv1 is False, 'capital_v1 must be false for rollback'" || {
-                echo "DEPLOY_BLOCKED=capital_v1_inconsistent bot=$P"; exit 1;
-              }
-              echo "CAPITAL_V1_REPORTED bot=$P PASS"
+              if [ "${DESK_RELEASE_PROFILE:-current}" = legacy_13oct ]; then
+                echo "CAPITAL_V1_CHECK_SKIPPED_LEGACY_13OCT bot=$P (il codice del 13/10 non ha Capitale V1)"
+              else
+                # Modules must exist in the new image but the active behaviour
+                # must remain legacy (Capital V1 feature gate is explicitly OFF).
+                docker exec "superbot-desk-$P" python -c 'from desk import capital_journal, capital_manager, capital_runtime, vault_manager, position_sizer' || {
+                  echo "DEPLOY_BLOCKED=capital_code_missing bot=$P"; exit 1;
+                }
+                python3 -I -c "import json,os; h=json.load(open('/opt/superbot-desk-data/$P/heartbeat.json')); cv1=h.get('capital_v1'); assert type(cv1) is bool, 'capital_v1 missing or invalid'; assert os.getenv('DESK_CAPITAL_V1','off') != 'off' or cv1 is False, 'capital_v1 must be false for rollback'" || {
+                  echo "DEPLOY_BLOCKED=capital_v1_inconsistent bot=$P"; exit 1;
+                }
+                echo "CAPITAL_V1_REPORTED bot=$P PASS"
+              fi
             done
             # == Manifesto del rilascio ==
             mkdir -p /opt/superbot-deploys

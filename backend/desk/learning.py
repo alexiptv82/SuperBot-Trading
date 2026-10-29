@@ -64,7 +64,7 @@ def tier_of(symbol: str) -> str:
 
 
 def build_features(symbol: str, reading: Any, ctx: Optional[dict], dec: Optional[dict], now_ms: int,
-                   btc_reading: Any = None, extra: Optional[dict] = None) -> dict:
+                   btc_reading: Any = None) -> dict:
     """Valori d'ingresso, tutti conoscibili al momento della decisione (nessun dato futuro).
     Funzione pura e tollerante: dati mancanti diventano None, non errori."""
     f: dict = {}
@@ -115,8 +115,6 @@ def build_features(symbol: str, reading: Any, ctx: Optional[dict], dec: Optional
             dec_rr=_num(tp / sl, 2) if sl and tp else None,
             dec_action=str(dec.get("action", "")), reason=str(dec.get("reason", ""))[:160],
         )
-    if extra:   # campi aggiuntivi gia' calcolati dal chiamante (es. calendario macro), tutti noti alla decisione
-        f.update(extra)
     return f
 
 

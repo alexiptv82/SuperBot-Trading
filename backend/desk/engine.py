@@ -9,9 +9,7 @@ Classi di asset e leva massima:
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-import os
-import math
+from dataclasses import asdict, dataclass, field, fields
 from typing import Optional
 
 # ---- asset tier (leva massima)
@@ -43,12 +41,8 @@ class Limits:
     funding_bp_8h_long: float = 1.0
     maint: float = 0.005
     sl_liq_frac: float = 0.75        # V2: leggermente più morbido (era 0.8)
-    daily_stop: float = 0.12         # Approved rollback: historical 5818 daily stop, vault-only policy.
+    daily_stop: float = 0.12         # V2: 12% (era 10%)
     kill_equity: float = 450.0       # V2: abbassato da 500 a 450
-    # Restrict NEW entries only; never upscale AI margin/leverage to satisfy the floor.
-    # Existing positions, closures and ordinary DCA management retain their semantics.
-    min_initial_margin: float = 0.0
-    min_initial_leverage: int = 1
 
 
 @dataclass
@@ -95,14 +89,9 @@ class Position:
     legs: int = 1                # ingressi principali effettivamente eseguiti (2 con entrata diversificata)
     # ---- entrata diversificata: seconda gamba in attesa (None = nessuna)
     pending_split: Optional[dict] = None
-    # ---- barre gia' giudicate (orario di APERTURA dell'ultima barra elaborata; 0 = nessuna). Ogni barra si
-    # giudica UNA volta sola, con gli stop/TP in vigore in quel momento: un livello cambiato dopo (DCA,
-    # chiusura parziale) vale solo per le barre successive, mai per quelle gia' passate (difetto A). -1 = nessuna.
-    last_bar_ms: int = -1
 
 
-LEGACY_BAR_MS = 900_000         # barra dei bot (15m): serve solo a caricare posizioni salvate prima di last_bar_ms
-SPLIT_FIRST_FRAC = 0.5         # quota di margine della prima gamba
+SPLIT_FIRST_FRAC = 0.5          # quota di margine della prima gamba
 SPLIT_MIN_RETRACE = 0.0015      # sotto lo 0,15% la seconda gamba non ha senso: ingresso unico
 SPLIT_STOP_FRAC = 0.6           # il ritracciamento non supera il 60% della distanza dello stop
 SPLIT_TTL_MS = {"scalp": 3 * 3_600_000, "medio": 12 * 3_600_000}
@@ -117,6 +106,13 @@ def weighted_entry(old_entry: float, old_qty: float, new_fill: float, new_qty: f
     return (old_entry * old_qty + new_fill * new_qty) / total if total > 0 else old_entry
 
 
+
+def _known_fields(cls, d: dict) -> dict:
+    """Ritorno al codice del 13/10: lo stato scritto da versioni piu' recenti puo' contenere campi che questa versione
+    non conosce. Si ignorano (solo in lettura, nessuna decisione cambia) invece di far fallire il caricamento."""
+    names = {f.name for f in fields(cls)}
+    return {k: v for k, v in d.items() if k in names}
+
 class PaperAccount:
     def __init__(self, limits: Limits = Limits(), name: str = "main"):
         self.limits, self.name = limits, name
@@ -129,56 +125,6 @@ class PaperAccount:
         # eventi prodotti dal motore (seconda gamba eseguita/annullata): li legge e svuota cli.py.
         # Non fanno parte dello stato salvato.
         self.events: list = []
-        # V1 percentage policies are opt-in: legacy accounts behave identically until
-        # a validated PAPER capital-day snapshot enables them.
-        self._capital_bot = None
-        self._capital_day_budget = None
-        self._capital_reference = None
-
-    def set_capital_policy(self, bot: str, day_budget, reference=None) -> None:
-        # Hard fail-closed: Capital Management V1 is intentionally PAPER-only.
-        if os.getenv("DESK_MODE", "paper").strip().lower() != "paper":
-            raise ValueError("Capital V1 policy must never run in live mode")
-        from .position_sizer import cap_for
-        self._capital_day_budget = float(day_budget)
-        cap_for(bot, self._capital_day_budget)  # checks bot, finite, 0..1000
-        self._capital_bot = bot
-        self._capital_reference = reference
-
-    def _capital_size(self, symbol: str, proposed: float, lev: int,
-                      *, new_position: bool, release_split: bool = False):
-        if self._capital_day_budget is None:
-            return None
-        from .position_sizer import size_request
-        total = 0.0
-        for k, p in self.positions.items():
-            total += p.total_margin
-            if p.pending_split and not (k == symbol and release_split):
-                total += float(p.pending_split.get("margin", 0))
-        own = self.positions.get(symbol)
-        own_margin = own.total_margin if own else 0.0
-        own_pending = (float(own.pending_split.get("margin", 0)) if own and own.pending_split
-                       and not release_split else 0.0)
-        # A DCA or second leg is new risk: never bypass a latched daily stop.
-        blocked = bool(self._capital_reference and self._capital_reference.stop_latched)
-        if self._capital_reference is not None and self.positions:
-            quote_map=getattr(self,"_capital_latest_prices",{})
-            if not all(sym in quote_map for sym in self.positions):
-                blocked=True  # no new exposure from incomplete marks
-            else:
-                from .capital_manager import risk_view
-                blocked=blocked or risk_view(self._capital_reference,
-                                            self.equity(quote_map),
-                                            kill_equity=self.limits.kill_equity).reason!=""
-        return size_request(bot=self._capital_bot, day_budget=self._capital_day_budget,
-                            already_in_position=own_margin,
-                            pending_same_position=own_pending,
-                            total_committed_margin=total, available_cash=self.cash,
-                            reserved_cash=0, request=proposed,
-                            minimum_executable=self.limits.min_margin,
-                            fee_fraction=lev * self.limits.fee_bp_side / 10000,
-                            n_open=len(self.positions), is_new=new_position,
-                            risk_reason="daily_stop" if blocked else "")
 
     def margin_in_use(self) -> float:
         return sum(p.total_margin for p in self.positions.values())
@@ -195,16 +141,6 @@ class PaperAccount:
 
     def halted(self, prices: dict) -> str:
         eq = self.equity(prices)
-        if self._capital_reference is not None:
-            if any(sym not in prices for sym in self.positions):
-                return "prezzi di mercato incompleti"
-            from .capital_manager import risk_view
-            view = risk_view(self._capital_reference, eq, kill_equity=self.limits.kill_equity)
-            if view.reason == "kill_equity":
-                return "capitale sotto la soglia minima"
-            if view.stop_latched:
-                return "stop giornaliero raggiunto"
-            return ""
         if eq <= self.limits.kill_equity:
             return "capitale sotto la soglia minima"
         if eq <= self.day_start_equity * (1 - self.limits.daily_stop):
@@ -233,33 +169,15 @@ class PaperAccount:
             return None, "stop loss obbligatorio"
         if (side == 1 and sl >= price) or (side == -1 and sl <= price):
             return None, "stop dal lato sbagliato"
-        # Refuse invalid proposals before min/max can hide NaN or infinity.
-        try:
-            values = [margin, leverage, price, sl]
-            if tp is not None:
-                values.append(tp)
-            if not all(math.isfinite(float(v)) for v in values):
-                return None, "parametri apertura non finiti"
-        except (TypeError, ValueError, OverflowError):
-            return None, "parametri apertura non validi"
         if tp is not None and ((side == 1 and tp <= price) or (side == -1 and tp >= price)):
             tp = None
-        # Both configured ceiling and asset tier are physical limits.
-        tier_max = min(L.max_leverage, max_leverage_for(symbol))
+        # leva: rispetta il tier dell'asset
+        tier_max = max_leverage_for(symbol)
         lev = int(max(1, min(int(leverage), tier_max)))
-        if lev < L.min_initial_leverage:
-            return None, (f"leva eseguibile {lev}x sotto il minimo per nuova posizione "
-                          f"{L.min_initial_leverage}x (cap strumento {tier_max}x)")
         room = min(L.max_margin_trade, L.max_margin_total - self.margin_in_use(), self.cash * 0.95)
         mar = min(float(margin), room)
-        gate = self._capital_size(symbol, mar, lev, new_position=True)
-        if gate is not None:
-            if not gate.approved:
-                return None, "capitale percentuale: " + gate.reason
-            mar = float(gate.amount)
-        if mar < max(L.min_margin, L.min_initial_margin) - 1e-8:
-            return None, ("margine disponibile sotto il minimo per nuova posizione "
-                          f"{L.min_initial_margin:.0f}$; non aumentare la size proposta")
+        if mar < L.min_margin:
+            return None, "margine disponibile troppo basso"
         fill = price * (1 + side * L.slip_bp_side / 1e4)
         dist = abs(fill - sl) / fill
         if dist > L.sl_liq_frac * (1 / lev - L.maint):
@@ -271,9 +189,6 @@ class PaperAccount:
             first = round(mar * float(split.get("first_frac", SPLIT_FIRST_FRAC)), 2)
             second = round(mar - first, 2)
             if retr >= SPLIT_MIN_RETRACE and first >= L.min_margin and second >= L.min_margin:
-                if first < L.min_initial_margin - 1e-8:
-                    return None, ("prima gamba split sotto il minimo per nuova posizione "
-                                  f"{L.min_initial_margin:.0f}$")
                 mar = first
                 ttl = int(split.get("ttl_ms") or SPLIT_TTL_MS.get(trade_type, SPLIT_TTL_MS["medio"]))
                 pending = {"trigger": price * (1 - side * retr), "margin": second,
@@ -305,9 +220,6 @@ class PaperAccount:
         Il margine del DCA è proporzionale a quello già investito (50% primo, 30% secondo, 20% terzo).
         """
         L = self.limits
-        halt = self.halted(prices)
-        if halt:
-            return None, halt + ": DCA bloccato"
         pos = self.positions.get(symbol)
         if pos is None:
             return None, "nessuna posizione"
@@ -324,30 +236,16 @@ class PaperAccount:
             return None, "prezzo non ancora sceso per DCA long"
         if pos.side == -1 and px <= pos.entry:
             return None, "prezzo non ancora salito per DCA short"
-        # lo stop non si allarga mai (difetto D): il DCA puo' solo tenerlo uguale o avvicinarlo
-        tight_sl = max(pos.sl, float(new_sl)) if pos.side == 1 else min(pos.sl, float(new_sl))
-        if (pos.side == 1 and tight_sl >= px) or (pos.side == -1 and tight_sl <= px):
-            return None, "stop gia' raggiunto: niente DCA"
         # calcola margine DCA
         fracs = [0.40, 0.25]  # frazioni del margine principale per DCA 1/2 (max 2 ingressi extra)
         dca_mar = round(pos.margin * fracs[pos.dca_count], 2)
         if dca_mar < L.min_margin:
             dca_mar = L.min_margin
-        # Added exposure must also fit the portfolio's aggregate margin cap.
-        dca_mar = min(dca_mar, L.max_margin_total - self.margin_in_use())
-        if dca_mar < L.min_margin:
-            return None, "tetto margine totale: DCA bloccato"
         # verifica tetto DCA totale
         if pos.total_margin + dca_mar > L.max_dca_total:
             dca_mar = L.max_dca_total - pos.total_margin
         if dca_mar < L.min_margin:
             return None, "tetto DCA raggiunto"
-        gate = self._capital_size(symbol, dca_mar, pos.leverage,
-                                  new_position=False, release_split=True)
-        if gate is not None:
-            if not gate.approved:
-                return None, "capitale percentuale DCA: " + gate.reason
-            dca_mar = float(gate.amount)
         if dca_mar > self.cash * 0.95:
             return None, "cassa insufficiente per DCA"
         fill = px * (1 + pos.side * L.slip_bp_side / 1e4)
@@ -362,8 +260,7 @@ class PaperAccount:
         pos.qty += new_qty
         pos.total_margin += dca_mar
         pos.fee_open += fee
-        widened = tight_sl != float(new_sl)
-        pos.sl = tight_sl
+        pos.sl = float(new_sl)
         if new_tp is not None:
             pos.tp = float(new_tp)
         # ricalcola liquidazione sul nuovo entry medio
@@ -372,8 +269,7 @@ class PaperAccount:
         pos.dca_levels.append({"margin": dca_mar, "entry": fill, "qty": new_qty,
                                 "fee": fee, "added_ms": now_ms, "trigger_pct": round(trigger_pct, 4)})
         pos.dca_count += 1
-        pos.reason = (pos.reason[:200] + f" | DCA{pos.dca_count} @{fill:.5g}"
-                      + (" (stop non allargato)" if widened else "") + f": {reason[:80]}")[:300]
+        pos.reason = (pos.reason[:200] + f" | DCA{pos.dca_count} @{fill:.5g}: {reason[:80]}")[:300]
         self.cash -= dca_mar + fee
         self._cancel_split(pos, "DCA eseguito", now_ms)   # un DCA sostituisce la seconda gamba
         return pos, "ok"
@@ -402,23 +298,10 @@ class PaperAccount:
         if not ps:
             return None
         L = self.limits
-        marks = dict(getattr(self, "_capital_latest_prices", {}))
-        marks[pos.symbol] = float(ps["trigger"])
-        halt = self.halted(marks)
-        if halt:
-            self._cancel_split(pos, halt + ": seconda gamba bloccata", now_ms)
-            return None
         pos.pending_split = None     # consumata in ogni caso: o eseguita o annullata
         room = min(L.max_margin_trade - pos.total_margin, L.max_margin_total - self.margin_in_use(),
                    self.cash * 0.95)
         mar = min(float(ps["margin"]), room)
-        gate = self._capital_size(pos.symbol, mar, pos.leverage, new_position=False)
-        if gate is not None:
-            if not gate.approved:
-                self.events.append({"ev": "split_cancel", "id": pos.id, "symbol": pos.symbol,
-                                    "ts": now_ms, "reason": "capitale percentuale: " + gate.reason})
-                return None
-            mar = float(gate.amount)
         trig = float(ps["trigger"])
         fill = trig * (1 + pos.side * L.slip_bp_side / 1e4)
         notional = mar * pos.leverage
@@ -537,28 +420,10 @@ class PaperAccount:
         self.closed.append(rec)
         return rec
 
-    @staticmethod
-    def _exit_touched(pos: Position, h: float, l: float) -> bool:
-        """La barra tocca liquidazione, stop o TP con i livelli ATTUALI della posizione (prima gamba)."""
-        if pos.side == 1:
-            return l <= pos.liq or l <= pos.sl or (pos.tp is not None and h >= pos.tp)
-        return h >= pos.liq or h >= pos.sl or (pos.tp is not None and l <= pos.tp)
-
-    def on_bar(self, symbol: str, t: int, o: float, h: float, l: float, c: float, bar_ms: int,
-               exit_first: bool = False) -> Optional[dict]:
-        """Giudica una barra chiusa. `exit_first=True` e' solo per il LIVE: la seconda gamba parte sull'exchange
-        DOPO la candela (ordine a mercato), quindi se la candela chiude comunque la posizione quella gamba non e'
-        mai esistita e non si contabilizza. Con il valore predefinito (paper) l'ipotesi resta quella di sempre."""
+    def on_bar(self, symbol: str, t: int, o: float, h: float, l: float, c: float, bar_ms: int) -> Optional[dict]:
         pos = self.positions.get(symbol)
-        # Si giudicano le barre che FINISCONO dopo l'apertura, compresa quella in cui la posizione e' nata
-        # (prima veniva saltata: per i primi minuti stop e TP non esistevano). Ogni barra una volta sola.
-        # APPROSSIMAZIONE DICHIARATA: la barra d'apertura contiene anche prezzi precedenti all'ingresso (la candela
-        # non dice quando) e il suo massimo/minimo puo' far scattare stop o TP per movimenti avvenuti prima
-        # dell'apertura; lo stop prevale sempre sul TP. Una chiusura su quella barra si riconosce dal record:
-        # hold_min <= durata della barra (15 min). Quanto pesa si misura sui trade, non si stima.
-        if pos is None or t + bar_ms <= pos.open_ms or t <= pos.last_bar_ms:
+        if pos is None or t < pos.open_ms:
             return None
-        pos.last_bar_ms = t
         end = t + bar_ms
         # estremi toccati dall'apertura (per MAE/MFE): prima dei controlli, cosi' includono la barra di uscita
         if pos.px_hi > 0 and pos.px_lo > 0:
@@ -566,16 +431,12 @@ class PaperAccount:
         # seconda gamba dell'entrata diversificata. Se nella stessa barra tocca anche lo stop, il prezzo
         # ha attraversato prima il livello del ritracciamento (piu' vicino): la gamba si esegue e poi
         # scatta lo stop. E' l'ipotesi piu' sfavorevole, quella corretta per un test onesto.
-        # (Questo vale in PAPER. In LIVE, con exit_first, vale l'opposto: la gamba parte sull'exchange dopo la candela.)
         ps = pos.pending_split
         if ps:
             if t >= ps["expire_ms"]:
                 self._cancel_split(pos, "scaduta senza ritracciamento", end)
             elif (pos.side == 1 and l <= ps["trigger"]) or (pos.side == -1 and h >= ps["trigger"]):
-                # LIVE (exit_first): l'uscita si valuta sui livelli della prima gamba, prima della mediazione;
-                # la gamba pendente la annulla _close con l'evento "posizione chiusa".
-                if not (exit_first and self._exit_touched(pos, h, l)):
-                    self._fill_split(pos, end)
+                self._fill_split(pos, end)
         if pos.side == 1:
             if l <= pos.liq:
                 return self._close(pos, pos.liq, end, "liquidazione")
@@ -601,7 +462,7 @@ class PaperAccount:
 
     @classmethod
     def from_dict(cls, d: dict) -> "PaperAccount":
-        a = cls(Limits(**d["limits"]), d.get("name", "main"))
+        a = cls(Limits(**_known_fields(Limits, d["limits"])), d.get("name", "main"))
         a.cash, a.closed, a.next_id = d["cash"], d["closed"], d["next_id"]
         a.day, a.day_start_equity = d["day"], d["day_start_equity"]
         a.positions = {}
@@ -611,8 +472,5 @@ class PaperAccount:
             v.setdefault("total_margin", v.get("margin", 0))
             v.setdefault("trade_type", "medio")
             v.setdefault("dca_count", 0)
-            # posizione salvata da una versione precedente: la barra d'apertura conta come gia' giudicata,
-            # cosi' al primo ciclo dopo l'aggiornamento non si riesamina nulla che prima veniva saltato
-            v.setdefault("last_bar_ms", int(v.get("open_ms", 0)) // LEGACY_BAR_MS * LEGACY_BAR_MS)
-            a.positions[k] = Position(**v)
+            a.positions[k] = Position(**_known_fields(Position, v))
         return a

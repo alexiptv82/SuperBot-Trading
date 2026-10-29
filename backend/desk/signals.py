@@ -43,7 +43,7 @@ def rsi(c: np.ndarray, n: int = 14) -> float:
     au, ad = up[:n].mean(), dn[:n].mean()
     for i in range(n, len(d)):
         au, ad = (au * (n - 1) + up[i]) / n, (ad * (n - 1) + dn[i]) / n
-    return 50.0 if au == 0 and ad == 0 else 100.0 if ad == 0 else 100 - 100 / (1 + au / ad)
+    return 100.0 if ad == 0 else 100 - 100 / (1 + au / ad)
 
 
 def atr(b: np.ndarray, n: int = 14) -> float:
@@ -98,62 +98,16 @@ class Reading:
     trade_type: str = "medio"   # "scalp" se segnale su 15m/1h, "medio" se su 4h/1d
 
 
-DAILY_MIN_BARS = 200  # EMA50 contro EMA200 su barre 1d vere: con meno storia il trend 1d resta ASSENTE
-
-
-def closed_daily(rows, now_ms: int) -> np.ndarray:
-    """Barre giornaliere CHIUSE da righe BitGet [ts_apertura, o, h, l, c, vol].
-
-    Tiene solo una serie regolare: passo esatto di 1 giorno, nessun buco, nessun duplicato. La barra del
-    giorno in corso (ts + 1 giorno > now_ms) viene tolta. Qualunque anomalia -> array vuoto: il trend 1d
-    resta assente come prima, invece di essere calcolato su dati sbagliati."""
-    try:
-        arr = np.array([[float(x) for x in r[:6]] for r in rows], dtype=float)
-    except (TypeError, ValueError, IndexError):
-        return np.empty((0, 6))
-    if arr.ndim != 2 or len(arr) == 0 or not np.isfinite(arr).all():
-        return np.empty((0, 6))
-    arr = arr[np.argsort(arr[:, 0], kind="stable")]
-    arr = arr[arr[:, 0] + H1D <= now_ms]
-    if len(arr) == 0:
-        return np.empty((0, 6))
-    if len(arr) > 1 and not (np.diff(arr[:, 0]) == H1D).all():
-        return np.empty((0, 6))
-    return arr
-
-
-def direction(a, b):
-    """Equal values are neutral, including numerical equality at price scale."""
-    return 0 if np.isclose(a, b, rtol=1e-12, atol=0) else 1 if a > b else -1
-
-
-def closed_four_hour(rows, now_ms):
-    arr = np.asarray(rows, dtype=float)
-    if arr.ndim != 2 or arr.shape[1] < 6 or not np.isfinite(arr).all():
-        return np.empty((0,6))
-    arr = arr[np.argsort(arr[:,0],kind="stable")]
-    arr = arr[arr[:,0]+H4 <= now_ms,:6]
-    if not len(arr) or np.any(arr[:,0] % H4) or np.any(np.diff(arr[:,0]) != H4):
-        return np.empty((0,6))
-    if np.any(arr[:,1:5] <= 0) or np.any(arr[:,3]>np.minimum(arr[:,1],arr[:,4])) or np.any(arr[:,2]<np.maximum(arr[:,1],arr[:,4])):
-        return np.empty((0,6))
-    return arr
-
-
-def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
-                daily: np.ndarray | None = None, price: float | None = None,
-                four_hour: np.ndarray | None = None) -> Reading | None:
-    """`arr15`: barre 15m CHIUSE. `daily`: barre 1d chiuse (vedi `closed_daily`); senza, il 1d si ricava dalle
-    15m come prima (con ~10 giorni di storia resta assente). `price`: ultimo prezzo (barra in formazione)."""
+def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None) -> Reading | None:
     b1 = resample(arr15, H1)
-    b4 = four_hour if four_hour is not None and len(four_hour) >= 200 else resample(arr15, H4)
-    b1d = daily if daily is not None and len(daily) >= DAILY_MIN_BARS else resample(arr15, H1D)
+    b4 = resample(arr15, H4)
+    b1d = resample(arr15, H1D)
     if len(b1) < 60 or len(b4) < 60:
         return None
-    c1 = b1[:, 4]
-    price = float(arr15[-1, 4]) if price is None else float(price)
+    c1, c4 = b1[:, 4], b4[:, 4]
+    price = float(arr15[-1, 4])
     e20, e50 = ema(c1, 20)[-1], ema(c1, 50)[-1]
-    trend4 = direction(ema(b4[:,4],50)[-1],ema(b4[:,4],200)[-1]) if len(b4) >= 200 else None
+    e50_4, e200_4 = ema(c4, 50)[-1], ema(c4, min(200, len(c4) - 1))[-1]
     r1h = rsi(c1)
     roc24 = float(c1[-1] / c1[-25] - 1) if len(c1) > 25 else 0.0
     hi20, lo20 = float(b1[-21:-1, 2].max()), float(b1[-21:-1, 3].min())
@@ -163,15 +117,13 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
     # --- timeframe 1d (contesto di lungo)
     daily_trend = 0
     daily_note = ""
-    # Servono almeno DAILY_MIN_BARS giorni. Prima bastavano 30: con 30-49 barre EMA200 coincideva con EMA50 e
-    # il trend risultava sempre "bear" (difetto latente); con 50-199 si confrontavano due medie quasi uguali.
-    if len(b1d) >= DAILY_MIN_BARS:
+    if len(b1d) >= 30:
         cd = b1d[:, 4]
-        e50d = ema(cd, 50)[-1]
-        e200d = ema(cd, 200)[-1]
+        e50d = ema(cd, min(50, len(cd) - 1))[-1]
+        e200d = ema(cd, min(200, len(cd) - 1))[-1] if len(cd) >= 50 else e50d
         r1d = rsi(cd)
-        daily_trend = direction(e50d, e200d)
-        daily_note = f"trend 1d {'bull' if daily_trend == 1 else 'bear' if daily_trend == -1 else 'neutro'}, RSI1d {r1d:.0f}"
+        daily_trend = 1 if e50d > e200d else -1
+        daily_note = f"trend 1d {'bull' if daily_trend == 1 else 'bear'}, RSI1d {r1d:.0f}"
 
     # --- pattern candele
     pat = doji_pattern(b1)
@@ -187,17 +139,14 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
         comp[side_name].append(f"{why} (+{pts})")
 
     # trend 4h: 20 punti
-    if trend4:
-        add("long" if trend4 == 1 else "short", 20, "trend 4h")
+    add("long" if e50_4 > e200_4 else "short", 20, "trend 4h")
     # trend 1h: 15 punti
-    if direction(e20,e50):
-        add("long" if direction(e20,e50)==1 else "short", 15, "trend 1h")
+    add("long" if e20 > e50 else "short", 15, "trend 1h")
     # trend 1d: 15 punti (se disponibile)
     if daily_trend != 0:
         add("long" if daily_trend == 1 else "short", 15, "trend 1d")
     # prezzo vs EMA50 1h: 8 punti
-    if direction(price,e50):
-        add("long" if direction(price,e50)==1 else "short", 8, "prezzo vs EMA50")
+    add("long" if price > e50 else "short", 8, "prezzo vs EMA50")
     # momentum 24h: fino a 12 punti
     m = int(round(min(abs(roc24) / 0.03, 1.0) * 12))
     if m:
@@ -208,12 +157,12 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
     elif c1[-1] < lo20:
         add("short", 10, "rottura minimi 20h")
     # RSI 1h: 8 punti
-    if 50 < r1h <= 70:
+    if 50 <= r1h <= 70:
         add("long", 8, f"RSI {r1h:.0f}")
     elif 30 <= r1h < 50:
         add("short", 8, f"RSI {r1h:.0f}")
     # volume: 4 punti
-    if vol_ratio > 1.3 and direction(c1[-1],b1[-1,1]):
+    if vol_ratio > 1.3:
         add("long" if c1[-1] >= b1[-1, 1] else "short", 4, f"volumi x{vol_ratio:.1f}")
 
     # --- pattern candele: fino a 8 punti
@@ -262,14 +211,9 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None,
     return Reading(
         symbol=symbol, price=price, side=side, score=score, long_score=ls, short_score=ss,
         atr_pct=a_pct, sl_pct=sl, tp_pct=round(sl * 1.8, 5),
-        facts={"rsi1h": round(r1h, 1), "ema20_50_1h": "su" if direction(e20,e50)==1 else "giu" if direction(e20,e50)==-1 else "neutro",
-               "ema50_200_4h": "su" if trend4==1 else "giu" if trend4==-1 else "neutro" if trend4==0 else "nd",
-               "bars_4h": len(b4), "slow_4h_period": 200 if len(b4)>=200 else None, "roc24h": round(roc24, 4),
+        facts={"rsi1h": round(r1h, 1), "ema20_50_1h": "su" if e20 > e50 else "giu",
+               "ema50_200_4h": "su" if e50_4 > e200_4 else "giu", "roc24h": round(roc24, 4),
                "atr1h_pct": round(a_pct, 4), "vol_ratio": round(vol_ratio, 2),
-               # Previous 20 CLOSED 1h bars only; present to the model as context,
-               # NOT a new entry gate or a guarantee of an executed fill.
-               "support_prev_20h": round(lo20, 8),
-               "resistance_prev_20h": round(hi20, 8),
                "daily_trend": daily_note},
         why=comp["long" if side == 1 else "short"],
         seasonal_note=sea.note,
