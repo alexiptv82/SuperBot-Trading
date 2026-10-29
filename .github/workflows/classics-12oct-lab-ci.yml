@@ -1,0 +1,40 @@
+name: 12 October classic strategy provenance - offline
+on:
+  push:
+    branches: [work/classics-12oct-selective-lab-20261029]
+permissions:
+  contents: read
+jobs:
+  historical-source-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Historical scorer must be identical during golden and first loss
+        run: |
+          set -eu
+          FILE=backend/desk/signals.py
+          OLD=$(git rev-parse a0afc63:$FILE)
+          for SHA in 7ced3a6 5818aee 18d145f b4709d1; do
+            test "$(git rev-parse ${SHA}:$FILE)" = "$OLD"
+          done
+          test "$(git rev-parse dc16e01:$FILE)" != "$OLD"
+          echo "Historical scorer stable across 12-16 October: $OLD"
+      - name: Detect unsuitable existing backtest baseline
+        run: |
+          set -eu
+          grep -q 'return 60 if sym in TIER_AB else 63' deploy/scripts/desk_backtest.py
+          grep -q 'start_equity=100000.0' deploy/scripts/desk_backtest.py
+          echo 'Existing backtest NOT a faithful 12 Oct replay (threshold and bankroll mismatch)'
+      - name: Verify protected production source untouched
+        run: |
+          set -eu
+          test -z "$(git diff --name-only dc16e01 HEAD -- backend/desk deploy frontend .github/workflows/desk-deploy.yml)"
+      - name: Print offline findings
+        run: |
+          echo '### Source-only proof; NOT a PnL replay' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Historical scoring file identical on 12,15,16 Oct.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Existing backtest requires baseline-fidelity corrections before A/B.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No VPS, keys, account or trade operations used.' >> "$GITHUB_STEP_SUMMARY"
