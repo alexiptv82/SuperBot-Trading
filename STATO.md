@@ -1,3 +1,11 @@
+## 29/10 (16:00) — LABORATORIO EDGE (base13): NESSUNA EDGE LORDA — base13 perde anche a costi zero
+
+Laboratorio offline pre-registrato su 540 giorni candele reali (ramo `work/edge-lab-claude-20261029`, nessun bot toccato). Tre blocchi: A (costi), B (cap concentrazione), C (trend 4h). **Nessuna gate superata.** Risultati chiave: ordini maker −28% perdite ma ancora negative; cap posizioni blocca il 70–95% dei trade senza migliorare il R unitario; breakout 4h negativo anche lordo (R=−0,003, PF=0,954). Conclusione: il vantaggio lordo di base13 è assente — i costi aggravano ma non causano le perdite. Rapporto completo: `backend/edge_lab_claude/RAPPORTO.md` (commit `c919ed2`). Nessun deploy, DESK_MODE=paper, bot invariati. **Prossimo passo: solo dopo decisione utente.**
+
+AI: claude
+
+---
+
 ## 29/10 — BRAIN SCALP GRUPPO 5 COMPLETATO OFFLINE (I9 + I7), due CI verdi
 
 Dopo OK dell'utente «ok procediamo», implementato I9 sul solo ramo **`work/brain-scalp-dual-20261028`**: metriche aggiornate e persistite dopo ogni tick (equity marcata solo da quote fresche; saldo non inventato; trade oggi e totali; realizzato netto senza duplicare parziali; fee, margine, posizioni, tempo slot vuoti, blocchi). Implementato I7 `snapshot.py`: publisher atomico dual PAPER invocabile dal futuro supervisore ogni **5s**, lettura snapshot stale esplicita, controlli identità e no secret. GitHub Actions **[40904255227](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40904255227) SUCCESS: 101 test Python3.10 + 101 Python3.11**, classici/Brain Free/deploy protetti.
