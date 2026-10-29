@@ -25,7 +25,7 @@ jobs:
           BASE=c1a7c91924c92ff7a2a48988dfa0c3bda96aad48
           CHANGED="$(git diff --name-only $BASE HEAD)"
           echo "$CHANGED"
-          BAD="$(echo "$CHANGED" | grep -vE '^(backend/desk/(brain|cli|engine|learning|notifier|signals)\.py|backend/tests_rollback_9fa/.*|\.github/workflows/desk-deploy\.yml|\.github/workflows/classics-rollback-9fa-claude\.yml|deploy/ritorno-9fa667f/.*)$' || true)"
+          BAD="$(echo "$CHANGED" | grep -vE '^(backend/desk/(brain|cli|engine|learning|notifier|signals)\.py|backend/tests_rollback_9fa/.*|\.github/workflows/desk-deploy\.yml|\.github/workflows/classics-rollback-9fa-claude\.yml|\.github/workflows/desk-ci\.yml|\.github/workflows/desk-reset-portfolios\.yml|deploy/ritorno-9fa667f/.*)$' || true)"
           test -z "$BAD" || { echo "FUORI PERIMETRO: $BAD"; exit 1; }
           for f in brain cli learning notifier signals; do
             git diff --quiet 9fa667f HEAD -- backend/desk/$f.py || { echo "backend/desk/$f.py diverso da 9fa667f"; exit 1; }

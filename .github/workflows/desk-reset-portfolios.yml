@@ -1,0 +1,156 @@
+name: Sala segnali - chiudi posizioni e riporta i portafogli a 1000$ (PAPER, bot in pausa)
+
+# Fa le stesse due cose dei tasti dell'app "Chiudi" e "Azzera portafoglio", ma senza passare dall'app:
+#   1) chiude a prezzo di mercato le posizioni ancora aperte (close_position.flag),
+#   2) azzera il CONTO e riparte da 1000$ (reset_portfolio.flag).
+# Il bot resta IN PAUSA: l'avvio lo preme l'utente. Il cervello (storico trade, appunti, errori, registro di
+# apprendimento) non viene toccato: lo garantisce il bot stesso, che archivia la run e non cancella nulla.
+# Sicurezze: solo PAPER (si controlla l'ambiente dei container), solo bot gia' in pausa, nessuna scrittura finche'
+# tutti i controlli non passano, copia di sicurezza dei file di stato prima di scrivere i comandi, e il file trigger
+# deve contenere la conferma esplicita "confirm=paper-reset-1000" e i bot scelti ("bots=hawk,bull").
+# Parte SOLO quando cambia deploy/desk-reset-portfolios.trigger.
+
+on:
+  push:
+    branches: [rule-pool]
+    paths:
+      - "deploy/desk-reset-portfolios.trigger"
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Leggi e valida la richiesta
+        id: req
+        run: |
+          set -e
+          T=deploy/desk-reset-portfolios.trigger
+          CONFIRM="$(sed -n 's/^confirm=//p' "$T" | head -n1 | tr -d '[:space:]')"
+          [ "$CONFIRM" = "paper-reset-1000" ] || { echo "RESET_BLOCKED=confirm_mancante"; exit 1; }
+          BOTS="$(sed -n 's/^bots=//p' "$T" | head -n1 | tr -d '[:space:]')"
+          case "$BOTS" in hawk,bull|hawk|bull) ;; *) echo "RESET_BLOCKED=bots_non_validi"; exit 1 ;; esac
+          echo "bots=$BOTS" >> "$GITHUB_OUTPUT"
+          echo "Richiesta valida: bot=$BOTS"
+      - name: Chiudi le posizioni aperte e azzera il conto (VPS Singapore)
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          RESET_BOTS: ${{ steps.req.outputs.bots }}
+        with:
+          host: 51.79.205.82
+          # Impronta ECDSA del server Singapore: se cambia, la connessione viene rifiutata.
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          envs: RESET_BOTS
+          command_timeout: 15m
+          script: |
+            set -e
+            python3 -I - <<'PY'
+            import json, os, shutil, subprocess, sys, time
+            BASE = "/opt/superbot-desk-data"
+            BOTS = [b for b in os.environ.get("RESET_BOTS", "").split(",") if b in ("hawk", "bull")]
+            if not BOTS:
+                raise SystemExit("RESET_BLOCKED=nessun_bot")
+
+            def sh(args):
+                return subprocess.run(args, capture_output=True, text=True)
+
+            def state(p):
+                with open(f"{BASE}/{p}/state_v2.json") as f:
+                    return json.load(f)
+
+            def put(path, obj):
+                tmp = path + ".tmp"
+                with open(tmp, "w") as f:
+                    f.write(json.dumps(obj))
+                os.replace(tmp, path)
+
+            def wait(cond, secs):
+                t0 = time.time()
+                while time.time() - t0 < secs:
+                    try:
+                        if cond():
+                            return True
+                    except Exception:
+                        pass
+                    time.sleep(3)
+                return False
+
+            # ---- 1) controlli: nessuna scrittura finche' non passano per TUTTI i bot scelti
+            before = {}
+            for p in BOTS:
+                q = sh(["docker", "inspect", "--format", "{{json .Config.Env}}", "superbot-desk-" + p])
+                if q.returncode:
+                    raise SystemExit("RESET_BLOCKED=container_assente " + p)
+                env = dict(v.split("=", 1) for v in json.loads(q.stdout) if "=" in v)
+                if env.get("DESK_MODE", "paper") != "paper":
+                    raise SystemExit("RESET_BLOCKED=non_paper " + p)
+                if sh(["docker", "inspect", "-f", "{{.State.Running}}", "superbot-desk-" + p]).stdout.strip() != "true":
+                    raise SystemExit("RESET_BLOCKED=container_non_in_funzione " + p)
+                if not os.path.isfile(f"{BASE}/{p}/pause.flag"):
+                    raise SystemExit("RESET_BLOCKED=bot_non_in_pausa " + p)
+                for f in ("close_position.flag", "reset_portfolio.flag", "reset.flag"):
+                    if os.path.exists(f"{BASE}/{p}/{f}"):
+                        raise SystemExit(f"RESET_BLOCKED=comando_gia_in_coda {p} {f}")
+                st = state(p)
+                before[p] = {"run_no": int(st.get("run_no", 1)), "open": sorted((st.get("main") or {}).get("positions") or {})}
+                before[p]["brain"] = {f: (os.path.getsize(f"{BASE}/{p}/{f}") if os.path.isfile(f"{BASE}/{p}/{f}") else None)
+                                      for f in ("trade_history.jsonl", "lessons.md", "errors.md", "learning_log.jsonl")}
+                print(f"[{p}] run {before[p]['run_no']}, posizioni aperte: {before[p]['open'] or 'nessuna'}", flush=True)
+            print("CONTROLLI_SUPERATI=PASS (paper, container attivi, bot in pausa)", flush=True)
+
+            # ---- 2) copia di sicurezza dei file di stato (solo lettura sull'origine)
+            stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+            dest = f"/opt/superbot-backups/pre-reset-{stamp}"
+            os.makedirs(dest, exist_ok=True)
+            for p in BOTS:
+                shutil.copy2(f"{BASE}/{p}/state_v2.json", f"{dest}/{p}.state_v2.json")
+            print("copia di sicurezza dello stato in", dest, flush=True)
+
+            # ---- 3) chiusura delle posizioni aperte (come il tasto Chiudi), poi attesa
+            for p in BOTS:
+                if before[p]["open"]:
+                    put(f"{BASE}/{p}/close_position.flag", {"symbols": before[p]["open"], "ts": int(time.time() * 1000)})
+                    print(f"[{p}] richiesta di chiusura: {before[p]['open']}", flush=True)
+            for p in BOTS:
+                if before[p]["open"]:
+                    ok = wait(lambda p=p: not ((state(p).get("main") or {}).get("positions")), 300)
+                    la = state(p).get("last_action") or {}
+                    print(f"[{p}] chiusura: {'ok' if ok else 'NON COMPLETATA'} - esito bot: {la.get('type')} ok={la.get('ok')} {str(la.get('detail'))[:160]}", flush=True)
+                    if not ok:
+                        raise SystemExit(f"RESET_STOP=posizioni_ancora_aperte {p} (nessun azzeramento eseguito su questo bot)")
+
+            # ---- 4) azzeramento del conto (il bot lo rifiuta da solo se non e' in pausa o ha posizioni)
+            for p in BOTS:
+                t_req = int(time.time() * 1000)
+                put(f"{BASE}/{p}/reset_portfolio.flag", {})
+                def done(p=p, t_req=t_req):
+                    la = state(p).get("last_action") or {}
+                    return la.get("type") == "reset_portfolio" and int(la.get("ts", 0)) >= t_req
+                if not wait(done, 180):
+                    raise SystemExit(f"RESET_STOP=nessuna_risposta_dal_bot {p}")
+                la = state(p).get("last_action") or {}
+                print(f"[{p}] esito azzeramento: ok={la.get('ok')} - {str(la.get('detail'))[:200]}", flush=True)
+                if not la.get("ok"):
+                    raise SystemExit(f"RESET_STOP=rifiutato_dal_bot {p}")
+
+            # ---- 5) verifica finale
+            for p in BOTS:
+                st = state(p)
+                cash = float((st.get("main") or {}).get("cash", -1))
+                n = len((st.get("main") or {}).get("positions") or {})
+                paused = os.path.isfile(f"{BASE}/{p}/pause.flag")
+                run_ok = int(st.get("run_no", 0)) == before[p]["run_no"] + 1
+                print(f"[{p}] dopo il reset: run {st.get('run_no')}, posizioni {n}, conto {cash:.2f}$, in pausa: {paused}, run incrementata: {run_ok}", flush=True)
+                if n or abs(cash - 1000.0) > 0.01 or not paused or not run_ok:
+                    raise SystemExit(f"RESET_VERIFICA_FALLITA {p}")
+                for f, size_before in before[p]["brain"].items():
+                    path = f"{BASE}/{p}/{f}"
+                    size_after = os.path.getsize(path) if os.path.isfile(path) else None
+                    print(f"[{p}] cervello: {f}: {size_before} -> {size_after} byte", flush=True)
+                    if size_before is not None and (size_after is None or size_after < size_before):
+                        raise SystemExit(f"RESET_VERIFICA_FALLITA {p}: il file del cervello {f} e' diminuito")
+            print("RESET_OK: portafogli a 1000$, bot in pausa, cervello intatto", flush=True)
+            PY
