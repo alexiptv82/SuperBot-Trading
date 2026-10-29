@@ -411,6 +411,27 @@ class PaperWallet:
                 del state['plans'][symbol]
                 events.append({'kind':'plan_invalidated','symbol':symbol,
                                'plan_id':p.plan_id,'observed_price':q['price']})
+        # Physical and scalp exits can realize more costs than the mark-price
+        # estimate. Re-evaluate risk AFTER all exits and BEFORE opening plans.
+        end_capital,end_complete,_=_safe_equity(state,quotes)
+        end_fresh=(end_complete and all(
+            fresh(quotes.get(sym),now,self.protect_cfg)
+            for sym in state['positions']))
+        if not end_fresh:
+            opening_allowed=False
+        elif today==state['daily']['utc']:
+            end_baseline=state['daily']['start_equity']
+            if end_capital<=end_baseline*(1-self.spec.daily_stop_pct):
+                if not state['daily_stop_triggered']:
+                    state['daily_stop_triggered']=True
+                    state['daily_stop_day']=today
+                    events.append({'kind':'daily_stop_latched','day_utc':today,
+                                   'drawdown_pct':round(
+                                       100*(1-end_capital/end_baseline),4),
+                                   'limit_pct':100*self.spec.daily_stop_pct})
+                opening_allowed=False
+            if end_capital<=self.spec.kill_equity:
+                opening_allowed=False
         risk_used=sum(_risk(p,self.cfg) for p in state['positions'].values())
         for symbol,raw in list(state['plans'].items()):
             if not opening_allowed or state.get('paused'): break
