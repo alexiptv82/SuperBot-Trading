@@ -1081,10 +1081,30 @@ AI: chatgpt
 AI: chatgpt
 
 
-## 29/10/2026 — Integrazione contesto AI e riferimento storico: IN CORSO
+## 29/10/2026 — Integrazione contesto AI: autorizzazione iniziale (conclusa, esito sotto)
 - Utente «ok procedi» dopo consegna audit/riferimento48808a6. Autorizzati sviluppo e test offline del collegamento al contesto DeepSeek/Claude, non deploy o chiamate a pagamento.
 - Ramo nuovo work/brain-ai-context-20261029 da48808a6aa5cd9d2a4a1933b27ebc7828fd3ac480; baseline di ripristino preservata. Riutilizzare reference builder e contrattoPlan/BrainPair, niente scorer duplicato o fallback automatico ai classici.
 - Contesto di un conto per richiesta, compatibile con walletunico2000 nel disegno; non creare/azzerare/sommare i due database per fingere migrazione già fatta. Limiti finanziari del nuovo conto devono essere espliciti: nessun nuovo valore imposto in questa fase.
 - Preparare prompt verificabile con costi, capacità, entrambi i punteggi storici/avvisi, timestamp e fingerprint esposizione; rispostaJSON con piano condizionale oHOLD; DeepSeek principale/Claude revisore selettivo iniettati e testati con risposte sintetiche.
 - Ammissione solo dopo risposta coerente, non scaduta, contesto esposizione valido e con guardie esistenti su quote correnti. Timeout/revisione mancante non generano trade. Nessuna APIkey, rawprompt o testo errore sensibile nei journal.
 - Solo codiceScalp/test/docs/CIisolata e diario. Classici, BrainFree, PWA, main/rule-pool, deploy, VPS e memoria cumulativa intatti. Unico autore ChatGPT su questi file.
+
+
+## Integrazione contesto AI DeepSeek/Claude — COMPLETATA offline, CI verde
+
+- Ramo work/brain-ai-context-20261029, commit3e73bbff44946df7dba027e27086009229ebb351; base48808a6aa5cd9d2a4a1933b27ebc7828fd3ac480 preservata.
+- CI https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40950251529 SUCCESS:150test Python3.10 e150 Python3.11,300esecuzioni.125test precedenti più25nuove integrazioni; guardiaGit protegge desk,brain_free,deploy,frontend eDockerfile. Localmente139test(114baseline+25nuovi)Python3.12PASS, sintassiPASS.
+- ai_context: richiesta immutabile di un account con IDsha256, deadline, fingerprint esposizione e mandato. Include costi/capacità/posizioni, candele1m/5m chiuse e selezionate, vincoli contrattuali, entrambi punteggi del riferimento storico e avvisi. Dati mancanti/scaduti dichiarati, campi extra/futuri esclusi.
+- BrainPair.prepare_ai_request legge il wallet selezionato e ultime10chiusure; filtra episodi futuri/accountesplicitamente diverso e campi fuori whitelist. Memoriaepisodica, non retraining o lezioni persistenti giàvalidate.
+- ai_analysis.evaluate accetta callback esplicite(system,user) compatibili coi ritorni dei trasporti giàesistenti:DeepSeek content/usage,Claude(text,usage). Nessuna nuovaHTTP, APIkey o chiamata reale. REVIEW_PROVIDER=claude sostituisce il riferimentoSol non disponibile inconfigScalp; nessun cambio altrasporto operativo.
+- Revisione perproposta in contrasto col riferimento nonneutrale o conflag timing_uncertain/timeframe_conflict. Claude vede stesso contesto piùproposta primaria come dato nonattendibile e puòHOLD o proporre pianivalidi. Flagsono valutazioni delmodello, non evidenza indipendente o sogliecalibrate. HOLDnon attiva inutilmente revisione. Revisione mancata/fallita non produce fallbackFlash/rules/size50%.
+- accept_ai_analysis verifica hash/identità/mandato, deadline e clock, esposizione/prenotazioni/stop/funding/pausa/daily/coverage ancoraidentici, refancoravalido e revisione completata. Heartbeat/metriche/cursori/quote possonoavanzare senza invalidare dasoli. Ammissione usa quotescorrenti e accept_ai_plans giàesistente (guardieI2/I3/I4/G4), conrifiuti individuali dei piani.
+- last_ai_context_id persistente entra nelfingerprint e impedisce ripetizione di contesto giàconsumato, ancheHOLD dopo restart. Nessuna migrazioneSQL o reset. Evento ai_context_processed salva soloID,ruolo,revisione,orari,conteggi e tokenriconosciuti; nessun rawprompt/risposta completa/errore sensibile. Usageassente ignota, noncosto0 e nonledgerUSD.
+- Prove25nuove:unaccount/fixture2000, punteggi/costi/memoriacausale, esclusioni dati, callbackDeepSeek->prenotazione->tickPAPER,ClaudeHOLD/opiano,reviewselettiva/errori/assenza,JSONcorrotto/duplicato/troncato,requestalterata prima dichiamareprovider, esposizione/protezionicambiate eheartbeatinnocui,expiry/walletestraneo,overshootcorrente,replaydoporestart,indipendenzapiani eprivacy audit. UnerroreNameError nella nuova fixture di test èstato corretto prima delPASSfinale; nonerrorebot.
+- Walletunico2000 verificato SOLO come contesto sintetico senza fusioneDB. BrainPair mantienei due wallet del laboratorio: non creata/attivata classe operativaunica, non migrati conti e non scelti nuovi limiti finanziari. Limiti/rischio/slot restano quelli delmandatoesplicito di ciascun wallet nei test, non una proposta automaticamente approvata per ilnuovo conto.
+- Documentazione https://github.com/alexiptv82/SuperBot-Trading/blob/3e73bbff44946df7dba027e27086009229ebb351/docs/brain-ai-context-review.md
+- Diff verificato:8file(new ai_context.py,ai_analysis.py,test_brain_ai_context.py,CIisolata,reviewdoc;modificati coordinator.py,config.py,test_group6 perClaude). Nessun cambio allo scorerclassico, BrainFree, PWA, main/rule-pool, deploy, VPS, memoria cumulativa o dati operativi; nessun merge/reset/ordine/APIpagata. RamoScalp originale856a ePWA9251 invariati.
+- Limiti prima delrilascio:mandato/accountunico e migrazioneverificata separata; readercausale delriferimento nel feed; supervisoreH24 che mantenga tickprotettivi indipendenti dallecallback; budgetAPIcrash-safe/clockpre-chiamata/timeout e trasportireali autorizzati; audit tradeBrainrecenti e provecomparabili. Questo commit non certifica qualitàdecisioni, redditività o apprendimento e non èdeployato.
+- PrenotazioneChatGPT CONCLUSA. Ripristino codice con nuovo revert, senza forcepush o resetdati.
+
+AI: chatgpt
