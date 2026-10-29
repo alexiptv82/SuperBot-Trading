@@ -101,13 +101,16 @@ def read_snapshot(path,now,stale_after_ms=60000):
     try:
         if path.stat().st_size>2000000: raise ValueError('too_large')
         snapshot=json.loads(path.read_text(encoding='utf-8'))
-        if (snapshot.get('schema_version')!=1 or
+        if (not isinstance(snapshot,dict) or
+            snapshot.get('schema_version')!=1 or
             snapshot.get('paper') is not True or
             snapshot.get('read_only') is not True or
+            not isinstance(snapshot.get('profiles'),dict) or
             set(snapshot.get('profiles',{}))!=set(IDS)):
             raise ValueError('bad_schema')
         for name,p in snapshot['profiles'].items():
-            if p.get('account_id')!=IDS[name] or p.get('paper') is not True:
+            if (not isinstance(p,dict) or
+                p.get('account_id')!=IDS[name] or p.get('paper') is not True):
                 raise ValueError('foreign_wallet')
         age=now-snapshot['ts_ms']
         if type(age) not in (int,float) or age<0:
@@ -121,5 +124,6 @@ def read_snapshot(path,now,stale_after_ms=60000):
                                    and 0<=now-heartbeat<60000)
             profile['snapshot_stale']=stale
         return snapshot
-    except (OSError,ValueError,TypeError,KeyError):
+    except (OSError,ValueError,TypeError,KeyError,RecursionError):
         return {'status':'unavailable','available':False,'profiles':{}}
+

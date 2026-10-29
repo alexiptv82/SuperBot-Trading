@@ -93,6 +93,21 @@ from director.brain_scalp.snapshot import (
 
 
 class Group5Snapshots(unittest.TestCase):
+    def test_i7_wrong_json_container_types_fail_closed(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=Path(root)/'status.json'
+            profile={'account_id':'brain-scalp-bull-paper','paper':True}
+            for bad in [[],None,True,42,'snapshot',
+                        {'schema_version':1,'paper':True,'read_only':True,
+                         'profiles':['hawk','bull'],'ts_ms':NOW},
+                        {'schema_version':1,'paper':True,'read_only':True,
+                         'profiles':{'hawk':[],'bull':profile},'ts_ms':NOW}]:
+                with self.subTest(payload=bad):
+                    path.write_text(json.dumps(bad),encoding='utf-8')
+                    before=path.read_bytes()
+                    self.assertEqual(read_snapshot(path,NOW)['status'],'unavailable')
+                    self.assertEqual(path.read_bytes(),before)
+
     def test_i7_both_wallets_atomic_publication_and_throttle(self):
         with tempfile.TemporaryDirectory() as root:
             pair=BrainPair(root,initialize=True,now_ms=NOW)
@@ -184,3 +199,4 @@ class Group5Snapshots(unittest.TestCase):
                 self.assertEqual(read_snapshot(output,NOW+1000)['profiles']['hawk']['positions'][0]['symbol'],'BTC')
             finally:
                 pair.close()
+
