@@ -1,3 +1,11 @@
+## 29/10 (18:30) — SVOLTA STRATEGICA: CLASSICI ACCANTONATI, FOCUS ESCLUSIVO SUL BRAIN
+
+Decisione dell'utente: i bot classici (Falco/Toro, base13/rule-pool) vengono **fermati e accantonati** — non cancellati, non resettati, solo messi da parte. Il laboratorio edge ha confermato l'assenza di vantaggio lordo in base13. Il **Brain** (attualmente `work/brain-scalp-dual-20261028` da ChatGPT + Brain Free deployato) piace per il metodo: poche aperture, ragionate, ma posizioni troppo leggere per generare profitto significativo — il metodo è giusto, va solo migliorato. **Prossima fase: tutta l'energia su Brain.** Modelli in discussione: scanner quantitativo H24 con DeepSeek V4.1 Flash (`deepseek-flash`, reasoning_effort="high") + secondo modello (GPT-6.1 Sol o equivalente) solo per casi complessi. DeepSeek ha cambiato i nomi API a luglio 2026: `deepseek-chat`/`deepseek-reasoner` sono deprecati. Nessun deploy, DESK_MODE=paper, cervello intatto, classici non toccati. **In attesa che ChatGPT finisca il lavoro sul Brain Scalp, poi si decide.**
+
+AI: claude
+
+---
+
 ## 29/10 (16:00) — LABORATORIO EDGE (base13): NESSUNA EDGE LORDA — base13 perde anche a costi zero
 
 Laboratorio offline pre-registrato su 540 giorni candele reali (ramo `work/edge-lab-claude-20261029`, nessun bot toccato). Tre blocchi: A (costi), B (cap concentrazione), C (trend 4h). **Nessuna gate superata.** Risultati chiave: ordini maker −28% perdite ma ancora negative; cap posizioni blocca il 70–95% dei trade senza migliorare il R unitario; breakout 4h negativo anche lordo (R=−0,003, PF=0,954). Conclusione: il vantaggio lordo di base13 è assente — i costi aggravano ma non causano le perdite. Rapporto completo: `backend/edge_lab_claude/RAPPORTO.md` (commit `c919ed2`). Nessun deploy, DESK_MODE=paper, bot invariati. **Prossimo passo: solo dopo decisione utente.**
