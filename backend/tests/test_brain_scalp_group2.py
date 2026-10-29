@@ -196,5 +196,67 @@ class CandleBackfill(unittest.TestCase):
                 pair.close()
 
 
+    def test_b2_failed_gap_never_advances_past_unknown_stop(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.hawk.submit(plan(),NOW,CONTRACTS,{'BTC':quote()})
+                pair.tick(market(ts=NOW+1000),CONTRACTS,NOW+1000)
+                out=pair.tick(incomplete_market(NOW+4*MINUTE),
+                              CONTRACTS,NOW+4*MINUTE)
+                p=pair.hawk.store.load()['positions']['BTC']
+                self.assertEqual(out['hawk']['positions'],1)
+                self.assertEqual(p['last_bar_ms'],NOW+MINUTE)
+                self.assertEqual(p['scalp_gap_cursor_ms'],NOW)
+                self.assertFalse(p['coverage_complete'])
+                self.assertIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+            finally:
+                pair.close()
+
+    def test_b2_delayed_repair_replays_missing_stop(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.hawk.submit(plan(),NOW,CONTRACTS,{'BTC':quote()})
+                pair.tick(market(ts=NOW+1000),CONTRACTS,NOW+1000)
+                pair.tick(incomplete_market(NOW+4*MINUTE),
+                          CONTRACTS,NOW+4*MINUTE)
+                pair.candle_backfill=lambda symbol,start,end: [
+                    bar(ts,low=99.0) for ts in range(start,end,MINUTE)]
+                out=pair.tick(incomplete_market(NOW+4*MINUTE),
+                              CONTRACTS,NOW+4*MINUTE)
+                self.assertEqual(out['hawk']['positions'],0)
+                self.assertNotIn('BTC',pair.hawk.store.load()['coverage_gaps'])
+                self.assertTrue(any(e.get('kind')=='trade_closed'
+                                    and e.get('reason')=='stop_closed_bar'
+                                    for e in out['hawk']['events']))
+                self.assertTrue(any(e.get('kind')=='gap_recovered_verified'
+                                    for e in out['hawk']['events']))
+            finally:
+                pair.close()
+
+    def test_b2_safe_repair_restores_coverage_only_after_replay(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pair=BrainPair(folder,initialize=True,now_ms=NOW)
+            try:
+                pair.hawk.submit(plan(),NOW,CONTRACTS,{'BTC':quote()})
+                pair.tick(market(ts=NOW+1000),CONTRACTS,NOW+1000)
+                pair.tick(incomplete_market(NOW+4*MINUTE),
+                          CONTRACTS,NOW+4*MINUTE)
+                pair.candle_backfill=lambda symbol,start,end: [
+                    bar(ts) for ts in range(start,end,MINUTE)]
+                out=pair.tick(incomplete_market(NOW+4*MINUTE),
+                              CONTRACTS,NOW+4*MINUTE)
+                self.assertEqual(out['hawk']['positions'],1)
+                p=pair.hawk.store.load()['positions']['BTC']
+                self.assertTrue(p['coverage_complete'])
+                self.assertNotIn('scalp_gap_cursor_ms',p)
+                self.assertEqual(p['last_bar_ms'],NOW+3*MINUTE)
+                self.assertEqual(pair.hawk.store.load()['coverage_gaps'],[])
+            finally:
+                pair.close()
+
+
+
 if __name__=='__main__':
     unittest.main()
