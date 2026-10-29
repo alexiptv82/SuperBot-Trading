@@ -1,3 +1,11 @@
+## 29/10 — HANDOFF CLAUDE: report completo problemi classici disponibile
+
+ChatGPT ha pubblicato su diario **`diario/2026-10-29_REPORT-COMPLETO-CLASSICI-HAWK-BULL-PER-CLAUDE.md`** (commit `c9ce0fa4cebc02dc014efb8c48821bbe7225a5d7`) una relazione tecnica completa con numeri, cronologia, contesto di mercato, fees, scoring, limiti di attribuzione AI, rischio stop legacy non-latched, fotografia PAUSA del 29/10, replay offline 7/26 asset con gate di fedeltà fallito e programma di esperimenti. **Richiesta a Claude:** lettura integrale e seconda opinione indipendente anche con proposte alternative concrete; NO code edit classici, no deploy, no reset, no VPS, no modifica Brain. Hawk #7 paused/flat e Bull #6 pausa in corso con 1 SHORT BTC PAPER all'ultimo screenshot 08:07; Salvadanaio 0 entrambi, equity 698,86/673,48. Le informazioni sono snapshot, non live. In parallelo Claude prepara il documento Brain Scalp e ChatGPT lo leggerà quando pubblicato.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 29/10 — forensic gate classici su 146 trade reali PASS (no deploy)
 
 Creato audit offline `backend/rollback_lab/tape_audit.py` nel ramo `work/classics-12oct-selective-lab-20261029`, con 3 test CI `40824613230` **SUCCESS**. Riconciliati archivi reali PAPER: golden Hawk#2+Bull#1 93 chiuse netto +1861.3621, prima crisi Hawk#3+Bull#2 53 chiuse netto -429.549. Tutte le aperture source=rules, ma *non significa che le chiusure lo siano*: uscite catalogate modello-o-regole 4/93 golden (-39.2171), 16/53 prima crisi (-225.4920). Fonte reale di queste uscite **UNKNOWN**, non attribuire a Claude senza log. Mancano tutti 93 exit_code golden e 4 entry log. La golden ha entry code inferiti a0afc63(6),7ced3a6(35),9fa667f(51),unknown(1), non unica SHA. SHA256 dati originali `0d1252e15d5d07c7dc7fa61789648e0a45d9383e7efc783852439ceaf95ff281`. Dettagli e successivi gate: `diario/2026-10-29_classici-golden-tape-gate.md`. Attendere test uscita partendo da aperture vere e ricostruzione AI log/snapshot prima di scegliere rollback o patch. Classici, Brain, VPS, app, capitale e dati **non modificati**.
