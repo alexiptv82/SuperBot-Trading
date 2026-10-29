@@ -984,3 +984,12 @@ AI: chatgpt
 - Gestione attiva giàpresente nel codice (BE netto/parziali/trailing/giveback): non duplicare. Scanner giàordina conscore, ma copre breakout; valutare copertura/setup. I540giorni15m dei classici non sono un replay completo dello scalp1m/5m.
 - API ufficiale conferma deepseek-flash e reasoning_effort high con thinking enabled; nessuna adozione suffissi non documentati o stime mensili prive di token misurati.
 - Motore resta856a5ed095d4; PWA9251e6ddf2d6. Solo analisi e diario, nessun cambio codice/parametri, deploy, merge, VPS, memoria o datioperativi. In attesa degli altri report per il confronto.
+
+
+## 29/10/2026 — Secondo report AI (ChatGPT esterno) valutato
+- Analisi: diario/2026-10-29_valutazione-report-chatgpt-brain-chatgpt.md. Fonte dichiaratamente progettuale: autore senza accesso repository.
+- Trattenuti: audit sizing pervincolo, schema consnapshot/evidenze/scadenza e singoladecisionefinale, confidence nonusata percapitale senza calibrazione, indice memoria separato, escalation delimitata, rankingpersetup e campionescartati, Riniziale e proveidempotenza.
+- Rischio0,25% nonadottato:2,5USDT su1000 può produrre size ancora piùpiccole sotto iminimi. Preset25%a1R/trail2ATRda1,5R da provare, nonimportare.
+- Verificato codice: BEattuale protegge quantitàresidua; BEinteraoperazione includendo parziali è variante diversa, nonbug giàdimostrato. Nonallargare stopraggiunti. Gestione persistente giàpresente: nessunaduplicazione.
+- Esempio138,24USD su8640chiamate corretto soloalle ipotesi token/tariffe delreport, nonpreventivo delBrain. ProviderH24 resta da implementare/misurare.
+- Nessun codice/parametro cambiato; baseline856a5ed095d4, PWA9251e6dd invariati. Solo diario, confronto deireport ancoraaperto.
