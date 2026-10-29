@@ -152,7 +152,7 @@ class PaperWallet:
                     # reclassify pre-patch unknown gaps as automatically safe.
                     position.setdefault('scalp_gap_cursor_ms',position['last_bar_ms'])
                     position['coverage_complete']=False
-            elif event['kind']=='gap_backfilled':
+            elif event['kind'] in ('gap_backfilled','gap_history_complete'):
                 symbol=event['symbol']
                 if symbol not in state['positions']:
                     if symbol in state['coverage_gaps']:
