@@ -3,10 +3,10 @@
 A future supervisor submits vetted AI plans and calls tick with observed data.
 This module cannot touch the original Brain or classical portfolios.
 """
-from dataclasses import asdict
+from dataclasses import asdict,replace
 import math
 from director.brain_free.execution import apply,close,fresh,margin,protect
-from .config import SPECS
+from .config import SPECS,ENTRY_PRICE_AGE_MS,PROTECT_PRICE_AGE_MS
 from .plans import Plan,parse_plan,triggered
 from .store import WalletStore
 
@@ -58,6 +58,8 @@ class PaperWallet:
     def __init__(self,root,name,initialize=False,now_ms=None):
         self.spec=SPECS[name]
         self.cfg=self.spec.brain_config()
+        self.entry_cfg=replace(self.cfg,price_age_ms=ENTRY_PRICE_AGE_MS)
+        self.protect_cfg=replace(self.cfg,price_age_ms=PROTECT_PRICE_AGE_MS)
         self.store=WalletStore(root,name,initialize=initialize,now_ms=now_ms)
 
     def close(self): self.store.close()
@@ -67,7 +69,10 @@ class PaperWallet:
         plan=parse_plan(raw,self.spec,now,whitelist)
         state=self.store.load()
         q=quotes.get(plan.symbol)
-        if not fresh(q,now,self.cfg): raise ValueError('stale_plan_quote')
+        if not fresh(q,now,self.entry_cfg):
+            if fresh(q,now,self.cfg):
+                raise ValueError('quote_too_stale_for_entry')
+            raise ValueError('stale_plan_quote')
         if plan.plan_id in state['plan_ids']: raise ValueError('duplicate_plan_id')
         if plan.symbol in state['positions'] or plan.symbol in state['plans']:
             raise ValueError('symbol_already_reserved')
@@ -94,7 +99,7 @@ class PaperWallet:
         state['last_ms']=now
         state['heartbeat_ms']=now
         state['last_prices']={s:m['quote'] for s,m in markets.items() if _valid_quote(m.get('quote'))}
-        state,events=protect(state,markets,contracts,now,self.cfg)
+        state,events=protect(state,markets,contracts,now,self.protect_cfg)
         if delta_ms:
             events.insert(0,{'kind':'clock_adjusted','delta_ms':delta_ms,
                              'original_now_ms':original_now})
@@ -108,7 +113,7 @@ class PaperWallet:
             events.append({'kind':'equity_unavailable','symbol':symbol,
                            'reason':'invalid_or_missing_mark'})
         opening_allowed=(delta_ms<=500 and complete and
-                         all(fresh(quotes.get(sym),now,self.cfg) for sym in state['positions']))
+                         all(fresh(quotes.get(sym),now,self.entry_cfg) for sym in state['positions']))
         today=now//86400000
         if today!=state['daily']['utc'] and opening_allowed:
             state['daily']={'utc':today,'start_equity':capital}
@@ -119,7 +124,7 @@ class PaperWallet:
         # Observe profits from fresh quotes, never from historical bar extremes.
         for symbol,p in list(state['positions'].items()):
             q=quotes.get(symbol)
-            if not fresh(q,now,self.cfg): continue
+            if not fresh(q,now,self.protect_cfg): continue
             policy=p.get('scalp_policy') or {}
             net=_net_at_quote(p,q['price'],self.cfg)
             peak=max(policy.get('peak_net',0),net)
@@ -159,7 +164,7 @@ class PaperWallet:
                       'reason':'AI: '+p.reason,'invalidation':p.invalidation,'stop':p.stop,
                       'target':p.target,'margin':p.margin,'leverage':p.leverage}
             try:
-                state2,opened=apply(state,decision,quotes,contracts,now,self.cfg)
+                state2,opened=apply(state,decision,quotes,contracts,now,self.entry_cfg)
             except (ValueError,KeyError,TypeError) as ex:
                 del state['plans'][symbol]
                 events.append({'kind':'plan_rejected','symbol':symbol,'why':str(ex)[:100]})
@@ -168,7 +173,15 @@ class PaperWallet:
             state['positions'][symbol]['scalp_policy']={'hold_max_ms':p.hold_max_ms,
                         'protect_after_usd':p.protect_after_usd,
                         'take_net_usd':p.take_net_usd,'peak_net':0.,'plan_id':p.plan_id}
-            events.extend(opened);risk_used+=estimated
+            events.extend(opened)
+            actual_fill=state['positions'][symbol]['entry']
+            events.append({'kind':'entry_fill','symbol':symbol,'plan_id':p.plan_id,
+                           'trigger_price':p.trigger_price,'observed_price':px,
+                           'fill_price':actual_fill,
+                           'slippage_pct':abs(actual_fill-p.trigger_price)/p.trigger_price*100,
+                           'execution_slippage_pct':abs(actual_fill-px)/px*100,
+                           'quote_age_ms':now-q['ts_ms']})
+            risk_used+=estimated
         self.store.commit(state,now,events)
         return {'account_id':self.spec.account_id,'positions':len(state['positions']),
                 'pending':len(state['plans']),'cash':state['cash'],
