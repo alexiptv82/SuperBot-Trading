@@ -68,9 +68,19 @@ class BrainPair:
         contains a type, not potentially sensitive exception arguments.
         """
         results={}
+        anchors={}
+        for wallet in (self.hawk,self.bull):
+            try:
+                for symbol,position in wallet.store.load()['positions'].items():
+                    ts=position['last_bar_ms']
+                    anchors[symbol]=min(anchors.get(symbol,ts),ts)
+            except Exception:
+                _LOG.exception('Cannot load cursor for gap repair')
+        repaired,gap_events=repair_markets(
+            markets,now,fetcher=self.candle_backfill,anchors=anchors)
         for name,wallet in (('hawk',self.hawk),('bull',self.bull)):
             try:
-                results[name]=wallet.tick(markets,contracts,now)
+                results[name]=wallet.tick(repaired,contracts,now,market_events=gap_events)
             except Exception as error:
                 _LOG.exception('Brain Scalp wallet tick failed: %s',name)
                 event={'kind':'wallet_tick_error','wallet':name,
@@ -85,4 +95,5 @@ class BrainPair:
                 results[name]={'status':'error','wallet':name,
                                'error_type':type(error).__name__,
                                'event_persisted':persisted,'events':[event]}
+        results['market_events']=gap_events
         return results
