@@ -44,8 +44,9 @@ class BrainPair:
         if not isinstance(raw,dict) or not isinstance(raw.get('plans'),list):
             raise ValueError('model_response_wrong_schema')
         proposals=raw['plans']
-        if len(proposals)>32:
-            raise ValueError('model_response_plan_limit')
+        # Bound work per response but keep independent valid prefix plans.
+        # An oversized model response must not discard all valid proposals.
+        skipped=max(0,len(proposals)-32)
         candidates=shortlist.get('candidates',[]) if isinstance(shortlist,dict) else []
         permitted={c['symbol']:c for c in candidates
                    if isinstance(c,dict) and isinstance(c.get('symbol'),str)
@@ -56,7 +57,7 @@ class BrainPair:
         wallet_engine=getattr(self,wallet)
         quotes={sym:m.get('quote') for sym,m in markets.items()
                 if isinstance(sym,str) and isinstance(m,dict)}
-        for item in proposals:
+        for item in proposals[:32]:
             sym=item.get('symbol') if isinstance(item,dict) else None
             if not isinstance(sym,str):
                 sym=None
@@ -102,9 +103,16 @@ class BrainPair:
             result['rejected'].append(rejection)
             audit.append({'kind':'ai_plan_rejected','wallet':wallet,
                           'symbol':sym,'why':rejection['why']})
+        rejected_count=len(result['rejected'])+skipped
+        if skipped:
+            result['rejected'].append({'symbol':None,
+                                       'why':'model_response_plan_limit',
+                                       'skipped_count':skipped})
+            audit.append({'kind':'ai_plans_truncated','wallet':wallet,
+                          'skipped_count':skipped})
         audit.append({'kind':'ai_response_processed','wallet':wallet,
                       'accepted':len(result['accepted']),
-                      'rejected':len(result['rejected'])})
+                      'rejected':rejected_count,'skipped':skipped})
         # Keep a bounded durable summary, but never journal untrusted raw text.
         state=wallet_engine.store.load()
         wallet_engine.store.commit(state,max(int(now),state['last_ms']),audit)
