@@ -1,3 +1,15 @@
+## 29/10 — BRAIN SCALP GRUPPO 5 COMPLETATO OFFLINE (I9 + I7), due CI verdi
+
+Dopo OK dell'utente «ok procediamo», implementato I9 sul solo ramo **`work/brain-scalp-dual-20261028`**: metriche aggiornate e persistite dopo ogni tick (equity marcata solo da quote fresche; saldo non inventato; trade oggi e totali; realizzato netto senza duplicare parziali; fee, margine, posizioni, tempo slot vuoti, blocchi). Implementato I7 `snapshot.py`: publisher atomico dual PAPER invocabile dal futuro supervisore ogni **5s**, lettura snapshot stale esplicita, controlli identità e no secret. GitHub Actions **[40904255227](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40904255227) SUCCESS: 101 test Python3.10 + 101 Python3.11**, classici/Brain Free/deploy protetti.
+
+Sul ramo APP **`work/brain-scalp-dual-app-20261028`**, PWA legge preferibilmente snapshot JSON verificato (percorso `BRAIN_SCALP_SNAPSHOT_PATH`), mostra avviso e valori **storici** se writer fermo; fallback SQLite read-only solo quando snapshot assente; snapshot esistente corrotto fallisce chiuso. **[CI APP 40904609621](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40904609621) SUCCESS: backend 12 test + frontend build**. Report per Claude: `diario/2026-10-29_brain-scalp-gruppo5-chatgpt.md`.
+
+**NESSUN merge, deploy, reset, ordine, lettura/scrittura VPS o modifica a Hawk/Bull classici e Brain Free.** Manca supervisore H24 che invochi publisher 5s e integrazione dei due branch dopo test end-to-end; NON dire che PWA in produzione è già funzionante via snapshot. DB precedenti richiedono migrazione esplicita con backup+restore. **Gruppo 6 I8 A/B/C rimane sospeso: serve scelta dell'utente**.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 29/10 — BRAIN SCALP GRUPPO 4 COMPLETATO OFFLINE: 178/178 test verdi
 
 Dopo l'OK dell'utente, sul solo ramo **`work/brain-scalp-dual-20261028`** implementato Gruppo 4 del prompt Claude: I6 `BrainPair.accept_ai_plans` accetta/rifiuta singolarmente i piani AI, ID UUID e timestamp assegnati localmente, TTL limitato, risposta troppo lunga troncata con log, nessun payload grezzo nel journal; bug Code overshoot LONG/SHORT max 0,05% controllato su prenotazione e fill; stop sotto rumore/costi roundtrip 0,16% bloccato con spiegazione; prenotazione vietata durante latch daily-stop e anche quando soglia/killequity/pausa o equity incompleta prima del successivo tick. Nessun cambiamento ai portafogli o parametri autorizzati. **CI [40902066955](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/40902066955) SUCCESS: 89/89 test per Python 3.10 e 3.11 = 178/178 esecuzioni; guardie immutabilità classici e Brain Free e deploy verdi.** HEAD `cbdbefa1e972c07e2cc33e6b2c59c06d711b520b`. Report per Claude: `diario/2026-10-29_brain-scalp-gruppo4-chatgpt.md`. **NESSUN merge, deploy, VPS, reset, ordine o modifica ai classici, Brain Free o app**. Prossimo Gruppo 5 (I9/I7) richiede OK separato. Gruppo 6 I8 scelta A/B/C sempre sospesa.
