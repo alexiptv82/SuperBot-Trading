@@ -9,4 +9,6 @@ def register(app,require_session):
     @app.get('/api/brain/scalp')
     def scalp_status(response:Response,session=Depends(require_session)):
         response.headers['Cache-Control']='no-store'
-        return read_all(os.getenv('BRAIN_SCALP_DATA_DIR','/opt/superbot-brain-scalp'))
+        return read_all(
+            os.getenv('BRAIN_SCALP_DATA_DIR','/opt/superbot-brain-scalp'),
+            snapshot_path=os.getenv('BRAIN_SCALP_SNAPSHOT_PATH'))
