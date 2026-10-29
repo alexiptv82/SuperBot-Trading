@@ -33,7 +33,67 @@ class BrainPair:
         """Shared scanner. Result also explains each unselected symbol."""
         return scan(markets,now,limit=limit)
 
-    def accept_ai_plans(self,wallet,raw,shortlist,markets,contracts,now):
+    def prepare_ai_request(self,wallet,shortlist,markets,contracts,references,
+                           now,deadline_ms):
+        """Read one wallet on its owner thread; never merge profile balances."""
+        import json
+        from .ai_context import build_request
+        if wallet not in ('hawk','bull'):raise ValueError('unknown_wallet')
+        engine=getattr(self,wallet)
+        state=engine.store.load()
+        recent=[json.loads(row[0]) for row in engine.store.db.execute(
+            "SELECT body FROM events WHERE kind='trade_closed' ORDER BY seq DESC LIMIT 10")]
+        return build_request(state,engine.spec,markets,contracts,shortlist,
+                             references,recent,now,deadline_ms)
+
+    def accept_ai_analysis(self,wallet,request,analysis,markets,contracts,now):
+        """Admit only completed, current analysis; never call an API in a tick."""
+        from .ai_context import validate_current,decode
+        from .ai_analysis import AIAnalysis,parse_reply,review_reasons
+        if wallet not in ('hawk','bull'):raise ValueError('unknown_wallet')
+        empty={'accepted':[],'rejected':[]}
+        if not isinstance(analysis,AIAnalysis):
+            return dict(empty,status='analysis_unavailable')
+        if analysis.status!='ready':
+            status=analysis.status if analysis.status in (
+                'primary_failed','review_required','review_failed') else 'analysis_unavailable'
+            return dict(empty,status=status)
+        try:
+            engine=getattr(self,wallet)
+            payload=validate_current(request,engine.store.load(),engine.spec,now)
+            if analysis.context_id!=request.context_id:raise ValueError('context_id_mismatch')
+            first=parse_reply(analysis.primary_json,request)
+            final=parse_reply(analysis.final_json,request)
+            reasons=review_reasons(request,first)
+            if reasons and not analysis.reviewed:
+                return dict(empty,status='review_required')
+            if tuple(analysis.review_reasons)!=reasons:
+                raise ValueError('altered_analysis_review')
+            if not analysis.reviewed and final!=first:
+                raise ValueError('altered_analysis_selection')
+            usage=decode(analysis.usage_json)
+            safe_usage={}
+            if isinstance(usage,dict):
+                for provider in ('deepseek','claude'):
+                    values=usage.get(provider)
+                    if isinstance(values,dict):
+                        safe_usage[provider]={k:v for k,v in values.items()
+                            if k in ('prompt_tokens','completion_tokens','input_tokens',
+                                     'output_tokens','prompt_cache_hit_tokens',
+                                     'prompt_cache_miss_tokens') and type(v)==int and 0<=v<=10000000}
+            audit={'context_id':request.context_id,
+                   'provider':'claude' if analysis.reviewed else 'deepseek',
+                   'reviewed':bool(analysis.reviewed),'created_ms':request.created_ms,
+                   'completed_ms':now,'usage':safe_usage}
+        except (ValueError,TypeError,KeyError,AttributeError):
+            return dict(empty,status='rejected_context')
+        result=self.accept_ai_plans(wallet,final,{'candidates':payload['candidates']},
+                                    markets,contracts,now,context_audit=audit)
+        result.update(status='processed',context_id=request.context_id,
+                      reviewed=bool(analysis.reviewed),assessments=final['assessments'])
+        return result
+
+    def accept_ai_plans(self,wallet,raw,shortlist,markets,contracts,now,*,context_audit=None):
         """Admit independent AI proposals; mint all IDs and timestamps here.
 
         Untrusted plans cannot supply identity or clock. Invalid entries are
@@ -41,6 +101,32 @@ class BrainPair:
         Reservation, actual fill and protective exits remain PAPER-only.
         """
         if wallet not in ('hawk','bull'): raise ValueError('unknown_wallet')
+        if context_audit is not None:
+            # Only locally generated, bounded audit metadata may be persisted.
+            from .ai_context import encode
+            if (not isinstance(context_audit,dict) or
+                    set(context_audit)!={'context_id','provider','reviewed','created_ms',
+                                        'completed_ms','usage'} or
+                    context_audit.get('provider') not in ('deepseek','claude') or
+                    not isinstance(context_audit.get('context_id'),str) or
+                    len(context_audit['context_id'])!=64 or
+                    any(c not in '0123456789abcdef' for c in context_audit['context_id']) or
+                    len(encode(context_audit))>2000):
+                raise ValueError('invalid_context_audit')
+            if (type(context_audit['reviewed'])!=bool or
+                    context_audit['provider']!=('claude' if context_audit['reviewed'] else 'deepseek') or
+                    type(context_audit['created_ms'])!=int or
+                    type(context_audit['completed_ms'])!=int or
+                    not 0<context_audit['created_ms']<=context_audit['completed_ms']==now or
+                    not isinstance(context_audit['usage'],dict) or
+                    any(p not in ('deepseek','claude') for p in context_audit['usage'])):
+                raise ValueError('invalid_context_audit')
+            for values in context_audit['usage'].values():
+                if (not isinstance(values,dict) or any(
+                        k not in ('prompt_tokens','completion_tokens','input_tokens','output_tokens',
+                                  'prompt_cache_hit_tokens','prompt_cache_miss_tokens') or
+                        type(v)!=int or not 0<=v<=10000000 for k,v in values.items())):
+                    raise ValueError('invalid_context_audit')
         if not isinstance(raw,dict) or not isinstance(raw.get('plans'),list):
             raise ValueError('model_response_wrong_schema')
         proposals=raw['plans']
@@ -116,6 +202,11 @@ class BrainPair:
                       'rejected':rejected_count,'skipped':skipped})
         # Keep a bounded durable summary, but never journal untrusted raw text.
         state=wallet_engine.store.load()
+        if context_audit is not None:
+            state['last_ai_context_id']=context_audit['context_id']
+            audit.append({'kind':'ai_context_processed',**context_audit,
+                          'accepted':len(result['accepted']),
+                          'rejected':rejected_count})
         wallet_engine.store.commit(state,max(int(now),state['last_ms']),audit)
         return result
 
@@ -246,4 +337,3 @@ class BrainPair:
                                'event_persisted':persisted,'events':[event]}
         results['market_events']=gap_events
         return results
-

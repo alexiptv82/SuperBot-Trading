@@ -9,7 +9,7 @@ PROTECT_PRICE_AGE_MS = 10000
 # Verified official model IDs. This offline module does not call either API.
 SCANNER_MODEL = 'deepseek-flash'
 SCANNER_REASONING_EFFORT = 'high'
-ESCALATION_MODEL = 'gpt-6.1-sol'
+REVIEW_PROVIDER = 'claude'  # Actual model/credentials belong to the existing transport.
 
 
 @dataclass(frozen=True)
@@ -40,4 +40,3 @@ class WalletSpec:
 HAWK = WalletSpec('hawk', 'brain-scalp-hawk-paper', 10, 100, 250)
 BULL = WalletSpec('bull', 'brain-scalp-bull-paper', 3, 150, 350)
 SPECS = {'hawk': HAWK, 'bull': BULL}
-

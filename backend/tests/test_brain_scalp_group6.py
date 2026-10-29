@@ -3,7 +3,7 @@ from dataclasses import replace
 import tempfile
 import unittest
 from pathlib import Path
-from director.brain_scalp.config import HAWK,BULL,SCANNER_MODEL,ESCALATION_MODEL
+from director.brain_scalp.config import HAWK,BULL,SCANNER_MODEL,REVIEW_PROVIDER
 from director.brain_scalp.engine import PaperWallet,_resize_for_budget,_risk
 from director.brain_scalp.coordinator import BrainPair
 from director.brain_scalp.plans import parse_plan
@@ -158,7 +158,7 @@ class Group6Sizing(unittest.TestCase):
 
     def test_current_models_are_isolated_from_brain_free_defaults(self):
         self.assertEqual(SCANNER_MODEL,'deepseek-flash')
-        self.assertEqual(ESCALATION_MODEL,'gpt-6.1-sol')
+        self.assertEqual(REVIEW_PROVIDER,'claude')
         for spec in (HAWK,BULL):
             self.assertEqual(spec.brain_config().model,'deepseek-flash')
             self.assertEqual(spec.brain_config().thinking,'high')
