@@ -12,7 +12,7 @@ INTERVAL_MS=5000
 IDS={'hawk':'brain-scalp-hawk-paper','bull':'brain-scalp-bull-paper'}
 
 
-def project_wallet(state,name):
+def project_wallet(state,name,now):
     if state.get('mode')!='paper' or state.get('account_id')!=IDS[name]:
         raise ValueError('foreign_wallet')
     metrics=state.get('metrics') or {}
@@ -21,19 +21,36 @@ def project_wallet(state,name):
                 'leverage':p['leverage'],'stop':p['stop'],
                 'target':p.get('target'),'open_ms':p['open_ms']}
                for sym,p in sorted(state['positions'].items())]
+    for item in positions:
+        item['notional']=item['entry']*item['qty']
+        item['age_minutes']=max(0.,(now-item['open_ms'])/60000)
+        item['net_close_estimate']=None  # snapshots never invent a fresh mark
+    pending=[{'symbol':sym,'side':'LONG' if p['side']==1 else 'SHORT',
+              'trigger':p['trigger'],'price':p['trigger_price'],
+              'expires_ms':p['expires_ms'],'margin_reserved':p['margin']}
+             for sym,p in sorted((state.get('plans') or {}).items())]
+    margin=sum(p['margin'] for p in state['positions'].values())
+    capacity=state.get('runtime_capacity') or {}
     return {'status':'ok','available':True,'paper':True,'name':name,
             'account_id':state['account_id'],'heartbeat_ms':state.get('heartbeat_ms'),
             'metrics':metrics,'equity':metrics.get('equity'),
-            'cash':state['cash'],'positions':positions,
-            'pending_count':len(state.get('plans') or {}),
-            'paused':bool(state.get('paused')),'coverage_gaps':state.get('coverage_gaps',[])}
+            'net_pnl_vs_initial':(
+                metrics['equity']-1000 if metrics.get('equity') is not None else None),
+            'cash':state['cash'],'margin':margin,
+            'margin_limit':capacity.get('max_margin'),
+            'max_slots':capacity.get('max_slots'),
+            'initial_cash':1000.,'positions':positions,
+            'pending':pending,'paused':bool(state.get('paused')),
+            'coverage_gaps':state.get('coverage_gaps',[]),
+            'ai_spend':{'status':'not_connected_to_provider_metering'},
+            'trades_summary_only':True}
 
 
 def build_snapshot(hawk,bull,now):
     if type(now)!=int or now<=0: raise ValueError('invalid_time')
     return {'schema_version':1,'paper':True,'read_only':True,'ts_ms':now,
-            'profiles':{'hawk':project_wallet(hawk,'hawk'),
-                        'bull':project_wallet(bull,'bull')}}
+            'profiles':{'hawk':project_wallet(hawk,'hawk',now),
+                        'bull':project_wallet(bull,'bull',now)}}
 
 
 def atomic_write(path,snapshot):
