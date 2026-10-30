@@ -284,8 +284,10 @@ def get_prices(symbols: list, candles_map: dict) -> dict:
 
 
 def record_close(state: dict, rec: dict) -> None:
-    """Ogni chiusura (finale o parziale) va nello storico dei trade e nel registro di apprendimento."""
-    append_trade_history(DATA_DIR, rec)
+    """Append-only history with run metadata, leaving the engine receipt untouched."""
+    archived_row = dict(rec, run_no=int(state.get("run_no",1)),
+                        start_equity=PORTFOLIO.limits.start_equity)
+    append_trade_history(DATA_DIR, archived_row)
     row = dict(rec)
     row["reason"] = str(row.get("reason", ""))[:200]
     log_event(DATA_DIR, {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name,
@@ -401,6 +403,12 @@ def apply_claude_schedule(state: dict, now_ms: int, day: str) -> bool:
     - fuori dalle finestre: False (decidono le regole, come quando il budget e' finito).
     Imposta anche l'etichetta passiva claude_win sulle righe del registro. Non solleva mai."""
     try:
+        ai_mode = os.getenv("DESK_CLASSICS_AI_MODE", "scheduled").strip().lower()
+        # An invalid value disables Claude rather than silently granting
+        # additional AI calls. The rules engine remains active as before.
+        if ai_mode != "scheduled":
+            _learning.STAMP["claude_win"] = 0
+            return False
         s = schedule_state(DATA_DIR, now_ms)
         if s["mode"] == "none":
             _learning.STAMP.pop("claude_win", None)
@@ -1003,7 +1011,9 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
                 opts = json.loads(f.read() or "{}")
         except Exception:
             opts = {}
-        clear_lessons = bool(opts.get("clear_lessons")) if isinstance(opts, dict) else False
+        # Historical operator requests cannot authorize brain erasure.
+        # Keep the deprecated option for input compatibility, but ignore it.
+        clear_lessons = False
         if not os.path.exists(_flag("pause.flag")):
             _set_last_action(state, "reset_portfolio", False, "rifiutato: il bot non e' in pausa")
             save_state(state, STATE_FILE)
@@ -1017,11 +1027,9 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
             print("[RESET PORTAFOGLIO] rifiutato: posizioni aperte", flush=True)
             return False
         archive = _archive_run(state, acc, clear_lessons)   # se fallisce, non si cancella nulla
-        # solo ora lo storico della run corrente si sposta (la copia e' gia' in archivio)
-        _remove(os.path.join(DATA_DIR, "trade_history.jsonl"))
-        if clear_lessons:
-            _remove(os.path.join(DATA_DIR, "lessons.md"))
-            _remove(os.path.join(DATA_DIR, "errors.md"))
+        # Never delete or truncate learning artefacts. The archive is an
+        # additional checkpoint; the original history remains the brain's
+        # complete cross-run input in the active data directory.
         now_ms = int(time.time() * 1000)
         keep = {k: state[k] for k in ("budget", "last_call_ms", "market_ctx", "last_ctx_ts",
                                       "last_report_day", "last_prices", "last_prices_ms")
