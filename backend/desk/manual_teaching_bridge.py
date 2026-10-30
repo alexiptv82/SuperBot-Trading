@@ -14,7 +14,7 @@ def to_attested_close(record,portfolio,run_no,*,persisted=False,remaining=None):
     if (persisted is not True or portfolio not in ('hawk','bull') or
         type(run_no)!=int or run_no<=0 or not isinstance(record,dict) or
         record.get('why')!='chiusura manuale' or record.get('partial') is True or
-        record.get('account')!=portfolio or not isinstance(remaining,dict) or
+        record.get('account') not in (portfolio,'main') or not isinstance(remaining,dict) or
         record.get('symbol') in remaining):
         raise ValueError('unverified_classical_manual_close')
     return {
