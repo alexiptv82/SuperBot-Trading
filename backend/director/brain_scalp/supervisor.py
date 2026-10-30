@@ -75,7 +75,7 @@ class PaperSupervisor:
             'reserved_micro_usd':self.reservation}])
         return 'reserved'
 
-    def step(self,markets,contracts,*,references=None,observations=None,regime_v11=None):
+    def step(self,markets,contracts,*,references=None,observations=None,regime_v11=None,market_advisory=None):
         if self.closed:raise ValueError('supervisor_closed')
         now=self.clock()
         if type(now)!=int or now<=0:raise ValueError('invalid_clock')
@@ -83,7 +83,8 @@ class PaperSupervisor:
         tick=self.account.tick(markets,contracts,now)
         output={'tick':tick,'analysis_status':'idle',
                 'trend_observations':observations or {},
-                'regime_v11_indicators':regime_v11 or {}}
+                'regime_v11_indicators':regime_v11 or {},
+                'market_advisory':market_advisory or {}}
         scan_result=scan(markets,now,limit=10,diagnostics=True)
         output['scanner_diagnostics']=scan_result['diagnostics']
         healthy=tick['brain'].get('status')!='error'
@@ -115,7 +116,7 @@ class PaperSupervisor:
             else:
                 request=self.account.prepare_ai_request('brain',scan_result,markets,
                     contracts,references or {},now,now+self.deadline,
-                    observations or {},regime_v11 or {})
+                    observations or {},regime_v11 or {},market_advisory or {})
                 if not decode(request.payload_json)['candidates']:
                     output['analysis_status']='no_fresh_candidates'
                 else:
@@ -129,3 +130,4 @@ class PaperSupervisor:
             atomic_write(self.snapshot_path,build_account_snapshot(self.account,now,markets))
             self.last_snapshot=now
         return output
+
