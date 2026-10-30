@@ -190,7 +190,7 @@ export default function BrainScalpDashboard() {
   return <main style={{maxWidth:700,margin:'auto',padding:'18px 12px 100px',background:BG,color:'#f1f5f9',minHeight:'100vh'}}>
     <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:14}}>
       <div><h1 style={{fontSize:24,margin:'0 0 6px'}}>Brain Trading</h1>
-        <p style={{...small,margin:0}}>Dashboard PAPER · Sola lettura, nessun comando operativo.</p>
+        <p style={{...small,margin:0}}>Portafoglio PAPER in sola lettura · Conferme degli esempi disponibili.</p>
       </div>
       <Link to="/brain" style={{color:BLUE,fontSize:12,textDecoration:'none'}}>Archivio Brain</Link>
     </div>

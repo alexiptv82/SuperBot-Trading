@@ -16,7 +16,7 @@ const response=(extra={})=>({data:{
     positions:[],pending:[],trades_summary_only:true,
   }])),...extra,
 }});
-let host,root;
+let host,root,originalFetch;
 const mount=async()=>{await act(async()=>{
   root.render(<MemoryRouter><BrainScalpDashboard/></MemoryRouter>);
 });};
@@ -28,11 +28,14 @@ beforeEach(()=>{
   global.IS_REACT_ACT_ENVIRONMENT=true;
   host=document.createElement('div');root=createRoot(host);
   brainAPI.getScalpStatus.mockReset();
+  originalFetch=global.fetch;
+  global.fetch=jest.fn().mockResolvedValue({ok:true,json:async()=>({status:'available',groups:[]})});
 });
 afterEach(async()=>{
   await act(async()=>{root.unmount();});
   expect(jest.getTimerCount()).toBe(0);
   jest.useRealTimers();
+  global.fetch=originalFetch;
 });
 
 test('network failure removes online immediately, keeps labelled history and recovers',async()=>{
@@ -116,7 +119,7 @@ const singleResponse=()=>{
 
 test('single account renders once with its actual mandate and no dual wallets',async()=>{
   brainAPI.getScalpStatus.mockResolvedValue(singleResponse());await mount();
-  expect(host.querySelectorAll('section')).toHaveLength(1);
+  expect(host.querySelectorAll('section[aria-label="Portafoglio Brain"]')).toHaveLength(1);
   expect(host.textContent).toContain('Conto unico');
   expect(host.textContent).toContain('$2000.00');
   expect(host.textContent).toContain('7 slot');
@@ -132,13 +135,13 @@ test('single account network failure labels history and recovers without duplica
   expect(online()).toBe(false);expect(host.textContent).toContain('$2015.00');
   expect(host.textContent).toContain('valori mostrati sono storici');
   await advance(15000);expect(online()).toBe(true);
-  expect(host.querySelectorAll('section')).toHaveLength(1);
+  expect(host.querySelectorAll('section[aria-label="Portafoglio Brain"]')).toHaveLength(1);
 });
 
 test('unstarted single account never shows invented starting balance',async()=>{
   brainAPI.getScalpStatus.mockResolvedValue({data:{layout:'single',source:'snapshot',
     status:'not_started',profiles:{brain:{status:'not_started',available:false}}}});
-  await mount();expect(host.querySelectorAll('section')).toHaveLength(1);
+  await mount();expect(host.querySelectorAll('section[aria-label="Portafoglio Brain"]')).toHaveLength(1);
   expect(host.textContent).not.toContain('$2000.00');
   expect(host.textContent).toContain('Nessun saldo ricostruito');
   expect(online()).toBe(false);

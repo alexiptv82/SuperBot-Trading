@@ -19,7 +19,7 @@ jobs:
       - run: npm install --global yarn@1.22.22
       - run: yarn install --frozen-lockfile --non-interactive
         working-directory: frontend
-      - run: CI=true yarn test --watchAll=false --runInBand BrainScalpSimple BrainOperatorReviews
+      - run: CI=true yarn test --watchAll=false --runInBand BrainScalpDashboard BrainScalpSimple BrainOperatorReviews
         working-directory: frontend
       - run: yarn build
         working-directory: frontend
