@@ -60,3 +60,16 @@ AI: chatgpt (chat normale)
 - Brain: DeepSeek H24 primario (nessun blocco per ora del giorno) e Claude solo revisore selettivo in `work/brain-single-integration-20261030`. Non equivale a chiamate continue o trade forzati; budget e protezioni restano gate. Ruoli documentati nel ramo Brain `docs/brain-and-classics-ai-roles-2026-10-30.md`.
 - Nessun merge, deploy, modifica VPS, memoria o wallet. Autorizzazione separata richiesta per il rilascio. Insegnamento non connesso a Telegram di produzione.
 AI: chatgpt (chat normale)
+
+## 30/10 — Audit P1 LONG e nuova dashboard Brain leggibile (offline)
+
+L'utente chiede se LONG P1 sia implementato nei classici e come advisor Brain, e desidera una UI Brain simile alla dashboard dei classici, con portafoglio unico, prezzo di apertura/attuale, leva, margine, P&L, aperte, storico e statistiche.
+
+**VERDETTO LONG:** `rule-pool` e ramo teaching classici usano ancora `signals.py` vecchio, blob `57b524e...`, mentre LONG P1 e' solo su `work/fix-p1-long-scoring` (blob `d052adc...`). P1 **non e' integrato**. `BrainService.tick()` non fornisce ancora `references` al supervisore: l'adattatore classico `legacy_reference.py` e' solo predisposto e pinnato a vecchio scorer; **non e' un parere P1 attivo**. La versione P1 richiede 200 barre 4h per contributo EMA200, mentre 1000 candele 15m dei classici forniscono ~62,5 4h: senza feed storico esteso la componente va assente e puo' deprimere i punteggi. P1 non interrompe l'intero scorer automaticamente. Occorrono dati verificati e test shadow prima dell'attivazione; non riutilizzare lettore Claude non qualificato. Documento `docs/p1-long-classical-advisor-audit-2026-10-30.md` su `work/brain-single-integration-20261030`.
+
+**UI Brain pronta OFFLINE, senza deploy:** nuovo ramo `work/brain-simple-dashboard-20261030` derivato da `work/brain-single-app-20261030`. `BrainScalpDashboard.js` riscritta stile classici con cards mobile, un conto Brain, P&L, entrata, quotazione, leva, margine, stop/target, tabs Aperte/Storico/Statistiche/In attesa; NavBar BRAIN punta a `/brain/scalp`, archivio precedente resta linkato. Prezzo e P&L posizione vengono mostrati solo su quote fresche, non inventati se assenti/stale. Producer su `work/brain-single-integration-20261030` pubblica mark/P&L netto di chiusura stimato con costi, ultime 50 chiusure realmente persistite in SQLite, conteggi; frontend reader verifica timestamp e valori prima di mostrare. Storico totale completo richiedera' endpoint paginato autenticato futuro; non dichiarare gia' presente. Rami produttore/UI non uniti.
+
+CI verificata: UI run `41039334417` SUCCESS, 13 test React + build, 23 test reader +3 dati; Brain producer run `41039340769` SUCCESS su Python 3.10 e 3.11 con 175 test legacy motore per interprete piu' test integrazione. Solo mock/sandbox, nessuna chiamata AI, real-trade, reset, merge, deploy, cambio mandato, bot attivi, capitale o cervello. UI report `docs/brain-readable-ui-2026-10-30.md` su ramo UI. Prossimi gate: dati 4h/1d P1 verificati, shadow LONG/SHORT e collegamento advisor nel servizio, completamento Brain e rilascio separato simultaneo di producer+UI con backup restore e autorizzazione.
+
+AI: chatgpt (chat normale)
+
