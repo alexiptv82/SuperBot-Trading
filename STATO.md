@@ -1,3 +1,6 @@
+## IN_CORSO — Work: patch soli test legacy Claude
+Ripresa autorizzata dal contesto utente. Ramo work/classics-legacy-tests-20261030 da2b181871c0b8b9b67b3c6b6dd47c317316b4a962. Modificare solo test/CI/report, nessun runtime, token, timeout, scoring o limiti. Verificare95test prima/dopo e logging reale. Nessun skip/xfail per nascondere fallimenti, nessun merge/deploy.
+
 
 ## 30/10 — Consegna revisione indipendente e verifica teaching classici (Work)
 Utente chiedeZIP+prompt per altreAI e conferma che le chiusure manuali desiderate restino esempi/osservazioni e non regole. "Usiamolo così" mantiene il disegno consultivo; non è autorizzazione separata al deploy.
