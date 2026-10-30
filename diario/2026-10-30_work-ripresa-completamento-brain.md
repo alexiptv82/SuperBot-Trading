@@ -1,0 +1,7 @@
+# Ripresa completamento nuovo Brain — 30 ottobre 2026, Work
+Utente autorizza prosecuzione sviluppo e chiede stato grafica/doppiaAI e se occorre reset. Nessuna autorizzazione specifica a reset, merge o deploy. Preservare conti/storici/memoria. Il fallimento economico precedente non è causa tecnica sufficiente per cancellare dati.
+Verifica diretta docs/brain-readable-ui-2026-10-30.md su work/brain-simple-dashboard-20261030: UI conto unico implementata/testata offline, sola lettura, ultime50chiusure, non distribuita. Nuove azioni manuali non automaticamente abilitate dalla grafica.
+Verifica service.py/transports.py su work/brain-structural-advisory-20261030: DeepSeek primario e Claude revisore selettivo implementati. Claude opzionale: richiesti ANTHROPIC_API_KEY+BRAIN_CLAUDE_MODEL accoppiati e prezzi token; senza configurazione non presumere doppiaAI attiva. Nessuna verificaVPS o chiamataAI pagata. Ricarica credito DeepSeek non effettuata e rimane azione accountutente.
+Mancano collaudo integrato producer/UI aggiornata, teaching/outbox/conferme e consultazione osservativa, mandato e budget configurati esplicitamente, prova end-to-end feedpubblico e backup/restore prima del rilascio. Nessun reset effettuato; nuova sessionePAPER distinta preferita alla cancellazione e da progettare con riconciliazione.
+Prossimo lavoro: preparazione coordinata dei componenti in rami separati, collaudo del contratto dati e chiusuremanuali; riferimenti quantitativi non promossi a nuovi default.
+AI: chatgpt Work
