@@ -1,3 +1,6 @@
+## IN_CORSO — Work: revisione periodica posizioni Brain
+Owner ChatGPT Work. Autorizzazione utente confermata: completare sviluppo e collaudi, aggiornare solo per problemi/decisioni/test esterni utili. Ramo work/brain-position-review-20261030, base 895b34a64058b1321ba5ad372e8de435f3e7fec0. Checkout isolato, modifiche locali precedenti preservate. Obiettivo: revisione AI delle posizioni anche senza nuovi candidati, con protezioni indipendenti, validazione e test. Prosegue il mandato esteso; nessun avvio operativo in questa fase.
+
 ## IN_CORSO — Work: contratto servizio/app e refresh insegnamenti
 Utente «ok procediamo». Owner ChatGPT Work sul servizio work/brain-release-integration-20261030 base efc7d7761f06492041421ee6160b260f14917bd2; app verificata pin23fc151f17395bd77bba7446ca70617bc958836c. Verifica integrata publisher/API/inbox/preferenze, correzione refresh mancante durante tick. Solo offline, no merge/deploy/reset/API pagata.
 
