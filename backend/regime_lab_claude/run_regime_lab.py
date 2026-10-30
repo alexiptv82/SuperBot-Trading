@@ -371,7 +371,7 @@ def pct(x):
 def write_report(path, meta, occ, sanity, verd, scen, det, detg, per_symbol_occ):
     L = ["# Laboratorio lettore di regime v2 - rapporto (Claude)\n",
          f"Esecuzione: {meta['when']} | dati: {meta['symbols']} simboli, {meta['bars']} barre 15m, {meta['days']} giorni | "
-         f"config `{meta['hash']}` | profilo `classic15` (non validato). Criteri: `PREREGISTRAZIONE.md` (scritti prima).\n",
+         f"config `{meta.get('config', '')}` (`{meta['hash']}`) | profilo `classic15` (non validato). Criteri: `PREREGISTRAZIONE.md` (scritti prima).\n",
          "## 0. Sanita' del lettore (prima degli esiti)\n",
          f"- S0a occupazione stati di mercato: {sanity['S0a_text']} -> **{'OK' if sanity['S0a'] else 'FALLITO'}**",
          f"- S0b quota ALIGNED sui trade (8%-60%): {sanity['S0b_text']} -> **{'OK' if sanity['S0b'] else 'FALLITO'}**",
@@ -471,6 +471,95 @@ def synthetic_trades(candles: dict, n: int, seed: int) -> pd.DataFrame:
                              net=0.0, net_r=rng.normal(-0.15, 1.0, n), why="synthetic", reg_state=0, reg_turn=0))
 
 
+def cfg_name(confirm_n, w15, k, d):
+    return f"c{confirm_n}_w{int(round(w15 * 100))}_k{int(round(k * 100))}_d{int(round(d * 100))}"
+
+
+def cfg_from_name(name):
+    import re
+    m = re.fullmatch(r"c(\d+)_w(\d+)_k(\d+)_d(\d+)", name)
+    if not m:
+        raise ValueError(f"configurazione sconosciuta: {name}")
+    n, w, k, d = int(m[1]), int(m[2]) / 100, int(m[3]) / 100, int(m[4]) / 100
+    prof = rg.Profile("classic15", "15m", (("15m", w), ("1h", round(1 - w, 2))), (("4h", 1.0),), "1h", vr_w=288, dd_lag=4)
+    return prof, rg.Params(confirm_n=n, k_thr=k, d_thr=d, dd_thr=round(1.5 * d, 4))
+
+
+BASELINE = "c2_w60_k25_d20"                                   # v2.0
+GRID = [cfg_name(n, w, k, d) for n in (2, 4) for w in (0.6, 0.3) for k in (0.25, 0.15) for d in (0.20, 0.30)]
+
+
+def use_config(name):
+    global PROFILE, P
+    PROFILE, P = cfg_from_name(name)
+
+
+def structure_block(candles, synthetic, inputs):
+    """Metriche strutturali per la configurazione attiva. NON legge mai i rendimenti dei trade."""
+    res, mkt = build_regime(candles)
+    st = mkt["state"]
+    valid = st != rg.NA
+    occ = {rg.STATE_NAMES[k]: float((st[valid] == k).mean()) for k in range(1, len(rg.STATE_NAMES)) if (st[valid] == k).any()} if valid.any() else {}
+    span = (int(min(r["close_ms"][0] for r in res.values())) + 600 * BAR, int(max(r["close_ms"][-1] for r in res.values())))
+
+    def load_trades(i, sc):
+        tr = synthetic_trades(candles, 1500, seed=11 + i) if synthetic else pd.read_csv(os.path.join(inputs, f"trades_{sc}_base13.csv.gz"))
+        return tr[(tr.open_ms >= span[0]) & (tr.open_ms <= span[1])]
+
+    al = {}
+    for i, sc in enumerate(("S1", "S2")):
+        tr = load_trades(i, sc).sort_values("open_ms").reset_index(drop=True)
+        cl = classify_trades(tr, res, mkt)
+        side_ = tr.side.to_numpy()
+        al[sc] = {src: {sn: float((cl[src][side_ == sd] == rg.ALIGNED).mean()) for sd, sn in ((rg.SHORT, "SHORT"), (rg.LONG, "LONG"))} for src in SOURCES}
+    det = [detection_experiment(res, s, np.random.default_rng(77)) for s in ("BTC", "ETH") if s in res]
+    detg = detection_gates(det)
+    dw_mkt = dwell_stats(mkt["state"])
+    dws = np.array([dwell_stats(r["state"]) for r in res.values()])
+    dw_sym = tuple(float(np.nanmedian(dws[:, k])) for k in range(3))
+    per_symbol_occ = {}
+    for s in list(res)[:6]:
+        sv = res[s]["state"][res[s]["state"] != rg.NA]
+        per_symbol_occ[s] = {rg.STATE_NAMES[k]: float((sv == k).mean()) for k in range(1, 11)} if len(sv) else {}
+    sanity = dict(S0a=bool(occ) and max(occ.values()) <= 0.60, S0a_text=(f"massimo {pct(max(occ.values()))}" if occ else "nessun dato"),
+                  S0b=all(0.08 <= v <= 0.60 for sc in al.values() for src in sc.values() for v in src.values()),
+                  S0b_text="; ".join(f"{src} short {pct(v['SHORT'])} / long {pct(v['LONG'])}" for src, v in al["S2"].items()),
+                  S0d=bool(dw_mkt[0] >= 8), S0d_text=f"{dw_mkt[0]:.0f} barre 15m (minimo 8)")
+    sanity["structural_accept"] = bool(sanity["S0a"] and sanity["S0b"] and sanity["S0d"] and detg.get("D1") and detg.get("D2") and detg.get("D3"))
+    meta = dict(when=time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()), symbols=len(res), bars=int(sum(len(r["ts"]) for r in res.values())),
+                hash=rg.config_hash(PROFILE, P))
+    return dict(res=res, mkt=mkt, occ=occ, sanity=sanity, det=det, detg=detg, dw_mkt=dw_mkt, dw_sym=dw_sym, per_symbol_occ=per_symbol_occ,
+                meta=meta, span=span, load_trades=load_trades)
+
+
+def select_v21(rows):
+    """Regola E3: S0a, S0b, S0d veri e D1, D2, D3 veri; tra queste la piu' vicina a v2.0, poi il rapporto di ritardo piu' basso."""
+    base = cfg_from_name(BASELINE)
+    def changed(nm):
+        pr, pa = cfg_from_name(nm)
+        return int(pa.confirm_n != base[1].confirm_n) + int(pr.d_weights != base[0].d_weights) + int(pa.k_thr != base[1].k_thr) + int(pa.d_thr != base[1].d_thr)
+    ok = [r for r in rows if r["S0a"] and r["S0b"] and r["S0d"] and r["D1"] and r["D2"] and r["D3"]]
+    ok.sort(key=lambda r: (changed(r["name"]), r["ratio"] if r["ratio"] is not None else 9e9))
+    return ok[0]["name"] if ok else None
+
+
+def write_grid(path, rows, chosen):
+    L = ["# Fase GRIGLIA (E3) - solo metriche strutturali, nessun rendimento dei trade\n",
+         f"Regola di scelta (fissata prima): S0a, S0b, S0d e D1, D2, D3 tutti veri; la piu' vicina a v2.0, poi ritardo D1 piu' basso. **Scelta: {chosen or 'NESSUNA -> lettore non idoneo, il laboratorio si ferma'}**\n",
+         "| configurazione | S0a (max stato) | S0b | S0d (durata mediana) | D1 (ritardo v2/EMA) | D2 (lift; cambi/giorno) | D3 (rilevate vs placebo p95) | tutti |",
+         "|---|---|:-:|---|---|---|---|:-:|"]
+    yn = lambda b: "si" if b else "no"  # noqa: E731
+    for r in rows:
+        L.append(f"| {r['name']}{' (v2.0)' if r['name'] == BASELINE else ''} | {yn(r['S0a'])} ({pct(r['max_occ'])}) | {yn(r['S0b'])} | {yn(r['S0d'])} ({r['dwell']:.0f}) | "
+                 f"{yn(r['D1'])} ({f3(r['ratio'], 2) if r['ratio'] is not None else 'n/d'}) | {yn(r['D2'])} ({f3(r['lift'], 2)}; {r['fpd']:.2f}) | "
+                 f"{yn(r['D3'])} ({pct(r['rate'])} vs {pct(r['p95'])}) | **{yn(r['all'])}** |")
+    open(path, "w", encoding="utf-8").write("\n".join(L) + "\n")
+
+
+def jdefault(o):
+    return None if (isinstance(o, float) and np.isnan(o)) else (float(o) if isinstance(o, (np.floating, np.integer)) else bool(o) if isinstance(o, np.bool_) else str(o))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=540)
@@ -479,78 +568,58 @@ def main():
     ap.add_argument("--end", default="2026-10-29")
     ap.add_argument("--synthetic", action="store_true")
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--phase", choices=["structure", "full"], default="full")
+    ap.add_argument("--phase", choices=["structure", "grid", "full"], default="full")
     ap.add_argument("--iteration", type=int, default=1)
+    ap.add_argument("--config", default=BASELINE)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     t_start = time.time()
     end_ms = calendar.timegm(time.strptime(a.end, "%Y-%m-%d")) * 1000
     candles = labdata.synthetic(a.days, end_ms, n_symbols=12) if a.synthetic else labdata.load_real(a.days, a.cache, end_ms, workers=a.workers)
     print(f"[LAB] simboli con dati: {len(candles)}", flush=True)
-    res, mkt = build_regime(candles)
-    # sanita' S0a
-    st = mkt["state"]
-    valid = st != rg.NA
-    occ = {rg.STATE_NAMES[k]: float((st[valid] == k).mean()) for k in range(1, len(rg.STATE_NAMES)) if (st[valid] == k).any()} if valid.any() else {}
-    s0a = bool(occ) and max(occ.values()) <= 0.60
     inputs = os.path.join(HERE, "inputs")
-    span = (int(min(r["close_ms"][0] for r in res.values())) + 600 * BAR, int(max(r["close_ms"][-1] for r in res.values())))
-
-    def load_trades(i, sc):
-        tr = synthetic_trades(candles, 1500, seed=11 + i) if a.synthetic else pd.read_csv(os.path.join(inputs, f"trades_{sc}_base13.csv.gz"))
-        return tr[(tr.open_ms >= span[0]) & (tr.open_ms <= span[1])]
-
-    # S0b: usa SOLO istanti e lati dei trade (mai i rendimenti)
-    al = {}
-    for i, sc in enumerate(("S1", "S2")):
-        tr = load_trades(i, sc).sort_values("open_ms").reset_index(drop=True)
-        cl = classify_trades(tr, res, mkt)
-        side_ = tr.side.to_numpy()
-        al[sc] = {src: {sn: float((cl[src][side_ == sd] == rg.ALIGNED).mean()) for sd, sn in ((rg.SHORT, "SHORT"), (rg.LONG, "LONG"))} for src in SOURCES}
-    s0b = all(0.08 <= v <= 0.60 for sc in al.values() for src in sc.values() for v in src.values())
-    sanity = dict(S0a=s0a, S0a_text=(f"massimo {pct(max(occ.values()))}" if occ else "nessun dato"), S0b=s0b,
-                  S0b_text="; ".join(f"{src} short {pct(v['SHORT'])} / long {pct(v['LONG'])}" for src, v in al["S2"].items()))
-    drng = np.random.default_rng(77)
-    det = [detection_experiment(res, s, drng) for s in ("BTC", "ETH") if s in res]
-    detg = detection_gates(det)
-    per_symbol_occ = {}
-    for s in list(res)[:6]:
-        sv = res[s]["state"][res[s]["state"] != rg.NA]
-        per_symbol_occ[s] = {rg.STATE_NAMES[k]: float((sv == k).mean()) for k in range(1, 11)} if len(sv) else {}
-    dw_mkt = dwell_stats(mkt["state"])
-    dws = np.array([dwell_stats(r["state"]) for r in res.values()])
-    dw_sym = tuple(float(np.nanmedian(dws[:, k])) for k in range(3))
-    sanity["S0d"] = bool(dw_mkt[0] >= 8)                  # stabilita': uno stato di mercato dura in mediana almeno 2 ore
-    sanity["S0d_text"] = f"{dw_mkt[0]:.0f} barre 15m (minimo 8)"
-    sanity["structural_accept"] = bool(sanity["S0a"] and sanity["S0b"] and sanity["S0d"] and detg.get("D1") and detg.get("D2") and detg.get("D3"))
-    meta = dict(when=time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()), symbols=len(res), bars=int(sum(len(r["ts"]) for r in res.values())),
-                days=a.days, hash=rg.config_hash(PROFILE, P))
+    if a.phase == "grid":
+        rows = []
+        for nm in GRID:
+            use_config(nm)
+            b = structure_block(candles, a.synthetic, inputs)
+            g, sn = b["detg"], b["sanity"]
+            rows.append(dict(name=nm, S0a=sn["S0a"], max_occ=max(b["occ"].values()) if b["occ"] else float("nan"), S0b=sn["S0b"], S0d=sn["S0d"],
+                             dwell=b["dw_mkt"][0], D1=bool(g.get("D1")), D2=bool(g.get("D2")), D3=bool(g.get("D3")), ratio=g.get("ratio"),
+                             lift=g.get("lift_v2", float("nan")), fpd=g.get("flips_per_day_v2", float("nan")), rate=g.get("detect_rate_v2", float("nan")),
+                             p95=g.get("detect_rate_placebo_p95", float("nan")), all=sn["structural_accept"], hash=b["meta"]["hash"]))
+            print(f"[GRID] {nm} {b['meta']['hash']}: S0a={sn['S0a']} S0b={sn['S0b']} S0d={sn['S0d']} D1={g.get('D1')} D2={g.get('D2')} D3={g.get('D3')} ({time.time() - t_start:.0f}s)", flush=True)
+        chosen = select_v21(rows)
+        write_grid(os.path.join(a.out, "grid.md"), rows, chosen)
+        json.dump(dict(rows=rows, chosen=chosen, seconds=time.time() - t_start), open(os.path.join(a.out, "grid.json"), "w"), default=jdefault, indent=1)
+        print(f"[GRID] scelta E3: {chosen}", flush=True)
+        return
+    use_config(a.config)
+    b = structure_block(candles, a.synthetic, inputs)
+    res, mkt, occ, sanity, det, detg, span = b["res"], b["mkt"], b["occ"], b["sanity"], b["det"], b["detg"], b["span"]
+    meta = dict(b["meta"], days=a.days, config=a.config)
     if a.phase == "structure":
-        write_structure(os.path.join(a.out, "structure.md"), meta, occ, sanity, det, detg, dw_mkt, dw_sym, per_symbol_occ, a.iteration)
-        json.dump(dict(meta=meta, sanity=sanity, occupancy=occ, detection_gates=detg, dwell_market=dw_mkt, dwell_symbol=dw_sym,
+        write_structure(os.path.join(a.out, "structure.md"), meta, occ, sanity, det, detg, b["dw_mkt"], b["dw_sym"], b["per_symbol_occ"], a.iteration)
+        json.dump(dict(meta=meta, sanity=sanity, occupancy=occ, detection_gates=detg, dwell_market=b["dw_mkt"], dwell_symbol=b["dw_sym"],
                        detection=[{k: v for k, v in r.items() if k != "lags_both"} for r in det]),
-                  open(os.path.join(a.out, "structure.json"), "w"), default=lambda o: None if (isinstance(o, float) and np.isnan(o)) else (
-                      float(o) if isinstance(o, (np.floating, np.integer)) else bool(o) if isinstance(o, np.bool_) else str(o)), indent=1)
-        print(f"[LAB] fase STRUTTURA in {time.time() - t_start:.0f}s | S0a={s0a} S0b={s0b} D1={detg.get('D1')} D2={detg.get('D2')} D3={detg.get('D3')} "
-              f"dwell mercato={dw_mkt[0]:.0f}", flush=True)
+                  open(os.path.join(a.out, "structure.json"), "w"), default=jdefault, indent=1)
+        print(f"[LAB] fase STRUTTURA {a.config} in {time.time() - t_start:.0f}s | accettata={sanity['structural_accept']}", flush=True)
         return
     scen_rows, scen_trades = {}, {}
     for i, sc in enumerate(("S1", "S2")):
-        tr = load_trades(i, sc)
+        tr = b["load_trades"](i, sc)
         rows, trout = analyse_scenario(sc, tr, res, mkt, span, seed=100 + i)
         scen_rows[sc], scen_trades[sc] = rows, trout
         print(f"[LAB] {sc}: {len(tr)} trade analizzati ({time.time() - t_start:.0f}s)", flush=True)
     verd = verdicts({sc: scen_rows[sc]["policies"] for sc in scen_rows})
-    write_report(os.path.join(a.out, "report.md"), meta, occ, sanity, verd, scen_rows, det, detg, per_symbol_occ)
-    summ = dict(meta=meta, sanity=sanity, occupancy=occ, detection=det, detection_gates=detg,
+    write_report(os.path.join(a.out, "report.md"), meta, occ, sanity, verd, scen_rows, det, detg, b["per_symbol_occ"])
+    summ = dict(meta=meta, sanity=sanity, occupancy=occ, detection=[{k: v for k, v in r.items() if k != "lags_both"} for r in det], detection_gates=detg,
                 scenarios={sc: {k: v for k, v in scen_rows[sc].items()} for sc in scen_rows},
                 verdicts=[{k: v for k, v in x.items() if k != "main"} for x in verd], seconds=time.time() - t_start)
-    json.dump(summ, open(os.path.join(a.out, "summary.json"), "w"), default=lambda o: None if (isinstance(o, float) and np.isnan(o)) else (
-        float(o) if isinstance(o, (np.floating, np.integer)) else bool(o) if isinstance(o, np.bool_) else str(o)), indent=1)
+    json.dump(summ, open(os.path.join(a.out, "summary.json"), "w"), default=jdefault, indent=1)
     for sc in scen_trades:
         scen_trades[sc].to_csv(os.path.join(a.out, f"trades_regime_{sc}.csv.gz"), index=False)
-    print(f"[LAB] fatto in {time.time() - t_start:.0f}s | sanita' S0a={s0a} S0b={s0b} | candidate: "
-          f"{[(v['source'], v['policy']) for v in verd if v['candidate']]}", flush=True)
+    print(f"[LAB] fatto in {time.time() - t_start:.0f}s | config {a.config} | candidate: {[(v['source'], v['policy']) for v in verd if v['candidate']]}", flush=True)
 
 
 if __name__ == "__main__":

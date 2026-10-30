@@ -107,3 +107,13 @@ costi approssimati nello stress R7; i trade del banco sono quelli di base13 e no
   configurazione congelata. Il numero di iterazioni strutturali e' riportato nel rapporto. Se anche v2.1 non e' accettata, il rapporto dichiara
   il lettore non idoneo e si ferma: nessuna terza iterazione, nessuna lettura dei rendimenti per scegliere.
 
+- **E3 (30/10/2026, scritta PRIMA di eseguire la griglia).** Esito della fase struttura su dati reali, iterazione 1, config v2.0 (`1c7dee868ad5`):
+  S0a FALLITO (RANGE 62% delle barre di mercato), S0d FALLITO (durata mediana 6 barre), D1 FALSO (ritardo v2 / EMA = 0,70), D2 FALSO (lift 1,12),
+  D3 vero (80% contro 60% dei placebo), S0b ok. Letto solo questo, nessun rendimento. Come previsto da E2 si prova **una** configurazione corretta v2.1,
+  scelta da una griglia **dichiarata qui**, valutata solo con le metriche strutturali: confirm_n in {2, 4} x peso di 15m in D in {0,60 (1h 0,40), 0,30 (1h 0,70)}
+  x k_thr in {0,25; 0,15} x d_thr in {0,20; 0,30} (dd_thr = 1,5 x d_thr), 16 configurazioni, v2.0 inclusa; tutto il resto invariato (er_thr, emerge_d, vr_shock,
+  finestre, classi). Regola di scelta fissata ora: tra le configurazioni con S0a, S0b e S0d veri si tiene quelle con D1, D2 e D3 tutti veri; tra queste la piu'
+  vicina a v2.0 (meno parametri cambiati), a parita' il rapporto di ritardo D1 piu' basso. Se nessuna configurazione soddisfa tutto, il lettore e' dichiarato **non idoneo**
+  e il laboratorio si ferma: niente terza iterazione e nessuna lettura dei rendimenti. Tutte le 16 configurazioni e le loro metriche vanno nel rapporto (`grid.md`), non
+  solo la scelta. Limite dichiarato: la scelta e' in-sample sulle stesse 18 mesi (solo metriche strutturali); non e' una prova fuori campione.
+

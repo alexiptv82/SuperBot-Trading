@@ -32,24 +32,26 @@ jobs:
       - name: Test del lettore (specchio, causalita', equivalenza batch/vivo, buchi, isteresi)
         working-directory: backend/regime_lab_claude
         run: python -m unittest -v tests.test_regime_v2 2>&1 | tail -n 40
-      - name: Prova su dati finti (entrambe le fasi)
+      - name: Prova su dati finti (tutte le fasi)
         working-directory: backend/regime_lab_claude
         run: |
           python run_regime_lab.py --synthetic --days 60 --phase structure --out /tmp/synth-s --end 2026-10-29 | tail -n 3
+          python run_regime_lab.py --synthetic --days 60 --phase grid --out /tmp/synth-g --end 2026-10-29 | tail -n 3
           python run_regime_lab.py --synthetic --days 60 --phase full --out /tmp/synth-f --end 2026-10-29 | tail -n 3
       - name: Cache candele
         uses: actions/cache@v4
         with:
           path: /tmp/regime-cache
           key: regime-lab-candles-20261030-540-v1
-      - name: Fase da eseguire (file PHASE e ITERATION nel ramo)
+      - name: Fase da eseguire (file PHASE, ITERATION e CONFIG nel ramo)
         id: phase
         run: |
           echo "phase=$(tr -d '[:space:]' < backend/regime_lab_claude/PHASE)" >> "$GITHUB_OUTPUT"
           echo "iter=$(tr -d '[:space:]' < backend/regime_lab_claude/ITERATION)" >> "$GITHUB_OUTPUT"
+          if [ -f backend/regime_lab_claude/CONFIG ]; then echo "cfg=$(tr -d '[:space:]' < backend/regime_lab_claude/CONFIG)" >> "$GITHUB_OUTPUT"; else echo "cfg=c2_w60_k25_d20" >> "$GITHUB_OUTPUT"; fi
       - name: Laboratorio su candele reali Bitget (endpoint pubblici, sola lettura)
         working-directory: backend/regime_lab_claude
-        run: python run_regime_lab.py --days 540 --cache /tmp/regime-cache --out results/${{ steps.phase.outputs.phase }}_${{ steps.phase.outputs.iter }} --end 2026-10-29 --workers 4 --phase ${{ steps.phase.outputs.phase }} --iteration ${{ steps.phase.outputs.iter }}
+        run: python run_regime_lab.py --days 540 --cache /tmp/regime-cache --out results/${{ steps.phase.outputs.phase }}_${{ steps.phase.outputs.iter }} --end 2026-10-29 --workers 4 --phase ${{ steps.phase.outputs.phase }} --iteration ${{ steps.phase.outputs.iter }} --config ${{ steps.phase.outputs.cfg }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

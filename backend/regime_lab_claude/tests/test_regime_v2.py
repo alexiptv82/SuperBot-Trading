@@ -194,6 +194,27 @@ class TestHysteresisAndAggregation(unittest.TestCase):
         self.assertEqual(st[7], rg.NA)                             # prima barra dopo il buco: nessuna coppia ancora
         self.assertEqual(st[8], D)                                 # coppia nuova dopo il buco: torna lo stato
 
+    def test_confirm_n_generalises(self):
+        R, D = rg.RANGE, rg.DOWN_CLEAN
+        p4 = rg.Params(confirm_n=4)
+        raw = np.array([R] * 8 + [D] * 3 + [R] * 2 + [D] * 5 + [R] * 3, dtype=np.int8)
+        st = rg.confirm(raw, p4)
+        self.assertTrue(np.all(st[8:11] == R))                     # tre D di fila non bastano con confirm_n=4
+        self.assertTrue(np.all(st[11:13] == R))
+        self.assertEqual(st[13 + 2], R)                            # ancora 3 D di fila
+        self.assertEqual(st[13 + 3], D)                            # la quarta cambia
+        self.assertTrue(np.array_equal(rg.confirm(raw, rg.Params(confirm_n=2)), rg.confirm(raw, rg.Params())))
+        self.assertEqual(rg.config_hash(rg.CLASSIC15, rg.Params(confirm_n=2)), rg.config_hash(rg.CLASSIC15, rg.Params()))
+        self.assertNotEqual(rg.config_hash(rg.CLASSIC15, p4), rg.config_hash(rg.CLASSIC15, rg.Params()))
+
+    def test_mirror_and_batch_live_with_confirm4(self):
+        p4 = rg.Params(confirm_n=4)
+        b = make_base(n=4500, seed=4)
+        a, m = rg.compute_series(b, rg.CLASSIC15, p4), rg.compute_series(mirror(b), rg.CLASSIC15, p4)
+        self.assertTrue(np.array_equal(rg.MIRROR[a["state"]], m["state"]))
+        part = rg.compute_series(cut(b, 3000 - 1199, 3001), rg.CLASSIC15, p4)
+        self.assertEqual(part["state"][-1], a["state"][3000])
+
     def test_lookback_cap_goes_to_range(self):
         raw = np.array([rg.DOWN_CLEAN, rg.DOWN_CLEAN] + [rg.UP_CLEAN, rg.DOWN_CLEAN] * 100, dtype=np.int8)
         st = rg.confirm(raw, self.P)

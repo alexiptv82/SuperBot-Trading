@@ -88,12 +88,16 @@ class Params:
     emerge_d: float = 0.35
     vr_shock: float = 2.5
     lookback_cap: int = 96     # oltre queste barre di instabilita' continua lo stato e' RANGE
+    confirm_n: int = 2         # chiusure consecutive uguali per cambiare stato (v2.0: 2)
     warmup: int = 32           # barre consecutive minime per timeframe
     eps: float = 1e-12
 
 
 def config_hash(profile: Profile, p: Params) -> str:
-    return hashlib.sha256(json.dumps([asdict(profile), asdict(p)], sort_keys=True).encode()).hexdigest()[:12]
+    d = asdict(p)
+    if d.get("confirm_n") == 2:
+        del d["confirm_n"]            # compatibilita': l'hash della v2.0 (prima che il campo esistesse) non cambia
+    return hashlib.sha256(json.dumps([asdict(profile), d], sort_keys=True).encode()).hexdigest()[:12]
 
 
 # ---- aggregazione -------------------------------------------------------------------------------------------------
@@ -260,7 +264,7 @@ def classify(K, D, dD, ER, VR, p: Params):
 
 
 def confirm(raw, p: Params):
-    """Isteresi SENZA STATO: lo stato e' l'ultimo valore grezzo comparso su due chiusure consecutive, SENZA attraversare dati
+    """Isteresi SENZA STATO: lo stato e' l'ultimo valore grezzo comparso su `confirm_n` chiusure consecutive, SENZA attraversare dati
     mancanti. SHOCK e NA valgono subito (nessuna attesa, nessun ponte sopra un buco). Dipende solo dalle ultime `lookback_cap`
     barre: batch e vivo coincidono."""
     raw = np.asarray(raw, dtype=np.int8)
@@ -268,11 +272,13 @@ def confirm(raw, p: Params):
     if n == 0:
         return raw.copy()
     idx = np.arange(n)
-    eq = np.r_[False, raw[1:] == raw[:-1]]
+    chg = np.r_[True, raw[1:] != raw[:-1]]
+    run_start = np.maximum.accumulate(np.where(chg, idx, 0))
+    eq = (idx - run_start + 1) >= p.confirm_n                                        # serie uguale lunga almeno confirm_n
     last = np.maximum.accumulate(np.where(eq, idx, -1))
     na_at = np.maximum.accumulate(np.where(raw == NA, idx, -1))
     state = raw[np.clip(last, 0, None)].astype(np.int8)
-    state = np.where((last < 0) | (last <= na_at), NA, state).astype(np.int8)       # nessuna coppia dopo l'ultimo NA
+    state = np.where((last < 0) | (last <= na_at), NA, state).astype(np.int8)       # nessuna serie dopo l'ultimo NA
     state = np.where((state != NA) & ((idx - last) > p.lookback_cap), RANGE, state).astype(np.int8)
     state = np.where(raw == SHOCK, SHOCK, state).astype(np.int8)
     state = np.where(raw == NA, NA, state).astype(np.int8)
