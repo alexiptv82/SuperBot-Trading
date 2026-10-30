@@ -1,0 +1,3 @@
+# Work: inbox locale conferme
+CI41072232254SUCCESS per proiezioneesempi e recovery. APIUIattuale GETonly, non scrivewallet: mantenere principio ownerunico. Preparata OperatorInbox SQLite separata: accodamento conferme conIDidempotente, collisioni rifiutate, TTL120s, massimo100pending e5consumi/ciclo, claimprimaazione; crash/interruzione resta processing/needs_reconciliation senza retry automatico potenzialmenteambiguo. Modulo e2test nuovi pubblicati, testlocali insieme aoperator/preferenzePASS. Non ancora collegato adAPIUI/servizio; nessun endpointmutante/worker avviato o deploy. Manca riconciliazione degli esitoincerti e autorizzazione endpoint da collaudare. Nessun nuovo lettoreTelegram.
+AI: chatgpt Work
