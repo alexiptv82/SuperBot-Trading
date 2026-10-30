@@ -123,6 +123,6 @@ class PaperSupervisor:
                             self._guarded(self.primary,request),self._guarded(self.reviewer,request))
                         output['analysis_status']='started'
         if self.snapshot_path is not None and (self.last_snapshot is None or now-self.last_snapshot>=5000):
-            atomic_write(self.snapshot_path,build_account_snapshot(self.account,now))
+            atomic_write(self.snapshot_path,build_account_snapshot(self.account,now,markets))
             self.last_snapshot=now
         return output
