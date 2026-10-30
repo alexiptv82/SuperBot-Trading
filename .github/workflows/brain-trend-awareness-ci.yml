@@ -1,8 +1,11 @@
-name: Brain trend-change advisory (offline)
+name: Brain v1.1 read-only trend engine (offline)
 on:
   push:
-    branches: [work/brain-trend-awareness-20261030]
+    branches: [work/brain-trend-v11-shadow-20261030]
     paths:
+      - 'backend/director/trend_engine_v11.py'
+      - 'backend/director/trend_shadow.py'
+      - 'backend/tests/test_trend_v11_shadow.py'
       - 'backend/director/brain_scalp/**'
       - 'backend/director/trend_advisory.py'
       - 'backend/tests/test_trend_advisory.py'
@@ -39,7 +42,7 @@ jobs:
           DESK_MODE: paper
         run: |
           python -m compileall -q backend/director/brain_scalp backend/director/manual_teaching.py
-          PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_single_integration.py backend/tests/test_manual_teaching.py backend/tests/test_brain_operator.py backend/tests/test_brain_telegram_commands.py backend/tests/test_brain_dashboard_data.py backend/tests/test_trend_advisory.py backend/tests/test_brain_trend_context.py
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_single_integration.py backend/tests/test_manual_teaching.py backend/tests/test_brain_operator.py backend/tests/test_brain_telegram_commands.py backend/tests/test_brain_dashboard_data.py backend/tests/test_trend_advisory.py backend/tests/test_brain_trend_context.py backend/tests/test_trend_v11_shadow.py
           PYTHONPATH=backend python -m unittest -v backend.tests.test_brain_scalp_dual backend.tests.test_brain_scalp_group1 backend.tests.test_brain_scalp_group2 backend.tests.test_brain_scalp_group3 backend.tests.test_brain_scalp_group4 backend.tests.test_brain_scalp_group5 backend.tests.test_brain_scalp_group6 backend.tests.test_brain_scalp_reference backend.tests.test_brain_ai_context backend.tests.test_brain_resume backend.tests.test_brain_reclaim_probe
       - name: Guarantee untouched existing bots and deployed application
         run: |
