@@ -1,3 +1,15 @@
+## 30/10/2026 — Verifiche conferme Brain e dashboard (ChatGPT)
+Richiesta utente: procedere con le verifiche. Revisioni verificate: servizio work/brain-release-integration-20261030 efc7d7761f06492041421ee6160b260f14917bd2; app work/brain-operator-dashboard-20261030 c35e23cb037bc2064b461e1fa635895c83309b54.
+Esito remoto: servizio Actions41074225578 SUCCESS; dashboard Actions41074226811 FAILURE, pytest API SUCCESS, install npm ci fallita; React/build skipped.
+Verifiche locali Python3.12: suite identica al workflow servizio 74 PASS +21 subtest PASS; API 2 PASS. Prova integrata temporanea sui sorgenti dei due rami: chiusura PAPER con BrainOperator reale -> POST autenticata pending -> consumo owner -> receipt confirmed -> un solo esempio osservativo con training_applied=false; wallet invariato durante conferma, secondo consumo vuoto. Non prova browser o VPS né feed reale/AI pagata.
+Cause frontend confermate sul sorgente: frontend contiene yarn.lock, nessun package-lock.json; workflow usa npm ci; package.json non definisce script test ma workflow esegue npm test. La directory frontend è già specificata correttamente: non attribuire il guasto a working-directory errata.
+Ulteriori limiti da risolvere/testare: poll UI con fetch senza timeout/AbortController e setInterval può sovrapporre richieste bloccate; risposta reviews JSON di tipo non-oggetto può generare AttributeError invece di unavailable; gruppi non validi vengono accodati e possono finire needs_reconciliation. Nessuna promessa di collaudo frontend completo.
+Prossimo: correggere pipeline frontend usando lockfile/runner coerenti, aggiungere prove UI conferme e timeout/failure; poi eseguire build e collaudo servizio/dashboard completo. Mandato/configurazione/backup-restore e autorizzazione rilascio restano aperti.
+Nessuna modifica codice operativo o workflow, merge, deploy, reset, dati persistenti, API pagata o Telegram. Worktree verificati puliti; solo documentazione in diario.
+AI: chatgpt
+
+---
+
 ## IN_CORSO — Work integrazione rilascio Brain
 Utente okprocedi. Ramo work/brain-release-integration-20261030 dalla baseadvisory. Perimetro owneroperator/supervisor/servizio e test, poi contrattoUI. Chiusure finanziarie giàpersistite non devono essere riportate fallite per guasti teaching; recupero daSQLite senza ripetere chiusure. Nessun merge/deploy/reset. Mandato conto unico ancora da consolidare.
 
