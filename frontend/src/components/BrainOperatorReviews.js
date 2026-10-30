@@ -1,41 +1,65 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 
 export default function BrainOperatorReviews(){
   const [groups,setGroups]=useState([]);
   const [tickets,setTickets]=useState({});
   const [message,setMessage]=useState('');
+  const ticketsRef=useRef({});
+  const active=useRef(false);
+  const controllers=useRef(new Set());
+  const request=async(url,options={})=>{
+    const controller=new AbortController();
+    controllers.current.add(controller);
+    const timer=setTimeout(()=>controller.abort(),10000);
+    try{
+      const response=await fetch(url,{credentials:'same-origin',cache:'no-store',...options,signal:controller.signal});
+      if(!response.ok)throw new Error('request_failed');
+      return await response.json();
+    }finally{
+      clearTimeout(timer);
+      controllers.current.delete(controller);
+    }
+  };
   useEffect(()=>{
-    let live=true;
+    let live=true,timer;
+    active.current=true;
     const poll=async()=>{
       try{
-        const r=await fetch('/api/brain/operator/reviews',{credentials:'same-origin',cache:'no-store'});
-        if(!r.ok)throw new Error();
-        const data=await r.json();
+        const data=await request('/api/brain/operator/reviews');
         if(live)setGroups(data.status==='available'&&Array.isArray(data.groups)?data.groups:[]);
-        for(const [group,ticket] of Object.entries(tickets)){
-          const answer=await fetch('/api/brain/operator/result/'+ticket.id,{credentials:'same-origin',cache:'no-store'});
-          if(!answer.ok)continue;
-          const status=(await answer.json()).status;
+        for(const [group,ticket] of Object.entries(ticketsRef.current)){
+          if(!live)break;
+          if(ticket.terminal)continue;
+          const {status}=await request('/api/brain/operator/result/'+ticket.id);
+          if(['confirmed','expired','needs_reconciliation'].includes(status))
+            ticketsRef.current[group]={...ticket,terminal:true};
           if(live&&status==='confirmed')setMessage('Conferma registrata dal Brain. Esempio osservativo, non una regola.');
           else if(live&&['expired','needs_reconciliation','processing'].includes(status))
             setMessage('Esito '+status+': non ripetere la richiesta; verifica necessaria.');
         }
-      }catch(e){if(live)setMessage('Conferme temporaneamente non disponibili.');}
+      }catch(e){if(live)setMessage('Conferme temporaneamente non disponibili. Le richieste inviate non vengono ripetute.');}
+      finally{if(live)timer=setTimeout(poll,5000);}
     };
-    poll();const timer=setInterval(poll,5000);
-    return()=>{live=false;clearInterval(timer);};
-  },[tickets]);
+    poll();
+    return()=>{
+      live=false;active.current=false;clearTimeout(timer);
+      controllers.current.forEach(controller=>controller.abort());
+    };
+    // This poll reads current tickets through the ref, without restarting requests.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
   const send=async(group,choice)=>{
+    if(ticketsRef.current[group])return;
     const id=crypto.randomUUID().replace(/-/g,'');
-    setTickets(old=>({...old,[group]:{id,choice}}));
+    ticketsRef.current[group]={id,choice};
+    setTickets({...ticketsRef.current});
     setMessage('Richiesta in invio: non ancora confermata dal Brain.');
     try{
-      const r=await fetch('/api/brain/operator/confirm',{method:'POST',credentials:'same-origin',
+      await request('/api/brain/operator/confirm',{method:'POST',
         headers:{'Content-Type':'application/json','X-Brain-Operator':'1'},
         body:JSON.stringify({request_id:id,group_id:group,choice})});
-      if(!r.ok)throw new Error();
-      setMessage('Richiesta accodata. Attendo la conferma del Brain.');
-    }catch(e){setMessage('Esito invio incerto: attendo la verifica, non ripetere la richiesta.');}
+      if(active.current)setMessage('Richiesta accodata. Attendo la conferma del Brain.');
+    }catch(e){if(active.current)setMessage('Esito invio incerto: attendo la verifica, non ripetere la richiesta.');}
   };
   return <section aria-label="Insegnamenti manuali" style={{marginBottom:14,padding:14,border:'1px solid #334155',borderRadius:12}}>
     <h3>Le tue chiusure manuali</h3>

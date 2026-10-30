@@ -40,7 +40,8 @@ afterEach(async()=>{
 test('mobile-first single wallet shows meaningful price margin leverage and net',async()=>{
   brainAPI.getScalpStatus.mockResolvedValue(sample());
   await mount();
-  expect(host.querySelectorAll('section')).toHaveLength(1);
+  expect(host.querySelectorAll('section[aria-label="Portafoglio Brain"]')).toHaveLength(1);
+  expect(host.querySelectorAll('section[aria-label="Insegnamenti manuali"]')).toHaveLength(1);
   expect(host.textContent).toContain('Conto unico');
   expect(host.textContent).toContain('Prezzo entrata');
   expect(host.textContent).toContain('Prezzo attuale');
