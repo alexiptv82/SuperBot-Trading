@@ -17,6 +17,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install numpy pytest
+      - uses: actions/checkout@v4
+        with:
+          repository: alexiptv82/SuperBot-Trading
+          ref: 23fc151f17395bd77bba7446ca70617bc958836c
+          path: contract-app
+          persist-credentials: false
+      - run: pip install numpy pytest fastapi httpx
+      - run: PYTHONPATH=backend:contract-app/backend python -m pytest -q backend/tests/test_brain_app_service_contract.py
       - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_operator_inbox.py backend/tests/test_brain_operator_inbox_service.py backend/tests/test_brain_manual_preferences.py backend/tests/test_brain_teaching_recovery_service.py backend/tests/test_brain_operator.py backend/tests/test_brain_single_integration.py backend/tests/test_classical_methodology.py backend/tests/test_brain_ai_context.py backend/tests/test_brain_resume.py
       - run: test -z "$(git diff --name-only e9a0034506dec71b5592fe78dced4aff651c4de6 HEAD -- backend/desk frontend deploy backend/director/brain_free backend/director/brain_scalp/engine.py backend/director/brain_scalp/scanner.py)"

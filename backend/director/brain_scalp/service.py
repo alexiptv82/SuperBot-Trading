@@ -175,9 +175,11 @@ class BrainService:
                                     regime_v11=indicators,market_advisory=advice,
                                     operator_preferences=getattr(self,'operator_preferences',[]))
         inbox=getattr(self,'operator_inbox',None)
+        confirmed=False
         if inbox is not None:
             try:
                 confirmations=inbox.consume(self.operator,now)
+                confirmed=any(c.get('status')=='confirmed' for c in confirmations)
             except Exception:
                 confirmations=[{'status':'inbox_unavailable'}]
             if isinstance(result,dict):
@@ -185,10 +187,13 @@ class BrainService:
         # Protect/admit first. Recovery is observational and cannot turn a
         # successful financial tick into an error or create another close.
         last=getattr(self,'last_teaching_recovery',None)
-        if last is None or now-last>=60000:
+        if confirmed or last is None or now-last>=60000:
             self.last_teaching_recovery=now
             try:
                 self.operator.sync()
+                from .manual_preferences import confirmed_preferences
+                self.operator_preferences=confirmed_preferences(
+                    self.account.brain.store.root,self.account.brain.spec.account_id,now)
                 self.teaching_status='recorded'
             except Exception:
                 self.teaching_status='pending_recovery'
