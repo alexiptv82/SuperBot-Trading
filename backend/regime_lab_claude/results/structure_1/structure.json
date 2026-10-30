@@ -1,0 +1,107 @@
+{
+ "meta": {
+  "when": "2026-10-30 07:09 UTC",
+  "symbols": 26,
+  "bars": 1330756,
+  "days": 540,
+  "hash": "1c7dee868ad5"
+ },
+ "sanity": {
+  "S0a": false,
+  "S0a_text": "massimo 62%",
+  "S0b": true,
+  "S0b_text": "market short 18% / long 15%; symbol short 25% / long 23%; combined short 13% / long 9%",
+  "S0d": false,
+  "S0d_text": "6 barre 15m (minimo 8)",
+  "structural_accept": false
+ },
+ "occupancy": {
+  "SHOCK": 0.004515622907219257,
+  "DOWN_CLEAN": 0.06761953963607141,
+  "DOWN_CHOP": 0.09373744331553872,
+  "TURNING_UP": 0.040659740160342885,
+  "RANGE": 0.6166504027706026,
+  "TURNING_DOWN": 0.030786598549643152,
+  "UP_CHOP": 0.07938694678835888,
+  "UP_CLEAN": 0.05705757419206704,
+  "EMERGING_DOWN": 0.004840900828501999,
+  "EMERGING_UP": 0.004745230851654134
+ },
+ "detection_gates": {
+  "D1": false,
+  "D2": false,
+  "D3": true,
+  "median_lag_v2": 45.0,
+  "median_lag_ema": 64.0,
+  "ratio": 0.703125,
+  "lift_v2": 1.1215650847534342,
+  "lift_ema": 1.0265060709852838,
+  "flips_per_day_v2": 1.3596271064897811,
+  "detect_rate_v2": 0.7989690721649485,
+  "detect_rate_placebo_p95": 0.6030927835051546,
+  "n_turns_both": 109,
+  "n_turns": 194
+ },
+ "dwell_market": [
+  6.0,
+  3.0,
+  15.0
+ ],
+ "dwell_symbol": [
+  5.0,
+  3.0,
+  12.0
+ ],
+ "detection": [
+  {
+   "symbol": "BTC",
+   "turns": 99,
+   "detected_v2": 77,
+   "detected_ema": 55,
+   "both": 50,
+   "median_lag_v2": 44.0,
+   "median_lag_ema": 68.0,
+   "detect_rate_v2": 0.7777777777777778,
+   "detect_rate_v2_placebo_p95": 0.5959595959595959,
+   "detect_rate_v2_placebo_med": 0.5454545454545454,
+   "detect_rate_ema": 0.5555555555555556,
+   "detect_rate_ema_placebo_p95": 0.30303030303030304,
+   "flips_v2": 771,
+   "flips_ema": 239,
+   "flips_per_day_v2": 1.3967654884791756,
+   "flips_per_day_ema": 0.43297918514464717,
+   "confirm_v2": 0.6044098573281452,
+   "lift_v2": 1.1584993906438872,
+   "confirm_ema": 0.5630252100840336,
+   "lift_ema": 1.0792591140165542,
+   "base_rate_up": 0.5178313710596278,
+   "base_rate_down": 0.5256551462210406,
+   "dwell_median_bars": 5.0
+  },
+  {
+   "symbol": "ETH",
+   "turns": 95,
+   "detected_v2": 78,
+   "detected_ema": 68,
+   "both": 59,
+   "median_lag_v2": 49.0,
+   "median_lag_ema": 60.0,
+   "detect_rate_v2": 0.8210526315789474,
+   "detect_rate_v2_placebo_p95": 0.6105263157894737,
+   "detect_rate_v2_placebo_med": 0.5473684210526316,
+   "detect_rate_ema": 0.7157894736842105,
+   "detect_rate_ema_placebo_p95": 0.3473684210526316,
+   "flips_v2": 730,
+   "flips_ema": 268,
+   "flips_per_day_v2": 1.3224887245003867,
+   "flips_per_day_ema": 0.48551640844671734,
+   "confirm_v2": 0.5547945205479452,
+   "lift_v2": 1.0846307788629812,
+   "confirm_ema": 0.49812734082397003,
+   "lift_ema": 0.9737530279540132,
+   "base_rate_up": 0.509779718951766,
+   "base_rate_down": 0.5133687808583365,
+   "dwell_median_bars": 5.0
+  }
+ ]
+}
