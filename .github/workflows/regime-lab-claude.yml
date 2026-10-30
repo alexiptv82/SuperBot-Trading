@@ -1,0 +1,65 @@
+name: Regime lab (Claude) - offline, nessun bot toccato
+on:
+  push:
+    branches: [work/regime-lab-claude-20261030]
+    paths:
+      - 'backend/regime_lab_claude/**'
+      - '!backend/regime_lab_claude/results/**'
+      - '.github/workflows/regime-lab-claude.yml'
+permissions:
+  contents: write
+concurrency:
+  group: regime-lab-claude
+  cancel-in-progress: true
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy pandas
+      - name: Perimetro - nessun file di produzione toccato
+        run: |
+          set -e
+          changed="$(git diff --name-only fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7 HEAD | grep -v -E '^(backend/regime_lab_claude/|\.github/workflows/regime-lab-claude\.yml$)' || true)"
+          echo "fuori perimetro: [$changed]"
+          test -z "$changed"
+      - name: Test del lettore (specchio, causalita', equivalenza batch/vivo, buchi, isteresi)
+        working-directory: backend/regime_lab_claude
+        run: python -m unittest -v tests.test_regime_v2 2>&1 | tail -n 40
+      - name: Prova su dati finti (entrambe le fasi)
+        working-directory: backend/regime_lab_claude
+        run: |
+          python run_regime_lab.py --synthetic --days 60 --phase structure --out /tmp/synth-s --end 2026-10-29 | tail -n 3
+          python run_regime_lab.py --synthetic --days 60 --phase full --out /tmp/synth-f --end 2026-10-29 | tail -n 3
+      - name: Cache candele
+        uses: actions/cache@v4
+        with:
+          path: /tmp/regime-cache
+          key: regime-lab-candles-20261030-540-v1
+      - name: Fase da eseguire (file PHASE e ITERATION nel ramo)
+        id: phase
+        run: |
+          echo "phase=$(tr -d '[:space:]' < backend/regime_lab_claude/PHASE)" >> "$GITHUB_OUTPUT"
+          echo "iter=$(tr -d '[:space:]' < backend/regime_lab_claude/ITERATION)" >> "$GITHUB_OUTPUT"
+      - name: Laboratorio su candele reali Bitget (endpoint pubblici, sola lettura)
+        working-directory: backend/regime_lab_claude
+        run: python run_regime_lab.py --days 540 --cache /tmp/regime-cache --out results/${{ steps.phase.outputs.phase }}_${{ steps.phase.outputs.iter }} --end 2026-10-29 --workers 4 --phase ${{ steps.phase.outputs.phase }} --iteration ${{ steps.phase.outputs.iter }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regime-lab-claude-results
+          path: backend/regime_lab_claude/results
+      - name: Salva i risultati sul ramo del laboratorio (mai su rule-pool)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/regime_lab_claude/results
+          git diff --cached --quiet || git commit -m "regime-lab: risultati fase ${{ steps.phase.outputs.phase }} iterazione ${{ steps.phase.outputs.iter }} [skip ci]"
+          git pull --rebase origin work/regime-lab-claude-20261030
+          git push origin HEAD:work/regime-lab-claude-20261030
