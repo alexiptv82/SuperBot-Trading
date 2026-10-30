@@ -20,3 +20,8 @@ Ramo `work/brain-position-review-chat-20261030`, HEAD `f825a62a5592f956933784354
 Link CI: https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41119121131
 
 **Rilasciato**: NULLA. Nessun merge/deploy/riavvio/VPS/API pagata/reset/ordine o wallet alterato; git branch isolato. La sola consultazione AI sulle posizioni non e' ancora chiusura/stop automatico. Restano integrazione reale delle decisioni PAPER con test atomici e guardrail, feed API pubblico, collaudo end-to-end, budget/mandato, PWA, backup/restore e approvazione separata; non dichiarare Brain completo.
+
+## Prosecuzione autorizzata: motore decisioni PAPER su ramo distinto
+Utente: «ok procedi» per fase successiva dopo revisione periodica CI verde.
+Owner: Chat normale. Nuovo ramo `work/brain-position-execution-chat-20261030`, base `f825a62a5592f95693378435421f8c8ddc1fc5e4`; Work locale resta intatto. Obiettivo: collegare l'output `SUGGEST_CLOSE`/`SUGGEST_TIGHTEN` a transazioni PAPER **solo dopo controllo e revisione selettiva**, con opt-in esplicito di configurazione, atomicità SQLite, stop mai allargato, prezzo e ID posizione freschi, idempotenza, e test Python 3.10/3.11. Default: **OFF**, nessuna chiusura AI attiva sui servizi.
+Vincoli immutati: niente merge/deploy, VPS, avvio istanze o credenziali API; tutti gli storici append-only.
