@@ -9,7 +9,7 @@ from director.brain_scalp.position_review import (
     build_position_review,parse_review,evaluate_position_review,
     record_position_review)
 from director.brain_scalp.ai_context import decode,encode
-from backend.tests.test_brain_resume import SPEC,NOW,markets,CONTRACTS,plan,shortlist
+from backend.tests.test_brain_resume import SPEC,NOW,markets,CONTRACTS,plan,shortlist,breakout,hold
 import tempfile
 
 
@@ -68,6 +68,22 @@ class PositionReviews(TestCase):
         kinds=[r[0] for r in self.account.brain.store.db.execute('SELECT kind FROM events')]
         self.assertEqual(kinds.count('ai_position_review_observed'),1)
         self.assertEqual(after['ai_budget_reservation']['reserved_micro_usd'],100)
+
+    def test_entries_start_first_and_review_gets_a_turn_when_both_exist(self):
+        def both(system,user):
+            if decode(user).get('scope')=='position_review_advisory_only':
+                return answer(system,user)
+            return hold(system,user)
+        supervisor=self.start(primary=both)
+        self.assertEqual(supervisor.step(
+            breakout(self.now),CONTRACTS)['analysis_status'],'started')
+        supervisor.future.result(timeout=5)
+        self.now+=1000
+        self.assertEqual(supervisor.step(
+            breakout(self.now),CONTRACTS)['analysis_status'],'completed')
+        self.now+=1000
+        self.assertEqual(supervisor.step(
+            breakout(self.now),CONTRACTS)['analysis_status'],'position_review_started')
 
     def test_duplicate_replay_is_idempotent(self):
         req=build_position_review(self.account,markets(self.now),self.now,self.now+30000)
