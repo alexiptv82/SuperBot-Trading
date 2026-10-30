@@ -1,0 +1,80 @@
+name: Classical Falco Toro manual close teaching - offline only
+on:
+  push:
+    branches: [work/classics-trend-awareness-20261030]
+    paths:
+      - 'backend/desk/cli.py'
+      - 'backend/director/trend_advisory.py'
+      - 'backend/tests/test_trend_advisory.py'
+      - 'backend/tests/test_classics_trend_context.py'
+      - 'backend/desk/engine.py'
+      - 'backend/desk/manual_teaching_bridge.py'
+      - 'backend/director/manual_teaching.py'
+      - 'backend/tests/test_classics_manual_teaching.py'
+      - 'backend/tests/test_classics_safety_rules.py backend/tests/test_trend_advisory.py backend/tests/test_classics_trend_context.py'
+      - '.github/workflows/classics-trend-awareness-ci.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10','3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest numpy
+      - name: Validate legacy classical contract and new teaching handoff offline
+        env:
+          DESK_MODE: paper
+          TELEGRAM_BOT_TOKEN: ''
+          ANTHROPIC_API_KEY: ''
+        run: |
+          python -m compileall -q backend/desk/engine.py backend/desk/cli.py backend/desk/manual_teaching_bridge.py backend/director/manual_teaching.py
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_classics_manual_teaching.py backend/tests/test_classics_safety_rules.py
+      - name: Compare original legacy failures to candidate (no regression permitted)
+        env:
+          DESK_MODE: paper
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/classics-original" fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7
+          (cd "$RUNNER_TEMP/classics-original" && PYTHONPATH=backend python -m pytest -q backend/tests/test_desk.py --junitxml="$RUNNER_TEMP/original.xml" > "$RUNNER_TEMP/original.log" 2>&1) || true
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_desk.py --junitxml="$RUNNER_TEMP/candidate.xml" > "$RUNNER_TEMP/candidate.log" 2>&1 || true
+          python - <<'PY'
+          import os, xml.etree.ElementTree as ET
+          def collect(name):
+              root=ET.parse(os.path.join(os.environ["RUNNER_TEMP"],name+'.xml')).getroot()
+              cases=root.findall('.//testcase')
+              failures={c.attrib['name'] for c in cases
+                        if c.find('failure') is not None or c.find('error') is not None}
+              return len(cases),failures
+          old_n,old_f=collect('original');new_n,new_f=collect('candidate')
+          print(f'ORIGINAL {old_n} tests; {len(old_f)} failed')
+          print(f'CANDIDATE {new_n} tests; {len(new_f)} failed')
+          for name in sorted(new_f-old_f): print('NEW REGRESSION:',name)
+          for name in sorted(old_f-new_f): print('PREEXISTING FAILURE FIXED:',name)
+          for name in sorted(old_f&new_f): print('PREEXISTING FAILURE PERSISTS:',name)
+          if old_n!=new_n or new_f-old_f:
+              raise SystemExit('New regression in classical suite')
+          PY
+      - name: Baseline 13-Oct legacy tests (informational)
+        continue-on-error: true
+        env:
+          DESK_MODE: paper
+        run: |
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_desk.py
+
+      - name: Guard all Brain, frontend, deploy and existing paper contracts
+        run: |
+          test -z "$(git diff --name-only fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7 HEAD -- backend/director/brain_free backend/director/brain_scalp frontend deploy backend/server.py)"
+          git diff --name-only fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7 HEAD
+# This isolated diagnostic never deploys or updates trading runtime.
+# Verify legacy manual single-position operations offline before any deploy.
+# Retest the complete isolated paper-close evidence path.
+# Check take-profit finite-value acceptance across classic engine layers.
