@@ -29,6 +29,10 @@ Use only supplied symbols and eligible directions; never bypass execution
 guards. Choose margin/leverage/stop/target together within the supplied mandate
 and assess net costs. Confidence is observational, never a risk multiplier.
 Do not impose a fixed 20% profit target or fill slots for their own sake.
+Trend-change observations are early, symmetrical hypotheses only. Explicitly
+evaluate whether a previously bearish crypto is rotating upward (or vice versa);
+they never force, forbid or authorize a trade. Use the same net-cost and
+invalidation discipline for LONG and SHORT. No prediction is certainty.
 Protective exits remain independent of your availability.
 Return one JSON object: context_id, plans, assessments, summary.
 assessments must cover every eligible symbol once, with symbol, long_case,
@@ -92,7 +96,7 @@ class AIRequest:
 
 
 def build_request(state,spec,markets,contracts,shortlist,references,
-                  recent_trades,now_ms,deadline_ms):
+                  recent_trades,now_ms,deadline_ms,trend_observations=None):
     if (type(now_ms)!=int or type(deadline_ms)!=int or now_ms<=0 or
             not now_ms<deadline_ms<=now_ms+spec.max_plan_age_ms):
         raise ValueError('invalid_context_deadline')
@@ -141,6 +145,41 @@ def build_request(state,spec,markets,contracts,shortlist,references,
                 ref={'status':'available','max_age_ms':descriptor['max_age_ms'],'value':value}
             except (ValueError,TypeError,KeyError):
                 ref={'status':'unavailable','reason':'invalid_or_stale_reference'}
+        # Independent sensor: validated commentary, never a gate for candidates.
+        turn={'status':'not_supplied'}
+        raw_turn=(trend_observations or {}).get(symbol) if isinstance(trend_observations,dict) else None
+        if raw_turn is not None:
+            try:
+                if (not isinstance(raw_turn,dict) or
+                    raw_turn.get('kind')!='trend_change_observation' or
+                    raw_turn.get('authority')!='advisory_only' or
+                    raw_turn.get('may_authorize_entry') is not False or
+                    raw_turn.get('may_block_entry') is not False or
+                    raw_turn.get('symbol')!=symbol or
+                    raw_turn.get('bar_ms')!=300000 or
+                    raw_turn.get('phase') not in (
+                        'early_upshift','early_downshift','up_continuation',
+                        'down_continuation','uncertain') or
+                    type(raw_turn.get('observed_ms'))!=int or
+                    not 0<=now_ms-raw_turn['observed_ms']<=600000):
+                    raise ValueError('invalid_observation')
+                values={}
+                for key in ('prior_return_pct','recent_return_pct','acceleration_pct'):
+                    number=raw_turn[key]
+                    if type(number) not in (int,float) or not math.isfinite(number):
+                        raise ValueError('invalid_observation_number')
+                    values[key]=float(number)
+                turn={'status':'available','value':{
+                    'kind':'trend_change_observation',
+                    'authority':'advisory_only',
+                    'may_authorize_entry':False,'may_block_entry':False,
+                    'phase':raw_turn['phase'],
+                    'observed_ms':raw_turn['observed_ms'],
+                    'prior_direction':raw_turn['prior_direction'],
+                    'recent_direction':raw_turn['recent_direction'],
+                    **values}}
+            except (KeyError,TypeError,ValueError):
+                turn={'status':'unavailable','reason':'untrusted_or_stale_observation'}
         candidates.append({
             'symbol':symbol,'side':side,'signal_close_ms':signal,
             'setup':str(c.get('setup',''))[:100],
@@ -149,6 +188,7 @@ def build_request(state,spec,markets,contracts,shortlist,references,
                            '5m':[list(b[:6]) for b in five[-6:]]},
             'contract':{k:contract[k] for k in CONTRACT_KEYS if k in contract},
             'classical_reference':ref,
+            'trend_change_observation':turn,
         })
     memory=[]
     for t in recent_trades:
