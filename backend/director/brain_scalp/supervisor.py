@@ -19,7 +19,8 @@ from .position_review import (build_position_review,evaluate_position_review,
 class PaperSupervisor:
     def __init__(self,account,*,primary_call,reviewer_call,clock_ms,
                  daily_budget_micro_usd,reservation_micro_usd,
-                 analysis_interval_ms=300000,deadline_ms=30000,snapshot_path=None):
+                 analysis_interval_ms=300000,deadline_ms=30000,snapshot_path=None,
+                 position_actions='off'):
         if set(account.wallets)!={'brain'}:raise ValueError('single_account_required')
         if not callable(primary_call) or not callable(clock_ms):
             raise ValueError('explicit_callbacks_required')
@@ -34,6 +35,9 @@ class PaperSupervisor:
         if previous is not None and (not previous.closed or
                 (previous.future is not None and not previous.future.done())):
             raise ValueError('supervisor_already_active')
+        if position_actions not in ('off','paper') or type(position_actions)!=str:
+            raise ValueError('invalid_position_action_mode')
+        self.position_actions=position_actions
         self.account=account;self.primary=primary_call;self.reviewer=reviewer_call
         self.clock=clock_ms;self.budget=daily_budget_micro_usd
         self.reservation=reservation_micro_usd;self.interval=analysis_interval_ms
@@ -106,7 +110,9 @@ class PaperSupervisor:
                     analysis=self.future.result()
                     if purpose=='review':
                         output['position_review']=(record_position_review(
-                            self.account,self.request,analysis,markets,now)
+                            self.account,self.request,analysis,markets,now,
+                            execution_enabled=self.position_actions=='paper',
+                            contracts=contracts)
                             if healthy else {'status':'wallet_error'})
                     else:
                         output['analysis']=(self.account.accept_ai_analysis(
