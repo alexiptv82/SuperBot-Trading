@@ -29,6 +29,9 @@ Use only supplied symbols and eligible directions; never bypass execution
 guards. Choose margin/leverage/stop/target together within the supplied mandate
 and assess net costs. Confidence is observational, never a risk multiplier.
 Do not impose a fixed 20% profit target or fill slots for their own sake.
+Trend-change observations and regime_v11_indicator are early, symmetrical
+non-binding hypotheses, NOT permissions, filters, or extra LONG points.
+The indicator may be unavailable; that is not a reason to HOLD.
 Trend-change observations are early, symmetrical hypotheses only. Explicitly
 evaluate whether a previously bearish crypto is rotating upward (or vice versa);
 they never force, forbid or authorize a trade. Use the same net-cost and
@@ -96,7 +99,8 @@ class AIRequest:
 
 
 def build_request(state,spec,markets,contracts,shortlist,references,
-                  recent_trades,now_ms,deadline_ms,trend_observations=None):
+                  recent_trades,now_ms,deadline_ms,trend_observations=None,
+                  regime_v11=None):
     if (type(now_ms)!=int or type(deadline_ms)!=int or now_ms<=0 or
             not now_ms<deadline_ms<=now_ms+spec.max_plan_age_ms):
         raise ValueError('invalid_context_deadline')
@@ -180,6 +184,37 @@ def build_request(state,spec,markets,contracts,shortlist,references,
                     **values}}
             except (KeyError,TypeError,ValueError):
                 turn={'status':'unavailable','reason':'untrusted_or_stale_observation'}
+        v11={'status':'not_supplied'}
+        incoming=regime_v11.get(symbol) if isinstance(regime_v11,dict) else None
+        if incoming is not None:
+            try:
+                if (not isinstance(incoming,dict) or
+                    incoming.get('kind')!='trend_engine_v11' or
+                    incoming.get('authority')!='advisory_only' or
+                    incoming.get('may_authorize_entry') is not False or
+                    incoming.get('may_block_entry') is not False or
+                    incoming.get('may_modify_scores') is not False or
+                    incoming.get('symbol')!=symbol or
+                    incoming.get('state') not in ('NEUTRAL','BULLISH','BEARISH',
+                        'TRANSITION_UP','TRANSITION_DOWN') or
+                    incoming.get('quality')!='OK' or incoming.get('ready') is not True or
+                    type(incoming.get('observed_ms'))!=int or
+                    not 0<=now_ms-incoming['observed_ms']<=180000 or
+                    type(incoming.get('bias')) not in (int,float) or
+                    not math.isfinite(incoming['bias']) or
+                    not -1<=incoming['bias']<=1):
+                    raise ValueError('untrusted_regime_v11')
+                v11={'status':'available','value':{
+                    'state':incoming['state'],
+                    'bias':float(incoming['bias']),
+                    'source':'trend_engine_v11',
+                    'authority':'advisory_only',
+                    'strength_is_probability':False,
+                    'may_authorize_entry':False,'may_block_entry':False,
+                    'observed_ms':incoming['observed_ms'],
+                    'five_minute_ready':incoming.get('five_minute_ready') is True}}
+            except (TypeError,ValueError):
+                v11={'status':'unavailable'}
         candidates.append({
             'symbol':symbol,'side':side,'signal_close_ms':signal,
             'setup':str(c.get('setup',''))[:100],
@@ -189,6 +224,7 @@ def build_request(state,spec,markets,contracts,shortlist,references,
             'contract':{k:contract[k] for k in CONTRACT_KEYS if k in contract},
             'classical_reference':ref,
             'trend_change_observation':turn,
+            'regime_v11_indicator':v11,
         })
     memory=[]
     for t in recent_trades:
