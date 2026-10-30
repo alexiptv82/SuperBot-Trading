@@ -45,7 +45,7 @@ EMA position, 24h momentum, range breaks, RSI and volume with independent
 timing/invalidation judgment. It cannot change eligibility, force review,
 force a trade or block one; missing advice is not a reason to HOLD.
 Its legacy warmup, equal-value SHORT bias and static seasonality are cautions.
-Protective exits remain independent of your availability.
+Operator preferences are dated examples of exits confirmed by the user, not\nTP thresholds, training, guarantees, or instructions to imitate an outcome.\nConsider context and net costs independently; never infer a fixed profit target\nfrom an example, and never delay protective exits to reproduce a profit.\nProtective exits remain independent of your availability.
 Return one JSON object: context_id, plans, assessments, summary.
 assessments must cover every eligible symbol once, with symbol, long_case,
 short_case, decision (LONG/SHORT/HOLD), and optional review_flags containing
@@ -109,7 +109,7 @@ class AIRequest:
 
 def build_request(state,spec,markets,contracts,shortlist,references,
                   recent_trades,now_ms,deadline_ms,trend_observations=None,
-                  regime_v11=None,market_advisory=None):
+                  regime_v11=None,market_advisory=None,operator_preferences=None):
     if (type(now_ms)!=int or type(deadline_ms)!=int or now_ms<=0 or
             not now_ms<deadline_ms<=now_ms+spec.max_plan_age_ms):
         raise ValueError('invalid_context_deadline')
@@ -249,7 +249,10 @@ def build_request(state,spec,markets,contracts,shortlist,references,
         memory.append({k:t[k] for k in MEMORY_KEYS if k in t})
     memory=sorted(memory,key=lambda t:t['close_ms'])[-10:]
     exposure_hash=account_fingerprint(state)
+    from .manual_preferences import project_preferences
+    preferences=project_preferences(operator_preferences,spec.account_id,now_ms)
     payload={
+        'operator_preferences':preferences,
         'schema_version':1,'paper':True,'created_ms':now_ms,'deadline_ms':deadline_ms,
         'account_id':spec.account_id,'exposure_hash':exposure_hash,
         'account':{'cash':state['cash'],'equity':equity if complete else None,
