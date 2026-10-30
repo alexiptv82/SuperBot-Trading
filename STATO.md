@@ -1,3 +1,15 @@
+## 30/10 — Work: struttura consultiva e metodologia SHORT, codice pubblicato
+Utente autorizza implementazione offline del lettore non bloccante per Brain/classici e verifica della conservazione SHORT.
+Brain work/brain-structural-advisory-20261030 SHA26b7098786080b8982a05a4b2c3f5da3cba3ff24, base6b198e0; classici work/classics-structural-advisory-20261030 SHAd48658fad0ba271aaadc37d86fc488b6a9cdb3f4, base559b458. ChatGPT Work owner.
+Nuovo osservatore15m: due chiusure oltre range8barre+0,25ATR14, contesti1h/4h descrittivi; nessun score/veto/ordine. Worker pubblico15m1000barre,3simboli/minuto, cache30min e opt-in envdefaultoff; nessun servizio avviato.
+Verificati signals/seasonal identici fra rule-pool fed2e3f, candidato classici559b458 e pin9fa667f. Prima il servizioBrain NON passava il riferimento: non dichiarare metodologia già trasferita. Ora il vero scorer congelato e verificatoSHA viene eseguito su dati causali nel worker e presentato come classical_methodology all'AI. Non è clone della strategia: scanner/sizing/usciteBrain invariati, candidati restano breakout1m/5m. Metodo consultivo non innesca revisione obbligatoria.
+Test localePython3.12:84PASS+21subtest su integrazione/observer; separatamente157regressioni motorePASS, sovrapposte.18nuovi test includono opposizione scorerSHORT->AI LONG ammesso senza revisione, causalità, timeout, classici solo diagnostica.
+Pubblicazione CI: Brain41059587780 queued; classici41059589228 in_progress alla verifica. Non dichiarare ancora CIremota verde.
+Documenti docs/structural-advisory-and-short-methodology-2026-10-30.md e research/structural_advisory/PRE-REGISTRAZIONE.md sui rami. Holdout futuro fissato1novembre->1dicembre con warmup; nessun backtest nuovo completato, nessuna prova predittiva. Nessuna automazione download o rilascio creata.
+Nessun merge/deploy/APIpagata/VPS/reset/storico toccato; codice in rami separati. Prossimo: controllare CI e A/B classici, correggere eventuali regressioni, poi riprendere aperti Brain/classici. Stato runtime VPS non verificato.
+AI: chatgpt Work
+
+---
 ## IN_CORSO — Work: lettore strutturale consultivo e audit metodologia SHORT (30/10)
 
 Utente trasferisce lavoro alla chat Work e autorizza implementazione/test offline. Owner ChatGPT Work; nuovi rami work/brain-structural-advisory-20261030 e work/classics-structural-advisory-20261030 dalle rispettive basi v11 shadow. Brain resta decisore AI indipendente; classici solo osservazioni, nessun score/veto/ordine. Preservare scorer SHORT originale e verificare metodologia realmente collegata, non dichiarare completamento dal solo adapter. Nessun merge/deploy/reset/API pagata. Stato VPS non verificato. Checkpoint in Library SuperBot-Ripresa e diario a ogni progresso.
