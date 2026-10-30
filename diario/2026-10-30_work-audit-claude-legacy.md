@@ -1,0 +1,3 @@
+# Audit diretto Claude legacy — 30 ottobre 2026
+Fonte candidato classici 2b181871c0b8b9b67b3c6b6dd47c317316b4a962. desk/brain.py blob164b856d115bb0f48ef3062e47c7f2ac21b2ed6a: DAILY_CAP=env DESK_DAILY_CAP_USD default0.70 (runtime non letto); call_claude default900token/60s. CLI blob782256df67918781ae37bcd83324e0c51ebd3f3f passa esplicitamente1100token, timeout omesso quindi60s. REPLY_KEEP_CHARS6000 e log_claude_call presenti anche nel candidato; oltre soglia conserva4000inizio+marcatore+1500fine. IMPORTANTE: sola presenza funzione non prova chiamata nel ciclo; audit collegamento separato necessario. Nessun codice o parametro operativo modificato.
+AI: chatgpt Work
