@@ -1,4 +1,4 @@
-name: Brain single integration - offline only
+name: Brain trend-change advisory (offline)
 on:
   push:
     branches: [work/brain-trend-awareness-20261030]
@@ -44,3 +44,5 @@ jobs:
       - name: Guarantee untouched existing bots and deployed application
         run: |
           test -z "$(git diff --name-only 168cb9f127f43d349570edeb1cdc47eb9bf38bd3 HEAD -- backend/desk backend/director/brain_free backend/director/brain_pilot frontend backend/server.py deploy Dockerfile.brainfree)"
+
+# Confirm unchanged PAPER execution and update trend test results.
