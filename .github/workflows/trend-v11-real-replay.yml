@@ -1,0 +1,43 @@
+name: Trend v1.1 REAL Bitget replay - public read only
+on:
+  push:
+    branches: [work/trend-v11-replay-real-20261030]
+    paths:
+      - 'research/trend_v11_real_replay/**'
+      - '.github/workflows/trend-v11-real-replay.yml'
+permissions:
+  contents: read
+jobs:
+  measured-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Offline preregistration and data-integrity tests
+        run: PYTHONPATH=backend:research/trend_v11_real_replay python -m unittest discover -s research/trend_v11_real_replay -p 'test_*.py' -v
+      - name: Read-only Bitget historical 1m replay (no keys, no orders)
+        env:
+          DEEPSEEK_API_KEY: ''
+          ANTHROPIC_API_KEY: ''
+          DESK_MODE: paper
+          PYTHONPATH: backend
+        run: |
+          python research/trend_v11_real_replay/replay.py research-results
+      - name: Keep reproducibility data and reports even on network errors
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitget-1m-trend-v11-real-replay
+          path: |
+            research-results/summary.json
+            research-results/trend_events.csv
+            research-results/validated_candles/*.csv.gz
+            research/trend_v11_real_replay/PRE-REGISTRAZIONE.md
+          retention-days: 30
+      - name: Guard against operational-file changes
+        if: always()
+        run: |
+          test -z "$(git diff --name-only 6b198e060dcbb478b5fd69c6d4fcd928d5821888 HEAD -- backend/desk backend/director backend/server.py frontend deploy)"
