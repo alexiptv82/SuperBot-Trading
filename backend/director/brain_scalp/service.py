@@ -14,6 +14,8 @@ import time
 from .config import WalletSpec,validate_spec
 from .coordinator import BrainAccount
 from .market_bridge import PublicBrainFeed
+from .operator import BrainOperator
+from .telegram_commands import PaperTelegramCommands
 from .supervisor import PaperSupervisor
 from .transports import PriceLimit,make_primary,make_reviewer
 
@@ -96,11 +98,14 @@ class BrainService:
     def __init__(self,config,*,feed=None,clock_ms=None,initialize=False):
         self.feed=feed if feed is not None else PublicBrainFeed()
         self.clock=clock_ms if clock_ms is not None else lambda:int(time.time()*1000)
-        self.account=None;self.supervisor=None
+        self.account=None;self.supervisor=None;self.operator=None;self.telegram=None
+        self.last_markets={}
         try:
             self.account=BrainAccount(config['data_dir'],spec=config['spec'],
                 initialize=initialize,now_ms=self.clock(),
                 candle_backfill=self.feed.backfill)
+            self.operator=BrainOperator(self.account)
+            self.operator.sync()
             self.supervisor=PaperSupervisor(
                 self.account,primary_call=config['primary'],
                 reviewer_call=config['reviewer'],clock_ms=self.clock,
@@ -116,7 +121,20 @@ class BrainService:
         now=self.clock()
         state=self.account.brain.store.load()
         markets,contracts=self.feed.poll(state['positions'],now)
+        self.last_markets=markets
         return self.supervisor.step(markets,contracts)
+
+    def enable_telegram_commands(self,*,allowed_chat_id,allowed_user_id):
+        if self.telegram is not None:
+            raise ValueError('telegram_handler_already_enabled')
+        self.telegram=PaperTelegramCommands(self.operator,
+            allowed_chat_id=allowed_chat_id,allowed_user_id=allowed_user_id)
+
+    def handle_telegram_update(self,update):
+        if self.telegram is None:
+            raise ValueError('telegram_control_not_enabled')
+        # Called ONLY on the wallet-owner thread, after protective ticks.
+        return self.telegram.handle(update,self.last_markets,self.clock())
 
     def backup(self,path):
         return self.account.brain.store.backup(path)
