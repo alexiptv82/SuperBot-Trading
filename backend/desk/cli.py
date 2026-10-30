@@ -873,6 +873,7 @@ def _check_close_all_flag(state: dict) -> bool:
         now_ms = int(time.time() * 1000)
         prices = _market_prices(list(acc.positions), state)
         closed_n, skipped, net = 0, [], 0.0
+        manual_closed_records = []
         for sym in list(acc.positions):
             px = prices.get(sym)
             if px is None:
@@ -881,6 +882,7 @@ def _check_close_all_flag(state: dict) -> bool:
             rec = acc.close(sym, px, now_ms, "chiusura manuale")
             if rec:
                 record_close(state, rec)
+                manual_closed_records.append(rec)
                 closed_n += 1
                 net += rec["net"]
         flush_events(state, acc)
@@ -890,6 +892,17 @@ def _check_close_all_flag(state: dict) -> bool:
             detail += f"; prezzo non disponibile per {', '.join(skipped)}: ancora aperte, riprova"
         _set_last_action(state, "close_all", not skipped, detail, closed=closed_n, skipped=skipped)
         save_state(state, STATE_FILE)
+        # The old 13/10 wallet must be durably saved BEFORE teaching can
+        # attest a user's close; never treat a Bitget disappearance as proof.
+        if manual_closed_records:
+            try:
+                from desk.manual_teaching_bridge import record_verified_manual_closures
+                record_verified_manual_closures(
+                    DATA_DIR,PORTFOLIO.name,int(state.get("run_no",1)),
+                    manual_closed_records,persisted=True,remaining=acc.positions)
+            except Exception as teaching_error:
+                print("[TEACHING] post-save audit unavailable: "
+                      + type(teaching_error).__name__,flush=True)
         print(f"[CHIUDI TUTTO] {detail}", flush=True)
         return True
     except Exception as e:
