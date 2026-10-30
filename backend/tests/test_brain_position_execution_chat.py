@@ -170,6 +170,51 @@ class PaperPositionExecution(TestCase):
         self.assertIn('BTC',self.wallet.brain.store.load()['positions'])
         self.assertEqual(len(self.events('trade_closed')),0)
 
+    def test_rejects_backward_owner_clock_even_with_fresh_mark(self):
+        req=self.request();result=self.analysis(req)
+        state=self.wallet.brain.store.load()
+        state['last_ms']=self.now+2000
+        self.wallet.brain.store.commit(state,self.now+2000,
+                                      [{'kind':'test_advanced_clock'}])
+        answer=record_position_review(
+            self.wallet,req,result,markets(self.now+1000),self.now+1000,
+            execution_enabled=True,contracts=CONTRACTS)
+        self.assertEqual(answer['status'],'rejected_context')
+        self.assertEqual(len(self.events('trade_closed')),0)
+
+    def test_supervisor_reviewer_executes_after_protection_tick(self):
+        supervisor=PaperSupervisor(
+            self.wallet,primary_call=lambda s,u:reply(s,u),
+            reviewer_call=lambda s,u:reply(s,u),clock_ms=lambda:self.now,
+            daily_budget_micro_usd=200,reservation_micro_usd=100,
+            analysis_interval_ms=1000,position_actions='paper')
+        try:
+            first=supervisor.step(markets(self.now),CONTRACTS)
+            self.assertEqual(first['analysis_status'],'position_review_started')
+            supervisor.future.result(timeout=5)
+            self.now+=1000
+            second=supervisor.step(markets(self.now),CONTRACTS)
+            self.assertEqual(second['position_review']['status'],'applied')
+            self.assertEqual(second['position_review']['automatic_actions'],1)
+            self.assertNotIn('BTC',self.wallet.brain.store.load()['positions'])
+            self.assertEqual(len(self.events('trade_closed')),1)
+        finally:
+            supervisor.close()
+
+    def test_backup_integrity_includes_one_close_and_one_review(self):
+        from pathlib import Path
+        import sqlite3
+        req=self.request();result=self.analysis(req)
+        self.assertEqual(self.apply(req,result)['status'],'applied')
+        backup=Path(self.temp.name)/'brain-after-close.sqlite'
+        self.wallet.brain.store.backup(backup)
+        with sqlite3.connect(backup) as db:
+            self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM events WHERE kind='trade_closed'").fetchone()[0],1)
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM events WHERE kind='ai_position_review_observed'").fetchone()[0],1)
+
     def test_opt_in_mode_rejects_live_and_unknown(self):
         for mode in ('live','enabled',True,1,None):
             with self.assertRaises(ValueError):
