@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
 from typing import Optional
+import math
 
 # ---- asset tier (leva massima)
 TIER_A = {"BTC", "XAU", "XAG", "XAUUSDT", "XAGUSDT"}   # 45x
@@ -169,8 +170,16 @@ class PaperAccount:
             return None, "stop loss obbligatorio"
         if (side == 1 and sl >= price) or (side == -1 and sl <= price):
             return None, "stop dal lato sbagliato"
-        if tp is not None and ((side == 1 and tp <= price) or (side == -1 and tp >= price)):
-            tp = None
+        # A nonsensical TP must never create an impossible PAPER target.
+        if tp is not None:
+            try:
+                valid_tp = math.isfinite(float(tp)) and float(tp)>0
+                if valid_tp:
+                    valid_tp = ((side==1 and tp>price) or (side==-1 and tp<price))
+            except (TypeError,ValueError,OverflowError):
+                valid_tp = False
+            if not valid_tp:
+                tp = None
         # leva: rispetta il tier dell'asset
         tier_max = max_leverage_for(symbol)
         lev = int(max(1, min(int(leverage), tier_max)))
@@ -254,17 +263,41 @@ class PaperAccount:
         if dca_mar + fee > self.cash:
             return None, "cassa insufficiente per DCA"
         new_qty = notional / fill
-        # aggiorna entry media ponderata
+        # An averaging order may tighten the stop but cannot move it against
+        # the open position. Validate before mutating any cash or margin.
+        try:
+            proposal=float(new_sl)
+            if not (math.isfinite(proposal) and proposal>0):
+                return None, "stop DCA non valido"
+        except (TypeError,ValueError,OverflowError):
+            return None, "stop DCA non valido"
+        protected_sl=(max(pos.sl,proposal) if pos.side==1 else min(pos.sl,proposal))
+        new_entry=weighted_entry(pos.entry,pos.qty,fill,new_qty)
+        new_liq=liq_price(pos.side,new_entry,pos.leverage,L.maint)
+        if ((pos.side==1 and not new_liq<protected_sl<new_entry)
+            or (pos.side==-1 and not new_entry<protected_sl<new_liq)):
+            return None, "stop DCA incompatibile con liquidazione"
+        new_valid_tp=None
+        if new_tp is not None:
+            try:
+                tp_value=float(new_tp)
+                if (math.isfinite(tp_value) and tp_value>0 and
+                    ((pos.side==1 and tp_value>new_entry) or
+                     (pos.side==-1 and tp_value<new_entry))):
+                    new_valid_tp=tp_value
+            except (TypeError,ValueError,OverflowError):
+                pass
+        # aggiorna entry media ponderata after all validation gates
         old_entry, old_qty = pos.entry, pos.qty
-        pos.entry = weighted_entry(old_entry, old_qty, fill, new_qty)
+        pos.entry = new_entry
         pos.qty += new_qty
         pos.total_margin += dca_mar
         pos.fee_open += fee
-        pos.sl = float(new_sl)
+        pos.sl = protected_sl
         if new_tp is not None:
-            pos.tp = float(new_tp)
+            pos.tp = new_valid_tp
         # ricalcola liquidazione sul nuovo entry medio
-        pos.liq = liq_price(pos.side, pos.entry, pos.leverage, L.maint)
+        pos.liq = new_liq
         trigger_pct = abs(fill - old_entry) / old_entry
         pos.dca_levels.append({"margin": dca_mar, "entry": fill, "qty": new_qty,
                                 "fee": fee, "added_ms": now_ms, "trigger_pct": round(trigger_pct, 4)})
