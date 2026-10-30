@@ -86,4 +86,19 @@ class ManualClose(unittest.TestCase):
         self.assertEqual(len(self.op.pending_reviews()),1)
 
 
+    def test_teaching_io_failure_after_commit_does_not_fail_or_repeat_close(self):
+        from unittest.mock import patch
+        ident=self.current()
+        with patch.object(self.op.teaching,'register',side_effect=OSError('disk unavailable')):
+            result=self.op.close({'BTC':ident},markets(NOW+1000),NOW+1000)
+        self.assertEqual(result['closed'],['BTC'])
+        self.assertEqual(result['teaching_status'],'pending_recovery')
+        self.assertNotIn('BTC',self.account.brain.store.load()['positions'])
+        self.assertEqual(self.op.sync(),1)
+        self.assertEqual(self.op.sync(),0)
+        self.assertEqual(len(self.op.pending_reviews()),1)
+        with self.assertRaisesRegex(ValueError,'stale_position_id'):
+            self.op.close({'BTC':ident},markets(NOW+2000),NOW+2000)
+
+
 if __name__=='__main__':unittest.main()
