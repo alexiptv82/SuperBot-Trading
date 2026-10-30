@@ -1,0 +1,22 @@
+name: Brain release integration offline
+on:
+  push:
+    branches: [work/brain-release-integration-20261030]
+    paths: ['backend/**', '.github/workflows/brain-release-integration-ci.yml']
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      matrix:
+        python: ['3.10','3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install numpy pytest
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_teaching_recovery_service.py backend/tests/test_brain_operator.py backend/tests/test_brain_single_integration.py backend/tests/test_classical_methodology.py backend/tests/test_brain_ai_context.py backend/tests/test_brain_resume.py
+      - run: test -z "$(git diff --name-only e9a0034506dec71b5592fe78dced4aff651c4de6 HEAD -- backend/desk frontend deploy backend/director/brain_free backend/director/brain_scalp/engine.py backend/director/brain_scalp/scanner.py)"
