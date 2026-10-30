@@ -1,0 +1,102 @@
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from brain_scalp_view import read_all
+from backend.tests.test_brain_scalp_view import NOW,seed
+
+
+def snapshot():
+    return {'schema_version':2,'paper':True,'read_only':True,'ts_ms':NOW,
+        'account':{'status':'ok','paper':True,'account_id':'brain-scalp-single-paper',
+        'name':'brain','heartbeat_ms':NOW,'cash':2000.,'equity':2015.,'initial_cash':2000.,
+        'margin':0.,'margin_limit':1600.,'max_slots':10,'positions':[],'pending':[],
+        'net_pnl_vs_initial':99999.,'metrics':{}}}
+
+
+class SingleView(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.path=Path(self.tmp.name)/'snapshot.json'
+    def tearDown(self):self.tmp.cleanup()
+    def read(self,obj=None,now=NOW,layout='single'):
+        if obj is not None:self.path.write_text(json.dumps(obj))
+        return read_all(self.tmp.name,now,snapshot_path=self.path,layout=layout)
+
+    def test_unique_identity_actual_capital_and_recomputed_pnl(self):
+        result=self.read(snapshot(),layout='auto')
+        self.assertEqual(result['layout'],'single');self.assertEqual(set(result['profiles']),{'brain'})
+        p=result['profiles']['brain'];self.assertEqual(p['initial_cash'],2000)
+        self.assertEqual(p['net_pnl_vs_initial'],15);self.assertTrue(p['online'])
+
+    def test_missing_single_never_falls_back_to_dual_databases(self):
+        seed(self.tmp.name,'hawk');seed(self.tmp.name,'bull')
+        result=self.read()
+        self.assertEqual(set(result['profiles']),{'brain'})
+        self.assertFalse(result['profiles']['brain']['available'])
+        self.assertNotIn('cash',result['profiles']['brain'])
+
+    def test_corrupt_single_never_falls_back(self):
+        seed(self.tmp.name,'hawk');self.path.write_text('broken')
+        self.assertEqual(self.read()['status'],'unavailable')
+        self.assertEqual(set(self.read()['profiles']),{'brain'})
+
+    def test_stale_snapshot_and_heartbeat(self):
+        r=self.read(snapshot(),now=NOW+61000)
+        self.assertFalse(r['profiles']['brain']['online'])
+        self.assertTrue(r['snapshot_stale'])
+        obj=snapshot();obj['account']['heartbeat_ms']=NOW-61000
+        self.assertFalse(self.read(obj)['profiles']['brain']['online'])
+
+    def test_foreign_mixed_or_wrong_layout_rejected(self):
+        obj=snapshot();obj['account']['account_id']='brain-free-paper'
+        self.assertEqual(self.read(obj)['status'],'unavailable')
+        obj=snapshot();obj['profiles']={}
+        self.assertEqual(self.read(obj)['status'],'unavailable')
+        self.assertEqual(self.read(snapshot(),layout='dual')['status'],'unavailable')
+        obj=snapshot();obj['schema_version']=True
+        self.assertEqual(self.read(obj)['status'],'unavailable')
+
+    def test_invalid_capital_capacity_or_position_rejected(self):
+        for key,value in [('initial_cash',0),('initial_cash',float('nan')),
+                          ('margin_limit','1600'),('max_slots',True),('positions',[{'leverage':'bad'}])]:
+            with self.subTest(key=key):
+                obj=snapshot();obj['account'][key]=value
+                self.assertEqual(self.read(obj)['status'],'unavailable')
+
+    def test_unknown_equity_not_zero_and_file_unchanged(self):
+        obj=snapshot();obj['account']['equity']=None
+        self.read(obj);before=self.path.read_bytes();r=self.read()
+        self.assertIsNone(r['profiles']['brain']['net_pnl_vs_initial'])
+        self.assertEqual(self.path.read_bytes(),before)
+
+    def test_future_symlink_rejected(self):
+        obj=snapshot();obj['ts_ms']=NOW+1
+        self.assertEqual(self.read(obj)['status'],'unavailable')
+        target=Path(self.tmp.name)/'actual.json';target.write_text(json.dumps(snapshot()))
+        self.path.unlink();self.path.symlink_to(target)
+        self.assertEqual(self.read()['status'],'unavailable')
+
+class ProducerContract(unittest.TestCase):
+    def test_actual_single_wallet_producer_round_trip(self):
+        import os,subprocess,sys
+        core=os.environ.get('BRAIN_TEST_CORE_ROOT')
+        if not core:self.skipTest('pinned producer checkout supplied by CI')
+        script='''
+from dataclasses import replace
+from director.brain_scalp.config import HAWK
+from director.brain_scalp.coordinator import BrainAccount
+from director.brain_scalp.snapshot import build_account_snapshot,atomic_write
+from pathlib import Path
+import sys
+spec=replace(HAWK,name='brain',account_id='brain-scalp-single-paper',start_cash=2000,max_margin_total=1600)
+a=BrainAccount(sys.argv[1],spec=spec,initialize=True,now_ms=1800000000000)
+a.tick({}, {},1800000000000)
+atomic_write(Path(sys.argv[1])/'snapshot.json',build_account_snapshot(a,1800000000000))
+a.close()
+'''
+        with tempfile.TemporaryDirectory() as root:
+            env=dict(os.environ,PYTHONPATH=str(Path(core).resolve()/'backend'))
+            subprocess.run([sys.executable,'-c',script,root],env=env,cwd=core,check=True,timeout=15)
+            r=read_all(root,NOW,snapshot_path=Path(root)/'snapshot.json',layout='single')
+            self.assertEqual(r['status'],'ok');self.assertEqual(r['profiles']['brain']['equity'],2000)
+            self.assertEqual(r['profiles']['brain']['net_pnl_vs_initial'],0)

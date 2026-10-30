@@ -10,8 +10,8 @@ const fmtTime = n => Number.isFinite(n) ? new Date(n).toLocaleString('it-IT') : 
 function Wallet({name,data,historical}) {
   const d=data || {}, ready=d.status==='ok';
   return <section style={card}>
-    <h2 style={{margin:'0 0 6px',fontSize:19}}>🧠 Brain {name==='hawk'?'Hawk':'Bull'}</h2>
-    <p style={label}>Conto PAPER separato · base di prova 1.000 $ · {name==='hawk'?10:3} slot</p>
+    <h2 style={{margin:'0 0 6px',fontSize:19}}>🧠 Brain {name==='brain'?'· Conto unico':name==='hawk'?'Hawk':'Bull'}</h2>
+    <p style={label}>{name==='brain'?'Conto PAPER unico':'Conto PAPER separato'} · Capitale iniziale {money(d.initial_cash)} · {d.max_slots ?? '—'} slot</p>
     {!ready ? <p role="status" style={{color:'#fbbf24'}}>Portafoglio non ancora avviato o dati non leggibili. Nessun saldo ricostruito.</p> : <>
       <p>{d.online && !historical ? '🟢 Online' : '🟠 Dati non aggiornati'} · {d.paused?'Aperture in pausa':'H24 previsto'}</p>
       {(d.snapshot_stale || historical) && <p role="status" style={{color:'#fbbf24'}}>Aggiornamento non disponibile: i valori mostrati sono storici, non quotazioni correnti.</p>}
@@ -25,7 +25,7 @@ function Wallet({name,data,historical}) {
       {d.positions?.map(p=><article key={p.symbol} style={{borderTop:'1px solid #334155',padding:'9px 0'}}>
         <strong>{p.symbol} · {p.side}</strong>
         <p>Margine {money(p.margin)} · Leva {p.leverage?.toFixed(1)}× · Nozionale {money(p.notional)}</p>
-        <p>Netto chiudendo ora {money(p.net_close_estimate)} · Durata {p.age_minutes?.toFixed(1)} min</p>
+        <p>{historical?'Ultima stima netta disponibile':'Netto stimato di chiusura'} {money(p.net_close_estimate)} · Durata {p.age_minutes?.toFixed(1)} min</p>
         <p style={label}>Stop {p.stop} · Target {p.target} · {p.reason}</p>
       </article>)}
       <h3>Piani condizionali</h3>
@@ -66,6 +66,8 @@ export default function BrainScalpDashboard() {
     return ()=>{controller.abort();clearTimeout(timer);clearInterval(ageTimer);};
   },[]);
   const data=received?.data;
+  const single=data?.layout==='single';
+  const names=single?['brain']:['hawk','bull'];
   const elapsed=received ? Math.max(0,clock-received.at) : 0;
   const snapshotAge=Number.isFinite(data?.snapshot_age_ms) ? data.snapshot_age_ms : 0;
   const historical=error || elapsed>=60000 || Boolean(data?.snapshot_stale) ||
@@ -81,13 +83,12 @@ export default function BrainScalpDashboard() {
   };
   return <main style={{maxWidth:650,margin:'auto',padding:16,color:'#f1f5f9'}}>
     <h1>🧠 Brain Scalp · PAPER</h1>
-    <p style={label}>Due portafogli indipendenti, stesso scanner 1m/5m. Sola osservazione, nessun comando di trading.</p>
+    <p style={label}>{single?'Un solo portafoglio Brain PAPER.':'Portafogli Brain PAPER separati.'} Sola osservazione, nessun comando di trading.</p>
     <p><Link style={{color:'#38bdf8'}} to="/brain">Consulta archivio Brain precedente</Link></p>
     {error && <p role="status" style={{color:'#fbbf24'}}>Connessione non disponibile; gli ultimi valori ricevuti restano solo come storico.</p>}
     {data?.source==='snapshot' && <p style={label}>Fonte: snapshot PAPER {historical ? '(non aggiornato)' : '(ultimo aggiornamento verificato)'} · {fmtTime(data.snapshot_ts_ms)}</p>}
     {data?.status==='unavailable' && <p role="status" style={{color:'#fbbf24'}}>Snapshot non leggibile o non valido: saldi non disponibili.</p>}
-    <Wallet name="hawk" data={data?.profiles?.hawk} historical={walletHistorical('hawk')}/>
-    <Wallet name="bull" data={data?.profiles?.bull} historical={walletHistorical('bull')}/>
+    {names.map(name=><Wallet key={name} name={name} data={data?.profiles?.[name]} historical={walletHistorical(name)}/>)}
     <p style={label}>Saldo e risultati PAPER; costi AI non disponibili finché il nuovo provider non sarà collegato e misurato.</p>
   </main>;
 }

@@ -106,3 +106,40 @@ test('unmount aborts a pending request and clears polling and age timers',async(
   // Supply a fresh empty root so the shared cleanup can run normally.
   root=createRoot(host);
 });
+
+const singleResponse=()=>{
+  const r=response({layout:'single'});
+  r.data.profiles={brain:{...r.data.profiles.hawk,initial_cash:2000,equity:2015,
+    net_pnl_vs_initial:15,max_slots:7,margin_limit:1600}};
+  return r;
+};
+
+test('single account renders once with its actual mandate and no dual wallets',async()=>{
+  brainAPI.getScalpStatus.mockResolvedValue(singleResponse());await mount();
+  expect(host.querySelectorAll('section')).toHaveLength(1);
+  expect(host.textContent).toContain('Conto unico');
+  expect(host.textContent).toContain('$2000.00');
+  expect(host.textContent).toContain('7 slot');
+  expect(host.textContent).not.toContain('Brain Hawk');
+  expect(host.textContent).not.toContain('Brain Bull');
+  expect(online()).toBe(true);
+});
+
+test('single account network failure labels history and recovers without duplication',async()=>{
+  brainAPI.getScalpStatus.mockResolvedValue(singleResponse())
+    .mockResolvedValueOnce(singleResponse()).mockRejectedValueOnce(new Error('offline'));
+  await mount();await advance(15000);
+  expect(online()).toBe(false);expect(host.textContent).toContain('$2015.00');
+  expect(host.textContent).toContain('valori mostrati sono storici');
+  await advance(15000);expect(online()).toBe(true);
+  expect(host.querySelectorAll('section')).toHaveLength(1);
+});
+
+test('unstarted single account never shows invented starting balance',async()=>{
+  brainAPI.getScalpStatus.mockResolvedValue({data:{layout:'single',source:'snapshot',
+    status:'not_started',profiles:{brain:{status:'not_started',available:false}}}});
+  await mount();expect(host.querySelectorAll('section')).toHaveLength(1);
+  expect(host.textContent).not.toContain('$2000.00');
+  expect(host.textContent).toContain('Nessun saldo ricostruito');
+  expect(online()).toBe(false);
+});

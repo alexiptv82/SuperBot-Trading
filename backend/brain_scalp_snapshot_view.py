@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 
 IDS={'hawk':'brain-scalp-hawk-paper','bull':'brain-scalp-bull-paper'}
+SINGLE_IDS={'brain':'brain-scalp-single-paper'}
 
 
 def _valid_number(value):
@@ -15,34 +16,50 @@ def _valid_number(value):
             and math.isfinite(value))
 
 
-def read_published_snapshot(path,now):
+def read_published_snapshot(path,now,layout="auto"):
+    if layout not in ("auto","single","dual"):raise ValueError("invalid_layout")
     path=Path(path)
     if not path.exists() and not path.is_symlink():
         return None
-    unavailable={'paper':True,'read_only':True,'source':'snapshot',
+    ids=SINGLE_IDS if layout=='single' else IDS
+    unavailable={'layout':layout,'paper':True,'read_only':True,'source':'snapshot',
                  'status':'unavailable','snapshot_stale':True,
                  'profiles':{n:{'status':'unavailable','available':False,'name':n}
-                             for n in IDS}}
+                             for n in ids}}
     try:
         if path.is_symlink() or path.parent.is_symlink() or path.stat().st_size>2000000:
             raise ValueError('unsafe_snapshot')
         obj=json.loads(path.read_text(encoding='utf-8'))
-        if (not isinstance(obj,dict) or
-                obj.get('schema_version')!=1 or obj.get('paper') is not True
-                or obj.get('read_only') is not True
-                or not isinstance(obj.get('profiles'),dict)
-                or set(obj.get('profiles',{}))!=set(IDS)
-                or not _valid_number(obj.get('ts_ms'))):
-            raise ValueError('schema')
+        if not isinstance(obj,dict):raise ValueError('schema')
+        version=obj.get('schema_version')
+        if type(version)!=int or version not in (1,2):raise ValueError('schema')
+        single=version==2
+        ids=SINGLE_IDS if single else IDS
+        if ((layout=='single' and not single) or (layout=='dual' and single)):
+            raise ValueError('layout_mismatch')
+        unavailable.update(layout='single' if single else 'dual',
+            profiles={n:{'status':'unavailable','available':False,'name':n} for n in ids})
+        if ((layout=='single' and not single) or (layout=='dual' and single)):
+            raise ValueError('layout_mismatch')
+        if single:
+            if 'profiles' in obj or not isinstance(obj.get('account'),dict):
+                raise ValueError('schema')
+            sources={'brain':obj['account']}
+        else:
+            if 'account' in obj or not isinstance(obj.get('profiles'),dict) or set(obj['profiles'])!=set(ids):
+                raise ValueError('schema')
+            sources=obj['profiles']
+        if (obj.get('paper') is not True or obj.get('read_only') is not True or
+                not _valid_number(obj.get('ts_ms'))):raise ValueError('schema')
         age=now-obj['ts_ms']
         if age<0:
             raise ValueError('snapshot_from_future')
         stale=age>60000
         profiles={}
-        for name in IDS:
-            src=obj['profiles'][name]
+        for name in ids:
+            src=sources[name]
             if (not isinstance(src,dict) or
-                    src.get('account_id')!=IDS[name] or src.get('paper') is not True
+                    src.get('account_id')!=ids[name] or src.get('paper') is not True
                     or src.get('status')!='ok' or
                     not _valid_number(src.get('cash')) or src['cash']<0):
                 raise ValueError('foreign_or_invalid_wallet')
@@ -52,6 +69,19 @@ def read_published_snapshot(path,now):
                 rows=src.get(key,[])
                 if not isinstance(rows,list) or any(not isinstance(row,dict) for row in rows):
                     raise ValueError('invalid_wallet_rows')
+            if single:
+                for key in ('initial_cash','margin_limit','margin'):
+                    if not _valid_number(src.get(key)) or src[key]<0:
+                        raise ValueError('invalid_account_amount')
+                if src['initial_cash']<=0 or type(src.get('max_slots'))!=int or src['max_slots']<=0:
+                    raise ValueError('invalid_account_capacity')
+                for row in src.get('positions',[]):
+                    if not isinstance(row.get('symbol'),str) or row.get('side') not in ('LONG','SHORT'):
+                        raise ValueError('invalid_position')
+                    for key in ('margin','leverage','notional','entry','stop','age_minutes'):
+                        if not _valid_number(row.get(key)):raise ValueError('invalid_position')
+                    for key in ('target','net_close_estimate'):
+                        if row.get(key) is not None and not _valid_number(row[key]):raise ValueError('invalid_position')
             equity=src.get('equity')
             if equity is not None and not _valid_number(equity):
                 raise ValueError('invalid_equity')
@@ -59,10 +89,13 @@ def read_published_snapshot(path,now):
             online=(not stale and _valid_number(heartbeat) and
                     0<=now-heartbeat<60000)
             item=dict(src)
+            if single:
+                item['net_pnl_vs_initial']=None if equity is None else equity-src['initial_cash']
             item.update(name=name,status='ok',available=True,online=bool(online),
                         snapshot_stale=stale,snapshot_age_ms=age)
             profiles[name]=item
-        return {'paper':True,'read_only':True,'source':'snapshot',
+        return {'schema_version':version,'layout':'single' if single else 'dual',
+                'paper':True,'read_only':True,'source':'snapshot',
                 'status':'stale' if stale else 'ok',
                 'snapshot_stale':stale,'snapshot_age_ms':age,
                 'snapshot_ts_ms':obj['ts_ms'],'profiles':profiles}

@@ -1,0 +1,56 @@
+name: Brain single account app - offline CI
+on:
+  push:
+    branches: [work/brain-single-app-20261030]
+    paths:
+      - 'backend/brain_scalp_view.py'
+      - 'backend/brain_scalp_snapshot_view.py'
+      - 'backend/brain_scalp_api.py'
+      - 'backend/server.py'
+      - 'backend/tests/test_brain_scalp_view.py'
+      - 'backend/tests/test_brain_single_view.py'
+      - 'frontend/src/**'
+      - '.github/workflows/brain-single-app-ci.yml'
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install fastapi==0.110.0 httpx==0.27.0
+      - uses: actions/checkout@v4
+        with:
+          ref: a472c5327e8f9334c5677f5243c28095282faed2
+          path: core-fixture
+      - run: BRAIN_TEST_CORE_ROOT=core-fixture PYTHONPATH=backend python -m unittest -v backend.tests.test_brain_scalp_view backend.tests.test_brain_single_view
+      - run: python -m compileall -q backend/brain_scalp_api.py backend/brain_scalp_view.py backend/brain_scalp_snapshot_view.py backend/server.py
+      - name: Guard classical bot, legacy reader and deploy
+        run: |
+          test -z "$(git diff --name-only 9251e6ddf2d68b607fffd73b8383da8f00c687fa HEAD -- backend/desk backend/brain_free_view.py backend/brain_free_api.py deploy .github/workflows/deploy.yml)"
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: corepack enable
+      - run: yarn install --frozen-lockfile --non-interactive
+      - run: yarn react-scripts test --watchAll=false --runInBand --runTestsByPath src/pages/BrainScalpDashboard.test.js
+        env:
+          CI: 'true'
+      - run: yarn build
+        env:
+          CI: 'true'
+

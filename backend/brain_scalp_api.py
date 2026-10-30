@@ -11,4 +11,5 @@ def register(app,require_session):
         response.headers['Cache-Control']='no-store'
         return read_all(
             os.getenv('BRAIN_SCALP_DATA_DIR','/opt/superbot-brain-scalp'),
-            snapshot_path=os.getenv('BRAIN_SCALP_SNAPSHOT_PATH'))
+            snapshot_path=os.getenv('BRAIN_SCALP_SNAPSHOT_PATH'),
+            layout=os.getenv('BRAIN_SCALP_LAYOUT','auto'))
