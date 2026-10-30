@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -40,4 +42,5 @@ jobs:
       - name: Guard against operational-file changes
         if: always()
         run: |
-          test -z "$(git diff --name-only 6b198e060dcbb478b5fd69c6d4fcd928d5821888 HEAD -- backend/desk backend/director backend/server.py frontend deploy)"
+          git cat-file -e 6b198e060dcbb478b5fd69c6d4fcd928d5821888^{commit}
+          git diff --exit-code 6b198e060dcbb478b5fd69c6d4fcd928d5821888 HEAD -- backend/desk backend/director backend/server.py frontend deploy
