@@ -75,13 +75,14 @@ class PaperSupervisor:
             'reserved_micro_usd':self.reservation}])
         return 'reserved'
 
-    def step(self,markets,contracts,*,references=None):
+    def step(self,markets,contracts,*,references=None,observations=None):
         if self.closed:raise ValueError('supervisor_closed')
         now=self.clock()
         if type(now)!=int or now<=0:raise ValueError('invalid_clock')
         # Always protect first, independent of a slow, broken or unavailable AI.
         tick=self.account.tick(markets,contracts,now)
-        output={'tick':tick,'analysis_status':'idle'}
+        output={'tick':tick,'analysis_status':'idle',
+                'trend_observations':observations or {}}
         scan_result=scan(markets,now,limit=10,diagnostics=True)
         output['scanner_diagnostics']=scan_result['diagnostics']
         healthy=tick['brain'].get('status')!='error'
@@ -112,7 +113,8 @@ class PaperSupervisor:
                 output['analysis_status']='wallet_guarded'
             else:
                 request=self.account.prepare_ai_request('brain',scan_result,markets,
-                    contracts,references or {},now,now+self.deadline)
+                    contracts,references or {},now,now+self.deadline,
+                    observations or {})
                 if not decode(request.payload_json)['candidates']:
                     output['analysis_status']='no_fresh_candidates'
                 else:
