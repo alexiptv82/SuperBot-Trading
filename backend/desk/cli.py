@@ -1258,6 +1258,34 @@ def _poll_v11_shadow(state,ctl):
         print('[TREND-V11 SHADOW] unavailable: '+type(err).__name__,flush=True)
 
 
+def _poll_structure_advisory(state,ctl):
+    """Diagnostic only: no trade, score, risk or AI path reads this state."""
+    if os.getenv('DESK_STRUCTURE_ADVISORY','off').lower()!='on':
+        return
+    try:
+        from director.structural_shadow import StructuralShadow
+        worker=ctl.get('_structure_advisory')
+        if worker is None:
+            worker=ctl['_structure_advisory']=StructuralShadow()
+        now=int(time.time()*1000)
+        found=worker.poll(now,list(SYMBOLS),
+            lambda sym:fetch_candles(sym,bar='15m',limit=1000))
+        old=state.get('structure_advisory') or {}
+        # Replace rather than retain stale opinions. This is not trading state.
+        state['structure_advisory']=found
+        emitted=ctl.setdefault('_structure_notice_ms',{})
+        for sym,item in found.items():
+            phase=item['phase']
+            key=(sym,phase)
+            if (phase!='NO_BREAK' and (old.get(sym) or {}).get('phase')!=phase
+                    and now-emitted.get(key,-14400000)>=14400000):
+                emitted[key]=now
+                print('[STRUTTURA AVVISO] '+sym+' '+phase+
+                    ' rivalutare il contesto; nessuna azione obbligatoria',flush=True)
+    except Exception:
+        state['structure_advisory']={}
+
+
 def loop_step(state: dict, ctl: dict) -> bool:
     """Un giro del ciclo principale (ogni POLL_S secondi). ctl tiene la memoria tra un giro e l'altro:
     {'next_cycle_ms': int, 'prev_paused': bool|None}. Ritorna True se in questo giro e' girato un ciclo
@@ -1270,6 +1298,7 @@ def loop_step(state: dict, ctl: dict) -> bool:
     process_flags(state)
     # Async, public-only, advisory: never changes scores or protection.
     _poll_v11_shadow(state,ctl)
+    _poll_structure_advisory(state,ctl)
     paused = os.path.exists(_flag("pause.flag"))
     if paused != ctl.get("prev_paused"):
         if ctl.get("prev_paused") is not None:
