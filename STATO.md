@@ -1,3 +1,11 @@
+## 30/10 — IN_CORSO: Fallback e diagnostica DeepSeek / insegnamento chiusura manuale
+
+Chat normale: l'utente ha fornito due prompt Claude con autorizzazione a implementare chiarimenti Telegram HTTP 402 DeepSeek, monitor saldo a bassa frequenza, e progettazione/implementazione sicura della chiusura manuale come evento di insegnamento per Brain e classici. **Ramo prenotato** `work/manual-teaching-deepseek-20261030`, base `a472c5327e8f9334c5677f5243c28095282faed2`, limitato a codice offline Brain Free e test; classici e Brain Scalp restano in sola lettura finche' non e' verificato il canale corretto. Nessun deploy, nessun merge, nessuna chiamata API pagata, nessuna azione su posizioni o dati. Distinzione vincolante: in PAPER una posizione scomparsa da un account Bitget non e' prova di chiusura del wallet simulato. Lezioni future richiedono evento di chiusura certificato e conferma esplicita; mai addestramento automatico. Il futuro comando /chiudi all non va attivato alla cieca. Work/Claude non devono scrivere sugli stessi file senza passaggio.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 30/10 — HANDOFF WORK → CHAT NORMALE: PWA UNICA GIA' VALIDATA OFFLINE
 
 Verifica di GitHub del 30/10: motore unico Brain `work/brain-resume-20261030` commit `a472c5327e8f9334c5677f5243c28095282faed2`, CI run `41022451077` SUCCESS (175 test per Python 3.10 e 3.11). Adattamento PWA gia' presente su ramo separato `work/brain-single-app-20261030` commit `9b20adfc6cf1a1e025f0a45b6583a2b57f58a997`, run `41023662326` SUCCESS (backend/front-end e contratto produttore snapshot v2 pin a `a472c53`). La precedente voce Work che dice PWA ancora mancante e' superata da questo commit successivo. Nessuna PWA Brain unica gia' in produzione. Rami di motore e app hanno storie Git divergenti: non fare merge automatico. Necessari mandato unico definitivo, feed reale, trasporti AI con timeout e costi verificati, supervisore periodico, test end-to-end PAPER e OK separato al deploy; capitale 2000 USDT/margine 1600 nelle prove e' fixture, NON mandato. Laboratorio Claude regime non idoneo, non adottato. Nessun file operativo, VPS, memoria, runtime o deploy modificato nel passaggio. Handoff dettagliato in `diario/2026-10-30_brain-ripresa-chatgpt.md`.
