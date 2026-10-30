@@ -22,6 +22,7 @@ def register(app,require_session):
             with p.open('rb') as f:raw=f.read(100001)
             if len(raw)>100000:raise ValueError()
             data=json.loads(raw)
+            if not isinstance(data,dict):raise ValueError()
             now=int(time.time()*1000)
             if (data.get('paper') is not True or data.get('account_id')!='brain-scalp-single-paper'
                     or type(data.get('ts_ms')) is not int or not 0<=now-data['ts_ms']<=120000

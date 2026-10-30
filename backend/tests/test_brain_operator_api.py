@@ -1,5 +1,6 @@
 import importlib
 import time
+import pytest
 from fastapi import FastAPI,HTTPException
 from fastapi.testclient import TestClient
 from brain_operator_api import register
@@ -31,3 +32,14 @@ def test_auth_is_required_for_read_and_write(monkeypatch):
     client=TestClient(app)
     assert client.get('/api/brain/operator/reviews').status_code==401
     assert client.post('/api/brain/operator/confirm',json={}).status_code==401
+
+@pytest.mark.parametrize('payload',['[]','null','42','"invalid"'])
+def test_malformed_review_document_is_unavailable(tmp_path,monkeypatch,payload):
+    source=tmp_path/'reviews.json'
+    source.write_text(payload)
+    monkeypatch.setenv('BRAIN_OPERATOR_REVIEWS_PATH',str(source))
+    app=FastAPI()
+    register(app,lambda:{'user':'owner'})
+    result=TestClient(app).get('/api/brain/operator/reviews')
+    assert result.status_code==200
+    assert result.json()=={'status':'unavailable','groups':[]}

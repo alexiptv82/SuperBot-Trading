@@ -5,17 +5,20 @@ import BrainOperatorReviews from './BrainOperatorReviews';
 
 const groups={status:'available',groups:[{group_id:'b'.repeat(16),symbols:['BTC'],count:1,net_usd:12}]};
 const reply=data=>Promise.resolve({ok:true,json:async()=>data});
-let host,root,originalFetch;
+let host,root,originalFetch,originalCrypto;
 beforeEach(()=>{
   jest.useFakeTimers();global.IS_REACT_ACT_ENVIRONMENT=true;
   originalFetch=global.fetch;global.fetch=jest.fn();
-  Object.defineProperty(global.crypto,'randomUUID',{configurable:true,value:()=> 'a'.repeat(32)});
+  originalCrypto=Object.getOwnPropertyDescriptor(global,'crypto');
+  Object.defineProperty(global,'crypto',{configurable:true,value:{randomUUID:()=> 'a'.repeat(32)}});
   host=document.createElement('div');root=createRoot(host);
 });
 afterEach(async()=>{
   await act(async()=>root.unmount());
   expect(jest.getTimerCount()).toBe(0);
   global.fetch=originalFetch;jest.useRealTimers();
+  if(originalCrypto)Object.defineProperty(global,'crypto',originalCrypto);
+  else delete global.crypto;
 });
 const mount=async()=>act(async()=>root.render(<BrainOperatorReviews/>));
 const advance=async(ms)=>act(async()=>jest.advanceTimersByTime(ms));

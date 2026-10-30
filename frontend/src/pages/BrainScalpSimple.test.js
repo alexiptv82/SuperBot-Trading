@@ -23,18 +23,21 @@ const sample=(stale=false,mark=102)=>({data:{
     closed_total:1,trades_shown:1,recent_closed_wins:1,trades_summary_only:false
   }}
 }});
-let host,root;
+let host,root,originalFetch;
 const mount=async()=>await act(async()=>root.render(<MemoryRouter><BrainScalpDashboard/></MemoryRouter>));
 beforeEach(()=>{
   jest.useFakeTimers('modern');jest.setSystemTime(NOW);
   global.IS_REACT_ACT_ENVIRONMENT=true;
   host=document.createElement('div');root=createRoot(host);
   brainAPI.getScalpStatus.mockReset();
+  originalFetch=global.fetch;
+  global.fetch=jest.fn().mockResolvedValue({ok:true,json:async()=>({status:'available',groups:[]})});
 });
 afterEach(async()=>{
   await act(async()=>root.unmount());
   expect(jest.getTimerCount()).toBe(0);
   jest.useRealTimers();
+  global.fetch=originalFetch;
 });
 
 test('mobile-first single wallet shows meaningful price margin leverage and net',async()=>{
