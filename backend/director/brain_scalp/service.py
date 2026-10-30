@@ -192,7 +192,7 @@ class BrainService:
                 self.teaching_status='recorded'
             except Exception:
                 self.teaching_status='pending_recovery'
-        if self.operator_reviews_path and self.teaching_status=='recorded':
+        if getattr(self,'operator_reviews_path',None) and self.teaching_status=='recorded':
             try:
                 from director.manual_teaching import batches
                 from .snapshot import atomic_write
