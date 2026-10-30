@@ -98,12 +98,12 @@ def telegram_review(group):
         x=rows[0]
         content=f"{x['symbol']} {x['side']} {x['pnl_usd']:+.2f}$ ({x['pnl_pct_margin']:+.2f}% sul margine)"
     else:
-        content='\\n'.join(
+        content='\n'.join(
             f"  {x['bot'].upper()} {x['symbol']} {x['side']} {x['pnl_usd']:+.2f}$"
             for x in rows
-        )+f"\\nTotale PAPER: {total:+.2f}$"
-    return (f"[{labels}] 📋 {len(rows)} chiusure manuali PAPER verificate:\\n"
-            +content+f"\\nConferma insegnamento: /insegna_si {group['group_id']}"
+        )+f"\nTotale PAPER: {total:+.2f}$"
+    return (f"[{labels}] 📋 {len(rows)} chiusure manuali PAPER verificate:\n"
+            +content+f"\nConferma insegnamento: /insegna_si {group['group_id']}"
             +f" oppure /insegna_no {group['group_id']}")
 
 
@@ -136,7 +136,7 @@ class ManualLessons:
 
     @staticmethod
     def _append(path,obj):
-        payload=json.dumps(obj,ensure_ascii=False,sort_keys=True,allow_nan=False)+'\\n'
+        payload=json.dumps(obj,ensure_ascii=False,sort_keys=True,allow_nan=False)+'\n'
         if len(payload)>6000:raise ValueError('manual_event_too_large')
         fd=os.open(str(path),os.O_APPEND|os.O_CREAT|os.O_WRONLY,0o600)
         try:
@@ -185,11 +185,11 @@ class ManualLessons:
                 existing.add(eid)
             marker='[manual-id:'+eid+']'
             if choice=='yes' and intent=='profit_ok_free_slot' and marker not in lesson_text:
-                lesson=(f"\\n{marker} [{data['ts'][:10]}] Chiusura manuale confermata "
+                lesson=(f"\n{marker} [{data['ts'][:10]}] Chiusura manuale confermata "
                         f"{data['symbol']} {data['side']} {data['pnl_pct_margin']:+.1f}% "
                         f"sul margine ({data['duration_min']:.0f} min). "
                         "Intento dichiarato: incassare profitto e liberare slot. "
-                        "Osservazione, non regola operativa.\\n")
+                        "Osservazione, non regola operativa.\n")
                 fd=os.open(str(self.lessons),os.O_APPEND|os.O_CREAT|os.O_WRONLY,0o600)
                 with os.fdopen(fd,'a',encoding='utf-8') as f:
                     f.write(lesson);f.flush();os.fsync(f.fileno())
