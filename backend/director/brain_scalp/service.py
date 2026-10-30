@@ -14,6 +14,7 @@ import time
 from .config import WalletSpec,validate_spec
 from .coordinator import BrainAccount
 from .market_bridge import PublicBrainFeed
+from director.trend_advisory import observe_many
 from .operator import BrainOperator
 from .telegram_commands import PaperTelegramCommands
 from .supervisor import PaperSupervisor
@@ -122,7 +123,15 @@ class BrainService:
         state=self.account.brain.store.load()
         markets,contracts=self.feed.poll(state['positions'],now)
         self.last_markets=markets
-        return self.supervisor.step(markets,contracts)
+        try:
+            observations=observe_many({
+                sym:(m.get('bars') or {}).get('5m',())
+                for sym,m in markets.items() if isinstance(m,dict)
+            },now,300000)
+        except Exception:
+            observations={}
+        # The sensor cannot block protection, change orders or veto DeepSeek.
+        return self.supervisor.step(markets,contracts,observations=observations)
 
     def enable_telegram_commands(self,*,allowed_chat_id,allowed_user_id):
         if self.telegram is not None:
