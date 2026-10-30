@@ -74,3 +74,4 @@ jobs:
 # This isolated diagnostic never deploys or updates trading runtime.
 # Verify legacy manual single-position operations offline before any deploy.
 # Retest the complete isolated paper-close evidence path.
+# Check take-profit finite-value acceptance across classic engine layers.
