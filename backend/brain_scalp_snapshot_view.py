@@ -80,8 +80,35 @@ def read_published_snapshot(path,now,layout="auto"):
                         raise ValueError('invalid_position')
                     for key in ('margin','leverage','notional','entry','stop','age_minutes'):
                         if not _valid_number(row.get(key)):raise ValueError('invalid_position')
-                    for key in ('target','net_close_estimate'):
+                    for key in ('target','net_close_estimate','mark_price','pnl_pct_margin','mark_ts_ms'):
                         if row.get(key) is not None and not _valid_number(row[key]):raise ValueError('invalid_position')
+                    price_status=row.get('price_status')
+                    if price_status is not None:
+                        if price_status not in ('fresh','unavailable'):
+                            raise ValueError('invalid_price_status')
+                        if price_status=='fresh':
+                            if (not _valid_number(row.get('mark_price')) or
+                                row['mark_price']<=0 or
+                                not _valid_number(row.get('mark_ts_ms')) or
+                                not 0<=obj['ts_ms']-row['mark_ts_ms']<=10000 or
+                                not _valid_number(row.get('net_close_estimate'))):
+                                raise ValueError('unverified_mark')
+                        elif any(row.get(k) is not None for k in
+                                 ('mark_price','mark_ts_ms','net_close_estimate','pnl_pct_margin')):
+                            raise ValueError('stale_mark_claimed_as_fresh')
+                for trade in src.get('trades',[]):
+                    if (not isinstance(trade.get('symbol'),str) or
+                        trade.get('side') not in ('LONG','SHORT') or
+                        not _valid_number(trade.get('net')) or
+                        not _valid_number(trade.get('entry')) or
+                        not _valid_number(trade.get('close_ms'))):
+                        raise ValueError('invalid_trade_row')
+                for key in ('closed_total','trades_shown','recent_closed_wins','recent_closed_losses'):
+                    if key in src and (type(src[key])!=int or src[key]<0):
+                        raise ValueError('invalid_trade_counter')
+                if ('recent_closed_net_usd' in src and
+                    not _valid_number(src['recent_closed_net_usd'])):
+                    raise ValueError('invalid_trade_total')
             equity=src.get('equity')
             if equity is not None and not _valid_number(equity):
                 raise ValueError('invalid_equity')
