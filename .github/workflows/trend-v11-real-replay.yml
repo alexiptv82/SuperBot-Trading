@@ -44,3 +44,5 @@ jobs:
         run: |
           git cat-file -e 6b198e060dcbb478b5fd69c6d4fcd928d5821888^{commit}
           git diff --exit-code 6b198e060dcbb478b5fd69c6d4fcd928d5821888 HEAD -- backend/desk backend/director backend/server.py frontend deploy
+
+# Second run: verified boundary-minute retrieval from public Bitget only.
