@@ -42,10 +42,17 @@ class PaperTelegramCommands:
             update['update_id']<0):
             raise ValueError('invalid_telegram_update')
         msg=update.get('message')
-        if not isinstance(msg,dict) or type(msg.get('chat',{}).get('id'))!=int or (
-            type(msg.get('from',{}).get('id'))!=int) or (
-            msg['chat']['id']!=self.chat_id or msg['from']['id']!=self.user_id):
+        chat=msg.get('chat') if isinstance(msg,dict) else None
+        sender=msg.get('from') if isinstance(msg,dict) else None
+        if (not isinstance(chat,dict) or not isinstance(sender,dict) or
+                type(chat.get('id'))!=int or type(sender.get('id'))!=int or
+                chat['id']!=self.chat_id or sender['id']!=self.user_id):
             return {'status':'ignored_unauthorized'}
+        # Telegram gives message.date in Unix seconds. Old queued commands
+        # must never accidentally close a newly opened PAPER position.
+        sent=msg.get('date')
+        if type(sent)!=int or not 0<=now-sent*1000<=120000:
+            return {'status':'stale_telegram_command'}
         content=msg.get('text')
         if not isinstance(content,str) or len(content)>160:
             return {'status':'invalid_command'}
