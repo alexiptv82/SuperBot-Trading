@@ -1,0 +1,3 @@
+# Integrazione Brain: recovery teaching
+Ramo work/brain-release-integration-20261030. Corretto problema concreto: se registrazione teaching falliva DOPO commitSQLite di chiusura, comando poteva apparire fallito benchétrade chiuso. Ora restituisce chiusuraeffettiva e teaching_status=pending_recovery; sync ricostruisce inbox daeventoSQLite senza ripetere chiusura. Test nuovo simulaOSError poi recovery idempotente e rifiuto riutilizzoIDchiuso. Nessuna modifica scoring/sizing/limiti, nessun servizioavviato/merge/deploy. CollegamentoTelegram eUI e consultazioneesempi ancora da completare. Risultato test locale nella sessioneWork; CIremota diquesta patch ancora non eseguita.
+AI: chatgpt Work
