@@ -215,6 +215,19 @@ class PaperPositionExecution(TestCase):
             self.assertEqual(db.execute(
                 "SELECT COUNT(*) FROM events WHERE kind='ai_position_review_observed'").fetchone()[0],1)
 
+    def test_service_defaults_off_and_requires_explicit_paper_mode(self):
+        from pathlib import Path
+        from backend.tests.test_brain_single_integration import setup_env
+        from director.brain_scalp.service import required_env
+        env=setup_env(Path(self.temp.name))
+        self.assertEqual(required_env(env)['position_actions'],'off')
+        env['BRAIN_AI_POSITION_ACTIONS']='paper'
+        self.assertEqual(required_env(env)['position_actions'],'paper')
+        for invalid in ('live','auto','yes','true'):
+            env['BRAIN_AI_POSITION_ACTIONS']=invalid
+            with self.assertRaisesRegex(ValueError,'invalid_brain_position_actions_mode'):
+                required_env(env)
+
     def test_opt_in_mode_rejects_live_and_unknown(self):
         for mode in ('live','enabled',True,1,None):
             with self.assertRaises(ValueError):
