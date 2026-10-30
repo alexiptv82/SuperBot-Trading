@@ -37,7 +37,7 @@ class BrainPair:
         return scan(markets,now,limit=limit)
 
     def prepare_ai_request(self,wallet,shortlist,markets,contracts,references,
-                           now,deadline_ms,trend_observations=None):
+                           now,deadline_ms,trend_observations=None,regime_v11=None):
         """Read one wallet on its owner thread; never merge profile balances."""
         import json
         from .ai_context import build_request
@@ -47,7 +47,8 @@ class BrainPair:
         recent=[json.loads(row[0]) for row in engine.store.db.execute(
             "SELECT body FROM events WHERE kind='trade_closed' ORDER BY seq DESC LIMIT 10")]
         return build_request(state,engine.spec,markets,contracts,shortlist,
-                             references,recent,now,deadline_ms,trend_observations)
+                             references,recent,now,deadline_ms,trend_observations,
+                             regime_v11)
 
     def accept_ai_analysis(self,wallet,request,analysis,markets,contracts,now):
         """Admit only completed, current analysis; never call an API in a tick."""
