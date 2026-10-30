@@ -1,4 +1,4 @@
-name: Classical Falco Toro manual close teaching - offline only
+name: Classics trend-change advisory (offline)
 on:
   push:
     branches: [work/classics-trend-awareness-20261030]
@@ -80,3 +80,5 @@ jobs:
 # Verify legacy manual single-position operations offline before any deploy.
 # Retest the complete isolated paper-close evidence path.
 # Check take-profit finite-value acceptance across classic engine layers.
+
+# Confirm unchanged PAPER execution and update trend test results.
