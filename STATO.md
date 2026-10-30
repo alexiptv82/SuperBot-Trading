@@ -1,3 +1,6 @@
+## IN_CORSO — Work integrazione rilascio Brain
+Utente okprocedi. Ramo work/brain-release-integration-20261030 dalla baseadvisory. Perimetro owneroperator/supervisor/servizio e test, poi contrattoUI. Chiusure finanziarie giàpersistite non devono essere riportate fallite per guasti teaching; recupero daSQLite senza ripetere chiusure. Nessun merge/deploy/reset. Mandato conto unico ancora da consolidare.
+
 ## 30/10 — Patch test legacy Claude conclusa, Work
 Ramo work/classics-legacy-tests-20261030, base2b181871c0b8b9b67b3c6b6dd47c317316b4a962, codice test1d4fc867d0c66709e1edb04143b87357c576d780, CIe859b4f85acd766082957bdf981dca80c401e8d2.
 GitHubActions41063881878SUCCESS Python3.10/3.11: originale92PASS/3FAILprecisi; patch95PASS/0FAIL, nessun skip/xfail. LocalePython3.12 stesso esito. Ilconteggio95 non è cambiato. Solo4funzioni test modificate (3incompatibili+rafforzamento testlungo), runtime byteidentico alla base verificato inCI.
