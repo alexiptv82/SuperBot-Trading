@@ -21,3 +21,20 @@
 - Solo dopo un nuovo collaudo offline e un backup+restore, decidi se integrare il ramo nei classici. Richiede OK separato al merge e al deploy.
 
 AI: chatgpt (chat normale)
+
+## AGGIORNAMENTO VALIDATO — 30/10: 16 test storici corretti senza regressioni
+
+La verifica A/B isolata e' stata eseguita sullo stesso Python 3.10/3.11 contro l'esatto commit originale `rule-pool` `fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7`. Risultati finali run `41037349600` **SUCCESS**: originale **76/95 superati, 19 falliti**; ramo `work/classics-manual-teaching-20261030` **92/95 superati, 3 falliti**, **nessuna nuova regressione**. Altri **11 test mirati superati** su entrambi gli interpreti.
+
+Correzioni nuove, ancora **solo offline**:
+- DCA: lo stop LONG non puo' scendere e lo stop SHORT non puo' salire; no aumento della perdita consentita per allargamento SL. Prezzi invaldi e liquidazione incompatibile sono rifiutati prima di modificare il wallet.
+- Aperture, DCA e chiusure parziali: prezzi take-profit negativi, non numerici o non finiti vengono esclusi.
+- Reset: `trade_history.jsonl`, `lessons.md`, `errors.md` e `learning_log.jsonl` restano intatti, anche se una vecchia richiesta contiene `clear_lessons=true`. La run viene anche archiviata. La copia del record del trade ora include `run_no` e capitale iniziale, senza mutare il record del motore.
+- Chiusura singola: `close_position.flag` con lista esplicita di simboli e timestamp massimo 120s, senza inventare prezzi; il conto PAPER viene salvato, poi nasce l'evento didattico; `closed_by=utente` nel trade, heartbeat espone disponibilita'. La singola chiusura e' stata collaudata con evento didattico pending e nessuna lezione automatica. **Non e' una chiamata Bitget privata** e nessun Telegram listener e' stato avviato.
+- Ruolo AI classici: nuova configurazione `DESK_CLASSICS_AI_MODE=rules_only` salta completamente Claude e continua a calcolare decisioni con regole meccaniche; `scheduled` mantiene il vecchio comportamento finche' non si imposta esplicitamente il nuovo modo. Valori ignoti non autorizzano nuove chiamate a Claude.
+- Gli **unici 3 fallimenti** rimasti chiedono maggior numero di token per Claude e diagnostica del vecchio percorso Claude. Sono preesistenti, non implicano che si debbano aumentare le chiamate del provider. Prima del deploy, separare o aggiornare i test della configurazione storica secondo la politica classici rules-only richiesta dall'utente.
+
+**Non rilasciato**: nessun merge `rule-pool`, deploy, reset del conto, aggiornamento VPS, consumo AI reale, o mutazione di storia. Necessari revisione compatibilita' PWA e test operativi di end-to-end, backup/restore e approvazione separata.
+
+---
+
