@@ -84,8 +84,15 @@ class BrainOperator:
         store.commit(updated,now,events)
         # A crash now cannot lose the event: SQLite is authoritative. Replay
         # via sync() will recreate missing prompts without reopening trades.
-        self.sync()
-        return {'paper':True,'closed':[e['symbol'] for e in events],
+        teaching_status='recorded'
+        try:
+            self.sync()
+        except Exception:
+            # Financial commit is authoritative. Never report a completed
+            # close as failed merely because the observational inbox is down.
+            # sync() reconstructs it from SQLite after storage is repaired.
+            teaching_status='pending_recovery'
+        return {'teaching_status':teaching_status,'paper':True,'closed':[e['symbol'] for e in events],
                 'net_usd':sum(e['pnl_usd'] for e in events),
                 'position_ids':{e['symbol']:str(e['position_id']) for e in events}}
 
