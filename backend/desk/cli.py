@@ -508,6 +508,22 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             readings_list.append(r)
             readings_map[sym] = r
 
+    # This is a sensor, NOT an entry filter or an additional risk gate.
+    # The existing LONG/SHORT strategy receives the same candidate readings.
+    try:
+        from director.trend_advisory import observe_many
+        prior = state.get("trend_observations") or {}
+        trend = observe_many(candles_map, now_ms, 900000)
+        state["trend_observations"] = trend
+        for symbol,item in trend.items():
+            if (item["phase"] in ("early_upshift","early_downshift") and
+                    (prior.get(symbol) or {}).get("phase")!=item["phase"]):
+                print("[TREND-ADVISORY] "+symbol+" "+item["phase"]+
+                      " (lettura non vincolante)",flush=True)
+    except Exception as trend_error:
+        print("[TREND-ADVISORY] non disponibile: "+
+              type(trend_error).__name__,flush=True)
+
     print(f"[DESK V2] readings validi: {len(readings_list)}/{len(SYMBOLS)} simboli", flush=True)
     open_symbols = set(acc.positions)
 
