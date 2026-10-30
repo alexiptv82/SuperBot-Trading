@@ -40,3 +40,27 @@ class WalletSpec:
 HAWK = WalletSpec('hawk', 'brain-scalp-hawk-paper', 10, 100, 250)
 BULL = WalletSpec('bull', 'brain-scalp-bull-paper', 3, 150, 350)
 SPECS = {'hawk': HAWK, 'bull': BULL}
+
+
+def validate_spec(spec):
+    """Validate explicit mandates before creating files; no financial defaults added."""
+    import math
+    if not isinstance(spec, WalletSpec):
+        raise ValueError('explicit_wallet_spec_required')
+    if (not isinstance(spec.name,str) or not spec.name.isascii() or
+            not spec.name.isalnum() or not 1<=len(spec.name)<=20 or
+            not isinstance(spec.account_id,str) or not 1<=len(spec.account_id)<=80):
+        raise ValueError('invalid_wallet_identity')
+    for key in ('min_margin','max_margin_trade','start_cash','max_margin_total',
+                'risk_trade_usd','risk_portfolio_usd','daily_stop_pct','kill_equity'):
+        value=getattr(spec,key)
+        if type(value) not in (int,float) or not math.isfinite(value) or value<=0:
+            raise ValueError('invalid_wallet_mandate')
+    if (type(spec.slots)!=int or not 1<=spec.slots<=100 or
+            not spec.min_margin<=spec.max_margin_trade<=spec.max_margin_total<spec.start_cash or
+            not spec.risk_trade_usd<=spec.risk_portfolio_usd<=spec.start_cash or
+            not 0<spec.daily_stop_pct<1 or not spec.kill_equity<spec.start_cash or
+            type(spec.max_plan_age_ms)!=int or type(spec.max_plan_lifetime_ms)!=int or
+            not 1000<=spec.max_plan_age_ms<=spec.max_plan_lifetime_ms):
+        raise ValueError('invalid_wallet_mandate')
+    return spec

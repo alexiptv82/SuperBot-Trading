@@ -6,7 +6,7 @@ This module cannot touch the original Brain or classical portfolios.
 from dataclasses import asdict,replace
 import math
 from director.brain_free.execution import apply,close,fresh,margin,protect
-from .config import SPECS,ENTRY_PRICE_AGE_MS,PROTECT_PRICE_AGE_MS
+from .config import SPECS,validate_spec,ENTRY_PRICE_AGE_MS,PROTECT_PRICE_AGE_MS
 from .plans import Plan,parse_plan,triggered
 from .store import WalletStore
 from .metrics import build_metrics
@@ -203,12 +203,12 @@ def _protect_stop_with_quote(position,symbol,quote,candidate,now,contracts,event
 
 
 class PaperWallet:
-    def __init__(self,root,name,initialize=False,now_ms=None):
-        self.spec=SPECS[name]
+    def __init__(self,root,name,initialize=False,now_ms=None,*,spec=None):
+        self.spec=validate_spec(SPECS.get(name) if spec is None else spec)
         self.cfg=self.spec.brain_config()
         self.entry_cfg=replace(self.cfg,price_age_ms=ENTRY_PRICE_AGE_MS)
         self.protect_cfg=replace(self.cfg,price_age_ms=PROTECT_PRICE_AGE_MS)
-        self.store=WalletStore(root,name,initialize=initialize,now_ms=now_ms)
+        self.store=WalletStore(root,name,initialize=initialize,now_ms=now_ms,spec=self.spec)
 
     def close(self): self.store.close()
 

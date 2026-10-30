@@ -6,7 +6,7 @@ from pathlib import Path
 import sqlite3
 from uuid import uuid4
 from director.brain_free.execution import initial
-from .config import SPECS
+from .config import SPECS,validate_spec
 
 
 def encode(v): return json.dumps(v,sort_keys=True,separators=(',',':'),allow_nan=False)
@@ -26,9 +26,9 @@ def wallet_spec_digest(spec):
 
 
 class WalletStore:
-    def __init__(self,root,name,initialize=False,now_ms=None):
-        if name not in SPECS: raise ValueError('unknown_wallet')
-        self.spec=SPECS[name]
+    def __init__(self,root,name,initialize=False,now_ms=None,*,spec=None):
+        self.spec=validate_spec(SPECS.get(name) if spec is None else spec)
+        if self.spec.name!=name: raise ValueError('wrong_wallet_name')
         root=Path(root).absolute()
         forbidden=('superbot-desk-data','superbot-brain-free','superbot-brain-adaptive')
         if (root.name!=name or root.is_symlink() or

@@ -25,9 +25,12 @@ class BrainPair:
             self.hawk.close()
             raise
 
+    @property
+    def wallets(self):
+        return {'hawk':self.hawk,'bull':self.bull}
+
     def close(self):
-        self.hawk.close()
-        self.bull.close()
+        for wallet in self.wallets.values():wallet.close()
 
     def candidates(self,markets,now,limit=5):
         """Shared scanner. Result also explains each unselected symbol."""
@@ -38,8 +41,8 @@ class BrainPair:
         """Read one wallet on its owner thread; never merge profile balances."""
         import json
         from .ai_context import build_request
-        if wallet not in ('hawk','bull'):raise ValueError('unknown_wallet')
-        engine=getattr(self,wallet)
+        if wallet not in self.wallets:raise ValueError('unknown_wallet')
+        engine=self.wallets[wallet]
         state=engine.store.load()
         recent=[json.loads(row[0]) for row in engine.store.db.execute(
             "SELECT body FROM events WHERE kind='trade_closed' ORDER BY seq DESC LIMIT 10")]
@@ -50,7 +53,7 @@ class BrainPair:
         """Admit only completed, current analysis; never call an API in a tick."""
         from .ai_context import validate_current,decode
         from .ai_analysis import AIAnalysis,parse_reply,review_reasons
-        if wallet not in ('hawk','bull'):raise ValueError('unknown_wallet')
+        if wallet not in self.wallets:raise ValueError('unknown_wallet')
         empty={'accepted':[],'rejected':[]}
         if not isinstance(analysis,AIAnalysis):
             return dict(empty,status='analysis_unavailable')
@@ -59,7 +62,7 @@ class BrainPair:
                 'primary_failed','review_required','review_failed') else 'analysis_unavailable'
             return dict(empty,status=status)
         try:
-            engine=getattr(self,wallet)
+            engine=self.wallets[wallet]
             payload=validate_current(request,engine.store.load(),engine.spec,now)
             if analysis.context_id!=request.context_id:raise ValueError('context_id_mismatch')
             first=parse_reply(analysis.primary_json,request)
@@ -100,7 +103,7 @@ class BrainPair:
         rejected individually, without logging the raw model payload.
         Reservation, actual fill and protective exits remain PAPER-only.
         """
-        if wallet not in ('hawk','bull'): raise ValueError('unknown_wallet')
+        if wallet not in self.wallets: raise ValueError('unknown_wallet')
         if context_audit is not None:
             # Only locally generated, bounded audit metadata may be persisted.
             from .ai_context import encode
@@ -140,7 +143,7 @@ class BrainPair:
         seen=set()
         result={'accepted':[],'rejected':[]}
         audit=[]
-        wallet_engine=getattr(self,wallet)
+        wallet_engine=self.wallets[wallet]
         quotes={sym:m.get('quote') for sym,m in markets.items()
                 if isinstance(sym,str) and isinstance(m,dict)}
         for item in proposals[:32]:
@@ -249,7 +252,7 @@ class BrainPair:
         anchors={}
         quarantined=set()
         quarantined_with_positions=set()
-        for wallet in (self.hawk,self.bull):
+        for wallet in self.wallets.values():
             try:
                 existing=wallet.store.load()
                 quarantined.update(existing.get('coverage_gaps',[]))
@@ -318,7 +321,7 @@ class BrainPair:
             cleaned['bars']=dict(data.get('bars') or {})
             cleaned['bars']['1m']=kept
             repaired[symbol]=cleaned
-        for name,wallet in (('hawk',self.hawk),('bull',self.bull)):
+        for name,wallet in self.wallets.items():
             try:
                 results[name]=wallet.tick(repaired,contracts,now,market_events=gap_events)
             except Exception as error:
@@ -337,3 +340,23 @@ class BrainPair:
                                'event_persisted':persisted,'events':[event]}
         results['market_events']=gap_events
         return results
+
+
+class BrainAccount(BrainPair):
+    """One isolated PAPER account, reusing all dual coordinator protections.
+
+    Caller must supply its complete mandate. This never imports, sums, resets
+    or migrates existing wallets, and cannot start a service by itself.
+    """
+    def __init__(self,base,*,spec,initialize=False,now_ms=None,candle_backfill=None):
+        from .config import validate_spec
+        validate_spec(spec)
+        if spec.name!='brain' or spec.account_id!='brain-scalp-single-paper':
+            raise ValueError('single_account_identity_required')
+        self.candle_backfill=candle_backfill
+        self.brain=PaperWallet(Path(base).absolute()/'brain','brain',
+                               initialize=initialize,now_ms=now_ms,spec=spec)
+
+    @property
+    def wallets(self):
+        return {'brain':self.brain}

@@ -12,8 +12,10 @@ INTERVAL_MS=5000
 IDS={'hawk':'brain-scalp-hawk-paper','bull':'brain-scalp-bull-paper'}
 
 
-def project_wallet(state,name,now):
-    if state.get('mode')!='paper' or state.get('account_id')!=IDS[name]:
+def project_wallet(state,name,now,*,spec=None):
+    expected=IDS[name] if spec is None else spec.account_id
+    initial=1000. if spec is None else spec.start_cash
+    if state.get('mode')!='paper' or state.get('account_id')!=expected:
         raise ValueError('foreign_wallet')
     metrics=state.get('metrics') or {}
     positions=[{'symbol':sym,'side':'LONG' if p['side']==1 else 'SHORT',
@@ -35,11 +37,11 @@ def project_wallet(state,name,now):
             'account_id':state['account_id'],'heartbeat_ms':state.get('heartbeat_ms'),
             'metrics':metrics,'equity':metrics.get('equity'),
             'net_pnl_vs_initial':(
-                metrics['equity']-1000 if metrics.get('equity') is not None else None),
+                metrics['equity']-initial if metrics.get('equity') is not None else None),
             'cash':state['cash'],'margin':margin,
             'margin_limit':capacity.get('max_margin'),
             'max_slots':capacity.get('max_slots'),
-            'initial_cash':1000.,'positions':positions,
+            'initial_cash':initial,'positions':positions,
             'pending':pending,'paused':bool(state.get('paused')),
             'coverage_gaps':state.get('coverage_gaps',[]),
             'ai_spend':{'status':'not_connected_to_provider_metering'},
@@ -127,3 +129,17 @@ def read_snapshot(path,now,stale_after_ms=60000):
     except (OSError,ValueError,TypeError,KeyError,RecursionError):
         return {'status':'unavailable','available':False,'profiles':{}}
 
+
+
+def build_account_snapshot(account,now):
+    """Separate v2 single-account schema; never masquerades as dual profiles."""
+    if type(now)!=int or now<=0:raise ValueError('invalid_time')
+    engine=account.wallets.get('brain')
+    if engine is None:raise ValueError('single_account_required')
+    state=engine.store.load()
+    if state.get('account_id')!='brain-scalp-single-paper' or state.get('mode')!='paper':
+        raise ValueError('foreign_wallet')
+    # Reuse projection while parameterizing identity and initial capital below.
+    value=project_wallet(state,'brain',now,spec=engine.spec)
+    return {'schema_version':2,'paper':True,'read_only':True,'ts_ms':now,
+            'account':value}

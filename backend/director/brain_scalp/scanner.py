@@ -22,10 +22,10 @@ def _closed(bars, now, duration, n):
         return None
 
 
-def scan(markets, now_ms, limit=5):
+def scan(markets, now_ms, limit=5, *, diagnostics=False):
     if not isinstance(now_ms, int) or now_ms < 0 or not 1 <= limit <= 10:
         raise ValueError('invalid_scan_arguments')
-    found, coverage = [], {}
+    found, coverage, evidence = [], {}, {}
     for symbol in sorted(markets):
         m = markets[symbol]
         q = m.get('quote') or {}
@@ -47,6 +47,14 @@ def scan(markets, now_ms, limit=5):
         close5, close1 = five[-1][4], one[-1][4]
         delta = close1/one[-4][4]-1
         volume_ratio = five[-1][5]/max(1e-9,median(b[5] for b in five[-13:-1]))
+        evidence[symbol] = {
+            'LONG': {'break_confirmed':close5>recent_high,
+                     'momentum_confirmed':delta>0,'price_confirmed':close1>=close5*0.997},
+            'SHORT': {'break_confirmed':close5<recent_low,
+                      'momentum_confirmed':delta<0,'price_confirmed':close1<=close5*1.003},
+        }
+        for values in evidence[symbol].values():
+            values['volume_confirmed']=volume_ratio>=1.05
         if volume_ratio < 1.05:
             coverage[symbol] = 'volume_not_confirmed'
             continue
@@ -66,4 +74,24 @@ def scan(markets, now_ms, limit=5):
     found.sort(key=lambda c:(-c['score'],c['symbol']))
     for c in found[limit:]:
         coverage[c['symbol']] = 'eligible_not_shortlisted'
-    return {'candidates':found[:limit],'coverage':coverage,'symbols_checked':len(coverage)}
+    result={'candidates':found[:limit],'coverage':coverage,'symbols_checked':len(coverage)}
+    if diagnostics:
+        selected={(c['symbol'],c['side']) for c in found[:limit]}
+        rows=[]
+        for symbol,status in coverage.items():
+            for direction,side in [('LONG',1),('SHORT',-1)]:
+                checks=evidence.get(symbol,{}).get(direction)
+                if checks is None:
+                    reasons=[status];stage='DATA_UNAVAILABLE'
+                else:
+                    reasons=[key.upper()+'_FAILED' for key,value in checks.items() if not value]
+                    stage=('NO_SETUP' if reasons else
+                           'SELECTED' if (symbol,side) in selected else 'TOP_K')
+                rows.append({'symbol':symbol,'direction':direction,'stage':stage,
+                             'reason_codes':reasons,'checks':checks})
+        result['diagnostics']={'as_of_ms':now_ms,'rows':rows,
+            'scope':'scanner_only_not_ai_or_risk_outcome',
+            'counts':{d:{stage:sum(r['direction']==d and r['stage']==stage for r in rows)
+                        for stage in ('DATA_UNAVAILABLE','NO_SETUP','SELECTED','TOP_K')}
+                      for d in ('LONG','SHORT')}}
+    return result
