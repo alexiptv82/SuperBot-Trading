@@ -25,7 +25,10 @@ class ManualClose(unittest.TestCase):
 
     def test_confirmed_manual_close_is_verified_and_append_only(self):
         ident=self.current()
-        result=self.op.close({'BTC':ident},markets(NOW+1000),NOW+1000)
+        profitable=markets(NOW+1000)
+        profitable['BTC']['quote']['price']=102.0
+        result=self.op.close({'BTC':ident},profitable,NOW+1000)
+        self.assertGreater(result['net_usd'],0)
         self.assertEqual(result['closed'],['BTC'])
         self.assertNotIn('BTC',self.account.brain.store.load()['positions'])
         last=self.account.brain.store.db.execute(
