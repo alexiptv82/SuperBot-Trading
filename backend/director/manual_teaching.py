@@ -93,7 +93,7 @@ def batches(pending):
 
 def telegram_review(group):
     rows=group['items'];total=sum(x['pnl_usd'] for x in rows)
-    labels='+'.join(sorted(set(x['bot'].upper() for x in rows)))
+    labels='+'.join(x for x in ('HAWK','BULL','BRAIN') if x in set(y['bot'].upper() for y in rows))
     if len(rows)==1:
         x=rows[0]
         content=f"{x['symbol']} {x['side']} {x['pnl_usd']:+.2f}$ ({x['pnl_pct_margin']:+.2f}% sul margine)"
