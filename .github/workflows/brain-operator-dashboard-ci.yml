@@ -1,0 +1,24 @@
+name: Brain operator dashboard - offline
+on:
+  push:
+    branches: [work/brain-operator-dashboard-20261030]
+    paths: ['backend/**','frontend/**','.github/workflows/brain-operator-dashboard-ci.yml']
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install pytest fastapi httpx numpy
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_operator_api.py
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - run: CI=true npm test -- --watchAll=false --runInBand BrainScalpDashboard
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
