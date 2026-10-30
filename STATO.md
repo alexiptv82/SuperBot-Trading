@@ -1,3 +1,6 @@
+## IN_CORSO — Work: contratto servizio/app e refresh insegnamenti
+Utente «ok procediamo». Owner ChatGPT Work sul servizio work/brain-release-integration-20261030 base efc7d7761f06492041421ee6160b260f14917bd2; app verificata pin23fc151f17395bd77bba7446ca70617bc958836c. Verifica integrata publisher/API/inbox/preferenze, correzione refresh mancante durante tick. Solo offline, no merge/deploy/reset/API pagata.
+
 ## 30/10/2026 — Work: dashboard conferme verificata, CI verde
 Utente «ok andiamo avanti»: completati fix della pipeline e robustezza richieste API/UI sul ramo work/brain-operator-dashboard-20261030.
 HEAD verificato 23fc151f17395bd77bba7446ca70617bc958836c, GitHub Actions 41079008933 SUCCESS: 6 test API Python3.11, 17 test React su 3 suite (dashboard dati freschi/scaduti/polling, pagina semplice e nuove conferme), build produzione Compiled successfully. Locale Python3.12: 6 test API PASS; diff whitespace verificato.
