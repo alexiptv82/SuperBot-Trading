@@ -1,3 +1,11 @@
+## 30/10 — LONG P1 NON ATTIVO; DASHBOARD BRAIN LEGGIBILE VALIDATA OFFLINE
+
+Audit: scorer LONG P1 ancora solo su `work/fix-p1-long-scoring`, assente da `rule-pool` e dal ramo teaching classici; Brain ha adattatore legacy non vincolante ma `BrainService.tick` non passa ancora `references` in produzione offline. Feed 15m 1000 barre equivale a ~62 candele 4h, troppo poco per il contributo EMA200/200 barre di P1; serve feed causale e test shadow prima di attivazione, senza reintrodurre il lettore Claude bocciato. Documento `docs/p1-long-classical-advisor-audit-2026-10-30.md` sul ramo Brain. UI Brain unica riscritta offline `work/brain-simple-dashboard-20261030` (cards stile classici, P&L posizione su quotazione fresca, entry/mark/leva/margine/stop/TP, aperte/storico fino a 50/statistiche/piani). Producer dati aggiornato su `work/brain-single-integration-20261030`, frontend reader con valida prezzi. CI UI `41039334417` SUCCESS (React 13 test/build + Python 23+3), CI motore `41039340769` SUCCESS su Python3.10/3.11. **Nessun merge/deploy, reset, data migration o modifica ai bot attivi.** Prima di qualsiasi rilascio: completare Brain e advisor, test end-to-end reale PAPER, backup/restore, approvare mandato e sincronizzare rami producer/UI. Dettaglio `diario/2026-10-30_brain-ripresa-chatgpt.md`.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 30/10 — AUDIT A/B CLASSICI: 19 → 3 TEST FALLITI, RUOLI AI CONFERMATI
 
 L'utente conferma la preferenza: **Falco/Toro a regole meccaniche, Claude minimo o disabilitato; nuovo Brain DeepSeek analista H24 e Claude revisore SOLO selettivo**. Il codice del Brain sul ramo `work/brain-single-integration-20261030` supporta gia' DeepSeek principale senza schedule diurne, revisione Claude solo su conflitti/flag e nessun fallback alle regole in caso AI non disponibile. Documento `docs/brain-and-classics-ai-roles-2026-10-30.md`, commit `a0cdda023f4e1cb6ab12d11092b6d9fab417eb26`.
