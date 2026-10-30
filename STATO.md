@@ -1,3 +1,16 @@
+## 30/10/2026 — Work: dashboard conferme verificata, CI verde
+Utente «ok andiamo avanti»: completati fix della pipeline e robustezza richieste API/UI sul ramo work/brain-operator-dashboard-20261030.
+HEAD verificato 23fc151f17395bd77bba7446ca70617bc958836c, GitHub Actions 41079008933 SUCCESS: 6 test API Python3.11, 17 test React su 3 suite (dashboard dati freschi/scaduti/polling, pagina semplice e nuove conferme), build produzione Compiled successfully. Locale Python3.12: 6 test API PASS; diff whitespace verificato.
+Pipeline coerente con yarn.lock v1 esistente: yarn1.22.22 frozen-lockfile, script test esplicito. UI timeout10s con AbortController, polling successivo solo dopo completamento, abort allo smontaggio, guardia sincrona ticket contro doppi invii; ricevuta confermata distinta da pending, esiti incerti mai rispediti automaticamente. API restituisce unavailable per JSON reviews non-oggetto, 4 regressioni parametrizzate nuove.
+Nuovi test UI verificano un solo POST, pending/confirmed distinti, timeout e ripresa senza sovrapposizione, needs_reconciliation senza resend e cleanup. Fixture browser crypto/fetch esplicite; vecchi test contano il solo portafoglio senza confonderlo con la sezione insegnamenti.
+Tentativi documentati: 41078411539 install risolta ma fixture test errate (crypto assente e fetch non simulato); 41078645971 8test verdi ma build fallita su direttiva lint di regola non installata; risolto con callback stabile. 41078859578 SUCCESS con8test+build; estensione a17 verificata sulHEAD in41079008933. Nessun skip/xfail aggiunto.
+La verifica integrata della sessione precedente resta valida: API pending -> inbox -> BrainOperator reale -> receipt confirmed -> un esempio osservativo, wallet invariato durante conferma; servizio efc7d776 CI41074225578 verde, locale74PASS+21subtest. Non equivale a prova browser/VPS/feed pubblico o qualità economica.
+FATTO/PREPARATO: API/UI conferme e pipeline testate offline, codice solo ramo di sviluppo. RILASCIATO: nulla; nessun merge/deploy/reset/API pagata, wallet e storici conservati, PAPER.
+Prossimi aperti: collaudo operativo coordinato producer/app con percorsi/configurazione reali, indice journal/pending e riconciliazione esiti incerti, mandato/budget/account definitivo, backup/restore e OK separato per rilascio; classici e avvisi consultivi restano componenti separati da coordinare. Nessuna configurazione VPS o attivazione doppiaAI verificata in questa fase.
+AI: chatgpt Work
+
+---
+
 ## IN_CORSO — Work: collaudo dashboard conferme
 Utente «ok andiamo avanti»: prosecuzione fix pipeline e timeout UI/test offline. Owner ChatGPT Work, ramo work/brain-operator-dashboard-20261030 base c35e23cb037bc2064b461e1fa635895c83309b54. Usare yarn.lock esistente, test conferme/no-duplicate/abort e build. Nessun merge/deploy/reset/API pagata.
 
