@@ -1,0 +1,3 @@
+# Collegamento inbox al proprietario conto
+Ramo work/brain-release-integration-20261030: BRAIN_OPERATOR_INBOX_PATH opzionale, defaultdisabilitato. Il servizioPAPER apre coda separata e consuma dopo supervisor.step, stessothreadowner. Erroreinbox restituisce stato indisponibile senza invalidare tickprotettivo completato. Testintegrato ordineprotect->consume e isolamentoerrore; suite locale19PASS, nessuna rete. APIapp+UIancora non collegate, necessariaautenticazione/CSRF/receipt e pubblicazionegroupid. Nessun deploy/merge/reset/APIpagata. CIestesa avviata, esito da leggere. Registrocronologico non sostituisce statoVPS nonverificato.
+AI: chatgpt Work
