@@ -87,15 +87,20 @@ def _parse(rows,now_ms):
     for row in rows:
         if not isinstance(row,(list,tuple)) or len(row)<6:
             raise ValueError('invalid_shape')
-        raw=[float(x) if not isinstance(x,bool) else float('nan') for x in row[:6]]
+        ts=float(row[0]) if not isinstance(row[0],bool) else float('nan')
+        if not isfinite(ts):
+            raise ValueError('invalid_timestamp')
+        ms=int(ts)
+        if ts!=ms or ms<0 or ms%MINUTE:
+            raise ValueError('invalid_timestamp')
+        # OPEN candle is observationally irrelevant. Never inspect its
+        # mutable price or volume before the minute is actually closed.
+        if ms+MINUTE>now_ms:continue
+        raw=[float(x) if not isinstance(x,bool) else float('nan') for x in row[1:6]]
         if not all(isfinite(x) for x in raw):
             raise ValueError('invalid_number')
-        ms=int(raw[0])
-        if raw[0]!=ms or ms<0 or ms%MINUTE:
-            raise ValueError('invalid_timestamp')
-        c=_Candle(ms//1000,*raw[1:6])
+        c=_Candle(ms//1000,*raw)
         c.validate()
-        if ms+MINUTE>now_ms:continue  # Unclosed current bar has no authority.
         fingerprint=(c.op,c.hi,c.lo,c.cl,c.vol)
         if ms in seen:
             if seen[ms]!=fingerprint:raise ValueError('conflicting_revision')
