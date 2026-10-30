@@ -87,7 +87,28 @@ def gather(symbol,loader=fetch,delay=.09):
     wanted=list(range(START,END,MINUTE))
     missing=[t for t in wanted if t not in rows]
     if missing:
-        raise ValueError('history_gap_'+str(len(missing))+'_of_'+str(len(wanted)))
+        # The V2 paginator can omit one boundary minute per 200-row page.
+        # Query that minute explicitly; only accept a genuinely returned,
+        # independently validated Bitget candle, never interpolation.
+        print('REAL_REPLAY_PAGINATION_GAPS '+symbol+' '+str(len(missing))+
+              ' first='+str(missing[:3]),flush=True)
+        for t in missing:
+            params={'symbol':symbol+'USDT','productType':'USDT-FUTURES',
+                    'granularity':'1m','startTime':t-3*MINUTE,
+                    'endTime':t+4*MINUTE,'limit':10}
+            received=loader(params);calls+=1
+            for raw in received:
+                item=check_row(raw)
+                if item[0]!=t:continue
+                existing=rows.get(t)
+                if existing is not None and existing!=item:
+                    raise ValueError('conflicting_bitget_repair')
+                rows[t]=item
+            if delay:time.sleep(delay)
+        remaining=[t for t in missing if t not in rows]
+        if remaining:
+            raise ValueError('history_gap_'+str(len(remaining))+'_of_'+str(len(wanted))+
+                             '_first_'+str(remaining[:3]))
     ordered=[rows[t] for t in wanted]
     digest=hashlib.sha256(json.dumps(ordered,separators=(',',':')).encode()).hexdigest()
     return ordered,{'symbol':symbol,'minutes':len(ordered),'requests':calls,
