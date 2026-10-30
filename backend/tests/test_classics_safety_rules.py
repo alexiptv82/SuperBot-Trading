@@ -91,13 +91,15 @@ def test_reset_does_not_erase_history_or_brain(tmp_path):
 
 def test_single_close_produces_unconfirmed_verified_learning_inbox():
     import json
-    from backend.tests.test_desk import _sandbox,_state_with_two_positions,_write_close_request,NOW
+    from backend.tests.test_desk import _sandbox,_state_with_two_positions,_frozen_clock,NOW
     from director.manual_teaching import ManualLessons
     with _sandbox() as (folder,calls):
         state=_state_with_two_positions()
         cli.fetch_candles=lambda sym,bar='15m',limit=3:[[NOW,101,103,100,102.0,1.0]]
-        _write_close_request(folder,['BTC'])
-        assert cli._check_close_position_flag(state)
+        with _frozen_clock(NOW+1000):
+            with open(os.path.join(folder,'close_position.flag'),'w') as f:
+                json.dump({'symbols':['BTC'],'ts':NOW+1000},f)
+            assert cli._check_close_position_flag(state)
         assert 'BTC' not in cli.make_account(state).positions
         q=ManualLessons(folder).pending()
         assert len(q)==1 and q[0]['source']=='manual_user'
