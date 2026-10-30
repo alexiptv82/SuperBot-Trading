@@ -1,4 +1,15 @@
 
+## 30/10 — Consegna revisione indipendente e verifica teaching classici (Work)
+Utente chiedeZIP+prompt per altreAI e conferma che le chiusure manuali desiderate restino esempi/osservazioni e non regole. "Usiamolo così" mantiene il disegno consultivo; non è autorizzazione separata al deploy.
+Creato SuperBot_Advisory_Review_2026-10-30.zip: sottoinsieme codice/test, CLI classici candidata+baseline, sorgenti teaching, report/preregistrazione, dati Bitget giàvisti etichettati sviluppo, prompt e manifestSHA256. ZIPestratto e suiteindicata84PASS+21subtest;4testteachingPASS. NessunaAPIpagata, reteoperativa o servizio avviati.
+Audit attuale rule-pool backend/desk/cli.py blob8390092b2ee93194223afb2582dc10e48bf1c909: nessun record_verified_manual_closures né nuova chiusura singola. Nessun controlloVPS corrente, non inferire runtime dalramo.
+Nel candidato work/classics-structural-advisory-20261030: chiusura singola/totalePAPER, closed_by=utente, storico e salvataggioPRIMA di inboxteaching; ManualLessons registra eventi, conferma yes/no, log append-only e lessons su profitto confermato, training_applied=false. ConsumerTelegram/conferme non collegati alservizio, nessun uso certificato degli esempi nelle future decisioniAI, nessun retraining o regolaTP automatica. Registrazione è best-effortpostsave: recovery/outbox ancora da completare per garanzia di consegna; un errore didattico non annulla la chiusura.
+Intento da preservare: utente ultima parola sulle chiusure, esempi contestuali di profitto gradito per futura consultazione; non trasformare ogni chiusura in regola o profitto garantito. PAPERpermanente invariato, nessuna autorizzazione live.
+Prossimo passo di sviluppo: completare collegamento operativo chiusura/conferma/outbox e futura consultazione osservativa degli esempi, con test di causalità e senza autopromozione; rilascio richiede backup/restore e OKseparato. Risultati esterni verranno forniti dall'utente. Nessun merge/deploy/reset.
+AI: chatgpt Work
+
+---
+
 ## Esito finale verificato — 30/10, Work
 Brain codice26b7098786080b8982a05a4b2c3f5da3cba3ff24: Actions41059587780 SUCCESS suPython3.10/3.11; per interprete9test osservatore+24integrazione+157regressioni motorePASS.
 Classici codice72041ebe77c882f7b5c1b02e6f56152d91381bf4: Actions41059759276 SUCCESS suPython3.10/3.11;9osservatore+3diagnosticaPASS e A/B95test con92PASS/3FAILlegacyClaude identici subase/candidato. Nessuna nuova regressione; non dichiarare95/95verde.
