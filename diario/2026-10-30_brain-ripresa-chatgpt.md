@@ -118,3 +118,19 @@ L'utente conferma via libera a integrare l'allegato `SuperBot_Trend_Engine_v1_1_
 
 **Nessun merge, deploy, commit su rami operativi, modifiche VPS, reset, ordini, cancellazione di cervello o storici.** Proprietario di questa implementazione: ChatGPT chat normale. Documenti tecnici sui rispettivi branch: `docs/trend-engine-v11-brain-shadow-2026-10-30.md` e `docs/trend-engine-v11-classics-shadow-2026-10-30.md`.
 AI: chatgpt (chat normale)
+
+## 30/10 — Replay reale Bitget Trend Engine V1.1: risultato VERIFICATO ma senza edge LONG
+
+Su decisione utente ChatGPT ha continuato il lavoro misurando in SHADOW il lettore sui dati storici pubblici effettivi Bitget, senza secret, ordini, API private o VPS. Ramo di ricerca isolato `work/trend-v11-replay-real-20261030`, base `work/brain-trend-v11-shadow-20261030`, pre-registrazione `research/trend_v11_real_replay/PRE-REGISTRAZIONE.md` scritta prima del download. Endpoint API V2 `/api/v2/mix/market/history-candles` USDT-FUTURES, BTC/ETH/SOL/DOGE, 16/10 00:00Z–23/10 00:00Z, 1m.
+
+**Primo runner 41048369966**: api raggiungibile ma paginazione 200 barre ha omesso 51 timestamp per simbolo, dati correttamente rifiutati, nessun valore predittivo calcolato. Emendamento tecnico prereg esplicito: requery pubblica di ciascun minuto a Bitget, con valori convalidati, senza interpolare o cambiare soglie.
+
+**Runner definitivo 41048762622: SUCCESS**: 4 test preliminari PASS, 10.080 barre REALI per ognuno dei 4 simboli, **40.320 candele copertura 100%**, 102 richieste Bitget/simbolo (51 pagine + 51 requery verificati), SHA256 conservati nel report. Artifact GitHub Action `12973547599` include `summary.json`, `trend_events.csv`, candele originali validate `*.csv.gz` e pre-registrazione.
+
+**Verifiche prestazioni avviso, NON trading/P&L**: evento TRANSITION_UP o DOWN dopo ultimo regime opposto confermato entro 180m, cooldown 120m, orizzonte futuro 90m, barriera favorevole / avversa 0,35% la prima a verificarsi. N=490 avvisi (BTC122 ETH119 SOL121 DOGE128): 182 barriera favorevole prima, 188 avversa prima, 115 nessuna, 5 censurati. Tra eventi a barriera: **182/370=49,19%, Wilson 95% 44,1–54,3**. LONG/UP: 249 avvisi, **93 favorevoli vs 99 avversi**, 53 no barrier, 4 censurati, successo tra barriere 48,44%; DOWN: 89 favorevoli vs 89 avversi, 62 nessuna,1 censurato, 50%. BTC 41,67% ETH48,91% SOL53,85% DOGE49,12% tra barriere, IC tutti ampi. Baseline pseudocasuale non matched 110 fav/137 avv (44,53%): **NON autorizza a dichiarare superiorita'**, time buckets differenti. Frequenza 490/28 symbol-days =17,5 avvisi/simbolo/giorno; evitare spam Telegram.
+
+**VERDETTO:** nessuna evidenza di avviso LONG predittivamente affidabile su 7gg. KEEP SHADOW; nessuna modifica di punteggi LONG/SHORT, scanner, filtro, veto, capitali, AI, stop, prompt, ordini, selezione trade. Servono etichette di reale inversione strutturale su altri periodi, falsi allarmi, tempo di anticipo e nuovo out-of-sample preregistrato prima di progettare v1.2. Una mediana di 22,5 min alla barriera favorevole NON significa anticipo di 22,5 min sui trend.
+
+**Evidenza**: `research/trend_v11_real_replay/RISULTATI-REAL-BITGET.md` nel ramo ricerca, commit `194b91a44f4c4d88e7e8e10a4bff9703a6883eff`; Run https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41048762622 ; dataset https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41048762622/artifacts/12973547599 . Storici, bot classici e Brain attivi NON toccati; nessun merge/deploy.
+
+AI: chatgpt (chat normale)
