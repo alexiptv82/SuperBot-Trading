@@ -1,0 +1,53 @@
+name: Compare original classical suite with isolated teaching patch
+on:
+  push:
+    branches: [work/classics-manual-teaching-20261030]
+    paths: ['.github/workflows/classics-baseline-comparison.yml']
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7
+          path: original
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest numpy
+      - name: Run same old suite on original and modified tree
+        shell: bash
+        run: |
+          (cd original && PYTHONPATH=backend python -m pytest -q backend/tests/test_desk.py --junitxml=../original.xml > ../original.log 2>&1) || true
+          (cd candidate && PYTHONPATH=backend python -m pytest -q backend/tests/test_desk.py --junitxml=../candidate.xml > ../candidate.log 2>&1) || true
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          def failed(path):
+              root=ET.parse(path).getroot()
+              cases=root.findall('.//testcase')
+              bad={c.get('classname','')+'::'+c.get('name','')
+                   for c in cases if c.find('failure') is not None or c.find('error') is not None}
+              return len(cases), bad
+          n1,a=failed('original.xml')
+          n2,b=failed('candidate.xml')
+          print('ORIGINAL:',n1,'tests,',len(a),'failures')
+          print('CANDIDATE:',n2,'tests,',len(b),'failures')
+          print('NEW_FAILS:',len(b-a))
+          for s in sorted(b-a): print('NEW_FAILURE:',s)
+          print('EXISTING_FAILS:',len(a&b))
+          for s in sorted(a&b): print('PREEXISTING_FAILURE:',s)
+          print('FIXED_FAILS:',len(a-b))
+          for s in sorted(a-b): print('FIXED_FAILURE:',s)
+          if n1!=n2 or b-a:
+              raise SystemExit('REGRESSION: candidate introduced new failures')
+          PY
