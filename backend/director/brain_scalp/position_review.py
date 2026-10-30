@@ -182,6 +182,7 @@ def record_position_review(account, request, result, markets, now,
                 payload.get('actions_are_non_executable') is not True or
                 result.context_id!=request.context_id or
                 type(now)!=int or not request.created_ms<=now<=request.deadline_ms or
+                now<state.get('last_ms',0) or
                 account_fingerprint(state)!=request.exposure_hash):
             raise ValueError('review_stale_context')
         if state.get('last_position_review_context_id')==request.context_id:
