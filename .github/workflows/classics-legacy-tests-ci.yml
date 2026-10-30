@@ -1,0 +1,54 @@
+name: Legacy Claude tests - unchanged runtime
+on:
+  push:
+    branches: [work/classics-legacy-tests-20261030]
+    paths: ['backend/tests/test_desk.py', '.github/workflows/classics-legacy-tests-ci.yml']
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install numpy pytest
+      - name: Baseline and candidate, same interpreter
+        run: |
+          git worktree add /tmp/legacy-before 2b181871c0b8b9b67b3c6b6dd47c317316b4a962
+          set +e
+          (cd /tmp/legacy-before && PYTHONPATH=backend python -m pytest -q -rf backend/tests/test_desk.py --junitxml=/tmp/before.xml) > before.txt 2>&1
+          result=$?
+          set -e
+          cat before.txt
+          test "$result" -eq 1
+          PYTHONPATH=backend python -m pytest -q -rf backend/tests/test_desk.py --junitxml=/tmp/after.xml | tee after.txt
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          def cases(path):
+              return list(ET.parse(path).iter('testcase'))
+          before,after=cases('/tmp/before.xml'),cases('/tmp/after.xml')
+          failures={c.get('name') for c in before if c.find('failure') is not None or c.find('error') is not None}
+          assert len(before)==len(after)==95
+          assert failures=={'test_claude_limits_paper_is_larger_live_is_unchanged','test_cycle_in_paper_asks_claude_with_3000_tokens','test_cycle_logs_a_discarded_claude_reply_with_its_text_and_reason'},failures
+          assert not any(c.find('failure') is not None or c.find('error') is not None or c.find('skipped') is not None for c in after)
+          print('VERIFIED: baseline 92 pass / 3 fail; patched 95 pass / 0 fail, no skips')
+          PY
+      - name: Runtime byte-identical and patch export
+        run: |
+          test "$(git diff --name-only 2b181871c0b8b9b67b3c6b6dd47c317316b4a962 HEAD -- backend)" = "backend/tests/test_desk.py"
+          git diff 2b181871c0b8b9b67b3c6b6dd47c317316b4a962 HEAD -- backend/tests/test_desk.py > classics-legacy-tests.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: legacy-tests-python-${{ matrix.python }}
+          path: |
+            before.txt
+            after.txt
+            classics-legacy-tests.patch
