@@ -104,6 +104,8 @@ class BrainService:
         self.clock=clock_ms if clock_ms is not None else lambda:int(time.time()*1000)
         self.account=None;self.supervisor=None;self.operator=None;self.telegram=None
         self.last_markets={}
+        self.last_teaching_recovery=None
+        self.teaching_status='pending_recovery'
         self.trend_v11=TrendShadow()
         self.structural=StructuralShadow(include_methodology=True)
         self.structure_enabled=config.get('structure_advisory_enabled',False) is True
@@ -112,7 +114,12 @@ class BrainService:
                 initialize=initialize,now_ms=self.clock(),
                 candle_backfill=self.feed.backfill)
             self.operator=BrainOperator(self.account)
-            self.operator.sync()
+            try:
+                self.operator.sync()
+                self.teaching_status='recorded'
+            except Exception:
+                # The durable financial ledger remains authoritative.
+                self.teaching_status='pending_recovery'
             self.supervisor=PaperSupervisor(
                 self.account,primary_call=config['primary'],
                 reviewer_call=config['reviewer'],clock_ms=self.clock,
@@ -153,8 +160,21 @@ class BrainService:
                     lambda sym:candles(sym,'15m',1000))
             except Exception:
                 advice={}
-        return self.supervisor.step(markets,contracts,observations=observations,
+        result=self.supervisor.step(markets,contracts,observations=observations,
                                     regime_v11=indicators,market_advisory=advice)
+        # Protect/admit first. Recovery is observational and cannot turn a
+        # successful financial tick into an error or create another close.
+        last=getattr(self,'last_teaching_recovery',None)
+        if last is None or now-last>=60000:
+            self.last_teaching_recovery=now
+            try:
+                self.operator.sync()
+                self.teaching_status='recorded'
+            except Exception:
+                self.teaching_status='pending_recovery'
+        if isinstance(result,dict):
+            result['teaching_status']=self.teaching_status
+        return result
 
     def enable_telegram_commands(self,*,allowed_chat_id,allowed_user_id):
         if self.telegram is not None:
