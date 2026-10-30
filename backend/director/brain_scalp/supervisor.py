@@ -12,6 +12,8 @@ from .ai_analysis import evaluate
 from .ai_context import decode
 from .scanner import scan
 from .snapshot import atomic_write,build_account_snapshot
+from .position_review import (build_position_review,evaluate_position_review,
+                              record_position_review)
 
 
 class PaperSupervisor:
@@ -38,6 +40,7 @@ class PaperSupervisor:
         self.deadline=deadline_ms;self.snapshot_path=snapshot_path
         self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='brain-analysis')
         self.future=None;self.request=None;self.last_snapshot=None
+        self.future_purpose=None;self.last_purpose=None
         self.cancel=Event();self.closed=False
         account._analysis_supervisor=self
 
@@ -98,34 +101,81 @@ class PaperSupervisor:
                     'rows':diag['rows'][:200],'omitted_rows':max(0,len(diag['rows'])-200)}])
         if self.future is not None:
             if self.future.done():
+                purpose=self.future_purpose
                 try:
                     analysis=self.future.result()
-                    output['analysis']=self.account.accept_ai_analysis(
-                        'brain',self.request,analysis,markets,contracts,now) if healthy else {'status':'wallet_error'}
+                    if purpose=='review':
+                        output['position_review']=(record_position_review(
+                            self.account,self.request,analysis,markets,now)
+                            if healthy else {'status':'wallet_error'})
+                    else:
+                        output['analysis']=(self.account.accept_ai_analysis(
+                            'brain',self.request,analysis,markets,contracts,now)
+                            if healthy else {'status':'wallet_error'})
                 except Exception:
-                    output['analysis']={'status':'analysis_failed'}
-                self.future=None;self.request=None
+                    if purpose=='review':
+                        output['position_review']={'status':'analysis_failed'}
+                    else:
+                        output['analysis']={'status':'analysis_failed'}
+                self.future=None;self.request=None;self.future_purpose=None
                 output['analysis_status']='completed'
             else:
                 output['analysis_status']=('expired_waiting_for_transport' if
                     now>self.request.deadline_ms else 'pending')
-        elif healthy and scan_result['candidates']:
+        elif healthy:
+            # One bounded provider job at a time, shared budget and cooldown.
+            # Alternate entry and review when both exist; neither can starve.
             state=self.account.brain.store.load()
-            if state.get('paused') or state.get('daily_stop_triggered') or state.get('coverage_gaps'):
-                output['analysis_status']='wallet_guarded'
-            else:
-                request=self.account.prepare_ai_request('brain',scan_result,markets,
-                    contracts,references or {},now,now+self.deadline,
-                    observations or {},regime_v11 or {},market_advisory or {},operator_preferences or [])
-                if not decode(request.payload_json)['candidates']:
-                    output['analysis_status']='no_fresh_candidates'
+            entries=bool(scan_result['candidates'])
+            positions=bool(state.get('positions'))
+            review_first=positions and (not entries or self.last_purpose!='review')
+            attempted_review=False
+            if review_first:
+                attempted_review=True
+                if state.get('coverage_gaps'):
+                    output['analysis_status']='wallet_guarded'
                 else:
-                    status=self._reserve(now);output['analysis_status']=status
-                    if status=='reserved':
-                        self.request=request
-                        self.future=self.pool.submit(evaluate,request,
-                            self._guarded(self.primary,request),self._guarded(self.reviewer,request))
-                        output['analysis_status']='started'
+                    try:
+                        request=build_position_review(
+                            self.account,markets,now,now+self.deadline)
+                    except ValueError:
+                        request=None
+                    if request is None:
+                        output['analysis_status']='review_no_fresh_positions'
+                    else:
+                        status=self._reserve(now)
+                        output['analysis_status']=status
+                        if status=='reserved':
+                            self.request=request;self.future_purpose='review'
+                            self.future=self.pool.submit(evaluate_position_review,
+                                request,self._guarded(self.primary,request),
+                                self._guarded(self.reviewer,request))
+                            self.last_purpose='review'
+                            output['analysis_status']='position_review_started'
+            # A review with no usable market data may not block an otherwise
+            # eligible entry. But never bypass a wallet coverage quarantine.
+            if (entries and (not attempted_review or
+                    output['analysis_status']=='review_no_fresh_positions')):
+                if (state.get('paused') or state.get('daily_stop_triggered')
+                        or state.get('coverage_gaps')):
+                    output['analysis_status']='wallet_guarded'
+                else:
+                    request=self.account.prepare_ai_request(
+                        'brain',scan_result,markets,contracts,references or {},
+                        now,now+self.deadline,observations or {},regime_v11 or {},
+                        market_advisory or {},operator_preferences or [])
+                    if not decode(request.payload_json)['candidates']:
+                        output['analysis_status']='no_fresh_candidates'
+                    else:
+                        status=self._reserve(now)
+                        output['analysis_status']=status
+                        if status=='reserved':
+                            self.request=request;self.future_purpose='entry'
+                            self.future=self.pool.submit(evaluate,request,
+                                self._guarded(self.primary,request),
+                                self._guarded(self.reviewer,request))
+                            self.last_purpose='entry'
+                            output['analysis_status']='started'
         if self.snapshot_path is not None and (self.last_snapshot is None or now-self.last_snapshot>=5000):
             atomic_write(self.snapshot_path,build_account_snapshot(self.account,now,markets))
             self.last_snapshot=now
