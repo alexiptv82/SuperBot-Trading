@@ -23,3 +23,11 @@
 - Eseguire inoltre comparazione su **100 timestamp deterministici** fra funzione `safe_indicator` e stato ottenuto da una ricostruzione completa sulle stesse candele (non confrontare mai due fonti sconosciute). Verificare il no-lookahead apponendo una candela futura valida: l'osservazione non deve mutare.
 - Non copiare le API private/chiavi né lanciare ordini.
 - Risultati in logs/Actions artifacts; aggiornare diario solo con **risultati davvero osservati**, non con stime o numeri generati.
+
+## Emendamento tecnico trasparente — 30 ottobre 2026, dopo tentativo di estrazione senza esiti
+
+Il primo runner `41048369966` ha raggiunto Bitget, ma ogni pagina di 200 barre ha restituito 199 timestamp nell'intervallo richiesto: **51 assenze per ciascuno dei 4 simboli**, tutte con il medesimo schema di paginazione. Lo script ha correttamente rifiutato ogni simbolo (`no_verifiable_real_data`) e non ha calcolato statistiche.
+
+**Unica correzione consentita** al sistema di estrazione: per ogni timestamp omesso dalla pagina, fare una seconda richiesta V2 pubblica specifica a Bitget su una finestra breve che comprende quel minuto. Accettare il record solo se Bitget lo restituisce realmente e passa la stessa validazione OHLCV. Se anche una sola barra resta assente, quel simbolo è ancora `data_unavailable`. La ricostruzione artificiale dei prezzi rimane vietata.
+
+Sono **invariati** date, simboli, numero totale di barre richiesto, funzione del sensore, warmup, definizione di evento, cooldown, soglie 0,35%, orizzonte 90 minuti, gestione delle barre censurate e baseline descrittiva. Nel report compare il numero totale delle richieste supplementari. Questo non è un nuovo esperimento finanziario né un cambio di criteri a valle dei risultati: nel primo tentativo non sono esistiti risultati di eventi valutabili.
