@@ -1,0 +1,46 @@
+name: Brain single integration - offline only
+on:
+  push:
+    branches: [work/brain-trend-awareness-20261030]
+    paths:
+      - 'backend/director/brain_scalp/**'
+      - 'backend/director/trend_advisory.py'
+      - 'backend/tests/test_trend_advisory.py'
+      - 'backend/tests/test_brain_trend_context.py'
+      - 'backend/director/manual_teaching.py'
+      - 'backend/tests/test_brain_single_integration.py'
+      - 'backend/tests/test_manual_teaching.py'
+      - 'backend/tests/test_brain_operator.py'
+      - 'backend/tests/test_brain_telegram_commands.py'
+      - '.github/workflows/brain-trend-awareness-ci.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install local test runner (no provider credentials)
+        run: pip install pytest
+      - name: Type and runtime contracts; no live network
+        env:
+          DEEPSEEK_API_KEY: ''
+          ANTHROPIC_API_KEY: ''
+          DESK_MODE: paper
+        run: |
+          python -m compileall -q backend/director/brain_scalp backend/director/manual_teaching.py
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_single_integration.py backend/tests/test_manual_teaching.py backend/tests/test_brain_operator.py backend/tests/test_brain_telegram_commands.py backend/tests/test_brain_dashboard_data.py backend/tests/test_trend_advisory.py backend/tests/test_brain_trend_context.py
+          PYTHONPATH=backend python -m unittest -v backend.tests.test_brain_scalp_dual backend.tests.test_brain_scalp_group1 backend.tests.test_brain_scalp_group2 backend.tests.test_brain_scalp_group3 backend.tests.test_brain_scalp_group4 backend.tests.test_brain_scalp_group5 backend.tests.test_brain_scalp_group6 backend.tests.test_brain_scalp_reference backend.tests.test_brain_ai_context backend.tests.test_brain_resume backend.tests.test_brain_reclaim_probe
+      - name: Guarantee untouched existing bots and deployed application
+        run: |
+          test -z "$(git diff --name-only 168cb9f127f43d349570edeb1cdc47eb9bf38bd3 HEAD -- backend/desk backend/director/brain_free backend/director/brain_pilot frontend backend/server.py deploy Dockerfile.brainfree)"
