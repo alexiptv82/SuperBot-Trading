@@ -1,3 +1,6 @@
+## IN_CORSO — Work: collaudo dashboard conferme
+Utente «ok andiamo avanti»: prosecuzione fix pipeline e timeout UI/test offline. Owner ChatGPT Work, ramo work/brain-operator-dashboard-20261030 base c35e23cb037bc2064b461e1fa635895c83309b54. Usare yarn.lock esistente, test conferme/no-duplicate/abort e build. Nessun merge/deploy/reset/API pagata.
+
 ## 30/10/2026 — Verifiche conferme Brain e dashboard (ChatGPT)
 Richiesta utente: procedere con le verifiche. Revisioni verificate: servizio work/brain-release-integration-20261030 efc7d7761f06492041421ee6160b260f14917bd2; app work/brain-operator-dashboard-20261030 c35e23cb037bc2064b461e1fa635895c83309b54.
 Esito remoto: servizio Actions41074225578 SUCCESS; dashboard Actions41074226811 FAILURE, pytest API SUCCESS, install npm ci fallita; React/build skipped.
