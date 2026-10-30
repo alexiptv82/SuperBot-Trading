@@ -85,7 +85,7 @@ def build_position_review(account, markets, now, deadline):
             'exit_cost_model':{'fee_rate':wallet.cfg.fee_rate,
                                'slippage_rate':wallet.cfg.slippage,
                                'funding_after_now_unknown':True},
-            'protection_policy':{k:p.get('scalp_policy',{}).get(k)
+            'protection_policy':{k:(p.get('scalp_policy') or {}).get(k)
                                  for k in ('peak_net','take_net_usd','hold_max_ms',
                                            'breakeven_after_usd','trail_bps')},
             'mark':{'price':q['price'],'ts_ms':q['ts_ms']},
