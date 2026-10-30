@@ -33,6 +33,7 @@ class PositionReviewResult:
     recommendations_json: str = '{}'
     reviewed: bool = False
     usage_json: str = '{}'
+    approved_symbols: tuple = ()
 
 
 def _quote(markets, symbol, now, cfg):
@@ -112,8 +113,17 @@ def parse_review(text,request):
                 not isinstance(reason,str) or not 1<=len(reason)<=220):
             raise ValueError('review_invalid_item')
         seen.add(sym)
-        clean.append({'symbol':sym,'position_id':allowed[sym],
-                      'action':action,'reason':reason})
+        stop=item.get('stop_price')
+        if action=='SUGGEST_TIGHTEN':
+            if type(stop) not in (float,int) or not math.isfinite(stop) or stop<=0:
+                raise ValueError('review_invalid_stop')
+        elif 'stop_price' in item:
+            raise ValueError('unexpected_stop_price')
+        entry={'symbol':sym,'position_id':allowed[sym],
+               'action':action,'reason':reason}
+        if action=='SUGGEST_TIGHTEN':
+            entry['stop_price']=stop
+        clean.append(entry)
     return sorted(clean,key=lambda x:x['symbol'])
 
 
@@ -129,6 +139,7 @@ def evaluate_position_review(request,primary,reviewer=None):
     except Exception:
         return PositionReviewResult(request.context_id,'primary_failed')
     reviewed=False
+    approvals=()
     if callable(reviewer) and any(x['action']!='HOLD' for x in suggestions):
         try:
             content,tokens=_unpack(reviewer(
@@ -137,18 +148,31 @@ def evaluate_position_review(request,primary,reviewer=None):
                 'All output remains advisory only.',
                 encode({'context':decode(request.payload_json),
                         'initial_observations':suggestions})))
-            suggestions=parse_review(content,request)
+            rechecked=parse_review(content,request)
+            original_by_symbol={a['symbol']:a for a in suggestions}
+            approvals=tuple(sorted(
+                r['symbol'] for r in rechecked
+                if r['action']!='HOLD' and
+                   original_by_symbol[r['symbol']]['action']==r['action'] and
+                   (r['action']!='SUGGEST_TIGHTEN' or
+                    original_by_symbol[r['symbol']]['stop_price']==r['stop_price'])))
+            suggestions=rechecked
             usage['claude']=tokens
             reviewed=True
         except Exception:
             return PositionReviewResult(request.context_id,'review_failed',
                                         usage_json=encode(usage))
     return PositionReviewResult(request.context_id,'ready',
-                                encode(suggestions),reviewed,encode(usage))
+                                encode(suggestions),reviewed,encode(usage),approvals)
 
 
-def record_position_review(account, request, result, markets, now):
-    """Owner-thread, single idempotent audit commit; NO trading mutations."""
+def record_position_review(account, request, result, markets, now,
+                           *,execution_enabled=False,contracts=None):
+    """Owner-thread verified audit; optional reduce-only PAPER transaction.
+
+    The default is *strictly observational*. Execution requires an explicit
+    opt-in by the host and two agreeing analyses for the exact action.
+    """
     if not isinstance(result,PositionReviewResult) or result.status!='ready':
         return {'status':getattr(result,'status','review_unavailable')}
     try:
@@ -176,6 +200,12 @@ def record_position_review(account, request, result, markets, now):
                                       'reviews':findings}),request)
         if len(findings)>wallet.spec.slots:
             raise ValueError('review_limit')
+        if execution_enabled:
+            if type(execution_enabled)!=bool:
+                raise ValueError('invalid_execution_mode')
+            from .position_execution import apply_paper_review
+            return apply_paper_review(wallet,state,request,result,findings,
+                                      markets,contracts,now)
         state['last_position_review_context_id']=request.context_id
         event={'kind':'ai_position_review_observed','paper':True,
                'authority':'advisory_only','context_id':request.context_id,
