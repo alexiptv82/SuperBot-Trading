@@ -13,6 +13,8 @@ from .engine import _safe_equity
 from .legacy_reference import build_reference
 from .scanner import _closed
 from .store import wallet_spec_digest
+from director.structural_advisory import project_advisory
+from director.classical_methodology import project_methodology
 
 MAX_JSON_BYTES=120000
 POSITION_KEYS=('id','symbol','side','entry','qty','margin','leverage','stop','target',
@@ -36,6 +38,13 @@ Trend-change observations are early, symmetrical hypotheses only. Explicitly
 evaluate whether a previously bearish crypto is rotating upward (or vice versa);
 they never force, forbid or authorize a trade. Use the same net-cost and
 invalidation discipline for LONG and SHORT. No prediction is certainty.
+Structural advisory is experimental evidence, not a signal to obey.
+Classical methodology contains the actual frozen LONG/SHORT scorer output,
+not a trading strategy imported into your engine. Consider its 4h/1h trend,
+EMA position, 24h momentum, range breaks, RSI and volume with independent
+timing/invalidation judgment. It cannot change eligibility, force review,
+force a trade or block one; missing advice is not a reason to HOLD.
+Its legacy warmup, equal-value SHORT bias and static seasonality are cautions.
 Protective exits remain independent of your availability.
 Return one JSON object: context_id, plans, assessments, summary.
 assessments must cover every eligible symbol once, with symbol, long_case,
@@ -100,7 +109,7 @@ class AIRequest:
 
 def build_request(state,spec,markets,contracts,shortlist,references,
                   recent_trades,now_ms,deadline_ms,trend_observations=None,
-                  regime_v11=None):
+                  regime_v11=None,market_advisory=None):
     if (type(now_ms)!=int or type(deadline_ms)!=int or now_ms<=0 or
             not now_ms<deadline_ms<=now_ms+spec.max_plan_age_ms):
         raise ValueError('invalid_context_deadline')
@@ -215,6 +224,9 @@ def build_request(state,spec,markets,contracts,shortlist,references,
                     'five_minute_ready':incoming.get('five_minute_ready') is True}}
             except (TypeError,ValueError):
                 v11={'status':'unavailable'}
+        advisory=(market_advisory or {}).get(symbol) if isinstance(market_advisory,dict) else None
+        structure=project_advisory(advisory,symbol,now_ms)
+        methodology=project_methodology(advisory.get('classical_methodology'),symbol,now_ms) if isinstance(advisory,dict) else {'status':'not_supplied'}
         candidates.append({
             'symbol':symbol,'side':side,'signal_close_ms':signal,
             'setup':str(c.get('setup',''))[:100],
@@ -225,6 +237,8 @@ def build_request(state,spec,markets,contracts,shortlist,references,
             'classical_reference':ref,
             'trend_change_observation':turn,
             'regime_v11_indicator':v11,
+            'structural_advisory':structure,
+            'classical_methodology':methodology,
         })
     memory=[]
     for t in recent_trades:
@@ -288,3 +302,4 @@ def validate_current(request,state,spec,now_ms):
         if ref['status']=='available' and now_ms-ref['value']['observed_ms']>ref['max_age_ms']:
             raise ValueError('reference_expired_during_analysis')
     return payload
+
