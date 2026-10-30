@@ -27,3 +27,14 @@ AI: chatgpt
 - Per il passaggio da Work a chat normale: il coordinamento e' in corso sulla verifica/infrastruttura Brain; non e' stato preso possesso di file di codice. Prima di scrivere nuovi componenti, aggiornare sezione IN_CORSO e prenotare il perimetro secondo SINCRONIZZAZIONE-WORK-CHAT.md.
 
 AI: chatgpt (chat normale)
+
+## 30/10 — Due prompt Claude: fix saldo DeepSeek e insegnamento manuale (offline)
+
+- Utente ha fornito due prompt: (1) chiarire errori DeepSeek 402/429/401 e alert saldo, (2) imparare da chiusure manuali di Brain e classici, previa conferma Telegram, senza cambiare automaticamente la strategia.
+- **Ramo isolato** `work/manual-teaching-deepseek-20261030`, base `a472c5327e8f9334c5677f5243c28095282faed2`; report `docs/deepseek-credit-manual-teaching-20261030.md`, HEAD `168cb9f127f43d349570edeb1cdc47eb9bf38bd3`.
+- **Fix DeepSeek implementati offline**: stato `balance` attribuito esplicitamente a DeepSeek in notifica; anche rate/auth/generici; controlli `GET /user/balance` con timeout 8s e solo valuta USD, alert su saldo basso (default 2 USD da normale variabile d'ambiente) o is_available=false, massimo 1 ogni 4h, controllo ogni 6h o 50 richieste, worker separato dagli stop. Nessun Secret aggiunto, nessuna chiamata API reale.
+- **Insegnamento manuale: modulo condivisibile offline ma NON connesso**. `backend/director/manual_teaching.py`: prende solo eventi di chiusura PAPER verificati, idempotenza, grouping 5m, identificatori Telegram, risposta yes/no con TTL 2h, no_response, append-only in learning_log e lessons solo dopo consenso su profitto; `training_applied=false`. Non presume che sparizione Bitget==chiusura PAPER. Nessun listener Telegram, /chiudi o /chiudi all in esecuzione. Su classici 13/10 il singolo close e' disabilitato mentre close-all esiste; nuovo Brain Scalp e' dashboard read-only. Richiedono integrazione separata e receipt di esecuzione, unico consumer Telegram e test end-to-end.
+- **Actions run 41032428460 SUCCESS**: 53 test Python 3.10 + 53 test Python 3.11 (106 esecuzioni) tra regressione Brain Free e nuovi mock/test manuali. CI iniziale 41031809738 aveva 46 pass +1 fail per eco testo errore non attendibile; corretto con allowlist; run successiva `41031935792` verde, poi suite allargata verde. Guard Git: no modifiche desk/classici, Brain Scalp, Brain Pilot, frontend, deploy, Dockerfile.
+- **Non autorizzati/eseguiti**: merge su rule-pool/main, deploy, avvio servizio, migrazioni, posizioni, reset o modifiche memoria/VPS. I due problemi vanno separati: fix DeepSeek e' candidato a rilascio solo dopo collaudo d'integrazione e OK; insegnamento non e' attivo e non va dichiarato completo.
+
+AI: chatgpt (chat normale)
