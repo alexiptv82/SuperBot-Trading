@@ -45,7 +45,7 @@ class HistoricalReplayTests(unittest.TestCase):
         bars[1][3]=99.
         self.assertEqual(replay.first_barrier(bars,0,1)['outcome'],'adverse_first')
         self.assertEqual(replay.first_barrier(bars,0,-1)['outcome'],'adverse_first')
-        self.assertEqual(replay.first_barrier(bars,2,1)['outcome'],'censored')
+        self.assertEqual(replay.first_barrier(bars,3,1)['outcome'],'censored')
 
     def test_wilson_and_censoring_counted_separately(self):
         events=[{'outcome':'favorable_first','minutes':4},
