@@ -1,4 +1,4 @@
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useCallback,useEffect,useRef,useState} from 'react';
 
 export default function BrainOperatorReviews(){
   const [groups,setGroups]=useState([]);
@@ -7,7 +7,7 @@ export default function BrainOperatorReviews(){
   const ticketsRef=useRef({});
   const active=useRef(false);
   const controllers=useRef(new Set());
-  const request=async(url,options={})=>{
+  const request=useCallback(async(url,options={})=>{
     const controller=new AbortController();
     controllers.current.add(controller);
     const timer=setTimeout(()=>controller.abort(),10000);
@@ -19,7 +19,7 @@ export default function BrainOperatorReviews(){
       clearTimeout(timer);
       controllers.current.delete(controller);
     }
-  };
+  },[]);
   useEffect(()=>{
     let live=true,timer;
     active.current=true;
@@ -46,8 +46,7 @@ export default function BrainOperatorReviews(){
       controllers.current.forEach(controller=>controller.abort());
     };
     // This poll reads current tickets through the ref, without restarting requests.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+  },[request]);
   const send=async(group,choice)=>{
     if(ticketsRef.current[group])return;
     const id=crypto.randomUUID().replace(/-/g,'');
