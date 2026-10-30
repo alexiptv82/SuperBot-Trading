@@ -1120,3 +1120,22 @@ AI: chatgpt
 - PrenotazioneChatGPT CONCLUSA. Ripristino codice con nuovo revert, senza forcepush o resetdati.
 
 AI: chatgpt
+
+
+## 30/10/2026 — Ripresa Brain e selezione report: implementazione offline
+
+- Utente conferma che non arriveranno altri report e Claude non prosegue; autorizza implementazione delle parti utili e ripresa lavoro sospeso. Nessuna autorizzazione a merge/deploy o chiamate AI a pagamento.
+- Letti diario aggiornato e risultati Claude al commit 3fc4fa9c790c5266fa70aa546e8216ad981b7bd4: 16 configurazioni, nessuna idonea; fase economica mai eseguita. Lettore regime v2 NON importato nel prompt/scoring/ordini. Non aggirare il gate fallito cambiando soglie dopo i risultati.
+- Ramo work/brain-resume-20261030, commit a472c5327e8f9334c5677f5243c28095282faed2; base di ripristino 3e73bbff44946df7dba027e27086009229ebb351 preservata.
+- CI 41022451077 SUCCESS: 175 test per Python 3.10 e 3.11 (150 precedenti +25 nuovi). Locale 164 test; gli 11 test di provenienza Git girano in CI. Guardie Git: nessuna modifica desk/BrainFree/deploy/frontend.
+- BrainAccount riusa PaperWallet/BrainPair, un solo SQLite PAPER. Mandato completo obbligatorio; 2000 USDT e1600 margine solo fixture di test, non default operativo. No fusione/reset/migrazione conti. Validazione mandato, fingerprint, backup esistente, doppio writer e re-inizializzazione respinti.
+- PaperSupervisor.step protegge prima delle analisi e mantiene AI in worker separato senza accesso SQLite; nessun daemon installato. Una richiesta in volo, deadline pre-provider e pre-revisore, risposte scadute rifiutate. Budget intera analisi prenotato prima della callback e persistente dopo restart/errori; nessun rimborso ignoto. Non e' metering effettivo; tetto richiede stima conservativa prezzi/token di entrambi i provider. Trasporti devono applicare timeout finiti, un thread bloccato non e' interrompibile forzatamente.
+- Diagnostica per entrambi i lati nello scanner, risultati invariati: DATA_UNAVAILABLE/NO_SETUP/SELECTED/TOP_K, condizioni osservate e conteggi; journal massimo una volta/minuto con200righe. Test causali e shortlist invariata.
+- Snapshot unico schema v2, capitale iniziale dal mandato. PWA dual v1 lo rifiuta invece di mostrare due conti fittizi; adattamento PWA ancora necessario prima delrilascio.
+- research/long_reclaim: esperimento OHLCV isolato e simmetrico (recupero livello dopo violazione, volume relativo1.5, conferma successiva), execution_permission=false. Nessun collegamento a bot/prompt, nessun CVD o assorbimento istituzionale preteso. Preregistrazione nuova, 7 test tecnici; nessun backtest economico/edge dimostrato. Disponibile per ricerca classici eBrain senza duplicare scorer.
+- Verificati in25nuovi test: restart/conto/backup, mandato invalido, concorrenza, AI lenta con stop che chiude, risposta scaduta, budget postrestart, apertura PAPER dopo callback sintetica, diagnostica, causalita'/specchio delreclaim. Nessuna API pagata.
+- Report: https://github.com/alexiptv82/SuperBot-Trading/blob/a472c5327e8f9334c5677f5243c28095282faed2/docs/brain-resume-review.md
+- Restano: mandato finanziario unico definitivo, PWA v2, collegamento feed/trasporti con tetti token e prezzi verificati, eventuale migrazione conbackup e riconciliazione e OKdeploy separato. Nessun servizioH24 operativo nuovo e nessun cambiamento della strategia attiva dichiarato. La richiesta complessiva di rilascio non e' ancora completata.
+- Nessun merge, forcepush, VPS, reset, storici/cervello o rami operativi modificati. Unico autoreChatGPT, Claude laboratorio preservato.
+
+AI: chatgpt
