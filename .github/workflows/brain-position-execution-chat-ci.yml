@@ -4,7 +4,7 @@ on:
     branches: [work/brain-position-execution-chat-20261030]
     paths:
       - 'backend/**'
-      - '.github/workflows/brain-position-review-chat-ci.yml'
+      - '.github/workflows/brain-position-execution-chat-ci.yml'
   workflow_dispatch:
 permissions:
   contents: read
