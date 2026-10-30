@@ -74,3 +74,22 @@ def test_review_publication_expiry_is_rejected(tmp_path,monkeypatch):
     monkeypatch.setattr('brain_operator_api.time.time',lambda:(NOW+120001)/1000)
     app=FastAPI();register(app,lambda:{'user':'owner'})
     assert TestClient(app).get('/api/brain/operator/reviews').json()=={'status':'unavailable','groups':[]}
+
+def test_real_single_snapshot_is_readable_by_pinned_app_and_stales(tmp_path):
+    from director.brain_scalp.snapshot import build_account_snapshot,atomic_write
+    from brain_scalp_snapshot_view import read_published_snapshot
+    case=fixtures.ManualClose();case.setUp()
+    try:
+        before=case.account.brain.store.load()
+        snapshot=build_account_snapshot(case.account,NOW+1000,markets(NOW+1000))
+        path=tmp_path/'snapshot.json';atomic_write(path,snapshot)
+        view=read_published_snapshot(path,NOW+1000,layout='single')
+        assert view['layout']=='single' and view['status']=='ok'
+        assert set(view['profiles'])=={'brain'}
+        position=view['profiles']['brain']['positions'][0]
+        assert position['symbol']=='BTC' and position['price_status']=='fresh'
+        stale=read_published_snapshot(path,NOW+62000,layout='single')
+        assert stale['snapshot_stale'] is True
+        assert stale['profiles']['brain']['online'] is False
+        assert case.account.brain.store.load()==before
+    finally:case.tearDown()
