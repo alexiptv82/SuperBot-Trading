@@ -9,12 +9,13 @@ from .store import Store,dumps
 from .memory import seeds,recent
 from .prompt_builder import build
 from .provider import call,validate
+from .balance import check_balance,low_balance_threshold,unavailable_message,credit_alert
 from .spend import price,view
 from .notifications import Dispatcher,event_text
 from .reports import schedule
 
 class Runtime:
-    def __init__(self,root,initialize=False,cfg=Config(),model_call=call,api_key=None,seed_dir=None):
+    def __init__(self,root,initialize=False,cfg=Config(),model_call=call,api_key=None,seed_dir=None,balance_call=None):
         if os.getenv('DESK_MODE','paper')!='paper':raise ValueError('paper_only')
         self.cfg=cfg;self.seeds=seeds(seed_dir or Path(__file__).parent/'seeds')
         from .mandate import SYSTEM
@@ -28,8 +29,16 @@ class Runtime:
             self.store.close();raise ValueError('explicit_bug_upgrade_required')
         self.pool=ThreadPoolExecutor(1,thread_name_prefix='brain-free-model')
         self.model_call=model_call;self.pending=None;self.retry_at=0;self.failures=0
+        # The optional read-only credit worker is independent of protective ticks.
+        # main() enables it; offline tests explicitly inject a fake callback.
+        self.balance_call=balance_call;self.balance_future=None
+        self.balance_pool=ThreadPoolExecutor(1,thread_name_prefix='brain-free-balance')
+        try:self.balance_threshold=low_balance_threshold()
+        except ValueError:self.balance_threshold=low_balance_threshold("2.0")
     def close(self):
-        self.pool.shutdown(wait=False,cancel_futures=True);self.store.close()
+        self.pool.shutdown(wait=False,cancel_futures=True)
+        self.balance_pool.shutdown(wait=False,cancel_futures=True)
+        self.store.close()
     def activate(self,now,markets):
         state=self.store.load()
         if state['verified_start_ms'] is not None:return
@@ -55,6 +64,13 @@ class Runtime:
         if result.get('error')=='missing_key':body['billing']={'cost':0.,'status':'not_sent'}
         self.store.finish_request(job['id'],'complete' if body['billing'] else 'unknown_cost',body)
         state=self.store.load();error=result.get('error')
+        # Count completed requests (including rejected/failed ones) without
+        # confusing spend measurement with the low-credit balance monitor.
+        credit=state.get('deepseek_credit_monitor') or {}
+        credit['calls_since_check']=min(1000000,credit.get('calls_since_check',0)+1)
+        state['deepseek_credit_monitor']=credit
+        self.store.commit(state)
+        state=self.store.load()
         try:
             if error:raise ValueError(error)
             if result.get('finish_reason')!='stop':raise ValueError('incomplete_response')
@@ -89,7 +105,46 @@ class Runtime:
             state=self.store.load();state['last_full_ms']=0;state['last_manage_ms']=0
             state['provider_status']=str(exc) if isinstance(exc,ValueError) else 'invalid_response'
             self.store.commit(state,[(job['id']+':failed','ai_unavailable',now,{'code':state['provider_status']})],
-                [('ai-error:'+state['provider_status']+':'+str(now//3600000),'[BRAIN] AI non disponibile: '+state['provider_status']+'. Stop locali attivi, nessun fallback alle regole.')])
+                [('ai-error:'+state['provider_status']+':'+str(now//3600000),unavailable_message(state['provider_status']))])
+    def _poll_balance(self,now):
+        """Process completed checks and schedule another without holding the wallet tick."""
+        if self.balance_call is None or not self.key:
+            return
+        if self.balance_future is not None:
+            if not self.balance_future.done():
+                return
+            try:result=self.balance_future.result()
+            except Exception:result={'status':'unavailable'}
+            self.balance_future=None
+            state=self.store.load();credit=state.get('deepseek_credit_monitor') or {}
+            text=credit_alert(result,self.balance_threshold)
+            last=credit.get('last_alert_ms')
+            messages=[]
+            if text and (type(last)!=int or now-last>=4*3600000):
+                credit['last_alert_ms']=now
+                ident='deepseek-credit:'+str(now//(4*3600000))
+                messages=[(ident,text)]
+            credit['last_status']=str(result.get('status','unavailable'))[:32] if isinstance(result,dict) else 'unavailable'
+            state['deepseek_credit_monitor']=credit
+            self.store.commit(state,(),messages)
+        if self.balance_future is not None:
+            return
+        state=self.store.load()
+        if state.get('verified_start_ms') is None:
+            return
+        credit=state.get('deepseek_credit_monitor') or {}
+        last=credit.get('last_check_ms')
+        calls=credit.get('calls_since_check',0)
+        if type(last)==int and now-last<6*3600000 and calls<50:
+            return
+        # Persist scheduling first. On crash, retry after interval instead of
+        # creating a repeated storm of read-only balance requests.
+        credit['last_check_ms']=now
+        credit['calls_since_check']=0
+        state['deepseek_credit_monitor']=credit
+        self.store.commit(state)
+        self.balance_future=self.balance_pool.submit(self.balance_call,self.key)
+
     def step(self,markets,contracts,context,now):
         try:json.dumps(context,allow_nan=False)
         except (ValueError,TypeError):context={'status':'unavailable_invalid_context','binding':False}
@@ -122,6 +177,10 @@ class Runtime:
         updated['fresh_quote_count']=sum(fresh(m.get('quote'),now,self.cfg) for m in markets.values())
         self.record_events(updated,events,now,'protection:'+str(now))
         self.receive(markets,contracts,now)
+        # Fail-open with respect to credit telemetry: position protections and
+        # AI error handling must never depend on availability of this endpoint.
+        try:self._poll_balance(now)
+        except Exception:pass
         state=self.store.load()
         if now-state.get('last_comparison_ms',0)>=900000:
             from .reports import classical_comparison
@@ -158,7 +217,7 @@ def main():
     if args.initialize:
         runtime=Runtime(args.root,True);runtime.close();return
     from .feeds import Feeds
-    runtime=Runtime(args.root);feeds=Feeds();dispatcher=Dispatcher(runtime.store.root,os.getenv('TELEGRAM_BOT_TOKEN',''),os.getenv('TELEGRAM_CHAT_ID',''))
+    runtime=Runtime(args.root,balance_call=check_balance);feeds=Feeds();dispatcher=Dispatcher(runtime.store.root,os.getenv('TELEGRAM_BOT_TOKEN',''),os.getenv('TELEGRAM_CHAT_ID',''))
     try:
         while True:
             now=int(time.time()*1000)
