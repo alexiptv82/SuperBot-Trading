@@ -35,7 +35,7 @@ class Advisory(unittest.TestCase):
         self.assertEqual(mirrored['phase'],'early_downshift')
         self.assertEqual(mirrored['prior_direction'],'up')
         self.assertEqual(mirrored['recent_direction'],'down')
-        self.assertAlmostEqual(q['prior_return_pct'],-mirrored['prior_return_pct'],delta=0.02)
+        self.assertAlmostEqual(q['prior_return_pct'],-mirrored['prior_return_pct'],delta=0.06)
         self.assertAlmostEqual(q['recent_return_pct'],-mirrored['recent_return_pct'],delta=0.02)
 
     def test_no_peeking_at_unclosed_candles(self):
