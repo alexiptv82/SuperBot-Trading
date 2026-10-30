@@ -15,6 +15,7 @@ from .config import WalletSpec,validate_spec
 from .coordinator import BrainAccount
 from .market_bridge import PublicBrainFeed
 from director.trend_advisory import observe_many
+from director.trend_shadow import TrendShadow
 from .operator import BrainOperator
 from .telegram_commands import PaperTelegramCommands
 from .supervisor import PaperSupervisor
@@ -101,6 +102,7 @@ class BrainService:
         self.clock=clock_ms if clock_ms is not None else lambda:int(time.time()*1000)
         self.account=None;self.supervisor=None;self.operator=None;self.telegram=None
         self.last_markets={}
+        self.trend_v11=TrendShadow()
         try:
             self.account=BrainAccount(config['data_dir'],spec=config['spec'],
                 initialize=initialize,now_ms=self.clock(),
@@ -130,8 +132,17 @@ class BrainService:
             },now,300000)
         except Exception:
             observations={}
-        # The sensor cannot block protection, change orders or veto DeepSeek.
-        return self.supervisor.step(markets,contracts,observations=observations)
+        # Only completed worker output can be consumed; trend calculations
+        # never occupy the wallet-owner thread or prevent protective ticks.
+        try:
+            indicators=self.trend_v11.poll(now,{
+                sym:(m.get('bars') or {}).get('1m',())
+                for sym,m in markets.items() if isinstance(m,dict)
+            })
+        except Exception:
+            indicators={}
+        return self.supervisor.step(markets,contracts,observations=observations,
+                                    regime_v11=indicators)
 
     def enable_telegram_commands(self,*,allowed_chat_id,allowed_user_id):
         if self.telegram is not None:
@@ -149,6 +160,7 @@ class BrainService:
         return self.account.brain.store.backup(path)
 
     def close(self):
+        if self.trend_v11 is not None:self.trend_v11.close()
         if self.supervisor is not None:
             self.supervisor.close()
         if self.account is not None:
