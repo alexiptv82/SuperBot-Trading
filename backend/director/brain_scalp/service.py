@@ -106,6 +106,7 @@ class BrainService:
         self.last_markets={}
         self.last_teaching_recovery=None
         self.teaching_status='pending_recovery'
+        self.operator_preferences=[]
         self.trend_v11=TrendShadow()
         self.structural=StructuralShadow(include_methodology=True)
         self.structure_enabled=config.get('structure_advisory_enabled',False) is True
@@ -116,6 +117,9 @@ class BrainService:
             self.operator=BrainOperator(self.account)
             try:
                 self.operator.sync()
+                from .manual_preferences import confirmed_preferences
+                self.operator_preferences=confirmed_preferences(
+                    self.account.brain.store.root,self.account.brain.spec.account_id,self.clock())
                 self.teaching_status='recorded'
             except Exception:
                 # The durable financial ledger remains authoritative.
@@ -161,7 +165,8 @@ class BrainService:
             except Exception:
                 advice={}
         result=self.supervisor.step(markets,contracts,observations=observations,
-                                    regime_v11=indicators,market_advisory=advice)
+                                    regime_v11=indicators,market_advisory=advice,
+                                    operator_preferences=getattr(self,'operator_preferences',[]))
         # Protect/admit first. Recovery is observational and cannot turn a
         # successful financial tick into an error or create another close.
         last=getattr(self,'last_teaching_recovery',None)
