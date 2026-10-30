@@ -1,0 +1,40 @@
+name: Classical Falco Toro manual close teaching - offline only
+on:
+  push:
+    branches: [work/classics-manual-teaching-20261030]
+    paths:
+      - 'backend/desk/cli.py'
+      - 'backend/desk/manual_teaching_bridge.py'
+      - 'backend/director/manual_teaching.py'
+      - 'backend/tests/test_classics_manual_teaching.py'
+      - '.github/workflows/classics-manual-teaching-ci.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10','3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest
+      - name: Validate legacy classical contract and new teaching handoff offline
+        env:
+          DESK_MODE: paper
+          TELEGRAM_BOT_TOKEN: ''
+          ANTHROPIC_API_KEY: ''
+        run: |
+          python -m compileall -q backend/desk/cli.py backend/desk/manual_teaching_bridge.py backend/director/manual_teaching.py
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_desk.py backend/tests/test_classics_manual_teaching.py
+      - name: Guard all Brain, frontend, deploy and existing paper contracts
+        run: |
+          test -z "$(git diff --name-only fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7 HEAD -- backend/director/brain_free backend/director/brain_scalp frontend deploy backend/server.py)"
+          git diff --name-only fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7 HEAD
