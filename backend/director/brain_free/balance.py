@@ -76,9 +76,14 @@ def unavailable_message(status):
     }
     reason = reasons.get(status)
     if reason is None:
-        safe = str(status)[:64]
-        safe = "".join(c for c in safe if c.isascii() and (c.isalnum() or c in "_-"))
-        reason = safe or "errore sconosciuto"
+        # Never echo arbitrary exception text: it can include secrets/URLs.
+        safe_codes = {
+            "invalid_response", "incomplete_response", "expired_response",
+            "account_changed_during_request", "provider_failed",
+            "invalid_schema", "invalid_summary", "invalid_decision",
+            "invalid_assessments", "missing_reason", "nonfinite_json",
+        }
+        reason = status if status in safe_codes else "errore sconosciuto"
     return "[BRAIN] DeepSeek non disponibile: " + reason + ". Stop locali attivi, nessun fallback alle regole."
 
 
