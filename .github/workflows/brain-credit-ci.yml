@@ -1,0 +1,33 @@
+name: Brain Free DeepSeek credit checks - offline only
+on:
+  push:
+    branches: [work/manual-teaching-deepseek-20261030]
+    paths:
+      - 'backend/director/brain_free/**'
+      - 'backend/tests/test_brain_credit_monitor.py'
+      - '.github/workflows/brain-credit-ci.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest
+      - name: Mock-only Brain Free regression
+        run: |
+          python -m compileall -q backend/director/brain_free
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_free.py backend/tests/test_brain_free_rollout.py backend/tests/test_brain_credit_monitor.py
+      - name: No changes to trading or deployment components
+        run: |
+          test -z "$(git diff --name-only a472c5327e8f9334c5677f5243c28095282faed2 HEAD -- backend/desk backend/director/brain_scalp backend/director/brain_pilot frontend deploy Dockerfile.brainfree)"
