@@ -87,3 +87,21 @@ def test_reset_does_not_erase_history_or_brain(tmp_path):
             assert (data/n).read_bytes()==b
     finally:
         cli.DATA_DIR,cli.STATE_FILE=original
+
+
+def test_single_close_produces_unconfirmed_verified_learning_inbox():
+    import json
+    from backend.tests.test_desk import _sandbox,_state_with_two_positions,_write_close_request,NOW
+    from director.manual_teaching import ManualLessons
+    with _sandbox() as (folder,calls):
+        state=_state_with_two_positions()
+        cli.fetch_candles=lambda sym,bar='15m',limit=3:[[NOW,101,103,100,102.0,1.0]]
+        _write_close_request(folder,['BTC'])
+        assert cli._check_close_position_flag(state)
+        assert 'BTC' not in cli.make_account(state).positions
+        q=ManualLessons(folder).pending()
+        assert len(q)==1 and q[0]['source']=='manual_user'
+        assert q[0]['bot']==cli.PORTFOLIO.name
+        assert not os.path.exists(os.path.join(folder,'lessons.md'))
+        assert any(row.get('ev')=='close' for row in
+                   (json.loads(line) for line in open(os.path.join(folder,'learning_log.jsonl'))))
