@@ -73,3 +73,21 @@ CI verificata: UI run `41039334417` SUCCESS, 13 test React + build, 23 test read
 
 AI: chatgpt (chat normale)
 
+## 30/10 — Chiarimento strategia LONG: sensore di inversione non vincolante (Brain + classici)
+
+L'utente ha chiarito che LONG non deve essere una nuova strategia d'apertura: occorre un **lettore precoce, simmetrico e NON BLOCCANTE** dei cambi di direzione, per aiutare Falco/Toro e soprattutto DeepSeek Brain a capire quando un mercato ribassista comincia a girare (e viceversa). Una volta accertato il setup, si continuano a utilizzare i normali meccanismi LONG/SHORT, guardrail e gestione del rischio. Brain conserva l'indipendenza AI, il lettore non apre, non autorizza e non vieta ordini.
+
+**Codice completato OFFLINE su due rami separati:**
+- `work/classics-trend-awareness-20261030`, HEAD `7c4a65f761b0fc99ddbc1bbfffaab5c5fe944e2e`, derivato da teaching classici. Nuovo `backend/director/trend_advisory.py` su 40 barre 15m chiuse e senza gap, log-return speculari; `desk/cli.py` salva `state['trend_observations']` e stampa solo nuovi cambi di fase, senza toccare scoring, stop, pesi, gate, operazioni o AI. CI `41043189208` SUCCESS su Python3.10/3.11: 18 nuovi test per interprete; A/B 19 failure baseline vs 3 preesistenti nel candidato, 0 nuove regressioni. I 3 residui sono su comportamento legacy Claude.
+- `work/brain-trend-awareness-20261030`, HEAD `971cf59b47cde0b789736d251de89eaca3b0f2de`, derivato dall'integrazione Brain. Stesso lettore puro su barre 5m del feed gia' esistente. `service.py` lo passa a `supervisor.step(...,observations=...)`; `coordinator.py` e `ai_context.py` lo includono, con validazione esplicita e come `advisory_only`, nelle osservazioni dei candidati scanner, solo nel materiale di analisi DeepSeek. Il tick di protezione rimane prima dell'AI. Nessuna inversione da sola crea un trade; gli ordini AI continuano soggetti a setup scanner e guardrail fisici. CI `41043182817` SUCCESS Python3.10/3.11: 33 pytest + 175 unittest per interprete, test di simmetria, causalita', non-leakage candele incomplete, mancati dati non bloccanti, protezioni.
+
+**Nessuna integrazione P1 del vecchio scoring LONG:** e' stato distinto dal nuovo sensore osservativo; i pesi originali del punteggio restano identici, e il lettore regime Claude fallito non e' stato usato. Il sensore non identifica in modo certo i minimi/massimi futuri. Il Brain ha dati 5m; i classici dati 15m e ciclo ~15-30min: quest'ultima lettura non e' tick-by-tick. Per dimostrare se il sistema aiuti davvero ad anticipare LONG serve test fuori campione su dati reali e misure di ritardo/falsi allarmi/P&L. Il Brain attualmente consulta DeepSeek su candidati del suo scanner e il lettore NON aggira il limite dei setup; documentare questa limitazione, non dichiararlo AI senza filtri.
+
+Report:
+- `docs/trend-change-advisory-2026-10-30.md` sul ramo Brain.
+- `docs/trend-change-classics-2026-10-30.md` sul ramo classici.
+
+**Vincoli**: niente merge/deploy, niente modifica portafogli attivi, seed o reset, niente ordini reali, niente cron/job/API a pagamento; PWA non toccata in questi rami e rimane sul ramo `work/brain-simple-dashboard-20261030`. Storici/cervello conservati. Owner: chat normale. I branch hanno HEAD dopo documentazione [skip ci], CI verificata sui rispettivi commit di codice precedente.
+
+AI: chatgpt (chat normale)
+
