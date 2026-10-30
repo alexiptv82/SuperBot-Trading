@@ -56,6 +56,9 @@ def required_env(env):
     if missing:
         # Only variable names, never any supplied values.
         raise ValueError('brain_env_missing:'+','.join(missing))
+    actions_mode=env.get('BRAIN_AI_POSITION_ACTIONS','off')
+    if actions_mode not in ('off','paper'):
+        raise ValueError('invalid_brain_position_actions_mode')
     spec=mandate_from_json(env['BRAIN_SINGLE_MANDATE_JSON'])
     data_dir=Path(env['BRAIN_SINGLE_DATA_DIR']).absolute()
     snapshot=Path(env['BRAIN_SINGLE_SNAPSHOT_PATH']).absolute()
@@ -87,7 +90,8 @@ def required_env(env):
         max_input_bytes=max_bytes,max_output_tokens=max_tokens,
         reviewer_enabled=bool(reviewer_key))
     daily,per_analysis=prices.reservation()
-    return {'operator_reviews_path':env.get('BRAIN_OPERATOR_REVIEWS_PATH') or None,
+    return {'position_actions':actions_mode,
+            'operator_reviews_path':env.get('BRAIN_OPERATOR_REVIEWS_PATH') or None,
             'operator_inbox_path':env.get('BRAIN_OPERATOR_INBOX_PATH') or None,
             'structure_advisory_enabled':env.get('BRAIN_STRUCTURE_ADVISORY','off').lower()=='on',
             'spec':spec,'data_dir':data_dir,'snapshot_path':snapshot,
@@ -137,7 +141,8 @@ class BrainService:
                 daily_budget_micro_usd=config['daily_budget_micro_usd'],
                 reservation_micro_usd=config['reservation_micro_usd'],
                 analysis_interval_ms=300000,deadline_ms=30000,
-                snapshot_path=config['snapshot_path'])
+                snapshot_path=config['snapshot_path'],
+                position_actions=config.get('position_actions','off'))
         except BaseException:
             self.close()
             raise
