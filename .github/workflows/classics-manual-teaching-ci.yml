@@ -73,3 +73,4 @@ jobs:
           git diff --name-only fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7 HEAD
 # This isolated diagnostic never deploys or updates trading runtime.
 # Verify legacy manual single-position operations offline before any deploy.
+# Retest the complete isolated paper-close evidence path.
