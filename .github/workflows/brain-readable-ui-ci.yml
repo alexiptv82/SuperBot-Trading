@@ -48,3 +48,4 @@ jobs:
       - name: Nothing changed in trading or production deployment
         run: |
           test -z "$(git diff --name-only 22f9394cff2c21755747c9aa1d6d97f89fdbcd64 HEAD -- backend/desk backend/director frontend/build deploy)"
+# CI opt-in run for readable single PAPER dashboard; no deploy.
