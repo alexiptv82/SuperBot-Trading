@@ -7,6 +7,7 @@ on:
       - 'backend/director/manual_teaching.py'
       - 'backend/tests/test_brain_single_integration.py'
       - 'backend/tests/test_manual_teaching.py'
+      - 'backend/tests/test_brain_operator.py'
       - '.github/workflows/brain-single-integration-ci.yml'
 permissions:
   contents: read
@@ -34,7 +35,7 @@ jobs:
           DESK_MODE: paper
         run: |
           python -m compileall -q backend/director/brain_scalp backend/director/manual_teaching.py
-          PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_single_integration.py backend/tests/test_manual_teaching.py
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_single_integration.py backend/tests/test_manual_teaching.py backend/tests/test_brain_operator.py
           PYTHONPATH=backend python -m unittest -v backend.tests.test_brain_scalp_dual backend.tests.test_brain_scalp_group1 backend.tests.test_brain_scalp_group2 backend.tests.test_brain_scalp_group3 backend.tests.test_brain_scalp_group4 backend.tests.test_brain_scalp_group5 backend.tests.test_brain_scalp_group6 backend.tests.test_brain_scalp_reference backend.tests.test_brain_ai_context backend.tests.test_brain_resume backend.tests.test_brain_reclaim_probe
       - name: Guarantee untouched existing bots and deployed application
         run: |
