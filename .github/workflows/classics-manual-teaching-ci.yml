@@ -71,3 +71,4 @@ jobs:
         run: |
           test -z "$(git diff --name-only fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7 HEAD -- backend/director/brain_free backend/director/brain_scalp frontend deploy backend/server.py)"
           git diff --name-only fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7 HEAD
+# This isolated diagnostic never deploys or updates trading runtime.
