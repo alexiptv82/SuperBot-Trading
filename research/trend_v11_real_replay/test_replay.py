@@ -31,11 +31,22 @@ class HistoricalReplayTests(unittest.TestCase):
         self.assertEqual(bars[0][0],start)
         self.assertEqual(bars[-1][0],replay.END-replay.MINUTE)
 
-        def missing(params):
+        # A first-page boundary omission is recoverable only by authentic
+        # rows in a later, narrowly targeted Bitget response.
+        def boundary_missing(params):
             rows=fake(params)
-            return rows[:-1] if params['startTime']==replay.START else rows
+            return rows[:-1] if (params['startTime']==replay.START and
+                                params['limit']==replay.PAGE) else rows
+        fixed,meta=replay.gather('BTC',loader=boundary_missing,delay=0)
+        self.assertEqual(len(fixed),replay.EXPECTED)
+        self.assertEqual(meta['requests'],52)
+
+        # If Bitget itself has no candle, no synthetic repair is allowed.
+        absent=replay.START+(replay.PAGE-1)*replay.MINUTE
+        def genuinely_missing(params):
+            return [row for row in fake(params) if int(row[0])!=absent]
         with self.assertRaisesRegex(ValueError,'history_gap'):
-            replay.gather('BTC',loader=missing,delay=0)
+            replay.gather('BTC',loader=genuinely_missing,delay=0)
 
     def test_conservative_same_bar_collision_is_not_success(self):
         price=100.
