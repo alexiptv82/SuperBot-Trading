@@ -158,6 +158,7 @@ def _flag(name: str) -> str:
     return os.path.join(DATA_DIR, name)
 
 
+CLOSE_POSITION_MAX_AGE_S = 120  # prevent forgotten operator close requests
 POLL_S = 5                 # ogni quanto il bot controlla i tasti dell'app
 RETRY_S = 300              # dopo un ciclo fallito riprova dopo 5 minuti
 CYCLE_S = 1800             # ciclo normale: 30 minuti
@@ -228,7 +229,7 @@ def make_account(state: dict) -> PaperAccount:
 
 
 # ---- heartbeat: dice all'app (e al healthcheck) che il bot e' vivo e cosa sta facendo
-HB: dict = {"started_ms": int(time.time() * 1000), "version": CODE_VERSION, "pid": os.getpid(),
+HB: dict = {"close_position": True, "started_ms": int(time.time() * 1000), "version": CODE_VERSION, "pid": os.getpid(),
             "cycles": 0, "last_start_ms": 0, "last_end_ms": 0, "last_ok": None, "last_error": "",
             "next_cycle_ms": 0}
 _hb_last_write = 0.0
@@ -865,6 +866,84 @@ def _market_prices(symbols: list, state: dict) -> dict:
     return px
 
 
+def _check_close_position_flag(state: dict) -> bool:
+    """Close named positions in the local PAPER wallet; never touch Bitget orders.
+
+    A request must be a recent operator action. Missing/unknown prices do not
+    fabricate exits. Only after the wallet save can the teaching inbox grow.
+    """
+    path = _flag("close_position.flag")
+    if not os.path.exists(path):
+        return False
+    try:
+        now_ms = int(time.time() * 1000)
+        try:
+            with open(path, encoding="utf-8") as f:
+                req = json.load(f)
+        except (OSError,ValueError):
+            req = None
+        if not isinstance(req,dict) or type(req.get("ts"))!=int or (
+                now_ms-req["ts"]<0 or now_ms-req["ts"]>CLOSE_POSITION_MAX_AGE_S*1000):
+            _set_last_action(state,"close_position",False,"richiesta scaduta o non valida")
+            save_state(state,STATE_FILE)
+            return False
+        symbols = req.get("symbols")
+        if (not isinstance(symbols,list) or not 1<=len(symbols)<=30 or
+                any(not isinstance(x,str) or not 1<=len(x)<=24 or
+                    not x.isascii() or not x.replace("_","").isalnum()
+                    for x in symbols) or len(set(symbols))!=len(symbols)):
+            _set_last_action(state,"close_position",False,"simboli non validi")
+            save_state(state,STATE_FILE)
+            return False
+        acc=make_account(state)
+        active=[sym for sym in symbols if sym in acc.positions]
+        if not active:
+            _set_last_action(state,"close_position",True,
+                "posizione gia' chiusa",closed=[])
+            save_state(state,STATE_FILE)
+            return True
+        prices=_market_prices(active,state)
+        closed,skipped,records=[],[],[]
+        for sym in active:
+            px=prices.get(sym)
+            if px is None or type(px) not in (int,float):
+                skipped.append(sym);continue
+            import math
+            if not math.isfinite(float(px)) or px<=0:
+                skipped.append(sym);continue
+            rec=acc.close(sym,px,now_ms,"chiusura manuale")
+            if rec:
+                rec["closed_by"]="utente"
+                record_close(state,rec)
+                records.append(rec);closed.append(sym)
+            else:
+                skipped.append(sym)
+        flush_events(state,acc)
+        save_account(acc,state)
+        ok=not skipped
+        detail=(f"chiuse {len(closed)} posizioni PAPER" if closed else
+                "nessuna posizione chiusa: prezzo non disponibile")
+        if skipped:detail+=f"; senza prezzo: {', '.join(skipped)}"
+        _set_last_action(state,"close_position",ok,detail,
+                         closed=closed,skipped=skipped)
+        save_state(state,STATE_FILE)
+        if records:
+            try:
+                from desk.manual_teaching_bridge import record_verified_manual_closures
+                record_verified_manual_closures(
+                    DATA_DIR,PORTFOLIO.name,int(state.get("run_no",1)),
+                    records,persisted=True,remaining=acc.positions)
+            except Exception as err:
+                print("[TEACHING] post-save audit unavailable: "
+                      +type(err).__name__,flush=True)
+        return bool(closed)
+    except Exception as e:
+        print("[CHIUSURA SINGOLA ERROR] "+type(e).__name__,flush=True)
+        return False
+    finally:
+        _remove(path)
+
+
 def _check_close_all_flag(state: dict) -> bool:
     """reset.flag = 'chiudi tutto': chiude ogni posizione al PREZZO DI MERCATO, con commissioni,
     slippage e funding reali, e registra i trade nello storico. Se per un simbolo non c'e' un
@@ -889,6 +968,7 @@ def _check_close_all_flag(state: dict) -> bool:
                 continue
             rec = acc.close(sym, px, now_ms, "chiusura manuale")
             if rec:
+                rec["closed_by"] = "utente"
                 record_close(state, rec)
                 manual_closed_records.append(rec)
                 closed_n += 1
@@ -1064,6 +1144,7 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
 def process_flags(state: dict) -> None:
     """Esegue i comandi arrivati dall'app. L'ordine conta: budget, chiudi tutto, reset conto."""
     _check_budget_reset_flag(state)
+    _check_close_position_flag(state)
     _check_close_all_flag(state)
     _check_portfolio_reset_flag(state)
 
