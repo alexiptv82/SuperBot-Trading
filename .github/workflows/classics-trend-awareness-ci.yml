@@ -1,8 +1,11 @@
-name: Classics trend-change advisory (offline)
+name: Classics v1.1 read-only trend engine (offline)
 on:
   push:
-    branches: [work/classics-trend-awareness-20261030]
+    branches: [work/classics-trend-v11-shadow-20261030]
     paths:
+      - 'backend/director/trend_engine_v11.py'
+      - 'backend/director/trend_shadow.py'
+      - 'backend/tests/test_trend_v11_shadow.py'
       - 'backend/desk/cli.py'
       - 'backend/director/trend_advisory.py'
       - 'backend/tests/test_trend_advisory.py'
@@ -40,7 +43,7 @@ jobs:
           ANTHROPIC_API_KEY: ''
         run: |
           python -m compileall -q backend/desk/engine.py backend/desk/cli.py backend/desk/manual_teaching_bridge.py backend/director/manual_teaching.py
-          PYTHONPATH=backend python -m pytest -q backend/tests/test_classics_manual_teaching.py backend/tests/test_classics_safety_rules.py backend/tests/test_trend_advisory.py backend/tests/test_classics_trend_context.py
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_classics_manual_teaching.py backend/tests/test_classics_safety_rules.py backend/tests/test_trend_advisory.py backend/tests/test_classics_trend_context.py backend/tests/test_trend_v11_shadow.py
       - name: Compare original legacy failures to candidate (no regression permitted)
         env:
           DESK_MODE: paper
