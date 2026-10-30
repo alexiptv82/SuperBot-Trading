@@ -16,6 +16,7 @@ from .coordinator import BrainAccount
 from .market_bridge import PublicBrainFeed
 from director.trend_advisory import observe_many
 from director.trend_shadow import TrendShadow
+from director.structural_shadow import StructuralShadow
 from .operator import BrainOperator
 from .telegram_commands import PaperTelegramCommands
 from .supervisor import PaperSupervisor
@@ -86,7 +87,8 @@ def required_env(env):
         max_input_bytes=max_bytes,max_output_tokens=max_tokens,
         reviewer_enabled=bool(reviewer_key))
     daily,per_analysis=prices.reservation()
-    return {'spec':spec,'data_dir':data_dir,'snapshot_path':snapshot,
+    return {'structure_advisory_enabled':env.get('BRAIN_STRUCTURE_ADVISORY','off').lower()=='on',
+            'spec':spec,'data_dir':data_dir,'snapshot_path':snapshot,
             'daily_budget_micro_usd':daily,'reservation_micro_usd':per_analysis,
             'primary':make_primary(env['DEEPSEEK_API_KEY'],max_input_bytes=max_bytes,
                 max_tokens=max_tokens,timeout_s=primary_timeout),
@@ -103,6 +105,8 @@ class BrainService:
         self.account=None;self.supervisor=None;self.operator=None;self.telegram=None
         self.last_markets={}
         self.trend_v11=TrendShadow()
+        self.structural=StructuralShadow(include_methodology=True)
+        self.structure_enabled=config.get('structure_advisory_enabled',False) is True
         try:
             self.account=BrainAccount(config['data_dir'],spec=config['spec'],
                 initialize=initialize,now_ms=self.clock(),
@@ -141,8 +145,16 @@ class BrainService:
             })
         except Exception:
             indicators={}
+        advice={}
+        if self.structure_enabled:
+            try:
+                from director.brain_free.feeds import candles
+                advice=self.structural.poll(now,list(markets),
+                    lambda sym:candles(sym,'15m',1000))
+            except Exception:
+                advice={}
         return self.supervisor.step(markets,contracts,observations=observations,
-                                    regime_v11=indicators)
+                                    regime_v11=indicators,market_advisory=advice)
 
     def enable_telegram_commands(self,*,allowed_chat_id,allowed_user_id):
         if self.telegram is not None:
@@ -160,6 +172,7 @@ class BrainService:
         return self.account.brain.store.backup(path)
 
     def close(self):
+        if self.structural is not None:self.structural.close()
         if self.trend_v11 is not None:self.trend_v11.close()
         if self.supervisor is not None:
             self.supervisor.close()
@@ -210,3 +223,4 @@ def main(argv=None,env=None):
 
 if __name__=='__main__':
     main()
+
