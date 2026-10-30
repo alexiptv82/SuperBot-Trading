@@ -5,6 +5,8 @@ on:
     paths:
       - 'backend/director/brain_free/**'
       - 'backend/tests/test_brain_credit_monitor.py'
+      - 'backend/director/manual_teaching.py'
+      - 'backend/tests/test_manual_teaching.py'
       - '.github/workflows/brain-credit-ci.yml'
 permissions:
   contents: read
@@ -27,7 +29,7 @@ jobs:
       - name: Mock-only Brain Free regression
         run: |
           python -m compileall -q backend/director/brain_free
-          PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_free.py backend/tests/test_brain_free_rollout.py backend/tests/test_brain_credit_monitor.py
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_free.py backend/tests/test_brain_free_rollout.py backend/tests/test_brain_credit_monitor.py backend/tests/test_manual_teaching.py
       - name: No changes to trading or deployment components
         run: |
           test -z "$(git diff --name-only a472c5327e8f9334c5677f5243c28095282faed2 HEAD -- backend/desk backend/director/brain_scalp backend/director/brain_pilot frontend deploy Dockerfile.brainfree)"
