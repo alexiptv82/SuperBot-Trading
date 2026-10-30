@@ -1,0 +1,3 @@
+# Work — recovery periodico insegnamenti
+Implementato su work/brain-release-integration-20261030: inizializzazione non si arresta per guasto teaching; dopo supervisor.step (protezioni e motore prima) tentativo sync ogni60s, stato recorded/pending_recovery. Nessuna nuova chiusura, deduplica giàesistente.14test localiPASS per recovery/operatore/servizio. CIremota dedicata avviata ma esito ancora da leggere. Recovery legge journal su threadowner dopo protezioni: NON ancora workerI/O con latenza garantita, resta limite da misurare. Nessun consumerTelegram attivato, outbox/retrievalAI/UI ancora incompleti. Nessun merge/deploy/reset/APIpagata.
+AI: chatgpt Work
