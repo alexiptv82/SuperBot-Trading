@@ -1,3 +1,13 @@
+## 30/10 — HANDOFF WORK → CHAT NORMALE: PWA UNICA GIA' VALIDATA OFFLINE
+
+Verifica di GitHub del 30/10: motore unico Brain `work/brain-resume-20261030` commit `a472c5327e8f9334c5677f5243c28095282faed2`, CI run `41022451077` SUCCESS (175 test per Python 3.10 e 3.11). Adattamento PWA gia' presente su ramo separato `work/brain-single-app-20261030` commit `9b20adfc6cf1a1e025f0a45b6583a2b57f58a997`, run `41023662326` SUCCESS (backend/front-end e contratto produttore snapshot v2 pin a `a472c53`). La precedente voce Work che dice PWA ancora mancante e' superata da questo commit successivo. Nessuna PWA Brain unica gia' in produzione. Rami di motore e app hanno storie Git divergenti: non fare merge automatico. Necessari mandato unico definitivo, feed reale, trasporti AI con timeout e costi verificati, supervisore periodico, test end-to-end PAPER e OK separato al deploy; capitale 2000 USDT/margine 1600 nelle prove e' fixture, NON mandato. Laboratorio Claude regime non idoneo, non adottato. Nessun file operativo, VPS, memoria, runtime o deploy modificato nel passaggio. Handoff dettagliato in `diario/2026-10-30_brain-ripresa-chatgpt.md`.
+
+**IN_CORSO:** chat normale — audit di integrazione Brain/PWA in sola lettura; nessun file di codice prenotato. Prima di nuova implementazione, definire perimetro di proprieta' e ramo dedicato. Work fermo dopo il proprio rapporto; non presumere sincronizzazione automatica.
+
+AI: chatgpt (chat normale)
+
+---
+
 ## 30/10 (09:00) — LETTORE DI REGIME (Claude): NON IDONEO — nessuna delle 16 configurazioni passa i criteri, laboratorio fermo (offline, nessun bot toccato)
 
 Richiesta dell'utente: partendo dal PDF «Lettore dinamico del regime per simbolo» costruire un lettore migliorato che aiuti i **classici** (short buoni in mercato ribassista, in difficolta' quando non c'e' direzione o cambia) e **anche il Brain**. **Corregge in parte la voce del 29/10 18:30: lo short dei classici resta base candidata del Brain** (ChatGPT ha gia' costruito il riferimento consultivo `legacy_reference` sul ramo `work/brain-short-reference-20261029` e il contesto AI sul ramo `work/brain-ai-context-20261029`, vedi sue voci). Ramo laboratorio **`work/regime-lab-claude-20261030`** (mai unito a `rule-pool`; il workflow verifica che nessun file di produzione cambi), cartella `backend/regime_lab_claude/`: modulo `regime_v2.py` (direzione / qualita' del movimento / anomalia di volatilita' separate, specchio long-short esatto, isteresi senza memoria, livello di mercato, `read_regime()` che non solleva mai), 21 test verdi, `PREREGISTRAZIONE.md` con criteri scritti prima.
