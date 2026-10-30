@@ -128,7 +128,7 @@ class PaperSupervisor:
             state=self.account.brain.store.load()
             entries=bool(scan_result['candidates'])
             positions=bool(state.get('positions'))
-            review_first=positions and (not entries or self.last_purpose!='review')
+            review_first=positions and (not entries or self.last_purpose=='entry')
             attempted_review=False
             if review_first:
                 attempted_review=True
