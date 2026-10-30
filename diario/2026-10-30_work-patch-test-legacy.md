@@ -1,0 +1,7 @@
+## 30/10 — Patch test legacy Claude conclusa, Work
+Ramo work/classics-legacy-tests-20261030, base2b181871c0b8b9b67b3c6b6dd47c317316b4a962, codice test1d4fc867d0c66709e1edb04143b87357c576d780, CIe859b4f85acd766082957bdf981dca80c401e8d2.
+GitHubActions41063881878SUCCESS Python3.10/3.11: originale92PASS/3FAILprecisi; patch95PASS/0FAIL, nessun skip/xfail. LocalePython3.12 stesso esito. Ilconteggio95 non è cambiato. Solo4funzioni test modificate (3incompatibili+rafforzamento testlungo), runtime byteidentico alla base verificato inCI.
+Firma reale trasporto900token/60s; ciclo1100token, timeoutomesso60s. Testciclo coerente contrasporto, non nuova politicaAI. Logging rispostacorta e motivo preservati; testlungo ora confronta esattamente4000inizio+marcatore+1500fine e motivo troncato_prima_della_fine; rispostavalida senza testo verificata daltestesistente. Primo tentativo rafforzamento aveva motivoerrato json_troncato: corretto dopo evidenza della fixture incompleta, non runtime.
+Non dichiarare95/95originale: originale resta92/95, aggiornata95/95. Nessun cli.py/brain.py/scorer/rischio/token/budget/timeout modificato; nessun deploy/merge/APIpagata. ValorebudgetVPS estraneo aquesto test e nonverificato.
+Patch e outputprima/dopo consegnati in TXT. Prossimo: integrare solo dopo eventuale OKseparato, poi riprendere teaching/outbox/conferme e apertiBrain; non confondere testverdi con insegnamento operativo attivo o sensore predittivo validato.
+AI: chatgpt Work
