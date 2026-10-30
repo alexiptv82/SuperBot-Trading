@@ -75,7 +75,7 @@ class PaperSupervisor:
             'reserved_micro_usd':self.reservation}])
         return 'reserved'
 
-    def step(self,markets,contracts,*,references=None,observations=None,regime_v11=None,market_advisory=None):
+    def step(self,markets,contracts,*,references=None,observations=None,regime_v11=None,market_advisory=None,operator_preferences=None):
         if self.closed:raise ValueError('supervisor_closed')
         now=self.clock()
         if type(now)!=int or now<=0:raise ValueError('invalid_clock')
@@ -116,7 +116,7 @@ class PaperSupervisor:
             else:
                 request=self.account.prepare_ai_request('brain',scan_result,markets,
                     contracts,references or {},now,now+self.deadline,
-                    observations or {},regime_v11 or {},market_advisory or {})
+                    observations or {},regime_v11 or {},market_advisory or {},operator_preferences or [])
                 if not decode(request.payload_json)['candidates']:
                     output['analysis_status']='no_fresh_candidates'
                 else:
