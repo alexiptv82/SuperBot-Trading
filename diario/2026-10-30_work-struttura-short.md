@@ -17,3 +17,12 @@ Verifica ASTlocale: CLIclassico identico alla base eccetto nuova funzione diagno
 Fase implementazione/testCONCLUSA offline; nessun deploy/merge o prova predittiva nuova. Il limite scannerBrain resta documentato: metodologia consultiva non trasforma il Brain in cloneclassici.
 Checkpoint GitHub+Library aggiornati; prossimo passo separato: validazione quantitativa nuova e completamento apertiBrain/classici già elencati.
 AI: chatgpt Work
+
+## 30/10 — Consegna revisione indipendente e verifica teaching classici (Work)
+Utente chiedeZIP+prompt per altreAI e conferma che le chiusure manuali desiderate restino esempi/osservazioni e non regole. "Usiamolo così" mantiene il disegno consultivo; non è autorizzazione separata al deploy.
+Creato SuperBot_Advisory_Review_2026-10-30.zip: sottoinsieme codice/test, CLI classici candidata+baseline, sorgenti teaching, report/preregistrazione, dati Bitget giàvisti etichettati sviluppo, prompt e manifestSHA256. ZIPestratto e suiteindicata84PASS+21subtest;4testteachingPASS. NessunaAPIpagata, reteoperativa o servizio avviati.
+Audit attuale rule-pool backend/desk/cli.py blob8390092b2ee93194223afb2582dc10e48bf1c909: nessun record_verified_manual_closures né nuova chiusura singola. Nessun controlloVPS corrente, non inferire runtime dalramo.
+Nel candidato work/classics-structural-advisory-20261030: chiusura singola/totalePAPER, closed_by=utente, storico e salvataggioPRIMA di inboxteaching; ManualLessons registra eventi, conferma yes/no, log append-only e lessons su profitto confermato, training_applied=false. ConsumerTelegram/conferme non collegati alservizio, nessun uso certificato degli esempi nelle future decisioniAI, nessun retraining o regolaTP automatica. Registrazione è best-effortpostsave: recovery/outbox ancora da completare per garanzia di consegna; un errore didattico non annulla la chiusura.
+Intento da preservare: utente ultima parola sulle chiusure, esempi contestuali di profitto gradito per futura consultazione; non trasformare ogni chiusura in regola o profitto garantito. PAPERpermanente invariato, nessuna autorizzazione live.
+Prossimo passo di sviluppo: completare collegamento operativo chiusura/conferma/outbox e futura consultazione osservativa degli esempi, con test di causalità e senza autopromozione; rilascio richiede backup/restore e OKseparato. Risultati esterni verranno forniti dall'utente. Nessun merge/deploy/reset.
+AI: chatgpt Work
