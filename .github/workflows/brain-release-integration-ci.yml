@@ -18,5 +18,5 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install numpy pytest
-      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_manual_preferences.py backend/tests/test_brain_teaching_recovery_service.py backend/tests/test_brain_operator.py backend/tests/test_brain_single_integration.py backend/tests/test_classical_methodology.py backend/tests/test_brain_ai_context.py backend/tests/test_brain_resume.py
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_operator_inbox.py backend/tests/test_brain_operator_inbox_service.py backend/tests/test_brain_manual_preferences.py backend/tests/test_brain_teaching_recovery_service.py backend/tests/test_brain_operator.py backend/tests/test_brain_single_integration.py backend/tests/test_classical_methodology.py backend/tests/test_brain_ai_context.py backend/tests/test_brain_resume.py
       - run: test -z "$(git diff --name-only e9a0034506dec71b5592fe78dced4aff651c4de6 HEAD -- backend/desk frontend deploy backend/director/brain_free backend/director/brain_scalp/engine.py backend/director/brain_scalp/scanner.py)"
