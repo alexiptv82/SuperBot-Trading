@@ -620,7 +620,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 continue
             new_tp = None
             if tp2_pct and tp2_pct > 0:
-                new_tp = px * (1 + pos.side * tp2_pct)
+                new_tp = _sane_tp(sym,px * (1 + pos.side * tp2_pct),"partial")
             partial = acc.partial_close(sym, px, now_ms, fraction, new_tp=new_tp,
                                         why=dec.get("reason", "TP parziale")[:80])
             if partial:
@@ -642,7 +642,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 print(f"[DCA SKIP] {sym}: sl_pct mancante")
                 continue
             new_sl = px * (1 - pos.side * sl_pct)
-            new_tp = px * (1 + pos.side * tp_pct) if tp_pct > 0 else None
+            new_tp = _sane_tp(sym,px * (1 + pos.side * tp_pct),"dca") if tp_pct > 0 else None
             result, msg = acc.add_dca(sym, new_sl, new_tp, now_ms, prices, dec.get("reason", "")[:80])
             if result:
                 print(f"[DCA] {sym} DCA#{result.dca_count} @{px:.5g}  nuovo entry medio {result.entry:.5g}  "
@@ -688,7 +688,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 sl_pct = r.sl_pct if r else 0.01
             sl = px * (1 - side * sl_pct)
             tp_pct = dec.get("take_profit_pct", 0)
-            tp = px * (1 + side * tp_pct) if tp_pct > 0 else None
+            tp = _sane_tp(sym,px * (1 + side * tp_pct),"open") if tp_pct > 0 else None
             # ── GUARDRAIL portfolio-aware ────────────────────────────────────
             # Se Claude propone valori troppo bassi rispetto al portfolio corrente,
             # forziamo i minimi del portfolio selezionato.
@@ -864,6 +864,20 @@ def _market_prices(symbols: list, state: dict) -> dict:
         if s not in px and (state.get("last_prices") or {}).get(s):
             px[s] = state["last_prices"][s]
     return px
+
+
+def _sane_tp(symbol: str, target, source: str = ""):
+    """Return only a finite, strictly positive PAPER take-profit price."""
+    if target is None:
+        return None
+    try:
+        import math
+        value = float(target)
+        if not math.isfinite(value) or value<=0:
+            return None
+        return value
+    except (TypeError,ValueError,OverflowError):
+        return None
 
 
 def _check_close_position_flag(state: dict) -> bool:
