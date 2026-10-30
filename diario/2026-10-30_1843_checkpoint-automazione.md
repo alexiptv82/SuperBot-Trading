@@ -1,0 +1,9 @@
+## 30/10/2026 18:43 Europe/Rome — Contratto servizio/app Brain e refresh teaching verificati
+Novità verificata da GitHub successiva al checkpoint precedente; delle chat sono accessibili soltanto i messaggi recenti forniti al run, non la conversazione completa.
+FATTO/PREPARATO offline: ramo `work/brain-release-integration-20261030`, HEAD `895b34a64058b1321ba5ad372e8de435f3e7fec0`. Il fix `d15218566fd758ac33e3fc416471a69279687c71` ricarica gli esempi confermati nello stesso tick dopo il consumo, rendendoli disponibili all'analisi del tick successivo senza riavvio; il recovery periodico resta attivo. Conferme yes/no sono osservazioni, `training_applied=false`, senza chiamate AI extra.
+CONTRATTO verificato con app pin `23fc151f17395bd77bba7446ca70617bc958836c`: review -> API autenticata -> inbox SQLite separata -> owner -> receipt confirmed -> refresh preferenze; wallet invariato. Prova snapshot reale conto singolo: app legge fresco/scaduto correttamente e il ledger resta immutato. Percorsi condivisi e owner unico documentati.
+TEST: Actions `41080286894` SUCCESS su Python 3.10/3.11; per interprete 4 test contratto PASS, 74 test servizio PASS + 21 subtest PASS, guardia perimetro operativo PASS. Run precedente del fix `41080113529` SUCCESS.
+RILASCIATO: nulla. Nessun merge/deploy/reset/servizio/conto/API pagata; PAPER, wallet e storici conservati. Non è prova browser/VPS/feed pubblico o qualità/disponibilità/credito provider AI.
+PROBLEMI: mandato conto, budget/prezzi/provider/modelli, percorsi host/owner, backup+restore, feed e configurazione definitiva, prova app reale, indice journal/pending e riconciliazione, versioni/rollback e OK separato restano aperti. Avvisi strutturali consultivi.
+PROSSIMO: configurazione PAPER definitiva e piano backup/restore, poi collaudo coordinato servizio/app senza doppie istanze.
+AI: checkpoint automatico ChatGPT Work
