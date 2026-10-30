@@ -76,9 +76,10 @@ class NonblockingV11(unittest.TestCase):
         try:
             def broken(_):raise TimeoutError('network')
             self.assertEqual(shadow.poll_public(NOW,['BTC'],broken),{})
+            future=shadow.future
             # While network is pending, no wait on the financial thread.
             self.assertEqual(shadow.poll_public(NOW+10,['BTC'],broken),{})
-            shadow.future.result(timeout=3)
+            future.result(timeout=3)
             self.assertEqual(shadow.poll_public(NOW+20000,['BTC'],broken),{})
         finally:shadow.close()
 
