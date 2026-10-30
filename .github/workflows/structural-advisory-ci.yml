@@ -1,0 +1,43 @@
+name: Structural advisory - offline contracts
+on:
+  push:
+    branches: [work/brain-structural-advisory-20261030, work/classics-structural-advisory-20261030]
+    paths:
+      - 'backend/**'
+      - 'research/structural_advisory/**'
+      - '.github/workflows/structural-advisory-ci.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install numpy pytest
+      - name: Shared causal observer
+        run: PYTHONPATH=backend python -m pytest -q backend/tests/test_structural_advisory.py
+      - name: Brain nonbinding integration and regression
+        if: contains(github.ref_name, 'brain-structural')
+        run: |
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_classical_methodology.py backend/tests/test_brain_v11_context.py backend/tests/test_brain_trend_context.py backend/tests/test_brain_single_integration.py backend/tests/test_trend_v11_shadow.py
+          PYTHONPATH=backend python -m unittest -q backend.tests.test_brain_scalp_dual backend.tests.test_brain_scalp_group1 backend.tests.test_brain_scalp_group2 backend.tests.test_brain_scalp_group3 backend.tests.test_brain_scalp_group4 backend.tests.test_brain_scalp_group5 backend.tests.test_brain_scalp_group6 backend.tests.test_brain_ai_context backend.tests.test_brain_resume
+          test -z "$(git diff --name-only 6b198e060dcbb478b5fd69c6d4fcd928d5821888 HEAD -- backend/desk backend/director/brain_free frontend deploy backend/director/brain_scalp/scanner.py backend/director/brain_scalp/engine.py backend/director/brain_scalp/ai_analysis.py)"
+      - name: Classics diagnostics only and identical scoring
+        if: contains(github.ref_name, 'classics-structural')
+        run: |
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_classics_structure.py
+          test -z "$(git diff --name-only 559b458102a72cccbddb8a71eb102f28e5631b45 HEAD -- backend/desk/signals.py backend/desk/seasonal.py backend/desk/engine.py backend/director/brain_scalp frontend deploy)"
+          git worktree add /tmp/classics-advisory-baseline 559b458102a72cccbddb8a71eb102f28e5631b45
+          python research/structural_advisory/check_classic_regression.py /tmp/classics-advisory-baseline /tmp/base.json
+          python research/structural_advisory/check_classic_regression.py "$PWD" /tmp/candidate.json
+          python -c 'import json; a=json.load(open("/tmp/base.json")); b=json.load(open("/tmp/candidate.json")); print("baseline",a,"candidate",b); assert b["tests"]==a["tests"] and not(set(b["failures"])-set(a["failures"]))'
