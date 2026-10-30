@@ -87,7 +87,8 @@ def required_env(env):
         max_input_bytes=max_bytes,max_output_tokens=max_tokens,
         reviewer_enabled=bool(reviewer_key))
     daily,per_analysis=prices.reservation()
-    return {'structure_advisory_enabled':env.get('BRAIN_STRUCTURE_ADVISORY','off').lower()=='on',
+    return {'operator_inbox_path':env.get('BRAIN_OPERATOR_INBOX_PATH') or None,
+            'structure_advisory_enabled':env.get('BRAIN_STRUCTURE_ADVISORY','off').lower()=='on',
             'spec':spec,'data_dir':data_dir,'snapshot_path':snapshot,
             'daily_budget_micro_usd':daily,'reservation_micro_usd':per_analysis,
             'primary':make_primary(env['DEEPSEEK_API_KEY'],max_input_bytes=max_bytes,
@@ -103,6 +104,7 @@ class BrainService:
         self.feed=feed if feed is not None else PublicBrainFeed()
         self.clock=clock_ms if clock_ms is not None else lambda:int(time.time()*1000)
         self.account=None;self.supervisor=None;self.operator=None;self.telegram=None
+        self.operator_inbox=None
         self.last_markets={}
         self.last_teaching_recovery=None
         self.teaching_status='pending_recovery'
@@ -115,6 +117,9 @@ class BrainService:
                 initialize=initialize,now_ms=self.clock(),
                 candle_backfill=self.feed.backfill)
             self.operator=BrainOperator(self.account)
+            if config.get('operator_inbox_path'):
+                from .operator_inbox import OperatorInbox
+                self.operator_inbox=OperatorInbox(config['operator_inbox_path'])
             try:
                 self.operator.sync()
                 from .manual_preferences import confirmed_preferences
@@ -167,6 +172,14 @@ class BrainService:
         result=self.supervisor.step(markets,contracts,observations=observations,
                                     regime_v11=indicators,market_advisory=advice,
                                     operator_preferences=getattr(self,'operator_preferences',[]))
+        inbox=getattr(self,'operator_inbox',None)
+        if inbox is not None:
+            try:
+                confirmations=inbox.consume(self.operator,now)
+            except Exception:
+                confirmations=[{'status':'inbox_unavailable'}]
+            if isinstance(result,dict):
+                result['operator_confirmations']=confirmations
         # Protect/admit first. Recovery is observational and cannot turn a
         # successful financial tick into an error or create another close.
         last=getattr(self,'last_teaching_recovery',None)
@@ -197,6 +210,7 @@ class BrainService:
         return self.account.brain.store.backup(path)
 
     def close(self):
+        if self.operator_inbox is not None:self.operator_inbox.close()
         if self.structural is not None:self.structural.close()
         if self.trend_v11 is not None:self.trend_v11.close()
         if self.supervisor is not None:
