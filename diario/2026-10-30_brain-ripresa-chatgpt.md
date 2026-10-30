@@ -91,3 +91,12 @@ Report:
 
 AI: chatgpt (chat normale)
 
+## 30/10 — Revisione allegato SuperBot Trend Engine v1 (ZIP utente), prototipo v1.1 scaricabile
+
+L'utente ha allegato `SuperBot_Trend_Engine_v1.zip` e chiesto fattibilita', miglioramenti e uso sia su classici sia sul Brain come avviso precoce SHORT→LONG, senza veto/ingressi imposti. Analisi ZIP di 9 file: `engine.py` usa EMA9/21, ATR14, swing confermati con due barre di ritardo, volumetria e aggregazione 1m/5m; `adjust_scores(...enabled=True)` sposta long/short di ±6 punti e **puo' cambiare soglia di apertura**, quindi NON attivare. Lo schema include checkpoint, replay CSV sintetico e 13 unit test. Test originali eseguiti su macchina: **13/13 PASS**. Replay 360 candele **sintetiche**, 1 flip confermato, nessun rendimento reale inferibile.
+
+Preparato artefatto locale `SuperBot_Trend_Engine_v1_1_REVISIONE.zip` (26 KB circa, da consegnare in chat): copia del pacchetto originale con un adattatore `bitget_shadow_bridge.py`, documento `REVISIONE_CHATGPT_IT.md`, 10 nuovi test. V1.1: converte timestamp pubblici Bitget V2 OHLCV da **ms a secondi**, ignora 1m non chiusa, controlla duplicati e revisioni contraddittorie, ritorna UNKNOWN su gap o stale, non scambia quote volume con taker-buy base volume, usa shadow-only con punteggi originali **invariati**. `RegimeEngine.update/snapshot` esigono int secondi. **23/23 test locali PASS**, replay deterministico. Non modifica codice GitHub trading, repo operativo, AI, VPS o portafogli. Review tecnica nel documento allegato nello ZIP.
+
+**Architettura:** Brain possiede candele 1m ma default feed pubblico ~120 records per simbolo non aperto; pieno warmup 5m interno richiede ~250 minuti di barre 1m contigue. Si puo' usare la lettura solo 1m fino al raggiungimento dei 250, senza dichiarare conferma 5m. Classici attualmente leggono **15m**, e NON possono dare 15m all'engine 1m; serve worker feed pubblico 1m **separato**, non bloccante, cache e controlli di freschezza. Il progetto e' adatto a consiglio DeepSeek Brain e osservazione Falco/Toro, ma **non e' stato ancora collegato** al ciclo effettivo nei due rami; il precedente lettore `trend_advisory.py` rimane attivo soltanto nei rami di sviluppo. No tuning su dataset sintetico, non riabilitare ±6 score senza consenso e test. Necessario benchmark dati Bitget reali walk-forward e PAPER shadow per prove di inversione/falsi allarmi/costi. Fonte documentale esterna Bitget V2 candles max 1000 correnti e max 200 storiche.
+
+AI: chatgpt (chat normale)
