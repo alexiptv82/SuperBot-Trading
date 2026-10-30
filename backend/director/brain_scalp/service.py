@@ -87,7 +87,8 @@ def required_env(env):
         max_input_bytes=max_bytes,max_output_tokens=max_tokens,
         reviewer_enabled=bool(reviewer_key))
     daily,per_analysis=prices.reservation()
-    return {'operator_inbox_path':env.get('BRAIN_OPERATOR_INBOX_PATH') or None,
+    return {'operator_reviews_path':env.get('BRAIN_OPERATOR_REVIEWS_PATH') or None,
+            'operator_inbox_path':env.get('BRAIN_OPERATOR_INBOX_PATH') or None,
             'structure_advisory_enabled':env.get('BRAIN_STRUCTURE_ADVISORY','off').lower()=='on',
             'spec':spec,'data_dir':data_dir,'snapshot_path':snapshot,
             'daily_budget_micro_usd':daily,'reservation_micro_usd':per_analysis,
@@ -105,6 +106,7 @@ class BrainService:
         self.clock=clock_ms if clock_ms is not None else lambda:int(time.time()*1000)
         self.account=None;self.supervisor=None;self.operator=None;self.telegram=None
         self.operator_inbox=None
+        self.operator_reviews_path=config.get('operator_reviews_path')
         self.last_markets={}
         self.last_teaching_recovery=None
         self.teaching_status='pending_recovery'
@@ -190,6 +192,21 @@ class BrainService:
                 self.teaching_status='recorded'
             except Exception:
                 self.teaching_status='pending_recovery'
+        if self.operator_reviews_path and self.teaching_status=='recorded':
+            try:
+                from director.manual_teaching import batches
+                from .snapshot import atomic_write
+                groups=batches(self.operator.teaching.pending())[-10:]
+                clean=[{'group_id':g['group_id'],'count':len(g['items']),
+                        'net_usd':round(sum(i['pnl_usd'] for i in g['items']),4),
+                        'symbols':[i['symbol'] for i in g['items']],
+                        'expires_ms':min(i['close_ms'] for i in g['items'])+7200000}
+                       for g in groups]
+                atomic_write(self.operator_reviews_path,{'paper':True,
+                    'account_id':'brain-scalp-single-paper','ts_ms':now,
+                    'groups':[g for g in clean if g['expires_ms']>=now]})
+            except Exception:
+                pass
         if isinstance(result,dict):
             result['teaching_status']=self.teaching_status
         return result
