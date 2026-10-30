@@ -51,3 +51,12 @@ AI: chatgpt (chat normale)
 - Report dettagliati: `docs/brain-single-integration-checkpoint-2026-10-30.md` sul ramo Brain e `docs/classics-manual-teaching-checkpoint-2026-10-30.md` sul ramo classici.
 
 AI: chatgpt (chat normale)
+
+## 30/10 — Follow-up richiesta utente: test storici e ruoli AI
+
+- Chiarito il significato dei 19 fallimenti: confrontati log GitHub con codice originale, non solo intuito. Tre categorie: single-position close assente, reset/rischi reali, test Claude legacy. Confermati stop DCA allargato e cancellazione dello storico corrente nel reset (pur archiviato).
+- Nuove patch solo sul ramo `work/classics-manual-teaching-20261030`: reset append-only cervello, classificazione run storica, stop DCA no-widen, TP validi, singolo close flag con scadenza 120s e teaching post-save, `DESK_CLASSICS_AI_MODE=rules_only`. Nessun cambiamento al ramo attivo `rule-pool`.
+- Test A/B stesso checkout e Python 3.10/3.11: prima 19/95 fail, dopo 3/95 fail, **16 fallimenti storici corretti**, 0 regressioni introdotte, 11 nuovi test verdi/interprete, run `41037349600`. Tre rimasti appartengono al comportamento storico Claude (max token/timeouts/log di risposta) e non sono motivo per aumentare AI nei classici.
+- Brain: DeepSeek H24 primario (nessun blocco per ora del giorno) e Claude solo revisore selettivo in `work/brain-single-integration-20261030`. Non equivale a chiamate continue o trade forzati; budget e protezioni restano gate. Ruoli documentati nel ramo Brain `docs/brain-and-classics-ai-roles-2026-10-30.md`.
+- Nessun merge, deploy, modifica VPS, memoria o wallet. Autorizzazione separata richiesta per il rilascio. Insegnamento non connesso a Telegram di produzione.
+AI: chatgpt (chat normale)
