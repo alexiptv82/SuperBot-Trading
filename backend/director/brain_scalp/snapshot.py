@@ -131,15 +131,76 @@ def read_snapshot(path,now,stale_after_ms=60000):
 
 
 
-def build_account_snapshot(account,now):
-    """Separate v2 single-account schema; never masquerades as dual profiles."""
+def build_account_snapshot(account,now,markets=None):
+    """v2 single account: readable PAPER positions and bounded actual close history.
+
+    Mark estimates require a timely quote; no stale, absent or fabricated P&L.
+    The authoritative SQLite event history is read only, not modified.
+    """
+    from dataclasses import replace
+    import math
+    from director.brain_free.execution import fresh
+    from .config import PROTECT_PRICE_AGE_MS
     if type(now)!=int or now<=0:raise ValueError('invalid_time')
     engine=account.wallets.get('brain')
     if engine is None:raise ValueError('single_account_required')
     state=engine.store.load()
     if state.get('account_id')!='brain-scalp-single-paper' or state.get('mode')!='paper':
         raise ValueError('foreign_wallet')
-    # Reuse projection while parameterizing identity and initial capital below.
     value=project_wallet(state,'brain',now,spec=engine.spec)
+    markets=markets if isinstance(markets,dict) else {}
+    cfg=replace(engine.spec.brain_config(),price_age_ms=PROTECT_PRICE_AGE_MS)
+    for row in value['positions']:
+        quote=(markets.get(row['symbol']) or {}).get('quote')
+        if not fresh(quote,now,cfg):
+            row.update(mark_price=None,mark_ts_ms=None,price_status='unavailable',
+                       net_close_estimate=None,pnl_pct_margin=None)
+            continue
+        position=state['positions'][row['symbol']]
+        px=quote['price']
+        fill=px*(1-position['side']*cfg.slippage)
+        fee=position['qty']*fill*cfg.fee_rate
+        gross=position['side']*(fill-position['entry'])*position['qty']
+        estimate=gross-position['entry_fees']-fee-position['funding']
+        if not math.isfinite(estimate):
+            row.update(mark_price=None,mark_ts_ms=None,price_status='unavailable',
+                       net_close_estimate=None,pnl_pct_margin=None)
+            continue
+        row.update(mark_price=px,mark_ts_ms=quote['ts_ms'],
+                   price_status='fresh',net_close_estimate=round(estimate,4),
+                   pnl_pct_margin=(round(estimate/row['margin']*100,2)
+                                   if row['margin']>0 else None))
+    rows=engine.store.db.execute(
+        "SELECT body FROM events WHERE kind='trade_closed' ORDER BY seq DESC LIMIT 50").fetchall()
+    latest=[]
+    for (body,) in rows:
+        try:
+            e=json.loads(body)
+            if e.get('kind')!='trade_closed':continue
+            trade={'symbol':e['symbol'],'side':'LONG' if e['side']==1 else 'SHORT',
+                   'position_id':e['position_id'],'entry':e['entry'],
+                   'exit':(e.get('segment') or {}).get('exit'),
+                   'leverage':e['leverage'],'net':e['net'],
+                   'close_ms':e['close_ms'],'open_ms':e['open_ms'],
+                   'duration_minutes':e.get('duration_minutes'),
+                   'reason':str(e.get('reason') or '')[:160],
+                   'source':str(e.get('source') or '')[:40]}
+            if (not isinstance(trade['symbol'],str) or
+                any(type(trade[k]) not in (float,int) or not math.isfinite(trade[k])
+                    for k in ('entry','net','leverage','close_ms','open_ms'))):
+                continue
+            if trade['exit'] is not None and (
+                type(trade['exit']) not in (int,float) or not math.isfinite(trade['exit'])):
+                trade['exit']=None
+            latest.append(trade)
+        except (ValueError,TypeError,KeyError,OverflowError):continue
+    value['trades']=latest
+    value['trades_summary_only']=False
+    value['trades_shown']=len(latest)
+    value['closed_total']=engine.store.db.execute(
+        "SELECT COUNT(*) FROM events WHERE kind='trade_closed'").fetchone()[0]
+    value['recent_closed_wins']=sum(t['net']>0 for t in latest)
+    value['recent_closed_losses']=sum(t['net']<0 for t in latest)
+    value['recent_closed_net_usd']=round(sum(t['net'] for t in latest),4)
     return {'schema_version':2,'paper':True,'read_only':True,'ts_ms':now,
             'account':value}
