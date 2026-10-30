@@ -33,3 +33,7 @@ Vincoli immutati: niente merge/deploy, VPS, avvio istanze o credenziali API; tut
 **Test:** nuova suite dedicata (inclusi opt-in, close, stop, veto, stale, clock, safety e backup). GitHub CI `41122603852` SUCCESS su precedente codice `62a64afe`, con suite estesa. Controllo sull'ultimo codice `1062bbc8` run `41122638613` **queued** all'ultima lettura: non dichiarare full green finale finché non concluso. Altri controlli precedenti `41122241622`, `41122400413`, `41122581224` SUCCESS.
 **Salvataggio doppio:** diario GitHub aggiornato e file Library `/SuperBot-Ripresa/ULTIMO-STATO-SUPERBOT.md` aggiornato per append (stesso library_file_id), con stato precedente conservato. Nessun backup di produzione sostituito.
 **RILASCIATO:** nulla. Nessun merge, deploy, VPS, API pagata, bot o wallet/DB runtime, memoria e storici toccati. Work deve leggere questo checkpoint e riconciliare eventuali suoi file locali. Mancano CI HEAD, full staging e autorizzazione separata al rilascio.
+
+## CI conclusa — codice finale
+GitHub Actions `41122638613` ha concluso con **SUCCESS** sul commit di codice `1062bbc82b0e92b88b6bc617dbe29143ef7c28bb`; output Python 3.11 verificato: **88 test PASS +21 subtest PASS**, più gate d'immutabilità `backend/desk`/`engine.py`/`scanner.py`/PWA/deploy PASS. Il runner pubblica anche la matrice Python3.10; verificare il suo job log se servono conteggi per entrambe le versioni prima del rilascio. Questa CI non è un test API reale o VPS.
+Link: https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41122638613
