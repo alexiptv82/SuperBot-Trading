@@ -1,3 +1,6 @@
+## IN_CORSO — chat normale: modulo revisione posizioni Brain (handoff temporaneo 30/10)
+Work e' fermo per limite utilizzo; ramo Work locale work/brain-position-review-20261030 non pubblicato e NON toccato. Prosecuzione su nuovo ramo distinto work/brain-position-review-chat-20261030, base 895b34a. Solo sviluppo/test offline: revisione posizioni senza candidati e raccomandazioni consultive sicure, nessun ordine autonomo in questa prima fase. Work prima di riprendere legge diario/2026-10-30_chat-normale-handoff.md e verifica differenze. Nessun merge/deploy/reset/uso API pagate.
+
 ## IN_CORSO — Work: revisione periodica posizioni Brain
 Owner ChatGPT Work. Autorizzazione utente confermata: completare sviluppo e collaudi, aggiornare solo per problemi/decisioni/test esterni utili. Ramo work/brain-position-review-20261030, base 895b34a64058b1321ba5ad372e8de435f3e7fec0. Checkout isolato, modifiche locali precedenti preservate. Obiettivo: revisione AI delle posizioni anche senza nuovi candidati, con protezioni indipendenti, validazione e test. Prosegue il mandato esteso; nessun avvio operativo in questa fase.
 
