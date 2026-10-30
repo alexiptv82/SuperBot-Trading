@@ -1218,6 +1218,46 @@ def sync_mode(state: dict) -> str:
     return mode
 
 
+def _poll_v11_shadow(state,ctl):
+    """Only background PUBLIC 1m observations. Not an entry/exit strategy."""
+    if os.getenv('DESK_TREND_V11_SHADOW','off').lower()!='on':
+        return
+    try:
+        from director.trend_shadow import TrendShadow
+        shadow=ctl.get('_trend_v11')
+        if shadow is None:
+            shadow=ctl['_trend_v11']=TrendShadow(interval_ms=60000)
+        now=int(time.time()*1000)
+        # Prioritize the open positions; rotate other symbols to stay below
+        # public API limits and never occupy the trading/protection thread.
+        current=state.get('main') or {}
+        positions=current.get('positions') or {}
+        active=[sym for sym in positions if sym in SYMBOLS]
+        remaining=[sym for sym in SYMBOLS if sym not in active]
+        offset=int(ctl.get('trend_rotation',0))
+        other=(remaining[offset:]+remaining[:offset])[:max(0,8-len(active))]
+        selection=list(dict.fromkeys(active+other))[:12]
+        previous_started=shadow.last_started
+        found=shadow.poll_public(
+            now,selection,lambda sym:fetch_candles(sym,bar='1m',limit=300))
+        if shadow.last_started!=previous_started:
+            ctl['trend_rotation']=(offset+len(other))%max(1,len(remaining))
+        old=state.get('trend_v11_observations') or {}
+        if found:
+            merged={**old,**found}
+            merged={sym:r for sym,r in merged.items()
+                    if isinstance(r,dict) and type(r.get('observed_ms'))==int
+                    and 0<=now-r['observed_ms']<=180000}
+            state['trend_v11_observations']=merged
+            for sym,v in found.items():
+                if (v['state'] in ('TRANSITION_UP','TRANSITION_DOWN') and
+                    (old.get(sym) or {}).get('state')!=v['state']):
+                    print('[TREND-V11 SHADOW] '+sym+' '+v['state']+
+                          ' indicatore non vincolante',flush=True)
+    except Exception as err:
+        print('[TREND-V11 SHADOW] unavailable: '+type(err).__name__,flush=True)
+
+
 def loop_step(state: dict, ctl: dict) -> bool:
     """Un giro del ciclo principale (ogni POLL_S secondi). ctl tiene la memoria tra un giro e l'altro:
     {'next_cycle_ms': int, 'prev_paused': bool|None}. Ritorna True se in questo giro e' girato un ciclo
@@ -1228,6 +1268,8 @@ def loop_step(state: dict, ctl: dict) -> bool:
     - in pausa il bot continua a girare finche' ha posizioni aperte (svuotamento), poi si ferma da solo.
     """
     process_flags(state)
+    # Async, public-only, advisory: never changes scores or protection.
+    _poll_v11_shadow(state,ctl)
     paused = os.path.exists(_flag("pause.flag"))
     if paused != ctl.get("prev_paused"):
         if ctl.get("prev_paused") is not None:
