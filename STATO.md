@@ -1,3 +1,6 @@
+## IN_CORSO — Work: completamento MTF e pacchetto PAPER, 31/10
+Utente autorizza ripresa dei restanti lavori in questa chat. Laboratorio autonomo e nuovo LONG sono affidati alla chat separata: non svilupparli qui. Owner Work su nuovo ramo work/brain-mtf-packaging-20261031, base854f03e733195a9ffa06184b24855c97660a8edc. Perimetro: contesto multitimeframe consultivo per ingressi/revisioni e preparazione operativa verificabile, nessun deploy/merge/reset/API AI pagata. Non modificare classici, SHORT, rischio o strategie. Registrare risultati e limiti reali.
+
 ## 31/10/2026 11:59 Europe/Rome — Backup coordinato Brain PAPER verificato offline
 
 FATTO/PREPARATO: utente conferma completamento degli aperti e incarico LONG ad altra AI. Prompt autonomo gia' disponibile in claude/prompt-long-engine-2026-10-31.md sul ramo diario: motore LONG isolato, ingressi/uscite/invalidation, SHORT preservato, consiglio Brain non vincolante, test causali e confronto fuori campione.
