@@ -1,3 +1,6 @@
+## IN_CORSO — 31/10: memoria classici e notifiche AI
+ChatGPT Work owner su work/classics-teaching-completion-20261031, base2b181871c0b8b9b67b3c6b6dd47c317316b4a962. Recupero da ricevute salvate, conferme accodate autenticabili e preferenze consultive; scorer/SHORT e nuovo LONG non toccati. App su ramo completion-app, servizi Brain su completion: confronto con HEAD remoti prima di pubblicare. Sviluppo/test PAPER, nessun merge/deploy/reset o invio Telegram reale in questa fase.
+
 ## 31/10/2026 08:25 Europe/Rome — Riduzioni AI PAPER e stato provider integrati; LONG affidato a ricerca separata
 
 FATTO/PREPARATO: utente autorizza il completamento degli aperti e affida il nuovo motore LONG a un'altra AI. Prompt preciso pubblicato in `claude/prompt-long-engine-2026-10-31.md` su diario (commit `a4a20a9e4cada8366eacfa85a6fa5bd1f520b408`): modulo isolato, SHORT preservato, ingressi/uscite/invalidation, adapter consultivo Brain, preregistrazione, test causali, confronto di portafoglio e holdout. Le buone prestazioni SHORT restano ipotesi da misurare.
