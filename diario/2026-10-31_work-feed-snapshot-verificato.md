@@ -1,0 +1,8 @@
+
+
+## 31/10/2026 — Work: restore e feed pubblico fino a snapshot app verificati
+FATTO/PREPARATO: ramo work/brain-resume-verification-20261031, HEAD c637650b4bafd91cda726796a21bce0b4c212df9. Test restore pubblicato tramite GitHub (00905f7); smoke riproducibile backend/tests/smoke_brain_public_snapshot.py (8c6ab2a). Nessuna modifica runtime. Vecchio ramo Work locale 750f06c conservato e ancora da riconciliare funzionalmente.
+TEST: suite locale 89 PASS +21 subtest e contratto app 4 PASS su Python 3.12.14. Rettifica resoconto precedente: i test LOCALI erano su Python 3.12, non 3.11. GitHub Actions 41170668794 SUCCESS su matrice Python 3.10/3.11, test restore e contratto app fissato a 23fc151f17395bd77bba7446ca70617bc958836c, guardia moduli originali superata.
+SMOKE PUBBLICO: BTC Bitget reale, 120 candele chiuse 1m e 119 5m, contigue e recenti; quotazione età 175ms; tick conto PAPER temporaneo vuoto -> snapshot -> lettore app pin23fc151, fresco poi scaduto dopo62s; lettore lascia ledger identico. Zero chiamate AI e ordini exchange. La prova non include trade aperti reali, browser, VPS né valutazione economica.
+RILASCIATO: nulla; azioni AI default off, nessun merge/deploy/reset e storici preservati. Configurazione di test 2000/1600 resta fixture, non mandato definitivo.
+APERTI/PROSSIMO: test feed reale con posizioni PAPER temporanee e failure, contratto UI/Telegram gestione posizioni, riconciliare Work precedente (incluse riduzioni parziali), provider/costi/mandato e staging con backup/restore prima dell'OK separato al rilascio. Nessun apprendimento autonomo completo dichiarato. Chat disponibili solo per messaggi forniti e fonti accessibili: riepilogo di ripresa, non esportazione integrale.
