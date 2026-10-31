@@ -1,0 +1,25 @@
+name: Classical teaching completion - offline
+on:
+  push:
+    branches: [work/classics-teaching-completion-20261031]
+    paths: ['backend/**','.github/workflows/classics-teaching-completion-ci.yml']
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix: {python: ['3.10','3.11']}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '${{ matrix.python }}'}
+      - run: pip install pytest numpy
+      - name: Causal teaching and original classical regression
+        env: {DESK_MODE: paper, TELEGRAM_BOT_TOKEN: '', ANTHROPIC_API_KEY: ''}
+        run: PYTHONPATH=backend python -m pytest -q backend/tests/test_desk.py backend/tests/test_classics_teaching_completion.py backend/tests/test_classics_manual_teaching.py backend/tests/test_classics_safety_rules.py backend/tests/test_classics_structure.py
+      - name: Frozen strategy, risk, protection, Brain and deploy
+        run: |
+          test -z "$(git diff --name-only 2b181871c0b8b9b67b3c6b6dd47c317316b4a962 HEAD -- backend/desk/signals.py backend/desk/seasonal.py backend/desk/engine.py backend/desk/brain.py backend/director/brain_free backend/director/brain_scalp frontend deploy)"

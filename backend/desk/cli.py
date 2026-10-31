@@ -201,7 +201,12 @@ def save_state(state: dict, path: str) -> None:
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(state, f, default=str)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, path)
+    directory_fd=os.open(os.path.dirname(path),os.O_RDONLY|os.O_DIRECTORY)
+    try:os.fsync(directory_fd)
+    finally:os.close(directory_fd)
 
 
 def load_lessons() -> str:
@@ -286,6 +291,12 @@ def get_prices(symbols: list, candles_map: dict) -> dict:
 
 def record_close(state: dict, rec: dict) -> None:
     """Append-only history with run metadata, leaving the engine receipt untouched."""
+    try:
+        from desk.manual_teaching_service import queue_close
+        queue_close(state,rec,PORTFOLIO.name)
+    except Exception:
+        # Invalid teaching evidence must never prevent financial persistence.
+        state['manual_teaching_status']='receipt_unavailable'
     archived_row = dict(rec, run_no=int(state.get("run_no",1)),
                         start_equity=PORTFOLIO.limits.start_equity)
     append_trade_history(DATA_DIR, archived_row)
@@ -544,6 +555,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     headlines = ctx_for_prompt.get("news", []) if ctx_for_prompt else []
 
     lessons = load_lessons()
+    if os.getenv('DESK_MANUAL_TEACHING','off').lower()=='on':
+        examples=state.get('manual_operator_preferences') or []
+        if examples:
+            lessons+='\nChiusure confermate: osservazioni contestuali, non regole o TP obbligatori.\n'+json.dumps(examples,ensure_ascii=False)
     sym_stats = stats_summary(load_symbol_stats(DATA_DIR))
 
     last_call = state.get("last_call_ms", 0)
@@ -1142,7 +1157,8 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
         # complete cross-run input in the active data directory.
         now_ms = int(time.time() * 1000)
         keep = {k: state[k] for k in ("budget", "last_call_ms", "market_ctx", "last_ctx_ts",
-                                      "last_report_day", "last_prices", "last_prices_ms")
+                                      "last_report_day", "last_prices", "last_prices_ms",
+                                      "manual_teaching_outbox")
                 if k in state}
         if not clear_lessons and "lessons_day" in state:
             keep["lessons_day"] = state["lessons_day"]
@@ -1324,8 +1340,26 @@ def loop_step(state: dict, ctl: dict) -> bool:
         print(f"[SLEEP] prossimo ciclo tra {wait // 60} min", flush=True)
         ran = True
     mode = sync_mode(state)
+    _poll_manual_teaching(state,ctl)
     write_heartbeat(state, next_cycle_ms=0 if mode == "paused" else ctl.get("next_cycle_ms", 0))
     return ran
+
+
+def _poll_manual_teaching(state,ctl):
+    if os.getenv('DESK_MANUAL_TEACHING','off').lower()!='on':return
+    now=int(time.time()*1000)
+    last=ctl.get('last_teaching_ms')
+    if last is not None and now-last<60000:return
+    ctl['last_teaching_ms']=now
+    try:
+        from desk.manual_teaching_service import poll
+        result=poll(DATA_DIR,PORTFOLIO.name,STATE_FILE,state,now,
+                    inbox_path=os.getenv('DESK_TEACHING_INBOX_PATH') or None)
+        state['manual_teaching_status']=result['status']
+        state['manual_operator_preferences']=result['preferences']
+    except Exception:
+        state['manual_teaching_status']='pending_recovery'
+        state['manual_operator_preferences']=[]
 
 
 def main() -> None:
@@ -1335,6 +1369,7 @@ def main() -> None:
     if "--once" in sys.argv:
         process_flags(state)
         iteration(state, drain=os.path.exists(_flag("pause.flag")))
+        _poll_manual_teaching(state,{})
         return
 
     print(f"[DESK V2] avvio [{PORTFOLIO.name.upper()}] versione {CODE_VERSION} — {PORTFOLIO.description}")
