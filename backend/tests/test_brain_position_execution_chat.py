@@ -215,6 +215,28 @@ class PaperPositionExecution(TestCase):
             self.assertEqual(db.execute(
                 "SELECT COUNT(*) FROM events WHERE kind='ai_position_review_observed'").fetchone()[0],1)
 
+    def test_restored_backup_preserves_identity_events_and_rejects_replay(self):
+        from pathlib import Path
+        req=self.request();result=self.analysis(req)
+        self.assertEqual(self.apply(req,result)['status'],'applied')
+        expected=self.wallet.brain.store.load()
+        events=self.wallet.brain.store.db.execute('SELECT * FROM events ORDER BY seq').fetchall()
+        with tempfile.TemporaryDirectory() as restored_dir:
+            root=Path(restored_dir)/'brain'
+            root.mkdir()
+            self.wallet.brain.store.backup(root/'brain_scalp.sqlite3')
+            restored=BrainAccount(restored_dir,spec=SPEC,initialize=False,now_ms=self.now)
+            try:
+                self.assertEqual(restored.brain.store.load(),expected)
+                self.assertEqual(restored.brain.store.db.execute('SELECT * FROM events ORDER BY seq').fetchall(),events)
+                receipt=record_position_review(restored,req,result,markets(self.now),self.now,
+                                               execution_enabled=True,contracts=CONTRACTS)
+                self.assertEqual(receipt['status'],'rejected_context')
+                self.assertEqual(restored.brain.store.load(),expected)
+                self.assertEqual(restored.brain.store.db.execute('SELECT * FROM events ORDER BY seq').fetchall(),events)
+            finally:
+                restored.close()
+
     def test_service_defaults_off_and_requires_explicit_paper_mode(self):
         from pathlib import Path
         from backend.tests.test_brain_single_integration import setup_env
