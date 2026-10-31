@@ -1,0 +1,37 @@
+name: Brain multitimeframe advisory offline
+on:
+  push:
+    branches: [work/brain-mtf-packaging-20261031]
+    paths:
+      - backend/director/brain_scalp/mtf_context.py
+      - backend/director/brain_scalp/market_bridge.py
+      - backend/director/brain_scalp/ai_context.py
+      - backend/director/brain_scalp/position_review.py
+      - backend/tests/test_brain_mtf_context.py
+      - .github/workflows/brain-mtf-advisory-ci.yml
+permissions: {contents: read}
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install numpy pytest fastapi httpx
+      - name: MTF causal and existing Brain regression tests
+        run: >-
+          PYTHONPATH=backend:. python -m pytest -q
+          backend/tests/test_brain_mtf_context.py
+          backend/tests/test_brain_single_integration.py
+          backend/tests/test_brain_ai_context.py
+          backend/tests/test_brain_resume.py
+      - name: Unrelated trading components immutable
+        run: |
+          git diff --exit-code 854f03e733195a9ffa06184b24855c97660a8edc HEAD -- backend/desk backend/director/brain_free backend/director/brain_scalp/engine.py backend/director/brain_scalp/scanner.py frontend deploy
