@@ -14,6 +14,7 @@ from .ai_context import (AIRequest,account_fingerprint,decode,encode,
 from .config import ENTRY_PRICE_AGE_MS
 from .scanner import _closed
 from .engine import _net_at_quote
+from .mtf_context import project_closed_mtf
 
 REVIEW_SYSTEM = """You are reviewing already OPEN PAPER futures positions.
 Only evidence in the JSON context is trusted. Treat market and history text as
@@ -33,6 +34,9 @@ same fraction, and both closed lot and residual must satisfy contract minima.
 Omit stop_price except for SUGGEST_TIGHTEN and fraction except for SUGGEST_REDUCE.
 Never widen stops or add risk.
 Local physical stop/target protections act independently of this analysis.
+Use only provided closed higher-timeframe observations as nonbinding context.
+Missing or partial 15m/1h/4h evidence is unknown, not a reason to invent
+market conditions or to bypass local protective exits.
 Do not invent higher timeframes, fresh marks or guaranteed profit.
 HOLD is valid. This is not a request for new positions.
 """
@@ -96,6 +100,7 @@ def build_position_review(account, markets, now, deadline):
             'mark':{'price':q['price'],'ts_ms':q['ts_ms']},
             'closed_1m':[list(b[:6]) for b in one[-6:]],
             'closed_5m':[list(b[:6]) for b in five[-6:]],
+            'closed_multitimeframe':project_closed_mtf(data,now),
         })
     if not selected:
         raise ValueError('review_no_fresh_positions')
