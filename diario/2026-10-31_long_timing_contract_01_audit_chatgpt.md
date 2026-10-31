@@ -1,0 +1,9 @@
+# 31 ottobre 2026 — Audit LONG Timing Contract 01 (ChatGPT)
+
+ZIP caricato: SuperBot_Long_Timing_Contract_01.zip, SHA-256 6cc299e4381c82566b7f2f4d6b4bc110fd754e53310963e8802ab8730a416de1; 6 file, SHA256SUMS 5/5 OK. Baseline V6.1.1 SHA256 0c1ff499673aa5923444b66baae26cb5f98009973a3ea19fee27a8b620bd686e, suite originale 82/82 PASS. Due test allegati 2/2 PASS ma con asserzioni deboli; demo riprodotta: alla chiusura T NO_TRADE/DATA_UNAVAILABLE; a T+1000ms CANDIDATE/SETUP_CONFIRMED; scadenza T+60000ms; primo open 1m dopo la decisione è T+60000 ed è scaduto. Il bar open T è anteriore alla disponibilità.
+
+L'harness è una funzione di **controllo orari**, non realizza CANDIDATE→pending→fill o ledger, né dispone di quote/tick sub-minuto realmente osservate. Test avversariali nuovi: 3 PASS / 3 FAIL: latency_ms=-1000 permette segnale di fill prima dell'availability, booleano come latenza, timestamp off-grid T+2000 accettato come finto open 1m. Questi problemi NON alterano l'engine congelato.
+
+**Gate:** P0 Research03 confermato; candidabilità dimostrata su fixture sintetica; 1m bar-open-only unexecutable; fill completo non dimostrato; economic_evidence INSUFFICIENT; PAPER_ELIGIBLE NO; nessuna integrazione Brain/Hawk/Bull. La formula UNEXECUTABLE_AT_1M_RESOLUTION vale soltanto per l'attuale modello di fill agli open, non prova impossibilità di fill intrabar con vere quotazioni tick.
+
+Artefatti generati in questa chat: AUDIT_INDIPENDENTE_TIMING_CONTRACT_01_2026-10-31.md, TEST_INDIPENDENTI_TIMING_CONTRACT_01.py, PROMPT_GROK_TIMING_CONTRACT_02_2026-10-31.md, PACCHETTO_AUDIT_TIMING_CONTRACT_01_PER_GROK.zip. Prossimo Grok Timing Contract 02, patch solo harness, timestamp validati, assert CANDIDATE, pending+fill sintetico con tick e ledger, no modifica engine, nessun deploy/merge/ordini/VPS/SHORT/wallet.
