@@ -1,0 +1,13 @@
+# 31 ottobre 2026 — SuperBot LONG Research 03: audit indipendente ChatGPT
+
+**Originale utente**: SuperBot_Long_RealData_Research_03.zip, SHA256 `2cd400c25122478dea20c9cd7df5554eef6a023f4ad82c0d850124d97dc230c1`. ZIP integri e manifest 307/307. Raw pagine Bitget dichiarate 148, trasformazioni OHLCV raw→dataset verificate per tutti i record normalizzati. Dataset BTC 9949 barre 1m / ETH 9948, con contesto 15m 1990, 1h 1393, 4h 1194 per simbolo, senza gap. Aggregazioni OHLCV coerenti per tutte le finestre completamente sovrapposte. V6.1.1 SHA256 `0c1ff499673aa5923444b66baae26cb5f98009973a3ea19fee27a8b620bd686e`, 82/82 PASS.
+
+**Replay indipendenti completi:** 4/4 riprodotti, con motivi, regimi, decisioni e 0 CANDIDATE/0 trade identici al `replay_summary.json` (BTC CONTINUATION/REVERSAL, ETH CONTINUATION/REVERSAL). Eligible formali BTC 9928, ETH 9927 per famiglia, ma quote assunte a spread 2bps, availability close+1000ms (assumed_historical), funding 0, OOS 30 giorni assente e preregistrazione senza attestazione esterna. P&L zero non prova efficacia.
+
+**P0 temporale NUOVO — blocco deterministico:** `engine.Parameters.ttl_ms=60000`, `run_replay.evaluate_long(ctx,end,p)`, barre 1m storiche disponibili soltanto `close_ms+1000`. All'istante `as_of=end` l'ultima barra 1m usabile è sempre quella di `end-60000`; dunque `valid_until=lastclose+ttl=end`, e il codice `if as_of_ms >= until: SIGNAL_EXPIRED` rende impossibile ogni CANDIDATE dopo un trigger. Controllati tutti i timestamp: **BTC 9948/9948, ETH 9947/9947** bar disponibili già a scadenza. I 35 SIGNAL_EXPIRED osservati nei quattro replay confermano. Inoltre, anticipare soltanto la valutazione a `close+1000` non rende automaticamente eseguibile il fill solo al bar-open: il primo open disponibile dopo decisione può coincidere con TTL. Serve contratto event-time e test causale di candidato/fill prima di scaricare altri 30 giorni.
+
+**Verdetto:** raw_integrity PASS (interno), replay reproducibility PASS, temporal_contract FAIL P0, economic_evidence INSUFFICIENT, BRAIN_ADVISORY / HAWK_LONG_SHADOW / BULL_LONG_SHADOW non autorizzati, PAPER_ELIGIBLE NO.
+
+**Artefatti locali consegnabili all'utente/Grok:** `AUDIT_INDEPENDENTE_LONG_RESEARCH_03_2026-10-31.md`, `RESEARCH03_TTL_REPRODUCIBILE.py`, `PROMPT_GROK_RESEARCH_03_GATE_TEMPORALE_2026-10-31.md`, `RESEARCH03_VERIFICA_INDIPENDENTE.json`, ZIP `PACCHETTO_AUDIT_RESEARCH03_PER_GROK.zip`. Non incorporati nel repository.
+
+**Privacy/produzione:** nessuna modifica ai motori, SHORT, VPS, wallet, app, merge, deploy, trading, chiavi o API a pagamento. Diario aggiornato esclusivamente per checkpoint.
