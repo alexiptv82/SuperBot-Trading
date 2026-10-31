@@ -112,6 +112,28 @@ class Integration(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'reserved_ceiling'):
             primary('a'*120001,'{}')
 
+    def test_feed_exception_still_reaches_owner_and_snapshot(self):
+        env=setup_env(self.root)
+        feed=PublicBrainFeed(reader=FakeReader(),fetcher=lambda _:None)
+        s=BrainService(required_env(env),feed=feed,clock_ms=lambda:NOW,initialize=True)
+        try:
+            from backend.tests.test_brain_resume import plan,shortlist
+            s.account.accept_ai_plans('brain',{'plans':[plan()]},shortlist(),markets(),CONTRACTS,NOW)
+            s.account.tick(markets(),CONTRACTS,NOW+1)
+            before=s.account.brain.store.load()['positions']['BTC']
+            s.clock=lambda:NOW+1000
+            s.supervisor.clock=s.clock
+            feed.poll=Mock(side_effect=RuntimeError('SYNTHETIC_SECRET_BODY'))
+            result=s.tick()
+            self.assertIn('tick',result)
+            self.assertEqual(s.last_markets,{})
+            snap=json.loads((self.root/'snapshot.json').read_text())
+            self.assertEqual(snap['schema_version'],2)
+            self.assertEqual(snap['account']['positions'][0]['price_status'],'unavailable')
+            self.assertEqual(s.account.brain.store.load()['positions']['BTC']['qty'],before['qty'])
+            self.assertNotIn('SYNTHETIC_SECRET_BODY',json.dumps(result))
+        finally:s.close()
+
     def test_claude_reviewer_uses_current_messages_api_no_key_echo(self):
         incoming=[]
         def opener(req,timeout):

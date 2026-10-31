@@ -65,6 +65,60 @@ class PaperPositionExecution(TestCase):
         return [json.loads(row[0]) for row in self.wallet.brain.store.db.execute(
             'SELECT body FROM events WHERE kind=?',(kind,))]
 
+    def reduction(self,req,fraction=.5,review_fraction=None):
+        def respond(system,user,value):
+            payload=decode(reply(system,user,'SUGGEST_REDUCE'))
+            for row in payload['reviews']:row['fraction']=value
+            return encode(payload)
+        return evaluate_position_review(req,
+            lambda s,u:respond(s,u,fraction),
+            lambda s,u:respond(s,u,fraction if review_fraction is None else review_fraction))
+
+    def test_reduction_scales_peak_and_preserves_residual_protections(self):
+        state=self.wallet.brain.store.load()
+        state['positions']['BTC']['scalp_policy']={'peak_net':20.}
+        self.wallet.brain.store.commit(state,self.now,[])
+        before=state['positions']['BTC']
+        req=self.request();result=self.reduction(req)
+        self.assertEqual(result.approved_symbols,('BTC',))
+        receipt=self.apply(req,result)
+        self.assertEqual(receipt['executed'][0]['action'],'reduced')
+        after=self.wallet.brain.store.load()['positions']['BTC']
+        ratio=after['qty']/before['qty']
+        self.assertGreater(ratio,0);self.assertLess(ratio,1)
+        for key in ('margin','entry_fees','funding'):
+            self.assertAlmostEqual(after[key],before[key]*ratio)
+        self.assertAlmostEqual(after['scalp_policy']['peak_net'],20*ratio)
+        for key in ('id','stop','target','leverage','open_ms'):
+            self.assertEqual(after[key],before[key])
+        self.assertEqual(len(self.events('partial_trade')),1)
+        self.assertEqual(len(self.events('trade_closed')),0)
+        self.assertEqual(self.apply(req,result)['status'],'rejected_context')
+        self.assertEqual(len(self.events('partial_trade')),1)
+
+    def test_different_reviewer_fraction_cannot_reduce(self):
+        req=self.request();result=self.reduction(req,.5,.25)
+        self.assertEqual(result.approved_symbols,())
+        self.assertEqual(self.apply(req,result)['automatic_actions'],0)
+        self.assertEqual(self.events('partial_trade'),[])
+
+    def test_bad_partial_fraction_rejected_before_execution(self):
+        for fraction in (0,1,-.5,True,'0.5'):
+            with self.subTest(fraction=fraction):
+                req=self.request();result=self.reduction(req,fraction)
+                self.assertEqual(result.status,'primary_failed')
+                self.assertEqual(self.events('partial_trade'),[])
+
+    def test_small_residual_never_promotes_partial_to_full_close(self):
+        req=self.request();result=self.reduction(req,.999999)
+        old=self.wallet.brain.store.load()
+        self.assertEqual(self.apply(req,result)['status'],'rejected_context')
+        new=self.wallet.brain.store.load()
+        self.assertEqual(new['cash'],old['cash'])
+        self.assertEqual(new['positions'],old['positions'])
+        self.assertEqual(self.events('trade_closed'),[])
+        self.assertEqual(self.events('partial_trade'),[])
+
     def test_default_advisory_never_changes_wallet(self):
         req=self.request();result=self.analysis(req)
         old=self.wallet.brain.store.load()

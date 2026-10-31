@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 import json
 import urllib.request
+import urllib.error
+from .provider_health import ProviderFailure
 
 from director.brain_free.provider import call as deepseek_call
 from director.brain_free.config import Config as DeepSeekConfig
@@ -103,8 +105,10 @@ def claude_message(key,model,system,user,*,max_tokens=4096,timeout_s=10,
         safe={k:usage[k] for k in ('input_tokens','output_tokens')
               if type(usage.get(k))==int and 0<=usage[k]<=10000000}
         return content,safe
+    except urllib.error.HTTPError as exc:
+        raise ProviderFailure({401:'auth',402:'balance',403:'auth',429:'rate'}.get(exc.code,'http')) from None
     except Exception:
-        raise ValueError('review_provider_unavailable') from None
+        raise ProviderFailure('unavailable') from None
 
 
 def make_reviewer(key,model,*,max_input_bytes=120000,max_tokens=4096,

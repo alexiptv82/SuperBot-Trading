@@ -213,15 +213,19 @@ def build_account_snapshot(account,now,markets=None,*,position_actions=None):
             proposals=[{'symbol':str(r['symbol'])[:20],
                         'action':r['action'],'reason':str(r.get('reason',''))[:220]}
                        for r in event['reviews'][:10]
-                       if r.get('action') in ('HOLD','SUGGEST_CLOSE','SUGGEST_TIGHTEN')]
+                       if r.get('action') in ('HOLD','SUGGEST_CLOSE','SUGGEST_REDUCE','SUGGEST_TIGHTEN')]
             executed=[{'symbol':str(r['symbol'])[:20],'action':r['action']}
                       for r in event.get('executed',[])[:10]
-                      if r.get('action') in ('closed','stop_tightened')]
+                      if r.get('action') in ('closed','reduced','stop_tightened')]
             review.update(status='recorded',last={'ts_ms':row[0],
                 'reviewer_checked':event.get('reviewed') is True,
                 'proposals':proposals,'executed':executed})
         except (ValueError,TypeError,KeyError,AttributeError):
             review.update(status='unavailable')
     value['position_review']=review
+    attempt=state.get('last_ai_attempt')
+    if isinstance(attempt,dict):
+        value['ai_attempt']={k:attempt.get(k) for k in
+            ('ts_ms','purpose','status','provider','failure_code')}
     return {'schema_version':2,'paper':True,'read_only':True,'ts_ms':now,
             'account':value}

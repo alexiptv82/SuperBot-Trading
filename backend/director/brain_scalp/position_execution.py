@@ -8,7 +8,7 @@ financial ledger and the AI receipt in one SQLite transaction.
 from copy import deepcopy
 import math
 
-from director.brain_free.execution import close as settle_paper
+from director.brain_free.execution import close as settle_paper,rounded
 from .engine import _protect_stop_with_quote
 from .metrics import build_metrics
 
@@ -48,18 +48,45 @@ def apply_paper_review(wallet,state,request,result,findings,markets,contracts,no
         px=quote.get('price')
         if type(px) not in (int,float) or not math.isfinite(px) or px<=0:
             raise ValueError('invalid_action_price')
-        if action=='SUGGEST_CLOSE':
+        if action in ('SUGGEST_CLOSE','SUGGEST_REDUCE'):
+            fraction=1.
+            old_qty=position['qty']
+            if action=='SUGGEST_REDUCE':
+                contract=contracts.get(sym)
+                if not isinstance(contract,dict) or contract.get('status')!='normal':
+                    raise ValueError('action_contract_unavailable')
+                requested=review['fraction']
+                step=contract['qty_step']
+                minimum=contract['min_qty'];notional=contract['min_notional']
+                if (any(type(v) not in (int,float) or not math.isfinite(v)
+                        for v in (step,minimum,notional)) or step<=0 or minimum<0 or notional<0):
+                    raise ValueError('invalid_action_contract')
+                qty=rounded(old_qty*requested,step)
+                remainder=old_qty-qty
+                fill=px*(1-position['side']*wallet.cfg.slippage)
+                if (qty<=0 or qty>=old_qty or qty<minimum or qty*fill<notional or
+                        remainder<minimum or remainder*px<notional):
+                    # Never silently promote a partial proposal to a full close.
+                    raise ValueError('partial_or_residual_below_minimum')
+                fraction=qty/old_qty
             financial=settle_paper(updated,sym,px,now,
-                                   'AI:position_review',cfg=wallet.cfg)
-            if financial['kind']!='trade_closed':
+                                   'AI:position_review',fraction=fraction,cfg=wallet.cfg)
+            expected='partial_trade' if action=='SUGGEST_REDUCE' else 'trade_closed'
+            if financial['kind']!=expected:
                 raise ValueError('incomplete_ai_close')
+            if action=='SUGGEST_REDUCE':
+                residual=updated['positions'][sym]
+                policy=residual.get('scalp_policy')
+                if isinstance(policy,dict):
+                    policy['peak_net']=max(0.,policy.get('peak_net',0.)*residual['qty']/old_qty)
+                financial.update(requested_fraction=requested,executed_fraction=fraction)
             financial.update({'paper':True,'bot':'brain',
                               'account_id':wallet.spec.account_id,
                               'ai_context_id':request.context_id,
                               'ai_reviewer_agreed':True})
             updated['plans'].pop(sym,None)
             events.append(financial)
-            actions.append({'symbol':sym,'action':'closed',
+            actions.append({'symbol':sym,'action':'reduced' if action=='SUGGEST_REDUCE' else 'closed',
                             'position_id':review['position_id']})
         elif action=='SUGGEST_TIGHTEN':
             contract=contracts.get(sym)

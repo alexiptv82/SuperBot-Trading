@@ -85,6 +85,37 @@ class PositionReviews(TestCase):
         self.assertEqual(supervisor.step(
             breakout(self.now),CONTRACTS)['analysis_status'],'position_review_started')
 
+    def test_failed_provider_is_persisted_without_exception_text_or_execution(self):
+        from director.brain_scalp.snapshot import build_account_snapshot
+        supervisor=self.start(primary=lambda s,u:{'error':'balance','usage':None})
+        supervisor.step(markets(self.now),CONTRACTS)
+        supervisor.future.result(timeout=5);self.now+=1000
+        response=supervisor.step(markets(self.now),CONTRACTS)
+        self.assertEqual(response['ai_attempt']['provider'],'deepseek')
+        self.assertEqual(response['ai_attempt']['failure_code'],'balance')
+        self.assertIn('BTC',self.account.brain.store.load()['positions'])
+        snap=build_account_snapshot(self.account,self.now,markets(self.now))
+        self.assertEqual(snap['account']['ai_attempt'],response['ai_attempt'])
+        self.assertNotIn('position_review',response.get('analysis',{}))
+        self.now+=1000
+        def bad(s,u):raise RuntimeError('SYNTHETIC_SECRET_BODY')
+        supervisor.primary=bad
+        supervisor.step(markets(self.now),CONTRACTS)
+        supervisor.future.result(timeout=5);self.now+=1000
+        response=supervisor.step(markets(self.now),CONTRACTS)
+        self.assertEqual(response['ai_attempt']['failure_code'],'invalid_response')
+        self.assertNotIn('SYNTHETIC_SECRET_BODY',json.dumps(response))
+
+    def test_reviewer_failure_names_claude_and_keeps_position(self):
+        supervisor=self.start(primary=lambda s,u:answer(s,u,'SUGGEST_CLOSE'),
+                              reviewer=lambda s,u:{'error':'auth','usage':None})
+        supervisor.step(markets(self.now),CONTRACTS)
+        supervisor.future.result(timeout=5);self.now+=1000
+        result=supervisor.step(markets(self.now),CONTRACTS)
+        self.assertEqual(result['ai_attempt']['provider'],'claude')
+        self.assertEqual(result['ai_attempt']['failure_code'],'auth')
+        self.assertIn('BTC',self.account.brain.store.load()['positions'])
+
     def test_duplicate_replay_is_idempotent(self):
         req=build_position_review(self.account,markets(self.now),self.now,self.now+30000)
         result=evaluate_position_review(req,answer)

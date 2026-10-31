@@ -150,7 +150,12 @@ class BrainService:
     def tick(self):
         now=self.clock()
         state=self.account.brain.store.load()
-        markets,contracts=self.feed.poll(state['positions'],now)
+        try:
+            markets,contracts=self.feed.poll(state['positions'],now)
+        except Exception:
+            # Let the owner record missing coverage and freshness guards even
+            # when poll itself fails. No stale quote is recycled as current.
+            markets,contracts={},{}
         self.last_markets=markets
         try:
             observations=observe_many({
@@ -277,11 +282,11 @@ def main(argv=None,env=None):
         while True:
             start=time.monotonic()
             try:service.tick()
-            except Exception:
+            except Exception as exc:
                 # No AI fallback; the next tick attempts protection again.
                 # Only exception types, never market/keys/payloads, in logs.
                 import logging
-                logging.getLogger(__name__).exception('brain_paper_tick_failed')
+                logging.getLogger(__name__).error('brain_paper_tick_failed:%s',type(exc).__name__)
             time.sleep(max(0,5-(time.monotonic()-start)))
     finally:
         service.close()

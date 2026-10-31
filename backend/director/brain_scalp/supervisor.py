@@ -106,6 +106,7 @@ class PaperSupervisor:
         if self.future is not None:
             if self.future.done():
                 purpose=self.future_purpose
+                analysis=None
                 try:
                     analysis=self.future.result()
                     if purpose=='review':
@@ -125,6 +126,17 @@ class PaperSupervisor:
                         output['analysis']={'status':'analysis_failed'}
                 self.future=None;self.request=None;self.future_purpose=None
                 output['analysis_status']='completed'
+                outcome=output.get('position_review' if purpose=='review' else 'analysis',{})
+                attempt={'ts_ms':now,'purpose':purpose,
+                    'status':outcome.get('status','analysis_failed'),
+                    'provider':('deepseek' if getattr(analysis,'status',None)=='primary_failed'
+                                else 'claude' if getattr(analysis,'status',None)=='review_failed' else None),
+                    'failure_code':getattr(analysis,'failure_code',None)}
+                if healthy:
+                    latest=self.account.brain.store.load()
+                    latest['last_ai_attempt']=attempt
+                    self.account.brain.store.commit(latest,now,[dict(attempt,kind='ai_attempt_completed')])
+                output['ai_attempt']=attempt
             else:
                 output['analysis_status']=('expired_waiting_for_transport' if
                     now>self.request.deadline_ms else 'pending')

@@ -74,7 +74,11 @@ def _unpack(value):
     if isinstance(value,tuple) and len(value)==2:
         text,usage=value
     elif isinstance(value,dict):
-        if value.get('error'):raise ValueError('provider_unavailable')
+        if value.get('error'):
+            from .provider_health import ProviderFailure
+            code={'balance':'balance','auth':'auth','missing_key':'auth','rate':'rate',
+                  'provider_http':'http','provider_network_or_format':'network'}.get(value['error'],'unavailable')
+            raise ProviderFailure(code)
         if value.get('finish_reason') in ('length','max_tokens'):
             raise ValueError('provider_truncated')
         text,usage=value.get('content'),value.get('usage') or {}
@@ -98,6 +102,7 @@ class AIAnalysis:
     reviewed:bool=False
     review_reasons:tuple=()
     usage_json:str='{}'
+    failure_code:str|None=None
 
 
 def evaluate(request,primary_call,reviewer_call=None):
@@ -109,8 +114,10 @@ def evaluate(request,primary_call,reviewer_call=None):
         text,tokens=_unpack(primary_call(SYSTEM,request.payload_json))
         usage['deepseek']=tokens
         first=parse_reply(text,request)
-    except Exception:
-        return AIAnalysis(request.context_id,'primary_failed',usage_json=encode(usage))
+    except Exception as exc:
+        from .provider_health import failure_code
+        return AIAnalysis(request.context_id,'primary_failed',usage_json=encode(usage),
+                          failure_code=failure_code(exc))
     reasons=review_reasons(request,first)
     first_json=encode(first)
     if not reasons:
@@ -130,8 +137,10 @@ def evaluate(request,primary_call,reviewer_call=None):
             'and execution constraints still apply.',encode(reviewer_payload)))
         usage['claude']=tokens
         final=parse_reply(text,request)
-    except Exception:
+    except Exception as exc:
+        from .provider_health import failure_code
         return AIAnalysis(request.context_id,'review_failed',first_json,
-                          review_reasons=reasons,usage_json=encode(usage))
+                          review_reasons=reasons,usage_json=encode(usage),
+                          failure_code=failure_code(exc))
     return AIAnalysis(request.context_id,'ready',first_json,encode(final),
                       True,reasons,encode(usage))
