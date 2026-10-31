@@ -34,3 +34,23 @@ Prossimo passo proposto: riprendere completamento Brain e classici, mantenendo r
 
 ## Messaggio da usare in una nuova chat
 Leggi SuperBot-Ripresa/ULTIMO-STATO-SUPERBOT.md e il diario GitHub del 30 ottobre. Verifica le ultime versioni e riprendi dagli aperti senza rifare il lavoro completato. Mantieni i due checkpoint e tutti i vincoli PAPER, no perdita storici, no merge/deploy senza OK.
+
+
+---
+
+## 31/10/2026 06:41 Europe/Rome — Revisione autonoma posizioni e telemetria dashboard verificate
+
+Novità verificata tramite i rami GitHub e i messaggi recenti accessibili; non è disponibile un'esportazione completa delle chat. Questo resta un riepilogo di ripresa.
+
+FATTO/PREPARATO: il ciclo AI separato per le posizioni aperte è presente sul ramo `work/brain-position-review-chat-20261030`, HEAD `f825a62a5592f95693378435421f8c8ddc1fc5e4`: può partire anche con scanner vuoto, mantiene la precedenza alle nuove entrate quando esistono e assegna comunque un turno equo alla revisione. Validazioni, scadenza e idempotenza restano nel perimetro PAPER. La telemetria dell'ultima revisione è pubblicata dal servizio `work/brain-resume-verification-20261031` (codice `ca2abb80e5597656c6475e7b07556ccc29591c90`, HEAD documentale `288c838d062bdbf9fdfaddbfbf646367d3351b42`) e letta dall'app `work/brain-review-dashboard-20261031` HEAD `2e82ac62084cc1f32f78352347a7c100a47ab188`. Dashboard e API distinguono proposta, secondo parere ricevuto e azione realmente eseguita; dati malformati o snapshot scaduti degradano senza invalidare il portafoglio.
+
+TEST: CI ciclo posizioni `41119121131` SUCCESS. CI servizio/contratto `41171363805` SUCCESS su Python 3.10/3.11: chiusura PAPER committata -> snapshot -> lettore app -> `executed=closed`; lettura senza modifica ledger. Risultati locali registrati: 90 test servizio + 21 subtest e 5 test contratto. CI app `41171339329` SUCCESS: 16 test reader/API + 8 subtest, 20 test React su 4 suite e build completata.
+
+RILASCIATO: nulla. Nessun merge, deploy, reset, istanza nuova, modifica wallet o API pagata. PAPER, journal e storici preservati. Non è una prova browser/VPS né certificazione della disponibilità H24 o del credito dei provider.
+
+PROBLEMI/APERTI: rendere visibili failure e stato provider anche via Telegram; riconciliare le riduzioni parziali con il precedente ramo Work; completare i classici; fissare mandato del conto, costi/budget/provider e staging; backup/restore e collaudo reale prima di qualunque OK al rilascio.
+
+PROSSIMO PASSO: integrare la gestione degli errori e la riconciliazione delle azioni parziali, poi preparare configurazione PAPER definitiva e prova coordinata servizio/app con backup e restore verificati.
+
+AI: checkpoint automatico ChatGPT Work
+
