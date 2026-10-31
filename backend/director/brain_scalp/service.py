@@ -90,7 +90,14 @@ def required_env(env):
         max_input_bytes=max_bytes,max_output_tokens=max_tokens,
         reviewer_enabled=bool(reviewer_key))
     daily,per_analysis=prices.reservation()
+    notify_mode=env.get('BRAIN_NOTIFY_TELEGRAM','off')
+    if notify_mode not in ('off','on'):raise ValueError('invalid_notification_mode')
+    notification_sender=None
+    if notify_mode=='on':
+        from .notification_outbox import telegram_sender
+        notification_sender=telegram_sender(env.get('TELEGRAM_BOT_TOKEN'),env.get('TELEGRAM_CHAT_ID'))
     return {'position_actions':actions_mode,
+            'notification_sender':notification_sender,
             'operator_reviews_path':env.get('BRAIN_OPERATOR_REVIEWS_PATH') or None,
             'operator_inbox_path':env.get('BRAIN_OPERATOR_INBOX_PATH') or None,
             'structure_advisory_enabled':env.get('BRAIN_STRUCTURE_ADVISORY','off').lower()=='on',
@@ -110,6 +117,7 @@ class BrainService:
         self.clock=clock_ms if clock_ms is not None else lambda:int(time.time()*1000)
         self.account=None;self.supervisor=None;self.operator=None;self.telegram=None
         self.operator_inbox=None
+        self.notifications=None
         self.operator_reviews_path=config.get('operator_reviews_path')
         self.last_markets={}
         self.last_teaching_recovery=None
@@ -143,6 +151,10 @@ class BrainService:
                 analysis_interval_ms=300000,deadline_ms=30000,
                 snapshot_path=config['snapshot_path'],
                 position_actions=config.get('position_actions','off'))
+            if config.get('notification_sender') is not None:
+                from .notification_outbox import NotificationOutbox
+                self.notifications=NotificationOutbox(
+                    Path(config['data_dir'])/'brain.notifications.sqlite3',config['notification_sender'])
         except BaseException:
             self.close()
             raise
@@ -224,6 +236,16 @@ class BrainService:
                 pass
         if isinstance(result,dict):
             result['teaching_status']=self.teaching_status
+        notifications=getattr(self,'notifications',None)
+        if notifications is not None:
+            try:
+                attempt=result.get('ai_attempt') if isinstance(result,dict) else None
+                if not isinstance(attempt,dict):
+                    attempt=self.account.brain.store.load().get('last_ai_attempt')
+                notifications.stage(attempt)
+                status=notifications.step(now)
+            except Exception:status='unavailable'
+            if isinstance(result,dict):result['notification_status']=status
         return result
 
     def enable_telegram_commands(self,*,allowed_chat_id,allowed_user_id):
@@ -242,6 +264,7 @@ class BrainService:
         return self.account.brain.store.backup(path)
 
     def close(self):
+        if getattr(self,'notifications',None) is not None:self.notifications.close()
         if self.operator_inbox is not None:self.operator_inbox.close()
         if self.structural is not None:self.structural.close()
         if self.trend_v11 is not None:self.trend_v11.close()

@@ -25,12 +25,12 @@ jobs:
           python-version: ${{ matrix.python }}
       - uses: actions/checkout@v4
         with:
-          ref: 1bf0cbce3311074a504dbbbfdbdd6413d01b13f9
+          ref: 3ce2f9915c75e7cb76b60e97575d578af7db14d5
           path: contract-app
           persist-credentials: false
       - run: python -m pip install numpy pytest fastapi httpx
       - run: PYTHONPATH=backend:contract-app/backend python -m pytest -q backend/tests/test_brain_app_service_contract.py
-      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_position_execution_chat.py backend/tests/test_brain_position_review_chat.py backend/tests/test_brain_resume.py backend/tests/test_brain_ai_context.py backend/tests/test_brain_single_integration.py backend/tests/test_brain_operator.py backend/tests/test_brain_manual_preferences.py backend/tests/test_brain_teaching_recovery_service.py
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_notification_outbox.py backend/tests/test_brain_position_execution_chat.py backend/tests/test_brain_position_review_chat.py backend/tests/test_brain_resume.py backend/tests/test_brain_ai_context.py backend/tests/test_brain_single_integration.py backend/tests/test_brain_operator.py backend/tests/test_brain_manual_preferences.py backend/tests/test_brain_teaching_recovery_service.py
       - name: Verify classical and live execution unchanged
         run: |
           test -z "$(git diff --name-only 895b34a64058b1321ba5ad372e8de435f3e7fec0 HEAD -- backend/desk backend/director/brain_free frontend deploy backend/director/brain_scalp/engine.py backend/director/brain_scalp/scanner.py)"
