@@ -15,6 +15,25 @@ def snapshot():
 
 
 class SingleView(unittest.TestCase):
+    def test_review_telemetry_is_optional_and_malformed_isolated(self):
+        obj=snapshot()
+        self.assertNotIn('position_review',self.read(obj)['profiles']['brain'])
+        for bad in ({'mode':'live','status':'none','last':None},
+                    {'mode':'paper','status':'recorded','last':{'ts_ms':NOW+1}},
+                    {'mode':'paper','status':'recorded','last':{'ts_ms':NOW,
+                     'reviewer_checked':True,'proposals':'bad','executed':[]}}):
+            with self.subTest(bad=bad):
+                obj['account']['position_review']=bad
+                result=self.read(obj)
+                self.assertEqual(result['status'],'ok')
+                self.assertEqual(result['profiles']['brain']['position_review']['mode'],'unknown')
+                self.assertEqual(result['profiles']['brain']['cash'],2000)
+        good={'mode':'off','status':'recorded','last':{'ts_ms':NOW,
+              'reviewer_checked':True,'proposals':[{'symbol':'BTC','action':'SUGGEST_CLOSE','reason':'example'}],
+              'executed':[]}}
+        obj['account']['position_review']=good
+        self.assertEqual(self.read(obj)['profiles']['brain']['position_review'],good)
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.path=Path(self.tmp.name)/'snapshot.json'
     def tearDown(self):self.tmp.cleanup()
