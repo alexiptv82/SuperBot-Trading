@@ -1,3 +1,6 @@
+## IN_CORSO — 31/10: backup coordinato Brain PAPER
+ChatGPT Work riprende su base c23a0699ead68420d03d8c7d3399fc6766884f66, ramo previsto work/brain-coordinated-backup-20261031. Completa backup/restore isolato wallet, memoria, inbox e coda notifiche; preserva gli esiti incerti e non avvia servizi operativi. Utente conferma completamento degli aperti; motore LONG affidato ad altra AI, prompt già presente claude/prompt-long-engine-2026-10-31.md. Nessun deploy/merge/reset/API pagata autorizzato da questa fase.
+
 ## 31/10/2026 11:12 Europe/Rome — Conferme classici nell'app e notifiche Brain verificate offline
 
 FATTO/PREPARATO: servizio classici `work/classics-teaching-completion-20261031` HEAD `aff1191968723bfdeb54dd968dbd18bcc21c5036`, già verificato nel checkpoint precedente. App `work/brain-completion-app-20261031` HEAD `3ce2f9915c75e7cb76b60e97575d578af7db14d5`: API autenticata per Falco/Toro, pagina conferme, portafoglio/run/origine verificati e coda separata. Il test di contratto usa il vero producer classici fissato ad aff1191: chiusura salvata -> gruppo pubblicato -> POST autenticato -> consumo owner -> ricevuta confirmed -> esempio consultivo; la conferma lascia invariato il file del conto.
