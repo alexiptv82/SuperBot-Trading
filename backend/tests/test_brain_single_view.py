@@ -36,6 +36,27 @@ class SingleView(unittest.TestCase):
 
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.path=Path(self.tmp.name)/'snapshot.json'
+
+    def test_partial_review_preserves_readable_account(self):
+        obj=snapshot()
+        obj['account']['position_review']={'mode':'paper','status':'recorded',
+            'last':{'ts_ms':NOW,'reviewer_checked':True,
+                    'proposals':[{'symbol':'BTC','action':'SUGGEST_REDUCE','reason':'partial'}],
+                    'executed':[{'symbol':'BTC','action':'reduced'}]}}
+        value=self.read(obj)['profiles']['brain']
+        self.assertEqual(value['position_review'],obj['account']['position_review'])
+        self.assertEqual(value['cash'],2000.)
+
+    def test_attempt_whitelist_discards_untrusted_fields(self):
+        obj=snapshot();attempt={'ts_ms':NOW,'purpose':'review','provider':'deepseek',
+                               'status':'primary_failed','failure_code':'balance'}
+        obj['account']['ai_attempt']=dict(attempt,response_body='SYNTHETIC_SECRET_BODY')
+        self.assertEqual(self.read(obj)['profiles']['brain']['ai_attempt'],attempt)
+        for key,value in (('ts_ms',NOW+1),('provider','other'),('failure_code','free text')):
+            obj['account']['ai_attempt']=dict(attempt,**{key:value})
+            result=self.read(obj)
+            self.assertEqual(result['status'],'ok')
+            self.assertNotIn('ai_attempt',result['profiles']['brain'])
     def tearDown(self):self.tmp.cleanup()
     def read(self,obj=None,now=NOW,layout='single'):
         if obj is not None:self.path.write_text(json.dumps(obj))

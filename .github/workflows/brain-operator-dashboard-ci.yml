@@ -1,7 +1,7 @@
 name: Brain operator dashboard - offline
 on:
   push:
-    branches: [work/brain-operator-dashboard-20261030, work/brain-review-dashboard-20261031]
+    branches: [work/brain-operator-dashboard-20261030, work/brain-review-dashboard-20261031, work/brain-completion-app-20261031]
     paths: ['backend/**','frontend/**','.github/workflows/brain-operator-dashboard-ci.yml']
 permissions: {contents: read}
 jobs:

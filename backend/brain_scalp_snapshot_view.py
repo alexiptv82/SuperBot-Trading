@@ -116,6 +116,22 @@ def read_published_snapshot(path,now,layout="auto"):
             online=(not stale and _valid_number(heartbeat) and
                     0<=now-heartbeat<60000)
             item=dict(src)
+            attempt=src.get('ai_attempt')
+            if attempt is not None:
+                # This field never carries prompts, provider bodies or free text.
+                codes=('balance','auth','rate','network','http','truncated',
+                       'prompt_limit','invalid_response','unavailable',None)
+                if (isinstance(attempt,dict) and
+                    _valid_number(attempt.get('ts_ms')) and 0<attempt['ts_ms']<=obj['ts_ms'] and
+                    attempt.get('purpose') in ('entry','review') and
+                    attempt.get('provider') in ('deepseek','claude',None) and
+                    attempt.get('failure_code') in codes and
+                    attempt.get('status') in ('primary_failed','review_failed','review_required',
+                        'ready','analysis_failed','rejected_context','observed','applied',
+                        'processed','admitted','duplicate','wallet_error')):
+                    item['ai_attempt']={k:attempt.get(k) for k in
+                        ('ts_ms','purpose','provider','status','failure_code')}
+                else:item.pop('ai_attempt',None)
             review=src.get('position_review')
             if review is not None:
                 try:
@@ -128,8 +144,8 @@ def read_published_snapshot(path,now,layout="auto"):
                             or not 0<last['ts_ms']<=obj['ts_ms']
                             or type(last.get('reviewer_checked'))!=bool):
                             raise ValueError('review_time')
-                        for key,allowed in (('proposals',('HOLD','SUGGEST_CLOSE','SUGGEST_TIGHTEN')),
-                                            ('executed',('closed','stop_tightened'))):
+                        for key,allowed in (('proposals',('HOLD','SUGGEST_CLOSE','SUGGEST_REDUCE','SUGGEST_TIGHTEN')),
+                                            ('executed',('closed','reduced','stop_tightened'))):
                             rows=last.get(key)
                             if (not isinstance(rows,list) or len(rows)>10 or any(
                                 not isinstance(r,dict) or not isinstance(r.get('symbol'),str)

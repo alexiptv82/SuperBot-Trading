@@ -1,14 +1,26 @@
 import React from 'react';
 
 const labels={HOLD:'Mantieni',SUGGEST_CLOSE:'Proposta di chiusura',
+  SUGGEST_REDUCE:'Proposta di riduzione',reduced:'Riduzione PAPER eseguita',
   SUGGEST_TIGHTEN:'Proposta di stop più stretto',closed:'Chiusura PAPER eseguita',
   stop_tightened:'Stop aggiornato'};
 
-export default function BrainPositionReview({review,stale}) {
+const failures={balance:'Credito esaurito',auth:'Accesso API non autorizzato',
+  rate:'Limite richieste raggiunto',network:'Rete o risposta non disponibile',
+  http:'Errore del provider',truncated:'Risposta incompleta',
+  prompt_limit:'Contesto oltre il limite',invalid_response:'Risposta non valida',
+  unavailable:'Provider non disponibile'};
+
+export default function BrainPositionReview({review,attempt,stale}) {
   const known=review&&['off','paper','unknown'].includes(review.mode);
   const last=review?.status==='recorded'?review.last:null;
   return <section aria-label="Revisione AI posizioni" style={{border:'1px solid #334155',borderRadius:14,padding:14,marginBottom:12}}>
     <strong>Gestione AI delle posizioni</strong>
+    {attempt?.failure_code&&<p role="status">
+      {stale?'Ultimo errore registrato':'Errore nell’ultima analisi'}: {attempt.provider==='deepseek'?'DeepSeek':attempt.provider==='claude'?'Claude':'AI'}
+      {' · '}{failures[attempt.failure_code]||'Analisi non disponibile'}
+      {' · '}{new Date(attempt.ts_ms).toLocaleString('it-IT')}. Nessuna azione da questa risposta.
+    </p>}
     <p>{stale?'Stato storico · aggiornamento necessario':!known||review.mode==='unknown'
       ?'Stato automatico non disponibile':review.mode==='paper'
       ?'Gestione automatica PAPER abilitata':'Gestione automatica spenta'}</p>
