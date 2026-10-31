@@ -1,0 +1,11 @@
+# 31/10/2026 — ChatGPT audit Grok LONG RealData Research 01
+
+Utente ha caricato SuperBot_Long_RealData_Research_01.zip per audit della Fase 2. SHA256 archivio 2d7b3c1611eab242350e49ab7ccfc1d04a54786751e01586dc33d06f9fec4c6c; 9 file. Manifesto: 8/8 payload validi, autohash SHA256SUMS.txt sbagliato (usa l'hash del file vuoto). Baseline SuperBot_Long_Lab_v6_1_1.zip hash 0c1ff499673aa5923444b66baae26cb5f98009973a3ea19fee27a8b620bd686e, compatibile con gate software. Suite baseline 82/82 PASS.
+
+Replay indipendente sul btc_sample.json: 200 barre 1m (=3h20), trades=0, PnL=0, final_equity=1000; verify_run(result,dataset)=PASS. **Tutte le 200 decisioni NO_TRADE sono provocate da warmup insufficiente: 21 WARMUP_1m, 179 WARMUP_15m. Nessun segnale effettivamente valutabile.** Il test non misura la performance della strategia.
+
+Provenienza: 4 pagine 1H/4H BTC/ETH descritte con hash e timestamp, ma raw HTTP bytes assenti dallo ZIP; 1m e 15m BTC non presenti nel provenance per pagina. Campione BTC dichiara availability='observed' per 800 barre, sebbene disponibile solo l'ipotesi close+1000ms. Timestamp di download sample 2026-10-31 18:18:12 UTC; una candela per 1m/15m/1h/4h chiude dopo il download (18:19/18:30/19:00/20:00 UTC): non sono finali al momento del download. 13 aggregazioni 15m e 3 aggregazioni 1h sulle sovrapposizioni 1m risultano coerenti, ma non certificano fonte Bitget.
+
+Dicitura Grok data_provenance VERIFIED non verificabile con prove allegate. OOS 30gg non eseguito, funding/spread storici non reali, leva/liquidazione non modellate, nessun confronto LONG+SHORT. Verdetti: LAB SOFTWARE OFFLINE OK; RESEARCH 01 NOT_TESTABLE per analisi economica; provenienza solo dichiarata; BRAIN_ADVISORY / HAWK_LONG_SHADOW / BULL_LONG_SHADOW NON APPROVATI a integrazione; PAPER_ELIGIBLE NO.
+
+Creati in chat e scaricabili: AUDIT_LONG_REALDATA_RESEARCH_01_2026-10-31.md, PROMPT_GROK_LONG_FASE2_RICERCA_DATI_COMPLETI_2026-10-31.md, LONG_RESEARCH_01_REPLAY_RIPRODOTTO.json, LONG_RESEARCH_01_AUDIT_MACHINE_SUMMARY.json, PACCHETTO_REVISIONE_LONG_REALDATA_01_PER_GROK.zip. Prompt a Grok per Research 02: congelare v6.1.1, acquisire dati raw verificabili con adeguato warmup e holdout, conteggio eligible decision e guardie, OOS/famiglie e gate distinti. Nessun deploy/merge/VPS/ordine/SHORT/codice del Brain modificato; solo checkpoint diario.
