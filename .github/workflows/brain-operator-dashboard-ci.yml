@@ -1,7 +1,7 @@
 name: Brain operator dashboard - offline
 on:
   push:
-    branches: [work/brain-operator-dashboard-20261030]
+    branches: [work/brain-operator-dashboard-20261030, work/brain-review-dashboard-20261031]
     paths: ['backend/**','frontend/**','.github/workflows/brain-operator-dashboard-ci.yml']
 permissions: {contents: read}
 jobs:
@@ -13,13 +13,13 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - run: pip install pytest fastapi httpx numpy
-      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_operator_api.py
+      - run: PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_operator_api.py backend/tests/test_brain_single_view.py
       - uses: actions/setup-node@v4
         with: {node-version: '20'}
       - run: npm install --global yarn@1.22.22
       - run: yarn install --frozen-lockfile --non-interactive
         working-directory: frontend
-      - run: CI=true yarn test --watchAll=false --runInBand BrainScalpDashboard BrainScalpSimple BrainOperatorReviews
+      - run: CI=true yarn test --watchAll=false --runInBand BrainScalpDashboard BrainScalpSimple BrainOperatorReviews BrainPositionReview
         working-directory: frontend
       - run: yarn build
         working-directory: frontend
