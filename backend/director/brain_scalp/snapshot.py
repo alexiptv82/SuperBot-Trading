@@ -131,7 +131,7 @@ def read_snapshot(path,now,stale_after_ms=60000):
 
 
 
-def build_account_snapshot(account,now,markets=None):
+def build_account_snapshot(account,now,markets=None,*,position_actions=None):
     """v2 single account: readable PAPER positions and bounded actual close history.
 
     Mark estimates require a timely quote; no stale, absent or fabricated P&L.
@@ -202,5 +202,26 @@ def build_account_snapshot(account,now,markets=None):
     value['recent_closed_wins']=sum(t['net']>0 for t in latest)
     value['recent_closed_losses']=sum(t['net']<0 for t in latest)
     value['recent_closed_net_usd']=round(sum(t['net'] for t in latest),4)
+    review={'mode':position_actions if position_actions in ('off','paper') else 'unknown',
+            'status':'none','last':None}
+    row=engine.store.db.execute("SELECT ts,body FROM events WHERE kind='ai_position_review_observed' ORDER BY seq DESC LIMIT 1").fetchone()
+    if row:
+        try:
+            event=json.loads(row[1])
+            if type(row[0])!=int or not 0<row[0]<=now:
+                raise ValueError('invalid_review_time')
+            proposals=[{'symbol':str(r['symbol'])[:20],
+                        'action':r['action'],'reason':str(r.get('reason',''))[:220]}
+                       for r in event['reviews'][:10]
+                       if r.get('action') in ('HOLD','SUGGEST_CLOSE','SUGGEST_TIGHTEN')]
+            executed=[{'symbol':str(r['symbol'])[:20],'action':r['action']}
+                      for r in event.get('executed',[])[:10]
+                      if r.get('action') in ('closed','stop_tightened')]
+            review.update(status='recorded',last={'ts_ms':row[0],
+                'reviewer_checked':event.get('reviewed') is True,
+                'proposals':proposals,'executed':executed})
+        except (ValueError,TypeError,KeyError,AttributeError):
+            review.update(status='unavailable')
+    value['position_review']=review
     return {'schema_version':2,'paper':True,'read_only':True,'ts_ms':now,
             'account':value}
