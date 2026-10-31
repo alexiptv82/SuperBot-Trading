@@ -1,5 +1,13 @@
 
 
+## 31/10/2026 — Posizione PAPER temporanea con quotazioni reali
+PREPARATO: ramo work/brain-resume-verification-20261031, codice test 462bf17c04e014104a5e866a86f747045af46239. Esteso smoke_brain_public_snapshot.py: proposta SINTETICA LONG, prezzi/contratti/candele BTC Bitget reali, apertura tramite motore PAPER, snapshot e lettore app pin23fc151. Nessuna scelta AI reale o modifica runtime.
+VERIFICATO: 119 barre chiuse 1m e119 5m contigue e recenti, quote età132ms; posizione visibile con stima P&L, richiesta review costruita; prezzo mancante o vecchio11s => P&L indisponibile e review_no_fresh_positions; snapshot scaduto dopo62s => offline. Letture e richieste review non modificano ledger. Primo tentativo al margine100 rifiutato correttamente perché normalizzazione lotto scendeva a99,58; fixture portata a110, limiti motore invariati. 21 test locali PASS Python3.12.14 (esecuzione+contratto app). CI nuova41170927837 avviata, ancora in corso al checkpoint; precedente41170668794 verde non sostituisce verifica nuovoHEAD.
+RILASCIATO: nulla, zero API AI/ordini exchange/deploy/reset, solo conto temporaneo eliminato a fine prova; storici produzione intatti, gestione AI default off.
+APERTO: snapshot e dashboard non espongono ancora esito revisione AI; da aggiungere contratto read-only e UI. Restano failure del ciclo protettivo con feed reale, riconciliazione Work precedente/riduzioni parziali, Telegram, configurazione mandato/costi e staging. Non prova browser/VPS, profitto o capacità decisionale provider. Prossimo: telemetria revisioni nel contratto servizio/app e relativi test; verificare CI41170927837. Riepilogo di ripresa con fonti accessibili, non esportazione completa chat.
+
+
+
 ## 31/10/2026 — Work: restore e feed pubblico fino a snapshot app verificati
 FATTO/PREPARATO: ramo work/brain-resume-verification-20261031, HEAD c637650b4bafd91cda726796a21bce0b4c212df9. Test restore pubblicato tramite GitHub (00905f7); smoke riproducibile backend/tests/smoke_brain_public_snapshot.py (8c6ab2a). Nessuna modifica runtime. Vecchio ramo Work locale 750f06c conservato e ancora da riconciliare funzionalmente.
 TEST: suite locale 89 PASS +21 subtest e contratto app 4 PASS su Python 3.12.14. Rettifica resoconto precedente: i test LOCALI erano su Python 3.12, non 3.11. GitHub Actions 41170668794 SUCCESS su matrice Python 3.10/3.11, test restore e contratto app fissato a 23fc151f17395bd77bba7446ca70617bc958836c, guardia moduli originali superata.
