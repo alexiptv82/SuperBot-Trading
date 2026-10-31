@@ -237,6 +237,20 @@ class PaperPositionExecution(TestCase):
             finally:
                 restored.close()
 
+    def test_snapshot_distinguishes_proposal_from_execution_and_mode(self):
+        from director.brain_scalp.snapshot import build_account_snapshot
+        req=self.request();result=self.analysis(req,review_action='HOLD')
+        self.apply(req,result)
+        before=self.wallet.brain.store.load()
+        summary=build_account_snapshot(self.wallet,self.now,markets(self.now),
+            position_actions='paper')['account']['position_review']
+        self.assertEqual(summary['mode'],'paper')
+        self.assertEqual(summary['status'],'recorded')
+        self.assertTrue(summary['last']['reviewer_checked'])
+        self.assertEqual(summary['last']['executed'],[])
+        self.assertEqual(self.wallet.brain.store.load(),before)
+        self.assertEqual(build_account_snapshot(self.wallet,self.now)['account']['position_review']['mode'],'unknown')
+
     def test_service_defaults_off_and_requires_explicit_paper_mode(self):
         from pathlib import Path
         from backend.tests.test_brain_single_integration import setup_env
