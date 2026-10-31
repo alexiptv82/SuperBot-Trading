@@ -2,6 +2,7 @@ import React, {useEffect,useState} from 'react';
 import {Link} from 'react-router-dom';
 import {brainAPI} from '../api';
 import BrainOperatorReviews from '../components/BrainOperatorReviews';
+import BrainPositionReview from '../components/BrainPositionReview';
 
 // A deliberately compact, mobile-first PAPER portfolio view in the style of
 // the classical trading desk. Financial values are never reconstructed from
@@ -123,6 +124,7 @@ function Wallet({name,data,historical}) {
         <div><strong>{d.positions?.length??0}/{d.max_slots??'—'}</strong><div style={small}>Slot occupati</div></div>
         <div style={{textAlign:'right'}}><strong>{d.pending?.length??0}</strong><div style={small}>Piani in attesa</div></div>
       </div>
+      {single&&<BrainPositionReview review={d.position_review} stale={historical}/>}
       {single&&<BrainOperatorReviews/>}
       <div role="tablist" aria-label="Sezioni conto Brain" style={{display:'flex',gap:5,overflowX:'auto',marginBottom:12}}>
         {tabs.map(([id,text])=><button key={id} role="tab" aria-selected={tab===id}
