@@ -116,8 +116,8 @@ def test_bad_teaching_evidence_does_not_block_a_financial_close():
 def test_confirmed_examples_reach_optional_ai_context_without_rule_changes():
     from backend.tests.test_desk import _sandbox,_frozen_clock,_cut_stub,NOW as START
     seen=[];inner=_cut_stub()
-    def capture(system,user,**kwargs):
-        seen.append(user);return inner(system,user,**kwargs)
+    def capture(system,user,*args,**kwargs):
+        seen.append(user);return inner(system,user,*args,**kwargs)
     with _sandbox(capture),_frozen_clock(START),patch.dict(os.environ,{'DESK_MANUAL_TEACHING':'on'}):
         state={'manual_operator_preferences':[{'event_id':'OBSERVATION_MARKER','training_applied':False}]}
         cli.run_cycle(state,START)
