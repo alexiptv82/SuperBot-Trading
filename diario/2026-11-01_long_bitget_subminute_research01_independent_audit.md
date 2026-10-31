@@ -1,0 +1,17 @@
+# 2026-11-01 — SuperBot LONG: audit Bitget Subminute Research 01
+
+**Ambito:** solo analisi dati offline; nessuna modifica a LONG V6.1.1 o simulatore R1/R2 congelati, Brain/Falco/Toro/SHORT, wallet/capitale, VPS, PAPER/LIVE, branch operativi.
+
+**ZIP ricevuto:** SuperBot_Long_Bitget_Subminute_Research_01.zip, SHA256 `6a0e66200183c5a2f4ae0bc51008919ac5a52662ac008090ec2674950eca319f`. ZIP CRC OK, 18 entries; manifesto 17/18 OK: 17/17 file nonself integri, SHA256SUMS.txt include erroneamente il proprio hash che NON corrisponde (difetto self-hash).
+
+**REST documentata** /api/v3/market/fills e /api/v3/market/orderbook, category=USDT-FUTURES, BTCUSDT ETHUSDT. Payload salvati: BTC 100 trade + 1 book, ETH 100 trade +1 book; 4 risposte dichiarate 200/00000, hash/URL interni coerenti. Due snapshots bid/ask: BTC 77481.0 / 77481.1, ETH 2254.25 / 2254.26. Delta book exchange timestamp→local receipt 23/22 ms NON certificato (clock non NTP); HTTP request→receipt 208-234ms. Normalizzato REST INCOMPLETO: appena 12/200 (11 BTC, 1 ETH), entrambi prefissi esatti dei raw.
+
+**WS**: sei frame grezzi con hash interni OK; 5 ACK (BTC books1/publicTrade/kline, ETH books1/publicTrade), 1 frame publicTrade BTC contenente 50 trade, ma appena 10 normalizzati, prefisso; nessun messaggio books1 data e nessuna kline/candela chiusa. Frame WS trade presenta eventi exchange avvenuti da 1.834 a 32.972 secondi prima della ricezione del frame: non assimilare a latenza rete. Log 3 errori OSError Input/output error (2 REST fills, 1 WS); il collector originario usa un unico except per request, parsing e file writes, quindi NON si può attribuirli tutti al network: probable scrittura interrotta, causa non dimostrata.
+
+**Provenienza**: payload compatibili con struttura documentata ufficiale Bitget, raw e SHA coerenti; origine indipendente esterna NON verificata da un live cross-check. Data capture reale self-reported YES, bid/ask REST solo snapshot, WS books1 data NO. Storico non scaricato.
+
+**Recupero OFFLINE senza inventare dati:** creati 250 trade (100 BTC REST, 100 ETH REST, 50 BTC WS) dai raw: TRADE_BITGET_RESEARCH01_RICOSTRUITI_DAI_RAW.jsonl, SHA256 `bf3badf8edc1acbad68cf85cfaa68095e0589b5db664982d967520f26739dfc7`. Distingue exchange trade timestamp e batch payload receipt, tutti marcati RECONSTRUCTED_OFFLINE_FROM_SAVED_RAW, non broker fill, non executable quotes. Non prova eseguibilità LONG.
+
+**Artefatti consegnati in chat:** AUDIT_INDIPENDENTE_BITGET_SUBMINUTE_RESEARCH_01_2026-11-01.md SHA256 `3168e3d59da107185757111de33bb309d3ba4c90e69eb138a733f0c4f907aefe`; PACCHETTO_AUDIT_BITGET_SUBMINUTE_RESEARCH01_PER_GROK.zip SHA256 `ffbd40d3d6e10452d401493209c9088e7d9a6ff244e925103ae089f010bb4a0e`, con script di verifica, ricostruzione, 250 trade, JSON di prove, report e prompt Research 02. Nuovo ZIP manifesto 6/6 validi, senza self hash.
+
+**Veredetto:** RAW_INTERNAL_INTEGRITY 17/17 PASS, MANIFEST_SELF_HASH FAIL, NORMALIZATION_COMPLETENESS FAIL, LIVE_BBO_STREAM NO, CLOSED_WS_1M NO, INDEPENDENT_DATA_PROVENANCE NOT_VERIFIED, REAL_EXECUTION UNVERIFIED, ECONOMIC_EVIDENCE INSUFFICIENT, PAPER_ELIGIBLE NO. Prossimo Grok Research 02: sanare recorder/normalizer senza toccare motore congelato, raw→normalized 100%, audit errori per fase, raccogliere serie live books1 con real receipt ed evidenza clock sync. Nessun replay economico finché manca un book causale.
