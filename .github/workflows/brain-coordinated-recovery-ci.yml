@@ -1,0 +1,37 @@
+name: Brain coordinated recovery offline
+on:
+  push:
+    branches: [work/brain-coordinated-backup-20261031]
+    paths:
+      - backend/director/brain_scalp/recovery_bundle.py
+      - backend/tests/test_brain_recovery_bundle.py
+      - .github/workflows/brain-coordinated-recovery-ci.yml
+permissions: {contents: read}
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install numpy pytest fastapi httpx
+      - name: Recovery and component regressions (no network)
+        run: >-
+          PYTHONPATH=backend python -m pytest -q
+          backend/tests/test_brain_recovery_bundle.py
+          backend/tests/test_brain_notification_outbox.py
+          backend/tests/test_brain_single_integration.py
+          backend/tests/test_brain_operator.py
+          backend/tests/test_brain_operator_inbox.py
+          backend/tests/test_brain_manual_preferences.py
+          backend/tests/test_brain_resume.py
+      - name: Existing components unchanged from verified base
+        run: |
+          git diff --exit-code c23a0699ead68420d03d8c7d3399fc6766884f66 HEAD -- backend/desk backend/director/brain_free backend/director/brain_scalp/service.py backend/director/brain_scalp/supervisor.py backend/director/brain_scalp/engine.py backend/director/brain_scalp/scanner.py frontend deploy
