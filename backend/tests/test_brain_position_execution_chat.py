@@ -255,6 +255,29 @@ class PaperPositionExecution(TestCase):
         finally:
             supervisor.close()
 
+    def test_health_write_failure_does_not_hide_committed_close(self):
+        from unittest.mock import patch
+        supervisor=PaperSupervisor(self.wallet,primary_call=lambda s,u:reply(s,u),
+            reviewer_call=lambda s,u:reply(s,u),clock_ms=lambda:self.now,
+            daily_budget_micro_usd=200,reservation_micro_usd=100,
+            analysis_interval_ms=1000,position_actions='paper')
+        original=self.wallet.brain.store.commit
+        def commit(state,now,events):
+            if any(e.get('kind')=='ai_attempt_completed' for e in events):
+                raise OSError('synthetic telemetry outage')
+            return original(state,now,events)
+        try:
+            supervisor.step(markets(self.now),CONTRACTS)
+            supervisor.future.result(timeout=5);self.now+=1000
+            with patch.object(self.wallet.brain.store,'commit',side_effect=commit):
+                outcome=supervisor.step(markets(self.now),CONTRACTS)
+            self.assertEqual(outcome['position_review']['status'],'applied')
+            self.assertEqual(outcome['ai_attempt_status'],'unavailable')
+            self.assertEqual(len(self.events('trade_closed')),1)
+            self.assertNotIn('BTC',self.wallet.brain.store.load()['positions'])
+            self.assertIsNone(supervisor.future)
+        finally:supervisor.close()
+
     def test_backup_integrity_includes_one_close_and_one_review(self):
         from pathlib import Path
         import sqlite3

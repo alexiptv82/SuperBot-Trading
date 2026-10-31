@@ -133,9 +133,14 @@ class PaperSupervisor:
                                 else 'claude' if getattr(analysis,'status',None)=='review_failed' else None),
                     'failure_code':getattr(analysis,'failure_code',None)}
                 if healthy:
-                    latest=self.account.brain.store.load()
-                    latest['last_ai_attempt']=attempt
-                    self.account.brain.store.commit(latest,now,[dict(attempt,kind='ai_attempt_completed')])
+                    try:
+                        latest=self.account.brain.store.load()
+                        latest['last_ai_attempt']=attempt
+                        self.account.brain.store.commit(latest,now,[dict(attempt,kind='ai_attempt_completed')])
+                    except Exception:
+                        # Financial receipt is already authoritative. A health
+                        # telemetry failure must never imply that a close failed.
+                        output['ai_attempt_status']='unavailable'
                 output['ai_attempt']=attempt
             else:
                 output['analysis_status']=('expired_waiting_for_transport' if
