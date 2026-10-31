@@ -25,7 +25,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - uses: actions/checkout@v4
         with:
-          ref: 23fc151f17395bd77bba7446ca70617bc958836c
+          ref: 0065868712ac4f0bd2e7626c10b06237fbb73dec
           path: contract-app
           persist-credentials: false
       - run: python -m pip install numpy pytest fastapi httpx
