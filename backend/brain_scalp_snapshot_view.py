@@ -116,6 +116,30 @@ def read_published_snapshot(path,now,layout="auto"):
             online=(not stale and _valid_number(heartbeat) and
                     0<=now-heartbeat<60000)
             item=dict(src)
+            review=src.get('position_review')
+            if review is not None:
+                try:
+                    if (not isinstance(review,dict) or review.get('mode') not in ('off','paper','unknown')
+                        or review.get('status') not in ('none','recorded','unavailable')):
+                        raise ValueError('review_schema')
+                    last=review.get('last')
+                    if review['status']=='recorded':
+                        if (not isinstance(last,dict) or not _valid_number(last.get('ts_ms'))
+                            or not 0<last['ts_ms']<=obj['ts_ms']
+                            or type(last.get('reviewer_checked'))!=bool):
+                            raise ValueError('review_time')
+                        for key,allowed in (('proposals',('HOLD','SUGGEST_CLOSE','SUGGEST_TIGHTEN')),
+                                            ('executed',('closed','stop_tightened'))):
+                            rows=last.get(key)
+                            if (not isinstance(rows,list) or len(rows)>10 or any(
+                                not isinstance(r,dict) or not isinstance(r.get('symbol'),str)
+                                or len(r['symbol'])>20 or r.get('action') not in allowed
+                                or ('reason' in r and (not isinstance(r['reason'],str) or len(r['reason'])>220))
+                                for r in rows)):
+                                raise ValueError('review_rows')
+                    elif last is not None:raise ValueError('review_last')
+                except (ValueError,TypeError):
+                    item['position_review']={'mode':'unknown','status':'unavailable','last':None}
             if single:
                 item['net_pnl_vs_initial']=None if equity is None else equity-src['initial_cash']
             item.update(name=name,status='ok',available=True,online=bool(online),
