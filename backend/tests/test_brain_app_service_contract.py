@@ -10,6 +10,28 @@ from director.brain_scalp.operator_inbox import OperatorInbox
 from backend.tests import test_brain_operator as fixtures
 from backend.tests.test_brain_resume import NOW,markets
 
+def test_committed_ai_close_is_visible_as_execution_in_app(tmp_path):
+    from backend.tests.test_brain_position_execution_chat import PaperPositionExecution
+    from director.brain_scalp.snapshot import build_account_snapshot,atomic_write
+    from brain_scalp_snapshot_view import read_published_snapshot
+    case=PaperPositionExecution();case.setUp()
+    try:
+        request=case.request()
+        case.apply(request,case.analysis(request))
+        before=case.wallet.brain.store.load()
+        path=tmp_path/'snapshot.json'
+        atomic_write(path,build_account_snapshot(case.wallet,case.now,
+                     markets(case.now),position_actions='paper'))
+        view=read_published_snapshot(path,case.now,layout='single')
+        review=view['profiles']['brain']['position_review']
+        assert review['mode']=='paper'
+        assert review['last']['reviewer_checked'] is True
+        assert review['last']['proposals'][0]['action']=='SUGGEST_CLOSE'
+        assert review['last']['executed'][0]=={'symbol':'BTC','action':'closed'}
+        assert case.wallet.brain.store.load()==before
+    finally:
+        case.tearDown()
+
 @pytest.mark.parametrize('choice',['yes','no'])
 def test_published_review_to_api_receipt_and_next_analysis(tmp_path,monkeypatch,choice):
     case=fixtures.ManualClose();case.setUp()
