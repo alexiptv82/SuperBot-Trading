@@ -1,0 +1,13 @@
+# SuperBot LONG R1/R2 Patch 01 — audit indipendente Grok verificato e freeze sintetico
+Data 2026-11-01. Tutti i controlli eseguiti OFFLINE. Nessuna modifica a LONG V6.1.1, Brain, Falco, Toro, SHORT, VPS, wallet, protezioni capitale. Nessun merge, deploy, PAPER o LIVE.
+
+**Audit Grok:** SuperBot_Long_R1_R2_Patch_01_Independent_Audit.zip SHA256 1eecc40afbf243e84e85cc23a4def06f67b60ab641dc8ff0c9243354fdbe6741. CRC OK, SHA256SUMS 3/3 OK. 22/22 test nuovi riprodotti.
+**Patch verificata:** SuperBot_Long_TC024_R1_R2_Patch_01.zip SHA256 3342022e94c5e852062a7f24f235d12f3d4fa70b368b86b6a5a88a694cc8ad36. CRC OK, manifest 86/86. 163/163 runner + 21/21 acceptance + 6/6 mode +15/15 additional = **205/205 PASS**. Dei 163, **21 legacy** non sono test strict. Baseline V6.1.1 SHA256 0c1ff499673aa5923444b66baae26cb5f98009973a3ea19fee27a8b620bd686e, 82/82 nel runner.
+
+R1_ENTRY_AUTHORIZATION e R2_LEDGER_ISOLATION: **PASS** secondo il contratto di accettazione consolidato e il threat model cooperativo in-memory. Anche ledger snapshots, fake payload, fee, TTL, latenza testati da Grok.
+
+Controllo temporale ChatGPT supplementare: 1/2 test PASS; il test fallito richiede quote_receipt >= pending_receipt, ma QUESTA REGOLA NON è nella SPEC_ACCETTAZIONE_R1_R2 consolidata. Il gate approvato è ts >= max(as_of, available_at, pending.received_at, tick.received_at)+latency e quote.available_at <= quote.received_at <= ts < valid_until. Non è nuovo bug R1/R2. La docstring introduttiva del codice ha ordine più restrittivo ed è da armonizzare senza retroagire su comportamento. Quote già ricevute prima del PENDING possono essere note al momento di esecuzione, ma freschezza/eseguibilità non provate da sintetico.
+
+**Decisione:** congelamento APPROVATO **esclusivamente come baseline di ricerca sintetica** fissando i hash sopra, senza trasferimento in branch operativi. Non certificato per broker e non idoneo PAPER. REAL_EXECUTION UNVERIFIED, ECONOMIC_EVIDENCE INSUFFICIENT, PAPER_ELIGIBLE NO. Prossima fase: fattibilità e provenienza di vere quote/tick Bitget sub-minuto, no lookahead, separazione exchange/receive/execute time, freshness, bid/ask, fee, slippage e liquidità. Ulteriori cambi al codice richiedono ticket separato e autorizzazione.
+
+Artefatti scaricabili in chat: VERIFICA_FINALE_GROK_PATCH_R1_R2_FREEZE_SINTETICO_2026-11-01.md SHA256 906bd11120097e3d2504dbe26a2fc9967fc87f14e69abb8fee2be02bccbd2f67; PACCHETTO_VERIFICA_FINALE_R1_R2_PATCH01.zip SHA256 c8aaae87fc0f5209d4df43ba357a706d4a83823cfa495b8e023e7bc0957f0976.
