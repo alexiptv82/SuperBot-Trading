@@ -26,7 +26,7 @@ def validate_feed_snapshot(markets, contracts):
             bars={}
         # Only the existing engine decides whether these series are complete
         # and causal. A missing frame is left missing rather than fabricated.
-        m['bars']={tf:list(bars.get(tf) or ()) for tf in ('1m','5m')}
+        m['bars']={tf:list(bars.get(tf) or ()) for tf in ('1m','5m','15m','1H','4H')}
         q=m.get('quote')
         if not isinstance(q,dict):
             m.pop('quote',None)
