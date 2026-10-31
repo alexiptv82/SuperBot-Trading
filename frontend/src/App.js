@@ -13,6 +13,7 @@ import LiveTrades from './pages/LiveTrades';
 import LivePerformance from './pages/LivePerformance';
 import BrainDashboard from './pages/BrainDashboard';
 import BrainScalpDashboard from './pages/BrainScalpDashboard';
+import ClassicalManualReviews from './pages/ClassicalManualReviews';
 
 // Error boundary globale: cattura qualsiasi crash di render nell'albero React
 // e mostra un messaggio utile invece della schermata nera.
@@ -98,8 +99,10 @@ export default function App() {
       <AppProvider>
         <BrowserRouter>
           <PasswordBanner />
+          <div style={{padding:'8px 16px',textAlign:'right'}}><Link to="/manual-reviews">Conferma le tue chiusure · Falco e Toro</Link></div>
           <div style={{ paddingBottom: '75px' }}>
             <Routes>
+            <Route path="/manual-reviews" element={<ClassicalManualReviews />} />
               {/* ── Sezione PAPER (soldi simulati) ── */}
               <Route path="/" element={<Dashboard />} />
               <Route path="/trades" element={<Trades />} />

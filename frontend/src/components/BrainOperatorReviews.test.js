@@ -66,3 +66,16 @@ test('unmount aborts pending requests and cancels timers',async()=>{
   expect(signal.aborted).toBe(true);expect(jest.getTimerCount()).toBe(0);
   root=createRoot(host);
 });
+
+test('classical confirmation uses its portfolio endpoint and exact account scope',async()=>{
+  const classic={...groups,account_id:'desk-hawk-paper-run-8'};
+  global.fetch.mockImplementation(url=>reply(url.includes('/result/')?{status:'confirmed'}:url.endsWith('/confirm')?{status:'pending'}:classic));
+  await act(async()=>root.render(<BrainOperatorReviews basePath="/api/desk/operator/hawk" owner="Falco" accountScoped/>));
+  await click();await click();
+  const posts=global.fetch.mock.calls.filter(([url])=>url.endsWith('/confirm'));
+  expect(posts).toHaveLength(1);
+  expect(posts[0][0]).toBe('/api/desk/operator/hawk/confirm');
+  expect(JSON.parse(posts[0][1].body).account_id).toBe('desk-hawk-paper-run-8');
+  await advance(5000);
+  expect(host.textContent).toContain('Conferma registrata da Falco');
+});

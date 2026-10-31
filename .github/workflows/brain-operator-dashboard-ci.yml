@@ -15,10 +15,15 @@ jobs:
           ref: 547c475d8f469e2c98c6f3ca9ed1787535d53824
           path: contract-producer
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: aff1191968723bfdeb54dd968dbd18bcc21c5036
+          path: contract-classics
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - run: pip install pytest fastapi httpx numpy
-      - run: BRAIN_TEST_CORE_ROOT=$GITHUB_WORKSPACE/contract-producer PYTHONPATH=backend python -m pytest -q backend/tests/test_brain_operator_api.py backend/tests/test_brain_single_view.py
+      - run: CLASSICS_TEST_ROOT=$GITHUB_WORKSPACE/contract-classics BRAIN_TEST_CORE_ROOT=$GITHUB_WORKSPACE/contract-producer PYTHONPATH=backend python -m pytest -q backend/tests/test_classical_operator_api.py backend/tests/test_brain_operator_api.py backend/tests/test_brain_single_view.py
       - uses: actions/setup-node@v4
         with: {node-version: '20'}
       - run: npm install --global yarn@1.22.22

@@ -470,6 +470,8 @@ from brain_scalp_api import register as register_brain_scalp
 register_brain_scalp(app, require_session)
 from brain_operator_api import register as register_brain_operator
 register_brain_operator(app, require_session)
+from classical_operator_api import register as register_classical_operator
+register_classical_operator(app, require_session)
 
 # Serve frontend React se la cartella build esiste
 frontend_build = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'build')
