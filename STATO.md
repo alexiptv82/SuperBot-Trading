@@ -1,3 +1,6 @@
+## IN_CORSO — 31 ottobre: completamento Brain/classici e incarico LONG separato
+Utente autorizza completamento degli aperti. ChatGPT Work owner del completamento, ramo work/brain-completion-20261031 base288c838d062bdbf9fdfaddbfbf646367d3351b42. Prima fase: errori visibili del ciclo AI, riconciliazione riduzioni parziali, poi integrazione classici e ricerca/valutazione sperimentale. Nuovo motore LONG affidato dall'utente ad altra AI: progettazione isolata e consiglio consultivo per Brain; preservare SHORT e non modificare signals.py in parallelo. Preparare prompt con contratto e validazione fuori campione. Deploy/avvio restano oggetto dell'esame finale richiesto dall'utente; nessun reset, PAPER e storici preservati.
+
 
 
 ## 31/10/2026 — Telemetria revisioni AI collegata alla dashboard, verifiche verdi
