@@ -54,3 +54,22 @@ PROSSIMO PASSO: integrare la gestione degli errori e la riconciliazione delle az
 
 AI: checkpoint automatico ChatGPT Work
 
+
+
+---
+
+## 31/10/2026 08:52 Europe/Rome — Teaching classici recuperabile e conferme isolate verificati offline
+
+Novità verificata dopo il checkpoint precedente tramite commit e GitHub Actions. Delle chat sono accessibili soltanto i messaggi recenti forniti a questo run; non è disponibile un'esportazione completa. Questo resta un riepilogo di ripresa.
+
+FATTO/PREPARATO: nuovo ramo `work/classics-teaching-completion-20261031`, HEAD `aff1191968723bfdeb54dd968dbd18bcc21c5036`. Il commit funzionale `148bd1c3d66ed858ab2f7d7b093f1fe5f239874a` aggiunge per Falco/Toro una ricevuta teaching nello stato PAPER prima del salvataggio, persistenza sincronizzata su disco, recovery esclusivamente da chiusure già salvate e registrazione idempotente. Le conferme yes/no usano una coda SQLite separata, sono vincolate a portafoglio, conto e numero di run, scadono, e un esito incerto non viene ripetuto automaticamente. Gli esempi positivi confermati restano osservazioni contestuali (`training_applied=false`), consultabili solo con `DESK_MANUAL_TEACHING=on`; default off e modalità rules-only non avviano AI. Scorer, segnali, engine, rischio, Brain, frontend e deploy sono congelati dalla guardia CI.
+
+TEST: il primo run `41182181964` è fallito per una firma dello stub di test non compatibile con gli argomenti posizionali reali; nessun difetto operativo è stato nascosto. Il commit `aff1191968723bfdeb54dd968dbd18bcc21c5036` corregge soltanto lo stub. GitHub Actions `41182205012` SUCCESS su Python 3.10 e 3.11: 120 test PASS per interprete; guardia dei componenti congelati PASS. Verificati anche: chiusura PAPER salvata -> recovery senza ripetere la chiusura -> conferma autenticata/scoped -> memoria consultabile; errore teaching non blocca la persistenza finanziaria; run diversa rifiutata; wallet non modificato dalla conferma.
+
+RILASCIATO: nulla. Codice solo su ramo di lavoro, opt-in default off. Nessun merge, deploy, reset, istanza o messaggio Telegram reale, modifica wallet o API pagata. PAPER, journal, memoria e storici preservati.
+
+PROBLEMI/APERTI: collegare e collaudare l'app/Telegram alle code dei due portafogli con mount e autenticazione reali; riconciliare manualmente eventuali esiti `needs_reconciliation`; completare analisi multitimeframe, ricerca e valutazione fuori campione, mandato/rischi/budget/provider, packaging/staging e backup/restore. Il nuovo motore LONG resta separato e non è implicitamente integrato.
+
+PROSSIMO PASSO: verificare il contratto app/Telegram end-to-end per Falco e Toro senza accesso in scrittura ai wallet, quindi preparare il pacchetto coordinato PAPER e il collaudo backup/restore prima di un eventuale OK separato al rilascio.
+
+AI: checkpoint automatico ChatGPT Work
