@@ -1,0 +1,14 @@
+# 2026-11-01 — SuperBot LONG TC02.4 R1/R2 Patch 01 offline
+
+Autorizzazione utente: 'ok procediamo' dopo l'audit finale del contratto R1/R2. Lavoro **solo sulla copia offline dell'harness**. Nessun merge, deploy, modifica VPS, wallet, Brain/Falco/Toro/SHORT, ordine PAPER/LIVE o trading.
+
+**Artefatto consegnato in chat:** `SuperBot_Long_TC024_R1_R2_Patch_01.zip` SHA256 `3342022e94c5e852062a7f24f235d12f3d4fa70b368b86b6a5a88a694cc8ad36` (137372 byte). Report `REPORT_SUPERBOT_LONG_TC024_R1_R2_PATCH_01_2026-11-01.md`, SHA256 `abc661e40beb4431c9fbf3b9760e3cb3b51ca5dec3f1ef827b37d7811b04ad04`. Archivio autonomo: baseline originale, harness patchato, design/27 test consolidati, 15 test supplementari, differenza `PATCH_R1_R2.diff`, log e runner `verify_acceptance.py`. Fresca riestrazione da ZIP confermata CRC PASS, manifesto **86/86 PASS**, runner PASS.
+
+Baseline frozen LONG V6.1.1 ZIP SHA256 `0c1ff499673aa5923444b66baae26cb5f98009973a3ea19fee27a8b620bd686e` e TC02.4 sorgente ZIP `2abf78ca525592ce77dca1b35c3fe56dbf5ddcbb7f1046edfcc4d4031f65d801`. Tutti i file baseline inclusi nel pacchetto R1/R2 verificati byte per byte identici all'originale.
+
+**R1**: `_ENTRY_CAPABILITY` e `_commit_validated_entry` eliminati. `consume(ENTRY)` e `_terminalize(ENTRY)` rifiutano sempre gli ENTRY preformati. Unico `_commit_from_raw` costruisce ENTRY da PENDING valido + tick grezzo, ricontrollando stato, ID, label strict, quote timestamps, latenza, TTL esclusivo, qty obbligatoria strict, finite price/costi/slippage/fee sul fill, e overflow. Non è security boundary contro codice Python ostile nello stesso interpreter.
+**R2**: `LabLedger(mode=None|'STRICT'|'LEGACY_SYNTHETIC_ONLY')` in sola lettura, prima chiamata mode-aware associa mode in assenza di altro; `register_pending` generico non imposta mode. `LEDGER_MODE_MISMATCH` precede ogni validazione e non registra né eventi né protocol errors né pending, anche per tick malformati. Ledger default strict e legacy separati.
+
+**Risultati eseguiti sul pacchetto, inclusa prova da estrazione fresca:** suite ufficiale TC02.4 **163/163 PASS** (82 baseline originali e 21 legacy migrati inclusi); test design R1/R2 **21/21 PASS**; test mode **6/6 PASS**; nuovi test avversariali indipendenti **15/15 PASS**. Totale 205/205 esecuzioni (21 legacy NON equivalgono a prove strict). Le suite TC02 originali con ticks privi di timestamp restano intenzionalmente incompatibili con strict.
+
+**Stato:** patch offline tecnicamente valida nei test, **non ancora congelata**: serve audit indipendente Grok. REAL_EXECUTION UNVERIFIED; ECONOMIC_EVIDENCE INSUFFICIENT; PAPER_ELIGIBLE NO. Prossimo dopo audit positivo: freeze harness e ricerca fattibilità di quote/tick reali Bitget.
