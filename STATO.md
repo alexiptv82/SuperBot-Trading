@@ -1,5 +1,5 @@
-## IN_CORSO — Work: completamento MTF e pacchetto PAPER, 31/10
-Utente autorizza ripresa dei restanti lavori in questa chat. Laboratorio autonomo e nuovo LONG sono affidati alla chat separata: non svilupparli qui. Owner Work su nuovo ramo work/brain-mtf-packaging-20261031, base854f03e733195a9ffa06184b24855c97660a8edc. Perimetro: contesto multitimeframe consultivo per ingressi/revisioni e preparazione operativa verificabile, nessun deploy/merge/reset/API AI pagata. Non modificare classici, SHORT, rischio o strategie. Registrare risultati e limiti reali.
+## IN_CORSO — ChatGPT chat corrente: MTF e pacchetto PAPER, 31/10
+L'utente ha eliminato la chat Work precedente rimasta bloccata; passaggio di mano alla chat corrente. Il motore LONG resta al laboratorio separato, senza integrazione implicita. Owner ChatGPT su work/brain-mtf-packaging-20261031, base 854f03e733195a9ffa06184b24855c97660a8edc; HEAD a1619074129a840cb381dbc582955fec9930ec44. Primo incremento MTF consultivo 15m/1H/4H su ingressi e revisioni, CI 41199004997 SUCCESS Python 3.10/3.11; nessun cambiamento a scanner, engine, classici, SHORT o protezioni. Continua con verifiche di contratto MTF e packaging, senza merge/deploy/reset/VPS/API pagata. PAPER e storici invariati. Dettagli in diario/2026-10-31_chatgpt.md.
 
 ## 31/10/2026 11:59 Europe/Rome — Backup coordinato Brain PAPER verificato offline
 
