@@ -183,7 +183,8 @@ class PaperSupervisor:
                             self.last_purpose='entry'
                             output['analysis_status']='started'
         if self.snapshot_path is not None and (self.last_snapshot is None or now-self.last_snapshot>=5000):
-            atomic_write(self.snapshot_path,build_account_snapshot(self.account,now,markets))
+            atomic_write(self.snapshot_path,build_account_snapshot(
+                self.account,now,markets,position_actions=self.position_actions))
             self.last_snapshot=now
         return output
 
