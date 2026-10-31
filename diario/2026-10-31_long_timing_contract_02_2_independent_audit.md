@@ -1,0 +1,9 @@
+31 ottobre 2026 — Audit indipendente LONG Timing Contract 02.2
+
+Pacchetto: SuperBot_Long_Timing_Contract_02_2.zip. SHA256 d4f21eefd76a21056ae02b704a71d522d6f670d0316d1a8fe382109560d9015d. ZIP integro, manifesto 5/5. Baseline originale V6.1.1 SHA256 0c1ff499673aa5923444b66baae26cb5f98009973a3ea19fee27a8b620bd686e, 82/82 test PASS. TC02.2 9/9 PASS, TC01 6/6 PASS, TC02.1 10/10 PASS. TC02 storico 10/12 PASS con globale condiviso, 12/12 con reset esplicito prima di ogni test.
+
+Nove nuovi test avversariali: 9/9 FAIL su TC02.2. LabLedger.consume consente ENTRY con PENDING ma senza prezzo/quantità/orario, anche oltre TTL; il REJECT per mismatch di ID si registra e consente successivo ENTRY sullo stesso ID; tick.received_at_ms può essere successivo a fill_ts o precedente a quote.available_at_ms; register_pending accetta candidati già scaduti, con as_of antecedente alla disponibilità o TTL nullo. Va chiarita la semantica dei timestamp tick vs quote vs execution.
+
+Verdetto: canditato sintetico PASS, fill singolo nominale PASS, ma lifecycle/stateful completo e integrità ledger NON CHIUSI; execution realism non verificato; economic evidence insufficiente; PAPER_ELIGIBLE NO per Brain/Falco/Toro. Non modificato motore LONG V6.1.1, bot, SHORT, wallet, VPS o trading.
+
+Artefatti scaricabili in chat: AUDIT_LONG_TIMING_CONTRACT_02_2_2026-10-31.md, PROMPT_GROK_TIMING_CONTRACT_02_3_2026-10-31.md, TC022_REGRESSIONI_AVVERSARIALI_INDIPENDENTI.py, TC022_ADVERSARIAL_RESULTS.txt, PACCHETTO_GROK_TIMING_CONTRACT_02_2_AUDIT.zip. Prossimo: proposta TC02.3, unico percorso di finalizzazione ENTRY, pending e terminal invariants senza altre riscritture di strategia.
