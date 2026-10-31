@@ -11,6 +11,7 @@ from director.brain_free.execution import fresh,margin
 from .config import ENTRY_PRICE_AGE_MS,PROTECT_PRICE_AGE_MS
 from .engine import _safe_equity
 from .legacy_reference import build_reference
+from .mtf_context import project_closed_mtf
 from .scanner import _closed
 from .store import wallet_spec_digest
 from director.structural_advisory import project_advisory
@@ -45,6 +46,9 @@ EMA position, 24h momentum, range breaks, RSI and volume with independent
 timing/invalidation judgment. It cannot change eligibility, force review,
 force a trade or block one; missing advice is not a reason to HOLD.
 Its legacy warmup, equal-value SHORT bias and static seasonality are cautions.
+Closed 15m/1h/4h observations are read-only causal context, not forecasts,
+trade permissions, vetoes or score adjustments. Partial or absent higher-timeframe
+data must not itself force HOLD or excuse missing mandatory 1m/5m evidence.
 Operator preferences are dated examples of exits confirmed by the user, not\nTP thresholds, training, guarantees, or instructions to imitate an outcome.\nConsider context and net costs independently; never infer a fixed profit target\nfrom an example, and never delay protective exits to reproduce a profit.\nProtective exits remain independent of your availability.
 Return one JSON object: context_id, plans, assessments, summary.
 assessments must cover every eligible symbol once, with symbol, long_case,
@@ -239,6 +243,7 @@ def build_request(state,spec,markets,contracts,shortlist,references,
             'regime_v11_indicator':v11,
             'structural_advisory':structure,
             'classical_methodology':methodology,
+            'closed_multitimeframe':project_closed_mtf(m,now_ms),
         })
     memory=[]
     for t in recent_trades:
