@@ -1,0 +1,13 @@
+# 31/10/2026 — Revisione incrociata rapporto Grok, ChatGPT
+
+**Oggetto:** rapporto consegnato dall'utente `AUDIT_INDIPENDENTE_SUPERBOT_2026-10-31.md`; Grok agisce come revisore read-only dell'intero SuperBot. Nessuna autorizzazione implicita per cambiare codice/strategie/deploy.
+
+**Check indipendenti:** letti `diario/STATO.md`, `work/brain-mtf-packaging-20261031/backend/director/brain_scalp/{ai_context.py,position_review.py,mtf_context.py,service.py,supervisor.py}`, `brain_free/feeds.py` e `rule-pool/backend/desk/{cli.py,signals.py}`. Verificati ref GitHub: diario HEAD `84b9db2ac960eaf28321e0bc4790d8da3f9534ab`, branch MTF HEAD `a1619074129a840cb381dbc582955fec9930ec44` all'ora della lettura. Grok aveva letto una fotografia diario precedente `ec1a661...`.
+
+**Accolte come proposte:** staging + backup coordinato prima di rilascio; recorder e provenienza causale dati (non confondere osservazione live con backfill storico); telemetria per attribuire decisioni a outcome; anti-batch e startup cooldown in shadow; memory-as-hypothesis; regimi consultivi.
+
+**Rettifiche:** MTF gia' inserito nei payload di ingresso/review e nei relativi system prompt sul ramo MTF; ancora senza test end-to-end del contratto, senza deploy e senza OOS economico. Gap feed 120 vs LONG 200 e' un blocker dell'integrazione LONG, **non del Brain in assenza LONG**. Flag wallet V3 risolti in parte nel Lab V4; NON attribuire vulnerabilita' V3 al Brain non integrato. Fallback regole esiste nel codice classici `cli.py` quando Claude non fornisce decisioni, distinto dal Brain DeepSeek senza fallback automatico. Filtro qualita' che obbliga NO_TRADE non e' consentito come modifica implicita dei consigli non bloccanti. Guardia 450 USDT e configurazione sono classici, non assumere gli stessi parametri nel Brain (mandato indipendente). Nessuno startup cooldown esplicito trovato nel `cli.py` classico, presenti cooldown tra trade: verificare versione reale su VPS prima di classificare il difetto come runtime attivo.
+
+**Prossimo programma consigliato:** (1) packaging/restore/staging isolati Brain, (2) test MTF end-to-end, (3) design recorder/backfill e semantica availability, (4) studio quantitativo startup batch e bias LONG/SHORT, (5) telemetria shadow; Grok sviluppi modulo isolato solo con ownership esplicita. LONG Lab V4 rimane da correggere; non integrare.
+
+**Rilascio:** nulla. Nessun merge, deploy, trigger, VPS, modifica a SHORT/capitale/memorie o test di runtime. Relazione completa creata in chat: `REVISIONE_INCROCIATA_AUDIT_GROK_SUPERBOT_2026-10-31.md`. Il rapporto completo non e' stato caricato sul repository.
