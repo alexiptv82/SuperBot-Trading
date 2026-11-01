@@ -186,6 +186,39 @@ class SingleTradeContractTests(unittest.TestCase):
         with self.assertRaisesRegex(CloseRejected,"unattested_manual_close"):
             verified_close_lesson(r,receipt=receipt,before_wallet=wallet(),after_wallet=after,now_ms=NOW)
 
+    def test_classic_paper_engine_close_one_keeps_other_trade(self):
+        # The actual existing PAPER account engine; run only on in-memory
+        # accounts, never connected to application flags or Bitget.
+        from dataclasses import asdict
+        from desk.engine import PaperAccount, Limits
+        account=PaperAccount(Limits(),name="main")
+        entered=NOW-100000
+        btc,status=account.open("BTC",1,100,10,100,95,None,entered,
+                                {"BTC":100,"ETH":100})
+        self.assertEqual(status,"ok")
+        eth,status=account.open("ETH",-1,100,10,100,105,None,entered-1000,
+                                {"BTC":100,"ETH":100})
+        self.assertEqual(status,"ok")
+        other_before=asdict(eth)
+        w={"account_id":"hawk","run_id":3,"as_of_ms":NOW-200,
+           "positions":{k:asdict(p) for k,p in account.positions.items()}}
+        r=req(position_id=btc.id,open_ms=btc.open_ms)
+        self.assertEqual(validate_target(r,w,now_ms=NOW)["symbol"],"BTC")
+        closed=account.close("BTC",103,NOW-100,"chiusura manuale")
+        self.assertEqual(closed["id"],btc.id)
+        self.assertEqual(set(account.positions),{"ETH"})
+        self.assertEqual(asdict(account.positions["ETH"]),other_before)
+        receipt={"persisted":True,"kind":"trade_closed","source":"manual_user",
+                 "request_id":r["request_id"],"account_id":"hawk","run_id":3,
+                 "position_id":btc.id,"close_ms":NOW-100,
+                 "net_usd":closed["net"],"margin_usd":closed["margin"]}
+        after={"account_id":"hawk","run_id":3,"as_of_ms":NOW,
+               "positions":{k:asdict(p) for k,p in account.positions.items()}}
+        lesson=verified_close_lesson(r,receipt=receipt,before_wallet=w,
+                                     after_wallet=after,now_ms=NOW)
+        self.assertEqual(lesson["position_id"],btc.id)
+        self.assertFalse(lesson["changes_strategy"])
+
     def test_input_is_never_mutated(self):
         r=req();w=wallet()
         r0=copy.deepcopy(r);w0=copy.deepcopy(w)
