@@ -1,3 +1,10 @@
+## PRIORITÀ AGGIORNATA 2026-11-01 — Brain vincolato, LONG prima del redesign
+
+Decisione utente: Brain AI completamente libero bocciato per futura messa in funzione dopo perdita aggregata riferita ~50% del portafoglio. Dato economico non verificato indipendentemente: non attribuire cause senza audit trade. Prima terminare LONG Shadow, PR #26 Draft, senza merge/deploy. Poi riprogettare Brain a portafoglio unico, SHORT+LONG entro regole di rischio simili ai classici, AI controllata per selezione/gestione entro vincoli. Chiusure manuali con insegnamento da motivi e profitto sufficiente richieste per Brain e classici; esistono componenti su rami differenti ma non presumere rilasciate. Nessuna soglia di ROI numerica ancora scelta, nessuna modifica strategia autorizzata.
+
+Dettagli e vincoli: `diario/2026-11-01_nuova_direzione_brain_regole_e_chiusure_manual_teaching.md`. LONG `work/long-shadow-app-observation-20261101`, PR #26 ancora Draft. SHORT, protezione 450 USDT, capital manager e produzione invariati.
+
+---
 ## IN_CORSO — ChatGPT chat corrente: MTF e pacchetto PAPER, 31/10
 L'utente ha eliminato la chat Work precedente rimasta bloccata; passaggio di mano alla chat corrente. Il motore LONG resta al laboratorio separato, senza integrazione implicita. Owner ChatGPT su work/brain-mtf-packaging-20261031, base 854f03e733195a9ffa06184b24855c97660a8edc; HEAD a1619074129a840cb381dbc582955fec9930ec44. Primo incremento MTF consultivo 15m/1H/4H su ingressi e revisioni, CI 41199004997 SUCCESS Python 3.10/3.11; nessun cambiamento a scanner, engine, classici, SHORT o protezioni. Continua con verifiche di contratto MTF e packaging, senza merge/deploy/reset/VPS/API pagata. PAPER e storici invariati. Dettagli in diario/2026-10-31_chatgpt.md.
 
