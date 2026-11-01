@@ -188,12 +188,18 @@ def read_dashboard(*, roots, shadow_dir, now_ms=None, brain_source=None):
     for consumer in ACCOUNTS:
         wallet=wallet_snapshot(consumer,roots=roots,now_ms=now,
                                brain_source=brain_source)
-        try:
-            advice=_shadow_record(Path(shadow_dir),consumer,now)
-            advisory_status='unverified_external_record'
-        except (Unavailable,OSError,ValueError,UnicodeError):
+        if wallet['status'] != 'ok':
+            # Never surface a CANDIDATE as actionable-looking advice when its
+            # authoritative wallet is missing or stale.
             advice=None
-            advisory_status='not_available'
+            advisory_status='wallet_unavailable'
+        else:
+            try:
+                advice=_shadow_record(Path(shadow_dir),consumer,now)
+                advisory_status='unverified_external_record'
+            except (Unavailable,OSError,ValueError,UnicodeError):
+                advice=None
+                advisory_status='not_available'
         presence={}
         if wallet['status']=='ok':
             positions=wallet['snapshot']['positions']
