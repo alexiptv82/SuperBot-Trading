@@ -1,0 +1,15 @@
+# SuperBot LONG — 1 novembre 2026 — ponte storico R03 / bid-ask R04
+
+**Mandato utente:** proseguire direttamente con la verifica delle candele mancanti, senza coinvolgere Grok/Claude salvo problemi sostanziali. Nessun intervento operativo consentito.
+
+**Lavoro verificato:** confronto diretto dell'archivio SuperBot_Long_RealData_Research_03.zip (SHA256 2cd400c25122478dea20c9cd7df5554eef6a023f4ad82c0d850124d97dc230c1) e SuperBot_Long_Bitget_Subminute_Research_04.zip (SHA256 730231866e8436007a1ae8efb1b2bcbffdb49a53e4b10e947413df41ceb450d9). Controllati 33791 hash dei frame R04; 11322 book BTC e 20395 ETH; primo BBO 2026-11-01 07:16:03.301 UTC. Ultima candela 1m R03 BTC/ETH close 2026-10-31 19:51:00 UTC.
+
+**Mancanti con availability ipotizzata close+1000ms e fino all'ultimo book R04:** per OGNI simbolo BTCUSDT/ETHUSDT: 1m 694 (close dal 31 ott 19:52 al 1 nov 07:25), 15m 46, 1h 12, 4h 3, totale 755/simbolo, **1510 candele**. Le ultime candele 1m con close alle 07:26 non sono temporalmente disponibili con grace +1000ms prima dell'ultimo frame, pertanto NON conteggiate. Un conto basato soltanto sui close darebbe 695, ma sarebbe errato per il gate scelto.
+
+**Tentativo eseguito:** GET pubblico https://api.bitget.com/api/v3/market/history-candles con category USDT-FUTURES, symbol BTCUSDT, interval 1m, bounded timestamps, fallisce [Errno -3] Temporary failure in name resolution. Dati storici autentici nuovi acquisiti = 0. Non sostituiti da dati sintetici. Log FETCH_ERRORS.json incluso.
+
+**Pacchetto autonomo creato nella chat:** SuperBot_Long_R04_Candle_Gap_Bridge_01.zip, SHA256 **9ad1fdabcdfd21cb463e644b09e05fdf209e0ac85e2c52ede829b1d694656454**, contiene originali R03/R04 immutati, piano gap JSON, script `candle_bridge.py` di verifica fail-closed, script `fetch_public_candles.py` API GET read-only, `run_network.sh` one-shot per ambiente con internet, report, README italiano, log DNS, TEST_RESULTS, 9 test offline. Manifesto **21/21 PASS**, ZIP CRC PASS, 9/9 test PASS da estrazione fresca. Il downloader ricontrolla mercato/simbolo/timeframe, SHA raw, OHLCV, timeline, duplicati, copertura, e marca candele `assumed_historical` con `live_received_at_ms=null`.
+
+**Gate finali:** HISTORICAL_GAP_IDENTIFIED PASS; raw R04 integrity PASS; historical missing candles 1510; GAP_DOWNLOADED NO; GAP_FULLY_BACKFILLED NO; HISTORICAL_LIVE_CANDLE_AVAILABILITY NOT_OBSERVED; CAUSAL_LONG_REPLAY_READY NO; REAL_EXECUTION UNVERIFIED; ECONOMIC_EVIDENCE INSUFFICIENT; PAPER_ELIGIBLE NO. Dopo un eventuale download storico retrospettivo rimane comunque NON provata la disponibilità live dei dati ai tempi R04; non promuovere PAPER senza prove ulteriori.
+
+**Nessuna modifica:** LONG V6.1.1 frozen, TC02.4 R1/R2 frozen, Brain, Falco, Toro, SHORT, budget, wallet, VPS, trading PAPER/LIVE, branch operativi. Nessun merge o deploy. Eventuale uso del downloader su ambiente con rete è l'unico passo esterno ancora necessario per completare l'allineamento storico.
