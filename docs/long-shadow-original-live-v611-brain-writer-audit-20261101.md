@@ -33,3 +33,19 @@ PYTHONPATH=backend python backend/long_shadow_brain_docker_metadata_preflight.py
 - `PAPER_ELIGIBLE=NO`, `ORDERS_CREATED=0`, `MERGE=NO`, `DEPLOY=NO`
 
 PR #26 resta DRAFT e non mergiata; PR #27 (chiusura manuale singolo trade per ID) resta DRAFT e separata. Brain AI attuale completamente libero bocciato per prossimo rilascio, futura conversione a Brain rules-governed con ONE wallet dopo completamento LONG. Nessun cambiamento agli SHORT o alla protezione capitale 450 USDT.
+
+## Aggiornamento audit Docker v2 — 1 novembre 2026
+
+L'audit del primo preflight ha rivelato un caso non coperto: un processo writer può avere un nome differente da `brain` o `superbot`, oppure montare una cartella *contenente* il wallet anziché il percorso esatto. Il codice iniziale lo poteva ignorare e sottostimare i candidati.
+
+Corretto in `backend/long_shadow_brain_docker_metadata_preflight.py`: **tutti i container in esecuzione** vengono ispezionati per i soli metadati dei mount Docker (nessuna variabile, nessun log, nessuna lettura wallet). Si confrontano sia `Source` sia `Destination` con le due directory note, comprese cartelle parent e figli. Nomi inattesi, montaggi ampi, web-app con mount scrivibile e più writer causano `AMBIGUOUS_OR_UNEXPECTED_WRITER_MOUNT`. L'output è esclusivamente aggregato e non contiene nomi, percorsi, capitale o credenziali. In ogni caso `active_owner_confirmed=false`, perché un mount Docker non prova che sia il vero processo trading.
+
+Test di regressione ampliati a **16 casi** (10 precedenti + nomi inattesi, mount per `Source`, cartelle parent, web-app erroneamente RW, conteggio completo e fail-closed). La verifica GitHub CI sul commit con patch andrà controllata prima di trattare il preflight come verificato. **Mai eseguire il preflight sulla VPS senza un'azione esplicita dell'operatore.**
+
+Per la prima verifica VPS da Termius, si può usare il singolo comando di sola lettura:
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+```
+
+Questo elenca solo i container e il loro stato, **non** saldo, credenziali, env né log. È un primo inventario; non attesta ancora il wallet. Dopo aver letto l'elenco si può decidere quale diagnostica mount eseguire, senza cambiare i servizi.
