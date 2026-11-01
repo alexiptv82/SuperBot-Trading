@@ -1,0 +1,11 @@
+# 2026-11-01 — SuperBot LONG Candle Gap Bridge 01: patch API v3 limit 100
+
+Diagnosi esterna: il precedente `fetch_public_candles.py` inviava `limit=104` al pubblico Bitget GET /api/v3/market/history-candles, provocando HTTP 400 code 40020 Parameter limit error. L'endpoint v3 specifica limit massimo 100. Inoltre timeframe orari API v3 sono 1H/4H, mentre il piano mantiene 1h/4h.
+
+**Patch prodotta direttamente da ChatGPT in copia offline, solo strumenti read-only:** `SuperBot_Long_Candle_Gap_Bridge_01_API100_Fix.zip`, SHA256 `ad910cf1dafc2da1cf67be190950845cc2ec03975ae31b895203a245e2fb48de`, 5,391,807 byte. Include i due ZIP di riferimento immutati (R03 SHA256 2cd400c25122478dea20c9cd7df5554eef6a023f4ad82c0d850124d97dc230c1, R04 SHA256 730231866e8436007a1ae8efb1b2bcbffdb49a53e4b10e947413df41ceb450d9), sorgente originale del bridge invariato, diff, README, test, log di nuova prova.
+
+**Modifiche fetch:** dimensione lotti massimo 95, limit HTTP fino a 100, mappa timeframe 1h→1H e 4h→4H, confini temporali allineati con guardia, controllo che tutte le aperture richieste siano presenti prima di accettare una pagina, resume solo su pagina integra, stop fail-closed su errore. Manifesto nonself 26/26 checksum; fresh unzip CRC/test OK. 9 test originali + 6 nuovi = 15/15 PASS, anche da estrazione nuova. Nessun dato storico inventato.
+
+**Ritento di rete realmente eseguito:** `bash run_network.sh` dal container ChatGPT, exit 2 per `[Errno -3] Temporary failure in name resolution` sul nome api.bitget.com, prima di ricevere un HTTP response. Nuove candele realmente scaricate: 0. Piano mancanze invariato: 694 1m, 46 15m, 12 1h e 3 4h per ciascuno dei due simboli, totale 1510. Il fetch corretto va eseguito una sola volta in ambiente dotato di rete, poi i risultati verificati da ChatGPT.
+
+**Limiti/gate:** `GAP_DOWNLOADED=NO`, `CAUSAL_LONG_REPLAY_READY=NO`, `REAL_EXECUTION=UNVERIFIED`, `ECONOMIC_EVIDENCE=INSUFFICIENT`, `PAPER_ELIGIBLE=NO`. Le candele scaricate dopo il mercato non dimostreranno la ricezione live nel 2026-11-01. Nessun merge, deploy, VPS, ordine, trading o modifica a LONG V6.1.1, harness frozen R1/R2, Brain/Falco/Toro, SHORT, wallet e protezioni.
