@@ -5,8 +5,15 @@ on:
       - work/long-shadow-app-observation-20261101
     paths:
       - backend/long_shadow_readonly.py
+      - backend/long_shadow_capture_context.py
       - backend/long_shadow_api.py
       - backend/tests/test_long_shadow_readonly.py
+      - backend/tests/test_long_shadow_capture_context.py
+      - frontend/src/pages/LongShadowDashboard.js
+      - frontend/src/pages/LongShadowDashboard.test.js
+      - frontend/src/pages/Dashboard.js
+      - frontend/src/App.js
+      - frontend/src/api.js
       - backend/server.py
       - .github/workflows/long-shadow-readonly-ci.yml
   workflow_dispatch:
@@ -23,7 +30,9 @@ jobs:
           python-version: '3.11'
       - run: pip install fastapi==0.110.0 httpx==0.27.0
       - name: Wallet + API read-only contracts
-        run: PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_readonly.py -v
+        run: |
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_readonly.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_capture_context.py -v
       - name: Static guard—no engine imports/orders
         run: |
           python - <<'PY'
@@ -41,3 +50,21 @@ jobs:
           PY
 
 # Isolated research CI only. No VPS or deploy permissions.
+
+  frontend-shadow-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify shadow display contracts
+        run: CI=true npm test -- --watch=false --runInBand LongShadowDashboard.test.js
+      - name: Compile dashboard
+        run: CI=false npm run build
