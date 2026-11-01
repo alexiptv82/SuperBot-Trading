@@ -119,7 +119,15 @@ def _brain(root, kind, now_ms, fresh_ms):
             raise Unavailable('brain_free_account_mismatch')
         positions = state.get('positions')
     pos = _positions(positions)
-    observed = state.get('heartbeat_ms')
+    # Pilot heartbeat lives in status.json (see desk/brain_view.py); Brain Free
+    # stores heartbeat_ms in the SQLite state. Never infer from last_bar.
+    if kind == 'pilot':
+        beat = _json_bounded(_safe_file(root, 'status.json').read_text(encoding='utf8'))
+        if beat.get('mode') != 'paper' or beat.get('applied') is not False:
+            raise Unavailable('brain_pilot_heartbeat_identity_mismatch')
+        observed = beat.get('ts_ms')
+    else:
+        observed = state.get('heartbeat_ms')
     if not _age_ok(observed, now_ms, fresh_ms):
         raise Unavailable('brain_state_stale')
     return {'account_id':'brain','as_of_ms':observed,
