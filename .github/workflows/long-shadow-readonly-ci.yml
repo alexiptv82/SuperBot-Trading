@@ -12,6 +12,7 @@ on:
       - backend/long_shadow_observer.py
       - backend/long_shadow_observer_runner.py
       - backend/long_shadow_rest_closed.py
+      - backend/long_shadow_brain_source_diagnostic.py
       - backend/long_shadow_api.py
       - backend/tests/test_long_shadow_readonly.py
       - backend/tests/test_long_shadow_capture_context.py
@@ -21,6 +22,7 @@ on:
       - backend/tests/test_long_shadow_observer.py
       - backend/tests/test_long_shadow_observer_runner.py
       - backend/tests/test_long_shadow_rest_closed.py
+      - backend/tests/test_long_shadow_brain_source_diagnostic.py
       - frontend/src/pages/LongShadowDashboard.js
       - frontend/src/pages/LongShadowDashboard.test.js
       - frontend/src/pages/Dashboard.js
@@ -62,6 +64,7 @@ jobs:
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_observer.py -v
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_observer_runner.py -v
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_rest_closed.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_brain_source_diagnostic.py -v
       - name: Static guard—no engine imports/orders
         run: |
           python - <<'PY'
