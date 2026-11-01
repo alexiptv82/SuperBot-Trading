@@ -162,7 +162,7 @@ def _shadow_record(root, consumer, now_ms, wallet_as_of_ms):
         raise Unavailable('shadow_identity_mismatch')
     if data.get('authority')!='advisory_only' or data.get('observation_only') is not True:
         raise Unavailable('shadow_authority_invalid')
-    if not _age_ok(data.get('as_of_ms'), now_ms, 20*60_000):
+    if not _age_ok(data.get('as_of_ms'), now_ms, 60_000):
         raise Unavailable('shadow_record_stale')
     # Advice was computed for a particular authoritative wallet snapshot.
     # New positions or a changed wallet heartbeat invalidate old advice.
