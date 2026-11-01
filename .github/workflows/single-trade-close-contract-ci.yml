@@ -49,3 +49,5 @@ jobs:
                   assert not any(m.startswith(('requests','websockets','exchange','subprocess','sqlite3','fastapi','ccxt')) for m in modules)
           print('SINGLE_TRADE_NO_EXECUTION_GUARD_PASS')
           PY
+
+# Draft CI only; no secrets, broker permissions or deployment steps.
