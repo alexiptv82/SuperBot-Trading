@@ -1,3 +1,12 @@
+## LONG SHADOW — 2026-11-01: originale V6.1.1 testato LIVE pubblico; Brain writer ancora sconosciuto
+
+PR #26 DRAFT `work/long-shadow-app-observation-20261101`, nessun merge/deploy. GitHub Actions **41347328579** e **41347649123** SUCCESS: motore congelato V6.1.1 originale SHA256 `36f8c62be8d205d909ae16f5652209710de56ae710fedb6b75a601b96486fe72` ricostruito fedelmente dal fixture compresso del laboratorio, 8 serie REST e 2 books1 public WS Bitget **LIVE**, 3 wallet PAPER sintetici, 12 valutazioni tutte `NO_TRADE` per `SETUP_ABSENT`, 0 ordini. CI aggiornata **41347649054**: backend **110/110 PASS**, React test/build PASS. Nessun wallet utente/VPS letto, nessun vantaggio economico dimostrato, H24 e rollover 15m/1H/4H non provati.
+
+Nuovo `long_shadow_brain_docker_metadata_preflight.py` SOLO per una futura ispezione VPS autorizzata: conteggi aggregati metadati mount RW dei possibili writer Brain; NO env/secrets/log/ordini; **non eseguito su VPS**. Il container web `superbot` può montare sia Brain Free che Pilot in RO: non indica quale motore tradare. `ACTIVE_BRAIN_OWNER=UNVERIFIED`. Diario `diario/2026-11-01_long_shadow_original_v611_live_public_110tests_brain_writer_preflight.md`.
+
+PR #27 DRAFT per chiusura singolo trade ID ancora non operativa. Redesign Brain rules-controlled dopo LONG. `PAPER_ELIGIBLE=NO`, `DEPLOY=NO`, SHORT e protezione 450 USDT invariati.
+
+---
 ## LONG Shadow — 1 novembre 2026: V6.1.1 originale testato su dati Bitget registrati
 
 Motore congelato **originale** SHA `36f8c62be8d205d909ae16f5652209710de56ae710fedb6b75a601b96486fe72` recuperato dal laboratorio dell'utente e verificato: **82/82** test originali PASS. Replay REST+WebSocket da cattura Bitget 15min originale SHA `33eb490e34d7dbfbb208827d3f85edc48f327a3619ca2e33f3a5dfb5d5a84cb2`, otto serie REST realmente ricevute, quote books1 autentiche, tempi causalmente rispettati, tre wallet sintetici Hawk/Bull/Brain: **12/12 `NO_TRADE` `SETUP_ABSENT`**, 0 candidati e 0 ordini. Gate negativi rifiuto motore alterato e REST SHA non valido PASS. Kit riproducibile `SuperBot_LONG_Frozen_V611_Recorded_Replay_Verification_01.zip`, SHA `2d9e9549c2b88fc8226d15aa4244a022128b1e1c22d794a5308e1b5a39e3eb88` scaricabile nella chat. È REPLAY OFFLINE, non segnale live né prova di redditività.
