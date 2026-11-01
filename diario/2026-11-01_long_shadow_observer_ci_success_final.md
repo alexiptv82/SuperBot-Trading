@@ -1,0 +1,9 @@
+# 2026-11-01 — Conferma finale CI LONG Shadow observer
+
+PR #26 `work/long-shadow-app-observation-20261101` ancora DRAFT, non merged. Workflow GitHub Actions `41340629748` al commit `efc444bc277ad45bff4e5d43f458163edbc8b9f7` concluso con `status=completed`, `conclusion=success`. Entrambi i job: `isolated-contract` SUCCESS e `frontend-shadow-render` SUCCESS. Backend: 62 test Python su 7 suite PASS, `READ_ONLY_STATIC_GATES_PASS`. Frontend: test React PASS e build PASS. Nessun deploy, esecuzione ordine, merge o installazione VPS.
+
+Nuovo `long_shadow_observer.py` e `long_shadow_observer_runner.py`: unione opzionale e off-by-default di live public capture files, frozen V6.1.1 SHA-pinned, wallet autorevoli read-only e output `CANDIDATE/NO_TRADE` advisory-only per Falco/Toro/Brain. Binding timestamp wallet esatto e limite 60s sull'advice UI. Il file record è un **consiglio non autorizzativo**, non un evento trade.
+
+Per evitare il ciclo di validazioni senza fine, il prossimo lavoro NON deve ripetere la cattura 15m già verificata. Va implementato/testato solo il tassello **candele chiuse continuamente** (può essere endpoint GET pubblico `/api/v3/market/candles`, risposta osservata dopo close+grace, con timestamp di ricezione e dati OHLCV non anticipati, verificare documentazione ufficiale Bitget); il collector WS attuale produce update provvisorie. Solo dopo: staging con sorgente Brain runtime identificata e autorizzazione esplicita per deploy shadow. `PAPER_ELIGIBLE=NO` e vantaggio economico non dimostrato.
+
+PR #27 Draft per chiusura manuale esatta di singolo trade per ID rimane separata, 21 test PASS per Python 3.10 e 3.11; non è ancora operativa nell'app. La nuova politica Brain rules-governed richiesta dall'utente resta futura e non attivata.
