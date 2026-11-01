@@ -14,6 +14,9 @@ on:
       - backend/long_shadow_rest_closed.py
       - backend/long_shadow_brain_source_diagnostic.py
       - backend/long_shadow_frozen_recorded_replay.py
+      - backend/long_shadow_brain_docker_metadata_preflight.py
+      - backend/research_frozen_long_v611_engine.zlib.b64
+      - backend/research_materialize_frozen_long_v611.py
       - backend/long_shadow_api.py
       - backend/tests/test_long_shadow_readonly.py
       - backend/tests/test_long_shadow_capture_context.py
@@ -25,6 +28,8 @@ on:
       - backend/tests/test_long_shadow_rest_closed.py
       - backend/tests/test_long_shadow_brain_source_diagnostic.py
       - backend/tests/test_long_shadow_frozen_recorded_replay.py
+      - backend/tests/test_long_shadow_brain_docker_metadata_preflight.py
+      - backend/tests/test_long_shadow_original_frozen_fixture.py
       - frontend/src/pages/LongShadowDashboard.js
       - frontend/src/pages/LongShadowDashboard.test.js
       - frontend/src/pages/Dashboard.js
@@ -68,6 +73,8 @@ jobs:
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_rest_closed.py -v
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_brain_source_diagnostic.py -v
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_frozen_recorded_replay.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_brain_docker_metadata_preflight.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_original_frozen_fixture.py -v
       - name: Static guard—no engine imports/orders
         run: |
           python - <<'PY'
