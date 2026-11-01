@@ -1,0 +1,51 @@
+name: Single Trade Close — offline ID contract (no deploy)
+on:
+  push:
+    branches: [work/manual-single-trade-close-contract-20261101]
+    paths:
+      - backend/director/single_trade_close_contract.py
+      - backend/tests/test_single_trade_close_contract.py
+      - .github/workflows/single-trade-close-contract-ci.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - backend/director/single_trade_close_contract.py
+      - backend/tests/test_single_trade_close_contract.py
+      - .github/workflows/single-trade-close-contract-ci.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  no-orders-contract:
+    name: Validate exact-position dry run
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    strategy:
+      matrix:
+        python: ['3.10','3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Validate exact-ID close and teaching tests
+        env:
+          PYTHONPATH: backend
+        run: python -m unittest discover -s backend/tests -p test_single_trade_close_contract.py -v
+      - name: No-trading static guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('backend/director/single_trade_close_contract.py')
+          text=p.read_text()
+          for forbidden in ('create_order(', 'place_order(', 'close_position(', 'requests.', 'socket.', 'subprocess.', 'os.system(', 'sqlite3.connect(', 'open('):
+              assert forbidden not in text, forbidden
+          import ast
+          tree=ast.parse(text)
+          for node in ast.walk(tree):
+              if isinstance(node, (ast.Import, ast.ImportFrom)):
+                  modules=([a.name for a in node.names] if isinstance(node,ast.Import)
+                           else [node.module or ''])
+                  assert not any(m.startswith(('requests','websockets','exchange','subprocess','sqlite3','fastapi','ccxt')) for m in modules)
+          print('SINGLE_TRADE_NO_EXECUTION_GUARD_PASS')
+          PY
