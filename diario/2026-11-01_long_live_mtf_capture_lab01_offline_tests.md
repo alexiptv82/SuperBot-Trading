@@ -1,0 +1,17 @@
+# SuperBot LONG — 2026-11-01 — LIVE MTF Capture Lab 01 (read-only, offline tested)
+
+**Mandato:** proseguire autonomamente lo studio della disponibilità live delle candele su 1m/15m/1H/4H insieme a books1, riducendo il ricorso a Grok/Claude. Nessun cambio a codice operativo o strategia.
+
+**Origine:** R03↔R04 gap storico di 1510 candele già colmato; audit rollover R04 mostra snapshot kline 1m reali e 18 rollover, ma non ricevute multi-timeframe complete. Problema rimanente: raccogliere una nuova finestra più lunga con receipt MTF osservati e quote L1.
+
+**Software di laboratorio prodotto in locale da ChatGPT:** `SuperBot_Long_Live_MTF_Capture_Lab_01.zip` SHA256 `4e52e009092de1cd893e26a0338ef7599d5659d17836a385834e103c128afc75`, 48,270 byte, ZIP valido, **10/10 file SHA256 nel manifesto**. Contiene `capture_mtf.py`, `verify_capture.py`, `pack_results.py`, `run_network.sh`, `requirements.txt`, 35 test, 10 frame WS originali R04 conservati verbatim come fixture, README e rapporto. Rimozione file `.pyc` e nessun code path alla produzione.
+
+**Funzionamento:** WebSocket pubblico Bitget `wss://ws.bitget.com/v3/ws/public`, 10 subscription = BTCUSDT/ETHUSDT × books1 e kline (1m,15m,1H,4H); REST GET pubblico tempo server `/api/v3/market/time` con bounds da roundtrip e warmup storico `/api/v3/market/candles` con 250 barre. Solo GET, nessuna chiave, nessun POST, nessun ordine, nessun accesso a wallet/VPS. Raw WS con raw SHA256 e receive wall nanosecond + monotonic nanosecond; rotazione in parti 32 MiB; ACK per sessione, ping testuale 30s e pong 15s, reconnect log, guardia spazio disco, fail closed se preflight di orario server fallisce; clock server REST NON equivale a NTP.
+
+**Quality controls:** manifesto SHA per file, sha per frame, tipi JSON, data book/kline OHLCV, ordine monotonic, clock jump, ACK e ricezione per canale, 4TF coverage, quote age su griglia 1s usando solo ultima BBO già ricevuta. Snapshot storici, aggiornamenti kline e chiusure finali tenuti distinti: nessuna conferma esplicita close nel protocollo. Dati causali/economici NON ancora provati.
+
+**Test verificati:** 35/35 PASS (`python3 -m unittest discover -s tests -q`), anche dopo fresh extraction ZIP; manifesto 10/10 PASS. Inclusi test su 10 frame WS R04 originali, hash tamper, ACK mancante, timestamp, OHLCV, checksum, clock/server GET mock e archivio extras. **Nessuna nuova cattura live eseguita:** test diretto `GET https://api.bitget.com/api/v3/market/time` da container fallisce `[Errno -3] Temporary failure in name resolution` (DNS), quindi zero nuovi frame.
+
+**Esecuzione richiesta in futuro su macchina di ricerca con rete, non VPS prod:** estrarre ZIP e `bash run_network.sh`; default 5 ore garantisce almeno un passaggio temporale 4H, `HOURS=24` opzionale, esegue test, cattura e verifica e produce `SuperBot_LONG_LIVE_MTF_RESULT_*.zip` da restituire a ChatGPT. Il runner non è stato avviato in rete e non c'è processo in background. Non coinvolgere altre AI per questo run.
+
+**Gate:** LAB_CODE_IMPLEMENTED=YES, LAB_OFFLINE_TESTS=35/35 PASS, LIVE_CAPTURE_STARTED=NO, LIVE_MTF_RECEIPT_PROVEN=NO, NTP_CERTIFIED=NO, REAL_EXECUTION=UNVERIFIED, ECONOMIC_EVIDENCE=INSUFFICIENT, PAPER_ELIGIBLE=NO. Motore LONG V6.1.1/harness TC02.4 R1/R2 congelati; Brain/Falco/Toro/SHORT, wallet, capitale, VPS invariati. Nessun merge/deploy/trade.
