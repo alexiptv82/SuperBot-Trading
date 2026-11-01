@@ -466,6 +466,9 @@ from desk.brain_view import register_fastapi as register_brain_view
 register_brain_view(app, require_session)
 from brain_free_api import register as register_brain_free
 register_brain_free(app, require_session)
+# LONG shadow: authenticated GET-only observation; never talks to a broker.
+from long_shadow_api import register as register_long_shadow
+register_long_shadow(app, require_session)
 
 # Serve frontend React se la cartella build esiste
 frontend_build = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'build')
