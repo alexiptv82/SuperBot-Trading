@@ -31,3 +31,9 @@ Status: development branch only. No deploy, no merge, no PAPER trading or broker
 3. Implement and test a separate shadow-only worker with MTF receipts and authoritative wallets, no order API.
 4. Verify the authenticated GET endpoint and the frontend in staging.
 5. Request explicit user approval before deploying shadow. PAPER requires separate approval.
+## Pinned offline evaluation probe added
+
+- backend/long_shadow_offline_probe.py combines the verified capture startup context, read-only wallet status and frozen LONG engine, checked against SHA256 36f8c62be8d205d909ae16f5652209710de56ae710fedb6b75a601b96486fe72.
+- It is manually invoked for an archive and writes only to a NEW research directory (not inside any wallet). It creates advisory-only records with zero executable order capability. Missing wallets produce NO_TRADE / WALLET_UNAVAILABLE, never an assumed empty wallet.
+- It is NOT a live H24 service, and reading a past capture with a currently fresh wallet fails closed on timestamp mismatch. Do not deploy or connect it to a production writer.
+- Four additional unit tests cover pinned hash failure, missing wallets, unauthorized engine flags and no overwrite. CI evaluation is still not confirmed.
