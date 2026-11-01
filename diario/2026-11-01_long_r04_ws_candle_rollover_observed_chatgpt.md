@@ -1,0 +1,15 @@
+# SuperBot LONG — 2026-11-01 — R04 WS candle receipt e rollover osservati
+
+ChatGPT ha proseguito autonomamente la ricerca offline dopo l'allineamento delle 1510 candele R03→R04. Non coinvolti Grok/Claude, nessuna modifica a bot/strategia/harness congelati, né deploy, VPS, chiavi o trading.
+
+**Fonti immutate:** Bitget R04 ZIP SHA256 `730231866e8436007a1ae8efb1b2bcbffdb49a53e4b10e947413df41ceb450d9`; Candle Gap Bridge RESULTS ZIP SHA256 `8209f927728f690ea69a7dfaf57723eaff3a37d546420309bee4d059b84d8ae6`. Frame R04 SHA verificati integralmente sul programma di analisi.
+
+**Scoperta:** snapshot di WebSocket v3 kline 1m R04 ricevuto LIVE alle 07:16:03.156 UTC BTC e 07:16:03.300 UTC ETH. Ciascuno contiene 500 candele, delle quali 499 erano già temporalmente terminate. 499/499 valori OHLCV corrispondono allo storico scaricato dopo, per ciascun simbolo (998 complessive). Questo prova ricezione di quelle candele A QUELL'ISTANTE, non la disponibilità originale ai rispettivi minuti passati.
+
+**Rollover osservati:** 9 BTC + 9 ETH. Tempo da confine minuto a primo update nuova candela: BTC min224ms med486ms max2189ms, ETH min201ms med504ms max2397ms. Ultimo update precedente prima del confine identico OHLCV finale storico: BTC 6/9, ETH 4/9. Successivi snapshot storico-matching: 8/9 per simbolo, ma ricevuti entro TTL 60s solo 4/9 per simbolo. Age dell'ultimo BBO già ricevuto al rollover (NON futuro): BTC med28ms max473ms, ETH med25ms max152ms. Nessun flag `confirm`/`closed` esplicito identificato nel WS kline originale; secondo la doc Bitget v3 snapshot/update non equivalgono a un ack esplicito.
+
+**Interpretazione:** 1m_RECEIPT_OBSERVED = YES dal WS per 998 righe storiche a receipt iniziale; 1m_ROLLOVER_OBSERVED =18; 1m_FINAL_CLOSE_EVIDENCE = PARTIAL e retrospettiva; nessuna ricevuta live 15m/1H/4H in R04, nessun contesto LONG MTF completamente co-raccolto. NON dichiarare retroattivamente il probe LONG 40 NO_TRADE come backtest causalmente live completo. NTP clock verificato NO, esecuzione di ordini NO, economics INSUFFICIENT, PAPER_ELIGIBLE NO.
+
+**Nuovo pacchetto autonomo** `SuperBot_Long_R04_WS_Candle_Rollover_01.zip`, SHA256 `a91755c840ab1a472d45fb6f5f85212d11cdbc55755f103c8c16e99188fdc80d`; contiene inputs originali R04/RESULTS, script `analyze_rollover.py`, `verify.py`, report, CSV 18 eventi, JSON metriche, run log, TEST_RESULTS e manifesto **10/10 SHA256**; extraction clean + `python3 verify.py` **15/15 PASS**, senza rete.
+
+**Prossimo lavoro di ricerca:** cattura simultanea read-only WS books1 e kline 1m/15m/1H/4H con ricevute effettive, oltre a REST warmup al momento dell'avvio e time-sync documentato, su un intervallo più lungo. In questo ambiente Bitget DNS non raggiungibile, quindi nessun nuovo dato live inventato. Motore LONG V6.1.1, simulatore R1/R2, Brain/Falco/Toro/SHORT, capitale e protezioni invariati; PAPER NO.
