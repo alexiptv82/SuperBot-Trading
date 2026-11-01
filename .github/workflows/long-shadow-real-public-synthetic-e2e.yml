@@ -1,0 +1,39 @@
+name: LONG Shadow Real Public Feed + Synthetic Wallet E2E (NO TRADE)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/long_shadow_live_public_synthetic_wallet_smoke.py'
+      - '.github/workflows/long-shadow-real-public-synthetic-e2e.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-rest-and-books1-with-fake-wallets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install public WebSocket client only
+        run: python -m pip install websocket-client==1.8.0
+      - name: 'Static safety: no private API, wallet overwrite, or real LONG claim'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('backend/long_shadow_live_public_synthetic_wallet_smoke.py').read_text()
+          assert "wss://ws.bitget.com/v3/ws/public" in src
+          assert "STUB_NO_TRADE_NOT_REAL_V611" in src
+          assert 'TemporaryDirectory' in src
+          for word in ('create_order(', 'place_order(', 'cancel_order(', 'close_position(', 'ccxt', 'API_SECRET', 'API_KEY'):
+              assert word not in src, word
+          print('PUBLIC_MARKET_SYNTHETIC_WALLET_STATIC_PASS')
+          PY
+      - name: Real Bitget PUBLIC REST+books1 and SYNTHETIC 3-wallet observer
+        env:
+          PYTHONPATH: backend
+        run: python backend/long_shadow_live_public_synthetic_wallet_smoke.py
+
+# Public-only integration, no secrets, no access to existing VPS/account wallets.

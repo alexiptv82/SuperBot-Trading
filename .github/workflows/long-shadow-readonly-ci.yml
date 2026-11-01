@@ -1,0 +1,119 @@
+name: Long Shadow Read-Only Contract
+on:
+  push:
+    branches:
+      - work/long-shadow-app-observation-20261101
+    paths:
+      - backend/long_shadow_readonly.py
+      - backend/long_shadow_capture_context.py
+      - backend/long_shadow_offline_probe.py
+      - backend/long_shadow_stream.py
+      - backend/long_shadow_stream_runner.py
+      - backend/long_shadow_observer.py
+      - backend/long_shadow_observer_runner.py
+      - backend/long_shadow_rest_closed.py
+      - backend/long_shadow_brain_source_diagnostic.py
+      - backend/long_shadow_frozen_recorded_replay.py
+      - backend/long_shadow_brain_docker_metadata_preflight.py
+      - backend/research_frozen_long_v611_engine.zlib.b64
+      - backend/research_materialize_frozen_long_v611.py
+      - backend/long_shadow_api.py
+      - backend/tests/test_long_shadow_readonly.py
+      - backend/tests/test_long_shadow_capture_context.py
+      - backend/tests/test_long_shadow_offline_probe.py
+      - backend/tests/test_long_shadow_stream.py
+      - backend/tests/test_long_shadow_stream_runner.py
+      - backend/tests/test_long_shadow_observer.py
+      - backend/tests/test_long_shadow_observer_runner.py
+      - backend/tests/test_long_shadow_rest_closed.py
+      - backend/tests/test_long_shadow_brain_source_diagnostic.py
+      - backend/tests/test_long_shadow_frozen_recorded_replay.py
+      - backend/tests/test_long_shadow_brain_docker_metadata_preflight.py
+      - backend/tests/test_long_shadow_original_frozen_fixture.py
+      - frontend/src/pages/LongShadowDashboard.js
+      - frontend/src/pages/LongShadowDashboard.test.js
+      - frontend/src/pages/Dashboard.js
+      - frontend/src/App.js
+      - frontend/src/api.js
+      - backend/server.py
+      - .github/workflows/long-shadow-readonly-ci.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/long_shadow_*.py'
+      - 'backend/tests/test_long_shadow_*.py'
+      - 'backend/server.py'
+      - 'frontend/src/pages/LongShadowDashboard*'
+      - 'frontend/src/pages/Dashboard.js'
+      - 'frontend/src/App.js'
+      - 'frontend/src/api.js'
+      - '.github/workflows/long-shadow-readonly-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install fastapi==0.110.0 httpx==0.27.0
+      - name: Wallet + API read-only contracts
+        run: |
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_readonly.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_capture_context.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_offline_probe.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_stream.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_stream_runner.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_observer.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_observer_runner.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_rest_closed.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_brain_source_diagnostic.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_frozen_recorded_replay.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_brain_docker_metadata_preflight.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_original_frozen_fixture.py -v
+      - name: Static guard—no engine imports/orders
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          api=Path('backend/long_shadow_api.py').read_text()
+          view=Path('backend/long_shadow_readonly.py').read_text()
+          server=Path('backend/server.py').read_text()
+          assert 'register_long_shadow(app, require_session)' in server
+          assert "app.get('/api/long/shadow')" in api
+          assert 'app.post' not in api and 'app.delete' not in api
+          assert 'from desk.engine' not in view and 'from exchange' not in view
+          for token in ('create_order(', 'place_order(', 'cancel_order(', 'requests.post('):
+              assert token not in api+view
+          observer=Path('backend/long_shadow_observer.py').read_text()
+          runner=Path('backend/long_shadow_observer_runner.py').read_text()
+          rest=Path('backend/long_shadow_rest_closed.py').read_text()
+          for token in ('create_order(', 'place_order(', 'cancel_order(', 'requests.post(', 'close_position(', 'ccxt'):
+              assert token not in observer+runner+rest
+          print('READ_ONLY_STATIC_GATES_PASS')
+          PY
+
+# Isolated research CI only. No VPS or deploy permissions.
+
+  frontend-shadow-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify shadow display contracts
+        run: CI=true npx react-scripts test --watchAll=false --runInBand --testPathPattern=LongShadowDashboard.test.js
+      - name: Compile dashboard
+        run: CI=false npm run build
+
+# Tested pipeline: captured frames -> frozen LONG advisory -> wallet-bound view. No deploy.

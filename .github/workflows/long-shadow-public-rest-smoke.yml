@@ -1,0 +1,38 @@
+name: LONG Shadow Public Bitget REST Smoke (NO TRADE)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/long_shadow_rest_live_smoke.py'
+      - 'backend/long_shadow_rest_closed.py'
+      - '.github/workflows/long-shadow-public-rest-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-candles-eight-series:
+    name: Public REST BTC+ETH 1m/15m/1H/4H — no keys, no orders
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Assert endpoint is public read-only and no trading imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          a=Path('backend/long_shadow_rest_live_smoke.py').read_text()
+          b=Path('backend/long_shadow_rest_closed.py').read_text()
+          assert "https://api.bitget.com/api/v3/market/candles" in b
+          assert "urllib.request.Request" in b
+          for text in (a,b):
+              for token in ('create_order(', 'place_order(', 'cancel_order(', 'close_position(', 'requests.post(', 'ccxt', 'API_SECRET', 'API_KEY'):
+                  assert token not in text, token
+          print('PUBLIC_READ_ONLY_STATIC_GUARD_PASS')
+          PY
+      - name: Test REAL public REST candle schema, eight timeframes
+        env:
+          PYTHONPATH: backend
+        run: python backend/long_shadow_rest_live_smoke.py

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { deskAPI, bullAPI, errMsg } from '../api';
 import { fmtClock, fmtDateTime, fmtDuration, signed, pnlColor, botState, macroNote } from '../deskUi';
 import ChartModal from '../components/ChartModal';
@@ -547,6 +548,10 @@ export default function Dashboard() {
         {chip('hawk', '🦅 Falco', '#38bdf8')}
         {chip('bull', '🐂 Toro', '#a78bfa')}
       </div>
+
+      <Link to="/long/shadow" style={{ display: 'block', color: '#38bdf8', fontSize: '13px', margin: '0 0 14px' }}>
+        🔎 LONG Shadow · guarda i segnali (solo osservazione)
+      </Link>
 
       {/* Selettore portafoglio */}
       <div style={{
