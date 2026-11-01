@@ -114,6 +114,38 @@ class ShadowContracts(unittest.TestCase):
         self.assertEqual(result['consumers']['hawk']['advisory_status'],'wallet_unavailable')
         self.assertIsNone(result['consumers']['hawk']['advice'])
 
+    def test_advice_requires_exact_wallet_snapshot_binding(self):
+        classic(self.roots['hawk'], {'BTC':{'side':-1}})
+        out=self.root/'output';out.mkdir()
+        record={'schema':'long-shadow-record-v1','consumer':'hawk',
+                'authority':'advisory_only','observation_only':True,
+                'wallet_as_of_ms':NOW-1000,'as_of_ms':NOW,
+                'symbol':'BTCUSDT','setup':'REVERSAL',
+                'decision':'CANDIDATE','reasons':['study_only']}
+        (out/'hawk.json').write_text(json.dumps(record))
+        valid=read_dashboard(roots=self.roots,shadow_dir=out,now_ms=NOW)
+        self.assertEqual(valid['consumers']['hawk']['advisory_status'],
+                         'unverified_external_record')
+        self.assertEqual(valid['consumers']['hawk']['advice']['decision'],
+                         'CANDIDATE')
+        record['wallet_as_of_ms']=NOW-2000
+        (out/'hawk.json').write_text(json.dumps(record))
+        invalid=read_dashboard(roots=self.roots,shadow_dir=out,now_ms=NOW)
+        self.assertEqual(invalid['consumers']['hawk']['advisory_status'],
+                         'not_available')
+        self.assertIsNone(invalid['consumers']['hawk']['advice'])
+
+    def test_unbound_legacy_advice_is_not_displayed(self):
+        classic(self.roots['hawk'], {})
+        out=self.root/'output';out.mkdir()
+        record={'schema':'long-shadow-record-v1','consumer':'hawk',
+                'authority':'advisory_only','observation_only':True,
+                'as_of_ms':NOW,'symbol':'ETHUSDT','setup':'CONTINUATION',
+                'decision':'CANDIDATE','reasons':[]}
+        (out/'hawk.json').write_text(json.dumps(record))
+        result=read_dashboard(roots=self.roots,shadow_dir=out,now_ms=NOW)
+        self.assertIsNone(result['consumers']['hawk']['advice'])
+
     def test_wallet_files_never_written(self):
         classic(self.roots['hawk'],{'BTC':{'side':-1}})
         before={p.name:(p.read_bytes(),p.stat().st_mtime_ns) for p in self.roots['hawk'].iterdir()}
