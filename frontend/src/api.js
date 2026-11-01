@@ -102,6 +102,10 @@ export const deskAPI = {
   disableBullTrading: () => API.post('/api/desk/bull/trading/disable'),
 };
 export const bullAPI = makeDeskAPI('/api/desk/bull');
+// Consultation-only LONG Shadow, never exposes trading commands.
+export const longShadowAPI = {
+  getStatus: (signal) => API.get('/api/long/shadow', { signal }),
+};
 export const brainAPI = {
   getFreeStatus: (signal) => API.get('/api/brain/free', { signal }),
   getStatus: (signal) => API.get('/api/brain/status', { signal }),
