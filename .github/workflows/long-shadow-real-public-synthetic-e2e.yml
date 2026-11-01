@@ -35,3 +35,5 @@ jobs:
         env:
           PYTHONPATH: backend
         run: python backend/long_shadow_live_public_synthetic_wallet_smoke.py
+
+# Public-only integration, no secrets, no access to existing VPS/account wallets.
