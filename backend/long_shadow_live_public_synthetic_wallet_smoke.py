@@ -64,7 +64,7 @@ def _synthetic_wallets(parent, now):
     """Use same on-disk formats as app, but ONLY under isolated tmp root."""
     roots={a:parent/a for a in ('hawk','bull','brain')}
     for root in roots.values():
-        root.mkdir(mode=0o700)
+        root.mkdir(parents=True,mode=0o700)
     for name in ('hawk','bull'):
         data=roots[name]
         positions=({'BTC':{'symbol':'BTC','side':-1}}
