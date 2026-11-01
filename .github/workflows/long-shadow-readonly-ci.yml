@@ -85,6 +85,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
       - name: Verify shadow display contracts
-        run: CI=true npm test -- --watch=false --runInBand LongShadowDashboard.test.js
+        run: CI=true npx react-scripts test --watchAll=false --runInBand --testPathPattern=LongShadowDashboard.test.js
       - name: Compile dashboard
         run: CI=false npm run build
