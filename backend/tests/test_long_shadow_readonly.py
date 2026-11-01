@@ -60,6 +60,33 @@ class ShadowContracts(unittest.TestCase):
         self.assertEqual(wallet_snapshot('brain',roots=self.roots,now_ms=NOW,brain_source='free')['status'],'ok')
         self.assertEqual(wallet_snapshot('brain',roots=self.roots,now_ms=NOW,brain_source='pilot')['status'],'unavailable')
 
+    def test_pilot_reads_status_json_heartbeat_not_state(self):
+        root=self.roots['brain'];root.mkdir()
+        with sqlite3.connect(root/'brain.sqlite3') as db:
+            db.execute('CREATE TABLE state(id INTEGER PRIMARY KEY, body TEXT)')
+            db.execute('INSERT INTO state VALUES(1,?)',
+                       (json.dumps({'version':'brain-pilot-v1',
+                                    'account':{'name':'brain-paper','positions':{
+                                        'BTC':{'side':-1}}}}),))
+        (root/'status.json').write_text(json.dumps({'mode':'paper','applied':False,'ts_ms':NOW}))
+        status=wallet_snapshot('brain',roots=self.roots,now_ms=NOW,brain_source='pilot')
+        self.assertEqual(status['status'],'ok')
+        self.assertEqual(status['snapshot']['positions'][0]['side'],'SHORT')
+
+    def test_pilot_rejects_bad_or_stale_status_json(self):
+        root=self.roots['brain'];root.mkdir()
+        with sqlite3.connect(root/'brain.sqlite3') as db:
+            db.execute('CREATE TABLE state(id INTEGER PRIMARY KEY, body TEXT)')
+            db.execute('INSERT INTO state VALUES(1,?)',
+                       (json.dumps({'version':'brain-pilot-v1',
+                                    'account':{'name':'brain-paper','positions':{}}}),))
+        for beat in ({'mode':'paper','applied':True,'ts_ms':NOW},
+                     {'mode':'paper','applied':False,'ts_ms':NOW-60*60*1000},
+                     {'mode':'live','applied':False,'ts_ms':NOW}):
+            (root/'status.json').write_text(json.dumps(beat))
+            status=wallet_snapshot('brain',roots=self.roots,now_ms=NOW,brain_source='pilot')
+            self.assertEqual(status['status'],'unavailable')
+
     def test_observer_never_can_trade(self):
         obj=read_dashboard(roots=self.roots,shadow_dir=self.root/'none',now_ms=NOW)
         for key in ('enabled','can_execute_orders','paper_eligible','engine_running'):
