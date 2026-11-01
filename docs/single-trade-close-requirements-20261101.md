@@ -27,3 +27,9 @@ Scheda di ciascun trade: simbolo, LONG/SHORT, prezzo ingresso/attuale, margine, 
 ## Gate
 
 Pure request/target/lesson contract + test = pronto in ricerca. API autenticata/operator inbox/owner-close e UI identica su classici + Brain = ancora da implementare. Staging app/PAPER = NON autorizzati. LONG Shadow PR #26 resta separata e NON mergiata. Brain attuale libero bocciato per futuro rilascio. Protezione 450 USDT e SHORT invariati.
+## Audit indipendente e regressioni verificati
+
+- PR Draft #27: https://github.com/alexiptv82/SuperBot-Trading/pull/27
+- GitHub Actions run `41339003755`: Python 3.10 **21/21 PASS** e Python 3.11 **21/21 PASS**; static guard no-trading **PASS** in entrambi i job. Il test di integrazione chiama il motore PAPER dei classici **solo in memoria**: chiude BTC, lascia ETH aperto, con identità e contenuto invariati.
+- Il generatore di bozza di insegnamento ora richiede `before_wallet` e `after_wallet`; verifica che tutti gli altri trade abbiano lo stesso ID e tempo di apertura dopo la chiusura. Una sparizione accidentale di un secondo trade o un altro trade riaperto non può essere registrato come successo del comando singolo.
+- Non sono ancora stati implementati receiver/api autenticata/idempotency duratura/worker proprietario del wallet per l'ID esatto, né collegamenti all'app Brain e alla UI dei classici. I 21 test NON significano che un pulsante dell'app sia pronto al deploy.
