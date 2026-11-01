@@ -102,6 +102,18 @@ class ShadowContracts(unittest.TestCase):
         obj=read_dashboard(roots=self.roots,shadow_dir=out,now_ms=NOW)
         self.assertEqual(obj['consumers']['hawk']['advisory_status'],'not_available')
 
+    def test_wallet_missing_suppresses_candidate_even_if_shadow_record_exists(self):
+        out=self.root/'output';out.mkdir()
+        record={'schema':'long-shadow-record-v1','consumer':'hawk',
+                'authority':'advisory_only','observation_only':True,
+                'as_of_ms':NOW,'symbol':'BTCUSDT','setup':'REVERSAL',
+                'decision':'CANDIDATE','reasons':['test']}
+        (out/'hawk.json').write_text(json.dumps(record))
+        result=read_dashboard(roots=self.roots,shadow_dir=out,now_ms=NOW)
+        self.assertEqual(result['consumers']['hawk']['wallet_status'],'unavailable')
+        self.assertEqual(result['consumers']['hawk']['advisory_status'],'wallet_unavailable')
+        self.assertIsNone(result['consumers']['hawk']['advice'])
+
     def test_wallet_files_never_written(self):
         classic(self.roots['hawk'],{'BTC':{'side':-1}})
         before={p.name:(p.read_bytes(),p.stat().st_mtime_ns) for p in self.roots['hawk'].iterdir()}
