@@ -1,7 +1,7 @@
 name: LONG Shadow Public Bitget REST Smoke (NO TRADE)
 on:
-  push:
-    branches: [work/long-shadow-app-observation-20261101]
+  pull_request:
+    branches: [main]
     paths:
       - 'backend/long_shadow_rest_live_smoke.py'
       - 'backend/long_shadow_rest_closed.py'
