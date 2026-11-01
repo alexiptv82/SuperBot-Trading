@@ -1,0 +1,17 @@
+# 2026-11-01 — LONG Shadow React, causal snapshot bridge, pinned frozen LONG offline probe
+
+Utente ha autorizzato prosecuzione dello sviluppo. ChatGPT ha lavorato SOLO su branch `work/long-shadow-app-observation-20261101` da main e NON ha effettuato merge, deploy, accesso VPS, ordini PAPER/LIVE, modifiche motori classici, SHORT, Brain o protezione capitale 450 USDT.
+
+**Branch**: al confronto GitHub `main...work/long-shadow-app-observation-20261101` risulta `ahead_by=19`, `behind_by=0`, con differenze limitate a 15 file. Nessuna modifica alla produzione. File essenziali: backend GET-only `long_shadow_api.py`, wallet reader read-only `long_shadow_readonly.py`, `long_shadow_capture_context.py`, `long_shadow_offline_probe.py`, frontend `LongShadowDashboard.js` e test, wiring `App.js/api.js/Dashboard.js`, nuovi test e CI job, `backend/server.py` +3 righe di registrazione endpoint. Runbook `docs/long-shadow-staging-runbook.md`.
+
+**UI:** pagina nuova `/long/shadow` accessibile con link nella dashboard PAPER, separa Falco/Toro/Brain, mostra LONG/SHORT aperti per wallet solo se valido; wallet assente/stale → non disponibile (mai zero posizioni). Mostra CANDIDATE esplicitamente NON eseguibile, NO_TRADE, e `unverified_external_record` correttamente etichettato. Nessun tasto ordine/POST.
+
+**Feed offline:** `long_shadow_capture_context.startup_contexts` consuma ZIP della cattura 15 minuti con manifest e raw SHA verificati, 10 ACK, primo snapshot kline 1m/15m/1H/4H BTC/ETH. Scarta candle corrente; le barre chiuse ricevono *receipt timestamp* realmente osservato, senza retrodatare la disponibilità. Attende BBO books1 osservata dopo tutti gli snapshot, entro 2s. Fornisce contesti, NON ordini. Non finge closed ack di provider o disponibilità live H24.
+
+**Frozen engine worker solo offline:** `long_shadow_offline_probe.py` carica un engine da percorso esplicito SOLO se SHA256 `36f8c62be8d205d909ae16f5652209710de56ae710fedb6b75a601b96486fe72` (motore lab V6.1.1 nell'archivio). Combina contesto verificato con wallet autoritativo read-only, rifiuta wallet sconosciuto, valuta CONTINUATION/REVERSAL per account, verifica `authority=advisory_only` e tutti i `may_...` false, scrive SOLO in directory di ricerca nuova non dentro wallet. Brain senza sorgente `pilot|free` verificata produce NO_TRADE/WALLET_UNAVAILABLE; mai riempi slot fittizi. NON installato o collegato a server runtime, non ha API d'ordine.
+
+**Test e CI:** già 23 test locali dell'adattatore reader nel pacchetto precedente PASS; aggiunti test regressione 4 MTF capture, 4 offline probe e 4 React render. Workflow branch con due job Python/React build/test. `get_commit_combined_status` dopo commit `871eadaf...` ha restituito `statuses: []`; **esito GitHub Actions e run della nuova suite non verificati**, quindi non affermare CI verde. Nessun nuovo test E2E sull'app online svolto.
+
+**Gate:** STAGING_CODE_PREPARED=YES, FRONTEND_ROUTE_CODE_PREPARED=YES, OBSERVED_SNAPSHOT_TO_OFFLINE_ADVISORY_CODE_PREPARED=YES, LIVE_H24_WORKER_CONNECTED=NO, APP_DEPLOYED=NO, BRAIN_WALLET_SOURCE_CONFIRMED=NO, CI_GREEN=UNVERIFIED, REAL_EXECUTION=UNVERIFIED, ECONOMIC_EVIDENCE=INSUFFICIENT, PAPER_ELIGIBLE=NO.
+
+**Prossimo lavoro utile**: ottenere/verificare CI branch e riparare eventuali test; identificare il Brain realmente autorevole; costruire servizio shadow continuo separato senza order API, testare staging E2E con wallet read-only e dati live, quindi chiedere esplicito OK per deploy. NESSUN merge/deploy senza permesso.
