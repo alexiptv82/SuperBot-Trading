@@ -1,0 +1,17 @@
+# SuperBot LONG — 2026-11-01: audit R05.4 e studio quote-age R04, gestione diretta ChatGPT
+
+**Indicazione dell'utente:** ridurre i cicli con Grok; ChatGPT prende direttamente in carico audit e lavori ordinari. Grok/Claude solo per problemi complessi o un audit indipendente importante. Nessun merge/deploy/PAPER/LIVE o bot operativo modificato.
+
+ZIP effettivamente allegato `SuperBot_Long_Bitget_Subminute_Research_05_4_DOWNLOAD.zip`: SHA256 **9c6a33ecb2437455b4c0d75af0708b4e733dca8270ab2a9b9aadd28ee2c6225e**. Diverso dal SHA256 comunicato da Grok (45e55b2adab73b90d9aaf0874827af83ea579afd673810c5c39a1e2ee2dfbc46): possibile repackaging non provato; NON dichiarare identità dello ZIP originario. CRC OK e manifesto interno **20/20 PASS**.
+
+R05.4 contiene micro-fix publicTrade bad action quarantinata; snapshot raw copied + digest compare; output `complete` contabile distinto da qualità. Test Python in runtime locale 61/61 `test*.py` e 12/12 `TEST*.py` PASS dopo predisposizione symlink per test che assume `/workspace/artifacts/bitget_r04/code/normalize_full.py`. Nessuna asserzione cambiata; 6 nuovi test causali BBO age/no lookahead PASS. Normalizer R05.4 già valido per rielaborazione Research04 IMMUTABILE, non certificato genericamente per ingest non presidiato.
+
+Verifica dati: snapshot raw incluso R05.4 **identico byte-per-byte** ai 33791 frame WS R04 originali, sha66bfe660433d3db16d636a301994198aab575fd656845b4b686d06f7f90716bf. Output 31717 BBO, 3634 trade (391 duplicate flag), quarantena zero. Quattro file normalizzati identical byte-per-byte a R05.1. Una cartella `norm_*/raw_snapshot.jsonl` è rimasta dentro gli output, cleanup incompleto. Il JSON `reconciliation_summary.json` ha `complete=true` ma NON il campo `quality_gate` esplicito (non va detto che è certificato dalla pipeline).
+
+**Studio causale read-only BBO quote-age:** campionato a secondi UTC interi, usando SOLO ultima quotazione ricevuta localmente prima o al tempo di campionamento, 597 secondi per simbolo. BTC 11322 update, age p50 113ms p95 693ms max2370ms; age>500ms 59/597=9.88%, >1000ms 11/597. ETH 20395 update, age p50 59ms p95 417ms max2297ms; >500ms 20/597=3.35%, >1000ms 7/597. Spread mediano L1 BTC 0.01285bps ETH0.04416bps, osservazioni non prezzi di fill, non latenza di rete, non prova di stale book/disconnessione. Clock NTP UNVERIFIED.
+
+**Nuovo blocco evidenziato:** Research03 multi-timeframe BTC/ETH last 1m close 2026-10-31 19:51:00 UTC; R04 first BBO receipt 2026-11-01 07:16:03.301 UTC, gap circa 11h 25min senza candele 1m osservate nello storico fornito. Impossibile unire i due archivi in replay senza dati MTF causalmente allineati alla finestra BBO R04.
+
+**Artefatto nuovo generato in chat:** `SuperBot_Long_R054_Audit_e_QuoteAge_R04_01.zip` SHA256 `27cb8cbc24df621662ba3fe4291f25993ee010c5cfa883d3e16c4dc2e1bdfec3`; contiene report, CSV BBO age, JSON summary, script Python riutilizzabile, test/risultati, README, manifesto 9/9 PASS. Report standalone `AUDIT_FINALE_RESEARCH_05_4_E_STUDIO_QUOTE_AGE_R04.md` nel pacchetto e in cartella dedicata.
+
+**Decisione:** non servono altri cicli Grok sulla pipeline per R04 storica. Procedere solo con lavoro che colmi reale gap: acquisire e verificare dataset 1m/15m/1h/4h coincidente con BBO R04, inclusa availability causale. Nessuna quotazione inventata e niente backtest economico da 10 minuti di L1. Gate: REAL_EXECUTION UNVERIFIED, ECONOMIC_EVIDENCE INSUFFICIENT, PAPER_ELIGIBLE NO. Frozen LONG V6.1.1, harness R1/R2, Brain/Hawk/Bull/SHORT invariati.
