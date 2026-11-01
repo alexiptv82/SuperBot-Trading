@@ -153,7 +153,7 @@ def wallet_snapshot(consumer, *, roots, now_ms=None, fresh_ms=DEFAULT_FRESH_MS,
         return {'status':'unavailable',
                 'reason':str(exc) if isinstance(exc,Unavailable) else 'wallet_unreadable'}
 
-def _shadow_record(root, consumer, now_ms):
+def _shadow_record(root, consumer, now_ms, wallet_as_of_ms):
     if root.is_symlink():
         raise Unavailable('shadow_dir_symlink')
     path=_safe_file(root,consumer+'.json')
@@ -164,6 +164,12 @@ def _shadow_record(root, consumer, now_ms):
         raise Unavailable('shadow_authority_invalid')
     if not _age_ok(data.get('as_of_ms'), now_ms, 20*60_000):
         raise Unavailable('shadow_record_stale')
+    # Advice was computed for a particular authoritative wallet snapshot.
+    # New positions or a changed wallet heartbeat invalidate old advice.
+    if (type(wallet_as_of_ms) is not int or
+            type(data.get('wallet_as_of_ms')) is not int or
+            data['wallet_as_of_ms'] != wallet_as_of_ms):
+        raise Unavailable('shadow_wallet_snapshot_changed')
     if data.get('decision') not in ('CANDIDATE','NO_TRADE'):
         raise Unavailable('shadow_invalid_decision')
     if data.get('setup') not in ('CONTINUATION','REVERSAL'):
@@ -195,7 +201,8 @@ def read_dashboard(*, roots, shadow_dir, now_ms=None, brain_source=None):
             advisory_status='wallet_unavailable'
         else:
             try:
-                advice=_shadow_record(Path(shadow_dir),consumer,now)
+                advice=_shadow_record(Path(shadow_dir),consumer,now,
+                                      wallet['snapshot']['as_of_ms'])
                 advisory_status='unverified_external_record'
             except (Unavailable,OSError,ValueError,UnicodeError):
                 advice=None
