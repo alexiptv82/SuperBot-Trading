@@ -129,7 +129,7 @@ class SingleTradeContractTests(unittest.TestCase):
         rec={"persisted":True,"kind":"trade_closed","source":"manual_user",
              "request_id":r["request_id"],"account_id":"hawk","run_id":3,
              "position_id":12,"close_ms":NOW-300,"net_usd":19.5,"margin_usd":100}
-        lesson=verified_close_lesson(r,receipt=rec,after_wallet=after,now_ms=NOW)
+        lesson=verified_close_lesson(r,receipt=rec,before_wallet=wallet(),after_wallet=after,now_ms=NOW)
         self.assertEqual(lesson["roi_net_on_margin_pct"],19.5)
         self.assertTrue(lesson["user_confirmation_required"])
         self.assertFalse(lesson["changes_strategy"])
@@ -142,7 +142,7 @@ class SingleTradeContractTests(unittest.TestCase):
                  "request_id":r["request_id"],"account_id":"hawk","run_id":3,
                  "position_id":12,"close_ms":NOW-300,"net_usd":19.5,"margin_usd":100}
         with self.assertRaisesRegex(CloseRejected,"unattested_manual_close"):
-            verified_close_lesson(r,receipt=receipt,after_wallet=after,now_ms=NOW)
+            verified_close_lesson(r,receipt=receipt,before_wallet=wallet(),after_wallet=after,now_ms=NOW)
 
     def test_open_target_never_becomes_lesson(self):
         r=req()
@@ -150,7 +150,31 @@ class SingleTradeContractTests(unittest.TestCase):
                  "request_id":r["request_id"],"account_id":"hawk","run_id":3,
                  "position_id":12,"close_ms":NOW-300,"net_usd":19.5,"margin_usd":100}
         with self.assertRaisesRegex(CloseRejected,"target_not_yet_closed"):
-            verified_close_lesson(r,receipt=receipt,after_wallet=wallet(),now_ms=NOW)
+            verified_close_lesson(r,receipt=receipt,before_wallet=wallet(),after_wallet=wallet(),now_ms=NOW)
+
+    def test_other_positions_must_stay_open_for_attestation(self):
+        r=req()
+        after=wallet()
+        del after["positions"]["BTC"]
+        del after["positions"]["ETH"]  # accidental all-close must fail
+        receipt={"persisted":True,"kind":"trade_closed","source":"manual_user",
+                 "request_id":r["request_id"],"account_id":"hawk","run_id":3,
+                 "position_id":12,"close_ms":NOW-300,"net_usd":19.5,"margin_usd":100}
+        with self.assertRaisesRegex(CloseRejected,"other_position_changed_or_closed"):
+            verified_close_lesson(r,receipt=receipt,before_wallet=wallet(),
+                                  after_wallet=after,now_ms=NOW)
+
+    def test_other_trade_reopened_with_same_symbol_is_not_acceptable(self):
+        r=req()
+        after=wallet()
+        del after["positions"]["BTC"]
+        after["positions"]["ETH"]["id"]=999
+        receipt={"persisted":True,"kind":"trade_closed","source":"manual_user",
+                 "request_id":r["request_id"],"account_id":"hawk","run_id":3,
+                 "position_id":12,"close_ms":NOW-300,"net_usd":19.5,"margin_usd":100}
+        with self.assertRaisesRegex(CloseRejected,"other_position_changed_or_closed"):
+            verified_close_lesson(r,receipt=receipt,before_wallet=wallet(),
+                                  after_wallet=after,now_ms=NOW)
 
     def test_learning_rejects_wrong_closed_position(self):
         r=req()
@@ -160,7 +184,7 @@ class SingleTradeContractTests(unittest.TestCase):
                  "request_id":r["request_id"],"account_id":"hawk","run_id":3,
                  "position_id":21,"close_ms":NOW-300,"net_usd":19.5,"margin_usd":100}
         with self.assertRaisesRegex(CloseRejected,"unattested_manual_close"):
-            verified_close_lesson(r,receipt=receipt,after_wallet=after,now_ms=NOW)
+            verified_close_lesson(r,receipt=receipt,before_wallet=wallet(),after_wallet=after,now_ms=NOW)
 
     def test_input_is_never_mutated(self):
         r=req();w=wallet()
