@@ -1,0 +1,41 @@
+name: Long Shadow Read-Only Contract
+on:
+  push:
+    branches:
+      - work/long-shadow-app-observation-20261101
+    paths:
+      - backend/long_shadow_readonly.py
+      - backend/long_shadow_api.py
+      - backend/tests/test_long_shadow_readonly.py
+      - backend/server.py
+      - .github/workflows/long-shadow-readonly-ci.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install fastapi==0.110.0 httpx==0.27.0
+      - name: Wallet + API read-only contracts
+        run: PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_readonly.py -v
+      - name: Static guard—no engine imports/orders
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          api=Path('backend/long_shadow_api.py').read_text()
+          view=Path('backend/long_shadow_readonly.py').read_text()
+          server=Path('backend/server.py').read_text()
+          assert 'register_long_shadow(app, require_session)' in server
+          assert "app.get('/api/long/shadow')" in api
+          assert 'app.post' not in api and 'app.delete' not in api
+          assert 'from desk.engine' not in view and 'from exchange' not in view
+          for token in ('create_order(', 'place_order(', 'cancel_order(', 'requests.post('):
+              assert token not in api+view
+          print('READ_ONLY_STATIC_GATES_PASS')
+          PY
