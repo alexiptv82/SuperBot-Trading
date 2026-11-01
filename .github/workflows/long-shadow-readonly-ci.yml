@@ -98,3 +98,5 @@ jobs:
         run: CI=true npx react-scripts test --watchAll=false --runInBand --testPathPattern=LongShadowDashboard.test.js
       - name: Compile dashboard
         run: CI=false npm run build
+
+# Tested pipeline: captured frames -> frozen LONG advisory -> wallet-bound view. No deploy.
