@@ -1,0 +1,17 @@
+# 2026-11-01 — LONG Shadow: wallet Brain source fixes + real 15m evidence checkpoint
+
+Branch `work/long-shadow-app-observation-20261101` remains isolated. Absolutely no merge, deploy, VPS access, PAPER/LIVE orders, or modifications to SHORT/Brain/Hawk/Bull active engines, 450 USDT floor or frozen LONG V6.1.1.
+
+**Fix Brain Pilot:** `backend/long_shadow_readonly.py` now reads pilot heartbeat from the authoritative `status.json` (`mode='paper', applied=false, ts_ms`) documented by `backend/desk/brain_view.py`. Brain Free still reads `heartbeat_ms` from SQLite state. Pilot/Free identity labels must match, fresh timestamps required; missing/stale = unavailable. This corrects a prior bug where pilot reader demanded a `state.heartbeat_ms` that the canonical pilot does not generally store.
+
+**Fix source directory:** `backend/long_shadow_api.py` now determines source only from explicit `LONG_SHADOW_BRAIN_SOURCE`: 'free' → `BRAIN_FREE_DATA_DIR` default `/opt/superbot-brain-free` exactly as main `backend/brain_free_api.py`; 'pilot' → `BRAIN_DATA_DIR` default `/opt/superbot-desk-data/brain` exactly as main `desk/brain_view.py`; unknown source → safe nonexistent sentinel. Optional `LONG_SHADOW_BRAIN_DATA_DIR` can override path only after source kind selection, with account identity check still active. No automatic guessing of actual active Brain on VPS.
+
+**Safety of advice display:** `backend/long_shadow_readonly.py` now suppresses any `CANDIDATE` record if corresponding authoritative wallet read fails (status wallet_unavailable, advice null). Prevents stale or missing wallet from showing advisory-looking trade opportunities.
+
+**Tests added in branch** `backend/tests/test_long_shadow_readonly.py`: correct Pilot heartbeat side SHORT; invalid/stale/mismatched pilot heartbeat; Free/Pilot/default source directory mapping; unavailable wallet candidate hidden. Local regression on staging mirror (same logical patches, independent staging code) **26/26 PASS** with Python FastAPI tests. This does NOT establish GitHub CI green or end-to-end production runtime.
+
+**Independent real 15-minute capture audit** re-read source zip `SuperBot_LONG_LIVE_MTF_RESULT_20261101T161618Z.zip` SHA256 `33eb490e34d7dbfbb208827d3f85edc48f327a3619ca2e33f3a5dfb5d5a84cb2`; BTC/ETH each have 500 bars per 1m, 15m, 1H and 4H first snapshot, exactly 499 closed and 1 still forming per timeframe; excluded the live incomplete bar. BTC snapshot first receipt times 1793549781799 (1m), 1793549781946 (15m), 1793549782098 (1H), 1793549782099 (4H), first post-startup quote 1793549782244 (+145ms). ETH times 1793549782100, 1793549782102, 1793549782241, 1793549782243; post-startup quote 1793549782244 (+1ms). Added `docs/long-shadow-15min-capture-real-startup-audit.md` on isolated branch. No retroactive claim of historic live receive at bar close.
+
+**Still pending**: confirmation which Brain instance is actually running; H24 shadow worker/live data feed, app staging deployment, GitHub Actions green/React build verified on current branch, 1H/4H live rollover evidence, economic performance. Gate `REAL_EXECUTION=UNVERIFIED`, `ECONOMIC_EVIDENCE=INSUFFICIENT`, `PAPER_ELIGIBLE=NO`.
+
+**Next**: verify all branch CI checks and fix failures, get authoritative Brain runtime mapping without reading secrets or writing positions, implement tested separate observer service if feasible, then request explicit approval before deployment.
