@@ -1,3 +1,12 @@
+## LONG SHADOW — 2026-11-01, observer read-only pronto su ramo Draft
+
+PR #26 `work/long-shadow-app-observation-20261101`: nuovo bridge `long_shadow_observer.py` + runner ricerca `long_shadow_observer_runner.py` (non installato) tra archivio pubblico Bitget, LONG V6.1.1 SHA-pinned e tre wallet autorevoli read-only. Produce 12 record consultivi per ciclo (Falco/Toro shadow, Brain advisor): nessun ordine, default off, fail-closed dati/wallet stantii; consigli legati a snapshot wallet esatto e scadenza 60 secondi. `LONG_V6.1.1` frozen invariato. GitHub Actions run **41340629748** SUCCESS, backend **62/62 PASS** (7 suite + static guard), React render e build frontend SUCCESS. Nessun merge/deploy/VPS/API privata/ordine PAPER.
+
+**Blocco residuo:** lettore segue collector pubblico esterno ma un servizio H24 con candele CHIUSE verificate continuamente non è ancora provato; gli aggiornamenti kline correnti NON sono finalizzazioni. Dopo scadenza 1m il frozen LONG ritorna NO_TRADE, non segnale. Fonte Brain realmente attiva ancora da confermare. `PAPER_ELIGIBLE=NO`, economia insufficiente. Dettagli: `diario/2026-11-01_long_shadow_observer_causal_wallet_bridge_62tests.md` e `docs/long-shadow-observer-bridge-20261101.md` sul ramo PR #26.
+
+Separata PR #27 Draft per chiusura manuale esatta per `position_id` (21 test PASS Python 3.10/3.11), senza comando operativo. Brain libero bocciato per prossimo rilascio, successivo redesign rules-controlled; nessuna modifica a SHORT/protezione 450 USDT.
+
+---
 ## REQUISITO AGGIUNTO 2026-11-01 — Chiudi UNA posizione per ID, non tutte
 
 L'utente richiede «Chiudi questo trade» per Falco, Toro e Brain, lasciando tutte le altre posizioni aperte. La chiusura deve confrontare account, run, ID posizione, simbolo, lato e open_ms, non soltanto il simbolo; nessun comando vecchio può chiudere una posizione riaperta. Nei classici `main` API/dashboard hanno command-close per simbolo ma il `cli.py` main non ne contiene il consumer; esiste in rami successivi, da integrare e rafforzare. DCA/split aggregati fanno parte della stessa posizione. Teaching solo dopo chiusura attestata/persistita e conferma motivo; mai auto-modificare strategia da un clic.
