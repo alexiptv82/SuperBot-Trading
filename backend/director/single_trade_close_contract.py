@@ -141,7 +141,7 @@ def validate_target(request, wallet, *, now_ms, seen_request_ids=()):
     }
 
 
-def verified_close_lesson(request, *, receipt, after_wallet, now_ms):
+def verified_close_lesson(request, *, receipt, before_wallet, after_wallet, now_ms):
     """Create a draft lesson only AFTER a wallet owner attests persisted close.
 
     A click, queued request or disappearing exchange position is NOT a closure.
@@ -168,6 +168,25 @@ def verified_close_lesson(request, *, receipt, after_wallet, now_ms):
     positions = after_wallet.get("positions")
     if not isinstance(positions, dict):
         raise CloseRejected("post_close_wallet_missing")
+    if not isinstance(before_wallet, dict) or before_wallet.get("account_id") != request["account_id"] or (
+        before_wallet.get("run_id") != request["run_id"] or
+        not isinstance(before_wallet.get("positions"), dict)
+    ):
+        raise CloseRejected("before_wallet_identity_mismatch")
+    # A manual one-trade closure is attestable only when every other position
+    # survives with the same unique ID and opening time. Concurrent legitimate
+    # protective closes may cause a false negative, never a false 'all safe'.
+    previous = before_wallet["positions"]
+    for old_key, old_position in previous.items():
+        old_sym = _symbol(old_key)
+        if old_sym == _symbol(request["symbol"]):
+            continue
+        matching = [v for k,v in positions.items() if _symbol(k) == old_sym]
+        if len(matching) != 1 or not isinstance(matching[0],dict) or not isinstance(old_position,dict) or (
+            matching[0].get("id") != old_position.get("id") or
+            matching[0].get("open_ms") != old_position.get("open_ms")
+        ):
+            raise CloseRejected("other_position_changed_or_closed")
     wanted = _symbol(request.get("symbol"))
     if any(_symbol(k) == wanted and isinstance(p, dict) and
            p.get("id") == request["position_id"] for k, p in positions.items()):
