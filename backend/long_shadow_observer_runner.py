@@ -18,6 +18,7 @@ import time
 from long_shadow_offline_probe import frozen_engine
 from long_shadow_observer import evaluate_observation
 from long_shadow_stream_runner import CaptureTail
+from long_shadow_rest_closed import RestClosedOverlay, public_candles, FeedNotReady
 
 CONSUMERS = ('hawk', 'bull', 'brain')
 
@@ -93,6 +94,10 @@ def main():
     parser.add_argument('--brain-wallet',required=True)
     parser.add_argument('--brain-source',choices=['free','pilot'])
     parser.add_argument('--frozen-engine',help='SHA-pinned engine.py path')
+    parser.add_argument('--enable-rest-closed',action='store_true',
+                        help='EXPLICIT opt-in to Bitget public HTTPS candle GETs; no private API')
+    parser.add_argument('--rest-refresh-seconds',type=int,default=30,
+                        help='minimum 15s; refresh 8 public closed candle series')
     parser.add_argument('--enable-advice',action='store_true',
                         help='Opt in to READ-ONLY engine evaluation; NOT trading')
     parser.add_argument('--seconds',type=int,default=60,
@@ -101,8 +106,11 @@ def main():
     parser.add_argument('--evaluate-every-seconds',type=int,default=30)
     args=parser.parse_args()
     if (args.seconds < 0 or not .1 <= args.poll_seconds <= 30 or
-            not 5 <= args.evaluate_every_seconds <= 3600):
+            not 5 <= args.evaluate_every_seconds <= 3600 or
+            not 15 <= args.rest_refresh_seconds <= 300):
         parser.error('invalid timing arguments')
+    if args.enable_rest_closed and not args.enable_advice:
+        parser.error('REST polling requires explicit --enable-advice')
     if args.enable_advice and not args.frozen_engine:
         parser.error('explicit SHA-pinned engine required for advice')
     roots={'hawk':args.hawk_wallet,'bull':args.bull_wallet,'brain':args.brain_wallet}
@@ -110,14 +118,32 @@ def main():
     # Pinned load or fail BEFORE processing any market/wallet data.
     engine=frozen_engine(args.frozen_engine) if args.enable_advice else None
     tail=CaptureTail(args.input_dir)
+    rest=RestClosedOverlay(tail.feed) if args.enable_rest_closed else None
     started=time.monotonic()
     last_eval=None
+    last_rest=None
     while args.seconds == 0 or time.monotonic()-started < args.seconds:
         tail.poll()  # raises on corrupt, truncated or symlink parts
         now_ms=int(time.time()*1000)  # never backdate to captured frames
+        if rest is not None and (last_rest is None or
+                                 time.monotonic()-last_rest>=args.rest_refresh_seconds):
+            # 8 sequential PUBLIC GETs only; never private API credentials.
+            # Failure invalidates previous REST candles: NO_TRADE thereafter.
+            last_rest=time.monotonic()
+            try:
+                rest.refresh(public_candles)
+            except FeedNotReady as exc:
+                print(json.dumps({'rest_closed_status':'NOT_READY',
+                                  'reason':str(exc),'orders_created':0}),
+                      flush=True)
+            # New public GETs can take seconds. Re-poll the WS writer to
+            # acquire quotes whose receipt is AFTER the latest REST fetch.
+            tail.poll()
+            now_ms=int(time.time()*1000)
         if last_eval is None or (time.monotonic()-last_eval >= args.evaluate_every_seconds):
             result=evaluate_observation(
-                feed=tail.feed, now_ms=now_ms, roots=roots,
+                feed=rest if rest is not None else tail.feed,
+                now_ms=now_ms, roots=roots,
                 brain_source=args.brain_source, engine=engine,
                 enabled=args.enable_advice)
             publish_observation(result,output)
