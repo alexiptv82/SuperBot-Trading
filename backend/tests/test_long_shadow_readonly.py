@@ -121,6 +121,24 @@ class ShadowContracts(unittest.TestCase):
         after={p.name:(p.read_bytes(),p.stat().st_mtime_ns) for p in self.roots['hawk'].iterdir()}
         self.assertEqual(before,after)
 
+    def test_brain_source_mapping_matches_existing_app_readers(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from long_shadow_api import register
+        for kind,expected in (('free','/opt/superbot-brain-free'),
+                              ('pilot','/opt/superbot-desk-data/brain'),
+                              ('','/nonexistent/long-shadow-brain-source-not-selected')):
+            with patch.dict(os.environ, {'LONG_SHADOW_BRAIN_SOURCE':kind}, clear=True):
+                with patch('long_shadow_readonly.read_dashboard',return_value={
+                    'schema':'long-shadow-dashboard-v1',
+                    'enabled':False,'can_execute_orders':False}) as reader:
+                    app=FastAPI()
+                    register(app,lambda:'owner')
+                    with TestClient(app) as client:
+                        self.assertEqual(client.get('/api/long/shadow').status_code,200)
+                    self.assertEqual(reader.call_args.kwargs['roots']['brain'],expected)
+                    self.assertEqual(reader.call_args.kwargs['brain_source'],kind or None)
+
     def test_api_authenticated_and_get_only(self):
         from fastapi import FastAPI,HTTPException
         from fastapi.testclient import TestClient
