@@ -6,9 +6,11 @@ on:
     paths:
       - backend/long_shadow_readonly.py
       - backend/long_shadow_capture_context.py
+      - backend/long_shadow_offline_probe.py
       - backend/long_shadow_api.py
       - backend/tests/test_long_shadow_readonly.py
       - backend/tests/test_long_shadow_capture_context.py
+      - backend/tests/test_long_shadow_offline_probe.py
       - frontend/src/pages/LongShadowDashboard.js
       - frontend/src/pages/LongShadowDashboard.test.js
       - frontend/src/pages/Dashboard.js
@@ -33,6 +35,7 @@ jobs:
         run: |
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_readonly.py -v
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_capture_context.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_offline_probe.py -v
       - name: Static guard—no engine imports/orders
         run: |
           python - <<'PY'
