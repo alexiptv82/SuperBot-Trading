@@ -123,6 +123,7 @@ def evaluate_observation(*, feed, now_ms, roots, brain_source=None,
                         **_no_trade(consumer, symbol, setup, now_ms, 'SETUP_ABSENT', 'ok'),
                         'decision': result['decision'],
                         'reasons': reasons[:12],
+                        'wallet_as_of_ms': wallet['snapshot']['as_of_ms'],
                         'engine_data_grade': result.get('data_grade'),
                         'engine_data_cutoff_ms': result.get('data_cutoff_ms'),
                     })
