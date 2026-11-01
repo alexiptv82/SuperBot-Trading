@@ -11,6 +11,7 @@ on:
       - backend/long_shadow_stream_runner.py
       - backend/long_shadow_observer.py
       - backend/long_shadow_observer_runner.py
+      - backend/long_shadow_rest_closed.py
       - backend/long_shadow_api.py
       - backend/tests/test_long_shadow_readonly.py
       - backend/tests/test_long_shadow_capture_context.py
@@ -19,6 +20,7 @@ on:
       - backend/tests/test_long_shadow_stream_runner.py
       - backend/tests/test_long_shadow_observer.py
       - backend/tests/test_long_shadow_observer_runner.py
+      - backend/tests/test_long_shadow_rest_closed.py
       - frontend/src/pages/LongShadowDashboard.js
       - frontend/src/pages/LongShadowDashboard.test.js
       - frontend/src/pages/Dashboard.js
@@ -59,6 +61,7 @@ jobs:
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_stream_runner.py -v
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_observer.py -v
           PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_observer_runner.py -v
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p test_long_shadow_rest_closed.py -v
       - name: Static guard—no engine imports/orders
         run: |
           python - <<'PY'
@@ -74,8 +77,9 @@ jobs:
               assert token not in api+view
           observer=Path('backend/long_shadow_observer.py').read_text()
           runner=Path('backend/long_shadow_observer_runner.py').read_text()
+          rest=Path('backend/long_shadow_rest_closed.py').read_text()
           for token in ('create_order(', 'place_order(', 'cancel_order(', 'requests.post(', 'close_position(', 'ccxt'):
-              assert token not in observer+runner
+              assert token not in observer+runner+rest
           print('READ_ONLY_STATIC_GATES_PASS')
           PY
 
