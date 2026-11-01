@@ -18,6 +18,17 @@ on:
       - frontend/src/api.js
       - backend/server.py
       - .github/workflows/long-shadow-readonly-ci.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/long_shadow_*.py'
+      - 'backend/tests/test_long_shadow_*.py'
+      - 'backend/server.py'
+      - 'frontend/src/pages/LongShadowDashboard*'
+      - 'frontend/src/pages/Dashboard.js'
+      - 'frontend/src/App.js'
+      - 'frontend/src/api.js'
+      - '.github/workflows/long-shadow-readonly-ci.yml'
   workflow_dispatch:
 permissions:
   contents: read
