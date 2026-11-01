@@ -39,3 +39,5 @@ jobs:
               assert token not in api+view
           print('READ_ONLY_STATIC_GATES_PASS')
           PY
+
+# Isolated research CI only. No VPS or deploy permissions.
