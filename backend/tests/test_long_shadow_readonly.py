@@ -135,6 +135,20 @@ class ShadowContracts(unittest.TestCase):
                          'not_available')
         self.assertIsNone(invalid['consumers']['hawk']['advice'])
 
+    def test_expired_candidate_hidden_after_60_seconds(self):
+        classic(self.roots['hawk'], {})
+        out=self.root/'output';out.mkdir()
+        row={'schema':'long-shadow-record-v1','consumer':'hawk',
+             'authority':'advisory_only','observation_only':True,
+             'wallet_as_of_ms':NOW-1000,'as_of_ms':NOW-61000,
+             'symbol':'BTCUSDT','setup':'CONTINUATION',
+             'decision':'CANDIDATE','reasons':[]}
+        (out/'hawk.json').write_text(json.dumps(row))
+        result=read_dashboard(roots=self.roots,shadow_dir=out,now_ms=NOW)
+        self.assertEqual(result['consumers']['hawk']['advisory_status'],
+                         'not_available')
+        self.assertIsNone(result['consumers']['hawk']['advice'])
+
     def test_unbound_legacy_advice_is_not_displayed(self):
         classic(self.roots['hawk'], {})
         out=self.root/'output';out.mkdir()
