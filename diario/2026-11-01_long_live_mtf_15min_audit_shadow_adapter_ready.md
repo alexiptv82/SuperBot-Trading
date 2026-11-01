@@ -1,0 +1,13 @@
+# 2026-11-01 — Test LIVE MTF 15 minuti e adapter LONG shadow isolato
+
+**Input ricevuto:** `SuperBot_LONG_LIVE_MTF_RESULT_20261101T161618Z.zip` SHA256 `33eb490e34d7dbfbb208827d3f85edc48f327a3619ca2e33f3a5dfb5d5a84cb2`. ZIP CRC valido, manifesto 6/6, 43498 frame grezzi SHA verificati. 15 minuti richiesti e completati, una sessione, zero errori, 10/10 ACK, 16 clock campioni HTTP (non NTP), 8 REST warmup. BTC/ETH 10 canali: BTC books 14952, kline 1m 372 / 15m365 /1H364 /4H365; ETH books25826, kline 1m305 /15m304 /1H302 /4H304.
+
+**Verifica indipendente:** SHA per ciascuno dei frame e monotonicità passati; 15 nuovi periodi 1m e 1 nuovo periodo 15m per simbolo. Nessun rollover 1H o 4H all'interno dei 15m (canali hanno comunque inviato snapshot e update). Nel primo snapshot ricevuto BTC/ETH si trovano 499 candele già temporalmente chiuse per ciascuno dei 4 timeframe, stampate come disponibili solo all'istante del snapshot, senza retrodatazione. Warmup 200 raggiunto senza tagli.
+
+**Solo laboratorio, nessun merge/deploy:** `SuperBot_LONG_MTF_15m_Audit_Shadow_Ready_01.zip`, SHA256 `4fba7c842d3ddd76ad62408fcc045a654a6261faf30733bf1d7fca986f11a7b8`, ZIP CRC OK e 61/61 SHA del manifesto. Contiene input immutato, LONG V6.1.1 immutato, `shadow_bridge.py` consultivo Hawk/Bull/Brain, test e prova snapshot osservato. 14/14 test adapter+verificatore e 82/82 test originali LONG PASS anche su estrazione pulita.
+
+`shadow_bridge.py` impostato `enabled=False` per default, wallet flags SOLO da parametro wallet separato e autorevole (non da segnali/AI), fail-closed per wallet mancante/stantio/non coerente/stato sconosciuto, account separati Hawk/Bull/Brain, nessun accesso ordini. Brain advisory, Hawk e Bull shadow. Prova motore su snapshot iniziali: 12 NO_TRADE `SETUP_ABSENT` (2 simboli × 3 destinatari × 2 setup). **Wallet ipoteticamente vuoti solo per prova**, non un binding reale. Nessun ordine.
+
+**Gate:** CAPTURE_15M PASS, OFFLINE_SHADOW_ADAPTER PASS, REAL_WALLET_BINDING NOT IMPLEMENTED, APPLICATION_SHADOW_NOT_DEPLOYED, 1H/4H live close NOT OBSERVED, REAL_EXECUTION UNVERIFIED, ECONOMIC_EVIDENCE INSUFFICIENT, PAPER_ELIGIBLE NO. Non toccati SHORT, LONG V6.1.1, TC02.4 R1/R2, capitale (450 USDT), Brain/Falco/Toro operativi, VPS.
+
+**Prossimo passo:** controllare branch applicativo corrente e veri wallet/ledger in sola lettura, connettere tre output shadow/advisory su ramo isolato, mostrare diagnosi su dashboard, test end-to-end senza ordini. Nessun merge/deploy senza OK esplicito.
