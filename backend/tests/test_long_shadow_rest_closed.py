@@ -26,6 +26,15 @@ def ws(*, session=1, quote_time=NOW+1500):
 def getter(s,tf):
     return payload(s,tf,at=NOW),NOW+1000
 
+def batch_clock():
+    # Begin + eight starts are BEFORE response receipt; the final batch
+    # end must occur AFTER all eight receive timestamps.
+    calls=[0]
+    def now():
+        calls[0]+=1
+        return NOW+1500 if calls[0]>=10 else NOW
+    return now
+
 class PublicClosedCandleContracts(unittest.TestCase):
     def test_correct_v3_shape_and_causal_timestamp(self):
         result=parse_closed_response(payload('BTCUSDT','1m'),
@@ -75,9 +84,9 @@ class PublicClosedCandleContracts(unittest.TestCase):
     def test_atomic_eight_series(self):
         market=ws()
         overlay=RestClosedOverlay(market)
-        with self.assertRaisesRegex(FeedNotReady,'quote_not_fresh_after_rest'):
+        with self.assertRaisesRegex(FeedNotReady,'rest_not_ready'):
             overlay.context('BTCUSDT',NOW+1500)
-        status=overlay.refresh(getter,clock_ms=lambda:NOW)
+        status=overlay.refresh(getter,clock_ms=batch_clock())
         self.assertEqual(status['closed_series'],8)
         self.assertEqual(len(overlay.bars),8)
         self.assertEqual(len(overlay.context('BTCUSDT',NOW+1500)['bars']),4)
@@ -86,39 +95,39 @@ class PublicClosedCandleContracts(unittest.TestCase):
     def test_partial_http_failure_invalidates_previous_snapshot(self):
         market=ws()
         overlay=RestClosedOverlay(market)
-        overlay.refresh(getter,clock_ms=lambda:NOW)
+        overlay.refresh(getter,clock_ms=batch_clock())
         def broken(symbol,interval):
             if symbol=='ETHUSDT' and interval=='4H':
                 raise FeedNotReady('rest_public_unavailable')
             return getter(symbol,interval)
         with self.assertRaisesRegex(FeedNotReady,'rest_public_unavailable'):
-            overlay.refresh(broken,clock_ms=lambda:NOW)
+            overlay.refresh(broken,clock_ms=batch_clock())
         self.assertEqual(overlay.bars,{})
         with self.assertRaisesRegex(FeedNotReady,'rest_not_ready'):
             overlay.context('BTCUSDT',NOW+1500)
     def test_reconnect_invalidates_rest_context(self):
         market=ws()
         overlay=RestClosedOverlay(market)
-        overlay.refresh(getter,clock_ms=lambda:NOW)
+        overlay.refresh(getter,clock_ms=batch_clock())
         market.session=2
         with self.assertRaisesRegex(FeedNotReady,'ws_reconnected'):
             overlay.context('BTCUSDT',NOW+1500)
     def test_quote_must_arrive_after_last_rest_receipt(self):
         market=ws(quote_time=NOW+500)
         overlay=RestClosedOverlay(market)
-        overlay.refresh(getter,clock_ms=lambda:NOW)
+        overlay.refresh(getter,clock_ms=batch_clock())
         with self.assertRaisesRegex(FeedNotReady,'quote_not_fresh_after_rest'):
             overlay.context('BTCUSDT',NOW+1000)
     def test_quote_staleness(self):
         market=ws()
         overlay=RestClosedOverlay(market)
-        overlay.refresh(getter,clock_ms=lambda:NOW)
+        overlay.refresh(getter,clock_ms=batch_clock())
         with self.assertRaisesRegex(FeedNotReady,'quote_not_fresh_after_rest'):
             overlay.context('BTCUSDT',NOW+5000)
     def test_rest_expiration(self):
         market=ws()
         overlay=RestClosedOverlay(market)
-        overlay.refresh(getter,clock_ms=lambda:NOW)
+        overlay.refresh(getter,clock_ms=batch_clock())
         with self.assertRaisesRegex(FeedNotReady,'rest_snapshot_stale'):
             overlay.context('BTCUSDT',NOW+90000)
     def test_request_before_close_grace_does_not_take_new_candle(self):
@@ -142,7 +151,7 @@ class PublicClosedCandleContracts(unittest.TestCase):
     def test_no_trade_authority_in_overlay(self):
         market=ws()
         overlay=RestClosedOverlay(market)
-        result=overlay.refresh(getter,clock_ms=lambda:NOW)
+        result=overlay.refresh(getter,clock_ms=batch_clock())
         self.assertFalse(result['can_execute_orders'])
         self.assertFalse(overlay.context('BTCUSDT',NOW+1500)['execution_verified'])
     def test_historic_bar_becomes_available_on_receipt_only(self):
