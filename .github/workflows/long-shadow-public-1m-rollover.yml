@@ -1,0 +1,33 @@
+name: LONG Shadow Public 1m Closed Rollover (NO TRADE)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/long_shadow_rest_1m_rollover_smoke.py'
+      - '.github/workflows/long-shadow-public-1m-rollover.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-one-minute-rollover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Public-only static guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('backend/long_shadow_rest_1m_rollover_smoke.py').read_text()
+          assert 'public_candles' in s
+          for banned in ('place_order(', 'create_order(', 'cancel_order(', 'close_position(', 'ccxt', 'API_KEY', 'API_SECRET'):
+              assert banned not in s
+          print('PUBLIC_NO_ORDER_GUARD_PASS')
+          PY
+      - name: Verify real BTC and ETH 1m closed candle progression
+        env:
+          PYTHONPATH: backend
+        run: python backend/long_shadow_rest_1m_rollover_smoke.py
