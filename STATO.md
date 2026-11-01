@@ -1,3 +1,10 @@
+## REQUISITO AGGIUNTO 2026-11-01 — Chiudi UNA posizione per ID, non tutte
+
+L'utente richiede «Chiudi questo trade» per Falco, Toro e Brain, lasciando tutte le altre posizioni aperte. La chiusura deve confrontare account, run, ID posizione, simbolo, lato e open_ms, non soltanto il simbolo; nessun comando vecchio può chiudere una posizione riaperta. Nei classici `main` API/dashboard hanno command-close per simbolo ma il `cli.py` main non ne contiene il consumer; esiste in rami successivi, da integrare e rafforzare. DCA/split aggregati fanno parte della stessa posizione. Teaching solo dopo chiusura attestata/persistita e conferma motivo; mai auto-modificare strategia da un clic.
+
+Creato ramo `work/manual-single-trade-close-contract-20261101`, PR **Draft #27** non mergiata: validatore pure Python NO ORDERS con 21/21 test PASS su Python 3.10 e 3.11 (GitHub Actions run 41339003755) compresa prova con vero motore PAPER in memoria: BTC chiuso, ETH invariato. Non vi sono endpoint / consumer operativi o deploy; prima finire LONG PR Draft #26. Diario dettagliato: `diario/2026-11-01_chiusura_singolo_trade_id_hawk_bull_brain.md`.
+
+---
 ## PRIORITÀ AGGIORNATA 2026-11-01 — Brain vincolato, LONG prima del redesign
 
 Decisione utente: Brain AI completamente libero bocciato per futura messa in funzione dopo perdita aggregata riferita ~50% del portafoglio. Dato economico non verificato indipendentemente: non attribuire cause senza audit trade. Prima terminare LONG Shadow, PR #26 Draft, senza merge/deploy. Poi riprogettare Brain a portafoglio unico, SHORT+LONG entro regole di rischio simili ai classici, AI controllata per selezione/gestione entro vincoli. Chiusure manuali con insegnamento da motivi e profitto sufficiente richieste per Brain e classici; esistono componenti su rami differenti ma non presumere rilasciate. Nessuna soglia di ROI numerica ancora scelta, nessuna modifica strategia autorizzata.
