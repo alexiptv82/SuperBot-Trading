@@ -1,0 +1,47 @@
+name: LONG Shadow REAL frozen V6.1.1 + Bitget Public E2E (NO TRADE)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/long_shadow_live_authentic_v611_synthetic_e2e.py'
+      - 'backend/research_frozen_long_v611_engine.zlib.b64'
+      - 'backend/research_materialize_frozen_long_v611.py'
+      - 'backend/tests/test_long_shadow_original_frozen_fixture.py'
+      - '.github/workflows/long-shadow-original-live-e2e.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frozen-engine-public-market-synthetic-wallet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PUBLIC websocket client only
+        run: python -m pip install websocket-client==1.8.0
+      - name: Byte-exact unchanged frozen engine reconstruction tests
+        env:
+          PYTHONPATH: backend
+        run: python -m unittest discover -s backend/tests -p test_long_shadow_original_frozen_fixture.py -v
+      - name: 'Static safety: only public data, synthetic wallet, no trading API'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          script=Path('backend/long_shadow_live_authentic_v611_synthetic_e2e.py').read_text()
+          materializer=Path('backend/research_materialize_frozen_long_v611.py').read_text()
+          assert 'public_candles' in script and '_fresh_books_after_rest' in script
+          assert '_synthetic_wallets' in script and 'TemporaryDirectory' in script
+          assert 'frozen_engine(original)' in script
+          assert 'PINNED_ENGINE_SHA256' in script and 'PINNED_ENGINE_SHA256' in materializer
+          for text in (script,materializer):
+              for token in ('place_order(', 'create_order(', 'cancel_order(', 'close_position(', 'ccxt', 'API_KEY', 'API_SECRET'):
+                  assert token not in text,token
+          print('FROZEN_ENGINE_LIVE_E2E_STATIC_NO_ORDER_PASS')
+          PY
+      - name: Test genuine frozen engine with REAL Bitget public market and three SYNTHETIC wallets
+        env:
+          PYTHONPATH: backend
+        run: python backend/long_shadow_live_authentic_v611_synthetic_e2e.py
