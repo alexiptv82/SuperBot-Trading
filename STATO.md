@@ -1,3 +1,8 @@
+## LONG Shadow — 1 novembre 2026, candele chiuse REST preparate (nessun deploy)
+
+La PR #26 Draft `work/long-shadow-app-observation-20261101` ora contiene il modulo opt-in `long_shadow_rest_closed.py`: pubblici GET Bitget v3 1m/15m/1H/4H (BTC/ETH, 8 serie), solo candele con fine intervallo+2s già trascorsi, validazione orari/REST risposta e 200 barre, snapshot atomici, quote WS fresche dopo REST, nessuna candela corrente promossa a definitiva. Il runner resta spento per default, flag `--enable-rest-closed` richiede `--enable-advice`, nessun ordine, nessuna attivazione. GitHub Actions run **41341579226** SUCCESS: 81/81 backend, static no-orders e frontend React build PASS. Questo collaudo usa REST simulate, NON è prova di sessione HTTP live H24 e non dimostra profitto. Brain wallet runtime da verificare; PR #27 Draft per singola chiusura trade per ID separata, non attiva. Diary `diario/2026-11-01_long_shadow_rest_closed_81tests_ci_success.md`. `PAPER_ELIGIBLE=NO`, nessun merge/deploy.
+
+---
 ## LONG SHADOW — 2026-11-01, observer read-only pronto su ramo Draft
 
 PR #26 `work/long-shadow-app-observation-20261101`: nuovo bridge `long_shadow_observer.py` + runner ricerca `long_shadow_observer_runner.py` (non installato) tra archivio pubblico Bitget, LONG V6.1.1 SHA-pinned e tre wallet autorevoli read-only. Produce 12 record consultivi per ciclo (Falco/Toro shadow, Brain advisor): nessun ordine, default off, fail-closed dati/wallet stantii; consigli legati a snapshot wallet esatto e scadenza 60 secondi. `LONG_V6.1.1` frozen invariato. GitHub Actions run **41340629748** SUCCESS, backend **62/62 PASS** (7 suite + static guard), React render e build frontend SUCCESS. Nessun merge/deploy/VPS/API privata/ordine PAPER.
