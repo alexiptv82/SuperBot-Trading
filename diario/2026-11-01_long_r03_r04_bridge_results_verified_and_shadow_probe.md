@@ -1,0 +1,17 @@
+# SuperBot LONG — 2026-11-01 — Audit Bridge Results R03→R04, prova motore congelato
+
+Utente ha allegato `SuperBot_Long_Candle_Gap_Bridge_01_RESULTS.zip`. Lavoro gestito direttamente da ChatGPT, Grok e Claude non coinvolti. Nessun merge/deploy, accesso VPS, bot operativi, trading PAPER/LIVE o modifica motore.
+
+ZIP risultati SHA256 `8209f927728f690ea69a7dfaf57723eaff3a37d546420309bee4d059b84d8ae6`, ZIP CRC PASS, manifest SHA256 **34/34 PASS**. 22 pagine raw API Bitget v3 con status code `00000`, category USDT-FUTURES, BTCUSDT/ETHUSDT, timestamps request→response coerenti. Provenienza API verificabile internamente alla consegna, non indipendentemente certificata tramite nuova rete. `results/validated/reconciliation.json` fully_backfilled true / causal_replay_ready false.
+
+**1510/1510 candele raccolte** (755 BTC, 755 ETH): per simbolo 694×1m, 46×15m, 12×1h, 3×4h. Tutte corrispondono esattamente ai raw API originali (OHLCV/times), non duplicate, range completo, disponibilità retrospettiva `assumed_historical`, `available_at_ms_assumed = close+1000`, `live_received_at_ms = null`.
+
+**Seam con Research03 originale:** ultimo close R03 → primo nuovo close senza buchi per ogni TF BTC+ETH; 1m BTC ultima chiusura 77528.7 = nuova prima apertura 77528.7, ETH 2251.35=2251.35; anche slow TF seam coerente. Controllo crossTF su finestre complete dal nuovo 1m: per simbolo 45×15m,11×1h,2×4h =58; totale **116 finestre OHLCV aggregate esatte, 0 mismatch**.
+
+**Prova congelata V6.1.1:** baseline SHA256 `0c1ff499673aa5923444b66baae26cb5f98009973a3ea19fee27a8b620bd686e`, 82/82 suite originale PASS. Su quotes R04 (11322 BTC +20395 ETH) scelta la prima quotazione ricevuta dopo `close+1000ms` per ciascuna delle 10 chiusure 1m nella finestra, con quote receipt non futura, 20 istanti BTC+ETH, 2 setup ciascuno CONTINUATION/REVERSAL, **40 valutazioni** shadow originali: **40 NO_TRADE**, **0 CANDIDATE**, tutte reason SETUP_ABSENT; nessun DATA_UNAVAILABLE/SIGNAL_EXPIRED. Significa solo assenza di setup in 10 minuti campionati, NON risultato economico.
+
+**Limite di causalità fondamentale:** le candele mancanti sono state scaricate RETROSPETTIVAMENTE il 1 novembre, non è osservata la ricezione delle candele durante la finestra book R04 07:16→07:26 UTC. Availability +1000ms è assunta, non misurata; non promuovere questo probe a replay causale live/real execution. Clock NTP R04 non attestato, bid/ask L1 non prova fill, nessuna stima PnL, OOS 30 giorni mancante.
+
+**Pacchetto di audit offline autonomo prodotto in chat:** `SuperBot_Long_R03_R04_Bridge_Independent_Verified_01.zip`, SHA256 `c6c0cac4ad0fba938b2e39d77398a1dfcf2e9bf97b594b86ebdac4c075a10049`, 5.48MB, CRC PASS, manifesto 12/12. Contiene input originali R03, R04 e RESULTS, report, script portatili, prove JSON e runner `python3 run_verify.py`. Re-run su dati estratti in temp PASS, output identici alle evidenze, 82/82 baseline PASS.
+
+**Gate:** HISTORICAL_GAP_FILLED PASS (integrità interna), CROSS_TF_AGGREGATION PASS, FROZEN_ENGINE_ASSUMED_TIMELINE_PROBE PASS (0/40 candidates), LIVE_CANDLE_AVAILABILITY UNVERIFIED, REAL_EXECUTION UNVERIFIED, ECONOMIC_EVIDENCE INSUFFICIENT, PAPER_ELIGIBLE NO. Prossimo obiettivo autonomo: prova di orari reali di disponibilità candele chiuse co-raccolte con books1 e campione più lungo; NON modificare LONG V6.1.1 o R1/R2 per forzare candidati.
