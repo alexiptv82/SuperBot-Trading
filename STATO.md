@@ -1,3 +1,9 @@
+## 2026-11-02 09:12 Europe/Rome — Brain Free runtime paused CONFIRMED, AI Shadow call stop still to verify
+
+Utente ha eseguito da Termius uno script di sola lettura. **Screenshot reale**: `BRAIN_FREE_FLAG: True`, `BRAIN_FREE_RUNTIME_PAUSED: True`, `BRAIN_FREE_HEARTBEAT_AGE_S: 2`, `BRAIN_FREE_OPEN_PAPER: 0`. Questo attesta che il Brain Free running ha recepito pause.flag ed è senza posizioni PAPER. **AI Shadow**: `AI_SHADOW_FLAG: True`, `AI_SHADOW_LAST_SKIP: None`, `AI_SHADOW_LAST_CALLED: True`, `AI_SHADOW_CALLS_OK: 1087`, `AI_SHADOW_CALLS_FAILED: 3`. L'ultimo ciclo che mostrava `called=True` potrebbe essere precedente alla creazione di `pause.flag` (~09:09); **non è prova di nuova chiamata dopo la pausa** e non possiamo dichiarare DeepSeek fermato senza riscontro temporale. Il codice `backend/director/ai_shadow/pilot.py` salta il modello se `pause.flag` presente; `status.json.ts_ms` e file `pause.flag` mtime permettono confronto in modo non sensibile. Prossima lettura: status timestamp > flag mtime con last_cycle.skip='pausa' e last_cycle.called=false, contatori invariati. Falco/Toro healthy dall'ultimo `docker ps`, Pool starting da rivalutare. **Nessun ulteriore cambio dei servizi richiesto**, nessun merge o deploy.
+
+---
+
 ## 2026-11-02 09:09 Europa/Roma — VPS Singapore in modalità LOCAL, pause triple verificate da screenshot
 
 L'utente ha ripristinato avvio LOCAL, chiave SSH Termius funziona. Screenshot `docker ps --format 'table {{.Names}}\t{{.Status}}'`: `superbot` Up; `superbot-desk-bull` e `superbot-desk-hawk` **healthy**; `superbot-brain-free`, `superbot-turbo`, `superbot-ai`, `superbot-sidecar` **healthy**; `superbot-pool` **health: starting** (non confermato healthy). `superbot-brain-pilot` NON figura nella lista dei container in esecuzione.
