@@ -50,3 +50,34 @@ if command -v systemctl >/dev/null; then
   systemctl list-units --type=service --all --no-pager --no-legend 2>/dev/null | grep -Ei 'superbot|brain|shadow|deepseek' | cut -c1-175 || true
 fi
 printf '\nV3_AUDIT_COMPLETED=YES\n'
+
+printf '\n=== RUOLO DEI WORKER ATTIVI (METADATI, SENZA SEGRETI) ===\n'
+python3 - <<'PY'
+import json,subprocess
+names=['superbot','superbot-desk-hawk','superbot-desk-bull','superbot-brain-free','superbot-turbo','superbot-ai','superbot-sidecar','superbot-pool']
+for name in names:
+    r=subprocess.run(['docker','inspect',name],capture_output=True,text=True)
+    if r.returncode:continue
+    d=json.loads(r.stdout)[0]
+    cfg=d.get('Config') or {}
+    mode=next((v.split('=',1)[1] for v in cfg.get('Env') or [] if v.startswith('DESK_MODE=')), 'UNSET')
+    mounts=[]
+    for m in d.get('Mounts') or []:
+        s=m.get('Source','')
+        if s.startswith('/opt/superbot'): mounts.append(s)
+    cmd=cfg.get('Cmd') or []
+    entry=cfg.get('Entrypoint') or []
+    # Non stampare argomenti di comando: potrebbero contenere segreti.
+    print(name, 'state=',d.get('State',{}).get('Status'),
+          'image=',str(cfg.get('Image',''))[:90],
+          'entry_exe=',str(entry[0] if entry else '')[:60],
+          'cmd_exe=',str(cmd[0] if cmd else '')[:60],
+          'mode=',mode,
+          'restart=',(d.get('HostConfig') or {}).get('RestartPolicy',{}).get('Name','?'),
+          'data_mounts=',','.join(mounts)[:300])
+PY
+printf '\n=== BACKUP_PREFLIGHT (SOLTANTO DIMENSIONI) ===\n'
+for d in /opt/superbot-desk-data /opt/superbot-brain-free /opt/superbot-brain-adaptive /opt/superbot-pool-data; do
+  if [ -d "$d" ]; then du -sh "$d" 2>/dev/null || true; fi
+done
+df -h /opt | tail -1
