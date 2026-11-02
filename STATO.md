@@ -1,3 +1,9 @@
+## 2026-11-02 09:36 — Pool health non recuperato (screenshot Termius)
+
+Diagnostica VPS Singapore `superbot-pool`: `POOL_HEALTH: unhealthy`, `ERRORI_CONSECUTIVI: 9`, `ULTIMO_HEALTH_EXIT: 1`, `STARTED_MS_ETA_MIN: 34266`, `LAST_OK_MS_ETA_MIN: 16192`. Ultimo ciclo riuscito circa 11,2 giorni prima del controllo: problema preesistente al Rescue del 2 novembre. Falco e Toro in precedenza healthy, AI Free in pausa runtime e AI Shadow confermato senza nuova chiamata nel ciclo post-pausa. Non eseguiti restart/redeploy. Prossima diagnosi sola lettura: ultime righe di `docker logs` del Pool, cercando `ERRORE giro fallito` o `giro fatto`, senza stampare segreti. Non correggere prima di vedere la causa.
+
+---
+
 ## 2026-11-02 09:12 Europe/Rome — Brain Free runtime paused CONFIRMED, AI Shadow call stop still to verify
 
 Utente ha eseguito da Termius uno script di sola lettura. **Screenshot reale**: `BRAIN_FREE_FLAG: True`, `BRAIN_FREE_RUNTIME_PAUSED: True`, `BRAIN_FREE_HEARTBEAT_AGE_S: 2`, `BRAIN_FREE_OPEN_PAPER: 0`. Questo attesta che il Brain Free running ha recepito pause.flag ed è senza posizioni PAPER. **AI Shadow**: `AI_SHADOW_FLAG: True`, `AI_SHADOW_LAST_SKIP: None`, `AI_SHADOW_LAST_CALLED: True`, `AI_SHADOW_CALLS_OK: 1087`, `AI_SHADOW_CALLS_FAILED: 3`. L'ultimo ciclo che mostrava `called=True` potrebbe essere precedente alla creazione di `pause.flag` (~09:09); **non è prova di nuova chiamata dopo la pausa** e non possiamo dichiarare DeepSeek fermato senza riscontro temporale. Il codice `backend/director/ai_shadow/pilot.py` salta il modello se `pause.flag` presente; `status.json.ts_ms` e file `pause.flag` mtime permettono confronto in modo non sensibile. Prossima lettura: status timestamp > flag mtime con last_cycle.skip='pausa' e last_cycle.called=false, contatori invariati. Falco/Toro healthy dall'ultimo `docker ps`, Pool starting da rivalutare. **Nessun ulteriore cambio dei servizi richiesto**, nessun merge o deploy.
