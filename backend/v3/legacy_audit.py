@@ -183,42 +183,12 @@ def audit_classic_snapshot(
     )
 
 
-def plan_classic_closed_events(
-    directory: str | Path,
-    portfolio_id: str,
-    *,
-    learning_path: str | Path | None = None,
-) -> tuple[AuditReport, tuple[Event, ...]]:
-    """Stage validated close events in memory ONLY; nothing is written.
+def plan_classic_closed_events(*_args, **_kwargs):
+    """Disabled: two independent ID schemes could duplicate the same trade.
 
-    Event IDs use the source line number, not trade ID, because one trade
-    may have several partial closes. A changed source line with the same ID
-    will later be rejected as a conflict by the V3 event journal.
+    The single supported planner is legacy_multirun.plan_classic_multirun_events.
     """
-    report = audit_classic_snapshot(directory, portfolio_id, learning_path=learning_path)
-    if not report.eligible:
-        return report, ()
-    root = Path(directory)
-    history = _parse_rows(_source(root / "trade_history.jsonl", _MAX_JSONL))
-    prepared = []
-    for idx, row in enumerate(history, 1):
-        occurred_at_ms, _ = _closed(row)
-        prepared.append(Event(
-            event_id=f"legacy.{portfolio_id}.{report.legacy_run_id}.close.{idx}",
-            portfolio_id=portfolio_id,
-            run_id=report.legacy_run_id,
-            kind="legacy_trade_closed",
-            occurred_at_ms=occurred_at_ms,
-            source="legacy_snapshot",
-            payload={
-                "provenance": "observed_paper_record_not_retraining",
-                "source_line": idx,
-                "source_row_sha256": hashlib.sha256(
-                    _canon(row).encode("utf-8")).hexdigest(),
-                "legacy_record": row,
-            },
-        ))
-    return report, tuple(prepared)
+    raise NotImplementedError("superseded_by_plan_classic_multirun_events")
 
 
 def open_frozen_sqlite(db_path: str | Path) -> sqlite3.Connection:
