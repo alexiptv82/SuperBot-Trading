@@ -16,6 +16,7 @@ import sqlite3
 
 from .events import EventJournal, EventConflict, _validate, _digest, _GENESIS
 from .legacy_accounting import audit_classic_books
+from .legacy_archives import audit_classic_archives
 from .legacy_multirun import plan_classic_multirun_events
 from .legacy_audit import _MAX_JSONL, _MAX_STATE, _source
 
@@ -40,9 +41,27 @@ class ImportReceipt:
 
 
 def _source_hashes(root: Path) -> dict[str, str]:
-    return {name: sha256(_source(root / name,
+    """Hash every source required for a complete multirun audit."""
+    files = {name: sha256(_source(root / name,
             _MAX_STATE if name == _SOURCE_FILES[0] else _MAX_JSONL)).hexdigest()
             for name in _SOURCE_FILES}
+    archive = root / "archive"
+    if archive.is_symlink():
+        raise ValueError("archive_symlink_forbidden")
+    if archive.is_dir():
+        folders = sorted(archive.iterdir())
+        if len(folders) > 256:
+            raise ValueError("too_many_archive_runs")
+        for folder in folders:
+            if folder.is_symlink() or not folder.is_dir():
+                raise ValueError("invalid_archive_entry")
+            for name in ("state_v2.json", "trade_history.jsonl", "summary.json"):
+                key = "archive/" + folder.name + "/" + name
+                files[key] = sha256(_source(
+                    folder / name,
+                    _MAX_JSONL if name.endswith(".jsonl") else _MAX_STATE
+                )).hexdigest()
+    return files
 
 
 def _hash(obj: object) -> str:
@@ -101,10 +120,11 @@ def import_verified_classic_copy(
     before = _source_hashes(source)
     report, events = plan_classic_multirun_events(source, portfolio_id)
     books = audit_classic_books(source, portfolio_id)
+    archives = audit_classic_archives(source, portfolio_id)
     after = _source_hashes(source)
     if before != after:
         raise ValueError("source_modified_during_audit")
-    if (not report.eligible or not books.cash_formula_pass
+    if (not archives.eligible or not report.eligible or not books.cash_formula_pass
             or not books.multirun_pass or books.issues
             or len(events) != report.history_closes
             or len(events) != report.learning_closes):
