@@ -76,3 +76,8 @@ Current status remains **NO-GO**. Test fixtures are synthetic, even if Python 3.
 - Existing evidence files should not include API keys, individual AI prompts, exchange secrets, or personal identifiers.
 - The independent SHA witness proves exact match only if its origin/authenticity is genuinely independent and trusted. It is not a digital signature.
 - Final F0 acceptance is a **separate user-approved operation**, not automatically triggered by pushes or by a green CI badge.
+
+
+### Memory-file preservation gate (classics)
+
+F0 classic witnesses include, in addition to the trade ledger and `archive/*`, the mandatory `lessons.md` and the optional `errors.md` (its absence is itself bound into the witness). A restored backup missing or altering the lessons file fails verification. These documents are **preserved as bytes**, not yet parsed or imported into the new AI structured memory. Brain's SQLite verification covers the database only: any additional Brain files or AI memory outside `brain.sqlite3` require a separate inventory and backup contract before declaring the complete Brain memory protected.
