@@ -90,7 +90,7 @@ def audit_classic_archives(directory: str | Path, portfolio_id: str) -> ArchiveA
             except (KeyError, ValueError, TypeError, IndexError) as exc:
                 # Issue type only in reports; do not expose account data.
                 issues.append("ARCHIVE_SUMMARY_MISMATCH:" + type(exc).__name__)
-    if verified != expected:
+    if not expected.issubset(verified):
         issues.append("ARCHIVE_RUN_COVERAGE_MISMATCH")
     return ArchiveAudit(
         eligible=not issues,
