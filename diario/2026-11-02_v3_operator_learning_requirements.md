@@ -1,0 +1,7 @@
+# SuperBot V3 — Requisiti apprendimento e comandi operatore (2 novembre 2026)
+
+L'utente chiarisce che i portafogli operativi sono PAPER, non LIVE. Il rischio da evitare nel fermarli è perdere dati e contesto storico, non perdere saldo reale. Richiede arresto di tutti i worker durante la ricostruzione, conservazione degli storici e nuova run PAPER distinta con 1000 USDT Falco, 1000 Toro, 2000 Brain. La pausa Falco/Toro è azionabile dall'app; l'attuale Brain richiede gestione via VPS.
+
+Requisito prioritario: comandi manuali nell'app su tutti e tre i portafogli, specialmente Brain: pausa/ripresa, apertura PAPER, chiusura di un singolo trade, parziale, gestione SL/TP e ricevuta. Le chiusure intenzionali dell'utente, soprattutto l'incasso di un profitto ritenuto sufficiente per liberare uno slot, devono essere registrate con motivo, posizione ID, stato, timing e PnL netto. L'AI deve trattarle come preferenze confermate, studiarle e valutarle con confronti controfattuali e test fuori campione prima di modificare le regole. Non scambiare chiusure amministrative per segnali di preferenza.
+
+Audit codice: i classici hanno `learning_log.jsonl` append-only e un `update_lessons` condizionale con Claude. Brain presenta ultimi dieci trade al provider, senza riaddestramento. Manual teaching esiste su rami di sviluppo ma non è attestato come funzione deployata completa. Memorizzare non garantisce migliorare: valutare utilizzo reale e risultati con audit del runtime.
