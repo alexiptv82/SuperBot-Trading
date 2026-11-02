@@ -47,15 +47,13 @@ def fixture_classic(tmp_path, *, state_rows=None, history_rows=None,
 def test_matching_state_and_log_produce_single_event(tmp_path):
     root = fixture_classic(tmp_path)
     before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir()}
-    report, events = plan_classic_closed_events(root, "hawk")
+    report = audit_classic_snapshot(root, "hawk")
     assert report.eligible
     assert (report.state_closed, report.history_closed, report.learning_closed) == (1, 1, 1)
     assert report.open_positions == 1
     assert report.history_net == "2.5"
-    assert len(events) == 1  # NOT 3 duplicates across the sources
-    assert events[0].run_id == "legacy-hawk-8"
-    assert events[0].kind == "legacy_trade_closed"
-    assert events[0].payload["legacy_record"]["net"] == 2.5
+    assert report.legacy_run_id == "legacy-hawk-8"
+    assert len(report.files_sha256) == 3
     after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir()}
     assert after == before
     assert not any(x.suffix in (".sqlite3", ".db") for x in root.iterdir())
@@ -64,10 +62,9 @@ def test_matching_state_and_log_produce_single_event(tmp_path):
 def test_partial_and_final_same_position_stay_separate(tmp_path):
     rows = [close(net=2, partial=True), close(net=-0.5, stamp=1793631600000)]
     root = fixture_classic(tmp_path, history_rows=rows)
-    report, staged = plan_classic_closed_events(root, "hawk")
+    report = audit_classic_snapshot(root, "hawk")
     assert report.eligible
-    assert len(staged) == 2
-    assert staged[0].event_id != staged[1].event_id
+    assert report.history_closed == 2
     assert report.history_net == "1.5"
 
 
@@ -77,7 +74,7 @@ def test_reconciliation_refuses_missing_close_and_wrong_net(tmp_path):
     assert not report.eligible
     assert "CLOSED_ROW_MISMATCH" in report.issues
     assert "CLOSED_NET_MISMATCH" in report.issues
-    assert staged == ()
+
 
 
 def test_learning_coverage_gap_explicitly_blocks(tmp_path):
@@ -86,7 +83,7 @@ def test_learning_coverage_gap_explicitly_blocks(tmp_path):
     assert report.state_closed == report.history_closed == 1
     assert "LEARNING_COVERAGE_GAP" in report.issues
     assert not report.eligible
-    assert not staged
+
 
 
 def test_duplicated_jsonl_record_detected(tmp_path):
@@ -103,7 +100,7 @@ def test_invalid_json_line_refuses_import(tmp_path):
     with (root / "trade_history.jsonl").open("a") as f:
         f.write("{ incomplete\n")
     with pytest.raises(json.JSONDecodeError):
-        plan_classic_closed_events(root, "hawk")
+        audit_classic_snapshot(root, "hawk")
 
 
 def test_no_legacy_write_when_missing_file_or_symlink(tmp_path):
@@ -177,10 +174,16 @@ def test_archived_run_explicit_shared_learning_log(tmp_path):
     # The legacy archiver did not put learning_log.jsonl inside archive/.
     with pytest.raises(ValueError, match="missing_or_symlink_source"):
         audit_classic_snapshot(archived, "hawk")
-    report, staged = plan_classic_closed_events(
+    report = audit_classic_snapshot(
         archived, "hawk", learning_path=root / "learning_log.jsonl"
     )
     assert report.eligible
     assert report.history_closed == 1
-    assert len(staged) == 1
+    assert report.legacy_run_id == "legacy-hawk-8"
     assert staged[0].run_id == "legacy-hawk-8"
+
+
+def test_superseded_single_run_planner_is_disabled(tmp_path):
+    root = fixture_classic(tmp_path)
+    with pytest.raises(NotImplementedError, match="superseded_by_plan_classic_multirun_events"):
+        plan_classic_closed_events(root, "hawk")
