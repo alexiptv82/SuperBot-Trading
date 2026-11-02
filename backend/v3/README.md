@@ -25,3 +25,15 @@ PYTHONPATH=backend python -m pytest -q backend/tests/test_v3_events.py backend/t
 ```
 
 Solo libreria standard Python + pytest nei test. Non importa componenti legacy per evitare side effect.
+
+
+## Audit di riconciliazione legacy (staging: non è un'importazione attiva)
+
+`legacy_audit.py` legge le **copie offline** dei dati PAPER senza creare o modificare file:
+- Falco/Toro: `state_v2.json` e `trade_history.jsonl` rappresentano due viste delle stesse chiusure. Le righe vengono confrontate integralmente (inclusi record di chiusura parziale), assieme al P&L netto e al conteggio. `learning_log.jsonl` serve a verificare la copertura delle registrazioni, non è un terzo elenco di trade da sommare.
+- Per una run archiviata, passare esplicitamente `learning_path=/percorso/condiviso/learning_log.jsonl`. L'archiviatore legacy non copia il learning log nelle singole cartelle `archive/`; il campo `run_no` individua le righe della run.
+- `plan_classic_closed_events()` produce solo una **lista di eventi in memoria**, con ID stabile anche quando una posizione ha più chiusure parziali e hash della singola riga. Se ci sono anomalie restituisce **zero eventi** e un rapporto `eligible=False`. Non invoca `EventJournal.append()`.
+- Brain Free usa `brain.sqlite3`, con schema ed eventi diversi: `audit_brain_snapshot()` conta gli eventi, conferma PAPER/integrità ma riporta sempre `import_eligible=False` finché non avremo definito la riconciliazione contabile specifica.
+- I file in produzione vanno lasciati intatti. Per i test con dati reali si usano solo directory di backup già estratte, senza riprendere bot o AI.
+
+**Importante:** l'idoneità del rapporto locale su dati sintetici non certifica ancora il backup VPS, lo storico di tutte le run né la corrispondenza dell'equity. Mancano l'audit sui dati storici effettivi, la riconciliazione delle aperture e dei movimenti di cassa e le proiezioni finali. La nuova memoria non deve considerare la stessa chiusura ripetuta su più file come eventi distinti.
