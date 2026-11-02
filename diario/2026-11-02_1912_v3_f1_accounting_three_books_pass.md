@@ -22,3 +22,6 @@ Utente autorizza «Okay, procediamo, ricordati se hai bisogno c'è sempre dispon
 - Backup generale post-stop locale certificato, **copia esterna cifrata POST-stop non attestata**: blocca vera migrazione/import senza ulteriore verifica.
 - Successivo: schema versionato L0, import offline idempotente in DB V3 separato su ambiente di prova, riconciliazione import vs source, hash chain e prova di restore, senza modificare i DB originali. Preparare un pacchetto di revisione indipendente per Claude/Grok dei passaggi contabili.
 - V3 1000/1000/1000 non creata; servizi bot/AI e strategie non riattivati; PR #29 resta DRAFT e F1 non marcata COMPLETATA.
+
+## Revisione esterna disponibile
+Documento di incarico preparato per Cloud/Claude e Grok: https://github.com/alexiptv82/SuperBot-Trading/blob/work/v3-foundations-event-risk-20261102/docs/v3/independent-review-f1-20261102.md . Nessuna revisione delle due AI è stata ancora ricevuta; il documento serve per revisione manuale indipendente, non concede accesso alla VPS né a dati privati.
