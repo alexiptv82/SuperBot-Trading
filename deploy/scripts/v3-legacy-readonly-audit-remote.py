@@ -125,4 +125,21 @@ try:
         print("BRAIN_EVENT_FIELDS", kind, ",".join(fields))
 except Exception as exc:
     print("BRAIN_STRUCTURE BLOCKED=", type(exc).__name__)
+from v3.legacy_brain_books import audit_brain_books
+try:
+    result = audit_brain_books(brain)
+    print(
+        "BRAIN_BOOKS",
+        "ELIGIBLE=", result.eligible,
+        "OPENED=", result.opened,
+        "FINALS=", result.finalized,
+        "PARTIALS=", result.partial_segments,
+        "OPEN_SNAPSHOT=", result.open_snapshot,
+        "CASH_PASS=", result.cash_pass,
+        "SEGMENT_PASS=", result.partial_segment_pass,
+        "ENTRY_EXIT_PAIRING=", result.entry_exit_pairing_pass,
+        "ISSUES=", ",".join(result.issues) if result.issues else "NONE",
+    )
+except Exception as exc:
+    print("BRAIN_BOOKS BLOCKED=", type(exc).__name__)
 print("READONLY_AUDIT_FINISHED=YES")
