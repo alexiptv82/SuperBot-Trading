@@ -6,6 +6,7 @@ import pytest
 
 from v3.events import Event, EventJournal, EventConflict
 from v3.offline_import import import_verified_classic_copy
+from v3.legacy_multirun import plan_classic_multirun_events
 
 
 def _one(ident, stamp, net):
@@ -110,7 +111,7 @@ def test_trigger_failure_rolls_back_entire_batch(tmp_path):
         db.execute("""
             CREATE TRIGGER test_reject_second
             BEFORE INSERT ON v3_events
-            WHEN NEW.event_id LIKE '%.closed.2'
+            WHEN NEW.run_id = 'legacy-hawk-8'
             BEGIN SELECT RAISE(ABORT, 'forced_insert_error'); END
         """)
     with pytest.raises(sqlite3.IntegrityError, match="forced_insert_error"):
@@ -133,8 +134,9 @@ def test_preexisting_matching_id_without_manifest_is_not_silently_adopted(tmp_pa
     work.mkdir()
     j = EventJournal(work / "v3-import.sqlite3")
     j.init_schema()
+    same_trade_id = plan_classic_multirun_events(src, "hawk")[1][0].event_id
     j.append(Event(
-        "legacy.hawk.7.closed.1", "hawk", "legacy-hawk-7",
+        same_trade_id, "hawk", "legacy-hawk-7",
         "legacy_trade_closed", 1793500000000, "legacy_paper_history",
         {"origin": "unaudited_import"}
     ))
