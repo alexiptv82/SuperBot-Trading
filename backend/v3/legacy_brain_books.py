@@ -75,6 +75,9 @@ def audit_brain_books(
     closes: dict[tuple[int, str, int], dict] = {}
     epochs = 0
     reframe_checkpoints: list[tuple[int, Decimal]] = []
+    last_event_time: int | None = None
+    if kinds.get("experiment_started", 0) > 1:
+        issues.append("MULTIPLE_EXPERIMENT_START")
     with open_frozen_sqlite(db_path) as db:
         raw_state = db.execute(
             "SELECT body FROM state WHERE id=1"
@@ -85,13 +88,20 @@ def audit_brain_books(
         account_cash = _number(state.get("cash"))
         if not isinstance(state.get("positions"), dict):
             raise ValueError("invalid_positions")
-        for kind, body in db.execute(
-            """SELECT kind,body FROM events
+        for kind, stamp, body in db.execute(
+            """SELECT kind,ts,body FROM events
                WHERE kind IN ('open','dca','partial_trade','trade_closed',
-                              'experiment_reframed')
+                              'experiment_reframed','experiment_started')
                ORDER BY seq"""
         ):
+            if (type(stamp) is not int or stamp <= 0 or
+                    (last_event_time is not None and stamp < last_event_time)):
+                issues.append("EPOCH_TIME_ORDER")
+            else:
+                last_event_time = stamp
             e = json.loads(body)
+            if kind == "experiment_started":
+                continue
             if not isinstance(e, dict):
                 issues.append("INVALID_EVENT_BODY")
                 continue
