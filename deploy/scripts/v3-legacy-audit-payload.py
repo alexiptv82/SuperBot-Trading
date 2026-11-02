@@ -14,6 +14,7 @@ files = [
     ("v3.legacy_audit", ROOT / "backend/v3/legacy_audit.py"),
     ("v3.legacy_multirun", ROOT / "backend/v3/legacy_multirun.py"),
     ("v3.legacy_accounting", ROOT / "backend/v3/legacy_accounting.py"),
+    ("v3.legacy_brain_books", ROOT / "backend/v3/legacy_brain_books.py"),
 ]
 print("import base64,sys,types")
 print("p=types.ModuleType('v3'); p.__path__=[]; sys.modules['v3']=p")
