@@ -125,7 +125,7 @@ def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
     risk_budget = min(
         equity * per_trade,
         equity * total_risk - used_risk,
-        equity - floor,
+        equity - floor - used_risk,
     )
     if risk_budget <= 0:
         return _rejected("risk_budget_exhausted")
