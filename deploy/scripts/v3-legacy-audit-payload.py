@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 files = [
     ("v3.events", ROOT / "backend/v3/events.py"),
     ("v3.legacy_audit", ROOT / "backend/v3/legacy_audit.py"),
+    ("v3.legacy_multirun", ROOT / "backend/v3/legacy_multirun.py"),
 ]
 print("import base64,sys,types")
 print("p=types.ModuleType('v3'); p.__path__=[]; sys.modules['v3']=p")
