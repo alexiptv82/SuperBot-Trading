@@ -68,9 +68,13 @@ def audit_brain_books(
         issues.append("UNKNOWN_EVENT_KIND")
     if kinds.get("dca", 0):
         issues.append("DCA_REPLAY_NOT_IMPLEMENTED")
-    opens: dict[tuple[str, int], dict] = {}
-    partials: dict[tuple[str, int], list[dict]] = {}
-    closes: dict[tuple[str, int], dict] = {}
+    # Historical position IDs restart at explicit experiment_reframed events.
+    # An ID is unique only within an epoch, not across the entire SQLite file.
+    opens: dict[tuple[int, str, int], dict] = {}
+    partials: dict[tuple[int, str, int], list[dict]] = {}
+    closes: dict[tuple[int, str, int], dict] = {}
+    epochs = 0
+    reframe_checkpoints: list[tuple[int, Decimal]] = []
     uri = Path(db_path).resolve().as_uri() + "?mode=ro&immutable=1"
     with sqlite3.connect(uri, uri=True, timeout=5) as db:
         db.execute("PRAGMA query_only=ON")
@@ -85,20 +89,44 @@ def audit_brain_books(
             raise ValueError("invalid_positions")
         for kind, body in db.execute(
             """SELECT kind,body FROM events
-               WHERE kind IN ('open','dca','partial_trade','trade_closed')
+               WHERE kind IN ('open','dca','partial_trade','trade_closed',
+                              'experiment_reframed')
                ORDER BY seq"""
         ):
             e = json.loads(body)
-            if not isinstance(e, dict) or e.get("kind") != kind:
+            if not isinstance(e, dict):
+                issues.append("INVALID_EVENT_BODY")
+                continue
+            if kind == "experiment_reframed":
+                old_state = e.get("old_state")
+                if not isinstance(old_state, dict):
+                    issues.append("REFRAME_OLD_STATE_MISSING")
+                else:
+                    try:
+                        before = _event_decimal(e, "old_cash")
+                        after = _event_decimal(e, "new_cash")
+                        state_before = _event_decimal(old_state, "cash")
+                        if (abs(before - after) > tolerance or
+                                abs(before - state_before) > tolerance or
+                                old_state.get("positions")):
+                            issues.append("REFRAME_NOT_CASH_NEUTRAL")
+                        reframe_checkpoints.append((len(closes), before))
+                    except ValueError:
+                        issues.append("REFRAME_CASH_INVALID")
+                if set(opens) != set(closes):
+                    issues.append("REFRAME_HAS_ACTIVE_POSITION")
+                epochs += 1
+                continue
+            if e.get("kind") != kind:
                 issues.append("EVENT_BODY_KIND_MISMATCH")
                 continue
             symbol, ident = e.get("symbol"), e.get("position_id")
             if not isinstance(symbol, str) or not symbol or type(ident) is not int:
                 issues.append("INVALID_POSITION_IDENTITY")
                 continue
-            key = (symbol, ident)
+            key = (epochs, symbol, ident)
             if kind == "open":
-                if key in opens or key in closes:
+                if key in opens:
                     issues.append("DUPLICATE_POSITION_OPEN")
                 else:
                     opens[key] = e
@@ -118,6 +146,7 @@ def audit_brain_books(
         issues.append("POSITION_STILL_OPEN")
 
     accumulated = Decimal(0)
+    final_nets = []
     partial_pass = True
     for key, final in closes.items():
         segments = partials.get(key, [])
@@ -151,9 +180,21 @@ def audit_brain_books(
             if abs(final_total - calculated) > tolerance:
                 raise ValueError("aggregate_net_mismatch")
             accumulated += final_total
+            final_nets.append(final_total)
         except (ValueError, TypeError):
             partial_pass = False
             issues.append("SEGMENT_ACCOUNTING_MISMATCH")
+    for end_count, old_cash in reframe_checkpoints:
+        expected_before_reframe = start_equity + sum(
+            final_nets[:end_count], Decimal(0)
+        )
+        if (len(final_nets) < end_count or
+                abs(expected_before_reframe - old_cash) > tolerance):
+            issues.append("REFRAME_PRIOR_CASH_MISMATCH")
+    if reframe_checkpoints and state.get("v2_start_equity") is not None:
+        if abs(_number(state["v2_start_equity"]) -
+               reframe_checkpoints[-1][1]) > tolerance:
+            issues.append("REFRAME_V2_START_MISMATCH")
     implied = start_equity + accumulated
     cash_residual = account_cash - implied
     cash_pass = abs(cash_residual) <= tolerance
