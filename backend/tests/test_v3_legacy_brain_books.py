@@ -139,3 +139,24 @@ def test_reframe_fake_topup_is_blocked(tmp_path):
     report = audit_brain_books(p)
     assert not report.eligible
     assert "REFRAME_NOT_CASH_NEUTRAL" in report.issues
+
+
+def test_p1_4_reject_reversed_brain_event_time(tmp_path):
+    p = make_db(tmp_path)
+    with sqlite3.connect(p) as db:
+        db.execute("UPDATE events SET ts=1 WHERE seq=5")
+    report = audit_brain_books(p)
+    assert not report.eligible
+    assert "EPOCH_TIME_ORDER" in report.issues
+
+
+def test_p1_5_reject_multiple_experiment_started(tmp_path):
+    p = make_db(tmp_path)
+    with sqlite3.connect(p) as db:
+        for n in (6, 7):
+            db.execute("INSERT INTO events VALUES(?,?,?,?,?)",
+                       (n, str(n), "experiment_started", n,
+                        json.dumps({"experiment_id": "test-" + str(n)})))
+    report = audit_brain_books(p)
+    assert not report.eligible
+    assert "MULTIPLE_EXPERIMENT_START" in report.issues
