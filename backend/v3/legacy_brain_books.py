@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 import sqlite3
 
-from .legacy_audit import _number
+from .legacy_audit import _number, open_frozen_sqlite
 from .legacy_accounting import audit_brain_structure
 
 
@@ -75,9 +75,7 @@ def audit_brain_books(
     closes: dict[tuple[int, str, int], dict] = {}
     epochs = 0
     reframe_checkpoints: list[tuple[int, Decimal]] = []
-    uri = Path(db_path).resolve().as_uri() + "?mode=ro&immutable=1"
-    with sqlite3.connect(uri, uri=True, timeout=5) as db:
-        db.execute("PRAGMA query_only=ON")
+    with open_frozen_sqlite(db_path) as db:
         raw_state = db.execute(
             "SELECT body FROM state WHERE id=1"
         ).fetchone()
