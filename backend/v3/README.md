@@ -93,3 +93,10 @@ Nuovi moduli *solo lettura*:
 `backup_certification.py` implements a read-only source witness for Brain, a SQLite `Connection.backup()` capture suitable for committed WAL rows, and an off-host verification routine that requires an independently retained manifest SHA-256, event digest, event count and max sequence. `f0_classic_certificate.py` binds Falco/Toro archive/state/history/learning source files to an independent digest and reruns the prior cash and archive reconciliations on the restored directory. See [the complete safe F0 runbook](../../docs/v3/f0-backup-certification-runbook.md).
 
 **No VPS backup has been certified by these additions.** The code has only been exercised on synthetic SQLite and JSONL fixtures through isolated CI. Encrypted off-host backup, authentic independently retained source witnesses, operator permission controls, SSH key rotation and real-data replay remain necessary before production import. This is a strictly isolated review/capture aid; no automatic VPS access, runtime integration or trading restart.
+
+
+### F0 operator interface and privileged-access hold
+
+`python -m v3.f0_cli` now exposes `observe-brain`, `capture-brain`, `verify-brain`, `observe-classic` and `verify-classic` for reviewed, trusted **offline** use. Witnesses must be stored separately from the restored backup. It contains no SSH/exchange/network integration and is not a production/automatic VPS job. See `docs/v3/f0-operator-access-gate-20261102.md` and the F0 runbook.
+
+The classic F0 witness additionally includes mandatory `lessons.md` and optional `errors.md`; they are preserved as historical source data, **not yet imported as V3 memory episodes**. The Brain F0 verifier protects `brain.sqlite3` only; any other Brain learning files require separate discovery and certification. The old GitHub root SSH key remains a security concern in other existing workflows, so automated remote capture remains blocked.
