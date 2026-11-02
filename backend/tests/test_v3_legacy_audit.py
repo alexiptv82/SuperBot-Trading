@@ -70,7 +70,7 @@ def test_partial_and_final_same_position_stay_separate(tmp_path):
 
 def test_reconciliation_refuses_missing_close_and_wrong_net(tmp_path):
     root = fixture_classic(tmp_path, state_rows=[close(net=3)])
-    report, staged = plan_classic_closed_events(root, "hawk")
+    report = audit_classic_snapshot(root, "hawk")
     assert not report.eligible
     assert "CLOSED_ROW_MISMATCH" in report.issues
     assert "CLOSED_NET_MISMATCH" in report.issues
@@ -79,7 +79,7 @@ def test_reconciliation_refuses_missing_close_and_wrong_net(tmp_path):
 
 def test_learning_coverage_gap_explicitly_blocks(tmp_path):
     root = fixture_classic(tmp_path, learning_rows=[])
-    report, staged = plan_classic_closed_events(root, "hawk")
+    report = audit_classic_snapshot(root, "hawk")
     assert report.state_closed == report.history_closed == 1
     assert "LEARNING_COVERAGE_GAP" in report.issues
     assert not report.eligible
@@ -90,9 +90,9 @@ def test_duplicated_jsonl_record_detected(tmp_path):
     row = close()
     root = fixture_classic(tmp_path, state_rows=[row, row],
                            history_rows=[row, row])
-    report, staged = plan_classic_closed_events(root, "hawk")
+    report = audit_classic_snapshot(root, "hawk")
     assert "DUPLICATE_HISTORY_ROW" in report.issues
-    assert not staged
+
 
 
 def test_invalid_json_line_refuses_import(tmp_path):
@@ -180,7 +180,7 @@ def test_archived_run_explicit_shared_learning_log(tmp_path):
     assert report.eligible
     assert report.history_closed == 1
     assert report.legacy_run_id == "legacy-hawk-8"
-    assert staged[0].run_id == "legacy-hawk-8"
+    assert report.legacy_run_id == "legacy-hawk-8"
 
 
 def test_superseded_single_run_planner_is_disabled(tmp_path):
