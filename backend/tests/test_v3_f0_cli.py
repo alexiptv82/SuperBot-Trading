@@ -62,7 +62,7 @@ def test_brain_cli_refuses_self_attested_witness_inside_restore(tmp_path):
 def test_brain_cli_refuses_forged_external_witness(tmp_path):
     db = make_brain(tmp_path)
     witness = run(["observe-brain", "--source", str(db)])
-    witness["source_observation"]["event_count"] += 1
+    witness["source_observation"]["events_sha256"] = "0" * 64
     file = tmp_path / "independent.json"
     file.write_text(json.dumps(witness))
     captured = tmp_path / "captured"
