@@ -101,3 +101,34 @@ def test_truncated_reason_is_not_mismatch(tmp_path):
     (root / "learning_log.jsonl").write_text("\n".join(rows) + "\n")
     report = audit_classic_multirun(root, "hawk")
     assert report.eligible
+
+
+def test_historical_start_equity_only_in_history_is_preserved(tmp_path):
+    root = setup(tmp_path)
+    rows = [json.loads(x) for x in (root / "trade_history.jsonl").read_text().splitlines()]
+    rows[0]["start_equity"] = 1000.0
+    (root / "trade_history.jsonl").write_text(
+        "".join(json.dumps(x) + "\n" for x in rows)
+    )
+    report, events = plan_classic_multirun_events(root, "hawk")
+    assert report.eligible
+    assert len(events) == 2
+    assert events[0].payload["record"]["start_equity"] == 1000.0
+
+
+def test_start_equity_conflict_is_not_silently_ignored(tmp_path):
+    root = setup(tmp_path)
+    rows = [json.loads(x) for x in (root / "trade_history.jsonl").read_text().splitlines()]
+    rows[0]["start_equity"] = 1000.0
+    (root / "trade_history.jsonl").write_text(
+        "".join(json.dumps(x) + "\n" for x in rows)
+    )
+    log = [json.loads(x) for x in (root / "learning_log.jsonl").read_text().splitlines()]
+    log[0]["start_equity"] = 2000.0
+    (root / "learning_log.jsonl").write_text(
+        "".join(json.dumps(x) + "\n" for x in log)
+    )
+    report, events = plan_classic_multirun_events(root, "hawk")
+    assert not report.eligible
+    assert "LEARNING_FIELD_MISMATCH" in report.issues
+    assert events == ()
