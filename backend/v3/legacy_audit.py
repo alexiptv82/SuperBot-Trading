@@ -221,6 +221,31 @@ def plan_classic_closed_events(
     return report, tuple(prepared)
 
 
+def open_frozen_sqlite(db_path: str | Path) -> sqlite3.Connection:
+    """Open a pre-captured SQLite snapshot without silently ignoring sidecars.
+
+    Sidecar absence is only a necessary precondition, not proof that a copy
+    included all committed WAL transactions. Independent capture-time
+    count/MAX(seq) and off-host restore certification remain mandatory.
+    """
+    path = Path(db_path)
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("invalid_frozen_db")
+    for suffix in ("-wal", "-journal"):
+        side = Path(str(path) + suffix)
+        if side.is_symlink():
+            raise ValueError("sqlite_sidecar_symlink:" + suffix)
+        if side.exists():
+            if not side.is_file():
+                raise ValueError("sqlite_sidecar_invalid:" + suffix)
+            if side.stat().st_size > 0:
+                raise ValueError("sqlite_sidecar_present:" + suffix)
+    db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro&immutable=1",
+                         uri=True, timeout=5)
+    db.execute("PRAGMA query_only=ON")
+    return db
+
+
 def audit_brain_snapshot(db_path: str | Path) -> dict[str, Any]:
     """Brain Free V2 read-only inventory; do not yet infer P&L from events.
 
@@ -231,9 +256,7 @@ def audit_brain_snapshot(db_path: str | Path) -> dict[str, Any]:
     path = Path(db_path)
     if path.is_symlink() or not path.is_file():
         raise ValueError("invalid_brain_database")
-    with sqlite3.connect(path.resolve().as_uri() + "?mode=ro&immutable=1",
-                         uri=True, timeout=5) as db:
-        db.execute("PRAGMA query_only=ON")
+    with open_frozen_sqlite(path) as db:
         integrity = db.execute("PRAGMA integrity_check").fetchone()[0]
         if integrity != "ok":
             raise ValueError("brain_sqlite_integrity_error")
