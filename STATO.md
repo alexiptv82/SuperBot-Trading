@@ -1,3 +1,9 @@
+## 2026-11-02 11:10 Europe/Rome — Pool PAPER S2: 273 closed, 17 time-max-hold (readonly)
+
+Screenshot Termius audit SQLite `mode=ro` on `/opt/superbot-pool-data/pool.db`: `CTL_S2_majors` closed=44, `time` at exactly 48h=1; `CTL_S2_top10` closed=120, time48=10; `R_S2_majors` closed=18, time48=1; `R_S2_top10` closed=91, time48=5. Total **273 closed PAPER S2, 17 closed time/48h**. Prior audit reported **zero recorded Donchian closed >48h**. This is an audit *cohort*, NOT indication that all 17 have a bug: the verified XRP case was saved `time` at 48h and old engine tried to change to Donchian at 49h. PR #28 isolated correction and 69/69 CI PASS, NO merge, NO deploy, Pool still unhealthy. Next logical gate is a read-only, bounded reconciliation of all 273 recorded closed S2 trades against candidate engine semantics from existing 15m cache (never call Bitget, never mutate DB) to ensure no other immutable divergence. Keep Falco/Toro healthy and Brain Free/Pilot/AI Shadow paused.
+
+---
+
 ## 2026-11-02 11:06 — Pool: 0 Donchian S2 PAPER chiusi oltre 48 ore (audit parziale)
 
 Screenshot Termius, SQLite readonly su `/opt/superbot-pool-data/pool.db`: `TRADE_DONCHIAN_OLTRE_48H: 0` con filtro `venue='paper'`, `status='closed'`, `why='donchian'`, `rule_id LIKE '%S2%'`, `hold_h >48.000001`. Questo verifica soltanto l'assenza di **trade già registrati** oltre il limite; NON prova che il replay del nuovo motore concordi con tutti i trade `time` già chiusi a 48h. Caso XRP precedentemente accertato: `time` salvato a 48h vs `donchian` ricalcolato a 49h, impedito da ImmutableTradeError. Fix in Draft PR #28 isolata, 69/69 CI PASS, NO merge/deploy; non disattivare controllo immutabilità, non mutare/cancellare DB. Passo prossimo: contare i `time` al limite massimo per capire ampiezza della verifica, poi replay su snapshot non operativo, senza CPU intensive sul VPS di trading.
