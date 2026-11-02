@@ -32,6 +32,28 @@ for port in ("hawk", "bull"):
         "ISSUES=", ",".join(report.issues) if report.issues else "NONE",
     )
 
+    # Diagnostic only: detect whether the current run is a strict subset of
+    # a historical, multi-run JSONL. Do not modify the audit's BLOCKED gate.
+    import json
+    from collections import Counter
+    from v3.legacy_audit import _canon
+    account = json.loads((path / "state_v2.json").read_text())
+    state_rows = account["main"]["closed"]
+    history_rows = [json.loads(line) for line in
+                    (path / "trade_history.jsonl").read_text().splitlines()
+                    if line.strip()]
+    a, b = Counter(_canon(r) for r in state_rows), Counter(_canon(r) for r in history_rows)
+    full_current_subset = all(b[key] >= n for key, n in a.items())
+    log_rows = [json.loads(line) for line in
+                (path / "learning_log.jsonl").read_text().splitlines()
+                if line.strip()]
+    close_by_run = Counter(str(r.get("run_no", "MISSING")) for r in log_rows
+                           if r.get("ev") == "close")
+    print(port.upper(), "CURRENT_ROWS_PRESENT_IN_HISTORY=", full_current_subset,
+          "LEARNING_CLOSE_RUN_COUNTS=", ";".join(
+              f"{k}:{v}" for k, v in sorted(close_by_run.items())
+          ))
+
 brain = SNAP / "superbot-brain-free" / "brain.sqlite3"
 try:
     report = audit_brain_snapshot(brain)
