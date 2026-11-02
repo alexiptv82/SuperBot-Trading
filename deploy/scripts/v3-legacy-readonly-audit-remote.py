@@ -64,6 +64,20 @@ for port in ("hawk", "bull"):
           "RUNS=", ",".join(str(x[0]) for x in multi.runs),
           "MULTIRUN_ISSUES=", ",".join(multi.issues) if multi.issues else "NONE")
 
+    if "LEARNING_FIELD_MISMATCH" in multi.issues:
+        from v3.legacy_multirun import _key
+        learning_map = {_key(item): item for item in log_rows
+                        if item.get("ev") == "close"}
+        discrepancy = Counter()
+        for row in history_rows:
+            found = learning_map.get(_key(row))
+            if found:
+                for key, value in row.items():
+                    if key != "reason" and found.get(key, object()) != value:
+                        discrepancy[key] += 1
+        print(port.upper(), "DIFFERING_FIELD_NAMES_ONLY=",
+              ";".join(f"{k}:{v}" for k, v in sorted(discrepancy.items())))
+
 brain = SNAP / "superbot-brain-free" / "brain.sqlite3"
 try:
     report = audit_brain_snapshot(brain)
