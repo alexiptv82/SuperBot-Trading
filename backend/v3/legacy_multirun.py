@@ -78,10 +78,12 @@ def _scan(
     return run, current, positions, history, learn_closes
 
 
-def _match(run, current, positions, history, learn_closes):
+def _match(run, current, positions, history, learn_closes, portfolio_id):
     issues = []
     by_key = defaultdict(list)
     for row in learn_closes:
+        if row.get('portfolio') != portfolio_id:
+            issues.append('LEARNING_PORTFOLIO_MISMATCH')
         key = _key(row)
         by_key[key].append(row)
     assigned: list[tuple[int, dict]] = []
@@ -118,6 +120,17 @@ def _match(run, current, positions, history, learn_closes):
         issues.append("CURRENT_RUN_STATE_HISTORY_MISMATCH")
     if len(_fingerprints(history)) != len(history):
         issues.append("DUPLICATE_HISTORY_ROW")
+    # Historic resets completed with no positions. For each old run,
+    # position ids may have many partials but at most ONE final close.
+    finals = Counter((r, item["id"]) for r, item in assigned
+                     if not item.get("partial"))
+    if any(value > 1 for value in finals.values()):
+        issues.append("DUPLICATE_FINAL_CLOSE")
+    if any(item.get("partial") and r < run and
+           (r, item["id"]) not in finals for r, item in assigned):
+        issues.append("PARTIAL_WITHOUT_FINAL_IN_CLOSED_RUN")
+    if any(r > run for r, _ in assigned):
+        issues.append("FUTURE_LEGACY_RUN")
     current_net_matches = _net(current) == _net(current_history)
     if not current_net_matches:
         issues.append("CURRENT_RUN_NET_MISMATCH")
@@ -135,7 +148,7 @@ def audit_classic_multirun(directory, portfolio_id, *, learning_path=None):
         directory, portfolio_id, learning_path=learning_path
     )
     assigned, current_history, net_match, run_summaries, issues = _match(
-        run, current, positions, history, learn
+        run, current, positions, history, learn, portfolio_id
     )
     report = MultiRunReport(
         portfolio_id, run, not issues, len(history), len(learn),
@@ -168,7 +181,9 @@ def plan_classic_multirun_events(directory, portfolio_id, *, learning_path=None)
     for idx, (historical_run, item) in enumerate(assigned, 1):
         stamp, _ = _closed(item)
         events.append(Event(
-            event_id=f"legacy.{portfolio_id}.{historical_run}.closed.{idx}",
+            event_id=(f"legacy.{portfolio_id}.r{historical_run}."
+                     f"p{item['id']}.{stamp}."
+                     f"{hashlib.sha256(_canon(item).encode('utf-8')).hexdigest()[:16]}"),
             portfolio_id=portfolio_id,
             run_id=f"legacy-{portfolio_id}-{historical_run}",
             kind="legacy_trade_closed",
