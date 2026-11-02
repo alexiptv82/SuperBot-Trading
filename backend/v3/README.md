@@ -37,3 +37,20 @@ Solo libreria standard Python + pytest nei test. Non importa componenti legacy p
 - I file in produzione vanno lasciati intatti. Per i test con dati reali si usano solo directory di backup già estratte, senza riprendere bot o AI.
 
 **Importante:** l'idoneità del rapporto locale su dati sintetici non certifica ancora il backup VPS, lo storico di tutte le run né la corrispondenza dell'equity. Mancano l'audit sui dati storici effettivi, la riconciliazione delle aperture e dei movimenti di cassa e le proiezioni finali. La nuova memoria non deve considerare la stessa chiusura ripetuta su più file come eventi distinti.
+
+
+## Esito audit reale sul backup post-stop (2 novembre 2026)
+
+L'audit iniziale `legacy_audit.py` confrontava **tutto** `trade_history.jsonl` con le sole chiusure di `state_v2.json`: sui dati reali il file storico è cumulativo e questo confronto dà un falso allarme di scarsa copertura. La verifica corretta è ora `legacy_multirun.py`, che assegna ogni riga dello storico a una run verificata tramite la corrispondente voce `close` di `learning_log.jsonl`.
+
+Esito su copie già estratte e ferme in `/opt/superbot-v3-backups/20261102T144010Z/restore-test`:
+- **Falco:** 348 chiusure riconciliate, run **2–8**, 59 della run corrente, 6 posizioni PAPER lasciate aperte prima dello stop;
+- **Toro:** 186 chiusure riconciliate, run **1–7**, 23 della run corrente, 2 posizioni PAPER lasciate aperte prima dello stop;
+- **Totale:** **534** chiusure dei classici associate individualmente alle rispettive run senza duplicazioni; stato corrente e relativo sottoinsieme coincidono.
+- Metadata legacy `start_equity` compare in alcuni record storici senza essere stato riportato nel learning log: il valore originale viene conservato; una differenza quando il campo è presente su entrambe le sorgenti blocca l'audit.
+- `plan_classic_multirun_events()` ha prodotto e validato **534 eventi in memoria**, senza scriverli nel database V3 e senza modificare alcun originale.
+- **Brain Free:** SQLite integri; 8.447 eventi di vario tipo, 182 di tipo `trade_closed`, zero posizioni aperte; importazione ancora bloccata fino al contratto di riconciliazione Brain P&L.
+
+Esecuzioni GitHub: [riconciliazione completa](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41493073676), [534 eventi staging RAM](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41493242680); [CI 35/35 per Python 3.10 e 3.11](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41492985727).
+
+**Nessun import persistente eseguito.** Mancano la riconciliazione dei movimenti di cassa, delle posizioni aperte e del P&L Brain; non interpretare questo audit come approvazione economica delle strategie. L'archivio generale post-stop è verificato localmente ma una copia esterna cifrata successiva al fermo non è ancora attestata.
