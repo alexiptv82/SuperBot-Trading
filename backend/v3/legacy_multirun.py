@@ -98,7 +98,14 @@ def _match(run, current, positions, history, learn_closes):
             continue
         # Ensure match on ALL unmodified record fields, not only identity key.
         for field, value in item.items():
-            if field != "reason" and (field not in candidate or candidate[field] != value):
+            if field == "reason":
+                continue  # the learning writer truncates free-text reason
+            # Historical formats sometimes stored start_equity on the trade
+            # record but not in the learning-log projection. Preserve the
+            # source field as provenance; do NOT invent it in the learning row.
+            if field == "start_equity" and field not in candidate:
+                continue
+            if field not in candidate or candidate[field] != value:
                 issues.append("LEARNING_FIELD_MISMATCH")
                 break
         assigned.append((run_no, item))
