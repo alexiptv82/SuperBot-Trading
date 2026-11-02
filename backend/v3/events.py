@@ -184,8 +184,11 @@ class EventJournal:
                    ORDER BY seq""", (portfolio_id, run_id)
             ).fetchall()]
 
-    def verify_chain(self) -> tuple[int, str]:
-        """Check the whole sequence, not just one run: chain crosses accounts."""
+    def verify_chain(self, expected_count: int | None = None,
+                     expected_head: str | None = None) -> tuple[int, str]:
+        """Verify chain; detect tail truncation only when an external anchor is given."""
+        if (expected_count is None) != (expected_head is None):
+            raise ValueError("external_manifest_requires_count_and_head")
         with self._connect(read_only=True) as db:
             prev = _GENESIS
             count = 0
@@ -199,4 +202,6 @@ class EventJournal:
                     raise ValueError("journal_hash_chain_invalid")
                 prev = row[9]
                 count += 1
+            if expected_count is not None and (count != expected_count or prev != expected_head):
+                raise ValueError("journal_does_not_match_external_manifest")
             return count, prev
