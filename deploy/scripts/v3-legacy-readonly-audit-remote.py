@@ -98,4 +98,31 @@ try:
           "IMPORT_ELIGIBLE=", report["import_eligible"])
 except Exception as exc:
     print("BRAIN BLOCKED", "error=", type(exc).__name__)
+from v3.legacy_accounting import audit_classic_books, audit_brain_structure
+for port in ("hawk", "bull"):
+    try:
+        result = audit_classic_books(SNAP / "superbot-desk-data" / port, port)
+        print(
+            "ACCOUNTING", port.upper(),
+            "RUN=", result.run_id,
+            "CLOSED=", result.closed_count,
+            "OPEN=", result.open_count,
+            "MULTIRUN_PASS=", result.multirun_pass,
+            "BOOK_CASH_PASS=", result.cash_formula_pass,
+            "BOOK_ISSUES=", ",".join(result.issues) if result.issues else "NONE",
+        )
+    except Exception as exc:
+        print("ACCOUNTING", port.upper(), "BLOCKED=", type(exc).__name__)
+
+try:
+    structure = audit_brain_structure(brain)
+    print("BRAIN_STRUCTURE PAPER=", structure.paper_valid,
+          "EVENTS=", structure.total_events,
+          "KINDS=", ";".join(k + ":" + str(v) for k,v in structure.kind_counts),
+          "OPEN=", structure.open_positions,
+          "IMPORT_ALLOWED=", structure.import_allowed)
+    for kind, fields in structure.relevant_fields:
+        print("BRAIN_EVENT_FIELDS", kind, ",".join(fields))
+except Exception as exc:
+    print("BRAIN_STRUCTURE BLOCKED=", type(exc).__name__)
 print("READONLY_AUDIT_FINISHED=YES")
