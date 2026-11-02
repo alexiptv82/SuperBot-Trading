@@ -8,7 +8,8 @@ import sqlite3
 
 import pytest
 
-from v3.backup_certification import capture_brain_copy, verify_brain_offhost
+from v3.backup_certification import (capture_brain_copy, verify_brain_offhost,
+                                     observe_brain_source_readonly)
 from v3.legacy_audit import audit_brain_snapshot
 
 
@@ -163,3 +164,46 @@ def test_non_paper_brain_is_rejected_before_certificate(tmp_path):
             capture_brain_copy(source, tmp_path / "no-certificate")
     finally:
         writer.close()
+
+
+def test_source_side_witness_observes_committed_wal(tmp_path):
+    source, writer = brain_fixture(tmp_path, wal=True, n=7)
+    try:
+        source_observation = observe_brain_source_readonly(source)
+        assert source_observation["event_count"] == 7
+        assert source_observation["max_event_seq"] == 7
+        out = tmp_path / "capture"
+        capture_brain_copy(source, out)
+        assert source_observation == json.loads(
+            (out / "manifest.json").read_text()
+        )["source_observation"]
+    finally:
+        writer.close()
+
+
+def test_stale_snapshot_rejected_by_separate_original_source_witness(tmp_path):
+    original_dir = tmp_path / "original"
+    original_dir.mkdir()
+    original, writer = brain_fixture(original_dir, wal=True, n=7)
+    stale_dir = tmp_path / "stale"
+    stale_dir.mkdir()
+    stale, other = brain_fixture(stale_dir, wal=False, n=5)
+    try:
+        independently_recorded = observe_brain_source_readonly(original)
+        assert independently_recorded["event_count"] == 7
+        output = tmp_path / "wrong-capture"
+        capture_brain_copy(stale, output)
+        self_manifest_hash = witness(output)["expected_manifest_sha256"]
+        # The stale copy has a valid *self*-manifest. It does not match the
+        # independently observed original and must fail certification.
+        with pytest.raises(ValueError, match="external_source_witness_mismatch"):
+            verify_brain_offhost(
+                output,
+                expected_manifest_sha256=self_manifest_hash,
+                expected_event_count=independently_recorded["event_count"],
+                expected_max_event_seq=independently_recorded["max_event_seq"],
+                expected_events_sha256=independently_recorded["events_sha256"],
+            )
+    finally:
+        writer.close()
+        other.close()
