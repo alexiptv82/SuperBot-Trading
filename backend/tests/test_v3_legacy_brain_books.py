@@ -94,3 +94,48 @@ def test_segment_component_mismatch(tmp_path):
     r = audit_brain_books(p)
     assert not r.eligible
     assert "SEGMENT_ACCOUNTING_MISMATCH" in r.issues
+
+
+def test_reframe_reuses_id_across_epochs_without_double_count(tmp_path):
+    """Position id can restart at one in V2 without representing old V1 trade."""
+    p = tmp_path / "brain.sqlite3"
+    with sqlite3.connect(p) as db:
+        db.execute("CREATE TABLE state(id INTEGER PRIMARY KEY,body TEXT)")
+        db.execute("CREATE TABLE events(seq INTEGER PRIMARY KEY,id TEXT,kind TEXT,ts INTEGER,body TEXT)")
+        db.execute("INSERT INTO state VALUES(1,?)", (
+            json.dumps({"mode":"paper","account_id":"brain-free-paper",
+                        "cash":2013,"positions":{},"v2_start_equity":2005}),))
+        ev = [
+            ("open", {"kind":"open","symbol":"BTC","position_id":1}),
+            ("trade_closed", {"kind":"trade_closed","symbol":"BTC","position_id":1,
+                              "net":5,"segment":{"net":5,"gross":6,"fees":1,"funding":0}}),
+            ("experiment_reframed", {"old_state":{"cash":2005,"positions":{}},
+                                    "old_cash":2005,"new_cash":2005}),
+            ("open", {"kind":"open","symbol":"BTC","position_id":1}),
+            ("trade_closed", {"kind":"trade_closed","symbol":"BTC","position_id":1,
+                              "net":8,"segment":{"net":8,"gross":9,"fees":1,"funding":0}}),
+        ]
+        for idx,(kind,body) in enumerate(ev,1):
+            db.execute("INSERT INTO events VALUES(?,?,?,?,?)",
+                       (idx,str(idx),kind,idx,json.dumps(body)))
+    report = audit_brain_books(p)
+    assert report.eligible, report.issues
+    assert report.opened == report.finalized == 2
+    assert report.summed_closed_net == "13"
+    assert report.cash_pass
+
+
+def test_reframe_fake_topup_is_blocked(tmp_path):
+    p = tmp_path / "brain.sqlite3"
+    with sqlite3.connect(p) as db:
+        db.execute("CREATE TABLE state(id INTEGER PRIMARY KEY,body TEXT)")
+        db.execute("CREATE TABLE events(seq INTEGER PRIMARY KEY,id TEXT,kind TEXT,ts INTEGER,body TEXT)")
+        db.execute("INSERT INTO state VALUES(1,?)", (
+            json.dumps({"mode":"paper","account_id":"brain-free-paper",
+                        "cash":2100,"positions":{},"v2_start_equity":2100}),))
+        db.execute("INSERT INTO events VALUES(1,'1','experiment_reframed',1,?)",
+                   (json.dumps({"old_state":{"cash":2000,"positions":{}},
+                                "old_cash":2000,"new_cash":2100}),))
+    report = audit_brain_books(p)
+    assert not report.eligible
+    assert "REFRAME_NOT_CASH_NEUTRAL" in report.issues
