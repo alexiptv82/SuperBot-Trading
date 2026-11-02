@@ -89,3 +89,14 @@ def test_report_excludes_sensitive_file_contents(tmp_path):
     (Path(src["hawk"][0]) / "lessons.md").write_text("PRIVATE_AI_LESSON_DO_NOT_EMIT")
     output = json.dumps(build_report(examine_sources(src), True, [], True, []))
     assert "PRIVATE_AI_LESSON_DO_NOT_EMIT" not in output
+
+
+def test_brain_adjacent_learning_files_are_inventory_only(tmp_path):
+    src = fixtures(tmp_path)
+    root = Path(src["brain"][0]).parent
+    (root / "memory.jsonl").write_text("HIDDEN_PRIVATE_AI_MEMORY_DO_NOT_EMIT")
+    data = examine_sources(src)
+    assert data["brain"]["adjacent_memory_candidates"]["memory.jsonl"]["present"]
+    output = json.dumps(data)
+    assert "HIDDEN_PRIVATE_AI_MEMORY_DO_NOT_EMIT" not in output
+    assert "memory.jsonl" in output
