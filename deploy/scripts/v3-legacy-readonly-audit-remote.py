@@ -54,6 +54,16 @@ for port in ("hawk", "bull"):
               f"{k}:{v}" for k, v in sorted(close_by_run.items())
           ))
 
+    from v3.legacy_multirun import audit_classic_multirun
+    multi = audit_classic_multirun(path, port)
+    print(port.upper(), "MULTIRUN_ELIGIBLE=", multi.eligible,
+          "TOTAL_RECONCILED=", sum(item[1] for item in multi.runs),
+          "TOTAL_HISTORY=", multi.history_closes,
+          "CURRENT_RUN_MATCH=", multi.current_net_matches
+          and multi.state_current_closes == multi.current_history_closes,
+          "RUNS=", ",".join(str(x[0]) for x in multi.runs),
+          "MULTIRUN_ISSUES=", ",".join(multi.issues) if multi.issues else "NONE")
+
 brain = SNAP / "superbot-brain-free" / "brain.sqlite3"
 try:
     report = audit_brain_snapshot(brain)
