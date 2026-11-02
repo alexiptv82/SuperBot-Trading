@@ -1,0 +1,45 @@
+name: 'SuperBot V3 - Inventario VPS Singapore (sola lettura)'
+
+# Non esegue alcuna operazione sulla VPS salvo richieste di stato.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - deploy/v3-inventory.trigger
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superbot-v3-singapore-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collegamento verificato alla VPS Singapore (nessuna modifica)
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || { echo 'ERRORE: chiave Singapore mancante'; exit 1; }
+          test -s deploy/scripts/v3-vps-inventory.sh || { echo 'ERRORE: script mancante'; exit 1; }
+          bash -n deploy/scripts/v3-vps-inventory.sh
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/v3_key"
+          chmod 600 "$HOME/.ssh/v3_key"
+          trap 'rm -f "$HOME/.ssh/v3_key"' EXIT
+          # Host key pubblico gia registrato nel workflow di deploy Singapore.
+          cat > "$HOME/.ssh/v3_known_hosts" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 600 "$HOME/.ssh/v3_known_hosts"
+          ssh -T -i "$HOME/.ssh/v3_key" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile="$HOME/.ssh/v3_known_hosts" \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
+            root@51.79.205.82 'bash -s' < deploy/scripts/v3-vps-inventory.sh
