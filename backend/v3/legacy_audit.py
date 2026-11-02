@@ -107,12 +107,18 @@ def _net(rows: list[dict]) -> Decimal:
     return sum((_closed(row)[1] for row in rows), Decimal("0"))
 
 
-def audit_classic_snapshot(directory: str | Path, portfolio_id: str) -> AuditReport:
+def audit_classic_snapshot(
+    directory: str | Path,
+    portfolio_id: str,
+    *,
+    learning_path: str | Path | None = None,
+) -> AuditReport:
     """Compare the CURRENT classic run with its own history and learning log.
 
-    Earlier archived runs must be audited independently using their archived
-    state_v2.json and trade_history.jsonl. No cross-run reconciliation by
-    symbol or trade ID is permitted.
+    Archived runs must use their archived state_v2.json and trade_history.jsonl,
+    and explicitly pass learning_path pointing to the shared ORIGINAL learning
+    log if the archive omitted it. Never silently borrow another run's data.
+    No cross-run matching by symbol or trade ID is permitted.
     """
     if portfolio_id not in ("hawk", "bull"):
         raise ValueError("unsupported_portfolio")
@@ -124,7 +130,7 @@ def audit_classic_snapshot(directory: str | Path, portfolio_id: str) -> AuditRep
     raw: dict[str, bytes] = {}
     digest: dict[str, str] = {}
     for filename in files:
-        path = root / filename
+        path = Path(learning_path) if filename == "learning_log.jsonl" and learning_path is not None else root / filename
         raw[filename] = _source(path, _MAX_STATE if filename == files[0] else _MAX_JSONL)
         digest[filename] = hashlib.sha256(raw[filename]).hexdigest()
 
@@ -178,7 +184,10 @@ def audit_classic_snapshot(directory: str | Path, portfolio_id: str) -> AuditRep
 
 
 def plan_classic_closed_events(
-    directory: str | Path, portfolio_id: str
+    directory: str | Path,
+    portfolio_id: str,
+    *,
+    learning_path: str | Path | None = None,
 ) -> tuple[AuditReport, tuple[Event, ...]]:
     """Stage validated close events in memory ONLY; nothing is written.
 
@@ -186,7 +195,7 @@ def plan_classic_closed_events(
     may have several partial closes. A changed source line with the same ID
     will later be rejected as a conflict by the V3 event journal.
     """
-    report = audit_classic_snapshot(directory, portfolio_id)
+    report = audit_classic_snapshot(directory, portfolio_id, learning_path=learning_path)
     if not report.eligible:
         return report, ()
     root = Path(directory)
