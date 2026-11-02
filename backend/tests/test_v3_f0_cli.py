@@ -110,6 +110,7 @@ def make_classic(tmp_path):
     (base / "learning_log.jsonl").write_text(
         json.dumps({"ev": "close", "run_no": 1, "portfolio": "hawk", **trade}) + "\n"
     )
+    (base / "lessons.md").write_text("# Lessons preserved\n")
     return base
 
 
