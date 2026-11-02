@@ -94,3 +94,48 @@ def test_cli_refuses_missing_external_witness(tmp_path, capsys):
                  "--external-manifest-sha256", receipt["manifest_sha256"]])
     assert code == 2
     assert json.loads(capsys.readouterr().out)["status"] == "F0_BLOCKED"
+
+
+def make_classic(tmp_path):
+    base = tmp_path / "hawk"
+    base.mkdir()
+    trade = {"id": 1, "symbol": "ETH/USDT:USDT", "side": 1,
+             "open_ms": 1793600000000, "close_ms": 1793600300000,
+             "net": 4.0, "why": "time"}
+    (base / "state_v2.json").write_text(json.dumps({
+        "run_no": 1, "main": {"cash": 1004, "closed": [trade],
+                             "positions": {}, "limits": {"start_equity": 1000}}
+    }))
+    (base / "trade_history.jsonl").write_text(json.dumps(trade) + "\n")
+    (base / "learning_log.jsonl").write_text(
+        json.dumps({"ev": "close", "run_no": 1, "portfolio": "hawk", **trade}) + "\n"
+    )
+    return base
+
+
+def test_classic_cli_witness_and_offline_verification(tmp_path):
+    source = make_classic(tmp_path)
+    evidence = run(["observe-classic", "--source", str(source),
+                    "--portfolio", "hawk"])
+    assert evidence["schema"] == "superbot-v3-f0-classic-source-v1"
+    assert evidence["total_closed"] == 1
+    proof = tmp_path / "external-source.json"
+    proof.write_text(json.dumps(evidence))
+    restored = tmp_path / "separate-restore"
+    shutil.copytree(source, restored)
+    verified = run(["verify-classic", "--restored-directory", str(restored),
+                    "--external-witness", str(proof), "--portfolio", "hawk"])
+    assert verified["verified"] is True
+    assert verified["total_closed"] == 1
+
+
+def test_classic_cli_rejects_wrong_account_witness(tmp_path):
+    source = make_classic(tmp_path)
+    evidence = run(["observe-classic", "--source", str(source),
+                    "--portfolio", "hawk"])
+    evidence["portfolio_id"] = "bull"
+    proof = tmp_path / "external-source.json"
+    proof.write_text(json.dumps(evidence))
+    with pytest.raises(ValueError, match="wrong_classic_witness_portfolio"):
+        run(["verify-classic", "--restored-directory", str(source),
+             "--external-witness", str(proof), "--portfolio", "hawk"])
