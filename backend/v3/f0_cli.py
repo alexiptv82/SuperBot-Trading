@@ -10,6 +10,7 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 import re
+import sqlite3
 import sys
 
 from .backup_certification import (
@@ -161,6 +162,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    # Imported late to avoid subprocess/network dependencies.
-    import sqlite3
     sys.exit(main())
