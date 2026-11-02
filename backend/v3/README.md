@@ -70,3 +70,19 @@ Nuovi moduli *solo lettura*:
 - Unit test isolati: **49 PASS Python 3.10 e 49 PASS Python 3.11**, https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41497835752 (SUCCESS).
 
 **Non estendere queste conclusioni:** non abbiamo calcolato il P&L non realizzato con prezzi correnti e né verificato commissioni/funding reali dell'exchange, né la causalità e l'aspettativa economica delle strategie. La V3 non ha ancora importato permanentemente i registri L0: per questo servono snapshot esterno POST-stop certificato, codice import idempotente offline con schema versionato e replay del nuovo journal, prove di backup/ripristino e nuova revisione. 1000/1000/1000 PAPER non sono stati creati.
+
+## F1 — importatore L0 OFFLINE sperimentale (2 novembre 2026)
+
+`offline_import.py` introduce **solo per il laboratorio** `import_verified_classic_copy(workspace, source_copy, portfolio_id)`.
+
+- Input: una directory di snapshot *già copiata e ferma*, separata dal workspace; nessun accesso a VPS, bot, API o credenziali.
+- Solo classici: Falco e Toro. Brain Free è **escluso** fino al completamento della revisione V1/V2 e dell'adapter specifico.
+- Preflight: SHA-256 di `state_v2.json`, `trade_history.jsonl` e `learning_log.jsonl`; quadratura multi-run e CASH corrente; hash ripetuti dopo i controlli; schema e dimensione dei payload validati prima di aprire SQLite.
+- Destinazione: SQLite V3 separato nel workspace; tabella `v3_import_manifest` con versione, hash delle fonti, digest del lotto, numero eventi e sessioni. Trigger anti-UPDATE/DELETE anche sul manifesto.
+- Una transazione `BEGIN IMMEDIATE` per **l'intero lotto**: verifica catena preesistente, confronta l'eventuale manifesto, scrive eventi/hash in ordine, inserisce il manifesto e committa soltanto se tutti i controlli passano. Qualsiasi conflitto annulla la transazione.
+- Secondo import della stessa copia: **zero nuovi eventi**; manifest o record non identici: **fail closed**. Una scrittura parziale precedente senza manifesto viene rifiutata invece di essere sanata silenziosamente.
+- Dopo la transazione: controllo dell'intera catena `EventJournal.verify_chain()`; vengono restituiti solo conteggi e hash, non risultati di trading o lezioni attribuite all'AI.
+
+**Risultati CI sui dati sintetici:** [#41499540631](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41499540631), **57 PASS Python 3.10 + 57 PASS Python 3.11**. Test di rollback, collisione ID, corruzione della catena, snapshot alterato, separazione dei portafogli e idempotenza.
+
+**Gate ancora aperti:** codice sperimentale, non import reali, mai avviato sulla VPS; serve revisione Claude/Grok, attestazione della **copia cifrata ESTERNA post-stop**, test di estrazione dei backup, review delle policy di reimport, e riconciliazione del Brain. Non è un'API di produzione né un consenso a deploy/merge. Le posizioni PAPER aperte dei classici non vengono migrate da questo modulo.
