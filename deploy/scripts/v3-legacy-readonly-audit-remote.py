@@ -64,6 +64,16 @@ for port in ("hawk", "bull"):
           "RUNS=", ",".join(str(x[0]) for x in multi.runs),
           "MULTIRUN_ISSUES=", ",".join(multi.issues) if multi.issues else "NONE")
 
+    if multi.eligible:
+        from v3.legacy_multirun import plan_classic_multirun_events
+        from v3.events import _validate
+        prepared_report, proposed_events = plan_classic_multirun_events(path, port)
+        for ev in proposed_events:
+            _validate(ev)
+        assert len(proposed_events) == multi.history_closes
+        assert len({ev.event_id for ev in proposed_events}) == len(proposed_events)
+        print(port.upper(), "MEMORY_ONLY_EVENT_PLAN_PASS=", len(proposed_events))
+
     if "LEARNING_FIELD_MISMATCH" in multi.issues:
         from v3.legacy_multirun import _key
         learning_map = {_key(item): item for item in log_rows
