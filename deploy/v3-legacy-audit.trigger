@@ -1,4 +1,4 @@
 authorization=READ_ONLY_BACKUP_AUDIT
 target=OFFLINE_RESTORE_TEST
-phase=accounting-cash-margin-brain-event-shape
+phase=brain-cash-trade-lifecycle-readonly
 no-write=yes
