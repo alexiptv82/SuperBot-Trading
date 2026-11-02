@@ -1,6 +1,4 @@
-requested=inventory-details-read-only
-reason=SuperBot-V3-shutdown-all-workers
-requested-at=2026-11-02
-phase=2
+requested=verify-active-workers-after-authorized-stop
+phase=3
+reason=SuperBot V3 independent read-only verification
 no-stop=yes
-no-deploy=yes
