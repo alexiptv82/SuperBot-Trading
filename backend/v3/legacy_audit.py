@@ -231,7 +231,7 @@ def audit_brain_snapshot(db_path: str | Path) -> dict[str, Any]:
     path = Path(db_path)
     if path.is_symlink() or not path.is_file():
         raise ValueError("invalid_brain_database")
-    with sqlite3.connect(path.resolve().as_uri() + "?mode=ro",
+    with sqlite3.connect(path.resolve().as_uri() + "?mode=ro&immutable=1",
                          uri=True, timeout=5) as db:
         db.execute("PRAGMA query_only=ON")
         integrity = db.execute("PRAGMA integrity_check").fetchone()[0]
