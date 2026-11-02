@@ -86,3 +86,10 @@ Nuovi moduli *solo lettura*:
 **Risultati CI sui dati sintetici:** [#41499540631](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41499540631), **57 PASS Python 3.10 + 57 PASS Python 3.11**. Test di rollback, collisione ID, corruzione della catena, snapshot alterato, separazione dei portafogli e idempotenza.
 
 **Gate ancora aperti:** codice sperimentale, non import reali, mai avviato sulla VPS; serve revisione Claude/Grok, attestazione della **copia cifrata ESTERNA post-stop**, test di estrazione dei backup, review delle policy di reimport, e riconciliazione del Brain. Non è un'API di produzione né un consenso a deploy/merge. Le posizioni PAPER aperte dei classici non vengono migrate da questo modulo.
+
+
+## F0 — certificate of historical backups (new isolated code, NOT a real certificate)
+
+`backup_certification.py` implements a read-only source witness for Brain, a SQLite `Connection.backup()` capture suitable for committed WAL rows, and an off-host verification routine that requires an independently retained manifest SHA-256, event digest, event count and max sequence. `f0_classic_certificate.py` binds Falco/Toro archive/state/history/learning source files to an independent digest and reruns the prior cash and archive reconciliations on the restored directory. See [the complete safe F0 runbook](../../docs/v3/f0-backup-certification-runbook.md).
+
+**No VPS backup has been certified by these additions.** The code has only been exercised on synthetic SQLite and JSONL fixtures through isolated CI. Encrypted off-host backup, authentic independently retained source witnesses, operator permission controls, SSH key rotation and real-data replay remain necessary before production import. This is a strictly isolated review/capture aid; no automatic VPS access, runtime integration or trading restart.
