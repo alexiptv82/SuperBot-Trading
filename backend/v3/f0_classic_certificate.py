@@ -16,6 +16,7 @@ from .legacy_archives import audit_classic_archives
 from .legacy_accounting import audit_classic_books
 from .legacy_multirun import audit_classic_multirun
 from .offline_import import _source_hashes
+from .legacy_audit import _source
 
 _HEX = re.compile("[a-f0-9]{64}\\Z")
 
@@ -43,6 +44,18 @@ def observe_classic_source_readonly(
             or not books.multirun_pass or books.issues or not archive.eligible):
         raise ValueError("classic_archive_or_accounting_failed")
     hashes = _source_hashes(root)
+    # Trade ledger and learning_log are not the entire classic brain memory.
+    # The existing backup contract makes lessons.md essential; errors.md is
+    # optional, but its presence/absence must be included in the witness.
+    lessons = root / "lessons.md"
+    hashes["lessons.md"] = sha256(_source(lessons, 50 * 1024 * 1024)).hexdigest()
+    errors = root / "errors.md"
+    if errors.is_symlink():
+        raise ValueError("unsafe_optional_error_log")
+    hashes["errors.md"] = (
+        sha256(_source(errors, 50 * 1024 * 1024)).hexdigest()
+        if errors.exists() else "ABSENT"
+    )
     canonical = json.dumps(hashes, sort_keys=True, separators=(",", ":"),
                            ensure_ascii=True).encode("utf-8")
     return ClassicSourceWitness(
