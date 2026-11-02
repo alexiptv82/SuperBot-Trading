@@ -63,3 +63,8 @@ Use output redirection to retain the source observation *outside* the backup; ne
 An operator with restricted access verifies the current stopped state, authenticates the source paths, records witnesses outside the VPS, captures Brain with committed WAL content, validates Falco/Toro archives, produces an encrypted off-VPS copy, restores it elsewhere and passes the separate source-witness verifier. A reviewer checks the evidence without seeing secrets. Only then may we label F0 certified.
 
 Until then: **NO-GO for real historic import**, PR #29 remains DRAFT, all PAPER wallets unchanged, and no runtime/deploy approval is implied.
+
+
+### Preservation scope
+
+For Hawk and Bull, `lessons.md` is mandatory and `errors.md` is tracked if present; both are covered by the F0 witness in addition to the trade records. Do **not** infer that the future V3 brain has imported these lessons merely because backups can preserve them. For Brain Free, the current F0 code certifies `brain.sqlite3`, not arbitrary adjacent learning files, model prompts or other sources. An explicit file inventory is needed before full-memory certification.
