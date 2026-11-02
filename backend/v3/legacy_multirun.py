@@ -168,7 +168,7 @@ def plan_classic_multirun_events(directory, portfolio_id, *, learning_path=None)
         directory, portfolio_id, learning_path=learning_path
     )
     assigned, current_history, net_match, summaries, issues = _match(
-        run, current, positions, history, learn
+        run, current, positions, history, learn, portfolio_id
     )
     report = MultiRunReport(
         portfolio_id, run, not issues, len(history), len(learn),
