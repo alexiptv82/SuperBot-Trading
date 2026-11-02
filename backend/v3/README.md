@@ -100,3 +100,10 @@ Nuovi moduli *solo lettura*:
 `python -m v3.f0_cli` now exposes `observe-brain`, `capture-brain`, `verify-brain`, `observe-classic` and `verify-classic` for reviewed, trusted **offline** use. Witnesses must be stored separately from the restored backup. It contains no SSH/exchange/network integration and is not a production/automatic VPS job. See `docs/v3/f0-operator-access-gate-20261102.md` and the F0 runbook.
 
 The classic F0 witness additionally includes mandatory `lessons.md` and optional `errors.md`; they are preserved as historical source data, **not yet imported as V3 memory episodes**. The Brain F0 verifier protects `brain.sqlite3` only; any other Brain learning files require separate discovery and certification. The old GitHub root SSH key remains a security concern in other existing workflows, so automated remote capture remains blocked.
+
+
+### Passive F0 VPS preflight — still requires operator
+
+`f0_host_preflight.py` inspects **metadata only**: known PAPER source-file locations, WAL/-shm/-journal presence and sizes, classic `lessons.md`/run archives and candidate additional Brain memory files, and related Docker/systemd running names. It never opens SQLite, issues transactions, or controls containers. Unknown service state or missing artifacts produces `PREFLIGHT_BLOCKED` (not automatic permission to proceed). Its findings are a first-pass inventory, not a proof that all workers have stopped or that any backup is complete.
+
+See [the single Termius read-only preflight and next steps](../../docs/v3/f0-live-preflight-termius-20261102.md). Only the user/operator can carry out the real VPS inspection until a least-privileged integration has been provisioned and approved.
