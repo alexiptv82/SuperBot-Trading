@@ -60,6 +60,19 @@ def examine_sources(base_map: dict[str, tuple[str, str]]) -> dict:
         path = Path(raw)
         entry = _metadata(path, category)
         if key == "brain":
+            # Report candidate adjacent memory artifacts by allowlisted name
+            # ONLY. Never print secrets, dotfiles, app configuration or file
+            # content. A SQLite-only certificate does not cover these files.
+            parent = path.parent
+            candidates = (
+                "learning_log.jsonl", "trade_history.jsonl",
+                "lessons.md", "errors.md", "memory.jsonl",
+                "strategy_memory.jsonl", "brain_memory.jsonl",
+            )
+            entry["adjacent_memory_candidates"] = {
+                name: _metadata(parent / name, "file")
+                for name in candidates
+            }
             for ext in ("-wal", "-shm", "-journal"):
                 entry[ext.lstrip("-")] = _metadata(Path(str(path) + ext), "file")
         elif entry["valid"]:
