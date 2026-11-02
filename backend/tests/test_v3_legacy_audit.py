@@ -166,3 +166,21 @@ def test_brain_foreign_account_refused(tmp_path):
             json.dumps({"mode": "live", "account_id": "live", "positions": {}}),))
     with pytest.raises(ValueError, match="foreign_brain_account"):
         audit_brain_snapshot(path)
+
+
+def test_archived_run_explicit_shared_learning_log(tmp_path):
+    root = fixture_classic(tmp_path)
+    archived = tmp_path / "archive-8"
+    archived.mkdir()
+    for filename in ("state_v2.json", "trade_history.jsonl"):
+        (archived / filename).write_bytes((root / filename).read_bytes())
+    # The legacy archiver did not put learning_log.jsonl inside archive/.
+    with pytest.raises(ValueError, match="missing_or_symlink_source"):
+        audit_classic_snapshot(archived, "hawk")
+    report, staged = plan_classic_closed_events(
+        archived, "hawk", learning_path=root / "learning_log.jsonl"
+    )
+    assert report.eligible
+    assert report.history_closed == 1
+    assert len(staged) == 1
+    assert staged[0].run_id == "legacy-hawk-8"
