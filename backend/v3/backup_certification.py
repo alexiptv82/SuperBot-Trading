@@ -86,6 +86,25 @@ def _check_source(source: Path, target: Path) -> None:
         raise ValueError("source_equals_destination")
 
 
+def observe_brain_source_readonly(source_db: str | Path) -> dict:
+    """Produce source-side witness fields without backing up or writing.
+
+    Run separately while the original source is stopped; preserve the result
+    outside the backup and independently of the destination copy. This uses
+    normal read-only SQLite semantics so committed WAL entries are included.
+    """
+    source = Path(source_db)
+    if source.is_symlink() or not source.is_file():
+        raise ValueError("source_db_missing_or_symlink")
+    with sqlite3.connect(source.resolve().as_uri() + "?mode=ro",
+                         uri=True, timeout=10) as db:
+        db.execute("PRAGMA query_only=ON")
+        db.execute("BEGIN")
+        observed = _inspect(db)
+        db.execute("COMMIT")
+        return observed
+
+
 def capture_brain_copy(source_db: str | Path,
                        snapshot_directory: str | Path) -> BackupReceipt:
     """Create a new local consistent SQLite backup, with manifest-last marker.
@@ -116,6 +135,9 @@ def capture_brain_copy(source_db: str | Path,
         checked = _inspect(copied)
     if observed != checked:
         raise ValueError("sqlite_backup_snapshot_mismatch")
+    # fsync the completed backup before publishing its manifest.
+    with db_copy.open("rb") as file:
+        os.fsync(file.fileno())
     db_hash = _hash_file(db_copy)
     manifest = {
         "schema": _VERSION,
