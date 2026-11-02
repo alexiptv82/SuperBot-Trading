@@ -15,7 +15,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
-from .legacy_audit import _MAX_STATE, _source, _parse_doc, _number, _net
+from .legacy_audit import _MAX_STATE, _source, _parse_doc, _number, _net, open_frozen_sqlite
 from .legacy_multirun import audit_classic_multirun
 
 
@@ -130,9 +130,7 @@ def audit_brain_structure(db_path: str | Path) -> BrainStructure:
     path = Path(db_path)
     if path.is_symlink() or not path.is_file():
         raise ValueError("invalid_brain_db")
-    uri = path.resolve().as_uri() + "?mode=ro&immutable=1"
-    with sqlite3.connect(uri, uri=True, timeout=5) as db:
-        db.execute("PRAGMA query_only=ON")
+    with open_frozen_sqlite(path) as db:
         if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise ValueError("brain_integrity_failed")
         row = db.execute("SELECT body FROM state WHERE id=1").fetchone()
