@@ -30,8 +30,8 @@ def make_snapshot(tmp_path, port="hawk"):
         json.dumps(earlier) + "\n" + json.dumps(current) + "\n"
     )
     (src / "learning_log.jsonl").write_text(
-        json.dumps({"ev": "close", "run_no": 7, **earlier}) + "\n" +
-        json.dumps({"ev": "close", "run_no": 8, **current}) + "\n"
+        json.dumps({"ev": "close", "run_no": 7, "portfolio": port, **earlier}) + "\n" +
+        json.dumps({"ev": "close", "run_no": 8, "portfolio": port, **current}) + "\n"
     )
     return src
 
