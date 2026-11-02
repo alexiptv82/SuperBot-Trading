@@ -1,0 +1,61 @@
+name: 'SuperBot V3 - STOP worker PAPER e backup verificato'
+
+# Nessun deploy o reset. Solo avvio manuale approvato o trigger dedicato.
+on:
+  workflow_dispatch:
+    inputs:
+      conferma:
+        description: 'Digita STOP_PAPER_V3 per autorizzare lo spegnimento'
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - deploy/v3-stop.trigger
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superbot-v3-singapore-maintenance
+  cancel-in-progress: false
+
+jobs:
+  shutdown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verifica autorizzazione esplicita
+        env:
+          EVENT_TYPE: ${{ github.event_name }}
+          CONFIRM: ${{ inputs.conferma }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_TYPE" = push ]; then
+            grep -Fxq 'approved=YES_STOP_PAPER_AND_BACKUP' deploy/v3-stop.trigger
+            grep -Fxq 'destination=Singapore' deploy/v3-stop.trigger
+          else
+            test "$CONFIRM" = STOP_PAPER_V3 || { echo 'CONFERMA_NON_VALIDA'; exit 1; }
+          fi
+          test -s deploy/scripts/v3-stop-paper-workers.sh
+          bash -n deploy/scripts/v3-stop-paper-workers.sh
+          echo 'AUTH=VERIFIED_PAPER_SHUTDOWN'
+      - name: Arresto protetto e backup coerente sulla VPS Singapore
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || { echo 'ERRORE: chiave Singapore mancante'; exit 1; }
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SG_SSH_KEY" > "$HOME/.ssh/v3_key"
+          chmod 600 "$HOME/.ssh/v3_key"
+          trap 'rm -f "$HOME/.ssh/v3_key"' EXIT
+          cat > "$HOME/.ssh/v3_known_hosts" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 600 "$HOME/.ssh/v3_known_hosts"
+          ssh -T -i "$HOME/.ssh/v3_key" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile="$HOME/.ssh/v3_known_hosts" \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
+            root@51.79.205.82 'bash -s' < deploy/scripts/v3-stop-paper-workers.sh
