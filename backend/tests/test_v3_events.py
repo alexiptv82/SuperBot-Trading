@@ -104,3 +104,22 @@ def test_does_not_create_legacy_files(tmp_path):
         j.init_schema()
     assert original.read_text() == '{"unchanged":true}\n'
     assert not (tmp_path / "v3").exists()
+
+
+def test_external_anchor_detects_truncated_journal_tail(tmp_path):
+    path = tmp_path / "v3.sqlite3"
+    j = EventJournal(path)
+    j.init_schema()
+    j.append(event("a1"))
+    j.append(event("b2"))
+    anchor = j.verify_chain()
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER v3_no_delete")
+        db.execute("DELETE FROM v3_events WHERE seq=(SELECT MAX(seq) FROM v3_events)")
+    # The remaining hash chain is internally consistent after tail deletion;
+    # only a separately retained (count, head) attests to completeness.
+    assert j.verify_chain()[0] == 1
+    with pytest.raises(ValueError, match="journal_does_not_match_external_manifest"):
+        j.verify_chain(expected_count=anchor[0], expected_head=anchor[1])
+    with pytest.raises(ValueError, match="external_manifest_requires_count_and_head"):
+        j.verify_chain(expected_count=anchor[0])
