@@ -39,6 +39,7 @@ def make_hawk(tmp_path):
         "run_no":7, "portfolio":"hawk", "start_equity":1000,
         "end_equity":995.5, "pnl":-4.5, "net_total":-4.5, "trades":1
     }))
+    (root / "lessons.md").write_text("# Historical lessons preserved\n")
     return root
 
 
@@ -103,3 +104,20 @@ def test_missing_or_invalid_external_witness_rejected(tmp_path):
         verify_classic_offhost(source,"hawk", expected_files_sha256="bad",
             expected_total_closed=2,expected_historical_runs=1,
             expected_current_run=8)
+
+
+def test_historical_lessons_are_part_of_f0_witness(tmp_path):
+    source = make_hawk(tmp_path)
+    witness = observe_classic_source_readonly(source, "hawk")
+    restored = tmp_path / "restored"
+    shutil.copytree(source, restored)
+    (restored / "lessons.md").write_text("# Changed lessons, economic trades unchanged\n")
+    with pytest.raises(ValueError, match="classic_external_source_witness_mismatch"):
+        verify_classic_offhost(restored, "hawk", **kw(witness))
+
+
+def test_missing_required_lessons_prevents_certification(tmp_path):
+    source = make_hawk(tmp_path)
+    (source / "lessons.md").unlink()
+    with pytest.raises(ValueError, match="missing_or_symlink_source"):
+        observe_classic_source_readonly(source, "hawk")
