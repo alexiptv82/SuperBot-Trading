@@ -1,0 +1,50 @@
+name: Pool Donchian Max-Hold Immutability — isolated research CI
+on:
+  push:
+    branches:
+      - work/pool-donchian-maxhold-immutability-20261102
+    paths:
+      - backend/strategy_lab.py
+      - backend/rule_pool/**
+      - backend/tests/test_pool_donchian_maxhold_regression.py
+      - backend/tests/test_rule_pool.py
+      - backend/tests/test_rule_pool_runner.py
+      - backend/tests/test_strategy_lab.py
+      - .github/workflows/pool-donchian-immutability-ci.yml
+  pull_request:
+    branches:
+      - rule-pool
+    paths:
+      - backend/strategy_lab.py
+      - backend/tests/test_pool_donchian_maxhold_regression.py
+      - .github/workflows/pool-donchian-immutability-ci.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frozen-paper-journal-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Dependencies (unit tests only; no network market or trading APIs)
+        run: python -m pip install numpy pandas pytest
+      - name: Original strategy lab, rule pool and XRP immutability regression
+        run: python -m pytest -q tests/test_pool_donchian_maxhold_regression.py tests/test_rule_pool.py tests/test_rule_pool_runner.py tests/test_strategy_lab.py
+      - name: Source static gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          code=Path('strategy_lab.py').read_text()
+          assert 'if cfg.donch_exit and j + 1 <= last and j + 1 < n:' in code
+          assert 'def simulate_exit(' in code
+          assert 'if last == e + cfg.max_hold - 1 else "end"' in code
+          print('POOL_IMMUTABLE_MAX_HOLD_STATIC_GATE=PASS')
+          PY
+# This workflow does NOT deploy or connect to the VPS or private wallets.

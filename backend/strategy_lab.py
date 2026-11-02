@@ -373,7 +373,11 @@ def simulate_exit(b: Bars, e: int, side: int, d: float, cfg: ExitCfg, sig: Sig,
                 stop = max(stop, hh - cfg.trail_mult * sig.atr[j])
             else:
                 stop = min(stop, ll + cfg.trail_mult * sig.atr[j])
-        if cfg.donch_exit and j + 1 < n:
+        # A Donchian exit fills at the NEXT bar open. That next bar must
+        # still be inside max_hold; otherwise a previously final 'time' exit
+        # mutates into 'donchian' as soon as one more bar is downloaded.
+        # This broke the immutable CTL_S2_top10/XRP PAPER journal on 2026-10-22.
+        if cfg.donch_exit and j + 1 <= last and j + 1 < n:
             if side == 1 and np.isfinite(dlow[j]) and c < dlow[j]:
                 return j + 1, b.o[j + 1], "donchian"
             if side == -1 and np.isfinite(dhigh[j]) and c > dhigh[j]:
