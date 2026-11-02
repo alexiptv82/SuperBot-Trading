@@ -34,6 +34,17 @@ def make_snapshot(tmp_path, port="hawk"):
         json.dumps({"ev": "close", "run_no": 7, "portfolio": port, **earlier}) + "\n" +
         json.dumps({"ev": "close", "run_no": 8, "portfolio": port, **current}) + "\n"
     )
+    archived = src / "archive" / "legacy-7"
+    archived.mkdir(parents=True)
+    (archived / "state_v2.json").write_text(json.dumps({
+        "run_no": 7, "main": {"closed": [earlier], "positions": {}}
+    }))
+    (archived / "trade_history.jsonl").write_text(json.dumps(earlier) + "\n")
+    (archived / "summary.json").write_text(json.dumps({
+        "run_no": 7, "portfolio": port, "trades": 1,
+        "start_equity": 1000, "end_equity": 998,
+        "pnl": -2, "net_total": -2
+    }))
     return src
 
 
@@ -47,7 +58,7 @@ def test_atomic_import_and_exact_double_run_idempotency(tmp_path):
     snapshot = make_snapshot(tmp_path)
     work = tmp_path / "lab"
     work.mkdir()
-    before = {p.name: p.read_bytes() for p in snapshot.iterdir()}
+    before = {str(p.relative_to(snapshot)): p.read_bytes() for p in snapshot.rglob('*') if p.is_file()}
     first = call(work, snapshot)
     assert first.inserted == 2 and first.already_present == 0
     assert first.event_count == 2 and first.run_count == 2
@@ -60,7 +71,7 @@ def test_atomic_import_and_exact_double_run_idempotency(tmp_path):
     assert again.inserted == 0 and again.already_present == 2
     assert again.chain_head == first.chain_head
     assert again.source_digest == first.source_digest
-    assert {p.name: p.read_bytes() for p in snapshot.iterdir()} == before
+    assert {str(p.relative_to(snapshot)): p.read_bytes() for p in snapshot.rglob('*') if p.is_file()} == before
 
 
 def test_distinct_portfolios_same_ledger_preserve_global_chain(tmp_path):
