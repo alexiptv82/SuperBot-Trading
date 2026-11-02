@@ -54,3 +54,19 @@ Esito su copie già estratte e ferme in `/opt/superbot-v3-backups/20261102T14401
 Esecuzioni GitHub: [riconciliazione completa](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41493073676), [534 eventi staging RAM](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41493242680); [CI 35/35 per Python 3.10 e 3.11](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41492985727).
 
 **Nessun import persistente eseguito.** Mancano la riconciliazione dei movimenti di cassa, delle posizioni aperte e del P&L Brain; non interpretare questo audit come approvazione economica delle strategie. L'archivio generale post-stop è verificato localmente ma una copia esterna cifrata successiva al fermo non è ancora attestata.
+
+
+## F1 — contabilità storica congelata: risultati verificati (2 novembre 2026)
+
+Nuovi moduli *solo lettura*:
+- `legacy_accounting.py`: quadratura Falco/Toro della run corrente: `cash + margine_open = capitale_iniziale + Σ net_chiusure - fee_apertura_residue`, tolleranza 0,01 USDT. Non è equity mark-to-market, che richiede prezzi freschi; non sostituisce il confronto multi-run.
+- `legacy_brain_books.py`: verifica il flusso Brain di apertura, uscita parziale e chiusura finale, evitando di sommare le parziali una seconda volta al `net` cumulativo della chiusura finale. Le identità sono `(epoca, simbolo, id)`, perché il passaggio Brain V1→V2 tramite `experiment_reframed` azzera gli ID ma **non** il saldo. Verifica inoltre `old_cash == new_cash == old_state.cash` e continuità contabile delle epoche.
+
+**Prova su copie offline del backup post-arresto:**
+- Falco run 8: cash/margine e 59 chiusure + 6 aperte: **BOOK_CASH_PASS=True**, 348 chiusure su 7 run compatibili.
+- Toro run 7: cash/margine e 23 chiusure + 2 aperte: **BOOK_CASH_PASS=True**, 186 chiusure su 7 run compatibili.
+- Brain: 8.447 eventi, 182 aperture e 182 finali, 55 parziali, zero aperte: **BRAIN_BOOKS ELIGIBLE=True, CASH_PASS=True, SEGMENT_PASS=True, ENTRY_EXIT_PAIRING=True, ISSUES=NONE**; migrazione V1→V2 senza top-up contabile rilevato.
+- Workflow audit reali (nessun file modificato sulla VPS): https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41497955027 (SUCCESS).
+- Unit test isolati: **49 PASS Python 3.10 e 49 PASS Python 3.11**, https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41497835752 (SUCCESS).
+
+**Non estendere queste conclusioni:** non abbiamo calcolato il P&L non realizzato con prezzi correnti e né verificato commissioni/funding reali dell'exchange, né la causalità e l'aspettativa economica delle strategie. La V3 non ha ancora importato permanentemente i registri L0: per questo servono snapshot esterno POST-stop certificato, codice import idempotente offline con schema versionato e replay del nuovo journal, prove di backup/ripristino e nuova revisione. 1000/1000/1000 PAPER non sono stati creati.
