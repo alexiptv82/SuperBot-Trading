@@ -22,6 +22,7 @@ jobs:
         run: |
           bash -n ops/f0/provision_account.sh
           bash -n ops/f0/install_public_key.sh
+          bash -n ops/f0/classic_metadata_acl.sh
       - name: Python standard-library tests (no secrets)
         run: |
           python3 -m compileall -q ops/f0
