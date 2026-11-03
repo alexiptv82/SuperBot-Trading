@@ -1,4 +1,4 @@
-#Brain V3 F2 — motore AI autonomo in modalità PAPER.
+# Brain V3 F2 — motore AI autonomo in modalità PAPER.
 
 Stato: progettazione + codice isolato + test offline. NON operativo.
 Nessuna chiamata a DeepSeek/Claude reale, nessun collegamento a VPS, nessun impatto su F1 o portafogli esistenti.
