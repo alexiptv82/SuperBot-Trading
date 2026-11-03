@@ -1,3 +1,38 @@
+## 03/11 (notturno) — REVIEW INDIPENDENTE F2 R1.9: 28/28 PASS — P0 confermati, no deploy
+
+**Claude Sonnet 4.6 — coordinatore temporaneo (ChatGPT Work non disponibile)**
+
+Lavoro svolto offline su branch isolato `work/v3-f2-review-claude-20261103` (fork da `work/v3-brain-f2-grok` HEAD `ec999f8`, Grok). Nessun file di Grok modificato.
+
+**Verifica accessi:** GitHub MCP in sola lettura (403 su write); git clone locale con push funzionante. Letto tutto lo stato: LEGGIMI.md, STATO.md, MANUALE-OPERATIVO.md, ultime voci diario, PR #29/32/33/34/35.
+
+**Test suite indipendente** `backend/tests/test_brain_f2_independent_claude.py` — 28 test negativi su P0/P1:
+- P0-1 (4 test): `risk_policy=None` / `snapshot=None` → mai `OPEN/APPROVED`, `risk_quote` resta None
+- P0-2 (3 test): `quote_paper_risk` lancia TypeError o restituisce None → `NO_TRADE` (patch sulla firma)
+- P0-3 (4 test): `journal=None` → `missing_journal` → `NO_TRADE`; con journal valido → `append` chiamato
+- P0-4 (2 test): `_reevaluate_positions` stub restituisce identità; mai `APPROVED` da stub
+- P0-5 (7 test): verifier `None/False/1/eccezione`, mandate senza `approved`/`portfolio_id` errato/`run_id` errato → `NO_TRADE`
+- P1 (8 test): equity < floor, stale data, paused, latched, `portfolio_id≠brain`, `run_id` vuoto, `EXECUTED_PAPER` mai uscente, `CLOSE/MODIFY_STOP` → `NO_TRADE`
+
+**Esito: 28/28 PASS** su Python 3.13.16 + pytest 9.1.1. Commit `5f1ffc5`. Branch pushato.
+
+**Risultato chiave:** i 5 P0 blocker *esistono* nel codice di Grok come garanzie. Il più importante è il gate `_mandate_ok()` con verifica strict bool (`result is not True`) che blocca verifier che restituiscono `1` invece di `True`. Il gate 450 USDT floor è presente in `_apply_risk_gate`. Lo stub `_reevaluate_positions` non produce effetti collaterali.
+
+**Gate ancora aperti (invariati, nessuna modifica):**
+- Trust anchor reale (Ed25519/HSM) per policy_verifier — attualmente solo mock sintetico
+- Trasporto HTTP e budget ledger DeepSeek/Claude (F4 non ancora iniziato)
+- Executor PAPER reale (F5 non iniziato)
+- Backup off-host certificato (F0 VPS — richiede `--apply` via Termius, OK utente pendente)
+- Import 534 trade legacy (bloccato fino a backup off-host certificato)
+
+**Nessun deploy, DESK_MODE=paper, cervello intatto, Hawk/Bull non toccati, nessun merge.**
+
+Prossimo passaggio (proposta, decide l'utente): aprire PR Draft per questa review, poi Grok o ChatGPT possono prendere i test come contratto per le correzioni P0.
+
+AI: claude
+
+---
+
 ## 2026-11-03 — Brain V3 F3-A/B offline: PR #35 DRAFT, 237 PASS su 3.10/3.11, NO DEPLOY
 
 Creato branch isolato `work/v3-brain-f3-offline-20261103`, base esatta F2 R1.9 PR #33, con verifica policy operatore firmata Ed25519 (solo chiave pubblica), adapter DeepSeek/Claude mockati e disattivati di default, test negativi e CI isolata. PR [#35](https://github.com/alexiptv82/SuperBot-Trading/pull/35), head `627045e4111b4f67ced5b48a26a0791d0e2437c0`. Verifica locale su archivio originale F2 R1.9: **124/124 PASS**. GitHub Actions [41672572888](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41672572888) SUCCESS, **237/237 PASS Python 3.10** + **237/237 PASS Python 3.11** (log letti). Nessuna modifica F1/F2, wallet, VPS, servizi o API pagata. **NON OPERATIVO**: manca trust anchor operatore reale, chiave/revoche/tempo esterni, HTTP AI e budget persistente, esecuzione PAPER, preflight. PR DRAFT senza merge/deploy. Checkpoint dettagliato `diario/2026-11-03_v3_f3_operator_receipt_providers_pr35_237pass.md`. Sorgenti F3 salvati nella Library `/SuperBot-Ripresa/F3A-F3B-OFFLINE-SOURCES-20261103.json`.
