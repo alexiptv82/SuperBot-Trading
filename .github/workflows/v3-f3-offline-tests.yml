@@ -1,0 +1,36 @@
+name: SuperBot V3 F3 — signed policy and AI adapter offline regressions
+on:
+  push:
+    branches: [work/v3-brain-f3-offline-20261103]
+    paths:
+      - 'backend/v3/**'
+      - 'backend/tests/test_brain_f2*.py'
+      - 'backend/tests/test_brain_f3*.py'
+      - 'backend/tests/test_v3_*.py'
+      - '.github/workflows/v3-f3-offline-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  f1-f2-f3-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install isolated test-only dependencies
+        run: python -m pip install 'pytest>=8,<10' 'cryptography>=41,<47'
+      - name: Compile F1 F2 F3 and regression tests
+        run: python -m compileall -q backend/v3 backend/tests/test_v3_*.py backend/tests/test_brain_f2*.py backend/tests/test_brain_f3*.py
+      - name: Run isolated F1 F2 F3 tests without clients or secrets
+        env:
+          PYTHONPATH: backend
+        run: python -m pytest -q backend/tests/test_v3_*.py backend/tests/test_brain_f2*.py backend/tests/test_brain_f3*.py
