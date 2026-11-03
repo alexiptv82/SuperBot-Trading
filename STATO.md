@@ -1,37 +1,3 @@
-## 03/11 (sera) — MANDATO V3 RICEVUTO + BRIEF GROK P0 PREPARATO
-
-**Claude Sonnet 4.6 — coordinatore tecnico temporaneo**
-
-Ricevuto mandato completo scritto (sezioni 1-13). Interpretazione allineata alla visione: Brain è motore autonomo decisionale, Falco/Toro sono motori meccanici di confronto, tre portafogli PAPER indipendenti da 1.000 USDT ciascuno.
-
-**Risposta al mandato sezione 12 completata:**
-- A: Interpretazione allineata — Brain ≠ bot con filtri, è agente che ragiona e impara
-- B: Inventario tecnico — F1/F2/F3 solo offline; 5 P0 F2 confermati; backup e VPS non ancora pronti
-- C: Roadmap percorso critico: Backup → F2 P0 → F1/F2/F3 merge → F4 → F5 → F6
-- D: 5 innovazioni: memoria episodica per regime, supervisore event-driven, registro NO_TRADE, budget cognitivo AI, rilevatore degrado
-- E: Infrastruttura attuale sufficiente per F1→F5; gate aperto: backup certificato
-- F: Accesso GitHub funzionante; diario come sync point tra AI
-- G: 10 criteri di avvio V3 PAPER definiti in sequenza
-
-**Brief tecnico per Grok — F2 P0 fix:**
-Documento salvato nel Project: `claude/brief-grok-f2-p0-fix-2026-11-03.md`
-5 P0 con fix richiesto e criteri di accettazione:
-- P0-1: Guard risk_policy/snapshot None → ValueError in __init__
-- P0-2: Log diagnostico su eccezione quote_paper_risk + verifica parametri
-- P0-3: Guard journal=None → ValueError (o NullJournal pattern)
-- P0-4: Implementazione minima _reevaluate_positions() (non più stub identità)
-- P0-5: Verifier strutturale minimo (non più lambda True)
-
-**Prossimo gate (decide utente):**
-1. Girare brief a Grok per F2 P0 fix
-2. Confermare merge PR #28 (Pool fix, 69/69 PASS)
-3. Certificare backup VPS (via ChatGPT + Termius)
-
-**Nessun deploy, DESK_MODE=paper, cervello intatto, bot fermi, nessun merge.**
-AI: claude
-
----
-
 ## 03/11 (notturno) — REVIEW INDIPENDENTE F2 R1.9: 28/28 PASS — P0 confermati, no deploy
 
 **Claude Sonnet 4.6 — coordinatore temporaneo (ChatGPT Work non disponibile)**
@@ -1608,3 +1574,29 @@ AI: chatgpt
 - Nessun merge, forcepush, VPS, reset, storici/cervello o rami operativi modificati. Unico autoreChatGPT, Claude laboratorio preservato.
 
 AI: chatgpt
+## 03/11 (pomeriggio) — REVIEW F2 P0: 33/33 PASS — Finding P1 documentato
+
+**Claude Sonnet 4.6 — reviewer indipendente F2**
+
+Suite aggiornata dopo ricezione archivio P0 da Grok (SHA: `1d4c689...`).
+
+**Cosa è cambiato rispetto alla sessione notturna:**
+- Grok ha consegnato `07d249d6-v3-brain-f2-p0-fixes-20261103.tar.gz` con 5 P0 implementati
+- Copiati in repo: engine.py (P0-1/2/3/4/5), analyst.py, contracts.py, reviewer.py (Grok's versions)
+- Aggiunto `test_brain_f2_p0_fixes.py` (5 test Grok, tutti PASS)
+- Suite Claude corretta: P0-3 ora raise ValueError (non NO_TRADE silenzioso)
+- `_reevaluate_positions` ha nuova firma: `(self, context: MarketContext, decision: BrainDecision)`
+
+**Risultato finale: 33/33 PASS + 5/5 PASS (P0 suite Grok)**
+Commit: `88dac0e` su branch `work/v3-f2-review-claude-20261103`
+
+**Finding P1 documentato (non blocca, ma Grok deve decidere):**
+`paused`, `market_data_fresh`, `daily_loss_latched` NON causano early-return in engine._apply_risk_gate().
+Vengono passati correttamente a quote_paper_risk (F1) via RiskRequest, ma se F1 è mockato con allowed=True
+le guardie risultano inefficaci a livello F2. In PAPER reale zero impatto (F1 gestisce). 
+Proposta: aggiungere early-return esplicito prima del try-block (vedi commento PR #33).
+
+**Commento GitHub PR #33 non pubblicato (403 write)** — testo pronto per copia-incolla manuale.
+
+**Nessun deploy, DESK_MODE=paper, cervello intatto, Hawk/Bull non toccati, nessun merge.**
+
