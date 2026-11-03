@@ -18,7 +18,7 @@ Legge **soltanto** due file con percorso fisso:
 
 Con `O_NOFOLLOW` rifiuta file finali symlink, limita ciascun JSON a 64 KiB, valida i campi e produce un JSON **allowlist** senza stampare contenuti di errore, segreti, percorsi remoti, token o credenziali. I fallimenti sono `UNAVAILABLE`, mai certificazioni positive. L'esecuzione da shell root locale è deliberatamente richiesta per leggere file forse protetti: **NON** è un comando permesso attraverso l'utente SSH `superbot-f0`.
 
-Il campo `archive_newer_than_brain_snapshot` indica **soltanto la cronologia**, non la copertura dell'archivio. `externally_certified=false`, `restore_verified=false`, `archive_coverage_verified=false`, `external_storage_verified=false` sono **invarianti sempre false** per questo strumento.
+Il campo `archive_newer_than_brain_snapshot` indica **soltanto la cronologia**, non la copertura dell'archivio. Dopo la revisione, il confronto usa la data codificata nel nome dell'archivio, verificata come data di calendario reale; non basta un `ultimo_successo` recente quando il nome è vecchio, assente o impossibile. Se la data nel nome è successiva al successo dichiarato, l'esito cronologico è `UNKNOWN`. Lo strumento apre i file JSON regolari in modo non bloccante per rifiutare anche una FIFO senza attendere. Queste restrizioni non certificano la presenza dei byte. `externally_certified=false`, `restore_verified=false`, `archive_coverage_verified=false`, `external_storage_verified=false` sono **invarianti sempre false** per questo strumento.
 
 ## Gate successivi
 
@@ -27,4 +27,4 @@ Il campo `archive_newer_than_brain_snapshot` indica **soltanto la cronologia**, 
 3. Scaricare/ripristinare su host differente in una cartella isolata e applicare le verifiche di `backend/v3/backup_certification.py` e `backend/v3/f0_classic_certificate.py` della PR #29, con witness esterni. Questa PR #34 **non** crea quelle prove e non trasferisce i dati.
 4. Evitare di riutilizzare o ampliare l'accesso SSH legacy root della sentinella. La futura sostituzione con account limitato, se necessaria, richiede approvazioni specifiche e test di sicurezza.
 
-Nessun merge, deploy, reset, avvio, import, modifica ACL o cancellazione è autorizzato da questo preflight. Test sintetici locali: 7/7 PASS. Attendere CI GitHub indipendente.
+Nessun merge, deploy, reset, avvio, import, modifica ACL o cancellazione è autorizzato da questo preflight. Baseline: 7/7 PASS. Revisione offline successiva: 12 fixture, incluse date incompatibili nel nome e FIFO. Il nuovo esito CI deve essere verificato indipendentemente prima di dichiarare la revisione superata.
