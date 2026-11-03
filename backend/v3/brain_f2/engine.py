@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import logging
 import hashlib
 import uuid
 from dataclasses import replace
@@ -29,7 +30,7 @@ except ImportError:
 
 
 _ALLOWED_RATIONALE = frozenset({
-    "ai_unavailable", "reviewer_unavailable", "risk_rejected",
+    "ai_unavailable", "reviewer_unavailable", "risk_rejected", "market_gate",
     "missing_journal", "journal_persist_failed", "invalid_input",
     "portfolio_boundary", "malformed_output", "duplicate_request",
     "symbol_mismatch", "price_divergence", "close_modify_not_executable_r1",
@@ -42,6 +43,7 @@ _ALLOWED_SOURCES = frozenset({
 })
 _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
 _ALLOWED_ORIGINS = frozenset({"deepseek", "claude", "deepseek:mock", "claude:mock"})
+logger = logging.getLogger(__name__)
 _TRUSTED_APPROVERS = frozenset({"operator", "system-admin"})  # external trust anchor required
 
 def _policy_hash(policy) -> str:
@@ -96,6 +98,14 @@ class BrainEngine:
         policy_mandate: Optional[dict] = None,
         policy_verifier: Optional[Callable[[dict, Any], bool]] = None,
     ):
+        # P0-1: required dependencies
+        if risk_policy is None:
+            raise ValueError("risk_policy is required")
+        if portfolio_snapshot is None:
+            raise ValueError("portfolio_snapshot is required")
+        # P0-3: journal required (NullJournal pattern alternative would still fail-closed)
+        if journal is None:
+            raise ValueError("journal is required")
         self.analyst = analyst
         self.reviewer = reviewer
         self.risk_policy = risk_policy
@@ -354,6 +364,13 @@ class BrainEngine:
             decision.rationale = "invalid_input"
             return decision
 
+        # P1: early-return for locked/stale state (defense-in-depth, independent of F1)
+        if mp["paused"] or not mp["market_data_fresh"] or mp["daily_loss_latched"]:
+            decision.kind = DecisionKind.NO_TRADE
+            decision.status = ProposalStatus.RISK_REJECTED
+            decision.rationale = "market_gate"
+            return decision
+
         try:
             request = RiskRequest(
                 equity=nums["equity"],
@@ -381,7 +398,8 @@ class BrainEngine:
             else:
                 decision.status = ProposalStatus.APPROVED
                 decision.rationale = "risk_quote_ok"
-        except Exception:
+        except Exception as exc:
+            logger.error("quote_paper_risk failed: %s", type(exc).__name__)
             decision.kind = DecisionKind.NO_TRADE
             decision.status = ProposalStatus.RISK_REJECTED
             decision.rationale = "risk_rejected"
@@ -469,6 +487,16 @@ class BrainEngine:
         return conf_f < threshold or "regime_change" in (decision.rationale or "")
 
     def _reevaluate_positions(self, context: MarketContext, decision: BrainDecision) -> BrainDecision:
+        """Minimal reevaluation: review open positions and journal the outcome."""
+        if not self.open_positions:
+            return decision
+        try:
+            for pos in self.open_positions:
+                reviewed = self.reviewer.review(decision, f"reevaluate:{pos.get('id', '?')}")
+                if isinstance(self.journal, EventJournal):
+                    self._append_durable(reviewed, context)
+        except Exception as exc:
+            logger.error("reevaluate failed: %s", type(exc).__name__)
         return decision
 
     def propose_adaptive_strategy(self, regime: str) -> dict:
