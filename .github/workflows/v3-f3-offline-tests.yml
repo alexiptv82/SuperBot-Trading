@@ -8,6 +8,14 @@ on:
       - 'backend/tests/test_brain_f3*.py'
       - 'backend/tests/test_v3_*.py'
       - '.github/workflows/v3-f3-offline-tests.yml'
+  pull_request:
+    branches: [work/v3-brain-f2-grok]
+    paths:
+      - 'backend/v3/**'
+      - 'backend/tests/test_brain_f2*.py'
+      - 'backend/tests/test_brain_f3*.py'
+      - 'backend/tests/test_v3_*.py'
+      - '.github/workflows/v3-f3-offline-tests.yml'
   workflow_dispatch:
 
 permissions:
