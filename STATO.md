@@ -1,3 +1,23 @@
+## 03/11 (sera) — FASE 0 COMPLETATA: baseline integration F1+F2(P0/P1)+F3 — 67/67 PASS, PR #36 DRAFT
+
+**Claude Sonnet 4.6 — coordinatore V3**
+
+Branch `work/v3-integration-baseline-20261103` (commit `12dc78f`), PR [#36](https://github.com/alexiptv82/SuperBot-Trading/pull/36) DRAFT.
+
+Stack integrata: F3 (`627045e`) come base (già stacked su F2), con `engine.py` P1 sovrapposto da `work/v3-f2-review-claude-20261103` (`02e1f08`).
+
+**Risultati test:** 33/33 (Claude) + 17/17 (F3 boundaries) + 17/17 (F3+F2 integration) = **67/67 PASS** Python 3.13.16.
+
+**Regressions attese:** 15 test Grok legacy (`test_brain_f2.py` + `test_brain_f2_safety_contract.py`) falliscono perché pre-datano i P0 fix (mancano `risk_policy=`, `journal=`). Debito tecnico di Grok da correggere in `work/v3-brain-f2-grok`.
+
+**Prossimo:** Grok corregge 15 suite legacy → poi Fase F4 (trasporti AI).
+
+**Gate invariati:** DESK_MODE=paper, Hawk/Bull non toccati, cervello intatto, nessun deploy.
+
+Voce dettagliata: `diario/2026-11-03_fase0_baseline_integration_67pass.md`
+
+---
+
 ## 03/11 (notturno) — REVIEW INDIPENDENTE F2 R1.9: 28/28 PASS — P0 confermati, no deploy
 
 **Claude Sonnet 4.6 — coordinatore temporaneo (ChatGPT Work non disponibile)**
