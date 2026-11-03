@@ -30,7 +30,7 @@ except ImportError:
 
 
 _ALLOWED_RATIONALE = frozenset({
-    "ai_unavailable", "reviewer_unavailable", "risk_rejected",
+    "ai_unavailable", "reviewer_unavailable", "risk_rejected", "market_gate",
     "missing_journal", "journal_persist_failed", "invalid_input",
     "portfolio_boundary", "malformed_output", "duplicate_request",
     "symbol_mismatch", "price_divergence", "close_modify_not_executable_r1",
@@ -362,6 +362,13 @@ class BrainEngine:
             decision.kind = DecisionKind.NO_TRADE
             decision.status = ProposalStatus.RISK_REJECTED
             decision.rationale = "invalid_input"
+            return decision
+
+        # P1: early-return for locked/stale state (defense-in-depth, independent of F1)
+        if mp["paused"] or not mp["market_data_fresh"] or mp["daily_loss_latched"]:
+            decision.kind = DecisionKind.NO_TRADE
+            decision.status = ProposalStatus.RISK_REJECTED
+            decision.rationale = "market_gate"
             return decision
 
         try:

@@ -413,48 +413,32 @@ class TestP1ExtraProtections:
         d = engine.step(_context())
         assert d.kind == DecisionKind.NO_TRADE
 
-    # FINDING P1 (documentato 2026-11-03):
-    # Grok's engine delega paused/fresh/latched a quote_paper_risk (F1) senza cortocircuitare prima.
-    # Se quote_paper_risk viene mockato con allowed=True, engine non produce NO_TRADE.
-    # Comportamento atteso a regime: quote_paper_risk F1 risponde already con allowed=False.
-    # Questi test verificano che i valori siano correttamente PASSATI a quote_paper_risk,
-    # non che engine li controlli da solo.
+    # P1 chiuso (2026-11-03): early-return aggiunto da Grok in _apply_risk_gate()
+    # prima del try-block. Engine F2 ora cortocircuita autonomamente su paused/fresh/latched.
 
-    def test_stale_data_passed_to_risk(self):
-        """market_data_fresh=False viene passato a quote_paper_risk come RiskRequest."""
+    def test_stale_data_no_trade(self):
+        """market_data_fresh=False → early-return NO_TRADE in F2 (defense-in-depth)."""
         engine = _engine_with_open()
         engine.market_params = _market_params(fresh=False)
-        captured = {}
-        def _capture_quote(policy, req):
-            captured["fresh"] = req.market_data_fresh
-            return _real_quote_allowed()
-        with patch("backend.v3.brain_f2.engine.quote_paper_risk", side_effect=_capture_quote):
-            engine.step(_context())
-        assert captured.get("fresh") is False, "market_data_fresh=False deve essere passato a RiskRequest"
+        with patch("backend.v3.brain_f2.engine.quote_paper_risk", return_value=_real_quote_allowed()):
+            d = engine.step(_context())
+        assert d.kind == DecisionKind.NO_TRADE
 
-    def test_paused_passed_to_risk(self):
-        """paused=True viene passato a quote_paper_risk come RiskRequest."""
+    def test_paused_no_trade(self):
+        """paused=True → early-return NO_TRADE in F2 (defense-in-depth)."""
         engine = _engine_with_open()
         engine.market_params = _market_params(paused=True)
-        captured = {}
-        def _capture_quote(policy, req):
-            captured["paused"] = req.paused
-            return _real_quote_allowed()
-        with patch("backend.v3.brain_f2.engine.quote_paper_risk", side_effect=_capture_quote):
-            engine.step(_context())
-        assert captured.get("paused") is True, "paused=True deve essere passato a RiskRequest"
+        with patch("backend.v3.brain_f2.engine.quote_paper_risk", return_value=_real_quote_allowed()):
+            d = engine.step(_context())
+        assert d.kind == DecisionKind.NO_TRADE
 
-    def test_daily_loss_latched_passed_to_risk(self):
-        """daily_loss_latched=True viene passato a quote_paper_risk come RiskRequest."""
+    def test_daily_loss_latched_no_trade(self):
+        """daily_loss_latched=True → early-return NO_TRADE in F2 (defense-in-depth)."""
         engine = _engine_with_open()
         engine.market_params = _market_params(latched=True)
-        captured = {}
-        def _capture_quote(policy, req):
-            captured["latched"] = req.daily_loss_latched
-            return _real_quote_allowed()
-        with patch("backend.v3.brain_f2.engine.quote_paper_risk", side_effect=_capture_quote):
-            engine.step(_context())
-        assert captured.get("latched") is True, "daily_loss_latched=True deve essere passato a RiskRequest"
+        with patch("backend.v3.brain_f2.engine.quote_paper_risk", return_value=_real_quote_allowed()):
+            d = engine.step(_context())
+        assert d.kind == DecisionKind.NO_TRADE
 
     def test_invalid_portfolio_id_no_trade(self):
         engine = _engine_with_open(portfolio_id="hawk")
