@@ -43,8 +43,8 @@ class RestrictedStatusTests(unittest.TestCase):
 
     def test_systemd_only_returns_aggregate_not_arguments(self):
         sample = (
-            "superbot-brain.service loaded active running confidential-data\\n"
-            "cron.service loaded active running Cron\\n"
+            "superbot-brain.service loaded active running confidential-data\n"
+            "cron.service loaded active running Cron\n"
         )
         p = types.SimpleNamespace(returncode=0, stdout=sample)
         with patch.object(agent.subprocess, "run", return_value=p):
@@ -54,11 +54,11 @@ class RestrictedStatusTests(unittest.TestCase):
 
     def test_processes_return_counts_without_commands(self):
         data = (
-            "1900 /usr/bin/superbot confidential-token=NEVER_PRINT\\n"
-            "1901 /usr/bin/python3 private.py\\n"
+            "1900 /usr/bin/superbot confidential-token=NEVER_PRINT\n"
+            "1901 /usr/bin/python3 private.py\n"
         )
         p = types.SimpleNamespace(returncode=0, stdout=data)
-        with patch.object(agent.subprocess, "run", return_value=p), \\
+        with patch.object(agent.subprocess, "run", return_value=p), \
              patch.object(agent.os, "getpid", return_value=9000):
             summary = agent.processes()
         self.assertEqual(summary["matching_count"], 1)
@@ -72,8 +72,8 @@ class RestrictedStatusTests(unittest.TestCase):
 
     def test_refuses_root_even_if_forced_command_is_misconfigured(self):
         capture = io.StringIO()
-        with patch.object(agent.os, "geteuid", return_value=0), \\
-             patch.object(agent, "collect", side_effect=AssertionError("not called")), \\
+        with patch.object(agent.os, "geteuid", return_value=0), \
+             patch.object(agent, "collect", side_effect=AssertionError("not called")), \
              patch("sys.stdout", capture):
             rc = agent.main()
         self.assertEqual(rc, 3)
@@ -82,10 +82,10 @@ class RestrictedStatusTests(unittest.TestCase):
     def test_collect_cannot_report_backup_certified(self):
         with tempfile.TemporaryDirectory() as tmp:
             # No real source paths or host services are accessed in this test.
-            with patch.object(agent, "SOURCE", Path(tmp)), \\
-                 patch.object(agent, "CLASSICS", Path(tmp)), \\
-                 patch.object(agent, "BACKUPS", Path(tmp)), \\
-                 patch.object(agent, "services", return_value={"status": "UNKNOWN"}), \\
+            with patch.object(agent, "SOURCE", Path(tmp)), \
+                 patch.object(agent, "CLASSICS", Path(tmp)), \
+                 patch.object(agent, "BACKUPS", Path(tmp)), \
+                 patch.object(agent, "services", return_value={"status": "UNKNOWN"}), \
                  patch.object(agent, "processes", return_value={"status": "UNKNOWN"}):
                 report = agent.collect()
             self.assertEqual(report["status"], "OBSERVATION_ONLY")
