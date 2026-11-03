@@ -1600,3 +1600,18 @@ Proposta: aggiungere early-return esplicito prima del try-block (vedi commento P
 
 **Nessun deploy, DESK_MODE=paper, cervello intatto, Hawk/Bull non toccati, nessun merge.**
 
+
+## 03/11 (sera) — P1 CHIUSO: early-return confermato, 33/33 PASS
+
+**Claude Sonnet 4.6 — reviewer indipendente F2**
+
+Grok ha consegnato archivio P1 (SHA: `8c39542d...`).
+Early-return `market_gate` verificato in `_apply_risk_gate()` riga 368:
+```python
+if mp["paused"] or not mp["market_data_fresh"] or mp["daily_loss_latched"]:
+    decision.rationale = "market_gate"; return NO_TRADE
+```
+Suite Claude aggiornata: 3 test P1 tornano a verificare outcome NO_TRADE.
+33/33 PASS + 5/5 P0 PASS. Commit `02e1f08` su `work/v3-f2-review-claude-20261103`.
+
+**F2 P0+P1: approvati.** Ancora DRAFT. Nessun merge/deploy. Nessuna modifica a Hawk/Bull/cervello.
