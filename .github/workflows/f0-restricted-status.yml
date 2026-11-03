@@ -1,0 +1,52 @@
+name: SuperBot F0 - restricted VPS status
+
+# IMPORTANT: never runs code from a mutable branch on the VPS.
+# This workflow must be reviewed and merged independently of V3.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '35 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superbot-f0-restricted-status
+  cancel-in-progress: false
+
+jobs:
+  status:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Restricted SSH forced-command (non-root, status-only)
+        shell: bash
+        env:
+          F0_SSH_KEY: ${{ secrets.SUPERBOT_F0_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${F0_SSH_KEY:-}" || { echo 'F0_NOT_CONFIGURED: dedicated SSH secret missing'; exit 2; }
+          tempdir="$(mktemp -d)"
+          trap 'rm -rf "$tempdir"' EXIT
+          chmod 700 "$tempdir"
+          printf '%s\n' "$F0_SSH_KEY" > "$tempdir/id_ed25519"
+          chmod 600 "$tempdir/id_ed25519"
+          ssh-keygen -y -f "$tempdir/id_ed25519" >/dev/null
+          # Existing pinned Singapore ed25519 host key: operator must verify
+          # its fingerprint on the VPS before enabling this workflow.
+          cat > "$tempdir/known_hosts" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 600 "$tempdir/known_hosts"
+          # No checkout, no remote shell, no dynamic commands, no forwarding.
+          # authorized_keys MUST force the root-owned fixed diagnostics script.
+          ssh -T -i "$tempdir/id_ed25519" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o PreferredAuthentications=publickey -o PasswordAuthentication=no \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$tempdir/known_hosts" \
+            -o HostKeyAlgorithms=ssh-ed25519 \
+            -o ClearAllForwardings=yes \
+            -o ConnectTimeout=15 -o ServerAliveInterval=10 \
+            -o ServerAliveCountMax=2 \
+            superbot-f0@51.79.205.82 status
