@@ -75,3 +75,22 @@ Solo dopo la conferma dell'account, host key e secret, approvare separatamente i
 La diagnostica può restituire `UNAVAILABLE` se le cartelle storiche non concedono permesso di attraversamento alla nuova identità. **Non** dare permessi globali ai dati, non mettere F0 nel gruppo Docker e non modificare ACL a intuito. Se succede, definire puntualmente le ACL dei soli percorsi necessari prima di richiedere una modifica separata.
 
 Questo schema evita di consegnare a ChatGPT accesso SSH generico alla VPS: ChatGPT può mantenere il codice e leggere i risultati della diagnostica GitHub, mentre il server rifiuta qualsiasi azione diversa dal comando già approvato. Per eseguire backup reali occorrerà una seconda funzionalità separata con limiti e autorizzazioni specifici.
+
+
+## Recovery for Android/Termius private-key line endings (2026-11-03)
+
+If the initial GitHub job reports `Load key "...id_ed25519": error in libcrypto`, the private key in GitHub is malformed or was pasted without correct newline boundaries. The workflow supports both normal PEM/OpenSSH multiline text and a one-line **`F0B64:`** transport format. This prefix is NOT a public key; it contains the private key encoded as Base64.
+
+On the **VPS Termius root session where the new, dedicated F0 GitHub key was created**, after checking the local private key is present with `ssh-keygen -y -P '' -f /root/superbot-f0-setup/github-f0-ed25519 >/dev/null`, run the command below. **The one-line output is a secret, equivalent to the full private key; never screenshot or paste it into chat, a GitHub Issue/PR, or a terminal log shared with anyone.**
+
+```bash
+printf 'F0B64:'
+base64 -w0 /root/superbot-f0-setup/github-f0-ed25519
+printf '\n'
+```
+
+Copy the **whole line** starting `F0B64:` and paste it **only into** GitHub → repository Settings → Secrets and variables → Actions → edit `SUPERBOT_F0_SSH_PRIVATE_KEY`. No trailing spaces or line breaks are needed; the workflow will restore the original bytes in an ephemeral file, validate its OpenSSH header/footer and parse it without printing the key.
+
+After the merge of this patch, re-run the failing GitHub Actions diagnostic job and verify its `F0_KEY_PARSE_PASS` followed by a JSON `OBSERVATION_ONLY`. When functional, handle the temporary private-key file on the VPS with an explicit cleanup procedure; until then, keep `/root/superbot-f0-setup` restricted `0700` and never transmit the private key in chat. Do not revoke the already-used Termius account key.
+
+The Base64 format is **encoding, not encryption**. The output is sensitive and must only be entered in GitHub Actions Secrets.

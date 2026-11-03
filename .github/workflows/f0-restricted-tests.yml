@@ -26,3 +26,29 @@ jobs:
         run: |
           python3 -m compileall -q ops/f0
           python3 -m unittest discover -s ops/f0 -p 'test_*.py' -v
+      - name: Check restricted SSH workflow shell syntax
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+          import subprocess
+          source = Path(".github/workflows/f0-restricted-status.yml").read_text()
+          marker = "        run: |\n"
+          assert source.count(marker) == 1, "Expected exactly one fixed SSH run block"
+          body = dedent(source.split(marker, 1)[1])
+          subprocess.run(["bash", "-n"], input=body, text=True, check=True)
+          PY
+      - name: Verify dedicated OpenSSH key one-line Base64 roundtrip
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          ssh-keygen -q -t ed25519 -N '' -f "$tmpdir/ephemeral"
+          encoded="$(base64 -w0 "$tmpdir/ephemeral")"
+          printf '%s' "$encoded" | base64 --decode > "$tmpdir/restored"
+          cmp "$tmpdir/ephemeral" "$tmpdir/restored"
+          grep -Fqx -- '-----BEGIN OPENSSH PRIVATE KEY-----' "$tmpdir/restored"
+          grep -Fqx -- '-----END OPENSSH PRIVATE KEY-----' "$tmpdir/restored"
+          chmod 600 "$tmpdir/restored"
+          ssh-keygen -y -P '' -f "$tmpdir/restored" >/dev/null

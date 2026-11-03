@@ -29,9 +29,32 @@ jobs:
           tempdir="$(mktemp -d)"
           trap 'rm -rf "$tempdir"' EXIT
           chmod 700 "$tempdir"
-          printf '%s\n' "$F0_SSH_KEY" > "$tempdir/id_ed25519"
+          # The F0B64: transport preserves exact binary bytes of a valid
+          # OpenSSH private key when copied from mobile terminals. Neither
+          # raw material nor derived public keys are ever printed.
+          if [[ "$F0_SSH_KEY" == F0B64:* ]]; then
+            encoded="${F0_SSH_KEY#F0B64:}"
+            if [[ ! "$encoded" =~ ^[A-Za-z0-9+/=]+$ ]]; then
+              echo 'F0_KEY_B64_INVALID_CHARACTER'; exit 2
+            fi
+            if ! printf '%s' "$encoded" | base64 --decode > "$tempdir/id_ed25519"; then
+              echo 'F0_KEY_B64_DECODE_FAILED'; exit 2
+            fi
+          else
+            # Backward compatible with a properly copied multiline key.
+            printf '%s\n' "$F0_SSH_KEY" | tr -d '\r' > "$tempdir/id_ed25519"
+          fi
           chmod 600 "$tempdir/id_ed25519"
-          ssh-keygen -y -f "$tempdir/id_ed25519" >/dev/null
+          if ! grep -Fqx -- '-----BEGIN OPENSSH PRIVATE KEY-----' "$tempdir/id_ed25519"; then
+            echo 'F0_KEY_NOT_OPENSSH_PRIVATE'; exit 2
+          fi
+          if ! grep -Fqx -- '-----END OPENSSH PRIVATE KEY-----' "$tempdir/id_ed25519"; then
+            echo 'F0_KEY_TRUNCATED_MISSING_END'; exit 2
+          fi
+          if ! ssh-keygen -y -P '' -f "$tempdir/id_ed25519" >/dev/null 2>&1; then
+            echo 'F0_KEY_INVALID_OR_ENCRYPTED'; exit 2
+          fi
+          echo 'F0_KEY_PARSE_PASS'
           # Existing pinned Singapore ed25519 host key: operator must verify
           # its fingerprint on the VPS before enabling this workflow.
           cat > "$tempdir/known_hosts" <<'HOSTKEY'
