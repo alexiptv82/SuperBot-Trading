@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -43,6 +44,7 @@ class F0ExternalBackupPreflightTests(unittest.TestCase):
     def test_newer_archive_still_not_a_restore_certificate(self):
         status = json.loads(self.status.read_text())
         status['ultimo_successo'] = '2026-11-03T10:00:00Z'
+        status['archivio'] = 'superbot-backup-20261103T100000Z.tar.gz.age'
         self.status.write_text(json.dumps(status))
         value = inspect(self.status, self.manifest)
         self.assertTrue(value['archive_newer_than_brain_snapshot'])
@@ -78,6 +80,46 @@ class F0ExternalBackupPreflightTests(unittest.TestCase):
         value['ultimo_successo'] = 'yesterday'
         self.status.write_text(json.dumps(value))
         result = inspect(self.status, self.manifest)
+        self.assertEqual(result['archive_newer_than_brain_snapshot'], 'UNKNOWN')
+
+    def test_status_newer_but_archive_filename_older(self):
+        status = json.loads(self.status.read_text())
+        status['ultimo_successo'] = '2026-11-03T10:00:00Z'
+        # Metadata success time alone cannot make this older archive current.
+        self.status.write_text(json.dumps(status))
+        result = inspect(self.status, self.manifest)
+        self.assertIs(result['archive_newer_than_brain_snapshot'], False)
+        self.assertFalse(result['externally_certified'])
+
+    def test_invalid_archive_name_has_unknown_recency(self):
+        status = json.loads(self.status.read_text())
+        status['ultimo_successo'] = '2026-11-03T10:00:00Z'
+        status['archivio'] = 'untrusted.tar.gz.age'
+        self.status.write_text(json.dumps(status))
+        result = inspect(self.status, self.manifest)
+        self.assertFalse(result['last_archive_name_expected_format'])
+        self.assertEqual(result['archive_newer_than_brain_snapshot'], 'UNKNOWN')
+
+    def test_impossible_archive_calendar_date_is_rejected(self):
+        status = json.loads(self.status.read_text())
+        status['archivio'] = 'superbot-backup-20261303T100000Z.tar.gz.age'
+        self.status.write_text(json.dumps(status))
+        result = inspect(self.status, self.manifest)
+        self.assertFalse(result['last_archive_name_expected_format'])
+        self.assertEqual(result['archive_newer_than_brain_snapshot'], 'UNKNOWN')
+
+    def test_archive_name_later_than_success_has_unknown_recency(self):
+        status = json.loads(self.status.read_text())
+        status['archivio'] = 'superbot-backup-20261104T100000Z.tar.gz.age'
+        self.status.write_text(json.dumps(status))
+        result = inspect(self.status, self.manifest)
+        self.assertEqual(result['archive_newer_than_brain_snapshot'], 'UNKNOWN')
+
+    def test_fifo_status_is_rejected_without_blocking(self):
+        self.status.unlink()
+        os.mkfifo(self.status)
+        result = inspect(self.status, self.manifest)
+        self.assertEqual(result['legacy_status'], 'UNAVAILABLE')
         self.assertEqual(result['archive_newer_than_brain_snapshot'], 'UNKNOWN')
 
 
