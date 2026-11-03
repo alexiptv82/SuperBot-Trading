@@ -22,6 +22,17 @@ jobs:
         run: |
           bash -n ops/f0/provision_account.sh
           bash -n ops/f0/install_public_key.sh
+          bash -n ops/f0/classic_metadata_acl.sh
+      - name: Fail closed when a non-root runner requests ACL changes
+        run: |
+          set -euo pipefail
+          log="$(mktemp)"
+          trap 'rm -f "$log"' EXIT
+          if bash ops/f0/classic_metadata_acl.sh --apply > "$log" 2>&1; then
+            echo 'ERROR: non-root runner was allowed to apply ACL' >&2
+            exit 1
+          fi
+          grep -q 'F0_ACL_BLOCKED' "$log"
       - name: Python standard-library tests (no secrets)
         run: |
           python3 -m compileall -q ops/f0

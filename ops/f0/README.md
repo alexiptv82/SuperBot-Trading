@@ -1,6 +1,6 @@
 # SuperBot F0 — Collegamento automatico GitHub ↔ VPS, account limitato
 
-**Stato:** codice pronto per revisione tecnica. Il collegamento NON è ancora installato, la chiave privata GitHub NON è stata configurata e nessun accesso SSH è stato eseguito.
+**Stato al 2026-11-03:** collegamento GitHub Actions → VPS verificato in sola lettura (run [41596313485](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/41596313485), `success`). Il sistema continua a consentire soltanto un comando diagnostico fisso. La copia Brain F0 verificata è ancora solo locale; F0 off-host non è certificato.
 
 Questa integrazione non sostituisce Termius: lo riduce a una **configurazione iniziale**, e poi rende leggibili in GitHub Actions i risultati di diagnostica della VPS. Il primo livello consente solo **lettura di metadati** (dimensioni dei file e stato sintetico dei processi); non può fare backup, restart, reset, trade, installazioni, modifiche all'AI o consultare contenuti/segreti. La certificazione F0 del backup fuori VPS resta un gate separato.
 
@@ -94,3 +94,32 @@ Copy the **whole line** starting `F0B64:` and paste it **only into** GitHub → 
 After the merge of this patch, re-run the failing GitHub Actions diagnostic job and verify its `F0_KEY_PARSE_PASS` followed by a JSON `OBSERVATION_ONLY`. When functional, handle the temporary private-key file on the VPS with an explicit cleanup procedure; until then, keep `/root/superbot-f0-setup` restricted `0700` and never transmit the private key in chat. Do not revoke the already-used Termius account key.
 
 The Base64 format is **encoding, not encryption**. The output is sensitive and must only be entered in GitHub Actions Secrets.
+
+
+## Hawk/Bull: diagnostica metadati con ACL minima (separata, NON applicata)
+
+L'esecuzione remota F0 riuscita mostra le directory `/opt/superbot-desk-data/hawk` e `bull` come `PRESENT`, ma gli `state_v2.json`, `trade_history.jsonl`, `learning_log.jsonl`, `lessons.md` e la directory `archive` come `UNAVAILABLE` per `superbot-f0`. I precedenti controlli locali root li avevano individuati. Questo è **un limite di accessibilità**, non evidenza di perdita dati.
+
+Il probe F0 usa soltanto `stat()`: per conoscere l'esistenza e le dimensioni di un file non è necessario concedere lettura del suo contenuto. Serve permesso di attraversamento (`--x`) sulla directory immediatamente superiore. Non servono `chmod 777`, gruppi Docker, `sudo` o accesso root via SSH.
+
+È stato preparato `ops/f0/classic_metadata_acl.sh`, per una **sola esecuzione locale sotto controllo operatore** e con queste proprietà:
+- Default `--check`: controllo in sola lettura, nessun cambio di ACL.
+- `--apply` solo su **esplicita autorizzazione**: concede soltanto `user:superbot-f0:--x` alle due directory precise `/opt/superbot-desk-data/{hawk,bull}`, lasciando i permessi dei file invariati.
+- Prima dell'applicazione: verifica che i percorsi non siano symlink, che i quattro file essenziali e `archive` esistano, che il nuovo account non abbia gruppi privilegiati e che un eventuale ACL mask non debba essere ampliato.
+- Salva un testimone ACL originale in `/root/superbot-f0-setup/acl-before-hawk-bull.*` (file `0600`, directory `0700`). Se il controllo successivo fallisce, tenta il ripristino automatico di entrambe le ACL.
+- Rifiuta di procedere se non sono installati `getfacl` e `setfacl`. Non installa pacchetti.
+- Non cambia file di trading, DB, backup, WAL, container, bot o crontab.
+- Il controllo manuale successivo può essere un rerun del job GitHub F0; non occorre inviare screenshot della VPS.
+
+Per provarlo **solo dopo revisione della PR**, scaricare da un **commit SHA specifico e verificato**, mai un branch mutevole, e lanciare inizialmente esclusivamente `--check`. Esempio per Termius root:
+
+```bash
+# Sostituire il segnaposto con il commit SHA approvato dal revisore:
+REF="COMMIT_SHA_REVISIONATO"
+curl -fsSLo /root/superbot-f0-setup/classic_metadata_acl.sh \
+  "https://raw.githubusercontent.com/alexiptv82/SuperBot-Trading/$REF/ops/f0/classic_metadata_acl.sh"
+bash -n /root/superbot-f0-setup/classic_metadata_acl.sh
+bash /root/superbot-f0-setup/classic_metadata_acl.sh --check
+```
+
+**Non eseguire `--apply` per il solo fatto di aver scaricato il file.** Il risultato del preflight non è una certificazione dello storico. Anche dopo l'ACL, il collegamento rimane diagnostico e **non può acquisire, esportare o leggere il contenuto** dei file Falco/Toro: per la certificazione F0 servono uno snapshot in ambiente autorizzato, copia cifrata off-host e restore verificato.
