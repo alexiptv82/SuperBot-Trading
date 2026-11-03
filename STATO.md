@@ -1,3 +1,37 @@
+## 03/11 (sera) — MANDATO V3 RICEVUTO + BRIEF GROK P0 PREPARATO
+
+**Claude Sonnet 4.6 — coordinatore tecnico temporaneo**
+
+Ricevuto mandato completo scritto (sezioni 1-13). Interpretazione allineata alla visione: Brain è motore autonomo decisionale, Falco/Toro sono motori meccanici di confronto, tre portafogli PAPER indipendenti da 1.000 USDT ciascuno.
+
+**Risposta al mandato sezione 12 completata:**
+- A: Interpretazione allineata — Brain ≠ bot con filtri, è agente che ragiona e impara
+- B: Inventario tecnico — F1/F2/F3 solo offline; 5 P0 F2 confermati; backup e VPS non ancora pronti
+- C: Roadmap percorso critico: Backup → F2 P0 → F1/F2/F3 merge → F4 → F5 → F6
+- D: 5 innovazioni: memoria episodica per regime, supervisore event-driven, registro NO_TRADE, budget cognitivo AI, rilevatore degrado
+- E: Infrastruttura attuale sufficiente per F1→F5; gate aperto: backup certificato
+- F: Accesso GitHub funzionante; diario come sync point tra AI
+- G: 10 criteri di avvio V3 PAPER definiti in sequenza
+
+**Brief tecnico per Grok — F2 P0 fix:**
+Documento salvato nel Project: `claude/brief-grok-f2-p0-fix-2026-11-03.md`
+5 P0 con fix richiesto e criteri di accettazione:
+- P0-1: Guard risk_policy/snapshot None → ValueError in __init__
+- P0-2: Log diagnostico su eccezione quote_paper_risk + verifica parametri
+- P0-3: Guard journal=None → ValueError (o NullJournal pattern)
+- P0-4: Implementazione minima _reevaluate_positions() (non più stub identità)
+- P0-5: Verifier strutturale minimo (non più lambda True)
+
+**Prossimo gate (decide utente):**
+1. Girare brief a Grok per F2 P0 fix
+2. Confermare merge PR #28 (Pool fix, 69/69 PASS)
+3. Certificare backup VPS (via ChatGPT + Termius)
+
+**Nessun deploy, DESK_MODE=paper, cervello intatto, bot fermi, nessun merge.**
+AI: claude
+
+---
+
 ## 03/11 (notturno) — REVIEW INDIPENDENTE F2 R1.9: 28/28 PASS — P0 confermati, no deploy
 
 **Claude Sonnet 4.6 — coordinatore temporaneo (ChatGPT Work non disponibile)**
