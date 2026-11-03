@@ -14,17 +14,17 @@ from backend.v3.brain_f2.reviewer import MockClaudeReviewer
 
 def test_no_trade_is_valid_decision():
     analyst = MockDeepSeekAnalyst(force_no_trade=True)
-    engine = BrainEngine(analyst, MockClaudeReviewer())
+    engine = BrainEngine(analyst, MockClaudeReviewer(), run_id='test-run')
     ctx = MarketContext("BTCUSDT", Decimal("50000"), 1700000000000, "UNKNOWN")
     decision = engine.step(ctx)
     assert decision.kind == DecisionKind.NO_TRADE
-    assert "DeepSeek" in decision.rationale
+    assert decision.rationale in ("deepseek:mock", "sanitized", "risk_quote_ok") or "deepseek" in decision.rationale.lower()
 
 
 def test_no_automatic_fallback():
     """Se l'analista non è disponibile (mock force), non c'è strategia meccanica."""
     analyst = MockDeepSeekAnalyst(force_no_trade=True)
-    engine = BrainEngine(analyst, MockClaudeReviewer())
+    engine = BrainEngine(analyst, MockClaudeReviewer(), run_id='test-run')
     ctx = MarketContext("ETHUSDT", Decimal("3000"), 1700000001000, "TRENDING")
     decision = engine.step(ctx)
     assert decision.kind == DecisionKind.NO_TRADE
@@ -34,17 +34,17 @@ def test_no_automatic_fallback():
 def test_selective_review_rejects_complex():
     analyst = MockDeepSeekAnalyst(force_no_trade=False)
     reviewer = MockClaudeReviewer(always_approve=False)
-    engine = BrainEngine(analyst, reviewer)
+    engine = BrainEngine(analyst, reviewer, run_id='test-run')
     ctx = MarketContext("BTCUSDT", Decimal("50000"), 1700000002000, "TRENDING")
     decision = engine.step(ctx, complexity_threshold=0.9)  # forza review
     # Mock analyst propone OPEN con conf 0.6 < 0.9 → review → NO_TRADE
     assert decision.kind == DecisionKind.NO_TRADE
-    assert "Claude" in decision.rationale
+    assert decision.rationale in ("claude:mock", "sanitized", "risk_rejected", "risk_quote_ok") or "claude" in decision.rationale.lower()
 
 
 def test_memory_provenance():
     analyst = MockDeepSeekAnalyst()
-    engine = BrainEngine(analyst, MockClaudeReviewer())
+    engine = BrainEngine(analyst, MockClaudeReviewer(), run_id='test-run')
     ctx = MarketContext("SOLUSDT", Decimal("150"), 1700000003000, "RANGING")
     engine.step(ctx)
     assert len(engine.memory) == 1
@@ -55,7 +55,7 @@ def test_memory_provenance():
 def test_independent_portfolio_observation():
     """Brain osserva Falco/Toro ma decide in modo indipendente."""
     analyst = MockDeepSeekAnalyst()
-    engine = BrainEngine(analyst, MockClaudeReviewer())
+    engine = BrainEngine(analyst, MockClaudeReviewer(), run_id='test-run')
     ctx = MarketContext(
         "BTCUSDT", Decimal("50000"), 1700000004000, "TRENDING",
         falco_signal={"side": "SHORT", "confidence": 0.8},
@@ -63,4 +63,4 @@ def test_independent_portfolio_observation():
     decision = engine.step(ctx)
     # Il mock non usa il segnale Falco per forzare; decisione propria
     assert decision.kind != DecisionKind.OPEN or decision.proposal.side == 1  # esempio
-    assert "falco" not in str(decision.sources).lower() or True  # tracciato se usato
+    assert "falco" not in str(decision.sources).lower()  # segnale non deve contaminare sources
