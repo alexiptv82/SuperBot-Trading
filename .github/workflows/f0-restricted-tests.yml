@@ -1,0 +1,28 @@
+name: SuperBot F0 - restricted diagnostics tests
+on:
+  pull_request:
+    paths:
+      - 'ops/f0/**'
+      - '.github/workflows/f0-restricted-*.yml'
+  push:
+    branches:
+      - work/f0-restricted-remote-diagnostics-20261103
+    paths:
+      - 'ops/f0/**'
+      - '.github/workflows/f0-restricted-*.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint shell installers
+        run: |
+          bash -n ops/f0/provision_account.sh
+          bash -n ops/f0/install_public_key.sh
+      - name: Python standard-library tests (no secrets)
+        run: |
+          python3 -m compileall -q ops/f0
+          python3 -m unittest discover -s ops/f0 -p 'test_*.py' -v
