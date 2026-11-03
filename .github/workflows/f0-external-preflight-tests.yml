@@ -1,0 +1,35 @@
+name: SuperBot F0 — external backup preflight metadata offline tests
+on:
+  push:
+    branches: [work/f0-external-backup-preflight-20261103]
+    paths:
+      - 'ops/f0/offhost_preflight.py'
+      - 'ops/f0/test_offhost_preflight.py'
+      - '.github/workflows/f0-external-preflight-tests.yml'
+  pull_request:
+    paths:
+      - 'ops/f0/offhost_preflight.py'
+      - 'ops/f0/test_offhost_preflight.py'
+      - '.github/workflows/f0-external-preflight-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-metadata-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile read-only preflight
+        run: python -m compileall -q ops/f0/offhost_preflight.py ops/f0/test_offhost_preflight.py
+      - name: Run offline synthetic fixtures (no VPS, secrets or network clients)
+        run: python -m unittest ops.f0.test_offhost_preflight -v
