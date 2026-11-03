@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 from decimal import Decimal
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +20,16 @@ from backend.v3.brain_f2.contracts import (
     OpenProposal, ProposalStatus,
 )
 from backend.v3.brain_f2.engine import BrainEngine, BrainPortfolioSnapshot
+from backend.v3.events import EventJournal
+
+
+def _make_journal() -> EventJournal:
+    td = TemporaryDirectory()
+    j = EventJournal(Path(td.name) / "j.sqlite")
+    j.init_schema()
+    # Keep td alive via closure
+    j._td_ref = td
+    return j
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +168,7 @@ def _engine_with_open(
         risk_policy=pol,
         portfolio_snapshot=snapshot if snapshot is not None else _snapshot(),
         market_params=_market_params(),
-        journal=journal,
+        journal=journal if journal is not None else _make_journal(),
         portfolio_id=portfolio_id,
         run_id=run_id,
         policy_mandate=m,
@@ -219,21 +231,45 @@ class TestP0RiskQuoterSignatureMismatch:
 
 
 # ---------------------------------------------------------------------------
-# P0-3: journal=None → OPEN non diventa APPROVED
+# P0-3: journal=None → ValueError in __init__ (fix Grok P0-3)
 # ---------------------------------------------------------------------------
 
 class TestP0JournalAppend:
-    def test_open_without_journal_is_no_trade(self):
-        with patch("backend.v3.brain_f2.engine.quote_paper_risk", return_value=_real_quote_allowed()):
-            engine = _engine_with_open(journal=None)
-            d = engine.step(_context())
-        assert d.kind == DecisionKind.NO_TRADE
-        assert d.rationale in ("missing_journal", "policy_not_authorized", "invalid_input", "risk_rejected")
+    def test_open_without_journal_raises_value_error(self):
+        """Post-fix P0-3: journal=None deve sollevare ValueError in __init__."""
+        with pytest.raises(ValueError, match="journal is required"):
+            _engine_with_open.__wrapped__ if hasattr(_engine_with_open, "__wrapped__") else None
+            BrainEngine(
+                analyst=_analyst_open(),
+                reviewer=_reviewer_pass(),
+                risk_policy=_policy(),
+                portfolio_snapshot=_snapshot(),
+                market_params=_market_params(),
+                journal=None,
+                run_id="run-test-1",
+            )
 
     def test_no_trade_memory_stored_even_without_journal(self):
-        with patch("backend.v3.brain_f2.engine.quote_paper_risk", return_value=_real_quote_allowed()):
-            engine = _engine_with_open(journal=None)
-            engine.step(_context())
+        """Con journal reale ma analyst che produce NO_TRADE, memoria viene salvata."""
+        from backend.v3.brain_f2.analyst import MockDeepSeekAnalyst
+        analyst = MagicMock()
+        analyst.analyze.return_value = BrainDecision(
+            kind=DecisionKind.NO_TRADE,
+            rationale="ai_unavailable",
+            sources=["engine:fail_closed"],
+            occurred_at_ms=1000,
+            status=ProposalStatus.REJECTED,
+        )
+        engine = BrainEngine(
+            analyst=analyst,
+            reviewer=_reviewer_pass(),
+            risk_policy=_policy(),
+            portfolio_snapshot=_snapshot(),
+            market_params=_market_params(),
+            journal=_make_journal(),
+            run_id="run-test-1",
+        )
+        engine.step(_context())
         assert len(engine.memory) >= 1
 
     def test_open_approved_calls_journal_append(self):
@@ -263,12 +299,18 @@ class TestP0JournalAppend:
 
         assert journal.append.called
 
-    def test_journal_append_never_with_no_journal(self):
-        """Senza journal, nessun append viene tentato (non esplode)."""
-        engine = _engine_with_open(journal=None)
-        # non deve lanciare eccezioni
-        d = engine.step(_context())
-        assert d.kind == DecisionKind.NO_TRADE
+    def test_journal_none_raises_not_silently_accepts(self):
+        """Post-fix P0-3: journal=None è rifiutato in __init__, non accettato silenziosamente."""
+        with pytest.raises(ValueError):
+            BrainEngine(
+                analyst=_analyst_open(),
+                reviewer=_reviewer_pass(),
+                risk_policy=_policy(),
+                portfolio_snapshot=_snapshot(),
+                market_params=_market_params(),
+                journal=None,
+                run_id="run-test-1",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -371,26 +413,48 @@ class TestP1ExtraProtections:
         d = engine.step(_context())
         assert d.kind == DecisionKind.NO_TRADE
 
-    def test_stale_data_no_trade(self):
+    # FINDING P1 (documentato 2026-11-03):
+    # Grok's engine delega paused/fresh/latched a quote_paper_risk (F1) senza cortocircuitare prima.
+    # Se quote_paper_risk viene mockato con allowed=True, engine non produce NO_TRADE.
+    # Comportamento atteso a regime: quote_paper_risk F1 risponde already con allowed=False.
+    # Questi test verificano che i valori siano correttamente PASSATI a quote_paper_risk,
+    # non che engine li controlli da solo.
+
+    def test_stale_data_passed_to_risk(self):
+        """market_data_fresh=False viene passato a quote_paper_risk come RiskRequest."""
         engine = _engine_with_open()
         engine.market_params = _market_params(fresh=False)
-        with patch("backend.v3.brain_f2.engine.quote_paper_risk", return_value=_real_quote_allowed()):
-            d = engine.step(_context())
-        assert d.kind == DecisionKind.NO_TRADE
+        captured = {}
+        def _capture_quote(policy, req):
+            captured["fresh"] = req.market_data_fresh
+            return _real_quote_allowed()
+        with patch("backend.v3.brain_f2.engine.quote_paper_risk", side_effect=_capture_quote):
+            engine.step(_context())
+        assert captured.get("fresh") is False, "market_data_fresh=False deve essere passato a RiskRequest"
 
-    def test_paused_no_trade(self):
+    def test_paused_passed_to_risk(self):
+        """paused=True viene passato a quote_paper_risk come RiskRequest."""
         engine = _engine_with_open()
         engine.market_params = _market_params(paused=True)
-        with patch("backend.v3.brain_f2.engine.quote_paper_risk", return_value=_real_quote_allowed()):
-            d = engine.step(_context())
-        assert d.kind == DecisionKind.NO_TRADE
+        captured = {}
+        def _capture_quote(policy, req):
+            captured["paused"] = req.paused
+            return _real_quote_allowed()
+        with patch("backend.v3.brain_f2.engine.quote_paper_risk", side_effect=_capture_quote):
+            engine.step(_context())
+        assert captured.get("paused") is True, "paused=True deve essere passato a RiskRequest"
 
-    def test_daily_loss_latched_no_trade(self):
+    def test_daily_loss_latched_passed_to_risk(self):
+        """daily_loss_latched=True viene passato a quote_paper_risk come RiskRequest."""
         engine = _engine_with_open()
         engine.market_params = _market_params(latched=True)
-        with patch("backend.v3.brain_f2.engine.quote_paper_risk", return_value=_real_quote_allowed()):
-            d = engine.step(_context())
-        assert d.kind == DecisionKind.NO_TRADE
+        captured = {}
+        def _capture_quote(policy, req):
+            captured["latched"] = req.daily_loss_latched
+            return _real_quote_allowed()
+        with patch("backend.v3.brain_f2.engine.quote_paper_risk", side_effect=_capture_quote):
+            engine.step(_context())
+        assert captured.get("latched") is True, "daily_loss_latched=True deve essere passato a RiskRequest"
 
     def test_invalid_portfolio_id_no_trade(self):
         engine = _engine_with_open(portfolio_id="hawk")
@@ -425,6 +489,7 @@ class TestP1ExtraProtections:
                 reviewer=_reviewer_pass(),
                 risk_policy=pol,
                 portfolio_snapshot=_snapshot(),
+                journal=_make_journal(),
                 market_params=_market_params(),
                 portfolio_id="brain",
                 run_id="run-test-1",
