@@ -27,3 +27,7 @@
 4. Privilegiare GitHub restricted diagnostics F0 già convalidato; non usare vecchie credenziali root per operazioni arbitrarie.
 
 **Nessun restart, merge, deploy, import, reset wallet, cambio ACL, cancellazione chiavi o accesso SSH root eseguito durante questo lavoro.**
+
+## Follow-up: ticket autonomo per Grok
+
+Pubblicato `docs/v3/brain-f2-r1-remediation-ticket-20261103.md` nel branch `work/v3-brain-f2-grok`, commit `f8070966a8f0c79aa339a0582b0650d8cb1b85cc`. Specifica criteri accettazione concreti per fail-closed OPEN, adapter F1, indisponibilità AI (incl. 402), EventJournal idempotente con portfolio/run, CLOSE/MODIFY_STOP non eseguibili e test negativi. Ramo in DRAFT, niente esecuzione. Il collaboratore può leggere direttamente il ticket su GitHub e consegnare un tarball senza privilegi scrittura.
