@@ -690,7 +690,56 @@ def test_speed(monkeypatch, index, dense):
         durations.append(elapsed)
     ratio = durations[1] / durations[0]
     print(f'SPEED index={index} dense={dense} n15000={durations[0]:.6f} n60000={durations[1]:.6f} ratio={ratio:.6f}')
-    assert ratio < 6
+    # Il rapporto fra tempi NON e' asserito (instabile sulle macchine lente, tempi di pochi ms): la linearita'
+    # e' provata in modo deterministico da test_work_is_linear_not_quadratic (conteggio delle letture).
+
+
+class CountList(list):
+    """Lista che conta quante volte i suoi elementi vengono letti (indice, fetta, iterazione)."""
+    reads = 0
+
+    def __getitem__(self, key):
+        CountList.reads += 1
+        return list.__getitem__(self, key)
+
+    def __iter__(self):
+        for item in list.__iter__(self):
+            CountList.reads += 1
+            yield item
+
+
+@pytest.mark.parametrize('index', range(4))
+@pytest.mark.parametrize('dense', [False, True])
+def test_work_is_linear_not_quadratic(monkeypatch, index, dense):
+    # Prova DETERMINISTICA (nessun orologio): letture di barre e lati a n e a 2n. Lineare -> rapporto ~2;
+    # una scansione per segnale (quadratica) -> ~4. Soglia 2.5.
+    reads = {}
+    for n in (2000, 4000):
+        bs = CountList(bars(n))
+        sides = CountList([1 if i % 2 else -1 for i in range(n)])
+        if index == 3:
+            patch_atr(monkeypatch, [D(2)] * n)
+            call = lambda: build(bs, sides if dense else CountList([0] * n), REAL_RISK)
+        else:
+            mod, fn, ps, _ = CASES[index]
+            if dense:
+                data, _ = feature_stubs(monkeypatch, mod, n)
+                if mod is B:
+                    data['high'] = [D(99) if i % 2 == 0 else D(102) for i in range(n)]
+                    data['low'] = [D(98) if i % 2 == 0 else D(101) for i in range(n)]
+                if mod is R:
+                    data['pb'] = [D('.1') if i % 2 else D('.9') for i in range(n)]
+                    data['hist'] = [D(1) if i % 2 else D(-1) for i in range(n)]
+                    data['line'] = [-h for h in data['hist']]
+                if mod is T:
+                    data['ef'] = [D(99) if i % 2 else D(101) for i in range(n)]
+            call = lambda: fn('BTCUSDT', bs, ps, REAL_RISK, candle_ms=MS)
+        CountList.reads = 0
+        out = call()
+        reads[n] = CountList.reads
+        assert len(out) >= n - 1 if dense else len(out) == 0
+        assert reads[n] > 0
+    assert reads[4000] / reads[2000] < 2.5, reads
 
 
 @pytest.mark.parametrize('value', [RISK, BP, RP, TP])
