@@ -464,6 +464,10 @@ class TestValidation:
         expect("invalid_period", good_bars(), 2, 0, True, SP, candle_ms=CMS)
         for args in ((0, 3, 2), (2, 0, 2), (2, 3, 0)):
             expect("invalid_period", [None], *args, None, candle_ms=CMS)           # periodo prima di params e di bars
+        for which in range(3):                                                     # idem con True (numericamente valido)
+            args = [1, 1, 1]
+            args[which] = True
+            expect("invalid_period", [None], *args, None, candle_ms=CMS)
 
     @pytest.mark.parametrize("bad", [None, {"shock_tr_mult": 1}, (D(1), D(50), D(30), D(10)), "x", 1, [D(1)] * 4])
     def test_params_wrong_type(self, bad):
