@@ -111,3 +111,22 @@ PROSSIMO PASSO: sviluppare e sottoporre a verifica indipendente P5 Opportunity C
 
 Fonti: Library versione 20; ramo `diario`, incluso `diario/2026-10-30_work-ripresa-doppio-checkpoint.md`, `STATO.md` e checkpoint 02–04 novembre; PR GitHub #29 e #33–#44. Accesso alle chat limitato ai messaggi recenti forniti e alle fonti accessibili: questo è un riepilogo di ripresa, non un'esportazione integrale automatica.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 04/11/2026 12:47 Europe/Rome — P5 Opportunity Cost Engine verificato offline, PR #45 DRAFT
+
+FATTO/PREPARATO: nuovo modulo F7 `backend/v3/learning/opportunity.py` sul ramo `work/v3-p5-opportunity-grok-20261104`, PR #45 aperta e DRAFT, HEAD `8fc808b6db4ad255f2f628d3666ed4bd7e81355b`, impilata sulla PR #44. `label_candidates` etichetta a posteriori candidati LONG/SHORT non eseguiti per orizzonti configurabili (esempi 15 minuti, 1 ora e 4 ore), indicando stop/target/timeout, ambiguità, prezzo e risultato lordo/netto. È un componente puro di ricerca: non decide, non apre e non chiude posizioni; `candle_ms`, orizzonti, costi e policy dei tocchi ambigui restano argomenti obbligatori.
+
+La consegna originale di Grok è conservata nel commit `0889106`; Claude ha corretto nel commit `330ca96` consumo silenzioso di generatori, accettazione di insiemi non ordinati, ID con newline, dipendenza dal contesto Decimal, overflow non tipizzato, indice ricostruito per candidato e zero negativo. Aggiunti oracolo indipendente `Fraction` (`fc72786`), test più stretti dopo la mutazione (`4b8d13e`) e marcatura `xfail(strict)` dei tre test errati della consegna (`8fc808b`).
+
+TEST: il diario registra suite V3 locale da 923 a **1215 PASS**, 3 xfailed dichiarati e 3 failure preesistenti/invariate dovute a `fastapi` assente nell'ambiente. Aggiunti 278 test indipendenti oltre ai test validi di Grok; contro il modulo originale 14 casi della nuova suite fallivano. Mutazione **99/101**, con due sopravvissuti classificati equivalenti; la sola suite Grok ne intercettava 35/101. Oracolo indipendente su 80 dataset di candele valide e controlli manuali sui confini. Questi risultati sono verifiche offline riportate nel diario e nella PR, non GitHub Actions né evidenza economica.
+
+RILASCIATO: nulla. PR #45 non è unita né distribuita. Nessun merge/deploy V3, modifica al runtime, reset, wallet, API pagata o accesso ai dati reali. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: nessuna simulazione di gap/slippage o liquidazione; costo uniforme per stop/target; ordine dei tocchi dentro la stessa candela non osservabile, quindi `ambiguous_policy` resta una decisione esplicita. Manca ancora il produttore dei candidati. Import dei 534 trade legacy bloccato finché F0 non completa backup cifrato off-host e restore indipendente. Le tre failure legate a `fastapi` non sono state risolte da questo modulo e non vanno confuse con P5.
+
+PROSSIMO PASSO: P6 `backend/v3/learning/walkforward.py`, selezionando celle positive esclusivamente dai dati passati e misurandone il decadimento nel periodo successivo, per ridurre il rischio dei confronti multipli. Restano da decidere policy prudente/ottimistica per i tocchi ambigui, eventuale liquidazione PAPER e soglie statistiche; queste decisioni non bloccano lo sviluppo offline.
+
+Fonti: Library versione 21; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p5_opportunity.md` e il checkpoint di ripresa; PR GitHub #45. Accesso alle chat limitato ai messaggi recenti forniti e alle fonti accessibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
