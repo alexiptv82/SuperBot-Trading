@@ -1,3 +1,12 @@
+## 04/11 (mattina) — P3 FATTO: TradeOutcome + ESTRATTORE DEGLI ESITI, PR #43 DRAFT, 525 PASS
+
+**Claude Sonnet 5.5 — coordinatore**
+
+`backend/v3/outcomes.py`: un record immutabile per ogni posizione PAPER chiusa (net_bp, costs_bp, R, durata, motivo di uscita, legame **verificato** con la decisione e regime). Pura, sola lettura, nulla scartato in silenzio, numeri ricalcolati. 84 test, mutazione 25/25. **Correzione al mio strumento:** le prove di mutazione usavano la cache del bytecode; rifatte tutte con la cache disattivata, risultati invariati. Limite: nel journal non c'è un campo "strategia" (non va inventato).
+**Prossimo:** Grok — primo modulo F7 `learning/expectancy.py` (prompt nel Project: `claude/prompt-grok-p4-expectancy-2026-11-04.md`); consegna come testo, Claude rilancia test e mutanti.
+
+---
+
 ## 04/11 (mattina) — P2 FATTO: LEGAME DECISIONE → POSIZIONE → CHIUSURA, PR #42 DRAFT, 441 PASS
 
 **Claude Sonnet 5.5 — coordinatore** · motore: codice di Grok (diff, Modalità B: non può fare push)
