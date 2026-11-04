@@ -2,6 +2,8 @@
 """
 import random
 from decimal import Decimal
+
+import pytest
 from fractions import Fraction
 from backend.v3.learning.opportunity import (
     Candle, Candidate, label_candidates,
@@ -61,6 +63,7 @@ def test_signal_on_boundary_included():
     r = label_candidates([c], candles, candle_ms=1000, horizons_ms=[1000], cost_bp=Decimal("0"), ambiguous_policy="stop_first")
     assert r[0].horizons[0].barrier in ("target", "stop")
 
+@pytest.mark.xfail(strict=True, reason="attesa errata (consegna di Grok): la candela 2000 ha high=115 == target=115, quindi il tocco c'e' ed e' 'target', non 'timeout'. Il confine e' coperto da TestWindow in test_brain_f7_opportunity_oracle.py")
 def test_signal_after_boundary_excluded():
     candles = {"BTC": [_c(1000, 100, 120, 95, 110), _c(2000, 110, 115, 100, 112)]}
     c = _cand("c1", "BTC", 1, 1001, 100, 90, 115)
@@ -126,6 +129,7 @@ def test_no_mutation():
     label_candidates([c], candles, candle_ms=1000, horizons_ms=[1000], cost_bp=Decimal("0"), ambiguous_policy="stop_first")
     assert c.entry_price == orig
 
+@pytest.mark.xfail(strict=True, reason="difettoso (consegna di Grok): legge un percorso relativo (dipende dalla cwd) e la whitelist degli import omette collections.abc, che e' libreria standard. La purezza e' coperta da TestPublicContractAndPurity in test_brain_f7_opportunity_oracle.py")
 def test_purity():
     import ast
     from pathlib import Path
@@ -183,6 +187,7 @@ def _oracle(candidates, candles, candle_ms, horizons_ms, cost_bp, policy):
         out.append((c.candidate_id, horizons))
     return out
 
+@pytest.mark.xfail(strict=True, reason="difettoso (consegna di Grok): genera candele non valide (close fino a high+1) che il modulo rifiuta con invalid_candles, e il suo 'oracolo' ricopia l'algoritmo del modulo. Sostituito da TestAgainstOracle in test_brain_f7_opportunity_oracle.py")
 def test_oracle_random():
     rng = random.Random(42)
     has_amb = has_gap = has_timeout = False
