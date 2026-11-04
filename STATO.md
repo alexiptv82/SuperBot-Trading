@@ -1,37 +1,16 @@
-## 2026-11-04 — F5 PAPER executor: 138/138 PASS, PR #38 DRAFT
+## 04/11 — F5 PAPER EXECUTOR COMPLETATO + FIX BASELINE 215/215 PASS
 
-**Claude Sonnet 4.6**
+**Claude Sonnet 4.6 — coordinatore**
 
-`backend/v3/executor/paper.py`: `execute_paper()` — riceve `BrainDecision(OPEN+APPROVED)`,
-simula fill PAPER, scrive evento `paper_open` su EventJournal, restituisce `ExecutionReceipt`.
-Fail-closed: `ExecutionError` se qualcosa va storto prima della scrittura; `EXECUTED_PAPER` impostato
-solo dopo scrittura riuscita. stdlib only, nessuna API. 25 test offline.
-PR [#38](https://github.com/alexiptv82/SuperBot-Trading/pull/38) DRAFT.
-**138/138 PASS** (F2×3 + F3×2 + F4 + F5 — Python 3.13.16).
-Nessun deploy, DESK_MODE=paper, Hawk/Bull intatti.
+**F5 completato:** `backend/v3/executor/paper.py` + 25 test → 138/138 PASS. PR #38 DRAFT aperta.
+Branch: `work/v3-f5-paper-executor-20261104` (commit finale `b7cf0bd`)
 
-AI: claude
+**Fix baseline R12/R13/R19:** 9 test scritti da altre AI con contratto obsoleto `journal=None`.
+Aggiornati al contratto attuale (`ValueError` al costruttore / journal reale via tmpdir).
+Risultato: **215/215 PASS** (F2+F3+F4+F5, Python 3.13.16, 6.36s).
 
----
-
-## 2026-11-04 — F4 trasporti+budget: 113/113 PASS, PR #37 DRAFT | F5 PAPER executor in corso
-
-**Claude Sonnet 4.6**
-
-**F4 completata** — branch `work/v3-f4-transports-budget-20261104` (commit `c0bc55a`), PR [#37](https://github.com/alexiptv82/SuperBot-Trading/pull/37) DRAFT.
-- `backend/v3/transport.py`: factory `deepseek_transport()` e `claude_transport()` — stdlib only, API key letta a runtime, fail-closed su ProviderUnavailable
-- `backend/v3/budget.py`: `BudgetLedger` SQLite append-only, `spending_gate()` factory, thread-safe, WAL
-- `backend/tests/test_brain_f4_transports.py`: 30 test offline (15 budget, 7 transport, 8 adapter)
-- **113/113 PASS** (Python 3.13.16, 0.54s)
-- Aggiunto `.gitignore` completo (Python, IDE, OS, secrets)
-
-**F5 PAPER executor — in corso** — branch `work/v3-f5-paper-executor-20261104`.
-Obiettivo: `backend/v3/executor/paper.py` — riceve `BrainDecision(APPROVED, risk_quote)`, simula fill PAPER, scrive su EventJournal, restituisce `ExecutionReceipt`. Nessuna API reale.
-
-Gate ancora aperti: trust anchor Ed25519 reale, F6 dashboard, F7 brain evolutivo (Grok), F8 integrazione.
-Nessun deploy, DESK_MODE=paper, Hawk/Bull non toccati, cervello intatto.
-
-AI: claude
+**Prossimo:** F6 — Dashboard unificata (Falco + Toro + Brain in un'unica view).
+F7 Grok non iniziato. F0 backup VPS bloccato su OK utente + Termius.
 
 ---
 
