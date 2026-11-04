@@ -1,20 +1,17 @@
-## 03/11 (sera) — FASE 0 COMPLETATA: baseline integration F1+F2(P0/P1)+F3 — 67/67 PASS, PR #36 DRAFT
+## 04/11 — FASE 0 COMPLETA: 83/83 PASS — legacy fix su branch integrazione
 
 **Claude Sonnet 4.6 — coordinatore V3**
 
-Branch `work/v3-integration-baseline-20261103` (commit `12dc78f`), PR [#36](https://github.com/alexiptv82/SuperBot-Trading/pull/36) DRAFT.
+Completata Fase 0 su `work/v3-integration-baseline-20261103` (commit `2a868db`, PR #36 DRAFT).
 
-Stack integrata: F3 (`627045e`) come base (già stacked su F2), con `engine.py` P1 sovrapposto da `work/v3-f2-review-claude-20261103` (`02e1f08`).
+**15 test legacy corretti** (`test_brain_f2.py` 5 + `test_brain_f2_safety_contract.py` 10):
+aggiunto `risk_policy=`, `portfolio_snapshot=`, `market_params=`, `journal=` a tutti i costruttori
+`BrainEngine`. Corretto semantica `test_no_risk_gate_must_prevent_open` → `pytest.raises(ValueError)`.
 
-**Risultati test:** 33/33 (Claude) + 17/17 (F3 boundaries) + 17/17 (F3+F2 integration) = **67/67 PASS** Python 3.13.16.
+**Risultato: 83/83 PASS** (Python 3.13.16, 0.41s). Gate Fase 0 chiuso.
 
-**Regressions attese:** 15 test Grok legacy (`test_brain_f2.py` + `test_brain_f2_safety_contract.py`) falliscono perché pre-datano i P0 fix (mancano `risk_policy=`, `journal=`). Debito tecnico di Grok da correggere in `work/v3-brain-f2-grok`.
-
-**Prossimo:** Grok corregge 15 suite legacy → poi Fase F4 (trasporti AI).
-
-**Gate invariati:** DESK_MODE=paper, Hawk/Bull non toccati, cervello intatto, nessun deploy.
-
-Voce dettagliata: `diario/2026-11-03_fase0_baseline_integration_67pass.md`
+**Prossimo: Fase F4 — AI transports** (DeepSeek HTTP + Claude HTTP + budget ledger).
+Richiede autore F4 (Grok per trasporti, Claude per coordinamento). Nessun deploy, DESK_MODE=paper.
 
 ---
 
