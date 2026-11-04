@@ -78,6 +78,7 @@ class BrainDecision:
     sources: list[str] = field(default_factory=list)
     occurred_at_ms: int = 0
     status: ProposalStatus = ProposalStatus.DRAFT
+    journal_event_id: Optional[str] = None
 
 
 @dataclass(frozen=True)

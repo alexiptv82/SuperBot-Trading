@@ -42,6 +42,25 @@ _ALLOWED_SOURCES = frozenset({
     "deepseek:analysis", "claude:review", "risk:quote",
 })
 _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
+_SYMBOL_RE = __import__("re").compile(r"^[A-Z0-9][A-Z0-9/_:.-]{0,31}$")
+_ALLOWED_REGIMES = frozenset({"TRENDING", "RANGING", "VOLATILE", "UNKNOWN"})
+_EVENT_ID_RE = __import__("re").compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$")
+
+def _safe_symbol(s):
+    if isinstance(s, str) and _SYMBOL_RE.match(s):
+        return s
+    return "unknown"
+
+def _safe_regime(r):
+    if isinstance(r, str) and r in _ALLOWED_REGIMES:
+        return r
+    return "UNKNOWN"
+
+def _safe_event_id(eid):
+    if isinstance(eid, str) and _EVENT_ID_RE.match(eid):
+        return eid
+    return None
+
 _ALLOWED_ORIGINS = frozenset({"deepseek", "claude", "deepseek:mock", "claude:mock"})
 logger = logging.getLogger(__name__)
 _TRUSTED_APPROVERS = frozenset({"operator", "system-admin"})  # external trust anchor required
@@ -181,11 +200,13 @@ class BrainEngine:
                 decision.rationale = "missing_journal"
                 return self._persist_and_return(decision, context, write_journal=False)
 
-            if not self._append_durable(decision, context):
+            eid = self._append_durable(decision, context)
+            if not eid:
                 decision.kind = DecisionKind.NO_TRADE
                 decision.status = ProposalStatus.REJECTED
                 decision.rationale = "journal_persist_failed"
                 return self._persist_and_return(decision, context, write_journal=False)
+            decision.journal_event_id = _safe_event_id(eid)
             # Already written; do not write again
             return self._persist_and_return(decision, context, write_journal=False)
 
@@ -406,9 +427,9 @@ class BrainEngine:
             decision.risk_quote = None
         return decision
 
-    def _append_durable(self, decision: BrainDecision, context: MarketContext) -> bool:
+    def _append_durable(self, decision: BrainDecision, context: MarketContext) -> Optional[str]:
         if not isinstance(self.journal, EventJournal) or Event is None:
-            return False
+            return None
         eid = _request_id(self.run_id, context.timestamp_ms, context.symbol, decision.proposal)
         claim = uuid.uuid4().hex
         try:
@@ -425,16 +446,18 @@ class BrainEngine:
                     "rationale": decision.rationale,
                     "sources": self._sanitize_sources(decision.sources),
                     "claim": claim,
+                    "symbol": _safe_symbol(getattr(context, "symbol", None)),
+                    "regime": _safe_regime(getattr(context, "regime", None)),
                 },
             )
             stored = self.journal.append(event)
             after = self.journal.list_run("brain", self.run_id)
             match = [r for r in after if r.event.event_id == eid]
             if not match or match[0].event.payload.get("claim") != claim:
-                return False
-            return True
+                return None
+            return eid
         except Exception:
-            return False
+            return None
 
     def _normalize(self, decision: BrainDecision) -> BrainDecision:
         """Single boundary: rebuild a clean decision before return/memory/journal."""
@@ -460,6 +483,7 @@ class BrainEngine:
             sources=sources,
             occurred_at_ms=decision.occurred_at_ms if isinstance(decision.occurred_at_ms, int) else 0,
             status=status,
+            journal_event_id=_safe_event_id(getattr(decision, "journal_event_id", None)),
         )
 
     def _persist_and_return(self, decision: BrainDecision, context: MarketContext, write_journal: bool = True) -> BrainDecision:
