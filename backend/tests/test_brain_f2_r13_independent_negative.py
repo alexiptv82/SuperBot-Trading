@@ -68,7 +68,9 @@ def test_no_trade_cannot_claim_executed():
             return BrainDecision(kind=DecisionKind.NO_TRADE,
                                  status=ProposalStatus.EXECUTED_PAPER,
                                  rationale="forged",occurred_at_ms=context.timestamp_ms)
-    assert engine(analyst=Forged()).step(CTX).status != ProposalStatus.EXECUTED_PAPER
+    with TemporaryDirectory() as td:
+        j=EventJournal(Path(td)/"j.sqlite");j.init_schema()
+        assert engine(journal=j,analyst=Forged()).step(CTX).status != ProposalStatus.EXECUTED_PAPER
 
 def test_untrusted_sources_not_persisted():
     with TemporaryDirectory() as td:

@@ -49,9 +49,9 @@ def test_missing_operator_identity_rejected_even_with_verifier():
         assert d.status != ProposalStatus.APPROVED
 
 def test_missing_journal_denial_has_no_proposal_or_risk_quote():
-    d=engine(None,m=mandate(portfolio_id='brain',run_id='r19')).step(CTX)
-    assert d.kind==DecisionKind.NO_TRADE and d.status != ProposalStatus.APPROVED
-    assert d.proposal is None and d.risk_quote is None
+    # journal=None now raises ValueError at constructor (fail-closed: no journal = no engine)
+    with pytest.raises(ValueError, match='journal is required'):
+        engine(None, m=mandate(portfolio_id='brain', run_id='r19'))
 
 class BrokenJournal(EventJournal):
     def append(self,e): raise OSError('synthetic-failure')

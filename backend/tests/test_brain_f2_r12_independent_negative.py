@@ -30,20 +30,25 @@ def engine(**kw):
     return BrainEngine(**args)
 
 def test_must_not_approve_without_persistent_journal():
-    decision=engine(journal=None).step(context())
-    assert not (decision.kind==DecisionKind.OPEN and decision.status==ProposalStatus.APPROVED), 'Approved OPEN without journal'
+    # journal=None now raises ValueError at construction (fail-closed at constructor)
+    with pytest.raises(ValueError, match='journal is required'):
+        engine(journal=None)
 
 def test_paused_state_must_be_explicit():
     # market_params lacks paused and daily_loss_latched
     mp = params()
     del mp['paused']
     del mp['daily_loss_latched']
-    decision=engine(market_params=mp).step(context())
+    with TemporaryDirectory() as td:
+        journal=EventJournal(Path(td)/'j.sqlite');journal.init_schema()
+        decision=engine(market_params=mp,journal=journal).step(context())
     assert decision.kind==DecisionKind.NO_TRADE, 'Missing pause state was assumed false'
 
 @pytest.mark.parametrize('floor', ['NaN','Infinity'])
 def test_malformed_floor_fails_closed_without_crashing(floor):
-    decision=engine(risk_policy=policy(floor)).step(context())
+    with TemporaryDirectory() as td:
+        journal=EventJournal(Path(td)/'j.sqlite');journal.init_schema()
+        decision=engine(risk_policy=policy(floor),journal=journal).step(context())
     assert decision.kind==DecisionKind.NO_TRADE
 
 class SensitiveError(Analyst):
@@ -51,7 +56,9 @@ class SensitiveError(Analyst):
         raise RuntimeError('SensitiveHeader=example-private-credential-value')
 
 def test_provider_exception_text_is_not_reflected():
-    decision=engine(analyst=SensitiveError()).step(context())
+    with TemporaryDirectory() as td:
+        journal=EventJournal(Path(td)/'j.sqlite');journal.init_schema()
+        decision=engine(analyst=SensitiveError(),journal=journal).step(context())
     assert 'example-private-credential-value' not in decision.rationale
 
 def test_brain_engine_refuses_cross_portfolio_journal_writes():
@@ -73,12 +80,16 @@ class ReturnsNone(Analyst):
     def analyze(self, context, open_positions): return None
 
 def test_malformed_analyst_return_fails_closed_without_crash():
-    decision=engine(analyst=ReturnsNone()).step(context())
+    with TemporaryDirectory() as td:
+        journal=EventJournal(Path(td)/'j.sqlite');journal.init_schema()
+        decision=engine(analyst=ReturnsNone(),journal=journal).step(context())
     assert decision.kind == DecisionKind.NO_TRADE
 
 class InvalidReviewer(MockClaudeReviewer):
     def review(self, decision, complexity_reason): return None
 
 def test_malformed_reviewer_return_fails_closed_without_crash():
-    decision=engine(reviewer=InvalidReviewer()).step(context(),complexity_threshold=.9)
+    with TemporaryDirectory() as td:
+        journal=EventJournal(Path(td)/'j.sqlite');journal.init_schema()
+        decision=engine(reviewer=InvalidReviewer(),journal=journal).step(context(),complexity_threshold=.9)
     assert decision.kind == DecisionKind.NO_TRADE
