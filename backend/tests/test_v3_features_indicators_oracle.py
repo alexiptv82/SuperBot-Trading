@@ -26,10 +26,11 @@ from __future__ import annotations
 import ast
 import copy
 import dataclasses
+import decimal
 import itertools
 import math
 import random
-from decimal import ROUND_UP, Decimal, InvalidOperation, getcontext, localcontext
+from decimal import ROUND_UP, Context, Decimal, InvalidOperation, getcontext, localcontext
 from fractions import Fraction
 from pathlib import Path
 
@@ -188,8 +189,12 @@ def o_macd(bars, fast, slow, signal):
 
 
 def o_sqrt(x: Fraction) -> Fraction:
-    """sqrt a scala fissa con math.isqrt: errore assoluto <= 1e-40."""
-    return Fraction(math.isqrt(x.numerator * 10**80 // x.denominator), 10**40)
+    """sqrt con math.isqrt a scala RELATIVA: parte intera del risultato >= 10**40 (errore relativo <= 1e-40)."""
+    if x == 0:
+        return Fraction(0)
+    d = len(str(x.numerator)) - len(str(x.denominator))            # ~ log10(x) entro +-1
+    m = max(0, (82 - d + 1) // 2 + 1)
+    return Fraction(math.isqrt(x.numerator * 10 ** (2 * m) // x.denominator), 10 ** m)
 
 
 def o_boll(bars, n, k):
@@ -830,47 +835,130 @@ class TestValidationValues:
 
 
 # ============================================================ scale estreme
+BIGCTX = Context(prec=120, Emax=decimal.MAX_EMAX, Emin=decimal.MIN_EMIN)
+CTX_FIELDS = (("prec", 60), ("Emin", -999999), ("Emax", 999999), ("clamp", 0))
+
+
+def base_bars(n=8):
+    """Serie a scala 1; le altre scale sono la stessa mantissa con esponente spostato (invarianza di scala)."""
+    out, p = [], D(1)
+    for k in range(n):
+        o, c = p, p * (D("1.01") if k % 2 else D("0.99"))
+        out.append(Bar(k * CMS, o, max(o, c) * D("1.001"), min(o, c) / D("1.001"), c, D(1)))
+        p = c
+    return out
+
+
+def rescale(bars, e):
+    with localcontext(BIGCTX):
+        return [Bar(b.open_time_ms, b.open.scaleb(e), b.high.scaleb(e), b.low.scaleb(e), b.close.scaleb(e), b.volume)
+                for b in bars]
+
+
+def _series(r):
+    return tuple(r.__dict__.values()) if dataclasses.is_dataclass(r) else (r,)
+
+
+# nome -> (calcolo sulle barre, oracolo sulle barre a scala 1, grado di omogeneita' di ogni serie)
+# grado 1: la serie scala con il prezzo (livelli); grado 0: indipendente dalla scala (rapporti)
+SCALE_CASES = {
+    "true_range": (lambda b: true_range(b, candle_ms=CMS), lambda b: (o_tr(b),), (1,)),
+    "atr": (lambda b: atr(b, 3, candle_ms=CMS), lambda b: (o_atr(b, 3),), (1,)),
+    "rsi": (lambda b: rsi(b, 3, candle_ms=CMS), lambda b: (o_rsi(b, 3),), (0,)),
+    "macd": (lambda b: macd(b, 2, 3, 2, candle_ms=CMS), lambda b: o_macd(b, 2, 3, 2), (1, 1, 1)),
+    "bollinger": (lambda b: bollinger(b, 3, D(2), candle_ms=CMS), lambda b: o_boll(b, 3, D(2)), (1, 1, 1, 0, 0)),
+    "donchian": (lambda b: donchian(b, 3, candle_ms=CMS), lambda b: o_donchian(b, 3), (1, 1)),
+    "adx": (lambda b: adx(b, 3, candle_ms=CMS), lambda b: o_adx(b, 3), (0, 0, 0)),
+    "sma": (lambda b: sma(closes(b), 3), lambda b: (o_sma([F(x) for x in closes(b)], 3),), (1,)),
+    "ema": (lambda b: ema(closes(b), 3), lambda b: (o_ema([F(x) for x in closes(b)], 3),), (1,)),
+    "rma": (lambda b: rma(closes(b), 3), lambda b: (o_rma([F(x) for x in closes(b)], 3),), (1,)),
+}
+BASE = base_bars()
+BASE_WANT = {name: case[1](BASE) for name, case in SCALE_CASES.items()}
+MUST_WORK = (-100_000, -300, 300, 100_000)
+MAY_REFUSE = (-10**9, -1_000_100, -1_000_020, -999_990, -600_000, 600_000, 999_990, 999_999, 1_000_010,
+              1_000_100, 10**9)
+REL = Fraction(1, 10**30)
+
+
+def assert_scaled_correct(got_series, want_series, degrees, e, ctx):
+    assert len(got_series) == len(want_series) == len(degrees), ctx
+    for si, (gs, ws, deg) in enumerate(zip(got_series, want_series, degrees)):
+        assert len(gs) == len(ws), (ctx, si)
+        for i, (g, w) in enumerate(zip(gs, ws)):
+            if w is None:
+                assert g is None, (ctx, si, i)
+                continue
+            assert g is not None and type(g) is Decimal, (ctx, si, i, g)
+            with localcontext(BIGCTX):
+                unscaled = Fraction(g.scaleb(-e * deg))
+            assert abs(unscaled - w) <= REL * max(abs(w), Fraction(1, 10**20)), (ctx, si, i, g)
+
+
 class TestExtremeScales:
-    @staticmethod
-    def scaled(exp, n=8):
-        out, p = [], D(10) ** exp
-        for k in range(n):
-            o, c = p, p * (D("1.01") if k % 2 else D("0.99"))
-            out.append(Bar(k * CMS, o, max(o, c) * D("1.001"), min(o, c) / D("1.001"), c, D(1)))
-            p = c
-        return out
+    def test_base_series_is_valid_and_oracle_is_nontrivial(self):
+        check_bars(BASE, candle_ms=CMS)
+        for name, want in BASE_WANT.items():
+            assert any(v is not None and v != 0 for ws in want for v in ws), name
 
-    ALL = {
-        "true_range": lambda b: true_range(b, candle_ms=CMS),
-        "atr": lambda b: atr(b, 3, candle_ms=CMS),
-        "rsi": lambda b: rsi(b, 3, candle_ms=CMS),
-        "macd": lambda b: macd(b, 2, 3, 2, candle_ms=CMS),
-        "bollinger": lambda b: bollinger(b, 3, D(2), candle_ms=CMS),
-        "donchian": lambda b: donchian(b, 3, candle_ms=CMS),
-        "adx": lambda b: adx(b, 3, candle_ms=CMS),
-        "sma": lambda b: sma(closes(b), 3),
-        "ema": lambda b: ema(closes(b), 3),
-        "rma": lambda b: rma(closes(b), 3),
-    }
+    @pytest.mark.parametrize("name", list(SCALE_CASES))
+    @pytest.mark.parametrize("e", MUST_WORK)
+    def test_supported_range_is_correct_not_refused(self, name, e):
+        fn, _, degrees = SCALE_CASES[name]
+        got = _series(fn(rescale(BASE, e)))
+        assert_scaled_correct(got, BASE_WANT[name], degrees, e, (name, e))
 
-    @pytest.mark.parametrize("exp", [400, 600_000, 999_990, 999_997, -400, -600_000, -999_990])
-    @pytest.mark.parametrize("name", list(ALL))
-    def test_result_or_typed_error_never_a_raw_exception(self, name, exp):
+    @pytest.mark.parametrize("name", list(SCALE_CASES))
+    @pytest.mark.parametrize("e", MAY_REFUSE)
+    def test_beyond_range_correct_or_typed_never_raw_never_silently_wrong(self, name, e):
+        fn, _, degrees = SCALE_CASES[name]
         try:
-            self.ALL[name](self.scaled(exp))
-        except ValueError as e:
-            assert str(e) == "numeric_out_of_range", (name, exp, str(e))
-        # qualunque altra eccezione (decimal.Overflow, InvalidOperation, ...) fa fallire il test
+            got = _series(fn(rescale(BASE, e)))
+        except ValueError as exc:
+            assert str(exc) == "numeric_out_of_range", (name, e, str(exc))
+            return
+        assert_scaled_correct(got, BASE_WANT[name], degrees, e, (name, e))      # se risponde, risponde giusto
 
-    def test_bollinger_at_huge_scale_is_typed(self):
-        expect("numeric_out_of_range", bollinger, self.scaled(600_000), 3, D(2), candle_ms=CMS)
+    @pytest.mark.parametrize("name", list(SCALE_CASES))
+    def test_the_refusal_actually_happens_somewhere(self, name):
+        """Guardia: l'insieme di scale oltre il range contiene casi che il modulo rifiuta davvero (sono 'ValueError'
+        e non risposte): altrimenti il test precedente non proverebbe nulla sul ramo dell'errore."""
+        fn = SCALE_CASES[name][0]
+        refused = 0
+        for e in MAY_REFUSE:
+            try:
+                fn(rescale(BASE, e))
+            except ValueError:
+                refused += 1
+        if name != "donchian":                       # donchian non fa aritmetica: risponde a ogni scala
+            assert refused >= 3, (name, refused)
 
-    def test_moderate_huge_scale_still_correct(self):
-        bars = self.scaled(300)
-        r = bollinger(bars, 3, D(2), candle_ms=CMS)
-        mid, up, lo, pb, bw = o_boll(bars, 3, D(2))
-        assert_same(r.mid, mid, "mid", Fraction(1, 10**30))
-        assert_same(r.upper, up, "upper", Fraction(1, 10**30))
+    def test_error_has_no_decimal_cause_attached(self):
+        with pytest.raises(ValueError) as ex:
+            bollinger(rescale(BASE, 600_000), 3, D(2), candle_ms=CMS)
+        assert str(ex.value) == "numeric_out_of_range"
+        assert ex.value.__cause__ is None and ex.value.__suppress_context__ is True
+
+    def test_context_is_pinned_not_inherited(self):
+        c = ind._CTX
+        for attr, want in CTX_FIELDS:
+            assert getattr(c, attr) == want, attr
+        assert c.rounding == decimal.ROUND_HALF_EVEN
+        for trap in (decimal.InvalidOperation, decimal.DivisionByZero, decimal.Overflow, decimal.Underflow):
+            assert c.traps[trap], trap
+
+    def test_the_ambient_trap_settings_of_the_caller_do_not_matter(self):
+        with localcontext() as c:
+            c.traps[decimal.Overflow] = False
+            c.traps[decimal.Underflow] = False
+            c.Emax = decimal.MAX_EMAX
+            c.Emin = decimal.MIN_EMIN
+            with pytest.raises(ValueError) as ex:
+                bollinger(rescale(BASE, 600_000), 3, D(2), candle_ms=CMS)
+            assert str(ex.value) == "numeric_out_of_range"
+            with pytest.raises(ValueError) as ex:
+                ema(closes(rescale(BASE, -1_000_100)), 3)
+            assert str(ex.value) == "numeric_out_of_range"
 
 
 # ============================================================ purezza
