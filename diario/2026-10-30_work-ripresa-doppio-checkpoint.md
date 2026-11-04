@@ -206,3 +206,21 @@ PROSSIMO PASSO: P9, definendo prima un contratto comune e poi i rilevatori delle
 
 Fonti: Library versione 25; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p6_walkforward.md` e il checkpoint di ripresa; PR GitHub #50. Dei progressi delle chat sono accessibili soltanto messaggi recenti e riferimenti disponibili: questo è un riepilogo di ripresa, non un'esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+
+---
+
+## 04/11/2026 20:51 Europe/Rome — P6: prova di complessità resa deterministica
+
+FATTO/PREPARATO: aggiornato il solo test indipendente di P6 sul ramo `work/v3-p6-walkforward-grok-20261104`, PR #50 ancora aperta e DRAFT. Nuovo HEAD `6db4cc219743fcbc6107c87f9d9ec5afb002ba96`, successivo a `be7053fea0eef9a39df1623a6d1cf7e057ac1f6c`. Il commit modifica esclusivamente `backend/tests/test_brain_f7_walkforward_independent.py` (+29/−7): il rapporto fra tempi su 15.000 e 60.000 trade, risultato instabile su una macchina esterna (9,3 contro 4,5 nell'ambiente originario; lineare atteso circa 4), è sostituito da una prova deterministica che conta le letture di `closed_at_ms` e `link_status` tramite trade-spia. La guardia verifica che i trade siano letti O(N), non una volta per ciascun fold; il controllo “molte celle” usa il minimo di due corse e un limite 4×, mentre il difetto precedente produceva circa 35×.
+
+TEST: non è stato documentato un nuovo conteggio aggregato dopo questo commit; resta quindi valida come ultima suite completa la verifica P6 già registrata: **3179 PASS**, 3 xfailed, mutazione **89/90** con un equivalente e 3 failure preesistenti per `fastapi` mancante. Il nuovo commit elimina una fonte di falso negativo prestazionale senza modificare il modulo `walkforward.py`, il contratto o la logica di selezione. Non vengono dichiarati GitHub Actions, dati reali o nuova evidenza economica.
+
+RILASCIATO: nulla. PR #50 non è unita né distribuita. Nessun codice operativo, strategia, soglia, rischio, Brain, journal o wallet è stato modificato. Nessun merge/deploy, reset, API pagata o accesso a dati reali. `DESK_MODE=paper` resta invariato; PAPER, memoria e storici preservati.
+
+PROBLEMI/APERTI: il test prestazionale assoluto su 60.000 trade resta sensibile alla velocità dell'ambiente, ma la prova della complessità O(N) ora non dipende dall'orologio. Restano invariati i limiti P6 su confronti multipli e fold non indipendenti, la scelta delle soglie statistiche P6/P8, i rilevatori delle 12 schede e il produttore `Candidate` per P5. L1/L4, F0 e import dei 534 trade legacy restano soggetti ai gate già documentati.
+
+PROSSIMO PASSO: P9, definendo il contratto comune e i rilevatori delle 12 schede candle-only che producano `Candidate` per P5; poi laboratorio BTC/ETH fuori campione prima di qualsiasi promozione al Brain.
+
+Fonti: Library versione 26; ramo `diario`, checkpoint di ripresa e stato P6; PR GitHub #50 e commit `6db4cc2`. L'accesso alle chat è limitato ai messaggi recenti disponibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
