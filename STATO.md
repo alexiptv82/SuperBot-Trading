@@ -1,30 +1,21 @@
-## 04/11 — F4 COMPLETATA: HTTP transport + budget ledger, 113/113 PASS
+## 2026-11-04 — F4 trasporti+budget: 113/113 PASS, PR #37 DRAFT | F5 PAPER executor in corso
 
 **Claude Sonnet 4.6**
 
-Implementati `backend/v3/transport.py` (factory DeepSeek + Claude via stdlib urllib) e
-`backend/v3/budget.py` (ledger SQLite append-only + spending_gate fail-closed).
-30 nuovi test → 113/113 PASS totali (F2+F3+F4). Branch: `work/v3-f4-transports-budget-20261104`
-(commit `af18aed`). PR #37 DRAFT. Nessun deploy, DESK_MODE=paper, cervello intatto.
-Gate aperti: F5 executor PAPER, F6 dashboard, F7 brain evolutivo (Grok), F8 release,
-backup off-host VPS (richiede OK utente).
+**F4 completata** — branch `work/v3-f4-transports-budget-20261104` (commit `c0bc55a`), PR [#37](https://github.com/alexiptv82/SuperBot-Trading/pull/37) DRAFT.
+- `backend/v3/transport.py`: factory `deepseek_transport()` e `claude_transport()` — stdlib only, API key letta a runtime, fail-closed su ProviderUnavailable
+- `backend/v3/budget.py`: `BudgetLedger` SQLite append-only, `spending_gate()` factory, thread-safe, WAL
+- `backend/tests/test_brain_f4_transports.py`: 30 test offline (15 budget, 7 transport, 8 adapter)
+- **113/113 PASS** (Python 3.13.16, 0.54s)
+- Aggiunto `.gitignore` completo (Python, IDE, OS, secrets)
 
----
+**F5 PAPER executor — in corso** — branch `work/v3-f5-paper-executor-20261104`.
+Obiettivo: `backend/v3/executor/paper.py` — riceve `BrainDecision(APPROVED, risk_quote)`, simula fill PAPER, scrive su EventJournal, restituisce `ExecutionReceipt`. Nessuna API reale.
 
-## 04/11 — FASE 0 COMPLETA: 83/83 PASS — legacy fix su branch integrazione
+Gate ancora aperti: trust anchor Ed25519 reale, F6 dashboard, F7 brain evolutivo (Grok), F8 integrazione.
+Nessun deploy, DESK_MODE=paper, Hawk/Bull non toccati, cervello intatto.
 
-**Claude Sonnet 4.6 — coordinatore V3**
-
-Completata Fase 0 su `work/v3-integration-baseline-20261103` (commit `2a868db`, PR #36 DRAFT).
-
-**15 test legacy corretti** (`test_brain_f2.py` 5 + `test_brain_f2_safety_contract.py` 10):
-aggiunto `risk_policy=`, `portfolio_snapshot=`, `market_params=`, `journal=` a tutti i costruttori
-`BrainEngine`. Corretto semantica `test_no_risk_gate_must_prevent_open` → `pytest.raises(ValueError)`.
-
-**Risultato: 83/83 PASS** (Python 3.13.16, 0.41s). Gate Fase 0 chiuso.
-
-**Prossimo: Fase F4 — AI transports** (DeepSeek HTTP + Claude HTTP + budget ledger).
-Richiede autore F4 (Grok per trasporti, Claude per coordinamento). Nessun deploy, DESK_MODE=paper.
+AI: claude
 
 ---
 
