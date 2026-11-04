@@ -9,10 +9,16 @@ Flusso:
     for s in summaries:
         print(format_summary(s))
 
-Tipi di evento riconosciuti:
-    paper_open   — apertura posizione PAPER
-    paper_close  — chiusura posizione PAPER (payload: realized_pnl)
-    brain_step   — decisione del cervello (kind in payload: NO_TRADE/OPEN/APPROVED)
+Tipi di evento riconosciuti (e chi li produce oggi):
+    paper_open      — apertura PAPER. Prodotto da executor.paper.execute_paper.
+    brain_decision  — decisione del cervello (payload: kind, status). Prodotto
+                      da brain_f2.engine.BrainEngine (portfolio_id="brain").
+    paper_close     — chiusura PAPER (payload: position_id, symbol,
+                      realized_pnl). ATTENZIONE: contratto PROPOSTO, oggi
+                      nessun modulo lo produce (execute_paper gestisce solo
+                      OPEN). Finche' non esiste un esecutore di chiusura, i
+                      conteggi su chiusure e PnL saranno sempre zero su dati
+                      reali.
 """
 from __future__ import annotations
 
@@ -146,7 +152,7 @@ def build_summary(
                 closed_at_ms=ts,
             ))
 
-        elif ev.kind == "brain_step":
+        elif ev.kind == "brain_decision":
             brain_steps += 1
             decision_kind = _str_field(p.get("kind"))
             decision_status = _str_field(p.get("status"))

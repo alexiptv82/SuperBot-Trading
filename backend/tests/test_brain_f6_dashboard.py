@@ -72,13 +72,16 @@ def _close_event(portfolio_id: str, run_id: str, position_id: str,
 def _brain_event(portfolio_id: str, run_id: str, seq: int,
                  kind: str = "OPEN", status: str = "APPROVED",
                  ts: int = 1_700_000_002_000) -> Event:
+    # Stessa forma dell'evento scritto da BrainEngine._append_durable
+    # (kind="brain_decision", source="brain_f2_engine"). Il test
+    # TestRealProducers sotto verifica che resti allineata al produttore vero.
     return Event(
-        event_id=f"brain_step.{seq}",
+        event_id=f"brain_decision.{seq}",
         portfolio_id=portfolio_id,
         run_id=run_id,
-        kind="brain_step",
+        kind="brain_decision",
         occurred_at_ms=ts,
-        source="brain_engine",
+        source="brain_f2_engine",
         payload={"kind": kind, "status": status},
     )
 
@@ -326,4 +329,106 @@ class TestFormatSummary:
             j.append(_brain_event("brain", "r1", 1))
             s = build_summary(j, "brain", "r1")
         txt = format_summary(s)
-        assert "brain" in txt.lower() or "step" in txt.lower()
+        assert "brain steps : 1 (1 approvati)" in txt
+
+
+# ---------------------------------------------------------------------------
+# TestRealProducers — la dashboard deve leggere cio' che i moduli scrivono DAVVERO
+# ---------------------------------------------------------------------------
+# Gli altri test costruiscono gli eventi a mano. Questi usano i produttori veri
+# (BrainEngine ed execute_paper): se un produttore cambia nome o forma
+# dell'evento, qui si rompe subito invece di mostrare zeri in silenzio.
+
+from backend.v3.brain_f2.analyst import MockDeepSeekAnalyst
+from backend.v3.brain_f2.contracts import (
+    BrainDecision, DecisionKind, MarketContext, OpenProposal, ProposalStatus,
+)
+from backend.v3.brain_f2.engine import BrainEngine, BrainPortfolioSnapshot, _policy_hash
+from backend.v3.brain_f2.reviewer import MockClaudeReviewer
+from backend.v3.executor.paper import execute_paper
+from backend.v3.risk import RiskPolicy, RiskQuote
+
+_ENGINE_RUN = "r-f6-engine"
+
+
+def _real_engine(journal: EventJournal) -> BrainEngine:
+    """Motore configurato in modo valido: run_id e mandato coerenti.
+
+    Senza run_id il motore risponde NO_TRADE('invalid_input') prima ancora di
+    analizzare, quindi non scrive la decisione che vogliamo osservare.
+    """
+    policy = RiskPolicy(Decimal(".02"), Decimal(".05"), Decimal(".1"),
+                        Decimal(".3"), Decimal("450"), Decimal("16"), Decimal(".5"))
+    snapshot = BrainPortfolioSnapshot(Decimal("1000"), Decimal("1000"),
+                                      Decimal("0"), Decimal("0"))
+    params = {"exchange_leverage_limit": 10, "quantity_step": Decimal(".001"),
+              "minimum_notional": Decimal("5"), "maintenance_fraction": Decimal(".004"),
+              "market_data_fresh": True, "paused": False, "daily_loss_latched": False}
+    return BrainEngine(
+        analyst=MockDeepSeekAnalyst(),
+        reviewer=MockClaudeReviewer(always_approve=True),
+        risk_policy=policy, portfolio_snapshot=snapshot, market_params=params,
+        journal=journal, portfolio_id="brain", run_id=_ENGINE_RUN,
+        policy_verifier=lambda m, p: True,
+        policy_mandate={"version": "f6-test", "approved_by": "operator",
+                        "approved": True, "portfolio_id": "brain",
+                        "run_id": _ENGINE_RUN,
+                        "policy_hash": _policy_hash(policy)},
+    )
+
+
+class TestRealProducers:
+    def test_dashboard_sees_real_brain_engine_decision(self):
+        with TemporaryDirectory() as td:
+            j = _journal(td)
+            eng = _real_engine(j)
+            decision = eng.step(MarketContext("BTCUSDT", Decimal("50000"),
+                                              1_700_000_000_000, "TRENDING"))
+            s = build_summary(j, "brain", _ENGINE_RUN)
+        assert s.brain_steps == 1, "il motore ha scritto un evento che la dashboard non riconosce"
+        # Il motore deve aver davvero ragionato (non fermarsi per input non valido):
+        assert decision.rationale != "invalid_input"
+        expected = int(decision.kind == DecisionKind.OPEN
+                       and decision.status == ProposalStatus.APPROVED)
+        assert s.brain_approvals == expected
+
+    def test_dashboard_sees_real_execute_paper_open(self):
+        proposal = OpenProposal(
+            symbol="BTCUSDT", side=1, entry_price=Decimal("30000"),
+            stop_price=Decimal("29000"), leverage=5, rationale="deepseek:analysis",
+            confidence=0.75, originating_ai="deepseek", context_hash="abc123")
+        quote = RiskQuote(allowed=True, reason="ok", quantity=Decimal("0.01"),
+                          notional=Decimal("300"), margin=Decimal("60"),
+                          worst_case_loss_estimate=Decimal("30"),
+                          risk_budget=Decimal("450"))
+        decision = BrainDecision(
+            kind=DecisionKind.OPEN, proposal=proposal, risk_quote=quote,
+            rationale="deepseek:analysis", sources=["deepseek:analysis"],
+            occurred_at_ms=1_700_000_000_000, status=ProposalStatus.APPROVED)
+        with TemporaryDirectory() as td:
+            j = _journal(td)
+            receipt = execute_paper(decision, portfolio_id="hawk", run_id="r-real",
+                                    journal=j, now_ms=1_700_000_001_000)
+            s = build_summary(j, "hawk", "r-real")
+        assert len(s.open_positions) == 1
+        pos = s.open_positions[0]
+        assert pos.position_id == receipt.position_id
+        assert pos.symbol == "BTCUSDT"
+        assert pos.fill_price == receipt.fill_price
+        assert pos.margin_used == Decimal("60")
+        assert s.margin_in_use == Decimal("60")
+
+    def test_no_producer_writes_paper_close_yet(self):
+        """Documenta un buco noto: nessun modulo di backend/v3 scrive paper_close.
+
+        Se questo test inizia a fallire, significa che e' stato aggiunto un
+        esecutore di chiusura: aggiornare il contratto in dashboard.py e
+        sostituire questo test con uno che usa il produttore vero.
+        """
+        from pathlib import Path as _P
+        root = _P(__file__).resolve().parents[1] / "v3"
+        writers = [
+            str(p.relative_to(root)) for p in root.rglob("*.py")
+            if p.name != "dashboard.py" and '"paper_close"' in p.read_text(encoding="utf-8")
+        ]
+        assert writers == [], f"paper_close ora ha un produttore: {writers}"
