@@ -34,8 +34,10 @@ Scelte di progetto
       ``position_already_closed``.
   Per questo chi somma i PnL deve leggere gli eventi ``paper_close`` dal
   journal, non sommare le ricevute restituite ai chiamanti.
-* ``decision_event_id`` e' copiato dal ``paper_open`` se presente (campo che
-  oggi ``execute_paper`` non scrive: vedi piano F7, passo P2).
+* ``decision_event_id`` e' copiato dal ``paper_open`` (scritto da ``execute_paper``
+  dal passo P2: id dell'evento ``brain_decision`` che ha generato la posizione;
+  "" = posizione senza decisione collegata). Deve essere una stringa breve:
+  altrimenti ``corrupt_position_payload``.
 
 Contratto dell'evento ``paper_close`` (letto da ``backend/v3/dashboard.py``)::
 
@@ -190,6 +192,9 @@ def close_paper(
     _require(type(leverage) is int and 1 <= leverage <= 125, "corrupt_position_payload")
     symbol = p.get("symbol")
     _require(isinstance(symbol, str) and bool(symbol), "corrupt_position_payload")
+    decision_event_id = p.get("decision_event_id", "")
+    _require(isinstance(decision_event_id, str) and len(decision_event_id) <= 128,
+             "corrupt_position_payload")
     _require(timestamp_ms >= opened.occurred_at_ms, "close_before_open")
 
     # --- calcolo (Decimal puro; ordine delle operazioni fissato) ---
@@ -226,7 +231,7 @@ def close_paper(
         "opened_at_ms": opened.occurred_at_ms,
         "held_ms": held_ms,
         "loss_exceeds_margin": loss_exceeds_margin,
-        "decision_event_id": p.get("decision_event_id", ""),
+        "decision_event_id": decision_event_id,
     }
     event = Event(
         event_id=f"paper_close.{position_id}",

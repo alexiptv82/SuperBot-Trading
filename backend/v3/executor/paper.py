@@ -17,9 +17,17 @@ Design constraints
   can be traced back to the append-only audit trail.
 * Portfolio IDs must be in {'hawk', 'bull', 'brain'} — the EventJournal
   constraint. Callers own the mapping from their domain to these IDs.
+* Decision link (F7, step P2): the id of the 'brain_decision' journal event that
+  produced the decision (BrainDecision.journal_event_id, set only by the engine
+  after a verified write) is copied into paper_open.decision_event_id, so an
+  outcome can later be attributed to the decision. A decision without an id
+  (None, e.g. built by hand) is stored as "" = unlinked. A malformed id is
+  rejected (fail-closed). The id is NOT checked against the journal here: a
+  consumer that needs a guaranteed link must look the event up itself.
 """
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -29,6 +37,9 @@ from typing import Any, Mapping
 from backend.v3.brain_f2.contracts import BrainDecision, DecisionKind, ProposalStatus
 from backend.v3.events import Event, EventJournal
 from backend.v3.risk import RiskQuote
+
+# Same shape the journal accepts for event ids.
+_DECISION_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$")
 
 
 class ExecutionError(RuntimeError):
@@ -57,6 +68,7 @@ class ExecutionReceipt:
     timestamp_ms: int
     journal_seq: int          # StoredEvent.seq from EventJournal
     journal_event_id: str     # Event.event_id stored in journal
+    decision_event_id: str = ""   # id of the originating 'brain_decision' event ("" = unlinked)
 
 
 def _require(condition: bool, code: str) -> None:
@@ -140,6 +152,14 @@ def execute_paper(
     _validate_decision(decision)
     proposal = decision.proposal
 
+    # Link to the originating decision: None = unlinked (""), anything else must be well-formed.
+    link = getattr(decision, "journal_event_id", None)
+    if link is None:
+        link = ""
+    else:
+        _require(isinstance(link, str) and bool(_DECISION_ID_RE.match(link)),
+                 "invalid_decision_event_id")
+
     # risk_quote can be on decision.risk_quote (set by BrainEngine)
     quote = decision.risk_quote
     _validate_risk_quote(quote)
@@ -180,6 +200,7 @@ def execute_paper(
         "originating_ai": getattr(proposal, "originating_ai", "unknown"),
         "context_hash": getattr(proposal, "context_hash", ""),
         "rationale": decision.rationale,
+        "decision_event_id": link,
     }
 
     event_id = f"paper_open.{position_id}"
@@ -218,4 +239,5 @@ def execute_paper(
         timestamp_ms=timestamp_ms,
         journal_seq=stored.seq,
         journal_event_id=stored.event.event_id,
+        decision_event_id=link,
     )
