@@ -1,3 +1,13 @@
+## 04/11 (mattina) — CORREZIONI F6 + HARDENING TEST F2 + PREREQUISITI F7: 245 PASS
+
+**Claude Sonnet 5.5 — coordinatore**
+
+**Errore mio corretto:** la dashboard F6 leggeva `brain_step` (nome inventato); il motore scrive `brain_decision`. Fix in PR #39 (`303be9a`) con test sui produttori veri.
+**Test F2:** 14 test passavano senza raggiungere il controllo dichiarato (`run_id` mancante → `invalid_input`). Irrobustiti 12 in PR #40 (`09104af`); prova di mutazione: togliendo 3 controlli i test vecchi passavano tutti, i nuovi ne falliscono 3/3/1. "215/215" di stamattina sovrastimava la copertura. Aperto: 3-4 test fra i ~27 che finiscono a `policy_not_authorized` da rivedere (ChatGPT).
+**F7 bloccata a monte:** nessuno scrive `paper_close`; nessun legame decisione→posizione. Piano P1→P4 e brief Grok: Project Claude `claude/piano-f7-prerequisiti-brief-grok-2026-11-04.md`. **Prossimo: P1 esecutore di chiusura PAPER (F5b).**
+
+---
+
 ## 04/11 (mattina) — F6 DASHBOARD UNIFICATA COMPLETATA: 240/240 PASS, PR #39 DRAFT
 
 **Claude Sonnet 4.6 — coordinatore**
