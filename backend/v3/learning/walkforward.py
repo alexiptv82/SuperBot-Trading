@@ -4,6 +4,11 @@ Chooses cells on a training window, measures them on the following test
 window, and reports the decay. Does not decide anything and does not change
 any strategy.
 
+Exact rules the tests pin down: windows are half-open (a trade closed exactly at train_end is not in
+train); the selection uses train trades only; every mean is a per-trade mean of exact values rounded once
+(4 decimals, half-even, never "-0.0000"); decay_bp = is - oos is computed from the exact sums, not from the
+already rounded means; key() is evaluated once per admitted trade; cost is O(N log N + sum of window sizes).
+
 Known limits: selection is still on many cells (multiple comparisons); the
 decay measures the effect, it does not remove it; sliding folds are not
 independent when train_ms > step_ms; a test trade in a selected cell may have
@@ -78,11 +83,6 @@ class WalkForwardReport:
     decay_bp: Optional[Decimal]
 
 
-def _check_int_day(n, code):
-    if type(n) is not int or n % _MS_PER_DAY != 0:
-        raise ValueError(code)
-
-
 def make_folds(*, start_ms, end_ms, train_ms, test_ms, step_ms, embargo_ms, expanding) -> tuple[Fold, ...]:
     if type(start_ms) is not int or type(end_ms) is not int or start_ms < 0 or start_ms % _MS_PER_DAY != 0 or end_ms <= start_ms:
         raise ValueError("invalid_window")
@@ -114,8 +114,8 @@ def make_folds(*, start_ms, end_ms, train_ms, test_ms, step_ms, embargo_ms, expa
     return tuple(folds)
 
 
-def _validate_folds(folds):
-    if not isinstance(folds, (list, tuple)) or not folds:
+def _validate_folds(folds: Sequence[Fold]) -> None:
+    if not isinstance(folds, Sequence) or len(folds) == 0:
         raise ValueError("invalid_folds")
     prev_test_end = None
     for i, f in enumerate(folds):
@@ -133,57 +133,104 @@ def _validate_folds(folds):
         prev_test_end = f.test_end_ms
 
 
-def walk_forward(outcomes, folds, *, min_trades, min_days, confidence, n_boot, seed,
-                 key=default_cell_key, link_statuses=frozenset({"linked"})) -> WalkForwardReport:
+def _lower_bound(a: Sequence[int], x: int) -> int:
+    """Primo indice con a[i] >= x in una lista ordinata (ricerca binaria)."""
+    lo, hi = 0, len(a)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if a[mid] < x:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
+def _ident(key: Callable[[TradeOutcome], tuple], o: TradeOutcome) -> tuple[tuple, str]:
+    k = key(o)
+    return (k, repr(k))
+
+
+def _mean4(values: Sequence[Decimal]) -> Optional[Decimal]:
+    """Media per trade dei valori esatti, arrotondata UNA volta (4 decimali, half-even)."""
+    return _q4(sum(values) / Decimal(len(values))) if values else None
+
+
+def _same_key_ids(cs: Sequence[CellStats]) -> list[tuple[tuple, str]]:
+    return [(c.key, repr(c.key)) for c in cs]
+
+
+def walk_forward(outcomes: Sequence[TradeOutcome], folds: Sequence[Fold], *,
+                 min_trades: int, min_days: int, confidence: Decimal, n_boot: int, seed: int,
+                 key: Callable[[TradeOutcome], tuple] = default_cell_key,
+                 link_statuses: frozenset[str] = frozenset({"linked"})) -> WalkForwardReport:
+    # Validazione: tutti i codici di cell_stats (anche `key` provata su ogni trade ammesso), poi i fold.
     cell_stats(outcomes, min_trades=min_trades, min_days=min_days, confidence=confidence,
                n_boot=n_boot, seed=seed, key=key, link_statuses=link_statuses)
     _validate_folds(folds)
     try:
         with localcontext(_CTX):
+            # Trade ammessi per posizione di arrivo, ordinati per chiusura UNA volta: ogni finestra e' poi
+            # un intervallo trovato con ricerca binaria (O(N log N + somma delle finestre), non O(N * fold)).
+            admitted = [i for i, o in enumerate(outcomes) if o.link_status in link_statuses]
+            by_time = sorted((outcomes[i].closed_at_ms, i) for i in admitted)
+            times = [t for t, _ in by_time]
+            ident = {i: _ident(key, outcomes[i]) for i in admitted}      # key() una sola volta per trade
+
+            def window(lo: int, hi: int) -> list[int]:
+                """Posizioni dei trade con lo <= closed_at_ms < hi, nell'ordine in cui sono arrivati."""
+                return sorted(i for _, i in by_time[_lower_bound(times, lo):_lower_bound(times, hi)])
+
             fold_results = []
-            all_is = []
-            all_oos = []
-            all_rest = []
+            all_is: list[Decimal] = []
+            all_oos: list[Decimal] = []
+            all_rest: list[Decimal] = []
             for fold in folds:
-                train = [o for o in outcomes if o.link_status in link_statuses
-                         and fold.train_start_ms <= o.closed_at_ms < fold.train_end_ms]
-                test = [o for o in outcomes if o.link_status in link_statuses
-                        and fold.test_start_ms <= o.closed_at_ms < fold.test_end_ms]
+                train_pos = window(fold.train_start_ms, fold.train_end_ms)
+                test_pos = window(fold.test_start_ms, fold.test_end_ms)
+                train = [outcomes[i] for i in train_pos]
                 cs = cell_stats(train, min_trades=min_trades, min_days=min_days, confidence=confidence,
                                 n_boot=n_boot, seed=seed, key=key, link_statuses=link_statuses)
                 evaluated = [c for c in cs if c.status != "insufficient"]
                 selected = [c for c in cs if c.status == "positive"]
-                selected_ids = {(c.key, repr(c.key)) for c in selected}
+                sel_ids = _same_key_ids(selected)
+                sel_set = set(sel_ids)
+
+                train_by_cell: dict[tuple[tuple, str], list[Decimal]] = {}
+                for i in train_pos:
+                    train_by_cell.setdefault(ident[i], []).append(outcomes[i].net_bp)
+                test_by_cell: dict[tuple[tuple, str], list[Decimal]] = {}
+                sel_test: list[Decimal] = []
+                rest_test: list[Decimal] = []
+                for i in test_pos:
+                    net = outcomes[i].net_bp
+                    test_by_cell.setdefault(ident[i], []).append(net)
+                    (sel_test if ident[i] in sel_set else rest_test).append(net)
+
                 sel_cells = []
-                for c in selected:
-                    cell_test = [o for o in test if (key(o), repr(key(o))) == (c.key, repr(c.key))]
-                    tn = len(cell_test)
-                    tm = _q4(sum(o.net_bp for o in cell_test) / Decimal(tn)) if tn else None
-                    sel_cells.append(SelectedCell(c.key, c.n, c.mean_net_bp, c.ci_low, tn, tm))
-                sel_test = [o for o in test if (key(o), repr(key(o))) in selected_ids]
-                rest_test = [o for o in test if (key(o), repr(key(o))) not in selected_ids]
-                sn = len(sel_test)
-                sm = _q4(sum(o.net_bp for o in sel_test) / Decimal(sn)) if sn else None
-                rn = len(rest_test)
-                rm = _q4(sum(o.net_bp for o in rest_test) / Decimal(rn)) if rn else None
+                for c, cid in zip(selected, sel_ids):
+                    cell_test = test_by_cell.get(cid, [])
+                    sel_cells.append(SelectedCell(c.key, c.n, c.mean_net_bp, c.ci_low,
+                                                  len(cell_test), _mean4(cell_test)))
+                    all_is.extend(train_by_cell.get(cid, []))
                 fold_results.append(FoldResult(
-                    fold, len(train), len(test), len(evaluated), len(selected),
-                    tuple(sel_cells), sn, sm, rn, rm,
+                    fold, len(train), len(test_pos), len(evaluated), len(selected),
+                    tuple(sel_cells), len(sel_test), _mean4(sel_test), len(rest_test), _mean4(rest_test),
                 ))
-                all_is.extend(o.net_bp for c in selected for o in train if (key(o), repr(key(o))) == (c.key, repr(c.key)))
-                all_oos.extend(o.net_bp for o in sel_test)
-                all_rest.extend(o.net_bp for o in rest_test)
-            is_n = len(all_is)
-            is_mean = _q4(sum(all_is) / Decimal(is_n)) if is_n else None
-            oos_n = len(all_oos)
-            oos_mean = _q4(sum(all_oos) / Decimal(oos_n)) if oos_n else None
-            rest_n = len(all_rest)
-            rest_mean = _q4(sum(all_rest) / Decimal(rest_n)) if rest_n else None
-            decay = _q4(is_mean - oos_mean) if is_mean is not None and oos_mean is not None else None
+                all_oos.extend(sel_test)
+                all_rest.extend(rest_test)
+
+            is_n, oos_n, rest_n = len(all_is), len(all_oos), len(all_rest)
+            if is_n and oos_n:
+                # decadimento dai valori ESATTI (non dalle medie gia' arrotondate), arrotondato una volta:
+                # is - oos = (S_is * n_oos - S_oos * n_is) / (n_is * n_oos)
+                decay = _q4((sum(all_is) * Decimal(oos_n) - sum(all_oos) * Decimal(is_n))
+                            / (Decimal(is_n) * Decimal(oos_n)))
+            else:
+                decay = None
             return WalkForwardReport(
                 tuple(fold_results), sum(fr.n_selected for fr in fold_results),
                 sum(1 for fr in fold_results if fr.n_selected > 0),
-                is_n, is_mean, oos_n, oos_mean, rest_n, rest_mean, decay,
+                is_n, _mean4(all_is), oos_n, _mean4(all_oos), rest_n, _mean4(all_rest), decay,
             )
     except ArithmeticError:
         raise ValueError("invalid_outcome") from None
