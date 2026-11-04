@@ -1,3 +1,19 @@
+## 2026-11-04 — F5 PAPER executor: 138/138 PASS, PR #38 DRAFT
+
+**Claude Sonnet 4.6**
+
+`backend/v3/executor/paper.py`: `execute_paper()` — riceve `BrainDecision(OPEN+APPROVED)`,
+simula fill PAPER, scrive evento `paper_open` su EventJournal, restituisce `ExecutionReceipt`.
+Fail-closed: `ExecutionError` se qualcosa va storto prima della scrittura; `EXECUTED_PAPER` impostato
+solo dopo scrittura riuscita. stdlib only, nessuna API. 25 test offline.
+PR [#38](https://github.com/alexiptv82/SuperBot-Trading/pull/38) DRAFT.
+**138/138 PASS** (F2×3 + F3×2 + F4 + F5 — Python 3.13.16).
+Nessun deploy, DESK_MODE=paper, Hawk/Bull intatti.
+
+AI: claude
+
+---
+
 ## 2026-11-04 — F4 trasporti+budget: 113/113 PASS, PR #37 DRAFT | F5 PAPER executor in corso
 
 **Claude Sonnet 4.6**
