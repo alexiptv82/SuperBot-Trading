@@ -21,6 +21,19 @@ Scelte di progetto
 * La perdita NON viene troncata al margine: il valore registrato e' il calcolo
   puro; ``loss_exceeds_margin`` lo segnala. Decidere se/come simulare la
   liquidazione e' una scelta di modello che spetta all'utente.
+* Concorrenza e idempotenza: l'unicita' di ``event_id = paper_close.<position_id>``
+  (vincolo UNIQUE del journal, scrittura sotto ``BEGIN IMMEDIATE``) garantisce
+  che per ogni posizione esista AL PIU' UN ``paper_close``. Verificato con
+  thread veri (vedi ``TestConcurrency``). Casi:
+    - chiusura gia' scritta quando la richiesta legge il journal: fallisce con
+      ``position_already_closed`` (anche un retry identico DOPO la chiusura);
+    - due richieste che si sovrappongono (entrambe leggono prima che una scriva):
+      se sono IDENTICHE (stesso prezzo, costi, ragione e timestamp) il journal
+      ignora il duplicato e ENTRAMBE possono ricevere la stessa ricevuta; se
+      sono DIVERSE vince la prima scrittura e le altre falliscono con
+      ``position_already_closed``.
+  Per questo chi somma i PnL deve leggere gli eventi ``paper_close`` dal
+  journal, non sommare le ricevute restituite ai chiamanti.
 * ``decision_event_id`` e' copiato dal ``paper_open`` se presente (campo che
   oggi ``execute_paper`` non scrive: vedi piano F7, passo P2).
 
@@ -37,7 +50,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import Any, Mapping
 
-from backend.v3.events import Event, EventJournal
+from backend.v3.events import Event, EventConflict, EventJournal
 from backend.v3.executor.paper import ExecutionError
 
 # Insieme chiuso delle ragioni di chiusura.
@@ -226,6 +239,11 @@ def close_paper(
     )
     try:
         stored = journal.append(event)
+    except EventConflict:
+        # Stesso event_id (paper_close.<position_id>) con contenuto diverso: un'altra
+        # chiusura e' stata scritta fra la nostra lettura e la nostra scrittura.
+        # Non e' un guasto del journal: la posizione risulta gia' chiusa.
+        raise ExecutionError("position_already_closed") from None
     except Exception as exc:
         raise ExecutionError("journal_write_failed") from exc
 

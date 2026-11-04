@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
 import pytest
@@ -427,3 +429,110 @@ class TestJournalFailures:
         with pytest.raises(ExecutionError) as e:
             _close(j, pid, exit_price=Decimal("31234.5"))
         assert "31234" not in str(e.value) and "30000" not in str(e.value)
+
+
+# ---------------------------------------------------------------------------
+# concorrenza (verificata con thread veri, non solo ragionata)
+# ---------------------------------------------------------------------------
+
+class _RivalFirst(EventJournal):
+    """Simula la corsa: un'ALTRA chiusura (prezzo diverso) viene scritta fra la
+    lettura della posizione e la nostra scrittura. Deterministico, senza thread."""
+
+    def append(self, event):
+        if event.kind == "paper_close" and not getattr(self, "_rival_done", False):
+            self._rival_done = True
+            rival = dict(event.payload, exit_price="1", realized_pnl="-300.00000000")
+            super().append(Event(event.event_id, event.portfolio_id, event.run_id,
+                                 "paper_close", event.occurred_at_ms,
+                                 "executor.paper_close", rival))
+        return super().append(event)
+
+
+def _paper_closes(journal: EventJournal) -> list:
+    return [s.event for s in journal.list_run("hawk", RUN) if s.event.kind == "paper_close"]
+
+
+def _race(journal: EventJournal, position_id: str, make_kwargs, n: int = 8) -> list:
+    """Lancia n close_paper insieme (Barrier) e ritorna per ciascuna ('OK', ricevuta) o ('ERR', codice)."""
+    barrier = threading.Barrier(n)
+
+    def worker(i):
+        kw = dict(portfolio_id="hawk", run_id=RUN, position_id=position_id,
+                  reason="stop", fee_bps=6, journal=journal)
+        kw.update(make_kwargs(i))
+        barrier.wait()
+        try:
+            return ("OK", close_paper(**kw))
+        except ExecutionError as e:
+            return ("ERR", str(e))
+
+    with ThreadPoolExecutor(n) as ex:
+        return list(ex.map(worker, range(n)))
+
+
+class TestConcurrency:
+    def test_losing_a_race_reports_position_already_closed(self):
+        """Il perdente della corsa NON deve vedere 'journal_write_failed' (guasto
+        del disco) ma 'position_already_closed' (la posizione risulta chiusa)."""
+        base = _journal()
+        pid = _open(base).position_id
+        racing = _RivalFirst(base.filename)
+        with pytest.raises(ExecutionError, match="^position_already_closed$"):
+            _close(racing, pid)
+        closes = _paper_closes(base)
+        assert len(closes) == 1
+        assert closes[0].payload["exit_price"] == "1"  # vince la prima scrittura, non la nostra
+        assert base.verify_chain()[0] == 2
+
+    def test_control_race_helper_is_inert_without_a_rival(self):
+        """Controllo: senza la corsa (rival gia' consumato) la stessa chiusura riesce."""
+        base = _journal()
+        pid = _open(base).position_id
+        racing = _RivalFirst(base.filename)
+        racing._rival_done = True
+        assert _close(racing, pid).realized_pnl == Decimal("9.63400000")
+
+    def test_sequential_identical_retry_after_close_is_rejected(self):
+        """Un retry identico DOPO la chiusura non e' idempotente: la posizione e' gia' chiusa."""
+        j = _journal()
+        pid = _open(j).position_id
+        _close(j, pid)
+        _expect("position_already_closed", j, pid)  # stessi argomenti
+        assert len(_paper_closes(j)) == 1
+
+    @pytest.mark.parametrize("round_", range(3))
+    def test_threads_different_prices_exactly_one_close(self, round_):
+        j = _journal()
+        pid = _open(j).position_id
+        res = _race(j, pid, lambda i: dict(exit_price=Decimal(31000 + i), now_ms=T_CLOSE))
+        closes = _paper_closes(j)
+        assert len(closes) == 1                                   # invariante del journal
+        oks = [r for k, r in res if k == "OK"]
+        errs = [r for k, r in res if k == "ERR"]
+        assert len(oks) == 1                                      # prezzi diversi: un solo vincitore
+        assert set(errs) == {"position_already_closed"} and len(errs) == 7
+        assert str(oks[0].realized_pnl) == closes[0].payload["realized_pnl"]
+        assert j.verify_chain()[0] == 2
+
+    @pytest.mark.parametrize("round_", range(3))
+    def test_threads_identical_requests_never_write_two_events(self, round_):
+        j = _journal()
+        pid = _open(j).position_id
+        res = _race(j, pid, lambda i: dict(exit_price=Decimal("31000"), now_ms=T_CLOSE))
+        closes = _paper_closes(j)
+        assert len(closes) == 1
+        oks = [r for k, r in res if k == "OK"]
+        assert len(oks) >= 1
+        # tutte le ricevute riuscite descrivono LO STESSO evento (stesso seq e stesso PnL)
+        assert {(r.journal_seq, r.realized_pnl) for r in oks} == {
+            (oks[0].journal_seq, oks[0].realized_pnl)}
+        assert {r for k, r in res if k == "ERR"} <= {"position_already_closed"}
+
+    def test_threads_never_leak_unexpected_error_codes(self):
+        """Sotto contesa gli unici esiti ammessi sono successo o position_already_closed."""
+        j = _journal()
+        pid = _open(j).position_id
+        res = _race(j, pid, lambda i: dict(exit_price=Decimal("31000")), n=12)  # now_ms dall'orologio
+        assert {r for k, r in res if k == "ERR"} <= {"position_already_closed"}
+        assert len(_paper_closes(j)) == 1
