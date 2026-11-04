@@ -1,3 +1,12 @@
+## 04/11 (pomeriggio, dopo L0) — P7 FATTO: INDICATORI A BARRE CHIUSE, PR #47 DRAFT, 2260 PASS
+
+**Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo, applicata invariata)
+
+`backend/v3/features/indicators.py` (EMA/RMA, ATR, RSI, MACD, Bollinger, Donchian, ADX; `Decimal`, nessun look-ahead). Formule di Grok giuste (oracolo `Fraction`, laboratorio, pandas); **3 difetti corretti da Claude**: `Overflow` grezzo, `Underflow` non intercettato (zeri silenziosi a scale minuscole), `adx` O(N²) (24 s → 0,045 s per 4000 barre). Suite V3 1647 → 2260 PASS; mutazione 199/223 (24 equivalenti spiegati); i soli 8 test di Grok: 28/223.
+**Prossimo:** Grok — P7b (`v3/features/levels.py`: supertrend, percentile ATR, VWAP di sessione, range d'apertura, swing; prompt `claude/prompt-grok-p7b-livelli-2026-11-04.md`); in attesa P6. Dettagli: `diario/2026-11-04_p7_indicatori.md`.
+
+---
+
 ## 04/11 (pomeriggio, dopo l'analisi) — L0 FATTO: BIBLIOTECA STRATEGICA NEL REPO, PR #46 DRAFT, 1647 PASS
 
 **Claude Sonnet 5.5 — coordinatore** · solo dati e validazione, nessun collegamento col Brain
