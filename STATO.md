@@ -1,3 +1,12 @@
+## 04/11 (pomeriggio, dopo P4) — P5 FATTO: ETICHETTATURA DELLE OPPORTUNITÀ, PR #45 DRAFT, 1215 PASS
+
+**Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo)
+
+`backend/v3/learning/opportunity.py`: per ogni **candidato non eseguito** (long/short) dice, a 15 min / 1 h / 4 h, se è stato toccato prima lo stop o l'obiettivo (o nessuno), con `gross_bp`/`net_bp`. Etichetta soltanto, non decide nulla. Consegna di Grok applicata **invariata** (`0889106`); verificata con oracolo `Fraction` indipendente e mutazione: **difetti trovati** — un generatore come `candidates` veniva consumato dalla validazione e restituiva `()` **in silenzio** (idem le serie di candele e gli insiemi), id `"c1\n"` accettato, `_CTX` dichiarato ma mai usato (risultato dipendente dal contesto Decimal del chiamante), overflow grezzo; **3 dei suoi 17 test sono sbagliati**; rapporto troncato, mutanti non eseguiti. Corretto in `330ca96`; 278 test miei; suite V3 **923 → 1215 passed**; **mutazione 99/101** (2 equivalenti; la suite di Grok da sola: 35/101). La mia prima passata di mutazione lasciò 7 sopravvissuti: erano buchi dei **miei** test (candele cattive con lo stesso orario delle buone), corretti. Limiti: nessun gap/slippage, ordine dei tocchi dentro la candela sconosciuto (`ambiguous`), costo uguale per ogni barriera, manca il produttore dei candidati.
+**Prossimo:** Grok — P6 walk-forward (`learning/walkforward.py`): scegliere le celle positive col solo passato e misurarle dopo (risposta ai confronti multipli). Prompt nel Project: `claude/prompt-grok-p6-walkforward-2026-11-04.md`.
+
+---
+
 ## 04/11 (pomeriggio) — P4 MODULO 1 FATTO: EXPECTANCY PER CELLA A BLOCCHI DI GIORNI, PR #44 DRAFT, 788 PASS
 
 **Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo)
