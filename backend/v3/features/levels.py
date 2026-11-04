@@ -10,10 +10,10 @@ volume becomes positive; swing pivots are confirmed only after `right` bars.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Optional
 
-from backend.v3.features.indicators import Bar, _CTX, atr, check_bars, localcontext
+from backend.v3.features.indicators import _CTX, atr, check_bars
 
 
 @dataclass(frozen=True)
@@ -195,29 +195,28 @@ def swing_levels(bars, left, right, *, candle_ms) -> SwingSeries:
             lo = [None] * len(bars)
             hi_t = [None] * len(bars)
             lo_t = [None] * len(bars)
-            pivots_h = []
-            pivots_l = []
-            for j in range(len(bars)):
-                if j >= left and j + right < len(bars):
+            cur_h = None
+            cur_l = None
+            for i in range(len(bars)):
+                # il pivot candidato j e' valutato solo con barre <= i = j + right (nessun look-ahead)
+                # e l'ultimo pivot confermato resta valido finche' non ne arriva un altro: una sola
+                # passata, O(N * (left + right)), invece della scansione di tutti i pivot per ogni barra.
+                j = i - right
+                if j >= left:
                     left_max = max(bars[k].high for k in range(j - left, j))
                     right_max = max(bars[k].high for k in range(j + 1, j + right + 1))
                     if bars[j].high > left_max and bars[j].high >= right_max:
-                        pivots_h.append(j)
+                        cur_h = j
                     left_min = min(bars[k].low for k in range(j - left, j))
                     right_min = min(bars[k].low for k in range(j + 1, j + right + 1))
                     if bars[j].low < left_min and bars[j].low <= right_min:
-                        pivots_l.append(j)
-            for i in range(len(bars)):
-                for j in reversed(pivots_h):
-                    if j + right <= i:
-                        hi[i] = _nz(bars[j].high)
-                        hi_t[i] = bars[j].open_time_ms
-                        break
-                for j in reversed(pivots_l):
-                    if j + right <= i:
-                        lo[i] = _nz(bars[j].low)
-                        lo_t[i] = bars[j].open_time_ms
-                        break
+                        cur_l = j
+                if cur_h is not None:
+                    hi[i] = _nz(bars[cur_h].high)
+                    hi_t[i] = bars[cur_h].open_time_ms
+                if cur_l is not None:
+                    lo[i] = _nz(bars[cur_l].low)
+                    lo_t[i] = bars[cur_l].open_time_ms
             return SwingSeries(tuple(hi), tuple(lo), tuple(hi_t), tuple(lo_t))
     except ArithmeticError:
         raise ValueError("numeric_out_of_range") from None
