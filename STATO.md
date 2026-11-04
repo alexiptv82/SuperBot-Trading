@@ -1,3 +1,12 @@
+## 04/11 (pomeriggio, dopo P7) — P7b FATTO: LIVELLI E SESSIONI, PR #48 DRAFT, 2575 PASS
+
+**Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo, applicata invariata)
+
+`backend/v3/features/levels.py` (supertrend, percentile ATR, VWAP di sessione, range d'apertura, livelli di swing; `Decimal`, nessun look-ahead). Formule di Grok giuste (oracolo `Fraction`); **2 difetti corretti da Claude**: `swing_levels` O(N·P) (60 000 barre: 15,5 s → ~0,3 s), `localcontext` ri-esportato. Con P7 + P7b le **12 schede a sole candele sono calcolabili**. Suite V3 2268 → 2575 PASS; mutazione 123/141 (18 equivalenti spiegati); i soli 8 test di Grok: 42/141.
+**Prossimo:** Grok — P8 regime (`v3/features/regime.py`, soglie solo come parametri; prompt `claude/prompt-grok-p8-regime-2026-11-04.md`); in attesa P6. Dettagli: `diario/2026-11-04_p7b_livelli.md`.
+
+---
+
 ## 04/11 (pomeriggio, dopo L0) — P7 FATTO: INDICATORI A BARRE CHIUSE, PR #47 DRAFT, 2260 PASS
 
 **Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo, applicata invariata)
