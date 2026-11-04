@@ -1,3 +1,12 @@
+## 04/11 (mattina) — P2 FATTO: LEGAME DECISIONE → POSIZIONE → CHIUSURA, PR #42 DRAFT, 441 PASS
+
+**Claude Sonnet 5.5 — coordinatore** · motore: codice di Grok (diff, Modalità B: non può fare push)
+
+`brain_decision.event_id → paper_open.decision_event_id → paper_close.decision_event_id`. Il diff di Grok applicato senza modifiche (`e863c6e`); Claude ha trovato e corretto un difetto (`_normalize` lasciava passare un id iniettato su decisioni non approvate), ha scritto 46 test sul motore e 24 sulla catena con i produttori veri. Mutazione 10/10 (motore) e 8/8 (esecutore). Le dichiarazioni "375 passed / 3 mutanti" di Grok restano non verificabili (il suo file di test non è arrivato). Finding di concorrenza di `close_paper`: chiarito, contava le ricevute.
+**Prossimo:** P3 `TradeOutcome` + estrattore (Claude), poi prompt a Grok per i moduli F7 con l'interfaccia fissata.
+
+---
+
 ## 04/11 (pomeriggio) — F5b: FINDING DI GROK SULLA CONCORRENZA VERIFICATO, 371 PASS
 
 **Claude Sonnet 5.5 — coordinatore**
