@@ -130,3 +130,22 @@ PROSSIMO PASSO: P6 `backend/v3/learning/walkforward.py`, selezionando celle posi
 
 Fonti: Library versione 21; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p5_opportunity.md` e il checkpoint di ripresa; PR GitHub #45. Accesso alle chat limitato ai messaggi recenti forniti e alle fonti accessibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 04/11/2026 13:43 Europe/Rome — Biblioteca strategica L0 verificata offline, PR #46 DRAFT
+
+FATTO/PREPARATO: dopo l'analisi di integrabilità e l'OK utente limitato alla fase L0, è stata preparata `backend/v3/knowledge/` sul ramo `work/v3-l0-strategy-library-claude-20261104`, PR #46 aperta e DRAFT, HEAD `83dc44737a06a6bc2ea70e4d6ade2e6bfa4ecf5b`. La biblioteca conserva 24 schede strategiche e 30 fonti come dati di ricerca fissati con SHA-256 e validazione rigida; non viene scaricata a runtime e non è collegata al Brain, al journal, ai prompt, alle soglie o ai limiti di rischio.
+
+Il caricatore rifiuta struttura/tipi non conformi, hash errati, BOM, NaN/Infinity, chiavi duplicate e testo ostile; le schede devono restare `research_only` e non possono dichiararsi profittevoli o validate su Bitget. Classificazione documentata: 12 schede testabili con sole candele, 2 che richiedono funding/OI e 10 che richiedono dati nuovi. Il registro conserva otto prove `analog` del laboratorio precedente con differenze e timeframe fuori scheda dichiarati; una prova analoga non promuove né valida la scheda.
+
+TEST: suite V3 locale documentata da **1215 a 1647 PASS** (+432), con 3 xfailed e 3 failure preesistenti per `fastapi` mancante, invariate. Oracolo indipendente sul JSON e classificazione A/B/C scritta a mano; test di precedenza e input ostili. Mutazione **165/165** sul codice finale. Corretto durante la verifica un errore dello strumento che aveva trasformato escape `\uXXXX` in caratteri invisibili e rimosso un carattere non ASCII dal modulo. Questi sono risultati offline riportati nel diario/PR, non prova economica né collaudo operativo.
+
+RILASCIATO: nulla. PR #46 non è unita né distribuita. Nessuna strategia è stata attivata, selezionata o inserita nel prompt del Brain. Nessun merge/deploy V3, modifica runtime, wallet, reset o API pagata. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: le fonti esterne non sono state verificate integralmente e le prove `analog` non equivalgono a prove delle schede; l'esperimento negativo Hummingbot citato è stato verificato soltanto nella sua pagina ufficiale. Il Brain oggi non riceve le feature richieste e il journal non contiene `strategy_id`. L1 (identificatore strategia nella catena decisione/esito) e L4 (short-list nel prompt) modificano contratti/prompt e restano bloccati fino a OK esplicito separato. Import storico resta NO-GO finché F0 non è certificato.
+
+PROSSIMO PASSO: attendere/convalidare P6 walk-forward; sviluppare P7 indicatori deterministici a barre chiuse (`v3/features/indicators.py`) con prova di non-lookahead, poi P8 regime e rilevatori delle sole schede compatibili con candele. Soltanto dopo valutazione su dati fuori campione considerare L1/L4 e chiedere autorizzazione specifica.
+
+Fonti: Library versione 22; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_biblioteca-strategica-analisi.md`, `diario/2026-11-04_l0_biblioteca-strategica.md` e il checkpoint di ripresa; PR GitHub #46. Accesso alle chat limitato ai messaggi recenti forniti e alle fonti accessibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
