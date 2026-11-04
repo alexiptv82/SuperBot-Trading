@@ -1,0 +1,1200 @@
+{
+  "metadata": {
+    "package": "SuperBot Futures Strategy Knowledge Base",
+    "version": "1.0.0",
+    "date": "2026-11-04",
+    "market_scope": "Crypto perpetual futures con focus Bitget USDT-FUTURES",
+    "status": "research_only_no_live",
+    "video_method": "Solo metadati, descrizioni e fonti companion accessibili; i filmati non sono stati visionati integralmente, nessuna trascrizione sistematica",
+    "performance_method": "Nessun backtest locale svolto; nessuna strategia certificata profittevole su Bitget",
+    "source_grade_meaning": {
+      "A": "fonte primaria tecnica o pubblicazione scientifica; NON prova di redditivita",
+      "B": "documentazione/codice/preprint o esperimento trasparente; NON audit di profitti",
+      "C": "video educativo con potenziale conflitto commerciale",
+      "D": "metadata incompleti o creator non verificato"
+    },
+    "strategy_field_rule_origin": {
+      "reproduced_source_rule": "riporta regole esplicitate dalla fonte",
+      "source_concept_adapted": "idea documentata ma formalizzazione adattata dal report",
+      "hypothesis": "sintesi / proposta da testare; non attribuire alla fonte come regola esplicita"
+    }
+  },
+  "sources": [
+    {
+      "id": "V01",
+      "type": "youtube",
+      "publisher": "Hummingbot",
+      "title": "Building a Directional Trading Bot with MACD and Bollinger Bands Indicators",
+      "url": "https://www.youtube.com/watch?v=uKFBu2bSU1Y",
+      "published_or_checked": "2023-04-21",
+      "assessment": "Video/documentazione tecnica e post con risultati esposti; video non visionato integralmente",
+      "source_grade": "B"
+    },
+    {
+      "id": "V02",
+      "type": "youtube",
+      "publisher": "Hummingbot",
+      "title": "Funding Rate Arbitrage: Deep Dive into Designing and Running the Strategy",
+      "url": "https://www.youtube.com/watch?v=Ly8R5g3juxw",
+      "published_or_checked": "2024-04-22",
+      "assessment": "Video ufficiale; descrizione con capitoli e codice indicato; performance non verificata",
+      "source_grade": "B"
+    },
+    {
+      "id": "V03",
+      "type": "youtube",
+      "publisher": "Hummingbot",
+      "title": "Perpetual Market Making Demo | Hummingbot Live",
+      "url": "https://www.youtube.com/watch?v=IclhZWtKiSA",
+      "published_or_checked": "2021-02-19",
+      "assessment": "Demo ufficiale; dettagli appresi anche dalla documentazione del progetto",
+      "source_grade": "B"
+    },
+    {
+      "id": "V04",
+      "type": "youtube",
+      "publisher": "Delta Exchange",
+      "title": "Simple VWAP Scalping Strategy for Beginners",
+      "url": "https://www.youtube.com/watch?v=QPhBwGF2nnc",
+      "published_or_checked": "2025-06-06",
+      "assessment": "Descrizione e capitoli: bounce/reject, break/retest; fonte commerciale di un exchange",
+      "source_grade": "C"
+    },
+    {
+      "id": "V05",
+      "type": "youtube",
+      "publisher": "Hummingbot",
+      "title": "Hummingbot Live: Building an AI Trading Strategy (Part 1)",
+      "url": "https://www.youtube.com/watch?v=mSKWaABwe2Y",
+      "published_or_checked": "2025-02-14",
+      "assessment": "Presentazione su AI trading, non certificazione di un rendimento",
+      "source_grade": "C"
+    },
+    {
+      "id": "V06",
+      "type": "youtube",
+      "publisher": "Delta Exchange",
+      "title": "RSI ed EMA per individuare il trend (titolo non esposto nel risultato)",
+      "url": "https://www.youtube.com/watch?v=XdPLGZtaVg4",
+      "published_or_checked": "2024-10-26",
+      "assessment": "Descrizione del video disponibile; titolo non verificato; fonte commerciale",
+      "source_grade": "C"
+    },
+    {
+      "id": "V07",
+      "type": "youtube",
+      "publisher": "Futures educator",
+      "title": "Introduzione a footprint, delta, volume profile e order flow",
+      "url": "https://www.youtube.com/watch?v=2SMlJyPAYec",
+      "published_or_checked": "2026-07",
+      "assessment": "Contenuti descritti nella scheda video; identita canale/titolo incompleti",
+      "source_grade": "D"
+    },
+    {
+      "id": "G01",
+      "type": "github",
+      "publisher": "Freqtrade",
+      "title": "Repository di strategie d’esempio",
+      "url": "https://github.com/freqtrade/freqtrade-strategies",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Repository ufficiale: finalita educative; non plug-and-profit",
+      "source_grade": "B"
+    },
+    {
+      "id": "G02",
+      "type": "github",
+      "publisher": "Hummingbot",
+      "title": "Repository Hummingbot",
+      "url": "https://github.com/hummingbot/hummingbot",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Framework open-source, non garanzia di edge",
+      "source_grade": "B"
+    },
+    {
+      "id": "G03",
+      "type": "github",
+      "publisher": "Hummingbot",
+      "title": "Esempio controller Grid Strike",
+      "url": "https://github.com/hummingbot/hummingbot/blob/master/controllers/generic/grid_strike.py",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Codice collegato dalla guida ufficiale; compatibilita da verificare",
+      "source_grade": "B"
+    },
+    {
+      "id": "G04",
+      "type": "github",
+      "publisher": "Hummingbot",
+      "title": "Template arbitraggi spot-perpetual",
+      "url": "https://github.com/hummingbot/hummingbot/blob/master/hummingbot/templates/conf_spot_perpetual_arbitrage_strategy_TEMPLATE.yml",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Template config di vecchio framework; richiede revisione",
+      "source_grade": "B"
+    },
+    {
+      "id": "D01",
+      "type": "documentation",
+      "publisher": "Hummingbot",
+      "title": "Controllers V2 - strategie modulari",
+      "url": "https://hummingbot.org/strategies/v2-strategies/controllers/",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Controller con strategie direzionali e maker",
+      "source_grade": "B"
+    },
+    {
+      "id": "D02",
+      "type": "documentation",
+      "publisher": "Hummingbot",
+      "title": "MACD + Bollinger: esperimento e numeri",
+      "url": "https://hummingbot.org/blog/directional-trading-with-macd-and-bollinger-bands/",
+      "published_or_checked": "2023-04-21",
+      "assessment": "334 trade e -1,538% net su circa 11 giorni: risultato riportato dal progetto, non audit indipendente",
+      "source_grade": "B"
+    },
+    {
+      "id": "D03",
+      "type": "documentation",
+      "publisher": "Hummingbot",
+      "title": "Liquidation Sniper V2",
+      "url": "https://hummingbot.org/blog/coding-a-liquidation-sniper-v2-strategy-controller/",
+      "published_or_checked": "2024-08-03",
+      "assessment": "Esempio di rebound post-liquidazione; senza prova robusta di profittabilita",
+      "source_grade": "B"
+    },
+    {
+      "id": "D04",
+      "type": "documentation",
+      "publisher": "Hummingbot",
+      "title": "Grid Strike V2",
+      "url": "https://hummingbot.org/blog/strategy-guide-grid-strike/",
+      "published_or_checked": "2025-10-07",
+      "assessment": "Griglie long/short e triple-barrier",
+      "source_grade": "B"
+    },
+    {
+      "id": "D05",
+      "type": "documentation",
+      "publisher": "Hummingbot",
+      "title": "Perpetual market making V1",
+      "url": "https://github.com/hummingbot/hummingbot-site/blob/main/docs/strategies/v1-strategies/perpetual-market-making.md",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Spread, cancel/replace, gestione posizioni",
+      "source_grade": "B"
+    },
+    {
+      "id": "D06",
+      "type": "documentation",
+      "publisher": "Hummingbot",
+      "title": "Spot-Perpetual Arbitrage V1",
+      "url": "https://github.com/hummingbot/hummingbot-site/blob/main/docs/strategies/v1-strategies/spot-perpetual-arbitrage.md",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Strategia base di cash-and-carry, richiede due gambe",
+      "source_grade": "B"
+    },
+    {
+      "id": "D07",
+      "type": "documentation",
+      "publisher": "Freqtrade",
+      "title": "Lookahead analysis",
+      "url": "https://www.freqtrade.io/en/stable/lookahead-analysis/",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Test anti-fuga del futuro, limiti e falsi positivi",
+      "source_grade": "A"
+    },
+    {
+      "id": "D08",
+      "type": "documentation",
+      "publisher": "Freqtrade",
+      "title": "Recursive analysis",
+      "url": "https://www.freqtrade.io/en/stable/recursive-analysis/",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Controllo stabilita indicatori e warmup",
+      "source_grade": "A"
+    },
+    {
+      "id": "D09",
+      "type": "documentation",
+      "publisher": "Freqtrade",
+      "title": "FreqAI running/retraining",
+      "url": "https://www.freqtrade.io/en/stable/freqai-running/",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Riaddestramento periodico con dati storici e live",
+      "source_grade": "B"
+    },
+    {
+      "id": "D10",
+      "type": "documentation",
+      "publisher": "Bitget",
+      "title": "Dati futures: funding e open interest",
+      "url": "https://www.bitget.com/docs/catalog/market/derivatives",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Documentazione API; funding history e OI history disponibili con limiti",
+      "source_grade": "A"
+    },
+    {
+      "id": "D11",
+      "type": "documentation",
+      "publisher": "Bitget",
+      "title": "Storico candele",
+      "url": "https://www.bitget.com/docs/catalog/market/market-data",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Endpoint storico OHLCV, granularita e limiti",
+      "source_grade": "A"
+    },
+    {
+      "id": "D12",
+      "type": "documentation",
+      "publisher": "Bitget",
+      "title": "Gestione ordini",
+      "url": "https://www.bitget.com/docs/catalog/trading/order-management",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Ordini e reduce-only; verificare modalita account corrente",
+      "source_grade": "A"
+    },
+    {
+      "id": "D13",
+      "type": "documentation",
+      "publisher": "NautilusTrader",
+      "title": "Backtesting e simulazione ordini",
+      "url": "https://github.com/nautechsystems/nautilus_trader/blob/develop/docs/concepts/backtesting/index.md",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Matching e fill models, accounting",
+      "source_grade": "B"
+    },
+    {
+      "id": "D14",
+      "type": "documentation",
+      "publisher": "NautilusTrader",
+      "title": "Funding settlement in backtest",
+      "url": "https://github.com/nautechsystems/nautilus_trader/blob/develop/docs/concepts/backtesting/accounts-and-margin.md",
+      "published_or_checked": "2026-11-04",
+      "assessment": "Funding integrato nel conto simulato",
+      "source_grade": "B"
+    },
+    {
+      "id": "P01",
+      "type": "paper",
+      "publisher": "Chi et al.",
+      "title": "An empirical investigation on risk factors in cryptocurrency futures",
+      "url": "https://onlinelibrary.wiley.com/doi/10.1002/fut.22425",
+      "published_or_checked": "2023-05-22",
+      "assessment": "Studio peer-reviewed: basis e momentum come fattori, non convalida dello scalp 1m",
+      "source_grade": "A"
+    },
+    {
+      "id": "P02",
+      "type": "paper",
+      "publisher": "Cao, Zhai, Luo",
+      "title": "Anatomy of cryptocurrency perpetual futures returns",
+      "url": "https://www.research.ed.ac.uk/en/publications/anatomy-of-cryptocurrency-perpetual-futures-returns/",
+      "published_or_checked": "2024-04-09",
+      "assessment": "Studio accettato; basi/microstruttura e fattori; differenze versione successiva SSRN",
+      "source_grade": "A"
+    },
+    {
+      "id": "P03",
+      "type": "paper",
+      "publisher": "Moskowitz, Ooi, Pedersen",
+      "title": "Time series momentum",
+      "url": "https://www.sciencedirect.com/science/article/pii/S0304405X11002613",
+      "published_or_checked": "2012-05",
+      "assessment": "Futures non-crypto su orizzonte mensile, solo base teorica non trasferibile direttamente allo scalp",
+      "source_grade": "A"
+    },
+    {
+      "id": "P04",
+      "type": "paper",
+      "publisher": "Bailey et al.",
+      "title": "The Probability of Backtest Overfitting",
+      "url": "https://scholarworks.wmich.edu/math_pubs/42/",
+      "published_or_checked": "2017-04",
+      "assessment": "Evidenza metodologica su overfitting e CSCV",
+      "source_grade": "A"
+    },
+    {
+      "id": "P05",
+      "type": "paper",
+      "publisher": "John et al.",
+      "title": "The Impact of Spoofing on Bitcoin Market Microstructure",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5771502",
+      "published_or_checked": "2025-11-19",
+      "assessment": "Preprint, non prova definitiva; order book vulnerabile a manipolazione",
+      "source_grade": "B"
+    }
+  ],
+  "strategies": [
+    {
+      "id": "S01",
+      "name": "EMA MTF pullback trend",
+      "family": "trend",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m",
+        "1h",
+        "4h"
+      ],
+      "required_features": [
+        "ohlcv",
+        "ema20",
+        "ema50",
+        "atr",
+        "spread"
+      ],
+      "entry_hypothesis": "Identificare direzione su 1h/4h e struttura 15m; su 5m attendere ritracciamento verso EMA20/50 e conferma su candela CHIUSA 1m/5m. LONG e SHORT simmetrici; mai bias fisso.",
+      "exit_hypothesis": "Stop oltre swing o multiplo ATR, target multiplo del rischio, uscita se struttura 15m invalidata; time stop.",
+      "invalidate_when": "Trend di timeframe alto neutro/contraddittorio; spread alto; prossimita funding senza modello.",
+      "known_failure_modes": "Whipsaw in laterale, ritardo EMA, cambi di regime.",
+      "sources": [
+        "P03",
+        "G01",
+        "D11"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Esempio sintetizzato, NON regola attribuita ai paper; paper P03 riguarda altri mercati/orizzonti.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S02",
+      "name": "EMA 9/21 crossover con filtro ADX",
+      "family": "trend",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "ema9",
+        "ema21",
+        "adx",
+        "atr",
+        "spread"
+      ],
+      "entry_hypothesis": "Cross EMA9/21 a chiusura con ADX sopra soglia pre-registrata e direzione 15m coerente.",
+      "exit_hypothesis": "ATR/trailing limitato o inversione segnale con cooldown; costi integrati.",
+      "invalidate_when": "ADX debole, congestione, troppi incroci in finestra breve.",
+      "known_failure_modes": "Segnali tardivi, churn da fee.",
+      "sources": [
+        "G01",
+        "D01"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Parametri richiedono grid di test piccolo, OOS.",
+      "research_priority": "medium",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S03",
+      "name": "VWAP bounce e rejection",
+      "family": "vwap",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "RANGE",
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframes": [
+        "1m",
+        "5m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "vwap_session",
+        "volume",
+        "spread"
+      ],
+      "entry_hypothesis": "Prezzo tocca VWAP sessionale e respinge; ingresso solo con conferma e direzione filtrata dal regime.",
+      "exit_hypothesis": "Stop oltre zona rifiutata; target verso estremi range o multiplo del rischio; time stop.",
+      "invalidate_when": "Sessione definita in modo incoerente; breakout ad alta volatilita.",
+      "known_failure_modes": "VWAP dipende da reset sessionale 24/7; livelli a regime instabile.",
+      "sources": [
+        "V04"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Video fonte commerciale, descrizione consultata, trascrizione non verificata.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S04",
+      "name": "VWAP breakout + retest",
+      "family": "vwap",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "EXPANSION",
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframes": [
+        "1m",
+        "5m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "vwap_session",
+        "atr",
+        "volume",
+        "spread"
+      ],
+      "entry_hypothesis": "Chiusura oltre VWAP con volume e successivo retest che mantiene il livello; allineare al trend 15m.",
+      "exit_hypothesis": "Stop sotto/sopra retest; target strutturale; uscita a ritorno sotto/sopra VWAP.",
+      "invalidate_when": "Breakout senza retest, wick-only, news shock.",
+      "known_failure_modes": "Fakeout, lateness, spread.",
+      "sources": [
+        "V04"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Descrizione video indica due setup; trigger dettagliato formalizzato qui come ipotesi.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S05",
+      "name": "Bollinger + MACD reversal Hummingbot",
+      "family": "mean_reversion",
+      "holding_style": "intraday",
+      "candidate_regimes": [
+        "RANGE"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "bollinger_percent_b",
+        "macd",
+        "macd_hist",
+        "atr"
+      ],
+      "entry_hypothesis": "REGOLA DELLA FONTE: long %B < 0.2, MACD histogram > 0, MACD < 0; short %B > 0.8, hist < 0, MACD > 0.",
+      "exit_hypothesis": "Nella fonte: TP e SL legati a deviazione standard degli ultimi 100 periodi, time limit 55 minuti; parametri da ricontrollare e adattare ai costi.",
+      "invalidate_when": "Forte trend, high vol, commissioni che superano edge.",
+      "known_failure_modes": "Reversion non parte; alti costi; esperimento pubblicato perdita netta -1.538% con 334 trade.",
+      "sources": [
+        "V01",
+        "D02"
+      ],
+      "rule_origin": "reproduced_source_rule",
+      "limitations": "Fonte riporta esperimento negativo (non verificato in modo indipendente). Non usare come edge positivo.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": false
+    },
+    {
+      "id": "S06",
+      "name": "Bollinger squeeze breakout",
+      "family": "volatility",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "EXPANSION"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "bollinger_bandwidth",
+        "atr",
+        "volume",
+        "spread"
+      ],
+      "entry_hypothesis": "Compressione bandwidth percentile basso, poi chiusura fuori banda con aumento volume e ATR in espansione.",
+      "exit_hypothesis": "SL rientro nel range, target ATR, uscita al decadimento dell’espansione.",
+      "invalidate_when": "Movimenti da spread, picchi isolati, tasso falsi breakout troppo alto.",
+      "known_failure_modes": "False rotture e trailing prematuro.",
+      "sources": [
+        "D01",
+        "G01"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Idea da famiglia indicatori, parametri non certificati.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S07",
+      "name": "Donchian breakout 20/55",
+      "family": "breakout",
+      "holding_style": "intraday",
+      "candidate_regimes": [
+        "TREND_UP",
+        "TREND_DOWN",
+        "EXPANSION"
+      ],
+      "timeframes": [
+        "5m",
+        "15m",
+        "1h"
+      ],
+      "required_features": [
+        "ohlcv",
+        "donchian_high",
+        "donchian_low",
+        "atr",
+        "spread"
+      ],
+      "entry_hypothesis": "Su candela chiusa rottura di massimo/minimo N barre, filtrata da trend e volatilita; N=20/55 soltanto candidati.",
+      "exit_hypothesis": "ATR stop e trailing; uscita su rottura opposta o timeout.",
+      "invalidate_when": "Mercato range stretto, gap da manutenzione feed.",
+      "known_failure_modes": "Molti falsi breakout, effetto fees su 5m.",
+      "sources": [
+        "P03",
+        "G01"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "L’evidenza P03 non testa questa specifica implementazione 5m su crypto.",
+      "research_priority": "medium",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S08",
+      "name": "Opening range / UTC anchored breakout",
+      "family": "breakout",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "EXPANSION",
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "utc_anchor",
+        "session_range",
+        "volume",
+        "spread"
+      ],
+      "entry_hypothesis": "Definire finestre orarie crypto in modo PRE-REGISTRATO (es. apertura USA/Europa) e testare rottura del range iniziale.",
+      "exit_hypothesis": "Stop all’interno range, TP multiplo R; time stop breve.",
+      "invalidate_when": "Sessioni con poca liquidita, festivita, finestra ottimizzata ex-post.",
+      "known_failure_modes": "Crypto 24/7: gli orari non sono sessioni universali.",
+      "sources": [
+        "G01",
+        "D11"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Assunzioni di stagionalita intraday da provare su dati Bitget.",
+      "research_priority": "medium",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S09",
+      "name": "Liquidity sweep + failed breakout",
+      "family": "liquidity",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "RANGE",
+        "REVERSAL_CANDIDATE"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "swing_levels",
+        "volume",
+        "atr",
+        "spread"
+      ],
+      "entry_hypothesis": "Sweep oltre massimo/minimo locale, rapido ritorno e chiusura interna; contrarian SOLO con invalidazione chiara; CVD opzionale.",
+      "exit_hypothesis": "Stop oltre estremo sweep, target centro/opposto range, uscita a recupero fallito.",
+      "invalidate_when": "Trend forte, accelerazione direzionale e wick isolate.",
+      "known_failure_modes": "Falso reversal; non inferire intenzione di stop-hunt da sole candele.",
+      "sources": [
+        "V07",
+        "D03"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Pattern ispirato a concetti didattici; fonte video parzialmente identificata.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S10",
+      "name": "Order-book imbalance + trade confirmation",
+      "family": "order_flow",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "RANGE",
+        "EXPANSION"
+      ],
+      "timeframes": [
+        "tick",
+        "1m"
+      ],
+      "required_features": [
+        "l2_orderbook",
+        "trades",
+        "spread",
+        "depth",
+        "latency"
+      ],
+      "entry_hypothesis": "Valutare sbilanciamento bid/ask persistente assieme a eseguiti aggressivi; non operare sul solo muro visibile.",
+      "exit_hypothesis": "Uscita rapida se la pressione si inverte o liquidita sparisce; slippage budget.",
+      "invalidate_when": "Feed asincrono, depth spoofata, latenza insufficiente.",
+      "known_failure_modes": "Spoofing, cancellazioni, overreaction ai falsi muri.",
+      "sources": [
+        "P05",
+        "V07"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Richiede storico L2/tick, non testabile con sole candele 1m.",
+      "research_priority": "low",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S11",
+      "name": "CVD divergence + absorption",
+      "family": "order_flow",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "RANGE",
+        "REVERSAL_CANDIDATE"
+      ],
+      "timeframes": [
+        "tick",
+        "1m",
+        "5m"
+      ],
+      "required_features": [
+        "aggressor_trades",
+        "cvd",
+        "ohlcv",
+        "depth",
+        "latency"
+      ],
+      "entry_hypothesis": "Prezzo nuovo estremo non confermato da CVD; entrata solo dopo struttura di assorbimento e invalidazione.",
+      "exit_hypothesis": "Stop oltre estremo, uscita a perdita assorbimento; time limit.",
+      "invalidate_when": "CVD non disponibile o ricostruito inaccuratamente; volume venue incompleto.",
+      "known_failure_modes": "Divergenza persiste per molte candele; microstructure noise.",
+      "sources": [
+        "V07",
+        "P05"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "No aggretade aggressor-side equivale a no trigger, mai sintetizzare CVD da RSI.",
+      "research_priority": "medium",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S12",
+      "name": "Open Interest / prezzo regime qualifier",
+      "family": "positioning",
+      "holding_style": "signal_filter",
+      "candidate_regimes": [
+        "ALL"
+      ],
+      "timeframes": [
+        "5m",
+        "15m",
+        "1h"
+      ],
+      "required_features": [
+        "ohlcv",
+        "open_interest",
+        "funding_rate",
+        "volume"
+      ],
+      "entry_hypothesis": "Classificare congiuntamente delta prezzo e delta OI; usare solo come filtro di contesto con prezzi e volumi.",
+      "exit_hypothesis": "Non apre posizioni autonomamente; modifica ranking o confidenza di altre strategie.",
+      "invalidate_when": "Dati OI stantii, aggregazione fra exchange non coerente.",
+      "known_failure_modes": "OI crescente non determina direzione; OI in calo puo indicare chiusura long O short.",
+      "sources": [
+        "D10",
+        "P01",
+        "P02"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Separare variabili esplicative e predizione causale.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S13",
+      "name": "Liquidation rebound after cascade",
+      "family": "liquidations",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "SHOCK",
+        "REVERSAL_CANDIDATE"
+      ],
+      "timeframes": [
+        "tick",
+        "1m",
+        "5m"
+      ],
+      "required_features": [
+        "liquidation_feed",
+        "trades",
+        "ohlcv",
+        "atr",
+        "spread"
+      ],
+      "entry_hypothesis": "Individuare cascata di liquidazioni REALI e segnale di stabilizzazione; cercare rimbalzo contro direzione del forced flow.",
+      "exit_hypothesis": "TP e stop dinamici; time stop stretto; evitare DCA senza cap severo.",
+      "invalidate_when": "Feed liquidazioni assente, shock persistente, gap estremo.",
+      "known_failure_modes": "Cascata continua; eventi parzialmente rilevati; martingala pericolosa.",
+      "sources": [
+        "D03"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Fonte contiene DCA; in questo pacchetto ogni aumento esposizione e disabilitato di default.",
+      "research_priority": "medium",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S14",
+      "name": "Volume profile VAH/VAL/POC rotation",
+      "family": "volume_profile",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "RANGE"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "required_features": [
+        "trades_or_tick_volume",
+        "volume_profile",
+        "ohlcv",
+        "spread"
+      ],
+      "entry_hypothesis": "In range identificato, valutare rotation VAL->POC->VAH e viceversa, con rifiuto e conferma prezzo.",
+      "exit_hypothesis": "Profit-taking a POC o bordo opposto; stop oltre area valore.",
+      "invalidate_when": "Trend in espansione, profilo costruito con dati inadeguati.",
+      "known_failure_modes": "POC si sposta; classificazione del range errata.",
+      "sources": [
+        "V07"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Con OHLCV standard volume profile e approssimato, non equivale a VP tick.",
+      "research_priority": "medium",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S15",
+      "name": "Supertrend filter + retest",
+      "family": "trend",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframes": [
+        "5m",
+        "15m",
+        "1h"
+      ],
+      "required_features": [
+        "ohlcv",
+        "supertrend",
+        "atr",
+        "volume"
+      ],
+      "entry_hypothesis": "Usare supertrend 15m per direzione e retest 5m come trigger su candle close.",
+      "exit_hypothesis": "ATR stop, trailing su swing, regime conflict exit.",
+      "invalidate_when": "Regime range, volatilita anomala.",
+      "known_failure_modes": "Lag trend filter, inversioni multiple.",
+      "sources": [
+        "D01"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Hummingbot elenca controller supertrend_v1, regole qui specificate sono una variante.",
+      "research_priority": "medium",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S16",
+      "name": "Spot-perpetual basis convergence",
+      "family": "basis_arbitrage",
+      "holding_style": "market_neutral",
+      "candidate_regimes": [
+        "ALL"
+      ],
+      "timeframes": [
+        "5m",
+        "1h"
+      ],
+      "required_features": [
+        "spot_mid",
+        "perp_mid",
+        "funding_rate",
+        "borrow_cost",
+        "fees",
+        "depth",
+        "execution_latency"
+      ],
+      "entry_hypothesis": "Aprire gambe opposte se spread netto previsto supera costi, funding/borrowing e buffer; hedge delta quasi neutrale.",
+      "exit_hypothesis": "Chiudere alla convergenza o deterioramento basis; emergency unhedged-leg rule.",
+      "invalidate_when": "Seconda gamba non eseguibile, funding sfavorevole, spot borrowing mancante.",
+      "known_failure_modes": "Leg risk, capital fragmentation, basis widening, margin.",
+      "sources": [
+        "D06",
+        "G04",
+        "P01"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Richiede connettore spot e futures; non realizzabile dal solo short/long future singolo.",
+      "research_priority": "low",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S17",
+      "name": "Funding rate cross-venue differential",
+      "family": "funding_arbitrage",
+      "holding_style": "market_neutral",
+      "candidate_regimes": [
+        "ALL"
+      ],
+      "timeframes": [
+        "1h",
+        "4h"
+      ],
+      "required_features": [
+        "funding_rate_by_venue",
+        "perp_mid_by_venue",
+        "fees",
+        "depth",
+        "margin_by_venue"
+      ],
+      "entry_hypothesis": "Aprire long/short su due exchange solo se differenziale funding previsto netto compensa basis e execution risk.",
+      "exit_hypothesis": "Chiudere al decadimento differenziale o condizioni di stress/margine.",
+      "invalidate_when": "Disponibilita soltanto Bitget, risk transfer non possibile, mismatch settlement.",
+      "known_failure_modes": "Funding cambia, basis divergence, rischio exchange e hedge execution.",
+      "sources": [
+        "V02"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Video parla di cross-venue (Hyperliquid/Binance); non e una strategia Bitget-only.",
+      "research_priority": "low",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S18",
+      "name": "Perpetual market making spread capture",
+      "family": "market_making",
+      "holding_style": "microstructure",
+      "candidate_regimes": [
+        "RANGE"
+      ],
+      "timeframes": [
+        "tick",
+        "1m"
+      ],
+      "required_features": [
+        "l2_orderbook",
+        "fills",
+        "fees",
+        "latency",
+        "inventory",
+        "mark_price"
+      ],
+      "entry_hypothesis": "Quotare maker bid e ask con spread che copre maker fees, adverse selection e inventory; cancellare quando cambiano fair value/volatilita.",
+      "exit_hypothesis": "Gestire posizione dopo fill, stop quote e flatten con modello market impact.",
+      "invalidate_when": "Trend forte, latency elevata, quote stale, funding costoso.",
+      "known_failure_modes": "Adverse selection, partial fills, maker->taker fee inversione.",
+      "sources": [
+        "V03",
+        "D05"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Servono misure fill probability/queue e calcolo rischio inventory.",
+      "research_priority": "low",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S19",
+      "name": "Dynamic Grid Strike long/short",
+      "family": "grid",
+      "holding_style": "intraday",
+      "candidate_regimes": [
+        "RANGE",
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "atr",
+        "spread",
+        "depth",
+        "inventory"
+      ],
+      "entry_hypothesis": "Posizionare ordini limit in griglia DIREZIONALE dentro banda predefinita; spacing legato ad ATR e costi.",
+      "exit_hypothesis": "Ogni livello triple-barrier; kill switch al superamento banda e max esposizione.",
+      "invalidate_when": "Shock, gap oltre banda, correlazione portafoglio elevata.",
+      "known_failure_modes": "Cattura minuscoli profitti ma accumula perdite di trend; DCA mascherato.",
+      "sources": [
+        "D04",
+        "G03"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Senza regole massima esposizione la grid e esclusa.",
+      "research_priority": "medium",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S20",
+      "name": "ATR volatility expansion impulse",
+      "family": "volatility",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "EXPANSION"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "atr",
+        "atr_percentile",
+        "volume",
+        "spread"
+      ],
+      "entry_hypothesis": "ATR percentile da compresso a espansione, candle close oltre range e aumento volume; entrare solo col trend di 15m oppure breakout neutro.",
+      "exit_hypothesis": "SL struttura/ATR, TP o trailing in funzione della durata impulso, kill in caso spread spike.",
+      "invalidate_when": "Volatilita alta dovuta solo a dati errati o liquidita insufficiente.",
+      "known_failure_modes": "Slippage estremo; trailing in whipsaw.",
+      "sources": [
+        "G01",
+        "D11"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Candidato originale del catalogo, non attribuito a creator esterno.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S21",
+      "name": "RSI + EMA filtered mean reversion",
+      "family": "mean_reversion",
+      "holding_style": "scalp",
+      "candidate_regimes": [
+        "RANGE"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "rsi",
+        "ema50",
+        "atr",
+        "spread"
+      ],
+      "entry_hypothesis": "In RANGE RSI estremo e ritorno verso EMA 50 confermato; in TREND usare RSI solo per timing a favore del trend.",
+      "exit_hypothesis": "TP media/centro range e stop oltre swing, time stop.",
+      "invalidate_when": "RSI ipercomprato in trend up non e uno short automatico.",
+      "known_failure_modes": "Falsi reversal; threshold mining.",
+      "sources": [
+        "V06",
+        "G01"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Titolo video non recuperato; descritto come RSI+EMA; formule proposte da questo report.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S22",
+      "name": "Basis/momentum cross-sectional factor rotation",
+      "family": "factor",
+      "holding_style": "intraday",
+      "candidate_regimes": [
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframes": [
+        "1h",
+        "4h",
+        "1d"
+      ],
+      "required_features": [
+        "futures_basis",
+        "funding_rate",
+        "returns",
+        "volume",
+        "liquidity"
+      ],
+      "entry_hypothesis": "Rankare future per fattori basis/prezzo-volume e momentum con train/OOS; poi scegliere candidati per strategie scalp indipendenti.",
+      "exit_hypothesis": "Ribilanciamento con controllo turnover e transazioni; non segnali 1m autonomi.",
+      "invalidate_when": "Sample piccolo, funding storico lacunoso, fattori correlati.",
+      "known_failure_modes": "Data snooping, spurious ranking, fee.",
+      "sources": [
+        "P01",
+        "P02"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Risultati studi sono su fattori e non provano benefici nello scalp o top30 Bitget.",
+      "research_priority": "medium",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S23",
+      "name": "Time-series momentum medium-horizon",
+      "family": "trend",
+      "holding_style": "swing",
+      "candidate_regimes": [
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframes": [
+        "4h",
+        "1d"
+      ],
+      "required_features": [
+        "ohlcv",
+        "volatility",
+        "funding_rate"
+      ],
+      "entry_hypothesis": "Seguire segnale di momentum medio periodo con sizing volatility-scaled; usare come baseline di direzione, NON come entry 1m.",
+      "exit_hypothesis": "Trailing lento, risk exit e funding drag.",
+      "invalidate_when": "Microstructure intraday, risultati ricerca su futures tradizionali.",
+      "known_failure_modes": "Reversal prolungati, funding e gap.",
+      "sources": [
+        "P03"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Trasferimento al crypto speculativo: da verificare.",
+      "research_priority": "low",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S24",
+      "name": "Regime-aware multi-strategy selector",
+      "family": "meta",
+      "holding_style": "decision_system",
+      "candidate_regimes": [
+        "ALL"
+      ],
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m",
+        "1h",
+        "4h"
+      ],
+      "required_features": [
+        "regime_probabilities",
+        "strategy_oos_metrics",
+        "fees",
+        "spread",
+        "market_data_health"
+      ],
+      "entry_hypothesis": "Calcolare regime e pre-condizioni. In PAPER scegliere fra strategie eleggibili solo se dati presenti e storico OOS sufficiente; altrimenti NO_TRADE.",
+      "exit_hypothesis": "Aggiornamento ranking su finestra rolling con cooldown/hysteresis; non utilizzare PnL della finestra di selezione per training dello stesso periodo.",
+      "invalidate_when": "Regime non classificabile, edge validato assente, rischio portafoglio alto.",
+      "known_failure_modes": "Overfitting da strategy switching; feedback loop tra AI e PnL.",
+      "sources": [
+        "D01",
+        "D09",
+        "P04"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Architettura proposta appositamente per SuperBot, non standard testato.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    }
+  ]
+}
