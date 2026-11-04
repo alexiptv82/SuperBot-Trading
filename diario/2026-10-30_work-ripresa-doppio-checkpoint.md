@@ -149,3 +149,22 @@ PROSSIMO PASSO: attendere/convalidare P6 walk-forward; sviluppare P7 indicatori 
 
 Fonti: Library versione 22; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_biblioteca-strategica-analisi.md`, `diario/2026-11-04_l0_biblioteca-strategica.md` e il checkpoint di ripresa; PR GitHub #46. Accesso alle chat limitato ai messaggi recenti forniti e alle fonti accessibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 04/11/2026 15:48 Europe/Rome — P7 indicatori e P7b livelli/sessioni verificati offline
+
+FATTO/PREPARATO: completati due moduli puri di feature engineering, senza collegamento al Brain o al runtime. P7 è sul ramo `work/v3-p7-indicators-grok-20261104`, PR #47 aperta e DRAFT, HEAD `d11d37d9d11f8f37a762ae27ae432bddaa0cc15a`: `backend/v3/features/indicators.py` calcola EMA/RMA, true range, ATR, RSI, MACD, Bollinger, Donchian e ADX su barre chiuse con `Decimal` e vincolo di non-lookahead. Le formule consegnate da Grok sono risultate coerenti con oracolo indipendente, laboratorio e pandas; Claude ha corretto overflow non tipizzato, underflow silenzioso e ADX O(N²), riducendo 4000 barre da circa 24 secondi a 0,045 secondi.
+
+P7b è sul ramo `work/v3-p7b-levels-grok-20261104`, PR #48 aperta e DRAFT, HEAD `1b404a53dbc3e2071715f8411d4d3d34e1b1ae13`: `backend/v3/features/levels.py` aggiunge supertrend, percentile ATR, VWAP di sessione, range d'apertura e livelli di swing, sempre causali e a barre chiuse. Le formule Grok coincidono con un oracolo `Fraction`; Claude ha corretto `swing_levels` O(N·P) rendendolo lineare (60.000 barre da circa 15,5 secondi a 0,3 secondi) e rimosso una riesportazione impropria di `localcontext`. Con P7+P7b le 12 schede della biblioteca L0 che richiedono soltanto candele sono tecnicamente calcolabili, non validate economicamente.
+
+TEST: P7 porta la suite locale a 2260 PASS; mutazione **199/223**, con 24 sopravvissuti classificati equivalenti. P7b porta la suite finale a **2575 PASS**, 3 xfailed; restano 3 failure preesistenti per `fastapi` mancante, invariate. Mutazione P7b **123/141**, con 18 equivalenti. Verificati oracoli indipendenti, non-lookahead con meta-test, scale estreme, ordine delle validazioni, contesto Decimal, purezza AST e prestazioni. Queste sono prove offline documentate nel diario/PR, non GitHub Actions né evidenza economica su mercato reale.
+
+RILASCIATO: nulla. PR #47 e #48 non sono unite né distribuite. Nessuna feature viene passata al Brain, nessuna strategia è attivata e nessun dato reale è stato usato. Nessun merge/deploy V3, modifica runtime, wallet, reset o API pagata. PAPER, journal, memoria e storici preservati.
+
+PROBLEMI/APERTI: P7 rifiuta buchi nelle barre e usa convenzioni di inizializzazione EMA/RMA; P7b conserva pivot senza scadenza, accetta sessioni iniziali parziali e mantiene `atr_percentile` O(N·window). Mancano P8 regime, rilevatori delle schede e produttore `Candidate`; P6 walk-forward non è ancora consegnato. L1/L4 restano bloccati fino a OK esplicito; F0 e import storico restano NO-GO.
+
+PROSSIMO PASSO: P8 `v3/features/regime.py` con soglie solo come parametri obbligatori; completare e verificare P6 walk-forward; quindi costruire rilevatori per le 12 schede a sole candele, produrre `Candidate` per P5 e collaudare su storico BTC/ETH fuori campione. Nessuna promozione al Brain prima dei gate statistici e dell'autorizzazione separata.
+
+Fonti: Library versione 23; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p7_indicatori.md`, `diario/2026-11-04_p7b_livelli.md` e il checkpoint di ripresa; PR GitHub #47 e #48. Accesso alle chat limitato ai messaggi recenti forniti e alle fonti accessibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
