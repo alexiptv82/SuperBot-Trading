@@ -186,3 +186,23 @@ PROSSIMO PASSO: completare e verificare P6 `learning/walkforward.py`; definire i
 
 Fonti: Library versione 24; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p8_regime.md` e il checkpoint di ripresa; PR GitHub #49. I messaggi recenti accessibili documentano la preparazione di un oracolo P8, ma non è disponibile la chat completa: questo è un riepilogo di ripresa, non un'esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+
+---
+
+## 04/11/2026 19:46 Europe/Rome — P6 walk-forward delle celle verificato offline
+
+FATTO/PREPARATO: completato il modulo puro `backend/v3/learning/walkforward.py` sul ramo `work/v3-p6-walkforward-grok-20261104`, PR #50 aperta e DRAFT, HEAD `be7053fea0eef9a39df1623a6d1cf7e057ac1f6c`, impilata sulla PR #49. `make_folds` costruisce finestre rolling/expanding con embargo a giorni interi; `walk_forward` seleziona con `cell_stats` le celle positive usando esclusivamente il train e le misura sul test successivo, riportando medie in-sample, out-of-sample, resto e decadimento `is − oos`. `min_trades`, `min_days`, `confidence`, `n_boot` e `seed` sono parametri obbligatori senza default. La consegna originale di Grok è conservata nel commit `ce61a4e`; i test indipendenti sono nei commit `6304a95` e `581047f`, le correzioni nel commit `0717b35` e l'hardening derivato dalla mutazione nel commit `be7053f`.
+
+Sono stati corretti due difetti verificati: `decay_bp` usava due medie già arrotondate, producendo 14 differenze su 72 confronti con l'oracolo `Fraction`; ora il decadimento è calcolato dai valori esatti e arrotondato una sola volta. Inoltre il costo O(N·S) è stato eliminato valutando `key()` una sola volta per trade, ordinando una volta per chiusura e trovando le finestre con ricerca binaria; il test “molte celle” è passato da circa 37,6 secondi a 0,9 secondi, mentre 60.000 trade × 20 celle × 40 fold richiedono circa 1,9 secondi.
+
+TEST: **394 test** nei due file P6 (388 indipendenti + 6 di Grok); suite V3 da 2785 a **3179 PASS**, 3 xfailed. Restano 3 failure preesistenti per `fastapi` mancante, invariate. Verificati oracolo `Fraction` su 72 confronti con guardie, vettore manuale, `cell_stats` sostituita con stub/spia, assenza di fuga con meta-test, invarianza ai trade futuri, validazione e ordine degli errori, scale estreme, purezza AST e prestazioni. Mutazione **89/90**: l'unico sopravvissuto è classificato equivalente; i soli 6 test originali di Grok intercettavano 14/90. Sono prove offline documentate nel diario e nella PR, non GitHub Actions né validazione economica su dati reali.
+
+RILASCIATO: nulla. PR #50 non è unita né distribuita. Il modulo non è collegato al Brain, journal, prompt, strategie, soglie o limiti di rischio. Nessun merge/deploy, modifica operativa, wallet, reset, API pagata o accesso a dati reali. `DESK_MODE=paper` resta invariato; PAPER, journal, memoria e storici preservati.
+
+PROBLEMI/APERTI: la selezione su molte celle conserva il rischio di confronti multipli; il decadimento ne misura l'effetto ma non lo elimina. I fold rolling non sono indipendenti quando `train_ms > step_ms`; un trade del test può essere stato aperto nel train e chiuso dopo `train_end`, caso gestito dall'embargo; le celle mai viste nel train finiscono in `rest`. Le soglie statistiche P6 e le quattro soglie di `RegimeParams` P8 devono ancora essere scelte e validate fuori campione. Mancano i rilevatori delle 12 schede a sole candele e il produttore `Candidate` per P5. L1/L4, F0 e import dei 534 trade legacy restano soggetti ai gate e alle autorizzazioni già documentati.
+
+PROSSIMO PASSO: P9, definendo prima un contratto comune e poi i rilevatori delle 12 schede candle-only che producano `Candidate` per P5; quindi laboratorio su storico BTC/ETH in CI, con spezzatura ai buchi, e validazione fuori campione prima di qualsiasi promozione al Brain. Scelta delle soglie, policy PAPER e integrazioni restano decisioni separate.
+
+Fonti: Library versione 25; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p6_walkforward.md` e il checkpoint di ripresa; PR GitHub #50. Dei progressi delle chat sono accessibili soltanto messaggi recenti e riferimenti disponibili: questo è un riepilogo di ripresa, non un'esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
