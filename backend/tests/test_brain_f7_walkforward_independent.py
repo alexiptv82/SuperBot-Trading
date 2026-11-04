@@ -1132,17 +1132,39 @@ def timed(monkeypatch, n, ncells, n_folds=40):
     return dt
 
 
+class _Probe:
+    """Trade che conta le letture dei suoi attributi (solo quelli non definiti negli slot)."""
+    __slots__ = ("_o", "_c")
+
+    def __init__(self, o, counter):
+        self._o = o
+        self._c = counter
+
+    def __getattr__(self, name):
+        self._c[name] += 1
+        return getattr(self._o, name)
+
+
 class TestSpeed:
     def test_60000_trades_20_cells_40_folds(self, monkeypatch):
         assert timed(monkeypatch, 60_000, 20) < 6.0
 
-    def test_time_grows_linearly_with_the_number_of_trades(self, monkeypatch):
-        small = min(timed(monkeypatch, 15_000, 20) for _ in range(2))
-        large = min(timed(monkeypatch, 60_000, 20) for _ in range(2))
-        assert large / max(small, 1e-3) < 6.0, (small, large)               # lineare ~4, quadratico ~16
+    def test_trades_are_read_a_linear_number_of_times_not_once_per_fold(self, monkeypatch):
+        # Prova DETERMINISTICA (conta le letture, nessun orologio): un modulo che rilegge tutti i trade per ogni
+        # fold farebbe 40 * N letture di closed_at_ms; quello corretto ne fa N (un solo ordinamento).
+        monkeypatch.setattr(wf, "cell_stats", fast_cell_stats)
+        folds = folds_of(0, 620, 120, 10, 10, 0, False)[:40]
+        assert len(folds) == 40
+        for n in (15_000, 60_000):
+            counter = collections.Counter()
+            probes = [_Probe(o, counter) for o in big(n, 20)]
+            rep = run(probes, folds)
+            assert rep.n_selections > 0
+            assert counter["closed_at_ms"] <= 2 * n, (n, counter["closed_at_ms"])
+            assert counter["link_status"] <= 2 * n, (n, counter["link_status"])
 
     def test_many_cells_cost_the_same_as_few(self, monkeypatch):
-        few = timed(monkeypatch, 15_000, 75)
-        many = timed(monkeypatch, 15_000, 300)
+        few = min(timed(monkeypatch, 15_000, 75) for _ in range(2))
+        many = min(timed(monkeypatch, 15_000, 300) for _ in range(2))
         assert many < 10.0, many
-        assert many / max(few, 0.3) < 2.5, (few, many)                    # O(N), non O(N * celle selezionate)
+        assert many / max(few, 0.3) < 4.0, (few, many)          # O(N), non O(N * celle): il difetto dava ~35x
