@@ -3,7 +3,7 @@
 **Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo, applicata invariata)
 
 `backend/v3/features/regime.py` (`regime_labels`: TREND_UP/DOWN, RANGE, EXPANSION, SHOCK, UNCERTAIN; soglie solo come argomenti obbligatori, nessun default). **Nessun difetto di codice** nel modulo di Grok (oracolo `Fraction`: 43 200 confronti, 0 differenze); limite dichiarato: pareggi esatti su valori periodici seguono i Decimal. Suite V3 2575 → 2785 PASS; mutazione 67/69 (2 equivalenti); i soli 5 test di Grok: 25/69.
-**Prossimo:** attesa Grok P6 (walk-forward) e, se l'utente lo porta, l'oracolo cieco di ChatGPT per P8; **le 4 soglie di `RegimeParams` le sceglie l'utente**. Dettagli: `diario/2026-11-04_p8_regime.md`.
+**Prossimo:** attesa Grok P6 (walk-forward) (l'oracolo cieco di DeepSeek per P8, troncato e con convenzioni indovinate, non è stato applicato: vedi diario); **le 4 soglie di `RegimeParams` le sceglie l'utente**. Dettagli: `diario/2026-11-04_p8_regime.md`.
 
 ---
 
