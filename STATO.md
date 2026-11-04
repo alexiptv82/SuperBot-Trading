@@ -1,3 +1,18 @@
+## 04/11 (mattina) — F6 DASHBOARD UNIFICATA COMPLETATA: 240/240 PASS, PR #39 DRAFT
+
+**Claude Sonnet 4.6 — coordinatore**
+
+**F6 completato:** `backend/v3/dashboard.py` + 25 test → 240/240 PASS.
+PR #39 DRAFT: https://github.com/alexiptv82/SuperBot-Trading/pull/39
+Branch: `work/v3-f6-dashboard-20261104` (commit `0cfad35`)
+
+API: `build_summary(journal, pid, run_id)`, `build_all_summaries`, `format_summary`.
+Aggrega paper_open/paper_close/brain_step. Read-only, offline, fail-safe.
+
+**Prossimo:** F7 — Cervello evolutivo (Grok). F8 in attesa. F0 bloccato su OK utente.
+
+---
+
 ## 04/11 — F5 PAPER EXECUTOR COMPLETATO + FIX BASELINE 215/215 PASS
 
 **Claude Sonnet 4.6 — coordinatore**
