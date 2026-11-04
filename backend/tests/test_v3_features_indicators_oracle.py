@@ -661,7 +661,8 @@ class TestValidationBars:
             assert all(v == () for v in vals)
 
     @pytest.mark.parametrize("name", list(BAR_CALLERS))
-    @pytest.mark.parametrize("bad", [None, "abc", b"abc", 5, {1}, {"a": 1}, (x for x in range(3)), iter([])])
+    @pytest.mark.parametrize("bad", [None, "abc", b"abc", 5, {1}, {"a": 1}, (x for x in range(3)), iter([]),
+                                       set(good_bars(3)), frozenset(good_bars(3)), dict.fromkeys(good_bars(3))])
     def test_bars_must_be_a_real_sequence(self, name, bad):
         expect("invalid_bars", BAR_CALLERS[name], bad)
 
@@ -811,7 +812,8 @@ class TestValidationValues:
         assert self.FN[name]((D(1), D(2)), 1) is not None
 
     @pytest.mark.parametrize("name", list(FN))
-    @pytest.mark.parametrize("bad", [None, "123", b"12", 5, {D(1)}, {1: D(1)}, (x for x in [D(1)]), iter([D(1)])])
+    @pytest.mark.parametrize("bad", [None, "123", b"12", 5, {D(1)}, {1: D(1)}, (x for x in [D(1)]), iter([D(1)]),
+                                       {D(1), D(2)}, frozenset({D(1), D(2)}), dict.fromkeys([D(1), D(2)])])
     def test_values_container(self, name, bad):
         expect("invalid_values", self.FN[name], bad, 2)
 
@@ -836,7 +838,7 @@ class TestValidationValues:
 
 # ============================================================ scale estreme
 BIGCTX = Context(prec=120, Emax=decimal.MAX_EMAX, Emin=decimal.MIN_EMIN)
-CTX_FIELDS = (("prec", 60), ("Emin", -999999), ("Emax", 999999), ("clamp", 0))
+CTX_FIELDS = (("prec", 60), ("Emin", -999999), ("Emax", 999999), ("clamp", 0), ("capitals", 1))
 
 
 def base_bars(n=8):
@@ -933,9 +935,10 @@ class TestExtremeScales:
         if name != "donchian":                       # donchian non fa aritmetica: risponde a ogni scala
             assert refused >= 3, (name, refused)
 
-    def test_error_has_no_decimal_cause_attached(self):
+    @pytest.mark.parametrize("name", [n for n in SCALE_CASES if n != "donchian"])
+    def test_error_has_no_decimal_cause_attached(self, name):
         with pytest.raises(ValueError) as ex:
-            bollinger(rescale(BASE, 600_000), 3, D(2), candle_ms=CMS)
+            SCALE_CASES[name][0](rescale(BASE, 10**9))
         assert str(ex.value) == "numeric_out_of_range"
         assert ex.value.__cause__ is None and ex.value.__suppress_context__ is True
 
@@ -959,6 +962,60 @@ class TestExtremeScales:
             with pytest.raises(ValueError) as ex:
                 ema(closes(rescale(BASE, -1_000_100)), 3)
             assert str(ex.value) == "numeric_out_of_range"
+
+
+# ============================================================ forma dei risultati e firme
+class TestShapes:
+    BARS = good_bars(30)
+    VALS = closes(BARS)
+
+    def test_plain_series_are_tuples(self):
+        for r in (sma(self.VALS, 3), ema(self.VALS, 3), rma(self.VALS, 3), true_range(self.BARS, candle_ms=CMS),
+                  atr(self.BARS, 3, candle_ms=CMS), rsi(self.BARS, 3, candle_ms=CMS)):
+            assert type(r) is tuple and len(r) == 30
+
+    def test_dataclasses_fields_types_and_frozen(self):
+        results = {
+            ind.MacdSeries: (macd(self.BARS, 2, 4, 2, candle_ms=CMS), ("line", "signal", "hist")),
+            ind.BollingerSeries: (bollinger(self.BARS, 3, D(2), candle_ms=CMS),
+                                  ("mid", "upper", "lower", "percent_b", "bandwidth")),
+            ind.DonchianSeries: (donchian(self.BARS, 3, candle_ms=CMS), ("high", "low")),
+            ind.AdxSeries: (adx(self.BARS, 3, candle_ms=CMS), ("plus_di", "minus_di", "adx")),
+        }
+        for cls, (r, names) in results.items():
+            assert type(r) is cls and dataclasses.is_dataclass(r)
+            assert tuple(f.name for f in dataclasses.fields(cls)) == names
+            for nme in names:
+                assert type(getattr(r, nme)) is tuple and len(getattr(r, nme)) == 30
+            with pytest.raises(dataclasses.FrozenInstanceError):
+                setattr(r, names[0], ())
+        assert tuple(f.name for f in dataclasses.fields(Bar)) == ("open_time_ms", "open", "high", "low", "close", "volume")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            self.BARS[0].close = D(1)
+
+    def test_signatures_candle_ms_keyword_only_and_no_defaults(self):
+        import inspect
+        for fn in (check_bars, true_range, atr, rsi, macd, bollinger, donchian, adx):
+            params = inspect.signature(fn).parameters
+            assert params["candle_ms"].kind is inspect.Parameter.KEYWORD_ONLY, fn.__name__
+        for fn in (sma, ema, rma, check_bars, true_range, atr, rsi, macd, bollinger, donchian, adx):
+            for p in inspect.signature(fn).parameters.values():
+                assert p.default is inspect.Parameter.empty, (fn.__name__, p.name)
+        with pytest.raises(TypeError):
+            atr(self.BARS, 3, CMS)
+        with pytest.raises(TypeError):
+            true_range(self.BARS)                                  # candle_ms obbligatorio, nessun default
+        with pytest.raises(TypeError):
+            sma(self.VALS)
+
+    def test_negative_zero_inputs_are_normalised(self):
+        nz = D("-0")
+        assert nz.is_signed() and nz == 0
+        for fn in (sma, ema, rma):
+            r = fn([nz], 1)
+            assert r == (D(0),) and not r[0].is_signed(), fn.__name__
+            r = fn([nz, nz, nz], 1)
+            assert all(not x.is_signed() for x in r), fn.__name__
 
 
 # ============================================================ purezza
