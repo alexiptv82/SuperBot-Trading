@@ -14,11 +14,8 @@ Tipi di evento riconosciuti (e chi li produce oggi):
     brain_decision  — decisione del cervello (payload: kind, status). Prodotto
                       da brain_f2.engine.BrainEngine (portfolio_id="brain").
     paper_close     — chiusura PAPER (payload: position_id, symbol,
-                      realized_pnl). ATTENZIONE: contratto PROPOSTO, oggi
-                      nessun modulo lo produce (execute_paper gestisce solo
-                      OPEN). Finche' non esiste un esecutore di chiusura, i
-                      conteggi su chiusure e PnL saranno sempre zero su dati
-                      reali.
+                      realized_pnl, ...). Prodotto da
+                      executor.paper_close.close_paper (F5b).
 """
 from __future__ import annotations
 

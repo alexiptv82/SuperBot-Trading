@@ -418,17 +418,35 @@ class TestRealProducers:
         assert pos.margin_used == Decimal("60")
         assert s.margin_in_use == Decimal("60")
 
-    def test_no_producer_writes_paper_close_yet(self):
-        """Documenta un buco noto: nessun modulo di backend/v3 scrive paper_close.
-
-        Se questo test inizia a fallire, significa che e' stato aggiunto un
-        esecutore di chiusura: aggiornare il contratto in dashboard.py e
-        sostituire questo test con uno che usa il produttore vero.
-        """
-        from pathlib import Path as _P
-        root = _P(__file__).resolve().parents[1] / "v3"
-        writers = [
-            str(p.relative_to(root)) for p in root.rglob("*.py")
-            if p.name != "dashboard.py" and '"paper_close"' in p.read_text(encoding="utf-8")
-        ]
-        assert writers == [], f"paper_close ora ha un produttore: {writers}"
+    def test_dashboard_sees_real_close_paper(self):
+        """open (execute_paper) -> close (close_paper) -> la dashboard li legge entrambi."""
+        from backend.v3.executor.paper_close import close_paper
+        proposal = OpenProposal(
+            symbol="BTCUSDT", side=1, entry_price=Decimal("30000"),
+            stop_price=Decimal("29000"), leverage=5, rationale="deepseek:analysis",
+            confidence=0.75, originating_ai="deepseek", context_hash="abc123")
+        quote = RiskQuote(allowed=True, reason="ok", quantity=Decimal("0.01"),
+                          notional=Decimal("300"), margin=Decimal("60"),
+                          worst_case_loss_estimate=Decimal("30"),
+                          risk_budget=Decimal("450"))
+        decision = BrainDecision(
+            kind=DecisionKind.OPEN, proposal=proposal, risk_quote=quote,
+            rationale="deepseek:analysis", sources=["deepseek:analysis"],
+            occurred_at_ms=1_700_000_000_000, status=ProposalStatus.APPROVED)
+        with TemporaryDirectory() as td:
+            j = _journal(td)
+            opened = execute_paper(decision, portfolio_id="hawk", run_id="r-close",
+                                   journal=j, now_ms=1_700_000_001_000)
+            before = build_summary(j, "hawk", "r-close")
+            closed = close_paper(portfolio_id="hawk", run_id="r-close",
+                                 position_id=opened.position_id,
+                                 exit_price=Decimal("31000"), reason="manual",
+                                 fee_bps=Decimal("6"), journal=j, now_ms=1_700_000_061_000)
+            after = build_summary(j, "hawk", "r-close")
+        assert len(before.open_positions) == 1 and before.margin_in_use == Decimal("60")
+        assert len(after.open_positions) == 0 and after.margin_in_use == Decimal("0")
+        assert len(after.closed_trades) == 1
+        assert after.closed_trades[0].position_id == opened.position_id
+        assert after.closed_trades[0].realized_pnl == closed.realized_pnl == Decimal("9.634")
+        assert after.realized_pnl == Decimal("9.634")
+        assert after.last_event_ms == 1_700_000_061_000
