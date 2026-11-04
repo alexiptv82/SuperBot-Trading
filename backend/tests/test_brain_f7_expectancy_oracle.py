@@ -207,6 +207,15 @@ class TestPercentileIndexes:
     def test_hand_values(self, conf, nb, expected):
         assert ex._percentile_indexes(D(conf), nb) == expected
 
+    def test_exact_even_when_the_confidence_has_more_digits_than_the_ambient_precision(self):
+        """0.9 + 1e-37: l'indice alto esatto e' ceil(190.00..01) - 1 = 190. Con la precisione
+        ambientale (28 cifre) 1 - alpha/2 si arrotonderebbe a 0.95 e darebbe 189."""
+        conf = D("0.9000000000000000000000000000000000001")
+        assert ex._percentile_indexes(conf, 200) == (9, 190) == _oracle_idx(str(conf), 200)
+        with localcontext() as ctx:
+            ctx.prec = 5
+            assert ex._percentile_indexes(conf, 200) == (9, 190)
+
     def test_symmetry_and_range_for_many_inputs(self):
         for conf in ("0.0001", "0.1", "0.5", "0.6827", "0.8", "0.9", "0.95", "0.99", "0.9999"):
             for nb in (200, 201, 250, 299, 300, 1000, 1001):
