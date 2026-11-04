@@ -48,3 +48,27 @@ Prompt unico nel Project (`claude/prompt-grok-p2-review-f5b-2026-11-04.md`), pun
 - **Task A (P2):** nel suo `engine.py`: `BrainDecision.journal_event_id`, `_append_durable` che ritorna l'id, id che sopravvive a `_normalize`, `symbol`/`regime` nel payload di `brain_decision` con allowlist. Branch `work/v3-p2-decision-link-grok-20261104`.
 - **Task B:** revisione indipendente di `close_paper`, soprattutto la concorrenza fra due chiusure simultanee (finora solo ragionata). Branch `work/v3-f5b-grok-review-20261104`, nuovo file di test.
 Dopo P2, Claude aggiorna `execute_paper` per copiare l'id in `paper_open.decision_event_id`.
+
+---
+
+## Aggiornamento (pomeriggio): verifica del report di Grok sulla concorrenza
+
+**AI:** Claude Sonnet 5.5 (coordinatore) · **Commit:** `59f835a` su `work/v3-f5b-paper-close-20261104` (PR #41 DRAFT)
+
+**Cosa è arrivato:** l'utente ha incollato un report di Grok ("Task A e B completati": P2 con 349 test e 3/3 mutanti; finding P1 "concorrenza non protetta", 4 chiusure simultanee tutte riuscite).
+
+**Cosa si è potuto verificare, e cosa no:**
+- ❌ I branch indicati da Grok (`work/v3-p2-decision-link-grok-20261104`, `work/v3-f5b-grok-review-20261104`) **non esistono sul server** (`git ls-remote`). Nessun commit, commento PR o voce di diario suo oggi; la sezione "Deliverable" del report era vuota. "349 passed", "3/3 mutanti" e il test `test_concurrent_close_only_one_succeeds` sono **non verificati**. P2 (Task A) resta da consegnare.
+- ✅ Il finding sulla concorrenza l'ho riprodotto io con thread reali (8 thread, 3 scenari, 10 esecuzioni = 30 corse): il journal contiene **sempre un solo** `paper_close`, catena di hash valida. **Nessuna doppia chiusura** (`event_id` UNIQUE + `BEGIN IMMEDIATE` esistono già; la correzione suggerita da Grok è già nello schema). Può aver visto più chiamate "OK": richieste identiche sovrapposte ricevono la stessa ricevuta.
+
+**Due punti minori reali, sistemati in `59f835a`:**
+1. Chi perdeva la corsa riceveva `journal_write_failed` (fuorviante) → ora `position_already_closed`.
+2. Semantica delle richieste identiche sovrapposte documentata nel docstring: chi somma i PnL legge gli eventi del journal, non le ricevute. Un retry identico dopo la chiusura fallisce con `position_already_closed`.
+
+**Test e mutazione:** 112 test (erano 102); 4/4 mutanti uccisi; sul mutante "doppia chiusura vera" i test con thread lo rilevano in 20/20 esecuzioni (singolo test ~75-90%: dipende dalla sovrapposizione dei thread). Suite V3 (test_brain_f* esclusi i legacy, test_v3_events, test_v3_risk): **371 PASS**. Il numero non è confrontabile con i "345" di prima: l'insieme di file misurato è diverso.
+
+**Correzione a me stesso:** nel messaggio del commit ho scritto "24 esecuzioni"; il conteggio corretto è 10 esecuzioni della sonda (30 corse). Segnalato sulla PR; storia del branch non riscritta.
+
+**Prossimo:** serve che Grok faccia push del suo lavoro (o incolli il diff). Poi: `execute_paper` copia `decision.journal_event_id` in `paper_open.decision_event_id` (mio), poi P3 `TradeOutcome`.
+
+⛔ Nessun merge/deploy · DESK_MODE=paper invariato · Hawk/Bull non toccati · cervello intatto · nessuna modifica a strategia, soglie, limiti di rischio, prompt.

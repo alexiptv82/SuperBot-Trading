@@ -1,3 +1,12 @@
+## 04/11 (pomeriggio) — F5b: FINDING DI GROK SULLA CONCORRENZA VERIFICATO, 371 PASS
+
+**Claude Sonnet 5.5 — coordinatore**
+
+Il report di Grok ("Task A e B completati") **non è verificabile**: i suoi due branch non esistono sul server e la sezione Deliverable era vuota. Il finding "doppia chiusura" **non si riproduce**: con 8 thread reali (30 corse) il journal contiene sempre un solo `paper_close`, catena valida. Corretti due punti minori in `close_paper` (commit `59f835a`, PR #41): codice d'errore fuorviante `journal_write_failed` → `position_already_closed` e semantica documentata delle richieste identiche sovrapposte. 112 test, mutazione 4/4, suite V3 371 PASS.
+**Serve:** Grok deve fare push dei suoi branch (o incollare il diff). **P2 resta da consegnare.** Poi `execute_paper` copia l'id della decisione, poi P3 `TradeOutcome`.
+
+---
+
 ## 04/11 (mattina) — P1 FATTO: CHIUSURA PAPER (F5b), PR #41 DRAFT, 345 PASS
 
 **Claude Sonnet 5.5 — coordinatore**
