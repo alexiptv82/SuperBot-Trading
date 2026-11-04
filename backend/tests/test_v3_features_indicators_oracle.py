@@ -763,7 +763,8 @@ class TestValidationBars:
         badbars = [None]
         param_bad = {"atr": {"n": 0}, "rsi": {"n": 0}, "macd": {"fast": 4, "slow": 2}, "bollinger": {"n": 1},
                      "donchian": {"n": 0}, "adx": {"n": 0}}[name]
-        expect("invalid_candle_ms", BAR_CALLERS[name], badbars, candle_ms=True, **param_bad)
+        for bad_ms in (True, False, 0, -1, 60000.0, "60000", None):
+            expect("invalid_candle_ms", BAR_CALLERS[name], badbars, candle_ms=bad_ms, **param_bad)
         expect("invalid_period", BAR_CALLERS[name], badbars, **param_bad)
         expect("invalid_bars", BAR_CALLERS[name], badbars)
         # periodo cattivo con barre valide: sempre invalid_period
