@@ -255,12 +255,15 @@ class TestArgumentValidation:
         j = _journal()
         _expect("invalid_reason", j, _open(j).position_id, reason=bad)
 
-    @pytest.mark.parametrize("bad", [0, -1, Decimal("-0.5"), "NaN", "Infinity", "abc", True, None])
+    # float e stringhe vengono rifiutati: importi e prezzi non si convertono in silenzio
+    @pytest.mark.parametrize("bad", [0, -1, Decimal("-0.5"), "NaN", "Infinity", "abc", True, None,
+                                     31000.5, "31000", Decimal("NaN"), Decimal("Infinity")])
     def test_invalid_exit_price(self, bad):
         j = _journal()
         _expect("invalid_exit_price", j, _open(j).position_id, exit_price=bad)
 
-    @pytest.mark.parametrize("bad", [-1, Decimal("100.01"), 101, "NaN", "Infinity", "x", True, None])
+    @pytest.mark.parametrize("bad", [-1, Decimal("100.01"), 101, "NaN", "Infinity", "x", True, None,
+                                     6.0, "6", Decimal("NaN")])
     def test_invalid_fee_bps(self, bad):
         j = _journal()
         _expect("invalid_fee_bps", j, _open(j).position_id, fee_bps=bad)
@@ -333,6 +336,8 @@ class TestPositionState:
         {"quantity": "0"}, {"quantity": "-1"}, {"quantity": None},
         {"margin_used": "0"}, {"margin_used": "Infinity"},
         {"symbol": ""}, {"symbol": None},
+        {"side": 1.0},
+        {"leverage": None}, {"leverage": 0}, {"leverage": 126}, {"leverage": True}, {"leverage": "5"},
     ])
     def test_corrupt_open_payload_fails_closed(self, override):
         j = _journal()
@@ -344,6 +349,44 @@ class TestPositionState:
         j = _journal()
         r = _close(j, _raw_open(j))
         assert r.symbol == "BTC/USDT:USDT"
+
+
+# ---------------------------------------------------------------------------
+# valori finiti ma estremi: devono dare ExecutionError, mai un'eccezione decimal
+# ---------------------------------------------------------------------------
+
+class TestNumericExtremes:
+    @pytest.mark.parametrize("huge", [Decimal("1E+999999"), Decimal("1" + "0" * 40)])
+    def test_extreme_exit_price(self, huge):
+        j = _journal()
+        _expect("numeric_out_of_range", j, _open(j).position_id, exit_price=huge)
+
+    @pytest.mark.parametrize("field", ["quantity", "fill_price"])
+    def test_extreme_open_payload(self, field):
+        j = _journal()
+        pid = _raw_open(j, **{field: "1E+999999"})
+        _expect("numeric_out_of_range", j, pid)
+
+    def test_extreme_fee_times_notional(self):
+        j = _journal()
+        pid = _raw_open(j, quantity="1E+30")
+        _expect("numeric_out_of_range", j, pid, fee_bps=100)
+
+    def test_tiny_but_positive_exit_price_is_a_legitimate_total_loss(self):
+        """Controllo: non ogni valore estremo e' un errore. Prezzo ~0 = perdita quasi totale."""
+        j = _journal()
+        r = _close(j, _open(j).position_id, exit_price=Decimal("1E-999999"))
+        assert r.gross_pnl == Decimal("-300.00000000")
+
+    def test_only_execution_error_ever_escapes(self):
+        """Nessuna combinazione estrema fa uscire un'eccezione diversa da ExecutionError."""
+        for exit_price in (Decimal("1E+999999"), Decimal("1E-999999"), Decimal("9" * 60)):
+            j = _journal()
+            pid = _open(j).position_id
+            try:
+                _close(j, pid, exit_price=exit_price)
+            except ExecutionError:
+                pass
 
 
 # ---------------------------------------------------------------------------

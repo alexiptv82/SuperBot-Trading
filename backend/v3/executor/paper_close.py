@@ -84,6 +84,16 @@ def _dec(value: Any, code: str) -> Decimal:
     return d
 
 
+def _num_input(value: Any, code: str) -> Decimal:
+    """Numero passato dal chiamante: solo Decimal o int (mai float, bool o stringhe).
+
+    Un float e' una approssimazione binaria: per importi e prezzi si rifiuta
+    invece di convertirlo in silenzio.
+    """
+    _require(type(value) in (Decimal, int), code)
+    return _dec(value, code)
+
+
 def _q(value: Decimal) -> Decimal:
     return value.quantize(_QUANT, rounding=ROUND_HALF_EVEN)
 
@@ -146,9 +156,9 @@ def close_paper(
     _require(isinstance(position_id, str) and bool(position_id), "invalid_position_id")
     _require(isinstance(journal, EventJournal), "invalid_journal_type")
     _require(isinstance(reason, str) and reason in CLOSE_REASONS, "invalid_reason")
-    exit_d = _dec(exit_price, "invalid_exit_price")
+    exit_d = _num_input(exit_price, "invalid_exit_price")
     _require(exit_d > 0, "invalid_exit_price")
-    fee_d = _dec(fee_bps, "invalid_fee_bps")
+    fee_d = _num_input(fee_bps, "invalid_fee_bps")
     _require(0 <= fee_d <= _MAX_FEE_BPS, "invalid_fee_bps")
 
     timestamp_ms = now_ms if now_ms is not None else int(time.time() * 1000)
@@ -158,21 +168,30 @@ def close_paper(
     opened = _find_position(journal, portfolio_id, run_id, position_id)
     p = opened.payload
     side = p.get("side")
-    _require(side in (-1, 1) and not isinstance(side, bool), "corrupt_position_payload")
+    _require(type(side) is int and side in (-1, 1), "corrupt_position_payload")
     entry = _dec(p.get("fill_price"), "corrupt_position_payload")
     qty = _dec(p.get("quantity"), "corrupt_position_payload")
     margin = _dec(p.get("margin_used"), "corrupt_position_payload")
     _require(entry > 0 and qty > 0 and margin > 0, "corrupt_position_payload")
+    leverage = p.get("leverage")
+    _require(type(leverage) is int and 1 <= leverage <= 125, "corrupt_position_payload")
     symbol = p.get("symbol")
     _require(isinstance(symbol, str) and bool(symbol), "corrupt_position_payload")
     _require(timestamp_ms >= opened.occurred_at_ms, "close_before_open")
 
     # --- calcolo (Decimal puro; ordine delle operazioni fissato) ---
-    gross = _q(Decimal(side) * (exit_d - entry) * qty)
-    notional_entry = _q(entry * qty)
-    notional_exit = _q(exit_d * qty)
-    fees = _q((notional_entry + notional_exit) * fee_d / Decimal(10000))
-    realized = _q(gross - fees)
+    # Valori finiti ma estremi (esponenti enormi, troppe cifre) fanno sollevare
+    # decimal.InvalidOperation/Overflow: li convertiamo nel codice d'errore del
+    # contratto invece di lasciarli uscire come eccezioni non tipizzate.
+    try:
+        gross = _q(Decimal(side) * (exit_d - entry) * qty)
+        notional_entry = _q(entry * qty)
+        notional_exit = _q(exit_d * qty)
+        fees = _q((notional_entry + notional_exit) * fee_d / Decimal(10000))
+        realized = _q(gross - fees)
+        loss_exceeds_margin = bool(realized < 0 and -realized > margin)
+    except ArithmeticError:  # decimal.DecimalException e' sottoclasse di ArithmeticError
+        raise ExecutionError("numeric_out_of_range") from None
     held_ms = timestamp_ms - opened.occurred_at_ms
 
     payload: dict[str, Any] = {
@@ -188,12 +207,12 @@ def close_paper(
         "fees": str(fees),
         "realized_pnl": str(realized),
         "margin_used": str(margin),
-        "leverage": p.get("leverage"),
+        "leverage": leverage,
         "fee_bps": str(fee_d),
         "reason": reason,
         "opened_at_ms": opened.occurred_at_ms,
         "held_ms": held_ms,
-        "loss_exceeds_margin": bool(realized < 0 and -realized > margin),
+        "loss_exceeds_margin": loss_exceeds_margin,
         "decision_event_id": p.get("decision_event_id", ""),
     }
     event = Event(
