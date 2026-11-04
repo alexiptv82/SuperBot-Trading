@@ -546,6 +546,21 @@ class TestValidation:
         CALLERS[name](good_bars(), period_ms=CMS, anchor_ms=0, k=1)     # periodo = 1 barra ammesso (k=1 per opening_range)
         CALLERS[name](good_bars(), period_ms=4 * CMS, anchor_ms=3 * CMS)
 
+    def test_session_bool_values_are_refused_even_when_numerically_valid(self):
+        """Con candle_ms=1, True e False sono valori numericamente BUONI (1 e 0): solo il controllo di tipo li rifiuta."""
+        bars = [Bar(k, D(10), D(11), D(9), D(10), D(1)) for k in range(8)]
+        vwap_session(bars, 2, 0, candle_ms=1)
+        opening_range(bars, 2, 0, 1, candle_ms=1)
+        vwap_session(bars, 1, 0, candle_ms=1)                                            # periodo di una barra: ammesso
+        expect("invalid_period", vwap_session, bars, True, 0, candle_ms=1)               # True == 1
+        expect("invalid_period", vwap_session, bars, 2, False, candle_ms=1)              # False == 0
+        expect("invalid_period", opening_range, bars, True, 0, 1, candle_ms=1)
+        expect("invalid_period", opening_range, bars, 2, False, 1, candle_ms=1)
+        expect("invalid_period", opening_range, bars, 2, 0, True, candle_ms=1)           # k = True == 1
+        for name, param in (("supertrend", "n"), ("atr_percentile", "n"), ("atr_percentile", "window"),
+                            ("swing_levels", "left"), ("swing_levels", "right")):
+            expect("invalid_period", CALLERS[name], bars, candle_ms=1, **{param: True})
+
     def test_session_parameters_are_checked_against_candle_ms(self):
         bars = [Bar(k * 5, D(10), D(11), D(9), D(10), D(1)) for k in range(12)]       # candle_ms = 5
         vwap_session(bars, 20, 5, candle_ms=5)
