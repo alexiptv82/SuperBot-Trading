@@ -1,3 +1,12 @@
+## 04/11 (sera, dopo P9a) — PRE-REGISTRAZIONE DEL LABORATORIO FISSATA E PROMPT P10 PRONTO PER CHATGPT
+
+**Claude Sonnet 5.5 — coordinatore** · solo documenti, nessun codice nuovo
+
+Dopo la revisione esterna delle 21:26 (adottati stress 20 bp, sei verdetti separati senza aggregato, controllo invertito, classi di verdetto, regola di decadimento; dichiarati come limiti ingresso al `close`, niente funding/slippage separati, candidati non portafoglio) sono fissati **prima dei risultati** i valori e le regole del laboratorio (`backend/v3/lab/preregistration.json`, sha256 `7e561c21…550e`; testo in `claude/lab-preregistrazione-p10-2026-11-04.md`): 3 strategie × BTC/ETH, 15 m, ~540 giorni, costi 12 bp (+0/20), walk-forward 120/30/30 con embargo 1 giorno, `EVIDENZA_POSITIVA` solo se tutte le condizioni E1–E4 (IC 0,99, OOS ≥ 50 % IS, controllo invertito, controllo a scorrimento per la deriva). **Nessuna evidenza → ci si ferma, P9b non si costruisce.**
+**Prossimo:** ChatGPT scrive P10 (`claude/prompt-chatgpt-p10-lab-2026-11-04.md`: adattatore etichette → `TradeOutcome`, controlli, verdetto, esecutore); poi caricatore dello storico + job GitHub Actions + rapporto. Il Brain e i suoi limiti non cambiano. Dettagli: `diario/2026-11-04_p10_preregistrazione.md`.
+
+---
+
 ## 04/11 (sera, dopo P6) — P9a FATTO: RILEVATORI A SOLE CANDELE, PR #51 DRAFT, 3560 PASS
 
 **Claude Sonnet 5.5 — coordinatore** · modulo: codice di **ChatGPT** (Grok senza tempo di utilizzo; Modalità B: consegna come testo, applicata invariata)
