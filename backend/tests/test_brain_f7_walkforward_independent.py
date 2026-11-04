@@ -827,6 +827,21 @@ class TestValidation:
             call(folds=folds)
         assert str(e.value) == "invalid_folds"
 
+    def test_a_subclass_of_fold_is_rejected_like_the_exact_type_checks_elsewhere(self):
+        # stessa severita' di `type(v) is not int` / `type(expanding) is not bool`: solo `Fold` esatto
+        class FoldX(wf.Fold):
+            pass
+
+        f = VF[0]
+        sub = FoldX(f.index, f.train_start_ms, f.train_end_ms, f.test_start_ms, f.test_end_ms)
+        assert isinstance(sub, wf.Fold) and type(sub) is not wf.Fold
+        with pytest.raises(ValueError) as e:
+            call(folds=[sub])
+        assert str(e.value) == "invalid_folds"
+        with pytest.raises(ValueError) as e:
+            call(folds=[f, sub])
+        assert str(e.value) == "invalid_folds"
+
     @pytest.mark.parametrize("over", [
         dict(train_start_ms=False), dict(index=False), dict(train_end_ms=float(3 * DAY)),
         dict(test_start_ms=None), dict(test_end_ms="x"),
