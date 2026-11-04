@@ -89,6 +89,19 @@ for _i, (_mode, _len) in enumerate(itertools.product(MODES, LENGTHS)):
     DATASETS.append((f"{_mode}-{_len}-{_i}", make_bars(_rng, _len, _mode, t0=_i)))
 for _s in range(6):
     DATASETS.append((f"long-{_s}", make_bars(random.Random(900 + _s), 130, "walk_flats", t0=_s)))
+
+
+def bars_hl(highs, lows, t0=0):
+    out = []
+    for k, (h, lo) in enumerate(zip(highs, lows)):
+        mid = (D(h) + D(lo)) / 2
+        out.append(Bar((t0 + k) * CMS, mid, D(h), D(lo), mid, D(1)))
+    return out
+
+
+# up == dn > 0 (barre "esterne" simmetriche), barre interne (up<0, dn<0), barre uguali (up == dn == 0):
+# i dati casuali non producono mai questi pareggi, ma il contratto li decide (+DM e -DM valgono 0)
+DATASETS.append(("adx-ties", bars_hl([10, 12, 14, 13, 13, 15, 15, 14, 16, 17], [8, 6, 4, 5, 5, 3, 3, 4, 2, 1])))
 PERIODS = (1, 2, 3, 5, 14, 20)
 BB_K = (D("1"), D("2.5"))
 MACD_SETS = ((2, 3, 2), (3, 5, 2), (5, 10, 4), (12, 26, 9))
@@ -527,7 +540,7 @@ class TestProperties:
         assert (adx(tuple(lst), 3, candle_ms=CMS), rsi(tuple(lst), 3, candle_ms=CMS), ema(tuple(vals), 3)) == a   # tuple = lista
 
     def test_context_independence(self):
-        name, bars = DATASETS[-1]
+        bars = next(b for n, b in DATASETS if n == "long-5")
         vals = closes(bars)
 
         def everything():
@@ -732,6 +745,24 @@ class TestValidationBars:
                 b = list(base)
                 b[pos] = Bar(**{**base[pos].__dict__, **over_p})
                 expect("invalid_bars", BAR_CALLERS[name], b)
+
+    @pytest.mark.parametrize("name", list(BAR_CALLERS))
+    def test_open_time_bool_is_refused_even_when_numerically_valid(self, name):
+        """Con candle_ms=1, False==0 e True==1 sono multipli e contigui: sbaglia SOLO il tipo."""
+        def series(times):
+            return [Bar(t, D(10), D(11), D(9), D(10), D(1)) for t in times]
+        BAR_CALLERS[name](series([0, 1, 2, 3]), candle_ms=1)
+        for times in ([False, 1, 2, 3], [0, True, 2, 3], [0, 1, True], [True]):
+            expect("invalid_bars", BAR_CALLERS[name], series(times), candle_ms=1)
+
+    @pytest.mark.parametrize("name", list(BAR_CALLERS))
+    def test_negative_open_time_is_refused_even_when_aligned_and_contiguous(self, name):
+        """Serie tutta negativa o che parte negativa e attraversa lo zero: allineata e contigua, sbaglia SOLO il segno."""
+        def series(k0, n=8):
+            return [Bar((k0 + k) * CMS, D(10), D(11), D(9), D(10), D(1)) for k in range(n)]
+        BAR_CALLERS[name](series(0))
+        for k0 in (-8, -4, -1):
+            expect("invalid_bars", BAR_CALLERS[name], series(k0))
 
     @pytest.mark.parametrize("name", list(BAR_CALLERS))
     def test_gaps_and_ordering_defects(self, name):
