@@ -471,6 +471,10 @@ class BrainEngine:
         # Strip proposal and risk_quote from non-actionable
         proposal = decision.proposal if kind == DecisionKind.OPEN and status == ProposalStatus.APPROVED else None
         risk_quote = decision.risk_quote if kind == DecisionKind.OPEN and status == ProposalStatus.APPROVED else None
+        # Il legame con il journal esiste solo per una decisione OPEN/APPROVED: l'id lo
+        # assegna il motore dopo la scrittura verificata; un id arrivato dall'analista
+        # (o presente su una decisione non approvata) non si conserva.
+        link_allowed = kind == DecisionKind.OPEN and status == ProposalStatus.APPROVED
         # Rationale allowlist
         rationale = decision.rationale if isinstance(decision.rationale, str) and decision.rationale in _ALLOWED_RATIONALE else "sanitized"
         # Sources allowlist
@@ -483,7 +487,7 @@ class BrainEngine:
             sources=sources,
             occurred_at_ms=decision.occurred_at_ms if isinstance(decision.occurred_at_ms, int) else 0,
             status=status,
-            journal_event_id=_safe_event_id(getattr(decision, "journal_event_id", None)),
+            journal_event_id=_safe_event_id(getattr(decision, "journal_event_id", None)) if link_allowed else None,
         )
 
     def _persist_and_return(self, decision: BrainDecision, context: MarketContext, write_journal: bool = True) -> BrainDecision:
