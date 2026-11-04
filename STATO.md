@@ -1,3 +1,12 @@
+## 04/11 (pomeriggio) — BIBLIOTECA STRATEGICA PER IL BRAIN: ANALISI (nessun codice toccato)
+
+**Claude Sonnet 5.5 — coordinatore**
+
+Pacchetto dell'utente (24 schede strategia, 30 fonti, JSON) analizzato come dati non attendibili. **Integrabile come memoria di ricerca con prove, non come regole da seguire.** Il Brain oggi non riceve feature (solo simbolo, prezzo, regime, n. posizioni) e il journal non ha un campo strategia: servono uno stadio feature+regime e un `strategy_id` da elenco chiuso. Testabili ora con sole candele: 12 schede; 10 non testabili (L2, tick, liquidazioni, spot). Le prove del 9/10 su analoghi non superarono i costi (16 bp): aspettativa onesta, la maggior parte delle schede non reggerà; l'utilità è la mappa misurata e l'attribuzione dei trade alle strategie. Piano: L0 (caricatore + registro prove, offline) → P7 feature/regime → P8 rilevatori → laboratorio con P5/P4/P6 → L1/L4 (contratti e prompt del Brain: richiedono OK).
+**Prossimo:** attendere la consegna di P6 (Grok); L0 appena l'utente conferma. Dettagli: `claude/analisi-biblioteca-strategica-brain-2026-11-04.md`.
+
+---
+
 ## 04/11 (pomeriggio, dopo P4) — P5 FATTO: ETICHETTATURA DELLE OPPORTUNITÀ, PR #45 DRAFT, 1215 PASS
 
 **Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo)
