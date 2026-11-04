@@ -72,3 +72,8 @@ Dopo P2, Claude aggiorna `execute_paper` per copiare l'id in `paper_open.decisio
 **Prossimo:** serve che Grok faccia push del suo lavoro (o incolli il diff). Poi: `execute_paper` copia `decision.journal_event_id` in `paper_open.decision_event_id` (mio), poi P3 `TradeOutcome`.
 
 ⛔ Nessun merge/deploy · DESK_MODE=paper invariato · Hawk/Bull non toccati · cervello intatto · nessuna modifica a strategia, soglie, limiti di rischio, prompt.
+
+### Nuovo prompt per Grok (09:40)
+
+Dopo la verifica sopra, prompt di consegna nel Project Claude: `claude/prompt-grok-consegna-p2-2026-11-04.md`. Punto di partenza ora `59f835a` (371 PASS attesi). Chiede: (1) FASE 1, 5 domande su cosa Grok può eseguire davvero (comandi, push, origine dei numeri del suo report); (2) Task A = P2 con contratto preciso (`journal_event_id`, `_append_durable` che ritorna l'id dopo verifica del claim, `_normalize` che lo conserva, `symbol`/`regime` con allowlist, NO_TRADE → `None`); (3) Task B = chiarire se i "4 successi" erano ricevute o eventi nel journal, rieseguire `TestConcurrency`, elencare cosa ha provato; (4) due modalità di consegna: A (push + `git ls-remote` come prova) o B (diff unificato come testo, risultati marcati `NON ESEGUITO`), e rapporto finale a schema fisso.
+Regola: da ora ogni lavoro affidato a Grok viene accompagnato da un prompt preciso.
