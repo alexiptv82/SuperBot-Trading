@@ -12,7 +12,7 @@ import pytest
 
 from backend.v3.brain_f2.analyst import Analyst, MockDeepSeekAnalyst
 from backend.v3.brain_f2.contracts import DecisionKind, MarketContext, OpenProposal, ProposalStatus, BrainDecision
-from backend.v3.brain_f2.engine import BrainEngine, BrainPortfolioSnapshot
+from backend.v3.brain_f2.engine import BrainEngine, BrainPortfolioSnapshot, _policy_hash
 from backend.v3.brain_f2.reviewer import MockClaudeReviewer
 from backend.v3.events import Event, EventJournal, EventConflict
 from backend.v3.risk import RiskPolicy, quote_paper_risk
@@ -20,7 +20,11 @@ from backend.v3.risk import RiskPolicy, quote_paper_risk
 
 def _make_journal():
     _tmpdir = tempfile.mkdtemp()
-    return EventJournal(os.path.join(_tmpdir, "journal.db"))
+    journal = EventJournal(os.path.join(_tmpdir, "journal.db"))
+    # Schema inizializzato: senza, un motore valido non riesce a persistere la
+    # decisione e risponde NO_TRADE('journal_persist_failed') (init ripetuto = innocuo).
+    journal.init_schema()
+    return journal
 
 
 def _market(regime="TRENDING", price="50000"):
@@ -56,6 +60,34 @@ def _market_params(fresh=True):
         "maintenance_fraction": Decimal("0.004"),
         "market_data_fresh": fresh, "paused": False, "daily_loss_latched": False,
     }
+
+
+def _authorized(policy, run_id="test-run"):
+    """Argomenti per un motore VALIDO: run_id + mandato con scope e hash coerenti.
+
+    Hardening 04/11/2026: senza questi il motore risponde NO_TRADE('invalid_input')
+    prima di arrivare al controllo che il test dichiara di verificare.
+    """
+    return dict(
+        run_id=run_id,
+        policy_verifier=lambda m, p: True,
+        policy_mandate={"version": "safety-test", "approved_by": "operator",
+                        "approved": True, "portfolio_id": "brain",
+                        "run_id": run_id, "policy_hash": _policy_hash(policy)},
+    )
+
+
+def test_control_valid_engine_approves():
+    """Controllo anti-test-vuoti: con input validi il motore DEVE approvare."""
+    pol = _policy()
+    engine = BrainEngine(
+        MockDeepSeekAnalyst(), MockClaudeReviewer(always_approve=True),
+        risk_policy=pol, portfolio_snapshot=_snapshot(),
+        market_params=_market_params(), journal=_make_journal(), **_authorized(pol),
+    )
+    decision = engine.step(_market())
+    assert (decision.kind, decision.status, decision.rationale) == \
+        (DecisionKind.OPEN, ProposalStatus.APPROVED, "risk_quote_ok")
 
 
 def test_no_risk_gate_must_prevent_open():
@@ -157,13 +189,15 @@ def test_stale_market_rejected():
 
 
 def test_policy_floor_below_450_rejected():
+    pol = _policy(floor="400")
     engine = BrainEngine(
         MockDeepSeekAnalyst(),
         MockClaudeReviewer(always_approve=True),
-        risk_policy=_policy(floor="400"),
+        risk_policy=pol,
         portfolio_snapshot=_snapshot(),
         market_params=_market_params(),
         journal=_make_journal(),
+        **_authorized(pol),
     )
     decision = engine.step(_market())
     assert decision.kind == DecisionKind.NO_TRADE
@@ -171,13 +205,15 @@ def test_policy_floor_below_450_rejected():
 
 
 def test_missing_market_params_rejected():
+    pol = _policy()
     engine = BrainEngine(
         MockDeepSeekAnalyst(),
         MockClaudeReviewer(always_approve=True),
-        risk_policy=_policy(),
+        risk_policy=pol,
         portfolio_snapshot=_snapshot(),
         market_params={},
         journal=_make_journal(),
+        **_authorized(pol),
     )
     decision = engine.step(_market())
     assert decision.kind == DecisionKind.NO_TRADE
@@ -185,16 +221,19 @@ def test_missing_market_params_rejected():
 
 
 def test_nan_infinity_rejected():
+    pol = _policy()
     engine = BrainEngine(
         MockDeepSeekAnalyst(),
         MockClaudeReviewer(always_approve=True),
-        risk_policy=_policy(),
+        risk_policy=pol,
         portfolio_snapshot=BrainPortfolioSnapshot(Decimal("NaN"), Decimal("1000"), Decimal("0"), Decimal("0")),
         market_params=_market_params(),
         journal=_make_journal(),
+        **_authorized(pol),
     )
     decision = engine.step(_market())
     assert decision.kind == DecisionKind.NO_TRADE
+    assert decision.rationale == "invalid_input"
 
 
 def test_close_and_modify_not_executable():
@@ -225,16 +264,26 @@ def test_falco_toro_signals_are_advisory_only():
         falco_signal={"side": -1},
         toro_signal={"side": 1},
     )
-    engine = BrainEngine(
-        MockDeepSeekAnalyst(),
-        MockClaudeReviewer(always_approve=True),
-        risk_policy=_policy(),
-        portfolio_snapshot=_snapshot(),
-        market_params=_market_params(),
-        journal=_make_journal(),
-    )
-    decision = engine.step(ctx)
-    # Signals must not force an OPEN without risk gate; and equity comes only from Brain snapshot
-    assert decision.kind in (DecisionKind.OPEN, DecisionKind.NO_TRADE)
-    # No contamination: the decision does not embed Falcon/Toro equity
-    assert "falco" not in (decision.rationale or "").lower() or "advisory" in (decision.rationale or "").lower()
+    def _decide(context):
+        pol = _policy()
+        return BrainEngine(
+            MockDeepSeekAnalyst(),
+            MockClaudeReviewer(always_approve=True),
+            risk_policy=pol,
+            portfolio_snapshot=_snapshot(),
+            market_params=_market_params(),
+            journal=_make_journal(),
+            **_authorized(pol),
+        ).step(context)
+
+    with_signals = _decide(ctx)
+    without_signals = _decide(_market())
+    # Advisory-only: i segnali Falco/Toro non cambiano la decisione ne' il sizing
+    assert with_signals.kind == without_signals.kind == DecisionKind.OPEN
+    assert with_signals.status == without_signals.status == ProposalStatus.APPROVED
+    assert with_signals.proposal.side == without_signals.proposal.side
+    assert with_signals.risk_quote.quantity == without_signals.risk_quote.quantity
+    assert with_signals.risk_quote.margin == without_signals.risk_quote.margin
+    # Nessuna contaminazione: la decisione non incorpora dati di Falco/Toro
+    assert "falco" not in (with_signals.rationale or "").lower()
+    assert "toro" not in (with_signals.rationale or "").lower()
