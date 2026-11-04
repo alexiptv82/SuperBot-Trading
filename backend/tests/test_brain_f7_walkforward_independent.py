@@ -449,6 +449,8 @@ class TestMakeFolds:
         ("invalid_window", dict(end_ms=0)), ("invalid_window", dict(end_ms=-1)),
         ("invalid_window", dict(end_ms=float(20 * DAY))), ("invalid_window", dict(end_ms="x")),
         ("invalid_window", dict(start_ms=3 * DAY, end_ms=3 * DAY)),
+        ("invalid_lengths", dict(step_ms=float(3 * DAY))), ("invalid_lengths", dict(test_ms=float(2 * DAY))),
+        ("invalid_lengths", dict(step_ms=None)), ("invalid_lengths", dict(train_ms=None)),
         ("invalid_lengths", dict(train_ms=0)), ("invalid_lengths", dict(train_ms=-DAY)),
         ("invalid_lengths", dict(train_ms=5 * DAY + 1)), ("invalid_lengths", dict(train_ms=float(5 * DAY))),
         ("invalid_lengths", dict(train_ms=True)), ("invalid_lengths", dict(test_ms=0)),
@@ -571,6 +573,20 @@ class TestRulesWithStubbedCellStats:
             assert kw["min_trades"] == 4 and kw["min_days"] == 3 and kw["confidence"] == Decimal("0.9")
             assert kw["n_boot"] == 200 and kw["seed"] == 12345          # lo stesso seed a ogni fold
             assert kw["key"] is keyf and kw["link_statuses"] is statuses
+
+    def test_key_is_never_evaluated_on_trades_with_a_status_that_is_not_admitted(self):
+        """cell_stats non chiama key() sui trade filtrati: nemmeno il walk-forward (qui key solleverebbe)."""
+        t = [out(f"k{i}", int((i + 0.5) * DAY), "A", 1, "10") for i in range(6)]
+        t += [out(f"u{i}", int((i + 0.5) * DAY), "A", 1, "10", status="unlinked") for i in range(6)]
+        seen = []
+
+        def key(o):
+            seen.append(o.link_status)
+            if o.link_status != "linked":
+                raise RuntimeError("key chiamata su un trade non ammesso")
+            return (o.symbol,)
+        rep = run(t, folds_of(0, 8, 3, 2, 3, 0, False), key=key, min_trades=3)
+        assert set(seen) == {"linked"} and rep.n_selections >= 1
 
     def test_the_result_of_the_first_validation_call_is_ignored(self, monkeypatch):
         t, f = self._data()
