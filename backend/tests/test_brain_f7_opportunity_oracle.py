@@ -562,7 +562,8 @@ class TestValidation:
     def test_cost_bp_zero_is_valid(self):
         assert len(label_candidates(GOOD_CANDS, GOOD_CANDLES, **{**KW, "cost_bp": D(0)})) == 2
 
-    @pytest.mark.parametrize("bad", [None, "", "stop", "STOP_FIRST", "stop_first ", ["stop_first"], True, 1])
+    @pytest.mark.parametrize("bad", [None, "", "stop", "STOP_FIRST", "stop_first ", ["stop_first"], True, 1,
+                                     "mid", "both", "first", "target", "stop_last", "worst_case", "best_case"])
     def test_ambiguous_policy(self, bad):
         assert _err(ambiguous_policy=bad) == "invalid_ambiguous_policy"
 
@@ -621,8 +622,11 @@ class TestValidation:
     def test_candles_must_be_a_mapping(self, bad):
         assert _err(candles=bad) == "invalid_candles"
 
-    @pytest.mark.parametrize("bad_series", [None, 5, set(GOOD_CANDLES["BTC"]), (c for c in GOOD_CANDLES["BTC"]),
-                                            iter(GOOD_CANDLES["BTC"]), "abc", {1: 2}])
+    @pytest.mark.parametrize("bad_series", [
+        None, 5, set(GOOD_CANDLES["BTC"]), (c for c in GOOD_CANDLES["BTC"]),
+        iter(GOOD_CANDLES["BTC"]), "abc", {1: 2},
+        # un insieme/frozenset di UNA sola candela e' valido come contenuto: solo il tipo lo respinge
+        {GOOD_CANDLES["BTC"][0]}, frozenset(GOOD_CANDLES["BTC"][:1])])
     def test_each_series_must_be_a_sequence_never_an_iterator(self, bad_series):
         assert _err(candles={"BTC": bad_series}) == "invalid_candles"
 
@@ -630,28 +634,62 @@ class TestValidation:
         assert _err(candles={5: GOOD_CANDLES["BTC"]}) == "invalid_candles"
         assert _err(candles={None: []}) == "invalid_candles"
 
-    @pytest.mark.parametrize("bad_candle", [
-        None, "x", 5, (1000, 100, 105, 95, 102),
-        Candle(1000, D("NaN"), D(105), D(95), D(102)), Candle(1000, D(100), D("NaN"), D(95), D(102)),
-        Candle(1000, D(100), D(105), D("NaN"), D(102)), Candle(1000, D(100), D(105), D(95), D("NaN")),
-        Candle(1000, D("sNaN"), D(105), D(95), D(102)), Candle(1000, D(100), D("Infinity"), D(95), D(102)),
-        Candle(1000, D(0), D(105), D(95), D(102)), Candle(1000, D(100), D(105), D(0), D(102)),
-        Candle(1000, D(-1), D(105), D(95), D(102)), Candle(1000, D(100), D(105), D(95), D(-102)),
-        Candle(1000, 100.0, D(105), D(95), D(102)), Candle(1000, D(100), 105, D(95), D(102)),
-        Candle(1000, D(100), D(105), D(95), "102"), Candle(1000, D(100), D(105), None, D(102)),
-        Candle(1000, D(100), D(94), D(95), D(94)),              # high < low
-        Candle(1000, D(100), D(105), D(101), D(102)),           # low > open
-        Candle(1000, D(100), D(105), D(103), D(102)),           # low > close
-        Candle(1000, D(100), D(99), D(95), D(98)),              # high < open
-        Candle(1000, D(100), D(101), D(95), D(102)),            # high < close
-        Candle(1000.0, D(100), D(105), D(95), D(102)), Candle(True, D(100), D(105), D(95), D(102)),
-        Candle(-1000, D(100), D(105), D(95), D(102)), Candle(1500, D(100), D(105), D(95), D(102)),
-        Candle(None, D(100), D(105), D(95), D(102)), Candle("1000", D(100), D(105), D(95), D(102)),
-    ])
-    def test_every_candle_is_checked_wherever_it_sits(self, bad_candle):
-        series = GOOD_CANDLES["BTC"]
-        for variant in ([bad_candle] + series, series[:1] + [bad_candle] + series[1:], series + [bad_candle]):
-            assert _err(candles={"BTC": variant}) == "invalid_candles"
+    @staticmethod
+    def _series_with(pos, **over):
+        """Tre candele valide (1000, 2000, 3000) con quella in `pos` modificata SOLO nei campi dati.
+        L'orario resta quello dello slot: cosi' l'unico difetto e' quello dichiarato (un orario
+        duplicato o fuori ordine farebbe fallire la serie per un altro motivo e nasconderebbe
+        l'assenza del controllo specifico)."""
+        series = [_c(t, 100, 105, 95, 102) for t in (1000, 2000, 3000)]
+        fields = dict(open_time_ms=1000 * (pos + 1), open=D(100), high=D(105), low=D(95), close=D(102))
+        fields.update(over)
+        series[pos] = Candle(**fields)
+        return series
+
+    @pytest.mark.parametrize("pos", [0, 1, 2])
+    def test_control_a_series_with_no_defect_is_valid(self, pos):
+        series = self._series_with(pos)
+        res = label_candidates([_k()], {"BTC": series}, **{**KW, "horizons_ms": [1000, 3000]})
+        assert [h.status for h in res[0].horizons] == ["complete", "complete"]
+
+    @pytest.mark.parametrize("bad_element", [None, "x", 5, (1000, 100, 105, 95, 102), {"open_time_ms": 1000}, object()])
+    def test_elements_that_are_not_candles(self, bad_element):
+        for pos in (0, 1, 2):
+            series = self._series_with(pos)
+            series[pos] = bad_element
+            assert _err(candles={"BTC": series}) == "invalid_candles"
+
+    @pytest.mark.parametrize("over", [
+        dict(open=D("NaN")), dict(high=D("NaN")), dict(low=D("NaN")), dict(close=D("NaN")),
+        dict(open=D("sNaN")), dict(high=D("Infinity")), dict(low=D("-Infinity")),
+        dict(open=D(0)), dict(low=D(0)), dict(high=D(0)), dict(close=D(0)),
+        dict(open=D(-1)), dict(close=D(-102)),
+        dict(open=100.0), dict(high=105), dict(close="102"), dict(low=None), dict(open=None),
+        dict(high=D(94), low=D(95)),                       # high < low
+        dict(low=D(101)),                                  # low > open
+        dict(open=D(103), close=D(100), low=D(101)),       # low > close
+        dict(high=D(99)),                                  # high < open
+        dict(high=D(101)),                                 # high < close
+        dict(open_time_ms=1500),                           # fuori griglia
+        dict(open_time_ms=1000.0), dict(open_time_ms=None), dict(open_time_ms="1000"),
+        dict(open_time_ms=-1000),
+    ], ids=lambda o: ",".join(f"{k}={v!r}" for k, v in o.items()))
+    def test_every_candle_is_checked_wherever_it_sits(self, over):
+        for pos in (0, 1, 2):
+            assert _err(candles={"BTC": self._series_with(pos, **over)}) == "invalid_candles", pos
+
+    def test_open_time_must_be_a_real_int_even_when_the_grid_would_accept_it(self):
+        for bad in (True, 2.0, 2):
+            candle = Candle(bad, D(100), D(105), D(95), D(102))
+            if type(bad) is int:                                       # controllo: 2 e' valido
+                assert len(label_candidates(GOOD_CANDS, {"BTC": [candle]}, **{**KW, "candle_ms": 1, "horizons_ms": [1]})) == 2
+            else:
+                assert _err(candles={"BTC": [candle]}, candle_ms=1, horizons_ms=[1]) == "invalid_candles"
+
+    def test_horizon_must_be_a_real_int_even_when_the_grid_would_accept_it(self):
+        assert _err(candle_ms=1, horizons_ms=[True]) == "invalid_horizons"
+        assert _err(candle_ms=1, horizons_ms=[2.0]) == "invalid_horizons"
+        assert len(label_candidates(GOOD_CANDS, GOOD_CANDLES, **{**KW, "candle_ms": 1, "horizons_ms": [2]})) == 2
 
     def test_candles_of_an_unreferenced_symbol_are_validated_too(self):
         bad = {"BTC": GOOD_CANDLES["BTC"], "XRP": [Candle(1000, D("NaN"), D(5), D(4), D(4))]}
@@ -710,9 +748,6 @@ class TestPublicContractAndPurity:
             label_candidates(GOOD_CANDS, GOOD_CANDLES)                             # type: ignore[call-arg]
         with pytest.raises(TypeError):
             label_candidates(GOOD_CANDS, GOOD_CANDLES, 1000, [1000], D(0), "stop_first")   # type: ignore[call-arg]
-
-    def test_policies_constant(self):
-        assert op.POLICIES == ("stop_first", "target_first")
 
     def test_module_is_pure_stdlib_no_io_no_clock_no_random_no_float(self):
         src = Path(op.__file__).read_text()
