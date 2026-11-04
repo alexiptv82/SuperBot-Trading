@@ -1,8 +1,9 @@
-## 04/11 (mattina) — P1 FATTO: CHIUSURA PAPER (F5b), PR #41 DRAFT, 325 PASS
+## 04/11 (mattina) — P1 FATTO: CHIUSURA PAPER (F5b), PR #41 DRAFT, 345 PASS
 
 **Claude Sonnet 5.5 — coordinatore**
 
-`close_paper` (`backend/v3/executor/paper_close.py`, commit `33b36d6`): scrive `paper_close` con PnL netto dei costi; prezzo e costi in input, nessuna soglia hardcoded; `reason` ∈ {stop, brain_close, manual, liquidation} (manual distinguibile). 82 test, mutazione 8/8. La dashboard F6 ora legge il produttore vero.
+`close_paper` (`backend/v3/executor/paper_close.py`, commit `33b36d6`): scrive `paper_close` con PnL netto dei costi; prezzo e costi in input, nessuna soglia hardcoded; `reason` ∈ {stop, brain_close, manual, liquidation} (manual distinguibile). 102 test, mutazione 12/12 (commit `6ed0695`: una sonda di Claude ha trovato e corretto 3 difetti numerici prima della revisione esterna). La dashboard F6 ora legge il produttore vero.
+**In attesa di Grok** (prompt: Project `claude/prompt-grok-p2-review-f5b-2026-11-04.md`): Task A = P2 nel suo `engine.py` (branch `work/v3-p2-decision-link-grok-20261104`); Task B = revisione indipendente di `close_paper` (branch `work/v3-f5b-grok-review-20261104`).
 **Decisione di modello per l'utente (non blocca nulla):** la perdita non è troncata al margine (flag `loss_exceeds_margin`); se simulare la liquidazione lo decide lui.
 **Prossimo:** P2 legame decisione→posizione (richiede `engine.py` di Grok, un autore alla volta) e P3 `TradeOutcome` (mio). Piano aggiornato nel Project: `claude/piano-f7-prerequisiti-brief-grok-2026-11-04.md`.
 

@@ -30,3 +30,21 @@ Suite F2–F6 + F5b: **325 PASS**.
 - ⛔ Nessun merge/deploy · DESK_MODE=paper invariato · Hawk/Bull non toccati · cervello intatto
 - Nessuna modifica a strategia, soglie, limiti di rischio o prompt.
 - Prossimo: **P3** `TradeOutcome` (record immutabile + estrattore sul journal, mio). **P2** (legame decisione→posizione) richiede una modifica a `engine.py` di Grok: da coordinare, un solo autore alla volta.
+
+---
+
+## Aggiornamento (06:50): difetti trovati prima della revisione esterna
+
+Sonda su casi limite numerici (prima di coinvolgere Grok) ha trovato 3 problemi in `close_paper`, corretti nel commit `6ed0695`:
+1. valori finiti ma estremi facevano uscire `decimal.InvalidOperation`/`Overflow` invece di `ExecutionError` (nessuna scrittura nel journal, ma contratto violato) -> `numeric_out_of_range`;
+2. `float`/stringhe accettati come prezzo o costo -> solo `Decimal`/`int`;
+3. `side=1.0` e `leverage` mancante accettati nel payload della posizione -> rifiutati.
+
+Test 102 (erano 82), mutazione 12/12, suite completa 345 PASS.
+
+## Richiesta a Grok
+
+Prompt unico nel Project (`claude/prompt-grok-p2-review-f5b-2026-11-04.md`), punto di partenza `6ed0695`:
+- **Task A (P2):** nel suo `engine.py`: `BrainDecision.journal_event_id`, `_append_durable` che ritorna l'id, id che sopravvive a `_normalize`, `symbol`/`regime` nel payload di `brain_decision` con allowlist. Branch `work/v3-p2-decision-link-grok-20261104`.
+- **Task B:** revisione indipendente di `close_paper`, soprattutto la concorrenza fra due chiusure simultanee (finora solo ragionata). Branch `work/v3-f5b-grok-review-20261104`, nuovo file di test.
+Dopo P2, Claude aggiorna `execute_paper` per copiare l'id in `paper_open.decision_event_id`.
