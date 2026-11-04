@@ -1,3 +1,12 @@
+## 04/11 (sera, dopo P6) — P9a FATTO: RILEVATORI A SOLE CANDELE, PR #51 DRAFT, 3560 PASS
+
+**Claude Sonnet 5.5 — coordinatore** · modulo: codice di **ChatGPT** (Grok senza tempo di utilizzo; Modalità B: consegna come testo, applicata invariata)
+
+`backend/v3/detectors/` (`RiskSpec`, `build_candidates`; S07 Donchian breakout, S05 Bollinger+MACD, S02 EMA cross+ADX → `Candidate` per P5; nessuna soglia nel codice). **Nessun difetto di codice**: mutazione 102/102 (sua), test di velocità instabile sostituito con conteggio deterministico delle letture. Suite V3 3179 → 3560 PASS; mie verifiche: regole riscritte da zero, nessun look-ahead con indicatori veri, candidati accettati da `label_candidates`.
+**Prossimo:** caricatore dello storico BTC/ETH via GitHub Actions → collegamento etichette P5 → statistica P4/P6 + primo rapporto; poi ci si ferma (P9b solo se il rapporto lo giustifica). **Servono i parametri dei 3 rilevatori e le soglie di P6 dall'utente.** Dettagli: `diario/2026-11-04_p9a_rilevatori.md`.
+
+---
+
 ## 04/11 (sera, dopo P8) — P6 FATTO: WALK-FORWARD DELLE CELLE, PR #50 DRAFT, 3179 PASS
 
 **Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo, applicata invariata, poi corretta in un commit a parte)
