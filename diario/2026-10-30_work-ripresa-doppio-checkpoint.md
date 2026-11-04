@@ -224,3 +224,23 @@ PROSSIMO PASSO: P9, definendo il contratto comune e i rilevatori delle 12 schede
 
 Fonti: Library versione 26; ramo `diario`, checkpoint di ripresa e stato P6; PR GitHub #50 e commit `6db4cc2`. L'accesso alle chat è limitato ai messaggi recenti disponibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+
+---
+
+## 04/11/2026 21:50 Europe/Rome — P9a rilevatori verificati; laboratorio P10 pre-registrato
+
+FATTO: completato il pacchetto puro `backend/v3/detectors/` sul ramo `work/v3-p9a-detectors-chatgpt-20261104`, PR #51 aperta e DRAFT, HEAD `8f123a248c9604c6aa5ec2dba57fa31ab72add7b`, impilata sulla PR #50. `common.py` definisce `RiskSpec` e costruisce `Candidate` per P5 con cooldown, ATR, barriere non arrotondate e tempo di segnale a chiusura barra; i tre rilevatori iniziali sono S07 Donchian breakout con EMA opzionale, S05 Bollinger %B + MACD e S02 incrocio EMA + ADX minimo. Soglie, periodi e moltiplicatori restano argomenti obbligatori senza default. La consegna ChatGPT invariata è nel commit `86ec465`; il test di velocità è stato reso deterministico nel commit `b437bc0`; la verifica indipendente leggera è nel commit `8f123a2`. Non sono stati trovati difetti nei moduli. Unico limite contrattuale verificato: timestamp artificialmente enormi possono produrre un ID oltre i 128 caratteri accettati da P5, irrilevante per timestamp reali.
+
+TEST P9a: **381 test** nei due file; suite V3 da 3179 a **3560 PASS**, 3 xfailed, con 3 failure preesistenti per `fastapi` mancante, invariate. La consegna ChatGPT documenta mutazione **102/102**. La verifica indipendente ha riscritto regole, lati, cooldown e barriere con parametri/semi diversi, ottenendo candidati identici su 12 serie da 1.200 barre; verificati non-lookahead con meta-test, compatibilità con `label_candidates` P5 e barriere effettivamente toccate. Mutazione leggera dei test indipendenti **11/12**; il sopravvissuto è coperto dalla suite originale. Il rapporto temporale instabile è stato sostituito da conteggio deterministico delle letture, che intercetta due mutanti quadratici.
+
+PREPARATO, NON IMPLEMENTATO: fissata prima dei risultati la pre-registrazione P10 del laboratorio in `backend/v3/lab/preregistration.json`, SHA-256 `7e561c2131d33a4214ba973da2163e53a232fe2e6ea115b95443c109d9ab550e`, con documento e prompt P10. Per BTCUSDT/ETHUSDT a 15 minuti su circa 540 giorni: S07/S05/S02, costi 12 bp con stress 0/20 bp, walk-forward 120/30/30 giorni ed embargo 1 giorno. Sei verdetti separati strategia×asset, senza aggregato. `EVIDENZA_POSITIVA` richiede insieme IC 0,99 con limite basso > 0, almeno 3 fold e 100 trade OOS, OOS positivo e almeno 50% dell'IS, controllo invertito peggiore e non positivo, rango almeno 95 nel controllo a scorrimento. Se nessuna coppia supera tutti i gate, ci si ferma e P9b non viene costruito. P10 è al momento solo documentazione/pre-registrazione: nessun codice laboratorio o risultato di mercato è stato dichiarato completato.
+
+RILASCIATO: nulla. PR #51 non è unita né distribuita. Nessun rilevatore è collegato al Brain, journal, prompt, rischio o runtime. Nessun merge/deploy, modifica operativa, wallet, reset, API pagata o accesso a dati reali. `DESK_MODE=paper` resta invariato; PAPER, memoria e storici preservati.
+
+PROBLEMI/APERTI: P9a non contiene dati reali né prova di redditività; manca il filtro multi-timeframe/ricampionamento P9b, stop e obiettivi non applicano tick size e l'ingresso è al close della barra. I candidati sono etichettati indipendentemente, non simulano un portafoglio. P10 deve ancora essere implementato e verificato; funding e slippage separati non sono disponibili. Restano aperte scelta soglie P6/P8, policy PAPER, L1/L4, certificazione F0 e import dei 534 trade legacy.
+
+PROSSIMO PASSO: ChatGPT prepara P10 in `backend/v3/lab/`; applicazione invariata e verifica ridotta con oracolo dell'adattatore e prova di sistema; poi caricatore storico BTC/ETH con segmentazione ai buchi, job GitHub Actions e rapporto pre-registrato. Soltanto un esito positivo autorizza a valutare P9b; nessuna promozione al Brain è implicita.
+
+Fonti: Library versione 27; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p9a_rilevatori.md`, `diario/2026-11-04_p10_preregistrazione.md` e checkpoint di ripresa; PR GitHub #51. Accesso alle chat limitato ai messaggi recenti e file disponibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
