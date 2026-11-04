@@ -1,3 +1,12 @@
+## 04/11 (sera, dopo P8) — P6 FATTO: WALK-FORWARD DELLE CELLE, PR #50 DRAFT, 3179 PASS
+
+**Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo, applicata invariata, poi corretta in un commit a parte)
+
+`backend/v3/learning/walkforward.py` (`make_folds`, `walk_forward`: celle scelte sul train, misurate sul test con embargo; decadimento `is − oos`; soglie solo come argomenti obbligatori). **2 difetti corretti da Claude**: `decay_bp` con doppio arrotondamento (14/72 confronti con l'oracolo `Fraction`) e costo O(N·S) (test «molte celle» 37,6 s → 0,9 s). Suite V3 2785 → 3179 PASS; mutazione 89/90 (1 equivalente); i soli 6 test di Grok: 14/90.
+**Prossimo:** P9 — rilevatori delle 12 schede a sole candele → `Candidate` per P5 (prompt per Grok in preparazione); **le soglie di P6 e le 4 di `RegimeParams` le sceglie l'utente**. Dettagli: `diario/2026-11-04_p6_walkforward.md`.
+
+---
+
 ## 04/11 (pomeriggio, dopo P7b) — P8 FATTO: CLASSIFICATORE DI REGIME, PR #49 DRAFT, 2785 PASS
 
 **Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo, applicata invariata)
