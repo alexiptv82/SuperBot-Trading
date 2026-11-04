@@ -8,7 +8,7 @@ validata su Bitget. Questo modulo le carica, le valida in modo rigido e dice per
 quali dati servono per provarla; non sceglie strategie, non tocca il Brain, il journal, i
 prompt, le soglie o i limiti di rischio (collegarla al Brain e' un passo successivo che
 richiede l'OK esplicito dell'utente). Il testo libero delle schede e' DATO, mai istruzione:
-chi lo userà dentro un prompt dovra' passare solo identificatori e campi controllati.
+chi lo usera' dentro un prompt dovra' passare solo identificatori e campi controllati.
 
 Regole esatte (contratto verificato dai test)
 ---------------------------------------------
@@ -263,7 +263,7 @@ def _valid_date(v: object, *, full: bool) -> bool:
         datetime.date(year, month, int(day))
     except ValueError:
         return False
-    return year >= 1
+    return True
 
 
 def _parse_source(d: object) -> Source:
@@ -399,7 +399,7 @@ def load_library_bytes(raw: bytes, *, expected_sha256: str) -> Library:
             object_pairs_hook=_no_duplicate_keys,
             parse_constant=_no_constant,
         )
-    except (UnicodeDecodeError, ValueError, RecursionError):
+    except (ValueError, RecursionError):          # UnicodeDecodeError e JSONDecodeError sono ValueError
         raise ValueError("invalid_json") from None
     return parse_library(data)
 
@@ -583,7 +583,7 @@ def _valid_record(r: object) -> bool:
         and _is_text(r.differences, CAP_RULE_TEXT)
         and _is_text(r.cost_scenario, 200)
         and type(periods) is tuple
-        and 1 <= len(periods) <= len(EVIDENCE_PERIODS)
+        and len(periods) >= 1                           # al massimo 3: periodi unici fra 3 nomi ammessi
         and all(_valid_period(p) for p in periods)
         and len({p.period for p in periods}) == len(periods)
         and _is_text(r.source_doc, 200)

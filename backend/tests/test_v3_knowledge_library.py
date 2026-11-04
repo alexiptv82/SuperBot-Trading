@@ -131,8 +131,8 @@ class TestRealLibraryMatchesRawJson:
         assert "%B < 0.2" in s05.entry_hypothesis and "MACD histogram > 0" in s05.entry_hypothesis
         assert "hist < 0" in s05.entry_hypothesis and "%B > 0.8" in s05.entry_hypothesis
         assert "->" in s14.entry_hypothesis and "->" in s18.known_failure_modes
-        assert "’" in s06.exit_hypothesis
-        assert "’" in self.lib.sources[[x.id for x in self.lib.sources].index("G01")].title
+        assert "\u2019" in s06.exit_hypothesis
+        assert "\u2019" in self.lib.sources[[x.id for x in self.lib.sources].index("G01")].title
 
     def test_unused_sources_are_allowed(self):
         used = {r for s in self.lib.strategies for r in s.sources}
@@ -230,11 +230,11 @@ class TestInvalidLibrary:
 
     @pytest.mark.parametrize("key,value", [
         ("version", None), ("version", "1.0"), ("version", "1.0.0.0"), ("version", "v1.0.0"),
-        ("version", "1.0.0\n"), ("version", " 1.0.0"), ("version", "１.0.0"),
+        ("version", "1.0.0\n"), ("version", " 1.0.0"), ("version", "\uff11.0.0"),
         ("version", 1), ("version", ["1.0.0"]),
         ("date", None), ("date", "2026-11"), ("date", "2026"), ("date", "2026-02-30"),
         ("date", "2026-13-01"), ("date", "2026-11-31"), ("date", "0000-01-01"),
-        ("date", "2026-11-04\n"), ("date", "2026-11-4"), ("date", "２026-11-04"), ("date", 20261104),
+        ("date", "2026-11-04\n"), ("date", "2026-11-4"), ("date", "\uff12026-11-04"), ("date", 20261104),
         ("status", None), ("status", "research_only"), ("status", "live"), ("status", "research_only_no_live\n"),
     ])
     def test_metadata_fields(self, key, value):
@@ -261,12 +261,12 @@ class TestInvalidLibrary:
 
 # ======================================================================= testo libero (stesse regole ovunque)
 BAD_TEXTS = [
-    "", " ", " x", "x ", "x\n", "\nx", "a\nb", "a\tb", "a\x00b", "a\x7fb", "a​b", "a‮b",
-    "x ", "a`b", "a{b", "a}b", "```", "see http://x.io", "see HTTPS://x.io", "go www.x.io",
+    "", " ", " x", "x ", "x\n", "\nx", "a\nb", "a\tb", "a\x00b", "a\x7fb", "a\u200bb", "a\u202eb",
+    "x\u00a0", "a`b", "a{b", "a}b", "```", "see http://x.io", "see HTTPS://x.io", "go www.x.io",
     "<b>x", "x</b>", "a<b", "<!--", "<?x", 123, None, ["x"], b"x", True,
 ]
 GOOD_TEXTS = [
-    "a < b", "a > b", "x->y", "%B < 0.2, MACD > 0", "caffè", "it’s", "<", "a <", "< 0", "a <3",
+    "a < b", "a > b", "x->y", "%B < 0.2, MACD > 0", "caff\u00e8", "it\u2019s", "<", "a <", "< 0", "a <3",
     "prezzo<2", "-", "x" * 5,
 ]
 STRATEGY_TEXT_FIELDS = [
@@ -321,7 +321,7 @@ class TestInvalidSource:
                 expect("invalid_source", d)
 
     @pytest.mark.parametrize("bad", [
-        "V1", "V001", "X01", "v01", "V01\n", " V01", "V0１", "Ｖ" "01", "", None, 1, ["V01"], True])
+        "V1", "V001", "X01", "v01", "V01\n", " V01", "V0\uff11", "\uff36" "01", "", None, 1, ["V01"], True])
     def test_id(self, bad):
         for pos in SRC_POS:
             expect("invalid_source", with_source(pos, id=bad))
@@ -340,7 +340,7 @@ class TestInvalidSource:
         "http://example.com/x", "ftp://example.com", "HTTPS://example.com", "https://", "https://host",
         "https://exa mple.com", "https://example.com/a b", "https://example.com/\n", "https://example.com\n",
         "javascript:alert(1)", "//example.com", "example.com", "https://user@example.com/",
-        "https://exaämple.com", "https://example..com", "https://-.", "https://example.com/<x>",
+        "https://exa\u00e4mple.com", "https://example..com", "https://-.", "https://example.com/<x>",
         "https://example.com/\"", "https://example.com/'", "https://example.com/`", "https://example.com/\\",
         "https://example.com:/x", "https://example.com:123456/x", "https://example.com/{x}",
         "https://example.com/" + "a" * 300, "", None, 1, ["https://example.com"],
@@ -359,7 +359,8 @@ class TestInvalidSource:
 
     @pytest.mark.parametrize("bad", [
         "2023-13", "2023-00", "2023", "2023-1", "23-01", "2023-02-30", "2023-01-32", "2023-01-00",
-        "2023-01-1", "2023-01-01\n", "2023-01-", "２023-01", "2023/01/01", "", None, 202301, ["2023-01"]])
+        "2023-01-1", "2023-01-01\n", "2023-01-", "\uff12023-01", "2023/01/01", "", None, 202301, ["2023-01"],
+        "0000-05", "0000-05-10"])
     def test_date_bad(self, bad):
         for pos in SRC_POS:
             expect("invalid_source", with_source(pos, published_or_checked=bad))
@@ -385,10 +386,10 @@ LIST_FIELD_CASES = {
     "timeframes": [[], ["2h"], ["1M"], ["5m", "5m"], "5m", ("5m",), [["5m"]], [5], [None]],
     "sources": [
         [], ["V1"], ["v01"], ["X01"], ["V01", "V01"], "V01", ("V01",), [["V01"]], [1], [None],
-        ["V01\n"], ["V0１"], ["V01", "V02", "V03", "V04", "V05", "V06", "V07"],
+        ["V01\n"], ["V0\uff11"], ["V01", "V02", "V03", "V04", "V05", "V06", "V07"],
     ],
     "required_features": [
-        [], ["ATR"], ["1atr"], ["atr-14"], ["atr 14"], [""], ["a" * 41], ["atr\n"], ["àtr"],
+        [], ["ATR"], ["1atr"], ["atr-14"], ["atr 14"], [""], ["a" * 41], ["atr\n"], ["\u00e0tr"],
         ["atr", "atr"], "atr", ("atr",), [["atr"]], [1], [None], [{}],
         [f"f{i:02d}" for i in range(13)],
     ],
@@ -413,7 +414,7 @@ class TestInvalidStrategy:
                 expect("invalid_strategy", d)
 
     @pytest.mark.parametrize("bad", [
-        "S1", "S001", "s01", "T01", "S01\n", " S01", "S0１", "Ｓ" "01", "", None, 1, ["S01"], True])
+        "S1", "S001", "s01", "T01", "S01\n", " S01", "S0\uff11", "\uff33" "01", "", None, 1, ["S01"], True])
     def test_id(self, bad):
         for pos in S_POS:
             expect("invalid_strategy", with_strategy(pos, id=bad))
@@ -693,13 +694,15 @@ class TestClassification:
             fn(bad)
         assert str(e.value) == "invalid_strategy"
 
-    def test_strategy_subclass_is_refused(self):
+    @pytest.mark.parametrize("fn", [classify_data, data_gaps, feature_caveats])
+    def test_strategy_subclass_is_refused(self, fn):
         class Sub(Strategy):
             pass
         s = self.lib.strategy("S01")
         sub = Sub(**s.__dict__)
-        with pytest.raises(ValueError):
-            classify_data(sub)
+        with pytest.raises(ValueError) as e:
+            fn(sub)
+        assert str(e.value) == "invalid_strategy"
 
     def test_caveats(self):
         assert feature_caveats(self.lib.strategy("S03")) == (
@@ -817,7 +820,7 @@ class TestEvidenceRegistry:
 
     @pytest.mark.parametrize("over", [
         {"evidence_id": "E1"}, {"evidence_id": "E001"}, {"evidence_id": "e01"}, {"evidence_id": "E01\n"},
-        {"evidence_id": "E０１"}, {"evidence_id": 1},
+        {"evidence_id": "E\uff10\uff11"}, {"evidence_id": 1},
         {"strategy_id": "s07"}, {"strategy_id": "S7"}, {"strategy_id": "S07\n"}, {"strategy_id": None},
         {"relation": "direct"}, {"relation": "Analog"}, {"relation": ""}, {"relation": None},
         {"timeframe": "2h"}, {"timeframe": None}, {"timeframe": ["1h"]},
@@ -826,7 +829,7 @@ class TestEvidenceRegistry:
         {"cost_scenario": ""}, {"cost_scenario": "x" * 201}, {"cost_scenario": "a\nb"},
         {"source_doc": ""}, {"source_doc": "x" * 201}, {"source_doc": "<b>"},
         {"run_id": ""}, {"run_id": "abc"}, {"run_id": "12\n"}, {"run_id": "1" * 21}, {"run_id": 37916437081},
-        {"run_id": "１２"},
+        {"run_id": "\uff11\uff12"},
         {"limits": ""}, {"limits": "x" * 401}, {"limits": "a{b"},
         {"periods": ()}, {"periods": []}, {"periods": None},
     ])
