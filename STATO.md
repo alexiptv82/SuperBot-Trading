@@ -1,3 +1,12 @@
+## 04/11 (pomeriggio) — P4 MODULO 1 FATTO: EXPECTANCY PER CELLA A BLOCCHI DI GIORNI, PR #44 DRAFT, 788 PASS
+
+**Claude Sonnet 5.5 — coordinatore** · modulo: codice di Grok (Modalità B: consegna come testo)
+
+`backend/v3/learning/expectancy.py`: expectancy **netta dei costi** in bp per cella (simbolo, lato, regime, manuale/Brain) con intervallo a **blocchi di giorni**; il win rate non decide mai lo stato; nessuna soglia nel codice. Consegna di Grok applicata **invariata** (`b24944c`), poi verificata con un oracolo esatto scritto dal testo del contratto: **6 scostamenti** (indici percentile half-even invece di floor/ceil−1 — sbagliati in silenzio con 0.95/300 e 0.95/220; NaN; `key` validata solo sul primo trade; input ostili; chiavi ambigue che rendevano il risultato dipendente dall'ordine; tabella senza intervallo). Il suo "539 passed" era 544. Corretti in `4eb5e47` con 243 test miei + catena completa con i produttori veri; **mutazione 82/84** (2 equivalenti; la suite di Grok da sola: 26/84). Limite: confronti multipli non corretti (è un filtro, serve conferma fuori campione).
+**Prossimo:** Grok — P5 Opportunity Cost Engine, nucleo di etichettatura `learning/opportunity.py` (prompt nel Project: `claude/prompt-grok-p5-opportunity-2026-11-04.md`).
+
+---
+
 ## 04/11 (mattina) — P3 FATTO: TradeOutcome + ESTRATTORE DEGLI ESITI, PR #43 DRAFT, 525 PASS
 
 **Claude Sonnet 5.5 — coordinatore**
