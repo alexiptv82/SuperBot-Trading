@@ -584,6 +584,23 @@ class TestExtremeScales:
                 assert str(exc) == "numeric_out_of_range"
         assert refused >= 2
 
+    @pytest.mark.parametrize("m", [D("1E+1000005"), D("1E+1500000"), D("1E+999999999")])
+    def test_huge_multiplier_is_a_typed_error_not_a_raw_one(self, m):
+        with pytest.raises(ValueError) as e:
+            regime_labels(hl_bars(VECTOR_HL), 2, 3, 2, RegimeParams(m, D(100), D(60), D(40)), candle_ms=CMS)
+        assert str(e.value) == "numeric_out_of_range" and e.value.__cause__ is None and e.value.__suppress_context__ is True
+
+    @pytest.mark.parametrize("m", [D("1E-1000010"), D("1E-999999999")])
+    def test_tiny_multiplier_is_correct_or_typed(self, m):
+        want = regime_labels(hl_bars(VECTOR_HL), 2, 3, 2, RegimeParams(D("1E-30"), D(100), D(60), D(40)), candle_ms=CMS)
+        assert "SHOCK" in want
+        try:
+            got = regime_labels(hl_bars(VECTOR_HL), 2, 3, 2, RegimeParams(m, D(100), D(60), D(40)), candle_ms=CMS)
+        except ValueError as e:
+            assert str(e) == "numeric_out_of_range"
+        else:
+            assert got == want
+
     def test_ambient_traps_of_the_caller_do_not_matter(self):
         with localcontext() as c:
             c.traps[decimal.Overflow] = False
