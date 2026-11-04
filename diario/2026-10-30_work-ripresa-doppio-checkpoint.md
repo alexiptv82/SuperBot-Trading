@@ -168,3 +168,21 @@ PROSSIMO PASSO: P8 `v3/features/regime.py` con soglie solo come parametri obblig
 
 Fonti: Library versione 23; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p7_indicatori.md`, `diario/2026-11-04_p7b_livelli.md` e il checkpoint di ripresa; PR GitHub #47 e #48. Accesso alle chat limitato ai messaggi recenti forniti e alle fonti accessibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+
+---
+
+## 04/11/2026 16:51 Europe/Rome — P8 classificatore di regime verificato offline
+
+FATTO/PREPARATO: completato il modulo puro `backend/v3/features/regime.py` sul ramo `work/v3-p8-regime-grok-20261104`, PR #49 aperta e DRAFT, HEAD `0a4737f8269cd7184b4c4d1a13ed4e0d8d51fc97`, impilata sulla PR #48. `regime_labels` classifica ogni barra chiusa nel vocabolario `TREND_UP`, `TREND_DOWN`, `RANGE`, `EXPANSION`, `SHOCK`, `UNCERTAIN`; le quattro soglie e i tre periodi sono parametri obbligatori, senza default. La funzione non ha isteresi o memoria fra barre e non è collegata al Brain, journal, prompt, rischio o runtime. La consegna di Grok è conservata invariata nel commit `a71d186`; la verifica indipendente e gli hardening test sono nei commit `2068647`, `bde3a5a` e `0a4737f`. Non sono stati trovati difetti di codice nel modulo; è stata invece rafforzata la suite dopo la mutazione.
+
+TEST: suite V3 locale da 2575 a **2785 PASS**, 3 xfailed; restano 3 failure preesistenti per `fastapi` mancante, invariate. Verifica indipendente con oracolo `Fraction`: **43.200 confronti, 0 differenze**, tutte le sei etichette rappresentate. Controllati ordine delle regole, bordi delle soglie, ogni ingresso `None`, argomenti delle funzioni sottostanti, non-lookahead con meta-test, scale estreme, contesto Decimal, validazione, purezza AST e prestazioni (60.000 barre in circa 2,6 secondi). Mutazione **67/69**: i due sopravvissuti sono classificati equivalenti; i soli 5 test originali di Grok ne intercettavano 25/69. Sono prove offline documentate nel diario e nella PR, non GitHub Actions né validazione economica su dati reali.
+
+RILASCIATO: nulla. PR #49 non è unita né distribuita. Nessuna soglia è stata scelta o tarata, nessuna feature è passata al Brain e nessuna strategia è stata attivata. Nessun merge/deploy, modifica operativa, wallet, reset, API pagata o accesso a dati reali. `DESK_MODE=paper` resta invariato; PAPER, journal, memoria e storici preservati.
+
+PROBLEMI/APERTI: le prime barre restano `UNCERTAIN` durante il riscaldamento; senza isteresi l'etichetta può oscillare vicino alle soglie; ADX con periodi molto corti è un rilevatore di range debole; pareggi esatti su valori periodici seguono la precisione Decimal; buchi nelle barre sono rifiutati. Le quattro soglie devono ancora essere scelte dall'utente e validate fuori campione. P6 walk-forward non è ancora consegnato; mancano rilevatori delle 12 schede candle-only e produttore `Candidate` per P5. L1/L4, F0 e import dei 534 trade legacy restano soggetti ai gate e alle autorizzazioni già documentati.
+
+PROSSIMO PASSO: completare e verificare P6 `learning/walkforward.py`; definire il contratto comune dei rilevatori, costruire i rilevatori delle 12 schede e produrre `Candidate` per P5; quindi eseguire laboratorio su storico BTC/ETH fuori campione prima di qualsiasi promozione al Brain. Scelta delle soglie, policy PAPER e integrazioni restano decisioni separate.
+
+Fonti: Library versione 24; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p8_regime.md` e il checkpoint di ripresa; PR GitHub #49. I messaggi recenti accessibili documentano la preparazione di un oracolo P8, ma non è disponibile la chat completa: questo è un riepilogo di ripresa, non un'esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
