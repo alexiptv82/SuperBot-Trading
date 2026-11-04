@@ -1,3 +1,16 @@
+## 04/11 — F4 COMPLETATA: HTTP transport + budget ledger, 113/113 PASS
+
+**Claude Sonnet 4.6**
+
+Implementati `backend/v3/transport.py` (factory DeepSeek + Claude via stdlib urllib) e
+`backend/v3/budget.py` (ledger SQLite append-only + spending_gate fail-closed).
+30 nuovi test → 113/113 PASS totali (F2+F3+F4). Branch: `work/v3-f4-transports-budget-20261104`
+(commit `af18aed`). PR #37 DRAFT. Nessun deploy, DESK_MODE=paper, cervello intatto.
+Gate aperti: F5 executor PAPER, F6 dashboard, F7 brain evolutivo (Grok), F8 release,
+backup off-host VPS (richiede OK utente).
+
+---
+
 ## 04/11 — FASE 0 COMPLETA: 83/83 PASS — legacy fix su branch integrazione
 
 **Claude Sonnet 4.6 — coordinatore V3**
