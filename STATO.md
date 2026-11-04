@@ -1,3 +1,12 @@
+## 04/11 (pomeriggio, dopo l'analisi) — L0 FATTO: BIBLIOTECA STRATEGICA NEL REPO, PR #46 DRAFT, 1647 PASS
+
+**Claude Sonnet 5.5 — coordinatore** · solo dati e validazione, nessun collegamento col Brain
+
+`backend/v3/knowledge/`: le 24 schede e le 30 fonti dell'utente, fissate con SHA-256 e validate in modo rigido (elenchi chiusi, nessuna dichiarazione di profittabilità, feature classificate a mano). Classificazione dei dati: **12 schede a sole candele, 2 con funding/OI, 10 con dati nuovi**. Registro prove con le 8 voci `analog` del lab del 9/10 (differenze e timeframe fuori scheda dichiarati; nessuna cambia lo stato). Suite V3 **1215 → 1647 passed** (+432); **mutazione 165/165** sul codice finale (2 equivalenti del primo passaggio rimossi). Mio errore corretto: i `\uXXXX` dei test erano stati scritti come caratteri invisibili (bidi/zero-width), riportati a escape. Limite: prove `analog` ≠ prove delle schede; L1 (`strategy_id` nel journal) e L4 (short-list nel prompt) aspettano l'OK esplicito dell'utente.
+**Prossimo:** Grok — P7 indicatori a barre chiuse (`v3/features/indicators.py`, prompt `claude/prompt-grok-p7-indicatori-2026-11-04.md`); in attesa anche la consegna di P6. Dettagli: `diario/2026-11-04_l0_biblioteca-strategica.md`.
+
+---
+
 ## 04/11 (pomeriggio) — BIBLIOTECA STRATEGICA PER IL BRAIN: ANALISI (nessun codice toccato)
 
 **Claude Sonnet 5.5 — coordinatore**
