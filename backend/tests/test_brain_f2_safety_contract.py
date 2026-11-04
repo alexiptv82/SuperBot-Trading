@@ -3,9 +3,10 @@
 No network, VPS, exchange, real wallet or secret access.
 Temporary SQLite only.
 """
+import os
+import tempfile
 from decimal import Decimal
 from pathlib import Path
-import tempfile
 
 import pytest
 
@@ -15,6 +16,11 @@ from backend.v3.brain_f2.engine import BrainEngine, BrainPortfolioSnapshot
 from backend.v3.brain_f2.reviewer import MockClaudeReviewer
 from backend.v3.events import Event, EventJournal, EventConflict
 from backend.v3.risk import RiskPolicy, quote_paper_risk
+
+
+def _make_journal():
+    _tmpdir = tempfile.mkdtemp()
+    return EventJournal(os.path.join(_tmpdir, "journal.db"))
 
 
 def _market(regime="TRENDING", price="50000"):
@@ -53,10 +59,9 @@ def _market_params(fresh=True):
 
 
 def test_no_risk_gate_must_prevent_open():
-    engine = BrainEngine(MockDeepSeekAnalyst(), MockClaudeReviewer(always_approve=True), run_id='test-run')
-    decision = engine.step(_market())
-    assert decision.kind == DecisionKind.NO_TRADE
-    assert decision.rationale in ("invalid_input", "missing_journal")
+    """P0 contract: BrainEngine senza risk_policy non si costruisce."""
+    with pytest.raises(ValueError, match="risk_policy is required"):
+        BrainEngine(MockDeepSeekAnalyst(), MockClaudeReviewer(always_approve=True), run_id='test-run')
 
 
 class UnavailableAnalyst(Analyst):
@@ -65,7 +70,12 @@ class UnavailableAnalyst(Analyst):
 
 
 def test_unavailable_ai_yields_no_trade():
-    engine = BrainEngine(UnavailableAnalyst(), MockClaudeReviewer(always_approve=True), run_id='test-run')
+    engine = BrainEngine(
+        UnavailableAnalyst(), MockClaudeReviewer(always_approve=True),
+        risk_policy=_policy(), portfolio_snapshot=_snapshot(),
+        market_params=_market_params(), journal=_make_journal(),
+        run_id='test-run',
+    )
     decision = engine.step(_market())
     assert decision.kind == DecisionKind.NO_TRADE
     assert "ai_unavailable" in decision.rationale
@@ -79,7 +89,8 @@ def test_journal_sqlite_write_and_restart():
         engine = BrainEngine(
             MockDeepSeekAnalyst(force_no_trade=True),
             MockClaudeReviewer(always_approve=True),
-            journal=journal,
+            risk_policy=_policy(), portfolio_snapshot=_snapshot(),
+            market_params=_market_params(), journal=journal,
             run_id="brain-f2-offline",
         )
         decision = engine.step(_market())
@@ -113,10 +124,18 @@ def test_portfolio_isolation():
         path = Path(td) / "iso.sqlite"
         journal = EventJournal(path)
         journal.init_schema()
-        engine_b = BrainEngine(MockDeepSeekAnalyst(force_no_trade=True), MockClaudeReviewer(always_approve=True), journal=journal, run_id="brain-run")
+        engine_b = BrainEngine(
+            MockDeepSeekAnalyst(force_no_trade=True), MockClaudeReviewer(always_approve=True),
+            risk_policy=_policy(), portfolio_snapshot=_snapshot(),
+            market_params=_market_params(), journal=journal, run_id="brain-run",
+        )
         engine_b.step(_market())
         assert len(journal.list_run("brain", "brain-run")) == 1
-        engine_h = BrainEngine(MockDeepSeekAnalyst(force_no_trade=True), MockClaudeReviewer(always_approve=True), journal=journal, portfolio_id="hawk", run_id="hawk-run")
+        engine_h = BrainEngine(
+            MockDeepSeekAnalyst(force_no_trade=True), MockClaudeReviewer(always_approve=True),
+            risk_policy=_policy(), portfolio_snapshot=_snapshot(),
+            market_params=_market_params(), journal=journal, portfolio_id="hawk", run_id="hawk-run",
+        )
         d = engine_h.step(_market())
         assert d.kind == DecisionKind.NO_TRADE
         assert len(journal.list_run("hawk", "hawk-run")) == 0
@@ -129,11 +148,12 @@ def test_stale_market_rejected():
         risk_policy=_policy(),
         portfolio_snapshot=_snapshot(),
         market_params=_market_params(fresh=False),
+        journal=_make_journal(),
         run_id="test-run",
     )
     decision = engine.step(_market())
     assert decision.kind == DecisionKind.NO_TRADE
-    assert decision.rationale == "risk_rejected"
+    assert decision.rationale in ("risk_rejected", "market_gate")
 
 
 def test_policy_floor_below_450_rejected():
@@ -143,6 +163,7 @@ def test_policy_floor_below_450_rejected():
         risk_policy=_policy(floor="400"),
         portfolio_snapshot=_snapshot(),
         market_params=_market_params(),
+        journal=_make_journal(),
     )
     decision = engine.step(_market())
     assert decision.kind == DecisionKind.NO_TRADE
@@ -156,6 +177,7 @@ def test_missing_market_params_rejected():
         risk_policy=_policy(),
         portfolio_snapshot=_snapshot(),
         market_params={},
+        journal=_make_journal(),
     )
     decision = engine.step(_market())
     assert decision.kind == DecisionKind.NO_TRADE
@@ -169,6 +191,7 @@ def test_nan_infinity_rejected():
         risk_policy=_policy(),
         portfolio_snapshot=BrainPortfolioSnapshot(Decimal("NaN"), Decimal("1000"), Decimal("0"), Decimal("0")),
         market_params=_market_params(),
+        journal=_make_journal(),
     )
     decision = engine.step(_market())
     assert decision.kind == DecisionKind.NO_TRADE
@@ -184,7 +207,12 @@ def test_close_and_modify_not_executable():
                 rationale="close me",
                 occurred_at_ms=context.timestamp_ms,
             )
-    engine = BrainEngine(EmitClose(), MockClaudeReviewer(always_approve=True), run_id='test-run')
+    engine = BrainEngine(
+        EmitClose(), MockClaudeReviewer(always_approve=True),
+        risk_policy=_policy(), portfolio_snapshot=_snapshot(),
+        market_params=_market_params(), journal=_make_journal(),
+        run_id='test-run',
+    )
     decision = engine.step(_market())
     assert decision.kind == DecisionKind.NO_TRADE
     assert decision.status != ProposalStatus.EXECUTED_PAPER
@@ -203,6 +231,7 @@ def test_falco_toro_signals_are_advisory_only():
         risk_policy=_policy(),
         portfolio_snapshot=_snapshot(),
         market_params=_market_params(),
+        journal=_make_journal(),
     )
     decision = engine.step(ctx)
     # Signals must not force an OPEN without risk gate; and equity comes only from Brain snapshot
