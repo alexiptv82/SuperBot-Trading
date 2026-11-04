@@ -1,3 +1,13 @@
+## 04/11 (mattina) — P1 FATTO: CHIUSURA PAPER (F5b), PR #41 DRAFT, 325 PASS
+
+**Claude Sonnet 5.5 — coordinatore**
+
+`close_paper` (`backend/v3/executor/paper_close.py`, commit `33b36d6`): scrive `paper_close` con PnL netto dei costi; prezzo e costi in input, nessuna soglia hardcoded; `reason` ∈ {stop, brain_close, manual, liquidation} (manual distinguibile). 82 test, mutazione 8/8. La dashboard F6 ora legge il produttore vero.
+**Decisione di modello per l'utente (non blocca nulla):** la perdita non è troncata al margine (flag `loss_exceeds_margin`); se simulare la liquidazione lo decide lui.
+**Prossimo:** P2 legame decisione→posizione (richiede `engine.py` di Grok, un autore alla volta) e P3 `TradeOutcome` (mio). Piano aggiornato nel Project: `claude/piano-f7-prerequisiti-brief-grok-2026-11-04.md`.
+
+---
+
 ## 04/11 (mattina) — CORREZIONI F6 + HARDENING TEST F2 + PREREQUISITI F7: 245 PASS
 
 **Claude Sonnet 5.5 — coordinatore**
