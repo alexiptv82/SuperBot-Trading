@@ -1,3 +1,15 @@
+## 05/11 (mattina, dopo P10) — L'UTENTE AUTORIZZA IL BRAIN A IMPARARE DAI SUOI TRADE: L1 FATTO (PR #53), L4 IN CONSEGNA A CHATGPT
+
+**Claude Sonnet 5.5 — coordinatore** · L1 scritto da Claude; L4 affidato a **ChatGPT** (Modalità B)
+
+**Decisione dell'utente (5/11, 10:45):** basta test offline a catena; il Brain impara **lavorando**, dai trade che farà in PAPER, usando la biblioteca come base («più trade fa, più può capire qual è la strategia migliore»). Obiettivo finale: Brain autonomo (sceglie strategia, dimensione, TP/SL, chiusure parziali, mediazione, capitale, in base a mercato e notizie). Ha autorizzato «il necessario» per far imparare il Brain: L1 e L4 **solo in PAPER, nessun deploy**.
+**L1 FATTO (PR #53 draft, `fa3e110`):** `strategy_id` + `strategy_origin` dalla proposta del Brain al journal fino a `TradeOutcome` (schema 2); regola unica in `backend/v3/strategy_label.py` (id a token chiuso, `AI_` per le proposte del Brain, elenco ammesso per la biblioteca); **un'etichetta cattiva non blocca mai un trade, viene scartata**; chiave di cella con etichetta; vocabolario dei regimi esteso alle 6 etichette P8 (prima il registro le avrebbe riscritte in `UNKNOWN`). 106 test nuovi; suite V3 4224 → **4238 PASS** (3 failure preesistenti `fastapi`); mutazione 21/21. Lo schema 2 ha rotto 32 test del laboratorio P10, visti solo dalla suite completa: adattati nello stesso commit.
+**L4 IN CONSEGNA:** prompt `claude/prompt-chatgpt-l4-brain-view-2026-11-05.md` (punto di partenza `fa3e110`): tabellone per strategia × lato nel regime attuale (celle P4, netto dopo costi, intervallo a blocchi di giorni), menù delle 12 schede a sole candele, nuovo adattatore DeepSeek che dichiara la strategia; nessun file esistente modificato. Parametri del tabellone **proposti da Claude, modificabili dall'utente**: `min_trades 15`, `min_days 4`, `confidence 0.90`, `n_boot 2000`, `max_cells 12` (solo in `view_params.json`, sha256 `1b30b526…d7c8`). Testo di sistema con politica di esplorazione in PAPER (può provare strategie non ancora misurate; «insufficiente» ≠ «cattivo»); sha256 `703bee08…07f9`.
+**Limite onesto:** oggi il Brain vede solo prezzo e regime; la strategia che dichiara è un'attribuzione, non una regola applicata sui dati. Mancano ancora: CLOSE/MODIFY_STOP e chiusure parziali, mediazione, gestione dei TP, dimensione scelta dal Brain, feature multi-timeframe e notizie nel payload, trasporto vero con budget (F4), feed in tempo reale con monitor degli stop (F5), dashboard (F6), certificazione F0, dossier F8.
+**Prossimo:** applicare la consegna di ChatGPT invariata, verifica leggera (prova di sistema decisione → journal → esito → tabellone → payload), PR draft. **Per far partire il PAPER serve l'OK esplicito dell'utente al deploy (regola 1): nessun deploy fatto.**
+
+---
+
 ## 05/11 (mattina, dopo P9a) — P10 FATTO E PRIMO RUN REALE: SEI NEGATIVO, SI FERMA, PR #52 DRAFT, 4132 PASS
 
 **Claude Sonnet 5.5 — coordinatore** · modulo: codice di **ChatGPT** (Modalità B: consegna come testo, applicata invariata; nessun difetto di codice)
