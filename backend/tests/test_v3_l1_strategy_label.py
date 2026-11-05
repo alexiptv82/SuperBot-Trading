@@ -20,13 +20,16 @@ from backend.v3.brain_f2.analyst import Analyst, MockDeepSeekAnalyst
 from backend.v3.brain_f2.contracts import (
     BrainDecision, DecisionKind, MarketContext, OpenProposal, ProposalStatus,
 )
-from backend.v3.brain_f2.engine import BrainEngine, BrainPortfolioSnapshot, _policy_hash
+from backend.v3.brain_f2.engine import (
+    BrainEngine, BrainPortfolioSnapshot, _ALLOWED_REGIMES, _policy_hash,
+)
+from backend.v3.features.regime import REGIME_LABELS
 from backend.v3.brain_f2.reviewer import MockClaudeReviewer
 from backend.v3.events import Event, EventJournal
 from backend.v3.executor.paper import execute_paper
 from backend.v3.executor.paper_close import close_paper
 from backend.v3.learning.expectancy import cell_stats
-from backend.v3.outcomes import SCHEMA_VERSION, TradeOutcome, extract_outcomes
+from backend.v3.outcomes import REGIMES, SCHEMA_VERSION, TradeOutcome, extract_outcomes
 from backend.v3.risk import RiskPolicy, RiskQuote
 from backend.v3.strategy_label import (
     AI_PREFIX, STRATEGY_ORIGINS, is_valid_strategy_id, normalize_label,
@@ -438,3 +441,34 @@ class TestScoreboardKey:
                            key=lambda o: (o.strategy_id, o.decision_regime, o.side))
         assert {c.key for c in cells} == {("S07", "TRENDING", 1), ("S05", "TRENDING", 1)}
         assert sorted(c.n for c in cells) == [3, 3]
+
+
+# ---------------------------------------------------------------------------
+# 5. vocabolario dei regimi: le 6 etichette di P8 sono registrabili e rileggibili
+# ---------------------------------------------------------------------------
+
+class TestRegimeVocabulary:
+    OLD = {"TRENDING", "RANGING", "VOLATILE", "UNKNOWN"}
+
+    def test_engine_and_outcomes_share_one_vocabulary(self):
+        assert _ALLOWED_REGIMES == REGIMES                       # niente deriva fra scrittore e lettore
+        assert self.OLD <= REGIMES                               # le 4 storiche restano
+        assert set(REGIME_LABELS) <= REGIMES                     # le 6 di P8 ci sono tutte
+        assert REGIMES == self.OLD | set(REGIME_LABELS)          # e nient'altro
+
+    @pytest.mark.parametrize("regime", sorted(set(REGIME_LABELS)))
+    def test_p8_regime_survives_decision_journal_and_outcome(self, regime):
+        j = _journal()
+        d = _step(j, LabelAnalyst("S07", "library"), regime=regime)
+        # MockDeepSeek apre solo in TRENDING: qui il nostro analista apre in ogni regime
+        assert (d.kind, d.status) == (DecisionKind.OPEN, ProposalStatus.APPROVED)
+        assert _decision_payload(j, d.journal_event_id)["regime"] == regime
+        _open_close(j, d)
+        o = _one(j)
+        assert (o.link_status, o.decision_regime, o.strategy_id) == ("linked", regime, "S07")
+
+    @pytest.mark.parametrize("regime", ["trend_up", "TREND_UP ", "TREND-UP", "ALL", "REVERSAL_CANDIDATE", "", "x" * 40])
+    def test_other_strings_still_become_unknown(self, regime):
+        j = _journal()
+        d = _step(j, LabelAnalyst("S07", "library"), regime=regime)
+        assert _decision_payload(j, d.journal_event_id)["regime"] == "UNKNOWN"

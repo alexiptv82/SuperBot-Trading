@@ -57,7 +57,11 @@ SCHEMA_VERSION = 2   # 2: aggiunti strategy_id / strategy_origin (L1)
 EXIT_REASONS = frozenset({"stop", "brain_close", "manual", "liquidation"})
 LINK_STATUSES = ("linked", "unlinked", "dangling", "wrong_decision",
                  "symbol_mismatch", "decision_after_open")
-REGIMES = frozenset({"TRENDING", "RANGING", "VOLATILE", "UNKNOWN"})
+# Identico a brain_f2.engine._ALLOWED_REGIMES: 4 etichette storiche + 6 del classificatore P8.
+REGIMES = frozenset({
+    "TRENDING", "RANGING", "VOLATILE", "UNKNOWN",
+    "TREND_UP", "TREND_DOWN", "RANGE", "EXPANSION", "SHOCK", "UNCERTAIN",
+})
 
 _Q8 = Decimal("0.00000001")
 _Q4 = Decimal("0.0001")

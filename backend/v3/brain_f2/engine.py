@@ -45,7 +45,13 @@ _ALLOWED_SOURCES = frozenset({
 })
 _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
 _SYMBOL_RE = __import__("re").compile(r"^[A-Z0-9][A-Z0-9/_:.-]{0,31}$")
-_ALLOWED_REGIMES = frozenset({"TRENDING", "RANGING", "VOLATILE", "UNKNOWN"})
+# Vocabolario dei regimi che una decisione puo' registrare: le 4 etichette storiche piu' le 6 del
+# classificatore P8 (features/regime.py), cosi' il tabellone puo' raggruppare per regime P8.
+# Deve restare identico a outcomes.REGIMES (lo verifica test_v3_l1_strategy_label.py).
+_ALLOWED_REGIMES = frozenset({
+    "TRENDING", "RANGING", "VOLATILE", "UNKNOWN",
+    "TREND_UP", "TREND_DOWN", "RANGE", "EXPANSION", "SHOCK", "UNCERTAIN",
+})
 _EVENT_ID_RE = __import__("re").compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$")
 
 def _safe_symbol(s):
