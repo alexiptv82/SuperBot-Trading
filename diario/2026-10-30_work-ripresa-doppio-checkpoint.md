@@ -284,3 +284,23 @@ PROSSIMO PASSO: completare la consegna L4 su base `fa3e110`, applicarla invariat
 
 Fonti: Library versione 29 e `prompt-chatgpt-l4-brain-view-2026-11-05.md`; ramo `diario`, `STATO.md`, `diario/2026-11-05_l1_etichetta_strategia_e_l4.md` e checkpoint di ripresa; PR GitHub #53 e commit citati. Accesso alle chat limitato ai messaggi recenti e ai file disponibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+
+---
+
+## 05/11/2026 14:45 Europe/Rome — L4 implementato e verificato offline; PR #54 DRAFT
+
+FATTO: L4 è stato pubblicato sul ramo `work/v3-l4-brain-view-chatgpt-20261105`, PR #54 aperta e DRAFT, impilata su #53, non unita. HEAD verificato `32eb85794002d3392d47cfc2956cae1e9a571e68`. I sette file nuovi in `backend/v3/brain_view/` aggiungono parametri rigidi, tabellone strategia × origine × lato nel regime corrente, menù delle 12 schede candle-only e `DeepSeekL4Analyst`; L1 scarta etichette non ammesse senza bloccare il trade. Commit documentati: `111c2d0` consegna ChatGPT invariata, `97f6cf9` correzioni della sola suite, `cab064e` verifica indipendente, `32eb857` hardening corrente.
+
+TEST: la PR documenta suite V3 **4442 PASS**, 3 xfailed e 3 failure preesistenti per `fastapi` mancante; oracolo indipendente su 40 scenari, mutazione leggera `view.py` **13/13** e prova PAPER completa decisione → journal → chiusura → outcome → tabellone → nuovo payload. Il rapporto ChatGPT conserva 827/827 test mirati, 160/160 L4 da `/tmp` e prima mutazione completa 54/60 con M01 poi ucciso; la sua suite globale non è certificata perché interrotta per timeout. L'ultimo commit documenta inoltre mutazione mirata 15/15. Nessun GitHub Actions associato all'HEAD corrente.
+
+PREPARATO: pacchetto Library `SuperBot-V3-L4-corretto-e-testato-2026-11-05.zip` e rapporto `RAPPORTO_L4_VERIFICATO_2026-11-05.md`. Parametri proposti, ancora modificabili: `min_trades=15`, `min_days=4`, `confidence=0.90`, `n_boot=2000`, `max_cells=12`.
+
+RILASCIATO: nulla. PR #54 resta DRAFT; nessun merge/deploy, runtime/VPS, strategia operativa, wallet, reset o API pagata. `DESK_MODE=paper` invariato; PAPER, memoria e storici preservati. Library `ULTIMO-STATO-SUPERBOT.md` aggiornata alla versione 31 conservando identità e cartella.
+
+PROBLEMI: il Brain vede prezzo e regime ma non gli indicatori delle schede, quindi la strategia dichiarata è attribuzione e non prova di applicazione della regola. Il tabellone aggrega tutti i simboli, non corregge i confronti multipli e richiede tempo per popolare le celle. Restano aperti CLOSE/MODIFY_STOP, parziali, mediazione, TP, sizing, feature multi-timeframe/notizie, F4, F5, F6, F0 e F8.
+
+PROSSIMO PASSO: revisione della PR #54 e decisione separata sui gate mancanti. Qualsiasi merge o avvio PAPER richiede un OK esplicito distinto; nessun avvio è implicito.
+
+Fonti: Library versione 30 e artefatti L4; messaggi recenti accessibili; PR #54, ramo e commit citati; ramo `diario`, `STATO.md` e diario L1/L4. Accesso alle chat limitato ai messaggi e file recenti disponibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
