@@ -408,3 +408,24 @@ PROSSIMO PASSO: revisionare l'HEAD esatto `a9044b6`; rendere verificabili Action
 
 Fonti: Library versione 35; PR #61 e commit `186ead8`/`a9044b6`; PR #60 e #59; messaggi recenti accessibili. Accesso alle chat limitato: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 05/11/2026 22:50 Europe/Rome — Freno perdita giornaliera Brain PAPER su PR #57, HEAD `e25c8dd`
+
+FATTO: dopo il checkpoint delle 21:41, la PR #57 DRAFT sul ramo `work/v3-a1-exits-claude-20261105` è stata aggiornata alle 21:57 Europe/Rome con `e25c8dd8db88fd6994e3b7a75ecfdec5ff258421`. Il commit aggiunge al runner Brain PAPER un freno di perdita giornaliera: realizzato + non realizzato del giorno UTC; avviso al **35%**; al **50%** blocco di nuove aperture e chiamate al modello fino alla mezzanotte UTC, con stop, uscite, monitoraggio e chiusura manuale ancora attivi. Lo halt resta agganciato per il giorno e persistito atomicamente in `daily_loss.json`; il heartbeat espone livello e percentuale. Telegram è best-effort e no-op senza credenziali.
+
+COMMIT/RAMO: PR #57 aperta, mergeable, DRAFT, non unita; HEAD `e25c8dd`, base `main` a `fb38267`. Il commit tocca otto file: test daily-loss/e2e e `alerts.py`, `config.py`, `daily_loss.py`, `runner.py`, `runner_config.json`, `wiring.py`. La PR elenca come precedenti `5954f85` (ciclo orario, ragionamento esteso, tetto 0,75 USD/giorno, durata 24 h), `def23a0` (pacchetto A4) e `3ccef61` (collegamento app-Brain e durata chiamate); il nuovo delta verificato è `e25c8dd`.
+
+TEST/RISCONTRO: commit e PR dichiarano **145 test** nuovi; con **113** test runner/manual-close/e2e risultano **258 PASS**. Mutazione dichiarata **18/18**. GitHub restituisce zero workflow run e zero status associati all'HEAD: conteggi registrati come evidenza del commit/PR, non come Action indipendentemente riscontrata. Nessun nuovo totale della suite V3+Brain viene attribuito.
+
+PREPARATO: parametri richiesti `daily_loss_warn_fraction=0.35` e `daily_loss_halt_fraction=0.50`. Da revisionare prezzi mancanti, persistenza e reset UTC, Telegram, configurazione reale, mount e sessione coordinata.
+
+RILASCIATO: nulla. Nessun merge, deploy, runtime/VPS, avvio bot, wallet, reset o API pagata. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: nessuna Action/status collegata; nessuna prova VPS, sessione reale, telefono o Telegram reale. Un prezzo posizione mancante viene ignorato nel non realizzato, lasciando contare solo il realizzato: comportamento da riesaminare per un gate protettivo. La PR è basata su `main` e aggrega una storia ampia: va revisionato il diff effettivo. L'idea dei “sei agenti/servizi” resta progettuale, senza ramo, commit o test.
+
+PROSSIMO PASSO: revisione indipendente dell'HEAD `e25c8dd`; test riproducibili dei bordi 35/50%, cambio giorno UTC, restart/latch, guasti prezzo e Telegram; collegamento verificabile della CI. Correzioni in commit separati. Merge, deploy o avvio richiedono OK esplicito separato.
+
+Fonti: Library versione 36; PR #57 e commit `e25c8dd`; verifiche HEAD/status; messaggi recenti accessibili. Accesso alle chat limitato: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
