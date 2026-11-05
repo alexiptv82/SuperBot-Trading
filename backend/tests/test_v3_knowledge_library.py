@@ -1005,11 +1005,21 @@ class TestImmutabilityAndPurity:
         assert floats == []
 
     def test_no_import_side_effects_on_environment(self):
-        before = dict(os.environ)
-        import importlib
-        importlib.reload(lib_mod)
-        assert dict(os.environ) == before
-        assert lib_mod.KB_SHA256 == PINNED_SHA
+        # Import "fresco" in un processo a parte: ``importlib.reload`` ricreerebbe la classe ``Library`` nel processo
+        # dei test e ogni test successivo che passa la biblioteca a ``build_menu`` fallirebbe con ``invalid_library``
+        # (inquinamento tra test, emerso con la prova end-to-end del runner).
+        import subprocess
+        import sys
+        root = Path(lib_mod.__file__).resolve().parents[3]
+        code = ("import os\nbefore = dict(os.environ)\n"
+                "from backend.v3.knowledge import library as m\n"
+                "assert dict(os.environ) == before\nprint(m.KB_SHA256)")
+        env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in (str(root), os.environ.get("PYTHONPATH", "")) if p),
+                   PYTHONDONTWRITEBYTECODE="1")
+        done = subprocess.run([sys.executable, "-c", code], cwd=root, env=env, capture_output=True, text=True,
+                              timeout=120)
+        assert done.returncode == 0, done.stderr
+        assert done.stdout.strip() == PINNED_SHA
 
     def test_package_does_not_touch_the_brain(self):
         """L0 e' solo dati: nessun import da brain_f2/brain_f3/executor/events nel pacchetto knowledge."""

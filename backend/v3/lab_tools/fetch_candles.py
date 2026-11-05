@@ -30,6 +30,11 @@ HEADER = ["open_time_ms", "open", "high", "low", "close", "volume"]
 _SYMBOL = re.compile(r"[A-Z0-9]{3,30}")
 _NUM = re.compile(r"-?\d+(\.\d+)?([eE][+-]?\d+)?")
 
+# Nomi di granularita' documentati da Bitget (minuti in minuscolo, ore e giorni in maiuscolo): "1H" e "4H", non "60m"/"240m".
+# Fuori tabella resta il vecchio ``<n>m``. Non verificato da qui (Bitget non e' raggiungibile): prima prova sulla VPS.
+_GRANULARITY = {60_000: "1m", 180_000: "3m", 300_000: "5m", 900_000: "15m", 1_800_000: "30m", 3_600_000: "1H",
+                14_400_000: "4H", 21_600_000: "6H", 43_200_000: "12H", 86_400_000: "1D"}
+
 _lock = threading.Lock()
 _last = [0.0]
 
@@ -88,7 +93,7 @@ def fetch_rows(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
         raise ValueError("invalid_symbol")
     if candle_ms < 60_000 or candle_ms % 60_000 or end_ms <= start_ms:
         raise ValueError("invalid_window")
-    gran = f"{candle_ms // 60_000}m"
+    gran = _GRANULARITY.get(candle_ms, f"{candle_ms // 60_000}m")
     rows: dict = {}
     cur_end, empty = end_ms - 1, 0
     for _ in range(max_requests):

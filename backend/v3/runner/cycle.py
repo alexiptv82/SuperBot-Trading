@@ -42,6 +42,7 @@ from backend.v3.features.indicators import Bar
 from backend.v3.risk import RiskPolicy
 
 PORTFOLIO_ID = "brain"
+MIN_PRICE_PLACES = 8
 RULE_KEYS = ("exchange_leverage_limit", "quantity_step", "minimum_notional", "maintenance_fraction")
 
 
@@ -101,6 +102,13 @@ def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal) ->
                     Decimal("0"))
     cash = max(equity - margin, Decimal("0"))
     return BrainPortfolioSnapshot(equity, cash, margin, open_risk)
+
+
+def price_with_room(price: Decimal) -> Decimal:
+    """Il prezzo con almeno ``MIN_PRICE_PLACES`` decimali. ``execute_paper`` arrotonda il prezzo di riempimento a
+    ZERO (ROUND_DOWN) alla precisione del prezzo di ingresso: con "0.18234" una slippage di 2 bp (0,0000036) sparirebbe
+    sul long e diventerebbe un tick intero (5,5 bp) sullo short. Con 8 decimali l'errore e' trascurabile."""
+    return price.quantize(Decimal(1).scaleb(min(price.as_tuple().exponent, -MIN_PRICE_PLACES)))
 
 
 def _market_params(rules: Mapping) -> dict:
@@ -164,6 +172,7 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
             if type(price) is not Decimal or not price.is_finite() or price <= 0:
                 errors.append((symbol, "price_error"))
                 continue
+            price = price_with_room(price)
             bars_holder.set(symbol, bars_by_tf)
             engine = BrainEngine(
                 analyst=analyst, reviewer=NoReviewer(), risk_policy=risk_policy,

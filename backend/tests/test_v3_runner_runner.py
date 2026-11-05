@@ -206,3 +206,17 @@ def test_bad_data_dir_and_delay():
     for delay in (-1, CYCLE_MS, True, 1.5, "20"):
         with pytest.raises(ValueError, match="invalid_cycle_delay"):
             Runner(run_id="r", data_dir=d, run_monitor=lambda n: None, run_cycle=lambda n, s: None, cycle_delay_ms=delay)
+
+
+def test_on_tick_receives_each_successful_tick_and_its_failures_are_contained():
+    r = Rig()
+    seen = []
+
+    def cb(now, result):
+        seen.append((now, result.state))
+        raise RuntimeError("log broke")
+    clock = iter([G + DELAY, 0, G + MINUTE_MS])
+    stops = iter([False, False, False, True])
+    r.runner.run(now_fn=lambda: next(clock), sleep_fn=lambda s: None, should_stop=lambda: next(stops), on_tick=cb)
+    assert seen == [(G + DELAY, "running"), (G + MINUTE_MS, "running")]          # il tick con now=0 non arriva al log
+    assert len(r.monitor_calls) == 2

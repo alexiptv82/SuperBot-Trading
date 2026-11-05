@@ -24,7 +24,8 @@ from backend.v3.events import EventJournal
 from backend.v3.features.indicators import Bar
 from backend.v3.risk import RiskPolicy
 from backend.v3.runner.cycle import (
-    CycleBars, CycleReport, MarketEntryAnalyst, NoReviewer, run_brain_cycle, snapshot_from_summary,
+    CycleBars, CycleReport, MarketEntryAnalyst, NoReviewer, price_with_room, run_brain_cycle,
+    snapshot_from_summary,
 )
 
 D = Decimal
@@ -439,3 +440,28 @@ def test_snapshot_from_summary_uses_realized_pnl_margin_and_open_risk():
     snap3 = snapshot_from_summary(empty, D("1000"))
     assert (snap3.equity, snap3.available_cash, snap3.margin_used, snap3.existing_open_risk) == (
         D("1012.5"), D("1012.5"), D("0"), D("0"))
+
+
+# ---------------------------------------------------------------------------------------------------
+# 6. Precisione del prezzo: la slippage non deve sparire (execute_paper arrotonda alla precisione del prezzo)
+# ---------------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("price,expected_exp", [("100", -8), ("100.5", -8), ("0.18234", -8), ("97123.4", -8),
+                                                ("0.123456789012", -12), ("1.00000000", -8)])
+def test_price_with_room_keeps_the_value_and_at_least_eight_places(price, expected_exp):
+    out = price_with_room(D(price))
+    assert out == D(price) and out.as_tuple().exponent == expected_exp
+
+
+@pytest.mark.parametrize("price,long_fill,short_fill", [
+    ("100", "100.02000000", "99.98000000"),
+    ("0.18234", "0.18237646", "0.18230353"),         # a 5 decimali la slippage di 2 bp si perderebbe sul long
+    ("97123.4", "97142.82468000", "97103.97532000"),
+])
+def test_slippage_is_applied_at_full_precision_whatever_the_price_decimals(price, long_fill, short_fill):
+    for side, stop_factor, expected in ((1, D("0.99"), long_fill), (-1, D("1.01"), short_fill)):
+        j = _journal()
+        rep = _cycle(j, ScriptAnalyst(side=side, stop_factor=stop_factor), symbols=("AAAUSDT",), slip=2,
+                     price_source=lambda s, n, p=price: D(p))
+        assert rep.opened, rep
+        assert D(_events(j, "paper_open")[0].payload["fill_price"]) == D(expected)

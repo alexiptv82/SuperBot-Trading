@@ -125,12 +125,20 @@ class Runner:
                     pass
 
     def run(self, *, now_fn: Callable[[], int], sleep_fn: Callable[[float], None],
-            should_stop: Callable[[], bool] = lambda: False, poll_s: float = 5.0) -> None:
-        """Ciclo infinito (finche' ``should_stop`` non e' vero). Un'eccezione inattesa in un tick non lo ferma."""
+            should_stop: Callable[[], bool] = lambda: False, poll_s: float = 5.0,
+            on_tick: Optional[Callable[[int, TickResult], None]] = None) -> None:
+        """Ciclo infinito (finche' ``should_stop`` non e' vero). Un'eccezione inattesa in un tick non lo ferma;
+        ``on_tick`` (log) e' best-effort: un suo errore non ferma il ciclo."""
         while not should_stop():
             now = now_fn()
             try:
-                self.tick(now)
+                result = self.tick(now)
             except Exception:
                 self._write_heartbeat(now, "running", "tick_failed")
+            else:
+                if on_tick is not None:
+                    try:
+                        on_tick(now, result)
+                    except Exception:
+                        pass
             sleep_fn(poll_s)

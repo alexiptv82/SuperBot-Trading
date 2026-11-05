@@ -391,3 +391,27 @@ def test_last_minute_close_raises_when_there_is_no_recent_bar():
     assert str(e.value) == "no_recent_bar"
     with pytest.raises(RuntimeError):
         last_minute_close("BTCUSDT", T0 + 3 * M1, FakeBitget({}, fail=True))
+
+
+# ----------------------------------------------------------------------------- nomi di granularita' verso Bitget
+@pytest.mark.parametrize("candle_ms,name", [(60_000, "1m"), (180_000, "3m"), (300_000, "5m"), (900_000, "15m"),
+                                            (1_800_000, "30m"), (3_600_000, "1H"), (14_400_000, "4H"),
+                                            (21_600_000, "6H"), (43_200_000, "12H"), (86_400_000, "1D"),
+                                            (120_000, "2m")])                  # fuori tabella: vecchio "<n>m"
+def test_granularity_sent_to_bitget_uses_the_documented_names(candle_ms, name):
+    seen = []
+
+    def get(url):
+        seen.append(parse_qs(urlparse(url).query)["granularity"][0])
+        return {"code": "00000", "data": []}
+    fetch_closed_bars("BTCUSDT", 10 * candle_ms, 20 * candle_ms, candle_ms=candle_ms, get_json=get)
+    assert seen and set(seen) == {name}
+
+
+def test_hourly_and_four_hourly_stores_read_the_bitget_names():
+    s1 = _series(T0, 40, H1)
+    s4 = _series(T0, 40, 4 * H1)
+    fake = FakeBitget({("BTCUSDT", "1H"): s1, ("BTCUSDT", "4H"): s4})
+    cs = CandleStore(fake, keep={"1h": (H1, 30), "4h": (4 * H1, 20)})
+    assert cs.refresh("BTCUSDT", "1h", T0 + 40 * H1) == s1[10:40]
+    assert cs.refresh("BTCUSDT", "4h", T0 + 40 * 4 * H1) == s4[20:40]
