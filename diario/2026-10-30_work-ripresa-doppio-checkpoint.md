@@ -346,3 +346,23 @@ LIMITAZIONE DEL CHECKPOINT: l'ambiente locale necessario per sostituire in sicur
 
 Fonti: Library versione 32; PR #55, ramo e commit L5; PR #54; messaggi recenti accessibili e checkpoint del ramo `diario`. Accesso alle chat limitato ai messaggi e file recenti disponibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+
+---
+
+## 05/11/2026 19:50 Europe/Rome — Dashboard V3 unificata consegnata localmente, non pubblicata
+
+FATTO: verificata la consegna Modalità B `SuperBot-Dashboard-Unificata-2026-11-05.zip` sulla base ZIP del commit `f8300d10043768bede17439cc2dfecb7fe98f25d`. Cinque file nuovi aggiungono una dashboard mobile in sola lettura per Falco, Toro e Brain: `backend/v3_api.py`, test backend, `Overview.js`, CSS e test frontend. La patch di collegamento è limitata a due righe in `server.py`, rotta `/overview` e navigazione. Quattro GET autenticati espongono stato, posizioni, P&L, margine, ultimo evento, ultima decisione/regime, spesa DeepSeek, tabellone L4 e trade etichettati. Runner, strategie, journal, storico, mandati, rischio e dati operativi restano invariati.
+
+TEST: **26/26 backend PASS** dalla radice e da `/tmp`; suite `test_v3_*.py` **4097 PASS** con i 26 casi inclusi; frontend **7/7 PASS** dalla radice e da `/tmp`; build CRA **Compiled successfully**. Verifica finale con FastAPI 0.110.0 e HTTPX 0.27.0 fissati dai requisiti. `git apply --check` della patch passa sulla base originale. Nessuna campagna di mutazione o nuovo oracolo dichiarati.
+
+PREPARATO, NON PUBBLICATO: il pacchetto conserva manifesto, log e nota diario. Il ramo previsto `work/v3-dashboard-unificata-chatgpt-20261105` non risulta su GitHub; non sono stati trovati commit o PR della nuova dashboard. La precedente PR #39 è distinta e non prova la pubblicazione di questa V1. Il file Library `/SuperBot-Ripresa/ULTIMO-STATO-SUPERBOT.md` è stato riallineato alla versione 33, includendo anche il checkpoint già esistente della PR #55.
+
+RILASCIATO: nulla. Nessun commit/push della dashboard, merge, deploy, modifica runtime/VPS, avvio bot o Brain, wallet, reset, API pagata o chiamata reale a exchange/AI. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: adattatore budget read-only dipendente da attributi interni; possibili file ausiliari SQLite WAL; precisione legacy non recuperabile. Screenshot mobile e prova browser reale non eseguiti; non risultano suite completa repository, prova VPS o verifica integrale del server con servizi di produzione. Il tabellone mostra l'ultimo regime registrato, non un mercato attuale né un apprendimento certificato.
+
+PROSSIMO PASSO: applicare invariati file e patch a un checkout esatto di `f8300d1` in ramo isolato, quindi verificare diff, integrazione, suite e resa mobile reale; eventuali correzioni in commit separati. Merge, deploy o avvio richiedono OK esplicito separato.
+
+Fonti: Library versione 33 e pacchetto dashboard con rapporto/log/manifesto; messaggi recenti accessibili; ricerche GitHub; ramo `diario`. Accesso alle chat limitato ai messaggi e file recenti disponibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
