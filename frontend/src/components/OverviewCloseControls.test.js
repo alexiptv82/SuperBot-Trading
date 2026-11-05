@@ -57,7 +57,8 @@ test('Brain: only one POST after confirmation and result polled every 3 seconds'
     expect(s.host.textContent).toContain('Richiesta inviata');
     await act(async () => { jest.advanceTimersByTime(3000); });
     expect(API.get).toHaveBeenCalledWith('/api/v3/brain/close-result');
-    expect(s.host.textContent).toContain('p-001: posizione chiusa.');
+    expect(s.host.textContent).toContain('BTCUSDT: posizione chiusa.');
+    expect(s.host.textContent).not.toContain('p-001');
     expect(refresh).toHaveBeenCalledTimes(1);
   } finally { await s.done(); jest.useRealTimers(); }
 });

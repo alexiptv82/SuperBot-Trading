@@ -29,6 +29,12 @@ const reasonText = code => {
   return 'Verificare lo stato del Brain';
 };
 
+// Motivo di chiusura in parole; qualsiasi codice sconosciuto diventa «altro», mai il codice grezzo.
+const EXIT_REASONS = { stop: 'stop', take_profit: 'obiettivo raggiunto', timeout: 'tempo scaduto',
+  manual: 'chiusa da te', brain_close: 'chiusa dal Brain', liquidation: 'liquidata' };
+export const exitReasonText = code =>
+  typeof code === 'string' && Object.prototype.hasOwnProperty.call(EXIT_REASONS, code) ? EXIT_REASONS[code] : 'altro';
+
 function StateLabel({ state }) {
   return <span style={{ color: PALETTE[state] || '#94a3b8', fontWeight: 700, fontSize: 13 }}>
     <span aria-hidden="true">● </span>{STATE_TEXT[state] || 'Non disponibile'}
@@ -47,7 +53,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
     <header style={{ marginBottom: 18 }}>
       <div style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>SUPERBOT V3 · PAPER</div>
       <h1 style={{ fontSize: 25, margin: '6px 0' }}>I tre portafogli</h1>
-      <div style={MUTED}>Solo lettura · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
+      <div style={MUTED}>Solo PAPER, nessun ordine reale · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
     </header>
     <section aria-label="Portafogli">
       {portfolios.map(p => <article key={p.id} style={BLOCK}>
@@ -117,7 +123,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
       <h2 style={{ fontSize: 17, margin: '0 0 12px' }}>Ultimi 20 trade chiusi · Brain</h2>
       {closedTrades.length === 0 ? <p style={MUTED}>Nessun trade chiuso disponibile.</p> : closedTrades.map(t => <div key={t.position_id} style={{ borderTop: '1px solid #314357', padding: '12px 0' }}>
         <strong>{t.symbol} · {direction(t.side)} · {t.strategy_id || 'Senza etichetta'}</strong>
-        <div style={MUTED}>{t.regime || 'Regime sconosciuto'} · {t.exit_reason} · {ageText(t.closed_at_ms, nowMs)}</div>
+        <div style={MUTED}>{t.regime || 'Regime sconosciuto'} · {exitReasonText(t.exit_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
         <div style={MUTED}>Netto: {bp(t.net_bp)} · Durata: {t.hold_ms} ms</div>
       </div>)}
     </section>
