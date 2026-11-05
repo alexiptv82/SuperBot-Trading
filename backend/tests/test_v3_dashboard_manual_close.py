@@ -228,3 +228,13 @@ def test_work_file_exposes_pending_to_dashboard(tmp_path):
     (tmp_path / '.close_request.work').write_text('{}')
     with TestClient(_app(paths)[0]) as client:
         assert client.get('/api/v3/brain/trades').json()['close_pending'] is True
+
+
+def test_in_progress_runner_work_file_is_pending_to_ui(tmp_path):
+    paths = _paths(tmp_path)
+    _journal_sample(paths, close=False)
+    _heartbeat(tmp_path)
+    (tmp_path / '.close_request.work').write_text('{"ts_ms": 1, "all": true}', encoding='utf-8')
+    with TestClient(_app(paths)[0]) as client:
+        assert client.get('/api/v3/brain/close-result').json() == {'result': None, 'pending': True}
+        assert client.get('/api/v3/brain/trades').json()['close_pending'] is True

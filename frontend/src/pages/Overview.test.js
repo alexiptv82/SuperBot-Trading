@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import API from '../api';
-import Overview, { OverviewContent } from './Overview';
+import Overview, { OverviewContent, brainExitReason } from './Overview';
 
 jest.mock('../api', () => ({ get: jest.fn() }));
 
@@ -95,4 +95,20 @@ test('model text is escaped by React', () => {
   const html = renderToStaticMarkup(<OverviewContent {...altered} nowMs={now} regime="" onRegime={() => {}} />);
   expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   expect(html).not.toContain('<script>');
+});
+
+
+test.each([
+  ['stop', 'stop'], ['take_profit', 'obiettivo raggiunto'],
+  ['timeout', 'tempo scaduto (24 ore)'], ['manual', 'chiusa da te'],
+  ['brain_close', 'chiusa dal Brain'], ['liquidation', 'liquidata'],
+  ['evil_code', 'altro'], ['__proto__', 'altro'], ['toString', 'altro'], [undefined, 'altro'],
+])('Brain-only exit reason %s displays %s', (reason, label) => {
+  expect(brainExitReason(reason)).toBe(label);
+});
+
+test('Brain closed trades do not display internal reason tokens', () => {
+  const html = renderToStaticMarkup(<OverviewContent {...sample} regime="TREND_UP" onRegime={() => {}} nowMs={now} />);
+  expect(html).toContain('obiettivo raggiunto');
+  expect(html).not.toContain('take_profit');
 });

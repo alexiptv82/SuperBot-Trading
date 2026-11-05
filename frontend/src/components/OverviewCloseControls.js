@@ -6,17 +6,16 @@ import { closePositionRequest } from './LiveParts';
 const BTN = { border: '1px solid #fda4af', color: '#fecdd3', borderRadius: 8, padding: '7px 10px', background: '#462230', cursor: 'pointer', fontSize: 12 };
 const MUTED = { color: '#a8bacd', fontSize: 12 };
 
-// nameOf traduce l'identificativo tecnico di una posizione in un nome leggibile (il simbolo).
-export function closeResultMessages(result, nameOf = id => id) {
+export function closeResultMessages(result) {
   if (!result) return [];
   if (result.status === 'expired') return ['La richiesta è scaduta: riprova.'];
   if (result.status === 'invalid_request') return ['Richiesta non valida: riprova.'];
-  const notes = (result.closed || []).map(id => `${nameOf(id)}: posizione chiusa.`);
+  const notes = (result.closed || []).map(id => `${id}: posizione chiusa.`);
   for (const [id, code] of result.failed || []) {
     if (code === 'position_already_closed' || code === 'position_not_open') {
-      notes.push(`${nameOf(id)}: posizione già chiusa.`);
+      notes.push(`${id}: posizione già chiusa.`);
     } else if (code === 'price_unavailable' || code === 'invalid_exit_price') {
-      notes.push(`${nameOf(id)}: prezzo non disponibile, riprova.`);
+      notes.push(`${id}: prezzo non disponibile, riprova.`);
     } else {
       notes.push('Impossibile completare una chiusura. Verifica lo stato del Brain e riprova.');
     }
@@ -33,7 +32,7 @@ const brainErrorText = err => {
     richiesta_non_valida: 'Richiesta non valida. Aggiorna la pagina.' })[code] || 'Invio non riuscito. Riprova.';
 };
 
-export function BrainCloseControls({ positions = [], serverPending = false, onRefresh = () => {} }) {
+export function BrainCloseControls({ positions = [], serverPending = false, onRefresh = () => {}, renderPosition = null }) {
   const [confirm, setConfirm] = useState(null);
   const [pending, setPending] = useState(null);
   const [sending, setSending] = useState(false);
@@ -42,8 +41,6 @@ export function BrainCloseControls({ positions = [], serverPending = false, onRe
   const active = useRef(false);
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
-  // Simboli delle posizioni al momento del clic: la pagina si aggiorna ogni 30 s e la posizione chiusa sparisce dall'elenco.
-  const namesRef = useRef({});
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
 
@@ -54,7 +51,6 @@ export function BrainCloseControls({ positions = [], serverPending = false, onRe
     setProblem('');
     setNotes([]);
     const payload = confirm.all ? { all: true } : { position_id: confirm.position_id };
-    namesRef.current = Object.fromEntries(positionsRef.current.map(p => [p.position_id, p.symbol]));
     try {
       const { data } = await API.post('/api/v3/brain/close', payload);
       setPending({ ts_ms: data.ts_ms, at_ms: Date.now() });
@@ -85,7 +81,7 @@ export function BrainCloseControls({ positions = [], serverPending = false, onRe
         const { data } = await API.get('/api/v3/brain/close-result');
         const result = data?.result;
         if (alive && !data?.pending && result?.request_ts_ms === pending.ts_ms) {
-          setNotes(closeResultMessages(result, id => namesRef.current[id] || 'Posizione'));
+          setNotes(closeResultMessages(result));
           setPending(null);
           active.current = false;
           refreshRef.current();
@@ -108,8 +104,9 @@ export function BrainCloseControls({ positions = [], serverPending = false, onRe
     {positions.length > 0 && <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
       <button type="button" style={BTN} disabled={disabled} onClick={() => ask({ all: true })}>Chiudi tutte ({positions.length})</button>
     </div>}
-    {positions.map(p => <div key={p.position_id} style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-      <button type="button" style={BTN} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi {p.symbol}</button>
+    {positions.map(p => <div key={p.position_id} style={{ display: 'flex', gap: 10, alignItems: 'center', borderTop: '1px solid #314357', padding: '12px 0', minWidth: 0 }}>
+      <div style={{ minWidth: 0, flex: 1 }}>{renderPosition ? renderPosition(p) : <strong>{p.symbol}</strong>}</div>
+      <button type="button" style={{ ...BTN, flexShrink: 0 }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi {p.symbol}</button>
     </div>)}
     {confirm && <div role="dialog" aria-label="Conferma chiusura Brain" style={{ border: '1px solid #fda4af', padding: 12, borderRadius: 10, marginTop: 8 }}>
       <p style={{ margin: '0 0 10px' }}>{confirm.all

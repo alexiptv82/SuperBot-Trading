@@ -440,7 +440,7 @@ def _close_result(paths: V3Paths, now_ms: int) -> dict:
         if valid:
             result = {'request_ts_ms': req_ts, 'done_ms': done_ms, 'status': status,
                       'closed': closed, 'failed': failed}
-    return {'result': result, 'pending': _exists(paths.close_request_path)}
+    return {'result': result, 'pending': _close_inflight(paths)}
 
 
 def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> APIRouter:

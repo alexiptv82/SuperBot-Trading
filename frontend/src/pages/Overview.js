@@ -13,6 +13,16 @@ const money = value => value === null || value === undefined ? '—' : `${value}
 const bp = value => value === null || value === undefined ? '—' : `${value} bp`;
 const amountUsd = value => value === null || value === undefined ? '—' : `$${value}`;
 const direction = side => side === 1 ? 'LONG' : side === -1 ? 'SHORT' : '—';
+// Only Brain trade exit reasons are translated; unknown codes never reach the UI.
+const EXIT_REASONS = Object.freeze({
+  stop: 'stop', take_profit: 'obiettivo raggiunto',
+  timeout: 'tempo scaduto (24 ore)', manual: 'chiusa da te',
+  brain_close: 'chiusa dal Brain', liquidation: 'liquidata',
+});
+export const brainExitReason = reason => (
+  typeof reason === 'string' && Object.prototype.hasOwnProperty.call(EXIT_REASONS, reason)
+    ? EXIT_REASONS[reason] : 'altro'
+);
 const ageText = (ts, nowMs) => {
   if (!Number.isInteger(ts) || ts <= 0) return 'Mai';
   const seconds = Math.max(0, Math.floor((nowMs - ts) / 1000));
@@ -28,12 +38,6 @@ const reasonText = code => {
   }
   return 'Verificare lo stato del Brain';
 };
-
-// Motivo di chiusura in parole; qualsiasi codice sconosciuto diventa «altro», mai il codice grezzo.
-const EXIT_REASONS = { stop: 'stop', take_profit: 'obiettivo raggiunto', timeout: 'tempo scaduto',
-  manual: 'chiusa da te', brain_close: 'chiusa dal Brain', liquidation: 'liquidata' };
-export const exitReasonText = code =>
-  typeof code === 'string' && Object.prototype.hasOwnProperty.call(EXIT_REASONS, code) ? EXIT_REASONS[code] : 'altro';
 
 function StateLabel({ state }) {
   return <span style={{ color: PALETTE[state] || '#94a3b8', fontWeight: 700, fontSize: 13 }}>
@@ -53,7 +57,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
     <header style={{ marginBottom: 18 }}>
       <div style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>SUPERBOT V3 · PAPER</div>
       <h1 style={{ fontSize: 25, margin: '6px 0' }}>I tre portafogli</h1>
-      <div style={MUTED}>Solo PAPER, nessun ordine reale · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
+      <div style={MUTED}>Monitoraggio · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
     </header>
     <section aria-label="Portafogli">
       {portfolios.map(p => <article key={p.id} style={BLOCK}>
@@ -111,19 +115,20 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
     </section>
     <section style={BLOCK} aria-label="Posizioni Brain">
       <h2 style={{ fontSize: 17, margin: '0 0 12px' }}>Posizioni aperte · Brain</h2>
-      {openPositions.length === 0 ? <p style={MUTED}>Nessuna posizione aperta.</p> : openPositions.map(p => <div key={p.position_id} style={{ borderTop: '1px solid #314357', padding: '12px 0' }}>
-        <strong>{p.symbol} · {direction(p.side)} · {p.leverage}×</strong>
-        <div style={MUTED}>Strategia: {p.strategy_id || 'Non dichiarata'}</div>
-        <div style={MUTED}>Ingresso {p.entry} · Stop {p.stop}</div>
-        <div style={MUTED}>P&L non realizzato: {money(p.unrealized_pnl)}</div>
-      </div>)}
-      <BrainCloseControls positions={openPositions} serverPending={trades?.close_pending === true} onRefresh={onRefresh} />
+      {openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
+      <BrainCloseControls positions={openPositions} serverPending={trades?.close_pending === true} onRefresh={onRefresh}
+        renderPosition={p => <>
+          <strong>{p.symbol} · {direction(p.side)} · {p.leverage}×</strong>
+          <div style={MUTED}>Strategia: {p.strategy_id || 'Non dichiarata'}</div>
+          <div style={MUTED}>Ingresso {p.entry} · Stop {p.stop}</div>
+          <div style={MUTED}>P&L non realizzato: {money(p.unrealized_pnl)}</div>
+        </>} />
     </section>
     <section style={BLOCK} aria-label="Ultimi trade Brain">
       <h2 style={{ fontSize: 17, margin: '0 0 12px' }}>Ultimi 20 trade chiusi · Brain</h2>
       {closedTrades.length === 0 ? <p style={MUTED}>Nessun trade chiuso disponibile.</p> : closedTrades.map(t => <div key={t.position_id} style={{ borderTop: '1px solid #314357', padding: '12px 0' }}>
         <strong>{t.symbol} · {direction(t.side)} · {t.strategy_id || 'Senza etichetta'}</strong>
-        <div style={MUTED}>{t.regime || 'Regime sconosciuto'} · {exitReasonText(t.exit_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
+        <div style={MUTED}>{t.regime || 'Regime sconosciuto'} · {brainExitReason(t.exit_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
         <div style={MUTED}>Netto: {bp(t.net_bp)} · Durata: {t.hold_ms} ms</div>
       </div>)}
     </section>
