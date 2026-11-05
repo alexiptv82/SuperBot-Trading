@@ -75,6 +75,11 @@ class CandleStore:
 
     def refresh(self, symbol: str, tf: str, now_ms: int) -> list[Bar]:
         """Aggiorna e restituisce la coda contigua. Solleva se la rete fallisce (la cache resta com'era)."""
+        return contiguous_tail(self.refresh_raw(symbol, tf, now_ms), self._keep[tf][0])
+
+    def refresh_raw(self, symbol: str, tf: str, now_ms: int) -> list[Bar]:
+        """Come ``refresh`` ma restituisce TUTTE le barre in cache, buchi compresi (serve al monitor degli stop:
+        una barra mancante non deve far sparire la storia che la precede)."""
         if tf not in self._keep or type(now_ms) is not int or now_ms <= 0:
             raise ValueError("invalid_request")
         step, keep = self._keep[tf]
@@ -95,4 +100,23 @@ class CandleStore:
             self._retry_at.pop(key, None)
         else:
             self._retry_at[key] = retry_at
-        return contiguous_tail(raw, step)
+        return list(raw)
+
+
+def minute_fetcher(store: CandleStore, tf: str = "1m"):
+    """Adattatore per il monitor: ``fetch_bars(symbol, start_ms, end_ms)`` sulle candele da 1 minuto in cache.
+
+    ``end_ms`` e' allineato al minuto (il monitor lo garantisce): si ricevono le barre chiuse con
+    ``start_ms <= apertura < end_ms``, buchi compresi."""
+    def fetch(symbol: str, start_ms: int, end_ms: int) -> list[Bar]:
+        return [b for b in store.refresh_raw(symbol, tf, end_ms) if start_ms <= b.open_time_ms < end_ms]
+    return fetch
+
+
+def last_minute_close(symbol: str, now_ms: int, get_json: GetJson = http_json, *, lookback: int = 5) -> Decimal:
+    """Chiusura dell'ultimo minuto chiuso (prezzo di mercato per l'ingresso). Solleva se non c'e' nessuna barra."""
+    end = now_ms // 60_000 * 60_000
+    bars = fetch_closed_bars(symbol, end - lookback * 60_000, end, candle_ms=60_000, get_json=get_json)
+    if not bars:
+        raise ValueError("no_recent_bar")
+    return bars[-1].close

@@ -326,3 +326,68 @@ def test_bad_now_is_refused(now):
     with pytest.raises(ValueError) as e:
         _run(_journal(), _feed({}), now)
     assert str(e.value) == "invalid_now"
+
+
+# ----------------------------------------------------------------------------- refresh_raw, minute_fetcher, last_minute_close
+from backend.v3.runner.feed import last_minute_close, minute_fetcher   # noqa: E402
+
+M1 = 60_000
+
+
+def _cs1(fake):
+    return CandleStore(fake, keep={"1m": (M1, 200), "15m": (M15, 100)})
+
+
+def test_refresh_raw_keeps_the_history_before_a_hole_while_refresh_does_not():
+    series = _series(T0, 140, M15)
+    fake = FakeBitget({("BTCUSDT", "15m"): series}, hole={T0 + 50 * M15})
+    cs = _cs(fake)
+    raw = cs.refresh_raw("BTCUSDT", "15m", T0 + 80 * M15)
+    assert [b.open_time_ms for b in raw] == [b.open_time_ms for b in series[:80] if b.open_time_ms != T0 + 50 * M15]
+    assert cs.refresh("BTCUSDT", "15m", T0 + 80 * M15) == series[51:80]
+    raw.clear()                                                # una copia: la cache non si altera da fuori
+    assert len(cs.refresh_raw("BTCUSDT", "15m", T0 + 80 * M15)) == 79
+
+
+def test_refresh_raw_rejects_bad_requests_like_refresh():
+    for tf, now in [("5m", T0), ("15m", 0), ("15m", True)]:
+        with pytest.raises(ValueError) as e:
+            _cs(FakeBitget({})).refresh_raw("BTCUSDT", tf, now)
+        assert str(e.value) == "invalid_request"
+
+
+def test_minute_fetcher_filters_by_window_and_keeps_holes():
+    series = _series(T0, 150, M1)
+    fake = FakeBitget({("BTCUSDT", "1m"): series}, hole={T0 + 40 * M1})
+    fetch = minute_fetcher(_cs1(fake))
+    got = fetch("BTCUSDT", T0 + 30 * M1, T0 + 60 * M1)
+    assert [b.open_time_ms for b in got] == [T0 + i * M1 for i in range(30, 60) if i != 40]
+    again = fetch("BTCUSDT", T0 + 30 * M1, T0 + 61 * M1)         # un minuto in piu': solo la barra nuova in rete
+    assert again[-1].open_time_ms == T0 + 60 * M1 and len(again) == 30
+
+
+def test_minute_fetcher_feeds_the_monitor_so_a_stop_before_a_hole_is_still_seen():
+    j = _journal()
+    pid = _open(j)                                             # long 30000, stop 29000, aperta a T0 + 17 s
+    bars = [_mbar(i, 30000, 30100, 29900, 30000) for i in range(30)]
+    bars[5] = _mbar(5, 30000, 30050, 28900, 29000)             # minuto 5: tocca lo stop
+    fake = FakeBitget({("BTCUSDT", "1m"): bars}, hole={bars[10].open_time_ms})   # buco dopo
+    rep = _run(j, minute_fetcher(_cs1(fake)), T0 + 40 * MINUTE_MS)
+    assert rep.closed == ((pid, EXIT_STOP),) and rep.errors == ()
+    assert _closes(j)[0]["reason"] == "stop"
+
+
+def test_last_minute_close_is_the_last_closed_minute():
+    series = _series(T0, 40, M1)
+    fake = FakeBitget({("BTCUSDT", "1m"): series})
+    now = T0 + 30 * M1 + 25_000                                # il minuto 30 e' ancora in formazione
+    assert last_minute_close("BTCUSDT", now, fake) == series[29].close
+
+
+def test_last_minute_close_raises_when_there_is_no_recent_bar():
+    fake = FakeBitget({("BTCUSDT", "1m"): _series(T0, 5, M1)})
+    with pytest.raises(ValueError) as e:
+        last_minute_close("BTCUSDT", T0 + 500 * M1, fake)
+    assert str(e.value) == "no_recent_bar"
+    with pytest.raises(RuntimeError):
+        last_minute_close("BTCUSDT", T0 + 3 * M1, FakeBitget({}, fail=True))
