@@ -123,9 +123,10 @@ def render_report_md(result):
     for r in result['results']:
         w, wf = r['whole'], r['walk_forward']
         stress = {Decimal(k): v for k, v in r['stress'].items()}
+        dash = lambda v: '—' if v is None else str(v)
         row = [r['strategy_id'], r['symbol'], r['verdict'], w['n'], w['mean_net_bp'],
-               f"{w['ci_low']} / {w['ci_high']}", w['mean_r'], r['max_dd_r'],
-               ' / '.join(str(wf[k]) for k in ('is_mean_net_bp', 'oos_mean_net_bp', 'decay_bp', 'oos_over_is')),
+               f"{dash(w['ci_low'])} / {dash(w['ci_high'])}", w['mean_r'], r['max_dd_r'],
+               ' / '.join(dash(wf[k]) for k in ('is_mean_net_bp', 'oos_mean_net_bp', 'decay_bp', 'oos_over_is')),
                r['inverted']['cell']['mean_net_bp'], r['shift_control']['rank_pct'],
                stress.get(Decimal('0'), {}).get('mean_net_bp'), stress.get(Decimal('20'), {}).get('mean_net_bp'),
                r['ambiguous']['share'], r['entry_gap']['mean_adverse_gap_bp']]

@@ -432,3 +432,12 @@ def test_classify_matches_an_independent_reading_of_the_rule_on_20000_boundary_h
     kinds = {v for v, _ in seen}
     assert kinds == {"DATI_INSUFFICIENTI", "NEGATIVO", "EVIDENZA_POSITIVA", "POSITIVO_INCONCLUDENTE", "NULLO"}   # guardia: tutti i rami sono coperti
     assert any(v == "POSITIVO_INCONCLUDENTE" and len(f) >= 3 for v, f in seen)
+
+
+def test_markdown_report_never_shows_python_none():
+    """Con walk-forward senza selezioni (mercato che non ha nulla da selezionare) il rapporto mostra «—», non «None»."""
+    p = make_protocol(strategies=[s for s in json.loads(PREREG.read_text())["strategies"] if s["id"] == "S07"])
+    res = R.run_lab(p, {"BTCUSDT": bars_from_returns(rets_meanrev(N_DAYS * 96, 101), 101)})
+    assert res["results"][0]["walk_forward"]["oos_n"] == 0                     # guardia: davvero nessuna selezione
+    md = R.render_report_md(res)
+    assert "None" not in md and "—" in md and "NEGATIVO" in md
