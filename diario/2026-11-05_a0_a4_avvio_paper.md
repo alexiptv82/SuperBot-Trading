@@ -16,3 +16,10 @@ Autore: Claude Sonnet 5.5 (coordinatore). Nessun deploy, nessun avvio. Dettagli 
 * 57 test nuovi, mutazione 46/49 (3 equivalenti); test classici esistenti: stesso elenco di 63 fallimenti prima e dopo (ereditati dal codice del 13/10).
 * Da confermare: tetto 3/1, oro e argento esclusi, finestra 1 ora, tolleranza 0,5 ATR. Deploy solo con OK esplicito.
 
+## 20:00 — Decisioni dell'utente, chiusura manuale, correzione sul ciclo
+
+* Decisioni su S25 (metalli inclusi, margini 100/350, leva 15–35/15–45, nessun tetto di slot, posizioni non per giorni) e sul Brain (valori sì; ragionamento esteso richiesto; freni «allarghiamo»): vedi `STATO.md` voce 05/11 20:00.
+* **Chiusura manuale:** classici PR #59 DRAFT (`work/classics-close-position-claude-20261105`); Brain commit `d3bfbdd` su #57 (`manual_close.py`, 49 test, mutazione 39/39). Pulsante nell'app: secondo giro per ChatGPT.
+* PR #58 aggiornata: 62 test, mutazione 49/52, nessun tetto di posizioni.
+* Correzione: il motore classico gira ogni 30 minuti, non ogni 15.
+* Aperti: validità segnale, anti-inseguimento, regola della leva, uscite rapide di S25, numeri dei freni, ragionamento esteso, durata massima del Brain. Nessun deploy.
