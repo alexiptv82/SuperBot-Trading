@@ -304,3 +304,23 @@ PROSSIMO PASSO: revisione della PR #54 e decisione separata sui gate mancanti. Q
 
 Fonti: Library versione 30 e artefatti L4; messaggi recenti accessibili; PR #54, ramo e commit citati; ramo `diario`, `STATO.md` e diario L1/L4. Accesso alle chat limitato ai messaggi e file recenti disponibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+
+---
+
+## 05/11/2026 15:43 Europe/Rome — L5 Market View verificato localmente, non pubblicato
+
+FATTO: ricevuti e verificati in Library `SuperBot-V3-L5-pacchetto-e-rapporto-2026-11-05.zip` e `RAPPORTO_L5_COMPLETO.md`. In copia isolata L5 aggiunge `backend/v3/brain_market/`: parametri rigidi, vista multi-timeframe su sole candele chiuse (15m/1h/4h) e `DeepSeekL5Analyst`, che combina indicatori/regime con tabellone L4 e menù strategie. Dati base mancanti o regime discordante impediscono la chiamata AI e producono NO_TRADE.
+
+TEST LOCALI: L5 finale **253/253 PASS** da radice e `/tmp`; L1–L4–L5 **782/782 PASS**. Suite generale **4651 PASS, 3 xfailed, 0 fail** eseguita quando L5 aveva 250 casi; i tre casi anti-look-ahead aggiunti dopo passano nella suite L5 finale, ma non è documentata una nuova suite generale sul checkout GitHub esatto. Anti-look-ahead su 41 istanti, prova PAPER end-to-end e tempo locale circa 0,80 s su 4.250 candele/tre timeframe. Mutazione completa 74/78; altri 2 mutanti reali uccisi in prova mirata, 2 equivalenti documentati: evidenza 76/78 senza secondo run completo.
+
+PREPARATO, NON PUBBLICATO: verifica su ricostruzione ZIP L1 + pacchetto L4; 345/345 file L1 byte-identici. La copia non contiene `.git` né il test indipendente L4 di Claude, quindi non è dimostrata identica all'esatto `cab064e` o all'HEAD L4. Nessun ramo, commit o PR L5 trovato su GitHub; PR #54 resta DRAFT a `32eb857`.
+
+RILASCIATO: nulla. Nessun merge/deploy, runtime/VPS, avvio Brain, wallet, reset o API pagata; nessuna chiamata DeepSeek reale. `DESK_MODE=paper` invariato; PAPER, memoria e storici preservati. Library `ULTIMO-STATO-SUPERBOT.md` aggiornata alla versione 32, stessa identità e cartella.
+
+PROBLEMI: manca applicazione e verifica su checkout GitHub esatto, suite completa finale e revisione indipendente. La vista non include order book, CVD, funding/OI, liquidazioni, notizie o dati multi-venue e non modifica CLOSE/MODIFY_STOP, parziali, mediazione, TP o sizing.
+
+PROSSIMO PASSO: applicare i soli file L5 all'HEAD L4 in ramo isolato, verificare diff, suite completa, oracolo/mutazioni e catena PAPER; solo dopo eventuale PR DRAFT. Merge o avvio PAPER richiedono ancora OK esplicito separato.
+
+Fonti: Library versione 31 e artefatti L5; messaggi recenti accessibili; ricerche GitHub L5, PR #54 e ramo `diario`. Accesso alle chat limitato ai messaggi e file recenti disponibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
