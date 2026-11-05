@@ -57,7 +57,7 @@ from backend.v3.transport import deepseek_transport
 
 PROVIDER = "deepseek"
 MANDATE_FILE = "mandate.json"
-MINUTE_STORE_BARS = 3_700          # 60 ore di durata massima + margine, a 1 minuto
+MINUTE_STORE_BARS = 1_500          # 24 ore di durata massima + margine, a 1 minuto (un test lo lega alla politica di uscita)
 EXTRA_KEEP = 24                    # barre in piu' del minimo, per non stare sempre sul bordo
 
 
@@ -127,13 +127,14 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     metered = MeteredTransport(
         inner_transport if inner_transport is not None else deepseek_transport(), ledger, PROVIDER,
         input_usd_per_million=config.input_usd_per_million, output_usd_per_million=config.output_usd_per_million,
-        extra_payload={"thinking": {"type": "disabled"}} if config.thinking == "disabled" else None)
+        extra_payload=config.model_extra_payload)
     holder = CycleBars()
     analyst = MarketEntryAnalyst(DeepSeekL5Analyst(
         transport=metered, model=config.model,
         outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
         bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
-        spending_gate=ledger.spending_gate(daily_limits={PROVIDER: config.daily_cap_units}), enabled=True))
+        spending_gate=ledger.spending_gate(daily_limits={PROVIDER: config.daily_cap_units}), enabled=True,
+        max_tokens=config.max_tokens))
     store = CandleStore(get_json, keep={s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP)
                                         for s in vp.timeframes})
     minutes = CandleStore(get_json, keep={"1m": (60_000, MINUTE_STORE_BARS)})
@@ -167,7 +168,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                                 fee_bps=config.fee_bps, now_ms=now_ms)
 
     runner = Runner(run_id=run_id, data_dir=data_dir, run_monitor=run_monitor, run_cycle=run_cycle, halted=halted,
-                    run_commands=run_commands)
+                    cycle_ms=config.cycle_ms, run_commands=run_commands)
     return Built(runner, journal, ledger, metered, mandate)
 
 

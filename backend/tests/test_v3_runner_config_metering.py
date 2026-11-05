@@ -36,8 +36,22 @@ def test_default_config_values_are_the_proposals():
             p.max_total_margin_fraction, p.minimum_equity, p.estimated_roundtrip_cost_bp,
             p.liquidation_buffer_fraction) == (D("0.02"), D("0.05"), D("0.1"), D("0.3"), D("450"), D("16"), D("0.5"))
     assert (c.model, c.thinking, c.input_usd_per_million, c.output_usd_per_million) == (
-        "deepseek-flash", "disabled", D("0.30"), D("1.20"))
-    assert c.daily_cap_usd == D("0.60") and c.daily_cap_units == 600_000 and type(c.daily_cap_units) is int
+        "deepseek-flash", "enabled", D("0.30"), D("1.20"))
+    assert (c.reasoning_effort, c.max_tokens, c.cycle_minutes, c.cycle_ms) == ("high", 6000, 60, 3_600_000)
+    assert c.daily_cap_usd == D("0.75") and c.daily_cap_units == 750_000 and type(c.daily_cap_units) is int
+    assert c.model_extra_payload == {"thinking": {"type": "enabled"}, "reasoning_effort": "high"}
+
+
+def test_model_extra_payload_for_each_thinking_mode():
+    off = load_runner_config(_raw(thinking="disabled", reasoning_effort="omit", max_tokens=256))
+    assert off.model_extra_payload == {"thinking": {"type": "disabled"}}
+    omit = load_runner_config(_raw(thinking="omit", reasoning_effort="omit"))
+    assert omit.model_extra_payload is None
+    on = load_runner_config(_raw(thinking="enabled", reasoning_effort="omit"))
+    assert on.model_extra_payload == {"thinking": {"type": "enabled"}}
+    for effort in ("low", "high", "max"):
+        c = load_runner_config(_raw(thinking="enabled", reasoning_effort=effort))
+        assert c.model_extra_payload == {"thinking": {"type": "enabled"}, "reasoning_effort": effort}
 
 
 def test_loader_needs_exact_bytes():
@@ -74,6 +88,11 @@ def test_loader_rejects_duplicate_keys_and_unknown_or_missing_keys():
     del d["extra"], d["model"]
     with pytest.raises(ValueError, match="invalid_config"):
         load_runner_config(json.dumps(d).encode())
+    for key in ("reasoning_effort", "max_tokens", "cycle_minutes"):                  # le chiavi nuove sono obbligatorie
+        d2 = json.loads(base)
+        del d2[key]
+        with pytest.raises(ValueError, match="invalid_config"):
+            load_runner_config(json.dumps(d2).encode())
 
 
 @pytest.mark.parametrize("over", [
@@ -87,7 +106,16 @@ def test_loader_rejects_duplicate_keys_and_unknown_or_missing_keys():
     {"fee_bps": "101"}, {"fee_bps": "-1"}, {"fee_bps": 6},
     {"maintenance_fraction": "1"}, {"maintenance_fraction": "-0.1"}, {"maintenance_fraction": 0.005},
     {"model": ""}, {"model": " deepseek-flash"}, {"model": "Deep Seek"}, {"model": "deepseek flash"}, {"model": 5}, {"model": "x" * 65}, {"model": "-x"},
-    {"thinking": "enabled"}, {"thinking": None}, {"thinking": True},
+    {"thinking": "on"}, {"thinking": None}, {"thinking": True}, {"thinking": "ENABLED"},
+    {"reasoning_effort": "medium"}, {"reasoning_effort": None}, {"reasoning_effort": True}, {"reasoning_effort": "HIGH"},
+    {"thinking": "disabled", "reasoning_effort": "high"}, {"thinking": "omit", "reasoning_effort": "low"},   # sforzo senza ragionamento
+    {"max_tokens": 0}, {"max_tokens": -1}, {"max_tokens": 65537}, {"max_tokens": True}, {"max_tokens": 6000.0},
+    {"max_tokens": "6000"}, {"max_tokens": 1023},                                                          # < minimo con il ragionamento
+    {"thinking": "disabled", "reasoning_effort": "omit", "max_tokens": 0},                                # limiti validi anche senza ragionamento
+    {"thinking": "omit", "reasoning_effort": "omit", "max_tokens": -5},
+    {"thinking": "disabled", "reasoning_effort": "omit", "max_tokens": 65537},
+    {"cycle_minutes": 0}, {"cycle_minutes": 14}, {"cycle_minutes": 16}, {"cycle_minutes": 1455}, {"cycle_minutes": 1441},
+    {"cycle_minutes": True}, {"cycle_minutes": 60.0}, {"cycle_minutes": "60"}, {"cycle_minutes": -15},
     {"input_usd_per_million_tokens": "-0.1"}, {"input_usd_per_million_tokens": 0.3},
     {"output_usd_per_million_tokens": "1001"}, {"output_usd_per_million_tokens": "x"},
     {"daily_cap_usd": "0"}, {"daily_cap_usd": "-1"}, {"daily_cap_usd": "1001"}, {"daily_cap_usd": "0.0000001"},
@@ -121,9 +149,15 @@ def test_loader_rejects_bad_risk_policy(over):
 
 def test_loader_accepts_boundaries():
     c = load_runner_config(_raw(slippage_bps=500, fee_bps="100", maintenance_fraction="0", thinking="omit",
-                                daily_cap_usd="0.000001"))
+                                reasoning_effort="omit", max_tokens=1, cycle_minutes=15, daily_cap_usd="0.000001"))
     assert c.slippage_bps == 500 and c.fee_bps == D("100") and c.maintenance_fraction == D("0")
-    assert c.thinking == "omit" and c.daily_cap_units == 1
+    assert c.thinking == "omit" and c.daily_cap_units == 1 and c.max_tokens == 1 and c.cycle_ms == 900_000
+    top = load_runner_config(_raw(thinking="enabled", reasoning_effort="max", max_tokens=65536, cycle_minutes=1440))
+    assert top.max_tokens == 65536 and top.cycle_ms == 86_400_000
+    low = load_runner_config(_raw(thinking="enabled", max_tokens=1024))
+    assert low.max_tokens == 1024
+    assert load_runner_config(_raw(thinking="enabled", max_tokens=65536)).max_tokens == 65536
+    assert load_runner_config(_raw(daily_cap_usd="12.5")).daily_cap_units == 12_500_000
     c2 = load_runner_config(_raw(**_risk(max_loss_fraction="0.05", max_position_margin_fraction="0.3")))
     assert c2.risk_policy.max_loss_fraction == c2.risk_policy.max_open_risk_fraction == D("0.05")
 

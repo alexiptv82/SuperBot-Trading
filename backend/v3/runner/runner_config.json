@@ -15,8 +15,11 @@
     "liquidation_buffer_fraction": "0.5"
   },
   "model": "deepseek-flash",
-  "thinking": "disabled",
+  "thinking": "enabled",
+  "reasoning_effort": "high",
+  "max_tokens": 6000,
+  "cycle_minutes": 60,
   "input_usd_per_million_tokens": "0.30",
   "output_usd_per_million_tokens": "1.20",
-  "daily_cap_usd": "0.60"
+  "daily_cap_usd": "0.75"
 }

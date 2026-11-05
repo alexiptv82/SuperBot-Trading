@@ -1,4 +1,4 @@
-"""Il "direttore" del Brain PAPER: ogni minuto il monitor delle uscite, ogni 15 minuti un giro del Brain.
+"""Il "direttore" del Brain PAPER: ogni minuto il monitor delle uscite, a intervalli fissi (15 minuti o un multiplo) un giro del Brain.
 
 ``Runner.tick(now_ms)`` decide cosa e' dovuto adesso e lo esegue; ``Runner.run`` lo richiama in ciclo.
 Qui non c'e' rete, ne' modello, ne' orologio di sistema: monitor e ciclo arrivano come funzioni (le costruisce
@@ -9,9 +9,10 @@ Regole:
   solo le NUOVE aperture, le posizioni aperte devono poter chiudere.
 * **Comandi dell'utente** (chiusura manuale, ``manual_close.py``) a ogni tick (ogni ~5 s), anche in pausa o fermo,
   PRIMA del monitor: un clic sul pulsante non aspetta il minuto successivo.
-* **Giro del Brain una volta per candela da 15 minuti**, a ``cycle_delay_ms`` (20 s) dopo la chiusura, cosi'
-  la candela appena chiusa e' disponibile sul feed. Se il processo parte a meta' candela il giro parte subito
-  (la vista accetta dati fino a 15 minuti dopo la chiusura). Un giro fallito NON si ripete nella stessa
+* **Giro del Brain una volta per intervallo** (``cycle_ms``: 15 minuti di default, un multiplo di 15 minuti da
+  configurazione; oggi 1 ora), a ``cycle_delay_ms`` (20 s) dopo l'inizio dell'intervallo, cosi' la candela appena
+  chiusa e' disponibile sul feed. Se il processo parte a meta' intervallo il giro parte subito (la vista accetta dati
+  fino a 15 minuti dopo la chiusura dell'ultima candela da 15 minuti). Un giro fallito NON si ripete nella stessa
   candela (niente raffica di chiamate al modello).
 * **Pausa**: se esiste ``pause.flag`` nella cartella dati non si fanno giri del Brain (nessuna apertura e nessuna
   spesa per il modello) e lo stato e' ``paused``; togliendo il file il giro riparte subito se la candela non
@@ -56,18 +57,20 @@ def _short(text: str) -> str:
 class Runner:
     def __init__(self, *, run_id: str, data_dir: Path, run_monitor: Callable[[int], MonitorReport],
                  run_cycle: Callable[[int, int], CycleReport], halted: Callable[[], Optional[str]] = lambda: None,
-                 cycle_delay_ms: int = 20_000,
+                 cycle_delay_ms: int = 20_000, cycle_ms: int = CYCLE_MS,
                  run_commands: Optional[Callable[[int], Optional[ManualCloseReport]]] = None):
         if type(run_id) is not str or not _RUN_ID_RE.match(run_id):
             raise ValueError("invalid_run_id")
         if not isinstance(data_dir, Path) or not data_dir.is_dir():
             raise ValueError("invalid_data_dir")
-        if type(cycle_delay_ms) is not int or not 0 <= cycle_delay_ms < CYCLE_MS:
+        if type(cycle_ms) is not int or not CYCLE_MS <= cycle_ms <= 86_400_000 or cycle_ms % CYCLE_MS:
+            raise ValueError("invalid_cycle_ms")
+        if type(cycle_delay_ms) is not int or not 0 <= cycle_delay_ms < cycle_ms:
             raise ValueError("invalid_cycle_delay")
         self.run_id, self.data_dir = run_id, data_dir
         self.pause_path, self.heartbeat_path = data_dir / "pause.flag", data_dir / "heartbeat.json"
         self._monitor, self._cycle, self._halted, self._delay = run_monitor, run_cycle, halted, cycle_delay_ms
-        self._commands = run_commands
+        self._commands, self._cycle_ms = run_commands, cycle_ms
         self._last_minute = -1
         self._last_slot = -1
         self.cycles = 0
@@ -103,8 +106,8 @@ class Runner:
             except Exception:
                 errors.append("monitor_failed")
 
-        slot = now_ms // CYCLE_MS
-        if slot > self._last_slot and now_ms - slot * CYCLE_MS >= self._delay and state == "running":
+        slot = now_ms // self._cycle_ms
+        if slot > self._last_slot and now_ms - slot * self._cycle_ms >= self._delay and state == "running":
             self._last_slot = slot                              # servita comunque: un guasto non si ripete nella candela
             try:
                 cycle_report = self._cycle(now_ms, slot)

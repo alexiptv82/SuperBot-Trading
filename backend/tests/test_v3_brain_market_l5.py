@@ -641,7 +641,7 @@ class TransportRecorder:
         return TransportResponse(self.status,{"choices":[{"finish_reason":"stop","message":{"content":self.text}}]})
 
 
-def configured(*,bars,params=None,results=None,response=OPEN_JSON,enabled=True,gate=None,market_p=None,model="deepseek-chat"):
+def configured(*,bars,params=None,results=None,response=OPEN_JSON,enabled=True,gate=None,market_p=None,model="deepseek-chat",**extra):
     p=params or small_params()
     market_p=market_p or p
     m=regime_for_context(bars,timestamp_ms=T,params=market_p)
@@ -653,7 +653,7 @@ def configured(*,bars,params=None,results=None,response=OPEN_JSON,enabled=True,g
                         view_params=ViewParams(3,2,D("0.90"),200,20261105,12),
                         market_params=market_p,menu=build_menu(load_library()),
                         spending_gate=(lambda v:True) if gate is None else gate,
-                        enabled=enabled)
+                        enabled=enabled,**extra)
     ctx=MarketContext("BTCUSDT",D("50000"),T,m)
     return a,transport,ctx,calls
 
@@ -690,6 +690,27 @@ def test_adapter_payload_hash_prompt_and_sources(adapter_setup):
     assert d.proposal.context_hash != hashlib.sha256(json.dumps({k:v for k,v in info.items()
                                                 if k!="market"},sort_keys=True).encode()).hexdigest()
     assert a.allowed_strategy_ids==frozenset(x.strategy_id for x in a.menu)
+
+
+def test_max_tokens_is_configurable_and_defaults_to_256(adapter_setup):
+    p,b=adapter_setup
+    a,tr,ctx,_=configured(bars=b,params=p)
+    assert a.max_tokens==256
+    a.analyze(ctx,[])
+    assert tr.calls[0]["max_tokens"]==256
+    a,tr,ctx,_=configured(bars=b,params=p,max_tokens=6000)
+    a.analyze(ctx,[])
+    assert a.max_tokens==6000 and tr.calls[0]["max_tokens"]==6000
+    for edge in (1,65536):
+        a,tr,ctx,_=configured(bars=b,params=p,max_tokens=edge)
+        assert a.max_tokens==edge
+
+
+@pytest.mark.parametrize("bad",[0,-1,65537,True,256.0,"256",None])
+def test_max_tokens_rejects_bad_values(adapter_setup,bad):
+    p,b=adapter_setup
+    with pytest.raises(ValueError,match="invalid_max_tokens"):
+        configured(bars=b,params=p,max_tokens=bad)
 
 
 @pytest.mark.parametrize("response,want", [
