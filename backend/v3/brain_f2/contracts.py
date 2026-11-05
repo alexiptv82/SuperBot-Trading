@@ -51,6 +51,10 @@ class OpenProposal:
     confidence: float  # 0..1
     originating_ai: str  # "deepseek" | "claude"
     context_hash: str
+    # L1: etichetta della strategia (backend/v3/strategy_label.py). Opzionale: None = nessuna
+    # attribuzione. Il motore la valida contro un elenco chiuso prima di scriverla nel journal.
+    strategy_id: Optional[str] = None
+    strategy_origin: Optional[str] = None  # "library" | "ai_proposed"
 
 
 @dataclass(frozen=True)

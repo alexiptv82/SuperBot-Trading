@@ -36,6 +36,10 @@ Design
   manual close is a real trade, but a learner must not imitate it blindly.
 * Money and prices are ``Decimal`` (serialised as strings by ``to_dict``);
   ``*_bp`` are basis points of the ENTRY notional, rounded half-even to 1e-4.
+* L1 (schema 2): ``strategy_id`` / ``strategy_origin`` come from the linked decision
+  (``backend/v3/strategy_label.py`` is the single rule). They are filled only for
+  ``link_status == "linked"``; otherwise, and for a missing or invalid label, both
+  are ``""``. The learner groups with ``key=lambda o: (o.strategy_id, o.decision_regime, o.side)``.
 * No threshold, limit or strategy parameter lives here.
 """
 from __future__ import annotations
@@ -46,8 +50,9 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Any, Mapping, Optional
 
 from backend.v3.events import EventJournal, StoredEvent
+from backend.v3.strategy_label import normalize_label
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2   # 2: aggiunti strategy_id / strategy_origin (L1)
 
 EXIT_REASONS = frozenset({"stop", "brain_close", "manual", "liquidation"})
 LINK_STATUSES = ("linked", "unlinked", "dangling", "wrong_decision",
@@ -101,6 +106,10 @@ class TradeOutcome:
     decision_event_id: str          # "" if unlinked
     link_status: str                # one of LINK_STATUSES
     decision_regime: str            # regime recorded by the decision, "" if unknown
+    # L1 (schema 2): strategy the Brain declared for this opening. Only trusted when
+    # ``link_status == "linked"``; "" for unlinked/legacy decisions, bad or missing labels.
+    strategy_id: str = ""           # e.g. "S07" (library) or "AI_..." (ai_proposed)
+    strategy_origin: str = ""       # "library" | "ai_proposed" | ""
 
     @property
     def is_manual(self) -> bool:
@@ -273,23 +282,28 @@ def _recompute(c: dict[str, Any]) -> None:
 
 
 def _link(did: str, symbol: str, opened_at_ms: int,
-          brain: Mapping[str, StoredEvent]) -> tuple[str, str]:
-    """-> (link_status, decision_regime)."""
+          brain: Mapping[str, StoredEvent]) -> tuple[str, str, str, str]:
+    """-> (link_status, decision_regime, strategy_id, strategy_origin).
+
+    The strategy label is attributed only when the link is ``linked`` and the pair
+    passes ``normalize_label`` (a bad or half label becomes ``("", "")``, never an error).
+    """
     if not did:
-        return "unlinked", ""
+        return "unlinked", "", "", ""
     se = brain.get(did)
     if se is None:
-        return "dangling", ""
+        return "dangling", "", "", ""
     p = se.event.payload if isinstance(se.event.payload, Mapping) else {}
     regime = p.get("regime")
     regime = regime if isinstance(regime, str) and regime in REGIMES else ""
     if p.get("kind") != "OPEN" or p.get("status") != "APPROVED":
-        return "wrong_decision", regime
+        return "wrong_decision", regime, "", ""
     if p.get("symbol") != symbol:
-        return "symbol_mismatch", regime
+        return "symbol_mismatch", regime, "", ""
     if se.event.occurred_at_ms > opened_at_ms:
-        return "decision_after_open", regime
-    return "linked", regime
+        return "decision_after_open", regime, "", ""
+    sid, sor = normalize_label(p.get("strategy_id"), p.get("strategy_origin"))
+    return "linked", regime, sid, sor
 
 
 def _build(pid: str, portfolio_id: str, run_id: str, o: dict[str, Any], c: dict[str, Any],
@@ -313,7 +327,8 @@ def _build(pid: str, portfolio_id: str, run_id: str, o: dict[str, Any], c: dict[
             r_mult = _q4(c["realized"] / (stop_dist * o["qty"]))
     except ArithmeticError:
         raise _Bad("numeric_out_of_range") from None
-    status, regime = _link(o["decision_event_id"], o["symbol"], o["opened_at_ms"], brain)
+    status, regime, strategy_id, strategy_origin = _link(
+        o["decision_event_id"], o["symbol"], o["opened_at_ms"], brain)
     return TradeOutcome(
         schema_version=SCHEMA_VERSION, position_id=pid, portfolio_id=portfolio_id, run_id=run_id,
         symbol=o["symbol"], side=o["side"], originating_ai=o["ai"], leverage=o["leverage"],
@@ -323,7 +338,8 @@ def _build(pid: str, portfolio_id: str, run_id: str, o: dict[str, Any], c: dict[
         gross_bp=gross_bp, costs_bp=costs_bp, net_bp=net_bp,
         stop_distance_bp=stop_bp, r_multiple=r_mult, exit_reason=c["reason"],
         loss_exceeds_margin=c["loss_exceeds_margin"], decision_event_id=o["decision_event_id"],
-        link_status=status, decision_regime=regime)
+        link_status=status, decision_regime=regime,
+        strategy_id=strategy_id, strategy_origin=strategy_origin)
 
 
 def _read(journal: EventJournal, portfolio_id: str, run_id: str) -> list[StoredEvent]:

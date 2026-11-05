@@ -142,7 +142,7 @@ class TestControlAndNumbers:
         assert o.position_id == pid and o.symbol == "BTCUSDT" and o.side == 1
         assert o.decision_event_id == d.journal_event_id
         assert (o.link_status, o.decision_regime) == ("linked", "TRENDING")
-        assert o.schema_version == SCHEMA_VERSION == 1
+        assert o.schema_version == SCHEMA_VERSION == 2
         assert o.exit_reason == "brain_close" and o.is_win and not o.is_manual
 
     def test_long_exact_numbers(self):

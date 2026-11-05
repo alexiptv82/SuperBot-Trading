@@ -13,7 +13,9 @@ import hashlib
 import uuid
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterable, Optional
+
+from backend.v3.strategy_label import is_valid_strategy_id, normalize_label
 
 from .analyst import Analyst
 from .contracts import (
@@ -116,7 +118,22 @@ class BrainEngine:
         run_id: Optional[str] = None,
         policy_mandate: Optional[dict] = None,
         policy_verifier: Optional[Callable[[dict, Any], bool]] = None,
+        allowed_strategy_ids: Optional[Iterable[str]] = None,
     ):
+        # L1: elenco chiuso degli id di biblioteca ammessi come etichetta. None/vuoto = nessuna
+        # etichetta "library" viene mai scritta nel journal (le "ai_proposed" seguono la loro regola).
+        if allowed_strategy_ids is None:
+            self.allowed_strategy_ids: frozenset = frozenset()
+        else:
+            if isinstance(allowed_strategy_ids, (str, bytes)):
+                raise ValueError("invalid_strategy_ids")
+            try:
+                ids = list(allowed_strategy_ids)
+            except TypeError:
+                raise ValueError("invalid_strategy_ids") from None
+            if not all(is_valid_strategy_id(s) for s in ids):
+                raise ValueError("invalid_strategy_ids")
+            self.allowed_strategy_ids = frozenset(ids)
         # P0-1: required dependencies
         if risk_policy is None:
             raise ValueError("risk_policy is required")
@@ -304,7 +321,13 @@ class BrainEngine:
             origin = prop.originating_ai if isinstance(prop.originating_ai, str) and prop.originating_ai in _ALLOWED_ORIGINS else None
             # Context hash: only allow short hex or None
             ctx_hash = prop.context_hash if isinstance(prop.context_hash, str) and len(prop.context_hash) <= 64 and all(c in "0123456789abcdef" for c in prop.context_hash) else None
-            decision.proposal = replace(prop, rationale=rat, originating_ai=origin or "sanitized", context_hash=ctx_hash)
+            # L1: etichetta della strategia: o valida (elenco chiuso) o scartata; non blocca mai il trade
+            sid, sor = normalize_label(getattr(prop, "strategy_id", None),
+                                       getattr(prop, "strategy_origin", None),
+                                       self.allowed_strategy_ids)
+            decision.proposal = replace(prop, rationale=rat, originating_ai=origin or "sanitized",
+                                        context_hash=ctx_hash,
+                                        strategy_id=sid or None, strategy_origin=sor or None)
             if origin is None:
                 decision.kind = DecisionKind.NO_TRADE
                 decision.status = ProposalStatus.REJECTED
@@ -433,6 +456,25 @@ class BrainEngine:
         eid = _request_id(self.run_id, context.timestamp_ms, context.symbol, decision.proposal)
         claim = uuid.uuid4().hex
         try:
+            payload = {
+                "kind": decision.kind.value,
+                "status": decision.status.value,
+                "rationale": decision.rationale,
+                "sources": self._sanitize_sources(decision.sources),
+                "claim": claim,
+                "symbol": _safe_symbol(getattr(context, "symbol", None)),
+                "regime": _safe_regime(getattr(context, "regime", None)),
+            }
+            # L1: l'etichetta entra nel journal solo per un'apertura approvata e solo se valida; una
+            # decisione senza etichetta scrive esattamente il payload di prima (stesso hash).
+            prop = decision.proposal
+            if (decision.kind == DecisionKind.OPEN and decision.status == ProposalStatus.APPROVED
+                    and isinstance(prop, OpenProposal)):
+                sid, sor = normalize_label(prop.strategy_id, prop.strategy_origin,
+                                           self.allowed_strategy_ids)
+                if sid:
+                    payload["strategy_id"] = sid
+                    payload["strategy_origin"] = sor
             event = Event(
                 event_id=eid,
                 portfolio_id="brain",
@@ -440,15 +482,7 @@ class BrainEngine:
                 kind="brain_decision",
                 occurred_at_ms=context.timestamp_ms,
                 source="brain_f2_engine",
-                payload={
-                    "kind": decision.kind.value,
-                    "status": decision.status.value,
-                    "rationale": decision.rationale,
-                    "sources": self._sanitize_sources(decision.sources),
-                    "claim": claim,
-                    "symbol": _safe_symbol(getattr(context, "symbol", None)),
-                    "regime": _safe_regime(getattr(context, "regime", None)),
-                },
+                payload=payload,
             )
             stored = self.journal.append(event)
             after = self.journal.list_run("brain", self.run_id)

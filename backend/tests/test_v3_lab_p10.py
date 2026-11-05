@@ -210,13 +210,14 @@ def test_adapter_every_field_fraction(side, barrier, unit, signal):
     dist = abs(Fraction(c.entry_price)-Fraction(c.stop_price))/Fraction(c.entry_price)*10000
     gross = q(Fraction(unit)*Fraction(gb)/10000,8)
     fee = q(Fraction(unit)*12/10000,8)
-    expected = dict(schema_version=1, position_id='x', portfolio_id='lab', run_id='test', symbol='BTCUSDT', side=side,
+    expected = dict(schema_version=2, position_id='x', portfolio_id='lab', run_id='test', symbol='BTCUSDT', side=side,
                     originating_ai='S07', leverage=1, opened_at_ms=signal, closed_at_ms=close, hold_ms=close-signal,
                     entry_price=c.entry_price, exit_price=ex, quantity=q(Fraction(unit)/103,8), notional_entry=D(unit),
                     margin_used=D(unit), gross_pnl=gross, fees=fee, realized_pnl=gross-fee, gross_bp=gb, costs_bp=D('12'),
                     net_bp=nb, stop_distance_bp=q(dist), r_multiple=q(Fraction(nb)/dist),
                     exit_reason='stop' if barrier=='stop' else 'brain_close', loss_exceeds_margin=False,
-                    decision_event_id='x', link_status='linked', decision_regime='RANGE')
+                    decision_event_id='x', link_status='linked', decision_regime='RANGE',
+                    strategy_id='', strategy_origin='')   # L1: il laboratorio non attribuisce (campi di default)
     assert asdict(out) == expected
 
 

@@ -186,8 +186,9 @@ def test_adapter_rewritten_from_the_contract_matches_field_by_field(seed, policy
         closed = closed_at(lab, hbars)
         gross_pnl = rnd(F(unit) * lab["gross"] / 10000, 8)
         fees = rnd(F(unit) * F(cost) / 10000, 8)
-        assert (o.schema_version, o.position_id, o.portfolio_id, o.run_id) == (1, c.candidate_id, "lab", "r-1")
+        assert (o.schema_version, o.position_id, o.portfolio_id, o.run_id) == (2, c.candidate_id, "lab", "r-1")   # schema 2 (L1)
         assert (o.symbol, o.side, o.originating_ai, o.leverage) == (c.symbol, c.side, "S07", 1)
+        assert (o.strategy_id, o.strategy_origin) == ("", "")   # L1: campi di default nel laboratorio
         assert (o.opened_at_ms, o.closed_at_ms, o.hold_ms) == (c.signal_time_ms, closed, closed - c.signal_time_ms)
         assert (o.entry_price, F(o.exit_price)) == (c.entry_price, lab["exit"])
         assert F(o.quantity) == rnd(F(unit) / fx(c.entry_price), 8)
