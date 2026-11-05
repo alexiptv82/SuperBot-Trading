@@ -558,6 +558,13 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
         source = "rules"
 
+    if os.environ.get("DESK_LONG_S25") == "1":   # strategia long S25: le sue uscite sono solo stop, target, tempo
+        try:
+            from desk import long_s25
+            decisions = long_s25.protect(decisions, acc.positions)
+        except Exception as e:
+            print(f"[S25] errore ignorato: {e}", flush=True)
+
     if not drain and os.path.exists(_flag("pause.flag")):
         drain = True   # pausa premuta mentre il ciclo era in corso: vale da subito
     if drain:
@@ -760,6 +767,16 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     if drain:
         for s in list(acc.positions):
             acc.cancel_split(s, "bot in pausa", now_ms)
+
+    # ---- strategia long S25 (spenta di default): chiusura a tempo e nuovi ingressi, prima della lettura delle barre
+    if os.environ.get("DESK_LONG_S25") == "1":
+        try:
+            from desk import long_s25
+            long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=drain,
+                          record_close=record_close, notify_open=notify_open, notify_close=notify_close,
+                          log_event=lambda ev: log_event(DATA_DIR, ev))
+        except Exception as e:
+            print(f"[S25] errore ignorato: {e}", flush=True)
 
     # ---- processa barre (stop, liq, tp automatici; seconda gamba al ritracciamento)
     import numpy as np
