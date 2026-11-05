@@ -324,3 +324,25 @@ PROSSIMO PASSO: applicare i soli file L5 all'HEAD L4 in ramo isolato, verificare
 
 Fonti: Library versione 31 e artefatti L5; messaggi recenti accessibili; ricerche GitHub L5, PR #54 e ramo `diario`. Accesso alle chat limitato ai messaggi e file recenti disponibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+
+---
+
+## 05/11/2026 16:42 Europe/Rome — L5 pubblicato e verificato su PR #55 DRAFT
+
+FATTO: L5 è stato pubblicato sul ramo `work/v3-l5-market-view-chatgpt-20261105`, PR #55 aperta e DRAFT, impilata su #54, non unita. HEAD verificato `57f2a5f414ebbe202e4a3b204bd81aadfe4c9088`; commit `8dcf3e5` applica invariati codice e test ChatGPT e `57f2a5f` aggiunge 66 test indipendenti. I soli file nuovi in `backend/v3/brain_market/` forniscono vista indicatori/regime su candele chiuse 15m/1h/4h e `DeepSeekL5Analyst`; dati base mancanti o regime discordante falliscono chiuso, senza chiamata al modello né trade.
+
+TEST: i 253 test ChatGPT passano da radice e `/tmp`; mutazione originale **76/78**, con due equivalenti documentati. La verifica indipendente confronta ogni campo con le funzioni `features/*`, usa dieci periodi distinti, controlla `min_bars`, bordi di freschezza/barra aperta, regime unico, non-look-ahead e vista realmente passata all'adattatore. Mutazione di collegamento: ChatGPT 25/38, indipendente 36/38, insieme **38/38**. Suite V3 pubblicata nella PR: **4783 PASS**, 3 xfailed e le stesse 3 failure preesistenti per `fastapi` mancante. Nessun GitHub Actions associato all'HEAD corrente.
+
+PREPARATO: L5 resta dipendente da #54 e manca ancora la sorgente delle candele: `bars_source` è soltanto iniettata. Periodi e soglie sono proposte modificabili, non ottimizzate né prova di redditività.
+
+RILASCIATO: nulla. PR #55 resta DRAFT; nessun merge/deploy, runtime/VPS, avvio Brain, wallet, reset o API pagata. `DESK_MODE=paper` invariato; PAPER, memoria e storici preservati.
+
+PROBLEMI: la sorgente live delle candele non è costruita; solo il timeframe base è obbligatorio; gli indicatori informano il modello ma non applicano regole deterministiche. Restano aperti feed/collegamento, CLOSE/MODIFY_STOP, parziali, mediazione, TP, sizing, order book/CVD/funding-OI/notizie, F4/F5/F6/F0/F8.
+
+PROSSIMO PASSO: revisione della PR #55 e progettazione del feed che popola `bars_source`, mantenendo L5 isolato e PAPER. Merge o avvio richiedono OK esplicito separato.
+
+LIMITAZIONE DEL CHECKPOINT: l'ambiente locale necessario per sostituire in sicurezza lo stesso file Library non era disponibile in questa esecuzione; la Library resta quindi alla versione 32 e dovrà essere riallineata al prossimo controllo. Il ramo `diario` registra comunque la novità verificata per non perderla.
+
+Fonti: Library versione 32; PR #55, ramo e commit L5; PR #54; messaggi recenti accessibili e checkpoint del ramo `diario`. Accesso alle chat limitato ai messaggi e file recenti disponibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
