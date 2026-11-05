@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import API from '../api';
-import Overview, { OverviewContent } from './Overview';
+import Overview, { OverviewContent, brainExitReason } from './Overview';
 
 jest.mock('../api', () => ({ get: jest.fn() }));
 
@@ -38,7 +38,8 @@ test('phone-first unified cards and learning metrics, only safe text', () => {
   expect(html).toContain('Insufficiente ≠ cattivo');
   expect(html).toContain('AI_X');
   expect(html).toContain('P&amp;L non realizzato:');
-  expect(html).not.toContain('<button');
+  expect(html).toContain('Chiudi BTCUSDT');
+  expect(html).toContain('Chiudi tutte (1)');
   expect(html).not.toContain('<form');
   expect(html).toContain('max-width:640px');
 });
@@ -94,4 +95,20 @@ test('model text is escaped by React', () => {
   const html = renderToStaticMarkup(<OverviewContent {...altered} nowMs={now} regime="" onRegime={() => {}} />);
   expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   expect(html).not.toContain('<script>');
+});
+
+
+test.each([
+  ['stop', 'stop'], ['take_profit', 'obiettivo raggiunto'],
+  ['timeout', 'tempo scaduto'], ['manual', 'chiusa da te'],
+  ['brain_close', 'chiusa dal Brain'], ['liquidation', 'liquidata'],
+  ['evil_code', 'altro'], ['__proto__', 'altro'], ['toString', 'altro'], [undefined, 'altro'],
+])('Brain-only exit reason %s displays %s', (reason, label) => {
+  expect(brainExitReason(reason)).toBe(label);
+});
+
+test('Brain closed trades do not display internal reason tokens', () => {
+  const html = renderToStaticMarkup(<OverviewContent {...sample} regime="TREND_UP" onRegime={() => {}} nowMs={now} />);
+  expect(html).toContain('obiettivo raggiunto');
+  expect(html).not.toContain('take_profit');
 });

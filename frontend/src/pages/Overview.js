@@ -1,6 +1,7 @@
-/** Unified PAPER overview: read-only mobile-first view. No trading controls. */
-import React, { useEffect, useState } from 'react';
+/** Unified PAPER overview: read-only metrics plus authenticated close requests. */
+import React, { useCallback, useEffect, useState } from 'react';
 import API from '../api';
+import { BrainCloseControls, ClassicCloseControls } from '../components/OverviewCloseControls';
 
 const PALETTE = { running: '#34d399', paused: '#fbbf24', halted: '#fb7185', stale: '#fbbf24', not_started: '#94a3b8' };
 const STATE_TEXT = { running: 'In funzione', paused: 'In pausa', halted: 'Fermo', stale: 'Segnale assente', not_started: 'Non avviato' };
@@ -12,6 +13,16 @@ const money = value => value === null || value === undefined ? '—' : `${value}
 const bp = value => value === null || value === undefined ? '—' : `${value} bp`;
 const amountUsd = value => value === null || value === undefined ? '—' : `$${value}`;
 const direction = side => side === 1 ? 'LONG' : side === -1 ? 'SHORT' : '—';
+// Only Brain trade exit reasons are translated; unknown codes never reach the UI.
+const EXIT_REASONS = Object.freeze({
+  stop: 'stop', take_profit: 'obiettivo raggiunto',
+  timeout: 'tempo scaduto', manual: 'chiusa da te',
+  brain_close: 'chiusa dal Brain', liquidation: 'liquidata',
+});
+export const brainExitReason = reason => (
+  typeof reason === 'string' && Object.prototype.hasOwnProperty.call(EXIT_REASONS, reason)
+    ? EXIT_REASONS[reason] : 'altro'
+);
 const ageText = (ts, nowMs) => {
   if (!Number.isInteger(ts) || ts <= 0) return 'Mai';
   const seconds = Math.max(0, Math.floor((nowMs - ts) / 1000));
@@ -34,7 +45,7 @@ function StateLabel({ state }) {
   </span>;
 }
 
-export function OverviewContent({ overview, status, scoreboard, trades, nowMs = Date.now(), regime, onRegime }) {
+export function OverviewContent({ overview, status, scoreboard, trades, nowMs = Date.now(), regime, onRegime, onRefresh = () => {} }) {
   if (!overview) return <section role="status" style={BLOCK}>Nessun dato disponibile.</section>;
   const portfolios = overview.portfolios || [];
   const regimes = scoreboard?.regimes || [];
@@ -46,7 +57,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
     <header style={{ marginBottom: 18 }}>
       <div style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>SUPERBOT V3 · PAPER</div>
       <h1 style={{ fontSize: 25, margin: '6px 0' }}>I tre portafogli</h1>
-      <div style={MUTED}>Solo lettura · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
+      <div style={MUTED}>Monitoraggio · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
     </header>
     <section aria-label="Portafogli">
       {portfolios.map(p => <article key={p.id} style={BLOCK}>
@@ -61,6 +72,8 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           <div><div style={MUTED}>Ultimo evento</div><strong>{ageText(p.last_event_ms, nowMs)}</strong></div>
         </div>
         {p.id === 'brain' && stoppedReason && <p style={{ color: '#fda4af', fontSize: 13 }}>{stoppedReason}</p>}
+        {p.kind === 'classic' && <ClassicCloseControls portfolio={p.id} positions={p.positions || []}
+          canClose={p.can_close_position === true} pending={p.close_pending || []} onRefresh={onRefresh} />}
       </article>)}
     </section>
     <section style={BLOCK} aria-label="Stato Brain">
@@ -102,18 +115,20 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
     </section>
     <section style={BLOCK} aria-label="Posizioni Brain">
       <h2 style={{ fontSize: 17, margin: '0 0 12px' }}>Posizioni aperte · Brain</h2>
-      {openPositions.length === 0 ? <p style={MUTED}>Nessuna posizione aperta.</p> : openPositions.map(p => <div key={p.position_id} style={{ borderTop: '1px solid #314357', padding: '12px 0' }}>
-        <strong>{p.symbol} · {direction(p.side)} · {p.leverage}×</strong>
-        <div style={MUTED}>Strategia: {p.strategy_id || 'Non dichiarata'}</div>
-        <div style={MUTED}>Ingresso {p.entry} · Stop {p.stop}</div>
-        <div style={MUTED}>P&L non realizzato: {money(p.unrealized_pnl)}</div>
-      </div>)}
+      {openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
+      <BrainCloseControls positions={openPositions} serverPending={trades?.close_pending === true} onRefresh={onRefresh}
+        renderPosition={p => <>
+          <strong>{p.symbol} · {direction(p.side)} · {p.leverage}×</strong>
+          <div style={MUTED}>Strategia: {p.strategy_id || 'Non dichiarata'}</div>
+          <div style={MUTED}>Ingresso {p.entry} · Stop {p.stop}</div>
+          <div style={MUTED}>P&L non realizzato: {money(p.unrealized_pnl)}</div>
+        </>} />
     </section>
     <section style={BLOCK} aria-label="Ultimi trade Brain">
       <h2 style={{ fontSize: 17, margin: '0 0 12px' }}>Ultimi 20 trade chiusi · Brain</h2>
       {closedTrades.length === 0 ? <p style={MUTED}>Nessun trade chiuso disponibile.</p> : closedTrades.map(t => <div key={t.position_id} style={{ borderTop: '1px solid #314357', padding: '12px 0' }}>
         <strong>{t.symbol} · {direction(t.side)} · {t.strategy_id || 'Senza etichetta'}</strong>
-        <div style={MUTED}>{t.regime || 'Regime sconosciuto'} · {t.exit_reason} · {ageText(t.closed_at_ms, nowMs)}</div>
+        <div style={MUTED}>{t.regime || 'Regime sconosciuto'} · {brainExitReason(t.exit_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
         <div style={MUTED}>Netto: {bp(t.net_bp)} · Durata: {t.hold_ms} ms</div>
       </div>)}
     </section>
@@ -125,6 +140,8 @@ export default function Overview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [regime, setRegime] = useState('');
+  const [refreshToken, setRefreshToken] = useState(0);
+  const requestRefresh = useCallback(() => setRefreshToken(n => n + 1), []);
   useEffect(() => {
     let alive = true;
     let active = null;
@@ -150,8 +167,8 @@ export default function Overview() {
     refresh();
     const timer = setInterval(refresh, 30000);
     return () => { alive = false; clearInterval(timer); if (active) active.abort(); };
-  }, []);
+  }, [refreshToken]);
   if (loading) return <div role="status" style={{ padding: 22 }}>Caricamento della dashboard PAPER…</div>;
   if (error) return <div role="alert" style={{ padding: 22 }}>Impossibile aggiornare la dashboard. Verifica la connessione o la sessione.</div>;
-  return <OverviewContent {...data} regime={regime} onRegime={setRegime} />;
+  return <OverviewContent {...data} regime={regime} onRegime={setRegime} onRefresh={requestRefresh} />;
 }
