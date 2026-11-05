@@ -188,7 +188,7 @@ def test_params_cwd_agnostic(tmp_path):
 def test_menu_full_library():
     library = load_library()
     actual = build_menu(library)
-    expected = [*(f"S{i:02d}" for i in range(1, 10)), "S15", "S20", "S21"]
+    expected = [*(f"S{i:02d}" for i in range(1, 10)), "S15", "S20", "S21", "S25", "S26", "S27"]
     assert [m.strategy_id for m in actual] == expected
     assert [s.id for s in library.strategies if _testable_now(s) == DATA_CANDLES] == expected
     assert menu_ids(actual) == frozenset(expected)

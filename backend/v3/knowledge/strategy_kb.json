@@ -1,8 +1,8 @@
 {
   "metadata": {
     "package": "SuperBot Futures Strategy Knowledge Base",
-    "version": "1.0.0",
-    "date": "2026-11-04",
+    "version": "1.1.0",
+    "date": "2026-11-05",
     "market_scope": "Crypto perpetual futures con focus Bitget USDT-FUTURES",
     "status": "research_only_no_live",
     "video_method": "Solo metadati, descrizioni e fonti companion accessibili; i filmati non sono stati visionati integralmente, nessuna trascrizione sistematica",
@@ -129,6 +129,26 @@
       "published_or_checked": "2026-11-04",
       "assessment": "Template config di vecchio framework; richiede revisione",
       "source_grade": "B"
+    },
+    {
+      "id": "G05",
+      "type": "github",
+      "publisher": "xenoxavier",
+      "title": "freqtrade-ema-vwap (strategia long EMA9 + VWAP giornaliero, futures 1h)",
+      "url": "https://github.com/xenoxavier/freqtrade-ema-vwap",
+      "published_or_checked": "2026-11-05",
+      "assessment": "Indicato dalla ricerca di ChatGPT del 5/11, non riaperto da noi. Forward test dichiarato di 6,2 giorni a leva 20x; i conteggi dichiarati non tornano. Solo ipotesi",
+      "source_grade": "D"
+    },
+    {
+      "id": "G06",
+      "type": "github",
+      "publisher": "shahzaib-574",
+      "title": "MarketCipherTrading (Fusion Cipher e VWAP Momentum, BTC 4h)",
+      "url": "https://github.com/shahzaib-574/MarketCipherTrading",
+      "published_or_checked": "2026-11-05",
+      "assessment": "Indicato dalla ricerca di ChatGPT del 5/11, non riaperto da noi. Backtest dichiarati dall'autore su BTC 4h, non riprodotti. Solo ipotesi",
+      "source_grade": "D"
     },
     {
       "id": "D01",
@@ -1191,6 +1211,114 @@
       "rule_origin": "hypothesis",
       "limitations": "Architettura proposta appositamente per SuperBot, non standard testato.",
       "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S25",
+      "name": "EMA9 + VWAP giornaliero breakout long 1h",
+      "family": "vwap",
+      "holding_style": "swing",
+      "candidate_regimes": [
+        "TREND_UP",
+        "EXPANSION"
+      ],
+      "timeframes": [
+        "1h"
+      ],
+      "required_features": [
+        "ohlcv",
+        "ema9",
+        "vwap_session",
+        "utc_anchor",
+        "atr",
+        "volume"
+      ],
+      "entry_hypothesis": "Solo long. Su candela chiusa: EMA9 incrocia al rialzo il VWAP giornaliero (ancora 00:00 UTC) e la chiusura sta sopra entrambe; ingresso alla rottura del massimo della candela di segnale.",
+      "exit_hypothesis": "Stop 1.5 ATR, target 3 ATR, uscita a tempo dopo 60 ore (valori della fonte, solo candidati).",
+      "invalidate_when": "VWAP non calcolabile (volume nullo o sessione incompleta), spread anomalo, candela di segnale senza volume.",
+      "known_failure_modes": "Falsi incroci in range, rotture senza seguito, costi alti rispetto al target se l'ATR e' piccolo.",
+      "sources": [
+        "G05"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "Fonte con forward test di 6,2 giorni a leva 20x e conteggi non coerenti; regole non riprodotte da noi. Va misurata dal Brain in PAPER.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S26",
+      "name": "EMA9 + VWAP giornaliero breakout long 15m (variante)",
+      "family": "vwap",
+      "holding_style": "intraday",
+      "candidate_regimes": [
+        "TREND_UP",
+        "EXPANSION"
+      ],
+      "timeframes": [
+        "15m"
+      ],
+      "required_features": [
+        "ohlcv",
+        "ema9",
+        "vwap_session",
+        "utc_anchor",
+        "atr",
+        "volume"
+      ],
+      "entry_hypothesis": "Stessa regola di S25 applicata alle candele 15m. E' una variante nostra: la fonte usa il timeframe 1h.",
+      "exit_hypothesis": "Stop 1.5 ATR e target 3 ATR calcolati sull'ATR a 15m; timeout da fissare in proporzione a quello di S25.",
+      "invalidate_when": "ATR a 15m piccolo rispetto ai costi di giro, spread anomalo, VWAP non calcolabile.",
+      "known_failure_modes": "Piu rumore e piu operazioni che a 1h, quindi costi pesanti; regole analoghe a 15m erano negative dopo i costi nel laboratorio del 9 ottobre.",
+      "sources": [
+        "G05"
+      ],
+      "rule_origin": "hypothesis",
+      "limitations": "Scelta voluta dall'utente per i 15m; nessuna evidenza propria. Va misurata dal Brain in PAPER.",
+      "research_priority": "high",
+      "proven_profitable": false,
+      "validated_on_bitget": false,
+      "status": "research_only",
+      "hypothesis_only": true
+    },
+    {
+      "id": "S27",
+      "name": "VWAP pullback in trend rialzista (long)",
+      "family": "vwap",
+      "holding_style": "swing",
+      "candidate_regimes": [
+        "TREND_UP"
+      ],
+      "timeframes": [
+        "1h",
+        "4h"
+      ],
+      "required_features": [
+        "ohlcv",
+        "vwap_session",
+        "utc_anchor",
+        "ema20",
+        "ema50",
+        "adx",
+        "rsi",
+        "macd",
+        "atr"
+      ],
+      "entry_hypothesis": "Solo long con trend rialzista (medie in ordine, ADX sopra soglia): attendere un ritracciamento verso il VWAP giornaliero ed entrare quando RSI e MACD tornano a favore.",
+      "exit_hypothesis": "Stop e target in ATR, uscita se il trend si rompe (chiusura sotto EMA50); valori solo candidati.",
+      "invalidate_when": "Trend non chiaro (ADX basso), VWAP non calcolabile, volume nullo.",
+      "known_failure_modes": "Il ritracciamento diventa inversione; troppe conferme riducono i trade.",
+      "sources": [
+        "G06"
+      ],
+      "rule_origin": "source_concept_adapted",
+      "limitations": "La fonte dichiara test solo su BTC 4h, non riprodotti da noi; qui adattata a 1h e 4h.",
+      "research_priority": "medium",
       "proven_profitable": false,
       "validated_on_bitget": false,
       "status": "research_only",

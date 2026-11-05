@@ -38,7 +38,7 @@ from backend.v3.knowledge.library import testable_now as classify_data   # 'test
 KB_PATH = Path(lib_mod.__file__).with_name("strategy_kb.json")
 RAW_BYTES = KB_PATH.read_bytes()
 RAW = json.loads(RAW_BYTES.decode("utf-8"))
-PINNED_SHA = "0b2900d3a545f25ad242d48c1de04c844b22643fcaae3f0243e5a06061e85c1b"
+PINNED_SHA = "3bbff14716215de462d9ccc743eda414b2ea088f4c8550d2a76e42976e3511f4"
 
 N_STRATEGIES = len(RAW["strategies"])
 N_SOURCES = len(RAW["sources"])
@@ -83,7 +83,7 @@ class TestPinnedFile:
 
     def test_load_library_works_from_any_cwd(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        assert len(load_library().strategies) == 24
+        assert len(load_library().strategies) == 27
 
 
 class TestRealLibraryMatchesRawJson:
@@ -92,11 +92,11 @@ class TestRealLibraryMatchesRawJson:
     lib = load_library()
 
     def test_counts_order_and_metadata(self):
-        assert self.lib.version == RAW["metadata"]["version"] == "1.0.0"
-        assert self.lib.date == RAW["metadata"]["date"] == "2026-11-04"
-        assert [s.id for s in self.lib.strategies] == [f"S{i:02d}" for i in range(1, 25)]
+        assert self.lib.version == RAW["metadata"]["version"] == "1.1.0"
+        assert self.lib.date == RAW["metadata"]["date"] == "2026-11-05"
+        assert [s.id for s in self.lib.strategies] == [f"S{i:02d}" for i in range(1, 28)]
         assert [s.id for s in self.lib.sources] == [x["id"] for x in RAW["sources"]]
-        assert (len(self.lib.strategies), len(self.lib.sources)) == (24, 30)
+        assert (len(self.lib.strategies), len(self.lib.sources)) == (27, 32)
 
     def test_every_strategy_field_equals_raw(self):
         for obj, raw in zip(self.lib.strategies, RAW["strategies"]):
@@ -114,14 +114,14 @@ class TestRealLibraryMatchesRawJson:
             assert (s.proven_profitable, s.validated_on_bitget, s.status) == (
                 False, False, "research_only")
         origins = [s.rule_origin for s in self.lib.strategies]
-        assert origins.count("hypothesis") == 13
-        assert origins.count("source_concept_adapted") == 10
+        assert origins.count("hypothesis") == 14
+        assert origins.count("source_concept_adapted") == 12
         assert origins.count("reproduced_source_rule") == 1
         reproduced = [s for s in self.lib.strategies if s.rule_origin == "reproduced_source_rule"]
         assert [s.id for s in reproduced] == ["S05"]
         assert [s.id for s in self.lib.strategies if not s.hypothesis_only] == ["S05"]
         prio = [s.research_priority for s in self.lib.strategies]
-        assert (prio.count("high"), prio.count("medium"), prio.count("low")) == (10, 9, 5)
+        assert (prio.count("high"), prio.count("medium"), prio.count("low")) == (12, 10, 5)
         assert [s.id for s in self.lib.strategies if s.candidate_regimes == ("ALL",)] == [
             "S12", "S16", "S17", "S24"]
 
@@ -179,10 +179,10 @@ class TestControl:
         d["sources"].reverse()
         d["strategies"][0] = dict(reversed(list(d["strategies"][0].items())))  # ordine dei campi
         lib = parse_library(d)
-        assert lib.strategies[0].id == "S24" and lib.strategies[-1].id == "S01"
+        assert lib.strategies[0].id == "S27" and lib.strategies[-1].id == "S01"
         d = fresh()
-        del d["strategies"][-1]                                    # 23 schede: ok
-        assert len(parse_library(d).strategies) == 23
+        del d["strategies"][-1]                                    # 26 schede: ok
+        assert len(parse_library(d).strategies) == 26
         d = fresh()
         d["metadata"]["note_extra"] = "ok"                         # metadati descrittivi in piu': ignorati
         assert parse_library(d) == load_library()
@@ -504,7 +504,7 @@ class TestClaimsOriginFeaturesSources:
         expect("unknown_source_ref", d)
         d = fresh()                       # tolgo una fonte che NESSUNO cita: ammesso
         d["sources"] = [x for x in d["sources"] if x["id"] != "D07"]
-        assert len(parse_library(d).sources) == 29
+        assert len(parse_library(d).sources) == 31
 
 
 class TestStagePrecedence:
@@ -628,7 +628,8 @@ class TestLoadBytes:
 
 
 # ======================================================================= classificazione dei dati
-CLASS_A = ("S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S15", "S20", "S21")
+CLASS_A = ("S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S15", "S20", "S21",
+           "S25", "S26", "S27")
 CLASS_B = ("S12", "S23")
 GAPS_C = {
     "S10": ("l2_orderbook", "trades", "depth", "latency"),
@@ -660,7 +661,7 @@ class TestClassification:
 
     def test_golden_table_covers_every_strategy_once(self):
         assert set(EXPECTED_CLASS) == {s.id for s in self.lib.strategies}
-        assert len(CLASS_A) + len(CLASS_B) + len(GAPS_C) == 24
+        assert len(CLASS_A) + len(CLASS_B) + len(GAPS_C) == 27
 
     def test_class_and_gaps_per_strategy(self):
         for s in self.lib.strategies:
@@ -885,7 +886,7 @@ class TestEvidenceRegistry:
 
     def test_evidence_unknown_strategy(self):
         self._bad("evidence_unknown_strategy", [self._rep(0, strategy_id="S99")])
-        self._bad("evidence_unknown_strategy", [EVIDENCE[0], self._rep(1, strategy_id="S25")])
+        self._bad("evidence_unknown_strategy", [EVIDENCE[0], self._rep(1, strategy_id="S28")])
 
     def test_stage_order_of_evidence_errors(self):
         both = [self._rep(0, strategy_id="S99"), self._rep(1, evidence_id="E01")]
@@ -922,8 +923,8 @@ class TestReport:
 
     def test_full_report_built_independently(self):
         want = "\n".join([
-            "Biblioteca strategica v1.0.0 (2026-11-04): 24 schede, 30 fonti, tutte research_only",
-            "Dati: candles=12, candles_funding_oi=2, needs_new_data=10",
+            "Biblioteca strategica v1.1.0 (2026-11-05): 27 schede, 32 fonti, tutte research_only",
+            "Dati: candles=15, candles_funding_oi=2, needs_new_data=10",
             "id | famiglia | priorita | origine | dati | lacune | prove",
             *_expected_rows(self.lib),
         ]) + "\n"
@@ -933,7 +934,7 @@ class TestReport:
         text = format_library(self.lib)
         assert text.endswith("\n") and not text.endswith("\n\n")
         lines = text.splitlines()
-        assert len(lines) == 3 + 24
+        assert len(lines) == 3 + 27
         assert all(line == line.rstrip() for line in lines)
         assert all(line.count(" | ") == 6 for line in lines[2:])
 

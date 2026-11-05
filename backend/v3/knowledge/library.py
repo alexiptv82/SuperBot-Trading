@@ -70,7 +70,7 @@ from pathlib import Path
 from typing import Optional
 
 KB_FILENAME = "strategy_kb.json"
-KB_SHA256 = "0b2900d3a545f25ad242d48c1de04c844b22643fcaae3f0243e5a06061e85c1b"
+KB_SHA256 = "3bbff14716215de462d9ccc743eda414b2ea088f4c8550d2a76e42976e3511f4"
 
 # ---------------------------------------------------------------- vocabolari chiusi
 FAMILIES = frozenset({
