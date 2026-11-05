@@ -244,3 +244,24 @@ PROSSIMO PASSO: ChatGPT prepara P10 in `backend/v3/lab/`; applicazione invariata
 
 Fonti: Library versione 27; ramo `diario`, incluso `STATO.md`, `diario/2026-11-04_p9a_rilevatori.md`, `diario/2026-11-04_p10_preregistrazione.md` e checkpoint di ripresa; PR GitHub #51. Accesso alle chat limitato ai messaggi recenti e file disponibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 05/11/2026 06:50 Europe/Rome — P10 verificato e primo run storico negativo
+
+FATTO: pubblicato sul ramo `work/v3-p10-lab-chatgpt-20261105` il laboratorio P10 pre-registrato, PR #52 aperta e DRAFT, HEAD `89b4f3e5e65197fcfdfb5c7376049306cfe67f01`, impilata sulla PR #51. La consegna ChatGPT è stata applicata invariata nel commit `9556c9f`; la verifica indipendente è nel commit `8f55ae0`; il caricatore in sola lettura delle candele pubbliche Bitget è nel commit `4f226af`, con trattamento delle righe incoerenti come buchi nel commit `532bdb8`. Il laboratorio comprende adattatore P5 → `TradeOutcome`, controlli invertito e a scorrimento, verdetti, esecutore e rapporto. Il protocollo conserva l'impronta pre-registrata SHA-256 `7e561c2131d33a4214ba973da2163e53a232fe2e6ea115b95443c109d9ab550e`.
+
+TEST: laboratorio **572/572 PASS**; suite V3 da 3560 a **4132 PASS**, 3 xfailed e le stesse 3 failure preesistenti dovute a `fastapi` mancante. La verifica indipendente comprende 19 test con adattatore `Fraction` e scanner di barriere riscritti, ricalcolo separato del rapporto, 20.000 casi di verdetto e catena su mercati sintetici con risposta nota. Mutazione **59/60**; il solo sopravvissuto M32 è classificato equivalente. GitHub Actions verdi: run storico `41974342514` e stampa in sola lettura del rapporto già prodotto `41975088821`.
+
+RISULTATO STORICO: eseguito il protocollo su candele pubbliche Bitget BTCUSDT ed ETHUSDT a 15 minuti per 540 giorni, con 51.839 barre su 51.840 attese per simbolo, 0 buchi e 0 righe incoerenti scartate. Tutte le sei coppie S07/S05/S02 × BTC/ETH hanno verdetto **NEGATIVO**: media netta a 12 bp compresa fra −9,7 e −15,9 bp e intervallo 0,99 interamente sotto zero. A costo 0 le medie vanno circa da −3,9 a +2,3 bp; nessuna coppia supera il rango 95 del controllo a scorrimento. Il walk-forward non ha prodotto misure OOS; il motivo preciso non è stato verificato perché il verdetto NEGATIVO ha precedenza. Secondo la regola fissata prima dei risultati, nessuna `EVIDENZA_POSITIVA` implica arresto: **P9b non si costruisce** e non vi è alcuna promozione al Brain.
+
+PREPARATO: PR #52 conserva metodo, caricatore, workflow e rapporto come archivio riproducibile di ricerca. I 540 giorni sono ora consumati per queste tre strategie e questi parametri: qualsiasi variazione di orizzonte, filtro o parametro richiede una nuova ipotesi e una nuova pre-registrazione prima dei risultati.
+
+RILASCIATO: nulla. PR #52 non è unita né distribuita; nessun collegamento con Brain, runtime, strategie operative, prompt o limiti di rischio. Nessun merge/deploy, modifica operativa, wallet, reset, API pagata o saldo reale. `DESK_MODE=paper` resta invariato; PAPER, memoria e storici preservati.
+
+PROBLEMI/APERTI: l'esito vale soltanto per S07/S05/S02 con parametri fissati, orizzonte di 4 ore, timeframe 15 minuti e periodo di circa 18 mesi; non prova che ogni variante sia inefficace. I candidati si sovrappongono e non simulano un portafoglio; il drawdown in R non è rischio reale; funding e slippage non sono modellati separatamente. Restano aperte le soglie `RegimeParams`, la policy di esplorazione PAPER, L1/L4, la certificazione F0 e l'import dei trade legacy.
+
+PROSSIMO PASSO: nessun lavoro automatico sul laboratorio. Decisione utente fra chiudere il capitolo P10 lasciando la PR #52 in bozza come archivio riproducibile oppure formulare una nuova ipotesi pre-registrata; in parallelo restano le decisioni non legate al laboratorio su soglie del Brain, policy PAPER, L1/L4, F0 e import storico.
+
+Fonti: Library versione 28 e consegna `CONSEGNA-P10-LAB-2026-11-05.md`; ramo `diario`, `STATO.md`, `diario/2026-11-05_p10_laboratorio_risultati.md` e checkpoint di ripresa; PR GitHub #52, ramo P10, commit e Actions citati. Accesso alle chat limitato ai messaggi recenti e ai file disponibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
