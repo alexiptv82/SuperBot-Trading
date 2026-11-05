@@ -277,10 +277,11 @@ def test_params_syntax_nested_constant_always_rejected():
 def stubbed(monkeypatch, *, close="100", ef="100.123456", es="99.5", a="1.23456",
             pct="63.3333", strength="54.345", line="-0.9", signal="-0.776544",
             hist="-0.123456", pb="1.23456", bw="0.098765", hi="110", lo="90",
-            ad="32.555", plus="20", minus="10", label="TREND_UP"):
+            ad="32.555", plus="20", minus="10", label="TREND_UP", e9="100.5", vw="99.8"):
     d = lambda s: D(s)
     monkeypatch.setattr(view_module, "min_bars", lambda spec, ind: 1)
-    monkeypatch.setattr(view_module, "ema", lambda values,n: (d(ef) if n == 20 else d(es),))
+    monkeypatch.setattr(view_module, "ema", lambda values,n: (d(ef) if n == 20 else d(e9) if n == 9 else d(es),))
+    monkeypatch.setattr(view_module, "vwap_session", lambda bars,period,anchor, *, candle_ms: (d(vw),))
     monkeypatch.setattr(view_module, "atr", lambda bars,n, *, candle_ms: (d(a),))
     monkeypatch.setattr(view_module, "atr_percentile", lambda bars,n,w, *, candle_ms: (d(pct),))
     monkeypatch.setattr(view_module, "rsi", lambda bars,n, *, candle_ms: (d(strength),))
@@ -309,8 +310,22 @@ def test_stubbed_all_fields_with_fraction_check(monkeypatch):
         "atr_bp":"123.46", "atr_pct_rank":"63.33", "rsi":"54.34",
         "macd_hist_bp":"-12.35", "macd_above_signal":-1,
         "bb_pct_b":"1.2346", "bb_bandwidth":"0.0988", "donchian_pos":"0.5000",
-        "adx":"32.56", "di_dir":1,
+        "adx":"32.56", "di_dir":1, "ema9_gap_bp":"-50.00", "vwap_gap_bp":"20.00",
     }
+
+
+def test_stub_extra_fields_are_optional_and_do_not_change_status(monkeypatch):
+    """EMA9 / daily VWAP are optional fields: None when not computable, status stays ok."""
+    bars = stubbed(monkeypatch)
+    x = good_view(load_default_params(), bars)["timeframes"][0]
+    assert (x["ema9_gap_bp"], x["vwap_gap_bp"]) == ("-50.00", "20.00")
+    monkeypatch.setattr(view_module, "vwap_session", lambda *a, **k: (None,))
+    x = good_view(load_default_params(), bars)["timeframes"][0]
+    assert x["status"] == "ok" and x["vwap_gap_bp"] is None and x["ema9_gap_bp"] == "-50.00"
+    monkeypatch.setattr(view_module, "ema", lambda values, n: (None,) if n == 9 else (D("99"),))
+    x = good_view(load_default_params(), bars)["timeframes"][0]
+    assert x["status"] == "ok" and x["ema9_gap_bp"] is None and x["vwap_gap_bp"] is None
+    assert x["ema_fast_gap_bp"] == "100.00"
 
 
 @pytest.mark.parametrize("field,kwargs,expected", [
@@ -330,6 +345,10 @@ def test_stubbed_all_fields_with_fraction_check(monkeypatch):
     ("bb_pct_b",dict(pb="1.23456"),"1.2346"),
     ("atr_bp",dict(a="0.00001"),"0.00"),
     ("ema_fast_gap_bp",dict(ef="99.99"),"1.00"),
+    ("ema9_gap_bp",dict(e9="99.99"),"1.00"),
+    ("ema9_gap_bp",dict(e9="100.01"),"-1.00"),
+    ("vwap_gap_bp",dict(vw="99.5"),"50.00"),
+    ("vwap_gap_bp",dict(vw="100"),"0.00"),
     ("macd_hist_bp",dict(hist="0.5"),"50.00"),
 ])
 def test_stub_branch_formulas(monkeypatch,field,kwargs,expected):
@@ -500,7 +519,7 @@ def test_no_float_and_schema_deterministic(official):
     assert all(set(row)=={"tf","status","close","regime","ema_fast_gap_bp",
             "ema_slow_gap_bp","ema_cross","atr_bp","atr_pct_rank","rsi",
             "macd_hist_bp","macd_above_signal","bb_pct_b","bb_bandwidth",
-            "donchian_pos","adx","di_dir"} for row in x["timeframes"])
+            "donchian_pos","adx","di_dir","ema9_gap_bp","vwap_gap_bp"} for row in x["timeframes"])
     check_numbers(x)
     assert type(json.dumps(x,sort_keys=True)) is str
     assert regime_for_context(b,timestamp_ms=T,params=p)==x["regime"]
@@ -525,6 +544,9 @@ def test_no_lookahead_many_instants_and_guard(seed):
         expected=str(((sliced[-1].close-full_ema)/sliced[-1].close*D("10000"))
                     .quantize(D("0.01"),rounding=ROUND_HALF_EVEN))
         assert snapshot["ema_fast_gap_bp"]==expected
+        full_e9=tech.ema([b.close for b in series],9)[k-1]
+        assert snapshot["ema9_gap_bp"]==str(((sliced[-1].close-full_e9)/sliced[-1].close*D("10000"))
+                    .quantize(D("0.01"),rounding=ROUND_HALF_EVEN))
         full_rsi=tech.rsi(series,p.indicators.rsi_n,candle_ms=s.candle_ms)[k-1]
         assert snapshot["rsi"]==str(full_rsi.quantize(D("0.01"),rounding=ROUND_HALF_EVEN))
         full_regime=regime_mod.regime_labels(series,p.indicators.atr_n,s.pct_window,
@@ -1052,6 +1074,8 @@ def test_all_fields_no_lookahead_against_full_series(name,seed):
         q2=lambda v: (lambda x:str(abs(x) if x==0 else x))(v.quantize(D("0.01"),rounding=ROUND_HALF_EVEN))
         q4=lambda v: (lambda x:str(abs(x) if x==0 else x))(v.quantize(D("0.0001"),rounding=ROUND_HALF_EVEN))
         sign=lambda a,b:int(a>b)-int(a<b)
+        nine=tech.ema(closes,9)
+        dvwap=levels_mod.vwap_session(bars,86400000,0,candle_ms=spec.candle_ms)
         for k in random.Random(seed).sample(range(45,170),7):
             c=bars[k-1].close
             at=bars[k-1].open_time_ms+spec.candle_ms
@@ -1075,6 +1099,8 @@ def test_all_fields_no_lookahead_against_full_series(name,seed):
                 "donchian_pos":q4((c-lo)/(hi-lo)) if hi!=lo else "0.5000",
                 "adx":q2(direct.adx[k-1]),
                 "di_dir":sign(direct.plus_di[k-1],direct.minus_di[k-1]),
+                "ema9_gap_bp":q2((c-nine[k-1])/c*D("10000")),
+                "vwap_gap_bp":None if dvwap[k-1] is None else q2((c-dvwap[k-1])/c*D("10000")),
             }
             assert entry==want
             assert entry["regime"]==labels[k-1]

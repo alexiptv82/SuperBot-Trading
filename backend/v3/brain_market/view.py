@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from decimal import Context, Decimal, ROUND_HALF_EVEN, localcontext
 
 from backend.v3.features.indicators import check_bars, ema, atr, rsi, macd, bollinger, donchian, adx
-from backend.v3.features.levels import atr_percentile
+from backend.v3.features.levels import atr_percentile, vwap_session
 from backend.v3.features.regime import regime_labels
 from backend.v3.brain_market.params import IndicatorParams, TimeframeSpec, MarketViewParams
 
@@ -18,6 +18,11 @@ _CTX = Context(prec=60, rounding=ROUND_HALF_EVEN)
 Q2 = Decimal("0.01")
 Q4 = Decimal("0.0001")
 _BP = Decimal("10000")
+# Fixed by the S25-S27 cards, not tunable: EMA9 and a VWAP anchored at 00:00 UTC.
+# Both are optional fields: None when not computable (e.g. a day with no volume);
+# they never change the timeframe status or min_bars.
+EMA_EXTRA_N = 9
+VWAP_PERIOD_MS = 86_400_000
 
 
 def min_bars(spec: TimeframeSpec, ind: IndicatorParams) -> int:
@@ -52,6 +57,8 @@ def _one_ok(bars, spec, params):
     bb = bollinger(bars, ind.bb_n, ind.bb_k, candle_ms=step)
     dc = donchian(bars, ind.donchian_n, candle_ms=step)
     directional = adx(bars, ind.adx_n, candle_ms=step)
+    e9 = ema(closes, EMA_EXTRA_N)[-1]
+    day_vwap = vwap_session(bars, VWAP_PERIOD_MS, 0, candle_ms=step)[-1]
     label = regime_labels(bars, ind.atr_n, spec.pct_window, ind.adx_n,
                           params.regime, candle_ms=step)[-1]
     values = (e_fast, e_slow, average_range, pct, strength, mac.line[-1],
@@ -76,6 +83,8 @@ def _one_ok(bars, spec, params):
         "donchian_pos": _q((close - low) / (high - low), Q4) if high != low else "0.5000",
         "adx": _q(directional.adx[-1], Q2),
         "di_dir": _sign(directional.plus_di[-1], directional.minus_di[-1]),
+        "ema9_gap_bp": None if e9 is None else _q((close - e9) / close * _BP, Q2),
+        "vwap_gap_bp": None if day_vwap is None else _q((close - day_vwap) / close * _BP, Q2),
     }
 
 

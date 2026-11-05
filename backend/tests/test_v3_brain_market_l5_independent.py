@@ -34,6 +34,7 @@ from backend.v3.outcomes import REGIMES
 D = Decimal
 TS = (1_800_000_000_000 // 14_400_000) * 14_400_000 + 7 * 60_000      # 7 minuti dopo una chiusura da 4 h
 STEPS = {"15m": 900_000, "1h": 3_600_000, "4h": 14_400_000}
+DAY = 86_400_000
 
 
 # ----------------------------------------------------------------------------------------------
@@ -60,7 +61,8 @@ def _series(seed: int, n: int, step: int, ts: int = TS) -> list[Bar]:
 
 def _distinct_params(seed: int, *, pct_lo: int = 2, pct_hi: int = 12) -> MarketViewParams:
     rnd = random.Random(7000 + seed)
-    vals = rnd.sample(range(2, 18), 10)                                 # dieci periodi diversi
+    # dieci periodi diversi, e diversi anche dal 9 fisso dell'EMA9 (campo ema9_gap_bp)
+    vals = rnd.sample([x for x in range(2, 18) if x != 9], 10)
     ef, es = sorted(vals[0:2])
     mf, ms = sorted(vals[2:4])
     atr_n, rsi_n, sig, bb_n, dn, adx_n = vals[4:10]
@@ -117,6 +119,33 @@ def _values(bars, spec, ind):
     }
 
 
+def _oracle_vwap(bars):
+    """VWAP giornaliero (sessione UTC 00:00) sull'ultima barra, in Fraction; None se non calcolabile.
+
+    Scritto qui dal contratto: prezzo tipico (H+L+C)/3 pesato per il volume, dalle barre della sessione
+    dell'ultima barra. Se la prima barra passata cade a meta' sessione e la sessione e' la stessa,
+    la sessione e' incompleta: None. Volume totale zero: None."""
+    day = bars[-1].open_time_ms // DAY
+    session = [b for b in bars if b.open_time_ms // DAY == day]
+    if session[0] is bars[0] and bars[0].open_time_ms % DAY != 0:
+        return None
+    vol = sum(Fraction(b.volume) for b in session)
+    if vol == 0:
+        return None
+    return sum((Fraction(b.high) + Fraction(b.low) + Fraction(b.close)) / 3 * Fraction(b.volume)
+               for b in session) / vol
+
+
+def _expected_extras(bars):
+    close = Fraction(bars[-1].close)
+    e9 = ema([b.close for b in bars], 9)[-1]
+    vw = _oracle_vwap(bars)
+    return {
+        "ema9_gap_bp": None if e9 is None else _fmt((close - Fraction(e9)) / close * 10_000, 2),
+        "vwap_gap_bp": None if vw is None else _fmt((close - vw) / close * 10_000, 2),
+    }
+
+
 def _expected_entry(bars, spec, p):
     v = _values(bars, spec, p.indicators)
     assert all(x is not None for x in v.values())
@@ -140,6 +169,7 @@ def _expected_entry(bars, spec, p):
         "donchian_pos": "0.5000" if f["dh"] == f["dl"] else _fmt((close - f["dl"]) / (f["dh"] - f["dl"]), 4),
         "adx": _fmt(f["adx"], 2),
         "di_dir": _sgn(f["pdi"], f["mdi"]),
+        **_expected_extras(bars),
     }
 
 
@@ -158,7 +188,7 @@ def test_every_field_matches_direct_indicator_calls_with_distinct_periods(seed):
     ind = p.indicators
     periods = [ind.ema_fast, ind.ema_slow, ind.atr_n, ind.rsi_n, ind.macd_fast, ind.macd_slow,
                ind.macd_signal, ind.bb_n, ind.donchian_n, ind.adx_n]
-    assert len(set(periods)) == 10                      # guardia: un periodo scambiato cambia il numero
+    assert len(set(periods)) == 10 and 9 not in periods   # guardia: un periodo scambiato cambia il numero
     bars = _bars_for(p, seed, extra=seed % 7)
     got = build_market_view(bars, timestamp_ms=TS, params=p)
     assert got == _expected_view(bars, p)
@@ -183,6 +213,113 @@ def test_scenarios_really_exercise_the_branches():
     assert len(regimes) >= 3 and regimes <= set(REGIMES), regimes
     assert pb_out
     assert min(pos) >= 0 and max(pos) <= 1
+
+
+# ----------------------------------------------------------------------------------------------
+# 1b. campi opzionali ema9_gap_bp e vwap_gap_bp (schede S25-S27): oracolo Fraction, None, bordi di sessione
+
+def _extras_view(seed, ts, counts):
+    """Vista a tre timeframe con ``counts`` barre ciascuno; parametri a periodi tutti diversi."""
+    p = _distinct_params(seed)
+    bars = {s.name: _series(seed * 10 + j, counts[s.name], s.candle_ms, ts)
+            for j, s in enumerate(p.timeframes)}
+    return p, bars, build_market_view(bars, timestamp_ms=ts, params=p)
+
+
+_MIDNIGHT = (TS // DAY) * DAY
+_SESSION_INSTANTS = (                       # ultima barra chiusa: a fine sessione, prima barra, a meta'
+    _MIDNIGHT + 7 * 60_000, _MIDNIGHT + 900_000 + 7 * 60_000, _MIDNIGHT + 3_600_000 + 7 * 60_000,
+    _MIDNIGHT + 4 * 3_600_000 + 7 * 60_000, _MIDNIGHT + 13 * 3_600_000 + 7 * 60_000,
+)
+
+
+@pytest.mark.parametrize("ts", _SESSION_INSTANTS)
+@pytest.mark.parametrize("seed", range(6))
+def test_extra_fields_match_the_fraction_oracle_across_session_boundaries(seed, ts):
+    counts = {"15m": 400, "1h": 130, "4h": 40}          # oltre due giorni su ogni timeframe
+    p, bars, view = _extras_view(seed, ts, counts)
+    for entry in view["timeframes"]:
+        assert entry["status"] == "ok"
+        want = _expected_extras(bars[entry["tf"]])
+        assert (entry["ema9_gap_bp"], entry["vwap_gap_bp"]) == (want["ema9_gap_bp"], want["vwap_gap_bp"])
+        assert entry["vwap_gap_bp"] is not None         # barre dall'inizio di una sessione: sempre definito
+    assert view == _expected_view(bars, p)
+
+
+def test_vwap_is_the_typical_price_of_the_first_bar_right_after_midnight():
+    """Prima barra di una sessione: il VWAP e' il suo prezzo tipico; gap = (close - tp) / close."""
+    ts = _MIDNIGHT + 900_000 + 7 * 60_000
+    p, bars, view = _extras_view(3, ts, {"15m": 400, "1h": 130, "4h": 40})
+    b = bars["15m"][-1]
+    assert b.open_time_ms == _MIDNIGHT
+    tp = (Fraction(b.high) + Fraction(b.low) + Fraction(b.close)) / 3
+    entry = next(e for e in view["timeframes"] if e["tf"] == "15m")
+    assert entry["vwap_gap_bp"] == _fmt((Fraction(b.close) - tp) / Fraction(b.close) * 10_000, 2)
+
+
+def test_incomplete_first_session_gives_none_but_keeps_status_and_other_fields():
+    """Tutte le barre nella stessa sessione e la prima a meta' giornata: VWAP None, il resto invariato."""
+    ts = _MIDNIGHT + 12 * 3_600_000 + 7 * 60_000
+    p = _distinct_params(5)
+    n = min_bars(p.timeframes[0], p.indicators) + 2
+    assert n * 900_000 < 12 * 3_600_000                  # tutte dentro la stessa sessione
+    bars = {"15m": _series(51, n, 900_000, ts)}
+    view = build_market_view(bars, timestamp_ms=ts, params=p)
+    e = next(x for x in view["timeframes"] if x["tf"] == "15m")
+    assert e["status"] == "ok" and e["vwap_gap_bp"] is None
+    assert e["ema9_gap_bp"] == _expected_extras(bars["15m"])["ema9_gap_bp"]
+    assert {k: v for k, v in e.items() if k != "vwap_gap_bp"} == {
+        k: v for k, v in _expected_entry(bars["15m"], p.timeframes[0], p).items() if k != "vwap_gap_bp"}
+
+
+def test_zero_volume_session_gives_none_and_zero_volume_bar_is_weightless():
+    ts = _MIDNIGHT + 3 * 3_600_000 + 7 * 60_000
+    p, bars, _ = _extras_view(2, ts, {"15m": 400, "1h": 130, "4h": 40})
+    series = bars["15m"]
+    today = [i for i, b in enumerate(series) if b.open_time_ms // DAY == series[-1].open_time_ms // DAY]
+    assert len(today) == 12                              # 00:00 .. 02:45
+    zero = [type(b)(b.open_time_ms, b.open, b.high, b.low, b.close, D(0)) for b in series]
+    # tutta la sessione corrente senza volume: VWAP non calcolabile, stato invariato
+    allz = series[:today[0]] + [zero[i] for i in today]
+    e = next(x for x in build_market_view({"15m": allz}, timestamp_ms=ts, params=p)["timeframes"]
+             if x["tf"] == "15m")
+    assert e["status"] == "ok" and e["vwap_gap_bp"] is None
+    # una sola barra senza volume dentro la sessione: non pesa, il resto e' invariato
+    one = list(series)
+    one[today[1]] = zero[today[1]]
+    e = next(x for x in build_market_view({"15m": one}, timestamp_ms=ts, params=p)["timeframes"]
+             if x["tf"] == "15m")
+    assert e["vwap_gap_bp"] == _expected_extras(one)["vwap_gap_bp"] is not None
+
+
+def test_ema9_none_below_nine_bars_and_never_changes_status():
+    """Periodi piccoli: min_bars = 7 < 9. Con 7 e 8 barre lo stato e' ok ma EMA9 non e' definita."""
+    ind = IndicatorParams(ema_fast=2, ema_slow=4, atr_n=3, rsi_n=5, macd_fast=2, macd_slow=5,
+                          macd_signal=3, bb_n=6, bb_k=D("2"), donchian_n=7, adx_n=4)
+    spec = TimeframeSpec("15m", 900_000, 2)
+    p = MarketViewParams("15m", 1, (spec,), ind, _distinct_params(1).regime)
+    assert min_bars(spec, ind) == 7
+    for n in (7, 8, 9, 10):
+        bars = {"15m": _series(14, n, 900_000)}
+        e = build_market_view(bars, timestamp_ms=TS, params=p)["timeframes"][0]
+        assert e["status"] == "ok"
+        assert (e["ema9_gap_bp"] is None) == (n < 9)
+        assert e["ema9_gap_bp"] == _expected_extras(bars["15m"])["ema9_gap_bp"]
+
+
+def test_extra_fields_ignore_the_configured_ema_periods():
+    """EMA9 e' fisso a 9: con le stesse barre, cambiare ema_fast/ema_slow non lo sposta (e il VWAP nemmeno)."""
+    import dataclasses
+    p = _distinct_params(4)
+    q = dataclasses.replace(p, indicators=dataclasses.replace(
+        p.indicators, ema_fast=p.indicators.ema_fast + 20, ema_slow=p.indicators.ema_slow + 30))
+    bars = _bars_for(q, 4, extra=10)                      # abbastanza barre per entrambe le configurazioni
+    a = build_market_view(bars, timestamp_ms=TS, params=p)
+    b = build_market_view(bars, timestamp_ms=TS, params=q)
+    assert [e["status"] for e in a["timeframes"]] == [e["status"] for e in b["timeframes"]] == ["ok"] * 3
+    for x, y in zip(a["timeframes"], b["timeframes"]):
+        assert (x["ema9_gap_bp"], x["vwap_gap_bp"]) == (y["ema9_gap_bp"], y["vwap_gap_bp"])
+        assert x["ema_fast_gap_bp"] != y["ema_fast_gap_bp"]
 
 
 # ----------------------------------------------------------------------------------------------
