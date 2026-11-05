@@ -1,17 +1,19 @@
-"""V3 unified PAPER dashboard: read-only FastAPI endpoints.
+"""V3 unified PAPER dashboard with authenticated manual-close request channel.
 
-No write path, no schema initialization, no live execution authority. All
-journal reads use EventJournal.list_run (SQLite mode=ro); the budget ledger is
-bound to a read-only SQLite connection, never constructed normally.
+Only POST /brain/close can write a close_request.json, atomically. No journal
+updates, live execution authority or schema initialization. EventJournal uses
+SQLite mode=ro; the budget ledger uses a read-only SQLite connection.
 """
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import os
 import re
 import sqlite3
 import threading
+import tempfile
 import time
 from dataclasses import dataclass
 from contextlib import closing
@@ -20,7 +22,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Callable
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 import desk_view as dv
 from backend.v3.budget import BudgetLedger
@@ -34,6 +36,10 @@ from backend.v3.runner.config import load_default_config
 _MICRO_DOLLAR = Decimal('1000000')
 _HEARTBEAT_STALE_MS = 3 * 900 * 1000  # UI freshness, NOT trading/strategy limits
 _CODE_RE = re.compile(r'^[A-Za-z0-9_.:-]{1,96}$')
+_POSITION_RE = re.compile(r'^[A-Za-z0-9_.:-]{1,64}$')
+_CLOSE_RESULT_MAX_AGE_MS = 600_000
+_CLOSE_RESULT_STATUSES = frozenset({'done', 'expired', 'invalid_request'})
+_CLOSE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -45,6 +51,17 @@ class V3Paths:
     pause_flag_path: str | None
     falco_data_dir: str
     toro_data_dir: str
+    close_request_path: str | None = None
+    close_result_path: str | None = None
+
+    def __post_init__(self):
+        """Default command files live beside the configured heartbeat, never /opt."""
+        if self.heartbeat_path:
+            home = Path(self.heartbeat_path).parent
+            if self.close_request_path is None:
+                object.__setattr__(self, 'close_request_path', str(home / 'close_request.json'))
+            if self.close_result_path is None:
+                object.__setattr__(self, 'close_result_path', str(home / 'close_result.json'))
 
     @classmethod
     def from_env(cls, falco_data_dir: str, toro_data_dir: str) -> 'V3Paths':
@@ -56,6 +73,8 @@ class V3Paths:
             heartbeat_path=os.environ.get('V3_HEARTBEAT_PATH'),
             pause_flag_path=os.environ.get('V3_PAUSE_FLAG_PATH'),
             falco_data_dir=falco_data_dir, toro_data_dir=toro_data_dir,
+            close_request_path=os.environ.get('V3_CLOSE_REQUEST_PATH'),
+            close_result_path=os.environ.get('V3_CLOSE_RESULT_PATH'),
         )
 
 
@@ -212,7 +231,18 @@ def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
     else:
         mode = 'running'
     perf = dv.build_performance(data_dir, portfolio_id) if state else None
+    # Desk's existing view is the authority for open positions / close capability.
+    detail = dv.build_status(data_dir, 'hawk' if portfolio_id == 'falco' else 'bull', now=now_s)
+    classic_positions = [
+        {'symbol': p['symbol'], 'side': p.get('side'), 'leverage': p.get('leverage'),
+         'entry': _safe_decimal(p.get('entry')), 'stop': _safe_decimal(p.get('sl')) if p.get('sl') is not None else None,
+         'unrealized_pnl': _safe_decimal(p.get('pnl'))}
+        for p in detail.get('positions', ()) if type(p) is dict and type(p.get('symbol')) is str
+    ]
     return {'id': portfolio_id, 'kind': 'classic', 'state': mode,
+            'positions': classic_positions,
+            'can_close_position': detail.get('can_close_position') is True,
+            'close_pending': detail.get('close_position_pending') or [],
             'open_positions': len(positions),
             'realized_pnl': _safe_decimal(perf['total_pnl'] if perf and perf.get('available') else 0),
             'margin_in_use': str(margin), 'last_event_ms': last_ms,
@@ -303,11 +333,118 @@ async def _trades(paths: V3Paths, limit: int, get_ticker) -> dict:
                        'entry': str(pos.fill_price), 'stop': str(pos.stop_price),
                        'leverage': pos.leverage, 'strategy_id': labels.get(pos.position_id),
                        'unrealized_pnl': await _ticker_pnl(get_ticker, pos)})
-    return {'open_positions': opened, 'closed_trades': closed}
+    return {'open_positions': opened, 'closed_trades': closed,
+            'close_pending': _close_inflight(paths)}
+
+
+def _close_error(status: int, code: str, message: str) -> HTTPException:
+    """Stable machine code + clear Italian message; never leak server paths."""
+    return HTTPException(status_code=status, detail={'code': code, 'message': message},
+                         headers={'Cache-Control': 'no-store'})
+
+
+def _close_body(body: object) -> tuple[str | None, bool]:
+    """Only one exact shape: {'position_id': id} OR {'all': true}."""
+    if type(body) is not dict:
+        raise _close_error(422, 'richiesta_non_valida', 'Richiesta di chiusura non valida.')
+    if set(body) == {'all'} and body['all'] is True:
+        return None, True
+    if (set(body) == {'position_id'} and type(body['position_id']) is str
+            and _POSITION_RE.fullmatch(body['position_id'])):
+        return body['position_id'], False
+    raise _close_error(422, 'richiesta_non_valida', 'Indica una posizione valida o conferma Chiudi tutte.')
+
+
+def _close_request(paths: V3Paths, body: object, now_ms: int) -> dict:
+    """Validate first; atomically publish one PAPER-only command file.
+
+    A directory flock serializes requests from multiple backend workers without
+    creating a second persistent control file. The runner consumes the request.
+    """
+    position_id, close_all = _close_body(body)
+    hb = _heartbeat(paths)
+    if (hb is None or not paths.journal_path or not paths.run_id or
+            not _exists(paths.journal_path) or now_ms - hb['ts_ms'] > _HEARTBEAT_STALE_MS
+            or hb['ts_ms'] > now_ms + _CLOSE_RESULT_MAX_AGE_MS
+            or hb['run_id'] != paths.run_id):
+        raise _close_error(409, 'brain_non_risponde', 'Il Brain non risponde: riprova quando è collegato.')
+    summary = _summary(paths)
+    if summary is None:
+        raise _close_error(409, 'brain_non_risponde', 'Il registro del Brain non è disponibile.')
+    open_ids = {p.position_id for p in summary.open_positions}
+    if close_all:
+        if not open_ids:
+            raise _close_error(409, 'nessuna_posizione', 'Non ci sono posizioni aperte da chiudere.')
+    elif position_id not in open_ids:
+        raise _close_error(404, 'posizione_non_aperta', 'La posizione non è più aperta.')
+    if not paths.close_request_path:
+        raise _close_error(409, 'brain_non_risponde', 'Il canale di chiusura del Brain non è configurato.')
+    target = Path(paths.close_request_path)
+    payload = {'ts_ms': now_ms, 'all': True} if close_all else {'ts_ms': now_ms, 'position_ids': [position_id]}
+    tmp_name = None
+    try:
+        with _CLOSE_LOCK:
+            # A lock on the existing directory (Linux) also coordinates distinct uvicorn workers.
+            dirfd = os.open(str(target.parent), os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+            try:
+                fcntl.flock(dirfd, fcntl.LOCK_EX)
+                if target.exists() or (target.parent / '.close_request.work').exists():
+                    raise _close_error(409, 'richiesta_in_corso', 'Una chiusura è già in corso.')
+                fd, tmp_name = tempfile.mkstemp(prefix='.close_request.', suffix='.tmp', dir=target.parent)
+                with os.fdopen(fd, 'w', encoding='utf-8') as writer:
+                    json.dump(payload, writer, sort_keys=True)
+                    writer.flush()
+                    os.fsync(writer.fileno())
+                os.replace(tmp_name, target)
+                tmp_name = None
+            finally:
+                fcntl.flock(dirfd, fcntl.LOCK_UN)
+                os.close(dirfd)
+    except HTTPException:
+        raise
+    except OSError:
+        raise _close_error(409, 'brain_non_risponde', 'Impossibile inviare la richiesta al Brain.') from None
+    finally:
+        if tmp_name is not None:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+    return {'ok': True, 'pending': True, 'ts_ms': now_ms}
+
+
+
+def _close_inflight(paths: V3Paths) -> bool:
+    if not paths.close_request_path:
+        return False
+    target = Path(paths.close_request_path)
+    return target.is_file() or (target.parent / '.close_request.work').is_file()
+
+
+def _close_result(paths: V3Paths, now_ms: int) -> dict:
+    """Display only recent sanitized engine results; do not echo arbitrary file text."""
+    raw = _json_read(paths.close_result_path)
+    result = None
+    if raw is not None:
+        req_ts, done_ms = raw.get('request_ts_ms'), raw.get('done_ms')
+        closed, failed, status = raw.get('closed'), raw.get('failed'), raw.get('status')
+        valid = (type(req_ts) is int and 0 < req_ts <= now_ms + _CLOSE_RESULT_MAX_AGE_MS
+                 and now_ms - req_ts <= _CLOSE_RESULT_MAX_AGE_MS
+                 and type(done_ms) is int and done_ms >= 0
+                 and type(status) is str and status in _CLOSE_RESULT_STATUSES
+                 and type(closed) is list and type(failed) is list
+                 and all(type(i) is str and _POSITION_RE.fullmatch(i) for i in closed)
+                 and all(type(pair) is list and len(pair) == 2
+                         and type(pair[0]) is str and (pair[0] == '*' or _POSITION_RE.fullmatch(pair[0]))
+                         and type(pair[1]) is str and _CODE_RE.fullmatch(pair[1]) for pair in failed))
+        if valid:
+            result = {'request_ts_ms': req_ts, 'done_ms': done_ms, 'status': status,
+                      'closed': closed, 'failed': failed}
+    return {'result': result, 'pending': _exists(paths.close_request_path)}
 
 
 def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> APIRouter:
-    """Create a GET-only router, session-gated, with explicit no-store responses."""
+    """Create session-gated dashboard and PAPER-only manual-close endpoints."""
     if type(paths) is not V3Paths:
         raise ValueError('invalid_paths')
     router = APIRouter(prefix='/api/v3')
@@ -332,5 +469,19 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
                            session=Depends(require_session)):
         response.headers['Cache-Control'] = 'no-store'
         return await _trades(paths, limit, get_ticker)
+
+    @router.post('/brain/close')
+    async def brain_close(request: Request, response: Response, session=Depends(require_session)):
+        response.headers['Cache-Control'] = 'no-store'
+        try:
+            body = await request.json()
+        except (ValueError, UnicodeError):
+            body = None
+        return _close_request(paths, body, int(time.time() * 1000))
+
+    @router.get('/brain/close-result')
+    def brain_close_result(response: Response, session=Depends(require_session)):
+        response.headers['Cache-Control'] = 'no-store'
+        return _close_result(paths, int(time.time() * 1000))
 
     return router

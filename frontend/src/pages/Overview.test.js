@@ -38,7 +38,8 @@ test('phone-first unified cards and learning metrics, only safe text', () => {
   expect(html).toContain('Insufficiente ≠ cattivo');
   expect(html).toContain('AI_X');
   expect(html).toContain('P&amp;L non realizzato:');
-  expect(html).not.toContain('<button');
+  expect(html).toContain('Chiudi BTCUSDT');
+  expect(html).toContain('Chiudi tutte (1)');
   expect(html).not.toContain('<form');
   expect(html).toContain('max-width:640px');
 });

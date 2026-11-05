@@ -1,6 +1,7 @@
-/** Unified PAPER overview: read-only mobile-first view. No trading controls. */
-import React, { useEffect, useState } from 'react';
+/** Unified PAPER overview: read-only metrics plus authenticated close requests. */
+import React, { useCallback, useEffect, useState } from 'react';
 import API from '../api';
+import { BrainCloseControls, ClassicCloseControls } from '../components/OverviewCloseControls';
 
 const PALETTE = { running: '#34d399', paused: '#fbbf24', halted: '#fb7185', stale: '#fbbf24', not_started: '#94a3b8' };
 const STATE_TEXT = { running: 'In funzione', paused: 'In pausa', halted: 'Fermo', stale: 'Segnale assente', not_started: 'Non avviato' };
@@ -34,7 +35,7 @@ function StateLabel({ state }) {
   </span>;
 }
 
-export function OverviewContent({ overview, status, scoreboard, trades, nowMs = Date.now(), regime, onRegime }) {
+export function OverviewContent({ overview, status, scoreboard, trades, nowMs = Date.now(), regime, onRegime, onRefresh = () => {} }) {
   if (!overview) return <section role="status" style={BLOCK}>Nessun dato disponibile.</section>;
   const portfolios = overview.portfolios || [];
   const regimes = scoreboard?.regimes || [];
@@ -61,6 +62,8 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           <div><div style={MUTED}>Ultimo evento</div><strong>{ageText(p.last_event_ms, nowMs)}</strong></div>
         </div>
         {p.id === 'brain' && stoppedReason && <p style={{ color: '#fda4af', fontSize: 13 }}>{stoppedReason}</p>}
+        {p.kind === 'classic' && <ClassicCloseControls portfolio={p.id} positions={p.positions || []}
+          canClose={p.can_close_position === true} pending={p.close_pending || []} onRefresh={onRefresh} />}
       </article>)}
     </section>
     <section style={BLOCK} aria-label="Stato Brain">
@@ -108,6 +111,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         <div style={MUTED}>Ingresso {p.entry} · Stop {p.stop}</div>
         <div style={MUTED}>P&L non realizzato: {money(p.unrealized_pnl)}</div>
       </div>)}
+      <BrainCloseControls positions={openPositions} serverPending={trades?.close_pending === true} onRefresh={onRefresh} />
     </section>
     <section style={BLOCK} aria-label="Ultimi trade Brain">
       <h2 style={{ fontSize: 17, margin: '0 0 12px' }}>Ultimi 20 trade chiusi · Brain</h2>
@@ -125,6 +129,8 @@ export default function Overview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [regime, setRegime] = useState('');
+  const [refreshToken, setRefreshToken] = useState(0);
+  const requestRefresh = useCallback(() => setRefreshToken(n => n + 1), []);
   useEffect(() => {
     let alive = true;
     let active = null;
@@ -150,8 +156,8 @@ export default function Overview() {
     refresh();
     const timer = setInterval(refresh, 30000);
     return () => { alive = false; clearInterval(timer); if (active) active.abort(); };
-  }, []);
+  }, [refreshToken]);
   if (loading) return <div role="status" style={{ padding: 22 }}>Caricamento della dashboard PAPER…</div>;
   if (error) return <div role="alert" style={{ padding: 22 }}>Impossibile aggiornare la dashboard. Verifica la connessione o la sessione.</div>;
-  return <OverviewContent {...data} regime={regime} onRegime={setRegime} />;
+  return <OverviewContent {...data} regime={regime} onRegime={setRegime} onRefresh={requestRefresh} />;
 }

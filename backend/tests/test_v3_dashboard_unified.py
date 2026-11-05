@@ -103,7 +103,9 @@ def test_login_and_only_get(tmp_path):
             assert c.post(path).status_code == 405
             assert c.put(path).status_code == 405
             assert c.delete(path).status_code == 405
-    assert all(route.methods == {'GET'} for route in make_router(auth, paths).routes)
+    methods = {route.path: route.methods for route in make_router(auth, paths).routes}
+    assert methods['/api/v3/brain/close'] == {'POST'}
+    assert all(methods[path] == {'GET'} for path in methods if path != '/api/v3/brain/close')
 
 
 def test_real_journal_closed_trade_score_and_immutable(tmp_path):
