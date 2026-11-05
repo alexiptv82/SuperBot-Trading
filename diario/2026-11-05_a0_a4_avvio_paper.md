@@ -31,3 +31,10 @@ Autore: Claude Sonnet 5.5 (coordinatore). Nessun deploy, nessun avvio. Dettagli 
 * Dashboard di ChatGPT applicata invariata (PR #60, `a5a0c14`); CI nuova `v3-dashboard-ci` verde (backend, Jest, build).
 * Aperti: freni di rischio («20 %»: chiarimento chiesto), analisi dei tempi dei classici, misura costi del ragionamento. Nessun deploy.
 * **Attenzione, due consegne della dashboard:** il checkpoint ChatGPT delle 19:50 (`diario/2026-10-30_work-ripresa-doppio-checkpoint.md`) descrive un pacchetto `SuperBot-Dashboard-Unificata-2026-11-05.zip` con 26 test backend, 7 frontend e un file CSS; quello applicato nella PR #60 è il pacchetto `SuperBot-V3-Dashboard-Unificata-consegna-2026-11-05.zip` (16 test backend, 5 Jest, 4 file) consegnato dall'utente. Il pacchetto con 26/7 non è arrivato a Claude: se lo si preferisce, va passato (verrebbe applicato in un commit a parte sullo stesso ramo).
+
+## 20:40 — Pulsante «Chiudi» di ChatGPT applicato (PR #61)
+
+* Consegna invariata (`73199f0`; la sua base v1 coincide con quella applicata); CI `v3-dashboard-ci` a 3 job verde: backend con fastapi (16 + 33 test, 0 saltati, prova con il runner vero), suite V3 3616 ok, Jest 34, build ok.
+* Corretti in commit mio (`5b37464`): motivi di chiusura in parole, simbolo al posto dell'identificativo, intestazione non più «solo lettura». Errore mio sul formato del file CI, corretto (`df0459c`).
+* Rilievo sul Brain: limite di attesa 30 s per chiamata e giro sequenziale dentro il tick con il ragionamento esteso (battito, chiusura manuale, uscite aspettano il giro). Nulla cambiato; misura nelle prime 24 ore (punto 5f del pacchetto), decisione all'utente. Aggiunto «Collegamento dell'app al Brain» (`3ccef61`).
+* Aperti: freni di rischio («20 %»), consegna «26/7» mai arrivata, analisi tempi classici. Nessun deploy.
