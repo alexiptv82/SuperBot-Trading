@@ -14,8 +14,13 @@ Regola (solo long, candele da 1 ora CHIUSE, ricavate dalle candele da 15 minuti 
   oltre ``CHASE_ATR`` x ATR sopra di esso (niente inseguimento). Il segnale si ricalcola a ogni giro dalle candele
   (nessuna memoria): dopo un riavvio non si ripete un ingresso gia' fatto.
 * Stop 1,5 x ATR, target 3 x ATR, chiusura a tempo dopo 60 ore. Un'apertura per simbolo; tetto di posizioni S25
-  per portafoglio (``MAX_OPEN``). Oro e argento esclusi.
-* Dimensione e leva: i valori gia' in uso dal portafoglio (``guardrail_*_forced``); il motore applica tetti e controlli.
+  per portafoglio (``MAX_OPEN``). Oro e argento INCLUSI (decisione dell'utente, 5/11): nei weekend le serie hanno
+  buchi, ``closed_hours`` tiene solo la coda contigua e il VWAP della prima sessione incompleta e' indefinito, quindi
+  li' i segnali sono semplicemente meno (nessun segnale falso).
+* Dimensione (decisione dell'utente, 5/11): margine ``MARGIN`` per portafoglio (Falco 100 $, Toro 350 $: i tetti per
+  trade dei portafogli). Leva: forbice dell'utente 15-35 (Falco) e 15-45 (Toro) in ``LEV_MIN``/``LEV_MAX``; il motore
+  applica anche il tetto del simbolo (BTC, oro, argento 45x; ETH 30x; altri 25x), il controllo stop-contro-liquidazione,
+  lo stop giornaliero e gli altri limiti. Regola di scelta della leva dentro la forbice: ``leverage_for`` (da confermare).
 
 Le uscite di S25 sono SOLO stop, target e tempo: ``protect`` toglie le chiusure/DCA decise da regole o da Claude sulle
 posizioni S25 (le regole chiuderebbero ogni long quando il punteggio long e' basso, cioe' nei mercati ribassisti).
@@ -42,7 +47,10 @@ CHASE_ATR = 0.5                      # massimo scostamento sopra il trigger, in 
 MAX_HOLD_MS = 60 * H1
 COOLDOWN_MS = H1                     # come MEDIO_COOLDOWN_MS di cli.py
 MAX_OPEN = {"hawk": 3, "bull": 1}    # posizioni S25 contemporanee per portafoglio (mia scelta, da confermare)
-EXCLUDED = frozenset({"XAU", "XAG", "XAUUSDT", "XAGUSDT"})
+EXCLUDED: frozenset = frozenset()    # nessun simbolo escluso: oro e argento inclusi per decisione dell'utente
+MARGIN = {"hawk": 100.0, "bull": 350.0}      # margine per posizione S25 ($), uguale al tetto per trade del portafoglio
+LEV_MIN = 15
+LEV_MAX = {"hawk": 35, "bull": 45}           # forbice dell'utente; il motore applica in piu' il tetto del simbolo
 PROTECTED_ACTIONS = ("close", "partial_close", "dca")
 MIN_HOURS = ATR_N + 2                # barre orarie contigue minime per calcolare il segnale
 
@@ -178,6 +186,12 @@ def protect(decisions: list, positions: dict) -> list:
     return [d for d in decisions if not (d.get("symbol") in mine and d.get("action") in PROTECTED_ACTIONS)]
 
 
+def leverage_for(name: str, sig: dict, price: float) -> int:
+    """Leva di un ingresso S25 dentro la forbice ``LEV_MIN``..``LEV_MAX[name]``. Per ora fissa al minimo (15x): la regola
+    che la fa salire va ancora decisa con l'utente. Il tetto del simbolo lo applica il motore."""
+    return min(LEV_MIN, LEV_MAX.get(name, LEV_MIN))
+
+
 def _base(symbol: str) -> str:
     return symbol.upper().replace("USDT", "").replace("PERP", "").strip("/:")
 
@@ -224,12 +238,13 @@ def step(acc, state: dict, candles_map: dict, prices: dict, now_ms: int, portfol
             if now_ms - last_open.get(sym, 0) < COOLDOWN_MS:
                 report["skipped"][sym] = "cooldown"
                 continue
-            margin = min(portfolio.guardrail_margin_forced, portfolio.limits.max_margin_trade)
+            margin = min(MARGIN[name], portfolio.limits.max_margin_trade)
+            lev = leverage_for(name, sig, float(px))
             feats = {"strategy": STRATEGY_ID, "ema9": round(sig["ema9"], 8), "vwap": round(sig["vwap"], 8),
                      "atr1h": round(sig["atr"], 8), "trigger": sig["trigger"], "signal_open_ms": sig["signal_open_ms"]}
             reason = (f"S25 EMA9 sopra VWAP 1h, rottura {sig['trigger']:.5g}; stop {STOP_ATR} ATR, "
                       f"target {TARGET_ATR} ATR, max 60 h")
-            pos, msg = acc.open(sym, 1, margin, portfolio.guardrail_lev_forced, float(px), plan["sl"], plan["tp"],
+            pos, msg = acc.open(sym, 1, margin, lev, float(px), plan["sl"], plan["tp"],
                                 now_ms, prices, confidence=0, reason=reason, source=SOURCE, trade_type="medio",
                                 features=feats)
             if not pos:

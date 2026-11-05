@@ -64,9 +64,9 @@ def to_15m(h1):
     return np.array(rows, dtype=float)
 
 
-def port(name="hawk", margin=60.0, lev=15):
-    return SimpleNamespace(name=name, guardrail_margin_forced=margin, guardrail_lev_forced=lev,
-                           limits=Limits())
+def port(name="hawk"):
+    # i valori "forzati" del portafoglio NON devono contare: S25 usa i propri (MARGIN, leva dalla forbice)
+    return SimpleNamespace(name=name, guardrail_margin_forced=1.0, guardrail_lev_forced=1, limits=Limits())
 
 
 class Rec:
@@ -346,7 +346,7 @@ def test_step_opens_long_with_expected_levels_and_records_it():
     out, rec = run_step(acc, state, world(), {"ETH": px}, NOW_STEP)
     assert out["opened"] == ["ETH"]
     p = acc.positions["ETH"]
-    assert p.side == 1 and p.source == L.SOURCE and p.leverage == 15 and p.total_margin == 60.0
+    assert p.side == 1 and p.source == L.SOURCE and p.leverage == 15 and p.total_margin == 100.0
     assert p.sl == pytest.approx(px - 1.5 * SIG_ATR) and p.tp == pytest.approx(px + 3.0 * SIG_ATR)
     assert p.trade_type == "medio" and p.open_ms == NOW_STEP
     assert state["last_open_ms"]["ETH"] == NOW_STEP
@@ -356,11 +356,28 @@ def test_step_opens_long_with_expected_levels_and_records_it():
     assert ev["portfolio"] == "hawk" and ev["features"]["strategy"] == "S25"
 
 
-def test_step_uses_the_portfolio_sizing_and_name():
+def test_step_sizing_is_per_portfolio_from_the_users_values_not_the_forced_guardrail():
     acc = PaperAccount(Limits())
-    run_step(acc, {}, world(), {"ETH": SIG_TRIGGER + 0.05}, NOW_STEP, portfolio=port("bull", 200.0, 12))
-    p = acc.positions["ETH"]
-    assert p.total_margin == 200.0 and p.leverage == 12
+    run_step(acc, {}, world(), {"ETH": SIG_TRIGGER + 0.05}, NOW_STEP, portfolio=port("hawk"))
+    assert acc.positions["ETH"].total_margin == 100.0 and acc.positions["ETH"].leverage == 15
+    acc = PaperAccount(Limits())
+    run_step(acc, {}, world(), {"ETH": SIG_TRIGGER + 0.05}, NOW_STEP, portfolio=port("bull"))
+    assert acc.positions["ETH"].total_margin == 350.0 and acc.positions["ETH"].leverage == 15
+
+
+def test_step_margin_never_exceeds_the_portfolio_trade_cap():
+    p = port("bull")
+    p.limits = Limits(max_margin_trade=120.0)
+    acc = PaperAccount(Limits())
+    run_step(acc, {}, world(), {"ETH": SIG_TRIGGER + 0.05}, NOW_STEP, portfolio=p)
+    assert acc.positions["ETH"].total_margin == 120.0
+
+
+def test_leverage_range_is_the_users_and_default_leverage_is_the_minimum():
+    assert L.LEV_MIN == 15 and L.LEV_MAX == {"hawk": 35, "bull": 45} and L.MARGIN == {"hawk": 100.0, "bull": 350.0}
+    assert L.leverage_for("hawk", SIG, 100.0) == 15 and L.leverage_for("bull", SIG, 100.0) == 15
+    for name in ("hawk", "bull"):
+        assert L.LEV_MIN <= L.leverage_for(name, SIG, 100.0) <= L.LEV_MAX[name]
 
 
 def test_step_does_nothing_without_break_or_when_too_far():
@@ -387,12 +404,20 @@ def test_step_respects_cooldown_after_restart_and_does_not_reenter():
     assert "ETH" in acc.positions                           # cooldown scaduto: e' ancora dentro la finestra
 
 
-def test_step_skips_symbols_with_open_positions_and_excluded_metals():
+def test_step_skips_symbols_with_open_positions():
     acc, state = PaperAccount(Limits()), {}
     acc.open("ETH", -1, 60.0, 15, SIG_TRIGGER, SIG_TRIGGER * 1.01, None, 1, {}, source="rules")
-    out, _ = run_step(acc, state, world({"XAU": A15.copy(), "XAG": A15.copy()}),
-                      {"ETH": SIG_TRIGGER + 0.05, "XAU": SIG_TRIGGER + 0.05, "XAG": SIG_TRIGGER + 0.05}, NOW_STEP)
+    out, _ = run_step(acc, state, world(), {"ETH": SIG_TRIGGER + 0.05}, NOW_STEP)
     assert list(acc.positions) == ["ETH"] and acc.positions["ETH"].side == -1 and not out["opened"]
+
+
+def test_step_trades_gold_and_silver_like_any_other_symbol():
+    assert L.EXCLUDED == frozenset()
+    acc = PaperAccount(Limits())
+    cmap = {"XAU": A15.copy(), "XAG": A15.copy()}
+    out, rec = run_step(acc, {}, cmap, {"XAU": SIG_TRIGGER + 0.05, "XAG": SIG_TRIGGER + 0.05}, NOW_STEP)
+    assert out["opened"] == ["XAU", "XAG"]
+    assert all(p.source == L.SOURCE and p.leverage == 15 and p.total_margin == 100.0 for p in acc.positions.values())
 
 
 def test_step_caps_s25_positions_per_portfolio():
@@ -403,7 +428,7 @@ def test_step_caps_s25_positions_per_portfolio():
     out, _ = run_step(acc, {}, cmap, px, NOW_STEP, portfolio=port("hawk"))
     assert out["opened"] == ["AAA", "BBB", "CCC"] and out["skipped"]["DDD"] == "tetto_s25"
     acc = PaperAccount(Limits())
-    out, _ = run_step(acc, {}, cmap, px, NOW_STEP, portfolio=port("bull", 200.0))
+    out, _ = run_step(acc, {}, cmap, px, NOW_STEP, portfolio=port("bull"))
     assert out["opened"] == ["AAA"] and out["skipped"]["BBB"] == "tetto_s25"
     acc = PaperAccount(Limits())
     out, _ = run_step(acc, {}, cmap, px, NOW_STEP, portfolio=port("altro"))
@@ -628,7 +653,7 @@ def test_full_cycle_with_switch_on_opens_s25_long(sandbox, monkeypatch):
     assert p.source == L.SOURCE and p.side == 1 and p.open_ms == now
     assert p.sl < p.entry < p.tp
     assert p.sl == pytest.approx(px - 1.5 * sig["atr"]) and p.tp == pytest.approx(px + 3.0 * sig["atr"])
-    assert p.total_margin == cli.PORTFOLIO.guardrail_margin_forced and p.leverage == cli.PORTFOLIO.guardrail_lev_forced
+    assert p.total_margin == L.MARGIN[cli.PORTFOLIO.name] and p.leverage == L.LEV_MIN
     log = open(os.path.join(d, "learning_log.jsonl")).read().splitlines()
     assert any(json.loads(r).get("ev") == "open" and json.loads(r).get("source") == L.SOURCE for r in log)
     # secondo giro nello stesso quarto d'ora: nessun secondo ingresso (la posizione esiste ed e' in cooldown)
