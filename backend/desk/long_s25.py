@@ -13,8 +13,9 @@ Regola (solo long, candele da 1 ora CHIUSE, ricavate dalle candele da 15 minuti 
 * Ingresso: nella candela da 1 ora successiva, quando il prezzo sta sopra il massimo della candela di segnale ma non
   oltre ``CHASE_ATR`` x ATR sopra di esso (niente inseguimento). Il segnale si ricalcola a ogni giro dalle candele
   (nessuna memoria): dopo un riavvio non si ripete un ingresso gia' fatto.
-* Stop 1,5 x ATR, target 3 x ATR, chiusura a tempo dopo 60 ore. Un'apertura per simbolo; tetto di posizioni S25
-  per portafoglio (``MAX_OPEN``). Oro e argento INCLUSI (decisione dell'utente, 5/11): nei weekend le serie hanno
+* Stop 1,5 x ATR, target 3 x ATR, chiusura a tempo dopo 60 ore. Un'apertura per simbolo. NESSUN tetto proprio di
+  posizioni S25 (decisione dell'utente, 5/11): usa gli slot liberi del portafoglio come le altre aperture e non e'
+  obbligatorio riempirli; il tetto resta quello del motore (``Limits.max_open``). Oro e argento INCLUSI (decisione dell'utente, 5/11): nei weekend le serie hanno
   buchi, ``closed_hours`` tiene solo la coda contigua e il VWAP della prima sessione incompleta e' indefinito, quindi
   li' i segnali sono semplicemente meno (nessun segnale falso).
 * Dimensione (decisione dell'utente, 5/11): margine ``MARGIN`` per portafoglio (Falco 100 $, Toro 350 $: i tetti per
@@ -46,7 +47,6 @@ TARGET_ATR = 3.0
 CHASE_ATR = 0.5                      # massimo scostamento sopra il trigger, in ATR (mia scelta, da confermare)
 MAX_HOLD_MS = 60 * H1
 COOLDOWN_MS = H1                     # come MEDIO_COOLDOWN_MS di cli.py
-MAX_OPEN = {"hawk": 3, "bull": 1}    # posizioni S25 contemporanee per portafoglio (mia scelta, da confermare)
 EXCLUDED: frozenset = frozenset()    # nessun simbolo escluso: oro e argento inclusi per decisione dell'utente
 MARGIN = {"hawk": 100.0, "bull": 350.0}      # margine per posizione S25 ($), uguale al tetto per trade del portafoglio
 LEV_MIN = 15
@@ -219,12 +219,8 @@ def step(acc, state: dict, candles_map: dict, prices: dict, now_ms: int, portfol
         return report
     last_open = state.setdefault("last_open_ms", {})
     name = getattr(portfolio, "name", "")
-    cap = MAX_OPEN.get(name, 0)
     for sym, arr in candles_map.items():
         if _base(sym) in EXCLUDED or sym in acc.positions:
-            continue
-        if len(owned(acc.positions)) >= cap:
-            report["skipped"][sym] = "tetto_s25"
             continue
         try:
             sig = signal(closed_hours(arr, now_ms))
@@ -237,6 +233,9 @@ def step(acc, state: dict, candles_map: dict, prices: dict, now_ms: int, portfol
                 continue
             if now_ms - last_open.get(sym, 0) < COOLDOWN_MS:
                 report["skipped"][sym] = "cooldown"
+                continue
+            if name not in MARGIN:
+                report["skipped"][sym] = "portafoglio_sconosciuto"
                 continue
             margin = min(MARGIN[name], portfolio.limits.max_margin_trade)
             lev = leverage_for(name, sig, float(px))

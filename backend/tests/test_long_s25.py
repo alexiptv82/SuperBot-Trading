@@ -420,27 +420,41 @@ def test_step_trades_gold_and_silver_like_any_other_symbol():
     assert all(p.source == L.SOURCE and p.leverage == 15 and p.total_margin == 100.0 for p in acc.positions.values())
 
 
-def test_step_caps_s25_positions_per_portfolio():
-    names = ["AAA", "BBB", "CCC", "DDD"]
+def test_step_has_no_s25_specific_cap_and_uses_free_slots_up_to_the_engine_limit():
+    names = ["AAA", "BBB", "CCC", "DDD", "EEE"]
     cmap = {n: A15.copy() for n in names}
     px = {n: SIG_TRIGGER + 0.05 for n in names}
     acc = PaperAccount(Limits())
     out, _ = run_step(acc, {}, cmap, px, NOW_STEP, portfolio=port("hawk"))
-    assert out["opened"] == ["AAA", "BBB", "CCC"] and out["skipped"]["DDD"] == "tetto_s25"
-    acc = PaperAccount(Limits())
-    out, _ = run_step(acc, {}, cmap, px, NOW_STEP, portfolio=port("bull"))
-    assert out["opened"] == ["AAA"] and out["skipped"]["BBB"] == "tetto_s25"
-    acc = PaperAccount(Limits())
-    out, _ = run_step(acc, {}, cmap, px, NOW_STEP, portfolio=port("altro"))
-    assert not out["opened"]
+    assert out["opened"] == names                              # piu' di 3: nessun tetto proprio di S25
+    p = port("bull")
+    p.limits = Limits(max_open=3)
+    acc = PaperAccount(p.limits)
+    out, _ = run_step(acc, {}, cmap, px, NOW_STEP, portfolio=p)
+    assert out["opened"] == ["AAA", "BBB", "CCC"]              # il tetto e' quello del motore
+    assert out["skipped"]["DDD"] == "rifiutata:troppe posizioni aperte" and "EEE" in out["skipped"]
 
 
-def test_step_other_positions_do_not_count_toward_the_s25_cap():
+def test_step_does_not_have_to_fill_every_slot():
     acc = PaperAccount(Limits())
-    for s in ("P1", "P2", "P3"):
+    out, _ = run_step(acc, {}, {"ETH": A15.copy(), "SOL": to_15m(hours([], [100.0, 99.0, 98.0], day=3))},
+                      {"ETH": SIG_TRIGGER + 0.05, "SOL": 98.0}, NOW_STEP)
+    assert out["opened"] == ["ETH"] and list(acc.positions) == ["ETH"]
+
+
+def test_step_other_positions_and_s25_positions_share_the_same_slots():
+    acc = PaperAccount(Limits(max_open=3))
+    for s in ("P1", "P2"):
         acc.open(s, -1, 60.0, 15, 100.0, 101.0, None, 1, {}, source="rules")
-    out, _ = run_step(acc, {}, {"ETH": A15.copy()}, {"ETH": SIG_TRIGGER + 0.05}, NOW_STEP)
-    assert out["opened"] == ["ETH"]
+    out, _ = run_step(acc, {}, {"ETH": A15.copy(), "SOL": A15.copy()},
+                      {"ETH": SIG_TRIGGER + 0.05, "SOL": SIG_TRIGGER + 0.05}, NOW_STEP, portfolio=port("hawk"))
+    assert out["opened"] == ["ETH"] and out["skipped"]["SOL"].startswith("rifiutata:")
+
+
+def test_step_unknown_portfolio_opens_nothing():
+    acc = PaperAccount(Limits())
+    out, _ = run_step(acc, {}, world(), {"ETH": SIG_TRIGGER + 0.05}, NOW_STEP, portfolio=port("altro"))
+    assert not out["opened"] and out["skipped"]["ETH"] == "portafoglio_sconosciuto"
 
 
 def test_step_in_pause_or_halt_opens_nothing_but_still_closes_on_time():
