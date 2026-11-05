@@ -8,7 +8,7 @@
 
 **Decisioni utente (21:36).** Per-trade 20% di 100$ = 0.02 già in vigore: nessun cambio. Giornaliero 35%/50%: applicato. Fermare il bot dal telefono: prompt ChatGPT terzo giro (Pausa/Riprendi + banner).
 
-**Test.** 145 nuovi + 113 esistenti verdi. Mutation 18/18. Commit `e25c8dd`, PR #57 aggiornata.
+**Test.** Suite completa: 6117 pass, 3 xfailed (4 fallimenti `test_superbot.py` per rete, preesistenti). 145 test nuovi sulla perdita giornaliera. Mutation 18/18. Commit `e25c8dd`, PR #57 aggiornata. ZIP e prompt ChatGPT (terzo giro: Pausa/Riprendi + banner perdita) consegnati all'utente. Pacchetto di rilascio A4 aggiornato con perdita giornaliera, soglie e Telegram.
 
 ---
 
