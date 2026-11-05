@@ -21,5 +21,7 @@
   "cycle_minutes": 60,
   "input_usd_per_million_tokens": "0.30",
   "output_usd_per_million_tokens": "1.20",
-  "daily_cap_usd": "0.75"
+  "daily_cap_usd": "0.75",
+  "daily_loss_warn_fraction": "0.35",
+  "daily_loss_halt_fraction": "0.50"
 }

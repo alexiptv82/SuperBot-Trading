@@ -44,8 +44,10 @@ from backend.v3.knowledge.library import load_library
 from backend.v3.lab_tools.fetch_candles import http_json
 from backend.v3.outcomes import extract_outcomes
 from backend.v3.risk import RiskPolicy
+from backend.v3.runner.alerts import telegram_sender
 from backend.v3.runner.config import RunnerConfig, default_config_path, load_runner_config
 from backend.v3.runner.contracts import ContractRules
+from backend.v3.runner.daily_loss import DailyLossGuard, evaluate_daily_loss
 from backend.v3.runner.cycle import CycleBars, CycleReport, MarketEntryAnalyst, PORTFOLIO_ID, run_brain_cycle
 from backend.v3.runner.exits import load_default_policy
 from backend.v3.runner.feed import CandleStore, last_minute_close, minute_fetcher
@@ -117,7 +119,8 @@ class Built:
 def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                  get_json: Callable[[str], object] = http_json,
                  inner_transport: Optional[Transport] = None,
-                 view_params: Optional[MarketViewParams] = None) -> Built:
+                 view_params: Optional[MarketViewParams] = None,
+                 alert_send: Optional[Callable[[str], bool]] = None) -> Built:
     """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test."""
     journal = EventJournal(str(data_dir / "journal.db"))
     journal.init_schema()
@@ -167,8 +170,15 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                                 price_of=lambda sym, now: last_minute_close(sym, now, get_json),
                                 fee_bps=config.fee_bps, now_ms=now_ms)
 
+    daily_loss = DailyLossGuard(
+        data_dir=data_dir, send=alert_send, warn_fraction=config.daily_loss_warn, halt_fraction=config.daily_loss_halt,
+        evaluate=lambda now_ms: evaluate_daily_loss(
+            journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id, initial_equity=config.initial_equity,
+            now_ms=now_ms, price_of=lambda sym, now: last_minute_close(sym, now, get_json),
+            warn_fraction=config.daily_loss_warn, halt_fraction=config.daily_loss_halt))
+
     runner = Runner(run_id=run_id, data_dir=data_dir, run_monitor=run_monitor, run_cycle=run_cycle, halted=halted,
-                    cycle_ms=config.cycle_ms, run_commands=run_commands)
+                    cycle_ms=config.cycle_ms, run_commands=run_commands, daily_loss=daily_loss)
     return Built(runner, journal, ledger, metered, mandate)
 
 
@@ -211,7 +221,7 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     data_dir.mkdir(parents=True, exist_ok=True)
     try:
         built = build_runner(data_dir=data_dir, run_id=a.run_id, config=config, get_json=get_json,
-                             inner_transport=inner_transport)
+                             inner_transport=inner_transport, alert_send=telegram_sender(environ))
     except ValueError:
         print("setup_invalid", file=sys.stderr)
         return 2

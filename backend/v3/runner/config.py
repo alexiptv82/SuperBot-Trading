@@ -13,6 +13,9 @@ sbagliati, valori fuori intervallo -> ``ValueError("invalid_config")`` (nessun d
   token di ragionamento** (se non basta la risposta e' troncata, ``finish_reason`` ``length``, nessuna decisione).
 * ``cycle_minutes``: ogni quanti minuti il Brain decide (multiplo di 15; 60 = ogni ora, scelta dell'utente 5/11). Le uscite
   si controllano comunque ogni minuto.
+* ``daily_loss_warn_fraction`` / ``daily_loss_halt_fraction``: perdita giornaliera (giorno UTC, sul capitale di inizio
+  giornata) a cui il Brain avvisa e a cui smette di aprire (decisione dell'utente 5/11: 35 % e 50 %; vedi ``daily_loss.py``).
+  Fuori dal mandato di rischio (non cambiano il suo ``policy_hash``).
 * ``daily_cap_usd``: tetto di spesa giornaliero (giorno UTC) per il modello; i prezzi per milione di token servono solo
   a stimare la spesa (sempre al prezzo del token NON in cache: stima prudente).
 """
@@ -31,7 +34,8 @@ _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}USDT$")
 _MODEL_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 _KEYS = {"schema_version", "symbols", "initial_equity", "slippage_bps", "fee_bps", "maintenance_fraction",
          "risk_policy", "model", "thinking", "reasoning_effort", "max_tokens", "cycle_minutes",
-         "input_usd_per_million_tokens", "output_usd_per_million_tokens", "daily_cap_usd"}
+         "input_usd_per_million_tokens", "output_usd_per_million_tokens", "daily_cap_usd",
+         "daily_loss_warn_fraction", "daily_loss_halt_fraction"}
 _THINKING = ("disabled", "omit", "enabled")
 _EFFORTS = ("omit", "low", "high", "max")
 MIN_REASONING_TOKENS = 1024          # con il ragionamento un tetto piu' basso troncherebbe sempre la risposta
@@ -55,6 +59,8 @@ class RunnerConfig:
     input_usd_per_million: Decimal
     output_usd_per_million: Decimal
     daily_cap_usd: Decimal
+    daily_loss_warn: Decimal = Decimal("0.35")
+    daily_loss_halt: Decimal = Decimal("0.50")
 
     @property
     def cycle_ms(self) -> int:
@@ -154,6 +160,10 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
     cap = _dec(data["daily_cap_usd"], Decimal("0"), Decimal("1000"), lo_open=True)
     if cap * 1_000_000 != (cap * 1_000_000).to_integral_value():
         _fail()
+    warn = _dec(data["daily_loss_warn_fraction"], Decimal("0"), Decimal("1"), lo_open=True, hi_open=True)
+    halt = _dec(data["daily_loss_halt_fraction"], Decimal("0"), Decimal("1"), lo_open=True)
+    if not warn < halt:
+        _fail()
     return RunnerConfig(
         symbols=tuple(syms), initial_equity=equity, slippage_bps=slip,
         fee_bps=_dec(data["fee_bps"], Decimal("0"), Decimal("100")),
@@ -162,7 +172,7 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
         max_tokens=max_tokens, cycle_minutes=cycle,
         input_usd_per_million=_dec(data["input_usd_per_million_tokens"], Decimal("0"), Decimal("1000")),
         output_usd_per_million=_dec(data["output_usd_per_million_tokens"], Decimal("0"), Decimal("1000")),
-        daily_cap_usd=cap)
+        daily_cap_usd=cap, daily_loss_warn=warn, daily_loss_halt=halt)
 
 
 def default_config_path() -> Path:

@@ -19,7 +19,11 @@ Regole:
   e' stata ancora servita. **Fermo** (``halted``): come la pausa ma deciso dal programma (es. tetto di spesa).
 * **Battito** ``heartbeat.json`` riscritto a ogni tick in modo atomico: ``ts_ms``, ``cycle`` (giri completati da
   questo processo), ``state`` (running|paused|halted), ``run_id``, ``last_error`` (solo codici brevi, mai
-  testi liberi, chiavi o importi) o ``null``.
+  testi liberi, chiavi o importi) o ``null``. Con il freno di perdita giornaliera (``daily_loss.py``) il battito porta
+  anche ``daily_loss_level`` (ok|warn|halt|unknown) e ``daily_loss_pct`` (perdita di oggi in %, una cifra decimale).
+* **Perdita giornaliera**: valutata a ogni tick DOPO comandi e monitor (una chiusura appena avvenuta conta subito);
+  al livello ``halt`` lo stato e' ``halted`` (``halted:daily_loss``, come il tetto di spesa: niente giri del Brain,
+  uscite e comandi proseguono); se la valutazione fallisce, ``halted:daily_loss_check_failed``.
 """
 from __future__ import annotations
 
@@ -32,6 +36,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from backend.v3.runner.cycle import CycleReport
+from backend.v3.runner.daily_loss import DailyLoss, pct_text
 from backend.v3.runner.manual_close import ManualCloseReport
 from backend.v3.runner.monitor import MonitorReport
 
@@ -58,7 +63,8 @@ class Runner:
     def __init__(self, *, run_id: str, data_dir: Path, run_monitor: Callable[[int], MonitorReport],
                  run_cycle: Callable[[int, int], CycleReport], halted: Callable[[], Optional[str]] = lambda: None,
                  cycle_delay_ms: int = 20_000, cycle_ms: int = CYCLE_MS,
-                 run_commands: Optional[Callable[[int], Optional[ManualCloseReport]]] = None):
+                 run_commands: Optional[Callable[[int], Optional[ManualCloseReport]]] = None,
+                 daily_loss: Optional[Callable[[int], DailyLoss]] = None):
         if type(run_id) is not str or not _RUN_ID_RE.match(run_id):
             raise ValueError("invalid_run_id")
         if not isinstance(data_dir, Path) or not data_dir.is_dir():
@@ -71,6 +77,7 @@ class Runner:
         self.pause_path, self.heartbeat_path = data_dir / "pause.flag", data_dir / "heartbeat.json"
         self._monitor, self._cycle, self._halted, self._delay = run_monitor, run_cycle, halted, cycle_delay_ms
         self._commands, self._cycle_ms = run_commands, cycle_ms
+        self._daily_loss = daily_loss
         self._last_minute = -1
         self._last_slot = -1
         self.cycles = 0
@@ -84,10 +91,6 @@ class Runner:
             halt_reason = self._halted()
         except Exception:
             halt_reason = "halt_check_failed"                  # nel dubbio: niente nuove aperture
-        state = "halted" if halt_reason else ("paused" if self.pause_path.exists() else "running")
-        if halt_reason:
-            errors.append(_short(f"halted:{halt_reason}"))
-
         monitor_report = cycle_report = manual_report = None
         if self._commands is not None:
             try:
@@ -106,6 +109,22 @@ class Runner:
             except Exception:
                 errors.append("monitor_failed")
 
+        # la perdita di oggi si valuta DOPO comandi e monitor: una chiusura appena avvenuta (stop, chiusura manuale)
+        # conta subito e non puo' lasciare aprire una nuova posizione nello stesso tick
+        loss_info: Optional[dict] = None
+        if self._daily_loss is not None:
+            try:
+                loss = self._daily_loss(now_ms)
+                loss_info = {"daily_loss_level": loss.level, "daily_loss_pct": pct_text(loss.loss_fraction)}
+                if loss.level == "halt":
+                    halt_reason = halt_reason or "daily_loss"
+            except Exception:
+                loss_info = {"daily_loss_level": "unknown"}
+                halt_reason = halt_reason or "daily_loss_check_failed"   # nel dubbio: niente nuove aperture
+        state = "halted" if halt_reason else ("paused" if self.pause_path.exists() else "running")
+        if halt_reason:
+            errors.insert(0, _short(f"halted:{halt_reason}"))
+
         slot = now_ms // self._cycle_ms
         if slot > self._last_slot and now_ms - slot * self._cycle_ms >= self._delay and state == "running":
             self._last_slot = slot                              # servita comunque: un guasto non si ripete nella candela
@@ -118,12 +137,16 @@ class Runner:
                 errors.append("cycle_failed")
 
         last_error = ";".join(errors)[:200] if errors else None
-        self._write_heartbeat(now_ms, state, last_error)
+        self._write_heartbeat(now_ms, state, last_error, loss_info)
         return TickResult(state, monitor_report, cycle_report, last_error, manual_report)
 
-    def _write_heartbeat(self, now_ms: int, state: str, last_error: Optional[str]) -> None:
-        body = json.dumps({"ts_ms": now_ms, "cycle": self.cycles, "state": state, "run_id": self.run_id,
-                           "last_error": last_error}, sort_keys=True)
+    def _write_heartbeat(self, now_ms: int, state: str, last_error: Optional[str],
+                         extra: Optional[dict] = None) -> None:
+        beat = {"ts_ms": now_ms, "cycle": self.cycles, "state": state, "run_id": self.run_id,
+                "last_error": last_error}
+        if extra:
+            beat.update(extra)
+        body = json.dumps(beat, sort_keys=True)
         tmp = None
         try:
             fd, tmp = tempfile.mkstemp(dir=self.data_dir, prefix=".heartbeat.", suffix=".tmp")
