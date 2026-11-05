@@ -1,0 +1,46 @@
+name: Laboratorio P10 - stampa del rapporto di un run gia' fatto (sola lettura)
+
+# NON rilancia il laboratorio e NON scarica dati di mercato: scarica l'artefatto `lab-p10-risultati` di un run
+# precedente di `lab-p10.yml` e ne stampa il rapporto nel log (utile perche' l'artefatto non e' raggiungibile
+# da tutti gli ambienti di lavoro). Nessun segreto, nessun deploy, nessuna scrittura nel repository.
+
+on:
+  push:
+    branches: [work/v3-p10-lab-chatgpt-20261105]
+    paths:
+      - ".github/workflows/lab-p10-report.yml"
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "ID del run di lab-p10.yml di cui stampare il rapporto"
+        required: false
+        default: "41974342514"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Scarica l'artefatto del run indicato
+        uses: actions/download-artifact@v4
+        with:
+          name: lab-p10-risultati
+          path: art
+          run-id: ${{ inputs.run_id || '41974342514' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Elenco file
+        run: |
+          find art -type f -printf '%s %p\n' | sort -k2
+
+      - name: Metadati dei dati
+        run: |
+          for f in art/lab_data/fetch_meta.json; do echo "== $f"; cat "$f"; echo; done
+
+      - name: Rapporto Markdown
+        run: |
+          cat art/lab_out/lab_report.md
