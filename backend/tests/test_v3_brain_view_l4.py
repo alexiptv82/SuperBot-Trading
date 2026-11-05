@@ -19,7 +19,7 @@ from backend.v3.brain_view.view import build_scoreboard
 from backend.v3.brain_view.deepseek_l4 import DeepSeekL4Analyst, SYSTEM_PROMPT
 from backend.v3.brain_f2.contracts import MarketContext, DecisionKind
 from backend.v3.brain_f3.providers import ProviderUnavailable, TransportResponse
-from backend.v3.knowledge.library import load_library, testable_now, DATA_CANDLES, FAMILIES, HOLDING_STYLES, REGIMES as KB_REGIMES
+from backend.v3.knowledge.library import load_library, testable_now as _testable_now, DATA_CANDLES, FAMILIES, HOLDING_STYLES, REGIMES as KB_REGIMES
 from backend.v3.learning.expectancy import cell_stats
 from backend.v3.outcomes import REGIMES, TradeOutcome
 
@@ -190,7 +190,7 @@ def test_menu_full_library():
     actual = build_menu(library)
     expected = [*(f"S{i:02d}" for i in range(1, 10)), "S15", "S20", "S21"]
     assert [m.strategy_id for m in actual] == expected
-    assert [s.id for s in library.strategies if testable_now(s) == DATA_CANDLES] == expected
+    assert [s.id for s in library.strategies if _testable_now(s) == DATA_CANDLES] == expected
     assert menu_ids(actual) == frozenset(expected)
     for item in actual:
         assert item.family in FAMILIES and item.holding_style in HOLDING_STYLES
@@ -677,8 +677,18 @@ def test_view_explicit_state_ranking():
 
 
 def test_view_invalid_outcomes_second_error_and_order():
-    x = [mk(), mk(net_bp=D("NaN"))]
+    # il secondo elemento non e' un TradeOutcome: il passo 1 (tipi) viene prima di regime e params
+    x = [mk(), object()]
     assert_code("invalid_outcomes", lambda: build_scoreboard(x, regime="BAD", params=object()))
+
+
+def test_view_nan_outcome_is_found_by_cell_stats_after_regime_and_params():
+    # un TradeOutcome costruito a mano con NaN e' del tipo giusto: il passo 1 lo lascia passare,
+    # lo trova cell_stats (passo 4); con un regime sbagliato esce invalid_regime, non invalid_outcomes
+    x = [mk(), mk(net_bp=D("NaN"))]
+    assert_code("invalid_regime", lambda: build_scoreboard(x, regime="BAD", params=params()))
+    assert_code("invalid_params", lambda: build_scoreboard(x, regime="TRENDING", params=object()))
+    assert_code("invalid_outcomes", lambda: build_scoreboard(x, regime="TRENDING", params=params()))
 
 
 def test_adapter_rejects_invalid_menu_constructor():
@@ -755,3 +765,33 @@ def test_view_numeric_order_within_same_status():
 def test_view_truncated_equal_boundary():
     x = build_scoreboard(sample(), regime="TRENDING", params=params(max_cells=6))
     assert len(x["cells"]) == 6 and x["n_cells"] == 6 and x["truncated"] is False
+
+
+# -- Aggiunti da Claude dopo la prova di mutazione (M01, M38) -------------------
+def test_params_bytearray_with_valid_json_is_rejected_by_type_alone():
+    # un caso cattivo di tipo deve essere numericamente valido: con il JSON giusto dentro, solo il
+    # controllo del tipo puo' rifiutarlo (bytearray ha .decode e il resto del file sarebbe valido)
+    good = PARAMS_FILE.read_bytes()
+    assert load_view_params(good).max_cells == 12
+    assert_code("invalid_params", lambda: load_view_params(bytearray(good)))
+    assert_code("invalid_params", lambda: load_view_params(memoryview(good)))
+
+
+def test_view_status_rank_beats_mean_for_every_adjacent_pair(monkeypatch):
+    # medie costruite al contrario dell'ordine dei ranghi: se un rango viene scambiato, l'ordine cambia
+    import backend.v3.brain_view.view as v
+    from backend.v3.learning.expectancy import CellStats
+
+    def cs(sid, status, mean):
+        low = None if status == "insufficient" else D("-1")
+        high = None if status == "insufficient" else D("1")
+        return CellStats(key=(sid, "library", 1), n=5, n_days=3, mean_net_bp=D(mean),
+                         median_net_bp=D(mean), mean_costs_bp=D("12"), mean_r=None,
+                         win_rate=D("0.5"), ci_low=low, ci_high=high, status=status)
+
+    crafted = (cs("S04", "insufficient", "-10"), cs("S03", "inconclusive", "-20"),
+               cs("S02", "negative", "-30"), cs("S01", "positive", "-40"))
+    monkeypatch.setattr(v, "cell_stats", lambda *a, **kw: crafted)
+    out = build_scoreboard([mk()], regime="TRENDING", params=params())
+    assert [c["status"] for c in out["cells"]] == ["positive", "negative", "inconclusive", "insufficient"]
+    assert [c["strategy_id"] for c in out["cells"]] == ["S01", "S02", "S03", "S04"]
