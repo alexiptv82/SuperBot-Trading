@@ -9,3 +9,8 @@
 **Prossimo:** nessun deploy senza OK esplicito (regola 1). Il pezzo che manca per far partire l'apprendimento in PAPER è il collegamento (ciclo che chiama il Brain, trasporto vero con tetto di spesa, feed prezzi); poi dare al Brain indicatori e candele nel payload. Dettagli in `claude/f7-avanzamento.md`.
 
 Vedi anche: `diario/2026-11-05_l1_etichetta_strategia_e_l4.md`.
+
+## Aggiornamento 15:00 — secondo pacchetto di ChatGPT
+
+Un solo cambio di codice rispetto alla PR #54: in `view.py` ogni esito è validato (valori finiti, `closed_at_ms` int > 0, `link_status` str) prima di regime e parametri, anche se la selezione lo scarterebbe. Adottato invariato (`ca520bf`); mio test sull'ordine degli errori sostituito e 21 casi di esito ostile aggiunti (`32eb857`); mutazione 15/15; suite 4464 passed (3 failure `fastapi` note). I numeri del suo rapporto (suite incompleta) non sostituiscono quelli della PR.
+

@@ -1,3 +1,14 @@
+## 05/11 (15:00) — L4: SECONDO PACCHETTO DI CHATGPT REVISIONATO E ADOTTATO NELL'UNICO PUNTO CHE CAMBIAVA (PR #54, 4464 PASS)
+
+**Claude Sonnet 5.5 — coordinatore** · codice: ChatGPT (Modalità B) · nessun deploy, nessun merge
+
+ChatGPT ha rifatto il giro dopo aver ricevuto un ZIP del repository («L4 corretto e testato»). Confronto con la PR #54: 5 file del modulo identici, i test uguali ai miei salvo un alias e un caso già coperto; **un solo cambio di codice** in `view.py`: ogni esito viene validato (valori finiti, `closed_at_ms` int > 0, `link_status` str) **prima** di regime e parametri, anche se la selezione lo scarterebbe. Stessa regola di `cell_stats` (P4) e già scritta nel docstring: adottato **invariato** (`ca520bf`). Un mio test non reggeva più (NaN trovato dopo regime e params): sostituito (`32eb857`) con 21 casi di esito ostile fuori selezione e un test su `r_multiple None`. **Mutazione sul blocco nuovo: 15/15 uccisi.** Suite: **4464 passed**, 3 xfailed, 3 failure `fastapi` già note.
+Effetto pratico: un solo record corrotto nel journal fa fallire il tabellone (adattatore: `invalid_scoreboard`, nessun trade) invece di essere ignorato in silenzio: scelta prudente, coerente con P4.
+Il rapporto di ChatGPT dichiara la suite generale «incompleta» (4244 test) e 54/60 mutanti: i numeri autentici sono quelli di questa PR (suite completa 4464, 56/60 dei suoi mutanti con i 4 equivalenti motivati, oracolo indipendente mio su 40 scenari).
+**Prossimo:** attendere la consegna di L5 (`backend/v3/brain_market/`, punto di partenza ora `32eb857`); poi applicazione invariata, verifica snella, PR impilata su #54.
+
+---
+
 ## 05/11 (14:30) — L5 PRONTO PER CHATGPT: IL BRAIN VEDRÀ IL MERCATO (INDICATORI E REGIME SU 15 m / 1 h / 4 h)
 
 **Claude Sonnet 5.5 — coordinatore** · solo documenti, nessun codice nuovo · punto di partenza per ChatGPT: `cab064e` (PR #54)
