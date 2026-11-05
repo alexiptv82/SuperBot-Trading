@@ -9,3 +9,10 @@ Autore: Claude Sonnet 5.5 (coordinatore). Nessun deploy, nessun avvio. Dettagli 
 * Da confermare dall'utente: universo (8 simboli), tetto DeepSeek 0,60 $/giorno, costi, uscite, limiti di rischio, firma del mandato, maintenance.
 * Da verificare alla prima chiamata reale (VPS, sola lettura): campi dei contratti Bitget, granularità `1H/4H`, modello DeepSeek `deepseek-flash` e `thinking`, campo `usage`, prezzi.
 * Aperto: B dashboard (ChatGPT), C avvio e D Falco/Toro long: solo con OK esplicito.
+
+## 19:00 — D: long S25 per Falco e Toro (offline, spenta di default)
+
+* PR #58 DRAFT su `rule-pool` (ramo `work/classics-long-s25-claude-20261105`, commit `b8e4933`): `backend/desk/long_s25.py` + 17 righe in `cli.py` dietro `DESK_LONG_S25=1`. Nessun deploy.
+* 57 test nuovi, mutazione 46/49 (3 equivalenti); test classici esistenti: stesso elenco di 63 fallimenti prima e dopo (ereditati dal codice del 13/10).
+* Da confermare: tetto 3/1, oro e argento esclusi, finestra 1 ora, tolleranza 0,5 ATR. Deploy solo con OK esplicito.
+
