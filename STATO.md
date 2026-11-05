@@ -1,3 +1,15 @@
+## 05/11 (17:15) — ROADMAP DI AVVIO PAPER (BRAIN V3, FALCO E TORO) E VALUTAZIONE DELLE STRATEGIE LONG
+
+**Claude Sonnet 5.5 — coordinatore** · solo documenti, nessun codice nuovo, nessun deploy · richiesta dell'utente (17:05): «scegli tu, il prima possibile, senza saltare i punti importanti; la dashboard è da fare; niente test ripetuti sulle strategie, il test vero è farli lavorare»
+
+**Roadmap** (`claude/roadmap-avvio-paper-v3-2026-11-05.md`): A0 schede S25–S27 + VWAP/EMA9 nella vista (0,5 g) · A1 uscite del Brain: CLOSE + take-profit (oggi il motore rifiuta CLOSE, `close_modify_not_executable_r1`, e la proposta non ha TP) (1 g) · A2 feed candele/prezzi + monitor stop/TP + ciclo 15 min + `heartbeat.json`/`pause.flag` (1–1,5 g) · A3 collegare `transport.py` e `budget.py` (già nel repo) con tetto giornaliero (0,5 g) · A4 prova end-to-end con candele registrate + pacchetto di rilascio (0,5 g) · **B dashboard unificata** (ChatGPT, in parallelo, ~2 g; prompt `claude/prompt-chatgpt-dashboard-unificata-2026-11-05.md`, ZIP di partenza `57f2a5f`) · C backup F0 (strumenti già nel repo) + container separato + avvio PAPER, **con OK esplicito** · D Falco e Toro con la long (2–3 g, **OK al redeploy**). Stime mie. Si ferma: laboratorio, P9b, mutazioni/oracoli sui moduli nuovi, importazione legacy, F8 lungo. Non si taglia: monitor stop/TP, tetto DeepSeek + pausa, backup, costi realistici (12 bp), dashboard.
+**Strategie** (`claude/valutazione-strategie-long-2026-11-05.md`): GitHub non raggiungibile da qui, cifre **non verificate** (quelle degli autori). Sì: S25 EMA9+VWAP 1 h (prima long per Falco/Toro: regole complete, molti trade; evidenza debole: 6,2 giorni, leva 20x, 188+190≠382), S26 stessa regola a 15 m (variante nostra, preferenza dell'utente per i 15 m), S27 pullback verso il VWAP (VWAP Momentum). Nessuna scheda nuova per Donchian 4 h (famiglia di S07, già negativa a 15 m nel lab). Rimandate: Fusion Cipher (EMA233, money flow non nella vista), Apex (serve il giornaliero). Non ora: LightGBM 15 m (modello, non regola; fragile ai costi), Scalp Hidden V 5 m. Esclusi: hyper-hedge, RSI Momentum.
+**Decisioni all'utente:** universo e budget DeepSeek del Brain (proposta: 8 simboli, ~10–20 $/mese; 27 simboli ~30–65 $/mese, prezzi del 20/10 da riverificare), costi PAPER (12 bp + slippage?), OK di deploy a parte per C e D.
+**Stato dei classici:** secondo il diario del 2/11 Falco e Toro restano attivi e invariati (non verificato oggi sulla VPS).
+**Prossimo:** A1 (uscite) e A2 (collegamento) sul ramo impilato su #55; dashboard a ChatGPT appena l'utente gli passa prompt e ZIP.
+
+---
+
 ## 05/11 (17:00) — L5 FATTO: IL BRAIN VEDE IL MERCATO (PR #55 DRAFT, IMPILATA SU #54, 4783 PASS)
 
 **Claude Sonnet 5.5 — coordinatore** · modulo: codice di **ChatGPT** (Modalità B: applicato invariato `8dcf3e5`; ChatGPT non ha potuto clonare il repo, ha lavorato su una ricostruzione locale) · nessun deploy, nessun merge
