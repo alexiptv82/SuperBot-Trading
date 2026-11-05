@@ -270,7 +270,7 @@ NOW_IN = 11 * H1 + 20_000                                 # dentro l'ora success
 def test_entry_plan_levels_and_window():
     plan, why = L.entry_plan(SIG, 100.4, NOW_IN)
     assert why == "ok"
-    assert plan["sl"] == pytest.approx(100.4 - 1.5 * 2.0) and plan["tp"] == pytest.approx(100.4 + 3.0 * 2.0)
+    assert plan["sl"] == pytest.approx(100.4 - 1.5 * 2.0) and plan["tp"] == pytest.approx(100.4 + 1.5 * 2.0)
     assert L.entry_plan(SIG, 100.4, 11 * H1)[1] == "ok"                  # primo istante utile
     assert L.entry_plan(SIG, 100.4, 11 * H1 - 1)[1] == "segnale_scaduto"  # la barra di segnale non e' chiusa
     assert L.entry_plan(SIG, 100.4, 12 * H1 - 1)[1] == "ok"
@@ -347,7 +347,7 @@ def test_step_opens_long_with_expected_levels_and_records_it():
     assert out["opened"] == ["ETH"]
     p = acc.positions["ETH"]
     assert p.side == 1 and p.source == L.SOURCE and p.leverage == 15 and p.total_margin == 100.0
-    assert p.sl == pytest.approx(px - 1.5 * SIG_ATR) and p.tp == pytest.approx(px + 3.0 * SIG_ATR)
+    assert p.sl == pytest.approx(px - 1.5 * SIG_ATR) and p.tp == pytest.approx(px + 1.5 * SIG_ATR)
     assert p.trade_type == "medio" and p.open_ms == NOW_STEP
     assert state["last_open_ms"]["ETH"] == NOW_STEP
     assert len(rec.opened) == 1 and rec.opened[0][0] == "ETH" and rec.opened[0][7] == L.SOURCE
@@ -467,7 +467,7 @@ def test_step_in_pause_or_halt_opens_nothing_but_still_closes_on_time():
         assert out["closed"] == ["SOL"] and not acc.positions and len(rec.closed) == 1
 
 
-def test_step_closes_on_time_after_exactly_sixty_hours_not_before():
+def test_step_closes_on_time_after_exactly_twelve_hours_not_before():
     acc = PaperAccount(Limits())
     acc.open("SOL", 1, 60.0, 15, 100.0, 98.0, 106.0, 5_000, {}, source=L.SOURCE)
     out, rec = run_step(acc, {}, {}, {"SOL": 100.5}, 5_000 + L.MAX_HOLD_MS - 1)
@@ -479,14 +479,14 @@ def test_step_closes_on_time_after_exactly_sixty_hours_not_before():
     assert rec.notes_c[0][0] == "SOL" and rec.notes_c[0][1] == r["net"] and rec.notes_c[0][3] == r["why"]
 
 
-def test_time_exit_is_sixty_real_hours():
-    sixty_h = 60 * 3_600_000
-    assert L.MAX_HOLD_MS == sixty_h
+def test_time_exit_is_twelve_real_hours():
+    twelve_h = 12 * 3_600_000
+    assert L.MAX_HOLD_MS == twelve_h
     acc = PaperAccount(Limits())
     acc.open("SOL", 1, 60.0, 15, 100.0, 98.0, 106.0, 7_000, {}, source=L.SOURCE)
-    run_step(acc, {}, {}, {"SOL": 100.5}, 7_000 + sixty_h - 1)
+    run_step(acc, {}, {}, {"SOL": 100.5}, 7_000 + twelve_h - 1)
     assert "SOL" in acc.positions
-    run_step(acc, {}, {}, {"SOL": 100.5}, 7_000 + sixty_h)
+    run_step(acc, {}, {}, {"SOL": 100.5}, 7_000 + twelve_h)
     assert "SOL" not in acc.positions
 
 
@@ -666,7 +666,7 @@ def test_full_cycle_with_switch_on_opens_s25_long(sandbox, monkeypatch):
     p = acc.positions["ETH"]
     assert p.source == L.SOURCE and p.side == 1 and p.open_ms == now
     assert p.sl < p.entry < p.tp
-    assert p.sl == pytest.approx(px - 1.5 * sig["atr"]) and p.tp == pytest.approx(px + 3.0 * sig["atr"])
+    assert p.sl == pytest.approx(px - 1.5 * sig["atr"]) and p.tp == pytest.approx(px + 1.5 * sig["atr"])
     assert p.total_margin == L.MARGIN[cli.PORTFOLIO.name] and p.leverage == L.LEV_MIN
     log = open(os.path.join(d, "learning_log.jsonl")).read().splitlines()
     assert any(json.loads(r).get("ev") == "open" and json.loads(r).get("source") == L.SOURCE for r in log)
@@ -726,7 +726,7 @@ def test_full_cycle_rules_close_cannot_close_an_s25_position_only_when_switch_on
     assert "ETH" not in acc.positions and acc.closed[-1]["why"] == "chiusura Claude"
 
 
-def test_full_cycle_time_exit_closes_s25_position_after_sixty_hours(sandbox, monkeypatch):
+def test_full_cycle_time_exit_closes_s25_position_after_twelve_hours(sandbox, monkeypatch):
     cli, d = sandbox
     a15, sig = _cycle_candles()
     _install(cli, monkeypatch, a15)

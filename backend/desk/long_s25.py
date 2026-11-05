@@ -13,7 +13,7 @@ Regola (solo long, candele da 1 ora CHIUSE, ricavate dalle candele da 15 minuti 
 * Ingresso: nella candela da 1 ora successiva, quando il prezzo sta sopra il massimo della candela di segnale ma non
   oltre ``CHASE_ATR`` x ATR sopra di esso (niente inseguimento). Il segnale si ricalcola a ogni giro dalle candele
   (nessuna memoria): dopo un riavvio non si ripete un ingresso gia' fatto.
-* Stop 1,5 x ATR, target 3 x ATR, chiusura a tempo dopo 60 ore. Un'apertura per simbolo. NESSUN tetto proprio di
+* Stop 1,5 x ATR, target 1,5 x ATR, chiusura a tempo dopo 12 ore. Un'apertura per simbolo. NESSUN tetto proprio di
   posizioni S25 (decisione dell'utente, 5/11): usa gli slot liberi del portafoglio come le altre aperture e non e'
   obbligatorio riempirli; il tetto resta quello del motore (``Limits.max_open``). Oro e argento INCLUSI (decisione dell'utente, 5/11): nei weekend le serie hanno
   buchi, ``closed_hours`` tiene solo la coda contigua e il VWAP della prima sessione incompleta e' indefinito, quindi
@@ -21,7 +21,7 @@ Regola (solo long, candele da 1 ora CHIUSE, ricavate dalle candele da 15 minuti 
 * Dimensione (decisione dell'utente, 5/11): margine ``MARGIN`` per portafoglio (Falco 100 $, Toro 350 $: i tetti per
   trade dei portafogli). Leva: forbice dell'utente 15-35 (Falco) e 15-45 (Toro) in ``LEV_MIN``/``LEV_MAX``; il motore
   applica anche il tetto del simbolo (BTC, oro, argento 45x; ETH 30x; altri 25x), il controllo stop-contro-liquidazione,
-  lo stop giornaliero e gli altri limiti. Regola di scelta della leva dentro la forbice: ``leverage_for`` (da confermare).
+  lo stop giornaliero e gli altri limiti. Regola di scelta della leva dentro la forbice: ``leverage_for`` = sempre la minima, 15x (decisione dell'utente, 5/11; si alza solo dopo le prime misure).
 
 Le uscite di S25 sono SOLO stop, target e tempo: ``protect`` toglie le chiusure/DCA decise da regole o da Claude sulle
 posizioni S25 (le regole chiuderebbero ogni long quando il punteggio long e' basso, cioe' nei mercati ribassisti).
@@ -43,9 +43,9 @@ DAY = 86_400_000
 EMA_N = 9
 ATR_N = 14
 STOP_ATR = 1.5
-TARGET_ATR = 3.0
+TARGET_ATR = 1.5
 CHASE_ATR = 0.5                      # massimo scostamento sopra il trigger, in ATR (mia scelta, da confermare)
-MAX_HOLD_MS = 60 * H1
+MAX_HOLD_MS = 12 * H1
 COOLDOWN_MS = H1                     # come MEDIO_COOLDOWN_MS di cli.py
 EXCLUDED: frozenset = frozenset()    # nessun simbolo escluso: oro e argento inclusi per decisione dell'utente
 MARGIN = {"hawk": 100.0, "bull": 350.0}      # margine per posizione S25 ($), uguale al tetto per trade del portafoglio
@@ -213,7 +213,7 @@ def step(acc, state: dict, candles_map: dict, prices: dict, now_ms: int, portfol
         if rec:
             report["closed"].append(sym)
             echo(f"[S25 TEMPO] {sym} net {rec['net']:+.2f}$")
-            _safe(notify_close, sym, rec["net"], "S25: 60 ore trascorse", rec["why"])
+            _safe(notify_close, sym, rec["net"], "S25: 12 ore trascorse", rec["why"])
             record_close(state, rec)
     if halt or drain:
         return report
@@ -242,7 +242,7 @@ def step(acc, state: dict, candles_map: dict, prices: dict, now_ms: int, portfol
             feats = {"strategy": STRATEGY_ID, "ema9": round(sig["ema9"], 8), "vwap": round(sig["vwap"], 8),
                      "atr1h": round(sig["atr"], 8), "trigger": sig["trigger"], "signal_open_ms": sig["signal_open_ms"]}
             reason = (f"S25 EMA9 sopra VWAP 1h, rottura {sig['trigger']:.5g}; stop {STOP_ATR} ATR, "
-                      f"target {TARGET_ATR} ATR, max 60 h")
+                      f"target {TARGET_ATR} ATR, max 12 h")
             pos, msg = acc.open(sym, 1, margin, lev, float(px), plan["sl"], plan["tp"],
                                 now_ms, prices, confidence=0, reason=reason, source=SOURCE, trade_type="medio",
                                 features=feats)
