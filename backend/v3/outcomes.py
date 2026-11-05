@@ -54,7 +54,8 @@ from backend.v3.strategy_label import normalize_label
 
 SCHEMA_VERSION = 2   # 2: aggiunti strategy_id / strategy_origin (L1)
 
-EXIT_REASONS = frozenset({"stop", "brain_close", "manual", "liquidation"})
+# Identico a executor.paper_close.CLOSE_REASONS (lo verifica test_v3_runner_exits.py).
+EXIT_REASONS = frozenset({"stop", "brain_close", "manual", "liquidation", "take_profit", "timeout"})
 LINK_STATUSES = ("linked", "unlinked", "dangling", "wrong_decision",
                  "symbol_mismatch", "decision_after_open")
 # Identico a brain_f2.engine._ALLOWED_REGIMES: 4 etichette storiche + 6 del classificatore P8.

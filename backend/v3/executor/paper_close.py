@@ -56,7 +56,8 @@ from backend.v3.events import Event, EventConflict, EventJournal
 from backend.v3.executor.paper import ExecutionError
 
 # Insieme chiuso delle ragioni di chiusura.
-CLOSE_REASONS = frozenset({"stop", "brain_close", "manual", "liquidation"})
+# take_profit e timeout: uscite meccaniche del runner (backend/v3/runner/exits.py).
+CLOSE_REASONS = frozenset({"stop", "brain_close", "manual", "liquidation", "take_profit", "timeout"})
 
 _QUANT = Decimal("0.00000001")
 _MAX_FEE_BPS = Decimal("100")  # 1% per lato: oltre e' quasi certamente un errore di unita'
