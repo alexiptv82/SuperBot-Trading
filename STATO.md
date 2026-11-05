@@ -1,3 +1,17 @@
+## 05/11 (22:30) — FRENO DI PERDITA GIORNALIERA COMPLETO (AVVISO 35 %, STOP 50 %, TELEGRAM) SU PR #57 (`e25c8dd`); NIENTE DEPLOY
+
+**Claude Opus 4.6 — coordinatore** · codice scritto da Claude, solo offline · nessun deploy, nessun merge · su decisione dell'utente (21:36): avviso al 35 %, stop al 50 % della perdita giornaliera
+
+**Cosa.** `daily_loss.py` (nuovo): `evaluate_daily_loss` (realizzato + non realizzato, giorno UTC, guadagni compensano, livello ok/warn/halt). `DailyLossGuard`: cache al minuto, latch dello halt per il giorno, stato su disco, avviso Telegram una volta per livello. `alerts.py` (nuovo): `telegram_sender` — no-op se chiavi mancano, best-effort, timeout 8 s.
+
+**Integrazione.** La perdita si valuta DOPO comandi e monitor (chiusura appena avvenuta blocca nuove aperture nello stesso tick); halt → `halted:daily_loss`, niente giri del Brain, uscite e comandi proseguono. Heartbeat con `daily_loss_level` e `daily_loss_pct`. Config: soglie obbligatorie (0 < warn < halt ≤ 1). Mandato invariato.
+
+**Decisioni utente (21:36).** Per-trade 20% di 100$ = 0.02 già in vigore: nessun cambio. Giornaliero 35%/50%: applicato. Fermare il bot dal telefono: prompt ChatGPT terzo giro (Pausa/Riprendi + banner).
+
+**Test.** 145 nuovi + 113 esistenti verdi. Mutation 18/18. Commit `e25c8dd`, PR #57 aggiornata.
+
+---
+
 ## 05/11 (21:35) — SECONDA CONSEGNA «CHIUDI» DI CHATGPT APPLICATA INVARIATA (PR #61, `186ead8`) + MIE CORREZIONI (`a9044b6`); CI VERDE SULL'ULTIMO COMMIT; NIENTE DEPLOY
 
 **Seconda consegna ChatGPT (base `a5a0c14`, verificata).** La sua patch si applica pulita ad `a5a0c14` e riproduce i suoi 4 file; 7 file sostituiti byte per byte nel commit `186ead8` (commit sopra la prima consegna, nessun force-push). Novità rispetto alla prima: l'esito (`GET close-result`, campo `pending`) tiene conto anche della richiesta già presa in carico dal runner (`.close_request.work`) + un test; «Chiudi» accanto a ogni posizione; motivi di chiusura tradotti (con «tempo scaduto (24 ore)»); intestazione «Monitoraggio».
