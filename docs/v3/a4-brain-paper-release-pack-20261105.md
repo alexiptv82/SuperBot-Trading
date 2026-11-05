@@ -78,6 +78,8 @@ Controlli nelle prime 24–48 ore: battito aggiornato ogni minuto; `last_error` 
 
 Emergenza: creare `pause.flag` nella cartella dati ferma le **nuove** aperture e la spesa del modello (le uscite proseguono); rimuoverlo le riattiva. Il tetto di spesa ferma da solo il Brain (`halted:budget`).
 
+Chiusura manuale (decisione dell'utente: «deve essere inserita»): l'app scrive `close_request.json` nella cartella dati (`{"ts_ms": <ms UTC>, "position_ids": ["<id>", ...]}` oppure `{"ts_ms": <ms UTC>, "all": true}`); il programma lo esegue entro circa 5 secondi, **anche con il Brain in pausa o fermo e senza chiamate al modello**, chiude al prezzo dell'ultimo minuto chiuso con motivo `manual` e scrive `close_result.json` (`status` `done`/`expired`/`invalid_request`, id chiusi, fallimenti con codici brevi). Una richiesta più vecchia di 10 minuti scade. A mano, in emergenza: scrivere quel file con l'ora corrente e gli id delle posizioni aperte (si leggono nel journal o dalla dashboard). Il Brain riconosce l'esito `manual` nel tabellone e non lo copia alla cieca. Il pulsante nell'app è un lavoro a parte (dashboard).
+
 ## 7. Cosa non c'è ancora (volutamente fuori dalla prima versione)
 
 Chiusure parziali, mediazione dell'ingresso, dimensione scelta dal Brain, notizie, MODIFY_STOP, importazione dei trade legacy. Il blocco giornaliero per perdita (`daily_loss_latched`) **non è definito per il Brain**: oggi è sempre spento; il freno vero sono i limiti di rischio per operazione, il margine totale e la soglia minima di equity (450).
