@@ -9,6 +9,12 @@ credentials.json
 __pycache__/
 *.py[cod]
 *.pyc
+*$py.class
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
 
 frontend/node_modules/
 frontend/build/
@@ -24,3 +30,21 @@ backend/__pycache__/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs locali
+*.log
