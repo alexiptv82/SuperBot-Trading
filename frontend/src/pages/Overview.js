@@ -16,7 +16,7 @@ const direction = side => side === 1 ? 'LONG' : side === -1 ? 'SHORT' : '—';
 // Only Brain trade exit reasons are translated; unknown codes never reach the UI.
 const EXIT_REASONS = Object.freeze({
   stop: 'stop', take_profit: 'obiettivo raggiunto',
-  timeout: 'tempo scaduto (24 ore)', manual: 'chiusa da te',
+  timeout: 'tempo scaduto', manual: 'chiusa da te',
   brain_close: 'chiusa dal Brain', liquidation: 'liquidata',
 });
 export const brainExitReason = reason => (

@@ -100,7 +100,7 @@ test('model text is escaped by React', () => {
 
 test.each([
   ['stop', 'stop'], ['take_profit', 'obiettivo raggiunto'],
-  ['timeout', 'tempo scaduto (24 ore)'], ['manual', 'chiusa da te'],
+  ['timeout', 'tempo scaduto'], ['manual', 'chiusa da te'],
   ['brain_close', 'chiusa dal Brain'], ['liquidation', 'liquidata'],
   ['evil_code', 'altro'], ['__proto__', 'altro'], ['toString', 'altro'], [undefined, 'altro'],
 ])('Brain-only exit reason %s displays %s', (reason, label) => {
