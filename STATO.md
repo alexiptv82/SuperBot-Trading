@@ -1,3 +1,15 @@
+## 05/11 (21:35) — SECONDA CONSEGNA «CHIUDI» DI CHATGPT APPLICATA INVARIATA (PR #61, `186ead8`) + MIE CORREZIONI (`a9044b6`); CI VERDE SULL'ULTIMO COMMIT; NIENTE DEPLOY
+
+**Seconda consegna ChatGPT (base `a5a0c14`, verificata).** La sua patch si applica pulita ad `a5a0c14` e riproduce i suoi 4 file; 7 file sostituiti byte per byte nel commit `186ead8` (commit sopra la prima consegna, nessun force-push). Novità rispetto alla prima: l'esito (`GET close-result`, campo `pending`) tiene conto anche della richiesta già presa in carico dal runner (`.close_request.work`) + un test; «Chiudi» accanto a ogni posizione; motivi di chiusura tradotti (con «tempo scaduto (24 ore)»); intestazione «Monitoraggio».
+
+**Mie correzioni sopra (`a9044b6`).** Nei messaggi di esito il simbolo al posto dell'identificativo tecnico (la consegna mostra ancora l'id); «tempo scaduto» **senza** il numero di ore scritto nel codice (invecchierebbe se cambia `max_hold_hours`). Test: `OverviewLabels.test.js` riscritto.
+
+**CI `v3-dashboard-ci` sull'ULTIMO commit `a9044b6` (run 42103828585): verde.** Backend con fastapi: dashboard 16 + chiusura manuale 34 test, 0 saltati (con la prova API → `run_manual_close` vero → chiusura PAPER → esito); suite V3 3617 ok (1 saltato preesistente: oracolo numpy/pandas); Jest 33 test (3 file); build ok. (Il checkpoint di ChatGPT delle 20:50 notava che mancava il collegamento tra la CI dichiarata e l'HEAD: ora c'è, sul commit sopra.) Test locali di ChatGPT: V3 4222 ok, dashboard 50/50.
+
+**La «gara teorica» segnalata da ChatGPT non esiste con questo ordine di controlli.** L'API controlla prima `close_request.json`, poi `.close_request.work`, sotto blocco sulla cartella; il runner passa da richiesta a `.work` con una sola rinomina atomica, e una richiesta nuova esiste solo se l'ha creata l'API (serializzata dal blocco). Quindi non si perde nessuna richiesta; resterebbe possibile solo con un file scritto a mano fuori dall'API nello stesso istante. Non modificato il runner (rispetto dell'incarico e dell'ordine dei controlli).
+
+**Non provato:** app intera con sessione vera, telefono, VPS, Falco/Toro con un bot che dichiara `close_position` (serve #59 rilasciata). **Aperti:** freni di rischio del Brain («20 %», risposta attesa); limite di attesa 30 s e giro sequenziale con ragionamento esteso (punto 5f, misura sulla VPS, decisione all'utente); analisi dei tempi dei classici; C e D solo con OK esplicito.
+
 ## 05/11 (20:40) — PULSANTE «CHIUDI» DI CHATGPT APPLICATO (PR #61 BOZZA, CI VERDE) + DUE RILIEVI MIEI; NIENTE DEPLOY
 
 **Consegna di ChatGPT (secondo giro, modello dichiarato GPT-6).** ZIP «Chiusura manuale»: 4 file della dashboard v1 modificati + 3 nuovi. Verifica: la sua base v1 coincide **byte per byte** con la v1 già applicata (la sua `INTEGRAZIONE.diff` si applica pulita al ramo e riproduce i suoi 4 file). Applicata **invariata** nel commit `73199f0` sul ramo `work/v3-dashboard-chiudi-chatgpt-20261105` (da `a5a0c14`), **PR #61 bozza, base = ramo della #60**.

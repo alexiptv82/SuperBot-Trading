@@ -38,3 +38,10 @@ Autore: Claude Sonnet 5.5 (coordinatore). Nessun deploy, nessun avvio. Dettagli 
 * Corretti in commit mio (`5b37464`): motivi di chiusura in parole, simbolo al posto dell'identificativo, intestazione non più «solo lettura». Errore mio sul formato del file CI, corretto (`df0459c`).
 * Rilievo sul Brain: limite di attesa 30 s per chiamata e giro sequenziale dentro il tick con il ragionamento esteso (battito, chiusura manuale, uscite aspettano il giro). Nulla cambiato; misura nelle prime 24 ore (punto 5f del pacchetto), decisione all'utente. Aggiunto «Collegamento dell'app al Brain» (`3ccef61`).
 * Aperti: freni di rischio («20 %»), consegna «26/7» mai arrivata, analisi tempi classici. Nessun deploy.
+
+## 21:35 — Seconda consegna «Chiudi» di ChatGPT applicata (PR #61)
+
+* Seconda consegna (base `a5a0c14`, patch verificata) applicata invariata in `186ead8`; mie correzioni in `a9044b6` (simbolo negli esiti, «tempo scaduto» senza ore).
+* CI sull'ultimo commit verde: backend con fastapi 16 + 34 (0 saltati, runner vero), suite V3 3617 ok, Jest 33, build ok.
+* La gara teorica segnalata da ChatGPT non c'è (ordine dei controlli + rinomina atomica); runner non toccato.
+* Aperti: freni di rischio («20 %»), misura dei 30 s di attesa con ragionamento esteso, analisi tempi classici. Nessun deploy.
