@@ -389,3 +389,22 @@ PROSSIMO PASSO: revisione PR #61 e verifica sull'HEAD esatto di Action/status, s
 
 Fonti: Library versione 34 e pacchetto/rapporto Dashboard Chiudi; PR #61, ramo e commit; PR #60; messaggi recenti accessibili. Accesso alle chat limitato: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 05/11/2026 21:41 Europe/Rome — PR #61 aggiornata con seconda consegna, HEAD `a9044b6`
+
+FATTO: dopo il checkpoint delle 20:50, la PR #61 DRAFT sul ramo `work/v3-dashboard-chiudi-chatgpt-20261105` è avanzata dall'HEAD `5b374649924aecd8db092803a24e5df307a2f49a` a `a9044b6759da327b44da04f9e7f51e211d44e03f`, restando aperta, mergeable e non unita. Il commit `186ead8b6ad719d6aedbd1af6b6b688bb0e57cee` applica invariata una seconda consegna ChatGPT basata su `a5a0c14`: `.close_request.work` è considerato pendente nell'esito e nello stato UI, il pulsante `Chiudi` è adiacente a ogni posizione, i motivi sono tradotti e la sezione è `Monitoraggio`. Il commit `a9044b6` ripristina simbolo al posto dell'identificativo tecnico, timeout `tempo scaduto` senza ore codificate e test sulla nuova `brainExitReason`.
+
+TEST/RISCONTRO: la PR aggiornata dichiara, sull'HEAD `a9044b6`, backend dashboard **16 PASS** e chiusura manuale **34 PASS**, zero skip e roundtrip con runner reale; suite V3 **3617 PASS, 1 skipped** preesistente per numpy/pandas assenti; frontend Jest **33 PASS** su tre file; build di produzione riuscita. GitHub restituisce tuttavia zero workflow run e zero status associati all'HEAD corrente: i risultati restano evidenza dichiarata nella PR, non Action indipendentemente collegate.
+
+PREPARATO: la PR #61 resta impilata sulla #60, base `a5a0c1462e5129e8fed80c47c93243ad22475c15`. Per Falco/Toro serve il rilascio della capacità `close_position` della PR #59. Restano da provare app completa con sessione reale, mount/cartella dati condivisi, telefono e VPS.
+
+RILASCIATO: nulla. PR #61, #60 e #59 restano DRAFT; nessun merge, deploy, runtime/VPS, avvio bot, wallet, reset o API pagata. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: manca il collegamento verificabile dei risultati ad Action/status dell'HEAD; non risultano prove su sessione reale, telefono, VPS o classici con capacità rilasciata. Resta la gara teorica stretta già registrata sul passaggio `close_request.json` → `.close_request.work`. La proposta dei “sei agenti” non è registrata come avanzamento perché nelle chat accessibili è soltanto concettuale, senza codice, commit, PR o test.
+
+PROSSIMO PASSO: revisionare l'HEAD esatto `a9044b6`; rendere verificabili Action/status; provare in PAPER sessione reale, mount e mobile; mantenere eventuali correzioni in commit separati. Merge, deploy o avvio richiedono OK esplicito separato.
+
+Fonti: Library versione 35; PR #61 e commit `186ead8`/`a9044b6`; PR #60 e #59; messaggi recenti accessibili. Accesso alle chat limitato: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
