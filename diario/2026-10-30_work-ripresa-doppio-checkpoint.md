@@ -366,3 +366,26 @@ PROSSIMO PASSO: applicare invariati file e patch a un checkout esatto di `f8300d
 
 Fonti: Library versione 33 e pacchetto dashboard con rapporto/log/manifesto; messaggi recenti accessibili; ricerche GitHub; ramo `diario`. Accesso alle chat limitato ai messaggi e file recenti disponibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 05/11/2026 20:50 Europe/Rome — Chiusura manuale PAPER su PR #61 DRAFT
+
+FATTO: la consegna Dashboard Chiudi è stata pubblicata sul ramo `work/v3-dashboard-chiudi-chatgpt-20261105`, PR #61 aperta e DRAFT, impilata sulla #60 e non unita. Base `a5a0c1462e5129e8fed80c47c93243ad22475c15`; HEAD `5b374649924aecd8db092803a24e5df307a2f49a`. Commit: `73199f0` consegna ChatGPT invariata; `90e4ce6` e `df0459c` CI/workflow; `5b37464` motivi di chiusura in parole, simbolo al posto dell'identificativo tecnico e intestazione PAPER corretta.
+
+IMPLEMENTATO: pulsanti `Chiudi` e `Chiudi tutte` con conferma. Per Brain, l'API autenticata valida stato/run/journal/posizione e scrive soltanto `close_request.json` atomico; il runner PAPER esistente consuma la richiesta e l'API espone l'esito recente filtrato. Falco/Toro riusano le API esistenti solo quando dichiarano `can_close_position`. Nessun ordine live.
+
+TEST LOCALI CONSEGNA: suite V3 **4222 PASS**; dashboard+chiusura **50/50 PASS** da radice e `/tmp`; quattro file frontend senza errori sintattici; 387 file originari confrontati, 4 modificati, 383 invariati e 3 nuovi. Il rapporto locale non certifica Jest o build.
+
+RISCONTRO PR: la PR dichiara dashboard 16 test + chiusura 33 senza skip, suite V3 **3616 PASS e 1 skipped** preesistente, Jest **34 PASS** e build riuscita, inclusa prova API → runner reale → chiusura PAPER → esito. Le interrogazioni GitHub non restituiscono run/status associati all'HEAD `5b37464`: risultati registrati come evidenza della PR, non come Action indipendentemente riscontrata.
+
+PREPARATO: dipende dalla dashboard #60; Falco/Toro richiedono anche la capacità della #59. Al rilascio vanno configurati `V3_*`, `V3_RUN_ID`, mount scrivibile condiviso e utente coerente dei container.
+
+RILASCIATO: nulla. PR #61 DRAFT, mergeable ma non unita. Nessun merge/deploy, runtime/VPS, avvio bot, wallet, reset o API pagata. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: possibile gara teorica stretta nel passaggio `close_request.json` → `.close_request.work` perché runner e API non condividono lo stesso `flock`. Non provati app completa con sessione reale, telefono, VPS o classici con chiusura rilasciata. Manca un collegamento verificabile fra CI dichiarata e HEAD corrente.
+
+PROSSIMO PASSO: revisione PR #61 e verifica sull'HEAD esatto di Action/status, sessione, mount e prova mobile PAPER; correzioni eventuali in commit separati. Merge, deploy o avvio richiedono OK separato.
+
+Fonti: Library versione 34 e pacchetto/rapporto Dashboard Chiudi; PR #61, ramo e commit; PR #60; messaggi recenti accessibili. Accesso alle chat limitato: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
