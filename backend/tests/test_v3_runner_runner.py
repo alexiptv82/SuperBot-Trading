@@ -17,7 +17,7 @@ DELAY = 20_000
 
 
 class Rig:
-    def __init__(self, *, halted=lambda: None, monitor_errors=(), cycle_errors=(), delay=DELAY):
+    def __init__(self, *, halted=lambda: None, monitor_errors=(), cycle_errors=(), delay=DELAY, cycle_ms=CYCLE_MS):
         self.dir = Path(tempfile.mkdtemp())
         self.monitor_calls, self.cycle_calls = [], []
         self.monitor_fail = self.cycle_fail = False
@@ -35,7 +35,7 @@ class Rig:
                 raise RuntimeError("boom")
             return CycleReport(now, (), (), (), tuple(self.cycle_errors))
         self.runner = Runner(run_id="run-1", data_dir=self.dir, run_monitor=mon, run_cycle=cyc,
-                             halted=halted, cycle_delay_ms=delay)
+                             halted=halted, cycle_delay_ms=delay, cycle_ms=cycle_ms)
 
     def beat(self):
         return json.loads((self.dir / "heartbeat.json").read_text(encoding="utf-8"))
@@ -220,3 +220,58 @@ def test_on_tick_receives_each_successful_tick_and_its_failures_are_contained():
     r.runner.run(now_fn=lambda: next(clock), sleep_fn=lambda s: None, should_stop=lambda: next(stops), on_tick=cb)
     assert seen == [(G + DELAY, "running"), (G + MINUTE_MS, "running")]          # il tick con now=0 non arriva al log
     assert len(r.monitor_calls) == 2
+
+
+# ----------------------------------------------------------------------------- giro a intervallo lungo (1 ora)
+HOUR = 4 * CYCLE_MS
+H0 = 1_800_000_000_000 // HOUR * HOUR                       # inizio di un'ora
+
+
+def test_hourly_cycle_runs_once_per_hour_while_the_monitor_still_runs_every_minute():
+    r = Rig(cycle_ms=HOUR)
+    r.runner.tick(H0 + DELAY - 1)
+    assert r.cycle_calls == []                                                  # troppo presto
+    r.runner.tick(H0 + DELAY)
+    assert r.cycle_calls == [(H0 + DELAY, H0 // HOUR)]
+    for k in range(1, 60):                                                      # minuti 1..59: solo il monitor
+        r.runner.tick(H0 + k * MINUTE_MS + 30_000)
+    assert len(r.cycle_calls) == 1 and len(r.monitor_calls) == 60               # il primo tick e i 59 minuti dopo
+    r.runner.tick(H0 + CYCLE_MS + DELAY)                                         # un quarto d'ora dopo: NON e' un nuovo giro
+    r.runner.tick(H0 + HOUR + DELAY)
+    assert r.cycle_calls[-1] == (H0 + HOUR + DELAY, H0 // HOUR + 1) and len(r.cycle_calls) == 2
+
+
+def test_hourly_cycle_started_mid_hour_runs_at_once_then_at_the_next_hour():
+    r = Rig(cycle_ms=HOUR)
+    r.runner.tick(H0 + 37 * MINUTE_MS)
+    assert len(r.cycle_calls) == 1
+    r.runner.tick(H0 + 59 * MINUTE_MS)
+    assert len(r.cycle_calls) == 1
+    r.runner.tick(H0 + HOUR + DELAY)
+    assert len(r.cycle_calls) == 2
+
+
+def test_hourly_cycle_does_not_spend_in_pause_and_resumes_in_the_same_hour():
+    r = Rig(cycle_ms=HOUR)
+    (r.dir / "pause.flag").write_text("")
+    r.runner.tick(H0 + DELAY)
+    assert r.cycle_calls == [] and r.beat()["state"] == "paused"
+    (r.dir / "pause.flag").unlink()
+    r.runner.tick(H0 + 40 * MINUTE_MS)
+    assert len(r.cycle_calls) == 1
+
+
+@pytest.mark.parametrize("bad", [0, -900_000, 450_000, 900_001, 1_800_001, 86_400_000 + 900_000, True, 3_600_000.0, "3600000", None])
+def test_invalid_cycle_ms_is_refused(bad):
+    with pytest.raises(ValueError, match="invalid_cycle_ms"):
+        Rig(cycle_ms=bad)
+
+
+def test_cycle_ms_boundaries_and_the_delay_must_fit_inside_the_interval():
+    Rig(cycle_ms=CYCLE_MS)
+    Rig(cycle_ms=86_400_000)
+    Rig(cycle_ms=HOUR, delay=HOUR - 1)
+    with pytest.raises(ValueError, match="invalid_cycle_delay"):
+        Rig(cycle_ms=HOUR, delay=HOUR)
+    with pytest.raises(ValueError, match="invalid_cycle_delay"):
+        Rig(cycle_ms=CYCLE_MS, delay=CYCLE_MS)

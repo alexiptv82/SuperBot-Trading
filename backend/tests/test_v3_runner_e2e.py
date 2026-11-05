@@ -90,9 +90,15 @@ class FakeModel:
                                        "usage": {"prompt_tokens": 2500, "completion_tokens": 60}})
 
 
-def _setup(symbols=("BTCUSDT", "ETHUSDT"), **cfg):
+# I giri di prova sono ogni 15 minuti, senza ragionamento e con 256 token (la sequenza dei minuti di questi test e'
+# scritta su quel ritmo); il ritmo di oggi (ogni ora, ragionamento esteso) e' provato in fondo con ``real=True``.
+LEGACY = dict(cycle_minutes=15, thinking="disabled", reasoning_effort="omit", max_tokens=256)
+
+
+def _setup(symbols=("BTCUSDT", "ETHUSDT"), real=False, **cfg):
     data_dir = Path(tempfile.mkdtemp())
-    config = dataclasses.replace(load_default_config(), symbols=symbols, **cfg)
+    base = dict(symbols=symbols, **({} if real else LEGACY))
+    config = dataclasses.replace(load_default_config(), **{**base, **cfg})
     model = FakeModel()
     built = build_runner(data_dir=data_dir, run_id=RUN, config=config, get_json=_get_json_factory(),
                          inner_transport=model, view_params=VIEW)
@@ -334,3 +340,48 @@ def test_verifier_rechecks_the_file_at_opening_time(tmp_path):
     assert v(dict(m, run_id="altra"), cfg.risk_policy) is False and v(None, cfg.risk_policy) is False
     (tmp_path / "mandate.json").write_text(json.dumps(dict(m, approved=False)), encoding="utf-8")
     assert v(m, cfg.risk_policy) is False                                        # revocato nel frattempo
+
+
+# ----------------------------------------------------------------------------- il ritmo di oggi: ogni ora, ragionamento esteso
+def test_real_config_hourly_cycle_with_extended_reasoning_reaches_the_model_and_the_ledger():
+    built, model, data_dir, config = _setup(real=True)
+    assert (config.cycle_minutes, config.thinking, config.max_tokens) == (60, "enabled", 6000)
+    _approve(built, data_dir, config)
+    t = built.runner.tick(G + 25_000)                                            # primo giro dell'ora
+    assert t.cycle is not None and t.cycle.errors == () and len(model.payloads) == 2
+    for p in model.payloads:                                                     # parametri DeepSeek dalla configurazione
+        assert p["model"] == "deepseek-flash" and p["max_tokens"] == 6000
+        assert p["thinking"] == {"type": "enabled"} and p["reasoning_effort"] == "high"
+        assert p["response_format"] == {"type": "json_object"} and p["stream"] is False
+    assert built.ledger.daily_spend("deepseek") == 2 * COST_PER_CALL
+    built.runner.tick(G + CYCLE_MS + 20_000)                                     # un quarto d'ora dopo: nessun nuovo giro
+    t = built.runner.tick(G + 3 * CYCLE_MS + 20_000)                             # il monitor ha chiuso BTC (minuto 17) ed ETH (minuto 21)
+    assert sorted(r for _, r in t.monitor.closed) == ["stop", "take_profit"] and t.cycle is None
+    assert len(model.payloads) == 2 and built.runner.cycles == 1
+    t = built.runner.tick(G + 4 * CYCLE_MS + 20_000)                             # un'ora dopo: nuovo giro, i simboli sono liberi
+    assert built.runner.cycles == 2 and t.cycle.skipped_open == () and len(model.payloads) == 4
+
+
+def test_real_config_exits_still_run_every_minute_between_hourly_cycles():
+    built, model, data_dir, config = _setup(real=True)
+    _approve(built, data_dir, config)
+    built.runner.tick(G + 25_000)
+    t = built.runner.tick(G + 19 * M)                                            # il take-profit di BTC (minuto 17) non aspetta l'ora
+    assert [r for _, r in t.monitor.closed] == ["take_profit"] and t.cycle is None
+    t = built.runner.tick(G + 23 * M)
+    assert [r for _, r in t.monitor.closed] == ["stop"]
+
+
+def test_real_config_truncated_reasoning_is_no_decision_and_the_spend_is_still_recorded():
+    built, model, data_dir, config = _setup(real=True)
+    _approve(built, data_dir, config)
+
+    def truncated(payload):                                                      # il ragionamento ha finito i token: nessun JSON
+        model.payloads.append(payload)
+        return TransportResponse(200, {"choices": [{"finish_reason": "length", "message": {"content": ""}}],
+                                       "usage": {"prompt_tokens": 2500, "completion_tokens": 6000}})
+    built.metered._inner = truncated
+    t = built.runner.tick(G + 25_000)
+    assert t.cycle.opened == () and _events(built, "paper_open") == []
+    assert {(d[0], d[3]) for d in t.cycle.decisions} == {("BTCUSDT", "ai_unavailable"), ("ETHUSDT", "ai_unavailable")}
+    assert built.ledger.daily_spend("deepseek") == 2 * (2500 * 30 // 100 + 6000 * 120 // 100)   # la spesa si registra comunque

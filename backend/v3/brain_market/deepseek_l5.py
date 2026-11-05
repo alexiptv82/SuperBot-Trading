@@ -32,7 +32,9 @@ class DeepSeekL5Analyst(Analyst):
     def __init__(self, *, transport: Transport, model: str, outcomes_source,
                  bars_source, view_params: ViewParams, market_params: MarketViewParams,
                  menu: tuple[MenuItem, ...], spending_gate: SpendingGate | None = None,
-                 enabled: bool = False):
+                 enabled: bool = False, max_tokens: int = 256):
+        if type(max_tokens) is not int or not 1 <= max_tokens <= 65_536:
+            raise ValueError("invalid_max_tokens") from None
         if type(view_params) is not ViewParams:
             raise ValueError("invalid_params") from None
         if type(market_params) is not MarketViewParams:
@@ -42,6 +44,7 @@ class DeepSeekL5Analyst(Analyst):
         self.outcomes_source, self.bars_source = outcomes_source, bars_source
         self.view_params, self.market_params = view_params, market_params
         self.menu, self.spending_gate, self.enabled = menu, spending_gate, enabled
+        self.max_tokens = max_tokens
 
     def analyze(self, context: MarketContext, open_positions: list[Mapping]) -> BrainDecision:
         if (not isinstance(context, MarketContext) or not _safe_str(context.symbol)
@@ -79,7 +82,7 @@ class DeepSeekL5Analyst(Analyst):
         }
         info_json = json.dumps(info, sort_keys=True)
         payload = {
-            "model": self.model, "stream": False, "max_tokens": 256,
+            "model": self.model, "stream": False, "max_tokens": self.max_tokens,
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},

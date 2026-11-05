@@ -313,7 +313,7 @@ def test_policy_is_checked_before_position_and_position_before_bars():
 
 # ----------------------------------------------------------------------------- 4. politica da file
 def test_default_policy_file_and_values():
-    assert load_default_policy() == ExitPolicy(D("2"), 60 * 3_600_000, D("2"))
+    assert load_default_policy() == ExitPolicy(D("2"), 24 * 3_600_000, D("2"))
     raw = (ROOT / "backend/v3/runner/exit_policy.json").read_bytes()
     assert load_exit_policy(raw) == load_default_policy()
 
@@ -358,7 +358,7 @@ def test_default_policy_loads_from_any_cwd(tmp_path):
         env = dict(os.environ, PYTHONPATH=f"{ROOT}:{ROOT / 'backend'}")
         out = subprocess.run([sys.executable, "-c", src], cwd=cwd, env=env, capture_output=True,
                              text=True, check=True)
-        assert out.stdout.strip() == str(60 * 3_600_000)
+        assert out.stdout.strip() == str(24 * 3_600_000)
 
 
 # ----------------------------------------------------------------------------- 5. igiene
