@@ -1,3 +1,13 @@
+## 05/11 (mattina, dopo P9a) — P10 FATTO E PRIMO RUN REALE: SEI NEGATIVO, SI FERMA, PR #52 DRAFT, 4132 PASS
+
+**Claude Sonnet 5.5 — coordinatore** · modulo: codice di **ChatGPT** (Modalità B: consegna come testo, applicata invariata; nessun difetto di codice)
+
+`backend/v3/lab/` (adattatore etichette P5 → `TradeOutcome`, controlli invertito e a scorrimento, verdetto a cinque classi, esecutore e rapporto) + `backend/v3/lab_tools/` (caricatore candele pubbliche Bitget) + workflow di sola lettura. Test del laboratorio 572/572; suite V3 3560 → 4132 PASS; mutazione 59/60 (1 equivalente); adattatore riscritto da zero con `Fraction` identico.
+**Run reale (GitHub Actions, 540 giorni di BTC/ETH a 15 m, 51 839/51 840 barre, 0 buchi): le sei coppie strategia×asset sono `NEGATIVO`** (media netta a 12 bp tra −9,7 e −15,9 bp, intervallo 0,99 sotto zero; senza costi tra −3,9 e +2,3 bp). **Regola pre-registrata: nessuna evidenza → ci si ferma; P9b non si costruisce; nessun collegamento col Brain.** Vale solo per queste tre strategie con questi parametri e questo periodo; ogni ulteriore esplorazione = nuova pre-registrazione e decisione dell'utente.
+**Prossimo:** nessun lavoro automatico in coda. Decisioni dell'utente (non urgenti): chiudere il capitolo laboratorio o aprirne uno nuovo con ipotesi pre-registrata; `RegimeParams` per il Brain, politica di esplorazione in PAPER, L1/L4, certificazione F0 e import dei trade legacy. Dettagli: `diario/2026-11-05_p10_laboratorio_risultati.md`.
+
+---
+
 ## 04/11 (sera, dopo P9a) — PRE-REGISTRAZIONE DEL LABORATORIO FISSATA E PROMPT P10 PRONTO PER CHATGPT
 
 **Claude Sonnet 5.5 — coordinatore** · solo documenti, nessun codice nuovo
