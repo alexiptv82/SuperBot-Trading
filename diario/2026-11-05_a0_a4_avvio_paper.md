@@ -23,3 +23,10 @@ Autore: Claude Sonnet 5.5 (coordinatore). Nessun deploy, nessun avvio. Dettagli 
 * PR #58 aggiornata: 62 test, mutazione 49/52, nessun tetto di posizioni.
 * Correzione: il motore classico gira ogni 30 minuti, non ogni 15.
 * Aperti: validità segnale, anti-inseguimento, regola della leva, uscite rapide di S25, numeri dei freni, ragionamento esteso, durata massima del Brain. Nessun deploy.
+
+## 20:15 — Risposte dell'utente applicate; dashboard di ChatGPT
+
+* S25 (#58 `d991a0e`): target 1,5 ATR, 12 ore, leva 15x, validità 1 ora, 0,5 ATR. 62 test, mutazione 49/52.
+* Brain (#57 `5954f85`): decisioni ogni ora, ragionamento esteso (`thinking` enabled, sforzo high, 6000 token), 24 ore, tetto 0,75 $; 5678 test ok; mutazione 32/34. Parametri DeepSeek dalla documentazione, da provare dal vivo.
+* Dashboard di ChatGPT applicata invariata (PR #60, `a5a0c14`); CI nuova `v3-dashboard-ci` verde (backend, Jest, build).
+* Aperti: freni di rischio («20 %»: chiarimento chiesto), analisi dei tempi dei classici, misura costi del ragionamento. Nessun deploy.
