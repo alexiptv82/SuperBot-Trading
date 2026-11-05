@@ -23,6 +23,17 @@ def build_scoreboard(outcomes, *, regime, params) -> dict:
     """
     if not isinstance(outcomes, (list, tuple)) or any(type(o) is not TradeOutcome for o in outcomes):
         raise ValueError("invalid_outcomes") from None
+    # Validate every record before validating regime/params, including bad
+    # numeric values in cells that would otherwise be filtered out.
+    try:
+        for o in outcomes:
+            if (not all(v.is_finite() for v in (o.net_bp, o.costs_bp, o.realized_pnl))
+                    or (o.r_multiple is not None and not o.r_multiple.is_finite())
+                    or type(o.closed_at_ms) is not int or o.closed_at_ms <= 0
+                    or type(o.link_status) is not str):
+                raise ValueError("invalid_outcomes")
+    except (AttributeError, TypeError, ValueError):
+        raise ValueError("invalid_outcomes") from None
     if type(regime) is not str or regime not in REGIMES:
         raise ValueError("invalid_regime") from None
     if type(params) is not ViewParams:
