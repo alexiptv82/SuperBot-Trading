@@ -682,13 +682,44 @@ def test_view_invalid_outcomes_second_error_and_order():
     assert_code("invalid_outcomes", lambda: build_scoreboard(x, regime="BAD", params=object()))
 
 
-def test_view_nan_outcome_is_found_by_cell_stats_after_regime_and_params():
-    # un TradeOutcome costruito a mano con NaN e' del tipo giusto: il passo 1 lo lascia passare,
-    # lo trova cell_stats (passo 4); con un regime sbagliato esce invalid_regime, non invalid_outcomes
-    x = [mk(), mk(net_bp=D("NaN"))]
-    assert_code("invalid_regime", lambda: build_scoreboard(x, regime="BAD", params=params()))
-    assert_code("invalid_params", lambda: build_scoreboard(x, regime="TRENDING", params=object()))
+def test_view_nonfinite_outcome_is_rejected_before_regime_and_params():
+    # un TradeOutcome costruito a mano con NaN e' del tipo giusto ma non utilizzabile: il passo 1
+    # (ogni esito, poi regime, poi params) lo respinge per primo, come fa cell_stats in P4
+    x = [mk(), mk(position_id="p2", net_bp=D("NaN"))]
+    assert_code("invalid_outcomes", lambda: build_scoreboard(x, regime="BAD", params=params()))
+    assert_code("invalid_outcomes", lambda: build_scoreboard(x, regime="TRENDING", params=object()))
     assert_code("invalid_outcomes", lambda: build_scoreboard(x, regime="TRENDING", params=params()))
+
+
+# Esiti ostili ma di tipo giusto. Ognuno e' messo in un regime diverso da quello richiesto, cosi' la
+# selezione lo scarterebbe e cell_stats non lo vedrebbe mai: solo la validazione di ogni esito lo trova.
+HOSTILE_FIELDS = [
+    dict(net_bp=D("NaN")), dict(net_bp=D("Infinity")), dict(net_bp=1.5, gross_bp=D("100")),
+    dict(net_bp=None, gross_bp=D("100")),
+    dict(costs_bp=D("NaN")), dict(costs_bp=D("-Infinity")), dict(costs_bp="12"),
+    dict(realized_pnl=D("NaN")), dict(realized_pnl=D("Infinity")), dict(realized_pnl=None),
+    dict(r_multiple=D("NaN")), dict(r_multiple=D("-Infinity")), dict(r_multiple=0.44),
+    dict(closed_at_ms=True), dict(closed_at_ms=0), dict(closed_at_ms=-5),
+    dict(closed_at_ms=1.7e12), dict(closed_at_ms=None),
+    dict(link_status=None), dict(link_status=1), dict(link_status=b"linked"),
+]
+
+
+@pytest.mark.parametrize("bad", HOSTILE_FIELDS, ids=[str(sorted(b)) + str(i) for i, b in enumerate(HOSTILE_FIELDS)])
+def test_view_hostile_outcome_outside_the_selection_is_still_rejected(bad):
+    other_regime = mk(position_id="p2", decision_regime="RANGE", **bad)
+    for rows in ([mk(), other_regime], [other_regime, mk()], (mk(), mk(position_id="p3"), other_regime)):
+        assert_code("invalid_outcomes", lambda: build_scoreboard(rows, regime="TRENDING", params=params()))
+    # e vale anche con regime o params sbagliati: il passo 1 viene per primo
+    assert_code("invalid_outcomes", lambda: build_scoreboard([other_regime], regime="BAD", params=object()))
+
+
+def test_view_none_r_multiple_is_a_valid_outcome():
+    # r_multiple puo' mancare (None): non e' un esito ostile e il tabellone lo conta normalmente
+    rows = [mk(position_id=f"p{i}", r_multiple=None, closed_at_ms=1_700_000_000_000 + i * 86_400_000)
+            for i in range(3)]
+    out = build_scoreboard(rows, regime="TRENDING", params=params())
+    assert out["n_closed_linked"] == 3 and out["n_cells"] == 1
 
 
 def test_adapter_rejects_invalid_menu_constructor():
