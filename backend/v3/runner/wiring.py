@@ -7,6 +7,7 @@ Uso (SOLO su decisione dell'utente, vedi CLAUDE.md: nessun redeploy e nessun avv
 
 La cartella dati contiene: ``journal.db`` (journal append-only), ``budget.db`` (registro di spesa), ``heartbeat.json``,
 ``pause.flag`` (se esiste: nessun nuovo giro del Brain, le uscite proseguono) e ``mandate.json`` (il mandato).
+Comando dell'utente: ``close_request.json`` -> chiusura manuale, esito in ``close_result.json`` (``manual_close.py``).
 
 **Mandato.** Il motore apre solo con un mandato di rischio approvato dall'utente e legato all'hash dei limiti. Qui
 nessuno approva al posto suo: ``--print-mandate`` stampa un modello con ``approved: false``; l'utente (o chi lui
@@ -48,6 +49,7 @@ from backend.v3.runner.contracts import ContractRules
 from backend.v3.runner.cycle import CycleBars, CycleReport, MarketEntryAnalyst, PORTFOLIO_ID, run_brain_cycle
 from backend.v3.runner.exits import load_default_policy
 from backend.v3.runner.feed import CandleStore, last_minute_close, minute_fetcher
+from backend.v3.runner.manual_close import ManualCloseReport, run_manual_close
 from backend.v3.runner.metering import BudgetHalt, MeteredTransport
 from backend.v3.runner.monitor import MonitorReport, run_exit_monitor
 from backend.v3.runner.runner import Runner, TickResult
@@ -159,14 +161,20 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                                 fetch_bars=minute_fetcher(minutes), policy=exit_policy,
                                 fee_bps=config.fee_bps, now_ms=now_ms)
 
-    runner = Runner(run_id=run_id, data_dir=data_dir, run_monitor=run_monitor, run_cycle=run_cycle, halted=halted)
+    def run_commands(now_ms: int) -> Optional[ManualCloseReport]:
+        return run_manual_close(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id, data_dir=data_dir,
+                                price_of=lambda sym, now: last_minute_close(sym, now, get_json),
+                                fee_bps=config.fee_bps, now_ms=now_ms)
+
+    runner = Runner(run_id=run_id, data_dir=data_dir, run_monitor=run_monitor, run_cycle=run_cycle, halted=halted,
+                    run_commands=run_commands)
     return Built(runner, journal, ledger, metered, mandate)
 
 
 def _log(now_ms: int, r: TickResult, last: dict) -> None:
     """Una riga per evento che conta (giro fatto, posizione chiusa, errore nuovo): solo codici e conteggi."""
-    closed = len(r.monitor.closed) if r.monitor is not None else 0
-    if r.cycle is None and not closed and r.last_error == last.get("err"):
+    closed = (len(r.monitor.closed) if r.monitor is not None else 0) + (len(r.manual.closed) if r.manual is not None else 0)
+    if r.cycle is None and not closed and r.manual is None and r.last_error == last.get("err"):
         return
     last["err"] = r.last_error
     print(json.dumps({"ts_ms": now_ms, "state": r.state,

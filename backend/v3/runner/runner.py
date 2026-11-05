@@ -7,6 +7,8 @@ Qui non c'e' rete, ne' modello, ne' orologio di sistema: monitor e ciclo arrivan
 Regole:
 * **Monitor ogni minuto** (stop, take-profit, durata massima) SEMPRE, anche in pausa o fermo: la pausa ferma
   solo le NUOVE aperture, le posizioni aperte devono poter chiudere.
+* **Comandi dell'utente** (chiusura manuale, ``manual_close.py``) a ogni tick (ogni ~5 s), anche in pausa o fermo,
+  PRIMA del monitor: un clic sul pulsante non aspetta il minuto successivo.
 * **Giro del Brain una volta per candela da 15 minuti**, a ``cycle_delay_ms`` (20 s) dopo la chiusura, cosi'
   la candela appena chiusa e' disponibile sul feed. Se il processo parte a meta' candela il giro parte subito
   (la vista accetta dati fino a 15 minuti dopo la chiusura). Un giro fallito NON si ripete nella stessa
@@ -29,6 +31,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from backend.v3.runner.cycle import CycleReport
+from backend.v3.runner.manual_close import ManualCloseReport
 from backend.v3.runner.monitor import MonitorReport
 
 CYCLE_MS = 900_000
@@ -43,6 +46,7 @@ class TickResult:
     monitor: Optional[MonitorReport]
     cycle: Optional[CycleReport]
     last_error: Optional[str]
+    manual: Optional[ManualCloseReport] = None
 
 
 def _short(text: str) -> str:
@@ -52,7 +56,8 @@ def _short(text: str) -> str:
 class Runner:
     def __init__(self, *, run_id: str, data_dir: Path, run_monitor: Callable[[int], MonitorReport],
                  run_cycle: Callable[[int, int], CycleReport], halted: Callable[[], Optional[str]] = lambda: None,
-                 cycle_delay_ms: int = 20_000):
+                 cycle_delay_ms: int = 20_000,
+                 run_commands: Optional[Callable[[int], Optional[ManualCloseReport]]] = None):
         if type(run_id) is not str or not _RUN_ID_RE.match(run_id):
             raise ValueError("invalid_run_id")
         if not isinstance(data_dir, Path) or not data_dir.is_dir():
@@ -62,6 +67,7 @@ class Runner:
         self.run_id, self.data_dir = run_id, data_dir
         self.pause_path, self.heartbeat_path = data_dir / "pause.flag", data_dir / "heartbeat.json"
         self._monitor, self._cycle, self._halted, self._delay = run_monitor, run_cycle, halted, cycle_delay_ms
+        self._commands = run_commands
         self._last_minute = -1
         self._last_slot = -1
         self.cycles = 0
@@ -79,7 +85,14 @@ class Runner:
         if halt_reason:
             errors.append(_short(f"halted:{halt_reason}"))
 
-        monitor_report = cycle_report = None
+        monitor_report = cycle_report = manual_report = None
+        if self._commands is not None:
+            try:
+                manual_report = self._commands(now_ms)
+                if manual_report is not None and manual_report.failed:
+                    errors.append(_short(f"manual:{manual_report.failed[0][1]}"))
+            except Exception:
+                errors.append("commands_failed")
         minute = now_ms // MINUTE_MS
         if minute > self._last_minute:
             self._last_minute = minute
@@ -103,7 +116,7 @@ class Runner:
 
         last_error = ";".join(errors)[:200] if errors else None
         self._write_heartbeat(now_ms, state, last_error)
-        return TickResult(state, monitor_report, cycle_report, last_error)
+        return TickResult(state, monitor_report, cycle_report, last_error, manual_report)
 
     def _write_heartbeat(self, now_ms: int, state: str, last_error: Optional[str]) -> None:
         body = json.dumps({"ts_ms": now_ms, "cycle": self.cycles, "state": state, "run_id": self.run_id,
