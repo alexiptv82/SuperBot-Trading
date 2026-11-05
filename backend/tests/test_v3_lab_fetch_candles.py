@@ -145,3 +145,23 @@ def test_http_json_retries_transient_errors_and_not_client_errors(monkeypatch):
     with pytest.raises(urllib.error.HTTPError):
         FC.http_json("https://x.test/a", min_gap=0)
     assert calls["n"] == 1
+
+
+def test_inconsistent_rows_are_dropped_like_missing_bars_and_reported(tmp_path):
+    end = (NOW // MS) * MS
+    start = end - DAY
+    hist, _ = history(start, end - MS)
+    t3, t4, t5, t6 = (start + k * MS for k in (3, 4, 5, 6))
+    hist[t3] = [str(t3), "100", "99", "98", "100", "1", "1"]                      # high < open: incoerente
+    hist[t4] = [str(t4), "100", "101", "0", "100", "1", "1"]                      # low = 0: prezzo <= 0
+    hist[t5] = [str(t5), "100", "101", "99", "100", "-1", "1"]                    # volume < 0
+    hist[t6] = [str(t6), "100", "101", "99", "abc", "1", "1"]                     # non numerica
+    stats = {}
+    rows = FC.fetch_rows("BTCUSDT", start, end, candle_ms=MS, get_json=stub(hist), stats=stats)
+    assert set(range(start, end, MS)) - set(rows) == {t3, t4, t5, t6}
+    assert stats["invalid_ts"] == {t3, t4, t5, t6}
+    rc = FC.main(["--symbols", "BTCUSDT", "--days", "1", "--out-dir", str(tmp_path)], now_ms=NOW, get_json=stub(hist))
+    assert rc == 0
+    meta = json.loads((tmp_path / "fetch_meta.json").read_text())["BTCUSDT"]
+    assert meta["n_invalid_rows_dropped"] == 4 and meta["n_missing_bars"] == 4 and meta["n_bars"] == 96 - 4
+    assert len(R.split_contiguous(R.read_candles_csv(tmp_path / "BTCUSDT_15m.csv"), MS)) == 2     # il lab vede un buco

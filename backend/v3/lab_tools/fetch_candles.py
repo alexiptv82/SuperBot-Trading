@@ -20,6 +20,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from decimal import Decimal
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -58,7 +59,9 @@ def http_json(url: str, tries: int = 7, min_gap: float = 0.09):
 
 
 def _row(raw, start_ms: int, end_ms: int):
-    """(ts, open, high, low, close, volume) come stringhe, oppure None se la riga non e' usabile o e' fuori intervallo."""
+    """(ts, (open, high, low, close, volume)) come stringhe; None se la riga e' fuori intervallo o non e' una riga;
+    ("invalid", ts) se e' nell'intervallo ma incoerente (non numerica, prezzi <= 0, low/high che non contengono open/close):
+    una riga cosi' si scarta come se la barra mancasse (buco), mai corretta."""
     if not isinstance(raw, (list, tuple)) or len(raw) < 6:
         return None
     try:
@@ -67,15 +70,18 @@ def _row(raw, start_ms: int, end_ms: int):
         return None
     vals = tuple(str(x) for x in raw[1:6])
     if not all(_NUM.fullmatch(v) for v in vals):
-        return None
+        return "invalid", ts
     if ts < start_ms or ts >= end_ms:
         return None
+    o, h, l, c, v = (Decimal(x) for x in vals)
+    if min(o, h, l, c) <= 0 or v < 0 or not (l <= o <= h and l <= c <= h):      # riga incoerente: si scarta come se mancasse
+        return "invalid", ts
     return ts, vals
 
 
 def fetch_rows(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
                get_json: Callable[[str], object] = http_json, window_bars: int = 200,
-               max_requests: int = 3000, empty_limit: int = 6) -> dict:
+               max_requests: int = 3000, empty_limit: int = 6, stats: Optional[dict] = None) -> dict:
     """{apertura_ms: (open, high, low, close, volume)} per le barre con `start_ms <= apertura < end_ms`, scorrendo a ritroso
     a finestre di `window_bars` barre. Si ferma quando la storia finisce (`empty_limit` finestre vuote di fila)."""
     if not _SYMBOL.fullmatch(symbol):
@@ -93,9 +99,14 @@ def fetch_rows(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
         got = 0
         for raw in data or ():
             r = _row(raw, start_ms, end_ms)
-            if r is not None:
-                rows[r[0]] = r[1]
-                got += 1
+            if r is None:
+                continue
+            if r[0] == "invalid":
+                if stats is not None:
+                    stats.setdefault("invalid_ts", set()).add(r[1])
+                continue
+            rows[r[0]] = r[1]
+            got += 1
         empty = 0 if got else empty + 1
         if empty >= empty_limit or s <= start_ms:
             break
@@ -130,14 +141,16 @@ def main(argv=None, *, now_ms: Optional[int] = None, get_json: Callable[[str], o
     expected = a.days * 86_400_000 // a.candle_ms
     out, meta, ok = Path(a.out_dir), {}, True
     for sym in [s.strip() for s in a.symbols.split(",") if s.strip()]:
-        rows = fetch_rows(sym, start, end, candle_ms=a.candle_ms, get_json=get_json)
+        stats: dict = {}
+        rows = fetch_rows(sym, start, end, candle_ms=a.candle_ms, get_json=get_json, stats=stats)
+        bad = sorted(stats.get("invalid_ts", set()) - set(rows))
         ts = sorted(rows)
         n = len(ts)
         missing = (ts[-1] - ts[0]) // a.candle_ms + 1 - n if n else 0
         sha = write_csv(out / f"{sym}_{a.candle_ms // 60_000}m.csv", rows) if n else None
         meta[sym] = dict(n_bars=n, expected_bars=expected, first_open_ms=ts[0] if n else None, last_open_ms=ts[-1] if n else None,
-                         n_missing_bars=missing, sha256=sha)
-        print(f"{sym}: {n}/{expected} barre, buchi {missing}", flush=True)
+                         n_missing_bars=missing, n_invalid_rows_dropped=len(bad), invalid_rows_open_ms=bad[:50], sha256=sha)
+        print(f"{sym}: {n}/{expected} barre, buchi {missing}, righe incoerenti scartate {len(bad)}", flush=True)
         ok = ok and n >= a.min_fraction * expected
     meta["_run"] = dict(end_ms=end, start_ms=start, days=a.days, candle_ms=a.candle_ms,
                         fetched_at_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now / 1000)))
