@@ -265,3 +265,22 @@ PROSSIMO PASSO: nessun lavoro automatico sul laboratorio. Decisione utente fra c
 
 Fonti: Library versione 28 e consegna `CONSEGNA-P10-LAB-2026-11-05.md`; ramo `diario`, `STATO.md`, `diario/2026-11-05_p10_laboratorio_risultati.md` e checkpoint di ripresa; PR GitHub #52, ramo P10, commit e Actions citati. Accesso alle chat limitato ai messaggi recenti e ai file disponibili: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 05/11/2026 11:44 Europe/Rome — L1 etichetta le strategie; L4 soltanto preparato
+
+FATTO: dopo la decisione utente di far apprendere il Brain dai propri trade in PAPER invece di proseguire con altri test offline a catena, è stato pubblicato L1 sul ramo `work/v3-l1-strategy-label-claude-20261105`, PR #53 aperta e DRAFT, HEAD `fa3e110bab97d938b1f0f65aa19c6c34cf6abd10`, impilata sulla PR #52. I commit `d7baf59` e `164ec28` introducono e verificano `strategy_id`/ `strategy_origin` dalla proposta `OpenProposal` al journal e fino a `TradeOutcome` schema 2; `fa3e110` estende il vocabolario ai sei regimi P8. La regola unica in `backend/v3/strategy_label.py` accetta token chiusi, distingue `library` da `ai_proposed`, richiede prefisso `AI_` per le proposte del Brain e scarta un'etichetta non valida senza bloccare il trade. Le etichette vengono conservate solo per decisioni OPEN approvate e risultati realmente collegati; una decisione priva di etichetta mantiene il payload precedente.
+
+TEST: **106 test nuovi** su regola, motore, journal, esiti, chiave di cella e vocabolario dei regimi; suite V3 **4238 PASS**, 3 xfailed e le stesse 3 failure preesistenti per `fastapi` mancante. Verificati oracolo indipendente carattere per carattere su 20.000 stringhe, percorso completo `BrainEngine → execute_paper → close_paper → extract_outcomes`, rilettura dal journal e attribuzione soltanto con `link_status=linked`. Mutazione leggera **21/21**. Il passaggio di `TradeOutcome` allo schema 2 ha inizialmente rotto 32 test P10; sono stati adeguati nello stesso lavoro e la suite completa è tornata verde salvo le tre failure note. Non risultano nuovi GitHub Actions dedicati.
+
+PREPARATO, NON IMPLEMENTATO: L4 è affidato a ChatGPT tramite il prompt `prompt-chatgpt-l4-brain-view-2026-11-05.md`, con base `fa3e110`. Il progetto previsto costruisce un tabellone strategia × lato nel regime corrente, il menù delle 12 schede candle-only e un nuovo adattatore DeepSeek che dichiari la strategia. Parametri proposti, ancora modificabili: `min_trades=15`, `min_days=4`, `confidence=0.90`, `n_boot=2000`, `max_cells=12`. La baseline L4 risulta in verifica nelle chat recenti, ma non esistono ancora ramo, commit, PR, test finali o diario GitHub L4; non viene quindi dichiarata implementazione.
+
+RILASCIATO: nulla. PR #53 non è unita né distribuita e L1 non avvia il Brain V3. Nessun deploy, modifica a runtime/VPS, strategia operativa, soglia, limite di rischio, wallet, reset o API pagata. `DESK_MODE=paper` resta invariato; PAPER, memoria e storici preservati.
+
+PROBLEMI/APERTI: oggi il Brain vede ancora soltanto prezzo e regime; una strategia dichiarata è un'attribuzione, non la prova che la relativa regola sia stata applicata ai dati. L4 deve ancora essere consegnato e verificato. Mancano CLOSE/MODIFY_STOP, parziali, mediazione, gestione TP, dimensionamento deciso dal Brain, feature multi-timeframe e notizie, trasporto reale con budget F4, feed/monitor stop F5, dashboard F6, certificazione F0 e dossier F8.
+
+PROSSIMO PASSO: completare la consegna L4 su base `fa3e110`, applicarla invariata in un ramo isolato e verificare la catena decisione → journal → esito → tabellone → payload prima di aprire una PR DRAFT. Qualsiasi avvio PAPER richiede ancora un OK esplicito separato al deploy; nessun avvio è implicito.
+
+Fonti: Library versione 29 e `prompt-chatgpt-l4-brain-view-2026-11-05.md`; ramo `diario`, `STATO.md`, `diario/2026-11-05_l1_etichetta_strategia_e_l4.md` e checkpoint di ripresa; PR GitHub #53 e commit citati. Accesso alle chat limitato ai messaggi recenti e ai file disponibili: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
