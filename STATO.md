@@ -1,3 +1,11 @@
+## 06/11 — CHATGPT: INTEGRAZIONE AUTONOMA SPLIT PAPER E OPEN/CLOSE SERIALIZZATI — NO-GO DEPLOY
+
+**Verificato LOCALMENTE:** 4.469 PASS V3 (suite intera), 306 PASS mirati e 39 PASS da `/tmp` (test reali multiprocesso). PR #57 runner `e25c8dd` e PR #61 dashboard `a9044b6` ancora draft separate. 385 sorgenti originali: 381 byte-identici, 4 modificati SOLO nella sandbox (`cycle.py`, `runner.py`, `wiring.py`, `daily_loss.py`).
+**Fix di sicurezza:** split opt-in PAPER senza fallback su OPEN diretto, stop sidecar health prima e dopo DeepSeek, timestamp/heartbeat con clock fresco, halt perdita giornaliera 50% rivalutato e persistito dopo AI. OPEN e CLOSE cooperanti condividono `.brain-paper-open.lock` esclusivo durante la valutazione rischio e journal, evitando race di PnL. Default legacy invariato; codice NON attivato nel runner VPS.
+**FILE SALVATI IN LIBRERIA:** `/SuperBot-Trading/SuperBot-V3-Integrazione-Autonoma-Split-Stop-Open-P0-2026-11-06.zip` SHA256 `39388a989afea0dbaf9805fef14695a70d5b9a390b9e5c5de2b9ee5eb36b32ee`; rapporto SHA256 `c278ad094227a3e366752dc02f58d477174b0976db348732ef8208aa1711c7dd`. Checkpoint dettagliato `diario/2026-11-06_chatgpt-split-stop-open-p0-autonomo.md` commit `9126c13`.
+**RELEASE: NO-GO.** Il legacy VPS non usa i nuovi lock; monitor exit non ancora installato/supervisionato; cutover non testato; dashboard e S0/S1/S2 non unificati; Jest/CRA e test VPS non eseguiti. Nessun push di codice, merge, deploy, VPS touch o riavvio. Next: branch isolato + CI, prove watchdog/cutover + autorizzazione utente. Solo PAPER, trade risk 2%, open risk 5%, daily warn/halt 35%/50%, floor 450 USDT invariati.
+
+---
 ## 06/11 — CHATGPT: OPEN WRITER PAPER SERIALIZZATO + FENCE LEGACY, GATE P0 LOCALE
 
 **Verificato localmente:** modulo `open_serial.py` per OPEN PAPER: lease `flock` esclusiva che copre la rilettura del rischio e `execute_paper` tra writer aderenti, controllo effettivo heartbeat/lease del servizio uscite, rifiuto replay stessa decisione anche dopo close. Modulo `legacy_exit_fence.py` per condividere lock tra legacy e sidecar con opt-in futuro; preflight `cutover_preflight.py` blocca con posizioni aperte o manual close pendenti. Nessun codice di runtime modificato.
