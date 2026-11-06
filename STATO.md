@@ -1,3 +1,12 @@
+## 06/11 — CHATGPT: S1b PATCH CORRETTA, GATE STOP/BATTITO — NESSUN DEPLOY
+
+**Stato:** sviluppo PAPER isolato, nessun merge/deploy/riavvio. Corretto un bug nella patch S1b (su eccezione dopo `supervisor_observation` READY non riscrivere lo stesso ID come SKIPPED). Default `supervisor_evidence=False` invariato. La vecchia patch fallisce il test; la nuova lo passa; `git apply --check` sul commit runner e25c8dd passa.
+**Test:** 4379 PASS suite V3; 86 PASS mirati; 19 PASS da /tmp. Proposta heartbeat separata `tick_failed` → `halted`, 46 PASS dopo aggiornamento test; NON applicata.
+**Rischi NON RISOLTI:** P0 stop/manual close non ricontrollati mentre DeepSeek blocca il tick sequenziale; P1 fallback heartbeat `running` quando tick fallisce. Nessuna CI Jest, benchmark VPS o revisione delle patch da Claude. S0/S1 sono ricostruzioni, NON ZIP originali certificati. PR #57 e #61 restano separate.
+**Checkpoint:** `diario/2026-11-06_chatgpt-s1b-gate-stop-heartbeat-revisione.md` commit `e5fb354`. Pacchetto in Libreria `/SuperBot-Trading/SuperBot-V3-S1b-Gate-Sicurezza-Stop-2026-11-06.zip` SHA256 `ac945ac69958d6ab38d96f4b700221d90e4731d1eb4d65fe83a3e3681f2a8807`, rapporto SHA256 `472f04b82428aa02d0c02ba5b075134128ccbd4d6856c201df4c5d00b79e2344`.
+**Gate successivo:** revisione Claude, servizio stop/manual close indipendente dall'AI o verifica equivalente, CI unificata PR57+61 e S0/S1/S2; nessun merge/deploy senza OK dell'utente. Parametri PAPER 2% trade, 5% open, 35/50% perdita giornaliera, floor 450 USDT invariati.
+
+---
 ## 06/11 — CHATGPT: S1b/S2, RICOSTRUZIONE VERIFICATA IN PAPER; 4373 TEST PASS
 
 **Provenienza:** PR #57 runner `e25c8dd` e PR #61 dashboard `a9044b6` sono ancora separate. S0/S1 usati nei test sono **RICOSTRUITI**, non i due ZIP originali della Libreria. Non dichiarare merge/integrati i bot.
