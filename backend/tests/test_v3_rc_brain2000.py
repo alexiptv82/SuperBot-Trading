@@ -38,9 +38,9 @@ def test_confirmed_capital_and_user_approved_risk_profile():
     expected_risk = dict(standard["risk_policy"])
     expected_risk.update({
         "max_loss_fraction": "0.042857142857142857",
-        "max_open_risk_fraction": "0.05",
+        "max_open_risk_fraction": "0.12",
         "max_position_margin_fraction": "0.20",
-        "max_total_margin_fraction": "0.40",
+        "max_total_margin_fraction": "0.55",
         "max_loss_margin_fraction": "0.214285714285714285",
         "min_leverage": 20,
         "max_leverage": 50,
@@ -51,19 +51,19 @@ def test_confirmed_capital_and_user_approved_risk_profile():
         baseline.risk_policy,
         max_loss_fraction=Decimal("0.042857142857142857"),
         max_position_margin_fraction=Decimal("0.20"),
-        max_total_margin_fraction=Decimal("0.40"),
+        max_total_margin_fraction=Decimal("0.55"),
         max_loss_margin_fraction=Decimal("0.214285714285714285"),
         min_leverage=20, max_leverage=50,
     )
     assert chosen == replace(baseline, initial_equity=Decimal("2000"),
                              risk_policy=expected_policy)
     assert chosen.risk_policy.minimum_equity == Decimal("450")
-    assert chosen.risk_policy.max_open_risk_fraction == Decimal("0.05")
+    assert chosen.risk_policy.max_open_risk_fraction == Decimal("0.12")
     assert chosen.daily_loss_warn == Decimal("0.35")
     assert chosen.daily_loss_halt == Decimal("0.50")
     assert (chosen.initial_equity * chosen.risk_policy.max_loss_fraction
             < Decimal("85.72"))
-    assert chosen.initial_equity * chosen.risk_policy.max_open_risk_fraction == Decimal("100")
+    assert chosen.initial_equity * chosen.risk_policy.max_open_risk_fraction == Decimal("240")
 
 
 def test_paused_brain_2000_run_preserves_sibling_history(tmp_path):

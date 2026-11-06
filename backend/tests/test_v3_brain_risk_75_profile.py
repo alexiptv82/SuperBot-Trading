@@ -36,9 +36,9 @@ def test_profile_is_fixed_to_approved_capital_and_limits():
     assert config.initial_equity==D('2000')
     assert p.max_loss_fraction==D('0.042857142857142857')
     assert p.max_loss_margin_fraction==D('0.214285714285714285')
-    assert p.max_open_risk_fraction==D('.05')
+    assert p.max_open_risk_fraction==D('.12')
     assert p.max_position_margin_fraction==D('.20')
-    assert p.max_total_margin_fraction==D('.40')
+    assert p.max_total_margin_fraction==D('.55')
     assert (p.min_leverage,p.max_leverage)==(20,50)
     assert p.minimum_equity==D(450)
     assert config.daily_loss_warn==D('.35') and config.daily_loss_halt==D('.50')
@@ -79,12 +79,13 @@ def test_wide_stop_must_not_be_disguised_by_smaller_margin():
     assert not q.allowed and q.reason=='margin_loss_ratio_exceeded'
 
 
-def test_open_risk_5_percent_remains_portfolio_limit():
+def test_open_risk_12_percent_portfolio_limit():
     p=profile()
-    assert quote_paper_risk(p,request(existing_open_risk=D(100))).reason=='risk_budget_exhausted'
-    q=quote_paper_risk(p,request(existing_open_risk=D(75)))
+    assert quote_paper_risk(p,request(existing_open_risk=D(240))).reason=='risk_budget_exhausted'
+    q=quote_paper_risk(p,request(existing_open_risk=D(150)))
     assert q.allowed
-    assert q.worst_case_loss_estimate<=D(25)
+    assert q.worst_case_loss_estimate<=D('85.714285714285714')
+    assert q.risk_budget<=D('85.714285714285714')
 
 
 def test_old_config_and_mandate_policy_hash_remain_unchanged():
