@@ -1,0 +1,14 @@
+# Checkpoint — Supervisore V3 S2: provenienza verificata e gate S0/S1
+Data: 2026-11-06 | Autore: ChatGPT GPT-6 | PAPER | sviluppo locale isolato, NESSUN merge/deploy/riavvio/VPS.
+
+Baseline: ZIP superbot-trading-a5a0c14.zip; 387/387 file originali invariati. S2 precedente SHA256 8374a58b2fef2d689fc8dc5b92b308cdb49fb7640e24c33785f959de1498b79e. PR #57 (runner) e25c8dd e PR #61 (dashboard) a9044b6 ancora draft indipendenti.
+
+Fix consegnati: backend/v3/supervisor/terminal.py ora associa S1 a S0 solo se simbolo, timestamp non futuro, tipo, stato, reason_code e identificativo sono coerenti; claims multipli -> ambiguous, singolo incoerente -> inconsistent, assente -> not_recorded. Il PnL non viene visualizzato se l'esito S0 non è closed_verified. Duplicati ID o conteggi sorgente incompatibili vengono rifiutati. UI mobile distingue collegamento incoerente; API S2 aggiunge no-store e nosniff alle risposte 422/503.
+
+Gate nuovo: tools/supervisor_integration_gate.py, verifica SHA-256 degli ZIP S0 e S1, estrazione whitelist in directory TEMPORANEA, poi test compatibilità; manca ogni effetto su VPS/GitHub. ZIP S0 atteso SHA256 99788dafe1e09d24ae1a61da58b959e5a55c19b294c9cee84acce51753473d14; S1 atteso 221c42b3c67c5826bda30bb97e532c0a073441bca16f5fa9d823fa5f6e8bf8ff. Eseguito senza i due file: stato NOT_READY; SHA sbagliate e archivi assenti respinti. NON è stata eseguita una verifica S0+S1+S2 reale perché quegli ZIP non sono montati nella sessione.
+
+TEST effettivi: PYTHONPATH=.:backend python -m pytest backend/tests/test_v3_*.py -q -p no:cacheprovider --disable-warnings -> 4222 passed in 141.09s (0:02:21), 0 failures, exit 0. Backend mirato S2+dashboard -> 50 passed in 0.59s. S2 da /tmp -> 34 passed in 0.38s. 3 file JSX sintassi OK, 9 assertion JS pure; Jest e build CRA NON ESEGUITI. Routing optional patch dry-run per server.py e App.js PASS, patch NON applicata.
+
+Pacchetto allegato alla chat (NON presente nel repository): SuperBot-V3-S2-Provenienza-Gate-2026-11-06.zip SHA256 26425ed03c15504155183922963a8a0c221584f460dedf816f9309942140105c; report RAPPORTO_SuperBot_V3_S2_Provenienza_Gate_2026-11-06.md SHA256 33083982a2564dda2eefca82a60799826d3ed7b5648899644e251cd96b05c45d.
+
+NEXT GATE: Recuperare gli esatti originali S0 e S1 dai pacchetti precedenti; eseguire il nuovo gate, poi audit nel branch isolato con PR57+PR61, CI backend+Jest+build CRA, benchmark 30 simboli evitando doppio L5 e verifica priorità stop/manual-close. Nessuna modifica al Brain o ai classici in esecuzione. Rischio invariato 2% trade, 5% open, 35% warn, 50% stop, floor 450 USDT. Nessuna adozione 43% sizing.
