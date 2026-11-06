@@ -242,8 +242,8 @@ def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
          'take_profit': _safe_decimal(p.get('tp')) if p.get('tp') is not None else None,
          'liquidation': _safe_decimal(p.get('liq')) if p.get('liq') is not None else None,
          'trade_type': p.get('trade_type'), 'opened_at_ms': p.get('open_ms'),
-         'unrealized_pnl': (_safe_decimal(p.get('pnl')) if p.get('price_source') != 'entry' else None),
-         'roi_pct': (_safe_decimal(p.get('pnl_pct')) if p.get('price_source') != 'entry' else None)}
+         'unrealized_pnl': _safe_decimal(p.get('pnl')),
+         'roi_pct': _safe_decimal(p.get('pnl_pct'))}
         for p in detail.get('positions', ()) if type(p) is dict and type(p.get('symbol')) is str
     ]
     # Keep the new page aligned with the existing classic trade history.

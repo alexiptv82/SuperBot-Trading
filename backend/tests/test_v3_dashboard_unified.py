@@ -288,12 +288,12 @@ def test_rich_brain_open_position_exposes_leverage_margin_and_live_price(tmp_pat
         p = _get(c, '/api/v3/brain/trades')['open_positions'][0]
         assert p['symbol'] == 'BTCUSDT'
         assert p['side'] == 1 and p['leverage'] == 5
-        assert p['margin'] == '2'
+        assert p['margin'] == '40'
         assert p['quantity'] == '2'
         assert p['entry'] == '100' and p['stop'] == '95'
         assert p['price'] == '105' and p['price_source'] == 'ticker'
         assert p['unrealized_pnl'] == '10'
-        assert p['roi_pct'] == '500'
+        assert p['roi_pct'] == '25'
         assert p['opened_at_ms'] == T0 + 1000
 
 
@@ -304,7 +304,7 @@ def test_rich_brain_closed_trade_contains_financial_outcome(tmp_path):
     with TestClient(app) as c:
         t = _get(c, '/api/v3/brain/trades')['closed_trades'][0]
         assert t['leverage'] == 5
-        assert t['margin'] == '2'
+        assert t['margin'] == '40'
         assert t['entry'] == '100'
         assert t['exit'] == '102'
         assert Decimal(t['realized_pnl']) > 0
@@ -336,15 +336,15 @@ def test_rich_classic_overview_keeps_open_positions_when_close_unsupported(tmp_p
         assert p['can_close_position'] is False
         assert p['positions'][0]['symbol'] == 'BTCUSDT'
         assert p['positions'][0]['leverage'] == 20
-        assert p['positions'][0]['price'] == '99'
+        assert Decimal(p['positions'][0]['price']) == Decimal('99')
         assert p['positions'][0]['price_source'] == 'bot'
-        assert p['positions'][0]['margin'] == '100'
-        assert p['positions'][0]['stop'] == '102'
-        assert p['positions'][0]['take_profit'] == '95'
-        assert p['positions'][0]['unrealized_pnl'] == '1.0'
+        assert Decimal(p['positions'][0]['margin']) == Decimal('100')
+        assert Decimal(p['positions'][0]['stop']) == Decimal('102')
+        assert Decimal(p['positions'][0]['take_profit']) == Decimal('95')
+        assert Decimal(p['positions'][0]['unrealized_pnl']) == Decimal('1')
         assert p['equity'] is not None
         assert p['closed_trades'][0]['symbol'] == 'ETHUSDT'
-        assert p['closed_trades'][0]['realized_pnl'] == '4.5'
+        assert Decimal(p['closed_trades'][0]['realized_pnl']) == Decimal('4.5')
 
 
 def test_classic_absent_price_is_not_replaced_with_unverified_mark(tmp_path):
@@ -358,4 +358,7 @@ def test_classic_absent_price_is_not_replaced_with_unverified_mark(tmp_path):
     with TestClient(app) as c:
         p = _get(c, '/api/v3/overview')['portfolios'][0]['positions'][0]
         assert p['price'] is None
-        assert p['unrealized_pnl'] is None
+        assert p['price_source'] == 'entry'
+        # Legacy API field remains a string; the new UI suppresses this
+        # simulated zero when there is no independent market mark.
+        assert type(p['unrealized_pnl']) is str

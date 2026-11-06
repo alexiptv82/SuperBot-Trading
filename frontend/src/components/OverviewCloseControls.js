@@ -167,8 +167,8 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
       {p.price == null && <div style={MUTED}>Prezzo aggiornato non disponibile.</div>}
       <div style={MUTED}>Margine {p.margin ?? '—'} USDT · Stop {p.stop ?? '—'}</div>
       <div style={MUTED}>Obiettivo {p.take_profit ?? '—'} · Liquidazione {p.liquidation ?? '—'}</div>
-      <div style={{ fontSize:13, fontWeight:700, color:p.unrealized_pnl == null ? '#a8bacd' : String(p.unrealized_pnl).startsWith('-') ? '#fda4af' : '#4ade80' }}>
-        P&L {p.unrealized_pnl == null ? '—' : `${p.unrealized_pnl} USDT`} · ROI {p.roi_pct == null ? '—' : `${p.roi_pct}%`}
+      <div style={{ fontSize:13, fontWeight:700, color:p.price == null || p.unrealized_pnl == null ? '#a8bacd' : String(p.unrealized_pnl).startsWith('-') ? '#fda4af' : '#4ade80' }}>
+        P&L {p.price == null || p.unrealized_pnl == null ? '—' : `${p.unrealized_pnl} USDT`} · ROI {p.price == null || p.roi_pct == null ? '—' : `${p.roi_pct}%`}
       </div>
       {canClose && <button type="button" style={{ ...BTN, marginTop:8 }} disabled={busy || !!pending.length}
         onClick={() => setConfirm({ symbol: p.symbol })}>Chiudi {p.symbol}</button>}

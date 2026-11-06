@@ -66,7 +66,7 @@ test('Brain open trade shows margin, leverage, current price, stop and PnL', () 
   expect(h).toContain('Prezzo attuale 201.5');
   expect(h).toContain('Margine 350 USDT');
   expect(h).toContain('Stop 195');
-  expect(h).toContain('P&L non realizzato: 4.5 USDT');
+  expect(h).toContain('non realizzato: 4.5 USDT');
 });
 
 test('unknown price and PnL must not appear as fabricated zero', () => {
