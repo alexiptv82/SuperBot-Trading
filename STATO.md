@@ -1,3 +1,11 @@
+## 06/11 — CHATGPT: S2 SUPERVISORE, PROVENIENZA RAFFORZATA E GATE S0/S1 (SOLO LOCALE)
+
+**Verificato localmente:** S2 con collegamenti decisione/evidenza controllati per simbolo, timestamp, kind, status, motivo e ID; incoerenze segnalate e PnL mostrato solo per chiusure verificate. 4222 PASS V3; 50 PASS backend mirati; 34 PASS S2 da /tmp; 3 JSX parse e 9 verifiche JS pure. Nessun test React/Jest completo.
+**Gate S0/S1:** script offline con SHA pinned, eseguito e restituisce NOT_READY perché gli originali ZIP S0/S1 non sono nella sessione. Nessun S0/S1 runtime dichiarato integrato. Archivio consegnato in chat `SuperBot-V3-S2-Provenienza-Gate-2026-11-06.zip` (SHA256 `26425ed03c15504155183922963a8a0c221584f460dedf816f9309942140105c`). Report `RAPPORTO_SuperBot_V3_S2_Provenienza_Gate_2026-11-06.md` (SHA256 `33083982a2564dda2eefca82a60799826d3ed7b5648899644e251cd96b05c45d`).
+**Checkpoint dettagliato:** `diario/2026-11-06_chatgpt-supervisore-s2-provenienza-gate.md`, commit `73c78e8`.
+**Nessun merge, deploy, accesso VPS, bot avviato, modifica a rischio o storico.** Next: recuperare S0/S1 originali, test end-to-end e CI, verifica latenza 30 simboli con riuso della vista L5.
+
+---
 ## 06/11 — CHATGPT: DASHBOARD BRAIN PAUSA/RIPRENDI + BANNER PERDITA (PACCHETTO LOCALE), NESSUN DEPLOY
 
 **Autore:** ChatGPT GPT-6 · Fonte: checkpoint `diario/2026-11-06_chatgpt-pausa-riprendi-dashboard.md` (commit `675d8cd`).
