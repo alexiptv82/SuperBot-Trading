@@ -1,3 +1,13 @@
+## 06/11 — Classici con Claude + SHORT invariati; nuovo trend crossover advisory PR62
+
+- **Direttiva utente:** Falco e Toro **restano come prima con Claude**, fallback a regole e SHORT invariati. Soltanto LONG S25 e miglioramento riconoscimento cambio trend; nessuna forzatura di LONG, cambio leve, margini, limiti o modifica Brain.
+- **Commit:** `f46b267d3ead008816383a2c1da513c5ff03307f`, PR #62 DRAFT (no merge/deploy). Nuovo `backend/desk/trend_change.py` (EMA20/50 1h da candele chiuse, `UP_CROSS/DOWN_CROSS/NONE/UNKNOWN`), soltanto nuove evidenze in `Reading.facts`, presentate a Claude con timestamp e dicitura advisory. `backend/desk/cli.py` (call_claude, system prompts e logica SHORT) non modificato.
+- Il contesto EMA50/200 4h nativo richiede 200 candele; con 1000 barre15m normalmente non sono disponibili: bias marcato UNKNOWN senza inventare dati. Restano nel prompt le letture trend4h/1d di sempre.
+- **Test:** 15 PASS mirati su segnali sintetici e non regressione scoring/stop, nuovi test aggiunti al job CI classics-rc. CI su nuovo commit: backend/frontend/V3 PASS, classics-rc ancora in esecuzione al momento del checkpoint.
+- S25 LONG esiste ma resta **OFF** senza `DESK_LONG_S25=1`; abilitarlo solo al rilascio su nuovi portafogli PAPER. La VPS non è stata toccata, i vecchi storici e posizioni restano preservati; NO MERGE, NO DEPLOY, NO AVVIO.
+- Pacchetto/rapporto nella Library `/SuperBot-Trading`: `SuperBot-V3-Falco-Toro-Claude-Trend-Advisory-PAPER-2026-11-06.zip` SHA256 `a8c3462a1c0302744a316004d122dd1850c454e98624f8345a2d789b6553743c`. Diario `diario/2026-11-06_classici-claude-short-invariati-advisory-trend-pr62.md` commit `86df29a`.
+
+---
 ## 06/11 — Brain rischio totale 12%, margine totale 55% — NO DEPLOY
 
 **Decisione delegata dall'utente:** alzare rischio complessivo Brain PAPER sopra10%, mantenendo 75 USDT rischio stimato su350 e leva20–50x. Scelti **12% di rischio aperto totale** (=240 USDT con equity iniziale2000) e **55% margine totale** (=1100 USDT). La modifica del margine evita che il solo 12% sia cosmetico; esempio 3×350 margine =>1050 impegnati, 3×75=225 rischio stimato; 2×400+300 margin=>1100, ≤235,71 rischio stimato. Stop/fee/gap non garantiti. Altri limiti: max400 margine singolo, 21,42857% rischio/margine, 450 floor, daily35/50% **invariati**.
