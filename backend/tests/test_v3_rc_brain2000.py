@@ -50,6 +50,7 @@ def test_confirmed_capital_and_user_approved_risk_profile():
     expected_policy = replace(
         baseline.risk_policy,
         max_loss_fraction=Decimal("0.042857142857142857"),
+        max_open_risk_fraction=Decimal("0.12"),
         max_position_margin_fraction=Decimal("0.20"),
         max_total_margin_fraction=Decimal("0.55"),
         max_loss_margin_fraction=Decimal("0.214285714285714285"),
