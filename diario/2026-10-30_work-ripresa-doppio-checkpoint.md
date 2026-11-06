@@ -450,3 +450,22 @@ PROSSIMO PASSO: scegliere esplicitamente la baseline d'integrazione, applicare i
 
 Fonti: Library versione 37 e archivio `superbot-trading-e25c8dd.zip`; chat recente accessibile; PR #57/#61; riscontri GitHub. Accesso alle chat limitato: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 06/11/2026 03:46 Europe/Rome — Pausa/Riprendi Brain e banner perdita verificati localmente
+
+FATTO: recuperati nella chat di progetto accessibile il pacchetto `SuperBot-V3-Pausa-Riprendi-Banner-2026-11-06.zip` e il rapporto `RAPPORTO_SuperBot_V3_Pausa_Riprendi_2026-11-06.md`. La consegna è una copia locale ibrida della dashboard PR #61, HEAD `a9044b6759da327b44da04f9e7f51e211d44e03f`, e del runner/daily-loss PR #57, commit `e25c8dd8db88fd6994e3b7a75ecfdec5ff258421`; non esiste ancora un commit GitHub unico del codice. Endpoint PAPER autenticati `POST /api/v3/brain/pause` e `/resume` agiscono solo su `pause.flag` e attendono il heartbeat. La pausa blocca analisi/aperture ma non monitoraggio, stop o chiusure; Riprendi non supera daily halt. La dashboard mostra stato del controllo e banner perdita giornaliera giallo/rosso, inclusi stale e halt agganciato.
+
+COMMIT/RAMI/TEST: checkpoint separato `diario/2026-11-06_chatgpt-pausa-riprendi-dashboard.md`, blob `cfa68e075da340ddcfcc63cd03623fda1580f0ab`; aggiornamento documentale di `STATO.md` commit `45597b78a09a0cc7745e204d827b2d6c2d846c99`. PR #61 e #57 restano DRAFT e separate agli HEAD sopra indicati. Worktree locale ibrido: **4399 PASS, 0 fail** V3; dashboard **82 PASS** dalla radice e **82 PASS** da `/tmp`; 4 file JSX senza errori sintattici; 6/6 controlli JavaScript puri. Jest/React e build CRA non eseguiti per assenza `node_modules`; non sono Actions collegate a un commit unico.
+
+PREPARATO: pacchetto con quattro file dashboard modificati e tre nuovi, patch e manifesto; SHA-256 `1c7e83547b6716b6052bf0f0bf6fa31be494c9b086c2dce1f57399b4babe13b0`. Invariati rischio/trade **2%**, open risk **5%**, soglie daily-loss **35%/50%**, leva, TP/SL, mandato e logica Brain. Pronto per applicazione su ramo derivato dalla PR #61 e integrazione controllata con PR #57.
+
+RILASCIATO: nulla. Nessun commit/PR di codice nuovo, merge, deploy, runtime/VPS, avvio bot, wallet, reset o API pagata. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: prova locale ibrida, non singolo checkout pubblicato; mancano Jest/React, build CRA, permessi condivisi `pause.flag`, sessione reale, transizione heartbeat installata, telefono e VPS. La pausa si vede al tick successivo e non interrompe una chiamata AI già in corso; timeout DeepSeek invariato a 30 s.
+
+PROSSIMO PASSO: creare dopo revisione un ramo d'integrazione dalla PR #61, applicare i sette file e integrare `e25c8dd` senza sostituzioni cieche; eseguire Jest, build, suite completa, permessi/mount e prova PAPER pausa→heartbeat→ripresa. Merge, avvio o deploy richiedono OK esplicito separato.
+
+Fonti e limite: Library v38, artefatti recenti, checkpoint/`STATO.md` del ramo `diario`, PR #57/#61 e messaggi recenti recuperabili. Riepilogo di ripresa, non esportazione integrale automatica delle chat.
+AI: checkpoint automatico ChatGPT Work
