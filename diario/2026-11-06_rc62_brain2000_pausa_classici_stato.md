@@ -24,3 +24,9 @@ Confermati **2.000 USDT PAPER per Brain**, **1.000 USDT per Falco** e **1.000 US
 6. **Solo dopo**, con mandato Brain della run specifica approvato esplicitamente e tutti e tre i servizi in PAPER, togliere pause flag delle nuove run e monitorare.
 
 **Stato reale:** Brain 2.000 PAPER PREPARATO MA IN PAUSA; Falco/Toro codice RC aggiornato, storage nuovo e worker non avviati; **NO-GO al rilascio operativo**. Nessun merge su main/rule-pool, nessun reset storico o deploy dei tre bot.
+
+## Ulteriore controllo RC classici
+- Su PR #62 `backend/desk/cli.py` commit `448218d1`: S25, oltre a restare OFF per default, viene limitata esplicitamente a PAPER. Il comando di chiusura singola è PAPER-only e lascia intatto il percorso LIVE preesistente.
+- `backend/desk/engine.py` aggiornato con il recupero del parser storico per i campi vecchi/non riconosciuti dal motore, identico alla PR #58 (`ef0d598d`). Non sono state modificate le equazioni di trading.
+- CI Python 3.11 V3, API e React verdi negli ultimi job conclusi; il nuovo job `classics-rc` resta senza esito definitivo nel controllo del 6/11 (non dichiarare PASS).
+- Il sistema di autorizzazione ha rifiutato il workflow di preparazione automatica delle nuove directory classici e il tentativo di ampliare la diagnosi remota del backup esterno. **Non riprovare con scorciatoie**; non asserire che i classici siano pronti o che il backup esterno funzioni.
