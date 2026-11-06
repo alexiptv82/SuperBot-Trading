@@ -1,0 +1,125 @@
+name: V3 RC live readiness evidence (READ ONLY; never deploy)
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/v3-release-candidate-gpt6-20261106]
+    paths:
+      - .github/workflows/v3-rc-readonly-runtime-gate.yml
+permissions:
+  contents: read
+jobs:
+  audit-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify approved Brain 2000 PAPER configuration fingerprint
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import hashlib, json, pathlib
+          p=pathlib.Path("backend/v3/runner/runner_config_brain2000_paper.json")
+          b=p.read_bytes()
+          obj=json.loads(b)
+          assert str(obj["initial_equity"])=="2000"
+          policy=obj["risk_policy"]
+          assert policy["max_open_risk_fraction"]=="0.12"
+          assert policy["max_total_margin_fraction"]=="0.55"
+          assert policy["max_loss_margin_fraction"]=="0.214285714285714285"
+          assert policy["min_leverage"]==20 and policy["max_leverage"]==50
+          assert policy["minimum_equity"]=="450"
+          print("config_sha="+hashlib.sha256(b).hexdigest())
+          PY
+      - name: Read VPS status, existing-run config, backups and UI binding only
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            echo V3_RC_RUNTIME_EVIDENCE_ONLY=1
+            echo NO_DOCKER_START_OR_STOP=1
+            echo NO_FILES_MODIFIED=1
+            EXPECTED_SHA='${{ steps.config.outputs.config_sha }}'
+            export EXPECTED_SHA
+            python3 - <<'PY'
+            import hashlib, json, os, pathlib, sqlite3, subprocess, sys
+            def run(*cmd):
+                try:
+                    r=subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                     text=True, timeout=5, check=False)
+                    return r.stdout.strip() if r.returncode==0 else None
+                except (OSError, subprocess.TimeoutExpired):
+                    return None
+            def label(name, value):
+                print(name+"="+str(value))
+            label("SOURCE_COMMIT", run("git","-C","/opt/superbot-v3-rc62-src","rev-parse","HEAD") or "UNAVAILABLE")
+            for name in ("superbot","superbot-desk-hawk","superbot-desk-bull","superbot-brain-free"):
+                label("CONTAINER_"+name.replace("-","_").upper(), run("docker","inspect","-f","{{.State.Status}}",name) or "ABSENT")
+            envraw=run("docker","inspect","-f","{{json .Config.Env}}","superbot")
+            env={}
+            if envraw:
+                try:
+                    for kv in json.loads(envraw):
+                        if "=" in kv:
+                            k,v=kv.split("=",1)
+                            if k in ("DESK_MODE","TRADING_MODE","DESK_DATA_DIR","DESK_DATA_DIR_BULL",
+                                     "V3_JOURNAL_PATH","V3_RUN_ID","V3_BUDGET_DB_PATH",
+                                     "V3_HEARTBEAT_PATH","V3_PAUSE_FLAG_PATH"):
+                                env[k]=v
+                except (ValueError, TypeError):
+                    pass
+            label("WEB_PAPER_MODE", env.get("DESK_MODE")=="paper" or env.get("TRADING_MODE")=="paper")
+            for k in ("V3_JOURNAL_PATH","V3_RUN_ID","V3_BUDGET_DB_PATH","V3_HEARTBEAT_PATH","V3_PAUSE_FLAG_PATH"):
+                label("WEB_"+k+"_SET", bool(env.get(k)))
+            for key in ("DESK_DATA_DIR","DESK_DATA_DIR_BULL"):
+                label("WEB_"+key+"_IS_LEGACY", env.get(key, "").startswith("/opt/superbot-desk-data/"))
+            for k in ("hawk","bull"):
+                p=pathlib.Path("/opt/superbot-desk-data")/k
+                try:
+                    o=json.loads((p/"state_v2.json").read_text())
+                    n=len((o.get("main") or {}).get("positions") or {})
+                    label("HISTORIC_"+k.upper()+"_OPEN",n)
+                except Exception:
+                    label("HISTORIC_"+k.upper()+"_OPEN","UNKNOWN")
+                label("HISTORIC_"+k.upper()+"_PAUSED",(p/"pause.flag").is_file())
+            backup=pathlib.Path("/opt/superbot-backups/rc-v3-20261106T150730Z")
+            label("KNOWN_LOCAL_BACKUP_PRESENT",
+                  (backup/"superbot-desk-data.tar.gz").is_file() and
+                  (backup/"superbot-brain-free.tar.gz").is_file())
+            label("EXTBACKUP_SERVICE_FAILED",run("systemctl","is-failed","superbot-extbackup.service")=="failed")
+            label("EXTBACKUP_TIMER_ACTIVE",run("systemctl","is-active","superbot-extbackup.timer")=="active")
+            runhome=pathlib.Path("/opt/superbot-v3-paper-runs/brain-v3-rc20261106")
+            label("PRIOR_BRAIN_RUN_EXISTS",runhome.is_dir())
+            if runhome.is_dir():
+                label("PRIOR_BRAIN_RUN_PAUSED",(runhome/"pause.flag").is_file())
+                try:
+                    m=json.loads((runhome/"mandate.json").read_text())
+                    label("PRIOR_BRAIN_MANDATE_UNAPPROVED",m.get("approved") is False)
+                except (OSError, ValueError, TypeError):
+                    label("PRIOR_BRAIN_MANDATE_UNAPPROVED","UNKNOWN")
+                try:
+                    b=(runhome/"runner_config.json").read_bytes()
+                    label("PRIOR_BRAIN_CONFIG_MATCHES_CURRENT_PR",hashlib.sha256(b).hexdigest()==os.environ.get("EXPECTED_SHA"))
+                    # Do not log portfolio secrets or the raw runner configuration.
+                    cfg=json.loads(b)
+                    label("PRIOR_BRAIN_EQUITY_2000",str(cfg.get("initial_equity"))=="2000")
+                    label("PRIOR_BRAIN_OPEN_RISK_12",str((cfg.get("risk_policy") or {}).get("max_open_risk_fraction"))=="0.12")
+                except (OSError, ValueError):
+                    label("PRIOR_BRAIN_CONFIG_MATCHES_CURRENT_PR","UNKNOWN")
+                db=runhome/"journal.db"
+                try:
+                    uri=db.resolve().as_uri()+"?mode=ro"
+                    with sqlite3.connect(uri,uri=True,timeout=2) as conn:
+                        conn.execute("PRAGMA query_only=ON")
+                        label("PRIOR_BRAIN_JOURNAL_INTEGRITY_OK",conn.execute("PRAGMA quick_check").fetchone()[0]=="ok")
+                except (OSError,sqlite3.Error):
+                    label("PRIOR_BRAIN_JOURNAL_INTEGRITY_OK","UNKNOWN")
+            print("READ_ONLY_AUDIT_FINISHED=1")
+            print("DEPLOY_AUTHORIZATION=NOT_GRANTED_BY_THIS_WORKFLOW")
+            PY
