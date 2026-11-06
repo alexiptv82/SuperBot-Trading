@@ -1,3 +1,12 @@
+## 06/11 — Brain rischio totale 12%, margine totale 55% — NO DEPLOY
+
+**Decisione delegata dall'utente:** alzare rischio complessivo Brain PAPER sopra10%, mantenendo 75 USDT rischio stimato su350 e leva20–50x. Scelti **12% di rischio aperto totale** (=240 USDT con equity iniziale2000) e **55% margine totale** (=1100 USDT). La modifica del margine evita che il solo 12% sia cosmetico; esempio 3×350 margine =>1050 impegnati, 3×75=225 rischio stimato; 2×400+300 margin=>1100, ≤235,71 rischio stimato. Stop/fee/gap non garantiti. Altri limiti: max400 margine singolo, 21,42857% rischio/margine, 450 floor, daily35/50% **invariati**.
+**Codice SOLO PR #62 DRAFT:** commit `ff98f7ee23681420f77bb50ff0f84efc61469204`, modifica due valori del solo file `runner_config_brain2000_paper.json` più test; follow-up test-only commit `b9a611f5fcc7360e7b2085d22e3482575cb7f383` corregge comparazione residua 5% nel test RC2000. Nessuna modifica a motore risk, Falco/Toro, app VPS o mandati esistenti.
+**Verifiche:** 461 test mirati PASS; vecchia suite CI completa del commit ff98f7: 4068 PASS/1 skip, 1 FAIL per test aspettativa vecchio 5%; **ultima CI sul commit b9a611f5 ancora da confermare al checkpoint**, backend/frontend già PASS. Full locale interrotto per timeout, non PASS. NO-Go per VPS.
+**Libreria:** `/SuperBot-Trading/SuperBot-V3-Brain-Rischio-Aperto-12pct-PAPER-2026-11-06.zip` SHA256 `3bf05addd74be62bebd3f4e22e30101f90c86d145f60ec926715e226769fec55`; rapporto `RAPPORTO_SUPERBOT_V3_BRAIN_RISCHIO_TOTALE_12_2026-11-06.md` SHA256 `6213c77e02828476b6c82c567de5534f5797f1dded71f17a904fd3386d9cc7ad`. Diario `diario/2026-11-06_brain-v3-open-risk-12-total-margin-55.md` commit `3831ee8`.
+**NO merge, deploy, riavvio, rimozione pausa o modifica dati.** Run Brain2k già preparata sulla VPS usa vecchio config/mandate fingerprint e deve restare in pausa: occorre nuova run PAPER isolata e mandato coerente solo dopo altri gate e OK esplicito.
+
+---
 ## 06/11 — BRAIN RISK 75 SU 350 USDT PAPER, 20–50X — PR #62
 
 **Decisione utente confermata:** capitale Brain 2.000 USDT, margine obiettivo 350–400 USDT, leva 20–50x; rischio massimo STIMATO su margine 21,4285714% = 75 USDT su 350, 85,71 USDT su 400. Rischio equity/trade 4,285714%, **rischio totale aperto5%** e floor450 invariati. Margine posizione max20% equity/400 USDT, margine totale max40%/800 USDT. Daily warn/halt35%/50% invariati.
