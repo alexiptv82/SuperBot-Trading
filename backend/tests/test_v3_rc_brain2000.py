@@ -29,20 +29,40 @@ def _provision(parent: Path, *, expected: str = "2000"):
     )
 
 
-def test_confirmed_capital_is_the_only_parameter_change():
+def test_confirmed_capital_and_user_approved_risk_profile():
+    # The earlier version changed ONLY capital. The user later approved a
+    # separate, exact PAPER risk profile. Check no unrelated setting changes.
     standard, release = json.loads(BASE.read_bytes()), json.loads(BRAIN2000.read_bytes())
     assert standard["initial_equity"] == "1000"
     assert release["initial_equity"] == "2000"
-    assert release == dict(standard, initial_equity="2000")
+    expected_risk = dict(standard["risk_policy"])
+    expected_risk.update({
+        "max_loss_fraction": "0.042857142857142857",
+        "max_open_risk_fraction": "0.05",
+        "max_position_margin_fraction": "0.20",
+        "max_total_margin_fraction": "0.40",
+        "max_loss_margin_fraction": "0.214285714285714285",
+        "min_leverage": 20,
+        "max_leverage": 50,
+    })
+    assert release == dict(standard, initial_equity="2000", risk_policy=expected_risk)
     baseline, chosen = load_runner_config(BASE.read_bytes()), load_runner_config(BRAIN2000.read_bytes())
-    assert chosen.initial_equity == Decimal("2000")
-    assert chosen == replace(baseline, initial_equity=Decimal("2000"))
+    expected_policy = replace(
+        baseline.risk_policy,
+        max_loss_fraction=Decimal("0.042857142857142857"),
+        max_position_margin_fraction=Decimal("0.20"),
+        max_total_margin_fraction=Decimal("0.40"),
+        max_loss_margin_fraction=Decimal("0.214285714285714285"),
+        min_leverage=20, max_leverage=50,
+    )
+    assert chosen == replace(baseline, initial_equity=Decimal("2000"),
+                             risk_policy=expected_policy)
     assert chosen.risk_policy.minimum_equity == Decimal("450")
-    assert chosen.risk_policy.max_loss_fraction == Decimal("0.02")
     assert chosen.risk_policy.max_open_risk_fraction == Decimal("0.05")
     assert chosen.daily_loss_warn == Decimal("0.35")
     assert chosen.daily_loss_halt == Decimal("0.50")
-    assert chosen.initial_equity * chosen.risk_policy.max_loss_fraction == Decimal("40")
+    assert (chosen.initial_equity * chosen.risk_policy.max_loss_fraction
+            < Decimal("85.72"))
     assert chosen.initial_equity * chosen.risk_policy.max_open_risk_fraction == Decimal("100")
 
 
