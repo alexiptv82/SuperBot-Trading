@@ -47,4 +47,42 @@ jobs:
             done
             echo '=== disk space ==='
             df -h /opt 2>/dev/null | tail -1 || true
+            echo '=== portfolio positions (read-only JSON counters) ==='
+            python3 - <<'PY'
+            import json, pathlib, os
+            for role in ('hawk','bull'):
+                d=pathlib.Path('/opt/superbot-desk-data')/role
+                try:
+                    data=json.loads((d/'state_v2.json').read_text())
+                    positions=(data.get('main') or {}).get('positions') or {}
+                    print('portfolio='+role+' positions='+str(len(positions))+' paused='+str((d/'pause.flag').exists()))
+                except Exception as exc:
+                    print('portfolio='+role+' status=UNKNOWN type='+type(exc).__name__)
+            roots=('/opt/superbot-desk-data/brain','/opt/superbot-brain-data','/opt/superbot/data')
+            for root in roots:
+                if not os.path.isdir(root):
+                    continue
+                candidates=[]
+                for folder,dirs,files in os.walk(root):
+                    depth=len(pathlib.Path(folder).relative_to(root).parts)
+                    if depth>=2:
+                        dirs[:]=[]
+                    for fname in files:
+                        if fname in ('journal.db','budget.db','brain.db') or fname.endswith(('.sqlite3','.sqlite')):
+                            p=pathlib.Path(folder)/fname
+                            candidates.append(str(p.relative_to(root)))
+                print('brain_data='+root+' sqlite_candidates='+(','.join(candidates[:20]) or 'NONE'))
+            for root in ('/opt/superbot-backups','/opt/superbot-desk-data/hawk','/opt/superbot-desk-data/bull'):
+                if os.path.isdir(root):
+                    backups=0
+                    for folder,dirs,files in os.walk(root):
+                        if len(pathlib.Path(folder).relative_to(root).parts)>=2:
+                            dirs[:]=[]
+                        backups += sum(1 for f in files if 'backup' in f.lower() or f.endswith(('.bak','.tar.gz','.tgz')))
+                    print('backup_candidates='+root+' count='+str(backups))
+            PY
+            echo '=== historic Brain bind mounts (paths only) ==='
+            if docker inspect superbot-brain-free >/dev/null 2>&1; then
+              docker inspect -f '{{json .Mounts}}' superbot-brain-free | python3 -c 'import json,sys; a=json.load(sys.stdin); [print("brain_mount="+str(x.get("Source"))+" -> "+str(x.get("Destination"))) for x in a if "/opt/superbot" in str(x.get("Source"))]'
+            fi
             echo SUPERBOT_RC_PREFLIGHT_DONE=1
