@@ -120,6 +120,42 @@ jobs:
                         label("PRIOR_BRAIN_JOURNAL_INTEGRITY_OK",conn.execute("PRAGMA quick_check").fetchone()[0]=="ok")
                 except (OSError,sqlite3.Error):
                     label("PRIOR_BRAIN_JOURNAL_INTEGRITY_OK","UNKNOWN")
+            # External encrypted backup diagnostics: read sanitized state, not log text or credentials.
+            for prop in ("ActiveState","Result","ExecMainStatus","ExecMainCode"):
+                value=run("systemctl","show","superbot-extbackup.service","--property="+prop,"--value")
+                label("EXTBACKUP_"+prop.upper(),value or "UNKNOWN")
+            status=pathlib.Path("/opt/superbot-extbackup/status.json")
+            if status.is_file():
+                try:
+                    st=json.loads(status.read_text())
+                    if type(st) is not dict:
+                        st={}
+                    label("EXTBACKUP_STATUS_FILE_PRESENT",True)
+                    label("EXTBACKUP_LAST_SUCCESS_UTC",str(st.get("ultimo_successo") or "NONE")[:20]
+                          if str(st.get("ultimo_successo") or "").replace("-","").replace(":","").replace("T","").replace("Z","").isdigit()
+                          else "INVALID_OR_MISSING")
+                    err=st.get("ultimo_errore")
+                    label("EXTBACKUP_STATUS_REPORTS_ERROR",bool(err))
+                    text=str(err).lower()[:4096]
+                    if not text:
+                        category="NONE"
+                    elif any(x in text for x in ("permission denied","access denied","forbidden","unauthorized","invalid credential","authentication")):
+                        category="AUTH_OR_PERMISSIONS"
+                    elif any(x in text for x in ("no space left","disk full","quota","insufficient space")):
+                        category="STORAGE_CAPACITY"
+                    elif any(x in text for x in ("timeout","timed out","connection refused","connection reset","dns","network","unreachable")):
+                        category="CONNECTIVITY"
+                    elif any(x in text for x in ("not found","no such file","missing","does not exist")):
+                        category="MISSING_PATH"
+                    elif any(x in text for x in ("checksum","hash","integrity","corrupt")):
+                        category="INTEGRITY"
+                    else:
+                        category="UNCLASSIFIED_CHECK_PRIVATE_LOGS"
+                    label("EXTBACKUP_ERROR_CATEGORY",category)
+                except (OSError,ValueError,TypeError):
+                    label("EXTBACKUP_STATUS_FILE_PRESENT","UNREADABLE")
+            else:
+                label("EXTBACKUP_STATUS_FILE_PRESENT",False)
             print("READ_ONLY_AUDIT_FINISHED=1")
             print("DEPLOY_AUTHORIZATION=NOT_GRANTED_BY_THIS_WORKFLOW")
             PY
