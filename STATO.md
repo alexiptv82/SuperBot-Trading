@@ -1,3 +1,12 @@
+## 06/11 — CHATGPT: EXIT-SIDECAR PAPER INDIPENDENTE DALL'AI, GATE P0 (SOLO PROTOTIPO)
+
+**Fatto e VERIFICATO LOCALMENTE:** servizio separato di uscite `exit_service.py` con un solo proprietario `flock`, heartbeat con token di leasing per restart, comandi manuali e monitor stop indipendenti dal modello. Con AI finta bloccata 30 secondi, close PAPER in 5,022 s in quel campione e un solo `paper_close` (non SLA VPS). Test cross-process di stop/manual close e lock superati.
+**Test:** 1.188 PASS mirati con patch opt-in Runner/cycle applicata SOLO nella sandbox; 1.176 PASS sulla baseline e25 ripristinata; 385/385 file originari invariati. Full V3 tentata ma TIMEOUT ~21% dopo 200 s, NON PASS completo. Patch opzionale `git apply --check` PASS su e25.
+**NON ATTIVO / P0:** mancano wiring CLI/processo separato, watchdog/riavvio, handover senza due proprietari, re-check post DeepSeek di pausa/mandato/daily-loss/rischio e integrazione conflitti con patch S1b. Nessun merge/branch codice/deploy/VPS/redeploy. Runner e PR dashboard #61 ancora separati.
+**Pacchetto in Libreria:** `/SuperBot-Trading/SuperBot-V3-Exit-Service-Indipendente-Gate-P0-2026-11-06.zip` SHA256 `8a18248c7f6a9b0b67874a778c280ff7df5405ec8ff654c22923fcff02726da0`, report SHA256 `8e299f670350627dadcc7ca6adfaaa0ebdbac2362924385a51a41ba2955188e9`, handoff Claude. Checkpoint dettagliato `diario/2026-11-06_chatgpt-exit-service-indipendente-p0.md` commit `7411e18`.
+**Next:** Claude deve revisionare patch, montare sidecar con supervisor restart e rischio post-AI, testarlo con CI e PAPER; nessun avvio senza OK utente. Rischio 2% trade, 5% open, daily 35/50% e floor 450 invariati.
+
+---
 ## 06/11 — CHATGPT: S1b PATCH CORRETTA, GATE STOP/BATTITO — NESSUN DEPLOY
 
 **Stato:** sviluppo PAPER isolato, nessun merge/deploy/riavvio. Corretto un bug nella patch S1b (su eccezione dopo `supervisor_observation` READY non riscrivere lo stesso ID come SKIPPED). Default `supervisor_evidence=False` invariato. La vecchia patch fallisce il test; la nuova lo passa; `git apply --check` sul commit runner e25c8dd passa.
