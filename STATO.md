@@ -1,3 +1,13 @@
+## 06/11 — RC62 dashboard V3 ricca: tre portafogli, leve, prezzi e storico
+
+- **Conferma utente:** dashboard V3 completamente rinnovata, Falco/Toro dettagliati come nelle pagine originali e Brain ugualmente completo con TUTTE le posizioni aperte, LONG/SHORT, leva, margine, ingresso/prezzo disponibile, stop, P&L, storico chiuso. Mantenere anche Claude + SHORT classici originali; NON modificare strategie o trading worker.
+- **PR #62 DRAFT**, HEAD `027307c4729f7981f4cbe40ee03d8ebd867ca510`. La root PAPER `/` ora apre `/overview`; `/classic` conserva intatta l'originale dashboard di Falco/Toro. Tre card responsive fino a1200px, tutte le posizioni aperte sempre visibili indipendentemente dalla disponibilità del pulsante di chiusura; ogni portafoglio ha storico closed, P&L e leve. Brain registra margine/stop/price/PnL/ROI/strategia e risultati dopo fees dal journal; nessun valore di prezzo fabbricato. Prezzo classico di cache = 'Ultimo prezzo bot', non prezzo live.
+- **Test ultimo commit:** `v3-dashboard-ci` run `42291292574`: backend SUCCESS, frontend SUCCESS, v3-suite **4073 PASS, 1 SKIP**, classics-rc **IN ESECUZIONE al checkpoint**, verificare prima di GO.
+- Il precedente classici-rc sul commit f46b267 era FAILED per due SHA pinned vecchie; fix `fef06db` aggiorna i pin (senza eliminare il controllo di integrità) e conserva test scoring/SHORT. Test complessivo classici sull'ultimo commit ancora da confermare.
+- **Gate bloccante VPS:** server desktop ancora punta a dati vecchi Falco/Toro e precedente Brain. Setup di nuove directory PAPER distinte e run Brain2k policy 12%/55%, mandate e snapshot verificabili, `V3_*` corretti, stop sidecar e verifica smartphone reali necessari PRIMA del rilascio. Nessun merge/deploy/avvio/reset e vecchie posizioni 6 Falco +2 Toro preservate.
+- Diario completo: `diario/2026-11-06_rc62_dashboard_unificata_v2_full_portfolio_details.md`, commit `79b6494`.
+
+---
 ## 06/11 — Classici con Claude + SHORT invariati; nuovo trend crossover advisory PR62
 
 - **Direttiva utente:** Falco e Toro **restano come prima con Claude**, fallback a regole e SHORT invariati. Soltanto LONG S25 e miglioramento riconoscimento cambio trend; nessuna forzatura di LONG, cambio leve, margini, limiti o modifica Brain.
