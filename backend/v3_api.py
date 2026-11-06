@@ -303,10 +303,14 @@ def _overview(paths: V3Paths, now_ms: int) -> dict:
     s = _summary(paths)
     hb = _heartbeat(paths)
     state = _brain_state(paths, hb, now_ms)
+    n_closed = len(s.closed_trades) if s is not None else 0
+    wins = sum(1 for t in s.closed_trades if t.realized_pnl > 0) if s is not None else 0
     entries.append({'id': 'brain', 'kind': 'brain', 'state': state,
                     'open_positions': len(s.open_positions) if s is not None else 0,
                     'realized_pnl': str(s.realized_pnl) if s is not None else '0',
                     'margin_in_use': str(s.margin_in_use) if s is not None else '0',
+                    'total_closed': n_closed,
+                    'win_rate': str((Decimal(wins) * 100 / n_closed).quantize(Decimal('0.1'))) if n_closed else None,
                     'last_event_ms': s.last_event_ms if s is not None else None,
                     'heartbeat_age_s': max(0, (now_ms - hb['ts_ms']) // 1000) if hb else None})
     return {'generated_at_ms': now_ms, 'portfolios': entries}

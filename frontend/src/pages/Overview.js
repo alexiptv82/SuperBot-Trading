@@ -57,8 +57,11 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
   const stoppedReason = status?.state === 'halted' ? reasonText(status?.heartbeat?.last_error) : null;
   const openPositions = trades?.open_positions || [];
   const closedTrades = (trades?.closed_trades || []).slice(0, 20);
+  const brainUnrealized = !openPositions.length ? '0' :
+    openPositions.every(p => p.unrealized_pnl !== null && p.unrealized_pnl !== undefined)
+      ? openPositions.reduce((sum, p) => sum + Number(p.unrealized_pnl), 0).toFixed(2) : null;
   const portfolioNames = { falco: '🦅 Falco', toro: '🐂 Toro', brain: '🧠 Brain V3' };
-  return <main style={{ background: '#0b1323', color: '#eef5ff', minHeight: '100vh', padding: '16px 12px 92px', maxWidth: 640, margin: '0 auto', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }}>
+  return <main style={{ background: '#0b1323', color: '#eef5ff', minHeight: '100vh', padding: '16px 12px 92px', maxWidth: 1200, margin: '0 auto', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }}>
     <header style={{ marginBottom: 18 }}>
       <div style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>SUPERBOT V3 · PAPER</div>
       <h1 style={{ fontSize: 25, margin: '6px 0' }}>I tre portafogli</h1>
@@ -74,13 +77,13 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           <div style={detailBox}><div style={MUTED}>Posizioni aperte</div><strong>{p.open_positions ?? '—'}</strong></div>
           <div style={detailBox}><div style={MUTED}>P&L realizzato</div><strong style={{ color:pnlColor(p.realized_pnl) }}>{p.state === 'not_started' ? '—' : money(p.realized_pnl)}</strong></div>
           <div style={detailBox}><div style={MUTED}>Margine in uso</div><strong>{p.state === 'not_started' ? '—' : money(p.margin_in_use)}</strong></div>
-          <div style={detailBox}><div style={MUTED}>P&L aperto</div><strong style={{ color:pnlColor(p.unrealized_pnl) }}>{p.state === 'not_started' ? '—' : money(p.unrealized_pnl)}</strong></div>
+          <div style={detailBox}><div style={MUTED}>P&L aperto</div><strong style={{ color:pnlColor(p.id === 'brain' ? brainUnrealized : p.unrealized_pnl) }}>{p.state === 'not_started' ? '—' : money(p.id === 'brain' ? brainUnrealized : p.unrealized_pnl)}</strong></div>
           {p.kind === 'classic' && <>
             <div style={detailBox}><div style={MUTED}>Equity</div><strong>{money(p.equity)}</strong></div>
             <div style={detailBox}><div style={MUTED}>Profitto di oggi</div><strong style={{ color:pnlColor(p.day_pnl) }}>{money(p.day_pnl)}</strong></div>
-            <div style={detailBox}><div style={MUTED}>Trade chiusi</div><strong>{p.total_closed ?? 0}</strong></div>
-            <div style={detailBox}><div style={MUTED}>Win rate</div><strong>{p.win_rate == null ? '—' : `${p.win_rate}%`}</strong></div>
           </>}
+          <div style={detailBox}><div style={MUTED}>Trade chiusi</div><strong>{p.total_closed ?? 0}</strong></div>
+          <div style={detailBox}><div style={MUTED}>Win rate</div><strong>{p.win_rate == null ? '—' : `${p.win_rate}%`}</strong></div>
           <div style={{ gridColumn:'1 / -1', ...MUTED }}>Ultimo evento: {ageText(p.last_event_ms, nowMs)}</div>
         </div>
         {p.id === 'brain' && stoppedReason && <p style={{ color: '#fda4af', fontSize: 13 }}>{stoppedReason}</p>}

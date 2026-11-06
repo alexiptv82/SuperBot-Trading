@@ -293,7 +293,7 @@ def test_rich_brain_open_position_exposes_leverage_margin_and_live_price(tmp_pat
         assert p['entry'] == '100' and p['stop'] == '95'
         assert p['price'] == '105' and p['price_source'] == 'ticker'
         assert p['unrealized_pnl'] == '10'
-        assert p['roi_pct'] == '25'
+        assert Decimal(p['roi_pct']) == Decimal('25')
         assert p['opened_at_ms'] == T0 + 1000
 
 
