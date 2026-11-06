@@ -1,3 +1,13 @@
+## 06/11 — RC62: BRAIN 2.000 PAPER PREPARATO IN PAUSA; CLASSICI IN INTEGRAZIONE, NO-GO
+
+**Decisione confermata:** Brain 2.000 USDT PAPER; Falco 1.000, Toro 1.000 (totale 4.000 simulati). Config opt-in `backend/v3/runner/runner_config_brain2000_paper.json` cambia solo initial_equity rispetto al profilo 1000. `prepared_config_guard` blocca qualunque avvio Brain/EXIT con profilo incompatibile con la run preparata. CI dopo guard: V3 4053 PASS + 1 skipped su Python3.11, API e frontend PASS (run 42266573767).
+**ESEGUITO VPS:** workflow 42267383080 (success): nuova run `/opt/superbot-v3-paper-runs/brain-v3-rc20261106`, journal/budget propri, CONFIG 2000 verificata, mandato NON APPROVATO, PAUSA presente, validator EXIT `--validate-only` riuscito, nessun worker avviato. Vecchio storico/posizioni invariati.
+**Audit VPS:** web `superbot` running PAPER ma ancora montato sui VECCHI volumi hawk/bull/brain. Legacy workers fermi (restart=no), vecchio stato Falco 6 e Toro 2 posizioni PAPER ancora aperte. `superbot-extbackup.service` risulta FAILED; backup manuale e restore già verificati ma backup automatico esterno non certificato.
+**Classici su PR62:** integrati PR #58 (S25 opt-in, OFF di default) e PR #59 (Chiudi singola PAPER, percorso LIVE storico intatto); compatibilità `engine.py` con campi sconosciuti delle run precedenti ripristinata da #58, nuovo job CI `classics-rc` avviato, non dichiarare PASS finché non concluso.
+**BLOCCO OPERATIVO:** preparazione automatica delle nuove directory Falco/Toro in PAUSA non eseguita: l'azione è stata bloccata dai controlli della piattaforma, nessun tentativo di aggiramento. Non riavviare i vecchi container, non fare reset 6+2, non smontare storici.
+**Prossimi gate:** CI classic definitiva; nuovi storage in pausa per Falco/Toro; worker/supervisor EXIT unico con fault recovery; nuovi mount web/dashboard; diagnosi backup automatico esterno; mandate Brain approvato espressamente e rimozione PAUSA solo su nuove run. Dettagli `diario/2026-11-06_rc62_brain2000_pausa_classici_stato.md` commit `5fdafb7`, `docs/v3/RC62-CHECKPOINT-2000-CLASSICI-2026-11-06.md` su PR62. Release operativa **NO-GO**. Niente merge o deploy dei worker.
+
+---
 ## 06/11 — CHATGPT: RC62, RESTORE PROVATO E BOOTSTRAP PAPER UNICO — NO-GO DEPLOY
 
 **Release candidate software:** PR #62 draft su branch dedicato. Backend suite V3 e frontend Jest/build CI PASS al commit `6078be70`. Nessun merge/deploy/start VPS, la UI non ancora verificata dal server live.
