@@ -255,6 +255,8 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     ap.add_argument("--config", default=None, help="default: runner_config.json (valori proposti)")
     ap.add_argument("--print-mandate", action="store_true", help="stampa il modello di mandato (non approvato) ed esce")
     ap.add_argument("--once", action="store_true", help="un solo tick (prova) e poi esce")
+    ap.add_argument("--exit-mode", choices=("legacy", "sidecar"), default="legacy",
+                    help="sidecar: richiede journal e budget PAPER esistenti, e servizio uscite sano")
     a = ap.parse_args(argv)
     environ = os.environ if env is None else env
     try:
@@ -269,10 +271,19 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
         print("refused: DESK_MODE must be 'paper'", file=sys.stderr)
         return 2
     data_dir = Path(a.data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
+    if a.exit_mode == "sidecar":
+        # A split start must NEVER initialize an empty journal/run implicitly.
+        if not data_dir.is_dir():
+            print("split_data_missing", file=sys.stderr)
+            return 2
+        split_opts = {"exit_mode": "sidecar", "desk_mode": "paper", "clock_ms": now_fn}
+    else:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        split_opts = {}
     try:
         built = build_runner(data_dir=data_dir, run_id=a.run_id, config=config, get_json=get_json,
-                             inner_transport=inner_transport, alert_send=telegram_sender(environ))
+                             inner_transport=inner_transport, alert_send=telegram_sender(environ),
+                             **split_opts)
     except ValueError:
         print("setup_invalid", file=sys.stderr)
         return 2
