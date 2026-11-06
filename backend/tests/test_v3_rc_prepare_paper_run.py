@@ -16,9 +16,10 @@ from backend.v3.runner.prepare_paper_run import (RunPreparationError,
 CFG=default_config_path().read_bytes()
 
 def invoke(parent, *, name='brain-v3-rcsafe',run='rc-safe-001',cfg=CFG,
-           desk='paper',ts=1794000000000):
+           desk='paper',ts=1794000000000,equity='1000'):
     return prepare_new_paper_run(parent=parent,run_name=name,run_id=run,
-                                config_bytes=cfg,desk_mode=desk,now_ms=ts)
+                                config_bytes=cfg,desk_mode=desk,now_ms=ts,
+                                expected_initial_equity=equity)
 
 def test_new_run_is_paused_unapproved_and_accepted_by_worker(tmp_path):
     p=invoke(tmp_path)
@@ -64,13 +65,13 @@ def test_unsafe_leaf_name_symlink_and_bad_run_refused(tmp_path):
 
 def test_no_action_without_explicit_cli_flag(tmp_path):
     cfg=tmp_path/'config.json';cfg.write_bytes(CFG)
-    code=main(['--parent',str(tmp_path),'--run-name','brain-v3-rcsafe','--run-id','rc-safe-001','--config',str(cfg)],env={'DESK_MODE':'paper'})
+    code=main(['--parent',str(tmp_path),'--run-name','brain-v3-rcsafe','--run-id','rc-safe-001','--config',str(cfg),'--expected-initial-equity','1000'],env={'DESK_MODE':'paper'})
     assert code==2
     assert not (tmp_path/'brain-v3-rcsafe').exists()
 
 def test_cli_needs_paper_and_then_prepares_paused(tmp_path):
     cfg=tmp_path/'config.json';cfg.write_bytes(CFG)
-    args=['--parent',str(tmp_path),'--run-name','brain-v3-rcsafe','--run-id','rc-safe-001','--config',str(cfg),'--prepare-paper-paused']
+    args=['--parent',str(tmp_path),'--run-name','brain-v3-rcsafe','--run-id','rc-safe-001','--config',str(cfg),'--expected-initial-equity','1000','--prepare-paper-paused']
     assert main(args,env={'DESK_MODE':'live'})==2
     assert not (tmp_path/'brain-v3-rcsafe').exists()
     assert main(args,env={'DESK_MODE':'paper'})==0
@@ -84,3 +85,9 @@ def test_invalid_existing_dir_never_modified(tmp_path):
 def test_parent_must_exist_and_be_absolute(tmp_path):
     with pytest.raises(RunPreparationError): invoke(tmp_path/'missing')
     with pytest.raises(RunPreparationError): invoke(Path('.'))
+
+
+def test_explicit_capital_mismatch_refuses_before_creation(tmp_path):
+    with pytest.raises(RunPreparationError, match='capital_confirmation_mismatch'):
+        invoke(tmp_path,equity='2000')
+    assert list(tmp_path.iterdir()) == []
