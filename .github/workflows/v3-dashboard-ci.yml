@@ -85,5 +85,5 @@ jobs:
           DESK_MODE: paper
           DESK_MACRO_FETCH: '0'
         run: |
-          python -m py_compile backend/desk/cli.py backend/desk/long_s25.py
-          python -m pytest -q -p no:cacheprovider backend/tests/test_desk.py backend/tests/test_long_s25.py
+          python -m py_compile backend/desk/cli.py backend/desk/long_s25.py backend/desk/trend_change.py backend/desk/signals.py backend/desk/brain.py
+          python -m pytest -q -p no:cacheprovider backend/tests/test_desk.py backend/tests/test_long_s25.py backend/tests/test_desk_trend_change_advisory.py

@@ -125,6 +125,11 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None) -> Re
         daily_trend = 1 if e50d > e200d else -1
         daily_note = f"trend 1d {'bull' if daily_trend == 1 else 'bear'}, RSI1d {r1d:.0f}"
 
+    # Advisory-only: an actual EMA20/50 crossover on the last CLOSED 1h bar.
+    # Scores, SHORT logic and the existing 1h/4h/1d trend readings are unchanged.
+    from desk.trend_change import advisory as trend_change_advisory
+    trend_change = trend_change_advisory(b1, b4, now_ms, ema_fn=ema)
+
     # --- pattern candele
     pat = doji_pattern(b1)
 
@@ -214,7 +219,10 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None) -> Re
         facts={"rsi1h": round(r1h, 1), "ema20_50_1h": "su" if e20 > e50 else "giu",
                "ema50_200_4h": "su" if e50_4 > e200_4 else "giu", "roc24h": round(roc24, 4),
                "atr1h_pct": round(a_pct, 4), "vol_ratio": round(vol_ratio, 2),
-               "daily_trend": daily_note},
+               "daily_trend": daily_note,
+               "trend_change": trend_change["event"],
+               "trend_change_h4": trend_change["h4_bias"],
+               "trend_change_asof_ms": trend_change["asof_ms"]},
         why=comp["long" if side == 1 else "short"],
         seasonal_note=sea.note,
         pattern=pat,
