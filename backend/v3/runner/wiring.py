@@ -46,6 +46,7 @@ from backend.v3.outcomes import extract_outcomes
 from backend.v3.risk import RiskPolicy
 from backend.v3.runner.alerts import telegram_sender
 from backend.v3.runner.config import RunnerConfig, default_config_path, load_runner_config
+from backend.v3.runner.prepared_config_guard import verify_prepared_run_config
 from backend.v3.runner.contracts import ContractRules
 from backend.v3.runner.daily_loss import DailyLossGuard, evaluate_daily_loss
 from backend.v3.runner.cycle import CycleBars, CycleReport, MarketEntryAnalyst, PORTFOLIO_ID, run_brain_cycle
@@ -134,6 +135,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             raise ValueError("paper_mode_required")
         # Never create a fresh run/empty journal in a cutover path.
         journal = check_existing_data(data_dir=data_dir, run_id=run_id)
+        verify_prepared_run_config(data_dir=data_dir, run_id=run_id, config=config)
         if not (data_dir / "budget.db").is_file():
             raise ValueError("split_budget_missing")
         if clock_ms is None or not callable(clock_ms):
