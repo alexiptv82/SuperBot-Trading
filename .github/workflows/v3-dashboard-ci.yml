@@ -5,6 +5,7 @@ on:
     branches:
       - work/v3-dashboard-unificata-chatgpt-20261105
       - work/v3-dashboard-chiudi-chatgpt-20261105
+      - work/v3-release-candidate-gpt6-20261106
   workflow_dispatch:
 
 permissions:
