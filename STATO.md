@@ -1,3 +1,11 @@
+## 06/11 — CHATGPT: MARKET QUALITY MONITOR SHADOW, SOLO INCREMENTO (NO RUNTIME)
+
+**Decisione su consulenza esterna:** GO minimo microstruttura in SHADOW, NON nuovi bot. Unico nuovo modulo `backend/v3/observability/market_quality.py` (spread/profondità±10bps/microprice/imbalance/impatto), riusa `liquidity_quote.py` byte-identico alla precedente consegna. Ex-post midpoint markout 30/60s separato dai dati pretrade, niente leakage, AI, veto o seconda pipeline. Senza book Bitget L2 affidabile resta **OFF**: non rallentare il primo riavvio PAPER.
+**Prove:** 737 PASS regressione mirata runner/risk/market/observability; 385/385 file baseline e25 identici. NON è certificazione di feed UTA sequenziato, CI completa, VPS o profitti. Nessun file originale modificato o codice GitHub pushato.
+**Pacchetto in Library:** `/SuperBot-Trading/SuperBot-V3-Market-Quality-SHADOW-Incrementale-2026-11-06.zip` SHA256 `1e2624636668c64b2f0b3ded1b8452fc1f78b994a725eade5663ed8f4506e037`; report `RAPPORTO_SuperBot_V3_Market_Quality_SHADOW_2026-11-06.md` SHA256 `51482db9290be895ae70fcd58dc39482ab4ab51d51d311637b53189e27f62176`. Diario dettagliato `diario/2026-11-06_chatgpt-market-quality-shadow-puro.md` commit `ae72014`.
+**Prossimo lavoro:** priorità di rilascio a runner split e stop indipendenti, ownership e dashboard; solo dopo feed book validato e collegamento a S1 può essere promosso da libreria pura a telemetria SHADOW, senza azione sul trade. Soglie PAPER 2%/5%/35-50%/floor 450 invariate; nessun merge/deploy/riavvio.
+
+---
 ## 06/11 — NUOVA REGOLA PERMANENTE: MIGLIORIE, MAI RIFARE SUPERBOT
 
 **Direttiva utente (per ogni AI):** idee e video sono solo proposte di miglioria. Valutare in autonomia se sono utili, già presenti, compatibili ed economiche. Solo piccoli incrementi reversibili opt-in; niente rifacimento del bot, duplicazione di servizi o test di profittabilità infiniti prima del PAPER. La sicurezza di stop/risk/journal e recovery va comunque verificata prima dell'avvio. Regola persistente salvata anche in `LEGGIMI.md` (commit `dc49485`).
