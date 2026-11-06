@@ -469,3 +469,22 @@ PROSSIMO PASSO: creare dopo revisione un ramo d'integrazione dalla PR #61, appli
 
 Fonti e limite: Library v38, artefatti recenti, checkpoint/`STATO.md` del ramo `diario`, PR #57/#61 e messaggi recenti recuperabili. Riepilogo di ripresa, non esportazione integrale automatica delle chat.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 06/11/2026 05:46 Europe/Rome — Supervisore S0: timeline verificabile delle decisioni Brain PAPER
+
+FATTO: recuperati e verificati nella chat di progetto accessibile `SuperBot-V3-Supervisore-S0-6-Servizi-2026-11-06.zip` e `RAPPORTO_SUPERBOT_V3_SUPERVISORE_S0_2026-11-06.md`. Archivio integro, nove file, SHA-256 `99788dafe1e09d24ae1a61da58b959e5a55c19b294c9cee84acce51753473d14`. Sulla baseline locale runner PR #57 `e25c8dd8db88fd6994e3b7a75ecfdec5ff258421`, `backend/v3/supervisor/trace.py` realizza un primo read model puro: legge `EventJournal.verify_chain()`, `list_run()` ed `extract_outcomes()`, ricostruisce schede di decisione Brain PAPER incluse `NO_TRADE`, apertura, chiusura ed esito verificato. Non inventa snapshot mercato, quote rischio, memoria o invalidazione mancanti; chiusure manuali visibili ma escluse dalle statistiche automatiche.
+
+COMMIT/RAMI/TEST: consegna locale isolata; nessun ramo, commit o PR GitHub trovato per il nuovo codice Supervisore. PR #57 resta baseline runner `e25c8dd`; dashboard separata sulla PR #61 `a9044b6759da327b44da04f9e7f51e211d44e03f`. Log del pacchetto: **31 PASS** da radice, **31 PASS** da `/tmp`, **339 PASS** di compatibilità con journal, etichette L1, daily-loss e chiusura manuale. Database e posizioni sono sintetici temporanei; produttori PAPER reali `execute_paper`/`close_paper`. Non eseguiti suite generale, Jest, build CRA, VPS o dati live; nessuna Action associata.
+
+PREPARATO: base S0 e roadmap S1–S3. I sei servizi sono responsabilità prevalentemente deterministiche — Scanner, Controllore, Sizer, Executor PAPER, Registro, Equity — non sei nuove AI. Invariati rischio/trade **2%**, open risk **5%**, daily warn/halt **35%/50%**, floor **450 USDT**; non copiato il sizing al 43%. S1 dovrà registrare evidenze strutturate alla decisione; S2 GET autenticata e mobile sul ramo dashboard; S3 esperimenti preregistrati/OOS.
+
+RILASCIATO: nulla. Nessun endpoint HTTP, wiring runner, commit/PR di codice, merge, deploy, runtime/VPS, avvio bot, wallet, reset o API pagata. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: `brain_decision` non conserva dati sufficienti per ricostruire integralmente ragionamento, mercato, rischio, memoria o controfattuali; `context_hash` non è lo snapshot. Il runner usa `NoReviewer`: Claude non è revisore operativo. Catena hash senza ancora esterna non prova assenza di troncamento. S0 non ha route/UI e PR #57/#61 restano divergenti.
+
+PROSSIMO PASSO: pubblicare S0 soltanto dopo revisione in un ramo isolato/integrato, collegare CI e suite completa; revisionare lo schema append-only S1 prima del runner, poi costruire GET audit e vista mobile S2 sulla linea PR #61. Merge, avvio o deploy richiedono OK esplicito separato.
+
+Fonti e limite: Library v39, pacchetto/rapporto S0, sorgente/piano/log verificati, PR #57/#61 e ramo `diario`; accesso alle chat limitato ai messaggi recenti recuperabili. Riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
