@@ -43,7 +43,7 @@ test('classic open trade remains visible when manual close is not available', ()
   expect(h).toContain('SHORT');
   expect(h).toContain('25×');
   expect(h).toContain('Margine 100 USDT');
-  expect(h).toContain('Prezzo attuale 99');
+  expect(h).toContain('Ultimo prezzo bot 99');
   expect(h).toContain('Chiusura manuale non ancora disponibile');
   expect(h).not.toContain('Chiudi BTCUSDT');
   expect(h).toContain('Apri la dashboard classica completa');

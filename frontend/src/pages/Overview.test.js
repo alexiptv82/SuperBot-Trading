@@ -41,7 +41,8 @@ test('phone-first unified cards and learning metrics, only safe text', () => {
   expect(html).toContain('Chiudi BTCUSDT');
   expect(html).toContain('Chiudi tutte (1)');
   expect(html).not.toContain('<form');
-  expect(html).toContain('max-width:640px');
+  expect(html).toContain('max-width:1200px');
+  expect(html).toContain('grid-template-columns:repeat(auto-fit');
 });
 
 test('not started means unavailable, not fictional wallet', () => {

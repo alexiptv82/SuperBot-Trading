@@ -163,7 +163,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
     {positions.map(p => <div key={p.symbol} style={{ background:'#0e1a2d', padding:'12px', border:'1px solid #30465e', borderRadius:11, marginTop:9 }}>
       <strong>{p.symbol} · <span style={{ color:p.side === 1 ? '#4ade80' : '#fda4af' }}>{p.side === 1 ? 'LONG' : 'SHORT'}</span> · {p.leverage ?? '—'}×</strong>
       {p.trade_type && <span style={{ display:'block', ...MUTED }}>Tipo: {p.trade_type}</span>}
-      <div style={{ ...MUTED, marginTop:6 }}>Ingresso {p.entry} · Prezzo attuale {p.price ?? '—'}</div>
+      <div style={{ ...MUTED, marginTop:6 }}>Ingresso {p.entry} · {p.price_source === 'bot' ? 'Ultimo prezzo bot' : p.price_source === 'live' ? 'Prezzo live' : 'Prezzo'} {p.price ?? '—'}</div>
       {p.price == null && <div style={MUTED}>Prezzo aggiornato non disponibile.</div>}
       <div style={MUTED}>Margine {p.margin ?? '—'} USDT · Stop {p.stop ?? '—'}</div>
       <div style={MUTED}>Obiettivo {p.take_profit ?? '—'} · Liquidazione {p.liquidation ?? '—'}</div>
