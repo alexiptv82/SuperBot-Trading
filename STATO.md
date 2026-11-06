@@ -1,3 +1,11 @@
+## 06/11 — NUOVA REGOLA PERMANENTE: MIGLIORIE, MAI RIFARE SUPERBOT
+
+**Direttiva utente (per ogni AI):** idee e video sono solo proposte di miglioria. Valutare in autonomia se sono utili, già presenti, compatibili ed economiche. Solo piccoli incrementi reversibili opt-in; niente rifacimento del bot, duplicazione di servizi o test di profittabilità infiniti prima del PAPER. La sicurezza di stop/risk/journal e recovery va comunque verificata prima dell'avvio. Regola persistente salvata anche in `LEGGIMI.md` (commit `dc49485`).
+**Audit concreto:** PR #57 `runner_config.json` ha `cycle_minutes=60` (config dello ZIP, NON verifica VPS); analisi L5 e RiskQuote già presenti. Sviluppati SOLO in sandbox nuovi osservatori puri: scanner 5m su candele chiuse 1m e stima liquidity su book opzionale. Nessun codice runtime/runner/AI/strategia cambiato; dati book NON disponibili nel ramo, quindi non fare veto. 25 test nuovi e **692 compatibilità PASS**; **385/385** file originali invariati. Nessun deploy/merge/riavvio.
+**Libreria:** `/SuperBot-Trading/SuperBot-V3-Scanner-Liquidita-Incrementali-2026-11-06.zip`, SHA256 `4ba6d156876afe95057e6077a9c77672da93126b19cdf60a82323f3fbe340af9`, rapporto `IDEE-INCREMENTALI-NON-RIFARE-2026-11-06.md`. Diario `diario/2026-11-06_chatgpt-policy-migliorie-incrementali-scanner-book.md` commit `9e37788`.
+**Decisione:** GO scanner come osservatore NON ancora montato; DEFER filtro liquidità bloccante finché non è validato feed del book; NO nuovo sizer/AI 5m. Prima integrare/validare runtime PAPER uscite indipendenti e PR #61 UI, poi collegare osservazioni senza ritardare ripartenza.
+
+---
 ## 06/11 — CHATGPT: INTEGRAZIONE AUTONOMA SPLIT PAPER E OPEN/CLOSE SERIALIZZATI — NO-GO DEPLOY
 
 **Verificato LOCALMENTE:** 4.469 PASS V3 (suite intera), 306 PASS mirati e 39 PASS da `/tmp` (test reali multiprocesso). PR #57 runner `e25c8dd` e PR #61 dashboard `a9044b6` ancora draft separate. 385 sorgenti originali: 381 byte-identici, 4 modificati SOLO nella sandbox (`cycle.py`, `runner.py`, `wiring.py`, `daily_loss.py`).
