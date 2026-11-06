@@ -236,17 +236,43 @@ def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
     classic_positions = [
         {'symbol': p['symbol'], 'side': p.get('side'), 'leverage': p.get('leverage'),
          'entry': _safe_decimal(p.get('entry')), 'stop': _safe_decimal(p.get('sl')) if p.get('sl') is not None else None,
-         'unrealized_pnl': _safe_decimal(p.get('pnl'))}
+         'price': (_safe_decimal(p.get('price')) if p.get('price_source') != 'entry' else None),
+         'price_source': p.get('price_source') if p.get('price_source') in ('live', 'bot', 'entry') else None,
+         'margin': _safe_decimal(p.get('margin')), 'quantity': _safe_decimal(p.get('qty')),
+         'take_profit': _safe_decimal(p.get('tp')) if p.get('tp') is not None else None,
+         'liquidation': _safe_decimal(p.get('liq')) if p.get('liq') is not None else None,
+         'trade_type': p.get('trade_type'), 'opened_at_ms': p.get('open_ms'),
+         'unrealized_pnl': (_safe_decimal(p.get('pnl')) if p.get('price_source') != 'entry' else None),
+         'roi_pct': (_safe_decimal(p.get('pnl_pct')) if p.get('price_source') != 'entry' else None)}
         for p in detail.get('positions', ()) if type(p) is dict and type(p.get('symbol')) is str
     ]
+    # Keep the new page aligned with the existing classic trade history.
+    recent = dv.build_trades(data_dir, limit=20) if state else []
+    closed = [
+        {'symbol': t.get('symbol'), 'side': t.get('side'), 'leverage': t.get('leverage'),
+         'entry': _safe_decimal(t.get('entry_price')) if t.get('entry_price') is not None else None,
+         'exit': _safe_decimal(t.get('exit_price')) if t.get('exit_price') is not None else None,
+         'margin': _safe_decimal(t.get('margin')) if t.get('margin') is not None else None,
+         'realized_pnl': _safe_decimal(t.get('pnl')) if t.get('pnl') is not None else None,
+         'closed_at_ms': t.get('close_ms'), 'close_reason': str(t.get('close_reason') or '')[:120],
+         'trade_type': t.get('trade_type'), 'partial': t.get('partial') is True}
+        for t in recent if type(t) is dict
+    ]
     return {'id': portfolio_id, 'kind': 'classic', 'state': mode,
-            'positions': classic_positions,
+            'positions': classic_positions, 'closed_trades': closed,
             'can_close_position': detail.get('can_close_position') is True,
             'close_pending': detail.get('close_position_pending') or [],
             'open_positions': len(positions),
             'realized_pnl': _safe_decimal(perf['total_pnl'] if perf and perf.get('available') else 0),
             'margin_in_use': str(margin), 'last_event_ms': last_ms,
-            'heartbeat_age_s': age}
+            'heartbeat_age_s': age,
+            'equity': _safe_decimal(detail.get('equity')) if detail.get('available') else None,
+            'cash': _safe_decimal(detail.get('cash')) if detail.get('available') else None,
+            'day_pnl': _safe_decimal(detail.get('day_pnl')) if detail.get('available') else None,
+            'unrealized_pnl': _safe_decimal(detail.get('unrealized_pnl')) if detail.get('available') else None,
+            'start_equity': _safe_decimal(detail.get('start_equity')) if detail.get('available') else None,
+            'total_closed': detail.get('total_closed', 0),
+            'win_rate': _safe_decimal(perf.get('win_rate')) if perf and perf.get('available') else None}
 
 
 def _brain_status(paths: V3Paths, now_ms: int) -> dict:
@@ -294,21 +320,28 @@ def _scoreboard(paths: V3Paths, now_ms: int) -> dict:
     return {'generated_at_ms': now_ms, 'regimes': scores}
 
 
-async def _ticker_pnl(get_ticker, pos):
+async def _ticker_mark(get_ticker, pos):
+    """Return a real price mark and unrealized PnL together, or two unknowns.
+
+    In particular NEVER pass off entry price as the latest traded price.
+    """
     if get_ticker is None:
-        return None
+        return None, None
     try:
-        # Market data read only. This optional callback may be network-backed.
         result = get_ticker(pos.symbol)
         if asyncio.iscoroutine(result):
             result = await asyncio.wait_for(result, timeout=4)
         last = Decimal(str(result['price']))
         if not last.is_finite() or last <= 0:
-            return None
-        return str((last - pos.fill_price) * pos.quantity * pos.side)
+            return None, None
+        return str(last), str((last - pos.fill_price) * pos.quantity * pos.side)
     except Exception:
-        # An unavailable market-price provider never breaks read-only trades.
-        return None
+        return None, None
+
+
+async def _ticker_pnl(get_ticker, pos):
+    """Keep the existing private PnL helper available to other callers."""
+    return (await _ticker_mark(get_ticker, pos))[1]
 
 
 async def _trades(paths: V3Paths, limit: int, get_ticker) -> dict:
@@ -317,6 +350,9 @@ async def _trades(paths: V3Paths, limit: int, get_ticker) -> dict:
                'strategy_id': o.strategy_id or None, 'strategy_origin': o.strategy_origin or None,
                'regime': o.decision_regime or None, 'net_bp': str(o.net_bp),
                'exit_reason': o.exit_reason, 'hold_ms': o.hold_ms,
+               'leverage': o.leverage, 'margin': str(o.margin_used),
+               'entry': str(o.entry_price), 'exit': str(o.exit_price),
+               'fees': str(o.fees), 'realized_pnl': str(o.realized_pnl),
                'closed_at_ms': o.closed_at_ms} for o in outcomes]
     summary = _summary(paths)
     events = _events(paths)
@@ -329,10 +365,16 @@ async def _trades(paths: V3Paths, limit: int, get_ticker) -> dict:
             labels[p.get('position_id')] = d.get('strategy_id')
     opened = []
     for pos in summary.open_positions if summary is not None else ():
+        mark, pnl = await _ticker_mark(get_ticker, pos)
+        roi = (str(Decimal(pnl) / pos.margin_used * 100)
+               if pnl is not None and pos.margin_used > 0 else None)
         opened.append({'position_id': pos.position_id, 'symbol': pos.symbol, 'side': pos.side,
                        'entry': str(pos.fill_price), 'stop': str(pos.stop_price),
+                       'price': mark, 'price_source': 'ticker' if mark is not None else None,
+                       'margin': str(pos.margin_used), 'quantity': str(pos.quantity),
+                       'opened_at_ms': pos.opened_at_ms,
                        'leverage': pos.leverage, 'strategy_id': labels.get(pos.position_id),
-                       'unrealized_pnl': await _ticker_pnl(get_ticker, pos)})
+                       'unrealized_pnl': pnl, 'roi_pct': roi})
     return {'open_positions': opened, 'closed_trades': closed,
             'close_pending': _close_inflight(paths)}
 

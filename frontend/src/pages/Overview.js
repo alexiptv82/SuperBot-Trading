@@ -1,5 +1,6 @@
 /** Unified PAPER overview: read-only metrics plus authenticated close requests. */
 import React, { useCallback, useEffect, useState } from 'react';
+
 import API from '../api';
 import { BrainCloseControls, ClassicCloseControls } from '../components/OverviewCloseControls';
 
@@ -11,6 +12,9 @@ const MUTED = { color: '#a8bacd', fontSize: 12 };
 
 const money = value => value === null || value === undefined ? '—' : `${value} USDT`;
 const bp = value => value === null || value === undefined ? '—' : `${value} bp`;
+const field = value => value === null || value === undefined || value === '' ? '—' : value;
+const pnlColor = value => value === null || value === undefined ? '#a8bacd' : String(value).startsWith('-') ? '#fda4af' : '#4ade80';
+const detailBox = { padding: '10px 11px', background: '#0e1a2d', borderRadius: 10, border: '1px solid #30465e' };
 const amountUsd = value => value === null || value === undefined ? '—' : `$${value}`;
 const direction = side => side === 1 ? 'LONG' : side === -1 ? 'SHORT' : '—';
 // Only Brain trade exit reasons are translated; unknown codes never reach the UI.
@@ -53,27 +57,49 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
   const stoppedReason = status?.state === 'halted' ? reasonText(status?.heartbeat?.last_error) : null;
   const openPositions = trades?.open_positions || [];
   const closedTrades = (trades?.closed_trades || []).slice(0, 20);
+  const portfolioNames = { falco: '🦅 Falco', toro: '🐂 Toro', brain: '🧠 Brain V3' };
   return <main style={{ background: '#0b1323', color: '#eef5ff', minHeight: '100vh', padding: '16px 12px 92px', maxWidth: 640, margin: '0 auto', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }}>
     <header style={{ marginBottom: 18 }}>
       <div style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>SUPERBOT V3 · PAPER</div>
       <h1 style={{ fontSize: 25, margin: '6px 0' }}>I tre portafogli</h1>
       <div style={MUTED}>Monitoraggio · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
     </header>
-    <section aria-label="Portafogli">
-      {portfolios.map(p => <article key={p.id} style={BLOCK}>
+    <section aria-label="Portafogli" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap:12, alignItems:'start', marginBottom:14 }}>
+      {portfolios.map(p => <article key={p.id} style={{ ...BLOCK, marginBottom:0, borderTop: `3px solid ${p.id === 'falco' ? '#38bdf8' : p.id === 'toro' ? '#fbbf24' : '#a78bfa'}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-          <strong style={{ fontSize: 18 }}>{({ falco: '🦅 Falco', toro: '🐂 Toro', brain: '🧠 Brain V3' })[p.id] || p.id}</strong>
+          <strong style={{ fontSize: 18 }}>{portfolioNames[p.id] || p.id}</strong>
           <StateLabel state={p.state} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 16 }}>
-          <div><div style={MUTED}>Posizioni aperte</div><strong>{p.open_positions ?? '—'}</strong></div>
-          <div><div style={MUTED}>P&L realizzato</div><strong>{p.state === 'not_started' ? '—' : money(p.realized_pnl)}</strong></div>
-          <div><div style={MUTED}>Margine in uso</div><strong>{p.state === 'not_started' ? '—' : money(p.margin_in_use)}</strong></div>
-          <div><div style={MUTED}>Ultimo evento</div><strong>{ageText(p.last_event_ms, nowMs)}</strong></div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:9, marginTop:14 }}>
+          <div style={detailBox}><div style={MUTED}>Posizioni aperte</div><strong>{p.open_positions ?? '—'}</strong></div>
+          <div style={detailBox}><div style={MUTED}>P&L realizzato</div><strong style={{ color:pnlColor(p.realized_pnl) }}>{p.state === 'not_started' ? '—' : money(p.realized_pnl)}</strong></div>
+          <div style={detailBox}><div style={MUTED}>Margine in uso</div><strong>{p.state === 'not_started' ? '—' : money(p.margin_in_use)}</strong></div>
+          <div style={detailBox}><div style={MUTED}>P&L aperto</div><strong style={{ color:pnlColor(p.unrealized_pnl) }}>{p.state === 'not_started' ? '—' : money(p.unrealized_pnl)}</strong></div>
+          {p.kind === 'classic' && <>
+            <div style={detailBox}><div style={MUTED}>Equity</div><strong>{money(p.equity)}</strong></div>
+            <div style={detailBox}><div style={MUTED}>Profitto di oggi</div><strong style={{ color:pnlColor(p.day_pnl) }}>{money(p.day_pnl)}</strong></div>
+            <div style={detailBox}><div style={MUTED}>Trade chiusi</div><strong>{p.total_closed ?? 0}</strong></div>
+            <div style={detailBox}><div style={MUTED}>Win rate</div><strong>{p.win_rate == null ? '—' : `${p.win_rate}%`}</strong></div>
+          </>}
+          <div style={{ gridColumn:'1 / -1', ...MUTED }}>Ultimo evento: {ageText(p.last_event_ms, nowMs)}</div>
         </div>
         {p.id === 'brain' && stoppedReason && <p style={{ color: '#fda4af', fontSize: 13 }}>{stoppedReason}</p>}
-        {p.kind === 'classic' && <ClassicCloseControls portfolio={p.id} positions={p.positions || []}
-          canClose={p.can_close_position === true} pending={p.close_pending || []} onRefresh={onRefresh} />}
+        {p.kind === 'classic' && <>
+          <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · {p.id === 'falco' ? 'Falco' : 'Toro'}</h3>
+          <ClassicCloseControls portfolio={p.id} positions={p.positions || []}
+            canClose={p.can_close_position === true} pending={p.close_pending || []} onRefresh={onRefresh} />
+          <details style={{ marginTop:14 }}>
+            <summary style={{ color:'#7dd3fc', cursor:'pointer', fontWeight:700, fontSize:13 }}>Ultimi trade chiusi ({(p.closed_trades || []).length})</summary>
+            {(p.closed_trades || []).length === 0 && <p style={MUTED}>Ancora nessun trade chiuso nella nuova run.</p>}
+            {(p.closed_trades || []).map((t, i) => <div key={`${t.symbol}-${t.closed_at_ms}-${i}`} style={{ padding:'10px 0', borderBottom:'1px solid #314357' }}>
+              <strong>{t.symbol} · {direction(t.side)} · {field(t.leverage)}×</strong>
+              <div style={{ ...MUTED, color:pnlColor(t.realized_pnl) }}>P&L netto {money(t.realized_pnl)}</div>
+              <div style={MUTED}>Entrata {field(t.entry)} · Uscita {field(t.exit)} · Margine {money(t.margin)}</div>
+              <div style={MUTED}>{t.partial ? 'Chiusura parziale · ' : ''}{field(t.close_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
+            </div>)}
+          </details>
+          <a href="/classic" style={{ display:'inline-block', color:'#7dd3fc', fontSize:12, marginTop:13 }}>Apri la dashboard classica completa</a>
+        </>}
       </article>)}
     </section>
     <section style={BLOCK} aria-label="Stato Brain">
@@ -120,16 +146,21 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         renderPosition={p => <>
           <strong>{p.symbol} · {direction(p.side)} · {p.leverage}×</strong>
           <div style={MUTED}>Strategia: {p.strategy_id || 'Non dichiarata'}</div>
-          <div style={MUTED}>Ingresso {p.entry} · Stop {p.stop}</div>
-          <div style={MUTED}>P&L non realizzato: {money(p.unrealized_pnl)}</div>
+          <div style={MUTED}>Ingresso {field(p.entry)} · Prezzo attuale {field(p.price)}</div>
+          <div style={MUTED}>Stop {field(p.stop)} · Margine {money(p.margin)}</div>
+          <div style={MUTED}>Quantità {field(p.quantity)} · Apertura {ageText(p.opened_at_ms, nowMs)}</div>
+          <div style={{ ...MUTED, color:pnlColor(p.unrealized_pnl) }}>P&L non realizzato: {money(p.unrealized_pnl)} · ROI {p.roi_pct == null ? '—' : `${p.roi_pct}%`}</div>
+          {p.price == null && <div style={MUTED}>Prezzo aggiornato non disponibile: P&L non calcolabile.</div>}
         </>} />
     </section>
     <section style={BLOCK} aria-label="Ultimi trade Brain">
-      <h2 style={{ fontSize: 17, margin: '0 0 12px' }}>Ultimi 20 trade chiusi · Brain</h2>
-      {closedTrades.length === 0 ? <p style={MUTED}>Nessun trade chiuso disponibile.</p> : closedTrades.map(t => <div key={t.position_id} style={{ borderTop: '1px solid #314357', padding: '12px 0' }}>
-        <strong>{t.symbol} · {direction(t.side)} · {t.strategy_id || 'Senza etichetta'}</strong>
+      <h2 style={{ fontSize:17, margin:'0 0 12px' }}>Ultimi 20 trade chiusi · Brain</h2>
+      {closedTrades.length === 0 ? <p style={MUTED}>Nessun trade chiuso disponibile.</p> : closedTrades.map(t => <div key={t.position_id} style={{ borderTop:'1px solid #314357', padding:'12px 0' }}>
+        <strong>{t.symbol} · {direction(t.side)} · {field(t.leverage)}× · {t.strategy_id || 'Senza etichetta'}</strong>
+        <div style={{ ...MUTED, color:pnlColor(t.realized_pnl) }}>P&L netto: {money(t.realized_pnl)} · {bp(t.net_bp)}</div>
+        <div style={MUTED}>Ingresso {field(t.entry)} · Uscita {field(t.exit)} · Margine {money(t.margin)}</div>
         <div style={MUTED}>{t.regime || 'Regime sconosciuto'} · {brainExitReason(t.exit_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
-        <div style={MUTED}>Netto: {bp(t.net_bp)} · Durata: {t.hold_ms} ms</div>
+        <div style={MUTED}>Commissioni {money(t.fees)} · Durata {t.hold_ms == null ? '—' : `${Math.round(t.hold_ms / 60000)} min`}</div>
       </div>)}
     </section>
   </main>;

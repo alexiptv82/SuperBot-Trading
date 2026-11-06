@@ -132,8 +132,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const locked = useRef(false);
-  if (!positions.length) return null;
-  if (!canClose) return <p style={MUTED}>Chiusura manuale non ancora disponibile su questo bot.</p>;
+  if (!positions.length) return <p style={MUTED}>Nessuna posizione aperta nella nuova run.</p>;
   const send = async () => {
     if (locked.current || !confirm) return;
     locked.current = true;
@@ -159,14 +158,22 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
     }
   };
   return <div style={{ marginTop: 8 }}>
-    <button type="button" style={BTN} disabled={busy || !!pending.length} onClick={() => setConfirm({ all: true })}>Chiudi tutte ({positions.length})</button>
-    {positions.map(p => <div key={p.symbol} style={{ padding: '8px 0', borderBottom: '1px solid #30405b' }}>
-      <span>{p.symbol} · {p.side === 1 ? 'LONG' : 'SHORT'} · {p.leverage || '—'}×</span>
-      <span style={{ display: 'block', ...MUTED }}>Ingresso {p.entry} · Stop {p.stop ?? '—'} · P&L {p.unrealized_pnl}</span>
-      <button type="button" style={{ ...BTN, marginTop: 6 }} disabled={busy || !!pending.length}
-        onClick={() => setConfirm({ symbol: p.symbol })}>Chiudi {p.symbol}</button>
+    {!canClose && <p style={MUTED}>Chiusura manuale non ancora disponibile su questo bot: le posizioni restano visibili.</p>}
+    {canClose && <button type="button" style={BTN} disabled={busy || !!pending.length} onClick={() => setConfirm({ all: true })}>Chiudi tutte ({positions.length})</button>}
+    {positions.map(p => <div key={p.symbol} style={{ background:'#0e1a2d', padding:'12px', border:'1px solid #30465e', borderRadius:11, marginTop:9 }}>
+      <strong>{p.symbol} · <span style={{ color:p.side === 1 ? '#4ade80' : '#fda4af' }}>{p.side === 1 ? 'LONG' : 'SHORT'}</span> · {p.leverage ?? '—'}×</strong>
+      {p.trade_type && <span style={{ display:'block', ...MUTED }}>Tipo: {p.trade_type}</span>}
+      <div style={{ ...MUTED, marginTop:6 }}>Ingresso {p.entry} · Prezzo attuale {p.price ?? '—'}</div>
+      {p.price == null && <div style={MUTED}>Prezzo aggiornato non disponibile.</div>}
+      <div style={MUTED}>Margine {p.margin ?? '—'} USDT · Stop {p.stop ?? '—'}</div>
+      <div style={MUTED}>Obiettivo {p.take_profit ?? '—'} · Liquidazione {p.liquidation ?? '—'}</div>
+      <div style={{ fontSize:13, fontWeight:700, color:p.unrealized_pnl == null ? '#a8bacd' : String(p.unrealized_pnl).startsWith('-') ? '#fda4af' : '#4ade80' }}>
+        P&L {p.unrealized_pnl == null ? '—' : `${p.unrealized_pnl} USDT`} · ROI {p.roi_pct == null ? '—' : `${p.roi_pct}%`}
+      </div>
+      {canClose && <button type="button" style={{ ...BTN, marginTop:8 }} disabled={busy || !!pending.length}
+        onClick={() => setConfirm({ symbol: p.symbol })}>Chiudi {p.symbol}</button>}
     </div>)}
-    {confirm && <div role="dialog" aria-label={`Conferma chiusura ${portfolio}`} style={{ padding: 10, border: '1px solid #fda4af', borderRadius: 8 }}>
+    {canClose && confirm && <div role="dialog" aria-label={`Conferma chiusura ${portfolio}`} style={{ padding: 10, border: '1px solid #fda4af', borderRadius: 8 }}>
       <p>{confirm.all ? `Chiudere tutte le ${positions.length} posizioni di ${portfolio}?` : `Chiudere ${confirm.symbol} adesso a prezzo di mercato?`}</p>
       <button type="button" style={BTN} onClick={send} disabled={busy}>Chiudi</button>{' '}
       <button type="button" style={{ ...BTN, background: 'transparent' }} disabled={busy} onClick={() => setConfirm(null)}>Annulla</button>

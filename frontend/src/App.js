@@ -102,7 +102,8 @@ export default function App() {
           <div style={{ paddingBottom: '75px' }}>
             <Routes>
               {/* ── Sezione PAPER (soldi simulati) ── */}
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={<Navigate to="/overview" replace />} />
+              <Route path="/classic" element={<Dashboard />} />
               <Route path="/trades" element={<Trades />} />
               <Route path="/performance" element={<Performance />} />
               <Route path="/settings" element={<Settings />} />

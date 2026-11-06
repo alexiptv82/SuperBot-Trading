@@ -275,3 +275,87 @@ def test_bad_ticker_is_not_http_failure(tmp_path):
     with TestClient(app) as c:
         position = _get(c, '/api/v3/brain/trades')['open_positions'][0]
         assert position['unrealized_pnl'] is None
+
+
+def test_rich_brain_open_position_exposes_leverage_margin_and_live_price(tmp_path):
+    paths = _paths(tmp_path)
+    _journal_sample(paths, close=False)
+    async def ticker(symbol):
+        assert symbol == 'BTCUSDT'
+        return {'price': '105'}
+    app, _ = _app(paths, ticker)
+    with TestClient(app) as c:
+        p = _get(c, '/api/v3/brain/trades')['open_positions'][0]
+        assert p['symbol'] == 'BTCUSDT'
+        assert p['side'] == 1 and p['leverage'] == 5
+        assert p['margin'] == '2'
+        assert p['quantity'] == '2'
+        assert p['entry'] == '100' and p['stop'] == '95'
+        assert p['price'] == '105' and p['price_source'] == 'ticker'
+        assert p['unrealized_pnl'] == '10'
+        assert p['roi_pct'] == '500'
+        assert p['opened_at_ms'] == T0 + 1000
+
+
+def test_rich_brain_closed_trade_contains_financial_outcome(tmp_path):
+    paths = _paths(tmp_path)
+    _journal_sample(paths, close=True)
+    app, _ = _app(paths)
+    with TestClient(app) as c:
+        t = _get(c, '/api/v3/brain/trades')['closed_trades'][0]
+        assert t['leverage'] == 5
+        assert t['margin'] == '2'
+        assert t['entry'] == '100'
+        assert t['exit'] == '102'
+        assert Decimal(t['realized_pnl']) > 0
+        assert Decimal(t['fees']) >= 0
+        assert t['closed_at_ms'] == T0 + 61000
+
+
+def test_rich_classic_overview_keeps_open_positions_when_close_unsupported(tmp_path):
+    paths = _paths(tmp_path)
+    hawk = tmp_path / 'hawk'
+    now = time.time()
+    (hawk / 'heartbeat.json').write_text(json.dumps({'ts': now, 'cycles': 1}))
+    (hawk / 'state_v2.json').write_text(json.dumps({
+        'main': {
+            'cash': 900,
+            'positions': {'BTCUSDT': {'entry': 100, 'qty': 1, 'side': -1,
+                                     'leverage': 20, 'total_margin': 100, 'sl': 102,
+                                     'tp': 95, 'trade_type': 'scalp'}},
+            'closed': [{'symbol': 'ETHUSDT', 'side': 1, 'leverage': 20,
+                        'entry': 100, 'exit': 103, 'net': 4.5,
+                        'margin': 150, 'close_ms': T0+100, 'why': 'target'}],
+            'limits': {'start_equity': 1000}},
+        'last_prices': {'BTCUSDT': 99}, 'last_prices_ms': T0
+    }))
+    app, _ = _app(paths)
+    with TestClient(app) as c:
+        p = _get(c, '/api/v3/overview')['portfolios'][0]
+        assert p['id'] == 'falco'
+        assert p['can_close_position'] is False
+        assert p['positions'][0]['symbol'] == 'BTCUSDT'
+        assert p['positions'][0]['leverage'] == 20
+        assert p['positions'][0]['price'] == '99'
+        assert p['positions'][0]['price_source'] == 'bot'
+        assert p['positions'][0]['margin'] == '100'
+        assert p['positions'][0]['stop'] == '102'
+        assert p['positions'][0]['take_profit'] == '95'
+        assert p['positions'][0]['unrealized_pnl'] == '1.0'
+        assert p['equity'] is not None
+        assert p['closed_trades'][0]['symbol'] == 'ETHUSDT'
+        assert p['closed_trades'][0]['realized_pnl'] == '4.5'
+
+
+def test_classic_absent_price_is_not_replaced_with_unverified_mark(tmp_path):
+    paths = _paths(tmp_path)
+    hawk = tmp_path / 'hawk'
+    (hawk / 'state_v2.json').write_text(json.dumps({'main': {
+        'cash': 900, 'positions': {'BTCUSDT': {'entry': 100, 'qty': 1,
+                                                'side': 1, 'total_margin': 100}},
+        'limits': {'start_equity': 1000}}}))
+    app, _ = _app(paths)
+    with TestClient(app) as c:
+        p = _get(c, '/api/v3/overview')['portfolios'][0]['positions'][0]
+        assert p['price'] is None
+        assert p['unrealized_pnl'] is None
