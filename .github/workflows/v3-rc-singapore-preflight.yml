@@ -1,0 +1,50 @@
+name: V3 RC Singapore preflight (READ ONLY, no deploy)
+on:
+  push:
+    branches: [work/v3-release-candidate-gpt6-20261106]
+    paths: ['.github/workflows/v3-rc-singapore-preflight.yml']
+permissions:
+  contents: read
+jobs:
+  read-only-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read-only container and data inventory on Singapore
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            printf 'SUPERBOT_RC_READ_ONLY_PREFLIGHT=1\n'
+            if ! command -v docker >/dev/null 2>&1; then echo DOCKER=UNAVAILABLE; exit 1; fi
+            echo '=== superbot container states (no env or logs dumped) ==='
+            docker ps -a --format '{{.Names}} | {{.Status}}' | grep -E 'superbot|brain|hawk|bull' || true
+            echo '=== expected containers PAPER mode ==='
+            for c in superbot superbot-desk-hawk superbot-desk-bull; do
+              if docker inspect "$c" >/dev/null 2>&1; then
+                state="$(docker inspect -f '{{.State.Status}}' "$c")"
+                if docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$c" | grep -Eq '^(DESK_MODE|TRADING_MODE)=paper$'; then mode=PAPER; else mode=NOT_CONFIRMED; fi
+                printf '%s status=%s mode=%s\n' "$c" "$state" "$mode"
+              else printf '%s status=ABSENT\n' "$c"; fi
+            done
+            echo '=== data directories: existence only ==='
+            for d in /opt/superbot-desk-data/hawk /opt/superbot-desk-data/bull /opt/superbot-desk-data/brain /opt/superbot-brain-data /opt/superbot/data; do
+              if test -d "$d"; then
+                printf '%s present=YES\n' "$d"
+                for f in journal.db state_v2.json heartbeat.json pause.flag; do
+                  if test -f "$d/$f"; then printf '  %s=EXISTS\n' "$f"; else printf '  %s=ABSENT\n' "$f"; fi
+                done
+              else printf '%s present=NO\n' "$d"; fi
+            done
+            echo '=== backup folders: existence only ==='
+            for d in /opt/superbot-backups /opt/superbot-desk-backups /opt/superbot-desk-data/backups; do
+              if test -d "$d"; then printf '%s present=YES\n' "$d"; else printf '%s present=NO\n' "$d"; fi
+            done
+            echo '=== disk space ==='
+            df -h /opt 2>/dev/null | tail -1 || true
+            echo SUPERBOT_RC_PREFLIGHT_DONE=1
