@@ -1,3 +1,12 @@
+## 06/11 — CHATGPT: OPEN WRITER PAPER SERIALIZZATO + FENCE LEGACY, GATE P0 LOCALE
+
+**Verificato localmente:** modulo `open_serial.py` per OPEN PAPER: lease `flock` esclusiva che copre la rilettura del rischio e `execute_paper` tra writer aderenti, controllo effettivo heartbeat/lease del servizio uscite, rifiuto replay stessa decisione anche dopo close. Modulo `legacy_exit_fence.py` per condividere lock tra legacy e sidecar con opt-in futuro; preflight `cutover_preflight.py` blocca con posizioni aperte o manual close pendenti. Nessun codice di runtime modificato.
+**Test:** 1263 PASS con patch opt-in solo in sandbox; 36 PASS da /tmp, 1258 PASS sulla baseline e25 ripristinata; 31 PASS da /tmp senza patch, prove multiprocesso incluse. 385 file originali invariati; patch dry-run e git apply --check PASS.
+**RIMANE P0:** runner attuale non usa ancora il lock degli OPEN e il legacy non usa ancora fence; protocollo limita solo writer aderenti e non rende atomici mutamenti esterni al journal. Nessun cutover/rollback VPS, no full CI/Jest/DeepSeek live, nessun merge/deploy/avvio.
+**File in Library:** `SuperBot-V3-Open-Writer-Exit-Ownership-Gate-P0-2026-11-06.zip` SHA256 `c1731441c30fde90f3fcf45a8b308203794804f610bc59206c0f7bd1013167a9`; rapporto SHA256 `da1500c76930689d847bad4b98eb8e366f16c66127d783887bf94ae0cbdc275f` e handoff Claude SHA256 `54cc1a76e46524d4fea3589a57f86736f1b03603e397d7bd3a6af03db0b0ae64`. Checkpoint completo `diario/2026-11-06_chatgpt-open-writer-exit-owner-gate-p0.md` commit `c199521`.
+**Next:** Claude revisione/branch isolato, integrazione cycle senza fallback diretto in split mode, prova vera del cutover solo con portfolio flat e nessuna richiesta manuale, CI e autorizzazione utente per qualunque deploy. PAPER: rischio 2% trade, 5% open, daily 35/50%, floor 450 invariati.
+
+---
 ## 06/11 — CHATGPT: EXIT WORKER + WATCHDOG + GATE DOPO AI (SOLO LOCALE)
 
 **LAVORO TESTATO, NON RILASCIATO:** nuovo entrypoint `exit_worker.py` (journal preesistente verificato read-only, `DESK_MODE=paper`, avvio esplicito), heartbeat Type=notify/WatchdogSec da template NON installato, `post_ai_guard.py` (veto dopo AI con mandato/pausa/budget/daily-loss/feed/nuovo RiskQuote + riferimento journal verificato). Nessun file originale e25 alterato.
