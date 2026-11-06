@@ -6,6 +6,7 @@ import { useAppMode } from '../AppContext';
 const PAPER_TABS = [
   { path: '/',            icon: '📊', label: 'Dashboard' },
   { path: '/overview',    icon: '🧭', label: '3 bot' },
+  { path: '/supervisor',  icon: '🛰️', label: 'Agenti' },
   { path: '/trades',      icon: '💹', label: 'Trade' },
   { path: '/performance', icon: '🏆', label: 'Performance' },
   { path: '/brain',       icon: '🧠', label: 'BRAIN' },
