@@ -1,3 +1,12 @@
+## 06/11 — CHATGPT: EXIT WORKER + WATCHDOG + GATE DOPO AI (SOLO LOCALE)
+
+**LAVORO TESTATO, NON RILASCIATO:** nuovo entrypoint `exit_worker.py` (journal preesistente verificato read-only, `DESK_MODE=paper`, avvio esplicito), heartbeat Type=notify/WatchdogSec da template NON installato, `post_ai_guard.py` (veto dopo AI con mandato/pausa/budget/daily-loss/feed/nuovo RiskQuote + riferimento journal verificato). Nessun file originale e25 alterato.
+**TEST:** 1088 PASS suite mirata runner/risk/journal/exit e nuovi moduli; 51 PASS da `/tmp`. 385/385 file originali invariati. Non svolti full 6k+, CI frontend, systemd reale, VPS o DeepSeek/Bitget reale.
+**P0 RIMANENTI:** legacy runner non condivide lock sidecar (handover non garantito da flag CLI); controllo del rischio post-AI NON atomico con apertura e possibile race tra writer; watchdog da solo non protegge posizioni se feed è giù; wiring/servizio non attivati. PR #57 e #61 restano separate. S0/S1 ricostruiti NON originali certificati.
+**Archivio Libreria:** `/SuperBot-Trading/SuperBot-V3-Exit-Worker-Watchdog-PostAI-Gate-2026-11-06.zip` SHA256 `e7c5192b408865a0ca6193c5ac12e2736da7e54ee54e989087f9bf0ca61d97af`, rapporto e handoff Claude accanto. Checkpoint `diario/2026-11-06_chatgpt-exit-worker-watchdog-post-ai-gate.md` commit `fa534d6`.
+**Next:** Claude revisione + branch isolato, owner unico e quota/append atomici, test crash/restart con watchdog ed exit health, CI e richiesta OK prima di deploy. PAPER e soglie 2%/5%/35%/50%, floor 450 USDT invariati.
+
+---
 ## 06/11 — CHATGPT: EXIT-SIDECAR PAPER INDIPENDENTE DALL'AI, GATE P0 (SOLO PROTOTIPO)
 
 **Fatto e VERIFICATO LOCALMENTE:** servizio separato di uscite `exit_service.py` con un solo proprietario `flock`, heartbeat con token di leasing per restart, comandi manuali e monitor stop indipendenti dal modello. Con AI finta bloccata 30 secondi, close PAPER in 5,022 s in quel campione e un solo `paper_close` (non SLA VPS). Test cross-process di stop/manual close e lock superati.
