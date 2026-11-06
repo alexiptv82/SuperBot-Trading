@@ -1,3 +1,12 @@
+## 06/11 — CHATGPT: S1b/S2, RICOSTRUZIONE VERIFICATA IN PAPER; 4373 TEST PASS
+
+**Provenienza:** PR #57 runner `e25c8dd` e PR #61 dashboard `a9044b6` sono ancora separate. S0/S1 usati nei test sono **RICOSTRUITI**, non i due ZIP originali della Libreria. Non dichiarare merge/integrati i bot.
+**S1b:** implementato `PreparedMarketView` nel modulo ricostruito, riusa il calcolo L5 per regime + evidenza. Patch opzionale a `runner/cycle.py`, `supervisor_evidence=False` per default, da revisionare con Claude. Una scrittura di evidenza fallita non produce OPEN PAPER; nessun cambiamento a stop/manual close o ai limiti di rischio.
+**Verifiche:** suite V3 sulla sandbox 4373 pass in 148,16 s; mirati 325 pass; da `/tmp` 56 pass; frontend JSX 3 parse + 9 check JS puri. Benchmark su 6 simboli: 5,03 s base, 5,14 s con evidenza (30 simboli timeout, NON validato); nessun Jest o prova VPS.
+**File in Libreria ChatGPT:** `/SuperBot-Trading/SuperBot-V3-S1b-S2-Integrazione-Isolata-2026-11-06.zip` SHA256 `f6339da9ee963441cd12b92e8819c00a25fb05918d4932c69d085b25d4f86b5e`, rapporto `RAPPORTO_SUPERBOT_V3_S1b_S2_INTEGRAZIONE_REVISIONE_2026-11-06.md` SHA256 `9500021c605b321bd5227ed4e2a804a05a596e982b17cf9a044db23918bc8f3e`. Checkpoint `diario/2026-11-06_chatgpt-s1b-s2-compatibilita-e-riuso-l5.md` commit `60f9352`.
+**Prossimo gate:** revisione Claude, branch di integrazione PR57+61, Jest/build e monitor stop sotto timeout DeepSeek, benchmark VPS. NESSUN merge, deploy, avvio, push di codice, modifica storico/strategie/rischio. PAPER, trade 2%, open 5%, daily 35/50%, floor 450 USDT invariati.
+
+---
 ## 06/11 — CHATGPT: S2 SUPERVISORE, PROVENIENZA RAFFORZATA E GATE S0/S1 (SOLO LOCALE)
 
 **Verificato localmente:** S2 con collegamenti decisione/evidenza controllati per simbolo, timestamp, kind, status, motivo e ID; incoerenze segnalate e PnL mostrato solo per chiusure verificate. 4222 PASS V3; 50 PASS backend mirati; 34 PASS S2 da /tmp; 3 JSX parse e 9 verifiche JS pure. Nessun test React/Jest completo.
