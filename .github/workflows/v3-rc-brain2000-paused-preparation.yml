@@ -1,0 +1,67 @@
+name: V3 RC prepare isolated Brain 2000 PAPER (PAUSED, no deploy)
+on:
+  push:
+    branches: [work/v3-release-candidate-gpt6-20261106]
+    paths: ['.github/workflows/v3-rc-brain2000-paused-preparation.yml']
+permissions:
+  contents: read
+jobs:
+  prepare-paused-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: New directory only; no starts, no merge, no legacy writes
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 12m
+          script: |
+            set -eu
+            umask 077
+            echo V3_RC_BRAIN_PREPARE_PAUSED_ONLY=1
+            test -d /opt/superbot-backups/rc-v3-20261106T150730Z || { echo NO_VERIFIED_BACKUP; exit 1; }
+            test -s /opt/superbot-backups/rc-v3-20261106T150730Z/superbot-desk-data.tar.gz || { echo NO_VERIFIED_ARCHIVE; exit 1; }
+            tar -tzf /opt/superbot-backups/rc-v3-20261106T150730Z/superbot-desk-data.tar.gz >/dev/null
+            for c in superbot-desk-hawk superbot-desk-bull superbot-brain-free; do
+              if docker inspect "$c" >/dev/null 2>&1; then
+                test "$(docker inspect -f '{{.State.Running}}' "$c")" = false || { echo LEGACY_WORKER_RUNNING; exit 1; }
+              fi
+            done
+            SRC=/opt/superbot-v3-rc62-src
+            PARENT=/opt/superbot-v3-paper-runs
+            RUN=brain-v3-rc20261106
+            test ! -e "$SRC" && test ! -L "$SRC" || { echo SOURCE_EXISTS_ABORT; exit 1; }
+            test ! -e "$PARENT" && test ! -L "$PARENT" || { echo PARENT_EXISTS_ABORT; exit 1; }
+            git clone --single-branch --depth 1 --branch work/v3-release-candidate-gpt6-20261106 https://github.com/alexiptv82/SuperBot-Trading.git "$SRC"
+            ACTUAL="$(git -C "$SRC" rev-parse HEAD)"
+            EXPECTED="${{ github.sha }}"
+            test "$ACTUAL" = "$EXPECTED" || { echo UNEXPECTED_RELEASE_COMMIT; exit 1; }
+            test "$(python3 -c 'import sys;print(sys.version_info[:2]>=(3,10))')" = True || { echo PYTHON_VERSION_UNSUPPORTED; exit 1; }
+            install -d -m 0700 "$PARENT"
+            DESK_MODE=paper PYTHONPATH="$SRC:$SRC/backend" python3 -m backend.v3.runner.prepare_paper_run \
+              --parent "$PARENT" --run-name "$RUN" --run-id brain-rc-2000-20261106 \
+              --config "$SRC/backend/v3/runner/runner_config_brain2000_paper.json" \
+              --expected-initial-equity 2000 --prepare-paper-paused
+            DESK_MODE=paper PYTHONPATH="$SRC:$SRC/backend" python3 -m backend.v3.runner.exit_worker \
+              --data-dir "$PARENT/$RUN" --run-id brain-rc-2000-20261106 \
+              --config "$PARENT/$RUN/runner_config.json" --validate-only
+            PYTHONPATH="$SRC:$SRC/backend" python3 - "$PARENT/$RUN" <<'PY'
+            import json, pathlib, sys
+            from backend.v3.runner.config import load_runner_config
+            from backend.v3.runner.prepared_config_guard import verify_prepared_run_config
+            p=pathlib.Path(sys.argv[1])
+            c=load_runner_config((p/'runner_config.json').read_bytes())
+            verify_prepared_run_config(data_dir=p,run_id='brain-rc-2000-20261106',config=c)
+            marker=json.loads((p/'PREPARED_PAUSED_ONLY.json').read_text())
+            mandate=json.loads((p/'mandate.json').read_text())
+            assert str(c.initial_equity)==marker['initial_equity']=='2000'
+            assert (p/'pause.flag').is_file()
+            assert mandate['approved'] is False
+            print('BRAIN_NEW_RUN_CONFIRMED=2000 PAPER PAUSED MANDATE_UNAPPROVED')
+            PY
+            echo 'NEW_RUN_PATH=/opt/superbot-v3-paper-runs/brain-v3-rc20261106'
+            echo 'LEGACY_DATA_UNTOUCHED=YES'
+            echo 'NO_WORKER_STARTED=YES'
