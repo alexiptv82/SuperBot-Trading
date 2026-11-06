@@ -51,7 +51,7 @@ def _safe_scope(parent: Path, run_name: str, run_id: str, *, desk_mode: str) -> 
 
 def prepare_new_paper_run(*, parent: Path, run_name: str, run_id: str,
                           config_bytes: bytes, desk_mode: str,
-                          now_ms: int) -> Path:
+                          now_ms: int, expected_initial_equity: str) -> Path:
     """Create a NEW, paused and unapproved Brain run with a verified journal.
 
     On failure after mkdir, deliberately leave a paused, incomplete directory
@@ -67,6 +67,10 @@ def prepare_new_paper_run(*, parent: Path, run_name: str, run_id: str,
         config = load_runner_config(config_bytes)
     except (ValueError, TypeError):
         raise RunPreparationError("invalid_config") from None
+
+    if (type(expected_initial_equity) is not str or
+            expected_initial_equity != str(config.initial_equity)):
+        raise RunPreparationError("capital_confirmation_mismatch")
 
     try:
         root.mkdir(mode=0o700)
@@ -95,7 +99,7 @@ def prepare_new_paper_run(*, parent: Path, run_name: str, run_id: str,
     try:
         # BudgetLedger manages an internal SQLite connection and initializes
         # its append-only schema. Close it after provisioning, before any worker.
-        ledger._conn.close()
+        ledger.close()
     except Exception:
         raise RunPreparationError("budget_setup_failed") from None
     event = Event(
@@ -129,6 +133,8 @@ def main(argv: Optional[list[str]] = None, *, env: Optional[Mapping[str,str]] = 
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("--prepare-paper-paused", action="store_true")
+    parser.add_argument("--expected-initial-equity", required=True,
+                        help="Exact USDT equity confirmed by the operator and config")
     args = parser.parse_args(argv)
     variables = os.environ if env is None else env
     if not args.prepare_paper_paused:
@@ -141,7 +147,8 @@ def main(argv: Optional[list[str]] = None, *, env: Optional[Mapping[str,str]] = 
         config = Path(args.config).read_bytes()
         root = prepare_new_paper_run(
             parent=Path(args.parent),run_name=args.run_name,run_id=args.run_id,
-            config_bytes=config,desk_mode="paper",now_ms=int(time.time()*1000))
+            config_bytes=config,desk_mode="paper",now_ms=int(time.time()*1000),
+            expected_initial_equity=args.expected_initial_equity)
     except (RunPreparationError,OSError,ValueError) as exc:
         code=str(exc) if isinstance(exc, RunPreparationError) else "setup_failed"
         print(code,file=sys.stderr)
