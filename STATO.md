@@ -1,3 +1,14 @@
+## 06/11 — CHATGPT: DASHBOARD BRAIN PAUSA/RIPRENDI + BANNER PERDITA (PACCHETTO LOCALE), NESSUN DEPLOY
+
+**Autore:** ChatGPT GPT-6 · Fonte: checkpoint `diario/2026-11-06_chatgpt-pausa-riprendi-dashboard.md` (commit `675d8cd`).
+Base PR #61 `a9044b6` + runner freno giornaliero PR #57 `e25c8dd`, su worktree locale ibrido, **non** merge GitHub. 
+**Consegna:** `SuperBot-V3-Pausa-Riprendi-Banner-2026-11-06.zip` (SHA-256 `1c7e83547b6716b6052bf0f0bf6fa31be494c9b086c2dce1f57399b4babe13b0`) e rapporto tecnico nella chat.
+**Fatti verificati:** endpoint session-gated solo PAPER per creare/rimuovere `pause.flag`, banner di perdita dal heartbeat (soglie runner config 35%/50%, non ricalcolate), resume non supera halt. **4399 test V3 pass, 82/82 dashboard pass** dalla radice e da `/tmp`; 4 JSX parse, 6 check JS puri. **Jest non eseguito**: necessita CI. 
+**Invariati:** risk per trade 2%, open risk 5%, soglie giornaliere, runner, VPS, log storico, strategie. Nessun merge/deploy.
+**Prossimo:** applicazione su branch di lavoro e integrazione controllata con PR #57, Jest+build CI, verifica pausa/permessi su VPS, misurare timeout DeepSeek 30 s; fase C/D solo con OK utente.
+
+---
+
 ## 05/11 (22:30) — FRENO DI PERDITA GIORNALIERA COMPLETO (AVVISO 35 %, STOP 50 %, TELEGRAM) SU PR #57 (`e25c8dd`); NIENTE DEPLOY
 
 **Claude Opus 4.6 — coordinatore** · codice scritto da Claude, solo offline · nessun deploy, nessun merge · su decisione dell'utente (21:36): avviso al 35 %, stop al 50 % della perdita giornaliera
