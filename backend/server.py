@@ -550,6 +550,7 @@ async def _on_startup():
 # un solo codice per i due portafogli, cosi' non possono piu' divergere.
 import desk_api
 import v3_api
+from backend.v3.supervisor_http import make_router as make_supervisor_router
 
 _DESK_DATA      = os.environ.get("DESK_DATA_DIR",      "/opt/superbot-desk-data/hawk")
 _DESK_DATA_BULL = os.environ.get("DESK_DATA_DIR_BULL",  "/opt/superbot-desk-data/bull")
@@ -559,6 +560,9 @@ app.include_router(desk_api.make_router("hawk", _DESK_DATA, require_session, exc
 app.include_router(desk_api.make_router("bull", _DESK_DATA_BULL, require_session, exchange.get_ticker),
                    prefix="/api/desk/bull")
 app.include_router(v3_api.make_router(require_session, v3_api.V3Paths.from_env(_DESK_DATA, _DESK_DATA_BULL), exchange.get_ticker))
+# Read-only supervisor timeline; never starts a runner or initializes a journal.
+_supervisor_paths = v3_api.V3Paths.from_env(_DESK_DATA, _DESK_DATA_BULL)
+app.include_router(make_supervisor_router(require_session, _supervisor_paths.journal_path, _supervisor_paths.run_id))
 
 _prices_cache: dict = {}
 _prices_cache_ts: float = 0.0
