@@ -24,6 +24,7 @@ from typing import Callable, Mapping, Optional
 
 from backend.v3.events import EventJournal
 from backend.v3.runner.config import RunnerConfig, default_config_path, load_runner_config
+from backend.v3.runner.prepared_config_guard import verify_prepared_run_config
 from backend.v3.runner.exit_service import ExitService
 from backend.v3.runner.exits import load_default_policy
 from backend.v3.runner.feed import CandleStore, last_minute_close, minute_fetcher
@@ -80,6 +81,7 @@ def build_exit_worker(*, data_dir: Path, run_id: str, config: RunnerConfig,
         raise ExitWorkerConfigurationError('invalid_exit_config')
     journal = check_existing_data(data_dir=data_dir, run_id=run_id,
                                   require_existing_run=require_existing_run)
+    verify_prepared_run_config(data_dir=data_dir, run_id=run_id, config=config)
     # A distinct 1m store belongs only to this exit worker: never share the AI
     # worker's in-memory cache or mutate its portfolio state.
     minutes = CandleStore(get_json, keep={'1m': (60_000, 1_500)})
@@ -173,6 +175,7 @@ def main(argv: Optional[list[str]] = None, *, env: Optional[Mapping[str, str]] =
         folder = Path(args.data_dir)
         if args.validate_only:
             check_existing_data(data_dir=folder,run_id=args.run_id)
+            verify_prepared_run_config(data_dir=folder, run_id=args.run_id, config=config)
             print('validated_existing_brain_run')
             return 0
         svc = build_exit_worker(data_dir=folder,run_id=args.run_id,config=config,get_json=get_json)
