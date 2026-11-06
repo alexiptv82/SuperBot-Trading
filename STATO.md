@@ -1,3 +1,13 @@
+## 06/11 — BRAIN RISK 75 SU 350 USDT PAPER, 20–50X — PR #62
+
+**Decisione utente confermata:** capitale Brain 2.000 USDT, margine obiettivo 350–400 USDT, leva 20–50x; rischio massimo STIMATO su margine 21,4285714% = 75 USDT su 350, 85,71 USDT su 400. Rischio equity/trade 4,285714%, **rischio totale aperto5%** e floor450 invariati. Margine posizione max20% equity/400 USDT, margine totale max40%/800 USDT. Daily warn/halt35%/50% invariati.
+**Patch PR #62:** commit `047d2b23a33cbfa145d46e884b2c2927521110fe`: nuovi campi policy opzionali, adeguamento leva proposto da Brain in20–50x, ratio perdita stimata/margine effettivo e hash di mandato; aggiornamento test di configurazione nel commit `5a9bbb41b10e3a6af22341ece7a39384588aca70`. Default legacies e Falco/Toro NON modificati.
+**Verifica:** 419 PASS mirati locali; workflow V3 Python3.11 sul commit `5a9bbb41` **4064 PASS, 1 SKIP**, frontend e backend CI PASS. Il job classics-rc risulta ancora in corso al checkpoint di aggiornamento: non dichiarare CI globale verde prima di verificarlo.
+**IMPORTANTE:** tetto5% rischio totale =100 USDT all'inizio: dopo un trade rischio75, restano25. A20x con buffer costi16bp stop distanza avversa circa0,91%; a50x circa0,27%. Lo stop è scelto dall'AI e protetto dalla policy, ma gap e liquidazioni possono causare perdite oltre la stima. Il Risk Manager prova leva più bassa prima del veto quando possibile.
+**Release gate:** la directory di nuova run Brain2k già preparata sulla VPS ha ancora il profilo vecchio. Cambiare la policy cambia config SHA e policy hash: NON aggiornare in-place, NON sbloccare, NON riavviare. Occorre nuova run PAPER PAUSED e nuovo mandato con i limiti approvati; storico precedente preservato. No merge/deploy/operazioni VPS eseguiti in questo step.
+**Checkpoint:** `diario/2026-11-06_brain-risk-75-su-350-margin-v3.md` (commit `07e55dd`). Library `/SuperBot-Trading/SuperBot-V3-Brain-Risk-75-Su350-Optin-PAPER-2026-11-06.zip` (SHA256 `79b6f912468b29222ad50d2be12ec36b84a08b3b06e585ca03834c52e915a0ef`), rapporto abbinato.
+
+---
 ## 06/11 — RC62: BRAIN 2.000 PAPER PREPARATO IN PAUSA; CLASSICI IN INTEGRAZIONE, NO-GO
 
 **Decisione confermata:** Brain 2.000 USDT PAPER; Falco 1.000, Toro 1.000 (totale 4.000 simulati). Config opt-in `backend/v3/runner/runner_config_brain2000_paper.json` cambia solo initial_equity rispetto al profilo 1000. `prepared_config_guard` blocca qualunque avvio Brain/EXIT con profilo incompatibile con la run preparata. CI dopo guard: V3 4053 PASS + 1 skipped su Python3.11, API e frontend PASS (run 42266573767).
