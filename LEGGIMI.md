@@ -1,3 +1,8 @@
+## Regola permanente — proposte dell'utente come incrementi, mai ricostruzione
+
+Ogni idea, link, video, screenshot o analisi che l'utente invia va considerato un **possibile miglioramento**, NON un ordine di rifare il bot. Prima di scrivere: verificare se esista già; valutarne utilità, semplicità, compatibilità con Brain/Falco/Toro, effetti su stop, costi AI e tempi di ripartenza; scegliere GO / RINVIARE / NO-GO. Se utile, introdurre il **più piccolo incremento isolato, reversibile, opt-in, predefinito OFF**. Non duplicare motori AI, scanner, Sizer o gestione rischio già presenti. Non ricostruire da zero la piattaforma.
+
+**Test:** prima di attivare verificare invarianti di rischio, stop/chiusure, idempotenza, contabilità, storico e recupero guasti. La profittabilità delle strategie e i parametri si valuteranno con risultati forward PAPER reali, senza allungare inutilmente i test offline. Mai merge/deploy/restart o alterazione storico senza OK espresso. Report proposta: cosa abbiamo, beneficio/costo, compatibilità, scelta e gate PAPER. Dettagli e ultimo incremento nel checkpoint `diario/2026-11-06_chatgpt-policy-migliorie-incrementali-scanner-book.md`.
 # SuperBot Trading — Diario di continuità (LEGGIMI)
 
 Questo ramo (`diario`) è la **memoria condivisa** del progetto. Non contiene codice e non è collegato a nessun workflow: scriverci non fa partire deploy, riavvii o altro.
