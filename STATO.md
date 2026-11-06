@@ -1,3 +1,13 @@
+## 06/11 — CHATGPT: RC62, RESTORE PROVATO E BOOTSTRAP PAPER UNICO — NO-GO DEPLOY
+
+**Release candidate software:** PR #62 draft su branch dedicato. Backend suite V3 e frontend Jest/build CI PASS al commit `6078be70`. Nessun merge/deploy/start VPS, la UI non ancora verificata dal server live.
+**VPS verificata read-only:** web `superbot` in PAPER running; Falco/Toro/Brain legacy fermi e in pausa. Falco 6, Toro 2 posizioni PAPER ancora aperte nello storico (NO reset, NO close-all). Storico Brain legacy in brain.sqlite3, separato da journal V3.
+**Backup e prova di restore:** `/opt/superbot-backups/rc-v3-20261106T150730Z` tar e SQLite controllati; ripristino in /tmp verificato (Falco 6, Toro 2, Brain archive, 2 database integri), copia temporanea pulita.
+**Preparatore di run V3:** consolidati e tolti i duplicati. Resta solo `backend/v3/runner/prepare_paper_run.py`, `--expected-initial-equity` esplicito, nuovo path, PAPER e mandato NON approvato + PAUSA. Test e CI PASS. Nessun bootstrap su VPS eseguito.
+**P0 aperti:** capitale Brain non deciso (config esempio 1000 vs obiettivo storico 2000), nuove directory classici con storico separato, owner esclusivo exit e prove guasto/cutover, mount UI su nuovi path, controllo config PAPER e mandato. Il fallback rules-only dei classici è possibile senza chiave Anthropic, ma policy legacy differenti dai desideri V3 vanno valutate. No deploy finché questi gate non sono soddisfatti.
+**Doc:** `docs/v3/RC62-PAPER-AVVIO-CONTROLLATO-2026-11-06.md` (PR62). Checkpoint `diario/2026-11-06_chatgpt-rc62-onboarding-restore-gates.md` commit `34cbae8`. No ridisegni, no nuove strategie.
+
+---
 ## 06/11 — CHATGPT: MARKET QUALITY MONITOR SHADOW, SOLO INCREMENTO (NO RUNTIME)
 
 **Decisione su consulenza esterna:** GO minimo microstruttura in SHADOW, NON nuovi bot. Unico nuovo modulo `backend/v3/observability/market_quality.py` (spread/profondità±10bps/microprice/imbalance/impatto), riusa `liquidity_quote.py` byte-identico alla precedente consegna. Ex-post midpoint markout 30/60s separato dai dati pretrade, niente leakage, AI, veto o seconda pipeline. Senza book Bitget L2 affidabile resta **OFF**: non rallentare il primo riavvio PAPER.
