@@ -69,3 +69,21 @@ jobs:
           CI: 'false'
           REACT_APP_BACKEND_URL: ''
         run: npm run build
+
+  classics-rc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install pytest numpy
+      - name: Verify classic engines, optional S25 and PAPER close request
+        env:
+          PYTHONPATH: .:backend
+          DESK_MODE: paper
+          DESK_MACRO_FETCH: '0'
+        run: |
+          python -m py_compile backend/desk/cli.py backend/desk/long_s25.py
+          python -m pytest -q -p no:cacheprovider backend/tests/test_desk.py backend/tests/test_long_s25.py
