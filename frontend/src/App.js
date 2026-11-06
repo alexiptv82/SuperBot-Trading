@@ -13,6 +13,7 @@ import LiveTrades from './pages/LiveTrades';
 import LivePerformance from './pages/LivePerformance';
 import BrainDashboard from './pages/BrainDashboard';
 import Overview from './pages/Overview';
+import Supervisor from './pages/Supervisor';
 
 // Error boundary globale: cattura qualsiasi crash di render nell'albero React
 // e mostra un messaggio utile invece della schermata nera.
@@ -111,6 +112,7 @@ export default function App() {
               <Route path="/live/performance" element={<LivePerformance />} />
               <Route path="/brain" element={<BrainDashboard />} />
               <Route path="/overview" element={<Overview />} />
+              <Route path="/supervisor" element={<Supervisor />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </div>
