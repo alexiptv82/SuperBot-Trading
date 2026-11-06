@@ -64,7 +64,9 @@ class Runner:
                  run_cycle: Callable[[int, int], CycleReport], halted: Callable[[], Optional[str]] = lambda: None,
                  cycle_delay_ms: int = 20_000, cycle_ms: int = CYCLE_MS,
                  run_commands: Optional[Callable[[int], Optional[ManualCloseReport]]] = None,
-                 daily_loss: Optional[Callable[[int], DailyLoss]] = None):
+                 daily_loss: Optional[Callable[[int], DailyLoss]] = None,
+                 exit_mode: str = "legacy", exit_healthy: Optional[Callable[[int], bool]] = None,
+                 fresh_clock_ms: Optional[Callable[[], int]] = None):
         if type(run_id) is not str or not _RUN_ID_RE.match(run_id):
             raise ValueError("invalid_run_id")
         if not isinstance(data_dir, Path) or not data_dir.is_dir():
@@ -77,6 +79,16 @@ class Runner:
         self.pause_path, self.heartbeat_path = data_dir / "pause.flag", data_dir / "heartbeat.json"
         self._monitor, self._cycle, self._halted, self._delay = run_monitor, run_cycle, halted, cycle_delay_ms
         self._commands, self._cycle_ms = run_commands, cycle_ms
+        if type(exit_mode) is not str or exit_mode not in ("legacy", "sidecar"):
+            raise ValueError("invalid_exit_mode")
+        if exit_mode == "sidecar":
+            if (run_monitor is not None or run_commands is not None or not callable(exit_healthy)
+                    or not callable(fresh_clock_ms)):
+                raise ValueError("split_exits_must_have_single_owner")
+        elif run_monitor is None or exit_healthy is not None or fresh_clock_ms is not None:
+            raise ValueError("legacy_exits_invalid")
+        self._exit_mode, self._exit_healthy = exit_mode, exit_healthy
+        self._fresh_clock_ms = fresh_clock_ms
         self._daily_loss = daily_loss
         self._last_minute = -1
         self._last_slot = -1
@@ -100,7 +112,7 @@ class Runner:
             except Exception:
                 errors.append("commands_failed")
         minute = now_ms // MINUTE_MS
-        if minute > self._last_minute:
+        if self._exit_mode == "legacy" and minute > self._last_minute:
             self._last_minute = minute
             try:
                 monitor_report = self._monitor(now_ms)
@@ -108,6 +120,12 @@ class Runner:
                     errors.append(_short(f"monitor:{monitor_report.errors[0][1]}"))
             except Exception:
                 errors.append("monitor_failed")
+        if self._exit_mode == "sidecar":
+            try:
+                if self._exit_healthy(now_ms) is not True:
+                    halt_reason = halt_reason or "exit_service_unhealthy"
+            except Exception:
+                halt_reason = halt_reason or "exit_service_unhealthy"
 
         # la perdita di oggi si valuta DOPO comandi e monitor: una chiusura appena avvenuta (stop, chiusura manuale)
         # conta subito e non puo' lasciare aprire una nuova posizione nello stesso tick
@@ -136,8 +154,33 @@ class Runner:
             except Exception:
                 errors.append("cycle_failed")
 
+        # A model call may take many seconds. Re-read the independent owner,
+        # mandate/budget and pause AFTER AI as well as before the cycle: never
+        # publish a false RUNNING beat when one of them changed mid-request.
+        beat_ms = now_ms
+        if self._exit_mode == "sidecar" and state == "running":
+            try:
+                beat_ms = self._fresh_clock_ms()
+                if type(beat_ms) is not int or beat_ms < now_ms:
+                    raise ValueError("split_clock_invalid")
+                still_healthy = self._exit_healthy(beat_ms) is True
+            except Exception:
+                still_healthy = False
+                beat_ms = now_ms
+            try:
+                late_halt = self._halted()
+            except Exception:
+                late_halt = "halt_check_failed"
+            if not still_healthy:
+                state = "halted"
+                errors.insert(0, "halted:exit_service_unhealthy")
+            elif late_halt:
+                state = "halted"
+                errors.insert(0, _short(f"halted:{late_halt}"))
+            elif self.pause_path.exists():
+                state = "paused"
         last_error = ";".join(errors)[:200] if errors else None
-        self._write_heartbeat(now_ms, state, last_error, loss_info)
+        self._write_heartbeat(beat_ms, state, last_error, loss_info)
         return TickResult(state, monitor_report, cycle_report, last_error, manual_report)
 
     def _write_heartbeat(self, now_ms: int, state: str, last_error: Optional[str],
@@ -173,7 +216,7 @@ class Runner:
             try:
                 result = self.tick(now)
             except Exception:
-                self._write_heartbeat(now, "running", "tick_failed")
+                self._write_heartbeat(now, "halted" if self._exit_mode == "sidecar" else "running", "tick_failed")
             else:
                 if on_tick is not None:
                     try:

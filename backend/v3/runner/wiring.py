@@ -35,7 +35,7 @@ from backend.v3.brain_f2.engine import _policy_hash
 from backend.v3.brain_f3.providers import Transport
 from backend.v3.brain_market.deepseek_l5 import DeepSeekL5Analyst
 from backend.v3.brain_market.params import MarketViewParams, load_default_params as load_market_params
-from backend.v3.brain_market.view import min_bars
+from backend.v3.brain_market.view import min_bars, regime_for_context
 from backend.v3.brain_view.menu import build_menu, menu_ids
 from backend.v3.brain_view.params import load_default_params as load_view_params
 from backend.v3.budget import BudgetLedger
@@ -55,6 +55,9 @@ from backend.v3.runner.manual_close import ManualCloseReport, run_manual_close
 from backend.v3.runner.metering import BudgetHalt, MeteredTransport
 from backend.v3.runner.monitor import MonitorReport, run_exit_monitor
 from backend.v3.runner.runner import Runner, TickResult
+from backend.v3.runner.open_serial import commit_paper_open
+from backend.v3.runner.exit_service import exit_service_healthy
+from backend.v3.runner.exit_worker import check_existing_data
 from backend.v3.transport import deepseek_transport
 
 PROVIDER = "deepseek"
@@ -120,10 +123,24 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                  get_json: Callable[[str], object] = http_json,
                  inner_transport: Optional[Transport] = None,
                  view_params: Optional[MarketViewParams] = None,
-                 alert_send: Optional[Callable[[str], bool]] = None) -> Built:
+                 alert_send: Optional[Callable[[str], bool]] = None,
+                 exit_mode: str = "legacy", clock_ms: Optional[Callable[[], int]] = None,
+                 desk_mode: Optional[str] = None) -> Built:
     """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test."""
-    journal = EventJournal(str(data_dir / "journal.db"))
-    journal.init_schema()
+    if type(exit_mode) is not str or exit_mode not in ("legacy", "sidecar"):
+        raise ValueError("invalid_exit_mode")
+    if exit_mode == "sidecar":
+        if type(desk_mode) is not str or desk_mode != "paper":
+            raise ValueError("paper_mode_required")
+        # Never create a fresh run/empty journal in a cutover path.
+        journal = check_existing_data(data_dir=data_dir, run_id=run_id)
+        if not (data_dir / "budget.db").is_file():
+            raise ValueError("split_budget_missing")
+        if clock_ms is None or not callable(clock_ms):
+            raise ValueError("split_fresh_clock_required")
+    else:
+        journal = EventJournal(str(data_dir / "journal.db"))
+        journal.init_schema()
     ledger = BudgetLedger(str(data_dir / "budget.db"))
     vp = view_params if view_params is not None else load_market_params()
     menu = build_menu(load_library())
@@ -150,6 +167,32 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     def halted() -> Optional[str]:
         return mandate.problem() or budget_halt()
 
+    def safety_open_commit(decision):
+        # Split mode only. The *real* on-disk exit owner is checked again under
+        # the single-writer lock, after the model returns and before append.
+        def fresh_market(sym: str, at_ms: int) -> bool:
+            candles = {tf.name: store.refresh(sym, tf.name, at_ms) for tf in vp.timeframes}
+            return regime_for_context(candles, timestamp_ms=at_ms, params=vp) != "UNKNOWN"
+
+        guard_inputs = {
+            "initial_equity": config.initial_equity,
+            "risk_policy": config.risk_policy,
+            "exit_healthy": lambda t: exit_service_healthy(data_dir=data_dir, run_id=run_id, now_ms=t),
+            "mandate_problem": mandate.problem,
+            "budget_problem": budget_halt,
+            # Unlike the scheduled one-minute cache, this checks CURRENT PnL
+            # and durably latches HALT if the limit was crossed during AI wait.
+            "daily_loss_halted": lambda t: daily_loss.recheck(t).level == "halt",
+            "paused": lambda: (data_dir / "pause.flag").exists(),
+            "market_rules": lambda sym: rules(sym),
+            "market_price": lambda sym, t: last_minute_close(sym, t, get_json),
+            "market_fresh": fresh_market,
+        }
+        return commit_paper_open(
+            journal=journal, data_dir=data_dir, run_id=run_id, decision=decision,
+            clock_ms=clock_ms, guard_inputs=guard_inputs,
+            slippage_bps=config.slippage_bps, desk_mode=desk_mode)
+
     def run_cycle(now_ms: int, slot: int) -> CycleReport:
         rules.load(now_ms)
         return run_brain_cycle(
@@ -158,7 +201,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             mandate=mandate.read(), policy_verifier=make_verifier(mandate, run_id), market_rules=rules,
             initial_equity=config.initial_equity, slippage_bps=config.slippage_bps,
             allowed_strategy_ids=allowed, price_source=lambda sym, now: last_minute_close(sym, now, get_json),
-            rotate=slot)
+            rotate=slot, require_open_commit=(exit_mode == "sidecar"),
+            open_commit=safety_open_commit if exit_mode == "sidecar" else None)
 
     def run_monitor(now_ms: int) -> MonitorReport:
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,
@@ -177,8 +221,15 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             now_ms=now_ms, price_of=lambda sym, now: last_minute_close(sym, now, get_json),
             warn_fraction=config.daily_loss_warn, halt_fraction=config.daily_loss_halt))
 
-    runner = Runner(run_id=run_id, data_dir=data_dir, run_monitor=run_monitor, run_cycle=run_cycle, halted=halted,
-                    cycle_ms=config.cycle_ms, run_commands=run_commands, daily_loss=daily_loss)
+    runner = Runner(
+        run_id=run_id, data_dir=data_dir,
+        run_monitor=run_monitor if exit_mode == "legacy" else None,
+        run_cycle=run_cycle, halted=halted, cycle_ms=config.cycle_ms,
+        run_commands=run_commands if exit_mode == "legacy" else None, daily_loss=daily_loss,
+        exit_mode=exit_mode,
+        exit_healthy=(lambda t: exit_service_healthy(data_dir=data_dir, run_id=run_id, now_ms=t))
+        if exit_mode == "sidecar" else None,
+        fresh_clock_ms=clock_ms if exit_mode == "sidecar" else None)
     return Built(runner, journal, ledger, metered, mandate)
 
 

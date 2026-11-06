@@ -549,6 +549,7 @@ async def _on_startup():
 # legge e si mandano i comandi (file-flag). Tutta la logica sta in desk_view.py / desk_api.py:
 # un solo codice per i due portafogli, cosi' non possono piu' divergere.
 import desk_api
+import v3_api
 
 _DESK_DATA      = os.environ.get("DESK_DATA_DIR",      "/opt/superbot-desk-data/hawk")
 _DESK_DATA_BULL = os.environ.get("DESK_DATA_DIR_BULL",  "/opt/superbot-desk-data/bull")
@@ -557,6 +558,7 @@ app.include_router(desk_api.make_router("hawk", _DESK_DATA, require_session, exc
                    prefix="/api/desk")
 app.include_router(desk_api.make_router("bull", _DESK_DATA_BULL, require_session, exchange.get_ticker),
                    prefix="/api/desk/bull")
+app.include_router(v3_api.make_router(require_session, v3_api.V3Paths.from_env(_DESK_DATA, _DESK_DATA_BULL), exchange.get_ticker))
 
 _prices_cache: dict = {}
 _prices_cache_ts: float = 0.0
