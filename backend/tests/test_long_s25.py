@@ -568,8 +568,12 @@ def test_step_position_survives_state_roundtrip_with_source():
 
 
 # --------------------------------------------------------------------------------------- (6) non regressione
+# Pin aggiornati SOLO dopo l'estensione approvata del segnale trend consultivo:
+# nessuna modifica a punteggi LONG/SHORT, call_claude o strategie. Il test
+# test_desk_trend_change_advisory.py verifica anche l'assenza di effetti sullo scoring.
+
 PINNED = {
-    "signals.py": "3c398e4be0335896b30f09426e5d8567cefd064907290b71b13860b8d54ec5bf",
+    "signals.py": "488798a3a01792f8a158f667008643339ec691fa8e57d746bb88bb926ed23665",
     "seasonal.py": "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7",
 }
 
@@ -582,7 +586,7 @@ def test_scorer_files_are_unchanged(name):
 
 def test_engine_and_brain_files_are_unchanged_by_this_work():
     for name, want in (("engine.py", "77836e4e84acccd256492708754a3bd72d8ecdb5a98c39456e9a6fb649787010"),
-                       ("brain.py", "a077a7cb3cc41a2d4cf057da6439aa00dda0ed76d10e3072c00e9bfab8caff33")):
+                       ("brain.py", "3ee7839be372cc65b10c39d3767a37d8100464791c24b5f751e7dd1903fe5771")):
         with open(os.path.join(BACKEND, "desk", name), "rb") as f:
             assert hashlib.sha256(f.read()).hexdigest() == want
 
