@@ -429,3 +429,24 @@ PROSSIMO PASSO: revisione indipendente dell'HEAD `e25c8dd`; test riproducibili d
 
 Fonti: Library versione 36; PR #57 e commit `e25c8dd`; verifiche HEAD/status; messaggi recenti accessibili. Accesso alle chat limitato: riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 06/11/2026 02:51 Europe/Rome — Verifica locale dell'archivio `e25c8dd` e divergenza runner/dashboard
+
+FATTO: verificato nella chat di progetto accessibile il pacchetto Library `superbot-trading-e25c8dd.zip`, creato alle 01:35 Europe/Rome. L'archivio è integro e il commento ZIP identifica esattamente `e25c8dd8db88fd6994e3b7a75ecfdec5ff258421`: è una fotografia dell'HEAD già registrato, non nuovo codice. La verifica locale riportata ha eseguito test su freno giornaliero, configurazione/runner e chiusura manuale: **341 PASS, 0 fail**. Suite generale non eseguita.
+
+RISCONTRO: `e25c8dd` della PR #57 diverge dalla dashboard basata su `a5a0c1462e5129e8fed80c47c93243ad22475c15` e non contiene `backend/v3_api.py` né `Overview.js`. Runner/daily-loss e dashboard/chiusura manuale devono essere coordinati in integrazione, non sostituiti direttamente. `runner_config.json` riporta capitale iniziale Brain PAPER di **1.000 USDT**.
+
+COMMIT/RAMI/CI: nessun nuovo commit. PR #57 DRAFT resta a `e25c8dd`; PR #61 DRAFT resta a `a9044b6`. Zero workflow run e zero status GitHub associati a `e25c8dd`: i 341 PASS sono evidenza locale della chat, non Action collegata. L'integrità ZIP è stata confermata senza errori; pytest non è rieseguibile nell'ambiente di questo checkpoint perché il modulo non è disponibile.
+
+PREPARATO: documentato il vincolo d'integrazione e conservato un archivio riproducibile dell'HEAD runner. Non è una release né un nuovo avanzamento di codice.
+
+RILASCIATO: nulla. Nessun merge, deploy, runtime/VPS, avvio bot, wallet, reset o API pagata. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: mancano suite generale e CI associata; integrazione da costruire preservando runner/daily-loss, API e frontend senza sovrascritture fra storie divergenti. Non provati sessione reale, telefono, mount, Telegram o VPS. I “sei agenti/servizi” restano progettuali.
+
+PROSSIMO PASSO: scegliere esplicitamente la baseline d'integrazione, applicare i delta runner e dashboard senza sostituzioni cieche, quindi eseguire suite completa e test mirati daily-loss, chiusura, API e frontend. Merge, deploy o avvio richiedono OK separato.
+
+Fonti: Library versione 37 e archivio `superbot-trading-e25c8dd.zip`; chat recente accessibile; PR #57/#61; riscontri GitHub. Accesso alle chat limitato: riepilogo di ripresa, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
