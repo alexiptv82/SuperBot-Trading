@@ -1,3 +1,15 @@
+## 06/11 — RC62 VPS read-only: codice VERDE, rilascio NO-GO (backup offsite)
+
+**Audit VPS fresco** 2026-11-06 21:14 UTC, GitHub run `42295014067` (**READ ONLY**) + backup sentinel `42217335679`:
+- **PR #62 CI success** commit `027307c`: backend/frontend/classics-rc/v3-suite VERDI, 4073 PASS/1 SKIP. Nessun merge o deploy.
+- WEB `superbot` in PAPER running ma ancora sui volumi LEGACY classici e senza binding Brain `V3_JOURNAL_PATH`, `V3_RUN_ID`, `V3_BUDGET_DB_PATH`, `V3_HEARTBEAT_PATH`, `V3_PAUSE_FLAG_PATH`; la nuova dashboard NON è sulla VPS come release completa.
+- Falco legacy **6** aperte, Toro legacy **2** aperte, contenitori fermi e pause attive; non toccare i loro volumi/storici.
+- Brain2k V3 vecchia preparazione `/opt/superbot-v3-paper-runs/brain-v3-rc20261106` PAUSED/mandate unapproved, journal integrity OK, ma **CONFIG SHA e risk aperto NON corrispondono a12%/55%**. Non cambiare in-place. Checkout vecchio RC SHA `53b63b6e8`.
+- **Backup esterno cifrato FAILED**: servizio fail exit 1 con timer attivo, ultimo successo `2026-11-02T03:28:45Z`; sentinella segnala backup del cervello non riuscito per mancata verifica finestra fine ciclo oppure file assenti (alternativa non risolta). Backup locale /opt/superbot-backups/rc-v3-20261106T150730Z presente, restore rehearsal riuscito, ma NON sostituisce offsite.
+- **NO-GO alla ripartenza**: prima risolvere backup esterno e attestare restore off-host, poi nuove run Falco/Toro/Brain in directory separate PAUSED, Brain2k risk12%/margin55% e mandato nuovo, web binding, sidecar/lock/rollback, prova su smartphone e OK specifico avvio PAPER. Nessuna azione di modifica VPS, merge, deploy o riavvio eseguita.
+- Fonte: `diario/2026-11-06_rc62_vps-readonly-no-go-backup-esterno.md` commit `e3d9f45`; runbook PR #62 `docs/v3/RC62-SINGAPORE-READONLY-GATE-20261106.md`.
+
+---
 ## 06/11 — RC62 dashboard V3 ricca: tre portafogli, leve, prezzi e storico
 
 - **Conferma utente:** dashboard V3 completamente rinnovata, Falco/Toro dettagliati come nelle pagine originali e Brain ugualmente completo con TUTTE le posizioni aperte, LONG/SHORT, leva, margine, ingresso/prezzo disponibile, stop, P&L, storico chiuso. Mantenere anche Claude + SHORT classici originali; NON modificare strategie o trading worker.
