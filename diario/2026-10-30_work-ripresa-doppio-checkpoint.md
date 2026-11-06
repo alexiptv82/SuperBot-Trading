@@ -488,3 +488,24 @@ PROSSIMO PASSO: pubblicare S0 soltanto dopo revisione in un ramo isolato/integra
 
 Fonti e limite: Library v39, pacchetto/rapporto S0, sorgente/piano/log verificati, PR #57/#61 e ramo `diario`; accesso alle chat limitato ai messaggi recenti recuperabili. Riepilogo di ripresa, non esportazione integrale.
 AI: checkpoint automatico ChatGPT Work
+
+---
+
+## 06/11/2026 06:51 Europe/Rome — Supervisore S1/S1b e primo Terminale S2 verificati localmente
+
+FATTO — S1: verificati `SuperBot-V3-Supervisore-S1-Evidenze-2026-11-06.zip` e rapporto; archivio integro, 12 file, SHA-256 `221c42b3c67c5826bda30bb97e532c0a073441bca16f5fa9d823fa5f6e8bf8ff`. Su baseline runner PR #57 `e25c8dd8db88fd6994e3b7a75ecfdec5ff258421` più S0, il nuovo `supervisor/evidence.py` registra append-only/idempotente osservazioni prima della decisione, candidati scartati e risoluzioni dopo `BrainEngine.step`, con candele chiuse/L5, valori PAPER strutturati, allowlist e link verificati. Nessun testo libero o ragionamento/memoria inventati. I 385 file originari restano invariati; patch opt-in runner separata, provata solo in copia e non applicata.
+
+FATTO — S1b/S2: verificati `SuperBot-V3-S1b-Benchmark-S2-Terminale-2026-11-06.zip` e rapporto; archivio integro, 18 file, SHA-256 `8374a58b2fef2d689fc8dc5b92b308cdb49fb7640e24c33785f959de1498b79e`. Benchmark sintetico su 30 simboli/3 timeframe/4.050 barre riusate: vista L5 mediana **334,719 ms**, p95 **401,182 ms**, totale **9.878,813 ms**; lettura 300 eventi **1,231 ms**, verifica catena **2,276 ms**. Esclude feed, rete, DeepSeek e VPS: richiede riuso di una singola vista L5. S2 aggiunge localmente read model `terminal.py`, GET autenticata/no-store `/api/v3/brain/decision-timeline` e pagina React mobile read-only. S0/S1 non sono inclusi nel secondo ZIP: senza di essi 503; test route con reader sintetici, quindi non pronto all'uso.
+
+COMMIT/RAMI/TEST: checkpoint S1 su `diario/2026-11-06_chatgpt-supervisore-s1-evidenze.md`, commit documentale `363007b`, blob `b74d64506c3b530d3ef15907946fc5e1fa55f854`. Nessun commit/ramo/PR GitHub del codice S1/S2. PR #57 resta `e25c8dd`, PR #61 `a9044b6759da327b44da04f9e7f51e211d44e03f`. S1: **83 PASS** radice, **83 PASS** `/tmp`, **489 PASS** compatibilità, **190 PASS** con hook solo in copia. S2: **4208 PASS** suite V3 baseline+nuovi moduli; **36 PASS** mirati, **20 PASS** `/tmp`; 3 JSX analizzati, 8 controlli JS puri. 387 file originali dashboard invariati. Non eseguiti Jest/React, build CRA, integrazione con S0/S1 reali, VPS o dati live.
+
+PREPARATO: S1 evidenze verificabili, S1b costo locale, S2 terminale Brain read-only. Patch runner e route/UI non applicate. Invariati rischio/trade **2%**, open risk **5%**, daily **35%/50%**, floor **450 USDT**; nessun sizing 43%. Falco/Toro non ancora omogenei nel journal.
+
+RILASCIATO: nulla. Nessun wiring, commit/PR di codice, merge, deploy, VPS, avvio bot, wallet, reset, API pagata o chiamata live. PAPER, memoria, journal e storici preservati.
+
+PROBLEMI/APERTI: S1 inattivo; doppio calcolo L5 costoso senza riuso; quote rischio talvolta assente dopo normalizzazione. S2 dipende da S0/S1, finestra S0 max 500 decisioni e nessuna prova integrata reale. Mancano Jest/build; runner/dashboard divergenti; hash chain senza ancora esterna; nessun apprendimento dimostrato. Runner non modificato.
+
+PROSSIMO PASSO: riunire S0/S1/PR57/PR61 in ramo di revisione, verificare SHA/dipendenze, riusare una sola vista L5, eseguire CI completa, Jest/build e collaudo PAPER VPS di isolamento/latenza senza rallentare stop e chiusure. Merge, attivazione o deploy richiedono OK separato.
+
+Fonti e limite: Library v40, pacchetti/rapporti/manifest/log S1 e S1b-S2, ramo `diario`, PR #57/#61 e messaggi recenti recuperabili. Accesso incompleto; riepilogo, non esportazione integrale.
+AI: checkpoint automatico ChatGPT Work
