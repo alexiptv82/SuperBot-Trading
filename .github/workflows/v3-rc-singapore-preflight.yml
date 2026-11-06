@@ -85,4 +85,17 @@ jobs:
             if docker inspect superbot-brain-free >/dev/null 2>&1; then
               docker inspect -f '{{json .Mounts}}' superbot-brain-free | python3 -c 'import json,sys; a=json.load(sys.stdin); [print("brain_mount="+str(x.get("Source"))+" -> "+str(x.get("Destination"))) for x in a if "/opt/superbot" in str(x.get("Source"))]'
             fi
+            echo '=== immutable container layout audit (read only, no secrets) ==='
+            for c in superbot superbot-desk-hawk superbot-desk-bull superbot-brain-free; do
+              if ! docker inspect "$c" >/dev/null 2>&1; then continue; fi
+              docker inspect -f 'container={{.Name}} image={{.Config.Image}} state={{.State.Status}} restart={{.HostConfig.RestartPolicy.Name}}' "$c"
+              docker inspect -f '{{json .Mounts}}' "$c" | python3 -c 'import json,sys; a=json.load(sys.stdin); [print("mount_type="+str(x.get("Type"))+" source="+str(x.get("Source"))+" dest="+str(x.get("Destination"))) for x in a if str(x.get("Source", "")).startswith("/opt/superbot")]'
+              docker inspect -f '{{json .Config.Env}}' "$c" | python3 -c 'import json,sys; a=json.load(sys.stdin); d=dict(x.split("=",1) for x in a if "=" in x); [print("mode_"+k+"="+d[k]) for k in ("DESK_MODE", "DESK_DATA_DIR", "DESK_DATA_DIR_BULL", "V3_JOURNAL_PATH", "V3_RUN_ID") if k in d]'
+            done
+            echo '=== named services only (no process command lines) ==='
+            systemctl list-units --all --type=service --no-pager --no-legend 2>/dev/null | grep -Ei 'superbot|brain|desk' | cut -c1-110 || true
+            echo '=== code checkout candidates (existence only) ==='
+            for d in /opt/SuperBot-Trading /opt/superbot-trading /opt/superbot /opt/superbot-app /opt/superbot-desk /opt/superbot-release-rc; do
+              if test -d "$d"; then echo "code_dir_exists=$d"; fi
+            done
             echo SUPERBOT_RC_PREFLIGHT_DONE=1
