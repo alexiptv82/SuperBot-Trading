@@ -167,3 +167,51 @@ jobs:
             print("NO_SERVICE_RESTART_NO_STORAGE_WRITES=1")
             print("RELEASE_GATE=NO_GO")
             PY
+
+            echo V3_BACKUP_WRAPPER_READ_ONLY_FINGERPRINT=1
+            python3 - <<'PY'
+            from pathlib import Path
+            import subprocess
+            import json
+            import datetime
+
+            root=Path("/opt/superbot-extbackup")
+            choices=[]
+            try:
+                choices=sorted(p for p in root.iterdir()
+                               if p.is_file() and not p.is_symlink()
+                               and p.suffix in (".py", ".sh") and p.stat().st_size < 200000)
+            except (OSError, ValueError):
+                pass
+            print("BACKUP_WRAPPER_SCRIPT_CANDIDATES="+str(len(choices)))
+            texts=[]
+            for p in choices[:30]:
+                try:
+                    texts.append(p.read_text(encoding="utf-8",errors="replace"))
+                except OSError:
+                    pass
+            joined="\n".join(texts)
+            print("WRAPPER_REFERENCES_BACKUP_BRAIN="+str("backup_brain" in joined))
+            print("WRAPPER_MENTIONS_EXPLICIT_STOPPED_MODE="+str("--bot-stopped" in joined))
+            # A string in the source is NOT proof that this mode is passed to the installed command.
+            for p in (Path("/opt/superbot-v3-rc62-src/deploy/scripts/backup_brain.py"),
+                      Path("/opt/superbot-extbackup/backup_brain.py")):
+                if p.is_file() and not p.is_symlink() and p.stat().st_size < 200000:
+                    try:
+                        src=p.read_text(encoding="utf-8",errors="replace")
+                        print("INSTALLED_BACKUP_HELPER_HAS_STOPPED_MODE="+str("--bot-stopped" in src))
+                        break
+                    except OSError:
+                        pass
+            else:
+                print("INSTALLED_BACKUP_HELPER_HAS_STOPPED_MODE=UNKNOWN")
+            try:
+                obj=json.loads((root/"status.json").read_text(encoding="utf-8"))
+                val=obj.get("ultimo_tentativo","") if isinstance(obj,dict) else ""
+                dt=datetime.datetime.fromisoformat(val.replace("Z","+00:00")) if isinstance(val,str) else None
+                age=(datetime.datetime.now(datetime.timezone.utc)-dt).total_seconds() if dt else -1
+                print("LAST_ATTEMPT_AGE_H="+str(int(age//3600) if age>=0 else "UNKNOWN"))
+            except (OSError,ValueError,TypeError):
+                print("LAST_ATTEMPT_AGE_H=UNKNOWN")
+            print("READ_ONLY_WRAPPER_ANALYSIS_DONE=1")
+            PY
