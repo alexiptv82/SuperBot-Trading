@@ -33,6 +33,8 @@ from backend.v3.brain_accounting import brain_book_metrics
 from backend.v3.events import EventJournal
 from backend.v3.outcomes import REGIMES, extract_outcomes
 from backend.v3.runner.config import load_default_config
+from backend.v3.runner.exit_service import exit_service_healthy
+from backend.v3.cutover_gate import brain_single_close_enabled
 
 _MICRO_DOLLAR = Decimal('1000000')
 _HEARTBEAT_STALE_MS = 3 * 900 * 1000  # UI freshness, NOT trading/strategy limits
@@ -373,7 +375,8 @@ def _overview(paths: V3Paths, now_ms: int) -> dict:
     from backend.v3.cutover_gate import classic_single_close_enabled
     return {'generated_at_ms': now_ms, 'portfolios': entries,
             'cutover_readonly': os.environ.get('V3_CUTOVER_READONLY', '0') == '1',
-            'classic_single_close_allowed': classic_single_close_enabled(os.environ)}
+            'classic_single_close_allowed': classic_single_close_enabled(os.environ),
+            'brain_single_close_allowed': _brain_single_close_ready(paths, now_ms)}
 
 
 def _scoreboard(paths: V3Paths, now_ms: int) -> dict:
@@ -453,6 +456,39 @@ async def _trades(paths: V3Paths, limit: int, get_ticker, offset: int = 0) -> di
             'close_pending': _close_inflight(paths)}
 
 
+def _brain_single_close_ready(paths: V3Paths, now_ms: int) -> bool:
+    """Fail closed until a genuine Brain PAPER exit-sidecar owns this exact run.
+
+    The main Brain AI heartbeat is *not* sufficient. In particular, the
+    currently prepared Brain run has no owner and remains safely disabled.
+    """
+    if (not brain_single_close_enabled(os.environ) or type(now_ms) is not int
+            or now_ms <= 0 or not paths.run_id or not paths.journal_path
+            or not paths.close_request_path or not paths.close_result_path
+            or not paths.pause_flag_path or not paths.brain_config_path):
+        return False
+    try:
+        root = Path(paths.journal_path).parent
+        if not root.is_absolute() or root.is_symlink() or not root.is_dir():
+            return False
+        expected = (
+            (paths.journal_path, "journal.db"),
+            (paths.close_request_path, "close_request.json"),
+            (paths.close_result_path, "close_result.json"),
+            (paths.pause_flag_path, "pause.flag"),
+            (paths.brain_config_path, "runner_config.json"),
+        )
+        if any(Path(value) != root / name for value, name in expected):
+            return False
+        if any((root / name).is_symlink() for name in ("journal.db", "runner_config.json")):
+            return False
+        if not (root / "journal.db").is_file() or not (root / "runner_config.json").is_file():
+            return False
+        return exit_service_healthy(data_dir=root, run_id=paths.run_id, now_ms=now_ms)
+    except (OSError, TypeError, ValueError):
+        return False
+
+
 def _close_error(status: int, code: str, message: str) -> HTTPException:
     """Stable machine code + clear Italian message; never leak server paths."""
     return HTTPException(status_code=status, detail={'code': code, 'message': message},
@@ -478,12 +514,23 @@ def _close_request(paths: V3Paths, body: object, now_ms: int) -> dict:
     creating a second persistent control file. The runner consumes the request.
     """
     position_id, close_all = _close_body(body)
-    hb = _heartbeat(paths)
-    if (hb is None or not paths.journal_path or not paths.run_id or
-            not _exists(paths.journal_path) or now_ms - hb['ts_ms'] > _HEARTBEAT_STALE_MS
-            or hb['ts_ms'] > now_ms + _CLOSE_RESULT_MAX_AGE_MS
-            or hb['run_id'] != paths.run_id):
-        raise _close_error(409, 'brain_non_risponde', 'Il Brain non risponde: riprova quando è collegato.')
+    if brain_single_close_enabled(os.environ):
+        if close_all:
+            raise _close_error(423, 'solo_chiusura_singola',
+                               'In modalità PAPER puoi chiudere una posizione Brain alla volta.')
+        if not _brain_single_close_ready(paths, now_ms):
+            raise _close_error(409, 'servizio_uscita_non_pronto',
+                               'Il servizio di uscita PAPER del Brain non è pronto.')
+    else:
+        # Existing runner-owned protocol outside the limited cutover.
+        # The AI heartbeat alone never unlocks the PAPER cutover flag.
+        hb = _heartbeat(paths)
+        if (hb is None or not paths.journal_path or not paths.run_id or
+                not _exists(paths.journal_path) or now_ms - hb['ts_ms'] > _HEARTBEAT_STALE_MS
+                or hb['ts_ms'] > now_ms + _CLOSE_RESULT_MAX_AGE_MS
+                or hb['run_id'] != paths.run_id):
+            raise _close_error(409, 'brain_non_risponde',
+                               'Il Brain non risponde: riprova quando è collegato.')
     summary = _summary(paths)
     if summary is None:
         raise _close_error(409, 'brain_non_risponde', 'Il registro del Brain non è disponibile.')
