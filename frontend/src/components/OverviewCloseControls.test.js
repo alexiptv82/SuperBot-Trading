@@ -184,3 +184,25 @@ test('Classics: close-all without explicit queued acknowledgement is not a succe
     expect(s.host.textContent).not.toContain('Il bot sta elaborando');
   } finally { await s.done(); }
 });
+
+test('Classic PAPER: exit-only completed manual profit is shown distinctly from a queued request', () => {
+  const h = renderToStaticMarkup(<ClassicCloseControls portfolio="falco" positions={[]}
+    lastAction={{ type: 'close_position', ok: true, detail: 'chiusa BTC (netto +7.20$)' }} />);
+  expect(h).toContain('Ultima chiusura: chiusa BTC');
+  expect(h).not.toContain('sta elaborando');
+});
+
+test('Classic PAPER: pending close-all disables all close buttons and shows progress', () => {
+  const h = renderToStaticMarkup(<ClassicCloseControls portfolio="toro"
+    positions={positions} canClose allPending />);
+  expect(h).toContain('Chiusura in corso');
+  expect(h).toMatch(/disabled=""/);
+});
+
+test('Classic PAPER: failed manual close is visible as a failure, not a winning trade', () => {
+  const h = renderToStaticMarkup(<ClassicCloseControls portfolio="falco"
+    positions={positions} canClose lastAction={{
+      type: 'close_position', ok: false, detail: 'BTC: NON chiusa (prezzo non disponibile)'
+    }} />);
+  expect(h).toContain('NON chiusa');
+});
