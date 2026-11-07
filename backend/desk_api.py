@@ -99,7 +99,7 @@ def make_router(portfolio: str, data_dir: str, require_session, get_ticker) -> A
     @r.post("/close-all")
     async def close_all(session=Depends(require_session)):
         try:
-            result = dv.command_close_all(data_dir)
+            result = dv.command_close_all(data_dir, portfolio)
         except OSError as e:
             raise _flag_error(e)
         if result.get("ok") is False:
@@ -114,7 +114,7 @@ def make_router(portfolio: str, data_dir: str, require_session, get_ticker) -> A
             body = {}
         symbol = body.get("symbol") if isinstance(body, dict) else None
         try:
-            ok, code, payload = dv.command_close_position(data_dir, symbol)
+            ok, code, payload = dv.command_close_position(data_dir, symbol, portfolio)
         except OSError as e:
             raise _flag_error(e)
         if not ok:
