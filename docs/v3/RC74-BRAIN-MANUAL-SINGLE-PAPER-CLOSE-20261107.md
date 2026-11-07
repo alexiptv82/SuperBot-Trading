@@ -21,6 +21,7 @@ Il test pratico del bottone Falco/Toro è stato confermato dall'utente. L'utente
 ## Verifiche
 
 - [CI RC74 #42380869478](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42380869478): **181 test backend PASS**, compreso run PAPER sintetico con AI in pausa, sidecar reale, click API singolo, ricevuta, close journal, esito `manual`, rifiuto doppio click, mismatched run/path, owner non attivo e tutti i flag PAPER; **87 test frontend PASS (12 suite)** + build React PASS.
+- [Regressione V3 completa #42381307963](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42381307963): **4.173 test V3 PASS, 1 SKIP**, più **114 test esecutore PAPER Brain PASS**. Nessun fallimento.
 - Nessun test ha scritto nei volumi Singapore originali; **nessun merge né deploy Brain** è stato effettuato.
 
 ## Gate di attivazione reale (NON soddisfatti nel 7/11)
