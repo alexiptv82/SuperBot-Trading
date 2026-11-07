@@ -1,0 +1,73 @@
+name: RC73 Singapore PAPER public 1m quote readiness (READ ONLY)
+on:
+  push:
+    branches: [work/v3-rc73-manual-close-idempotency-20261107]
+    paths: ['.github/workflows/v3-rc73-singapore-paper-prices-readonly.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Read current 6+2 legacy symbols and test only public Bitget 1m candles
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 155s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import json,math,time,urllib.request
+            from pathlib import Path
+            collected={}
+            for name,wanted in (('hawk',6),('bull',2)):
+                f=Path('/opt/superbot-desk-data')/name/'state_v2.json'
+                state=json.loads(f.read_text())
+                positions=state['main']['positions']
+                assert type(positions) is dict and len(positions)==wanted
+                assert (f.parent/'pause.flag').is_file()
+                collected[name]=list(positions)
+            all_symbols=sorted(set(collected['hawk']+collected['bull']))
+            now_ms=int(time.time()*1000)
+            valid={}
+            for name in all_symbols:
+                sym=name.upper()
+                if not sym.endswith('USDT'):sym+='USDT'
+                url=('https://api.bitget.com/api/v2/mix/market/candles?symbol='+
+                     sym+'&productType=USDT-FUTURES&granularity=1m&limit=3')
+                good=False
+                reason='unknown'
+                try:
+                    req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+                    with urllib.request.urlopen(req,timeout=7) as resp:
+                        result=json.load(resp)
+                    if result.get('code')!='00000':
+                        reason='provider_error'
+                    else:
+                        rows=sorted(result.get('data') or [],key=lambda r:float(r[0]))
+                        last=rows[-1]
+                        stamp=float(last[0])
+                        price=float(last[4])
+                        age=now_ms-stamp
+                        good=math.isfinite(price) and price>0 and -1000<=age<=120000
+                        reason='fresh' if good else 'stale_or_invalid'
+                except Exception:
+                    reason='network_error'
+                valid[name]=good
+                print('RC73_SYMBOL_QUOTE_'+name.upper()+'='+reason)
+                time.sleep(0.25)
+            for name in ('hawk','bull'):
+                ready=sum(valid.get(sym,False) for sym in collected[name])
+                print('RC73_'+name.upper()+'_FRESH_MARKS='+str(ready)+'/'+str(len(collected[name])))
+            count=sum(valid.values())
+            print('RC73_PUBLIC_1M_PRICE_READINESS='+str(count)+'/'+str(len(all_symbols)))
+            print('RC73_PUBLIC_MARK_CHECK_ONLY_NO_TRADES=True')
+            # Record real availability, never invent prices or place an exchange order.
+            if count!=len(all_symbols):
+                raise SystemExit('RC73_QUOTE_FEED_NO_GO_FOR_ALL_MANUAL_CLOSE')
+            PY
