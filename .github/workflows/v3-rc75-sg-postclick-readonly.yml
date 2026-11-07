@@ -163,7 +163,7 @@ jobs:
         with:
           host: 51.79.205.82
           username: root
-          key: \${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
           fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
           command_timeout: 100s
           script: |
