@@ -1,3 +1,13 @@
+## 07/11/2026 ~19:40 CET — RC76: ARB forense e gap STOP in manutenzione (READ ONLY)
+
+**RC76 SUCCESS** [Action #42402452564](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42402452564): in Falco e Toro resta 1 ARB PAPER SHORT ciascuno, ingresso condiviso `0.160507892`, leva 25x, stop memorizzato `0.162574857`, liq teorica `0.166125668`, aperte da ~131,75 ore; margini 100/185 USDT. Segnale condiviso rules trend4h/1h/EMA50. **Non è stato ottenuto un ticker fresco verificato**, quindi nessuna perdita corrente/stop attraversato è attestata. Lo stop equivaleva a movimento avverso +1,29%, perdita lorda teorica al livello di stop -32,19/-59,56 USDT senza fee/slippage.
+
+**GAP DI SICUREZZA P0:** il worker attivo `backend/desk/exit_only.py` della RC73 processa **solo richieste di uscita manuale**, non esegue monitoraggio SL/TP automatico; i due motori legacy sono fermi. Questo non è una diagnosi definitiva del motivo di ingresso ARB, ma spiega perché uno scalp possa restare non gestito per 5,5 giorni durante la manutenzione. Da correggere e verificare come gate prima del nuovo avvio, senza riaccendere i vecchi motori.
+
+**Richiesta:** analisi causale *post-trade* in sola lettura per Falco/Toro/Brain, confrontando ingressi, rischio/stop, mercato e trade coevi, evitando cause inventate e apprendimento automatico su singoli esiti. Le due ARB saranno chiuse **dall'utente**, non dall'assistente. Solo **dopo conferma/nuovo audit** creare snapshot post-close con SHA/restore separato dal valido RC69; nessun reset/merge/deploy/avvio. **Diario dettagliato:** [RC76](diario/2026-11-07_chatgpt-rc76-arb-forensic-stop-gap.md).
+
+---
+
 ## 07/11/2026 18:03 CET — RC75 audit READ-ONLY post-chiusure manuali riuscito
 
 **ULTIMO DATO VPS verificato:** [Audit #42394351334](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42394351334) SUCCESS. Dopo i clic utente rimangono **Falco 1 ARB aperta, Toro 1 ARB aperta**. Il 7/11 risultano **5 chiusure manuali Falco (net +628,9169 USDT) e 1 Toro (net +154,0444 USDT)**, totale **+782,9613 USDT PAPER netti** di fee totali 18,7119 USDT, marcate `closed_by=utente` e `manual_learning=profit_protection_example`. P&L solo delle chiusure odierne, non equity né P&L delle ARB aperte.
