@@ -2,7 +2,7 @@ name: RC73 secure classic manual single PAPER closes on public app (NO TRADE ENG
 on:
   push:
     branches: [work/v3-rc73-manual-close-idempotency-20261107]
-    paths: ['.github/workflows/v3-rc73-paper-web-cutover.yml']
+    paths: ['.github/workflows/v3-rc73-enable-paper-single-close.yml']
   workflow_dispatch:
 permissions:
   contents: read
