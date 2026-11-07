@@ -764,6 +764,27 @@ def test_close_all_without_price_keeps_position_open_and_says_so():
         assert state["last_action"]["ok"] is False and "BTC" in state["last_action"]["skipped"]
 
 
+def test_close_all_paper_flag_expires_before_any_price_fetch_or_position_change():
+    """A queued request must not execute hours later after the old worker restarts."""
+    with _sandbox() as (d, calls):
+        state = _state_with_position(100.0)
+        before_cash = cli.make_account(state).cash
+        path = os.path.join(d, "reset.flag")
+        open(path, "w").close()
+        import time as _time
+        old = _time.time() - cli.CLOSE_ALL_MAX_AGE_S - 30
+        os.utime(path, (old, old))
+        def forbidden_fetch(*args, **kwargs):
+            raise AssertionError("stale close must not request a market price")
+        cli.fetch_candles = forbidden_fetch
+        assert cli._check_close_all_flag(state) is False
+        assert "BTC" in cli.make_account(state).positions
+        assert cli.make_account(state).cash == before_cash
+        assert state["last_action"]["ok"] is False
+        assert "scaduta" in state["last_action"]["detail"]
+        assert not os.path.exists(path)
+
+
 def _closed_trade_state(d, n=3):
     """Stato in pausa-e-piatto con n trade chiusi e relativo storico su disco."""
     state = {}
