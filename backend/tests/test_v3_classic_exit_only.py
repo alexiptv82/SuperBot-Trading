@@ -217,3 +217,33 @@ def test_snapshot_comparison_is_strict(tmp_path, monkeypatch):
     (backup / "trade_history.jsonl").write_text("{}\n", encoding="utf-8")
     with pytest.raises(ExitOnlyError, match="snapshot_missing_or_mismatched"):
         verify_snapshot(base, backup)
+
+
+def test_public_feed_error_keeps_position_open_and_reports_failure(tmp_path, monkeypatch):
+    base, backup = prepare(tmp_path, monkeypatch)
+    def feed_broken(*args):
+        raise OSError("temporary outage")
+    monkeypatch.setattr(cli, "fetch_candles", feed_broken)
+    with worker(base, backup) as service, TestClient(_app(base)) as api:
+        assert api.post("/api/desk/close-position", json={"symbol": "BTC"}).status_code == 200
+        service.tick()
+    state = json.loads((base / "state_v2.json").read_text())
+    assert "BTC" in state["main"]["positions"]
+    assert state["last_action"]["ok"] is False
+    assert not (base / "trade_history.jsonl").read_text()
+
+
+def test_exit_only_revokes_ready_if_trading_container_starts_during_price_fetch(tmp_path, monkeypatch):
+    base, backup = prepare(tmp_path, monkeypatch)
+    status = {"stopped": True}
+    def feed(*args):
+        status["stopped"] = False
+        return [[int(time.time() * 1000) - 10_000, 100, 100, 100, 98, 2]]
+    monkeypatch.setattr(cli, "fetch_candles", feed)
+    w = worker(base, backup, stopped=lambda _: status["stopped"])
+    with w, TestClient(_app(base)) as api:
+        assert api.post("/api/desk/close-position", json={"symbol": "BTC"}).status_code == 200
+        with pytest.raises(ExitOnlyError, match="legacy_container_not_proven"):
+            w.tick()
+        assert dv.exit_only_close_ready(str(base), "hawk") is False
+    assert "BTC" in json.loads((base / "state_v2.json").read_text())["main"]["positions"]
