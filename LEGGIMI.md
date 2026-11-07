@@ -1,4 +1,4 @@
-## Regola permanente — proposte dell'utente come incrementi, mai ricostruzione
+**AGGIORNAMENTO 07/11/2026 — LEGGERE PRIMA:** [Checkpoint completo RC69–RC74](diario/2026-11-07_chatgpt-rc69-rc74-checkpoint-completo.md). Dashboard V3 e single-close Falco/Toro online; test telefono positivo, numero posizioni attuali da riconciliare; Brain single-close PR #74 solo TESTATO OFFLINE e NON DEPLOYATO. Il backup cifrato off-host non è verificato. Leggere la nuova sezione iniziale di `STATO.md` prima di agire.\n\n## Regola permanente — proposte dell'utente come incrementi, mai ricostruzione
 
 Ogni idea, link, video, screenshot o analisi che l'utente invia va considerato un **possibile miglioramento**, NON un ordine di rifare il bot. Prima di scrivere: verificare se esista già; valutarne utilità, semplicità, compatibilità con Brain/Falco/Toro, effetti su stop, costi AI e tempi di ripartenza; scegliere GO / RINVIARE / NO-GO. Se utile, introdurre il **più piccolo incremento isolato, reversibile, opt-in, predefinito OFF**. Non duplicare motori AI, scanner, Sizer o gestione rischio già presenti. Non ricostruire da zero la piattaforma.
 
