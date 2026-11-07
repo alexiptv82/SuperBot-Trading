@@ -58,7 +58,7 @@ export function PortfolioTradeFields({ p, brain = false }) {
   </div>;
 }
 
-export function BrainCloseControls({ positions = [], serverPending = false, onRefresh = () => {}, renderPosition = null }) {
+export function BrainCloseControls({ positions = [], serverPending = false, readOnly = false, onRefresh = () => {}, renderPosition = null }) {
   const [confirm, setConfirm] = useState(null);
   const [pending, setPending] = useState(null);
   const [sending, setSending] = useState(false);
@@ -73,7 +73,7 @@ export function BrainCloseControls({ positions = [], serverPending = false, onRe
   refreshRef.current = onRefresh;
 
   const submit = async () => {
-    if (active.current || !confirm) return;
+    if (readOnly || active.current || !confirm) return;
     active.current = true;
     setSending(true);
     setProblem('');
@@ -126,10 +126,11 @@ export function BrainCloseControls({ positions = [], serverPending = false, onRe
   }, [pending]);
 
   const ask = target => {
-    if (!active.current && !sending && !serverPending) { setNotes([]); setProblem(''); setConfirm(target); }
+    if (!readOnly && !active.current && !sending && !serverPending) { setNotes([]); setProblem(''); setConfirm(target); }
   };
-  const disabled = active.current || sending || serverPending;
+  const disabled = readOnly || active.current || sending || serverPending;
   return <div>
+    {readOnly && positions.length > 0 && <p style={MUTED}>Collaudo PAPER in sola lettura: chiusure manuali non ancora attivate.</p>}
     {positions.length > 0 && <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
       <button type="button" style={BTN} disabled={disabled} onClick={() => ask({ all: true })}>Chiudi tutte ({positions.length})</button>
     </div>}
