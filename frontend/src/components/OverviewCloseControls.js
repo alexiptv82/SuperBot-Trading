@@ -132,8 +132,46 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [awaiting, setAwaiting] = useState(null);
   const locked = useRef(false);
-  const blocked = busy || !!pending.length || allPending;
+  const refreshRef = useRef(onRefresh);
+  refreshRef.current = onRefresh;
+
+  useEffect(() => {
+    if (!awaiting) return undefined;
+    let active = true;
+    let polling = false;
+    const poll = async () => {
+      if (!active || polling) return;
+      if (Date.now() - awaiting.at_ms >= 60000) {
+        setMessage('Nessuna conferma di chiusura ricevuta: aggiorna lo stato del portafoglio.');
+        setAwaiting(null);
+        return;
+      }
+      polling = true;
+      try {
+        const { data } = await API.get('/api/v3/overview');
+        const portfolioData = (data?.portfolios || []).find(p => p.id === portfolio);
+        const action = portfolioData?.last_action;
+        if (active && action?.type === awaiting.type &&
+            Number.isFinite(Number(action.ts)) && Number(action.ts) >= awaiting.at_ms - 2000) {
+          setMessage(action.ok
+            ? ('Chiusura PAPER confermata: ' + (action.detail || 'operazione registrata.'))
+            : ('Chiusura NON eseguita: ' + (action.detail || 'controlla il bot.')));
+          setAwaiting(null);
+          refreshRef.current();
+        }
+      } catch (_) {
+        // Network errors are retried for up to one minute: never invent success.
+      } finally {
+        polling = false;
+      }
+    };
+    const timer = setInterval(poll, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [awaiting, portfolio]);
+
+  const blocked = busy || !!pending.length || allPending || !!awaiting;
   const result = (lastAction && ['close_all', 'close_position'].includes(lastAction.type))
     ? lastAction : null;
   if (!positions.length) return <div>
@@ -156,8 +194,12 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
       } else {
         r = await closePositionRequest(portfolio === 'toro' ? 'bull' : 'hawk', confirm.symbol);
       }
-      setMessage(r.ok ? 'Richiesta inviata. Il bot sta elaborando la chiusura.' : (r.message || 'Chiusura non riuscita.'));
-      if (r.ok) onRefresh();
+      setMessage(r.ok ? 'Richiesta inviata, attendo conferma della chiusura PAPER.'
+        : (r.message || 'Chiusura non riuscita.'));
+      if (r.ok) {
+        setAwaiting({ type: confirm.all ? 'close_all' : 'close_position', at_ms: Date.now() });
+        onRefresh();
+      }
     } catch (error) {
       setMessage(error?.response?.status === 409
         ? 'Il bot non risponde: nessuna chiusura inviata. Serve il processo PAPER di chiusura attivo.'
@@ -189,7 +231,8 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
       <button type="button" style={BTN} onClick={send} disabled={busy}>Chiudi</button>{' '}
       <button type="button" style={{ ...BTN, background: 'transparent' }} disabled={busy} onClick={() => setConfirm(null)}>Annulla</button>
     </div>}
-    {(!!pending.length || allPending) && <p style={MUTED}>Chiusura in corso: elaborazione dal bot.</p>}
+    {(!!pending.length || allPending || !!awaiting) &&
+      <p style={MUTED}>Chiusura in corso: aspetto la registrazione del risultato.</p>}
     {message && <p role="status" style={MUTED}>{message}</p>}
     {result && <p role="status" style={{ ...MUTED, color: result.ok ? '#4ade80' : '#fda4af' }}>
       Ultima chiusura: {result.detail || (result.ok ? 'eseguita' : 'non eseguita')}</p>}
