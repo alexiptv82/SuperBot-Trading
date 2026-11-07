@@ -139,8 +139,6 @@ def stage_preflight():
         raise Refuse('current_frontend_missing')
     if (STAGE/'rc71-deploy-completed.json').exists():
         raise Refuse('cutover_already_completed')
-    if inspect(OLD) if False else False:
-        raise Refuse('previous_container_occupied')
     try:
         inspect(OLD)
     except Refuse:
@@ -225,7 +223,11 @@ def create_env_file(existing):
             out.flush()
             os.fsync(out.fileno())
     except Exception:
-        os.close(fd)
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        Path(p).unlink(missing_ok=True)
         raise
     return Path(p)
 
@@ -294,7 +296,8 @@ def rollback(*, old_renamed, old_stopped, new_exists, web_switched):
             subprocess.run(['docker','update','--restart','always',OLD],
                            capture_output=True,timeout=10)
             docker('rename',OLD,NAME)
-            docker('start',NAME,timeout=30)
+            if not inspect(NAME).get('State',{}).get('Running'):
+                docker('start',NAME,timeout=30)
         time.sleep(2)
         print('RC71_ROLLBACK_OLD_WEB_HEALTHY='+str(http('/api/health')==200),flush=True)
     except Exception:
@@ -306,15 +309,20 @@ def main():
     if os.geteuid()!=0:
         raise Refuse('root_required')
     ap=argparse.ArgumentParser()
-    ap.add_argument('--paper-readonly-cutover',action='store_true')
+    exclusive=ap.add_mutually_exclusive_group(required=True)
+    exclusive.add_argument('--paper-readonly-cutover',action='store_true')
+    exclusive.add_argument('--preflight-only',action='store_true')
     ap.add_argument('--expected-commit',required=True)
     args=ap.parse_args()
-    if not args.paper_readonly_cutover or len(args.expected_commit)!=40:
-        raise Refuse('explicit_authorization_or_commit_missing')
+    if len(args.expected_commit)!=40 or any(c not in '0123456789abcdef' for c in args.expected_commit):
+        raise Refuse('invalid_expected_release_commit')
     if (STAGE/'rc71-commit.txt').read_text().strip()!=args.expected_commit:
         raise Refuse('release_commit_mismatch')
     stage_preflight()
     print('RC71_PAPER_READONLY_PREFLIGHT=PASS',flush=True)
+    if args.preflight_only:
+        print('RC71_PREVIEW_ONLY_NO_PRODUCTION_CHANGED=True',flush=True)
+        return
     # Build new image and copy static assets before stopping the old app.
     tag='superbot:rc71-'+args.expected_commit[:10]
     docker('build','--pull=false','-q','-t',tag,str(STAGE),timeout=300)
@@ -369,6 +377,8 @@ def main():
         web_switched=True
         if http('/api/health')!=200:
             raise Refuse('web_health_lost_after_static_swap')
+        if sha(WEB/'build/index.html')!=sha(STAGE/'frontend/build/index.html'):
+            raise Refuse('deployed_frontend_does_not_match_candidate')
         # Confirm all eight original PAPER positions and both stopped workers.
         verify_historical()
         inspect_new=inspect(NAME)
