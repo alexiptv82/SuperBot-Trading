@@ -81,6 +81,9 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
     openPositions.every(p => p.unrealized_pnl !== null && p.unrealized_pnl !== undefined)
       ? openPositions.reduce((sum, p) => sum + Number(p.unrealized_pnl), 0).toFixed(2) : null;
   const portfolioNames = { falco: '🦅 Falco', toro: '🐂 Toro', brain: '🧠 Brain V3' };
+  const actualPeerSources = Array.isArray(status?.last_decision?.peer_observations_used)
+    ? status.last_decision.peer_observations_used.filter(x => x === 'falco' || x === 'toro')
+    : [];
   return <main style={{ background: '#0b1323', color: '#eef5ff', minHeight: '100vh', padding: '16px 12px 92px', maxWidth: 1200, margin: '0 auto', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }}>
     <header style={{ marginBottom: 18 }}>
       <div style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>SUPERBOT V3 · PAPER</div>
@@ -163,8 +166,8 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         {status?.last_decision && <div style={MUTED}>{status.last_decision.symbol || '—'} · {status.last_decision.strategy_id || 'Senza strategia dichiarata'} · {status.last_decision.status || '—'}</div>}
         {status?.last_decision && <div style={{ ...MUTED, marginTop:7 }}>
           Osservazioni classici usate nell'ultima decisione: {
-            status.last_decision.peer_observations_used?.length
-              ? status.last_decision.peer_observations_used.map(x => x === 'falco' ? 'Falco' : 'Toro').join(', ')
+            actualPeerSources.length
+              ? actualPeerSources.map(x => x === 'falco' ? 'Falco' : 'Toro').join(', ')
               : 'nessuna o non disponibile'}
         </div>}
       </>}
