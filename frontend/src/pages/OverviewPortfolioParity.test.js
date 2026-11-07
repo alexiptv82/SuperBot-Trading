@@ -76,6 +76,39 @@ test('Brain equity and daily PnL are unknown rather than a fabricated wallet val
   const root = render(fixture);
   const brainCard = root.querySelector('[data-testid="portfolio-brain"]');
   expect(brainCard.textContent).toContain('Equity—');
-  expect(brainCard.textContent).toContain('Profitto di oggi—');
+  expect(brainCard.textContent).toContain('Profitto di oggi (realizzato, UTC)—');
   expect(brainCard.textContent).not.toContain('Equity0 USDT');
+});
+
+test('Brain displays settled capital and UTC realized profit without inventing open-position equity', () => {
+  const updated = JSON.parse(JSON.stringify(fixture));
+  Object.assign(updated.overview.portfolios[2], {
+    start_equity:'2000', settled_equity:'2005.25', equity:null,
+    equity_basis:'open_unmarked', day_pnl:'5.25', pnl_day_timezone:'UTC'
+  });
+  const root = render(updated);
+  const brain = root.querySelector('[data-testid="portfolio-brain"]');
+  expect(brain.textContent).toContain('Profitto di oggi (realizzato, UTC)');
+  expect(brain.textContent).toContain('5.25');
+  expect(brain.textContent).toContain('2005.25 USDT');
+  expect(brain.textContent).toContain('escluso P&L aperto');
+  expect(brain.textContent).toContain('Non calcolabile senza prezzi verificati');
+});
+
+test('Classics monitoring is read-only and never labelled active AI decision input', () => {
+  const updated = JSON.parse(JSON.stringify(fixture));
+  Object.assign(updated.overview.portfolios[2], {
+    peer_observations_mode:'display_only_not_ai_input',
+    peer_observations: [
+      {portfolio_id:'falco',state:'paused',open_positions:2,day_pnl:'12.50'},
+      {portfolio_id:'toro',state:'stale',open_positions:1,day_pnl:null}
+    ]
+  });
+  const root = render(updated);
+  const panel = root.querySelector('section[aria-label="Osservazioni Falco e Toro"]');
+  expect(panel).not.toBeNull();
+  expect(panel.textContent).toContain('Confronto informativo in sola lettura');
+  expect(panel.textContent).toContain('non sono ancora collegati alle decisioni');
+  expect(panel.textContent).toContain('Falco');
+  expect(panel.textContent).toContain('Toro');
 });
