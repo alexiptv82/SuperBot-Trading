@@ -1,3 +1,13 @@
+## 07/11/2026 ~19:59 CET — RC77: entrambe ARB chiuse dall'utente, nuovo backup locale SHA/restore PASS
+
+**Verificato su VPS**: [audit RC77 #42403639118](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42403639118): **Falco 0 aperte, Toro 0 aperte**; manual exit di ARB id62 Falco **net -122,6256 USDT PAPER**, id19 Toro **net -226,8574**; somma ARB **-349,4830**. Le 6 chiusure precedenti +782,9613; **saldo netto delle 8 chiusure manuali del 7/11: +433,4783 USDT PAPER** (non equity). Prezzo di uscita ARB 0,16818363 contro ingresso 0,160507892 SHORT 25x, oltre stop configurato e livello di liquidazione teorica. **P0**: gap di monitor SL/TP con worker legacy spenti e sidecar temporaneo solo manual-close; verificare anche il modello di liquidazione/margin PAPER. Nessun trading riavviato.
+
+**Backup locale postclose riuscito**: [run backup #42403863492](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42403863492) e [verifica indipendente #42403956859](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42403956859) entrambi SUCCESS. Snapshot separato **`/opt/superbot-backups/rc77-paper-legacy-20261107T185803Z-331904`**, manifest e SHA verificati, 37 file Falco + 35 Toro, **restore isolato PASS**, originali invariati; backup RC69 intatto. Solo dati persistenti, esclusi heartbeat/lock temporanei. **Off-host ancora non funzionante/certificato**. Brain PAUSED, manual close Brain solo offline PR74. Zero merge/deploy/reset/start/ordini; *nuova run* 1.000/1.000/2.000 non creata.
+
+**Diario dettagliato:** [RC77](diario/2026-11-07_chatgpt-rc77-arb-chiuse-backup-postclose.md). **Prossimo passo:** protezione indipendente degli stop PAPER e diagnostica post-trade con dati verificabili, isolati e senza modifiche alle strategie; diagnosi backup esterno, gate Brain manual close. Nuove run/riavvio solo dopo autorizzazione dedicata e gate sicurezza.
+
+---
+
 ## 07/11/2026 ~19:40 CET — RC76: ARB forense e gap STOP in manutenzione (READ ONLY)
 
 **RC76 SUCCESS** [Action #42402452564](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42402452564): in Falco e Toro resta 1 ARB PAPER SHORT ciascuno, ingresso condiviso `0.160507892`, leva 25x, stop memorizzato `0.162574857`, liq teorica `0.166125668`, aperte da ~131,75 ore; margini 100/185 USDT. Segnale condiviso rules trend4h/1h/EMA50. **Non è stato ottenuto un ticker fresco verificato**, quindi nessuna perdita corrente/stop attraversato è attestata. Lo stop equivaleva a movimento avverso +1,29%, perdita lorda teorica al livello di stop -32,19/-59,56 USDT senza fee/slippage.
