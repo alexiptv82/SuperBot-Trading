@@ -1,0 +1,74 @@
+name: RC71 original web config and rollback audit (READ ONLY)
+on:
+  push:
+    branches: [work/v3-rc71-safe-web-cutover-20261107]
+    paths: ['.github/workflows/v3-rc71-production-cutover-inventory.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Inspect safe rollback-relevant metadata, not credentials or secrets
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import json,subprocess,sqlite3,os
+            from pathlib import Path
+            def run(*args):
+                x=subprocess.run(args,check=False,capture_output=True,text=True,timeout=8)
+                if x.returncode:raise RuntimeError('docker_command_failed')
+                return x.stdout
+            d=json.loads(run('docker','inspect','superbot'))[0]
+            print('RC71_PROD_RUNNING='+str(d['State']['Running']))
+            print('RC71_PROD_IMAGE_REF_PRESENT='+str(bool(d.get('Image'))))
+            print('RC71_PROD_RESTART_POLICY='+str(d['HostConfig']['RestartPolicy']['Name']))
+            ports=d.get('HostConfig',{}).get('PortBindings',{})
+            for port,binds in ports.items():
+                print('RC71_PROD_PORT_'+port.replace('/','_')+'='+','.join(
+                    str(b.get('HostIp',''))+':'+str(b.get('HostPort',''))
+                    for b in binds))
+            labels= {'/app/data':'APP_DB_DIR','/app/backend/.env':'APP_ENV_FILE',
+                     '/opt/superbot-desk-data/hawk':'HAWK_DATA',
+                     '/opt/superbot-desk-data/bull':'BULL_DATA'}
+            actual={}
+            for m in d.get('Mounts',[]):
+                label=labels.get(m.get('Destination'))
+                if label:
+                    actual[label]=(m.get('Source'),m.get('RW'))
+                    print('RC71_PROD_'+label+'_PRESENT=True')
+                    print('RC71_PROD_'+label+'_WRITABLE='+str(m.get('RW')))
+                else:
+                    # Unknown mounts are not safe to reproduce automatically.
+                    print('RC71_PROD_UNRECOGNIZED_MOUNT_DESTINATION=True')
+            print('RC71_PROD_MOUNT_COUNT='+str(len(d.get('Mounts',[]))))
+            env={}
+            for item in d.get('Config',{}).get('Env',[]):
+                if '=' in item:
+                    name,val=item.split('=',1)
+                    env[name]=val
+            for name in ('DESK_MODE','TRADING_MODE','DESK_DATA_DIR','DESK_DATA_DIR_BULL',
+                         'V3_JOURNAL_PATH','V3_RUN_ID','V3_RUNNER_CONFIG_PATH',
+                         'TELEGRAM_COMMANDS_ENABLED'):
+                print('RC71_ENV_'+name+'_SET='+str(bool(env.get(name))))
+            print('RC71_DOCKER_SOCKET_MOUNTED='+str(any('docker.sock' in m.get('Destination','')
+                for m in d.get('Mounts',[]))))
+            print('RC71_HOST_APP_SQLITE_EXISTS='+str(Path('/opt/superbot/data/superbot.db').is_file()))
+            print('RC71_HOST_APP_ENV_EXISTS='+str(Path('/opt/superbot/backend/.env').is_file()))
+            print('RC71_BRAIN_PREPARED_PAUSED='+str(
+                Path('/opt/superbot-v3-paper-runs/brain-v3-rc20261106/pause.flag').is_file()))
+            print('RC71_INSTALLED_DISABLED_EXIT_UNITS='+str(all(
+                subprocess.run(['systemctl','is-enabled','superbot-v3-'+n+'-exit.service'],
+                               capture_output=True,text=True).stdout.strip()=='disabled'
+                for n in ('falco','toro'))))
+            print('RC71_COMPLETED_READ_ONLY=True')
+            PY
