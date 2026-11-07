@@ -294,6 +294,7 @@ def normalize_trade(t: dict) -> dict:
         "fraction": t.get("fraction"), "confidence": t.get("confidence"), "source": t.get("source"),
         # "utente" se l'ha chiuso l'utente a mano (Chiudi / Chiudi tutto); altrimenti decide il bot
         "closed_by": t.get("closed_by"),
+        "manual_learning": t.get("manual_learning"),
     }
 
 
