@@ -1,3 +1,13 @@
+## 07/11/2026 18:03 CET — RC75 audit READ-ONLY post-chiusure manuali riuscito
+
+**ULTIMO DATO VPS verificato:** [Audit #42394351334](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42394351334) SUCCESS. Dopo i clic utente rimangono **Falco 1 ARB aperta, Toro 1 ARB aperta**. Il 7/11 risultano **5 chiusure manuali Falco (net +628,9169 USDT) e 1 Toro (net +154,0444 USDT)**, totale **+782,9613 USDT PAPER netti** di fee totali 18,7119 USDT, marcate `closed_by=utente` e `manual_learning=profit_protection_example`. P&L solo delle chiusure odierne, non equity né P&L delle ARB aperte.
+
+**Invariato:** web PAPER attiva, gate read-only/single-close classici; i due servizi exit-only READY; contenitori legacy Falco/Toro EXited e pause attive; Brain in pausa, `V3_ALLOW_BRAIN_SINGLE_CLOSE` non attivo, sidecar Brain assente. Backup RC69 precedente al click presente, **backup esterno in errore `exit-code` e NON certificato**; non esiste ancora snapshot locale post-chiusure verificato. Nessun ordine, merge, reset, deploy o restart effettuato durante RC75.
+
+**Diario dettagliato:** [RC75](diario/2026-11-07_chatgpt-rc75-sg-postclick-inventario-pnl.md). **Prossimo passo:** salvare snapshot post-close e provarne il restore con autorizzazione specifica, quindi predisporre Brain sidecar isolato senza accendere AI, ed eventualmente gestire le due ARB solo dopo clic utente. **Mai dire più 6+2 aperte**.
+
+---
+
 ## 07/11 — CHECKPOINT RC69–RC74: WEB V3 + manual close Falco/Toro, Brain solo offline
 
 **Checkpoint canonico:** [diario/2026-11-07_chatgpt-rc69-rc74-checkpoint-completo.md](diario/2026-11-07_chatgpt-rc69-rc74-checkpoint-completo.md) — nuovo rispetto ai blocchi cronologici sottostanti, che rimangono archiviati.
