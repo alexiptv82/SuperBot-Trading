@@ -143,6 +143,24 @@ class DailyLossGuard:
             self._state[key] = True                              # se l'invio fallisce si riprova al minuto dopo
             self._save()
 
+    def recheck(self, now_ms: int) -> DailyLoss:
+        """Force a fresh evaluation after an AI wait, bypassing minute cache.
+
+        A newly reached daily HALT must be *durably latched* before any new
+        OPEN; if the disk refused the state write, fail closed to the caller.
+        Normal scheduled checks retain their one-evaluation-per-minute cache.
+        """
+        if type(now_ms) is not int or now_ms <= 0:
+            raise ValueError("invalid_now")
+        self._last = None
+        result = self(now_ms)
+        if result.level == "halt":
+            persisted = self._load()
+            if (persisted["day_start_ms"] != self._state["day_start_ms"]
+                    or persisted["halt_latched"] is not True):
+                raise ValueError("daily_loss_latch_not_persisted")
+        return result
+
     def __call__(self, now_ms: int) -> DailyLoss:
         if type(now_ms) is not int or now_ms <= 0:
             raise ValueError("invalid_now")

@@ -4,7 +4,9 @@ import { useAppMode } from '../AppContext';
 
 // Tab per modalità PAPER
 const PAPER_TABS = [
-  { path: '/',            icon: '📊', label: 'Dashboard' },
+  { path: '/overview',    icon: '🧭', label: 'V3 · 3 bot' },
+  { path: '/classic',     icon: '📊', label: 'Classici' },
+  { path: '/supervisor',  icon: '🛰️', label: 'Agenti' },
   { path: '/trades',      icon: '💹', label: 'Trade' },
   { path: '/performance', icon: '🏆', label: 'Performance' },
   { path: '/brain',       icon: '🧠', label: 'BRAIN' },

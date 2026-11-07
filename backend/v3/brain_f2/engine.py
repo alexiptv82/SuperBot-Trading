@@ -42,6 +42,7 @@ _ALLOWED_RATIONALE = frozenset({
 _ALLOWED_SOURCES = frozenset({
     "deepseek:mock", "claude:mock", "engine:fail_closed", "engine:validate",
     "deepseek:analysis", "claude:review", "risk:quote",
+    "risk:leverage_adjusted",
 })
 _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
 _SYMBOL_RE = __import__("re").compile(r"^[A-Z0-9][A-Z0-9/_:.-]{0,31}$")
@@ -82,6 +83,10 @@ def _policy_hash(policy) -> str:
         str(policy.minimum_equity), str(policy.estimated_roundtrip_cost_bp),
         str(policy.liquidation_buffer_fraction),
     )
+    if (policy.max_loss_margin_fraction is not None
+            or policy.min_leverage != 1 or policy.max_leverage != 125):
+        fields += (str(policy.max_loss_margin_fraction),
+                   str(policy.min_leverage), str(policy.max_leverage))
     return hashlib.sha256("|".join(fields).encode()).hexdigest()[:16]
 
 
@@ -422,6 +427,23 @@ class BrainEngine:
             return decision
 
         try:
+            profile = self.risk_policy
+            suggested_leverage = decision.proposal.leverage
+            # In the opt-in 20..50x profile, search from the proposed leverage
+            # down to 20x instead of rejecting a trade that can be made safe
+            # by using a lower leverage. Legacy profiles are unchanged.
+            profile_mode = profile.max_loss_margin_fraction is not None
+            if profile_mode:
+                if type(suggested_leverage) is not int or not 1 <= suggested_leverage <= 125:
+                    raise ValueError("invalid_model_leverage")
+                exchange_limit = mp["exchange_leverage_limit"]
+                if type(exchange_limit) is not int or exchange_limit < profile.min_leverage:
+                    raise ValueError("exchange_leverage_below_profile")
+                start_leverage = min(max(suggested_leverage, profile.min_leverage),
+                                     profile.max_leverage, exchange_limit)
+                candidates = range(start_leverage, profile.min_leverage - 1, -1)
+            else:
+                candidates = (suggested_leverage,)
             request = RiskRequest(
                 equity=nums["equity"],
                 available_cash=nums["cash"],
@@ -430,7 +452,7 @@ class BrainEngine:
                 entry_price=nums["entry"],
                 stop_price=nums["stop"],
                 side=decision.proposal.side,
-                requested_leverage=decision.proposal.leverage,
+                requested_leverage=next(iter(candidates)),
                 exchange_leverage_limit=mp["exchange_leverage_limit"],
                 quantity_step=nums["step"],
                 minimum_notional=nums["min_notional"],
@@ -439,7 +461,19 @@ class BrainEngine:
                 paused=mp["paused"],
                 daily_loss_latched=mp["daily_loss_latched"],
             )
-            quote = quote_paper_risk(self.risk_policy, request)
+            quote = quote_paper_risk(profile, request)
+            approved_leverage = request.requested_leverage
+            if profile_mode and not quote.allowed and quote.reason in (
+                    "margin_loss_ratio_exceeded", "stop_near_liquidation", "invalid_leverage"):
+                for trial in list(candidates)[1:]:
+                    quote = quote_paper_risk(profile, replace(request, requested_leverage=trial))
+                    approved_leverage = trial
+                    if quote.allowed or quote.reason not in (
+                            "margin_loss_ratio_exceeded", "stop_near_liquidation", "invalid_leverage"):
+                        break
+            if profile_mode and quote.allowed and approved_leverage != suggested_leverage:
+                decision.proposal = replace(decision.proposal, leverage=approved_leverage)
+                decision.sources.append("risk:leverage_adjusted")
             decision.risk_quote = quote
             if not quote.allowed:
                 decision.kind = DecisionKind.NO_TRADE

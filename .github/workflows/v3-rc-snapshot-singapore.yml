@@ -1,0 +1,72 @@
+name: V3 RC protected Singapore snapshot (BACKUP ONLY)
+on:
+  push:
+    branches: [work/v3-release-candidate-gpt6-20261106]
+    paths: ['.github/workflows/v3-rc-snapshot-singapore.yml']
+permissions:
+  contents: read
+jobs:
+  backup-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - name: Append-only archive while legacy PAPER workers are stopped
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 11m
+          script: |
+            set -eu
+            umask 077
+            echo V3_RC_BACKUP_ONLY=1
+            for c in superbot-desk-hawk superbot-desk-bull superbot-brain-free; do
+              if docker inspect "$c" >/dev/null 2>&1; then
+                if [ "$(docker inspect -f '{{.State.Running}}' "$c")" = true ]; then
+                  echo 'BACKUP_ABORT=LEGACY_WORKER_RUNNING'; exit 1
+                fi
+              fi
+            done
+            test -d /opt/superbot-desk-data || { echo BACKUP_ABORT=DATA_MISSING; exit 1; }
+            test -d /opt/superbot-backups || { echo BACKUP_ABORT=DEST_MISSING; exit 1; }
+            STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+            DEST="/opt/superbot-backups/rc-v3-${STAMP}"
+            test ! -e "$DEST" || { echo BACKUP_ABORT=DEST_EXISTS; exit 1; }
+            mkdir -m 700 "$DEST"
+            tar -C /opt -czf "$DEST/superbot-desk-data.tar.gz" superbot-desk-data
+            if test -d /opt/superbot-brain-free; then
+              tar -C /opt -czf "$DEST/superbot-brain-free.tar.gz" superbot-brain-free
+            fi
+            echo 'BACKUP_ARCHIVES_WRITTEN=1'
+            python3 - "$DEST" <<'PY'
+            import sqlite3, pathlib, sys
+            dest=pathlib.Path(sys.argv[1])
+            for name,source in (('brain-legacy.sqlite3','/opt/superbot-desk-data/brain/brain.sqlite3'),
+                                ('app.sqlite3','/opt/superbot/data/superbot.db')):
+                src=pathlib.Path(source)
+                if not src.is_file():
+                    print('DATABASE_BACKUP_MISSING_SOURCE='+name)
+                    continue
+                conn=sqlite3.connect('file:'+str(src)+'?mode=ro',uri=True)
+                out=sqlite3.connect(str(dest/name))
+                try:
+                    conn.backup(out)
+                    ans=out.execute('PRAGMA integrity_check').fetchone()
+                    if not ans or ans[0]!='ok':
+                        raise RuntimeError('sqlite_integrity_failure:'+name)
+                finally:
+                    out.close();conn.close()
+                (dest/name).chmod(0o600)
+                print('DATABASE_BACKUP_VERIFIED='+name)
+            PY
+            for file in "$DEST"/*.tar.gz; do
+              test -s "$file" || { echo BACKUP_ABORT=EMPTY_ARCHIVE; exit 1; }
+              tar -tzf "$file" >/dev/null || { echo BACKUP_ABORT=ARCHIVE_CORRUPT; exit 1; }
+            done
+            chmod 700 "$DEST"
+            echo 'BACKUP_DIRECTORY='"$DEST"
+            echo 'BACKUP_ARCHIVES_VERIFIED=1'
+            find "$DEST" -maxdepth 1 -type f -printf 'file=%f bytes=%s\n'
+            echo V3_RC_BACKUP_COMPLETE=1

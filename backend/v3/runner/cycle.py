@@ -24,6 +24,7 @@ contesto (il motore verifica comunque che lo stop sia dal lato giusto e che il r
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import re
 from decimal import Decimal
 from typing import Callable, Iterable, Mapping, Optional, Sequence
 
@@ -123,12 +124,19 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     market_rules: Callable[[str], Optional[Mapping]], initial_equity: Decimal,
                     slippage_bps: int, allowed_strategy_ids: Iterable[str] = (),
                     price_source: Optional[Callable[[str, int], Decimal]] = None,
-                    rotate: int = 0) -> CycleReport:
+                    rotate: int = 0, open_commit: Optional[Callable[[BrainDecision], object]] = None,
+                    require_open_commit: bool = False) -> CycleReport:
     """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare)."""
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
     if type(rotate) is not int or rotate < 0:
         raise ValueError("invalid_rotate")
+    if type(require_open_commit) is not bool:
+        raise ValueError("invalid_open_commit_mode")
+    if require_open_commit and not callable(open_commit):
+        raise ValueError("split_open_commit_required")
+    if not require_open_commit and open_commit is not None:
+        raise ValueError("open_commit_requires_split_mode")
     syms = list(symbols)
     if syms:
         k = rotate % len(syms)
@@ -185,12 +193,45 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
             decision = engine.step(context, 0.0)
             decisions.append((symbol, decision.kind.value, decision.status.value, decision.rationale))
             if decision.kind == DecisionKind.OPEN and decision.status == ProposalStatus.APPROVED:
-                try:
-                    receipt = execute_paper(decision, portfolio_id=PORTFOLIO_ID, run_id=run_id,
-                                            journal=journal, slippage_bps=slippage_bps, now_ms=now_ms)
-                except ExecutionError as exc:
-                    errors.append((symbol, str(exc)))
-                    continue
+                if require_open_commit:
+                    # No fallback to execute_paper. The cooperating writer rechecks
+                    # current equity, mandate, pause and exit ownership *after* AI.
+                    try:
+                        from backend.v3.runner.open_serial import OpenCommit
+                        outcome = open_commit(decision)
+                        if type(outcome) is not OpenCommit:
+                            errors.append((symbol, "split_open_result_invalid"))
+                            continue
+                        if outcome.allowed is not True:
+                            code = outcome.code
+                            errors.append((symbol, code if type(code) is str and
+                                           re.fullmatch(r"[a-z][a-z0-9_]{0,63}", code)
+                                           else "split_open_denied"))
+                            continue
+                        receipt = outcome.receipt
+                        # Never claim an OPEN from a forged/partial callback
+                        # result; require the official journal record.
+                        if (receipt is None or receipt.portfolio_id != PORTFOLIO_ID
+                                or receipt.run_id != run_id or receipt.symbol != symbol
+                                or receipt.decision_event_id != decision.journal_event_id
+                                or not any(
+                                    r.event.kind == "paper_open"
+                                    and r.event.event_id == receipt.journal_event_id
+                                    and r.event.payload.get("position_id") == receipt.position_id
+                                    and r.event.payload.get("decision_event_id") == decision.journal_event_id
+                                    for r in journal.list_run(PORTFOLIO_ID, run_id))):
+                            errors.append((symbol, "split_open_receipt_unverified"))
+                            continue
+                    except Exception:
+                        errors.append((symbol, "split_open_failed"))
+                        continue
+                else:
+                    try:
+                        receipt = execute_paper(decision, portfolio_id=PORTFOLIO_ID, run_id=run_id,
+                                                journal=journal, slippage_bps=slippage_bps, now_ms=now_ms)
+                    except ExecutionError as exc:
+                        errors.append((symbol, str(exc)))
+                        continue
                 opened.append((symbol, receipt.position_id))
                 summary = build_summary(journal, PORTFOLIO_ID, run_id)   # il prossimo simbolo vede questa posizione
         except Exception:

@@ -29,6 +29,11 @@ class RiskPolicy:
     minimum_equity: Decimal
     estimated_roundtrip_cost_bp: Decimal
     liquidation_buffer_fraction: Decimal
+    # Optional PAPER profile: none/1x..125x preserves historical behavior.
+    # 75 USDT risk on 350 USDT margin = 0.214285714285... of actual margin.
+    max_loss_margin_fraction: Decimal | None = None
+    min_leverage: int = 1
+    max_leverage: int = 125
 
 
 @dataclass(frozen=True)
@@ -77,14 +82,25 @@ def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
         return _rejected("stale_market_data")
     if type(request.side) is not int or request.side not in (-1, 1):
         return _rejected("invalid_side")
+    if (type(policy.min_leverage) is not int or type(policy.max_leverage) is not int
+            or not 1 <= policy.min_leverage <= policy.max_leverage <= 125):
+        return _rejected("invalid_policy_or_market")
     if (type(request.requested_leverage) is not int
             or type(request.exchange_leverage_limit) is not int
             or request.requested_leverage <= 0
             or request.exchange_leverage_limit <= 0
             or request.requested_leverage > request.exchange_leverage_limit):
         return _rejected("invalid_leverage")
+    if not policy.min_leverage <= request.requested_leverage <= policy.max_leverage:
+        return _rejected("leverage_outside_profile")
 
     try:
+        if policy.max_loss_margin_fraction is not None:
+            loss_per_margin = _d(policy.max_loss_margin_fraction)
+            if not Decimal("0") < loss_per_margin <= Decimal("1"):
+                return _rejected("invalid_policy_or_market")
+        else:
+            loss_per_margin = None
         p = [_d(x) for x in (
             policy.max_loss_fraction, policy.max_open_risk_fraction,
             policy.max_position_margin_fraction, policy.max_total_margin_fraction,
@@ -121,6 +137,11 @@ def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
     liquid_dist = Decimal("1") / leverage - maintenance - cost_fraction
     if liquid_dist <= 0 or stop_fraction >= liquid_dist * buffer:
         return _rejected("stop_near_liquidation")
+    # This is a bound on loss vs ACTUAL filled margin, not only equity.
+    # Downsizing alone cannot change this ratio: a shorter stop or a lower
+    # leverage is necessary. The Brain can try a safer leverage before veto.
+    if loss_per_margin is not None and leverage * (stop_fraction + cost_fraction) > loss_per_margin:
+        return _rejected("margin_loss_ratio_exceeded")
 
     risk_budget = min(
         equity * per_trade,
@@ -153,7 +174,8 @@ def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
     notional = quantity * price
     margin = notional / leverage
     loss = quantity * estimated_loss_per_unit
-    if loss > risk_budget or margin > margin_budget:
+    if (loss > risk_budget or margin > margin_budget or
+            (loss_per_margin is not None and loss > margin * loss_per_margin)):
         return _rejected("internal_risk_invariant")
     return RiskQuote(True, "quote_only", quantity, notional, margin,
                      loss, risk_budget)

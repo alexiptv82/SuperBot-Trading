@@ -349,6 +349,12 @@ def build_prompt(snapshot: dict, readings: list, positions: list, headlines: lis
             f"ATR {r.atr_pct:.2%}, RSI1h {r.facts.get('rsi1h')}, "
             f"trend4h {r.facts.get('ema50_200_4h')}, {r.facts.get('daily_trend', '')}, "
             f"vol x{r.facts.get('vol_ratio', 1):.1f}"
+            + (f", cambio_trend_1h={r.facts['trend_change']}"
+               + (f", contesto_trend_4h={r.facts['trend_change_h4']}"
+                  if r.facts.get('trend_change_h4') in ('UP', 'DOWN', 'NEUTRAL') else "")
+               + f", segnale_su_chiusura_ms={r.facts.get('trend_change_asof_ms')}"
+               + " [solo consultivo: non forzare LONG/SHORT]"
+               if r.facts.get('trend_change') not in (None, 'UNKNOWN') else "")
             + (f", pattern={r.pattern}" if r.pattern else "")
             + (f", sl_sug {r.sl_pct:.2%}, tp_sug {r.tp_pct:.2%}")
         )

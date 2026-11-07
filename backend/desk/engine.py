@@ -9,7 +9,7 @@ Classi di asset e leva massima:
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Optional
 
 # ---- asset tier (leva massima)
@@ -105,6 +105,13 @@ def weighted_entry(old_entry: float, old_qty: float, new_fill: float, new_qty: f
     total = old_qty + new_qty
     return (old_entry * old_qty + new_fill * new_qty) / total if total > 0 else old_entry
 
+
+
+def _known_fields(cls, d: dict) -> dict:
+    """Ritorno al codice del 13/10: lo stato scritto da versioni piu' recenti puo' contenere campi che questa versione
+    non conosce. Si ignorano (solo in lettura, nessuna decisione cambia) invece di far fallire il caricamento."""
+    names = {f.name for f in fields(cls)}
+    return {k: v for k, v in d.items() if k in names}
 
 class PaperAccount:
     def __init__(self, limits: Limits = Limits(), name: str = "main"):
@@ -455,7 +462,7 @@ class PaperAccount:
 
     @classmethod
     def from_dict(cls, d: dict) -> "PaperAccount":
-        a = cls(Limits(**d["limits"]), d.get("name", "main"))
+        a = cls(Limits(**_known_fields(Limits, d["limits"])), d.get("name", "main"))
         a.cash, a.closed, a.next_id = d["cash"], d["closed"], d["next_id"]
         a.day, a.day_start_equity = d["day"], d["day_start_equity"]
         a.positions = {}
@@ -465,5 +472,5 @@ class PaperAccount:
             v.setdefault("total_margin", v.get("margin", 0))
             v.setdefault("trade_type", "medio")
             v.setdefault("dca_count", 0)
-            a.positions[k] = Position(**v)
+            a.positions[k] = Position(**_known_fields(Position, v))
         return a

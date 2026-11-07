@@ -14,6 +14,7 @@ Differenze chiave rispetto a V1:
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import time
@@ -164,6 +165,7 @@ RETRY_S = 300              # dopo un ciclo fallito riprova dopo 5 minuti
 CYCLE_S = 1800             # ciclo normale: 30 minuti
 CYCLE_FAST_S = 900         # con scalp aperto o in svuotamento: 15 minuti
 CODE_VERSION = os.getenv("DESK_CODE_VERSION", "dev")
+CLOSE_POSITION_MAX_AGE_S = 600   # max age for PAPER close request
 
 # Connettore live — no-op in paper mode, attivo se DESK_MODE=live
 # Lancia ValueError all'avvio se le chiavi API mancano in modalità live
@@ -303,7 +305,10 @@ def make_account(state: dict) -> PaperAccount:
 # ---- heartbeat: dice all'app (e al healthcheck) che il bot e' vivo e cosa sta facendo
 HB: dict = {"started_ms": int(time.time() * 1000), "version": CODE_VERSION, "pid": os.getpid(),
             "cycles": 0, "last_start_ms": 0, "last_end_ms": 0, "last_ok": None, "last_error": "",
-            "next_cycle_ms": 0}
+            "next_cycle_ms": 0,
+            # Dice all'app che questa versione sa chiudere una singola posizione su richiesta dell'utente.
+            # Con un bot piu' vecchio il tasto non appare (il comando resterebbe in attesa e scatterebbe dopo).
+            "close_position": not LIVE._live}
 _hb_last_write = 0.0
 
 
@@ -633,6 +638,13 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
         source = "rules"
 
+    if not LIVE._live and os.environ.get("DESK_LONG_S25") == "1":   # strategia long S25: le sue uscite sono solo stop, target, tempo
+        try:
+            from desk import long_s25
+            decisions = long_s25.protect(decisions, acc.positions)
+        except Exception as e:
+            print(f"[S25] errore ignorato: {e}", flush=True)
+
     if not drain and os.path.exists(_flag("pause.flag")):
         drain = True   # pausa premuta mentre il ciclo era in corso: vale da subito
     if drain:
@@ -871,6 +883,16 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         for s in list(acc.positions):
             acc.cancel_split(s, "bot in pausa", now_ms)
 
+    # ---- strategia long S25 (spenta di default): chiusura a tempo e nuovi ingressi, prima della lettura delle barre
+    if not LIVE._live and os.environ.get("DESK_LONG_S25") == "1":
+        try:
+            from desk import long_s25
+            long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=drain,
+                          record_close=record_close, notify_open=notify_open, notify_close=notify_close,
+                          log_event=lambda ev: log_event(DATA_DIR, ev))
+        except Exception as e:
+            print(f"[S25] errore ignorato: {e}", flush=True)
+
     # ---- processa barre (stop, liq, tp automatici; seconda gamba al ritracciamento)
     import numpy as np
     for sym, pos in list(acc.positions.items()):
@@ -954,17 +976,61 @@ def _check_budget_reset_flag(state: dict) -> bool:
         _remove(path)
 
 
-def _market_prices(symbols: list, state: dict) -> dict:
-    """Ultimo prezzo di mercato per i simboli indicati (candela 15m piu' recente)."""
-    px: dict = {}
-    for s in symbols:
-        arr = fetch_candles(s, "15m", 3)
-        if arr:
-            px[s] = arr[-1][4]
-    for s in symbols:
-        if s not in px and (state.get("last_prices") or {}).get(s):
-            px[s] = state["last_prices"][s]
-    return px
+MANUAL_CLOSE_CANDLE_MAX_AGE_MS = 1_800_000  # 30 minuti
+MANUAL_CLOSE_CACHE_MAX_AGE_MS = 120_000  # 2 minuti: bloccare prezzi vecchi di giorni
+
+
+def _market_prices(symbols: list, state: dict, now_ms: int | None = None) -> dict:
+    """Chiusure manuali: usare solo prezzi recenti e finiti (PAPER)."""
+    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    prices: dict = {}
+    for sym in symbols:
+        arr = fetch_candles(sym, "15m", 3)
+        if not arr:
+            continue
+        try:
+            candle = arr[-1]
+            ts, mark = int(candle[0]), float(candle[4])
+            if (0 <= now_ms - ts <= MANUAL_CLOSE_CANDLE_MAX_AGE_MS
+                    and math.isfinite(mark) and mark > 0):
+                prices[sym] = mark
+        except (TypeError, ValueError, IndexError, OverflowError):
+            continue
+    cache_ms = state.get("last_prices_ms")
+    if (type(cache_ms) is int
+            and 0 <= now_ms - cache_ms <= MANUAL_CLOSE_CACHE_MAX_AGE_MS):
+        cached = state.get("last_prices") or {}
+        for sym in symbols:
+            if sym in prices:
+                continue
+            try:
+                mark = float(cached.get(sym))
+                if math.isfinite(mark) and mark > 0:
+                    prices[sym] = mark
+            except (TypeError, ValueError, OverflowError):
+                continue
+    return prices
+
+
+def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms: int) -> tuple:
+    """Chiude UNA posizione a prezzo di mercato perche' lo ha chiesto l'utente (Chiudi tutto o Chiudi singola).
+    Il trade entra nello storico e nel registro come tutti gli altri (vinto o perso secondo il profitto vero),
+    con in piu' `closed_by: "utente"` per poter separare in analisi cio' che ha deciso il bot da cio' che ha
+    deciso l'utente: non cambia l'esito, non e' un trade "falso". Non passa dalle decisioni di regole o di Claude:
+    vale per qualunque posizione, anche una aperta da una strategia che le regole non possono chiudere.
+    Ritorna (record, "") se chiusa, (None, motivo) se non e' stata chiusa."""
+    rec = acc.close(sym, px, now_ms, "chiusura manuale")
+    if rec is None:
+        return None, "posizione non trovata"
+    rec["closed_by"] = "utente"
+    # Esempio per l'analisi del profitto, non una strategia automatica convalidata.
+    rec["manual_learning"] = (
+        "profit_protection_example" if rec["net"] > 0
+        else "loss_reduction_example" if rec["net"] < 0
+        else "break_even_example"
+    )
+    record_close(state, rec)
+    return rec, ""
 
 
 def _check_close_all_flag(state: dict) -> bool:
@@ -981,7 +1047,7 @@ def _check_close_all_flag(state: dict) -> bool:
             save_state(state, STATE_FILE)
             return True
         now_ms = int(time.time() * 1000)
-        prices = _market_prices(list(acc.positions), state)
+        prices = _market_prices(list(acc.positions), state, now_ms)
         closed_n, skipped, net = 0, [], 0.0
         for sym in list(acc.positions):
             px = prices.get(sym)
@@ -998,9 +1064,13 @@ def _check_close_all_flag(state: dict) -> bool:
                         skipped.append(sym)
                         continue
             # ─────────────────────────────────────────────────────────────────
-            rec = acc.close(sym, px, now_ms, "chiusura manuale")
+            if LIVE._live:
+                rec = acc.close(sym, px, now_ms, "chiusura manuale")
+                if rec:
+                    record_close(state, rec)
+            else:
+                rec, _ = _close_for_user(state, acc, sym, px, now_ms)
             if rec:
-                record_close(state, rec)
                 closed_n += 1
                 net += rec["net"]
         flush_events(state, acc)
@@ -1097,6 +1167,93 @@ def _archive_run(state: dict, acc: PaperAccount, clear_lessons: bool) -> str:
     return name
 
 
+def _check_close_position_flag(state: dict) -> bool:
+    """close_position.flag = {"symbols": [...], "ts": ms}: l'utente vuole chiudere queste posizioni (non tutte) a
+    prezzo di mercato. Stesse regole di 'Chiudi tutto': mai un'uscita inventata se manca il prezzo. Sicurezze: una
+    richiesta vecchia (clic dimenticato) non si esegue; un simbolo gia' chiuso non e' un errore; il file si 'prende
+    in carico' con un rinomina cosi' un secondo clic arrivato intanto non va perso. Funziona anche in pausa. L'esito
+    va in state['last_action'] e l'app lo mostra."""
+    path = _flag("close_position.flag")
+    if LIVE._live:
+        # This new request protocol is PAPER-only. The existing LIVE close-all
+        # path above remains unchanged and still calls the exchange first.
+        return False
+    if not os.path.exists(path):
+        return False
+    work = path + ".work"
+    try:
+        os.replace(path, work)
+    except OSError:
+        return False
+    try:
+        try:
+            with open(work) as f:
+                req = json.loads(f.read() or "{}")
+        except Exception:
+            req = {}
+        if not isinstance(req, dict):
+            req = {}
+        wanted = [str(x) for x in (req.get("symbols") or []) if x]
+        wanted = list(dict.fromkeys(wanted))
+        now_ms = int(time.time() * 1000)
+        try:
+            age_s = (now_ms - int(req.get("ts"))) / 1000.0
+        except (TypeError, ValueError):
+            age_s = None
+        if not wanted:
+            _set_last_action(state, "close_position", False, "richiesta di chiusura senza simbolo: ignorata")
+            save_state(state, STATE_FILE)
+            return False
+        if age_s is None or age_s > CLOSE_POSITION_MAX_AGE_S or age_s < -60:
+            _set_last_action(state, "close_position", False,
+                             f"richiesta di chiusura scaduta ({', '.join(wanted)}): non eseguita, riprova")
+            save_state(state, STATE_FILE)
+            print(f"[CHIUDI POSIZIONE] richiesta scaduta o senza ora ({', '.join(wanted)}): non eseguita", flush=True)
+            return False
+        acc = make_account(state)
+        present = [s for s in wanted if s in acc.positions]
+        gone = [s for s in wanted if s not in acc.positions]
+        prices = _market_prices(present, state, now_ms) if present else {}
+        closed, failed, net = [], [], 0.0
+        for sym in present:
+            px = prices.get(sym)
+            if px is None:
+                failed.append((sym, "prezzo non disponibile"))
+                continue
+            rec, why_not = _close_for_user(state, acc, sym, px, now_ms)
+            if why_not:
+                failed.append((sym, why_not))
+                continue
+            closed.append(sym)
+            net += rec["net"]
+            try:
+                notify_close(sym, rec["net"], "su tua richiesta", "chiusura manuale")
+            except Exception:
+                pass   # il messaggio Telegram non deve mai fermare la chiusura
+        flush_events(state, acc)
+        save_account(acc, state)
+        parts = []
+        if closed:
+            parts.append(f"chiusa {', '.join(closed)} (netto {net:+.2f}$)" if len(closed) == 1
+                         else f"chiuse {', '.join(closed)} (netto {net:+.2f}$)")
+        if gone:
+            parts.append(f"{', '.join(gone)}: gia' chiusa")
+        for sym, why in failed:
+            parts.append(f"{sym}: NON chiusa ({why}), resta aperta: riprova")
+        detail = "; ".join(parts) or "nessuna posizione da chiudere"
+        _set_last_action(state, "close_position", not failed, detail, closed=closed,
+                         skipped=[s for s, _ in failed])
+        save_state(state, STATE_FILE)
+        print(f"[CHIUDI POSIZIONE] {detail}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[CHIUDI POSIZIONE ERROR] {e}", flush=True)
+        traceback.print_exc()
+        return False
+    finally:
+        _remove(work)
+
+
 def _check_portfolio_reset_flag(state: dict) -> bool:
     """reset_portfolio.flag: archivia la run e riparte da 1000$ con i parametri del codice.
     Regole (controllate anche qui, non solo dall'app): il bot deve essere IN PAUSA e senza
@@ -1161,9 +1318,10 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
 
 
 def process_flags(state: dict) -> None:
-    """Esegue i comandi arrivati dall'app. L'ordine conta: budget, chiudi tutto, reset conto."""
+    """Esegue i comandi arrivati dall'app. L'ordine conta: budget, chiudi tutto, chiudi singola, reset conto."""
     _check_budget_reset_flag(state)
     _check_close_all_flag(state)
+    _check_close_position_flag(state)
     _check_portfolio_reset_flag(state)
 
 

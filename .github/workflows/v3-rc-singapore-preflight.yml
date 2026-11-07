@@ -1,0 +1,101 @@
+name: V3 RC Singapore preflight (READ ONLY, no deploy)
+on:
+  push:
+    branches: [work/v3-release-candidate-gpt6-20261106]
+    paths: ['.github/workflows/v3-rc-singapore-preflight.yml']
+permissions:
+  contents: read
+jobs:
+  read-only-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read-only container and data inventory on Singapore
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            printf 'SUPERBOT_RC_READ_ONLY_PREFLIGHT=1\n'
+            if ! command -v docker >/dev/null 2>&1; then echo DOCKER=UNAVAILABLE; exit 1; fi
+            echo '=== superbot container states (no env or logs dumped) ==='
+            docker ps -a --format '{{.Names}} | {{.Status}}' | grep -E 'superbot|brain|hawk|bull' || true
+            echo '=== expected containers PAPER mode ==='
+            for c in superbot superbot-desk-hawk superbot-desk-bull; do
+              if docker inspect "$c" >/dev/null 2>&1; then
+                state="$(docker inspect -f '{{.State.Status}}' "$c")"
+                if docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$c" | grep -Eq '^(DESK_MODE|TRADING_MODE)=paper$'; then mode=PAPER; else mode=NOT_CONFIRMED; fi
+                printf '%s status=%s mode=%s\n' "$c" "$state" "$mode"
+              else printf '%s status=ABSENT\n' "$c"; fi
+            done
+            echo '=== data directories: existence only ==='
+            for d in /opt/superbot-desk-data/hawk /opt/superbot-desk-data/bull /opt/superbot-desk-data/brain /opt/superbot-brain-data /opt/superbot/data; do
+              if test -d "$d"; then
+                printf '%s present=YES\n' "$d"
+                for f in journal.db state_v2.json heartbeat.json pause.flag; do
+                  if test -f "$d/$f"; then printf '  %s=EXISTS\n' "$f"; else printf '  %s=ABSENT\n' "$f"; fi
+                done
+              else printf '%s present=NO\n' "$d"; fi
+            done
+            echo '=== backup folders: existence only ==='
+            for d in /opt/superbot-backups /opt/superbot-desk-backups /opt/superbot-desk-data/backups; do
+              if test -d "$d"; then printf '%s present=YES\n' "$d"; else printf '%s present=NO\n' "$d"; fi
+            done
+            echo '=== disk space ==='
+            df -h /opt 2>/dev/null | tail -1 || true
+            echo '=== portfolio positions (read-only JSON counters) ==='
+            python3 - <<'PY'
+            import json, pathlib, os
+            for role in ('hawk','bull'):
+                d=pathlib.Path('/opt/superbot-desk-data')/role
+                try:
+                    data=json.loads((d/'state_v2.json').read_text())
+                    positions=(data.get('main') or {}).get('positions') or {}
+                    print('portfolio='+role+' positions='+str(len(positions))+' paused='+str((d/'pause.flag').exists()))
+                except Exception as exc:
+                    print('portfolio='+role+' status=UNKNOWN type='+type(exc).__name__)
+            roots=('/opt/superbot-desk-data/brain','/opt/superbot-brain-data','/opt/superbot/data')
+            for root in roots:
+                if not os.path.isdir(root):
+                    continue
+                candidates=[]
+                for folder,dirs,files in os.walk(root):
+                    depth=len(pathlib.Path(folder).relative_to(root).parts)
+                    if depth>=2:
+                        dirs[:]=[]
+                    for fname in files:
+                        if fname in ('journal.db','budget.db','brain.db') or fname.endswith(('.sqlite3','.sqlite')):
+                            p=pathlib.Path(folder)/fname
+                            candidates.append(str(p.relative_to(root)))
+                print('brain_data='+root+' sqlite_candidates='+(','.join(candidates[:20]) or 'NONE'))
+            for root in ('/opt/superbot-backups','/opt/superbot-desk-data/hawk','/opt/superbot-desk-data/bull'):
+                if os.path.isdir(root):
+                    backups=0
+                    for folder,dirs,files in os.walk(root):
+                        if len(pathlib.Path(folder).relative_to(root).parts)>=2:
+                            dirs[:]=[]
+                        backups += sum(1 for f in files if 'backup' in f.lower() or f.endswith(('.bak','.tar.gz','.tgz')))
+                    print('backup_candidates='+root+' count='+str(backups))
+            PY
+            echo '=== historic Brain bind mounts (paths only) ==='
+            if docker inspect superbot-brain-free >/dev/null 2>&1; then
+              docker inspect -f '{{json .Mounts}}' superbot-brain-free | python3 -c 'import json,sys; a=json.load(sys.stdin); [print("brain_mount="+str(x.get("Source"))+" -> "+str(x.get("Destination"))) for x in a if "/opt/superbot" in str(x.get("Source"))]'
+            fi
+            echo '=== immutable container layout audit (read only, no secrets) ==='
+            for c in superbot superbot-desk-hawk superbot-desk-bull superbot-brain-free; do
+              if ! docker inspect "$c" >/dev/null 2>&1; then continue; fi
+              docker inspect -f 'container={{.Name}} image={{.Config.Image}} state={{.State.Status}} restart={{.HostConfig.RestartPolicy.Name}}' "$c"
+              docker inspect -f '{{json .Mounts}}' "$c" | python3 -c 'import json,sys; a=json.load(sys.stdin); [print("mount_type="+str(x.get("Type"))+" source="+str(x.get("Source"))+" dest="+str(x.get("Destination"))) for x in a if str(x.get("Source", "")).startswith("/opt/superbot")]'
+              docker inspect -f '{{json .Config.Env}}' "$c" | python3 -c 'import json,sys; a=json.load(sys.stdin); d=dict(x.split("=",1) for x in a if "=" in x); [print("mode_"+k+"="+d[k]) for k in ("DESK_MODE", "DESK_DATA_DIR", "DESK_DATA_DIR_BULL", "V3_JOURNAL_PATH", "V3_RUN_ID") if k in d]'
+            done
+            echo '=== named services only (no process command lines) ==='
+            systemctl list-units --all --type=service --no-pager --no-legend 2>/dev/null | grep -Ei 'superbot|brain|desk' | cut -c1-110 || true
+            echo '=== code checkout candidates (existence only) ==='
+            for d in /opt/SuperBot-Trading /opt/superbot-trading /opt/superbot /opt/superbot-app /opt/superbot-desk /opt/superbot-release-rc; do
+              if test -d "$d"; then echo "code_dir_exists=$d"; fi
+            done
+            echo SUPERBOT_RC_PREFLIGHT_DONE=1

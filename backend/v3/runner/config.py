@@ -40,7 +40,10 @@ _THINKING = ("disabled", "omit", "enabled")
 _EFFORTS = ("omit", "low", "high", "max")
 MIN_REASONING_TOKENS = 1024          # con il ragionamento un tetto piu' basso troncherebbe sempre la risposta
 MAX_OUTPUT_TOKENS = 65_536
-_RISK_KEYS = set(RiskPolicy.__dataclass_fields__)
+_RISK_KEYS = {"max_loss_fraction", "max_open_risk_fraction", "max_position_margin_fraction",
+              "max_total_margin_fraction", "minimum_equity", "estimated_roundtrip_cost_bp",
+              "liquidation_buffer_fraction"}
+_OPTIONAL_PROFILE_KEYS = {"max_loss_margin_fraction", "min_leverage", "max_leverage"}
 
 
 @dataclass(frozen=True)
@@ -131,7 +134,12 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
     if type(slip) is not int or not 0 <= slip <= 500:
         _fail()
     risk = data["risk_policy"]
-    if type(risk) is not dict or set(risk) != _RISK_KEYS:
+    if type(risk) is not dict or set(risk) not in (_RISK_KEYS, _RISK_KEYS | _OPTIONAL_PROFILE_KEYS):
+        _fail()
+    has_profile = _OPTIONAL_PROFILE_KEYS <= set(risk)
+    min_lev, max_lev = (risk["min_leverage"], risk["max_leverage"]) if has_profile else (1, 125)
+    if (type(min_lev) is not int or type(max_lev) is not int
+            or not 1 <= min_lev <= max_lev <= 125):
         _fail()
     policy = RiskPolicy(
         max_loss_fraction=_dec(risk["max_loss_fraction"], Decimal("0"), Decimal("1"), lo_open=True),
@@ -140,7 +148,10 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
         max_total_margin_fraction=_dec(risk["max_total_margin_fraction"], Decimal("0"), Decimal("1"), lo_open=True),
         minimum_equity=_dec(risk["minimum_equity"], Decimal("450"), Decimal("1000000")),
         estimated_roundtrip_cost_bp=_dec(risk["estimated_roundtrip_cost_bp"], Decimal("0"), Decimal("1000")),
-        liquidation_buffer_fraction=_dec(risk["liquidation_buffer_fraction"], Decimal("0"), Decimal("1"), lo_open=True))
+        liquidation_buffer_fraction=_dec(risk["liquidation_buffer_fraction"], Decimal("0"), Decimal("1"), lo_open=True),
+        max_loss_margin_fraction=(_dec(risk["max_loss_margin_fraction"], Decimal("0"), Decimal("1"), lo_open=True)
+                                  if has_profile else None),
+        min_leverage=min_lev, max_leverage=max_lev)
     if not (policy.max_loss_fraction <= policy.max_open_risk_fraction
             and policy.max_position_margin_fraction <= policy.max_total_margin_fraction):
         _fail()

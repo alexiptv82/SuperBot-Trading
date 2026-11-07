@@ -1,0 +1,60 @@
+name: V3 RC backup restore rehearsal (TEMP ONLY)
+on:
+  push:
+    branches: [work/v3-release-candidate-gpt6-20261106]
+    paths: ['.github/workflows/v3-rc-restore-check.yml']
+permissions:
+  contents: read
+jobs:
+  restore-temp-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Restore archived histories to private temporary directory, validate, remove temporary copy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 12m
+          script: |
+            set -eu
+            umask 077
+            BASE=/opt/superbot-backups/rc-v3-20261106T150730Z
+            test -d "$BASE" || { echo RESTORE_ABORT=BACKUP_MISSING; exit 1; }
+            test -s "$BASE/superbot-desk-data.tar.gz" || exit 1
+            test -s "$BASE/superbot-brain-free.tar.gz" || exit 1
+            TMP="$(mktemp -d /tmp/superbot-rc-restore-XXXXXX)"
+            trap 'test -z "$TMP" || rm -rf -- "$TMP"' EXIT
+            test "${TMP#/tmp/superbot-rc-restore-}" != "$TMP" || exit 1
+            mkdir -m 700 "$TMP/desk" "$TMP/brain"
+            tar -C "$TMP/desk" -xzf "$BASE/superbot-desk-data.tar.gz" --no-same-owner
+            tar -C "$TMP/brain" -xzf "$BASE/superbot-brain-free.tar.gz" --no-same-owner
+            python3 - "$TMP" "$BASE" <<'PY'
+            import json,pathlib,sys,sqlite3,hashlib
+            t=pathlib.Path(sys.argv[1]); b=pathlib.Path(sys.argv[2])
+            for portfolio in ('hawk','bull'):
+                original=pathlib.Path('/opt/superbot-desk-data')/portfolio/'state_v2.json'
+                restored=t/'desk'/'superbot-desk-data'/portfolio/'state_v2.json'
+                assert restored.is_file(), 'missing_'+portfolio
+                payload=json.loads(restored.read_text())
+                pos=((payload.get('main') or {}).get('positions') or {})
+                print('RESTORED_PORTFOLIO='+portfolio+' open_position_count='+str(len(pos)))
+                if original.is_file():
+                    src_hash=hashlib.sha256(original.read_bytes()).hexdigest()
+                    bak_hash=hashlib.sha256(restored.read_bytes()).hexdigest()
+                    print('ORIGINAL_MATCH='+portfolio+' value='+str(src_hash==bak_hash))
+                    assert src_hash==bak_hash, 'live_snapshot_changed_'+portfolio
+            restored_brain=t/'brain'/'superbot-brain-free'
+            assert restored_brain.exists() and any(restored_brain.iterdir()), 'empty_brain_archive'
+            print('BRAIN_ARCHIVE_RESTORED=1')
+            for name in ('brain-legacy.sqlite3','app.sqlite3'):
+                dbpath=b/name
+                assert dbpath.is_file() and dbpath.stat().st_size>0, 'missing_db_'+name
+                with sqlite3.connect('file:'+str(dbpath)+'?mode=ro',uri=True) as conn:
+                    assert conn.execute('PRAGMA integrity_check').fetchone()[0]=='ok', 'corrupt_'+name
+                print('VERIFIED_SQLITE='+name)
+            print('RESTORE_REHEARSAL_SUCCESS=1')
+            PY
+            echo RESTORE_TEMP_COPY_REMOVED_ON_EXIT=1
