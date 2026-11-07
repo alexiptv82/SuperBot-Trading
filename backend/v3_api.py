@@ -311,10 +311,19 @@ def _brain_status(paths: V3Paths, now_ms: int) -> dict:
     last_decision = None
     if last is not None:
         p = last.event.payload
+        sources = p.get('sources') if type(p.get('sources')) is list else []
+        # Include only fixed provenance tags from the last journaled decision.
+        # This is not a forecast nor evidence of a profitable strategy.
+        peer_used = [
+            name for name, tag in (
+                ('falco', 'falco:paper_position_observation'),
+                ('toro', 'toro:paper_position_observation'))
+            if tag in sources]
         last_decision = {
             'kind': p.get('kind'), 'status': p.get('status'), 'symbol': p.get('symbol'),
             'regime': p.get('regime'), 'strategy_id': p.get('strategy_id'),
-            'ts_ms': last.event.occurred_at_ms}
+            'ts_ms': last.event.occurred_at_ms,
+            'peer_observations_used': peer_used}
     return {'state': state, 'run_id': paths.run_id or None,
             'heartbeat': ({k: hb[k] for k in ('ts_ms', 'cycle', 'state', 'last_error')}
                           if hb is not None else None),
