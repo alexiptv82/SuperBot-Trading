@@ -33,6 +33,31 @@ const brainErrorText = err => {
     richiesta_non_valida: 'Richiesta non valida. Aggiorna la pagina.' })[code] || 'Invio non riuscito. Riprova.';
 };
 
+/** Shared position facts for Falco, Toro and Brain. No invented mark, PnL or target. */
+export function PortfolioTradeFields({ p, brain = false }) {
+  const pxLabel = brain ? 'Prezzo attuale'
+    : p.price_source === 'bot' ? 'Ultimo prezzo bot'
+    : p.price_source === 'live' ? 'Prezzo live' : 'Prezzo';
+  const pnl = p.price == null || p.unrealized_pnl == null ? null : p.unrealized_pnl;
+  const roi = pnl == null || p.roi_pct == null ? '—' : `${p.roi_pct}%`;
+  const qty = p.quantity ?? p.qty ?? null;
+  const positive = pnl != null && !String(pnl).startsWith('-');
+  return <div data-testid={`portfolio-trade-${brain ? 'brain' : 'classic'}`}>
+    <strong>{p.symbol} · <span style={{ color: p.side === 1 ? '#4ade80' : '#fda4af' }}>
+      {p.side === 1 ? 'LONG' : p.side === -1 ? 'SHORT' : '—'}</span> · {p.leverage ?? '—'}×</strong>
+    {(p.trade_type || p.strategy_id) && <span style={{ display:'block', ...MUTED }}>
+      {brain ? 'Strategia' : 'Tipo'}: {brain ? p.strategy_id || 'Non dichiarata' : p.trade_type || '—'}</span>}
+    <div style={{ ...MUTED, marginTop: 6 }}>Ingresso {p.entry ?? '—'} · {pxLabel} {p.price ?? '—'}</div>
+    {p.price == null && <div style={MUTED}>Prezzo aggiornato non disponibile.</div>}
+    <div style={MUTED}>Margine {p.margin ?? '—'} USDT · Stop {p.stop ?? '—'}</div>
+    <div style={MUTED}>Obiettivo {p.take_profit ?? '—'} · Liquidazione {p.liquidation ?? '—'}</div>
+    {qty != null && <div style={MUTED}>Quantità {qty}</div>}
+    <div style={{ fontSize: 13, fontWeight: 700, color: pnl == null ? '#a8bacd' : positive ? '#4ade80' : '#fda4af' }}>
+      {brain ? 'P&L non realizzato:' : 'P&L'} {pnl == null ? '—' : `${pnl} USDT`} · ROI {roi}
+    </div>
+  </div>;
+}
+
 export function BrainCloseControls({ positions = [], serverPending = false, onRefresh = () => {}, renderPosition = null }) {
   const [confirm, setConfirm] = useState(null);
   const [pending, setPending] = useState(null);
@@ -109,7 +134,7 @@ export function BrainCloseControls({ positions = [], serverPending = false, onRe
       <button type="button" style={BTN} disabled={disabled} onClick={() => ask({ all: true })}>Chiudi tutte ({positions.length})</button>
     </div>}
     {positions.map(p => <div key={p.position_id} style={{ display: 'flex', gap: 10, alignItems: 'center', borderTop: '1px solid #314357', padding: '12px 0', minWidth: 0 }}>
-      <div style={{ minWidth: 0, flex: 1 }}>{renderPosition ? renderPosition(p) : <strong>{p.symbol}</strong>}</div>
+      <div style={{ minWidth: 0, flex: 1 }}>{renderPosition ? renderPosition(p) : <PortfolioTradeFields p={p} brain />}</div>
       <button type="button" style={{ ...BTN, flexShrink: 0 }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi {p.symbol}</button>
     </div>)}
     {confirm && <div role="dialog" aria-label="Conferma chiusura Brain" style={{ border: '1px solid #fda4af', padding: 12, borderRadius: 10, marginTop: 8 }}>
@@ -215,15 +240,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
     {!canClose && <p style={MUTED}>Chiusura manuale non ancora disponibile su questo bot (processo spento oppure versione precedente). Le posizioni restano visibili: nessun comando viene accodato.</p>}
     {canClose && <button type="button" style={BTN} disabled={blocked} onClick={() => setConfirm({ all: true })}>Chiudi tutte ({positions.length})</button>}
     {positions.map(p => <div key={p.symbol} style={{ background:'#0e1a2d', padding:'12px', border:'1px solid #30465e', borderRadius:11, marginTop:9 }}>
-      <strong>{p.symbol} · <span style={{ color:p.side === 1 ? '#4ade80' : '#fda4af' }}>{p.side === 1 ? 'LONG' : 'SHORT'}</span> · {p.leverage ?? '—'}×</strong>
-      {p.trade_type && <span style={{ display:'block', ...MUTED }}>Tipo: {p.trade_type}</span>}
-      <div style={{ ...MUTED, marginTop:6 }}>Ingresso {p.entry} · {p.price_source === 'bot' ? 'Ultimo prezzo bot' : p.price_source === 'live' ? 'Prezzo live' : 'Prezzo'} {p.price ?? '—'}</div>
-      {p.price == null && <div style={MUTED}>Prezzo aggiornato non disponibile.</div>}
-      <div style={MUTED}>Margine {p.margin ?? '—'} USDT · Stop {p.stop ?? '—'}</div>
-      <div style={MUTED}>Obiettivo {p.take_profit ?? '—'} · Liquidazione {p.liquidation ?? '—'}</div>
-      <div style={{ fontSize:13, fontWeight:700, color:p.price == null || p.unrealized_pnl == null ? '#a8bacd' : String(p.unrealized_pnl).startsWith('-') ? '#fda4af' : '#4ade80' }}>
-        P&L {p.price == null || p.unrealized_pnl == null ? '—' : `${p.unrealized_pnl} USDT`} · ROI {p.price == null || p.roi_pct == null ? '—' : `${p.roi_pct}%`}
-      </div>
+      <PortfolioTradeFields p={p} />
       {canClose && <button type="button" style={{ ...BTN, marginTop:8 }} disabled={blocked}
         onClick={() => setConfirm({ symbol: p.symbol })}>Chiudi {p.symbol}</button>}
     </div>)}
