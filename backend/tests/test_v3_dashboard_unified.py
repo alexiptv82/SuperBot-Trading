@@ -362,3 +362,28 @@ def test_classic_absent_price_is_not_replaced_with_unverified_mark(tmp_path):
         # Legacy API field remains a string; the new UI suppresses this
         # simulated zero when there is no independent market mark.
         assert type(p['unrealized_pnl']) is str
+
+
+
+def test_manual_profit_is_an_observation_not_a_new_strategy(tmp_path):
+    paths = _paths(tmp_path)
+    position_id = _journal_sample(paths, close=False)
+    from backend.v3.executor.paper_close import close_paper
+    j = EventJournal(paths.journal_path)
+    close_paper(portfolio_id="brain", run_id=RUN, position_id=position_id,
+                exit_price=D("102"), reason="manual", fee_bps=D("6"),
+                journal=j, now_ms=T0 + 62_000)
+    app, _ = _app(paths)
+    with TestClient(app) as c:
+        row = _get(c, "/api/v3/brain/trades")["closed_trades"][0]
+        assert row["exit_reason"] == "manual"
+        assert row["manual_learning"] == "profit_protection_example"
+        assert row["strategy_id"] == "S07"
+
+
+def test_manual_evidence_classifies_but_does_not_relabel_automatic_trades():
+    from backend.v3_api import _manual_learning_label
+    assert _manual_learning_label(True, "-1") == "loss_reduction_example"
+    assert _manual_learning_label(True, "0") == "break_even_example"
+    assert _manual_learning_label(False, "10") is None
+    assert _manual_learning_label(True, "NaN") is None
