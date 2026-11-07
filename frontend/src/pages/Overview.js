@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
 import API from '../api';
-import { BrainCloseControls, ClassicCloseControls } from '../components/OverviewCloseControls';
+import { BrainCloseControls, ClassicCloseControls, PortfolioTradeFields } from '../components/OverviewCloseControls';
 
 const PALETTE = { running: '#34d399', paused: '#fbbf24', halted: '#fb7185', stale: '#fbbf24', not_started: '#94a3b8' };
 const STATE_TEXT = { running: 'In funzione', paused: 'In pausa', halted: 'Fermo', stale: 'Segnale assente', not_started: 'Non avviato' };
@@ -43,6 +43,26 @@ const reasonText = code => {
   return 'Verificare lo stato del Brain';
 };
 
+/** Identical closed-trade presentation across Falco, Toro and Brain; AI metadata is additive. */
+function ClosedTradeDetails({ t, brain = false, nowMs }) {
+  const reason = brain ? brainExitReason(t.exit_reason) : field(t.close_reason);
+  return <div style={{ padding:'10px 0', borderBottom:'1px solid #314357' }}>
+    <strong>{t.symbol} · {direction(t.side)} · {field(t.leverage)}×
+      {brain && t.strategy_id ? ` · ${t.strategy_id}` : null}</strong>
+    <div style={{ ...MUTED, color:pnlColor(t.realized_pnl) }}>
+      P&L netto {money(t.realized_pnl)}{brain && t.net_bp != null ? ` · ${bp(t.net_bp)}` : ''}
+    </div>
+    <div style={MUTED}>Entrata {field(t.entry)} · Uscita {field(t.exit)} · Margine {money(t.margin)}</div>
+    <div style={MUTED}>{t.partial ? 'Chiusura parziale · ' : ''}{reason} · {ageText(t.closed_at_ms, nowMs)}</div>
+    {brain && <div style={MUTED}>
+      {t.regime || 'Regime sconosciuto'} · Commissioni {money(t.fees)} · Durata {t.hold_ms == null ? '—' : `${Math.round(t.hold_ms / 60000)} min`}
+    </div>}
+    {t.manual_learning === 'profit_protection_example' &&
+      <div style={{ ...MUTED, color:'#4ade80' }}>Profitto protetto manualmente · esempio per AI, non strategia convalidata</div>}
+    {t.manual_learning === 'loss_reduction_example' && <div style={MUTED}>Uscita manuale in perdita · esempio per AI</div>}
+  </div>;
+}
+
 function StateLabel({ state }) {
   return <span style={{ color: PALETTE[state] || '#94a3b8', fontWeight: 700, fontSize: 13 }}>
     <span aria-hidden="true">● </span>{STATE_TEXT[state] || 'Non disponibile'}
@@ -78,10 +98,8 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           <div style={detailBox}><div style={MUTED}>P&L realizzato</div><strong style={{ color:pnlColor(p.realized_pnl) }}>{p.state === 'not_started' ? '—' : money(p.realized_pnl)}</strong></div>
           <div style={detailBox}><div style={MUTED}>Margine in uso</div><strong>{p.state === 'not_started' ? '—' : money(p.margin_in_use)}</strong></div>
           <div style={detailBox}><div style={MUTED}>P&L aperto</div><strong style={{ color:pnlColor(p.id === 'brain' ? brainUnrealized : p.unrealized_pnl) }}>{p.state === 'not_started' ? '—' : money(p.id === 'brain' ? brainUnrealized : p.unrealized_pnl)}</strong></div>
-          {p.kind === 'classic' && <>
-            <div style={detailBox}><div style={MUTED}>Equity</div><strong>{money(p.equity)}</strong></div>
-            <div style={detailBox}><div style={MUTED}>Profitto di oggi</div><strong style={{ color:pnlColor(p.day_pnl) }}>{money(p.day_pnl)}</strong></div>
-          </>}
+          <div style={detailBox}><div style={MUTED}>Equity</div><strong>{p.state === 'not_started' ? '—' : money(p.equity)}</strong></div>
+          <div style={detailBox}><div style={MUTED}>Profitto di oggi</div><strong style={{ color:pnlColor(p.day_pnl) }}>{p.state === 'not_started' ? '—' : money(p.day_pnl)}</strong></div>
           <div style={detailBox}><div style={MUTED}>Trade chiusi</div><strong>{p.total_closed ?? 0}</strong></div>
           <div style={detailBox}><div style={MUTED}>Win rate</div><strong>{p.win_rate == null ? '—' : `${p.win_rate}%`}</strong></div>
           <div style={{ gridColumn:'1 / -1', ...MUTED }}>Ultimo evento: {ageText(p.last_event_ms, nowMs)}</div>
@@ -98,16 +116,22 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           <details style={{ marginTop:14 }}>
             <summary style={{ color:'#7dd3fc', cursor:'pointer', fontWeight:700, fontSize:13 }}>Ultimi trade chiusi ({(p.closed_trades || []).length})</summary>
             {(p.closed_trades || []).length === 0 && <p style={MUTED}>Ancora nessun trade chiuso nella nuova run.</p>}
-            {(p.closed_trades || []).map((t, i) => <div key={`${t.symbol}-${t.closed_at_ms}-${i}`} style={{ padding:'10px 0', borderBottom:'1px solid #314357' }}>
-              <strong>{t.symbol} · {direction(t.side)} · {field(t.leverage)}×</strong>
-              <div style={{ ...MUTED, color:pnlColor(t.realized_pnl) }}>P&L netto {money(t.realized_pnl)}</div>
-              <div style={MUTED}>Entrata {field(t.entry)} · Uscita {field(t.exit)} · Margine {money(t.margin)}</div>
-              <div style={MUTED}>{t.partial ? 'Chiusura parziale · ' : ''}{field(t.close_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
-              {t.manual_learning === 'profit_protection_example' && <div style={{ ...MUTED, color:'#4ade80' }}>Profitto protetto manualmente · esempio per AI, non strategia convalidata</div>}
-              {t.manual_learning === 'loss_reduction_example' && <div style={MUTED}>Uscita manuale in perdita · esempio per AI</div>}
-            </div>)}
+            {(p.closed_trades || []).map((t, i) => <ClosedTradeDetails key={`${t.symbol}-${t.closed_at_ms}-${i}`} t={t} nowMs={nowMs} />)}
           </details>
           <a href="/classic" style={{ display:'inline-block', color:'#7dd3fc', fontSize:12, marginTop:13 }}>Apri la dashboard classica completa</a>
+        </>}
+        {p.id === 'brain' && <>
+          <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · Brain</h3>
+          {openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
+          <BrainCloseControls positions={openPositions} serverPending={trades?.close_pending === true}
+            onRefresh={onRefresh} renderPosition={pos => <PortfolioTradeFields p={pos} brain />} />
+          <details style={{ marginTop:14 }}>
+            <summary style={{ color:'#7dd3fc', cursor:'pointer', fontWeight:700, fontSize:13 }}>
+              Ultimi 20 trade chiusi · Brain ({closedTrades.length})
+            </summary>
+            {closedTrades.length === 0 && <p style={MUTED}>Nessun trade chiuso disponibile.</p>}
+            {closedTrades.map((t,i) => <ClosedTradeDetails key={`${t.position_id || t.symbol}-${i}`} t={t} brain nowMs={nowMs} />)}
+          </details>
         </>}
       </article>)}
     </section>
@@ -147,32 +171,6 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
       <div style={{ fontSize: 12, color: '#cbd5e1', borderTop: '1px solid #314357', paddingTop: 10 }}>
         Insufficiente ≠ cattivo: significa non ancora misurato.
       </div>
-    </section>
-    <section style={BLOCK} aria-label="Posizioni Brain">
-      <h2 style={{ fontSize: 17, margin: '0 0 12px' }}>Posizioni aperte · Brain</h2>
-      {openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
-      <BrainCloseControls positions={openPositions} serverPending={trades?.close_pending === true} onRefresh={onRefresh}
-        renderPosition={p => <>
-          <strong>{p.symbol} · {direction(p.side)} · {p.leverage}×</strong>
-          <div style={MUTED}>Strategia: {p.strategy_id || 'Non dichiarata'}</div>
-          <div style={MUTED}>Ingresso {field(p.entry)} · Prezzo attuale {field(p.price)}</div>
-          <div style={MUTED}>Stop {field(p.stop)} · Margine {money(p.margin)}</div>
-          <div style={MUTED}>Quantità {field(p.quantity)} · Apertura {ageText(p.opened_at_ms, nowMs)}</div>
-          <div style={{ ...MUTED, color:pnlColor(p.unrealized_pnl) }}>P&L non realizzato: {money(p.unrealized_pnl)} · ROI {p.roi_pct == null ? '—' : `${p.roi_pct}%`}</div>
-          {p.price == null && <div style={MUTED}>Prezzo aggiornato non disponibile: P&L non calcolabile.</div>}
-        </>} />
-    </section>
-    <section style={BLOCK} aria-label="Ultimi trade Brain">
-      <h2 style={{ fontSize:17, margin:'0 0 12px' }}>Ultimi 20 trade chiusi · Brain</h2>
-      {closedTrades.length === 0 ? <p style={MUTED}>Nessun trade chiuso disponibile.</p> : closedTrades.map(t => <div key={t.position_id} style={{ borderTop:'1px solid #314357', padding:'12px 0' }}>
-        <strong>{t.symbol} · {direction(t.side)} · {field(t.leverage)}× · {t.strategy_id || 'Senza etichetta'}</strong>
-        <div style={{ ...MUTED, color:pnlColor(t.realized_pnl) }}>P&L netto: {money(t.realized_pnl)} · {bp(t.net_bp)}</div>
-        <div style={MUTED}>Ingresso {field(t.entry)} · Uscita {field(t.exit)} · Margine {money(t.margin)}</div>
-        <div style={MUTED}>{t.regime || 'Regime sconosciuto'} · {brainExitReason(t.exit_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
-        <div style={MUTED}>Commissioni {money(t.fees)} · Durata {t.hold_ms == null ? '—' : `${Math.round(t.hold_ms / 60000)} min`}</div>
-        {t.manual_learning === 'profit_protection_example' && <div style={{ ...MUTED, color:'#4ade80' }}>Profitto protetto manualmente · esempio per AI, non strategia convalidata</div>}
-        {t.manual_learning === 'loss_reduction_example' && <div style={MUTED}>Uscita manuale in perdita · esempio per AI</div>}
-      </div>)}
     </section>
   </main>;
 }
