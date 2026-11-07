@@ -1,7 +1,7 @@
 """Safety contract: login remains accessible, trading commands are forbidden."""
 import pytest
 
-from backend.v3.cutover_gate import should_refuse_mutation, classic_single_close_enabled
+from backend.v3.cutover_gate import should_refuse_mutation, classic_single_close_enabled, brain_single_close_enabled
 
 
 @pytest.mark.parametrize("path", (
@@ -71,3 +71,25 @@ def test_single_close_feature_flag_requires_all_4_paper_readonly_conditions():
         modified=dict(env,**{key:"0" if key.startswith("V3_") else "live"})
         assert not classic_single_close_enabled(modified)
     assert not classic_single_close_enabled({})
+
+
+
+def test_brain_paper_manual_close_is_individual_and_explicitly_opted_in():
+    env = {'V3_CUTOVER_READONLY':'1','V3_ALLOW_BRAIN_SINGLE_CLOSE':'1',
+           'TRADING_MODE':'paper','DESK_MODE':'paper'}
+    assert brain_single_close_enabled(env)
+    assert not should_refuse_mutation('POST','/api/v3/brain/close',readonly=True,
+                                     allow_paper_brain_single_close=True)
+    for method in ('PUT','PATCH','DELETE'):
+        assert should_refuse_mutation(method,'/api/v3/brain/close',readonly=True,
+                                      allow_paper_brain_single_close=True)
+    for path in ('/api/v3/brain/close-all','/api/v3/brain/close/extra',
+                 '/api/v3/brain/start','/api/v3/brain/reset','/api/bot/start',
+                 '/api/desk/resume','/api/desk/close-all'):
+        assert should_refuse_mutation('POST',path,readonly=True,
+                                      allow_paper_brain_single_close=True)
+    for name in env:
+        modified=dict(env)
+        modified[name]='0' if name.startswith('V3_') else 'live'
+        assert not brain_single_close_enabled(modified)
+    assert not brain_single_close_enabled({})
