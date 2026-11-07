@@ -76,3 +76,16 @@ def test_profile_source_must_be_explicit_environment_not_a_guess(monkeypatch):
     assert V3Paths.from_env('hawk', 'bull').brain_config_path is None
     monkeypatch.setenv('V3_RUNNER_CONFIG_PATH', '/opt/paper/run-specific-config.json')
     assert V3Paths.from_env('hawk', 'bull').brain_config_path == '/opt/paper/run-specific-config.json'
+
+
+def test_corrupt_outcome_report_cannot_crash_overview_or_produce_fake_numbers(tmp_path, monkeypatch):
+    import backend.v3.brain_accounting as accounting
+    from backend.v3.outcomes import OutcomeError
+    paths = replace(_paths(tmp_path), brain_config_path=str(PROFILE))
+    _journal_sample(paths, close=True)
+    def malformed(*args, **kwargs):
+        raise OutcomeError('corrupted_run')
+    monkeypatch.setattr(accounting, 'extract_outcomes', malformed)
+    brain = _overview(paths, T0 + 65_000)['portfolios'][2]
+    assert brain['equity'] is None and brain['day_pnl'] is None
+    assert brain['equity_basis'] == 'unavailable'
