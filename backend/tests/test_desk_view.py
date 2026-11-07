@@ -262,6 +262,7 @@ def test_close_all_only_queues_when_positions_exist():
         assert dv.command_close_all(d)["queued"] is False
         assert not os.path.exists(os.path.join(d, "reset.flag"))
         _write_state(d, {"BTC": _pos(), "ETH": _pos("ETH")}, cash=800.0)
+        _write_hb(d, ts=time.time())  # real-time receiver required for close-all
         r = dv.command_close_all(d)
         assert r["queued"] is True and r["positions_found"] == 2 and os.path.exists(os.path.join(d, "reset.flag"))
 
@@ -270,11 +271,11 @@ def test_close_position_rules():
     with tempfile.TemporaryDirectory() as d:
         _write_state(d, {"BTC": _pos(), "ETH": _pos("ETH")}, cash=800.0)
         # bot di una versione che non sa farlo: non si accoda nulla (scatterebbe a caso dopo)
-        _write_hb(d)
+        _write_hb(d, ts=time.time())
         ok, code, r = dv.command_close_position(d, "BTC")
         assert (ok, code) == (False, 409) and "versione precedente" in r["message"]
         assert not os.path.exists(os.path.join(d, "close_position.flag"))
-        _write_hb(d, close_position=True)
+        _write_hb(d, close_position=True, ts=time.time())
         for bad in ("", None, "../etc", "BTC; rm", "X" * 40):
             assert dv.command_close_position(d, bad)[:2] == (False, 400)
         ok, code, r = dv.command_close_position(d, "SOL")
@@ -297,10 +298,10 @@ def test_close_position_rules():
 def test_status_tells_if_the_bot_runs_paper_or_live_so_the_close_button_can_say_it():
     with tempfile.TemporaryDirectory() as d:
         _write_state(d, {"BTC": _pos()}, cash=900.0)
-        _write_hb(d, exec_mode="paper", close_position=True)
+        _write_hb(d, exec_mode="paper", close_position=True, ts=time.time())
         st = dv.build_status(d, "hawk")
         assert st["exec_mode"] == "paper" and st["can_close_position"] is True
-        _write_hb(d, exec_mode="live", close_position=True)
+        _write_hb(d, exec_mode="live", close_position=True, ts=time.time())
         assert dv.build_status(d, "hawk")["exec_mode"] == "live"
         _write_hb(d)
         st = dv.build_status(d, "hawk")
