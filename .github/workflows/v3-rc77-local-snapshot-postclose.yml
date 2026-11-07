@@ -1,0 +1,49 @@
+name: "RC77 PAPER post-ARB manual-close local snapshot + isolated restore (NO DEPLOY)"
+on:
+  push:
+    branches: [work/v3-rc77-post-arb-close-backup-20261107]
+    paths:
+      - .github/workflows/v3-rc77-local-snapshot-postclose.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: superbot-rc69-backup-20261107
+  cancel-in-progress: false
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate RC77 safety contract (runner only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile deploy/scripts/v3-rc77-local-snapshot-restore.py
+          grep -Fq 'RC77_SOURCE_TOUCHED=False' deploy/scripts/v3-rc77-local-snapshot-restore.py
+          grep -Fq 'RC77_NO_DOCKER_RESTART=True' deploy/scripts/v3-rc77-local-snapshot-restore.py
+          grep -Fq "EXPECTED_OPEN = {'hawk': 0, 'bull': 0}" deploy/scripts/v3-rc77-local-snapshot-restore.py
+          grep -Fq 'arb_manual_close_not_unique_or_missing' deploy/scripts/v3-rc77-local-snapshot-restore.py
+      - name: Backup ONLY immutable PAPER legacy history, verify hashes + isolated restore
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || { echo 'RC77_NO_SSH_KEY'; exit 2; }
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          chmod 700 "$tmp"
+          printf '%s\n' "$SG_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          chmod 600 "$tmp/key"
+          cat > "$tmp/known_hosts" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 600 "$tmp/known_hosts"
+          ssh -T -i "$tmp/key" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" \
+            -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
+            root@51.79.205.82 'python3 -B -' < deploy/scripts/v3-rc77-local-snapshot-restore.py
