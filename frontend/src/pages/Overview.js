@@ -98,12 +98,20 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           <div style={detailBox}><div style={MUTED}>P&L realizzato</div><strong style={{ color:pnlColor(p.realized_pnl) }}>{p.state === 'not_started' ? '—' : money(p.realized_pnl)}</strong></div>
           <div style={detailBox}><div style={MUTED}>Margine in uso</div><strong>{p.state === 'not_started' ? '—' : money(p.margin_in_use)}</strong></div>
           <div style={detailBox}><div style={MUTED}>P&L aperto</div><strong style={{ color:pnlColor(p.id === 'brain' ? brainUnrealized : p.unrealized_pnl) }}>{p.state === 'not_started' ? '—' : money(p.id === 'brain' ? brainUnrealized : p.unrealized_pnl)}</strong></div>
-          <div style={detailBox}><div style={MUTED}>Equity</div><strong>{p.state === 'not_started' ? '—' : money(p.equity)}</strong></div>
-          <div style={detailBox}><div style={MUTED}>Profitto di oggi</div><strong style={{ color:pnlColor(p.day_pnl) }}>{p.state === 'not_started' ? '—' : money(p.day_pnl)}</strong></div>
+          <div style={detailBox}><div style={MUTED}>Equity</div><strong>{p.state === 'not_started' ? '—' : money(p.equity)}</strong>
+            {p.id === 'brain' && p.equity_basis === 'open_unmarked' && <div style={MUTED}>Non calcolabile senza prezzi verificati delle posizioni aperte.</div>}
+          </div>
+          <div style={detailBox}><div style={MUTED}>Profitto di oggi{p.id === 'brain' ? ' (realizzato, UTC)' : ''}</div>
+            <strong style={{ color:pnlColor(p.day_pnl) }}>{p.state === 'not_started' ? '—' : money(p.day_pnl)}</strong>
+          </div>
           <div style={detailBox}><div style={MUTED}>Trade chiusi</div><strong>{p.total_closed ?? 0}</strong></div>
           <div style={detailBox}><div style={MUTED}>Win rate</div><strong>{p.win_rate == null ? '—' : `${p.win_rate}%`}</strong></div>
           <div style={{ gridColumn:'1 / -1', ...MUTED }}>Ultimo evento: {ageText(p.last_event_ms, nowMs)}</div>
         </div>
+        {p.id === 'brain' && p.settled_equity != null && <p style={{ ...MUTED, marginTop:9 }}>
+          Saldo PAPER contabile (capitale iniziale + trade chiusi): <strong>{money(p.settled_equity)}</strong>
+          {p.equity_basis === 'open_unmarked' ? ' · escluso P&L aperto' : ''}
+        </p>}
         {p.id === 'brain' && stoppedReason && <p style={{ color: '#fda4af', fontSize: 13 }}>{stoppedReason}</p>}
         {p.kind === 'classic' && <>
           <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · {p.id === 'falco' ? 'Falco' : 'Toro'}</h3>
@@ -134,6 +142,18 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           </details>
         </>}
       </article>)}
+    </section>
+    <section style={BLOCK} aria-label="Osservazioni Falco e Toro">
+      <h2 style={{ fontSize:17, marginTop:0 }}>Brain · osservazioni Falco e Toro</h2>
+      <p style={MUTED}>Confronto informativo in sola lettura. Questi dati non sono ancora collegati alle decisioni automatiche del Brain.</p>
+      {(portfolios.find(p => p.id === 'brain')?.peer_observations || []).map(peer =>
+        <div key={peer.portfolio_id} style={{ padding:'9px 0', borderTop:'1px solid #314357', ...MUTED }}>
+          <strong>{peer.portfolio_id === 'falco' ? '🦅 Falco' : '🐂 Toro'}</strong>
+          {' · '}Stato {STATE_TEXT[peer.state] || 'Non disponibile'} · Aperte {peer.open_positions ?? '—'}
+          {' · '}P&L oggi {peer.day_pnl == null ? '—' : money(peer.day_pnl)}
+        </div>)}
+      {!(portfolios.find(p => p.id === 'brain')?.peer_observations || []).length &&
+        <p style={MUTED}>Dati di osservazione non ancora disponibili.</p>}
     </section>
     <section style={BLOCK} aria-label="Stato Brain">
       <h2 style={{ fontSize: 17, marginTop: 0 }}>🧠 Brain · come lavora</h2>
