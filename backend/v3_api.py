@@ -371,7 +371,8 @@ def _overview(paths: V3Paths, now_ms: int) -> dict:
                     'day_pnl': book['day_pnl'],
                     'pnl_day_timezone': book['pnl_day_timezone'],
                     'peer_observations': peers,
-                    'peer_observations_mode': 'display_only_not_ai_input'})
+                    'peer_observations_mode': 'display_only_not_ai_input',
+                    'manual_close_allowed': _brain_single_close_ready(paths, now_ms)})
     from backend.v3.cutover_gate import classic_single_close_enabled
     return {'generated_at_ms': now_ms, 'portfolios': entries,
             'cutover_readonly': os.environ.get('V3_CUTOVER_READONLY', '0') == '1',
