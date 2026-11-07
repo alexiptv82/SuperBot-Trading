@@ -23,6 +23,7 @@ Regole:
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -93,13 +94,30 @@ def run_manual_close(*, journal: EventJournal, portfolio_id: str, run_id: str, d
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
     request, work = data_dir / REQUEST_FILE, data_dir / WORK_FILE
+    # Match the authenticated API's directory flock while claiming requests.
+    # Never overwrite an existing .work: a crashed worker may be resuming it.
+    # A second request waits for the NEXT tick, preserving the user's choice.
+    directory_fd = None
+    claimed = False
     try:
-        os.replace(request, work)                         # una richiesta nuova sostituisce un .work vecchio
-    except FileNotFoundError:
-        if not work.is_file():
-            return None                                   # niente richiesta e niente da riprendere
-    except OSError:
-        return None                                       # riprovera' al giro dopo
+        directory_fd = os.open(data_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                               | getattr(os, "O_NOFOLLOW", 0))
+        fcntl.flock(directory_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        claimed = True
+        if not work.exists():
+            try:
+                os.replace(request, work)
+            except FileNotFoundError:
+                return None
+        elif work.is_symlink() or not work.is_file():
+            return None
+    except (OSError, BlockingIOError):
+        return None
+    finally:
+        if directory_fd is not None:
+            if claimed:
+                fcntl.flock(directory_fd, fcntl.LOCK_UN)
+            os.close(directory_fd)
     try:
         raw = json.loads(work.read_text(encoding="utf-8"))
     except (OSError, ValueError):
