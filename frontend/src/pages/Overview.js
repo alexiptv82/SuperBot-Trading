@@ -88,7 +88,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
       <div style={MUTED}>Monitoraggio · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
     </header>
     <section aria-label="Portafogli" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap:12, alignItems:'start', marginBottom:14 }}>
-      {portfolios.map(p => <article key={p.id} style={{ ...BLOCK, marginBottom:0, borderTop: `3px solid ${p.id === 'falco' ? '#38bdf8' : p.id === 'toro' ? '#fbbf24' : '#a78bfa'}` }}>
+      {portfolios.map(p => <article key={p.id} data-testid={`portfolio-${p.id}`} aria-label={`Portafoglio ${p.id}`} style={{ ...BLOCK, marginBottom:0, borderTop: `3px solid ${p.id === 'falco' ? '#38bdf8' : p.id === 'toro' ? '#fbbf24' : '#a78bfa'}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
           <strong style={{ fontSize: 18 }}>{portfolioNames[p.id] || p.id}</strong>
           <StateLabel state={p.state} />
