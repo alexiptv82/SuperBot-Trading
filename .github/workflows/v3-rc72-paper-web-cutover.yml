@@ -1,7 +1,7 @@
 name: RC72 Brain inside Classici and Trade PAPER web cutover (NO BOT RESTART)
 on:
   push:
-    branches: [work/v3-rc72-safe-web-cutover-20261107]
+    branches: [work/v3-rc72-brain-in-classic-trade-20261107]
     paths: ['.github/workflows/v3-rc72-paper-web-cutover.yml']
   workflow_dispatch:
 permissions:
@@ -46,7 +46,7 @@ jobs:
           printf '%s\n' "$GITHUB_SHA" > rc72-commit.txt
           tar --exclude='.env' --exclude='*.env' --exclude='__pycache__' \
             -czf "$RUNNER_TEMP/rc72-release.tgz" \
-            Dockerfile backend frontend/build deploy/scripts/v3-rc72-web-cutover.py rc72-commit.txt
+            Dockerfile backend frontend/build deploy/scripts/v3-rc72-three-wallet-web-cutover.py rc72-commit.txt
           test -s "$RUNNER_TEMP/rc72-release.tgz"
       - name: Upload candidate WITHOUT changing production, run independent dry-run and guarded cutover
         shell: bash
@@ -73,10 +73,10 @@ jobs:
             < "$RUNNER_TEMP/rc72-release.tgz"
           # Required: dry-run must pass without writing to current application.
           ssh "${opts[@]}" root@51.79.205.82 \
-            "python3 /opt/superbot-v3-rc72-release/deploy/scripts/v3-rc72-web-cutover.py --preflight-only --expected-commit $GITHUB_SHA"
+            "python3 /opt/superbot-v3-rc72-release/deploy/scripts/v3-rc72-three-wallet-web-cutover.py --preflight-only --expected-commit $GITHUB_SHA"
           # Explicit PAPER-only cutover, original auth DB reused, rollback on failed smoke.
           ssh "${opts[@]}" root@51.79.205.82 \
-            "python3 /opt/superbot-v3-rc72-release/deploy/scripts/v3-rc72-web-cutover.py --paper-readonly-cutover --expected-commit $GITHUB_SHA"
+            "python3 /opt/superbot-v3-rc72-release/deploy/scripts/v3-rc72-three-wallet-web-cutover.py --paper-readonly-cutover --expected-commit $GITHUB_SHA"
       - name: Public HTTPS smoke with NO authentication material
         shell: bash
         run: |
