@@ -227,14 +227,23 @@ def test_no_request_is_a_cheap_no_op_that_asks_for_no_price_and_writes_nothing()
     assert r.run() is None and r.files() == [] and r.asked == []
 
 
-def test_a_leftover_work_file_is_resumed_and_a_new_request_replaces_a_stale_one():
+def test_unfinished_close_work_is_recovered_before_a_new_request_and_never_overwritten():
     r = Rig({"AAAUSDT": D("30100"), "BBBUSDT": D("30200")})
     a, b = _open(r.j, "AAAUSDT"), _open(r.j, "BBBUSDT")
     (r.dir / WORK_FILE).write_text(json.dumps({"ts_ms": NOW - 1, "position_ids": [a]}), encoding="utf-8")
-    assert r.run().closed == (a,) and WORK_FILE not in r.files()            # ripreso dopo un arresto a meta'
-    (r.dir / WORK_FILE).write_text(json.dumps({"ts_ms": NOW - 1, "position_ids": [a]}), encoding="utf-8")
+    assert r.run().closed == (a,) and WORK_FILE not in r.files()
+    # A crash left an already executed request as .work; a newer manual
+    # request MUST remain queued until that older request is reconciled.
+    old = json.dumps({"ts_ms": NOW - 1, "position_ids": [a]})
+    (r.dir / WORK_FILE).write_text(old, encoding="utf-8")
     r.ask({"ts_ms": NOW, "position_ids": [b]})
-    assert r.run().closed == (b,) and r.files() == [RESULT_FILE]            # vince la richiesta nuova
+    queued = (r.dir / REQUEST_FILE).read_bytes()
+    resumed = r.run()
+    assert resumed.closed == () and resumed.failed == ((a, "position_not_open"),)
+    assert (r.dir / REQUEST_FILE).read_bytes() == queued
+    assert [x["position_id"] for x in _closes(r.j)] == [a]
+    assert r.run().closed == (b,) and r.files() == [RESULT_FILE]
+    assert [x["position_id"] for x in _closes(r.j)] == [a,b]
 
 
 def test_a_binary_request_file_is_invalid_not_a_crash():
@@ -344,3 +353,20 @@ def test_end_to_end_the_user_closes_a_position_while_the_brain_is_paused_and_the
     assert [(o.symbol, o.exit_reason) for o in out] == [("ETHUSDT", "manual")]
     t = built.runner.tick(G + 19 * M)                                       # BTC resta sotto il monitor: take-profit
     assert [r for _, r in t.monitor.closed] == ["take_profit"]
+
+
+def test_manual_close_does_not_consume_request_while_web_writer_owns_lock():
+    import fcntl
+    r = Rig({"AAAUSDT": D("30100")})
+    a = _open(r.j, "AAAUSDT")
+    r.ask({"ts_ms": NOW, "position_ids": [a]})
+    fd = os.open(r.dir, os.O_RDONLY | getattr(os,"O_DIRECTORY",0))
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        assert r.run() is None
+        assert (r.dir / REQUEST_FILE).is_file()
+        assert _closes(r.j)==[]
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+    assert r.run().closed==(a,)
