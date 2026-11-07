@@ -32,7 +32,7 @@ test('Brain: controls visible for open position, no confirmation on first click'
   const s = setup(<BrainCloseControls positions={positions} />);
   try {
     await s.render();
-    await click(find(s.host, 'Chiudi BTCUSDT'));
+    await click(find(s.host, 'Chiudi ora · BTCUSDT'));
     expect(s.host.textContent).toContain('Chiudere BTCUSDT adesso a prezzo di mercato?');
     expect(API.post).not.toHaveBeenCalled();
     await click(find(s.host, 'Annulla'));
@@ -50,8 +50,8 @@ test('Brain: only one POST after confirmation and result polled every 3 seconds'
   const s = setup(<BrainCloseControls positions={positions} onRefresh={refresh} />);
   try {
     await s.render();
-    await click(find(s.host, 'Chiudi BTCUSDT'));
-    await click(find(s.host, 'Chiudi'));
+    await click(find(s.host, 'Chiudi ora · BTCUSDT'));
+    await click(find(s.host, 'Sì, chiudi'));
     expect(API.post).toHaveBeenCalledTimes(1);
     expect(API.post).toHaveBeenCalledWith('/api/v3/brain/close', { position_id: 'p-001' });
     expect(s.host.textContent).toContain('Richiesta inviata');
@@ -71,7 +71,7 @@ test('Brain: Chiudi tutte submits only {all:true} after confirmation', async () 
     await click(find(s.host, 'Chiudi tutte (1)'));
     expect(s.host.textContent).toContain('Chiudere tutte le 1 posizioni');
     expect(API.post).not.toHaveBeenCalled();
-    await click(find(s.host, 'Chiudi'));
+    await click(find(s.host, 'Sì, chiudi'));
     expect(API.post).toHaveBeenCalledWith('/api/v3/brain/close', { all: true });
   } finally { await s.done(); }
 });
@@ -80,8 +80,8 @@ test('Brain: pending request prevents duplicate submissions', async () => {
   API.post.mockResolvedValue({ data: { ok: true, pending: true, ts_ms: Date.now() } });
   const s = setup(<BrainCloseControls positions={positions} />);
   try {
-    await s.render(); await click(find(s.host, 'Chiudi BTCUSDT')); await click(find(s.host, 'Chiudi'));
-    expect(find(s.host, 'Chiudi BTCUSDT').disabled).toBe(true);
+    await s.render(); await click(find(s.host, 'Chiudi ora · BTCUSDT')); await click(find(s.host, 'Sì, chiudi'));
+    expect(find(s.host, 'Chiudi ora · BTCUSDT').disabled).toBe(true);
     expect(API.post).toHaveBeenCalledTimes(1);
   } finally { await s.done(); }
 });
@@ -92,10 +92,10 @@ test('Brain: 60-second timeout is readable and unlocks the button', async () => 
   API.get.mockResolvedValue({ data: { pending: true, result: null } });
   const s = setup(<BrainCloseControls positions={positions} />);
   try {
-    await s.render(); await click(find(s.host, 'Chiudi BTCUSDT')); await click(find(s.host, 'Chiudi'));
+    await s.render(); await click(find(s.host, 'Chiudi ora · BTCUSDT')); await click(find(s.host, 'Sì, chiudi'));
     await act(async () => { jest.advanceTimersByTime(60000); });
     expect(s.host.textContent).toContain('Il Brain non risponde');
-    expect(find(s.host, 'Chiudi BTCUSDT').disabled).toBe(false);
+    expect(find(s.host, 'Chiudi ora · BTCUSDT').disabled).toBe(false);
   } finally { await s.done(); jest.useRealTimers(); }
 });
 
@@ -103,7 +103,7 @@ test('Brain: rejection shows a friendly error, no raw code', async () => {
   API.post.mockRejectedValue({ response: { data: { detail: { code: 'richiesta_in_corso' } } } });
   const s = setup(<BrainCloseControls positions={positions} />);
   try {
-    await s.render(); await click(find(s.host, 'Chiudi BTCUSDT')); await click(find(s.host, 'Chiudi'));
+    await s.render(); await click(find(s.host, 'Chiudi ora · BTCUSDT')); await click(find(s.host, 'Sì, chiudi'));
     expect(s.host.textContent).toContain('Una richiesta di chiusura è già in corso');
     expect(s.host.textContent).not.toContain('richiesta_in_corso');
   } finally { await s.done(); }
@@ -245,4 +245,29 @@ test('Classic PAPER: close failure from the worker cannot be shown as success', 
     expect(s.host.textContent).toContain('Chiusura NON eseguita');
     expect(s.host.textContent).not.toContain('Chiusura PAPER confermata');
   } finally { await s.done(); jest.useRealTimers(); }
+});
+
+
+test('Brain: only single trade can be requested when the safe wallet view hides close-all', async () => {
+  const s=setup(<BrainCloseControls positions={positions} allowCloseAll={false} />);
+  try {
+    await s.render();
+    expect(find(s.host,'Chiudi tutte (1)')).toBeUndefined();
+    expect(find(s.host,'Chiudi ora · BTCUSDT')).toBeTruthy();
+    await click(find(s.host,'Chiudi ora · BTCUSDT'));
+    expect(API.post).not.toHaveBeenCalled();
+    expect(s.host.textContent).toContain('Chiudere BTCUSDT');
+    await click(find(s.host,'Annulla'));
+    expect(API.post).not.toHaveBeenCalled();
+  } finally { await s.done(); }
+});
+
+test('Brain: manual exit remains noninteractive until the specific backend readiness flag', async () => {
+  const s=setup(<BrainCloseControls positions={positions} allowCloseAll={false} readOnly />);
+  try {
+    await s.render();
+    expect(find(s.host,'Chiudi ora · BTCUSDT').disabled).toBe(true);
+    expect(find(s.host,'Chiudi tutte (1)')).toBeUndefined();
+    expect(API.post).not.toHaveBeenCalled();
+  } finally { await s.done(); }
 });
