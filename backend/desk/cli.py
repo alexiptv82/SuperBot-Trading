@@ -14,6 +14,7 @@ Differenze chiave rispetto a V1:
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import time
@@ -975,17 +976,40 @@ def _check_budget_reset_flag(state: dict) -> bool:
         _remove(path)
 
 
-def _market_prices(symbols: list, state: dict) -> dict:
-    """Ultimo prezzo di mercato per i simboli indicati (candela 15m piu' recente)."""
-    px: dict = {}
-    for s in symbols:
-        arr = fetch_candles(s, "15m", 3)
-        if arr:
-            px[s] = arr[-1][4]
-    for s in symbols:
-        if s not in px and (state.get("last_prices") or {}).get(s):
-            px[s] = state["last_prices"][s]
-    return px
+MANUAL_CLOSE_CANDLE_MAX_AGE_MS = 1_800_000  # 30 minuti
+MANUAL_CLOSE_CACHE_MAX_AGE_MS = 120_000  # 2 minuti: bloccare prezzi vecchi di giorni
+
+
+def _market_prices(symbols: list, state: dict, now_ms: int | None = None) -> dict:
+    """Chiusure manuali: usare solo prezzi recenti e finiti (PAPER)."""
+    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    prices: dict = {}
+    for sym in symbols:
+        arr = fetch_candles(sym, "15m", 3)
+        if not arr:
+            continue
+        try:
+            candle = arr[-1]
+            ts, mark = int(candle[0]), float(candle[4])
+            if (0 <= now_ms - ts <= MANUAL_CLOSE_CANDLE_MAX_AGE_MS
+                    and math.isfinite(mark) and mark > 0):
+                prices[sym] = mark
+        except (TypeError, ValueError, IndexError, OverflowError):
+            continue
+    cache_ms = state.get("last_prices_ms")
+    if (type(cache_ms) is int
+            and 0 <= now_ms - cache_ms <= MANUAL_CLOSE_CACHE_MAX_AGE_MS):
+        cached = state.get("last_prices") or {}
+        for sym in symbols:
+            if sym in prices:
+                continue
+            try:
+                mark = float(cached.get(sym))
+                if math.isfinite(mark) and mark > 0:
+                    prices[sym] = mark
+            except (TypeError, ValueError, OverflowError):
+                continue
+    return prices
 
 
 def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms: int) -> tuple:
@@ -999,6 +1023,12 @@ def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms:
     if rec is None:
         return None, "posizione non trovata"
     rec["closed_by"] = "utente"
+    # Esempio per l'analisi del profitto, non una strategia automatica convalidata.
+    rec["manual_learning"] = (
+        "profit_protection_example" if rec["net"] > 0
+        else "loss_reduction_example" if rec["net"] < 0
+        else "break_even_example"
+    )
     record_close(state, rec)
     return rec, ""
 
@@ -1017,7 +1047,7 @@ def _check_close_all_flag(state: dict) -> bool:
             save_state(state, STATE_FILE)
             return True
         now_ms = int(time.time() * 1000)
-        prices = _market_prices(list(acc.positions), state)
+        prices = _market_prices(list(acc.positions), state, now_ms)
         closed_n, skipped, net = 0, [], 0.0
         for sym in list(acc.positions):
             px = prices.get(sym)
@@ -1034,9 +1064,13 @@ def _check_close_all_flag(state: dict) -> bool:
                         skipped.append(sym)
                         continue
             # ─────────────────────────────────────────────────────────────────
-            rec = acc.close(sym, px, now_ms, "chiusura manuale")
+            if LIVE._live:
+                rec = acc.close(sym, px, now_ms, "chiusura manuale")
+                if rec:
+                    record_close(state, rec)
+            else:
+                rec, _ = _close_for_user(state, acc, sym, px, now_ms)
             if rec:
-                record_close(state, rec)
                 closed_n += 1
                 net += rec["net"]
         flush_events(state, acc)
@@ -1179,7 +1213,7 @@ def _check_close_position_flag(state: dict) -> bool:
         acc = make_account(state)
         present = [s for s in wanted if s in acc.positions]
         gone = [s for s in wanted if s not in acc.positions]
-        prices = _market_prices(present, state) if present else {}
+        prices = _market_prices(present, state, now_ms) if present else {}
         closed, failed, net = [], [], 0.0
         for sym in present:
             px = prices.get(sym)
