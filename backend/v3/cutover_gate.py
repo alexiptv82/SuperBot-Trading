@@ -30,14 +30,26 @@ def classic_single_close_enabled(env) -> bool:
             and env.get("DESK_MODE") == "paper")
 
 
+def brain_single_close_enabled(env) -> bool:
+    """Opt-in only; a separate live exit-owner lease is also required by V3 API."""
+    return (env.get("V3_CUTOVER_READONLY") == "1"
+            and env.get("V3_ALLOW_BRAIN_SINGLE_CLOSE") == "1"
+            and env.get("TRADING_MODE") == "paper"
+            and env.get("DESK_MODE") == "paper")
+
+
 def should_refuse_mutation(method: str, path: str, *, readonly: bool,
-                           allow_paper_single_close: bool = False) -> bool:
+                           allow_paper_single_close: bool = False,
+                           allow_paper_brain_single_close: bool = False) -> bool:
     if not readonly or type(method) is not str or type(path) is not str:
         return False
     if method.upper() in _READ_METHODS:
         return False
     if (allow_paper_single_close and method.upper() == "POST"
             and path in _SINGLE_PAPER_CLOSE_PATHS):
+        return False
+    if (allow_paper_brain_single_close and method.upper() == "POST"
+            and path == "/api/v3/brain/close"):
         return False
     return any(path == prefix or path.startswith(prefix + "/")
                for prefix in _BLOCKED_PREFIXES)

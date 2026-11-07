@@ -135,7 +135,10 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         {p.id === 'brain' && <>
           <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · Brain</h3>
           {openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
-          <BrainCloseControls positions={openPositions} readOnly={overview.cutover_readonly === true} serverPending={trades?.close_pending === true}
+          <BrainCloseControls positions={openPositions}
+            readOnly={overview.cutover_readonly === true && overview.brain_single_close_allowed !== true}
+            allowCloseAll={overview.cutover_readonly !== true}
+            serverPending={trades?.close_pending === true}
             onRefresh={onRefresh} renderPosition={pos => <PortfolioTradeFields p={pos} brain />} />
           <details style={{ marginTop:14 }}>
             <summary style={{ color:'#7dd3fc', cursor:'pointer', fontWeight:700, fontSize:13 }}>

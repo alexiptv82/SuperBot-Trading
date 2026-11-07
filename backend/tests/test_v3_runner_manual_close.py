@@ -227,14 +227,18 @@ def test_no_request_is_a_cheap_no_op_that_asks_for_no_price_and_writes_nothing()
     assert r.run() is None and r.files() == [] and r.asked == []
 
 
-def test_a_leftover_work_file_is_resumed_and_a_new_request_replaces_a_stale_one():
+def test_leftover_work_file_is_resumed_without_losing_a_second_request():
     r = Rig({"AAAUSDT": D("30100"), "BBBUSDT": D("30200")})
     a, b = _open(r.j, "AAAUSDT"), _open(r.j, "BBBUSDT")
     (r.dir / WORK_FILE).write_text(json.dumps({"ts_ms": NOW - 1, "position_ids": [a]}), encoding="utf-8")
-    assert r.run().closed == (a,) and WORK_FILE not in r.files()            # ripreso dopo un arresto a meta'
+    assert r.run().closed == (a,) and WORK_FILE not in r.files()
     (r.dir / WORK_FILE).write_text(json.dumps({"ts_ms": NOW - 1, "position_ids": [a]}), encoding="utf-8")
     r.ask({"ts_ms": NOW, "position_ids": [b]})
-    assert r.run().closed == (b,) and r.files() == [RESULT_FILE]            # vince la richiesta nuova
+    assert r.run().failed == ((a, "position_not_open"),)
+    assert REQUEST_FILE in r.files()    # request b never overwrote the prior .work
+    assert r.run().closed == (b,)
+    assert r.files() == [RESULT_FILE]
+    assert [event["position_id"] for event in _closes(r.j)] == [a, b]
 
 
 def test_a_binary_request_file_is_invalid_not_a_crash():

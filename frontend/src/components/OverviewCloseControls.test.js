@@ -246,3 +246,30 @@ test('Classic PAPER: close failure from the worker cannot be shown as success', 
     expect(s.host.textContent).not.toContain('Chiusura PAPER confermata');
   } finally { await s.done(); jest.useRealTimers(); }
 });
+
+
+test('Brain PAPER single-close-only hides close-all and requires explicit position confirmation', async () => {
+  const s = setup(<BrainCloseControls positions={positions} readOnly={false} allowCloseAll={false}/>);
+  try {
+    await s.render();
+    expect(find(s.host, 'Chiudi tutte (1)')).toBeUndefined();
+    expect(find(s.host, 'Chiudi BTCUSDT')).not.toBeNull();
+    await click(find(s.host, 'Chiudi BTCUSDT'));
+    expect(API.post).not.toHaveBeenCalled();
+    expect(s.host.textContent).toContain('Chiudere BTCUSDT adesso a prezzo di mercato?');
+    await click(find(s.host,'Annulla'));
+    expect(API.post).not.toHaveBeenCalled();
+  } finally { await s.done(); }
+});
+
+test('Brain PAPER manual exit stays blocked while exit owner is unavailable', async () => {
+  const s = setup(<BrainCloseControls positions={positions} readOnly allowCloseAll={false}/>);
+  try {
+    await s.render();
+    const button=find(s.host,'Chiudi BTCUSDT');
+    expect(button.disabled).toBe(true);
+    await click(button);
+    expect(API.post).not.toHaveBeenCalled();
+    expect(s.host.textContent).toContain('chiusure manuali non ancora attivate');
+  } finally { await s.done(); }
+});
