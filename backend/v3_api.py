@@ -82,6 +82,20 @@ def _exists(path: str | None) -> bool:
     return bool(path and Path(path).is_file())
 
 
+def _manual_learning_label(is_manual: bool, net) -> str | None:
+    """Learning evidence only: not a trading rule or verified exit strategy."""
+    if not is_manual:
+        return None
+    try:
+        value = Decimal(str(net))
+        if not value.is_finite():
+            return None
+        return ('profit_protection_example' if value > 0 else
+                'loss_reduction_example' if value < 0 else 'break_even_example')
+    except (TypeError, ValueError, InvalidOperation):
+        return None
+
+
 def _safe_decimal(value, default='0') -> str:
     try:
         number = Decimal(str(value))
@@ -255,7 +269,14 @@ def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
          'margin': _safe_decimal(t.get('margin')) if t.get('margin') is not None else None,
          'realized_pnl': _safe_decimal(t.get('pnl')) if t.get('pnl') is not None else None,
          'closed_at_ms': t.get('close_ms'), 'close_reason': str(t.get('close_reason') or '')[:120],
-         'trade_type': t.get('trade_type'), 'partial': t.get('partial') is True}
+         'trade_type': t.get('trade_type'), 'partial': t.get('partial') is True,
+         'closed_by': t.get('closed_by'),
+         'manual_learning': (
+             t.get('manual_learning')
+             if t.get('manual_learning') in (
+                 'profit_protection_example', 'loss_reduction_example', 'break_even_example')
+             else _manual_learning_label(t.get('closed_by') == 'utente', t.get('pnl')))}
+
         for t in recent if type(t) is dict
     ]
     return {'id': portfolio_id, 'kind': 'classic', 'state': mode,
@@ -357,6 +378,7 @@ async def _trades(paths: V3Paths, limit: int, get_ticker) -> dict:
                'leverage': o.leverage, 'margin': str(o.margin_used),
                'entry': str(o.entry_price), 'exit': str(o.exit_price),
                'fees': str(o.fees), 'realized_pnl': str(o.realized_pnl),
+               'manual_learning': _manual_learning_label(o.is_manual, o.realized_pnl),
                'closed_at_ms': o.closed_at_ms} for o in outcomes]
     summary = _summary(paths)
     events = _events(paths)
