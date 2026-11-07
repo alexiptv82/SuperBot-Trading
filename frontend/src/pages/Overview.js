@@ -161,6 +161,12 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         <div style={MUTED}>Regime · Ultima decisione</div>
         <div style={{ fontWeight: 700, margin: '5px 0 12px' }}>{status?.regime || 'Non disponibile'} · {status?.last_decision?.kind || 'Nessuna'}</div>
         {status?.last_decision && <div style={MUTED}>{status.last_decision.symbol || '—'} · {status.last_decision.strategy_id || 'Senza strategia dichiarata'} · {status.last_decision.status || '—'}</div>}
+        {status?.last_decision && <div style={{ ...MUTED, marginTop:7 }}>
+          Osservazioni classici usate nell'ultima decisione: {
+            status.last_decision.peer_observations_used?.length
+              ? status.last_decision.peer_observations_used.map(x => x === 'falco' ? 'Falco' : 'Toro').join(', ')
+              : 'nessuna o non disponibile'}
+        </div>}
       </>}
       <div style={{ borderTop: '1px solid #314357', marginTop: 12, paddingTop: 12 }}>
         <div style={MUTED}>Spesa DeepSeek oggi / tetto giornaliero</div>
