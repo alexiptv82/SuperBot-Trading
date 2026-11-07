@@ -121,7 +121,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           {p.close_worker_mode === 'exit_only' && <div style={{ ...MUTED, color: '#7dd3fc', marginBottom: 8 }}>
             Modalità solo chiusure PAPER · nessun nuovo ingresso</div>}
           <ClassicCloseControls portfolio={p.id} positions={p.positions || []}
-            canClose={p.can_close_position === true} pending={p.close_pending || []}
+            canClose={p.can_close_position === true && overview.cutover_readonly !== true} pending={p.close_pending || []}
             allPending={p.close_all_pending === true} lastAction={p.last_action}
             onRefresh={onRefresh} />
           <details style={{ marginTop:14 }}>
@@ -134,7 +134,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         {p.id === 'brain' && <>
           <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · Brain</h3>
           {openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
-          <BrainCloseControls positions={openPositions} serverPending={trades?.close_pending === true}
+          <BrainCloseControls positions={openPositions} readOnly={overview.cutover_readonly === true} serverPending={trades?.close_pending === true}
             onRefresh={onRefresh} renderPosition={pos => <PortfolioTradeFields p={pos} brain />} />
           <details style={{ marginTop:14 }}>
             <summary style={{ color:'#7dd3fc', cursor:'pointer', fontWeight:700, fontSize:13 }}>

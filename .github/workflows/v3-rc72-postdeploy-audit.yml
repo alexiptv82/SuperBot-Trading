@@ -1,0 +1,99 @@
+name: RC72 independent web wallet tabs and PAPER safety postdeploy (READ ONLY)
+on:
+  push:
+    branches: [work/v3-rc72-brain-in-classic-trade-20261107]
+    paths: ['.github/workflows/v3-rc72-postdeploy-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Check final web build, BTC-independent wallet storage, auth and old rollback
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import hashlib, json, sqlite3, subprocess, urllib.request, urllib.error
+            from pathlib import Path
+            def di(name):
+                p=subprocess.run(['docker','inspect',name],capture_output=True,text=True,timeout=8)
+                return json.loads(p.stdout)[0] if p.returncode==0 else {}
+            def hashfile(path):
+                h=hashlib.sha256()
+                with Path(path).open('rb') as f:
+                    for block in iter(lambda:f.read(1048576),b''):h.update(block)
+                return h.hexdigest()
+            def http(path,method='GET'):
+                try:
+                    req=urllib.request.Request('http://127.0.0.1:8002'+path,method=method)
+                    with urllib.request.urlopen(req,timeout=5) as r:return r.status
+                except urllib.error.HTTPError as e:return e.code
+                except Exception:return 0
+            ok=True
+            curr=di('superbot')
+            prev=di('superbot-rc72-previous')
+            env=dict(s.split('=',1) for s in curr.get('Config',{}).get('Env',[]) if '=' in s)
+            for label,value in (
+                ('PROD_RUNNING',curr.get('State',{}).get('Running') is True),
+                ('PREVIOUS_APP_PRESERVED_STOPPED',prev.get('State',{}).get('Running') is False),
+                ('PREVIOUS_FRONTEND_PRESENT',Path('/opt/superbot-web/build.rc72-previous/index.html').is_file()),
+                ('NEW_BUILD_MATCHES_SOURCE',hashfile('/opt/superbot-web/build/index.html')==
+                  hashfile('/opt/superbot-v3-rc72-release/frontend/build/index.html')),
+                ('NEW_BACKEND_PAGINATION_SOURCE_PRESENT',
+                  'offset: int = Query(0' in Path('/opt/superbot-v3-rc72-release/backend/v3_api.py').read_text()),
+                ('READONLY_MODE',env.get('V3_CUTOVER_READONLY')=='1'),
+                ('PAPER_MODE',env.get('DESK_MODE')=='paper' and env.get('TRADING_MODE')=='paper'),
+                ('TELEGRAM_DISABLED',env.get('TELEGRAM_COMMANDS_ENABLED')=='false'),
+                ('PEER_ADVISORY_DISABLED',env.get('V3_BRAIN_PEER_OBSERVATIONS')=='disabled'),
+                ('HEALTH_200',http('/api/health')==200),
+                ('OVERVIEW_UNAUTH_401',http('/api/v3/overview')==401),
+                ('BRAIN_HISTORY_UNAUTH_401',http('/api/v3/brain/trades?limit=15&offset=0')==401),
+                ('CLOSE_DENIED_423',http('/api/desk/close-all','POST')==423),
+                ('BRAIN_CLOSE_DENIED_423',http('/api/v3/brain/close','POST')==423),
+            ):
+                print('RC72_'+label+'='+str(value))
+                ok &= value
+            backup=sorted(Path('/opt/superbot-backups').glob('rc72-app-db-*/superbot.db'))
+            same=False
+            if backup:
+                try:
+                    with sqlite3.connect('file:'+str(backup[-1])+'?mode=ro',uri=True) as old, sqlite3.connect('file:/opt/superbot/data/superbot.db?mode=ro',uri=True) as new:
+                        q='SELECT password_hash,token_version,jwt_secret FROM auth_settings WHERE id=1'
+                        before=old.execute(q).fetchone()
+                        after=new.execute(q).fetchone()
+                        same=bool(before and after and before==after)
+                except (OSError,sqlite3.Error):pass
+            print('RC72_LOGIN_HASH_AND_JWT_UNCHANGED='+str(same))
+            ok &= same
+            for name,expected in (('hawk',6),('bull',2)):
+                bot=di('superbot-desk-'+name)
+                data=Path('/opt/superbot-desk-data')/name
+                try:positions=json.loads((data/'state_v2.json').read_text())['main']['positions']
+                except (ValueError,OSError,KeyError,TypeError):positions=None
+                good=(bot.get('State',{}).get('Running') is False
+                      and bot.get('HostConfig',{}).get('RestartPolicy',{}).get('Name')=='no'
+                      and (data/'pause.flag').is_file()
+                      and type(positions) is dict and len(positions)==expected
+                      and not any((data/n).exists() for n in (
+                        'close_position.flag','close_position.flag.work','reset.flag','reset.flag.work')))
+                print('RC72_'+name.upper()+'_ORIGINAL_POSITIONS_SAFE='+str(good))
+                ok &= good
+            for label in ('falco','toro'):
+                unit='superbot-v3-'+label+'-exit.service'
+                active=subprocess.run(['systemctl','is-active',unit],capture_output=True,text=True).stdout.strip()
+                enabled=subprocess.run(['systemctl','is-enabled',unit],capture_output=True,text=True).stdout.strip()
+                safe=active!='active' and enabled=='disabled'
+                print('RC72_'+label.upper()+'_EXIT_WORKER_INACTIVE='+str(safe))
+                ok &= safe
+            print('RC72_INDEPENDENT_RESULT='+('PASS' if ok else 'FAIL'))
+            if not ok:raise SystemExit(2)
+            PY

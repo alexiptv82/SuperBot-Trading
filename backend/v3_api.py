@@ -370,7 +370,8 @@ def _overview(paths: V3Paths, now_ms: int) -> dict:
                     'pnl_day_timezone': book['pnl_day_timezone'],
                     'peer_observations': peers,
                     'peer_observations_mode': 'display_only_not_ai_input'})
-    return {'generated_at_ms': now_ms, 'portfolios': entries}
+    return {'generated_at_ms': now_ms, 'portfolios': entries,
+            'cutover_readonly': os.environ.get('V3_CUTOVER_READONLY', '0') == '1'}
 
 
 def _scoreboard(paths: V3Paths, now_ms: int) -> dict:
@@ -405,8 +406,14 @@ async def _ticker_pnl(get_ticker, pos):
     return (await _ticker_mark(get_ticker, pos))[1]
 
 
-async def _trades(paths: V3Paths, limit: int, get_ticker) -> dict:
-    outcomes = sorted(_outcomes(paths), key=lambda o: o.closed_at_ms, reverse=True)[:limit]
+async def _trades(paths: V3Paths, limit: int, get_ticker, offset: int = 0) -> dict:
+    all_outcomes = sorted(_outcomes(paths), key=lambda o: o.closed_at_ms, reverse=True)
+    if type(offset) is not int or offset < 0:
+        raise ValueError('invalid_trade_history_offset')
+    total_closed = len(all_outcomes)
+    win_count = sum(o.realized_pnl > 0 for o in all_outcomes)
+    loss_count = sum(o.realized_pnl < 0 for o in all_outcomes)
+    outcomes = all_outcomes[offset:offset + limit]
     closed = [{'position_id': o.position_id, 'symbol': o.symbol, 'side': o.side,
                'strategy_id': o.strategy_id or None, 'strategy_origin': o.strategy_origin or None,
                'regime': o.decision_regime or None, 'net_bp': str(o.net_bp),
@@ -438,6 +445,9 @@ async def _trades(paths: V3Paths, limit: int, get_ticker) -> dict:
                        'leverage': pos.leverage, 'strategy_id': labels.get(pos.position_id),
                        'unrealized_pnl': pnl, 'roi_pct': roi})
     return {'open_positions': opened, 'closed_trades': closed,
+            'total_closed': total_closed, 'win_count': win_count,
+            'loss_count': loss_count, 'break_even_count': total_closed - win_count - loss_count,
+            'offset': offset, 'has_more': offset + len(closed) < total_closed,
             'close_pending': _close_inflight(paths)}
 
 
@@ -570,9 +580,10 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
 
     @router.get('/brain/trades')
     async def brain_trades(response: Response, limit: int = Query(50, ge=1, le=200),
+                           offset: int = Query(0, ge=0, le=1000000),
                            session=Depends(require_session)):
         response.headers['Cache-Control'] = 'no-store'
-        return await _trades(paths, limit, get_ticker)
+        return await _trades(paths, limit, get_ticker, offset)
 
     @router.post('/brain/close')
     async def brain_close(request: Request, response: Response, session=Depends(require_session)):

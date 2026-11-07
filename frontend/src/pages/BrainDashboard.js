@@ -188,10 +188,10 @@ function LegacyBrainDashboard() {
 }
 
 
-export default function BrainDashboard() {
+export default function BrainDashboard({ archiveInitially = false }) {
   const [free, setFree] = useState(null);
   const [error, setError] = useState(false);
-  const [archive, setArchive] = useState(false);
+  const [archive, setArchive] = useState(archiveInitially);
   useEffect(() => {
     const controller = new AbortController(); let timer;
     const poll = async () => {

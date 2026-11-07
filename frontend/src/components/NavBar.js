@@ -9,7 +9,6 @@ const PAPER_TABS = [
   { path: '/supervisor',  icon: '🛰️', label: 'Agenti' },
   { path: '/trades',      icon: '💹', label: 'Trade' },
   { path: '/performance', icon: '🏆', label: 'Performance' },
-  { path: '/brain',       icon: '🧠', label: 'BRAIN' },
 ];
 
 // Tab per modalità LIVE

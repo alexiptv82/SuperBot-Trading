@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { deskAPI, bullAPI, errMsg } from '../api';
+import API, { deskAPI, bullAPI, errMsg } from '../api';
+import { PAPER_PORTFOLIOS, brainWalletSummary } from '../brainWallet';
+import BrainPortfolioSection from '../components/BrainPortfolioSection';
 import { fmtClock, fmtDateTime, fmtDuration, signed, pnlColor, botState, macroNote } from '../deskUi';
 import ChartModal from '../components/ChartModal';
 import Salvadanaio from '../components/Salvadanaio';
@@ -185,7 +187,7 @@ function StateBanner({ status, isBull }) {
 }
 
 // Sezione KPI per un portafoglio
-function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume, onClosePosition }) {
+function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume, onClosePosition, readOnly = false }) {
   const isBull = portfolio === 'bull';
 
   if (!status) return (
@@ -204,11 +206,11 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
   const positions = Array.isArray(status.positions) ? status.positions : [];
   const nOpen = positions.length;
   const mode = status.bot_mode;                       // running | draining | paused
-  const canPause = mode === 'running' && !busy;
-  const canStart = (mode === 'draining' || mode === 'paused') && !busy;
+  const canPause = mode === 'running' && !busy && !readOnly;
+  const canStart = (mode === 'draining' || mode === 'paused') && !busy && !readOnly;
   // Tasto "Chiudi ora" su ogni posizione: solo se il bot di adesso lo sa fare (il battito lo dichiara) ed e' acceso.
   // Con il bot in paper la posizione e' finta: si chiude solo nel simulatore, nessun ordine su BitGet.
-  const closer = status.can_close_position && status.bot_online !== false && onClosePosition
+  const closer = !readOnly && status.can_close_position && status.bot_online !== false && onClosePosition
     ? { pending: status.close_position_pending || [], onClose: onClosePosition, simulated: status.exec_mode !== 'live' } : null;
 
   const budgetSpent = status.budget_spent_usd ?? 0;
@@ -270,6 +272,9 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
       </div>
 
       {/* Stato del bot e comandi */}
+      {readOnly && <Card style={{ marginBottom:12, borderColor:'#fbbf24', color:'#fbbf24', fontSize:12 }}>
+        Collaudo PAPER in sola lettura: avvio, pausa e chiusure manuali temporaneamente bloccati.
+      </Card>}
       <StateBanner status={status} isBull={isBull} />
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
@@ -331,13 +336,13 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
       {/* Chiudi tutto */}
       {nOpen > 0 && (
         <button
-          disabled={busy === 'close'}
+          disabled={readOnly || busy === 'close'}
           onClick={onCloseAll}
           style={{
             width: '100%', padding: '10px', borderRadius: '10px', marginBottom: '12px',
             border: '1px solid #dc2626', background: 'rgba(220,38,38,0.1)',
             color: '#fca5a5', fontWeight: 'bold', fontSize: '13px',
-            cursor: busy === 'close' ? 'not-allowed' : 'pointer', opacity: busy === 'close' ? 0.6 : 1,
+            cursor: readOnly || busy === 'close' ? 'not-allowed' : 'pointer', opacity: readOnly || busy === 'close' ? 0.6 : 1,
           }}
         >
           {busy === 'close' ? '⏳ Chiusura…' : `🔒 Chiudi subito tutte le posizioni (${nOpen}) a prezzo di mercato`}
@@ -424,11 +429,13 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
 export default function Dashboard() {
   const [prices, setPrices] = useState({});
   const [statuses, setStatuses] = useState({ hawk: null, bull: null });
-  const [portfolio, setPortfolio] = useState('hawk'); // 'hawk' | 'bull'
+  const [brainData, setBrainData] = useState({ wallet:null, trades:null });
+  const [cutoverReadOnly, setCutoverReadOnly] = useState(true);
+  const [portfolio, setPortfolio] = useState(() => new URLSearchParams(window.location.search).get('portfolio') === 'brain' ? 'brain' : 'hawk'); // 'hawk' | 'bull' | 'brain'
   const [now, setNow] = useState(new Date());
   const [chartState, setChartState] = useState(null);
-  const [busy, setBusy] = useState({ hawk: null, bull: null });        // 'pause' | 'resume' | 'close' | null
-  const [actionMsg, setActionMsg] = useState({ hawk: null, bull: null });
+  const [busy, setBusy] = useState({ hawk: null, bull: null, brain: null });        // 'pause' | 'resume' | 'close' | null
+  const [actionMsg, setActionMsg] = useState({ hawk: null, bull: null, brain: null });
 
   const fetchOne = useCallback(async (pf) => {
     try {
@@ -441,18 +448,39 @@ export default function Dashboard() {
   }, []);
   const fetchStatus = useCallback(() => Promise.all([fetchOne('hawk'), fetchOne('bull')]), [fetchOne]);
 
+  const fetchBrain = useCallback(async () => {
+    try {
+      const [overviewRes, statusRes, tradeRes] = await Promise.all([
+        API.get('/api/v3/overview'),
+        API.get('/api/v3/brain/status'),
+        API.get('/api/v3/brain/trades?limit=30'),
+      ]);
+      const portfolioSummary = (overviewRes.data?.portfolios || []).find(p => p.id === 'brain');
+      setCutoverReadOnly(overviewRes.data?.cutover_readonly !== false);
+      setBrainData({
+        wallet: brainWalletSummary(portfolioSummary,statusRes.data,tradeRes.data),
+        trades: tradeRes.data,
+      });
+    } catch (_) {
+      // No valid snapshots: never show yesterday's Brain marks as current.
+      setBrainData({ wallet:null, trades:null });
+      setCutoverReadOnly(true);
+    }
+  }, []);
+
   const fetchPrices = useCallback(async () => {
     try { const p = await deskAPI.getPrices(); setPrices(p.data); } catch {}
   }, []);
 
   useEffect(() => { fetchStatus(); const t = setInterval(fetchStatus, 6000); return () => clearInterval(t); }, [fetchStatus]);
+  useEffect(() => { fetchBrain(); const t = setInterval(fetchBrain, 15000); return () => clearInterval(t); }, [fetchBrain]);
   useEffect(() => { fetchPrices(); const t = setInterval(fetchPrices, 60000); return () => clearInterval(t); }, [fetchPrices]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
 
   const marketLive = Object.keys(prices).length > 0;
   const dateLabel = now.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
   const timeLabel = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-  const activeStatus = statuses[portfolio];
+  const activeStatus = portfolio === 'brain' ? brainData.wallet : statuses[portfolio];
 
   const openChart = (symbol, tradeInfo = null) => setChartState({ symbol, tradeInfo });
   const closeChart = () => setChartState(null);
@@ -464,6 +492,10 @@ export default function Dashboard() {
 
   // Esegue un comando, mostra l'esito e rilegge lo stato subito (il server lo calcola dal flag, quindi e' immediato).
   const run = async (pf, kind, call, okFallback) => {
+    if (cutoverReadOnly || pf === 'brain') {
+      say(pf,false,'Collaudo PAPER: nessun comando trading disponibile.');
+      return;
+    }
     setBusy(b => ({ ...b, [pf]: kind }));
     try {
       const { data } = await call();
@@ -485,6 +517,9 @@ export default function Dashboard() {
   const handleResume = () => run(portfolio, 'resume', () => apiFor(portfolio).resume(), 'Bot avviato.');
   // Chiude UNA posizione a mano (stesso comando della pagina Live). Ritorna {ok, message} per il tasto.
   const handleClosePosition = (pf) => async (symbol) => {
+    if (cutoverReadOnly || pf === 'brain') {
+      return { ok:false, message:'Collaudo PAPER: chiusure temporaneamente bloccate.' };
+    }
     try {
       const { data } = await apiFor(pf).closePosition(symbol);
       return { ok: true, message: data?.message || 'Chiusura inviata.' };
@@ -497,13 +532,20 @@ export default function Dashboard() {
     }
   };
   const handleCloseAll = () => {
+    if (cutoverReadOnly || portfolio === 'brain') return;
     const n = activeStatus?.open_positions ?? 0;
     if (!window.confirm(`Chiudere subito tutte le ${n} posizioni a prezzo di mercato?\n\nIl bot non si ferma: se non lo metti in pausa potrà riaprirne di nuove.`)) return;
     return run(portfolio, 'close', () => apiFor(portfolio).closeAll(), 'Chiusura inviata.');
   };
 
   const chip = (pf, label, color) => {
-    const st = botState(statuses[pf]);
+    const st = pf === 'brain'
+      ? ({key:brainData.wallet?.state === 'running' ? 'running' : 'paused',
+          color:brainData.wallet?.state === 'running' ? '#4ade80' : '#fbbf24',
+          text: brainData.wallet?.state === 'running' ? 'in funzione'
+            : brainData.wallet?.state === 'not_started' ? 'non avviato'
+            : brainData.wallet ? 'in pausa / fermo' : 'dati non disponibili'})
+      : botState(statuses[pf]);
     return (
       <div style={{
         flex: 1, padding: '6px 10px', borderRadius: '10px', fontSize: '12px', textAlign: 'center',
@@ -542,10 +584,11 @@ export default function Dashboard() {
         {activeStatus?.version && <span> · v{activeStatus.version}</span>}
       </div>
 
-      {/* Stato dei due bot */}
+      {/* Stato dei tre portafogli PAPER */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
         {chip('hawk', '🦅 Falco', '#38bdf8')}
         {chip('bull', '🐂 Toro', '#a78bfa')}
+        {chip('brain', '🧠 Brain', '#a78bfa')}
       </div>
 
       {/* Selettore portafoglio */}
@@ -553,8 +596,8 @@ export default function Dashboard() {
         display: 'flex', gap: '6px', marginBottom: '14px',
         background: '#1e293b', borderRadius: '12px', padding: '4px', border: '1px solid #334155'
       }}>
-        {[['hawk', '🦅 Falco', '#38bdf8'], ['bull', '🐂 Toro', '#7c3aed']].map(([id, label, color]) => (
-          <button key={id} onClick={() => setPortfolio(id)}
+        {PAPER_PORTFOLIOS.map(({id,label,color}) => (
+          <button key={id} type="button" aria-pressed={portfolio === id} onClick={() => setPortfolio(id)}
             style={{
               flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
               background: portfolio === id ? color : 'transparent',
@@ -568,7 +611,9 @@ export default function Dashboard() {
 
       {/* KPI portafoglio selezionato */}
       <DeskErrorBoundary>
-        <PortfolioSection
+        {portfolio === 'brain' ? <BrainPortfolioSection wallet={brainData.wallet}
+          rawTrades={brainData.trades} readOnly={cutoverReadOnly} onRefresh={fetchBrain} />
+        : <PortfolioSection
           status={activeStatus}
           portfolio={portfolio}
           busy={busy[portfolio]}
@@ -578,7 +623,8 @@ export default function Dashboard() {
           onPause={handlePause}
           onResume={handleResume}
           onClosePosition={handleClosePosition(portfolio)}
-        />
+          readOnly={cutoverReadOnly}
+        />}
       </DeskErrorBoundary>
 
       {/* ── Mercato Live ── */}

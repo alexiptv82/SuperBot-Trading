@@ -114,7 +114,8 @@ export default function App() {
               <Route path="/live" element={<LiveDashboard />} />
               <Route path="/live/trades" element={<LiveTrades />} />
               <Route path="/live/performance" element={<LivePerformance />} />
-              <Route path="/brain" element={<BrainDashboard />} />
+              <Route path="/brain" element={<Navigate to="/classic?portfolio=brain" replace />} />
+              <Route path="/brain/archive" element={<BrainDashboard archiveInitially />} />
               <Route path="/overview" element={<Overview />} />
               <Route path="/supervisor" element={<Supervisor />} />
               <Route path="*" element={<Navigate to="/" />} />
