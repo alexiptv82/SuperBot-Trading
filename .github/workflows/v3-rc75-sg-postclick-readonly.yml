@@ -222,6 +222,15 @@ jobs:
                 count_loss=sum(x<0 for x in closed_nets)
                 print(label+'_ARB_HISTORY_SUMMARY='+json.dumps({'closed':len(arb_closed),'net_samples':len(closed_nets),'wins':count_win,'losses':count_loss,'net_total_usdt':round(sum(closed_nets),4),'worst_net_usdt':round(min(closed_nets),4) if closed_nets else None}))
                 print(label+'_ARB_RECENT_CLOSED='+json.dumps(arb_closed[-6:],sort_keys=True))
+                by_trade={}
+                for e in arb_closed:
+                    k=(str(e.get('id')),str(e.get('open_ms')))
+                    if k not in by_trade:by_trade[k]={'records':0,'net':0.0,'source':e.get('source')}
+                    by_trade[k]['records']+=1
+                    by_trade[k]['net']+=(f(e.get('net')) or 0.0)
+                logical=[{'id':k[0],'open_ms':k[1],'records':v['records'],'net':round(v['net'],4),'source':v['source']} for k,v in by_trade.items()]
+                print(label+'_ARB_DISTINCT_TRADE_OUTCOMES='+json.dumps(logical,sort_keys=True))
+                print(label+'_ARB_DISTINCT_TRADE_COUNTS='+json.dumps({'total':len(logical),'positive':sum(x['net']>0 for x in logical),'negative':sum(x['net']<0 for x in logical),'partial_events_extra':len(arb_closed)-len(logical)},sort_keys=True))
                 if arb_closed:print(label+'_ARB_LATEST_CLOSE='+json.dumps(arb_closed[-1],sort_keys=True))
                 if not isinstance(arb,dict):
                     print(label+'_ARB_OPEN=False')
