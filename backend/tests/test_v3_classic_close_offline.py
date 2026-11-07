@@ -68,10 +68,15 @@ def test_active_paper_worker_can_receive_manual_close_even_while_paused(tmp_path
         one = client.post("/api/desk/close-position", json={"symbol": "BTC"})
         assert one.status_code == 200
         assert one.json()["queued"] is True
+        conflict = client.post("/api/desk/close-all")
+        assert conflict.status_code == 409  # one active close at a time
+        assert not (tmp_path / "reset.flag").exists()
+        # Simulate acknowledgment/consumption, without changing trading state.
+        (tmp_path / "close_position.flag").unlink()
         all_positions = client.post("/api/desk/close-all")
         assert all_positions.status_code == 200
         assert all_positions.json()["queued"] is True
-    assert (tmp_path / "close_position.flag").is_file()
+    assert not (tmp_path / "close_position.flag").exists()
     assert (tmp_path / "reset.flag").is_file()
     # The endpoint itself only queues. It never mutates positions or pretends they closed.
     assert "BTC" in json.loads((tmp_path / "state_v2.json").read_text())["main"]["positions"]
