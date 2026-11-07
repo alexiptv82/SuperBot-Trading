@@ -267,7 +267,8 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
         "last_action": state.get("last_action"),
         "can_reset": can_reset, "reset_blocked_reason": reset_reason,
         "reset_pending": os.path.exists(os.path.join(data_dir, "reset_portfolio.flag")),
-        "close_all_pending": os.path.exists(os.path.join(data_dir, "reset.flag")),
+        "close_all_pending": any(os.path.exists(os.path.join(data_dir, f))
+                                 for f in ("reset.flag", "reset.flag.work")),
         "close_position_pending": close_pending(data_dir),
         "exec_mode": (hb or {}).get("exec_mode"),
         "can_close_position": (can_close_position(hb, now) or exit_only_close_ready(data_dir, portfolio, now)),
@@ -491,6 +492,10 @@ def command_close_all(data_dir: str, portfolio: Optional[str] = None) -> dict:
         return {"ok": False, "queued": False, "positions_found": len(positions),
                 "symbols": list(positions), "message": CLOSE_WORKER_OFFLINE_MESSAGE}
     if positions:
+        if any(os.path.exists(os.path.join(data_dir, name)) for name in
+               ("reset.flag", "reset.flag.work", "close_position.flag", "close_position.flag.work")):
+            return {"ok": False, "queued": False, "positions_found": len(positions),
+                    "symbols": list(positions), "message": "Una chiusura e' gia' in corso: attendi l'esito."}
         _write_flag(data_dir, "reset.flag")
     return {"ok": True, "queued": bool(positions), "positions_found": len(positions),
             "symbols": list(positions),
@@ -568,8 +573,14 @@ def _read_close_request(data_dir: str) -> list:
 
 
 def close_pending(data_dir: str) -> list:
-    """Simboli per cui l'utente ha chiesto la chiusura e il bot non l'ha ancora presa in carico."""
-    return _read_close_request(data_dir)
+    """Pending includes claimed .work: do not hide an in-progress or interrupted command."""
+    current = _read_close_request(data_dir)
+    try:
+        with open(os.path.join(data_dir, "close_position.flag.work")) as f:
+            claimed = json.load(f).get("symbols") or []
+    except (OSError, ValueError, AttributeError):
+        claimed = []
+    return list(dict.fromkeys(current + [str(x) for x in claimed if x]))
 
 
 def _find_position_key(positions: dict, symbol: str) -> Optional[str]:
@@ -599,6 +610,9 @@ def command_close_position(data_dir: str, symbol: str, portfolio: Optional[str] 
         return False, 409, {"ok": False, "message": CLOSE_WORKER_OFFLINE_MESSAGE}
     if not (can_close_position(hb) or exit_only):
         return False, 409, {"ok": False, "message": CLOSE_OLD_BOT_MESSAGE}
+    if any(os.path.exists(os.path.join(data_dir, name)) for name in
+           ("reset.flag", "reset.flag.work", "close_position.flag.work")):
+        return False, 409, {"ok": False, "message": "Una chiusura e' gia' in corso: attendi l'esito."}
     positions = ((read_state(data_dir).get("main")) or {}).get("positions") or {}
     key = _find_position_key(positions, sym)
     if key is None:
