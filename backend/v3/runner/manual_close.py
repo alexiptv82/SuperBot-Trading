@@ -23,6 +23,7 @@ Regole:
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -93,33 +94,57 @@ def run_manual_close(*, journal: EventJournal, portfolio_id: str, run_id: str, d
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
     request, work = data_dir / REQUEST_FILE, data_dir / WORK_FILE
+    # Both the authenticated web writer and the exit executor use the same
+    # directory mutex. The runner must NEVER overwrite an unfinished .work
+    # file when a new request arrives (e.g. following a process crash).
     try:
-        os.replace(request, work)                         # una richiesta nuova sostituisce un .work vecchio
-    except FileNotFoundError:
+        fd = os.open(str(data_dir), os.O_RDONLY |
+                     getattr(os, 'O_DIRECTORY', 0) |
+                     getattr(os, 'O_NOFOLLOW', 0))
+    except OSError:
+        return None
+    locked = False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            locked = True
+        except BlockingIOError:
+            return None
         if not work.is_file():
-            return None                                   # niente richiesta e niente da riprendere
-    except OSError:
-        return None                                       # riprovera' al giro dopo
-    try:
-        raw = json.loads(work.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raw = None
-    parsed = _parse(raw, now_ms)
-    if parsed is None:
-        report, req_ts = ManualCloseReport("invalid_request", (), ()), 0
-    else:
-        req_ts, ids = parsed
-        if now_ms - req_ts > MAX_AGE_MS:
-            report = ManualCloseReport("expired", (), ())
+            if not request.is_file():
+                return None
+            try:
+                os.replace(request, work)
+            except OSError:
+                return None
+        # If .work already exists, finish THAT older request first. A fresh
+        # close_request.json, if any, remains queued for the next tick.
+        try:
+            raw = json.loads(work.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raw = None
+        parsed = _parse(raw, now_ms)
+        if parsed is None:
+            report, req_ts = ManualCloseReport("invalid_request", (), ()), 0
         else:
-            report = _execute(journal, portfolio_id, run_id, ids, price_of, fee_bps, now_ms)
-    _write_result(data_dir, {"request_ts_ms": req_ts, "done_ms": now_ms, "status": report.status,
-                             "closed": list(report.closed), "failed": [list(f) for f in report.failed]})
-    try:
-        work.unlink()
-    except OSError:
-        pass
-    return report
+            req_ts, ids = parsed
+            if now_ms - req_ts > MAX_AGE_MS:
+                report = ManualCloseReport("expired", (), ())
+            else:
+                report = _execute(journal, portfolio_id, run_id, ids, price_of, fee_bps, now_ms)
+        _write_result(data_dir, {"request_ts_ms": req_ts, "done_ms": now_ms,
+                                 "status": report.status,
+                                 "closed": list(report.closed),
+                                 "failed": [list(f) for f in report.failed]})
+        try:
+            work.unlink()
+        except OSError:
+            pass
+        return report
+    finally:
+        if locked:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def _execute(journal: EventJournal, portfolio_id: str, run_id: str, ids: Optional[tuple[str, ...]],
