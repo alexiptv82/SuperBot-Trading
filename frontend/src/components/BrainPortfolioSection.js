@@ -81,7 +81,7 @@ export default function BrainPortfolioSection({ wallet, rawTrades, readOnly, onR
       Nessuna posizione aperta nella run Brain V3.
     </div>}
     {nOpen > 0 && <BrainCloseControls positions={rawTrades?.open_positions || []}
-      readOnly={readOnly} serverPending={rawTrades?.close_pending === true}
+      readOnly={readOnly} allowCloseAll={false} serverPending={rawTrades?.close_pending === true}
       onRefresh={onRefresh} renderPosition={pos => <PortfolioTradeFields p={pos} brain />} />}
 
     <details style={{ marginTop:14, marginBottom:14 }}>
