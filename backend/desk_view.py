@@ -14,11 +14,13 @@ File letti dalla cartella dati:
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import math
 import os
 import re
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -485,7 +487,47 @@ def command_resume(data_dir: str) -> dict:
             "message": "Bot avviato: riprende subito a cercare trade."}
 
 
+@contextmanager
+def _manual_request_lock(data_dir: str):
+    """Synchronize HTTP writers across Uvicorn processes without writing a lock file.
+
+    Advisory flock on the EXISTING portfolio directory is also compatible
+    with the independent PAPER exit worker. Missing, symlinked or unwritable
+    paths must fail closed. No file command is queued when the lock is busy.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(data_dir, flags)
+    acquired = False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        acquired = True
+        yield
+    finally:
+        if acquired:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+MANUAL_CLOSE_BUSY_MESSAGE = "Una richiesta di chiusura è già in elaborazione: attendi l'esito."
+
+
 def command_close_all(data_dir: str, portfolio: Optional[str] = None) -> dict:
+    """Queue only one PAPER close command, serialized across HTTP workers."""
+    # Offline requests must not even write a lock file or a dormant close flag.
+    positions = ((read_state(data_dir).get("main")) or {}).get("positions") or {}
+    if positions and not (close_worker_ready(read_heartbeat(data_dir))
+                          or exit_only_close_ready(data_dir, portfolio)):
+        return {"ok": False, "queued": False, "positions_found": len(positions),
+                "symbols": list(positions), "message": CLOSE_WORKER_OFFLINE_MESSAGE}
+    try:
+        with _manual_request_lock(data_dir):
+            return _command_close_all_locked(data_dir, portfolio)
+    except BlockingIOError:
+        return {"ok": False, "queued": False, "positions_found": len(positions),
+                "symbols": list(positions), "message": MANUAL_CLOSE_BUSY_MESSAGE}
+
+
+def _command_close_all_locked(data_dir: str, portfolio: Optional[str] = None) -> dict:
     positions = ((read_state(data_dir).get("main")) or {}).get("positions") or {}
     if positions and not (close_worker_ready(read_heartbeat(data_dir))
                           or exit_only_close_ready(data_dir, portfolio)):
@@ -598,6 +640,22 @@ def _find_position_key(positions: dict, symbol: str) -> Optional[str]:
 
 
 def command_close_position(data_dir: str, symbol: str, portfolio: Optional[str] = None) -> tuple:
+    """Atomic ONE-PAPER-close enqueuing; duplicate taps never replace a pending request."""
+    sym = str(symbol or "").strip()
+    if not sym or len(sym) > 24 or not all(c.isalnum() or c in "-_" for c in sym):
+        return False, 400, {"ok": False, "message": "Simbolo non valido."}
+    hb = read_heartbeat(data_dir)
+    ready = close_worker_ready(hb) and can_close_position(hb)
+    if not ready and not exit_only_close_ready(data_dir, portfolio):
+        return False, 409, {"ok": False, "message": CLOSE_WORKER_OFFLINE_MESSAGE}
+    try:
+        with _manual_request_lock(data_dir):
+            return _command_close_position_locked(data_dir, sym, portfolio)
+    except BlockingIOError:
+        return False, 409, {"ok": False, "message": MANUAL_CLOSE_BUSY_MESSAGE}
+
+
+def _command_close_position_locked(data_dir: str, symbol: str, portfolio: Optional[str] = None) -> tuple:
     """(ok, http_status, risposta). Chiude UNA posizione a prezzo di mercato su richiesta dell'utente.
     Il comando e' un file che il bot prende in carico entro pochi secondi (e scarta se resta li' oltre 10 minuti).
     Rifiutato se: simbolo vuoto o strano, il bot e' di una versione che non lo sa fare, la posizione non c'e'."""
@@ -611,17 +669,17 @@ def command_close_position(data_dir: str, symbol: str, portfolio: Optional[str] 
     if not (can_close_position(hb) or exit_only):
         return False, 409, {"ok": False, "message": CLOSE_OLD_BOT_MESSAGE}
     if any(os.path.exists(os.path.join(data_dir, name)) for name in
-           ("reset.flag", "reset.flag.work", "close_position.flag.work")):
+           ("reset.flag", "reset.flag.work", "close_position.flag", "close_position.flag.work")):
         return False, 409, {"ok": False, "message": "Una chiusura e' gia' in corso: attendi l'esito."}
     positions = ((read_state(data_dir).get("main")) or {}).get("positions") or {}
     key = _find_position_key(positions, sym)
     if key is None:
         return False, 404, {"ok": False, "message": f"{sym.upper()}: il bot non ha una posizione aperta su questo "
                                                     "simbolo (forse è già stata chiusa)."}
-    pending = _read_close_request(data_dir)
-    if key not in pending:
-        pending.append(key)
-    _write_flag(data_dir, "close_position.flag", json.dumps({"symbols": pending, "ts": int(time.time() * 1000)}))
+    # One command per acknowledgement: do not refresh timestamps or overwrite
+    # an unconsumed request (including a user double-tap on the same symbol).
+    _write_flag(data_dir, "close_position.flag",
+                json.dumps({"symbols": [key], "ts": int(time.time() * 1000)}))
     return True, 200, {"ok": True, "queued": True, "symbol": key,
                        "message": f"Chiusura di {key} inviata: il bot la esegue a prezzo di mercato entro pochi "
                                   "secondi. La vedrai tra i trade chiusi come chiusa da te."}
