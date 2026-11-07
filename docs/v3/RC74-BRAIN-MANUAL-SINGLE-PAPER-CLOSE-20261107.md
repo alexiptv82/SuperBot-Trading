@@ -31,4 +31,4 @@ Il test pratico del bottone Falco/Toro è stato confermato dall'utente. L'utente
 4. `V3_ALLOW_BRAIN_SINGLE_CLOSE` rimane **DISABLED** sulla web app finché non è dimostrato il nuovo exit worker e collaudo di un close su una **run Brain sintetica isolata**. Un flag da solo non autorizza alcuna chiusura.
 5. Al momento del GO, fare nuovo snapshot locale di journaling Brain, preservare lo storico e configurare il rollback; collaudare dal telefono solo dopo posizione PAPER aperta naturalmente dalla run. L'utente decide se/quale posizione chiudere. Portafogli restano Falco 1.000, Toro 1.000, Brain 2.000 USDT PAPER nella nuova run.
 
-**Attuali 6+2 trade legacy e manual-close già operativo Falco/Toro: nessun cambiamento RC74.**
+**Manual-close Falco/Toro già funzionante secondo il test sul telefono confermato dall'utente.** Il numero di posizioni classiche rimaste va verificato dopo la prova (il precedente 6+2 è un checkpoint anteriore al clic); RC74 non ha effettuato nuove chiusure.
