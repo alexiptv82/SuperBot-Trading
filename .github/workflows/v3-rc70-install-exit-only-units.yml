@@ -2,7 +2,7 @@ name: RC70 install Falco Toro PAPER exit-only units INACTIVE (NO TRADES)
 on:
   push:
     branches: [work/v3-rc70-authorized-dashboard-cutover-20261107]
-    paths: ['.github/workflows/v3-rc70-install-exit-only-units.yml']
+    paths: ['.github/workflows/v3-rc70-install-exit-only-units.yml', 'deploy/scripts/v3-rc70-install-exit-only-units.sh']
   workflow_dispatch:
 permissions:
   contents: read
