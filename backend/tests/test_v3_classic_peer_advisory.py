@@ -134,3 +134,31 @@ def test_failed_peer_reader_is_optional_and_must_not_block_no_trade():
     assert report.opened == ()
     assert analyst.last_context.falco_signal is None
     assert analyst.last_context.toro_signal is None
+
+
+def test_peer_observation_provenance_survives_actual_brain_engine_journal():
+    from decimal import Decimal
+    class ReportSource(ScriptAnalyst):
+        def analyze(self, context, open_positions):
+            decision = super().analyze(context, open_positions)
+            if context.falco_signal:
+                decision.sources.append("falco:paper_position_observation")
+            return decision
+
+    j = _journal()
+    signal = {"portfolio":"falco","symbol":"AAAUSDT",
+              "source":"classic_paper_positions","observation":"SHORT_POSITION",
+              "asof_ms":NOW,"open_positions":1}
+    run_brain_cycle(
+        now_ms=NOW,journal=j,run_id=RUN,symbols=("AAAUSDT",),
+        store=FakeStore(),bars_holder=CycleBars(),
+        analyst=MarketEntryAnalyst(ReportSource(kind="NO_TRADE")),
+        view_params=VIEW,risk_policy=POLICY,mandate=_mandate(),
+        policy_verifier=lambda m,p:True,market_rules=lambda s:RULES,
+        initial_equity=Decimal("1000"),slippage_bps=2,
+        allowed_strategy_ids=("S25",),
+        peer_source=lambda sym,now: {"falco":signal})
+    events = [row.event for row in j.list_run("brain",RUN) if row.event.kind=="brain_decision"]
+    assert events
+    assert "falco:paper_position_observation" in events[-1].payload["sources"]
+    assert "toro:paper_position_observation" not in events[-1].payload["sources"]
