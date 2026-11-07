@@ -25,3 +25,13 @@ Creare una funzione *Post-Trade Review* read-only per Falco, Toro e Brain che se
 
 ## Blocco per i prossimi passi
 L'utente ha dichiarato che chiuderà **lui personalmente** entrambe le ARB con `Chiudi ora` in app. Aspettare conferma/nuovo audit READ-ONLY prima di dichiarare chiuse. NON eseguire close via assistente. L'autorizzazione data al backup riguarda snapshot nuovo **dopo** queste chiusure: usare nuovo nome, non sovrascrivere RC69, controllo file hash/restore isolato, nessun restart. Backup esterno off-host ancora FAILED, non certificato. Non creare nuova run PAPER/reset finché mancano gate.
+
+## Seconda verifica RC76 — deduplica chiusure parziali, 19:48 CET circa
+
+- [Audit RC76 #42403056386](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42403056386) SUCCESS; HEAD branch `12e199ad092f7200cca3c1f95b234456386e14a2`; ancora 1 ARB aperta Falco e 1 Toro; ticker fresco non attestato; nessun ordine/modifica VPS.
+- **Falco:** 8 trade storici ARB distinti già chiusi, **2 positivi e 6 negativi**, risultato netto aggregato **-163,3066 USDT PAPER**, inclusa una chiusura di ARB associata a DeepSeek; gli altri in prevalenza `source=rules`.
+- **Toro:** 5 eventi di chiusura ARB corrispondono a **solo 2 trade distinti**: una posizione `id=5` con 4 chiusure parziali e netto aggregato **+60,6742 USDT**, una posizione `id=2` negativa **-76,6340 USDT**, totale **-15,9598 USDT PAPER**. Per analisi/training aggregare per (`portfolio`, `run`, `position_id`/`open_ms`) e separare fill parziali.
+- Totale ARB storico *realizzato* delle due run legacy **-179,2664 USDT**, esclusi i due ARB ancora aperti. Questo è un segnale di fragilità locale della strategia/timing ARB, non una prova sufficiente per cambiare le regole. Le due posizioni aperte hanno lo stesso segnale, leva e prezzo: doppia esposizione direzionale su uno stesso asset, pur con wallet indipendenti.
+- Il fatto che i trade manualmente chiusi in profitto il 7/11 fossero tutti SHORT, con ragione tecnica spesso identica, non dimostra che ARB avrebbe dovuto vincere: occorre analisi causale dei dati **disponibili al momento dell'ingresso**, del prezzo e della protezione SL nel tempo. Evitare deduzioni da soli trend attuali.
+
+**Stato feature:** sola specifica/audit; nessuna pagina post-mortem integrata o diagnosi AI in produzione. Backup post-close ancora da effettuare solo dopo clic e nuova verifica utente.
