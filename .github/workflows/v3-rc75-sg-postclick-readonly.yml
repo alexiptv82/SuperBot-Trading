@@ -32,6 +32,8 @@ jobs:
             python3 -B - <<'PY'
             import json, hashlib, subprocess, time, datetime
             from collections import deque
+            from zoneinfo import ZoneInfo
+            import math
             from pathlib import Path
             now=time.time()
             print('RC75_MODE=READ_ONLY')
@@ -82,6 +84,8 @@ jobs:
                 print(title+'_POSITIONS_OPEN='+str(len(pos) if isinstance(pos,(dict,list)) else 'UNKNOWN'))
                 print(title+'_OPEN_SYMBOLS='+json.dumps(sorted(set((str((x.get('symbol') or x.get('coin') or k) if isinstance(x,dict) else k)) for k,x in pos.items())) if isinstance(pos,dict) else []))
                 relevant=[]
+                today_manual=[]
+                today_all=[]
                 history_entries=0
                 latest=deque(maxlen=4)
                 try:
@@ -96,11 +100,22 @@ jobs:
                                 continue
                             if not isinstance(e,dict):
                                 continue
-                            small={k:e[k] for k in ('symbol','side','closed_by','reason','close_reason','manual_learning','net_pnl','realized_pnl','pnl','fees','closed_at','timestamp') if k in e}
+                            small={k:e[k] for k in ('id','symbol','side','closed_by','reason','close_reason','manual_learning','net','gross','net_pnl','realized_pnl','pnl','fees','open_ms','close_ms','closed_at','timestamp') if k in e}
                             latest.append(small)
                             src=str(e.get('closed_by',''))+' '+str(e.get('reason',''))+' '+str(e.get('close_reason',''))
-                            if 'manual' in src.lower() or 'utente' in src.lower():
+                            manual=('manual' in src.lower() or 'utente' in src.lower())
+                            if manual:
                                 relevant.append(small)
+                            ms=e.get('close_ms')
+                            if isinstance(ms,(int,float)):
+                                try:
+                                    day=datetime.datetime.fromtimestamp(ms/1000, datetime.timezone.utc).astimezone(ZoneInfo('Europe/Rome')).date().isoformat()
+                                    if day=='2026-11-07':
+                                        today_all.append(small)
+                                        if manual:
+                                            today_manual.append(small)
+                                except (OverflowError,OSError,ValueError):
+                                    pass
                 except (OSError,UnicodeError):
                     print(title+'_HISTORY_READABLE=False')
                 print(title+'_TRADE_HISTORY_LINES='+str(history_entries))
@@ -108,6 +123,14 @@ jobs:
                 print(title+'_RECENT_HISTORY='+json.dumps(list(latest),default=str,ensure_ascii=True))
                 print(title+'_MANUAL_CLOSE_MATCHES='+str(len(relevant)))
                 print(title+'_LAST_MANUAL_CLOSE='+json.dumps(relevant[-2:],default=str,ensure_ascii=True))
+                print(title+'_TODAY_ALL_CLOSE_COUNT='+str(len(today_all)))
+                print(title+'_TODAY_MANUAL_CLOSE_COUNT='+str(len(today_manual)))
+                print(title+'_TODAY_MANUAL_CLOSES='+json.dumps(today_manual[-12:],default=str,ensure_ascii=True))
+                valid_nets=[float(x['net']) for x in today_manual if isinstance(x.get('net'),(int,float)) and math.isfinite(float(x['net']))]
+                valid_fees=[float(x['fees']) for x in today_manual if isinstance(x.get('fees'),(int,float)) and math.isfinite(float(x['fees']))]
+                print(title+'_TODAY_NET_SUM='+str(round(sum(valid_nets),4)))
+                print(title+'_TODAY_NET_SAMPLES='+str(len(valid_nets)))
+                print(title+'_TODAY_FEES_SUM='+str(round(sum(valid_fees),4)))
                 svc='superbot-v3-'+title.lower()+'-exit.service'
                 print(title+'_EXIT_UNIT_ACTIVE='+sh('systemctl','is-active',svc))
                 print(title+'_EXIT_UNIT_ENABLED='+sh('systemctl','is-enabled',svc))
