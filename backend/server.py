@@ -23,7 +23,7 @@ from webauthn.helpers.structs import (
 import asyncio
 
 from config import config
-from backend.v3.cutover_gate import should_refuse_mutation
+from backend.v3.cutover_gate import should_refuse_mutation, classic_single_close_enabled
 from database import init_db, get_db, Trade, AuditLog
 from bot_engine import bot
 from exchange import exchange
@@ -65,7 +65,8 @@ async def _paper_dashboard_cutover_guard(request: Request, call_next):
     # Preserve login, password change, WebAuthn and GET-only dashboard views.
     if should_refuse_mutation(
         request.method, request.url.path,
-        readonly=os.environ.get('V3_CUTOVER_READONLY', '0') == '1'
+        readonly=os.environ.get('V3_CUTOVER_READONLY', '0') == '1',
+        allow_paper_single_close=classic_single_close_enabled(os.environ)
     ):
         return JSONResponse(
             status_code=423,

@@ -121,7 +121,8 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           {p.close_worker_mode === 'exit_only' && <div style={{ ...MUTED, color: '#7dd3fc', marginBottom: 8 }}>
             Modalità solo chiusure PAPER · nessun nuovo ingresso</div>}
           <ClassicCloseControls portfolio={p.id} positions={p.positions || []}
-            canClose={p.can_close_position === true && overview.cutover_readonly !== true} pending={p.close_pending || []}
+            canClose={p.can_close_position === true && (overview.cutover_readonly !== true || overview.classic_single_close_allowed === true)}
+            allowCloseAll={overview.cutover_readonly !== true} pending={p.close_pending || []}
             allPending={p.close_all_pending === true} lastAction={p.last_action}
             onRefresh={onRefresh} />
           <details style={{ marginTop:14 }}>

@@ -1,0 +1,51 @@
+name: RC73 authorized PAPER exit-only activation (NO CLOSE, NO TRADING)
+on:
+  push:
+    branches: [work/v3-rc73-manual-close-idempotency-20261107]
+    paths: ['.github/workflows/v3-rc73-activate-exit-only.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: superbot-rc73-single-close-activation
+  cancel-in-progress: false
+jobs:
+  prepare-exit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify narrow exit-only worker script
+        run: |
+          set -euo pipefail
+          bash -n deploy/scripts/v3-rc73-activate-exit-only.sh
+          python3 -m py_compile backend/desk/exit_only.py
+          grep -q 'def _manual_request_lock' backend/desk_view.py
+          grep -q 'LOCK_EX | fcntl.LOCK_NB' backend/desk/exit_only.py
+      - name: Install audited code in inactive service path and start PAPER exit-only service
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || { echo RC73_NO_SSH; exit 2; }
+          t="$(mktemp -d)"
+          trap 'rm -rf "$t"' EXIT
+          chmod 700 "$t"
+          printf '%s\n' "$SG_SSH_KEY" | tr -d '\r' > "$t/key"
+          chmod 600 "$t/key"
+          cat > "$t/known_hosts" <<'KEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KEY
+          chmod 600 "$t/known_hosts"
+          opts=(-i "$t/key" -o IdentitiesOnly=yes -o BatchMode=yes
+                -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$t/known_hosts"
+                -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=20
+                -o ServerAliveInterval=12 -o ServerAliveCountMax=4)
+          scp -q "${opts[@]}" backend/desk/exit_only.py \
+            root@51.79.205.82:/opt/superbot-v3-rc70-stage/backend/desk/exit_only.py.rc73-candidate
+          ssh -T "${opts[@]}" root@51.79.205.82 \
+            'bash -s -- --activate-paper-close-only' \
+            < deploy/scripts/v3-rc73-activate-exit-only.sh

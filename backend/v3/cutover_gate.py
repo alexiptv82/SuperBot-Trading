@@ -16,10 +16,28 @@ _BLOCKED_PREFIXES = (
 _READ_METHODS = frozenset(("GET", "HEAD", "OPTIONS"))
 
 
-def should_refuse_mutation(method: str, path: str, *, readonly: bool) -> bool:
+_SINGLE_PAPER_CLOSE_PATHS = frozenset((
+    "/api/desk/close-position",
+    "/api/desk/bull/close-position",
+))
+
+
+def classic_single_close_enabled(env) -> bool:
+    """Only an explicit PAPER+readonly opt-in can unlock single classic exits."""
+    return (env.get("V3_CUTOVER_READONLY") == "1"
+            and env.get("V3_ALLOW_CLASSIC_SINGLE_CLOSE") == "1"
+            and env.get("TRADING_MODE") == "paper"
+            and env.get("DESK_MODE") == "paper")
+
+
+def should_refuse_mutation(method: str, path: str, *, readonly: bool,
+                           allow_paper_single_close: bool = False) -> bool:
     if not readonly or type(method) is not str or type(path) is not str:
         return False
     if method.upper() in _READ_METHODS:
+        return False
+    if (allow_paper_single_close and method.upper() == "POST"
+            and path in _SINGLE_PAPER_CLOSE_PATHS):
         return False
     return any(path == prefix or path.startswith(prefix + "/")
                for prefix in _BLOCKED_PREFIXES)

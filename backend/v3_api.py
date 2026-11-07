@@ -370,8 +370,10 @@ def _overview(paths: V3Paths, now_ms: int) -> dict:
                     'pnl_day_timezone': book['pnl_day_timezone'],
                     'peer_observations': peers,
                     'peer_observations_mode': 'display_only_not_ai_input'})
+    from backend.v3.cutover_gate import classic_single_close_enabled
     return {'generated_at_ms': now_ms, 'portfolios': entries,
-            'cutover_readonly': os.environ.get('V3_CUTOVER_READONLY', '0') == '1'}
+            'cutover_readonly': os.environ.get('V3_CUTOVER_READONLY', '0') == '1',
+            'classic_single_close_allowed': classic_single_close_enabled(os.environ)}
 
 
 def _scoreboard(paths: V3Paths, now_ms: int) -> dict:

@@ -197,7 +197,21 @@ class ExitOnlyWorker:
     def tick(self) -> dict:
         if self._fd is None:
             raise ExitOnlyError("worker_not_started")
+        # Same existing-directory lock as desk_view._manual_request_lock:
+        # the exit worker cannot claim a flag while an authenticated HTTP
+        # writer is checking / publishing that flag. No new locking file.
+        dirfd = os.open(self.base, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                        | getattr(os, "O_NOFOLLOW", 0))
+        acquired = False
         try:
+            try:
+                fcntl.flock(dirfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+            except BlockingIOError:
+                # A legitimate web request owns the directory briefly.
+                # Nothing has been claimed; safely retry on next poll.
+                return {"manual_one_requested": False, "manual_all_requested": False,
+                        "request_writer_busy": True}
             self.check_safe()
             # Do not call legacy.process_flags(), legacy.loop_step(), legacy.iteration(),
             # legacy.run_cycle(), or any strategy/AI function, even in PAPER.
@@ -220,6 +234,10 @@ class ExitOnlyWorker:
             # No further close commands can be accepted after failed preflight.
             self._write_heartbeat(False)
             raise
+        finally:
+            if acquired:
+                fcntl.flock(dirfd, fcntl.LOCK_UN)
+            os.close(dirfd)
 
 
 def main(argv=None) -> int:

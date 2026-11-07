@@ -153,7 +153,7 @@ export function BrainCloseControls({ positions = [], serverPending = false, read
   </div>;
 }
 
-export function ClassicCloseControls({ portfolio, positions = [], canClose = false, pending = [],
+export function ClassicCloseControls({ portfolio, positions = [], canClose = false, allowCloseAll = true, pending = [],
   allPending = false, lastAction = null, onRefresh = () => {} }) {
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -206,7 +206,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
       Ultima chiusura: {result.detail || (result.ok ? 'eseguita' : 'non eseguita')}</p>}
   </div>;
   const send = async () => {
-    if (locked.current || !confirm) return;
+    if (locked.current || !confirm || (confirm.all && !allowCloseAll)) return;
     locked.current = true;
     setBusy(true);
     setMessage('');
@@ -239,7 +239,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
   };
   return <div style={{ marginTop: 8 }}>
     {!canClose && <p style={MUTED}>Chiusura manuale non ancora disponibile su questo bot (processo spento oppure versione precedente). Le posizioni restano visibili: nessun comando viene accodato.</p>}
-    {canClose && <button type="button" style={BTN} disabled={blocked} onClick={() => setConfirm({ all: true })}>Chiudi tutte ({positions.length})</button>}
+    {canClose && allowCloseAll && <button type="button" style={BTN} disabled={blocked} onClick={() => setConfirm({ all: true })}>Chiudi tutte ({positions.length})</button>}
     {positions.map(p => <div key={p.symbol} style={{ background:'#0e1a2d', padding:'12px', border:'1px solid #30465e', borderRadius:11, marginTop:9 }}>
       <PortfolioTradeFields p={p} />
       {canClose && <button type="button" style={{ ...BTN, marginTop:8 }} disabled={blocked}
