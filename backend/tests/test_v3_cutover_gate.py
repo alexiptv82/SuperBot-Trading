@@ -1,7 +1,7 @@
 """Safety contract: login remains accessible, trading commands are forbidden."""
 import pytest
 
-from backend.v3.cutover_gate import should_refuse_mutation
+from backend.v3.cutover_gate import should_refuse_mutation, classic_single_close_enabled
 
 
 @pytest.mark.parametrize("path", (
@@ -40,3 +40,34 @@ def test_guard_is_explicit_opt_in_and_path_boundary_aware():
     assert not should_refuse_mutation("POST","/api/deskman",readonly=True)
     assert not should_refuse_mutation("POST","/api/botanical",readonly=True)
     assert not should_refuse_mutation("POST","/api/auth/login",readonly=True)
+
+
+@pytest.mark.parametrize("path", (
+    "/api/desk/close-position", "/api/desk/bull/close-position",
+))
+def test_explicit_paper_opt_in_allows_only_single_classic_manual_close(path):
+    assert not should_refuse_mutation("POST",path,readonly=True,allow_paper_single_close=True)
+    for method in ("PUT", "PATCH", "DELETE"):
+        assert should_refuse_mutation(method,path,readonly=True,allow_paper_single_close=True)
+
+
+@pytest.mark.parametrize("path", (
+    "/api/desk/close-all", "/api/desk/bull/close-all",
+    "/api/desk/resume", "/api/desk/bull/resume",
+    "/api/desk/pause", "/api/desk/bull/pause",
+    "/api/bot/start", "/api/desk/reset-portfolio",
+    "/api/desk/bull/reset-portfolio", "/api/v3/brain/close",
+    "/api/desk/close-position/extra", "/api/desk/bull/close-position/extra",
+))
+def test_classic_single_only_does_not_unlock_any_other_mutation(path):
+    assert should_refuse_mutation("POST",path,readonly=True,allow_paper_single_close=True)
+
+
+def test_single_close_feature_flag_requires_all_4_paper_readonly_conditions():
+    env={"V3_CUTOVER_READONLY":"1", "V3_ALLOW_CLASSIC_SINGLE_CLOSE":"1",
+         "TRADING_MODE":"paper","DESK_MODE":"paper"}
+    assert classic_single_close_enabled(env)
+    for key in env:
+        modified=dict(env,**{key:"0" if key.startswith("V3_") else "live"})
+        assert not classic_single_close_enabled(modified)
+    assert not classic_single_close_enabled({})
