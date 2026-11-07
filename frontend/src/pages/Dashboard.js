@@ -155,6 +155,12 @@ function StateBanner({ status, isBull }) {
     </Card>
   );
 
+  if (status.close_worker_mode === 'exit_only') {
+    return box('#7dd3fc', '🛡 Solo chiusure PAPER', [
+      'Falco e Toro restano fermi: nessuna nuova apertura.',
+      'Le posizioni possono essere chiuse soltanto su tua conferma.',
+    ]);
+  }
   if (st.key === 'offline') {
     const age = status.heartbeat_age_s != null ? ` (ultimo segnale ${fmtDuration(status.heartbeat_age_s * 1000)} fa)` : '';
     return box('#f87171', `🔴 Il bot non risponde${age}`,
@@ -187,7 +193,7 @@ function StateBanner({ status, isBull }) {
 }
 
 // Sezione KPI per un portafoglio
-function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume, onClosePosition, readOnly = false }) {
+function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume, onClosePosition, readOnly = false, singleCloseAllowed = false }) {
   const isBull = portfolio === 'bull';
 
   if (!status) return (
@@ -210,7 +216,8 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
   const canStart = (mode === 'draining' || mode === 'paused') && !busy && !readOnly;
   // Tasto "Chiudi ora" su ogni posizione: solo se il bot di adesso lo sa fare (il battito lo dichiara) ed e' acceso.
   // Con il bot in paper la posizione e' finta: si chiude solo nel simulatore, nessun ordine su BitGet.
-  const closer = !readOnly && status.can_close_position && status.bot_online !== false && onClosePosition
+  const closer = (!readOnly || singleCloseAllowed) && status.can_close_position &&
+    (status.close_worker_mode === 'exit_only' || status.bot_online !== false) && onClosePosition
     ? { pending: status.close_position_pending || [], onClose: onClosePosition, simulated: status.exec_mode !== 'live' } : null;
 
   const budgetSpent = status.budget_spent_usd ?? 0;
@@ -273,7 +280,9 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
 
       {/* Stato del bot e comandi */}
       {readOnly && <Card style={{ marginBottom:12, borderColor:'#fbbf24', color:'#fbbf24', fontSize:12 }}>
-        Collaudo PAPER in sola lettura: avvio, pausa e chiusure manuali temporaneamente bloccati.
+        {singleCloseAllowed
+          ? 'Solo chiusura singola PAPER abilitata; avvio, pausa e chiusura totale restano bloccati.'
+          : 'Collaudo PAPER in sola lettura: avvio, pausa e chiusure manuali temporaneamente bloccati.'}
       </Card>}
       <StateBanner status={status} isBull={isBull} />
 
@@ -431,6 +440,7 @@ export default function Dashboard() {
   const [statuses, setStatuses] = useState({ hawk: null, bull: null });
   const [brainData, setBrainData] = useState({ wallet:null, trades:null });
   const [cutoverReadOnly, setCutoverReadOnly] = useState(true);
+  const [classicSingleCloseAllowed, setClassicSingleCloseAllowed] = useState(false);
   const [portfolio, setPortfolio] = useState(() => new URLSearchParams(window.location.search).get('portfolio') === 'brain' ? 'brain' : 'hawk'); // 'hawk' | 'bull' | 'brain'
   const [now, setNow] = useState(new Date());
   const [chartState, setChartState] = useState(null);
@@ -457,6 +467,7 @@ export default function Dashboard() {
       ]);
       const portfolioSummary = (overviewRes.data?.portfolios || []).find(p => p.id === 'brain');
       setCutoverReadOnly(overviewRes.data?.cutover_readonly !== false);
+      setClassicSingleCloseAllowed(overviewRes.data?.classic_single_close_allowed === true);
       setBrainData({
         wallet: brainWalletSummary(portfolioSummary,statusRes.data,tradeRes.data),
         trades: tradeRes.data,
@@ -465,6 +476,7 @@ export default function Dashboard() {
       // No valid snapshots: never show yesterday's Brain marks as current.
       setBrainData({ wallet:null, trades:null });
       setCutoverReadOnly(true);
+      setClassicSingleCloseAllowed(false);
     }
   }, []);
 
@@ -517,7 +529,7 @@ export default function Dashboard() {
   const handleResume = () => run(portfolio, 'resume', () => apiFor(portfolio).resume(), 'Bot avviato.');
   // Chiude UNA posizione a mano (stesso comando della pagina Live). Ritorna {ok, message} per il tasto.
   const handleClosePosition = (pf) => async (symbol) => {
-    if (cutoverReadOnly || pf === 'brain') {
+    if ((cutoverReadOnly && !classicSingleCloseAllowed) || pf === 'brain') {
       return { ok:false, message:'Collaudo PAPER: chiusure temporaneamente bloccate.' };
     }
     try {
@@ -624,6 +636,7 @@ export default function Dashboard() {
           onResume={handleResume}
           onClosePosition={handleClosePosition(portfolio)}
           readOnly={cutoverReadOnly}
+          singleCloseAllowed={classicSingleCloseAllowed}
         />}
       </DeskErrorBoundary>
 
