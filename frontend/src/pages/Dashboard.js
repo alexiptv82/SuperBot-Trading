@@ -441,6 +441,7 @@ export default function Dashboard() {
   const [brainData, setBrainData] = useState({ wallet:null, trades:null });
   const [cutoverReadOnly, setCutoverReadOnly] = useState(true);
   const [classicSingleCloseAllowed, setClassicSingleCloseAllowed] = useState(false);
+  const [brainSingleCloseAllowed, setBrainSingleCloseAllowed] = useState(false);
   const [portfolio, setPortfolio] = useState(() => new URLSearchParams(window.location.search).get('portfolio') === 'brain' ? 'brain' : 'hawk'); // 'hawk' | 'bull' | 'brain'
   const [now, setNow] = useState(new Date());
   const [chartState, setChartState] = useState(null);
@@ -468,6 +469,7 @@ export default function Dashboard() {
       const portfolioSummary = (overviewRes.data?.portfolios || []).find(p => p.id === 'brain');
       setCutoverReadOnly(overviewRes.data?.cutover_readonly !== false);
       setClassicSingleCloseAllowed(overviewRes.data?.classic_single_close_allowed === true);
+      setBrainSingleCloseAllowed(overviewRes.data?.brain_single_close_allowed === true);
       setBrainData({
         wallet: brainWalletSummary(portfolioSummary,statusRes.data,tradeRes.data),
         trades: tradeRes.data,
@@ -477,6 +479,7 @@ export default function Dashboard() {
       setBrainData({ wallet:null, trades:null });
       setCutoverReadOnly(true);
       setClassicSingleCloseAllowed(false);
+      setBrainSingleCloseAllowed(false);
     }
   }, []);
 
@@ -624,7 +627,8 @@ export default function Dashboard() {
       {/* KPI portafoglio selezionato */}
       <DeskErrorBoundary>
         {portfolio === 'brain' ? <BrainPortfolioSection wallet={brainData.wallet}
-          rawTrades={brainData.trades} readOnly={cutoverReadOnly} onRefresh={fetchBrain} />
+          rawTrades={brainData.trades}
+          readOnly={cutoverReadOnly && !brainSingleCloseAllowed} onRefresh={fetchBrain} />
         : <PortfolioSection
           status={activeStatus}
           portfolio={portfolio}
