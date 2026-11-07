@@ -154,7 +154,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
         const portfolioData = (data?.portfolios || []).find(p => p.id === portfolio);
         const action = portfolioData?.last_action;
         if (active && action?.type === awaiting.type &&
-            Number.isFinite(Number(action.ts)) && Number(action.ts) >= awaiting.at_ms - 2000) {
+            Number.isFinite(Number(action.ts)) && Number(action.ts) >= awaiting.at_ms) {
           setMessage(action.ok
             ? ('Chiusura PAPER confermata: ' + (action.detail || 'operazione registrata.'))
             : ('Chiusura NON eseguita: ' + (action.detail || 'controlla il bot.')));
@@ -184,6 +184,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
     locked.current = true;
     setBusy(true);
     setMessage('');
+    const initiatedAt = Date.now(); // before POST: a fast worker can finish before HTTP returns
     try {
       let r;
       if (confirm.all) {
@@ -197,7 +198,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
       setMessage(r.ok ? 'Richiesta inviata, attendo conferma della chiusura PAPER.'
         : (r.message || 'Chiusura non riuscita.'));
       if (r.ok) {
-        setAwaiting({ type: confirm.all ? 'close_all' : 'close_position', at_ms: Date.now() });
+        setAwaiting({ type: confirm.all ? 'close_all' : 'close_position', at_ms: initiatedAt });
         onRefresh();
       }
     } catch (error) {
