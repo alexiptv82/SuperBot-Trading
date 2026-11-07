@@ -270,7 +270,8 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
         "close_all_pending": os.path.exists(os.path.join(data_dir, "reset.flag")),
         "close_position_pending": close_pending(data_dir),
         "exec_mode": (hb or {}).get("exec_mode"),
-        "can_close_position": can_close_position(hb, now),
+        "can_close_position": (can_close_position(hb, now) or exit_only_close_ready(data_dir, portfolio, now)),
+        "close_worker_mode": close_worker_mode(data_dir, portfolio, now),
         # orari di trading e calendario macro: li calcola il bot, l'app mostra soltanto (assenti nei bot vecchi)
         "hours": (hb or {}).get("hours"),
         "macro": (hb or {}).get("macro"),
@@ -483,9 +484,10 @@ def command_resume(data_dir: str) -> dict:
             "message": "Bot avviato: riprende subito a cercare trade."}
 
 
-def command_close_all(data_dir: str) -> dict:
+def command_close_all(data_dir: str, portfolio: Optional[str] = None) -> dict:
     positions = ((read_state(data_dir).get("main")) or {}).get("positions") or {}
-    if positions and not close_worker_ready(read_heartbeat(data_dir)):
+    if positions and not (close_worker_ready(read_heartbeat(data_dir))
+                          or exit_only_close_ready(data_dir, portfolio)):
         return {"ok": False, "queued": False, "positions_found": len(positions),
                 "symbols": list(positions), "message": CLOSE_WORKER_OFFLINE_MESSAGE}
     if positions:
@@ -522,6 +524,35 @@ def close_worker_ready(hb: Optional[dict], now: Optional[float] = None) -> bool:
     return -CLOSE_WORKER_MAX_FUTURE_S <= age < CLOSE_WORKER_MAX_AGE_S
 
 
+EXIT_ONLY_MAX_AGE_S = 12  # distinct, short-lived PAPER exit-only heartbeat
+
+
+def exit_only_close_ready(data_dir: str, portfolio: Optional[str] = None,
+                          now: Optional[float] = None) -> bool:
+    """A paused PAPER exit worker can receive close requests while legacy trading is stopped."""
+    path = os.path.join(data_dir, "exit_only_heartbeat.json")
+    if os.path.islink(path) or not os.path.isfile(path):
+        return False
+    data = _read_json(path)
+    if (data.get("mode") != "paper-exit-only" or data.get("ready") is not True
+            or data.get("portfolio") not in ("hawk", "bull")
+            or (portfolio is not None and data.get("portfolio") != portfolio)
+            or type(data.get("ts")) not in (float, int) or not math.isfinite(data["ts"])):
+        return False
+    age = (time.time() if now is None else now) - data["ts"]
+    return (os.path.isfile(os.path.join(data_dir, "pause.flag"))
+            and -2 <= age < EXIT_ONLY_MAX_AGE_S)
+
+
+def close_worker_mode(data_dir: str, portfolio: Optional[str] = None,
+                      now: Optional[float] = None) -> str:
+    if exit_only_close_ready(data_dir, portfolio, now):
+        return "exit_only"
+    if can_close_position(read_heartbeat(data_dir, now), now):
+        return "classic_runner"
+    return "offline"
+
+
 def can_close_position(hb: Optional[dict], now: Optional[float] = None) -> bool:
     """Solo una versione capace e con heartbeat recente puo' ricevere chiusure PAPER."""
     return bool(close_worker_ready(hb, now) and hb.get("close_position") is True)
@@ -555,7 +586,7 @@ def _find_position_key(positions: dict, symbol: str) -> Optional[str]:
     return None
 
 
-def command_close_position(data_dir: str, symbol: str) -> tuple:
+def command_close_position(data_dir: str, symbol: str, portfolio: Optional[str] = None) -> tuple:
     """(ok, http_status, risposta). Chiude UNA posizione a prezzo di mercato su richiesta dell'utente.
     Il comando e' un file che il bot prende in carico entro pochi secondi (e scarta se resta li' oltre 10 minuti).
     Rifiutato se: simbolo vuoto o strano, il bot e' di una versione che non lo sa fare, la posizione non c'e'."""
@@ -563,9 +594,10 @@ def command_close_position(data_dir: str, symbol: str) -> tuple:
     if not sym or len(sym) > 24 or not all(c.isalnum() or c in "-_" for c in sym):
         return False, 400, {"ok": False, "message": "Simbolo non valido."}
     hb = read_heartbeat(data_dir)
-    if not close_worker_ready(hb):
+    exit_only = exit_only_close_ready(data_dir, portfolio)
+    if not (close_worker_ready(hb) or exit_only):
         return False, 409, {"ok": False, "message": CLOSE_WORKER_OFFLINE_MESSAGE}
-    if not can_close_position(hb):
+    if not (can_close_position(hb) or exit_only):
         return False, 409, {"ok": False, "message": CLOSE_OLD_BOT_MESSAGE}
     positions = ((read_state(data_dir).get("main")) or {}).get("positions") or {}
     key = _find_position_key(positions, sym)
