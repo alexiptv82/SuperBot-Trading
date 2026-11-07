@@ -90,7 +90,7 @@ test('Brain displays settled capital and UTC realized profit without inventing o
   const brain = root.querySelector('[data-testid="portfolio-brain"]');
   expect(brain.textContent).toContain('Profitto di oggi (realizzato, UTC)');
   expect(brain.textContent).toContain('5.25');
-  expect(brain.textContent).toContain('2,005.25');
+  expect(brain.textContent).toContain('2005.25 USDT');
   expect(brain.textContent).toContain('escluso P&L aperto');
   expect(brain.textContent).toContain('Non calcolabile senza prezzi verificati');
 });
