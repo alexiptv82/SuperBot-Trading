@@ -1,0 +1,136 @@
+name: "RC75 SuperBot Singapore post-click inventory (READ ONLY)"
+on:
+  push:
+    branches:
+      - work/v3-rc75-sg-postclick-audit-20261107
+    paths:
+      - .github/workflows/v3-rc75-sg-postclick-readonly.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc75-singapore-postclick-readonly
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Read live PAPER state, manual closes, worker health and backups without mutations
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 110s
+          script: |
+            set -eu
+            python3 -B - <<'PY'
+            import json, hashlib, subprocess, time, datetime
+            from collections import deque
+            from pathlib import Path
+            now=time.time()
+            print('RC75_MODE=READ_ONLY')
+            print('RC75_DATE_UTC='+datetime.datetime.now(datetime.timezone.utc).isoformat())
+            def jload(p):
+                try:
+                    return json.loads(p.read_text())
+                except (OSError,UnicodeError,ValueError,TypeError) as e:
+                    print('READ_ERROR='+p.name+':'+type(e).__name__)
+                    return None
+            def sh(*args):
+                try:
+                    p=subprocess.run(args,text=True,capture_output=True,timeout=7)
+                    return p.stdout.strip() if p.returncode == 0 else 'UNAVAILABLE'
+                except Exception:
+                    return 'UNAVAILABLE'
+            def hashfile(p):
+                try:
+                    h=hashlib.sha256()
+                    with p.open('rb') as f:
+                        for block in iter(lambda:f.read(1024*1024),b''):
+                            h.update(block)
+                    return h.hexdigest()
+                except OSError:
+                    return 'UNAVAILABLE'
+            try:
+                p=subprocess.run(['docker','inspect','superbot'],capture_output=True,text=True,timeout=9)
+                d=json.loads(p.stdout)[0] if p.returncode==0 else {}
+                flags={}
+                allowed={'TRADING_MODE','DESK_MODE','V3_CUTOVER_READONLY','V3_ALLOW_CLASSIC_SINGLE_CLOSE','V3_ALLOW_BRAIN_SINGLE_CLOSE'}
+                for entry in (d.get('Config') or {}).get('Env') or []:
+                    k,sep,v=entry.partition('=')
+                    if sep and k in allowed:
+                        flags[k]=v
+                print('WEB_RUNNING='+str((d.get('State') or {}).get('Running')))
+                print('WEB_SAFE_FLAGS='+json.dumps(flags,sort_keys=True))
+            except Exception as e:
+                print('WEB_INSPECT_ERROR='+type(e).__name__)
+            for slug,title in [('hawk','FALCO'),('bull','TORO')]:
+                root=Path('/opt/superbot-desk-data')/slug
+                state_path=root/'state_v2.json'
+                hist_path=root/'trade_history.jsonl'
+                state=jload(state_path)
+                main=state.get('main') if isinstance(state,dict) else None
+                pos=main.get('positions') if isinstance(main,dict) else None
+                print(title+'_STATE_PRESENT='+str(state_path.is_file()))
+                print(title+'_STATE_SHA256='+hashfile(state_path))
+                print(title+'_POSITIONS_OPEN='+str(len(pos) if isinstance(pos,(dict,list)) else 'UNKNOWN'))
+                print(title+'_OPEN_SYMBOLS='+json.dumps(sorted(set((str((x.get('symbol') or x.get('coin') or k) if isinstance(x,dict) else k)) for k,x in pos.items())) if isinstance(pos,dict) else []))
+                relevant=[]
+                history_entries=0
+                latest=deque(maxlen=4)
+                try:
+                    with hist_path.open('r',encoding='utf-8') as f:
+                        for line in f:
+                            if not line.strip():
+                                continue
+                            history_entries+=1
+                            try:
+                                e=json.loads(line)
+                            except ValueError:
+                                continue
+                            if not isinstance(e,dict):
+                                continue
+                            small={k:e[k] for k in ('symbol','side','closed_by','reason','close_reason','manual_learning','net_pnl','realized_pnl','pnl','fees','closed_at','timestamp') if k in e}
+                            latest.append(small)
+                            src=str(e.get('closed_by',''))+' '+str(e.get('reason',''))+' '+str(e.get('close_reason',''))
+                            if 'manual' in src.lower() or 'utente' in src.lower():
+                                relevant.append(small)
+                except (OSError,UnicodeError):
+                    print(title+'_HISTORY_READABLE=False')
+                print(title+'_TRADE_HISTORY_LINES='+str(history_entries))
+                print(title+'_HISTORY_SHA256='+hashfile(hist_path))
+                print(title+'_RECENT_HISTORY='+json.dumps(list(latest),default=str,ensure_ascii=True))
+                print(title+'_MANUAL_CLOSE_MATCHES='+str(len(relevant)))
+                print(title+'_LAST_MANUAL_CLOSE='+json.dumps(relevant[-2:],default=str,ensure_ascii=True))
+                svc='superbot-v3-'+title.lower()+'-exit.service'
+                print(title+'_EXIT_UNIT_ACTIVE='+sh('systemctl','is-active',svc))
+                print(title+'_EXIT_UNIT_ENABLED='+sh('systemctl','is-enabled',svc))
+                hb=jload(root/'exit_only_heartbeat.json')
+                if isinstance(hb,dict):
+                    ts=hb.get('ts')
+                    age=round(now-float(ts),1) if isinstance(ts,(int,float)) else None
+                    print(title+'_EXIT_HEARTBEAT='+json.dumps({k:hb.get(k) for k in ('mode','portfolio','ready')},sort_keys=True))
+                    print(title+'_EXIT_HEARTBEAT_AGE_SECONDS='+str(age))
+                print(title+'_PENDING_CLOSE_FLAG='+str(any((root/n).exists() for n in ('close_position.flag','close_position.flag.work'))))
+                print(title+'_PAUSED='+str((root/'pause.flag').is_file()))
+                print(title+'_CLASSIC_CONTAINER='+sh('docker','inspect','-f','{{.State.Status}}','superbot-desk-'+slug))
+            brain=Path('/opt/superbot-v3-paper-runs/brain-v3-rc20261106')
+            print('BRAIN_PREPARED_RUN_DIR='+str(brain.is_dir()))
+            print('BRAIN_PAUSED='+str((brain/'pause.flag').is_file()))
+            print('BRAIN_JOURNAL_PRESENT='+str((brain/'journal.db').is_file()))
+            print('BRAIN_CLOSE_REQUEST_PRESENT='+str((brain/'close_request.json').exists()))
+            print('BRAIN_CLOSE_RESULT_PRESENT='+str((brain/'close_result.json').exists()))
+            print('BRAIN_EXIT_HEARTBEAT_PRESENT='+str((brain/'exit_heartbeat.json').exists()))
+            print('OFFHOST_BACKUP_UNIT_ACTIVE='+sh('systemctl','is-active','superbot-extbackup.service'))
+            print('OFFHOST_BACKUP_UNIT_RESULT='+sh('systemctl','show','--property=Result','--value','superbot-extbackup.service'))
+            snaps=sorted(Path('/opt/superbot-backups').glob('rc69-paper-legacy-*'))
+            print('RC69_LOCAL_SNAPSHOT_COUNT='+str(len(snaps)))
+            print('RC69_LOCAL_SNAPSHOT_LATEST='+str(snaps[-1].name if snaps else 'NONE'))
+            print('RC75_AUDIT_COMPLETED=YES')
+            PY
