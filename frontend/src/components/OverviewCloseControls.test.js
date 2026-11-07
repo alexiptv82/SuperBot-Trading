@@ -206,3 +206,43 @@ test('Classic PAPER: failed manual close is visible as a failure, not a winning 
     }} />);
   expect(h).toContain('NON chiusa');
 });
+
+test('Classic PAPER: close is confirmed only by a matching authenticated server result', async () => {
+  jest.useFakeTimers();
+  const ts = Date.now();
+  closePositionRequest.mockResolvedValue({ ok: true, message: 'richiesta ricevuta' });
+  API.get.mockResolvedValue({ data: { portfolios: [
+    { id: 'falco', last_action: { type: 'close_position', ts: ts + 500,
+      ok: true, detail: 'chiusa BTC (netto +4.20$)' } }
+  ] } });
+  const s = setup(<ClassicCloseControls portfolio="falco" positions={positions} canClose />);
+  try {
+    await s.render();
+    await click(find(s.host, 'Chiudi BTCUSDT'));
+    await click(find(s.host, 'Chiudi'));
+    expect(s.host.textContent).toContain('attendo conferma');
+    expect(s.host.textContent).not.toContain('Chiusura PAPER confermata');
+    await act(async () => { jest.advanceTimersByTime(3000); });
+    expect(API.get).toHaveBeenCalledWith('/api/v3/overview');
+    expect(s.host.textContent).toContain('Chiusura PAPER confermata: chiusa BTC');
+  } finally { await s.done(); jest.useRealTimers(); }
+});
+
+test('Classic PAPER: close failure from the worker cannot be shown as success', async () => {
+  jest.useFakeTimers();
+  const ts = Date.now();
+  closePositionRequest.mockResolvedValue({ ok: true, message: 'queued' });
+  API.get.mockResolvedValue({ data: { portfolios: [
+    { id: 'falco', last_action: { type: 'close_position', ts: ts + 200,
+      ok: false, detail: 'BTC: NON chiusa (prezzo non disponibile)' } }
+  ] } });
+  const s = setup(<ClassicCloseControls portfolio="falco" positions={positions} canClose />);
+  try {
+    await s.render();
+    await click(find(s.host, 'Chiudi BTCUSDT'));
+    await click(find(s.host, 'Chiudi'));
+    await act(async () => { jest.advanceTimersByTime(3000); });
+    expect(s.host.textContent).toContain('Chiusura NON eseguita');
+    expect(s.host.textContent).not.toContain('Chiusura PAPER confermata');
+  } finally { await s.done(); jest.useRealTimers(); }
+});
