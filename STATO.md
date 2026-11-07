@@ -1,3 +1,21 @@
+## 07/11 — CHECKPOINT RC69–RC74: WEB V3 + manual close Falco/Toro, Brain solo offline
+
+**Checkpoint canonico:** [diario/2026-11-07_chatgpt-rc69-rc74-checkpoint-completo.md](diario/2026-11-07_chatgpt-rc69-rc74-checkpoint-completo.md) — nuovo rispetto ai blocchi cronologici sottostanti, che rimangono archiviati.
+
+**ONLINE verificato in precedenza:** dashboard V3 PAPER sul dominio ufficiale; le pagine Classici e Trade includono Falco/Toro/Brain con grafica uniforme (PR #72). Le chiusure singole Falco/Toro con conferma e servizi separati PAPER *exit-only* sono state distribuite (PR #73). L'utente ha verificato sul telefono che il bottone **Chiudi ora funziona**. Sono ancora bloccati trading entry, close-all, reset e Brain-close sul sito. Nessun merge delle PR.
+
+**IMPORTANTE:** l'audit precedente al clic riportava 6 posizioni Falco + 2 Toro, ma l'utente ha eseguito un test di chiusura. **NON ripetere automaticamente 6+2 come conteggio attuale:** serve nuovo audit read-only di state/history, ticket e PnL realizzato. L'assistente non ha chiuso nessun trade per conto dell'utente.
+
+**Brain V3:** capitale previsto per nuova run PAPER **2.000 USDT**; AI/entry in pausa. Singola chiusura manuale Brain quando AI è in pausa sviluppata nella [PR #74](https://github.com/alexiptv82/SuperBot-Trading/pull/74): **181 test backend / 87 frontend / build PASS**, [suite completa V3 4.173 PASS + 1 SKIP e 114 paper executor PASS](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42381307963). **NON DEPLOYATA**: prima serve exit-sidecar Brain indipendente, owner lock/lease della run, percorsi IPC corretti e test VPS; non attivare il flag solo perché i test passano.
+
+**Backup:** snapshot locale Falco/Toro RC69 (**38+36 file**, SHA-256/restore PASS); DB auth originale e vecchio web preservati con rollback RC71–RC73. **Off-host esterno non ancora riparato/verificato.** Nuovo backup post-test utente da valutare. No reset-in-place, no perdita della memoria storica.
+
+**Prossimo lavoro:** read-only live audit post clic utente → riconciliazione e nuovo snapshot locale → safety gate per Brain exit-only → collaudo del “Chiudi ora” Brain dopo avvio naturale della nuova run PAPER → eventuale nuova run Falco 1.000/Toro 1.000/Brain 2.000 **solo dopo OK espresso**. Conservare Claude con Falco/Toro e SHORT legacy; miglioramenti LONG/trend incrementali. Non avviare bot né aprire nuove posizioni per testare il bottone.
+
+**PR operativamente rilevanti:** [#62](https://github.com/alexiptv82/SuperBot-Trading/pull/62), [#69](https://github.com/alexiptv82/SuperBot-Trading/pull/69), [#71](https://github.com/alexiptv82/SuperBot-Trading/pull/71), [#72](https://github.com/alexiptv82/SuperBot-Trading/pull/72), [#73](https://github.com/alexiptv82/SuperBot-Trading/pull/73) (distribuite web/components dove descritto, ma PR ancora DRAFT), [#74](https://github.com/alexiptv82/SuperBot-Trading/pull/74) (solo testata offline).
+
+---
+
 ## 07/11 — Manual close profit protection + stop prezzi stale; chiusura legacy BLOCCATA
 
 - **Richiesta confermata:** chiusura singolo trade PAPER manuale in Falco/Toro/Brain, con profitto netto e provenienza manuale registrati come esempio di *protezione profitto*, senza convertire automaticamente l'uscita dell'utente in strategia validata. Nuova run Falco1000/Toro1000/Brain2000 con storico precedente preservato.
