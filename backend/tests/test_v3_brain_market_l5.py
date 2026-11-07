@@ -37,7 +37,7 @@ D = Decimal
 ROOT = Path(__file__).resolve().parents[2]
 PARAMS_FILE = default_params_path()
 PARAMS_HASH = "612168ceb05489616c92b737f938c7516eb0c60c834209f33625874387b46398"
-PROMPT_HASH = "4a5721c9ef1ce641d3f9a449b9f7400d0ad2a8f64a5fadaf826db0b623108d0c"
+PROMPT_HASH = "462a9a39923dbf40d99b38dd4531c0c6002bcaa08ac00937ad709e0f716d87f2"
 EXPECTED_SYSTEM = (
     'Return only JSON. Either {"kind":"NO_TRADE"} or {"kind":"OPEN","side":1 or -1,'
     '"entry_price":"100","stop_price":"99","leverage":2,"confidence":0.7,'
@@ -52,6 +52,7 @@ EXPECTED_SYSTEM = (
     'with confidence. Status inconclusive or insufficient means not yet known, not bad. '
     'Choose a strategy whose conditions the market shows, prefer strategies measured '
     'positive, avoid those measured negative, and you may try unmeasured ones to learn. '
+    'If the optional peer_paper_positions field is present, it contains read-only observations of Falco and Toro PAPER positions, NOT recommendations, predictions or orders. A position may be stale or absent. Do not copy a peer trade automatically; derive your own LONG/SHORT/NO_TRADE from verified market data and strategy evidence. '
     'No tools, no market orders, no execution authority.'
 )
 T = (1_800_000_000_000 // 14_400_000) * 14_400_000
@@ -148,7 +149,7 @@ def test_pinned_exact_contents():
 
 def test_prompt_exact():
     assert SYSTEM_PROMPT == EXPECTED_SYSTEM
-    assert len(SYSTEM_PROMPT) == 1078
+    assert len(SYSTEM_PROMPT) == 1407
     assert hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest() == PROMPT_HASH
 
 
