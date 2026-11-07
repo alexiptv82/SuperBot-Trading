@@ -995,7 +995,7 @@ def test_speed_and_count_regime_calls(official,monkeypatch):
             "backend.v3.brain_f2.analyst","backend.v3.brain_f2.contracts",
             "backend.v3.brain_f3.providers","backend.v3.brain_view.params",
             "backend.v3.brain_view.menu","backend.v3.brain_view.view",
-            "backend.v3.brain_market.params","backend.v3.brain_market.view","backend.v3.outcomes"}),
+            "backend.v3.brain_market.params","backend.v3.brain_market.view","backend.v3.brain_market.classic_peers","backend.v3.outcomes"}),
 ])
 def test_ast_imports_and_no_clock(name,allowed):
     path=PARAMS_FILE.parent/name
