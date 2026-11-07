@@ -79,8 +79,8 @@ def inventory(root: Path) -> dict:
         raise Refused('unreconciled_close_request')
     if any((root/f).is_symlink() or not (root/f).is_file() for f in REQUIRED):
         raise Refused('essential_legacy_files_missing')
-    n = read_state(root/'state_v2.json')
-    if n != EXPECTED_OPEN[root.name]:
+    open_count = read_state(root/'state_v2.json')
+    if open_count != EXPECTED_OPEN[root.name]:
         raise Refused('legacy_open_count_changed')
     files = {}
     total = 0
@@ -102,7 +102,7 @@ def inventory(root: Path) -> dict:
     for n in REQUIRED:
         if n not in files:
             raise Refused('essential_file_not_in_inventory')
-    return {'count': len(files), 'total_bytes': total, 'files': files, 'open_count': n}
+    return {'count': len(files), 'total_bytes': total, 'files': files, 'open_count': open_count}
 
 
 def equal_files(source: Path, copy: Path, listed: dict) -> None:
@@ -170,6 +170,9 @@ def main() -> int:
                 for name in NAMES
             },
         }
+        for name in NAMES:
+            if type(manifest['portfolios'][name]['open_positions']) is not int or manifest['portfolios'][name]['open_positions'] != EXPECTED_OPEN[name]:
+                raise Refused('snapshot_manifest_position_count_invalid')
         (dest/'MANIFEST.json').write_text(json.dumps(manifest,sort_keys=True,indent=2)+'\n',encoding='utf-8')
         os.chmod(dest/'MANIFEST.json',0o600)
         # Do not print any sensitive filenames, contents, or hashes to CI logs.
