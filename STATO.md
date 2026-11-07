@@ -1,3 +1,13 @@
+## 07/11/2026 — RC79: post-trade review READ-ONLY isolato, PR #76 in bozza
+
+**FATTO OFFLINE:** [PR #76](https://github.com/alexiptv82/SuperBot-Trading/pull/76) su `cursor/rc79-post-trade-readonly-chatgpt`, derivata dal codice RC77 ma separata dalla [PR #75 / RC78](https://github.com/alexiptv82/SuperBot-Trading/pull/75). Nuovo modulo puro `backend/v3/observability/post_trade_review.py` e test: **15 PASS locali**, non CI remota. Aggregazione multi-fill per wallet/run/id/open_ms, confronto ARB cross-wallet, costi e gross/net solo se disponibili, rilevamento perdite oltre margine, stop verificato solo da fonte e verdict prudente `evidenza_insufficiente` senza percorso prezzo affidabile. Nessun adapter Brain collegato ancora, nessuna UI e nessun apprendimento automatico. 
+
+**REVIEW RC78:** commento [#75](https://github.com/alexiptv82/SuperBot-Trading/pull/75#issuecomment-6713495952): il monitor PAPER attualmente in bozza, se il feed è privo di quotazioni fresche, può segnalare heartbeat `ready=true` anche quando non sorveglia stop sulle posizioni ancora aperte. Servono telemetria/alert degradati e prova interruzioni durante persistence; questa è revisione statica, NON prova VPS. RC78 resta OFF, non deployato.
+
+**CONTINUITÀ:** diario [RC79](diario/2026-11-07_chatgpt-rc79-post-trade-readonly.md) e Library `/SuperBot-Trading/RC79-2026-11-07` (ZIP con sorgenti + handoff). Tutto PAPER. Nessun merge/deploy/reset/riavvio/ordini/nuova run/contatto VPS durante RC79. Ultimo stato VPS certificato resta RC77: Falco e Toro **0 aperte**, Brain PAUSED, snapshot locale restore PASS; backup esterno non certificato. Prima di nuove run vanno superati i gate P0 e serve OK dedicato. Grok lavora in parallelo: non sovrapporre incarichi ai componenti RC78 e alle strategie. 
+
+---
+
 ## 07/11/2026 ~19:59 CET — RC77: entrambe ARB chiuse dall'utente, nuovo backup locale SHA/restore PASS
 
 **Verificato su VPS**: [audit RC77 #42403639118](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42403639118): **Falco 0 aperte, Toro 0 aperte**; manual exit di ARB id62 Falco **net -122,6256 USDT PAPER**, id19 Toro **net -226,8574**; somma ARB **-349,4830**. Le 6 chiusure precedenti +782,9613; **saldo netto delle 8 chiusure manuali del 7/11: +433,4783 USDT PAPER** (non equity). Prezzo di uscita ARB 0,16818363 contro ingresso 0,160507892 SHORT 25x, oltre stop configurato e livello di liquidazione teorica. **P0**: gap di monitor SL/TP con worker legacy spenti e sidecar temporaneo solo manual-close; verificare anche il modello di liquidazione/margin PAPER. Nessun trading riavviato.
