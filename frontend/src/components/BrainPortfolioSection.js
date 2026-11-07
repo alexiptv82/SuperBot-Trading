@@ -66,7 +66,9 @@ export default function BrainPortfolioSection({ wallet, rawTrades, readOnly, onR
         Portafoglio autonomo e separato da Falco e Toro.
       </div>
       {readOnly && <div style={{fontSize:12,color:'#fbbf24',marginTop:6}}>
-        Collaudo PAPER in sola lettura: apertura, pausa e chiusure disabilitate.
+        {wallet.manual_close_allowed
+          ? 'Solo chiusura manuale singola PAPER consentita; nuove aperture e pausa/ripresa restano bloccate.'
+          : 'Collaudo PAPER in sola lettura: apertura, pausa e chiusure disabilitate.'}
       </div>}
     </div>
 
@@ -81,7 +83,8 @@ export default function BrainPortfolioSection({ wallet, rawTrades, readOnly, onR
       Nessuna posizione aperta nella run Brain V3.
     </div>}
     {nOpen > 0 && <BrainCloseControls positions={rawTrades?.open_positions || []}
-      readOnly={readOnly} serverPending={rawTrades?.close_pending === true}
+      readOnly={readOnly && !wallet.manual_close_allowed} allowCloseAll={!readOnly}
+      serverPending={rawTrades?.close_pending === true}
       onRefresh={onRefresh} renderPosition={pos => <PortfolioTradeFields p={pos} brain />} />}
 
     <details style={{ marginTop:14, marginBottom:14 }}>
