@@ -1,3 +1,13 @@
+## 07/11 — Manual close profit protection + stop prezzi stale; chiusura legacy BLOCCATA
+
+- **Richiesta confermata:** chiusura singolo trade PAPER manuale in Falco/Toro/Brain, con profitto netto e provenienza manuale registrati come esempio di *protezione profitto*, senza convertire automaticamente l'uscita dell'utente in strategia validata. Nuova run Falco1000/Toro1000/Brain2000 con storico precedente preservato.
+- **PR #62 DRAFT**, commit `447a9536311a50a8439a8d6f2bea98a2c70acf6d`: registrazione `manual_learning` e `closed_by=utente` anche da close-all classico PAPER; Brain ha `reason=manual` nel journal e API classifica l'osservazione senza alterare il motore; UI marca profitto protetto distinto dalle chiusure automatiche. Prezzi vecchi rifiutati in `_market_prices` (candele oltre30min, cache oltre2min), nessuna chiusura su dati vecchi di 4 giorni.
+- **Test ultimo commit:** GitHub Actions `42353201748`: backend PASS, frontend PASS, V3 **4075 PASS/1 SKIP**, `classics-rc` ancora IN ESECUZIONE all'ultimo checkpoint; non dichiarare tutto verde senza job finale. Nuovi regression test stale prices e manual profit evidence.
+- **Blocco VPS:** fonte più recente è audit Singapore 6/11: Falco6 + Toro2 posizioni legacy, workers exited e pause flags, backup cifrato off-host FAILED (ultimo successo Nov2) e web legata a vecchi volumi. Nessuna prova verificata del profitto attuale al 7/11, prezzo live e durata vanno ricalcolati. **NON QUEUE CLOSE** a worker spento; NON start old containers, NON overwrite journal, NO legacy reset-in-place.
+- **Ordine:** ripristino/certificazione backup off-host; inventario/read-only PnL fresco; close manuali atomici (su owner unico in pausa, con quotazione recente) e riconciliazione storico/trade; archiviazione; nuove run PAUSED in storage isolato (1000/1000/2000) e dashboard; smoke e mandato Brain; via libera PAPER finale solo dopo gate. Solo una finestra SHADOW con dati post-exit può validare se l'incasso anticipato migliora l'expectancy.
+- Diario dettagliato: `diario/2026-11-07_verifica-chiusure-manuali-profitto-esempio-e-legacy-non-chiudere-stale.md` commit `2b033f9`.
+
+---
 ## 06/11 — RC62 VPS read-only: codice VERDE, rilascio NO-GO (backup offsite)
 
 **Audit VPS fresco** 2026-11-06 21:14 UTC, GitHub run `42295014067` (**READ ONLY**) + backup sentinel `42217335679`:
