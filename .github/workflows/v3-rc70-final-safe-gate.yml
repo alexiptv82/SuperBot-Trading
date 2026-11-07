@@ -64,7 +64,7 @@ jobs:
                 running=d.get('State',{}).get('Running')
                 paused=Path('/opt/superbot-desk-data/'+n+'/pause.flag').is_file()
                 r,json_data=cmd('systemctl','is-enabled','superbot-v3-'+label+'-exit.service')
-                disabled=r==0 and json_data=='disabled'
+                disabled=r in (0,1) and json_data=='disabled'  # systemctl returns 1 for a DISABLED unit
                 active=cmd('systemctl','is-active','superbot-v3-'+label+'-exit.service')[1]=='active'
                 state=json.loads(Path('/opt/superbot-desk-data/'+n+'/state_v2.json').read_text())
                 count=len(state.get('main',{}).get('positions',{}))
