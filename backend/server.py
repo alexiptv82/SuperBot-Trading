@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import os
@@ -23,6 +23,7 @@ from webauthn.helpers.structs import (
 import asyncio
 
 from config import config
+from backend.v3.cutover_gate import should_refuse_mutation
 from database import init_db, get_db, Trade, AuditLog
 from bot_engine import bot
 from exchange import exchange
@@ -57,6 +58,21 @@ from auth import (
 init_db()
 
 app = FastAPI(title='SuperBot Trading API', version='1.0.0')
+
+@app.middleware('http')
+async def _paper_dashboard_cutover_guard(request: Request, call_next):
+    # Explicit opt-in, PAPER-only release hard-stop for all trading commands.
+    # Preserve login, password change, WebAuthn and GET-only dashboard views.
+    if should_refuse_mutation(
+        request.method, request.url.path,
+        readonly=os.environ.get('V3_CUTOVER_READONLY', '0') == '1'
+    ):
+        return JSONResponse(
+            status_code=423,
+            content={'ok': False, 'message': 'Collaudo V3 in sola lettura: comandi trading disattivati'}
+        )
+    return await call_next(request)
+
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True,
                    allow_methods=['*'], allow_headers=['*'])
 
