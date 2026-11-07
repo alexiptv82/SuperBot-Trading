@@ -29,6 +29,7 @@ from backend.v3.budget import BudgetLedger
 from backend.v3.brain_view.params import load_default_params
 from backend.v3.brain_view.view import build_scoreboard
 from backend.v3.dashboard import build_summary
+from backend.v3.brain_accounting import brain_book_metrics
 from backend.v3.events import EventJournal
 from backend.v3.outcomes import REGIMES, extract_outcomes
 from backend.v3.runner.config import load_default_config
@@ -53,6 +54,7 @@ class V3Paths:
     toro_data_dir: str
     close_request_path: str | None = None
     close_result_path: str | None = None
+    brain_config_path: str | None = None
 
     def __post_init__(self):
         """Default command files live beside the configured heartbeat, never /opt."""
@@ -75,6 +77,7 @@ class V3Paths:
             falco_data_dir=falco_data_dir, toro_data_dir=toro_data_dir,
             close_request_path=os.environ.get('V3_CLOSE_REQUEST_PATH'),
             close_result_path=os.environ.get('V3_CLOSE_RESULT_PATH'),
+            brain_config_path=os.environ.get('V3_RUNNER_CONFIG_PATH'),
         )
 
 
@@ -329,6 +332,19 @@ def _overview(paths: V3Paths, now_ms: int) -> dict:
     state = _brain_state(paths, hb, now_ms)
     n_closed = len(s.closed_trades) if s is not None else 0
     wins = sum(1 for t in s.closed_trades if t.realized_pnl > 0) if s is not None else 0
+    # The journal cannot mark open positions; show settled book equity separately.
+    book = brain_book_metrics(
+        journal=_journal(paths), summary=s, run_id=paths.run_id,
+        config_path=paths.brain_config_path, now_ms=now_ms)
+    # Sanitize peer data for visual inspection only: NEVER issue trading instructions
+    # or pretend this is already wired into the Brain analyst prompt.
+    peers = [
+        {'portfolio_id': p['id'], 'state': p['state'],
+         'open_positions': p['open_positions'],
+         'day_pnl': p.get('day_pnl'),
+         'last_event_ms': p.get('last_event_ms')}
+        for p in entries
+    ]
     entries.append({'id': 'brain', 'kind': 'brain', 'state': state,
                     'open_positions': len(s.open_positions) if s is not None else 0,
                     'realized_pnl': str(s.realized_pnl) if s is not None else '0',
@@ -336,7 +352,15 @@ def _overview(paths: V3Paths, now_ms: int) -> dict:
                     'total_closed': n_closed,
                     'win_rate': str((Decimal(wins) * 100 / n_closed).quantize(Decimal('0.1'))) if n_closed else None,
                     'last_event_ms': s.last_event_ms if s is not None else None,
-                    'heartbeat_age_s': max(0, (now_ms - hb['ts_ms']) // 1000) if hb else None})
+                    'heartbeat_age_s': max(0, (now_ms - hb['ts_ms']) // 1000) if hb else None,
+                    'equity': book['equity'],
+                    'settled_equity': book['settled_equity'],
+                    'start_equity': book['start_equity'],
+                    'equity_basis': book['equity_basis'],
+                    'day_pnl': book['day_pnl'],
+                    'pnl_day_timezone': book['pnl_day_timezone'],
+                    'peer_observations': peers,
+                    'peer_observations_mode': 'display_only_not_ai_input'})
     return {'generated_at_ms': now_ms, 'portfolios': entries}
 
 
