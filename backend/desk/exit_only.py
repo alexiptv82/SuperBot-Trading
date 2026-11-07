@@ -26,10 +26,11 @@ import time
 from typing import Callable, Optional
 
 from desk.paper_stop_monitor import (
-    STOP_WORK_NAME,
     PaperStopRefused,
     apply_paper_stop_protection,
+    classify_candle,
     monitor_opt_in,
+    reconcile_stop_claim,
 )
 
 REQUIRED = ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")
@@ -153,15 +154,19 @@ class ExitOnlyWorker:
             verify_snapshot(self.base, self.backup)
             if any((self.base / f).exists() for f in PENDING):
                 raise ExitOnlyError("existing_close_request_needs_manual_reconciliation")
-            if os.path.lexists(self.base / STOP_WORK_NAME):
-                raise ExitOnlyError("unreconciled_stop_protection")
+            verdict = reconcile_stop_claim(self.legacy)
+            if verdict not in ("absent", "resolved"):
+                raise ExitOnlyError("unreconciled_stop_protection:" + verdict)
 
-    def _write_heartbeat(self, ready: bool) -> None:
+    def _write_heartbeat(self, ready: bool, stop_protection: str = "off") -> None:
         payload = {
             "mode": "paper-exit-only", "portfolio": self.portfolio, "ready": ready,
             "ts": self.clock(), "pid": os.getpid(),
-            # Observability only. False unless the operator exported the opt-in.
+            # opt-in is not coverage. stop_protection says whether every open
+            # position has a fresh quote (covered), only some (partial), none
+            # (blind), nothing is open (idle), or the monitor is off/blocked.
             "stop_monitor_opt_in": monitor_opt_in(),
+            "stop_protection": stop_protection,
         }
         fd, tmp = tempfile.mkstemp(dir=self.base, prefix=".exit-only-hb.", suffix=".tmp")
         try:
@@ -186,7 +191,7 @@ class ExitOnlyWorker:
             raise ExitOnlyError("another_exit_writer_active") from None
         try:
             self.check_safe(startup=True)
-            self._write_heartbeat(True)
+            self._write_heartbeat(True, "unverified" if monitor_opt_in() else "off")
         except Exception:
             fcntl.flock(self._fd, fcntl.LOCK_UN)
             os.close(self._fd)
@@ -227,7 +232,9 @@ class ExitOnlyWorker:
                 # A legitimate web request owns the directory briefly.
                 # Nothing has been claimed; safely retry on next poll.
                 return {"manual_one_requested": False, "manual_all_requested": False,
-                        "request_writer_busy": True, "stop_monitor": {"enabled": False, "closed": []}}
+                        "request_writer_busy": True,
+                        "stop_monitor": {"enabled": False, "closed": [], "stop_protection": "blocked",
+                                         "blocked": "directory_lock"}}
             self.check_safe()
             # Do not call legacy.process_flags(), legacy.loop_step(), legacy.iteration(),
             # legacy.run_cycle(), or any strategy/AI function, even in PAPER.
@@ -241,26 +248,27 @@ class ExitOnlyWorker:
                     self.legacy._check_close_position_flag(state, price_provider=self._price_provider)
                 if all_pending:
                     self.legacy._check_close_all_flag(state, price_provider=self._price_provider)
-            stop_report = {"enabled": False, "closed": []}
+            stop_report = {"enabled": False, "closed": [], "stop_protection": "off"}
             if monitor_opt_in():
                 # Manual requests were handled first. Re-check the maintenance
-                # posture after any quote fetch, then protect under the same lock.
+                # posture after the quote read, then protect under the same lock.
                 self.check_safe()
                 fresh_state = self.legacy.load_state(str(self.base / "state_v2.json"))
                 symbols = list(((fresh_state.get("main") or {}).get("positions") or {}))
                 now_ms = int(self.clock() * 1000)
-                prices = recent_minute_prices(
-                    symbols, fresh_state, now_ms, fetch_candles=self.legacy.fetch_candles)
+                quotes = self._classify_feed(symbols, now_ms)
                 self.check_safe()
                 try:
                     stop_report = apply_paper_stop_protection(
-                        self.legacy, prices, now_ms, lock_held=True)
+                        self.legacy, {}, now_ms, lock_held=True, quotes=quotes,
+                        lock_fd=self._fd,
+                        legacy_stopped=lambda: self.stopped(self.portfolio))
                 except PaperStopRefused as exc:
                     raise ExitOnlyError(str(exc)) from None
             # The legacy handlers deliberately catch their own errors. Verify
             # ownership AGAIN after them; never publish READY if Docker changed mid-request.
             self.check_safe()
-            self._write_heartbeat(True)
+            self._write_heartbeat(True, stop_report.get("stop_protection") or "off")
             return {"manual_one_requested": selected, "manual_all_requested": all_pending,
                     "stop_monitor": stop_report}
         except Exception:
@@ -271,6 +279,20 @@ class ExitOnlyWorker:
             if acquired:
                 fcntl.flock(dirfd, fcntl.LOCK_UN)
             os.close(dirfd)
+
+    def _classify_feed(self, symbols, now_ms: int) -> dict:
+        quotes = {}
+        for symbol in symbols:
+            try:
+                bars = self.legacy.fetch_candles(symbol, "1m", 3)
+            except Exception:
+                quotes[symbol] = {"status": "missing", "reason": "feed_error", "price": None}
+                continue
+            if not isinstance(bars, (list, tuple)) or not bars:
+                quotes[symbol] = {"status": "missing", "reason": "empty_feed", "price": None}
+                continue
+            quotes[symbol] = classify_candle(bars[-1], now_ms)
+        return quotes
 
 
 def main(argv=None) -> int:
