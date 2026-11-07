@@ -90,10 +90,10 @@ test('Trade uses the same three selectors, exact closed outcomes and side/outcom
     const chips=Array.from(m.host.querySelectorAll('button'));
     await act(async()=>chips.find(x=>x.textContent==='Vincenti').click());
     expect(m.host.textContent).toContain('ETH');
-    expect(m.host.textContent).not.toContain('SOLUSDT');
+    expect(Array.from(m.host.querySelectorAll('[data-testid="trade-ticket"]')).map(x=>x.textContent)).toEqual([expect.stringContaining('ETH')]);
     await act(async()=>chips.find(x=>x.textContent==='Perdenti').click());
     expect(m.host.textContent).toContain('SOL');
-    expect(m.host.textContent).not.toContain('ETHUSDT');
+    expect(Array.from(m.host.querySelectorAll('[data-testid="trade-ticket"]')).map(x=>x.textContent)).toEqual([expect.stringContaining('SOL')]);
     expect(API.get).toHaveBeenCalledWith('/api/v3/brain/trades?limit=100&offset=0');
   }finally{await m.done();}
 });
@@ -102,7 +102,7 @@ test('Brain position close buttons remain disabled while cutover is readonly',()
   const wallet=brainWalletSummary(paperOverview.portfolios[2],{state:'paused'},result);
   const html=renderToStaticMarkup(<BrainPortfolioSection wallet={wallet} rawTrades={result}
     readOnly onRefresh={()=>{}} />);
-  expect(html).toContain('Chiusure');
+  expect(html).toContain('chiusure disabilitate');
   expect(html).toContain('disabled');
-  expect(html).toContain('non disponibile').toBeUndefined();
+  expect(html).toContain('Equity');
 });
