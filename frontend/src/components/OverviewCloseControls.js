@@ -133,9 +133,9 @@ export function BrainCloseControls({ positions = [], serverPending = false, onRe
     {positions.length > 0 && <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
       <button type="button" style={BTN} disabled={disabled} onClick={() => ask({ all: true })}>Chiudi tutte ({positions.length})</button>
     </div>}
-    {positions.map(p => <div key={p.position_id} style={{ display: 'flex', gap: 10, alignItems: 'center', borderTop: '1px solid #314357', padding: '12px 0', minWidth: 0 }}>
-      <div style={{ minWidth: 0, flex: 1 }}>{renderPosition ? renderPosition(p) : <PortfolioTradeFields p={p} brain />}</div>
-      <button type="button" style={{ ...BTN, flexShrink: 0 }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi {p.symbol}</button>
+    {positions.map(p => <div key={p.position_id} style={{ background:'#0e1a2d', padding:12, border:'1px solid #30465e', borderRadius:11, marginTop:9, minWidth:0 }}>
+      <div>{renderPosition ? renderPosition(p) : <PortfolioTradeFields p={p} brain />}</div>
+      <button type="button" style={{ ...BTN, marginTop:8 }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi {p.symbol}</button>
     </div>)}
     {confirm && <div role="dialog" aria-label="Conferma chiusura Brain" style={{ border: '1px solid #fda4af', padding: 12, borderRadius: 10, marginTop: 8 }}>
       <p style={{ margin: '0 0 10px' }}>{confirm.all
