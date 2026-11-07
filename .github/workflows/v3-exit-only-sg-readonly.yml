@@ -1,0 +1,86 @@
+name: V3 legacy PAPER exit-only readiness (READ ONLY)
+on:
+  push:
+    branches: [work/v3-classic-paper-exit-only-20261107]
+    paths: ['.github/workflows/v3-exit-only-sg-readonly.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Read-only legacy close safety conditions on Singapore (NO DEPLOY)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            echo SUPERBOT_V3_EXIT_ONLY_READ_ONLY=1
+            python3 - <<'PY'
+            import json
+            import os
+            from pathlib import Path
+            import subprocess
+            import time
+
+            base = Path('/opt/superbot-desk-data')
+            required = ('state_v2.json','trade_history.jsonl','learning_log.jsonl','lessons.md')
+            def inspect(name):
+                try:
+                    proc=subprocess.run(
+                        ['docker','inspect','-f',
+                         '{{.State.Running}}|{{.HostConfig.RestartPolicy.Name}}',
+                         'superbot-desk-'+name],
+                        capture_output=True,text=True,check=False,timeout=5)
+                except (OSError,subprocess.TimeoutExpired):
+                    return 'UNKNOWN','UNKNOWN'
+                if proc.returncode:
+                    return 'UNKNOWN','UNKNOWN'
+                parts=proc.stdout.strip().split('|',1)
+                if len(parts)!=2:
+                    return 'UNKNOWN','UNKNOWN'
+                running, restart=parts
+                return (running if running in ('true','false') else 'UNKNOWN',
+                        restart if restart in ('no','always','unless-stopped','on-failure','') else 'OTHER')
+            count=0
+            for name in ('hawk','bull'):
+                root=base/name
+                prefix=name.upper()
+                running,restart=inspect(name)
+                print(prefix+'_CONTAINER_RUNNING='+running)
+                print(prefix+'_RESTART_POLICY='+restart)
+                print(prefix+'_OWNERSHIP_READY='+str(running=='false' and restart in ('no','')))
+                print(prefix+'_PAUSE_PRESENT='+str((root/'pause.flag').is_file()))
+                present=True
+                for f in required:
+                    p=root/f
+                    valid=p.is_file() and not p.is_symlink() and (p.stat().st_size>0 if f=='state_v2.json' else True)
+                    present &= valid
+                    print(prefix+'_REQUIRED_'+f.replace('.','_').upper()+'='+str(valid))
+                print(prefix+'_REQUIRED_ALL_PRESENT='+str(present))
+                hb=root/'heartbeat.json'
+                if hb.is_file():
+                    age=int(time.time()-hb.stat().st_mtime)
+                    print(prefix+'_LEGACY_HEARTBEAT_OLDER_THAN_120S='+str(age>120))
+                else:
+                    print(prefix+'_LEGACY_HEARTBEAT_OLDER_THAN_120S=UNKNOWN')
+                flags=['reset.flag','reset.flag.work','close_position.flag','close_position.flag.work']
+                print(prefix+'_PENDING_CLOSE_REQUIRES_RECONCILIATION='+str(any((root/f).exists() for f in flags)))
+                try:
+                    st=json.loads((root/'state_v2.json').read_text())
+                    positions=(st.get('main') or {}).get('positions') or {}
+                    n=len(positions) if isinstance(positions,dict) else 'UNKNOWN'
+                except (OSError,ValueError,AttributeError):
+                    n='UNKNOWN'
+                print(prefix+'_LEGACY_POSITIONS='+str(n))
+            print('READ_ONLY_FINISHED=1')
+            print('NO_CONTAINER_START_OR_STOP=1')
+            print('NO_STATE_OR_FLAG_WRITES=1')
+            print('RELEASE_GATE=NO_GO_UNTIL_APPROVED_CUTOVER=1')
+            PY
