@@ -140,7 +140,7 @@ test('Falco: use existing closePositionRequest; no POST without confirmation', a
 });
 
 test('Toro: existing closeAll is reused with inline confirmation', async () => {
-  bullAPI.closeAll.mockResolvedValue({ data: { ok: true } });
+  bullAPI.closeAll.mockResolvedValue({ data: { ok: true, queued: true } });
   const s = setup(<ClassicCloseControls portfolio="toro" positions={positions} canClose />);
   try {
     await s.render();
@@ -158,5 +158,29 @@ test('Brain: pending command persisted before page reload disables close buttons
     expect(find(s.host, 'Chiudi BTCUSDT').disabled).toBe(true);
     expect(s.host.textContent).toContain('Una richiesta di chiusura è già in corso.');
     expect(API.post).not.toHaveBeenCalled();
+  } finally { await s.done(); }
+});
+
+test('Classics: 409 from an offline bot never claims a successful close request', async () => {
+  bullAPI.closeAll.mockRejectedValue({ response: { status: 409 } });
+  const s = setup(<ClassicCloseControls portfolio="toro" positions={positions} canClose />);
+  try {
+    await s.render();
+    await click(find(s.host, 'Chiudi tutte (1)'));
+    await click(find(s.host, 'Chiudi'));
+    expect(s.host.textContent).toContain('nessuna chiusura inviata');
+    expect(s.host.textContent).not.toContain('Il bot sta elaborando');
+  } finally { await s.done(); }
+});
+
+test('Classics: close-all without explicit queued acknowledgement is not a success', async () => {
+  bullAPI.closeAll.mockResolvedValue({ data: { ok: true } });
+  const s = setup(<ClassicCloseControls portfolio="toro" positions={positions} canClose />);
+  try {
+    await s.render();
+    await click(find(s.host, 'Chiudi tutte (1)'));
+    await click(find(s.host, 'Chiudi'));
+    expect(s.host.textContent).toContain('non ha confermato la presa in carico');
+    expect(s.host.textContent).not.toContain('Il bot sta elaborando');
   } finally { await s.done(); }
 });
