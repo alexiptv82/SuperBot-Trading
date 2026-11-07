@@ -920,7 +920,10 @@ def _loop_step_pause_drain_then_paused_then_resume():
         assert list(cli.make_account(state).positions) == ["BTC"]
         assert state["mode"] == "draining" and state["paused"] is True and hb()["mode"] == "draining"
         # 4) la posizione si chiude (qui: chiusura manuale) -> il bot passa a "in pausa" e non cicla piu'
-        open(os.path.join(d, "reset.flag"), "w").close()
+        close_flag = os.path.join(d, "reset.flag")
+        open(close_flag, "w").close()
+        # Fake clock and filesystem mtime must agree for the expiring PAPER command.
+        os.utime(close_flag, (NOW / 1000, NOW / 1000))
         cli.loop_step(state, ctl)
         assert not cli.make_account(state).positions
         assert state["mode"] == "paused" and hb()["mode"] == "paused"
