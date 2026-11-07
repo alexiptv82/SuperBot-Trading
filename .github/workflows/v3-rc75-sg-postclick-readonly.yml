@@ -1,8 +1,8 @@
-name: "RC75 SuperBot Singapore post-click inventory (READ ONLY)"
+name: "RC77 SuperBot Singapore post-ARB closes inventory (READ ONLY)"
 on:
   push:
     branches:
-      - work/v3-rc76-arb-forensic-readonly-20261107
+      - work/v3-rc77-post-arb-close-backup-20261107
     paths:
       - .github/workflows/v3-rc75-sg-postclick-readonly.yml
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rc76-singapore-postclick-arb-readonly
+  group: rc77-singapore-post-arb-audit-readonly
   cancel-in-progress: false
 
 jobs:
