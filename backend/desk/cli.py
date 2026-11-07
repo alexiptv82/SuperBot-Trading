@@ -1036,7 +1036,7 @@ def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms:
 CLOSE_ALL_MAX_AGE_S = 600  # anche il comando legacy senza timestamp non puo' svegliarsi giorni dopo
 
 
-def _check_close_all_flag(state: dict) -> bool:
+def _check_close_all_flag(state: dict, price_provider=None) -> bool:
     """reset.flag: chiusura PAPER a prezzo di mercato, mai su richiesta dimenticata.
     Il protocollo storico non contiene un timestamp. Per le sole richieste PAPER,
     usare l'mtime del flag; se troppo vecchio si scarta senza toccare le posizioni.
@@ -1062,7 +1062,7 @@ def _check_close_all_flag(state: dict) -> bool:
             save_state(state, STATE_FILE)
             return True
         now_ms = int(time.time() * 1000)
-        prices = _market_prices(list(acc.positions), state, now_ms)
+        prices = (price_provider or _market_prices)(list(acc.positions), state, now_ms)
         closed_n, skipped, net = 0, [], 0.0
         for sym in list(acc.positions):
             px = prices.get(sym)
@@ -1182,7 +1182,7 @@ def _archive_run(state: dict, acc: PaperAccount, clear_lessons: bool) -> str:
     return name
 
 
-def _check_close_position_flag(state: dict) -> bool:
+def _check_close_position_flag(state: dict, price_provider=None) -> bool:
     """close_position.flag = {"symbols": [...], "ts": ms}: l'utente vuole chiudere queste posizioni (non tutte) a
     prezzo di mercato. Stesse regole di 'Chiudi tutto': mai un'uscita inventata se manca il prezzo. Sicurezze: una
     richiesta vecchia (clic dimenticato) non si esegue; un simbolo gia' chiuso non e' un errore; il file si 'prende
@@ -1228,7 +1228,7 @@ def _check_close_position_flag(state: dict) -> bool:
         acc = make_account(state)
         present = [s for s in wanted if s in acc.positions]
         gone = [s for s in wanted if s not in acc.positions]
-        prices = _market_prices(present, state, now_ms) if present else {}
+        prices = (price_provider or _market_prices)(present, state, now_ms) if present else {}
         closed, failed, net = [], [], 0.0
         for sym in present:
             px = prices.get(sym)
