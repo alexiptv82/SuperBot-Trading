@@ -12,7 +12,7 @@ from pathlib import Path
 
 from backend.v3.events import EventJournal
 from backend.v3.dashboard import PortfolioSummary
-from backend.v3.outcomes import extract_outcomes
+from backend.v3.outcomes import OutcomeError, extract_outcomes
 from backend.v3.runner.config import load_runner_config
 
 
@@ -66,5 +66,5 @@ def brain_book_metrics(*, journal: EventJournal | None,
             "day_pnl": str(day),
         })
         return out
-    except (OSError, ValueError, TypeError, ArithmeticError):
+    except (OSError, ValueError, TypeError, ArithmeticError, OutcomeError):
         return out
