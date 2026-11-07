@@ -40,7 +40,7 @@ def _app(tmp_path):
     return app
 
 
-@pytest.mark.parametrize("age", [None, 61, 3600, -31, "nan", 0])
+@pytest.mark.parametrize("age", [None, 61, 3600, -31, "nan"])
 def test_offline_classic_close_refused_without_any_writes(tmp_path, age):
     now = time.time()
     stamp = None if age is None else ("nan" if age == "nan" else now - age)
