@@ -34,7 +34,7 @@ def prepare(tmp_path, monkeypatch, *, portfolio="hawk"):
     state = {}
     acc = cli.make_account(state)
     stamp = int(time.time() * 1000) - 3_600_000
-    p, msg = acc.open("BTC", -1, 100, 20, 100.0, 105.0, 95.0, stamp, {})
+    p, msg = acc.open("BTC", -1, 100, 20, 100.0, 102.0, 95.0, stamp, {})
     assert p is not None, msg
     cli.save_account(acc, state)
     cli.save_state(state, str(base / "state_v2.json"))
