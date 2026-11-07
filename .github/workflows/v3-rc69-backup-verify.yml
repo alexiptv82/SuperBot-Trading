@@ -2,7 +2,7 @@ name: RC69 PAPER legacy local snapshot + isolated restore (NO DEPLOY)
 on:
   push:
     branches: [work/v3-rc69-singapore-preflight-20261107]
-    paths: ['.github/workflows/v3-rc69-backup-verify.yml']
+    paths: ['.github/workflows/v3-rc69-backup-verify.yml', 'deploy/scripts/v3-rc69-local-snapshot-restore.py']
   workflow_dispatch:
 permissions:
   contents: read
