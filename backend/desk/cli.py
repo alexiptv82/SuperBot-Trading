@@ -1033,14 +1033,29 @@ def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms:
     return rec, ""
 
 
+CLOSE_ALL_MAX_AGE_S = 600  # anche il comando legacy senza timestamp non puo' svegliarsi giorni dopo
+
+
 def _check_close_all_flag(state: dict) -> bool:
-    """reset.flag = 'chiudi tutto': chiude ogni posizione al PREZZO DI MERCATO, con commissioni,
-    slippage e funding reali, e registra i trade nello storico. Se per un simbolo non c'e' un
-    prezzo la posizione resta aperta (meglio che inventare un'uscita) e l'esito lo dice."""
+    """reset.flag: chiusura PAPER a prezzo di mercato, mai su richiesta dimenticata.
+    Il protocollo storico non contiene un timestamp. Per le sole richieste PAPER,
+    usare l'mtime del flag; se troppo vecchio si scarta senza toccare le posizioni.
+    LIVE conserva il percorso precedente, senza cambiare l'esecuzione exchange.
+    """
     path = _flag("reset.flag")
     if not os.path.exists(path):
         return False
     try:
+        if not LIVE._live:
+            try:
+                age_s = time.time() - os.path.getmtime(path)
+            except OSError:
+                return False
+            if not (-60 <= age_s <= CLOSE_ALL_MAX_AGE_S):
+                _set_last_action(state, "close_all", False,
+                                 "richiesta di chiusura totale scaduta: ignorata; riprova dall'app")
+                save_state(state, STATE_FILE)
+                return False
         acc = make_account(state)
         if not acc.positions:
             _set_last_action(state, "close_all", True, "nessuna posizione aperta")

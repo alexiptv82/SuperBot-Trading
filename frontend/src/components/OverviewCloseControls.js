@@ -142,15 +142,18 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
       let r;
       if (confirm.all) {
         const api = portfolio === 'toro' ? bullAPI : deskAPI;
-        await api.closeAll();
-        r = { ok: true, message: 'Richiesta di chiusura totale inviata.' };
+        const { data } = await api.closeAll();
+        r = { ok: data?.ok === true && data?.queued === true,
+          message: data?.message || 'Il bot non ha confermato la presa in carico.' };
       } else {
         r = await closePositionRequest(portfolio === 'toro' ? 'bull' : 'hawk', confirm.symbol);
       }
       setMessage(r.ok ? 'Richiesta inviata. Il bot sta elaborando la chiusura.' : (r.message || 'Chiusura non riuscita.'));
       if (r.ok) onRefresh();
-    } catch (_) {
-      setMessage('Chiusura non riuscita. Verifica il bot e riprova.');
+    } catch (error) {
+      setMessage(error?.response?.status === 409
+        ? 'Il bot non risponde: nessuna chiusura inviata. Serve il processo PAPER di chiusura attivo.'
+        : 'Chiusura non riuscita. Verifica il bot e riprova.');
     } finally {
       locked.current = false;
       setBusy(false);
@@ -158,7 +161,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
     }
   };
   return <div style={{ marginTop: 8 }}>
-    {!canClose && <p style={MUTED}>Chiusura manuale non ancora disponibile su questo bot: le posizioni restano visibili.</p>}
+    {!canClose && <p style={MUTED}>Chiusura manuale non ancora disponibile su questo bot (processo spento oppure versione precedente). Le posizioni restano visibili: nessun comando viene accodato.</p>}
     {canClose && <button type="button" style={BTN} disabled={busy || !!pending.length} onClick={() => setConfirm({ all: true })}>Chiudi tutte ({positions.length})</button>}
     {positions.map(p => <div key={p.symbol} style={{ background:'#0e1a2d', padding:'12px', border:'1px solid #30465e', borderRadius:11, marginTop:9 }}>
       <strong>{p.symbol} · <span style={{ color:p.side === 1 ? '#4ade80' : '#fda4af' }}>{p.side === 1 ? 'LONG' : 'SHORT'}</span> · {p.leverage ?? '—'}×</strong>

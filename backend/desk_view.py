@@ -15,6 +15,7 @@ File letti dalla cartella dati:
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -22,6 +23,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 HEARTBEAT_FRESH_S = 300        # battito piu' vecchio di 5 minuti = bot offline
+CLOSE_WORKER_MAX_AGE_S = 60   # comandi di chiusura: serve un consumatore realmente attivo
+CLOSE_WORKER_MAX_FUTURE_S = 30 # un orologio troppo avanti non prova che il processo sia vivo
 STATE_FRESH_S = 75 * 60        # ripiego per bot vecchi senza heartbeat
 DEFAULT_START_EQUITY = 1000.0
 
@@ -267,7 +270,7 @@ def build_status(data_dir: str, portfolio: str, prices: Optional[dict] = None,
         "close_all_pending": os.path.exists(os.path.join(data_dir, "reset.flag")),
         "close_position_pending": close_pending(data_dir),
         "exec_mode": (hb or {}).get("exec_mode"),
-        "can_close_position": can_close_position(read_heartbeat(data_dir)),
+        "can_close_position": can_close_position(hb, now),
         # orari di trading e calendario macro: li calcola il bot, l'app mostra soltanto (assenti nei bot vecchi)
         "hours": (hb or {}).get("hours"),
         "macro": (hb or {}).get("macro"),
@@ -482,22 +485,46 @@ def command_resume(data_dir: str) -> dict:
 
 def command_close_all(data_dir: str) -> dict:
     positions = ((read_state(data_dir).get("main")) or {}).get("positions") or {}
+    if positions and not close_worker_ready(read_heartbeat(data_dir)):
+        return {"ok": False, "queued": False, "positions_found": len(positions),
+                "symbols": list(positions), "message": CLOSE_WORKER_OFFLINE_MESSAGE}
     if positions:
         _write_flag(data_dir, "reset.flag")
-    return {"queued": bool(positions), "positions_found": len(positions), "symbols": list(positions),
+    return {"ok": True, "queued": bool(positions), "positions_found": len(positions),
+            "symbols": list(positions),
             "message": (f"Chiusura inviata: {len(positions)} posizioni verranno chiuse a prezzo di mercato "
                         "entro pochi secondi." if positions else "Nessuna posizione aperta.")}
 
 
 CLOSE_OLD_BOT_MESSAGE = ("Il bot gira ancora con la versione precedente, che non sa chiudere una singola posizione. "
-                         "Il tasto si sblocca dopo la ridistribuzione dei bot (intanto resta Chiudi tutto).")
+                         "Il tasto si sblocca dopo la ridistribuzione dei bot.")
+CLOSE_WORKER_OFFLINE_MESSAGE = ("Il bot non sta rispondendo: nessuna chiusura inviata. "
+                                "Una richiesta lasciata sui vecchi dati potrebbe eseguirsi al prossimo riavvio. "
+                                "Serve il processo PAPER di chiusura attivo, anche se il trading e' in pausa.")
 
 
-def can_close_position(hb: Optional[dict]) -> bool:
-    """Il battito del bot dichiara `close_position` solo dalla versione che sa chiudere una singola posizione.
-    Con un bot piu' vecchio il comando resterebbe in un file e scatterebbe a caso dopo il prossimo aggiornamento:
-    meglio non accodarlo."""
-    return bool(hb and hb.get("close_position") is True)
+def close_worker_ready(hb: Optional[dict], now: Optional[float] = None) -> bool:
+    """Un vecchio heartbeat non prova che il bot consumera' il comando.
+
+    Non basta la presenza del file, ne' il flag pausa; heartbeat senza timestamp attendibile,
+    troppo vecchio o nel futuro viene rifiutato (fail closed). Per l'exit-only spento
+    occorre un processo separato e verificato, non un file che potrebbe scattare dopo.
+    """
+    if not isinstance(hb, dict) or type(hb.get("ts")) not in (str, int, float):
+        return False
+    try:
+        timestamp = float(hb["ts"])
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not math.isfinite(timestamp) or timestamp <= 0:
+        return False
+    age = (time.time() if now is None else now) - timestamp
+    return -CLOSE_WORKER_MAX_FUTURE_S <= age < CLOSE_WORKER_MAX_AGE_S
+
+
+def can_close_position(hb: Optional[dict], now: Optional[float] = None) -> bool:
+    """Solo una versione capace e con heartbeat recente puo' ricevere chiusure PAPER."""
+    return bool(close_worker_ready(hb, now) and hb.get("close_position") is True)
 
 
 def _read_close_request(data_dir: str) -> list:
@@ -535,7 +562,10 @@ def command_close_position(data_dir: str, symbol: str) -> tuple:
     sym = str(symbol or "").strip()
     if not sym or len(sym) > 24 or not all(c.isalnum() or c in "-_" for c in sym):
         return False, 400, {"ok": False, "message": "Simbolo non valido."}
-    if not can_close_position(read_heartbeat(data_dir)):
+    hb = read_heartbeat(data_dir)
+    if not close_worker_ready(hb):
+        return False, 409, {"ok": False, "message": CLOSE_WORKER_OFFLINE_MESSAGE}
+    if not can_close_position(hb):
         return False, 409, {"ok": False, "message": CLOSE_OLD_BOT_MESSAGE}
     positions = ((read_state(data_dir).get("main")) or {}).get("positions") or {}
     key = _find_position_key(positions, sym)

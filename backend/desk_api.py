@@ -99,9 +99,12 @@ def make_router(portfolio: str, data_dir: str, require_session, get_ticker) -> A
     @r.post("/close-all")
     async def close_all(session=Depends(require_session)):
         try:
-            return dv.command_close_all(data_dir)
+            result = dv.command_close_all(data_dir)
         except OSError as e:
             raise _flag_error(e)
+        if result.get("ok") is False:
+            raise HTTPException(status_code=409, detail=result["message"])
+        return result
 
     @r.post("/close-position")
     async def close_position(request: Request, session=Depends(require_session)):

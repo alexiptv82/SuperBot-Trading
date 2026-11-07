@@ -6,6 +6,7 @@ on:
       - work/v3-dashboard-unificata-chatgpt-20261105
       - work/v3-dashboard-chiudi-chatgpt-20261105
       - work/v3-release-candidate-gpt6-20261106
+      - work/v3-classic-close-offline-safety-20261107
   workflow_dispatch:
 
 permissions:
@@ -33,6 +34,10 @@ jobs:
           python -m pytest -q -rs -p no:cacheprovider backend/tests/test_v3_dashboard_manual_close.py | tee close-tests.log
           # La prova con il runner vero non deve essere saltata: uno skip qui conta come errore.
           if grep -qi "skipped" close-tests.log; then echo "ERRORE: test saltati"; exit 1; fi
+      - name: 'Classic close fail-closed: stopped bots cannot receive delayed flags'
+        env:
+          PYTHONPATH: .:backend
+        run: python -m pytest -q -p no:cacheprovider backend/tests/test_v3_classic_close_offline.py backend/tests/test_desk_view.py
       - name: Sintassi di server.py e dell'API (senza importare il runtime del bot)
         run: python -m py_compile backend/v3_api.py backend/server.py
   v3-suite:
