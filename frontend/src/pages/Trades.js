@@ -235,7 +235,7 @@ export default function Trades() {
         const isOpen = !!t._isOpen;
         const pnl = t.pnl;
         return (
-          <div key={`${isOpen ? 'o' : 'c'}-${t.symbol}-${t.id ?? ''}-${t.close_ms ?? t.open_ms ?? i}-${i}`} style={{
+          <div data-testid="trade-ticket" key={`${isOpen ? 'o' : 'c'}-${t.symbol}-${t.id ?? ''}-${t.close_ms ?? t.open_ms ?? i}-${i}`} style={{
             background: SURFACE, borderRadius: '12px', padding: '14px', marginBottom: '10px',
             border: `1px solid ${isOpen ? 'rgba(56,189,248,0.4)' : BORDER}`
           }}>
