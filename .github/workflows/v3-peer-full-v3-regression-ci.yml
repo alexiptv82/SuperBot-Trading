@@ -2,7 +2,6 @@ name: V3 entire PAPER regression after peer advisory (NO DEPLOY)
 on:
   push:
     branches: [work/v3-brain-peer-signal-advisory-20261107]
-    paths: ['.github/workflows/v3-peer-full-v3-regression-ci.yml']
   workflow_dispatch:
 permissions:
   contents: read
