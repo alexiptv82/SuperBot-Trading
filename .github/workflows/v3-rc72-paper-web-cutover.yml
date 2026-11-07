@@ -1,0 +1,92 @@
+name: RC72 Brain inside Classici and Trade PAPER web cutover (NO BOT RESTART)
+on:
+  push:
+    branches: [work/v3-rc72-safe-web-cutover-20261107]
+    paths: ['.github/workflows/v3-rc72-paper-web-cutover.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: superbot-rc72-authenticated-web-cutover
+  cancel-in-progress: false
+jobs:
+  paper-dashboard-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build final three-portfolio dashboard (same-origin HTTPS)
+        working-directory: frontend
+        env:
+          REACT_APP_BACKEND_URL: ''
+          CI: 'false'
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -s build/index.html
+      - name: Validate strict cutover script before touching Singapore
+        run: |
+          set -euo pipefail
+          python3 -m py_compile deploy/scripts/v3-rc72-three-wallet-web-cutover.py backend/server.py backend/v3/cutover_gate.py
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0,'.')
+          from backend.v3.cutover_gate import should_refuse_mutation as g
+          assert g('POST','/api/desk/close-all',readonly=True)
+          assert g('POST','/api/v3/brain/close-position',readonly=True)
+          assert not g('POST','/api/auth/login',readonly=True)
+          print('RC72_RELEASE_READONLY_GUARD=PASS')
+          PY
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          printf '%s\n' "$GITHUB_SHA" > rc72-commit.txt
+          tar --exclude='.env' --exclude='*.env' --exclude='__pycache__' \
+            -czf "$RUNNER_TEMP/rc72-release.tgz" \
+            Dockerfile backend frontend/build deploy/scripts/v3-rc72-web-cutover.py rc72-commit.txt
+          test -s "$RUNNER_TEMP/rc72-release.tgz"
+      - name: Upload candidate WITHOUT changing production, run independent dry-run and guarded cutover
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || { echo RC72_NO_SSH_SECRET; exit 2; }
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          chmod 700 "$tmp"
+          printf '%s\n' "$SG_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          chmod 600 "$tmp/key"
+          cat > "$tmp/known_hosts" <<'KH'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          chmod 600 "$tmp/known_hosts"
+          opts=(-i "$tmp/key" -o IdentitiesOnly=yes -o BatchMode=yes
+                -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts"
+                -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=20
+                -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+          ssh "${opts[@]}" root@51.79.205.82 \
+            'set -eu; umask 077; test ! -e /opt/superbot-v3-rc72-release; install -d -m 0700 /opt/superbot-v3-rc72-release; tar -xzf - -C /opt/superbot-v3-rc72-release' \
+            < "$RUNNER_TEMP/rc72-release.tgz"
+          # Required: dry-run must pass without writing to current application.
+          ssh "${opts[@]}" root@51.79.205.82 \
+            "python3 /opt/superbot-v3-rc72-release/deploy/scripts/v3-rc72-web-cutover.py --preflight-only --expected-commit $GITHUB_SHA"
+          # Explicit PAPER-only cutover, original auth DB reused, rollback on failed smoke.
+          ssh "${opts[@]}" root@51.79.205.82 \
+            "python3 /opt/superbot-v3-rc72-release/deploy/scripts/v3-rc72-web-cutover.py --paper-readonly-cutover --expected-commit $GITHUB_SHA"
+      - name: Public HTTPS smoke with NO authentication material
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE=https://superbot-trading.duckdns.org
+          html="$(curl -fsS --connect-timeout 8 --max-time 20 "$SITE/")"
+          test -n "$html"
+          code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 12 "$SITE/api/v3/overview")"
+          test "$code" = 401 || { echo RC72_PUBLIC_AUTH_CHECK_FAILED; exit 2; }
+          mode="$(curl -fsS --max-time 12 "$SITE/api/health")"
+          echo "$mode" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="paper"; print("RC72_PUBLIC_PAPER_BACKEND_PASS=True")'
+          echo RC72_PUBLIC_HTTPS_FRONTEND_PASS=True
+          echo RC72_PUBLIC_PROTECTED_API_401_PASS=True
