@@ -16,10 +16,10 @@ const closed = {
 };
 const fixture = {
   overview: { generated_at_ms: now, portfolios: [
-    {id:'falco',kind:'classic',state:'running',open_positions:1,positions:[position],
+    {id:'falco',kind:'classic',state:'running',open_positions:1,can_close_position:true,positions:[position],
       closed_trades:[closed],realized_pnl:'11',unrealized_pnl:'8',margin_in_use:'200',
       equity:'1019',day_pnl:'11',total_closed:1,win_rate:'100'},
-    {id:'toro',kind:'classic',state:'paused',open_positions:1,positions:[{...position,symbol:'SOLUSDT'}],
+    {id:'toro',kind:'classic',state:'paused',open_positions:1,can_close_position:true,positions:[{...position,symbol:'SOLUSDT'}],
       closed_trades:[{...closed,symbol:'ADAUSDT'}],realized_pnl:'11',unrealized_pnl:'8',margin_in_use:'200',
       equity:'1019',day_pnl:'11',total_closed:1,win_rate:'100'},
     {id:'brain',kind:'brain',state:'running',open_positions:1,realized_pnl:'11',
