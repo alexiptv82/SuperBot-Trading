@@ -1,3 +1,9 @@
+## 07/11/2026 — RC80 revisione indipendente ChatGPT: REQUEST CHANGES, stop NON pronto
+
+**PR #77** Draft su `cursor/rc80-paper-stop-hardening-31c4` @ `9dedf5dc9ea0586e854afc59ebc050f9574f62c0`; base PR #75 invariata. Sei file; 56 test locali dichiarati da Grok, **nessuna CI GitHub verificata**. Review statica con 4 rilievi e un esperimento isolato sul lock: [commento PR #77](https://github.com/alexiptv82/SuperBot-Trading/pull/77#issuecomment-6713923063), [diario dettagliato](diario/2026-11-07_chatgpt-rc80-review-indipendente.md). P0 controllo FD path non prova lock realmente tenuto; P0 storico e claim `symbol,id` confondono run e chiusure parziali; P1 candela non necessariamente chiusa e protezione close-only ignora wick; P1 allarme/dashboard/health ancora da certificare. Correzione chiesta a Grok nel proprio ramo senza modificare #75/#76. **NO merge/deploy/riavvio/operazioni VPS**, monitor OFF. Ultimo audit certificato RC77: Falco/Toro 0 PAPER aperte, Brain PAUSED, backup locale restore PASS, off-host non certificato.
+
+---
+
 ## 07/11/2026 — RC79: post-trade review READ-ONLY isolato, PR #76 in bozza
 
 **FATTO OFFLINE:** [PR #76](https://github.com/alexiptv82/SuperBot-Trading/pull/76) su `cursor/rc79-post-trade-readonly-chatgpt`, derivata dal codice RC77 ma separata dalla [PR #75 / RC78](https://github.com/alexiptv82/SuperBot-Trading/pull/75). Nuovo modulo puro `backend/v3/observability/post_trade_review.py` e test: **15 PASS locali**, non CI remota. Aggregazione multi-fill per wallet/run/id/open_ms, confronto ARB cross-wallet, costi e gross/net solo se disponibili, rilevamento perdite oltre margine, stop verificato solo da fonte e verdict prudente `evidenza_insufficiente` senza percorso prezzo affidabile. Nessun adapter Brain collegato ancora, nessuna UI e nessun apprendimento automatico. 
