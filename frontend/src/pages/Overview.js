@@ -89,8 +89,12 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         {p.id === 'brain' && stoppedReason && <p style={{ color: '#fda4af', fontSize: 13 }}>{stoppedReason}</p>}
         {p.kind === 'classic' && <>
           <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · {p.id === 'falco' ? 'Falco' : 'Toro'}</h3>
+          {p.close_worker_mode === 'exit_only' && <div style={{ ...MUTED, color: '#7dd3fc', marginBottom: 8 }}>
+            Modalità solo chiusure PAPER · nessun nuovo ingresso</div>}
           <ClassicCloseControls portfolio={p.id} positions={p.positions || []}
-            canClose={p.can_close_position === true} pending={p.close_pending || []} onRefresh={onRefresh} />
+            canClose={p.can_close_position === true} pending={p.close_pending || []}
+            allPending={p.close_all_pending === true} lastAction={p.last_action}
+            onRefresh={onRefresh} />
           <details style={{ marginTop:14 }}>
             <summary style={{ color:'#7dd3fc', cursor:'pointer', fontWeight:700, fontSize:13 }}>Ultimi trade chiusi ({(p.closed_trades || []).length})</summary>
             {(p.closed_trades || []).length === 0 && <p style={MUTED}>Ancora nessun trade chiuso nella nuova run.</p>}

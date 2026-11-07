@@ -127,17 +127,64 @@ export function BrainCloseControls({ positions = [], serverPending = false, onRe
   </div>;
 }
 
-export function ClassicCloseControls({ portfolio, positions = [], canClose = false, pending = [], onRefresh = () => {} }) {
+export function ClassicCloseControls({ portfolio, positions = [], canClose = false, pending = [],
+  allPending = false, lastAction = null, onRefresh = () => {} }) {
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [awaiting, setAwaiting] = useState(null);
   const locked = useRef(false);
-  if (!positions.length) return <p style={MUTED}>Nessuna posizione aperta nella nuova run.</p>;
+  const refreshRef = useRef(onRefresh);
+  refreshRef.current = onRefresh;
+
+  useEffect(() => {
+    if (!awaiting) return undefined;
+    let active = true;
+    let polling = false;
+    const poll = async () => {
+      if (!active || polling) return;
+      if (Date.now() - awaiting.at_ms >= 60000) {
+        setMessage('Nessuna conferma di chiusura ricevuta: aggiorna lo stato del portafoglio.');
+        setAwaiting(null);
+        return;
+      }
+      polling = true;
+      try {
+        const { data } = await API.get('/api/v3/overview');
+        const portfolioData = (data?.portfolios || []).find(p => p.id === portfolio);
+        const action = portfolioData?.last_action;
+        if (active && action?.type === awaiting.type &&
+            Number.isFinite(Number(action.ts)) && Number(action.ts) >= awaiting.at_ms) {
+          setMessage(action.ok
+            ? ('Chiusura PAPER confermata: ' + (action.detail || 'operazione registrata.'))
+            : ('Chiusura NON eseguita: ' + (action.detail || 'controlla il bot.')));
+          setAwaiting(null);
+          refreshRef.current();
+        }
+      } catch (_) {
+        // Network errors are retried for up to one minute: never invent success.
+      } finally {
+        polling = false;
+      }
+    };
+    const timer = setInterval(poll, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [awaiting, portfolio]);
+
+  const blocked = busy || !!pending.length || allPending || !!awaiting;
+  const result = (lastAction && ['close_all', 'close_position'].includes(lastAction.type))
+    ? lastAction : null;
+  if (!positions.length) return <div>
+    <p style={MUTED}>Nessuna posizione aperta.</p>
+    {result && <p role="status" style={{ ...MUTED, color: result.ok ? '#4ade80' : '#fda4af' }}>
+      Ultima chiusura: {result.detail || (result.ok ? 'eseguita' : 'non eseguita')}</p>}
+  </div>;
   const send = async () => {
     if (locked.current || !confirm) return;
     locked.current = true;
     setBusy(true);
     setMessage('');
+    const initiatedAt = Date.now(); // before POST: a fast worker can finish before HTTP returns
     try {
       let r;
       if (confirm.all) {
@@ -148,8 +195,12 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
       } else {
         r = await closePositionRequest(portfolio === 'toro' ? 'bull' : 'hawk', confirm.symbol);
       }
-      setMessage(r.ok ? 'Richiesta inviata. Il bot sta elaborando la chiusura.' : (r.message || 'Chiusura non riuscita.'));
-      if (r.ok) onRefresh();
+      setMessage(r.ok ? 'Richiesta inviata, attendo conferma della chiusura PAPER.'
+        : (r.message || 'Chiusura non riuscita.'));
+      if (r.ok) {
+        setAwaiting({ type: confirm.all ? 'close_all' : 'close_position', at_ms: initiatedAt });
+        onRefresh();
+      }
     } catch (error) {
       setMessage(error?.response?.status === 409
         ? 'Il bot non risponde: nessuna chiusura inviata. Serve il processo PAPER di chiusura attivo.'
@@ -162,7 +213,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
   };
   return <div style={{ marginTop: 8 }}>
     {!canClose && <p style={MUTED}>Chiusura manuale non ancora disponibile su questo bot (processo spento oppure versione precedente). Le posizioni restano visibili: nessun comando viene accodato.</p>}
-    {canClose && <button type="button" style={BTN} disabled={busy || !!pending.length} onClick={() => setConfirm({ all: true })}>Chiudi tutte ({positions.length})</button>}
+    {canClose && <button type="button" style={BTN} disabled={blocked} onClick={() => setConfirm({ all: true })}>Chiudi tutte ({positions.length})</button>}
     {positions.map(p => <div key={p.symbol} style={{ background:'#0e1a2d', padding:'12px', border:'1px solid #30465e', borderRadius:11, marginTop:9 }}>
       <strong>{p.symbol} · <span style={{ color:p.side === 1 ? '#4ade80' : '#fda4af' }}>{p.side === 1 ? 'LONG' : 'SHORT'}</span> · {p.leverage ?? '—'}×</strong>
       {p.trade_type && <span style={{ display:'block', ...MUTED }}>Tipo: {p.trade_type}</span>}
@@ -173,7 +224,7 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
       <div style={{ fontSize:13, fontWeight:700, color:p.price == null || p.unrealized_pnl == null ? '#a8bacd' : String(p.unrealized_pnl).startsWith('-') ? '#fda4af' : '#4ade80' }}>
         P&L {p.price == null || p.unrealized_pnl == null ? '—' : `${p.unrealized_pnl} USDT`} · ROI {p.price == null || p.roi_pct == null ? '—' : `${p.roi_pct}%`}
       </div>
-      {canClose && <button type="button" style={{ ...BTN, marginTop:8 }} disabled={busy || !!pending.length}
+      {canClose && <button type="button" style={{ ...BTN, marginTop:8 }} disabled={blocked}
         onClick={() => setConfirm({ symbol: p.symbol })}>Chiudi {p.symbol}</button>}
     </div>)}
     {canClose && confirm && <div role="dialog" aria-label={`Conferma chiusura ${portfolio}`} style={{ padding: 10, border: '1px solid #fda4af', borderRadius: 8 }}>
@@ -181,7 +232,10 @@ export function ClassicCloseControls({ portfolio, positions = [], canClose = fal
       <button type="button" style={BTN} onClick={send} disabled={busy}>Chiudi</button>{' '}
       <button type="button" style={{ ...BTN, background: 'transparent' }} disabled={busy} onClick={() => setConfirm(null)}>Annulla</button>
     </div>}
-    {!!pending.length && <p style={MUTED}>Chiusura in corso: elaborazione dal bot.</p>}
+    {(!!pending.length || allPending || !!awaiting) &&
+      <p style={MUTED}>Chiusura in corso: aspetto la registrazione del risultato.</p>}
     {message && <p role="status" style={MUTED}>{message}</p>}
+    {result && <p role="status" style={{ ...MUTED, color: result.ok ? '#4ade80' : '#fda4af' }}>
+      Ultima chiusura: {result.detail || (result.ok ? 'eseguita' : 'non eseguita')}</p>}
   </div>;
 }
