@@ -49,7 +49,12 @@ test('Falco, Toro and Brain have the same visible wallet metrics, positions and 
       'Trade aperti','Ultimi']) {
       expect(card.textContent).toContain(label);
     }
-    expect(card.querySelector('button').textContent).toContain('Chiudi tutte');
+    if (card === cards[2]) {
+      expect(card.textContent).toContain('Chiudi ora');
+      expect(card.textContent).not.toContain('Chiudi tutte');
+    } else {
+      expect(card.querySelector('button').textContent).toContain('Chiudi tutte');
+    }
     expect(card.querySelectorAll('details').length).toBe(1);
     expect(card.textContent).toContain('LONG');
     expect(card.textContent).toContain('25×');
