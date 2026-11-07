@@ -37,6 +37,7 @@ from backend.v3.brain_f2.reviewer import Reviewer
 from backend.v3.brain_market.params import MarketViewParams
 from backend.v3.brain_market.view import regime_for_context
 from backend.v3.dashboard import PortfolioSummary, build_summary
+from backend.v3.brain_market.classic_peers import validate_peer_signal
 from backend.v3.events import EventJournal
 from backend.v3.executor.paper import ExecutionError, execute_paper
 from backend.v3.features.indicators import Bar
@@ -125,7 +126,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     slippage_bps: int, allowed_strategy_ids: Iterable[str] = (),
                     price_source: Optional[Callable[[str, int], Decimal]] = None,
                     rotate: int = 0, open_commit: Optional[Callable[[BrainDecision], object]] = None,
-                    require_open_commit: bool = False) -> CycleReport:
+                    require_open_commit: bool = False,
+                    peer_source: Optional[Callable[[str, int], Mapping]] = None) -> CycleReport:
     """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare)."""
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
@@ -189,7 +191,19 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 run_id=run_id, policy_mandate=dict(mandate) if mandate is not None else None,
                 policy_verifier=policy_verifier, allowed_strategy_ids=allowed)
             engine.open_positions = [{"symbol": p.symbol, "side": p.side} for p in summary.open_positions]
-            context = MarketContext(symbol, price, now_ms, regime)
+            peers: Mapping = {}
+            if peer_source is not None:
+                try:
+                    candidate = peer_source(symbol, now_ms)
+                    if type(candidate) is dict:
+                        peers = candidate
+                except Exception:
+                    peers = {}  # no data, never an AI override
+            context = MarketContext(
+                symbol, price, now_ms, regime,
+                falco_signal=validate_peer_signal(peers.get("falco"), "falco", symbol, now_ms),
+                toro_signal=validate_peer_signal(peers.get("toro"), "toro", symbol, now_ms))
+
             decision = engine.step(context, 0.0)
             decisions.append((symbol, decision.kind.value, decision.status.value, decision.rationale))
             if decision.kind == DecisionKind.OPEN and decision.status == ProposalStatus.APPROVED:

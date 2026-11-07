@@ -22,8 +22,9 @@ from backend.v3.brain_view.view import build_scoreboard
 from backend.v3.brain_market.params import MarketViewParams
 from backend.v3.brain_market.view import build_market_view
 from backend.v3.outcomes import REGIMES
+from backend.v3.brain_market.classic_peers import validate_peer_signal
 
-SYSTEM_PROMPT = 'Return only JSON. Either {"kind":"NO_TRADE"} or {"kind":"OPEN","side":1 or -1,"entry_price":"100","stop_price":"99","leverage":2,"confidence":0.7,"strategy_id":"S07","strategy_origin":"library"}. strategy_id is an id from the strategies list (strategy_origin library) or your own name starting with AI_ (strategy_origin ai_proposed). The market object gives, for each timeframe, indicators computed on closed candles only: distances are in basis points of the last close, atr_bp is the average true range, regime is the classifier label. A timeframe whose status is not ok has no data. The scoreboard shows the measured net result, in basis points after costs, of your own past closed trades in the current regime, per strategy and side. Status positive or negative means measured with confidence. Status inconclusive or insufficient means not yet known, not bad. Choose a strategy whose conditions the market shows, prefer strategies measured positive, avoid those measured negative, and you may try unmeasured ones to learn. No tools, no market orders, no execution authority.'
+SYSTEM_PROMPT = 'Return only JSON. Either {"kind":"NO_TRADE"} or {"kind":"OPEN","side":1 or -1,"entry_price":"100","stop_price":"99","leverage":2,"confidence":0.7,"strategy_id":"S07","strategy_origin":"library"}. strategy_id is an id from the strategies list (strategy_origin library) or your own name starting with AI_ (strategy_origin ai_proposed). The market object gives, for each timeframe, indicators computed on closed candles only: distances are in basis points of the last close, atr_bp is the average true range, regime is the classifier label. A timeframe whose status is not ok has no data. The scoreboard shows the measured net result, in basis points after costs, of your own past closed trades in the current regime, per strategy and side. Status positive or negative means measured with confidence. Status inconclusive or insufficient means not yet known, not bad. Choose a strategy whose conditions the market shows, prefer strategies measured positive, avoid those measured negative, and you may try unmeasured ones to learn. If the optional peer_paper_positions field is present, it contains read-only observations of Falco and Toro PAPER positions, NOT recommendations, predictions or orders. A position may be stale or absent. Do not copy a peer trade automatically; derive your own LONG/SHORT/NO_TRADE from verified market data and strategy evidence. No tools, no market orders, no execution authority.'
 
 
 class DeepSeekL5Analyst(Analyst):
@@ -80,7 +81,17 @@ class DeepSeekL5Analyst(Analyst):
             "open_position_count": count, "market": market,
             "scoreboard": scoreboard, "strategies": menu_payload(self.menu),
         }
+        peer_positions = {}
+        for key, item in (("falco", context.falco_signal), ("toro", context.toro_signal)):
+            valid = validate_peer_signal(item, key, context.symbol, context.timestamp_ms)
+            if valid is not None:
+                peer_positions[key] = valid
+        if peer_positions:
+            info["peer_paper_positions"] = peer_positions
         info_json = json.dumps(info, sort_keys=True)
+        sources = ["deepseek:analysis"] + [
+            key + ":paper_position_observation" for key in ("falco", "toro")
+            if key in peer_positions]
         payload = {
             "model": self.model, "stream": False, "max_tokens": self.max_tokens,
             "response_format": {"type": "json_object"},
@@ -101,7 +112,7 @@ class DeepSeekL5Analyst(Analyst):
             obj = _json_object(choice["message"]["content"])
             if obj.get("kind") == "NO_TRADE" and set(obj) == {"kind"}:
                 return BrainDecision(kind=DecisionKind.NO_TRADE, rationale="deepseek:analysis",
-                                     sources=["deepseek:analysis"],
+                                     sources=sources,
                                      occurred_at_ms=context.timestamp_ms)
             keys = {"kind", "side", "entry_price", "stop_price", "leverage", "confidence"}
             labelled_keys = keys | {"strategy_id", "strategy_origin"}
@@ -127,7 +138,7 @@ class DeepSeekL5Analyst(Analyst):
                 strategy_origin=obj["strategy_origin"] if labelled else None,
             )
             return BrainDecision(kind=DecisionKind.OPEN, proposal=proposal,
-                                 rationale="deepseek:analysis", sources=["deepseek:analysis"],
+                                 rationale="deepseek:analysis", sources=sources,
                                  occurred_at_ms=context.timestamp_ms)
         except Exception:
             raise ProviderUnavailable("invalid_model_output") from None
