@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { deskAPI, bullAPI, errMsg } from '../api';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import API, { deskAPI, bullAPI, errMsg } from '../api';
+import { PAPER_PORTFOLIOS, brainClosedTrades, brainOpenTrades } from '../brainWallet';
 import { fmtDateTime, fmtDuration, signed, pnlColor } from '../deskUi';
 
 const PAGE_SIZE = 100;
@@ -17,6 +18,12 @@ const REASON = {
   'liquidazione': 'LIQUIDAZIONE',
   'chiusura Claude': 'USCITA DEL BOT',
   'chiusura manuale': 'CHIUSURA MANUALE',
+  'manual': 'CHIUSURA MANUALE',
+  'manual_close': 'CHIUSURA MANUALE',
+  'take_profit': 'TAKE PROFIT',
+  'stop_loss': 'STOP LOSS',
+  'liquidation': 'LIQUIDAZIONE',
+  'brain_close': 'USCITA BRAIN',
 };
 const reasonLabel = (r) => REASON[r] || (r ? String(r).toUpperCase().slice(0, 22) : 'CHIUSO');
 
@@ -32,10 +39,15 @@ const Chip = ({ active, onClick, children }) => (
 const price = (v) => (v == null || isNaN(v)) ? '--' : Number(v).toFixed(Number(v) < 1 ? 5 : 2);
 
 export default function Trades() {
-  const [portfolio, setPortfolio] = useState('hawk');
+  const [portfolio, setPortfolio] = useState(() => new URLSearchParams(window.location.search).get('portfolio') === 'brain' ? 'brain' : 'hawk');
+  const activePortfolio = useRef(portfolio);
+  activePortfolio.current = portfolio;
   const [closed, setClosed] = useState([]);       // chiusi (storico)
   const [open, setOpen] = useState([]);           // aperti, con P&L live
-  const [meta, setMeta] = useState(null);         // stato del bot
+  const [meta, setMeta] = useState(null);
+  const [brainCounts, setBrainCounts] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [pageBusy, setPageBusy] = useState(false);         // stato del bot
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [symbolFilter, setSymbolFilter] = useState('all');
@@ -45,8 +57,30 @@ export default function Trades() {
   const load = useCallback(async (pf, quiet = false) => {
     if (!quiet) setLoading(true);
     try {
+      if (pf === 'brain') {
+        const [tradesResponse, overviewResponse] = await Promise.all([
+          API.get(`/api/v3/brain/trades?limit=${PAGE_SIZE}&offset=0`),
+          API.get('/api/v3/overview'),
+        ]);
+        if (activePortfolio.current !== pf) return;
+        const details = tradesResponse.data || {};
+        const wallet = (overviewResponse.data?.portfolios || []).find(p => p.id === 'brain');
+        setClosed(brainClosedTrades(details.closed_trades));
+        setOpen(brainOpenTrades(details.open_positions));
+        setMeta({ total_closed: details.total_closed ?? wallet?.total_closed ?? null,
+          realized_pnl: wallet?.realized_pnl ?? null, state: wallet?.state || 'not_started' });
+        setBrainCounts({ win_count: details.win_count ?? null,
+          loss_count: details.loss_count ?? null,
+          break_even_count: details.break_even_count ?? null });
+        setHasMore(details.has_more === true);
+        setError('');
+        return;
+      }
       const api = apiFor(pf);
       const [histRes, statusRes] = await Promise.all([api.getTrades(PAGE_SIZE), api.getStatus()]);
+      if (activePortfolio.current !== pf) return;
+      setBrainCounts(null);
+      setHasMore(false);
       setClosed(Array.isArray(histRes.data) ? histRes.data : []);
       const st = statusRes.data || {};
       setMeta(st);
@@ -59,19 +93,40 @@ export default function Trades() {
       })) : []);
       setError('');
     } catch (e) {
-      setError(`Impossibile leggere i trade: ${errMsg(e)}`);
+      if (activePortfolio.current === pf) setError(`Impossibile leggere i trade: ${errMsg(e)}`);
     } finally {
       if (!quiet) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    setClosed([]); setOpen([]); setMeta(null);
+    setClosed([]); setOpen([]); setMeta(null); setBrainCounts(null); setHasMore(false);
     setSymbolFilter('all');
     load(portfolio);
     const t = setInterval(() => load(portfolio, true), 15000);   // il P&L dei trade aperti si aggiorna da solo
     return () => clearInterval(t);
   }, [portfolio, load]);
+
+  const loadMore = async () => {
+    if (portfolio !== 'brain' || pageBusy || !hasMore) return;
+    const offset = closed.length;
+    setPageBusy(true);
+    try {
+      const r = await API.get(`/api/v3/brain/trades?limit=${PAGE_SIZE}&offset=${offset}`);
+      if (activePortfolio.current !== 'brain') return;
+      const items = brainClosedTrades(r.data?.closed_trades);
+      setClosed(before => {
+        // A prior polling refresh can replace earlier pages. Avoid duplicates by id.
+        const ids = new Set(before.map(t => t.position_id));
+        return [...before, ...items.filter(t => !ids.has(t.position_id))];
+      });
+      setHasMore(r.data?.has_more === true);
+    } catch (err) {
+      if (activePortfolio.current === 'brain') setError(`Storico non caricato: ${errMsg(err)}`);
+    } finally {
+      setPageBusy(false);
+    }
+  };
 
   const allTrades = useMemo(() => [...open, ...closed], [open, closed]);
 
@@ -91,8 +146,14 @@ export default function Trades() {
     return true;
   });
 
-  const openPnl = open.reduce((a, t) => a + (t.pnl || 0), 0);
-  const closedNet = closed.reduce((a, t) => a + (t.pnl || 0), 0);
+  const openPnl = open.some(t => t.pnl == null) ? null : open.reduce((a, t) => a + t.pnl, 0);
+  const closedNet = closed.some(t => t.pnl == null) ? null : closed.reduce((a, t) => a + t.pnl, 0);
+  const fullNet = portfolio === 'brain' && meta?.realized_pnl != null
+    ? Number(meta.realized_pnl) : closedNet;
+  const winCount = portfolio === 'brain' ? brainCounts?.win_count
+    : (meta?.total_closed > closed.length ? null : closed.filter(t => t.pnl != null && t.pnl > 0).length);
+  const lossCount = portfolio === 'brain' ? brainCounts?.loss_count
+    : (meta?.total_closed > closed.length ? null : closed.filter(t => t.pnl != null && t.pnl < 0).length);
 
   return (
     <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
@@ -100,8 +161,8 @@ export default function Trades() {
 
       {/* Portafoglio */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', background: SURFACE, borderRadius: '12px', padding: '4px', border: `1px solid ${BORDER}` }}>
-        {[['hawk', '🦅 Falco', ACCENT], ['bull', '🐂 Toro', '#7c3aed']].map(([id, label, color]) => (
-          <button key={id} onClick={() => setPortfolio(id)} style={{
+        {PAPER_PORTFOLIOS.map(({id,label,color}) => (
+          <button key={id} type="button" aria-pressed={portfolio === id} onClick={() => setPortfolio(id)} style={{
             flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
             background: portfolio === id ? color : 'transparent',
             color: portfolio === id ? '#fff' : MUTED, fontWeight: 'bold', cursor: 'pointer', fontSize: '13px',
@@ -114,15 +175,29 @@ export default function Trades() {
         <div style={{ flex: 1, background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: '10px', padding: '8px 10px', textAlign: 'center' }}>
           <div style={{ fontSize: '10px', color: MUTED }}>Aperti ora</div>
           <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{open.length}</div>
-          <div style={{ fontSize: '11px', color: pnlColor(openPnl) }}>{signed(openPnl)}$ latente</div>
+          <div style={{ fontSize: '11px', color: pnlColor(openPnl) }}>{openPnl == null ? '— · prezzo mancante' : signed(openPnl)+'$ latente'}</div>
         </div>
         <div style={{ flex: 1, background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: '10px', padding: '8px 10px', textAlign: 'center' }}>
           <div style={{ fontSize: '10px', color: MUTED }}>Chiusi{meta?.total_closed > closed.length ? ` (ultimi ${closed.length})` : ''}</div>
           <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{meta?.total_closed ?? closed.length}</div>
-          <div style={{ fontSize: '11px', color: pnlColor(closedNet) }}>{signed(closedNet)}$ netto</div>
+          <div style={{ fontSize: '11px', color: pnlColor(fullNet) }}>{fullNet == null || !Number.isFinite(fullNet) ? '—' : signed(fullNet)+'$ netto'}{portfolio === 'brain' ? ' · run Brain' : ''}</div>
         </div>
       </div>
 
+      {(winCount != null || lossCount != null) && <div style={{ display:'flex',gap:8,marginBottom:12 }}>
+        <div style={{ flex:1,background:SURFACE,border:`1px solid ${BORDER}`,borderRadius:10,padding:10,textAlign:'center' }}>
+          <div style={{fontSize:11,color:MUTED}}>Vincenti</div>
+          <strong style={{color:'#4ade80'}}>{winCount ?? '—'}</strong>
+        </div>
+        <div style={{ flex:1,background:SURFACE,border:`1px solid ${BORDER}`,borderRadius:10,padding:10,textAlign:'center' }}>
+          <div style={{fontSize:11,color:MUTED}}>Perdenti</div>
+          <strong style={{color:'#f87171'}}>{lossCount ?? '—'}</strong>
+        </div>
+      </div>}
+      {portfolio === 'brain' && <p style={{ color:MUTED,fontSize:11,marginBottom:12 }}>
+        Run Brain V3 indipendente · {meta?.state === 'not_started' ? 'non avviata' : 'solo PAPER'}.
+        {meta?.total_closed > closed.length ? ` Visualizzati ${closed.length} di ${meta.total_closed} chiusi; carica altri per consultarli tutti.` : ''}
+      </p>}
       {error && (
         <div style={{ marginBottom: '12px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(220,38,38,0.1)', color: '#fca5a5', fontSize: '12px' }}>
           {error}
@@ -224,6 +299,11 @@ export default function Trades() {
         );
       })}
 
+      {portfolio === 'brain' && hasMore && <button onClick={loadMore} disabled={pageBusy}
+        style={{ width:'100%',padding:12,borderRadius:10,border:`1px solid ${BORDER}`,
+          color:ACCENT,background:SURFACE,fontWeight:'bold',marginBottom:10,cursor:'pointer' }}>
+        {pageBusy ? 'Caricamento storico...' : 'Carica altri trade Brain'}
+      </button>}
       <button onClick={() => load(portfolio)} disabled={loading} style={{
         width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${BORDER}`,
         background: 'none', color: MUTED, fontWeight: 'bold',
