@@ -534,13 +534,13 @@ def test_router_close_position_answers_409_404_and_queues():
         def call(body):
             return asyncio.run(_handler(router, "/close-position", "POST")(request=Req(body), session=None))
 
-        _write_hb(d)
+        _write_hb(d, ts=time.time())
         try:
             call({"symbol": "BTC"})
             raise AssertionError("doveva rifiutare: bot vecchio")
         except Exception as e:
             assert getattr(e, "status_code", None) == 409
-        _write_hb(d, close_position=True)
+        _write_hb(d, close_position=True, ts=time.time())
         try:
             call({"symbol": "SOL"})
             raise AssertionError("doveva rifiutare: nessuna posizione")
