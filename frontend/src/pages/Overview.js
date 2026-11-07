@@ -99,6 +99,8 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
               <div style={{ ...MUTED, color:pnlColor(t.realized_pnl) }}>P&L netto {money(t.realized_pnl)}</div>
               <div style={MUTED}>Entrata {field(t.entry)} · Uscita {field(t.exit)} · Margine {money(t.margin)}</div>
               <div style={MUTED}>{t.partial ? 'Chiusura parziale · ' : ''}{field(t.close_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
+              {t.manual_learning === 'profit_protection_example' && <div style={{ ...MUTED, color:'#4ade80' }}>Profitto protetto manualmente · esempio per AI, non strategia convalidata</div>}
+              {t.manual_learning === 'loss_reduction_example' && <div style={MUTED}>Uscita manuale in perdita · esempio per AI</div>}
             </div>)}
           </details>
           <a href="/classic" style={{ display:'inline-block', color:'#7dd3fc', fontSize:12, marginTop:13 }}>Apri la dashboard classica completa</a>
@@ -164,6 +166,8 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         <div style={MUTED}>Ingresso {field(t.entry)} · Uscita {field(t.exit)} · Margine {money(t.margin)}</div>
         <div style={MUTED}>{t.regime || 'Regime sconosciuto'} · {brainExitReason(t.exit_reason)} · {ageText(t.closed_at_ms, nowMs)}</div>
         <div style={MUTED}>Commissioni {money(t.fees)} · Durata {t.hold_ms == null ? '—' : `${Math.round(t.hold_ms / 60000)} min`}</div>
+        {t.manual_learning === 'profit_protection_example' && <div style={{ ...MUTED, color:'#4ade80' }}>Profitto protetto manualmente · esempio per AI, non strategia convalidata</div>}
+        {t.manual_learning === 'loss_reduction_example' && <div style={MUTED}>Uscita manuale in perdita · esempio per AI</div>}
       </div>)}
     </section>
   </main>;
