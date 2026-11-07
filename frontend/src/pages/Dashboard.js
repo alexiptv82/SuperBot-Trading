@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { deskAPI, bullAPI, errMsg } from '../api';
+import API, { deskAPI, bullAPI, errMsg } from '../api';
+import { PAPER_PORTFOLIOS, brainWalletSummary } from '../brainWallet';
+import { BrainCloseControls, PortfolioTradeFields } from '../components/OverviewCloseControls';
 import { fmtClock, fmtDateTime, fmtDuration, signed, pnlColor, botState, macroNote } from '../deskUi';
 import ChartModal from '../components/ChartModal';
 import Salvadanaio from '../components/Salvadanaio';
@@ -185,7 +187,7 @@ function StateBanner({ status, isBull }) {
 }
 
 // Sezione KPI per un portafoglio
-function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume, onClosePosition }) {
+function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume, onClosePosition, readOnly = false }) {
   const isBull = portfolio === 'bull';
 
   if (!status) return (
@@ -204,11 +206,11 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
   const positions = Array.isArray(status.positions) ? status.positions : [];
   const nOpen = positions.length;
   const mode = status.bot_mode;                       // running | draining | paused
-  const canPause = mode === 'running' && !busy;
-  const canStart = (mode === 'draining' || mode === 'paused') && !busy;
+  const canPause = mode === 'running' && !busy && !readOnly;
+  const canStart = (mode === 'draining' || mode === 'paused') && !busy && !readOnly;
   // Tasto "Chiudi ora" su ogni posizione: solo se il bot di adesso lo sa fare (il battito lo dichiara) ed e' acceso.
   // Con il bot in paper la posizione e' finta: si chiude solo nel simulatore, nessun ordine su BitGet.
-  const closer = status.can_close_position && status.bot_online !== false && onClosePosition
+  const closer = !readOnly && status.can_close_position && status.bot_online !== false && onClosePosition
     ? { pending: status.close_position_pending || [], onClose: onClosePosition, simulated: status.exec_mode !== 'live' } : null;
 
   const budgetSpent = status.budget_spent_usd ?? 0;
@@ -270,6 +272,9 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
       </div>
 
       {/* Stato del bot e comandi */}
+      {readOnly && <Card style={{ marginBottom:12, borderColor:'#fbbf24', color:'#fbbf24', fontSize:12 }}>
+        Collaudo PAPER in sola lettura: avvio, pausa e chiusure manuali temporaneamente bloccati.
+      </Card>}
       <StateBanner status={status} isBull={isBull} />
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
@@ -331,13 +336,13 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
       {/* Chiudi tutto */}
       {nOpen > 0 && (
         <button
-          disabled={busy === 'close'}
+          disabled={readOnly || busy === 'close'}
           onClick={onCloseAll}
           style={{
             width: '100%', padding: '10px', borderRadius: '10px', marginBottom: '12px',
             border: '1px solid #dc2626', background: 'rgba(220,38,38,0.1)',
             color: '#fca5a5', fontWeight: 'bold', fontSize: '13px',
-            cursor: busy === 'close' ? 'not-allowed' : 'pointer', opacity: busy === 'close' ? 0.6 : 1,
+            cursor: readOnly || busy === 'close' ? 'not-allowed' : 'pointer', opacity: readOnly || busy === 'close' ? 0.6 : 1,
           }}
         >
           {busy === 'close' ? '⏳ Chiusura…' : `🔒 Chiudi subito tutte le posizioni (${nOpen}) a prezzo di mercato`}
@@ -419,6 +424,848 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
       )}
     </>
   );
+}
+
+function BrainPortfolioSection({ wallet, rawTrades, readOnly, onRefresh }) {
+  if (!wallet) return <Card style={{ marginBottom:16, textAlign:'center', color:'#94a3b8' }}>
+    Brain V3: dati del portafoglio non ancora disponibili.
+  </Card>;
+  const nOpen = wallet.positions.length;
+  const money = (value, digits=2) => value == null ? '—' : '
+  const [prices, setPrices] = useState({});
+  const [statuses, setStatuses] = useState({ hawk: null, bull: null });
+  const [portfolio, setPortfolio] = useState('hawk'); // 'hawk' | 'bull'
+  const [now, setNow] = useState(new Date());
+  const [chartState, setChartState] = useState(null);
+  const [busy, setBusy] = useState({ hawk: null, bull: null });        // 'pause' | 'resume' | 'close' | null
+  const [actionMsg, setActionMsg] = useState({ hawk: null, bull: null });
+
+  const fetchOne = useCallback(async (pf) => {
+    try {
+      const r = await apiFor(pf).getStatus();
+      setStatuses(s => ({ ...s, [pf]: r.data }));
+    } catch (e) {
+      // se il server non risponde non cancello l'ultimo stato buono: segno solo che e' vecchio
+      setStatuses(s => (s[pf] ? s : { ...s, [pf]: { available: false, message: 'Server non raggiungibile: riprovo tra pochi secondi' } }));
+    }
+  }, []);
+  const fetchStatus = useCallback(() => Promise.all([fetchOne('hawk'), fetchOne('bull')]), [fetchOne]);
+
+  const fetchPrices = useCallback(async () => {
+    try { const p = await deskAPI.getPrices(); setPrices(p.data); } catch {}
+  }, []);
+
+  useEffect(() => { fetchStatus(); const t = setInterval(fetchStatus, 6000); return () => clearInterval(t); }, [fetchStatus]);
+  useEffect(() => { fetchPrices(); const t = setInterval(fetchPrices, 60000); return () => clearInterval(t); }, [fetchPrices]);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
+
+  const marketLive = Object.keys(prices).length > 0;
+  const dateLabel = now.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+  const timeLabel = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const activeStatus = statuses[portfolio];
+
+  const openChart = (symbol, tradeInfo = null) => setChartState({ symbol, tradeInfo });
+  const closeChart = () => setChartState(null);
+
+  const say = (pf, ok, text) => {
+    setActionMsg(m => ({ ...m, [pf]: { ok, text } }));
+    setTimeout(() => setActionMsg(m => ({ ...m, [pf]: null })), 12000);
+  };
+
+  // Esegue un comando, mostra l'esito e rilegge lo stato subito (il server lo calcola dal flag, quindi e' immediato).
+  const run = async (pf, kind, call, okFallback) => {
+    setBusy(b => ({ ...b, [pf]: kind }));
+    try {
+      const { data } = await call();
+      if (data && data.bot_mode) {
+        setStatuses(s => s[pf] ? ({ ...s, [pf]: { ...s[pf], paused: data.paused, bot_mode: data.bot_mode, draining: data.bot_mode === 'draining' } }) : s);
+      }
+      say(pf, true, data?.message || okFallback);
+    } catch (e) {
+      say(pf, false, `Errore: ${errMsg(e)}`);
+    } finally {
+      setBusy(b => ({ ...b, [pf]: null }));
+      fetchOne(pf);
+      setTimeout(() => fetchOne(pf), 2500);
+      setTimeout(() => fetchOne(pf), 8000);
+    }
+  };
+
+  const handlePause = () => run(portfolio, 'pause', () => apiFor(portfolio).pause(), 'Pausa attivata.');
+  const handleResume = () => run(portfolio, 'resume', () => apiFor(portfolio).resume(), 'Bot avviato.');
+  // Chiude UNA posizione a mano (stesso comando della pagina Live). Ritorna {ok, message} per il tasto.
+  const handleClosePosition = (pf) => async (symbol) => {
+    try {
+      const { data } = await apiFor(pf).closePosition(symbol);
+      return { ok: true, message: data?.message || 'Chiusura inviata.' };
+    } catch (e) {
+      return { ok: false, message: errMsg(e) };
+    } finally {
+      fetchOne(pf);
+      setTimeout(() => fetchOne(pf), 2500);
+      setTimeout(() => fetchOne(pf), 8000);
+    }
+  };
+  const handleCloseAll = () => {
+    const n = activeStatus?.open_positions ?? 0;
+    if (!window.confirm(`Chiudere subito tutte le ${n} posizioni a prezzo di mercato?\n\nIl bot non si ferma: se non lo metti in pausa potrà riaprirne di nuove.`)) return;
+    return run(portfolio, 'close', () => apiFor(portfolio).closeAll(), 'Chiusura inviata.');
+  };
+
+  const chip = (pf, label, color) => {
+    const st = botState(statuses[pf]);
+    return (
+      <div style={{
+        flex: 1, padding: '6px 10px', borderRadius: '10px', fontSize: '12px', textAlign: 'center',
+        background: st.color + '14', border: `1px solid ${st.color}55`, color: st.key === 'running' ? color : st.color,
+      }}>
+        {label} {st.key === 'running' ? '● ' : st.key === 'offline' ? '○ ' : st.key === 'draining' ? '◐ ' : '⏸ '}{st.text}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div>
+          <h1 style={{
+            fontSize: '22px', fontWeight: 'bold',
+            background: 'linear-gradient(90deg, #f1f5f9, #38bdf8)',
+            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+            margin: 0,
+          }}>💹 Trade non reale</h1>
+          <div style={{ fontSize: '10px', color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginTop: '3px' }}>
+            ○ PAPER MODE · soldi simulati
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <StatusChip label="Mercato" ok={marketLive} okText="Live" badText="Offline" />
+        </div>
+      </div>
+
+      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>
+        {dateLabel} · <strong style={{ color: '#94a3b8' }}>{timeLabel}</strong>
+        {activeStatus?.day && <span> · Giorno {activeStatus.day}</span>}
+        {activeStatus?.cycle?.count != null && <span> · Ciclo #{activeStatus.cycle.count}</span>}
+        {activeStatus?.version && <span> · v{activeStatus.version}</span>}
+      </div>
+
+      {/* Stato dei due bot */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+        {chip('hawk', '🦅 Falco', '#38bdf8')}
+        {chip('bull', '🐂 Toro', '#a78bfa')}
+      </div>
+
+      {/* Selettore portafoglio */}
+      <div style={{
+        display: 'flex', gap: '6px', marginBottom: '14px',
+        background: '#1e293b', borderRadius: '12px', padding: '4px', border: '1px solid #334155'
+      }}>
+        {[['hawk', '🦅 Falco', '#38bdf8'], ['bull', '🐂 Toro', '#7c3aed']].map(([id, label, color]) => (
+          <button key={id} onClick={() => setPortfolio(id)}
+            style={{
+              flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
+              background: portfolio === id ? color : 'transparent',
+              color: portfolio === id ? '#fff' : '#64748b',
+              fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'all 0.15s',
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* KPI portafoglio selezionato */}
+      <DeskErrorBoundary>
+        <PortfolioSection
+          status={activeStatus}
+          portfolio={portfolio}
+          busy={busy[portfolio]}
+          actionMsg={actionMsg[portfolio]}
+          onCloseAll={handleCloseAll}
+          onChartOpen={openChart}
+          onPause={handlePause}
+          onResume={handleResume}
+          onClosePosition={handleClosePosition(portfolio)}
+        />
+      </DeskErrorBoundary>
+
+      {/* ── Mercato Live ── */}
+      <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '4px', marginTop: '8px', color: '#cbd5e1' }}>
+        📊 Mercato Live
+      </h2>
+      <p style={{ fontSize: '11px', color: '#475569', marginBottom: '8px' }}>
+        {V2_SYMBOLS.length} simboli monitorati dal Bot V2 — tocca per aprire il grafico
+      </p>
+      <MarketCarousel
+        symbols={V2_SYMBOLS}
+        prices={prices}
+        onSymbolClick={(sym) => openChart(sym)}
+      />
+
+      {/* Modal grafico */}
+      <ChartModal
+        symbol={chartState?.symbol || null}
+        tradeInfo={chartState?.tradeInfo || null}
+        onClose={closeChart}
+      />
+    </div>
+  );
+}
+
+// Esportato solo per la prova di rendering (non cambia nulla per l app)
+export { PortfolioSection };
++fmt(value,digits);
+  const netColor = wallet.pnl_total == null ? '#e2e8f0' : pnlColor(wallet.pnl_total);
+  const state = ({
+    running:'🟢 In funzione', paused:'⏸ In pausa',
+    halted:'🛑 Fermo', stale:'⚠️ Segnale assente', not_started:'⏸ Non avviato'
+  })[wallet.state] || 'Stato non disponibile';
+  return <div data-testid="brain-classic-wallet">
+    <Card style={{ marginBottom:12, textAlign:'center', borderColor:netColor+'55' }}>
+      <div style={{ fontSize:11, color:'#64748b', marginBottom:4, letterSpacing:'0.05em', textTransform:'uppercase' }}>
+        Equity — 🧠 Brain · PAPER
+      </div>
+      <div style={{ fontSize:36, fontWeight:'bold', color:netColor }}>{money(wallet.equity)}</div>
+      <div style={{ fontSize:13, fontWeight:'bold', color:netColor }}>
+        P&L realizzato {wallet.pnl_total == null ? '—' : signed(wallet.pnl_total)+'
+  const [prices, setPrices] = useState({});
+  const [statuses, setStatuses] = useState({ hawk: null, bull: null });
+  const [portfolio, setPortfolio] = useState('hawk'); // 'hawk' | 'bull'
+  const [now, setNow] = useState(new Date());
+  const [chartState, setChartState] = useState(null);
+  const [busy, setBusy] = useState({ hawk: null, bull: null });        // 'pause' | 'resume' | 'close' | null
+  const [actionMsg, setActionMsg] = useState({ hawk: null, bull: null });
+
+  const fetchOne = useCallback(async (pf) => {
+    try {
+      const r = await apiFor(pf).getStatus();
+      setStatuses(s => ({ ...s, [pf]: r.data }));
+    } catch (e) {
+      // se il server non risponde non cancello l'ultimo stato buono: segno solo che e' vecchio
+      setStatuses(s => (s[pf] ? s : { ...s, [pf]: { available: false, message: 'Server non raggiungibile: riprovo tra pochi secondi' } }));
+    }
+  }, []);
+  const fetchStatus = useCallback(() => Promise.all([fetchOne('hawk'), fetchOne('bull')]), [fetchOne]);
+
+  const fetchPrices = useCallback(async () => {
+    try { const p = await deskAPI.getPrices(); setPrices(p.data); } catch {}
+  }, []);
+
+  useEffect(() => { fetchStatus(); const t = setInterval(fetchStatus, 6000); return () => clearInterval(t); }, [fetchStatus]);
+  useEffect(() => { fetchPrices(); const t = setInterval(fetchPrices, 60000); return () => clearInterval(t); }, [fetchPrices]);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
+
+  const marketLive = Object.keys(prices).length > 0;
+  const dateLabel = now.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+  const timeLabel = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const activeStatus = statuses[portfolio];
+
+  const openChart = (symbol, tradeInfo = null) => setChartState({ symbol, tradeInfo });
+  const closeChart = () => setChartState(null);
+
+  const say = (pf, ok, text) => {
+    setActionMsg(m => ({ ...m, [pf]: { ok, text } }));
+    setTimeout(() => setActionMsg(m => ({ ...m, [pf]: null })), 12000);
+  };
+
+  // Esegue un comando, mostra l'esito e rilegge lo stato subito (il server lo calcola dal flag, quindi e' immediato).
+  const run = async (pf, kind, call, okFallback) => {
+    setBusy(b => ({ ...b, [pf]: kind }));
+    try {
+      const { data } = await call();
+      if (data && data.bot_mode) {
+        setStatuses(s => s[pf] ? ({ ...s, [pf]: { ...s[pf], paused: data.paused, bot_mode: data.bot_mode, draining: data.bot_mode === 'draining' } }) : s);
+      }
+      say(pf, true, data?.message || okFallback);
+    } catch (e) {
+      say(pf, false, `Errore: ${errMsg(e)}`);
+    } finally {
+      setBusy(b => ({ ...b, [pf]: null }));
+      fetchOne(pf);
+      setTimeout(() => fetchOne(pf), 2500);
+      setTimeout(() => fetchOne(pf), 8000);
+    }
+  };
+
+  const handlePause = () => run(portfolio, 'pause', () => apiFor(portfolio).pause(), 'Pausa attivata.');
+  const handleResume = () => run(portfolio, 'resume', () => apiFor(portfolio).resume(), 'Bot avviato.');
+  // Chiude UNA posizione a mano (stesso comando della pagina Live). Ritorna {ok, message} per il tasto.
+  const handleClosePosition = (pf) => async (symbol) => {
+    try {
+      const { data } = await apiFor(pf).closePosition(symbol);
+      return { ok: true, message: data?.message || 'Chiusura inviata.' };
+    } catch (e) {
+      return { ok: false, message: errMsg(e) };
+    } finally {
+      fetchOne(pf);
+      setTimeout(() => fetchOne(pf), 2500);
+      setTimeout(() => fetchOne(pf), 8000);
+    }
+  };
+  const handleCloseAll = () => {
+    const n = activeStatus?.open_positions ?? 0;
+    if (!window.confirm(`Chiudere subito tutte le ${n} posizioni a prezzo di mercato?\n\nIl bot non si ferma: se non lo metti in pausa potrà riaprirne di nuove.`)) return;
+    return run(portfolio, 'close', () => apiFor(portfolio).closeAll(), 'Chiusura inviata.');
+  };
+
+  const chip = (pf, label, color) => {
+    const st = botState(statuses[pf]);
+    return (
+      <div style={{
+        flex: 1, padding: '6px 10px', borderRadius: '10px', fontSize: '12px', textAlign: 'center',
+        background: st.color + '14', border: `1px solid ${st.color}55`, color: st.key === 'running' ? color : st.color,
+      }}>
+        {label} {st.key === 'running' ? '● ' : st.key === 'offline' ? '○ ' : st.key === 'draining' ? '◐ ' : '⏸ '}{st.text}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div>
+          <h1 style={{
+            fontSize: '22px', fontWeight: 'bold',
+            background: 'linear-gradient(90deg, #f1f5f9, #38bdf8)',
+            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+            margin: 0,
+          }}>💹 Trade non reale</h1>
+          <div style={{ fontSize: '10px', color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginTop: '3px' }}>
+            ○ PAPER MODE · soldi simulati
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <StatusChip label="Mercato" ok={marketLive} okText="Live" badText="Offline" />
+        </div>
+      </div>
+
+      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>
+        {dateLabel} · <strong style={{ color: '#94a3b8' }}>{timeLabel}</strong>
+        {activeStatus?.day && <span> · Giorno {activeStatus.day}</span>}
+        {activeStatus?.cycle?.count != null && <span> · Ciclo #{activeStatus.cycle.count}</span>}
+        {activeStatus?.version && <span> · v{activeStatus.version}</span>}
+      </div>
+
+      {/* Stato dei due bot */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+        {chip('hawk', '🦅 Falco', '#38bdf8')}
+        {chip('bull', '🐂 Toro', '#a78bfa')}
+      </div>
+
+      {/* Selettore portafoglio */}
+      <div style={{
+        display: 'flex', gap: '6px', marginBottom: '14px',
+        background: '#1e293b', borderRadius: '12px', padding: '4px', border: '1px solid #334155'
+      }}>
+        {[['hawk', '🦅 Falco', '#38bdf8'], ['bull', '🐂 Toro', '#7c3aed']].map(([id, label, color]) => (
+          <button key={id} onClick={() => setPortfolio(id)}
+            style={{
+              flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
+              background: portfolio === id ? color : 'transparent',
+              color: portfolio === id ? '#fff' : '#64748b',
+              fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'all 0.15s',
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* KPI portafoglio selezionato */}
+      <DeskErrorBoundary>
+        <PortfolioSection
+          status={activeStatus}
+          portfolio={portfolio}
+          busy={busy[portfolio]}
+          actionMsg={actionMsg[portfolio]}
+          onCloseAll={handleCloseAll}
+          onChartOpen={openChart}
+          onPause={handlePause}
+          onResume={handleResume}
+          onClosePosition={handleClosePosition(portfolio)}
+        />
+      </DeskErrorBoundary>
+
+      {/* ── Mercato Live ── */}
+      <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '4px', marginTop: '8px', color: '#cbd5e1' }}>
+        📊 Mercato Live
+      </h2>
+      <p style={{ fontSize: '11px', color: '#475569', marginBottom: '8px' }}>
+        {V2_SYMBOLS.length} simboli monitorati dal Bot V2 — tocca per aprire il grafico
+      </p>
+      <MarketCarousel
+        symbols={V2_SYMBOLS}
+        prices={prices}
+        onSymbolClick={(sym) => openChart(sym)}
+      />
+
+      {/* Modal grafico */}
+      <ChartModal
+        symbol={chartState?.symbol || null}
+        tradeInfo={chartState?.tradeInfo || null}
+        onClose={closeChart}
+      />
+    </div>
+  );
+}
+
+// Esportato solo per la prova di rendering (non cambia nulla per l app)
+export { PortfolioSection };
+}
+        {wallet.pnl_total_pct != null && ` (${signed(wallet.pnl_total_pct)}%)`}
+        {wallet.start_equity != null && ` da ${money(wallet.start_equity,0)}`}
+      </div>
+      <div style={{ display:'flex', justifyContent:'center', gap:14, marginTop:8, fontSize:12, flexWrap:'wrap' }}>
+        <span style={{ color:'#64748b' }}>Cassa <strong style={{ color:'#cbd5e1' }}>{money(wallet.cash)}</strong></span>
+        <span style={{ color:'#64748b' }}>Margine <strong style={{ color:'#cbd5e1' }}>{money(wallet.margin_used,0)}</strong></span>
+        <span style={{ color:'#64748b' }}>Aperto <strong style={{ color:pnlColor(wallet.unrealized_pnl) }}>
+          {wallet.unrealized_pnl == null ? '—' : signed(wallet.unrealized_pnl)+'
+  const [prices, setPrices] = useState({});
+  const [statuses, setStatuses] = useState({ hawk: null, bull: null });
+  const [portfolio, setPortfolio] = useState('hawk'); // 'hawk' | 'bull'
+  const [now, setNow] = useState(new Date());
+  const [chartState, setChartState] = useState(null);
+  const [busy, setBusy] = useState({ hawk: null, bull: null });        // 'pause' | 'resume' | 'close' | null
+  const [actionMsg, setActionMsg] = useState({ hawk: null, bull: null });
+
+  const fetchOne = useCallback(async (pf) => {
+    try {
+      const r = await apiFor(pf).getStatus();
+      setStatuses(s => ({ ...s, [pf]: r.data }));
+    } catch (e) {
+      // se il server non risponde non cancello l'ultimo stato buono: segno solo che e' vecchio
+      setStatuses(s => (s[pf] ? s : { ...s, [pf]: { available: false, message: 'Server non raggiungibile: riprovo tra pochi secondi' } }));
+    }
+  }, []);
+  const fetchStatus = useCallback(() => Promise.all([fetchOne('hawk'), fetchOne('bull')]), [fetchOne]);
+
+  const fetchPrices = useCallback(async () => {
+    try { const p = await deskAPI.getPrices(); setPrices(p.data); } catch {}
+  }, []);
+
+  useEffect(() => { fetchStatus(); const t = setInterval(fetchStatus, 6000); return () => clearInterval(t); }, [fetchStatus]);
+  useEffect(() => { fetchPrices(); const t = setInterval(fetchPrices, 60000); return () => clearInterval(t); }, [fetchPrices]);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
+
+  const marketLive = Object.keys(prices).length > 0;
+  const dateLabel = now.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+  const timeLabel = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const activeStatus = statuses[portfolio];
+
+  const openChart = (symbol, tradeInfo = null) => setChartState({ symbol, tradeInfo });
+  const closeChart = () => setChartState(null);
+
+  const say = (pf, ok, text) => {
+    setActionMsg(m => ({ ...m, [pf]: { ok, text } }));
+    setTimeout(() => setActionMsg(m => ({ ...m, [pf]: null })), 12000);
+  };
+
+  // Esegue un comando, mostra l'esito e rilegge lo stato subito (il server lo calcola dal flag, quindi e' immediato).
+  const run = async (pf, kind, call, okFallback) => {
+    setBusy(b => ({ ...b, [pf]: kind }));
+    try {
+      const { data } = await call();
+      if (data && data.bot_mode) {
+        setStatuses(s => s[pf] ? ({ ...s, [pf]: { ...s[pf], paused: data.paused, bot_mode: data.bot_mode, draining: data.bot_mode === 'draining' } }) : s);
+      }
+      say(pf, true, data?.message || okFallback);
+    } catch (e) {
+      say(pf, false, `Errore: ${errMsg(e)}`);
+    } finally {
+      setBusy(b => ({ ...b, [pf]: null }));
+      fetchOne(pf);
+      setTimeout(() => fetchOne(pf), 2500);
+      setTimeout(() => fetchOne(pf), 8000);
+    }
+  };
+
+  const handlePause = () => run(portfolio, 'pause', () => apiFor(portfolio).pause(), 'Pausa attivata.');
+  const handleResume = () => run(portfolio, 'resume', () => apiFor(portfolio).resume(), 'Bot avviato.');
+  // Chiude UNA posizione a mano (stesso comando della pagina Live). Ritorna {ok, message} per il tasto.
+  const handleClosePosition = (pf) => async (symbol) => {
+    try {
+      const { data } = await apiFor(pf).closePosition(symbol);
+      return { ok: true, message: data?.message || 'Chiusura inviata.' };
+    } catch (e) {
+      return { ok: false, message: errMsg(e) };
+    } finally {
+      fetchOne(pf);
+      setTimeout(() => fetchOne(pf), 2500);
+      setTimeout(() => fetchOne(pf), 8000);
+    }
+  };
+  const handleCloseAll = () => {
+    const n = activeStatus?.open_positions ?? 0;
+    if (!window.confirm(`Chiudere subito tutte le ${n} posizioni a prezzo di mercato?\n\nIl bot non si ferma: se non lo metti in pausa potrà riaprirne di nuove.`)) return;
+    return run(portfolio, 'close', () => apiFor(portfolio).closeAll(), 'Chiusura inviata.');
+  };
+
+  const chip = (pf, label, color) => {
+    const st = botState(statuses[pf]);
+    return (
+      <div style={{
+        flex: 1, padding: '6px 10px', borderRadius: '10px', fontSize: '12px', textAlign: 'center',
+        background: st.color + '14', border: `1px solid ${st.color}55`, color: st.key === 'running' ? color : st.color,
+      }}>
+        {label} {st.key === 'running' ? '● ' : st.key === 'offline' ? '○ ' : st.key === 'draining' ? '◐ ' : '⏸ '}{st.text}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div>
+          <h1 style={{
+            fontSize: '22px', fontWeight: 'bold',
+            background: 'linear-gradient(90deg, #f1f5f9, #38bdf8)',
+            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+            margin: 0,
+          }}>💹 Trade non reale</h1>
+          <div style={{ fontSize: '10px', color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginTop: '3px' }}>
+            ○ PAPER MODE · soldi simulati
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <StatusChip label="Mercato" ok={marketLive} okText="Live" badText="Offline" />
+        </div>
+      </div>
+
+      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>
+        {dateLabel} · <strong style={{ color: '#94a3b8' }}>{timeLabel}</strong>
+        {activeStatus?.day && <span> · Giorno {activeStatus.day}</span>}
+        {activeStatus?.cycle?.count != null && <span> · Ciclo #{activeStatus.cycle.count}</span>}
+        {activeStatus?.version && <span> · v{activeStatus.version}</span>}
+      </div>
+
+      {/* Stato dei due bot */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+        {chip('hawk', '🦅 Falco', '#38bdf8')}
+        {chip('bull', '🐂 Toro', '#a78bfa')}
+      </div>
+
+      {/* Selettore portafoglio */}
+      <div style={{
+        display: 'flex', gap: '6px', marginBottom: '14px',
+        background: '#1e293b', borderRadius: '12px', padding: '4px', border: '1px solid #334155'
+      }}>
+        {[['hawk', '🦅 Falco', '#38bdf8'], ['bull', '🐂 Toro', '#7c3aed']].map(([id, label, color]) => (
+          <button key={id} onClick={() => setPortfolio(id)}
+            style={{
+              flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
+              background: portfolio === id ? color : 'transparent',
+              color: portfolio === id ? '#fff' : '#64748b',
+              fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'all 0.15s',
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* KPI portafoglio selezionato */}
+      <DeskErrorBoundary>
+        <PortfolioSection
+          status={activeStatus}
+          portfolio={portfolio}
+          busy={busy[portfolio]}
+          actionMsg={actionMsg[portfolio]}
+          onCloseAll={handleCloseAll}
+          onChartOpen={openChart}
+          onPause={handlePause}
+          onResume={handleResume}
+          onClosePosition={handleClosePosition(portfolio)}
+        />
+      </DeskErrorBoundary>
+
+      {/* ── Mercato Live ── */}
+      <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '4px', marginTop: '8px', color: '#cbd5e1' }}>
+        📊 Mercato Live
+      </h2>
+      <p style={{ fontSize: '11px', color: '#475569', marginBottom: '8px' }}>
+        {V2_SYMBOLS.length} simboli monitorati dal Bot V2 — tocca per aprire il grafico
+      </p>
+      <MarketCarousel
+        symbols={V2_SYMBOLS}
+        prices={prices}
+        onSymbolClick={(sym) => openChart(sym)}
+      />
+
+      {/* Modal grafico */}
+      <ChartModal
+        symbol={chartState?.symbol || null}
+        tradeInfo={chartState?.tradeInfo || null}
+        onClose={closeChart}
+      />
+    </div>
+  );
+}
+
+// Esportato solo per la prova di rendering (non cambia nulla per l app)
+export { PortfolioSection };
+}</strong></span>
+        <span style={{ color:'#64748b' }}>Oggi <strong style={{ color:pnlColor(wallet.day_pnl) }}>
+          {wallet.day_pnl == null ? '—' : signed(wallet.day_pnl)+'
+  const [prices, setPrices] = useState({});
+  const [statuses, setStatuses] = useState({ hawk: null, bull: null });
+  const [portfolio, setPortfolio] = useState('hawk'); // 'hawk' | 'bull'
+  const [now, setNow] = useState(new Date());
+  const [chartState, setChartState] = useState(null);
+  const [busy, setBusy] = useState({ hawk: null, bull: null });        // 'pause' | 'resume' | 'close' | null
+  const [actionMsg, setActionMsg] = useState({ hawk: null, bull: null });
+
+  const fetchOne = useCallback(async (pf) => {
+    try {
+      const r = await apiFor(pf).getStatus();
+      setStatuses(s => ({ ...s, [pf]: r.data }));
+    } catch (e) {
+      // se il server non risponde non cancello l'ultimo stato buono: segno solo che e' vecchio
+      setStatuses(s => (s[pf] ? s : { ...s, [pf]: { available: false, message: 'Server non raggiungibile: riprovo tra pochi secondi' } }));
+    }
+  }, []);
+  const fetchStatus = useCallback(() => Promise.all([fetchOne('hawk'), fetchOne('bull')]), [fetchOne]);
+
+  const fetchPrices = useCallback(async () => {
+    try { const p = await deskAPI.getPrices(); setPrices(p.data); } catch {}
+  }, []);
+
+  useEffect(() => { fetchStatus(); const t = setInterval(fetchStatus, 6000); return () => clearInterval(t); }, [fetchStatus]);
+  useEffect(() => { fetchPrices(); const t = setInterval(fetchPrices, 60000); return () => clearInterval(t); }, [fetchPrices]);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(t); }, []);
+
+  const marketLive = Object.keys(prices).length > 0;
+  const dateLabel = now.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+  const timeLabel = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const activeStatus = statuses[portfolio];
+
+  const openChart = (symbol, tradeInfo = null) => setChartState({ symbol, tradeInfo });
+  const closeChart = () => setChartState(null);
+
+  const say = (pf, ok, text) => {
+    setActionMsg(m => ({ ...m, [pf]: { ok, text } }));
+    setTimeout(() => setActionMsg(m => ({ ...m, [pf]: null })), 12000);
+  };
+
+  // Esegue un comando, mostra l'esito e rilegge lo stato subito (il server lo calcola dal flag, quindi e' immediato).
+  const run = async (pf, kind, call, okFallback) => {
+    setBusy(b => ({ ...b, [pf]: kind }));
+    try {
+      const { data } = await call();
+      if (data && data.bot_mode) {
+        setStatuses(s => s[pf] ? ({ ...s, [pf]: { ...s[pf], paused: data.paused, bot_mode: data.bot_mode, draining: data.bot_mode === 'draining' } }) : s);
+      }
+      say(pf, true, data?.message || okFallback);
+    } catch (e) {
+      say(pf, false, `Errore: ${errMsg(e)}`);
+    } finally {
+      setBusy(b => ({ ...b, [pf]: null }));
+      fetchOne(pf);
+      setTimeout(() => fetchOne(pf), 2500);
+      setTimeout(() => fetchOne(pf), 8000);
+    }
+  };
+
+  const handlePause = () => run(portfolio, 'pause', () => apiFor(portfolio).pause(), 'Pausa attivata.');
+  const handleResume = () => run(portfolio, 'resume', () => apiFor(portfolio).resume(), 'Bot avviato.');
+  // Chiude UNA posizione a mano (stesso comando della pagina Live). Ritorna {ok, message} per il tasto.
+  const handleClosePosition = (pf) => async (symbol) => {
+    try {
+      const { data } = await apiFor(pf).closePosition(symbol);
+      return { ok: true, message: data?.message || 'Chiusura inviata.' };
+    } catch (e) {
+      return { ok: false, message: errMsg(e) };
+    } finally {
+      fetchOne(pf);
+      setTimeout(() => fetchOne(pf), 2500);
+      setTimeout(() => fetchOne(pf), 8000);
+    }
+  };
+  const handleCloseAll = () => {
+    const n = activeStatus?.open_positions ?? 0;
+    if (!window.confirm(`Chiudere subito tutte le ${n} posizioni a prezzo di mercato?\n\nIl bot non si ferma: se non lo metti in pausa potrà riaprirne di nuove.`)) return;
+    return run(portfolio, 'close', () => apiFor(portfolio).closeAll(), 'Chiusura inviata.');
+  };
+
+  const chip = (pf, label, color) => {
+    const st = botState(statuses[pf]);
+    return (
+      <div style={{
+        flex: 1, padding: '6px 10px', borderRadius: '10px', fontSize: '12px', textAlign: 'center',
+        background: st.color + '14', border: `1px solid ${st.color}55`, color: st.key === 'running' ? color : st.color,
+      }}>
+        {label} {st.key === 'running' ? '● ' : st.key === 'offline' ? '○ ' : st.key === 'draining' ? '◐ ' : '⏸ '}{st.text}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div>
+          <h1 style={{
+            fontSize: '22px', fontWeight: 'bold',
+            background: 'linear-gradient(90deg, #f1f5f9, #38bdf8)',
+            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+            margin: 0,
+          }}>💹 Trade non reale</h1>
+          <div style={{ fontSize: '10px', color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginTop: '3px' }}>
+            ○ PAPER MODE · soldi simulati
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <StatusChip label="Mercato" ok={marketLive} okText="Live" badText="Offline" />
+        </div>
+      </div>
+
+      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>
+        {dateLabel} · <strong style={{ color: '#94a3b8' }}>{timeLabel}</strong>
+        {activeStatus?.day && <span> · Giorno {activeStatus.day}</span>}
+        {activeStatus?.cycle?.count != null && <span> · Ciclo #{activeStatus.cycle.count}</span>}
+        {activeStatus?.version && <span> · v{activeStatus.version}</span>}
+      </div>
+
+      {/* Stato dei due bot */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+        {chip('hawk', '🦅 Falco', '#38bdf8')}
+        {chip('bull', '🐂 Toro', '#a78bfa')}
+      </div>
+
+      {/* Selettore portafoglio */}
+      <div style={{
+        display: 'flex', gap: '6px', marginBottom: '14px',
+        background: '#1e293b', borderRadius: '12px', padding: '4px', border: '1px solid #334155'
+      }}>
+        {[['hawk', '🦅 Falco', '#38bdf8'], ['bull', '🐂 Toro', '#7c3aed']].map(([id, label, color]) => (
+          <button key={id} onClick={() => setPortfolio(id)}
+            style={{
+              flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
+              background: portfolio === id ? color : 'transparent',
+              color: portfolio === id ? '#fff' : '#64748b',
+              fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'all 0.15s',
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* KPI portafoglio selezionato */}
+      <DeskErrorBoundary>
+        <PortfolioSection
+          status={activeStatus}
+          portfolio={portfolio}
+          busy={busy[portfolio]}
+          actionMsg={actionMsg[portfolio]}
+          onCloseAll={handleCloseAll}
+          onChartOpen={openChart}
+          onPause={handlePause}
+          onResume={handleResume}
+          onClosePosition={handleClosePosition(portfolio)}
+        />
+      </DeskErrorBoundary>
+
+      {/* ── Mercato Live ── */}
+      <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '4px', marginTop: '8px', color: '#cbd5e1' }}>
+        📊 Mercato Live
+      </h2>
+      <p style={{ fontSize: '11px', color: '#475569', marginBottom: '8px' }}>
+        {V2_SYMBOLS.length} simboli monitorati dal Bot V2 — tocca per aprire il grafico
+      </p>
+      <MarketCarousel
+        symbols={V2_SYMBOLS}
+        prices={prices}
+        onSymbolClick={(sym) => openChart(sym)}
+      />
+
+      {/* Modal grafico */}
+      <ChartModal
+        symbol={chartState?.symbol || null}
+        tradeInfo={chartState?.tradeInfo || null}
+        onClose={closeChart}
+      />
+    </div>
+  );
+}
+
+// Esportato solo per la prova di rendering (non cambia nulla per l app)
+export { PortfolioSection };
+}</strong></span>
+      </div>
+      {wallet.settled_equity != null && <div style={{ color:'#94a3b8', fontSize:11, marginTop:8 }}>
+        Saldo contabile: {money(wallet.settled_equity)}{wallet.equity_basis === 'open_unmarked' && ' · escluso P&L aperto'}
+      </div>}
+      {wallet.equity == null && <div style={{ color:'#fbbf24', fontSize:11, marginTop:8 }}>
+        Equity totale non disponibile: servono prezzi verificati e una run contabilizzata.
+      </div>}
+    </Card>
+    <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+      <Card style={{ flex:1, textAlign:'center', padding:'12px 8px' }}>
+        <div style={{ fontSize:10, color:'#64748b' }}>Aperte</div>
+        <div style={{ fontSize:24, fontWeight:'bold', color:'#38bdf8' }}>{nOpen}<span style={{ fontSize:12,color:'#475569' }}>/{wallet.max_open ?? '—'}</span></div>
+      </Card>
+      <Card style={{ flex:1, textAlign:'center', padding:'12px 8px' }}>
+        <div style={{ fontSize:10, color:'#64748b' }}>Chiuse</div>
+        <div style={{ fontSize:24, fontWeight:'bold' }}>{wallet.total_closed ?? '—'}</div>
+      </Card>
+      <Card style={{ flex:1, textAlign:'center', padding:'12px 8px' }}>
+        <div style={{ fontSize:10, color:'#64748b' }}>Budget AI</div>
+        <div style={{ fontSize:18, fontWeight:'bold', color:'#4ade80' }}>
+          {wallet.spend?.today_usd == null ? '—' : money(wallet.spend.today_usd,3)}
+        </div>
+      </Card>
+    </div>
+    <Card style={{ marginBottom:12, borderColor:'#a78bfa', background:'#a78bfa14' }}>
+      <strong style={{ color:'#c4b5fd' }}>🧠 Brain · {state}</strong>
+      <div style={{ color:'#94a3b8', fontSize:12, marginTop:4 }}>
+        Motore AI indipendente. Le posizioni e la memoria non sono condivise con Falco e Toro.
+      </div>
+      {readOnly && <div style={{ color:'#fbbf24', fontSize:12, marginTop:5 }}>
+        Collaudo PAPER in sola lettura · nessuna apertura o chiusura consentita.
+      </div>}
+    </Card>
+    <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+      {['▶ Avvia / Riprendi', '⏸ Pausa'].map(label => <button key={label} type="button"
+        disabled style={{ flex:1,padding:12,borderRadius:10,background:'#0f172a',border:'1px solid #334155',
+          color:'#64748b',fontWeight:'bold' }}>{label}</button>)}
+    </div>
+    <h2 style={{ fontSize:15, fontWeight:'bold', marginBottom:8, color:'#cbd5e1' }}>⚡ Posizioni Aperte</h2>
+    {!nOpen && <Card style={{ marginBottom:12, textAlign:'center', color:'#94a3b8', fontSize:13 }}>
+      Nessuna posizione aperta nella run Brain V3.
+    </Card>}
+    {nOpen > 0 && <BrainCloseControls positions={rawTrades?.open_positions || []}
+      readOnly={readOnly || wallet.state !== 'running'} serverPending={rawTrades?.close_pending===true}
+      onRefresh={onRefresh}
+      renderPosition={p => <PortfolioTradeFields p={{
+        ...p, trade_type:p.strategy_id,
+        stop:p.stop, take_profit:p.take_profit,
+        unrealized_pnl:p.unrealized_pnl,roi_pct:p.roi_pct
+      }} brain />}
+    />}
+    <details style={{ marginTop:12, marginBottom:14 }}>
+      <summary style={{ color:'#7dd3fc',cursor:'pointer',fontWeight:'bold',fontSize:13 }}>
+        🧠 Analisi, osservazioni e memoria AI
+      </summary>
+      <Card style={{ marginTop:8,fontSize:12,color:'#cbd5e1' }}>
+        <div>Ultima decisione: {wallet.last_decision?.kind ?? 'Nessuna decisione disponibile'}</div>
+        <div>Strategia: {wallet.last_decision?.strategy_id ?? '—'}</div>
+        <div>Osservazioni consultate: {(wallet.last_decision?.peer_observations_used || []).join(', ') || 'nessuna'}</div>
+        <div style={{ marginTop:5,color:'#94a3b8' }}>
+          Il Brain può consultare i classici, ma non copia automaticamente le loro operazioni.
+        </div>
+        <a href="/overview" style={{ display:'inline-block',marginTop:9,color:'#7dd3fc' }}>
+          Approfondisci decisioni e apprendimento Brain in V3
+        </a>
+        <div style={{marginTop:8}}><a href="/brain/archive" style={{ color:'#94a3b8' }}>
+          Archivio Brain precedenti
+        </a></div>
+      </Card>
+    </details>
+  </div>;
 }
 
 export default function Dashboard() {
