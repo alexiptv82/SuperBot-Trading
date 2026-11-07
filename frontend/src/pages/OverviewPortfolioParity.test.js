@@ -112,3 +112,15 @@ test('Classics monitoring is read-only and never labelled active AI decision inp
   expect(panel.textContent).toContain('Falco');
   expect(panel.textContent).toContain('Toro');
 });
+
+test('Brain lists actual last-decision peer provenance without claiming autonomous learning', () => {
+  const updated = JSON.parse(JSON.stringify(fixture));
+  updated.status.last_decision = {
+    kind:'NO_TRADE', status:'REJECTED', symbol:'BTCUSDT',
+    peer_observations_used:['falco','toro']
+  };
+  const root = render(updated);
+  const panel = root.querySelector('section[aria-label="Stato Brain"]');
+  expect(panel.textContent).toContain("Osservazioni classici usate nell'ultima decisione: Falco, Toro");
+  expect(panel.textContent).not.toContain('strategia convalidata');
+});
