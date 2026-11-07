@@ -1,0 +1,66 @@
+name: RC70 authorized isolated PAPER dashboard staging (NO LIVE / NO LEGACY WRITES)
+on:
+  push:
+    branches: [work/v3-rc70-authorized-dashboard-cutover-20261107]
+    paths: ['.github/workflows/v3-rc70-authorized-local-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: superbot-rc70-singapore-preview
+  cancel-in-progress: false
+jobs:
+  install-preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build unified V3 dashboard for same-origin staging
+        working-directory: frontend
+        env:
+          CI: 'false'
+          REACT_APP_BACKEND_URL: ''
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -s build/index.html
+      - name: Validate pinned code and package only the tested app (no secrets)
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          bash -n deploy/scripts/v3-rc70-install-preview.sh
+          python3 -m py_compile backend/v3_api.py backend/desk/exit_only.py
+          # Do not pack .env, private config, .git or credentials.
+          tar --exclude='*.env' --exclude='.env' --exclude='__pycache__' \
+            -czf "$RUNNER_TEMP/rc70-bundle.tgz" \
+            Dockerfile backend frontend/build deploy/scripts/v3-rc70-install-preview.sh
+          test -s "$RUNNER_TEMP/rc70-bundle.tgz"
+      - name: Install 127.0.0.1 preview and run smoke test without changing web or bots
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || { echo RC70_NO_SSH_SECRET; exit 2; }
+          temp="$(mktemp -d)"
+          trap 'rm -rf "$temp"' EXIT
+          chmod 700 "$temp"
+          printf '%s\n' "$SG_SSH_KEY" | tr -d '\r' > "$temp/key"
+          chmod 600 "$temp/key"
+          cat > "$temp/known_hosts" <<'KH'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          KH
+          chmod 600 "$temp/known_hosts"
+          opts=(-i "$temp/key" -o IdentitiesOnly=yes -o BatchMode=yes
+                -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$temp/known_hosts"
+                -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=20)
+          ssh "${opts[@]}" root@51.79.205.82 \
+            'set -eu; umask 077; test ! -e /opt/superbot-v3-rc70-stage; mkdir -m 0700 /opt/superbot-v3-rc70-stage; tar -xzf - -C /opt/superbot-v3-rc70-stage' \
+            < "$RUNNER_TEMP/rc70-bundle.tgz"
+          ssh "${opts[@]}" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+            root@51.79.205.82 'bash /opt/superbot-v3-rc70-stage/deploy/scripts/v3-rc70-install-preview.sh --prepare-stage'

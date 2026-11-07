@@ -33,7 +33,8 @@ API.interceptors.response.use(
       || url.includes('/api/auth/forgot');
     if (err?.response?.status === 401 && !isAuthForm) {
       sessionStorage.removeItem('sb_token');
-      if (window.location.pathname !== '/') window.location.href = '/';
+      const home = (process.env.REACT_APP_BASENAME || '') + '/';
+      if (window.location.pathname !== home) window.location.href = home;
     }
     return Promise.reject(err);
   }

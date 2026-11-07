@@ -1,0 +1,36 @@
+name: RC70 inspect Python environment for exit-only worker (READ ONLY)
+on:
+  push:
+    branches: [work/v3-rc70-authorized-dashboard-cutover-20261107]
+    paths: ['.github/workflows/v3-rc70-python-deps-check.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Inspect host deps without package install or writes
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 60s
+          script: |
+            set -eu
+            echo RC70_PY_ENV_AUDIT_ONLY=True
+            python3 - <<'PY'
+            import importlib.util, subprocess, sys
+            print("RC70_HOST_PY_VERSION="+str(sys.version_info.major)+"."+str(sys.version_info.minor))
+            for name in ("numpy","pip","virtualenv","ccxt"):
+                print("RC70_HOST_"+name.upper()+"_AVAILABLE="+str(importlib.util.find_spec(name) is not None))
+            try:
+                import ensurepip
+                print("RC70_ENSUREPIP_AVAILABLE=True")
+            except ImportError:
+                print("RC70_ENSUREPIP_AVAILABLE=False")
+            PY
+            test ! -e /etc/systemd/system/superbot-v3-falco-exit.service && echo RC70_FALCO_UNIT_ABSENT=True || echo RC70_FALCO_UNIT_ABSENT=False
+            test ! -e /etc/systemd/system/superbot-v3-toro-exit.service && echo RC70_TORO_UNIT_ABSENT=True || echo RC70_TORO_UNIT_ABSENT=False
