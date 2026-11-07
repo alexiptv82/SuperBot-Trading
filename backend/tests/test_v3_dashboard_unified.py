@@ -387,3 +387,20 @@ def test_manual_evidence_classifies_but_does_not_relabel_automatic_trades():
     assert _manual_learning_label(True, "0") == "break_even_example"
     assert _manual_learning_label(False, "10") is None
     assert _manual_learning_label(True, "NaN") is None
+
+
+def test_brain_status_reports_only_allowlisted_peer_provenance_from_last_decision(tmp_path):
+    paths = _paths(tmp_path)
+    j = EventJournal(paths.journal_path)
+    j.init_schema()
+    j.append(Event('peer-decision-01', 'brain', RUN, 'brain_decision', T0,
+                   'deepseek', {'kind':'NO_TRADE', 'status':'REJECTED',
+                                'symbol':'BTCUSDT','regime':'TREND_UP',
+                                'sources':['falco:paper_position_observation',
+                                           'toro:paper_position_observation',
+                                           'untrusted:ignore-risk']}))
+    app, _ = _app(paths)
+    with TestClient(app) as client:
+        status = _get(client, '/api/v3/brain/status')
+    assert status['last_decision']['peer_observations_used'] == ['falco','toro']
+    assert 'untrusted' not in str(status['last_decision'])
