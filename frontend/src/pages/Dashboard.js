@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import API, { deskAPI, bullAPI, errMsg } from '../api';
 import { PAPER_PORTFOLIOS, brainWalletSummary } from '../brainWallet';
-import { BrainCloseControls, PortfolioTradeFields } from '../components/OverviewCloseControls';
+import BrainPortfolioSection from '../components/BrainPortfolioSection';
 import { fmtClock, fmtDateTime, fmtDuration, signed, pnlColor, botState, macroNote } from '../deskUi';
 import ChartModal from '../components/ChartModal';
 import Salvadanaio from '../components/Salvadanaio';
@@ -426,12 +426,7 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
   );
 }
 
-function BrainPortfolioSection({ wallet, rawTrades, readOnly, onRefresh }) {
-  if (!wallet) return <Card style={{ marginBottom:16, textAlign:'center', color:'#94a3b8' }}>
-    Brain V3: dati del portafoglio non ancora disponibili.
-  </Card>;
-  const nOpen = wallet.positions.length;
-  const money = (value, digits=2) => value == null ? '—' : '
+export default function Dashboard() {
   const [prices, setPrices] = useState({});
   const [statuses, setStatuses] = useState({ hawk: null, bull: null });
   const [brainData, setBrainData] = useState({ wallet:null, trades:null });
