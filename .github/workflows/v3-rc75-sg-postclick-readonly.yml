@@ -217,6 +217,11 @@ jobs:
                 except OSError:print(label+'_HISTORY_UNAVAILABLE=True')
                 arb_closed=[e for e in events if e.get('symbol')=='ARB']
                 print(label+'_ARB_CLOSED_COUNT='+str(len(arb_closed)))
+                closed_nets=[f(e.get('net')) for e in arb_closed if f(e.get('net')) is not None]
+                count_win=sum(x>0 for x in closed_nets)
+                count_loss=sum(x<0 for x in closed_nets)
+                print(label+'_ARB_HISTORY_SUMMARY='+json.dumps({'closed':len(arb_closed),'net_samples':len(closed_nets),'wins':count_win,'losses':count_loss,'net_total_usdt':round(sum(closed_nets),4),'worst_net_usdt':round(min(closed_nets),4) if closed_nets else None}))
+                print(label+'_ARB_RECENT_CLOSED='+json.dumps(arb_closed[-6:],sort_keys=True))
                 if arb_closed:print(label+'_ARB_LATEST_CLOSE='+json.dumps(arb_closed[-1],sort_keys=True))
                 if not isinstance(arb,dict):
                     print(label+'_ARB_OPEN=False')
