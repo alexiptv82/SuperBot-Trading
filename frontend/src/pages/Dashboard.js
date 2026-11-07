@@ -1279,7 +1279,7 @@ export { PortfolioSection };
       Nessuna posizione aperta nella run Brain V3.
     </Card>}
     {nOpen > 0 && <BrainCloseControls positions={rawTrades?.open_positions || []}
-      readOnly={readOnly || wallet.state !== 'running'} serverPending={rawTrades?.close_pending===true}
+      readOnly={readOnly} serverPending={rawTrades?.close_pending===true}
       onRefresh={onRefresh}
       renderPosition={p => <PortfolioTradeFields p={{
         ...p, trade_type:p.strategy_id,
