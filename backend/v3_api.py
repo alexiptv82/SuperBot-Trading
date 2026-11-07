@@ -284,6 +284,7 @@ def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
             'can_close_position': detail.get('can_close_position') is True,
             'close_worker_mode': detail.get('close_worker_mode', 'offline'),
             'close_pending': detail.get('close_position_pending') or [],
+            'close_all_pending': detail.get('close_all_pending') is True,
             'last_action': detail.get('last_action'),
             'open_positions': len(positions),
             'realized_pnl': _safe_decimal(perf['total_pnl'] if perf and perf.get('available') else 0),
