@@ -43,6 +43,9 @@ _ALLOWED_SOURCES = frozenset({
     "deepseek:mock", "claude:mock", "engine:fail_closed", "engine:validate",
     "deepseek:analysis", "claude:review", "risk:quote",
     "risk:leverage_adjusted",
+    # Advisory-only context evidence; may affect the model's analysis but never
+    # bypass a risk gate, grant execution authority, or become an order.
+    "falco:paper_position_observation", "toro:paper_position_observation",
 })
 _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
 _SYMBOL_RE = __import__("re").compile(r"^[A-Z0-9][A-Z0-9/_:.-]{0,31}$")
