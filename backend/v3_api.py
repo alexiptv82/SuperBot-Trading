@@ -370,10 +370,11 @@ def _overview(paths: V3Paths, now_ms: int) -> dict:
                     'pnl_day_timezone': book['pnl_day_timezone'],
                     'peer_observations': peers,
                     'peer_observations_mode': 'display_only_not_ai_input'})
-    from backend.v3.cutover_gate import classic_single_close_enabled
+    from backend.v3.cutover_gate import classic_single_close_enabled, brain_single_close_enabled
     return {'generated_at_ms': now_ms, 'portfolios': entries,
             'cutover_readonly': os.environ.get('V3_CUTOVER_READONLY', '0') == '1',
-            'classic_single_close_allowed': classic_single_close_enabled(os.environ)}
+            'classic_single_close_allowed': classic_single_close_enabled(os.environ),
+            'brain_single_close_allowed': brain_single_close_enabled(os.environ, now_ms)}
 
 
 def _scoreboard(paths: V3Paths, now_ms: int) -> dict:
@@ -478,6 +479,11 @@ def _close_request(paths: V3Paths, body: object, now_ms: int) -> dict:
     creating a second persistent control file. The runner consumes the request.
     """
     position_id, close_all = _close_body(body)
+    # Even when the Brain single-position route is explicitly unlocked,
+    # closing the ENTIRE Brain wallet still requires separate authorization.
+    if close_all and os.environ.get('V3_CUTOVER_READONLY') == '1':
+        raise _close_error(423, 'chiusura_totale_disabilitata',
+                           'Durante il collaudo è possibile chiudere solo una posizione Brain per volta.')
     hb = _heartbeat(paths)
     if (hb is None or not paths.journal_path or not paths.run_id or
             not _exists(paths.journal_path) or now_ms - hb['ts_ms'] > _HEARTBEAT_STALE_MS
@@ -503,7 +509,7 @@ def _close_request(paths: V3Paths, body: object, now_ms: int) -> dict:
             # A lock on the existing directory (Linux) also coordinates distinct uvicorn workers.
             dirfd = os.open(str(target.parent), os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
             try:
-                fcntl.flock(dirfd, fcntl.LOCK_EX)
+                fcntl.flock(dirfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 if target.exists() or (target.parent / '.close_request.work').exists():
                     raise _close_error(409, 'richiesta_in_corso', 'Una chiusura è già in corso.')
                 fd, tmp_name = tempfile.mkstemp(prefix='.close_request.', suffix='.tmp', dir=target.parent)
@@ -518,6 +524,8 @@ def _close_request(paths: V3Paths, body: object, now_ms: int) -> dict:
                 os.close(dirfd)
     except HTTPException:
         raise
+    except BlockingIOError:
+        raise _close_error(409, 'richiesta_in_corso', 'Il Brain sta elaborando una chiusura: attendi l’esito.') from None
     except OSError:
         raise _close_error(409, 'brain_non_risponde', 'Impossibile inviare la richiesta al Brain.') from None
     finally:
