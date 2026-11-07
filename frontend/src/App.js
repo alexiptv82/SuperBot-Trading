@@ -97,7 +97,10 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <AppProvider>
-        <BrowserRouter>
+        <BrowserRouter basename={process.env.REACT_APP_BASENAME || undefined}>
+          {process.env.REACT_APP_PREVIEW_READONLY === '1' && <div role="status" style={{ background:'#78350f', color:'#fff7ed', padding:'10px 14px', fontWeight:700, textAlign:'center', fontSize:13 }}>
+            COLLAUDO V3 PAPER IN SOLA LETTURA — dati di prova, chiusure disabilitate, bot fermi.
+          </div>}
           <PasswordBanner />
           <div style={{ paddingBottom: '75px' }}>
             <Routes>
