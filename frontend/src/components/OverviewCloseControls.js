@@ -58,7 +58,7 @@ export function PortfolioTradeFields({ p, brain = false }) {
   </div>;
 }
 
-export function BrainCloseControls({ positions = [], serverPending = false, readOnly = false, onRefresh = () => {}, renderPosition = null }) {
+export function BrainCloseControls({ positions = [], serverPending = false, readOnly = false, allowCloseAll = true, onRefresh = () => {}, renderPosition = null }) {
   const [confirm, setConfirm] = useState(null);
   const [pending, setPending] = useState(null);
   const [sending, setSending] = useState(false);
@@ -73,7 +73,7 @@ export function BrainCloseControls({ positions = [], serverPending = false, read
   refreshRef.current = onRefresh;
 
   const submit = async () => {
-    if (readOnly || active.current || !confirm) return;
+    if (readOnly || active.current || !confirm || (confirm.all && !allowCloseAll)) return;
     active.current = true;
     setSending(true);
     setProblem('');
@@ -131,19 +131,19 @@ export function BrainCloseControls({ positions = [], serverPending = false, read
   const disabled = readOnly || active.current || sending || serverPending;
   return <div>
     {readOnly && positions.length > 0 && <p style={MUTED}>Collaudo PAPER in sola lettura: chiusure manuali non ancora attivate.</p>}
-    {positions.length > 0 && <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
+    {allowCloseAll && positions.length > 0 && <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
       <button type="button" style={BTN} disabled={disabled} onClick={() => ask({ all: true })}>Chiudi tutte ({positions.length})</button>
     </div>}
     {positions.map(p => <div key={p.position_id} style={{ background:'#0e1a2d', padding:12, border:'1px solid #30465e', borderRadius:11, marginTop:9, minWidth:0 }}>
       <div>{renderPosition ? renderPosition(p) : <PortfolioTradeFields p={p} brain />}</div>
-      <button type="button" style={{ ...BTN, marginTop:8 }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi {p.symbol}</button>
+      <button type="button" style={{ ...BTN, marginTop:8 }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi ora · {p.symbol}</button>
     </div>)}
     {confirm && <div role="dialog" aria-label="Conferma chiusura Brain" style={{ border: '1px solid #fda4af', padding: 12, borderRadius: 10, marginTop: 8 }}>
       <p style={{ margin: '0 0 10px' }}>{confirm.all
         ? `Chiudere tutte le ${positions.length} posizioni aperte del Brain a prezzo di mercato?`
         : `Chiudere ${confirm.symbol} adesso a prezzo di mercato?`}</p>
       <p style={MUTED}>Operazione PAPER, nessun ordine reale su Bitget.</p>
-      <button type="button" style={BTN} onClick={submit} disabled={sending}>Chiudi</button>{' '}
+      <button type="button" style={BTN} onClick={submit} disabled={sending}>Sì, chiudi</button>{' '}
       <button type="button" style={{ ...BTN, background: 'transparent' }} onClick={() => setConfirm(null)} disabled={sending}>Annulla</button>
     </div>}
     {pending && <div role="status" style={MUTED}>Richiesta inviata… controllo la risposta del Brain.</div>}
