@@ -1,0 +1,36 @@
+name: RC69 independent PAPER snapshot audit (READ ONLY)
+on:
+  push:
+    branches: [work/v3-rc69-singapore-preflight-20261107]
+    paths: ['.github/workflows/v3-rc69-verify-local-snapshot.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  attest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile verifier
+        run: python3 -m py_compile deploy/scripts/v3-rc69-verify-backup-readonly.py
+      - name: Independent SHA-256 + manifest type audit without writes
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || { echo 'RC69_NO_SSH'; exit 2; }
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          chmod 700 "$tmp"
+          printf '%s\n' "$SG_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          chmod 600 "$tmp/key"
+          cat > "$tmp/known_hosts" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 600 "$tmp/known_hosts"
+          ssh -T -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" \
+            -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=20 \
+            root@51.79.205.82 'python3 -' < deploy/scripts/v3-rc69-verify-backup-readonly.py
