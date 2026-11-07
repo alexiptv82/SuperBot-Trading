@@ -1,8 +1,13 @@
 """Isolated PAPER manual-exit worker for legacy Falco/Toro, NEVER a strategy runner.
 
 The historic desk containers must remain stopped, with restart policies disabled.
-This worker may ONLY consume the two authenticated-dashboard close-request flags.
-It never processes pause/resume/reset, calls Claude, evaluates symbols, or opens trades.
+By default this worker may ONLY consume the two authenticated-dashboard close-request
+flags. It never processes pause/resume/reset, calls Claude, evaluates symbols, or opens trades.
+
+PAPER stop, take-profit and liquidation protection is a separate opt-in read at tick
+time (``DESK_PAPER_STOP_MONITOR=1``). Import, process start and deployment do not
+enable it. When enabled it runs inside this same lock, after manual closes, and
+never starts the legacy containers.
 
 This is a separate opt-in process. Merely importing this module has no side effects.
 """
@@ -19,6 +24,13 @@ import subprocess
 import tempfile
 import time
 from typing import Callable, Optional
+
+from desk.paper_stop_monitor import (
+    STOP_WORK_NAME,
+    PaperStopRefused,
+    apply_paper_stop_protection,
+    monitor_opt_in,
+)
 
 REQUIRED = ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")
 PENDING = ("reset.flag", "reset.flag.work", "close_position.flag", "close_position.flag.work")
@@ -141,11 +153,15 @@ class ExitOnlyWorker:
             verify_snapshot(self.base, self.backup)
             if any((self.base / f).exists() for f in PENDING):
                 raise ExitOnlyError("existing_close_request_needs_manual_reconciliation")
+            if os.path.lexists(self.base / STOP_WORK_NAME):
+                raise ExitOnlyError("unreconciled_stop_protection")
 
     def _write_heartbeat(self, ready: bool) -> None:
         payload = {
             "mode": "paper-exit-only", "portfolio": self.portfolio, "ready": ready,
             "ts": self.clock(), "pid": os.getpid(),
+            # Observability only. False unless the operator exported the opt-in.
+            "stop_monitor_opt_in": monitor_opt_in(),
         }
         fd, tmp = tempfile.mkstemp(dir=self.base, prefix=".exit-only-hb.", suffix=".tmp")
         try:
@@ -211,7 +227,7 @@ class ExitOnlyWorker:
                 # A legitimate web request owns the directory briefly.
                 # Nothing has been claimed; safely retry on next poll.
                 return {"manual_one_requested": False, "manual_all_requested": False,
-                        "request_writer_busy": True}
+                        "request_writer_busy": True, "stop_monitor": {"enabled": False, "closed": []}}
             self.check_safe()
             # Do not call legacy.process_flags(), legacy.loop_step(), legacy.iteration(),
             # legacy.run_cycle(), or any strategy/AI function, even in PAPER.
@@ -225,11 +241,28 @@ class ExitOnlyWorker:
                     self.legacy._check_close_position_flag(state, price_provider=self._price_provider)
                 if all_pending:
                     self.legacy._check_close_all_flag(state, price_provider=self._price_provider)
+            stop_report = {"enabled": False, "closed": []}
+            if monitor_opt_in():
+                # Manual requests were handled first. Re-check the maintenance
+                # posture after any quote fetch, then protect under the same lock.
+                self.check_safe()
+                fresh_state = self.legacy.load_state(str(self.base / "state_v2.json"))
+                symbols = list(((fresh_state.get("main") or {}).get("positions") or {}))
+                now_ms = int(self.clock() * 1000)
+                prices = recent_minute_prices(
+                    symbols, fresh_state, now_ms, fetch_candles=self.legacy.fetch_candles)
+                self.check_safe()
+                try:
+                    stop_report = apply_paper_stop_protection(
+                        self.legacy, prices, now_ms, lock_held=True)
+                except PaperStopRefused as exc:
+                    raise ExitOnlyError(str(exc)) from None
             # The legacy handlers deliberately catch their own errors. Verify
             # ownership AGAIN after them; never publish READY if Docker changed mid-request.
             self.check_safe()
             self._write_heartbeat(True)
-            return {"manual_one_requested": selected, "manual_all_requested": all_pending}
+            return {"manual_one_requested": selected, "manual_all_requested": all_pending,
+                    "stop_monitor": stop_report}
         except Exception:
             # No further close commands can be accepted after failed preflight.
             self._write_heartbeat(False)
