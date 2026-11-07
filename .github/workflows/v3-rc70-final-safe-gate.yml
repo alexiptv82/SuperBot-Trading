@@ -1,0 +1,80 @@
+name: RC70 final PAPER staging + inactive exits gate (READ ONLY)
+on:
+  push:
+    branches: [work/v3-rc70-authorized-dashboard-cutover-20261107]
+    paths: ['.github/workflows/v3-rc70-final-safe-gate.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  attest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Final audit of segregated UI, Docker mounts, historical positions and disabled services
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            python3 - <<'PY'
+            import json,os,subprocess,urllib.request,urllib.error
+            from pathlib import Path
+            names = {'falco':'hawk','toro':'bull'}
+            def cmd(*argv):
+                try:
+                    p=subprocess.run(argv,capture_output=True,text=True,timeout=6)
+                    return (p.returncode,p.stdout.strip())
+                except (OSError,subprocess.TimeoutExpired):
+                    return (99,'')
+            def http(url):
+                try:
+                    with urllib.request.urlopen(url,timeout=5) as r:
+                        return r.status
+                except urllib.error.HTTPError as err:
+                    return err.code
+                except Exception:
+                    return 0
+            ok=True
+            for label,port,expected in [('STAGE_WEB',18080,200),('STAGE_AUTH',18080,401),('PROD',8002,200)]:
+                suffix='/api/v3/overview' if label=='STAGE_AUTH' else '/api/health' if label=='PROD' else '/'
+                code=http('http://127.0.0.1:'+str(port)+suffix)
+                good=code==expected
+                print('RC70_'+label+'_EXPECTED_HTTP_'+str(expected)+'='+str(good))
+                ok &= good
+            id,name=cmd('docker','inspect','superbot-v3-rc70-preview')
+            try:
+                inspected=json.loads(name)[0] if id==0 else {}
+            except (ValueError,IndexError):
+                inspected={}
+            mounts=inspected.get('Mounts',[])
+            ro=sum(not m.get('RW',True) and m.get('Destination','').endswith('/'+x)
+                   for x in ('hawk','bull') for m in mounts)
+            print('RC70_SNAPSHOT_MOUNTS_READ_ONLY='+str(ro==2))
+            ok &= ro==2
+            print('RC70_STAGE_DOCKER_RESTART_DISABLED='+str((inspected.get('HostConfig') or {}).get('RestartPolicy',{}).get('Name')=='no'))
+            ok &= (inspected.get('HostConfig') or {}).get('RestartPolicy',{}).get('Name')=='no'
+            for label,n in names.items():
+                rc,details=cmd('docker','inspect','superbot-desk-'+n)
+                d=json.loads(details)[0] if rc==0 else {}
+                running=d.get('State',{}).get('Running')
+                paused=Path('/opt/superbot-desk-data/'+n+'/pause.flag').is_file()
+                r,json_data=cmd('systemctl','is-enabled','superbot-v3-'+label+'-exit.service')
+                disabled=r==0 and json_data=='disabled'
+                active=cmd('systemctl','is-active','superbot-v3-'+label+'-exit.service')[1]=='active'
+                state=json.loads(Path('/opt/superbot-desk-data/'+n+'/state_v2.json').read_text())
+                count=len(state.get('main',{}).get('positions',{}))
+                good=running is False and paused and disabled and not active and count=={'hawk':6,'bull':2}[n]
+                print('RC70_'+label.upper()+'_PAPER_HISTORIC_SAFE='+str(good))
+                print('RC70_'+label.upper()+'_EXIT_UNIT_INSTALLED_DISABLED='+str(disabled and not active))
+                ok &= good
+            preview_public=Path('/opt/superbot-v3-rc70-public-web').exists()
+            print('RC70_PUBLIC_PREVIEW_NOT_PUBLISHED='+str(not preview_public))
+            print('RC70_NO_TRADES_EXECUTED=True')
+            print('RC70_FINAL_READONLY_GATE='+('PASS' if ok else 'FAIL'))
+            if not ok:raise SystemExit(2)
+            PY
