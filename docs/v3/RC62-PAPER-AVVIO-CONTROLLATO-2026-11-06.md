@@ -1,3 +1,15 @@
+## Aggiornamento vincolante — 7 novembre 2026 (precedenza sulle righe storiche sopra)
+
+**Non utilizzare come istruzioni operative i vecchi valori 2%/5% o le descrizioni “rules-only / nessuna chiave Anthropic” riportate nelle sezioni storiche di questo documento.** Queste sezioni rappresentano checkpoint superati, non la configurazione approvata per la nuova run.
+
+- **Falco e Toro:** conservare la consultazione di **Claude** come nella versione precedente. La strategia SHORT esistente resta invariata; S25 LONG e indicatore consultivo di cambio trend sono integrazioni additive. Le credenziali non vanno inserite nei log, nel frontend o in GitHub; verificare come il servizio le carica senza modificarle in questa fase.
+- **Brain:** capitale PAPER **2.000 USDT**; profilo attuale della PR #62: rischio aggregato **12%**, tetto di margine aggregato **55%**, rischio stimato per operazione fino a 75 USDT su 350 USDT di margine, margine singolo fino a 400 USDT, leva 20–50×, protezione equity 450 USDT. Il mandato non è ancora approvato e la vecchia run PAUSED non va modificata in-place.
+- **Conferma runtime 6/11:** audit Singapore in sola lettura, report `docs/v3/RC62-SINGAPORE-READONLY-GATE-20261106.md`. Backup esterno cifrato **FAILED** (ultimo successo 2/11), non risolto dalla prova di ripristino locale. Nuove run e nuovi volumi web non configurati. **NO-GO deploy e start**.
+- **CI ultimo commit 14ac880dd:** run GitHub `42295814354`, quattro job SUCCESS (backend, frontend, v3-suite, classics-rc). Non equivale a collaudo VPS.
+- **Prossima priorità:** diagnosticare e ripristinare backup esterno con attestazione off-host e restore isolato; poi nuove run PAUSED, collegamento web e prova UI. Nessun merge, deploy, start/stop, reset, cambio di rischio o firma del mandato senza specifica procedura approvata.
+
+---
+
 # SuperBot V3 — checklist di avvio controllato (PR #62)
 **Stato:** NO-GO per il deploy. Preparazione e test soltanto. NESSUN ordine LIVE.
 
