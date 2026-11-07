@@ -34,6 +34,7 @@ from typing import Callable, Mapping, Optional
 from backend.v3.brain_f2.engine import _policy_hash
 from backend.v3.brain_f3.providers import Transport
 from backend.v3.brain_market.deepseek_l5 import DeepSeekL5Analyst
+from backend.v3.brain_market.classic_peers import read_peers
 from backend.v3.brain_market.params import MarketViewParams, load_default_params as load_market_params
 from backend.v3.brain_market.view import min_bars, regime_for_context
 from backend.v3.brain_view.menu import build_menu, menu_ids
@@ -126,10 +127,21 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                  view_params: Optional[MarketViewParams] = None,
                  alert_send: Optional[Callable[[str], bool]] = None,
                  exit_mode: str = "legacy", clock_ms: Optional[Callable[[], int]] = None,
-                 desk_mode: Optional[str] = None) -> Built:
+                 desk_mode: Optional[str] = None,
+                 classic_peer_dirs: Optional[Mapping[str, Path]] = None) -> Built:
     """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test."""
     if type(exit_mode) is not str or exit_mode not in ("legacy", "sidecar"):
         raise ValueError("invalid_exit_mode")
+    # Peer observation is opt-in and can only read explicitly provided, isolated dirs.
+    peer_reader = None
+    if classic_peer_dirs is not None:
+        if (type(classic_peer_dirs) is not dict or set(classic_peer_dirs) != {"falco", "toro"}
+                or any(not isinstance(p, Path) or not p.is_absolute() for p in classic_peer_dirs.values())
+                or any(p.resolve() == data_dir.resolve() for p in classic_peer_dirs.values())
+                or classic_peer_dirs["falco"].resolve() == classic_peer_dirs["toro"].resolve()):
+            raise ValueError("invalid_peer_directories")
+        peer_reader = lambda sym, at_ms: read_peers(
+            classic_peer_dirs["falco"], classic_peer_dirs["toro"], sym, at_ms)
     if exit_mode == "sidecar":
         if type(desk_mode) is not str or desk_mode != "paper":
             raise ValueError("paper_mode_required")
@@ -204,7 +216,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             initial_equity=config.initial_equity, slippage_bps=config.slippage_bps,
             allowed_strategy_ids=allowed, price_source=lambda sym, now: last_minute_close(sym, now, get_json),
             rotate=slot, require_open_commit=(exit_mode == "sidecar"),
-            open_commit=safety_open_commit if exit_mode == "sidecar" else None)
+            open_commit=safety_open_commit if exit_mode == "sidecar" else None,
+            peer_source=peer_reader)
 
     def run_monitor(now_ms: int) -> MonitorReport:
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,
@@ -272,6 +285,18 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     if environ.get("DESK_MODE") != "paper":
         print("refused: DESK_MODE must be 'paper'", file=sys.stderr)
         return 2
+    # Explicit opt-in; never infer classic paths from legacy /opt defaults.
+    peer_mode = environ.get("V3_BRAIN_PEER_OBSERVATIONS", "disabled")
+    if peer_mode not in ("disabled", "paper_readonly"):
+        print("peer_mode_invalid", file=sys.stderr)
+        return 2
+    peer_opts = {}
+    if peer_mode == "paper_readonly":
+        falco, toro = environ.get("V3_FALCO_DATA_DIR"), environ.get("V3_TORO_DATA_DIR")
+        if not falco or not toro:
+            print("peer_paths_missing", file=sys.stderr)
+            return 2
+        peer_opts = {"classic_peer_dirs": {"falco": Path(falco), "toro": Path(toro)}}
     data_dir = Path(a.data_dir)
     if a.exit_mode == "sidecar":
         # A split start must NEVER initialize an empty journal/run implicitly.
@@ -285,7 +310,7 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     try:
         built = build_runner(data_dir=data_dir, run_id=a.run_id, config=config, get_json=get_json,
                              inner_transport=inner_transport, alert_send=telegram_sender(environ),
-                             **split_opts)
+                             **split_opts, **peer_opts)
     except ValueError:
         print("setup_invalid", file=sys.stderr)
         return 2
