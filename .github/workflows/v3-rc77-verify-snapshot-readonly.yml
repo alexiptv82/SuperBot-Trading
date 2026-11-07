@@ -1,0 +1,36 @@
+name: "RC77 independent post-ARB PAPER snapshot SHA audit (READ ONLY)"
+on:
+  push:
+    branches: [work/v3-rc77-post-arb-close-backup-20261107]
+    paths: [.github/workflows/v3-rc77-verify-snapshot-readonly.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile independent verifier
+        run: python3 -m py_compile deploy/scripts/v3-rc77-verify-backup-readonly.py
+      - name: Verify immutable copy hashes and manifest against legacy PAPER (read only)
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || { echo RC77_NO_SSH; exit 2; }
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          chmod 700 "$tmp"
+          printf '%s\n' "$SG_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          chmod 600 "$tmp/key"
+          cat > "$tmp/known_hosts" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 600 "$tmp/known_hosts"
+          ssh -T -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" \
+            -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=20 \
+            root@51.79.205.82 'python3 -B -' < deploy/scripts/v3-rc77-verify-backup-readonly.py
