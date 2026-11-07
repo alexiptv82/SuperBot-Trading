@@ -737,13 +737,15 @@ def _state_with_position(price_entry=100.0):
 def test_close_all_closes_at_market_price_with_real_costs():
     with _sandbox() as (d, calls):
         state = _state_with_position(100.0)
-        cli.fetch_candles = lambda sym, bar="15m", limit=3: [[NOW, 101, 103, 100, 102.0, 1.0]]
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [[int(__import__("time").time() * 1000) - 60_000, 101, 103, 100, 102.0, 1.0]]
         open(os.path.join(d, "reset.flag"), "w").close()
         assert cli._check_close_all_flag(state) is True
         acc = cli.make_account(state)
         assert not acc.positions
         rec = acc.closed[0]
         assert rec["why"] == "chiusura manuale"
+        assert rec["closed_by"] == "utente"
+        assert rec["manual_learning"] == "profit_protection_example"
         assert abs(rec["exit"] - 102.0) < 0.05, f"deve chiudere al prezzo di mercato, non a quello d'ingresso: {rec['exit']}"
         assert rec["net"] > 0 and rec["fees"] > 0, "pnl e commissioni reali, non zero"
         assert not os.path.exists(os.path.join(d, "reset.flag"))
@@ -1594,3 +1596,35 @@ def test_a_window_start_triggers_an_immediate_cycle_and_the_heartbeat_shows_the_
         assert cli.loop_step(state, ctl) is False, "senza calendario il ritmo non cambia"
         hb = json.load(open(os.path.join(d, "heartbeat.json")))["claude_schedule"]
         assert hb["mode"] == "none" and hb["allowed"] is True
+
+
+
+def test_manual_close_rejects_stale_prices_from_old_paused_run():
+    import time
+    with _sandbox() as (d, calls):
+        state = _state_with_position(100.0)
+        old_ms = int(time.time() * 1000) - 4 * 86_400_000
+        state["last_prices"] = {"BTC": 150.0}
+        state["last_prices_ms"] = old_ms
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [
+            [old_ms, 99, 152, 98, 150.0, 1.0]]
+        open(os.path.join(d, "reset.flag"), "w").close()
+        assert cli._check_close_all_flag(state) is True
+        assert "BTC" in cli.make_account(state).positions
+        assert state["last_action"]["ok"] is False
+        assert state["last_action"]["skipped"] == ["BTC"]
+
+
+def test_manual_close_price_is_positive_recent_and_finite():
+    import time
+    now = int(time.time() * 1000)
+    with _sandbox() as (d, calls):
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [
+            [now - 60_000, 100, 101, 99, float("nan"), 2]]
+        stale_state = {"last_prices": {"BTC": 105.0}, "last_prices_ms": now - 4*86_400_000}
+        fresh_state = {"last_prices": {"BTC": 105.0}, "last_prices_ms": now - 60_000}
+        assert cli._market_prices(["BTC"], stale_state, now) == {}
+        assert cli._market_prices(["BTC"], fresh_state, now) == {"BTC": 105.0}
+        cli.fetch_candles = lambda sym, bar="15m", limit=3: [
+            [now - 60_000, 100, 101, 99, 102.0, 2]]
+        assert cli._market_prices(["BTC"], {}, now) == {"BTC": 102.0}
