@@ -76,7 +76,7 @@ test('Brain equity and daily PnL are unknown rather than a fabricated wallet val
   const root = render(fixture);
   const brainCard = root.querySelector('[data-testid="portfolio-brain"]');
   expect(brainCard.textContent).toContain('Equity—');
-  expect(brainCard.textContent).toContain('Profitto di oggi—');
+  expect(brainCard.textContent).toContain('Profitto di oggi (realizzato, UTC)—');
   expect(brainCard.textContent).not.toContain('Equity0 USDT');
 });
 
