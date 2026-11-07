@@ -1045,10 +1045,20 @@ def _check_close_all_flag(state: dict, price_provider=None) -> bool:
     path = _flag("reset.flag")
     if not os.path.exists(path):
         return False
+    # PAPER: atomically claim a request before fetching prices. A crash leaves
+    # .work visible for manual reconciliation rather than executing it twice.
+    work = path if LIVE._live else path + ".work"
+    if not LIVE._live:
+        if os.path.exists(work):
+            return False
+        try:
+            os.replace(path, work)
+        except OSError:
+            return False
     try:
         if not LIVE._live:
             try:
-                age_s = time.time() - os.path.getmtime(path)
+                age_s = time.time() - os.path.getmtime(work)
             except OSError:
                 return False
             if not (-60 <= age_s <= CLOSE_ALL_MAX_AGE_S):
@@ -1102,7 +1112,7 @@ def _check_close_all_flag(state: dict, price_provider=None) -> bool:
         traceback.print_exc()
         return False
     finally:
-        _remove(path)
+        _remove(work)
 
 
 def run_params() -> dict:
@@ -1196,6 +1206,8 @@ def _check_close_position_flag(state: dict, price_provider=None) -> bool:
     if not os.path.exists(path):
         return False
     work = path + ".work"
+    if os.path.exists(work):  # incomplete prior close must be reconciled, never overwritten
+        return False
     try:
         os.replace(path, work)
     except OSError:
