@@ -25,10 +25,25 @@ for n in falco toro; do
   test ! -e "/etc/systemd/system/superbot-v3-$n-exit.service" || { echo RC70_UNIT_ALREADY_PRESENT; exit 2; }
   test "$(systemctl is-active "superbot-v3-$n-exit.service" 2>/dev/null || true)" != active || { echo RC70_UNIT_ALREADY_RUNNING; exit 2; }
 done
-if [ ! -x "$STAGE/.venv/bin/python3" ]; then
-  python3 -m venv "$STAGE/.venv"
+# Host Debian may lack ensurepip. Install ONLY the matching venv package,
+# with needrestart in list mode so packages do not restart existing services.
+if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
+  command -v apt-get >/dev/null || { echo RC70_VENV_PACKAGE_TOOL_MISSING; exit 2; }
+  export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l APT_LISTCHANGES_FRONTEND=none
+  apt-get update -qq >/dev/null
+  apt-get install -y -qq --no-install-recommends python3.12-venv >/dev/null
+  python3 -c 'import ensurepip' >/dev/null 2>&1 || { echo RC70_ENSUREPIP_STILL_MISSING; exit 2; }
+  echo RC70_PY312_VENV_PACKAGE_READY=True
+fi
+# First attempt can leave a partial .venv with python but no pip. The path
+# is dedicated exclusively to the new staging directory; never touch host env.
+if ! test -x "$STAGE/.venv/bin/python3" ||
+   ! "$STAGE/.venv/bin/python3" -c 'import numpy' >/dev/null 2>&1; then
+  python3 -m venv --clear "$STAGE/.venv"
   "$STAGE/.venv/bin/python3" -m pip install --disable-pip-version-check --no-input --quiet 'numpy>=1.26,<3' >/dev/null
 fi
+"$STAGE/.venv/bin/python3" -c 'import numpy; assert numpy.__version__' >/dev/null
+echo RC70_ISOLATED_PYTHON_DEPENDENCIES_READY=True
 DESK_MODE=paper DESK_PORTFOLIO=hawk DESK_DATA_DIR="$STAGE/data" \
   PYTHONPATH="$STAGE/backend" PYTHONDONTWRITEBYTECODE=1 \
   "$STAGE/.venv/bin/python3" -c 'from desk import cli; from desk.exit_only import ExitOnlyWorker; assert cli.LIVE._live is False' >/dev/null
