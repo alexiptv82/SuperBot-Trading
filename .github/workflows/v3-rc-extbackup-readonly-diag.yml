@@ -1,0 +1,217 @@
+name: V3 RC backup diagnosis on Singapore (READ ONLY)
+
+on:
+  push:
+    branches: [work/v3-extbackup-readonly-diagnostic-20261107]
+    paths: ['.github/workflows/v3-rc-extbackup-readonly-diag.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superbot-v3-extbackup-audit
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Inspect stopped workers and backup prerequisites without disclosing logs or secrets
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 90s
+          script: |
+            set -eu
+            echo V3_BACKUP_DIAGNOSTIC_READ_ONLY=1
+            python3 - <<'PY'
+            import datetime
+            import json
+            import os
+            from pathlib import Path
+            import re
+            import subprocess
+            import time
+
+            ROOT = Path("/opt/superbot-desk-data")
+            REQUIRED = ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")
+            CORE = REQUIRED + ("errors.md",)
+            STALE_SECONDS = 120
+            QUIET_SECONDS = 10
+
+            def cmd(*args):
+                try:
+                    p = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                       text=True, timeout=6, check=False)
+                    return p.stdout.strip() if p.returncode == 0 else None
+                except (OSError, subprocess.TimeoutExpired):
+                    return None
+
+            def flag(label, value):
+                print(label + "=" + str(value))
+
+            def backup_error_category(raw):
+                if not isinstance(raw, str) or not raw:
+                    return "NONE_OR_UNKNOWN"
+                s = raw.lower()
+                if any(w in s for w in ("no space left", "quota", "disk full", "spazio esaurito")):
+                    return "STORAGE_CAPACITY"
+                if any(w in s for w in ("permission denied", "access denied", "forbidden", "autorizzazione", "authentication")):
+                    return "AUTH_OR_PERMISSIONS"
+                if any(w in s for w in ("connection refused", "timeout", "timed out", "dns", "unreachable", "rete")):
+                    return "CONNECTIVITY"
+                if any(w in s for w in ("finestra", "fine ciclo", "bot-stopped", "file mancanti", "missing", "irrinunciabili")):
+                    return "BOUNDARY_OR_MISSING_FILES_AMBIGUOUS"
+                if any(w in s for w in ("hash", "checksum", "corrupt", "integrity")):
+                    return "INTEGRITY"
+                return "UNCLASSIFIED_PRIVATE_INSPECTION_REQUIRED"
+
+            now = time.time()
+            for prop in ("ActiveState", "Result", "ExecMainStatus"):
+                value = cmd("systemctl", "show", "superbot-extbackup.service", "-p", prop, "--value")
+                if prop == "ActiveState":
+                    value = value if value in ("active", "inactive", "failed", "activating", "deactivating") else "UNKNOWN"
+                elif prop == "Result":
+                    value = value if value in ("success", "exit-code", "signal", "timeout", "start-limit-hit", "resources") else "OTHER_OR_UNKNOWN"
+                else:
+                    value = value if value and re.fullmatch(r"[0-9]{1,4}", value) else "UNKNOWN"
+                flag("BACKUP_SERVICE_" + prop.upper(), value)
+            flag("BACKUP_TIMER_ACTIVE", cmd("systemctl", "is-active", "superbot-extbackup.timer") == "active")
+            # Inspect command only in private memory; never print command/credentials/unit contents.
+            command = cmd("systemctl", "show", "superbot-extbackup.service", "-p", "ExecStart", "--value")
+            flag("BACKUP_UNIT_EXPLICIT_STOPPED_FLAG", "UNKNOWN" if command is None else "--bot-stopped" in command)
+            flag("BACKUP_WRAPPER_NOT_AUDITED", True)
+
+            status_path = Path("/opt/superbot-extbackup/status.json")
+            flag("BACKUP_STATUS_PRESENT", status_path.is_file() and not status_path.is_symlink())
+            if status_path.is_file() and not status_path.is_symlink():
+                try:
+                    status = json.loads(status_path.read_text(encoding="utf-8"))
+                    if not isinstance(status, dict):
+                        raise ValueError("invalid")
+                    last = status.get("ultimo_successo")
+                    if isinstance(last, str):
+                        try:
+                            last_dt = datetime.datetime.fromisoformat(last.replace("Z", "+00:00"))
+                            age = (datetime.datetime.now(datetime.timezone.utc) - last_dt).total_seconds()
+                            flag("BACKUP_LAST_SUCCESS_AGE_H", int(age // 3600) if age >= 0 else "INVALID")
+                        except ValueError:
+                            flag("BACKUP_LAST_SUCCESS_AGE_H", "UNKNOWN")
+                    else:
+                        flag("BACKUP_LAST_SUCCESS_AGE_H", "UNKNOWN")
+                    flag("BACKUP_LAST_ERROR_CATEGORY", backup_error_category(status.get("ultimo_errore")))
+                except (OSError, ValueError, TypeError):
+                    flag("BACKUP_STATUS_VALID", False)
+
+            all_stopped = True
+            all_heartbeat_stale = True
+            all_required_present = True
+            all_files_quiet = True
+            for name in ("hawk", "bull"):
+                prefix = name.upper()
+                state = cmd("docker", "inspect", "-f", "{{.State.Status}}", "superbot-desk-" + name)
+                state = state if state in ("created", "running", "paused", "restarting", "exited", "dead") else "UNKNOWN"
+                flag(prefix + "_CONTAINER_STATE", state)
+                stopped = state in ("exited", "dead", "created")
+                all_stopped &= stopped
+                base = ROOT / name
+                for filename in REQUIRED:
+                    path = base / filename
+                    if path.is_symlink():
+                        state_file = "SYMLINK_NOT_ACCEPTED"
+                    elif not path.is_file():
+                        state_file = "MISSING"
+                    elif filename == "state_v2.json" and path.stat().st_size == 0:
+                        state_file = "EMPTY"
+                    else:
+                        state_file = "PRESENT"
+                    flag(prefix + "_REQUIRED_" + filename.replace(".", "_").upper(), state_file)
+                    all_required_present &= state_file == "PRESENT"
+                hb = base / "heartbeat.json"
+                if not hb.exists():
+                    hb_stale = True
+                    hb_bucket = "ABSENT"
+                else:
+                    try:
+                        age = now - hb.stat().st_mtime
+                        hb_stale = age > STALE_SECONDS
+                        hb_bucket = "STALE_GT120S" if hb_stale else "FRESH_LE120S"
+                    except OSError:
+                        hb_stale = False
+                        hb_bucket = "UNKNOWN"
+                all_heartbeat_stale &= hb_stale
+                flag(prefix + "_HEARTBEAT", hb_bucket)
+                quiet = True
+                for filename in CORE:
+                    path = base / filename
+                    try:
+                        if path.is_file() and now - path.stat().st_mtime < QUIET_SECONDS:
+                            quiet = False
+                    except OSError:
+                        quiet = False
+                all_files_quiet &= quiet
+                flag(prefix + "_CORE_FILES_QUIET_GE10S", quiet)
+
+            flag("PREREQ_CONTAINERS_DEMONSTRABLY_STOPPED", all_stopped)
+            flag("PREREQ_STALE_HEARTBEATS", all_heartbeat_stale)
+            flag("PREREQ_REQUIRED_FILES_PRESENT", all_required_present)
+            flag("PREREQ_CORE_FILES_QUIET", all_files_quiet)
+            flag("STOPPED_MODE_PRECONDITIONS_ONLY",
+                 all_stopped and all_heartbeat_stale and all_required_present and all_files_quiet)
+            print("DIAGNOSIS_IS_NOT_BACKUP_REPAIR=1")
+            print("NO_SERVICE_RESTART_NO_STORAGE_WRITES=1")
+            print("RELEASE_GATE=NO_GO")
+            PY
+
+            echo V3_BACKUP_WRAPPER_READ_ONLY_FINGERPRINT=1
+            python3 - <<'PY'
+            from pathlib import Path
+            import subprocess
+            import json
+            import datetime
+
+            root=Path("/opt/superbot-extbackup")
+            choices=[]
+            try:
+                choices=sorted(p for p in root.iterdir()
+                               if p.is_file() and not p.is_symlink()
+                               and p.suffix in (".py", ".sh") and p.stat().st_size < 200000)
+            except (OSError, ValueError):
+                pass
+            print("BACKUP_WRAPPER_SCRIPT_CANDIDATES="+str(len(choices)))
+            texts=[]
+            for p in choices[:30]:
+                try:
+                    texts.append(p.read_text(encoding="utf-8",errors="replace"))
+                except OSError:
+                    pass
+            joined="\n".join(texts)
+            print("WRAPPER_REFERENCES_BACKUP_BRAIN="+str("backup_brain" in joined))
+            print("WRAPPER_MENTIONS_EXPLICIT_STOPPED_MODE="+str("--bot-stopped" in joined))
+            # A string in the source is NOT proof that this mode is passed to the installed command.
+            for p in (Path("/opt/superbot-v3-rc62-src/deploy/scripts/backup_brain.py"),
+                      Path("/opt/superbot-extbackup/backup_brain.py")):
+                if p.is_file() and not p.is_symlink() and p.stat().st_size < 200000:
+                    try:
+                        src=p.read_text(encoding="utf-8",errors="replace")
+                        print("INSTALLED_BACKUP_HELPER_HAS_STOPPED_MODE="+str("--bot-stopped" in src))
+                        break
+                    except OSError:
+                        pass
+            else:
+                print("INSTALLED_BACKUP_HELPER_HAS_STOPPED_MODE=UNKNOWN")
+            try:
+                obj=json.loads((root/"status.json").read_text(encoding="utf-8"))
+                val=obj.get("ultimo_tentativo","") if isinstance(obj,dict) else ""
+                dt=datetime.datetime.fromisoformat(val.replace("Z","+00:00")) if isinstance(val,str) else None
+                age=(datetime.datetime.now(datetime.timezone.utc)-dt).total_seconds() if dt else -1
+                print("LAST_ATTEMPT_AGE_H="+str(int(age//3600) if age>=0 else "UNKNOWN"))
+            except (OSError,ValueError,TypeError):
+                print("LAST_ATTEMPT_AGE_H=UNKNOWN")
+            print("READ_ONLY_WRAPPER_ANALYSIS_DONE=1")
+            PY
