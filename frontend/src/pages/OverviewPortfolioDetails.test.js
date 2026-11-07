@@ -12,7 +12,7 @@ const base = {
         margin:'100',stop:'102',take_profit:'95',liquidation:'105',
         unrealized_pnl:'5.5',roi_pct:'5.5',trade_type:'scalp'}],
       closed_trades:[{symbol:'ETHUSDT',side:1,leverage:20,entry:'100',exit:'102',
-        margin:'150',realized_pnl:'4.50',close_reason:'obiettivo',closed_at_ms:NOW-20000}] },
+        margin:'150',realized_pnl:'4.50',close_reason:'chiusura manuale',manual_learning:'profit_protection_example',closed_at_ms:NOW-20000}] },
     { id:'toro',kind:'classic',state:'paused',open_positions:0,realized_pnl:'0',
       margin_in_use:'0',positions:[],closed_trades:[],last_event_ms:NOW-10000 },
     { id:'brain',kind:'brain',state:'running',open_positions:1,realized_pnl:'7.10',
@@ -25,7 +25,7 @@ const base = {
        opened_at_ms:NOW-60000,unrealized_pnl:'4.5',roi_pct:'1.2857',strategy_id:'S07'}],
     closed_trades:[{position_id:'id-2',symbol:'ADAUSDT',side:-1,leverage:40,margin:'200',
        entry:'100',exit:'98',realized_pnl:'7.10',net_bp:'27.1',fees:'1.2',
-       closed_at_ms:NOW-5000,hold_ms:60000,exit_reason:'take_profit',regime:'TREND_DOWN'}] },
+       closed_at_ms:NOW-5000,hold_ms:60000,exit_reason:'manual',manual_learning:'profit_protection_example',regime:'TREND_DOWN'}] },
 };
 const render = data => renderToStaticMarkup(<OverviewContent {...data} nowMs={NOW} regime="" onRegime={() => {}} />);
 
@@ -78,4 +78,10 @@ test('unknown price and PnL must not appear as fabricated zero', () => {
   const h=render(clone);
   expect(h).toContain('Prezzo aggiornato non disponibile');
   expect(h).not.toContain('P&L non realizzato: 0 USDT');
+});
+
+test('manual profit is separate learning evidence, not a proven strategy', () => {
+  const h = render(base);
+  expect(h.match(/Profitto protetto manualmente/g)).toHaveLength(2);
+  expect(h).toContain('non strategia convalidata');
 });
