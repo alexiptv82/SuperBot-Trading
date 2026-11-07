@@ -90,7 +90,10 @@ def recent_minute_prices(symbols, state, now_ms: int, *, fetch_candles) -> dict:
     """No old candle cache; use public Bitget futures 1m candles no older than 120 seconds."""
     prices = {}
     for symbol in symbols:
-        bars = fetch_candles(symbol, "1m", 3)
+        try:
+            bars = fetch_candles(symbol, "1m", 3)
+        except Exception:
+            bars = []  # failed public feed => no PAPER close, never invented price
         if not isinstance(bars, (tuple, list)) or not bars:
             continue
         try:
@@ -208,6 +211,9 @@ class ExitOnlyWorker:
                     self.legacy._check_close_position_flag(state, price_provider=self._price_provider)
                 if all_pending:
                     self.legacy._check_close_all_flag(state, price_provider=self._price_provider)
+            # The legacy handlers deliberately catch their own errors. Verify
+            # ownership AGAIN after them; never publish READY if Docker changed mid-request.
+            self.check_safe()
             self._write_heartbeat(True)
             return {"manual_one_requested": selected, "manual_all_requested": all_pending}
         except Exception:
