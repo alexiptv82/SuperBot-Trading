@@ -2,7 +2,7 @@ name: "RC75 SuperBot Singapore post-click inventory (READ ONLY)"
 on:
   push:
     branches:
-      - work/v3-rc75-sg-postclick-audit-20261107
+      - work/v3-rc76-arb-forensic-readonly-20261107
     paths:
       - .github/workflows/v3-rc75-sg-postclick-readonly.yml
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rc75-singapore-postclick-readonly
+  group: rc76-singapore-postclick-arb-readonly
   cancel-in-progress: false
 
 jobs:
@@ -156,4 +156,89 @@ jobs:
             print('RC69_LOCAL_SNAPSHOT_COUNT='+str(len(snaps)))
             print('RC69_LOCAL_SNAPSHOT_LATEST='+str(snaps[-1].name if snaps else 'NONE'))
             print('RC75_AUDIT_COMPLETED=YES')
+            PY
+
+      - name: Inspect ARB PAPER facts and compare manual winners (read only)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 51.79.205.82
+          username: root
+          key: \${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+          fingerprint: SHA256:sNv9lNqWbZFf2Pm5ChIubeQKV5TzKfUWNlGPzCJg96s
+          command_timeout: 100s
+          script: |
+            set -eu
+            python3 -B - <<'PY'
+            import json,math,time,urllib.request
+            from pathlib import Path
+            now=time.time()
+            print('RC76_FORENSIC=READ_ONLY')
+            def load(p):
+                try:return json.loads(p.read_text(encoding='utf8'))
+                except (OSError,ValueError,UnicodeError):return {}
+            def f(x):
+                try:
+                    n=float(x)
+                    return n if math.isfinite(n) else None
+                except (ValueError,TypeError):return None
+            quote={}
+            try:
+                url='https://api.bitget.com/api/v2/mix/market/ticker?symbol=ARBUSDT&productType=USDT-FUTURES'
+                req=urllib.request.Request(url,headers={'User-Agent':'SuperBot-RC76-readonly'})
+                with urllib.request.urlopen(req,timeout=6) as rsp:q=json.load(rsp)
+                d=q.get('data')
+                if q.get('code')=='00000' and isinstance(d,list) and d:
+                    d=d[0]
+                    px=f(d.get('lastPr'))
+                    ts=f(d.get('ts'))
+                    if px and px>0 and ts is not None and 0<=now*1000-ts<120000:
+                        quote={'price':px,'timestamp_ms':int(ts),'price_change_24h':f(d.get('change24h')),'funding':f(d.get('fundingRate'))}
+            except Exception as exc:
+                print('MARKET_DATA_ERROR='+type(exc).__name__)
+            print('ARB_FRESH_QUOTE='+json.dumps(quote))
+            for slug,label in (('hawk','FALCO'),('bull','TORO')):
+                root=Path('/opt/superbot-desk-data')/slug
+                s=load(root/'state_v2.json')
+                main=s.get('main') if isinstance(s,dict) else None
+                main=main if isinstance(main,dict) else {}
+                pos=main.get('positions')
+                pos=pos if isinstance(pos,dict) else {}
+                arb=pos.get('ARB')
+                if not isinstance(arb,dict):
+                    arb=next((v for v in pos.values() if isinstance(v,dict) and str(v.get('symbol','')).upper().startswith('ARB')),None)
+                events=[]
+                try:
+                    with (root/'trade_history.jsonl').open(encoding='utf8') as h:
+                        for line in h:
+                            try:e=json.loads(line)
+                            except ValueError:continue
+                            if isinstance(e,dict) and (e.get('symbol')=='ARB' or e.get('closed_by')=='utente'):
+                                events.append({k:e[k] for k in ('id','symbol','side','entry','exit','margin','leverage','net','fees','reason','source','open_ms','close_ms','why','closed_by') if k in e})
+                except OSError:print(label+'_HISTORY_UNAVAILABLE=True')
+                arb_closed=[e for e in events if e.get('symbol')=='ARB']
+                print(label+'_ARB_CLOSED_COUNT='+str(len(arb_closed)))
+                if arb_closed:print(label+'_ARB_LATEST_CLOSE='+json.dumps(arb_closed[-1],sort_keys=True))
+                if not isinstance(arb,dict):
+                    print(label+'_ARB_OPEN=False')
+                    continue
+                print(label+'_ARB_OPEN=True')
+                safe={k:arb[k] for k in ('id','symbol','side','entry','qty','margin','total_margin','leverage','sl','tp','liq','open_ms','confidence','source','reason','dca_count','trade_type') if k in arb}
+                print(label+'_ARB_POSITION='+json.dumps(safe,sort_keys=True))
+                ms=f(arb.get('open_ms'))
+                if ms:print(label+'_ARB_HOURS_OPEN='+str(round((now*1000-ms)/3600000,2)))
+                entry,qty,side=(f(arb.get(k)) for k in ('entry','qty','side'))
+                margin=f(arb.get('total_margin',arb.get('margin')))
+                stop=f(arb.get('sl'))
+                if quote and entry and qty and side in (-1,1):
+                    price=quote['price']
+                    gross=side*(price-entry)*qty
+                    print(label+'_ARB_ADVERSE_MOVE_PCT='+str(round(100*(price-entry)/entry*-side,4)))
+                    print(label+'_ARB_GROSS_UNREALIZED_EST_USDT='+str(round(gross,4)))
+                    if margin and margin>0:print(label+'_ARB_GROSS_ROI_EST_PCT='+str(round(gross/margin*100,2)))
+                    if stop and stop>0:print(label+'_ARB_SL_CROSSED_BY_QUOTE='+str(price>=stop if side<0 else price<=stop))
+                else:
+                    print(label+'_ARB_MARK_TO_MARKET=UNAVAILABLE')
+                wins=[e for e in events if e.get('closed_by')=='utente' and (f(e.get('net')) or 0)>0]
+                print(label+'_WINNERS='+json.dumps([{'symbol':e.get('symbol'),'side':e.get('side'),'leverage':e.get('leverage'),'reason':e.get('reason')} for e in wins[-8:]],sort_keys=True))
+            print('RC76_DONE=True')
             PY
