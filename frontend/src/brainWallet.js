@@ -95,6 +95,7 @@ export function brainWalletSummary(portfolio, status, tradeData) {
     max_open: null, // only display a limit when the live run config provides it
     positions: open,
     close_pending: tradeData?.close_pending === true,
+    manual_close_allowed: portfolio.manual_close_allowed === true,
     last_decision: status?.last_decision || null,
     peer_observations: Array.isArray(portfolio.peer_observations) ? portfolio.peer_observations : [],
     spend: status?.spend || null,
