@@ -155,7 +155,7 @@ test('Brain: pending command persisted before page reload disables close buttons
   const s = setup(<BrainCloseControls positions={positions} serverPending />);
   try {
     await s.render();
-    expect(find(s.host, 'Chiudi BTCUSDT').disabled).toBe(true);
+    expect(find(s.host, 'Chiudi ora · BTCUSDT').disabled).toBe(true);
     expect(s.host.textContent).toContain('Una richiesta di chiusura è già in corso.');
     expect(API.post).not.toHaveBeenCalled();
   } finally { await s.done(); }
