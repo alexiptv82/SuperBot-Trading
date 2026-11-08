@@ -35,6 +35,7 @@ from backend.v3.outcomes import REGIMES, extract_outcomes
 from backend.v3.runner.config import load_default_config
 from backend.v3.runner.exit_service import exit_service_healthy
 from backend.v3.cutover_gate import brain_single_close_enabled
+from backend.v3.observability.classic_stop_health import classic_stop_health
 
 _MICRO_DOLLAR = Decimal('1000000')
 _HEARTBEAT_STALE_MS = 3 * 900 * 1000  # UI freshness, NOT trading/strategy limits
@@ -284,7 +285,12 @@ def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
 
         for t in recent if type(t) is dict
     ]
+    stop_health = classic_stop_health(
+        data_dir, 'hawk' if portfolio_id == 'falco' else 'bull',
+        now_s=now_s, open_positions=len(positions),
+        worker_mode=detail.get('close_worker_mode', 'offline'))
     return {'id': portfolio_id, 'kind': 'classic', 'state': mode,
+            'stop_health': stop_health,
             'positions': classic_positions, 'closed_trades': closed,
             'can_close_position': detail.get('can_close_position') is True,
             'close_worker_mode': detail.get('close_worker_mode', 'offline'),

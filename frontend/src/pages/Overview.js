@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 import API from '../api';
 import { BrainCloseControls, ClassicCloseControls, PortfolioTradeFields } from '../components/OverviewCloseControls';
+import ClassicStopNotice from '../components/ClassicStopNotice';
 
 const PALETTE = { running: '#34d399', paused: '#fbbf24', halted: '#fb7185', stale: '#fbbf24', not_started: '#94a3b8' };
 const STATE_TEXT = { running: 'In funzione', paused: 'In pausa', halted: 'Fermo', stale: 'Segnale assente', not_started: 'Non avviato' };
@@ -117,6 +118,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         </p>}
         {p.id === 'brain' && stoppedReason && <p style={{ color: '#fda4af', fontSize: 13 }}>{stoppedReason}</p>}
         {p.kind === 'classic' && <>
+          <ClassicStopNotice health={p.stop_health} openPositions={p.open_positions} />
           <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · {p.id === 'falco' ? 'Falco' : 'Toro'}</h3>
           {p.close_worker_mode === 'exit_only' && <div style={{ ...MUTED, color: '#7dd3fc', marginBottom: 8 }}>
             Modalità solo chiusure PAPER · nessun nuovo ingresso</div>}
