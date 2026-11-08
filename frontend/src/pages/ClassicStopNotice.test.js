@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ClassicStopNotice, OverviewContent } from './Overview';
+import { OverviewContent } from './Overview';
+import ClassicStopNotice from '../components/ClassicStopNotice';
 
 const status = (state, quote_coverage = false, reason = 'coverage_' + state) => ({
   scope: 'maintenance_exit_only', state, quote_coverage, alarm: !quote_coverage,
