@@ -258,15 +258,36 @@ def _same_closure_economics(history_row: dict, learning_row: dict) -> bool:
     return True
 
 
-def find_same_closure(base: Path, symbol: str, pos_id, open_ms: int, *,
-                      portfolio=None, run_no=None):
-    """Return the single history/learning pair for this position, or None.
-
-    None covers a missing pair, two different close_ms values, or numbers that
-    do not describe the same fill. Partial rows are ignored.
-    """
-    if type(open_ms) is not int:
+def _closure_fingerprint(row: dict):
+    """Identity of one terminal fill. None means the row cannot be compared safely."""
+    if type(row.get("close_ms")) is not int or row.get("why") is None or "net" not in row:
         return None
+    if isinstance(row.get("net"), bool):
+        return None
+    try:
+        net = float(row["net"])
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(net):
+        return None
+    extras = []
+    for field in ("gross", "fees", "exit"):
+        if field not in row:
+            extras.append(None)
+            continue
+        if isinstance(row[field], bool):
+            return None
+        try:
+            number = float(row[field])
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(number):
+            return None
+        extras.append(round(number, 4))
+    return (row["close_ms"], row.get("why"), round(net, 4), tuple(extras))
+
+
+def _terminal_rows(base: Path, symbol: str, pos_id, open_ms: int, *, portfolio=None, run_no=None):
     history_rows = []
     for row in _iter_rows(base / "trade_history.jsonl"):
         if _terminal_match(row, symbol=symbol, pos_id=pos_id, open_ms=open_ms,
@@ -279,15 +300,52 @@ def find_same_closure(base: Path, symbol: str, pos_id, open_ms: int, *,
         if _terminal_match(row, symbol=symbol, pos_id=pos_id, open_ms=open_ms,
                            portfolio=portfolio, run_no=run_no):
             learning_rows.append(row)
-    pairs = []
+    return history_rows, learning_rows
+
+
+def terminal_closure_status(base: Path, symbol: str, pos_id, open_ms: int, *,
+                            portfolio=None, run_no=None) -> str:
+    """unique, discordant, or absent.
+
+    One matching history/learning pair is not enough when either register also
+    contains a different terminal close for this same position. Identical
+    repeated rows are the same fill and are kept. Partial rows are ignored.
+    """
+    if type(open_ms) is not int:
+        return "discordant"
+    history_rows, learning_rows = _terminal_rows(
+        base, symbol, pos_id, open_ms, portfolio=portfolio, run_no=run_no)
+    if not history_rows and not learning_rows:
+        return "absent"
+    history_keys = [_closure_fingerprint(row) for row in history_rows]
+    learning_keys = [_closure_fingerprint(row) for row in learning_rows]
+    if any(key is None for key in history_keys + learning_keys):
+        return "discordant"
+    history_set, learning_set = set(history_keys), set(learning_keys)
+    if len(history_set) > 1 or len(learning_set) > 1 or history_set != learning_set:
+        return "discordant"
+    if len(history_set) != 1:
+        return "absent"
+    return "unique"
+
+
+def find_same_closure(base: Path, symbol: str, pos_id, open_ms: int, *,
+                      portfolio=None, run_no=None):
+    """Return one history/learning pair only when every terminal row agrees.
+
+    A competing terminal close in either file, even if another pair matches,
+    returns None. Nothing is deleted.
+    """
+    if terminal_closure_status(base, symbol, pos_id, open_ms,
+                               portfolio=portfolio, run_no=run_no) != "unique":
+        return None
+    history_rows, learning_rows = _terminal_rows(
+        base, symbol, pos_id, open_ms, portfolio=portfolio, run_no=run_no)
     for history_row in history_rows:
         for learning_row in learning_rows:
             if _same_closure_economics(history_row, learning_row):
-                pairs.append((history_row, learning_row))
-    close_times = {pair[0].get("close_ms") for pair in pairs}
-    if len(close_times) != 1:
-        return None
-    return pairs[0]
+                return (history_row, learning_row)
+    return None
 
 
 def _history_has_close(base: Path, symbol: str, pos_id, close_ms=None, *,
@@ -334,16 +392,16 @@ def inspect_claims(base: Path, acc) -> str:
                       and pos.open_ms == claim["open_ms"])
         portfolio = claim.get("portfolio")
         run_no = claim.get("run_no")
-        pair = find_same_closure(
+        status = terminal_closure_status(
             base, claim["symbol"], claim["id"], claim["open_ms"],
             portfolio=portfolio, run_no=run_no)
-        if still_open and pair is not None:
-            return "mismatch"
+        if status == "discordant":
+            return "mismatch" if still_open else "unproven"
+        if status == "unique":
+            return "mismatch" if still_open else "resolved"
         if still_open:
             return "open"
-        if pair is None:
-            return "unproven"
-    return "resolved"
+        return "unproven"
 
 
 def _archive_claim(base: Path) -> str:
@@ -613,8 +671,8 @@ def apply_paper_stop_protection(legacy, prices: dict, now_ms: int, *, lock_held:
             pos = acc.positions.get(symbol)
             if pos is None or not _same_id(pos.id, pos_id) or pos.open_ms != open_ms:
                 continue
-            if _history_has_close(base, symbol, pos_id, open_ms=open_ms,
-                                  portfolio=portfolio, run_no=run_no):
+            if terminal_closure_status(base, symbol, pos_id, open_ms,
+                                       portfolio=portfolio, run_no=run_no) in ("unique", "discordant"):
                 raise PaperStopRefused("state_history_mismatch")
             record = acc._close(pos, fill, now_ms, why)
             _durable_record(legacy, base, state, record)

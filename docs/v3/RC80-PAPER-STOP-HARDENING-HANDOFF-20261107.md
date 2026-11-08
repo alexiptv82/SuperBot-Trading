@@ -74,3 +74,7 @@ P0-E: `find_same_closure` accoppia una riga di `trade_history.jsonl` e una di `l
 P0-F: `assess_restart` è in sola lettura. Lo snapshot passato al worker non viene riscritto né usato per rimettere una posizione chiusa. La discendenza è append-only più una chiusura provata per ogni posizione sparita. `publish_recovery_snapshot` scrive un manifesto nuovo accanto, con hash dell'antenato e dei file correnti. Corruzione o antenato diverso bloccano l'avvio. Un manifesto assente, se la discendenza torna, non toglie la protezione alla posizione rimasta.
 
 Prova locale del caso a due posizioni: BTC chiuso, ETH aperto, byte del backup uguali prima e dopo il restart, seconda chiusura di ETH possibile. Non è CI GitHub.
+
+## Review `6720918518` su `34a4abe6ac80b5d65bfc12fbfdbe40d131124b4d`
+
+`terminal_closure_status` non accetta una coppia buona se nello storico o nel learning esiste un altro terminale diverso per la stessa `symbol/id/open_ms`. Duplicati identici restano. I file non vengono ripuliti. Il restart con quel conflitto risponde `close_not_proven` e non tocca il backup.

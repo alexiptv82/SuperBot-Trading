@@ -60,3 +60,11 @@ Fonte: https://github.com/alexiptv82/SuperBot-Trading/pull/77#issuecomment-67207
 **P0-F.** Il riavvio non richiede più che i file vivi siano identici allo snapshot originale, e non lo ricopia sopra i dati. Lo snapshot storico resta intatto. Lo stato vivo deve esserne un'estensione: log solo in append, lezioni invariate, una posizione sparita solo se storico e learning hanno la stessa chiusura. I checkpoint nuovi stanno in una cartella sorella `*.paper-stop-recovery`, mai dentro il backup. Un manifest corrotto blocca l'avvio senza ripristinare nulla. Manca il manifest dopo un crash ma la discendenza è coerente: l'altra posizione resta sorvegliabile. Test: `test_restart_after_one_of_two_closes_keeps_the_other_and_the_backup` (BTC chiuso, ETH ancora aperto, backup byte-identico, poi ETH chiudibile) e i due test di manifest corrotto / learning tolto.
 
 Non è una certificazione di stop in produzione. Dashboard, wick intrabar, backup esterno e VPS restano fuori. Nessun merge o deploy.
+
+## Terza review, 8 novembre 2026 — terminali contraddittori
+
+Fonte: https://github.com/alexiptv82/SuperBot-Trading/pull/77#issuecomment-6720918518 sull'HEAD `34a4abe6ac80b5d65bfc12fbfdbe40d131124b4d`. ChatGPT conferma P0-E e P0-F. Resta un solo caso: `find_same_closure` accettava una coppia history/learning anche se nello stesso registro c'era un'altra chiusura terminale diversa.
+
+Ora ogni riga terminale della stessa posizione deve avere la stessa impronta (`close_ms`, `why`, `net` e gli importi presenti). Una seconda riga con `close_ms` o netto diverso, nello storico, nel learning o in entrambi, rende la prova `discordant`: il claim non si archivia e il restart non dà la posizione per chiusa. Le righe non si cancellano. Due copie identiche dello stesso fill restano ammesse. I parziali non sono terminali. Test: `test_conflicting_terminal_closes_are_not_a_unique_proof`.
+
+Prova locale, non CI: 66 passed, 0 failed sui tre file pytest già usati (29 RC80, 22 RC78, 15 exit-only). Nessuna Actions su questo branch.

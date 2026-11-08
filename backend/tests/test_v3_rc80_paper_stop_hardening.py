@@ -430,6 +430,71 @@ def _terminal(symbol, pos_id, open_ms, close_ms, net, why="stop loss"):
             "why": why, "net": net, "gross": net, "fees": 0.1, "exit": 1.0, "partial": False}
 
 
+def _write_registers(base, history_rows, learning_rows):
+    (base / "trade_history.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in history_rows), encoding="utf-8")
+    (base / "learning_log.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in learning_rows), encoding="utf-8")
+
+
+def test_conflicting_terminal_closes_are_not_a_unique_proof(tmp_path, monkeypatch):
+    """Third review: one matching pair must not hide another terminal close."""
+    from desk.paper_stop_monitor import find_same_closure, inspect_claims, terminal_closure_status
+    base, backup = rc78.prepare(tmp_path, monkeypatch)
+    state = json.loads((base / "state_v2.json").read_text())
+    pos = state["main"]["positions"].pop("BTC")
+    (base / "state_v2.json").write_text(json.dumps(state), encoding="utf-8")
+    good = _terminal("BTC", pos["id"], pos["open_ms"], 2000, -1.0)
+    other = _terminal("BTC", pos["id"], pos["open_ms"], 3000, -8.0)
+    good_learn = dict(good, ev="close", portfolio="hawk")
+    other_learn = dict(other, ev="close", portfolio="hawk")
+    claim = {"claims": [{"symbol": "BTC", "id": pos["id"], "open_ms": pos["open_ms"], "portfolio": "hawk"}]}
+    acc = cli.make_account(json.loads((base / "state_v2.json").read_text()))
+
+    def expect(history_rows, learning_rows, status, verdict):
+        _write_registers(base, history_rows, learning_rows)
+        (base / STOP_WORK_NAME).write_text(json.dumps(claim), encoding="utf-8")
+        before_history = (base / "trade_history.jsonl").read_bytes()
+        before_learning = (base / "learning_log.jsonl").read_bytes()
+        before_backup = (backup / "state_v2.json").read_bytes()
+        assert terminal_closure_status(base, "BTC", pos["id"], pos["open_ms"]) == status
+        assert (find_same_closure(base, "BTC", pos["id"], pos["open_ms"]) is not None) is (status == "unique")
+        assert inspect_claims(base, acc) == verdict
+        assert (base / "trade_history.jsonl").read_bytes() == before_history
+        assert (base / "learning_log.jsonl").read_bytes() == before_learning
+        assert (backup / "state_v2.json").read_bytes() == before_backup
+        assert (base / STOP_WORK_NAME).is_file()
+
+    # The reviewed case: history has a second discordant terminal, learning only the good one.
+    expect([good, other], [good_learn], "discordant", "unproven")
+    expect([other, good], [good_learn], "discordant", "unproven")
+    # Discordant extra only in learning.
+    expect([good], [good_learn, other_learn], "discordant", "unproven")
+    # Matching pair plus a conflicting extra in both registers.
+    expect([good, other], [other_learn, good_learn], "discordant", "unproven")
+    # History-only conflict, no learning row.
+    expect([good, other], [], "discordant", "unproven")
+    # Learning-only conflict, no history row.
+    expect([], [good_learn, other_learn], "discordant", "unproven")
+    # Identical repeated evidence is the same fill and is not deleted.
+    expect([good, dict(good)], [good_learn, dict(good_learn)], "unique", "resolved")
+    # A partial fill beside the one terminal pair is not a second closure.
+    partial = dict(good, close_ms=1500, partial=True, why="TP parziale", net=0.4)
+    expect([partial, good], [good_learn], "unique", "resolved")
+    history_prefix = (backup / "trade_history.jsonl").read_bytes()
+    learning_prefix = (backup / "learning_log.jsonl").read_bytes()
+    (base / "trade_history.jsonl").write_bytes(
+        history_prefix + (json.dumps(good) + "\n" + json.dumps(other) + "\n").encode())
+    (base / "learning_log.jsonl").write_bytes(learning_prefix + (json.dumps(good_learn) + "\n").encode())
+    before_backup = {name: (backup / name).read_bytes() for name in
+                     ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")}
+    from desk.exit_only import assess_restart
+    with pytest.raises(ExitOnlyError, match="restart_lineage_degraded:close_not_proven:BTC"):
+        assess_restart(base, backup)
+    for name, payload in before_backup.items():
+        assert (backup / name).read_bytes() == payload
+
+
 def test_history_and_learning_must_be_the_same_closure(tmp_path, monkeypatch):
     """P0-E: same position with two different close_ms values is not resolved."""
     from desk.paper_stop_monitor import find_same_closure, inspect_claims
