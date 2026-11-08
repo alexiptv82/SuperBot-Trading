@@ -20,4 +20,4 @@ Secondo giro, stessa PR #79, dopo la revisione sul commit `49b1a73`. Solo due P0
 
 Test locali, non CI: RC82 17 passed; `test_desk.py` 84 passed; exit-only+RC78+RC80 67 passed e 7 warning. Workflow: nessun `cursor/**` e nessun `pull_request_target`. `[skip ci]` non è la sola difesa.
 
-Lo SHA da revisionare è il HEAD del branch dopo il push, scritto nella PR #79. Prossimo passo: revisione indipendente. Non è una certificazione di stop né un via libera al riavvio. PR #77 e #78 non vanno toccate.
+Commit del codice: `dfc705974396b826bfee42e34571d2aa7583e7ab`. Lo SHA da revisionare è il HEAD del branch, commit successivo a quello. Prossimo passo: revisione indipendente. Non è una certificazione di stop né un via libera al riavvio. PR #77 e #78 non vanno toccate.

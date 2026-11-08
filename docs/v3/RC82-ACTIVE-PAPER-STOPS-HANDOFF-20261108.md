@@ -37,7 +37,7 @@ Funzioni: `_prove_protective_close`, `_jsonl_has_close`, `_close_row_matches` e 
 
 2. Prezzi operativi. `run_cycle` non usa più `get_prices` per aperture e DCA. `operational_prices` prende l'ultima chiusura con timestamp non futuro e OHLC accettato da `_bar_usable` (niente low/close ≤ 0, niente range incoerente). Una candela solo futura o invalida non apre e non aumenta il margine. Se davanti c'è una candela valida, l'ingresso usa quella chiusura, non il close futuro. Una candela valida resta utilizzabile anche se il ciclo successivo è più tardi: è il comportamento che `test_desk.py` già verificava. Lo stop sulle barre vecchie ma valide non cambia.
 
-Questo testo è nel commit figlio di `49b1a73f92904cac63c31c51ef2537254172d2ad`. Lo SHA da revisionare è il HEAD di `cursor/rc82-active-paper-stops-31c4` dopo il push, riportato nella descrizione della PR #79.
+Commit del codice: `dfc705974396b826bfee42e34571d2aa7583e7ab`, figlio di `49b1a73f92904cac63c31c51ef2537254172d2ad`. Lo SHA da revisionare è il HEAD del branch, il commit immediatamente successivo che registra questo identificativo.
 
 ## Comportamenti verificati e non modificati
 
