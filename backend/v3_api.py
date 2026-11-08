@@ -36,6 +36,7 @@ from backend.v3.runner.config import load_default_config
 from backend.v3.runner.exit_service import exit_service_healthy
 from backend.v3.cutover_gate import brain_single_close_enabled
 from backend.v3.observability.classic_stop_health import classic_stop_health
+from backend.v3.observability.classic_running_stop_health import running_stop_health
 
 _MICRO_DOLLAR = Decimal('1000000')
 _HEARTBEAT_STALE_MS = 3 * 900 * 1000  # UI freshness, NOT trading/strategy limits
@@ -285,10 +286,21 @@ def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
 
         for t in recent if type(t) is dict
     ]
-    stop_health = classic_stop_health(
-        data_dir, 'hawk' if portfolio_id == 'falco' else 'bull',
-        now_s=now_s, open_positions=len(positions),
-        worker_mode=detail.get('close_worker_mode', 'offline'))
+    classic_name = 'hawk' if portfolio_id == 'falco' else 'bull'
+    close_mode = detail.get('close_worker_mode', 'offline')
+    # The maintenance sidecar and the running trading engine have unrelated stop monitors.
+    # Never display the maintenance 1m model for a live 15m OHLC runner.
+    if close_mode != 'exit_only' and (
+            close_mode == 'classic_runner' or
+            (hb is not None and (hb.get('stop_feed') is not None
+                                 or hb.get('mode') in ('running', 'draining'))) or
+            (not paused and bool(positions))):
+        stop_health = running_stop_health(
+            hb, classic_name, list(positions), now_s=now_s)
+    else:
+        stop_health = classic_stop_health(
+            data_dir, classic_name, now_s=now_s,
+            open_positions=len(positions), worker_mode=close_mode)
     return {'id': portfolio_id, 'kind': 'classic', 'state': mode,
             'stop_health': stop_health,
             'positions': classic_positions, 'closed_trades': closed,
