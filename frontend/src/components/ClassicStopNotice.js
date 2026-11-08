@@ -16,7 +16,10 @@ export default function ClassicStopNotice({ health, openPositions = 0 }) {
     unverified: 'Protezione stop non verificata',
   };
   const hasQuoteCoverage = state === 'covered' && health?.quote_coverage === true;
-  const message = labels[state] || labels.unverified;
+  // A partial/inconsistent UI payload must never describe missing price coverage as available.
+  const message = state === 'covered' && !hasQuoteCoverage
+    ? 'Copertura prezzi non dimostrata: dati incoerenti o incompleti'
+    : (labels[state] || labels.unverified);
   const reason = health?.reason === 'maintenance_worker_not_active'
     ? 'Il monitor RC80 è valido solo in manutenzione: gli stop del motore operativo vanno verificati separatamente.'
     : 'Il monitor RC80 riguarda soltanto la manutenzione PAPER.';
