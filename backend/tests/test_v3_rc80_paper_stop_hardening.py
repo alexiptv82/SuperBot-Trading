@@ -12,6 +12,7 @@ import sys
 import pytest
 
 from desk import cli
+from desk.exit_only import ExitOnlyError
 from desk.paper_stop_monitor import (
     DIAG_NAME,
     STOP_WORK_NAME,
@@ -244,6 +245,10 @@ def test_proven_claim_is_archived_on_startup_without_a_second_close(tmp_path, mo
                                 "open_ms": closed["open_ms"], "portfolio": "hawk"}]}),
         encoding="utf-8")
     _refresh(base, backup)
+    from desk.exit_only import recovery_root
+    published = recovery_root(backup)
+    if published.exists():
+        shutil.rmtree(published)
     with rc78.worker(base, backup):
         pass
     assert len(rc78._history(base)) == 2
@@ -418,6 +423,153 @@ def test_health_write_failure_is_not_reported_as_coverage(tmp_path, monkeypatch)
     assert report["closed"] == []
     assert "BTC" in rc78._positions(base)
     assert len(rc78._history(base)) == 1
+
+
+def _terminal(symbol, pos_id, open_ms, close_ms, net, why="stop loss"):
+    return {"id": pos_id, "symbol": symbol, "open_ms": open_ms, "close_ms": close_ms,
+            "why": why, "net": net, "gross": net, "fees": 0.1, "exit": 1.0, "partial": False}
+
+
+def test_history_and_learning_must_be_the_same_closure(tmp_path, monkeypatch):
+    """P0-E: same position with two different close_ms values is not resolved."""
+    from desk.paper_stop_monitor import find_same_closure, inspect_claims
+    base, _backup = rc78.prepare(tmp_path, monkeypatch)
+    state = json.loads((base / "state_v2.json").read_text())
+    pos = state["main"]["positions"].pop("BTC")
+    (base / "state_v2.json").write_text(json.dumps(state), encoding="utf-8")
+    history = _terminal("BTC", pos["id"], pos["open_ms"], 2000, -1.0)
+    learning_other = dict(_terminal("BTC", pos["id"], pos["open_ms"], 3000, -1.0), ev="close", portfolio="hawk")
+    (base / "trade_history.jsonl").write_text(json.dumps(history) + "\n", encoding="utf-8")
+    (base / "learning_log.jsonl").write_text(json.dumps(learning_other) + "\n", encoding="utf-8")
+    (base / STOP_WORK_NAME).write_text(json.dumps({
+        "claims": [{"symbol": "BTC", "id": pos["id"], "open_ms": pos["open_ms"], "portfolio": "hawk"}]}),
+        encoding="utf-8")
+    acc = cli.make_account(json.loads((base / "state_v2.json").read_text()))
+    assert find_same_closure(base, "BTC", pos["id"], pos["open_ms"]) is None
+    assert inspect_claims(base, acc) == "unproven"
+    learning_same = dict(history, ev="close", portfolio="hawk")
+    (base / "learning_log.jsonl").write_text(json.dumps(learning_same) + "\n", encoding="utf-8")
+    assert find_same_closure(base, "BTC", pos["id"], pos["open_ms"]) is not None
+    assert inspect_claims(base, acc) == "resolved"
+    partial = dict(history, close_ms=1500, partial=True, why="TP parziale", net=0.4)
+    (base / "trade_history.jsonl").write_text(
+        json.dumps(partial) + "\n" + json.dumps(history) + "\n", encoding="utf-8")
+    assert inspect_claims(base, acc) == "resolved"
+    mismatched_net = dict(learning_same, net=-9.0)
+    (base / "learning_log.jsonl").write_text(json.dumps(mismatched_net) + "\n", encoding="utf-8")
+    assert find_same_closure(base, "BTC", pos["id"], pos["open_ms"]) is None
+    assert inspect_claims(base, acc) == "unproven"
+
+
+def test_restart_after_one_of_two_closes_keeps_the_other_and_the_backup(tmp_path, monkeypatch):
+    """P0-F: original snapshot is not rewritten; the remaining position stays protectable."""
+    from desk.exit_only import recovery_root
+    base, backup = rc78.prepare(tmp_path, monkeypatch)
+    state = json.loads((base / "state_v2.json").read_text())
+    acc = cli.make_account(state)
+    opened, message = acc.open("ETH", -1, 100, 20, 100.0, 102.0, 95.0, rc78._now_ms() - 5_000, {})
+    assert opened is not None, message
+    cli.save_account(acc, state)
+    cli.save_state(state, str(base / "state_v2.json"))
+    for name in ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md"):
+        shutil.copy2(base / name, backup / name)
+    original = {name: (backup / name).read_bytes() for name in
+                ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")}
+    monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
+    now = rc78._now_ms()
+
+    def fetch(symbol, bar, limit):
+        price = 130.0 if symbol == "BTC" else 100.0
+        return rc78._candle(now, price)
+
+    monkeypatch.setattr(cli, "fetch_candles", fetch)
+    with rc78.worker(base, backup) as service:
+        first = service.tick()
+    assert [row["symbol"] for row in first["stop_monitor"]["closed"]] == ["BTC"]
+    assert "BTC" not in rc78._positions(base)
+    assert "ETH" in rc78._positions(base)
+    for name, payload in original.items():
+        assert (backup / name).read_bytes() == payload
+    root = recovery_root(backup)
+    assert root.is_dir() and backup.resolve() not in root.resolve().parents
+    # Crash before the recovery directory is considered: restart still uses the original snapshot.
+    shutil.rmtree(root)
+    with rc78.worker(base, backup) as service:
+        assert "ETH" in rc78._positions(base)
+        assert "BTC" not in rc78._positions(base)
+        monkeypatch.setattr(cli, "fetch_candles", lambda symbol, bar, limit: rc78._candle(rc78._now_ms(), 130.0))
+        second = service.tick()
+    assert [row["symbol"] for row in second["stop_monitor"]["closed"]] == ["ETH"]
+    assert rc78._positions(base) == {}
+    for name, payload in original.items():
+        assert (backup / name).read_bytes() == payload
+    closures = [row for row in rc78._history(base) if row.get("symbol") in ("BTC", "ETH") and row.get("partial") is not True]
+    assert {row["symbol"] for row in closures} == {"BTC", "ETH"}
+
+
+def test_restart_fails_closed_when_the_close_pair_or_snapshot_is_bad(tmp_path, monkeypatch):
+    base, backup = rc78.prepare(tmp_path, monkeypatch)
+    state = json.loads((base / "state_v2.json").read_text())
+    acc = cli.make_account(state)
+    opened, message = acc.open("ETH", -1, 100, 20, 100.0, 102.0, 95.0, rc78._now_ms() - 5_000, {})
+    assert opened is not None, message
+    cli.save_account(acc, state)
+    cli.save_state(state, str(base / "state_v2.json"))
+    for name in ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md"):
+        shutil.copy2(base / name, backup / name)
+    original = {name: (backup / name).read_bytes() for name in
+                ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")}
+    monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
+    now = rc78._now_ms()
+    monkeypatch.setattr(
+        cli, "fetch_candles",
+        lambda symbol, bar, limit: rc78._candle(now, 130.0 if symbol == "BTC" else 100.0))
+    with rc78.worker(base, backup) as service:
+        service.tick()
+    # Drop the learning proof of BTC's close. State must not be restored from the old snapshot.
+    (base / "learning_log.jsonl").write_bytes(original["learning_log.jsonl"])
+    eth_open = rc78._positions(base)["ETH"]["open_ms"]
+    with pytest.raises(ExitOnlyError, match="restart_lineage_degraded:close_not_proven:BTC"):
+        with rc78.worker(base, backup):
+            pass
+    assert "BTC" not in rc78._positions(base)
+    assert rc78._positions(base)["ETH"]["open_ms"] == eth_open
+    for name, payload in original.items():
+        assert (backup / name).read_bytes() == payload
+    # Restore the learning line by replaying the tick is not allowed; put a corrupt manifest
+    # only after the files are consistent again would block on corruption. Rebuild consistency
+    # is out of scope: the degraded start must leave both the backup and the open position.
+    from desk.exit_only import recovery_root
+    root = recovery_root(backup)
+    if root.exists():
+        shutil.rmtree(root)
+    bad = root / "rc80-corrupt"
+    bad.mkdir(parents=True)
+    (bad / "MANIFEST.json").write_text("{", encoding="utf-8")
+    # Lineage is still degraded, so the corrupt manifest is not required to be the first error.
+    # Repair learning by copying the post-close file back from the recovery copy if present.
+    # Here learning was truncated and no recovery copy remains, so start stays degraded.
+    with pytest.raises(ExitOnlyError, match="restart_lineage_degraded:close_not_proven:BTC"):
+        with rc78.worker(base, backup):
+            pass
+
+
+def test_corrupt_recovery_manifest_refuses_start_without_touching_backup(tmp_path, monkeypatch):
+    base, backup = rc78.prepare(tmp_path, monkeypatch)
+    original = {name: (backup / name).read_bytes() for name in
+                ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")}
+    from desk.exit_only import recovery_root
+    root = recovery_root(backup)
+    bad = root / "rc80-corrupt"
+    bad.mkdir(parents=True)
+    (bad / "MANIFEST.json").write_text("{", encoding="utf-8")
+    monkeypatch.setenv("DESK_MODE", "paper")
+    with pytest.raises(ExitOnlyError, match="recovery_snapshot_corrupt:json"):
+        with rc78.worker(base, backup):
+            pass
+    assert "BTC" in rc78._positions(base)
+    for name, payload in original.items():
+        assert (backup / name).read_bytes() == payload
 
 
 def test_stale_heartbeat_is_an_alarm_and_ready_is_not_coverage():

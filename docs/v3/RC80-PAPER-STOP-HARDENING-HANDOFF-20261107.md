@@ -66,3 +66,11 @@ Parent review: `9dedf5dc9ea0586e854afc59ebc050f9574f62c0`.
 - **P1-D** errore di scrittura health → `telemetry_failed`, nessuna chiusura, nessuna dichiarazione `covered`. `stop_certified` è sempre false. `protection_alarm` è il lettore fail-visible. UI non toccata: gate residuo prima di qualunque attivazione.
 
 Il diario canonico non va aggiornato da questo branch.
+
+## Review `6720701115` su `b64519346cbe0c928cd29d3e9d57c619b472ac78`
+
+P0-E: `find_same_closure` accoppia una riga di `trade_history.jsonl` e una di `learning_log.jsonl` con lo stesso `close_ms`, `why` e numeri economici. Due `close_ms` o un netto diverso non risolvono il claim.
+
+P0-F: `assess_restart` è in sola lettura. Lo snapshot passato al worker non viene riscritto né usato per rimettere una posizione chiusa. La discendenza è append-only più una chiusura provata per ogni posizione sparita. `publish_recovery_snapshot` scrive un manifesto nuovo accanto, con hash dell'antenato e dei file correnti. Corruzione o antenato diverso bloccano l'avvio. Un manifesto assente, se la discendenza torna, non toglie la protezione alla posizione rimasta.
+
+Prova locale del caso a due posizioni: BTC chiuso, ETH aperto, byte del backup uguali prima e dopo il restart, seconda chiusura di ETH possibile. Non è CI GitHub.

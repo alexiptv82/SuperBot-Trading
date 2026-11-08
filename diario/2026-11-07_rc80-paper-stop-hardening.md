@@ -50,3 +50,13 @@ Fonte: commento https://github.com/alexiptv82/SuperBot-Trading/pull/77#issuecomm
 | P1-D health e allarme | Se la scrittura health fallisce, lo stato è `telemetry_failed` e non si chiude. `stop_certified` resta false. `protection_alarm` segnala heartbeat vecchio, `ready` senza copertura, e il limite del wick. La dashboard non è stata modificata: l'allarme è nel file di heartbeat, non in UI. |
 
 Prove locali dopo la patch, non CI GitHub: stesso comando pytest dei tre file. Il numero aggiornato è nel messaggio di consegna e nel handoff. Nessuna Actions attesa, perché il branch non entra nei filtri dei workflow.
+
+## Seconda review, 8 novembre 2026 — due P0 residui
+
+Fonte: https://github.com/alexiptv82/SuperBot-Trading/pull/77#issuecomment-6720701115 sull'HEAD `b64519346cbe0c928cd29d3e9d57c619b472ac78`. I quattro rilievi precedenti sono confermati da ChatGPT. Questa patch copre solo P0-E e P0-F.
+
+**P0-E.** `resolved` non basta più se storico e learning parlano della stessa posizione. Devono essere la stessa chiusura: stesso `close_ms`, stesso `why`, stesso `net` (quattro decimali) e, se presenti, `gross`, `fees`, `exit`. `close_ms` 2000 nello storico e 3000 nel learning, o un netto diverso, resta `unproven`. Un fill parziale non conta. Test: `test_history_and_learning_must_be_the_same_closure`.
+
+**P0-F.** Il riavvio non richiede più che i file vivi siano identici allo snapshot originale, e non lo ricopia sopra i dati. Lo snapshot storico resta intatto. Lo stato vivo deve esserne un'estensione: log solo in append, lezioni invariate, una posizione sparita solo se storico e learning hanno la stessa chiusura. I checkpoint nuovi stanno in una cartella sorella `*.paper-stop-recovery`, mai dentro il backup. Un manifest corrotto blocca l'avvio senza ripristinare nulla. Manca il manifest dopo un crash ma la discendenza è coerente: l'altra posizione resta sorvegliabile. Test: `test_restart_after_one_of_two_closes_keeps_the_other_and_the_backup` (BTC chiuso, ETH ancora aperto, backup byte-identico, poi ETH chiudibile) e i due test di manifest corrotto / learning tolto.
+
+Non è una certificazione di stop in produzione. Dashboard, wick intrabar, backup esterno e VPS restano fuori. Nessun merge o deploy.

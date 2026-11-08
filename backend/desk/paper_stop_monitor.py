@@ -227,24 +227,85 @@ def _terminal_match(row: dict, *, symbol: str, pos_id, open_ms: int,
     return why in PROTECTION_REASONS or why == "chiusura manuale"
 
 
-def _history_has_close(base: Path, symbol: str, pos_id, close_ms=None, *,
-                       open_ms: int, portfolio=None, run_no=None) -> bool:
+def _same_number(left, right) -> bool:
+    try:
+        a, b = float(left), float(right)
+    except (TypeError, ValueError):
+        return left == right
+    if isinstance(left, bool) or isinstance(right, bool):
+        return False
+    if not (math.isfinite(a) and math.isfinite(b)):
+        return False
+    return round(a, 4) == round(b, 4)
+
+
+def _same_closure_economics(history_row: dict, learning_row: dict) -> bool:
+    """The two files must describe one fill, not two closes of one position."""
+    if type(history_row.get("close_ms")) is not int or history_row.get("close_ms") != learning_row.get("close_ms"):
+        return False
+    if history_row.get("why") != learning_row.get("why"):
+        return False
+    if "net" not in history_row or "net" not in learning_row:
+        return False
+    if not _same_number(history_row.get("net"), learning_row.get("net")):
+        return False
+    for field in ("gross", "fees", "exit"):
+        in_history, in_learning = field in history_row, field in learning_row
+        if in_history != in_learning:
+            return False
+        if in_history and not _same_number(history_row.get(field), learning_row.get(field)):
+            return False
+    return True
+
+
+def find_same_closure(base: Path, symbol: str, pos_id, open_ms: int, *,
+                      portfolio=None, run_no=None):
+    """Return the single history/learning pair for this position, or None.
+
+    None covers a missing pair, two different close_ms values, or numbers that
+    do not describe the same fill. Partial rows are ignored.
+    """
+    if type(open_ms) is not int:
+        return None
+    history_rows = []
     for row in _iter_rows(base / "trade_history.jsonl"):
         if _terminal_match(row, symbol=symbol, pos_id=pos_id, open_ms=open_ms,
-                           close_ms=close_ms, portfolio=portfolio, run_no=run_no):
-            return True
-    return False
-
-
-def _learning_has_close(base: Path, symbol: str, pos_id, close_ms, *,
-                        open_ms: int, portfolio=None, run_no=None) -> bool:
+                           portfolio=portfolio, run_no=run_no):
+            history_rows.append(row)
+    learning_rows = []
     for row in _iter_rows(base / "learning_log.jsonl"):
         if row.get("ev") != "close":
             continue
         if _terminal_match(row, symbol=symbol, pos_id=pos_id, open_ms=open_ms,
-                           close_ms=close_ms, portfolio=portfolio, run_no=run_no):
-            return True
-    return False
+                           portfolio=portfolio, run_no=run_no):
+            learning_rows.append(row)
+    pairs = []
+    for history_row in history_rows:
+        for learning_row in learning_rows:
+            if _same_closure_economics(history_row, learning_row):
+                pairs.append((history_row, learning_row))
+    close_times = {pair[0].get("close_ms") for pair in pairs}
+    if len(close_times) != 1:
+        return None
+    return pairs[0]
+
+
+def _history_has_close(base: Path, symbol: str, pos_id, close_ms=None, *,
+                       open_ms: int, portfolio=None, run_no=None) -> bool:
+    return find_same_closure(base, symbol, pos_id, open_ms,
+                             portfolio=portfolio, run_no=run_no) is not None and (
+        close_ms is None or find_same_closure(
+            base, symbol, pos_id, open_ms, portfolio=portfolio, run_no=run_no)[0].get("close_ms") == close_ms)
+
+
+def _learning_has_close(base: Path, symbol: str, pos_id, close_ms, *,
+                        open_ms: int, portfolio=None, run_no=None) -> bool:
+    pair = find_same_closure(base, symbol, pos_id, open_ms, portfolio=portfolio, run_no=run_no)
+    if pair is None:
+        return False
+    if close_ms is not None and pair[1].get("close_ms") != close_ms:
+        return False
+    return True
 
 
 def _fsync(path: Path) -> None:
@@ -273,17 +334,14 @@ def inspect_claims(base: Path, acc) -> str:
                       and pos.open_ms == claim["open_ms"])
         portfolio = claim.get("portfolio")
         run_no = claim.get("run_no")
-        recorded = _history_has_close(
-            base, claim["symbol"], claim["id"], open_ms=claim["open_ms"],
+        pair = find_same_closure(
+            base, claim["symbol"], claim["id"], claim["open_ms"],
             portfolio=portfolio, run_no=run_no)
-        learned = _learning_has_close(
-            base, claim["symbol"], claim["id"], None, open_ms=claim["open_ms"],
-            portfolio=portfolio, run_no=run_no)
-        if still_open and recorded:
+        if still_open and pair is not None:
             return "mismatch"
         if still_open:
             return "open"
-        if not (recorded and learned):
+        if pair is None:
             return "unproven"
     return "resolved"
 

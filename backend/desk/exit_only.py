@@ -30,6 +30,7 @@ from desk.paper_stop_monitor import (
     INTRABAR_WICK,
     PaperStopRefused,
     apply_paper_stop_protection,
+    find_same_closure,
     monitor_opt_in,
     reconcile_stop_claim,
     select_closed_minute,
@@ -90,7 +91,7 @@ def _safe_required_files(base: Path) -> None:
 
 
 def verify_snapshot(base: Path, backup: Path) -> None:
-    """A fresh local backup of all indispensable files, byte-identical at start, is mandatory."""
+    """Byte-identical check. Used by tests and by the first start, not as a restore."""
     if backup.is_symlink() or not backup.is_dir() or backup.resolve() == base.resolve():
         raise ExitOnlyError("snapshot_directory_missing_or_invalid")
     if base.resolve() in backup.resolve().parents or backup.resolve() in base.resolve().parents:
@@ -99,6 +100,164 @@ def verify_snapshot(base: Path, backup: Path) -> None:
         original, copy = base / name, backup / name
         if copy.is_symlink() or not copy.is_file() or _sha256(original) != _sha256(copy):
             raise ExitOnlyError("snapshot_missing_or_mismatched:" + name)
+
+
+RECOVERY_SCHEMA = "rc80-paper-stop-recovery-v1"
+
+
+def recovery_root(backup: Path) -> Path:
+    """Sibling of the historical snapshot. Never a child of that snapshot."""
+    root = backup.parent / (backup.name + ".paper-stop-recovery")
+    backup_real, root_real = backup.resolve(), root.resolve()
+    if backup_real == root_real or backup_real in root_real.parents or root_real in backup_real.parents:
+        raise ExitOnlyError("recovery_snapshot_overlaps_backup")
+    return root
+
+
+def _positions_of(path: Path) -> dict:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        positions = (payload.get("main") or {}).get("positions")
+    except (OSError, ValueError, AttributeError):
+        raise ExitOnlyError("restart_lineage_degraded:state_unreadable") from None
+    if not isinstance(positions, dict):
+        raise ExitOnlyError("restart_lineage_degraded:state_shape")
+    return positions
+
+
+def assess_restart(base: Path, backup: Path) -> str:
+    """Read-only restart check. Never copies a snapshot back onto live data.
+
+    The historical backup stays the ancestor. Live history and learning must be
+    that ancestor plus appends. A position that disappeared must have one
+    paired history/learning closure. A stale or corrupt recovery manifest does
+    not restore anything; corruption and ambiguity refuse the start.
+    """
+    if backup.is_symlink() or not backup.is_dir() or backup.resolve() == base.resolve():
+        raise ExitOnlyError("restart_lineage_degraded:backup_missing")
+    for name in REQUIRED:
+        original, copy = base / name, backup / name
+        if original.is_symlink() or copy.is_symlink() or not original.is_file() or not copy.is_file():
+            raise ExitOnlyError("restart_lineage_degraded:missing:" + name)
+    if (base / "lessons.md").read_bytes() != (backup / "lessons.md").read_bytes():
+        raise ExitOnlyError("restart_lineage_degraded:lessons_changed")
+    for name in ("trade_history.jsonl", "learning_log.jsonl"):
+        if not (base / name).read_bytes().startswith((backup / name).read_bytes()):
+            raise ExitOnlyError("restart_lineage_degraded:not_append_only:" + name)
+    old_positions, new_positions = _positions_of(backup / "state_v2.json"), _positions_of(base / "state_v2.json")
+    for symbol, old in old_positions.items():
+        if not isinstance(old, dict) or type(old.get("open_ms")) is not int:
+            raise ExitOnlyError("restart_lineage_degraded:ancestor_position:" + str(symbol))
+        if symbol in new_positions:
+            current = new_positions[symbol]
+            if not isinstance(current, dict) or current.get("id") != old.get("id") or current.get("open_ms") != old.get("open_ms"):
+                raise ExitOnlyError("restart_lineage_degraded:position_replaced:" + str(symbol))
+            continue
+        if find_same_closure(base, str(symbol), old.get("id"), old.get("open_ms")) is None:
+            raise ExitOnlyError("restart_lineage_degraded:close_not_proven:" + str(symbol))
+    for symbol in new_positions:
+        if symbol not in old_positions:
+            raise ExitOnlyError("restart_lineage_degraded:unexpected_position:" + str(symbol))
+    ancestor = {name: _sha256(backup / name) for name in REQUIRED}
+    current = {name: _sha256(base / name) for name in REQUIRED}
+    root = recovery_root(backup)
+    if not root.exists():
+        return "lineage_only"
+    if root.is_symlink() or not root.is_dir():
+        raise ExitOnlyError("recovery_snapshot_corrupt:root")
+    matching = []
+    for child in sorted(root.iterdir()):
+        if child.name.startswith("."):
+            continue
+        manifest_path = child / "MANIFEST.json"
+        if not child.is_dir() or child.is_symlink():
+            raise ExitOnlyError("recovery_snapshot_corrupt:entry")
+        if not manifest_path.exists():
+            continue  # crash before the manifest was published; not evidence
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise ExitOnlyError("recovery_snapshot_corrupt:manifest")
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeError):
+            raise ExitOnlyError("recovery_snapshot_corrupt:json") from None
+        if not isinstance(payload, dict) or payload.get("schema") != RECOVERY_SCHEMA:
+            raise ExitOnlyError("recovery_snapshot_corrupt:schema")
+        if payload.get("current") != current:
+            continue  # older generation, kept, never restored
+        for name in REQUIRED:
+            copy = child / name
+            if copy.is_symlink() or not copy.is_file() or _sha256(copy) != current[name]:
+                raise ExitOnlyError("recovery_snapshot_corrupt:bytes:" + name)
+        if payload.get("ancestor") != ancestor:
+            raise ExitOnlyError("recovery_snapshot_unproven:ancestor")
+        matching.append(payload)
+    if len(matching) > 1:
+        closures = {json.dumps(item.get("closures"), sort_keys=True) for item in matching}
+        if len(closures) != 1:
+            raise ExitOnlyError("recovery_snapshot_ambiguous")
+    return "verified" if matching else "lineage_only"
+
+
+def publish_recovery_snapshot(base: Path, backup: Path, portfolio: str) -> Path:
+    """Write a new immutable checkpoint beside the historical backup.
+
+    Does not open the backup for writing and does not replace an existing
+    checkpoint directory.
+    """
+    if assess_restart(base, backup) not in ("lineage_only", "verified"):
+        raise ExitOnlyError("recovery_snapshot_refused")
+    root = recovery_root(backup)
+    root.mkdir(mode=0o700, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    dest = root / ("rc80-" + stamp + "-" + str(os.getpid()))
+    suffix = 1
+    while dest.exists():
+        dest = root / ("rc80-" + stamp + "-" + str(os.getpid()) + "-" + str(suffix))
+        suffix += 1
+    dest.mkdir(mode=0o700)
+    for name in REQUIRED:
+        target = dest / name
+        if backup.resolve() in target.resolve().parents:
+            raise ExitOnlyError("recovery_snapshot_overlaps_backup")
+        target.write_bytes((base / name).read_bytes())
+        os.chmod(target, 0o600)
+        _fd = os.open(target, os.O_RDONLY)
+        try:
+            os.fsync(_fd)
+        finally:
+            os.close(_fd)
+    current_positions = _positions_of(base / "state_v2.json")
+    ancestor_positions = _positions_of(backup / "state_v2.json")
+    closures = []
+    for symbol, old in ancestor_positions.items():
+        if symbol in current_positions:
+            continue
+        pair = find_same_closure(base, str(symbol), old.get("id"), old.get("open_ms"))
+        if pair is None:
+            raise ExitOnlyError("recovery_snapshot_refused:close_not_proven")
+        history_row = pair[0]
+        closures.append({"symbol": str(symbol), "id": old.get("id"), "open_ms": old.get("open_ms"),
+                         "close_ms": history_row.get("close_ms"), "why": history_row.get("why"),
+                         "net": history_row.get("net")})
+    manifest = {
+        "schema": RECOVERY_SCHEMA,
+        "portfolio": portfolio,
+        "ancestor": {name: _sha256(backup / name) for name in REQUIRED},
+        "current": {name: _sha256(base / name) for name in REQUIRED},
+        "open_positions": sorted(str(symbol) for symbol in current_positions),
+        "closures": closures,
+    }
+    manifest_path = dest / "MANIFEST.json"
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
+    fd = os.open(manifest_path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    for name in REQUIRED:
+        if _sha256(dest / name) != manifest["current"][name]:
+            raise ExitOnlyError("recovery_snapshot_corrupt:bytes:" + name)
+    return dest
 
 
 def recent_minute_prices(symbols, state, now_ms: int, *, fetch_candles) -> dict:
@@ -153,7 +312,9 @@ class ExitOnlyWorker:
             raise ExitOnlyError("legacy_container_not_proven_stopped_and_disabled")
         _safe_required_files(self.base)
         if startup:
-            verify_snapshot(self.base, self.backup)
+            # Lineage against the original snapshot. Never restore that snapshot
+            # over the live files and never write inside it.
+            assess_restart(self.base, self.backup)
             if any((self.base / f).exists() for f in PENDING):
                 raise ExitOnlyError("existing_close_request_needs_manual_reconciliation")
             verdict = reconcile_stop_claim(self.legacy)
@@ -273,6 +434,8 @@ class ExitOnlyWorker:
             # The legacy handlers deliberately catch their own errors. Verify
             # ownership AGAIN after them; never publish READY if Docker changed mid-request.
             self.check_safe()
+            if stop_report.get("closed"):
+                publish_recovery_snapshot(self.base, self.backup, self.portfolio)
             self._write_heartbeat(
                 True, stop_report.get("stop_protection") or "off",
                 stop_report.get("telemetry_ok", True))
