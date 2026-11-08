@@ -78,3 +78,7 @@ Prova locale del caso a due posizioni: BTC chiuso, ETH aperto, byte del backup u
 ## Review `6720918518` su `34a4abe6ac80b5d65bfc12fbfdbe40d131124b4d`
 
 `terminal_closure_status` non accetta una coppia buona se nello storico o nel learning esiste un altro terminale diverso per la stessa `symbol/id/open_ms`. Duplicati identici restano. I file non vengono ripuliti. Il restart con quel conflitto risponde `close_not_proven` e non tocca il backup.
+
+## Review `6721423727` su `9bdb82cef48bc22df399ac2a5ac9b8481ad9305b`
+
+`inspect_claims` accumula tutti i claim. `resolved` e l'archivio del file intero avvengono solo se ciascuno è `resolved`. Ordine BTC/ETH indifferente. Un gruppo misto lascia `paper_stop_protect.work` byte-identico: nessun `reconciled-*.json`. Il caso tutto provato archivia l'elenco completo. Prova locale: 67 passed, 0 failed. Non è CI e non è un deploy.
