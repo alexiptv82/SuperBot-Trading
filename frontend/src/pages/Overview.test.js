@@ -113,3 +113,31 @@ test('Brain closed trades do not display internal reason tokens', () => {
   expect(html).toContain('obiettivo raggiunto');
   expect(html).not.toContain('take_profit');
 });
+
+
+test('RC84: Overview keeps Falco/Toro running alerts if Brain API fails', async () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const p = {...sample.overview, portfolios: sample.overview.portfolios.map(x =>
+    x.id === 'falco' ? {...x, stop_health: {
+      scope:'classic_runner_15m_ohlc', state:'degraded', alarm:true,
+      stop_certified:false,blocked_symbols:['ARB'], quote_coverage:false
+    }} : x)};
+  API.get.mockImplementation(path => path === '/api/v3/overview'
+    ? Promise.resolve({data:p})
+    : Promise.reject(new Error('brain temporarily offline')));
+  const el=document.createElement('div');
+  const root=createRoot(el);
+  try{
+    await act(async()=>{ root.render(<Overview/>); });
+    expect(el.textContent).toContain('I tre portafogli');
+    expect(el.textContent).toContain('Allarme controllo stop PAPER');
+    expect(el.textContent).toContain('ARB');
+    expect(el.textContent).toContain('Dettaglio posizioni Brain non disponibile');
+    expect(el.textContent).toContain('P&L aperto');
+    expect(el.querySelector('[data-testid="portfolio-brain"]').textContent).toContain('—');
+    expect(el.querySelector('[data-testid="portfolio-brain"] button')).toBeNull();
+  }finally{
+    await act(async()=>{root.unmount()});
+    API.get.mockReset();
+  }
+});
