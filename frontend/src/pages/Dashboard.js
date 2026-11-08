@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import API, { deskAPI, bullAPI, errMsg } from '../api';
 import { PAPER_PORTFOLIOS, brainWalletSummary } from '../brainWallet';
 import BrainPortfolioSection from '../components/BrainPortfolioSection';
+import ClassicStopNotice from '../components/ClassicStopNotice';
 import { fmtClock, fmtDateTime, fmtDuration, signed, pnlColor, botState, macroNote } from '../deskUi';
 import ChartModal from '../components/ChartModal';
 import Salvadanaio from '../components/Salvadanaio';
@@ -193,7 +194,7 @@ function StateBanner({ status, isBull }) {
 }
 
 // Sezione KPI per un portafoglio
-function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume, onClosePosition, readOnly = false, singleCloseAllowed = false }) {
+function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onChartOpen, onPause, onResume, onClosePosition, readOnly = false, singleCloseAllowed = false, stopHealth = null }) {
   const isBull = portfolio === 'bull';
 
   if (!status) return (
@@ -285,6 +286,7 @@ function PortfolioSection({ status, portfolio, busy, actionMsg, onCloseAll, onCh
           : 'Collaudo PAPER in sola lettura: avvio, pausa e chiusure manuali temporaneamente bloccati.'}
       </Card>}
       <StateBanner status={status} isBull={isBull} />
+      <ClassicStopNotice health={stopHealth} openPositions={nOpen} />
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
         {btn(canStart, '#4ade80', busy === 'resume' ? '⏳ Avvio…' : (mode === 'draining' ? '▶ Riprendi' : '▶ Avvia'), onResume)}
@@ -441,6 +443,7 @@ export default function Dashboard() {
   const [brainData, setBrainData] = useState({ wallet:null, trades:null });
   const [cutoverReadOnly, setCutoverReadOnly] = useState(true);
   const [classicSingleCloseAllowed, setClassicSingleCloseAllowed] = useState(false);
+  const [classicStopHealth, setClassicStopHealth] = useState({ hawk:null, bull:null });
   const [portfolio, setPortfolio] = useState(() => new URLSearchParams(window.location.search).get('portfolio') === 'brain' ? 'brain' : 'hawk'); // 'hawk' | 'bull' | 'brain'
   const [now, setNow] = useState(new Date());
   const [chartState, setChartState] = useState(null);
@@ -468,6 +471,11 @@ export default function Dashboard() {
       const portfolioSummary = (overviewRes.data?.portfolios || []).find(p => p.id === 'brain');
       setCutoverReadOnly(overviewRes.data?.cutover_readonly !== false);
       setClassicSingleCloseAllowed(overviewRes.data?.classic_single_close_allowed === true);
+      const classicRows = overviewRes.data?.portfolios || [];
+      setClassicStopHealth({
+        hawk: classicRows.find(p => p.id === 'falco')?.stop_health || null,
+        bull: classicRows.find(p => p.id === 'toro')?.stop_health || null,
+      });
       setBrainData({
         wallet: brainWalletSummary(portfolioSummary,statusRes.data,tradeRes.data),
         trades: tradeRes.data,
@@ -477,6 +485,7 @@ export default function Dashboard() {
       setBrainData({ wallet:null, trades:null });
       setCutoverReadOnly(true);
       setClassicSingleCloseAllowed(false);
+      setClassicStopHealth({ hawk:null, bull:null }); // Never reuse stale 'covered' status.
     }
   }, []);
 
@@ -637,6 +646,7 @@ export default function Dashboard() {
           onClosePosition={handleClosePosition(portfolio)}
           readOnly={cutoverReadOnly}
           singleCloseAllowed={classicSingleCloseAllowed}
+          stopHealth={classicStopHealth[portfolio]}
         />}
       </DeskErrorBoundary>
 
