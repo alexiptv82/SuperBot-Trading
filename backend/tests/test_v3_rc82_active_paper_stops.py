@@ -438,3 +438,56 @@ print(json.dumps({"portfolio": cli.PORTFOLIO.name, "open": "BTC" in out.position
 
 def _repo() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+# RC84 regression: an external Telegram message is only an informational
+# consequence of a durable paper close, never its pre-commit announcement.
+def test_rc84_no_false_telegram_close_when_history_is_not_durable(desk, monkeypatch):
+    sent = []
+    monkeypatch.setattr(cli, "notify_close", lambda *_args: sent.append(_args))
+    real_writer = cli.append_trade_history
+    monkeypatch.setattr(cli, "append_trade_history", lambda *_a, **_k: None)
+    cli.fetch_candles = lambda sym, bar="15m", limit=1000: (
+        [[BASE - BAR, 100, 101, 97, 99, 1]] if sym == "BTC" else [])
+    state = _state(_open(1, 98.0, 110.0, BASE - 3 * BAR))
+    with pytest.raises(RuntimeError, match="close_not_durable"):
+        cli.run_cycle(state, NOW)
+    assert sent == []
+    assert "BTC" in cli.make_account(state).positions
+    monkeypatch.setattr(cli, "append_trade_history", real_writer)
+    cli.run_cycle(state, NOW)
+    assert len(sent) == 1 and sent[0][0] == "BTC"
+    assert len(_history(desk)) == 1
+
+
+def test_rc84_no_false_telegram_close_when_account_save_fails(desk, monkeypatch):
+    sent = []
+    monkeypatch.setattr(cli, "notify_close", lambda *_args: sent.append(_args))
+    real_save = cli.save_state
+    cli.fetch_candles = lambda sym, bar="15m", limit=1000: (
+        [[BASE - BAR, 100, 101, 97, 99, 1]] if sym == "BTC" else [])
+    state = _state(_open(1, 98.0, 110.0, BASE - 3 * BAR))
+    def crash(*_args):
+        raise OSError("simulated_state_save_failure")
+    monkeypatch.setattr(cli, "save_state", crash)
+    with pytest.raises(OSError, match="simulated_state_save_failure"):
+        cli.run_cycle(state, NOW)
+    assert sent == []
+    # The close was proven in both logs but the ledger did not commit.
+    assert len(_history(desk)) == 1
+    monkeypatch.setattr(cli, "save_state", real_save)
+    restarted = _state(_open(1, 98.0, 110.0, BASE - 3 * BAR))
+    cli.run_cycle(restarted, NOW)
+    assert len(sent) == 1
+    assert len(_history(desk)) == 1
+    assert "BTC" not in cli.make_account(restarted).positions
+
+
+def test_rc84_failed_telegram_transport_does_not_roll_back_valid_close(desk, monkeypatch):
+    monkeypatch.setattr(cli, "notify_close",
+                        lambda *_args: (_ for _ in ()).throw(OSError("offline_telegram")))
+    closed, _state_out = _cycle(
+        desk, _open(1, 98.0, 110.0, BASE - 3 * BAR),
+        [[BASE - BAR, 100, 101, 97, 99, 1]])
+    assert "BTC" not in closed.positions
+    assert len(_history(desk)) == 1
