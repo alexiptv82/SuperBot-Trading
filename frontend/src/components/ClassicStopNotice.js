@@ -2,6 +2,18 @@ import React from 'react';
 
 /** Quote health is not a stop certificate and does not describe the running classic engine. */
 export default function ClassicStopNotice({ health, openPositions = 0 }) {
+  // No heartbeat/unknown scope: do not assume either the RC80 maintenance model
+  // or RC82 runner model; show a neutral fail-visible warning for open trades.
+  if (!health || !['classic_runner_15m_ohlc', 'maintenance_exit_only'].includes(health.scope)) {
+    if (openPositions === 0) return null;
+    return <div data-testid="classic-stop-notice" role="alert"
+      style={{ padding: 10, marginTop: 11, border: '1px solid #fbbf24', borderRadius: 9,
+        background: '#312a15', color: '#fde68a', fontSize: 12 }}>
+      <strong>⚠️ Dati di protezione non disponibili</strong>
+      <div>Non è possibile verificare lo stato degli stop PAPER di questo portafoglio.</div>
+      <div>Stato sconosciuto: nessun controllo è certificato e non viene ipotizzato il modello di esecuzione.</div>
+    </div>;
+  }
   if (health?.scope === 'classic_runner_15m_ohlc') {
     const blocked = Array.isArray(health.blocked_symbols) ? health.blocked_symbols.slice(0, 8) : [];
     if (openPositions === 0 && blocked.length === 0) return null;
