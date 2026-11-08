@@ -518,24 +518,97 @@ def _bar_usable(o, h, l, c) -> bool:
     return ll <= min(oo, cc) and max(oo, cc) <= hh
 
 
-def _same_protective_close(rec: dict) -> bool:
-    """True se questo stop, target o liquidazione e' gia' nello storico. Un riavvio non deve contarlo due volte."""
-    path = os.path.join(DATA_DIR, "trade_history.jsonl")
+_CLOSE_PROOF = ("symbol", "id", "open_ms", "close_ms", "why", "net")
+
+
+def _proof_value(row: dict, key: str):
+    value = row.get(key)
+    if key == "net" and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return value
+
+
+def _close_row_matches(row, rec: dict, *, learning: bool, run_no) -> bool:
+    """La riga e' questa chiusura: identita' esatta, senza riscrivere un fill gia' completo."""
+    if not isinstance(row, dict) or row.get("partial"):
+        return False
+    if learning and row.get("ev") != "close":
+        return False
+    for key in _CLOSE_PROOF:
+        if _proof_value(row, key) != _proof_value(rec, key):
+            return False
+    if "run_no" in row and row.get("run_no") != run_no:
+        return False
+    if learning and row.get("run_no") != run_no:
+        return False
+    return True
+
+
+def _jsonl_has_close(path: str, rec: dict, *, learning: bool, run_no) -> bool:
+    """True solo se una riga completa e leggibile prova la chiusura. Una riga troncata non conta e non si cancella."""
     try:
         with open(path, encoding="utf-8") as fh:
-            lines = fh.readlines()[-400:]
+            lines = fh
+            found = False
+            for line in lines:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if _close_row_matches(row, rec, learning=learning, run_no=run_no):
+                    found = True
     except OSError:
         return False
-    for line in reversed(lines):
-        try:
-            row = json.loads(line)
-        except ValueError:
+    return found
+
+
+def _prove_protective_close(state: dict, rec: dict) -> bool:
+    """Scrive e rilegge storico e learning. Non riscrive un fill gia' provato e non cancella righe.
+
+    Ritorna True solo se entrambi i registri contengono la stessa chiusura. Se uno dei due non si puo'
+    provare, il chiamante non deve rendere durevole la chiusura del conto: al giro dopo si riprova.
+    """
+    run_no = state.get("run_no", 1)
+    history = os.path.join(DATA_DIR, "trade_history.jsonl")
+    learning = os.path.join(DATA_DIR, "learning_log.jsonl")
+    if not _jsonl_has_close(history, rec, learning=False, run_no=run_no):
+        append_trade_history(DATA_DIR, rec)
+    if not _jsonl_has_close(learning, rec, learning=True, run_no=run_no):
+        row = dict(rec)
+        row["reason"] = str(row.get("reason", ""))[:200]
+        log_event(DATA_DIR, {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name,
+                             "run_no": run_no, **row})
+    return (_jsonl_has_close(history, rec, learning=False, run_no=run_no)
+            and _jsonl_has_close(learning, rec, learning=True, run_no=run_no))
+
+
+def operational_prices(symbols: list, candles_map: dict, now_ms: int) -> dict:
+    """Prezzo per aperture e DCA: ultima chiusura non futura e con OHLC utilizzabile.
+
+    Una candela gia' scartata per gli stop (futura, non positiva, range incoerente) non diventa il
+    prezzo di un ingresso. Una candela valida, anche se il ciclo arriva dopo, resta il prezzo: e' il
+    comportamento precedente. Lo stop sulle barre vecchie continua in apply_paper_protective_exits.
+    """
+    out = {}
+    for sym in symbols:
+        arr = candles_map.get(sym)
+        if arr is None or len(arr) == 0:
             continue
-        if (isinstance(row, dict) and row.get("symbol") == rec.get("symbol") and row.get("id") == rec.get("id")
-                and row.get("open_ms") == rec.get("open_ms") and row.get("close_ms") == rec.get("close_ms")
-                and row.get("why") == rec.get("why") and not row.get("partial")):
-            return True
-    return False
+        best_ts = None
+        best_close = None
+        for row in arr:
+            try:
+                ts, o, h, l, c = int(row[0]), row[1], row[2], row[3], row[4]
+            except (TypeError, ValueError, IndexError, OverflowError):
+                continue
+            if ts > now_ms or not _bar_usable(o, h, l, c):
+                continue
+            if best_ts is None or ts >= best_ts:
+                best_ts, best_close = ts, float(c)
+        if best_close is None or not math.isfinite(best_close) or best_close <= 0:
+            continue
+        out[sym] = best_close
+    return out
 
 
 def apply_paper_protective_exits(acc: PaperAccount, candles_map: dict, now_ms: int, state: dict,
@@ -594,8 +667,9 @@ def apply_paper_protective_exits(acc: PaperAccount, candles_map: dict, now_ms: i
                 info["exit"] = result["why"]
                 print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
                 notify_close(sym, result["net"], result.get("why", ""), result["why"])
-                if not _same_protective_close(result):
-                    record_close(state, result)
+                if not _prove_protective_close(state, result):
+                    info["status"] = "close_not_durable"
+                    raise RuntimeError("close_not_durable")
                 save_account(acc, state)
                 save_state(state, STATE_FILE)
                 break
@@ -631,7 +705,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         write_heartbeat(state, force=False)   # il ciclo puo' durare un minuto: il bot resta "vivo"
 
     print(f"[DESK V2] candles ok: {len(candles_map)}/{len(SYMBOLS)} simboli", flush=True)
-    prices = get_prices(SYMBOLS, candles_map)
+    prices = operational_prices(SYMBOLS, candles_map, now_ms)
     # ultimi prezzi noti: la dashboard li usa come ripiego per il P&L live delle posizioni
     if prices:
         state["last_prices"] = {s: p for s, p in prices.items()}

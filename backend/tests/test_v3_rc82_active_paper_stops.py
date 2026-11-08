@@ -63,7 +63,15 @@ def _history(desk):
     path = desk / "trade_history.jsonl"
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    return rows
 
 
 def test_missing_feed_keeps_the_position_and_alarms_without_a_certificate(desk):
@@ -198,6 +206,146 @@ def test_classics_still_call_claude_only_when_the_schedule_and_key_allow_it(desk
     state["last_call_ms"] = 0
     cli.run_cycle(state, NOW)
     assert calls == [1]
+
+
+def _learning_closes(desk):
+    path = desk / "learning_log.jsonl"
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if row.get("ev") == "close":
+            rows.append(row)
+    return rows
+
+
+def _stop_rows():
+    return [[BASE - BAR, 100, 101, 97, 99, 1]]
+
+
+def _run_stop(desk, account):
+    cli.fetch_candles = lambda sym, bar="15m", limit=1000: (_stop_rows() if sym == "BTC" else [])
+    return _state(account)
+
+
+def test_history_missing_and_learning_present_recovers_without_duplication(desk, monkeypatch):
+    account = _open(1, 98.0, 110.0, BASE - 3 * BAR)
+    state = _run_stop(desk, account)
+    real_history = cli.append_trade_history
+    monkeypatch.setattr(cli, "append_trade_history", lambda *_a, **_k: None)
+    with pytest.raises(RuntimeError, match="close_not_durable"):
+        cli.run_cycle(state, NOW)
+    assert _history(desk) == []
+    assert len(_learning_closes(desk)) == 1
+    assert "BTC" in state["main"]["positions"]
+    assert not (desk / "state_v2.json").exists()
+    assert cli.HB["stop_feed"]["symbols"]["BTC"]["status"] == "close_not_durable"
+    monkeypatch.setattr(cli, "append_trade_history", real_history)
+    cli.run_cycle(state, NOW)
+    closed = cli.make_account(state)
+    assert "BTC" not in closed.positions
+    assert len(_history(desk)) == 1 and len(_learning_closes(desk)) == 1
+    cli.run_cycle(state, NOW)
+    assert len(_history(desk)) == 1 and len(_learning_closes(desk)) == 1
+
+
+def test_learning_missing_and_history_present_recovers_without_duplication(desk, monkeypatch):
+    account = _open(1, 98.0, 110.0, BASE - 3 * BAR)
+    state = _run_stop(desk, account)
+    real_learn = cli.log_event
+    monkeypatch.setattr(cli, "log_event", lambda *_a, **_k: False)
+    with pytest.raises(RuntimeError, match="close_not_durable"):
+        cli.run_cycle(state, NOW)
+    assert len(_history(desk)) == 1 and _learning_closes(desk) == []
+    assert "BTC" in state["main"]["positions"]
+    monkeypatch.setattr(cli, "log_event", real_learn)
+    cli.run_cycle(state, NOW)
+    assert "BTC" not in cli.make_account(state).positions
+    assert len(_history(desk)) == 1 and len(_learning_closes(desk)) == 1
+    assert _history(desk)[0]["net"] == _learning_closes(desk)[0]["net"]
+    assert _history(desk)[0]["why"] == _learning_closes(desk)[0]["why"] == "stop loss"
+
+
+def test_both_record_writes_fail_then_one_recovery_appends_each_once(desk, monkeypatch):
+    account = _open(1, 98.0, 110.0, BASE - 3 * BAR)
+    state = _run_stop(desk, account)
+    real_history, real_learn = cli.append_trade_history, cli.log_event
+    monkeypatch.setattr(cli, "append_trade_history", lambda *_a, **_k: None)
+    monkeypatch.setattr(cli, "log_event", lambda *_a, **_k: False)
+    with pytest.raises(RuntimeError, match="close_not_durable"):
+        cli.run_cycle(state, NOW)
+    assert not (desk / "trade_history.jsonl").exists()
+    assert not (desk / "learning_log.jsonl").exists()
+    assert "BTC" in state["main"]["positions"]
+    monkeypatch.setattr(cli, "append_trade_history", real_history)
+    monkeypatch.setattr(cli, "log_event", real_learn)
+    cli.run_cycle(state, NOW)
+    assert len(_history(desk)) == 1 and len(_learning_closes(desk)) == 1
+    cli.run_cycle(state, NOW)
+    assert len(_history(desk)) == 1 and len(_learning_closes(desk)) == 1
+
+
+def test_truncated_records_are_kept_and_the_close_is_appended_once(desk):
+    eth = {"symbol": "ETH", "id": 9, "open_ms": 1, "close_ms": 2, "why": "vecchio", "net": 1.5, "run_no": 1}
+    (desk / "trade_history.jsonl").write_text(
+        json.dumps(eth) + "\n" + '{"symbol":"BTC","id":1,"open_ms":\n', encoding="utf-8")
+    (desk / "learning_log.jsonl").write_text(
+        json.dumps({"ev": "close", **eth}) + "\n" + '{"ev":"close","symbol":"BTC"', encoding="utf-8")
+    state = _run_stop(desk, _open(1, 98.0, 110.0, BASE - 3 * BAR))
+    cli.run_cycle(state, NOW)
+    history_raw = (desk / "trade_history.jsonl").read_text(encoding="utf-8")
+    learning_raw = (desk / "learning_log.jsonl").read_text(encoding="utf-8")
+    assert '{"symbol":"BTC","id":1,"open_ms":\n' in history_raw
+    assert '{"ev":"close","symbol":"BTC"' in learning_raw
+    assert sum(1 for row in _history(desk) if row.get("why") == "vecchio") == 1
+    assert sum(1 for row in _history(desk) if row.get("why") == "stop loss") == 1
+    assert sum(1 for row in _learning_closes(desk) if row.get("why") == "vecchio") == 1
+    assert sum(1 for row in _learning_closes(desk) if row.get("why") == "stop loss") == 1
+    cli.run_cycle(state, NOW)
+    assert sum(1 for row in _history(desk) if row.get("why") == "stop loss") == 1
+    assert sum(1 for row in _learning_closes(desk) if row.get("why") == "stop loss") == 1
+
+
+def _entry(action):
+    return [{"symbol": "BTC", "action": action, "confidence": 80, "leverage": 10,
+             "margin_usd": 60, "stop_loss_pct": 0.02, "take_profit_pct": 0.05,
+             "dca_sl_pct": 0.02, "dca_tp_pct": 0.05, "reason": "sintetico", "trade_type": "medio"}]
+
+
+def test_future_or_invalid_quote_does_not_open_or_add_margin(desk):
+    future, _ = _cycle(desk, PaperAccount(cli.PORTFOLIO.limits, "main"),
+                       [[NOW + BAR, 100, 101, 99, 99, 1]], _entry("open_long"))
+    assert future.positions == {} and future.cash == cli.PORTFOLIO.limits.start_equity
+    invalid, _ = _cycle(desk, PaperAccount(cli.PORTFOLIO.limits, "main"),
+                        [[BASE, 100, 90, 110, 99, 1]], _entry("open_long"))
+    assert invalid.positions == {}
+    zero_close, _ = _cycle(desk, PaperAccount(cli.PORTFOLIO.limits, "main"),
+                           [[BASE, 100, 101, 99, 0, 1]], _entry("open_long"))
+    assert zero_close.positions == {}
+    held = _open(1, 94.0, 120.0, BASE - 3 * BAR)
+    before = held.positions["BTC"].total_margin
+    untouched, _ = _cycle(desk, held, [[NOW + BAR, 100, 101, 99, 99, 1]], _entry("dca"))
+    assert untouched.positions["BTC"].dca_count == 0
+    assert untouched.positions["BTC"].total_margin == before
+    bad_dca, _ = _cycle(desk, _open(1, 94.0, 120.0, BASE - 3 * BAR),
+                        [[BASE, 100, 101, 0, 99, 1]], _entry("dca"))
+    assert bad_dca.positions["BTC"].dca_count == 0
+
+
+def test_valid_quote_still_opens_and_still_adds_dca(desk):
+    opened, _ = _cycle(desk, PaperAccount(cli.PORTFOLIO.limits, "main"),
+                       [[BASE - BAR, 100, 101, 99.2, 100, 1], [NOW + BAR, 50, 50, 50, 50, 1]],
+                       _entry("open_long"))
+    assert "BTC" in opened.positions
+    assert abs(opened.positions["BTC"].entry - 100.02) < 1e-6
+    added, _ = _cycle(desk, _open(1, 94.0, 120.0, BASE - 3 * BAR),
+                      [[BASE - BAR, 100, 101, 99.2, 100, 1]], _entry("dca"))
+    assert added.positions["BTC"].dca_count == 1
+    assert added.positions["BTC"].total_margin > 60
 
 
 def test_bull_rejects_the_same_future_bar(tmp_path):

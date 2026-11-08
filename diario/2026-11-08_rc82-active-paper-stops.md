@@ -13,6 +13,11 @@ Audit del ciclo attivo Falco/Toro (`backend/desk/cli.py`, `backend/desk/engine.p
 
 Non sono stati cambiati formula, leva, size, capitale, prompt o il prezzo che `on_bar` assegna a stop, target e liquidazione. Claude resta consultato secondo chiave e calendario: lo stub non esce in rete.
 
-Test locali: 11 casi RC82 dentro la suite da 95 con `test_desk.py` (95 passed) e 67 passed fra exit-only, RC78 e RC80. Workflow di push e pull_request non includono `cursor/**`: il push di questo branch non è un deploy. `[skip ci]` è solo un segno in più.
+Secondo giro, stessa PR #79, dopo la revisione sul commit `49b1a73`. Solo due P0:
 
-Prossimo passo: revisione indipendente. Non è una certificazione di stop né un via libera al riavvio. PR #77 e #78 non vanno toccate.
+- `_prove_protective_close`: storico e learning devono essere entrambi riletti (`symbol`, `id`, `open_ms`, `close_ms`, `why`, `net`, `run_no` se c'è). Se manca la prova non si salva il conto. Righe troncate restano e non si incollano alla riga nuova (`_append_json_line`).
+- `operational_prices`: una candela futura o con OHLC inutilizzabile non apre e non fa DCA. Una candela valida mantiene il prezzo di prima.
+
+Test locali, non CI: RC82 17 passed; `test_desk.py` 84 passed; exit-only+RC78+RC80 67 passed e 7 warning. Workflow: nessun `cursor/**` e nessun `pull_request_target`. `[skip ci]` non è la sola difesa.
+
+Lo SHA da revisionare è il HEAD del branch dopo il push, scritto nella PR #79. Prossimo passo: revisione indipendente. Non è una certificazione di stop né un via libera al riavvio. PR #77 e #78 non vanno toccate.

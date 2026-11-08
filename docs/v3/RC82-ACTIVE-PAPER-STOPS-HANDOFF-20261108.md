@@ -25,9 +25,19 @@ Priorità già corretta e lasciata com'è: liquidazione, poi stop, poi take-prof
 - applica le barre valide, anche se il feed è vecchio, così uno stop già stampato chiude;
 - segna `heartbeat.stop_feed` (`missing`, `unusable`, `future`, `stale`, `latest_rejected`) e `stop_certified=false`;
 - gira una volta prima di Claude/DCA e una volta dopo, così uno stop già toccato non viene allargato e uno stop stretto nello stesso ciclo vale subito;
-- non riscrive lo storico se la stessa chiusura (simbolo, id, open_ms, close_ms, why) c'è già.
+- non rende durevole la chiusura se storico e learning non sono entrambi riletti.
 
 `stop_certified` non è mai true. Il healthcheck non è stato modificato: un feed cieco non deve far riavviare il container. L'allarme è nel contenuto del heartbeat, non nell'età del file.
+
+## Secondo giro, due P0 della revisione su `49b1a73`
+
+Funzioni: `_prove_protective_close`, `_jsonl_has_close`, `_close_row_matches` e `operational_prices` in `backend/desk/cli.py`. Scrittura su file: `_append_json_line` in `backend/desk/brain.py`, usata anche da `log_event` in `backend/desk/learning.py`.
+
+1. Persistenza. Una chiusura protettiva è provata solo se storico e learning hanno la stessa identità (`symbol`, `id`, `open_ms`, `close_ms`, `why`, `net`; `run_no` se presente, e sempre nel learning). Se manca un lato si scrive solo quello, poi si rilegge. Se uno dei due non si può provare si alza `close_not_durable` e non si salva il conto: la posizione resta aperta sul disco e il giro dopo riprova. Una riga già completa non si riscrive. Una riga troncata o parziale non conta come prova e non si cancella: la riga nuova va a capo, così non si incolla al frammento. Casi coperti: storico ok e learning no, il contrario, entrambi no, frammento troncato, recupero dopo il fallimento, secondo giro senza duplicati.
+
+2. Prezzi operativi. `run_cycle` non usa più `get_prices` per aperture e DCA. `operational_prices` prende l'ultima chiusura con timestamp non futuro e OHLC accettato da `_bar_usable` (niente low/close ≤ 0, niente range incoerente). Una candela solo futura o invalida non apre e non aumenta il margine. Se davanti c'è una candela valida, l'ingresso usa quella chiusura, non il close futuro. Una candela valida resta utilizzabile anche se il ciclo successivo è più tardi: è il comportamento che `test_desk.py` già verificava. Lo stop sulle barre vecchie ma valide non cambia.
+
+Questo testo è nel commit figlio di `49b1a73f92904cac63c31c51ef2537254172d2ad`. Lo SHA da revisionare è il HEAD di `cursor/rc82-active-paper-stops-31c4` dopo il push, riportato nella descrizione della PR #79.
 
 ## Comportamenti verificati e non modificati
 
@@ -37,22 +47,22 @@ Priorità già corretta e lasciata com'è: liquidazione, poi stop, poi take-prof
 - Senza chiave, o fuori dal calendario, Claude non è chiamato e decidono le regole. Con chiave sintetica e senza calendario, la funzione di chiamata viene usata una volta. Nessuna richiesta reale.
 - Falco e Toro condividono il ciclo. Il caso della barra futura è eseguito anche con `DESK_PORTFOLIO=bull`.
 
-## Test eseguiti su questa VM
+## Test eseguiti su questa VM, secondo giro
 
-`PYTHONPATH=backend python3 -m pytest -q -p no:cacheprovider backend/tests/test_v3_rc82_active_paper_stops.py backend/tests/test_desk.py`
+cwd `/tmp/rc82-work`, `PYTHONPATH=backend`, `python3 -m pytest -q -p no:cacheprovider --tb=line`.
 
-95 passed, 0 failed, circa 565 s.
-
-`PYTHONPATH=backend python3 -m pytest -q -p no:cacheprovider backend/tests/test_v3_classic_exit_only.py backend/tests/test_v3_rc78_paper_stop_monitor.py backend/tests/test_v3_rc80_paper_stop_hardening.py`
-
-67 passed, 7 warning di deprecazione, 1,14 s.
+- `backend/tests/test_v3_rc82_active_paper_stops.py`: 17 passed, 0 failed, 0.34 s, exit 0.
+- `backend/tests/test_desk.py`: 84 passed, 0 failed, 564.93 s, exit 0.
+- `backend/tests/test_v3_classic_exit_only.py` + `test_v3_rc78_paper_stop_monitor.py` + `test_v3_rc80_paper_stop_hardening.py`: 67 passed, 7 warning, 1.17 s, exit 0. Warning: deprecazione AnyIO in Starlette e `app=` shortcut di httpx su 6 test exit-only.
 
 Non è una CI GitHub e non certifica gli stop in produzione né un riavvio.
 
 ## Residui
 
-- Fra un ciclo e l'altro lo stop non è osservato. Con uno scalp l'attesa arriva a 15 minuti, più la durata del ciclo.
+- Fra un ciclo e l'altro lo stop non è osservato. Con uno scalp l'attesa arriva a 15 minuti, più la durata del ciclo. Non è un controllo a ogni tick.
 - Il wick della candela di ingresso resta invisibile.
-- RC81 legge `exit_only_heartbeat.json`, non questo `stop_feed` del bot attivo.
+- RC81 legge `exit_only_heartbeat.json`, non `stop_feed` del bot attivo. La dashboard RUNNING non mostra ancora quell'allarme.
 - Il healthcheck resta verde se il processo scrive il heartbeat, anche con `stop_feed.alarm=true`.
-- Nessuna modifica a Brain, a PR #77 o alla PR #78.
+- Una candela valida ma vecchia può ancora essere il prezzo di un'apertura: non è futura e l'OHLC è coerente. L'allarme di feed vecchio resta sullo stop, non blocca da solo l'ingresso.
+- Se il secondo passaggio chiude dopo un DCA solo in memoria e la prova dei registri fallisce, il conto non viene salvato. La riga già scritta di quella chiusura resta. Il giro dopo riparte dallo stato precedente e può registrare un fill diverso. Il caso provato è la chiusura del primo passaggio, prima del DCA.
+- Nessuna modifica a PR #77 o alla PR #78. Prossimo passo: revisione indipendente, senza merge né riavvio.

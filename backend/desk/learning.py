@@ -143,8 +143,8 @@ def log_event(data_dir: str, ev: dict, candidate: bool = False) -> bool:
         row = _clean({"schema": SCHEMA, **STAMP, **ev})
         row.setdefault("logged_ms", int(time.time() * 1000))
         line = json.dumps(row, ensure_ascii=False, default=str, allow_nan=False)
-        with open(path, "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
+        from desk.brain import _append_json_line
+        _append_json_line(path, line)
         return True
     except Exception:
         return False
