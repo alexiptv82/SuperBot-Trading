@@ -69,6 +69,9 @@ def classic_stop_health(data_dir: str, portfolio: str, *, now_s: float | None = 
                   monitor_opt_in=payload.get("stop_monitor_opt_in") is True)
     if payload.get("stop_certified") is not False:
         return dict(result, reason="certificate_claim_invalid")
+    if (payload.get("execution") != MODEL or
+            payload.get("intrabar_wick") != "not_a_fill"):
+        return dict(result, reason="monitor_model_unverified")
     if payload.get("ready") is not True:
         return dict(result, state="blocked", reason="worker_not_ready")
     if payload.get("telemetry_ok") is not True:
