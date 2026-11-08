@@ -495,6 +495,68 @@ def test_conflicting_terminal_closes_are_not_a_unique_proof(tmp_path, monkeypatc
         assert (backup / name).read_bytes() == payload
 
 
+def test_a_claim_group_is_resolved_only_when_every_claim_is(tmp_path, monkeypatch):
+    """Review 6721423727: the first resolved claim must not archive the rest."""
+    from desk.paper_stop_monitor import inspect_claims, reconcile_stop_claim
+    base, backup = rc78.prepare(tmp_path, monkeypatch)
+    state = json.loads((base / "state_v2.json").read_text())
+    btc = state["main"]["positions"]["BTC"]
+    eth_open = btc["open_ms"] + 10
+    state["main"]["positions"]["ETH"] = dict(btc, id=btc["id"] + 1, symbol="ETH", open_ms=eth_open)
+    sol_open = btc["open_ms"] + 20
+    state["main"]["positions"]["SOL"] = dict(btc, id=btc["id"] + 2, symbol="SOL", open_ms=sol_open)
+    (base / "state_v2.json").write_text(json.dumps(state), encoding="utf-8")
+    btc_row = _terminal("BTC", btc["id"], btc["open_ms"], 2000, -1.0)
+    eth_bad = _terminal("ETH", btc["id"] + 1, eth_open, 3000, -8.0)
+    eth_other = _terminal("ETH", btc["id"] + 1, eth_open, 4000, -2.0)
+    eth_good = _terminal("ETH", btc["id"] + 1, eth_open, 3000, -1.5)
+    sol_good = _terminal("SOL", btc["id"] + 2, sol_open, 5000, -0.5)
+    monkeypatch.setattr(cli, "DATA_DIR", str(base))
+    monkeypatch.setattr(cli, "STATE_FILE", str(base / "state_v2.json"))
+
+    def run(claims, live_symbols, history, learning):
+        live = json.loads((base / "state_v2.json").read_text())
+        live["main"]["positions"] = {
+            symbol: state["main"]["positions"][symbol] for symbol in live_symbols}
+        (base / "state_v2.json").write_text(json.dumps(live), encoding="utf-8")
+        (base / "trade_history.jsonl").write_text(
+            "".join(json.dumps(row) + "\n" for row in history), encoding="utf-8")
+        (base / "learning_log.jsonl").write_text(
+            "".join(json.dumps(dict(row, ev="close", portfolio="hawk")) + "\n" for row in learning),
+            encoding="utf-8")
+        raw = json.dumps({"claims": claims})
+        (base / STOP_WORK_NAME).write_text(raw, encoding="utf-8")
+        for archived in base.glob("paper_stop_protect.reconciled-*.json"):
+            archived.unlink()
+        acc = cli.make_account(json.loads((base / "state_v2.json").read_text()))
+        verdict = inspect_claims(base, acc)
+        disk = reconcile_stop_claim(cli)
+        assert disk == verdict
+        archives = list(base.glob("paper_stop_protect.reconciled-*.json"))
+        if verdict != "resolved":
+            assert (base / STOP_WORK_NAME).read_text(encoding="utf-8") == raw
+            assert archives == []
+        else:
+            assert not (base / STOP_WORK_NAME).exists()
+            assert len(archives) == 1
+            saved = json.loads(archives[0].read_text(encoding="utf-8"))["claims"]
+            assert [item["symbol"] for item in saved] == [item["symbol"] for item in claims]
+        return verdict
+
+    btc_claim = {"symbol": "BTC", "id": btc["id"], "open_ms": btc["open_ms"], "portfolio": "hawk"}
+    eth_claim = {"symbol": "ETH", "id": btc["id"] + 1, "open_ms": eth_open, "portfolio": "hawk"}
+    sol_claim = {"symbol": "SOL", "id": btc["id"] + 2, "open_ms": sol_open, "portfolio": "hawk"}
+    proven = ([btc_row], [btc_row])
+    for claims in ([btc_claim, eth_claim], [eth_claim, btc_claim]):
+        assert run(claims, ["ETH"], *proven) == "open"
+        assert run(claims, [], [btc_row, eth_bad], [btc_row, eth_other]) == "unproven"
+        assert run(claims, ["ETH"], [btc_row, eth_bad, eth_other], [btc_row, eth_bad]) == "mismatch"
+    assert run([btc_claim, eth_claim, sol_claim], ["ETH"], [btc_row, sol_good], [btc_row, sol_good]) == "open"
+    assert run([sol_claim, eth_claim, btc_claim], [], [btc_row, eth_bad], [btc_row, eth_other]) == "unproven"
+    assert run([eth_claim, sol_claim, btc_claim], [], 
+               [btc_row, eth_good, sol_good], [btc_row, eth_good, sol_good]) == "resolved"
+
+
 def test_history_and_learning_must_be_the_same_closure(tmp_path, monkeypatch):
     """P0-E: same position with two different close_ms values is not resolved."""
     from desk.paper_stop_monitor import find_same_closure, inspect_claims

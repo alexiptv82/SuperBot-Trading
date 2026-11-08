@@ -68,3 +68,9 @@ Fonte: https://github.com/alexiptv82/SuperBot-Trading/pull/77#issuecomment-67209
 Ora ogni riga terminale della stessa posizione deve avere la stessa impronta (`close_ms`, `why`, `net` e gli importi presenti). Una seconda riga con `close_ms` o netto diverso, nello storico, nel learning o in entrambi, rende la prova `discordant`: il claim non si archivia e il restart non dà la posizione per chiusa. Le righe non si cancellano. Due copie identiche dello stesso fill restano ammesse. I parziali non sono terminali. Test: `test_conflicting_terminal_closes_are_not_a_unique_proof`.
 
 Prova locale, non CI: 66 passed, 0 failed sui tre file pytest già usati (29 RC80, 22 RC78, 15 exit-only). Nessuna Actions su questo branch.
+
+## Review del 8 novembre 2026, 12:21 UTC — gruppo di claim
+
+Fonte: https://github.com/alexiptv82/SuperBot-Trading/pull/77#issuecomment-6721423727 sull'HEAD `9bdb82cef48bc22df399ac2a5ac9b8481ad9305b`. La correzione sui terminali contraddittori è confermata. Regressione: `inspect_claims` faceva `return "resolved"` dentro il ciclo, quindi un file con BTC già provato ed ETH ancora aperto veniva archiviato per intero.
+
+Ora il verdetto si accumula. Il gruppo è `resolved` solo se ogni claim lo è. Basta un `mismatch`, un `open` o un `unproven` per bloccare l'archivio, in qualunque ordine. Il test `test_a_claim_group_is_resolved_only_when_every_claim_is` controlla il file su disco: nei casi misti `paper_stop_protect.work` resta byte-identico e non compare un `reconciled-*.json`; solo il gruppo tutto provato viene archiviato, con tutti i simboli. Prova locale successiva sullo stesso comando: 67 passed, 0 failed (30 RC80, 22 RC78, 15 exit-only). Non è CI GitHub. Non è un deploy.

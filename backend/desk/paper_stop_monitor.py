@@ -384,9 +384,14 @@ def inspect_claims(base: Path, acc) -> str:
     claims = _read_claims(path)
     if not claims:
         return "malformed"
+    # One file lists every position claimed in the same tick. The group is
+    # resolved only when every claim is. A later resolved row must not hide
+    # an earlier open, unproven, or mismatched one, nor the reverse.
+    verdicts = []
     for claim in claims:
         if type(claim.get("open_ms")) is not int:
-            return "unproven"
+            verdicts.append("unproven")
+            continue
         pos = acc.positions.get(claim["symbol"])
         still_open = (pos is not None and _same_id(pos.id, claim["id"])
                       and pos.open_ms == claim["open_ms"])
@@ -396,12 +401,20 @@ def inspect_claims(base: Path, acc) -> str:
             base, claim["symbol"], claim["id"], claim["open_ms"],
             portfolio=portfolio, run_no=run_no)
         if status == "discordant":
-            return "mismatch" if still_open else "unproven"
-        if status == "unique":
-            return "mismatch" if still_open else "resolved"
-        if still_open:
-            return "open"
+            verdicts.append("mismatch" if still_open else "unproven")
+        elif status == "unique":
+            verdicts.append("mismatch" if still_open else "resolved")
+        elif still_open:
+            verdicts.append("open")
+        else:
+            verdicts.append("unproven")
+    if any(item == "mismatch" for item in verdicts):
+        return "mismatch"
+    if any(item == "open" for item in verdicts):
+        return "open"
+    if any(item == "unproven" for item in verdicts):
         return "unproven"
+    return "resolved"
 
 
 def _archive_claim(base: Path) -> str:
