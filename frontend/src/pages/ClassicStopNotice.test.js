@@ -57,3 +57,11 @@ test('overview binds a classic portfolio health object without issuing commands'
   expect(html).toContain('classic-stop-notice');
   expect(html).toContain('Nessuna posizione ha un prezzo verificato');
 });
+
+test('inconsistent covered flag never claims that quote data is available', () => {
+  const html = view(status('covered', false));
+  expect(html).toContain('role="alert"');
+  expect(html).toContain('Copertura prezzi non dimostrata');
+  expect(html).not.toContain('Prezzi recenti disponibili');
+  expect(html).toContain('non equivale a stop-loss certificato');
+});
