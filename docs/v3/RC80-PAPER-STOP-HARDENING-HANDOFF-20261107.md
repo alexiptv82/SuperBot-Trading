@@ -55,3 +55,14 @@ Solo locali:
 - Il controllo del lock via `/proc/self/fd` è quello di Linux.
 - Backup esterno non certificato. Brain non deployato. Nessuna attestazione VPS dopo RC77.
 - Opt-in spento di default. Non deployare e non accendere.
+
+## Review `6713923063` — patch sullo stesso branch
+
+Parent review: `9dedf5dc9ea0586e854afc59ebc050f9574f62c0`.
+
+- **P0-A** `_prove_writer_lock`: il path non basta. Il test `test_open_but_unlocked_fd_is_not_ownership` apre l'fd senza flock mentre un altro processo tiene `LOCK_EX` e deve ricevere `ownership_lock_required` senza chiudere.
+- **P0-B** chiave `symbol + id + open_ms`. I parziali (`partial` o motivo con «parzial») non sono chiusure terminali. `resolved` richiede anche il learning. Claim senza `open_ms`: `unproven`.
+- **P1-C** non è un cambio di `_close` né di leva/size. Ammissione dati: barra 1m chiusa soltanto. Wick documentato come non-fill. La dashboard non mostra ancora questo limite.
+- **P1-D** errore di scrittura health → `telemetry_failed`, nessuna chiusura, nessuna dichiarazione `covered`. `stop_certified` è sempre false. `protection_alarm` è il lettore fail-visible. UI non toccata: gate residuo prima di qualunque attivazione.
+
+Il diario canonico non va aggiornato da questo branch.

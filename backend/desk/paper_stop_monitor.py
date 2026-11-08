@@ -32,8 +32,12 @@ WRITER_LOCK = ".exit_only_writer.lock"
 MANUAL_WORK = ("close_position.flag.work", "reset.flag.work")
 PROTECTION_REASONS = ("liquidazione", "stop loss", "take profit")
 PRICE_MAX_AGE_MS = 120_000
-# Bar timestamp is the candle OPEN, not the exchange match time.
+# Bar timestamp is the candle OPEN. A 1m bar is closed only after 60s.
+# Usable closed bars are those whose open is 60–120 seconds old.
+BAR_MS = 60_000
 QUOTE_CLOCK = "bar_open_ms"
+EXECUTION_MODEL = "closed_1m_close_only"
+INTRABAR_WICK = "not_a_fill"
 
 
 class PaperStopRefused(RuntimeError):
@@ -91,12 +95,35 @@ def classify_candle(bar, now_ms: int) -> dict:
     if min(open_, high, low, close) <= 0 or high < low or not (low <= open_ <= high and low <= close <= high):
         return {"status": "anomalous", "reason": "ohlc", "price": None}
     age = now_ms - ts
+    common = {"ts": ts, "age_ms": age, "clock": QUOTE_CLOCK,
+              "execution": EXECUTION_MODEL, "intrabar_wick": INTRABAR_WICK}
     if age < 0:
-        return {"status": "future", "reason": "timestamp_ahead", "price": None, "ts": ts, "age_ms": age}
+        return {"status": "future", "reason": "timestamp_ahead", "price": None, **common}
+    if age < BAR_MS:
+        # The exchange bar is still forming. Its close is not a finished price.
+        return {"status": "incomplete", "reason": "candle_still_forming", "price": None, **common}
     if age > PRICE_MAX_AGE_MS:
-        return {"status": "stale", "reason": "older_than_120s", "price": None, "ts": ts, "age_ms": age}
-    return {"status": "fresh", "reason": "ok", "price": close, "ts": ts, "age_ms": age,
-            "clock": QUOTE_CLOCK}
+        return {"status": "stale", "reason": "older_than_120s", "price": None, **common}
+    return {"status": "fresh", "reason": "closed_bar", "price": close, **common}
+
+
+def select_closed_minute(bars, now_ms: int) -> dict:
+    """Use the newest completed 1m bar. A forming bar is not a price."""
+    if not isinstance(bars, (list, tuple)) or not bars:
+        return {"status": "missing", "reason": "empty_feed", "price": None,
+                "execution": EXECUTION_MODEL, "intrabar_wick": INTRABAR_WICK}
+    forming = False
+    for bar in reversed(list(bars)):
+        found = classify_candle(bar, now_ms)
+        if found["status"] == "incomplete":
+            forming = True
+            continue
+        return found
+    if forming:
+        return {"status": "incomplete", "reason": "candle_still_forming", "price": None,
+                "execution": EXECUTION_MODEL, "intrabar_wick": INTRABAR_WICK}
+    return {"status": "anomalous", "reason": "shape", "price": None,
+            "execution": EXECUTION_MODEL, "intrabar_wick": INTRABAR_WICK}
 
 
 def quote_protection(pos, price) -> Optional[tuple]:
@@ -142,7 +169,14 @@ def _read_claims(path: Path):
     for item in claims:
         if not isinstance(item, dict) or not item.get("symbol") or _id_key(item.get("id")) is None:
             return None
-        clean.append({"symbol": str(item["symbol"]), "id": _id_key(item.get("id"))})
+        open_ms = item.get("open_ms")
+        clean.append({
+            "symbol": str(item["symbol"]),
+            "id": _id_key(item.get("id")),
+            "open_ms": open_ms if type(open_ms) is int else None,
+            "run_no": item.get("run_no"),
+            "portfolio": item.get("portfolio"),
+        })
     return clean
 
 
@@ -164,22 +198,51 @@ def _iter_rows(path: Path):
         return
 
 
-def _history_has_close(base: Path, symbol: str, pos_id, close_ms=None) -> bool:
+def _is_partial_row(row: dict) -> bool:
+    if row.get("partial") is True:
+        return True
+    why = str(row.get("why") or "").lower()
+    return "parzial" in why
+
+
+def _terminal_match(row: dict, *, symbol: str, pos_id, open_ms: int,
+                    close_ms=None, portfolio=None, run_no=None) -> bool:
+    """A terminal close of this exact position. Partial fills and other runs do not match."""
+    if not isinstance(row, dict) or _is_partial_row(row):
+        return False
+    if row.get("symbol") != symbol or not _same_id(row.get("id"), pos_id):
+        return False
+    if type(open_ms) is not int or row.get("open_ms") != open_ms:
+        return False
+    if close_ms is not None and row.get("close_ms") != close_ms:
+        return False
+    if run_no is not None and "run_no" in row and row.get("run_no") != run_no:
+        return False
+    # `account` in the trade record is the paper book name ("main"), not Falco/Toro.
+    if portfolio is not None and "portfolio" in row and row.get("portfolio") not in (None, portfolio):
+        return False
+    why = row.get("why")
+    if row.get("ev") == "close":
+        return why in PROTECTION_REASONS or why == "chiusura manuale" or why is None
+    return why in PROTECTION_REASONS or why == "chiusura manuale"
+
+
+def _history_has_close(base: Path, symbol: str, pos_id, close_ms=None, *,
+                       open_ms: int, portfolio=None, run_no=None) -> bool:
     for row in _iter_rows(base / "trade_history.jsonl"):
-        if row.get("symbol") != symbol or not _same_id(row.get("id"), pos_id):
-            continue
-        if close_ms is not None and row.get("close_ms") != close_ms:
-            continue
-        if row.get("why") in PROTECTION_REASONS or row.get("why") == "chiusura manuale":
+        if _terminal_match(row, symbol=symbol, pos_id=pos_id, open_ms=open_ms,
+                           close_ms=close_ms, portfolio=portfolio, run_no=run_no):
             return True
     return False
 
 
-def _learning_has_close(base: Path, symbol: str, pos_id, close_ms) -> bool:
+def _learning_has_close(base: Path, symbol: str, pos_id, close_ms, *,
+                        open_ms: int, portfolio=None, run_no=None) -> bool:
     for row in _iter_rows(base / "learning_log.jsonl"):
         if row.get("ev") != "close":
             continue
-        if row.get("symbol") == symbol and _same_id(row.get("id"), pos_id) and row.get("close_ms") == close_ms:
+        if _terminal_match(row, symbol=symbol, pos_id=pos_id, open_ms=open_ms,
+                           close_ms=close_ms, portfolio=portfolio, run_no=run_no):
             return True
     return False
 
@@ -203,14 +266,24 @@ def inspect_claims(base: Path, acc) -> str:
     if not claims:
         return "malformed"
     for claim in claims:
+        if type(claim.get("open_ms")) is not int:
+            return "unproven"
         pos = acc.positions.get(claim["symbol"])
-        still_open = pos is not None and _same_id(pos.id, claim["id"])
-        recorded = _history_has_close(base, claim["symbol"], claim["id"])
+        still_open = (pos is not None and _same_id(pos.id, claim["id"])
+                      and pos.open_ms == claim["open_ms"])
+        portfolio = claim.get("portfolio")
+        run_no = claim.get("run_no")
+        recorded = _history_has_close(
+            base, claim["symbol"], claim["id"], open_ms=claim["open_ms"],
+            portfolio=portfolio, run_no=run_no)
+        learned = _learning_has_close(
+            base, claim["symbol"], claim["id"], None, open_ms=claim["open_ms"],
+            portfolio=portfolio, run_no=run_no)
         if still_open and recorded:
             return "mismatch"
         if still_open:
             return "open"
-        if not recorded:
+        if not (recorded and learned):
             return "unproven"
     return "resolved"
 
@@ -331,6 +404,21 @@ def _fd_is_writer_lock(fd, base: Path) -> bool:
     return target == os.path.realpath(base / WRITER_LOCK)
 
 
+def _prove_writer_lock(fd, base: Path) -> None:
+    """Path match is not ownership. Relocking this fd must succeed.
+
+    An fd opened on the lock file but not flocked fails here when another
+    holder already has LOCK_EX. The call never unlocks a lock it did not take.
+    """
+    if not _fd_is_writer_lock(fd, base):
+        raise PaperStopRefused("ownership_lock_required")
+    import fcntl
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        raise PaperStopRefused("ownership_lock_required") from exc
+
+
 def _quotes_from_prices(prices: dict) -> dict:
     """Tests pass a synthetic fresh mark. Absence is not a price."""
     quotes = {}
@@ -350,9 +438,13 @@ def _durable_record(legacy, base: Path, state: dict, record: dict) -> None:
     for path in (history, learning):
         if path.is_file():
             _fsync(path)
-    if not _history_has_close(base, record["symbol"], record["id"], record["close_ms"]):
+    portfolio = getattr(legacy.PORTFOLIO, "name", None)
+    run_no = state.get("run_no")
+    if not _history_has_close(base, record["symbol"], record["id"], record["close_ms"],
+                              open_ms=record["open_ms"], portfolio=portfolio, run_no=run_no):
         raise PaperStopRefused("history_not_durable")
-    if not _learning_has_close(base, record["symbol"], record["id"], record["close_ms"]):
+    if not _learning_has_close(base, record["symbol"], record["id"], record["close_ms"],
+                               open_ms=record["open_ms"], portfolio=portfolio, run_no=run_no):
         raise PaperStopRefused("learning_not_durable")
 
 
@@ -400,8 +492,8 @@ def apply_paper_stop_protection(legacy, prices: dict, now_ms: int, *, lock_held:
     if lock_fd is None:
         lock_fd = _hold_writer_lock(base)
         owned_lock = True
-    elif not _fd_is_writer_lock(lock_fd, base):
-        raise PaperStopRefused("ownership_lock_required")
+    else:
+        _prove_writer_lock(lock_fd, base)
     try:
         if any((base / name).exists() for name in MANUAL_WORK):
             return {"enabled": True, "closed": [], "kept": [], "blocked": "unreconciled_manual_close",
@@ -425,8 +517,14 @@ def apply_paper_stop_protection(legacy, prices: dict, now_ms: int, *, lock_held:
             if row["coverage"] != "covered":
                 continue
             fresh[row["symbol"]] = quote_map[row["symbol"]]["price"]
-        _note_transition(base, now_ms, health["coverage"], health["positions"])
+        telemetry_ok = _note_transition(base, now_ms, health["coverage"], health["positions"])
+        if not telemetry_ok:
+            return {"enabled": True, "closed": [], "kept": sorted(acc.positions), "blocked": None,
+                    "stop_protection": "telemetry_failed", "telemetry_ok": False,
+                    "positions": health["positions"]}
 
+        portfolio = getattr(legacy.PORTFOLIO, "name", None)
+        run_no = state.get("run_no")
         planned = []
         for symbol in symbols:
             pos = acc.positions[symbol]
@@ -440,21 +538,25 @@ def apply_paper_stop_protection(legacy, prices: dict, now_ms: int, *, lock_held:
             why, fill = decision
             if why not in PROTECTION_REASONS:
                 continue
-            planned.append((symbol, _id_key(pos.id), why, fill))
+            planned.append((symbol, _id_key(pos.id), pos.open_ms, why, fill))
         if not planned:
             return {"enabled": True, "closed": [], "kept": sorted(acc.positions), "blocked": None,
-                    "stop_protection": health["coverage"], "positions": health["positions"]}
+                    "stop_protection": health["coverage"], "telemetry_ok": True,
+                    "positions": health["positions"],
+                    "execution": EXECUTION_MODEL, "intrabar_wick": INTRABAR_WICK}
 
         if not legacy_stopped():
             raise PaperStopRefused("legacy_container_not_proven_stopped_and_disabled")
-        _write_claims(base, [{"symbol": symbol, "id": pos_id, "why": why}
-                             for symbol, pos_id, why, _fill in planned])
+        _write_claims(base, [{"symbol": symbol, "id": pos_id, "open_ms": open_ms, "why": why,
+                              "run_no": run_no, "portfolio": portfolio}
+                             for symbol, pos_id, open_ms, why, _fill in planned])
         closed = []
-        for symbol, pos_id, why, fill in planned:
+        for symbol, pos_id, open_ms, why, fill in planned:
             pos = acc.positions.get(symbol)
-            if pos is None or not _same_id(pos.id, pos_id):
+            if pos is None or not _same_id(pos.id, pos_id) or pos.open_ms != open_ms:
                 continue
-            if _history_has_close(base, symbol, pos_id):
+            if _history_has_close(base, symbol, pos_id, open_ms=open_ms,
+                                  portfolio=portfolio, run_no=run_no):
                 raise PaperStopRefused("state_history_mismatch")
             record = acc._close(pos, fill, now_ms, why)
             _durable_record(legacy, base, state, record)
@@ -472,13 +574,16 @@ def apply_paper_stop_protection(legacy, prices: dict, now_ms: int, *, lock_held:
         except OSError:
             pass
         return {"enabled": True, "closed": closed, "kept": sorted(acc.positions), "blocked": None,
-                "stop_protection": health["coverage"], "positions": health["positions"]}
+                "stop_protection": health["coverage"], "telemetry_ok": True,
+                "positions": health["positions"],
+                "execution": EXECUTION_MODEL, "intrabar_wick": INTRABAR_WICK,
+                "stop_certified": False}
     finally:
         if owned_lock:
             _release_writer_lock(lock_fd)
 
 
-def _note_transition(base: Path, now_ms: int, coverage: str, rows: list, kind: Optional[str] = None) -> None:
+def _note_transition(base: Path, now_ms: int, coverage: str, rows: list, kind: Optional[str] = None) -> bool:
     previous = _load_health(base)
     events = _transitions(previous, rows) if rows else []
     if kind and previous.get("blocked") != kind:
@@ -495,8 +600,39 @@ def _note_transition(base: Path, now_ms: int, coverage: str, rows: list, kind: O
             if event["kind"] == "baseline" and previous:
                 continue
             _append_diag(base, {"ts": now_ms, "coverage": coverage, **event})
+        return True
     except OSError:
-        return
+        return False
+
+
+def protection_alarm(heartbeat, now=None) -> dict:
+    """Fail-visible reading of the exit heartbeat. `ready` is not stop coverage.
+
+    The dashboard is intentionally not changed here. Callers that only look at
+    `ready` still get an explicit alarm from this function.
+    """
+    reasons = []
+    if not isinstance(heartbeat, dict):
+        return {"alarm": True, "reasons": ["missing"]}
+    try:
+        timestamp = float(heartbeat.get("ts"))
+    except (TypeError, ValueError):
+        timestamp = None
+    moment = time.time() if now is None else now
+    if timestamp is None or not math.isfinite(timestamp) or not (-2 <= moment - timestamp < 12):
+        reasons.append("heartbeat_stale")
+    status = heartbeat.get("stop_protection")
+    if heartbeat.get("ready") is True and status not in ("covered", "idle", "off"):
+        reasons.append("ready_is_not_stop_coverage")
+    if status in ("blind", "partial", "blocked", "telemetry_failed", "unverified"):
+        reasons.append(status)
+    if heartbeat.get("telemetry_ok") is False:
+        reasons.append("telemetry_failed")
+    if heartbeat.get("stop_certified") is not False:
+        reasons.append("stop_certified_must_stay_false")
+    if heartbeat.get("intrabar_wick") == INTRABAR_WICK:
+        reasons.append("intrabar_wick_not_a_fill")
+    return {"alarm": bool(reasons), "reasons": reasons}
 
 
 def reconcile_stop_claim(legacy) -> str:

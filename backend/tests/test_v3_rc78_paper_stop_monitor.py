@@ -28,7 +28,8 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _candle(now_ms: int, close: float, age_ms: int = 10_000):
+def _candle(now_ms: int, close: float, age_ms: int = 70_000):
+    """Default age is a closed 1m bar (open 70s ago), still inside the 120s window."""
     return [[now_ms - age_ms, close, close, close, close, 1]]
 
 
@@ -71,7 +72,7 @@ def worker(base, backup, *, stopped=lambda _: True):
     return ExitOnlyWorker(base=base, backup=backup, portfolio=base.name, legacy=cli, stopped=stopped)
 
 
-def _feed(now_ms, close, age_ms=10_000):
+def _feed(now_ms, close, age_ms=70_000):
     def fetch(symbol, bar, limit):
         assert bar == "1m"
         return _candle(now_ms, close, age_ms)
@@ -330,7 +331,7 @@ def test_interrupted_claim_is_not_replayed_and_blocks_startup(tmp_path, monkeypa
     assert (base / "state_v2.json").read_bytes() == before
     monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
     report = apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=True, legacy_stopped=lambda: True)
-    assert report["blocked"] == "open"
+    assert report["blocked"] == "unproven"
     assert len(_history(base)) == 1
     assert (base / STOP_WORK_NAME).is_file()
 

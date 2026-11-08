@@ -26,11 +26,13 @@ import time
 from typing import Callable, Optional
 
 from desk.paper_stop_monitor import (
+    EXECUTION_MODEL,
+    INTRABAR_WICK,
     PaperStopRefused,
     apply_paper_stop_protection,
-    classify_candle,
     monitor_opt_in,
     reconcile_stop_claim,
+    select_closed_minute,
 )
 
 REQUIRED = ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl", "lessons.md")
@@ -158,15 +160,18 @@ class ExitOnlyWorker:
             if verdict not in ("absent", "resolved"):
                 raise ExitOnlyError("unreconciled_stop_protection:" + verdict)
 
-    def _write_heartbeat(self, ready: bool, stop_protection: str = "off") -> None:
+    def _write_heartbeat(self, ready: bool, stop_protection: str = "off",
+                         telemetry_ok: bool = True) -> None:
         payload = {
             "mode": "paper-exit-only", "portfolio": self.portfolio, "ready": ready,
             "ts": self.clock(), "pid": os.getpid(),
-            # opt-in is not coverage. stop_protection says whether every open
-            # position has a fresh quote (covered), only some (partial), none
-            # (blind), nothing is open (idle), or the monitor is off/blocked.
+            # ready means the manual-close worker is up. It is not a stop certificate.
             "stop_monitor_opt_in": monitor_opt_in(),
             "stop_protection": stop_protection,
+            "stop_certified": False,
+            "telemetry_ok": bool(telemetry_ok),
+            "execution": EXECUTION_MODEL,
+            "intrabar_wick": INTRABAR_WICK,
         }
         fd, tmp = tempfile.mkstemp(dir=self.base, prefix=".exit-only-hb.", suffix=".tmp")
         try:
@@ -268,7 +273,9 @@ class ExitOnlyWorker:
             # The legacy handlers deliberately catch their own errors. Verify
             # ownership AGAIN after them; never publish READY if Docker changed mid-request.
             self.check_safe()
-            self._write_heartbeat(True, stop_report.get("stop_protection") or "off")
+            self._write_heartbeat(
+                True, stop_report.get("stop_protection") or "off",
+                stop_report.get("telemetry_ok", True))
             return {"manual_one_requested": selected, "manual_all_requested": all_pending,
                     "stop_monitor": stop_report}
         except Exception:
@@ -289,9 +296,10 @@ class ExitOnlyWorker:
                 quotes[symbol] = {"status": "missing", "reason": "feed_error", "price": None}
                 continue
             if not isinstance(bars, (list, tuple)) or not bars:
-                quotes[symbol] = {"status": "missing", "reason": "empty_feed", "price": None}
+                quotes[symbol] = {"status": "missing", "reason": "empty_feed", "price": None,
+                                  "execution": EXECUTION_MODEL, "intrabar_wick": INTRABAR_WICK}
                 continue
-            quotes[symbol] = classify_candle(bars[-1], now_ms)
+            quotes[symbol] = select_closed_minute(bars, now_ms)
         return quotes
 
 

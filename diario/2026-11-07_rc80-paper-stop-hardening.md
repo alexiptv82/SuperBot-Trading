@@ -37,3 +37,16 @@ Risultato locale: **56 passed, 0 failed** (19 RC80, 22 RC78, 15 exit-only). Ness
 - L'età della barra è l'apertura della candela 1m, non l'ora dello scambio. Oltre 120 secondi il prezzo è stale.
 - Il monitor resta spento senza `DESK_PAPER_STOP_MONITOR=1` e `DESK_MODE=paper`.
 - Non è pronto per la produzione. La revisione indipendente è di ChatGPT. Nessuna fase successiva è stata avviata.
+
+## Correzione dopo review ChatGPT, 8 novembre 2026
+
+Fonte: commento https://github.com/alexiptv82/SuperBot-Trading/pull/77#issuecomment-6713923063 sul commit `9dedf5dc9ea0586e854afc59ebc050f9574f62c0`. REQUEST CHANGES. Questa patch è un commit aggiuntivo sullo stesso branch della PR #77. Il diario canonico (`e0a0da89d83671274a2484feb849535d0ec8de30` al momento della lettura) non è stato modificato.
+
+| Rilievo | Esito |
+|---|---|
+| P0-A lock: il path dell'fd non prova il flock | Corretto. `flock(fd, LOCK_EX\|NB)` sullo stesso fd. Un fd aperto ma non lockato, mentre un altro processo tiene il lock, viene rifiutato. Test di processo separato. |
+| P0-B identità `symbol,id` | Corretto. La prova richiede `open_ms` e non conta i fill parziali. Un record di un'altra run con lo stesso id non blocca né risolve la posizione nuova. Senza `open_ms` il claim resta `unproven`. `resolved` esige storico e learning. |
+| P1-C candela aperta e wick | Scelta documentata, non è un cambio di formula economica. Vale solo la chiusura di una barra 1m già conclusa (`60s <= età apertura <= 120s`). La barra in formazione non è `covered` e non chiude. Il wick non è un fill: telemetria `execution=closed_1m_close_only`, `intrabar_wick=not_a_fill`. |
+| P1-D health e allarme | Se la scrittura health fallisce, lo stato è `telemetry_failed` e non si chiude. `stop_certified` resta false. `protection_alarm` segnala heartbeat vecchio, `ready` senza copertura, e il limite del wick. La dashboard non è stata modificata: l'allarme è nel file di heartbeat, non in UI. |
+
+Prove locali dopo la patch, non CI GitHub: stesso comando pytest dei tre file. Il numero aggiornato è nel messaggio di consegna e nel handoff. Nessuna Actions attesa, perché il branch non entra nei filtri dei workflow.

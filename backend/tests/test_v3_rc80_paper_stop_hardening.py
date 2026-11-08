@@ -89,13 +89,14 @@ def test_wick_through_stop_with_a_close_back_inside_does_not_close(tmp_path, mon
     now = rc78._now_ms()
 
     def fetch(symbol, bar, limit):
-        # High pierces the short stop at 102. The close came back to 100.
-        return [[now - 5_000, 100, 103, 99, 100, 1]]
+        # Forming bar: high already through the short stop, close not a finished price.
+        return [[now - 5_000, 100, 103, 99, 103, 1]]
 
     monkeypatch.setattr(cli, "fetch_candles", fetch)
     with rc78.worker(base, backup) as service:
         report = service.tick()
-    assert report["stop_monitor"]["stop_protection"] == "covered"
+    assert report["stop_monitor"]["stop_protection"] == "blind"
+    assert report["stop_monitor"]["positions"][0]["status"] == "incomplete"
     assert report["stop_monitor"]["closed"] == []
     assert "BTC" in rc78._positions(base)
 
@@ -158,7 +159,7 @@ def test_gap_close_uses_liquidation_before_stop(tmp_path, monkeypatch):
     pos = state["main"]["positions"]["BTC"]
     now = rc78._now_ms()
     gap = pos["liq"] + 5
-    monkeypatch.setattr(cli, "fetch_candles", lambda *a, **k: [[now - 1000, gap, gap, gap, gap, 1]])
+    monkeypatch.setattr(cli, "fetch_candles", lambda *a, **k: [[now - 70_000, gap, gap, gap, gap, 1]])
     with rc78.worker(base, backup) as service:
         report = service.tick()
     assert report["stop_monitor"]["closed"][0]["why"] == "liquidazione"
@@ -220,7 +221,9 @@ def test_string_claim_id_still_blocks_the_open_position(tmp_path, monkeypatch):
     state = json.loads((base / "state_v2.json").read_text())
     pos_id = state["main"]["positions"]["BTC"]["id"]
     (base / STOP_WORK_NAME).write_text(
-        json.dumps({"claims": [{"symbol": "BTC", "id": str(pos_id)}]}), encoding="utf-8")
+        json.dumps({"claims": [{"symbol": "BTC", "id": str(pos_id),
+                                "open_ms": state["main"]["positions"]["BTC"]["open_ms"]}]}),
+        encoding="utf-8")
     monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
     report = apply_paper_stop_protection(cli, {"BTC": 130.0}, rc78._now_ms(),
                                          lock_held=True, legacy_stopped=lambda: True)
@@ -237,7 +240,9 @@ def test_proven_claim_is_archived_on_startup_without_a_second_close(tmp_path, mo
         service.tick()
     closed = rc78._history(base)[-1]
     (base / STOP_WORK_NAME).write_text(
-        json.dumps({"claims": [{"symbol": "BTC", "id": closed["id"]}]}), encoding="utf-8")
+        json.dumps({"claims": [{"symbol": "BTC", "id": closed["id"],
+                                "open_ms": closed["open_ms"], "portfolio": "hawk"}]}),
+        encoding="utf-8")
     _refresh(base, backup)
     with rc78.worker(base, backup):
         pass
@@ -311,3 +316,122 @@ def test_bool_clock_and_live_mode_do_not_close(tmp_path, monkeypatch):
                                     lock_held=True, legacy_stopped=lambda: True)
     assert len(rc78._history(base)) == 1
     assert (base / "lessons.md").read_text().startswith("Historic lesson")
+
+
+def test_open_but_unlocked_fd_is_not_ownership(tmp_path, monkeypatch):
+    """P0-A: a path-matching fd that is not flocked must not close."""
+    base, _backup = rc78.prepare(tmp_path, monkeypatch)
+    monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
+    import fcntl
+    held = os.open(base / ".exit_only_writer.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(held, fcntl.LOCK_EX)
+    script = """
+import os, sys
+sys.path[:0] = os.environ["PYTHONPATH"].split(":")
+from desk import cli
+from desk.paper_stop_monitor import PaperStopRefused, apply_paper_stop_protection
+base, now = sys.argv[1], int(sys.argv[2])
+os.environ["DESK_MODE"] = "paper"
+os.environ["DESK_PAPER_STOP_MONITOR"] = "1"
+cli.DATA_DIR = base
+cli.STATE_FILE = base + "/state_v2.json"
+cli.LIVE._live = False
+fd = os.open(base + "/.exit_only_writer.lock", os.O_RDWR)
+try:
+    apply_paper_stop_protection(cli, {"BTC": 130.0}, now, lock_held=True,
+                                legacy_stopped=lambda: True, lock_fd=fd)
+    print("CLOSED")
+except PaperStopRefused as exc:
+    print("REFUSED " + str(exc))
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = ".:backend"
+    proc = subprocess.run([sys.executable, "-c", script, str(base), str(rc78._now_ms())],
+                          cwd=str(Path.cwd()), env=env, capture_output=True, text=True, check=False)
+    fcntl.flock(held, fcntl.LOCK_UN)
+    os.close(held)
+    assert proc.returncode == 0, proc.stderr
+    assert "REFUSED ownership_lock_required" in proc.stdout
+    assert "BTC" in rc78._positions(base)
+    assert len(rc78._history(base)) == 1
+
+
+def test_reused_id_from_an_older_run_is_not_this_position(tmp_path, monkeypatch):
+    base, _backup = rc78.prepare(tmp_path, monkeypatch)
+    state = json.loads((base / "state_v2.json").read_text())
+    pos = state["main"]["positions"]["BTC"]
+    old_open = pos["open_ms"] - 86_400_000
+    (base / "trade_history.jsonl").write_text(
+        json.dumps({"id": pos["id"], "symbol": "BTC", "open_ms": old_open, "close_ms": old_open + 1000,
+                    "why": "stop loss", "net": -1, "partial": False}) + "\n",
+        encoding="utf-8")
+    (base / "learning_log.jsonl").write_text(
+        json.dumps({"ev": "close", "id": pos["id"], "symbol": "BTC", "open_ms": old_open,
+                    "close_ms": old_open + 1000, "why": "stop loss", "portfolio": "hawk", "run_no": 1}) + "\n",
+        encoding="utf-8")
+    partial = {"id": pos["id"], "symbol": "BTC", "open_ms": pos["open_ms"], "close_ms": pos["open_ms"] + 10,
+               "why": "TP parziale", "partial": True, "net": 1}
+    with (base / "trade_history.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(partial) + "\n")
+    monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
+    report = apply_paper_stop_protection(
+        cli, {"BTC": 130.0}, rc78._now_ms(), lock_held=True, legacy_stopped=lambda: True)
+    assert report["blocked"] is None
+    assert report["closed"][0]["why"] == "liquidazione" or report["closed"][0]["why"] == "stop loss"
+    rows = rc78._history(base)
+    finals = [row for row in rows if row.get("open_ms") == pos["open_ms"] and row.get("partial") is not True]
+    assert len(finals) == 1
+    assert "BTC" not in rc78._positions(base)
+
+
+def test_closed_bar_wick_is_not_a_fill(tmp_path, monkeypatch):
+    base, backup = rc78.prepare(tmp_path, monkeypatch)
+    monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
+    now = rc78._now_ms()
+
+    def fetch(symbol, bar, limit):
+        # Closed bar: wick through the short stop, close back inside. Not a fill.
+        return [[now - 70_000, 100, 103, 99, 100, 1]]
+
+    monkeypatch.setattr(cli, "fetch_candles", fetch)
+    with rc78.worker(base, backup) as service:
+        report = service.tick()
+        assert report["stop_monitor"]["stop_protection"] == "covered"
+        assert report["stop_monitor"]["closed"] == []
+        assert report["stop_monitor"]["intrabar_wick"] == "not_a_fill"
+        assert _hb(base)["stop_certified"] is False
+        assert "BTC" in rc78._positions(base)
+
+
+def test_health_write_failure_is_not_reported_as_coverage(tmp_path, monkeypatch):
+    base, _backup = rc78.prepare(tmp_path, monkeypatch)
+    monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
+
+    def broken(*_a, **_k):
+        raise OSError("disk")
+
+    monkeypatch.setattr("desk.paper_stop_monitor._save_health", broken)
+    report = apply_paper_stop_protection(
+        cli, {"BTC": 130.0}, rc78._now_ms(), lock_held=True, legacy_stopped=lambda: True)
+    assert report["stop_protection"] == "telemetry_failed"
+    assert report["telemetry_ok"] is False
+    assert report["closed"] == []
+    assert "BTC" in rc78._positions(base)
+    assert len(rc78._history(base)) == 1
+
+
+def test_stale_heartbeat_is_an_alarm_and_ready_is_not_coverage():
+    from desk.paper_stop_monitor import protection_alarm
+    fresh = {"ready": True, "ts": 1_000.0, "stop_protection": "blind",
+             "stop_certified": False, "telemetry_ok": True, "intrabar_wick": "not_a_fill",
+             "stop_monitor_opt_in": True}
+    alarm = protection_alarm(fresh, now=1_001.0)
+    assert alarm["alarm"] is True
+    assert "blind" in alarm["reasons"]
+    assert "ready_is_not_stop_coverage" in alarm["reasons"]
+    stale = dict(fresh, stop_protection="covered")
+    aged = protection_alarm(stale, now=1_030.0)
+    assert "heartbeat_stale" in aged["reasons"]
+    certified = dict(fresh, stop_protection="idle", stop_certified=True, ts=1_000.0)
+    bad = protection_alarm(certified, now=1_001.0)
+    assert "stop_certified_must_stay_false" in bad["reasons"]
