@@ -107,3 +107,37 @@ def test_certificate_claim_and_bad_field_types_are_rejected(tmp_path):
     assert _read(tmp_path, now)["reason"] == "certificate_claim_invalid"
     _sample(tmp_path, now=now, ts=True)
     assert _read(tmp_path, now)["reason"] == "heartbeat_time_invalid"
+
+
+def test_unrecognized_monitor_model_never_claims_coverage(tmp_path):
+    now = time.time()
+    _sample(tmp_path, now=now, execution="unknown_model")
+    out = _read(tmp_path, now)
+    assert out["state"] == "unverified"
+    assert out["reason"] == "monitor_model_unverified"
+    assert out["alarm"] is True
+
+
+def test_classic_overview_exposes_only_read_only_stop_health(tmp_path, monkeypatch):
+    """Check the API assembler wires the classifier, without touching commands."""
+    from backend import v3_api
+
+    now = time.time()
+    _sample(tmp_path, now=now)
+    state = {"main": {"positions": {"BTC": {"total_margin": "100"}}}}
+    monkeypatch.setattr(v3_api.dv, "read_state", lambda *_a, **_k: state)
+    monkeypatch.setattr(v3_api.dv, "read_heartbeat", lambda *_a, **_k: None)
+    monkeypatch.setattr(v3_api.dv, "pause_requested", lambda *_a, **_k: True)
+    monkeypatch.setattr(v3_api.dv, "build_performance", lambda *_a, **_k: None)
+    monkeypatch.setattr(v3_api.dv, "build_trades", lambda *_a, **_k: [])
+    monkeypatch.setattr(v3_api.dv, "build_status", lambda *_a, **_k: {
+        "available": False, "positions": [], "close_worker_mode": "exit_only"
+    })
+    result = v3_api._classic("falco", str(tmp_path), now)
+    assert result["stop_health"]["state"] == "covered"
+    assert result["stop_health"]["stop_certified"] is False
+    assert result["stop_health"]["execution"] == "closed_1m_close_only"
+    assert "stop_health" in result and result["id"] == "falco"
+    # The identical, but wrong-portfolio, heartbeat cannot certify Toro.
+    toro = v3_api._classic("toro", str(tmp_path), now)
+    assert toro["stop_health"]["state"] == "unverified"
