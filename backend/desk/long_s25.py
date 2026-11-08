@@ -198,7 +198,8 @@ def _base(symbol: str) -> str:
 
 def step(acc, state: dict, candles_map: dict, prices: dict, now_ms: int, portfolio, *, halt, drain: bool,
          record_close: Callable, notify_open: Callable, notify_close: Callable,
-         log_event: Callable[[dict], None], echo: Callable[[str], None] = print) -> dict:
+         log_event: Callable[[dict], None], echo: Callable[[str], None] = print,
+         can_close: Optional[Callable[[str], bool]] = None) -> dict:
     """Un giro di S25: chiusura a tempo delle posizioni S25 (sempre) e nuove aperture (non in pausa, non con blocco).
     Mai solleva per un simbolo: l'errore di un simbolo non ferma gli altri ne' il ciclo classico."""
     report = {"opened": [], "closed": [], "skipped": {}}
@@ -208,6 +209,9 @@ def step(acc, state: dict, candles_map: dict, prices: dict, now_ms: int, portfol
         px = prices.get(sym)
         if px is None:
             report["skipped"][sym] = "prezzo_assente"
+            continue
+        if can_close is not None and not can_close(sym):
+            report["skipped"][sym] = "registro_incoerente"
             continue
         rec = acc.close(sym, px, now_ms, "chiusura a tempo S25")
         if rec:

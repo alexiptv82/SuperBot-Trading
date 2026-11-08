@@ -381,67 +381,136 @@ def _has_close_row(path: str, rec: dict, *, learning: bool, run_no) -> bool:
     return False
 
 
-def _close_logged(rec: dict, run_no) -> bool:
-    return (_has_close_row(os.path.join(DATA_DIR, "trade_history.jsonl"), rec, learning=False, run_no=run_no)
-            and _has_close_row(os.path.join(DATA_DIR, "learning_log.jsonl"), rec, learning=True, run_no=run_no))
-
-
 def record_close(state: dict, rec: dict) -> None:
-    """Ogni chiusura (finale o parziale) va nello storico dei trade e nel registro di apprendimento.
+    """Ogni chiusura (finale o parziale) va nello storico dei trade e nel registro di apprendimento."""
+    append_trade_history(DATA_DIR, rec)
+    row = dict(rec)
+    row["reason"] = str(row.get("reason", ""))[:200]
+    log_event(DATA_DIR, {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name,
+                         "run_no": state.get("run_no", 1), **row})
 
-    Una riga identica gia' presente non si riscrive (ripresa dopo un salvataggio fallito): niente duplicati."""
+
+# ---- Chiusure PAPER non protettive (regole/Claude, manuale, parziale, S25): commit in due fasi.
+# 1) conto + claim (record esatto) salvati insieme; 2) storico e learning scritti DAL claim, mai ricalcolati;
+# 3) claim rimosso e stato risalvato. Telegram solo dopo il passo 3. Un riavvio completa il claim con lo
+# stesso record: nessun secondo fill della stessa posizione. Registri append-only, mai riscritti.
+CLAIMS_KEY = "paper_close_claims"
+
+
+def _close_claim_id(rec: dict, run_no) -> str:
+    kind = f"partial:{rec.get('fraction')}" if rec.get("partial") else "terminal"
+    return "|".join(str(x) for x in (run_no, rec.get("symbol"), rec.get("id"), rec.get("open_ms"),
+                                       rec.get("close_ms"), kind, repr(_proof_value(rec, "net"))))
+
+
+def _claim_paper_close(state: dict, rec: dict, notice=None) -> None:
     run_no = state.get("run_no", 1)
-    if not _has_close_row(os.path.join(DATA_DIR, "trade_history.jsonl"), rec, learning=False, run_no=run_no):
-        append_trade_history(DATA_DIR, rec)
-    if not _has_close_row(os.path.join(DATA_DIR, "learning_log.jsonl"), rec, learning=True, run_no=run_no):
-        row = dict(rec)
-        row["reason"] = str(row.get("reason", ""))[:200]
-        log_event(DATA_DIR, {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name,
-                             "run_no": run_no, **row})
-    _RECENT_CLOSES.append(rec)
-    del _RECENT_CLOSES[:-64]
+    claims = state.setdefault(CLAIMS_KEY, [])
+    cid = _close_claim_id(rec, run_no)
+    if not any(c.get("claim_id") == cid for c in claims):
+        claims.append({"claim_id": cid, "run_no": run_no, "rec": dict(rec),
+                       "notice": list(notice) if notice else None})
 
 
-# Avvisi Telegram di chiusura PAPER non protettiva: in coda finche' storico, learning e stato non sono scritti.
-_PENDING_CLOSE_NOTICES: list = []
-_RECENT_CLOSES: list = []
-
-
-def _discard_close_notices() -> None:
-    _PENDING_CLOSE_NOTICES.clear()
-    _RECENT_CLOSES.clear()
-
-
-def _queue_close_notice(state: dict, sym, net, reason, why) -> None:
-    _PENDING_CLOSE_NOTICES.append((state.get("run_no", 1), sym, net, reason, why))
-
-
-def _flush_close_notices() -> None:
-    """Chiamare solo DOPO save_state riuscito. Invia solo se la stessa chiusura e' in storico e learning.
-    Telegram e' un'informazione: un errore di invio non annulla nulla."""
-    pending = list(_PENDING_CLOSE_NOTICES)
-    recents = list(_RECENT_CLOSES)
-    _discard_close_notices()
-    for run_no, sym, net, reason, why in pending:
-        rec = next((r for r in recents if r.get("symbol") == sym and r.get("net") == net), None)
-        if rec is not None:
-            recents.remove(rec)
-        if rec is None or not _close_logged(rec, run_no):
-            print(f"[TELEGRAM] chiusura {sym} non verificata nei registri: avviso omesso", flush=True)
-            continue
+def _terminal_already_logged(state: dict, pos) -> bool:
+    """Una chiusura terminale di QUESTA posizione (stessa run) e' gia' nei registri mentre il conto la tiene aperta."""
+    if pos is None:
+        return False
+    run_no = state.get("run_no", 1)
+    ident = {"symbol": getattr(pos, "symbol", None), "id": pos.id, "open_ms": pos.open_ms, "side": pos.side}
+    for name, learning in (("trade_history.jsonl", False), ("learning_log.jsonl", True)):
         try:
-            notify_close(sym, net, reason, why)
-        except Exception:
-            pass
+            with open(os.path.join(DATA_DIR, name), encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        row = json.loads(line)
+                    except ValueError:
+                        continue
+                    if not isinstance(row, dict) or row.get("partial"):
+                        continue
+                    if learning and (row.get("ev") != "close" or row.get("run_no") != run_no):
+                        continue
+                    if "run_no" in row and row.get("run_no") != run_no:
+                        continue
+                    if all(row.get(k) == v for k, v in ident.items()):
+                        return True
+        except OSError:
+            continue
+    return False
 
 
-def _save_state_then_notify(state: dict) -> None:
-    try:
-        save_state(state, STATE_FILE)
-    except BaseException:
-        _discard_close_notices()
-        raise
-    _flush_close_notices()
+def _note_close_block(sym: str, why: str) -> None:
+    blocked = HB.setdefault("paper_close_blocked", [])
+    if sym not in blocked:
+        blocked.append(sym)
+    print(f"[CHIUSURA BLOCCATA] {sym}: {why}", flush=True)
+
+
+def _learning_close_row(rec: dict, run_no) -> dict:
+    row = dict(rec)
+    row["reason"] = str(row.get("reason", ""))[:200]
+    return {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name, "run_no": run_no, **row}
+
+
+def _prove_claimed_close(rec: dict, run_no) -> str:
+    """proven, pending (registro non scrivibile/leggibile) o conflict (terminale incompatibile gia' presente)."""
+    history = os.path.join(DATA_DIR, "trade_history.jsonl")
+    learning = os.path.join(DATA_DIR, "learning_log.jsonl")
+    if rec.get("partial"):
+        # Una parziale ha identita' propria (close_ms, fraction, net): un terminale successivo della stessa
+        # posizione non la contraddice. Il terminale PRECEDENTE e' gia' rifiutato prima di eseguirla.
+        if not _has_close_row(history, rec, learning=False, run_no=run_no):
+            append_trade_history(DATA_DIR, rec)
+        if not _has_close_row(learning, rec, learning=True, run_no=run_no):
+            log_event(DATA_DIR, _learning_close_row(rec, run_no))
+        ok = (_has_close_row(history, rec, learning=False, run_no=run_no)
+              and _has_close_row(learning, rec, learning=True, run_no=run_no))
+        return "proven" if ok else "pending"
+    hist = _scan_close(history, rec, learning=False, run_no=run_no)
+    learn = _scan_close(learning, rec, learning=True, run_no=run_no)
+    if "conflict" in (hist, learn):
+        return "conflict"
+    if "unreadable" in (hist, learn):
+        return "pending"
+    if hist == "absent":
+        append_trade_history(DATA_DIR, rec)
+    if learn == "absent":
+        log_event(DATA_DIR, _learning_close_row(rec, run_no))
+    ok = (_scan_close(history, rec, learning=False, run_no=run_no) == "match"
+          and _scan_close(learning, rec, learning=True, run_no=run_no) == "match")
+    return "proven" if ok else "pending"
+
+
+def _commit_paper_closes(state: dict) -> list:
+    """Salva lo stato; se ci sono claim li prova nei registri, rimuove i provati e risalva; poi Telegram.
+    Senza claim equivale a save_state (comportamento LIVE invariato)."""
+    save_state(state, STATE_FILE)                       # fase 1: conto e claim insieme, o nulla
+    claims = list(state.get(CLAIMS_KEY) or [])
+    if not claims:
+        if not LIVE._live:
+            HB["paper_close_claims"] = {"pending": 0, "conflict": []}
+        return []
+    proven, conflict = [], []
+    for claim in claims:
+        status = _prove_claimed_close(claim["rec"], claim["run_no"])
+        claim["status"] = status
+        if status == "proven":
+            proven.append(claim)
+        elif status == "conflict":
+            conflict.append(claim["claim_id"])
+            print(f"[REGISTRO INCOERENTE] {claim['claim_id']}: terminale diverso gia' presente, nulla scritto",
+                  flush=True)
+    state[CLAIMS_KEY] = [c for c in claims if c not in proven]
+    HB["paper_close_claims"] = {"pending": len(state[CLAIMS_KEY]) - len(conflict), "conflict": conflict}
+    if proven:
+        save_state(state, STATE_FILE)                   # fase 3: chiusure definitive
+        for claim in proven:                            # Telegram: informativo, al massimo una volta
+            if claim.get("notice"):
+                try:
+                    notify_close(claim["rec"].get("symbol"), claim["rec"].get("net"), *claim["notice"])
+                except Exception:
+                    pass
+    return proven
 
 
 REPLY_KEEP_CHARS = 6000   # una risposta scartata piu' lunga si salva accorciata (inizio e fine)
@@ -793,7 +862,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     """
     import numpy as np
 
-    _discard_close_notices()
+    HB.pop("paper_close_blocked", None)
+    if not LIVE._live and state.get(CLAIMS_KEY):
+        _commit_paper_closes(state)       # ripresa: completa i claim con il record gia' salvato
     acc = make_account(state)
     day = time.strftime("%Y-%m-%d", time.gmtime(now_ms / 1000))
     acc.roll_day(day, {})
@@ -971,6 +1042,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             continue
 
         if act == "close":
+            if not LIVE._live and _terminal_already_logged(state, acc.positions.get(sym)):
+                _note_close_block(sym, "chiusura terminale gia' nei registri: verifica necessaria")
+                continue
             # ── LIVE: chiudi su Bitget prima di aggiornare il motore ─────────
             if LIVE._live:
                 pos_pre = acc.positions.get(sym)
@@ -988,8 +1062,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     notify_close(sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
                     record_close(state, closed)
                 else:
-                    record_close(state, closed)
-                    _queue_close_notice(state, sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
+                    _claim_paper_close(state, closed, (dec.get("reason", "")[:100], "chiusura Claude"))
 
         elif act == "partial_close":
             fraction = float(dec.get("partial_close_fraction") or dec.get("partial_fraction") or 0.35)
@@ -998,6 +1071,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             pos = acc.positions.get(sym)
             if pos is None:
                 print(f"[PARTIAL_CLOSE SKIP] {sym}: posizione non trovata")
+                continue
+            if not LIVE._live and _terminal_already_logged(state, pos):
+                _note_close_block(sym, "chiusura terminale gia' nei registri: parziale rifiutata")
                 continue
             new_tp = None
             if tp2_pct and tp2_pct > 0:
@@ -1012,8 +1088,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     notify_close(sym, partial["net"], partial_reason, "partial_close")
                     record_close(state, partial)
                 else:
-                    record_close(state, partial)
-                    _queue_close_notice(state, sym, partial["net"], partial_reason, "partial_close")
+                    _claim_paper_close(state, partial, (partial_reason, "partial_close"))
 
         elif act == "dca":
             # DCA su posizione esistente
@@ -1183,9 +1258,12 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     if not LIVE._live and os.environ.get("DESK_LONG_S25") == "1":
         try:
             from desk import long_s25
+            s25_notice: dict = {}
             long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=drain,
-                          record_close=record_close, notify_open=notify_open,
-                          notify_close=lambda *a: _queue_close_notice(state, *a),
+                          record_close=lambda st, rec: _claim_paper_close(st, rec, s25_notice.pop(rec["symbol"], None)),
+                          notify_open=notify_open,
+                          notify_close=lambda sym, net, reason, why: s25_notice.__setitem__(sym, (reason, why)),
+                          can_close=lambda sym: not _terminal_already_logged(state, acc.positions.get(sym)),
                           log_event=lambda ev: log_event(DATA_DIR, ev))
         except Exception as e:
             print(f"[S25] errore ignorato: {e}", flush=True)
@@ -1193,7 +1271,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # Il DCA e le altre modifiche sono solo in memoria. Si scrivono prima del secondo passaggio:
     # se la chiusura non si puo' provare, il disco resta su questa posizione e il netto del giro dopo coincide.
     save_account(acc, state)
-    _save_state_then_notify(state)
+    _commit_paper_closes(state)
     # Secondo passaggio: uno stop stretto da Claude o dalle regole nello stesso ciclo vale subito,
     # sulle stesse candele gia' filtrate. Una posizione chiusa dal primo passaggio non c'e' piu'.
     apply_paper_protective_exits(acc, candles_map, now_ms, state, stop_report)
@@ -1304,13 +1382,16 @@ def _market_prices(symbols: list, state: dict, now_ms: int | None = None) -> dic
     return prices
 
 
-def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms: int) -> tuple:
+def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms: int, notice=None) -> tuple:
     """Chiude UNA posizione a prezzo di mercato perche' lo ha chiesto l'utente (Chiudi tutto o Chiudi singola).
     Il trade entra nello storico e nel registro come tutti gli altri (vinto o perso secondo il profitto vero),
     con in piu' `closed_by: "utente"` per poter separare in analisi cio' che ha deciso il bot da cio' che ha
     deciso l'utente: non cambia l'esito, non e' un trade "falso". Non passa dalle decisioni di regole o di Claude:
     vale per qualunque posizione, anche una aperta da una strategia che le regole non possono chiudere.
     Ritorna (record, "") se chiusa, (None, motivo) se non e' stata chiusa."""
+    if _terminal_already_logged(state, acc.positions.get(sym)):
+        _note_close_block(sym, "chiusura terminale gia' nei registri: verifica necessaria")
+        return None, "chiusura gia' presente nello storico: verifica necessaria"
     rec = acc.close(sym, px, now_ms, "chiusura manuale")
     if rec is None:
         return None, "posizione non trovata"
@@ -1321,7 +1402,7 @@ def _close_for_user(state: dict, acc: PaperAccount, sym: str, px: float, now_ms:
         else "loss_reduction_example" if rec["net"] < 0
         else "break_even_example"
     )
-    record_close(state, rec)
+    _claim_paper_close(state, rec, notice)
     return rec, ""
 
 
@@ -1366,6 +1447,7 @@ def _check_close_all_flag(state: dict, price_provider=None) -> bool:
         now_ms = int(time.time() * 1000)
         prices = (price_provider or _market_prices)(list(acc.positions), state, now_ms)
         closed_n, skipped, net = 0, [], 0.0
+        blocked: list = []
         for sym in list(acc.positions):
             px = prices.get(sym)
             if px is None:
@@ -1386,7 +1468,9 @@ def _check_close_all_flag(state: dict, price_provider=None) -> bool:
                 if rec:
                     record_close(state, rec)
             else:
-                rec, _ = _close_for_user(state, acc, sym, px, now_ms)
+                rec, why_not = _close_for_user(state, acc, sym, px, now_ms)
+                if why_not and rec is None:
+                    blocked.append(sym)
             if rec:
                 closed_n += 1
                 net += rec["net"]
@@ -1395,8 +1479,11 @@ def _check_close_all_flag(state: dict, price_provider=None) -> bool:
         detail = f"chiuse {closed_n} posizioni (netto {net:+.2f}$)"
         if skipped:
             detail += f"; prezzo non disponibile per {', '.join(skipped)}: ancora aperte, riprova"
-        _set_last_action(state, "close_all", not skipped, detail, closed=closed_n, skipped=skipped)
-        save_state(state, STATE_FILE)
+        if blocked:
+            detail += f"; {', '.join(blocked)}: chiusura gia' presente nello storico, verifica necessaria"
+        _set_last_action(state, "close_all", not (skipped or blocked), detail, closed=closed_n,
+                         skipped=skipped + blocked)
+        _commit_paper_closes(state)
         print(f"[CHIUDI TUTTO] {detail}", flush=True)
         return True
     except Exception as e:
@@ -1504,7 +1591,6 @@ def _check_close_position_flag(state: dict, price_provider=None) -> bool:
         os.replace(path, work)
     except OSError:
         return False
-    _discard_close_notices()
     try:
         try:
             with open(work) as f:
@@ -1540,13 +1626,13 @@ def _check_close_position_flag(state: dict, price_provider=None) -> bool:
             if px is None:
                 failed.append((sym, "prezzo non disponibile"))
                 continue
-            rec, why_not = _close_for_user(state, acc, sym, px, now_ms)
+            rec, why_not = _close_for_user(state, acc, sym, px, now_ms,
+                                           notice=("su tua richiesta", "chiusura manuale"))
             if why_not:
                 failed.append((sym, why_not))
                 continue
             closed.append(sym)
             net += rec["net"]
-            _queue_close_notice(state, sym, rec["net"], "su tua richiesta", "chiusura manuale")
         flush_events(state, acc)
         save_account(acc, state)
         parts = []
@@ -1560,11 +1646,10 @@ def _check_close_position_flag(state: dict, price_provider=None) -> bool:
         detail = "; ".join(parts) or "nessuna posizione da chiudere"
         _set_last_action(state, "close_position", not failed, detail, closed=closed,
                          skipped=[s for s, _ in failed])
-        _save_state_then_notify(state)
+        _commit_paper_closes(state)
         print(f"[CHIUDI POSIZIONE] {detail}", flush=True)
         return True
     except Exception as e:
-        _discard_close_notices()
         print(f"[CHIUDI POSIZIONE ERROR] {e}", flush=True)
         traceback.print_exc()
         return False
