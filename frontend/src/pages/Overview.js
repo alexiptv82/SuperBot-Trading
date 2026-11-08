@@ -136,19 +136,22 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         </>}
         {p.id === 'brain' && <>
           <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · Brain</h3>
-          {openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
-          <BrainCloseControls positions={openPositions}
+          {!trades && <p role="alert" style={{ color:'#fda4af', fontSize:13 }}>
+            Dettaglio posizioni Brain non disponibile: nessuna chiusura consentita da questa schermata.
+          </p>}
+          {trades && openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
+          {trades && <BrainCloseControls positions={openPositions}
             readOnly={overview.cutover_readonly === true && overview.brain_single_close_allowed !== true}
             allowCloseAll={overview.cutover_readonly !== true}
             serverPending={trades?.close_pending === true}
-            onRefresh={onRefresh} renderPosition={pos => <PortfolioTradeFields p={pos} brain />} />
-          <details style={{ marginTop:14 }}>
+            onRefresh={onRefresh} renderPosition={pos => <PortfolioTradeFields p={pos} brain />} />}
+          {trades && <details style={{ marginTop:14 }}>
             <summary style={{ color:'#7dd3fc', cursor:'pointer', fontWeight:700, fontSize:13 }}>
               Ultimi 20 trade chiusi · Brain ({closedTrades.length})
             </summary>
             {closedTrades.length === 0 && <p style={MUTED}>Nessun trade chiuso disponibile.</p>}
             {closedTrades.map((t,i) => <ClosedTradeDetails key={`${t.position_id || t.symbol}-${i}`} t={t} brain nowMs={nowMs} />)}
-          </details>
+          </details>}
         </>}
       </article>)}
     </section>
@@ -225,13 +228,23 @@ export default function Overview() {
       const controller = new AbortController();
       active = controller;
       try {
-        const [a, b, c, d] = await Promise.all([
+        const [a, b, c, d] = await Promise.allSettled([
           API.get('/api/v3/overview', { signal: controller.signal }),
           API.get('/api/v3/brain/status', { signal: controller.signal }),
           API.get('/api/v3/brain/scoreboard', { signal: controller.signal }),
           API.get('/api/v3/brain/trades?limit=20', { signal: controller.signal }),
         ]);
-        if (alive) { setData({ overview: a.data, status: b.data, scoreboard: c.data, trades: d.data }); setError(false); }
+        if (a.status !== 'fulfilled' || !Array.isArray(a.value?.data?.portfolios))
+          throw new Error('overview_unavailable');
+        if (alive && !controller.signal.aborted) {
+          setData({
+            overview: a.value.data,
+            status: b.status === 'fulfilled' ? b.value.data : null,
+            scoreboard: c.status === 'fulfilled' ? c.value.data : { regimes: [] },
+            trades: d.status === 'fulfilled' ? d.value.data : null,
+          });
+          setError(false);
+        }
       } catch (e) {
         if (alive && !controller.signal.aborted) { setError(true); setData(null); }
       } finally {
