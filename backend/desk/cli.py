@@ -164,6 +164,7 @@ POLL_S = 5                 # ogni quanto il bot controlla i tasti dell'app
 RETRY_S = 300              # dopo un ciclo fallito riprova dopo 5 minuti
 CYCLE_S = 1800             # ciclo normale: 30 minuti
 CYCLE_FAST_S = 900         # con scalp aperto o in svuotamento: 15 minuti
+PAPER_BAR_MS = 900_000     # candele su cui Falco e Toro controllano stop, target e liquidazione
 CODE_VERSION = os.getenv("DESK_CODE_VERSION", "dev")
 CLOSE_POSITION_MAX_AGE_S = 600   # max age for PAPER close request
 
@@ -505,6 +506,107 @@ def apply_claude_schedule(state: dict, now_ms: int, day: str) -> bool:
         return False
 
 
+def _bar_usable(o, h, l, c) -> bool:
+    """OHLC utilizzabile per uno stop: numeri finiti, positivi, e il range contiene apertura e chiusura."""
+    try:
+        vals = (float(o), float(h), float(l), float(c))
+    except (TypeError, ValueError):
+        return False
+    if not all(math.isfinite(v) and v > 0 for v in vals):
+        return False
+    oo, hh, ll, cc = vals
+    return ll <= min(oo, cc) and max(oo, cc) <= hh
+
+
+def _same_protective_close(rec: dict) -> bool:
+    """True se questo stop, target o liquidazione e' gia' nello storico. Un riavvio non deve contarlo due volte."""
+    path = os.path.join(DATA_DIR, "trade_history.jsonl")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.readlines()[-400:]
+    except OSError:
+        return False
+    for line in reversed(lines):
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if (isinstance(row, dict) and row.get("symbol") == rec.get("symbol") and row.get("id") == rec.get("id")
+                and row.get("open_ms") == rec.get("open_ms") and row.get("close_ms") == rec.get("close_ms")
+                and row.get("why") == rec.get("why") and not row.get("partial")):
+            return True
+    return False
+
+
+def apply_paper_protective_exits(acc: PaperAccount, candles_map: dict, now_ms: int, state: dict,
+                                 report: Optional[dict] = None) -> dict:
+    """Applica stop, take-profit e liquidazione sulle candele da 15 minuti gia' ricevute.
+
+    Non inventa un prezzo. Una barra nel futuro, con numeri non validi o con high/low incoerenti non chiude
+    la posizione. Una barra valida chiude anche se il feed e' rimasto indietro: lo stop gia' stampato resta.
+    Il heartbeat riceve stop_feed e stop_certified=false. L'allarme non significa che il processo sia morto:
+    significa che il controllo degli stop non ha un prezzo utilizzabile fino all'ultima candela attesa.
+    """
+    if report is None:
+        report = {}
+    try:
+        for sym in list(acc.positions):
+            arr = candles_map.get(sym)
+            info = {"checked": False, "status": "missing", "bad": 0, "future": 0,
+                    "newest_open_ms": None, "exit": None}
+            rows = [] if arr is None else list(arr)
+            valid = []
+            last_ok = False
+            for i, row in enumerate(rows):
+                try:
+                    ts, o, h, l, c = int(row[0]), row[1], row[2], row[3], row[4]
+                except (TypeError, ValueError, IndexError, OverflowError):
+                    info["bad"] += 1
+                    continue
+                if ts > now_ms:
+                    info["future"] += 1
+                    continue
+                if not _bar_usable(o, h, l, c):
+                    info["bad"] += 1
+                    continue
+                valid.append((ts, float(o), float(h), float(l), float(c)))
+                last_ok = i == len(rows) - 1
+            if not valid:
+                info["status"] = "future" if info["future"] else ("missing" if not rows else "unusable")
+                report[sym] = info
+                continue
+            newest = valid[-1][0]
+            info["newest_open_ms"] = newest
+            info["checked"] = True
+            if info["future"]:
+                info["status"] = "future"
+            elif newest + 2 * PAPER_BAR_MS < now_ms:
+                info["status"] = "stale"
+            elif not last_ok:
+                info["status"] = "latest_rejected"
+            else:
+                info["status"] = "ok"
+            report[sym] = info
+            for ts, o, h, l, c in valid:
+                result = acc.on_bar(sym, ts, o, h, l, c, PAPER_BAR_MS)
+                if not result:
+                    continue
+                info["exit"] = result["why"]
+                print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
+                notify_close(sym, result["net"], result.get("why", ""), result["why"])
+                if not _same_protective_close(result):
+                    record_close(state, result)
+                save_account(acc, state)
+                save_state(state, STATE_FILE)
+                break
+    finally:
+        alarm = any(item.get("status") != "ok" for item in report.values())
+        HB["stop_feed"] = {"timeframe": "15m", "bar_ms": PAPER_BAR_MS, "alarm": alarm,
+                           "stop_certified": False, "symbols": report}
+        HB["stop_certified"] = False
+    return report
+
+
 def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     """Un ciclo di mercato.
 
@@ -543,6 +645,11 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     else:
         # Reset flag quando il halt viene rimosso (es. nuovo giorno / resume)
         state.pop("halt_notified", None)
+
+    # Prima di Claude, del DCA e di qualunque spostamento dello stop: uno stop gia' stampato
+    # su una candela valida non deve poter essere allargato nello stesso ciclo.
+    stop_report: dict = {}
+    apply_paper_protective_exits(acc, candles_map, now_ms, state, stop_report)
 
     # --- contesto di mercato (aggiornato ogni 30 minuti)
     last_ctx_ts = state.get("last_ctx_ts", 0)
@@ -893,21 +1000,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         except Exception as e:
             print(f"[S25] errore ignorato: {e}", flush=True)
 
-    # ---- processa barre (stop, liq, tp automatici; seconda gamba al ritracciamento)
-    import numpy as np
-    for sym, pos in list(acc.positions.items()):
-        arr = candles_map.get(sym)
-        if arr is None:
-            continue
-        bar_ms = 900_000  # 15m
-        for row in arr:
-            ts, o, h, l, c = int(row[0]), row[1], row[2], row[3], row[4]
-            result = acc.on_bar(sym, ts, o, h, l, c, bar_ms)
-            if result:
-                print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
-                notify_close(sym, result["net"], result.get("why", ""), result["why"])
-                record_close(state, result)
-                break
+    # Secondo passaggio: uno stop stretto da Claude o dalle regole nello stesso ciclo vale subito,
+    # sulle stesse candele gia' filtrate. Una posizione chiusa dal primo passaggio non c'e' piu'.
+    apply_paper_protective_exits(acc, candles_map, now_ms, state, stop_report)
     flush_events(state, acc)
 
     # ---- lessons (una chiamata a Claude: segue il calendario come le altre)
