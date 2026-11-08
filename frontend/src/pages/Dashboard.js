@@ -462,30 +462,29 @@ export default function Dashboard() {
   const fetchStatus = useCallback(() => Promise.all([fetchOne('hawk'), fetchOne('bull')]), [fetchOne]);
 
   const fetchBrain = useCallback(async () => {
-    try {
-      const [overviewRes, statusRes, tradeRes] = await Promise.all([
-        API.get('/api/v3/overview'),
-        API.get('/api/v3/brain/status'),
-        API.get('/api/v3/brain/trades?limit=30'),
-      ]);
-      const portfolioSummary = (overviewRes.data?.portfolios || []).find(p => p.id === 'brain');
-      setCutoverReadOnly(overviewRes.data?.cutover_readonly !== false);
-      setClassicSingleCloseAllowed(overviewRes.data?.classic_single_close_allowed === true);
-      const classicRows = overviewRes.data?.portfolios || [];
-      setClassicStopHealth({
-        hawk: classicRows.find(p => p.id === 'falco')?.stop_health || null,
-        bull: classicRows.find(p => p.id === 'toro')?.stop_health || null,
-      });
+    // A Brain status/trades outage must not hide Falco/Toro safety alarms.
+    // Fail closed independently for each data source; never reuse stale snapshots.
+    const [overviewResult, statusResult, tradeResult] = await Promise.allSettled([
+      API.get('/api/v3/overview'),
+      API.get('/api/v3/brain/status'),
+      API.get('/api/v3/brain/trades?limit=30'),
+    ]);
+    const overview = overviewResult.status === 'fulfilled' ? overviewResult.value?.data : null;
+    const rows = Array.isArray(overview?.portfolios) ? overview.portfolios : null;
+    setCutoverReadOnly(overview?.cutover_readonly !== false);
+    setClassicSingleCloseAllowed(overview?.classic_single_close_allowed === true);
+    setClassicStopHealth({
+      hawk: rows?.find(p => p.id === 'falco')?.stop_health || null,
+      bull: rows?.find(p => p.id === 'toro')?.stop_health || null,
+    });
+    if (rows && statusResult.status === 'fulfilled' && tradeResult.status === 'fulfilled') {
+      const brain = rows.find(p => p.id === 'brain');
       setBrainData({
-        wallet: brainWalletSummary(portfolioSummary,statusRes.data,tradeRes.data),
-        trades: tradeRes.data,
+        wallet: brainWalletSummary(brain,statusResult.value.data,tradeResult.value.data),
+        trades: tradeResult.value.data,
       });
-    } catch (_) {
-      // No valid snapshots: never show yesterday's Brain marks as current.
+    } else {
       setBrainData({ wallet:null, trades:null });
-      setCutoverReadOnly(true);
-      setClassicSingleCloseAllowed(false);
-      setClassicStopHealth({ hawk:null, bull:null }); // Never reuse stale 'covered' status.
     }
   }, []);
 
