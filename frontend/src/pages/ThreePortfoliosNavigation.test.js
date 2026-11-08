@@ -106,3 +106,34 @@ test('Brain position close buttons remain disabled while cutover is readonly',()
   expect(html).toContain('disabled');
   expect(html).toContain('Equity');
 });
+
+
+test('RC84: Falco RUNNING alarms remain visible even when Brain API is unavailable',async()=>{
+  deskAPI.getStatus.mockResolvedValue({data:{
+    available:true, bot_mode:'running', positions:[{symbol:'BTC',side:1,entry:100,qty:1,
+      margin:100,leverage:20,trade_type:'scalp'}], cash:900, margin_used:100, equity:1000,
+    pnl_total:0, start_equity:1000, run_no:1, max_open:10, total_closed:0,
+    close_worker_mode:'classic_runner', can_close_position:false, bot_online:true
+  }});
+  const stopped = {scope:'classic_runner_15m_ohlc',state:'degraded',alarm:true,
+    stop_certified:false,quote_coverage:false,blocked_symbols:['ARB'],
+    reason:'feed_alarm_or_unchecked_positions'};
+  API.get.mockImplementation(url => {
+    if (url === '/api/v3/overview') return Promise.resolve({data:{
+      generated_at_ms:Date.now(),cutover_readonly:true,classic_single_close_allowed:false,
+      portfolios:[{id:'falco',kind:'classic',open_positions:1,stop_health:stopped},
+                  {id:'toro',kind:'classic',open_positions:0},
+                  {id:'brain',kind:'brain',state:'paused',open_positions:0}]
+    }});
+    return Promise.reject(new Error('Brain temporarily unreachable'));
+  });
+  const m=await mount(Dashboard);
+  try{
+    const notice=m.host.querySelector('[data-testid="classic-running-stop-notice"]');
+    expect(notice).not.toBeNull();
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.textContent).toContain('ARB');
+    expect(notice.textContent).toContain('non equivale a stop-loss certificato');
+    expect(API.get).toHaveBeenCalledWith('/api/v3/brain/status');
+  }finally{await m.done();}
+});
