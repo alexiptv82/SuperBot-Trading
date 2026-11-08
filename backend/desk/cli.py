@@ -691,12 +691,17 @@ def apply_paper_protective_exits(acc: PaperAccount, candles_map: dict, now_ms: i
                     continue
                 info["exit"] = result["why"]
                 print(f"[{result['why'].upper()}] {sym} net {result['net']:+.2f}$")
-                notify_close(sym, result["net"], result.get("why", ""), result["why"])
                 if not _prove_protective_close(state, result):
                     info["status"] = "close_not_durable"
                     raise RuntimeError("close_not_durable")
                 save_account(acc, state)
                 save_state(state, STATE_FILE)
+                # Telegram is informational, never evidence of a durable close.
+                # A failed journal proof or state save must not send a false "CHIUSO".
+                try:
+                    notify_close(sym, result["net"], result.get("why", ""), result["why"])
+                except Exception:
+                    pass
                 break
     finally:
         alarm = any(item.get("status") != "ok" for item in report.values())
