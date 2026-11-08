@@ -28,7 +28,8 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _candle(now_ms: int, close: float, age_ms: int = 10_000):
+def _candle(now_ms: int, close: float, age_ms: int = 70_000):
+    """Default age is a closed 1m bar (open 70s ago), still inside the 120s window."""
     return [[now_ms - age_ms, close, close, close, close, 1]]
 
 
@@ -71,7 +72,7 @@ def worker(base, backup, *, stopped=lambda _: True):
     return ExitOnlyWorker(base=base, backup=backup, portfolio=base.name, legacy=cli, stopped=stopped)
 
 
-def _feed(now_ms, close, age_ms=10_000):
+def _feed(now_ms, close, age_ms=70_000):
     def fetch(symbol, bar, limit):
         assert bar == "1m"
         return _candle(now_ms, close, age_ms)
@@ -146,7 +147,7 @@ def test_pending_second_leg_is_not_filled_when_price_reaches_its_trigger(tmp_pat
     pos["pending_split"] = {"trigger": 99.0, "expire_ms": _now_ms() + 3_600_000, "margin": 80}
     (base / "state_v2.json").write_text(json.dumps(state), encoding="utf-8")
     monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
-    report = apply_paper_stop_protection(cli, {"BTC": 99.0}, _now_ms(), lock_held=True)
+    report = apply_paper_stop_protection(cli, {"BTC": 99.0}, _now_ms(), lock_held=True, legacy_stopped=lambda: True)
     assert report["enabled"] is True and report["closed"] == []
     kept = _positions(base)["BTC"]
     assert kept["total_margin"] == before_margin
@@ -250,11 +251,11 @@ def test_pause_and_live_refuse_before_any_close(tmp_path, monkeypatch):
     (base / "pause.flag").write_text("", encoding="utf-8")
     monkeypatch.setattr(cli.LIVE, "_live", True)
     with pytest.raises(PaperStopRefused, match="paper_only"):
-        apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=True)
+        apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=True, legacy_stopped=lambda: True)
     monkeypatch.setattr(cli.LIVE, "_live", False)
     monkeypatch.setenv("DESK_MODE", "live")
     with pytest.raises(PaperStopRefused, match="paper_only"):
-        apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=True)
+        apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=True, legacy_stopped=lambda: True)
     assert len(_history(base)) == 1
 
 
@@ -311,7 +312,7 @@ def test_unreconciled_manual_work_blocks_stop_close(tmp_path, monkeypatch):
     monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
     (base / "close_position.flag.work").write_text(
         json.dumps({"symbols": ["BTC"], "ts": _now_ms()}), encoding="utf-8")
-    report = apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=True)
+    report = apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=True, legacy_stopped=lambda: True)
     assert report["blocked"] == "unreconciled_manual_close"
     assert "BTC" in _positions(base)
     assert len(_history(base)) == 1
@@ -329,8 +330,8 @@ def test_interrupted_claim_is_not_replayed_and_blocks_startup(tmp_path, monkeypa
             pass
     assert (base / "state_v2.json").read_bytes() == before
     monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
-    report = apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=True)
-    assert report["blocked"] == "unreconciled_stop_protection"
+    report = apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=True, legacy_stopped=lambda: True)
+    assert report["blocked"] == "unproven"
     assert len(_history(base)) == 1
     assert (base / STOP_WORK_NAME).is_file()
 
@@ -340,11 +341,12 @@ def test_resolved_claim_for_a_closed_id_does_not_invent_a_trade(tmp_path, monkey
     monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
     (base / STOP_WORK_NAME).write_text(
         json.dumps({"claims": [{"symbol": "GONE", "id": 999}]}), encoding="utf-8")
-    report = apply_paper_stop_protection(cli, {"BTC": 100.0}, _now_ms(), lock_held=True)
+    report = apply_paper_stop_protection(cli, {"BTC": 100.0}, _now_ms(), lock_held=True, legacy_stopped=lambda: True)
     assert report["closed"] == []
-    assert report["blocked"] is None
+    assert report["blocked"] == "unproven"
+    assert report["stop_protection"] == "blocked"
     assert "BTC" in _positions(base)
-    assert not (base / STOP_WORK_NAME).exists()
+    assert (base / STOP_WORK_NAME).is_file()
     assert len(_history(base)) == 1
 
 
@@ -353,7 +355,7 @@ def test_directory_lock_and_second_writer_do_not_close(tmp_path, monkeypatch):
     monkeypatch.setenv("DESK_PAPER_STOP_MONITOR", "1")
     monkeypatch.setattr(cli, "fetch_candles", _feed(_now_ms(), 130.0))
     with pytest.raises(PaperStopRefused, match="ownership_lock_required"):
-        apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=False)
+        apply_paper_stop_protection(cli, {"BTC": 130.0}, _now_ms(), lock_held=False, legacy_stopped=lambda: True)
     with worker(base, backup) as service:
         fd = os.open(base, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
         fcntl.flock(fd, fcntl.LOCK_EX)
