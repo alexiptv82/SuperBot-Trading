@@ -479,13 +479,25 @@ def _utc_day(ms: int) -> str:
 
 
 # ---------------- storico trade permanente
+def _append_json_line(path: str, line: str) -> None:
+    """Aggiunge una riga. Se il file finisce a meta', la parte gia' scritta resta e la riga nuova sta da sola."""
+    with open(path, "a+b") as fh:
+        fh.seek(0, os.SEEK_END)
+        if fh.tell():
+            fh.seek(-1, os.SEEK_END)
+            if fh.read(1) != b"\n":
+                fh.write(b"\n")
+        fh.write(line.encode("utf-8"))
+        if not line.endswith("\n"):
+            fh.write(b"\n")
+
+
 def append_trade_history(data_dir: str, trade: dict) -> None:
     """Appende un trade chiuso al log JSONL permanente (sopravvive ai rideploy)."""
     path = os.path.join(data_dir, "trade_history.jsonl")
     os.makedirs(data_dir, exist_ok=True)
     try:
-        with open(path, "a") as f:
-            f.write(json.dumps(trade, default=str) + "\n")
+        _append_json_line(path, json.dumps(trade, default=str))
     except Exception:
         pass
 

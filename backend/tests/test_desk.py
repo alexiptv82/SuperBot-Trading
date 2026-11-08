@@ -327,6 +327,42 @@ def test_rules_fallback_sizes_with_score_and_closes_weak_positions():
 
 from desk import cli  # noqa: E402
 
+# I cicli di questi test avanzano l'orologio senza riscaricare le candele. Il prezzo di un
+# ingresso nuovo non accetta piu' una barra vecchia: si aggiunge solo una candela piatta
+# sull'ultimo close, nel bucket dell'orologio del ciclo. I prezzi OHLC storici non cambiano.
+_FEED_CLOCK = {"ms": NOW}
+
+
+def _rows_asof(rows, now_ms):
+    out = [list(map(float, row)) for row in rows]
+    if not out:
+        return out
+    target = (int(now_ms) // BAR) * BAR
+    last = int(out[-1][0])
+    if last <= target and target - last >= BAR:
+        px = float(out[-1][4])
+        vol = float(out[-1][5]) if len(out[-1]) > 5 else 1.0
+        out.append([float(target), px, px, px, px, vol])
+    return out
+
+
+def _world_rows(world, sym, limit=300):
+    arr = world.get(sym)
+    if arr is None or len(arr) == 0:
+        return []
+    return _rows_asof(arr[-int(limit):], _FEED_CLOCK["ms"])
+
+
+_orig_run_cycle = cli.run_cycle
+
+
+def _run_cycle_coherent(state, now_ms, drain=False):
+    _FEED_CLOCK["ms"] = int(now_ms)
+    return _orig_run_cycle(state, now_ms, drain=drain)
+
+
+cli.run_cycle = _run_cycle_coherent
+
 
 class FakeContext:
     """Stub per fetch_all_context: ritorna ctx vuoto."""
@@ -394,7 +430,7 @@ def test_full_cycle_v2_opens_position_and_saves_state():
     orig_ctx = _mc.fetch_all_context
     orig_call = _brain.call_claude
 
-    cli.fetch_candles = lambda sym, bar="15m", limit=300: (world.get(sym, np.zeros((0, 6)))[-limit:].tolist())
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit)
     _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
     # patch call_claude sia in brain che in cli (cli lo importa direttamente)
     stub = _claude_stub()
@@ -440,7 +476,7 @@ def test_cycle_v2_without_key_uses_rules():
     orig_fetch = cli.fetch_candles
     orig_ctx = _mc.fetch_all_context
 
-    cli.fetch_candles = lambda sym, bar="15m", limit=300: (world.get(sym, np.zeros((0, 6)))[-limit:].tolist())
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit)
     _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
 
     os.environ.pop("ANTHROPIC_API_KEY", None)
@@ -469,7 +505,7 @@ def test_cycle_v2_dca_execution():
     orig_ctx = _mc.fetch_all_context
     orig_call = _brain.call_claude
 
-    cli.fetch_candles = lambda sym, bar="15m", limit=300: (world.get(sym, np.zeros((0, 6)))[-limit:].tolist())
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit)
     _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
 
     os.environ["ANTHROPIC_API_KEY"] = "test"
@@ -569,7 +605,7 @@ def _sandbox(claude=None):
     saved = (cli.fetch_candles, _mc.fetch_all_context, _brain.call_claude, _c.call_claude,
              _c.DATA_DIR, _c.STATE_FILE, os.environ.get("ANTHROPIC_API_KEY"),
              os.environ.pop("TELEGRAM_BOT_TOKEN", None))
-    cli.fetch_candles = lambda sym, bar="15m", limit=300: (world.get(sym, np.zeros((0, 6)))[-limit:].tolist())
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit)
     _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
     calls = []
 
@@ -1200,9 +1236,11 @@ def test_cycle_second_leg_fills_when_market_retraces_and_is_logged():
         def extended(sym, bar="15m", limit=300):
             rows = base(sym, bar, limit)
             if sym == "BTC" and rows:
-                last = rows[-1]
+                last = list(rows[-1])
                 px = float(last[4])
-                rows = rows + [[int(last[0]) + BAR, px, px * 1.001, px * (1 - 0.0075), px * 0.999, 1.0]]
+                last[2] = max(float(last[2]), px * 1.001)
+                last[3] = min(float(last[3]), px * (1 - 0.0075))
+                rows[-1] = last
             return rows
 
         cli.fetch_candles = extended
