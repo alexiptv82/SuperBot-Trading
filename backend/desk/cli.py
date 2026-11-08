@@ -544,70 +544,95 @@ def _close_row_matches(row, rec: dict, *, learning: bool, run_no) -> bool:
     return True
 
 
-def _jsonl_has_close(path: str, rec: dict, *, learning: bool, run_no) -> bool:
-    """True solo se una riga completa e leggibile prova la chiusura. Una riga troncata non conta e non si cancella."""
+def _scan_close(path: str, rec: dict, *, learning: bool, run_no) -> str:
+    """match, absent, conflict o unreadable. Una riga troncata non conta e non si cancella.
+
+    conflict: esiste già una chiusura terminale della stessa posizione con un netto o un motivo diverso.
+    Non si aggiunge un secondo fill e non si sceglie un match arbitrario.
+    """
+    match = False
+    conflict = False
     try:
         with open(path, encoding="utf-8") as fh:
-            lines = fh
-            found = False
-            for line in lines:
+            for line in fh:
                 try:
                     row = json.loads(line)
                 except ValueError:
                     continue
+                if not isinstance(row, dict) or row.get("partial"):
+                    continue
+                if learning and row.get("ev") != "close":
+                    continue
+                if (row.get("symbol") != rec.get("symbol") or row.get("id") != rec.get("id")
+                        or row.get("open_ms") != rec.get("open_ms") or row.get("side") != rec.get("side")):
+                    continue
+                if "run_no" in row and row.get("run_no") != run_no:
+                    continue
+                if learning and row.get("run_no") != run_no:
+                    continue
                 if _close_row_matches(row, rec, learning=learning, run_no=run_no):
-                    found = True
+                    match = True
+                else:
+                    conflict = True
+    except FileNotFoundError:
+        return "absent"
     except OSError:
-        return False
-    return found
+        return "unreadable"
+    if conflict:
+        return "conflict"
+    return "match" if match else "absent"
 
 
 def _prove_protective_close(state: dict, rec: dict) -> bool:
     """Scrive e rilegge storico e learning. Non riscrive un fill gia' provato e non cancella righe.
 
-    Ritorna True solo se entrambi i registri contengono la stessa chiusura. Se uno dei due non si puo'
-    provare, il chiamante non deve rendere durevole la chiusura del conto: al giro dopo si riprova.
+    Ritorna True solo se entrambi i registri contengono la stessa chiusura. Un fill terminale diverso
+    per la stessa posizione blocca la scrittura. Se la prova manca, il conto non va salvato come chiuso.
     """
     run_no = state.get("run_no", 1)
     history = os.path.join(DATA_DIR, "trade_history.jsonl")
     learning = os.path.join(DATA_DIR, "learning_log.jsonl")
-    if not _jsonl_has_close(history, rec, learning=False, run_no=run_no):
+    hist = _scan_close(history, rec, learning=False, run_no=run_no)
+    learn = _scan_close(learning, rec, learning=True, run_no=run_no)
+    if "conflict" in (hist, learn) or "unreadable" in (hist, learn):
+        return False
+    if hist == "absent":
         append_trade_history(DATA_DIR, rec)
-    if not _jsonl_has_close(learning, rec, learning=True, run_no=run_no):
+    if learn == "absent":
         row = dict(rec)
         row["reason"] = str(row.get("reason", ""))[:200]
         log_event(DATA_DIR, {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name,
                              "run_no": run_no, **row})
-    return (_jsonl_has_close(history, rec, learning=False, run_no=run_no)
-            and _jsonl_has_close(learning, rec, learning=True, run_no=run_no))
+    return (_scan_close(history, rec, learning=False, run_no=run_no) == "match"
+            and _scan_close(learning, rec, learning=True, run_no=run_no) == "match")
+
+
+def _quote_fresh(ts: int, now_ms: int) -> bool:
+    """La barra può prezzare un ingresso solo se non è più vecchia di due candele da 15 minuti."""
+    return ts <= now_ms and not ts + 2 * PAPER_BAR_MS < now_ms
 
 
 def operational_prices(symbols: list, candles_map: dict, now_ms: int) -> dict:
-    """Prezzo per aperture e DCA: ultima chiusura non futura e con OHLC utilizzabile.
+    """Prezzo per aperture e DCA. L'ultima riga deve essere fresca e OHLC valido.
 
-    Una candela gia' scartata per gli stop (futura, non positiva, range incoerente) non diventa il
-    prezzo di un ingresso. Una candela valida, anche se il ciclo arriva dopo, resta il prezzo: e' il
-    comportamento precedente. Lo stop sulle barre vecchie continua in apply_paper_protective_exits.
+    Non si torna a una barra più vecchia se l'ultima è futura, invalida o stale. Gli stop
+    continuano a usare le barre storiche valide in apply_paper_protective_exits.
     """
     out = {}
     for sym in symbols:
         arr = candles_map.get(sym)
         if arr is None or len(arr) == 0:
             continue
-        best_ts = None
-        best_close = None
-        for row in arr:
-            try:
-                ts, o, h, l, c = int(row[0]), row[1], row[2], row[3], row[4]
-            except (TypeError, ValueError, IndexError, OverflowError):
-                continue
-            if ts > now_ms or not _bar_usable(o, h, l, c):
-                continue
-            if best_ts is None or ts >= best_ts:
-                best_ts, best_close = ts, float(c)
-        if best_close is None or not math.isfinite(best_close) or best_close <= 0:
+        last = list(arr)[-1]
+        try:
+            ts, o, h, l, c = int(last[0]), last[1], last[2], last[3], last[4]
+        except (TypeError, ValueError, IndexError, OverflowError):
             continue
-        out[sym] = best_close
+        if not _quote_fresh(ts, now_ms) or not _bar_usable(o, h, l, c):
+            continue
+        close = float(c)
+        if math.isfinite(close) and close > 0:
+            out[sym] = close
     return out
 
 
@@ -706,6 +731,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     print(f"[DESK V2] candles ok: {len(candles_map)}/{len(SYMBOLS)} simboli", flush=True)
     prices = operational_prices(SYMBOLS, candles_map, now_ms)
+    HB["new_exposure"] = {
+        "blocked_symbols": sorted(sym for sym, arr in candles_map.items() if len(arr) and sym not in prices),
+        "stop_certified": False,
+    }
     # ultimi prezzi noti: la dashboard li usa come ripiego per il P&L live delle posizioni
     if prices:
         state["last_prices"] = {s: p for s, p in prices.items()}
@@ -1074,9 +1103,16 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         except Exception as e:
             print(f"[S25] errore ignorato: {e}", flush=True)
 
+    # Il DCA e le altre modifiche sono solo in memoria. Si scrivono prima del secondo passaggio:
+    # se la chiusura non si puo' provare, il disco resta su questa posizione e il netto del giro dopo coincide.
+    save_account(acc, state)
+    save_state(state, STATE_FILE)
     # Secondo passaggio: uno stop stretto da Claude o dalle regole nello stesso ciclo vale subito,
     # sulle stesse candele gia' filtrate. Una posizione chiusa dal primo passaggio non c'e' piu'.
     apply_paper_protective_exits(acc, candles_map, now_ms, state, stop_report)
+    if HB.get("new_exposure", {}).get("blocked_symbols"):
+        HB["stop_feed"]["alarm"] = True
+        HB["stop_feed"]["stop_certified"] = False
     flush_events(state, acc)
 
     # ---- lessons (una chiamata a Claude: segue il calendario come le altre)

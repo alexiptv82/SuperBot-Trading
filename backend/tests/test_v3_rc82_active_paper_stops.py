@@ -336,16 +336,64 @@ def test_future_or_invalid_quote_does_not_open_or_add_margin(desk):
     assert bad_dca.positions["BTC"].dca_count == 0
 
 
-def test_valid_quote_still_opens_and_still_adds_dca(desk):
+def test_stale_quote_and_obsolete_fallback_do_not_open_or_add(desk):
+    old = NOW - 6 * 3_600_000
+    stale_bar = [[old, 100, 101, 99, 100, 1]]
+    opened, _ = _cycle(desk, PaperAccount(cli.PORTFOLIO.limits, "main"), stale_bar, _entry("open_long"))
+    assert opened.positions == {}
+    assert "BTC" in cli.HB["new_exposure"]["blocked_symbols"]
+    held = _open(1, 94.0, 120.0, old - 3 * BAR)
+    before = held.positions["BTC"].total_margin
+    added, _ = _cycle(desk, held, [[old, 100, 101, 99.2, 100, 1]], _entry("dca"))
+    assert added.positions["BTC"].dca_count == 0
+    assert added.positions["BTC"].total_margin == before
+    fallback = [[old, 100, 101, 99, 100, 1], [NOW + BAR, 50, 51, 49, 50, 1]]
+    blocked, _ = _cycle(desk, PaperAccount(cli.PORTFOLIO.limits, "main"), fallback, _entry("open_long"))
+    assert blocked.positions == {}
+    assert "BTC" in cli.HB["new_exposure"]["blocked_symbols"]
+    assert cli.HB["stop_feed"]["alarm"] is True and cli.HB["stop_feed"]["stop_certified"] is False
+
+
+def test_recent_quote_still_opens_and_still_adds_dca(desk):
     opened, _ = _cycle(desk, PaperAccount(cli.PORTFOLIO.limits, "main"),
-                       [[BASE - BAR, 100, 101, 99.2, 100, 1], [NOW + BAR, 50, 50, 50, 50, 1]],
-                       _entry("open_long"))
+                       [[BASE, 100, 101, 99.2, 100, 1]], _entry("open_long"))
     assert "BTC" in opened.positions
     assert abs(opened.positions["BTC"].entry - 100.02) < 1e-6
+    assert "BTC" not in cli.HB["new_exposure"]["blocked_symbols"]
     added, _ = _cycle(desk, _open(1, 94.0, 120.0, BASE - 3 * BAR),
                       [[BASE - BAR, 100, 101, 99.2, 100, 1]], _entry("dca"))
     assert added.positions["BTC"].dca_count == 1
     assert added.positions["BTC"].total_margin > 60
+
+
+def test_second_pass_close_after_dca_replays_the_same_fill(desk, monkeypatch):
+    """Il learning fallisce dopo il DCA in memoria. Il disco resta sulla posizione col DCA,
+    lo storico tiene quel fill, e il giro dopo non ne scrive un altro con un netto diverso."""
+    account = _open(1, 94.0, 120.0, BASE - 3 * BAR)
+    bar = [[BASE - BAR, 100, 101, 97, 100, 1]]
+    cli.fetch_candles = lambda sym, bar_="15m", limit=1000: (bar if sym == "BTC" else [])
+    cli.rules_decisions = lambda *_a, **_k: _entry("dca")
+    real_learn = cli.log_event
+    monkeypatch.setattr(cli, "log_event", lambda *_a, **_k: False)
+    state = _state(account)
+    with pytest.raises(RuntimeError, match="close_not_durable"):
+        cli.run_cycle(state, NOW)
+    history = _history(desk)
+    assert len(history) == 1 and history[0]["why"] == "stop loss" and history[0]["dca_count"] == 1
+    assert _learning_closes(desk) == []
+    disk = json.loads((desk / "state_v2.json").read_text(encoding="utf-8"))
+    assert disk["main"]["positions"]["BTC"]["dca_count"] == 1
+    partial_net = history[0]["net"]
+    monkeypatch.setattr(cli, "log_event", real_learn)
+    cli.rules_decisions = lambda *_a, **_k: []
+    cli.run_cycle(disk, NOW)
+    rows = _history(desk)
+    learned = _learning_closes(desk)
+    assert len(rows) == 1 and len(learned) == 1
+    assert rows[0]["net"] == learned[0]["net"] == partial_net
+    closed = cli.make_account(disk)
+    assert "BTC" not in closed.positions
+    assert len(closed.closed) == 1 and closed.closed[0]["net"] == partial_net
 
 
 def test_bull_rejects_the_same_future_bar(tmp_path):

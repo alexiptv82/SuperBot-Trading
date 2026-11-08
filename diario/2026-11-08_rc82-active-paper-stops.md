@@ -20,4 +20,9 @@ Secondo giro, stessa PR #79, dopo la revisione sul commit `49b1a73`. Solo due P0
 
 Test locali, non CI: RC82 17 passed; `test_desk.py` 84 passed; exit-only+RC78+RC80 67 passed e 7 warning. Workflow: nessun `cursor/**` e nessun `pull_request_target`. `[skip ci]` non è la sola difesa.
 
-Commit del codice: `dfc705974396b826bfee42e34571d2aa7583e7ab`. Lo SHA da revisionare è il HEAD del branch, commit successivo a quello. Prossimo passo: revisione indipendente. Non è una certificazione di stop né un via libera al riavvio. PR #77 e #78 non vanno toccate.
+Terzo giro, partenza `bccfddfb98e6ee0213962951879426fc61ef6f13`. Due residui della seconda revisione:
+
+- Aperture e DCA rifiutano l'ultima candela se è vecchia di oltre due barre da 15 minuti, futura o OHLC invalida. Non si ripiega su una barra obsoleta. Gli stop storici restano. I test di `test_desk.py` che spostavano l'orologio senza aggiornare le candele ricevono una candela piatta sul bucket corrente.
+- Prima del secondo passaggio lo stato col DCA viene salvato. Se il learning della chiusura fallisce, il riavvio dal disco riproduce lo stesso netto. Un fill terminale diverso non viene duplicato.
+
+Test: RC82 19 passed; desk 84 passed; exit-only+RC78+RC80 67 passed e 7 warning. Workflow senza `cursor/**` e senza `pull_request_target`. Lo SHA da revisionare è il HEAD dopo il push. Non è una certificazione di stop né un via libera al riavvio. PR #77 e #78 non vanno toccate.
