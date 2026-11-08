@@ -364,13 +364,84 @@ def get_prices(symbols: list, candles_map: dict) -> dict:
     return {s: arr[-1][4] for s, arr in candles_map.items() if len(arr) > 0}
 
 
+def _has_close_row(path: str, rec: dict, *, learning: bool, run_no) -> bool:
+    """True se il registro contiene gia' ESATTAMENTE questa chiusura (finale o parziale). Sola lettura."""
+    partial = bool(rec.get("partial"))
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if _close_row_matches(row, rec, learning=learning, run_no=run_no, partial=partial):
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def _close_logged(rec: dict, run_no) -> bool:
+    return (_has_close_row(os.path.join(DATA_DIR, "trade_history.jsonl"), rec, learning=False, run_no=run_no)
+            and _has_close_row(os.path.join(DATA_DIR, "learning_log.jsonl"), rec, learning=True, run_no=run_no))
+
+
 def record_close(state: dict, rec: dict) -> None:
-    """Ogni chiusura (finale o parziale) va nello storico dei trade e nel registro di apprendimento."""
-    append_trade_history(DATA_DIR, rec)
-    row = dict(rec)
-    row["reason"] = str(row.get("reason", ""))[:200]
-    log_event(DATA_DIR, {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name,
-                         "run_no": state.get("run_no", 1), **row})
+    """Ogni chiusura (finale o parziale) va nello storico dei trade e nel registro di apprendimento.
+
+    Una riga identica gia' presente non si riscrive (ripresa dopo un salvataggio fallito): niente duplicati."""
+    run_no = state.get("run_no", 1)
+    if not _has_close_row(os.path.join(DATA_DIR, "trade_history.jsonl"), rec, learning=False, run_no=run_no):
+        append_trade_history(DATA_DIR, rec)
+    if not _has_close_row(os.path.join(DATA_DIR, "learning_log.jsonl"), rec, learning=True, run_no=run_no):
+        row = dict(rec)
+        row["reason"] = str(row.get("reason", ""))[:200]
+        log_event(DATA_DIR, {"ev": "close", "ts": rec.get("close_ms"), "portfolio": PORTFOLIO.name,
+                             "run_no": run_no, **row})
+    _RECENT_CLOSES.append(rec)
+    del _RECENT_CLOSES[:-64]
+
+
+# Avvisi Telegram di chiusura PAPER non protettiva: in coda finche' storico, learning e stato non sono scritti.
+_PENDING_CLOSE_NOTICES: list = []
+_RECENT_CLOSES: list = []
+
+
+def _discard_close_notices() -> None:
+    _PENDING_CLOSE_NOTICES.clear()
+    _RECENT_CLOSES.clear()
+
+
+def _queue_close_notice(state: dict, sym, net, reason, why) -> None:
+    _PENDING_CLOSE_NOTICES.append((state.get("run_no", 1), sym, net, reason, why))
+
+
+def _flush_close_notices() -> None:
+    """Chiamare solo DOPO save_state riuscito. Invia solo se la stessa chiusura e' in storico e learning.
+    Telegram e' un'informazione: un errore di invio non annulla nulla."""
+    pending = list(_PENDING_CLOSE_NOTICES)
+    recents = list(_RECENT_CLOSES)
+    _discard_close_notices()
+    for run_no, sym, net, reason, why in pending:
+        rec = next((r for r in recents if r.get("symbol") == sym and r.get("net") == net), None)
+        if rec is not None:
+            recents.remove(rec)
+        if rec is None or not _close_logged(rec, run_no):
+            print(f"[TELEGRAM] chiusura {sym} non verificata nei registri: avviso omesso", flush=True)
+            continue
+        try:
+            notify_close(sym, net, reason, why)
+        except Exception:
+            pass
+
+
+def _save_state_then_notify(state: dict) -> None:
+    try:
+        save_state(state, STATE_FILE)
+    except BaseException:
+        _discard_close_notices()
+        raise
+    _flush_close_notices()
 
 
 REPLY_KEEP_CHARS = 6000   # una risposta scartata piu' lunga si salva accorciata (inizio e fine)
@@ -528,9 +599,11 @@ def _proof_value(row: dict, key: str):
     return value
 
 
-def _close_row_matches(row, rec: dict, *, learning: bool, run_no) -> bool:
+def _close_row_matches(row, rec: dict, *, learning: bool, run_no, partial: bool = False) -> bool:
     """La riga e' questa chiusura: identita' esatta, senza riscrivere un fill gia' completo."""
-    if not isinstance(row, dict) or row.get("partial"):
+    if not isinstance(row, dict) or bool(row.get("partial")) != partial:
+        return False
+    if partial and _proof_value(row, "fraction") != _proof_value(rec, "fraction"):
         return False
     if learning and row.get("ev") != "close":
         return False
@@ -720,6 +793,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     """
     import numpy as np
 
+    _discard_close_notices()
     acc = make_account(state)
     day = time.strftime("%Y-%m-%d", time.gmtime(now_ms / 1000))
     acc.roll_day(day, {})
@@ -910,8 +984,12 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             closed = acc.close(sym, px, now_ms, "chiusura Claude")
             if closed:
                 print(f"[CLOSE] {sym} net {closed['net']:+.2f}$  motivo: {dec['reason'][:60]}")
-                notify_close(sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
-                record_close(state, closed)
+                if LIVE._live:
+                    notify_close(sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
+                    record_close(state, closed)
+                else:
+                    record_close(state, closed)
+                    _queue_close_notice(state, sym, closed["net"], dec.get("reason", "")[:100], "chiusura Claude")
 
         elif act == "partial_close":
             fraction = float(dec.get("partial_close_fraction") or dec.get("partial_fraction") or 0.35)
@@ -929,10 +1007,13 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             if partial:
                 print(f"[PARTIAL_CLOSE] {sym} chiuso {fraction*100:.0f}%  net {partial['net']:+.2f}$  "
                       f"TP2={'%.5g' % new_tp if new_tp else 'none'}")
-                notify_close(sym, partial["net"],
-                             f"TP parziale {fraction*100:.0f}% — {dec.get('reason','')[:80]}",
-                             "partial_close")
-                record_close(state, partial)
+                partial_reason = f"TP parziale {fraction*100:.0f}% — {dec.get('reason','')[:80]}"
+                if LIVE._live:
+                    notify_close(sym, partial["net"], partial_reason, "partial_close")
+                    record_close(state, partial)
+                else:
+                    record_close(state, partial)
+                    _queue_close_notice(state, sym, partial["net"], partial_reason, "partial_close")
 
         elif act == "dca":
             # DCA su posizione esistente
@@ -1103,7 +1184,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         try:
             from desk import long_s25
             long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=drain,
-                          record_close=record_close, notify_open=notify_open, notify_close=notify_close,
+                          record_close=record_close, notify_open=notify_open,
+                          notify_close=lambda *a: _queue_close_notice(state, *a),
                           log_event=lambda ev: log_event(DATA_DIR, ev))
         except Exception as e:
             print(f"[S25] errore ignorato: {e}", flush=True)
@@ -1111,7 +1193,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # Il DCA e le altre modifiche sono solo in memoria. Si scrivono prima del secondo passaggio:
     # se la chiusura non si puo' provare, il disco resta su questa posizione e il netto del giro dopo coincide.
     save_account(acc, state)
-    save_state(state, STATE_FILE)
+    _save_state_then_notify(state)
     # Secondo passaggio: uno stop stretto da Claude o dalle regole nello stesso ciclo vale subito,
     # sulle stesse candele gia' filtrate. Una posizione chiusa dal primo passaggio non c'e' piu'.
     apply_paper_protective_exits(acc, candles_map, now_ms, state, stop_report)
@@ -1422,6 +1504,7 @@ def _check_close_position_flag(state: dict, price_provider=None) -> bool:
         os.replace(path, work)
     except OSError:
         return False
+    _discard_close_notices()
     try:
         try:
             with open(work) as f:
@@ -1463,10 +1546,7 @@ def _check_close_position_flag(state: dict, price_provider=None) -> bool:
                 continue
             closed.append(sym)
             net += rec["net"]
-            try:
-                notify_close(sym, rec["net"], "su tua richiesta", "chiusura manuale")
-            except Exception:
-                pass   # il messaggio Telegram non deve mai fermare la chiusura
+            _queue_close_notice(state, sym, rec["net"], "su tua richiesta", "chiusura manuale")
         flush_events(state, acc)
         save_account(acc, state)
         parts = []
@@ -1480,10 +1560,11 @@ def _check_close_position_flag(state: dict, price_provider=None) -> bool:
         detail = "; ".join(parts) or "nessuna posizione da chiudere"
         _set_last_action(state, "close_position", not failed, detail, closed=closed,
                          skipped=[s for s, _ in failed])
-        save_state(state, STATE_FILE)
+        _save_state_then_notify(state)
         print(f"[CHIUDI POSIZIONE] {detail}", flush=True)
         return True
     except Exception as e:
+        _discard_close_notices()
         print(f"[CHIUDI POSIZIONE ERROR] {e}", flush=True)
         traceback.print_exc()
         return False
