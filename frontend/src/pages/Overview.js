@@ -78,7 +78,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
   const stoppedReason = status?.state === 'halted' ? reasonText(status?.heartbeat?.last_error) : null;
   const openPositions = trades?.open_positions || [];
   const closedTrades = (trades?.closed_trades || []).slice(0, 20);
-  const brainUnrealized = !openPositions.length ? '0' :
+  const brainUnrealized = !trades ? null : !openPositions.length ? '0' :
     openPositions.every(p => p.unrealized_pnl !== null && p.unrealized_pnl !== undefined)
       ? openPositions.reduce((sum, p) => sum + Number(p.unrealized_pnl), 0).toFixed(2) : null;
   const portfolioNames = { falco: '🦅 Falco', toro: '🐂 Toro', brain: '🧠 Brain V3' };
