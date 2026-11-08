@@ -79,7 +79,7 @@ test('running OHLC good state is never called certified or continuous', () => {
   expect(html).toContain('ultimo ciclo');
   expect(html).toContain('15 minuti');
   expect(html).toContain('30 minuti');
-  expect(html).toContain('non è monitoraggio continuo');
+  expect(html.toLowerCase()).toContain('non è monitoraggio continuo');
   expect(html).toContain('non equivale a stop-loss certificato');
   expect(html).not.toContain('ultima candela 1m');
 });
@@ -114,4 +114,19 @@ test('runner and maintenance monitors never display each other\'s model', () => 
   expect(running).not.toContain('monitor RC80');
   expect(maintenance).toContain('Il monitor RC80');
   expect(maintenance).not.toContain('intervalli di circa 15 minuti');
+});
+
+
+test('missing stop health shows neutral warning without pretending 1m or 15m protection', () => {
+  for (const payload of [null, undefined, {scope:'unknown'}]) {
+    const html = view(payload);
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('Dati di protezione non disponibili');
+    expect(html).not.toContain('chiusura della candela da 1 minuto');
+    expect(html).not.toContain('controllano gli estremi delle candele 15m');
+    expect(html).not.toContain('stop-loss certificato');
+  }
+  const empty = renderToStaticMarkup(
+    <ClassicStopNotice health={null} openPositions={0} />);
+  expect(empty).toBe('');
 });
