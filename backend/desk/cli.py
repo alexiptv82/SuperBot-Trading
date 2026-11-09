@@ -525,6 +525,16 @@ def _unresolved_claims(state: dict) -> list:
     return list(state.get(CLAIMS_KEY) or []) if not LIVE._live else []
 
 
+def _settle_claims_now(state: dict, acc) -> bool:
+    """Subito dopo una chiusura PAPER non protettiva: checkpoint del conto + prova dei registri.
+    True se nessun claim e' rimasto irrisolto (percorso sano: il ciclo prosegue come prima)."""
+    if LIVE._live:
+        return True
+    save_account(acc, state)
+    _commit_paper_closes(state)
+    return not _unresolved_claims(state)
+
+
 def _recover_paper_claims(state: dict, ctl: dict) -> bool:
     """Completa i claim sospesi anche con bot in pausa e senza posizioni. Nessun mercato, nessun trade.
     Al piu' un tentativo ogni CLAIM_RECOVERY_S secondi; un errore non ferma il ciclo principale."""
@@ -1079,6 +1089,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         px = prices.get(sym)
         if px is None:
             continue
+        if claim_block and act not in MANAGE_ACTIONS:
+            print(f"[CLAIM] {sym} {act} ignorata: chiusure da riconciliare", flush=True)
+            continue
 
         if act == "close":
             if not LIVE._live and _terminal_already_logged(state, acc.positions.get(sym)):
@@ -1102,6 +1115,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     record_close(state, closed)
                 else:
                     _claim_paper_close(state, closed, (dec.get("reason", "")[:100], "chiusura Claude"))
+                    claim_block = claim_block or not _settle_claims_now(state, acc)
 
         elif act == "partial_close":
             fraction = float(dec.get("partial_close_fraction") or dec.get("partial_fraction") or 0.35)
@@ -1128,6 +1142,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     record_close(state, partial)
                 else:
                     _claim_paper_close(state, partial, (partial_reason, "partial_close"))
+                    claim_block = claim_block or not _settle_claims_now(state, acc)
 
         elif act == "dca":
             # DCA su posizione esistente
@@ -1289,23 +1304,37 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     flush_events(state, acc)
 
     # In pausa non entra nulla di nuovo: nemmeno la seconda gamba di un'entrata diversificata.
-    if drain:
+    if drain or claim_block:
         for s in list(acc.positions):
-            acc.cancel_split(s, "bot in pausa", now_ms)
+            acc.cancel_split(s, "bot in pausa" if drain else "chiusure contabili da riconciliare", now_ms)
 
     # ---- strategia long S25 (spenta di default): chiusura a tempo e nuovi ingressi, prima della lettura delle barre
     if not LIVE._live and os.environ.get("DESK_LONG_S25") == "1":
         try:
             from desk import long_s25
             s25_notice: dict = {}
+
+            def s25_record(st, rec):
+                _claim_paper_close(st, rec, s25_notice.pop(rec["symbol"], None))
+                try:
+                    _settle_claims_now(st, acc)
+                except Exception as exc:
+                    # Nessun errore di salvataggio nascosto: il claim resta irrisolto (entries_blocked lo vede)
+                    # e il commit finale del ciclo ritenta e solleva come per ogni altra chiusura.
+                    print(f"[CLAIM] S25: riconciliazione immediata rimandata: {type(exc).__name__}", flush=True)
+
             long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=no_new,
-                          record_close=lambda st, rec: _claim_paper_close(st, rec, s25_notice.pop(rec["symbol"], None)),
+                          record_close=s25_record,
+                          entries_blocked=lambda: bool(_unresolved_claims(state)),
                           notify_open=notify_open,
                           notify_close=lambda sym, net, reason, why: s25_notice.__setitem__(sym, (reason, why)),
                           can_close=lambda sym: not _terminal_already_logged(state, acc.positions.get(sym)),
                           log_event=lambda ev: log_event(DATA_DIR, ev))
         except Exception as e:
             print(f"[S25] errore ignorato: {e}", flush=True)
+    if _unresolved_claims(state):          # claim nato in questo ciclo e ancora irrisolto: niente seconde gambe
+        for s in list(acc.positions):
+            acc.cancel_split(s, "chiusure contabili da riconciliare", now_ms)
 
     # Il DCA e le altre modifiche sono solo in memoria. Si scrivono prima del secondo passaggio:
     # se la chiusura non si puo' provare, il disco resta su questa posizione e il netto del giro dopo coincide.

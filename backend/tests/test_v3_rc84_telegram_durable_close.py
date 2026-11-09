@@ -56,6 +56,14 @@ def _assert_coherent(desk):
         assert any(all(x.get(k) == c["rec"].get(k) for k in PROOF) for x in closed)
 
 
+class _From:
+    def __init__(self, n):
+        self.n = n
+
+    def __contains__(self, k):
+        return k >= self.n
+
+
 class Rig:
     def __init__(self, desk, monkeypatch):
         self.desk, self.mp = desk, monkeypatch
@@ -83,6 +91,10 @@ class Rig:
     def fail_saves(self, *which):
         self.saves, self.fail_on = 0, set(which)
 
+    def fail_from(self, n):
+        """Guasto persistente: ogni salvataggio dal n-esimo in poi fallisce (finche' non si chiama heal)."""
+        self.saves, self.fail_on = 0, _From(n)
+
     def heal(self):
         self.fail_on = set()
 
@@ -105,8 +117,14 @@ def _initial(rig, path):
     return state
 
 
+def bar_before(now):
+    """Ultima candela chiusa rispetto a `now`: sempre recente, indipendente dal minuto in cui gira la suite."""
+    return [[now // BAR * BAR - BAR, 100, 100.5, 99.5, 100, 1]]
+
+
 def _run(rig, path, state, now=NOW):
     """Esegue il percorso; un errore di salvataggio simulato e' atteso, altro no."""
+    cli.fetch_candles = lambda sym, bar="15m", limit=1000: bar_before(now) if sym == "BTC" else []
     try:
         if path in ("rules", "partial"):
             action = ({"symbol": "BTC", "action": "close", "reason": "probe"} if path == "rules" else
@@ -187,7 +205,7 @@ def test_unwritable_register_keeps_a_durable_claim_and_recovers_exactly_once(rig
 @pytest.mark.parametrize("path", PATHS)
 def test_failed_checkpoint_writes_nothing_and_a_later_retry_is_the_only_fill(rig, path):
     state = _initial(rig, path)
-    rig.fail_saves(1)                                             # fase 1 fallita
+    rig.fail_from(1)                                              # fase 1 fallita
     _run(rig, path, state)
     assert rig.sent == [] and _history(rig.desk) == [] and _learning(rig.desk) == []
     assert _btc_open_on_disk(rig) and not _disk(rig.desk).get(cli.CLAIMS_KEY)
@@ -203,7 +221,7 @@ def test_failed_checkpoint_writes_nothing_and_a_later_retry_is_the_only_fill(rig
 @pytest.mark.parametrize("path", PATHS)
 def test_crash_after_registers_before_final_save_completes_the_same_close_on_restart(rig, path):
     state = _initial(rig, path)
-    rig.fail_saves(2)                                             # fase 1 ok, registri scritti, fase 3 fallita
+    rig.fail_from(2)                                              # fase 1 ok, registri scritti, fase 3 fallita
     _run(rig, path, state)
     assert rig.sent == []
     claim = _disk(rig.desk)[cli.CLAIMS_KEY][0]

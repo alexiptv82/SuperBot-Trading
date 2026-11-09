@@ -12,7 +12,7 @@ import pytest
 import desk.cli as cli
 from backend.tests.test_v3_rc82_active_paper_stops import BAR, BASE, NOW, _entry, _history, _open, _state, desk  # noqa: F401
 from backend.tests.test_v3_rc84_telegram_durable_close import (  # noqa: F401
-    FLAT, Rig, _assert_coherent, _disk, _initial, _learning, _restart, _run, rig,
+    FLAT, bar_before, Rig, _assert_coherent, _disk, _initial, _learning, _restart, _run, rig,
 )
 
 
@@ -188,7 +188,7 @@ def test_dca_is_blocked_while_a_partial_claim_is_pending_and_resumes_after_recov
     assert len(state[cli.CLAIMS_KEY]) == 1 and "BTC" in state["main"]["positions"]
     before = state["main"]["positions"]["BTC"]
     cli.rules_decisions = lambda *_a, **_k: _entry("dca")
-    cli.fetch_candles = lambda sym, bar="15m", limit=1000: [[BASE - BAR, 100, 101, 99.2, 100, 1]] if sym == "BTC" else []
+    cli.fetch_candles = lambda sym, bar="15m", limit=1000: bar_before(NOW + 120_000) if sym == "BTC" else []
     cli.run_cycle(state, NOW + 60_000)
     held = cli.make_account(state).positions["BTC"]
     assert held.dca_count == 0 and held.total_margin == pytest.approx(before["total_margin"])
