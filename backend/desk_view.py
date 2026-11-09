@@ -647,6 +647,10 @@ def command_close_position(data_dir: str, symbol: str, portfolio: Optional[str] 
     hb = read_heartbeat(data_dir)
     ready = close_worker_ready(hb) and can_close_position(hb)
     if not ready and not exit_only_close_ready(data_dir, portfolio):
+        # Bot vivo (heartbeat fresco) ma di una versione senza chiusura singola: messaggio dedicato.
+        # Resta un rifiuto 409 e nessun flag viene scritto, come per il bot che non risponde.
+        if close_worker_ready(hb):
+            return False, 409, {"ok": False, "message": CLOSE_OLD_BOT_MESSAGE}
         return False, 409, {"ok": False, "message": CLOSE_WORKER_OFFLINE_MESSAGE}
     try:
         with _manual_request_lock(data_dir):

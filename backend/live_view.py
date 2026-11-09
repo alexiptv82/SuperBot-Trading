@@ -260,7 +260,7 @@ def build_portfolio(data_dir: str, capital, loss_pct, desk_mode: str = "paper",
         "heartbeat_age_s": round(hb["age_s"], 1) if hb else None,
         "bot_online": bool(hb and hb["age_s"] < dv.HEARTBEAT_FRESH_S),
         # il tasto Chiudi della singola posizione c'e' solo se il bot di adesso lo sa fare (vedi desk_view)
-        "can_close_position": dv.can_close_position(hb),
+        "can_close_position": dv.can_close_position(hb, now),
         "close_pending": dv.close_pending(data_dir),
         "cycle_info": {"last_end_ms": _positive_ms((hb or {}).get("last_end_ms")) or None,
                        "next_cycle_ms": _positive_ms((hb or {}).get("next_cycle_ms")) or None,

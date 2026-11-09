@@ -30,6 +30,11 @@ class PolicyFixture:
     minimum_equity: Decimal = Decimal("450")
     estimated_roundtrip_cost_bp: Decimal = Decimal("16")
     liquidation_buffer_fraction: Decimal = Decimal(".5")
+    # Campi aggiunti a RiskPolicy dal profilo 75 USDT: stessi default (None / 1x / 125x), quindi
+    # l'hash della politica resta quello storico e nessun limite di rischio cambia.
+    max_loss_margin_fraction: object = None
+    min_leverage: int = 1
+    max_leverage: int = 125
 
 
 POLICY = PolicyFixture()

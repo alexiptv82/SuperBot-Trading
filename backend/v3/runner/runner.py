@@ -186,7 +186,7 @@ class Runner:
     def _write_heartbeat(self, now_ms: int, state: str, last_error: Optional[str],
                          extra: Optional[dict] = None) -> None:
         beat = {"ts_ms": now_ms, "cycle": self.cycles, "state": state, "run_id": self.run_id,
-                "last_error": last_error}
+                "last_error": last_error, "exit_mode": self._exit_mode}
         if extra:
             beat.update(extra)
         body = json.dumps(beat, sort_keys=True)

@@ -25,13 +25,26 @@ os.environ["DASHBOARD_PASSWORD_B64"] = base64.b64encode(b"IniziALE-pw-2026").dec
 os.environ.pop("DASHBOARD_PASSWORD", None)
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.chdir(_TMP)
+_OLD_CWD = os.getcwd()
+os.chdir(_TMP)       # solo per gli import; ripristinato subito sotto e attivo solo durante i test del modulo
 
 from fastapi.testclient import TestClient  # noqa: E402
 
 import auth  # noqa: E402
 import server  # noqa: E402
 from database import SessionLocal  # noqa: E402
+os.chdir(_OLD_CWD)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _module_cwd():
+    """L'app usa percorsi relativi: cwd temporanea solo per questo modulo, mai lasciata agli altri test."""
+    before = os.getcwd()
+    os.chdir(_TMP)
+    try:
+        yield
+    finally:
+        os.chdir(before)
 
 BOOT = "IniziALE-pw-2026"
 NEW = "NuovaPassword-Sicura-1"

@@ -75,7 +75,8 @@ def test_delay_zero_runs_at_the_close():
 def test_heartbeat_content_and_counter():
     r = Rig()
     r.runner.tick(G + DELAY)
-    assert r.beat() == {"ts_ms": G + DELAY, "cycle": 1, "state": "running", "run_id": "run-1", "last_error": None}
+    assert r.beat() == {"ts_ms": G + DELAY, "cycle": 1, "state": "running", "run_id": "run-1", "last_error": None,
+                        "exit_mode": "legacy"}
     r.runner.tick(G + CYCLE_MS + DELAY)
     assert r.beat()["cycle"] == 2 and r.beat()["ts_ms"] == G + CYCLE_MS + DELAY
     assert sorted(os.listdir(r.dir)) == ["heartbeat.json"]                                 # nessun file temporaneo
@@ -183,7 +184,8 @@ def test_run_loop_survives_a_tick_exception_and_stops_on_request():
 def test_run_loop_marks_tick_failed_in_the_heartbeat():
     r = Rig()
     r.runner.run(now_fn=lambda: 0, sleep_fn=lambda s: None, should_stop=iter([False, True]).__next__)
-    assert r.beat() == {"ts_ms": 0, "cycle": 0, "state": "running", "run_id": "run-1", "last_error": "tick_failed"}
+    assert r.beat() == {"ts_ms": 0, "cycle": 0, "state": "running", "run_id": "run-1", "last_error": "tick_failed",
+                        "exit_mode": "legacy"}
 
 
 @pytest.mark.parametrize("now", [0, -1, True, 1.5, None, "1"])

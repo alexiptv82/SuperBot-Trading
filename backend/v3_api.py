@@ -36,6 +36,7 @@ from backend.v3.runner.config import load_default_config
 from backend.v3.runner.exit_service import exit_service_healthy
 from backend.v3.cutover_gate import brain_single_close_enabled
 from backend.v3.observability.classic_stop_health import classic_stop_health
+from backend.v3.observability.classic_running_stop_health import running_stop_health
 
 _MICRO_DOLLAR = Decimal('1000000')
 _HEARTBEAT_STALE_MS = 3 * 900 * 1000  # UI freshness, NOT trading/strategy limits
@@ -220,6 +221,54 @@ def _spend(paths: V3Paths) -> dict | None:
         return None
 
 
+_SYMBOL_RE = re.compile(r'^[A-Za-z0-9]{1,16}$')
+_RECON_HB_MAX_AGE_S = 120
+_RECON_MAX_SYMBOLS = 8
+
+
+def _claim_reconciliation(state: dict, hb: dict | None) -> dict:
+    """Sola lettura: stato SANITIZZATO dei claim di chiusura PAPER (nessun record grezzo, id o importo).
+
+    ok = nessun claim irrisolto; pending = riconciliazione in corso; conflict = serve un intervento umano;
+    unknown = dati non verificabili. Chiusura 'checkpointed' = nel conto ma non ancora provata nei registri.
+    """
+    out = {'state': 'unknown', 'pending_count': 0, 'conflict_count': 0, 'affected_symbols': [],
+           'checkpointed_not_final': False}
+    if not isinstance(state, dict) or not state:
+        return out
+    raw = state.get('paper_close_claims')
+    if raw is None:
+        raw = []
+    if type(raw) is not list or any(not isinstance(c, dict) for c in raw):
+        return out
+    conflict = sum(1 for c in raw if c.get('status') == 'conflict')
+    pending = len(raw) - conflict
+    symbols = set()
+    for c in raw:
+        rec = c.get('rec')
+        sym = rec.get('symbol') if isinstance(rec, dict) else None
+        if type(sym) is str and _SYMBOL_RE.fullmatch(sym):
+            symbols.add(sym.upper())
+    # Il runner annota in heartbeat gli esiti dell'ultimo tentativo (un conflitto puo' non essere ancora su disco).
+    claims_hb = hb.get('paper_close_claims') if isinstance(hb, dict) else None
+    fresh = isinstance(hb, dict) and type(hb.get('age_s')) in (int, float) and hb['age_s'] < _RECON_HB_MAX_AGE_S
+    if fresh and isinstance(claims_hb, dict):
+        hb_conflict = claims_hb.get('conflict')
+        if type(hb_conflict) is list:
+            conflict = max(conflict, min(len(hb_conflict), 10_000))
+    hb_pending = claims_hb.get('pending') if fresh and isinstance(claims_hb, dict) else None
+    out['conflict_count'] = conflict
+    out['pending_count'] = max(0, pending)
+    out['affected_symbols'] = sorted(symbols)[:_RECON_MAX_SYMBOLS]
+    out['checkpointed_not_final'] = bool(pending or conflict)
+    out['state'] = 'conflict' if conflict else ('pending' if pending else 'ok')
+    # Snapshot divergenti: l'heartbeat fresco dichiara claim in attesa ma lo stato su disco non ne mostra.
+    # Non e' dimostrabile che sia tutto riconciliato: mai 'ok'.
+    if out['state'] == 'ok' and type(hb_pending) is int and hb_pending > 0:
+        out['state'] = 'unknown'
+    return out
+
+
 def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
     """Reuse desk_view's state, heartbeat, pause and performance readers."""
     state = dv.read_state(data_dir)
@@ -285,12 +334,24 @@ def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
 
         for t in recent if type(t) is dict
     ]
-    stop_health = classic_stop_health(
-        data_dir, 'hawk' if portfolio_id == 'falco' else 'bull',
-        now_s=now_s, open_positions=len(positions),
-        worker_mode=detail.get('close_worker_mode', 'offline'))
+    classic_name = 'hawk' if portfolio_id == 'falco' else 'bull'
+    close_mode = detail.get('close_worker_mode', 'offline')
+    # The maintenance sidecar and the running trading engine have unrelated stop monitors.
+    # Never display the maintenance 1m model for a live 15m OHLC runner.
+    if close_mode != 'exit_only' and (
+            close_mode == 'classic_runner' or
+            (hb is not None and (hb.get('stop_feed') is not None
+                                 or hb.get('mode') in ('running', 'draining'))) or
+            (not paused and bool(positions))):
+        stop_health = running_stop_health(
+            hb, classic_name, list(positions), now_s=now_s)
+    else:
+        stop_health = classic_stop_health(
+            data_dir, classic_name, now_s=now_s,
+            open_positions=len(positions), worker_mode=close_mode)
     return {'id': portfolio_id, 'kind': 'classic', 'state': mode,
             'stop_health': stop_health,
+            'close_reconciliation': _claim_reconciliation(state, hb),
             'positions': classic_positions, 'closed_trades': closed,
             'can_close_position': detail.get('can_close_position') is True,
             'close_worker_mode': detail.get('close_worker_mode', 'offline'),

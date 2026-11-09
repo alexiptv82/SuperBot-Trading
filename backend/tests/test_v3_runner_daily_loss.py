@@ -586,7 +586,7 @@ def test_runner_ok_level_runs_the_cycle_and_writes_the_loss_fields_in_the_heartb
     t = r.runner.tick(T0)
     assert t.state == "running" and t.last_error is None and r.cyc == [T0]
     assert r.beat() == {"ts_ms": T0, "cycle": 1, "state": "running", "run_id": "run-1", "last_error": None,
-                        "daily_loss_level": "ok", "daily_loss_pct": "12.3"}
+                        "daily_loss_level": "ok", "daily_loss_pct": "12.3", "exit_mode": "legacy"}
 
 
 def test_runner_warn_level_keeps_running_and_only_reports():
@@ -602,7 +602,8 @@ def test_runner_halt_level_stops_the_brain_but_not_commands_or_the_monitor():
     assert t.state == "halted" and t.last_error == "halted:daily_loss" and t.cycle is None and r.cyc == []
     assert r.cmd == [T0] and r.mon == [T0]                         # chiusura manuale e uscite proseguono
     assert r.beat() == {"ts_ms": T0, "cycle": 0, "state": "halted", "run_id": "run-1",
-                        "last_error": "halted:daily_loss", "daily_loss_level": "halt", "daily_loss_pct": "51.2"}
+                        "last_error": "halted:daily_loss", "daily_loss_level": "halt", "daily_loss_pct": "51.2",
+                        "exit_mode": "legacy"}
 
 
 def test_runner_halt_keeps_monitoring_and_commands_on_every_following_tick():
@@ -691,7 +692,8 @@ def test_runner_without_the_loss_hook_keeps_the_old_heartbeat_exactly():
                  run_cycle=lambda n, s: CycleReport(n, (), (), (), ()))
     run.tick(T0)
     assert json.loads((d / "heartbeat.json").read_text(encoding="utf-8")) == {
-        "ts_ms": T0, "cycle": 1, "state": "running", "run_id": "run-1", "last_error": None}
+        "ts_ms": T0, "cycle": 1, "state": "running", "run_id": "run-1", "last_error": None,
+        "exit_mode": "legacy"}
 
 
 # ----------------------------------------------------------------------------- config

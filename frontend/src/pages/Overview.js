@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import API from '../api';
 import { BrainCloseControls, ClassicCloseControls, PortfolioTradeFields } from '../components/OverviewCloseControls';
 import ClassicStopNotice from '../components/ClassicStopNotice';
+import ClaimReconciliationNotice from '../components/ClaimReconciliationNotice';
 
 const PALETTE = { running: '#34d399', paused: '#fbbf24', halted: '#fb7185', stale: '#fbbf24', not_started: '#94a3b8' };
 const STATE_TEXT = { running: 'In funzione', paused: 'In pausa', halted: 'Fermo', stale: 'Segnale assente', not_started: 'Non avviato' };
@@ -78,7 +79,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
   const stoppedReason = status?.state === 'halted' ? reasonText(status?.heartbeat?.last_error) : null;
   const openPositions = trades?.open_positions || [];
   const closedTrades = (trades?.closed_trades || []).slice(0, 20);
-  const brainUnrealized = !openPositions.length ? '0' :
+  const brainUnrealized = !trades ? null : !openPositions.length ? '0' :
     openPositions.every(p => p.unrealized_pnl !== null && p.unrealized_pnl !== undefined)
       ? openPositions.reduce((sum, p) => sum + Number(p.unrealized_pnl), 0).toFixed(2) : null;
   const portfolioNames = { falco: '🦅 Falco', toro: '🐂 Toro', brain: '🧠 Brain V3' };
@@ -118,6 +119,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         </p>}
         {p.id === 'brain' && stoppedReason && <p style={{ color: '#fda4af', fontSize: 13 }}>{stoppedReason}</p>}
         {p.kind === 'classic' && <>
+          <ClaimReconciliationNotice recon={p.close_reconciliation} notStarted={p.state === 'not_started'} />
           <ClassicStopNotice health={p.stop_health} openPositions={p.open_positions} />
           <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · {p.id === 'falco' ? 'Falco' : 'Toro'}</h3>
           {p.close_worker_mode === 'exit_only' && <div style={{ ...MUTED, color: '#7dd3fc', marginBottom: 8 }}>
@@ -136,19 +138,22 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         </>}
         {p.id === 'brain' && <>
           <h3 style={{ fontSize:14, margin:'17px 0 8px' }}>Trade aperti · Brain</h3>
-          {openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
-          <BrainCloseControls positions={openPositions}
+          {!trades && <p role="alert" style={{ color:'#fda4af', fontSize:13 }}>
+            Dettaglio posizioni Brain non disponibile: nessuna chiusura consentita da questa schermata.
+          </p>}
+          {trades && openPositions.length === 0 && <p style={MUTED}>Nessuna posizione aperta.</p>}
+          {trades && <BrainCloseControls positions={openPositions}
             readOnly={overview.cutover_readonly === true && overview.brain_single_close_allowed !== true}
             allowCloseAll={overview.cutover_readonly !== true}
             serverPending={trades?.close_pending === true}
-            onRefresh={onRefresh} renderPosition={pos => <PortfolioTradeFields p={pos} brain />} />
-          <details style={{ marginTop:14 }}>
+            onRefresh={onRefresh} renderPosition={pos => <PortfolioTradeFields p={pos} brain />} />}
+          {trades && <details style={{ marginTop:14 }}>
             <summary style={{ color:'#7dd3fc', cursor:'pointer', fontWeight:700, fontSize:13 }}>
               Ultimi 20 trade chiusi · Brain ({closedTrades.length})
             </summary>
             {closedTrades.length === 0 && <p style={MUTED}>Nessun trade chiuso disponibile.</p>}
             {closedTrades.map((t,i) => <ClosedTradeDetails key={`${t.position_id || t.symbol}-${i}`} t={t} brain nowMs={nowMs} />)}
-          </details>
+          </details>}
         </>}
       </article>)}
     </section>
@@ -225,13 +230,23 @@ export default function Overview() {
       const controller = new AbortController();
       active = controller;
       try {
-        const [a, b, c, d] = await Promise.all([
+        const [a, b, c, d] = await Promise.allSettled([
           API.get('/api/v3/overview', { signal: controller.signal }),
           API.get('/api/v3/brain/status', { signal: controller.signal }),
           API.get('/api/v3/brain/scoreboard', { signal: controller.signal }),
           API.get('/api/v3/brain/trades?limit=20', { signal: controller.signal }),
         ]);
-        if (alive) { setData({ overview: a.data, status: b.data, scoreboard: c.data, trades: d.data }); setError(false); }
+        if (a.status !== 'fulfilled' || !Array.isArray(a.value?.data?.portfolios))
+          throw new Error('overview_unavailable');
+        if (alive && !controller.signal.aborted) {
+          setData({
+            overview: a.value.data,
+            status: b.status === 'fulfilled' ? b.value.data : null,
+            scoreboard: c.status === 'fulfilled' ? c.value.data : { regimes: [] },
+            trades: d.status === 'fulfilled' ? d.value.data : null,
+          });
+          setError(false);
+        }
       } catch (e) {
         if (alive && !controller.signal.aborted) { setError(true); setData(null); }
       } finally {

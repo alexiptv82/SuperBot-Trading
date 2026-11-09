@@ -22,7 +22,8 @@ os.environ.setdefault("DB_PATH", os.path.join(_TMP, "t.db"))
 os.environ.setdefault("DASHBOARD_PASSWORD_B64", base64.b64encode(b"IniziALE-pw-2026").decode())
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.chdir(_TMP)
+_OLD_CWD = os.getcwd()
+os.chdir(_TMP)       # solo per gli import; ripristinato subito sotto e attivo solo durante i test del modulo
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, inspect, text  # noqa: E402
@@ -35,6 +36,18 @@ import server  # noqa: E402
 from bot_engine import bot  # noqa: E402
 from config import config  # noqa: E402
 from database import AuditLog, RiskSettings, SessionLocal, Trade  # noqa: E402
+os.chdir(_OLD_CWD)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _module_cwd():
+    """L'app usa percorsi relativi: cwd temporanea solo per questo modulo, mai lasciata agli altri test."""
+    before = os.getcwd()
+    os.chdir(_TMP)
+    try:
+        yield
+    finally:
+        os.chdir(before)
 
 SYMBOL = "BTCUSDT"
 

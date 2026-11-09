@@ -65,3 +65,68 @@ test('inconsistent covered flag never claims that quote data is available', () =
   expect(html).not.toContain('Prezzi recenti disponibili');
   expect(html).toContain('non equivale a stop-loss certificato');
 });
+
+
+const runnerStatus = (state, alarm = true, blocked_symbols = []) => ({
+  scope: 'classic_runner_15m_ohlc', state, alarm,
+  blocked_symbols, stop_certified: false, quote_coverage: false,
+  execution: 'periodic_15m_ohlc',
+});
+
+test('running OHLC good state is never called certified or continuous', () => {
+  const html = view(runnerStatus('observed', false));
+  expect(html).toContain('role="status"');
+  expect(html).toContain('ultimo ciclo');
+  expect(html).toContain('15 minuti');
+  expect(html).toContain('30 minuti');
+  expect(html.toLowerCase()).toContain('non è monitoraggio continuo');
+  expect(html).toContain('non equivale a stop-loss certificato');
+  expect(html).not.toContain('ultima candela 1m');
+});
+
+test.each(['stale', 'unverified', 'degraded'])(
+  'running status %s creates an explicit warning', state => {
+    const html = view(runnerStatus(state));
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('Allarme controllo stop PAPER');
+    expect(html).not.toContain('Prezzi recenti disponibili');
+  }
+);
+
+test('running alarm with no positions still displays blocked exposure symbols', () => {
+  const html = renderToStaticMarkup(
+    <ClassicStopNotice health={runnerStatus('degraded', true, ['ARB'])} openPositions={0} />);
+  expect(html).toContain('role="alert"');
+  expect(html).toContain('ARB');
+  expect(html).toContain('Nuovi ingressi/DCA');
+});
+
+test('running observed state with alarm true never gives a green status', () => {
+  const html = view(runnerStatus('observed', true));
+  expect(html).toContain('role="alert"');
+  expect(html).toContain('non verificabile');
+});
+
+test('runner and maintenance monitors never display each other\'s model', () => {
+  const running = view(runnerStatus('observed', false));
+  const maintenance = view(status('covered', true, 'one_minute_close_only'));
+  expect(running).toContain('OHLC');
+  expect(running).not.toContain('monitor RC80');
+  expect(maintenance).toContain('Il monitor RC80');
+  expect(maintenance).not.toContain('intervalli di circa 15 minuti');
+});
+
+
+test('missing stop health shows neutral warning without pretending 1m or 15m protection', () => {
+  for (const payload of [null, undefined, {scope:'unknown'}]) {
+    const html = view(payload);
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('Dati di protezione non disponibili');
+    expect(html).not.toContain('chiusura della candela da 1 minuto');
+    expect(html).not.toContain('controllano gli estremi delle candele 15m');
+    expect(html).not.toContain('stop-loss certificato');
+  }
+  const empty = renderToStaticMarkup(
+    <ClassicStopNotice health={null} openPositions={0} />);
+  expect(empty).toBe('');
+});

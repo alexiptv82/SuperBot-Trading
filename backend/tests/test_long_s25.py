@@ -585,8 +585,10 @@ def test_scorer_files_are_unchanged(name):
 
 
 def test_engine_and_brain_files_are_unchanged_by_this_work():
+    # brain.py: pin aggiornato dopo RC82 (dfc7059), che ha reso la scrittura dello storico/learning append-only
+    # robusta a righe troncate (_append_json_line). engine.py (formule economiche) resta quello originale.
     for name, want in (("engine.py", "77836e4e84acccd256492708754a3bd72d8ecdb5a98c39456e9a6fb649787010"),
-                       ("brain.py", "3ee7839be372cc65b10c39d3767a37d8100464791c24b5f751e7dd1903fe5771")):
+                       ("brain.py", "4f040c142909d3369fef81a2f7ef3307eab65421db1958e98d6153230f38884e")):
         with open(os.path.join(BACKEND, "desk", name), "rb") as f:
             assert hashlib.sha256(f.read()).hexdigest() == want
 

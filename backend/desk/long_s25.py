@@ -198,7 +198,9 @@ def _base(symbol: str) -> str:
 
 def step(acc, state: dict, candles_map: dict, prices: dict, now_ms: int, portfolio, *, halt, drain: bool,
          record_close: Callable, notify_open: Callable, notify_close: Callable,
-         log_event: Callable[[dict], None], echo: Callable[[str], None] = print) -> dict:
+         log_event: Callable[[dict], None], echo: Callable[[str], None] = print,
+         can_close: Optional[Callable[[str], bool]] = None,
+         entries_blocked: Optional[Callable[[], bool]] = None) -> dict:
     """Un giro di S25: chiusura a tempo delle posizioni S25 (sempre) e nuove aperture (non in pausa, non con blocco).
     Mai solleva per un simbolo: l'errore di un simbolo non ferma gli altri ne' il ciclo classico."""
     report = {"opened": [], "closed": [], "skipped": {}}
@@ -209,13 +211,16 @@ def step(acc, state: dict, candles_map: dict, prices: dict, now_ms: int, portfol
         if px is None:
             report["skipped"][sym] = "prezzo_assente"
             continue
+        if can_close is not None and not can_close(sym):
+            report["skipped"][sym] = "registro_incoerente"
+            continue
         rec = acc.close(sym, px, now_ms, "chiusura a tempo S25")
         if rec:
             report["closed"].append(sym)
             echo(f"[S25 TEMPO] {sym} net {rec['net']:+.2f}$")
             _safe(notify_close, sym, rec["net"], "S25: 12 ore trascorse", rec["why"])
             record_close(state, rec)
-    if halt or drain:
+    if halt or drain or (entries_blocked is not None and entries_blocked()):
         return report
     last_open = state.setdefault("last_open_ms", {})
     name = getattr(portfolio, "name", "")

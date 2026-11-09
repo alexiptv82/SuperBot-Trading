@@ -286,13 +286,15 @@ def test_close_position_rules():
         assert (ok, code) == (True, 200) and r["symbol"] == "BTC" and r["queued"] is True
         req = json.load(open(os.path.join(d, "close_position.flag")))
         assert req["symbols"] == ["BTC"] and abs(req["ts"] - time.time() * 1000) < 5000
-        # un secondo clic su un'altra posizione, prima che il bot abbia preso il primo, non lo cancella
-        assert dv.command_close_position(d, "ETH")[0] is True
-        assert dv.command_close_position(d, "ETH")[0] is True, "lo stesso clic due volte non duplica"
-        assert json.load(open(os.path.join(d, "close_position.flag")))["symbols"] == ["BTC", "ETH"]
-        assert dv.close_pending(d) == ["BTC", "ETH"]
+        # Contratto RC73: finche' una richiesta e' in attesa un secondo comando (stessa o altra posizione) viene
+        # rifiutato con 409 e non sovrascrive ne' accoda nulla; il primo resta intatto.
+        for sym in ("ETH", "BTC"):
+            ok, code, r = dv.command_close_position(d, sym)
+            assert (ok, code) == (False, 409) and "gia' in corso" in r["message"]
+        assert json.load(open(os.path.join(d, "close_position.flag")))["symbols"] == ["BTC"]
+        assert dv.close_pending(d) == ["BTC"]
         st = dv.build_status(d, "hawk")
-        assert st["close_position_pending"] == ["BTC", "ETH"] and st["can_close_position"] is True
+        assert st["close_position_pending"] == ["BTC"] and st["can_close_position"] is True
 
 
 def test_status_tells_if_the_bot_runs_paper_or_live_so_the_close_button_can_say_it():
@@ -643,3 +645,23 @@ def test_router_hours_get_and_post():
                 raise AssertionError("doveva rifiutare")
             except Exception as e:
                 assert getattr(e, "status_code", None) == code
+
+
+def test_close_position_old_bot_vs_unresponsive_bot_messages_and_no_flag_written():
+    """Bot vivo ma senza chiusura singola: messaggio 'versione precedente'; bot spento/vecchio: 'non risponde'.
+    In entrambi i casi 409 e nessun file di comando."""
+    with tempfile.TemporaryDirectory() as d:
+        _write_state(d, {"BTC": _pos()}, cash=900.0)
+        _write_hb(d, ts=time.time())
+        ok, code, r = dv.command_close_position(d, "BTC")
+        assert (ok, code) == (False, 409) and "versione precedente" in r["message"]
+        _write_hb(d, close_position=True, ts=time.time() - 3600)          # capace ma heartbeat scaduto
+        ok, code, r = dv.command_close_position(d, "BTC")
+        assert (ok, code) == (False, 409) and "non sta rispondendo" in r["message"]
+        os.remove(os.path.join(d, "heartbeat.json"))                       # nessun heartbeat
+        ok, code, r = dv.command_close_position(d, "BTC")
+        assert (ok, code) == (False, 409) and "non sta rispondendo" in r["message"]
+        _write_hb(d, close_position=True, ts=time.time() + 3600)           # heartbeat dal futuro
+        assert dv.command_close_position(d, "BTC")[:2] == (False, 409)
+        assert not os.path.exists(os.path.join(d, "close_position.flag"))
+        assert dv.command_close_position(d, "../etc")[:2] == (False, 400)  # validazione invariata

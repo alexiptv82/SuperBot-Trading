@@ -58,7 +58,8 @@ from backend.v3.runner.metering import BudgetHalt, MeteredTransport
 from backend.v3.runner.monitor import MonitorReport, run_exit_monitor
 from backend.v3.runner.runner import Runner, TickResult
 from backend.v3.runner.open_serial import commit_paper_open
-from backend.v3.runner.exit_service import exit_service_healthy
+from backend.v3.runner.exit_service import ExitServiceBusy, exit_service_healthy
+from backend.v3.runner.legacy_exit_fence import LegacyExitFence
 from backend.v3.runner.exit_worker import check_existing_data
 from backend.v3.transport import deepseek_transport
 
@@ -307,6 +308,28 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     else:
         data_dir.mkdir(parents=True, exist_ok=True)
         split_opts = {}
+    fence = None
+    if a.exit_mode == "legacy":
+        # Il runner legacy possiede monitor e chiusure: tiene per TUTTA la vita lo stesso lease kernel
+        # dell'exit-worker. Se un altro proprietario lo detiene, non parte (e non chiude nulla).
+        try:
+            fence = LegacyExitFence(run_id=a.run_id, data_dir=data_dir).start()
+        except ExitServiceBusy:
+            print("exit_owner_busy", file=sys.stderr)
+            return 3
+        except ValueError:
+            print("setup_invalid", file=sys.stderr)
+            return 2
+    try:
+        return _run_built(a, data_dir, config, environ, get_json, inner_transport, now_fn, sleep_fn,
+                          should_stop, split_opts, peer_opts)
+    finally:
+        if fence is not None:
+            fence.stop()
+
+
+def _run_built(a, data_dir, config, environ, get_json, inner_transport, now_fn, sleep_fn,
+               should_stop, split_opts, peer_opts) -> int:
     try:
         built = build_runner(data_dir=data_dir, run_id=a.run_id, config=config, get_json=get_json,
                              inner_transport=inner_transport, alert_send=telegram_sender(environ),

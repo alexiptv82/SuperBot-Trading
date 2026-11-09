@@ -1,0 +1,28 @@
+# TEMPLATE DA REVISIONARE — NON installare, abilitare o avviare senza OK esplicito dell'utente.
+# Runner Brain in modalita' sidecar: NON possiede chiusure ne' monitor; apre solo con exit-worker sano.
+[Unit]
+Description=SuperBot Brain V3 PAPER runner sidecar (run %i)
+# Parte solo dopo READY=1 dell'exit-worker (tick sano) e si ferma con lui.
+BindsTo=superbot-brain-v3-exit-worker@%i.service
+After=superbot-brain-v3-exit-worker@%i.service
+
+[Service]
+Type=simple
+User=@@SERVICE_USER@@
+WorkingDirectory=@@REPO_DIR@@
+Environment=DESK_MODE=paper
+Environment=PYTHONPATH=@@REPO_DIR@@:@@REPO_DIR@@/backend
+# Chiavi del modello: SOLO tramite file d'ambiente gestito fuori dal repository (mai valori qui).
+EnvironmentFile=@@BRAIN_ENV_FILE@@
+ExecStart=@@PYTHON@@ -m backend.v3.runner.wiring --data-dir @@BRAIN_DATA_DIR@@ --run-id %i --config @@BRAIN_DATA_DIR@@/runner_config.json --exit-mode sidecar
+Restart=on-failure
+RestartSec=15
+RestartPreventExitStatus=2 3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=@@BRAIN_DATA_DIR@@
+
+[Install]
+WantedBy=multi-user.target

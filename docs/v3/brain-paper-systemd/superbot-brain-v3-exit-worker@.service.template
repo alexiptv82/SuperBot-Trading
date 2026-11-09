@@ -1,0 +1,33 @@
+# TEMPLATE DA REVISIONARE — NON installare, abilitare o avviare senza OK esplicito dell'utente.
+# Segnaposto @@...@@ da sostituire con valori VERIFICATI sul server; nessuna credenziale qui.
+# %i = run_id Brain PAPER (es. la run 2000 USDT gia' preparata). Solo PAPER.
+[Unit]
+Description=SuperBot Brain V3 PAPER exit-worker (proprietario unico delle chiusure, run %i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=@@SERVICE_USER@@
+WorkingDirectory=@@REPO_DIR@@
+Environment=DESK_MODE=paper
+Environment=PYTHONPATH=@@REPO_DIR@@:@@REPO_DIR@@/backend
+# --wait-lease-s: attende che il runner legacy AGGIORNATO rilasci il lease (passaggio di consegne).
+# Rifiuta di partire (exit 3) se il lease e' detenuto o se un runner di versione precedente sembra vivo.
+ExecStart=@@PYTHON@@ -m backend.v3.runner.exit_worker --data-dir @@BRAIN_DATA_DIR@@ --run-id %i --config @@BRAIN_DATA_DIR@@/runner_config.json --start-paper --legacy-exits-disabled --wait-lease-s 120
+TimeoutStartSec=180
+# READY e WATCHDOG solo su tick sani: un worker degradato viene riavviato, e finche' non e' sano le aperture restano bloccate.
+WatchdogSec=60
+Restart=on-failure
+RestartSec=10
+# exit 2 = configurazione/dati non validi: non insistere.
+RestartPreventExitStatus=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=@@BRAIN_DATA_DIR@@
+
+[Install]
+WantedBy=multi-user.target
