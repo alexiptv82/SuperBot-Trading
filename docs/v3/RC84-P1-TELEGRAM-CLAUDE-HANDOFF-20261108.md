@@ -240,3 +240,14 @@ Limiti: azioni non pinnate a SHA (tag `@v4`/`@v5`, da pinnare all'approvazione);
 | build `CI=true` | Compiled successfully |
 
 **Richiede un runner GitHub reale (NON verificato)**: `sudo -n`, `ip link set lo up` e `unshare -n` su `ubuntu-24.04` ospitato; eventuali restrizioni AppArmor/namespace; `setup-python`/`setup-node`/cache; upload degli artefatti; comportamento di `concurrency`. Il preflight è pensato per fallire subito con una diagnostica, mai per ripiegare. Il workflow non è mai girato su GitHub.
+
+---
+
+# Ultimi due fix prima della CI (09/11/2026, base `5e76863001ac2d540ca0ef8e81b849e0f449b9d7`, revisione ChatGPT #6748220955)
+
+Solo test e documento. Nessun workflow creato o avviato; `.github/` non toccata; trading, AI, rischio, Brain, D1, D2 e dashboard invariati.
+
+1. **Test compatibile con la futura pubblicazione** (`test_v3_rc84_ci_proposal.py`): `workflow_state_problems()` ammette solo (a) workflow assente, (b) workflow presente e identico al YAML approvato nel documento. Falliscono modifiche, varianti/copie, collisioni di nome e link simbolici. 25 test con directory temporanee sintetiche (11 modifiche mirate), più una **prova generale in una copia di scratch** con il file identico: suite completa 7 003 passed / 0 failed; con il file alterato il test fallisce. Il file non è stato creato nel repository.
+2. **Timeout nel wrapper** (`test_superbot.py`): default 10 s mantenuto; prima di inviare vengono rifiutati `None`, 0, negativi, `nan`/`inf`, > 30 s, bool, stringhe, tuple, liste e oggetti. Test con la spia HTTP: 20 valori non validi ⇒ nessuna richiesta, né GET né POST; 8 valori validi (fino a 30 s inclusi) inviati invariati; default 10. Con il wrapper precedente 20 di questi test falliscono. `test_ci_integration_guard.py`: 61 test.
+
+Risultati (Python 3.11, dipendenze di `requirements.txt`, namespace di rete vuoto): backend **7 003 passed, 0 failed, 3 xfailed, 9 deselected** (stato reale e copia con il workflow); Jest 124/124 (14 suite); build `CI=true` compilata. Non è una CI: il workflow non è mai girato su GitHub. Restano da verificare su un runner reale `sudo -n`/`ip`/`unshare -n` su `ubuntu-24.04` e il comportamento delle azioni fissate a SHA.
