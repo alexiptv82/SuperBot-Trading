@@ -218,3 +218,25 @@ Non ho creato né avviato alcun workflow.
 Risultati locali (Python 3.11, stessi comandi del YAML, namespace di rete vuoto; connessione esterna e DNS di `api.bitget.com` provati bloccati): backend **6 935 passed, 0 failed, 3 xfailed, 9 deselected**; Jest 124/124 (14 suite); build `CI=true` compilata. **Non è una CI**: il workflow non è mai girato su GitHub.
 
 Limiti: azioni non pinnate a SHA (tag `@v4`/`@v5`, da pinnare all'approvazione); `sudo`/`iproute2`/`unshare` sul runner non provati su un runner reale; restano `v3-stop-paper-workers.yml` e `v3-vps-inventory.yml` con push su `main`; gli altri gate dell'audit restano aperti.
+
+---
+
+# Rifinitura sicurezza CI (09/11/2026, base `74fbde2ae0327503241e1e7e1ca15513b818de28`, revisione ChatGPT #6747209165)
+
+**Commit test+documento: `56877eecee148e7c35c5cc3fcf526bec2cd46770`.** Solo test e documento in `docs/v3/`. Nessun workflow creato o avviato; `.github/` non toccata; trading, AI, D1, D2, rischio, capitali e dashboard invariati.
+
+1. **Wrapper HTTP d'integrazione** (`test_superbot.py`): verifica l'URL effettivo (schema/host/porta = `REACT_APP_BACKEND_URL`), nessun redirect seguito (un 3xx è un errore), nessun proxy ereditato (`trust_env=False`, `proxies` del chiamante ignorati), timeout (10 s, massimo 30). Prova in-process con un finto server che risponde `302` verso `sentinel.invalid`, `https://example.org`, un'altra porta locale e un URL relativo allo schema: una spia su `HTTPAdapter.send` registra ogni richiesta e non apre connessioni fuori dal server finto ⇒ solo la richiesta al server finto, **nessuna richiesta esterna**; un controllo con sessione `requests` normale mostra che il redirect verso la sentinella partirebbe. Con il wrapper precedente 14 di questi test falliscono. `test_ci_integration_guard.py`: 32 test.
+2. **Preflight fail-fast** (proposta YAML, in entrambi i job, prima di installare e testare): `unshare`/`ip`/`sudo -n` presenti, diagnostica (kernel, release, `ip -V`, `unshare --version`, sysctl AppArmor), sonda dentro `sudo -n unshare -n` (solo `lo`, nessuna rotta, loopback usabile, `ENETUNREACH` verso `192.0.2.1`, nome `.invalid` non risolvibile). Qualunque anomalia ⇒ `exit 1`. Nessun `||` di ripiego, nessun `continue-on-error`. Sonda provata qui in tre casi: dentro il namespace OK; fuori ⇒ errore; namespace senza loopback ⇒ errore.
+3. **`PYTHONPATH` esplicito e assoluto** (`<workspace>:<workspace>/backend`, equivalente a `.:backend` ma immune ai test che cambiano cwd; un `PYTHONPATH` relativo da un'altra cwd fallisce, documentato da un test), inoltrato a `sudo env`, più passo che verifica gli import da una cartella estranea. `test_v3_rc84_import_paths.py` (7): import da cwd estranea, ordini avanti/inverso/ruotato/mescolato, auth/profiles prima e dopo i test di lock.
+4. **Pin a SHA** (verificati con `git ls-remote` in sola lettura sui repository ufficiali, poi `git fetch --depth 1`: oggetto `commit`; il tag maggiore coincide con il patch più alto): `actions/checkout` v4.4.0 `11d5960a…7262`, `actions/setup-python` v5.6.0 `a26af69b…065`, `actions/setup-node` v4.4.0 `49933ea5…020`, `actions/upload-artifact` v4.6.2 `ea165f8d…fa02` (SHA completi nel documento). Stessa serie maggiore dei workflow esistenti; nessuna azione nuova.
+
+**Proposta**: `docs/v3/RC84-CI-OFFLINE-PROPOSAL-20261109.md`; `actionlint` 1.7.12 senza avvisi; `test_v3_rc84_ci_proposal.py` (11) controlla trigger, permessi, assenza di segreti/operazioni, pin, preflight prima dei test, assenza di ripieghi, `PYTHONPATH`; 4 mutazioni intercettate (ripiego `||`, tag al posto dello SHA, preflight rimosso, `PYTHONPATH` relativo).
+
+| eseguito qui (Python 3.11, dipendenze di `requirements.txt`, namespace di rete vuoto) | esito |
+|---|---|
+| backend offline, ordine alfabetico | **6 960 passed, 0 failed, 3 xfailed, 9 deselected** |
+| backend offline, file in ordine inverso | **6 960 passed, 0 failed, 3 xfailed, 9 deselected** |
+| Jest (Node 22) | 124/124, 14 suite |
+| build `CI=true` | Compiled successfully |
+
+**Richiede un runner GitHub reale (NON verificato)**: `sudo -n`, `ip link set lo up` e `unshare -n` su `ubuntu-24.04` ospitato; eventuali restrizioni AppArmor/namespace; `setup-python`/`setup-node`/cache; upload degli artefatti; comportamento di `concurrency`. Il preflight è pensato per fallire subito con una diagnostica, mai per ripiegare. Il workflow non è mai girato su GitHub.
