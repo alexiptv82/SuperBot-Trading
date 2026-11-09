@@ -74,3 +74,31 @@ La suite estesa **non è verde**: i 32 FAIL sono preesistenti (20 `test_brain_f3
 - Un claim in conflitto non si risolve da solo: blocca nuove aperture/DCA e il reset finché un umano non interviene.
 - Le seconde gambe pendenti vengono annullate (come in pausa) quando ci sono claim irrisolti.
 - Nessuna UI per `paper_close_claims` (solo heartbeat/log); restano aperti i gate RC84 (browser autenticato/Android, sidecar Brain, backup off-host, nuova run solo con OK).
+
+---
+
+# Esposizioni nello stesso ciclo (09/11/2026, base `8b486f1d40aaec36e398ef43774fb19bc5106c26`, revisione ChatGPT #6734798159)
+
+**Commit codice+test: `cd6436fc87bbc78b759afd190e78bcf401b824f2`.**
+
+**Difetto confermato** (6 test nuovi fallivano sulla base): `claim_block` era calcolato una volta a inizio ciclo, quindi `close(A)` seguita da `open_long(B)`, `partial_close(A)` seguita da `dca(A)` e l'ingresso S25 dopo una chiusura a tempo passavano mentre il claim era ancora irrisolto.
+
+**Correzione minima** (`cli.py`, parametro opzionale `entries_blocked` in `long_s25.step`; solo PAPER):
+- `_settle_claims_now(state, acc)`: subito dopo ogni chiusura non protettiva (regole/Claude, parziale, S25) si salva il conto con il claim e si provano i registri. **Percorso sano invariato**: il claim si risolve (e parte l'avviso) prima della decisione successiva, quindi `close(A)+open(B)` e `partial(A)+dca(A)` avvengono nello stesso ciclo come prima. Un blocco "a claim presente" avrebbe invece rinviato anche le riaperture sane.
+- Se il claim resta irrisolto (registro non scrivibile/conflitto): le azioni non di gestione successive (`MANAGE_ACTIONS` = close/partial_close/hold) vengono ignorate con log `[CLAIM]`, `long_s25.step` non apre (`entries_blocked`), le seconde gambe pendenti vengono annullate (come in pausa), prima della seconda passata protettiva.
+- S25: un errore di salvataggio nella riconciliazione immediata non è nascosto dal `try/except` di S25: il claim resta irrisolto (blocca gli ingressi) e il commit finale del ciclo ritenta e solleva come per le altre chiusure.
+- Seconda chiusura non protettiva della stessa posizione con claim parziale pendente: **ammessa** (è un'uscita); produce un secondo claim con identità distinta. Test contabile: dopo il ripristino 2 righe (parziale + terminale) in storico e learning, 2 avvisi, somma dei netti = chiusure del conto, mai due terminali, nessuna posizione fantasma.
+- Invariati: protocollo a claim, LIVE (`_settle_claims_now` ritorna subito), registri append-only, AI, strategie, formule, leve, size, rischio, stop protettivi (RC82), chiusure manuali di posizioni non coinvolte.
+
+**Test** — `backend/tests/test_v3_rc84_same_cycle_exposure.py` (11): per history e learning non scrivibili `close(A)+open(B)`, `partial(A)+dca(A)`, S25 dopo chiusura a tempo (bloccati nel ciclo, poi sbloccati dopo la riconciliazione a inizio ciclo successivo); i tre percorsi sani nello stesso ciclo; seconda chiusura con claim parziale pendente; stop protettivo con claim parziale pendente. Resa robusta la dipendenza dal minuto di esecuzione dei test precedenti (candela relativa all'istante simulato); verificato con orologio fissato a +5/+420/+810/+890 s dentro la barra da 15 min (`test_close_all…` escluso da quel controllo: confronta la data reale del file flag).
+
+**Esecuzioni** (rete rifiutata, nessun segreto)
+| | `8b486f1` | `cd6436f` |
+|---|---|---|
+| backend esteso (escl. `test_auth_flow.py`, `test_profiles_engine.py`: manca `sqlalchemy`) | 6 790 PASS / 32 FAIL / 3 xfail | **6 801 PASS / 32 FAIL / 3 xfail** |
+| insieme dei FAIL | — | **identico** (0 nuovi, 0 risolti) |
+| Jest / build (frontend invariato) | 109/109 | 109/109, Compiled successfully |
+
+La suite estesa **non è verde**: i 32 FAIL sono preesistenti (20 `test_brain_f3_boundaries.py`, 1 `test_desk_view.py`, 1 `test_live_view.py`, 1 `test_long_s25.py` hash di `brain.py`, 9 `test_superbot.py` server live).
+
+**Limiti**: la riconciliazione immediata aggiunge due salvataggi di stato per ogni chiusura non protettiva (comportamento atteso, non temporale); un claim in conflitto continua a richiedere un intervento umano; nessuna UI per i claim; gate RC84 aperti invariati (browser autenticato/Android, sidecar Brain, backup off-host, nuova run solo con OK).
