@@ -127,3 +127,33 @@ La suite estesa **non è verde**: i 32 FAIL sono preesistenti (20 `test_brain_f3
 
 I 34 FAIL **non sono superati**: 20 `test_brain_f3_boundaries.py` (fixture obsoleta), 1 `test_desk_view.py`, 1 `test_live_view.py`, 1 `test_long_s25.py` (hash `brain.py`), 9 `test_superbot.py` (server live), 2 `test_v3_rc80_paper_stop_hardening.py` (`os.chdir` all'import di auth/profiles).
 **Limiti**: `status=conflict` si vede nell'overview solo se persistito nello stato o annotato nell'heartbeat fresco; nessuna procedura operativa scritta per i conflitti; nessuna prova in browser autenticato/Android; D2 e gli altri gate dell'audit restano aperti.
+
+---
+
+# D2 — un solo proprietario delle chiusure Brain PAPER (09/11/2026, base `c6082dfefc26d4ed61aaa3363bb24af45612db8b`, revisione ChatGPT #6740016283)
+
+**Commit codice+test+template: `fcaa2758220e5a42a5d2ba8419424ab898d85d2d`.** Protocollo e procedura: `docs/v3/brain-paper-systemd/README.md`.
+
+**Difetto riprodotto sulla base**: con un exit-worker che detiene il lease, `wiring.main --exit-mode legacy` partiva comunque (3 test nuovi falliscono con `wiring.py`/`runner.py` di `c6082df`).
+
+**Modifiche** (`backend/v3/runner/wiring.py`, `runner.py`, `exit_worker.py`):
+- runner `legacy`: acquisisce `LegacyExitFence` (stesso `flock` `.exit_service.lock` dell'exit-worker) **prima** di costruire il runner e lo tiene fino all'uscita; se è occupato esce con 3 `exit_owner_busy` senza creare journal né heartbeat. In `sidecar` non prende il lease (invariato: apre solo con exit-worker sano).
+- exit-worker: lease occupato → 3 `exit_owner_busy` (prima finiva in "stopped_unexpectedly"); `--wait-lease-s N` (≤ 600) per il passaggio di consegne; `foreign_exit_owner()` rifiuta l'avvio (3) e degrada ogni tick (nessuna chiusura, aperture bloccate) se l'heartbeat del runner è senza `exit_mode` e più recente di 45 min, oppure illeggibile.
+- heartbeat del runner: nuovo campo `exit_mode` (`legacy`/`sidecar`). **Cambio di contratto voluto**: aggiornate 6 attese esatte in `test_v3_runner_runner.py` (2), `test_v3_runner_e2e.py` (1), `test_v3_runner_daily_loss.py` (3), aggiungendo solo quel campo.
+- Invariati: strategie, AI, rischio, executor, desk classici, frontend, LIVE (`DESK_MODE≠paper` rifiutato prima di qualunque lease o file).
+
+**Test** `backend/tests/test_v3_rc84_brain_single_exit_owner.py` (21, sottoprocessi reali): exit-worker rifiutato con legacy aggiornato attivo; legacy rifiutato con exit-worker attivo; secondo legacy rifiutato; lease tenuto per tutta la vita del runner e liberato all'uscita; 6 processi concorrenti → 1 proprietario; crash `SIGKILL` → lease liberato e preso dal successore; riavvio senza certificazione ereditata; handover sequenziale (rilascio ≤ acquisizione, attesa < 2 s); attesa limitata fail-closed; heartbeat non aggiornato/obsoleto/sidecar/legacy/corrotto/symlink; worker rifiutato con runner vecchio vivo; worker in servizio che si ritira e poi riprende; lease legacy che non certifica mai il sidecar; due processi che chiudono la stessa posizione → 1 sola `paper_close`; modalità non PAPER rifiutata. Ripetuto 3 volte su Python 3.11: 21/21.
+
+| | `c6082df` (3.11 completo) | `fcaa275` |
+|---|---|---|
+| backend | 6 860 PASS / 34 FAIL / 3 xfail | **6 881 PASS / 34 FAIL / 3 xfail** |
+| insieme dei FAIL | — | identico (0 nuovi, 0 risolti) |
+
+Frontend non modificato (Jest 124/124 e build attestati su `973fe57`). Template systemd verificati con `systemd-analyze verify` (systemd 255) su un'istanza con segnaposto fittizi: nessun errore (solo l'avviso sull'utente di prova `nobody`).
+
+**Limiti aperti**
+1. **Runner di versione precedente**: non rispetta il lease; l'esclusione verso di lui **non è dimostrabile**. Il riconoscimento via heartbeat (45 min) è solo difesa in profondità. La migrazione deve prima aggiornare il runner legacy (fase A) e solo dopo passare all'exit-worker (fase B).
+2. Finestra di passaggio: tra rilascio del runner legacy e acquisizione dell'exit-worker al massimo un intervallo di attesa (0,25 s); il primo tick sano (monitor) avviene subito dopo.
+3. Due runner `sidecar` sulla stessa run non sono esclusi da questo lease (non possiedono chiusure; le aperture restano serializzate da `open_serial`), ma scriverebbero lo stesso `heartbeat.json`.
+4. Unità systemd e procedura: **non installate né provate su un sistema reale**; segnaposto da verificare; servono mandato, backup off-host e preflight VPS read-only.
+5. Restano aperti gli altri gate dell'audit (34 FAIL preesistenti, CI 3.11, browser/Android, staging, release candidate pinned).
