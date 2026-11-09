@@ -1,5 +1,6 @@
 import os
 import time
+from urllib.parse import urlparse
 
 import pytest
 import requests
@@ -16,22 +17,61 @@ pytestmark = [pytest.mark.integration,
               pytest.mark.skipif(not BASE_URL, reason="integrazione: richiede un server attivo (REACT_APP_BACKEND_URL)")]
 
 
+_TIMEOUT_S = 10
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _origin(url: str):
+    """(schema, host, porta) di un URL, oppure None se non e' un http(s) valido."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in _DEFAULT_PORTS or not parsed.hostname:
+            return None
+        return parsed.scheme, parsed.hostname.lower(), parsed.port or _DEFAULT_PORTS[parsed.scheme]
+    except ValueError:
+        return None
+
+
 class _Guarded:
-    """requests.get/post, ma rifiuta prima di inviare se l'opt-in locale non c'e'."""
+    """GET/POST verso il solo server locale effimero dichiarato, mai altrove.
+
+    - opt-in locale obbligatorio (conftest.integration_allowed);
+    - l'URL EFFETTIVO di ogni richiesta deve avere lo stesso schema/host/porta di REACT_APP_BACKEND_URL;
+    - nessun redirect seguito (un 3xx e' un errore: nessuna seconda richiesta puo' partire);
+    - nessun proxy ereditato dall'ambiente (sessione con trust_env=False);
+    - timeout su ogni richiesta.
+    """
+
+    def __init__(self):
+        self._session = requests.Session()
+        self._session.trust_env = False
+        self._session.proxies = {}
 
     @staticmethod
-    def _check():
+    def _check(url):
         ok, why = integration_allowed()
         if not ok:
             raise RuntimeError("richiesta di integrazione bloccata: " + why)
+        base = _origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
+        target = _origin(url) if isinstance(url, str) else None
+        if base is None or target is None or target != base:
+            raise RuntimeError("richiesta di integrazione bloccata: l'URL non appartiene al server locale dichiarato")
 
-    def get(self, *a, **k):
-        self._check()
-        return requests.request('GET', *a, **k)
+    def _send(self, method, url, **kwargs):
+        self._check(url)
+        kwargs.pop("allow_redirects", None)
+        kwargs.pop("proxies", None)
+        kwargs.setdefault("timeout", _TIMEOUT_S)
+        resp = self._session.request(method, url, allow_redirects=False, **kwargs)
+        if 300 <= resp.status_code < 400:
+            raise RuntimeError("richiesta di integrazione bloccata: redirect rifiutato (nessun redirect viene seguito)")
+        return resp
 
-    def post(self, *a, **k):
-        self._check()
-        return requests.request('POST', *a, **k)
+    def get(self, url, **kwargs):
+        return self._send("GET", url, **kwargs)
+
+    def post(self, url, **kwargs):
+        return self._send("POST", url, **kwargs)
 
 
 http = _Guarded()

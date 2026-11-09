@@ -64,9 +64,76 @@ def test_no_secret_operational_or_remote_keywords():
     assert "${{ secrets" not in body and "github_token" not in body
 
 
-def test_only_official_actions_and_no_other_workflow_is_invoked():
+PINS = {
+    "actions/checkout": "11d5960a326750d5838078e36cf38b85af677262",
+    "actions/setup-python": "a26af69be951a213d495a4c3e4e4022e16d87065",
+    "actions/setup-node": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+    "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+}
+
+
+def test_only_the_four_official_actions_pinned_to_verified_commit_shas():
     uses = re.findall(r"(?m)^\s*-?\s*uses:\s*(\S+)", _yaml_text())
-    assert uses and all(u.startswith("actions/") for u in uses)
+    assert uses
+    for u in uses:
+        name, _, ref = u.partition("@")
+        assert name in PINS, f"azione non prevista: {name}"
+        assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{name} non e' fissata a uno SHA"
+        assert ref == PINS[name]
+    assert {u.partition("@")[0] for u in uses} == set(PINS)
+    doc = DOC.read_text(encoding="utf-8")
+    for sha in PINS.values():
+        assert sha in doc
+
+
+def _steps(job: str) -> list[str]:
+    """Testo di ciascuno step di un job, in ordine."""
+    jobs = _block(_no_comments(), "jobs")
+    m = re.search(rf"(?ms)^  {job}:\n(.*?)(?=^  \w+:\n|\Z)", jobs)
+    assert m, job
+    return re.split(r"(?m)^      - ", m.group(1))[1:]
+
+
+def test_network_namespace_preflight_runs_first_in_both_jobs_and_is_fail_fast():
+    for job in ("backend", "frontend"):
+        steps = _steps(job)
+        idx = next(i for i, st in enumerate(steps) if st.startswith("name: Preflight - empty network namespace"))
+        first_real = next(i for i, st in enumerate(steps)
+                          if "pytest" in st or "react-scripts" in st or "pip install" in st or "yarn install" in st)
+        assert idx < first_real, f"{job}: il preflight deve precedere installazione e test"
+        pre = steps[idx]
+        assert "set -euo pipefail" in pre
+        assert "sudo -n true" in pre and "command -v unshare" in pre and "command -v ip " in pre
+        assert "sudo -n unshare -n --" in pre and "ip link set lo up" in pre
+        assert "ENETUNREACH" in pre and "/proc/net/dev" in pre and "isolation-probe.invalid" in pre
+        assert "exit 1" in pre or "sys.exit(1)" in pre
+
+
+def test_there_is_no_fallback_that_runs_tests_with_an_open_network():
+    text = _no_comments()
+    assert "continue-on-error" not in text
+    guard = re.compile(r'\|\| \{ echo "::error::[^"\n]*"; exit 1; \}')
+    for line in text.splitlines():
+        if re.search(r"unshare|pytest|react-scripts", line):
+            # unico uso ammesso di "||": un controllo che stampa un errore ed esce con 1 (mai un ripiego)
+            assert "||" not in guard.sub("", line), line
+    for job in ("backend", "frontend"):
+        for st in _steps(job):
+            if "pytest" in st or "react-scripts test" in st or "react-scripts build" in st:
+                assert "sudo -n" in st and "unshare -n --" in st and "set -euo pipefail" in st or "build" in st
+                assert "if:" not in st.split("run:")[0]            # mai saltati o resi condizionali
+    for st in _steps("backend") + _steps("frontend"):
+        if "pytest backend/tests" in st or "react-scripts test" in st:
+            assert "unshare -n --" in st
+
+
+def test_pythonpath_is_explicit_absolute_and_forwarded_through_sudo():
+    env = _block(_no_comments(), "env")
+    assert "PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend" in env
+    run_step = next(st for st in _steps("backend") if "Offline backend suite" in st)
+    assert '"PYTHONPATH=$PYTHONPATH"' in run_step
+    check = next(st for st in _steps("backend") if "imports resolve" in st)
+    assert 'cd "$RUNNER_TEMP"' in check and "desk.cli" in check and "backend.v3_api" in check
 
 
 def test_integration_is_excluded_fail_closed_and_the_backend_url_is_empty():
@@ -75,7 +142,7 @@ def test_integration_is_excluded_fail_closed_and_the_backend_url_is_empty():
     assert re.search(r"(?m)^  REACT_APP_BACKEND_URL: ''$", env)
     assert re.search(r"(?m)^  SUPERBOT_ALLOW_INTEGRATION: '0'$", env)
     assert '-m "not integration"' in text and "--strict-markers" in text
-    assert text.count("unshare -n") == 3                           # pytest, jest, build: mai con rete
+    assert len(re.findall(r"unshare -n --", text)) == 5            # 2 sonde + pytest + jest + build: mai con rete
 
 
 def test_versions_and_scope():

@@ -16,10 +16,18 @@ Correzione (solo test, nessun codice applicativo):
   Host non locali, `0.0.0.0`, schemi diversi da http/https, trucchi come `127.0.0.1.evil.example` o `user@evil/127.0.0.1` sono rifiutati.
 - `backend/tests/test_superbot.py`: seconda barriera in codice (le chiamate passano da un wrapper che rifiuta prima di inviare senza opt-in);
   **password statica rimossa** dal file: il login di successo usa `SUPERBOT_TEST_PASSWORD` dall'ambiente (se manca, il test è saltato).
-- `backend/tests/test_ci_integration_guard.py` (nuovo, 17 test): un finto server su `127.0.0.1` **conta ogni richiesta**. Sottoprocessi pytest
+- **Wrapper HTTP rafforzato** (revisione ChatGPT #6747209165): oltre all'opt-in, controlla l'**URL effettivo** di ogni richiesta (stesso schema/host/porta di
+  `REACT_APP_BACKEND_URL`; `localhost` ≠ `127.0.0.1`, altra porta, altro schema, stringa vuota o non-stringa ⇒ rifiutato prima di inviare); **nessun redirect
+  seguito** (`allow_redirects=False`; un 3xx è un errore e non parte alcuna seconda richiesta); **nessun proxy ereditato** (`trust_env=False`, `proxies` del chiamante
+  ignorati); **timeout** su ogni richiesta (10 s, massimo 30).
+- `backend/tests/test_ci_integration_guard.py` (nuovo, 32 test): un finto server su `127.0.0.1` **conta ogni richiesta**. Sottoprocessi pytest
   selezionano `test_superbot.py` con l'URL del finto server o con `http://backend.invalid:9` / `https://staging.example.org`:
   senza opt-in **0 richieste, 0 POST, 9 skipped**; con `-m "not integration"` 9 deselected; opt-in con host non locale rifiutato; opt-in senza URL
-  inerte. Un **controllo positivo** (opt-in locale) prova che il contatore vede `GET /api/health` e `POST /api/bot/start`: senza questo "zero richieste"
+  inerte. In più, test in-process con un finto server che risponde `302` verso `sentinel.invalid`, `https://example.org`, un'altra porta locale e un URL relativo allo schema:
+  una spia su `HTTPAdapter.send` registra ogni richiesta (e non apre mai connessioni fuori dal server finto): con il wrapper **solo la richiesta al server finto**,
+  nessuna seconda richiesta; un controllo con una sessione `requests` normale mostra invece che il redirect verso la sentinella **partirebbe**. Stessa prova per i
+  proxy ereditati (variabili `HTTP(S)_PROXY` verso un secondo finto server: il controllo li usa, il wrapper no) e per il timeout. Con il wrapper precedente 14 di
+  questi test falliscono. Un **controllo positivo** (opt-in locale) prova che il contatore vede `GET /api/health` e `POST /api/bot/start`: senza questo "zero richieste"
   non dimostrerebbe nulla. Mutazione: neutralizzando le due barriere, 4 test falliscono (poi ripristinato).
 
 La password di bootstrap resta altrove nel repository (`backend/auth.py`, test di autenticazione che verificano che sia *rifiutata* come nuova password,
@@ -33,7 +41,8 @@ La password di bootstrap resta altrove nel repository (`backend/auth.py`, test d
 name: RC84 offline verification (TEST ONLY)
 
 # SOLO VERIFICA. Nessun segreto, nessun ssh/scp/docker/systemctl, nessun deploy, nessun altro workflow richiamato.
-# I test girano in un namespace di rete vuoto (nessuna richiesta esterna possibile, nemmeno verso Bitget).
+# Test e build girano in un namespace di rete vuoto (nessuna richiesta esterna possibile, nemmeno verso Bitget).
+# Se il namespace non funziona il job FALLISCE: non esiste alcun ripiego che esegua i test con la rete aperta.
 on:
   workflow_dispatch:
     inputs:
@@ -60,6 +69,8 @@ env:
   TRADING_MODE: paper
   DESK_MACRO_FETCH: '0'
   PYTHONDONTWRITEBYTECODE: '1'
+  # Percorsi ASSOLUTI (equivalenti a ".:backend"): non dipendono dalla cwd, che alcuni test cambiano temporaneamente.
+  PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
 
 jobs:
   backend:
@@ -67,7 +78,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      # Azioni ufficiali fissate a commit SHA (tag nel commento).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -80,18 +92,59 @@ jobs:
           if [ -n "$EXPECTED_SHA" ] && [ "$(git rev-parse HEAD)" != "$EXPECTED_SHA" ]; then
             echo "::error::checkout SHA differs from expected_sha"; exit 1
           fi
-      - uses: actions/setup-python@v5
+      - name: Preflight - empty network namespace (fail fast, no fallback)
+        run: |
+          set -euo pipefail
+          command -v unshare >/dev/null || { echo "::error::unshare not available"; exit 1; }
+          command -v ip >/dev/null || { echo "::error::ip (iproute2) not available"; exit 1; }
+          sudo -n true || { echo "::error::passwordless sudo not available"; exit 1; }
+          { uname -r; . /etc/os-release; echo "$PRETTY_NAME"; id -un; ip -V; unshare --version
+            sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo "apparmor userns sysctl: n/a"; } | sed 's/^/diag: /'
+          cat > "$RUNNER_TEMP/netns_probe.py" <<'PY'
+          import errno, socket, sys
+          def fail(msg):
+              print("::error::" + msg); sys.exit(1)
+          ifaces = [l.split(":")[0].strip() for l in open("/proc/net/dev").read().splitlines()[2:]]
+          if ifaces != ["lo"]:
+              fail(f"namespace not isolated: interfaces={ifaces}")
+          if open("/proc/net/route").read().splitlines()[1:]:
+              fail("namespace has routes")
+          try:
+              srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(1)
+              socket.create_connection(("127.0.0.1", srv.getsockname()[1]), timeout=2).close(); srv.close()
+          except OSError as exc:
+              fail(f"loopback is not usable: {exc}")
+          try:
+              socket.create_connection(("192.0.2.1", 80), timeout=2)
+              fail("external connection is possible")
+          except OSError as exc:
+              if exc.errno != errno.ENETUNREACH:
+                  fail(f"unexpected error {exc.errno}")
+          try:
+              socket.getaddrinfo("isolation-probe.invalid", 443)
+              fail("name resolution is possible")
+          except socket.gaierror:
+              pass
+          print("network namespace ok: loopback usable, no external route, no name resolution")
+          PY
+          sudo -n unshare -n -- bash -euo pipefail -c 'ip link set lo up; python3 "$0"' "$RUNNER_TEMP/netns_probe.py"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Install declared dependencies
         run: python -m pip install --no-input -r backend/requirements.txt
+      - name: Check imports resolve from any working directory
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          python -c "import desk.cli, desk_view, live_view, backend.v3_api, backend.v3.runner.wiring, backend.tests.conftest; print('imports ok from', __import__('os').getcwd())"
       - name: Offline backend suite (integration excluded, empty network namespace)
         run: |
+          set -euo pipefail
           mkdir -p reports
-          # Namespace di rete vuoto: solo loopback. Nessuna richiesta esterna e' possibile.
-          sudo -E env "PATH=$PATH" unshare -n -- bash -c '
+          sudo -n env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" unshare -n -- bash -euo pipefail -c '
             ip link set lo up
             python -m pytest backend/tests -m "not integration" --strict-markers -p no:cacheprovider \
               -q -rfsxX --junitxml=reports/backend-junit.xml 2>&1 | tee reports/backend.log
@@ -126,7 +179,7 @@ jobs:
           bad = n["failed"] or n["error"] or n["xpassed"] or integration_ran
           sys.exit(1 if bad else 0)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: backend-reports
@@ -141,12 +194,46 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 1
-      - uses: actions/setup-node@v4
+      - name: Preflight - empty network namespace (fail fast, no fallback)
+        run: |
+          set -euo pipefail
+          command -v unshare >/dev/null || { echo "::error::unshare not available"; exit 1; }
+          command -v ip >/dev/null || { echo "::error::ip (iproute2) not available"; exit 1; }
+          sudo -n true || { echo "::error::passwordless sudo not available"; exit 1; }
+          cat > "$RUNNER_TEMP/netns_probe.py" <<'PY'
+          import errno, socket, sys
+          def fail(msg):
+              print("::error::" + msg); sys.exit(1)
+          ifaces = [l.split(":")[0].strip() for l in open("/proc/net/dev").read().splitlines()[2:]]
+          if ifaces != ["lo"]:
+              fail(f"namespace not isolated: interfaces={ifaces}")
+          if open("/proc/net/route").read().splitlines()[1:]:
+              fail("namespace has routes")
+          try:
+              srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(1)
+              socket.create_connection(("127.0.0.1", srv.getsockname()[1]), timeout=2).close(); srv.close()
+          except OSError as exc:
+              fail(f"loopback is not usable: {exc}")
+          try:
+              socket.create_connection(("192.0.2.1", 80), timeout=2)
+              fail("external connection is possible")
+          except OSError as exc:
+              if exc.errno != errno.ENETUNREACH:
+                  fail(f"unexpected error {exc.errno}")
+          try:
+              socket.getaddrinfo("isolation-probe.invalid", 443)
+              fail("name resolution is possible")
+          except socket.gaierror:
+              pass
+          print("network namespace ok: loopback usable, no external route, no name resolution")
+          PY
+          sudo -n unshare -n -- bash -euo pipefail -c 'ip link set lo up; python3 "$0"' "$RUNNER_TEMP/netns_probe.py"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: yarn
@@ -155,15 +242,16 @@ jobs:
         run: yarn install --frozen-lockfile --ignore-engines --network-timeout 300000
       - name: Jest (empty network namespace)
         run: |
+          set -euo pipefail
           mkdir -p ../reports
-          sudo -E env "PATH=$PATH" unshare -n -- bash -c '
+          sudo -n env "PATH=$PATH" unshare -n -- bash -euo pipefail -c '
             CI=true npx --no-install react-scripts test --watchAll=false --runInBand \
               --json --outputFile=../reports/jest.json'
-      - name: Build (CI=true)
+      - name: Build (CI=true, empty network namespace)
         env:
           CI: 'true'
           BUILD_PATH: ${{ runner.temp }}/rc84-build
-        run: sudo -E env "PATH=$PATH" unshare -n -- npx --no-install react-scripts build
+        run: sudo -n env "PATH=$PATH" "CI=$CI" "BUILD_PATH=$BUILD_PATH" "REACT_APP_BACKEND_URL=" unshare -n -- npx --no-install react-scripts build
       - name: Report
         if: always()
         working-directory: .
@@ -182,7 +270,7 @@ jobs:
           print(md)
           sys.exit(1 if r["numFailedTests"] or r["numFailedTestSuites"] else 0)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: frontend-reports
@@ -191,13 +279,29 @@ jobs:
 ```
 
 ### Sicurezza della pipeline (verificata anche da `backend/tests/test_v3_rc84_ci_proposal.py`)
-- `permissions: contents: read`; nessun `secrets.*`, nessun `GITHUB_TOKEN` esplicito oltre al default in sola lettura, nessun `persist-credentials`.
+- `permissions: contents: read`; nessun `secrets.*`, nessun `GITHUB_TOKEN` esplicito oltre al default in sola lettura, `persist-credentials: false`.
 - Nessun `ssh`, `scp`, `rsync`, `docker`, `systemctl`, `curl`, `deploy`; nessun `workflow_call`, `workflow_run`, `repository_dispatch`, `uses: ./.github/...`.
-- Azioni di terze parti: solo `actions/*` ufficiali.
+- **Azioni ufficiali fissate a commit SHA** (vedi sotto), nessuna azione nuova o di terzi: `actions/checkout`, `setup-python`, `setup-node`, `upload-artifact`.
 - `REACT_APP_BACKEND_URL` **vuota** e `SUPERBOT_ALLOW_INTEGRATION=0` a livello di workflow; `-m "not integration"` **e** barriera in `conftest.py`.
-- I test girano in un **namespace di rete vuoto** (`unshare -n`): nessuna richiesta esterna possibile, nemmeno verso Bitget. Provato in sandbox: connessione
-  a un IP esterno → `OSError`, risoluzione DNS di `api.bitget.com` → `gaierror`. Le dipendenze si installano **prima**, in step separati con rete.
+- **Preflight fail-fast del namespace di rete**, in entrambi i job, **prima** di installare o testare: diagnostica (`uname`, release, utente, `ip -V`, `unshare --version`,
+  sysctl AppArmor sugli user namespace), poi verifica che `unshare`, `ip` e `sudo -n` esistano, poi una sonda dentro `sudo -n unshare -n` che richiede: solo
+  l'interfaccia `lo`, nessuna rotta, loopback usabile (bind+connect), connessione verso `192.0.2.1` (RFC 5737) = `ENETUNREACH`, risoluzione di `isolation-probe.invalid` fallita.
+  Qualunque anomalia ⇒ `exit 1` e il job si ferma. **Non esiste alcun ripiego**: nessun `||`, nessun `continue-on-error`, nessun passo che esegua test senza il namespace.
+- Test, Jest e build girano in `sudo -n unshare -n` con `set -euo pipefail`; le dipendenze si installano **prima**, in step separati con rete.
+- **`PYTHONPATH` esplicito e assoluto** (`<workspace>:<workspace>/backend`, equivalente a `.:backend` ma immune ai test che cambiano cwd) e passato esplicitamente a `sudo env`.
+  Un passo dedicato verifica che `desk.cli`, `desk_view`, `live_view`, `backend.v3_api`, `backend.v3.runner.wiring` e `backend.tests.conftest` si importino da una cartella estranea.
 - Il job fallisce se un qualunque test di `test_superbot` risulta eseguito, se c'è un `failed`/`error`/`xpassed`, o se l'SHA del checkout non è quello atteso.
+
+### Pin delle azioni (verificati il 09/11/2026 con `git ls-remote` in sola lettura sui repository ufficiali, poi `git fetch --depth 1` del commit)
+| azione | tag | commit SHA | data del commit | verifica |
+|---|---|---|---|---|
+| `actions/checkout` | v4 (= v4.4.0) | `11d5960a326750d5838078e36cf38b85af677262` | 2026-07-16 | il tag `v4` e il patch più alto `v4.4.0` puntano allo stesso commit; oggetto `commit` |
+| `actions/setup-python` | v5 (= v5.6.0) | `a26af69be951a213d495a4c3e4e4022e16d87065` | 2025-04-23 | idem (`v5.6.0`) |
+| `actions/setup-node` | v4 (= v4.4.0) | `49933ea5288caeca8642d1e84afbd3f7d6820020` | 2025-04-02 | idem (`v4.4.0`) |
+| `actions/upload-artifact` | v4 (= v4.6.2) | `ea165f8d65b6e75b540449e92b4886f43607fa02` | 2025-03-19 | idem (`v4.6.2`) |
+
+Restano sulla **stessa serie maggiore** già usata dagli altri workflow del repository (nessun cambio di comportamento). Limite: la verifica prova che il tag ufficiale punta a quel commit
+*oggi*; non sostituisce una revisione del contenuto delle azioni. Rieseguire il controllo al momento della pubblicazione e prima di ogni aggiornamento.
 
 ### Quale evento lo attiverebbe, una volta approvato
 1. **`push` sul solo ramo `cursor/rc84-running-stop-health-telegram-20261108`, e solo se il push modifica `.github/workflows/rc84-offline-verify.yml`.**
@@ -219,8 +323,10 @@ Lo SHA verificato è quello del commit che contiene il workflow (`github.sha`): 
 ## 4. Risultati attesi e verificati in sandbox (Python 3.11, stessi comandi del YAML, namespace di rete vuoto)
 | | atteso | verificato localmente |
 |---|---|---|
-| backend `-m "not integration"` | 6 935 passed (6 910 + 17 test di guardia + 8 test della proposta), 3 xfailed, 9 deselected, 0 failed | **6 935 passed, 0 failed, 3 xfailed, 9 deselected** in un namespace di rete vuoto (loopback riattivato con `ioctl` perché qui manca `ip`; un primo run senza loopback aveva 6 926 passed + 1 failed nel solo test di controllo positivo, che richiede il loopback) |
+| backend `-m "not integration"` | 6 960 passed (6 910 + 32 guardia integrazione + 11 proposta + 7 import/ordine), 3 xfailed, 9 deselected, 0 failed | **6 960 passed, 0 failed, 3 xfailed, 9 deselected** in un namespace di rete vuoto, `PYTHONPATH` assoluto, sia in ordine alfabetico sia con i file di test in ordine **inverso** (loopback riattivato con `ioctl`: qui manca `ip`) |
 | auth/profiles | inclusi | inclusi |
+| import da cwd estranea, ordine dei test (avanti / inverso / ruotato / mescolato) | PASS | 7 test PASS (`test_v3_rc84_import_paths.py`), `PYTHONPATH` relativo da altra cwd fallisce come documentato |
+| sonda del namespace (stesso codice del YAML) | OK dentro, errore fuori, errore senza loopback | verificato nei tre casi (loopback attivato con `ioctl`: qui manca `ip`) |
 | Jest (Node 22) | 124 passed, 0 failed, 14 suite | 124 / 0 / 14 |
 | build `CI=true` | Compiled successfully | Compiled successfully |
 | `actionlint` 1.7.12 sul YAML | nessun avviso | nessun avviso |
@@ -228,8 +334,8 @@ Lo script di report è stato provato su tre junit: reale (exit 1 per il FAIL), p
 Il run su GitHub **non è stato eseguito**: questi sono risultati locali, non una CI.
 
 ## 5. Limiti e punti aperti
-- **Pin delle azioni**: il YAML usa tag (`@v4`, `@v5`); all'approvazione vanno sostituiti con SHA di commit verificati (qui non verificabili offline).
-- `ip link set lo up` e `sudo unshare -n` assumono un runner `ubuntu-24.04` con `sudo` senza password e `iproute2` (standard sui runner ospitati da GitHub); non provati su un runner reale.
+- **Pin delle azioni**: SHA verificati qui sopra; da riverificare alla pubblicazione. I commenti `# vX.Y.Z` accanto agli SHA sono solo informativi.
+- **Da verificare solo su un runner GitHub reale** (non provabile qui): `ip link set lo up`, `sudo -n unshare -n` e `iproute2` su `ubuntu-24.04` ospitato, eventuali limiti AppArmor/namespace, comportamento di `setup-python`/`setup-node`/cache, upload degli artefatti. Il preflight è pensato per far fallire subito il job con una diagnostica leggibile; se fallisce, **non** si ripiega sui test con rete: si discute un'alternativa revisionabile (es. runner con rete controllata) prima di riprovare.
 - Il namespace vuoto non impedisce a un test di *tentare* connessioni (falliranno): è il comportamento voluto; nessun test attuale ne dipende.
 - Il job gira come root dentro `unshare`: i file in `reports/` risultano di root (irrilevante per gli step seguenti).
 - **Workflow operativi presenti nel repository**: `v3-stop-paper-workers.yml` e `v3-vps-inventory.yml` hanno un trigger `push` su `main`; una futura fusione in `main` li farebbe partire. Decisione da prendere prima di qualsiasi merge.

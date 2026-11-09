@@ -130,3 +130,161 @@ def test_the_integration_module_contains_no_static_password_and_refuses_unguarde
         test_superbot.http.post("http://127.0.0.1:9/api/bot/start")
     with pytest.raises(RuntimeError, match="bloccata"):
         test_superbot.http.get("http://127.0.0.1:9/api/health")
+
+
+# ---------------------------------------------------------------- redirect, proxy, URL effettivo, timeout (in-process)
+
+import requests
+from requests.adapters import HTTPAdapter
+
+
+class _Redirecting(BaseHTTPRequestHandler):
+    seen: list = []
+    location = "http://sentinel.invalid:9/leak"
+
+    def _answer(self):
+        type(self).seen.append((self.command, self.path))
+        if self.path.startswith("/redir"):
+            self.send_response(302)
+            self.send_header("Location", type(self).location)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        body = b'{"status":"ok"}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_GET = do_POST = _answer
+
+    def log_message(self, *a):
+        pass
+
+
+def _serve(handler_cls):
+    handler = type("H", (handler_cls,), {"seen": []})
+    srv = HTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, handler
+
+
+@pytest.fixture
+def origin():
+    srv, handler = _serve(_Redirecting)
+    try:
+        yield f"http://127.0.0.1:{srv.server_address[1]}", handler
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+@pytest.fixture
+def spy(monkeypatch, origin):
+    """Registra ogni richiesta inviata. Verso il server finto passa davvero; verso QUALSIASI altro URL non fa
+    nessuna connessione: registra e risponde con una risposta finta (cosi' il test non tocca mai la rete)."""
+    url, _ = origin
+    host_port = url.split("//", 1)[1]
+    calls = []
+    real_send = HTTPAdapter.send
+
+    def fake_send(self, request, **kwargs):
+        calls.append({"url": request.url, "timeout": kwargs.get("timeout"), "proxies": kwargs.get("proxies")})
+        if request.url.split("//", 1)[1].split("/", 1)[0] == host_port:
+            return real_send(self, request, **kwargs)
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = b"{}"
+        resp.url = request.url
+        resp.request = request
+        return resp
+
+    monkeypatch.setattr(HTTPAdapter, "send", fake_send)
+    monkeypatch.setenv("SUPERBOT_ALLOW_INTEGRATION", "1")
+    monkeypatch.setenv("REACT_APP_BACKEND_URL", url)
+    return calls
+
+
+def _guarded():
+    from backend.tests import test_superbot
+    return test_superbot.http
+
+
+@pytest.mark.parametrize("target", [
+    "http://sentinel.invalid:9/leak",                      # host non locale
+    "https://example.org/leak",                            # https esterno
+    "http://127.0.0.1:1/leak",                             # altro server locale (altra porta)
+    "//evil.invalid/leak",                                 # relativo allo schema
+])
+def test_a_redirect_to_another_host_is_refused_and_no_second_request_is_ever_sent(origin, spy, target):
+    url, handler = origin
+    handler.location = target
+    with pytest.raises(RuntimeError, match="redirect rifiutato"):
+        _guarded().get(url + "/redir")
+    with pytest.raises(RuntimeError, match="redirect rifiutato"):
+        _guarded().post(url + "/redir")
+    assert [c["url"] for c in spy] == [url + "/redir", url + "/redir"]     # solo le due richieste al server finto
+    assert handler.seen == [("GET", "/redir"), ("POST", "/redir")]
+    handler.location = "http://sentinel.invalid:9/leak"
+
+
+def test_control_a_plain_requests_session_does_follow_the_redirect_to_the_sentinel(origin, spy):
+    """Controllo positivo: senza il wrapper il redirect parte davvero (la spia lo vede, senza connessione reale)."""
+    url, _ = origin
+    session = requests.Session()
+    session.trust_env = False
+    session.get(url + "/redir", timeout=5)
+    assert "http://sentinel.invalid:9/leak" in [c["url"] for c in spy]
+
+
+@pytest.mark.parametrize("bad", [
+    "http://localhost:{port}/x",              # stesso loopback ma host diverso da quello dichiarato
+    "http://127.0.0.1:{other}/x",             # altra porta
+    "https://127.0.0.1:{port}/x",             # altro schema
+    "ftp://127.0.0.1:{port}/x",
+    "http://sentinel.invalid:{port}/x",
+    "http://127.0.0.1.evil.invalid:{port}/x",
+    "",
+    None,
+])
+def test_a_request_whose_effective_url_is_not_the_declared_server_is_refused_before_sending(origin, spy, bad):
+    url, handler = origin
+    port = int(url.rsplit(":", 1)[1])
+    target = bad.format(port=port, other=port + 1) if isinstance(bad, str) else bad
+    with pytest.raises(RuntimeError, match="bloccata"):
+        _guarded().get(target)
+    with pytest.raises(RuntimeError, match="bloccata"):
+        _guarded().post(target)
+    assert spy == [] and handler.seen == []
+
+
+def test_inherited_proxies_are_not_used(origin, spy, monkeypatch):
+    url, handler = origin
+    proxy_srv, proxy_handler = _serve(_Redirecting)
+    try:
+        proxy_url = f"http://127.0.0.1:{proxy_srv.server_address[1]}"
+        for var in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+            monkeypatch.setenv(var, proxy_url)
+        for var in ("NO_PROXY", "no_proxy"):
+            monkeypatch.setenv(var, "")
+        plain = requests.Session()                           # controllo: sessione che eredita l'ambiente
+        plain.get(url + "/ok", timeout=5)
+        assert any(c["proxies"] for c in spy), "il controllo avrebbe dovuto usare il proxy ereditato"
+        spy.clear()
+        _guarded().get(url + "/ok")
+        assert all(not c["proxies"] for c in spy)            # nessun proxy applicato dal wrapper
+        assert [c["url"] for c in spy] == [url + "/ok"]
+    finally:
+        proxy_srv.shutdown()
+        proxy_srv.server_close()
+
+
+def test_every_request_has_a_bounded_timeout(origin, spy):
+    url, _ = origin
+    _guarded().get(url + "/ok")
+    _guarded().post(url + "/ok")
+    assert all(c["timeout"] is not None and 0 < c["timeout"] <= 30 for c in spy) and len(spy) == 2
+    spy.clear()
+    _guarded().get(url + "/ok", timeout=3, allow_redirects=True, proxies={"http": "http://evil.invalid:1"})
+    assert spy[0]["timeout"] == 3 and not spy[0]["proxies"]  # allow_redirects e proxies passati dal chiamante vengono ignorati
