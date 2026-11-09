@@ -1,3 +1,13 @@
+## 09/11/2026 (22:20) — SICUREZZA GITHUB, FASE 1B: ALTRI 13 WORKFLOW OBSOLETI DISATTIVATI VIA API (15 IN TOTALE); IN ATTESA DI REVISIONE CHATGPT
+
+**Claude Opus 5.5** · autorizzato dall'utente · solo GitHub, nessun accesso alle VPS · nessun secret, codice, branch o file trigger modificato · nessun merge, deploy, riavvio · HiTV non toccato · PR #80 invariata (Draft, `0e29a73`).
+
+**Fatto.** Disattivati con l'API ufficiale 13 workflow delle vecchie procedure del server dismesso (nessuno in esecuzione, ultimo uso a ottobre); verificati uno per uno: `disabled_manually`. Le due disattivazioni della fase 1 persistono. Totale disattivati: 15 su 269. Workflow CI, backup, sentinelle e diagnostica di Singapore lasciati attivi.
+
+**Aperto.** Revoca della vecchia chiave e verifiche sui server (fase 2) solo dopo la revisione di ChatGPT e con OK dell'utente. Dettagli solo nel Project privato.
+
+---
+
 ## 09/11/2026 (22:15) — SICUREZZA GITHUB, FASE 1: DUE WORKFLOW OBSOLETI DISATTIVATI VIA API; IN ATTESA DI REVISIONE CHATGPT
 
 **Claude Opus 5.5** · autorizzato dall'utente · solo GitHub, nessun accesso alle VPS · nessun merge, deploy, riavvio, commit sul codice · HiTV non toccato · PR #80 invariata (Draft, `0e29a73`).
