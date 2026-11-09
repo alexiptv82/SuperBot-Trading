@@ -5,6 +5,11 @@ import time
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
+# Test di INTEGRAZIONE: parlano con un server in esecuzione e usano la password di bootstrap.
+# Senza REACT_APP_BACKEND_URL vengono SALTATI (mai contati come superati); non fanno parte della suite offline.
+pytestmark = [pytest.mark.integration,
+              pytest.mark.skipif(not BASE_URL, reason="integrazione: richiede un server attivo (REACT_APP_BACKEND_URL)")]
+
 class TestHealth:
     def test_health(self):
         r = requests.get(f"{BASE_URL}/api/health")

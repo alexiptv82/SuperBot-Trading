@@ -256,11 +256,16 @@ def _claim_reconciliation(state: dict, hb: dict | None) -> dict:
         hb_conflict = claims_hb.get('conflict')
         if type(hb_conflict) is list:
             conflict = max(conflict, min(len(hb_conflict), 10_000))
+    hb_pending = claims_hb.get('pending') if fresh and isinstance(claims_hb, dict) else None
     out['conflict_count'] = conflict
     out['pending_count'] = max(0, pending)
     out['affected_symbols'] = sorted(symbols)[:_RECON_MAX_SYMBOLS]
     out['checkpointed_not_final'] = bool(pending or conflict)
     out['state'] = 'conflict' if conflict else ('pending' if pending else 'ok')
+    # Snapshot divergenti: l'heartbeat fresco dichiara claim in attesa ma lo stato su disco non ne mostra.
+    # Non e' dimostrabile che sia tutto riconciliato: mai 'ok'.
+    if out['state'] == 'ok' and type(hb_pending) is int and hb_pending > 0:
+        out['state'] = 'unknown'
     return out
 
 

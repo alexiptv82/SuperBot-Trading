@@ -169,3 +169,22 @@ def test_reading_the_overview_never_modifies_state_or_registers(tmp_path):
     _overview(client)
     after = {p.name: p.read_bytes() for p in d.iterdir()}
     assert before == after
+
+
+# ---------------------------------------------------------------- snapshot divergenti
+
+def test_fresh_heartbeat_with_pending_claims_but_clean_state_is_never_ok():
+    r = _claim_reconciliation(_state([]), _hb(paper_close_claims={"pending": 2, "conflict": []}))
+    assert r["state"] == "unknown" and r["pending_count"] == 0
+
+
+def test_stale_or_invalid_heartbeat_claims_do_not_change_a_clean_state():
+    stale = {"age_s": 9999.0, "paper_close_claims": {"pending": 3, "conflict": []}}
+    assert _claim_reconciliation(_state([]), stale)["state"] == "ok"
+    for bad in ({"pending": "3"}, {"pending": True}, {"pending": -1}, {"pending": 0}, "x", None):
+        assert _claim_reconciliation(_state([]), _hb(paper_close_claims=bad))["state"] == "ok"
+
+
+def test_agreeing_snapshots_stay_pending_and_a_heartbeat_pending_zero_confirms_ok():
+    assert _claim_reconciliation(_state([_claim()]), _hb(paper_close_claims={"pending": 1, "conflict": []}))["state"] == "pending"
+    assert _claim_reconciliation(_state([]), _hb(paper_close_claims={"pending": 0, "conflict": []}))["state"] == "ok"
