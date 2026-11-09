@@ -23,3 +23,12 @@ Claude riferisce nuovi 11 test (6 fail senza patch), backend esteso **6.801 PASS
 6. Backup off-host + restore, preflight VPS in sola lettura con OK specifico, nuovi portafogli PAPER Falco/Toro 1000 USDT e Brain 2000 USDT preservando storico, release/dipendenze e riavvio solo con OK utente.
 
 **No merge, deploy, VPS, restart, reset, ordini effettuati. PR #80 resta DRAFT.**
+
+
+## Controllo di ascendenza GitHub (solo lettura)
+Il confronto dei commit dimostra che l'HEAD PR #80 `0637e01b...` **discende già** da:
+- PR #74 Brain manual close `91214f9064ee2fba478a5c4fcdf5efc3f21a707b` (compare: ahead 59, behind 0);
+- PR #77 RC80 `50b75b9643680b9c758047d3890f3599b051f325` (ahead 41, behind 0);
+- PR #78 RC81 `29eb75750625a8819cd2db71dc2459d164c3199c` (ahead 27, behind 0);
+- PR #79 RC82 `1e64684b9d813aad1ca1c7d344872333e451fd05` (base diretta PR #80).
+Quindi non serve ricopiare la PR #74 dentro RC84: è un antenato nella storia Git. **Questo non certifica la catena di deploy né Brain exit-worker single-owner.** Tutte le PR consultate risultano Draft e non mergeate, gli effettivi gate di release restano da verificare.
