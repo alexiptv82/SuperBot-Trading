@@ -102,3 +102,28 @@ La suite estesa **non è verde**: i 32 FAIL sono preesistenti (20 `test_brain_f3
 La suite estesa **non è verde**: i 32 FAIL sono preesistenti (20 `test_brain_f3_boundaries.py`, 1 `test_desk_view.py`, 1 `test_live_view.py`, 1 `test_long_s25.py` hash di `brain.py`, 9 `test_superbot.py` server live).
 
 **Limiti**: la riconciliazione immediata aggiunge due salvataggi di stato per ogni chiusura non protettiva (comportamento atteso, non temporale); un claim in conflitto continua a richiedere un intervento umano; nessuna UI per i claim; gate RC84 aperti invariati (browser autenticato/Android, sidecar Brain, backup off-host, nuova run solo con OK).
+
+---
+
+# D1 — visibilità dei claim contabili (09/11/2026, base `0637e01b2b41a4c89fdbe7473bdc867ee5c58860`, revisione ChatGPT #6740016283)
+
+**Commit codice+test: `973fe5722b7c7b8dee8cb25d273c24406652b8bb`.** Solo lettura; motore contabile, claim, strategie, AI, LIVE e Brain invariati.
+
+**Backend** — `GET /api/v3/overview` (già autenticato) aggiunge a Falco e Toro `close_reconciliation`:
+`{state: ok|pending|conflict|unknown, pending_count, conflict_count, affected_symbols (≤8, solo [A-Za-z0-9]{1,16}, ordinati, unici), checkpointed_not_final}`.
+- `ok`: `paper_close_claims` vuoto/assente in uno stato leggibile; `pending`: claim non provati; `conflict`: claim con `status=conflict` (o conflitto annotato nell'heartbeat se fresco, < 120 s); `unknown`: stato mancante/vuoto o claim malformati — mai `ok` per default.
+- Non esposti: `claim_id`, record `rec`, importi, motivi, notifiche. Il Brain non riceve il campo. Nessuna rotta nuova: le rotte restano 5 GET + l'unica POST preesistente `/brain/close`.
+
+**Dashboard** — nuovo `ClaimReconciliationNotice` (`role="alert"`, solo testo, nessun controllo): mostrato in **I tre portafogli** e in **Classici** (Falco/Toro) anche con zero posizioni. Testi distinti per `pending` / `conflict` (intervento umano; aperture, DCA e reset bloccati) / `unknown`. Dice che equity, P&L e trade chiusi «possono includere chiusure non ancora definitive» e che i valori non vengono azzerati né ricalcolati (nessun importo toccato). Overview non raggiungibile o campo mancante → «non verificabile»; portafoglio `not_started` → nessun banner `unknown` (un conflitto resta sempre visibile). Layout, chiusure manuali e `ClassicStopNotice` invariati (i due file `ClassicStopNotice*` non toccati).
+
+**Test**: `backend/tests/test_v3_rc84_claim_visibility.py` (19: pura, endpoint autenticato/401, solo GET, sola lettura di file, Brain assente, recupero, simboli, claim malformati); `ClaimReconciliationNotice.test.js` (11) + 4 test in `ThreePortfoliosNavigation.test.js` (zero posizioni con Brain giù, conflitto→riconciliato, overview assente, nessun controllo/POST).
+
+| | audit `0637e01` (Python 3.11, completo) | `973fe57` |
+|---|---|---|
+| backend | 6 841 PASS / 34 FAIL / 3 xfail | **6 860 PASS / 34 FAIL / 3 xfail** |
+| insieme dei FAIL | — | identico (0 nuovi, 0 risolti) |
+| Jest | 109/109 | **124/124** (14 suite) |
+| build `CI=true` | Compiled successfully | Compiled successfully |
+
+I 34 FAIL **non sono superati**: 20 `test_brain_f3_boundaries.py` (fixture obsoleta), 1 `test_desk_view.py`, 1 `test_live_view.py`, 1 `test_long_s25.py` (hash `brain.py`), 9 `test_superbot.py` (server live), 2 `test_v3_rc80_paper_stop_hardening.py` (`os.chdir` all'import di auth/profiles).
+**Limiti**: `status=conflict` si vede nell'overview solo se persistito nello stato o annotato nell'heartbeat fresco; nessuna procedura operativa scritta per i conflitti; nessuna prova in browser autenticato/Android; D2 e gli altri gate dell'audit restano aperti.
