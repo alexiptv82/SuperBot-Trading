@@ -1,3 +1,13 @@
+## 09/11/2026 (23:30) — BACKUP ESTERNO: CORREZIONE "BOT FERMI" PREPARATA E PROVATA OFFLINE; NON INSTALLATA; IN ATTESA DI REVISIONE CHATGPT
+
+**Claude Sonnet 5.5** · solo GitHub e prove offline · nessuna connessione alle VPS, nessun workflow avviato, nessuna installazione · HiTV non toccato · bot non avviati · PR #80 invariata (Draft, `0e29a73`).
+
+**Fatto.** Individuata la causa: il job notturno del backup esterno parte da un piccolo script di avvio (`run.sh`) che non passa mai la modalità "bot fermi" che il programma di backup già possiede. Preparata una correzione minima su un solo file: lo script sceglie la modalità solo se docker dimostra che entrambi i bot sono fermi, altrimenti resta il percorso normale; il programma di backup continua a rifiutare se un bot risulta attivo. Ramo `work/extbackup-bot-stopped-20261109` (commit `a1e7edb`, senza avviare workflow). Prove offline: 32 nuove, 180 verdi in totale. Una prova ha scoperto un errore di sintassi nella forma dell'opzione, già corretto. Preparati un controllo in sola lettura e la procedura di installazione e rollback.
+
+**Aperto.** Revisione di ChatGPT e OK dell'utente prima di installare qualunque cosa sul server. L'estensione del backup a Brain V3 resta un lavoro separato, non iniziato. Dettagli solo nel Project privato.
+
+---
+
 ## 09/11/2026 (22:50) — SICUREZZA, FASE 2 PREFLIGHT VPS: BLOCCATO (NESSUN ACCESSO SSH DA QUESTA SESSIONE); BACKUP ESTERNO FERMO DAL 2/11
 
 **Claude Opus 5.5** · solo letture su GitHub · nessuna connessione alle VPS, nessun workflow avviato o creato, nessuna modifica · HiTV non toccato · bot non avviati.
