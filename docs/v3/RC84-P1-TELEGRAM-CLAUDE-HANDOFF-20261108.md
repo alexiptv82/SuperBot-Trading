@@ -157,3 +157,48 @@ Frontend non modificato (Jest 124/124 e build attestati su `973fe57`). Template 
 3. Due runner `sidecar` sulla stessa run non sono esclusi da questo lease (non possiedono chiusure; le aperture restano serializzate da `open_serial`), ma scriverebbero lo stesso `heartbeat.json`.
 4. Unità systemd e procedura: **non installate né provate su un sistema reale**; segnaposto da verificare; servono mandato, backup off-host e preflight VPS read-only.
 5. Restano aperti gli altri gate dell'audit (34 FAIL preesistenti, CI 3.11, browser/Android, staging, release candidate pinned).
+
+---
+
+# Bonifica della suite backend (Python 3.11) e preparazione CI (09/11/2026, base `8e3dbb9c65b41dc37395081b8771e315d3f4365c`)
+
+**Commit codice+test: `480cd53002d363432cac9790349e575bcd04d39a`.** D1 e D2 invariati. Nessuna modifica a strategie, AI, motore, leve, size, risk manager, PnL o storici.
+
+## Interventi (uno per uno)
+| # | File | Intervento | Natura |
+|---|---|---|---|
+| 1 | `tests/test_brain_f3_boundaries.py` | `PolicyFixture` con `max_loss_margin_fraction=None`, `min_leverage=1`, `max_leverage=125` = default di `RiskPolicy`: l'hash storico di `_policy_hash` non cambia, nessun limite di rischio cambia. Controllo "denti": disattivando la verifica della firma in una copia, 4 test falliscono (poi ripristinato). | solo test |
+| 2 | `tests/test_auth_flow.py`, `test_profiles_engine.py` | `os.chdir(_TMP)` resta solo per gli import, poi ripristino; fixture autouse di modulo che entra in `_TMP` durante i test del modulo e ripristina in uscita. I test RC80 dei lock (sottoprocesso con `PYTHONPATH` relativo) passano in qualunque ordine (verificato anche con auth/profiles prima). | solo test |
+| 3 | `live_view.py` | `can_close_position(hb, now)`: propaga l'orologio già passato a `build_portfolio`. Con `now=None` (produzione) comportamento identico. | applicativo, minimo |
+| 4 | `desk_view.py` | `command_close_position`: bot con heartbeat fresco ma senza chiusura singola → 409 con `CLOSE_OLD_BOT_MESSAGE` (prima: «non risponde», il messaggio era irraggiungibile). Sempre 409, nessun flag scritto; heartbeat scaduto/assente/futuro → ancora «non risponde»; validazione simbolo e `exit_only` invariati. `test_desk_view.py`: nuovo test dei messaggi e delle non-scritture; nel test esistente aggiornate le asserzioni sul secondo clic al contratto RC73 (`f089030`: richiesta già in attesa ⇒ 409 «gia' in corso», niente sovrascrittura). | applicativo minimo + test |
+| 5 | `tests/test_long_s25.py` | Pin di `brain.py` aggiornato a `4f040c14…`. Verificato prima: l'unica differenza da RC81 è `_append_json_line` (RC82 `dfc7059`, scrittura append robusta a righe troncate, coperta da test RC82); `engine.py` (formule economiche) invariato e ancora pinnato. | solo test |
+| 6 | `tests/test_superbot.py` | `pytestmark`: marker `integration` + `skipif` senza `REACT_APP_BACKEND_URL`. I 9 test risultano **SKIPPED**, non PASS; non eseguiti (nessun server). | solo test |
+| 7 | `v3_api.py` | Snapshot divergenti: heartbeat fresco con `paper_close_claims.pending > 0` ma stato senza claim ⇒ `close_reconciliation.state = unknown` (mai `ok`); heartbeat scaduto o non valido ignorato. +3 test. | applicativo, minimo (D1) |
+
+## Risultati (Python 3.11.x, dipendenze di `requirements.txt`, rete rifiutata, nessun segreto)
+| | prima (`8e3dbb9`) | dopo (`480cd53`) |
+|---|---|---|
+| backend, cartella intera | 6 881 PASS / 34 FAIL / 3 xfail | **6 910 PASS / 0 FAIL / 9 skipped / 3 xfail** |
+| auth/profiles | 42 PASS | incluse (passano) |
+| lock RC80 + processi concorrenti Brain (136 test, anche con auth/profiles prima) | — | PASS |
+| Jest | 124/124 | 124/124 (14 suite) |
+| build `CI=true` | Compiled successfully | Compiled successfully |
+
+**Non eseguiti / non attestati**: i 9 `test_superbot.py` (richiedono un server vivo: eseguirli solo contro un ambiente di prova autorizzato, con `REACT_APP_BACKEND_URL`); 3 xfail preesistenti. Su Python 3.13 `sqlalchemy==2.0.28` non si importa: la suite va eseguita su 3.11 (o 3.12).
+
+## GitHub Actions — verifica in sola lettura
+- 89 workflow. **Nessuno scatta in automatico** su un push a `cursor/rc84-…` (tutti i `push` sono vincolati ad altri rami) né sugli eventi della PR #80 (base `cursor/rc82-…`; i soli `pull_request` esistenti hanno base `main` / `work/v3-brain-f2-grok`). `list_workflow_runs` sul ramo: 0 run.
+- **Operativi (ssh/scp/docker/systemctl, segreti `SSH_PRIVATE_KEY`/`SINGAPORE_SSH_PRIVATE_KEY`/Bitget/Anthropic)**: tra gli altri `deploy.yml`, `desk-*`, `pool-*`, `superbot-restart.yml`, `staging-deploy.yml`, tutti i `v3-rc69…rc77`, `v3-stop-paper-workers.yml` e `v3-vps-inventory.yml`. **Non avviarne alcuno.** Attenzione: gli ultimi due hanno `push` su `main`: una futura fusione in `main` li farebbe scattare (decisione da valutare prima di qualsiasi merge).
+- **Solo test, senza segreti** (`permissions: contents: read`, nessun ssh): `v3-rc74-full-v3-regression.yml` (`backend/tests/test_v3_*.py`, Python 3.11), `v3-peer-full-v3-regression-ci.yml` (+ Jest/build), `v3-rc73-final-guard-ci.yml`, ecc. Limiti: sono vincolati ad altri rami e coprono solo `test_v3_*.py` (non desk, F3, auth/profiles); `workflow_dispatch` richiede che il file esista sul ramo predefinito (`main` non li ha).
+
+**Procedura proposta per la CI sullo SHA finale** (da approvare; non eseguita):
+1. Fissare lo SHA finale (senza `[skip ci]` nell'ultimo commit, oppure `workflow_dispatch`).
+2. Aggiungere, in un commit separato e revisionato, un workflow dedicato **solo test** `rc84-tests.yml`: `permissions: contents: read`; trigger `workflow_dispatch` e `push` limitato a `branches: [cursor/rc84-running-stop-health-telegram-20261108]` con `paths: ['.github/workflows/rc84-tests.yml']`; job backend `ubuntu-24.04`, `python-version: '3.11'`, `pip install -r backend/requirements.txt`, `PYTHONPATH=.:backend DESK_MODE=paper DESK_MACRO_FETCH=0`, `python -m pytest -q -p no:cacheprovider backend/tests/`; job frontend Node 20, `npm ci` (o `yarn --frozen-lockfile`), `CI=true react-scripts test --watchAll=false --runInBand`, `CI=true react-scripts build`. Nessun `secrets.*`, nessun ssh/docker/deploy.
+3. Per il solo avvio manuale servirebbe che il file sia sul ramo predefinito: valutare di far scattare il `push` del file stesso sul ramo, che è l'unico evento già filtrato per questo ramo.
+4. Controllare prima, con `list_workflows`, che nessun altro workflow dichiari lo stesso ramo.
+Non ho creato né avviato alcun workflow.
+
+## Limiti
+- I test sono stati allineati solo dopo aver verificato la causa; il test dei messaggi `desk_view` e le 3 asserzioni F3 verificano ancora fail-closed (mutazione intercettata).
+- Nessun test è stato "reso verde" con skip tranne i 9 di integrazione, dichiarati.
+- Restano aperti i gate dell'audit: CI reale su SHA pinned, browser autenticato/Android, staging (password di bootstrap nel workflow), backup off-host, preflight VPS, release candidate unica (#76 e 2 commit di `main`), systemd Brain non provato su sistema reale.
