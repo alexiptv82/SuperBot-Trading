@@ -137,3 +137,73 @@ test('RC84: Falco RUNNING alarms remain visible even when Brain API is unavailab
     expect(API.get).toHaveBeenCalledWith('/api/v3/brain/status');
   }finally{await m.done();}
 });
+
+const flatStatus = {data:{
+  available:true, bot_mode:'running', positions:[], cash:1005.03, margin_used:0, equity:1005.03,
+  pnl_total:5.03, start_equity:1000, run_no:1, max_open:10, total_closed:1,
+  close_worker_mode:'classic_runner', can_close_position:false, bot_online:true
+}};
+const reconOverview = (falco) => ({data:{
+  generated_at_ms:Date.now(),cutover_readonly:true,classic_single_close_allowed:false,
+  portfolios:[{id:'falco',kind:'classic',state:'running',open_positions:0,...falco},
+              {id:'toro',kind:'classic',state:'paused',open_positions:0},
+              {id:'brain',kind:'brain',state:'paused',open_positions:0}]
+}});
+
+test('D1: Classici shows the reconciliation alert with zero open positions and Brain API down',async()=>{
+  deskAPI.getStatus.mockResolvedValue(flatStatus);
+  API.get.mockImplementation(url => url === '/api/v3/overview'
+    ? Promise.resolve(reconOverview({close_reconciliation:{state:'pending',pending_count:1,conflict_count:0,
+        affected_symbols:['BTC'],checkpointed_not_final:true}}))
+    : Promise.reject(new Error('Brain temporarily unreachable')));
+  const m=await mount(Dashboard);
+  try{
+    const notice=m.host.querySelector('[data-testid="claim-reconciliation-notice"]');
+    expect(notice).not.toBeNull();
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.textContent).toContain('BTC');
+    expect(notice.textContent).toContain('possono includere chiusure non ancora definitive');
+    expect(m.host.textContent).toContain('5.03');
+  }finally{await m.done();}
+});
+
+test('D1: Classici shows a conflict, then no alert after the claim is reconciled',async()=>{
+  deskAPI.getStatus.mockResolvedValue(flatStatus);
+  let recon={state:'conflict',pending_count:0,conflict_count:1,affected_symbols:['ETH'],checkpointed_not_final:true};
+  API.get.mockImplementation(url => url === '/api/v3/overview'
+    ? Promise.resolve(reconOverview({close_reconciliation:recon}))
+    : Promise.reject(new Error('x')));
+  let m=await mount(Dashboard);
+  try{
+    expect(m.host.querySelector('[data-testid="claim-reconciliation-notice"]').textContent).toContain('intervento umano');
+  }finally{await m.done();}
+  recon={state:'ok',pending_count:0,conflict_count:0,affected_symbols:[],checkpointed_not_final:false};
+  m=await mount(Dashboard);
+  try{
+    expect(m.host.querySelector('[data-testid="claim-reconciliation-notice"]')).toBeNull();
+  }finally{await m.done();}
+});
+
+test('D1: when the overview itself is unavailable the Classici page says reconciliation is not verifiable',async()=>{
+  deskAPI.getStatus.mockResolvedValue(flatStatus);
+  API.get.mockImplementation(() => Promise.reject(new Error('overview down')));
+  const m=await mount(Dashboard);
+  try{
+    const notice=m.host.querySelector('[data-testid="claim-reconciliation-notice"]');
+    expect(notice).not.toBeNull();
+    expect(notice.textContent).toContain('non verificabile');
+  }finally{await m.done();}
+});
+
+test('D1: the notice adds no request other than the existing GETs',async()=>{
+  deskAPI.getStatus.mockResolvedValue(flatStatus);
+  API.get.mockImplementation(url => url === '/api/v3/overview'
+    ? Promise.resolve(reconOverview({close_reconciliation:{state:'pending',pending_count:1,conflict_count:0,
+        affected_symbols:['BTC'],checkpointed_not_final:true}}))
+    : Promise.reject(new Error('x')));
+  const m=await mount(Dashboard);
+  try{
+    expect(m.host.querySelectorAll('[data-testid="claim-reconciliation-notice"] button, [data-testid="claim-reconciliation-notice"] a')).toHaveLength(0);
+    expect(API.post).toBeUndefined();
+  }finally{await m.done();}
+});
