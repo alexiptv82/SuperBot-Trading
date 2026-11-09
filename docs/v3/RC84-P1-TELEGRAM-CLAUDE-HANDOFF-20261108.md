@@ -202,3 +202,19 @@ Non ho creato né avviato alcun workflow.
 - I test sono stati allineati solo dopo aver verificato la causa; il test dei messaggi `desk_view` e le 3 asserzioni F3 verificano ancora fail-closed (mutazione intercettata).
 - Nessun test è stato "reso verde" con skip tranne i 9 di integrazione, dichiarati.
 - Restano aperti i gate dell'audit: CI reale su SHA pinned, browser autenticato/Android, staging (password di bootstrap nel workflow), backup off-host, preflight VPS, release candidate unica (#76 e 2 commit di `main`), systemd Brain non provato su sistema reale.
+
+---
+
+# Preparazione CI offline sicura (09/11/2026, base `10ac0cce626716ee97983319f23cfb538b377ce1`, revisione ChatGPT #6746349575)
+
+**Commit codice+test+documento: `bee85fda7b2c513fec19af86ae211213fade924d`.** Nessun workflow creato, avviato o modificato (`.github/` non toccata). Nessun codice applicativo modificato: solo test e un documento.
+
+- **Rischio confermato**: con `REACT_APP_BACKEND_URL` impostata `test_superbot.py` eseguiva davvero 9 richieste, tra cui `POST /api/bot/start`, con una password fissa nel repository.
+- **Correzione fail-closed**: `backend/tests/conftest.py` (marker `integration`; test saltati salvo `SUPERBOT_ALLOW_INTEGRATION=1` e host `127.0.0.1`/`localhost`/`::1`), seconda barriera nel wrapper di `test_superbot.py`, password statica rimossa (`SUPERBOT_TEST_PASSWORD`).
+- **Prova di sicurezza** `test_ci_integration_guard.py` (17): finto server locale che conta le richieste; URL fittizi (anche non locali) senza opt-in ⇒ **0 richieste, 0 POST, 9 skipped**; `-m "not integration"` ⇒ 9 deselected; controllo positivo che il contatore vede `GET /api/health` e `POST /api/bot/start`. Mutazione (barriere neutralizzate) ⇒ 4 fallimenti; ripristinato.
+- **Proposta di pipeline**: `docs/v3/RC84-CI-OFFLINE-PROPOSAL-20261109.md` (YAML in blocco Markdown, inerte). `test_v3_rc84_ci_proposal.py` (8, senza PyYAML, non saltabile) controlla: permessi `contents: read`, nessun segreto/ssh/docker/systemctl/deploy/curl/Bitget/altri workflow, solo azioni `actions/*`, trigger esatti (push filtrato sul solo file e sul solo ramo RC84 + `workflow_dispatch`), URL vuota, `-m "not integration"`, 3 `unshare -n`, Python 3.11, Node 22. `actionlint` 1.7.12: nessun avviso.
+- **Evento che lo attiverebbe**: solo un push sul ramo `cursor/rc84-running-stop-health-telegram-20261108` che modifichi `.github/workflows/rc84-offline-verify.yml` (il commit che lo aggiunge ⇒ 1 run; commit senza `[skip ci]`); `workflow_dispatch` non utilizzabile finché il file non è sul ramo predefinito.
+
+Risultati locali (Python 3.11, stessi comandi del YAML, namespace di rete vuoto; connessione esterna e DNS di `api.bitget.com` provati bloccati): backend **6 935 passed, 0 failed, 3 xfailed, 9 deselected**; Jest 124/124 (14 suite); build `CI=true` compilata. **Non è una CI**: il workflow non è mai girato su GitHub.
+
+Limiti: azioni non pinnate a SHA (tag `@v4`/`@v5`, da pinnare all'approvazione); `sudo`/`iproute2`/`unshare` sul runner non provati su un runner reale; restano `v3-stop-paper-workers.yml` e `v3-vps-inventory.yml` con push su `main`; gli altri gate dell'audit restano aperti.
