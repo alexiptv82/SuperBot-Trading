@@ -1,3 +1,13 @@
+## 10/11/2026 (00:10) — BACKUP ESTERNO: REVISIONE FINALE DI SICUREZZA FATTA (CONTROLLO BLOCCANTE, SCRIPT DI INSTALLAZIONE/ROLLBACK, TEST); NON INSTALLATA; IN ATTESA DI REVISIONE CHATGPT
+
+**Claude Sonnet 5.5** · solo GitHub e prove offline · nessuna connessione alle VPS, nessun workflow avviato, nessuna installazione, nessun merge · HiTV non toccato · bot non avviati · PR #80 invariata (Draft, `0e29a73`).
+
+**Fatto.** Sul ramo di lavoro `work/extbackup-bot-stopped-20261109` (commit `521f7fd`, solo `deploy/extbackup/*` e il file dei test) il controllo di prima dell'installazione ora BLOCCA (non solo avvisa) se: i tre programmi Python installati hanno impronte diverse dal repository, i container hanno una politica di riavvio automatica (salvo un caso alternativo verificato e accettato per nome), il numero di posizioni aperte è sconosciuto, oppure manca una prova affidabile che i servizi exit-only non abbiano chiusure in coda o scritture concorrenti. Aggiunto uno script che installa/ripristina SOLO il wrapper `run.sh` (simulazione di default, originale salvato una volta, ripristino con impronta verificata) e una verifica remota dopo il backup. Test offline: 236 PASS + 101 sotto-test PASS, 0 FAIL, 0 SKIP, con cifratura age e ripristino eseguiti davvero. Verificato che solo l'azione `setup` del workflow `sg-extbackup` può riscrivere il wrapper (solo con un push su `rule-pool` che tocchi il file trigger): finché il ramo non è unito, non toccare quel file.
+
+**Aperto.** Revisione di ChatGPT e OK dell'utente prima di installare qualunque cosa sul server; decisione dell'utente sull'unione del ramo. L'estensione del backup a Brain V3 resta un lavoro separato, non iniziato. Dettagli e procedura per Termius solo nel Project privato.
+
+---
+
 ## 09/11/2026 (23:30) — BACKUP ESTERNO: CORREZIONE "BOT FERMI" PREPARATA E PROVATA OFFLINE; NON INSTALLATA; IN ATTESA DI REVISIONE CHATGPT
 
 **Claude Sonnet 5.5** · solo GitHub e prove offline · nessuna connessione alle VPS, nessun workflow avviato, nessuna installazione · HiTV non toccato · bot non avviati · PR #80 invariata (Draft, `0e29a73`).
