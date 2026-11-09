@@ -1,3 +1,15 @@
+## 09/11/2026 (22:50) — SICUREZZA, FASE 2 PREFLIGHT VPS: BLOCCATO (NESSUN ACCESSO SSH DA QUESTA SESSIONE); BACKUP ESTERNO FERMO DAL 2/11
+
+**Claude Opus 5.5** · solo letture su GitHub · nessuna connessione alle VPS, nessun workflow avviato o creato, nessuna modifica · HiTV non toccato · bot non avviati.
+
+**Accesso.** Questa sessione non ha un accesso SSH autorizzato alle VPS: verifiche dirette di Strasburgo e Singapore non eseguite. Opzioni per proseguire nel rapporto privato.
+
+**Backup esterno.** La sentinella è in errore perché, con i bot PAPER fermi dal 2/11, il job notturno richiede un "confine di ciclo" che non arriva; la modalità per bot fermi esiste nello script ma il job installato non la usa. Ultimo backup esterno riuscito: 2/11/2026. Gli snapshot locali del 7/11 risultano verificati con prova di ripristino. Correzione proposta, non eseguita: in attesa di revisione ChatGPT e OK dell'utente.
+
+Dettagli solo nel Project privato.
+
+---
+
 ## 09/11/2026 (22:20) — SICUREZZA GITHUB, FASE 1B: ALTRI 13 WORKFLOW OBSOLETI DISATTIVATI VIA API (15 IN TOTALE); IN ATTESA DI REVISIONE CHATGPT
 
 **Claude Opus 5.5** · autorizzato dall'utente · solo GitHub, nessun accesso alle VPS · nessun secret, codice, branch o file trigger modificato · nessun merge, deploy, riavvio · HiTV non toccato · PR #80 invariata (Draft, `0e29a73`).
