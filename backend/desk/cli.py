@@ -500,10 +500,15 @@ def _commit_paper_closes(state: dict) -> list:
             conflict.append(claim["claim_id"])
             print(f"[REGISTRO INCOERENTE] {claim['claim_id']}: terminale diverso gia' presente, nulla scritto",
                   flush=True)
-    state[CLAIMS_KEY] = [c for c in claims if c not in proven]
-    HB["paper_close_claims"] = {"pending": len(state[CLAIMS_KEY]) - len(conflict), "conflict": conflict}
+    remaining = [c for c in claims if c not in proven]
+    HB["paper_close_claims"] = {"pending": len(remaining) - len(conflict), "conflict": conflict}
     if proven:
-        save_state(state, STATE_FILE)                   # fase 3: chiusure definitive
+        state[CLAIMS_KEY] = remaining
+        try:
+            save_state(state, STATE_FILE)               # fase 3: chiusure definitive
+        except BaseException:
+            state[CLAIMS_KEY] = claims                  # un salvataggio successivo non deve rendere definitivo cio' che non lo e'
+            raise
         for claim in proven:                            # Telegram: informativo, al massimo una volta
             if claim.get("notice"):
                 try:
@@ -511,6 +516,32 @@ def _commit_paper_closes(state: dict) -> list:
                 except Exception:
                     pass
     return proven
+
+
+CLAIM_RECOVERY_S = 60   # tentativo di riconciliazione non aggressivo, indipendente dal mercato
+
+
+def _unresolved_claims(state: dict) -> list:
+    return list(state.get(CLAIMS_KEY) or []) if not LIVE._live else []
+
+
+def _recover_paper_claims(state: dict, ctl: dict) -> bool:
+    """Completa i claim sospesi anche con bot in pausa e senza posizioni. Nessun mercato, nessun trade.
+    Al piu' un tentativo ogni CLAIM_RECOVERY_S secondi; un errore non ferma il ciclo principale."""
+    if not _unresolved_claims(state):
+        return False
+    now = int(time.time() * 1000)
+    if now < ctl.get("claims_retry_ms", 0):
+        return False
+    ctl["claims_retry_ms"] = now + CLAIM_RECOVERY_S * 1000
+    try:
+        _commit_paper_closes(state)
+    except Exception as e:
+        HB["paper_close_claims_error"] = type(e).__name__
+        print(f"[CLAIM] riconciliazione rimandata: {type(e).__name__}", flush=True)
+        return False
+    HB.pop("paper_close_claims_error", None)
+    return True
 
 
 REPLY_KEEP_CHARS = 6000   # una risposta scartata piu' lunga si salva accorciata (inizio e fine)
@@ -865,7 +896,13 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     HB.pop("paper_close_blocked", None)
     if not LIVE._live and state.get(CLAIMS_KEY):
         _commit_paper_closes(state)       # ripresa: completa i claim con il record gia' salvato
+    claim_block = bool(_unresolved_claims(state))   # chiusure contabili ancora da riconciliare
     acc = make_account(state)
+    if claim_block:
+        # Come in pausa: nessuna nuova esposizione (aperture, DCA, seconde gambe, S25); le uscite restano attive.
+        for s_ in list(acc.positions):
+            acc.cancel_split(s_, "chiusure contabili da riconciliare", now_ms)
+        print(f"[CLAIM] {len(state[CLAIMS_KEY])} chiusure da riconciliare: nuove aperture e DCA bloccate", flush=True)
     day = time.strftime("%Y-%m-%d", time.gmtime(now_ms / 1000))
     acc.roll_day(day, {})
     claude_ok = apply_claude_schedule(state, now_ms, day)
@@ -1007,13 +1044,15 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     if not drain and os.path.exists(_flag("pause.flag")):
         drain = True   # pausa premuta mentre il ciclo era in corso: vale da subito
-    if drain:
+    no_new = drain or claim_block
+    if no_new:
         # PAUSA: solo gestione delle posizioni esistenti. Ingressi e DCA sono scartati qui,
         # prima dell'esecuzione, qualunque sia la loro origine (Claude o regole).
         skipped = [d for d in decisions if d["action"] not in MANAGE_ACTIONS]
         decisions = [d for d in decisions if d["action"] in MANAGE_ACTIONS]
         if skipped:
-            print(f"[PAUSA] {len(skipped)} nuovi ingressi/DCA ignorati: bot in pausa "
+            print(f"[{'PAUSA' if drain else 'CLAIM'}] {len(skipped)} nuovi ingressi/DCA ignorati: "
+                  f"{'bot in pausa ' if drain else 'chiusure da riconciliare '}"
                   f"({len(acc.positions)} posizioni ancora da completare)", flush=True)
 
     # ---- esecuzione decisioni
@@ -1259,7 +1298,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         try:
             from desk import long_s25
             s25_notice: dict = {}
-            long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=drain,
+            long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=no_new,
                           record_close=lambda st, rec: _claim_paper_close(st, rec, s25_notice.pop(rec["symbol"], None)),
                           notify_open=notify_open,
                           notify_close=lambda sym, net, reason, why: s25_notice.__setitem__(sym, (reason, why)),
@@ -1683,6 +1722,16 @@ def _check_portfolio_reset_flag(state: dict) -> bool:
             save_state(state, STATE_FILE)
             print("[RESET PORTAFOGLIO] rifiutato: posizioni aperte", flush=True)
             return False
+        claims = _unresolved_claims(state)
+        if claims:
+            conflict = sum(1 for c in claims if c.get("status") == "conflict")
+            _set_last_action(state, "reset_portfolio", False,
+                             f"rifiutato: {len(claims)} chiusure contabili da riconciliare"
+                             f"{f' ({conflict} in conflitto)' if conflict else ''}; "
+                             "storico e learning non toccati")
+            save_state(state, STATE_FILE)
+            print("[RESET PORTAFOGLIO] rifiutato: chiusure contabili da riconciliare", flush=True)
+            return False
         archive = _archive_run(state, acc, clear_lessons)   # se fallisce, non si cancella nulla
         # solo ora lo storico della run corrente si sposta (la copia e' gia' in archivio)
         _remove(os.path.join(DATA_DIR, "trade_history.jsonl"))
@@ -1777,6 +1826,7 @@ def loop_step(state: dict, ctl: dict) -> bool:
     - in pausa il bot continua a girare finche' ha posizioni aperte (svuotamento), poi si ferma da solo.
     """
     process_flags(state)
+    _recover_paper_claims(state, ctl)
     paused = os.path.exists(_flag("pause.flag"))
     if paused != ctl.get("prev_paused"):
         if ctl.get("prev_paused") is not None:
