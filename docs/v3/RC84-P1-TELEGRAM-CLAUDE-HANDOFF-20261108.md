@@ -46,3 +46,31 @@ Nota: una prima esecuzione completa ha mostrato 6 fallimenti manuali dovuti al m
 3. Con un registro permanentemente non scrivibile la chiusura resta pendente (conto chiuso, claim visibile in heartbeat) finché il disco non torna scrivibile; nessuna UI dedicata.
 4. Due parziali identiche per close_ms, fraction e net nella stessa posizione non sono distinguibili (impossibile dopo la prima riduzione di quantità).
 5. Gate RC84 aperti: browser autenticato/Android, sidecar Brain, backup off-host, nuova run solo con OK.
+
+---
+
+# Integrazione nel ciclo operativo (09/11/2026, base `8591dba8c2152c0e9cb4cc104e7ddcaba09b35de`, revisione ChatGPT #6734234466)
+
+**Commit codice+test: `f0ea0c1d9e9110b439903c19785306c454375ca4`.** Il protocollo a claim non è stato ricostruito; tre guardie nel ciclo, tutte solo PAPER (in LIVE `_unresolved_claims` è sempre vuoto).
+
+1. **Recupero in pausa/riavvio** — `_recover_paper_claims` in `loop_step` subito dopo `process_flags`, anche con bot in pausa e senza posizioni: nessun ciclo di mercato, nessun trade, al massimo un tentativo ogni `CLAIM_RECOVERY_S = 60` s, errori catturati (`HB["paper_close_claims_error"]`). Riusa `_commit_paper_closes`: Telegram solo per i claim provati e rimossi, quindi nessun duplicato. Correzione collegata: se il salvataggio finale fallisce lo stato in memoria torna ai claim (prima un salvataggio successivo, es. `sync_mode`, poteva rendere definitivo il claim senza avviso).
+2. **Reset sicuro** — `_check_portfolio_reset_flag` rifiuta con claim pendenti o in conflitto, prima di `_archive_run`: nessun file toccato né spostato; `last_action` = «rifiutato: N chiusure contabili da riconciliare (M in conflitto); storico e learning non toccati». `reset.flag` (Chiudi tutto) non archivia nulla ed è già coperto dal protocollo a claim.
+3. **Nessuna nuova esposizione** — se a inizio ciclo restano claim irrisolti (dopo il tentativo di riconciliazione), come in pausa: decisioni filtrate a `close/partial_close/hold` (niente aperture né DCA), seconde gambe pendenti annullate prima della prima passata protettiva, `long_s25.step(drain=True)` (resta la chiusura a tempo). Stop/TP/liquidazione e chiusure manuali di posizioni non coinvolte restano attive (il blocco per posizione è solo il pre-controllo già esistente).
+
+## Test — `backend/tests/test_v3_rc84_claim_integration.py` (11) + `test_v3_rc84_telegram_durable_close.py` (36)
+Ultima posizione chiusa a mano in pausa con claim pendente → `loop_step` (storage rotto: nessun crash e rate limit; poi scrivibile: riconciliazione, 1 avviso, nessun ciclo di mercato, nessun duplicato); riavvio da vero `state_v2.json`; crash nel salvataggio finale della riconciliazione; reset rifiutato (pendente e in conflitto) con file byte-identici e nessuna `archive/`; reset di nuovo possibile dopo la riconciliazione; apertura bloccata con claim e consentita dopo; DCA bloccato con claim di parziale e ripreso dopo la riconciliazione; S25 riceve `drain=True` solo con claim; stop protettivo e chiusura manuale di posizione non coinvolta attivi con claim; LIVE ignora i claim. Senza la patch 8 degli 11 falliscono (gli altri 3 sono controlli di non regressione).
+
+## Esecuzioni (rete rifiutata, nessun segreto)
+| | `8591dba` | `f0ea0c1` |
+|---|---|---|
+| backend esteso (escl. `test_auth_flow.py`, `test_profiles_engine.py`: manca `sqlalchemy`) | 6 779 PASS / 32 FAIL / 3 xfail | **6 790 PASS / 32 FAIL / 3 xfail** |
+| insieme dei FAIL | — | **identico** (0 nuovi, 0 risolti) |
+| Jest / build (frontend invariato) | 109/109 | 109/109, Compiled successfully |
+
+La suite estesa **non è verde**: i 32 FAIL sono preesistenti (20 `test_brain_f3_boundaries.py` fixture senza `max_loss_margin_fraction`, 1 `test_desk_view.py`, 1 `test_live_view.py`, 1 `test_long_s25.py` hash di `brain.py`, 9 `test_superbot.py` server live).
+
+## Limiti
+- Il blocco usa i claim presenti a inizio ciclo: un claim creato e rimasto pendente a metà ciclo blocca dal ciclo successivo (le aperture del ciclo corrente sono già state decise).
+- Un claim in conflitto non si risolve da solo: blocca nuove aperture/DCA e il reset finché un umano non interviene.
+- Le seconde gambe pendenti vengono annullate (come in pausa) quando ci sono claim irrisolti.
+- Nessuna UI per `paper_close_claims` (solo heartbeat/log); restano aperti i gate RC84 (browser autenticato/Android, sidecar Brain, backup off-host, nuova run solo con OK).
