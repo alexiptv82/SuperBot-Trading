@@ -19,8 +19,8 @@ Correzione (solo test, nessun codice applicativo):
 - **Wrapper HTTP rafforzato** (revisione ChatGPT #6747209165): oltre all'opt-in, controlla l'**URL effettivo** di ogni richiesta (stesso schema/host/porta di
   `REACT_APP_BACKEND_URL`; `localhost` ≠ `127.0.0.1`, altra porta, altro schema, stringa vuota o non-stringa ⇒ rifiutato prima di inviare); **nessun redirect
   seguito** (`allow_redirects=False`; un 3xx è un errore e non parte alcuna seconda richiesta); **nessun proxy ereditato** (`trust_env=False`, `proxies` del chiamante
-  ignorati); **timeout** su ogni richiesta (10 s, massimo 30).
-- `backend/tests/test_ci_integration_guard.py` (nuovo, 32 test): un finto server su `127.0.0.1` **conta ogni richiesta**. Sottoprocessi pytest
+  ignorati); **timeout** su ogni richiesta: default 10 s, e prima di inviare viene rifiutato qualunque valore nullo (attesa infinita), non numerico, booleano, tupla, non finito (`nan`/`inf`), zero, negativo o superiore a 30 s.
+- `backend/tests/test_ci_integration_guard.py` (nuovo, 61 test): un finto server su `127.0.0.1` **conta ogni richiesta**. Sottoprocessi pytest
   selezionano `test_superbot.py` con l'URL del finto server o con `http://backend.invalid:9` / `https://staging.example.org`:
   senza opt-in **0 richieste, 0 POST, 9 skipped**; con `-m "not integration"` 9 deselected; opt-in con host non locale rifiutato; opt-in senza URL
   inerte. In più, test in-process con un finto server che risponde `302` verso `sentinel.invalid`, `https://example.org`, un'altra porta locale e un URL relativo allo schema:
@@ -303,6 +303,13 @@ jobs:
 Restano sulla **stessa serie maggiore** già usata dagli altri workflow del repository (nessun cambio di comportamento). Limite: la verifica prova che il tag ufficiale punta a quel commit
 *oggi*; non sostituisce una revisione del contenuto delle azioni. Rieseguire il controllo al momento della pubblicazione e prima di ogni aggiornamento.
 
+### Compatibilità dei test con la futura pubblicazione
+`test_v3_rc84_ci_proposal.py` ammette **due soli stati** del repository, tramite `workflow_state_problems()`: (a) proposta inattiva, file `.github/workflows/rc84-offline-verify.yml` assente;
+(b) pubblicazione autorizzata, file presente e **identico** al YAML approvato in questo documento (confronto insensibile solo a fine riga CRLF, spazi finali e righe vuote ai bordi).
+Falliscono: file modificato (permessi, trigger, pin, preflight, ripiego, URL, `PYTHONPATH`, segreti, ssh), varianti o copie (`.yaml`, `-copy`), un altro workflow con lo stesso nome, collegamento simbolico.
+Provato con directory temporanee sintetiche (25 test) e con una **prova generale in una copia di scratch** con il file identico: suite completa 7 003 passed, 0 failed; con il file alterato il test fallisce.
+Quando il workflow verrà pubblicato non servirà modificare alcun test; se si modifica il YAML bisogna aggiornare il documento (è la fonte approvata).
+
 ### Quale evento lo attiverebbe, una volta approvato
 1. **`push` sul solo ramo `cursor/rc84-running-stop-health-telegram-20261108`, e solo se il push modifica `.github/workflows/rc84-offline-verify.yml`.**
    Quindi il commit che *aggiunge* il file produce **un** run; i push successivi che non toccano il file non fanno partire nulla. Per rilanciare
@@ -323,7 +330,7 @@ Lo SHA verificato è quello del commit che contiene il workflow (`github.sha`): 
 ## 4. Risultati attesi e verificati in sandbox (Python 3.11, stessi comandi del YAML, namespace di rete vuoto)
 | | atteso | verificato localmente |
 |---|---|---|
-| backend `-m "not integration"` | 6 960 passed (6 910 + 32 guardia integrazione + 11 proposta + 7 import/ordine), 3 xfailed, 9 deselected, 0 failed | **6 960 passed, 0 failed, 3 xfailed, 9 deselected** in un namespace di rete vuoto, `PYTHONPATH` assoluto, sia in ordine alfabetico sia con i file di test in ordine **inverso** (loopback riattivato con `ioctl`: qui manca `ip`) |
+| backend `-m "not integration"` | 7 003 passed (6 910 + 61 guardia integrazione + 25 proposta + 7 import/ordine), 3 xfailed, 9 deselected, 0 failed | **7 003 passed, 0 failed, 3 xfailed, 9 deselected** in un namespace di rete vuoto, sia nello stato reale (workflow assente) sia in una copia di prova con il workflow approvato presente; in precedenza anche con i file di test in ordine inverso (loopback riattivato con `ioctl`: qui manca `ip`) |
 | auth/profiles | inclusi | inclusi |
 | import da cwd estranea, ordine dei test (avanti / inverso / ruotato / mescolato) | PASS | 7 test PASS (`test_v3_rc84_import_paths.py`), `PYTHONPATH` relativo da altra cwd fallisce come documentato |
 | sonda del namespace (stesso codice del YAML) | OK dentro, errore fuori, errore senza loopback | verificato nei tre casi (loopback attivato con `ioctl`: qui manca `ip`) |

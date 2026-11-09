@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 DOC = ROOT / "docs/v3/RC84-CI-OFFLINE-PROPOSAL-20261109.md"
 BRANCH = "cursor/rc84-running-stop-health-telegram-20261108"
@@ -32,12 +34,97 @@ def _block(text: str, key: str) -> str:
     return m.group(1)
 
 
-def test_proposal_is_not_an_active_workflow():
+WORKFLOW_FILE = "rc84-offline-verify.yml"
+WORKFLOW_MARKER = "RC84 offline verification"
+
+
+def _normalized(text: str) -> str:
+    """Confronto insensibile a fine riga CRLF, spazi finali e righe vuote iniziali/finali (nient'altro)."""
+    return "\n".join(line.rstrip() for line in text.replace("\r\n", "\n").replace("\r", "\n").strip("\n").split("\n"))
+
+
+def workflow_state_problems(workflows_dir: Path, approved_yaml: str) -> list[str]:
+    """Problemi dello stato del workflow, valido in ENTRAMBI gli stati ammessi:
+    - proposta ancora inattiva: il file non esiste;
+    - pubblicazione autorizzata: il file esiste ed e' IDENTICO al YAML approvato nel documento.
+    Qualunque altra cosa (file modificato, copie o varianti, altri workflow con lo stesso nome, link simbolici) e' un problema."""
+    problems: list[str] = []
+    if not workflows_dir.is_dir():
+        return problems
+    for path in sorted(workflows_dir.iterdir()):
+        if path.is_dir() or path.suffix not in (".yml", ".yaml"):
+            continue
+        if path.name == WORKFLOW_FILE:
+            if path.is_symlink():
+                problems.append(f"{path.name}: collegamento simbolico")
+            elif _normalized(path.read_text(encoding="utf-8")) != _normalized(approved_yaml):
+                problems.append(f"{path.name}: diverso dal YAML approvato nel documento")
+        elif path.name.startswith("rc84-offline-verify"):
+            problems.append(f"{path.name}: variante non approvata del workflow")
+        elif WORKFLOW_MARKER in path.read_text(encoding="utf-8"):
+            problems.append(f"{path.name}: un altro workflow usa il nome della proposta")
+    return problems
+
+
+def test_real_repository_state_is_either_inactive_or_exactly_the_approved_workflow():
     assert DOC.exists() and ".github" not in DOC.parts
-    workflows = list((ROOT / ".github/workflows").glob("*.y*ml"))
-    assert "rc84-offline-verify.yml" not in {p.name for p in workflows}
-    for p in workflows:
-        assert "RC84 offline verification" not in p.read_text(encoding="utf-8")
+    assert workflow_state_problems(ROOT / ".github/workflows", _yaml_text()) == []
+
+
+def _tree(tmp_path, files):
+    d = tmp_path / ".github/workflows"
+    d.mkdir(parents=True)
+    for name, text in files.items():
+        (d / name).write_text(text, encoding="utf-8")
+    return d
+
+
+def test_state_inactive_proposal_passes(tmp_path):
+    assert workflow_state_problems(tmp_path / "missing", _yaml_text()) == []
+    assert workflow_state_problems(_tree(tmp_path, {}), _yaml_text()) == []
+    assert workflow_state_problems(_tree(tmp_path / "x", {"other.yml": "name: Altro\non: push\n"}), _yaml_text()) == []
+
+
+def test_state_future_published_workflow_identical_to_the_approved_yaml_passes(tmp_path):
+    y = _yaml_text()
+    assert workflow_state_problems(_tree(tmp_path / "a", {WORKFLOW_FILE: y}), y) == []
+    assert workflow_state_problems(_tree(tmp_path / "b", {WORKFLOW_FILE: y + "\n"}), y) == []
+    crlf = "\r\n".join(line + "  " for line in y.split("\n")) + "\r\n"
+    assert workflow_state_problems(_tree(tmp_path / "c", {WORKFLOW_FILE: crlf}), y) == []
+
+
+MODIFICATIONS = {
+    "permessi di scrittura": ("  contents: read\n", "  contents: write\n"),
+    "integrazione non esclusa": ('-m "not integration" ', ""),
+    "tag al posto dello SHA": ("actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0", "actions/checkout@v4"),
+    "segreto aggiunto": ("      - name: Check the SHA under test", "      - run: echo ${{ secrets.TOKEN }}\n      - name: Check the SHA under test"),
+    "preflight rimosso": ("Preflight - empty network namespace (fail fast, no fallback)", "Setup"),
+    "ripiego senza namespace": ("exit ${PIPESTATUS[0]}'\n      - name: Report (PASS", "exit ${PIPESTATUS[0]}' || python -m pytest backend/tests\n      - name: Report (PASS"),
+    "trigger su pull_request": ("  push:\n", "  pull_request:\n  push:\n"),
+    "altro ramo": ("branches: [cursor/rc84-running-stop-health-telegram-20261108]", "branches: ['**']"),
+    "URL backend non vuoto": ("  REACT_APP_BACKEND_URL: ''", "  REACT_APP_BACKEND_URL: 'http://example.org'"),
+    "PYTHONPATH relativo": ("PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend", "PYTHONPATH: .:backend"),
+    "ssh aggiunto": ("      - name: Install declared dependencies", "      - run: ssh host\n      - name: Install declared dependencies"),
+}
+
+
+@pytest.mark.parametrize("label", sorted(MODIFICATIONS))
+def test_state_published_but_modified_or_missing_protections_fails(tmp_path, label):
+    y = _yaml_text()
+    old, new = MODIFICATIONS[label]
+    assert old in y, label
+    problems = workflow_state_problems(_tree(tmp_path, {WORKFLOW_FILE: y.replace(old, new, 1)}), y)
+    assert problems and "diverso dal YAML approvato" in problems[0]
+
+
+def test_state_variants_copies_and_name_collisions_fail(tmp_path):
+    y = _yaml_text()
+    assert workflow_state_problems(_tree(tmp_path / "a", {"rc84-offline-verify.yaml": y}), y)
+    assert workflow_state_problems(_tree(tmp_path / "b", {"rc84-offline-verify-copy.yml": y}), y)
+    assert workflow_state_problems(_tree(tmp_path / "c", {"deploy.yml": f"name: {WORKFLOW_MARKER} (TEST ONLY)\non: push\n"}), y)
+    d = _tree(tmp_path / "d", {"real.yml": y})
+    (d / WORKFLOW_FILE).symlink_to(d / "real.yml")
+    assert any("collegamento simbolico" in p for p in workflow_state_problems(d, y))
 
 
 def test_triggers_are_exactly_dispatch_and_a_path_filtered_push_on_the_rc84_branch():

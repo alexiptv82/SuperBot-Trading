@@ -288,3 +288,31 @@ def test_every_request_has_a_bounded_timeout(origin, spy):
     spy.clear()
     _guarded().get(url + "/ok", timeout=3, allow_redirects=True, proxies={"http": "http://evil.invalid:1"})
     assert spy[0]["timeout"] == 3 and not spy[0]["proxies"]  # allow_redirects e proxies passati dal chiamante vengono ignorati
+
+
+# ---------------------------------------------------------------- timeout: valori non validi non partono mai
+
+@pytest.mark.parametrize("bad", [None, 0, 0.0, -1, -0.001, 30.0001, 31, 3600, 1e9, float("nan"), float("inf"),
+                                 -float("inf"), True, False, "5", b"5", (3, 3), [5], {"t": 5}, object()],
+                         ids=lambda v: repr(v)[:24])
+def test_an_invalid_timeout_is_refused_before_any_request_is_sent(origin, spy, bad):
+    url, handler = origin
+    with pytest.raises(RuntimeError, match="timeout non valido"):
+        _guarded().get(url + "/ok", timeout=bad)
+    with pytest.raises(RuntimeError, match="timeout non valido"):
+        _guarded().post(url + "/ok", timeout=bad)
+    assert spy == [] and handler.seen == []
+
+
+@pytest.mark.parametrize("good", [0.001, 0.5, 1, 3, 10, 29.999, 30, 30.0])
+def test_a_valid_timeout_is_sent_unchanged(origin, spy, good):
+    url, _ = origin
+    _guarded().get(url + "/ok", timeout=good)
+    assert [c["timeout"] for c in spy] == [good]
+
+
+def test_the_default_timeout_is_ten_seconds_and_never_infinite(origin, spy):
+    url, _ = origin
+    _guarded().get(url + "/ok")
+    _guarded().post(url + "/ok")
+    assert [c["timeout"] for c in spy] == [10, 10]

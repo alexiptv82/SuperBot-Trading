@@ -1,3 +1,4 @@
+import math
 import os
 import time
 from urllib.parse import urlparse
@@ -18,6 +19,7 @@ pytestmark = [pytest.mark.integration,
 
 
 _TIMEOUT_S = 10
+_MAX_TIMEOUT_S = 30
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
@@ -57,11 +59,21 @@ class _Guarded:
         if base is None or target is None or target != base:
             raise RuntimeError("richiesta di integrazione bloccata: l'URL non appartiene al server locale dichiarato")
 
+    @staticmethod
+    def _valid_timeout(value):
+        """Solo un numero finito, > 0 e <= 30 s. None (= attesa infinita), bool, stringhe, tuple, nan/inf: rifiutati."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False
+        return math.isfinite(value) and 0 < value <= _MAX_TIMEOUT_S
+
     def _send(self, method, url, **kwargs):
         self._check(url)
         kwargs.pop("allow_redirects", None)
         kwargs.pop("proxies", None)
         kwargs.setdefault("timeout", _TIMEOUT_S)
+        if not self._valid_timeout(kwargs["timeout"]):
+            raise RuntimeError("richiesta di integrazione bloccata: timeout non valido "
+                               f"(ammesso un numero finito > 0 e <= {_MAX_TIMEOUT_S} s)")
         resp = self._session.request(method, url, allow_redirects=False, **kwargs)
         if 300 <= resp.status_code < 400:
             raise RuntimeError("richiesta di integrazione bloccata: redirect rifiutato (nessun redirect viene seguito)")
