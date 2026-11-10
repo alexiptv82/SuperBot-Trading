@@ -8,12 +8,14 @@ external_backup_brain_v3.py; il ripristino in restore_brain_v3_backup.py (che ri
 Garanzie (sorgente = cartelle vere della VPS, sempre in SOLA LETTURA):
   - nessun file della sorgente viene creato, riscritto, spostato o cancellato; nessun database vuoto viene inizializzato
     al posto di un file assente (un file mancante e' un RIFIUTO);
-  - SQLite si copia solo con l'API di backup (transazione consistente, include il WAL gia' confermato). Un database in
-    modalita' WAL che nessuno sta usando (nessun file -wal/-shm) si apre `immutable=1`: SQLite non crea cosi' nessun
-    file collaterale nella cartella vera (una apertura `mode=ro` di un WAL chiuso ne crea due); se i file collaterali
-    ci sono gia' (processo vivo o residuo di un processo morto) si apre `mode=ro`; uno solo dei due = stato inatteso =
-    rifiuto. Unico effetto possibile sulla sorgente: con i residui di un processo MORTO SQLite ricostruisce il file
-    `-shm` (indice volatile del WAL, nessun dato); database e `-wal` restano identici byte per byte (provato nei test);
+  - SQLite si copia solo con l'API di backup (transazione consistente, include il WAL gia' confermato). Tre casi:
+      * journal in modalita' rollback (journal.db): apertura `mode=ro` (nessun file creato, nessuna scrittura);
+      * WAL pulito (nessun -wal/-shm, nessun processo): apertura `immutable=1` (SQLite non crea file collaterali);
+      * WAL con file collaterali (processo vivo O residuo di un arresto brusco): la sorgente NON viene mai aperta con
+        SQLite. Si copiano il database e il -wal in una cartella privata (leggendo ogni file una volta e ricontrollando
+        poi dimensione, data e SHA-256 della sorgente: se e' cambiata, `source_changed_during_capture`) e SQLite lavora
+        sulla COPIA (il recupero del WAL avviene li'). Database, -wal e -shm originali restano identici byte per byte e
+        con la stessa data: nessuna ricostruzione del -shm, nessun file creato o cancellato nella cartella vera;
   - journal.db: catena hash ricalcolata evento per evento (stessa formula di backend/v3/events.py), id evento unici,
     trigger di immodificabilita' presenti, una sola identita' (portfolio "brain" + run_id della run), primo evento
     `run_prepared` coerente con la configurazione, coerenza delle posizioni PAPER (nessuna chiusura senza apertura);
@@ -34,6 +36,7 @@ import re
 import shutil
 import sqlite3
 import stat
+import tempfile
 import time
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -58,8 +61,9 @@ TMP_RE = re.compile(r"^\.(heartbeat|exit_heartbeat|daily_loss|close_result|close
 MAX_SMALL = {"runner_config.json": 131072, "PREPARED_PAUSED_ONLY.json": 8192, "mandate.json": 65536,
              "daily_loss.json": 8192, "pause.flag": 8192, "heartbeat.json": 65536, "exit_heartbeat.json": 65536,
              "close_request.json": 65536, ".close_request.work": 65536, "close_result.json": 65536}
-EXTRA_MAX_EACH = 1 << 20
-EXTRA_MAX_TOTAL = 8 << 20
+EXTRA_MAX_EACH = 16 << 20
+EXTRA_MAX_TOTAL = 64 << 20
+SCRATCH_ROOT = None       # cartella privata per le copie di lavoro dei WAL (la imposta la pipeline); None = temporanea di sistema
 JOURNAL_COLS = ["seq", "event_id", "portfolio_id", "run_id", "kind", "occurred_at_ms", "source", "payload_json",
                 "previous_hash", "event_hash"]
 BUDGET_COLS = ["id", "occurred_at", "provider", "units", "metadata"]
@@ -162,20 +166,126 @@ def _is_wal(path):
     return head[18] == 2 and head[19] == 2
 
 
+class _SrcConn(sqlite3.Connection):
+    """Connessione che, se lavora su una copia di lavoro privata, la cancella alla chiusura."""
+    scratch = None
+
+    def close(self):
+        try:
+            super().close()
+        finally:
+            if self.scratch:
+                shutil.rmtree(self.scratch, ignore_errors=True)
+                self.scratch = None
+
+
+def find_holders(paths):
+    """(pid, completo): processi che hanno aperti i file (lettura di /proc, nessuna scrittura).
+    `completo` e' falso se qualche processo non era ispezionabile (serve root per escluderli tutti)."""
+    targets = {os.path.realpath(p) for p in paths}
+    pids, complete = [], True
+    try:
+        entries = [e for e in os.listdir("/proc") if e.isdigit() and int(e) != os.getpid()]
+    except OSError:
+        return [], False
+    for e in entries:
+        try:
+            fds = os.listdir("/proc/%s/fd" % e)
+        except PermissionError:
+            complete = False
+            continue
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                target = os.readlink("/proc/%s/fd/%s" % (e, fd))
+            except OSError:
+                continue
+            if target.endswith(" (deleted)"):
+                target = target[: -len(" (deleted)")]
+            if target in targets:
+                pids.append(int(e))
+                break
+    return pids, complete
+
+
+def describe_source(path):
+    """Descrizione dello stato di un database SOLO dai metadati (stat e prima pagina): nessuna apertura SQLite, nessuna
+    scrittura, nessun file creato. Serve al preflight."""
+    name = os.path.basename(path)
+    if not os.path.lexists(path):
+        return {"nome": name, "stato": "assente"}
+    if os.path.islink(path) or not os.path.isfile(path):
+        return {"nome": name, "stato": "non_sicuro"}
+    info = {"nome": name, "byte": os.path.getsize(path)}
+    try:
+        wal = _is_wal(path)
+    except Refused as e:
+        info["stato"] = e.code
+        return info
+    side = {}
+    for ext in ("-wal", "-shm", "-journal"):
+        p = path + ext
+        side[ext] = os.path.getsize(p) if os.path.lexists(p) and os.path.isfile(p) else None
+    info["collaterali"] = {k: v for k, v in side.items() if v is not None}
+    if wal:
+        w, sh = side["-wal"] is not None, side["-shm"] is not None
+        if not w and not sh:
+            info["stato"], info["cattura"] = "wal_pulito", "immutable=1: nessun file creato"
+        elif w and sh:
+            info["stato"] = "wal_con_file_collaterali"
+            info["cattura"] = "copia di database e -wal in una cartella privata; originali (-shm compreso) intatti"
+        else:
+            info["stato"], info["cattura"] = "wal_collaterali_anomali", "rifiuto (wal_sidecar_state_unexpected)"
+    else:
+        extra_wal = side["-wal"] is not None or side["-shm"] is not None
+        if extra_wal:
+            info["stato"], info["cattura"] = "collaterali_anomali", "rifiuto (wal_sidecar_state_unexpected)"
+        elif side["-journal"]:
+            info["stato"], info["cattura"] = "journal_presente", "lettura mode=ro; se e' un residuo: rifiuto (hot_journal)"
+        else:
+            info["stato"], info["cattura"] = "rollback_pulito", "lettura mode=ro: nessuna scrittura"
+    holders, complete = find_holders([path, path + "-wal", path + "-shm"])
+    info["processi"] = holders
+    info["processi_verificati_tutti"] = complete
+    return info
+
+
+def _stable_copy(files, dst_dir):
+    """Copia i file in dst_dir (un solo passaggio di lettura, con SHA-256) e poi ricontrolla la sorgente: stessa
+    dimensione, stessa data e stesso SHA-256, altrimenti la sorgente stava cambiando."""
+    before, digest = {}, {}
+    for p in files:
+        st = os.stat(p)
+        before[p] = (st.st_size, st.st_mtime_ns, st.st_ino)
+    for p in files:
+        h = hashlib.sha256()
+        with open(p, "rb") as src, open(os.path.join(dst_dir, os.path.basename(p)), "wb") as dst:
+            for chunk in iter(lambda: src.read(1 << 20), b""):
+                h.update(chunk)
+                dst.write(chunk)
+        digest[p] = h.hexdigest()
+    for p in files:
+        st = os.stat(p)
+        if (st.st_size, st.st_mtime_ns, st.st_ino) != before[p] or sha256_file(p) != digest[p]:
+            raise Refused("source_changed_during_capture", os.path.basename(p))
+
+
 def open_source_db(path):
-    """Apre `path` in sola lettura senza creare file nella sua cartella (vedi la nota in testa)."""
+    """Apre `path` per la LETTURA senza mai modificare ne' creare file nella cartella vera (vedi la nota in testa)."""
     name = os.path.basename(path)
     if not os.path.lexists(path):
         raise Refused("file_missing", name)
     if os.path.islink(path) or not os.path.isfile(path):
         raise Refused("file_unsafe", name)
     wal_p, shm_p, jr_p = path + "-wal", path + "-shm", path + "-journal"
+    scratch = None
     if _is_wal(path):
         w, s = os.path.lexists(wal_p), os.path.lexists(shm_p)
         if not w and not s:
             suffix = "?immutable=1"
         elif w and s:
-            suffix = "?mode=ro"
+            suffix = None
         else:
             raise Refused("wal_sidecar_state_unexpected", name)
     else:
@@ -184,17 +294,40 @@ def open_source_db(path):
         suffix = "?mode=ro"
     conn = None
     try:
-        conn = sqlite3.connect(Path(path).resolve().as_uri() + suffix, uri=True, timeout=10)
+        if suffix is None:
+            if SCRATCH_ROOT:
+                os.makedirs(SCRATCH_ROOT, mode=0o700, exist_ok=True)
+            scratch = tempfile.mkdtemp(prefix=".scratch-", dir=SCRATCH_ROOT)
+            os.chmod(scratch, 0o700)
+            _stable_copy([path, wal_p], scratch)
+            conn = sqlite3.connect(os.path.join(scratch, name), timeout=10, factory=_SrcConn)
+            conn.scratch, scratch = scratch, None
+        else:
+            conn = sqlite3.connect(Path(path).resolve().as_uri() + suffix, uri=True, timeout=10)
         conn.execute("PRAGMA query_only=ON")
         conn.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchall()      # la prima lettura scopre un journal "caldo"
         return conn
+    except Refused:
+        if conn is not None:
+            conn.close()
+        if scratch:
+            shutil.rmtree(scratch, ignore_errors=True)
+        raise
     except sqlite3.Error as e:
         if conn is not None:
             conn.close()
+        if scratch:
+            shutil.rmtree(scratch, ignore_errors=True)
         if "locked" in str(e) or "busy" in str(e):
             raise Refused("sqlite_busy", name)
         if "readonly" in str(e) and os.path.lexists(jr_p) and os.path.getsize(jr_p) > 0:
             raise Refused("hot_journal", name)              # residuo di un arresto brusco: lo recupera solo il suo programma
+        raise Refused("sqlite_open_failed", name)
+    except OSError:
+        if conn is not None:
+            conn.close()
+        if scratch:
+            shutil.rmtree(scratch, ignore_errors=True)
         raise Refused("sqlite_open_failed", name)
 
 
@@ -564,6 +697,14 @@ def _present_sidecars(run_dir):
     return sorted(n for n in SIDECARS if os.path.lexists(os.path.join(run_dir, n)))
 
 
+def _extras_hashes(run_dir, names):
+    out = {}
+    for n in names:
+        raw = read_small(os.path.join(run_dir, n), EXTRA_MAX_EACH, required=False)
+        out[n] = None if raw is None else sha256_bytes(raw)
+    return out
+
+
 def _observe(run_dir):
     """Impronta leggera della sorgente (per accorgersi di modifiche durante la copia)."""
     jc = open_source_db(os.path.join(run_dir, "journal.db"))
@@ -580,7 +721,11 @@ def _observe(run_dir):
     for n in tuple(n for n in DURABLE_REQUIRED if n.endswith(".json")) + DURABLE_OPTIONAL + CONTROL:
         raw = read_small(os.path.join(run_dir, n), MAX_SMALL[n], required=n in DURABLE_REQUIRED)
         files[n] = None if raw is None else sha256_bytes(raw)
-    return {"journal": j, "budget": b, "files": files, "sidecars": _present_sidecars(run_dir)}
+    return {"journal": j, "budget": b, "files": files, "sidecars": _present_sidecars(run_dir),
+            "extras": _extras_hashes(run_dir, scan_run_dir(run_dir))}
+
+
+OBSERVED_KEYS = ("journal", "budget", "files", "sidecars", "extras")
 
 
 def _capture_once(run_dir, stage, extras):
@@ -599,12 +744,20 @@ def _capture_once(run_dir, stage, extras):
         if raw is not None:
             os.makedirs(tdir, mode=0o700, exist_ok=True)
             _write(os.path.join(tdir, n), raw)
+    extra_hash, extra_meta = {}, []
     for n in extras:
-        raw = read_small(os.path.join(run_dir, n), EXTRA_MAX_EACH, required=False)
+        src = os.path.join(run_dir, n)
+        raw = read_small(src, EXTRA_MAX_EACH, required=False)
+        extra_hash[n] = None if raw is None else sha256_bytes(raw)
         if raw is not None:
             os.makedirs(os.path.join(stage, "extra"), mode=0o700, exist_ok=True)
             _write(os.path.join(stage, "extra", n), raw)
-    return {"journal": j, "budget": b, "files": files, "sidecars": sidecars_before}
+            st = os.lstat(src)
+            extra_meta.append({"nome": n, "percorso_originale": os.path.abspath(src), "size": len(raw),
+                               "sha256": extra_hash[n], "modo": oct(st.st_mode & 0o777),
+                               "mtime_ms": int(st.st_mtime * 1000), "archiviato_in": "extra/" + n})
+    return {"journal": j, "budget": b, "files": files, "sidecars": sidecars_before, "extras": extra_hash,
+            "extra_meta": extra_meta}
 
 
 def capture_run(run_dir, stage, now_ms, attempts=3, wait=1.0, hooks=None, anchor=None):
@@ -622,7 +775,7 @@ def capture_run(run_dir, stage, now_ms, attempts=3, wait=1.0, hooks=None, anchor
             cap = _capture_once(run_dir, stage, extras)
             if hooks and hooks.get("after_copy"):
                 hooks["after_copy"](attempt)
-            if _observe(run_dir) != cap or _present_sidecars(run_dir) != cap["sidecars"]:
+            if _observe(run_dir) != {k: cap[k] for k in OBSERVED_KEYS} or _present_sidecars(run_dir) != cap["sidecars"]:
                 raise Refused("source_changed_during_capture", run_name)
             facts = facts_from_files(stage, run_name, now_ms, hash_at, prefix_ids)
             j, b = facts["journal"], facts["budget"]
@@ -630,7 +783,7 @@ def capture_run(run_dir, stage, now_ms, attempts=3, wait=1.0, hooks=None, anchor
                     or {"righe": b["righe"], "id_max": b["id_max"], "unita": b["unita"]} != cap["budget"]):
                 raise Refused("snapshot_mismatch", run_name)
             facts["file_sha256"] = {k: v for k, v in cap["files"].items() if v is not None}
-            facts["extra"] = list(extras)
+            facts["extra"] = cap["extra_meta"]
             facts["database_sorgente"] = {"journal": "ro", "budget": "ro"}
             return facts
         except Refused as e:
@@ -752,7 +905,7 @@ def state_fingerprint(facts_list, legacy):
     for f in facts_list:
         j, b = f["journal"], f["budget"]
         core[f["run_name"]] = {"j": [j["eventi"], j["testa"]], "b": [b["righe"], b["unita"], b["testa"]],
-                               "f": f["file_sha256"], "x": f["extra"]}
+                               "f": f["file_sha256"], "x": [[e["nome"], e["sha256"]] for e in f["extra"]]}
     return sha256_bytes(canon({"runs": core, "legacy": ({k: legacy[k] for k in ("eventi", "events_sha256",
                                                                                "state_sha256")} if legacy else None)}
                               ).encode())

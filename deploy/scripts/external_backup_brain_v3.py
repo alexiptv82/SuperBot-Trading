@@ -23,7 +23,13 @@ Se lo stato e' identico all'ultimo archivio pubblicato non si crea un archivio n
 Uscita 3: non c'e' niente da proteggere (cartella delle run assente o vuota e nessun backup precedente).
 
   --plan       prova locale completa (copia, verifiche, archivio, cifratura) SENZA rete e SENZA invio: stampa le dimensioni;
-  --preflight  controlli di sola lettura (strumenti, destinatario, cartelle, file collaterali SQLite, spazio, rete).
+  --preflight  controlli sui SOLI METADATI (stat e prima pagina dei database: nessuna apertura SQLite, nessuna scrittura,
+               nessun file creato; i processi che tengono aperti i file si leggono da /proc).
+
+Esecuzione pianificata (SUPERBOT_V3_SCHEDULED=1, impostata dall'unita' systemd): rifiutata se manca il file
+<work>/timer-gate.json, che l'installatore scrive solo dopo la prova di un backup reale e di un ripristino indipendente.
+Segnali SIGTERM/SIGINT: si ripulisce il testo in chiaro prima di uscire; dopo un arresto brusco (SIGKILL) i residui
+temporanei (cartella di lavoro 0700, file 0600) vengono rimossi al primo avvio successivo e dall'unita' (ExecStopPost).
 """
 import argparse
 import hashlib
@@ -33,6 +39,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import sqlite3
 import subprocess
@@ -257,12 +264,36 @@ def manifest_name(name):
 # ---- controlli di sola lettura ----------------------------------------------------------------------------------
 
 def preflight(a, classic):
+    """Solo metadati: nessuna apertura SQLite (un WAL rimasto dopo un arresto brusco verrebbe ricostruito da SQLite anche
+    in sola lettura), nessuna scrittura, nessun file creato."""
     snap = load_module(os.path.join(a.tools, "brain_v3_snapshot.py"), "brain_v3_snapshot")
     res = []
 
     def add(ok, msg):
         res.append((ok, msg))
         say(("OK     " if ok else "BLOCCO ") + msg)
+
+    def info(msg):
+        say("INFO   " + msg)
+
+    def describe(label, path):
+        d = snap.describe_source(path)
+        state = d["stato"]
+        bad = state in ("assente", "non_sicuro", "sqlite_not_a_database", "wal_collaterali_anomali", "collaterali_anomali")
+        add(not bad, "%s: %s (%s MiB)%s" % (label, state, d.get("byte", 0) // MIB,
+                                             " | cattura: " + d["cattura"] if "cattura" in d else ""))
+        if d.get("collaterali"):
+            info("%s: file collaterali %s" % (label, ", ".join("%s=%d byte" % kv for kv in sorted(d["collaterali"].items()))))
+        if "processi" in d:
+            if d["processi"]:
+                info("%s: aperto da processi %s (scrittore o lettore ATTIVO)" % (label, d["processi"]))
+            elif d["processi_verificati_tutti"]:
+                info("%s: nessun processo lo tiene aperto" % label)
+            else:
+                info("%s: processi non tutti ispezionabili (servono permessi di root): stato attivo/residuo NON determinabile" % label)
+        if state == "journal_presente":
+            info("%s: file -journal non vuoto (scrittura in corso o residuo): se e' un residuo il backup si ferma con hot_journal" % label)
+        return d, bad
     for tool in ("age", "git"):
         add(bool(shutil.which(tool)), "programma %s disponibile" % tool)
     try:
@@ -276,7 +307,11 @@ def preflight(a, classic):
         add(os.path.isfile(a.known_hosts or ""), "known_hosts presente")
     need = 0
     if a.mode == "v3":
-        runs, ignored = snap.discover_runs(a.runs_root)
+        try:
+            runs, ignored = snap.discover_runs(a.runs_root)
+        except snap.Refused as e:
+            add(False, "cartella delle run: %s" % e.code)
+            runs, ignored = [], []
         add(os.path.isdir(a.runs_root), "cartella delle run %s (%d run, %d voci ignorate)" % (a.runs_root, len(runs), len(ignored)))
         for n in runs:
             d = os.path.join(a.runs_root, n)
@@ -285,31 +320,20 @@ def preflight(a, classic):
             for dbn in ("journal.db", "budget.db"):
                 p = os.path.join(d, dbn)
                 if os.path.isfile(p):
-                    need += os.path.getsize(p)
-                    try:
-                        c = snap.open_source_db(p)
-                        c.close()
-                        add(True, "run %s: %s apribile in sola lettura senza creare file" % (n, dbn))
-                    except snap.Refused as e:
-                        add(False, "run %s: %s -> %s" % (n, dbn, e.code))
-            add(True, "run %s: %s" % (n, "IN PAUSA" if os.path.exists(os.path.join(d, "pause.flag")) else "non in pausa"))
+                    need += os.path.getsize(p) + (os.path.getsize(p + "-wal") if os.path.isfile(p + "-wal") else 0)
+                    describe("run %s: %s" % (n, dbn), p)
+            info("run %s: %s" % (n, "IN PAUSA" if os.path.exists(os.path.join(d, "pause.flag")) else "non in pausa"))
     else:
         p = a.legacy_db
-        add(os.path.isfile(p) and not os.path.islink(p), "database storico %s presente (%s MiB)"
-            % (p, (os.path.getsize(p) // MIB) if os.path.isfile(p) else "?"))
         if os.path.isfile(p):
-            need += os.path.getsize(p) * 2
-            try:
-                snap.open_source_db(p).close()
-                add(True, "apribile in sola lettura senza creare file")
-            except snap.Refused as e:
-                add(False, "apertura: %s" % e.code)
+            need += os.path.getsize(p) * 2 + (os.path.getsize(p + "-wal") if os.path.isfile(p + "-wal") else 0)
+        describe("database storico", p)
     probe = a.work
     while probe and not os.path.exists(probe):
         probe = os.path.dirname(probe)
     free = shutil.disk_usage(probe or "/").free
     add(free > need * 3 + 64 * MIB, "spazio libero %d MiB, stimato necessario %d MiB" % (free // MIB, (need * 3 + 64 * MIB) // MIB))
-    add(os.path.realpath(a.work).rstrip("/").endswith("superbot-extbackup") is False,
+    add(os.path.basename(os.path.realpath(a.work).rstrip("/")) != "superbot-extbackup",
         "la cartella di lavoro non e' quella del backup di Falco/Toro")
     if a.remote and not a.no_network:
         r = subprocess.run(["git", "ls-remote", "--heads", a.remote], capture_output=True, timeout=120,
@@ -319,7 +343,7 @@ def preflight(a, classic):
                                 % (a.ssh_key, a.known_hosts)} if a.ssh_key else {})))
         add(r.returncode == 0, "repository dei backup raggiungibile (ls-remote, sola lettura)")
     bad = [m for ok, m in res if not ok]
-    say("PREFLIGHT: %s" % ("BLOCCATO (%d)" % len(bad) if bad else "OK (nessuna modifica fatta)"))
+    say("PREFLIGHT: %s" % ("BLOCCATO (%d)" % len(bad) if bad else "OK (solo metadati: nessuna apertura SQLite, nessuna scrittura)"))
     return 1 if bad else 0
 
 
@@ -359,8 +383,9 @@ def execute(a, classic, snap):
                                                       a.attempts, a.attempt_wait)
             legacy = None
             if not facts:
-                say("RISULTATO: NIENTE DA PROTEGGERE  nessuna cartella brain-v3-* in %s" % a.runs_root)
-                classic.write_status(wd, ultima_verifica_ok=created, nota="nessuna_run")
+                say("RISULTATO: NIENTE DA PROTEGGERE  nessuna cartella brain-v3-* in %s. NESSUN BACKUP E' STATO ESEGUITO "
+                    "e questo esito non certifica niente" % a.runs_root)
+                classic.write_status(wd, ultimo_controllo=created, stato="nessuna_run")
                 return 3
             body = {"runs": facts, "ignorati": ignored}
             anchors = dict(prev_anchors) if a.run else {}        # con --run le ancore delle altre run restano quelle precedenti
@@ -483,7 +508,26 @@ def prune(a, classic, repo, fam):
     return sorted(removed)
 
 
+def sweep_stale(wd):
+    """Dopo un arresto brusco restano solo file temporanei NOSTRI nella cartella di lavoro (0700): li toglie."""
+    gone = []
+    for n in sorted(os.listdir(wd)):
+        full = os.path.join(wd, n)
+        if n in ("staging", "scratch") or n.startswith("verifica-"):
+            shutil.rmtree(full, ignore_errors=True)
+            gone.append(n)
+        elif n == "staging.tar.gz" or re.match(r"^superbot-(brainv3|brainfree)-\d{8}T\d{6}Z\.tar\.gz\.age(\.part\d{3})?$", n):
+            os.unlink(full)
+            gone.append(n)
+    return gone
+
+
+def _on_signal(signum, _frame):
+    raise SystemExit(128 + signum)
+
+
 def main(argv=None):
+    os.umask(0o077)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mode", required=True, choices=sorted(FAMILIES))
     ap.add_argument("--runs-root", default="/opt/superbot-v3-paper-runs")
@@ -530,6 +574,11 @@ def main(argv=None):
     if a.preflight:
         return preflight(a, classic)
     wd = os.path.join(a.work, a.mode)
+    if os.environ.get("SUPERBOT_V3_SCHEDULED") == "1" and a.mode == "v3" and not a.plan:
+        if not os.path.isfile(os.path.join(a.work, "timer-gate.json")):
+            print("RIFIUTATO (timer_gate_missing): esecuzione pianificata senza la prova di un backup reale e di un "
+                  "ripristino indipendente (timer-gate.json). Niente e' stato fatto.")
+            return 1
     os.makedirs(wd, mode=0o700, exist_ok=True)
     os.chmod(a.work, 0o700)
     try:
@@ -537,25 +586,40 @@ def main(argv=None):
     except classic.Fail as e:
         print("ERRORE BACKUP BRAIN V3: %s" % e)
         return 1
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT, _on_signal)
+    snap.SCRATCH_ROOT = os.path.join(wd, "scratch")
     try:
+        gone = sweep_stale(wd)
+        if gone:
+            say("ripulito il residuo temporaneo di un'esecuzione interrotta: %s" % ", ".join(gone))
         if not a.plan:
             classic.write_status(wd, ultimo_tentativo=classic.now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"))
         return execute(a, classic, snap)
     except snap.Refused as e:
         msg = str(e)[:700]
         print("RIFIUTATO (%s): %s" % (e.code, msg))
-        print("RISULTATO: FALLITO. Nessun archivio e' stato considerato inviato; niente e' stato cancellato.")
+        print("RISULTATO: FALLITO. Nessun archivio e' stato considerato inviato; nessun dato ne' archivio e' stato cancellato.")
         if not a.plan:
             classic.write_status(wd, ultimo_errore=msg, codice_rifiuto=e.code)
         return 1
     except (classic.Fail, OSError, subprocess.SubprocessError, tarfile.TarError, sqlite3.Error) as e:
         msg = str(e)[:700]
         print("ERRORE BACKUP BRAIN V3: %s" % msg)
-        print("RISULTATO: FALLITO. Nessun archivio e' stato considerato inviato; niente e' stato cancellato.")
+        print("RISULTATO: FALLITO. Nessun archivio e' stato considerato inviato; nessun dato ne' archivio e' stato cancellato.")
         if not a.plan:
             classic.write_status(wd, ultimo_errore=msg)
         return 1
+    except SystemExit as e:
+        print("RISULTATO: INTERROTTO da un segnale. Nessun archivio e' stato considerato inviato; testo in chiaro rimosso.")
+        if not a.plan:
+            classic.write_status(wd, ultimo_errore="interrotto da un segnale (%s)" % e.code)
+        raise
     finally:
+        try:
+            os.rmdir(snap.SCRATCH_ROOT)                       # cartella di lavoro dei WAL: se e' vuota non resta
+        except OSError:
+            pass
         os.close(lock)
 
 

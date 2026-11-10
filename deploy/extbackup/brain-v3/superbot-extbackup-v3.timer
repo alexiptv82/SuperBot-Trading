@@ -4,7 +4,8 @@ Description=SuperBot backup esterno cifrato Brain V3 - ogni giorno (30 minuti do
 [Timer]
 OnCalendar=*-*-* 03:50:00 UTC
 RandomizedDelaySec=300
-Persistent=true
+# NIENTE Persistent=true: attivare (o riattivare) il timer non deve mai far partire subito un backup arretrato.
+# Una notte saltata non e' un problema: il giro successivo confronta lo stato con l'ultimo archivio pubblicato.
 
 [Install]
 WantedBy=timers.target

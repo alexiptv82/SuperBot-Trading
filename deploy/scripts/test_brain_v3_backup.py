@@ -523,11 +523,14 @@ class MissingTruncatedAndSourceTests(SnapshotCase):
         r.write("budget.db-wal", b"")
         self.refused("wal_sidecar_state_unexpected", capture, r)
 
-    def test_unknown_small_file_is_copied_as_extra_not_lost(self):
+    def test_unknown_small_file_is_copied_as_extra_with_original_path(self):
         r = Run(self.root, "brain-v3-xtr")
         r.write("nota.txt", "appunti dell'operatore\n")
         f = capture(r)
-        self.assertEqual(f["extra"], ["nota.txt"])
+        (e,) = f["extra"]
+        self.assertEqual((e["nome"], e["archiviato_in"], e["size"]), ("nota.txt", "extra/nota.txt", 23))
+        self.assertEqual(e["percorso_originale"], os.path.join(r.dir, "nota.txt"))
+        self.assertEqual(e["sha256"], sha(b"appunti dell'operatore\n"))
 
     def test_empty_runs_root_means_nothing_to_protect(self):
         facts, ignored = S.build_runs_snapshot(os.path.join(self.td.name, "non-esiste"), os.path.join(self.td.name, "s"),
@@ -1098,7 +1101,7 @@ class PreflightTests(PipelineCase):
         before = tree_state(self.td.name)
         p = subprocess.run(self.args("--preflight", "--no-network"), capture_output=True, text=True, timeout=120)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        self.assertIn("PREFLIGHT: OK (nessuna modifica fatta)", p.stdout)
+        self.assertIn("PREFLIGHT: OK (solo metadati", p.stdout)
         self.assertEqual(tree_state(self.td.name), before)
         self.assertFalse(os.path.exists(self.work))
         os.unlink(os.path.join(self.runs, "brain-v3-alfa1", "mandate.json"))
@@ -1168,13 +1171,10 @@ class LegacyBrainFreeTests(PipelineCase):
     def test_dead_process_wal_residue_is_backed_up_in_its_own_family_and_restored(self):
         make_legacy(self.legacy, 60, dead_process_wal=True)
         self.assertTrue(os.path.exists(self.legacy + "-wal") and os.path.exists(self.legacy + "-shm"))
-        db_before, wal_before = sha(slurp(self.legacy)), sha(slurp(self.legacy + "-wal"))
-        listing = sorted(os.listdir(self.legacy_dir))
+        before = tree_state(self.legacy_dir)
         rc, out = self.free()
         self.assertEqual(rc, 0, out)
-        self.assertEqual(sha(slurp(self.legacy)), db_before)            # database e -wal identici
-        self.assertEqual(sha(slurp(self.legacy + "-wal")), wal_before)
-        self.assertEqual(sorted(os.listdir(self.legacy_dir)), listing)              # nessun file nuovo
+        self.assertEqual(tree_state(self.legacy_dir), before)                       # database, -wal e -shm: byte, data e elenco identici
         heads = subprocess.run(["git", "ls-remote", "--heads", self.remote], capture_output=True, text=True).stdout
         self.assertIn("refs/heads/brain-free", heads)
         self.assertNotIn("refs/heads/brain-v3", heads)
@@ -1395,26 +1395,431 @@ class Rc84CrossCheckTests(PipelineCase):
 
 
 # ======================================================================================================
-# Installazione / rollback della sola estensione
+# Revisione di sicurezza: WAL senza toccare i file collaterali, preflight non invasivo
+# ======================================================================================================
+
+HOLDER = r"""
+import sqlite3, sys, time
+from datetime import datetime, timezone
+c = sqlite3.connect(sys.argv[1], isolation_level=None)
+c.execute('PRAGMA journal_mode=WAL'); c.execute('PRAGMA wal_autocheckpoint=0')
+for i in range(40):
+    c.execute("INSERT INTO spend_events(occurred_at,provider,units,metadata) VALUES(?,?,?,?)",
+              (datetime.now(timezone.utc).isoformat(), 'deepseek', 3, '{}'))
+print('ready', flush=True)
+if sys.argv[2] == 'idle':
+    time.sleep(120)
+else:
+    end = time.time() + 120
+    while time.time() < end:
+        c.execute("INSERT INTO spend_events(occurred_at,provider,units,metadata) VALUES(?,?,?,?)",
+                  (datetime.now(timezone.utc).isoformat(), 'deepseek', 1, '{}'))
+        time.sleep(0.003)
+"""
+
+
+@unittest.skipUnless(HAVE_AGE, "mancano age/age-keygen/git")
+class WalCaptureTests(PipelineCase):
+    """WAL pulito, residuo dopo un arresto brusco, scrittore attivo: sorgente intatta e dati completi."""
+
+    def live_holder(self, db, mode):
+        p = subprocess.Popen([sys.executable, "-c", HOLDER, db, mode], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: (p.kill(), p.wait(timeout=30), p.stdout.close()))
+        self.assertEqual(p.stdout.readline().strip(), "ready")
+        return p
+
+    def crash_residue(self, db):
+        code = HOLDER.replace("print('ready', flush=True)", "import os; os._exit(0)")
+        subprocess.run([sys.executable, "-c", code, db, "idle"], check=True)
+
+    def preflight(self, *extra):
+        return subprocess.run(self.args("--preflight", "--no-network", *extra), capture_output=True, text=True, timeout=120)
+
+    def test_clean_wal_is_described_and_captured_without_any_change(self):
+        r = Run(self.runs, "brain-v3-pulito")
+        r.spend(5)
+        d = S.describe_source(r.budget)
+        self.assertEqual(d["stato"], "wal_pulito")
+        self.assertEqual(d["collaterali"], {})
+        before = tree_state(self.td.name)
+        p = self.preflight()
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("wal_pulito", p.stdout)
+        self.assertEqual(tree_state(self.td.name), before)
+        f = capture(r)
+        self.assertEqual(f["budget"]["righe"], 1)
+        self.assertEqual(tree_state(self.td.name), before)
+
+    def test_crash_residue_is_described_without_opening_sqlite_and_captured_with_originals_intact(self):
+        r = Run(self.runs, "brain-v3-residuo")
+        self.crash_residue(r.budget)
+        self.assertTrue(os.path.exists(r.budget + "-wal") and os.path.exists(r.budget + "-shm"))
+        d = S.describe_source(r.budget)
+        self.assertEqual(d["stato"], "wal_con_file_collaterali")
+        self.assertEqual(d["processi"], [])
+        before = tree_state(self.runs)
+        p = self.preflight()
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("wal_con_file_collaterali", p.stdout)
+        self.assertIn("originali (-shm compreso) intatti", p.stdout)
+        self.assertEqual(tree_state(self.runs), before, "il preflight ha toccato la sorgente (anche solo il -shm)")
+        f = capture(r)
+        self.assertEqual(f["budget"]["righe"], 40)                     # righe presenti SOLO nel -wal del processo morto
+        self.assertEqual(tree_state(self.runs), before, "la cattura ha toccato database, -wal o -shm")
+
+    def test_idle_live_writer_is_detected_and_captured_with_originals_intact(self):
+        r = Run(self.runs, "brain-v3-vivo")
+        holder = self.live_holder(r.budget, "idle")
+        d = S.describe_source(r.budget)
+        self.assertEqual(d["stato"], "wal_con_file_collaterali")
+        self.assertIn(holder.pid, d["processi"])
+        before = tree_state(self.runs)
+        p = self.preflight()
+        self.assertIn("aperto da processi", p.stdout)
+        self.assertEqual(tree_state(self.runs), before)
+        f = capture(r)
+        self.assertEqual(f["budget"]["righe"], 40)
+        self.assertEqual(tree_state(self.runs), before)
+
+    def test_busy_live_writer_yields_a_consistent_snapshot_or_an_explicit_refusal(self):
+        r = Run(self.runs, "brain-v3-attivo")
+        self.live_holder(r.budget, "busy")
+        ok = refused = 0
+        for _ in range(6):
+            try:
+                f = capture(r, attempts=2, wait=0.01)
+                ok += 1
+                self.assertGreaterEqual(f["budget"]["righe"], 40)
+            except S.Refused as e:
+                self.assertIn(e.code, ("source_changed_during_capture", "sqlite_busy"))
+                refused += 1
+        self.assertEqual(ok + refused, 6)
+        # nessun file creato da noi nella cartella vera
+        self.assertEqual(sorted(n for n in os.listdir(r.dir) if n.startswith(".scratch")), [])
+
+    def test_scratch_copy_is_private_and_removed(self):
+        r = Run(self.runs, "brain-v3-privato")
+        self.crash_residue(r.budget)
+        root = os.path.join(self.td.name, "scratch-root")
+        S.SCRATCH_ROOT = root
+        self.addCleanup(setattr, S, "SCRATCH_ROOT", None)
+        conn = S.open_source_db(r.budget)
+        (sub,) = os.listdir(root)
+        self.assertEqual(oct(os.stat(os.path.join(root, sub)).st_mode & 0o777), "0o700")
+        conn.close()
+        self.assertEqual(os.listdir(root), [])
+
+    def test_changing_wal_during_the_copy_is_refused(self):
+        r = Run(self.runs, "brain-v3-cambia")
+        self.crash_residue(r.budget)
+        real = S.sha256_file
+        done = []
+
+        def flaky(path):
+            if path.endswith("-wal") and not done:
+                done.append(1)
+                with open(path, "ab") as f:                          # qualcuno scrive nel -wal tra copia e riverifica
+                    f.write(b"\0")
+            return real(path)
+        S.sha256_file = flaky
+        self.addCleanup(setattr, S, "sha256_file", real)
+        with self.assertRaises(S.Refused) as cm:
+            S.open_source_db(r.budget)
+        self.assertEqual(cm.exception.code, "source_changed_during_capture")
+
+    def test_describe_source_never_opens_sqlite_or_writes(self):
+        r = Run(self.runs, "brain-v3-meta")
+        self.crash_residue(r.budget)
+        before = tree_state(r.dir)
+        for path in (r.budget, r.journal):
+            S.describe_source(path)
+        self.assertEqual(tree_state(r.dir), before)
+        self.assertEqual(S.describe_source(r.journal)["stato"], "rollback_pulito")
+        self.assertEqual(S.describe_source(os.path.join(r.dir, "non-esiste.db"))["stato"], "assente")
+
+
+# ======================================================================================================
+# Falsi positivi: nessuna run / uscita 3 non certificano nulla; esecuzione pianificata senza prova
+# ======================================================================================================
+
+class FalsePositiveTests(PipelineCase):
+    def test_exit_3_records_no_success_and_no_verification(self):
+        rc, out = self.backup()
+        self.assertEqual(rc, 3, out)
+        self.assertIn("NESSUN BACKUP E' STATO ESEGUITO", out)
+        st = self.status()
+        for k in ("ultimo_successo", "ultima_verifica_ok", "archivio", "sha256", "verifica"):
+            self.assertNotIn(k, st)
+        self.assertEqual(st["stato"], "nessuna_run")
+        self.assertEqual(subprocess.run(["git", "ls-remote", "--heads", self.remote], capture_output=True, text=True).stdout.strip(), "")
+
+    def test_scheduled_run_without_timer_gate_is_refused_and_does_nothing(self):
+        self.populated_runs()
+        rc, out = self.backup(env=dict(os.environ, SUPERBOT_V3_SCHEDULED="1"))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("timer_gate_missing", out)
+        self.assertFalse(os.path.exists(os.path.join(self.work, "v3")))
+        self.assertEqual(subprocess.run(["git", "ls-remote", "--heads", self.remote], capture_output=True, text=True).stdout.strip(), "")
+        os.makedirs(self.work)
+        spit(os.path.join(self.work, "timer-gate.json"), "{}")
+        rc, out = self.backup(env=dict(os.environ, SUPERBOT_V3_SCHEDULED="1"))
+        self.assertEqual(rc, 0, out)
+
+    def test_unit_files_have_no_persistent_and_no_success_exit_3(self):
+        base = os.path.join(HERE, "..", "extbackup", "brain-v3")
+        timer, service = slurp(os.path.join(base, "superbot-extbackup-v3.timer")).decode(), slurp(os.path.join(base, "superbot-extbackup-v3.service")).decode()
+        self.assertFalse([l for l in timer.splitlines() if l.strip().startswith("Persistent")])
+        self.assertNotIn("SuccessExitStatus", service)
+        self.assertIn("SUPERBOT_V3_SCHEDULED=1", service)
+        self.assertIn("ExecStopPost", service)
+
+
+# ======================================================================================================
+# Interruzioni anomale della pipeline: staging, cifratura
+# ======================================================================================================
+
+@unittest.skipUnless(HAVE_AGE, "mancano age/age-keygen/git")
+class InterruptionTests(PipelineCase):
+    def slow_age(self):
+        d = os.path.join(self.td.name, "slowbin")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "age"), "w") as f:
+            f.write('#!/bin/sh\n# scrive un cifrato parziale e poi resta in attesa\nwhile [ "$1" != "-o" ]; do shift; done\n'
+                    'echo parziale > "$2"\nsleep 60\n')
+        os.chmod(os.path.join(d, "age"), 0o755)
+        return dict(os.environ, PATH=d + os.pathsep + os.environ["PATH"])
+
+    def start_until_encrypting(self):
+        proc = subprocess.Popen(self.args(), env=self.slow_age(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(lambda: (proc.kill(), proc.wait(timeout=30), proc.stdout.close()))
+        wd = os.path.join(self.work, "v3")
+        end = time.time() + 60
+        while time.time() < end:
+            names = os.listdir(wd) if os.path.isdir(wd) else []
+            if os.path.isfile(os.path.join(wd, "staging.tar.gz")) and any(n.endswith(".tar.gz.age") for n in names):
+                return proc, wd
+            time.sleep(0.05)
+        self.fail("la cifratura non e' partita")
+
+    def test_sigterm_during_encryption_removes_every_plaintext_and_partial_file(self):
+        self.populated_runs()
+        before = tree_state(self.runs)
+        proc, wd = self.start_until_encrypting()
+        self.assertTrue(os.path.isdir(os.path.join(wd, "staging")))
+        proc.terminate()
+        out, _ = proc.communicate(timeout=60)
+        self.assertEqual(proc.returncode, 143, out)
+        self.assertIn("INTERROTTO", out)
+        self.assertEqual(sorted(n for n in os.listdir(wd) if n != "repo" and n != "status.json" and n != ".lock"), [])
+        self.assertEqual(subprocess.run(["git", "ls-remote", "--heads", self.remote], capture_output=True, text=True).stdout.strip(), "")
+        self.assertIn("interrotto da un segnale", self.status()["ultimo_errore"])
+        self.assertEqual(tree_state(self.runs), before)
+
+    def test_sigkill_leaves_only_private_temp_files_and_the_next_run_sweeps_them(self):
+        self.populated_runs()
+        before = tree_state(self.runs)
+        proc, wd = self.start_until_encrypting()
+        proc.kill()
+        proc.communicate(timeout=60)
+        subprocess.run(["pkill", "-f", "slowbin"], check=False)
+        self.assertTrue(os.path.isfile(os.path.join(wd, "staging.tar.gz")))
+        for n in ("staging", "staging.tar.gz"):
+            mode = os.stat(os.path.join(wd, n)).st_mode & 0o777
+            self.assertEqual(mode & 0o077, 0, "%s leggibile da altri (%o)" % (n, mode))
+        self.assertEqual(os.stat(self.work).st_mode & 0o077, 0)
+        self.assertEqual(os.stat(wd).st_mode & 0o077, 0)
+        # il testo in chiaro non e' nel clone che si pubblica, ne' sul remoto
+        self.assertFalse(os.path.exists(os.path.join(wd, "repo", "staging.tar.gz")))
+        self.assertEqual(subprocess.run(["git", "ls-remote", "--heads", self.remote], capture_output=True, text=True).stdout.strip(), "")
+        rc, out = self.backup()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ripulito il residuo temporaneo", out)
+        self.assertEqual(sorted(n for n in os.listdir(wd) if n not in ("repo", "status.json", ".lock")), [])
+        self.assertEqual(plaintext_hits(self.remote, [SECRET.encode(), b"SQLite format 3"]), [])
+        self.assertEqual(tree_state(self.runs), before)
+
+
+# ======================================================================================================
+# File sconosciuti in extra/: manifesto, recupero senza perdite, nessuna attivazione
+# ======================================================================================================
+
+@unittest.skipUnless(HAVE_AGE, "mancano age/age-keygen/git")
+class ExtraFilesTests(PipelineCase):
+    PAYLOADS = {"appunti.txt": b"riga senza a capo e senza UTF-8: \\xff\\xfe\\x00 fine",
+                ".memoria.jsonl": b'{"i":1}\\n{"i":2}\\n', "vuoto.bin": b"", "dati.bin": os.urandom(5000)}
+
+    def run_with_extras(self):
+        r = Run(self.runs, "brain-v3-memo")
+        r.decision(1)
+        for n, data in self.PAYLOADS.items():
+            r.write(n, data)
+            os.utime(os.path.join(r.dir, n), (1700000000 + len(n), 1700000000 + len(n)))
+        os.chmod(os.path.join(r.dir, "appunti.txt"), 0o640)
+        return r
+
+    def test_extra_files_are_listed_with_original_path_and_restored_byte_for_byte(self):
+        r = self.run_with_extras()
+        before = tree_state(self.runs)
+        rc, out = self.backup()
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(tree_state(self.runs), before)
+        (arc,) = self.archives(self.clone())
+        rc, rout, dest = self.restore(arc)
+        self.assertEqual(rc, 0, rout)
+        inner = jload(os.path.join(dest, "INTERNAL-MANIFEST.json"))
+        listed = {e["nome"]: e for e in inner["runs"][0]["extra"]}
+        self.assertEqual(sorted(listed), sorted(self.PAYLOADS))
+        base = os.path.join(dest, "dati", "runs", "brain-v3-memo")
+        for n, data in self.PAYLOADS.items():
+            e = listed[n]
+            self.assertEqual(e["percorso_originale"], os.path.join(r.dir, n))
+            self.assertEqual((e["size"], e["sha256"], e["archiviato_in"]), (len(data), sha(data), "extra/" + n))
+            self.assertEqual(slurp(os.path.join(base, "extra", n)), data)                  # nessuna perdita
+            self.assertEqual(int(os.stat(os.path.join(base, "extra", n)).st_mtime), 1700000000 + len(n))
+            self.assertIn("originale %s" % os.path.join(r.dir, n), rout)
+        self.assertEqual(listed["appunti.txt"]["modo"], "0o640")
+        # nessuna attivazione: niente di tutto questo e' nella cartella della run
+        self.assertEqual(sorted(set(self.PAYLOADS) & set(os.listdir(base))), [])
+        self.assertIn("nessuna attivazione automatica", rout)
+        rep = jload(os.path.join(dest, "RESTORE-REPORT.json"))
+        self.assertEqual(sorted(e["nome"] for e in rep["extra"]), sorted(self.PAYLOADS))
+        self.assertEqual(rep["extra"][0]["modo_originale"] in ("0o600", "0o640", "0o644"), True)
+
+    def test_changing_an_extra_file_makes_a_new_archive(self):
+        r = self.run_with_extras()
+        self.assertEqual(self.backup()[0], 0)
+        rc, out = self.backup()
+        self.assertIn("INVARIATO", out)
+        r.write("appunti.txt", b"contenuto cambiato")
+        rc, out = self.backup()
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("INVARIATO", out)
+        self.assertEqual(len(self.archives(self.clone())), 2)
+
+    def test_extra_file_changing_during_the_copy_is_detected(self):
+        r = self.run_with_extras()
+
+        def hook(attempt):
+            r.write("appunti.txt", b"modificato durante la copia %d" % attempt)
+        with self.assertRaises(S.Refused) as cm:
+            capture(r, attempts=2, wait=0, hooks={"after_copy": hook})
+        self.assertEqual(cm.exception.code, "source_changed_during_capture")
+
+    def test_oversize_or_nested_unknown_entries_are_refused_not_dropped(self):
+        r = Run(self.runs, "brain-v3-grosso")
+        with open(os.path.join(r.dir, "enorme.jsonl"), "wb") as f:
+            f.truncate(S.EXTRA_MAX_EACH + 1)
+        with self.assertRaises(S.Refused) as cm:
+            capture(r)
+        self.assertEqual(cm.exception.code, "unexpected_entry")
+
+    def test_restore_rejects_extra_files_that_differ_from_the_manifest(self):
+        r = self.run_with_extras()
+        self.assertEqual(self.backup()[0], 0)
+        (arc,) = self.archives(self.clone())
+        rc, rout, dest = self.restore(arc)
+        self.assertEqual(rc, 0, rout)
+        import restore_brain_v3_backup as R
+        problems = []
+
+        class P(list):
+            def add(self, m):
+                self.append(m)
+        rec = jload(os.path.join(dest, "INTERNAL-MANIFEST.json"))["runs"][0]
+        spit(os.path.join(dest, "dati", "runs", "brain-v3-memo", "extra", "appunti.txt"), b"alterato")
+        spit(os.path.join(dest, "dati", "runs", "brain-v3-memo", "intruso.txt"), b"x")
+        problems = P()
+        R.check_extras(dest, rec, problems)
+        self.assertTrue(any("extra/appunti.txt diverso" in m for m in problems), problems)
+        self.assertTrue(any("file non previsti" in m and "intruso.txt" in m for m in problems), problems)
+
+
+# ======================================================================================================
+# Installazione / rollback della sola estensione e cancello del timer
 # ======================================================================================================
 
 INSTALLER = os.path.join(HERE, "..", "extbackup", "brain-v3", "install_brain_v3_extension.py")
-RUNV3 = os.path.join(HERE, "..", "extbackup", "brain-v3", "run-v3.sh")
+FAKE_SYSTEMCTL = r'''#!%(py)s
+import json, os, signal, sys, time
+state_p, log_p, unitdir = os.environ["FAKE_SC_STATE"], os.environ["FAKE_SC_LOG"], os.environ["FAKE_SC_UNITDIR"]
+st = {"enabled": [], "active": []}
+if os.path.exists(state_p):
+    with open(state_p) as f:
+        st = json.load(f)
+verb, args = sys.argv[1], sys.argv[2:]
+with open(log_p, "a") as f:
+    f.write(" ".join(sys.argv[1:]) + "\n")
+if verb in os.environ.get("FAKE_SC_SLEEP", "-").split(","):
+    time.sleep(30)
+if verb == os.environ.get("FAKE_SC_KILL", "-"):
+    os.kill(os.getppid(), signal.SIGKILL)
+    sys.exit(0)
+if verb in os.environ.get("FAKE_SC_FAIL", "-").split(","):
+    print("errore simulato di systemd", file=sys.stderr)
+    sys.exit(1)
+units = [x for x in args if not x.startswith("-")]
+unit = units[-1] if units else ""
+def save():
+    with open(state_p, "w") as f:
+        json.dump(st, f)
+def exists():
+    return os.path.isfile(os.path.join(unitdir, unit))
+if verb == "is-active":
+    if unit == "superbot-extbackup.service":
+        s = os.environ.get("FAKE_SC_CLASSIC", "inactive")
+    elif unit == "superbot-extbackup-v3.service":
+        s = os.environ.get("FAKE_SC_V3_SERVICE", "inactive")
+    else:
+        s = "active" if unit in st["active"] else "inactive"
+    print(s)
+    sys.exit(0 if s == "active" else 3)
+if verb == "is-enabled":
+    s = "enabled" if unit in st["enabled"] else "disabled"
+    print(s)
+    sys.exit(0 if s == "enabled" else 1)
+if verb == "enable":
+    if not exists():
+        print("Failed to enable unit: Unit file %%s does not exist." %% unit, file=sys.stderr)
+        sys.exit(1)
+    if unit not in st["enabled"]:
+        st["enabled"].append(unit)
+    if "--now" in args and unit not in st["active"]:
+        st["active"].append(unit)
+    save()
+elif verb == "start":
+    if not exists():
+        print("Unit not found", file=sys.stderr)
+        sys.exit(5)
+    if unit not in st["active"]:
+        st["active"].append(unit)
+    save()
+elif verb == "stop":
+    if unit in st["active"]:
+        st["active"].remove(unit)
+    save()
+elif verb == "disable":
+    if unit in st["enabled"]:
+        st["enabled"].remove(unit)
+    if "--now" in args and unit in st["active"]:
+        st["active"].remove(unit)
+    save()
+sys.exit(0)
+'''
 
 
 @unittest.skipUnless(HAVE_AGE, "mancano age/git")
-class InstallerTests(unittest.TestCase):
+class InstallerTests(PipelineCase):
     def setUp(self):
-        self.td = tempfile.TemporaryDirectory()
+        super().setUp()
         t = self.td.name
         self.tools = os.path.join(t, "tools")
         self.classic = os.path.join(t, "extbackup")
-        self.work = os.path.join(t, "extbackup-v3")
         self.systemd = os.path.join(t, "systemd")
         self.state = os.path.join(t, "state")
         self.key = os.path.join(t, "key")
         self.fakebin = os.path.join(t, "fakebin")
-        self.calls = os.path.join(t, "systemctl.log")
+        self.sc_state = os.path.join(t, "sc-state.json")
+        self.sc_log = os.path.join(t, "systemctl.log")
         for d in (self.tools, self.classic, self.systemd, self.fakebin):
             os.makedirs(d)
         for n in ("external_backup.py", "backup_brain.py", "backup_app_db.py"):
@@ -1422,129 +1827,130 @@ class InstallerTests(unittest.TestCase):
         for n in ("recipient.txt", "known_hosts", "run.sh", "status.json"):
             spit(os.path.join(self.classic, n), n + "\n")
         spit(self.key, "chiave finta\n")
-        self.set_systemctl("inactive")
-
-    def tearDown(self):
-        self.td.cleanup()
-
-    def set_systemctl(self, active):
         with open(os.path.join(self.fakebin, "systemctl"), "w") as f:
-            f.write('#!/bin/sh\necho "$@" >> %s\ncase "$1" in is-active) echo %s; [ %s = active ] && exit 0 || exit 3;; '
-                    'is-enabled) echo enabled; exit 0;; *) exit 0;; esac\n' % (self.calls, active, active))
+            f.write(FAKE_SYSTEMCTL % {"py": sys.executable})
         os.chmod(os.path.join(self.fakebin, "systemctl"), 0o755)
 
-    def run_inst(self, *args):
-        cmd = [sys.executable, INSTALLER, *args, "--tools-dir", self.tools, "--work-dir", self.work,
-               "--classic-dir", self.classic, "--systemd-dir", self.systemd, "--state-dir", self.state,
-               "--ssh-key", self.key, "--allow-nonroot"]
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
-                           env=dict(os.environ, PATH=self.fakebin + os.pathsep + os.environ["PATH"]))
+    def env(self, **extra):
+        return dict(os.environ, PATH=self.fakebin + os.pathsep + os.environ["PATH"], FAKE_SC_STATE=self.sc_state,
+                    FAKE_SC_LOG=self.sc_log, FAKE_SC_UNITDIR=self.systemd, **extra)
+
+    def inst_args(self, *args, host="vps-singapore"):
+        return [sys.executable, INSTALLER, *args, "--tools-dir", self.tools, "--work-dir", self.work,
+                "--classic-dir", self.classic, "--systemd-dir", self.systemd, "--state-dir", self.state,
+                "--ssh-key", self.key, "--allow-nonroot", "--host-name", host]
+
+    def run_inst(self, *args, host="vps-singapore", **env):
+        p = subprocess.run(self.inst_args(*args, host=host), capture_output=True, text=True, timeout=120, env=self.env(**env))
         return p.returncode, p.stdout + p.stderr
 
-    def approval(self):
-        rc, out = self.run_inst("install")
-        return [l.split()[-1] for l in out.splitlines() if "IMPRONTA DI APPROVAZIONE" in l][0]
+    def log(self):
+        return slurp(self.sc_log).decode().splitlines() if os.path.exists(self.sc_log) else []
+
+    def mutating_calls(self):
+        return [l for l in self.log() if l.split()[0] in ("daemon-reload", "enable", "start", "stop", "disable")]
+
+    def sc(self):
+        return jload(self.sc_state) if os.path.exists(self.sc_state) else {"enabled": [], "active": []}
+
+    def approval(self, *extra):
+        rc, out = self.run_inst("status")
+        return [l.split()[-1] for l in out.splitlines() if "impronta di approvazione" in l][0]
 
     def snap(self):
-        """Albero di tutte le cartelle che l'installatore potrebbe toccare (esclusi finto systemctl e il suo registro)."""
         out = {}
-        for d in (self.tools, self.classic, self.work, self.systemd, self.state):
+        for d in (self.tools, self.classic, self.systemd, self.state, self.work):
             if os.path.isdir(d):
                 for k, v in tree_state(d).items():
                     out[os.path.join(d, k)] = v
-        out["elenco-radice"] = sorted(n for n in os.listdir(self.td.name) if n not in ("fakebin", "systemctl.log"))
+        out["radice"] = sorted(n for n in os.listdir(self.td.name) if n in ("extbackup-v3", "work") or ".removed-" in n)
         return out
 
     def classic_state(self):
-        return {n: sha(slurp(os.path.join(self.tools, n))) for n in ("external_backup.py", "backup_brain.py", "backup_app_db.py")} | \
-               {"classic/" + n: sha(slurp(os.path.join(self.classic, n))) for n in os.listdir(self.classic)}
+        st = {n: sha(slurp(os.path.join(self.tools, n))) for n in ("external_backup.py", "backup_brain.py", "backup_app_db.py")}
+        st.update({"classic/" + n: sha(slurp(os.path.join(self.classic, n))) for n in os.listdir(self.classic)})
+        return st
 
+    def make_proof(self):
+        """Un backup VERO (pubblicato e verificato) e il certificato di un ripristino indipendente."""
+        self.populated_runs()
+        rc, out = self.backup()
+        self.assertEqual(rc, 0, out)
+        (arc,) = self.archives(self.clone())
+        cert = os.path.join(self.td.name, "cert.json")
+        rc, rout, _ = self.restore(arc, None, None, "--certificate", cert)
+        self.assertEqual(rc, 0, rout)
+        return cert, arc
+
+    def assert_timer_invariant(self):
+        """Mai un timer attivo o abilitato senza un'unita' valida (identica al file rivisto)."""
+        st = self.sc()
+        for unit in set(st["enabled"]) | set(st["active"]):
+            path = os.path.join(self.systemd, unit)
+            self.assertTrue(os.path.isfile(path), "%s attivo/abilitato ma senza unita'" % unit)
+            self.assertEqual(sha(slurp(path)), sha(slurp(os.path.join(HERE, "..", "extbackup", "brain-v3", unit))))
+
+    # ---- senza timer ----
     def test_simulation_changes_nothing(self):
         before = self.snap()
         rc, out = self.run_inst("install")
         self.assertEqual(rc, 0, out)
         self.assertIn("SIMULAZIONE RIUSCITA", out)
         self.assertEqual(self.snap(), before)
-        self.assertFalse(os.path.exists(self.work))
+        self.assertEqual(self.mutating_calls(), [])
 
     def test_apply_needs_the_exact_approval_fingerprint(self):
-        rc, out = self.run_inst("install", "--apply")
-        self.assertEqual(rc, 1)
+        self.assertEqual(self.run_inst("install", "--apply")[0], 1)
         rc, out = self.run_inst("install", "--apply", "--approve", "0" * 64)
         self.assertEqual(rc, 1)
         self.assertIn("--approve", out)
-        self.assertFalse(os.path.exists(self.work))
+        self.assertFalse(os.path.exists(os.path.join(self.work, "run-v3.sh")))
 
-    def test_install_creates_only_new_files_and_leaves_the_classic_backup_alone(self):
+    def test_install_without_timer_creates_only_new_files_and_leaves_the_classic_backup_alone(self):
         classic_before = self.classic_state()
         ap = self.approval()
         rc, out = self.run_inst("install", "--apply", "--approve", ap)
         self.assertEqual(rc, 0, out)
         for p in (os.path.join(self.tools, "brain_v3_snapshot.py"), os.path.join(self.tools, "external_backup_brain_v3.py"),
                   os.path.join(self.work, "run-v3.sh")):
-            self.assertTrue(os.path.isfile(p))
             self.assertEqual(oct(os.stat(p).st_mode & 0o777), "0o700")
         self.assertEqual(self.classic_state(), classic_before)
-        self.assertFalse(os.path.exists(os.path.join(self.systemd, "superbot-extbackup-v3.timer")), "il timer solo se richiesto")
+        self.assertEqual(os.listdir(self.systemd), [])
+        self.assertEqual(self.mutating_calls(), [])
+        self.assertEqual(jload(os.path.join(self.state, "INSTALL-MANIFEST.json"))["stato"], "completo")
         rc, out = self.run_inst("install", "--apply", "--approve", ap)
-        self.assertEqual(rc, 0)
         self.assertIn("GIA' INSTALLATO", out)
-        # i file installati funzionano da soli
-        p = subprocess.run([sys.executable, "-I", os.path.join(self.tools, "external_backup_brain_v3.py"), "--help"],
-                           capture_output=True, text=True)
+        p = subprocess.run([sys.executable, "-I", os.path.join(self.tools, "external_backup_brain_v3.py"), "--help"], capture_output=True, text=True)
         self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertEqual(subprocess.run(["sh", "-n", os.path.join(self.work, "run-v3.sh")]).returncode, 0)
         self.assertEqual(subprocess.run(["sh", os.path.join(self.work, "run-v3.sh"), "--mode", "boh"], capture_output=True).returncode, 2)
 
     def test_rollback_removes_only_the_extension_and_moves_the_work_dir_aside(self):
         classic_before = self.classic_state()
-        ap = self.approval()
-        self.assertEqual(self.run_inst("install", "--apply", "--approve", ap)[0], 0)
+        self.assertEqual(self.run_inst("install", "--apply", "--approve", self.approval())[0], 0)
         os.makedirs(os.path.join(self.work, "v3"))
         spit(os.path.join(self.work, "v3", "status.json"), "{}")
         rc, out = self.run_inst("rollback")
         self.assertEqual(rc, 0, out)
-        self.assertTrue(os.path.exists(os.path.join(self.tools, "brain_v3_snapshot.py")), "la simulazione non toglie nulla")
+        self.assertTrue(os.path.exists(os.path.join(self.tools, "brain_v3_snapshot.py")))
         rc, out = self.run_inst("rollback", "--apply")
         self.assertEqual(rc, 0, out)
         self.assertFalse(os.path.exists(os.path.join(self.tools, "brain_v3_snapshot.py")))
-        self.assertFalse(os.path.exists(os.path.join(self.tools, "external_backup_brain_v3.py")))
         self.assertFalse(os.path.exists(self.work))
-        moved = [d for d in os.listdir(os.path.dirname(self.work)) if d.startswith("extbackup-v3.removed-")]
+        moved = [d for d in os.listdir(self.td.name) if d.startswith("work.removed-")]
         self.assertEqual(len(moved), 1)
-        self.assertTrue(os.path.isfile(os.path.join(os.path.dirname(self.work), moved[0], "v3", "status.json")),
-                        "lo stato e i dati della cartella di lavoro non vanno cancellati")
+        self.assertTrue(os.path.isfile(os.path.join(self.td.name, moved[0], "v3", "status.json")))
         self.assertEqual(self.classic_state(), classic_before)
-        self.assertEqual(self.run_inst("rollback", "--apply")[0], 1)         # secondo rollback: niente da annullare
+        self.assertEqual(self.run_inst("rollback", "--apply")[0], 1)
 
-    def test_timer_is_installed_only_on_request_and_removed_by_rollback(self):
-        ap = self.approval()
-        rc, out = self.run_inst("install", "--with-timer", "--apply", "--approve", ap)
-        self.assertEqual(rc, 0, out)
-        self.assertTrue(os.path.isfile(os.path.join(self.systemd, "superbot-extbackup-v3.timer")))
-        calls = slurp(self.calls).decode()
-        self.assertIn("daemon-reload", calls)
-        self.assertIn("enable --now superbot-extbackup-v3.timer", calls)
-        self.assertNotIn("start superbot-extbackup", calls)
-        self.assertNotIn("superbot-extbackup.timer", calls, "il timer di Falco/Toro non si tocca")
-        rc, out = self.run_inst("rollback", "--apply")
-        self.assertEqual(rc, 0, out)
-        self.assertFalse(os.path.exists(os.path.join(self.systemd, "superbot-extbackup-v3.timer")))
-        self.assertIn("disable --now superbot-extbackup-v3.timer", slurp(self.calls).decode())
-
-    def test_blocks_when_classic_backup_is_running_or_tools_differ(self):
-        self.set_systemctl("active")
-        rc, out = self.run_inst("install")
+    def test_blocks_when_classic_backup_is_running_or_tools_differ_or_file_exists(self):
+        rc, out = self.run_inst("install", FAKE_SC_CLASSIC="active")
         self.assertEqual(rc, 1)
         self.assertIn("e' in corso", out)
-        self.set_systemctl("inactive")
         with open(os.path.join(self.tools, "external_backup.py"), "a") as f:
             f.write("# modificato\n")
         rc, out = self.run_inst("install")
-        self.assertEqual(rc, 1)
         self.assertIn("versione rivista", out)
-
-    def test_never_overwrites_a_different_existing_file(self):
+        shutil.copyfile(os.path.join(HERE, "external_backup.py"), os.path.join(self.tools, "external_backup.py"))
         os.makedirs(self.work)
         spit(os.path.join(self.work, "run-v3.sh"), "#!/bin/sh\necho mio\n")
         rc, out = self.run_inst("install")
@@ -1552,8 +1958,7 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("non lo sovrascrivo", out)
 
     def test_modified_installed_file_is_left_in_place_by_rollback(self):
-        ap = self.approval()
-        self.assertEqual(self.run_inst("install", "--apply", "--approve", ap)[0], 0)
+        self.assertEqual(self.run_inst("install", "--apply", "--approve", self.approval())[0], 0)
         with open(os.path.join(self.tools, "brain_v3_snapshot.py"), "a") as f:
             f.write("# modifica dell'operatore\n")
         rc, out = self.run_inst("rollback", "--apply")
@@ -1561,11 +1966,212 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("MODIFICATO dopo l'installazione", out)
         self.assertTrue(os.path.exists(os.path.join(self.tools, "brain_v3_snapshot.py")))
 
-    def test_status_is_read_only(self):
+    def test_status_is_read_only_and_says_that_no_real_backup_is_certified(self):
         before = self.snap()
         rc, out = self.run_inst("status")
         self.assertEqual(rc, 0, out)
+        self.assertIn("cancello del timer: NON soddisfatto", out)
+        self.assertIn("nessun backup reale", out)
         self.assertEqual(self.snap(), before)
+        self.assertEqual(self.mutating_calls(), [])
+
+    # ---- il cancello del timer ----
+    def test_first_install_with_timer_is_blocked_without_any_real_backup(self):
+        ap = self.approval("--with-timer")
+        before = self.snap()
+        for args in (("install", "--with-timer"), ("install", "--with-timer", "--apply", "--approve", ap)):
+            rc, out = self.run_inst(*args)
+            self.assertEqual(rc, 1, out)
+            self.assertIn("CANCELLO DEL TIMER", out)
+            self.assertIn("nessun backup reale", out)
+        self.assertEqual(self.snap(), before)
+        self.assertEqual(os.listdir(self.systemd), [])
+        self.assertEqual(self.mutating_calls(), [])
+
+    def test_a_plan_or_exit_3_or_failed_run_do_not_satisfy_the_gate(self):
+        ap = self.approval("--with-timer")
+        self.assertEqual(self.backup()[0], 3)                                 # niente da proteggere
+        self.assertIn("CANCELLO", self.run_inst("install", "--with-timer", "--apply", "--approve", ap)[1])
+        self.populated_runs()
+        self.assertEqual(self.backup("--plan")[0], 0)
+        rc, out = self.run_inst("install", "--with-timer", "--apply", "--approve", ap)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("CANCELLO", out)
+        os.unlink(os.path.join(self.runs, "brain-v3-alfa1", "mandate.json"))
+        self.assertEqual(self.backup()[0], 1)                                 # tentativo fallito
+        self.assertIn("CANCELLO", self.run_inst("install", "--with-timer", "--restore-certificate", "/non/esiste")[1])
+        self.assertEqual(os.listdir(self.systemd), [])
+
+    def test_gate_rejects_missing_forged_same_host_or_mismatching_certificates(self):
+        cert, _arc = self.make_proof()
+        base = jload(cert)
+        self.assertIn("manca --restore-certificate", self.run_inst("install", "--with-timer")[1])
+        rc, out = self.run_inst("install", "--with-timer", "--restore-certificate", cert, host=base["eseguito_su"])
+        self.assertEqual(rc, 1)
+        self.assertIn("QUESTA macchina", out)
+        cases = {"altro_archivio": lambda c: c.update(archivio_sha256="0" * 64),
+                 "altra_testa": lambda c: c["run"][0].update(testa="f" * 64),
+                 "meno_eventi": lambda c: c["run"][0].update(eventi=1),
+                 "run_mancante": lambda c: c.update(run=c["run"][:1]),
+                 "strumenti": lambda c: c["strumenti"].update({"brain_v3_snapshot.py": "1" * 64}),
+                 "esito": lambda c: c.update(esito="FALLITO"),
+                 "famiglia": lambda c: c.update(famiglia="brain-free")}
+        for name, mutate in cases.items():
+            with self.subTest(caso=name):
+                c = json.loads(json.dumps(base))
+                mutate(c)
+                path = os.path.join(self.td.name, "cert-%s.json" % name)
+                spit(path, json.dumps(c))
+                rc, out = self.run_inst("install", "--with-timer", "--restore-certificate", path)
+                self.assertEqual(rc, 1, out)
+                self.assertIn("CANCELLO DEL TIMER", out)
+        self.assertEqual(os.listdir(self.systemd), [])
+        self.assertEqual(self.mutating_calls(), [])
+
+    def test_restore_writes_no_certificate_when_anything_fails(self):
+        self.populated_runs()
+        self.assertEqual(self.backup()[0], 0)
+        (arc,) = self.archives(self.clone())
+        cert = os.path.join(self.td.name, "cert-no.json")
+        other = os.path.join(self.td.name, "altra.txt")
+        keygen(other)
+        rc, _out, _ = self.restore(arc, None, other, "--certificate", cert)
+        self.assertEqual(rc, 1)
+        self.assertFalse(os.path.exists(cert))
+
+    def test_gate_satisfied_activates_the_timer_without_a_backlog_run(self):
+        cert, _arc = self.make_proof()
+        ap = self.approval("--with-timer")
+        rc, out = self.run_inst("install", "--with-timer", "--restore-certificate", cert)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("cancello del timer soddisfatto", out)
+        self.assertEqual(self.mutating_calls(), [])                          # la simulazione non attiva niente
+        rc, out = self.run_inst("install", "--with-timer", "--restore-certificate", cert, "--apply", "--approve", ap)
+        self.assertEqual(rc, 0, out)
+        unit_timer = slurp(os.path.join(self.systemd, "superbot-extbackup-v3.timer")).decode()
+        self.assertFalse([l for l in unit_timer.splitlines() if l.strip().startswith("Persistent")])
+        calls = self.mutating_calls()
+        self.assertEqual(calls, ["daemon-reload", "enable superbot-extbackup-v3.timer", "start superbot-extbackup-v3.timer"])
+        self.assertFalse([l for l in self.log() if "--now" in l or l.endswith("superbot-extbackup-v3.service") and l.startswith(("start", "restart"))])
+        self.assertEqual(self.sc(), {"enabled": ["superbot-extbackup-v3.timer"], "active": ["superbot-extbackup-v3.timer"]})
+        self.assertTrue(os.path.isfile(os.path.join(self.work, "timer-gate.json")))
+        self.assertEqual(jload(os.path.join(self.state, "INSTALL-MANIFEST.json"))["stato"], "completo")
+        self.assert_timer_invariant()
+        n = len(self.log())
+        rc, out = self.run_inst("install", "--with-timer", "--restore-certificate", cert, "--apply", "--approve", ap)
+        self.assertIn("GIA' INSTALLATO", out)
+        self.assertEqual(self.mutating_calls(), calls)                       # nessuna nuova azione di systemd
+
+    def test_reactivation_after_rollback_starts_no_backup_either(self):
+        cert, _arc = self.make_proof()
+        ap = self.approval("--with-timer")
+        args = ("install", "--with-timer", "--restore-certificate", cert, "--apply", "--approve", ap)
+        self.assertEqual(self.run_inst(*args)[0], 0)
+        rc, out = self.run_inst("rollback", "--apply")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.sc(), {"enabled": [], "active": []})
+        self.assertEqual(os.listdir(self.systemd), [])
+        self.assertFalse(os.path.exists(os.path.join(self.work, "timer-gate.json")))
+        open(self.sc_log, "w").close()
+        # il lavoro (stato, clone con le prove) e' stato spostato, non cancellato: lo rimetto dov'era per riattivare
+        (moved,) = [d for d in os.listdir(self.td.name) if d.startswith("work.removed-")]
+        shutil.move(os.path.join(self.td.name, moved), self.work)
+        for f in ("run-v3.sh",):
+            if os.path.exists(os.path.join(self.work, f)):
+                os.unlink(os.path.join(self.work, f))
+        rc, out = self.run_inst(*args)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.mutating_calls(), ["daemon-reload", "enable superbot-extbackup-v3.timer", "start superbot-extbackup-v3.timer"])
+        self.assertNotIn("start superbot-extbackup-v3.service", self.log())
+        self.assertFalse([l for l in self.log() if "--now" in l])
+        self.assert_timer_invariant()
+
+    def test_partial_systemd_failures_leave_nothing_active_and_nothing_installed(self):
+        cert, _arc = self.make_proof()
+        ap = self.approval("--with-timer")
+        args = ("install", "--with-timer", "--restore-certificate", cert, "--apply", "--approve", ap)
+        classic_before = self.classic_state()
+        for verb in ("daemon-reload", "enable", "start"):
+            with self.subTest(fallisce=verb):
+                for f in (self.sc_state, self.sc_log):
+                    if os.path.exists(f):
+                        os.unlink(f)
+                rc, out = self.run_inst(*args, FAKE_SC_FAIL=verb)
+                self.assertEqual(rc, 1, out)
+                self.assertIn("installazione interrotta", out)
+                self.assertEqual(self.sc(), {"enabled": [], "active": []})
+                self.assertEqual(os.listdir(self.systemd), [])
+                self.assertFalse(os.path.exists(os.path.join(self.work, "timer-gate.json")))
+                self.assertFalse(os.path.exists(os.path.join(self.state, "INSTALL-MANIFEST.json")))
+                self.assertFalse(os.path.exists(os.path.join(self.tools, "brain_v3_snapshot.py")))
+                self.assertIn("disable superbot-extbackup-v3.timer", self.log())   # compensazione eseguita
+                self.assertEqual(self.classic_state(), classic_before)
+        self.assertTrue(os.path.isfile(os.path.join(self.work, "v3", "status.json")), "lo stato del backup non si tocca")
+
+    def test_unexpected_service_start_triggers_compensation(self):
+        cert, _arc = self.make_proof()
+        ap = self.approval("--with-timer")
+        rc, out = self.run_inst("install", "--with-timer", "--restore-certificate", cert, "--apply", "--approve", ap,
+                                FAKE_SC_V3_SERVICE="active")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("il servizio di backup e' partito", out)
+        self.assertEqual(self.sc(), {"enabled": [], "active": []})
+        self.assertEqual(os.listdir(self.systemd), [])
+
+    def test_sigkill_during_install_never_leaves_a_timer_without_a_valid_unit_and_rollback_recovers(self):
+        cert, _arc = self.make_proof()
+        ap = self.approval("--with-timer")
+        args = ("install", "--with-timer", "--restore-certificate", cert, "--apply", "--approve", ap)
+        for verb in ("daemon-reload", "enable", "start"):
+            with self.subTest(ucciso_a=verb):
+                for f in (self.sc_state, self.sc_log):
+                    if os.path.exists(f):
+                        os.unlink(f)
+                p = subprocess.run(self.inst_args(*args), capture_output=True, text=True, timeout=120, env=self.env(FAKE_SC_KILL=verb))
+                self.assertEqual(p.returncode, -9)
+                self.assert_timer_invariant()                                  # unita' valide finche' qualcosa e' attivo
+                self.assertEqual(jload(os.path.join(self.state, "INSTALL-MANIFEST.json"))["stato"], "in_corso")
+                rc, out = self.run_inst("install", "--with-timer", "--restore-certificate", cert)
+                self.assertEqual(rc, 1)
+                self.assertIn("interrotta", out)
+                rc, out = self.run_inst("status")
+                self.assertIn("installazione interrotta", out)
+                rc, out = self.run_inst("rollback", "--apply")
+                self.assertEqual(rc, 0, out)
+                self.assertEqual(self.sc(), {"enabled": [], "active": []})
+                self.assertEqual(os.listdir(self.systemd), [])
+                self.assertFalse(os.path.exists(os.path.join(self.work, "timer-gate.json")))
+                self.assertFalse(os.path.exists(os.path.join(self.tools, "brain_v3_snapshot.py")))
+                (moved,) = [d for d in os.listdir(self.td.name) if d.startswith("work.removed-")]
+                shutil.move(os.path.join(self.td.name, moved), self.work)       # rimetto il lavoro per il giro dopo
+
+    def test_sigterm_during_install_compensates(self):
+        cert, _arc = self.make_proof()
+        ap = self.approval("--with-timer")
+        args = ("install", "--with-timer", "--restore-certificate", cert, "--apply", "--approve", ap)
+        proc = subprocess.Popen(self.inst_args(*args), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                env=self.env(FAKE_SC_SLEEP="daemon-reload"))
+        self.addCleanup(lambda: (proc.kill(), proc.wait(timeout=30), proc.stdout.close()))
+        end = time.time() + 60
+        while time.time() < end and not any(l.startswith("daemon-reload") for l in self.log()):
+            time.sleep(0.05)
+        proc.terminate()
+        out, _ = proc.communicate(timeout=60)
+        self.assertEqual(proc.returncode, 143, out)
+        self.assertIn("ESITO: FALLITO", out)
+        self.assertEqual(self.sc(), {"enabled": [], "active": []})
+        self.assertEqual(os.listdir(self.systemd), [])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "INSTALL-MANIFEST.json")))
+
+    def test_rollback_removes_temp_files_left_by_an_interrupted_write(self):
+        self.assertEqual(self.run_inst("install", "--apply", "--approve", self.approval())[0], 0)
+        stray = os.path.join(self.work, ".run-v3.sh.new.4242")
+        spit(stray, "residuo")
+        rc, out = self.run_inst("rollback", "--apply")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("temporaneo di un'installazione interrotta", out)
+        (moved,) = [d for d in os.listdir(self.td.name) if d.startswith("work.removed-")]
+        self.assertFalse(os.path.exists(os.path.join(self.td.name, moved, ".run-v3.sh.new.4242")))
 
 
 if __name__ == "__main__":

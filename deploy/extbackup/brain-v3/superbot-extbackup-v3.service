@@ -5,8 +5,13 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# Il programma rifiuta di partire da qui se manca /opt/superbot-extbackup-v3/timer-gate.json (scritto dall'installatore
+# solo dopo la prova di un backup reale e di un ripristino indipendente).
+Environment=SUPERBOT_V3_SCHEDULED=1
 Nice=10
 IOSchedulingClass=idle
 TimeoutStartSec=45min
-SuccessExitStatus=3
+# Uscita 3 («niente da proteggere») NON e' un successo: il servizio risulta fallito e si vede.
 ExecStart=/opt/superbot-extbackup-v3/run-v3.sh --mode v3
+# Dopo un arresto brusco o un timeout restano solo file temporanei NOSTRI: si tolgono sempre (nessun testo in chiaro in giro).
+ExecStopPost=/bin/sh -c 'rm -rf /opt/superbot-extbackup-v3/v3/staging /opt/superbot-extbackup-v3/v3/scratch /opt/superbot-extbackup-v3/v3/staging.tar.gz; rm -f /opt/superbot-extbackup-v3/v3/superbot-brainv3-*.tar.gz.age /opt/superbot-extbackup-v3/v3/superbot-brainv3-*.tar.gz.age.part*'

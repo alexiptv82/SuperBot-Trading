@@ -20,7 +20,13 @@ Passi (qualunque difetto = uscita 1, e --out resta per l'esame):
   5. database storico Brain Free: integrita' e misura (eventi, hash del flusso, hash dello stato) uguali al manifesto;
   6. la run ripristinata e' sempre IN PAUSA: se la sorgente non aveva pause.flag ne viene scritto uno nella COPIA;
      heartbeat e richieste di chiusura restano in transient/ (non vengono mai rimessi in funzione);
-  7. facoltativo --v3-src: controllo con il codice VERO di RC84 (check_existing_data, verify_prepared_run_config,
+  7. file sconosciuti archiviati in extra/: elencati nel manifesto con il percorso originale; qui si controllano
+     dimensione e SHA-256, si ripristina la data di modifica e si riportano modo e percorso originale in
+     RESTORE-REPORT.json. Restano SOLO in extra/: nulla viene rimesso nella cartella della run (nessuna attivazione);
+  8. facoltativo --certificate FILE: se, e solo se, TUTTO e' OK, scrive un certificato del ripristino (archivio, SHA-256
+     dell'archivio cifrato, macchina, data, run con eventi e hash di testa, impronte degli strumenti). L'installatore lo
+     richiede, insieme alla prova di un backup realmente pubblicato, prima di attivare il timer;
+  9. facoltativo --v3-src: controllo con il codice VERO di RC84 (check_existing_data, verify_prepared_run_config,
      load_runner_config, build_summary): se non indicato il passo e' dichiarato NON ESEGUITO (non e' un PASS).
 """
 import argparse
@@ -29,6 +35,7 @@ import importlib.util
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tarfile
@@ -114,6 +121,51 @@ def check_run(out, rec, snap, problems, now_ms):
             "run_id": got["run_id"]}
 
 
+RUN_ROOT_ALLOWED = ("journal.db", "budget.db", "runner_config.json", "PREPARED_PAUSED_ONLY.json", "mandate.json",
+                    "daily_loss.json", "pause.flag", "transient", "extra")
+
+
+def check_extras(out, rec, problems):
+    """Controlla i file sconosciuti di una run (extra/) contro il manifesto. Restituisce l'elenco per il rapporto."""
+    name = rec["run_name"]
+    base = os.path.join(out, "dati", "runs", name)
+    extra_dir = os.path.join(base, "extra")
+    declared = {e["nome"]: e for e in rec.get("extra", [])}
+    present = sorted(os.listdir(extra_dir)) if os.path.isdir(extra_dir) else []
+    if sorted(declared) != present:
+        problems.add("run %s: i file in extra/ (%s) non coincidono con quelli del manifesto (%s)"
+                     % (name, ",".join(present) or "-", ",".join(sorted(declared)) or "-"))
+    stray = sorted(n for n in os.listdir(base) if n not in RUN_ROOT_ALLOWED)
+    if stray:
+        problems.add("run %s: file non previsti nella cartella della run: %s" % (name, ",".join(stray)))
+    done = []
+    for n, e in sorted(declared.items()):
+        path = os.path.join(extra_dir, n)
+        if not os.path.isfile(path):
+            continue
+        if os.path.getsize(path) != e["size"] or classic_sha(path) != e["sha256"]:
+            problems.add("run %s: extra/%s diverso dal manifesto" % (name, n))
+            continue
+        ts = e["mtime_ms"] / 1000.0
+        os.utime(path, (ts, ts))
+        print("  extra: %s/%s  originale %s -> extra/%s  (%d byte, modo originale %s)"
+              % (name, n, e["percorso_originale"], n, e["size"], e["modo"]))
+        done.append({"run": name, "nome": n, "percorso_originale": e["percorso_originale"], "archiviato_in": "extra/" + n,
+                     "size": e["size"], "sha256": e["sha256"], "modo_originale": e["modo"], "mtime_ms": e["mtime_ms"]})
+    if declared:
+        print("  extra: nessun file e' stato rimesso nella cartella della run (nessuna attivazione automatica)")
+    return done
+
+
+def classic_sha(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def cross_check_rc84(src, out, restored, problems):
     """Controllo con il codice vero di RC84 (facoltativo). Restituisce True se eseguito."""
     sys.path.insert(0, src)
@@ -150,6 +202,7 @@ def main(argv=None):
     ap.add_argument("--identity", required=True, help="file con la chiave PRIVATA di recupero (AGE-SECRET-KEY-...)")
     ap.add_argument("--out", required=True, help="cartella vuota o inesistente (mai una cartella di produzione)")
     ap.add_argument("--manifest", default="")
+    ap.add_argument("--certificate", default="", help="scrive il certificato del ripristino solo se TUTTO e' OK")
     ap.add_argument("--v3-src", default="", help="checkout di RC84 per il controllo con il codice vero (facoltativo)")
     a = ap.parse_args(argv)
 
@@ -181,6 +234,7 @@ def main(argv=None):
         if enc is None:
             print("RISULTATO: FALLITO")
             return 1
+        enc_sha = classic.sha256_file(enc)
         plain = os.path.join(tmpdir, "archivio.tar.gz")
         p = subprocess.run(["age", "-d", "-i", a.identity, "-o", plain, enc], capture_output=True, text=True)
         if p.returncode != 0:
@@ -219,7 +273,7 @@ def main(argv=None):
           % (len(declared), inner.get("famiglia"), inner.get("creato")))
 
     now_ms = int(time.time() * 1000)
-    restored = []
+    restored, extras_report = [], []
     if inner.get("famiglia") == "v3":
         runs = inner.get("runs") or []
         if not runs:
@@ -228,6 +282,7 @@ def main(argv=None):
             r = check_run(a.out, rec, snap, problems, now_ms)
             if r:
                 restored.append(r)
+                extras_report += check_extras(a.out, rec, problems)
         names = sorted(os.listdir(os.path.join(a.out, "dati", "runs"))) if os.path.isdir(os.path.join(a.out, "dati", "runs")) else []
         if names != sorted(r["run_name"] for r in runs):
             problems.add("le cartelle delle run ripristinate non coincidono con il manifesto")
@@ -248,12 +303,24 @@ def main(argv=None):
 
     report = {"archivio": os.path.basename(a.archive), "esito": "FALLITO" if problems else "OK",
               "problemi": list(problems), "run": [{k: v for k, v in r.items() if k != "ids_aperte"} for r in restored],
-              "controllo_rc84": "eseguito" if a.v3_src else "non eseguito"}
+              "controllo_rc84": "eseguito" if a.v3_src else "non eseguito", "extra": extras_report}
     with open(os.path.join(a.out, "RESTORE-REPORT.json"), "w") as f:
         json.dump(report, f, indent=1, sort_keys=True)
     if problems:
-        print("RISULTATO: FALLITO (%d problemi). La cartella %s resta per l'esame." % (len(problems), a.out))
+        print("RISULTATO: FALLITO (%d problemi). La cartella %s resta per l'esame. Nessun certificato scritto." % (len(problems), a.out))
         return 1
+    if a.certificate:
+        cert = {"schema": "superbot-brain-v3-restore-certificate-v1", "esito": "OK", "famiglia": inner.get("famiglia"),
+                "archivio": os.path.basename(a.archive), "archivio_sha256": enc_sha, "eseguito_su": socket.gethostname(),
+                "eseguito_il": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "controllo_rc84": "eseguito" if a.v3_src else "non eseguito",
+                "run": [{"nome": r["run"], "eventi": r["eventi"], "testa": r["testa"]} for r in restored],
+                "extra": len(extras_report),
+                "strumenti": {"restore_brain_v3_backup.py": classic_sha(os.path.abspath(__file__)),
+                              "brain_v3_snapshot.py": classic_sha(os.path.join(HERE, "brain_v3_snapshot.py"))}}
+        with open(a.certificate, "w") as f:
+            json.dump(cert, f, indent=1, sort_keys=True)
+        print("  certificato del ripristino scritto in %s (archivio sha256 %s...)" % (a.certificate, enc_sha[:12]))
     print("RISULTATO: OK  backup decifrato, completo e coerente in %s (nulla avviato, nulla scritto fuori da questa cartella)" % a.out)
     return 0
 
