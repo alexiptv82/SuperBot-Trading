@@ -134,6 +134,8 @@ out('RUN_EQUITY_2000',bool(conf and str(conf.get('initial_equity'))=='2000'))
 risk=conf.get('risk_policy') if conf else None
 out('RUN_FLOOR_450',bool(isinstance(risk,dict) and str(risk.get('minimum_equity'))=='450'))
 out('RUN_LEVERAGE_20_50',bool(isinstance(risk,dict) and risk.get('min_leverage')==20 and risk.get('max_leverage')==50))
+out('RUN_LEVERAGE_MIN_VALUE',risk.get('min_leverage') if isinstance(risk,dict) and type(risk.get('min_leverage')) is int else 'UNSET')
+out('RUN_LEVERAGE_MAX_VALUE',risk.get('max_leverage') if isinstance(risk,dict) and type(risk.get('max_leverage')) is int else 'UNSET')
 out('MARKER_PAPER_PAUSED',bool(marker and marker.get('paper_only') is True and marker.get('paused') is True))
 out('MANDATE_APPROVED',man.get('approved') if isinstance(man,dict) and type(man.get('approved')) is bool else 'UNKNOWN')
 out('MARKER_MANDATE_UNAPPROVED',bool(marker and marker.get('mandate_approved') is False))
