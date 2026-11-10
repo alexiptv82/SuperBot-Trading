@@ -1,7 +1,8 @@
-requested=preflight-paper-only
-approved=2026-11-10
-phase=read-only-inventory
-no-stop=yes
+requested=paper-v3-final-readonly-gate
+date=2026-11-10
+user_authorized=read-only
 no-restart=yes
 no-deploy=yes
-reason=verify-three-wallets-before-paper-restart
+no-reset=yes
+no-live-orders=yes
+scope=brain-prepared-state,single-owner,mode,rc77-snapshot
