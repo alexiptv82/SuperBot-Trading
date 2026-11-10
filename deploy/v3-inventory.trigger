@@ -1,8 +1,6 @@
-requested=paper-v3-final-readonly-gate
+requested=paper-brain-leverage-diagnostic
 date=2026-11-10
-user_authorized=read-only
-no-restart=yes
-no-deploy=yes
-no-reset=yes
-no-live-orders=yes
-scope=brain-prepared-state,single-owner,mode,rc77-snapshot
+read_only=yes
+no_orders=yes
+no_restart=yes
+scope=two-nonsecret-configuration-fields
