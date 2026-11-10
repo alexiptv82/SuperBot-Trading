@@ -1,0 +1,10 @@
+[Unit]
+Description=SuperBot backup esterno cifrato Brain V3 - ogni giorno (30 minuti dopo quello di Falco/Toro)
+
+[Timer]
+OnCalendar=*-*-* 03:50:00 UTC
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=SuperBot backup esterno cifrato - Brain V3 (affianca quello di Falco/Toro)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=45min
+SuccessExitStatus=3
+ExecStart=/opt/superbot-extbackup-v3/run-v3.sh --mode v3
