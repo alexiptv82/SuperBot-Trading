@@ -407,7 +407,16 @@ fi
 
 if [ "$MODE" = post ]; then
   echo "== 7. Esito del servizio"
-  info "$(systemctl show superbot-extbackup.service -p ActiveState -p Result -p ExecMainStatus 2>/dev/null | tr '\n' ' ')"
+  SHOWRAW="$(systemctl show superbot-extbackup.service -p ActiveState -p Result -p ExecMainStatus 2>/dev/null)"
+  SHOWSVC="$(printf '%s\n' "$SHOWRAW" | tr '\n' ' ')"
+  info "$SHOWSVC"
+  # l'ordine delle righe di "systemctl show" non e' garantito: si controlla ogni proprieta' per conto suo
+  if printf '%s\n' "$SHOWRAW" | grep -qx 'ActiveState=inactive' && printf '%s\n' "$SHOWRAW" | grep -qx 'Result=success' \
+    && printf '%s\n' "$SHOWRAW" | grep -qx 'ExecMainStatus=0'; then
+    ok "superbot-extbackup.service terminato con successo (inattivo, Result=success, uscita 0)"
+  else
+    bad "superbot-extbackup.service non risulta terminato con successo (${SHOWSVC:-risposta vuota}): il backup potrebbe essere ancora in corso o fallito"
+  fi
   journalctl -u superbot-extbackup.service -n 25 --no-pager 2>/dev/null | cut -c1-220 | sed 's/^/           /'
   echo "== 8. Stato scritto dal backup (status.json)"
   ST="$(python3 -I - "$EXTB/status.json" "$NOW" <<'PY' 2>/dev/null

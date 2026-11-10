@@ -95,7 +95,7 @@ case "$1" in
   show)
     case "$*" in
       *MainPID*) for a; do U="$a"; done; if [ -f "$FAKE_SYSTEMD_DIR/$U.mainpid" ]; then cat "$FAKE_SYSTEMD_DIR/$U.mainpid"; else echo 0; fi ;;
-      *) echo "ActiveState=inactive"; echo "Result=success"; echo "ExecMainStatus=0" ;;
+      *) if [ -f "$FAKE_SYSTEMD_DIR/extbackup.show" ]; then cat "$FAKE_SYSTEMD_DIR/extbackup.show"; else echo "ActiveState=inactive"; echo "Result=success"; echo "ExecMainStatus=0"; fi ;;
     esac ;;
   *) echo "systemctl finto: comando non permesso nelle prove: $*" >&2; exit 9 ;;
 esac
@@ -1179,6 +1179,105 @@ class PostCheckTests(Base):
         rc, out = self.check("post", sig)
         self.assertEqual(rc, 1, out)
         self.assertIn("archivio locale cifrato mancante", out)
+
+    def test_post_blocks_when_the_service_is_still_running_failed_or_unreadable(self):
+        sig = self.backup()
+        show = os.path.join(self.sysdir, "extbackup.show")
+        cases = {"ancora attivo": "ActiveState=active\nResult=success\nExecMainStatus=0\n",
+                 "in avvio": "ActiveState=activating\nResult=success\nExecMainStatus=0\n",
+                 "fallito": "ActiveState=failed\nResult=exit-code\nExecMainStatus=1\n",
+                 "uscita diversa da zero": "ActiveState=inactive\nResult=success\nExecMainStatus=3\n",
+                 "risposta vuota": ""}
+        for label, body in cases.items():
+            with self.subTest(caso=label):
+                put(show, body)
+                rc, out = self.check("post", sig)
+                self.assertEqual(rc, 1, out)
+                self.assertIn("non risulta terminato con successo", out)
+        for order in ("Result=success\nExecMainStatus=0\nActiveState=inactive\n", "ExecMainStatus=0\nActiveState=inactive\nResult=success\n"):
+            put(show, order)                                   # l'ordine reale delle righe di systemctl show puo' essere diverso
+            self.assertEqual(self.check("post", sig)[0], 0)
+        os.unlink(show)
+        self.assertEqual(self.check("post", sig)[0], 0)
+
+    def test_post_rejects_a_manifest_that_belongs_to_another_archive(self):
+        """status.json punta a un archivio il cui manifesto non c'e': non si ripiega sull'ultimo manifesto trovato."""
+        sig = self.backup()
+        path = os.path.join(self.work, "status.json")
+        st = json.loads(get(path))
+        st["archivio"] = "superbot-backup-20200101T000000Z.tar.gz.age"
+        put(path, json.dumps(st))
+        rc, out = self.check("post", sig)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("nessun manifesto nel repository locale dei backup", out)
+        self.assertNotIn("CONTROLLO SUPERATO", out)
+
+    def test_post_rejects_a_manifest_whose_archive_or_date_differs_from_status(self):
+        sig = self.backup()
+        m = self.manifest_path()
+        man = json.loads(get(m))
+        man["creato"] = "2020-01-01T00:00:00Z"
+        put(m, json.dumps(man))
+        rc, out = self.check("post", sig)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("archivio o data non coincidono", out)
+
+    def test_post_rejects_a_status_with_an_invalid_archive_name(self):
+        sig = self.backup()
+        path = os.path.join(self.work, "status.json")
+        for bad in ("../../etc/passwd", "superbot-backup-1.tar.gz.age", None, "x y"):
+            with self.subTest(nome=bad):
+                st = json.loads(get(path))
+                st["archivio"] = bad
+                put(path, json.dumps(st))
+                rc, out = self.check("post", sig)
+                self.assertEqual(rc, 1, out)
+                self.assertIn("nome archivio non valido", out)
+
+    def test_post_rejects_an_altered_local_encrypted_archive(self):
+        sig = self.backup()
+        arc = self.manifest_path().replace(".manifest.json", ".tar.gz.age")
+        with open(arc, "ab") as f:
+            f.write(b"x")
+        rc, out = self.check("post", sig)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("archivio locale cifrato: SHA-256 non coincide", out)
+
+    def test_post_rejects_a_status_sha_that_differs_from_manifest_and_archive(self):
+        sig = self.backup()
+        path = os.path.join(self.work, "status.json")
+        st = json.loads(get(path))
+        st["sha256"] = "0" * 64
+        put(path, json.dumps(st))
+        rc, out = self.check("post", sig)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("non coincide con status.json", out)
+
+    def test_post_rejects_a_success_in_the_future_or_far_after_the_attempt(self):
+        sig = self.backup()
+        path = os.path.join(self.work, "status.json")
+        orig = json.loads(get(path))
+        for label, key, value in (("successo nel futuro", "ultimo_successo", "2099-01-01T00:00:00Z"),
+                                  ("tentativo molto prima", "ultimo_tentativo", "2020-01-01T00:00:00Z"),
+                                  ("tentativo mancante", "ultimo_tentativo", None),
+                                  ("tentativo malformato", "ultimo_tentativo", "ieri")):
+            with self.subTest(caso=label):
+                st = dict(orig)
+                st[key] = value
+                put(path, json.dumps(st))
+                rc, out = self.check("post", sig)
+                self.assertEqual(rc, 1, out)
+                self.assertNotIn("CONTROLLO SUPERATO", out)
+
+    def test_post_signature_must_be_lowercase_hex_exactly_16_and_equal(self):
+        sig = self.backup()
+        for supplied in (sig.upper(), sig + "0", sig[:-1] + ("0" if sig[-1] != "0" else "1"), sig + " ", "-" + sig[1:]):
+            with self.subTest(firma=supplied):
+                rc, out = self.check("post", supplied)
+                self.assertEqual(rc, 1, out)
+                self.assertNotIn("CONTROLLO SUPERATO", out)
+        rc, out = self.check("post", sig)
+        self.assertEqual(rc, 0, out)
 
     def test_post_blocks_when_run_sh_was_overwritten_with_the_old_version(self):
         sig = self.backup()
