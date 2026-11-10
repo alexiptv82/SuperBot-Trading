@@ -201,7 +201,7 @@ ALLOWED = re.compile(
     r"|nota: copia del cervello con eccezione dichiarata nel manifesto \(bot fermi o prima installazione\)"
     r"|[a-z' /,A-Z0-9()-]+: NON CONFERMATO|ripristino: ERRORE \(dettagli non pubblicati\))"
     r"|Nessun file decifrato e' stato caricato o conservato; nessun dato di portafoglio e' stato stampato\."
-    r"|CERTIFICATO \{[^\n]*\})?$")
+    r"|CERTIFICATO \{[^\n]*\}|::notice title=CERTIFICATO::\{[^\n]*\})?$")
 
 
 @unittest.skipUnless(HAVE_AGE, "mancano age/age-keygen/git")
@@ -291,16 +291,20 @@ class VerifierRunTests(unittest.TestCase):
         self.assertEqual(T.slurp(self.case.ident), before)
 
     def test_attestation_lines_contain_only_names_and_hashes_and_only_for_confirmed_families(self):
-        extra = ("--run-id", "42685000001", "--workflow-sha256", "a" * 64, "--script-sha256", "b" * 64, "--pinned-sha", PINNED_SHA)
+        extra = ("--run-id", "42685000001", "--workflow-sha256", "a" * 64, "--script-sha256", "b" * 64, "--pinned-sha", PINNED_SHA,
+                 "--run-attempt", "1", "--commit", "c" * 40, "--repository", "alexiptv82/SuperBot-Trading")
         p, work, summary = self.verify(rc84=T.RC84 or "", extra=extra)
         certs = [json.loads(l[len("CERTIFICATO "):]) for l in p.stdout.splitlines() if l.startswith("CERTIFICATO ")]
         families = sorted(c["famiglia"] for c in certs)
         self.assertEqual(families, ["brain-free", "classico", "v3"] if T.HAVE_RC84 else ["brain-free", "classico"])
         for c in certs:
-            self.assertEqual(sorted(c), ["archivio", "archivio_sha256", "controllo_rc84", "eseguito_su", "esito", "famiglia", "origine",
-                                         "pinned_sha", "run_id", "schema", "script_sha256", "workflow_sha256"])
+            self.assertEqual(sorted(c), ["archivio", "archivio_sha256", "commit", "controllo_rc84", "eseguito_su", "esito", "famiglia", "origine",
+                                         "pinned_sha", "repository", "run_attempt", "run_id", "schema", "script_sha256", "workflow_sha256"])
             self.assertEqual((c["esito"], c["origine"], c["eseguito_su"], c["run_id"]), ("OK", "github-actions", "github-actions", "42685000001"))
             self.assertRegex(c["archivio_sha256"], r"^[0-9a-f]{64}$")
+        # la stessa attestazione e' emessa anche come annotazione del job (GitHub la espone nelle API pubbliche): testo identico
+        notes = [json.loads(l[len("::notice title=CERTIFICATO::"):]) for l in p.stdout.splitlines() if l.startswith("::notice title=CERTIFICATO::")]
+        self.assertEqual(sorted(notes, key=lambda c: c["famiglia"]), sorted(certs, key=lambda c: c["famiglia"]))
         by = {c["famiglia"]: c for c in certs}
         self.assertEqual(by["classico"]["controllo_rc84"], "non eseguito")
         if T.HAVE_RC84:
@@ -458,35 +462,23 @@ class KeyCheckWorkflowStaticTests(unittest.TestCase):
         for bad in ("set -x", "xtrace", "printenv", "base64", "env | ", "cat \"$RUNNER_TEMP/age"):
             self.assertNotIn(bad, self.text)
 
-    def test_documented_recipient_is_pinned_to_the_23_october_commit_and_still_among_the_recipients(self):
+    def test_documented_recipient_is_pinned_to_the_23_october_commit(self):
         self.assertIn("DOC_SHA: " + DOC_COMMIT, self.text)
         self.assertRegex(self.text, r"DOC_RECIPIENT_SHA256: [0-9a-f]{64}")
         doc_sha = re.search(r"DOC_RECIPIENT_SHA256: ([0-9a-f]{64})", self.text).group(1)
-        if subprocess.run(["git", "-C", ROOT, "cat-file", "-e", DOC_COMMIT + "^{commit}"], capture_output=True).returncode != 0:
-            self.skipTest("SKIP: il commit del 23/10 non e' nella copia locale del repository")
-        blob = subprocess.run(["git", "-C", ROOT, "show", "%s:deploy/extbackup/recipient-v2.txt" % DOC_COMMIT], capture_output=True, check=True).stdout
-        self.assertEqual(hashlib.sha256(blob).hexdigest(), doc_sha)
-        documented = [l for l in blob.decode().splitlines() if l and not l.startswith("#")]
-        current = read(RECIPIENT_V2).splitlines()
-        for k in documented:
-            self.assertIn(k, current, "il destinatario documentato il 23/10 non e' piu' tra i destinatari V2")
+        blob = subprocess.run(["git", "-C", ROOT, "show", "%s:deploy/extbackup/recipient-v2.txt" % DOC_COMMIT], capture_output=True)
+        if blob.returncode == 0:                                      # con la cronologia completa si controlla il commit vero
+            self.assertEqual(hashlib.sha256(blob.stdout).hexdigest(), doc_sha)
+        # il file dei destinatari ATTUALI e' quello su cui si decide (la chiave puo' essere stata sostituita di proposito)
+        self.assertIn('--current-recipients "$RUNNER_TEMP/wf/deploy/extbackup/recipient-v2.txt"', self.text)
+        self.assertNotIn("grep -qxF", self.text)
 
-    def test_the_documented_key_guard_in_the_workflow_behaves_as_intended(self):
-        guard = ("while read -r K; do\n"
-                 "  grep -qxF \"$K\" \"$WF/$R\" || { echo BLOCCO; exit 1; }\n"
-                 "done < <(grep -v '^#' \"$DOC/$R\" | grep -v '^$')\n")
-        self.assertIn("grep -qxF \"$K\" \"$RUNNER_TEMP/wf/$R\"", self.text)
-        self.assertIn("done < <(grep -v '^#' \"$RUNNER_TEMP/doc/$R\" | grep -v '^$')", self.text)
-        with tempfile.TemporaryDirectory() as td:
-            for d in ("wf", "doc"):
-                os.makedirs(os.path.join(td, d))
-            doc, wf = "# documentato\nage1" + "a" * 58 + "\n", "# documentato\nage1" + "a" * 58 + "\n# personale\nage1" + "b" * 58 + "\n"
-            T.spit(os.path.join(td, "doc", "r.txt"), doc)
-            env = dict(os.environ, WF=os.path.join(td, "wf"), DOC=os.path.join(td, "doc"), R="r.txt")
-            T.spit(os.path.join(td, "wf", "r.txt"), wf)
-            self.assertEqual(subprocess.run(["bash", "-c", guard], env=env, capture_output=True).returncode, 0)        # V2 + personale: ok
-            T.spit(os.path.join(td, "wf", "r.txt"), "age1" + "b" * 58 + "\n")
-            self.assertEqual(subprocess.run(["bash", "-c", guard], env=env, capture_output=True).returncode, 1)        # V2 tolta: blocco
+    def test_the_workflow_does_not_claim_the_secret_is_protected_and_explains_the_dispatch_limit(self):
+        head = self.text.split("\non:\n")[0]
+        self.assertIn("Secret di REPOSITORY", head)
+        self.assertIn("NON rende protetto quel Secret", head)
+        self.assertIn("workflow_dispatch funziona solo se questo file e' sul ramo predefinito", head)
+        self.assertIn("SEGRETI-E-PROTEZIONI.md", head)
 
     def test_approval_precedes_the_secret_and_formula_matches_documentation(self):
         names = list(self.steps)
@@ -500,7 +492,8 @@ class KeyCheckWorkflowStaticTests(unittest.TestCase):
 
 
 KC_ALLOWED = re.compile(r"^(# .*|ESITO [^\n]*: (OK|NO)( \(non eseguita: la chiave non coincide\))?|ESITO COMPLESSIVO: (OK|NO)"
-                        r"|La chiave V2 nel Secret appartiene alla coppia documentata: puo' decifrare gli archivi cifrati per quel destinatario\.)?$")
+                        r"|La chiave V2 nel Secret appartiene alla coppia documentata: puo' decifrare gli archivi cifrati per quel destinatario\."
+                        r"|La chiave nel Secret e' un destinatario attuale dei backup ma NON e' la V2 documentata il 23 ottobre: chiave sostituita\.)?$")
 
 
 @unittest.skipUnless(HAVE_AGE, "mancano age/age-keygen/git")
@@ -576,6 +569,39 @@ class KeyCheckRunTests(unittest.TestCase):
         self.assertNotRegex(src, r"open\([^)]*identity")
         self.assertNotIn("os.environ", src)
         self.assertNotIn("getenv", src)
+
+    def run_current(self, identity, current):
+        work = os.path.join(self.td.name, "work")
+        cur = os.path.join(self.td.name, "current.txt")
+        T.spit(cur, current)
+        p = subprocess.run([sys.executable, "-I", KEYCHECK, "--identity", identity, "--recipients", self.rec, "--current-recipients", cur,
+                            "--work", work], capture_output=True, text=True, timeout=120)
+        return p
+
+    def test_a_replaced_key_is_valid_when_it_is_a_current_recipient_and_reported_as_not_the_documented_one(self):
+        p = self.run_current(self.other, "%s\n%s\n" % (self.pub_good, self.pub_other))        # sostituita: la nuova e' tra i destinatari
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("coincide con il destinatario V2 documentato il 23 ottobre: NO", p.stdout)
+        self.assertIn("tra i destinatari dei backup di questo commit: OK", p.stdout)
+        self.assertIn("chiave sostituita", p.stdout)
+        self.assertIn("ESITO COMPLESSIVO: OK", p.stdout)
+        for l in p.stdout.splitlines():
+            self.assertRegex(l, KC_ALLOWED)
+
+    def test_the_documented_key_is_useless_when_it_is_no_longer_a_current_recipient(self):
+        p = self.run_current(self.good, "%s\n" % self.pub_other)
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertIn("coincide con il destinatario V2 documentato il 23 ottobre: OK", p.stdout)
+        self.assertIn("tra i destinatari dei backup di questo commit: NO", p.stdout)
+        self.assertIn("ESITO COMPLESSIVO: NO", p.stdout)
+
+    def test_a_key_that_is_neither_documented_nor_current_is_rejected(self):
+        third = os.path.join(self.td.name, "third")
+        T.keygen(third)
+        p = self.run_current(third, "%s\n%s\n" % (self.pub_good, self.pub_other))
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertIn("ESITO COMPLESSIVO: NO", p.stdout)
+        self.assertNotIn("age1", p.stdout)
 
     def test_documented_recipient_file_with_several_keys_matches_any_of_them(self):
         T.spit(self.rec, "%s\n%s\n" % (self.pub_other, self.pub_good))

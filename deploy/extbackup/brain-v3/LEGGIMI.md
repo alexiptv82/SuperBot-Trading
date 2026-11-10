@@ -1,3 +1,7 @@
+> **Aggiornamento V2 (revisione 2):** il wrapper `run-v3.sh` resta in `/opt/superbot-extbackup-v3/`, ma da V2 **lavora in `/opt/superbot-extbackup-v2/brain`** (clone, stato, cancello del timer) e cifra per i destinatari V2 verso il repository
+> `superbot-backups-v2`. I dati V1 in `/opt/superbot-extbackup-v3/{v3,brain-free}` non si toccano. Una installazione V1 esistente si aggiorna con `upgrade` (vedi `deploy/extbackup/age-v2-migration/LEGGIMI.md` §4bis); il cancello del timer richiede una
+> prova verificata con le API di GitHub (un rapporto locale vale solo con `--accept-unsigned-certificate`). La pulizia `ExecStopPost` gira solo se prende lo stesso `.lock` dei backup (non può toccare i file di un backup manuale in corso). I percorsi `/opt/superbot-extbackup-v3/v3/…` nel testo sotto sono quelli V1.
+
 # Backup esterno cifrato di Brain V3 (estensione affiancata a quello di Falco/Toro)
 
 **DESTINATARIO E REPOSITORY: dal commit di migrazione age V1→V2 questa estensione cifra verso i destinatari V2 (`/opt/superbot-extbackup-v2/recipients.txt`, con impronta fissata nel wrapper) e pubblica nel repository V2 `superbot-backups-v2`. Gli archivi V1 restano nel repository `superbot-backups`, separati e intatti. Procedura completa: `deploy/extbackup/age-v2-migration/LEGGIMI.md`.**
@@ -97,7 +101,7 @@ python3 deploy/extbackup/brain-v3/install_brain_v3_extension.py install --apply 
 /opt/superbot-extbackup-v3/run-v3.sh --plan
 # 5. primo backup vero (pubblica e verifica da GitHub)
 /opt/superbot-extbackup-v3/run-v3.sh
-cat /opt/superbot-extbackup-v3/v3/status.json            # ultimo_successo, archivio, sha256, verifica, repo_byte (nessun segreto)
+cat /opt/superbot-extbackup-v2/brain/v3/status.json            # ultimo_successo, archivio, sha256, verifica, repo_byte (nessun segreto)
 ```
 **Il timer NON si attiva senza la prova** (cancello verificato dall'installatore, non da una promessa):
 1. un backup reale pubblicato e verificato (passo 5; un `--plan`, l'uscita 3 o un tentativo fallito non contano);
@@ -111,7 +115,7 @@ Attivazione del timer: scrive le unità (senza `Persistent=true`), poi `daemon-r
 il timer sia attivo e il servizio no. Un passo che fallisce, un segnale o un errore: `stop`/`disable` del timer, unità e `timer-gate.json` tolti, registro ripulito. Il registro
 `/root/extbackup-v3-install/INSTALL-MANIFEST.json` è scritto **prima** di ogni modifica (stato `in_corso`, poi `completo`): dopo un'interruzione brusca `status` lo segnala e
 `rollback --apply` toglie tutto ciò che risulta presente e invariato. Una riattivazione (rollback poi nuova installazione) non lancia nessun backup arretrato.
-Il programma, se avviato dall'unità (`SUPERBOT_V3_SCHEDULED=1`), rifiuta di partire senza `<work>/timer-gate.json`.
+Il programma, se avviato dall'unità (`SUPERBOT_V3_SCHEDULED=1`), rifiuta di partire senza `/opt/superbot-extbackup-v2/brain/timer-gate.json`.
 Brain Free (a mano, una volta): `/opt/superbot-extbackup-v3/run-v3.sh --mode brain-free --plan`, poi senza `--plan` se dimensione e parti sono accettabili.
 
 ## Verifica con ripristino isolato (su un'ALTRA macchina, con la chiave privata di recupero)

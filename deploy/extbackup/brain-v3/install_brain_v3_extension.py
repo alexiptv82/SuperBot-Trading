@@ -6,6 +6,8 @@ profilo `classic` (Falco/Toro). Il backup V1 di Falco/Toro (run.sh, timer 03:20,
   python3 install_brain_v3_extension.py [--profile ...] install  [--apply --approve IMPRONTA]
   python3 install_brain_v3_extension.py [--profile ...] install  --with-timer --restore-certificate FILE [--apply --approve IMPRONTA]
   python3 install_brain_v3_extension.py [--profile ...] rollback [--apply]
+  python3 install_brain_v3_extension.py --profile v3 upgrade          [--apply --approve IMPRONTA]   (V1 -> V2, vedi sotto)
+  python3 install_brain_v3_extension.py --profile v3 upgrade-rollback [--apply]                      (torna alla versione precedente)
 
 Senza --apply e' una SIMULAZIONE: controlla tutto, stampa che cosa farebbe e l'IMPRONTA DI APPROVAZIONE dei file che
 installerebbe (la stessa per entrambi i profili); non scrive niente (nemmeno cartelle). Con --apply serve --approve.
@@ -31,10 +33,23 @@ IL TIMER SI ATTIVA SOLO CON LA PROVA (cancello):
   si usa "enable --now": enable, poi start del SOLO timer, e dopo si controlla che il servizio non sia partito. Un solo passo di
   systemd che fallisce, un segnale o un errore: si disattiva e si toglie quanto creato da questa esecuzione.
 
+UPGRADE di un Brain V3 gia' installato in versione V1 (wrapper, script e registro del 10/11, destinatario V1):
+  - riconosce la versione precedente SOLO dagli SHA-256 esatti delle consegne note (PREVIOUS_VERSIONS: e2b84b0, 7b2aabe) e dal
+    registro di installazione "completo"; una versione sconosciuta, un file modificato o una combinazione mista: BLOCCO;
+  - rifiuta se un backup e' in corso (servizi systemd, file .lock delle cartelle di lavoro, processi) o se il timer e' attivo/abilitato;
+  - salva PRIMA una copia verificata di ogni file da sostituire e del registro in <state>/upgrade-<data>/ (mai cancellata);
+  - sostituisce con scritture atomiche (file temporaneo + fsync + rename) e verifica lo SHA-256 di ciascuna; non avvia backup,
+    non attiva timer, non esegue daemon-reload;
+  - NON tocca archivi, database, stati o registri V1: la cartella dati V1 (/opt/superbot-extbackup-v3/{v3,brain-free}) resta com'e';
+    il V2 lavora in una cartella SEPARATA (/opt/superbot-extbackup-v2/brain), quindi il primo backup V2 e' completo e il cancello del
+    timer non puo' essere soddisfatto da uno status.json V1;
+  - se qualcosa fallisce o arriva un segnale: ripristina da solo la versione precedente; dopo un arresto brusco: upgrade-rollback --apply.
+
 Rollback: toglie i file registrati (solo se invariati; quelli comuni solo se l'altro profilo non li usa), ferma e toglie il solo
 timer del profilo e SPOSTA la cartella di lavoro in <cartella>.removed-<data> (non cancella mai dati o stato).
 """
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -49,6 +64,8 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
 SCRIPTS = os.path.join(REPO, "deploy", "scripts")
+sys.path.insert(0, SCRIPTS)
+import github_run_proof                                                    # noqa: E402
 V2SRC = os.path.join(REPO, "deploy", "extbackup", "v2")
 RECIPIENTS_SRC = os.path.join(REPO, "deploy", "extbackup", "recipient-v2.txt")
 CHECKER = os.path.join(V2SRC, "check_recipient_consistency.py")
@@ -58,6 +75,30 @@ CLASSIC_EXTERNAL_BACKUP_SHA = "7cad7d8fdc83b76f9cd28e93edcc75aafcca05955bf4214a0
 CLASSIC_NAMES = ("external_backup.py", "backup_brain.py", "backup_app_db.py")
 CERT_SCHEMA = "superbot-brain-v3-restore-certificate-v1"
 SHARED = ("age_recipients.py", "recipients.txt")
+EXPECTED_REPO = "alexiptv82/SuperBot-Trading"
+RECOVERY_WORKFLOW_PATH = ".github/workflows/age-v2-recovery-verify.yml"
+RECOVERY_SCRIPT_PATH = "deploy/extbackup/age-v2-recovery/verify_recovery.py"
+RECOVERY_BRANCHES = ("work/age-v2-recovery-run-20261110", "main")
+# Consegne PRECEDENTI note di Brain V3 (destinatario V1). Una versione e' "nota" solo se TUTTI i file presenti hanno gli SHA-256 esatti
+# di UNA di queste righe. Gli SHA-256 sono quelli dei file nei commit indicati (git show COMMIT:percorso | sha256sum).
+PREVIOUS_VERSIONS = {
+    "e2b84b0": {"descrizione": "prima consegna Brain V3 (commit e2b84b0)", "file": {
+        "brain_v3_snapshot.py": "9ee81b10f3ff4f1d7535da457405345db55e6892f422103925bae744bc4fbada",
+        "external_backup_brain_v3.py": "1d06b871544467da67b4ac96490de5f947ad0d5e61d0a68f046d8fcf0d32b0b6",
+        "run-v3.sh": "234e8b5330545f1238406740c81fc74ff3d7b11a2ca59eac8d37f77b9bc4f194",
+        "superbot-extbackup-v3.service": "aec58da38c3a07235c4e2ea414f46be009f192ac148f3894e62fb3fb4ffdb9e2",
+        "superbot-extbackup-v3.timer": "9cd702a06235a968d16243e08dc695991c5896c68ef4389eda14062f518afe98"}},
+    "7b2aabe": {"descrizione": "versione dopo la revisione di sicurezza (commit 7b2aabe)", "file": {
+        "brain_v3_snapshot.py": "585889d9df071b7eccf78f04f7fcc3c5b63324ee04207ddc4c9a72d91192c6db",
+        "external_backup_brain_v3.py": "7ddf31f96b9180b07142121bd6d43e1fadbad28489bf597f9bfd641cdc0f5af0",
+        "run-v3.sh": "234e8b5330545f1238406740c81fc74ff3d7b11a2ca59eac8d37f77b9bc4f194",
+        "superbot-extbackup-v3.service": "b63aa2c2bc9cd5a38b658e55f27f56b5b25577bbb77928931f223cf65e615092",
+        "superbot-extbackup-v3.timer": "ade6d0debe3914c1598fc9034908519103a8873c3f159f881adaf96568f14ebd"}},
+}
+UPGRADE_REQUIRED = ("brain_v3_snapshot.py", "external_backup_brain_v3.py", "run-v3.sh")
+UPGRADE_UNITS = ("superbot-extbackup-v3.service", "superbot-extbackup-v3.timer")
+WATCHED_PROGRAMS = ("external_backup_brain_v3.py", "external_backup.py", "external_backup_multi.py", "run-v3.sh", "run-classic.sh",
+                    "run.sh", "backup_brain.py", "backup_app_db.py")
 ALL_UNITS = (("superbot-extbackup-v3.service", HERE), ("superbot-extbackup-v3.timer", HERE),
              ("superbot-extbackup-v2.service", V2SRC), ("superbot-extbackup-v2.timer", V2SRC))
 
@@ -87,17 +128,23 @@ def jload(path):
         return json.load(f)
 
 
+def data_dir_of(a):
+    """Cartella dei DATI V2 di Brain V3 (clone, stato, cancello): separata da quella del wrapper e da quella dei dati V1."""
+    return a.data_dir or os.path.join(a.v2_dir, "brain")
+
+
 def prof(a):
     """Tutto cio' che cambia da un profilo all'altro."""
     if a.profile == "v3":
-        wd = a.work_dir
+        wd, dd = a.work_dir, data_dir_of(a)
         return {"name": "v3", "manifest": "INSTALL-MANIFEST.json", "label": "Brain V3 / Brain Free",
                 "tools": ("age_recipients.py", "brain_v3_snapshot.py", "external_backup_brain_v3.py"),
                 "wrapper": (os.path.join(wd, "run-v3.sh"), os.path.join(HERE, "run-v3.sh")),
                 "service": "superbot-extbackup-v3.service", "timer": "superbot-extbackup-v3.timer", "units_src": HERE,
-                "gate_file": os.path.join(wd, "timer-gate.json"), "status": os.path.join(wd, "v3", "status.json"),
-                "repo": os.path.join(wd, "v3", "repo"), "sub": "brain-v3", "family": "v3",
-                "dirs": [a.v2_dir, wd], "aside": wd, "wrapper_name": "run-v3.sh"}
+                "gate_file": os.path.join(dd, "timer-gate.json"), "status": os.path.join(dd, "v3", "status.json"),
+                "repo": os.path.join(dd, "v3", "repo"), "sub": "brain-v3", "family": "v3",
+                "dirs": list(dict.fromkeys([a.v2_dir, wd, dd])), "aside": dd, "wrapper_name": "run-v3.sh",
+                "locks": [os.path.join(dd, "v3", ".lock"), os.path.join(dd, "brain-free", ".lock")]}
     wd = a.v2_dir
     return {"name": "classic", "manifest": "INSTALL-MANIFEST-classic.json", "label": "Falco/Toro",
             "tools": ("age_recipients.py", "external_backup_multi.py"),
@@ -105,7 +152,8 @@ def prof(a):
             "service": "superbot-extbackup-v2.service", "timer": "superbot-extbackup-v2.timer", "units_src": V2SRC,
             "gate_file": os.path.join(wd, "timer-gate.json"), "status": os.path.join(wd, "work", "status.json"),
             "repo": os.path.join(wd, "work", "repo"), "sub": "archives", "family": "classico",
-            "dirs": [wd], "aside": os.path.join(wd, "work"), "wrapper_name": "run-classic.sh"}
+            "dirs": [wd], "aside": os.path.join(wd, "work"), "wrapper_name": "run-classic.sh",
+            "locks": [os.path.join(wd, "work", ".lock")]}
 
 
 def plan(a, with_timer=None):
@@ -197,7 +245,12 @@ def pinned_sha_of_workflow():
 
 
 def check_certificate(a, p, c, published):
-    """Problemi di UN certificato (lista vuota = valido)."""
+    """Problemi di UN certificato (lista vuota = valido).
+
+    Due classi, mai confuse: (1) PROVA AUTENTICA = certificato del workflow protetto, confrontato con le API pubbliche di GitHub
+    (run riuscita, commit, file del workflow e dello script, annotazione identica); (2) RAPPORTO NON FIRMATO = file prodotto da
+    restore_brain_v3_backup.py su un'altra macchina: e' solo testo, vale solo se lo si accetta ESPLICITAMENTE (--accept-unsigned-certificate)
+    e solo per la famiglia v3."""
     bad = []
     origin = c.get("origine", "ripristino-locale")
     if c.get("esito") != "OK":
@@ -211,9 +264,17 @@ def check_certificate(a, p, c, published):
             bad.append("il certificato usa script di un commit diverso da quello fissato nel workflow")
         if not re.fullmatch(r"\d{5,}", str(c.get("run_id", ""))):
             bad.append("il certificato non indica il numero della run di GitHub Actions")
+        if not bad:
+            bad += ["PROVA NON AUTENTICA: " + x for x in github_run_proof.verify(
+                c, a.github_api, EXPECTED_REPO,
+                {"workflow_path": RECOVERY_WORKFLOW_PATH, "script_path": RECOVERY_SCRIPT_PATH, "branches": RECOVERY_BRANCHES,
+                 "workflow_sha256": sha(WORKFLOW), "script_sha256": sha(VERIFY_SCRIPT)}, allow_http=a.allow_nonroot)]
     else:
         if p["family"] != "v3":
             bad.append("per questa famiglia serve un certificato prodotto dal workflow protetto (origine github-actions)")
+        if not a.accept_unsigned_certificate:
+            bad.append("RAPPORTO NON FIRMATO: un file di ripristino locale e' solo testo e non prova l'esecuzione; serve la prova del workflow "
+                       "protetto (verificata con GitHub), oppure --accept-unsigned-certificate per accettarlo di proposito")
         if c.get("eseguito_su") == this_host(a):
             bad.append("il ripristino risulta fatto su QUESTA macchina (%s): serve un ripristino indipendente" % this_host(a))
         want = {"restore_brain_v3_backup.py": sha(os.path.join(SCRIPTS, "restore_brain_v3_backup.py")),
@@ -269,6 +330,8 @@ def timer_gate(a):
         problems = check_certificate(a, p, c, published)
         if not problems:
             proof.update({"certificato_archivio_sha256": c["archivio_sha256"], "origine": c.get("origine", "ripristino-locale"),
+                          "autenticita": "verificata con le API di GitHub" if c.get("origine") == "github-actions"
+                          else "NON FIRMATO (accettato su richiesta esplicita)", "run_id": c.get("run_id"),
                           "ripristino_eseguito_su": c.get("eseguito_su"), "controllo_rc84": c.get("controllo_rc84")})
             return [], proof
         best = best or problems
@@ -277,7 +340,7 @@ def timer_gate(a):
 
 # ---- controlli e primitive ----------------------------------------------------------------------------------------
 
-def checks(a):
+def checks(a, upgrading=False):
     bad = []
     p = prof(a)
     if os.getuid() != 0 and not a.allow_nonroot:
@@ -294,11 +357,7 @@ def checks(a):
         bad.append("manca %s" % eb)
     elif sha(eb) != CLASSIC_EXTERNAL_BACKUP_SHA:
         bad.append("external_backup.py installato ha sha256 %s, atteso %s (versione rivista)" % (sha(eb), CLASSIC_EXTERNAL_BACKUP_SHA))
-    rc, state = systemctl("is-active", "superbot-extbackup.service")
-    if rc == 127 and not a.allow_nonroot:
-        bad.append("systemctl non disponibile: non posso escludere un backup di Falco/Toro in corso")
-    elif state in ("active", "activating"):
-        bad.append("superbot-extbackup.service e' in corso (%s): non installo durante un backup" % state)
+    bad += running_backups(a)
     cp = subprocess.run([sys.executable, "-I", CHECKER, "--root", REPO], capture_output=True, text=True, timeout=120)
     if cp.returncode != 0:
         bad.append("coerenza dei destinatari nel repository: NO (%s)" % "; ".join(
@@ -306,24 +365,61 @@ def checks(a):
     for dest, src, _mode in plan(a):
         if not os.path.isfile(src):
             bad.append("sorgente mancante: %s" % src)
-        elif os.path.lexists(dest) and (os.path.islink(dest) or sha(dest) != sha(src)):
-            bad.append("%s esiste gia' con contenuto diverso: non lo sovrascrivo" % dest)
+        elif os.path.lexists(dest) and (os.path.islink(dest) or sha(dest) != sha(src)) and not (
+                upgrading and os.path.basename(dest) in UPGRADE_REQUIRED):
+            known = [lab for lab, v in PREVIOUS_VERSIONS.items() if not os.path.islink(dest) and sha(dest) in v["file"].values()]
+            bad.append("%s esiste gia' con contenuto diverso: non lo sovrascrivo%s" % (
+                dest, " (e' la versione precedente %s: usare il comando upgrade)" % known[0] if known else ""))
         base = os.path.basename(dest)
         if base in CLASSIC_NAMES or base in ("run.sh", "recipient.txt"):
             bad.append("destinazione %s e' un file del backup V1 di Falco/Toro: BLOCCO" % dest)
     return bad
 
 
+def fsync_dir(path):
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
 def atomic_put(src, dest, mode):
+    """Copia in un file temporaneo accanto alla destinazione, fsync, rename atomico, verifica dello SHA-256."""
     tmp = os.path.join(os.path.dirname(dest), ".%s.new.%d" % (os.path.basename(dest), os.getpid()))
     try:
-        shutil.copyfile(src, tmp)
+        with open(src, "rb") as fi, open(tmp, "wb") as fo:
+            shutil.copyfileobj(fi, fo)
+            fo.flush()
+            os.fsync(fo.fileno())
         os.chmod(tmp, mode)
         os.replace(tmp, dest)
+        fsync_dir(os.path.dirname(dest))
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
     return sha(dest) == sha(src)
+
+
+def maybe_fault(a, name):
+    """SOLO per le prove automatiche (con --allow-nonroot): provoca un errore, un'attesa o un arresto brusco in un punto preciso."""
+    spec = os.environ.get("SUPERBOT_INSTALLER_FAULT", "")
+    if not a.allow_nonroot or not spec:
+        return
+    where, _, action = spec.partition(":")
+    if where != name:
+        return
+    if action == "kill":
+        os.kill(os.getpid(), signal.SIGKILL)
+    elif action == "sleep":
+        time.sleep(30)
+    else:
+        raise OSError("errore simulato in %s" % name)
 
 
 def manifest_path(a):
@@ -401,6 +497,435 @@ def _on_signal(signum, _frame):
     raise SystemExit(128 + signum)
 
 
+# ---- backup in corso -----------------------------------------------------------------------------------------------
+
+def lock_candidates(a):
+    """File .lock (creati da take_lock di ogni backup) delle cartelle di lavoro V1 e V2: si sondano solo se esistono."""
+    out_ = list(prof(a)["locks"])
+    out_ += [os.path.join(a.work_dir, "v3", ".lock"), os.path.join(a.work_dir, "brain-free", ".lock"),
+             os.path.join(a.v2_dir, "work", ".lock"), os.path.join(data_dir_of(a), "v3", ".lock"),
+             os.path.join(data_dir_of(a), "brain-free", ".lock"), os.path.join(a.classic_dir, "work", ".lock")]
+    return list(dict.fromkeys(out_))
+
+
+def running_backups(a):
+    """Motivi per cui un backup potrebbe essere in corso: servizi systemd, .lock occupati, processi dei programmi di backup."""
+    why = []
+    for unit in ("superbot-extbackup.service", "superbot-extbackup-v3.service", "superbot-extbackup-v2.service"):
+        rc, state = systemctl("is-active", unit)
+        if rc == 127 and not a.allow_nonroot:
+            why.append("systemctl non disponibile: non posso escludere un backup in corso")
+            break
+        if state in ("active", "activating", "deactivating"):
+            why.append("%s e' in corso (%s): non modifico nulla durante un backup" % (unit, state))
+    for path in lock_candidates(a):
+        if not os.path.isfile(path):
+            continue
+        try:
+            fd = os.open(path, os.O_RDONLY)
+        except OSError:
+            why.append("non riesco a sondare %s" % path)
+            continue
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except BlockingIOError:
+            why.append("un backup tiene occupato %s (e' in corso)" % path)
+        except OSError:
+            why.append("non riesco a sondare %s" % path)
+        finally:
+            os.close(fd)
+    me = str(os.getpid())
+    try:
+        pids = [n for n in os.listdir(a.proc_dir) if n.isdigit() and n != me]
+    except OSError:
+        pids = []
+        if not a.allow_nonroot:
+            why.append("non riesco a leggere %s: non posso escludere un backup in corso" % a.proc_dir)
+    for pid in pids:
+        try:
+            with open(os.path.join(a.proc_dir, pid, "cmdline"), "rb") as f:
+                argv = [x.decode("utf-8", "replace") for x in f.read().split(b"\0") if x]
+        except OSError:
+            continue
+        hit = sorted({os.path.basename(x) for x in argv[:6]} & set(WATCHED_PROGRAMS))
+        if hit:
+            why.append("un processo di backup e' in esecuzione (pid %s: %s)" % (pid, ", ".join(hit)))
+    return why
+
+
+# ---- upgrade V1 -> V2 di un Brain V3 gia' installato -------------------------------------------------------------------
+
+def upgrade_targets(a):
+    """nome -> (destinazione installata, sorgente nuova, modo) dei file che l'upgrade sostituisce."""
+    p = prof(a)
+    return {"brain_v3_snapshot.py": (os.path.join(a.tools_dir, "brain_v3_snapshot.py"), os.path.join(SCRIPTS, "brain_v3_snapshot.py"), 0o700),
+            "external_backup_brain_v3.py": (os.path.join(a.tools_dir, "external_backup_brain_v3.py"),
+                                            os.path.join(SCRIPTS, "external_backup_brain_v3.py"), 0o700),
+            "run-v3.sh": (p["wrapper"][0], p["wrapper"][1], 0o700),
+            "superbot-extbackup-v3.service": (os.path.join(a.systemd_dir, "superbot-extbackup-v3.service"),
+                                              os.path.join(HERE, "superbot-extbackup-v3.service"), 0o644),
+            "superbot-extbackup-v3.timer": (os.path.join(a.systemd_dir, "superbot-extbackup-v3.timer"),
+                                            os.path.join(HERE, "superbot-extbackup-v3.timer"), 0o644)}
+
+
+def classify_previous(a):
+    """(stato, etichetta, problemi). stato: 'precedente' (versione nota, da aggiornare), 'aggiornato', 'assente', 'sconosciuto'."""
+    t = upgrade_targets(a)
+    problems, present = [], {}
+    for name, (dest, _src, _m) in t.items():
+        if os.path.islink(dest):
+            problems.append("%s e' un collegamento simbolico: non lo tocco" % dest)
+        elif os.path.isfile(dest):
+            present[name] = sha(dest)
+        elif os.path.lexists(dest):
+            problems.append("%s non e' un file normale" % dest)
+    if problems:
+        return "sconosciuto", None, problems
+    if not any(n in present for n in UPGRADE_REQUIRED):
+        return "assente", None, []
+    missing = [n for n in UPGRADE_REQUIRED if n not in present]
+    if all(present[n] == sha(t[n][1]) for n in present) and not missing:
+        return "aggiornato", None, []
+    if missing:
+        return "sconosciuto", None, ["manca %s: installazione incompleta o interrotta (upgrade-rollback?)" % t[missing[0]][0]]
+    fits = [lab for lab, v in PREVIOUS_VERSIONS.items() if all(present[n] == v["file"][n] for n in present)]
+    if fits:
+        return "precedente", fits[0], []
+    for n in present:
+        if not any(present[n] == v["file"][n] for v in PREVIOUS_VERSIONS.values()):
+            problems.append("%s ha SHA-256 %s...: non corrisponde a nessuna versione precedente nota" % (t[n][0], present[n][:16]))
+    if not problems:
+        problems.append("combinazione di file di versioni diverse (forse un upgrade interrotto: upgrade-rollback)")
+    return "sconosciuto", None, problems
+
+
+def old_register_problems(a, label):
+    """Il registro scritto dall'installatore precedente: completo, nel formato V1 e coerente con i file presenti."""
+    path = manifest_path(a)
+    if not os.path.isfile(path):
+        return ["registro dell'installazione precedente assente (%s): non posso dimostrare chi ha installato quei file" % path]
+    try:
+        rec = jload(path)
+    except (OSError, ValueError):
+        return ["registro dell'installazione precedente illeggibile"]
+    if rec.get("stato") != "completo":
+        return ["registro dell'installazione in stato '%s': eseguire prima rollback con la versione che l'ha scritto" % rec.get("stato")]
+    if "profilo" in rec or "upgrade" in rec:
+        return ["il registro non e' nel formato V1: e' gia' una installazione V2"]
+    t = upgrade_targets(a)
+    allowed = {d: n for n, (d, _s, _m) in t.items()}
+    allowed[os.path.join(a.work_dir, "timer-gate.json")] = None
+    bad = []
+    for c in rec.get("file", []):
+        n = allowed.get(c.get("path"), "?")
+        if n == "?":
+            bad.append("il registro elenca un file imprevisto: %s" % c.get("path"))
+        elif n and os.path.isfile(c["path"]) and sha(c["path"]) != c.get("sha256"):
+            bad.append("%s e' stato modificato dopo l'installazione registrata" % c["path"])
+    return bad
+
+
+def upgrade_journals(a):
+    found = []
+    if os.path.isdir(a.state_dir):
+        for n in sorted(os.listdir(a.state_dir)):
+            j = os.path.join(a.state_dir, n, "UPGRADE.json")
+            if n.startswith("upgrade-") and os.path.isfile(j):
+                try:
+                    found.append((os.path.join(a.state_dir, n), jload(j)))
+                except (OSError, ValueError):
+                    found.append((os.path.join(a.state_dir, n), {"stato": "illeggibile"}))
+    return found
+
+
+def write_json_atomic(path, obj, mode=0o600):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=1, sort_keys=True)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+    fsync_dir(os.path.dirname(path))
+
+
+def restore_from_journal(a, jdir, j):
+    """Riporta ogni file alla versione precedente usando SOLO le copie verificate. Restituisce i problemi (lista vuota = tutto a posto)."""
+    problems = []
+    for e in j.get("sostituiti", []):
+        path = e["path"]
+        cur = sha(path) if os.path.isfile(path) and not os.path.islink(path) else None
+        if cur == e["old_sha"]:
+            continue
+        if cur not in (e["new_sha"], None):
+            problems.append("%s ha un contenuto imprevisto (ne' precedente ne' nuovo): non lo tocco" % path)
+            continue
+        copy = os.path.join(jdir, "old", e["name"])
+        if not os.path.isfile(copy) or sha(copy) != e["old_sha"]:
+            problems.append("la copia verificata di %s non e' integra: non posso ripristinarlo" % e["name"])
+            continue
+        if not atomic_put(copy, path, e["mode"]):
+            problems.append("ripristino di %s non verificato" % path)
+    for e in j.get("creati", []):
+        path = e["path"]
+        if os.path.lexists(path):
+            if not os.path.islink(path) and sha(path) == e["sha256"]:
+                os.unlink(path)
+            else:
+                problems.append("%s e' cambiato dopo l'upgrade: lo lascio" % path)
+    reg_copy = os.path.join(jdir, "old", "INSTALL-MANIFEST.json")
+    reg = j.get("registro_path")
+    if reg and os.path.isfile(reg_copy):
+        if not os.path.isfile(reg) or sha(reg) != sha(reg_copy):
+            if not atomic_put(reg_copy, reg, j.get("registro_mode") or 0o600):
+                problems.append("registro precedente non ripristinato")
+    for s_ in stray_temp([e["path"] for e in j.get("sostituiti", [])] + [e["path"] for e in j.get("creati", [])]):
+        try:
+            os.unlink(s_)
+        except OSError:
+            pass
+    for d in reversed(j.get("cartelle_create", [])):
+        if os.path.isdir(d) and not os.listdir(d):
+            os.rmdir(d)
+    return problems
+
+
+def hold_locks(a):
+    """Tiene occupati i .lock esistenti di Brain V3 (V1 e V2) per tutto l'upgrade: un backup manuale che parte nel frattempo si rifiuta da solo.
+    Il .lock di Falco/Toro si sonda soltanto (running_backups), mai si tiene: l'upgrade non tocca nulla di Falco/Toro."""
+    fds = []
+    for path in [os.path.join(a.work_dir, "v3", ".lock"), os.path.join(a.work_dir, "brain-free", ".lock"),
+                 os.path.join(data_dir_of(a), "v3", ".lock"), os.path.join(data_dir_of(a), "brain-free", ".lock")]:
+        if os.path.isfile(path):
+            fd = os.open(path, os.O_RDONLY)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                os.close(fd)
+                for x in fds:
+                    os.close(x)
+                raise OSError("un backup tiene occupato %s" % path)
+            fds.append(fd)
+    return fds
+
+
+def timer_blockers(a):
+    bad = []
+    for n in UPGRADE_UNITS:
+        if not n.endswith(".timer"):
+            continue
+        rc, state = systemctl("is-active", n)
+        rc2, en = systemctl("is-enabled", n)
+        if state in ("active", "activating") or en == "enabled":
+            bad.append("%s e' attivo/abilitato (%s / %s): disattivarlo prima (systemctl disable --now %s)" % (n, state, en, n))
+    return bad
+
+
+def do_upgrade(a):
+    p = prof(a)
+    print("== Upgrade Brain V3 V1 -> V2 (%s)" % ("APPLICA" if a.apply else "SIMULAZIONE"))
+    bad = []
+    if a.profile != "v3":
+        out("BLOCCO", "l'upgrade riguarda solo il profilo v3 (Falco/Toro V2 e' una installazione nuova: usare install)")
+        return 1
+    state, label, problems = classify_previous(a)
+    jr = [(d, j) for d, j in upgrade_journals(a) if j.get("stato") in ("in_corso", "illeggibile")]
+    if jr:
+        bad.append("un upgrade precedente e' rimasto a meta' (%s): eseguire prima upgrade-rollback --apply" % os.path.basename(jr[0][0]))
+    if state == "assente":
+        bad.append("nessuna installazione precedente di Brain V3 da aggiornare: usare install")
+    elif state == "sconosciuto":
+        bad += ["VERSIONE SCONOSCIUTA: " + x for x in problems]
+    elif state == "precedente":
+        bad += old_register_problems(a, label)
+    if state in ("precedente", "aggiornato"):
+        bad += checks(a, upgrading=True)
+        bad += timer_blockers(a)
+    if state == "aggiornato" and not bad:
+        out("OK", "i file installati sono gia' quelli di questo repository")
+        print("ESITO: GIA' AGGIORNATO - nessuna modifica")
+        return 0
+    for b in bad:
+        out("BLOCCO", b)
+    if bad:
+        print("ESITO: NESSUNA MODIFICA - %d blocchi" % len(bad))
+        return 1
+    appr = approval(a)
+    t = upgrade_targets(a)
+    replace = [(n, t[n][0], t[n][1], t[n][2]) for n in t if os.path.isfile(t[n][0]) and sha(t[n][0]) != sha(t[n][1])]
+    create = [(d, s, m) for d, s, m in plan(a) if not os.path.lexists(d) and os.path.basename(d) not in t]
+    out("OK", "versione precedente riconosciuta: %s" % PREVIOUS_VERSIONS[label]["descrizione"])
+    out("OK", "controlli superati: nessun backup in corso, timer non attivo, destinatari coerenti, registro precedente coerente")
+    for n, dest, src, _m in replace:
+        out("OK", "%s %s (%s... -> %s...)" % ("sostituirei" if not a.apply else "sostituisco", dest, sha(dest)[:12], sha(src)[:12]))
+    for d, _s, _m in create:
+        out("OK", "%s %s" % ("creerei" if not a.apply else "creo", d))
+    out("INFO", "i dati V1 (%s/v3, %s/brain-free), gli archivi e gli stati non si toccano; il V2 usa %s" % (a.work_dir, a.work_dir, data_dir_of(a)))
+    out("INFO", "IMPRONTA DI APPROVAZIONE: %s" % appr)
+    if not a.apply:
+        print("ESITO: SIMULAZIONE RIUSCITA - nessuna modifica. Per applicare: --profile v3 upgrade --apply --approve %s" % appr)
+        return 0
+    if a.approve != appr:
+        out("BLOCCO", "--approve mancante o diverso dall'impronta dei file di questo repository")
+        print("ESITO: NESSUNA MODIFICA")
+        return 1
+    # 1) copie verificate PRIMA di qualunque modifica
+    os.makedirs(a.state_dir, mode=0o700, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    jdir = os.path.join(a.state_dir, "upgrade-" + stamp)
+    n_ = 0
+    while os.path.exists(jdir):
+        n_ += 1
+        jdir = os.path.join(a.state_dir, "upgrade-%s-%d" % (stamp, n_))
+    os.mkdir(jdir, 0o700)
+    os.mkdir(os.path.join(jdir, "old"), 0o700)
+    for n, dest, _src, _m in replace:
+        copy = os.path.join(jdir, "old", n)
+        shutil.copyfile(dest, copy)
+        os.chmod(copy, 0o600)
+        if sha(copy) != sha(dest):
+            out("BLOCCO", "la copia di %s non coincide con l'originale: nessuna modifica" % dest)
+            print("ESITO: NESSUNA MODIFICA (le copie in %s non sono state usate)" % jdir)
+            return 1
+    reg = manifest_path(a)
+    shutil.copyfile(reg, os.path.join(jdir, "old", "INSTALL-MANIFEST.json"))
+    os.chmod(os.path.join(jdir, "old", "INSTALL-MANIFEST.json"), 0o600)
+    new_dirs = [a.v2_dir] if (create and not os.path.isdir(a.v2_dir)) else []
+    journal = {"schema": "superbot-brain-v3-upgrade-v1", "stato": "in_corso", "creato": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+               "da": label, "approvazione": appr, "registro_path": reg, "registro_mode": stat_mode(reg) or 0o600, "cartelle_create": new_dirs,
+               "sostituiti": [{"name": n, "path": dest, "old_sha": sha(dest), "new_sha": sha(src), "mode": stat_mode(dest)}
+                              for n, dest, src, _m in replace],
+               "creati": [{"path": d, "sha256": sha(s), "mode": m} for d, s, m in create]}
+    for e in journal["sostituiti"]:
+        e["mode"] = e["mode"] or 0o700
+    write_json_atomic(os.path.join(jdir, "UPGRADE.json"), journal)
+    # 2) esecuzione
+    fds = []
+    old_term, old_int = signal.signal(signal.SIGTERM, _on_signal), signal.signal(signal.SIGINT, _on_signal)
+    try:
+        fds = hold_locks(a)
+        for i, (n, dest, src, mode) in enumerate(replace, 1):
+            if not atomic_put(src, dest, mode):
+                raise OSError("verifica fallita su %s" % dest)
+            out("OK", "sostituito %s" % dest)
+            maybe_fault(a, "put%d" % i)
+        for d in new_dirs:
+            os.makedirs(d, mode=0o700, exist_ok=True)
+        for i, (d, s, m) in enumerate(create, 1):
+            if not atomic_put(s, d, m):
+                raise OSError("verifica fallita su %s" % d)
+            out("OK", "creato %s" % d)
+            maybe_fault(a, "create%d" % i)
+        for n, dest, src, _m in replace:
+            if sha(dest) != sha(src):
+                raise OSError("dopo la sostituzione %s non coincide con il file del repository" % dest)
+        cp = subprocess.run([sys.executable, "-I", CHECKER, "--root", REPO, "--installed", "--v2-dir", a.v2_dir, "--v3-dir", a.work_dir,
+                             "--tools-dir", a.tools_dir, "--systemd-dir", a.systemd_dir, "--v1-dir", a.classic_dir],
+                            capture_output=True, text=True, timeout=120)
+        if cp.returncode != 0:
+            raise OSError("coerenza dei file installati: NO (%s)" % "; ".join(l[4:] for l in cp.stdout.splitlines() if l.startswith("NO  "))[:300])
+        maybe_fault(a, "before-register")
+        files = []
+        for n in list(t):
+            d = t[n][0]
+            if os.path.isfile(d):
+                files.append({"path": d, "sha256": sha(d), "mode": t[n][2]})
+        files += [{"path": d, "sha256": sha(d), "mode": m} for d, _s, m in create]
+        for extra in (os.path.join(a.tools_dir, "age_recipients.py"), os.path.join(a.v2_dir, "recipients.txt")):
+            if extra not in {c["path"] for c in files} and os.path.isfile(extra):
+                files.append({"path": extra, "sha256": sha(extra), "mode": 0o644})
+        record = {"creato": journal["creato"], "stato": "completo", "profilo": "v3", "file": files, "cartelle_create": new_dirs,
+                  "aside": data_dir_of(a), "timer": False, "approvazione": appr,
+                  "upgrade": {"da": label, "diario": jdir}}
+        write_manifest(a, record)
+        maybe_fault(a, "before-complete")
+        journal["stato"] = "completo"
+        write_json_atomic(os.path.join(jdir, "UPGRADE.json"), journal)
+    except BaseException as e:
+        out("BLOCCO", "upgrade interrotto: %s" % (e if isinstance(e, Exception) else "segnale %s" % getattr(e, "code", e)))
+        for fd in fds:
+            os.close(fd)
+        fds = []
+        problems = restore_from_journal(a, jdir, journal)
+        journal["stato"] = "annullato" if not problems else "in_corso"
+        write_json_atomic(os.path.join(jdir, "UPGRADE.json"), journal)
+        for pr in problems:
+            out("BLOCCO", pr)
+        print("ESITO: FALLITO - %s; nessun archivio, database o stato e' stato toccato"
+              % ("versione precedente ripristinata e verificata" if not problems else "RIPRISTINO INCOMPLETO: eseguire upgrade-rollback --apply"))
+        if isinstance(e, SystemExit):
+            raise
+        return 1
+    finally:
+        for fd in fds:
+            os.close(fd)
+        signal.signal(signal.SIGTERM, old_term)
+        signal.signal(signal.SIGINT, old_int)
+    print("ESITO: AGGIORNATO - V1 -> V2 (nessun timer attivato, nessun backup eseguito). Copie verificate e diario: %s. "
+          "Prossimo passo: run-v3.sh --preflight, poi il primo backup reale a mano. Annullare: --profile v3 upgrade-rollback --apply" % jdir)
+    return 0
+
+
+def stat_mode(path):
+    try:
+        return os.stat(path).st_mode & 0o777
+    except OSError:
+        return 0
+
+
+def do_upgrade_rollback(a):
+    print("== Rollback dell'upgrade (%s)" % ("APPLICA" if a.apply else "SIMULAZIONE"))
+    bad = []
+    if os.getuid() != 0 and not a.allow_nonroot:
+        bad.append("va eseguito come root")
+    cand = [(d, j) for d, j in upgrade_journals(a) if j.get("stato") in ("in_corso", "completo")]
+    if not cand:
+        bad.append("nessun upgrade da annullare in %s" % a.state_dir)
+    bad += running_backups(a)
+    bad += timer_blockers(a)
+    for b in bad:
+        out("BLOCCO", b)
+    if bad:
+        print("ESITO: NESSUNA MODIFICA - %d blocchi" % len(bad))
+        return 1
+    jdir, j = cand[-1]
+    for e in j.get("sostituiti", []):
+        cur = sha(e["path"]) if os.path.isfile(e["path"]) else None
+        what = "gia' alla versione precedente" if cur == e["old_sha"] else ("ripristinerei" if a.apply is False else "ripristino")
+        out("OK" if cur in (e["old_sha"], e["new_sha"]) else "ATTENZIONE", "%s: %s" % (e["path"], what if cur in (e["old_sha"], e["new_sha"]) else "contenuto imprevisto, non lo tocco"))
+    for e in j.get("creati", []):
+        out("OK", "%s %s" % ("toglierei" if not a.apply else "tolgo", e["path"]))
+    out("INFO", "registro precedente: %s ripristinato da %s" % (j.get("registro_path"), os.path.join(jdir, "old")))
+    if not a.apply:
+        print("ESITO: SIMULAZIONE RIUSCITA - nessuna modifica. Per applicare: --profile v3 upgrade-rollback --apply")
+        return 0
+    fds = []
+    old_term, old_int = signal.signal(signal.SIGTERM, _on_signal), signal.signal(signal.SIGINT, _on_signal)
+    try:
+        fds = hold_locks(a)
+        problems = restore_from_journal(a, jdir, j)
+    except OSError as e:
+        out("BLOCCO", str(e))
+        print("ESITO: NESSUNA MODIFICA")
+        return 1
+    finally:
+        for fd in fds:
+            os.close(fd)
+        signal.signal(signal.SIGTERM, old_term)
+        signal.signal(signal.SIGINT, old_int)
+    for pr in problems:
+        out("BLOCCO", pr)
+    if problems:
+        print("ESITO: RIPRISTINO INCOMPLETO - %d problemi; le copie in %s restano" % (len(problems), jdir))
+        return 1
+    j["stato"] = "annullato"
+    j["annullato"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    write_json_atomic(os.path.join(jdir, "UPGRADE.json"), j)
+    print("ESITO: VERSIONE PRECEDENTE RIPRISTINATA - file e registro come prima dell'upgrade; copie e diario conservati in %s" % jdir)
+    return 0
+
+
 # ---- comandi ------------------------------------------------------------------------------------------------------
 
 def do_status(a):
@@ -431,6 +956,15 @@ def do_status(a):
             out("INFO", "  - " + b)
     else:
         out("INFO", "cancello del timer: soddisfatto (%s)" % json.dumps(proof, sort_keys=True))
+    if a.profile == "v3":
+        st_, lab_, pr_ = classify_previous(a)
+        out("INFO", "versione di Brain V3 installata: %s" % {
+            "precedente": "PRECEDENTE V1 - " + PREVIOUS_VERSIONS.get(lab_ or "", {}).get("descrizione", ""), "aggiornato": "V2 (come questo repository)",
+            "assente": "nessuna", "sconosciuto": "SCONOSCIUTA (" + "; ".join(pr_)[:200] + ")"}[st_])
+        for d_, j_ in upgrade_journals(a):
+            interrupted = j_.get("stato") in ("in_corso", "illeggibile")
+            out("ATTENZIONE" if interrupted else "INFO", "upgrade %s: %s%s" % (os.path.basename(d_), j_.get("stato"),
+                " -> interrotto: eseguire upgrade-rollback --apply" if interrupted else ""))
     out("INFO", "impronta di approvazione dei file di questo repository: %s" % approval(a))
     return 0
 
@@ -462,8 +996,8 @@ def do_install(a):
     timer_done = a.with_timer and os.path.isfile(p["gate_file"]) and not todo
     out("OK", "controlli superati (coerenza dei destinatari compresa); da creare: %s" % (", ".join(d for d, _s, _m in todo) or "(niente: gia' installato)"))
     if a.with_timer:
-        out("OK", "cancello del timer soddisfatto: backup pubblicato %s, ripristino indipendente (%s) su %s" % (
-            proof.get("archivio_pubblicato"), proof.get("origine"), proof.get("ripristino_eseguito_su")))
+        out("OK", "cancello del timer soddisfatto: backup pubblicato %s, ripristino indipendente (%s) su %s; autenticita': %s" % (
+            proof.get("archivio_pubblicato"), proof.get("origine"), proof.get("ripristino_eseguito_su"), proof.get("autenticita")))
         if proof.get("controllo_rc84") != "eseguito" and p["family"] == "v3":
             out("INFO", "il ripristino indipendente NON includeva il confronto con il codice RC84: resta un gate separato")
     out("INFO", "IMPRONTA DI APPROVAZIONE: %s" % appr)
@@ -562,9 +1096,21 @@ def do_rollback(a):
         out("BLOCCO", "nessun registro dell'installazione in %s: niente da annullare" % a.state_dir)
         return 1
     rec = jload(manifest_path(a))
+    if "profilo" not in rec:
+        out("BLOCCO", "il registro e' nel formato V1 (installazione precedente): non lo annullo da qui; "
+                      "per passare a V2 usare 'upgrade', per tornare indietro la procedura V1 originale")
+        return 1
+    if rec.get("upgrade"):
+        out("BLOCCO", "questa installazione deriva da un upgrade V1->V2: per tornare alla versione precedente usare 'upgrade-rollback'")
+        return 1
     rc, state = systemctl("is-active", p["service"])
     if state in ("active", "activating"):
         out("BLOCCO", "il servizio %s e' in corso (%s): attendere la fine" % (p["name"], state))
+        return 1
+    running = running_backups(a)
+    if running:
+        for r_ in running:
+            out("BLOCCO", r_)
         return 1
     if rec.get("stato") != "completo":
         out("INFO", "registro in stato '%s': installazione interrotta, si toglie quanto risulta presente e invariato" % rec.get("stato"))
@@ -609,6 +1155,9 @@ def do_rollback(a):
     if os.path.isdir(aside):
         os.rename(aside, "%s.removed-%s" % (aside, stamp))
     os.rename(manifest_path(a), os.path.join(a.state_dir, "%s.rolledback-%s.json" % (p["manifest"][:-len(".json")], stamp)))
+    for d_ in reversed(rec.get("cartelle_create", [])):                     # solo cartelle create da noi e rimaste vuote
+        if os.path.isdir(d_) and not os.listdir(d_):
+            os.rmdir(d_)
     print("ESITO: RIPRISTINATO - rimossi solo i file V2 del profilo %s%s; il backup V1 di Falco/Toro non e' stato toccato"
           % (p["name"], "; file lasciati: %d" % len(leave) if leave else ""))
     return 0
@@ -616,23 +1165,33 @@ def do_rollback(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=("status", "install", "rollback"))
+    ap.add_argument("command", choices=("status", "install", "rollback", "upgrade", "upgrade-rollback"))
     ap.add_argument("--profile", choices=("v3", "classic"), default="v3")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--approve", default="")
     ap.add_argument("--with-timer", action="store_true")
     ap.add_argument("--restore-certificate", default="", help="certificato (file di restore_brain_v3_backup.py o righe CERTIFICATO del workflow)")
+    ap.add_argument("--github-api", default="https://api.github.com", help="API pubbliche di GitHub per verificare le prove (solo lettura, senza credenziali)")
+    ap.add_argument("--accept-unsigned-certificate", action="store_true",
+                    help="accetta un rapporto di ripristino locale NON firmato (solo famiglia v3): sconsigliato, e' solo testo")
     ap.add_argument("--tools-dir", default="/opt/superbot-tools")
-    ap.add_argument("--work-dir", default="/opt/superbot-extbackup-v3")
+    ap.add_argument("--work-dir", default="/opt/superbot-extbackup-v3", help="cartella del WRAPPER run-v3.sh (e dei dati V1, che non si toccano)")
+    ap.add_argument("--data-dir", default="", help="dati V2 di Brain V3 (predefinito: <v2-dir>/brain)")
     ap.add_argument("--v2-dir", default="/opt/superbot-extbackup-v2")
     ap.add_argument("--classic-dir", default="/opt/superbot-extbackup", help="solo per il known_hosts di GitHub, in sola lettura")
     ap.add_argument("--systemd-dir", default="/etc/systemd/system")
     ap.add_argument("--state-dir", default="/root/extbackup-v3-install")
     ap.add_argument("--ssh-key", default="/root/.ssh/superbot_backup_v2_ed25519")
+    ap.add_argument("--proc-dir", default="/proc", help="dove cercare i processi di backup in corso (solo per le prove: /proc)")
     ap.add_argument("--host-name", default="", help="solo per le prove automatiche")
     ap.add_argument("--allow-nonroot", action="store_true", help="solo per le prove automatiche")
     a = ap.parse_args(argv)
-    return {"status": do_status, "install": do_install, "rollback": do_rollback}[a.command](a)
+    table = os.environ.get("SUPERBOT_INSTALLER_PREVIOUS_TABLE", "")
+    if table and a.allow_nonroot:                          # SOLO per le prove automatiche: in produzione la tabella e' quella del codice
+        global PREVIOUS_VERSIONS
+        PREVIOUS_VERSIONS = jload(table)
+    return {"status": do_status, "install": do_install, "rollback": do_rollback, "upgrade": do_upgrade,
+            "upgrade-rollback": do_upgrade_rollback}[a.command](a)
 
 
 if __name__ == "__main__":

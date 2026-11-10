@@ -40,6 +40,12 @@ UNITS = {      # unita' -> wrapper che puo' eseguire
     "deploy/extbackup/v2/superbot-extbackup-v2.service": V2_DIR + "/run-classic.sh",
     "deploy/extbackup/brain-v3/superbot-extbackup-v3.service": "/opt/superbot-extbackup-v3/run-v3.sh",
 }
+UNIT_LOCKS = {   # unita' -> .lock che ogni backup prende e che la pulizia ExecStopPost deve prendere a sua volta
+    "deploy/extbackup/v2/superbot-extbackup-v2.service": V2_DIR + "/work/.lock",
+    "deploy/extbackup/brain-v3/superbot-extbackup-v3.service": V2_DIR + "/brain/v3/.lock",
+}
+WRAPPER_WORK = {"deploy/extbackup/v2/run-classic.sh": "--work " + V2_DIR + "/work ",
+                "deploy/extbackup/brain-v3/run-v3.sh": "--work " + V2_DIR + "/brain "}
 TIMERS = ("deploy/extbackup/v2/superbot-extbackup-v2.timer", "deploy/extbackup/brain-v3/superbot-extbackup-v3.timer")
 TOOLS = ("age_recipients.py", "external_backup_multi.py", "external_backup_brain_v3.py", "brain_v3_snapshot.py")
 REQUIRED = ('--recipient-file ' + V2_DIR + '/recipients.txt', "--remote git@github.com:alexiptv82/superbot-backups-v2.git",
@@ -93,11 +99,21 @@ def repo_checks(root, rep):
         rep.line(("/opt/superbot-tools/" + script) in text, "%s: lancia lo script a destinatari multipli (%s)" % (os.path.basename(rel), script))
         rep.line("/opt/superbot-tools/external_backup.py" not in text, "%s: non lancia il backup classico direttamente" % os.path.basename(rel))
         rep.line(not [x for x in V1_FORBIDDEN if x in text], "%s: nessun riferimento V1" % os.path.basename(rel))
+        rep.line(WRAPPER_WORK[rel] in text and "--work /opt/superbot-extbackup-v3" not in text,
+                 "%s: cartella dati V2 separata (i dati V1 non si toccano)" % os.path.basename(rel))
     for rel, wrapper in UNITS.items():
         text = code_only(read(os.path.join(root, rel)))
         exec_lines = re.findall(r"(?m)^ExecStart=(\S+)", text)
         rep.line(exec_lines == [wrapper], "%s: esegue solo il wrapper V2" % os.path.basename(rel))
         rep.line(not [x for x in V1_FORBIDDEN if x in text], "%s: nessun riferimento V1" % os.path.basename(rel))
+        stops = re.findall(r"(?m)^ExecStopPost=(.*)$", text)
+        lock = UNIT_LOCKS[rel]
+        rep.line(all(st.startswith("-/usr/bin/flock -n %s /bin/sh -c " % lock) for st in stops) and len(stops) >= 1,
+                 "%s: la pulizia ExecStopPost prende lo stesso .lock dei backup (non tocca i file di un backup manuale)" % os.path.basename(rel))
+        base_dir = os.path.dirname(lock)
+        paths = re.findall(r"(/opt/\S+)", " ".join(stops).split(" /bin/sh -c ", 1)[-1]) if stops else []
+        rep.line(bool(paths) and all(pth.startswith(base_dir + "/") for pth in paths),
+                 "%s: la pulizia agisce solo dentro %s" % (os.path.basename(rel), base_dir))
     for rel in TIMERS:
         text = read(os.path.join(root, rel))
         rep.line(not re.search(r"(?m)^\s*Persistent\s*=\s*true", text, re.I), "%s: nessun Persistent=true" % os.path.basename(rel))

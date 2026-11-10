@@ -9,7 +9,8 @@
 #
 # Cifra verso i destinatari V2 (/opt/superbot-extbackup-v2/recipients.txt, impronta approvata qui sotto: se il file cambia, rifiuto)
 # e pubblica nel repository V2 (superbot-backups-v2) con la chiave di deploy V2; gli archivi V1 non si toccano. Usa in sola lettura
-# il known_hosts di GitHub del backup di Falco/Toro; scrive solo in /opt/superbot-extbackup-v3. Non ferma, non avvia e non
+# il known_hosts di GitHub del backup di Falco/Toro; scrive solo in /opt/superbot-extbackup-v2/brain (dati V2, cartella SEPARATA da
+# /opt/superbot-extbackup-v3/{v3,brain-free}, dove restano intatti stato e clone del backup V1). Non ferma, non avvia e non
 # riavvia nessun servizio o container.
 MODE=v3
 if [ "${1:-}" = "--mode" ]; then
@@ -23,6 +24,6 @@ esac
 exec /usr/bin/python3 -I /opt/superbot-tools/external_backup_brain_v3.py --mode "$MODE" \
   --expect-recipients-sha256 e3088c3f778d669a9c6751c1c20a7fbd6313a9a1d8a96910bc773152c108ef1b \
   --runs-root /opt/superbot-v3-paper-runs --legacy-db /opt/superbot-brain-free/brain.sqlite3 \
-  --work /opt/superbot-extbackup-v3 --tools /opt/superbot-tools \
+  --work /opt/superbot-extbackup-v2/brain --tools /opt/superbot-tools \
   --remote git@github.com:alexiptv82/superbot-backups-v2.git --recipient-file /opt/superbot-extbackup-v2/recipients.txt \
   --ssh-key /root/.ssh/superbot_backup_v2_ed25519 --known-hosts /opt/superbot-extbackup/known_hosts "$@"

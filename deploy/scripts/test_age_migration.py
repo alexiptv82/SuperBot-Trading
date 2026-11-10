@@ -21,6 +21,7 @@ sys.path.insert(0, HERE)
 import age_recipients as AR                                       # noqa: E402
 import test_brain_v3_backup as T                                  # noqa: E402
 import test_external_backup as CLASSIC                            # noqa: E402
+import fake_github_api as FG                                      # noqa: E402
 
 MULTI = os.path.join(HERE, "external_backup_multi.py")
 CHECKER = os.path.join(ROOT, "deploy", "extbackup", "v2", "check_recipient_consistency.py")
@@ -394,6 +395,36 @@ class ConsistencyCheckerTests(unittest.TestCase):
         self.assertIn("NO  superbot-extbackup-v2.timer: nessun Persistent=true", out)
         self.assertIn("NO  superbot-extbackup-v3.service: esegue solo il wrapper V2", out)
 
+    def test_unguarded_cleanup_or_cleanup_outside_the_work_folder_is_caught(self):
+        cases = {"deploy/extbackup/brain-v3/superbot-extbackup-v3.service": "superbot-extbackup-v3.service",
+                 "deploy/extbackup/v2/superbot-extbackup-v2.service": "superbot-extbackup-v2.service"}
+        for rel, label in cases.items():
+            with self.subTest(unita=label, caso="senza flock"):
+                shutil.rmtree(self.root)
+                self.root = mini_repo(os.path.join(self.td.name, "repo"))
+                self.edit(rel, lambda t: re.sub(r"(?m)^ExecStopPost=-/usr/bin/flock -n \S+ ", "ExecStopPost=", t))
+                rc, out = self.check()
+                self.assertEqual(rc, 1, out)
+                self.assertIn("NO  %s: la pulizia ExecStopPost prende lo stesso .lock" % label, out)
+            with self.subTest(unita=label, caso="lock sbagliato"):
+                shutil.rmtree(self.root)
+                self.root = mini_repo(os.path.join(self.td.name, "repo"))
+                self.edit(rel, lambda t: re.sub(r"(?m)^(ExecStopPost=-/usr/bin/flock -n )\S+", r"\1/tmp/altro.lock", t))
+                self.assertEqual(self.check()[0], 1)
+            with self.subTest(unita=label, caso="cancella fuori dalla cartella"):
+                shutil.rmtree(self.root)
+                self.root = mini_repo(os.path.join(self.td.name, "repo"))
+                self.edit(rel, lambda t: t.replace("rm -f ", "rm -f /opt/superbot-extbackup-v2/repo/x "))
+                rc, out = self.check()
+                self.assertEqual(rc, 1, out)
+                self.assertIn("NO  %s: la pulizia agisce solo dentro" % label, out)
+
+    def test_brain_v3_wrapper_must_work_in_the_separate_v2_folder(self):
+        self.edit("deploy/extbackup/brain-v3/run-v3.sh", lambda t: t.replace("--work /opt/superbot-extbackup-v2/brain", "--work /opt/superbot-extbackup-v3"))
+        rc, out = self.check()
+        self.assertEqual(rc, 1)
+        self.assertIn("NO  run-v3.sh: cartella dati V2 separata", out)
+
     def test_v1_recipient_in_the_v2_file_or_modified_v1_file_is_caught(self):
         v1 = [l for l in T.slurp(os.path.join(self.root, "deploy/extbackup/recipient.txt")).decode().splitlines() if l.startswith("age1")][0]
         self.edit("deploy/extbackup/recipient-v2.txt", lambda t: t + v1 + "\n")
@@ -477,6 +508,7 @@ def pinned_sha_of_workflow():
 def actions_cert(family, archive_sha, **override):
     c = {"schema": "superbot-brain-v3-restore-certificate-v1", "esito": "OK", "famiglia": family, "archivio": "x.tar.gz.age",
          "archivio_sha256": archive_sha, "eseguito_su": "github-actions", "origine": "github-actions", "run_id": "42685000001",
+         "run_attempt": "1", "commit": "c" * 40, "repository": FG.REPO,
          "workflow_sha256": T.sha(T.slurp(WORKFLOW)), "script_sha256": T.sha(T.slurp(VERIFY)), "pinned_sha": pinned_sha_of_workflow(),
          "controllo_rc84": "non eseguito"}
     c.update(override)
@@ -488,10 +520,17 @@ class InstallerV2Base(T.InstallerBase):
         super().setUp()
         self.cls = CLASSIC.ExternalBackupTests("test_full_round_trip_backup_then_restore")
         self.cls.setUp()
+        self.gh = FG.FakeGitHub()                                      # le API pubbliche di GitHub, finte e locali
+        self.addCleanup(self.gh.close)
 
     def tearDown(self):
         self.cls.tearDown()
         super().tearDown()
+
+    def publish_run(self, cert, **kw):
+        """Fa risultare a GitHub (finto) una run riuscita che ha emesso proprio questo certificato."""
+        self.gh.register_valid(cert, T.slurp(WORKFLOW), T.slurp(VERIFY), **kw)
+        return cert
 
     def run_prof(self, profile, *args, host="vps-singapore", **env):
         p = subprocess.run(self.inst_args(*args, host=host) + ["--profile", profile], capture_output=True, text=True, timeout=180,
@@ -523,9 +562,15 @@ class InstallerV2Base(T.InstallerBase):
         os.makedirs(base, exist_ok=True)
         cmd = [sys.executable, "-I", VERIFY, "--identity", self.ident, "--repos-dir", base, "--pinned", ROOT, "--work",
                os.path.join(self.td.name, "ver-work"), "--run-id", "42685000001", "--workflow-sha256", T.sha(T.slurp(WORKFLOW)),
-               "--script-sha256", T.sha(T.slurp(VERIFY)), "--pinned-sha", pinned_sha_of_workflow()]
+               "--script-sha256", T.sha(T.slurp(VERIFY)), "--pinned-sha", pinned_sha_of_workflow(),
+               "--run-attempt", "1", "--commit", "c" * 40, "--repository", FG.REPO]
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         lines = [l for l in p.stdout.splitlines() if l.startswith("CERTIFICATO ")]
+        notes = [l[len("::notice title=CERTIFICATO::"):].replace("%0D", "\r").replace("%0A", "\n").replace("%25", "%")
+                 for l in p.stdout.splitlines() if l.startswith("::notice title=CERTIFICATO::")]
+        self.assertEqual(len(notes), len(lines))
+        for l, note in zip(lines, notes):
+            self.publish_run(json.loads(l[len("CERTIFICATO "):]), annotations=[{"title": "CERTIFICATO", "message": note}])
         path = os.path.join(self.td.name, tmp)
         T.spit(path, "\n".join(lines) + "\n")
         return path, lines
@@ -668,7 +713,7 @@ class ClassicTimerGateTests(InstallerV2Base):
         self.prepare()
         man = T.jload(next(os.path.join(dp, f) for dp, _d, fn in os.walk(os.path.join(self.v2, "work", "repo", "archives"))
                            for f in fn if f.endswith(".manifest.json")))
-        good = actions_cert("classico", man["sha256"])
+        good = self.publish_run(actions_cert("classico", man["sha256"]))
         path0 = os.path.join(self.td.name, "ok.json")
         T.spit(path0, json.dumps(good))
         self.assertEqual(self.run_prof("classic", "install", "--with-timer", "--restore-certificate", path0)[0], 0)
@@ -690,13 +735,126 @@ class ClassicTimerGateTests(InstallerV2Base):
         man = T.jload(next(os.path.join(dp, f) for dp, _d, fn in os.walk(os.path.join(self.work, "v3", "repo", "brain-v3"))
                            for f in fn if f.endswith(".manifest.json")))
         path = os.path.join(self.td.name, "actions-v3.txt")
-        T.spit(path, "CERTIFICATO " + json.dumps(actions_cert("v3", man["sha256"], controllo_rc84="eseguito")) + "\n")
+        T.spit(path, "CERTIFICATO " + json.dumps(self.publish_run(actions_cert("v3", man["sha256"], controllo_rc84="eseguito"))) + "\n")
         rc, out = self.run_prof("v3", "install", "--with-timer", "--restore-certificate", path)
         self.assertEqual(rc, 0, out)
         self.assertIn("github-actions", out)
         bad = os.path.join(self.td.name, "actions-v3-bad.txt")
         T.spit(bad, "CERTIFICATO " + json.dumps(actions_cert("v3", man["sha256"], workflow_sha256="9" * 64)) + "\n")
         self.assertEqual(self.run_prof("v3", "install", "--with-timer", "--restore-certificate", bad)[0], 1)
+
+
+class CertificateAuthenticityTests(InstallerV2Base):
+    """Un rapporto non firmato non e' una prova: solo una run di GitHub confermata dalle sue API apre il cancello del timer."""
+
+    def prepare(self):
+        self.assertEqual(self.run_prof("classic", "install", "--apply", "--approve", self.approval_of("classic"))[0], 0)
+        self.classic_v2_backup()
+        man = T.jload(next(os.path.join(dp, f) for dp, _d, fn in os.walk(os.path.join(self.v2, "work", "repo", "archives"))
+                           for f in fn if f.endswith(".manifest.json")))
+        self.cert = actions_cert("classico", man["sha256"])
+        self.cert_path = os.path.join(self.td.name, "c.json")
+
+    def attempt(self, cert=None, **publish):
+        cert = cert or self.cert
+        self.gh.json_routes.clear()
+        self.gh.raw_routes.clear()
+        if publish is not None and publish.get("_pubblica", True):
+            publish.pop("_pubblica", None)
+            self.publish_run(cert, **publish)
+        T.spit(self.cert_path, json.dumps(cert))
+        return self.run_prof("classic", "install", "--with-timer", "--restore-certificate", self.cert_path)
+
+    def test_a_run_confirmed_by_github_opens_the_gate_and_only_get_requests_without_credentials_are_made(self):
+        self.prepare()
+        rc, out = self.attempt()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("autenticita': verificata con le API di GitHub", out)
+        self.assertTrue(self.gh.log)
+        for r in self.gh.log:
+            self.assertEqual(r["metodo"], "GET")
+            self.assertTrue(r["percorso"].startswith("/repos/alexiptv82/SuperBot-Trading/"), r)
+            self.assertFalse({"authorization", "cookie", "x-github-token"} & set(r["intestazioni"]), r)
+
+    def test_a_certificate_that_github_does_not_confirm_is_refused_in_every_way_it_can_be_forged(self):
+        self.prepare()
+        wf, sc = T.slurp(WORKFLOW), T.slurp(VERIFY)
+        cases = {
+            "run inesistente": dict(_pubblica=False),
+            "run fallita": dict(run={"conclusion": "failure"}),
+            "run non conclusa": dict(run={"status": "in_progress", "conclusion": None}),
+            "commit diverso": dict(run={"head_sha": "d" * 40}),
+            "tentativo diverso": dict(run={"run_attempt": 2}),
+            "ramo non atteso": dict(branch="cursor/un-ramo-qualunque"),
+            "evento non ammesso": dict(run={"event": "pull_request"}),
+            "altro workflow": dict(run={"path": ".github/workflows/altro.yml"}),
+            "repository diverso": dict(run={"repository": {"full_name": "altro/repo"}}),
+            "fork": dict(run={"head_repository": {"full_name": "altro/fork"}}),
+            "workflow modificato al commit": dict(files={FG.WORKFLOW_PATH: wf + b"\n# modifica"}),
+            "script modificato al commit": dict(files={FG.SCRIPT_PATH: sc + b"\n# modifica"}),
+            "job fallito": dict(jobs=[{"id": FG.JOB_ID, "conclusion": "failure"}]),
+            "nessun job": dict(jobs=[]),
+            "nessuna annotazione": dict(annotations=[]),
+            "annotazione con altro testo": dict(annotations=[{"title": "CERTIFICATO", "message": json.dumps(dict(self.cert, controllo_rc84="eseguito"))}]),
+            "annotazione con altro titolo": dict(annotations=[{"title": "NOTA", "message": json.dumps(self.cert, sort_keys=True, separators=(",", ":"))}]),
+        }
+        for name, kw in cases.items():
+            with self.subTest(caso=name):
+                rc, out = self.attempt(**kw)
+                self.assertEqual(rc, 1, out)
+                self.assertIn("PROVA NON AUTENTICA", out)
+                self.assertIn("CANCELLO DEL TIMER", out)
+                self.assertEqual(os.listdir(self.systemd), [])
+        self.assertEqual(self.mutating_calls(), [])
+
+    def test_old_format_or_incomplete_certificates_have_no_verifiable_proof(self):
+        self.prepare()
+        for field in ("commit", "run_attempt", "repository"):
+            with self.subTest(manca=field):
+                cert = {k: v for k, v in self.cert.items() if k != field}
+                rc, out = self.attempt(cert, **{"_pubblica": False})
+                self.assertEqual(rc, 1, out)
+                self.assertIn("PROVA NON AUTENTICA", out)
+        rc, out = self.attempt(dict(self.cert, run_id="12"), **{"_pubblica": False})
+        self.assertEqual(rc, 1)
+
+    def test_an_unreachable_github_never_means_verified(self):
+        self.prepare()
+        self.gh.close()
+        T.spit(self.cert_path, json.dumps(self.cert))
+        rc, out = self.run_prof("classic", "install", "--with-timer", "--restore-certificate", self.cert_path)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("prova non verificabile", out)
+
+    def test_the_proof_only_talks_https_and_loopback_for_tests(self):
+        import github_run_proof as GP
+        with self.assertRaises(GP.ProofError):
+            GP.http_get("http://api.github.com/x")
+        with self.assertRaises(GP.ProofError):
+            GP.http_get("http://127.0.0.1:9/x")                      # il loopback in chiaro e' ammesso solo dalle prove
+        with self.assertRaises(GP.ProofError):
+            GP.http_get("file:///etc/passwd", allow_http=True)
+        self.assertNotIn("Authorization", T.slurp(os.path.join(HERE, "github_run_proof.py")).decode().replace("Authorization\"", ""))
+
+    def test_an_unsigned_local_report_needs_an_explicit_choice_and_is_labelled(self):
+        cert_local, _arc = self.make_proof()
+        self.accept_unsigned = False
+        self.addCleanup(setattr, self, "accept_unsigned", True)
+        rc, out = self.run_prof("v3", "install", "--with-timer", "--restore-certificate", cert_local)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("RAPPORTO NON FIRMATO", out)
+        self.accept_unsigned = True
+        rc, out = self.run_prof("v3", "install", "--with-timer", "--restore-certificate", cert_local)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("NON FIRMATO (accettato su richiesta esplicita)", out)
+
+    def test_a_certificate_pasted_into_a_text_file_is_not_enough(self):
+        """Il vecchio punto debole: righe CERTIFICATO scritte a mano con le impronte giuste. Senza la run su GitHub non vale nulla."""
+        self.prepare()
+        T.spit(self.cert_path, "CERTIFICATO " + json.dumps(self.cert) + "\n")
+        rc, out = self.run_prof("classic", "install", "--with-timer", "--restore-certificate", self.cert_path)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("PROVA NON AUTENTICA", out)
 
 
 SETREC = os.path.join(ROOT, "deploy", "extbackup", "v2", "set_recipients.py")
@@ -779,6 +937,138 @@ class PersonalKeyIntroductionTests(MigrationCase):
                 self.assertIn("RIFIUTATO", out)
                 self.assertNotIn("AGE-SECRET-KEY-1" + "Q" * 10, out)
                 self.assertEqual({r: T.slurp(os.path.join(root, r)) for r in before}, before)
+
+    def test_removing_a_recipient_realigns_the_pins_and_never_leaves_zero(self):
+        root = self.mini()
+        shutil.copy2(SETREC, os.path.join(root, "deploy/extbackup/v2/set_recipients.py"))
+        keys0 = AR.read_recipients(os.path.join(root, "deploy/extbackup/recipient-v2.txt"))
+        self.assertEqual(self.run_set(root, "--add", self.pers_pub)[0], 0)
+        before = {r: T.slurp(os.path.join(root, r)) for r in ("deploy/extbackup/recipient-v2.txt", "deploy/extbackup/v2/run-classic.sh")}
+        rc, out = self.run_set(root, "--remove", keys0[0], "--dry-run")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual({r: T.slurp(os.path.join(root, r)) for r in before}, before)
+        rc, out = self.run_set(root, "--remove", keys0[0])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("COERENZA DESTINATARI: OK", out)
+        keys = AR.read_recipients(os.path.join(root, "deploy/extbackup/recipient-v2.txt"))
+        self.assertEqual(keys, [self.pers_pub])
+        for rel in ("deploy/extbackup/v2/run-classic.sh", "deploy/extbackup/brain-v3/run-v3.sh"):
+            self.assertEqual(self.wrapper_pin(root, rel), AR.fingerprint(keys))
+        # l'ultimo destinatario non si toglie, una chiave estranea nemmeno, una privata nemmeno
+        for key, frag in ((self.pers_pub, "unico destinatario"), (keys0[0], "non e' tra i destinatari"), ("AGE-SECRET-KEY-1" + "Q" * 58, "non e' una chiave pubblica")):
+            rc, out = self.run_set(root, "--remove", key)
+            self.assertEqual(rc, 1, out)
+            self.assertIn(frag, out)
+        self.assertEqual(AR.read_recipients(os.path.join(root, "deploy/extbackup/recipient-v2.txt")), [self.pers_pub])
+        self.assertEqual(self.run_set(root)[0], 1)                                   # ne --add ne --remove
+        self.assertEqual(self.run_set(root, "--add", keys0[0], "--remove", keys0[0])[0], 1)
+
+
+KIT = os.path.join(ROOT, "deploy", "extbackup", "age-v2-migration", "chiave_personale.py")
+
+
+@unittest.skipUnless(HAVE_AGE, "mancano age/git")
+class PersonalKeyKitTests(unittest.TestCase):
+    """Il kit per il PC del proprietario: crea e prova la chiave senza mai mostrare la privata ne' usare la rete."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.addCleanup(self.td.cleanup)
+        self.dir = os.path.join(self.td.name, "chiave")
+
+    def run_kit(self, *args):
+        p = subprocess.run([sys.executable, "-I", KIT, *args], capture_output=True, text=True, timeout=120)
+        return p.returncode, p.stdout + p.stderr
+
+    def make(self):
+        rc, out = self.run_kit("crea", "--cartella", self.dir)
+        self.assertEqual(rc, 0, out)
+        pub = re.search(r"chiave pubblica: (age1[a-z0-9]{58})", out).group(1)
+        return pub, out
+
+    def test_create_prints_only_the_public_key_and_writes_the_private_one_with_600(self):
+        pub, out = self.make()
+        ident = os.path.join(self.dir, "chiave-personale.txt")
+        self.assertEqual(oct(os.stat(ident).st_mode & 0o777), "0o600")
+        self.assertEqual(oct(os.stat(self.dir).st_mode & 0o777), "0o700")
+        secret = [l for l in T.slurp(ident).decode().splitlines() if l.startswith("AGE-SECRET-KEY-")][0]
+        self.assertNotIn(secret, out)
+        self.assertNotIn("AGE-SECRET-KEY", out)
+        self.assertEqual(T.slurp(os.path.join(self.dir, "chiave-personale-pubblica.txt")).decode().splitlines()[-1], pub)
+        self.assertIn(hashlib.sha256((pub + "\n").encode()).hexdigest(), out)
+        # un nome diverso crea una seconda chiave (es. quella per l'ambiente di GitHub) senza toccare la prima
+        rc, out3 = self.run_kit("crea", "--cartella", self.dir, "--nome", "chiave-actions")
+        self.assertEqual(rc, 0, out3)
+        self.assertTrue(os.path.isfile(os.path.join(self.dir, "chiave-actions.txt")))
+        self.assertNotEqual(re.search(r"chiave pubblica: (age1\S+)", out3).group(1), pub)
+        rc, out3 = self.run_kit("crea", "--cartella", self.dir, "--nome", "../fuori")
+        self.assertEqual(rc, 1)
+        # non sovrascrive
+        before = T.slurp(ident)
+        rc, out2 = self.run_kit("crea", "--cartella", self.dir)
+        self.assertEqual(rc, 1)
+        self.assertIn("non la sovrascrivo", out2)
+        self.assertEqual(T.slurp(ident), before)
+
+    def test_proof_accepts_the_right_pair_and_rejects_everything_else(self):
+        pub, _ = self.make()
+        ident = os.path.join(self.dir, "chiave-personale.txt")
+        rc, out = self.run_kit("prova", "--identita", ident, "--pubblica", pub)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ESITO COMPLESSIVO: OK - la chiave funziona", out)
+        self.assertNotIn("AGE-SECRET-KEY", out)
+        other = T.keygen(os.path.join(self.td.name, "altra"))
+        rc, out = self.run_kit("prova", "--identita", ident, "--pubblica", other)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("corrisponde alla pubblica indicata: NO", out)
+        rc, out = self.run_kit("prova", "--identita", ident, "--pubblica", "AGE-SECRET-KEY-1" + "Q" * 58)
+        self.assertEqual(rc, 1)
+        self.assertIn("chiave PRIVATA", out)
+        self.assertNotIn("Q" * 20, out)
+        rc, out = self.run_kit("prova", "--identita", os.path.join(self.td.name, "non-esiste"), "--pubblica", pub)
+        self.assertEqual(rc, 1)
+
+    def test_the_personal_key_really_opens_a_v2_backup_like_the_installed_flow(self):
+        """Un archivio cifrato per V2 + personale (come produce il backup) si apre con la sola chiave personale creata dal kit."""
+        pub, _ = self.make()
+        ident = os.path.join(self.dir, "chiave-personale.txt")
+        v2_pub = T.keygen(os.path.join(self.td.name, "v2"))
+        plain, enc = os.path.join(self.td.name, "p"), os.path.join(self.td.name, "p.age")
+        T.spit(plain, "dati di prova\n")
+        subprocess.run(["age", "-r", v2_pub, "-r", pub, "-o", enc, plain], check=True)
+        p = subprocess.run(["age", "-d", "-i", ident, enc], capture_output=True)
+        self.assertEqual(p.stdout, b"dati di prova\n")
+
+    def test_it_refuses_to_work_inside_a_git_repository_or_on_the_server(self):
+        repo = os.path.join(self.td.name, "repo")
+        os.makedirs(os.path.join(repo, ".git"))
+        rc, out = self.run_kit("crea", "--cartella", os.path.join(repo, "chiave"))
+        self.assertEqual(rc, 1)
+        self.assertIn("dentro un repository git", out)
+        self.assertFalse(os.path.exists(os.path.join(repo, "chiave", "chiave-personale.txt")))
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("kit", KIT)
+        kit = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(kit)
+        kit.SERVER_MARKERS = (self.td.name,)                                          # "il server" = una cartella che esiste
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = kit.main(["crea", "--cartella", os.path.join(self.td.name, "x")])
+        self.assertEqual(rc, 1)
+        self.assertIn("sembra il server", buf.getvalue())
+        self.assertFalse(os.path.exists(os.path.join(self.td.name, "x")))
+
+    def test_the_kit_has_no_network_and_no_way_to_send_the_key_anywhere(self):
+        text = T.slurp(KIT).decode()
+        import ast
+        mods = {n.names[0].name.split(".")[0] for n in ast.walk(ast.parse(text)) if isinstance(n, ast.Import)}
+        mods |= {n.module.split(".")[0] for n in ast.walk(ast.parse(text)) if isinstance(n, ast.ImportFrom)}
+        self.assertEqual(mods - {"argparse", "hashlib", "os", "shutil", "subprocess", "sys", "tempfile"}, set())
+        for forbidden in ("socket", "urllib", "http://", "https://", "requests", "ssl", "smtplib", "ftplib", "curl", "git push"):
+            self.assertNotIn(forbidden, text, forbidden)
+        self.assertEqual(sorted(set(re.findall(r'subprocess\.run\(\[("[a-z-]+")', text))), ['"age"', '"age-keygen"'])
 
 
 if __name__ == "__main__":

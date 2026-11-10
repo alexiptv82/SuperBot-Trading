@@ -4,6 +4,14 @@ name: SuperBot age V2 - controllo isolato della chiave (solo chiave pubblica der
 # fu documentato il 23 ottobre 2026 (commit e51cf721196bdd52bce39b925a3b7521e64e141a), e che la coppia funzioni (cifratura e
 # decifratura di 4 KiB casuali). Nei log compare soltanto ESITO ... OK/NO.
 #
+# ATTENZIONE - Secrets: SUPERBOT_AGE_RECOVERY_KEY_V2 e' oggi un Secret di REPOSITORY. L'ambiente "age-recovery" protegge SOLO i
+# Secrets definiti NELL'AMBIENTE: un Secret di repository resta leggibile da qualunque workflow del repository, su qualunque ramo,
+# senza approvazione. Questo workflow NON rende protetto quel Secret e non puo' dire dove sia memorizzato (il GITHUB_TOKEN non
+# elenca i Secrets). Finche' non e' stato sostituito da un Secret di ambiente (e quello di repository cancellato) NON va descritto
+# come protetto. Vedi deploy/extbackup/age-v2-migration/SEGRETI-E-PROTEZIONI.md.
+# Avvio: workflow_dispatch funziona solo se questo file e' sul ramo predefinito (non lo spostiamo senza decisione del proprietario);
+# il percorso supportato oggi e' il push del file KEYCHECK.trigger sul ramo di esecuzione.
+#
 # Garanzie (verificate da deploy/scripts/test_age_v2_recovery.py):
 #  - NESSUN accesso a VPS, a repository privati o a archivi; nessuna azione di terze parti (nessun "uses:"); nessun artifact;
 #  - UN solo Secret (SUPERBOT_AGE_RECOVERY_KEY_V2), visibile a UN solo passo, che lo scrive su un file 600 senza leggerlo ne' stamparlo;
@@ -57,9 +65,6 @@ jobs:
           fetch "$RUNNER_TEMP/doc" "$DOC_SHA"
           R="deploy/extbackup/recipient-v2.txt"
           [ "$(sha256sum "$RUNNER_TEMP/doc/$R" | cut -d' ' -f1)" = "$DOC_RECIPIENT_SHA256" ] || { echo "BLOCCO: il destinatario documentato non e' quello atteso"; exit 1; }
-          while read -r K; do
-            grep -qxF "$K" "$RUNNER_TEMP/wf/$R" || { echo "BLOCCO: il destinatario documentato il 23 ottobre non e' piu' tra i destinatari di questo commit"; exit 1; }
-          done < <(grep -v '^#' "$RUNNER_TEMP/doc/$R" | grep -v '^$')
           WF=$(sha256sum "$RUNNER_TEMP/wf/.github/workflows/age-v2-key-check.yml" | cut -d' ' -f1)
           SC=$(sha256sum "$RUNNER_TEMP/wf/deploy/extbackup/age-v2-recovery/check_key.py" | cut -d' ' -f1)
           GOT=$(printf '%s\n%s\n' "$WF" "$SC" | sha256sum | cut -d' ' -f1)
@@ -95,6 +100,7 @@ jobs:
           python3 -I "$RUNNER_TEMP/wf/deploy/extbackup/age-v2-recovery/check_key.py" \
             --identity "$RUNNER_TEMP/age-v2-identity" \
             --recipients "$RUNNER_TEMP/doc/deploy/extbackup/recipient-v2.txt" \
+            --current-recipients "$RUNNER_TEMP/wf/deploy/extbackup/recipient-v2.txt" \
             --work "$RUNNER_TEMP/work" \
             --summary "$GITHUB_STEP_SUMMARY"
 

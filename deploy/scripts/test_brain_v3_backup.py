@@ -1777,6 +1777,8 @@ if verb == "is-active":
         s = os.environ.get("FAKE_SC_CLASSIC", "inactive")
     elif unit == "superbot-extbackup-v3.service":
         s = os.environ.get("FAKE_SC_V3_SERVICE", "inactive")
+        if os.path.exists(state_p + ".started") and os.environ.get("FAKE_SC_V3_SERVICE_AFTER_START"):
+            s = os.environ["FAKE_SC_V3_SERVICE_AFTER_START"]
     else:
         s = "active" if unit in st["active"] else "inactive"
     print(s)
@@ -1800,6 +1802,7 @@ elif verb == "start":
         sys.exit(5)
     if unit not in st["active"]:
         st["active"].append(unit)
+    open(state_p + ".started", "w").close()
     save()
 elif verb == "stop":
     if unit in st["active"]:
@@ -1831,7 +1834,8 @@ class InstallerBase(PipelineCase):
         self.fakebin = os.path.join(t, "fakebin")
         self.sc_state = os.path.join(t, "sc-state.json")
         self.sc_log = os.path.join(t, "systemctl.log")
-        for d in (self.tools, self.classic, self.systemd, self.fakebin):
+        self.proc = os.path.join(t, "proc")                              # processi finti: nessun backup in corso
+        for d in (self.tools, self.classic, self.systemd, self.fakebin, self.proc):
             os.makedirs(d)
         for n in ("external_backup.py", "backup_brain.py", "backup_app_db.py"):
             shutil.copyfile(os.path.join(HERE, n), os.path.join(self.tools, n))
@@ -1849,7 +1853,14 @@ class InstallerBase(PipelineCase):
     def inst_args(self, *args, host="vps-singapore"):
         return [sys.executable, INSTALLER, *args, "--tools-dir", self.tools, "--work-dir", self.work,
                 "--classic-dir", self.classic, "--systemd-dir", self.systemd, "--state-dir", self.state,
-                "--v2-dir", self.v2, "--ssh-key", self.key, "--allow-nonroot", "--host-name", host, *self.profile_args]
+                "--v2-dir", self.v2, "--data-dir", self.work, "--proc-dir", self.proc, "--ssh-key", self.key, "--allow-nonroot",
+                "--host-name", host, *self.profile_args, *self.cert_args()]
+
+    accept_unsigned = True                                            # i rapporti di ripristino locali servono ai test del cancello
+    gh = None                                                         # finto server GitHub (solo dove serve)
+
+    def cert_args(self):
+        return (["--accept-unsigned-certificate"] if self.accept_unsigned else []) + (["--github-api", self.gh.url] if self.gh else [])
 
     def run_inst(self, *args, host="vps-singapore", **env):
         p = subprocess.run(self.inst_args(*args, host=host), capture_output=True, text=True, timeout=120, env=self.env(**env))
@@ -2126,7 +2137,7 @@ class InstallerTests(InstallerBase):
         cert, _arc = self.make_proof()
         ap = self.approval("--with-timer")
         rc, out = self.run_inst("install", "--with-timer", "--restore-certificate", cert, "--apply", "--approve", ap,
-                                FAKE_SC_V3_SERVICE="active")
+                                FAKE_SC_V3_SERVICE_AFTER_START="active")
         self.assertEqual(rc, 1, out)
         self.assertIn("il servizio di backup e' partito", out)
         self.assertEqual(self.sc(), {"enabled": [], "active": []})

@@ -15,6 +15,12 @@ name: SuperBot age V2 - verifica di recupero dei backup (isolata, sola lettura)
 #    ramo di ESECUZIONE diverso da quello di revisione (work/age-v2-recovery-run-20261110, che non esiste e che questo commit NON
 #    contiene). Pubblicare questo file sul ramo di revisione non puo' eseguire nulla.
 # Consigliato: ambiente "age-recovery" con revisore obbligatorio e ramo consentito limitato (vedi LEGGIMI.md).
+# ATTENZIONE - Secrets: l'ambiente protegge SOLO i Secrets definiti NELL'AMBIENTE. SUPERBOT_AGE_RECOVERY_KEY_V2 e' oggi un Secret di
+# REPOSITORY: resta leggibile da qualunque workflow del repository, su qualunque ramo, senza approvazione. Non va descritto come
+# protetto finche' non e' stato sostituito da un Secret di ambiente (e quello di repository cancellato). Vedi
+# deploy/extbackup/age-v2-migration/SEGRETI-E-PROTEZIONI.md.
+# workflow_dispatch funziona solo se questo file e' sul ramo predefinito (non lo spostiamo senza decisione del proprietario): il
+# percorso supportato oggi e' il push del file RUN.trigger sul ramo di esecuzione.
 
 on:
   workflow_dispatch:
@@ -135,7 +141,8 @@ jobs:
             --pinned "$RUNNER_TEMP/pinned" \
             --rc84 "$RUNNER_TEMP/rc84" \
             --work "$RUNNER_TEMP/work" \
-            --run-id "$GITHUB_RUN_ID" --workflow-sha256 "$WF_SHA" --script-sha256 "$SC_SHA" --pinned-sha "$PINNED_SHA" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --commit "$GITHUB_SHA" --repository "$GITHUB_REPOSITORY" \
+            --workflow-sha256 "$WF_SHA" --script-sha256 "$SC_SHA" --pinned-sha "$PINNED_SHA" \
             --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Rimozione di chiavi e contenuti temporanei

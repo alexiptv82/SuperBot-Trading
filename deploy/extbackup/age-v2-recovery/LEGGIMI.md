@@ -2,6 +2,10 @@
 
 > **Aggiornamento (migrazione V1→V2):** i fatti sul destinatario sono stati verificati dall'utente sulla VPS: **tutti gli ultimi archivi (Falco/Toro, Brain V3, Brain Free) sono cifrati per V1** e la chiave V2 del Secret appartiene a un'altra coppia. Questo workflow legge quindi il repository **V2** (`superbot-backups-v2`, archivi nuovi cifrati per V2) e emette le attestazioni `CERTIFICATO` per i timer; il controllo che il Secret coincida con il destinatario V2 documentato il 23/10 e' il workflow separato `age-v2-key-check.yml`. Procedura completa: `deploy/extbackup/age-v2-migration/LEGGIMI.md`. Il testo sotto resta valido per le parti non toccate.
 
+> **Revisione 2:** (a) `workflow_dispatch` funziona solo se il workflow è sul ramo **predefinito** (non lo spostiamo): l'avvio supportato è il push del file `RUN.trigger`/`KEYCHECK.trigger` su un ramo di esecuzione; i riferimenti a «Run workflow»
+> qui sotto valgono solo dopo una decisione esplicita del proprietario. (b) Un ambiente protetto non protegge un Secret **di repository**: vedi `deploy/extbackup/age-v2-migration/SEGRETI-E-PROTEZIONI.md`; finché la chiave non è stata sostituita da un Secret di ambiente
+> NON è protetta. (c) Le righe `CERTIFICATO` ora contengono `commit`, `run_attempt` e `repository` e sono emesse anche come annotazione del job: l'installatore le verifica con le API pubbliche di GitHub.
+
 **Stato: PREPARATO, NON ESEGUITO.** Nessun job che usa un Secret è stato avviato. Pubblicare questo ramo non esegue nulla: il workflow parte solo con
 `workflow_dispatch` (impronta di approvazione) oppure con il push del file `RUN.trigger` su un ramo di **esecuzione** diverso da quello di revisione (`work/age-v2-recovery-run-20261110`, che non esiste); il file `RUN.trigger` questo commit **non lo contiene**.
 

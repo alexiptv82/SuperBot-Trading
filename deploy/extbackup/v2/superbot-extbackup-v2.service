@@ -12,5 +12,7 @@ Nice=10
 IOSchedulingClass=idle
 TimeoutStartSec=45min
 ExecStart=/opt/superbot-extbackup-v2/run-classic.sh
-# Dopo un arresto brusco o un timeout restano solo file temporanei NOSTRI: si tolgono sempre (nessun testo in chiaro in giro).
-ExecStopPost=/bin/sh -c 'rm -rf /opt/superbot-extbackup-v2/work/staging /opt/superbot-extbackup-v2/work/staging.tar.gz; rm -f /opt/superbot-extbackup-v2/work/superbot-backup-*.tar.gz.age'
+# Dopo un arresto brusco o un timeout restano solo file temporanei NOSTRI. La pulizia gira SOLO se riesce a prendere lo stesso
+# .lock che prende ogni backup (flock -n): se nel frattempo c'e' un backup MANUALE in corso (che tiene il .lock), la pulizia non
+# parte e non puo' toccare i suoi file temporanei. Il "-" iniziale ignora l'esito (nessun lock libero = niente da pulire).
+ExecStopPost=-/usr/bin/flock -n /opt/superbot-extbackup-v2/work/.lock /bin/sh -c 'rm -rf /opt/superbot-extbackup-v2/work/staging /opt/superbot-extbackup-v2/work/staging.tar.gz; rm -f /opt/superbot-extbackup-v2/work/superbot-backup-*.tar.gz.age'

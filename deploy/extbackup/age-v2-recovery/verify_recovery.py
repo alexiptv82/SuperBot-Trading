@@ -57,7 +57,8 @@ def certificate(fam, latest, ctx):
     """Attestazione del ripristino indipendente: solo nomi, hash e identificativi (nessun dato decifrato)."""
     return {"schema": "superbot-brain-v3-restore-certificate-v1", "esito": "OK", "famiglia": FAMIGLIA[fam["tipo"]],
             "archivio": latest["archivio"], "archivio_sha256": latest["sha256"], "eseguito_su": "github-actions",
-            "origine": "github-actions", "run_id": ctx["run_id"], "workflow_sha256": ctx["workflow_sha256"],
+            "origine": "github-actions", "run_id": ctx["run_id"], "run_attempt": ctx["run_attempt"], "commit": ctx["commit"],
+            "repository": ctx["repository"], "workflow_sha256": ctx["workflow_sha256"],
             "script_sha256": ctx["script_sha256"], "pinned_sha": ctx["pinned_sha"],
             "controllo_rc84": "eseguito" if (fam["tipo"] == "v3" and ctx.get("rc84")) else "non eseguito"}
 
@@ -165,6 +166,9 @@ def main(argv=None):
     ap.add_argument("--workflow-sha256", default="")
     ap.add_argument("--script-sha256", default="")
     ap.add_argument("--pinned-sha", default="")
+    ap.add_argument("--commit", default="", help="GITHUB_SHA della run: l'installatore lo confronta con GitHub")
+    ap.add_argument("--run-attempt", default="")
+    ap.add_argument("--repository", default="")
     a = ap.parse_args(argv)
     os.umask(0o077)
     os.makedirs(a.work, mode=0o700, exist_ok=True)
@@ -217,10 +221,14 @@ def main(argv=None):
         for ln in lines:
             say("- " + ln)
         say("ESITO ripristino: %s" % ("OK" if confirmed else "NO"))
-        if confirmed and a.run_id and a.workflow_sha256 and a.script_sha256 and a.pinned_sha:
+        if confirmed and a.run_id and a.workflow_sha256 and a.script_sha256 and a.pinned_sha and a.commit and a.run_attempt and a.repository:
             ctx = {"run_id": a.run_id, "workflow_sha256": a.workflow_sha256, "script_sha256": a.script_sha256,
-                   "pinned_sha": a.pinned_sha, "rc84": a.rc84}
-            say("CERTIFICATO " + json.dumps(certificate(fam, latest, ctx), sort_keys=True, separators=(",", ":")))
+                   "pinned_sha": a.pinned_sha, "rc84": a.rc84, "commit": a.commit, "run_attempt": a.run_attempt, "repository": a.repository}
+            cert_line = json.dumps(certificate(fam, latest, ctx), sort_keys=True, separators=(",", ":"))
+            say("CERTIFICATO " + cert_line)
+            # Annotazione del job: GitHub la espone nelle sue API pubbliche. L'installatore la confronta con il certificato
+            # (github_run_proof.py): cosi' il testo e' dimostrabilmente prodotto da QUESTA run e non scritto a mano.
+            out("::notice title=CERTIFICATO::" + cert_line.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
         verdicts.append("OK" if confirmed else "NO")
     say("")
     total = "OK" if all(v == "OK" for v in verdicts) else ("NO" if all(v == "NO" for v in verdicts) else "PARZIALE")

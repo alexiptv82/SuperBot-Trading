@@ -3,12 +3,16 @@
 
 Che cosa fa (nessun archivio, nessuna rete, nessun repository privato, nessuna VPS):
   1. deriva internamente la chiave PUBBLICA dalla privata (age-keygen -y);
-  2. la confronta con le chiavi pubbliche del file dei destinatari documentati (il destinatario V2 del 23 ottobre);
-  3. se coincide, prova che la coppia FUNZIONA: cifra 4 KiB casuali verso il destinatario documentato, li decifra con la chiave
-     privata e confronta l'impronta; i file di prova stanno in --work e vengono cancellati.
+  2. la confronta con le chiavi pubbliche del file dei destinatari documentati (il destinatario V2 del 23 ottobre) e, se indicato con
+     --current-recipients, con i destinatari ATTUALI dei backup (file di questo commit): se il Secret e' stato sostituito da una
+     chiave nuova, la seconda verifica e' quella che conta, la prima diventa un'informazione ("non e' la V2 documentata");
+  3. se la chiave e' un destinatario valido, prova che la coppia FUNZIONA: cifra 4 KiB casuali verso la propria chiave pubblica, li
+     decifra con la chiave privata e confronta l'impronta; i file di prova stanno in --work e vengono cancellati.
 Nei log compare soltanto ESITO ... OK/NO: mai la chiave privata, mai la pubblica, mai il destinatario.
 Il file della chiave privata NON viene mai aperto da questo programma: si passa solo il suo percorso ad age.
-Uscita 0 solo se la chiave coincide E la prova di cifratura/decifratura riesce; 2 altrimenti.
+Uscita 0 solo se la chiave e' un destinatario valido (quello documentato, oppure uno attuale se --current-recipients) E la prova di
+cifratura/decifratura riesce; 2 altrimenti.
+NON dice dove sia memorizzato il Secret (di repository o di ambiente): quello si controlla solo nell'interfaccia di GitHub.
 """
 import argparse
 import hashlib
@@ -65,6 +69,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--identity", required=True, help="PERCORSO del file con la chiave privata (non viene mai letto qui)")
     ap.add_argument("--recipients", required=True, help="file con la/le chiave/i PUBBLICA/HE documentata/e")
+    ap.add_argument("--current-recipients", default="", help="file dei destinatari ATTUALI dei backup (di questo commit)")
     ap.add_argument("--work", required=True)
     ap.add_argument("--summary", default="")
     a = ap.parse_args(argv)
@@ -79,18 +84,26 @@ def main(argv=None):
     pub = derive_public(a.identity)
     ok_read = pub is not None
     line("ESITO chiave privata leggibile e valida: %s" % ("OK" if ok_read else "NO"))
-    ok_match = bool(ok_read and keys and pub in keys)
-    line("ESITO la chiave pubblica derivata coincide con il destinatario V2 documentato il 23 ottobre: %s" % ("OK" if ok_match else "NO"))
+    ok_doc = bool(ok_read and keys and pub in keys)
+    line("ESITO la chiave pubblica derivata coincide con il destinatario V2 documentato il 23 ottobre: %s" % ("OK" if ok_doc else "NO"))
+    ok_match = ok_doc
+    if a.current_recipients:
+        current = documented_keys(a.current_recipients)
+        ok_cur = bool(ok_read and current and pub in current)
+        line("ESITO la chiave e' tra i destinatari dei backup di questo commit: %s" % ("OK" if ok_cur else "NO"))
+        ok_match = ok_cur
     ok_trip = False
     if ok_match:
-        ok_trip = roundtrip(a.identity, keys, a.work)
+        ok_trip = roundtrip(a.identity, [pub], a.work)
         line("ESITO prova di cifratura e decifratura con la coppia: %s" % ("OK" if ok_trip else "NO"))
     else:
         line("ESITO prova di cifratura e decifratura con la coppia: NO (non eseguita: la chiave non coincide)")
     total = ok_read and ok_match and ok_trip
     line("ESITO COMPLESSIVO: %s" % ("OK" if total else "NO"))
-    if total:
+    if total and ok_doc:
         line("La chiave V2 nel Secret appartiene alla coppia documentata: puo' decifrare gli archivi cifrati per quel destinatario.")
+    elif total:
+        line("La chiave nel Secret e' un destinatario attuale dei backup ma NON e' la V2 documentata il 23 ottobre: chiave sostituita.")
     if a.summary:
         with open(a.summary, "a") as f:
             f.write("\n".join(report) + "\n")
