@@ -1,3 +1,9 @@
+## 10/11/2026 (21:03 Europe/Rome) — PREFLIGHT READ-ONLY VPS SINGAPORE COMPLETATO; CLASSICI FERMI, STORICI PRESENTI; NO RIAVVIO
+
+**Evidenza diretta:** [Actions run 42891405554](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42891405554) SUCCESS; job `audit` tramite SSH alla VPS, soli comandi diagnostici, log letto direttamente. Falco/Hawk e Toro/Bull `exited`, `DESK_MODE=paper`, pausa presente, `open_count=0`, file storico/apprendimento presenti; dashboard `superbot` RC73 in esecuzione, servizi classici `exit-only` attivi; Brain Free precedente fermo e in pausa (lettura SQLite `immutable=1`, potenzialmente snapshot non recente se WAL). Brain V3: run montata, readiness e singolo owner **NON certificati**. Disco 30 GB liberi. Nessun deploy/avvio/merge/ordine. Un solo run GitHub Actions; codice diagnostico su main corretto per evitare scritture SQLite accessorie. Dettagli e limiti: [diario/2026-11-10_preflight-vps-singapore-paper-readonly.md](diario/2026-11-10_preflight-vps-singapore-paper-readonly.md). **Prossimo gate minimale: readiness Brain V3, isolamento PAPER, snapshot locale e singolo writer; poi consenso separato per eventuale restart PAPER.** PR #80 ancora Draft, backup age V2 ancora separato.
+
+---
+
 ## 10/11/2026 (00:10) — BACKUP ESTERNO: REVISIONE FINALE DI SICUREZZA FATTA (CONTROLLO BLOCCANTE, SCRIPT DI INSTALLAZIONE/ROLLBACK, TEST); NON INSTALLATA; IN ATTESA DI REVISIONE CHATGPT
 
 **Claude Sonnet 5.5** · solo GitHub e prove offline · nessuna connessione alle VPS, nessun workflow avviato, nessuna installazione, nessun merge · HiTV non toccato · bot non avviati · PR #80 invariata (Draft, `0e29a73`).
