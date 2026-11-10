@@ -1,0 +1,144 @@
+name: SuperBot age V2 - verifica di recupero dei backup (isolata, sola lettura)
+
+# PREPARATO, NON ESEGUITO. Verifica se la chiave privata age V2 (Secret SUPERBOT_AGE_RECOVERY_KEY_V2) decifra gli ultimi
+# archivi del repository privato dei backup e ne fa un ripristino isolato su questo runner. Procedura e controlli: vedi
+# deploy/extbackup/age-v2-recovery/LEGGIMI.md.
+#
+# Garanzie (verificate da deploy/scripts/test_age_v2_recovery.py):
+#  - NESSUN accesso alla VPS (nessuna chiave SSH di server, nessun host), nessuna scrittura sul repository dei backup;
+#  - nessuna azione di terze parti (nessun "uses:"): solo comandi shell e script del repository a commit fissati;
+#  - due soli Secrets, ciascuno visibile a UN solo passo: SUPERBOT_BACKUPS_READ_KEY (chiave di deploy in SOLA LETTURA per
+#    superbot-backups) e SUPERBOT_AGE_RECOVERY_KEY_V2 (scritta su un file con permessi 600 e mai letta, stampata o esportata);
+#  - gli script che trattano la chiave sono quelli del commit 7b2aabe9... e RC84 0e29a73..., con impronte controllate;
+#  - nessun artifact, nessuna cache, nessun file decifrato conservato; log a frasi fisse (ESITO OK/NO), mai dati di portafoglio;
+#  - NON parte da sola: serve workflow_dispatch con l'impronta di approvazione, oppure il push del file RUN.trigger su un
+#    ramo di ESECUZIONE diverso da quello di revisione (work/age-v2-recovery-run-20261110, che non esiste e che questo commit NON
+#    contiene). Pubblicare questo file sul ramo di revisione non puo' eseguire nulla.
+# Consigliato: ambiente "age-recovery" con revisore obbligatorio e ramo consentito limitato (vedi LEGGIMI.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: "Impronta di approvazione (sha256 di workflow + script) - vedi LEGGIMI.md"
+        required: true
+        type: string
+  push:
+    branches: [work/age-v2-recovery-run-20261110]
+    paths:
+      - "deploy/extbackup/age-v2-recovery/RUN.trigger"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superbot-age-v2-recovery-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: age-recovery
+    steps:
+      - name: Fonti verificate, strumenti e approvazione (nessun Secret in questo passo)
+        shell: bash
+        env:
+          PINNED_SHA: 7b2aabe900d6ba6b032ab34e7568e4f4dd70d5ec
+          RC84_SHA: 0e29a73a36f668643da4088178bacb8616a45ac0
+          INPUT_APPROVAL: ${{ github.event.inputs.approval }}
+        run: |
+          set -euo pipefail
+          umask 077
+          fetch() {
+            git init -q "$1"
+            git -C "$1" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+            git -C "$1" fetch -q --depth 1 origin "$2"
+            git -C "$1" checkout -q FETCH_HEAD
+            [ "$(git -C "$1" rev-parse HEAD)" = "$2" ] || { echo "BLOCCO: commit diverso da quello fissato"; exit 1; }
+          }
+          fetch "$RUNNER_TEMP/wf" "$GITHUB_SHA"
+          fetch "$RUNNER_TEMP/pinned" "$PINNED_SHA"
+          fetch "$RUNNER_TEMP/rc84" "$RC84_SHA"
+          check() {
+            [ "$(sha256sum "$RUNNER_TEMP/pinned/$1" | cut -d' ' -f1)" = "$2" ] || { echo "BLOCCO: $1 diverso da quello rivisto"; exit 1; }
+          }
+          check deploy/scripts/restore_external_backup.py fa86e0cf41a380b21b467e6e51db1d7d523f144eab95726a04fd878c1a8c5532
+          check deploy/scripts/backup_brain.py 4a92e7daa6cff9fbf339f471656df8ba44067b6927d15b411b50313de0cb5d2c
+          check deploy/scripts/restore_brain_v3_backup.py ed06f99186488f30929e545837cc86f499aada5f70af4feec869b96407c9fa05
+          check deploy/scripts/brain_v3_snapshot.py 585889d9df071b7eccf78f04f7fcc3c5b63324ee04207ddc4c9a72d91192c6db
+          WF=$(sha256sum "$RUNNER_TEMP/wf/.github/workflows/age-v2-recovery-verify.yml" | cut -d' ' -f1)
+          SC=$(sha256sum "$RUNNER_TEMP/wf/deploy/extbackup/age-v2-recovery/verify_recovery.py" | cut -d' ' -f1)
+          GOT=$(printf '%s\n%s\n' "$WF" "$SC" | sha256sum | cut -d' ' -f1)
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            WANT="$INPUT_APPROVAL"
+          else
+            WANT=$(sed -n 's/^approval=\([0-9a-f]\{64\}\)$/\1/p' "$RUNNER_TEMP/wf/deploy/extbackup/age-v2-recovery/RUN.trigger" | head -n1)
+          fi
+          [[ "$WANT" =~ ^[0-9a-f]{64}$ ]] && [ "$WANT" = "$GOT" ] || {
+            echo "BLOCCO: impronta di approvazione mancante o diversa dai file di questo commit. Nessun Secret e' stato usato."
+            exit 1
+          }
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          echo "FONTI_E_APPROVAZIONE=OK"
+
+      - name: Accesso in SOLA LETTURA al repository privato dei backup
+        shell: bash
+        env:
+          BACKUPS_READ_KEY: ${{ secrets.SUPERBOT_BACKUPS_READ_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$BACKUPS_READ_KEY" || {
+            echo "BLOCCO: manca il Secret SUPERBOT_BACKUPS_READ_KEY (chiave di deploy in sola lettura per superbot-backups). La chiave di recupero NON e' stata usata."
+            exit 1
+          }
+          KEY="$RUNNER_TEMP/backups-read-key"
+          KH="$RUNNER_TEMP/github-known-hosts"
+          printf '%s\n' "$BACKUPS_READ_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          curl -fsS https://api.github.com/meta | python3 -c "import json,sys; [print('github.com ' + k) for k in json.load(sys.stdin)['ssh_keys']]" > "$KH"
+          test -s "$KH"
+          SSHCMD="ssh -i $KEY -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KH -o ConnectTimeout=30"
+          mkdir -p "$RUNNER_TEMP/repos"
+          for B in main brain-v3 brain-free; do
+            GIT_SSH_COMMAND="$SSHCMD" git clone -q --filter=blob:none --no-checkout --depth 1 --single-branch --branch "$B" \
+              git@github.com:alexiptv82/superbot-backups.git "$RUNNER_TEMP/repos/$B" 2>/dev/null || {
+              echo "BLOCCO: ramo $B del repository privato non leggibile con la chiave di sola lettura"
+              exit 1
+            }
+          done
+          echo "GIT_SSH_COMMAND=$SSHCMD" >> "$GITHUB_ENV"
+          echo "ACCESSO_REPOSITORY_PRIVATO=OK"
+
+      - name: Chiave di recupero V2 (viene solo scritta su un file 600, mai letta ne' stampata)
+        shell: bash
+        env:
+          AGE_RECOVERY_KEY_V2: ${{ secrets.SUPERBOT_AGE_RECOVERY_KEY_V2 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$AGE_RECOVERY_KEY_V2" || { echo "ESITO chiave V2 presente: NO"; exit 1; }
+          printf '%s\n' "$AGE_RECOVERY_KEY_V2" > "$RUNNER_TEMP/age-v2-identity"
+          chmod 600 "$RUNNER_TEMP/age-v2-identity"
+          echo "ESITO chiave V2 presente: OK"
+
+      - name: Confronto con il destinatario e ripristino isolato (rapporto a frasi fisse)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I "$RUNNER_TEMP/wf/deploy/extbackup/age-v2-recovery/verify_recovery.py" \
+            --identity "$RUNNER_TEMP/age-v2-identity" \
+            --repos-dir "$RUNNER_TEMP/repos" \
+            --pinned "$RUNNER_TEMP/pinned" \
+            --rc84 "$RUNNER_TEMP/rc84" \
+            --work "$RUNNER_TEMP/work" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Rimozione di chiavi e contenuti temporanei
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/age-v2-identity" "$RUNNER_TEMP/backups-read-key" "$RUNNER_TEMP/github-known-hosts" || true
+          rm -rf "$RUNNER_TEMP/work" "$RUNNER_TEMP/repos" "$RUNNER_TEMP/wf" "$RUNNER_TEMP/pinned" "$RUNNER_TEMP/rc84" || true
