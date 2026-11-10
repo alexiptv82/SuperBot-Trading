@@ -173,8 +173,9 @@ if [ "$MODE" = pre ]; then
   echo "== 2. Nessun backup in corso"
   S="$(systemctl is-active superbot-extbackup.service 2>/dev/null)"
   case "$S" in
+    inactive | failed) ok "superbot-extbackup.service non e' in corso (stato: $S)" ;;
     active | activating) bad "superbot-extbackup.service e' in corso ($S)" ;;
-    *) ok "superbot-extbackup.service non e' in corso (stato: ${S:-sconosciuto})" ;;
+    *) bad "superbot-extbackup.service: stato NON VERIFICABILE (${S:-risposta vuota}); non assumo che sia fermo" ;;
   esac
   # solo interpreti python che eseguono davvero questi script (non una shell che li nomina nel proprio testo)
   if pgrep -f '^[^ ]*python[0-9.]* (-I )?[^ ]*/(external_backup|backup_brain|backup_app_db)\.py' >/dev/null 2>&1; then bad "c'e' un processo di backup in esecuzione"; else ok "nessun processo di backup in esecuzione"; fi
@@ -377,8 +378,19 @@ if [ "$MODE" = pre ]; then
 fi
 SIG="$(signature)"
 echo "FIRMA_CERVELLO=$SIG   (impronta di tutti i file del cervello; deve essere IDENTICA prima e dopo il backup)"
-if [ "$MODE" = post ] && [ -n "$SIGPRE" ]; then
-  if [ "$SIG" = "$SIGPRE" ]; then ok "il cervello e' identico a prima del backup (stessa firma)"; else bad "il cervello e' DIVERSO da prima del backup (firma $SIGPRE -> $SIG): verificare cosa ha scritto"; fi
+if [ "$MODE" = post ]; then
+  case "$SIGPRE" in
+    "" | *[!0-9a-f]*) bad "firma PRE mancante o non valida: servono 16 caratteri esadecimali" ;;
+    *)
+      if [ "${#SIGPRE}" -ne 16 ]; then
+        bad "firma PRE non valida: lunghezza diversa da 16"
+      elif [ "$SIG" = "$SIGPRE" ]; then
+        ok "il cervello e' identico a prima del backup (stessa firma)"
+      else
+        bad "il cervello e' DIVERSO da prima del backup (firma $SIGPRE -> $SIG): verificare cosa ha scritto"
+      fi
+      ;;
+  esac
 fi
 
 if [ "$MODE" = pre ]; then
@@ -410,11 +422,17 @@ except Exception as e:
 err = s.get("ultimo_errore")
 ok_ts = s.get("ultimo_successo")
 age = "?"
+same_attempt = "no"
 try:
-    age = str(int(float(sys.argv[2]) - datetime.strptime(ok_ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()))
-except Exception:
+    now = datetime.fromtimestamp(float(sys.argv[2]), tz=timezone.utc)
+    ok_dt = datetime.strptime(ok_ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    try_dt = datetime.strptime(s.get("ultimo_tentativo"), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    age = str(int((now - ok_dt).total_seconds()))
+    if 0 <= (ok_dt - try_dt).total_seconds() <= 1800 and 0 <= (now - ok_dt).total_seconds() <= 1800:
+        same_attempt = "si"
+except (ValueError, TypeError, OverflowError):
     pass
-print("STATO errore=%s successo_eta_s=%s archivio=%s sha=%s" % ("si" if err else "no", age, s.get("archivio"), s.get("sha256")))
+print("STATO errore=%s successo_eta_s=%s archivio=%s sha=%s stesso_tentativo=%s" % ("si" if err else "no", age, s.get("archivio"), s.get("sha256"), same_attempt))
 if err:
     print("ERRORE %s" % str(err).splitlines()[0][:200])
 for k in ("ultimo_tentativo", "ultimo_successo", "dimensione", "archivi_visibili", "verifica"):
@@ -427,17 +445,29 @@ PY
     *errore=no*) ok "status.json: nessun errore registrato" ;;
     *) bad "status.json: ultimo errore registrato o stato illeggibile" ;;
   esac
+  case "$STL" in
+    *stesso_tentativo=si*) ok "ultimo successo associato all'ultimo tentativo" ;;
+    *) bad "status.json: ultimo successo non dimostrato per l'ultimo tentativo" ;;
+  esac
   SAGE="$(echo "$STL" | sed -n 's/.*successo_eta_s=\([0-9]*\).*/\1/p')"
   if is_uint "$SAGE" && [ "$SAGE" -le 1800 ]; then ok "ultimo backup riuscito $SAGE s fa (entro 30 minuti)"; else bad "l'ultimo backup riuscito non e' recente (eta: ${SAGE:-sconosciuta} s): questo giro non risulta riuscito"; fi
   SSHA="$(echo "$STL" | sed -n 's/.*sha=\([0-9a-f]*\).*/\1/p')"
   echo "== 9. Manifesto pubblico e verifica remota"
-  M="$(ls -1 "$EXTB"/repo/archives/*/*/*.manifest.json 2>/dev/null | sort | tail -1)"
+  SARCH="$(echo "$STL" | sed -n 's/.*archivio=\([^ ]*\) sha=.*/\1/p')"
+  M=""
+  if printf '%s\n' "$SARCH" | grep -Eq '^superbot-backup-[0-9]{8}T[0-9]{6}Z\.tar\.gz\.age$'; then
+    M="$(find "$EXTB/repo/archives" -type f -name "${SARCH%.tar.gz.age}.manifest.json" -print -quit 2>/dev/null)"
+  else
+    bad "status.json: nome archivio non valido"
+  fi
   if [ -n "$M" ]; then
     MAN="$(python3 -I - "$M" <<'PY' 2>/dev/null
 import json, sys
 with open(sys.argv[1], encoding="utf8") as f:
     m = json.load(f)
 print("SHA %s" % m.get("sha256"))
+print("ARCHIVIO %s" % m.get("archivio"))
+print("CREATO %s" % m.get("creato"))
 print("archivio = %s" % m.get("archivio"))
 print("creato = %s  dimensione = %s  file = %s" % (m.get("creato"), m.get("dimensione"), (m.get("contenuto") or {}).get("file")))
 im = (m.get("versioni") or {}).get("immagini_in_esecuzione") or {}
@@ -448,7 +478,26 @@ PY
 )"
     echo "$MAN" | grep -v '^SHA ' | sed 's/^/           /'
     MSHA="$(echo "$MAN" | sed -n 's/^SHA //p')"
+    MARCH="$(echo "$MAN" | sed -n 's/^ARCHIVIO //p')"
+    MCREATED="$(echo "$MAN" | sed -n 's/^CREATO //p')"
+    STCREATED="$(echo "$ST" | sed -n 's/^DETTAGLIO ultimo_successo = //p')"
+    if [ "$MARCH" = "$SARCH" ] && [ "$MCREATED" = "$STCREATED" ]; then
+      ok "manifesto: archivio e data coincidono con l'ultimo successo"
+    else
+      bad "manifesto: archivio o data non coincidono con l'ultimo successo"
+    fi
     if [ -n "$MSHA" ] && [ "$MSHA" = "$SSHA" ]; then ok "lo SHA-256 dell'archivio nel manifesto pubblico coincide con quello di status.json ($(echo "$MSHA" | cut -c1-16))"; else bad "lo SHA-256 del manifesto pubblico non coincide con status.json"; fi
+    A="${M%.manifest.json}.tar.gz.age"
+    if [ -f "$A" ] && [ ! -L "$A" ]; then
+      ASHA="$(sha256sum "$A" 2>/dev/null | cut -d' ' -f1)"
+      if [ -n "$ASHA" ] && [ "$ASHA" = "$SSHA" ]; then
+        ok "archivio locale cifrato: SHA-256 verificato"
+      else
+        bad "archivio locale cifrato: SHA-256 non coincide con lo stato"
+      fi
+    else
+      bad "archivio locale cifrato mancante o non regolare"
+    fi
     NSTOP="$(echo "$MAN" | grep -c 'in_esecuzione = False')"
     NOTHER="$(echo "$MAN" | grep 'in_esecuzione = ' | grep -vc 'in_esecuzione = False')"
     if [ "$NSTOP" -eq 2 ] && [ "$NOTHER" -eq 0 ]; then ok "il manifesto registra hawk e bull NON in esecuzione"; else bad "il manifesto non registra entrambi i bot come non in esecuzione"; fi
