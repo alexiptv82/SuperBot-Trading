@@ -1084,6 +1084,12 @@ class CheckScriptTests(Base):
         self.assertEqual(rc, 1, out)
         self.assertIn("processo di backup in esecuzione", out)
 
+    def test_unknown_backup_service_state_blocks(self):
+        put(os.path.join(self.sysdir, "superbot-extbackup.service"), "unknown")
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("stato NON VERIFICABILE", out)
+
     def test_a_backup_service_already_running_blocks(self):
         put(os.path.join(self.sysdir, "superbot-extbackup.service"), "active")
         rc, out = self.check()
@@ -1148,6 +1154,31 @@ class PostCheckTests(Base):
         self.assertEqual(work_before, sorted((os.path.join(dp, f), os.stat(os.path.join(dp, f)).st_mtime_ns)
                                              for dp, _dn, fn in os.walk(self.work) for f in fn),
                          "il controllo post ha scritto nella cartella del backup")
+
+    def test_post_requires_signature_from_pre(self):
+        self.backup()
+        for supplied in ((), ("123",), ("z" * 16,), ("0" * 15,)):
+            rc, out = self.check("post", *supplied)
+            self.assertEqual(rc, 1, out)
+            self.assertIn("firma PRE", out)
+
+    def test_post_rejects_success_from_a_different_attempt(self):
+        sig = self.backup()
+        path = os.path.join(self.work, "status.json")
+        st = json.loads(get(path))
+        st["ultimo_tentativo"] = "2099-01-01T00:00:00Z"
+        put(path, json.dumps(st))
+        rc, out = self.check("post", sig)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("ultimo successo non dimostrato", out)
+
+    def test_post_rejects_missing_encrypted_archive(self):
+        sig = self.backup()
+        m = self.manifest_path()
+        os.unlink(m.replace(".manifest.json", ".tar.gz.age"))
+        rc, out = self.check("post", sig)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("archivio locale cifrato mancante", out)
 
     def test_post_blocks_when_run_sh_was_overwritten_with_the_old_version(self):
         sig = self.backup()
