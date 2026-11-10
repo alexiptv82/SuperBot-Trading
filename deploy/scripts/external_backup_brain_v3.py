@@ -267,6 +267,7 @@ def preflight(a, classic):
     """Solo metadati: nessuna apertura SQLite (un WAL rimasto dopo un arresto brusco verrebbe ricostruito da SQLite anche
     in sola lettura), nessuna scrittura, nessun file creato."""
     snap = load_module(os.path.join(a.tools, "brain_v3_snapshot.py"), "brain_v3_snapshot")
+    ar = load_module(os.path.join(a.tools, "age_recipients.py"), "age_recipients")
     res = []
 
     def add(ok, msg):
@@ -297,9 +298,14 @@ def preflight(a, classic):
     for tool in ("age", "git"):
         add(bool(shutil.which(tool)), "programma %s disponibile" % tool)
     try:
-        classic.read_recipient(a.recipient_file)
-        add(True, "destinatario age (chiave pubblica) valido")
-    except classic.Fail as e:
+        keys = ar.read_recipients(a.recipient_file)
+        add(True, "destinatari age (solo chiavi pubbliche): %d" % len(keys))
+        if a.expect_recipients_sha256:
+            ar.check_expected(keys, a.expect_recipients_sha256)
+            add(True, "impronta dei destinatari uguale a quella approvata")
+        else:
+            add(False, "manca --expect-recipients-sha256 (impronta dei destinatari approvati)")
+    except ar.RecipientError as e:
         add(False, str(e))
     if a.ssh_key:
         ok = os.path.isfile(a.ssh_key) and (os.stat(a.ssh_key).st_mode & 0o077) == 0
@@ -361,7 +367,11 @@ def execute(a, classic, snap):
     fam = FAMILIES[a.mode]
     wd = os.path.join(a.work, a.mode)
     os.makedirs(wd, mode=0o700, exist_ok=True)
-    recipient = classic.read_recipient(a.recipient_file)
+    ar = load_module(os.path.join(a.tools, "age_recipients.py"), "age_recipients")
+    try:
+        recipient = ar.load_checked(a.recipient_file, a.expect_recipients_sha256)
+    except ar.RecipientError as e:
+        raise classic.Fail(str(e))
     stage = os.path.join(wd, "staging")
     plain = os.path.join(wd, "staging.tar.gz")
     cipher = None
@@ -419,14 +429,18 @@ def execute(a, classic, snap):
         internal.update(body)
         say("creo l'archivio e lo cifro con age ...")
         internal = build_archive(stage, plain, internal)
-        classic.encrypt(plain, cipher, recipient)
+        try:
+            ar.encrypt_to(plain, cipher, recipient.keys)
+        except ar.RecipientError as e:
+            raise classic.Fail(str(e))
         size, digest = os.path.getsize(cipher), sha256_file(cipher)
         if size > a.max_archive_mib * MIB:
             raise classic.Fail("archivio cifrato di %d MiB oltre il limite di %d MiB (--max-archive-mib): nessun invio"
                                % (size // MIB, a.max_archive_mib))
         public = {"formato": FORMAT, "famiglia": a.mode, "archivio": name, "sha256": digest, "dimensione": size,
                   "creato": created, "origine": internal["origine"], "impronta_stato": fp,
-                  "cifratura": {"strumento": "age", "destinatario": recipient},
+                  "cifratura": {"strumento": "age", "destinatario": recipient.keys[0], "destinatari": list(recipient.keys),
+                                "impronta_destinatari": ar.fingerprint(recipient.keys)},
                   "contenuto": dict(content, file=len(internal["file"]))}
         if anchors is not None:
             public["ancore"] = anchors
@@ -461,7 +475,8 @@ def execute(a, classic, snap):
             json.dump(public, f, indent=1, sort_keys=True)
         expect.append((rel_dir + "/" + manifest_name(name), sha256_file(os.path.join(dest, manifest_name(name)))))
         with open(os.path.join(repo.dir, "recipient.txt"), "w") as f:
-            f.write("# chiave PUBBLICA age dei backup (la privata di recupero non e' in questo repository)\n%s\n" % recipient)
+            f.write("# chiavi PUBBLICHE age dei backup (le private di recupero non sono in questo repository)\n%s\n"
+                    % "\n".join(recipient.keys))
         with open(os.path.join(repo.dir, "LEGGIMI.md"), "w") as f:
             f.write(LEGGIMI % fam["label"])
         removed = prune(a, classic, repo, fam) if (a.prune and a.confirm_prune) else []
@@ -536,7 +551,9 @@ def main(argv=None):
     ap.add_argument("--work", required=True, help="cartella di lavoro PROPRIA (mai quella del backup di Falco/Toro)")
     ap.add_argument("--remote", default="", help="repository dei backup (SSH o percorso)")
     ap.add_argument("--branch", default="")
-    ap.add_argument("--recipient-file", required=True)
+    ap.add_argument("--recipient-file", required=True, help="file con una o piu' chiavi PUBBLICHE age")
+    ap.add_argument("--expect-recipients-sha256", default="",
+                    help="impronta dei destinatari approvati (obbligatoria per l'invio): se il file e' diverso, rifiuto")
     ap.add_argument("--ssh-key", default="")
     ap.add_argument("--known-hosts", default="")
     ap.add_argument("--tools", default=HERE, help="cartella con external_backup.py e brain_v3_snapshot.py")
@@ -559,6 +576,10 @@ def main(argv=None):
     a.branch = a.branch or FAMILIES[a.mode]["branch"]
     if not (a.plan or a.preflight) and not a.remote:
         print("ERRORE: serve --remote (oppure --plan / --preflight)")
+        return 1
+    if not a.preflight and not a.expect_recipients_sha256:
+        print("ERRORE: serve --expect-recipients-sha256 (impronta dei destinatari approvati): senza, un file di destinatari "
+              "sostituito produrrebbe archivi che nessuno sa piu' aprire")
         return 1
     if a.ssh_key and not a.known_hosts:
         print("ERRORE: con --ssh-key serve anche --known-hosts (la chiave di GitHub va verificata)")

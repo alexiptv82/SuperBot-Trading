@@ -8,7 +8,8 @@ Che cosa fa, in un runner isolato e senza rete:
   3. se il PIU' RECENTE e' cifrato per questa chiave, lo scarica (solo quel file), lo decifra e lo ripristina con gli
      script verificati (restore_external_backup.py / restore_brain_v3_backup.py al commit fissato; per Brain V3 anche il
      codice RC84 fissato), poi CANCELLA subito il ripristino;
-  4. stampa un rapporto sintetico a frasi fisse.
+  4. stampa un rapporto sintetico a frasi fisse e, per ogni famiglia ripristinata, una riga CERTIFICATO (solo nomi e hash, mai
+     dati di portafoglio): e' l'attestazione che l'installatore dei timer accetta come ripristino indipendente.
 
 Garanzie di non divulgazione (verificate da test statici e di esecuzione):
   - il file della chiave privata NON viene mai aperto da questo programma: si passa solo il suo percorso ad age;
@@ -49,6 +50,18 @@ CHECKS = {
 FINAL = (r"^RISULTATO: OK", "ripristino isolato completo: OK")
 
 
+FAMIGLIA = {"classico": "classico", "v3": "v3", "brain-free": "brain-free"}
+
+
+def certificate(fam, latest, ctx):
+    """Attestazione del ripristino indipendente: solo nomi, hash e identificativi (nessun dato decifrato)."""
+    return {"schema": "superbot-brain-v3-restore-certificate-v1", "esito": "OK", "famiglia": FAMIGLIA[fam["tipo"]],
+            "archivio": latest["archivio"], "archivio_sha256": latest["sha256"], "eseguito_su": "github-actions",
+            "origine": "github-actions", "run_id": ctx["run_id"], "workflow_sha256": ctx["workflow_sha256"],
+            "script_sha256": ctx["script_sha256"], "pinned_sha": ctx["pinned_sha"],
+            "controllo_rc84": "eseguito" if (fam["tipo"] == "v3" and ctx.get("rc84")) else "non eseguito"}
+
+
 def out(msg=""):
     print(msg, flush=True)
 
@@ -82,8 +95,11 @@ def inventory(repo, fam):
             man = json.loads(git(repo, "show", "HEAD:" + path))
         except (RuntimeError, ValueError):
             continue
+        cif = man.get("cifratura") or {}
+        raw = cif.get("destinatari") or cif.get("destinatario") or ""
+        keys = [str(k) for k in raw] if isinstance(raw, (list, tuple)) else [k for k in str(raw).split(",") if k]
         found.append({"manifest": path, "archivio": archive, "creato": str(man.get("creato", "")),
-                      "destinatario": (man.get("cifratura") or {}).get("destinatario"), "parti": man.get("parti") or []})
+                      "destinatari": keys, "parti": man.get("parti") or [], "sha256": str(man.get("sha256", ""))})
     found.sort(key=lambda m: (m["creato"], m["archivio"]))
     return found
 
@@ -145,6 +161,10 @@ def main(argv=None):
     ap.add_argument("--rc84", default="", help="checkout di RC84 (commit fissato) per Brain V3")
     ap.add_argument("--work", required=True)
     ap.add_argument("--summary", default="", help="file a cui accodare lo stesso rapporto (GITHUB_STEP_SUMMARY)")
+    ap.add_argument("--run-id", default="")
+    ap.add_argument("--workflow-sha256", default="")
+    ap.add_argument("--script-sha256", default="")
+    ap.add_argument("--pinned-sha", default="")
     a = ap.parse_args(argv)
     os.umask(0o077)
     os.makedirs(a.work, mode=0o700, exist_ok=True)
@@ -180,12 +200,12 @@ def main(argv=None):
             say("ESITO archivi presenti: NO (nessun archivio nel ramo)")
             verdicts.append("NO")
             continue
-        mine = [m for m in inv if m["destinatario"] == pub]
+        mine = [m for m in inv if pub in m["destinatari"]]
         say("archivi nel ramo: %d | cifrati per questa chiave: %d | altro destinatario: %d"
             % (len(inv), len(mine), len(inv) - len(mine)))
         latest = inv[-1]
         say("archivio piu' recente: %s%s" % (latest["archivio"], " (in %d parti)" % len(latest["parti"]) if latest["parti"] else ""))
-        if latest["destinatario"] != pub:
+        if pub not in latest["destinatari"]:
             say("ESITO destinatario del piu' recente = questa chiave: NO (non decifrabile con questa chiave: nessun tentativo)")
             verdicts.append("NO")
             continue
@@ -197,6 +217,10 @@ def main(argv=None):
         for ln in lines:
             say("- " + ln)
         say("ESITO ripristino: %s" % ("OK" if confirmed else "NO"))
+        if confirmed and a.run_id and a.workflow_sha256 and a.script_sha256 and a.pinned_sha:
+            ctx = {"run_id": a.run_id, "workflow_sha256": a.workflow_sha256, "script_sha256": a.script_sha256,
+                   "pinned_sha": a.pinned_sha, "rc84": a.rc84}
+            say("CERTIFICATO " + json.dumps(certificate(fam, latest, ctx), sort_keys=True, separators=(",", ":")))
         verdicts.append("OK" if confirmed else "NO")
     say("")
     total = "OK" if all(v == "OK" for v in verdicts) else ("NO" if all(v == "NO" for v in verdicts) else "PARZIALE")

@@ -1,0 +1,10 @@
+[Unit]
+Description=SuperBot backup esterno cifrato Falco/Toro V2 - ogni giorno (15 minuti dopo quello V1)
+
+[Timer]
+OnCalendar=*-*-* 03:35:00 UTC
+RandomizedDelaySec=300
+# NIENTE Persistent=true: attivare (o riattivare) il timer non deve mai far partire subito un backup arretrato.
+
+[Install]
+WantedBy=timers.target

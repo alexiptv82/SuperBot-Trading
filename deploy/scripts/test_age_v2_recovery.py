@@ -25,6 +25,7 @@ import test_external_backup as CLASSIC                            # noqa: E402
 WORKFLOW = os.path.join(ROOT, ".github", "workflows", "age-v2-recovery-verify.yml")
 VERIFY = os.path.join(ROOT, "deploy", "extbackup", "age-v2-recovery", "verify_recovery.py")
 DOC = os.path.join(ROOT, "deploy", "extbackup", "age-v2-recovery", "LEGGIMI.md")
+RECIPIENT_V2 = os.path.join(ROOT, "deploy", "extbackup", "recipient-v2.txt")
 PINNED_SHA = "7b2aabe900d6ba6b032ab34e7568e4f4dd70d5ec"
 RC84_SHA = "0e29a73a36f668643da4088178bacb8616a45ac0"
 HAVE_AGE = T.HAVE_AGE
@@ -144,6 +145,12 @@ class WorkflowStaticTests(unittest.TestCase):
         self.assertLess(first.index("BLOCCO: impronta di approvazione"), len(first))
         self.assertIn("exit 1", first.split("BLOCCO: impronta di approvazione")[1][:400])
 
+    def test_attestation_arguments_come_from_non_secret_variables_and_repository_is_v2(self):
+        self.assertIn('--run-id "$GITHUB_RUN_ID"', self.text)
+        self.assertIn('{ echo "WF_SHA=$WF"; echo "SC_SHA=$SC"; echo "PINNED_SHA=$PINNED_SHA"; } >> "$GITHUB_ENV"', self.text)
+        self.assertIn("git@github.com:alexiptv82/superbot-backups-v2.git", self.text)
+        self.assertNotRegex(self.text, r"superbot-backups\.git")                 # il repository V1 non si legge
+
     def test_approval_formula_is_identical_in_workflow_and_documentation(self):
         formula = "printf '%s\\n%s\\n' \"$WF\" \"$SC\" | sha256sum | cut -d' ' -f1"
         self.assertIn(formula, self.text)
@@ -193,7 +200,8 @@ ALLOWED = re.compile(
     r"|ripristino isolato completo: OK|run Brain V3 ripristinate e verificate: \d+"
     r"|nota: copia del cervello con eccezione dichiarata nel manifesto \(bot fermi o prima installazione\)"
     r"|[a-z' /,A-Z0-9()-]+: NON CONFERMATO|ripristino: ERRORE \(dettagli non pubblicati\))"
-    r"|Nessun file decifrato e' stato caricato o conservato; nessun dato di portafoglio e' stato stampato\.)?$")
+    r"|Nessun file decifrato e' stato caricato o conservato; nessun dato di portafoglio e' stato stampato\."
+    r"|CERTIFICATO \{[^\n]*\})?$")
 
 
 @unittest.skipUnless(HAVE_AGE, "mancano age/age-keygen/git")
@@ -230,6 +238,7 @@ class VerifierRunTests(unittest.TestCase):
         c = self.case
         cmd = [sys.executable, "-I", T.PIPE, "--mode", mode, "--runs-root", self.runs, "--legacy-db", self.legacy,
                "--work", os.path.join(self.t, "w-%s" % mode), "--remote", c.remote, "--recipient-file", recipient or c.recfile,
+               "--expect-recipients-sha256", T.pin(recipient or c.recfile),
                "--tools", HERE, "--push-wait", "0", "--attempt-wait", "0"]
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -242,7 +251,7 @@ class VerifierRunTests(unittest.TestCase):
                 T.sh("git", "clone", "-q", "--branch", b, self.case.remote, os.path.join(base, b))
         return base
 
-    def verify(self, identity=None, repos=None, rc84=None, env=None, pinned=ROOT):
+    def verify(self, identity=None, repos=None, rc84=None, env=None, pinned=ROOT, extra=()):
         work = os.path.join(self.t, "work-%d" % time.time_ns())
         summary = os.path.join(self.t, "summary.md")
         if os.path.exists(summary):
@@ -251,6 +260,7 @@ class VerifierRunTests(unittest.TestCase):
                "--pinned", pinned, "--work", work, "--summary", summary]
         if rc84 is not None:
             cmd += ["--rc84", rc84]
+        cmd += list(extra)
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=900, env=env)
         return p, work, (read(summary) if os.path.exists(summary) else "")
 
@@ -279,6 +289,26 @@ class VerifierRunTests(unittest.TestCase):
         self.assert_only_fixed_sentences(out)
         self.assertEqual(os.listdir(work), [], "restano file decifrati o log")
         self.assertEqual(T.slurp(self.case.ident), before)
+
+    def test_attestation_lines_contain_only_names_and_hashes_and_only_for_confirmed_families(self):
+        extra = ("--run-id", "42685000001", "--workflow-sha256", "a" * 64, "--script-sha256", "b" * 64, "--pinned-sha", PINNED_SHA)
+        p, work, summary = self.verify(rc84=T.RC84 or "", extra=extra)
+        certs = [json.loads(l[len("CERTIFICATO "):]) for l in p.stdout.splitlines() if l.startswith("CERTIFICATO ")]
+        families = sorted(c["famiglia"] for c in certs)
+        self.assertEqual(families, ["brain-free", "classico", "v3"] if T.HAVE_RC84 else ["brain-free", "classico"])
+        for c in certs:
+            self.assertEqual(sorted(c), ["archivio", "archivio_sha256", "controllo_rc84", "eseguito_su", "esito", "famiglia", "origine",
+                                         "pinned_sha", "run_id", "schema", "script_sha256", "workflow_sha256"])
+            self.assertEqual((c["esito"], c["origine"], c["eseguito_su"], c["run_id"]), ("OK", "github-actions", "github-actions", "42685000001"))
+            self.assertRegex(c["archivio_sha256"], r"^[0-9a-f]{64}$")
+        by = {c["famiglia"]: c for c in certs}
+        self.assertEqual(by["classico"]["controllo_rc84"], "non eseguito")
+        if T.HAVE_RC84:
+            self.assertEqual(by["v3"]["controllo_rc84"], "eseguito")
+        self.assert_only_fixed_sentences(p.stdout)
+        # senza gli argomenti dell'attestazione non si emette nulla
+        p, _w, _ = self.verify(rc84=T.RC84 or "")
+        self.assertNotIn("CERTIFICATO", p.stdout)
 
     def test_without_rc84_the_v3_family_is_honestly_not_confirmed(self):
         p, work, _ = self.verify()
@@ -346,7 +376,8 @@ class VerifierRunTests(unittest.TestCase):
         rec = os.path.join(self.t, "rec-altro.txt")
         T.spit(rec, "# altro\n%s\n" % other_pub)
         cmd = [sys.executable, "-I", T.PIPE, "--mode", "v3", "--runs-root", self.runs, "--work", os.path.join(self.t, "w-v3b"),
-               "--remote", self.case.remote, "--recipient-file", rec, "--tools", HERE, "--push-wait", "0", "--attempt-wait", "0", "--force"]
+               "--remote", self.case.remote, "--recipient-file", rec, "--expect-recipients-sha256", T.pin(rec),
+               "--tools", HERE, "--push-wait", "0", "--attempt-wait", "0", "--force"]
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         repos = self.clone_all()
@@ -384,6 +415,176 @@ class VerifierRunTests(unittest.TestCase):
         self.assertNotIn("ERRORE", p.stdout)
         self.assertNotIn("RIPRISTINO DI PROVA", p.stdout)
         self.assert_only_fixed_sentences(p.stdout)
+
+
+KEYCHECK_WORKFLOW = os.path.join(ROOT, ".github", "workflows", "age-v2-key-check.yml")
+KEYCHECK = os.path.join(ROOT, "deploy", "extbackup", "age-v2-recovery", "check_key.py")
+DOC_COMMIT = "e51cf721196bdd52bce39b925a3b7521e64e141a"
+
+
+class KeyCheckWorkflowStaticTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.text = read(KEYCHECK_WORKFLOW)
+        cls.steps = steps_of(cls.text)
+
+    def test_no_actions_no_server_no_private_repository_no_artifacts(self):
+        self.assertNotRegex(self.text, r"(?m)^\s*-?\s*uses:")
+        for word in ("upload-artifact", "actions/cache", "SINGAPORE", "SSH_PRIVATE_KEY", "51.79.205.82", "root@", "scp ", "docker ",
+                     "superbot-backups", "BACKUPS_READ_KEY", "git@github.com", "ssh "):
+            self.assertNotIn(word, self.text)
+
+    def test_triggers_permissions_and_environment(self):
+        on = self.text.split("\npermissions:")[0]
+        block = on.split("\non:\n")[1]
+        self.assertEqual(re.findall(r"(?m)^  ([a-z_]+):", block), ["workflow_dispatch", "push"])
+        for forbidden in ("pull_request", "schedule", "workflow_run", "issue_comment", "repository_dispatch"):
+            self.assertNotIn(forbidden, on)
+        self.assertIn("branches: [work/age-v2-keycheck-run-20261110]", on)
+        self.assertRegex(self.text, r"(?m)^permissions:\n  contents: read\n")
+        self.assertIn("environment: age-recovery", self.text)
+        self.assertFalse(os.path.exists(os.path.join(ROOT, "deploy", "extbackup", "age-v2-recovery", "KEYCHECK.trigger")))
+
+    def test_exactly_one_secret_in_exactly_one_step_and_the_program_step_has_none(self):
+        self.assertEqual(sorted(set(re.findall(r"secrets\.([A-Za-z0-9_]+)", self.text))), ["SUPERBOT_AGE_RECOVERY_KEY_V2"])
+        self.assertEqual(len(re.findall(r"secrets\.", self.text)), 1)
+        self.assertNotIn("secrets.", self.text.split("    steps:")[0])
+        prog = [b for n, b in self.steps.items() if n.startswith("Confronto")][0]
+        self.assertNotIn("AGE_RECOVERY_KEY_V2", prog)
+        for line in self.text.splitlines():
+            if "$AGE_RECOVERY_KEY_V2" in line:
+                self.assertTrue(line.strip().startswith('test -n "$AGE_RECOVERY_KEY_V2"')
+                                or line.strip() == "printf '%s\\n' \"$AGE_RECOVERY_KEY_V2\" > \"$RUNNER_TEMP/age-v2-identity\"", line)
+        for bad in ("set -x", "xtrace", "printenv", "base64", "env | ", "cat \"$RUNNER_TEMP/age"):
+            self.assertNotIn(bad, self.text)
+
+    def test_documented_recipient_is_pinned_to_the_23_october_commit_and_still_among_the_recipients(self):
+        self.assertIn("DOC_SHA: " + DOC_COMMIT, self.text)
+        self.assertRegex(self.text, r"DOC_RECIPIENT_SHA256: [0-9a-f]{64}")
+        doc_sha = re.search(r"DOC_RECIPIENT_SHA256: ([0-9a-f]{64})", self.text).group(1)
+        if subprocess.run(["git", "-C", ROOT, "cat-file", "-e", DOC_COMMIT + "^{commit}"], capture_output=True).returncode != 0:
+            self.skipTest("SKIP: il commit del 23/10 non e' nella copia locale del repository")
+        blob = subprocess.run(["git", "-C", ROOT, "show", "%s:deploy/extbackup/recipient-v2.txt" % DOC_COMMIT], capture_output=True, check=True).stdout
+        self.assertEqual(hashlib.sha256(blob).hexdigest(), doc_sha)
+        documented = [l for l in blob.decode().splitlines() if l and not l.startswith("#")]
+        current = read(RECIPIENT_V2).splitlines()
+        for k in documented:
+            self.assertIn(k, current, "il destinatario documentato il 23/10 non e' piu' tra i destinatari V2")
+
+    def test_the_documented_key_guard_in_the_workflow_behaves_as_intended(self):
+        guard = ("while read -r K; do\n"
+                 "  grep -qxF \"$K\" \"$WF/$R\" || { echo BLOCCO; exit 1; }\n"
+                 "done < <(grep -v '^#' \"$DOC/$R\" | grep -v '^$')\n")
+        self.assertIn("grep -qxF \"$K\" \"$RUNNER_TEMP/wf/$R\"", self.text)
+        self.assertIn("done < <(grep -v '^#' \"$RUNNER_TEMP/doc/$R\" | grep -v '^$')", self.text)
+        with tempfile.TemporaryDirectory() as td:
+            for d in ("wf", "doc"):
+                os.makedirs(os.path.join(td, d))
+            doc, wf = "# documentato\nage1" + "a" * 58 + "\n", "# documentato\nage1" + "a" * 58 + "\n# personale\nage1" + "b" * 58 + "\n"
+            T.spit(os.path.join(td, "doc", "r.txt"), doc)
+            env = dict(os.environ, WF=os.path.join(td, "wf"), DOC=os.path.join(td, "doc"), R="r.txt")
+            T.spit(os.path.join(td, "wf", "r.txt"), wf)
+            self.assertEqual(subprocess.run(["bash", "-c", guard], env=env, capture_output=True).returncode, 0)        # V2 + personale: ok
+            T.spit(os.path.join(td, "wf", "r.txt"), "age1" + "b" * 58 + "\n")
+            self.assertEqual(subprocess.run(["bash", "-c", guard], env=env, capture_output=True).returncode, 1)        # V2 tolta: blocco
+
+    def test_approval_precedes_the_secret_and_formula_matches_documentation(self):
+        names = list(self.steps)
+        self.assertEqual(len(names), 4)
+        self.assertNotIn("secrets.", self.steps[names[0]])
+        self.assertIn("BLOCCO: impronta di approvazione", self.steps[names[0]])
+        self.assertIn("if: always()", self.steps[names[-1]])
+        self.assertIn("printf '%s\\n%s\\n' \"$WF\" \"$SC\" | sha256sum | cut -d' ' -f1", self.text)
+        self.assertEqual(sorted(re.findall(r"\$\{\{\s*([^}]+?)\s*\}\}", self.text)),
+                         ["github.event.inputs.approval", "secrets.SUPERBOT_AGE_RECOVERY_KEY_V2"])
+
+
+KC_ALLOWED = re.compile(r"^(# .*|ESITO [^\n]*: (OK|NO)( \(non eseguita: la chiave non coincide\))?|ESITO COMPLESSIVO: (OK|NO)"
+                        r"|La chiave V2 nel Secret appartiene alla coppia documentata: puo' decifrare gli archivi cifrati per quel destinatario\.)?$")
+
+
+@unittest.skipUnless(HAVE_AGE, "mancano age/age-keygen/git")
+class KeyCheckRunTests(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        t = self.td.name
+        self.good, self.other = os.path.join(t, "good"), os.path.join(t, "other")
+        self.pub_good, self.pub_other = T.keygen(self.good), T.keygen(self.other)
+        self.rec = os.path.join(t, "doc-recipient.txt")
+        T.spit(self.rec, "# destinatario documentato (prova)\n%s\n" % self.pub_good)
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def run_check(self, identity, rec=None, env=None):
+        work = os.path.join(self.td.name, "work")
+        summary = os.path.join(self.td.name, "summary.md")
+        p = subprocess.run([sys.executable, "-I", KEYCHECK, "--identity", identity, "--recipients", rec or self.rec, "--work", work,
+                            "--summary", summary], capture_output=True, text=True, timeout=120, env=env)
+        return p, work, (read(summary) if os.path.exists(summary) else "")
+
+    def test_matching_pair_is_confirmed_and_proved_by_a_real_roundtrip(self):
+        before = T.slurp(self.good)
+        p, work, summary = self.run_check(self.good)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        for line in ("ESITO chiave privata leggibile e valida: OK",
+                     "ESITO la chiave pubblica derivata coincide con il destinatario V2 documentato il 23 ottobre: OK",
+                     "ESITO prova di cifratura e decifratura con la coppia: OK", "ESITO COMPLESSIVO: OK"):
+            self.assertIn(line, p.stdout)
+        self.assertEqual(summary.strip(), p.stdout.strip())
+        for l in p.stdout.splitlines():
+            self.assertRegex(l, KC_ALLOWED)
+        self.assertFalse(os.path.exists(work), "restano file di prova")
+        self.assertEqual(T.slurp(self.good), before)
+
+    def test_a_different_pair_is_rejected_without_running_the_roundtrip(self):
+        shim = os.path.join(self.td.name, "shim")
+        os.makedirs(shim)
+        log = os.path.join(self.td.name, "age.log")
+        T.spit(os.path.join(shim, "age"), '#!/bin/sh\necho "$@" >> %s\nexec %s "$@"\n' % (log, shutil.which("age")))
+        os.chmod(os.path.join(shim, "age"), 0o755)
+        p, work, _ = self.run_check(self.other, env=dict(os.environ, PATH=shim + os.pathsep + os.environ["PATH"]))
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("coincide con il destinatario V2 documentato il 23 ottobre: NO", p.stdout)
+        self.assertIn("non eseguita", p.stdout)
+        self.assertIn("ESITO COMPLESSIVO: NO", p.stdout)
+        self.assertFalse(os.path.exists(log), "age e' stato invocato nonostante la chiave non coincida")
+        for l in p.stdout.splitlines():
+            self.assertRegex(l, KC_ALLOWED)
+
+    def test_invalid_or_missing_key_is_a_no(self):
+        bad = os.path.join(self.td.name, "bad")
+        T.spit(bad, "non e' una chiave %s\n" % MARKER)
+        for ident in (bad, os.path.join(self.td.name, "non-esiste")):
+            p, _w, _s = self.run_check(ident)
+            self.assertEqual(p.returncode, 2)
+            self.assertIn("ESITO chiave privata leggibile e valida: NO", p.stdout)
+            self.assertNotIn(MARKER, p.stdout + p.stderr)
+
+    def test_nothing_secret_or_public_is_ever_printed(self):
+        ident = os.path.join(self.td.name, "con-commenti")
+        body = T.slurp(self.good).decode()
+        T.spit(ident, "# %s\n%s" % (MARKER, body))
+        secret = [l for l in body.splitlines() if l.startswith("AGE-SECRET-KEY")][0]
+        p, work, summary = self.run_check(ident)
+        for blob in (p.stdout, p.stderr, summary):
+            for needle in (MARKER, secret, self.pub_good, self.pub_other, "age1", "AGE-SECRET-KEY"):
+                self.assertNotIn(needle, blob)
+
+    def test_the_program_never_opens_the_private_key_file(self):
+        src = read(KEYCHECK)
+        self.assertNotRegex(src, r"open\([^)]*identity")
+        self.assertNotIn("os.environ", src)
+        self.assertNotIn("getenv", src)
+
+    def test_documented_recipient_file_with_several_keys_matches_any_of_them(self):
+        T.spit(self.rec, "%s\n%s\n" % (self.pub_other, self.pub_good))
+        self.assertEqual(self.run_check(self.good)[0].returncode, 0)
+
+    def test_the_real_documented_recipient_is_a_valid_public_key_file(self):
+        keys = [l for l in read(RECIPIENT_V2).splitlines() if l and not l.startswith("#")]
+        self.assertEqual(len(keys), 1)
+        self.assertRegex(keys[0], r"^age1[0-9a-z]{58}$")
 
 
 if __name__ == "__main__":

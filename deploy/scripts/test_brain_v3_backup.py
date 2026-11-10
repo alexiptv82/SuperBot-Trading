@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import brain_v3_snapshot as S                                   # noqa: E402
+import age_recipients as AR                                     # noqa: E402
 
 PIPE = os.path.join(HERE, "external_backup_brain_v3.py")
 RESTORE = os.path.join(HERE, "restore_brain_v3_backup.py")
@@ -98,6 +99,11 @@ def jdump(o):
 
 def sha(b):
     return hashlib.sha256(b).hexdigest()
+
+
+def pin(recipient_file):
+    """Impronta approvata dei destinatari di un file (cio' che i wrapper reali fissano)."""
+    return AR.fingerprint(AR.read_recipients(recipient_file))
 
 
 def sh(*cmd, cwd=None, check=True, env=None):
@@ -670,6 +676,7 @@ class PipelineCase(unittest.TestCase):
         self.pub = keygen(self.ident)
         with open(self.recfile, "w") as f:
             f.write("# prova\n%s\n" % self.pub)
+        self.recpin = pin(self.recfile)
         sh("git", "init", "-q", "--bare", "-b", "main", self.remote)
 
     def tearDown(self):
@@ -678,7 +685,7 @@ class PipelineCase(unittest.TestCase):
     def args(self, *extra, mode="v3", remote=None):
         return [sys.executable, "-I", PIPE, "--mode", mode, "--runs-root", self.runs, "--work", self.work,
                 "--remote", remote or self.remote, "--recipient-file", self.recfile, "--tools", HERE,
-                "--push-wait", "0", "--attempt-wait", "0", *extra]
+                "--expect-recipients-sha256", self.recpin, "--push-wait", "0", "--attempt-wait", "0", *extra]
 
     def backup(self, *extra, mode="v3", env=None, remote=None):
         p = subprocess.run(self.args(*extra, mode=mode, remote=remote), capture_output=True, text=True, timeout=600,
@@ -1026,7 +1033,8 @@ class FailureModeTests(PipelineCase):
         self.populated_runs()
         classic_like = os.path.join(self.td.name, "superbot-extbackup")
         p = subprocess.run([sys.executable, "-I", PIPE, "--mode", "v3", "--runs-root", self.runs, "--work", classic_like,
-                            "--plan", "--recipient-file", self.recfile, "--tools", HERE], capture_output=True, text=True)
+                            "--plan", "--recipient-file", self.recfile, "--expect-recipients-sha256", pin(self.recfile), "--tools", HERE],
+                           capture_output=True, text=True)
         self.assertEqual(p.returncode, 1)
         self.assertIn("Falco/Toro", p.stdout)
         self.assertFalse(os.path.exists(classic_like))
@@ -1111,7 +1119,7 @@ class PreflightTests(PipelineCase):
         os.unlink(self.recfile)
         p = subprocess.run(self.args("--preflight", "--no-network"), capture_output=True, text=True, timeout=120)
         self.assertEqual(p.returncode, 1)
-        self.assertIn("destinatario illeggibile", p.stdout)
+        self.assertIn("recipient_file_unreadable", p.stdout)
 
 
 # ======================================================================================================
@@ -1262,7 +1270,7 @@ class ClassicCompatibilityTests(unittest.TestCase):
             r.decision(1)
             v3 = [sys.executable, "-I", PIPE, "--mode", "v3", "--runs-root", runs, "--work", os.path.join(case.td.name, "w3"),
                   "--remote", case.remote, "--recipient-file", case.recfile, "--tools", HERE, "--push-wait", "0",
-                  "--attempt-wait", "0"]
+                  "--attempt-wait", "0", "--expect-recipients-sha256", pin(case.recfile)]
             p = subprocess.run(v3, capture_output=True, text=True, timeout=300)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
             self.assertEqual(sh("git", "-C", case.remote, "rev-parse", "main").stdout.strip(), main_tip,
@@ -1808,7 +1816,9 @@ sys.exit(0)
 
 
 @unittest.skipUnless(HAVE_AGE, "mancano age/git")
-class InstallerTests(PipelineCase):
+class InstallerBase(PipelineCase):
+    profile_args = ()
+
     def setUp(self):
         super().setUp()
         t = self.td.name
@@ -1816,6 +1826,7 @@ class InstallerTests(PipelineCase):
         self.classic = os.path.join(t, "extbackup")
         self.systemd = os.path.join(t, "systemd")
         self.state = os.path.join(t, "state")
+        self.v2 = os.path.join(t, "v2")
         self.key = os.path.join(t, "key")
         self.fakebin = os.path.join(t, "fakebin")
         self.sc_state = os.path.join(t, "sc-state.json")
@@ -1825,7 +1836,7 @@ class InstallerTests(PipelineCase):
         for n in ("external_backup.py", "backup_brain.py", "backup_app_db.py"):
             shutil.copyfile(os.path.join(HERE, n), os.path.join(self.tools, n))
         for n in ("recipient.txt", "known_hosts", "run.sh", "status.json"):
-            spit(os.path.join(self.classic, n), n + "\n")
+            spit(os.path.join(self.classic, n), n + "\n")                 # il V1: l'installatore usa SOLO known_hosts
         spit(self.key, "chiave finta\n")
         with open(os.path.join(self.fakebin, "systemctl"), "w") as f:
             f.write(FAKE_SYSTEMCTL % {"py": sys.executable})
@@ -1838,7 +1849,7 @@ class InstallerTests(PipelineCase):
     def inst_args(self, *args, host="vps-singapore"):
         return [sys.executable, INSTALLER, *args, "--tools-dir", self.tools, "--work-dir", self.work,
                 "--classic-dir", self.classic, "--systemd-dir", self.systemd, "--state-dir", self.state,
-                "--ssh-key", self.key, "--allow-nonroot", "--host-name", host]
+                "--v2-dir", self.v2, "--ssh-key", self.key, "--allow-nonroot", "--host-name", host, *self.profile_args]
 
     def run_inst(self, *args, host="vps-singapore", **env):
         p = subprocess.run(self.inst_args(*args, host=host), capture_output=True, text=True, timeout=120, env=self.env(**env))
@@ -1859,7 +1870,7 @@ class InstallerTests(PipelineCase):
 
     def snap(self):
         out = {}
-        for d in (self.tools, self.classic, self.systemd, self.state, self.work):
+        for d in (self.tools, self.classic, self.systemd, self.state, self.work, self.v2):
             if os.path.isdir(d):
                 for k, v in tree_state(d).items():
                     out[os.path.join(d, k)] = v
@@ -1890,6 +1901,9 @@ class InstallerTests(PipelineCase):
             self.assertTrue(os.path.isfile(path), "%s attivo/abilitato ma senza unita'" % unit)
             self.assertEqual(sha(slurp(path)), sha(slurp(os.path.join(HERE, "..", "extbackup", "brain-v3", unit))))
 
+
+
+class InstallerTests(InstallerBase):
     # ---- senza timer ----
     def test_simulation_changes_nothing(self):
         before = self.snap()

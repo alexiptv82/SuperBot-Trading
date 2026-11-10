@@ -1,5 +1,7 @@
 # Backup esterno cifrato di Brain V3 (estensione affiancata a quello di Falco/Toro)
 
+**DESTINATARIO E REPOSITORY: dal commit di migrazione age V1→V2 questa estensione cifra verso i destinatari V2 (`/opt/superbot-extbackup-v2/recipients.txt`, con impronta fissata nel wrapper) e pubblica nel repository V2 `superbot-backups-v2`. Gli archivi V1 restano nel repository `superbot-backups`, separati e intatti. Procedura completa: `deploy/extbackup/age-v2-migration/LEGGIMI.md`.**
+
 **Stato: PREPARATO E PROVATO SOLO OFFLINE. NON INSTALLATO. Nessun accesso alle VPS è stato fatto per scriverlo. Revisione di sicurezza ChatGPT applicata (vedi sotto).**
 Installare solo dopo revisione di ChatGPT e OK esplicito dell'utente. Il backup di Falco e Toro (`external_backup.py`, `run.sh`,
 timer 03:20 UTC) **non viene modificato né chiamato**: questa è una componente separata, con cartella di lavoro, ramo git,
@@ -7,7 +9,7 @@ famiglia di archivi e (se voluto) timer propri.
 
 ## Che cosa protegge
 
-| Famiglia | Contenuto | Ramo nel repo privato `superbot-backups` | Cadenza proposta |
+| Famiglia | Contenuto | Ramo nel repo privato V2 `superbot-backups-v2` | Cadenza proposta |
 |---|---|---|---|
 | `v3` | ogni cartella `/opt/superbot-v3-paper-runs/brain-v3-*`: `journal.db`, `budget.db`, `runner_config.json`, `PREPARED_PAUSED_ONLY.json`, `mandate.json`, `pause.flag`, `daily_loss.json`; come *transient* `heartbeat.json`, `exit_heartbeat.json`, richieste/esiti di chiusura; eventuali file piccoli non previsti in `extra/` | `brain-v3` | giornaliera, solo se lo stato è cambiato |
 | `brain-free` | il solo `brain.sqlite3` storico (Brain Free/V2), **separato** dalle run V3 | `brain-free` | a mano, una volta; poi solo se cambia |
@@ -83,9 +85,10 @@ git -C /root/extbackup-v3-src rev-parse HEAD            # deve essere ESATTAMENT
 cd /root/extbackup-v3-src
 # 1. controlli sui SOLI METADATI (nessuna apertura SQLite, nessuna scrittura, nessun file creato)
 python3 -I deploy/scripts/external_backup_brain_v3.py --mode v3 --preflight --work /opt/superbot-extbackup-v3 \
-  --tools deploy/scripts --recipient-file /opt/superbot-extbackup/recipient.txt \
-  --ssh-key /root/.ssh/superbot_backup_ed25519 --known-hosts /opt/superbot-extbackup/known_hosts \
-  --remote git@github.com:alexiptv82/superbot-backups.git
+  --tools deploy/scripts --recipient-file deploy/extbackup/recipient-v2.txt \
+  --expect-recipients-sha256 <impronta fissata nei wrapper> \
+  --ssh-key /root/.ssh/superbot_backup_v2_ed25519 --known-hosts /opt/superbot-extbackup/known_hosts \
+  --remote git@github.com:alexiptv82/superbot-backups-v2.git
 # 2. simulazione dell'installazione: stampa l'IMPRONTA DI APPROVAZIONE (deve coincidere con quella approvata)
 python3 deploy/extbackup/brain-v3/install_brain_v3_extension.py install
 # 3. applicazione (NESSUN timer, nessun backup avviato)
@@ -113,7 +116,7 @@ Brain Free (a mano, una volta): `/opt/superbot-extbackup-v3/run-v3.sh --mode bra
 
 ## Verifica con ripristino isolato (su un'ALTRA macchina, con la chiave privata di recupero)
 ```sh
-git clone --branch brain-v3 git@github.com:alexiptv82/superbot-backups.git bk && cd bk
+git clone --branch brain-v3 git@github.com:alexiptv82/superbot-backups-v2.git bk && cd bk
 git clone --depth 1 --branch work/extbackup-brain-v3-20261110 https://github.com/alexiptv82/SuperBot-Trading.git src
 python3 -I src/deploy/scripts/restore_brain_v3_backup.py --archive brain-v3/AAAA/MM/superbot-brainv3-<data>.tar.gz.age \
   --identity /percorso/chiave-di-recupero.txt --out /cartella/vuota --certificate cert.json [--v3-src /percorso/checkout-RC84]
@@ -140,7 +143,7 @@ Il backup di Falco/Toro non è coinvolto in nessun passo.
 6. `ls -l /opt/superbot-brain-free/` — `brain.sqlite3` (~469 MB), presenza di `-wal`/`-shm`; `fuser -v` sui database: nessun processo.
 7. `df -h /opt` — almeno 3 GB liberi per il piano di Brain Free.
 8. `age --version; git --version; python3 --version` (Python ≥ 3.8).
-9. `ls -l /root/.ssh/superbot_backup_ed25519` (modo 600, **non stamparla**), `grep -c '^age1' /opt/superbot-extbackup/recipient.txt`, `test -s /opt/superbot-extbackup/known_hosts`.
+9. `ls -l /root/.ssh/superbot_backup_v2_ed25519` (modo 600, **non stamparla**), `grep -c '^age1' /opt/superbot-extbackup-v2/recipients.txt`, `test -s /opt/superbot-extbackup/known_hosts`.
 10. Il comando `--preflight` del passo 1 dell'installazione: **solo metadati** (stat e prima pagina), nessuna apertura SQLite; per ogni database dice lo stato
     (`rollback_pulito`, `wal_pulito`, `wal_con_file_collaterali`, …), la strategia di cattura e quali processi lo tengono aperto (da `/proc`; servono i permessi di root per vederli tutti).
 11. Per Brain V3: se i servizi exit-worker/runner esistono, che il proprietario delle chiusure sia uno solo (lease `.exit_service.lock` — **non** aprirlo né provarlo) e leggere solo `heartbeat.json`/`exit_heartbeat.json`.

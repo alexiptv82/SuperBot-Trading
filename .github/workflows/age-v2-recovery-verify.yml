@@ -8,7 +8,7 @@ name: SuperBot age V2 - verifica di recupero dei backup (isolata, sola lettura)
 #  - NESSUN accesso alla VPS (nessuna chiave SSH di server, nessun host), nessuna scrittura sul repository dei backup;
 #  - nessuna azione di terze parti (nessun "uses:"): solo comandi shell e script del repository a commit fissati;
 #  - due soli Secrets, ciascuno visibile a UN solo passo: SUPERBOT_BACKUPS_READ_KEY (chiave di deploy in SOLA LETTURA per
-#    superbot-backups) e SUPERBOT_AGE_RECOVERY_KEY_V2 (scritta su un file con permessi 600 e mai letta, stampata o esportata);
+#    superbot-backups-v2, il repository V2: gli archivi V1 non si aprono con questa chiave e non vengono letti) e SUPERBOT_AGE_RECOVERY_KEY_V2 (scritta su un file con permessi 600 e mai letta, stampata o esportata);
 #  - gli script che trattano la chiave sono quelli del commit 7b2aabe9... e RC84 0e29a73..., con impronte controllate;
 #  - nessun artifact, nessuna cache, nessun file decifrato conservato; log a frasi fisse (ESITO OK/NO), mai dati di portafoglio;
 #  - NON parte da sola: serve workflow_dispatch con l'impronta di approvazione, oppure il push del file RUN.trigger su un
@@ -81,6 +81,7 @@ jobs:
           }
           sudo apt-get update -qq
           sudo apt-get install -y -qq age
+          { echo "WF_SHA=$WF"; echo "SC_SHA=$SC"; echo "PINNED_SHA=$PINNED_SHA"; } >> "$GITHUB_ENV"
           echo "FONTI_E_APPROVAZIONE=OK"
 
       - name: Accesso in SOLA LETTURA al repository privato dei backup
@@ -91,7 +92,7 @@ jobs:
           set -euo pipefail
           umask 077
           test -n "$BACKUPS_READ_KEY" || {
-            echo "BLOCCO: manca il Secret SUPERBOT_BACKUPS_READ_KEY (chiave di deploy in sola lettura per superbot-backups). La chiave di recupero NON e' stata usata."
+            echo "BLOCCO: manca il Secret SUPERBOT_BACKUPS_READ_KEY (chiave di deploy in sola lettura per superbot-backups-v2). La chiave di recupero NON e' stata usata."
             exit 1
           }
           KEY="$RUNNER_TEMP/backups-read-key"
@@ -104,7 +105,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/repos"
           for B in main brain-v3 brain-free; do
             GIT_SSH_COMMAND="$SSHCMD" git clone -q --filter=blob:none --no-checkout --depth 1 --single-branch --branch "$B" \
-              git@github.com:alexiptv82/superbot-backups.git "$RUNNER_TEMP/repos/$B" 2>/dev/null || {
+              git@github.com:alexiptv82/superbot-backups-v2.git "$RUNNER_TEMP/repos/$B" 2>/dev/null || {
               echo "BLOCCO: ramo $B del repository privato non leggibile con la chiave di sola lettura"
               exit 1
             }
@@ -134,6 +135,7 @@ jobs:
             --pinned "$RUNNER_TEMP/pinned" \
             --rc84 "$RUNNER_TEMP/rc84" \
             --work "$RUNNER_TEMP/work" \
+            --run-id "$GITHUB_RUN_ID" --workflow-sha256 "$WF_SHA" --script-sha256 "$SC_SHA" --pinned-sha "$PINNED_SHA" \
             --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Rimozione di chiavi e contenuti temporanei

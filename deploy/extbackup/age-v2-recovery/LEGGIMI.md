@@ -1,5 +1,7 @@
 # Verifica di recupero con la chiave age V2 (workflow isolato)
 
+> **Aggiornamento (migrazione V1→V2):** i fatti sul destinatario sono stati verificati dall'utente sulla VPS: **tutti gli ultimi archivi (Falco/Toro, Brain V3, Brain Free) sono cifrati per V1** e la chiave V2 del Secret appartiene a un'altra coppia. Questo workflow legge quindi il repository **V2** (`superbot-backups-v2`, archivi nuovi cifrati per V2) e emette le attestazioni `CERTIFICATO` per i timer; il controllo che il Secret coincida con il destinatario V2 documentato il 23/10 e' il workflow separato `age-v2-key-check.yml`. Procedura completa: `deploy/extbackup/age-v2-migration/LEGGIMI.md`. Il testo sotto resta valido per le parti non toccate.
+
 **Stato: PREPARATO, NON ESEGUITO.** Nessun job che usa un Secret è stato avviato. Pubblicare questo ramo non esegue nulla: il workflow parte solo con
 `workflow_dispatch` (impronta di approvazione) oppure con il push del file `RUN.trigger` su un ramo di **esecuzione** diverso da quello di revisione (`work/age-v2-recovery-run-20261110`, che non esiste); il file `RUN.trigger` questo commit **non lo contiene**.
 
@@ -13,16 +15,16 @@ stampa i dettagli del ripristino (in un repository pubblico finirebbero nei log)
 Il destinatario V2 (`age1dkwnnrng…`) esiste **solo** sul ramo di sicurezza del 23/10 e nessun ramo lo promuove a destinatario di produzione: quello di produzione
 nel repository è `age142uj5c8x…` (V1, 19/10). Gli archivi di Falco/Toro, Brain V3 e Brain Free usano il destinatario del file `/opt/superbot-extbackup/recipient.txt`
 della VPS. Se è ancora V1, **la chiave V2 non li può aprire**.
-Aprire nell'interfaccia GitHub di `alexiptv82/superbot-backups` il file `*.manifest.json` dell'archivio più recente di ciascun ramo (`main` → `archives/…`,
+Aprire nell'interfaccia GitHub del repository dei backup (V1: `superbot-backups`; V2: `superbot-backups-v2`) il file `*.manifest.json` dell'archivio più recente di ciascun ramo (`main` → `archives/…`,
 `brain-v3`, `brain-free`) e leggere `cifratura.destinatario`: confrontare solo l'inizio (`age142uj5c8x` = V1, `age1dkwnnrng` = V2). Il manifest non contiene segreti.
 * se è **V2**: il workflow qui sotto può completare il ripristino;
 * se è **V1**: serve la chiave privata V1. Se anche quella è persa, quegli archivi **non sono recuperabili da nessuno** (age non ha porte di servizio): i dati originali
   restano sulla VPS, quindi la correzione è fare **nuovi** backup verso un destinatario di cui si custodisce la privata (vedi «Copia di emergenza»).
 
 ## Prerequisiti (da fare nell'interfaccia GitHub, una volta)
-1. **Lettura del repository privato dalla Actions.** La sessione di Claude non vede `superbot-backups` (`add_repo`: «you don't have access»), e il token del repository
+1. **Lettura del repository privato dalla Actions.** La sessione di Claude non vede i repository dei backup (`add_repo`: «you don't have access»), e il token del repository
    `SuperBot-Trading` non lo legge. Serve una chiave di deploy **in sola lettura**: sul proprio PC `ssh-keygen -t ed25519 -N '' -f chiave-lettura-backups`;
-   aggiungere la parte `.pub` in `superbot-backups` → Settings → Deploy keys **senza** «Allow write access»; incollare la parte privata nel Secret
+   aggiungere la parte `.pub` in `superbot-backups-v2` → Settings → Deploy keys **senza** «Allow write access»; incollare la parte privata nel Secret
    `SUPERBOT_BACKUPS_READ_KEY` di `SuperBot-Trading`; cancellare il file privato locale. **Non** riusare la chiave di deploy della VPS (ha accesso in scrittura).
 2. **Ambiente protetto `age-recovery`** (Settings → Environments): revisore obbligatorio = il proprietario; «Deployment branches» limitato a
    `work/age-v2-recovery-verify-20261110` (avvio con `workflow_dispatch`) e, se si vuole usare il push, `work/age-v2-recovery-run-20261110`. Il job lo dichiara, quindi non parte senza l'approvazione. (Senza questi controlli qualunque persona con scrittura sul repository

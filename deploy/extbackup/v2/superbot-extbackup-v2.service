@@ -1,0 +1,16 @@
+[Unit]
+Description=SuperBot backup esterno cifrato - Falco/Toro verso il destinatario V2 (affianca quello V1 finche' non si decide di spegnerlo)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Il wrapper rifiuta di partire da qui se manca /opt/superbot-extbackup-v2/timer-gate.json (scritto dall'installatore solo dopo la
+# prova di un backup V2 reale e di un ripristino indipendente).
+Environment=SUPERBOT_V2_SCHEDULED=1
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=45min
+ExecStart=/opt/superbot-extbackup-v2/run-classic.sh
+# Dopo un arresto brusco o un timeout restano solo file temporanei NOSTRI: si tolgono sempre (nessun testo in chiaro in giro).
+ExecStopPost=/bin/sh -c 'rm -rf /opt/superbot-extbackup-v2/work/staging /opt/superbot-extbackup-v2/work/staging.tar.gz; rm -f /opt/superbot-extbackup-v2/work/superbot-backup-*.tar.gz.age'
