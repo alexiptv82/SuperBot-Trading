@@ -37,8 +37,10 @@ for name,root in [('BRAIN_FREE',Path('/opt/superbot-brain-free')),('BRAIN_LEGACY
     print(name,'dir=',root.is_dir(),'pause=',(root/'pause.flag').is_file())
     db=root/'brain.sqlite3'
     if db.is_file():
+        # SQLite immutable=1 evita creazione/modifica di file -shm/-wal durante la diagnostica.
+        # Se esiste un WAL non checkpointato, lo stato letto puo' essere vecchio: non e' certificazione runtime.
         try:
-            with sqlite3.connect(f'file:{db}?mode=ro',uri=True,timeout=2) as cn:
+            with sqlite3.connect(f'file:{db}?mode=ro&immutable=1',uri=True,timeout=2) as cn:
                 cn.execute('PRAGMA query_only=ON')
                 row=cn.execute('SELECT body FROM state WHERE id=1').fetchone()
                 state=json.loads(row[0]) if row else {}
