@@ -1,0 +1,95 @@
+name: SuperBot RC84 - close-only PUBLIC post-release negative no-op check
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-close-only-postrelease-negative.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify current web+bridge while PAPER PAUSED and reject missing-position closes
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"
+          KNOWN="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$KNOWN"
+          chmod 0600 "$KNOWN"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=20 \
+            root@51.79.205.82 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          import json, pathlib, socket, subprocess, urllib.request,urllib.error
+          R=pathlib.Path('/opt/superbot-v3-paper-runs')
+          RUNS={'falco':R/'classic-hawk-paper20261111','toro':R/'classic-bull-paper20261111','brain':R/'brain-v3-paper20261111'}
+          def command(*args):
+              p=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=15)
+              assert p.returncode==0, 'INSPECTION_FAILED'
+              return p.stdout
+          assert command('systemctl','is-active','superbot-v3-paper-single-close-bridge.service').strip()=='active'
+          web=json.loads(command('docker','inspect','superbot'))[0]
+          bridge=json.loads(command('docker','inspect','superbot-rc84-paper-close-bridge'))[0]
+          assert web['State']['Running'] and bridge['State']['Running']
+          assert web['Config']['Image']=='superbot:rc84-paper-single-close-20261111'
+          assert bridge['HostConfig']['NetworkMode']=='none'
+          def mounts(container,path,write):
+              return any(m.get('Source')==str(path) and m.get('RW') is write for m in container.get('Mounts') or [])
+          for d in RUNS.values():
+              assert (d/'pause.flag').is_file() and mounts(web,d,False) and mounts(bridge,d,True)
+          assert mounts(web,pathlib.Path('/run/superbot-paper-close'),False)
+          assert command('docker','inspect','-f','{{.HostConfig.RestartPolicy.Name}}','superbot-rc84-before-singleclose').strip()=='no'
+          env=dict(item.split('=',1) for item in web['Config']['Env'] if '=' in item)
+          for key,value in dict(TRADING_MODE='paper',DESK_MODE='paper',V3_CUTOVER_READONLY='1',
+                                V3_ALLOW_CLASSIC_SINGLE_CLOSE='1',V3_ALLOW_BRAIN_SINGLE_CLOSE='1',
+                                V3_CLOSE_BRIDGE_ONLY='1').items():
+              assert env.get(key)==value
+          assert json.loads((RUNS['brain']/'mandate.json').read_text()).get('approved') is False
+          def http(path,method='GET'):
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(
+                      'http://127.0.0.1:8002'+path,method=method,
+                      data=b'{}' if method=='POST' else None),timeout=5) as x:
+                      return x.status
+              except urllib.error.HTTPError as e:return e.code
+          assert http('/api/health')==200
+          assert http('/api/v3/overview')==401
+          assert http('/api/desk/close-position','POST')==401
+          assert http('/api/desk/bull/close-position','POST')==401
+          assert http('/api/v3/brain/close','POST')==401
+          for path in ('/api/desk/close-all','/api/desk/resume','/api/desk/reset-portfolio'):
+              assert http(path,'POST')==423
+          print('RC84_CLOSE_POSTRELEASE_PUBLIC_GATES=PASS')
+          assert not (RUNS['falco']/'close_position.flag').exists()
+          assert not (RUNS['toro']/'close_position.flag').exists()
+          assert not (RUNS['brain']/'close_request.json').exists()
+          for wallet,field,value in [('falco','symbol','ZZZNEVER2026'),
+                                     ('toro','symbol','ZZZNEVER2026'),
+                                     ('brain','position_id','fake-never-open-20261111')]:
+              with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+                  s.settimeout(4)
+                  s.connect('/run/superbot-paper-close/close.sock')
+                  s.sendall(json.dumps({'wallet':wallet,field:value}).encode()+bytes([10]))
+                  ans=json.loads(s.recv(4096))
+              print('RC84_CLOSE_NEGATIVE_'+wallet.upper()+'_STATUS='+str(ans.get('status')))
+              assert ans.get('status')==404, 'CLOSE_ONLY_WORKER_NOT_READY_OR_UNEXPECTED_RESPONSE'
+              assert ans.get('payload',{}).get('ok') is False
+          assert not (RUNS['falco']/'close_position.flag').exists()
+          assert not (RUNS['toro']/'close_position.flag').exists()
+          assert not (RUNS['brain']/'close_request.json').exists()
+          print('RC84_CLOSE_POSTRELEASE_ZERO_CLOSE_FLAGS=PASS')
+          print('RC84_CLOSE_POSTRELEASE_BRIDGE_ALL_THREE_READY=PASS')
+          print('RC84_CLOSE_POSTRELEASE_PAPER_PAUSED_MANDATE_UNAPPROVED=PASS')
+          PY
