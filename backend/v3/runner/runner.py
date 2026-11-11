@@ -93,6 +93,10 @@ class Runner:
         self._last_minute = -1
         self._last_slot = -1
         self.cycles = 0
+        # Sticky diagnostic for the LAST completed Brain cycle. last_error is
+        # intentionally ephemeral per heartbeat, so the UI must not mistake
+        # "running" 5 seconds later for evidence of a valid market analysis.
+        self._last_cycle_summary: Optional[dict] = None
 
     def tick(self, now_ms: int) -> TickResult:
         if type(now_ms) is not int or now_ms <= 0:
@@ -149,9 +153,20 @@ class Runner:
             try:
                 cycle_report = self._cycle(now_ms, slot)
                 self.cycles += 1
+                self._last_cycle_summary = {
+                    "at_ms": now_ms,
+                    "decisions": len(cycle_report.decisions),
+                    "opened": len(cycle_report.opened),
+                    "errors": [[str(sym)[:25], str(code)[:64]]
+                               for sym, code in cycle_report.errors[:8]],
+                }
                 if cycle_report.errors:
                     errors.append(_short("cycle:" + ",".join(f"{s}:{c}" for s, c in cycle_report.errors[:3])))
             except Exception:
+                self._last_cycle_summary = {
+                    "at_ms": now_ms, "decisions": 0, "opened": 0,
+                    "errors": [["*", "cycle_failed"]],
+                }
                 errors.append("cycle_failed")
 
         # A model call may take many seconds. Re-read the independent owner,
@@ -180,7 +195,10 @@ class Runner:
             elif self.pause_path.exists():
                 state = "paused"
         last_error = ";".join(errors)[:200] if errors else None
-        self._write_heartbeat(beat_ms, state, last_error, loss_info)
+        health = dict(loss_info or {})
+        if self._last_cycle_summary is not None:
+            health["last_cycle"] = self._last_cycle_summary
+        self._write_heartbeat(beat_ms, state, last_error, health)
         return TickResult(state, monitor_report, cycle_report, last_error, manual_report)
 
     def _write_heartbeat(self, now_ms: int, state: str, last_error: Optional[str],
