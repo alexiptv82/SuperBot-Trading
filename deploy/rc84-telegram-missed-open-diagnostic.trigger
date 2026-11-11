@@ -1,0 +1,5 @@
+date=2026-11-11
+scope=read_only_probe_missed_four_paper_classic_telegram_alerts
+no_restared_bots=true
+no_trades=true
+no_secrets_in_logs=true
