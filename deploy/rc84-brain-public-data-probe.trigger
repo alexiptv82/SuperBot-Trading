@@ -1,0 +1,4 @@
+date=2026-11-11
+scope=limited_public_Bitget_GET_contracts_and_history_candles_on_VPS
+why=Brain_6_cycles_zero_model_requests
+no_trade_or_key_or_wallet_modifications=true
