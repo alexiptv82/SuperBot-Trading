@@ -1,0 +1,14 @@
+# 11/11/2026 — RC84 Brain V3 aggiunto in Performance e Impostazioni: PR Draft #81, NON distribuita
+
+**Richiesta utente:** dopo il rilascio riuscito della dashboard RC84 pubblica, l'utente ha confermato «app è aggiornata» ma segnalato che **Brain mancava in Performance** e **Brain mancava in Impostazioni**. Riconosciuto e corretto sul ramo tecnico, **senza ancora fare deploy sul pubblico**.
+
+- PR Draft: https://github.com/alexiptv82/SuperBot-Trading/pull/81
+- Ramo: `work/rc84-brain-performance-settings-20261111` (derivato dal ramo di preparazione RC84 `work/paper-restart-prep-20261110`, PR base dedicata a questo ramo; nessun merge).
+- Frontend `Performance.js`: terza scelta Brain; pannello `BrainPerformancePanel.js` con Diario, Statistiche e Run della nuova run indipendente, sorgenti `/api/v3/brain/trades`, `/api/v3/overview`, `/api/v3/brain/status`; paginazione fino a 10×200 record, avviso dati parziali, P&L realizzato contabilizzato, niente fake drawdown o miscela con storici classici/Brain Free. Derivazione in `frontend/src/brainPerformance.js`.
+- Frontend `Settings.js`: sezione `BrainSettingsPanel.js` accanto a Falco e Toro, sola lettura con stato, capitale, equity, posizioni, run, budget DeepSeek e parametri reali. **Niente** avvio/reset/orari non supportati inventati o attivati.
+- Backend `backend/v3_api.py`: nuova API autenticata GET `/api/v3/brain/config` con `no-store`, whitelist di campi pubblici della `runner_config.json` della run selezionata; nessun dato secret, nessuna mutazione.
+- Test aggiunti: `frontend/src/brainPerformance.test.js` e `backend/tests/test_v3_brain_settings_config_api.py`. Quest'ultimo include verifica di non-esposizione segreti, comportamento su config assente/invalid e nessuna modifica del file sorgente.
+- Verifica eseguita: [GitHub Actions run 42989249928](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42989249928) **SUCCESS**: 2 suite frontend, **9 test PASS**, compilazione React ottimizzata PASS, Python AST/py_compile backend PASS. **Non** eseguiti i nuovi test `pytest` backend (va ancora fatto prima di un futuro rilascio pubblico con API).
+- **Nessun** deploy, riavvio bot, sblocco pausa, modifica finanziaria, modifica credenziali o trade. La **dashboard pubblica resta RC84 precedente** rilasciata con [Actions 42986928313](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42986928313) e la precedente RC73 resta rollback. Falco/Toro 1000 PAPER e Brain 2000 PAPER, tutti PAUSED. Mandato Brain non approvato. Claude/DeepSeek nuovi servizi ancora da collegare.
+
+**Prossima azione:** ottenere autorizzazione distinta per un **aggiornamento UI+backend RC84** con backup/rollback e verifica autenticata, senza sbloccare il trading. Prima del deploy eseguire il test pytest mirato sulla whitelist API, evitando CI massive; controllare che la web distribuita usi frontend+backend dello stesso SHA. La PR #81 è Draft e non pronta per merge operativo.
