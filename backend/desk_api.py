@@ -3,11 +3,14 @@ per un portafoglio (stato, trade, performance, diario, run, comandi). Tutta la l
 desk_view.py (testata a parte): qui c'e' solo il collegamento a FastAPI, volutamente sottile.
 """
 import asyncio
+import os
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 import desk_view as dv
+from backend.v3.cutover_gate import classic_single_close_enabled
+from backend.v3.close_bridge import send_single_close, CloseBridgeError
 
 # prezzo live per simbolo: (istante monotonic, prezzo). Condiviso da /prices e da /status.
 _ticker_cache: dict = {}
@@ -113,6 +116,16 @@ def make_router(portfolio: str, data_dir: str, require_session, get_ticker) -> A
         except Exception:
             body = {}
         symbol = body.get("symbol") if isinstance(body, dict) else None
+        # In the RC84 cutover only the root-owned host bridge may create a
+        # PAPER close command. Docker keeps all wallet run directories RO.
+        if os.environ.get("V3_CUTOVER_READONLY") == "1":
+            if not classic_single_close_enabled(os.environ):
+                raise HTTPException(status_code=423, detail="Chiusura PAPER non abilitata.")
+            try:
+                return send_single_close(
+                    "falco" if portfolio == "hawk" else "toro", symbol)
+            except CloseBridgeError as e:
+                raise HTTPException(status_code=e.status, detail=e.message) from None
         try:
             ok, code, payload = dv.command_close_position(data_dir, symbol, portfolio)
         except OSError as e:
