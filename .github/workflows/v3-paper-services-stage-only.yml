@@ -1,0 +1,51 @@
+name: SuperBot V3 - stage four PAPER service templates WITHOUT installing
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-paper-services-stage.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-v3-service-templates-stage-only
+  cancel-in-progress: false
+jobs:
+  stage:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e5890cdd1de46adb9a6b0ba7b9b7ad32d72c669b
+      - name: Stage units into a NEW directory; no systemd actions
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = e5890cdd1de46adb9a6b0ba7b9b7ad32d72c669b
+          test -n "${SSH_PRIVATE_KEY:-}"
+          DIR=deploy/rc84-paper-services
+          for name in falco toro brain-exit brain-runner; do
+            FILE="$DIR/superbot-v3-paper-$name.service"
+            test -s "$FILE"
+            grep -q '^Environment=DESK_MODE=paper$' "$FILE"
+            grep -q '^ProtectSystem=strict$' "$FILE"
+            if grep -q '^\[Install\]' "$FILE"; then echo "SERVICE_INSTALL_SECTION_BLOCKED"; exit 2; fi
+            if grep -v '^#' "$FILE" | grep -q '/opt/superbot-desk-data/'; then
+              echo "LEGACY_DATA_REFERENCE_BLOCKED"; exit 2
+            fi
+          done
+          install -d -m 700 "$RUNNER_TEMP/sg"
+          KEY="$RUNNER_TEMP/sg/id"
+          HOSTS="$RUNNER_TEMP/sg/known_hosts"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPT=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          ssh "${OPT[@]}" root@51.79.205.82 'set -eu; dest=/opt/superbot-v3-rc84-services-staged; test ! -e "$dest"; install -d -m700 "$dest"'
+          scp "${OPT[@]}" "$DIR"/*.service root@51.79.205.82:/opt/superbot-v3-rc84-services-staged/
+          ssh "${OPT[@]}" root@51.79.205.82 'set -eu; dest=/opt/superbot-v3-rc84-services-staged; test "$(find "$dest" -maxdepth 1 -type f -name "*.service" | wc -l)" -eq 4; for file in "$dest"/*.service; do chmod 600 "$file"; grep -q "^Environment=DESK_MODE=paper$" "$file"; done; echo RC84_FOUR_PAPER_TEMPLATES_STAGED_ONLY=True; echo RC84_SYSTEMD_NOT_INSTALLED=True; echo RC84_NO_CONTAINERS_OR_SERVICES_STARTED=True'
