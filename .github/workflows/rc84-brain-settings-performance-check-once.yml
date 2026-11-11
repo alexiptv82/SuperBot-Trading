@@ -1,0 +1,47 @@
+name: RC84 Brain Performance and Settings - one targeted UI check
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/rc84-brain-ui-check.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: rc84-brain-ui-check-one-time
+  cancel-in-progress: false
+jobs:
+  check:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fe8aeecfdc36bed1d601bb30dd86249c81175291
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Python backend syntax without importing trading engine
+        run: python -m py_compile backend/v3_api.py backend/tests/test_v3_brain_settings_config_api.py
+      - name: Install frontend dependencies (no audit)
+        working-directory: frontend
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Brain adapter and current wallet regression tests
+        working-directory: frontend
+        env:
+          CI: 'true'
+        run: npx react-scripts test --watchAll=false --runInBand --testPathPattern='brainPerformance.test.js|brainWallet.test.js'
+      - name: Production frontend build
+        working-directory: frontend
+        env:
+          CI: 'false'
+          REACT_APP_BACKEND_URL: ''
+          GENERATE_SOURCEMAP: 'false'
+        run: npm run build
+      - name: Assert UI tests/build never deploy or unpause
+        run: |
+          echo RC84_BRAIN_UI_CHECK_ONLY=true
+          echo RC84_PUBLIC_WEB_UNCHANGED=true
+          echo RC84_NO_VPS_ACCESS=true
