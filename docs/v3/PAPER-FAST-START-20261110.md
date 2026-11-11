@@ -49,6 +49,17 @@ I classici in RC84 consultano effettivamente Claude tramite `backend/desk/cli.py
    Il comando crea file **solo nella nuova run** con `pause.flag`, `mandate.approved=false`, `journal.db`, `budget.db` e `PREPARED_PAUSED_ONLY.json`; non avvia motori. Usare un nome diverso se quello dell'esempio è già occupato. Il percorso `$STAGE_ROOT` è segnaposto: non supporre che il codice RC84 sia già installato in VPS.
 3. **NON approvare il mandato Brain automaticamente.** Preparare e confrontare `policy_hash` e la configurazione nuova; la firma `approved:true` deve seguire l'OK specifico dell'utente per lo sblocco.
 
+
+### Preparazione tecnica resa eseguibile (11 novembre)
+
+Sul ramo isolato sono disponibili due script con default **`--dry-run`**:
+
+- `deploy/scripts/v3-rc84-stage-source-only.sh`: `--stage-source` crea soltanto il checkout Git pinned RC84 (`0e29a73...`) in `/opt/superbot-v3-rc84-stage`, senza sostituire la dashboard.
+- `deploy/scripts/v3-rc84-prepare-three-paper-paused.sh`: `--prepare-paused-paper` crea `classic-hawk-paper20261111`, `classic-bull-paper20261111` e `brain-v3-paper20261111` sotto `/opt/superbot-v3-paper-runs`. Per i classici crea `pause.flag` e solo un marcatore operatore (lo stato conto sarà inizializzato al primo avvio autorizzato). Per Brain riusa il preparatore RC84 e crea mandato **NON approvato**. Rifiuta staging modificato, nomi già presenti e profilo Brain incompatibile. Nessun comando Docker/systemctl/Bitget/Claude/DeepSeek.
+- Python per Brain: il preparatore riusa la virtualenv `/opt/superbot-v3-rc70-stage/.venv/bin/python3`, già usata dallo staging precedente; se manca, rifiuta prima di creare directory.
+- I due script non effettuano la fase C: **non** installano una build, non accendono strategie/exit-sidecar, non sbloccano il mandato o le pause e non cambiano percorsi del web.
+- Prove: sintassi Bash locale per entrambi; sul preparatore 5/5 test procedurali con dati sintetici e modulo Brain sostitutivo (non è un collaudo integrato con la vera RC84 su VPS). I test non autorizzano il rilascio automatico.
+
 ### C. Handover e smoke test minimo (rilascio separatamente autorizzato)
 1. Exit-owner unico: per ogni run deve esserci esattamente un servizio autorizzato a scrivere chiusure. Brain: prima exit-sidecar PAPER con lease e heartbeat coerente, poi runner decisionale in split-mode; finché exit-sidecar non è sano, **niente nuove aperture**. Non consentire doppio monitor STOP.
 2. Collegare web RC84 alle **nuove** run, con mount e `run_id` coerenti; non mostrare dati legacy come posizioni nuove. Abilitare Chiudi Brain solo dopo exit-sidecar attivo e test su run sintetica isolata.
