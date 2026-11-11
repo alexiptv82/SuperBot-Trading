@@ -1,0 +1,7 @@
+date=2026-11-11
+scope=one_targeted_bridge_mock_test
+pinned_sha=69b4f629dfa238b930f41ef916fa52ea1386c298
+no_vps=true
+no_deploy=true
+no_trades=true
+no_bot_unpause=true
