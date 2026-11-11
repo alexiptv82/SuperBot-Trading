@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 
-PIN = "RELEASE_PIN_TO_BE_SET"
+PIN = os.environ.get("FABLE_STAGING_RELEASE_SHA", "")
 REPO = "https://github.com/alexiptv82/SuperBot-Trading.git"
 DEST = Path("/opt/superbot-v3-fable-shadow-staged-20261111")
 ROOT = Path("/opt/superbot-v3-paper-runs")
