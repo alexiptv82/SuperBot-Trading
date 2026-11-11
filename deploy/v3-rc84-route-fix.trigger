@@ -1,0 +1,8 @@
+date=2026-11-11
+scope=repair-isolated-rc84-preview-routing-only
+reviewed_script=0a1843b0203bf89e44d1ff62704a7c9717f389cf
+old_preview_container_recreated=yes
+production_services_unchanged=yes
+trading_strategies_not_started=yes
+run_volumes_readonly=yes
+no_live_orders=yes
