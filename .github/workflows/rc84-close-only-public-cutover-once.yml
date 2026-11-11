@@ -1,0 +1,54 @@
+name: SuperBot RC84 - PUBLIC single-close-only PAPER bridge with rollback
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-close-only-public-cutover.trigger']
+permissions:
+  contents: read
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '6a0a9e86c3df6422711958cd297ca7f5ef55bd45'
+      - name: Verify reviewed immutable cutover and rollback procedure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '6a0a9e86c3df6422711958cd297ca7f5ef55bd45'
+          SCRIPT=deploy/scripts/rc84-publish-single-close-only-paper.py
+          test "$(git hash-object "$SCRIPT")" = 'a7180fefc1eacda6078ac8dd22b8f3a179d0a44a'
+          python3 - "$SCRIPT" <<'PY'
+          import ast,pathlib,sys
+          ast.parse(pathlib.Path(sys.argv[1]).read_text(), filename=sys.argv[1])
+          print("RC84_SINGLE_CLOSE_PUBLIC_RELEASE_SCRIPT_VERIFIED=PASS")
+          PY
+      - name: Singapore guarded PAPER close-only web rollout
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/sg"
+          KEY="$RUNNER_TEMP/sg/id"
+          HOSTS="$RUNNER_TEMP/sg/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPT=(-T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          echo RC84_SINGLE_CLOSE_PUBLIC_CUTOVER_BEGIN
+          ssh "${OPT[@]}" root@51.79.205.82 \
+            'PYTHONDONTWRITEBYTECODE=1 python3 -I - --publish' \
+            < deploy/scripts/rc84-publish-single-close-only-paper.py
+          echo RC84_SINGLE_CLOSE_PUBLIC_ACTION_FINISHED=PASS
