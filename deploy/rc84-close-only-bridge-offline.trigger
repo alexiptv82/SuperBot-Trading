@@ -5,3 +5,6 @@ no_vps=true
 no_deploy=true
 no_trades=true
 no_bot_unpause=true
+
+retry=2
+reason=ci_pythonpath_collection_fix_only
