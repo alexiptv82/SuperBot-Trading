@@ -1,0 +1,46 @@
+name: SuperBot RC84 - provider readiness without inference, one time
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-provider-balance-readonly.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-v3-provider-readonly-check
+  cancel-in-progress: false
+jobs:
+  check:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 798db58e9f8df9b502d3a3339d35bb93cd172f29
+      - name: Verify pinned read-only script; inspect providers from Singapore
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 798db58e9f8df9b502d3a3339d35bb93cd172f29
+          SCRIPT=deploy/scripts/rc84-provider-readonly-balance-check.py
+          test "$(git hash-object "$SCRIPT")" = f330d11840e51f31d94c0b7d518087b830664608
+          python3 - "$SCRIPT" <<'PY'
+          import ast,sys,pathlib
+          ast.parse(pathlib.Path(sys.argv[1]).read_text())
+          print('RC84_PROVIDER_READONLY_SCRIPT_SYNTAX=PASS')
+          PY
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"
+          KNOWN="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$KNOWN"
+          chmod 0600 "$KNOWN"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=15 \
+            root@51.79.205.82 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' < "$SCRIPT"
+          echo RC84_PROVIDER_READONLY_ACTION_FINISHED=True
