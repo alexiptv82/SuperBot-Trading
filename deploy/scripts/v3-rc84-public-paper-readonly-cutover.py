@@ -348,8 +348,8 @@ def publish() -> None:
             if live_env.get(key) != value:
                 refuse("new_environment_drift")
         for path in (HAWK, BULL, BRAIN):
-            mounts = fresh.get("Mounts", [])
-            if not any(m.get("Source") == str(path) and m.get("RW") is False for m in mounts):
+            live_mounts = fresh.get("Mounts", [])
+            if not any(m.get("Source") == str(path) and m.get("RW") is False for m in live_mounts):
                 refuse("new_paper_mount_not_ro")
             if not (path / "pause.flag").is_file():
                 refuse("paper_wallet_unpaused")
@@ -383,12 +383,46 @@ def publish() -> None:
             rollback(old_renamed=old_renamed, new_created=new_created, web_changed=web_changed)
 
 
+
+def recover_aborted_staging_only() -> None:
+    """Remove only the failed, never-published RC84 candidate frontend.
+
+    Does not touch /opt/superbot-web/build or any Docker container.
+    Refuses if the current web is not the original RC73 or if a cutover began.
+    """
+    old = inspected(NAME)
+    if old is None or old.get("State", {}).get("Running") is not True:
+        refuse("recover_original_web_not_running")
+    if inspected(PREVIOUS) is not None:
+        refuse("recover_previous_container_exists")
+    if (PREV_BUILD.exists() or PREV_BUILD.is_symlink()
+            or FAILED_BUILD.exists() or FAILED_BUILD.is_symlink()):
+        refuse("recover_rollback_folder_exists")
+    if not regular(WEB / "build/index.html") or http("/api/health") != 200:
+        refuse("recover_original_web_unhealthy")
+    if not NEXT_BUILD.is_dir() or NEXT_BUILD.is_symlink():
+        refuse("recover_candidate_not_directory")
+    if not regular(NEXT_BUILD / "index.html") or not regular(PREVIEW / "frontend/index.html"):
+        refuse("recover_candidate_index_missing")
+    if sha256(NEXT_BUILD / "index.html") != sha256(PREVIEW / "frontend/index.html"):
+        refuse("recover_candidate_not_pinned_preview")
+    # This directory is a temporary copy created by the first, aborted attempt.
+    # It was never published; the live frontend under WEB/build is untouched.
+    shutil.rmtree(NEXT_BUILD)
+    print("RC84_ABORTED_ONLY_CANDIDATE_REMOVED=True", flush=True)
+    print("RC84_RC73_PUBLIC_WEB_UNCHANGED=True", flush=True)
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     exclusive = p.add_mutually_exclusive_group(required=True)
     exclusive.add_argument("--preflight-only", action="store_true")
     exclusive.add_argument("--publish-readonly", action="store_true")
+    exclusive.add_argument("--recover-aborted-candidate", action="store_true")
     args = p.parse_args()
+    if args.recover_aborted_candidate:
+        recover_aborted_staging_only()
+        return
     verify_identity()
     if args.preflight_only:
         print("RC84_PUBLIC_CUTOVER_DRY_RUN=PASS", flush=True)
