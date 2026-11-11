@@ -1,0 +1,8 @@
+scope=one_offline_unit_test_only
+approved_feature=fable_second_brain_shadow_optional
+feature_branch=work/brain-fable-shadow-budget-20261111
+revision=2c19e3ed2e10ad029a73278184c83fa50c0deb37
+no_vps=true
+no_model_calls=true
+no_deploy=true
+no_trading_change=true
