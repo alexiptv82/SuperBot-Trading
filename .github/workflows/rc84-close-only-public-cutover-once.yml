@@ -16,20 +16,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: '6a0a9e86c3df6422711958cd297ca7f5ef55bd45'
-      - name: Verify reviewed immutable cutover and rollback procedure
+          ref: 'e5210d75c3f0eee1b80c295ca38c19d8b6c1ef6d'
+      - name: Verify immutable Docker bridge cutover, systemd unit and rollback script
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '6a0a9e86c3df6422711958cd297ca7f5ef55bd45'
+          test "$(git rev-parse HEAD)" = 'e5210d75c3f0eee1b80c295ca38c19d8b6c1ef6d'
           SCRIPT=deploy/scripts/rc84-publish-single-close-only-paper.py
-          test "$(git hash-object "$SCRIPT")" = 'a7180fefc1eacda6078ac8dd22b8f3a179d0a44a'
+          UNIT=deploy/rc84-paper-services/superbot-v3-paper-single-close-bridge.service
+          test "$(git hash-object "$SCRIPT")" = '5775954d8e134bb3ec27eb18b5abb81b4953f24e'
+          test "$(git hash-object "$UNIT")" = '9555640cdeda3cc28303532078ea12f5be470316'
           python3 - "$SCRIPT" <<'PY'
           import ast,pathlib,sys
           ast.parse(pathlib.Path(sys.argv[1]).read_text(), filename=sys.argv[1])
-          print("RC84_SINGLE_CLOSE_PUBLIC_RELEASE_SCRIPT_VERIFIED=PASS")
+          print('RC84_CLOSE_ONLY_DOCKER_BRIDGE_SCRIPT_VERIFIED=PASS')
           PY
-      - name: Singapore guarded PAPER close-only web rollout
+      - name: Stage pinned unit, check guards and apply controlled public PAPER close-only release
         shell: bash
         env:
           SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
@@ -44,11 +46,23 @@ jobs:
           printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
           chmod 0600 "$HOSTS"
           trap 'rm -f "$KEY"' EXIT
-          OPT=(-T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+          HOST=root@51.79.205.82
+          OPT=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
             -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
-          echo RC84_SINGLE_CLOSE_PUBLIC_CUTOVER_BEGIN
-          ssh "${OPT[@]}" root@51.79.205.82 \
+          REMOTE=/opt/superbot-v3-rc84-close-bridge-release-unit
+          ssh -T "${OPT[@]}" "$HOST" \
+            'set -eu; d=/opt/superbot-v3-rc84-close-bridge-release-unit; test ! -L "$d"; install -d -m 0700 "$d"'
+          scp "${OPT[@]}" deploy/rc84-paper-services/superbot-v3-paper-single-close-bridge.service \
+            "$HOST":"$REMOTE"/superbot-v3-paper-single-close-bridge.service
+          ssh -T "${OPT[@]}" "$HOST" \
+            'set -eu; f=/opt/superbot-v3-rc84-close-bridge-release-unit/superbot-v3-paper-single-close-bridge.service; chmod 0600 "$f"; test "$(git hash-object "$f")" = "9555640cdeda3cc28303532078ea12f5be470316"; echo RC84_BRIDGE_HOST_UNIT_SOURCE_VERIFIED=PASS'
+          echo RC84_CLOSE_ONLY_PUBLIC_READONLY_PREFLIGHT_BEGIN
+          ssh -T "${OPT[@]}" "$HOST" \
+            'PYTHONDONTWRITEBYTECODE=1 python3 -I - --preflight' \
+            < deploy/scripts/rc84-publish-single-close-only-paper.py
+          echo RC84_CLOSE_ONLY_PUBLIC_DOCKER_BRIDGE_ROLLOUT_BEGIN
+          ssh -T "${OPT[@]}" "$HOST" \
             'PYTHONDONTWRITEBYTECODE=1 python3 -I - --publish' \
             < deploy/scripts/rc84-publish-single-close-only-paper.py
-          echo RC84_SINGLE_CLOSE_PUBLIC_ACTION_FINISHED=PASS
+          echo RC84_CLOSE_ONLY_PUBLIC_ACTION_FINISHED=PASS
