@@ -53,6 +53,7 @@ from backend.v3.runner.daily_loss import DailyLossGuard, evaluate_daily_loss
 from backend.v3.runner.cycle import CycleBars, CycleReport, MarketEntryAnalyst, PORTFOLIO_ID, run_brain_cycle
 from backend.v3.runner.exits import load_default_policy
 from backend.v3.runner.feed import CandleStore, last_minute_close, minute_fetcher
+from backend.v3.runner.fable_shadow import FableLedger, FableShadowAdviser, ShadowFableAnalyst
 from backend.v3.runner.manual_close import ManualCloseReport, run_manual_close
 from backend.v3.runner.metering import BudgetHalt, MeteredTransport
 from backend.v3.runner.monitor import MonitorReport, run_exit_monitor
@@ -61,7 +62,7 @@ from backend.v3.runner.open_serial import commit_paper_open
 from backend.v3.runner.exit_service import ExitServiceBusy, exit_service_healthy
 from backend.v3.runner.legacy_exit_fence import LegacyExitFence
 from backend.v3.runner.exit_worker import check_existing_data
-from backend.v3.transport import deepseek_transport
+from backend.v3.transport import deepseek_transport, claude_transport
 
 PROVIDER = "deepseek"
 MANDATE_FILE = "mandate.json"
@@ -164,12 +165,34 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         input_usd_per_million=config.input_usd_per_million, output_usd_per_million=config.output_usd_per_million,
         extra_payload=config.model_extra_payload)
     holder = CycleBars()
-    analyst = MarketEntryAnalyst(DeepSeekL5Analyst(
+    primary = DeepSeekL5Analyst(
         transport=metered, model=config.model,
         outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
         bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
         spending_gate=ledger.spending_gate(daily_limits={PROVIDER: config.daily_cap_units}), enabled=True,
-        max_tokens=config.max_tokens))
+        max_tokens=config.max_tokens)
+    # Fable is a strictly optional shadow observer, NEVER a reviewer which
+    # can alter a DeepSeek decision. Existing Brain PAPER behavior is identical
+    # when either of these TWO approval flags is absent (default OFF).
+    fable_opt_in = (os.environ.get("BRAIN_FABLE_SHADOW") == "1"
+                    and os.environ.get("BRAIN_FABLE_BUDGET_APPROVED") == "1")
+    if fable_opt_in and exit_mode == "sidecar" and desk_mode == "paper":
+        # Shared ledger lives OUTSIDE individual Brain runs, so a fresh run
+        # cannot accidentally reset the 5 USD UTC-month reservation allowance.
+        shared_budget = Path("/opt/superbot-v3-fable-ledger/fable_budget.db")
+        if os.environ.get("ANTHROPIC_API_KEY", "").strip():
+            try:
+                adviser = FableShadowAdviser(
+                    ledger=FableLedger(shared_budget, run_id),
+                    transport=claude_transport(), enabled=True)
+                primary = ShadowFableAnalyst(primary, adviser)
+            except Exception:
+                # No hard dependency on a second model, its DB or its key.
+                # Never substitute another model and never block DeepSeek.
+                print("BRAIN_FABLE_SHADOW_DISABLED=ledger_unavailable", flush=True)
+        else:
+            print("BRAIN_FABLE_SHADOW_DISABLED=anthropic_key_missing", flush=True)
+    analyst = MarketEntryAnalyst(primary)
     store = CandleStore(get_json, keep={s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP)
                                         for s in vp.timeframes})
     minutes = CandleStore(get_json, keep={"1m": (60_000, MINUTE_STORE_BARS)})
