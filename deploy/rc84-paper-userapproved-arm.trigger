@@ -1,0 +1,13 @@
+date=2026-11-11
+user_authorization=explicit_for_falco_toro_brain_paper_and_brain_simulated_mandate
+preflight=43050205825_PASS
+controller_sha=6aa8275496f43fcecc80ba1e0e9fc448d70379a8
+only_paper_trading=true
+initial_capital_falco=1000
+initial_capital_toro=1000
+initial_capital_brain=2000
+cooldown_minutes=20
+brain_fable_off=true
+no_live_exchange_orders=true
+no_mandate_or_risk_rewrite_other_than_approval=true
+automatic_fail_closed=true
