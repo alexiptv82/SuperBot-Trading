@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '728cedadd4179fa755864979528273f6cec117a0'
+          test "$(git rev-parse HEAD)" = 'aa52043c3ee0c6f46c5014861d2ed3bf64473390'
           test "$(git hash-object deploy/scripts/rc84-paper-telegram-alert-relay.py)" = 'e231a2445214864a2aaa21ca4b8581a6255c4eca'
           test "$(git hash-object deploy/rc84-paper-services/superbot-v3-paper-telegram-alert-relay.service)" = 'cc1071386255e7667d20bd59512e41b9a05f11d6'
           python3 -m unittest discover -s backend/tests -p test_rc84_paper_telegram_alert_relay.py -v
@@ -65,7 +65,7 @@ jobs:
               assert os.geteuid()==0
               assert code.is_file() and not code.is_symlink()
               assert unit_src.is_file() and not unit_src.is_symlink()
-              assert exec_safe('git','hash-object',str(code))=='0a35a7add5468b6abbcf6599e904b6e486c1520d'
+              assert exec_safe('git','hash-object',str(code))=='e231a2445214864a2aaa21ca4b8581a6255c4eca'
               assert exec_safe('git','hash-object',str(unit_src))=='cc1071386255e7667d20bd59512e41b9a05f11d6'
               assert not unit.exists() and not unit.is_symlink()
               assert not envfile.exists() and not envfile.is_symlink()
