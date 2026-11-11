@@ -204,8 +204,7 @@ def preflight() -> tuple[dict, tuple[str, ...]]:
     if not (WEB_DIR / "build/index.html").is_file() or not (
             WEB_DIR / "build.rc84-before-brain-ui/index.html").is_file():
         refuse("PUBLIC_STATIC_OR_EXISTING_ROLLBACK_MISSING")
-    if call("runuser", "-u", "www-data", "--", "test", "-r", str(WEB_DIR / "build/index.html"), fail_ok=True) == "impossible":
-        refuse("UNEXPECTED_NGINX_STATE")
+    call("runuser", "-u", "www-data", "--", "test", "-r", str(WEB_DIR / "build/index.html"))
     if not AUTH_DB.is_file() or AUTH_DB.is_symlink() or not BACKUP_DIR.is_dir():
         refuse("AUTH_BACKUP_ROOT_MISSING")
     if shutil.disk_usage("/opt").free < 1_500_000_000:
@@ -253,7 +252,10 @@ def start_bridge() -> None:
     call("systemctl", "daemon-reload", timeout=30)
     call("systemctl", "start", UNIT, timeout=30)
     for _ in range(10):
-        if call("systemctl", "is-active", "--quiet", UNIT, fail_ok=True) == "" and SOCKET.is_socket():
+        status = subprocess.run(
+            ["systemctl", "is-active", "--quiet", UNIT],
+            capture_output=True, check=False, timeout=8)
+        if status.returncode == 0 and SOCKET.is_socket():
             st = SOCKET.stat()
             if st.st_uid == 0 and stat.S_IMODE(st.st_mode) == 0o600:
                 break
@@ -271,10 +273,8 @@ def socket_ro_docker_test() -> None:
         "import json,socket;"
         "c=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);"
         "c.settimeout(3);c.connect('/run/superbot-paper-close/close.sock');"
-        "c.sendall(b'{\\\"wallet\\\":\\\"invalid\\\",\\\"symbol\\\":\\\"BTC\\\"}\\\\n');"
-        "reply=b'';"
-        "reply=c.recv(2048);"
-        "data=json.loads(reply);"
+        "c.sendall(json.dumps(dict(wallet='invalid',symbol='BTC')).encode()+bytes([10]));"
+        "data=json.loads(c.recv(2048));"
         "assert data.get('status')==423 and data.get('payload',{}).get('ok') is False;"
         "print('RC84_CLOSE_ONLY_SOCKET_RO_DOCKER_TEST=PASS')"
     )
@@ -455,8 +455,15 @@ def publish() -> None:
         if keyfile is not None:
             keyfile.unlink(missing_ok=True)
         if not success:
-            if renamed or created:rollback_web(renamed,created)
-            if installed:cleanup_bridge()
+            # A failed docker create may leave a named container behind before
+            # returning nonzero. Detect it, otherwise rollback could fail to
+            # rename the original public web into its rightful name.
+            if renamed:
+                created = created or inspect(LIVE) is not None
+            if renamed or created:
+                rollback_web(renamed,created)
+            if installed:
+                cleanup_bridge()
 
 
 def main() -> None:
