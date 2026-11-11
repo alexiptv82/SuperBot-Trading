@@ -22,6 +22,7 @@ import sqlite3
 import threading
 import time
 from typing import Callable, Mapping, Optional
+from backend.v3.features.indicators import Bar
 
 from backend.v3.brain_f2.analyst import Analyst
 from backend.v3.brain_f2.contracts import BrainDecision, DecisionKind, MarketContext, OpenProposal
@@ -259,6 +260,38 @@ class FableLedger:
             self._db.close()
 
 
+def compact_closed_candles(source: Optional[Callable], symbol: str) -> dict:
+    """At most three already-validated CLOSED candles per timeframe, no secrets.
+
+    Snapshot in the decision thread: CycleBars gets cleared next market cycle,
+    while the Fable HTTP review is asynchronous.
+    """
+    if not callable(source):
+        return {}
+    try:
+        snapshots = source(symbol)
+        if not isinstance(snapshots, Mapping):
+            return {}
+        result = {}
+        for timeframe in ("15m", "1h", "4h"):
+            values = snapshots.get(timeframe)
+            if not isinstance(values, (list, tuple)):
+                continue
+            sample = []
+            for bar in values[-3:]:
+                if type(bar) is not Bar:
+                    continue
+                sample.append({
+                    "t": bar.open_time_ms, "o": str(bar.open), "h": str(bar.high),
+                    "l": str(bar.low), "c": str(bar.close), "v": str(bar.volume),
+                })
+            if sample:
+                result[timeframe] = sample
+        return result
+    except Exception:
+        return {}
+
+
 class FableShadowAdviser:
     """Invoked only after a DeepSeek result; no authority over that result."""
 
@@ -266,7 +299,8 @@ class FableShadowAdviser:
                  enabled: bool = False):
         self.ledger, self.transport, self.enabled = ledger, transport, enabled
 
-    def observe(self, context: MarketContext, decision: BrainDecision) -> None:
+    def observe(self, context: MarketContext, decision: BrainDecision,
+                closed_candles: Optional[Mapping] = None) -> None:
         if self.enabled is not True:
             return
         if (not isinstance(context, MarketContext) or not isinstance(decision, BrainDecision)
@@ -285,6 +319,7 @@ class FableShadowAdviser:
             "entry": str(proposal.entry_price) if proposal else None,
             "stop": str(proposal.stop_price) if proposal else None,
             "market_ms": context.timestamp_ms,
+            "closed_candles": dict(closed_candles or {}),
         }
         # No private history, keys, free-form peer signals or raw model rationale.
         payload = {
@@ -332,10 +367,12 @@ class FableShadowAdviser:
 class ShadowFableAnalyst(Analyst):
     """Non-blocking observer: never delays or changes DeepSeek's decision."""
 
-    def __init__(self, primary: Analyst, shadow: FableShadowAdviser):
+    def __init__(self, primary: Analyst, shadow: FableShadowAdviser,
+                 bars_source: Optional[Callable] = None):
         if not isinstance(primary, Analyst) or not isinstance(shadow, FableShadowAdviser):
             raise ValueError("invalid_shadow_analyst")
         self.primary, self.shadow = primary, shadow
+        self.bars_source = bars_source
         # At most ONE pending Fable consultation, always outside the real
         # execution decision path. An HTTP timeout must never delay an OPEN
         # nor the independent exit sidecar.
@@ -346,9 +383,11 @@ class ShadowFableAnalyst(Analyst):
         if not self.shadow.enabled or not self._pending.acquire(blocking=False):
             return decision
 
+        candle_view = compact_closed_candles(self.bars_source, context.symbol)
+
         def _consult() -> None:
             try:
-                self.shadow.observe(context, decision)
+                self.shadow.observe(context, decision, closed_candles=candle_view)
             except Exception:
                 # Never log provider bodies, prompts, or key values.
                 log.warning("fable_shadow_unavailable")
