@@ -14,7 +14,7 @@ Environment=DESK_MODE=paper
 Environment=PYTHONPATH=/opt/superbot-v3-rc84-stage
 Environment=PYTHONDONTWRITEBYTECODE=1
 EnvironmentFile=/etc/superbot-v3-paper/brain-ai.env
-ExecStartPre=/usr/bin/test -f /opt/superbot-v3-paper-runs/brain-v3-paper20261111/pause.flag
+ExecStartPre=/usr/bin/test -f /opt/superbot-v3-paper-runs/brain-v3-paper20261111/PREPARED_PAUSED_ONLY.json
 ExecStart=/opt/superbot-v3-rc70-stage/.venv/bin/python3 -m backend.v3.runner.wiring --data-dir /opt/superbot-v3-paper-runs/brain-v3-paper20261111 --run-id brain-v3-paper20261111 --config /opt/superbot-v3-paper-runs/brain-v3-paper20261111/runner_config.json --exit-mode sidecar
 Restart=on-failure
 RestartSec=15
