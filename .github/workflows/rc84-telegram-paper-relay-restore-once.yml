@@ -15,12 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: '02ecab7453e056e79f816468c0f8b4473f3664af'
+          ref: '728cedadd4179fa755864979528273f6cec117a0'
       - name: Offline tests and immutable source checks - zero Telegram messages
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '02ecab7453e056e79f816468c0f8b4473f3664af'
+          test "$(git rev-parse HEAD)" = '728cedadd4179fa755864979528273f6cec117a0'
           test "$(git hash-object deploy/scripts/rc84-paper-telegram-alert-relay.py)" = '0a35a7add5468b6abbcf6599e904b6e486c1520d'
           test "$(git hash-object deploy/rc84-paper-services/superbot-v3-paper-telegram-alert-relay.service)" = 'cc1071386255e7667d20bd59512e41b9a05f11d6'
           python3 -m unittest discover -s backend/tests -p test_rc84_paper_telegram_alert_relay.py -v
