@@ -1,0 +1,7 @@
+date=2026-11-11
+release=close_only_paper_bridge
+revision=6a0a9e86c3df6422711958cd297ca7f5ef55bd45
+preflight_only=true
+no_vps_mutation=true
+no_bot_start=true
+no_trading=true
