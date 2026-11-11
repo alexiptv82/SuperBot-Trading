@@ -86,11 +86,12 @@ class Rec:
         self.events.append(ev)
 
 
-def run_step(acc, state, cmap, prices, now, portfolio=None, halt="", drain=False, rec=None):
+def run_step(acc, state, cmap, prices, now, portfolio=None, halt="", drain=False, rec=None, allow_new_entries=True):
     rec = rec or Rec()
     out = L.step(acc, state, cmap, prices, now, portfolio or port(), halt=halt, drain=drain,
                  record_close=rec.record_close, notify_open=rec.notify_open, notify_close=rec.notify_close,
-                 log_event=rec.log_event, echo=lambda s: None)
+                 log_event=rec.log_event, echo=lambda s: None,
+                 allow_new_entries=allow_new_entries)
     return out, rec
 
 
@@ -467,6 +468,22 @@ def test_step_in_pause_or_halt_opens_nothing_but_still_closes_on_time():
         assert out["closed"] == ["SOL"] and not acc.positions and len(rec.closed) == 1
 
 
+def test_rc84_new_s25_entries_disabled_but_existing_time_exit_preserved():
+    acc, st = PaperAccount(Limits()), {}
+    px = SIG_TRIGGER + 0.05
+    out, rec = run_step(acc, st, world(), {"ETH": px}, NOW_STEP,
+                        portfolio=port("hawk"), allow_new_entries=False)
+    assert out["opened"] == [] and not acc.positions and not rec.opened
+    assert "last_open_ms" not in st
+    acc.open("SOL", 1, 60.0, 15, 100.0, 98.0, 106.0,
+             NOW_STEP - L.MAX_HOLD_MS, {}, source=L.SOURCE)
+    out, rec = run_step(acc, st, world(), {"SOL": 100.5, "ETH": px},
+                        NOW_STEP, portfolio=port("hawk"),
+                        allow_new_entries=False)
+    assert out["closed"] == ["SOL"] and out["opened"] == []
+    assert not acc.positions and len(rec.closed) == 1
+
+
 def test_step_closes_on_time_after_exactly_twelve_hours_not_before():
     acc = PaperAccount(Limits())
     acc.open("SOL", 1, 60.0, 15, 100.0, 98.0, 106.0, 5_000, {}, source=L.SOURCE)
@@ -659,8 +676,11 @@ def _install(cli, monkeypatch, a15):
                         lambda sym, bar="15m", limit=1000: a15[-limit:].tolist() if sym == "ETH" else [])
 
 
-def test_full_cycle_with_switch_on_opens_s25_long(sandbox, monkeypatch):
+def test_full_cycle_toro_only_s25_entries(sandbox, monkeypatch):
     cli, d = sandbox
+    # S25's stand-alone module remains generic, but the wired PAPER runner
+    # owns new S25 medium-term LONG entries exclusively in Toro.
+    monkeypatch.setattr(cli, "PORTFOLIO", cli._make_bull_config())
     a15, sig = _cycle_candles()
     a15b, now, px = _with_new_hour(a15, sig)
     _install(cli, monkeypatch, a15b)
@@ -679,6 +699,23 @@ def test_full_cycle_with_switch_on_opens_s25_long(sandbox, monkeypatch):
     # secondo giro nello stesso quarto d'ora: nessun secondo ingresso (la posizione esiste ed e' in cooldown)
     cli.run_cycle(state, now + 1_000)
     assert len(cli.make_account(state).positions) == 1 and not cli.make_account(state).closed
+
+
+def test_full_cycle_falco_keeps_original_strategy_not_shared_s25(sandbox, monkeypatch):
+    cli, d = sandbox
+    a15, sig = _cycle_candles()
+    a15b, now, _ = _with_new_hour(a15, sig)
+    _install(cli, monkeypatch, a15b)
+    monkeypatch.setenv("DESK_LONG_S25", "1")
+    state = {}
+    cli.run_cycle(state, now)
+    assert not cli.make_account(state).positions
+    assert not state.get("last_open_ms")
+    # The S25 portfolio split changes NEW entries only and does not
+    # disable classic LONG/SHORT actions from Claude or the rules fallback.
+    source = open(os.path.join(BACKEND, "desk", "cli.py"), encoding="utf-8").read()
+    assert 'allow_new_entries=(PORTFOLIO.name == "bull")' in source
+
 
 
 def test_full_cycle_with_switch_off_never_opens_and_never_loads_the_module(sandbox, monkeypatch):
