@@ -1,0 +1,64 @@
+name: 'SuperBot V3 - ONE SHOT PAPER paused source and three runs'
+
+# Explicit trigger only. No code paths, no deploy, no stop/restart, no API orders.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-paper-stage.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-v3-paused-only-stage
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact reviewed staging scripts (no main-branch execution)
+        uses: actions/checkout@v4
+        with:
+          ref: '136373351a75238f101df20d46c2d257c99de822'
+      - name: Verify exact script blobs and connect pinned Singapore host
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '136373351a75238f101df20d46c2d257c99de822'
+          STAGE_SCRIPT=deploy/scripts/v3-rc84-stage-source-only.sh
+          PREP_SCRIPT=deploy/scripts/v3-rc84-prepare-three-paper-paused.sh
+          test "$(git hash-object "$STAGE_SCRIPT")" = '6b638f601ade6e52d4760cba4cc80e9fc7a50cc9'
+          test "$(git hash-object "$PREP_SCRIPT")" = '2deda861831701a228adb9a00d0172b4fe5aaf61'
+          bash -n "$STAGE_SCRIPT"
+          bash -n "$PREP_SCRIPT"
+          test -n "${SG_SSH_KEY:-}" || { echo RC84_STAGE_SSH_MISSING; exit 2; }
+          install -d -m 0700 "$RUNNER_TEMP/superbot-rc84-ssh"
+          KEY="$RUNNER_TEMP/superbot-rc84-ssh/id_sg"
+          HOSTS="$RUNNER_TEMP/superbot-rc84-ssh/known_hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          cat > "$HOSTS" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          remote() {
+            local script="$1" action="$2"
+            ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+              -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
+              root@51.79.205.82 bash -s -- "$action" < "$script"
+          }
+          echo 'STAGE_READINESS_DRYRUN_BEGIN'
+          remote "$STAGE_SCRIPT" --dry-run
+          echo 'STAGE_PINNED_CODE_BEGIN'
+          remote "$STAGE_SCRIPT" --stage-source
+          echo 'THREE_PAPER_RUNS_DRYRUN_BEGIN'
+          remote "$PREP_SCRIPT" --dry-run
+          echo 'THREE_PAPER_RUNS_PREPARE_PAUSED_BEGIN'
+          remote "$PREP_SCRIPT" --prepare-paused-paper
+          echo 'RC84_STAGE_WORKFLOW_COMPLETED_PAUSED_ONLY=True'
+          echo 'RC84_NO_PRODUCTION_DEPLOY_NO_START=True'
