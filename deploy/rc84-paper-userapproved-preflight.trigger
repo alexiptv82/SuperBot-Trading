@@ -5,3 +5,7 @@ scope=read_only_safety_preflight_and_root_private_controller_copy
 no_mandate_change_yet=true
 no_unpause_yet=true
 fable_off=true
+
+retry=2
+reason=verify_exact_16_hex_Brain_policy_hash_not_64
+new_controller_sha=6aa8275496f43fcecc80ba1e0e9fc448d70379a8
