@@ -1,0 +1,44 @@
+name: 'SuperBot V3 - initialize ONLY new paused PAPER classic accounts'
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-rc84-accounts.trigger'
+permissions:
+  contents: read
+jobs:
+  initialize:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '0a6e2c0cc72295a3859dd77a16ed1429af816ce7'
+      - name: Verify canonical 1000 USDT PAPER initial state and Brain sidecar in validate-only
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '0a6e2c0cc72295a3859dd77a16ed1429af816ce7'
+          INIT=deploy/scripts/v3-rc84-init-paused-classic-accounts.sh
+          test "$(git hash-object "$INIT")" = 'e9dffa2098aa393d49efc8ed0e7dcc395b44b6d2'
+          bash -n "$INIT"
+          test -n "${SG_SSH_KEY:-}"
+          install -d -m 0700 "$RUNNER_TEMP/rc84-accounts-ssh"
+          KEY="$RUNNER_TEMP/rc84-accounts-ssh/id_sg"
+          HOSTS="$RUNNER_TEMP/rc84-accounts-ssh/known_hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          cat > "$HOSTS" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPTS=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          echo RC84_ACCOUNT_DRYRUN_BEGIN
+          ssh -T "${OPTS[@]}" root@51.79.205.82 bash -s -- --dry-run < "$INIT"
+          echo RC84_ACCOUNT_INITIALIZE_PAUSED_BEGIN
+          ssh -T "${OPTS[@]}" root@51.79.205.82 bash -s -- --initialize-paused-accounts < "$INIT"
+          echo RC84_ACCOUNTS_JOB_COMPLETED_PAUSED_ONLY=True
