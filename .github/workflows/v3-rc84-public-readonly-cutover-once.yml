@@ -17,18 +17,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: '3eb600e82e4c835653cde5032e58faee545ba73d'
-      - name: Explicitly guarded RC84 PAPER read-only web cutover
+          ref: '894bdac51e070e4ebcc3d3230ba25f8341aafb1d'
+      - name: Recover only abandoned RC84 temporary frontend then guarded cutover
         shell: bash
         env:
           SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '3eb600e82e4c835653cde5032e58faee545ba73d'
+          test "$(git rev-parse HEAD)" = '894bdac51e070e4ebcc3d3230ba25f8341aafb1d'
           A=deploy/scripts/v3-rc84-public-paper-readonly-cutover.py
           B=deploy/scripts/v3-rc84-public-readonly-cutover-preflight.py
-          test "$(git hash-object "$A")" = '42ec4b07a5c9fe4a87b64368e63aed166d3df611'
+          test "$(git hash-object "$A")" = 'af249c44d2630db1d1d7de1ed956f0b259fb7d98'
           test "$(git hash-object "$B")" = 'd0b025c8ef033a0b6174cf5ca846298c255979be'
+          python3 - "$A" "$B" <<'PY'
+          import ast, pathlib, sys
+          for src in sys.argv[1:]:
+              ast.parse(pathlib.Path(src).read_text(), filename=src)
+          print("RC84_CUTOVER_FIXED_SCRIPTS_SYNTAX_PASS=True")
+          PY
           test -n "${SG_SSH_KEY:-}" || exit 2
           install -d -m 700 "$RUNNER_TEMP/sg"
           KEY="$RUNNER_TEMP/sg/id"
@@ -38,8 +44,11 @@ jobs:
           printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
           chmod 600 "$HOSTS"
           trap 'rm -f "$KEY"' EXIT
-          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+          OPT=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
-            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
-            root@51.79.205.82 'set -eu; d=/opt/superbot-v3-rc84-release-scripts; test -f "$d/v3-rc84-public-paper-readonly-cutover.py"; test -f "$d/v3-rc84-public-readonly-cutover-preflight.py"; cd "$d"; test "$(git hash-object v3-rc84-public-paper-readonly-cutover.py)" = 42ec4b07a5c9fe4a87b64368e63aed166d3df611; test "$(git hash-object v3-rc84-public-readonly-cutover-preflight.py)" = d0b025c8ef033a0b6174cf5ca846298c255979be; test ! -e /opt/superbot-v3-rc84-ui-preview/rc84-public-cutover.json; PYTHONDONTWRITEBYTECODE=1 python3 -I "$d/v3-rc84-public-paper-readonly-cutover.py" --preflight-only; PYTHONDONTWRITEBYTECODE=1 python3 -I "$d/v3-rc84-public-paper-readonly-cutover.py" --publish-readonly'
-          echo RC84_PUBLIC_WEB_CUTOVER_ACTION_FINISHED=True
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          NEW_DIR=/opt/superbot-v3-rc84-release-scripts-v2
+          ssh "${OPT[@]}" root@51.79.205.82 'set -eu; d=/opt/superbot-v3-rc84-release-scripts-v2; test ! -e "$d"; install -d -m 0700 "$d"'
+          scp "${OPT[@]}" "$A" "$B" root@51.79.205.82:"$NEW_DIR"/
+          ssh -T "${OPT[@]}" root@51.79.205.82 'set -eu; d=/opt/superbot-v3-rc84-release-scripts-v2; cd "$d"; chmod 0600 ./*.py; test "$(git hash-object v3-rc84-public-paper-readonly-cutover.py)" = af249c44d2630db1d1d7de1ed956f0b259fb7d98; test "$(git hash-object v3-rc84-public-readonly-cutover-preflight.py)" = d0b025c8ef033a0b6174cf5ca846298c255979be; test ! -e /opt/superbot-v3-rc84-ui-preview/rc84-public-cutover.json; PYTHONDONTWRITEBYTECODE=1 python3 -I "$d/v3-rc84-public-paper-readonly-cutover.py" --recover-aborted-candidate; PYTHONDONTWRITEBYTECODE=1 python3 -I "$d/v3-rc84-public-paper-readonly-cutover.py" --preflight-only; PYTHONDONTWRITEBYTECODE=1 python3 -I "$d/v3-rc84-public-paper-readonly-cutover.py" --publish-readonly'
+          echo RC84_PUBLIC_WEB_FIXED_CUTOVER_ACTION_FINISHED=True
