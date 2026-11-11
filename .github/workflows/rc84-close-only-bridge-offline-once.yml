@@ -42,6 +42,7 @@ jobs:
         shell: bash
         env:
           PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONPATH: '.:backend'
           DESK_MODE: paper
           TRADING_MODE: paper
           V3_CUTOVER_READONLY: '1'
