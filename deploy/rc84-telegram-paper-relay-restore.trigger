@@ -17,3 +17,7 @@ retry=3
 reason=fix_CAP_SYS_PTRACE_requirement_with_readonly_unit_envfile_identity_check
 code_sha=aa52043c3ee0c6f46c5014861d2ed3bf64473390
 sandbox_preflight_required=true
+
+retry=4
+reason=workflow_commit_pin_mismatch_fixed_code_unchanged
+workflow_sha=aa52043c3ee0c6f46c5014861d2ed3bf64473390
