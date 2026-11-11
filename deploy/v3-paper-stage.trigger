@@ -1,0 +1,10 @@
+approved=paused-source-and-three-paper-runs-only
+date=2026-11-11
+source_sha=0e29a73a36f668643da4088178bacb8616a45ac0
+staging_script_commit=136373351a75238f101df20d46c2d257c99de822
+no-deploy=yes
+no-container-start=yes
+no-mandate-approval=yes
+no-remove-pause=yes
+no-live-orders=yes
+scope=new-directories-only
