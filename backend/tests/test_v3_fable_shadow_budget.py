@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal
 import json
+import threading
+import time
 
 from backend.v3.brain_f2.analyst import Analyst
 from backend.v3.brain_f2.contracts import BrainDecision, DecisionKind, MarketContext, OpenProposal
@@ -48,6 +50,12 @@ def successful(_payload) -> TransportResponse:
     return TransportResponse(status_code=200, body=body)
 
 
+def _drain(shadow: ShadowFableAnalyst) -> None:
+    """Wait for a mocked shadow worker, never for a real provider."""
+    assert shadow._pending.acquire(timeout=3)
+    shadow._pending.release()
+
+
 def ledger(tmp_path, *, run="brain-001", clock=None) -> FableLedger:
     return FableLedger(
         tmp_path / "shared" / "fable_budget.db", run,
@@ -87,6 +95,7 @@ def test_shadow_returns_exact_same_deepseek_object_and_only_saves_advice(tmp_pat
     shadow = ShadowFableAnalyst(DeepSeek(),
                                FableShadowAdviser(ledger=l, transport=fake, enabled=True))
     result = shadow.analyze(market(clock_at(11)), [])
+    _drain(shadow)
     assert result is original  # ZERO influence on execution/risk gate/decision
     assert len(calls) == 1
     assert calls[0]["model"] == MODEL
@@ -165,6 +174,7 @@ def test_provider_error_consumes_reserved_allowance_and_never_changes_decision(t
     wrapped=ShadowFableAnalyst(
         Primary(),FableShadowAdviser(ledger=l,transport=fail,enabled=True))
     assert wrapped.analyze(market(clock_at(11)),[]) is d
+    _drain(wrapped)
     assert l.monthly_reserved_micro()>0
     assert l._db.execute("SELECT status FROM fable_results").fetchone()[0]=="provider_error"
     l.close()
@@ -192,4 +202,33 @@ def test_no_trade_does_not_spend_without_a_true_regime_transition(tmp_path):
     assert calls==[]
     adviser.observe(market(timestamp+2,regime="VOLATILE"),no_trade)
     assert calls==[1]
+    l.close()
+
+def test_slow_fable_never_blocks_deepseek_and_skips_concurrent_calls(tmp_path):
+    l = ledger(tmp_path)
+    ready, release = threading.Event(), threading.Event()
+    calls = []
+    d = decision(clock_at(11))
+    class Primary(Analyst):
+        def analyze(self, context, positions):
+            return d
+    def deliberately_slow(payload):
+        calls.append(1)
+        ready.set()
+        assert release.wait(3)
+        return successful(payload)
+    wrapper = ShadowFableAnalyst(
+        Primary(), FableShadowAdviser(ledger=l, transport=deliberately_slow, enabled=True))
+    started = time.monotonic()
+    assert wrapper.analyze(market(clock_at(11)), []) is d
+    assert time.monotonic() - started < 0.2
+    assert ready.wait(2)
+    # Previous consultation is still running. Brain must continue immediately.
+    started = time.monotonic()
+    assert wrapper.analyze(market(clock_at(11)+1), []) is d
+    assert time.monotonic() - started < 0.2
+    assert calls == [1]
+    release.set()
+    _drain(wrapper)
+    assert l.monthly_reserved_micro() > 0
     l.close()
