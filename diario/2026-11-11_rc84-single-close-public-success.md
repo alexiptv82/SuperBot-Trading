@@ -1,0 +1,35 @@
+# 11 novembre 2026 — RC84 «Chiudi ora» singolo PAPER PUBBLICATO e verificato su Falco/Toro/Brain
+
+**STATO REALE:** la dashboard SuperBot pubblica RC84 ora ha i POST di chiusura manuale **singola posizione PAPER** abilitati tramite un canale dedicato, senza sbloccare alcun motore di trading. Non confondere questo con una prova di chiusura realizzata: **non ci sono posizioni aperte e nessun ordine/chiusura è stato eseguito**.
+
+## Rilascio effettivo, con prove GHA
+
+- [Rilascio pubblico definitivo #43034359679](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/43034359679) **SUCCESS**, ~14:01 UTC / 15:01 Europe/Rome 11/11/2026.
+- Log del rilascio: `RC84_CLOSE_ONLY_ROLLBACK_PREFLIGHT=PASS`, `RC84_CLOSE_ONLY_LOGIN_SQLITE_BACKUP=PASS`, `RC84_CLOSE_ONLY_PINNED_WEB_IMAGE_BUILD=PASS`, `RC84_CLOSE_ONLY_HOST_BRIDGE_RUNNING=PASS`, `RC84_CLOSE_ONLY_SOCKET_RO_DOCKER_TEST=PASS`, `RC84_CLOSE_ONLY_PUBLIC_SINGLE_CLOSE_ENABLED=PASS`, `RC84_CLOSE_ONLY_WEB_PAPER_AND_RUN_MOUNTS_RO=PASS`, `RC84_CLOSE_ONLY_RESET_BULK_AND_START_BLOCKED=PASS`, `RC84_CLOSE_ONLY_AUTH_LOGIN_PRESERVED=PASS`, `RC84_CLOSE_ONLY_FALCO_TORO_BRAIN_PAUSED=PASS`, `RC84_CLOSE_ONLY_PREVIOUS_PUBLIC_RC84_RETAINED_FOR_ROLLBACK=True`, `RC84_CLOSE_ONLY_NO_AI_OR_EXCHANGE_ORDERS=True`.
+- [Controllo post-release #43034712809](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/43034712809) **SUCCESS**, ~14:03 UTC: web+bridge entrambi RUNNING, service bridge systemd ACTIVE, bridge container `NetworkMode=none`, web ancora con 3 mount di run `:ro` e solo socket `:ro`. POST individuali senza sessione restituiscono HTTP 401, mentre RESET/RESUME/CLOSE_ALL ancora HTTP 423.
+- **Test negativo reale** post-release: per Falco, Toro, Brain sono stati inviati tre identificatori di posizioni sicuramente inesistenti all'esatto socket; log `RC84_CLOSE_NEGATIVE_FALCO_STATUS=404`, `...TORO_STATUS=404`, `...BRAIN_STATUS=404`. Non sono apparsi `close_position.flag` e `close_request.json`; `RC84_CLOSE_POSTRELEASE_ZERO_CLOSE_FLAGS=PASS`, `RC84_CLOSE_POSTRELEASE_BRIDGE_ALL_THREE_READY=PASS`.
+- [Test locali CI #43031597384](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/43031597384) **9/9 PASS**, incluse API whitelist, no LIVE, no bulk/start/reset, servizio non raggiungibile, posizione inesistente e vera comunicazione mock UDS, nessuna chiusura reale. Primo workflow #43031433704 fallito **solo per PYTHONPATH del test**, subito corretto.
+- [Stage VPS #43032283390](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/43032283390) PASS, codice pinned `d6ef68730ba2017e1cb37daca1c0447e069a5d7b` in `/opt/superbot-v3-rc84-close-bridge-stage`, PID dei quattro servizi bot invariati. [Read-only preflight pubblico #43033247841](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/43033247841) PASS.
+
+## Architettura operativa esatta
+
+- **Web pubblica**: contenitore Docker `superbot`, nuova immagine `superbot:rc84-paper-single-close-20261111`, frontend statico React **non modificato**, login DB conservato e con backup SQLite verificato; flags PAPER `DESK_MODE=paper`, `TRADING_MODE=paper`, `V3_CUTOVER_READONLY=1`, `V3_ALLOW_CLASSIC_SINGLE_CLOSE=1`, `V3_ALLOW_BRAIN_SINGLE_CLOSE=1`, `V3_CLOSE_BRIDGE_ONLY=1`, `V3_CLOSE_BRIDGE_SOCKET=/run/superbot-paper-close/close.sock`.
+- **Tre directory dei nuovi portafogli RESTANO montate SOLO IN LETTURA nel container web**. Non è stato concesso accesso web in scrittura ai journal, capitali, reset o `mandate.json`. Solo `/run/superbot-paper-close` è montato `:ro` sul web e trasporta i comandi autenticati.
+- **Servizio di chiusura separato**: `superbot-v3-paper-single-close-bridge.service`, supervisiona contenitore `superbot-rc84-paper-close-bridge` con `--network none`, filesystem immagine read-only, user root, `--cap-drop ALL`, `NoNewPrivileges`. Vede i tre nuovi dati PAPER montati `:rw` **soltanto dentro questo container dedicato**, con un socket root-only `0600`; riceve solo `wallet=... + symbol/position_id`. Non ha chiavi exchange/AI, rete, funzioni start/reset/chiudi-tutto, né scrive ordini direttamente al mercato.
+- Per Falco/Toro sfrutta il protocollo atomico già funzionante `desk_view.command_close_position` e la guardia dell'heartbeat/exit-only; per Brain usa `v3_api._close_request` con identificazione esatta run e verifica heartbeat/lease dell'**exit sidecar**. L'esito effettivo di una chiusura PAPER, quando verrà eseguita, andrà verificato sul journal, P&L e learning.
+- La middleware continua a bloccare HTTP mutanti salvo le **tre** rotte di singola chiusura: `/api/desk/close-position`, `/api/desk/bull/close-position`, `/api/v3/brain/close` (quest'ultima rifiuta `all:true`). Il frontend già contiene conferma, tasti, messaggi e polling. I pulsanti sono visibili **solo per posizioni realmente aperte con servizio uscita sano**.
+- **Rollback preservato**: web precedente RC84 fermo come `superbot-rc84-before-singleclose`, restart=no. Vecchia RC84 e RC73 di ulteriori rollback non modificate, come pure i vecchi diari e storici PAPER.
+
+## Anomalia emersa e corretta senza interruzione pubblica
+
+- Primo rilascio [#43033446770](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/43033446770) FAILED **prima dello swap della dashboard**: il Python host dei runner non aveva `fastapi`. Backup DB già PASS, ma l'unit bridge non partiva; script ha effettuato cleanup. Diagnostica read-only [#43033670310](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/43033670310) ha confermato `ModuleNotFoundError: No module named fastapi`, web `superbot:brain-ui-20261111` sempre presente, bridge unit/socket non presenti.
+- Corretta la soluzione usando il backend Docker già completo di FastAPI, in un nuovo container `--network none`. Non è stato installato alcun pacchetto nel Python dei trader. Secondo rilascio e post-check riusciti.
+
+## Branch/PR e vincoli
+
+- [PR **Draft #83**](https://github.com/alexiptv82/SuperBot-Trading/pull/83), branch `work/rc84-paper-close-only-bridge-20261111`, HEAD `e5210d75c3f0eee1b80c295ca38c19d8b6c1ef6d` alla creazione. **NON mergiata**. Sorgente dell'immagine web/bridge in esecuzione pinned `d6ef68730ba2017e1cb37daca1c0447e069a5d7b`; script rollout successivo firmato da commit `e5210d75...`.
+- **Falco 1.000 USDT, Toro 1.000, Brain 2.000: tutti PAPER, tutti PAUSED**, mandato Brain non approvato. Claude vecchie chiavi API invalid → **nuova chiave già inserita e validata dall'utente via Termius** con `RC84_CLAUDE_REKEY_COMPLETED=PASS` su Falco/Toro; DeepSeek saldo disponibile. Fable 5.2 PR #82 resta **staged OFF**, zero calls/consumi.
+- NON sono stati aperti/chiusi trade, NON è stato fatto un reset, non è stato modificato l'exit owner, NO LIVE.
+- **Prossimo obiettivo**: verificare la visualizzazione app dall'utente e, con **autorizzazione separata**, avviare i tre PAPER con cooldown 15–30 min; poi prima chiusura manuale di una posizione PAPER realmente aperta, con prova su PnL, storico e learning. NO avvio senza consenso.
+
+**Questo checkpoint distingue la verifica negativa riuscita da un test di chiusura reale non ancora eseguito.**
