@@ -1,0 +1,7 @@
+date=2026-11-11
+consent=user_explicit_all_three_PAPER_and_Brain_mandate
+controller_sha=dbf6c92fe3fa72d5134f0bd2b5a01280514995fc
+scope=read_only_safety_preflight_and_root_private_controller_copy
+no_mandate_change_yet=true
+no_unpause_yet=true
+fable_off=true
