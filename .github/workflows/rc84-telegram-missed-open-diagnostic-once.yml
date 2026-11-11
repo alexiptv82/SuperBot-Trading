@@ -1,0 +1,87 @@
+name: SuperBot RC84 - Telegram missing four PAPER open alerts READ ONLY
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/rc84-telegram-missed-open-diagnostic.trigger'
+permissions: {contents: read}
+concurrency:
+  group: superbot-telegram-missed-open-diagnostic-20261111
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect only redacted credential PRESENCE and current PAPER position counts
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"
+          HOSTS="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
+            root@51.79.205.82 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          import json,os,pathlib,subprocess,time,urllib.request,urllib.error
+          ROOT=pathlib.Path('/opt/superbot-v3-paper-runs')
+          def cmd(*args):
+              x=subprocess.run(args,capture_output=True,text=True,timeout=12)
+              return x.stdout.strip() if x.returncode==0 else ''
+          def parse(contents):
+              # do not print credentials EVER: only compare presence booleans.
+              pairs={}
+              for s in contents.split(b'\0') if b'\0' in contents else contents.splitlines():
+                  if b'=' in s:
+                      k,v=s.split(b'=',1)
+                      pairs[k.decode('ascii','ignore')]=v.decode('utf-8','ignore').strip()
+              return pairs
+          def presence(prefix,data):
+              print(prefix+'_ANTHROPIC_PRESENT='+str(bool(data.get('ANTHROPIC_API_KEY'))))
+              print(prefix+'_DEEPSEEK_PRESENT='+str(bool(data.get('DEEPSEEK_API_KEY'))))
+              print(prefix+'_TELEGRAM_BOT_TOKEN_PRESENT='+str(bool(data.get('TELEGRAM_BOT_TOKEN'))))
+              print(prefix+'_TELEGRAM_CHAT_ID_PRESENT='+str(bool(data.get('TELEGRAM_CHAT_ID'))))
+          for label,unit,folder,envfile in [
+              ('FALCO','superbot-v3-paper-falco.service',ROOT/'classic-hawk-paper20261111','/etc/superbot-v3-paper/falco-ai.env'),
+              ('TORO','superbot-v3-paper-toro.service',ROOT/'classic-bull-paper20261111','/etc/superbot-v3-paper/toro-ai.env'),
+              ('BRAIN','superbot-v3-paper-brain-runner.service',ROOT/'brain-v3-paper20261111','/etc/superbot-v3-paper/brain-ai.env'),
+          ]:
+              pid=cmd('systemctl','show','-p','MainPID','--value',unit)
+              assert pid.isdecimal() and int(pid)>1, 'runner_not_alive'
+              proc=parse(pathlib.Path('/proc/'+pid+'/environ').read_bytes())
+              presence(label+'_ACTIVE_PROCESS',proc)
+              f=pathlib.Path(envfile)
+              if f.is_file() and not f.is_symlink():
+                  presence(label+'_ENVFILE',parse(f.read_bytes()))
+              else: print(label+'_ENVFILE_MISSING=True')
+              if label!='BRAIN':
+                  state=json.loads((folder/'state_v2.json').read_text())
+                  pos=(state.get('main') or {}).get('positions') or {}
+                  print(label+'_OPEN_PAPER_POSITIONS='+str(len(pos)))
+              print(label+'_PAUSE_FLAG_PRESENT='+str((folder/'pause.flag').exists()))
+          inspect=cmd('docker','inspect','superbot')
+          web=json.loads(inspect)[0] if inspect else {}
+          webenv=parse('\0'.join(web.get('Config',{}).get('Env',[])).encode())
+          presence('CURRENT_PUBLIC_WEB_ENV',webenv)
+          old=cmd('docker','inspect','superbot-desk-hawk')
+          if old:
+              oldenv=parse('\0'.join(json.loads(old)[0].get('Config',{}).get('Env',[])).encode())
+              presence('LEGACY_HAWK_CONTAINER_ENV',oldenv)
+          for name,path in (
+              ('WEB_ENVFILE',pathlib.Path('/opt/superbot-web/backend/.env')),
+              ('LEGACY_ROOT_ENV',pathlib.Path('/opt/superbot/.env')),
+              ('LEGACY_BACKEND_ENV',pathlib.Path('/opt/superbot/backend/.env')),
+          ):
+              if path.is_file() and not path.is_symlink():
+                  presence(name,parse(path.read_bytes()))
+              else:print(name+'_MISSING=True')
+          print('RC84_TELEGRAM_DIAG_NO_MUTATION_OR_MESSAGES=PASS')
+          PY
