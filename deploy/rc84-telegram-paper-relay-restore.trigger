@@ -8,3 +8,7 @@ legacy_bot_credentials_transferred_only_on_root_vps=true
 never_log_credentials=true
 deliver_existing_opens_as_recovered_alerts=true
 telegram_paid_model_calls=false
+
+retry=2
+reason=offline_test_HTML_P_amp_L_literal_only
+pinned_sha=728cedadd4179fa755864979528273f6cec117a0
