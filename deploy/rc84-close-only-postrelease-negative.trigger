@@ -1,0 +1,6 @@
+date=2026-11-11
+scope=live_paper_close_bridge_post_release_negative_test
+run=43034359679
+no_position_actual_close=true
+no_unpause=true
+no_AI_requests=true
