@@ -1,0 +1,7 @@
+approved=stage-and-test-rc84-public-release-scripts-only
+stage_only=yes
+source_commit=3eb600e82e4c835653cde5032e58faee545ba73d
+no_public_deploy=yes
+no_web_restart=yes
+no_trading_unpause=yes
+no_credentials_transfer=yes
