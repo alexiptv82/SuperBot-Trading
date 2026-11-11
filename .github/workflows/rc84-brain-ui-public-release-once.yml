@@ -1,0 +1,101 @@
+name: SuperBot RC84 - Brain Performance+Settings PUBLIC PAPER read-only patch
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/rc84-brain-ui-public-release.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  patch:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 23
+    steps:
+      - name: Checkout exact reviewed Brain UI revision
+        uses: actions/checkout@v4
+        with:
+          ref: 'd0c832620e9b237ce97305029bab5150d3f77489'
+      - name: Verify code pin and Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 'd0c832620e9b237ce97305029bab5150d3f77489'
+          python3 - <<'PY'
+          import ast, pathlib
+          for file in ('backend/v3_api.py',
+                       'backend/tests/test_v3_brain_settings_config_api.py',
+                       'deploy/scripts/rc84-brain-ui-public-paper-readonly-release.py'):
+              ast.parse(pathlib.Path(file).read_text(encoding='utf-8'),filename=file)
+          print('RC84_BRAIN_UI_RELEASE_PYTHON_AST=PASS')
+          PY
+      - name: Focused Brain V3 backend API tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q pytest fastapi==0.110.0 httpx==0.27.0
+          PYTHONPATH=backend python3 -m pytest -q \
+            backend/tests/test_v3_brain_settings_config_api.py \
+            backend/tests/test_v3_brain_trade_pagination.py
+      - name: Prepare React build dependencies
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install frontend (no audit, no postinstall)
+        working-directory: frontend
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Brain V3 frontend regression tests
+        working-directory: frontend
+        env:
+          CI: 'true'
+        run: npx react-scripts test --watchAll=false --runInBand --testPathPattern='brainPerformance.test.js|brainWallet.test.js'
+      - name: Build new frontend in same pinned revision
+        working-directory: frontend
+        env:
+          CI: 'false'
+          REACT_APP_BACKEND_URL: ''
+          GENERATE_SOURCEMAP: 'false'
+        run: npm run build
+      - name: Check build and upload to Singapore; publish with RC84 fallback
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 'd0c832620e9b237ce97305029bab5150d3f77489'
+          test -s frontend/build/index.html
+          test -s frontend/build/asset-manifest.json
+          test -n "${SG_SSH_KEY:-}" || { echo RC84_BRAIN_UI_SSH_SECRET_NOT_AVAILABLE; exit 2; }
+          ARCHIVE="$RUNNER_TEMP/brain-ui-build.tar.gz"
+          tar -czf "$ARCHIVE" -C frontend/build .
+          SHA="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
+          install -d -m 0700 "$RUNNER_TEMP/sg"
+          KEY="$RUNNER_TEMP/sg/id"
+          HOSTS="$RUNNER_TEMP/sg/known_hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPT=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          SSH_DEST=root@51.79.205.82
+          # New, dedicated code staging. Leave original RC84 source, frontend and bots unchanged.
+          ssh "${OPT[@]}" "$SSH_DEST" \
+            'set -eu; p=/opt/superbot-v3-brain-ui-stage; test ! -e "$p"; git -c core.hooksPath=/dev/null clone --no-checkout https://github.com/alexiptv82/SuperBot-Trading.git "$p" >/dev/null 2>&1; chmod 0700 "$p"; git -C "$p" -c core.hooksPath=/dev/null checkout --detach d0c832620e9b237ce97305029bab5150d3f77489 >/dev/null 2>&1; test "$(git -C "$p" rev-parse HEAD)" = d0c832620e9b237ce97305029bab5150d3f77489; echo RC84_BRAIN_UI_STAGED_PINNED_SOURCE=PASS'
+          scp "${OPT[@]}" "$ARCHIVE" "$SSH_DEST":/opt/superbot-v3-brain-ui-stage/brain-ui-build.tar.gz
+          ssh "${OPT[@]}" "$SSH_DEST" \
+            "set -eu; echo '$SHA  /opt/superbot-v3-brain-ui-stage/brain-ui-build.tar.gz' | sha256sum -c --status; echo RC84_BRAIN_UI_ASSET_HASH_MATCH=PASS"
+          echo RC84_BRAIN_UI_PREFLIGHT_BEGIN
+          ssh -T "${OPT[@]}" "$SSH_DEST" \
+            'RC84_BRAIN_UI_RELEASE_SHA=d0c832620e9b237ce97305029bab5150d3f77489 PYTHONDONTWRITEBYTECODE=1 python3 -I /opt/superbot-v3-brain-ui-stage/deploy/scripts/rc84-brain-ui-public-paper-readonly-release.py --preflight-only'
+          echo RC84_BRAIN_UI_READONLY_PUBLISH_BEGIN
+          ssh -T "${OPT[@]}" "$SSH_DEST" \
+            'RC84_BRAIN_UI_RELEASE_SHA=d0c832620e9b237ce97305029bab5150d3f77489 PYTHONDONTWRITEBYTECODE=1 python3 -I /opt/superbot-v3-brain-ui-stage/deploy/scripts/rc84-brain-ui-public-paper-readonly-release.py --publish-readonly'
+          echo RC84_BRAIN_UI_PUBLIC_PATCH_WORKFLOW_COMPLETED=True
