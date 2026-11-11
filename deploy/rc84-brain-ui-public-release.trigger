@@ -1,0 +1,11 @@
+approved_by_user=2026-11-11
+scope=Brain Performance and Settings public RC84 UI+backend only
+source_commit=d0c832620e9b237ce97305029bab5150d3f77489
+previous_public_rc84=retain_for_rollback
+previous_rc73=untouched
+new_brain_endpoint=authenticated_readonly
+no_paper_unpause=true
+no_mandate_approval=true
+no_trading_orders=true
+no_ai_key_changes=true
+no_merge=true
