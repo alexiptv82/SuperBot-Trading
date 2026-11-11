@@ -1,0 +1,11 @@
+approved=install-and-start-four-NEW-paper-services-PAUSED-only
+date=2026-11-11
+services_commit=691759b7ff9876b7dfb39811c186962873262a2a
+stage=only-new-paused-runs
+brain_mandate_approval=no
+remove_pause=no
+start_trading=no
+live_orders=no
+enable_on_boot=no
+public_dashboard_deploy=no
+stop_legacy_services=no
