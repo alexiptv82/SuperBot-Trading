@@ -1,0 +1,12 @@
+date=2026-11-11
+purpose=offline_Fable_tests_and_protected_source_staging_only
+reviewed_commit=6d5ff5d1196c06f13d0c96ca3f401b292da20cc0
+brain_budget_limit_USD=5_per_UTC_month
+fable_enabled=false
+no_model_calls=true
+no_service_changes=true
+no_trading_unpause=true
+no_mandate_change=true
+no_secret_access=true
+no_public_web_change=true
+preserve_all_rollbacks=true
