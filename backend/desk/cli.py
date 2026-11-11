@@ -1323,13 +1323,15 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     # e il commit finale del ciclo ritenta e solleva come per ogni altra chiusura.
                     print(f"[CLAIM] S25: riconciliazione immediata rimandata: {type(exc).__name__}", flush=True)
 
-            # RC84 correction: Falco keeps its original scalp LONG/SHORT engine;
-            # Toro alone owns new S25 medium-term LONG entries. Both continue
-            # protective exits for S25 positions already opened before rollout.
-            # This fixes identical automated S25 orders 2 seconds apart without
-            # switching off the pre-existing SHORT strategy or risk controls.
+            # RC84: keep S25 STOP/TP/TIME EXIT management for old trades.
+            # New S25 entries (same symbols/stops on BOTH portfolios, R:R=1:1)
+            # are DISABLED until separate signal-quality tests and approval.
+            # Original Claude/rule LONG+SHORT decisions continue as before.
+            # Only Toro may later opt in explicitly after verification.
+            s25_new_entries = (PORTFOLIO.name == "bull" and
+                               os.getenv("DESK_S25_TORO_ENTRY_APPROVED") == "1")
             long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=no_new,
-                          allow_new_entries=(PORTFOLIO.name == "bull"),
+                          allow_new_entries=s25_new_entries,
                           record_close=s25_record,
                           entries_blocked=lambda: bool(_unresolved_claims(state)),
                           notify_open=notify_open,
