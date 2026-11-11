@@ -1,0 +1,6 @@
+date=2026-11-11
+purpose=read_only_bridge_start_root_cause
+previous_run=43033446770
+no_public_deployment=true
+no_bot_changes=true
+no_model_calls=true
