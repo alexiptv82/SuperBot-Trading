@@ -142,7 +142,8 @@ class FableLedger:
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY |
                          getattr(os, "O_NOFOLLOW", 0), 0o600)
             os.close(fd)
-        self._db = sqlite3.connect(str(path), timeout=15, isolation_level=None)
+        self._db = sqlite3.connect(str(path), timeout=15, isolation_level=None,
+                                   check_same_thread=False)
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("""CREATE TABLE IF NOT EXISTS fable_observations(
             run_id TEXT NOT NULL, symbol TEXT NOT NULL, market_ms INTEGER NOT NULL,
@@ -329,19 +330,37 @@ class FableShadowAdviser:
 
 
 class ShadowFableAnalyst(Analyst):
-    """Identity wrapper: the returned BrainDecision is ALWAYS DeepSeek's."""
+    """Non-blocking observer: never delays or changes DeepSeek's decision."""
 
     def __init__(self, primary: Analyst, shadow: FableShadowAdviser):
         if not isinstance(primary, Analyst) or not isinstance(shadow, FableShadowAdviser):
             raise ValueError("invalid_shadow_analyst")
         self.primary, self.shadow = primary, shadow
+        # At most ONE pending Fable consultation, always outside the real
+        # execution decision path. An HTTP timeout must never delay an OPEN
+        # nor the independent exit sidecar.
+        self._pending = threading.Lock()
 
     def analyze(self, context: MarketContext, open_positions: list[Mapping]) -> BrainDecision:
         decision = self.primary.analyze(context, open_positions)
+        if not self.shadow.enabled or not self._pending.acquire(blocking=False):
+            return decision
+
+        def _consult() -> None:
+            try:
+                self.shadow.observe(context, decision)
+            except Exception:
+                # Never log provider bodies, prompts, or key values.
+                log.warning("fable_shadow_unavailable")
+            finally:
+                self._pending.release()
+
         try:
-            self.shadow.observe(context, decision)
+            threading.Thread(
+                target=_consult, name="brain-fable-shadow", daemon=True).start()
         except Exception:
-            # Shadow must never change DeepSeek decision, cancel an exit, or
-            # block an opening due to Fable/SQLite failures.
-            log.warning("fable_shadow_unavailable")
+            self._pending.release()
+            log.warning("fable_shadow_thread_unavailable")
+        # The EXACT DeepSeek decision object is returned without waiting for
+        # Fable to complete. Results are SHADOW-only.
         return decision
