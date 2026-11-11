@@ -667,6 +667,7 @@ def sandbox(monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
         monkeypatch.delenv("DESK_LONG_S25", raising=False)
+        monkeypatch.delenv("DESK_S25_TORO_ENTRY_APPROVED", raising=False)
         cli.HB.update(last_ok=None, last_error="", cycles=0)
         yield cli, d
 
@@ -685,6 +686,7 @@ def test_full_cycle_toro_only_s25_entries(sandbox, monkeypatch):
     a15b, now, px = _with_new_hour(a15, sig)
     _install(cli, monkeypatch, a15b)
     monkeypatch.setenv("DESK_LONG_S25", "1")
+    monkeypatch.setenv("DESK_S25_TORO_ENTRY_APPROVED", "1")
     state = {}
     cli.run_cycle(state, now)
     acc = cli.make_account(state)
@@ -701,6 +703,20 @@ def test_full_cycle_toro_only_s25_entries(sandbox, monkeypatch):
     assert len(cli.make_account(state).positions) == 1 and not cli.make_account(state).closed
 
 
+def test_rc84_toro_s25_new_entries_default_off(sandbox, monkeypatch):
+    cli, d = sandbox
+    monkeypatch.setattr(cli, "PORTFOLIO", cli._make_bull_config())
+    a15, sig = _cycle_candles()
+    a15b, now, _ = _with_new_hour(a15, sig)
+    _install(cli, monkeypatch, a15b)
+    monkeypatch.setenv("DESK_LONG_S25", "1")
+    # No explicit opt-in flag: this is the default for real PAPER processes.
+    state = {}
+    cli.run_cycle(state, now)
+    assert not cli.make_account(state).positions
+    assert "last_open_ms" not in state
+
+
 def test_full_cycle_falco_keeps_original_strategy_not_shared_s25(sandbox, monkeypatch):
     cli, d = sandbox
     a15, sig = _cycle_candles()
@@ -711,10 +727,11 @@ def test_full_cycle_falco_keeps_original_strategy_not_shared_s25(sandbox, monkey
     cli.run_cycle(state, now)
     assert not cli.make_account(state).positions
     assert not state.get("last_open_ms")
-    # The S25 portfolio split changes NEW entries only and does not
-    # disable classic LONG/SHORT actions from Claude or the rules fallback.
-    source = open(os.path.join(BACKEND, "desk", "cli.py"), encoding="utf-8").read()
-    assert 'allow_new_entries=(PORTFOLIO.name == "bull")' in source
+    # Even an explicit Toro entry opt-in does not enable identical Falco S25
+    # signals; the 12h management of existing S25 positions remains intact.
+    monkeypatch.setenv("DESK_S25_TORO_ENTRY_APPROVED", "1")
+    cli.run_cycle(state, now + 1_000)
+    assert not cli.make_account(state).positions
 
 
 
