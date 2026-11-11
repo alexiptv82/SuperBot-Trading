@@ -35,6 +35,7 @@ from backend.v3.outcomes import REGIMES, extract_outcomes
 from backend.v3.runner.config import load_default_config
 from backend.v3.runner.exit_service import exit_service_healthy
 from backend.v3.cutover_gate import brain_single_close_enabled
+from backend.v3.close_bridge import send_single_close, CloseBridgeError
 from backend.v3.observability.classic_stop_health import classic_stop_health
 from backend.v3.observability.classic_running_stop_health import running_stop_health
 
@@ -752,6 +753,20 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
             body = await request.json()
         except (ValueError, UnicodeError):
             body = None
+        if os.environ.get('V3_CUTOVER_READONLY') == '1':
+            if not brain_single_close_enabled(os.environ):
+                raise _close_error(423, 'solo_lettura',
+                                   'Chiusura PAPER non abilitata.')
+            # Bulk closes must remain forbidden even if a frontend is changed.
+            position_id, close_all = _close_body(body)
+            if close_all:
+                raise _close_error(423, 'solo_chiusura_singola',
+                                   'Puoi chiudere una sola posizione PAPER alla volta.')
+            try:
+                return send_single_close('brain', position_id)
+            except CloseBridgeError as error:
+                raise _close_error(error.status, 'bridge_non_disponibile',
+                                   error.message) from None
         return _close_request(paths, body, int(time.time() * 1000))
 
     @router.get('/brain/close-result')

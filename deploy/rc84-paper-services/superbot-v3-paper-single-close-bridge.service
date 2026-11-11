@@ -1,0 +1,32 @@
+# TEMPLATE ONLY — do not install without a pinned public PAPER cutover.
+# A highly isolated Docker process carries FastAPI dependencies required by
+# Brain manual-close validation; it has NO network and NO exchange credentials.
+# Only the bridge container gets RW wallet mounts. The PUBLIC WEB remains RO.
+[Unit]
+Description=SuperBot V3 PAPER single-close UNIX bridge (Docker isolated, NO network)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/superbot-v3-rc84-close-bridge-stage
+RuntimeDirectory=superbot-paper-close
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/docker run --rm --name superbot-rc84-paper-close-bridge --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true --user 0 --pids-limit 64 --memory 256m --tmpfs /tmp:rw,noexec,nosuid,size=8m -v /run/superbot-paper-close:/run/superbot-paper-close:rw -v /opt/superbot-v3-paper-runs/classic-hawk-paper20261111:/opt/superbot-v3-paper-runs/classic-hawk-paper20261111:rw -v /opt/superbot-v3-paper-runs/classic-bull-paper20261111:/opt/superbot-v3-paper-runs/classic-bull-paper20261111:rw -v /opt/superbot-v3-paper-runs/brain-v3-paper20261111:/opt/superbot-v3-paper-runs/brain-v3-paper20261111:rw -w /app -e PYTHONPATH=/app:/app/backend -e PYTHONDONTWRITEBYTECODE=1 -e DESK_MODE=paper -e TRADING_MODE=paper -e V3_CUTOVER_READONLY=1 -e V3_ALLOW_CLASSIC_SINGLE_CLOSE=1 -e V3_ALLOW_BRAIN_SINGLE_CLOSE=1 -e V3_CLOSE_BRIDGE_ONLY=1 -e V3_CLOSE_BRIDGE_SOCKET=/run/superbot-paper-close/close.sock --entrypoint python3 superbot:rc84-paper-single-close-20261111 -m backend.v3.close_bridge_server
+ExecStop=/usr/bin/docker stop -t 8 superbot-rc84-paper-close-bridge
+ExecStopPost=-/usr/bin/docker rm -f superbot-rc84-paper-close-bridge
+Restart=on-failure
+RestartSec=8
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ReadWritePaths=/run/superbot-paper-close
+# No Install section — only explicit operator installation/start.
