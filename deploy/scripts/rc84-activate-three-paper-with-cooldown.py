@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from decimal import Decimal
 import json
 import os
 from pathlib import Path
@@ -243,7 +244,8 @@ def verify(*, expected_approved: bool, expect_paused: bool = True) -> dict:
             or mandate.get("portfolio_id") != "brain"
             or mandate.get("run_id") != RUN_ID
             or not isinstance(mandate.get("policy_hash"), str)
-            or not re.fullmatch(r"[0-9a-f]{64}", mandate["policy_hash"])):
+            or not re.fullmatch(r"[0-9a-f]{16}", mandate["policy_hash"])
+            or mandate["policy_hash"] != expected_policy_hash(rp)):
         refuse("BRAIN_MANDATE_NOT_EXPECTED")
     if expected_approved and mandate.get("approved_by") != "user-authorized-PAPER-2026-11-11":
         refuse("BRAIN_PAPER_APPROVER_CHANGED")
@@ -267,6 +269,22 @@ def verify(*, expected_approved: bool, expect_paused: bool = True) -> dict:
     run("systemctl", "is-active", "--quiet", "superbot-v3-paper-single-close-bridge.service")
     public_web_gate()
     return {"worker_pids": pids, "mandate": mandate, "heartbeat_state": hb.get("state")}
+
+
+def expected_policy_hash(risk: dict) -> str:
+    """Match BrainEngine._policy_hash exactly; its checksum is 16 hex chars."""
+    keys = (
+        "max_loss_fraction", "max_open_risk_fraction",
+        "max_position_margin_fraction", "max_total_margin_fraction",
+        "minimum_equity", "estimated_roundtrip_cost_bp",
+        "liquidation_buffer_fraction", "max_loss_margin_fraction",
+    )
+    try:
+        fields = [str(Decimal(str(risk[key]))) for key in keys]
+        fields.extend((str(risk["min_leverage"]), str(risk["max_leverage"])))
+        return hashlib.sha256("|".join(fields).encode("utf-8")).hexdigest()[:16]
+    except (KeyError, ValueError, TypeError):
+        refuse("BRAIN_RISK_HASH_NOT_COMPUTABLE")
 
 
 def update_mandate(approved: bool) -> None:
