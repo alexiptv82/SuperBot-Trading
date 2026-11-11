@@ -1,0 +1,76 @@
+name: 'SuperBot V3 - RC84 isolated PAPER dashboard preview'
+# Trigger only by a dedicated, one-time file. No production deploy or strategy startup.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-rc84-preview.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-v3-rc84-preview
+  cancel-in-progress: false
+jobs:
+  preview:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '0e29a73a36f668643da4088178bacb8616a45ac0'
+          path: rc84-source
+      - uses: actions/checkout@v4
+        with:
+          ref: 'dc08f8b18ae80411e972c334f951c8171dffc1ca'
+          path: reviewed-script
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Pin code and build exactly RC84 frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C rc84-source rev-parse HEAD)" = '0e29a73a36f668643da4088178bacb8616a45ac0'
+          test "$(git -C reviewed-script rev-parse HEAD)" = 'dc08f8b18ae80411e972c334f951c8171dffc1ca'
+          script=reviewed-script/deploy/scripts/v3-rc84-preview-readonly.sh
+          test "$(git -C reviewed-script hash-object deploy/scripts/v3-rc84-preview-readonly.sh)" = 'a7f4bd810d462464f29925aa3c4e7dada9afb71c'
+          bash -n "$script"
+          cd rc84-source/frontend
+          yarn --version
+          yarn install --frozen-lockfile --non-interactive --silent
+          CI=false REACT_APP_BACKEND_URL='' yarn build
+          test -s build/index.html
+          tar -czf "$RUNNER_TEMP/rc84-paper-preview-frontend.tar.gz" -C build .
+          echo RC84_FRONTEND_PINNED_BUILD_SUCCESS=True
+      - name: Upload build and launch strictly read-only local preview
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}"
+          install -d -m 0700 "$RUNNER_TEMP/rc84-ssh"
+          KEY="$RUNNER_TEMP/rc84-ssh/id_sg"
+          HOSTS="$RUNNER_TEMP/rc84-ssh/known_hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          cat > "$HOSTS" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          SSHOPTS=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          # Create ONLY the brand new preview directory. NEVER touch /opt/superbot-web.
+          ssh -T "${SSHOPTS[@]}" root@51.79.205.82 \
+            'test ! -e /opt/superbot-v3-rc84-ui-preview && install -d -m 0700 /opt/superbot-v3-rc84-ui-preview && install -d -m 0700 /opt/superbot-v3-rc84-ui-preview/frontend'
+          scp "${SSHOPTS[@]}" "$RUNNER_TEMP/rc84-paper-preview-frontend.tar.gz" \
+            root@51.79.205.82:/opt/superbot-v3-rc84-ui-preview/frontend.tar.gz
+          ssh -T "${SSHOPTS[@]}" root@51.79.205.82 \
+            'tar -xzf /opt/superbot-v3-rc84-ui-preview/frontend.tar.gz -C /opt/superbot-v3-rc84-ui-preview/frontend && test -s /opt/superbot-v3-rc84-ui-preview/frontend/index.html'
+          PREVIEW=reviewed-script/deploy/scripts/v3-rc84-preview-readonly.sh
+          echo RC84_READONLY_PREVIEW_DRYRUN_BEGIN
+          ssh -T "${SSHOPTS[@]}" root@51.79.205.82 bash -s -- --dry-run < "$PREVIEW"
+          echo RC84_READONLY_PREVIEW_START_BEGIN
+          ssh -T "${SSHOPTS[@]}" root@51.79.205.82 bash -s -- --start-readonly-preview < "$PREVIEW"
+          echo RC84_READONLY_PREVIEW_WORKFLOW_COMPLETED=True
