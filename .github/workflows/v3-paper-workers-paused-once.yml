@@ -1,0 +1,64 @@
+name: SuperBot V3 - ONE SHOT start NEW PAPER workers PAUSED
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-paper-workers-paused.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-v3-new-paper-workers-paused-once
+  cancel-in-progress: false
+jobs:
+  paused-only:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '691759b7ff9876b7dfb39811c186962873262a2a'
+      - name: Guarded new PAPER service activation, no trading
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '691759b7ff9876b7dfb39811c186962873262a2a'
+          ROOT=deploy/rc84-paper-services
+          SCRIPT=deploy/scripts/v3-rc84-start-new-paper-workers-paused.sh
+          test "$(git hash-object "$SCRIPT")" = '87570186ccea798f2c1288e316463b2dcec5a22e'
+          bash -n "$SCRIPT"
+          for item in \
+            'falco ed4f7a128d0b194f8ad6fad70d610e598176b889' \
+            'toro c4288c6825133a70dd193aea6561ab44a644f9c7' \
+            'brain-exit b027c1c04571070ff4b414f6c2cb10e0e7330fbd' \
+            'brain-runner c76033ab39a232a48a5d094d2fa8ddb9be2fc072'; do
+            name="${item%% *}"
+            expect="${item##* }"
+            f="$ROOT/superbot-v3-paper-$name.service"
+            test "$(git hash-object "$f")" = "$expect"
+            grep -q '^Environment=DESK_MODE=paper$' "$f"
+            grep -q '^ExecStart=/usr/bin/env DESK_MODE=paper ' "$f"
+            grep -q '^ProtectSystem=strict$' "$f"
+            ! grep -q '^\[Install\]' "$f"
+            ! grep -v '^#' "$f" | grep -q '/opt/superbot-desk-data/'
+          done
+          test -n "${SG_SSH_KEY:-}"
+          install -d -m 0700 "$RUNNER_TEMP/superbot-stage"
+          KEY="$RUNNER_TEMP/superbot-stage/id"
+          HOSTS="$RUNNER_TEMP/superbot-stage/known_hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPT=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          ssh "${OPT[@]}" root@51.79.205.82 'set -eu; d=/opt/superbot-v3-rc84-services-staged-v2; test ! -e "$d"; install -d -m 0700 "$d"'
+          scp "${OPT[@]}" "$ROOT"/*.service root@51.79.205.82:/opt/superbot-v3-rc84-services-staged-v2/
+          ssh "${OPT[@]}" root@51.79.205.82 'set -eu; d=/opt/superbot-v3-rc84-services-staged-v2; test "$(find "$d" -maxdepth 1 -type f -name "*.service" | wc -l)" -eq 4; for f in "$d"/*.service; do chmod 0600 "$f"; done'
+          echo RC84_NEW_PAUSED_WORKERS_DRY_RUN_BEGIN
+          ssh -T "${OPT[@]}" root@51.79.205.82 'bash -s -- --dry-run' < "$SCRIPT"
+          echo RC84_NEW_PAUSED_WORKERS_EXPLICIT_START_BEGIN
+          ssh -T "${OPT[@]}" root@51.79.205.82 'bash -s -- --start-paused-only' < "$SCRIPT"
+          echo RC84_NEW_PAUSED_WORKERS_WORKFLOW_COMPLETED=True
