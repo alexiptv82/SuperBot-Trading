@@ -1,0 +1,5 @@
+date=2026-11-11
+purpose=diagnose_Brain_six_running_cycles_zero_journal_decisions
+scope=journalctl_summaries_and_readonly_budget_no_new_calls
+no_bot_restart=true
+no_trading_change=true
