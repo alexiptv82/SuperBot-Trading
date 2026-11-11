@@ -1,0 +1,9 @@
+requested=readonly-provider-presence-and-web-check
+date=2026-11-11
+script_commit=7469f74ec30acc32bcedbc62e47388bd811546b0
+no_secret_values_logged=yes
+no_vps_mutations=yes
+no_model_calls=yes
+no_deploy=yes
+no_restart=yes
+no_paper_unpause=yes
