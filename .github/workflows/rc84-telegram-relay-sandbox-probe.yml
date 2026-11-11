@@ -1,0 +1,97 @@
+name: RC84 - Telegram isolated sandbox root cause probe no messages
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-telegram-relay-sandbox-probe.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  probe:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reproduce sandbox checks without starting service or sending messages
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"; HOSTS="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" root@51.79.205.82 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          import json,os,pathlib,re,subprocess
+          os.umask(0o077)
+          base=pathlib.Path('/run')
+          envfile=base/'superbot-rc84-telegram-probe.env'
+          probe=base/'superbot-rc84-telegram-probe.py'
+          stage=pathlib.Path('/opt/superbot-v3-telegram-relay-code/relay.py')
+          assert stage.is_file()
+          assert not envfile.exists() and not probe.exists()
+          raw=json.loads(subprocess.check_output(['docker','inspect','superbot-desk-hawk'],text=True,timeout=15))[0]
+          env={}
+          for line in raw['Config'].get('Env',[]):
+              if '=' in line:
+                  k,v=line.split('=',1)
+                  if k in ('TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID'):env[k]=v
+          assert re.fullmatch(r'[0-9]{6,20}:[A-Za-z0-9_-]{25,100}',env.get('TELEGRAM_BOT_TOKEN',''))
+          assert re.fullmatch(r'-?[0-9]{5,25}',env.get('TELEGRAM_CHAT_ID',''))
+          with envfile.open('x') as fh:
+              fh.write('TELEGRAM_BOT_TOKEN='+env['TELEGRAM_BOT_TOKEN']+'\nTELEGRAM_CHAT_ID='+env['TELEGRAM_CHAT_ID']+'\n')
+          probe.write_text("""\
+          import importlib.util
+          import os
+          import pathlib
+          path='/opt/superbot-v3-telegram-relay-code/relay.py'
+          spec=importlib.util.spec_from_file_location('rc84_relay_probe',path)
+          mod=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          print('PROBE_IMPORT=PASS',flush=True)
+          try:
+              mod.validate_wallets()
+              print('PROBE_VALIDATE_WALLETS=PASS',flush=True)
+          except Exception as ex:
+              print('PROBE_VALIDATE_WALLETS_ERROR='+type(ex).__name__,flush=True)
+              raise SystemExit(2)
+          try:
+              token,chat=mod._credentials()
+              print('PROBE_CREDENTIAL_ENV=PASS',flush=True)
+          except Exception as ex:
+              print('PROBE_CREDENTIAL_ENV_ERROR='+type(ex).__name__,flush=True)
+              raise SystemExit(2)
+          print('PROBE_GETME_OK='+str(mod._api_call(token,'getMe',None)),flush=True)
+          """)
+          probe.chmod(0o600)
+          args=['systemd-run','--wait','--collect','--pipe','--unit=superbot-rc84-telegram-sandbox-probe',
+                '--property=Type=oneshot',
+                '--property=NoNewPrivileges=yes',
+                '--property=ProtectSystem=strict',
+                '--property=ProtectHome=yes',
+                '--property=PrivateTmp=yes',
+                '--property=PrivateDevices=yes',
+                '--property=RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6',
+                '--property=CapabilityBoundingSet=',
+                '--property=ReadWritePaths=/opt/superbot-v3-telegram-notifier',
+                '--property=EnvironmentFile='+str(envfile),
+                '/usr/bin/python3','-I',str(probe)]
+          try:
+              result=subprocess.run(args,capture_output=True,text=True,timeout=80)
+              print('PROBE_SYSTEMD_RUN_EXIT_SUCCESS='+str(result.returncode==0))
+              for line in (result.stdout+'\n'+result.stderr).splitlines():
+                  if line.startswith('PROBE_'):
+                      print(line[:180])
+          except Exception:
+              print('PROBE_SYSTEMD_EXEC_UNAVAILABLE=True')
+          finally:
+              envfile.unlink(missing_ok=True)
+              probe.unlink(missing_ok=True)
+          print('PROBE_NO_TRADE_CHANGES_OR_MESSAGES=PASS')
+          PY
