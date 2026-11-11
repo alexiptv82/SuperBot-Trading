@@ -76,10 +76,38 @@ def test_heartbeat_content_and_counter():
     r = Rig()
     r.runner.tick(G + DELAY)
     assert r.beat() == {"ts_ms": G + DELAY, "cycle": 1, "state": "running", "run_id": "run-1", "last_error": None,
-                        "exit_mode": "legacy"}
+                        "exit_mode": "legacy",
+                        "last_cycle": {"at_ms": G + DELAY, "decisions": 0, "opened": 0, "errors": []}}
     r.runner.tick(G + CYCLE_MS + DELAY)
     assert r.beat()["cycle"] == 2 and r.beat()["ts_ms"] == G + CYCLE_MS + DELAY
     assert sorted(os.listdir(r.dir)) == ["heartbeat.json"]                                 # nessun file temporaneo
+
+
+def test_rc84_last_cycle_error_stays_visible_until_next_actual_cycle():
+    # Prior heartbeat.last_error vanished 5s after the cycle failed.
+    # A clean next tick must not erase the last_cycle diagnostic.
+    r = Rig(cycle_errors=[("SOLUSDT", "data_unavailable")], cycle_ms=CYCLE_MS)
+    r.runner.tick(G + DELAY)
+    assert r.beat()["last_cycle"]["errors"] == [["SOLUSDT", "data_unavailable"]]
+    assert "data_unavailable" in r.beat()["last_error"]
+    r.runner.tick(G + DELAY + 5_000)
+    assert r.beat()["last_error"] is None
+    assert r.beat()["last_cycle"]["errors"] == [["SOLUSDT", "data_unavailable"]]
+    assert r.beat()["last_cycle"]["at_ms"] == G + DELAY
+
+
+def test_rc84_last_cycle_failure_is_sticky_but_not_a_false_current_halt():
+    r = Rig()
+    r.cycle_fail = True
+    r.runner.tick(G + DELAY)
+    assert r.beat()["last_cycle"]["errors"] == [["*", "cycle_failed"]]
+    r.cycle_fail = False
+    r.runner.tick(G + MINUTE_MS)
+    assert r.beat()["state"] == "running"
+    assert r.beat()["last_error"] is None
+    assert r.beat()["last_cycle"]["errors"] == [["*", "cycle_failed"]]
+    r.runner.tick(G + CYCLE_MS + DELAY)
+    assert r.beat()["last_cycle"]["errors"] == []
 
 
 def test_pause_flag_blocks_cycles_but_not_the_monitor_and_resumes_in_the_same_slot():
