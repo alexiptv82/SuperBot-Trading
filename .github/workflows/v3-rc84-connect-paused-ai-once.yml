@@ -1,0 +1,55 @@
+name: SuperBot V3 - ONE SHOT connect existing AI keys to PAUSED PAPER services
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-rc84-connect-paused-ai.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-v3-ai-key-setup-paused-only
+  cancel-in-progress: false
+jobs:
+  provision:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact reviewed paused-only setup script
+        uses: actions/checkout@v4
+        with:
+          ref: 'dbdc0811eea4460eeb959129a734804e6669292a'
+      - name: One-time guarded local key provision, without model calls or trading
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 'dbdc0811eea4460eeb959129a734804e6669292a'
+          SCRIPT=deploy/scripts/v3-rc84-connect-existing-ai-paused-only.py
+          test "$(git hash-object "$SCRIPT")" = 'b7fb3758d3e2922f78796bfef706909b14b02382'
+          python3 - "$SCRIPT" <<'PY'
+          import ast, sys
+          with open(sys.argv[1],encoding='utf-8') as f:
+              ast.parse(f.read(), filename=sys.argv[1])
+          print("RC84_AI_LOCAL_SCRIPT_SYNTAX=PASS")
+          PY
+          test -n "${SG_SSH_KEY:-}" || { echo RC84_AI_SSH_KEY_UNAVAILABLE; exit 2; }
+          install -d -m 0700 "$RUNNER_TEMP/sg"
+          KEY="$RUNNER_TEMP/sg/id"
+          HOSTS="$RUNNER_TEMP/sg/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPT=(-T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          echo RC84_AI_SERVER_SIDE_NO_SECRET_OUTPUT_PRECHECK_BEGIN
+          ssh "${OPT[@]}" root@51.79.205.82 \
+            'PYTHONDONTWRITEBYTECODE=1 python3 -I - --check' < "$SCRIPT"
+          echo RC84_AI_SERVER_SIDE_PROVISION_TO_PAUSED_SERVICES_BEGIN
+          ssh "${OPT[@]}" root@51.79.205.82 \
+            'PYTHONDONTWRITEBYTECODE=1 python3 -I - --apply-paused' < "$SCRIPT"
+          echo RC84_AI_WORKFLOW_COMPLETED_WITHOUT_TRADES=True
