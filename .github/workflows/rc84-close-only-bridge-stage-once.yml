@@ -1,0 +1,55 @@
+name: SuperBot RC84 - protected close-only bridge staging (no deployment)
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-close-only-bridge-stage.trigger']
+permissions:
+  contents: read
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  stage:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 'd6ef68730ba2017e1cb37daca1c0447e069a5d7b'
+      - name: Check exact script and syntax before contacting VPS
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 'd6ef68730ba2017e1cb37daca1c0447e069a5d7b'
+          python3 - <<'PY'
+          import ast,pathlib
+          p=pathlib.Path('deploy/scripts/rc84-stage-close-only-bridge-paused.py')
+          ast.parse(p.read_text(),filename=str(p))
+          print('RC84_BRIDGE_STAGE_AST=PASS')
+          PY
+      - name: Read-only preflight, then isolated source stage only (NO service changes)
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"
+          KNOWN="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$KNOWN"
+          chmod 0600 "$KNOWN"
+          trap 'rm -f "$KEY"' EXIT
+          OPT=(-T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=20)
+          SCRIPT=deploy/scripts/rc84-stage-close-only-bridge-paused.py
+          echo RC84_BRIDGE_VPS_PREFLIGHT_BEGIN
+          ssh "${OPT[@]}" root@51.79.205.82 \
+            'RC84_CLOSE_BRIDGE_STAGE_SHA=d6ef68730ba2017e1cb37daca1c0447e069a5d7b PYTHONDONTWRITEBYTECODE=1 python3 -I - --check' < "$SCRIPT"
+          echo RC84_BRIDGE_VPS_COPY_SOURCE_ONLY_BEGIN
+          ssh "${OPT[@]}" root@51.79.205.82 \
+            'RC84_CLOSE_BRIDGE_STAGE_SHA=d6ef68730ba2017e1cb37daca1c0447e069a5d7b PYTHONDONTWRITEBYTECODE=1 python3 -I - --stage' < "$SCRIPT"
+          echo RC84_BRIDGE_STAGING_NO_PUBLIC_CHANGES=PASS
