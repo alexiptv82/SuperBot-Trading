@@ -371,6 +371,44 @@ def _classic(portfolio_id: str, data_dir: str, now_s: float) -> dict:
             'win_rate': _safe_decimal(perf.get('win_rate')) if perf and perf.get('available') else None}
 
 
+def _public_brain_config(paths: V3Paths) -> dict:
+    """Only a fixed, nonsecret whitelist from THIS run's RC84 config. Never mutate."""
+    cfg = _json_read(paths.brain_config_path)
+    if not isinstance(cfg, dict) or not isinstance(cfg.get('risk_policy'), dict):
+        return {'available': False}
+    risk = cfg['risk_policy']
+
+    def finite_number(value):
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            number = Decimal(str(value))
+            return str(number) if number.is_finite() else None
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    def safe_int(value):
+        return value if type(value) is int and 0 <= value <= 100000 else None
+
+    return {
+        'available': True,
+        'run_id': paths.run_id,
+        'initial_equity': finite_number(cfg.get('initial_equity')),
+        'daily_cap_usd': finite_number(cfg.get('daily_cap_usd')),
+        'cycle_minutes': safe_int(cfg.get('cycle_minutes')),
+        'model': cfg.get('model') if cfg.get('model') in ('deepseek-flash', 'deepseek-chat', 'deepseek-reasoner') else None,
+        'risk': {
+            'minimum_equity': finite_number(risk.get('minimum_equity')),
+            'min_leverage': safe_int(risk.get('min_leverage')),
+            'max_leverage': safe_int(risk.get('max_leverage')),
+            'max_position_margin_fraction': finite_number(risk.get('max_position_margin_fraction')),
+            'max_total_margin_fraction': finite_number(risk.get('max_total_margin_fraction')),
+            'max_open_risk_fraction': finite_number(risk.get('max_open_risk_fraction')),
+            'max_loss_margin_fraction': finite_number(risk.get('max_loss_margin_fraction')),
+        },
+    }
+
+
 def _brain_status(paths: V3Paths, now_ms: int) -> dict:
     hb = _heartbeat(paths)
     state = _brain_state(paths, hb, now_ms)
@@ -684,6 +722,11 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
     def overview(response: Response, session=Depends(require_session)):
         response.headers['Cache-Control'] = 'no-store'
         return _overview(paths, int(time.time() * 1000))
+
+    @router.get('/brain/config')
+    def brain_config(response: Response, session=Depends(require_session)):
+        response.headers['Cache-Control'] = 'no-store'
+        return _public_brain_config(paths)
 
     @router.get('/brain/status')
     def brain_status(response: Response, session=Depends(require_session)):
