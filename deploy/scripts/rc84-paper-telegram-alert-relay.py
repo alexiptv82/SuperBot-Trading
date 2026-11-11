@@ -64,15 +64,42 @@ def _json_file(path: Path) -> dict:
 
 
 def _worker_env(unit: str) -> dict[str, str]:
+    """Verify the ACTIVE PAPER unit and its root-private envfile.
+
+    No /proc/<other-PID>/environ access: the relay deliberately has ZERO
+    CAP_SYS_PTRACE. The installation preflight already checked the original
+    live process environment; this periodic check rejects a newly configured
+    native Telegram notifier before it could duplicate alerts.
+    """
+    settings = {
+        "superbot-v3-paper-falco.service": ("hawk", "falco-ai.env"),
+        "superbot-v3-paper-toro.service": ("bull", "toro-ai.env"),
+    }
+    if unit not in settings:
+        fail("UNKNOWN_PAPER_WORKER_UNIT")
+    portfolio, env_filename = settings[unit]
     p = subprocess.run(
         ["systemctl", "show", unit, "-p", "MainPID", "--value"],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
         timeout=6, check=False)
     if p.returncode or not p.stdout.strip().isdecimal() or int(p.stdout.strip()) < 2:
         fail("TRADING_WORKER_UNAVAILABLE")
-    rows = Path("/proc/" + str(int(p.stdout.strip())) + "/environ").read_bytes().split(b"\0")
-    return dict((key.decode("ascii", "ignore"), value.decode("utf-8", "ignore"))
-                for row in rows if b"=" in row for key, value in [row.split(b"=", 1)])
+    unit_path = Path("/etc/systemd/system") / unit
+    if unit_path.is_symlink() or not unit_path.is_file():
+        fail("TRADING_WORKER_UNIT_NOT_PINNED")
+    lines = set(unit_path.read_text(encoding="utf-8").splitlines())
+    if ("Environment=DESK_MODE=paper" not in lines
+            or f"Environment=DESK_PORTFOLIO={portfolio}" not in lines):
+        fail("PAPER_TRADING_WORKER_IDENTITY_CHANGED")
+    envfile = Path("/etc/superbot-v3-paper") / env_filename
+    if envfile.is_symlink() or not envfile.is_file():
+        fail("CLASSIC_AI_ENVFILE_UNAVAILABLE")
+    config = envfile.read_text(encoding="utf-8")
+    names = {line.strip().split("=", 1)[0] for line in config.splitlines()
+             if "=" in line and not line.lstrip().startswith("#")}
+    if "TELEGRAM_BOT_TOKEN" in names or "TELEGRAM_CHAT_ID" in names:
+        fail("NATIVE_TELEGRAM_NOW_ENABLED")
+    return {"DESK_MODE": "paper", "DESK_PORTFOLIO": portfolio}
 
 
 def validate_wallets() -> None:
