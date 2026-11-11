@@ -1,0 +1,11 @@
+authorized_by_user=2026-11-11
+task=connect-existing-Claude-and-DeepSeek-to-new-paper-strategy-services
+source_commit=dbdc0811eea4460eeb959129a734804e6669292a
+three_wallets=PAUSED
+brain_mandate=UNAPPROVED
+provider_requests=NONE
+real_orders=NONE
+no_public_web_changes=true
+no_old_services_changed=true
+no_API_key_values_in_logs=true
+only_three_new_strategy_services_restart_paused=true
