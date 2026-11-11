@@ -1,0 +1,65 @@
+name: SuperBot RC84 - temporary PAPER entries halt for user-approved repair
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-repair-temporary-paper-entry-halt.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  halt_entries:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail-closed PAPER new entries only - preserve exits and existing journal
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"; HOSTS="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
+            root@51.79.205.82 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          import json,os,pathlib,subprocess
+          ROOT=pathlib.Path('/opt/superbot-v3-paper-runs')
+          specs=(
+            ('FALCO','classic-hawk-paper20261111','superbot-v3-paper-falco.service','hawk'),
+            ('TORO','classic-bull-paper20261111','superbot-v3-paper-toro.service','bull'),
+            ('BRAIN','brain-v3-paper20261111','superbot-v3-paper-brain-runner.service','brain'))
+          for label,folder,unit,portfolio in specs:
+              path=ROOT/folder
+              if not path.is_dir() or path.is_symlink():raise SystemExit('PAPER_FOLDER_UNSAFE')
+              marker=json.loads((path/'PREPARED_PAUSED_ONLY.json').read_text())
+              if marker.get('paper_only') is not True or (
+                  portfolio=='brain' and marker.get('run_id')!='brain-v3-paper20261111') or (
+                  portfolio!='brain' and marker.get('portfolio_id')!=portfolio):
+                  raise SystemExit('PAPER_IDENTITY_INVALID')
+              res=subprocess.run(['systemctl','show',unit,'-p','MainPID','--value'],capture_output=True,text=True,timeout=8)
+              if res.returncode or not res.stdout.strip().isdecimal() or int(res.stdout.strip())<=1:raise SystemExit('PAPER_PROCESS_INVALID')
+              raw=pathlib.Path('/proc/'+res.stdout.strip()+'/environ').read_bytes().split(b'\0')
+              env=dict(row.split(b'=',1) for row in raw if b'=' in row)
+              if env.get(b'DESK_MODE')!=b'paper':raise SystemExit('PAPER_MODE_UNVERIFIED')
+          # All identities verified before writing any flag, no process restarts.
+          for label,folder,unit,portfolio in specs:
+              p=ROOT/folder/'pause.flag'
+              if p.is_symlink():raise SystemExit('UNSAFE_PAUSE_SYMLINK')
+              if not p.exists():
+                  fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0),0o600)
+                  with os.fdopen(fd,'w') as out:
+                      out.write('user_authorized_temporary_entries_halt_for_rc84_repair_20261111\n')
+                      out.flush();os.fsync(out.fileno())
+              assert p.is_file()
+              print('RC84_REPAIR_'+label+'_NEW_ENTRIES_PAUSED=PASS',flush=True)
+          assert subprocess.run(['systemctl','is-active','superbot-v3-paper-brain-exit.service'],capture_output=True,timeout=8).returncode==0
+          print('RC84_REPAIR_BRAIN_EXIT_OWNER_STILL_RUNNING=PASS',flush=True)
+          print('RC84_REPAIR_NO_RESTART_RESET_CLOSE_OR_LIVE_ACTIONS=PASS',flush=True)
+          PY
