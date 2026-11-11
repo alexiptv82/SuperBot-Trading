@@ -314,3 +314,15 @@ Utente conferma che **Claude è nuovamente operativo**. Verificato PR #79 Grok @
 
 ---
 
+
+
+---
+
+## 11/11/2026 12:54 Europe/Rome — Provider readiness e checkpoint consolidato
+
+- Checkpoint append-only: [`diario/2026-11-11_checkpoint-consolidato-provider-readiness.md`](diario/2026-11-11_checkpoint-consolidato-provider-readiness.md).
+- GitHub Actions [run 42995334600](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/42995334600) SUCCESS: controllo provider solo GET, senza inferenza. Claude Falco/Toro HTTP 401 e credenziali non accessibili; DeepSeek balance HTTP 200. Nessun segreto/importo nei log, nessun trade, deploy o restart.
+- PR #80 resta DRAFT/non mergiata a `0e29a73a36f668643da4088178bacb8616a45ac0`; CI verificata: 7.003 backend PASS, 124 frontend PASS/build; 71 browser solo ambiente sintetico Claude. PR #81 resta DRAFT a `790dcb01431fd8469f50d113fe56d9e67a83e902`.
+- Falco/Toro/Brain: 1.000/1.000/2.000 USDT esclusivamente PAPER; ultimo stato verificato PAUSED, Brain mandate `approved=false`. Non sbloccare senza consenso separato.
+- Backup `work/extbackup-bot-stopped-20261109` @ `3dc2116a08058f57fc14b695431f6e3fa1a1ca45`: preparato, non installato. Verifica PC copia cifrata age: PowerShell `ESITO: VERIFICA OK` e chiave pubblica coincidente; non certifica backup/restore VPS.
+- Library riallineata alla v55, identità invariata. Prossimo: correggere Claude in pausa, verificare DeepSeek minimo necessario, manual-close owner unico; extbackup/restore solo con mandato separato.
