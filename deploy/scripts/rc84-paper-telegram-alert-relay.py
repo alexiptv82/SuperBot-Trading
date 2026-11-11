@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import subprocess
 import stat
 import time
 import urllib.request
@@ -62,8 +63,20 @@ def _json_file(path: Path) -> dict:
     return body
 
 
+def _worker_env(unit: str) -> dict[str, str]:
+    p = subprocess.run(
+        ["systemctl", "show", unit, "-p", "MainPID", "--value"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        timeout=6, check=False)
+    if p.returncode or not p.stdout.strip().isdecimal() or int(p.stdout.strip()) < 2:
+        fail("TRADING_WORKER_UNAVAILABLE")
+    rows = Path("/proc/" + str(int(p.stdout.strip())) + "/environ").read_bytes().split(b"\0")
+    return dict((key.decode("ascii", "ignore"), value.decode("utf-8", "ignore"))
+                for row in rows if b"=" in row for key, value in [row.split(b"=", 1)])
+
+
 def validate_wallets() -> None:
-    for label, _, path, pid, _ in WALLETS:
+    for label, _, path, pid, unit in WALLETS:
         if path.is_symlink() or not path.is_dir():
             fail("RUN_DIR_UNAVAILABLE")
         marker = _json_file(path / "PREPARED_PAUSED_ONLY.json")
@@ -74,6 +87,14 @@ def validate_wallets() -> None:
         state = _json_file(path / "state_v2.json")
         if type((state.get("main") or {}).get("positions")) is not dict:
             fail("WALLET_ACCOUNT_SHAPE_CHANGED")
+        process_env = _worker_env(unit)
+        if (process_env.get("DESK_MODE") != "paper"
+                or process_env.get("DESK_PORTFOLIO") != pid):
+            fail("PAPER_TRADING_WORKER_IDENTITY_CHANGED")
+        # If native Telegram notifications have later been re-enabled inside
+        # the runner, stop the external relay to prevent double alerts.
+        if process_env.get("TELEGRAM_BOT_TOKEN") or process_env.get("TELEGRAM_CHAT_ID"):
+            fail("NATIVE_TELEGRAM_NOW_ENABLED")
 
 
 def _credentials() -> tuple[str, str]:
@@ -299,8 +320,18 @@ def main() -> None:
             print("RC84_TELEGRAM_RELAY_RUNNING_PAPER_ONLY=True", flush=True)
             while True:
                 try:
+                    validate_wallets()
                     _scan(db, token, chat)
-                except (OSError, ValueError, RuntimeError, sqlite3.Error):
+                except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+                    # The observer must stop if its READ-ONLY identity no longer
+                    # matches the current PAPER workers or their native notifier
+                    # becomes active; never send twice or guess about a new run.
+                    if isinstance(exc, RuntimeError) and str(exc) in (
+                        "NATIVE_TELEGRAM_NOW_ENABLED",
+                        "PAPER_TRADING_WORKER_IDENTITY_CHANGED",
+                        "NOT_AUTHORIZED_PAPER_WALLET",
+                    ):
+                        fail("OBSERVER_SUPERSEDED_OR_PAPER_IDENTITY_CHANGED")
                     # No provider secrets or messages in logs.
                     print("RC84_TELEGRAM_RELAY_TICK_DEGRADED=True", flush=True)
                 time.sleep(POLL_SECONDS)
