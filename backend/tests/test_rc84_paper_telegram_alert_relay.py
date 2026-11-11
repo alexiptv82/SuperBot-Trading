@@ -93,7 +93,7 @@ class AlertRelayTests(unittest.TestCase):
             a=relay._close_events(root,wallet="FALCO",icon="🦅",
                                   since_ms=1794416300000,now_ms=1794416500000)
             self.assertEqual(len(a),1)
-            self.assertIn("P&L",a[0][2])
+            self.assertIn("P&amp;L",a[0][2])
             self.assertEqual(relay._close_events(root,wallet="FALCO",icon="🦅",
                              since_ms=1794416500001,now_ms=1794416600000),[])
 
