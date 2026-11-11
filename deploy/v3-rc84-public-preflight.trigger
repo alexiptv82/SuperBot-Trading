@@ -1,0 +1,9 @@
+requested=rc84-public-website-cutover-read-only-preflight
+source_sha=41741f81d1f8bf9d47ed9e24611742ab820bfbcb
+no_deploy=yes
+no_restart=yes
+no_vps_writes=yes
+no_credentials_read=yes
+no_provider_calls=yes
+no_unpause=yes
+no_bitget_orders=yes
