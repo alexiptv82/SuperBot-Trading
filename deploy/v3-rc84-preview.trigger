@@ -1,0 +1,10 @@
+date=2026-11-11
+approved_scope=isolated-rc84-readonly-ui-preview
+source_sha=0e29a73a36f668643da4088178bacb8616a45ac0
+script_sha=dc08f8b18ae80411e972c334f951c8171dffc1ca
+old_web_unchanged=yes
+run_volumes_readonly=yes
+no_strategy_start=yes
+no_exit_worker_start=yes
+no_trading_commands=yes
+no_live_orders=yes
