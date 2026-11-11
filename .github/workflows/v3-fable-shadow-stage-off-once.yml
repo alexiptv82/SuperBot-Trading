@@ -1,0 +1,76 @@
+name: SuperBot V3 - Fable OFF protected staging + offline tests once
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-fable-shadow-stage-off.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-v3-fable-stage-protected-20261111
+  cancel-in-progress: false
+jobs:
+  stage:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '6d5ff5d1196c06f13d0c96ca3f401b292da20cc0'
+      - name: Verify pinned branch and Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '6d5ff5d1196c06f13d0c96ca3f401b292da20cc0'
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          for file in (
+              "backend/v3/runner/fable_shadow.py",
+              "backend/v3/runner/wiring.py",
+              "backend/tests/test_v3_fable_shadow_budget.py",
+              "deploy/scripts/v3-fable-staging-paused-only.py",
+          ):
+              ast.parse(Path(file).read_text(),filename=file)
+          print("FABLE_PATCH_AND_STAGING_SYNTAX=PASS")
+          PY
+      - name: Install pytest only
+        run: python3 -m pip install -q pytest==8.4.2
+      - name: Test Fable's budget, no-wait and public-market snapshot OFFLINE
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          BRAIN_FABLE_SHADOW: '0'
+          BRAIN_FABLE_BUDGET_APPROVED: '0'
+        run: |
+          set -euo pipefail
+          python3 -m pytest -q backend/tests/test_v3_fable_shadow_budget.py
+          echo FABLE_SHADOW_OFFLINE_TESTS_PASS=true
+          echo FABLE_SHADOW_NO_MODEL_CALLS=true
+      - name: Stage exact source on Singapore (NO start, NO service restart)
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '6d5ff5d1196c06f13d0c96ca3f401b292da20cc0'
+          SCRIPT=deploy/scripts/v3-fable-staging-paused-only.py
+          test -s "$SCRIPT"
+          test -n "${SG_SSH_KEY:-}" || { echo FABLE_STAGE_SSH_KEY_UNAVAILABLE; exit 2; }
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"
+          KNOWN="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$KNOWN"
+          chmod 0600 "$KNOWN"
+          trap 'rm -f "$KEY"' EXIT
+          echo FABLE_PROTECTED_STAGE_CHECK_BEGIN
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=20 \
+            root@51.79.205.82 \
+            'FABLE_STAGING_RELEASE_SHA=6d5ff5d1196c06f13d0c96ca3f401b292da20cc0 PYTHONDONTWRITEBYTECODE=1 python3 -I -' \
+            < "$SCRIPT"
+          echo FABLE_SHADOW_STAGE_ONLY_WITHOUT_ACTIVATION=PASS
