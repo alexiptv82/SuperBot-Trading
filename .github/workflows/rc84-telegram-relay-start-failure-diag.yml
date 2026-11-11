@@ -1,0 +1,71 @@
+name: RC84 - Telegram relay startup failure diagnosis READ ONLY
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-telegram-relay-start-failure-diag.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Diagnose stopped Telegram observer with no secrets/messages/trade changes
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"; HOSTS="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" root@51.79.205.82 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          import importlib.util,os,pathlib,sqlite3,subprocess,re
+          code=pathlib.Path('/opt/superbot-v3-telegram-relay-code/relay.py')
+          print('TELEGRAM_DIAG_CODE_PRESENT='+str(code.is_file()))
+          print('TELEGRAM_DIAG_UNIT_PRESENT='+str(pathlib.Path('/etc/systemd/system/superbot-v3-paper-telegram-alert-relay.service').exists()))
+          print('TELEGRAM_DIAG_ENVFILE_PRESENT='+str(pathlib.Path('/etc/superbot-v3-paper/telegram-relay.env').exists()))
+          db=pathlib.Path('/opt/superbot-v3-telegram-notifier/sent.sqlite3')
+          print('TELEGRAM_DIAG_LEDGER_PRESENT='+str(db.is_file()))
+          if db.is_file():
+              try:
+                  with sqlite3.connect('file:'+str(db)+'?mode=ro',uri=True,timeout=5) as con:
+                      result=con.execute('SELECT COUNT(*), SUM(CASE WHEN delivered_ms>0 THEN 1 ELSE 0 END) FROM notice').fetchone()
+                  print('TELEGRAM_DIAG_LEDGER_ATTEMPTS='+str(result[0]))
+                  print('TELEGRAM_DIAG_LEDGER_DELIVERED='+str(result[1] or 0))
+              except Exception:
+                  print('TELEGRAM_DIAG_LEDGER_UNREADABLE=True')
+          if code.is_file():
+              try:
+                  spec=importlib.util.spec_from_file_location('relay_readonly_diagnostic',str(code))
+                  mod=importlib.util.module_from_spec(spec)
+                  spec.loader.exec_module(mod)
+                  print('TELEGRAM_DIAG_MODULE_IMPORT=PASS')
+                  mod.validate_wallets()
+                  print('TELEGRAM_DIAG_WORKER_IDENTITIES=PASS')
+              except Exception as exc:
+                  reason=str(exc)
+                  safe=reason if reason in (
+                      'NATIVE_TELEGRAM_NOW_ENABLED','PAPER_TRADING_WORKER_IDENTITY_CHANGED',
+                      'TRADING_WORKER_UNAVAILABLE','WALLET_ACCOUNT_SHAPE_CHANGED',
+                      'PAPER_FILE_MISSING_OR_SYMLINK','PAPER_FILE_INVALID',
+                      'NOT_AUTHORIZED_PAPER_WALLET','RUN_DIR_UNAVAILABLE') else type(exc).__name__
+                  print('TELEGRAM_DIAG_WORKER_GUARD_REFUSED='+safe)
+          svc='superbot-v3-paper-telegram-alert-relay.service'
+          p=subprocess.run(['journalctl','-u',svc,'-n','25','--no-pager','--output=cat'],capture_output=True,text=True,timeout=12)
+          print('TELEGRAM_DIAG_JOURNAL_AVAILABLE='+str(p.returncode==0))
+          if p.returncode==0:
+              for line in p.stdout.splitlines()[-25:]:
+                  if re.search(r'(Failed at step|Failed to|NAMESPACE|permission denied|Cannot open|refused|exit-code|status=|Main process exited|RC84_TELEGRAM_RELAY)',line,re.I):
+                      if re.search(r'(sk-ant|BOT_TOKEN|CHAT_ID|api.telegram.org|token=|secret)',line,re.I):continue
+                      print('TELEGRAM_DIAG_LOG='+re.sub(r'[^A-Za-z0-9 _:=/().-]','',line)[:165])
+          print('TELEGRAM_DIAG_NO_TRADING_MODIFICATIONS=PASS')
+          PY
