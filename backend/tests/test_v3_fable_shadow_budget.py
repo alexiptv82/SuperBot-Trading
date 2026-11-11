@@ -10,9 +10,10 @@ import time
 from backend.v3.brain_f2.analyst import Analyst
 from backend.v3.brain_f2.contracts import BrainDecision, DecisionKind, MarketContext, OpenProposal
 from backend.v3.brain_f3.providers import TransportResponse
+from backend.v3.features.indicators import Bar
 from backend.v3.runner.fable_shadow import (
     FableLedger, FableShadowAdviser, ShadowFableAnalyst, MONTHLY_CAP_MICRO,
-    MAX_TOKENS, MODEL, _read_opinion, _usage_cost_micro,
+    MAX_TOKENS, MODEL, _read_opinion, _usage_cost_micro, compact_closed_candles,
 )
 
 
@@ -231,4 +232,36 @@ def test_slow_fable_never_blocks_deepseek_and_skips_concurrent_calls(tmp_path):
     release.set()
     _drain(wrapper)
     assert l.monthly_reserved_micro() > 0
+    l.close()
+
+def test_fable_receives_only_three_closed_candles_per_timeframe(tmp_path):
+    l = ledger(tmp_path)
+    request_payloads = []
+    class Primary(Analyst):
+        def analyze(self, context, positions):
+            return decision(context.timestamp_ms)
+    def fake(payload):
+        request_payloads.append(payload)
+        return successful(payload)
+    bars = [Bar(
+        open_time_ms=clock_at(11) + 900000*i,
+        open=Decimal(str(100+i)), high=Decimal(str(102+i)),
+        low=Decimal(str(99+i)), close=Decimal(str(101+i)),
+        volume=Decimal("200"),
+    ) for i in range(8)]
+    def source(_symbol):
+        return {"15m": bars, "1h": [bars[-1]], "extra": bars}
+    shadow=ShadowFableAnalyst(
+        Primary(),FableShadowAdviser(ledger=l,transport=fake,enabled=True),
+        bars_source=source)
+    d=shadow.analyze(market(clock_at(11)), [])
+    assert d.kind==DecisionKind.OPEN
+    _drain(shadow)
+    body=json.loads(request_payloads[0]["messages"][0]["content"].split("\n",1)[1])
+    assert set(body["closed_candles"])=={"15m","1h"}
+    assert len(body["closed_candles"]["15m"])==3
+    assert len(body["closed_candles"]["1h"])==1
+    assert "extra" not in str(body)
+    assert set(body["closed_candles"]["15m"][0])=={"t","o","h","l","c","v"}
+    assert compact_closed_candles(None,"BTCUSDT")=={}
     l.close()
