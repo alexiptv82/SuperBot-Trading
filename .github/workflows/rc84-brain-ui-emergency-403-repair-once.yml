@@ -1,0 +1,48 @@
+name: SuperBot RC84 - emergency Nginx static asset 403 repair ONLY
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/rc84-brain-ui-403-repair.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  fix:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '0e7f79247c8663bb47f70e0e62d395cfbffca1fe'
+      - name: Diagnose and repair only public React asset permissions if exact 403 cause
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '0e7f79247c8663bb47f70e0e62d395cfbffca1fe'
+          SCRIPT=deploy/scripts/rc84-brain-ui-fix-nginx-403-once.sh
+          test "$(git hash-object "$SCRIPT")" = '3277386bc16b11f5a31e983fa6c5c5c990ea005a'
+          bash -n "$SCRIPT"
+          test -n "${SG_SSH_KEY:-}" || { echo RC84_403_SSH_UNAVAILABLE; exit 2; }
+          install -d -m 0700 "$RUNNER_TEMP/sg"
+          KEY="$RUNNER_TEMP/sg/id"
+          HOSTS="$RUNNER_TEMP/sg/known_hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPT=(-T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          echo RC84_403_REMOTE_READONLY_DIAGNOSIS_BEGIN
+          ssh "${OPT[@]}" root@51.79.205.82 'bash -s -- --check' < "$SCRIPT"
+          echo RC84_403_REMOTE_CONDITIONAL_ASSET_PERMISSION_REPAIR_BEGIN
+          ssh "${OPT[@]}" root@51.79.205.82 'bash -s -- --repair' < "$SCRIPT"
+          echo RC84_403_SAME_RELEASE_REMAINS_PAPER_PAUSED=True
+          echo RC84_403_NO_CONTAINER_SERVICE_OR_TRADE_MUTATION=True
