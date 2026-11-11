@@ -24,6 +24,18 @@ Se non succede nulla di particolare, non viene chiamato. Fable riceve un JSON mi
 
 **Protezione fondamentale:** `ShadowFableAnalyst.analyze(...)` restituisce lo stesso oggetto `BrainDecision` prodotto da DeepSeek, senza alterarne kind, proposta, prezzo, stop, size, status o risk quote. Se Fable, le API, il budget o il database falliscono, la decisione DeepSeek resta invariata. Chiude/gestisce stop SOLO il sidecar delle uscite Brain; Fable non interviene.
 
+## Protezione della latenza e qualità del contesto (revisione successiva)
+
+Il primo mock aveva una consultazione Fable **sincrona**: questo avrebbe potuto ritardare la validazione dei prezzi del ciclo DeepSeek. Prima del rilascio è stato corretto: `ShadowFableAnalyst` avvia al massimo **un worker daemon** indipendente, restituisce immediatamente l'identico oggetto `BrainDecision` e salta nuove consultazioni mentre la precedente è ancora in corso. I timeout/API falliti **non ritardano il trading PAPER** e non alterano ordini o stop. La prenotazione del costo avviene dentro il worker prima della richiesta di rete; le chiamate duplicate sono bloccate atomicamente nel ledger. Se il processo viene interrotto, l'eventuale prenotazione resta conteggiata nel tetto mensile.
+
+L'opinione Fable vede inoltre un'istantanea **massimo tre candele già chiuse** per timeframe 15m/1h/4h, con OHLCV compatti, estratte dallo stesso CycleBars validato usato da Brain. Non riceve storico privato, segreti, dati utente o testo integrale DeepSeek. Lo snapshot è acquisito subito per evitare letture concorrenti delle candele dopo un nuovo ciclo.
+
+**Privacy:** secondo la pagina ufficiale Fable 5.2 il modello richiede ritenzione Anthropic di 30 giorni e non offre zero-data-retention senza autorizzazione specifica. Si inviano quindi solo dati pubblici di mercato e la proposta PAPER. La consultazione resta disattivata per impostazione predefinita finché l'utente non autorizza il rilascio e la spesa.
+
+## Staging isolato sulla VPS (senza attivazione)
+
+Il nuovo script `deploy/scripts/v3-fable-staging-paused-only.py` prepara, soltanto dopo test e pin SHA, una copia di sorgenti GitHub in `/opt/superbot-v3-fable-shadow-staged-20261111`. Verifica tre pause PAPER, mandato Brain non approvato e gli stessi PID dei quattro servizi prima e dopo. **Non** modifica la directory software del runner esistente, unità systemd, file env, configurazione, dashboard o budget; non installa chiavi Fable e non chiama modelli. Un esito positivo prova soltanto la presenza della revisione in staging, NON il deploy operativo.
+
 ## Stato di attivazione
 
 - Nuovo modulo: `backend/v3/runner/fable_shadow.py`.
