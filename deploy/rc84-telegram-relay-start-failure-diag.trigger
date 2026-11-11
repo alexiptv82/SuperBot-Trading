@@ -1,0 +1,5 @@
+date=2026-11-11
+scope=read_only_diagnose_failed_telegram_relay_install
+failed_run=43064461989
+no_trades=true
+no_keys_in_logs=true
