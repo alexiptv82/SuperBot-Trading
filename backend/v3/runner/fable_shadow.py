@@ -130,7 +130,18 @@ class FableLedger:
             raise ValueError("symlink_ledger")
         self.run_id, self.clock_ms = run_id, clock_ms
         self._lock = threading.RLock()
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.parent.is_symlink():
+            raise ValueError("symlink_budget_directory")
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if (path.parent.stat().st_mode & 0o077):
+            raise ValueError("budget_directory_not_private")
+        if path.exists():
+            if not path.is_file() or (path.stat().st_mode & 0o077):
+                raise ValueError("budget_file_not_private")
+        else:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY |
+                         getattr(os, "O_NOFOLLOW", 0), 0o600)
+            os.close(fd)
         self._db = sqlite3.connect(str(path), timeout=15, isolation_level=None)
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("""CREATE TABLE IF NOT EXISTS fable_observations(
