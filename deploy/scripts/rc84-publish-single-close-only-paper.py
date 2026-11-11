@@ -30,7 +30,8 @@ PIN = "d6ef68730ba2017e1cb37daca1c0447e069a5d7b"
 STAGE = Path("/opt/superbot-v3-rc84-close-bridge-stage")
 UNIT_FILE = Path("/etc/systemd/system/superbot-v3-paper-single-close-bridge.service")
 UNIT = UNIT_FILE.name
-UNIT_SOURCE = STAGE / "deploy/rc84-paper-services/superbot-v3-paper-single-close-bridge.service"
+UNIT_SOURCE = Path("/opt/superbot-v3-rc84-close-bridge-release-unit/superbot-v3-paper-single-close-bridge.service")
+UNIT_SHA = "9555640cdeda3cc28303532078ea12f5be470316"
 SOCKET_DIR = Path("/run/superbot-paper-close")
 SOCKET = SOCKET_DIR / "close.sock"
 PREVIOUS = "superbot-rc84-before-singleclose"
@@ -170,8 +171,13 @@ def preflight() -> tuple[dict, tuple[str, ...]]:
         refuse("STAGED_SOURCE_PIN_CHANGED")
     if call("git", "-C", str(STAGE), "status", "--porcelain", "--untracked-files=no"):
         refuse("STAGED_SOURCE_DIRTY")
-    if not UNIT_SOURCE.is_file() or UNIT_SOURCE.is_symlink():
+    if (not UNIT_SOURCE.is_file() or UNIT_SOURCE.is_symlink()
+            or not UNIT_SOURCE.parent.is_dir() or UNIT_SOURCE.parent.is_symlink()
+            or UNIT_SOURCE.parent.stat().st_uid != 0
+            or UNIT_SOURCE.parent.stat().st_mode & 0o077):
         refuse("BRIDGE_SYSTEMD_TEMPLATE_MISSING")
+    if call("git", "hash-object", str(UNIT_SOURCE)) != UNIT_SHA:
+        refuse("BRIDGE_UNIT_TEMPLATE_HASH_MISMATCH")
     if UNIT_FILE.exists() or UNIT_FILE.is_symlink() or SOCKET_DIR.exists() or SOCKET_DIR.is_symlink():
         refuse("BRIDGE_UNIT_OR_SOCKET_ALREADY_EXISTS")
     if inspect(PREVIOUS) is not None:
@@ -282,7 +288,7 @@ def socket_ro_docker_test() -> None:
         "docker", "run", "--rm", "--network", "none", "--read-only",
         "--user", "0",
         "-v", str(SOCKET_DIR) + ":" + str(SOCKET_DIR) + ":ro",
-        "--entrypoint", "python3", OLD_IMAGE, "-c", snippet,
+        "--entrypoint", "python3", NEW_IMAGE, "-c", snippet,
         timeout=45)
     if "RC84_CLOSE_ONLY_SOCKET_RO_DOCKER_TEST=PASS" not in result:
         refuse("RO_DOCKER_SOCKET_TEST_FAILED")
@@ -381,17 +387,18 @@ def publish() -> None:
     renamed=created=success=False
     keyfile=None
     try:
-        installed=True  # cleanup also if systemd start partially failed
-        start_bridge()
-        socket_ro_docker_test()
-        # The PAPER strategy and exit workers remain untouched even after
-        # the bridge unit has started. Clone already staged source pinned.
-        if valid_paper_wallets()!=pids:
-            refuse("PAPER_WORKER_CHANGED_DURING_BRIDGE_PREP")
+        # The existing web remains online while the candidate is built.
+        # Docker image includes FastAPI; never install any packages into the
+        # paused strategy Python environment.
         call("docker", "build", "--pull=false", "--quiet",
              "-t", NEW_IMAGE, "-f", str(STAGE / "Dockerfile"), str(STAGE),
              timeout=500)
         print("RC84_CLOSE_ONLY_PINNED_WEB_IMAGE_BUILD=PASS",flush=True)
+        installed=True  # cleanup even if the bridge start partially failed
+        start_bridge()
+        socket_ro_docker_test()
+        if valid_paper_wallets()!=pids:
+            refuse("PAPER_WORKER_CHANGED_DURING_BRIDGE_PREP")
         mount_args=original_mount_args(old)
         keyfile=private_env_file(old)
         call("docker", "rename", LIVE, PREVIOUS, timeout=25)
