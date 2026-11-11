@@ -1,0 +1,11 @@
+authorized_by_user=2026-11-11
+task=publish-rc84-public-dashboard-paper-readonly
+code_sha=0e29a73a36f668643da4088178bacb8616a45ac0
+workflow_sha=c16280119b3920d41ea8058b14e22636507d94d3
+all_three_wallets=PAUSED
+brain_mandate=UNAPPROVED
+trading_orders=NONE
+model_calls=NONE
+manual_close=TEMPORARILY_DISABLED_ON_NEW_ZERO_POSITION_RUNS
+rollback=RETAIN_RC73
+do_not_resume_trading=true
