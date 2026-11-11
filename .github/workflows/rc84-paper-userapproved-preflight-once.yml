@@ -1,0 +1,58 @@
+name: SuperBot RC84 - AUTHORIZED PAPER activation preflight only
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-paper-userapproved-preflight.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 'dbf6c92fe3fa72d5134f0bd2b5a01280514995fc'
+      - name: Verify exact approved PAPER startup controller code and syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 'dbf6c92fe3fa72d5134f0bd2b5a01280514995fc'
+          f=deploy/scripts/rc84-activate-three-paper-with-cooldown.py
+          test "$(git hash-object "$f")" = '7779036c255bfc45ef67b84b30db5c95aefd5e48'
+          python3 - "$f" <<'PY'
+          import ast,sys,pathlib
+          ast.parse(pathlib.Path(sys.argv[1]).read_text(),filename=sys.argv[1])
+          print('PAPER_START_SCRIPT_OFFLINE_SYNTAX=PASS')
+          PY
+      - name: Stage controller root-private and verify three LIVE server PAPER safety gates
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || { echo VPS_KEY_MISSING; exit 2; }
+          install -d -m 0700 "$RUNNER_TEMP/sg"
+          KEY="$RUNNER_TEMP/sg/id"
+          HOSTS="$RUNNER_TEMP/sg/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPT=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          HOST=root@51.79.205.82
+          DST=/opt/superbot-v3-paper-activation-20261111
+          ssh -T "${OPT[@]}" "$HOST" \
+            'set -eu; d=/opt/superbot-v3-paper-activation-20261111; test ! -e "$d"; test ! -L "$d"; install -d -m 0700 "$d"'
+          scp "${OPT[@]}" deploy/scripts/rc84-activate-three-paper-with-cooldown.py "$HOST":"$DST"/activate.py
+          ssh -T "${OPT[@]}" "$HOST" \
+            'set -eu; f=/opt/superbot-v3-paper-activation-20261111/activate.py; chmod 0600 "$f"; test "$(git hash-object "$f")" = "7779036c255bfc45ef67b84b30db5c95aefd5e48"; echo PAPER_START_CONTROLLER_PINNED=PASS'
+          ssh -T "${OPT[@]}" "$HOST" \
+            'PYTHONDONTWRITEBYTECODE=1 python3 -I /opt/superbot-v3-paper-activation-20261111/activate.py --check'
+          echo PAPER_START_PRECHECK_ONLY_ZERO_UNPAUSE=PASS
