@@ -204,7 +204,7 @@ def auth_backup():
     return folder
 
 def unpack():
-    BUILD.mkdir(mode=0o700)
+    BUILD.mkdir(mode=0o755)
     with tarfile.open(BUNDLE,"r:gz") as tf:
         items=tf.getmembers()
         if len(items)>15000:refuse("ASSET_ARCHIVE_TOO_MANY_FILES")
@@ -220,6 +220,15 @@ def unpack():
                 if src is None:refuse("ASSET_READ_FAILED")
                 with src, target.open("wb") as dst:shutil.copyfileobj(src,dst)
     if not (BUILD/"index.html").is_file():refuse("ASSET_INDEX_MISSING")
+    # React build contains ONLY public static assets. Nginx (www-data) needs
+    # directory traverse and file read permissions; 0700 caused HTTP 403.
+    for item in BUILD.rglob("*"):
+        if item.is_symlink():refuse("ASSET_SYMLINK_NOT_ALLOWED")
+        if item.is_dir():item.chmod(0o755)
+        elif item.is_file():item.chmod(0o644)
+    BUILD.chmod(0o755)
+    run("runuser","-u","www-data","--","test","-r",str(BUILD/"index.html"),timeout=8)
+    print("RC84_BRAIN_UI_NGINX_READ_PERMISSIONS=PASS",flush=True)
     js=list((BUILD/"static/js").glob("main.*.js"))
     if len(js)!=1:refuse("MAIN_BUNDLE_MISSING")
     if not (BUILD/"asset-manifest.json").is_file():refuse("ASSET_MANIFEST_MISSING")
@@ -330,6 +339,8 @@ def publish():
         BUILD.replace(CURRENT)
         front_swapped=True
         if not (CURRENT/"index.html").is_file():refuse("NEW_FRONTEND_NOT_VISIBLE")
+        run("runuser","-u","www-data","--","test","-r",str(CURRENT/"index.html"),timeout=8)
+        print("RC84_BRAIN_UI_NGINX_CAN_READ_PUBLISHED_INDEX=PASS",flush=True)
         if not web_guards(require_new=True):refuse("POST_RELEASE_GUARDS_FAILED")
         new=inspect(CONTAINER)
         if new is None or new["State"]["Running"] is not True:refuse("NEW_WEB_NOT_RUNNING")
