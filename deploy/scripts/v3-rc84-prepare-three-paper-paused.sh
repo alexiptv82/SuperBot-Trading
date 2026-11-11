@@ -25,6 +25,7 @@ die() { echo "RC84_PREP_REFUSED_$1"; exit 2; }
 for tool in python3 git; do command -v "$tool" >/dev/null || die "MISSING_TOOL"; done
 [[ -d "$STAGE" && ! -L "$STAGE" && -d "$STAGE/.git" ]] || die "SOURCE_STAGE_NOT_PINNED"
 [[ "$(git -C "$STAGE" rev-parse HEAD 2>/dev/null)" == "$PIN" ]] || die "SOURCE_SHA_MISMATCH"
+[[ -z "$(git -C "$STAGE" status --porcelain --untracked-files=all 2>/dev/null)" ]] || die "SOURCE_WORKTREE_DIRTY"
 [[ -d "$ROOT" && ! -L "$ROOT" ]] || die "PAPER_PARENT_UNAVAILABLE"
 [[ -f "$CONFIG" && ! -L "$CONFIG" ]] || die "BRAIN_CONFIG_UNAVAILABLE"
 
@@ -45,6 +46,8 @@ assert Decimal(str(r["max_loss_margin_fraction"]))==Decimal("0.21428571428571428
 assert cfg["cycle_minutes"]==60
 PY
 
+BRAIN_PYTHON=/opt/superbot-v3-rc70-stage/.venv/bin/python3
+[[ -x "$BRAIN_PYTHON" ]] || die "BRAIN_PYTHON_VENV_UNAVAILABLE"
 for path in "$HAWK" "$BULL" "$BRAIN"; do
   [[ ! -e "$path" && ! -L "$path" ]] || die "NEW_RUN_ALREADY_EXISTS"
 done
@@ -79,8 +82,7 @@ done
 # pause.flag and an explicitly UNAPPROVED mandate. Never amend an old Brain run.
 # Prefer the already provisioned application venv used by the existing RC70 preview.
 # It is used only to execute the isolated preparator, never to start a service.
-BRAIN_PYTHON=/opt/superbot-v3-rc70-stage/.venv/bin/python3
-[[ -x "$BRAIN_PYTHON" ]] || die "BRAIN_PYTHON_VENV_UNAVAILABLE"
+
 DESK_MODE=paper PYTHONPATH="$STAGE" "$BRAIN_PYTHON" -m backend.v3.runner.prepare_paper_run \
   --parent "$ROOT" --run-name "$(basename "$BRAIN")" \
   --run-id "brain-v3-$TAG" --config "$CONFIG" \
