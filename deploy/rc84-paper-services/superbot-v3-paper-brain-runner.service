@@ -1,0 +1,26 @@
+# RC84 — TEMPLATE ONLY; NOT INSTALLED, ENABLED OR STARTED.
+# Must never start unless the Brain exit sidecar is confirmed healthy.
+[Unit]
+Description=SuperBot V3 Brain NEW PAPER decision runner (paused-first)
+BindsTo=superbot-v3-paper-brain-exit.service
+After=superbot-v3-paper-brain-exit.service
+Requires=superbot-v3-paper-brain-exit.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/superbot-v3-rc84-stage
+Environment=DESK_MODE=paper
+Environment=PYTHONPATH=/opt/superbot-v3-rc84-stage
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=/etc/superbot-v3-paper/brain-ai.env
+ExecStartPre=/usr/bin/test -f /opt/superbot-v3-paper-runs/brain-v3-paper20261111/pause.flag
+ExecStart=/opt/superbot-v3-rc70-stage/.venv/bin/python3 -m backend.v3.runner.wiring --data-dir /opt/superbot-v3-paper-runs/brain-v3-paper20261111 --run-id brain-v3-paper20261111 --config /opt/superbot-v3-paper-runs/brain-v3-paper20261111/runner_config.json --exit-mode sidecar
+Restart=on-failure
+RestartSec=15
+RestartPreventExitStatus=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/superbot-v3-paper-runs/brain-v3-paper20261111
+# Intentionally NO Install section: explicit user-approved start only.
