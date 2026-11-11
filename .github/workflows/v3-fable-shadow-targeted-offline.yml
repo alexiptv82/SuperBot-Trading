@@ -1,0 +1,49 @@
+name: SuperBot V3 - Fable shadow budget OFFLINE tests once
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-fable-shadow-offline.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-brain-fable-shadow-offline-20261111
+  cancel-in-progress: false
+jobs:
+  test:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '2c19e3ed2e10ad029a73278184c83fa50c0deb37'
+      - name: Offline Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '2c19e3ed2e10ad029a73278184c83fa50c0deb37'
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          for file in (
+              'backend/v3/runner/fable_shadow.py',
+              'backend/v3/runner/wiring.py',
+              'backend/tests/test_v3_fable_shadow_budget.py',
+          ):
+              ast.parse(Path(file).read_text(),filename=file)
+          print("FABLE_SHADOW_PYTHON_AST=PASS")
+          PY
+      - name: Install only pytest
+        run: python -m pip install --quiet pytest==8.4.2
+      - name: 9 scoped Fable unit tests, NO model calls
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          BRAIN_FABLE_SHADOW: '0'
+          BRAIN_FABLE_BUDGET_APPROVED: '0'
+        run: |
+          set -euo pipefail
+          python -m pytest -q backend/tests/test_v3_fable_shadow_budget.py
+          echo FABLE_SHADOW_TESTS_PASS=true
+          echo FABLE_SHADOW_NO_VPS_OR_AI_REQUESTS=true
