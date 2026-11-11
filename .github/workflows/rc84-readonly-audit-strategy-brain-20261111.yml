@@ -1,0 +1,172 @@
+name: RC84 - readonly Falco Toro trade independence LONG SHORT and Brain NO_TRADE audit
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-strategy-brain-readonly-audit.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read live PAPER portfolio states, trade origin, source and Brain journal (NO mutations)
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/sg"
+          KEY="$RUNNER_TEMP/sg/id"; HOSTS="$RUNNER_TEMP/sg/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 root@51.79.205.82 \
+            'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          from collections import Counter
+          from datetime import datetime,timezone
+          import json,os,pathlib,sqlite3,subprocess,time
+          root=pathlib.Path('/opt/superbot-v3-paper-runs')
+          now=int(time.time()*1000)
+          def stamp(t):
+              try:return datetime.fromtimestamp(int(t)/1000,timezone.utc).strftime('%H:%M:%S UTC')
+              except (TypeError,ValueError,OSError):return 'unknown'
+          def read_json(p):
+              if p.is_symlink() or not p.is_file():raise RuntimeError('paper_file_missing')
+              return json.loads(p.read_text())
+          def report(msg):
+              print('AUDIT_'+msg,flush=True)
+          def proc_keys(service,keys):
+              p=subprocess.run(['systemctl','show',service,'-p','MainPID','--value'],
+                               capture_output=True,text=True,timeout=8)
+              assert p.returncode==0 and p.stdout.strip().isdigit() and int(p.stdout.strip())>1,'worker_not_running'
+              pid=p.stdout.strip()
+              raw=pathlib.Path('/proc/'+pid+'/environ').read_bytes().split(b'\0')
+              env=dict(row.split(b'=',1) for row in raw if b'=' in row)
+              # NEVER print raw environment or secrets. Only allow-listed non-secret settings.
+              return pid,{k:env.get(k.encode(),b'').decode('utf-8','replace') for k in keys}
+          def tail_json(path,max_bytes=1024*1024):
+              if path.is_symlink() or not path.is_file():return []
+              try:
+                  size=path.stat().st_size
+                  with path.open('rb') as f:
+                      off=max(0,size-max_bytes)
+                      f.seek(off)
+                      if off:f.readline()
+                      rows=f.readlines()
+              except OSError:return []
+              out=[]
+              for line in rows:
+                  try:
+                      d=json.loads(line)
+                      if type(d) is dict:out.append(d)
+                  except (UnicodeError,ValueError,TypeError):pass
+              return out
+          positions={}
+          for name,unit,folder,want in (
+              ('FALCO','superbot-v3-paper-falco.service','classic-hawk-paper20261111','hawk'),
+              ('TORO','superbot-v3-paper-toro.service','classic-bull-paper20261111','bull')):
+              d=root/folder
+              pid,env=proc_keys(unit,['DESK_PORTFOLIO','DESK_MODE','DESK_LONG_S25','DESK_MODEL','DESK_DATA_DIR'])
+              assert env['DESK_MODE']=='paper' and env['DESK_PORTFOLIO']==want
+              state=read_json(d/'state_v2.json')
+              pos=(state.get('main') or {}).get('positions') or {}
+              assert type(pos) is dict
+              positions[name]=pos
+              hb=read_json(d/'heartbeat.json')
+              report(name+'_OPEN_COUNT='+str(len(pos)))
+              report(name+'_SERVICE_PID='+pid)
+              report(name+'_LONG_S25_ENABLED='+str(env['DESK_LONG_S25']=='1'))
+              report(name+'_MODEL='+str(env['DESK_MODEL'])[:75])
+              report(name+'_DATA_PATH_EXPECTED='+str(env['DESK_DATA_DIR']==str(d)))
+              report(name+'_HEARTBEAT_MODE='+str(hb.get('mode')))
+              report(name+'_HEARTBEAT_FRESH='+str(0<=time.time()-float(hb.get('ts',0))<120))
+              by_side=Counter()
+              by_origin=Counter()
+              for sym,p in sorted(pos.items()):
+                  if type(p) is not dict:continue
+                  direction='LONG' if p.get('side')==1 else 'SHORT' if p.get('side')==-1 else 'UNKNOWN'
+                  source=str(p.get('source','none'))[:45]
+                  by_side[direction]+=1
+                  by_origin[source]+=1
+                  opening=p.get('open_ms',0)
+                  item={
+                      'symbol':str(sym)[:25], 'side':direction,
+                      'source':source,'type':str(p.get('trade_type'))[:20],
+                      'lev':p.get('leverage'), 'margin':p.get('total_margin'),
+                      'open_utc':stamp(opening),'open_ms':opening,
+                      'sl':p.get('sl'),'tp':p.get('tp'),
+                      'confidence':p.get('confidence')
+                  }
+                  report(name+'_POSITION='+json.dumps(item,ensure_ascii=True,default=str))
+              report(name+'_SIDES='+json.dumps(dict(by_side)))
+              report(name+'_ORIGINS='+json.dumps(dict(by_origin)))
+              events=[x for x in tail_json(d/'learning_log.jsonl') if int(x.get('ts',0) or 0)>=now-8*3600000]
+              cl=[x for x in events if x.get('ev')=='claude_call']
+              report(name+'_CLAUDE_CALLS_LAST8H='+str(len(cl)))
+              report(name+'_CLAUDE_CALLS_OK_LAST8H='+str(sum(x.get('ok') is True for x in cl)))
+              report(name+'_CLAUDE_CALLS_NO_DECISIONS_LAST8H='+str(sum(x.get('n_decisions')==0 for x in cl)))
+              report(name+'_CLAUDE_FAIL_REASONS_LAST8H='+json.dumps(dict(Counter(str(x.get('fail_reason','unknown'))[:35] for x in cl if not x.get('ok')))))
+              opens=[x for x in events if x.get('ev')=='open']
+              report(name+'_LEARNING_OPENS_LAST8H='+str(len(opens)))
+              report(name+'_LEARNING_OPEN_SOURCE='+json.dumps(dict(Counter(str(x.get('source','unknown')) for x in opens))))
+              report(name+'_LEARNING_OPEN_SIDE='+json.dumps(dict(Counter('LONG' if x.get('side')==1 else 'SHORT' if x.get('side')==-1 else '?' for x in opens))))
+              candidates=[x for x in events if x.get('ev')=='candidate']
+              report(name+'_CANDIDATE_COUNTS_LAST8H='+str(len(candidates)))
+              report(name+'_CANDIDATE_STATES_LAST8H='+json.dumps(dict(Counter(str(x.get('status','unknown'))[:40] for x in candidates).most_common(8))))
+          common=sorted(set(positions['FALCO'])&set(positions['TORO']))
+          report('COMMON_SYMBOLS='+json.dumps(common))
+          for sym in common:
+              a,b=positions['FALCO'][sym],positions['TORO'][sym]
+              report('SHARED_COMPARISON_'+str(sym)[:25]+'='+json.dumps({
+                  'same_side':a.get('side')==b.get('side'),
+                  'same_origin':a.get('source')==b.get('source'),
+                  'same_trade_type':a.get('trade_type')==b.get('trade_type'),
+                  'time_difference_seconds':round(abs(int(a.get('open_ms',0))-int(b.get('open_ms',0)))/1000),
+                  'falco_margin':a.get('total_margin'),
+                  'toro_margin':b.get('total_margin')
+              },default=str))
+          brain=root/'brain-v3-paper20261111'
+          hb=read_json(brain/'heartbeat.json')
+          report('BRAIN_HEARTBEAT_STATE='+str(hb.get('state')))
+          report('BRAIN_HEARTBEAT_FRESH='+str(0<now-int(hb.get('ts_ms',0))<120000))
+          report('BRAIN_COMPLETED_CYCLES='+str(hb.get('cycle')))
+          report('BRAIN_LAST_ERROR_CODE='+str(hb.get('last_error'))[:190])
+          mandate=read_json(brain/'mandate.json')
+          report('BRAIN_MANDATE_APPROVED='+str(mandate.get('approved')))
+          bp=brain/'journal.db'
+          assert bp.is_file() and not bp.is_symlink()
+          db=sqlite3.connect('file:'+str(bp)+'?mode=ro',uri=True,timeout=10)
+          db.execute('PRAGMA query_only=ON')
+          try:
+              stats=db.execute('SELECT kind,COUNT(*) FROM v3_events WHERE portfolio_id=? AND run_id=? GROUP BY kind',
+                               ('brain','brain-v3-paper20261111')).fetchall()
+              report('BRAIN_JOURNAL_KINDS='+json.dumps(dict(stats)))
+              rows=db.execute('SELECT kind,occurred_at_ms,payload_json FROM v3_events WHERE portfolio_id=? AND run_id=? ORDER BY seq DESC LIMIT 300',
+                              ('brain','brain-v3-paper20261111')).fetchall()
+              summaries=Counter()
+              codes=Counter()
+              last=[]
+              for kind,ts,payload in rows:
+                  if kind!='brain_decision':continue
+                  p=json.loads(payload)
+                  category=(str(p.get('kind')),str(p.get('status')))
+                  summaries[category]+=1
+                  codes[str(p.get('rationale','unknown'))[:64]]+=1
+                  if len(last)<12:
+                      last.append({'utc':stamp(ts),'symbol':str(p.get('symbol'))[:25],
+                                   'kind':category[0],'status':category[1],
+                                   'reason':str(p.get('rationale','unknown'))[:64]})
+              report('BRAIN_LAST300_DECISION_TYPES='+json.dumps({str(k):v for k,v in summaries.items()}))
+              report('BRAIN_LAST300_RATIONALES='+json.dumps(dict(codes.most_common(12))))
+              report('BRAIN_LAST12_DECISIONS='+json.dumps(last,ensure_ascii=True))
+          finally:
+              db.close()
+          report('READ_ONLY_NO_RESTARTS_NO_ORDERS=PASS')
+          PY
