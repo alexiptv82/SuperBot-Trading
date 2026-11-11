@@ -12,3 +12,8 @@ telegram_paid_model_calls=false
 retry=2
 reason=offline_test_HTML_P_amp_L_literal_only
 pinned_sha=728cedadd4179fa755864979528273f6cec117a0
+
+retry=3
+reason=fix_CAP_SYS_PTRACE_requirement_with_readonly_unit_envfile_identity_check
+code_sha=aa52043c3ee0c6f46c5014861d2ed3bf64473390
+sandbox_preflight_required=true
