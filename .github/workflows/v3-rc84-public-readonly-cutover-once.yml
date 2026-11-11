@@ -1,0 +1,45 @@
+name: SuperBot RC84 - ONE SHOT public PAPER READONLY cutover with RC73 rollback
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/v3-rc84-public-readonly-cutover.trigger
+permissions:
+  contents: read
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '3eb600e82e4c835653cde5032e58faee545ba73d'
+      - name: Explicitly guarded RC84 PAPER read-only web cutover
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '3eb600e82e4c835653cde5032e58faee545ba73d'
+          A=deploy/scripts/v3-rc84-public-paper-readonly-cutover.py
+          B=deploy/scripts/v3-rc84-public-readonly-cutover-preflight.py
+          test "$(git hash-object "$A")" = '42ec4b07a5c9fe4a87b64368e63aed166d3df611'
+          test "$(git hash-object "$B")" = 'd0b025c8ef033a0b6174cf5ca846298c255979be'
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 700 "$RUNNER_TEMP/sg"
+          KEY="$RUNNER_TEMP/sg/id"
+          HOSTS="$RUNNER_TEMP/sg/known_hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
+            root@51.79.205.82 'set -eu; d=/opt/superbot-v3-rc84-release-scripts; test -f "$d/v3-rc84-public-paper-readonly-cutover.py"; test -f "$d/v3-rc84-public-readonly-cutover-preflight.py"; cd "$d"; test "$(git hash-object v3-rc84-public-paper-readonly-cutover.py)" = 42ec4b07a5c9fe4a87b64368e63aed166d3df611; test "$(git hash-object v3-rc84-public-readonly-cutover-preflight.py)" = d0b025c8ef033a0b6174cf5ca846298c255979be; test ! -e /opt/superbot-v3-rc84-ui-preview/rc84-public-cutover.json; PYTHONDONTWRITEBYTECODE=1 python3 -I "$d/v3-rc84-public-paper-readonly-cutover.py" --preflight-only; PYTHONDONTWRITEBYTECODE=1 python3 -I "$d/v3-rc84-public-paper-readonly-cutover.py" --publish-readonly'
+          echo RC84_PUBLIC_WEB_CUTOVER_ACTION_FINISHED=True
