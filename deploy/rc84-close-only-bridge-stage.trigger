@@ -1,0 +1,8 @@
+date=2026-11-11
+scope=source_staging_only
+source_sha=d6ef68730ba2017e1cb37daca1c0447e069a5d7b
+bot_services_start=false
+no_close_requests=true
+no_web_deploy=true
+no_trade_orders=true
+all_paper_wallets_must_be_paused=true
