@@ -1,0 +1,44 @@
+name: SuperBot V3 - credential presence and web read-only
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-rc84-ai-web-readonly.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: superbot-v3-ai-web-presence-readonly
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '7469f74ec30acc32bcedbc62e47388bd811546b0'
+      - name: Check new AI configuration and existing dashboards - no secrets read out
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '7469f74ec30acc32bcedbc62e47388bd811546b0'
+          SCRIPT=deploy/scripts/v3-rc84-credential-and-web-readonly.sh
+          test "$(git hash-object "$SCRIPT")" = 'b10874180b5fa80c9720643d3702ba6d4e160f62'
+          bash -n "$SCRIPT"
+          test -n "${SG_SSH_KEY:-}" || { echo RC84_NO_SSH_SECRET; exit 2; }
+          install -d -m 700 "$RUNNER_TEMP/sg-keys"
+          KEY="$RUNNER_TEMP/sg-keys/id"
+          HOSTS="$RUNNER_TEMP/sg-keys/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
+            root@51.79.205.82 'bash -s --' < "$SCRIPT"
+          echo RC84_AI_WEB_INSPECTION_COMPLETED=True
