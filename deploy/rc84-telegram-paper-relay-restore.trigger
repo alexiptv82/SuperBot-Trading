@@ -1,0 +1,10 @@
+date=2026-11-11
+scope=restore_telegram_alerts_for_four_active_classic_PAPER_positions
+branch_revision=02ecab7453e056e79f816468c0f8b4473f3664af
+no_bot_restart=true
+no_trading_order_change=true
+notifications_only=true
+legacy_bot_credentials_transferred_only_on_root_vps=true
+never_log_credentials=true
+deliver_existing_opens_as_recovered_alerts=true
+telegram_paid_model_calls=false
