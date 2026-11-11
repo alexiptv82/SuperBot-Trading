@@ -1,0 +1,33 @@
+# PAPER alerts only, NOT a trading worker. No BOT start/restart/close actions.
+# Installs only after a verified root-private credential copy from legacy.
+[Unit]
+Description=SuperBot V3 PAPER Telegram notices - classic open/close observer
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/superbot-v3-telegram-relay-code/relay.py
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/superbot-v3-telegram-relay-code
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=/etc/superbot-v3-paper/telegram-relay.env
+ExecStart=/usr/bin/python3 -I /opt/superbot-v3-telegram-relay-code/relay.py --serve
+Restart=on-failure
+RestartSec=20
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+MemoryDenyWriteExecute=yes
+ReadWritePaths=/opt/superbot-v3-telegram-notifier
+# The 2 PAPER run directories are READ ONLY to this process.
+ReadOnlyPaths=/opt/superbot-v3-paper-runs/classic-hawk-paper20261111 /opt/superbot-v3-paper-runs/classic-bull-paper20261111
+# NO Install section: explicit launch only after safety verification.
