@@ -1,0 +1,11 @@
+incident=HTTP_403_after_RC84_Brain_Performance_Settings_UI_release
+user_reported=2026-11-11
+approved_scope=restore_public_web_access_after_prior_authorized_release
+fix=ONLY_static_frontend_permissions_when_current_release_SHA_matches
+new_release_SHA=d0c832620e9b237ce97305029bab5150d3f77489
+no_bot_changes=true
+no_service_restart=true
+no_auth_changes=true
+no_secret_handling=true
+no_trade_unpause=true
+abort_on_unexpected_state=true
