@@ -1,0 +1,105 @@
+name: RC84 Brain public market data proof (read-only Bitget)
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-brain-public-data-probe.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  probe:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Probe Bitget contract fields and historical 15m continuity on Singapore
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"; HOSTS="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
+            root@51.79.205.82 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          import datetime,json,time,urllib.request,urllib.error
+          from decimal import Decimal,InvalidOperation
+          from urllib.parse import urlencode
+          BASE='https://api.bitget.com'
+          now=int(time.time()*1000)
+          def get(path,params,timeout=15):
+              u=BASE+path+'?'+urlencode(params)
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'SuperBot RC84 public-data audit'}),timeout=timeout) as f:
+                      raw=f.read(900000)
+                      data=json.loads(raw)
+                      return {'http':f.status,'code':data.get('code'),
+                              'data':data.get('data') or [],'error':None}
+              except urllib.error.HTTPError as e:return {'http':e.code,'code':None,'data':[],'error':'http_error'}
+              except Exception as e:return {'http':0,'code':None,'data':[],'error':type(e).__name__}
+          print('MARKET_AUDIT_SERVER_TIME_UTC='+datetime.datetime.now(datetime.timezone.utc).isoformat())
+          c=get('/api/v2/mix/market/contracts',{'productType':'USDT-FUTURES'},timeout=20)
+          print('MARKET_AUDIT_CONTRACT_HTTP='+str(c['http']))
+          print('MARKET_AUDIT_CONTRACT_CODE='+str(c['code']))
+          print('MARKET_AUDIT_CONTRACT_COUNT='+str(len(c['data'])))
+          print('MARKET_AUDIT_CONTRACT_ERROR='+str(c['error']))
+          if c['code']=='00000' and type(c['data']) is list:
+              for sym in ('BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','BNBUSDT','DOGEUSDT','ADAUSDT','LINKUSDT'):
+                  d=next((a for a in c['data'] if type(a) is dict and a.get('symbol')==sym),{})
+                  print('MARKET_AUDIT_CONTRACT_'+sym+'='+json.dumps({
+                      k:d.get(k) for k in ('symbolStatus','maxLever','sizeMultiplier','minTradeUSDT','minLever')},sort_keys=True))
+          # Two recent public 200-bar pages for BTC/SOL 15m: verify no history gaps,
+          # and the 15m 2893-bar minimum with an additional bounded 15-page scan.
+          step=900000
+          end=now//step*step
+          for sym in ('BTCUSDT','SOLUSDT'):
+              rows={}
+              first_fail=''
+              firstpage=None
+              end_cursor=end-1
+              for i in range(17):
+                  st=max(end-3000*step,end_cursor-200*step)
+                  d=get('/api/v2/mix/market/history-candles',{
+                      'symbol':sym,'productType':'USDT-FUTURES','granularity':'15m',
+                      'startTime':st,'endTime':end_cursor,'limit':200},timeout=18)
+                  if firstpage is None:
+                      firstpage={'http':d['http'],'code':d['code'],'size':len(d['data']),
+                                 'error':d['error']}
+                  if d['code']!='00000':
+                      first_fail=f'page_{i}:{d["error"] or d["code"]}'
+                      break
+                  good=0
+                  for x in d['data']:
+                      if type(x) in (list,tuple) and len(x)>=6:
+                          try:
+                              ts=int(x[0])
+                              if end-3000*step<=ts<end and ts%step==0:
+                                  rows[ts]=x[1:6];good+=1
+                          except (TypeError,ValueError):pass
+                  if not good:
+                      first_fail='empty_page_'+str(i)
+                      break
+                  if st<=end-3000*step:break
+                  end_cursor=st-1
+              tail=0
+              cur=end-step
+              while cur in rows:
+                  tail+=1;cur-=step
+              # Any missing last candle is diagnostic, not an excuse to synthesize data.
+              keys=sorted(rows)
+              latest=keys[-1] if keys else None
+              print('MARKET_AUDIT_'+sym+'_15M_FIRSTPAGE='+json.dumps(firstpage))
+              print('MARKET_AUDIT_'+sym+'_15M_OBSERVED_COUNT='+str(len(rows)))
+              print('MARKET_AUDIT_'+sym+'_15M_CONTIGUOUS_FROM_LAST_CLOSED='+str(tail))
+              print('MARKET_AUDIT_'+sym+'_15M_LAST_AGE_CANDLES='+str((end-step-latest)//step if latest is not None else -1))
+              print('MARKET_AUDIT_'+sym+'_15M_FAILURE='+str(first_fail))
+              print('MARKET_AUDIT_'+sym+'_15M_MIN2893_MET='+str(tail>=2893))
+          print('MARKET_AUDIT_NO_AI_TRADING_WALLET_MUTATIONS=PASS')
+          PY
