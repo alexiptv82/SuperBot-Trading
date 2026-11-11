@@ -1,0 +1,54 @@
+name: SuperBot RC84 - single-close bridge OFFLINE tests one time
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-close-only-bridge-offline.trigger']
+permissions:
+  contents: read
+concurrency:
+  group: rc84-single-close-bridge-offline-20261111
+  cancel-in-progress: false
+jobs:
+  test:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 69b4f629dfa238b930f41ef916fa52ea1386c298
+      - name: Verify pinned code and syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '69b4f629dfa238b930f41ef916fa52ea1386c298'
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          for path in (
+              "backend/v3/close_bridge.py",
+              "backend/v3/close_bridge_server.py",
+              "backend/v3/cutover_gate.py",
+              "backend/desk_api.py",
+              "backend/v3_api.py",
+              "backend/tests/test_v3_close_only_bridge.py",
+          ):
+              ast.parse(Path(path).read_text(), filename=path)
+          print("RC84_SINGLE_CLOSE_BRIDGE_SYNTAX=PASS")
+          PY
+      - name: Install backend test dependencies only
+        run: python3 -m pip install --quiet pytest==8.4.2 fastapi==0.110.0 httpx==0.27.0
+      - name: Run focused bridge and mutation gate tests (NO VPS)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          DESK_MODE: paper
+          TRADING_MODE: paper
+          V3_CUTOVER_READONLY: '1'
+          V3_ALLOW_CLASSIC_SINGLE_CLOSE: '0'
+          V3_ALLOW_BRAIN_SINGLE_CLOSE: '0'
+        run: |
+          set -euo pipefail
+          python3 -m pytest -q backend/tests/test_v3_close_only_bridge.py
+          echo RC84_SINGLE_CLOSE_BRIDGE_TESTS_PASS=true
+          echo RC84_ZERO_REAL_CLOSES_AND_ZERO_DEPLOY=true
