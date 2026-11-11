@@ -185,7 +185,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                 adviser = FableShadowAdviser(
                     ledger=FableLedger(shared_budget, run_id),
                     transport=claude_transport(), enabled=True)
-                primary = ShadowFableAnalyst(primary, adviser)
+                primary = ShadowFableAnalyst(primary, adviser, bars_source=holder)
             except Exception:
                 # No hard dependency on a second model, its DB or its key.
                 # Never substitute another model and never block DeepSeek.
