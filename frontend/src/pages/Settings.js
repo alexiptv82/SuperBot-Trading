@@ -4,6 +4,7 @@ import { botState, signed, fmtClock, fmtDateTime, PARAM_ROWS, DAY_LABELS, DAY_NA
 import Logs from './Logs';
 import ChangePasswordForm from '../components/ChangePasswordForm';
 import BiometricManager from '../components/BiometricManager';
+import BrainSettingsPanel from '../components/BrainSettingsPanel';
 
 const MUTED = '#94a3b8';
 const BORDER = '#334155';
@@ -394,17 +395,18 @@ export default function Settings() {
         {pwdMsg && <div style={{ fontSize: '12px', color: GOOD, marginTop: '10px' }}>{pwdMsg}</div>}
       </Card>
 
-      {/* ── Stato e comandi dei due portafogli ── */}
+      {/* ── Stato e comandi di tutti e tre i portafogli PAPER ── */}
       <PortfolioControl portfolio="hawk" />
       <PortfolioControl portfolio="bull" />
+      <BrainSettingsPanel />
 
-      {/* ── Orari di trading (spenti di default) ── */}
+      {/* ── Orari di trading dei classici (l'API Brain non offre comandi equivalenti) ── */}
       <HoursControl portfolio="hawk" />
       <HoursControl portfolio="bull" />
 
-      {/* ── Parametri con cui gira il bot ── */}
+      {/* ── Parametri classici; quelli Brain sono mostrati nella propria sezione ── */}
       <h2 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#cbd5e1' }}>
-        📐 Parametri del bot
+        📐 Parametri Falco e Toro
       </h2>
       <ParamsCard />
 
