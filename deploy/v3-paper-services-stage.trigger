@@ -1,0 +1,9 @@
+approved=stage-only-four-paper-service-templates
+source_sha=e5890cdd1de46adb9a6b0ba7b9b7ad32d72c669b
+stage_dir=/opt/superbot-v3-rc84-services-staged
+install_systemd=no
+start_services=no
+restart_services=no
+remove_pause=no
+approve_brain_mandate=no
+live_orders=no
