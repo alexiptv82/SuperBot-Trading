@@ -1,0 +1,5 @@
+date=2026-11-11
+user_intent=repair_bugs_immediately_may_reset_paper_wallets
+scope=temporary_pause_new_entries_only_all_three
+preserve_open_trades_and_exit_workers=true
+no_restart_or_reset_yet=true
