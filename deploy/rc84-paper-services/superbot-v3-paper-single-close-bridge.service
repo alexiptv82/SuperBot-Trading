@@ -1,0 +1,38 @@
+# TEMPLATE ONLY — NOT INSTALLED/STARTED.
+# A host-only writer for SINGLE manual close of an already-open PAPER position.
+# Web/Docker keeps all three run mounts READ ONLY. No live exchange access.
+[Unit]
+Description=SuperBot V3 PAPER close-only bridge (Falco/Toro/Brain)
+After=network.target
+ConditionPathExists=/opt/superbot-v3-paper-runs/brain-v3-paper20261111/PREPARED_PAUSED_ONLY.json
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/superbot-v3-rc84-close-bridge-stage
+Environment=PYTHONPATH=/opt/superbot-v3-rc84-close-bridge-stage:/opt/superbot-v3-rc84-close-bridge-stage/backend
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=DESK_MODE=paper
+Environment=TRADING_MODE=paper
+Environment=V3_CUTOVER_READONLY=1
+Environment=V3_ALLOW_CLASSIC_SINGLE_CLOSE=1
+Environment=V3_ALLOW_BRAIN_SINGLE_CLOSE=1
+Environment=V3_CLOSE_BRIDGE_ONLY=1
+Environment=V3_CLOSE_BRIDGE_SOCKET=/run/superbot-paper-close/close.sock
+RuntimeDirectory=superbot-paper-close
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStart=/opt/superbot-v3-rc70-stage/.venv/bin/python3 -m backend.v3.close_bridge_server
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ReadWritePaths=/run/superbot-paper-close /opt/superbot-v3-paper-runs/classic-hawk-paper20261111 /opt/superbot-v3-paper-runs/classic-bull-paper20261111 /opt/superbot-v3-paper-runs/brain-v3-paper20261111
+# Deliberately no Install section: never enabled automatically.
