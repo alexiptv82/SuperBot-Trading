@@ -12,3 +12,8 @@ keep_all_run_mounts_read_only=true
 no_trading_unpause=true
 no_ai_requests=true
 no_exchange_live_orders=true
+
+retry=2
+reason=isolated_docker_bridge_with_builtin_fastapi_no_install_on_trading_services
+release_script=e5210d75c3f0eee1b80c295ca38c19d8b6c1ef6d
+unit_sha=9555640cdeda3cc28303532078ea12f5be470316
