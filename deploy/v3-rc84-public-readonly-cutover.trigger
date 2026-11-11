@@ -1,11 +1,11 @@
 authorized_by_user=2026-11-11
-task=publish-rc84-public-dashboard-paper-readonly
-code_sha=0e29a73a36f668643da4088178bacb8616a45ac0
-workflow_sha=c16280119b3920d41ea8058b14e22636507d94d3
+task=retry-rc84-public-dashboard-readonly-after-fixing-local-variable
+revision=2
+script_commit=894bdac51e070e4ebcc3d3230ba25f8341aafb1d
+recover_only=aborted-temporary-rc84-new-frontend-after-rc73-healthcheck
 all_three_wallets=PAUSED
 brain_mandate=UNAPPROVED
 trading_orders=NONE
-model_calls=NONE
-manual_close=TEMPORARILY_DISABLED_ON_NEW_ZERO_POSITION_RUNS
+manual_closes=TEMPORARILY_DISABLED
 rollback=RETAIN_RC73
 do_not_resume_trading=true
