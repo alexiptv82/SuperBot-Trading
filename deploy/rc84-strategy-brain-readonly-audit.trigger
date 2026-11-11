@@ -1,0 +1,7 @@
+date=2026-11-11
+purpose=verify_Falco_Toro_same_paper_trades_and_LONG_SHORT_and_Brain_no_trade
+scope=read_only_vps_state_and_existing_logs
+no_trading_changes=true
+no_restarts=true
+no_live_orders=true
+no_provider_calls=true
