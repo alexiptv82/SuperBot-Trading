@@ -15,7 +15,7 @@ Environment=DESK_DATA_DIR=/opt/superbot-v3-paper-runs/classic-bull-paper20261111
 Environment=DESK_LONG_S25=1
 Environment=PYTHONPATH=/opt/superbot-v3-rc84-stage/backend
 Environment=PYTHONDONTWRITEBYTECODE=1
-EnvironmentFile=/etc/superbot-v3-paper/toro-ai.env
+EnvironmentFile=-/etc/superbot-v3-paper/toro-ai.env
 ExecStartPre=/usr/bin/test -f /opt/superbot-v3-paper-runs/classic-bull-paper20261111/PREPARED_PAUSED_ONLY.json
 ExecStart=/opt/superbot-v3-rc70-stage/.venv/bin/python3 -m desk.cli loop --portfolio bull
 Restart=on-failure
