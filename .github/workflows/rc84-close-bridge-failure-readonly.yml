@@ -1,0 +1,66 @@
+name: SuperBot RC84 - readonly diagnosis failed PAPER close bridge startup
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-close-bridge-failure-diagnostic.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read-only evidence from Singapore - no secrets or bot changes
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"
+          KNOWN="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$KNOWN"; chmod 600 "$KNOWN"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$KNOWN" root@51.79.205.82 'python3 -I -' <<'PY'
+          from pathlib import Path
+          import os, json, subprocess, re
+          unit='superbot-v3-paper-single-close-bridge.service'
+          stage=Path('/opt/superbot-v3-rc84-close-bridge-stage')
+          print('BRIDGE_FAILURE_DIAG_START=True')
+          print('BRIDGE_STAGE_PRESENT='+str(stage.is_dir()))
+          print('BRIDGE_PYTHON_VENV_PRESENT='+str(Path('/opt/superbot-v3-rc70-stage/.venv/bin/python3').is_file()))
+          print('BRIDGE_UNIT_PRESENT='+str(Path('/etc/systemd/system/'+unit).exists()))
+          print('BRIDGE_SOCKET_PRESENT='+str(Path('/run/superbot-paper-close/close.sock').exists()))
+          p=subprocess.run(['docker','inspect','-f','{{.Config.Image}}', 'superbot'],capture_output=True,text=True)
+          print('PUBLIC_WEB_IMAGE_MATCH='+str(p.returncode==0 and p.stdout.strip()=='superbot:brain-ui-20261111'))
+          e=os.environ.copy()
+          e.update({'PYTHONPATH':str(stage)+':'+str(stage/'backend'),
+                    'PYTHONDONTWRITEBYTECODE':'1'})
+          import_check=subprocess.run(
+              ['/opt/superbot-v3-rc70-stage/.venv/bin/python3','-c',
+               'import backend.v3.close_bridge_server; print("import_ok")'],
+              env=e,capture_output=True,text=True,timeout=20)
+          print('BRIDGE_MODULE_IMPORT_OK='+str(import_check.returncode==0))
+          if import_check.returncode:
+              code=(import_check.stderr.strip().splitlines() or ['unknown'])[-1]
+              if re.search(r'(ImportError|ModuleNotFoundError|SyntaxError|NameError|FileNotFoundError|PermissionError|TypeError)',code):
+                  print('BRIDGE_IMPORT_FAILURE_CLASS='+re.sub(r'[^A-Za-z0-9_:. -]','',code)[:140])
+          p=subprocess.run(['journalctl','-u',unit,'-n','45','--no-pager','--output=cat'],capture_output=True,text=True,timeout=20)
+          print('BRIDGE_JOURNAL_READ_OK='+str(p.returncode==0))
+          lines=p.stdout.splitlines()
+          for item in lines:
+              s=item.strip()
+              if re.search(r'(Traceback|ModuleNotFoundError|ImportError|FileNotFoundError|Failed to|status=|Permission denied|BRIDGE_REFUSED|bridge_not_paper|ProtectSystem|Dependency failed|mount)',s,re.I):
+                  # No provider API keys or env dumps are ever emitted.
+                  if re.search(r'(API_KEY|TOKEN|SECRET|password|sk-ant)',s,re.I):
+                      continue
+                  print('BRIDGE_JOURNAL_CAUSE='+re.sub(r'[^A-Za-z0-9_:/\\.()= -]','',s)[:150])
+          print('BRIDGE_FAILURE_DIAG_DONE=True')
+          PY
