@@ -1,0 +1,9 @@
+approved=provider-readonly-metadata-and-balance
+date=2026-11-11
+source_commit=798db58e9f8df9b502d3a3339d35bb93cd172f29
+provider_get_only=true
+no_model_inference=true
+no_order=true
+no_deploy=true
+no_restart=true
+no_secret_output=true
