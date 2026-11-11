@@ -1,0 +1,49 @@
+name: SuperBot RC84 - public dashboard cutover PREFLIGHT ONLY
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/v3-rc84-public-preflight.trigger
+permissions:
+  contents: read
+concurrency:
+  group: superbot-rc84-public-dashboard-preflight-only
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '41741f81d1f8bf9d47ed9e24611742ab820bfbcb'
+      - name: Validate script and inspect Singapore RC84 without modifying it
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '41741f81d1f8bf9d47ed9e24611742ab820bfbcb'
+          SCRIPT=deploy/scripts/v3-rc84-public-readonly-cutover-preflight.py
+          test "$(git hash-object "$SCRIPT")" = 'd0b025c8ef033a0b6174cf5ca846298c255979be'
+          python3 - <<'PY'
+          import ast, pathlib
+          src=pathlib.Path('deploy/scripts/v3-rc84-public-readonly-cutover-preflight.py')
+          ast.parse(src.read_text(), filename=str(src))
+          print("RC84_PUBLIC_PREFLIGHT_SYNTAX=PASS")
+          PY
+          test -n "${SG_SSH_KEY:-}" || { echo RC84_PUBLIC_PREFLIGHT_NO_SSH; exit 2; }
+          install -d -m 700 "$RUNNER_TEMP/sg"
+          KEY="$RUNNER_TEMP/sg/id"
+          HOSTS="$RUNNER_TEMP/sg/known_hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"
+          chmod 600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
+            root@51.79.205.82 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' < "$SCRIPT"
+          echo RC84_PUBLIC_CUTOVER_PREFLIGHT_ACTION_DONE=True
