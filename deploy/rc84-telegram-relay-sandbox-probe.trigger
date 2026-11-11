@@ -1,0 +1,4 @@
+date=2026-11-11
+purpose=probe_only_sandboxed_telegram_unit_root_cause
+no_real_messages=true
+no_trading_changes=true
