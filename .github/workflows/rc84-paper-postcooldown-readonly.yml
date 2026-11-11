@@ -1,0 +1,87 @@
+name: SuperBot RC84 - PAPER post-cooldown status READ-ONLY one shot
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-paper-postcooldown-readonly.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  status:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check real PAPER three-wallet status, no trade actions or credentials
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"
+          HOSTS="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
+            root@51.79.205.82 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          import json,os,pathlib,subprocess,time,urllib.request,urllib.error
+          R=pathlib.Path('/opt/superbot-v3-paper-runs')
+          root=pathlib.Path('/opt/superbot-v3-paper-activation-20261111')
+          def read(p):
+              if not p.is_file() or p.is_symlink():raise RuntimeError('missing_file')
+              return json.loads(p.read_text())
+          state=read(root/'activation-state.json')
+          assert state['approved_scope']=='paper_only'
+          print('PAPER_START_ACTIVATION_MODE='+str(state.get('mode')))
+          armed=int(state['armed_at_ms'])
+          duration=int(time.time()*1000)-armed
+          print('PAPER_START_COOLDOWN_ELAPSED_MINUTES='+str(duration//60000))
+          assert duration >= 20*60000,'cooldown_not_elapsed'
+          mand=read(R/'brain-v3-paper20261111'/'mandate.json')
+          print('PAPER_START_BRAIN_MANDATE_APPROVED='+str(mand.get('approved') is True))
+          for name,dir,unit in (
+              ('FALCO',R/'classic-hawk-paper20261111','superbot-v3-paper-falco.service'),
+              ('TORO',R/'classic-bull-paper20261111','superbot-v3-paper-toro.service'),
+              ('BRAIN',R/'brain-v3-paper20261111','superbot-v3-paper-brain-runner.service'),
+          ):
+              x=subprocess.run(['systemctl','is-active',unit],capture_output=True,text=True,timeout=7)
+              print('PAPER_START_'+name+'_SERVICE_ACTIVE='+str(x.returncode==0 and x.stdout.strip()=='active'))
+              print('PAPER_START_'+name+'_PAUSE_FLAG_PRESENT='+str((dir/'pause.flag').is_file()))
+              hb=read(dir/'heartbeat.json')
+              key='state' if name=='BRAIN' else 'mode'
+              print('PAPER_START_'+name+'_HEARTBEAT_MODE='+str(hb.get(key)))
+              ts=hb.get('ts_ms',0)/1000 if name=='BRAIN' else float(hb.get('ts',0))
+              print('PAPER_START_'+name+'_HEARTBEAT_FRESH='+str(-10 < time.time()-ts < 150))
+          ext=read(R/'brain-v3-paper20261111'/'exit_heartbeat.json')
+          print('PAPER_START_BRAIN_EXIT_HEALTHY='+str(ext.get('state')=='healthy' and ext.get('last_error') is None))
+          web=json.loads(subprocess.check_output(['docker','inspect','superbot'],text=True,timeout=15))[0]
+          wenv=dict(row.split('=',1) for row in web['Config'].get('Env',[]) if '=' in row)
+          assert all(wenv.get(k)==v for k,v in {
+              'TRADING_MODE':'paper','DESK_MODE':'paper','V3_CUTOVER_READONLY':'1',
+              'V3_CLOSE_BRIDGE_ONLY':'1','V3_ALLOW_CLASSIC_SINGLE_CLOSE':'1',
+              'V3_ALLOW_BRAIN_SINGLE_CLOSE':'1'}.items()),'web_paper_gate_changed'
+          for folder in (R/'classic-hawk-paper20261111',R/'classic-bull-paper20261111',R/'brain-v3-paper20261111'):
+              assert any(m.get('Source')==str(folder) and m.get('RW') is False for m in web.get('Mounts') or []),'web_mount_not_ro'
+          print('PAPER_START_WEB_STILL_READONLY_WITH_SINGLE_CLOSE_ONLY=PASS')
+          code=pathlib.Path('/opt/superbot-v3-rc84-stage/backend/v3/runner/fable_shadow.py')
+          assert not code.exists(),'Fable_must_not_be_live_in_trading_stage'
+          print('PAPER_START_FABLE_NOT_DEPLOYED=PASS')
+          outcome=state.get('mode')
+          if outcome=='paper_running':
+              assert mand.get('approved') is True,'mandate_not_approved'
+              for dir in (R/'classic-hawk-paper20261111',R/'classic-bull-paper20261111',R/'brain-v3-paper20261111'):
+                  assert not (dir/'pause.flag').exists(),'unexpected_paused_wallet'
+              print('RC84_THREE_PAPER_BOTS_RUNNING_AFTER_20M_COOLDOWN=PASS')
+          elif outcome in ('activation_failed_repaused','operator_emergency_paused'):
+              assert all((d/'pause.flag').exists() for d in (R/'classic-hawk-paper20261111',R/'classic-bull-paper20261111',R/'brain-v3-paper20261111'))
+              print('RC84_PAPER_ACTIVATION_FAILED_CLOSED_ALL_PAUSED=PASS')
+          else:
+              print('RC84_PAPER_ACTIVATION_NOT_COMPLETE=TRUE')
+          assert outcome=='paper_running','PAPER_NOT_YET_RUNNING_OR_FAILED'
+          PY
