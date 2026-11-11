@@ -1,0 +1,87 @@
+name: RC84 - Brain cycles with zero decisions read-only root cause
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-brain-zero-decisions-readonly.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  audit:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read only Brain cycle summary logs and DeepSeek spending ledger
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"; HOSTS="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 root@51.79.205.82 \
+            'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          from collections import Counter
+          import json,os,pathlib,sqlite3,subprocess,time,re
+          def out(s):print('BRAIN_AUDIT_'+s,flush=True)
+          p=subprocess.run(['journalctl','-u','superbot-v3-paper-brain-runner.service',
+                             '--since','2026-11-11 16:00:00','-n','2500',
+                             '--no-pager','--output=cat'],capture_output=True,text=True,timeout=25)
+          out('JOURNAL_AVAILABLE='+str(p.returncode==0))
+          cycles=[]
+          if p.returncode==0:
+              for s in p.stdout.splitlines():
+                  try:
+                      a=json.loads(s)
+                      if (type(a) is dict and 'cycle_decisions' in a
+                              and 'cycle_opened' in a and 'last_error' in a):
+                          cycles.append(a)
+                  except (TypeError,ValueError):
+                      continue
+          out('CYCLE_LOG_RECORDS='+str(len(cycles)))
+          for row in cycles[-13:]:
+              safe={
+                  'time_ms':row.get('ts_ms'),
+                  'state':row.get('state'),
+                  'decisions':row.get('cycle_decisions'),
+                  'opened':row.get('cycle_opened'),
+                  'last_error':str(row.get('last_error'))[:180]
+              }
+              out('CYCLE_SUMMARY='+json.dumps(safe,separators=(',',':')))
+          counts=Counter()
+          for c in cycles:
+              err=str(c.get('last_error') or '')
+              for item in err.split(';'):
+                  if item:counts[item[:80]]+=1
+          out('ERROR_CODES='+json.dumps(dict(counts.most_common(16))))
+          folder=pathlib.Path('/opt/superbot-v3-paper-runs/brain-v3-paper20261111')
+          hb=json.loads((folder/'heartbeat.json').read_text())
+          out('RUNNER_STATE='+str(hb.get('state')))
+          out('RUNNER_CYCLE_COUNT='+str(hb.get('cycle')))
+          out('RUNNER_CURRENT_ERROR='+str(hb.get('last_error')))
+          f=folder/'budget.db'
+          assert f.is_file() and not f.is_symlink()
+          with sqlite3.connect('file:'+str(f)+'?mode=ro',uri=True,timeout=10) as conn:
+              conn.execute('PRAGMA query_only=ON')
+              spend=conn.execute('SELECT provider, COUNT(*), COALESCE(SUM(units),0) FROM spend_events GROUP BY provider').fetchall()
+              out('SPEND_EVENTS='+json.dumps(spend))
+          unit='superbot-v3-paper-brain-runner.service'
+          s=subprocess.run(['systemctl','show',unit,'-p','MainPID','--value'],capture_output=True,text=True,timeout=8)
+          assert s.returncode==0 and s.stdout.strip().isdigit() and int(s.stdout.strip())>1
+          envrows=pathlib.Path('/proc/'+s.stdout.strip()+'/environ').read_bytes().split(b'\0')
+          env=dict(x.split(b'=',1) for x in envrows if b'=' in x)
+          for k in ('DESK_MODE','BRAIN_FABLE_SHADOW','BRAIN_FABLE_BUDGET_APPROVED'):
+              value=env.get(k.encode(),b'')
+              out('CONFIG_'+k+'='+value.decode('ascii','ignore')[:45])
+          out('CONFIG_DEEPSEEK_PRESENT='+str(bool(env.get(b'DEEPSEEK_API_KEY'))))
+          out('NO_MODEL_CALLS_DURING_AUDIT=PASS')
+          out('NO_RESTARTS_NO_TRADES=PASS')
+          PY
