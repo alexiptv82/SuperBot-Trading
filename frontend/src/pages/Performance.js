@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { deskAPI, bullAPI } from '../api';
 import { fmtDateTime, PARAM_ROWS } from '../deskUi';
+import BrainPerformancePanel from '../components/BrainPerformancePanel';
 
 const GOOD   = '#4ade80';
 const BAD    = '#f87171';
@@ -299,7 +300,7 @@ function RunsTab({ runs }) {
 }
 
 export default function Performance() {
-  // portfolio selector: 'hawk' | 'bull'
+  // Three independent PAPER wallets: 'hawk' | 'bull' | 'brain'
   const [portfolio, setPortfolio] = useState('hawk');
 
   const [diary,   setDiary]   = useState(null);
@@ -309,6 +310,7 @@ export default function Performance() {
   const [tab,     setTab]     = useState('diary'); // 'diary' | 'stats'
 
   const load = useCallback((pf = portfolio) => {
+    if (pf === 'brain') { setLoading(false); return; } // Brain has its own run-scoped API and loader.
     setLoading(true);
     const api = pf === 'bull' ? bullAPI : deskAPI;
     Promise.all([
@@ -349,13 +351,13 @@ export default function Performance() {
   const hasDiary = diary?.days?.length > 0;
   const hasPerf  = perf?.total_trades > 0;
 
-  const portfolioColor = portfolio === 'bull' ? '#a78bfa' : '#38bdf8';
+
 
   return (
     <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>🏆 Performance</h1>
-        <button
+        {portfolio !== 'brain' && <button
           onClick={() => load(portfolio)}
           disabled={loading}
           style={{
@@ -365,16 +367,16 @@ export default function Performance() {
           }}
         >
           {loading ? '...' : '↻ Aggiorna'}
-        </button>
+        </button>}
       </div>
 
       {/* Selettore portfolio */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', background: SURF, borderRadius: '12px', padding: '4px', border: `1px solid ${BORDER}` }}>
-        {[['hawk', '🦅 Falco'], ['bull', '🐂 Toro']].map(([id, label]) => (
+        {[['hawk', '🦅 Falco'], ['bull', '🐂 Toro'], ['brain', '🧠 Brain']].map(([id, label]) => (
           <button key={id} onClick={() => setPortfolio(id)}
             style={{
               flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
-              background: portfolio === id ? (id === 'bull' ? '#7c3aed' : ACCENT) : 'transparent',
+              background: portfolio === id ? (id === 'brain' ? '#a78bfa' : id === 'bull' ? '#7c3aed' : ACCENT) : 'transparent',
               color: portfolio === id ? '#fff' : MUTED,
               fontWeight: 'bold', cursor: 'pointer', fontSize: '13px',
             }}>
@@ -383,6 +385,7 @@ export default function Performance() {
         ))}
       </div>
 
+      {portfolio === 'brain' ? <BrainPerformancePanel /> : <>
       {/* Tab selector */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', background: SURF, borderRadius: '12px', padding: '4px', border: `1px solid ${BORDER}` }}>
         <TabBtn id="diary" label="📖 Diario" />
@@ -458,6 +461,7 @@ export default function Performance() {
 
       {/* ── TAB RUN ── */}
       {tab === 'runs' && <RunsTab runs={runs} />}
+      </>}
     </div>
   );
 }
