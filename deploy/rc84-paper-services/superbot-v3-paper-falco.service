@@ -17,7 +17,7 @@ Environment=PYTHONPATH=/opt/superbot-v3-rc84-stage/backend
 Environment=PYTHONDONTWRITEBYTECODE=1
 # Do not start until secrets have been provisioned OUTSIDE GitHub repo.
 EnvironmentFile=/etc/superbot-v3-paper/falco-ai.env
-ExecStartPre=/usr/bin/test -f /opt/superbot-v3-paper-runs/classic-hawk-paper20261111/pause.flag
+ExecStartPre=/usr/bin/test -f /opt/superbot-v3-paper-runs/classic-hawk-paper20261111/PREPARED_PAUSED_ONLY.json
 ExecStart=/opt/superbot-v3-rc70-stage/.venv/bin/python3 -m desk.cli loop --portfolio hawk
 Restart=on-failure
 RestartSec=15
