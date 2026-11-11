@@ -6,8 +6,8 @@ separately and never fed into the decision, risk manager or execution path.
 Enabled solely by TWO explicit runtime environment gates. No changes to
 runner_config.json, the hashed risk mandate, or the existing budget.db.
 The 5 USD UTC-month budget uses conservative reservations committed BEFORE
-each API request, so restarts/concurrent attempts cannot overspend this
-module's allowance based on the published token tariff.
+each API request, so restarts, future Brain run IDs and concurrent attempts cannot overspend
+this module's shared monthly allowance based on the published token tariff.
 """
 from __future__ import annotations
 
@@ -186,23 +186,23 @@ class FableLedger:
                     return None
                 spent = self._db.execute(
                     "SELECT COALESCE(SUM(reserved_micro),0) FROM fable_reservations "
-                    "WHERE run_id=? AND month=?",
-                    (self.run_id, month),
+                    "WHERE month=?",
+                    (month,),
                 ).fetchone()[0]
                 if spent + reserve_micro > MONTHLY_CAP_MICRO:
                     self._db.execute("COMMIT")
                     return None
                 day_count = self._db.execute(
-                    "SELECT COUNT(*) FROM fable_reservations WHERE run_id=? AND day=?",
-                    (self.run_id, day),
+                    "SELECT COUNT(*) FROM fable_reservations WHERE day=?",
+                    (day,),
                 ).fetchone()[0]
                 if day_count >= MAX_PER_DAY:
                     self._db.execute("COMMIT")
                     return None
                 last = self._db.execute(
                     "SELECT MAX(created_ms) FROM fable_reservations "
-                    "WHERE run_id=? AND symbol=?",
-                    (self.run_id, symbol),
+                    "WHERE symbol=?",
+                    (symbol,),
                 ).fetchone()[0]
                 if last is not None and now - last < SAME_SYMBOL_COOLDOWN_MS:
                     self._db.execute("COMMIT")
@@ -238,8 +238,8 @@ class FableLedger:
         with self._lock:
             return int(self._db.execute(
                 "SELECT COALESCE(SUM(reserved_micro),0) "
-                "FROM fable_reservations WHERE run_id=? AND month=?",
-                (self.run_id, month),
+                "FROM fable_reservations WHERE month=?",
+                (month,),
             ).fetchone()[0])
 
     def close(self) -> None:
