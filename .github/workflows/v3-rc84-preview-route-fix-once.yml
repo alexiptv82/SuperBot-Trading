@@ -1,0 +1,44 @@
+name: 'SuperBot V3 - repair ONLY isolated RC84 preview routing'
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/v3-rc84-route-fix.trigger'
+permissions:
+  contents: read
+jobs:
+  fix:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '0a1843b0203bf89e44d1ff62704a7c9717f389cf'
+      - name: Verify isolated fix and run on Singapore
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '0a1843b0203bf89e44d1ff62704a7c9717f389cf'
+          FIX=deploy/scripts/v3-rc84-repair-preview-routing.sh
+          test "$(git hash-object "$FIX")" = '2dcfdeb810f67841fb88df26e2a1b8b457f32a6b'
+          bash -n "$FIX"
+          test -n "${SG_SSH_KEY:-}"
+          install -d -m 0700 "$RUNNER_TEMP/rc84-route-ssh"
+          KEY="$RUNNER_TEMP/rc84-route-ssh/id_sg"
+          HOSTS="$RUNNER_TEMP/rc84-route-ssh/known_hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          cat > "$HOSTS" <<'HOSTKEY'
+          51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj
+          HOSTKEY
+          chmod 600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPTS=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          echo RC84_ROUTING_DRYRUN_BEGIN
+          ssh -T "${OPTS[@]}" root@51.79.205.82 bash -s -- --dry-run < "$FIX"
+          echo RC84_ROUTING_ISOLATED_REPAIR_BEGIN
+          ssh -T "${OPTS[@]}" root@51.79.205.82 bash -s -- --repair-preview-only < "$FIX"
+          echo RC84_ROUTE_FIX_JOB_COMPLETED=True
