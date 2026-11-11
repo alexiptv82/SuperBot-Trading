@@ -1,0 +1,66 @@
+name: SuperBot RC84 - USER AUTHORIZED arm THREE PAPER bots after 20m safety cooldown
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-paper-userapproved-arm.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  arm:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '6aa8275496f43fcecc80ba1e0e9fc448d70379a8'
+      - name: Verify exact audited controller and cooldown gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '6aa8275496f43fcecc80ba1e0e9fc448d70379a8'
+          file=deploy/scripts/rc84-activate-three-paper-with-cooldown.py
+          test "$(git hash-object "$file")" = '287036c44d4f7b56b5fe14a822b5360644259dae'
+          python3 - "$file" <<'PY'
+          import ast,sys,pathlib
+          ast.parse(pathlib.Path(sys.argv[1]).read_text(), filename=sys.argv[1])
+          print('RC84_USER_PAPER_APPROVED_CONTROLLER=PASS')
+          PY
+      - name: Check VPS then approve PAPER Brain mandate and arm 20-minute timer, NO immediate unpause
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"
+          HOSTS="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          ssh -T -i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20 \
+            root@51.79.205.82 'bash -se' <<'SH'
+          set -Eeuo pipefail
+          f=/opt/superbot-v3-paper-activation-20261111/activate.py
+          test -f "$f" && test ! -L "$f"
+          test "$(git hash-object "$f")" = '287036c44d4f7b56b5fe14a822b5360644259dae'
+          test ! -e /opt/superbot-v3-paper-activation-20261111/activation-state.json
+          export PYTHONDONTWRITEBYTECODE=1
+          python3 -I "$f" --check
+          trap 'python3 -I "$f" --emergency-pause >/dev/null 2>&1 || :' ERR
+          python3 -I "$f" --arm
+          systemctl is-active --quiet superbot-v3-paper-authorized-unpause-20261111.timer
+          for path in \
+            /opt/superbot-v3-paper-runs/classic-hawk-paper20261111/pause.flag \
+            /opt/superbot-v3-paper-runs/classic-bull-paper20261111/pause.flag \
+            /opt/superbot-v3-paper-runs/brain-v3-paper20261111/pause.flag
+          do test -f "$path"; done
+          echo RC84_THREE_PAPER_PAUSES_STILL_PRESENT=PASS
+          echo RC84_APPROVED_BRAIN_MANDATE_AND_20M_TIMER=PASS
+          echo RC84_NO_LIVE_TRADES_AND_FABLE_OFF=PASS
+          SH
