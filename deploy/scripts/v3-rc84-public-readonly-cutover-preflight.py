@@ -205,8 +205,6 @@ def main() -> None:
     binds = app.get("HostConfig", {}).get("PortBindings", {}).get("8001/tcp") or []
     if len(binds) != 1 or binds[0].get("HostIp") != "127.0.0.1" or binds[0].get("HostPort") != "8002":
         die("PUBLIC_WEB_PORT_CHANGED")
-    if NEW_OLDNAME in (x.get("Name", "").removeprefix("/") for x in []):
-        die("OLD_WEB_NAME_EXISTS")
     if docker(NEW_OLDNAME) is not None:
         die("ROLLBACK_CONTAINER_NAME_OCCUPIED")
     if any((OLDWEB / name).exists() for name in FORBIDDEN_NEW_WEB_DIRS):
