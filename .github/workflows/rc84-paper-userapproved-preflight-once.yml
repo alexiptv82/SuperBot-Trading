@@ -15,14 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 'dbf6c92fe3fa72d5134f0bd2b5a01280514995fc'
+          ref: '6aa8275496f43fcecc80ba1e0e9fc448d70379a8'
       - name: Verify exact approved PAPER startup controller code and syntax
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 'dbf6c92fe3fa72d5134f0bd2b5a01280514995fc'
+          test "$(git rev-parse HEAD)" = '6aa8275496f43fcecc80ba1e0e9fc448d70379a8'
           f=deploy/scripts/rc84-activate-three-paper-with-cooldown.py
-          test "$(git hash-object "$f")" = '7779036c255bfc45ef67b84b30db5c95aefd5e48'
+          test "$(git hash-object "$f")" = '287036c44d4f7b56b5fe14a822b5360644259dae'
           python3 - "$f" <<'PY'
           import ast,sys,pathlib
           ast.parse(pathlib.Path(sys.argv[1]).read_text(),filename=sys.argv[1])
@@ -49,10 +49,10 @@ jobs:
           HOST=root@51.79.205.82
           DST=/opt/superbot-v3-paper-activation-20261111
           ssh -T "${OPT[@]}" "$HOST" \
-            'set -eu; d=/opt/superbot-v3-paper-activation-20261111; test ! -e "$d"; test ! -L "$d"; install -d -m 0700 "$d"'
+            'set -eu; d=/opt/superbot-v3-paper-activation-20261111; f="$d/activate.py"; test -d "$d" && test ! -L "$d"; test ! -e "$d/activation-state.json"; test "$(git hash-object "$f")" = "7779036c255bfc45ef67b84b30db5c95aefd5e48"; echo PAPER_OLD_CHECK_ONLY_CONTROLLER_VERIFIED=PASS'
           scp "${OPT[@]}" deploy/scripts/rc84-activate-three-paper-with-cooldown.py "$HOST":"$DST"/activate.py
           ssh -T "${OPT[@]}" "$HOST" \
-            'set -eu; f=/opt/superbot-v3-paper-activation-20261111/activate.py; chmod 0600 "$f"; test "$(git hash-object "$f")" = "7779036c255bfc45ef67b84b30db5c95aefd5e48"; echo PAPER_START_CONTROLLER_PINNED=PASS'
+            'set -eu; f=/opt/superbot-v3-paper-activation-20261111/activate.py; chmod 0600 "$f"; test "$(git hash-object "$f")" = "287036c44d4f7b56b5fe14a822b5360644259dae"; echo PAPER_START_CONTROLLER_PINNED=PASS'
           ssh -T "${OPT[@]}" "$HOST" \
             'PYTHONDONTWRITEBYTECODE=1 python3 -I /opt/superbot-v3-paper-activation-20261111/activate.py --check'
           echo PAPER_START_PRECHECK_ONLY_ZERO_UNPAUSE=PASS
