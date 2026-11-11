@@ -53,7 +53,7 @@ export default function BrainPerformancePanel() {
       }
       const stats = summarizeBrainPerformance(trades, base, wallet, !more);
       if (seq.current !== request) return;
-      setData({stats, wallet, status:status.data || {}, partial:more});
+      setData({stats, wallet, status:status.data || {}, partial:more || !stats.fullyLoaded});
       setError('');
     } catch (e) {
       if (seq.current === request) setError(`Impossibile caricare Brain: ${errMsg(e)}`);
@@ -116,7 +116,7 @@ export default function BrainPerformancePanel() {
           </summary>
           <div style={{fontSize:12,color:MUTED,margin:'10px 0'}}>✅ {d.wins} · ❌ {d.losses}</div>
           {d.trades.map((t,i)=><Row key={t.position_id || i}
-            label={`${dt(t.close_ms)} · ${t.side===1?'LONG':'SHORT'} · ${t.symbol} · ${t.close_reason||'chiusura'}`}
+            label={`${dt(t.close_ms)} · ${t.side===1?'LONG':t.side===-1?'SHORT':'N/D'} · ${t.symbol} · ${t.close_reason||'chiusura'}`}
             value={money(t.pnl)} color={moneyColor(t.pnl)} />)}
           </details>
         </Card>))}
@@ -130,7 +130,7 @@ export default function BrainPerformancePanel() {
           <Row label="Profit factor" value={s.profitFactor ?? '—'} />
           <Row label="Miglior trade" value={money(s.best)} color={GOOD}/>
           <Row label="Peggior trade" value={money(s.worst)} color={BAD}/>
-          <Row label="Commissioni registrate" value={s.totalFees == null?'—':money(s.totalFees)}/>
+          <Row label="Commissioni registrate" value={s.totalFees == null?'—':`${s.totalFees.toFixed(2)} USDT`}/>
           <Row label="Max drawdown" value="Non disponibile per questa run" />
         </Card>
         {[
@@ -151,8 +151,8 @@ export default function BrainPerformancePanel() {
         <div style={{fontWeight:'bold',marginBottom:10}}>🧠 Run Brain corrente</div>
         <Row label="Identificativo" value={status?.run_id || '—'} />
         <Row label="Stato" value={stateLabel(meta?.state)} />
-        <Row label="Capitale iniziale" value={money(meta?.start_equity)}/>
-        <Row label="Equity" value={meta?.equity_basis==='unavailable'?'Non disponibile':money(meta?.equity)} />
+        <Row label="Capitale iniziale" value={meta?.start_equity==null?'—':`${Number(meta.start_equity).toFixed(2)} USDT`}/>
+        <Row label="Equity" value={meta?.equity_basis==='unavailable'?'Non disponibile':meta?.equity==null?'—':`${Number(meta.equity).toFixed(2)} USDT`} />
         <Row label="Posizioni aperte" value={meta?.open_positions ?? '—'} />
         <Row label="Ultima decisione" value={status?.last_decision?.kind || 'Nessuna'} />
         <Row label="Spesa AI oggi" value={status?.spend?.day == null?'—':`${status.spend.day} USD`} />
