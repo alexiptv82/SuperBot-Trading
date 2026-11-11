@@ -15,13 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: '728cedadd4179fa755864979528273f6cec117a0'
+          ref: 'aa52043c3ee0c6f46c5014861d2ed3bf64473390'
       - name: Offline tests and immutable source checks - zero Telegram messages
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = '728cedadd4179fa755864979528273f6cec117a0'
-          test "$(git hash-object deploy/scripts/rc84-paper-telegram-alert-relay.py)" = '0a35a7add5468b6abbcf6599e904b6e486c1520d'
+          test "$(git hash-object deploy/scripts/rc84-paper-telegram-alert-relay.py)" = 'e231a2445214864a2aaa21ca4b8581a6255c4eca'
           test "$(git hash-object deploy/rc84-paper-services/superbot-v3-paper-telegram-alert-relay.service)" = 'cc1071386255e7667d20bd59512e41b9a05f11d6'
           python3 -m unittest discover -s backend/tests -p test_rc84_paper_telegram_alert_relay.py -v
           echo RC84_TELEGRAM_RELAY_OFFLINE_TESTS=PASS
@@ -44,7 +44,7 @@ jobs:
           HOST=root@51.79.205.82
           STAGE=/opt/superbot-v3-telegram-relay-code
           ssh -T "${OPT[@]}" "$HOST" \
-            'set -eu; d=/opt/superbot-v3-telegram-relay-code; test ! -e "$d" && test ! -L "$d"; install -d -m 0700 "$d"'
+            'set -eu; d=/opt/superbot-v3-telegram-relay-code; test -d "$d" && test ! -L "$d"; test "$(stat -c %a "$d")" = 700'
           scp "${OPT[@]}" deploy/scripts/rc84-paper-telegram-alert-relay.py "$HOST":"$STAGE"/relay.py
           scp "${OPT[@]}" deploy/rc84-paper-services/superbot-v3-paper-telegram-alert-relay.service \
             "$HOST":"$STAGE"/superbot-v3-paper-telegram-alert-relay.service
@@ -69,7 +69,11 @@ jobs:
               assert exec_safe('git','hash-object',str(unit_src))=='cc1071386255e7667d20bd59512e41b9a05f11d6'
               assert not unit.exists() and not unit.is_symlink()
               assert not envfile.exists() and not envfile.is_symlink()
-              assert not store.exists() and not store.is_symlink()
+              assert not store.is_symlink()
+              if store.exists():
+                  assert store.is_dir() and store.stat().st_uid==0
+                  assert (store.stat().st_mode & 0o077)==0
+                  assert not dbfile.exists()
               envroot=envfile.parent
               assert envroot.is_dir() and envroot.stat().st_uid==0
               raw=json.loads(exec_safe('docker','inspect','superbot-desk-hawk'))
@@ -111,12 +115,33 @@ jobs:
                   assert not pe.get(b'TELEGRAM_BOT_TOKEN') and not pe.get(b'TELEGRAM_CHAT_ID')
               print('RC84_TELEGRAM_FALCO_POSITIONS_BEFORE='+str(counts['FALCO']),flush=True)
               print('RC84_TELEGRAM_TORO_POSITIONS_BEFORE='+str(counts['TORO']),flush=True)
-              store.mkdir(mode=0o700)
+              store.mkdir(mode=0o700,exist_ok=True)
+              store.chmod(0o700)
               fd=os.open(envfile,os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0),0o600)
               with os.fdopen(fd,'w',encoding='ascii') as out:
                   out.write('TELEGRAM_BOT_TOKEN='+token+'\n')
                   out.write('TELEGRAM_CHAT_ID='+chat+'\n')
                   out.flush();os.fsync(out.fileno())
+              # Before installing a persistent service, run its --check mode
+              # under equivalent systemd restrictions. No Telegram messages.
+              probe=subprocess.run(
+                  ['systemd-run','--wait','--pipe','--collect',
+                   '--unit=superbot-rc84-telegram-relay-preflight-20261111',
+                   '--property=Type=oneshot',
+                   '--property=NoNewPrivileges=yes',
+                   '--property=ProtectSystem=strict',
+                   '--property=ProtectHome=yes',
+                   '--property=PrivateTmp=yes',
+                   '--property=PrivateDevices=yes',
+                   '--property=RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6',
+                   '--property=CapabilityBoundingSet=',
+                   '--property=ReadWritePaths=/opt/superbot-v3-telegram-notifier',
+                   '--property=EnvironmentFile='+str(envfile),
+                   '/usr/bin/python3','-I',str(code),'--check'],
+                  capture_output=True,text=True,timeout=65)
+              if probe.returncode!=0 or 'RC84_PAPER_TELEGRAM_BOT_API_AUTHENTICATED=PASS' not in probe.stdout:
+                  raise RuntimeError('sandboxed_paper_telegram_preflight_failed')
+              print('RC84_TELEGRAM_SANDBOX_PREFLIGHT=PASS',flush=True)
               shutil.copyfile(unit_src,unit)
               unit.chmod(0o644)
               exec_safe('systemctl','daemon-reload')
