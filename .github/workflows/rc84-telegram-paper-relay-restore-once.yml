@@ -1,0 +1,158 @@
+name: SuperBot RC84 - restore Telegram PAPER alerts without bot restart
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/rc84-telegram-paper-relay-restore.trigger']
+permissions: {contents: read}
+concurrency:
+  group: superbot-public-singapore-cutover
+  cancel-in-progress: false
+jobs:
+  restore:
+    if: github.repository == 'alexiptv82/SuperBot-Trading'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '02ecab7453e056e79f816468c0f8b4473f3664af'
+      - name: Offline tests and immutable source checks - zero Telegram messages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '02ecab7453e056e79f816468c0f8b4473f3664af'
+          test "$(git hash-object deploy/scripts/rc84-paper-telegram-alert-relay.py)" = '0a35a7add5468b6abbcf6599e904b6e486c1520d'
+          test "$(git hash-object deploy/rc84-paper-services/superbot-v3-paper-telegram-alert-relay.service)" = 'cc1071386255e7667d20bd59512e41b9a05f11d6'
+          python3 -m unittest discover -s backend/tests -p test_rc84_paper_telegram_alert_relay.py -v
+          echo RC84_TELEGRAM_RELAY_OFFLINE_TESTS=PASS
+      - name: Singapore deploy independent read-only PAPER alert relay with private legacy credentials
+        shell: bash
+        env:
+          SG_SSH_KEY: ${{ secrets.SINGAPORE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SG_SSH_KEY:-}" || exit 2
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          KEY="$RUNNER_TEMP/ssh/id"
+          HOSTS="$RUNNER_TEMP/ssh/hosts"
+          printf '%s\n' "$SG_SSH_KEY" > "$KEY"; chmod 0600 "$KEY"
+          printf '%s\n' '51.79.205.82 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMfbyIlrK+PvKl6c58E140wSE5E+8arc36/uL3AFKgj' > "$HOSTS"; chmod 0600 "$HOSTS"
+          trap 'rm -f "$KEY"' EXIT
+          OPT=(-i "$KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$HOSTS" -o ConnectTimeout=20)
+          HOST=root@51.79.205.82
+          STAGE=/opt/superbot-v3-telegram-relay-code
+          ssh -T "${OPT[@]}" "$HOST" \
+            'set -eu; d=/opt/superbot-v3-telegram-relay-code; test ! -e "$d" && test ! -L "$d"; install -d -m 0700 "$d"'
+          scp "${OPT[@]}" deploy/scripts/rc84-paper-telegram-alert-relay.py "$HOST":"$STAGE"/relay.py
+          scp "${OPT[@]}" deploy/rc84-paper-services/superbot-v3-paper-telegram-alert-relay.service \
+            "$HOST":"$STAGE"/superbot-v3-paper-telegram-alert-relay.service
+          ssh -T "${OPT[@]}" "$HOST" 'PYTHONDONTWRITEBYTECODE=1 python3 -I -' <<'PY'
+          import json,os,pathlib,re,shutil,sqlite3,stat,subprocess,time,urllib.request
+          code=pathlib.Path('/opt/superbot-v3-telegram-relay-code/relay.py')
+          unit_src=pathlib.Path('/opt/superbot-v3-telegram-relay-code/superbot-v3-paper-telegram-alert-relay.service')
+          unit=pathlib.Path('/etc/systemd/system/superbot-v3-paper-telegram-alert-relay.service')
+          envfile=pathlib.Path('/etc/superbot-v3-paper/telegram-relay.env')
+          store=pathlib.Path('/opt/superbot-v3-telegram-notifier')
+          dbfile=store/'sent.sqlite3'
+          root=pathlib.Path('/opt/superbot-v3-paper-runs')
+          def exec_safe(*args,timeout=20):
+              p=subprocess.run(args,capture_output=True,timeout=timeout)
+              if p.returncode:raise RuntimeError('host_command_failed')
+              return p.stdout.decode('utf8','ignore').strip()
+          try:
+              assert os.geteuid()==0
+              assert code.is_file() and not code.is_symlink()
+              assert unit_src.is_file() and not unit_src.is_symlink()
+              assert exec_safe('git','hash-object',str(code))=='0a35a7add5468b6abbcf6599e904b6e486c1520d'
+              assert exec_safe('git','hash-object',str(unit_src))=='cc1071386255e7667d20bd59512e41b9a05f11d6'
+              assert not unit.exists() and not unit.is_symlink()
+              assert not envfile.exists() and not envfile.is_symlink()
+              assert not store.exists() and not store.is_symlink()
+              envroot=envfile.parent
+              assert envroot.is_dir() and envroot.stat().st_uid==0
+              raw=json.loads(exec_safe('docker','inspect','superbot-desk-hawk'))
+              assert type(raw)==list and len(raw)==1
+              secrets={}
+              for line in raw[0]['Config'].get('Env',[]):
+                  if '=' in line:
+                      k,v=line.split('=',1)
+                      if k in ('TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID'):
+                          secrets[k]=v
+              token=secrets.get('TELEGRAM_BOT_TOKEN','')
+              chat=secrets.get('TELEGRAM_CHAT_ID','')
+              assert re.fullmatch(r'[0-9]{6,20}:[A-Za-z0-9_-]{25,100}',token)
+              assert re.fullmatch(r'-?[0-9]{5,25}',chat)
+              try:
+                  with urllib.request.urlopen('https://api.telegram.org/bot'+token+'/getMe',timeout=8) as f:
+                      bot=json.loads(f.read(65536))
+                      assert f.status==200 and bot.get('ok') is True
+              except Exception:
+                  raise RuntimeError('legacy_telegram_bot_not_authenticated') from None
+              print('RC84_TELEGRAM_LEGACY_BOT_VALID=PASS',flush=True)
+              pids,counts={},{}
+              for label,folio,dir_name,unit_name in (
+                  ('FALCO','hawk','classic-hawk-paper20261111','superbot-v3-paper-falco.service'),
+                  ('TORO','bull','classic-bull-paper20261111','superbot-v3-paper-toro.service')):
+                  d=root/dir_name
+                  assert d.is_dir() and not d.is_symlink()
+                  m=json.loads((d/'PREPARED_PAUSED_ONLY.json').read_text())
+                  assert m.get('paper_only') is True and m.get('portfolio_id')==folio
+                  a=json.loads((d/'state_v2.json').read_text())
+                  assert type((a.get('main') or {}).get('positions')) is dict
+                  counts[label]=len(a['main']['positions'])
+                  pid=exec_safe('systemctl','show',unit_name,'-p','MainPID','--value')
+                  assert pid.isdecimal() and int(pid)>1
+                  pids[label]=int(pid)
+                  rows=pathlib.Path('/proc/'+pid+'/environ').read_bytes().split(b'\0')
+                  pe=dict(row.split(b'=',1) for row in rows if b'=' in row)
+                  assert pe.get(b'DESK_MODE')==b'paper' and pe.get(b'DESK_PORTFOLIO')==folio.encode()
+                  assert not pe.get(b'TELEGRAM_BOT_TOKEN') and not pe.get(b'TELEGRAM_CHAT_ID')
+              print('RC84_TELEGRAM_FALCO_POSITIONS_BEFORE='+str(counts['FALCO']),flush=True)
+              print('RC84_TELEGRAM_TORO_POSITIONS_BEFORE='+str(counts['TORO']),flush=True)
+              store.mkdir(mode=0o700)
+              fd=os.open(envfile,os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0),0o600)
+              with os.fdopen(fd,'w',encoding='ascii') as out:
+                  out.write('TELEGRAM_BOT_TOKEN='+token+'\n')
+                  out.write('TELEGRAM_CHAT_ID='+chat+'\n')
+                  out.flush();os.fsync(out.fileno())
+              shutil.copyfile(unit_src,unit)
+              unit.chmod(0o644)
+              exec_safe('systemctl','daemon-reload')
+              exec_safe('systemctl','start',unit.name,timeout=30)
+              deadline=time.monotonic()+50
+              sent=0
+              while time.monotonic()<deadline:
+                  if exec_safe('systemctl','is-active',unit.name)!='active':
+                      raise RuntimeError('telegram_relay_not_active')
+                  if dbfile.is_file():
+                      with sqlite3.connect('file:'+str(dbfile)+'?mode=ro',uri=True,timeout=5) as db:
+                          sent=db.execute('SELECT COUNT(*) FROM notice WHERE delivered_ms>0').fetchone()[0]
+                      if sent>=max(1,counts['FALCO']+counts['TORO']):
+                          break
+                  time.sleep(2)
+              assert exec_safe('systemctl','is-active',unit.name)=='active'
+              if counts['FALCO']+counts['TORO']>0 and sent==0:
+                  raise RuntimeError('no_telegram_deliveries')
+              for label,folio,dir_name,unit_name in (
+                  ('FALCO','hawk','classic-hawk-paper20261111','superbot-v3-paper-falco.service'),
+                  ('TORO','bull','classic-bull-paper20261111','superbot-v3-paper-toro.service')):
+                  assert int(exec_safe('systemctl','show',unit_name,'-p','MainPID','--value'))==pids[label]
+              print('RC84_TELEGRAM_PAPER_RELAY_ACTIVE=PASS',flush=True)
+              print('RC84_TELEGRAM_RECOVERED_MESSAGES_CONFIRMED='+str(sent),flush=True)
+              print('RC84_TELEGRAM_NO_TRADING_WORKER_RESTARTS=PASS',flush=True)
+              print('RC84_TELEGRAM_NO_TRADE_FILE_MUTATIONS=PASS',flush=True)
+          except Exception:
+              try: subprocess.run(['systemctl','stop',unit.name],capture_output=True,timeout=15)
+              except Exception:pass
+              if unit.is_file() and not unit.is_symlink():
+                  unit.unlink()
+                  subprocess.run(['systemctl','daemon-reload'],capture_output=True,timeout=15)
+              if envfile.is_file() and not envfile.is_symlink():
+                  envfile.unlink()
+              # Never erase a sent-message ledger: a retry could duplicate it.
+              print('RC84_TELEGRAM_RESTORE_REFUSED=guard_or_delivery_failed',flush=True)
+              raise SystemExit(2)
+          PY
+          echo RC84_TELEGRAM_PAPER_NOTIFICATIONS_RESTORED=PASS
