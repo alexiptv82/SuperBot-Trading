@@ -1,0 +1,27 @@
+# RC84 — TEMPLATE ONLY; EXIT OWNER FOR NEW BRAIN RUN, NOT THE LEGACY RUN.
+# Do not start without separate approval, and verify no competing writer.
+[Unit]
+Description=SuperBot V3 Brain NEW PAPER exit-only owner (paused-first)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=root
+WorkingDirectory=/opt/superbot-v3-rc84-stage
+Environment=DESK_MODE=paper
+Environment=PYTHONPATH=/opt/superbot-v3-rc84-stage
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/usr/bin/test -f /opt/superbot-v3-paper-runs/brain-v3-paper20261111/pause.flag
+ExecStart=/opt/superbot-v3-rc70-stage/.venv/bin/python3 -m backend.v3.runner.exit_worker --data-dir /opt/superbot-v3-paper-runs/brain-v3-paper20261111 --run-id brain-v3-paper20261111 --config /opt/superbot-v3-paper-runs/brain-v3-paper20261111/runner_config.json --start-paper --legacy-exits-disabled
+TimeoutStartSec=180
+WatchdogSec=60
+Restart=on-failure
+RestartSec=15
+RestartPreventExitStatus=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/superbot-v3-paper-runs/brain-v3-paper20261111
+# Intentionally NO Install section: explicit user-approved start only.
