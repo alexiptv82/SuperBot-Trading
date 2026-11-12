@@ -7,7 +7,7 @@
 - Ulteriore bug: `{"decisions":[]}` era un JSON valido senza posizioni, ma veniva erroneamente interpretato come assenza di decisioni e sostituito da fallback regole. Questo annullava un NO_TRADE intenzionale.
 
 ## Patch preparata, SOLO RAMO DI LAVORO, NON DEPLOY
-- Branch `work/rc84-fix-classic-divergence-brain-market-20261111`, HEAD finale **`fbbd016dfa58129b84886cea0be89c81c64777ed`**, PR [Draft #85](https://github.com/alexiptv82/SuperBot-Trading/pull/85).
+- Branch `work/rc84-fix-classic-divergence-brain-market-20261111`, HEAD finale **`ab7e0b7d991b8f4bd714fccfec23b09a936e6717`**, PR [Draft #85](https://github.com/alexiptv82/SuperBot-Trading/pull/85).
 - `backend/desk/cli.py` nuova funzione pura `_rc84_paper_classic_entry_policy(portfolio,source,decisions)` che filtra soltanto **nuovi ingressi**: Falco ammette ingressi LONG/SHORT di tipo `scalp` sia da Claude sia dalle regole, Toro ammette ingressi LONG/SHORT di tipo `medio` **solo da Claude** (fallback regole in Toro **manage/close/hold, mai nuove aperture**).
 - Ingressi con `trade_type` non conforme sono scartati con diagnostica di sola stampa `[RC84_POLICY]`, il totale appare in `HB["rc84_policy_rejected"]`. Nessuna posizione aperta viene chiusa forzatamente o trasformata in una direzione opposta; entrambi possono fare LONG/SHORT quando autorizzati dai segnali.
 - Risposta Claude valida `{"decisions":[]}` conserva `NO_TRADE` e **non richiama fallback**. Anche un eventuale futuro `DESK_S25_TORO_ENTRY_APPROVED=1` non deve sovrascrivere il NO_TRADE. Valori non validi/JSON troncati restano fallback, ma **solo** secondo la policy dei due portafogli.
@@ -21,8 +21,10 @@ File `backend/tests/test_long_s25.py`: politica di fallback differenziata, direz
 L'utente si trova nel clone isolato `/root/rc84-tests-UKXAJfmd/src` con virtualenv `.venv`. Usare un solo comando:
 ```bash
 git pull --ff-only origin work/rc84-fix-classic-divergence-brain-market-20261111 &&
-test "$(git rev-parse HEAD)" = "fbbd016dfa58129b84886cea0be89c81c64777ed" &&
+test "$(git rev-parse HEAD)" = "ab7e0b7d991b8f4bd714fccfec23b09a936e6717" &&
 PYTHONPATH="$PWD:$PWD/backend" PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
 .venv/bin/python -m pytest -q backend/tests/test_long_s25.py
 ```
 Solo dopo PASS, fare una verifica strategia SHORT/LONG indipendente e programmare backup+deploy PAPER con verifica unica proprietà delle uscite e collaudo DeepSeek reale, senza inutili suite ripetute. **No merge, no reset, no riavvio, LIVE vietato** fino a controllo e autorizzazione. GitHub Actions quota bassa/in coda.
+
+Checkpoint integrativo: il test `NO_TRADE` usa ora un ledger Claude sintetico in memoria e la stessa fixture delle candele S25, senza usare credenziali vere. Corretto esclusivamente il test dopo la prima versione. Il commit `ab7e0b7...` è l'HEAD definitivo da usare nel comando di collaudo mirato.
