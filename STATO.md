@@ -1,3 +1,11 @@
+## 12/11/2026 15:48 — AUDIT QUANTITATIVO PROVVISORIO; PR #91 CORREGGE IL LAYOUT V3 MA NON È COLLAUDATA
+
+Commit firmato [`7a6589f...`](https://github.com/alexiptv82/SuperBot-Trading/commit/7a6589f1dd09b6d59e97fbe0055af9b5caa69c9e) corregge cutoff, split per apertura, parziali/ID e linking learning; 13 test sintetici dichiarati verdi. Rapporto recente: 6 LONG S25, 0 vittorie, −270,21 USDT (Falco −63,60; Toro −206,61), R medio −1,12, R:R 0,97, MAE/MFE 1,08/0,29R; 13 SHORT Rules Scalp, 12 vittorie, +581,13 USDT, WR 92,3%, PF 32,90, R medio +1,42, R:R 1,75. BCH/BNB/RUNE S25 duplicati Falco/Toro; campione piccolo e contesto 4h reale non ricostruito.
+
+**Limite critico:** il vecchio comando poteva leggere `/opt/superbot-desk-data/{hawk,bull}` legacy invece dei wallet RC84 V3. [PR Draft #91](https://github.com/alexiptv82/SuperBot-Trading/pull/91), HEAD `500563a...`, aggiunge layout V3 fail-closed; controlli statici PASS, ma i 3 test nuovi e l'esecuzione sui wallet V3 non risultano effettuati. Numeri quindi reali rispetto al dataset analizzato ma non ancora certificati come RC84 V3. Stato PAPER invariato: Falco/Toro draining, Brain paused/exit healthy, tre pause e resume non autorizzato; nessun merge/deploy/VPS write. [Checkpoint completo](diario/2026-11-12_RC84-audit-quantitative-provisional-PR91-layout-gap.md). Extbackup non installato; age PC OK non certifica VPS; storici/EventJournal preservati.
+
+---
+
 ## 12/11/2026 14:45 — AUDIT RC84 LONG/SHORT/BRAIN OFFLINE; ANALIZZATORE DA CORREGGERE
 
 Commit firmato [`44f30aa74a279ecd2a59237bf89c7d4eaaabd365`](https://github.com/alexiptv82/SuperBot-Trading/commit/44f30aa74a279ecd2a59237bf89c7d4eaaabd365) sul ramo `ccr-999de027-0stnyt`: audit statico della sorgente RC84 distribuita `ab7e0b7...` e prove sintetiche, senza VPS o registri reali. Dimostrati offline: EMA200 4h di fatto EMA61 (23/40 rimbalzi sintetici armano LONG ≥60 con vera EMA200 ancora bear), trend 1d assente/bug latente, conferma inversione solo advisory, candele aperte nei punteggi (52→64), divari prompt/motore e funding PAPER solo LONG. Le sei chiusure +234,64 USDT non hanno direzione nel riepilogo: non attribuirle agli SHORT. Le quattro correzioni Brain RC84 risultano nel codice, ma nessun ciclo completo post-rilascio è provato.
