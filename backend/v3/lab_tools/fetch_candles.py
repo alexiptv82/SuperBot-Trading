@@ -93,12 +93,27 @@ def fetch_rows(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
         raise ValueError("invalid_symbol")
     if candle_ms < 60_000 or candle_ms % 60_000 or end_ms <= start_ms:
         raise ValueError("invalid_window")
+    if (type(window_bars) is not int or not 3 <= window_bars <= 200
+            or end_ms % candle_ms or type(max_requests) is not int or max_requests < 1):
+        raise ValueError("invalid_pagination")
     gran = _GRANULARITY.get(candle_ms, f"{candle_ms // 60_000}m")
     rows: dict = {}
-    cur_end, empty = end_ms - 1, 0
+    # RC84 verified on VPS with Bitget 2026-11-12: public /history-candles
+    # returns FULL, CURRENT histories when startTime and endTime are ALIGNED
+    # to the timeframe. With endTime=end_ms-1 (original code), SOL yielded
+    # only 1200 / required 2893 15m candles; SOL 1H even HTTP errored.
+    # Alignment yielded 3000/2893 SOL 15m and 760/733 SOL 1H, fresh.
+    # end_ms is the OPEN of the currently forming candle. It can be
+    # requested as the exclusive high bound, while _row rejects ts>=end_ms.
+    # Keep <=200 requested rows even if the exchange treats BOTH bounds
+    # as inclusive; overlap page boundaries by one candle to avoid holes.
+    cursor_end, empty = end_ms, 0
+    aligned_start = (start_ms // candle_ms) * candle_ms
     for _ in range(max_requests):
-        s = max(start_ms, cur_end - window_bars * candle_ms)
-        url = f"{BASE}{PATH}?symbol={symbol}&productType=USDT-FUTURES&granularity={gran}&startTime={s}&endTime={cur_end}&limit={window_bars}"
+        s = max(aligned_start, cursor_end - (window_bars - 1) * candle_ms)
+        url = (f"{BASE}{PATH}?symbol={symbol}&productType=USDT-FUTURES"
+               f"&granularity={gran}&startTime={s}&endTime={cursor_end}"
+               f"&limit={window_bars}")
         d = get_json(url)
         data = d.get("data") if isinstance(d, dict) and d.get("code") == "00000" else None
         got = 0
@@ -113,46 +128,17 @@ def fetch_rows(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
             rows[r[0]] = r[1]
             got += 1
         empty = 0 if got else empty + 1
-        if empty >= empty_limit or s <= start_ms:
+        if empty >= empty_limit or s <= aligned_start:
             break
-        cur_end = s - 1
+        next_end = s + candle_ms  # ONE overlapping boundary bar
+        if next_end >= cursor_end:
+            raise RuntimeError("paginazione non avanza")
+        cursor_end = next_end
     else:
         raise RuntimeError("troppe richieste")
-
-    # RC84: Bitget requires endTime aligned to the timeframe. The historical
-    # backwards paginator above uses end_ms - 1 to avoid including the live
-    # candle, but Bitget may FLOOR that to the preceding boundary, excluding
-    # the LAST CLOSED bar as well. Strict freshness (max_age_candles=1)
-    # correctly rejects that stale view and Brain never reaches DeepSeek.
-    # Recover exactly the latest CLOSED bar with aligned start/end boundaries.
-    # Keep the original history, its gaps and all existing price validation.
-    # If the exchange has not published the bar, remain fail-closed (stale).
-    if (end_ms % candle_ms == 0 and end_ms - candle_ms >= start_ms
-            and end_ms - candle_ms not in rows):
-        recent_start = end_ms - 2 * candle_ms
-        recent_url = (f"{BASE}{PATH}?symbol={symbol}&productType=USDT-FUTURES"
-                      f"&granularity={gran}&startTime={recent_start}"
-                      f"&endTime={end_ms}&limit=2")
-        try:
-            response = get_json(recent_url)
-            recent_data = (response.get("data")
-                           if isinstance(response, dict) and response.get("code") == "00000" else ())
-            for raw in recent_data or ():
-                parsed = _row(raw, start_ms, end_ms)
-                if parsed is None:
-                    continue
-                if parsed[0] == "invalid":
-                    if stats is not None:
-                        stats.setdefault("invalid_ts", set()).add(parsed[1])
-                    continue
-                if parsed[0] == end_ms - candle_ms:
-                    rows[parsed[0]] = parsed[1]
-        except Exception:
-            # Supplementary public GET is best effort; no synthetic price,
-            # no lowered freshness tolerance, and retry on a later cycle.
-            pass
+    # DO NOT synthesize / interpolate missing candles. Valid contiguous
+    # history and freshness are enforced by the market-view layer.
     return rows
-
 
 def write_csv(path: Path, rows: dict) -> str:
     """Scrive il CSV (intestazione esatta, righe in ordine di tempo). Restituisce l'impronta SHA-256 del file."""
