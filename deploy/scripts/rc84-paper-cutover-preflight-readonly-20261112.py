@@ -47,7 +47,7 @@ def safe_file(path: Path) -> bytes:
     return path.read_bytes()
 
 def git_blob(data: bytes) -> str:
-    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\\0" + data).hexdigest()
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + bytes([0]) + data).hexdigest()
 
 def inspect_backups_and_sources() -> None:
     if git_blob(safe_file(CHECKER)) != CHECKER_GIT_BLOB:
