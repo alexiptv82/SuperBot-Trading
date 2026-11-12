@@ -208,6 +208,15 @@ def freeze_and_snapshot():
             if current != inventory_before[label]:
                 refuse("source_changed_after_paper_stop:" + label)
         verify_sqlite_copies(snapshot)
+        # A concurrent systemd operator/automatic activation must not race
+        # with a successful snapshot. Recheck the identity gates at the end.
+        for service in SERVICES:
+            _, service_state = run(["systemctl", "is-active", service])
+            if service_state == "active":
+                refuse("paper_service_restarted_during_snapshot:" + service)
+        for _, (source, _, _) in BOTS.items():
+            if not (source / "pause.flag").is_file():
+                refuse("paper_pause_flag_removed_during_snapshot")
         manifest = {
             "schema": "rc84-private-paper-three-wallet-snapshot-v1",
             "created_utc": now,
