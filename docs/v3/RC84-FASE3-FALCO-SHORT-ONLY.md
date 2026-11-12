@@ -43,7 +43,35 @@ Non vengono iscritti come trade eseguiti o outcome positivi/negativi.
 - Nessun lock globale sullo stesso simbolo tra bot: la correlazione resta da **misurare**
   anziché vietare indiscriminatamente trade indipendenti.
 
-## Prove aggiunte, non ancora eseguite
+## Collaudo (Claude, 12/11/2026) — prove ESEGUITE localmente, nessuna GitHub Actions
+**Esito: PASS tecnico** sul ramo `work/rc84-phase3-falco-short-only-20261112` (non è una release).
+
+Revisione del codice (`cli.py`): l'interruttore agisce solo in PAPER e solo su Falco; tutti i percorsi d'ingresso LONG sono coperti
+(regole e Claude `open_long`/`open_long_split` → candidati `falco_short_only`; DCA su LONG residuo bloccato; seconda gamba LONG
+pendente annullata prima di `on_bar`; il monitor degli stop non esegue mai seconde gambe; S25 su Falco sempre spento). Nessun LONG
+viene trasformato in SHORT. `brain.py`, `engine.py`, `long_s25.py`, `signals.py` e tutto `backend/v3` (Brain) sono identici al
+congelato `dc98413`.
+
+**Correzione applicata (unica, minima):** il contatore `hawk_short_only_long_dca_blocked` era cumulativo per tutta la vita del
+processo, mentre gli altri `hawk_short_only_*` sono per ciclo; la prova originale (`>= 1`) poteva quindi passare grazie a cicli
+precedenti. Ora si azzera a ogni ciclo di Falco e la prova verifica `== 1`; inoltre la posizione della prova è resa davvero idonea al
+DCA (medio, prezzo sfavorevole), così il blocco SHORT_ONLY è l'**unico** motivo per cui il DCA non avviene (controllo in BOTH:
+lo stesso DCA avviene).
+
+Prove aggiunte nel collaudo (`backend/tests/test_desk_rc84_phase3_collaudo.py`, 12, ciclo vero): Claude `open_long` e
+`open_long_split` rifiutati e registrati come candidati; Claude `open_short_split` ammesso; nessuno SHORT forzato con sole proposte
+LONG e trend ribassista; LONG residua chiusa da stop, da take profit, da chiusura parziale e da chiusura decisa; controllo BOTH (DCA
+LONG e seconda gamba LONG restano); DCA SHORT ammesso in SHORT_ONLY; Toro bidirezionale con l'interruttore di Falco impostato; S25 mai
+su Falco anche con `DESK_S25_TORO_ENTRY_APPROVED=1` nell'ambiente.
+
+| Esecuzione | Congelato `dc98413` | Fase 3 collaudata |
+|---|---|---|
+| Prove Fase 3 (originali 12 + collaudo 12) | — | **24/24** |
+| Suite `backend/tests`, Python 3.13 (esclusi i 2 moduli SQLAlchemy) | 7.039 ok, 1 fallito (ambiente) | **7.063 ok, 1 fallito** (lo stesso: `test_v3_rc84_import_paths`, SQLAlchemy 2.0.28 + Python 3.13) |
+| Moduli SQLAlchemy, Python 3.11 | 49/49 | **49/49** |
+| Replay 42 percorsi (default `BOTH`) | base | **identico** |
+
+## Prove iniziali (ora eseguite: 12/12)
 
 File `backend/tests/test_desk_rc84_phase3_short_only.py`:
 - blocco ingressi `open_long` e `open_long_split` (origini Rules/Claude);
@@ -55,10 +83,7 @@ File `backend/tests/test_desk_rc84_phase3_short_only.py`:
 - LONG split residuo annullato prima degli stop;
 - DCA di LONG residuo bloccato senza chiusura forzata.
 
-**IMPORTANTE:** i test sono stati **scritti, non eseguiti** in questa sessione; è obbligatorio
-farli eseguire localmente a Claude con Python 3.11, oltre alle suite mirate RC82/RC84,
-Phase2/2B/2C/hardening e al replay preesistente. Nessuna GitHub Actions a consumo.
-Non considerare il candidato pronto se falliscono.
+Eseguite nel collaudo con esito positivo (vedi sopra), insieme a RC82/RC84, Fasi 2/2B/2C/hardening, suite completa e replay.
 
 ## Gate da soddisfare prima di qualsiasi unpause
 

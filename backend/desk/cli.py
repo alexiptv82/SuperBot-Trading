@@ -1147,6 +1147,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     hawk_short_only = hawk_mode == "SHORT_ONLY"
     if not LIVE._live and PORTFOLIO.name == "hawk":
         HB["hawk_entry_mode"] = hawk_mode
+        HB["hawk_short_only_long_dca_blocked"] = 0       # contatori per ciclo, come gli altri hawk_short_only_*
         cancelled = 0
         if hawk_short_only:
             # A pending LONG second split leg increases exposure before entry-policy filtering.

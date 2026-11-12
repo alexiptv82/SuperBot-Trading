@@ -122,6 +122,8 @@ def test_legacy_long_dca_does_not_increase_exposure_in_short_only(sandbox, monke
     p = original.positions["ETH"]
     # A historical medium position may exist on a wallet after a policy change.
     p.trade_type = "medio"
+    p.entry *= 1.02                     # prezzo sfavorevole: senza SHORT_ONLY il DCA sarebbe ammesso (vedi controllo)
+    p.sl = p.entry * 0.9
     cli_.save_account(original, state)
     monkeypatch.setenv("DESK_HAWK_ENTRY_MODE", "SHORT_ONLY")
     _run(cli_, monkeypatch, state, [{
@@ -130,4 +132,4 @@ def test_legacy_long_dca_does_not_increase_exposure_in_short_only(sandbox, monke
     }], lambda t: native_htf(t, 1))
     current = cli_.make_account(state).positions["ETH"]
     assert current.side == 1 and current.dca_count == 0
-    assert cli_.HB["hawk_short_only_long_dca_blocked"] >= 1
+    assert cli_.HB["hawk_short_only_long_dca_blocked"] == 1         # contatore del ciclo, non cumulativo
