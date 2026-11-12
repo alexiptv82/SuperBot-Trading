@@ -53,6 +53,48 @@ def test_fetch_collects_exactly_the_closed_bars_in_range_in_any_page_order_witho
         assert rows[start] == ("100.10"[:0] + hist[start][1], hist[start][2], hist[start][3], hist[start][4], hist[start][5])
 
 
+def test_rc84_bitget_floors_unaligned_end_and_excludes_latest_closed_bar_without_recovery():
+    # Simulated exchange contract: endTime is aligned DOWN; returned bars
+    # precede that aligned boundary, and current/forming bar is never returned.
+    # Old paginator sends end-1ms -> rounds to end-1 interval -> latest missing.
+    # The extra aligned request must restore ONLY the genuinely closed bar.
+    end = (NOW // MS) * MS
+    start = end - 20 * MS
+    hist, _ = history(start, end + MS)
+    queries = []
+
+    def bitget_aligned(url):
+        q = dict(re.findall(r"(\w+)=([^&]+)", url.split("?", 1)[1]))
+        lo = int(q["startTime"])
+        hi = int(q["endTime"]) // MS * MS
+        queries.append((lo, int(q["endTime"]), hi))
+        data = [hist[t] for t in sorted(hist) if lo <= t < hi]
+        return {"code": "00000", "data": data[-int(q["limit"]):]}
+
+    rows = FC.fetch_rows("BTCUSDT", start, end, candle_ms=MS, get_json=bitget_aligned)
+    assert sorted(rows) == list(range(start, end, MS))
+    assert queries[0][1] == end - 1
+    assert queries[-1][1] == end     # exact aligned recovery
+    assert rows[end - MS] == tuple(hist[end - MS][1:6])
+    assert end not in rows          # never include a forming candle
+
+
+def test_rc84_missing_latest_candle_stays_missing_when_exchange_is_late():
+    end = (NOW // MS) * MS
+    start = end - 20 * MS
+    hist, _ = history(start, end - 2 * MS)
+
+    def lagging_bitget(url):
+        q = dict(re.findall(r"(\w+)=([^&]+)", url.split("?", 1)[1]))
+        lo, hi = int(q["startTime"]), int(q["endTime"]) // MS * MS
+        return {"code": "00000", "data": [hist[t] for t in sorted(hist) if lo <= t < hi]}
+
+    rows = FC.fetch_rows("BTCUSDT", start, end, candle_ms=MS, get_json=lagging_bitget)
+    assert end - MS not in rows
+    assert len(rows) == 19
+    assert end not in rows
+
+
 def test_fetch_keeps_holes_and_never_interpolates():
     end = (NOW // MS) * MS
     start = end - 2 * DAY
