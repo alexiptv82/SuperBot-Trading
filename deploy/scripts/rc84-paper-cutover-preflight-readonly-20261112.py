@@ -9,6 +9,8 @@ FAIL CLOSED on any unexpected identity, writer, stage, or backup.
 from __future__ import annotations
 
 import hashlib
+import json
+import shlex
 import os
 from pathlib import Path
 import subprocess
@@ -104,9 +106,91 @@ def inspect_four_unit_templates() -> None:
     print("RC84_CUTOVER_FOUR_EXACT_UNIT_TEMPLATES=PASS", flush=True)
     print("RC84_CUTOVER_UNIT_PATH_SWAP_PLAN=PASS", flush=True)
 
+CLOSE_UNIT = "superbot-v3-paper-single-close-bridge.service"
+CLOSE_CONTAINER = "superbot-rc84-paper-close-bridge"
+CLOSE_UNIT_BLOB = "9555640cdeda3cc28303532078ea12f5be470316"
+CLOSE_IMAGE = "superbot:rc84-paper-single-close-20261111"
+
+def docker_inspect(container: str) -> dict:
+    data = json.loads(command(["docker", "inspect", container], timeout=30))
+    if not isinstance(data, list) or len(data) != 1:
+        refuse("docker_inspect_ambiguous")
+    return data[0]
+
+def mount_matches(obj: dict, source: Path, writable: bool) -> bool:
+    entries = [m for m in obj.get("Mounts", [])
+               if m.get("Source") == str(source)]
+    return len(entries) == 1 and entries[0].get("RW") is writable
+
+def inspect_authorized_bridge_process(pid: int, argv: bytes) -> bool:
+    # A narrow exception, NOT a blanket exception for Docker. Prove that the
+    # candidate PID is systemd's *exact* MainPID for the pinned close bridge.
+    if prop(CLOSE_UNIT, "ActiveState") != "active":
+        return False
+    if prop(CLOSE_UNIT, "MainPID") != str(pid):
+        return False
+    if prop(CLOSE_UNIT, "FragmentPath") != str(SYSTEMD / CLOSE_UNIT):
+        return False
+    if prop(CLOSE_UNIT, "DropInPaths") or prop(CLOSE_UNIT, "NeedDaemonReload") != "no":
+        return False
+    if git_blob(safe_file(SYSTEMD / CLOSE_UNIT)) != CLOSE_UNIT_BLOB:
+        refuse("close_bridge_unit_not_pinned")
+    try:
+        exe = os.readlink("/proc/" + str(pid) + "/exe")
+        parts = [x.decode("utf-8") for x in argv.split(bytes([0])) if x]
+    except (OSError, UnicodeDecodeError):
+        return False
+    if exe != "/usr/bin/docker" or len(parts) < 8 or parts[0] != "/usr/bin/docker":
+        return False
+    # Compare the full argv with the signed-off systemd unit's ExecStart
+    # rather than guessing from only 'docker run' or the container name.
+    unit_data = safe_file(SYSTEMD / CLOSE_UNIT).decode("utf-8")
+    cmd_lines = [line.split("=", 1)[1] for line in unit_data.splitlines()
+                 if line.startswith("ExecStart=")]
+    if len(cmd_lines) != 1 or parts != shlex.split(cmd_lines[0]):
+        return False
+    obj = docker_inspect(CLOSE_CONTAINER)
+    if obj.get("Name") != "/" + CLOSE_CONTAINER:
+        return False
+    if obj.get("State", {}).get("Running") is not True:
+        return False
+    host = obj.get("HostConfig", {})
+    if (host.get("NetworkMode") != "none"
+            or host.get("ReadonlyRootfs") is not True
+            or host.get("AutoRemove") is not True
+            or obj.get("Config", {}).get("Image") != CLOSE_IMAGE):
+        return False
+    if not all(mount_matches(obj, RUNS / name, True) for name in WALLETS):
+        return False
+    if not mount_matches(obj, Path("/run/superbot-paper-close"), True):
+        return False
+    web = docker_inspect("superbot")
+    if web.get("State", {}).get("Running") is not True:
+        return False
+    if not all(mount_matches(web, RUNS / name, False) for name in WALLETS):
+        return False
+    # Detect *all other currently running containers* that have wallet RW
+    # mounts, including a parent mount that may expose multiple wallets.
+    running_ids = command(["docker", "ps", "-q", "--no-trunc"], timeout=30).splitlines()
+    if not running_ids:
+        return False
+    for ident in running_ids:
+        other = docker_inspect(ident)
+        if other.get("Id") == obj.get("Id"):
+            continue
+        for m in other.get("Mounts", []):
+            source = m.get("Source")
+            if not isinstance(source, str) or m.get("RW") is not True:
+                continue
+            # /opt or /opt/superbot-v3-paper-runs mounted RW can expose
+            # wallets even if their full path is absent from argv.
+            if any(str((RUNS / name)) == source or
+                   str((RUNS / name)).startswith(source.rstrip("/") + "/")
+                   for name in WALLETS):
+                refuse("another_container_has_wallet_rw_mount")
+    return True
+
 def inspect_running_wallet_owners() -> None:
-    # Catch extra processes with explicit wallet paths in their argv without
-    # exposing argv, account identifiers, credential values, or env contents.
     needles = [str(RUNS / w).encode() for w in WALLETS]
     seen = []
     for entry in Path("/proc").iterdir():
@@ -117,10 +201,15 @@ def inspect_running_wallet_owners() -> None:
         except (FileNotFoundError, PermissionError, ProcessLookupError):
             continue
         if any(needle in argv for needle in needles):
-            seen.append(entry.name)
-    if seen:
-        refuse("possible_competing_paper_wallet_process_count_" + str(len(seen)))
-    print("RC84_CUTOVER_NO_ARGV_WRITERS_TO_THREE_RUNS=PASS", flush=True)
+            seen.append((int(entry.name), argv))
+    if len(seen) == 1 and inspect_authorized_bridge_process(*seen[0]):
+        print("RC84_CUTOVER_AUTHORIZED_CLOSE_BRIDGE_ONLY=PASS", flush=True)
+        print("RC84_CUTOVER_NO_OTHER_DOCKER_WALLET_RW=PASS", flush=True)
+    elif seen:
+        refuse("unclassified_wallet_argv_process_count_" + str(len(seen)))
+    else:
+        # A missing close bridge is NOT a substitute for healthy exit paths.
+        refuse("authorized_close_bridge_process_missing")
     # This is additional evidence, NOT proof there are no env-only writers.
     for unit in ("superbot-v3-falco-exit.service",
                  "superbot-v3-toro-exit.service",
