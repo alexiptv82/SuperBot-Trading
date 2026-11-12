@@ -1,3 +1,9 @@
+## 12/11/2026 16:50 — ROADMAP PROPOSTA: FALCO SHORT-ONLY, TORO LONG+SHORT; NON APPLICATA
+
+Proposta utente e valutazione recuperata: usare **Falco come SHORT-only reversibile**, **Toro LONG+SHORT** con nuova strategia LONG da correggere/validare, Brain indipendente; non aggiungere un quarto portafoglio per ora. È un obiettivo sperimentale PAPER, non un'autorizzazione operativa. I numeri precedenti (S25 −270,21; SHORT Rules +581,13) restano provvisori finché PR #91 non rigenera il rapporto sui wallet RC84 V3; campione/regime non giustificano un divieto LONG permanente. PR #91 invariata a `500563a...`, tre test nuovi ancora non eseguiti; nessun commit/config/deploy SHORT-only o risultato Cloud nuovo. Stato invariato: Falco/Toro draining, Brain paused/exit healthy, tre pause e resume non autorizzato. [Checkpoint completo](diario/2026-11-12_RC84-roadmap-falco-short-only-toro-dual-not-applied.md). Extbackup non installato; age PC OK non certifica VPS; PAPER e storici/EventJournal preservati.
+
+---
+
 ## 12/11/2026 15:48 — AUDIT QUANTITATIVO PROVVISORIO; PR #91 CORREGGE IL LAYOUT V3 MA NON È COLLAUDATA
 
 Commit firmato [`7a6589f...`](https://github.com/alexiptv82/SuperBot-Trading/commit/7a6589f1dd09b6d59e97fbe0055af9b5caa69c9e) corregge cutoff, split per apertura, parziali/ID e linking learning; 13 test sintetici dichiarati verdi. Rapporto recente: 6 LONG S25, 0 vittorie, −270,21 USDT (Falco −63,60; Toro −206,61), R medio −1,12, R:R 0,97, MAE/MFE 1,08/0,29R; 13 SHORT Rules Scalp, 12 vittorie, +581,13 USDT, WR 92,3%, PF 32,90, R medio +1,42, R:R 1,75. BCH/BNB/RUNE S25 duplicati Falco/Toro; campione piccolo e contesto 4h reale non ricostruito.
