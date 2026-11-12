@@ -78,7 +78,7 @@ o dati; non invia nulla in rete. Lo stato di mercato "vero" (EMA200 4h piena, 1d
 richiede le candele del periodo: è il passo successivo, sul banco storico, prima di qualunque modifica alla strategia LONG.
 
 ## 6. Prove
-`deploy/scripts/test_audit_long_short.py` (13 prove): registri prodotti dal **motore PAPER vero** (`PaperAccount.open/close/partial_close`)
+`deploy/scripts/test_audit_long_short.py` (13 prove precedenti, più 3 nuovi test di layout RC84 e fallimento sicuro, da rieseguire localmente): registri prodotti dal **motore PAPER vero** (`PaperAccount.open/close/partial_close`)
 con lo schema esatto di storico e learning; reset con id riusato e storico archiviato; parziale + finale; posizione aperta; riga troncata e
 riga duplicata; S25 duplicati tra portafogli con contesto del desk; trade a cavallo del rilascio (cambia sezione tra i due report);
 cutoff verificato con `zoneinfo` (12:37 Europe/Rome = 11:37 UTC); copia coerente, ripetuta se un file cambia, dichiarata non coerente se
