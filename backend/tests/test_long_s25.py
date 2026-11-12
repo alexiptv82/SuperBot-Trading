@@ -721,8 +721,16 @@ def test_rc84_claude_entries_are_role_specific_but_long_short_stay_possible(sand
     assert all(not x["action"].startswith("open_") for x in other)
 
 
-def test_rc84_valid_empty_claude_reply_is_no_trade_not_rule_fallback(sandbox, monkeypatch):
+@pytest.mark.parametrize("portfolio,enable_s25", [("hawk", False), ("bull", True)])
+def test_rc84_valid_empty_claude_reply_is_no_trade_not_rule_fallback(sandbox, monkeypatch,
+                                                                      portfolio, enable_s25):
     cli, _ = sandbox
+    monkeypatch.setattr(cli, "PORTFOLIO",
+                        cli._make_hawk_config() if portfolio == "hawk" else cli._make_bull_config())
+    if enable_s25:
+        # Even a future explicit Toro S25 opt-in must not undo NO_TRADE.
+        monkeypatch.setenv("DESK_LONG_S25", "1")
+        monkeypatch.setenv("DESK_S25_TORO_ENTRY_APPROVED", "1")
     a15, sig = _cycle_candles()
     a15b, now, _ = _with_new_hour(a15, sig)
     _install(cli, monkeypatch, a15b)
