@@ -88,7 +88,9 @@ def inspect_four_unit_templates() -> None:
             refuse("unit_unexpected_enable_state_" + unit)
         installed = safe_file(SYSTEMD / unit)
         staged = safe_file(SOURCE_UNITS / unit)
-        source_template = safe_file(OLD / "deploy" / "rc84-paper-services" / unit)
+        # Original OLD checkout predates these unit templates. Compare instead
+        # against exact, pinned NEW source; fail closed if any version differs.
+        source_template = safe_file(NEW / "deploy" / "rc84-paper-services" / unit)
         if installed != staged or staged != source_template:
             refuse("unit_not_exact_old_template_" + unit)
         original = installed.decode("utf-8")
