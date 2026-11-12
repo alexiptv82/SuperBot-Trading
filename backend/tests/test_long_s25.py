@@ -737,7 +737,11 @@ def test_rc84_valid_empty_claude_reply_is_no_trade_not_rule_fallback(sandbox, mo
     monkeypatch.setattr(cli, "apply_claude_schedule", lambda *args: True)
     monkeypatch.setattr(cli, "can_call", lambda *args: True)
     monkeypatch.setattr(cli, "build_prompt", lambda *args, **kwargs: "test")
-    monkeypatch.setattr(cli, "record_spend", lambda *args: 0.0)
+    def fake_record_spend(state, day, usage):
+        state.setdefault("budget", {})["spent"] = 0.0
+        return 0.0
+
+    monkeypatch.setattr(cli, "record_spend", fake_record_spend)
     monkeypatch.setattr(cli, "log_claude_call", lambda *args: None)
     observed = {"claude": 0, "fallback": 0}
 
