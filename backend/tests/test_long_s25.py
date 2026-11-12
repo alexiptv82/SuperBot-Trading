@@ -723,8 +723,8 @@ def test_rc84_claude_entries_are_role_specific_but_long_short_stay_possible(sand
 
 def test_rc84_valid_empty_claude_reply_is_no_trade_not_rule_fallback(sandbox, monkeypatch):
     cli, _ = sandbox
-    a15, _ = _cycle_candles()
-    a15b, now, _ = _with_new_hour(a15, {})
+    a15, sig = _cycle_candles()
+    a15b, now, _ = _with_new_hour(a15, sig)
     _install(cli, monkeypatch, a15b)
     monkeypatch.setattr(cli, "apply_claude_schedule", lambda *args: True)
     monkeypatch.setattr(cli, "can_call", lambda *args: True)
