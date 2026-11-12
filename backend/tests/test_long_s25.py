@@ -592,9 +592,10 @@ def test_step_position_survives_state_roundtrip_with_source():
 # RC84 fase 2 (ramo work/rc84-signals-mtf-closed-20261112): signals.py cambiato DI PROPOSITO (tendenze 4h/1d su
 # barre chiuse native con EMA200 vera o UNKNOWN, indicatori solo su candele chiuse, classificazione consultiva);
 # effetti misurati da deploy/scripts/replay_signals_rc84.py e da test_desk_rc84_phase2.py; fase 2B: coda senza buchi
-# oltre 3 giorni nelle serie 4h/1d (test_desk_rc84_phase2b.py).
+# oltre 3 giorni nelle serie 4h/1d (test_desk_rc84_phase2b.py); fase 2C: continuita' esatta per le crypto e
+# calendario dei metalli (test_desk_rc84_phase2c.py).
 PINNED = {
-    "signals.py": "99a5feb96e7498129dbb97f683fac0d995c243c64638a57bb660a3490aed4076",
+    "signals.py": "7136174ae75d9a51e76a7fd85338be3625a12a26740d119ea68449ca1f12a4c8",
     "seasonal.py": "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7",
 }
 

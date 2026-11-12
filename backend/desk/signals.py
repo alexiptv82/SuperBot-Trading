@@ -9,6 +9,7 @@ Punteggio 0-100 per il lato indicato + bonus stagionalità da seasonal.py.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -25,7 +26,18 @@ TREND_4H_POINTS = 20
 # e quindi piu' aperture. Finche' la policy non lo decide, il trend 1d e' solo contesto (0 punti): e' riportato nei
 # fatti, nella classificazione e nel prompt. Vedi docs/v3/RC84-FASE2-MOTORE-SEGNALI.md.
 DAILY_TREND_POINTS = 0
-MAX_GAP_MS = 3 * H1D                 # buco massimo tollerato in una serie 4h/1d (fine settimana dei metalli)
+# Calendari di mercato per la continuita' delle serie 4h/1d. Crypto: 24/7, ogni barra deve seguire la precedente di
+# ESATTAMENTE un periodo. Metalli (XAU, XAG): ammesse solo le barre mancanti che aprono di sabato o domenica UTC (chiusura
+# settimanale programmata); ogni altra barra mancante e' un'interruzione. Il calendario esatto della Bitget per i metalli
+# non e' stato verificato (vedi docs/v3/RC84-FASE2-MOTORE-SEGNALI.md, §8C): festivita' o chiusure diverse risultano
+# interruzioni, quindi tendenza UNKNOWN nel dubbio, mai una tendenza su una serie incompleta.
+CALENDAR_CRYPTO, CALENDAR_WEEKEND = "crypto_24_7", "chiusura_weekend"
+MARKET_CALENDAR = {"XAU": CALENDAR_WEEKEND, "XAG": CALENDAR_WEEKEND}
+
+
+def calendar_for(symbol: str) -> str:
+    base = str(symbol or "").upper().replace("USDT", "").replace("PERP", "").strip("/:")
+    return MARKET_CALENDAR.get(base, CALENDAR_CRYPTO)
 RANGE_GAP = 0.003                    # |EMA50-EMA200|/EMA200 sotto lo 0,3%: tendenza 4h piatta (laterale)
 
 
@@ -113,31 +125,71 @@ def closed_bars(arr: np.ndarray, now_ms: int, period_ms: int) -> np.ndarray:
     return a[keep]
 
 
-def htf_trend(bars: np.ndarray, now_ms: int, period_ms: int) -> dict:
+def _scheduled_gap(prev_open: int, next_open: int, period_ms: int, calendar: str) -> bool:
+    """True se TUTTE le barre mancanti tra due barre presenti cadono in una chiusura programmata del calendario."""
+    if calendar != CALENDAR_WEEKEND:
+        return False
+    for t in range(prev_open + period_ms, next_open, period_ms):
+        if time.gmtime(t / 1000).tm_wday not in (5, 6):          # sabato, domenica (UTC)
+            return False
+    return True
+
+
+def series_check(bars: np.ndarray, now_ms: int, period_ms: int, calendar: str = CALENDAR_CRYPTO) -> tuple:
+    """(coda continua di barre chiuse, info). Nessuna barra inventata ne' interpolata: si scarta, non si ripara.
+
+    Rifiuta tutta la serie (coda vuota) se ci sono aperture non allineate al periodo o lo stesso timestamp con valori
+    diversi. Altrimenti restituisce la coda piu' recente senza interruzioni (secondo il calendario) e descrive l'ultima
+    interruzione trovata (``info["interruzioni"]``, ``info["ultima_interruzione"]``)."""
+    info = {"interruzioni": 0, "ultima_interruzione": "", "duplicati": 0, "motivo": ""}
+    if bars is None or len(bars) == 0:
+        return np.empty((0, 6)), info
+    a = np.asarray(bars, dtype=float)
+    if a.ndim != 2 or a.shape[1] < 6:
+        info["motivo"] = "serie illeggibile"
+        return np.empty((0, 6)), info
+    a = a[:, :6]
+    a = a[np.isfinite(a).all(axis=1) & (a[:, 1:5] > 0).all(axis=1) & (a[:, 5] >= 0) & (a[:, 0] + period_ms <= now_ms)]
+    if len(a) == 0:
+        return np.empty((0, 6)), info
+    a = a[np.argsort(a[:, 0], kind="stable")]
+    if np.any(a[:, 0].astype(np.int64) % period_ms != 0):
+        info["motivo"] = "barre non coerenti con il timeframe (aperture non allineate)"
+        return np.empty((0, 6)), info
+    same = np.flatnonzero(np.diff(a[:, 0]) == 0)
+    if len(same):
+        info["duplicati"] = int(len(same))
+        if any(not np.array_equal(a[i], a[i + 1]) for i in same):
+            info["motivo"] = "barre non coerenti con il timeframe (duplicati in conflitto: %d)" % len(same)
+            return np.empty((0, 6)), info
+        a = a[np.r_[True, np.diff(a[:, 0]) > 0]]
+    start = 0
+    for i in range(1, len(a)):
+        prev, nxt = int(a[i - 1, 0]), int(a[i, 0])
+        if nxt - prev == period_ms or _scheduled_gap(prev, nxt, period_ms, calendar):
+            continue
+        info["interruzioni"] += 1
+        info["ultima_interruzione"] = "%d barre mancanti dopo %s" % (
+            (nxt - prev) // period_ms - 1, time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(prev / 1000)))
+        start = i
+    return a[start:], info
+
+
+def htf_trend(bars: np.ndarray, now_ms: int, period_ms: int, calendar: str = CALENDAR_CRYPTO) -> dict:
     """Tendenza EMA50/EMA200 su barre CHIUSE di un timeframe superiore. Mai una media sostituita da una piu' corta.
 
     ``state``: ``UP``/``DOWN``/``UNKNOWN``; ``why`` spiega un UNKNOWN; ``gap`` = (EMA50-EMA200)/EMA200;
     ``close_vs_ema50`` = +1/-1 se l'ultima chiusura e' sopra/sotto la EMA50; ``ema50_slope`` = segno della EMA50 su 3 barre."""
-    out = {"state": "UNKNOWN", "why": "", "bars": 0, "gaps": 0, "gap": None, "close_vs_ema50": 0, "ema50_slope": 0,
+    out = {"state": "UNKNOWN", "why": "", "bars": 0, "gaps": 0, "calendar": calendar, "last_gap": "", "gap": None, "close_vs_ema50": 0, "ema50_slope": 0,
            "closes_above_ema50": 0, "asof_ms": None}
-    c = closed_bars(bars, now_ms, period_ms)
-    out["bars"] = int(len(c))
-    # barre davvero di questo timeframe: aperture allineate al periodo e distanti almeno un periodo
-    # (una serie con un'altra granularita' non diventa una tendenza 4h/1d)
-    if len(c) and (np.any(c[:, 0].astype(np.int64) % period_ms != 0) or np.any(np.diff(c[:, 0]) < period_ms)):
-        out["why"] = "barre non coerenti con il timeframe"
-        out["bars"] = 0
+    c, info = series_check(bars, now_ms, period_ms, calendar)
+    out.update(bars=int(len(c)), gaps=info["interruzioni"], calendar=calendar, last_gap=info["ultima_interruzione"])
+    if info["motivo"]:
+        out["why"] = info["motivo"]
         return out
-    # interruzioni: si usa solo la coda piu' recente senza buchi oltre MAX_GAP_MS (es. un fine settimana dei metalli);
-    # oltre quel buco la serie precedente non si incolla, e se la coda e' corta la tendenza resta UNKNOWN
-    if len(c) > 1:
-        gaps = np.flatnonzero(np.diff(c[:, 0]) > max(MAX_GAP_MS, period_ms))
-        out["gaps"] = int(np.sum(np.diff(c[:, 0]) > period_ms))
-        if len(gaps):
-            c = c[gaps[-1] + 1:]
-            out["bars"] = int(len(c))
     if len(c) < TREND_MIN_BARS:
-        out["why"] = "storia insufficiente: %d barre chiuse < %d" % (len(c), TREND_MIN_BARS)
+        out["why"] = "storia insufficiente: %d barre chiuse < %d%s" % (
+            len(c), TREND_MIN_BARS, ("; serie interrotta: " + info["ultima_interruzione"]) if info["ultima_interruzione"] else "")
         return out
     last_end = int(c[-1, 0]) + period_ms
     # dati vecchi: l'ultima barra chiusa non e' quella appena terminata (oltre una barra di ritardo)
@@ -234,8 +286,9 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None, *,
     ref = float(c1[-1])                    # chiusura dell'ultima ora CHIUSA: base di tutti i confronti
     e20, e50 = ema(c1, 20)[-1], ema(c1, 50)[-1]
     src4 = bars_4h if bars_4h is not None else resample(closed15, H4)
-    t4 = htf_trend(src4, now_ms, H4)
-    t1d = htf_trend(bars_1d if bars_1d is not None else resample(closed15, H1D), now_ms, H1D)
+    cal = calendar_for(symbol)
+    t4 = htf_trend(src4, now_ms, H4, cal)
+    t1d = htf_trend(bars_1d if bars_1d is not None else resample(closed15, H1D), now_ms, H1D, cal)
     r1h = rsi(c1)
     roc24 = float(c1[-1] / c1[-25] - 1) if len(c1) > 25 else 0.0
     hi20, lo20 = float(b1[-21:-1, 2].max()), float(b1[-21:-1, 3].min())
@@ -352,6 +405,7 @@ def read_symbol(symbol: str, arr15: np.ndarray, now_ms: int | None = None, *,
                "ema50_200_4h": {"UP": "su", "DOWN": "giu"}.get(t4["state"], "UNKNOWN"), "roc24h": round(roc24, 4),
                "trend4h_state": t4["state"], "trend4h_why": t4["why"], "trend4h_bars": t4["bars"],
                "trend1d_state": t1d["state"], "trend1d_why": t1d["why"], "trend1d_bars": t1d["bars"],
+               "trend4h_gaps": t4["gaps"], "trend1d_gaps": t1d["gaps"], "market_calendar": cal,
                "trend_state": trend_state, "trend_state_why": trend_state_why,
                "closed_asof_ms": int(b1[-1, 0]) + H1,
                "atr1h_pct": round(a_pct, 4), "vol_ratio": round(vol_ratio, 2),

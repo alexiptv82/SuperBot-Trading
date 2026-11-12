@@ -129,12 +129,53 @@ catena completa nel ciclo vero. Replay: invariato (identico alla fase 2: i perco
 **Ancora da verificare con una lettura sulla VPS prima di qualunque rilascio:** `/market/candles` con `granularity=4H&limit=1000`
 (numero di barre e allineamento) e il parametro `limit=200` di `history-candles` usato qui (la pagina da 89 giorni ne contiene 90 al massimo).
 
+## 8C. Fase 2C — continuità esatta delle serie e calendari di mercato
+**Problema corretto:** in 2B `signals.py` tollerava buchi fino a 3 giorni in qualunque serie 4h/1d, quindi EMA50/EMA200 potevano
+essere calcolate su serie crypto incomplete. `MAX_GAP_MS` è stato **eliminato**.
+* **Crypto (24/7, predefinito):** ogni barra deve seguire la precedente di **esattamente** 4h o 1 giorno. Una barra mancante è
+  un'interruzione: si usa solo la coda continua più recente; se è più corta di 200 barre la tendenza è `UNKNOWN` con un motivo
+  verificabile, per esempio `storia insufficiente: 49 barre chiuse < 200; serie interrotta: 1 barre mancanti dopo 2026-11-03T08:00Z`.
+* **Metalli (`XAU`, `XAG`, calendario `chiusura_weekend`):** sono ammesse **solo** le barre mancanti che aprono di sabato o domenica UTC;
+  una barra mancante in un giorno feriale è un'interruzione. Il calendario esatto della Bitget per i metalli **non è verificato**
+  (§8C-residui): festività o orari diversi diventano interruzioni, cioè `UNKNOWN` nel dubbio, mai una tendenza su dati incompleti.
+  Con il mercato chiuso nel fine settimana l'ultima barra è vecchia, quindi la tendenza è `UNKNOWN` fino alla riapertura.
+* **Duplicati:** identici → uniti; **stesso timestamp con valori diversi → serie rifiutata** (`duplicati in conflitto: N`).
+  (Il livello di rete `merge_bars` tiene invece la riga scaricata per ultima e conta i conflitti, prima che la serie arrivi qui.)
+* **Intervalli irregolari:** un'apertura fuori dalla griglia del periodo → serie rifiutata (`aperture non allineate`); righe in ordine
+  sparso → ordinate; candele future o in formazione → escluse. Nessuna barra inventata o interpolata: si scarta, non si ripara.
+* Nei fatti della lettura: `market_calendar`, `trend4h_gaps`, `trend1d_gaps`; in `htf_trend`: `last_gap`.
+* Invariati: recupero paginato, cache, budget di richieste (2B), politica della fase 2 (gate solo sul 4h, 1d a 0 punti), motore PAPER,
+  rischio, strategie. Prove: `backend/tests/test_desk_rc84_phase2c.py` (13); la prova 2B che tollerava buchi di 2 giorni per tutti
+  è stata ristretta al taglio della serie (il contratto è cambiato di proposito in 2C).
+
+### 8C-1. Classificazione dei 26 fallimenti preesistenti (identici in `ab7e0b7` e nel candidato; nessun contratto di test modificato)
+| Prove | Causa verificata | Classe |
+|---|---|---|
+| `test_desk.py` (14: ciclo completo, DCA, pausa/svuotamento, ripresa, entrata diversificata, registro chiusure, calendario Claude) | le prove propongono aperture `medio` su Falco; la politica RC84 (`_rc84_paper_classic_entry_policy`, 12/11) le rifiuta (`[RC84_POLICY:HAWK] ... tipo=medio`) | **test obsoleti** (contratto cambiato da RC84) **con perdita di copertura**: DCA, entrata diversificata, svuotamento in pausa e ripresa non sono più provati nel ciclo vero |
+| `test_v3_rc82_active_paper_stops.py::test_recent_quote_still_opens_and_still_adds_dca` | stessa causa (regole `medio` su Falco) | test obsoleto, **perdita di copertura** dell'apertura + DCA con quotazione recente |
+| `test_v3_rc84_claim_integration.py::test_open_is_blocked_while_a_claim_is_unresolved_and_allowed_after_reconciliation` | stessa causa: l'apertura "dopo la riconciliazione" non avviene per la politica, non per il claim | test obsoleto; **attenzione:** la parte "bloccato con claim irrisolto" passa per il motivo sbagliato, quindi **la protezione dei claim non è più dimostrata** da questa prova |
+| `test_v3_rc84_same_cycle_exposure.py` (3 `close_then_open...`) | stessa causa (regole `medio` su Falco) | come sopra: **protezione "nessuna nuova esposizione nello stesso ciclo con claim irrisolto" non più dimostrata** per le aperture delle regole |
+| `test_v3_rc84_same_cycle_exposure.py` (3 `s25_entry_after_a_time_close...`) | i nuovi ingressi S25 sono spenti di default (5d21d14: servono Toro + `DESK_S25_TORO_ENTRY_APPROVED=1`); la prova usa Falco con solo `DESK_LONG_S25=1` | test obsoleto (comportamento voluto: S25 spento) |
+| `test_v3_runner_daily_loss.py` (2) | il heartbeat del runner Brain contiene `last_cycle`, aggiunto da `d8130a9` (11/11); le prove confrontano il heartbeat "esatto" di prima | test obsoleto (contratto cambiato da `d8130a9`) |
+| `test_v3_rc84_claim_visibility.py::test_unauthenticated_overview_is_refused_and_no_write_routes_were_added` | la rotta `GET /api/v3/brain/config` (aggiunta da `e87e913`, 11/11, sola lettura) non è nell'elenco atteso; la parte "solo GET oltre a brain/close" passa | test obsoleto (rotta in sola lettura legittima); nessuna rotta di scrittura nuova |
+| `test_v3_rc84_import_paths.py::test_auth_and_profiles_before_the_subprocess_lock_tests_in_both_orders` | `SQLAlchemy 2.0.28` non si importa con Python 3.13 (`TypingOnly ... __static_attributes__`) | **ambiente** (lo stesso per cui `test_auth_flow.py`/`test_profiles_engine.py` sono esclusi); va rieseguita con Python 3.11 o SQLAlchemy ≥ 2.0.31 |
+**Possibili difetti operativi:** nessun difetto del prodotto dimostrato. Il rischio vero è la **copertura persa**: 20 prove su 26
+falliscono prima di arrivare a ciò che dovevano dimostrare (DCA, pausa, entrata diversificata, blocco con claim irrisolto). Proposta
+(non applicata, da approvare): riscriverle con aperture `scalp` su Falco (o `medio` da Claude su Toro), così da provare di nuovo quelle
+protezioni nel ciclo vero, senza cambiare il loro scopo.
+
+### 8C-residui
+1. Calendario Bitget dei metalli (orari di chiusura e festività) non verificato: nel dubbio `UNKNOWN`. Una lettura in sola lettura sulla
+   VPS delle barre 4H/1Dutc di XAUUSDT/XAGUSDT direbbe quali barre mancano davvero.
+2. Le verifiche già fatte sulla VPS (ETH 4H 539 barre, BTC/ETH 1Dutc 267 barre, nessuna interruzione, `limit=200`) restano valide: con
+   serie continue la 2C non cambia nulla, come conferma il replay identico.
+
 ## 9. Riproduzione
 ```sh
 python3 deploy/scripts/replay_signals_rc84.py run --backend <checkout ab7e0b7>/backend --label rc84_ab7e0b7 --out rc84.json
 python3 deploy/scripts/replay_signals_rc84.py run --backend backend --label candidato --out cand.json
 python3 deploy/scripts/replay_signals_rc84.py run --backend backend --label candidato_1d15 --daily-points 15 --out cand15.json
 python3 deploy/scripts/replay_signals_rc84.py compare rc84.json cand.json cand15.json
-PYTHONPATH=.:backend python3 -m pytest -q backend/tests/test_desk_rc84_phase2.py backend/tests/test_desk_rc84_phase2b.py backend/tests/test_long_s25.py backend/tests/test_desk.py
+PYTHONPATH=.:backend python3 -m pytest -q backend/tests/test_desk_rc84_phase2.py backend/tests/test_desk_rc84_phase2b.py backend/tests/test_desk_rc84_phase2c.py backend/tests/test_long_s25.py backend/tests/test_desk.py
 ```
 I risultati sono deterministici (semi fissi): rieseguendo si ottengono gli stessi numeri.

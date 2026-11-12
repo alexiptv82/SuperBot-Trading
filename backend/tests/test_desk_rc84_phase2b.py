@@ -117,19 +117,13 @@ def test_expired_cache_with_api_error_returns_the_old_series_and_signals_call_it
     assert r.facts["trend1d_state"] == "UNKNOWN" and "dati vecchi" in r.facts["trend1d_why"]
 
 
-def test_missing_days_long_gaps_cut_the_series_short_gaps_are_tolerated(cli):
+def test_missing_days_cut_the_series(cli):
     # un buco di 6 giorni a 150 giorni dalla fine: resta la coda dopo il buco (<200) -> UNKNOWN
     fb = FakeBitget(NOW, 400, missing=range(250, 256))
     arr = cli.fetch_daily_history("XRP", NOW, fb)["arr"]
     r = S.read_symbol("XRP", m15(NOW, 1000, 0.0), NOW, bars_4h=native_bars(NOW, H4, 400, 0.002), bars_1d=arr)
     assert r.facts["trend1d_state"] == "UNKNOWN" and "storia insufficiente" in r.facts["trend1d_why"]
-    # buchi di 2 giorni (come un fine settimana dei metalli): tollerati
-    cli._HTF_CACHE.clear()
-    cli.htf_budget_reset()
-    fb = FakeBitget(NOW, 400, missing=[i for i in range(0, 395, 7)] + [i + 1 for i in range(0, 395, 7)])
-    arr = cli.fetch_daily_history("XAU", NOW, fb)["arr"]
-    t = S.htf_trend(arr, NOW, D1)
-    assert t["state"] in ("UP", "DOWN") and t["gaps"] > 0
+    # fase 2C: i buchi corti non sono piu' tollerati in generale; dipende dal calendario (test_desk_rc84_phase2c.py)
 
 
 def test_a_daily_page_with_another_granularity_is_an_error_and_is_not_cached(cli):
