@@ -208,6 +208,12 @@ def freeze_and_snapshot():
             if current != inventory_before[label]:
                 refuse("source_changed_after_paper_stop:" + label)
         verify_sqlite_copies(snapshot)
+        # Even a read-only SQLite integrity check may touch WAL/SHM sidecars
+        # under some configurations. Rehash the backup AFTER those checks.
+        for label, (source, _, _) in BOTS.items():
+            copied_final, _ = inventory(snapshot / source.name)
+            if copied_final != inventory_before[label]:
+                refuse("sqlite_check_or_other_writer_modified_snapshot:" + label)
         # A concurrent systemd operator/automatic activation must not race
         # with a successful snapshot. Recheck the identity gates at the end.
         for service in SERVICES:
