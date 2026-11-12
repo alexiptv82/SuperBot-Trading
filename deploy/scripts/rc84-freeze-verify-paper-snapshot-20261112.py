@@ -15,6 +15,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from urllib.parse import quote
 
@@ -146,21 +147,48 @@ def verify_prerequisites():
 
 
 def verify_sqlite_copies(snapshot):
-    for relative in ("brain-v3-paper20261111/journal.db",
-                     "brain-v3-paper20261111/budget.db"):
-        file = snapshot / relative
-        if not file.exists():
-            refuse("essential_brain_database_missing:" + relative)
-        if file.is_symlink():
-            refuse("sqlite_snapshot_symlink")
-        uri = "file:" + quote(str(file)) + "?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=5)
-        try:
-            result = conn.execute("PRAGMA integrity_check").fetchone()
-            if not result or result[0] != "ok":
-                refuse("sqlite_integrity_check_failed:" + relative)
-        finally:
-            conn.close()
+    """Check SQLite only on expendable *second* copies, never on saved snapshot.
+
+    A mode=ro SQLite connection may update WAL/SHM sidecars on close. The
+    preceding manifest-inventory hashes must remain byte-for-byte unchanged.
+    Keep journal.db, budget.db and each database's potential WAL/SHM/journal
+    sidecars together while validating, and discard only the temporary copies.
+    """
+    with tempfile.TemporaryDirectory(prefix=".rc84-sqlite-verify-",
+                                     dir=str(snapshot.parent)) as isolated:
+        isolated_root = Path(isolated)
+        for relative in ("brain-v3-paper20261111/journal.db",
+                         "brain-v3-paper20261111/budget.db"):
+            file = snapshot / relative
+            if not file.is_file() or file.is_symlink():
+                refuse("essential_brain_database_missing_or_symlink:" + relative)
+            scratch = isolated_root / Path(relative).parent
+            scratch.mkdir(parents=True, exist_ok=True, mode=0o700)
+            temp_db = scratch / file.name
+            for suffix in ("", "-wal", "-shm", "-journal"):
+                original = file.with_name(file.name + suffix)
+                if original.is_symlink():
+                    refuse("sqlite_snapshot_symlink")
+                if not original.exists():
+                    if suffix == "":
+                        refuse("essential_brain_database_missing:" + relative)
+                    continue
+                if not original.is_file():
+                    refuse("sqlite_snapshot_non_regular_file")
+                temporary = scratch / (file.name + suffix)
+                shutil.copy2(original, temporary)
+                if sha256(temporary) != sha256(original):
+                    refuse("sqlite_validation_copy_sha_mismatch")
+            uri = "file:" + quote(str(temp_db)) + "?mode=ro"
+            conn = sqlite3.connect(uri, uri=True, timeout=5)
+            try:
+                conn.execute("PRAGMA query_only=ON")
+                result = conn.execute("PRAGMA integrity_check").fetchone()
+                if not result or result[0] != "ok":
+                    refuse("sqlite_integrity_check_failed:" + relative)
+            finally:
+                conn.close()
+        print("RC84_SNAPSHOT_SQLITE_VERIFIED_IN_ISOLATION=PASS", flush=True)
 
 
 def freeze_and_snapshot():
@@ -208,8 +236,8 @@ def freeze_and_snapshot():
             if current != inventory_before[label]:
                 refuse("source_changed_after_paper_stop:" + label)
         verify_sqlite_copies(snapshot)
-        # Even a read-only SQLite integrity check may touch WAL/SHM sidecars
-        # under some configurations. Rehash the backup AFTER those checks.
+        # No SQLite connection ever opens the actual snapshot databases.
+        # Rehash originals anyway: this also catches any external writer.
         for label, (source, _, _) in BOTS.items():
             copied_final, _ = inventory(snapshot / source.name)
             if copied_final != inventory_before[label]:
