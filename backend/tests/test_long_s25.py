@@ -86,11 +86,12 @@ class Rec:
         self.events.append(ev)
 
 
-def run_step(acc, state, cmap, prices, now, portfolio=None, halt="", drain=False, rec=None):
+def run_step(acc, state, cmap, prices, now, portfolio=None, halt="", drain=False, rec=None, allow_new_entries=True):
     rec = rec or Rec()
     out = L.step(acc, state, cmap, prices, now, portfolio or port(), halt=halt, drain=drain,
                  record_close=rec.record_close, notify_open=rec.notify_open, notify_close=rec.notify_close,
-                 log_event=rec.log_event, echo=lambda s: None)
+                 log_event=rec.log_event, echo=lambda s: None,
+                 allow_new_entries=allow_new_entries)
     return out, rec
 
 
@@ -467,6 +468,22 @@ def test_step_in_pause_or_halt_opens_nothing_but_still_closes_on_time():
         assert out["closed"] == ["SOL"] and not acc.positions and len(rec.closed) == 1
 
 
+def test_rc84_new_s25_entries_disabled_but_existing_time_exit_preserved():
+    acc, st = PaperAccount(Limits()), {}
+    px = SIG_TRIGGER + 0.05
+    out, rec = run_step(acc, st, world(), {"ETH": px}, NOW_STEP,
+                        portfolio=port("hawk"), allow_new_entries=False)
+    assert out["opened"] == [] and not acc.positions and not rec.opened
+    assert "last_open_ms" not in st
+    acc.open("SOL", 1, 60.0, 15, 100.0, 98.0, 106.0,
+             NOW_STEP - L.MAX_HOLD_MS, {}, source=L.SOURCE)
+    out, rec = run_step(acc, st, world(), {"SOL": 100.5, "ETH": px},
+                        NOW_STEP, portfolio=port("hawk"),
+                        allow_new_entries=False)
+    assert out["closed"] == ["SOL"] and out["opened"] == []
+    assert not acc.positions and len(rec.closed) == 1
+
+
 def test_step_closes_on_time_after_exactly_twelve_hours_not_before():
     acc = PaperAccount(Limits())
     acc.open("SOL", 1, 60.0, 15, 100.0, 98.0, 106.0, 5_000, {}, source=L.SOURCE)
@@ -650,6 +667,7 @@ def sandbox(monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
         monkeypatch.delenv("DESK_LONG_S25", raising=False)
+        monkeypatch.delenv("DESK_S25_TORO_ENTRY_APPROVED", raising=False)
         cli.HB.update(last_ok=None, last_error="", cycles=0)
         yield cli, d
 
@@ -659,12 +677,126 @@ def _install(cli, monkeypatch, a15):
                         lambda sym, bar="15m", limit=1000: a15[-limit:].tolist() if sym == "ETH" else [])
 
 
-def test_full_cycle_with_switch_on_opens_s25_long(sandbox, monkeypatch):
+def test_rc84_falco_and_toro_do_not_share_rules_fallback_entries(sandbox):
+    cli, _ = sandbox
+    signals = [
+        {"symbol": "BTC", "action": "open_long", "trade_type": "scalp"},
+        {"symbol": "ETH", "action": "open_short", "trade_type": "scalp"},
+        {"symbol": "SOL", "action": "open_long", "trade_type": "medio"},
+        {"symbol": "ARB", "action": "open_short", "trade_type": "medio"},
+        {"symbol": "ADA", "action": "close", "trade_type": "medio"},
+        {"symbol": "XRP", "action": "hold", "trade_type": "scalp"},
+    ]
+    hawk, h_rejected = cli._rc84_paper_classic_entry_policy("hawk", "rules", signals)
+    bull, b_rejected = cli._rc84_paper_classic_entry_policy("bull", "rules", signals)
+    assert [d["action"] for d in hawk] == ["open_long", "open_short", "close", "hold"]
+    assert [d["symbol"] for d in h_rejected] == ["SOL", "ARB"]
+    assert [d["action"] for d in bull] == ["close", "hold"]
+    assert {d["symbol"] for d in b_rejected} == {"BTC", "ETH", "SOL", "ARB"}
+    # No forced reversal: short and long can both be suggested for Falco.
+    assert any(d["action"] == "open_long" for d in hawk)
+    assert any(d["action"] == "open_short" for d in hawk)
+
+
+def test_rc84_claude_entries_are_role_specific_but_long_short_stay_possible(sandbox):
+    cli, _ = sandbox
+    signals = [
+        {"symbol": "BTC", "action": "open_long", "trade_type": "scalp"},
+        {"symbol": "ETH", "action": "open_short", "trade_type": "scalp"},
+        {"symbol": "SOL", "action": "open_long", "trade_type": "medio"},
+        {"symbol": "ARB", "action": "open_short", "trade_type": "medio"},
+        {"symbol": "XRP", "action": "partial_close", "trade_type": "medio"},
+        {"symbol": "ADA", "action": "dca", "trade_type": "medio"},
+    ]
+    falco, _ = cli._rc84_paper_classic_entry_policy("hawk", "claude", signals)
+    toro, _ = cli._rc84_paper_classic_entry_policy("bull", "claude", signals)
+    assert {x["symbol"] for x in falco[:2]} == {"BTC", "ETH"}
+    assert {x["symbol"] for x in toro[:2]} == {"SOL", "ARB"}
+    assert [x["action"] for x in falco[-2:]] == ["partial_close", "dca"]
+    assert [x["action"] for x in toro[-2:]] == ["partial_close", "dca"]
+    # Unsupported source/portfolio fail-closed for new entries only.
+    other, _ = cli._rc84_paper_classic_entry_policy("bull", "rules", signals)
+    assert all(not x["action"].startswith("open_") for x in other)
+    other, _ = cli._rc84_paper_classic_entry_policy("hawk", "untrusted", signals)
+    assert all(not x["action"].startswith("open_") for x in other)
+
+
+@pytest.mark.parametrize("portfolio,enable_s25", [("hawk", False), ("bull", True)])
+def test_rc84_valid_empty_claude_reply_is_no_trade_not_rule_fallback(sandbox, monkeypatch,
+                                                                      portfolio, enable_s25):
+    cli, _ = sandbox
+    monkeypatch.setattr(cli, "PORTFOLIO",
+                        cli._make_hawk_config() if portfolio == "hawk" else cli._make_bull_config())
+    if enable_s25:
+        # Even a future explicit Toro S25 opt-in must not undo NO_TRADE.
+        monkeypatch.setenv("DESK_LONG_S25", "1")
+        monkeypatch.setenv("DESK_S25_TORO_ENTRY_APPROVED", "1")
+    a15, sig = _cycle_candles()
+    a15b, now, _ = _with_new_hour(a15, sig)
+    _install(cli, monkeypatch, a15b)
+    monkeypatch.setattr(cli, "apply_claude_schedule", lambda *args: True)
+    monkeypatch.setattr(cli, "can_call", lambda *args: True)
+    monkeypatch.setattr(cli, "build_prompt", lambda *args, **kwargs: "test")
+    def fake_record_spend(state, day, usage):
+        state.setdefault("budget", {})["spent"] = 0.0
+        return 0.0
+
+    monkeypatch.setattr(cli, "record_spend", fake_record_spend)
+    monkeypatch.setattr(cli, "log_claude_call", lambda *args: None)
+    observed = {"claude": 0, "fallback": 0}
+
+    def empty_claude(*args, **kwargs):
+        observed["claude"] += 1
+        return '{"decisions":[],"note":"NO_TRADE"}', {}
+
+    def forbidden_fallback(*args, **kwargs):
+        observed["fallback"] += 1
+        return [{"symbol": "ETH", "action": "open_short", "trade_type": "scalp"}]
+
+    monkeypatch.setattr(cli, "call_claude", empty_claude)
+    monkeypatch.setattr(cli, "rules_decisions", forbidden_fallback)
+    state = {}
+    cli.run_cycle(state, now)
+    assert observed == {"claude": 1, "fallback": 0}
+    assert not cli.make_account(state).positions
+    assert state.get("last_open_ms") == {}
+
+
+def test_rc84_same_rules_signal_creates_falco_scalp_but_no_toro_clone(sandbox, monkeypatch):
+    cli, _ = sandbox
+    a15, sig = _cycle_candles()
+    a15b, now, _ = _with_new_hour(a15, sig)
+    _install(cli, monkeypatch, a15b)
+    monkeypatch.setattr(cli, "apply_claude_schedule", lambda *args: False)
+    proposed = {"symbol": "ETH", "action": "open_long",
+                "trade_type": "scalp", "confidence": 99,
+                "leverage": 15, "margin_usd": 80.0,
+                "stop_loss_pct": 0.01, "take_profit_pct": 0.03,
+                "reason": "same synthetic rule signal"}
+    monkeypatch.setattr(cli, "rules_decisions", lambda *args, **kw: [dict(proposed)])
+    monkeypatch.setattr(cli, "PORTFOLIO", cli._make_hawk_config())
+    hawk = {}
+    cli.run_cycle(hawk, now)
+    assert list(cli.make_account(hawk).positions) == ["ETH"]
+    assert cli.make_account(hawk).positions["ETH"].source == "rules"
+    assert cli.make_account(hawk).positions["ETH"].trade_type == "scalp"
+    monkeypatch.setattr(cli, "PORTFOLIO", cli._make_bull_config())
+    bull = {}
+    cli.run_cycle(bull, now)
+    assert cli.make_account(bull).positions == {}
+    assert bull.get("last_open_ms") == {}
+
+
+def test_full_cycle_toro_only_s25_entries(sandbox, monkeypatch):
     cli, d = sandbox
+    # S25's stand-alone module remains generic, but the wired PAPER runner
+    # owns new S25 medium-term LONG entries exclusively in Toro.
+    monkeypatch.setattr(cli, "PORTFOLIO", cli._make_bull_config())
     a15, sig = _cycle_candles()
     a15b, now, px = _with_new_hour(a15, sig)
     _install(cli, monkeypatch, a15b)
     monkeypatch.setenv("DESK_LONG_S25", "1")
+    monkeypatch.setenv("DESK_S25_TORO_ENTRY_APPROVED", "1")
     state = {}
     cli.run_cycle(state, now)
     acc = cli.make_account(state)
@@ -679,6 +811,48 @@ def test_full_cycle_with_switch_on_opens_s25_long(sandbox, monkeypatch):
     # secondo giro nello stesso quarto d'ora: nessun secondo ingresso (la posizione esiste ed e' in cooldown)
     cli.run_cycle(state, now + 1_000)
     assert len(cli.make_account(state).positions) == 1 and not cli.make_account(state).closed
+
+
+def test_rc84_toro_s25_new_entries_default_off(sandbox, monkeypatch):
+    cli, d = sandbox
+    monkeypatch.setattr(cli, "PORTFOLIO", cli._make_bull_config())
+    a15, sig = _cycle_candles()
+    a15b, now, _ = _with_new_hour(a15, sig)
+    _install(cli, monkeypatch, a15b)
+    monkeypatch.setenv("DESK_LONG_S25", "1")
+    # No explicit opt-in flag: this is the default for real PAPER processes.
+    state = {}
+    cli.run_cycle(state, now)
+    assert not cli.make_account(state).positions
+    # cli.run_cycle always persists the shared timestamp map, including when
+    # S25 is disabled. An EMPTY map means no entry timestamp was recorded.
+    assert state.get("last_open_ms") == {}
+    log_path = os.path.join(d, "learning_log.jsonl")
+    if os.path.exists(log_path):
+        with open(log_path, encoding="utf-8") as entries:
+            assert not any(
+                json.loads(row).get("ev") == "open"
+                and json.loads(row).get("source") == L.SOURCE
+                for row in entries
+            )
+
+
+def test_full_cycle_falco_keeps_original_strategy_not_shared_s25(sandbox, monkeypatch):
+    cli, d = sandbox
+    a15, sig = _cycle_candles()
+    a15b, now, _ = _with_new_hour(a15, sig)
+    _install(cli, monkeypatch, a15b)
+    monkeypatch.setenv("DESK_LONG_S25", "1")
+    state = {}
+    cli.run_cycle(state, now)
+    assert not cli.make_account(state).positions
+    assert not state.get("last_open_ms")
+    # Even an explicit Toro entry opt-in does not enable identical Falco S25
+    # signals; the 12h management of existing S25 positions remains intact.
+    monkeypatch.setenv("DESK_S25_TORO_ENTRY_APPROVED", "1")
+    cli.run_cycle(state, now + 1_000)
+    assert not cli.make_account(state).positions
+
 
 
 def test_full_cycle_with_switch_off_never_opens_and_never_loads_the_module(sandbox, monkeypatch):

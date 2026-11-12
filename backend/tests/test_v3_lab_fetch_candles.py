@@ -53,6 +53,63 @@ def test_fetch_collects_exactly_the_closed_bars_in_range_in_any_page_order_witho
         assert rows[start] == ("100.10"[:0] + hist[start][1], hist[start][2], hist[start][3], hist[start][4], hist[start][5])
 
 
+def test_rc84_all_bitget_page_boundaries_aligned_and_latest_closed_retrieved():
+    # Public Bitget verified by user's VPS test: unaligned endTime made SOL
+    # history return 1200; aligned boundaries returned 3000 closed 15m bars.
+    end = (NOW // MS) * MS
+    start = end - 3000 * MS
+    hist, _ = history(start, end + MS)
+    queries = []
+
+    def bitget_aligned(url):
+        q = dict(re.findall(r"(\w+)=([^&]+)", url.split("?", 1)[1]))
+        lo, hi, limit = (int(q[name]) for name in ("startTime", "endTime", "limit"))
+        assert lo % MS == 0 and hi % MS == 0
+        queries.append((lo, hi, limit))
+        data = [hist[t] for t in sorted(hist) if lo <= t < hi]
+        return {"code": "00000", "data": data[-limit:]}
+
+    rows = FC.fetch_rows("BTCUSDT", start, end, candle_ms=MS, get_json=bitget_aligned)
+    assert sorted(rows) == list(range(start, end, MS))
+    assert queries[0][1] == end
+    assert len(queries) >= 15
+    assert all(limit <= 200 for _, _, limit in queries)
+    assert rows[end - MS] == tuple(hist[end - MS][1:6])
+    assert end not in rows  # never include a forming candle
+
+
+def test_rc84_bitget_allows_inclusive_end_without_201_bar_page_truncation():
+    end = (NOW // MS) * MS
+    start = end - 401 * MS
+    hist, _ = history(start, end + MS)
+
+    def inclusive_bitget(url):
+        q = dict(re.findall(r"(\w+)=([^&]+)", url.split("?", 1)[1]))
+        lo, hi, limit = (int(q[name]) for name in ("startTime", "endTime", "limit"))
+        # Return newest rows when the exchange treats BOTH bounds as inclusive.
+        data = [hist[t] for t in sorted(hist) if lo <= t <= hi]
+        return {"code": "00000", "data": data[-limit:]}
+
+    rows = FC.fetch_rows("ETHUSDT", start, end, candle_ms=MS, get_json=inclusive_bitget)
+    assert sorted(rows) == list(range(start, end, MS))
+
+
+def test_rc84_missing_latest_candle_stays_missing_when_exchange_is_late():
+    end = (NOW // MS) * MS
+    start = end - 20 * MS
+    hist, _ = history(start, end - 2 * MS)
+
+    def lagging_bitget(url):
+        q = dict(re.findall(r"(\w+)=([^&]+)", url.split("?", 1)[1]))
+        lo, hi = int(q["startTime"]), int(q["endTime"]) // MS * MS
+        return {"code": "00000", "data": [hist[t] for t in sorted(hist) if lo <= t < hi]}
+
+    rows = FC.fetch_rows("BTCUSDT", start, end, candle_ms=MS, get_json=lagging_bitget)
+    assert end - MS not in rows
+    assert len(rows) == 19
+    assert end not in rows
+
+
 def test_fetch_keeps_holes_and_never_interpolates():
     end = (NOW // MS) * MS
     start = end - 2 * DAY

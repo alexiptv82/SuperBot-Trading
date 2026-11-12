@@ -37,7 +37,7 @@ def test_parse_builds_exact_rules():
     _c(symbolStatus="maintain"), _c(symbolStatus=None), _c(symbol=""), _c(symbol=5), _c(sizeMultiplier="0"),
     _c(sizeMultiplier="-1"), _c(sizeMultiplier=0.01), _c(sizeMultiplier="x"), _c(sizeMultiplier="NaN"),
     _c(sizeMultiplier=None), _c(minTradeUSDT="-1"), _c(minTradeUSDT=None), _c(minTradeUSDT="Infinity"),
-    _c(maxLever="0"), _c(maxLever="126"), _c(maxLever="10.5"), _c(maxLever=10), _c(maxLever=None), "x", None,
+    _c(maxLever="0"), _c(maxLever="201"), _c(maxLever="10.5"), _c(maxLever=10), _c(maxLever=None), "x", None,
     {"symbol": "BTCUSDT"}])
 def test_a_malformed_or_inactive_contract_is_dropped_and_good_ones_survive(bad):
     t = parse_contract_rules(_ok(bad, _c("ETHUSDT")), maintenance_fraction=MAINT)
@@ -49,6 +49,15 @@ def test_boundary_values_are_accepted():
                              maintenance_fraction=MAINT)
     assert t["BTCUSDT"]["exchange_leverage_limit"] == 1 and t["BTCUSDT"]["minimum_notional"] == D("0")
     assert t["B"]["exchange_leverage_limit"] == 125
+
+
+def test_bitget_high_leverage_metadata_does_not_disable_a_symbol():
+    # Brain risk policy is independently capped at <=50x. A public exchange
+    # contract advertising a larger maxLever remains a valid tradable symbol.
+    table = parse_contract_rules(_ok(_c(maxLever="150"), _c("ETHUSDT", maxLever="200")),
+                                 maintenance_fraction=MAINT)
+    assert table["BTCUSDT"]["exchange_leverage_limit"] == 150
+    assert table["ETHUSDT"]["exchange_leverage_limit"] == 200
 
 
 def test_duplicate_symbol_keeps_the_first():

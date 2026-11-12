@@ -147,7 +147,8 @@ def test_the_whole_loop_open_close_learn():
     fills = {e.payload["symbol"]: (D(e.payload["fill_price"]), e.payload["slippage_bps"]) for e in opens}
     assert fills == {"BTCUSDT": (D("100.02"), 2), "ETHUSDT": (D("99.98"), 2)}
     assert _beat(data_dir) == {"ts_ms": G + 25_000, "cycle": 1, "state": "running", "run_id": RUN, "last_error": None,
-                               "daily_loss_level": "ok", "daily_loss_pct": "0.0", "exit_mode": "legacy"}
+                               "daily_loss_level": "ok", "daily_loss_pct": "0.0", "exit_mode": "legacy",
+                               "last_cycle": {"at_ms": G + 25_000, "decisions": 2, "opened": 2, "errors": []}}
     first_scoreboard = json.loads(model.payloads[0]["messages"][1]["content"])["scoreboard"]
 
     # 3. nessuna uscita ancora; alla candela dopo i simboli con posizione aperta non chiamano il modello
