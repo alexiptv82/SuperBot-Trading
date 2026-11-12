@@ -167,7 +167,8 @@ def _flat_state(rig):
 
 
 def test_open_is_blocked_while_a_claim_is_unresolved_and_allowed_after_reconciliation(rig):
-    fresh = [[BASE, 100, 101, 99.2, 100, 1]]
+    from backend.tests.rc84_test_support import with_history
+    fresh = with_history([[BASE, 100, 101, 99.2, 100, 1]])      # RC84 fase 2: storia sufficiente per una lettura
     cli.fetch_candles = lambda sym, bar="15m", limit=1000: fresh if sym == "BTC" else []
     state = _flat_state(rig)
     _plant_conflict_claim(rig, state)

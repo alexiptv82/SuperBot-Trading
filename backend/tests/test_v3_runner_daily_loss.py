@@ -585,8 +585,10 @@ def test_runner_ok_level_runs_the_cycle_and_writes_the_loss_fields_in_the_heartb
     r = RRig(_dl("ok", "0.1234"))
     t = r.runner.tick(T0)
     assert t.state == "running" and t.last_error is None and r.cyc == [T0]
+    # contratto del heartbeat aggiornato da d8130a9 (11/11): esito dell'ultimo ciclo Brain in "last_cycle"
     assert r.beat() == {"ts_ms": T0, "cycle": 1, "state": "running", "run_id": "run-1", "last_error": None,
-                        "daily_loss_level": "ok", "daily_loss_pct": "12.3", "exit_mode": "legacy"}
+                        "daily_loss_level": "ok", "daily_loss_pct": "12.3", "exit_mode": "legacy",
+                        "last_cycle": {"at_ms": T0, "decisions": 0, "opened": 0, "errors": []}}
 
 
 def test_runner_warn_level_keeps_running_and_only_reports():
@@ -691,9 +693,11 @@ def test_runner_without_the_loss_hook_keeps_the_old_heartbeat_exactly():
     run = Runner(run_id="run-1", data_dir=d, run_monitor=lambda n: MonitorReport(0, (), ()),
                  run_cycle=lambda n, s: CycleReport(n, (), (), (), ()))
     run.tick(T0)
+    # senza il gancio delle perdite il heartbeat resta quello di prima, piu' solo l'esito dell'ultimo ciclo (d8130a9):
+    # nessun campo daily_loss_* compare
     assert json.loads((d / "heartbeat.json").read_text(encoding="utf-8")) == {
         "ts_ms": T0, "cycle": 1, "state": "running", "run_id": "run-1", "last_error": None,
-        "exit_mode": "legacy"}
+        "exit_mode": "legacy", "last_cycle": {"at_ms": T0, "decisions": 0, "opened": 0, "errors": []}}
 
 
 # ----------------------------------------------------------------------------- config

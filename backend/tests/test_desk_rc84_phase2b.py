@@ -147,14 +147,18 @@ def test_request_budget_per_cycle_is_shared_by_all_symbols(cli):
 
 def test_merge_drops_open_misaligned_and_invalid_rows_and_counts_conflicts(cli):
     good = native_bars(NOW, D1, 10, 0.0, with_partial=True).tolist()
-    bad = [[good[3][0] + 3_600_000, 1, 1, 1, 1, 1],            # non allineata
+    bad = [  # le righe non valide si scartano; il conflitto resta visibile
+[good[3][0] + 3_600_000, 1, 1, 1, 1, 1],            # non allineata
            [good[4][0], float("nan"), 1, 1, 1, 1],              # non finita
            [good[5][0], -1, 1, 1, 1, 1],                        # prezzo negativo
            [good[6][0], 9, 9, 9, 9, 9]]                         # stesso giorno, valori diversi: vince l'ultimo scaricato
     arr, conflicts = cli.merge_bars(good, bad, D1, NOW)
-    assert len(arr) == 10 and conflicts == 1                    # 10 chiuse, quella in formazione esclusa
-    assert arr[6, 4] == 9 and arr[4, 4] == good[4][4] and arr[5, 4] == good[5][4]
-    _check_series(arr, NOW)
+    # 10 chiuse (quella in formazione esclusa) + la seconda versione del giorno in conflitto, che NON sostituisce la prima
+    assert len(arr) == 11 and conflicts == 1
+    assert sorted(arr[arr[:, 0] == good[6][0], 4].tolist()) == sorted([good[6][4], 9.0])
+    assert arr[4, 4] == good[4][4] and arr[5, 4] == good[5][4]
+    t = S.htf_trend(arr, NOW, D1)
+    assert t["state"] == "UNKNOWN" and "duplicati in conflitto" in t["why"]
 
 
 def test_4h_bars_of_the_wrong_granularity_are_rejected(cli):

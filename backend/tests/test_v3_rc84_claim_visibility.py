@@ -154,8 +154,11 @@ def test_unauthenticated_overview_is_refused_and_no_write_routes_were_added(tmp_
     methods = {r.path: r.methods for r in router.routes}
     assert methods["/api/v3/brain/close"] == {"POST"}                         # unica scrittura preesistente (Brain)
     assert all(m == {"GET"} for path, m in methods.items() if path != "/api/v3/brain/close")
+    # /api/v3/brain/config (e87e913, 11/11) e' in sola lettura: lo verifica gia' l'asserzione "solo GET" qui sopra
     assert set(methods) == {"/api/v3/overview", "/api/v3/brain/status", "/api/v3/brain/scoreboard",
-                            "/api/v3/brain/trades", "/api/v3/brain/close", "/api/v3/brain/close-result"}
+                            "/api/v3/brain/trades", "/api/v3/brain/close", "/api/v3/brain/close-result",
+                            "/api/v3/brain/config"}
+    assert methods["/api/v3/brain/config"] == {"GET"}
 
 
 def test_reading_the_overview_never_modifies_state_or_registers(tmp_path):

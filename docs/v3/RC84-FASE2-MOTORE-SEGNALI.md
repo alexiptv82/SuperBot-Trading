@@ -170,12 +170,57 @@ protezioni nel ciclo vero, senza cambiare il loro scopo.
 2. Le verifiche già fatte sulla VPS (ETH 4H 539 barre, BTC/ETH 1Dutc 267 barre, nessuna interruzione, `limit=200`) restano valide: con
    serie continue la 2C non cambia nulla, come conferma il replay identico.
 
+## 8D. Hardening finale (candidato congelato per la revisione indipendente)
+### Duplicati lungo tutta la catena
+Prima: `merge_bars` (cli.py) **sovrascriveva** una candela con lo stesso timestamp e valori diversi (vinceva l'ultima scaricata), quindi
+`signals.series_check` non poteva più vedere il conflitto. Ora:
+* duplicati **identici** (bordi delle pagine, righe ripetute) → uniti;
+* stesso timestamp con valori **diversi** — nella stessa risposta 4H, fra due pagine dello storico 1Dutc, o fra la cache e un download
+  successivo — **non viene risolto**: entrambe le versioni arrivano a `signals`, che rifiuta la serie (`duplicati in conflitto`), il
+  trend è `UNKNOWN`, la cache di quel simbolo/timeframe si svuota, si attende 30 minuti e si ricostruisce da capo. Stato nel heartbeat:
+  `conflitto_dati`;
+* effetto sulle decisioni: un conflitto nel 4H → nessuna nuova apertura su quel simbolo (`[TREND_UNKNOWN] … duplicati in conflitto`,
+  candidato `trend_sconosciuto`); un conflitto nel 1Dutc → trend 1d `UNKNOWN`, che come sempre non autorizza nulla (0 punti, nessun gate).
+Prove end-to-end in `backend/tests/test_desk_rc84_hardening.py`: pagine diverse con duplicati identici; conflitto fra due pagine;
+conflitto fra cache e download successivo; conflitto dentro una risposta 4H (con attesa senza nuove richieste); duplicati identici
+innocui; ciclo vero con conflitto 4H (nessuna apertura, motivo registrato); ciclo vero con duplicati identici (apertura normale); ciclo
+vero con conflitto 1Dutc (politica fase 2 invariata).
+
+### Le prove preesistenti recuperate (stesse verifiche, contratti attuali)
+| Prove | Adattamento (nessun comportamento operativo cambiato) | Ora verificano di nuovo |
+|---|---|---|
+| `test_desk.py` (14) | il finto exchange serve anche le barre 4H, ricavate dalla **stessa** serie 15m (solo gruppi completi e chiusi); le proposte di Claude su Falco sono `scalp` | ciclo completo, DCA, svuotamento in pausa, ripresa, entrata diversificata, registro delle chiusure, calendario di Claude |
+| `test_v3_rc82_active_paper_stops.py` (1) + `test_v3_rc84_claim_integration.py` (1) + `test_v3_rc84_same_cycle_exposure.py` (3) | `_entry` delle regole `scalp` (Falco); lettura con tendenza 4h nota (`rc84_test_support.known_4h_trend`) e, solo per ingressi/DCA, storia piatta più vecchia dell'apertura (`with_history`) per superare la soglia di 80 candele | apertura + DCA con quotazione recente; **blocco delle aperture con claim irrisolto e sblocco dopo la riconciliazione** (prima passava per il motivo sbagliato); nessuna nuova esposizione nello stesso ciclo con claim irrisolto |
+| `test_v3_rc84_same_cycle_exposure.py` (3 S25) | eseguite su **Toro con l'autorizzazione** `DESK_S25_TORO_ENTRY_APPROVED=1`; **aggiunta** la prova che senza autorizzazione (Falco o Toro) S25 non apre nulla e chiude comunque a tempo | blocco di S25 con claim irrisolto; percorso sano; nessun ingresso S25 senza opt-in |
+| `test_v3_runner_daily_loss.py` (2) | heartbeat Brain atteso con `last_cycle` (contratto di `d8130a9`) | campi della perdita giornaliera e assenza dei campi daily_loss senza il gancio |
+| `test_v3_rc84_claim_visibility.py` (1) | elenco rotte con `GET /api/v3/brain/config` (`e87e913`), verificata in sola lettura | nessuna rotta di scrittura nuova |
+| `test_v3_rc84_import_paths.py` (1) + `test_auth_flow.py` + `test_profiles_engine.py` | **non modificate**: problema d'ambiente (SQLAlchemy 2.0.28 non si importa con Python 3.13) | eseguite con Python 3.11 + `requirements.txt`: **49/49** sia su `ab7e0b7` sia sul candidato |
+Una barriera comune (`backend/tests/conftest.py`) svuota la cache delle barre 4h/1d fra una prova e l'altra e impedisce alle prove di
+chiamare la Bitget per lo storico.
+
+### Validazione finale
+* EMA50/EMA200 4H e 1D confrontate con un calcolo indipendente (`pandas ewm(adjust=False)`): identiche.
+* Candele 4H e 15m in formazione con movimenti estremi: lettura identica a quella senza di loro.
+* Serie mancanti/interrotte/in conflitto → `UNKNOWN` (prove 2C e hardening).
+* Chiusure PAPER, stop, TP, DCA, storico e riconciliazione: suite RC82/RC84 integralmente verdi.
+* Nessuna esposizione duplicata: lo stesso segnale in due cicli apre una sola posizione; sullo stesso segnale delle regole Toro non apre.
+
+### Risultati della validazione finale (candidato congelato)
+| Esecuzione | `ab7e0b7` | Candidato 2C | **Candidato hardening** |
+|---|---|---|---|
+| Suite `backend/tests`, Python 3.13 (esclusi `test_auth_flow.py`, `test_profiles_engine.py`) | 6.952 ok, 26 falliti | 7.001 ok, 26 falliti | **7.039 ok, 1 fallito** (`test_v3_rc84_import_paths`, ambiente SQLAlchemy) |
+| Moduli SQLAlchemy con Python 3.11 + `requirements.txt` | 49/49 | — | **49/49** |
+| Replay 42 percorsi | base | identico a 2/2B | **identico** (bit per bit) |
+**Candidato congelato** per la revisione indipendente (Grok): lo SHA è quello del commit che contiene questa sezione; nessun tag
+creato (un tag potrebbe avviare workflow). Non è una release.
+
 ## 9. Riproduzione
 ```sh
 python3 deploy/scripts/replay_signals_rc84.py run --backend <checkout ab7e0b7>/backend --label rc84_ab7e0b7 --out rc84.json
 python3 deploy/scripts/replay_signals_rc84.py run --backend backend --label candidato --out cand.json
 python3 deploy/scripts/replay_signals_rc84.py run --backend backend --label candidato_1d15 --daily-points 15 --out cand15.json
 python3 deploy/scripts/replay_signals_rc84.py compare rc84.json cand.json cand15.json
-PYTHONPATH=.:backend python3 -m pytest -q backend/tests/test_desk_rc84_phase2.py backend/tests/test_desk_rc84_phase2b.py backend/tests/test_desk_rc84_phase2c.py backend/tests/test_long_s25.py backend/tests/test_desk.py
+# moduli SQLAlchemy: python3.11 -m venv v && v/bin/pip install -r backend/requirements.txt && PYTHONPATH=.:backend v/bin/python -m pytest -q backend/tests/test_auth_flow.py backend/tests/test_profiles_engine.py backend/tests/test_v3_rc84_import_paths.py
+PYTHONPATH=.:backend python3 -m pytest -q backend/tests/test_desk_rc84_phase2.py backend/tests/test_desk_rc84_phase2b.py backend/tests/test_desk_rc84_phase2c.py backend/tests/test_desk_rc84_hardening.py backend/tests/test_long_s25.py backend/tests/test_desk.py
 ```
 I risultati sono deterministici (semi fissi): rieseguendo si ottengono gli stessi numeri.

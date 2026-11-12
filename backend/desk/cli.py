@@ -360,10 +360,12 @@ def fetch_history_page(symbol: str, granularity: str, start_ms: int, end_ms: int
 
 
 def merge_bars(old, new, period_ms: int, now_ms: int):
-    """Unisce due serie: un timestamp per barra (la riga piu' recente scaricata vince), ordine crescente, solo barre
-    CHIUSE e allineate al periodo, righe non finite o con prezzi non positivi scartate. Ritorna (array, conflitti)."""
+    """Unisce due serie: ordine crescente, solo barre CHIUSE e allineate al periodo, righe non finite o con prezzi non
+    positivi scartate, duplicati IDENTICI uniti. Lo stesso timestamp con valori DIVERSI non viene risolto (nessuna riga
+    "vince"): le versioni diverse restano tutte nella serie, cosi' signals.series_check la rifiuta e la tendenza e'
+    UNKNOWN. Ritorna (array, numero di timestamp in conflitto)."""
     import numpy as np
-    by_ts, conflicts = {}, 0
+    by_ts = {}
     for rows in (old, new):
         for row in ([] if rows is None else list(rows)):
             try:
@@ -375,13 +377,13 @@ def merge_bars(old, new, period_ms: int, now_ms: int):
                 continue
             if ts % period_ms != 0 or ts + period_ms > now_ms:
                 continue                                     # non allineata, oppure ancora in formazione
-            prev = by_ts.get(ts)
-            if prev is not None and prev != vals:
-                conflicts += 1
-            by_ts[ts] = vals
+            versions = by_ts.setdefault(ts, [])
+            if vals not in versions:
+                versions.append(vals)
+    conflicts = sum(1 for v in by_ts.values() if len(v) > 1)
     if not by_ts:
         return np.empty((0, 6)), conflicts
-    return np.array([[ts] + by_ts[ts] for ts in sorted(by_ts)], dtype=float), conflicts
+    return np.array([[ts] + v for ts in sorted(by_ts) for v in by_ts[ts]], dtype=float), conflicts
 
 
 def misaligned_rows(rows, period_ms: int) -> int:
@@ -436,6 +438,11 @@ def fetch_daily_history(sym: str, now_ms: int, page=None) -> dict:
     if not collected and old is None:
         return {"arr": None, "status": status}
     merged, conflicts = merge_bars(old, collected, D1_MS, now_ms)
+    if conflicts:
+        # stesso giorno con valori diversi (fra pagine o fra cache e Bitget): non si sa quale sia giusto. La serie con
+        # i conflitti va a signals (che la rifiuta: UNKNOWN), la cache si svuota e si ricostruisce da capo dopo l'attesa.
+        _HTF_CACHE[(sym, "1d")] = {"arr": None, "newest_close": 0, "failed_ms": now_ms, "conflicts": conflicts}
+        return {"arr": merged, "status": "conflitto_dati"}
     newest = int(merged[-1, 0]) + D1_MS if len(merged) else 0
     complete = status != "budget_esaurito" and (incremental or len(merged) >= DAILY_TARGET_BARS or status == "storia_finita")
     _HTF_CACHE[(sym, "1d")] = {"arr": merged, "newest_close": newest if complete else 0, "failed_ms": 0,
@@ -463,9 +470,14 @@ def fetch_htf(sym: str, now_ms: int, fetch=None, page=None) -> dict:
             rows = []                                        # non sono barre 4h: rifiutate in blocco
         if rows:
             arr, conflicts = merge_bars(None, rows, H4_MS, now_ms)
-            newest = int(arr[-1, 0]) + H4_MS if len(arr) else 0
-            _HTF_CACHE[(sym, "4h")] = {"arr": arr, "newest_close": newest, "failed_ms": 0, "conflicts": conflicts}
-            out["4h"], out["status"]["4h"] = arr, "ok"
+            if conflicts:
+                # stessa barra 4h con valori diversi nella stessa risposta: serie non usata per nuovi ingressi
+                _HTF_CACHE[(sym, "4h")] = {"arr": None, "newest_close": 0, "failed_ms": now_ms, "conflicts": conflicts}
+                out["4h"], out["status"]["4h"] = arr, "conflitto_dati"
+            else:
+                newest = int(arr[-1, 0]) + H4_MS if len(arr) else 0
+                _HTF_CACHE[(sym, "4h")] = {"arr": arr, "newest_close": newest, "failed_ms": 0, "conflicts": 0}
+                out["4h"], out["status"]["4h"] = arr, "ok"
         else:
             _HTF_CACHE[(sym, "4h")] = dict(entry or {"arr": None, "newest_close": 0}, failed_ms=now_ms)
             out["4h"], out["status"]["4h"] = (entry or {}).get("arr"), "errore_api"

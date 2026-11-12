@@ -351,10 +351,24 @@ def _rows_asof(rows, now_ms):
     return out
 
 
-def _world_rows(world, sym, limit=300):
+H4_MS = 14_400_000
+
+
+def _world_rows(world, sym, limit=300, bar="15m"):
     arr = world.get(sym)
     if arr is None or len(arr) == 0:
         return []
+    if bar == "4H":
+        # RC84 fase 2: il ciclo chiede anche le barre 4H native. Il finto exchange le ricava dalla STESSA serie 15m
+        # (solo gruppi completi di 16 candele, allineati ai 4h, gia' chiusi all'ora del ciclo): nessun dato inventato.
+        rows = arr[arr[:, 0] + BAR <= _FEED_CLOCK["ms"]]
+        key = rows[:, 0].astype(np.int64) // H4_MS
+        out = []
+        for k in np.unique(key):
+            g = rows[key == k]
+            if len(g) == 16 and int(g[0, 0]) == k * H4_MS:
+                out.append([float(k * H4_MS), g[0, 1], g[:, 2].max(), g[:, 3].min(), g[-1, 4], g[:, 5].sum()])
+        return out[-int(limit):]
     return _rows_asof(arr[-int(limit):], _FEED_CLOCK["ms"])
 
 
@@ -391,10 +405,7 @@ def _patch_candles(monkeypatch_dict, world):
     original = cli.fetch_candles
 
     def fake_fetch(symbol, bar="15m", limit=300):
-        arr = world.get(symbol)
-        if arr is None:
-            return []
-        return arr[-limit:].tolist()
+        return _world_rows(world, symbol, limit, bar)
 
     cli.fetch_candles = fake_fetch
     return original
@@ -418,7 +429,7 @@ def _claude_stub(action="open_long", symbol="BTC", conf=85, lev=10, margin=150, 
     def call(system, user, max_tokens=1100, timeout=60):
         body = {"decisions": [{"symbol": symbol, "action": action, "confidence": conf,
                                "leverage": lev, "margin_usd": margin, "stop_loss_pct": sl,
-                               "take_profit_pct": 0.025, "reason": "test", "trade_type": "medio",
+                               "take_profit_pct": 0.025, "reason": "test", "trade_type": "scalp",
                                "dca_sl_pct": 0, "dca_tp_pct": 0}], "note": "test"}
         return json.dumps(body), {"input_tokens": 2000, "output_tokens": 150}
     return call
@@ -435,7 +446,7 @@ def test_full_cycle_v2_opens_position_and_saves_state():
     orig_ctx = _mc.fetch_all_context
     orig_call = _brain.call_claude
 
-    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit)
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit, bar)
     _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
     # patch call_claude sia in brain che in cli (cli lo importa direttamente)
     stub = _claude_stub()
@@ -481,7 +492,7 @@ def test_cycle_v2_without_key_uses_rules():
     orig_fetch = cli.fetch_candles
     orig_ctx = _mc.fetch_all_context
 
-    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit)
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit, bar)
     _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
 
     os.environ.pop("ANTHROPIC_API_KEY", None)
@@ -510,7 +521,7 @@ def test_cycle_v2_dca_execution():
     orig_ctx = _mc.fetch_all_context
     orig_call = _brain.call_claude
 
-    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit)
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit, bar)
     _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
 
     os.environ["ANTHROPIC_API_KEY"] = "test"
@@ -522,13 +533,13 @@ def test_cycle_v2_dca_execution():
             # primo ciclo: apre BTC
             body = {"decisions": [{"symbol": "BTC", "action": "open_long", "confidence": 85,
                                    "leverage": 8, "margin_usd": 100, "stop_loss_pct": 0.015,
-                                   "take_profit_pct": 0.03, "reason": "test", "trade_type": "medio",
+                                   "take_profit_pct": 0.03, "reason": "test", "trade_type": "scalp",
                                    "dca_sl_pct": 0, "dca_tp_pct": 0}], "note": ""}
         else:
             # secondo ciclo: DCA su BTC
             body = {"decisions": [{"symbol": "BTC", "action": "dca", "confidence": 80,
                                    "leverage": 8, "margin_usd": 0, "stop_loss_pct": 0,
-                                   "take_profit_pct": 0, "reason": "support", "trade_type": "medio",
+                                   "take_profit_pct": 0, "reason": "support", "trade_type": "scalp",
                                    "dca_sl_pct": 0.012, "dca_tp_pct": 0.025}], "note": ""}
         return json.dumps(body), {"input_tokens": 2000, "output_tokens": 150}
 
@@ -610,7 +621,7 @@ def _sandbox(claude=None):
     saved = (cli.fetch_candles, _mc.fetch_all_context, _brain.call_claude, _c.call_claude,
              _c.DATA_DIR, _c.STATE_FILE, os.environ.get("ANTHROPIC_API_KEY"),
              os.environ.pop("TELEGRAM_BOT_TOKEN", None))
-    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit)
+    cli.fetch_candles = lambda sym, bar="15m", limit=300: _world_rows(world, sym, limit, bar)
     _mc.fetch_all_context = lambda syms, now: {"funding": {}, "oi": {}, "news": [], "ts": now}
     calls = []
 
@@ -650,7 +661,7 @@ def _decisions_stub(*decs):
 
 def _dec(symbol, action, **kw):
     base = {"symbol": symbol, "action": action, "confidence": 85, "leverage": 10, "margin_usd": 100,
-            "stop_loss_pct": 0.015, "take_profit_pct": 0.03, "reason": "test", "trade_type": "medio",
+            "stop_loss_pct": 0.015, "take_profit_pct": 0.03, "reason": "test", "trade_type": "scalp",
             "dca_sl_pct": 0.012, "dca_tp_pct": 0.025}
     base.update(kw)
     return base
@@ -1240,7 +1251,7 @@ def test_cycle_second_leg_fills_when_market_retraces_and_is_logged():
 
         def extended(sym, bar="15m", limit=300):
             rows = base(sym, bar, limit)
-            if sym == "BTC" and rows:
+            if sym == "BTC" and rows and bar == "15m":
                 last = list(rows[-1])
                 px = float(last[4])
                 last[2] = max(float(last[2]), px * 1.001)

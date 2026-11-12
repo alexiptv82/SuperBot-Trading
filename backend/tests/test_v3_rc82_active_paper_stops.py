@@ -46,11 +46,19 @@ def desk(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "fetch_all_context", lambda *_a, **_k: {"funding": {}, "oi": {}, "news": [], "ts": NOW})
     monkeypatch.setattr(cli, "rules_decisions", lambda *_a, **_k: [])
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # RC84 fase 2: tendenza 4h nota (queste prove riguardano stop/DCA/claim, non i segnali)
+    from backend.tests.rc84_test_support import known_4h_trend
+    known_4h_trend(monkeypatch, cli)
     reset_cache()
     return tmp_path
 
 
 def _cycle(desk, account, rows, decisions=None):
+    if decisions and any(d.get("action") in ("open_long", "open_short", "dca") for d in decisions):
+        # RC84 fase 2: per un ingresso o un DCA serve una lettura, cioe' almeno 80 candele (vedi supporto). Le prove
+        # che misurano solo lo stato degli stop restano con le loro righe, senza storia aggiunta.
+        from backend.tests.rc84_test_support import with_history
+        rows = with_history(rows)
     cli.fetch_candles = lambda sym, bar="15m", limit=1000: rows if sym == "BTC" else []
     if decisions is not None:
         cli.rules_decisions = lambda *_a, **_k: decisions
@@ -313,7 +321,8 @@ def test_truncated_records_are_kept_and_the_close_is_appended_once(desk):
 def _entry(action):
     return [{"symbol": "BTC", "action": action, "confidence": 80, "leverage": 10,
              "margin_usd": 60, "stop_loss_pct": 0.02, "take_profit_pct": 0.05,
-             "dca_sl_pct": 0.02, "dca_tp_pct": 0.05, "reason": "sintetico", "trade_type": "medio"}]
+             "dca_sl_pct": 0.02, "dca_tp_pct": 0.05, "reason": "sintetico", "trade_type": "scalp"}]
+# RC84: Falco (portafoglio di queste prove) apre dalle regole solo "scalp"; prima era "medio", che RC84 rifiuta
 
 
 def test_future_or_invalid_quote_does_not_open_or_add_margin(desk):

@@ -42,3 +42,20 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "integration" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def _desk_htf_isolation(monkeypatch):
+    """RC84 fase 2: nessuna prova tocca la rete Bitget per le barre 4h/1d, e la cache delle barre native non passa da una
+    prova all'altra. Lo storico paginato risponde "errore" (trend 1d UNKNOWN, che non blocca nulla) salvo che la prova
+    lo sostituisca; le barre 4H arrivano da fetch_candles, che le prove gia' sostituiscono."""
+    import sys
+    cli = sys.modules.get("desk.cli")
+    if cli is None or not hasattr(cli, "_HTF_CACHE"):
+        yield
+        return
+    cli._HTF_CACHE.clear()
+    cli.htf_budget_reset()
+    monkeypatch.setattr(cli, "_bitget_rows", lambda *a, **k: None)    # history-candles: sempre "errore" offline
+    yield
+    cli._HTF_CACHE.clear()

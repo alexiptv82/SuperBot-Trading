@@ -18,7 +18,9 @@ FRESH = [[BASE, 100, 101, 99.2, 100, 1]]     # barra recente, nessuno stop tocca
 
 
 def _feed(*symbols):
-    cli.fetch_candles = lambda sym, bar="15m", limit=1000: FRESH if sym in symbols else []
+    from backend.tests.rc84_test_support import with_history
+    rows = with_history(FRESH)                      # RC84 fase 2: storia sufficiente per una lettura (vedi supporto)
+    cli.fetch_candles = lambda sym, bar="15m", limit=1000: rows if sym in symbols else []
 
 
 def _held(rig, open_ms=BASE - 3 * BAR):
@@ -123,9 +125,16 @@ def test_partial_then_dca_still_happens_in_the_same_cycle_on_the_healthy_path(ri
 
 # --------------------------------------------------------------- S25 dopo una chiusura nello stesso ciclo
 
-def _s25_setup(rig, monkeypatch):
+def _s25_setup(rig, monkeypatch, toro_opt_in=True):
+    """RC84: i nuovi ingressi S25 esistono solo su Toro con l'autorizzazione esplicita. Queste prove (blocco con claim
+    irrisolto, percorso sano) girano quindi su Toro con l'opt-in; senza opt-in si prova che S25 non apre nulla."""
     from desk import long_s25
+    monkeypatch.setattr(cli, "PORTFOLIO", cli._make_bull_config())
     monkeypatch.setenv("DESK_LONG_S25", "1")
+    if toro_opt_in:
+        monkeypatch.setenv("DESK_S25_TORO_ENTRY_APPROVED", "1")
+    else:
+        monkeypatch.delenv("DESK_S25_TORO_ENTRY_APPROVED", raising=False)
     monkeypatch.setattr(long_s25, "closed_hours", lambda arr, now: arr)
     monkeypatch.setattr(long_s25, "signal", lambda h: {"ema9": 1.0, "vwap": 1.0, "atr": 1.0,
                                                        "trigger": 1.0, "signal_open_ms": 1})
@@ -160,6 +169,19 @@ def test_s25_entry_after_a_time_close_still_happens_on_the_healthy_path(rig, mon
     _decisions()
     cli.run_cycle(state, NOW)
     assert _positions(state) and len(rig.sent) == 1 and not state.get(cli.CLAIMS_KEY)
+    _assert_coherent(rig.desk)
+
+
+@pytest.mark.parametrize("portfolio", ["hawk", "bull"])
+def test_s25_never_opens_without_the_toro_authorization_but_still_closes_on_time(rig, monkeypatch, portfolio):
+    _feed("BTC", "ETH")
+    state = _s25_setup(rig, monkeypatch, toro_opt_in=False)
+    if portfolio == "hawk":
+        monkeypatch.setattr(cli, "PORTFOLIO", cli._make_hawk_config())
+    _decisions()
+    cli.run_cycle(state, NOW)
+    assert _positions(state) == set()                                  # chiusa a tempo, nessun nuovo ingresso S25
+    assert len(rig.sent) == 1 and not state.get(cli.CLAIMS_KEY)
     _assert_coherent(rig.desk)
 
 
