@@ -155,6 +155,38 @@ _TIER_AB = {"BTC", "ETH", "XAU", "XAG"}
 def tier_entry_score(symbol: str) -> int:
     """Restituisce la soglia di confidenza minima per aprire un trade su questo simbolo."""
     return 60 if symbol.upper() in _TIER_AB else 70
+
+
+# Contratto dichiarato nei prompt (SYSTEM_HAWK/SYSTEM_BULL) che il motore NON applica oggi. Solo per il confronto
+# in ombra (policy_shadow_violations): nessun valore qui cambia una decisione. Le modifiche di policy sono proposte a
+# parte in docs/v3/RC84-FASE2-MOTORE-SEGNALI.md e richiedono l'approvazione dell'utente.
+PROMPT_MIN_RR = 2.0
+PROMPT_BULL_CONF = {"tier_a": 65, "altri": 75}
+PROMPT_BULL_MIN_TP = 0.05
+
+
+def policy_shadow_violations(dec: dict, portfolio, symbol: str) -> list:
+    """Scostamenti di una decisione d'apertura dal contratto del prompt che il motore lascerebbe passare."""
+    out = []
+    sl, tp = float(dec.get("stop_loss_pct") or 0), float(dec.get("take_profit_pct") or 0)
+    if tp <= 0:
+        out.append("tp_assente: filtro R:R non applicato, nessun target")
+    elif sl > 0 and tp / sl < PROMPT_MIN_RR:
+        out.append("rr_%.2f_sotto_%.1f_del_prompt" % (tp / sl, PROMPT_MIN_RR))
+    if sl <= 0:
+        out.append("sl_assente: usato quello del segnale")
+    name = getattr(portfolio, "name", "")
+    if name == "bull":
+        need = PROMPT_BULL_CONF["tier_a"] if symbol.upper() in _TIER_AB else PROMPT_BULL_CONF["altri"]
+        if float(dec.get("confidence") or 0) < need:
+            out.append("confidenza_%s_sotto_%d_del_prompt_toro" % (dec.get("confidence"), need))
+        if 0 < tp < PROMPT_BULL_MIN_TP:
+            out.append("tp_%.2f%%_sotto_5%%_del_prompt_toro" % (tp * 100))
+    m, lev = float(dec.get("margin_usd") or 0), float(dec.get("leverage") or 0)
+    if m < getattr(portfolio, "guardrail_min_margin", 0) or lev < getattr(portfolio, "guardrail_min_lev", 0):
+        out.append("guardrail_alza_margine_leva: %.0f$/%gx -> %.0f$/%sx" % (
+            m, lev, getattr(portfolio, "guardrail_margin_forced", 0), getattr(portfolio, "guardrail_lev_forced", "?")))
+    return out
 HOUR_MS = 3_600_000
 HALF_HOUR_MS = 1_800_000
 SCALP_REVIEW_MS = 900_000    # scalp revisionati ogni 15 minuti
@@ -283,6 +315,36 @@ def fetch_candles(symbol: str, bar: str = "15m", limit: int = 1000) -> list:
         return [[float(x) for x in row[:6]] for row in sorted(raw, key=lambda r: float(r[0]))]
     except Exception:
         return []
+
+
+# ---- barre native 4h e 1d (tendenze EMA50/EMA200 vere su barre chiuse; vedi desk/signals.py)
+HTF_SPECS = (("4h", "4H", 14_400_000), ("1d", "1Dutc", 86_400_000))   # 1Dutc: giornata 00:00-24:00 UTC
+_HTF_CACHE: dict = {}
+
+
+def fetch_htf(sym: str, now_ms: int, fetch=None) -> dict:
+    """{"4h": array|None, "1d": array|None}. Si riscarica un timeframe solo quando e' terminata una barra piu' recente
+    di quella in cache: al massimo una richiesta ogni 4 ore (4h) e una al giorno (1d) per simbolo. Un errore di rete
+    lascia None (o l'ultima serie buona, che signals.py dichiarera' UNKNOWN se ormai vecchia): mai dati inventati."""
+    import numpy as np
+    fetch = fetch or fetch_candles
+    out = {}
+    for key, gran, period in HTF_SPECS:
+        cached = _HTF_CACHE.get((sym, key))
+        expected_last_close = now_ms - now_ms % period            # fine dell'ultima barra che dovrebbe essere chiusa
+        if cached is not None and cached[1] >= expected_last_close:
+            out[key] = cached[0]
+            continue
+        rows = fetch(sym, gran, 1000)
+        if rows:
+            arr = np.array(rows, dtype=float)
+            closed = arr[arr[:, 0] + period <= now_ms]
+            newest_close = int(closed[-1, 0]) + period if len(closed) else 0
+            _HTF_CACHE[(sym, key)] = (arr, newest_close)
+            out[key] = arr
+        else:
+            out[key] = cached[0] if cached is not None else None
+    return out
 
 
 def load_state(path: str) -> dict:
@@ -1005,7 +1067,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         arr = candles_map.get(sym)
         if arr is None or len(arr) < 80:
             continue
-        r = read_symbol(sym, arr, now_ms)
+        htf = fetch_htf(sym, now_ms)
+        r = read_symbol(sym, arr, now_ms, bars_4h=htf.get("4h"), bars_1d=htf.get("1d"))
         if r is not None:
             readings_list.append(r)
             readings_map[sym] = r
@@ -1212,6 +1275,20 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             # e tiene in attesa la seconda al ritracciamento (vedi PaperAccount.open / on_bar).
             is_split = act.endswith("_split")
             base_act = act.replace("_split", "")
+            # RC84 fase 2: senza una tendenza 4h VERIFICABILE (EMA50/EMA200 su barre 4h chiuse) nessuna nuova
+            # esposizione su quel simbolo, qualunque sia l'origine (regole o Claude). Gestione e uscite invariate.
+            rd_ = readings_map.get(sym)
+            if rd_ is None or (rd_.facts or {}).get("trend4h_state") not in ("UP", "DOWN"):
+                print(f"[TREND_UNKNOWN] {sym}: tendenza 4h non verificabile "
+                      f"({(rd_.facts or {}).get('trend4h_why', 'nessuna lettura') if rd_ else 'nessuna lettura'}): "
+                      f"nessuna nuova apertura", flush=True)
+                _candidate("trend_sconosciuto", dec, px)
+                continue
+            shadow = policy_shadow_violations(dec, PORTFOLIO, sym)
+            if shadow:
+                # SOLO REGISTRAZIONE: confronto tra il contratto del prompt e i controlli del motore. Non blocca.
+                print(f"[POLICY_SHADOW:{PORTFOLIO.name.upper()}] {sym} {act}: {', '.join(shadow)}", flush=True)
+                HB["policy_shadow_last"] = {"symbol": sym, "ts": now_ms, "violations": shadow}
             # cooldown per tipo
             trade_type = dec.get("trade_type", "medio")
             cooldown = SCALP_COOLDOWN_MS if trade_type == "scalp" else MEDIO_COOLDOWN_MS
@@ -1272,6 +1349,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                                        readings_map.get("BTC"))
             except Exception:
                 feats = {}   # la registrazione non deve mai impedire un'apertura
+            feats.update(policy_shadow=shadow)
             feats.update(proposed_margin=raw_margin, proposed_lev=raw_lev, split_requested=is_split,
                           guardrail_forced=bool(raw_margin != dec["margin_usd"] or raw_lev != dec["leverage"]))
             # ── INTERRUTTORE MANUALE (solo live) ────────────────────────────

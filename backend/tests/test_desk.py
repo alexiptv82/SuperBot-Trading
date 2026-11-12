@@ -236,8 +236,13 @@ def test_uptrend_scores_long_and_downtrend_scores_short():
 
 
 def test_short_history_gives_no_reading():
+    """RC84 fase 2: con poca storia la lettura puo' esistere (serve a gestire le posizioni aperte), ma senza tendenza 4h
+    verificabile non segnala nessun lato (nessuna apertura) e dichiara UNKNOWN invece di inventare una EMA200."""
     from desk.signals import read_symbol
-    assert read_symbol("X", _series(300, 0.0)) is None
+    r = read_symbol("X", _series(300, 0.0))
+    assert r is None or (r.side == 0 and r.facts["trend4h_state"] == "UNKNOWN"
+                         and r.facts["ema50_200_4h"] == "UNKNOWN" and r.facts["trend_state"] == "UNKNOWN")
+    assert read_symbol("X", _series(200, 0.0)) is None             # meno di 60 ore chiuse: nessuna lettura
 
 
 # ---- brain tests ----

@@ -356,6 +356,8 @@ def build_prompt(snapshot: dict, readings: list, positions: list, headlines: lis
                + " [solo consultivo: non forzare LONG/SHORT]"
                if r.facts.get('trend_change') not in (None, 'UNKNOWN') else "")
             + (f", pattern={r.pattern}" if r.pattern else "")
+            + (f", stato_trend={r.facts['trend_state']} [consultivo, su barre chiuse; UNKNOWN = dati 4h "
+               f"insufficienti: nessuna apertura possibile]" if r.facts.get('trend_state') else "")
             + (f", sl_sug {r.sl_pct:.2%}, tp_sug {r.tp_pct:.2%}")
         )
         if r.seasonal_note:

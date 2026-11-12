@@ -589,8 +589,11 @@ def test_step_position_survives_state_roundtrip_with_source():
 # nessuna modifica a punteggi LONG/SHORT, call_claude o strategie. Il test
 # test_desk_trend_change_advisory.py verifica anche l'assenza di effetti sullo scoring.
 
+# RC84 fase 2 (ramo work/rc84-signals-mtf-closed-20261112): signals.py cambiato DI PROPOSITO (tendenze 4h/1d su
+# barre chiuse native con EMA200 vera o UNKNOWN, indicatori solo su candele chiuse, classificazione consultiva);
+# effetti misurati da deploy/scripts/replay_signals_rc84.py e da test_desk_rc84_phase2.py.
 PINNED = {
-    "signals.py": "488798a3a01792f8a158f667008643339ec691fa8e57d746bb88bb926ed23665",
+    "signals.py": "37acafb5f7cd81d93053a4f43c1db8fe53366616d6fa01b3519872dc205be4da",
     "seasonal.py": "47c12da1abbe51be0c826fc03b7609af40407e2e101911ded3444def5d6912c7",
 }
 
@@ -605,7 +608,8 @@ def test_engine_and_brain_files_are_unchanged_by_this_work():
     # brain.py: pin aggiornato dopo RC82 (dfc7059), che ha reso la scrittura dello storico/learning append-only
     # robusta a righe troncate (_append_json_line). engine.py (formule economiche) resta quello originale.
     for name, want in (("engine.py", "77836e4e84acccd256492708754a3bd72d8ecdb5a98c39456e9a6fb649787010"),
-                       ("brain.py", "4f040c142909d3369fef81a2f7ef3307eab65421db1958e98d6153230f38884e")):
+                       # RC84 fase 2: brain.py aggiunge al prompt lo stato del trend consultivo (nessun'altra modifica)
+                       ("brain.py", "2c9147e067973d26fd71fe70b2ee325f282b64f0cea654b4a1ff54bc1987c045")):
         with open(os.path.join(BACKEND, "desk", name), "rb") as f:
             assert hashlib.sha256(f.read()).hexdigest() == want
 
@@ -767,6 +771,10 @@ def test_rc84_same_rules_signal_creates_falco_scalp_but_no_toro_clone(sandbox, m
     a15, sig = _cycle_candles()
     a15b, now, _ = _with_new_hour(a15, sig)
     _install(cli, monkeypatch, a15b)
+    # RC84 fase 2: senza tendenza 4h verificabile nessuna apertura. Questo test riguarda l'indipendenza dei portafogli,
+    # quindi fornisce barre 4h/1d native valide (rialziste) come farebbe l'exchange.
+    from test_desk_rc84_phase2 import native_htf
+    monkeypatch.setattr(cli, "fetch_htf", lambda sym, now_ms, fetch=None: native_htf(now_ms, 1))
     monkeypatch.setattr(cli, "apply_claude_schedule", lambda *args: False)
     proposed = {"symbol": "ETH", "action": "open_long",
                 "trade_type": "scalp", "confidence": 99,

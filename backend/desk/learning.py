@@ -86,6 +86,8 @@ def build_features(symbol: str, reading: Any, ctx: Optional[dict], dec: Optional
             ema20_50_1h=_sign(fa.get("ema20_50_1h")),
             ema50_200_4h=_sign(fa.get("ema50_200_4h")),
             daily_trend=_sign(fa.get("daily_trend")),
+            trend4h_state=str(fa.get("trend4h_state") or ""), trend1d_state=str(fa.get("trend1d_state") or ""),
+            trend_state=str(fa.get("trend_state") or ""),
             seasonal=str(getattr(reading, "seasonal_note", "") or "")[:80],
             why=[str(w)[:60] for w in (getattr(reading, "why", None) or [])[:8]],
             price=_num(getattr(reading, "price", None), 8),
