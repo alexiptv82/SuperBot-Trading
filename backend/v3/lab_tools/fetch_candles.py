@@ -118,6 +118,39 @@ def fetch_rows(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
         cur_end = s - 1
     else:
         raise RuntimeError("troppe richieste")
+
+    # RC84: Bitget requires endTime aligned to the timeframe. The historical
+    # backwards paginator above uses end_ms - 1 to avoid including the live
+    # candle, but Bitget may FLOOR that to the preceding boundary, excluding
+    # the LAST CLOSED bar as well. Strict freshness (max_age_candles=1)
+    # correctly rejects that stale view and Brain never reaches DeepSeek.
+    # Recover exactly the latest CLOSED bar with aligned start/end boundaries.
+    # Keep the original history, its gaps and all existing price validation.
+    # If the exchange has not published the bar, remain fail-closed (stale).
+    if (end_ms % candle_ms == 0 and end_ms - candle_ms >= start_ms
+            and end_ms - candle_ms not in rows):
+        recent_start = end_ms - 2 * candle_ms
+        recent_url = (f"{BASE}{PATH}?symbol={symbol}&productType=USDT-FUTURES"
+                      f"&granularity={gran}&startTime={recent_start}"
+                      f"&endTime={end_ms}&limit=2")
+        try:
+            response = get_json(recent_url)
+            recent_data = (response.get("data")
+                           if isinstance(response, dict) and response.get("code") == "00000" else ())
+            for raw in recent_data or ():
+                parsed = _row(raw, start_ms, end_ms)
+                if parsed is None:
+                    continue
+                if parsed[0] == "invalid":
+                    if stats is not None:
+                        stats.setdefault("invalid_ts", set()).add(parsed[1])
+                    continue
+                if parsed[0] == end_ms - candle_ms:
+                    rows[parsed[0]] = parsed[1]
+        except Exception:
+            # Supplementary public GET is best effort; no synthetic price,
+            # no lowered freshness tolerance, and retry on a later cycle.
+            pass
     return rows
 
 
