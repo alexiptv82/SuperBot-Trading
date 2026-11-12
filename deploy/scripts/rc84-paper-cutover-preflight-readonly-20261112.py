@@ -61,8 +61,11 @@ def inspect_backups_and_sources() -> None:
             refuse("source_directory_invalid_" + path.name)
         if command(["git", "-C", str(path), "rev-parse", "HEAD"]) != pin:
             refuse("source_git_pin_invalid_" + path.name)
+        # OLD may contain innocuous untracked runtime files; tracked files
+        # must be clean. NEW must be pristine including untracked paths.
+        untracked = "no" if path == OLD else "all"
         if command(["git", "-C", str(path), "status", "--porcelain",
-                    "--untracked-files=all"]):
+                    "--untracked-files=" + untracked]):
             refuse("source_dirty_" + path.name)
     print("RC84_CUTOVER_BACKUP_AND_SOURCES=PASS", flush=True)
 
