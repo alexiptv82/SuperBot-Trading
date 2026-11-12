@@ -1040,6 +1040,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     decisions = []
     source = "rules"
     valid_claude_reply = False
+    explicit_claude_no_trade = False
     if halt:
         print(f"[HALT] {halt}")
     elif drain and not acc.positions:
@@ -1059,6 +1060,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 # An explicitly valid empty decision list means NO_TRADE, not
                 # "Claude failed": never silently replace it with rules entries.
                 valid_claude_reply = True
+                explicit_claude_no_trade = not parsed["decisions"]
                 decisions = parsed["decisions"]
                 source = "claude"
                 print(f"[Claude] {len(decisions)} decisioni  costo {cost:.4f}$  "
@@ -1370,7 +1372,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             # Original Claude/rule LONG+SHORT decisions continue as before.
             # Only Toro may later opt in explicitly after verification.
             s25_new_entries = (PORTFOLIO.name == "bull" and
-                               os.getenv("DESK_S25_TORO_ENTRY_APPROVED") == "1")
+                               os.getenv("DESK_S25_TORO_ENTRY_APPROVED") == "1"
+                               and not explicit_claude_no_trade)
             long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=no_new,
                           allow_new_entries=s25_new_entries,
                           record_close=s25_record,
