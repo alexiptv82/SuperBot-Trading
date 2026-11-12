@@ -677,6 +677,79 @@ def _install(cli, monkeypatch, a15):
                         lambda sym, bar="15m", limit=1000: a15[-limit:].tolist() if sym == "ETH" else [])
 
 
+def test_rc84_falco_and_toro_do_not_share_rules_fallback_entries(sandbox):
+    cli, _ = sandbox
+    signals = [
+        {"symbol": "BTC", "action": "open_long", "trade_type": "scalp"},
+        {"symbol": "ETH", "action": "open_short", "trade_type": "scalp"},
+        {"symbol": "SOL", "action": "open_long", "trade_type": "medio"},
+        {"symbol": "ARB", "action": "open_short", "trade_type": "medio"},
+        {"symbol": "ADA", "action": "close", "trade_type": "medio"},
+        {"symbol": "XRP", "action": "hold", "trade_type": "scalp"},
+    ]
+    hawk, h_rejected = cli._rc84_paper_classic_entry_policy("hawk", "rules", signals)
+    bull, b_rejected = cli._rc84_paper_classic_entry_policy("bull", "rules", signals)
+    assert [d["action"] for d in hawk] == ["open_long", "open_short", "close", "hold"]
+    assert [d["symbol"] for d in h_rejected] == ["SOL", "ARB"]
+    assert [d["action"] for d in bull] == ["close", "hold"]
+    assert {d["symbol"] for d in b_rejected} == {"BTC", "ETH", "SOL", "ARB"}
+    # No forced reversal: short and long can both be suggested for Falco.
+    assert any(d["action"] == "open_long" for d in hawk)
+    assert any(d["action"] == "open_short" for d in hawk)
+
+
+def test_rc84_claude_entries_are_role_specific_but_long_short_stay_possible(sandbox):
+    cli, _ = sandbox
+    signals = [
+        {"symbol": "BTC", "action": "open_long", "trade_type": "scalp"},
+        {"symbol": "ETH", "action": "open_short", "trade_type": "scalp"},
+        {"symbol": "SOL", "action": "open_long", "trade_type": "medio"},
+        {"symbol": "ARB", "action": "open_short", "trade_type": "medio"},
+        {"symbol": "XRP", "action": "partial_close", "trade_type": "medio"},
+        {"symbol": "ADA", "action": "dca", "trade_type": "medio"},
+    ]
+    falco, _ = cli._rc84_paper_classic_entry_policy("hawk", "claude", signals)
+    toro, _ = cli._rc84_paper_classic_entry_policy("bull", "claude", signals)
+    assert {x["symbol"] for x in falco[:2]} == {"BTC", "ETH"}
+    assert {x["symbol"] for x in toro[:2]} == {"SOL", "ARB"}
+    assert [x["action"] for x in falco[-2:]] == ["partial_close", "dca"]
+    assert [x["action"] for x in toro[-2:]] == ["partial_close", "dca"]
+    # Unsupported source/portfolio fail-closed for new entries only.
+    other, _ = cli._rc84_paper_classic_entry_policy("bull", "rules", signals)
+    assert all(not x["action"].startswith("open_") for x in other)
+    other, _ = cli._rc84_paper_classic_entry_policy("hawk", "untrusted", signals)
+    assert all(not x["action"].startswith("open_") for x in other)
+
+
+def test_rc84_valid_empty_claude_reply_is_no_trade_not_rule_fallback(sandbox, monkeypatch):
+    cli, _ = sandbox
+    a15, _ = _cycle_candles()
+    a15b, now, _ = _with_new_hour(a15, {})
+    _install(cli, monkeypatch, a15b)
+    monkeypatch.setattr(cli, "apply_claude_schedule", lambda *args: True)
+    monkeypatch.setattr(cli, "can_call", lambda *args: True)
+    monkeypatch.setattr(cli, "build_prompt", lambda *args, **kwargs: "test")
+    monkeypatch.setattr(cli, "record_spend", lambda *args: 0.0)
+    monkeypatch.setattr(cli, "log_claude_call", lambda *args: None)
+    observed = {"claude": 0, "fallback": 0}
+
+    def empty_claude(*args, **kwargs):
+        observed["claude"] += 1
+        return '{"decisions":[],"note":"NO_TRADE"}', {}
+
+    def forbidden_fallback(*args, **kwargs):
+        observed["fallback"] += 1
+        return [{"symbol": "ETH", "action": "open_short", "trade_type": "scalp"}]
+
+    monkeypatch.setattr(cli, "call_claude", empty_claude)
+    monkeypatch.setattr(cli, "rules_decisions", forbidden_fallback)
+    state = {}
+    cli.run_cycle(state, now)
+    assert observed == {"claude": 1, "fallback": 0}
+    assert not cli.make_account(state).positions
+    assert state.get("last_open_ms") == {}
+
+
 def test_full_cycle_toro_only_s25_entries(sandbox, monkeypatch):
     cli, d = sandbox
     # S25's stand-alone module remains generic, but the wired PAPER runner
