@@ -123,6 +123,30 @@ SYSTEM = PORTFOLIO.system_prompt
 # ENTRY_SCORE base (fallback) — il valore effettivo dipende dal tier dell'asset
 _ENTRY_SCORE_BASE = int(os.getenv("DESK_ENTRY_SCORE", "60"))
 
+
+def _rc84_paper_classic_entry_policy(portfolio: str, source: str, decisions: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Make PAPER classic entry origins/horizons independent without altering exits.
+
+    Falco: scalp-only LONG or SHORT, including the rules fallback.
+    Toro: AI-selected medium-term LONG or SHORT, never shared rules entries.
+    Unrecognized sources/portfolios cannot create new PAPER exposure.
+    Management (close/hold/partial/DCA) is preserved unchanged; normal risk,
+    existing positions, stop and S25 time-exit handling remain separate.
+    """
+    entries = {"open_long", "open_short", "open_long_split", "open_short_split"}
+    kept, rejected = [], []
+    for decision in decisions:
+        if decision.get("action") not in entries:
+            kept.append(decision)
+            continue
+        horizon = decision.get("trade_type")
+        allowed = (
+            (portfolio == "hawk" and horizon == "scalp" and source in {"claude", "rules"})
+            or (portfolio == "bull" and horizon == "medio" and source == "claude")
+        )
+        (kept if allowed else rejected).append(decision)
+    return kept, rejected
+
 # Tier A/B: BTC, ETH, XAU, XAG → soglia 60
 # Tier C: tutti gli altri altcoin → soglia 70
 _TIER_AB = {"BTC", "ETH", "XAU", "XAG"}
@@ -1015,6 +1039,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     decisions = []
     source = "rules"
+    valid_claude_reply = False
     if halt:
         print(f"[HALT] {halt}")
     elif drain and not acc.positions:
@@ -1030,7 +1055,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             parsed = parse_decisions(text)
             log_claude_call(now_ms, state, text, usage, cost, parsed, len(prompt),
                             len(acc.positions), urgent_scalp, 1100)
-            if parsed:
+            if parsed is not None:
+                # An explicitly valid empty decision list means NO_TRADE, not
+                # "Claude failed": never silently replace it with rules entries.
+                valid_claude_reply = True
                 decisions = parsed["decisions"]
                 source = "claude"
                 print(f"[Claude] {len(decisions)} decisioni  costo {cost:.4f}$  "
@@ -1041,7 +1069,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             print(f"[WARN] Claude non disponibile: {e}")
             log_claude_error(now_ms, state, e, len(acc.positions), urgent_scalp)
 
-    if not decisions:
+    if not decisions and not valid_claude_reply:
         decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
         source = "rules"
 
@@ -1051,6 +1079,19 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             decisions = long_s25.protect(decisions, acc.positions)
         except Exception as e:
             print(f"[S25] errore ignorato: {e}", flush=True)
+
+    if not LIVE._live and PORTFOLIO.name in ("hawk", "bull"):
+        decisions, excluded = _rc84_paper_classic_entry_policy(PORTFOLIO.name, source, decisions)
+        if excluded:
+            for dec in excluded:
+                # Rejections are visible without using any exchange API and
+                # do not create fake trade or learning outcomes.
+                print(f"[RC84_POLICY:{PORTFOLIO.name.upper()}] ingresso {source} rifiutato "
+                      f"{dec.get('symbol', '?')} {dec.get('action', '?')} "
+                      f"tipo={dec.get('trade_type', '?')}", flush=True)
+            HB["rc84_policy_rejected"] = len(excluded)
+        else:
+            HB["rc84_policy_rejected"] = 0
 
     if not drain and os.path.exists(_flag("pause.flag")):
         drain = True   # pausa premuta mentre il ciclo era in corso: vale da subito
