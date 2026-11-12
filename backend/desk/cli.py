@@ -124,10 +124,17 @@ SYSTEM = PORTFOLIO.system_prompt
 _ENTRY_SCORE_BASE = int(os.getenv("DESK_ENTRY_SCORE", "60"))
 
 
-def _rc84_paper_classic_entry_policy(portfolio: str, source: str, decisions: list[dict]) -> tuple[list[dict], list[dict]]:
+def _hawk_entry_mode() -> str:
+    """Reversible PAPER-only experiment. Unknown values fail safe, never enabling LONG accidentally."""
+    value = os.getenv("DESK_HAWK_ENTRY_MODE", "BOTH").strip().upper()
+    return value if value in {"BOTH", "SHORT_ONLY"} else "SHORT_ONLY"
+
+
+def _rc84_paper_classic_entry_policy(portfolio: str, source: str, decisions: list[dict],
+                                     *, hawk_entry_mode: str = "BOTH") -> tuple[list[dict], list[dict]]:
     """Make PAPER classic entry origins/horizons independent without altering exits.
 
-    Falco: scalp-only LONG or SHORT, including the rules fallback.
+    Falco: scalp-only LONG or SHORT by default; optional PAPER SHORT_ONLY denies new LONG and LONG splits.
     Toro: AI-selected medium-term LONG or SHORT, never shared rules entries.
     Unrecognized sources/portfolios cannot create new PAPER exposure.
     Management (close/hold/partial/DCA) is preserved unchanged; normal risk,
@@ -144,6 +151,8 @@ def _rc84_paper_classic_entry_policy(portfolio: str, source: str, decisions: lis
             (portfolio == "hawk" and horizon == "scalp" and source in {"claude", "rules"})
             or (portfolio == "bull" and horizon == "medio" and source == "claude")
         )
+        if portfolio == "hawk" and hawk_entry_mode == "SHORT_ONLY" and decision["action"] in {"open_long", "open_long_split"}:
+            allowed = False
         (kept if allowed else rejected).append(decision)
     return kept, rejected
 
@@ -1133,6 +1142,23 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         _commit_paper_closes(state)       # ripresa: completa i claim con il record gia' salvato
     claim_block = bool(_unresolved_claims(state))   # chiusure contabili ancora da riconciliare
     acc = make_account(state)
+    # PAPER-only directional mode. Existing positions retain their protective exits.
+    hawk_mode = _hawk_entry_mode() if not LIVE._live and PORTFOLIO.name == "hawk" else "BOTH"
+    hawk_short_only = hawk_mode == "SHORT_ONLY"
+    if not LIVE._live and PORTFOLIO.name == "hawk":
+        HB["hawk_entry_mode"] = hawk_mode
+        cancelled = 0
+        if hawk_short_only:
+            # A pending LONG second split leg increases exposure before entry-policy filtering.
+            # Cancel it BEFORE apply_paper_protective_exits() calls PaperAccount.on_bar().
+            for symbol, pos in list(acc.positions.items()):
+                if pos.side == 1 and pos.pending_split:
+                    if acc.cancel_split(symbol, "Falco SHORT_ONLY: nessuna nuova esposizione LONG", now_ms):
+                        cancelled += 1
+            if cancelled:
+                save_account(acc, state)
+                save_state(state, STATE_FILE)
+        HB["hawk_short_only_long_splits_cancelled"] = cancelled
     if claim_block:
         # Come in pausa: nessuna nuova esposizione (aperture, DCA, seconde gambe, S25); le uscite restano attive.
         for s_ in list(acc.positions):
@@ -1291,18 +1317,41 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         except Exception as e:
             print(f"[S25] errore ignorato: {e}", flush=True)
 
+    def _candidate(status: str, d: dict, price: float) -> None:
+        """Registra un'apertura decisa ma NON eseguita, con le stesse feature di un'apertura vera:
+        servono per etichettarne l'esito in seguito (come sarebbe andata). Mai bloccante."""
+        try:
+            s = d["symbol"]
+            log_event(DATA_DIR, {
+                "ev": "candidate", "status": status, "ts": now_ms, "portfolio": PORTFOLIO.name,
+                "run_no": state.get("run_no", 1), "symbol": s, "price": price, "source": source,
+                "side": 1 if str(d.get("action", "")).startswith("open_long") else -1,
+                "features": build_features(s, readings_map.get(s), ctx_for_prompt, d, now_ms,
+                                           readings_map.get("BTC")),
+            }, candidate=True)
+        except Exception:
+            pass
+
     if not LIVE._live and PORTFOLIO.name in ("hawk", "bull"):
-        decisions, excluded = _rc84_paper_classic_entry_policy(PORTFOLIO.name, source, decisions)
+        decisions, excluded = _rc84_paper_classic_entry_policy(
+            PORTFOLIO.name, source, decisions, hawk_entry_mode=hawk_mode)
         if excluded:
+            short_only_rejected = 0
             for dec in excluded:
                 # Rejections are visible without using any exchange API and
                 # do not create fake trade or learning outcomes.
+                if hawk_short_only and dec.get("action") in {"open_long", "open_long_split"}:
+                    short_only_rejected += 1
+                    _candidate("falco_short_only", dec, prices.get(dec.get("symbol")))
                 print(f"[RC84_POLICY:{PORTFOLIO.name.upper()}] ingresso {source} rifiutato "
                       f"{dec.get('symbol', '?')} {dec.get('action', '?')} "
                       f"tipo={dec.get('trade_type', '?')}", flush=True)
+            HB["hawk_short_only_long_candidates"] = short_only_rejected if hawk_short_only else 0
             HB["rc84_policy_rejected"] = len(excluded)
         else:
             HB["rc84_policy_rejected"] = 0
+            if hawk_short_only:
+                HB["hawk_short_only_long_candidates"] = 0
 
     if not drain and os.path.exists(_flag("pause.flag")):
         drain = True   # pausa premuta mentre il ciclo era in corso: vale da subito
@@ -1319,21 +1368,6 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     # ---- esecuzione decisioni
     last_open_ms = state.get("last_open_ms", {})
-
-    def _candidate(status: str, d: dict, price: float) -> None:
-        """Registra un'apertura decisa ma NON eseguita, con le stesse feature di un'apertura vera:
-        servono per etichettarne l'esito in seguito (come sarebbe andata). Mai bloccante."""
-        try:
-            s = d["symbol"]
-            log_event(DATA_DIR, {
-                "ev": "candidate", "status": status, "ts": now_ms, "portfolio": PORTFOLIO.name,
-                "run_no": state.get("run_no", 1), "symbol": s, "price": price, "source": source,
-                "side": 1 if str(d.get("action", "")).startswith("open_long") else -1,
-                "features": build_features(s, readings_map.get(s), ctx_for_prompt, d, now_ms,
-                                           readings_map.get("BTC")),
-            }, candidate=True)
-        except Exception:
-            pass
 
     for dec in decisions:
         sym = dec["symbol"]
@@ -1397,9 +1431,14 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     claim_block = claim_block or not _settle_claims_now(state, acc)
 
         elif act == "dca":
-            # DCA su posizione esistente
+            # DCA su posizione esistente. SHORT_ONLY preserves exits and existing LONGs,
+            # but must not increase a legacy LONG exposure.
             pos = acc.positions.get(sym)
             if pos is None:
+                continue
+            if hawk_short_only and pos.side == 1:
+                print(f"[FALCO_SHORT_ONLY] DCA LONG residuo bloccato {sym}", flush=True)
+                HB["hawk_short_only_long_dca_blocked"] = HB.get("hawk_short_only_long_dca_blocked", 0) + 1
                 continue
             sl_pct = dec.get("dca_sl_pct") or dec.get("stop_loss_pct", 0)
             tp_pct = dec.get("dca_tp_pct") or dec.get("take_profit_pct", 0)
