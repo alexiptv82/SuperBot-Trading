@@ -163,16 +163,22 @@ def test_htf_bars_are_fetched_once_per_closed_bar_and_errors_keep_none(cli_mod):
 
     def fetch(sym, gran, limit):
         calls.append(gran)
-        return native_bars(NOW, H4 if gran == "4H" else D1, 300, 0.001).tolist()
-    out = cli_mod.fetch_htf("BTC", NOW, fetch)
-    assert calls == ["4H", "1Dutc"] and len(out["4h"]) == 301
-    cli_mod.fetch_htf("BTC", NOW + 15 * 60_000, fetch)          # stessa barra 4h e stesso giorno: niente rete
-    assert calls == ["4H", "1Dutc"]
+        return native_bars(NOW, H4, 300, 0.001).tolist()
+
+    def page(sym, gran, start, end):
+        calls.append(gran)
+        return [r for r in native_bars(NOW, D1, 400, 0.001).tolist() if start <= r[0] < end]
+    out = cli_mod.fetch_htf("BTC", NOW, fetch, page)
+    assert calls[0] == "4H" and set(calls[1:]) == {"1Dutc"} and len(out["4h"]) == 300   # la barra in formazione e' esclusa
+    n = len(calls)
+    cli_mod.fetch_htf("BTC", NOW + 15 * 60_000, fetch, page)        # stessa barra 4h e stesso giorno: niente rete
+    assert len(calls) == n
     later = NOW + H4
-    cli_mod.fetch_htf("BTC", later, lambda s, g, l: (calls.append(g), native_bars(later, H4 if g == "4H" else D1, 300, 0.001).tolist())[1])
-    assert calls == ["4H", "1Dutc", "4H"]                       # solo il 4h e' cambiato
-    out = cli_mod.fetch_htf("ETH", NOW, lambda s, g, l: [])
-    assert out == {"4h": None, "1d": None}
+    cli_mod.fetch_htf("BTC", later, lambda s, g, l: (calls.append(g), native_bars(later, H4, 300, 0.001).tolist())[1], page)
+    assert calls[n:] == ["4H"]                                      # solo il 4h e' cambiato
+    cli_mod.htf_budget_reset()
+    out = cli_mod.fetch_htf("ETH", NOW, lambda s, g, l: [], lambda *a: None)
+    assert out["4h"] is None and out["1d"] is None and out["status"] == {"4h": "errore_api", "1d": "errore_api"}
 
 
 def test_policy_shadow_reports_prompt_contract_gaps_without_blocking(cli_mod):

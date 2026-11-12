@@ -25,6 +25,7 @@ TREND_4H_POINTS = 20
 # e quindi piu' aperture. Finche' la policy non lo decide, il trend 1d e' solo contesto (0 punti): e' riportato nei
 # fatti, nella classificazione e nel prompt. Vedi docs/v3/RC84-FASE2-MOTORE-SEGNALI.md.
 DAILY_TREND_POINTS = 0
+MAX_GAP_MS = 3 * H1D                 # buco massimo tollerato in una serie 4h/1d (fine settimana dei metalli)
 RANGE_GAP = 0.003                    # |EMA50-EMA200|/EMA200 sotto lo 0,3%: tendenza 4h piatta (laterale)
 
 
@@ -117,7 +118,7 @@ def htf_trend(bars: np.ndarray, now_ms: int, period_ms: int) -> dict:
 
     ``state``: ``UP``/``DOWN``/``UNKNOWN``; ``why`` spiega un UNKNOWN; ``gap`` = (EMA50-EMA200)/EMA200;
     ``close_vs_ema50`` = +1/-1 se l'ultima chiusura e' sopra/sotto la EMA50; ``ema50_slope`` = segno della EMA50 su 3 barre."""
-    out = {"state": "UNKNOWN", "why": "", "bars": 0, "gap": None, "close_vs_ema50": 0, "ema50_slope": 0,
+    out = {"state": "UNKNOWN", "why": "", "bars": 0, "gaps": 0, "gap": None, "close_vs_ema50": 0, "ema50_slope": 0,
            "closes_above_ema50": 0, "asof_ms": None}
     c = closed_bars(bars, now_ms, period_ms)
     out["bars"] = int(len(c))
@@ -127,6 +128,14 @@ def htf_trend(bars: np.ndarray, now_ms: int, period_ms: int) -> dict:
         out["why"] = "barre non coerenti con il timeframe"
         out["bars"] = 0
         return out
+    # interruzioni: si usa solo la coda piu' recente senza buchi oltre MAX_GAP_MS (es. un fine settimana dei metalli);
+    # oltre quel buco la serie precedente non si incolla, e se la coda e' corta la tendenza resta UNKNOWN
+    if len(c) > 1:
+        gaps = np.flatnonzero(np.diff(c[:, 0]) > max(MAX_GAP_MS, period_ms))
+        out["gaps"] = int(np.sum(np.diff(c[:, 0]) > period_ms))
+        if len(gaps):
+            c = c[gaps[-1] + 1:]
+            out["bars"] = int(len(c))
     if len(c) < TREND_MIN_BARS:
         out["why"] = "storia insufficiente: %d barre chiuse < %d" % (len(c), TREND_MIN_BARS)
         return out

@@ -96,9 +96,8 @@ non può essere valutata seriamente su dati senza struttura: in questo replay le
 * Replay rieseguito: risultati identici bit per bit (semi fissi).
 
 ## 8. Problemi residui
-1. **Granularità Bitget da verificare** (la sandbox non raggiunge la Bitget): `4H` e `1Dutc` con `limit=1000` sull'endpoint
-   `/api/v2/mix/market/candles`. Se `4H` fosse rifiutata, nessuna apertura (sicuro ma bloccante); verifica in sola lettura prima di
-   qualunque rilascio.
+1. **Granularità Bitget:** lo storico `1Dutc` da `history-candles` è verificato sulla VPS (§8B). Resta da verificare `4H` con
+   `limit=1000` su `/market/candles`: se fosse rifiutata, nessuna apertura (sicuro ma bloccante).
 2. Replay solo sintetico e solo regole: niente Claude, niente dati di mercato reali. Per dati reali serve una copia delle candele
    storiche (lo script accetta qualsiasi `desk`; il generatore di mercato va sostituito con un lettore di file, non fatto).
 3. Classificazione `trend_state` non validata: resta consultiva.
@@ -106,12 +105,36 @@ non può essere valutata seriamente su dati senza struttura: in questo replay le
    altre in moduli RC82/RC84): preesistenti, identiche nel candidato, non toccate.
 5. Policy P-1…P-5 non applicate: decisione dell'utente.
 
+## 8B. Fase 2B — storico giornaliero Bitget paginato (aggiunta al candidato)
+**Fatto verificato dall'utente sulla VPS (12/11/2026):** `/api/v2/mix/market/history-candles`, granularità `1Dutc`, 3 richieste da 89
+giorni per simbolo → 267 candele chiuse per BTCUSDT ed ETHUSDT, nessuna interruzione (18/02–11/11/2026); `/market/candles` ne dava 89.
+| Requisito | Come è fatto (`backend/desk/cli.py`, `signals.py`) |
+|---|---|
+| ≥ 250 barre giornaliere quando esistono | `fetch_daily_history`: pagine da 89 giorni all'indietro da oggi 00:00 UTC, fino a 260 barre chiuse o 4 pagine (356 giorni); 3 pagine bastano per 267 |
+| paginazione, ordine, sovrapposizioni, duplicati | `merge_bars`: un timestamp per barra (vince la riga scaricata per ultima; i conflitti si contano), ordine crescente, bordi delle pagine deduplicati |
+| candele in formazione | escluse in `merge_bars` (apertura + durata > ora) e di nuovo in `signals.closed_bars` |
+| cache e limiti | prima ricostruzione una volta; poi **una** pagina al giorno (incrementale, le barre vecchie restano); 4H una richiesta per barra 4h chiusa; dopo un errore niente nuovi tentativi per 30 minuti; tetto di **12 pagine storiche per ciclo** per tutti i simboli (gli altri si completano ai cicli successivi; intanto il loro 1d è `UNKNOWN`, che non blocca) |
+| coerenza 4H e 1Dutc | una risposta con anche un solo timestamp non allineato al periodo è **rifiutata in blocco** (non sono barre di quella granularità) e non entra in cache; righe non finite o con prezzi ≤ 0 scartate |
+| interruzioni | `signals.htf_trend` usa solo la coda più recente senza buchi oltre 3 giorni (un fine settimana dei metalli è tollerato); prima del buco la serie non si incolla |
+| storia insufficiente | `UNKNOWN` con il motivo (`storia insufficiente: N barre chiuse < 200`, `dati vecchi`), nessun dato inventato, EMA200 mai accorciata; un simbolo con storia finita non viene ricostruito ogni giorno da capo |
+| il 1d non diventa un filtro | invariato: `DAILY_TREND_POINTS = 0`, il gate resta solo sulla tendenza 4h; prova con 4h rialzista e 1d ribassista: il LONG si apre |
+| stop, TP, chiusure, registri | non toccati; prova della catena completa (finto Bitget → `fetch_htf` → `read_symbol` → ciclo vero) |
+Il heartbeat riporta per simbolo lo stato dei dati (`HB["htf"]`: `ok`, `cache`, `errore_api`, `attesa_dopo_errore`, `storia_finita`,
+`budget_esaurito`, `incompleto`) e le tendenze lette. Prove: `backend/tests/test_desk_rc84_phase2b.py` (13): paginazione a 3 pagine e 267
+barre, simbolo recente (pagina vuota → stop, `UNKNOWN`, poi una sola pagina al giorno), cache stesso giorno/giorno dopo, errore a metà
+paginazione e attesa di 30 minuti, cache scaduta con errore → serie vecchia dichiarata "dati vecchi", buchi lunghi e corti, tetto di
+richieste per ciclo, righe non valide e conflitti, granularità sbagliata per 4H e 1Dutc, URL ed errori HTTP/JSON, 1d non bloccante,
+catena completa nel ciclo vero. Replay: invariato (identico alla fase 2: i percorsi sintetici non hanno buchi).
+
+**Ancora da verificare con una lettura sulla VPS prima di qualunque rilascio:** `/market/candles` con `granularity=4H&limit=1000`
+(numero di barre e allineamento) e il parametro `limit=200` di `history-candles` usato qui (la pagina da 89 giorni ne contiene 90 al massimo).
+
 ## 9. Riproduzione
 ```sh
 python3 deploy/scripts/replay_signals_rc84.py run --backend <checkout ab7e0b7>/backend --label rc84_ab7e0b7 --out rc84.json
 python3 deploy/scripts/replay_signals_rc84.py run --backend backend --label candidato --out cand.json
 python3 deploy/scripts/replay_signals_rc84.py run --backend backend --label candidato_1d15 --daily-points 15 --out cand15.json
 python3 deploy/scripts/replay_signals_rc84.py compare rc84.json cand.json cand15.json
-PYTHONPATH=.:backend python3 -m pytest -q backend/tests/test_desk_rc84_phase2.py backend/tests/test_long_s25.py backend/tests/test_desk.py
+PYTHONPATH=.:backend python3 -m pytest -q backend/tests/test_desk_rc84_phase2.py backend/tests/test_desk_rc84_phase2b.py backend/tests/test_long_s25.py backend/tests/test_desk.py
 ```
 I risultati sono deterministici (semi fissi): rieseguendo si ottengono gli stessi numeri.

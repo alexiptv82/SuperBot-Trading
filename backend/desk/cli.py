@@ -318,32 +318,159 @@ def fetch_candles(symbol: str, bar: str = "15m", limit: int = 1000) -> list:
 
 
 # ---- barre native 4h e 1d (tendenze EMA50/EMA200 vere su barre chiuse; vedi desk/signals.py)
-HTF_SPECS = (("4h", "4H", 14_400_000), ("1d", "1Dutc", 86_400_000))   # 1Dutc: giornata 00:00-24:00 UTC
-_HTF_CACHE: dict = {}
+# 4h: /market/candles, 1000 barre = ~166 giorni, una richiesta. 1d: /market/candles ne da' solo ~89, quindi lo storico
+# giornaliero si ricostruisce da /market/history-candles a pagine di 89 giorni all'indietro (verificato sulla VPS il
+# 12/11/2026: 3 pagine = 267 barre 1Dutc chiuse per BTC ed ETH, nessuna interruzione).
+H4_MS, D1_MS = 14_400_000, 86_400_000
+DAILY_GRANULARITY = "1Dutc"                  # giornata 00:00-24:00 UTC
+DAILY_PAGE_DAYS = 89                         # ampiezza di una pagina di history-candles
+DAILY_TARGET_BARS = 260                      # obiettivo: >= 250 barre chiuse (riscaldamento della EMA200)
+DAILY_MAX_PAGES = 4                          # al massimo 4 pagine (356 giorni) per la prima ricostruzione
+HISTORY_PAGES_PER_CYCLE = 12                 # tetto di pagine storiche per ciclo, per tutti i simboli insieme
+HTF_RETRY_MS = 30 * 60_000                   # dopo un errore di rete non si riprova prima di 30 minuti
+_HTF_CACHE: dict = {}                        # (simbolo, "4h"|"1d") -> {"arr", "newest_close", "failed_ms"}
+_HISTORY_BUDGET = {"left": HISTORY_PAGES_PER_CYCLE}
 
 
-def fetch_htf(sym: str, now_ms: int, fetch=None) -> dict:
-    """{"4h": array|None, "1d": array|None}. Si riscarica un timeframe solo quando e' terminata una barra piu' recente
-    di quella in cache: al massimo una richiesta ogni 4 ore (4h) e una al giorno (1d) per simbolo. Un errore di rete
-    lascia None (o l'ultima serie buona, che signals.py dichiarera' UNKNOWN se ormai vecchia): mai dati inventati."""
+def htf_budget_reset() -> None:
+    _HISTORY_BUDGET["left"] = HISTORY_PAGES_PER_CYCLE
+
+
+def _bitget_rows(url: str):
+    """Righe [ts, o, h, l, c, volume] ordinate, oppure None se la richiesta o la risposta non e' valida
+    (None = errore, [] = nessuna barra: le due cose restano distinte)."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            d = json.loads(r.read())
+        if not isinstance(d, dict) or d.get("code") != "00000" or not isinstance(d.get("data"), list):
+            return None
+        return [[float(x) for x in row[:6]] for row in sorted(d["data"], key=lambda r: float(r[0]))]
+    except Exception:
+        return None
+
+
+def fetch_history_page(symbol: str, granularity: str, start_ms: int, end_ms: int, limit: int = 200):
+    """Una pagina di /api/v2/mix/market/history-candles tra start_ms ed end_ms. None = errore."""
+    sym = symbol.upper()
+    if not sym.endswith("USDT"):
+        sym += "USDT"
+    return _bitget_rows(f"{BITGET_BASE}/api/v2/mix/market/history-candles?symbol={sym}&productType=USDT-FUTURES"
+                        f"&granularity={granularity}&startTime={int(start_ms)}&endTime={int(end_ms)}&limit={int(limit)}")
+
+
+def merge_bars(old, new, period_ms: int, now_ms: int):
+    """Unisce due serie: un timestamp per barra (la riga piu' recente scaricata vince), ordine crescente, solo barre
+    CHIUSE e allineate al periodo, righe non finite o con prezzi non positivi scartate. Ritorna (array, conflitti)."""
     import numpy as np
+    by_ts, conflicts = {}, 0
+    for rows in (old, new):
+        for row in ([] if rows is None else list(rows)):
+            try:
+                ts = int(row[0])
+                vals = [float(x) for x in row[1:6]]
+            except (TypeError, ValueError, IndexError, OverflowError):
+                continue
+            if not all(np.isfinite(vals)) or min(vals[:4]) <= 0 or vals[4] < 0:
+                continue
+            if ts % period_ms != 0 or ts + period_ms > now_ms:
+                continue                                     # non allineata, oppure ancora in formazione
+            prev = by_ts.get(ts)
+            if prev is not None and prev != vals:
+                conflicts += 1
+            by_ts[ts] = vals
+    if not by_ts:
+        return np.empty((0, 6)), conflicts
+    return np.array([[ts] + by_ts[ts] for ts in sorted(by_ts)], dtype=float), conflicts
+
+
+def misaligned_rows(rows, period_ms: int) -> int:
+    """Righe il cui timestamp non e' un multiplo del periodo: la risposta non e' della granularita' chiesta."""
+    n = 0
+    for row in rows or []:
+        try:
+            n += int(row[0]) % period_ms != 0
+        except (TypeError, ValueError, IndexError, OverflowError):
+            n += 1
+    return n
+
+
+def fetch_daily_history(sym: str, now_ms: int, page=None) -> dict:
+    """Storico giornaliero 1Dutc chiuso, ricostruito a pagine all'indietro e tenuto in cache.
+
+    Prima volta: fino a DAILY_MAX_PAGES pagine finche' le barre chiuse sono DAILY_TARGET_BARS o la Bitget non ne ha di
+    piu' vecchie (simbolo recente). Poi: una sola pagina, la piu' recente, quando e' terminato un nuovo giorno. Un errore
+    lascia la serie in cache (o niente) e non si riprova per HTF_RETRY_MS. Nessun dato inventato: la serie e' quella che la
+    Bitget ha restituito; se e' corta, signals.py dichiara UNKNOWN."""
+    page = page or fetch_history_page
+    entry = _HTF_CACHE.get((sym, "1d"))
+    expected = now_ms - now_ms % D1_MS                      # fine dell'ultimo giorno che dovrebbe essere chiuso
+    if entry is not None and entry["newest_close"] >= expected:
+        return {"arr": entry["arr"], "status": "cache"}
+    if entry is not None and entry.get("failed_ms") and now_ms - entry["failed_ms"] < HTF_RETRY_MS:
+        return {"arr": entry.get("arr"), "status": "attesa_dopo_errore"}
+    old = entry.get("arr") if entry else None
+    incremental = old is not None and (len(old) >= DAILY_TARGET_BARS or bool(entry.get("exhausted")))
+    pages = 1 if incremental else DAILY_MAX_PAGES
+    collected, end, status = [], expected, "ok"
+    for _ in range(pages):
+        if _HISTORY_BUDGET["left"] <= 0:
+            status = "budget_esaurito"
+            break
+        _HISTORY_BUDGET["left"] -= 1
+        start = end - DAILY_PAGE_DAYS * D1_MS
+        rows = page(sym, DAILY_GRANULARITY, start, end)
+        if rows is not None and misaligned_rows(rows, D1_MS):
+            rows = None                                      # granularita' incoerente: come un errore, niente in cache
+        if rows is None:
+            _HTF_CACHE[(sym, "1d")] = dict(entry or {"arr": None, "newest_close": 0}, failed_ms=now_ms)
+            return {"arr": old, "status": "errore_api"}
+        if not rows:
+            status = "storia_finita"                         # nessuna barra piu' vecchia: simbolo recente
+            break
+        collected += rows
+        end = start
+        merged, _c = merge_bars(old, collected, D1_MS, now_ms)
+        if not incremental and len(merged) >= DAILY_TARGET_BARS:
+            break
+    if not collected and old is None:
+        return {"arr": None, "status": status}
+    merged, conflicts = merge_bars(old, collected, D1_MS, now_ms)
+    newest = int(merged[-1, 0]) + D1_MS if len(merged) else 0
+    complete = status != "budget_esaurito" and (incremental or len(merged) >= DAILY_TARGET_BARS or status == "storia_finita")
+    _HTF_CACHE[(sym, "1d")] = {"arr": merged, "newest_close": newest if complete else 0, "failed_ms": 0,
+                               "conflicts": conflicts,
+                               "exhausted": status == "storia_finita" or bool((entry or {}).get("exhausted"))}
+    return {"arr": merged, "status": status if complete else (status if status != "ok" else "incompleto")}
+
+
+def fetch_htf(sym: str, now_ms: int, fetch=None, page=None) -> dict:
+    """{"4h": array|None, "1d": array|None, "status": {...}} per signals.read_symbol (barre chiuse, allineate, senza
+    duplicati). 4h: una richiesta a /market/candles quando e' terminata una nuova barra 4h; 1d: fetch_daily_history.
+    Errori di rete: si torna all'ultima serie buona (signals.py la dichiara UNKNOWN se ormai vecchia) e si attende."""
+    import numpy as np  # noqa: F401  (usato da merge_bars)
     fetch = fetch or fetch_candles
-    out = {}
-    for key, gran, period in HTF_SPECS:
-        cached = _HTF_CACHE.get((sym, key))
-        expected_last_close = now_ms - now_ms % period            # fine dell'ultima barra che dovrebbe essere chiusa
-        if cached is not None and cached[1] >= expected_last_close:
-            out[key] = cached[0]
-            continue
-        rows = fetch(sym, gran, 1000)
+    out = {"status": {}}
+    entry = _HTF_CACHE.get((sym, "4h"))
+    expected = now_ms - now_ms % H4_MS
+    if entry is not None and entry["newest_close"] >= expected:
+        out["4h"], out["status"]["4h"] = entry["arr"], "cache"
+    elif entry is not None and entry.get("failed_ms") and now_ms - entry["failed_ms"] < HTF_RETRY_MS:
+        out["4h"], out["status"]["4h"] = entry.get("arr"), "attesa_dopo_errore"
+    else:
+        rows = fetch(sym, "4H", 1000)
+        if rows and misaligned_rows(rows, H4_MS):
+            rows = []                                        # non sono barre 4h: rifiutate in blocco
         if rows:
-            arr = np.array(rows, dtype=float)
-            closed = arr[arr[:, 0] + period <= now_ms]
-            newest_close = int(closed[-1, 0]) + period if len(closed) else 0
-            _HTF_CACHE[(sym, key)] = (arr, newest_close)
-            out[key] = arr
+            arr, conflicts = merge_bars(None, rows, H4_MS, now_ms)
+            newest = int(arr[-1, 0]) + H4_MS if len(arr) else 0
+            _HTF_CACHE[(sym, "4h")] = {"arr": arr, "newest_close": newest, "failed_ms": 0, "conflicts": conflicts}
+            out["4h"], out["status"]["4h"] = arr, "ok"
         else:
-            out[key] = cached[0] if cached is not None else None
+            _HTF_CACHE[(sym, "4h")] = dict(entry or {"arr": None, "newest_close": 0}, failed_ms=now_ms)
+            out["4h"], out["status"]["4h"] = (entry or {}).get("arr"), "errore_api"
+    d = fetch_daily_history(sym, now_ms, page)
+    out["1d"], out["status"]["1d"] = d["arr"], d["status"]
     return out
 
 
@@ -1005,6 +1132,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     # carica candele per tutti i simboli
     candles_map: dict = {}
+    htf_budget_reset()               # tetto di pagine storiche Bitget per questo ciclo
     for sym in SYMBOLS:
         arr = fetch_candles(sym)
         if arr:
@@ -1063,17 +1191,23 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # segnali tecnici
     readings_list = []
     readings_map: dict = {}
+    htf_status: dict = {}
     for sym in SYMBOLS:
         arr = candles_map.get(sym)
         if arr is None or len(arr) < 80:
             continue
         htf = fetch_htf(sym, now_ms)
+        htf_status[sym] = htf.get("status", {})
         r = read_symbol(sym, arr, now_ms, bars_4h=htf.get("4h"), bars_1d=htf.get("1d"))
         if r is not None:
             readings_list.append(r)
             readings_map[sym] = r
 
     print(f"[DESK V2] readings validi: {len(readings_list)}/{len(SYMBOLS)} simboli", flush=True)
+    # stato dei dati 4h/1d per simbolo (ok, cache, errore_api, storia_finita, budget_esaurito...) e tendenze lette
+    HB["htf"] = {s: dict(st, trend4h=(readings_map[s].facts.get("trend4h_state") if s in readings_map else None),
+                         trend1d=(readings_map[s].facts.get("trend1d_state") if s in readings_map else None))
+                 for s, st in htf_status.items()}
     open_symbols = set(acc.positions)
 
     # snapshot conto per il prompt
