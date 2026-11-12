@@ -1,3 +1,9 @@
+## 12/11/2026 09:14 — FREEZE/SNAPSHOT AVVIATO, ESITO PENDENTE
+
+Nuova schermata Termius: avviato lo script pinned di freeze/snapshot da main `a1e9722a1a9af32ee045ebf61d7e43858c9a1d5e`; precheck visibile PASS con Falco 8, Toro 3, tre pause PAPER, mandato Brain approvato e Brain exit attivo. **Manca il risultato finale:** nessun `RC84_SNAPSHOT_VERIFIED=PASS`, prompt di ritorno, prova servizi fermati, manifesto/hash/SQLite o rollback concluso. Stato corretto: **avviato, esito pendente**. Non dichiarare backup riuscito, deploy/reset o rimozione pause. [Checkpoint append-only](diario/2026-11-12_RC84-freeze-snapshot-avviato-esito-pendente.md). PR #85 Draft `ab7e0b7d991b8f4bd714fccfec23b09a936e6717` non installata; PAPER ONLY, Fable OFF.
+
+---
+
 ## 12/11/2026 08:30 — 11 PAPER POSIZIONI APERTE, TUTTI PAUSATI, SNAPSHOT PENDING
 
 Utente screenshot preflight Termius `PREFLIGHT_READ_ONLY=COMPLETE`: **Falco active/paused=True OPEN=8, Toro active/paused=True OPEN=3, Brain active/paused=True MANDATE=True, Brain-exit active**, checkout effettivo `/opt/superbot-v3-rc84-stage` SHA **`0e29a73a36f668643da4088178bacb8616a45ac0`** (precedente). Le 11 posizioni sono reali nello stato PAPER; Brain open count non misurato. I tre pause flags sono presenti e i servizi gestiscono ancora uscite (Falco/Toro draining, Brain exit sidecar). Non rimuoverli. La correzione testata PR Draft #85 `ab7e0b7d991b8f4bd714fccfec23b09a936e6717` non è installata.
