@@ -296,11 +296,13 @@ def apply_paused() -> None:
             # A second interrupt must not interrupt the recovery itself.
             previous_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
             previous_term = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            previous_hup = signal.signal(signal.SIGHUP, signal.SIG_IGN)
             try:
                 restored = restore_original_units()
             finally:
                 signal.signal(signal.SIGINT, previous_int)
                 signal.signal(signal.SIGTERM, previous_term)
+                signal.signal(signal.SIGHUP, previous_hup)
             print("RC84_RELEASE_ROLLBACK_UNITS=" + ("PASS" if restored else "FAILED"), flush=True)
             print("RC84_RELEASE_ALL_WORKERS_LEFT_INACTIVE=" +
                   ("PASS" if restored else "NOT_VERIFIED"), flush=True)
@@ -325,11 +327,13 @@ def main() -> int:
             # handlers. The apply_paused() exception handler attempts rollback.
             previous_int = signal.signal(signal.SIGINT, interrupt_as_error)
             previous_term = signal.signal(signal.SIGTERM, interrupt_as_error)
+            previous_hup = signal.signal(signal.SIGHUP, interrupt_as_error)
             try:
                 apply_paused()
             finally:
                 signal.signal(signal.SIGINT, previous_int)
                 signal.signal(signal.SIGTERM, previous_term)
+                signal.signal(signal.SIGHUP, previous_hup)
         return 0
     except (RuntimeError, OSError, ValueError, KeyError, TypeError,
             subprocess.SubprocessError, json.JSONDecodeError, InterruptedError) as e:
