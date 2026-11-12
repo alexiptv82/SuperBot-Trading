@@ -717,12 +717,14 @@ def test_rc84_toro_s25_new_entries_default_off(sandbox, monkeypatch):
     # cli.run_cycle always persists the shared timestamp map, including when
     # S25 is disabled. An EMPTY map means no entry timestamp was recorded.
     assert state.get("last_open_ms") == {}
-    assert not any(
-        json.loads(row).get("ev") == "open"
-        and json.loads(row).get("source") == L.SOURCE
-        for row in (open(os.path.join(d, "learning_log.jsonl")).read().splitlines()
-                    if os.path.exists(os.path.join(d, "learning_log.jsonl")) else [])
-    )
+    log_path = os.path.join(d, "learning_log.jsonl")
+    if os.path.exists(log_path):
+        with open(log_path, encoding="utf-8") as entries:
+            assert not any(
+                json.loads(row).get("ev") == "open"
+                and json.loads(row).get("source") == L.SOURCE
+                for row in entries
+            )
 
 
 def test_full_cycle_falco_keeps_original_strategy_not_shared_s25(sandbox, monkeypatch):
