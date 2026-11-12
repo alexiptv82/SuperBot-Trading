@@ -750,6 +750,31 @@ def test_rc84_valid_empty_claude_reply_is_no_trade_not_rule_fallback(sandbox, mo
     assert state.get("last_open_ms") == {}
 
 
+def test_rc84_same_rules_signal_creates_falco_scalp_but_no_toro_clone(sandbox, monkeypatch):
+    cli, _ = sandbox
+    a15, sig = _cycle_candles()
+    a15b, now, _ = _with_new_hour(a15, sig)
+    _install(cli, monkeypatch, a15b)
+    monkeypatch.setattr(cli, "apply_claude_schedule", lambda *args: False)
+    proposed = {"symbol": "ETH", "action": "open_long",
+                "trade_type": "scalp", "confidence": 99,
+                "leverage": 15, "margin_usd": 80.0,
+                "stop_loss_pct": 0.01, "take_profit_pct": 0.03,
+                "reason": "same synthetic rule signal"}
+    monkeypatch.setattr(cli, "rules_decisions", lambda *args, **kw: [dict(proposed)])
+    monkeypatch.setattr(cli, "PORTFOLIO", cli._make_hawk_config())
+    hawk = {}
+    cli.run_cycle(hawk, now)
+    assert list(cli.make_account(hawk).positions) == ["ETH"]
+    assert cli.make_account(hawk).positions["ETH"].source == "rules"
+    assert cli.make_account(hawk).positions["ETH"].trade_type == "scalp"
+    monkeypatch.setattr(cli, "PORTFOLIO", cli._make_bull_config())
+    bull = {}
+    cli.run_cycle(bull, now)
+    assert cli.make_account(bull).positions == {}
+    assert bull.get("last_open_ms") == {}
+
+
 def test_full_cycle_toro_only_s25_entries(sandbox, monkeypatch):
     cli, d = sandbox
     # S25's stand-alone module remains generic, but the wired PAPER runner
