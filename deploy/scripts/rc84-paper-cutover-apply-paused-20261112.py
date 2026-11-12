@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -286,15 +287,28 @@ def apply_paused() -> None:
         print("RC84_RELEASE_NO_RESET_NO_LIVE=PASS", flush=True)
         print("RC84_RELEASE_PAUSE_FLAGS_RETAINED=3", flush=True)
         print("RC84_RELEASE_MANUAL_RESUME_NOT_AUTHORIZED=True", flush=True)
-    except Exception as exc:
+    except BaseException as exc:
+        # The Android/Termius connection or operator may deliver SIGINT/SIGTERM
+        # halfway through unit replacement. Never leave a mixed source config.
         code = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
         print("RC84_RELEASE_ABORT_REASON=" + code, flush=True)
         if changed:
-            restored = restore_original_units()
+            # A second interrupt must not interrupt the recovery itself.
+            previous_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            previous_term = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            try:
+                restored = restore_original_units()
+            finally:
+                signal.signal(signal.SIGINT, previous_int)
+                signal.signal(signal.SIGTERM, previous_term)
             print("RC84_RELEASE_ROLLBACK_UNITS=" + ("PASS" if restored else "FAILED"), flush=True)
             print("RC84_RELEASE_ALL_WORKERS_LEFT_INACTIVE=" +
                   ("PASS" if restored else "NOT_VERIFIED"), flush=True)
         raise
+
+def interrupt_as_error(signum: int, _frame: object) -> None:
+    raise InterruptedError("operator_signal_" + str(signum))
+
 
 def main() -> int:
     if sys.argv[1:] not in (["--check"], ["--apply-paused"]):
@@ -307,10 +321,18 @@ def main() -> int:
             print("RC84_RELEASE_READ_ONLY_CHECK=PASS", flush=True)
             print("RC84_RELEASE_NOT_APPLIED=True", flush=True)
         else:
-            apply_paused()
+            # Only the write-capable command installs signal-to-exception
+            # handlers. The apply_paused() exception handler attempts rollback.
+            previous_int = signal.signal(signal.SIGINT, interrupt_as_error)
+            previous_term = signal.signal(signal.SIGTERM, interrupt_as_error)
+            try:
+                apply_paused()
+            finally:
+                signal.signal(signal.SIGINT, previous_int)
+                signal.signal(signal.SIGTERM, previous_term)
         return 0
     except (RuntimeError, OSError, ValueError, KeyError, TypeError,
-            subprocess.SubprocessError, json.JSONDecodeError) as e:
+            subprocess.SubprocessError, json.JSONDecodeError, InterruptedError) as e:
         print("RC84_RELEASE_REFUSED=" + (
             str(e) if isinstance(e, RuntimeError) else type(e).__name__), flush=True)
         return 2
