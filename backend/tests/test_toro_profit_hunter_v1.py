@@ -66,6 +66,18 @@ class ToroProfitHunterTest(unittest.TestCase):
         self.assertEqual(maker.on_minute(Candle(102*MINUTE,101,102,99.9,100,2)),"FILLED")
         self.assertEqual(maker.on_minute(Candle(116*MINUTE,101,102,100,101,2)),"FILLED")
 
+    def test_risk_reduces_margin_instead_of_forcing_full_200(self):
+        q, why = self._quote(daily_pnl=-29)
+        self.assertEqual(why, "accepted")
+        self.assertLess(q.margin, 200)
+        self.assertLessEqual(q.worst_case_loss, 1)
+
+    def test_stale_maker_signal_cancels_without_fill(self):
+        q = Quote("BTCUSDT", 200, 7, 1400, 16, 100, 99, 103)
+        order = MakerPending(q, 0, 15*MINUTE, atr=4, invalid_below=98)
+        self.assertEqual(order.on_minute(
+            Candle(MINUTE, 100.5, 101.5, 99.0, 100, 2)), "CANCELLED_INVALIDATED")
+
     def test_maker_marketability_cancels_and_expiry(self):
         q=Quote("BTCUSDT",200,7,1400,16,100,99,103)
         self.assertEqual(MakerPending(q,0,15*MINUTE).on_minute(
