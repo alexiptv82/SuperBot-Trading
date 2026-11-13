@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 15:47 Europe/Rome — Brain PAPER unpaused; Toro Profit Hunter approvato solo come sviluppo
+
+- Nuovo checkpoint: [`diario/2026-11-13_brain-paper-unpaused-toro-profit-hunter-approved-not-implemented.md`](diario/2026-11-13_brain-paper-unpaused-toro-profit-hunter-approved-not-implemented.md).
+- Con autorizzazione separata, script guarded sul commit `9b1abcc…` eseguito via Termius: preflight PASS, rimossa soltanto la pausa Brain, runner attivo, exit healthy, rischio invariato, capitale 2.000 e zero posizioni iniziali.
+- Primo ciclo produttivo completo su 8 simboli ancora non attestato: nessuna prova nuova di decisioni nella run vera, `paper_open`, TP/SL, chiusure o PnL. Non forzare ordini e non avviare un ciclo manuale concorrente.
+- Decisione utente recente: implementare la versione corretta Toro LONG Profit Hunter del rapporto indipendente e, solo dopo verifica, riaccendere Falco/Toro insieme a Brain. È roadmap: nessun branch/commit/test/PR/deploy nuovo verificato; PR #93 resta FAIL e PR #94 NO-GO strategico.
+- Falco invariato. Nessun merge/Actions/reset/LIVE/ordine da questo checkpoint. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. PAPER, storici/EventJournal preservati.
+
+---
+
 ## 13/11/2026 14:44 Europe/Rome — Hotfix Brain installato; E2E isolato PASS; ancora PAUSED
 
 - Nuovo checkpoint: [`diario/2026-11-13_brain-hotfix-deployed-e2e-pass-paused.md`](diario/2026-11-13_brain-hotfix-deployed-e2e-pass-paused.md).
