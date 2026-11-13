@@ -4,7 +4,8 @@ New entries are one-sided, existing SHORT positions retain normal exits.
 All tests use synthetic candles only and cannot send orders.
 """
 from dataclasses import asdict
-import json
+from pathlib import Path
+import hashlib
 
 import pytest
 
@@ -29,6 +30,7 @@ def test_twin_mode_is_opt_in_paper_only_and_invalid_values_block_new(monkeypatch
 def test_twin_has_identical_limits_and_guards_to_hawk_but_independent_state(monkeypatch):
     monkeypatch.setenv("DESK_MODE", "paper")
     monkeypatch.setenv("DESK_BULL_TWIN_MODE", "LONG_ONLY")
+    monkeypatch.delenv("DESK_DATA_DIR", raising=False)
     hawk, bull = cli._make_hawk_config(), cli._make_bull_config()
     assert asdict(bull.limits) == asdict(hawk.limits)
     for key in ("guardrail_min_margin", "guardrail_min_lev", "guardrail_margin_forced",
@@ -156,3 +158,17 @@ def test_twin_has_no_dependency_on_failed_long_mirror():
     src = open(cli.__file__, encoding="utf-8").read()
     assert "from desk.long_mirror_15m import" not in src
     assert "import desk.long_mirror_15m" not in src
+
+
+def test_short_scoring_and_rules_sources_are_byte_identical_to_phase3():
+    """CLI differs for Toro routing, but the SHORT signal/rule formulas remain frozen."""
+    root = Path(__file__).resolve().parents[2]
+    blobs = {
+        "backend/desk/signals.py": "5dca1e58db4bce70c170e60e343d10cf7336bde9",
+        "backend/desk/brain.py": "6a8fc76448e486f7db86edb4bdfb9dbbbf249fcf",
+        "backend/desk/engine.py": "6e2110a55ef39ee49439ff9b085782376224e601",
+    }
+    for path, expected in blobs.items():
+        raw = (root / path).read_bytes()
+        got = hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
+        assert got == expected, f"protected SHORT logic changed: {path}"
