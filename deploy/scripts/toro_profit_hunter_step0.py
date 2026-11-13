@@ -60,8 +60,13 @@ def backtest(hourly: list[Candle], fourh: list[Candle], symbol: str,
     for j in range(1000, len(hourly)-max_w):
         decision_ts = hourly[j-1].ts + HOUR
         month = datetime.fromtimestamp(decision_ts/1000, timezone.utc).strftime("%Y-%m")
-        eligible[month].append(j)
         candidate, why = entry_signal(symbol, hourly[:j], fourh, decision_ts)
+        # The null shares the SAME non-down 4H eligibility as the real signals.
+        # It is matched on symbol (this file), UTC month and eligible regime,
+        # not sampled indiscriminately from violent downturns or warm-up gaps.
+        if why not in {"strong_4h_downtrend", "missing_or_gapped_closed_history",
+                       "4h_stale", "latest_1h_not_closed_at_decision"}:
+            eligible[month].append(j)
         if candidate is not None:
             raw_signals.append((j, month))
     # A signal during an open trade cannot initiate another position on same symbol.
@@ -79,14 +84,17 @@ def backtest(hourly: list[Candle], fourh: list[Candle], symbol: str,
         matched = bool(chosen)
         for seed in range(seeds):
             baseline = []
-            for _,month in chosen:
+            used = []
+            for _, month in chosen:
                 pool = eligible.get(month, ())
-                if not pool:
+                possible = [j for j in pool if all(abs(j-k) >= w for k in used)]
+                if not possible:
                     matched = False
                     break
-                j = pool[rng.randrange(len(pool))]
+                j = possible[rng.randrange(len(possible))]
+                used.append(j)
                 baseline.append(hourly[j+w-1].close/hourly[j].open-1-cost_fraction)
-            if baseline:
+            if len(baseline) == len(chosen) and baseline:
                 null_means.append(mean(baseline))
         avg = mean(net) if net else None
         null_out = (sum(x < avg for x in null_means)/len(null_means)
