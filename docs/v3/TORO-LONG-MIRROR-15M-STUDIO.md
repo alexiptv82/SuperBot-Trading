@@ -238,3 +238,104 @@ PYTHONPATH=backend python3 deploy/scripts/replay_toro_long_mirror_15m.py --days 
 **PORTO SICURO:** branch Fase3 `work/rc84-phase3-falco-short-only-20261112` /
 `f8332c92...`, branch Fase2 frozen `dc98413...`, RC84 VPS `ab7e0b7...` e
 i backup restano invariati. Nessun merge, deploy, unpause, reset o ordine LIVE.
+
+## Backtest su storico REALE Bitget USDT-FUTURES (13 novembre 2026, sul commit `1de3b7d`)
+
+**Verdetto: FAIL.** Nessun vantaggio misurabile su dati reali: il prototipo perde in tutti e tre i mercati, in
+entrambi i periodi, con e senza le conferme 15m. Senza costi il risultato è circa zero; i costi lo rendono negativo.
+Il portafoglio Toro proposto raggiunge la protezione dei 450 USDT in quasi tutte le combinazioni di leva e margine.
+**Toro LONG Mirror 15m non merita di essere sperimentato in PAPER nella forma attuale.** Nessuna soglia è stata
+cambiata per migliorare il risultato.
+
+### Dati
+
+- **Fonte:** endpoint pubblici ufficiali Bitget `GET /api/v2/mix/market/history-candles` (USDT-FUTURES, 15m e 4H nativi)
+  e `history-fund-rate`, senza credenziali. La pagina `bitget.com/data-download` dichiara l'archivio delle candele
+  futures, ma è un'applicazione JavaScript che non espone i file in modo scaricabile da riga di comando: è stato usato
+  l'endpoint documentato, che è la stessa fonte di mercato (Bitget Futures). Script:
+  `deploy/scripts/fetch_bitget_futures_history.py`; manifest con SHA-256 in
+  `docs/v3/toro-long-mirror-15m-backtest/manifest-dati.json` (i CSV non sono nel repository: si rigenerano con lo script).
+- **Periodo:** 12/04/2025 04:00 → 13/11/2026 07:00 UTC, BTCUSDT, ETHUSDT, SOLUSDT. Riscaldamento fino al 22/05/2025
+  (EMA200 4h). **Periodo A (studio)** 22/05/2025 → 15/02/2026; **periodo B (valutazione)** 15/02/2026 → 13/11/2026;
+  data di taglio fissata prima dei risultati.
+- **Integrità** (`integrita-dati.json`): 55.692 candele 15m e 3.480 4H per mercato, esattamente quelle attese;
+  0 buchi, 0 duplicati, 0 OHLCV invalidi, 0 volumi nulli, orari allineati; il 4H nativo coincide **esattamente**
+  (scarto 0) con il 4H ricavato dalle 15m su tutte le 3.480 barre; solo candele chiuse. Nessuna interpolazione.
+- **Difetto trovato e corretto nello scaricatore:** l'endpoint restituisce le candele con *chiusura* ≤ `endTime`; la
+  prima versione paginava con `endTime = prima_apertura − 1` e perdeva una candela ogni 200 (277 buchi regolari,
+  identici sui tre mercati). Corretto prima di ogni analisi e coperto dal test `test_pagination_keeps_every_candle`.
+- **Funding:** l'endpoint pubblico restituisce solo gli ultimi 90 giorni (15/08–13/11/2026; media 0,45–0,61 bp/8h,
+  minimo −1,35, massimo 1,0). Per tutto il periodo si usa la costante del motore PAPER (1 bp/8h), più prudente;
+  sensibilità a 3 bp/8h.
+- **Mercato nel campione:** esposizione LONG semplice A: BTC −37,7%, ETH −20,8%, SOL −50,3%; B: BTC −1,1%,
+  ETH −7,1%, SOL −9,0%. Il campione **non contiene un rialzo prolungato**: i giorni classificati "rialzo" (regime
+  ex-ante, rendimento 7 giorni ≥ +3%) sono 59–94 per mercato e periodo. È un limite del campione da tenere presente.
+
+### Metodo (fissato prima dei risultati)
+
+Decisione alla chiusura della candela 15m con sole candele chiuse; trend 4h dal lettore RC84 invariato sulle 4H
+native chiuse; ingresso all'apertura della candela successiva. Uscite di studio uguali per tutte le varianti: stop
+1,2×ATR 1h (0,3%–3,5%), take profit 1,8×stop, 24 h massimo, stop eseguito a min(stop, apertura) come `engine.on_bar`.
+Costi: commissioni 6 bp/lato, slippage 2 bp/lato, funding 1 bp/8h. Varianti: **PROTOTIPO**; **SENZA_CONFERME** (stesso
+punteggio e soglie, senza le tre conferme 15m nuove); **ORIGINALE_1H** (`signals.read_symbol` congelato, lato LONG,
+soglia del runner 60 BTC/ETH e 70 SOL); **CASUALE** (stesso numero di ingressi, 50 estrazioni per mercato e periodo);
+**ESPOSIZIONE** semplice. Script: `deploy/scripts/backtest_toro_long_mirror_15m.py`; risultati completi in
+`docs/v3/toro-long-mirror-15m-backtest/risultati.json`.
+
+### Risultati per operazione (rendimento netto in % del nozionale, senza leva)
+
+| Periodo | Variante | Operazioni | Media netta | Senza costi (BTC / ETH / SOL) |
+|---|---|---|---|---|
+| A | PROTOTIPO | 990 | −0,171% | −0,018 / +0,025 / +0,022 |
+| A | SENZA_CONFERME | 1.243 | −0,180% | |
+| A | ORIGINALE_1H | 333 | −0,164% | |
+| A | CASUALE | 49.500 | −0,207% | |
+| B | PROTOTIPO | 921 | −0,177% | −0,022 / +0,001 / +0,015 |
+| B | SENZA_CONFERME | 1.207 | −0,192% | |
+| B | ORIGINALE_1H | 249 | −0,289% | |
+| B | CASUALE | 46.050 | −0,213% | |
+
+Dettaglio PROTOTIPO, periodo B (valutazione):
+
+| Mercato | Operazioni | Vincenti | Media | Profit factor | Drawdown (somma %) | Casuali battuti |
+|---|---|---|---|---|---|---|
+| BTC | 295 | 35,3% | −0,194% | 0,64 | 57,3 | 58% |
+| ETH | 309 | 35,9% | −0,167% | 0,75 | 51,7 | 82% |
+| SOL | 317 | 34,1% | −0,170% | 0,78 | 60,0 | 84% |
+
+Per tipo e regime (periodo B, PROTOTIPO): continuazione BTC −0,14%, ETH −0,11%, SOL −0,22%; rimbalzo BTC −0,24%,
+ETH −0,22%, SOL −0,13%; regime rialzo BTC −0,14%, ETH −0,14%, **SOL +0,04% (t 0,24, non significativo)**; ribasso
+−0,24%…−0,43%; laterale −0,16%…−0,20%. Nel periodo A tutti i sottoinsiemi sono negativi (il migliore: ETH
+continuazione −0,03%, profit factor 0,96).
+
+**Costi:** senza costi la media è fra −0,02% e +0,03% per operazione, cioè nessun vantaggio lordo; i costi base
+(~0,17% per operazione con 6–7 ore di durata media) determinano interamente la perdita; con costi doppi −0,32%…−0,36%;
+con funding 3 bp/8h −0,16%…−0,21%.
+
+**Confronto con il caso:** il prototipo perde un po' meno degli ingressi casuali (−0,17% contro −0,21%) e batte fra il
+58% e il 90% delle estrazioni casuali: le conferme filtrano qualche ingresso pessimo, ma non creano un risultato
+positivo. Le conferme 15m riducono le operazioni di circa il 20–25% rispetto a SENZA_CONFERME con media simile.
+L'algoritmo LONG originale 1h è anch'esso negativo (−0,16% in A, −0,29% in B).
+
+### Portafoglio Toro simulato con `engine.PaperAccount` invariato
+
+Limiti: capitale 1.000, massimo 5 posizioni, massimo 200 USDT per operazione, margine totale 1.000, protezione 450,
+stop giornaliero 12%; leva richiesta 3/5/10/15/20/30 (limitata dal tetto dell'asset), margine 100 o 200.
+
+- **PROTOTIPO, periodo B:** con 3× e 100 USDT l'equity finisce a 497 (−503) senza toccare la protezione; **tutte le
+  altre combinazioni raggiungono la protezione dei 450 USDT** (equity finale 385–449, drawdown 55–68%).
+  Periodo A: protezione raggiunta in tutte le 12 combinazioni.
+- Le commissioni da sole valgono da circa 50 a 510 USDT a seconda della combinazione: con un vantaggio lordo nullo, la leva e il
+  margine aumentano solo la velocità della perdita.
+- Nessuna liquidazione con il prototipo (stop stretti); con l'originale 1h a 20–30× si verificano 1–2 liquidazioni.
+- **Con tre mercati non si superano mai 3 posizioni insieme**: i 5 slot non sono raggiungibili con questa lista.
+
+### Conclusione
+
+1. Dati reali affidabili: sì (fonte ufficiale, integrità completa).
+2. Vantaggio misurabile: **no**, né per le continuazioni né per i rimbalzi, in nessun mercato e in nessuno dei due periodi.
+3. Mercati laterali: perdite in tutti i casi, come nel replay sintetico, ma non peggiori degli altri regimi su dati reali.
+4. Leva: nessuna leva rende positivo un vantaggio lordo nullo; la leva alta anticipa la protezione dei 450 USDT.
+5. Verdetto: **FAIL**. Non attivare Toro LONG Mirror 15m in PAPER. Limite dichiarato: il campione è prevalentemente
+   ribassista/laterale; un'eventuale ripresa dello studio richiederebbe una nuova ipotesi, documentata prima di
+   guardare i dati, non la modifica delle soglie attuali su questo stesso campione.

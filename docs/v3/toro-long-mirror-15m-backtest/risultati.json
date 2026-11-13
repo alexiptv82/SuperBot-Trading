@@ -1,0 +1,3398 @@
+{
+ "nota": "STORICO REALE Bitget USDT-FUTURES; uscite e regime sono ipotesi di studio fissate a priori",
+ "periodi": {
+  "riscaldamento": [
+   "2025-04-12 04:00",
+   "2025-05-22 04:00"
+  ],
+  "A_studio": [
+   "2025-05-22 04:00",
+   "2026-02-15 00:00"
+  ],
+  "B_valutazione": [
+   "2026-02-15 00:00",
+   "2026-11-13 07:00"
+  ]
+ },
+ "mercati": {
+  "BTCUSDT": {
+   "stati_prototipo": {
+    "conferme_15m_non_sufficienti": 43506,
+    "soglia_o_contesto_insufficiente": 6653,
+    "LONG_CONTINUATION_CANDIDATE": 869,
+    "LONG_BOUNCE_CANDIDATE": 823
+   },
+   "A": {
+    "esposizione_pct": -37.67,
+    "giorni_regime": {
+     "rialzo": 59,
+     "ribasso": 83,
+     "laterale": 125
+    },
+    "proto": {
+     "tutti": {
+      "n": 314,
+      "win": 0.347,
+      "media_pct": -0.1947,
+      "somma_pct": -61.14,
+      "profit_factor": 0.624,
+      "max_drawdown_pct": 63.44,
+      "t": -3.71
+     },
+     "continuazione": {
+      "n": 143,
+      "win": 0.301,
+      "media_pct": -0.2661,
+      "somma_pct": -38.05,
+      "profit_factor": 0.475,
+      "max_drawdown_pct": 38.05,
+      "t": -4.27
+     },
+     "rimbalzo": {
+      "n": 171,
+      "win": 0.386,
+      "media_pct": -0.135,
+      "somma_pct": -23.09,
+      "profit_factor": 0.744,
+      "max_drawdown_pct": 27.1,
+      "t": -1.67
+     },
+     "regime_rialzo": {
+      "n": 84,
+      "win": 0.381,
+      "media_pct": -0.1523,
+      "somma_pct": -12.79,
+      "profit_factor": 0.663,
+      "max_drawdown_pct": 12.79,
+      "t": -1.79
+     },
+     "regime_ribasso": {
+      "n": 78,
+      "win": 0.269,
+      "media_pct": -0.2886,
+      "somma_pct": -22.51,
+      "profit_factor": 0.585,
+      "max_drawdown_pct": 22.51,
+      "t": -2.02
+     },
+     "regime_laterale": {
+      "n": 152,
+      "win": 0.368,
+      "media_pct": -0.17,
+      "somma_pct": -25.84,
+      "profit_factor": 0.633,
+      "max_drawdown_pct": 31.23,
+      "t": -2.62
+     },
+     "uscite": {
+      "stop": 195,
+      "target": 99,
+      "tempo": 20
+     },
+     "ore_medie": 6.68,
+     "casuale": {
+      "n": 15700,
+      "win": 0.343,
+      "media_pct": -0.2044,
+      "somma_pct": -3209.13,
+      "profit_factor": 0.581,
+      "max_drawdown_pct": 3209.13,
+      "t": -31.78
+     },
+     "quota_casuali_battuti": 0.6,
+     "casuale_regime_rialzo": {
+      "n": 4075,
+      "win": 0.352,
+      "media_pct": -0.1887,
+      "somma_pct": -768.85,
+      "profit_factor": 0.601,
+      "max_drawdown_pct": 768.85,
+      "t": -15.38
+     },
+     "casuale_regime_ribasso": {
+      "n": 3831,
+      "win": 0.339,
+      "media_pct": -0.2387,
+      "somma_pct": -914.62,
+      "profit_factor": 0.575,
+      "max_drawdown_pct": 914.62,
+      "t": -15.84
+     },
+     "casuale_regime_laterale": {
+      "n": 7794,
+      "win": 0.34,
+      "media_pct": -0.1957,
+      "somma_pct": -1525.65,
+      "profit_factor": 0.574,
+      "max_drawdown_pct": 1528.43,
+      "t": -23.12
+     }
+    },
+    "noconf": {
+     "tutti": {
+      "n": 399,
+      "win": 0.341,
+      "media_pct": -0.1925,
+      "somma_pct": -76.79,
+      "profit_factor": 0.628,
+      "max_drawdown_pct": 76.8,
+      "t": -4.15
+     },
+     "continuazione": {
+      "n": 169,
+      "win": 0.308,
+      "media_pct": -0.2348,
+      "somma_pct": -39.68,
+      "profit_factor": 0.512,
+      "max_drawdown_pct": 39.68,
+      "t": -4.16
+     },
+     "rimbalzo": {
+      "n": 230,
+      "win": 0.365,
+      "media_pct": -0.1614,
+      "somma_pct": -37.12,
+      "profit_factor": 0.703,
+      "max_drawdown_pct": 37.98,
+      "t": -2.34
+     },
+     "regime_rialzo": {
+      "n": 104,
+      "win": 0.385,
+      "media_pct": -0.1281,
+      "somma_pct": -13.33,
+      "profit_factor": 0.705,
+      "max_drawdown_pct": 13.33,
+      "t": -1.69
+     },
+     "regime_ribasso": {
+      "n": 98,
+      "win": 0.286,
+      "media_pct": -0.3084,
+      "somma_pct": -30.22,
+      "profit_factor": 0.567,
+      "max_drawdown_pct": 30.22,
+      "t": -2.44
+     },
+     "regime_laterale": {
+      "n": 197,
+      "win": 0.345,
+      "media_pct": -0.1687,
+      "somma_pct": -33.24,
+      "profit_factor": 0.637,
+      "max_drawdown_pct": 36.07,
+      "t": -2.94
+     },
+     "uscite": {
+      "stop": 252,
+      "target": 125,
+      "tempo": 22
+     },
+     "ore_medie": 6.51
+    },
+    "orig": {
+     "tutti": {
+      "n": 115,
+      "win": 0.339,
+      "media_pct": -0.1879,
+      "somma_pct": -21.61,
+      "profit_factor": 0.601,
+      "max_drawdown_pct": 27.22,
+      "t": -2.6
+     },
+     "continuazione": {
+      "n": 110,
+      "win": 0.336,
+      "media_pct": -0.1926,
+      "somma_pct": -21.18,
+      "profit_factor": 0.585,
+      "max_drawdown_pct": 26.79,
+      "t": -2.7
+     },
+     "rimbalzo": {
+      "n": 5,
+      "win": 0.4,
+      "media_pct": -0.0856,
+      "somma_pct": -0.43,
+      "profit_factor": 0.866,
+      "max_drawdown_pct": 2.34,
+      "t": -0.14
+     },
+     "regime_rialzo": {
+      "n": 56,
+      "win": 0.286,
+      "media_pct": -0.2959,
+      "somma_pct": -16.57,
+      "profit_factor": 0.422,
+      "max_drawdown_pct": 16.59,
+      "t": -3.13
+     },
+     "regime_ribasso": {
+      "n": 7,
+      "win": 0.429,
+      "media_pct": -0.2171,
+      "somma_pct": -1.52,
+      "profit_factor": 0.619,
+      "max_drawdown_pct": 2.4,
+      "t": -0.56
+     },
+     "regime_laterale": {
+      "n": 52,
+      "win": 0.385,
+      "media_pct": -0.0677,
+      "somma_pct": -3.52,
+      "profit_factor": 0.837,
+      "max_drawdown_pct": 12.35,
+      "t": -0.6
+     },
+     "uscite": {
+      "stop": 72,
+      "target": 38,
+      "tempo": 5
+     },
+     "ore_medie": 6.05
+    },
+    "costi_zero": {
+     "proto": {
+      "n": 315,
+      "win": 0.365,
+      "media_pct": -0.0182,
+      "somma_pct": -5.74,
+      "profit_factor": 0.956,
+      "max_drawdown_pct": 13.54,
+      "t": -0.34
+     },
+     "noconf": {
+      "n": 395,
+      "win": 0.357,
+      "media_pct": -0.0255,
+      "somma_pct": -10.07,
+      "profit_factor": 0.939,
+      "max_drawdown_pct": 15.92,
+      "t": -0.54
+     },
+     "orig": {
+      "n": 115,
+      "win": 0.365,
+      "media_pct": -0.026,
+      "somma_pct": -2.99,
+      "profit_factor": 0.93,
+      "max_drawdown_pct": 14.65,
+      "t": -0.35
+     }
+    },
+    "costi_doppi": {
+     "proto": {
+      "n": 318,
+      "win": 0.336,
+      "media_pct": -0.351,
+      "somma_pct": -111.63,
+      "profit_factor": 0.43,
+      "max_drawdown_pct": 113.49,
+      "t": -6.8
+     },
+     "noconf": {
+      "n": 405,
+      "win": 0.326,
+      "media_pct": -0.3563,
+      "somma_pct": -144.31,
+      "profit_factor": 0.427,
+      "max_drawdown_pct": 144.31,
+      "t": -7.82
+     },
+     "orig": {
+      "n": 115,
+      "win": 0.313,
+      "media_pct": -0.3826,
+      "somma_pct": -44.0,
+      "profit_factor": 0.355,
+      "max_drawdown_pct": 44.0,
+      "t": -5.45
+     }
+    },
+    "costi_funding_3bp": {
+     "proto": {
+      "n": 314,
+      "win": 0.347,
+      "media_pct": -0.2114,
+      "somma_pct": -66.39,
+      "profit_factor": 0.6,
+      "max_drawdown_pct": 68.64,
+      "t": -4.04
+     },
+     "noconf": {
+      "n": 399,
+      "win": 0.338,
+      "media_pct": -0.2087,
+      "somma_pct": -83.28,
+      "profit_factor": 0.604,
+      "max_drawdown_pct": 83.28,
+      "t": -4.51
+     },
+     "orig": {
+      "n": 115,
+      "win": 0.339,
+      "media_pct": -0.203,
+      "somma_pct": -23.35,
+      "profit_factor": 0.578,
+      "max_drawdown_pct": 28.51,
+      "t": -2.81
+     }
+    }
+   },
+   "B": {
+    "esposizione_pct": -1.08,
+    "giorni_regime": {
+     "rialzo": 68,
+     "ribasso": 64,
+     "laterale": 138
+    },
+    "proto": {
+     "tutti": {
+      "n": 295,
+      "win": 0.353,
+      "media_pct": -0.1943,
+      "somma_pct": -57.31,
+      "profit_factor": 0.639,
+      "max_drawdown_pct": 57.31,
+      "t": -3.45
+     },
+     "continuazione": {
+      "n": 133,
+      "win": 0.361,
+      "media_pct": -0.1372,
+      "somma_pct": -18.25,
+      "profit_factor": 0.713,
+      "max_drawdown_pct": 19.08,
+      "t": -1.77
+     },
+     "rimbalzo": {
+      "n": 162,
+      "win": 0.346,
+      "media_pct": -0.2411,
+      "somma_pct": -39.07,
+      "profit_factor": 0.59,
+      "max_drawdown_pct": 39.07,
+      "t": -3.0
+     },
+     "regime_rialzo": {
+      "n": 97,
+      "win": 0.33,
+      "media_pct": -0.1404,
+      "somma_pct": -13.62,
+      "profit_factor": 0.756,
+      "max_drawdown_pct": 15.06,
+      "t": -1.25
+     },
+     "regime_ribasso": {
+      "n": 45,
+      "win": 0.311,
+      "media_pct": -0.3975,
+      "somma_pct": -17.89,
+      "profit_factor": 0.424,
+      "max_drawdown_pct": 19.66,
+      "t": -2.52
+     },
+     "regime_laterale": {
+      "n": 153,
+      "win": 0.379,
+      "media_pct": -0.1687,
+      "somma_pct": -25.81,
+      "profit_factor": 0.641,
+      "max_drawdown_pct": 25.81,
+      "t": -2.51
+     },
+     "uscite": {
+      "stop": 186,
+      "target": 86,
+      "tempo": 23
+     },
+     "ore_medie": 6.66,
+     "casuale": {
+      "n": 14750,
+      "win": 0.349,
+      "media_pct": -0.2016,
+      "somma_pct": -2974.25,
+      "profit_factor": 0.669,
+      "max_drawdown_pct": 2980.46,
+      "t": -22.47
+     },
+     "quota_casuali_battuti": 0.58,
+     "casuale_regime_rialzo": {
+      "n": 4415,
+      "win": 0.341,
+      "media_pct": -0.2184,
+      "somma_pct": -964.2,
+      "profit_factor": 0.648,
+      "max_drawdown_pct": 965.93,
+      "t": -13.46
+     },
+     "casuale_regime_ribasso": {
+      "n": 4312,
+      "win": 0.301,
+      "media_pct": -0.3302,
+      "somma_pct": -1423.65,
+      "profit_factor": 0.547,
+      "max_drawdown_pct": 1427.29,
+      "t": -18.31
+     },
+     "casuale_regime_laterale": {
+      "n": 6023,
+      "win": 0.39,
+      "media_pct": -0.0974,
+      "somma_pct": -586.4,
+      "profit_factor": 0.811,
+      "max_drawdown_pct": 595.67,
+      "t": -7.44
+     }
+    },
+    "noconf": {
+     "tutti": {
+      "n": 394,
+      "win": 0.355,
+      "media_pct": -0.1769,
+      "somma_pct": -69.71,
+      "profit_factor": 0.667,
+      "max_drawdown_pct": 69.71,
+      "t": -3.63
+     },
+     "continuazione": {
+      "n": 167,
+      "win": 0.371,
+      "media_pct": -0.1404,
+      "somma_pct": -23.45,
+      "profit_factor": 0.708,
+      "max_drawdown_pct": 23.45,
+      "t": -2.04
+     },
+     "rimbalzo": {
+      "n": 227,
+      "win": 0.344,
+      "media_pct": -0.2038,
+      "somma_pct": -46.27,
+      "profit_factor": 0.641,
+      "max_drawdown_pct": 46.27,
+      "t": -3.01
+     },
+     "regime_rialzo": {
+      "n": 123,
+      "win": 0.366,
+      "media_pct": -0.1436,
+      "somma_pct": -17.67,
+      "profit_factor": 0.749,
+      "max_drawdown_pct": 18.06,
+      "t": -1.46
+     },
+     "regime_ribasso": {
+      "n": 68,
+      "win": 0.25,
+      "media_pct": -0.4196,
+      "somma_pct": -28.53,
+      "profit_factor": 0.398,
+      "max_drawdown_pct": 31.82,
+      "t": -3.44
+     },
+     "regime_laterale": {
+      "n": 203,
+      "win": 0.384,
+      "media_pct": -0.1158,
+      "somma_pct": -23.51,
+      "profit_factor": 0.743,
+      "max_drawdown_pct": 23.51,
+      "t": -1.91
+     },
+     "uscite": {
+      "stop": 246,
+      "target": 121,
+      "tempo": 27
+     },
+     "ore_medie": 6.61
+    },
+    "orig": {
+     "tutti": {
+      "n": 94,
+      "win": 0.298,
+      "media_pct": -0.2724,
+      "somma_pct": -25.61,
+      "profit_factor": 0.518,
+      "max_drawdown_pct": 29.55,
+      "t": -3.0
+     },
+     "continuazione": {
+      "n": 94,
+      "win": 0.298,
+      "media_pct": -0.2724,
+      "somma_pct": -25.61,
+      "profit_factor": 0.518,
+      "max_drawdown_pct": 29.55,
+      "t": -3.0
+     },
+     "rimbalzo": {
+      "n": 0
+     },
+     "regime_rialzo": {
+      "n": 55,
+      "win": 0.255,
+      "media_pct": -0.3186,
+      "somma_pct": -17.52,
+      "profit_factor": 0.498,
+      "max_drawdown_pct": 20.77,
+      "t": -2.44
+     },
+     "regime_ribasso": {
+      "n": 0
+     },
+     "regime_laterale": {
+      "n": 39,
+      "win": 0.359,
+      "media_pct": -0.2074,
+      "somma_pct": -8.09,
+      "profit_factor": 0.556,
+      "max_drawdown_pct": 9.45,
+      "t": -1.73
+     },
+     "uscite": {
+      "stop": 66,
+      "target": 25,
+      "tempo": 3
+     },
+     "ore_medie": 5.77
+    },
+    "costi_zero": {
+     "proto": {
+      "n": 292,
+      "win": 0.373,
+      "media_pct": -0.0215,
+      "somma_pct": -6.27,
+      "profit_factor": 0.951,
+      "max_drawdown_pct": 13.75,
+      "t": -0.37
+     },
+     "noconf": {
+      "n": 383,
+      "win": 0.379,
+      "media_pct": -0.0002,
+      "somma_pct": -0.08,
+      "profit_factor": 1.0,
+      "max_drawdown_pct": 19.15,
+      "t": -0.0
+     },
+     "orig": {
+      "n": 94,
+      "win": 0.319,
+      "media_pct": -0.0938,
+      "somma_pct": -8.82,
+      "profit_factor": 0.791,
+      "max_drawdown_pct": 14.22,
+      "t": -1.02
+     }
+    },
+    "costi_doppi": {
+     "proto": {
+      "n": 304,
+      "win": 0.322,
+      "media_pct": -0.3612,
+      "somma_pct": -109.81,
+      "profit_factor": 0.439,
+      "max_drawdown_pct": 109.81,
+      "t": -6.61
+     },
+     "noconf": {
+      "n": 395,
+      "win": 0.332,
+      "media_pct": -0.3429,
+      "somma_pct": -135.43,
+      "profit_factor": 0.461,
+      "max_drawdown_pct": 135.43,
+      "t": -7.1
+     },
+     "orig": {
+      "n": 93,
+      "win": 0.28,
+      "media_pct": -0.4273,
+      "somma_pct": -39.74,
+      "profit_factor": 0.364,
+      "max_drawdown_pct": 42.25,
+      "t": -4.71
+     }
+    },
+    "costi_funding_3bp": {
+     "proto": {
+      "n": 295,
+      "win": 0.339,
+      "media_pct": -0.2109,
+      "somma_pct": -62.22,
+      "profit_factor": 0.615,
+      "max_drawdown_pct": 62.22,
+      "t": -3.76
+     },
+     "noconf": {
+      "n": 394,
+      "win": 0.35,
+      "media_pct": -0.1935,
+      "somma_pct": -76.23,
+      "profit_factor": 0.642,
+      "max_drawdown_pct": 76.23,
+      "t": -3.98
+     },
+     "orig": {
+      "n": 94,
+      "win": 0.298,
+      "media_pct": -0.2869,
+      "somma_pct": -26.97,
+      "profit_factor": 0.499,
+      "max_drawdown_pct": 30.8,
+      "t": -3.17
+     }
+    }
+   }
+  },
+  "ETHUSDT": {
+   "stati_prototipo": {
+    "conferme_15m_non_sufficienti": 43594,
+    "soglia_o_contesto_insufficiente": 6311,
+    "LONG_CONTINUATION_CANDIDATE": 1218,
+    "LONG_BOUNCE_CANDIDATE": 728
+   },
+   "A": {
+    "esposizione_pct": -20.78,
+    "giorni_regime": {
+     "rialzo": 92,
+     "ribasso": 94,
+     "laterale": 81
+    },
+    "proto": {
+     "tutti": {
+      "n": 340,
+      "win": 0.368,
+      "media_pct": -0.1718,
+      "somma_pct": -58.42,
+      "profit_factor": 0.782,
+      "max_drawdown_pct": 73.03,
+      "t": -2.06
+     },
+     "continuazione": {
+      "n": 176,
+      "win": 0.42,
+      "media_pct": -0.0305,
+      "somma_pct": -5.37,
+      "profit_factor": 0.958,
+      "max_drawdown_pct": 21.06,
+      "t": -0.27
+     },
+     "rimbalzo": {
+      "n": 164,
+      "win": 0.311,
+      "media_pct": -0.3235,
+      "somma_pct": -53.05,
+      "profit_factor": 0.621,
+      "max_drawdown_pct": 57.0,
+      "t": -2.67
+     },
+     "regime_rialzo": {
+      "n": 149,
+      "win": 0.409,
+      "media_pct": -0.0392,
+      "somma_pct": -5.83,
+      "profit_factor": 0.947,
+      "max_drawdown_pct": 13.54,
+      "t": -0.31
+     },
+     "regime_ribasso": {
+      "n": 90,
+      "win": 0.311,
+      "media_pct": -0.347,
+      "somma_pct": -31.23,
+      "profit_factor": 0.655,
+      "max_drawdown_pct": 39.16,
+      "t": -1.79
+     },
+     "regime_laterale": {
+      "n": 101,
+      "win": 0.356,
+      "media_pct": -0.2114,
+      "somma_pct": -21.36,
+      "profit_factor": 0.684,
+      "max_drawdown_pct": 27.46,
+      "t": -1.78
+     },
+     "uscite": {
+      "stop": 208,
+      "target": 117,
+      "tempo": 15
+     },
+     "ore_medie": 6.17,
+     "casuale": {
+      "n": 17000,
+      "win": 0.371,
+      "media_pct": -0.1926,
+      "somma_pct": -3273.55,
+      "profit_factor": 0.771,
+      "max_drawdown_pct": 3276.85,
+      "t": -15.66
+     },
+     "quota_casuali_battuti": 0.64,
+     "casuale_regime_rialzo": {
+      "n": 6700,
+      "win": 0.379,
+      "media_pct": -0.1479,
+      "somma_pct": -991.01,
+      "profit_factor": 0.821,
+      "max_drawdown_pct": 997.08,
+      "t": -7.61
+     },
+     "casuale_regime_ribasso": {
+      "n": 4943,
+      "win": 0.337,
+      "media_pct": -0.3111,
+      "somma_pct": -1537.86,
+      "profit_factor": 0.686,
+      "max_drawdown_pct": 1537.86,
+      "t": -12.18
+     },
+     "casuale_regime_laterale": {
+      "n": 5357,
+      "win": 0.392,
+      "media_pct": -0.139,
+      "somma_pct": -744.68,
+      "profit_factor": 0.809,
+      "max_drawdown_pct": 751.71,
+      "t": -7.21
+     }
+    },
+    "noconf": {
+     "tutti": {
+      "n": 428,
+      "win": 0.371,
+      "media_pct": -0.1841,
+      "somma_pct": -78.77,
+      "profit_factor": 0.769,
+      "max_drawdown_pct": 92.81,
+      "t": -2.47
+     },
+     "continuazione": {
+      "n": 208,
+      "win": 0.399,
+      "media_pct": -0.1019,
+      "somma_pct": -21.19,
+      "profit_factor": 0.864,
+      "max_drawdown_pct": 26.27,
+      "t": -0.99
+     },
+     "rimbalzo": {
+      "n": 220,
+      "win": 0.345,
+      "media_pct": -0.2618,
+      "somma_pct": -57.59,
+      "profit_factor": 0.689,
+      "max_drawdown_pct": 69.85,
+      "t": -2.44
+     },
+     "regime_rialzo": {
+      "n": 186,
+      "win": 0.398,
+      "media_pct": -0.1151,
+      "somma_pct": -21.41,
+      "profit_factor": 0.846,
+      "max_drawdown_pct": 23.45,
+      "t": -1.06
+     },
+     "regime_ribasso": {
+      "n": 115,
+      "win": 0.33,
+      "media_pct": -0.3038,
+      "somma_pct": -34.93,
+      "profit_factor": 0.697,
+      "max_drawdown_pct": 48.15,
+      "t": -1.73
+     },
+     "regime_laterale": {
+      "n": 127,
+      "win": 0.37,
+      "media_pct": -0.1766,
+      "somma_pct": -22.43,
+      "profit_factor": 0.739,
+      "max_drawdown_pct": 36.3,
+      "t": -1.57
+     },
+     "uscite": {
+      "stop": 263,
+      "target": 148,
+      "tempo": 17
+     },
+     "ore_medie": 6.26
+    },
+    "orig": {
+     "tutti": {
+      "n": 173,
+      "win": 0.376,
+      "media_pct": -0.1044,
+      "somma_pct": -18.05,
+      "profit_factor": 0.863,
+      "max_drawdown_pct": 31.47,
+      "t": -0.91
+     },
+     "continuazione": {
+      "n": 165,
+      "win": 0.382,
+      "media_pct": -0.0811,
+      "somma_pct": -13.38,
+      "profit_factor": 0.892,
+      "max_drawdown_pct": 26.79,
+      "t": -0.68
+     },
+     "rimbalzo": {
+      "n": 8,
+      "win": 0.25,
+      "media_pct": -0.5846,
+      "somma_pct": -4.68,
+      "profit_factor": 0.402,
+      "max_drawdown_pct": 6.66,
+      "t": -1.19
+     },
+     "regime_rialzo": {
+      "n": 131,
+      "win": 0.389,
+      "media_pct": -0.0499,
+      "somma_pct": -6.53,
+      "profit_factor": 0.934,
+      "max_drawdown_pct": 18.3,
+      "t": -0.37
+     },
+     "regime_ribasso": {
+      "n": 12,
+      "win": 0.25,
+      "media_pct": -0.6741,
+      "somma_pct": -8.09,
+      "profit_factor": 0.382,
+      "max_drawdown_pct": 11.2,
+      "t": -1.6
+     },
+     "regime_laterale": {
+      "n": 30,
+      "win": 0.367,
+      "media_pct": -0.1145,
+      "somma_pct": -3.43,
+      "profit_factor": 0.83,
+      "max_drawdown_pct": 8.5,
+      "t": -0.47
+     },
+     "uscite": {
+      "stop": 106,
+      "target": 62,
+      "tempo": 5
+     },
+     "ore_medie": 6.12
+    },
+    "costi_zero": {
+     "proto": {
+      "n": 331,
+      "win": 0.393,
+      "media_pct": 0.0253,
+      "somma_pct": 8.37,
+      "profit_factor": 1.037,
+      "max_drawdown_pct": 33.78,
+      "t": 0.3
+     },
+     "noconf": {
+      "n": 422,
+      "win": 0.389,
+      "media_pct": -0.0004,
+      "somma_pct": -0.15,
+      "profit_factor": 0.999,
+      "max_drawdown_pct": 43.87,
+      "t": -0.0
+     },
+     "orig": {
+      "n": 170,
+      "win": 0.382,
+      "media_pct": 0.0648,
+      "somma_pct": 11.01,
+      "profit_factor": 1.098,
+      "max_drawdown_pct": 17.98,
+      "t": 0.55
+     }
+    },
+    "costi_doppi": {
+     "proto": {
+      "n": 336,
+      "win": 0.366,
+      "media_pct": -0.3215,
+      "somma_pct": -108.04,
+      "profit_factor": 0.633,
+      "max_drawdown_pct": 111.23,
+      "t": -3.86
+     },
+     "noconf": {
+      "n": 431,
+      "win": 0.364,
+      "media_pct": -0.3477,
+      "somma_pct": -149.84,
+      "profit_factor": 0.609,
+      "max_drawdown_pct": 153.2,
+      "t": -4.76
+     },
+     "orig": {
+      "n": 173,
+      "win": 0.37,
+      "media_pct": -0.2675,
+      "somma_pct": -46.28,
+      "profit_factor": 0.69,
+      "max_drawdown_pct": 49.27,
+      "t": -2.32
+     }
+    },
+    "costi_funding_3bp": {
+     "proto": {
+      "n": 340,
+      "win": 0.368,
+      "media_pct": -0.1872,
+      "somma_pct": -63.66,
+      "profit_factor": 0.765,
+      "max_drawdown_pct": 76.43,
+      "t": -2.25
+     },
+     "noconf": {
+      "n": 428,
+      "win": 0.371,
+      "media_pct": -0.1997,
+      "somma_pct": -85.47,
+      "profit_factor": 0.752,
+      "max_drawdown_pct": 96.99,
+      "t": -2.68
+     },
+     "orig": {
+      "n": 173,
+      "win": 0.376,
+      "media_pct": -0.1197,
+      "somma_pct": -20.7,
+      "profit_factor": 0.844,
+      "max_drawdown_pct": 32.6,
+      "t": -1.04
+     }
+    }
+   },
+   "B": {
+    "esposizione_pct": -7.06,
+    "giorni_regime": {
+     "rialzo": 72,
+     "ribasso": 77,
+     "laterale": 120
+    },
+    "proto": {
+     "tutti": {
+      "n": 309,
+      "win": 0.359,
+      "media_pct": -0.1672,
+      "somma_pct": -51.67,
+      "profit_factor": 0.746,
+      "max_drawdown_pct": 51.67,
+      "t": -2.3
+     },
+     "continuazione": {
+      "n": 152,
+      "win": 0.382,
+      "media_pct": -0.1112,
+      "somma_pct": -16.91,
+      "profit_factor": 0.797,
+      "max_drawdown_pct": 18.43,
+      "t": -1.22
+     },
+     "rimbalzo": {
+      "n": 157,
+      "win": 0.338,
+      "media_pct": -0.2214,
+      "somma_pct": -34.76,
+      "profit_factor": 0.711,
+      "max_drawdown_pct": 35.62,
+      "t": -1.98
+     },
+     "regime_rialzo": {
+      "n": 98,
+      "win": 0.347,
+      "media_pct": -0.1405,
+      "somma_pct": -13.77,
+      "profit_factor": 0.815,
+      "max_drawdown_pct": 16.33,
+      "t": -0.91
+     },
+     "regime_ribasso": {
+      "n": 62,
+      "win": 0.355,
+      "media_pct": -0.2397,
+      "somma_pct": -14.86,
+      "profit_factor": 0.674,
+      "max_drawdown_pct": 19.85,
+      "t": -1.4
+     },
+     "regime_laterale": {
+      "n": 149,
+      "win": 0.369,
+      "media_pct": -0.1546,
+      "somma_pct": -23.03,
+      "profit_factor": 0.723,
+      "max_drawdown_pct": 23.03,
+      "t": -1.81
+     },
+     "uscite": {
+      "stop": 194,
+      "target": 100,
+      "tempo": 15
+     },
+     "ore_medie": 6.19,
+     "casuale": {
+      "n": 15450,
+      "win": 0.354,
+      "media_pct": -0.2163,
+      "somma_pct": -3341.74,
+      "profit_factor": 0.717,
+      "max_drawdown_pct": 3350.84,
+      "t": -18.89
+     },
+     "quota_casuali_battuti": 0.82,
+     "casuale_regime_rialzo": {
+      "n": 4839,
+      "win": 0.342,
+      "media_pct": -0.2552,
+      "somma_pct": -1234.94,
+      "profit_factor": 0.684,
+      "max_drawdown_pct": 1240.35,
+      "t": -12.35
+     },
+     "casuale_regime_ribasso": {
+      "n": 5027,
+      "win": 0.305,
+      "media_pct": -0.3428,
+      "somma_pct": -1723.02,
+      "profit_factor": 0.606,
+      "max_drawdown_pct": 1724.69,
+      "t": -16.22
+     },
+     "casuale_regime_laterale": {
+      "n": 5584,
+      "win": 0.407,
+      "media_pct": -0.0687,
+      "somma_pct": -383.78,
+      "profit_factor": 0.892,
+      "max_drawdown_pct": 417.19,
+      "t": -3.88
+     }
+    },
+    "noconf": {
+     "tutti": {
+      "n": 407,
+      "win": 0.344,
+      "media_pct": -0.2307,
+      "somma_pct": -93.91,
+      "profit_factor": 0.667,
+      "max_drawdown_pct": 93.91,
+      "t": -3.68
+     },
+     "continuazione": {
+      "n": 189,
+      "win": 0.381,
+      "media_pct": -0.1547,
+      "somma_pct": -29.23,
+      "profit_factor": 0.73,
+      "max_drawdown_pct": 29.27,
+      "t": -1.9
+     },
+     "rimbalzo": {
+      "n": 218,
+      "win": 0.312,
+      "media_pct": -0.2967,
+      "somma_pct": -64.68,
+      "profit_factor": 0.628,
+      "max_drawdown_pct": 65.21,
+      "t": -3.18
+     },
+     "regime_rialzo": {
+      "n": 132,
+      "win": 0.318,
+      "media_pct": -0.3052,
+      "somma_pct": -40.29,
+      "profit_factor": 0.633,
+      "max_drawdown_pct": 40.29,
+      "t": -2.39
+     },
+     "regime_ribasso": {
+      "n": 91,
+      "win": 0.308,
+      "media_pct": -0.2892,
+      "somma_pct": -26.32,
+      "profit_factor": 0.623,
+      "max_drawdown_pct": 29.18,
+      "t": -2.06
+     },
+     "regime_laterale": {
+      "n": 184,
+      "win": 0.38,
+      "media_pct": -0.1484,
+      "somma_pct": -27.31,
+      "profit_factor": 0.733,
+      "max_drawdown_pct": 27.31,
+      "t": -1.91
+     },
+     "uscite": {
+      "stop": 264,
+      "target": 125,
+      "tempo": 18
+     },
+     "ore_medie": 6.23
+    },
+    "orig": {
+     "tutti": {
+      "n": 125,
+      "win": 0.296,
+      "media_pct": -0.338,
+      "somma_pct": -42.25,
+      "profit_factor": 0.528,
+      "max_drawdown_pct": 42.43,
+      "t": -3.24
+     },
+     "continuazione": {
+      "n": 125,
+      "win": 0.296,
+      "media_pct": -0.338,
+      "somma_pct": -42.25,
+      "profit_factor": 0.528,
+      "max_drawdown_pct": 42.43,
+      "t": -3.24
+     },
+     "rimbalzo": {
+      "n": 0
+     },
+     "regime_rialzo": {
+      "n": 57,
+      "win": 0.316,
+      "media_pct": -0.2627,
+      "somma_pct": -14.97,
+      "profit_factor": 0.675,
+      "max_drawdown_pct": 17.83,
+      "t": -1.35
+     },
+     "regime_ribasso": {
+      "n": 6,
+      "win": 0.167,
+      "media_pct": -0.5293,
+      "somma_pct": -3.18,
+      "profit_factor": 0.284,
+      "max_drawdown_pct": 4.44,
+      "t": -1.46
+     },
+     "regime_laterale": {
+      "n": 62,
+      "win": 0.29,
+      "media_pct": -0.3888,
+      "somma_pct": -24.11,
+      "profit_factor": 0.382,
+      "max_drawdown_pct": 24.11,
+      "t": -3.64
+     },
+     "uscite": {
+      "stop": 87,
+      "target": 32,
+      "tempo": 6
+     },
+     "ore_medie": 5.86
+    },
+    "costi_zero": {
+     "proto": {
+      "n": 307,
+      "win": 0.368,
+      "media_pct": 0.0012,
+      "somma_pct": 0.38,
+      "profit_factor": 1.002,
+      "max_drawdown_pct": 20.06,
+      "t": 0.02
+     },
+     "noconf": {
+      "n": 399,
+      "win": 0.353,
+      "media_pct": -0.0706,
+      "somma_pct": -28.16,
+      "profit_factor": 0.881,
+      "max_drawdown_pct": 41.9,
+      "t": -1.11
+     },
+     "orig": {
+      "n": 125,
+      "win": 0.32,
+      "media_pct": -0.152,
+      "somma_pct": -19.0,
+      "profit_factor": 0.749,
+      "max_drawdown_pct": 20.69,
+      "t": -1.42
+     }
+    },
+    "costi_doppi": {
+     "proto": {
+      "n": 310,
+      "win": 0.342,
+      "media_pct": -0.3305,
+      "somma_pct": -102.45,
+      "profit_factor": 0.566,
+      "max_drawdown_pct": 102.45,
+      "t": -4.58
+     },
+     "noconf": {
+      "n": 406,
+      "win": 0.323,
+      "media_pct": -0.3959,
+      "somma_pct": -160.74,
+      "profit_factor": 0.503,
+      "max_drawdown_pct": 160.74,
+      "t": -6.36
+     },
+     "orig": {
+      "n": 126,
+      "win": 0.294,
+      "media_pct": -0.4866,
+      "somma_pct": -61.32,
+      "profit_factor": 0.404,
+      "max_drawdown_pct": 61.32,
+      "t": -4.72
+     }
+    },
+    "costi_funding_3bp": {
+     "proto": {
+      "n": 309,
+      "win": 0.356,
+      "media_pct": -0.1827,
+      "somma_pct": -56.45,
+      "profit_factor": 0.726,
+      "max_drawdown_pct": 56.45,
+      "t": -2.52
+     },
+     "noconf": {
+      "n": 407,
+      "win": 0.337,
+      "media_pct": -0.2463,
+      "somma_pct": -100.26,
+      "profit_factor": 0.649,
+      "max_drawdown_pct": 100.26,
+      "t": -3.94
+     },
+     "orig": {
+      "n": 125,
+      "win": 0.296,
+      "media_pct": -0.3527,
+      "somma_pct": -44.09,
+      "profit_factor": 0.513,
+      "max_drawdown_pct": 44.13,
+      "t": -3.4
+     }
+    }
+   }
+  },
+  "SOLUSDT": {
+   "stati_prototipo": {
+    "conferme_15m_non_sufficienti": 43475,
+    "soglia_o_contesto_insufficiente": 6253,
+    "LONG_CONTINUATION_CANDIDATE": 1182,
+    "LONG_BOUNCE_CANDIDATE": 941
+   },
+   "A": {
+    "esposizione_pct": -50.29,
+    "giorni_regime": {
+     "rialzo": 94,
+     "ribasso": 111,
+     "laterale": 62
+    },
+    "proto": {
+     "tutti": {
+      "n": 336,
+      "win": 0.357,
+      "media_pct": -0.1472,
+      "somma_pct": -49.45,
+      "profit_factor": 0.833,
+      "max_drawdown_pct": 60.34,
+      "t": -1.54
+     },
+     "continuazione": {
+      "n": 154,
+      "win": 0.364,
+      "media_pct": -0.1278,
+      "somma_pct": -19.68,
+      "profit_factor": 0.855,
+      "max_drawdown_pct": 25.26,
+      "t": -0.91
+     },
+     "rimbalzo": {
+      "n": 182,
+      "win": 0.352,
+      "media_pct": -0.1635,
+      "somma_pct": -29.76,
+      "profit_factor": 0.814,
+      "max_drawdown_pct": 40.81,
+      "t": -1.25
+     },
+     "regime_rialzo": {
+      "n": 155,
+      "win": 0.342,
+      "media_pct": -0.1845,
+      "somma_pct": -28.6,
+      "profit_factor": 0.793,
+      "max_drawdown_pct": 33.17,
+      "t": -1.35
+     },
+     "regime_ribasso": {
+      "n": 94,
+      "win": 0.351,
+      "media_pct": -0.1431,
+      "somma_pct": -13.45,
+      "profit_factor": 0.855,
+      "max_drawdown_pct": 19.24,
+      "t": -0.68
+     },
+     "regime_laterale": {
+      "n": 87,
+      "win": 0.391,
+      "media_pct": -0.085,
+      "somma_pct": -7.4,
+      "profit_factor": 0.885,
+      "max_drawdown_pct": 27.45,
+      "t": -0.53
+     },
+     "uscite": {
+      "stop": 211,
+      "target": 112,
+      "tempo": 13
+     },
+     "ore_medie": 6.33,
+     "casuale": {
+      "n": 16800,
+      "win": 0.355,
+      "media_pct": -0.2238,
+      "somma_pct": -3760.5,
+      "profit_factor": 0.774,
+      "max_drawdown_pct": 3772.66,
+      "t": -15.48
+     },
+     "quota_casuali_battuti": 0.9,
+     "casuale_regime_rialzo": {
+      "n": 7416,
+      "win": 0.375,
+      "media_pct": -0.1392,
+      "somma_pct": -1032.66,
+      "profit_factor": 0.854,
+      "max_drawdown_pct": 1051.42,
+      "t": -6.38
+     },
+     "casuale_regime_ribasso": {
+      "n": 6017,
+      "win": 0.308,
+      "media_pct": -0.4246,
+      "somma_pct": -2554.74,
+      "profit_factor": 0.63,
+      "max_drawdown_pct": 2560.97,
+      "t": -16.74
+     },
+     "casuale_regime_laterale": {
+      "n": 3367,
+      "win": 0.394,
+      "media_pct": -0.0514,
+      "somma_pct": -173.1,
+      "profit_factor": 0.935,
+      "max_drawdown_pct": 195.68,
+      "t": -1.81
+     }
+    },
+    "noconf": {
+     "tutti": {
+      "n": 416,
+      "win": 0.361,
+      "media_pct": -0.1632,
+      "somma_pct": -67.91,
+      "profit_factor": 0.813,
+      "max_drawdown_pct": 84.15,
+      "t": -1.93
+     },
+     "continuazione": {
+      "n": 165,
+      "win": 0.382,
+      "media_pct": -0.0861,
+      "somma_pct": -14.21,
+      "profit_factor": 0.9,
+      "max_drawdown_pct": 20.67,
+      "t": -0.63
+     },
+     "rimbalzo": {
+      "n": 251,
+      "win": 0.347,
+      "media_pct": -0.2139,
+      "somma_pct": -53.7,
+      "profit_factor": 0.758,
+      "max_drawdown_pct": 77.09,
+      "t": -1.98
+     },
+     "regime_rialzo": {
+      "n": 181,
+      "win": 0.348,
+      "media_pct": -0.1917,
+      "somma_pct": -34.69,
+      "profit_factor": 0.781,
+      "max_drawdown_pct": 35.53,
+      "t": -1.56
+     },
+     "regime_ribasso": {
+      "n": 129,
+      "win": 0.341,
+      "media_pct": -0.2167,
+      "somma_pct": -27.95,
+      "profit_factor": 0.783,
+      "max_drawdown_pct": 39.64,
+      "t": -1.24
+     },
+     "regime_laterale": {
+      "n": 106,
+      "win": 0.406,
+      "media_pct": -0.0496,
+      "somma_pct": -5.26,
+      "profit_factor": 0.932,
+      "max_drawdown_pct": 28.65,
+      "t": -0.34
+     },
+     "uscite": {
+      "stop": 259,
+      "target": 137,
+      "tempo": 20
+     },
+     "ore_medie": 6.5
+    },
+    "orig": {
+     "tutti": {
+      "n": 45,
+      "win": 0.289,
+      "media_pct": -0.3312,
+      "somma_pct": -14.9,
+      "profit_factor": 0.678,
+      "max_drawdown_pct": 20.3,
+      "t": -1.21
+     },
+     "continuazione": {
+      "n": 45,
+      "win": 0.289,
+      "media_pct": -0.3312,
+      "somma_pct": -14.9,
+      "profit_factor": 0.678,
+      "max_drawdown_pct": 20.3,
+      "t": -1.21
+     },
+     "rimbalzo": {
+      "n": 0
+     },
+     "regime_rialzo": {
+      "n": 42,
+      "win": 0.286,
+      "media_pct": -0.3095,
+      "somma_pct": -13.0,
+      "profit_factor": 0.698,
+      "max_drawdown_pct": 18.4,
+      "t": -1.07
+     },
+     "regime_ribasso": {
+      "n": 2,
+      "win": 0.0,
+      "media_pct": -1.5917,
+      "somma_pct": -3.18,
+      "profit_factor": 0.0,
+      "max_drawdown_pct": 3.18,
+      "t": null
+     },
+     "regime_laterale": {
+      "n": 1,
+      "win": 1.0,
+      "media_pct": 1.2818,
+      "somma_pct": 1.28,
+      "profit_factor": null,
+      "max_drawdown_pct": 0.0,
+      "t": null
+     },
+     "uscite": {
+      "stop": 32,
+      "target": 13,
+      "tempo": 0
+     },
+     "ore_medie": 6.34
+    },
+    "costi_zero": {
+     "proto": {
+      "n": 338,
+      "win": 0.367,
+      "media_pct": 0.0223,
+      "somma_pct": 7.53,
+      "profit_factor": 1.029,
+      "max_drawdown_pct": 27.5,
+      "t": 0.23
+     },
+     "noconf": {
+      "n": 418,
+      "win": 0.371,
+      "media_pct": 0.011,
+      "somma_pct": 4.58,
+      "profit_factor": 1.014,
+      "max_drawdown_pct": 53.65,
+      "t": 0.13
+     },
+     "orig": {
+      "n": 45,
+      "win": 0.289,
+      "media_pct": -0.1834,
+      "somma_pct": -8.25,
+      "profit_factor": 0.802,
+      "max_drawdown_pct": 15.68,
+      "t": -0.67
+     }
+    },
+    "costi_doppi": {
+     "proto": {
+      "n": 335,
+      "win": 0.34,
+      "media_pct": -0.3334,
+      "somma_pct": -111.69,
+      "profit_factor": 0.665,
+      "max_drawdown_pct": 121.39,
+      "t": -3.49
+     },
+     "noconf": {
+      "n": 417,
+      "win": 0.345,
+      "media_pct": -0.3428,
+      "somma_pct": -142.93,
+      "profit_factor": 0.651,
+      "max_drawdown_pct": 154.47,
+      "t": -4.09
+     },
+     "orig": {
+      "n": 45,
+      "win": 0.289,
+      "media_pct": -0.4788,
+      "somma_pct": -21.55,
+      "profit_factor": 0.577,
+      "max_drawdown_pct": 26.63,
+      "t": -1.75
+     }
+    },
+    "costi_funding_3bp": {
+     "proto": {
+      "n": 336,
+      "win": 0.357,
+      "media_pct": -0.163,
+      "somma_pct": -54.77,
+      "profit_factor": 0.816,
+      "max_drawdown_pct": 65.52,
+      "t": -1.7
+     },
+     "noconf": {
+      "n": 416,
+      "win": 0.361,
+      "media_pct": -0.1795,
+      "somma_pct": -74.67,
+      "profit_factor": 0.797,
+      "max_drawdown_pct": 87.1,
+      "t": -2.13
+     },
+     "orig": {
+      "n": 45,
+      "win": 0.289,
+      "media_pct": -0.347,
+      "somma_pct": -15.62,
+      "profit_factor": 0.665,
+      "max_drawdown_pct": 20.94,
+      "t": -1.27
+     }
+    }
+   },
+   "B": {
+    "esposizione_pct": -8.99,
+    "giorni_regime": {
+     "rialzo": 82,
+     "ribasso": 91,
+     "laterale": 96
+    },
+    "proto": {
+     "tutti": {
+      "n": 317,
+      "win": 0.341,
+      "media_pct": -0.1698,
+      "somma_pct": -53.84,
+      "profit_factor": 0.781,
+      "max_drawdown_pct": 59.95,
+      "t": -1.98
+     },
+     "continuazione": {
+      "n": 140,
+      "win": 0.321,
+      "media_pct": -0.2158,
+      "somma_pct": -30.22,
+      "profit_factor": 0.725,
+      "max_drawdown_pct": 35.49,
+      "t": -1.71
+     },
+     "rimbalzo": {
+      "n": 177,
+      "win": 0.356,
+      "media_pct": -0.1334,
+      "somma_pct": -23.62,
+      "profit_factor": 0.827,
+      "max_drawdown_pct": 29.73,
+      "t": -1.14
+     },
+     "regime_rialzo": {
+      "n": 119,
+      "win": 0.42,
+      "media_pct": 0.0392,
+      "somma_pct": 4.67,
+      "profit_factor": 1.05,
+      "max_drawdown_pct": 14.58,
+      "t": 0.24
+     },
+     "regime_ribasso": {
+      "n": 84,
+      "win": 0.25,
+      "media_pct": -0.4291,
+      "somma_pct": -36.04,
+      "profit_factor": 0.49,
+      "max_drawdown_pct": 40.21,
+      "t": -3.0
+     },
+     "regime_laterale": {
+      "n": 114,
+      "win": 0.325,
+      "media_pct": -0.1971,
+      "somma_pct": -22.47,
+      "profit_factor": 0.728,
+      "max_drawdown_pct": 25.49,
+      "t": -1.51
+     },
+     "uscite": {
+      "stop": 203,
+      "target": 100,
+      "tempo": 14
+     },
+     "ore_medie": 6.34,
+     "casuale": {
+      "n": 15850,
+      "win": 0.352,
+      "media_pct": -0.2214,
+      "somma_pct": -3509.38,
+      "profit_factor": 0.738,
+      "max_drawdown_pct": 3512.97,
+      "t": -17.42
+     },
+     "quota_casuali_battuti": 0.84,
+     "casuale_regime_rialzo": {
+      "n": 5091,
+      "win": 0.361,
+      "media_pct": -0.222,
+      "somma_pct": -1130.45,
+      "profit_factor": 0.746,
+      "max_drawdown_pct": 1139.92,
+      "t": -9.75
+     },
+     "casuale_regime_ribasso": {
+      "n": 5405,
+      "win": 0.355,
+      "media_pct": -0.2186,
+      "somma_pct": -1181.68,
+      "profit_factor": 0.752,
+      "max_drawdown_pct": 1200.58,
+      "t": -9.43
+     },
+     "casuale_regime_laterale": {
+      "n": 5354,
+      "win": 0.34,
+      "media_pct": -0.2236,
+      "somma_pct": -1197.25,
+      "profit_factor": 0.716,
+      "max_drawdown_pct": 1201.77,
+      "t": -11.19
+     }
+    },
+    "noconf": {
+     "tutti": {
+      "n": 406,
+      "win": 0.345,
+      "media_pct": -0.169,
+      "somma_pct": -68.61,
+      "profit_factor": 0.783,
+      "max_drawdown_pct": 70.66,
+      "t": -2.23
+     },
+     "continuazione": {
+      "n": 156,
+      "win": 0.353,
+      "media_pct": -0.1075,
+      "somma_pct": -16.77,
+      "profit_factor": 0.848,
+      "max_drawdown_pct": 24.91,
+      "t": -0.92
+     },
+     "rimbalzo": {
+      "n": 250,
+      "win": 0.34,
+      "media_pct": -0.2074,
+      "somma_pct": -51.85,
+      "profit_factor": 0.748,
+      "max_drawdown_pct": 53.89,
+      "t": -2.08
+     },
+     "regime_rialzo": {
+      "n": 150,
+      "win": 0.393,
+      "media_pct": -0.0478,
+      "somma_pct": -7.18,
+      "profit_factor": 0.941,
+      "max_drawdown_pct": 25.96,
+      "t": -0.34
+     },
+     "regime_ribasso": {
+      "n": 114,
+      "win": 0.281,
+      "media_pct": -0.329,
+      "somma_pct": -37.51,
+      "profit_factor": 0.597,
+      "max_drawdown_pct": 45.02,
+      "t": -2.51
+     },
+     "regime_laterale": {
+      "n": 142,
+      "win": 0.345,
+      "media_pct": -0.1685,
+      "somma_pct": -23.93,
+      "profit_factor": 0.764,
+      "max_drawdown_pct": 25.99,
+      "t": -1.43
+     },
+     "uscite": {
+      "stop": 259,
+      "target": 132,
+      "tempo": 15
+     },
+     "ore_medie": 6.45
+    },
+    "orig": {
+     "tutti": {
+      "n": 30,
+      "win": 0.367,
+      "media_pct": -0.1359,
+      "somma_pct": -4.08,
+      "profit_factor": 0.815,
+      "max_drawdown_pct": 6.52,
+      "t": -0.5
+     },
+     "continuazione": {
+      "n": 30,
+      "win": 0.367,
+      "media_pct": -0.1359,
+      "somma_pct": -4.08,
+      "profit_factor": 0.815,
+      "max_drawdown_pct": 6.52,
+      "t": -0.5
+     },
+     "rimbalzo": {
+      "n": 0
+     },
+     "regime_rialzo": {
+      "n": 20,
+      "win": 0.4,
+      "media_pct": 0.014,
+      "somma_pct": 0.28,
+      "profit_factor": 1.019,
+      "max_drawdown_pct": 5.3,
+      "t": 0.04
+     },
+     "regime_ribasso": {
+      "n": 1,
+      "win": 0.0,
+      "media_pct": -1.2423,
+      "somma_pct": -1.24,
+      "profit_factor": 0.0,
+      "max_drawdown_pct": 1.24,
+      "t": null
+     },
+     "regime_laterale": {
+      "n": 9,
+      "win": 0.333,
+      "media_pct": -0.3461,
+      "somma_pct": -3.12,
+      "profit_factor": 0.462,
+      "max_drawdown_pct": 5.5,
+      "t": -1.02
+     },
+     "uscite": {
+      "stop": 19,
+      "target": 10,
+      "tempo": 1
+     },
+     "ore_medie": 5.13
+    },
+    "costi_zero": {
+     "proto": {
+      "n": 315,
+      "win": 0.356,
+      "media_pct": 0.0145,
+      "somma_pct": 4.57,
+      "profit_factor": 1.022,
+      "max_drawdown_pct": 24.97,
+      "t": 0.17
+     },
+     "noconf": {
+      "n": 406,
+      "win": 0.362,
+      "media_pct": 0.0007,
+      "somma_pct": 0.28,
+      "profit_factor": 1.001,
+      "max_drawdown_pct": 24.94,
+      "t": 0.01
+     },
+     "orig": {
+      "n": 30,
+      "win": 0.367,
+      "media_pct": 0.0111,
+      "somma_pct": 0.33,
+      "profit_factor": 1.017,
+      "max_drawdown_pct": 4.68,
+      "t": 0.04
+     }
+    },
+    "costi_doppi": {
+     "proto": {
+      "n": 321,
+      "win": 0.327,
+      "media_pct": -0.3412,
+      "somma_pct": -109.54,
+      "profit_factor": 0.614,
+      "max_drawdown_pct": 113.1,
+      "t": -4.04
+     },
+     "noconf": {
+      "n": 403,
+      "win": 0.34,
+      "media_pct": -0.3316,
+      "somma_pct": -133.63,
+      "profit_factor": 0.623,
+      "max_drawdown_pct": 135.52,
+      "t": -4.38
+     },
+     "orig": {
+      "n": 30,
+      "win": 0.333,
+      "media_pct": -0.3951,
+      "somma_pct": -11.85,
+      "profit_factor": 0.55,
+      "max_drawdown_pct": 12.64,
+      "t": -1.5
+     }
+    },
+    "costi_funding_3bp": {
+     "proto": {
+      "n": 317,
+      "win": 0.338,
+      "media_pct": -0.1857,
+      "somma_pct": -58.86,
+      "profit_factor": 0.764,
+      "max_drawdown_pct": 64.69,
+      "t": -2.17
+     },
+     "noconf": {
+      "n": 406,
+      "win": 0.342,
+      "media_pct": -0.1851,
+      "somma_pct": -75.16,
+      "profit_factor": 0.765,
+      "max_drawdown_pct": 77.19,
+      "t": -2.44
+     },
+     "orig": {
+      "n": 30,
+      "win": 0.367,
+      "media_pct": -0.1488,
+      "somma_pct": -4.46,
+      "profit_factor": 0.799,
+      "max_drawdown_pct": 6.74,
+      "t": -0.55
+     }
+    }
+   }
+  }
+ },
+ "portafoglio": {
+  "A_proto": [
+   {
+    "leva_richiesta": 3,
+    "margine": 100.0,
+    "equity_finale": 445.3,
+    "pnl_netto": -554.7,
+    "equity_minima": 445.3,
+    "max_drawdown_pct": 56.32,
+    "operazioni": 1012,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 88
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 838,
+    "protezione_450_ms": 1770359400000,
+    "commissioni": 364.22,
+    "funding": 24.03,
+    "win": 0.363,
+    "profit_factor": 0.748
+   },
+   {
+    "leva_richiesta": 3,
+    "margine": 200.0,
+    "equity_finale": 447.97,
+    "pnl_netto": -552.03,
+    "equity_minima": 447.97,
+    "max_drawdown_pct": 56.88,
+    "operazioni": 696,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 874
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 9196,
+    "protezione_450_ms": 1762837200000,
+    "commissioni": 496.36,
+    "funding": 32.31,
+    "win": 0.378,
+    "profit_factor": 0.812
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 100.0,
+    "equity_finale": 446.29,
+    "pnl_netto": -553.71,
+    "equity_minima": 446.29,
+    "max_drawdown_pct": 56.77,
+    "operazioni": 712,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 826
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 8570,
+    "protezione_450_ms": 1763400600000,
+    "commissioni": 427.14,
+    "funding": 27.95,
+    "win": 0.374,
+    "profit_factor": 0.786
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 200.0,
+    "equity_finale": 442.44,
+    "pnl_netto": -557.56,
+    "equity_minima": 442.44,
+    "max_drawdown_pct": 58.45,
+    "operazioni": 427,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 1634
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 15888,
+    "protezione_450_ms": 1756814400000,
+    "commissioni": 505.11,
+    "funding": 31.93,
+    "win": 0.368,
+    "profit_factor": 0.82
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 100.0,
+    "equity_finale": 443.96,
+    "pnl_netto": -556.04,
+    "equity_minima": 443.96,
+    "max_drawdown_pct": 58.31,
+    "operazioni": 427,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 1634
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 15887,
+    "protezione_450_ms": 1756814400000,
+    "commissioni": 512.39,
+    "funding": 32.66,
+    "win": 0.368,
+    "profit_factor": 0.823
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 200.0,
+    "equity_finale": 441.83,
+    "pnl_netto": -558.17,
+    "equity_minima": 422.12,
+    "max_drawdown_pct": 62.64,
+    "operazioni": 122,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 6,
+     "capitale sotto la soglia minima": 2761
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 22490,
+    "protezione_450_ms": 1750750200000,
+    "commissioni": 289.56,
+    "funding": 18.51,
+    "win": 0.328,
+    "profit_factor": 0.694
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 100.0,
+    "equity_finale": 443.52,
+    "pnl_netto": -556.48,
+    "equity_minima": 443.52,
+    "max_drawdown_pct": 59.58,
+    "operazioni": 154,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 6,
+     "capitale sotto la soglia minima": 2677
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 21495,
+    "protezione_450_ms": 1751795100000,
+    "commissioni": 277.04,
+    "funding": 18.06,
+    "win": 0.318,
+    "profit_factor": 0.665
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 200.0,
+    "equity_finale": 429.5,
+    "pnl_netto": -570.5,
+    "equity_minima": 429.5,
+    "max_drawdown_pct": 64.05,
+    "operazioni": 74,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 26,
+     "capitale sotto la soglia minima": 2884
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 23967,
+    "protezione_450_ms": 1749195000000,
+    "commissioni": 261.93,
+    "funding": 16.69,
+    "win": 0.311,
+    "profit_factor": 0.667
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 100.0,
+    "equity_finale": 444.35,
+    "pnl_netto": -555.65,
+    "equity_minima": 444.35,
+    "max_drawdown_pct": 60.67,
+    "operazioni": 113,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 2804
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 22713,
+    "protezione_450_ms": 1750695300000,
+    "commissioni": 271.04,
+    "funding": 16.45,
+    "win": 0.319,
+    "profit_factor": 0.681
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 200.0,
+    "equity_finale": 422.29,
+    "pnl_netto": -577.71,
+    "equity_minima": 422.29,
+    "max_drawdown_pct": 66.47,
+    "operazioni": 41,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 11,
+     "capitale sotto la soglia minima": 2980
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 24649,
+    "protezione_450_ms": 1749039300000,
+    "commissioni": 191.54,
+    "funding": 13.78,
+    "win": 0.244,
+    "profit_factor": 0.588
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 100.0,
+    "equity_finale": 430.74,
+    "pnl_netto": -569.26,
+    "equity_minima": 430.74,
+    "max_drawdown_pct": 63.48,
+    "operazioni": 75,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 26,
+     "capitale sotto la soglia minima": 2883
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 23897,
+    "protezione_450_ms": 1749741300000,
+    "commissioni": 254.82,
+    "funding": 16.04,
+    "win": 0.307,
+    "profit_factor": 0.656
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 200.0,
+    "equity_finale": 445.76,
+    "pnl_netto": -554.24,
+    "equity_minima": 445.76,
+    "max_drawdown_pct": 67.19,
+    "operazioni": 33,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 3021
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 24922,
+    "protezione_450_ms": 1748741400000,
+    "commissioni": 223.01,
+    "funding": 15.78,
+    "win": 0.273,
+    "profit_factor": 0.648
+   }
+  ],
+  "A_noconf": [
+   {
+    "leva_richiesta": 3,
+    "margine": 100.0,
+    "equity_finale": 449.32,
+    "pnl_netto": -550.68,
+    "equity_minima": 442.93,
+    "max_drawdown_pct": 56.79,
+    "operazioni": 1186,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 797
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 3548,
+    "protezione_450_ms": 1767899700000,
+    "commissioni": 426.9,
+    "funding": 26.87,
+    "win": 0.368,
+    "profit_factor": 0.784
+   },
+   {
+    "leva_richiesta": 3,
+    "margine": 200.0,
+    "equity_finale": 444.13,
+    "pnl_netto": -555.87,
+    "equity_minima": 444.13,
+    "max_drawdown_pct": 57.71,
+    "operazioni": 839,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 2261
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 9559,
+    "protezione_450_ms": 1762510500000,
+    "commissioni": 601.57,
+    "funding": 38.05,
+    "win": 0.38,
+    "profit_factor": 0.842
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 100.0,
+    "equity_finale": 447.13,
+    "pnl_netto": -552.87,
+    "equity_minima": 447.13,
+    "max_drawdown_pct": 57.08,
+    "operazioni": 879,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 2081
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 8690,
+    "protezione_450_ms": 1763292600000,
+    "commissioni": 527.41,
+    "funding": 33.6,
+    "win": 0.379,
+    "profit_factor": 0.824
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 200.0,
+    "equity_finale": 446.07,
+    "pnl_netto": -553.93,
+    "equity_minima": 438.14,
+    "max_drawdown_pct": 59.57,
+    "operazioni": 730,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 3,
+     "capitale sotto la soglia minima": 2680
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 11464,
+    "protezione_450_ms": 1760717700000,
+    "commissioni": 867.6,
+    "funding": 55.6,
+    "win": 0.385,
+    "profit_factor": 0.889
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 100.0,
+    "equity_finale": 444.12,
+    "pnl_netto": -555.88,
+    "equity_minima": 444.12,
+    "max_drawdown_pct": 59.02,
+    "operazioni": 724,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 3,
+     "capitale sotto la soglia minima": 2726
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 11653,
+    "protezione_450_ms": 1760681700000,
+    "commissioni": 869.02,
+    "funding": 54.87,
+    "win": 0.385,
+    "profit_factor": 0.889
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 200.0,
+    "equity_finale": 438.12,
+    "pnl_netto": -561.88,
+    "equity_minima": 438.12,
+    "max_drawdown_pct": 62.48,
+    "operazioni": 329,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 28,
+     "capitale sotto la soglia minima": 5895
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 19597,
+    "protezione_450_ms": 1753604100000,
+    "commissioni": 780.55,
+    "funding": 48.31,
+    "win": 0.383,
+    "profit_factor": 0.876
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 100.0,
+    "equity_finale": 429.63,
+    "pnl_netto": -570.37,
+    "equity_minima": 429.63,
+    "max_drawdown_pct": 61.83,
+    "operazioni": 512,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 2,
+     "capitale sotto la soglia minima": 4216
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 15928,
+    "protezione_450_ms": 1756814400000,
+    "commissioni": 921.85,
+    "funding": 58.35,
+    "win": 0.381,
+    "profit_factor": 0.894
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 200.0,
+    "equity_finale": 445.41,
+    "pnl_netto": -554.59,
+    "equity_minima": 445.41,
+    "max_drawdown_pct": 64.41,
+    "operazioni": 54,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 10,
+     "capitale sotto la soglia minima": 8082
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 24521,
+    "protezione_450_ms": 1749131100000,
+    "commissioni": 193.69,
+    "funding": 12.4,
+    "win": 0.241,
+    "profit_factor": 0.587
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 100.0,
+    "equity_finale": 431.52,
+    "pnl_netto": -568.48,
+    "equity_minima": 431.52,
+    "max_drawdown_pct": 63.04,
+    "operazioni": 341,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 28,
+     "capitale sotto la soglia minima": 5795
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 19485,
+    "protezione_450_ms": 1753648200000,
+    "commissioni": 818.58,
+    "funding": 50.49,
+    "win": 0.381,
+    "profit_factor": 0.879
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 200.0,
+    "equity_finale": 385.52,
+    "pnl_netto": -614.48,
+    "equity_minima": 385.52,
+    "max_drawdown_pct": 71.12,
+    "operazioni": 51,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 19,
+     "capitale sotto la soglia minima": 8082
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 24632,
+    "protezione_450_ms": 1749130200000,
+    "commissioni": 239.0,
+    "funding": 16.14,
+    "win": 0.255,
+    "profit_factor": 0.63
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 100.0,
+    "equity_finale": 428.26,
+    "pnl_netto": -571.74,
+    "equity_minima": 428.26,
+    "max_drawdown_pct": 64.29,
+    "operazioni": 54,
+    "aperture_rifiutate": {
+     "stop troppo lontano (liquidazione verrebbe prima)": 5,
+     "stop giornaliero raggiunto": 10,
+     "capitale sotto la soglia minima": 8082
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 24522,
+    "protezione_450_ms": 1749130200000,
+    "commissioni": 184.57,
+    "funding": 11.61,
+    "win": 0.241,
+    "profit_factor": 0.549
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 200.0,
+    "equity_finale": 427.74,
+    "pnl_netto": -572.26,
+    "equity_minima": 427.74,
+    "max_drawdown_pct": 69.41,
+    "operazioni": 34,
+    "aperture_rifiutate": {
+     "stop troppo lontano (liquidazione verrebbe prima)": 5,
+     "stop giornaliero raggiunto": 4,
+     "capitale sotto la soglia minima": 8191
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 24999,
+    "protezione_450_ms": 1748757600000,
+    "commissioni": 232.61,
+    "funding": 17.19,
+    "win": 0.265,
+    "profit_factor": 0.652
+   }
+  ],
+  "A_orig": [
+   {
+    "leva_richiesta": 3,
+    "margine": 100.0,
+    "equity_finale": 813.91,
+    "pnl_netto": -186.09,
+    "equity_minima": 812.03,
+    "max_drawdown_pct": 20.43,
+    "operazioni": 343,
+    "aperture_rifiutate": {},
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 0,
+    "protezione_450_ms": null,
+    "commissioni": 123.45,
+    "funding": 7.93,
+    "win": 0.353,
+    "profit_factor": 0.743
+   },
+   {
+    "leva_richiesta": 3,
+    "margine": 200.0,
+    "equity_finale": 627.81,
+    "pnl_netto": -372.19,
+    "equity_minima": 624.07,
+    "max_drawdown_pct": 40.05,
+    "operazioni": 343,
+    "aperture_rifiutate": {},
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 0,
+    "protezione_450_ms": null,
+    "commissioni": 246.9,
+    "funding": 15.86,
+    "win": 0.353,
+    "profit_factor": 0.743
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 100.0,
+    "equity_finale": 689.85,
+    "pnl_netto": -310.15,
+    "equity_minima": 686.72,
+    "max_drawdown_pct": 33.59,
+    "operazioni": 343,
+    "aperture_rifiutate": {},
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 0,
+    "protezione_450_ms": null,
+    "commissioni": 205.75,
+    "funding": 13.22,
+    "win": 0.353,
+    "profit_factor": 0.743
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 200.0,
+    "equity_finale": 446.14,
+    "pnl_netto": -553.86,
+    "equity_minima": 446.14,
+    "max_drawdown_pct": 58.24,
+    "operazioni": 303,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 91
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 3520,
+    "protezione_450_ms": 1767945600000,
+    "commissioni": 363.41,
+    "funding": 24.14,
+    "win": 0.35,
+    "profit_factor": 0.745
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 100.0,
+    "equity_finale": 445.3,
+    "pnl_netto": -554.7,
+    "equity_minima": 445.3,
+    "max_drawdown_pct": 58.31,
+    "operazioni": 303,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 91
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 3520,
+    "protezione_450_ms": 1767945600000,
+    "commissioni": 363.5,
+    "funding": 24.15,
+    "win": 0.35,
+    "profit_factor": 0.745
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 200.0,
+    "equity_finale": 439.24,
+    "pnl_netto": -560.76,
+    "equity_minima": 439.24,
+    "max_drawdown_pct": 61.35,
+    "operazioni": 214,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 408
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 16648,
+    "protezione_450_ms": 1756278900000,
+    "commissioni": 513.59,
+    "funding": 32.38,
+    "win": 0.364,
+    "profit_factor": 0.817
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 100.0,
+    "equity_finale": 444.2,
+    "pnl_netto": -555.8,
+    "equity_minima": 444.2,
+    "max_drawdown_pct": 59.7,
+    "operazioni": 232,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 355
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 15022,
+    "protezione_450_ms": 1757593800000,
+    "commissioni": 417.53,
+    "funding": 26.56,
+    "win": 0.353,
+    "profit_factor": 0.78
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 200.0,
+    "equity_finale": 436.09,
+    "pnl_netto": -563.91,
+    "equity_minima": 430.33,
+    "max_drawdown_pct": 64.28,
+    "operazioni": 204,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 13,
+     "capitale sotto la soglia minima": 416
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 17220,
+    "protezione_450_ms": 1755919800000,
+    "commissioni": 734.53,
+    "funding": 47.12,
+    "win": 0.373,
+    "profit_factor": 0.867
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 100.0,
+    "equity_finale": 399.98,
+    "pnl_netto": -600.02,
+    "equity_minima": 399.98,
+    "max_drawdown_pct": 64.8,
+    "operazioni": 213,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 411
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 1,
+    "candele_in_blocco": 16840,
+    "protezione_450_ms": 1756090800000,
+    "commissioni": 511.17,
+    "funding": 32.32,
+    "win": 0.366,
+    "profit_factor": 0.807
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 200.0,
+    "equity_finale": 435.15,
+    "pnl_netto": -564.85,
+    "equity_minima": 435.15,
+    "max_drawdown_pct": 65.74,
+    "operazioni": 193,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 30,
+     "capitale sotto la soglia minima": 445
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 1,
+    "candele_in_blocco": 17967,
+    "protezione_450_ms": 1755449100000,
+    "commissioni": 926.66,
+    "funding": 58.79,
+    "win": 0.383,
+    "profit_factor": 0.894
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 100.0,
+    "equity_finale": 387.93,
+    "pnl_netto": -612.07,
+    "equity_minima": 387.93,
+    "max_drawdown_pct": 67.33,
+    "operazioni": 201,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 13,
+     "capitale sotto la soglia minima": 432
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 2,
+    "candele_in_blocco": 17461,
+    "protezione_450_ms": 1755742500000,
+    "commissioni": 708.1,
+    "funding": 44.78,
+    "win": 0.373,
+    "profit_factor": 0.853
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 200.0,
+    "equity_finale": 340.26,
+    "pnl_netto": -659.74,
+    "equity_minima": 340.26,
+    "max_drawdown_pct": 75.25,
+    "operazioni": 131,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 27,
+     "capitale sotto la soglia minima": 651
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 1,
+    "candele_in_blocco": 20168,
+    "protezione_450_ms": 1752624000000,
+    "commissioni": 923.76,
+    "funding": 56.38,
+    "win": 0.382,
+    "profit_factor": 0.874
+   }
+  ],
+  "B_proto": [
+   {
+    "leva_richiesta": 3,
+    "margine": 100.0,
+    "equity_finale": 497.41,
+    "pnl_netto": -502.59,
+    "equity_minima": 497.41,
+    "max_drawdown_pct": 50.53,
+    "operazioni": 960,
+    "aperture_rifiutate": {},
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 0,
+    "protezione_450_ms": null,
+    "commissioni": 345.52,
+    "funding": 22.89,
+    "win": 0.359,
+    "profit_factor": 0.736
+   },
+   {
+    "leva_richiesta": 3,
+    "margine": 200.0,
+    "equity_finale": 449.38,
+    "pnl_netto": -550.62,
+    "equity_minima": 447.57,
+    "max_drawdown_pct": 55.72,
+    "operazioni": 377,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 1652
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 15966,
+    "protezione_450_ms": 1780114500000,
+    "commissioni": 269.1,
+    "funding": 18.05,
+    "win": 0.345,
+    "profit_factor": 0.665
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 100.0,
+    "equity_finale": 445.68,
+    "pnl_netto": -554.32,
+    "equity_minima": 445.68,
+    "max_drawdown_pct": 55.83,
+    "operazioni": 452,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 1454
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 13459,
+    "protezione_450_ms": 1782439200000,
+    "commissioni": 271.04,
+    "funding": 18.27,
+    "win": 0.343,
+    "profit_factor": 0.669
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 200.0,
+    "equity_finale": 445.91,
+    "pnl_netto": -554.09,
+    "equity_minima": 445.91,
+    "max_drawdown_pct": 56.2,
+    "operazioni": 250,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 1972
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 19324,
+    "protezione_450_ms": 1777157100000,
+    "commissioni": 289.78,
+    "funding": 19.19,
+    "win": 0.352,
+    "profit_factor": 0.715
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 100.0,
+    "equity_finale": 448.12,
+    "pnl_netto": -551.88,
+    "equity_minima": 448.12,
+    "max_drawdown_pct": 55.99,
+    "operazioni": 256,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 1964
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 19236,
+    "protezione_450_ms": 1777239900000,
+    "commissioni": 307.07,
+    "funding": 20.16,
+    "win": 0.352,
+    "profit_factor": 0.726
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 200.0,
+    "equity_finale": 406.77,
+    "pnl_netto": -593.23,
+    "equity_minima": 406.77,
+    "max_drawdown_pct": 60.75,
+    "operazioni": 64,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 10,
+     "capitale sotto la soglia minima": 2457
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 24478,
+    "protezione_450_ms": 1772716500000,
+    "commissioni": 150.2,
+    "funding": 8.52,
+    "win": 0.266,
+    "profit_factor": 0.554
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 100.0,
+    "equity_finale": 443.47,
+    "pnl_netto": -556.53,
+    "equity_minima": 443.47,
+    "max_drawdown_pct": 56.83,
+    "operazioni": 89,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 6,
+     "capitale sotto la soglia minima": 2409
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 23786,
+    "protezione_450_ms": 1773214200000,
+    "commissioni": 159.97,
+    "funding": 8.69,
+    "win": 0.27,
+    "profit_factor": 0.602
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 200.0,
+    "equity_finale": 384.75,
+    "pnl_netto": -615.25,
+    "equity_minima": 367.44,
+    "max_drawdown_pct": 65.15,
+    "operazioni": 29,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 1,
+     "capitale sotto la soglia minima": 2538
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25462,
+    "protezione_450_ms": 1771550100000,
+    "commissioni": 92.73,
+    "funding": 6.93,
+    "win": 0.172,
+    "profit_factor": 0.233
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 100.0,
+    "equity_finale": 412.53,
+    "pnl_netto": -587.47,
+    "equity_minima": 412.53,
+    "max_drawdown_pct": 60.19,
+    "operazioni": 64,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 10,
+     "capitale sotto la soglia minima": 2457
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 24477,
+    "protezione_450_ms": 1772716500000,
+    "commissioni": 153.34,
+    "funding": 8.68,
+    "win": 0.266,
+    "profit_factor": 0.566
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 200.0,
+    "equity_finale": 413.08,
+    "pnl_netto": -586.92,
+    "equity_minima": 413.08,
+    "max_drawdown_pct": 61.49,
+    "operazioni": 11,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 9,
+     "capitale sotto la soglia minima": 2583
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25843,
+    "protezione_450_ms": 1771421400000,
+    "commissioni": 51.3,
+    "funding": 2.61,
+    "win": 0.0,
+    "profit_factor": 0.0
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 100.0,
+    "equity_finale": 424.12,
+    "pnl_netto": -575.88,
+    "equity_minima": 335.21,
+    "max_drawdown_pct": 68.0,
+    "operazioni": 20,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 2562
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25671,
+    "protezione_450_ms": 1771560900000,
+    "commissioni": 68.1,
+    "funding": 4.76,
+    "win": 0.1,
+    "profit_factor": 0.143
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 200.0,
+    "equity_finale": 391.93,
+    "pnl_netto": -608.07,
+    "equity_minima": 391.93,
+    "max_drawdown_pct": 64.22,
+    "operazioni": 8,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 9,
+     "capitale sotto la soglia minima": 2592
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25935,
+    "protezione_450_ms": 1771305300000,
+    "commissioni": 53.67,
+    "funding": 2.53,
+    "win": 0.0,
+    "profit_factor": 0.0
+   }
+  ],
+  "B_noconf": [
+   {
+    "leva_richiesta": 3,
+    "margine": 100.0,
+    "equity_finale": 449.21,
+    "pnl_netto": -550.79,
+    "equity_minima": 448.14,
+    "max_drawdown_pct": 55.52,
+    "operazioni": 849,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 2803
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 8637,
+    "protezione_450_ms": 1786773600000,
+    "commissioni": 305.51,
+    "funding": 20.58,
+    "win": 0.351,
+    "profit_factor": 0.686
+   },
+   {
+    "leva_richiesta": 3,
+    "margine": 200.0,
+    "equity_finale": 440.89,
+    "pnl_netto": -559.11,
+    "equity_minima": 440.89,
+    "max_drawdown_pct": 56.57,
+    "operazioni": 448,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 4644
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 16850,
+    "protezione_450_ms": 1779381000000,
+    "commissioni": 311.12,
+    "funding": 20.8,
+    "win": 0.373,
+    "profit_factor": 0.709
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 100.0,
+    "equity_finale": 443.07,
+    "pnl_netto": -556.93,
+    "equity_minima": 443.07,
+    "max_drawdown_pct": 56.25,
+    "operazioni": 480,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 4520
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 16080,
+    "protezione_450_ms": 1780080300000,
+    "commissioni": 287.85,
+    "funding": 19.53,
+    "win": 0.36,
+    "profit_factor": 0.684
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 200.0,
+    "equity_finale": 435.78,
+    "pnl_netto": -564.22,
+    "equity_minima": 435.78,
+    "max_drawdown_pct": 57.5,
+    "operazioni": 120,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 5,
+     "capitale sotto la soglia minima": 6487
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 23785,
+    "protezione_450_ms": 1773054900000,
+    "commissioni": 138.0,
+    "funding": 8.06,
+    "win": 0.267,
+    "profit_factor": 0.552
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 100.0,
+    "equity_finale": 442.4,
+    "pnl_netto": -557.6,
+    "equity_minima": 409.67,
+    "max_drawdown_pct": 60.04,
+    "operazioni": 112,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 5,
+     "capitale sotto la soglia minima": 6535
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 23949,
+    "protezione_450_ms": 1773039600000,
+    "commissioni": 134.15,
+    "funding": 7.64,
+    "win": 0.259,
+    "profit_factor": 0.547
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 200.0,
+    "equity_finale": 413.58,
+    "pnl_netto": -586.42,
+    "equity_minima": 413.58,
+    "max_drawdown_pct": 60.63,
+    "operazioni": 38,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 8,
+     "capitale sotto la soglia minima": 6778
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25401,
+    "protezione_450_ms": 1771857000000,
+    "commissioni": 84.08,
+    "funding": 5.02,
+    "win": 0.158,
+    "profit_factor": 0.199
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 100.0,
+    "equity_finale": 370.96,
+    "pnl_netto": -629.04,
+    "equity_minima": 370.96,
+    "max_drawdown_pct": 64.26,
+    "operazioni": 81,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 10,
+     "capitale sotto la soglia minima": 6647
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 24580,
+    "protezione_450_ms": 1772588700000,
+    "commissioni": 145.52,
+    "funding": 8.73,
+    "win": 0.259,
+    "profit_factor": 0.526
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 200.0,
+    "equity_finale": 407.16,
+    "pnl_netto": -592.84,
+    "equity_minima": 407.16,
+    "max_drawdown_pct": 62.15,
+    "operazioni": 20,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 11,
+     "capitale sotto la soglia minima": 6876
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25787,
+    "protezione_450_ms": 1771494300000,
+    "commissioni": 69.81,
+    "funding": 3.0,
+    "win": 0.1,
+    "profit_factor": 0.139
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 100.0,
+    "equity_finale": 406.2,
+    "pnl_netto": -593.8,
+    "equity_minima": 406.2,
+    "max_drawdown_pct": 61.33,
+    "operazioni": 38,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 8,
+     "capitale sotto la soglia minima": 6778
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25398,
+    "protezione_450_ms": 1771594200000,
+    "commissioni": 90.9,
+    "funding": 5.54,
+    "win": 0.158,
+    "profit_factor": 0.228
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 200.0,
+    "equity_finale": 441.66,
+    "pnl_netto": -558.34,
+    "equity_minima": 441.66,
+    "max_drawdown_pct": 59.89,
+    "operazioni": 13,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 17,
+     "capitale sotto la soglia minima": 6892
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25839,
+    "protezione_450_ms": 1771422300000,
+    "commissioni": 61.73,
+    "funding": 2.92,
+    "win": 0.077,
+    "profit_factor": 0.127
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 100.0,
+    "equity_finale": 425.82,
+    "pnl_netto": -574.18,
+    "equity_minima": 425.82,
+    "max_drawdown_pct": 59.83,
+    "operazioni": 20,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 11,
+     "capitale sotto la soglia minima": 6876
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25783,
+    "protezione_450_ms": 1771501500000,
+    "commissioni": 67.5,
+    "funding": 2.95,
+    "win": 0.1,
+    "profit_factor": 0.13
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 200.0,
+    "equity_finale": 425.46,
+    "pnl_netto": -574.54,
+    "equity_minima": 425.46,
+    "max_drawdown_pct": 62.02,
+    "operazioni": 10,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 14,
+     "capitale sotto la soglia minima": 6914
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 25888,
+    "protezione_450_ms": 1771306200000,
+    "commissioni": 66.9,
+    "funding": 2.89,
+    "win": 0.1,
+    "profit_factor": 0.15
+   }
+  ],
+  "B_orig": [
+   {
+    "leva_richiesta": 3,
+    "margine": 100.0,
+    "equity_finale": 797.4,
+    "pnl_netto": -202.6,
+    "equity_minima": 793.11,
+    "max_drawdown_pct": 21.4,
+    "operazioni": 255,
+    "aperture_rifiutate": {},
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 0,
+    "protezione_450_ms": null,
+    "commissioni": 91.74,
+    "funding": 5.55,
+    "win": 0.333,
+    "profit_factor": 0.593
+   },
+   {
+    "leva_richiesta": 3,
+    "margine": 200.0,
+    "equity_finale": 594.8,
+    "pnl_netto": -405.2,
+    "equity_minima": 586.21,
+    "max_drawdown_pct": 42.42,
+    "operazioni": 255,
+    "aperture_rifiutate": {},
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 0,
+    "protezione_450_ms": null,
+    "commissioni": 183.47,
+    "funding": 11.1,
+    "win": 0.333,
+    "profit_factor": 0.593
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 100.0,
+    "equity_finale": 662.33,
+    "pnl_netto": -337.67,
+    "equity_minima": 655.18,
+    "max_drawdown_pct": 35.46,
+    "operazioni": 255,
+    "aperture_rifiutate": {},
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 0,
+    "protezione_450_ms": null,
+    "commissioni": 152.89,
+    "funding": 9.25,
+    "win": 0.333,
+    "profit_factor": 0.593
+   },
+   {
+    "leva_richiesta": 5,
+    "margine": 200.0,
+    "equity_finale": 447.99,
+    "pnl_netto": -552.01,
+    "equity_minima": 447.99,
+    "max_drawdown_pct": 56.52,
+    "operazioni": 195,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 111
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 5679,
+    "protezione_450_ms": 1789441200000,
+    "commissioni": 233.24,
+    "funding": 14.79,
+    "win": 0.333,
+    "profit_factor": 0.579
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 100.0,
+    "equity_finale": 443.82,
+    "pnl_netto": -556.18,
+    "equity_minima": 443.82,
+    "max_drawdown_pct": 56.92,
+    "operazioni": 195,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 111
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 5689,
+    "protezione_450_ms": 1789431300000,
+    "commissioni": 233.82,
+    "funding": 14.8,
+    "win": 0.333,
+    "profit_factor": 0.577
+   },
+   {
+    "leva_richiesta": 10,
+    "margine": 200.0,
+    "equity_finale": 434.21,
+    "pnl_netto": -565.79,
+    "equity_minima": 434.21,
+    "max_drawdown_pct": 59.06,
+    "operazioni": 97,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 384
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 11834,
+    "protezione_450_ms": 1783904400000,
+    "commissioni": 232.51,
+    "funding": 15.06,
+    "win": 0.34,
+    "profit_factor": 0.544
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 100.0,
+    "equity_finale": 439.76,
+    "pnl_netto": -560.24,
+    "equity_minima": 439.76,
+    "max_drawdown_pct": 57.93,
+    "operazioni": 122,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 314
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 9820,
+    "protezione_450_ms": 1785422700000,
+    "commissioni": 219.4,
+    "funding": 14.58,
+    "win": 0.336,
+    "profit_factor": 0.528
+   },
+   {
+    "leva_richiesta": 15,
+    "margine": 200.0,
+    "equity_finale": 445.15,
+    "pnl_netto": -554.85,
+    "equity_minima": 445.15,
+    "max_drawdown_pct": 59.19,
+    "operazioni": 70,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 441
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 18646,
+    "protezione_450_ms": 1777907700000,
+    "commissioni": 251.83,
+    "funding": 16.03,
+    "win": 0.343,
+    "profit_factor": 0.592
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 100.0,
+    "equity_finale": 434.54,
+    "pnl_netto": -565.46,
+    "equity_minima": 434.54,
+    "max_drawdown_pct": 59.03,
+    "operazioni": 97,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 384
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 11834,
+    "protezione_450_ms": 1783904400000,
+    "commissioni": 232.61,
+    "funding": 15.06,
+    "win": 0.34,
+    "profit_factor": 0.545
+   },
+   {
+    "leva_richiesta": 20,
+    "margine": 200.0,
+    "equity_finale": 413.71,
+    "pnl_netto": -586.29,
+    "equity_minima": 413.71,
+    "max_drawdown_pct": 63.1,
+    "operazioni": 54,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 2,
+     "capitale sotto la soglia minima": 480
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 0,
+    "candele_in_blocco": 19328,
+    "protezione_450_ms": 1777266000000,
+    "commissioni": 253.72,
+    "funding": 15.89,
+    "win": 0.315,
+    "profit_factor": 0.595
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 100.0,
+    "equity_finale": 444.91,
+    "pnl_netto": -555.09,
+    "equity_minima": 444.91,
+    "max_drawdown_pct": 59.21,
+    "operazioni": 57,
+    "aperture_rifiutate": {
+     "capitale sotto la soglia minima": 478
+    },
+    "max_posizioni_insieme": 3,
+    "liquidazioni": 1,
+    "candele_in_blocco": 19157,
+    "protezione_450_ms": 1777464900000,
+    "commissioni": 202.6,
+    "funding": 13.15,
+    "win": 0.316,
+    "profit_factor": 0.546
+   },
+   {
+    "leva_richiesta": 30,
+    "margine": 200.0,
+    "equity_finale": 401.1,
+    "pnl_netto": -598.9,
+    "equity_minima": 401.1,
+    "max_drawdown_pct": 66.06,
+    "operazioni": 31,
+    "aperture_rifiutate": {
+     "stop giornaliero raggiunto": 1,
+     "capitale sotto la soglia minima": 556
+    },
+    "max_posizioni_insieme": 2,
+    "liquidazioni": 1,
+    "candele_in_blocco": 20408,
+    "protezione_450_ms": 1776325500000,
+    "commissioni": 221.8,
+    "funding": 14.24,
+    "win": 0.355,
+    "profit_factor": 0.574
+   }
+  ]
+ }
+}
