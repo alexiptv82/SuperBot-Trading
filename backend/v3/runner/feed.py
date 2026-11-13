@@ -119,4 +119,8 @@ def last_minute_close(symbol: str, now_ms: int, get_json: GetJson = http_json, *
     bars = fetch_closed_bars(symbol, end - lookback * 60_000, end, candle_ms=60_000, get_json=get_json)
     if not bars:
         raise ValueError("no_recent_bar")
+    # The fetch window is a retry boundary, never a freshness allowance.
+    # Manual close and post-AI quote must not silently accept a past minute.
+    if bars[-1].open_time_ms != end - 60_000:
+        raise ValueError("stale_minute_bar")
     return bars[-1].close
