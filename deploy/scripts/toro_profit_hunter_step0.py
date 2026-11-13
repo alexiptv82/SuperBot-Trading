@@ -13,7 +13,8 @@ import csv
 import hashlib
 import json
 import random
-from collections import defaultdict
+from collections import defaultdict, Counter
+from bisect import bisect_right
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
@@ -28,7 +29,7 @@ def load_csv(path: Path) -> tuple[list[Candle], str]:
         rows = []
         for row in reader:
             rows.append(Candle(
-                ts=int(row["ts"]), open=float(row["open"]),
+                ts=int(row.get("ts") or row["open_time_ms"]), open=float(row["open"]),
                 high=float(row["high"]), low=float(row["low"]),
                 close=float(row["close"]), volume=float(row["volume"])
             ))
@@ -48,22 +49,42 @@ def check_complete(bars: list[Candle], interval: int) -> None:
 def backtest(hourly: list[Candle], fourh: list[Candle], symbol: str,
              *, windows: tuple[int, ...] = (4, 8, 12),
              seeds: int = 1000, cost_fraction: float = 0.0010) -> dict:
-    check_complete(hourly, HOUR)
-    check_complete(fourh, FOUR_HOURS)
+    # Reject malformed, duplicate and unordered observations; preserve missing
+    # candles as gaps, never fill or synthesize them. Candidate-level lookback
+    # and forward windows must both be contiguous.
+    for seq, interval in ((hourly,HOUR),(fourh,FOUR_HOURS)):
+        if not seq or any(not x.valid() or x.ts % interval for x in seq):
+            raise ValueError("invalid_bars")
+        if any(a.ts >= b.ts for a,b in zip(seq,seq[1:])):
+            raise ValueError("unsorted_or_duplicate_bars")
     if hourly[-1].ts + HOUR > fourh[-1].ts + FOUR_HOURS*2:
         raise ValueError("4h_feed_stale")
     max_w = max(windows)
     raw_signals = []
     eligible = defaultdict(list)
+    rejects = Counter()
+    skipped_forward_gaps = 0
+    stamps4 = [x.ts for x in fourh]
     # Both signal and random control are indexed on the next hour's OPEN.
-    # The control is limited to eligible periods after the 40-day warm-up.
+    # The null uses the same available 4H regime + month and complete horizons.
     for j in range(1000, len(hourly)-max_w):
         decision_ts = hourly[j-1].ts + HOUR
+        if hourly[j].ts != decision_ts:
+            rejects["gap_at_entry"] += 1
+            continue
+        if any(hourly[k].ts + HOUR != hourly[k+1].ts
+               for k in range(j,j+max_w-1)):
+            skipped_forward_gaps += 1
+            continue
+        # Bound the input to the exact required lookback. Pre-index CLOSED 4H
+        # bars to avoid re-sorting the whole 12-month dataset each hour.
+        start4 = bisect_right(stamps4, decision_ts-FOUR_HOURS)
+        available4 = fourh[max(0,start4-240):start4]
         month = datetime.fromtimestamp(decision_ts/1000, timezone.utc).strftime("%Y-%m")
-        candidate, why = entry_signal(symbol, hourly[:j], fourh, decision_ts)
-        # The null shares the SAME non-down 4H eligibility as the real signals.
-        # It is matched on symbol (this file), UTC month and eligible regime,
-        # not sampled indiscriminately from violent downturns or warm-up gaps.
+        candidate, why = entry_signal(
+            symbol, hourly[j-750:j], available4, decision_ts
+        )
+        rejects[why] += 1
         if why not in {"strong_4h_downtrend", "missing_or_gapped_closed_history",
                        "4h_stale", "latest_1h_not_closed_at_decision"}:
             eligible[month].append(j)
@@ -103,7 +124,12 @@ def backtest(hourly: list[Candle], fourh: list[Candle], symbol: str,
                                   avg_net=avg, share_of_matched_random_beaten=null_out,
                                   random_reps=len(null_means), matched=matched,
                                   cost_fraction=cost_fraction)
+    gaps_1h = sum(b.ts-a.ts>HOUR for a,b in zip(hourly,hourly[1:]))
+    gaps_4h = sum(b.ts-a.ts>FOUR_HOURS for a,b in zip(fourh,fourh[1:]))
     return {"symbol":symbol,"bars_1h":len(hourly),"bars_4h":len(fourh),
+            "missing_data_gaps_1h":gaps_1h,"missing_data_gaps_4h":gaps_4h,
+            "skipped_forward_windows_with_gaps":skipped_forward_gaps,
+            "rejected_or_eligible_reasons":dict(rejects),
             "raw_signals":len(raw_signals),"windows":signal_by_w,
             "note":"Entry only, not orders maker, portfolio, stop, Profit Guardian, AI or LIVE"}
 
