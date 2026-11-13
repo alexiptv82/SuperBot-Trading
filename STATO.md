@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 21:52 Europe/Rome — PR #99 preregistrata; replay Supertrend avviato, non concluso
+
+- Nuovo checkpoint: [`diario/2026-11-13_PR99-supertrend-prereg-replay-detached-avviato.md`](diario/2026-11-13_PR99-supertrend-prereg-replay-detached-avviato.md).
+- [PR #99](https://github.com/alexiptv82/SuperBot-Trading/pull/99) Draft/non mergiata, HEAD `4b06716…`: unico ultimo candidato Toro Supertrend 15m/1h, preregistrato prima dei test a `0c8471a…`; replay storico 365g classificato solo eliminatorio, non OOS incontaminato.
+- Output Termius delle 21:39 CET: pin sorgenti e self-test sintetico PASS, unit isolata `toro-supertrend-last-20261113.service` avviata detached, zero ordini e unità produttive dichiarate invariate.
+- È prova del solo avvio: nessun report economico, trade, expectancy, PF, drawdown, benchmark o GO/NO-GO ancora disponibile. Evitare una seconda istanza e attendere fine/log/report.
+- Brain invariato; report tecnico Brain richiesto ma non ancora prodotto in forma verificabile. Falco congelato; Toro sospeso e non integrato. Nessun merge/deploy/Action/ordine/rischio modificato. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 13/11/2026 20:54 Europe/Rome — PR #98 proxy gate FAIL; Step0′ non avviato
 
 - Nuovo checkpoint: [`diario/2026-11-13_PR98-proxy-gate-fail-no-strategy-backtest.md`](diario/2026-11-13_PR98-proxy-gate-fail-no-strategy-backtest.md).
