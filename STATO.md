@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 11:48 Europe/Rome — Priorità Brain; Issue #95 per DeepSeek E2E
+
+- Nuovo checkpoint: [`diario/2026-11-13_priorita-brain-issue95-gate-e2e.md`](diario/2026-11-13_priorita-brain-issue95-gate-e2e.md).
+- Decisione utente verificata: priorità al solo **Brain PAPER** per controllare DeepSeek→decisione→rischio→apertura; `NO_TRADE` resta valido e nessun trade va forzato. Falco SHORT originale congelato; Toro LONG/Twin sospeso in attesa di strategia diversa.
+- Aperta [Issue #95](https://github.com/alexiptv82/SuperBot-Trading/issues/95): checklist read-only VPS, vera inferenza DeepSeek NO_ORDER, E2E su journal isolato, exit-owner unico e rapporto go/no-go. Nessun gate host, inferenza, mandato, unpause o trade eseguito.
+- PR #94 resta Draft a `4987912…`; descrizione ora allineata: 31 test Twin, 405 regressioni e suite 7.094 PASS/1 fail ambiente riportati da Claude, non rieseguiti qui; PASS tecnico ma NON approvata strategicamente. PR #92 resta Draft a `f8332c9…`; PR #93 resta FAIL.
+- Nessun merge/deploy/Actions/VPS/reset/unpause/ordine. Extbackup non installato; verifica PC age `ESITO: VERIFICA OK` non certifica VPS. PAPER, storici ed EventJournal preservati.
+
+---
+
 ## 13/11/2026 10:47 Europe/Rome — PR #94 PASS tecnico, NO-GO strategico
 
 - Nuovo checkpoint: [`diario/2026-11-13_PR94-collaudo-reale-pass-tecnico-no-go-strategico.md`](diario/2026-11-13_PR94-collaudo-reale-pass-tecnico-no-go-strategico.md).
