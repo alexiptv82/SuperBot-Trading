@@ -279,6 +279,23 @@ class MakerPending:
         return self.status
 
 
+def momentum_score(five_min: Sequence[Candle], asof_ms: int) -> int | None:
+    """Closed 5m bars only. None => data unavailable, never treated as strong."""
+    bars = _bars(five_min, asof_ms, 5*MINUTE, 30)
+    if not bars:
+        return None
+    closes = [x.close for x in bars]
+    e9 = _ema(closes, 9)
+    points = 0
+    if closes[-1] > e9[-1] and e9[-1] > e9[-2]:
+        points += 1
+    if closes[-1] > min(x.low for x in bars[-4:-1]):
+        points += 1
+    if mean(x.volume for x in bars[-3:]) >= 0.8 * mean(x.volume for x in bars[-15:-3]):
+        points += 1
+    return points
+
+
 def estimated_net_long(*, entry: float, last_bid: float, quantity: float,
                        maker_fee: float, taker_fee: float, stop_slippage: float,
                        funding: float = 0.0) -> float:
