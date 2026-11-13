@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 16:47 Europe/Rome — PR #96 Toro core 19 PASS; Step0 Bitget ancora in corso
+
+- Nuovo checkpoint: [`diario/2026-11-13_PR96-toro-core-19pass-step0-in-corso.md`](diario/2026-11-13_PR96-toro-core-19pass-step0-in-corso.md).
+- [PR #96](https://github.com/alexiptv82/SuperBot-Trading/pull/96) Draft, ramo `work/toro-profit-hunter-v1-20261113`, HEAD `862c110…`: core LONG Profit Hunter isolato, replay Step0, harness e documentazione; non collegato a CLI/engine, nessun merge/deploy.
+- Output Termius verificato: 16/16, poi 18/18, infine **19/19 test PASS**, sempre `stage_unchanged=1`. È prova del core isolato, non di edge, contabilità PAPER o integrazione operativa.
+- Step0 read-only Bitget avviato sui cinque simboli. Dopo chiusura accidentale di Termius il processo è rimasto vivo; download parziale BTC/ETH 1H/4H, report finale assente. Non rilanciare o dedurre redditività.
+- Falco/Toro non riattivati; Brain non modificato e primo ciclo completo 8 simboli ancora non documentato da nuove evidenze. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 13/11/2026 15:47 Europe/Rome — Brain PAPER unpaused; Toro Profit Hunter approvato solo come sviluppo
 
 - Nuovo checkpoint: [`diario/2026-11-13_brain-paper-unpaused-toro-profit-hunter-approved-not-implemented.md`](diario/2026-11-13_brain-paper-unpaused-toro-profit-hunter-approved-not-implemented.md).
