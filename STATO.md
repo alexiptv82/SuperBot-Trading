@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 22:44 Europe/Rome — PR #99 NO-GO; audit Brain NO-GO certificazione
+
+- Nuovo checkpoint: [`diario/2026-11-13_PR99-no-go-audit-brain-no-go-certificazione.md`](diario/2026-11-13_PR99-no-go-audit-brain-no-go-certificazione.md).
+- [PR #99](https://github.com/alexiptv82/SuperBot-Trading/pull/99) replay completato: 361 trade, media netta −32,455 bp, PF 0,5938, DD close-only 89,73%, stress −46,455 bp, 1/8 gate — **NO-GO** preregistrato; nessun retuning/shadow/promozione, zero ordini e nessun bot change.
+- [Audit indipendente Brain](https://chatgpt.com/library?file_id=libfile_07126c23a3188191bfb229c512b03b0a&account_id=personal): 1.290 test base + 4 hotfix PASS, ma riprodotti falso `healthy` con feed vuoto, prezzo 1m vecchio, rischio aperto senza buffer costi, budget superabile e limiti di timestamp/minuto ingresso. Verdetto: NO-GO alla certificazione uscite/edge, non ordine di arresto.
+- Funding assente dal PnL PAPER, slippage non uniforme, learning limitato a etichette/run corrente e nessun Profit Guardian dinamico nel percorso Brain. Sono rilievi/proposte, non patch implementate.
+- Brain runtime live non certificato; Falco congelato; Toro sospeso. Nessun merge/deploy/Action/restart/ordine/rischio modificato. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 13/11/2026 21:52 Europe/Rome — PR #99 preregistrata; replay Supertrend avviato, non concluso
 
 - Nuovo checkpoint: [`diario/2026-11-13_PR99-supertrend-prereg-replay-detached-avviato.md`](diario/2026-11-13_PR99-supertrend-prereg-replay-detached-avviato.md).
