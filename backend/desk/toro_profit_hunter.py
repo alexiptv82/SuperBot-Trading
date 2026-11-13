@@ -346,7 +346,9 @@ def profit_guardian(state: Guardian, *, now_ms: int, opened_ms: int,
         atr_money = 0.25*(atr_price/entry_price)*remaining_notional
         giveback = max(5.0, atr_money, m*(0.4 if m<20 else
                             0.3 if m<30 else 0.25 if m<40 else 0.2))
-        new_floor = max(0.0, m-giveback)
+        # Report Claude section D: between +12 and +15 net the floor is
+        # BREAK-EVEN, not an aggressive +7 USDT trailing target.
+        new_floor = 0.0 if m < 15 else max(0.0, m-giveback)
         state.ratchet_floor = max(state.ratchet_floor, new_floor)
         if combined <= state.ratchet_floor:
             return Decision("CLOSE","ratchet_profit_floor")
