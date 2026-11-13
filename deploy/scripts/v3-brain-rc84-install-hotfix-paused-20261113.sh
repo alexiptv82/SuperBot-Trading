@@ -24,6 +24,7 @@ TEMP=
 BACKUP=
 MUTATED=0
 DONE=0
+RUN_STARTED_MS=0
 
 log(){ echo "BRAIN_DEPLOY $*"; }
 fail(){ log "FAIL reason=$1"; exit 1; }
@@ -86,14 +87,14 @@ PYCODE
 }
 
 pause_beat(){
-    PYTHONDONTWRITEBYTECODE=1 "$PY" - "$RUN" "$RUN_ID" <<'PYCODE'
+    PYTHONDONTWRITEBYTECODE=1 "$PY" - "$RUN" "$RUN_ID" "$RUN_STARTED_MS" <<'PYCODE'
 from pathlib import Path
 import json,sys,time
-d, run = Path(sys.argv[1]), sys.argv[2]
+d, run, minimum_ms = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
 try:
     b = json.loads((d/"heartbeat.json").read_text())
     good = (b.get("run_id")==run and b.get("state")=="paused"
-            and b.get("last_error") is None
+            and b.get("last_error") is None and b["ts_ms"] >= minimum_ms
             and 0 <= int(time.time()*1000)-b["ts_ms"] <= 30000)
 except (ValueError,KeyError,TypeError,OSError):
     good = False
@@ -222,9 +223,9 @@ assert_blob "$BACKUP/fetch_candles.py" "$OLD2" || fail "backup_candles_hash_mism
 log "BACKUP_VERIFIED=1 path=$BACKUP"
 
 # Paused + zero positions: stop only Brain's two workers before changing shared source.
+MUTATED=1
 systemctl stop "$RUN_UNIT" || fail "stop_brain_runner_failed"
 systemctl stop "$EXIT_UNIT" || fail "stop_brain_exit_failed"
-MUTATED=1
 ! systemctl is-active --quiet "$RUN_UNIT" || fail "runner_did_not_stop"
 ! systemctl is-active --quiet "$EXIT_UNIT" || fail "exit_did_not_stop"
 check_paused || fail "pause_disappeared_during_restart"
@@ -246,6 +247,7 @@ log "INSTALL=PASS changed_files=2 stage_sha_remains=$BASE"
 systemctl start "$EXIT_UNIT" || fail "start_brain_exit_failed"
 wait_exit || fail "exit_not_healthy_after"
 check_paused || fail "pause_disappeared_after_exit"
+RUN_STARTED_MS="$(date +%s%3N)"
 systemctl start "$RUN_UNIT" || fail "start_brain_runner_failed"
 wait_runner || fail "runner_not_paused_after"
 healthy_exit || fail "exit_unhealthy_final"
