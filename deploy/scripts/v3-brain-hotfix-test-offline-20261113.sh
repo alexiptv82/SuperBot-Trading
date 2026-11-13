@@ -77,3 +77,41 @@ for step in (60_000, 900_000, 3_600_000, 14_400_000):
 report(f"TIMEFRAME_BOUNDARY_CASES_PASS={count}/{count}")
 report("RESULT=PASS code_only_no_runtime_changes")
 PY
+if [[ "${1:-}" == "--with-market" ]]; then
+  PYTHONPATH="$TMP" PYTHONDONTWRITEBYTECODE=1 "$PY" - <<'PY'
+from decimal import Decimal
+from time import time
+from backend.v3.lab_tools.fetch_candles import fetch_rows, http_json
+from backend.v3.runner.contracts import ContractRules
+
+def get_json(url):
+    return http_json(url, tries=3, min_gap=0.25)
+
+now = int(time() * 1000)
+rules = ContractRules(get_json, maintenance_fraction=Decimal("0.005"))
+if not rules.load(now):
+    raise SystemExit("BRAIN_HOTFIX_VERIFY=FAIL Bitget contract download")
+missing = [s for s in ("BTCUSDT", "ETHUSDT", "SOLUSDT") if rules(s) is None]
+print("BRAIN_HOTFIX_VERIFY=BITGET_CONTRACTS missing=" + ",".join(missing), flush=True)
+if missing:
+    raise SystemExit("BRAIN_HOTFIX_VERIFY=FAIL missing_contracts")
+# Probe the critical historical windows on the PUBLIC Bitget feed (no API keys).
+# This does NOT call DeepSeek or invoke the runner or an execution API.
+for symbol, timeframe, step, needed in (
+    ("SOLUSDT", "15m", 900_000, 3000),
+    ("SOLUSDT", "1h", 3_600_000, 760),
+    ("SOLUSDT", "4h", 14_400_000, 205),
+    ("BTCUSDT", "15m", 900_000, 250),
+    ("ETHUSDT", "15m", 900_000, 250),
+):
+    end = (now // step) * step
+    begin = end - needed * step
+    rows = fetch_rows(symbol, begin, end, candle_ms=step, get_json=get_json)
+    expected = list(range(begin, end, step))
+    if sorted(rows) != expected:
+        print(f"BRAIN_HOTFIX_VERIFY=FAIL symbol={symbol} tf={timeframe} got={len(rows)} expected={needed}", flush=True)
+        raise SystemExit(1)
+    print(f"BRAIN_HOTFIX_VERIFY=MARKET_OK symbol={symbol} tf={timeframe} rows={len(rows)}", flush=True)
+print("BRAIN_HOTFIX_VERIFY=MARKET_RESULT=PASS no_runtime_changes", flush=True)
+PY
+fi
