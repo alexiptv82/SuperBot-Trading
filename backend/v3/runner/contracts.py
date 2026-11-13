@@ -47,7 +47,7 @@ def parse_contract_rules(payload: object, *, maintenance_fraction: Decimal) -> d
         symbol = item.get("symbol")
         step, notional, lever = _dec(item.get("sizeMultiplier")), _dec(item.get("minTradeUSDT")), _dec(item.get("maxLever"))
         if (type(symbol) is not str or not symbol or step is None or step <= 0 or notional is None or notional < 0
-                or lever is None or lever != lever.to_integral_value() or not 1 <= lever <= 125 or symbol in out):
+                or lever is None or lever != lever.to_integral_value() or not 1 <= lever <= 200 or symbol in out):
             continue
         out[symbol] = {"exchange_leverage_limit": int(lever), "quantity_step": step,
                        "minimum_notional": notional, "maintenance_fraction": maintenance_fraction}
