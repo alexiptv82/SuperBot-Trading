@@ -131,6 +131,25 @@ def _atr(c: Sequence[Candle], period: int = 14) -> float:
     return mean(tr[-period:])
 
 
+def _atr_history(c: Sequence[Candle], period: int = 14) -> list[float]:
+    """Wilder-style true range simple moving ATR for each closed bar, O(n).
+
+    Equivalent to evaluating _atr(c[:i], period) at each valid history
+    boundary; specifically, avoids O(n**2) recalculation during backtests.
+    """
+    if len(c) < period + 1:
+        return []
+    tr = [max(c[i].high-c[i].low,
+              abs(c[i].high-c[i-1].close),
+              abs(c[i].low-c[i-1].close)) for i in range(1,len(c))]
+    window_sum = sum(tr[:period])
+    result = [window_sum/period]
+    for i in range(period,len(tr)):
+        window_sum += tr[i]-tr[i-period]
+        result.append(window_sum/period)
+    return result
+
+
 def _adx(c: Sequence[Candle], period: int = 14) -> float:
     """ADX approximation with Wilder smoothing; only for the strong-down veto."""
     if len(c) < 3 * period:
@@ -188,7 +207,7 @@ def entry_signal(symbol: str, hourly: Sequence[Candle], four_hour: Sequence[Cand
     atr = _atr(h)
     if not atr or last.close <= 0:
         return None, "atr_invalid"
-    hist_atr = [_atr(h[:i]) for i in range(15, len(h)+1)]
+    hist_atr = _atr_history(h)
     recent = sorted(x for x in hist_atr[-720:] if x > 0)
     if len(recent) < 500 or atr > recent[int(0.9 * (len(recent)-1))]:
         return None, "excessive_volatility"
