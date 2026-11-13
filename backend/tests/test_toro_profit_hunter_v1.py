@@ -85,6 +85,18 @@ class ToroProfitHunterTest(unittest.TestCase):
         self.assertEqual(MakerPending(q,0,15*MINUTE).on_minute(
             Candle(15*MINUTE,101,102,101,102,2)), "EXPIRED")
 
+    def test_guardian_at_12_ratchets_to_net_break_even(self):
+        g = Guardian()
+        d = profit_guardian(g, now_ms=MINUTE, opened_ms=0, net_open_now=12,
+            atr_price=0.8, entry_price=100, remaining_notional=1500,
+            momentum_score=3, structural_room_net=100)
+        self.assertEqual(g.ratchet_floor, 0.0)
+        self.assertEqual(d.action, "HOLD")
+        d = profit_guardian(g, now_ms=2*MINUTE, opened_ms=0, net_open_now=-0.01,
+            atr_price=0.8, entry_price=100, remaining_notional=1500,
+            momentum_score=3, structural_room_net=100)
+        self.assertEqual(d.action, "CLOSE")
+
     def test_guardian_giveback_works_below_current_15(self):
         g=Guardian()
         d=profit_guardian(g,now_ms=MINUTE,opened_ms=0,net_open_now=25,
