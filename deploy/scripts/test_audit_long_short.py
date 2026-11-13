@@ -332,6 +332,41 @@ class SnapshotTests(FixtureCase):
         self.assertTrue(os.path.isfile(os.path.join(self.td.name, "nuova", "hawk", "trade_history.jsonl")))
 
 
+    def test_rc84_layout_explicit_mapping_preserves_realistic_wallets(self):
+        v3 = os.path.join(self.td.name, "superbot-v3-paper-runs")
+        os.makedirs(v3)
+        shutil.copytree(self.hawk, os.path.join(v3, "classic-hawk-paper20261111"))
+        shutil.copytree(self.bull, os.path.join(v3, "classic-bull-paper20261111"))
+        before = tree(v3)
+        rc, out = self.run_main("--vps", v3, "--layout", "rc84",
+                                "--since", "2026-11-10T23:00:00Z")
+        self.assertEqual(rc, 0)
+        self.assertIn("LAYOUT=rc84", out)
+        self.assertIn("Falco", out)
+        self.assertIn("Toro", out)
+        self.assertEqual(before, tree(v3), "audit must not mutate actual wallet files")
+
+    def test_rc84_layout_fails_closed_on_missing_wallet_or_required_file(self):
+        v3 = os.path.join(self.td.name, "superbot-v3-paper-runs")
+        os.makedirs(v3)
+        with self.assertRaises(SystemExit):
+            self.run_main("--vps", v3, "--layout", "rc84")
+        shutil.copytree(self.hawk, os.path.join(v3, "classic-hawk-paper20261111"))
+        shutil.copytree(self.bull, os.path.join(v3, "classic-bull-paper20261111"))
+        os.remove(os.path.join(v3, "classic-bull-paper20261111", "learning_log.jsonl"))
+        with self.assertRaises(SystemExit):
+            self.run_main("--vps", v3, "--layout", "rc84")
+
+    def test_no_report_if_snapshot_remains_inconsistent(self):
+        original = A.snapshot
+        A.snapshot = lambda *_args, **_kwargs: (False, 6, [])
+        try:
+            with self.assertRaises(SystemExit):
+                self.run_main("--vps", self.root, "--layout", "legacy")
+        finally:
+            A.snapshot = original
+
+
 class SafetyTests(unittest.TestCase):
     def test_the_analyzer_opens_data_files_only_for_reading_and_uses_no_network(self):
         with open(A.__file__, encoding="utf-8") as f:

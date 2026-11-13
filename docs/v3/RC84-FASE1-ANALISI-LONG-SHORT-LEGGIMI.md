@@ -7,16 +7,20 @@ numeri veri escono solo eseguendo il comando sotto sulla VPS. Nessuna modifica a
 Scarica lo script dal commit indicato nel rapporto di consegna, ne controlla l'impronta e lo esegue; non serve nessuna credenziale
 (il repository è pubblico) e lo script non apre la rete:
 ```sh
-D=$(mktemp -d) && curl -fsSL -o "$D/audit.py" https://raw.githubusercontent.com/alexiptv82/SuperBot-Trading/<COMMIT>/deploy/scripts/audit_long_short.py && echo "<SHA256>  $D/audit.py" | sha256sum -c - && python3 -I "$D/audit.py" --vps /opt/superbot-desk-data | tee "$D/rapporto.txt"; echo "rapporto salvato in $D/rapporto.txt"
+set -o pipefail
+D=$(mktemp -d) &&
+curl -fsSL -o "$D/audit.py" https://raw.githubusercontent.com/alexiptv82/SuperBot-Trading/<COMMIT>/deploy/scripts/audit_long_short.py &&
+test "$(git hash-object "$D/audit.py")" = "<GIT_BLOB_SHA>" &&
+python3 -I "$D/audit.py" --vps /opt/superbot-v3-paper-runs --layout rc84 --since 2026-11-10T23:00:00Z | tee "$D/rapporto.txt" &&
+echo "Rapporto RC84 salvato in $D/rapporto.txt"
 ```
-`<COMMIT>` e `<SHA256>` sono nel rapporto di consegna (l'impronta dello script è anche in fondo a questo documento). Se `sha256sum -c`
-non stampa `OK`, **non** si esegue nulla. Il rapporto contiene solo dati PAPER (simboli, orari, importi PAPER, motivi), nessuna chiave.
+`<COMMIT>` e `<GIT_BLOB_SHA>` vanno sostituiti con i riferimenti esatti dello script corretto. Il controllo `git hash-object` deve riuscire, altrimenti non parte l'audit. Usare `set -o pipefail` per propagare gli errori dello script anche attraverso `tee`. Il rapporto contiene solo dati PAPER (simboli, orari, importi PAPER, motivi), nessuna chiave.
 
-**Cosa fa sulla VPS:** per `hawk` (Falco) e `bull` (Toro) copia `trade_history.jsonl`, `learning_log.jsonl`, `state_v2.json` e gli
+**Cosa fa sulla VPS:** con `--layout rc84`, per `classic-hawk-paper20261111` (Falco) e `classic-bull-paper20261111` (Toro) sotto `/opt/superbot-v3-paper-runs` copia `trade_history.jsonl`, `learning_log.jsonl`, `state_v2.json` e gli
 storici archiviati dai reset (`archive/*/trade_history.jsonl`) in una cartella temporanea privata (0700) **fuori** dai dati, aprendo gli
 originali solo in lettura; la copia è ripetuta finché nessun file cambia durante il giro (i worker di uscita possono scrivere anche coi
 bot in pausa). Analizza le copie e le cancella alla fine. La riga `copia COERENTE` lo conferma; `NON COERENTE` = ripetere il comando.
-Con `--keep-copies /root/audit-copie-AAAAMMGG` (cartella nuova) le copie restano per altre analisi.
+Con `--keep-copies /root/audit-copie-AAAAMMGG` (cartella nuova) le copie restano per altre analisi. **ATTENZIONE:** il vecchio `--vps /opt/superbot-desk-data` usa `--layout legacy` (`hawk`, `bull`) ed è un dataset distinto; non sostituisce i trade RC84. Se il dataset RC84 manca o la copia cambia durante il giro, il programma interrompe il rapporto senza dichiararlo completo.
 
 ## 2. Come sono ricostruiti i trade
 * **Chiave di un trade = (simbolo, id, ora di apertura).** L'id del motore riparte da 1 a ogni reset, quindi da solo non basta; la
@@ -74,7 +78,7 @@ o dati; non invia nulla in rete. Lo stato di mercato "vero" (EMA200 4h piena, 1d
 richiede le candele del periodo: è il passo successivo, sul banco storico, prima di qualunque modifica alla strategia LONG.
 
 ## 6. Prove
-`deploy/scripts/test_audit_long_short.py` (13 prove): registri prodotti dal **motore PAPER vero** (`PaperAccount.open/close/partial_close`)
+`deploy/scripts/test_audit_long_short.py` (13 prove precedenti, più 3 nuovi test di layout RC84 e fallimento sicuro, da rieseguire localmente): registri prodotti dal **motore PAPER vero** (`PaperAccount.open/close/partial_close`)
 con lo schema esatto di storico e learning; reset con id riusato e storico archiviato; parziale + finale; posizione aperta; riga troncata e
 riga duplicata; S25 duplicati tra portafogli con contesto del desk; trade a cavallo del rilascio (cambia sezione tra i due report);
 cutoff verificato con `zoneinfo` (12:37 Europe/Rome = 11:37 UTC); copia coerente, ripetuta se un file cambia, dichiarata non coerente se
@@ -82,4 +86,4 @@ continua a cambiare; nessuna scrittura nei dati (contenuto e date di ogni file i
 cancellata; script senza moduli di rete e con un solo punto di scrittura (le copie).
 
 ## 7. Impronta dello script
-`sha256(deploy/scripts/audit_long_short.py) = 0769bc1a19f48988d5385f557fd7ac216c7ffecad916fd39d1236aeb050d3926`
+Il valore seguente si riferiva allo script precedente e **non va utilizzato per il nuovo comando RC84**: `0769bc1a19f48988d5385f557fd7ac216c7ffecad916fd39d1236aeb050d3926`. Ottenere il nuovo blob Git SHA dallo script nel ramo di correzione.

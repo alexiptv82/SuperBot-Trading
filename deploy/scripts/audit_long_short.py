@@ -33,7 +33,12 @@ from datetime import datetime, timezone
 VERSION = "audit-long-short-2"
 DEFAULT_SINCE = "2026-11-11T00:00:00Z"
 DEFAULT_CUTOFF = "2026-11-12T11:37:00Z"          # 12:37 Europe/Rome il 12/11/2026 (CET = UTC+1)
-VPS_PORTFOLIOS = (("Falco", "hawk"), ("Toro", "bull"))
+# Explicit dataset selection: do not silently analyze old legacy wallets instead of RC84.
+VPS_LAYOUTS = {
+    "legacy": (("Falco", "hawk"), ("Toro", "bull")),
+    "rc84": (("Falco", "classic-hawk-paper20261111"),
+             ("Toro", "classic-bull-paper20261111")),
+}
 DATA_FILES = ("trade_history.jsonl", "learning_log.jsonl", "state_v2.json")
 STRATEGY = {"claude": "Claude", "rules": "Rules", "rules_long_s25": "S25"}
 H = 3_600_000
@@ -491,7 +496,9 @@ def analyze(portfolios_dirs, since, cutoff, copies_info):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     g = ap.add_mutually_exclusive_group(required=True)
-    g.add_argument("--vps", help="radice dei dati (es. /opt/superbot-desk-data): copia coerente di hawk e bull, poi analisi")
+    g.add_argument("--vps", help="radice dei dati: /opt/superbot-v3-paper-runs (RC84) o /opt/superbot-desk-data (legacy)")
+    ap.add_argument("--layout", choices=("legacy", "rc84"), default="legacy",
+                    help="nome layout obbligatorio da specificare esplicitamente per analisi RC84: --layout rc84")
     g.add_argument("--portfolio", action="append", help="ETICHETTA=CARTELLA di copie gia' fatte (ripetibile)")
     ap.add_argument("--since", default=DEFAULT_SINCE)
     ap.add_argument("--cutoff", default=DEFAULT_CUTOFF, help="rilascio RC84 in UTC (predefinito 12:37 Europe/Rome = 11:37Z)")
@@ -516,13 +523,21 @@ def main(argv=None):
         work = tempfile.mkdtemp(prefix="audit-long-short-")
     try:
         os.chmod(work, 0o700)
-        dirs, info = [], []
-        for lab, sub in VPS_PORTFOLIOS:
+        dirs, info = [], ["LAYOUT=%s ROOT=%s" % (a.layout, root)]
+        for lab, sub in VPS_LAYOUTS[a.layout]:
             src = os.path.join(root, sub)
             if not os.path.isdir(src):
+                if a.layout == "rc84":
+                    raise SystemExit("ERRORE: wallet RC84 mancante: %s" % src)
                 info.append("%s: cartella %s assente" % (lab, src))
                 continue
+            if a.layout == "rc84":
+                missing = [n for n in DATA_FILES if not os.path.isfile(os.path.join(src, n))]
+                if missing:
+                    raise SystemExit("ERRORE: dataset RC84 incompleto in %s: %s" % (src, ",".join(missing)))
             ok, att, names = snapshot(src, os.path.join(work, sub))
+            if not ok:
+                raise SystemExit("ERRORE: copia NON COERENTE, rapporto non generato; riprovare piu' tardi")
             digest = hashlib.sha256()
             for n in names:
                 with open(os.path.join(work, sub, n), "rb") as f:
