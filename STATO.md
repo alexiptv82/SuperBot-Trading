@@ -1,5 +1,16 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 12:47 Europe/Rome — Brain preflight VPS parziale; DeepSeek non chiamato
+
+- Nuovo checkpoint: [`diario/2026-11-13_brain-preflight-vps-parziale-deepseek-non-chiamato.md`](diario/2026-11-13_brain-preflight-vps-parziale-deepseek-non-chiamato.md).
+- Riscontro Issue #95: mandato coerente e approvato, runner Brain ancora `paused`, exit `healthy`, journal integrity/chain OK, budget run invariato e pausa conservata. È prova riportata da output VPS, non controllo SSH indipendente di questo checkpoint.
+- Gate fallito/incompleto: regole contratti 6/8 (BTC/ETH mancanti), ciclo isolato su SOL fermato da `data_unavailable`; `deepseek {}` significa chiamata **non avvenuta**. Zero decisioni/aperture: E2E Brain non provato, NO-GO per unpause.
+- Preflight fissato a `5c71be8…`; smoke no-order preparato ma non eseguito su branch `work/brain-deepseek-smoke-readonly-20261113`, commit `46cd607…`. Lo `stage_sha` VPS resta non visibile/non verificato; nessun deploy parser autorizzato.
+- Falco SHORT congelato, Toro LONG/Twin sospeso. Nessun merge/deploy/Actions/VPS/reset/unpause/ordine. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. PAPER, storici ed EventJournal preservati.
+
+---
+
+
 ## 13/11/2026 11:48 Europe/Rome — Priorità Brain; Issue #95 per DeepSeek E2E
 
 - Nuovo checkpoint: [`diario/2026-11-13_priorita-brain-issue95-gate-e2e.md`](diario/2026-11-13_priorita-brain-issue95-gate-e2e.md).
