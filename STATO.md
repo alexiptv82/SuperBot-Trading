@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 18:44 Europe/Rome — PR #96 Step0 NO-GO; Step0′ funding solo proposto
+
+- Nuovo checkpoint: [`diario/2026-11-13_PR96-step0-no-go-claude-step0prime-proposto.md`](diario/2026-11-13_PR96-step0-no-go-claude-step0prime-proposto.md).
+- Step0 completato su 5 mercati/365 giorni: `evaluated=5 approved=0`. Medie nette riportate 4/8/12h −0,1305%/−0,1729%/−0,1380%; anche le medie lorde aggregate restano negative. **Toro BB100 V1 bocciato strategicamente**, PR #96 resta Draft/research e non va collegata o riattivata.
+- Discrepanza SOL 4h: log +0,0257%, tabella manuale −0,0257%; verificare JSON primario. Anche correggendo a positivo, media 4h circa −0,1204% e NO-GO invariato.
+- Rapporto Claude completo propone un solo Step0′ funding-negativo + recupero prezzo, con sei gate preregistrati e 24h primaria; non risulta autorizzato, nessun rischio/configurazione modificato.
+- Brain invariato; primo ciclo completo 8 simboli non documentato. Falco SHORT congelato e Toro sospeso. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 13/11/2026 17:46 Europe/Rome — PR #96 Step0 interrotto; resume detached avviato
 
 - Nuovo checkpoint: [`diario/2026-11-13_PR96-step0-interrotto-resume-detached-avviato.md`](diario/2026-11-13_PR96-step0-interrotto-resume-detached-avviato.md).
