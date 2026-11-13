@@ -38,7 +38,32 @@ backend/tests/test_v3_runner_feed_monitor.py 6fa6bedcc0edb63204e78909176bc7e260d
 BLOBS
 "$PYTHON" -m py_compile backend/v3/runner/monitor.py backend/v3/runner/feed.py backend/tests/test_v3_brain_exit_feed_observability_20261113.py
 echo "BRAIN_P0_TEST SOURCE_BLOBS=PASS SYNTAX=PASS run_mode=ISOLATED"
-# No pytest cache, no live credentials or stage configuration imports, no network.
+# The production Python venv intentionally does not ship pytest. Never modify it.
+# Use an existing pytest if available, or download a pinned copy to /tmp only.
+if "$PYTHON" -c 'import pytest' >/dev/null 2>&1; then
+    echo "BRAIN_P0_TEST PYTEST_SOURCE=EXISTING"
+else
+    echo "BRAIN_P0_TEST PYTEST_SOURCE=TEMPORARY_INSTALL"
+    INSTALLER=""
+    if "$PYTHON" -m pip --version >/dev/null 2>&1; then
+        INSTALLER="$PYTHON"
+    elif python3 -m pip --version >/dev/null 2>&1; then
+        INSTALLER=python3
+    else
+        echo "BRAIN_P0_TEST RESULT=BLOCKED reason=pip_unavailable no_runtime_changes=1"
+        exit 4
+    fi
+    mkdir -p "$TMP/pytest_lib"
+    if ! "$INSTALLER" -m pip install --disable-pip-version-check --no-input --no-cache-dir --quiet \
+        --target "$TMP/pytest_lib" 'pytest==8.4.2'; then
+        echo "BRAIN_P0_TEST RESULT=BLOCKED reason=temp_pytest_install_failed no_runtime_changes=1"
+        exit 4
+    fi
+    export PYTHONPATH="$TMP/pytest_lib:${PYTHONPATH:-}"
+    "$PYTHON" -c 'import pytest; assert pytest.__version__=="8.4.2"'
+fi
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+# No pytest cache, no live credentials or stage configuration imports, no network during tests.
 nice -n 10 "$PYTHON" -m pytest -q -p no:cacheprovider \
     backend/tests/test_v3_brain_exit_feed_observability_20261113.py \
     backend/tests/test_v3_runner_feed_monitor.py \
