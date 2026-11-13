@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 19:46 Europe/Rome — Step0′ autorizzato/preregistrato; audit fonti pubblico PASS
+
+- Nuovo checkpoint: [`diario/2026-11-13_PR97-prereg_PR98-funding-source-audit-pass.md`](diario/2026-11-13_PR97-prereg_PR98-funding-source-audit-pass.md).
+- Decisione utente verificata: autorizzato il percorso Step0′ funding-negativo con preregistrazione prima dei risultati, nessun gate R:R extra, hold-out ADA/AVAX/BCH/DOGE/DOT, 24h primaria/8h secondaria e tre benchmark inclusa ablation senza funding.
+- [PR #97](https://github.com/alexiptv82/SuperBot-Trading/pull/97) Draft, commit prereg immutabile `429bdd7…`; test strategico non avviato. SOL V1 4h risolto dalla fonte primaria: −0,025714%, media aggregata −0,1305%, NO-GO invariato.
+- [PR #98](https://github.com/alexiptv82/SuperBot-Trading/pull/98) Draft, HEAD `bdf48f7…`: audit pubblico completato, 6/6 simboli, errori 0, 270 record per fonte/simbolo. Il proxy gate resta `NOT_EVALUATED`: 132 timestamp comuni e concordanza segno non misurano episodi estremi o edge.
+- Brain invariato; Falco SHORT congelato; Toro sospeso. Nessun backtest P, rischio applicato, merge/deploy/Action/ordine. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 13/11/2026 18:44 Europe/Rome — PR #96 Step0 NO-GO; Step0′ funding solo proposto
 
 - Nuovo checkpoint: [`diario/2026-11-13_PR96-step0-no-go-claude-step0prime-proposto.md`](diario/2026-11-13_PR96-step0-no-go-claude-step0prime-proposto.md).
