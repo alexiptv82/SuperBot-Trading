@@ -27,7 +27,7 @@ M15 = 900_000
 H1 = 3_600_000
 H8 = 28_800_000
 D1 = 86_400_000
-START = 1_763_059_200_000  # 2025-11-13 16:00:00 UTC
+START = 1_763_049_600_000  # 2025-11-13 16:00:00 UTC
 END = 1_794_585_600_000    # 2026-11-13 16:00:00 UTC
 # A typo in fixed times MUST be caught; never silently move the window.
 CUTOFF_UTC = "2026-11-13T16:00:00+00:00"
@@ -372,9 +372,14 @@ def do_replay():
     rand=random_matched(trades,assets,eligible,RAND_SEEDS) if trades else None
     frequency=Counter(datetime.fromtimestamp(t["entry_ts"]/1000,timezone.utc).strftime("%Y-%m") for t in trades)
     signal_frequency=Counter(datetime.fromtimestamp(t["signal_ts"]/1000,timezone.utc).strftime("%Y-%m") for t in candidates)
-    allmonths=sorted({datetime.fromtimestamp(START/1000,timezone.utc).strftime("%Y-%m"),
-                      *signal_frequency.keys(),*frequency.keys(),
-                      datetime.fromtimestamp((END-M15)/1000,timezone.utc).strftime("%Y-%m")})
+    # Explicitly include every month even when no setup occurs.
+    allmonths=[]
+    year,month=2025,11
+    while (year,month)<=(2026,11):
+        allmonths.append(f"{year:04d}-{month:02d}")
+        month+=1
+        if month>12:
+            year+=1;month=1
     overall_profit=sum(t["profit_usdt"] for t in trades)
     positive_symbols=sum(v["n"]>0 and v["avg_bp"]>0 for v in by_sym.values())
     contrib={s:max(0,v["total_usdt"]) for s,v in by_sym.items()}
@@ -405,8 +410,8 @@ def do_replay():
             "by_symbol":by_sym,"closed_equity_drawdown":maxdd,
             "closed_equity_drawdown_not_MTM":True,
             "random_matched":rand,"stress_avg_bp":total_stress,
-            "monthly_trades":dict(sorted(frequency.items())),
-            "monthly_raw_signals":dict(sorted(signal_frequency.items())),
+            "monthly_trades":{month:frequency[month] for month in allmonths},
+            "monthly_raw_signals":{month:signal_frequency[month] for month in allmonths},
             "all_accepted_trades":trades,"pass_checks":checks_dict,
             "historical_go":False,
             "next":"A PASS is impossible without independently audited mark-to-market DD, "
