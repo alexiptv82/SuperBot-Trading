@@ -8,7 +8,7 @@ STAGE="/opt/superbot-v3-rc84-stage"
 PIN="4fd28ad7e4d00d3db9d15c510dbedf700ce24719"
 EXPECTED_STAGE="0e29a73a36f668643da4088178bacb8616a45ac0"
 ROOT_URL="https://raw.githubusercontent.com/alexiptv82/SuperBot-Trading/$PIN"
-if [[ ! -d "$STAGE/.git" ]]; then
+if ! git -C "$STAGE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "BRAIN_HOTFIX_VERIFY=BLOCK reason=stage_git_missing"; exit 2
 fi
 ACTUAL="$(git -C "$STAGE" rev-parse HEAD)"
