@@ -1,5 +1,16 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 14:44 Europe/Rome — Hotfix Brain installato; E2E isolato PASS; ancora PAUSED
+
+- Nuovo checkpoint: [`diario/2026-11-13_brain-hotfix-deployed-e2e-pass-paused.md`](diario/2026-11-13_brain-hotfix-deployed-e2e-pass-paused.md).
+- Dopo autorizzazione esplicita, installer pinned `e9f7710…`: backup verificato, esattamente due moduli dati Brain installati sullo stage `0e29a73…`, worktree intenzionalmente dirty per 2 file; riavviati soltanto runner/exit Brain. Controllo finale: pausa presente, zero posizioni, exit healthy, journal integro.
+- Preflight E2E isolato post-hotfix PASS: contratti 8/8; DeepSeek HTTP 200, JSON valido, reasoning presente, 8,7 s/3.040 token; decisione BTCUSDT `NO_TRADE/DRAFT`, zero aperture/errori; journal/budget operativi invariati.
+- Prova valida per feed→AI→decisione→journal temporaneo su BTC, non tutti gli 8 simboli né OPEN/TP/SL operativo o redditività. Brain resta PAUSED; unpause richiede consenso separato.
+- Falco SHORT e Toro LONG/Twin non toccati. Nessun merge/Actions/reset/LIVE/ordine. Backup installazione da conservare; extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Storici/EventJournal preservati.
+
+---
+
+
 ## 13/11/2026 13:45 Europe/Rome — DeepSeek reale PASS; hotfix Brain solo locale
 
 - Nuovo checkpoint: [`diario/2026-11-13_brain-deepseek-pass-hotfix-test-locale-paused.md`](diario/2026-11-13_brain-deepseek-pass-hotfix-test-locale-paused.md).
