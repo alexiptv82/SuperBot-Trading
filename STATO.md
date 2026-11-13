@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 17:46 Europe/Rome — PR #96 Step0 interrotto; resume detached avviato
+
+- Nuovo checkpoint: [`diario/2026-11-13_PR96-step0-interrotto-resume-detached-avviato.md`](diario/2026-11-13_PR96-step0-interrotto-resume-detached-avviato.md).
+- [PR #96](https://github.com/alexiptv82/SuperBot-Trading/pull/96) resta Draft/non mergiata; HEAD `0a4574de…`, 27 commit e 9 file. L'istanza Step0 originale è terminata senza report dopo 8/10 CSV (BTC/ETH/SOL/BNB 1H+4H; XRP assente); causa ignota, nessuna prova OOM.
+- Resume preparato ai commit `f89487c…` e `0a4574d…`, poi avviato detached con sorgenti pinned e syntax OK. È prova del solo avvio: report, coverage, segnali, expectancy e benchmark 4/8/12h restano non verificati.
+- I 19/19 test core PASS restano validi ma non provano edge o release. Falco/Toro non riattivati; Brain invariato e primo ciclo completo 8 simboli ancora non documentato.
+- Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati; nessun merge/deploy/Actions/ordine.
+
+---
+
 ## 13/11/2026 16:47 Europe/Rome — PR #96 Toro core 19 PASS; Step0 Bitget ancora in corso
 
 - Nuovo checkpoint: [`diario/2026-11-13_PR96-toro-core-19pass-step0-in-corso.md`](diario/2026-11-13_PR96-toro-core-19pass-step0-in-corso.md).
