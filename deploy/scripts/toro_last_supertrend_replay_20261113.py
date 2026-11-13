@@ -312,6 +312,8 @@ def random_matched(trades,assets,eligible,seed_count=1000):
         distribution.append(total/len(pool) if pool else float("nan"))
     distribution.sort()
     return {"draws":len(distribution),
+            "random_seed":971113,
+            "distribution_bp":distribution,
             "median_bp":distribution[len(distribution)//2] if distribution else None,
             "p95_bp":distribution[int((len(distribution)-1)*0.95)] if distribution else None}
 
