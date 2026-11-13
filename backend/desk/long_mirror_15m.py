@@ -47,7 +47,10 @@ def _rsi(x: np.ndarray, period: int = 14) -> float:
 
 
 def _long_pattern(bars: np.ndarray) -> str:
-    """Only the LONG mirror of the unchanged 1h candle patterns, applied to 15m."""
+    """Same classification order as the unchanged desk.signals.doji_pattern, applied to 15m.
+
+    A candle the original would read as "shooting_star" (a SHORT pattern) is reported as such and
+    earns no LONG points: it must never be re-read as a bullish engulfing (precedence preserved)."""
     o, h, l, c = [float(v) for v in bars[-1, 1:5]]
     body = abs(c - o)
     full = h - l
@@ -55,8 +58,11 @@ def _long_pattern(bars: np.ndarray) -> str:
         return ""
     if body / full < 0.1:
         return "doji"
-    if (min(o, c) - l) > 2 * body and h - max(o, c) < 0.5 * body:
+    upper, lower = h - max(o, c), min(o, c) - l
+    if lower > 2 * body and upper < 0.5 * body:
         return "hammer"
+    if upper > 2 * body and lower < 0.5 * body:
+        return "shooting_star"
     po, pc = [float(v) for v in (bars[-2, 1], bars[-2, 4])]
     if c > o and pc < po and c > po and o < pc:
         return "bullish_engulfing"
@@ -120,7 +126,7 @@ def inspect_long_mirror_15m(
     if now_ms < asof or now_ms - asof >= BAR_MS:
         return _no("dati_15m_vecchi", asof=asof)
 
-    closes, opens, highs, lows, volumes = a[:, 4], a[:, 1], a[:, 2], a[:, 3], a[:, 5]
+    closes, opens, highs, volumes = a[:, 4], a[:, 1], a[:, 2], a[:, 5]
     e20, e50 = _ema(closes, 20), _ema(closes, 50)
     ref = float(closes[-1])
     prev20_high = float(highs[-21:-1].max())

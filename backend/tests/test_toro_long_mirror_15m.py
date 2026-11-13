@@ -101,3 +101,34 @@ def test_downtrend_confirmed_bounce_is_a_distinct_nonexecuting_candidate():
 def test_two_red_candles_cannot_produce_a_long_candidate():
     r = inspect_long_mirror_15m("BTC", sample(end_force=-0.005), NOW, trend4h_state="UP")
     assert r.state == "NO_TRADE" and r.reason == "conferme_15m_non_sufficienti"
+
+
+def test_gap_inside_the_used_window_is_rejected_even_with_long_history():
+    """With 200 bars the history is sufficient: the missing bar must be detected as a gap, not as short history."""
+    a = sample(n=200)
+    assert inspect_long_mirror_15m("BTC", a, NOW, trend4h_state="UP").state == "LONG_CONTINUATION_CANDIDATE"
+    r = inspect_long_mirror_15m("BTC", np.delete(a, -30, axis=0), NOW, trend4h_state="UP")
+    assert r.state == "NO_TRADE" and r.reason == "storia_15m_interrotta"
+
+
+def test_shooting_star_keeps_the_original_precedence_and_earns_no_long_points():
+    """The frozen 1h classifier checks shooting_star before engulfing; the 15m mirror must not turn it bullish."""
+    from desk.long_mirror_15m import _long_pattern
+    from desk.signals import doji_pattern
+    a = sample(n=200)
+    pc = a[-2, 4]
+    a[-2, 1:5] = [pc * 1.002, pc * 1.002 * 1.0005, pc * 0.9995, pc]        # previous candle red
+    o, c = pc * 0.999, pc * 1.002 * 1.001                                   # engulfs the previous body
+    a[-1, 1:5] = [o, c + 3 * (c - o), o * 0.99999, c]                       # long upper wick: shooting star
+    assert doji_pattern(a[-3:]) == "shooting_star"
+    assert _long_pattern(a) == "shooting_star"
+
+
+def test_no_future_information_reaches_a_past_decision():
+    """Replaying bar by bar: a decision at time t is identical whether or not later bars are supplied."""
+    a = sample(n=200)
+    for k in (150, 170, 199):
+        now = int(a[k - 1, 0]) + BAR_MS + 1
+        past = inspect_long_mirror_15m("BTC", a[:k], now, trend4h_state="UP")
+        full = inspect_long_mirror_15m("BTC", a, now, trend4h_state="UP")
+        assert (past.state, past.reason, past.score, past.features) == (full.state, full.reason, full.score, full.features)
