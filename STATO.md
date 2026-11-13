@@ -1,3 +1,15 @@
+# STATO — SuperBot Trading
+
+## 13/11/2026 08:59 Europe/Rome — PR #93 FAIL reale; PR #94 soltanto test PAPER
+
+- Nuovo checkpoint: [`diario/2026-11-13_PR93-real-backtest-fail_PR94-twin-test-only.md`](diario/2026-11-13_PR93-real-backtest-fail_PR94-twin-test-only.md).
+- [PR #93](https://github.com/alexiptv82/SuperBot-Trading/pull/93) Draft a `c8e8992458264ff81d82f0e9805b9115e11c839c`: backtest read-only BTC/ETH/SOL 15m/4H con esito **FAIL — non integrare**; tutti i periodi/asset negativi, 21/21 test dichiarati, CSV grezzi non inclusi. Baseline negativa da conservare, nessun tuning sulla finestra B.
+- [PR #94](https://github.com/alexiptv82/SuperBot-Trading/pull/94) Draft a `4025db383fb92ee5e1656c55144df4833a77800d`: Falco SHORT / Toro LONG 10×100 predisposta OFF/PAPER come **solo test**. Test scritti ma non eseguiti; l’utente non ha ancora deciso la configurazione finale.
+- `kill_equity=450` è un gate per nuove aperture, non un floor assoluto sulle esposizioni aperte. Nessuna chiusura forzata automatica autorizzata.
+- Nessun merge/deploy/Actions/VPS/reset/unpause/ordine. Brain invariato; backup esterno preparato ma non installato; verifica PC age `ESITO: VERIFICA OK` non certifica la VPS. Storici ed EventJournal da preservare.
+
+---
+
 ## 13/11/2026 06:50 — PR #93: TORO LONG MIRROR 15M COLLAUDATO OFFLINE, NON PRONTO
 
 La roadmap successiva sostituisce Toro LONG+SHORT: Falco resta SHORT_ONLY con strategia congelata; Toro è ora desiderato LONG_ONLY, studiando una logica LONG speculare ma non equivalente allo SHORT. [PR Draft #93](https://github.com/alexiptv82/SuperBot-Trading/pull/93), branch `work/toro-long-mirror-15m-20261113`, HEAD [`1de3b7d...`](https://github.com/alexiptv82/SuperBot-Trading/commit/1de3b7d80afcf8fc1abe6e0290e863b3b09cad39), aperta/non mergiata: solo nuovi file di laboratorio, nessun collegamento al runner. Risultati documentati: 17/17 studio, 404 regressioni, suite 7.080 pass/1 fail noto/9 skip/3 xfail; replay soltanto sintetico e **nessun edge dimostrato**, con forte debolezza nel laterale. La proposta 5 slot × max 200 USDT è tecnica e da riconfermare, non configurazione attiva. [Checkpoint completo](diario/2026-11-13_PR93-toro-long-mirror-studio-tested-not-ready.md). Nessun merge/deploy/Action/VPS/reset/unpause/ordine; extbackup non installato, age PC OK ma non certifica VPS; PAPER, storici/EventJournal preservati.
