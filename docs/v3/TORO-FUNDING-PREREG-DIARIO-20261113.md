@@ -25,3 +25,15 @@
 4. Nessuna modifica ai processi, al capitale o alle strategie Falco/Brain. Nessun merge/deploy.
 
 **Nota:** soglia coincidenza 70/60/10/90 è una scelta di progettazione registrata preventivamente su richiesta dell'utente; NON era una soglia numerica fornita da Claude. Il pannello 15 è una scelta di pre-selezione, non un'asserzione che sia realmente il top15 storico.
+
+## Addendum verificato — 13 novembre 2026 ore 18:57 CET
+
+**Gate 1 SOL V1 CHIUSO (PASS: coerenza sorgenti)**, screenshot Termius delle 18:57, verifica read-only sul file originale `/opt/superbot-toro-research/step0-20261113T153437Z/step0_SOLUSDT_result.json`:
+- `report.windows["4"].signals = 67`
+- `report.windows["4"].avg_net = -0.0002571351706489649`, pari a **−0,025714%**.
+- `report.windows["4"].avg_gross = +0.00074286` circa, pari a **+0,074286%**.
+- Registro persistente `resume_run.log`, riga 20: `TORO_RESUME event=WINDOW symbol=SOLUSDT hours=4 signals=67 avg_net=-0.000257 random_beaten=0.743`.
+- Timestamp file (UTC): `step0_SOLUSDT_result.json` 16:41:11; `report_step0.json` 17:01:42; `resume_run.log` 17:01:42. Il registro e il JSON **sono coerenti**. La precedente apparente discrepanza derivava dalla lettura erronea del segno nello screenshot della chat, NON da un difetto dimostrato del codice o dei dati.
+- Nessuna variazione all'esito NO-GO BB100 V1: media netta aggregata 4h **−0,1305%**.
+
+**Gate ancora aperto:** disponibilità, copertura temporale, provenienza e causale allineamento del funding Binance/Bitget + universo mensile top 15 storico. **Nessuna esecuzione del nuovo backtest funding P**, nessun cambio dei criteri bloccati dalla PR #97, nessuna modifica ai bot o al rischio.
