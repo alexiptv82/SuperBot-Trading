@@ -13,9 +13,9 @@ blobs["backend/desk/toro_profit_hunter.py"]=adfffa3f1b6c77c036c3e45d56cc6837afc9
 blobs["backend/tests/test_toro_profit_hunter_v1.py"]=8979fb69fef1024dd1eb3ffa851b9f67ce8ed409
 blobs["backend/tests/test_toro_profit_hunter_step0.py"]=8a7f91ff1805ccff9228c58e4c67dcc89e36eed8
 blobs["deploy/scripts/toro_profit_hunter_step0.py"]=09543cb68d4ba117ed704b5c959854b3cd518f21
-for path in "\${!blobs[@]}"; do
+for path in "${!blobs[@]}"; do
   curl -fsSL --max-time 30 "$BASE/$path" -o "$TMP/$path"
-  [[ "$(git hash-object "$TMP/$path")" == "\${blobs[$path]}" ]] || {
+  [[ "$(git hash-object "$TMP/$path")" == "${blobs[$path]}" ]] || {
     echo "TORO_TEST RESULT=FAIL reason=hash_mismatch path=$path"; exit 1;
   }
 done
