@@ -197,7 +197,7 @@ def test_policy_shadow_reports_prompt_contract_gaps_without_blocking(cli_mod):
 
 def test_the_s25_entry_gate_still_requires_the_toro_opt_in():
     src = open(os.path.join(BACKEND, "desk", "cli.py"), encoding="utf-8").read()
-    assert ('s25_new_entries = (PORTFOLIO.name == "bull" and\n'
+    assert ('s25_new_entries = (PORTFOLIO.name == "bull" and bull_mode == "OFF" and\n'
             '                               os.getenv("DESK_S25_TORO_ENTRY_APPROVED") == "1"\n'
             '                               and not explicit_claude_no_trade)') in src
     assert 'if not LIVE._live and os.environ.get("DESK_LONG_S25") == "1":   # strategia long S25' in src
