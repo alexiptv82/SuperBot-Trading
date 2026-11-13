@@ -2,7 +2,7 @@
 import unittest
 from desk.toro_profit_hunter import (
     Candle, Guardian, MakerPending, Policy, Quote, Signal, HOUR, FOUR_HOURS, MINUTE,
-    _bars, entry_signal, estimated_net_long, profit_guardian, quote_entry, daily_summary
+    _bars, _atr, _atr_history, entry_signal, estimated_net_long, profit_guardian, quote_entry, daily_summary
 )
 
 
@@ -16,6 +16,15 @@ class ToroProfitHunterTest(unittest.TestCase):
                     exchange_max_leverage=45)
         opts.update(kwargs)
         return quote_entry(self.s, **opts)
+
+    def test_optimized_atr_history_equivalent_to_original(self):
+        bars = [Candle(i*HOUR, 100+i*0.01, 101+i*0.02,
+                       99+i*0.005, 100+i*0.01, 10+i%5)
+                for i in range(750)]
+        history = _atr_history(bars)
+        self.assertEqual(len(history), 736)
+        for index in (15, 42, 100, 310, 750):
+            self.assertAlmostEqual(history[index-15], _atr(bars[:index]), places=10)
 
     def test_risk_is_derived_from_stop_not_leverage_target(self):
         q, why = self._quote()
