@@ -1,6 +1,6 @@
 # SuperBot — Falco SHORT / Toro LONG: coppia di portafogli gemelli (PAPER)
 
-**Stato:** esperimento reversibile su ramo isolato, **NON collaudato** e **NON attivato**.
+**Stato:** esperimento reversibile su ramo isolato, collaudato tecnicamente il 13/11/2026 (vedi in fondo), **NON attivato**.
 **Base sicura:** Phase3 `f8332c92cc2bc4edee3ea7363f71f15a0a37a816` (Falco SHORT_ONLY, PR #92).
 **Fallimento separato:** PR #93 `c8e8992` (LONG Mirror 15m) resta **FAIL** e **non viene importata né incorporata** qui.
 **Versione su VPS:** invariata, i tre bot PAPER rimangono in pausa; nessun deploy, merge, reset, LIVE.
@@ -51,7 +51,7 @@ Il segnale `r.side` dipende dal confronto tra `long_score` e `short_score`.
 - `DESK_S25_TORO_ENTRY_APPROVED=1` NON può autorizzare nuove S25 se Twin != OFF; la gestione delle uscite S25 legacy rimane.
 - Lo stato `candidate` documenta i rifiuti per direzione, orizzonte o configurazione errata; nessun trade viene inventato.
 
-## Test scritti ma NON eseguiti
+## Test (eseguiti nel collaudo del 13/11/2026, vedi in fondo)
 
 `backend/tests/test_classics_twin_long_only.py` — config PAPER/LIVE, cap/guardrails, modalità legacy,
 allow/block LONG/SHORT da AI e rules, splits, DCA legacy, S25, NO_TRADE e cicli del bot.
@@ -81,3 +81,86 @@ L'operatività con 10 posizioni correlate merita una verifica di esposizione agg
 4. Nessuna modifica a servizi o VPS finché non siano superati i gate rischio e accordata autorizzazione esplicita per la distribuzione PAPER.
 
 **Questa PR è soltanto il candidato configurabile. Non eseguire merge/deploy/unpause/reset.**
+
+## Collaudo del 13 novembre 2026 (Claude, sul commit `4025db3`)
+
+**Verdetto tecnico: PASS** (correttezza dell'implementazione). **Verdetto strategico: i risultati NON giustificano un
+collaudo PAPER di Toro gemello LONG**; la configurazione resta un candidato tecnico, interruttore OFF, PR in Draft.
+
+### 1. Falco SHORT invariato: confronto di comportamento, non solo di impronte
+
+Il vero `cli.run_cycle` di `f8332c9` e di questo ramo è stato eseguito, in processi separati, sullo **stesso flusso di
+candele reali Bitget USDT-FUTURES** (BTC, ETH, SOL; 15m e 4H native; 22/05/2025 → 13/11/2026; un ciclo ogni 30 minuti;
+26.000 cicli circa) con `deploy/scripts/replay_classics_twin_real.py`. Confronto con
+`deploy/scripts/compare_classics_twin_replays.py` (risultato in `docs/v3/classics-twin-collaudo/confronto-replay.json`):
+
+| Configurazione | Chiusure | Esito |
+|---|---|---|
+| Falco SHORT_ONLY, sole regole | 351 | identico |
+| Falco SHORT_ONLY, percorso Claude (decisioni pseudo-casuali deterministiche) | 312 | identico |
+| Falco BOTH, sole regole | 255 | identico |
+| Falco BOTH, percorso Claude | 276 | identico |
+| Falco SHORT_ONLY con `DESK_BULL_TWIN_MODE=LONG_ONLY` nell'ambiente | 312 | identico |
+| Falco SHORT_ONLY, periodo B, dopo la correzione di questo collaudo | 98 | identico |
+| Toro OFF esplicito / variabile assente vs Toro di `f8332c9` | 392 | identico |
+
+"Identico" vuol dire: stessi segnali e aperture (simbolo, lato, istante, prezzo, leva, margine, stop, TP, motivazione),
+stesse chiusure (prezzo, motivo, PnL, commissioni), stessi candidati rifiutati, stesse posizioni finali e stessa
+cassa. L'unico campo escluso è `logged_ms`, l'orario di sistema in cui la riga viene scritta.
+
+### 2. Toro gemello: requisiti
+
+| # | Requisito | Esito | Prova |
+|---|---|---|---|
+| 1–3 | 1.000 USDT, 10 posizioni, 100 USDT per operazione | OK | `Limits` identici a Falco; margine 300 proposto → 100 |
+| 4 | Stessi guardrail e limiti di Falco | OK | 30$/5× → 60$/15× scalp come Falco |
+| 5 | LONG da Claude e regole | OK | ciclo vero, entrambe le fonti |
+| 6 | Nuovi SHORT sempre rifiutati | OK | `open_short`/`open_short_split`, Claude e regole; replay: 0 SHORT in 26.000 cicli |
+| 7 | NO_TRADE | OK | risposta vuota di Claude non sostituita da LONG delle regole; trend 4h UNKNOWN blocca |
+| 8 | Nessuna trasformazione SHORT → LONG | OK | risposta di Claude con soli SHORT: nulla si apre, le regole non subentrano |
+| 9 | Uscite SHORT preesistenti | OK | stop, TP, chiusura parziale e chiusura decisa |
+| 10 | DCA e seconde gambe SHORT bloccati | OK | DCA SHORT bloccato, DCA LONG ammesso; seconda gamba SHORT annullata, LONG mantenuta |
+| 11 | S25 disabilitata | OK | ciclo vero: con OFF e autorizzazione S25 apre (controllo), con LONG_ONLY no |
+| 12 | Ritorno con OFF | OK | ciclo vero e replay reale identico a `f8332c9` |
+| — | Valore non valido | OK | BLOCK_NEW: nessun nuovo ingresso, DCA o seconda gamba; uscite consentite; replay reale: 0 aperture |
+
+I test nuovi (`backend/tests/test_classics_twin_collaudo.py`, 13) falliscono se si tolgono il blocco DCA, il vincolo
+S25, il tetto di 100 USDT o l'annullamento delle seconde gambe (prova a mutazione eseguita).
+
+### 3. Difetto trovato e corretto
+
+`policy_shadow_violations` (solo registro, nessun effetto sulle decisioni) applicava al gemello il contratto del
+vecchio prompt Toro (TP ≥ 5%, confidenza 65/75), mentre il prompt gemello è quello di Falco: una proposta valida
+risultava "violazione". Ora il contratto Toro vale solo con OFF; il comportamento di Falco e di Toro OFF non cambia.
+Test: `test_shadow_audit_uses_the_falco_contract_in_twin_and_the_toro_contract_when_off`.
+
+### 4. Protezione del capitale (replay reale, sole regole)
+
+La protezione dei 450 USDT ferma le nuove aperture come previsto; nessuna apertura dopo la soglia. Nel replay del
+gemello con percorso Claude pseudo-casuale si sono verificate 2 liquidazioni (SOL 25×, ETH 26×; le leve vengono dalle
+decisioni; il motore applica i tetti per asset): la soglia 450 blocca le aperture, non limita la perdita delle posizioni
+già aperte.
+
+### 5. Risultato strategico su dati reali (sole regole, nessun Claude reale)
+
+| Replay (1.000 USDT iniziali) | Operazioni | PnL netto | Profit factor | Lordo prima dei costi | Commissioni | 450 raggiunto |
+|---|---|---|---|---|---|---|
+| Toro gemello LONG, 22/05/2025 → | 229 | −556,9 | 0,83 | +25,4 | 543,5 | 10/09/2025 |
+| Toro gemello LONG, periodo B (15/02/2026 →) | 112 | −551,9 | 0,61 | −280,5 | 254,1 | 15/07/2026 |
+| Falco SHORT_ONLY, 22/05/2025 → | 351 | −576,6 | 0,91 | +261,2 | 837,8 | 19/02/2026 |
+| Falco SHORT_ONLY, periodo B | 98 | −602,4 | 0,63 | −378,3 | 224,1 | 02/04/2026 |
+
+Su tre mercati e con le sole regole, **entrambi i gemelli consumano il capitale fino alla protezione**. Il LONG del
+gemello ha un risultato lordo vicino a zero nel primo periodo e negativo nel secondo; le commissioni a leva ~20× lo
+rendono pesantemente negativo. Coerente con il backtest della PR #93 (LONG originale 1h negativo).
+
+Limiti dichiarati: tre mercati invece dei 30 del runner; nessun Claude reale (le sue decisioni non sono riproducibili);
+contesto, notizie e funding esterni disattivati; cicli a cadenza fissa di 30 minuti. Questi limiti valgono anche per
+Falco: il replay non dice che lo SHORT di produzione perda, dice che le **regole** da sole non bastano su questi mercati.
+
+### 6. Conclusione
+
+- Correttezza tecnica: **PASS**.
+- Protezione del capitale: la soglia 450 funziona come blocco delle aperture; liquidazioni possibili a leva alta.
+- Risultato strategico: **non giustifica** un collaudo PAPER di Toro gemello LONG. Lasciare `DESK_BULL_TWIN_MODE` non
+  impostato (OFF). Nessun merge, deploy, unpause o reset.

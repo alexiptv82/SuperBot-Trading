@@ -219,7 +219,8 @@ def policy_shadow_violations(dec: dict, portfolio, symbol: str) -> list:
     if sl <= 0:
         out.append("sl_assente: usato quello del segnale")
     name = getattr(portfolio, "name", "")
-    if name == "bull":
+    # Toro gemello usa il prompt di Falco: il contratto storico di Toro (TP>=5%, confidenza 65/75) vale solo con OFF.
+    if name == "bull" and _bull_twin_mode() == "OFF":
         need = PROMPT_BULL_CONF["tier_a"] if symbol.upper() in _TIER_AB else PROMPT_BULL_CONF["altri"]
         if float(dec.get("confidence") or 0) < need:
             out.append("confidenza_%s_sotto_%d_del_prompt_toro" % (dec.get("confidence"), need))
