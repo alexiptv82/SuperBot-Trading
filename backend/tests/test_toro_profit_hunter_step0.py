@@ -18,8 +18,8 @@ class ToroStepZeroTest(unittest.TestCase):
     def test_bitget_csv_open_time_header_parsed(self):
         with tempfile.TemporaryDirectory() as td:
             source = Path(td)/"BTCUSDT_60m.csv"
-            source.write_text("open_time_ms,open,high,low,close,volume\\n"
-                              "0,100,101,99,100,5\\n", encoding="utf-8")
+            source.write_text("open_time_ms,open,high,low,close,volume\n"
+                              "0,100,101,99,100,5\n", encoding="utf-8")
             bars, sha = load_csv(source)
             self.assertEqual(len(bars), 1)
             self.assertEqual(bars[0].ts, 0)
