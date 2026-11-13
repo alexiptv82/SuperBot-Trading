@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 10:47 Europe/Rome — PR #94 PASS tecnico, NO-GO strategico
+
+- Nuovo checkpoint: [`diario/2026-11-13_PR94-collaudo-reale-pass-tecnico-no-go-strategico.md`](diario/2026-11-13_PR94-collaudo-reale-pass-tecnico-no-go-strategico.md).
+- [PR #94](https://github.com/alexiptv82/SuperBot-Trading/pull/94) Draft avanzata a [`4987912…`](https://github.com/alexiptv82/SuperBot-Trading/commit/4987912775f72f9b2bf0519a41fe9216fc6b45aa): 13 prove nel ciclo reale e replay `run_cycle` su BTC/ETH/SOL; correttezza Twin dichiarata **PASS**, Falco/base e Toro OFF dichiarati identici.
+- Esito strategico **NO-GO**: Toro LONG rules-only −556,9 USDT (PF 0,83) e −551,9 nel periodo B; Falco SHORT rules-only anch'esso negativo. Costi elevati e 2 liquidazioni nel percorso pseudo-Claude Toro. Kill 450 blocca nuove aperture, non garantisce il floor.
+- Twin resta OFF/PAPER e non giustifica un collaudo operativo. Configurazione finale Toro non decisa; nessun merge/deploy/unpause/reset/VPS/Actions. Descrizione PR ancora obsoleta (“test non eseguiti”) rispetto al commit/documento: allineamento necessario.
+- PR #93 resta FAIL; PR #92 Draft/non attivata; Brain invariato. Extbackup non installato; verifica PC age `ESITO: VERIFICA OK` non certifica VPS. Storici ed EventJournal preservati.
+
+---
+
 ## 13/11/2026 08:59 Europe/Rome — PR #93 FAIL reale; PR #94 soltanto test PAPER
 
 - Nuovo checkpoint: [`diario/2026-11-13_PR93-real-backtest-fail_PR94-twin-test-only.md`](diario/2026-11-13_PR93-real-backtest-fail_PR94-twin-test-only.md).
