@@ -1,0 +1,143 @@
+{
+ "BTCUSDT": {
+  "15m": {
+   "righe": 55692,
+   "dal": "2025-04-12 04:00",
+   "al": "2026-11-13 06:45",
+   "allineate": true,
+   "duplicati": 0,
+   "duplicati_in_conflitto": 0,
+   "buchi": 0,
+   "barre_mancanti": 0,
+   "primi_buchi": [],
+   "ohlcv_invalidi": 0,
+   "volume_zero": 0,
+   "atteso": 55692
+  },
+  "4H": {
+   "righe": 3480,
+   "dal": "2025-04-12 04:00",
+   "al": "2026-11-13 00:00",
+   "allineate": true,
+   "duplicati": 0,
+   "duplicati_in_conflitto": 0,
+   "buchi": 0,
+   "barre_mancanti": 0,
+   "primi_buchi": [],
+   "ohlcv_invalidi": 0,
+   "volume_zero": 0,
+   "atteso": 3480
+  },
+  "4H_vs_15m": {
+   "confrontate": 3480,
+   "max_scarto_close": 0.0,
+   "max_scarto_hl": 0.0,
+   "non_confrontabili": 0
+  },
+  "funding": {
+   "righe": 270,
+   "dal": "2026-08-15 08:00",
+   "al": "2026-11-13 00:00",
+   "media_bp": 0.612,
+   "min_bp": -1.18,
+   "max_bp": 1.0,
+   "intervalli_h": [
+    8
+   ]
+  }
+ },
+ "ETHUSDT": {
+  "15m": {
+   "righe": 55692,
+   "dal": "2025-04-12 04:00",
+   "al": "2026-11-13 06:45",
+   "allineate": true,
+   "duplicati": 0,
+   "duplicati_in_conflitto": 0,
+   "buchi": 0,
+   "barre_mancanti": 0,
+   "primi_buchi": [],
+   "ohlcv_invalidi": 0,
+   "volume_zero": 0,
+   "atteso": 55692
+  },
+  "4H": {
+   "righe": 3480,
+   "dal": "2025-04-12 04:00",
+   "al": "2026-11-13 00:00",
+   "allineate": true,
+   "duplicati": 0,
+   "duplicati_in_conflitto": 0,
+   "buchi": 0,
+   "barre_mancanti": 0,
+   "primi_buchi": [],
+   "ohlcv_invalidi": 0,
+   "volume_zero": 0,
+   "atteso": 3480
+  },
+  "4H_vs_15m": {
+   "confrontate": 3480,
+   "max_scarto_close": 0.0,
+   "max_scarto_hl": 0.0,
+   "non_confrontabili": 0
+  },
+  "funding": {
+   "righe": 270,
+   "dal": "2026-08-15 08:00",
+   "al": "2026-11-13 00:00",
+   "media_bp": 0.601,
+   "min_bp": -1.19,
+   "max_bp": 1.0,
+   "intervalli_h": [
+    8
+   ]
+  }
+ },
+ "SOLUSDT": {
+  "15m": {
+   "righe": 55692,
+   "dal": "2025-04-12 04:00",
+   "al": "2026-11-13 06:45",
+   "allineate": true,
+   "duplicati": 0,
+   "duplicati_in_conflitto": 0,
+   "buchi": 0,
+   "barre_mancanti": 0,
+   "primi_buchi": [],
+   "ohlcv_invalidi": 0,
+   "volume_zero": 0,
+   "atteso": 55692
+  },
+  "4H": {
+   "righe": 3480,
+   "dal": "2025-04-12 04:00",
+   "al": "2026-11-13 00:00",
+   "allineate": true,
+   "duplicati": 0,
+   "duplicati_in_conflitto": 0,
+   "buchi": 0,
+   "barre_mancanti": 0,
+   "primi_buchi": [],
+   "ohlcv_invalidi": 0,
+   "volume_zero": 0,
+   "atteso": 3480
+  },
+  "4H_vs_15m": {
+   "confrontate": 3480,
+   "max_scarto_close": 0.0,
+   "max_scarto_hl": 0.0,
+   "non_confrontabili": 0
+  },
+  "funding": {
+   "righe": 270,
+   "dal": "2026-08-15 08:00",
+   "al": "2026-11-13 00:00",
+   "media_bp": 0.449,
+   "min_bp": -1.35,
+   "max_bp": 1.0,
+   "intervalli_h": [
+    8
+   ]
+  }
+ }
+}

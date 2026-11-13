@@ -1,0 +1,53 @@
+{
+ "fonte": "https://api.bitget.com (endpoint pubblici, productType USDT-FUTURES)",
+ "scaricato_ms": 1794553795235,
+ "inizio_ms": 1744430400000,
+ "giorni": 580,
+ "file": {
+  "BTCUSDT_15m.csv": {
+   "righe": 55692,
+   "richieste": 279,
+   "sha256": "874c4ce744cb4061fa5a0af5c483073ef4c7ad52ad804ae91ea70023a56506ba"
+  },
+  "BTCUSDT_4H.csv": {
+   "righe": 3480,
+   "richieste": 18,
+   "sha256": "eac13566f2603085ca2ba8147f46d2be2a363436ff473dc203061783be988083"
+  },
+  "BTCUSDT_funding.csv": {
+   "righe": 270,
+   "richieste": 3,
+   "sha256": "9442e2ff4a2b403fe333c2a66d866b9df6113e074f670d49dc69a1758f90f2b3"
+  },
+  "ETHUSDT_15m.csv": {
+   "righe": 55692,
+   "richieste": 279,
+   "sha256": "8d5f4841bc72165e8205a8160d6e06e82ab53d3e8769ec2f83cd300ff41d7d52"
+  },
+  "ETHUSDT_4H.csv": {
+   "righe": 3480,
+   "richieste": 18,
+   "sha256": "d280f4fee1394eb3c5f444ffa8e509fe02e919ff6034dfc1f6dd72bfa0df7e8e"
+  },
+  "ETHUSDT_funding.csv": {
+   "righe": 270,
+   "richieste": 3,
+   "sha256": "0de55e8742b058e67d913d90f6616fdf1e0783969c6bbece1de7da9691b5543f"
+  },
+  "SOLUSDT_15m.csv": {
+   "righe": 55692,
+   "richieste": 279,
+   "sha256": "ad249d6f415a8eb9e14f522972383558cf0a65158e590c9d84f0b2cb0b4c6ebe"
+  },
+  "SOLUSDT_4H.csv": {
+   "righe": 3480,
+   "richieste": 18,
+   "sha256": "85887ea05130b888b1fdf4ce21be2ad722500211a4883d3a54cb44c899135f3c"
+  },
+  "SOLUSDT_funding.csv": {
+   "righe": 270,
+   "richieste": 3,
+   "sha256": "15166c431978b279c43194e4450dfe9412497039b94ac189055a94233ae4f422"
+  }
+ }
+}
