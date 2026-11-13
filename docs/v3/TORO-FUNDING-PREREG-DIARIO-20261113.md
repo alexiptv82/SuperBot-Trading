@@ -37,3 +37,27 @@
 - Nessuna variazione all'esito NO-GO BB100 V1: media netta aggregata 4h **−0,1305%**.
 
 **Gate ancora aperto:** disponibilità, copertura temporale, provenienza e causale allineamento del funding Binance/Bitget + universo mensile top 15 storico. **Nessuna esecuzione del nuovo backtest funding P**, nessun cambio dei criteri bloccati dalla PR #97, nessuna modifica ai bot o al rischio.
+
+## Addendum — 13 novembre 2026 ore 19:56 CET — proxy Binance RESPINTA dal gate dati
+
+**Fonte diretta:** screenshot Terminale VPS Termius ore 19:56, esecuzione reale dello script di sola lettura della PR #98. Test sintetico `TORO_PROXY_DIAG SYNTHETIC_TEST=PASS NO_NETWORK=1`.
+
+**Risultato:** `TORO_PROXY_DIAG PANEL_RESULT=DIAGNOSTIC_THRESHOLDS_NOT_MET pooled_extreme_events=155 pooled_precision=0.2968 STRATEGY_BACKTEST=0 FULL_UNIVERSE_GO=0`.
+
+| Asset | Eventi estremi negativi Binance | Match su Bitget | Coincidenza |
+|---|---:|---:|---:|
+| BTC | 20 | 1 | 5,00% |
+| ADA | 27 | 10 | 37,04% |
+| AVAX | 27 | 10 | 37,04% |
+| BCH | 27 | 10 | 37,04% |
+| DOGE | 27 | 8 | 29,63% |
+| DOT | 27 | 7 | 25,93% |
+| **Totale** | **155** | **46** | **29,68%** |
+
+Copertura oraria `0.9717` per simbolo, superiore al 90%; ogni asset ha almeno 10 eventi. Tuttavia **pooled 29,68% <70%** e **ogni singolo simbolo <60%**, dunque il gate di proxy pre-registrato **NON SUPERA**. Non abbassare retroattivamente i criteri; non rilanciare il backtest finanziario P con Binance trattata come fonte equivalente a Bitget.
+
+Report sorgente persistente sulla VPS: `/opt/superbot-toro-research/funding-source-audit-20261113T184346Z/proxy_diagnostic_20261113.json`.
+
+**Significato rigoroso:** risultato di allineamento fonti **retrospettivo** basato su percentili p10 dei 90gg osservati, non segnale storico causale, non expectancy/trading. Non dimostra che il funding Bitget sia incapace di produrre un vantaggio LONG. Le fonti Bitget storiche oltre 90gg e il top15 mensile non sono dimostrati. Alternative: dataset storico Bitget con provenienza verificata oppure raccolta prospettica shadow Bitget; NO tradare sulla base della proxy Binance. I sei GO strategici della PR#97 restano invariati/non valutati.
+
+**Operatività:** nessun nuovo ordine, nessun deploy/merge o variazione rischio. Brain PAPER non modificato, Falco SHORT originale non modificato, Toro non riacceso. PR #96 NO-GO V1, PR #97 prereg immutabile, PR #98 diagnostica pubblica.
