@@ -264,7 +264,9 @@ def test_stop_and_timeout_and_nothing():
         "CCCUSDT": calm[:20],
     })
     rep = _run(j, feed, T0 + 100 * MINUTE_MS)                    # 100 minuti: nessuna durata massima (3 h) superata
-    assert dict(rep.closed) == {stop_id: EXIT_STOP} and rep.errors == ()
+    # A still-open position with a truncated feed must no longer look healthy.
+    assert dict(rep.closed) == {stop_id: EXIT_STOP}
+    assert rep.errors == ((calm_id, "exit_feed_incomplete"),)
     stop_close = next(c for c in _closes(j) if c["position_id"] == stop_id)
     assert stop_close["exit_price"] == "29000.00000000"
     short = ExitPolicy(D("2"), 90 * MINUTE_MS, D("0"))
