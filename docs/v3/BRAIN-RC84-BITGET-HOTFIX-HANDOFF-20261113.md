@@ -38,3 +38,20 @@ Un backport **solo sui due moduli dati V3**, partendo dallo SHA operativo (non a
 6. In caso di failure: bloccare nuove aperture ripristinando pausa Brain; preservare funzione uscite, rollback se necessario e no reset dei journal.
 
 **PER ORA nessun merge, deploy, unpause, reset, LIVE, GitHub Actions o modifica VPS.**
+
+## 13/11/2026 — installazione approvata dall'utente; script pronto, non ancora eseguito
+
+L'utente ha autorizzato esplicitamente il **deploy limitato a due moduli su VPS, con backup e rollback, Brain mantenuto in pausa**.
+
+Script: `deploy/scripts/v3-brain-rc84-install-hotfix-paused-20261113.sh` sul ramo di lavoro, commit pinned di questo aggiornamento. L'esecuzione richiede Termius sulla VPS Singapore e privilegi root. **ChatGPT non ha accesso SSH diretto alla VPS**, quindi lo stato rimane preparato fino alla ricezione dell'output dell'utente.
+
+La procedura:
+- Prima di fermare servizi: PIN SSH/commit `0e29a73...` esatto, worktree Git pulito, SHA Git blob vecchi esatti, pause presente, zero posizioni Brain aperte da journal verificato, exit sidecar healthy, mandato/dati non modificati, entrambi servizi Brain attivi e con scope `brain-v3-paper20261111`.
+- Scarica due nuovi file pinned da GitHub con controllo SHA Git blob; verifica sintassi Python.
+- Genera **backup privato persistente in `/opt/superbot-v3-brain-hotfix-backups/brain-20261113-XXXXXXXX`**: i 2 file vecchi, copia della configurazione e mandato, pausa, e **snapshot coerenti online di journal.db e budget.db** via SQLite backup; controlla `PRAGMA integrity_check` e file SHA256SUMS.
+- Prima di modificare fonte, imposta gestione automatica del rollback: ferma solo runner Brain, poi exit Brain; se una qualunque fase fallisce, mantiene/ricrea pausa, prova a ripristinare i 2 file vecchi ed avviare prima exit e poi runner. Non tocca dati dei classici. **Non ripristina automaticamente i database**, per evitare perdita di eventi legittimi; le copie sono per recupero manuale e audit.
+- Copia **solo** `backend/v3/runner/contracts.py` e `backend/v3/lab_tools/fetch_candles.py` sullo stage operativo, confronta gli hash e il `git diff --name-only` esatto di soli 2 path. Git HEAD rimane `0e29a73...` e il worktree risulterà **intenzionalmente dirty per 2 file** (non è un branch deploy o merge).
+- Riavvia prima Brain exit sidecar e pretende lease+heartbeat healthy freschi, poi Brain runner e heartbeat PAUSED fresco post-start, verifica journal integro e zero posizioni. Qualsiasi FAIL attiva rollback. SUCCESS stampa `RESULT=PASS brain_only_hotfix_installed=1 pause=1 open_positions=0 exit_healthy=1` e percorso BACKUP_KEEP.
+- Nessuna modifica a `pause.flag`, rischio, leva, capitale, mandato, chiavi, strategie, brain prompts, Falco/Toro, frontend/API, GitHub Actions, no LIVE e nessun ordine.
+- Se il processo fosse terminato forzatamente da SIGKILL o per blackout prima del trap, fermare ogni ulteriore tentativo e richiedere revisione manuale: **non** eseguire `git checkout -f`/reset e non toccare i DB. I due backup source stanno in `BACKUP_KEEP` (o sottocartella recente della directory privata); reintrodurre solo i due file e riavviare solo Brain mantenendolo paused con un intervento amministrativo revisionato.
+- L'avvio con rimozione pausa Brain richiede una **seconda approvazione esplicita** dopo la prova del funzionamento Brain sul codice installato. Non è coperto dal consenso al deploy.
