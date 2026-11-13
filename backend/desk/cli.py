@@ -1188,8 +1188,9 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         if bull_twin_restrict:
             # Prevent an old SHORT pending split from increasing exposure before the exit scan.
             for symbol, pos in list(acc.positions.items()):
-                if pos.side == -1 and pos.pending_split:
-                    if acc.cancel_split(symbol, "Toro LONG_ONLY: nessuna nuova esposizione SHORT", now_ms):
+                if pos.pending_split and (bull_mode == "BLOCK_NEW" or pos.side == -1):
+                    if acc.cancel_split(symbol, "Toro LONG_ONLY: nessuna nuova esposizione SHORT" if
+                                        bull_mode == "LONG_ONLY" else "Toro: configurazione twin non valida", now_ms):
                         cancelled_bull += 1
             if cancelled_bull:
                 save_account(acc, state)
@@ -1397,8 +1398,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                     _candidate("falco_short_only", dec, prices.get(dec.get("symbol")))
                 if bull_twin_restrict and dec.get("action") in {"open_long", "open_long_split", "open_short", "open_short_split"}:
                     bull_twin_rejected += 1
-                    _candidate("toro_long_only" if bull_mode == "LONG_ONLY" else "toro_config_invalida",
-                               dec, prices.get(dec.get("symbol")))
+                    status = ("toro_config_invalida" if bull_mode == "BLOCK_NEW" else
+                              "toro_long_only" if dec.get("action") in {"open_short", "open_short_split"} else
+                              "toro_twin_horizon")
+                    _candidate(status, dec, prices.get(dec.get("symbol")))
                 print(f"[RC84_POLICY:{PORTFOLIO.name.upper()}] ingresso {source} rifiutato "
                       f"{dec.get('symbol', '?')} {dec.get('action', '?')} "
                       f"tipo={dec.get('trade_type', '?')}", flush=True)
@@ -1500,8 +1503,8 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
                 print(f"[FALCO_SHORT_ONLY] DCA LONG residuo bloccato {sym}", flush=True)
                 HB["hawk_short_only_long_dca_blocked"] = HB.get("hawk_short_only_long_dca_blocked", 0) + 1
                 continue
-            if bull_twin_restrict and pos.side == -1:
-                print(f"[TORO_LONG_ONLY] DCA SHORT residuo bloccato {sym}", flush=True)
+            if bull_twin_restrict and (pos.side == -1 or bull_mode == "BLOCK_NEW"):
+                print(f"[TORO_LONG_ONLY] DCA non consentito {sym}", flush=True)
                 HB["bull_twin_short_dca_blocked"] = HB.get("bull_twin_short_dca_blocked", 0) + 1
                 continue
             sl_pct = dec.get("dca_sl_pct") or dec.get("stop_loss_pct", 0)
