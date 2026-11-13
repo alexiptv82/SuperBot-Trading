@@ -53,6 +53,23 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
                 if signal is not None:
                     break
             if signal is None:
+                # Only closed candles whose opens are >= position entry can
+                # be evaluated. The opening partial minute is deliberately
+                # excluded by evaluate_exit; it must NOT cause false alarms.
+                first_eligible = ((pos.opened_at_ms + MINUTE_MS - 1) // MINUTE_MS) * MINUTE_MS
+                if first_eligible < end:
+                    timestamps = sorted({b.open_time_ms for b in bars
+                                         if first_eligible <= b.open_time_ms < end})
+                    expected = (end - first_eligible) // MINUTE_MS
+                    # Missing, stale, or internally gapped data is not
+                    # evidence that the stop was checked: degrade heartbeat
+                    # and veto new PAPER opens until the feed recovers.
+                    if (len(timestamps) != expected or not timestamps
+                            or timestamps[0] != first_eligible
+                            or timestamps[-1] != end - MINUTE_MS
+                            or any(b - a != MINUTE_MS
+                                   for a, b in zip(timestamps, timestamps[1:]))):
+                        errors.append((pos.position_id, "exit_feed_incomplete"))
                 continue
             close_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pos.position_id,
                         exit_price=signal.price, reason=signal.reason, fee_bps=fee_bps,
