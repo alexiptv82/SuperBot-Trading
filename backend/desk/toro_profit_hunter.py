@@ -245,10 +245,14 @@ def quote_entry(s: Signal, *, equity: float, cash: float, margin_used: float,
     max_notional = min(budget/(stop_distance+cost),
                        policy.max_notional_total-notional_used,
                        available_margin*min(exchange_max_leverage,policy.max_leverage))
-    lev = floor(max_notional/available_margin)
+    # Reduce MARGIN if the remaining risk budget cannot even support 1x
+    # at a full 200 USDT ticket. Do not force slots or over-risk a small order.
+    margin = round(min(available_margin, max_notional), 2)
+    if margin < policy.min_margin:
+        return None, "notional_too_small"
+    lev = floor(max_notional/margin)
     if lev < 1:
         return None, "notional_too_small"
-    margin = round(available_margin, 2)
     notional = margin*lev
     risk = notional*(stop_distance+cost)
     if risk > budget+1e-7:
@@ -263,6 +267,8 @@ class MakerPending:
     placed_ms: int
     expires_ms: int
     status: str = "PENDING"
+    atr: float = 0.0
+    invalid_below: float = 0.0
 
     def on_minute(self, bar: Candle, *, price_gap: bool = False) -> str:
         if self.status != "PENDING":
@@ -274,6 +280,10 @@ class MakerPending:
         elif bar.open < self.quote.entry_limit:
             # Post-only marketable on open: would cancel rather than cross spread.
             self.status = "CANCELLED_POST_ONLY"
+        elif ((self.atr > 0 and bar.high >= self.quote.entry_limit + 0.25*self.atr)
+                or (self.invalid_below > 0 and bar.low <= self.invalid_below)):
+            # Ambiguous OHLC crossing/cancel sequence: conservative NO FILL.
+            self.status = "CANCELLED_INVALIDATED"
         elif bar.low < self.quote.entry_limit:
             self.status = "FILLED"
         return self.status
