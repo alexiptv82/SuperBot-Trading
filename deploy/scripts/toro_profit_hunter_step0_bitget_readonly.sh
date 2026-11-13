@@ -36,7 +36,7 @@ import json, sys, time, hashlib
 from pathlib import Path
 from backend.v3.lab_tools.fetch_candles import fetch_rows, write_csv
 from deploy.scripts.toro_profit_hunter_step0 import load_csv, backtest
-from desk.toro_profit_hunter import HOUR, FOUR_HOURS
+from desk.toro_profit_hunter import HOUR, FOUR_HOURS, MINUTE
 
 out=Path(sys.argv[1]); pin,fix=sys.argv[2:]
 start_at=int(time.time()*1000)
