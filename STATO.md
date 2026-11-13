@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 23:51 Europe/Rome — Brain pausato; patch osservabilità preparata, non testata/installata
+
+- Nuovo checkpoint: [`diario/2026-11-13_brain-paused-observability-fix-prepared-untested.md`](diario/2026-11-13_brain-paused-observability-fix-prepared-untested.md).
+- Decisione utente e screenshot Termius delle 23:31 CET: Brain `PAUSA=ATTIVA`; runner ed exit sidecar `active`, stato `healthy`, nessun errore e heartbeat 0,6 s. È prova puntuale di attività, non certificazione feed/stop o stato VPS continuo.
+- Ramo `work/brain-exit-observability-20261113`, HEAD [`4efd1a3…`](https://github.com/alexiptv82/SuperBot-Trading/commit/4efd1a31051dd023480d4d9a327016ae9a6f9a0e): correzione candidata fail-closed per feed 1m vuoto/incompleto e prezzo stale; otto casi sintetici presenti, harness isolato con pytest temporaneo.
+- Test completi/PASS sul nuovo HEAD non verificati; nessuna PR, installazione, merge, deploy, Action, restart, unpause, ordine o modifica di rischio. Patch solo preparata.
+- Falco congelato; Toro sospeso e PR #99 resta NO-GO. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 13/11/2026 22:44 Europe/Rome — PR #99 NO-GO; audit Brain NO-GO certificazione
 
 - Nuovo checkpoint: [`diario/2026-11-13_PR99-no-go-audit-brain-no-go-certificazione.md`](diario/2026-11-13_PR99-no-go-audit-brain-no-go-certificazione.md).
