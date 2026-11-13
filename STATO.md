@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 20:54 Europe/Rome — PR #98 proxy gate FAIL; Step0′ non avviato
+
+- Nuovo checkpoint: [`diario/2026-11-13_PR98-proxy-gate-fail-no-strategy-backtest.md`](diario/2026-11-13_PR98-proxy-gate-fail-no-strategy-backtest.md).
+- [PR #98](https://github.com/alexiptv82/SuperBot-Trading/pull/98) Draft, HEAD `659ff47…`: diagnostico research-only senza rete sui 12 input già salvati, self-test sintetico PASS e hash verificati.
+- Gate proxy preregistrato: coverage ore comparabili 97,17% e campione minimo PASS; coincidenza pooled 29,68% contro 70% e tutti i simboli sotto 60% — **FAIL**. Binance non è un surrogato valido del funding Bitget; vietati Step0′ 2020–2026 col proxy e retuning post hoc.
+- È un NO-GO della **fonte proxy**, non della strategia: `STRATEGY_BACKTEST=0`, nessun PnL/trade/edge. Restano dati storici Bitget verificabili o shadow prospettico, entrambi non avviati.
+- Brain invariato; Falco congelato; Toro sospeso. Nessun merge/deploy/Action/VPS/ordine/rischio modificato. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 13/11/2026 19:46 Europe/Rome — Step0′ autorizzato/preregistrato; audit fonti pubblico PASS
 
 - Nuovo checkpoint: [`diario/2026-11-13_PR97-prereg_PR98-funding-source-audit-pass.md`](diario/2026-11-13_PR97-prereg_PR98-funding-source-audit-pass.md).
