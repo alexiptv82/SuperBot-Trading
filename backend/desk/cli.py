@@ -57,6 +57,14 @@ class PortfolioConfig:
     description: str
 
 
+def _bull_twin_mode() -> str:
+    """Optional, PAPER-only. OFF preserves original Toro. Invalid opt-in denies new entries."""
+    if os.getenv("DESK_MODE", "paper").strip().lower() == "live":
+        return "OFF"
+    value = os.getenv("DESK_BULL_TWIN_MODE", "OFF").strip().upper()
+    return value if value in {"OFF", "LONG_ONLY"} else "BLOCK_NEW"
+
+
 def _make_hawk_config() -> PortfolioConfig:
     data_dir = os.getenv("DESK_DATA_DIR", "/app/data/desk/hawk")
     return PortfolioConfig(
@@ -82,6 +90,26 @@ def _make_hawk_config() -> PortfolioConfig:
 
 def _make_bull_config() -> PortfolioConfig:
     data_dir = os.getenv("DESK_DATA_DIR", "/app/data/desk/bull")
+    # An isolated opt-in matches Hawk's money management but preserves independent Toro data/state.
+    # It does NOT load the failed 15m LONG mirror prototype or change any SHORT formula.
+    if _bull_twin_mode() != "OFF":
+        return PortfolioConfig(
+            name="bull", data_dir=data_dir,
+            limits=Limits(start_equity=1000.0, max_margin_trade=100.0, max_margin_total=1000.0,
+                          max_open=10, kill_equity=450.0, daily_stop=0.12),
+            system_prompt=(
+                "TORO PAPER GEMELLO — SOLTANTO LONG. Usa gli stessi criteri di scoring e orizzonte "
+                "scalp di Falco, senza forzare aperture. Per nuove esposizioni proponi soltanto "
+                "open_long/open_long_split o skip; NON aprire SHORT. Le vecchie posizioni SHORT "
+                "restano gestibili con hold/close/partial_close per le uscite protettive. "
+                "Leve/margini e limiti sono uguali a Falco, 10 posizioni max, 100 USDT max per posizione; "
+                "NO_TRADE è valido.\n\n" + SYSTEM_HAWK
+            ),
+            guardrail_min_margin=50.0, guardrail_min_lev=10,
+            guardrail_margin_forced=60.0, guardrail_lev_forced=15,
+            guardrail_type_forced="scalp",
+            description="Bull Twin PAPER — 10 slot, 100$/trade, LONG ONLY (opt-in)",
+        )
     return PortfolioConfig(
         name="bull",
         data_dir=data_dir,
@@ -131,7 +159,8 @@ def _hawk_entry_mode() -> str:
 
 
 def _rc84_paper_classic_entry_policy(portfolio: str, source: str, decisions: list[dict],
-                                     *, hawk_entry_mode: str = "BOTH") -> tuple[list[dict], list[dict]]:
+                                     *, hawk_entry_mode: str = "BOTH",
+                                     bull_twin_mode: str = "OFF") -> tuple[list[dict], list[dict]]:
     """Make PAPER classic entry origins/horizons independent without altering exits.
 
     Falco: scalp-only LONG or SHORT by default; optional PAPER SHORT_ONLY denies new LONG and LONG splits.
@@ -149,10 +178,15 @@ def _rc84_paper_classic_entry_policy(portfolio: str, source: str, decisions: lis
         horizon = decision.get("trade_type")
         allowed = (
             (portfolio == "hawk" and horizon == "scalp" and source in {"claude", "rules"})
-            or (portfolio == "bull" and horizon == "medio" and source == "claude")
+            or (portfolio == "bull" and bull_twin_mode == "OFF" and horizon == "medio" and source == "claude")
+            or (portfolio == "bull" and bull_twin_mode == "LONG_ONLY" and horizon == "scalp"
+                and source in {"claude", "rules"})
         )
         if portfolio == "hawk" and hawk_entry_mode == "SHORT_ONLY" and decision["action"] in {"open_long", "open_long_split"}:
             allowed = False
+        if portfolio == "bull" and bull_twin_mode in {"LONG_ONLY", "BLOCK_NEW"}:
+            if bull_twin_mode == "BLOCK_NEW" or decision["action"] in {"open_short", "open_short_split"}:
+                allowed = False
         (kept if allowed else rejected).append(decision)
     return kept, rejected
 
@@ -1145,6 +1179,22 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
     # PAPER-only directional mode. Existing positions retain their protective exits.
     hawk_mode = _hawk_entry_mode() if not LIVE._live and PORTFOLIO.name == "hawk" else "BOTH"
     hawk_short_only = hawk_mode == "SHORT_ONLY"
+    bull_mode = _bull_twin_mode() if not LIVE._live and PORTFOLIO.name == "bull" else "OFF"
+    bull_twin_restrict = bull_mode != "OFF"
+    if not LIVE._live and PORTFOLIO.name == "bull":
+        HB["bull_twin_mode"] = bull_mode
+        HB["bull_twin_short_dca_blocked"] = 0
+        cancelled_bull = 0
+        if bull_twin_restrict:
+            # Prevent an old SHORT pending split from increasing exposure before the exit scan.
+            for symbol, pos in list(acc.positions.items()):
+                if pos.side == -1 and pos.pending_split:
+                    if acc.cancel_split(symbol, "Toro LONG_ONLY: nessuna nuova esposizione SHORT", now_ms):
+                        cancelled_bull += 1
+            if cancelled_bull:
+                save_account(acc, state)
+                save_state(state, STATE_FILE)
+        HB["bull_twin_short_splits_cancelled"] = cancelled_bull
     if not LIVE._live and PORTFOLIO.name == "hawk":
         HB["hawk_entry_mode"] = hawk_mode
         HB["hawk_short_only_long_dca_blocked"] = 0       # contatori per ciclo, come gli altri hawk_short_only_*
@@ -1335,24 +1385,33 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
 
     if not LIVE._live and PORTFOLIO.name in ("hawk", "bull"):
         decisions, excluded = _rc84_paper_classic_entry_policy(
-            PORTFOLIO.name, source, decisions, hawk_entry_mode=hawk_mode)
+            PORTFOLIO.name, source, decisions, hawk_entry_mode=hawk_mode, bull_twin_mode=bull_mode)
         if excluded:
             short_only_rejected = 0
+            bull_twin_rejected = 0
             for dec in excluded:
                 # Rejections are visible without using any exchange API and
                 # do not create fake trade or learning outcomes.
                 if hawk_short_only and dec.get("action") in {"open_long", "open_long_split"}:
                     short_only_rejected += 1
                     _candidate("falco_short_only", dec, prices.get(dec.get("symbol")))
+                if bull_twin_restrict and dec.get("action") in {"open_long", "open_long_split", "open_short", "open_short_split"}:
+                    bull_twin_rejected += 1
+                    _candidate("toro_long_only" if bull_mode == "LONG_ONLY" else "toro_config_invalida",
+                               dec, prices.get(dec.get("symbol")))
                 print(f"[RC84_POLICY:{PORTFOLIO.name.upper()}] ingresso {source} rifiutato "
                       f"{dec.get('symbol', '?')} {dec.get('action', '?')} "
                       f"tipo={dec.get('trade_type', '?')}", flush=True)
             HB["hawk_short_only_long_candidates"] = short_only_rejected if hawk_short_only else 0
+            if bull_twin_restrict:
+                HB["bull_twin_rejected_candidates"] = bull_twin_rejected
             HB["rc84_policy_rejected"] = len(excluded)
         else:
             HB["rc84_policy_rejected"] = 0
             if hawk_short_only:
                 HB["hawk_short_only_long_candidates"] = 0
+            if bull_twin_restrict:
+                HB["bull_twin_rejected_candidates"] = 0
 
     if not drain and os.path.exists(_flag("pause.flag")):
         drain = True   # pausa premuta mentre il ciclo era in corso: vale da subito
@@ -1440,6 +1499,10 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             if hawk_short_only and pos.side == 1:
                 print(f"[FALCO_SHORT_ONLY] DCA LONG residuo bloccato {sym}", flush=True)
                 HB["hawk_short_only_long_dca_blocked"] = HB.get("hawk_short_only_long_dca_blocked", 0) + 1
+                continue
+            if bull_twin_restrict and pos.side == -1:
+                print(f"[TORO_LONG_ONLY] DCA SHORT residuo bloccato {sym}", flush=True)
+                HB["bull_twin_short_dca_blocked"] = HB.get("bull_twin_short_dca_blocked", 0) + 1
                 continue
             sl_pct = dec.get("dca_sl_pct") or dec.get("stop_loss_pct", 0)
             tp_pct = dec.get("dca_tp_pct") or dec.get("take_profit_pct", 0)
@@ -1635,7 +1698,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             # are DISABLED until separate signal-quality tests and approval.
             # Original Claude/rule LONG+SHORT decisions continue as before.
             # Only Toro may later opt in explicitly after verification.
-            s25_new_entries = (PORTFOLIO.name == "bull" and
+            s25_new_entries = (PORTFOLIO.name == "bull" and bull_mode == "OFF" and
                                os.getenv("DESK_S25_TORO_ENTRY_APPROVED") == "1"
                                and not explicit_claude_no_trade)
             long_s25.step(acc, state, candles_map, prices, now_ms, PORTFOLIO, halt=halt, drain=no_new,
