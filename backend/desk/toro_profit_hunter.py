@@ -101,7 +101,7 @@ class Guardian:
 
 
 def _bars(bars: Sequence[Candle], asof_ms: int, interval: int, required: int) -> list[Candle]:
-    b = sorted(b for b in bars if b.ts + interval <= asof_ms)
+    b = sorted((bar for bar in bars if bar.ts + interval <= asof_ms), key=lambda bar: bar.ts)
     if len(b) < required:
         return []
     b = b[-required:]
