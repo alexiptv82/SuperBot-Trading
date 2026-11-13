@@ -1,5 +1,17 @@
 # STATO — SuperBot Trading
 
+## 13/11/2026 13:45 Europe/Rome — DeepSeek reale PASS; hotfix Brain solo locale
+
+- Nuovo checkpoint: [`diario/2026-11-13_brain-deepseek-pass-hotfix-test-locale-paused.md`](diario/2026-11-13_brain-deepseek-pass-hotfix-test-locale-paused.md).
+- Riscontro VPS registrato in Issue #95: stage pulito `0e29a73…`, Brain paused con runner/exit attivi; DeepSeek `deepseek-flash` ha risposto HTTP 200 in 1,3 s con JSON valido `NO_TRADE` (126 token). Prova provider/formato, non analisi candele, OPEN, rischio o apertura PAPER.
+- Blocker installati confermati: parser metadata `maxLever<=125` blocca BTC/ETH; SOL `data_unavailable`. Brain resta NO-GO per unpause.
+- Hotfix Brain-only su `work/brain-rc84-market-data-hotfix-20261113`, HEAD `5113e10…`, base esatta `0e29a73…`: 5 file, due soli moduli dati più test/script/runbook. Test locali riportati 4/4 + 256/256 PASS, ma non suite repo né compatibilità VPS.
+- Test pinned dei file esatti/Bitget pubblico preparato, non eseguito sulla VPS. Nessun deploy/restart/unpause/ordine/Actions. Falco SHORT intatto; Toro LONG sospeso.
+- Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. PAPER, storici ed EventJournal preservati.
+
+---
+
+
 ## 13/11/2026 12:47 Europe/Rome — Brain preflight VPS parziale; DeepSeek non chiamato
 
 - Nuovo checkpoint: [`diario/2026-11-13_brain-preflight-vps-parziale-deepseek-non-chiamato.md`](diario/2026-11-13_brain-preflight-vps-parziale-deepseek-non-chiamato.md).
