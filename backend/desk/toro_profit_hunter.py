@@ -247,7 +247,9 @@ def quote_entry(s: Signal, *, equity: float, cash: float, margin_used: float,
                        available_margin*min(exchange_max_leverage,policy.max_leverage))
     # Reduce MARGIN if the remaining risk budget cannot even support 1x
     # at a full 200 USDT ticket. Do not force slots or over-risk a small order.
-    margin = round(min(available_margin, max_notional), 2)
+    # Always round margin DOWN to the nearest cent: nearest rounding can
+    # exceed the remaining daily risk budget by a fractional cent.
+    margin = floor(min(available_margin, max_notional)*100)/100
     if margin < policy.min_margin:
         return None, "notional_too_small"
     lev = floor(max_notional/margin)
