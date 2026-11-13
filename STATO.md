@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 14/11/2026 00:51 Europe/Rome — Brain P0 192 PASS; installer guarded solo preparato
+
+- Nuovo checkpoint: [`diario/2026-11-14_brain-p0-192pass-hash-baseline-installer-prepared.md`](diario/2026-11-14_brain-p0-192pass-hash-baseline-installer-prepared.md).
+- Primo tentativo bloccato per pytest assente; harness corretto al commit [`4efd1a3…`](https://github.com/alexiptv82/SuperBot-Trading/commit/4efd1a31051dd023480d4d9a327016ae9a6f9a0e): sorgenti/sintassi PASS, pytest temporaneo, **192/192 PASS in 4,92 s**, stage invariato, pausa preservata, exit service non toccato.
+- Checksum SHA-256 dei quattro file monitor/feed/contratti/candele identici fra le due copie operative controllate: baseline comune e hotfix precedenti preservabili; confronto read-only, non installazione.
+- Ramo `work/brain-exit-observability-20261113` avanzato a [`1bbdd6e…`](https://github.com/alexiptv82/SuperBot-Trading/commit/1bbdd6e217d230ecbefd96b2207d7dc26a2a1004): installer guarded PAPER-only preparato, default check-only, apply separato con backup/rollback. Nessuna prova di esecuzione del precheck; nessuna installazione/restart/PR/merge/Action.
+- Brain resta in pausa; Falco congelato; Toro sospeso/PR #99 NO-GO. Extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 13/11/2026 23:51 Europe/Rome — Brain pausato; patch osservabilità preparata, non testata/installata
 
 - Nuovo checkpoint: [`diario/2026-11-13_brain-paused-observability-fix-prepared-untested.md`](diario/2026-11-13_brain-paused-observability-fix-prepared-untested.md).
