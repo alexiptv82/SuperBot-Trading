@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 14/11/2026 01:55 Europe/Rome — Brain P0 riportato installato/RUNNING; Falco SHORT-only solo preparato
+
+- Nuovo checkpoint: [`diario/2026-11-14_brain-p0-reported-installed-running-falco-short-only-prepared.md`](diario/2026-11-14_brain-p0-reported-installed-running-falco-short-only-prepared.md).
+- Ramo Brain `work/brain-exit-observability-20261113` a [`33a0de7…`](https://github.com/alexiptv82/SuperBot-Trading/commit/33a0de73a9903ba1ff76326aa4cb7c688a1e4aca), con due script di unpause guarded successivi. Conversazioni accessibili riportano installazione P0 PASS, primo resume REPAUSED e secondo resume PASS/RUNNING; qui non c'è SSH né output utente integrale, quindi è prova puntuale riportata, non stato live continuativo.
+- Falco SHORT-only preparato su `work/falco-short-only-20261114`, HEAD [`154f553…`](https://github.com/alexiptv82/SuperBot-Trading/commit/154f5535396551265592fe6605c00e2cffc18f49): guardia account-level, blocco LONG/S25 LONG e 4 regressioni presenti ma **non eseguite con output verificato**. Nessuna installazione/PR/deploy; Falco/Toro restano in pausa.
+- Decisione utente: Brain non supervisore/autorizzatore; può osservare Falco/Toro. Telegram advisory-only, non copy-trading; nessuna modifica allo SHORT Falco. Collegamenti Brain↔classici/Telegram non implementati.
+- Toro PR #99 resta NO-GO; extbackup non installato; age PC `ESITO: VERIFICA OK` non certifica VPS. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 14/11/2026 00:51 Europe/Rome — Brain P0 192 PASS; installer guarded solo preparato
 
 - Nuovo checkpoint: [`diario/2026-11-14_brain-p0-192pass-hash-baseline-installer-prepared.md`](diario/2026-11-14_brain-p0-192pass-hash-baseline-installer-prepared.md).
