@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 14/11/2026 08:48 Europe/Rome — FRRD registrato; Toro Swing LONG solo proposto; weekend senza modifiche
+
+- Nuovo checkpoint: [`diario/2026-11-14_frrd-issue95-toro-swing-weekend-hold.md`](diario/2026-11-14_frrd-issue95-toro-swing-weekend-hold.md).
+- [Issue #95](https://github.com/alexiptv82/SuperBot-Trading/issues/95#issuecomment-6873326487) aggiornata con analisi read-only FRRD: codice storico `0e29a73…` usa base/ciclo 15m, feed 15m/1h/4h e regime senza memoria/isteresi; FRRD resta laboratorio shadow proposto, non implementato né provato redditizio.
+- Decisione utente: nel weekend nessuna modifica; Falco/Toro in pausa, SHORT esistente intoccabile, Brain solo PAPER. Toro LONG da studiare separatamente come non-scalp su timeframe più alti e durata ore-giorni; leva/margine/slot e numeri restano ipotesi non approvate.
+- Nessun nuovo test, deploy, merge, Action, restart, reset, ordine o modifica rischio. Brain `33a0de7…`, Falco `154f553…`, extbackup `3dc2116…`, PR #80 `0e29a73…` e PR #99 `4b06716…` invariati.
+- Nessun controllo SSH live: Brain RUNNING/exit HEALTHY resta attestazione puntuale delle 01:07, non stato corrente; un riepilogo di chat sulle posizioni non è promosso a fatto verificato. Age PC `ESITO: VERIFICA OK` non certifica VPS; extbackup non installato. PAPER, storici/EventJournal preservati.
+
+---
+
 ## 14/11/2026 01:55 Europe/Rome — Brain P0 riportato installato/RUNNING; Falco SHORT-only solo preparato
 
 - Nuovo checkpoint: [`diario/2026-11-14_brain-p0-reported-installed-running-falco-short-only-prepared.md`](diario/2026-11-14_brain-p0-reported-installed-running-falco-short-only-prepared.md).
