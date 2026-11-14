@@ -1045,7 +1045,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
         decisions = rules_decisions(readings_list, pos_info, open_symbols, _ENTRY_SCORE_BASE)
         source = "rules"
 
-    if not LIVE._live and os.environ.get("DESK_LONG_S25") == "1":   # strategia long S25: le sue uscite sono solo stop, target, tempo
+    if not LIVE._live and PORTFOLIO.name != "hawk" and os.environ.get("DESK_LONG_S25") == "1":   # strategia long S25: le sue uscite sono solo stop, target, tempo
         try:
             from desk import long_s25
             decisions = long_s25.protect(decisions, acc.positions)
@@ -1169,6 +1169,11 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             # e tiene in attesa la seconda al ritracciamento (vedi PaperAccount.open / on_bar).
             is_split = act.endswith("_split")
             base_act = act.replace("_split", "")
+            # Falco is SHORT-only: reject both normal and split LONG requests before quoting risk.
+            if PORTFOLIO.name == "hawk" and base_act == "open_long":
+                print(f"[FALCO SHORT-ONLY] {sym}: LONG entry rejected", flush=True)
+                _candidate("falco_short_only", dec, px)
+                continue
             # cooldown per tipo
             trade_type = dec.get("trade_type", "medio")
             cooldown = SCALP_COOLDOWN_MS if trade_type == "scalp" else MEDIO_COOLDOWN_MS
@@ -1309,7 +1314,7 @@ def run_cycle(state: dict, now_ms: int, drain: bool = False) -> None:
             acc.cancel_split(s, "bot in pausa" if drain else "chiusure contabili da riconciliare", now_ms)
 
     # ---- strategia long S25 (spenta di default): chiusura a tempo e nuovi ingressi, prima della lettura delle barre
-    if not LIVE._live and os.environ.get("DESK_LONG_S25") == "1":
+    if not LIVE._live and PORTFOLIO.name != "hawk" and os.environ.get("DESK_LONG_S25") == "1":
         try:
             from desk import long_s25
             s25_notice: dict = {}
