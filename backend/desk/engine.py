@@ -9,6 +9,8 @@ Classi di asset e leva massima:
 """
 from __future__ import annotations
 
+import os
+
 from dataclasses import asdict, dataclass, field, fields
 from typing import Optional
 
@@ -156,6 +158,10 @@ class PaperAccount:
         gamba (50% del margine) e lascia in attesa la seconda al ritracciamento indicato. Se la seconda
         gamba non avrebbe senso (stop troppo vicino, margini sotto il minimo) apre tutto subito."""
         L = self.limits
+        # Falco PAPER: last-resort guard for ALL open paths, including S25.
+        # Guard keyed by the process portfolio, not the source of the signal.
+        if side == 1 and os.environ.get("DESK_PORTFOLIO") == "hawk":
+            return None, "falco_short_only"
         if side not in (1, -1):
             return None, "lato non valido"
         if symbol in self.positions:
