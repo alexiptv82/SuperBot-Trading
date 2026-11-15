@@ -1,0 +1,18 @@
+{
+ "versione": "toro_trend_leader_shadow_v1",
+ "inizio_ombra": "2026-11-15",
+ "ultimo_giorno_chiuso": "2026-11-14",
+ "filtro_mercato_acceso": false,
+ "ampiezza_sopra_sma100": 0.067,
+ "posizioni_virtuali_aperte": [],
+ "riepilogo": {
+  "segnali": 0,
+  "eseguiti": 0,
+  "rifiutati_slot": 0,
+  "chiuse": 0,
+  "R_medio": null,
+  "vincenti": null,
+  "netto_medio_pct": null
+ },
+ "criterio_di_valutazione": "almeno 40 chiuse in avanti; approvazione solo con R medio > 0 e sopra la mediana dei casuali"
+}

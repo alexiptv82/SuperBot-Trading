@@ -314,14 +314,28 @@ calcolato dallo stop, leva effettiva sotto 3×. Gli scenari 10–20× restano se
 |---|---|---|---|
 | 1 | Eseguire lo script di audit sulla VPS (sola lettura) | pronto | no (solo esecuzione) |
 | 2 | Installare la correzione del pulsante «Chiudi» (immagine web) | CORREZIONE PROPOSTA, testata in locale | sì |
-| 3 | Registrare lato e motivo dei rifiuti di Brain (osservabilità) | proposta | sì |
+| 3 | Registrare lato, leva e stop delle proposte di Brain (osservabilità) | **preparato**: ramo `work/brain-reject-observability-20261115` (`6d7d3c6`), spento di default, 8 test + 1.128 regressioni | sì |
 | 4 | Contabilizzare il funding nel PnL PAPER di Brain | proposta | sì |
-| 5 | Toro H3 in ombra con registro osservazioni, regole congelate | proposta | sì |
+| 5 | Toro H3 in ombra con registro osservazioni, regole congelate | **preparato**: `research/long_lab_fable/shadow.py` + test; non installato né schedulato | sì |
 | 6 | Confronto offline Toro–Brain e memoria a tre livelli | progetto | sì |
 | 7 | Valutazione in avanti del filtro di ampiezza; FRRD come osservatore | IPOTESI | sì |
 | 8 | Decisione dell'utente sul vincolo di stop di Brain per i LONG | aperta | — |
 
 Non raccomando: nuove varianti LONG intraday a regole, leva alta per Toro, strategie di rimbalzo.
+
+### Aggiunte dopo il primo rapporto (15/11, pomeriggio)
+
+- **Osservatorio delle proposte di Brain** (punto 3). Il motore elimina di proposito lato e stop dalle decisioni non
+  approvate prima di scriverle nel journal; per non toccare quel confine la patch annota la proposta *prima* del
+  motore, in un file a parte (`proposal_observations.jsonl`), solo campi numerici, solo con
+  `V3_BRAIN_PROPOSAL_LOG=1`. Journal e decisioni restano identici (provato). Unendo per istante e simbolo si saprà
+  quanti LONG propone DeepSeek, con quale stop, e quanti ne respinge il rischio.
+- **Toro in ombra** (punto 5). `shadow.py` importa le regole H3 dal laboratorio senza ridefinirle, ricostruisce tutto
+  da zero a ogni esecuzione e scrive un registro con i campi richiesti per il confronto con Brain (regime, motivo,
+  stop iniziale, durata, massimo flottante, MAE, netto, R, uscita, rifiuti per slot pieni). Test: ripetibilità,
+  coerenza col motore del laboratorio, nessuna riga chiusa che cambia quando arrivano nuovi giorni.
+- **Stato di oggi (ultimo giorno chiuso 14/11/2026):** filtro di mercato **spento**; solo il 6,7% delle altcoin
+  dell'universo è sopra la propria media a 100 giorni; **zero segnali**. Con queste regole Toro oggi resterebbe fermo.
 
 ## Limiti di questo lavoro
 
