@@ -69,6 +69,9 @@ def _closed(
     closed = tuple(b for b in bars if b.open_time_ms + candle_ms <= as_of_ms)
     if len(closed) < minimum:
         return None
+    # Work only with a fixed causal lookback: an ancient data gap outside
+    # the required indicator window must not contaminate later observations.
+    closed = closed[-max(64, minimum):]
     try:
         check_bars(closed, candle_ms=candle_ms)
     except ValueError:
@@ -125,46 +128,49 @@ def observe(
         if h4 is None:
             return _uncertain(as_of_ms, "missing_stale_or_invalid_4h", regime)
 
-    with localcontext(_CTX):
-        volatility = atr(m15, ATR_N, candle_ms=M15)[-1]
-        if volatility is None or volatility <= 0:
-            return _uncertain(as_of_ms, "atr_zero_or_unavailable", regime)
-        hour = _trend(h1)
-        four_hour = _trend(h4) if h4 is not None else "NOT_PROVIDED"
-        previous = m15[-(SWING_N + 3):-2]  # fixed level BEFORE two confirmation bars
-        if len(previous) != SWING_N + 1:
-            return _uncertain(as_of_ms, "insufficient_swing_history", regime)
-        ceiling = max(b.high for b in previous)
-        floor = min(b.low for b in previous)
-        p, q, r = m15[-3:]
-        two_rising = p.close < q.close < r.close
-        two_falling = p.close > q.close > r.close
-        # Exclude confirmation bars themselves from the breakout reference.
-        break_up = two_rising and q.close > ceiling and r.close > ceiling
-        break_down = two_falling and q.close < floor and r.close < floor
-        local_low = min(b.low for b in m15[-(SWING_N + 1):])
-        rally = (r.close - local_low) / volatility
-        bp = volatility / r.close * Decimal(10_000)
-        rebound = two_rising and rally >= REBOUND_ATR
-        atr_str = str(bp.quantize(Decimal("0.01")))
-        rally_str = str(rally.quantize(Decimal("0.01")))
+    try:
+        with localcontext(_CTX):
+            volatility = atr(m15, ATR_N, candle_ms=M15)[-1]
+            if volatility is None or volatility <= 0:
+                return _uncertain(as_of_ms, "atr_zero_or_unavailable", regime)
+            hour = _trend(h1)
+            four_hour = _trend(h4) if h4 is not None else "NOT_PROVIDED"
+            previous = m15[-(SWING_N + 3):-2]  # fixed level BEFORE two confirmation bars
+            if len(previous) != SWING_N + 1:
+                return _uncertain(as_of_ms, "insufficient_swing_history", regime)
+            ceiling = max(b.high for b in previous)
+            floor = min(b.low for b in previous)
+            p, q, r = m15[-3:]
+            two_rising = p.close < q.close < r.close
+            two_falling = p.close > q.close > r.close
+            # Exclude confirmation bars themselves from the breakout reference.
+            break_up = two_rising and q.close > ceiling and r.close > ceiling
+            break_down = two_falling and q.close < floor and r.close < floor
+            local_low = min(b.low for b in m15[-(SWING_N + 1):])
+            rally = (r.close - local_low) / volatility
+            bp = volatility / r.close * Decimal(10_000)
+            rebound = two_rising and rally >= REBOUND_ATR
+            atr_str = str(bp.quantize(Decimal("0.01")))
+            rally_str = str(rally.quantize(Decimal("0.01")))
 
-        if break_up and hour == "UP" and four_hour != "DOWN":
-            state, reason = "INVERSIONE_CANDIDATA", "15m_break_up_twice_and_1h_up"
-        elif rebound:
-            state, reason = "RIMBALZO_LOCALE", (
-                "15m_recovery_against_4h_down"
-                if four_hour == "DOWN" else "15m_two_up_and_atr_recovery"
+            if break_up and hour == "UP" and four_hour != "DOWN":
+                state, reason = "INVERSIONE_CANDIDATA", "15m_break_up_twice_and_1h_up"
+            elif rebound:
+                state, reason = "RIMBALZO_LOCALE", (
+                    "15m_recovery_against_4h_down"
+                    if four_hour == "DOWN" else "15m_two_up_and_atr_recovery"
+                )
+            elif break_down and hour == "DOWN" and four_hour != "UP":
+                state, reason = "CONTINUAZIONE_SHORT", "15m_break_down_twice_and_1h_down"
+            elif break_down and four_hour == "UP":
+                state, reason = "INCERTO", "higher_tf_conflict_against_short"
+            elif break_up and hour == "DOWN":
+                state, reason = "INCERTO", "15m_up_break_but_1h_down"
+            else:
+                state, reason = "INCERTO", "no_confirmed_structure"
+            return Observation(
+                as_of_ms, state, reason, hour, four_hour, regime,
+                atr_str, rally_str, break_up, break_down,
             )
-        elif break_down and hour == "DOWN" and four_hour != "UP":
-            state, reason = "CONTINUAZIONE_SHORT", "15m_break_down_twice_and_1h_down"
-        elif break_down and four_hour == "UP":
-            state, reason = "INCERTO", "higher_tf_conflict_against_short"
-        elif break_up and hour == "DOWN":
-            state, reason = "INCERTO", "15m_up_break_but_1h_down"
-        else:
-            state, reason = "INCERTO", "no_confirmed_structure"
-        return Observation(
-            as_of_ms, state, reason, hour, four_hour, regime,
-            atr_str, rally_str, break_up, break_down,
-        )
+    except (ArithmeticError, ValueError):
+        return _uncertain(as_of_ms, "numeric_out_of_range", regime)
