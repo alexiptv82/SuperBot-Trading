@@ -24,13 +24,21 @@ export function closeResultMessages(result, nameOf = id => id) {
   return notes.length ? notes : ['Nessuna posizione chiusa. Verifica il Brain e riprova.'];
 }
 
-const brainErrorText = err => {
-  const code = err?.response?.data?.detail?.code;
-  return ({ brain_non_risponde: 'Il Brain non risponde. Riprova più tardi.',
+export const brainErrorText = err => {
+  const detail = err?.response?.data?.detail;
+  const code = detail?.code;
+  const known = ({ brain_non_risponde: 'Il Brain non risponde. Riprova più tardi.',
     posizione_non_aperta: 'Questa posizione non è più aperta.',
     nessuna_posizione: 'Non ci sono posizioni aperte.',
     richiesta_in_corso: 'Una richiesta di chiusura è già in corso.',
-    richiesta_non_valida: 'Richiesta non valida. Aggiorna la pagina.' })[code] || 'Invio non riuscito. Riprova.';
+    richiesta_non_valida: 'Richiesta non valida. Aggiorna la pagina.',
+    servizio_uscita_non_pronto: 'Il servizio di uscita PAPER del Brain non è pronto. Riprova tra un minuto.',
+    solo_chiusura_singola: 'Puoi chiudere una sola posizione PAPER alla volta.',
+    solo_lettura: 'Chiusura PAPER non abilitata su questa dashboard.' })[code];
+  if (known) return known;
+  // Il bridge di sola chiusura inoltra il motivo del rifiuto come testo breve già pensato per l'utente.
+  const message = typeof detail?.message === 'string' ? detail.message.trim().slice(0, 160) : '';
+  return message || 'Invio non riuscito. Riprova.';
 };
 
 /** Shared position facts for Falco, Toro and Brain. No invented mark, PnL or target. */
@@ -129,14 +137,16 @@ export function BrainCloseControls({ positions = [], serverPending = false, read
     if (!readOnly && (!target.all || allowCloseAll) && !active.current && !sending && !serverPending) { setNotes([]); setProblem(''); setConfirm(target); }
   };
   const disabled = readOnly || active.current || sending || serverPending;
+  // Un pulsante disattivato deve sembrarlo: prima aveva lo stesso aspetto di quello attivo.
+  const btn = disabled ? { ...BTN, opacity: 0.45, cursor: 'not-allowed' } : BTN;
   return <div>
-    {readOnly && positions.length > 0 && <p style={MUTED}>Collaudo PAPER in sola lettura: chiusure manuali non ancora attivate.</p>}
+    {readOnly && positions.length > 0 && <p role="status" style={{ ...MUTED, color: '#fbbf24' }}>Collaudo PAPER in sola lettura: chiusure manuali non ancora attivate (il servizio di uscita PAPER del Brain non risulta pronto). I pulsanti sono disattivati.</p>}
     {positions.length > 0 && allowCloseAll && <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
-      <button type="button" style={BTN} disabled={disabled} onClick={() => ask({ all: true })}>Chiudi tutte ({positions.length})</button>
+      <button type="button" style={btn} disabled={disabled} onClick={() => ask({ all: true })}>Chiudi tutte ({positions.length})</button>
     </div>}
     {positions.map(p => <div key={p.position_id} style={{ background:'#0e1a2d', padding:12, border:'1px solid #30465e', borderRadius:11, marginTop:9, minWidth:0 }}>
       <div>{renderPosition ? renderPosition(p) : <PortfolioTradeFields p={p} brain />}</div>
-      <button type="button" style={{ ...BTN, marginTop:8 }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi {p.symbol}</button>
+      <button type="button" style={{ ...btn, marginTop:8 }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi {p.symbol}</button>
     </div>)}
     {confirm && <div role="dialog" aria-label="Conferma chiusura Brain" style={{ border: '1px solid #fda4af', padding: 12, borderRadius: 10, marginTop: 8 }}>
       <p style={{ margin: '0 0 10px' }}>{confirm.all
