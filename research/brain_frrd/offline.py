@@ -55,15 +55,23 @@ def read_brain_opens(journal_path: Path, run_id: str) -> list[dict]:
         conn.execute("BEGIN")
         rows = conn.execute(
             "SELECT event_id, kind, occurred_at_ms, payload_json FROM v3_events "
-            "WHERE portfolio_id='brain' AND run_id=? AND kind IN ('paper_open','paper_close') "
+            "WHERE portfolio_id='brain' AND run_id=? AND kind IN ('brain_decision','paper_open','paper_close') "
             "ORDER BY seq", (run_id,),
         ).fetchall()
         closes = {}
+        decisions = {}
         opens = []
         for event_id, kind, when, body in rows:
             payload = json.loads(body)
             if type(payload) is not dict:
                 raise ValueError("invalid_journal_payload")
+            if kind == "brain_decision":
+                decisions[event_id] = {
+                    "ts_ms": when, "symbol": payload.get("symbol"),
+                    "kind": payload.get("kind"), "status": payload.get("status"),
+                    "regime": payload.get("regime"),
+                }
+                continue
             position_id = payload.get("position_id")
             if not isinstance(position_id, str) or not position_id:
                 raise ValueError("missing_position_id")
@@ -77,7 +85,8 @@ def read_brain_opens(journal_path: Path, run_id: str) -> list[dict]:
                 symbol = payload.get("symbol")
                 side = payload.get("side")
                 if (not isinstance(symbol, str) or not _SYMBOL.fullmatch(symbol)
-                        or side not in (1, -1) or type(when) is not int or when <= 0):
+                        or type(side) is not int or side not in (1, -1)
+                        or type(when) is not int or when <= 0):
                     raise ValueError("invalid_paper_open")
                 opens.append({
                     "decision_event_id": payload.get("decision_event_id"),
@@ -86,13 +95,25 @@ def read_brain_opens(journal_path: Path, run_id: str) -> list[dict]:
                     "symbol": symbol,
                     "side": side,
                     "as_of_ms": when,
-                    "regime": payload.get("regime")
-                    if payload.get("regime") in _REGIMES else "UNKNOWN",
+                    "regime": "UNKNOWN",  # real paper_open has no regime: join decision
                 })
         conn.rollback()  # conclude the read transaction; no write is possible
     finally:
         conn.close()
     for entry in opens:
+        link = entry["decision_event_id"]
+        linked = decisions.get(link) if type(link) is str and link else None
+        if (linked is not None and linked["symbol"] == entry["symbol"]
+                and linked["kind"] == "OPEN" and linked["status"] == "APPROVED"
+                and type(linked["ts_ms"]) is int
+                and 0 < linked["ts_ms"] <= entry["as_of_ms"]):
+            entry["decision_link"] = "verified"
+            entry["decision_ts_ms"] = linked["ts_ms"]
+            r = linked["regime"]
+            entry["regime"] = r if type(r) is str and r in _REGIMES else "UNKNOWN"
+        else:
+            entry["decision_link"] = "missing_or_inconsistent" if link else "unlinked"
+            entry["decision_ts_ms"] = None
         entry["outcome_after_entry"] = closes.get(entry["position_id"])
     return opens
 
