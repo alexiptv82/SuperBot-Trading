@@ -49,18 +49,46 @@ Installazione: serve ricostruire l'immagine web — **solo con autorizzazione**;
 
 ## B — Prestazioni di Brain
 
-**NON VERIFICATO.** Il journal è sulla VPS e non è accessibile da qui; nessun numero di PnL viene riportato.
-Lo script di audit (sola lettura) produce: decisioni per esito/regime/simbolo, LONG e SHORT, PnL realizzato e
-flottante (senza sommare snapshot), profit factor, expectancy, drawdown, durata, commissioni, funding stimato,
-spesa AI per giorno, errori. Va eseguito una volta e incollato.
+**Fonte dei numeri di Brain: RIPORTATI nella issue #95 da schermate Termius (13–15/11), non riestratti da me.**
+Il journal è sulla VPS; lo script di audit serve a rimisurarli in modo completo e aggiornato.
+
+| | Operazioni | Vincenti | PnL netto |
+|---|---|---|---|
+| SHORT | 11 | 7 | circa +217 USDT |
+| LONG | 2 | 0 | circa −137 USDT |
+| Totale | 13 | 7 | circa +80 USDT |
+
+Altri fatti riportati: tutte le posizioni a leva 20×; stop fra 0,40% e 0,87% dal prezzo; nelle prime 6 chiusure
+lordo −5,7 USDT e commissioni 50,7 USDT (8–9,5 USDT a operazione); 62 decisioni di cui 30 NO_TRADE del modello,
+16 respinte dal rischio, 15 approvate ma solo 6 aperte davvero.
+
+**Controllo oggettivo (VERIFICATO, candele reali Bitget a 1 minuto, `results/brain_window_baseline.json`).**
+Nella finestra 13/11 14:00 → 15/11 06:00 UTC gli 8 simboli di Brain sono scesi in media del **10,0%**
+(BTC −7,4%, SOL −13,2%, ADA −13,8%). Ho simulato un ingresso a OGNI ora su ogni simbolo con le regole di uscita di
+Brain (stop fisso, obiettivo 2R, 24 ore, 6 bp per lato, 2 bp di slippage):
+
+| Stop | SHORT a caso: vincenti | SHORT: media | LONG a caso: vincenti | LONG: media |
+|---|---|---|---|---|
+| 0,50% | 62,8% | +31 bp | 16,2% | −39 bp |
+| 0,75% | 71,0% | +72 bp (≈ +51 USDT su 7.000) | 8,2% | −70 bp (≈ −49 USDT) |
+| 0,90% | 70,0% | +87 bp | 6,1% | −87 bp |
+
+Brain ha vinto 7 SHORT su 11 (64%) con circa +20 USDT medi: **meno di SHORT aperti a caso** nella stessa finestra.
+I due LONG persi rientrano nel 92% di LONG perdenti di quelle ore. Il risultato positivo è spiegato dalla discesa del
+mercato; non è una prova di abilità né di apprendimento di DeepSeek. Limiti del confronto: 13 operazioni, dati da
+schermate, Brain non può aprire ogni ora su tutti i simboli (limiti di margine) ed è stato in pausa alcune ore.
+
+IPOTESI dalle prime 6 chiusure: la dimensione è decisa dal tetto di margine (nozionale quasi costante) e non dal
+rischio, quindi le perdite crescono con la distanza dello stop (stop larghi −77/−83 USDT) mentre le vincite a stop
+stretto valgono +48/+73 USDT: servono circa il 57% di vincenti per pareggiare, invece del 40% teorico di un 2R.
 
 **VERIFICATO dal codice installato:**
 1. Con leva 20–50× e perdita massima 21,43% del margine, lo stop di **ogni** posizione Brain deve stare entro
    **0,91%** dal prezzo a 20× (0,27% a 50×). È dentro il rumore orario delle crypto.
-2. Il PnL PAPER non contabilizza il funding (i LONG tenuti a lungo risultano migliori del vero).
+2. Il PnL PAPER non contabilizza il funding.
 3. Le proposte respinte dal rischio vengono scritte nel journal **senza lato, leva, stop e motivo specifico**
    (`NO_TRADE / RISK_REJECTED / risk_rejected`): oggi non si può sapere quanti LONG proposti da DeepSeek sono stati
-   scartati né perché. È la prima lacuna da colmare (sola osservabilità).
+   scartati né perché. Lo stesso vale per le 9 approvazioni non aperte. È la prima lacuna da colmare.
 
 ---
 
@@ -95,7 +123,8 @@ Le dieci domande:
 9. NON VERIFICABILE oggi: i rifiuti non registrano il lato (vedi B.3).
 10. Sì: ciò che paga gli SHORT è stare dal lato della deriva. L'equivalente LONG è operare solo quando la deriva è positiva.
 
-**Avvertenza:** i risultati SHORT recenti di Brain e Falco non dimostrano un vantaggio che sopravviva a un cambio di regime.
+**Avvertenza:** i risultati SHORT recenti di Brain e Falco non dimostrano un vantaggio che sopravviva a un cambio di
+regime. Per Brain il confronto diretto è nella sezione B: nella sua finestra SHORT casuali hanno fatto meglio.
 
 ---
 
@@ -296,7 +325,10 @@ Non raccomando: nuove varianti LONG intraday a regole, leva alta per Toro, strat
 
 ## Limiti di questo lavoro
 
-- Nessun accesso alla VPS: le sezioni A (conferma) e B (numeri) dipendono dallo script di audit.
+- Nessun accesso alla VPS: la conferma della sezione A e i numeri completi di Brain dipendono dallo script di audit;
+  i numeri di Brain nella sezione B vengono da schermate riportate nella issue #95.
+- I servizi Brain girano anche da `/opt/superbot-v3-rc84-repair-ab7e0b7` (issue #95): lo script di audit legge solo
+  journal e file di stato, quindi non dipende da quale copia del codice è in esecuzione.
 - Dati: solo contratti oggi quotati (bias di sopravvivenza, favorisce i LONG); candele giornaliere (stop valutati sul
   minimo del giorno); funding a tasso fisso; slippage delle altcoin minori probabilmente più alto dei 2 bp assunti.
 - H3 è una sola specifica; le sensibilità al filtro (50 e 200 giorni: +4,0% e +4,1%, stesso segno e stesso periodo

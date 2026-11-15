@@ -1,0 +1,86 @@
+{
+ "finestra_utc": [
+  "2026-11-13 14:00",
+  "2026-11-15 06:00"
+ ],
+ "mercato_pct": {
+  "BTCUSDT": -7.36,
+  "ETHUSDT": -8.67,
+  "SOLUSDT": -13.24,
+  "XRPUSDT": -7.21,
+  "BNBUSDT": -7.97,
+  "DOGEUSDT": -12.22,
+  "ADAUSDT": -13.84,
+  "LINKUSDT": -9.8,
+  "media": -10.04
+ },
+ "esiti": {
+  "SHORT_stop_0.50%": {
+   "n": 328,
+   "vincenti": 0.628,
+   "media_bp": 31.3,
+   "usdt_medio_su_7000_nozionale": 21.9,
+   "uscite": {
+    "tp": 206,
+    "stop": 122
+   },
+   "pareggio_vincenti_teorico": 0.427
+  },
+  "LONG_stop_0.50%": {
+   "n": 328,
+   "vincenti": 0.162,
+   "media_bp": -39.4,
+   "usdt_medio_su_7000_nozionale": -27.6,
+   "uscite": {
+    "stop": 275,
+    "tp": 53
+   },
+   "pareggio_vincenti_teorico": 0.427
+  },
+  "SHORT_stop_0.75%": {
+   "n": 328,
+   "vincenti": 0.71,
+   "media_bp": 72.2,
+   "usdt_medio_su_7000_nozionale": 50.6,
+   "uscite": {
+    "tp": 233,
+    "stop": 95
+   },
+   "pareggio_vincenti_teorico": 0.396
+  },
+  "LONG_stop_0.75%": {
+   "n": 328,
+   "vincenti": 0.082,
+   "media_bp": -70.3,
+   "usdt_medio_su_7000_nozionale": -49.2,
+   "uscite": {
+    "stop": 301,
+    "tp": 27
+   },
+   "pareggio_vincenti_teorico": 0.396
+  },
+  "SHORT_stop_0.90%": {
+   "n": 327,
+   "vincenti": 0.7,
+   "media_bp": 86.5,
+   "usdt_medio_su_7000_nozionale": 60.5,
+   "uscite": {
+    "tp": 229,
+    "stop": 98,
+    "aperta": 1
+   },
+   "pareggio_vincenti_teorico": 0.385
+  },
+  "LONG_stop_0.90%": {
+   "n": 328,
+   "vincenti": 0.061,
+   "media_bp": -87.4,
+   "usdt_medio_su_7000_nozionale": -61.2,
+   "uscite": {
+    "stop": 308,
+    "tp": 20
+   },
+   "pareggio_vincenti_teorico": 0.385
+  }
+ }
+}
