@@ -18,7 +18,10 @@ def _journal(path, *, with_close=True):
         "event_id TEXT, portfolio_id TEXT, run_id TEXT, kind TEXT, "
         "occurred_at_ms INTEGER, payload_json TEXT)"
     )
-    ev = [("paper_open", END, {
+    ev = [("brain_decision", END - 1000, {
+        "kind": "OPEN", "status": "APPROVED",
+        "symbol": "BTCUSDT", "regime": "EXPANSION",
+    }), ("paper_open", END, {
         "position_id": "p1", "symbol": "BTCUSDT", "side": -1,
         "decision_event_id": "d1", "regime": "EXPANSION",
     })]
@@ -31,7 +34,7 @@ def _journal(path, *, with_close=True):
         conn.execute(
             "INSERT INTO v3_events(event_id, portfolio_id, run_id, kind, "
             "occurred_at_ms, payload_json) VALUES (?, 'brain', 'brain-test', ?, ?, ?)",
-            (f"e{i}", kind, ts, json.dumps(body)),
+            ("d1" if kind == "brain_decision" else f"e{i}", kind, ts, json.dumps(body)),
         )
     conn.commit()
     conn.close()
@@ -71,6 +74,8 @@ def test_journal_is_read_only_and_outcome_never_enters_signal(tmp_path):
     assert row["frrd"]["advisory_only"] is True
     assert row["outcome_after_entry"]["realized_pnl_usdt"] == "12.34"
     assert row["decision_event_id"] == "d1"
+    assert row["decision_link"] == "verified"
+    assert row["decision_ts_ms"] == END - 1000
     # Identical entry candles, no close event: signal must be identical.
     no_close = tmp_path / "no_close.db"
     _journal(no_close, with_close=False)
@@ -123,3 +128,19 @@ def test_invalid_csv_header_or_nonfinite_number_cannot_be_silently_processed(tmp
     from research.brain_frrd.detector import observe
     obs = observe(rows, rows, as_of_ms=END)
     assert obs.state == "INCERTO"
+
+
+def test_lying_or_unlinked_decision_never_invents_a_regime(tmp_path):
+    journal, candles = _data(tmp_path)
+    conn = sqlite3.connect(journal)
+    bad = {"kind": "OPEN", "status": "APPROVED", "symbol": "ETHUSDT",
+           "regime": "EXPANSION"}
+    conn.execute("UPDATE v3_events SET payload_json=? WHERE kind='brain_decision'",
+                 (json.dumps(bad),))
+    conn.commit()
+    conn.close()
+    row = offline.analyze(journal, "brain-test", candles)[0]
+    assert row["regime"] == "UNKNOWN"
+    assert row["decision_link"] == "missing_or_inconsistent"
+    assert row["frrd"]["state"] == "CONTINUAZIONE_SHORT"
+    assert row["frrd"]["regime"] == "UNKNOWN"
