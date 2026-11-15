@@ -106,10 +106,10 @@ def test_censored_not_fake_loss_or_win(tmp_path):
 
 
 def test_csv_gaps_invalid_and_no_future_data(tmp_path):
-    f=candles(tmp_path/'candles', n=1600)
+    f=candles(tmp_path/'candles', n=1600, behavior='flat')
     lines=f.read_text().splitlines(); f.write_text('\n'.join(lines[:100]+lines[101:])+'\n')
-    with pytest.raises(ValueError, match='candle_gap'):
-        L.minute_bars(f)
+    bars=L.minute_bars(f)
+    assert L.simulate(bars,T+98*L.M1,1,0)['status'] == 'CENSORED_GAP'
     f.write_text('open_time_ms,open,high,low,close,volume\n0,NaN,1,1,1,1\n')
     with pytest.raises(ValueError):
         L.minute_bars(f)
