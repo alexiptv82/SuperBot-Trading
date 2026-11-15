@@ -289,6 +289,8 @@ def publish() -> None:
         new_mounts = {(m["Destination"], m["Type"], m["RW"], m["Source"]) for m in new["Mounts"]}
         if new_mounts != original_mounts:
             raise RuntimeError("new_mounts_differ")
+        if env_map(new) != env_map(web):
+            raise RuntimeError("web_environment_changed")
         if any(env_map(new).get(k) != v for k, v in EXPECTED_ENV.items()):
             raise RuntimeError("new_paper_gates_differ")
         cmd("docker", "update", "--restart", "always", LIVE, timeout=20)
