@@ -35,11 +35,15 @@ def read_bars(path: Path) -> list[Bar]:
             for row in reader:
                 if set(row) != set(_BAR_HEADER) or any(row[k] is None for k in _BAR_HEADER):
                     raise ValueError("invalid_candle_row")
-                result.append(Bar(
-                    int(row["open_time_ms"]), Decimal(row["open"]),
-                    Decimal(row["high"]), Decimal(row["low"]),
-                    Decimal(row["close"]), Decimal(row["volume"]),
-                ))
+                ts = int(row["open_time_ms"])
+                o, h, l, c, v = (
+                    Decimal(row[k]) for k in ("open", "high", "low", "close", "volume")
+                )
+                if (ts < 0 or not all(x.is_finite() for x in (o, h, l, c, v))
+                        or min(o, h, l, c) <= 0 or v < 0
+                        or not (l <= o <= h and l <= c <= h)):
+                    raise ValueError("invalid_candle_row")
+                result.append(Bar(ts, o, h, l, c, v))
     except (OSError, ArithmeticError, ValueError, KeyError) as exc:
         raise ValueError("invalid_candle_file") from exc
     return result
@@ -78,7 +82,10 @@ def read_brain_opens(journal_path: Path, run_id: str) -> list[dict]:
             if kind == "paper_close":
                 closes[position_id] = {
                     "close_ts_ms": when,
-                    "realized_pnl_usdt": str(payload.get("realized_pnl")),
+                    "realized_pnl_usdt": (
+                        str(payload["realized_pnl"])
+                        if payload.get("realized_pnl") is not None else None
+                    ),
                     "close_reason": payload.get("reason"),
                 }
             else:
@@ -114,7 +121,11 @@ def read_brain_opens(journal_path: Path, run_id: str) -> list[dict]:
         else:
             entry["decision_link"] = "missing_or_inconsistent" if link else "unlinked"
             entry["decision_ts_ms"] = None
-        entry["outcome_after_entry"] = closes.get(entry["position_id"])
+        close = closes.get(entry["position_id"])
+        entry["outcome_after_entry"] = (
+            close if close is not None and type(close["close_ts_ms"]) is int
+            and close["close_ts_ms"] >= entry["as_of_ms"] else None
+        )
     return opens
 
 
