@@ -317,7 +317,7 @@ calcolato dallo stop, leva effettiva sotto 3×. Gli scenari 10–20× restano se
 | 3 | Registrare lato, leva e stop delle proposte di Brain (osservabilità) | **preparato**: ramo `work/brain-reject-observability-20261115` (`6d7d3c6`), spento di default, 8 test + 1.128 regressioni | sì |
 | 4 | Contabilizzare il funding nel PnL PAPER di Brain | proposta | sì |
 | 5 | Toro H3 in ombra con registro osservazioni, regole congelate | **preparato**: `research/long_lab_fable/shadow.py` + test; non installato né schedulato | sì |
-| 6 | Confronto offline Toro–Brain e memoria a tre livelli | progetto | sì |
+| 6 | Confronto offline Toro–Brain e memoria a tre livelli | **preparato**: `research/long_lab_fable/cross_compare.py` + 3 test; sola lettura | no per l'esecuzione offline, sì per collegarlo a Brain |
 | 7 | Valutazione in avanti del filtro di ampiezza; FRRD come osservatore | IPOTESI | sì |
 | 8 | Decisione dell'utente sul vincolo di stop di Brain per i LONG | aperta | — |
 
@@ -336,6 +336,12 @@ Non raccomando: nuove varianti LONG intraday a regole, leva alta per Toro, strat
   coerenza col motore del laboratorio, nessuna riga chiusa che cambia quando arrivano nuovi giorni.
 - **Stato di oggi (ultimo giorno chiuso 14/11/2026):** filtro di mercato **spento**; solo il 6,7% delle altcoin
   dell'universo è sopra la propria media a 100 giorni; **zero segnali**. Con queste regole Toro oggi resterebbe fermo.
+- **Confronto Toro–Brain** (punto 6). `cross_compare.py` legge il registro dell'ombra, il journal di Brain in sola
+  lettura e, se c'è, il registro delle proposte. Per ogni segnale di Toro classifica cosa ha fatto Brain sullo stesso
+  simbolo nelle 24 ore dopo la chiusura giornaliera: LONG aperto, SHORT aperto, LONG/SHORT proposto e respinto,
+  NO_TRADE, non valutato. Uscita su tre livelli separati: *fatti* (ogni coppia con esiti), *ipotesi* (viste con
+  almeno 30 esiti chiusi di Toro, R medio e intervallo al 95%), *regole validate* (solo se confermate su un secondo
+  campione successivo, con intervallo che esclude lo zero). Nessun livello viene inviato a Brain.
 
 ## Limiti di questo lavoro
 
