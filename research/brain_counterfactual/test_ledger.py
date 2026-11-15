@@ -143,6 +143,8 @@ def test_paired_summary_keeps_unknown_side_out_of_model_score(tmp_path):
     assert stats['no_real_pnl_mixed_in'] is True
     assert stats['opening_state_counts']['APPROVED_NOT_OPENED_CAUSE_UNKNOWN'] == 1
     assert stats['model_minus_always_short_r'] == '0.0000'  # actual was short
+    assert stats['scenario_by_decision_group']['NO_TRADE/RISK_REJECTED']['resolved_n'] == 1
+    assert stats['scenario_by_decision_group']['NO_TRADE/DRAFT']['resolved_n'] == 1
 
 
 def test_post_ai_report_does_not_invent_reasons_for_missing_fills():
