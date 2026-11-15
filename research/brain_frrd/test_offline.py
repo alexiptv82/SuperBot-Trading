@@ -76,6 +76,9 @@ def test_journal_is_read_only_and_outcome_never_enters_signal(tmp_path):
     assert row["decision_event_id"] == "d1"
     assert row["decision_link"] == "verified"
     assert row["decision_ts_ms"] == END - 1000
+    assert row["signal_ts_ms"] == END - 1000
+    assert row["observation_time_basis"] == "linked_brain_decision"
+    assert row["frrd"]["as_of_ms"] == END - 1000
     # Identical entry candles, no close event: signal must be identical.
     no_close = tmp_path / "no_close.db"
     _journal(no_close, with_close=False)
@@ -139,5 +142,7 @@ def test_lying_or_unlinked_decision_never_invents_a_regime(tmp_path):
     row = offline.analyze(journal, "brain-test", candles)[0]
     assert row["regime"] == "UNKNOWN"
     assert row["decision_link"] == "missing_or_inconsistent"
+    assert row["signal_ts_ms"] == END
+    assert row["observation_time_basis"] == "paper_open_fallback"
     assert row["frrd"]["state"] == "CONTINUAZIONE_SHORT"
     assert row["frrd"]["regime"] == "UNKNOWN"
