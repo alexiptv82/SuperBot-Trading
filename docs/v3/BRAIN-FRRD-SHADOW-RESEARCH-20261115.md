@@ -63,5 +63,5 @@ A ogni `brain_decision` e `paper_open` ricostruire l'informazione conosciuta a q
 
 - Fix dashboard Brain `O_RDONLY`: installato, codice verificato da Termius, **pulsante «Chiudi trade» funzionante secondo l'utente**. Nessun trade chiuso come prova; il percorso di chiusura end-to-end non e' collaudato.
 - GitHub `work/brain-close-ro-web-preflight-20261115`: commit `401a621` riporta il collaudo UI.
-- FRRD: **solo questo protocollo di ricerca**; non implementato e non installato.
+- FRRD: **laboratorio offline implementato** in `research/brain_frrd/{detector.py,offline.py,test_detector.py,test_offline.py,README.md}`. Rilegge il journal solo in modalità `ro`, si collega alla `brain_decision` tramite `decision_event_id` per ricostruire il regime originale e calcola il segnale all'istante della decisione, non della chiusura. Test sintetici scritti, **non ancora eseguiti**. Nessun import nel runner, nessuna installazione o veto operativo. Mancano storico CSV e verifica quantitativa fuori campione.
 - Toro LONG H3: rimane esperimento separato, nessun deploy.
