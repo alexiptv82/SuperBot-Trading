@@ -34,3 +34,9 @@ In caso di errori durante il cutover, il codice tenta il rollback automaticament
 - Lo script di pubblicazione e' stato revisionato staticamente ma **non ancora eseguito** sulla VPS; nessun test CI avviato per non consumare minuti GitHub.
 - Il file `frontend/src/components/OverviewCloseControls.js` del ramo Fable contiene anche miglioramenti dell'interfaccia, ma questa immagine candidata modifica **solo il backend**: la priorita' e' abilitare il pulsante che gia' esiste.
 - Se il container e' cambiato rispetto agli ID verificati, il preflight deve rifiutare la sostituzione.
+
+## Esito reale del rilascio — 15 novembre 2026 (aggiornamento successivo)
+
+**Risolto nella dashboard, confermato dall'operatore.** Screenshot Termius del 15/11 alle 18:19 Europe/Rome: container pubblico `superbot` in esecuzione con tag `superbot:brain-close-ro-candidate-20261115`; precedente container `superbot-before-brain-close-ro-20261115` presente e fermo; `LOCK_READONLY=True`, `LOCK_RDWR=False`. Un successivo tentativo di rilancio dello script alle 18:18 ha restituito `backup_name_already_exists`, coerente con il rilascio gia' avvenuto, non con errore della patch.
+
+L'utente ha poi verificato nella UI: **«Chiudi trade» Brain funziona ed e' selezionabile**. Non e' stata chiusa alcuna posizione di prova; resta non verificato end-to-end l'esito di una chiusura richiesta dall'utente. Non ripetere il publish, non cancellare il backup e non modificare i tre servizi PAPER.
