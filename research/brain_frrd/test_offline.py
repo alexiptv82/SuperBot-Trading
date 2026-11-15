@@ -50,7 +50,8 @@ def _csv(path, bars):
 
 
 def _data(tmp_path):
-    journal = tmp_path / "journal.db"
+    journal = tmp_path / "run" / "journal.db"
+    journal.parent.mkdir(parents=True)
     _journal(journal)
     candle_folder = tmp_path / "candles" / "BTCUSDT"
     for name, bars in zip(("15m", "1h", "4h"), _down()):
@@ -106,7 +107,7 @@ def test_refuses_to_write_into_journal_directory(tmp_path):
     with pytest.raises(SystemExit):
         offline.main([
             "--journal", str(journal), "--run-id", "brain-test",
-            "--candles-dir", str(candles), "--out", str(tmp_path / "illegal.jsonl"),
+            "--candles-dir", str(candles), "--out", str(journal.parent / "illegal.jsonl"),
         ])
 
 
