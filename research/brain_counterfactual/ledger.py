@@ -37,7 +37,7 @@ def d(raw: str) -> Decimal:
 
 
 def minute_bars(path: Path) -> list[tuple]:
-    """Parse 1-minute CSV with exact schema; reject gaps and bad OHLC."""
+    """Parse 1-minute CSV; preserve gaps for per-trade coverage checks."""
     import csv
     with path.open(newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
@@ -52,8 +52,8 @@ def minute_bars(path: Path) -> list[tuple]:
             if (t < 0 or t % M1 or min(o, hi, lo, cl) <= 0 or volume < 0
                     or lo > min(o, cl) or hi < max(o, cl) or lo > hi):
                 raise ValueError('invalid_candle_ohlc')
-            if bars and t != bars[-1][0] + M1:
-                raise ValueError('candle_gap_or_duplicate')
+            if bars and t <= bars[-1][0]:
+                raise ValueError('candle_duplicate_or_unsorted')
             bars.append((t, o, hi, lo, cl))
     return bars
 
@@ -168,7 +168,8 @@ def annotate(dcs: list[dict], observer: dict) -> None:
             decision['side_origin'] = 'unique_observer_ts_symbol'
 
 
-def simulate(bars: list[tuple], ts: int, side: int, lag_minutes: int) -> dict:
+def simulate(bars: list[tuple], ts: int, side: int, lag_minutes: int,
+             times: list[int] | None = None) -> dict:
     """Idealized future 1m bar entry; no pretend position opened by a bot.
 
     Entry at next 1m open on/after snapshot + assumed lag. Stops and targets
@@ -178,7 +179,8 @@ def simulate(bars: list[tuple], ts: int, side: int, lag_minutes: int) -> dict:
     if type(side) is not int or side not in (-1, 1) or lag_minutes < 0:
         raise ValueError('simulate_args_invalid')
     t = ts + lag_minutes * M1
-    times = [b[0] for b in bars]
+    if times is None:
+        times = [b[0] for b in bars]
     k = bisect_left(times, t)
     if k >= len(bars) or bars[k][0] - t >= M1:
         return {'status': 'UNAVAILABLE'}
@@ -186,6 +188,8 @@ def simulate(bars: list[tuple], ts: int, side: int, lag_minutes: int) -> dict:
     stop = opened * (Decimal(1) - side * STOP)
     target = opened * (Decimal(1) + side * 2 * STOP)
     for j in range(k, min(k + HOLD, len(bars))):
+        if j > k and bars[j][0] != bars[j-1][0] + M1:
+            return {'status': 'CENSORED_GAP'}
         _, o, hi, lo, cl = bars[j]
         bad = lo <= stop if side == 1 else hi >= stop
         good = hi >= target if side == 1 else lo <= target
@@ -213,22 +217,24 @@ def build(db: Path, run_id: str, candles: Path, observer: Path | None = None,
           lag_minutes: tuple[int, ...] = (0, 1, 3)) -> tuple[list[dict], dict]:
     decisions, _, orphan = snapshot(db, run_id)
     annotate(decisions, observer_map(observer, decisions))
-    cache: dict[str, list[tuple] | None] = {}
+    cache: dict[str, tuple[list[tuple], list[int]] | None] = {}
     for row in decisions:
         sym = row['symbol']
         if sym not in cache:
             try:
-                cache[sym] = minute_bars(candles / sym / '1m.csv')
+                bars = minute_bars(candles / sym / '1m.csv')
+                cache[sym] = (bars, [b[0] for b in bars])
             except (OSError, ValueError):
                 cache[sym] = None
-        bars = cache[sym]
+        data = cache[sym]
         hypothetical = {}
         for lag in lag_minutes:
-            if bars is None:
+            if data is None:
                 up = down = {'status': 'UNAVAILABLE'}
             else:
-                up = simulate(bars, row['ts_ms'], 1, lag)
-                down = simulate(bars, row['ts_ms'], -1, lag)
+                bars, times = data
+                up = simulate(bars, row['ts_ms'], 1, lag, times)
+                down = simulate(bars, row['ts_ms'], -1, lag, times)
             hypothetical[str(lag)] = {'LONG': up, 'SHORT': down}
         row['hypothetical_only'] = hypothetical
         row['opening_state'] = (
