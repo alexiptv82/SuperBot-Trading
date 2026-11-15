@@ -67,16 +67,33 @@ class CycleBars:
 class MarketEntryAnalyst(Analyst):
     """Avvolge un analista: ogni OPEN entra a mercato, cioe' ``entry_price = context.price``."""
 
-    def __init__(self, inner: Analyst):
-        if not isinstance(inner, Analyst):
+    def __init__(self, inner: Analyst, observer=None):
+        if not isinstance(inner, Analyst) or (observer is not None and not callable(observer)):
             raise ValueError("invalid_analyst")
         self.inner = inner
+        self._observer = observer          # facoltativo: annota la proposta, non puo' cambiarla (proposal_log.py)
+
+    def _observe(self, context: MarketContext, decision=None, error=None) -> None:
+        if self._observer is None:
+            return
+        try:
+            from backend.v3.runner.proposal_log import proposal_record
+            record = proposal_record(context, decision, error)
+            if record is not None:
+                self._observer(record)
+        except Exception:
+            pass                           # l'osservatorio non deve mai influire sulla decisione
 
     def analyze(self, context: MarketContext, open_positions: list[Mapping]) -> BrainDecision:
-        decision = self.inner.analyze(context, open_positions)
+        try:
+            decision = self.inner.analyze(context, open_positions)
+        except Exception as exc:
+            self._observe(context, error=exc)
+            raise
         if (isinstance(decision, BrainDecision) and decision.kind == DecisionKind.OPEN
                 and isinstance(decision.proposal, OpenProposal)):
             decision.proposal = replace(decision.proposal, entry_price=context.price)
+        self._observe(context, decision)
         return decision
 
 

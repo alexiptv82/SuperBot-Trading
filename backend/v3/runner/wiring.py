@@ -129,7 +129,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                  alert_send: Optional[Callable[[str], bool]] = None,
                  exit_mode: str = "legacy", clock_ms: Optional[Callable[[], int]] = None,
                  desk_mode: Optional[str] = None,
-                 classic_peer_dirs: Optional[Mapping[str, Path]] = None) -> Built:
+                 classic_peer_dirs: Optional[Mapping[str, Path]] = None,
+                 proposal_observer: Optional[Callable[[Mapping], None]] = None) -> Built:
     """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test."""
     if type(exit_mode) is not str or exit_mode not in ("legacy", "sidecar"):
         raise ValueError("invalid_exit_mode")
@@ -169,7 +170,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
         bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
         spending_gate=ledger.spending_gate(daily_limits={PROVIDER: config.daily_cap_units}), enabled=True,
-        max_tokens=config.max_tokens))
+        max_tokens=config.max_tokens), observer=proposal_observer)
     store = CandleStore(get_json, keep={s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP)
                                         for s in vp.timeframes})
     minutes = CandleStore(get_json, keep={"1m": (60_000, MINUTE_STORE_BARS)})
@@ -299,6 +300,10 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
             return 2
         peer_opts = {"classic_peer_dirs": {"falco": Path(falco), "toro": Path(toro)}}
     data_dir = Path(a.data_dir)
+    # Osservatorio delle proposte: solo su richiesta esplicita; scrive un file a parte, mai il journal.
+    if environ.get("V3_BRAIN_PROPOSAL_LOG") == "1":
+        from backend.v3.runner.proposal_log import file_observer
+        peer_opts = dict(peer_opts, proposal_observer=file_observer(data_dir))
     if a.exit_mode == "sidecar":
         # A split start must NEVER initialize an empty journal/run implicitly.
         if not data_dir.is_dir():
