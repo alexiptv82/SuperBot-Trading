@@ -1,0 +1,1860 @@
+{
+ "file": {
+  "0GUSDT_1Dutc.csv": {
+   "righe": 423,
+   "sha256": "499f32dd077ecc88df251a74dd193298736c1090790240e97d232bfb2d2cfc80"
+  },
+  "1000000MOGUSDT_1Dutc.csv": {
+   "righe": 823,
+   "sha256": "b207635b6adba300038b734dc5105e8a80046e69e63114b3c6791ba1720321f5"
+  },
+  "1000BONKUSDT_1Dutc.csv": {
+   "righe": 981,
+   "sha256": "024c2857004b60e22edab20c0ca0123daceb866d7c8673c7d46098ce52c41e4b"
+  },
+  "1000CATUSDT_1Dutc.csv": {
+   "righe": 790,
+   "sha256": "61c336237138485b314f00fc69f2cbbf08a28a205bf6fea6b79c559ac8927c4c"
+  },
+  "1000RATSUSDT_1Dutc.csv": {
+   "righe": 1065,
+   "sha256": "c659e8c620383b852ca0357593c3da556dec28b443cda9223c3941f564b90c33"
+  },
+  "1000SATSUSDT_1Dutc.csv": {
+   "righe": 1068,
+   "sha256": "24fb4a15a21e7868c069ec418481c17fde004b6f541397677b5347d838379a71"
+  },
+  "1000XECUSDT_1Dutc.csv": {
+   "righe": 1227,
+   "sha256": "b1820d6a9421464c2e345589ffdca881f6ddb7d2d60926de86ebb2c0c2e8be20"
+  },
+  "1INCHUSDT_1Dutc.csv": {
+   "righe": 1591,
+   "sha256": "32d25d22f2ae237a180647068ff5e4d2d3930f864c6ac9d0a700ee977b8065db"
+  },
+  "1MBABYDOGEUSDT_1Dutc.csv": {
+   "righe": 790,
+   "sha256": "d630c3c1027c50d04d6d672aedf12babfaa6af0a1583004817c9eaead5370c47"
+  },
+  "1MCHEEMSUSDT_1Dutc.csv": {
+   "righe": 722,
+   "sha256": "239c054d3cc74e72c26e4dcfd7bfb2abcf98533b3421bb6c38c0cf319eef2d1f"
+  },
+  "2ZUSDT_1Dutc.csv": {
+   "righe": 409,
+   "sha256": "38570bda44903d97a12783bc30d6e4627a43931db6a7ce8aad971eaaded40442"
+  },
+  "AAVEUSDT_1Dutc.csv": {
+   "righe": 2070,
+   "sha256": "b262679ed492903db82847c9568357a40d7ceaa1542208fdc1f8e8e1e580523d"
+  },
+  "ACEUSDT_1Dutc.csv": {
+   "righe": 1062,
+   "sha256": "ceae125b8c337fd1a3a3e25f3a9cf50faf7c94ff293b207b838a0889c8a8ffc6"
+  },
+  "ACHUSDT_1Dutc.csv": {
+   "righe": 1356,
+   "sha256": "dcb39d0cc9be0ed2ab6cf87fd36698049265a32cd09f40f8cec664e65d1fcd61"
+  },
+  "ACTUSDT_1Dutc.csv": {
+   "righe": 734,
+   "sha256": "f5ebef2f22265a15d49da70c11e2942aea22e5395bd97119158200b80ceeddd8"
+  },
+  "ACUUSDT_1Dutc.csv": {
+   "righe": 298,
+   "sha256": "6c50c0fd02d23092aee7ade6796fefa97be006b4d1a237a5fb3ec026c924f701"
+  },
+  "ADAUSDT_1Dutc.csv": {
+   "righe": 2279,
+   "sha256": "08110191788f98868cc2d146414afaddcbdff581bce7132e6b92ddf629201174"
+  },
+  "AEONUSDT_1Dutc.csv": {
+   "righe": 111,
+   "sha256": "8f611399cdce486b54a28d6e1c9798256f6efc7bfad07a884646ccb33d88c3ce"
+  },
+  "AEROUSDT_1Dutc.csv": {
+   "righe": 740,
+   "sha256": "68f2e35585c7deff9da13fdee4e3204df99f43be9e4e6eaddfab6705c462c3dd"
+  },
+  "AEVOUSDT_1Dutc.csv": {
+   "righe": 968,
+   "sha256": "c7f379b066c3135de57caedd9b0fe46e239cc6df25cdb9785799e9db7f76b7d1"
+  },
+  "AGLDUSDT_1Dutc.csv": {
+   "righe": 1216,
+   "sha256": "e15dd1cbce366962113c87250750729f4385ea6089d2d088c9ab2558b1e19152"
+  },
+  "AIOUSDT_1Dutc.csv": {
+   "righe": 459,
+   "sha256": "cc6ccb4b1f4783c3fbd3536398415391417b9477dc2f49d6a38b6402c17e56ae"
+  },
+  "AIXBTUSDT_1Dutc.csv": {
+   "righe": 694,
+   "sha256": "d040588fe4b0d8338be823e9e3c6e58532f719fdfe2f1fcc201f2d9791937aac"
+  },
+  "AKEUSDT_1Dutc.csv": {
+   "righe": 74,
+   "sha256": "ac7d8b863660f1b390b56a97ddbb9fe4d2b0b6689ee6bef0fdc72bcba952b691"
+  },
+  "AKTUSDT_1Dutc.csv": {
+   "righe": 808,
+   "sha256": "7c025b3cd179ba3d1f9bdbdc6546b08156baab2a8f4a99390e30fc615fce4e3a"
+  },
+  "ALCHUSDT_1Dutc.csv": {
+   "righe": 677,
+   "sha256": "2094a9e301cadee3a710011448ab9eee83a259a46c10ebc5e967924b9f5a4f9b"
+  },
+  "ALGOUSDT_1Dutc.csv": {
+   "righe": 1718,
+   "sha256": "8e7f975c52b72eafde76ca471dc1af92707b518767494a22762a5fc08003e5be"
+  },
+  "ALICEUSDT_1Dutc.csv": {
+   "righe": 845,
+   "sha256": "556056618cdf43fe26957325cfd4d464f620c23c2cc3eb7815715a67100230cb"
+  },
+  "ALLOUSDT_1Dutc.csv": {
+   "righe": 369,
+   "sha256": "0c14f0dc089d75b354aa81abcc64fabf0f39749ec3dd7d473d0d33f59e3c485b"
+  },
+  "ALTUSDT_1Dutc.csv": {
+   "righe": 1020,
+   "sha256": "2fc78cb504f4f1ce2fbbf9a18496e3de6e69714ece35767189768539990c4545"
+  },
+  "ANIMEUSDT_1Dutc.csv": {
+   "righe": 661,
+   "sha256": "d14d7310324abfe2bd91d4776d6c3678ec6c45641a6d5b2653073e1a928f5ea1"
+  },
+  "ANKRUSDT_1Dutc.csv": {
+   "righe": 1359,
+   "sha256": "30cce524e3cb0a487b6a2c71d96c5f228c76a24f592cfbc605405d59446d9e23"
+  },
+  "APEUSDT_1Dutc.csv": {
+   "righe": 1682,
+   "sha256": "187c2fbf2f7cbcd4acc20b2e37e9cd45a1f0ba9371dee9e104f808f01518b2d2"
+  },
+  "API3USDT_1Dutc.csv": {
+   "righe": 1553,
+   "sha256": "1b358601f40c371db4db2245f6df43d68d4e81e4be22aa1fa49dd4896f003104"
+  },
+  "APRUSDT_1Dutc.csv": {
+   "righe": 388,
+   "sha256": "cfe0cf01b7863929cd8361cdf6ab47cfb5d115a62555170741c80145728ec218"
+  },
+  "APTUSDT_1Dutc.csv": {
+   "righe": 1488,
+   "sha256": "37243a477f04a02adc8300eeae3c7d37116d13a6392f96c6cbea6c98e71175dd"
+  },
+  "ARBUSDT_1Dutc.csv": {
+   "righe": 1333,
+   "sha256": "1e15541f61597a69e268c6aceabbdd73848f083ad1422e8bea502c42110b3b03"
+  },
+  "ARCUSDT_1Dutc.csv": {
+   "righe": 667,
+   "sha256": "1ab772da8478c918e0f700680f5d644991d676ce1602d922186269b6cdbef565"
+  },
+  "ARIAUSDT_1Dutc.csv": {
+   "righe": 438,
+   "sha256": "87c718a889e1bca598e97e711b87a94f8d8cbeb288252c7368600bc0c885434a"
+  },
+  "ARKMUSDT_1Dutc.csv": {
+   "righe": 1205,
+   "sha256": "a0cd7cdb1652b941b43065bc644dcad92bcd2b177f528b7635172ec447e7ae1f"
+  },
+  "ARKUSDT_1Dutc.csv": {
+   "righe": 783,
+   "sha256": "b7f070cf3d96ad19748aea8adb9a5e2344ea409a9bcdadc00c80d9ba6ce30826"
+  },
+  "ARPAUSDT_1Dutc.csv": {
+   "righe": 1306,
+   "sha256": "d6ea8ea536be291546fcc6b0ccd0a60d52870b38c7e18f9b47e54ba790cd5381"
+  },
+  "ARUSDT_1Dutc.csv": {
+   "righe": 1782,
+   "sha256": "eba0166dbe74ddce71acb966bbeeaf10a58112b1751193d4b1f5860279dd8565"
+  },
+  "ARXUSDT_1Dutc.csv": {
+   "righe": 146,
+   "sha256": "c7618a9c24080eb3dc7d7fd17e9075a50d10432f8cf15589f40b746d8df8f88c"
+  },
+  "ASRUSDT_1Dutc.csv": {
+   "righe": 558,
+   "sha256": "2263d441c7151dc359d1302d483d6235ff5b3e45b81246e69aec165d7d416000"
+  },
+  "ASTERUSDT_1Dutc.csv": {
+   "righe": 422,
+   "sha256": "f643499ea44939dbe7a89ee8dfe369e37b220a9a5f059d88d67dfd6af642d3f5"
+  },
+  "ASTRUSDT_1Dutc.csv": {
+   "righe": 1361,
+   "sha256": "1fbc08d31d9671a45bd7b51cce9a77fab74256066714614f55e258eb1777ad5c"
+  },
+  "ATHUSDT_1Dutc.csv": {
+   "righe": 883,
+   "sha256": "6357132f3c5ccfde4292fbd918373af08b84cc8856e4e2c6bc4dde897ea7f37f"
+  },
+  "ATOMUSDT_1Dutc.csv": {
+   "righe": 2208,
+   "sha256": "34fd78db206a50e85acae30c9a9d0c3a6417a044ab17fb7ef0b9b6376e70a311"
+  },
+  "ATUSDT_1Dutc.csv": {
+   "righe": 377,
+   "sha256": "b7619472b6282de906c8334002f9ee466a28cf864faef2b38b365d8542d35d6c"
+  },
+  "AUCTIONUSDT_1Dutc.csv": {
+   "righe": 636,
+   "sha256": "db1bc7bffc960be182ffa0e95e09713edfa8c7aac5f40d82de79bb8136311939"
+  },
+  "AUSDT_1Dutc.csv": {
+   "righe": 536,
+   "sha256": "1e71a9d679e3bbf4131ff8b6dc48547d10ddcd05b1c8be7283cdd82bb668383f"
+  },
+  "AVAUSDT_1Dutc.csv": {
+   "righe": 702,
+   "sha256": "31dd43bb8282e3dca9421004cb8e05c19f65630d08f2de93e4015ea6bd88bd42"
+  },
+  "AVAXUSDT_1Dutc.csv": {
+   "righe": 1873,
+   "sha256": "15639c330efeea02237b4bc0840cf9986dfbc3ea99a8532ba4aef46cd15ace95"
+  },
+  "AVNTUSDT_1Dutc.csv": {
+   "righe": 432,
+   "sha256": "7b1d74b9cc28827e7ddd0996cce3d0b14873b07651268042cf687484b3578ae1"
+  },
+  "AWEUSDT_1Dutc.csv": {
+   "righe": 543,
+   "sha256": "6c093afd7d9743c70256ffda0ca1fbbf3c8dae94195c810899dc3a9683e275ed"
+  },
+  "AXISUSDT_1Dutc.csv": {
+   "righe": 25,
+   "sha256": "616abb73d2d26e20704f8ae7c1bb3d1c1256696e294e0b60bf80d89fcbcdba89"
+  },
+  "AXLUSDT_1Dutc.csv": {
+   "righe": 977,
+   "sha256": "b58be2b3351c296fba65b4df67b744dbad5d1d62d3cb21321d91a64057221756"
+  },
+  "AXSUSDT_1Dutc.csv": {
+   "righe": 1879,
+   "sha256": "77ce3afee44d42cfbc73f2c3110410c77f2ad319468e9b282b394ba0668f728d"
+  },
+  "AZTECUSDT_1Dutc.csv": {
+   "righe": 276,
+   "sha256": "cf3c82c8352e2606e68314848b6e967eaead50c8680bb08815e0dc584efe7f2b"
+  },
+  "B2USDT_1Dutc.csv": {
+   "righe": 564,
+   "sha256": "532d06718f876cef914bfe1f0bf15c314b2cc0c855eab2126d8bf456da308847"
+  },
+  "BABYUSDT_1Dutc.csv": {
+   "righe": 584,
+   "sha256": "f8751e5d4cab604687399e4303ab85a9333795fc9a94daa3636f672056fda3a9"
+  },
+  "BANANAS31USDT_1Dutc.csv": {
+   "righe": 605,
+   "sha256": "1ae5bb68fa303b9e056a16c81ee8b49586189df3fdb0f81d0030131527a90139"
+  },
+  "BANANAUSDT_1Dutc.csv": {
+   "righe": 848,
+   "sha256": "93c76a1f2dbc9842bed8ded6e5dd999be1bdfc7fd75c91cc27c58f00ad9a7e3a"
+  },
+  "BANDUSDT_1Dutc.csv": {
+   "righe": 1553,
+   "sha256": "a676d9322d9a41349eb2f8d5a80d4bd064ec7aa10f749f5e2bed013ee3944f0f"
+  },
+  "BANKUSDT_1Dutc.csv": {
+   "righe": 576,
+   "sha256": "d7cb98d3cbed708c924fabab5a42c72ab52868afc2a6a0124d2c1f0a94967b1d"
+  },
+  "BANUSDT_1Dutc.csv": {
+   "righe": 727,
+   "sha256": "a6b8544ac35ee0b0eaa87b75f1eee4558d0de50b78b49492f8df018ee2b2658a"
+  },
+  "BARDUSDT_1Dutc.csv": {
+   "righe": 423,
+   "sha256": "38320b37f79f59bc1cdd0cc9924a9498c128e5a542d748d3481405bac37c5d95"
+  },
+  "BASEDUSDT_1Dutc.csv": {
+   "righe": 230,
+   "sha256": "839c54bd10f88ae490d45c75f1c078a867cff28d495ec5ae3ded8d34fbce69aa"
+  },
+  "BATUSDT_1Dutc.csv": {
+   "righe": 1453,
+   "sha256": "a2d04e5e9cfb3225c5173b68ebe2705705655484b898e3d745c02428d8df576a"
+  },
+  "BBUSDT_1Dutc.csv": {
+   "righe": 916,
+   "sha256": "22af70f1c30ea933443cbb3c0fb69c0d0ffb704dd2f98939b9e691c1d2e2c982"
+  },
+  "BCHUSDT_1Dutc.csv": {
+   "righe": 2510,
+   "sha256": "da118a42304ae3c014b02a4be34cb19800f5151dda24a63782328e95bdee530d"
+  },
+  "BEAMUSDT_1Dutc.csv": {
+   "righe": 977,
+   "sha256": "341ac73d3a94f0037d57d63406189d3db14c0e1d6ae1957510ef6fd95b09571a"
+  },
+  "BEATUSDT_1Dutc.csv": {
+   "righe": 368,
+   "sha256": "c4bbff2ca25523e656c82595830555951e709adc5e24ab2121ac8057fd6d31ee"
+  },
+  "BERAUSDT_1Dutc.csv": {
+   "righe": 647,
+   "sha256": "235476aa10adfa127a7aed2818e8a191406b6c4d8b056f88ef2349c872ca5a8e"
+  },
+  "BGBUSDT_1Dutc.csv": {
+   "righe": 863,
+   "sha256": "dbfd55b818d653296ac69517b33b3cca3d8d8e8c39070c76bcfbce6ad78b8765"
+  },
+  "BICOUSDT_1Dutc.csv": {
+   "righe": 906,
+   "sha256": "9ea3ac7c62acacef94be098588b248a8dd469020e155415f085c88d6856b698f"
+  },
+  "BIGTIMEUSDT_1Dutc.csv": {
+   "righe": 1130,
+   "sha256": "aa2a09b4fb6187a0fb338f388b4e437f5f76abd4f063ed5f9809112a1c19c64c"
+  },
+  "BILLUSDT_1Dutc.csv": {
+   "righe": 193,
+   "sha256": "1f2d4cb22a90a474f2889415833b88d1075fc6f6d7468dca9bbd439a973a25ff"
+  },
+  "BIOUSDT_1Dutc.csv": {
+   "righe": 681,
+   "sha256": "5f2739c049d2a5d69d4931912cea752eb92870c781e9991afdd07652ba73729b"
+  },
+  "BIRBUSDT_1Dutc.csv": {
+   "righe": 290,
+   "sha256": "f6fc86eb0a4e526fa9eba79c3b4e11df496b11f344abbf8f69a2a0ab81bb2c63"
+  },
+  "BLESSUSDT_1Dutc.csv": {
+   "righe": 418,
+   "sha256": "afba31bd4d61e0df3fef8dda37029d444c1d5e0257343744e552542927f2520c"
+  },
+  "BLURUSDT_1Dutc.csv": {
+   "righe": 1363,
+   "sha256": "5e1f22de30e595eaafb98f8e16849ab30cca803553197d6dce53a370e7652404"
+  },
+  "BNBUSDT_1Dutc.csv": {
+   "righe": 2510,
+   "sha256": "5b7d09228b78ada6d9bfa8eab38a210c54aee511a7e55ed84d631d068bebcdba"
+  },
+  "BNTUSDT_1Dutc.csv": {
+   "righe": 1192,
+   "sha256": "21831bd3adb8535985e2cde7b59e74e9afc8c289ffe5de6d82f4e223179db077"
+  },
+  "BOMEUSDT_1Dutc.csv": {
+   "righe": 971,
+   "sha256": "3b9f4bb29f3904b9eb6983fbe5168f0211e0be575df060d4739ce3ef8684b2e7"
+  },
+  "BRETTUSDT_1Dutc.csv": {
+   "righe": 884,
+   "sha256": "434ff40082637157337577987ac2c8f7a775d3eabacab77cfeb9a0b46ca3d425"
+  },
+  "BREVUSDT_1Dutc.csv": {
+   "righe": 313,
+   "sha256": "a56f91c28ba10521bc0ebf7787fa25fe1b2570214bb34dbd3824ee8831e91cb5"
+  },
+  "BROCCOLIUSDT_1Dutc.csv": {
+   "righe": 639,
+   "sha256": "98ed8ed7a3a3b29e136171a7e26dad643060fff1ca74b4c271beb2a671f4809c"
+  },
+  "BRUSDT_1Dutc.csv": {
+   "righe": 605,
+   "sha256": "4721095dab781ed7bc53ba241c9aafce07c55aae4750288c231e1ab13a8e4a6d"
+  },
+  "BSBUSDT_1Dutc.csv": {
+   "righe": 235,
+   "sha256": "b7cf29e3077cad4bd7c13e618221c5a2e61f12241376016ce5c538bb787432fc"
+  },
+  "BSVUSDT_1Dutc.csv": {
+   "righe": 1285,
+   "sha256": "f4f040dbe9333cf20e268952e6da8393300b46c1c44dd679fbcd18c03a541e10"
+  },
+  "BTCUSDT_1Dutc.csv": {
+   "righe": 2510,
+   "sha256": "282a049561f127012c3c0b65a059b66038df81f6a43fe7eefbc6ffdf67338afe"
+  },
+  "BTWUSDT_1Dutc.csv": {
+   "righe": 164,
+   "sha256": "1d2b07feab156a73c8c123714a0b26cdff8d7888187f2a738066af6708944373"
+  },
+  "BUSDT_1Dutc.csv": {
+   "righe": 542,
+   "sha256": "580e0d43125e03fa6b268092ccbe4b6531bcfd18fbff8284c99ec264471f5da3"
+  },
+  "C98USDT_1Dutc.csv": {
+   "righe": 1630,
+   "sha256": "ede58388271ade1d4cf3fd4201f2d3ad5344e3e9ec3034480300cb50e4346427"
+  },
+  "CAKEUSDT_1Dutc.csv": {
+   "righe": 963,
+   "sha256": "6163ed038e428895041ddcbd685a20c5df88b97788a3899dbda4c16601dd6337"
+  },
+  "CAPUSDT_1Dutc.csv": {
+   "righe": 141,
+   "sha256": "9a2f0e63b04ede5eb79f3cfaeda3f4d0c4c2a3df0e55736992515e7342d1d216"
+  },
+  "CARVUSDT_1Dutc.csv": {
+   "righe": 764,
+   "sha256": "1d08140fc0875a5def93570816660535c5630009b6f4fd78e5aebd079655daee"
+  },
+  "CATIUSDT_1Dutc.csv": {
+   "righe": 786,
+   "sha256": "2cc7297e7e0d8e69186088614792798f6499b8460fd2455b0e0299e8629e3ff7"
+  },
+  "CCUSDT_1Dutc.csv": {
+   "righe": 205,
+   "sha256": "5e4b091a9af1e301b0a3bb3151fc972af6de2ee39f1372055f2270d8703ec82c"
+  },
+  "CELOUSDT_1Dutc.csv": {
+   "righe": 1368,
+   "sha256": "f447848b1192154a7364aca84089e447b48548de8602c1c9f5df7452983111cc"
+  },
+  "CELRUSDT_1Dutc.csv": {
+   "righe": 1291,
+   "sha256": "9726e12375589fbec2ed651187eb1283abe442d2ea4cb74ff2ca46add2050b8d"
+  },
+  "CETUSUSDT_1Dutc.csv": {
+   "righe": 739,
+   "sha256": "8a5d7c7db8d8a00812b1669fc85ef40e1843550d7774228062e613e22790e13e"
+  },
+  "CFGUSDT_1Dutc.csv": {
+   "righe": 244,
+   "sha256": "f1b5de8f990d9ce1d4f098f1bb8987e0360ef3102dac69549ced769a7cccc075"
+  },
+  "CFXUSDT_1Dutc.csv": {
+   "righe": 1362,
+   "sha256": "4935085bceda3ed7f8517dc0b4d68b12baf4861afc1b3c326fc0645019d138fb"
+  },
+  "CGPTUSDT_1Dutc.csv": {
+   "righe": 694,
+   "sha256": "cad88ca086111402e3e32ccc6a9862ef3835d62c2577b434e014eb0db8b647eb"
+  },
+  "CHILLGUYUSDT_1Dutc.csv": {
+   "righe": 723,
+   "sha256": "f7ffa45ac33b5986a6bd9f14f8ebcec321b6f467713aab1eb9f027ae1c6b906d"
+  },
+  "CHIPUSDT_1Dutc.csv": {
+   "righe": 208,
+   "sha256": "366af849b9070eeba1a618f6db1c3a142098064e89e249bc2400959a52cc41a7"
+  },
+  "CHRUSDT_1Dutc.csv": {
+   "righe": 1318,
+   "sha256": "65850b2864eba165ae792dec875c392d95d4e1b4cb94cc31330c237c82cfb7ba"
+  },
+  "CHZUSDT_1Dutc.csv": {
+   "righe": 1668,
+   "sha256": "53e80f57b91ea4a4383530e84102536b514ce9b1a68fec0f41b2639670d273b9"
+  },
+  "CKBUSDT_1Dutc.csv": {
+   "righe": 1331,
+   "sha256": "71d9161cffa8bc4d742601eee939ec0dcc70d9ffb1e71aaf04aa738a7e2f16d9"
+  },
+  "CLANKERUSDT_1Dutc.csv": {
+   "righe": 384,
+   "sha256": "d8bdb6c96da52180bf7f2996b589818d6f555fa6a726e52fedf07e1bd50d2217"
+  },
+  "COAIUSDT_1Dutc.csv": {
+   "righe": 415,
+   "sha256": "3412547164d975b0c02090e217fec6ce9a08d4ce84465152330dc51579b63bfb"
+  },
+  "COMPUSDT_1Dutc.csv": {
+   "righe": 1591,
+   "sha256": "938e9e2ccc2f2ddb883283e6f92b74b5516323dca2b408ab8f2eea6645846f2d"
+  },
+  "COOKIEUSDT_1Dutc.csv": {
+   "righe": 677,
+   "sha256": "376e66a93594bcae4706922bce850c5142f2eaec3c77a58da51b458684616d92"
+  },
+  "COTIUSDT_1Dutc.csv": {
+   "righe": 1338,
+   "sha256": "58709fc0b1a1d87f32092ca2df28447b9f82a72826dc52fb8b96eabdbb19fd93"
+  },
+  "COWUSDT_1Dutc.csv": {
+   "righe": 739,
+   "sha256": "f0614fdedf38d3ad62f1b8bc2ce1db1e33fd140ca15637f2e578f9710b97bb6a"
+  },
+  "CPUSDT_1Dutc.csv": {
+   "righe": 74,
+   "sha256": "eb3f8cf3cb1ee4bb2a003acdca52544a6e3d35b97e3d0a485582a554cac65019"
+  },
+  "CROSSUSDT_1Dutc.csv": {
+   "righe": 499,
+   "sha256": "73278fb5674fba6e4ce2af8b6196a0063ea4bdda28aebde2cfe59e58b85b4d3c"
+  },
+  "CROUSDT_1Dutc.csv": {
+   "righe": 733,
+   "sha256": "8dd826adfc813f48e43803b878c6f78c9a8a82064b85c6c78a1925847f3340d2"
+  },
+  "CRVUSDT_1Dutc.csv": {
+   "righe": 1795,
+   "sha256": "ca9ebd843e80da999955b08a29efa97c5c7abcad59b5f6069c47066b9dbab65a"
+  },
+  "CTKUSDT_1Dutc.csv": {
+   "righe": 564,
+   "sha256": "b8a484dea829afcb77967f9d64eb0ec92cc3bd7651a2f048fc5fdb11005890c0"
+  },
+  "CTRUSDT_1Dutc.csv": {
+   "righe": 171,
+   "sha256": "ab735cfdb56438d11cba68c33697debf7cb31bb936c4f7a553dcfe482e2b5d45"
+  },
+  "CTSIUSDT_1Dutc.csv": {
+   "righe": 751,
+   "sha256": "cafc4b55aa7cbd534ef947b79a7ac4cc7d8050cb2417ee553db7c2f6f02c86af"
+  },
+  "CTUSDT_1Dutc.csv": {
+   "righe": 45,
+   "sha256": "2afacbe9e1cb71c0860464e5ad9f2f7375eea6520aba72aa0e4c6d22cb755bc7"
+  },
+  "CUSDT_1Dutc.csv": {
+   "righe": 489,
+   "sha256": "c554eaa959914d1f563f9a339456e0c5024b687f4eeea1a9479e915e56b7da0c"
+  },
+  "CVCUSDT_1Dutc.csv": {
+   "righe": 767,
+   "sha256": "7f2d15f98274b9db65765644c755e1d2dedc9c98099bc8eafb4bd22108f46b2b"
+  },
+  "CVXUSDT_1Dutc.csv": {
+   "righe": 713,
+   "sha256": "3669b620879cffed1e8eb3ce673a0c64b226fc1610e976cdb0edaa8dd8432919"
+  },
+  "CYBERUSDT_1Dutc.csv": {
+   "righe": 1182,
+   "sha256": "47e5c8e51c9342101bac214ab11c26d855f1588214b5343e2a67954acb5ae729"
+  },
+  "CYSUSDT_1Dutc.csv": {
+   "righe": 338,
+   "sha256": "0ce960191a365df2608b2dbea34a2569649a28c7e6d43ed049a36f040eee96e8"
+  },
+  "DASHUSDT_1Dutc.csv": {
+   "righe": 376,
+   "sha256": "a16b5dc5bfd33c489777a7435a8ddea89ade76b04a1a2c21c61fbe78f476bf55"
+  },
+  "DATAUSDT_1Dutc.csv": {
+   "righe": 640,
+   "sha256": "5492d239b58c1ca6625fd7a23fe0b225ca86a9e90fd896110abb94143ad4a1f3"
+  },
+  "DEEPUSDT_1Dutc.csv": {
+   "righe": 760,
+   "sha256": "6b87188d9d4651af19d65613e86ea237573cf6c19721186b7580f29fef9d06e5"
+  },
+  "DEXEUSDT_1Dutc.csv": {
+   "righe": 691,
+   "sha256": "d038cd05705dffba49fa78ead69dbec3a59b9054ed71afc6593d51534be76e7c"
+  },
+  "DGAIUSDT_1Dutc.csv": {
+   "righe": 72,
+   "sha256": "a2eae8ec5871ade7d5cbe0d22eac074456c84d34cb4196b6bb3503c0bb54af9b"
+  },
+  "DIAUSDT_1Dutc.csv": {
+   "righe": 774,
+   "sha256": "48e50125963430151fad741546152c1593e3e293ef9787715430bee4ba070617"
+  },
+  "DOGEUSDT_1Dutc.csv": {
+   "righe": 2004,
+   "sha256": "291029df660d2d063c03c8e2740498dc3e92e3bab613b378e514e12049f76d0b"
+  },
+  "DOGSUSDT_1Dutc.csv": {
+   "righe": 811,
+   "sha256": "caafd5497f0b10eb3906b0cecda95ed584ea6079ad8005d7624f7a14e07ec908"
+  },
+  "DOLOUSDT_1Dutc.csv": {
+   "righe": 570,
+   "sha256": "74d0fc7bac1ccafc9f066bbc1db9163092611a188d22f31c8254b0c0758f5a33"
+  },
+  "DOODUSDT_1Dutc.csv": {
+   "righe": 555,
+   "sha256": "b86e4a2b17c3671cfe65c6ae801eaca225b5e469b2e6e87302fdee6a29d629ce"
+  },
+  "DOSUSDT_1Dutc.csv": {
+   "righe": 96,
+   "sha256": "d06901167b979b300c6fd2a8b7a029faf4738c47ce64ba06375529300e94ca0b"
+  },
+  "DOTUSDT_1Dutc.csv": {
+   "righe": 2267,
+   "sha256": "e01852edac070c30b4f0cf53de2ef1e1ded414dc4ddf750131a17e24f75d0db8"
+  },
+  "DRIFTUSDT_1Dutc.csv": {
+   "righe": 737,
+   "sha256": "46bcefc891bb887f73b0b93388467475d02ea6065dcacac90a16823c45db9a71"
+  },
+  "DYDXUSDT_1Dutc.csv": {
+   "righe": 1795,
+   "sha256": "59f4f183a0b66676ad084c7779ee64bddf95f1e16d739f2d2450ddc6c35808b5"
+  },
+  "DYMUSDT_1Dutc.csv": {
+   "righe": 991,
+   "sha256": "114fb7bdb9e2c353dfe9045b3940486d01439e4cf01729b847c33bd1ed7d1f71"
+  },
+  "EDGEUSDT_1Dutc.csv": {
+   "righe": 229,
+   "sha256": "ffdd146c3743ab40c4d51026f25cbf2d608a36fb55f1074138dfe7a1383a2f3d"
+  },
+  "EGLDUSDT_1Dutc.csv": {
+   "righe": 1788,
+   "sha256": "29113525a5448b030490d7c65945340cfec032a2fc2c121ba5a3b66dd411398b"
+  },
+  "EIGENUSDT_1Dutc.csv": {
+   "righe": 775,
+   "sha256": "4fa745d88bbb4c24fe417b0a4d904b8c49ac64053d1ed7b86ce0f569dd355d38"
+  },
+  "ELSAUSDT_1Dutc.csv": {
+   "righe": 297,
+   "sha256": "dd6443c1da75d037bc69832d68a9ede408b388f10a800505b0e5794d716e433a"
+  },
+  "ENAUSDT_1Dutc.csv": {
+   "righe": 955,
+   "sha256": "ab083911a03a4fb2f5033730ccc2c17b06f63dadcd5cd0fe056eb1bf684c1a27"
+  },
+  "ENJUSDT_1Dutc.csv": {
+   "righe": 1710,
+   "sha256": "cedc2f429ac8310ed55949f93e3b56be1a9a5c0a5336e7cce62303bbc5536b29"
+  },
+  "ENSOUSDT_1Dutc.csv": {
+   "righe": 397,
+   "sha256": "0418245f2072c0a60415061d34063cfc037e2ca65c160dc3a07882df1680d647"
+  },
+  "ENSUSDT_1Dutc.csv": {
+   "righe": 1640,
+   "sha256": "1579c518d7cf886a6f078eb49f379f235d76f460a728f82a850088b9ec88a2ca"
+  },
+  "ERAUSDT_1Dutc.csv": {
+   "righe": 486,
+   "sha256": "4d08d7b354dde64c6a6fe756822b3a0aa4af1c45586969acfb007ccc18e7175c"
+  },
+  "ESPUSDT_1Dutc.csv": {
+   "righe": 276,
+   "sha256": "ea14d04404ab77672b7a96d2cf54e082fe5c103b2c015961c08cb550d2a3a6be"
+  },
+  "ETCUSDT_1Dutc.csv": {
+   "righe": 2510,
+   "sha256": "ea9ae3ec78511a32c8dd5ce531bc197202cf92a8947768890655481482171bc3"
+  },
+  "ETHFIUSDT_1Dutc.csv": {
+   "righe": 968,
+   "sha256": "822fb2bbcd86231b59cccddb45e13659036255b108107cd450cfb788d9916d1e"
+  },
+  "ETHUSDT_1Dutc.csv": {
+   "righe": 2510,
+   "sha256": "5dd383b5e694e014b5cd4d9755f74fb9452f64c0b0736eb28ac2f2e6f6e5e6aa"
+  },
+  "ETHWUSDT_1Dutc.csv": {
+   "righe": 766,
+   "sha256": "344c4dc001f1ee47ed089a8995f4531c254a0ba25c4547693772d9dcda5e5540"
+  },
+  "EULUSDT_1Dutc.csv": {
+   "righe": 397,
+   "sha256": "563d8f2e81c0d635b2cdf57a6c3c0d5c37a573f776595223870be154315906f9"
+  },
+  "EVAAUSDT_1Dutc.csv": {
+   "righe": 143,
+   "sha256": "aeeb065b4d3039b316b90223be861047c788da616707700488a13d8ae6127339"
+  },
+  "FARTCOINUSDT_1Dutc.csv": {
+   "righe": 694,
+   "sha256": "990c2ad8f9f363514a059fa76775140d01b9c2985cf2da71ffcd791b8a5bc07f"
+  },
+  "FETUSDT_1Dutc.csv": {
+   "righe": 1354,
+   "sha256": "b18275f1ea80d1833782aa60d51f3626fc63949d7ca85555af6421ef24a4bd92"
+  },
+  "FFUSDT_1Dutc.csv": {
+   "righe": 412,
+   "sha256": "6335fb2592513c6c862f939a692f496dd7adfe221151fa4809aabd99081b1d6a"
+  },
+  "FIDAUSDT_1Dutc.csv": {
+   "righe": 787,
+   "sha256": "e6851275a13d42c7aca5b688e36115b238ff809b535c9d2c37e5fae1bb9f2602"
+  },
+  "FIGHTUSDT_1Dutc.csv": {
+   "righe": 296,
+   "sha256": "3408eb4036547dbc10e6b8a6c0c195a75a1f021220dbe4a2722c9aba4d5fc20e"
+  },
+  "FILUSDT_1Dutc.csv": {
+   "righe": 2218,
+   "sha256": "1c690cad155790290e4064c9d3bd4fef8edaa334c4419e0bea447d0d4ac71e11"
+  },
+  "FLOCKUSDT_1Dutc.csv": {
+   "righe": 446,
+   "sha256": "0912871407a0b3bd79398832ccc5c5681a7e6a0d58819cd521b0d60757447681"
+  },
+  "FLOKIUSDT_1Dutc.csv": {
+   "righe": 1291,
+   "sha256": "f69a7b9db5a3bded1330a628e55fa5e2ec2a3d26e7adf0452393bd1119ff0cf6"
+  },
+  "FLUIDUSDT_1Dutc.csv": {
+   "righe": 417,
+   "sha256": "15e57503ccf9a348f7f824470c30a5347c01b23104743779cedf529315e44ede"
+  },
+  "FLUXUSDT_1Dutc.csv": {
+   "righe": 802,
+   "sha256": "d2fd0b06d88abcc297bb8e915977831371662a13798136fab6a0d0449b9ef9f8"
+  },
+  "FOGOUSDT_1Dutc.csv": {
+   "righe": 304,
+   "sha256": "0a3d065b8fc2751db47cb11ad0fa6035cb06b4cf9a332e638b74cedc40affeec"
+  },
+  "FOLKSUSDT_1Dutc.csv": {
+   "righe": 374,
+   "sha256": "9f41560bf699655067dacdf4b6cb47b86f93a2e529295d097b2b51c3ff222f01"
+  },
+  "FORMUSDT_1Dutc.csv": {
+   "righe": 606,
+   "sha256": "aff51f788e8605cdd49e88e3e0fa90451508012c77763de4ea9e16d856b5b33d"
+  },
+  "FRAXUSDT_1Dutc.csv": {
+   "righe": 304,
+   "sha256": "52939cf413e355f63ff1488a18fe0367a55bbf86f5dc9d5c7e3ac96559a3108a"
+  },
+  "FUSDT_1Dutc.csv": {
+   "righe": 515,
+   "sha256": "faaf1cef4c34160cce13cdd9404ec985c44286a94ccc1e0d870ac36c05607cfd"
+  },
+  "GALAUSDT_1Dutc.csv": {
+   "righe": 1803,
+   "sha256": "628b7bf537e585b67a1f37b73c569f0b03b956b044447ebaaf230abe3de9d535"
+  },
+  "GASUSDT_1Dutc.csv": {
+   "righe": 849,
+   "sha256": "d22a7562cbdbcae2537cd4572275b61c3672345dd890b2a9cd725f4eeba9ea84"
+  },
+  "GENIUSUSDT_1Dutc.csv": {
+   "righe": 213,
+   "sha256": "92268cfb0fe0dff918de44f11b6f25f81a3254e63540f881721acd64d6f8fe5b"
+  },
+  "GIGGLEUSDT_1Dutc.csv": {
+   "righe": 395,
+   "sha256": "cb213a677d9cdee1e5f9a7277ac08285862fdfd8643f788ff76cd18c28d9bda9"
+  },
+  "GLMUSDT_1Dutc.csv": {
+   "righe": 929,
+   "sha256": "258004c9443ec31c19ac85056808aa3b8e4c1b8c4fedd181f2ba2fe2cc447f0d"
+  },
+  "GMTUSDT_1Dutc.csv": {
+   "righe": 1689,
+   "sha256": "656c23e237be59debc313b64c5e8a95e903aa00bdb470139c88cf7d4b070d416"
+  },
+  "GMXUSDT_1Dutc.csv": {
+   "righe": 1361,
+   "sha256": "d10117dd9d637dcfc87cd2771a72d38a5bd3a629a5bdc80b4281a839709ceb1d"
+  },
+  "GPSUSDT_1Dutc.csv": {
+   "righe": 635,
+   "sha256": "1cff177320c7c716910e693b82486d119d9f3b68cafb1539497a8334c90321e0"
+  },
+  "GRAMUSDT_1Dutc.csv": {
+   "righe": 1278,
+   "sha256": "4446a8633cb299c5e5a61297fcbd218328e4873f38ea128a6528fa2c982c3923"
+  },
+  "GRASSUSDT_1Dutc.csv": {
+   "righe": 748,
+   "sha256": "1c9d68c9c54f1543278766f9e41c3246ce2b249709892cedd7fee3141b9572f0"
+  },
+  "GRIFFAINUSDT_1Dutc.csv": {
+   "righe": 682,
+   "sha256": "09958a9c1140807c243962d58e852bc683431fd956b1019a1c522f065cc52c47"
+  },
+  "GRTUSDT_1Dutc.csv": {
+   "righe": 1553,
+   "sha256": "c78cd283df4611a98fe47fa06bb23850832b3b4125d4b40ae032cc3ead949e25"
+  },
+  "GRVTUSDT_1Dutc.csv": {
+   "righe": 108,
+   "sha256": "18389ab257a52937c6d4155cd2248462ac55e70afc922654d5d092ad0bed353a"
+  },
+  "GUNUSDT_1Dutc.csv": {
+   "righe": 594,
+   "sha256": "c4fcc19e8139c8903596011c43467536f0715ad59e2e297752c59f08834880c4"
+  },
+  "GUSDT_1Dutc.csv": {
+   "righe": 822,
+   "sha256": "20b88a853c5815360e2d9071352c2758e7ecfc15f27c149daf118d8859e1762f"
+  },
+  "GWEIUSDT_1Dutc.csv": {
+   "righe": 290,
+   "sha256": "023fdeacf6fba5113361ec45b94ec3bf7dd940015883e90d2c420c1a47f1a132"
+  },
+  "HAEDALUSDT_1Dutc.csv": {
+   "righe": 565,
+   "sha256": "c1e5eef6955fa4e594a9c4b87806d378831a18b07dada52d4b79a9d520bf87fa"
+  },
+  "HBARUSDT_1Dutc.csv": {
+   "righe": 1339,
+   "sha256": "fb99e796ff82a32b05426580616bfc874a4119621ffbb7cc958212c13e536403"
+  },
+  "HIVEUSDT_1Dutc.csv": {
+   "righe": 692,
+   "sha256": "86d8460caee8fa8dd69a5a339ce071a60f5c235ce0c85f50bba6ca8e2c324bf7"
+  },
+  "HOLOUSDT_1Dutc.csv": {
+   "righe": 430,
+   "sha256": "79d5152a4dc73b2b4ed68fbba83be81defbf528dc2fcb6b611f1bce473e62691"
+  },
+  "HOMEUSDT_1Dutc.csv": {
+   "righe": 523,
+   "sha256": "8138a9cd96e40b9cec2e224aa95bf8542f36ea170c056514eb85c57e703b3ac4"
+  },
+  "HOTUSDT_1Dutc.csv": {
+   "righe": 1318,
+   "sha256": "ee18070c29af96ae1bf6f03850501c77387fad9b68abdccb6ce16d9b54b0ffa2"
+  },
+  "HUMAUSDT_1Dutc.csv": {
+   "righe": 538,
+   "sha256": "57bdb04b042b48cc4f31965b265f56d9d286ef8af6654233d090a8b520c910f7"
+  },
+  "HUSDT_1Dutc.csv": {
+   "righe": 508,
+   "sha256": "baa21021c34a636de77bdcb937587188ec5db6a9f6a9b4800d8ef18d897b9cea"
+  },
+  "HYPERUSDT_1Dutc.csv": {
+   "righe": 572,
+   "sha256": "afed699708839e2c9fbf1dabbedc93152706ff40e3eb26290fe1f32570438bef"
+  },
+  "HYPEUSDT_1Dutc.csv": {
+   "righe": 696,
+   "sha256": "1d93c742191f56a110b26b8c38e0493293ddc2197687772c4a02987fca082520"
+  },
+  "ICNTUSDT_1Dutc.csv": {
+   "righe": 500,
+   "sha256": "79785f4fa7a160db5cfb2be587e5d1bf2c57b7042e35fab2477819eb0d26ceb7"
+  },
+  "ICPUSDT_1Dutc.csv": {
+   "righe": 1999,
+   "sha256": "7c39c6baf095c2ee2adb369f6d0f242552dbb84487d028acb09d81f486295d2f"
+  },
+  "IDOLUSDT_1Dutc.csv": {
+   "righe": 522,
+   "sha256": "4bbd532021c3e70f9bbc4d7f925315048ed8af9faef3397cbb72535c861ad29b"
+  },
+  "IDUSDT_1Dutc.csv": {
+   "righe": 1331,
+   "sha256": "71fb681b5bd9140026290980d3cbea5346b8a8a70d5ae577980f7d806f6e6ad9"
+  },
+  "ILVUSDT_1Dutc.csv": {
+   "righe": 466,
+   "sha256": "c72b0212a463e378ac9c7d4b2764e48b6d2fe11483a9033b1120d1eb53de010b"
+  },
+  "IMXUSDT_1Dutc.csv": {
+   "righe": 1591,
+   "sha256": "8a7f016808ee1f59fd993ca0c97d2a50ceeb45bdf44fec69a889759dbb7203d3"
+  },
+  "INITUSDT_1Dutc.csv": {
+   "righe": 570,
+   "sha256": "f3465d96679a4761161ab66114b047873d796b6a282727783074c983b8b343f6"
+  },
+  "INJUSDT_1Dutc.csv": {
+   "righe": 1339,
+   "sha256": "dd9b6b949c73a6a6923ff3672a85f73d4a4ae46fafdbabb8851b7ee9aa1a5a81"
+  },
+  "INUSDT_1Dutc.csv": {
+   "righe": 465,
+   "sha256": "72fc44f88cb9a60db1422a9cf69be2172629633f72fe435e7fe1872dab67fab9"
+  },
+  "INXUSDT_1Dutc.csv": {
+   "righe": 288,
+   "sha256": "9e429ebd0311234ecc24895bf622537288fbff5372339aac132899b24daa747f"
+  },
+  "IOSTUSDT_1Dutc.csv": {
+   "righe": 1682,
+   "sha256": "a801e7e1baecbd834c5f4b108a50437c26d8f8bf24035f47397f85a195f02460"
+  },
+  "IOTAUSDT_1Dutc.csv": {
+   "righe": 1703,
+   "sha256": "ca65e4c40ef72b4ceb9513e5de00f57e6e49bc77e9b2006b0b67590679a42a83"
+  },
+  "IOTXUSDT_1Dutc.csv": {
+   "righe": 1286,
+   "sha256": "9341eab41afde1986a3a92ff5cbddf282d5ec33fa8374a3c1440569452aad10b"
+  },
+  "IOUSDT_1Dutc.csv": {
+   "righe": 887,
+   "sha256": "0118a2e1567a693d15c224e475761e502c5c0f03b4d7860bc6e1f96ec556182d"
+  },
+  "IRYSUSDT_1Dutc.csv": {
+   "righe": 353,
+   "sha256": "e5cb8851f4739c1b4a3f01bb9e8469c64156d2eaa11a4bd8113fdd5753603326"
+  },
+  "JASMYUSDT_1Dutc.csv": {
+   "righe": 1515,
+   "sha256": "8c9299a947529f34200484d812ebda262bfad05ccf147f5410da1781a3013051"
+  },
+  "JCTUSDT_1Dutc.csv": {
+   "righe": 369,
+   "sha256": "43418f78e28e30326fdd2dea170d232d395ff252851a9fdb5eb357c80cf2686c"
+  },
+  "JOEUSDT_1Dutc.csv": {
+   "righe": 1326,
+   "sha256": "dbdee179ff8e59006822f0ce940f247274955dcc7cb17364bfa26dd3cac9ccbe"
+  },
+  "JSTUSDT_1Dutc.csv": {
+   "righe": 566,
+   "sha256": "ef6689013bfbd57224edf603eceb0db20a86d957ab4ef9d75d55229f70506b69"
+  },
+  "JTOUSDT_1Dutc.csv": {
+   "righe": 1069,
+   "sha256": "253382c510e582c3e779b76f0ce0996009aa8d7350651a7c5eb2627e6fd9b3eb"
+  },
+  "JUPUSDT_1Dutc.csv": {
+   "righe": 1018,
+   "sha256": "d843e05372d1d989e34ebf4aca671953130e5d0e9eea68a275a258df64a53ffd"
+  },
+  "KAIAUSDT_1Dutc.csv": {
+   "righe": 1332,
+   "sha256": "87b61a77fe492b4f9aaebd971e8b2fabe853ed49fa1e3d4594231a1f5e2764eb"
+  },
+  "KAITOUSDT_1Dutc.csv": {
+   "righe": 633,
+   "sha256": "0cae98d24deb149ee2810c5fd88e17c695b0d8816af44d16a2bf7f09ab7a142b"
+  },
+  "KASUSDT_1Dutc.csv": {
+   "righe": 961,
+   "sha256": "cc63bdc37ac168d0eadd15bd7e0692fe32f48fdb65dd349d9a5926c664d3b414"
+  },
+  "KATUSDT_1Dutc.csv": {
+   "righe": 242,
+   "sha256": "b965320653acf8762ef629041f2c1397a9c2140cf2377e276960c07db5805d5c"
+  },
+  "KAVAUSDT_1Dutc.csv": {
+   "righe": 1650,
+   "sha256": "a2d1b8ffde181f9fe37767c5d7f98063d3a261cdd0e1d2d1714a5b6cbb3976dc"
+  },
+  "KERNELUSDT_1Dutc.csv": {
+   "righe": 580,
+   "sha256": "fa93b2607e5569eea95a1703292c921145f1bc5452af00f0198f0f15086b227a"
+  },
+  "KGENUSDT_1Dutc.csv": {
+   "righe": 403,
+   "sha256": "3d99fb95e8781b8c9d2cc38757f88ce3ca39c56cf6d7c30b292cce0fc6d69644"
+  },
+  "KITEUSDT_1Dutc.csv": {
+   "righe": 382,
+   "sha256": "aff652df9b3498babb7b9bc3e365d43acad67a0ef001a1d593634088b1e6ce16"
+  },
+  "KMNOUSDT_1Dutc.csv": {
+   "righe": 766,
+   "sha256": "643b99857a2e71677e63dff32a1cf6666c73d3a7c5c6f3ba702e1199d8dc7bda"
+  },
+  "KNCUSDT_1Dutc.csv": {
+   "righe": 1675,
+   "sha256": "295978f686a97908e24ae29d5c15ab96c2b75c15a506581e146468623e7a253e"
+  },
+  "KSMUSDT_1Dutc.csv": {
+   "righe": 1782,
+   "sha256": "05af32dfe111f66f518766d7c7c1c6fa0de23f8d323f804f0bcf1621502d3b77"
+  },
+  "LABUSDT_1Dutc.csv": {
+   "righe": 394,
+   "sha256": "897868f8f314819fc3713879f9968daedf4ea2b9a2fff09abf8c19f948eb55cb"
+  },
+  "LAUSDT_1Dutc.csv": {
+   "righe": 529,
+   "sha256": "1afa938442dc9f656af487d714c025f55c23cb0f5f10e7da0ec948c0ba3358b7"
+  },
+  "LAYERUSDT_1Dutc.csv": {
+   "righe": 642,
+   "sha256": "fdd139fd0f94d947b6bc09112fcb15100a57c7aa3e880ba6b7308a1fdbb4b32c"
+  },
+  "LDOUSDT_1Dutc.csv": {
+   "righe": 1368,
+   "sha256": "a7a6011fcff5f2d811f0c9dd82caab13e20e3479370031662f84b447dbdb038d"
+  },
+  "LINEAUSDT_1Dutc.csv": {
+   "righe": 440,
+   "sha256": "171a61081adae4d38ea86a85c5f96bea791067e6c0abb6090ad27e62aa851995"
+  },
+  "LINKUSDT_1Dutc.csv": {
+   "righe": 2293,
+   "sha256": "fd4e0e0c73f3915664fc3c3cd029371114738c86fb6e80fb0544a1f9e3b0ea7d"
+  },
+  "LISTAUSDT_1Dutc.csv": {
+   "righe": 878,
+   "sha256": "cdb32c024df07be7416ba1695f1acdd612b02d9ab77e98a06b489201d1fb48f0"
+  },
+  "LITUSDT_1Dutc.csv": {
+   "righe": 326,
+   "sha256": "78525f2183681a573fc3b918217af2b5f70c51acb68d5840abc1d10839d8d288"
+  },
+  "LPTUSDT_1Dutc.csv": {
+   "righe": 1193,
+   "sha256": "47f033cd3effe48faf19a00b6d99abea027b7948f1b0ae5f895836f38bedf516"
+  },
+  "LQTYUSDT_1Dutc.csv": {
+   "righe": 1341,
+   "sha256": "c5382373fc0b27896224fb3deadbfa6eb7cc5eded2867f9afa99b858e0bbc3d0"
+  },
+  "LSKUSDT_1Dutc.csv": {
+   "righe": 936,
+   "sha256": "da5614aada73846ed5bf842cdfc081ac2d40fd3fa8989b1691182e6eb82fd00c"
+  },
+  "LTCUSDT_1Dutc.csv": {
+   "righe": 2510,
+   "sha256": "18829423281b6c27363b730c54098a2ca2871d9ae1c09b2bf2352709a5b460c0"
+  },
+  "LUMIAUSDT_1Dutc.csv": {
+   "righe": 755,
+   "sha256": "9c2cdc13dce89c8f37f2e9711abe85e5990449224d492bfda6d68295f361eb84"
+  },
+  "LUNAUSDT_1Dutc.csv": {
+   "righe": 1585,
+   "sha256": "c7931611413a612cd0bd875ff18e70d7a37c50bb3ffbb62db842825cbe3bd248"
+  },
+  "LUNCUSDT_1Dutc.csv": {
+   "righe": 1521,
+   "sha256": "1db4de391be791ba6e3d2f72b6cb14588e4b44f4df832f4c03a2c3c323a17b56"
+  },
+  "LYNUSDT_1Dutc.csv": {
+   "righe": 402,
+   "sha256": "0e0c52b31ac91f17cd3327797e8ba48b727fd487a2d597a563fd526368789f85"
+  },
+  "MAGICUSDT_1Dutc.csv": {
+   "righe": 1378,
+   "sha256": "9813815affc3398f5e7e2c2d9991e0011023f06991428ad7eb00544618d2e8b9"
+  },
+  "MAGMAUSDT_1Dutc.csv": {
+   "righe": 321,
+   "sha256": "c3d0ba1d9ccdb97017a9306c2c66c2a80d4bc5a5fbdf99a9a4454dc5e50bc3b1"
+  },
+  "MANAUSDT_1Dutc.csv": {
+   "righe": 1809,
+   "sha256": "d3d82429e85312c327b30959ab8c213d0f6a3447b141741dccf0fad85c22b27c"
+  },
+  "MANTAUSDT_1Dutc.csv": {
+   "righe": 1026,
+   "sha256": "2104f16fed19438de2194a8013059562df0bce217c41bfae8eb9bc38ffb44c19"
+  },
+  "MANTRAUSDT_1Dutc.csv": {
+   "righe": 256,
+   "sha256": "5ea2999cc917536a2204711dc6d99fdd93eb6ce9a5657c23365a4045c4414ed0"
+  },
+  "MARSCOINUSDT_1Dutc.csv": {
+   "righe": 75,
+   "sha256": "9393c2a6671c201875506d4ddab659f48f8b4ef8dd8b2649a48341c10ab16649"
+  },
+  "MASKUSDT_1Dutc.csv": {
+   "righe": 1553,
+   "sha256": "0d36530d06d21ec2eec9ace826d6ba3f88a01d50eb814bc0b33c5a5d8c61f0b8"
+  },
+  "MAVUSDT_1Dutc.csv": {
+   "righe": 1235,
+   "sha256": "7d029813fc49a349906217d2433aedb0a57f83c8e885baa3692876ed316fc30c"
+  },
+  "MEGAUSDT_1Dutc.csv": {
+   "righe": 289,
+   "sha256": "f99b2bed73164d53b141663b5a191fc57a0c1eb976e79c94791ec39dc3dc16e3"
+  },
+  "MELANIAUSDT_1Dutc.csv": {
+   "righe": 664,
+   "sha256": "3474481469b37650550a428f32669a0c98794743988c7b71f21e24161b96ca09"
+  },
+  "MEMEUSDT_1Dutc.csv": {
+   "righe": 1108,
+   "sha256": "f3dfd8e6a0fd83ab115f592161997af4b29abef805b98671fd3a6843ad3f9512"
+  },
+  "MERLUSDT_1Dutc.csv": {
+   "righe": 731,
+   "sha256": "845fb37857a08a5abe767b9cb2ad660f81d886f0497d1b19ed7238b03721e1b2"
+  },
+  "METISUSDT_1Dutc.csv": {
+   "righe": 971,
+   "sha256": "2867b6e35e01bbe80bf57b27d1ca17dce8e2ec3deec9e722ef95b84db8c2322f"
+  },
+  "METUSDT_1Dutc.csv": {
+   "righe": 398,
+   "sha256": "c4d01eb5e6b61962000bc3961ddb925ccfae0694531d1ffd57617c644bc17ed6"
+  },
+  "MEUSDT_1Dutc.csv": {
+   "righe": 705,
+   "sha256": "db0675dbf074bae42c9a38d79fbc2ef79adafc1b6942848d8443e7074fbbcee1"
+  },
+  "MEWUSDT_1Dutc.csv": {
+   "righe": 881,
+   "sha256": "a6f32431c202f8b6eb93a96af96592ff697de56fb1c868d46ceb7cc88eeb0870"
+  },
+  "MINAUSDT_1Dutc.csv": {
+   "righe": 1362,
+   "sha256": "ac939cd4be23f60a90dc46690f740b8aa9b89a0d561692418652af7de6c4536b"
+  },
+  "MIRAUSDT_1Dutc.csv": {
+   "righe": 415,
+   "sha256": "06a19e14fad75464732db393cde16b252942d4985ed57bae5acab4fbef96a374"
+  },
+  "MMTUSDT_1Dutc.csv": {
+   "righe": 376,
+   "sha256": "2f3c0bcd3953bc191732e637dbbd77197affe19c99d8ac2cc3991c15a9e96c36"
+  },
+  "MOCAUSDT_1Dutc.csv": {
+   "righe": 855,
+   "sha256": "fd0417fcbabe82ebc430b834541706e8fffe28c99a92cbdc11b133e4bb6ae284"
+  },
+  "MONUSDT_1Dutc.csv": {
+   "righe": 401,
+   "sha256": "1819a6794541fbb0b6b026d0d0fee220d7420c991525e8887e5f6baea41db1f6"
+  },
+  "MOODENGUSDT_1Dutc.csv": {
+   "righe": 775,
+   "sha256": "10f739589bc0b04a5e7a3f1fa0fab6c2082a0a5c401a0ff5deb049850067d40b"
+  },
+  "MORPHOUSDT_1Dutc.csv": {
+   "righe": 724,
+   "sha256": "21db75c612f5544caae27b39259b620ed59de6e5bc669569aeaf109b03b2aa9c"
+  },
+  "MOVEUSDT_1Dutc.csv": {
+   "righe": 706,
+   "sha256": "5fb5ef91b7e5095b8f40eb2363e581d0e045de1a86a0d566d05ee3f385259379"
+  },
+  "MOVRUSDT_1Dutc.csv": {
+   "righe": 921,
+   "sha256": "742832591651dd76fd0f74d9849a64e55daa2ac00720bab881392306782c90f1"
+  },
+  "MTLUSDT_1Dutc.csv": {
+   "righe": 752,
+   "sha256": "9f2d2f305fcfdf6611d774f69986597d63db0dffc2f37de1a366c3253385bbdf"
+  },
+  "MUBARAKUSDT_1Dutc.csv": {
+   "righe": 608,
+   "sha256": "eb83ff9f1ca1266caee93bd2be30e71c1abe3c18103b46d4f7beab4e4437dc4d"
+  },
+  "MUSDT_1Dutc.csv": {
+   "righe": 500,
+   "sha256": "66fda28d649172246dc1597e5990bcd80ad58b14e379d77138ba7dd246e46215"
+  },
+  "MYXUSDT_1Dutc.csv": {
+   "righe": 431,
+   "sha256": "2a85ad86b1788b16d40e70ea81fc05869ab77a7aac25e605b368d9fe7f27c547"
+  },
+  "NAORISUSDT_1Dutc.csv": {
+   "righe": 472,
+   "sha256": "bc37c97582aef4e40d7ac1caba1bf986c69368738edd23e2dd4a131ee9e44d4c"
+  },
+  "NEARUSDT_1Dutc.csv": {
+   "righe": 1788,
+   "sha256": "7b37c0cd091428d623cfbef7b16347a89c2c03e6d32d1132aee96e19bf140227"
+  },
+  "NEIROCTOUSDT_1Dutc.csv": {
+   "righe": 767,
+   "sha256": "4cd7093e391c0e9464c47dffd2b9496ea4f27b88e16e11e18c561d12e93369c0"
+  },
+  "NEOUSDT_1Dutc.csv": {
+   "righe": 1725,
+   "sha256": "59355ddf716b169ca8d0a7a72c6bf3a26dca30e6bd6e5aa20e09077b84f17b22"
+  },
+  "NEWTUSDT_1Dutc.csv": {
+   "righe": 509,
+   "sha256": "45555fbf7b152fe5dc026d47ea781a0c7de3704b70a4b0c99fa4ac40046b034b"
+  },
+  "NIGHTUSDT_1Dutc.csv": {
+   "righe": 340,
+   "sha256": "47c37b213709783bdf72db657cc580f1508d6cd88810f7b08ac7b25c41f9ca2b"
+  },
+  "NILUSDT_1Dutc.csv": {
+   "righe": 601,
+   "sha256": "890700901a3eb3b6e321caafad8455e4caf052d9870a5273000b266eb197d43e"
+  },
+  "NMRUSDT_1Dutc.csv": {
+   "righe": 606,
+   "sha256": "d22db1a7a3c6e23b4e7593b948d97163dbc5bd6950fb45fd28649fe69e5b3378"
+  },
+  "NOTUSDT_1Dutc.csv": {
+   "righe": 913,
+   "sha256": "2ac5ccb202ffe8466d57f6ebd6b430ccd045a14671109c386bc25f165e1f33f1"
+  },
+  "NXPCUSDT_1Dutc.csv": {
+   "righe": 549,
+   "sha256": "a2217930696609d9a29ae87721e70ae77f0d4b03c1e97266cdad5fcd0deeff7d"
+  },
+  "OGNUSDT_1Dutc.csv": {
+   "righe": 1193,
+   "sha256": "bc4d6b4c46f623933f7bb2ac64edc3aa744d0d9205ff55a85bb05828b9022783"
+  },
+  "OGUSDT_1Dutc.csv": {
+   "righe": 767,
+   "sha256": "ef24c6f496a367674789a1cc4580a6efc53639903bf2ab6bf0dd66f45634d2cd"
+  },
+  "ONDOUSDT_1Dutc.csv": {
+   "righe": 963,
+   "sha256": "11fdf933b87d6e7088b136d3e4cb1f2714341fb1a9db2d17131a215875824e8e"
+  },
+  "ONEUSDT_1Dutc.csv": {
+   "righe": 1515,
+   "sha256": "eaad558722704a59fc73c75c595912d25208455e8920710aa6a62f11e9ae6121"
+  },
+  "ONGUSDT_1Dutc.csv": {
+   "righe": 943,
+   "sha256": "d00bb30fa245e438e7cbb79c32da19cb4f3504cb3058826f911367bd0ab18a89"
+  },
+  "ONTUSDT_1Dutc.csv": {
+   "righe": 1315,
+   "sha256": "1927f8de040d1987f09c89ca88d6017aa2ee668cf65510ef524d4f71d5d08089"
+  },
+  "OPENUSDT_1Dutc.csv": {
+   "righe": 433,
+   "sha256": "d8474ff91ad57fcb57e9932222f7b017d45161c02525aac871cbb93f365aae5c"
+  },
+  "OPGUSDT_1Dutc.csv": {
+   "righe": 206,
+   "sha256": "28a7c7306e9eddbe3a20bf0a7695b4261e5964c598a43b2396a4b541ceb49826"
+  },
+  "OPNUSDT_1Dutc.csv": {
+   "righe": 266,
+   "sha256": "d934821bc521ef69b909b0cb92d8d0899e6b9db22b644d810d8f672aeaa40522"
+  },
+  "OPUSDT_1Dutc.csv": {
+   "righe": 1616,
+   "sha256": "406bd1cf5046b8956399a2448c40969af8dc13346d55e132537e91fc48d49906"
+  },
+  "ORCAUSDT_1Dutc.csv": {
+   "righe": 709,
+   "sha256": "31a39e88047bcba3a9ed6085bdbc267b00293bd38c22bfa1beb72d51418cfd57"
+  },
+  "ORDERUSDT_1Dutc.csv": {
+   "righe": 809,
+   "sha256": "bea3c4fc4998e0c0c4d07704865f30020ce83f14f5c1c1e7356924c675b409c4"
+  },
+  "ORDIUSDT_1Dutc.csv": {
+   "righe": 1274,
+   "sha256": "d53c68a4dd6802880d2d52b294bc3399ba5552544befb57546b585d026748245"
+  },
+  "OUSDT_1Dutc.csv": {
+   "righe": 145,
+   "sha256": "1b2b8025f3988404ed6bfb69b002e9ee61e66e846a2086b3a0d55f6a22f4b44f"
+  },
+  "PARTIUSDT_1Dutc.csv": {
+   "righe": 600,
+   "sha256": "d3316bad73e516f47410516e434ec0004f4e47a44d5fabeabd4a285b5d09e275"
+  },
+  "PENDLEUSDT_1Dutc.csv": {
+   "righe": 1205,
+   "sha256": "8f267e82b7d0dda2179c516151c78d612ef3bcb5f90eaaa70df3880be2380cd7"
+  },
+  "PENGUUSDT_1Dutc.csv": {
+   "righe": 697,
+   "sha256": "41fec26420765e0aac19618695fc4017d8792738fab3a741e6f90e35ebb8b3d6"
+  },
+  "PEOPLEUSDT_1Dutc.csv": {
+   "righe": 1732,
+   "sha256": "37ebe487897ed1fad7b6e581963ec52c509028ec7099d4e842726892110bded9"
+  },
+  "PEPEUSDT_1Dutc.csv": {
+   "righe": 1290,
+   "sha256": "6184281e921d8e8acd343899db484eb8946c2b93754882ad1d1cf5cd2c74c836"
+  },
+  "PHAUSDT_1Dutc.csv": {
+   "righe": 685,
+   "sha256": "1072b9558617586adc2b1abdad62ea923d681157b5c3449fdb99089882a21c8e"
+  },
+  "PIEVERSEUSDT_1Dutc.csv": {
+   "righe": 363,
+   "sha256": "d14c72cfad0064f3f4d51cee48c3aebfb15d9451a13d2700eac2d788f15dd2ac"
+  },
+  "PIPPINUSDT_1Dutc.csv": {
+   "righe": 666,
+   "sha256": "1752d2b85fe107386270581fbcfe9e53e612d6ea807b88320797047ef94ba1cd"
+  },
+  "PIUSDT_1Dutc.csv": {
+   "righe": 633,
+   "sha256": "d679d8e5fc310897ef372fcf6d1a091b4ebd5f8340829e4a651921af58fcd9b6"
+  },
+  "PIXELUSDT_1Dutc.csv": {
+   "righe": 998,
+   "sha256": "883d63b4346f800a3d27951774fc28ec3bd5e1631d5c2a7e1aeb7c8983424f70"
+  },
+  "PLUMEUSDT_1Dutc.csv": {
+   "righe": 662,
+   "sha256": "b9b884cd80c0d1b51fc4a462577805aef6db0ae408d88191e9fa89980a360cce"
+  },
+  "PNUTUSDT_1Dutc.csv": {
+   "righe": 734,
+   "sha256": "d32c00d6f24dbc66c685167dde390a247e949ed0baee8d88f603f1216dea542d"
+  },
+  "POLUSDT_1Dutc.csv": {
+   "righe": 800,
+   "sha256": "7fbb9378d39e5e68d83aaf12371a4f00170436d62d7f1bcc2b98cee9f613ce00"
+  },
+  "POLYXUSDT_1Dutc.csv": {
+   "righe": 1117,
+   "sha256": "aa5c3e69aa486a166452280a727a389bdcc614027f9f984199a7b10ed20ad36b"
+  },
+  "PONSUSDT_1Dutc.csv": {
+   "righe": 76,
+   "sha256": "641a53cd5e0101dc20c39683351fd27d07cd6da317e063b280aa153ee97f0380"
+  },
+  "POPCATUSDT_1Dutc.csv": {
+   "righe": 841,
+   "sha256": "d3376d9876b44117e4707ea07bdb949f4a3bab932767ce386a3148cb263904f1"
+  },
+  "POWERUSDT_1Dutc.csv": {
+   "righe": 344,
+   "sha256": "a63b5efde3449d7f88cd7fd9fbba22ff4b855cbb23e65fe130ed821527dbd7d2"
+  },
+  "POWRUSDT_1Dutc.csv": {
+   "righe": 765,
+   "sha256": "f27dc25d031d26854eb210fc2dbbfc4934b3123aca4bc4d4943fa525cf46e7c7"
+  },
+  "PRLUSDT_1Dutc.csv": {
+   "righe": 228,
+   "sha256": "40bd75749f4fdf9461ae6ab3d4d506171b27dc8b767ae1e28056ca9c23845511"
+  },
+  "PROMUSDT_1Dutc.csv": {
+   "righe": 669,
+   "sha256": "c8a7029b4599b59491b986a863978c7d8a642441b6a53c6a532340c36367c273"
+  },
+  "PROSUSDT_1Dutc.csv": {
+   "righe": 200,
+   "sha256": "abbf9de529d74e03eab2406cd61e340c599d31db7073601022e6eca9fd460da2"
+  },
+  "PROVEUSDT_1Dutc.csv": {
+   "righe": 467,
+   "sha256": "9f6c53a9d40d5cf1010846f11e0d56b491885292d71cd394ad8235c2baf988e1"
+  },
+  "PUMPUSDT_1Dutc.csv": {
+   "righe": 489,
+   "sha256": "e8e43f331091fdca0df0574eef63b79c72b732e8bb0b65223ee4748e21a770c2"
+  },
+  "PUNDIXUSDT_1Dutc.csv": {
+   "righe": 564,
+   "sha256": "d7055a4e783e9ca0eb31d431f84883ee4c34975830110b9c711143e0de887262"
+  },
+  "PYTHUSDT_1Dutc.csv": {
+   "righe": 1088,
+   "sha256": "cf323bc1adee464329ea6c6fb589deb1cb007a6d2cf86d75301b5ed6f0f60b12"
+  },
+  "QNTUSDT_1Dutc.csv": {
+   "righe": 1243,
+   "sha256": "f28d89696b52f69451ef910ae762f1b4e87c60e933df821fb7d1c7df58de7039"
+  },
+  "QTUMUSDT_1Dutc.csv": {
+   "righe": 1563,
+   "sha256": "f404ce4bd927f13e518c388ef2894ee80094280493ca6d55211e2ba357e21184"
+  },
+  "QUSDT_1Dutc.csv": {
+   "righe": 439,
+   "sha256": "6ebc0e06f8b304744a37b5dfb73281b19b5face34b61fdf5e1a679b1c1019366"
+  },
+  "RAREUSDT_1Dutc.csv": {
+   "righe": 824,
+   "sha256": "f888e1f0f4c4fb4ca216ef888052e2389f8d60805620a73e0c0b0ff112a33fab"
+  },
+  "RAVEUSDT_1Dutc.csv": {
+   "righe": 335,
+   "sha256": "c976f3e3b20164eec2131f644878f1eec05e6a0615e01cc27ab4440f7feb14c9"
+  },
+  "RAYUSDT_1Dutc.csv": {
+   "righe": 758,
+   "sha256": "d4fff7753b434ab4886adccd6d5260a2e18b38c9295705b0caff8ce3e66705ee"
+  },
+  "RECALLUSDT_1Dutc.csv": {
+   "righe": 396,
+   "sha256": "63923480b7bd18d9d601286a2f5ba9787bda7c3a36aa2515b4e5e7a101b7eb39"
+  },
+  "REDUSDT_1Dutc.csv": {
+   "righe": 619,
+   "sha256": "2e6bd5cdeab80051533beaf69c670002f83a5c2f92dd3fefeca6be738e3af882"
+  },
+  "RENDERUSDT_1Dutc.csv": {
+   "righe": 842,
+   "sha256": "9deeff313868ea2f731ff06d855616624f3facfcbc9d76edd16796a39a64901b"
+  },
+  "RESOLVUSDT_1Dutc.csv": {
+   "righe": 523,
+   "sha256": "3f4761ffb186ba047c1b048fbbf83cc8c312b8ba7fb71059827a1c6e0cfda501"
+  },
+  "REUSDT_1Dutc.csv": {
+   "righe": 150,
+   "sha256": "bc93eac9adffd39c8e21fac26ae361baf07914e76540943938519befa4536705"
+  },
+  "REZUSDT_1Dutc.csv": {
+   "righe": 929,
+   "sha256": "998b9d8633aad4beafb89a8532eb5de6137ba3c251a7998ebbd494960813904c"
+  },
+  "RIVERUSDT_1Dutc.csv": {
+   "righe": 394,
+   "sha256": "6e967dba2c750ee86fc5b611e81c30c19a830f7d8dcea58e29debaf30f475315"
+  },
+  "ROBOUSDT_1Dutc.csv": {
+   "righe": 261,
+   "sha256": "e062f2f9b5e76279b3956eb927bc6235e7d8e7812972d59d63b7f48bf459c222"
+  },
+  "ROSEUSDT_1Dutc.csv": {
+   "righe": 1650,
+   "sha256": "540469e315789e64304eadc590853a184199bcddf34879db6d954a4ae189efc3"
+  },
+  "RPLUSDT_1Dutc.csv": {
+   "righe": 796,
+   "sha256": "3579025d3c488c0c345ba9ef3f23f807fabcf5aff91ba6fab2e33ce8eb5fe324"
+  },
+  "RSRUSDT_1Dutc.csv": {
+   "righe": 1616,
+   "sha256": "ffffaf65890bb7305d4787f8ee9b0b07b9473e8ff8aec366044274a041d5f7c6"
+  },
+  "RUNEUSDT_1Dutc.csv": {
+   "righe": 1675,
+   "sha256": "fbb347e37ae0d8277cf8ad4e8aca309f51c8a0db25e9deb2e6cff1e4cbf63d12"
+  },
+  "RVNUSDT_1Dutc.csv": {
+   "righe": 1306,
+   "sha256": "3eb85d205e4f42a9cc30bb71ce75dda1b166d22e7b7bbca7ff90a6251c9478f4"
+  },
+  "SAFEUSDT_1Dutc.csv": {
+   "righe": 751,
+   "sha256": "902e22c67ed6cdc343bfb9c39291762fec5ac5c4fea79c1a71380cedab407765"
+  },
+  "SAHARAUSDT_1Dutc.csv": {
+   "righe": 507,
+   "sha256": "22ba63a4b8c0c326b61917be58995faed4b349f53705eeceab37f11c1eb938a3"
+  },
+  "SANDUSDT_1Dutc.csv": {
+   "righe": 1803,
+   "sha256": "8edd75aa52da77ab4362ac24d254cae647b19620d8f1f7b9b9e68b8a96eb963f"
+  },
+  "SANTOSUSDT_1Dutc.csv": {
+   "righe": 748,
+   "sha256": "f46854d6c17dfe1d4f61c6f4c5475245ff4ded27583ef4169181737c1b88a4e5"
+  },
+  "SAPIENUSDT_1Dutc.csv": {
+   "righe": 452,
+   "sha256": "fdcd573d27366f3deac7b7eb323d208a7b3ce6e0ac2469d774858546defd1a36"
+  },
+  "SEIUSDT_1Dutc.csv": {
+   "righe": 1186,
+   "sha256": "4ca99208b8d7a8a07d5c75533f18ee77d58ffd57646595bfb7a72c5b653fb2b7"
+  },
+  "SENTUSDT_1Dutc.csv": {
+   "righe": 297,
+   "sha256": "810d56ced48b6aa56d14546e9eb4aabe29a858a29bef896b260a559524752e61"
+  },
+  "SFPUSDT_1Dutc.csv": {
+   "righe": 1306,
+   "sha256": "94f4ddae4bb6a5800835329bd89fbd029d1b2b4f1cfe37b82edbea44948ba14d"
+  },
+  "SHELLUSDT_1Dutc.csv": {
+   "righe": 640,
+   "sha256": "a0165194e22d0209c01620acf3e9118ac79f198386005630997a0a943fd31d79"
+  },
+  "SHIBUSDT_1Dutc.csv": {
+   "righe": 1815,
+   "sha256": "b2746054593630ee672566f4c487174f80f5bb55cda629b63ff72ad55917ce80"
+  },
+  "SIGNUSDT_1Dutc.csv": {
+   "righe": 566,
+   "sha256": "5be7e133f942f685ea440337b1a44d8a517c47355b455bec14b58d2f16329672"
+  },
+  "SIRENUSDT_1Dutc.csv": {
+   "righe": 605,
+   "sha256": "67931ba465bb31afeda22942b030e3e399d00ca0d61dca33a48d9b7ef10e6a80"
+  },
+  "SKLUSDT_1Dutc.csv": {
+   "righe": 1306,
+   "sha256": "fcd662ceaa5ef383d66615277b88d209566e6a8869ac88fc52ca02a179937095"
+  },
+  "SKRUSDT_1Dutc.csv": {
+   "righe": 298,
+   "sha256": "c19a9ef1ea4db45fbfcba4180fdb35a1db225ac5f32086b5c12695d44bb2bc0d"
+  },
+  "SKYAIUSDT_1Dutc.csv": {
+   "righe": 551,
+   "sha256": "aed89f9ae523f5b423c99ad02a7503e3e6779aaaa79667a01e567c6b18671ab3"
+  },
+  "SKYUSDT_1Dutc.csv": {
+   "righe": 432,
+   "sha256": "5b8dc905f1ec2180f7c52f075e0e2f21ed73237bbb40fc3cb87baefc677baba3"
+  },
+  "SLPUSDT_1Dutc.csv": {
+   "righe": 480,
+   "sha256": "0c4cb81a903974e4446bfbdee6ffe6e4cd83a31e522f3ad2b37df93df70ddc14"
+  },
+  "SLXUSDT_1Dutc.csv": {
+   "righe": 167,
+   "sha256": "34d3c6e1b6fe8c99dd49331974a94f9460a76ecaa6e5bebaf40148f1cf1fa0b1"
+  },
+  "SNXUSDT_1Dutc.csv": {
+   "righe": 1598,
+   "sha256": "af24a4f1d5f3639959cb4227f8ef808e89f927da1f81fcf2bf43106a6a4b6098"
+  },
+  "SOLUSDT_1Dutc.csv": {
+   "righe": 1941,
+   "sha256": "eeb4f866f8f45a34bd8be4d2f0ab891aa1d5cde1aecdf522ca0d94d49c24c8de"
+  },
+  "SOMIUSDT_1Dutc.csv": {
+   "righe": 447,
+   "sha256": "d123d903a2160369976b22d3e63c033d2340176356f22d7b0e36063e3ed8b240"
+  },
+  "SONICUSDT_1Dutc.csv": {
+   "righe": 677,
+   "sha256": "b3009e3988845e4eef151ef3b578cf17b2f9249fa89b1cc094068b75f44245ce"
+  },
+  "SOONUSDT_1Dutc.csv": {
+   "righe": 541,
+   "sha256": "e34db9f412430ada75556f2a7ee347528bbc56350ea965d1dd76d26cc5ccfe38"
+  },
+  "SOPHUSDT_1Dutc.csv": {
+   "righe": 536,
+   "sha256": "3222a86e92b3f9cff0b00ad4e15da44d0095c82d8b6b14cd06927c7551f81cc0"
+  },
+  "SPACEUSDT_1Dutc.csv": {
+   "righe": 296,
+   "sha256": "458f2e4030d05e58b9d249276dd110e117c80895c9b7536ecce890334809fd02"
+  },
+  "SPELLUSDT_1Dutc.csv": {
+   "righe": 1291,
+   "sha256": "c55b78a652ec7fc3aec40f5d68cf5b4a2a5914bb7e7cb94c156041ed6b13a027"
+  },
+  "SPKUSDT_1Dutc.csv": {
+   "righe": 516,
+   "sha256": "2ae811d9b2d38754ec6eb7843e1fec4c682f2be2b3782475c855db0204f451fc"
+  },
+  "SPXUSDT_1Dutc.csv": {
+   "righe": 747,
+   "sha256": "b6396ee876fcb044ed1ee4bbc81c9791d8c3af9b847636902f7ac300e5093b96"
+  },
+  "SQDUSDT_1Dutc.csv": {
+   "righe": 522,
+   "sha256": "476fd0435a15dd1662eb8640d7ea075abf53196d73eb41347ed55ab24e773779"
+  },
+  "SSVUSDT_1Dutc.csv": {
+   "righe": 1350,
+   "sha256": "14c6479593077c1dbd2428d56e731f9affc8bd404e7aa4cf79ba952c48f74230"
+  },
+  "STABLEUSDT_1Dutc.csv": {
+   "righe": 374,
+   "sha256": "7634501312ad9f48b1a4f257024282aa3f108d8d887e21568e231ef141ec6c19"
+  },
+  "STEEMUSDT_1Dutc.csv": {
+   "righe": 731,
+   "sha256": "c41a9ae3dfcca27f9490cbd7058d90eb0f81a23901ac994143c4b6de0ca901c0"
+  },
+  "STONKUSDT_1Dutc.csv": {
+   "righe": 58,
+   "sha256": "684f6f3615e78261b7bc05ed9784bac441af2ad58899ce65c86c20b385b9ee82"
+  },
+  "STOUSDT_1Dutc.csv": {
+   "righe": 591,
+   "sha256": "8f77b0c08e6d3c76748d0675c9b685fcb6f0b2d1ba51267ff282498b6a72eaa1"
+  },
+  "STRKUSDT_1Dutc.csv": {
+   "righe": 998,
+   "sha256": "99f8f127a912232798b29d9f401f0e5664855314ba5b805fadef5e4cc6dbc85e"
+  },
+  "STXUSDT_1Dutc.csv": {
+   "righe": 1340,
+   "sha256": "966e8c18ca0ab76cee8bea1928ca09b67b859269608b1c9f447edfae5bbc6148"
+  },
+  "SUIUSDT_1Dutc.csv": {
+   "righe": 1291,
+   "sha256": "baff61b7776011d2c04cf64ed1825ef29c427d27a6a0b2bcccfb3f6862606450"
+  },
+  "SUNUSDT_1Dutc.csv": {
+   "righe": 814,
+   "sha256": "26d40440c6626bb31d400f1a27910be460572f9dd7c9c5e63ddb1c83735d8caa"
+  },
+  "SUPERUSDT_1Dutc.csv": {
+   "righe": 943,
+   "sha256": "f5bccecc6c2230dd88a82b130341d12f800e3dca156bbbba9b841b7c67f31a51"
+  },
+  "SUSDT_1Dutc.csv": {
+   "righe": 669,
+   "sha256": "d17d96b98eac01aa602ed337600b0b76512df1d00026965ecce267034b5f9eeb"
+  },
+  "SUSHIUSDT_1Dutc.csv": {
+   "righe": 2242,
+   "sha256": "5daf2e7f6242cfb4612283e70587f92e791031b0e766f09abe846ea767f35e5a"
+  },
+  "SXTUSDT_1Dutc.csv": {
+   "righe": 556,
+   "sha256": "bfa57f9ea41b540fe6e5d2653169c4581f79816da3126bfe5d062ba2602370cb"
+  },
+  "SYNUSDT_1Dutc.csv": {
+   "righe": 816,
+   "sha256": "b0cf20c7a514ffebc89e8a88bf4f670186fe8d8a76a9738ed6ec778d596d79de"
+  },
+  "SYRUPUSDT_1Dutc.csv": {
+   "righe": 558,
+   "sha256": "b1c2fb92f3ff78fe55f5028728989589f1286031b809401e8eef93f6d5edd886"
+  },
+  "TAGUSDT_1Dutc.csv": {
+   "righe": 478,
+   "sha256": "feb564a5e549d7542251c6efc580c872b4786861011ba48d68c4d286c89bdd0d"
+  },
+  "TAIKOUSDT_1Dutc.csv": {
+   "righe": 886,
+   "sha256": "2ec7d0619148b58d1cdc7239d421ccc1dc2c0f3e3099d3524d2b531afc0e5e12"
+  },
+  "TAOUSDT_1Dutc.csv": {
+   "righe": 948,
+   "sha256": "e09ad66b7a82be5e9c7c6580db65ee84060bc05ac9005923222b5a3a70831e67"
+  },
+  "THETAUSDT_1Dutc.csv": {
+   "righe": 1879,
+   "sha256": "81b0a291b54aca30eab226b38873bfc34e8dafa570ea6f91094544b70fa8a2f5"
+  },
+  "THEUSDT_1Dutc.csv": {
+   "righe": 718,
+   "sha256": "a330dd2682115d0bc55df089e2c7dd94169040d7d76cd54418e31f59395fc7ca"
+  },
+  "TIAUSDT_1Dutc.csv": {
+   "righe": 1110,
+   "sha256": "1e335ed3eaf80c19d562f68c8f36b7a95f4332ebfda0e2b2ed87344207848df3"
+  },
+  "TLMUSDT_1Dutc.csv": {
+   "righe": 1324,
+   "sha256": "426b5a70725918b43cf2c0ccac4aa923727b1f7bc90934ae288a2dfcc46894f3"
+  },
+  "TNSRUSDT_1Dutc.csv": {
+   "righe": 951,
+   "sha256": "1d9f83df142565921772d664a8508de29ae52316092d3f38c8582f6a3a75f435"
+  },
+  "TOSHIUSDT_1Dutc.csv": {
+   "righe": 657,
+   "sha256": "f9e599b9f1ac149032e3549f622887125c4e429bbb05ab2c1e07e8d022607cd0"
+  },
+  "TOWNSUSDT_1Dutc.csv": {
+   "righe": 467,
+   "sha256": "287e4d7271d08d44a405493a4caa4eb0f3ff571e96fb7e454680fb19ec130e53"
+  },
+  "TRBUSDT_1Dutc.csv": {
+   "righe": 871,
+   "sha256": "f4df90a83d43c5e13519504fccb6a0fa2c90666e6d1275cbb58a0eb4a6849dbb"
+  },
+  "TREEUSDT_1Dutc.csv": {
+   "righe": 474,
+   "sha256": "8bb92a4ad8444c3d024ad32f0792fd2ef63fe3c7ad0f84b2a2a9f491f7ff66ae"
+  },
+  "TRIAUSDT_1Dutc.csv": {
+   "righe": 282,
+   "sha256": "e09f4deb24faba42c91bc9a7565cadda407b5a268c7a71eea0548958a8ddc8c3"
+  },
+  "TRUMPUSDT_1Dutc.csv": {
+   "righe": 666,
+   "sha256": "2aa6a6746908ba453c1200f91fffb9bdeffde41d8218af4931a8474c9131318f"
+  },
+  "TRUSTUSDT_1Dutc.csv": {
+   "righe": 375,
+   "sha256": "4f3dae69f6ff4fbd6060a38df5f1b7bb494c6f6e9bad5ec7589de7a3d36998f8"
+  },
+  "TRXUSDT_1Dutc.csv": {
+   "righe": 2270,
+   "sha256": "96feaa770585dc673ca61f4e82f9b19dabb44084681a2e1602d38731d48ff717"
+  },
+  "TURBOUSDT_1Dutc.csv": {
+   "righe": 879,
+   "sha256": "b9db7a004eae0c0d876a4e138757a7afa11443233b0531b9f408916b5ed2d4a2"
+  },
+  "TUSDT_1Dutc.csv": {
+   "righe": 823,
+   "sha256": "92a641277e13130e599980981057536bff2d6af97418bedb2ea36c203226a358"
+  },
+  "TUTUSDT_1Dutc.csv": {
+   "righe": 606,
+   "sha256": "14d6b31e305b3e21bf7322e95d331bc60a7c75ce53d8d26c5d80a730eeb0d284"
+  },
+  "UAIUSDT_1Dutc.csv": {
+   "righe": 374,
+   "sha256": "944832b78c22b02a4d58309980aaa85c6890b86020e97eaa4d210e23f6ff9d1c"
+  },
+  "UBUSDT_1Dutc.csv": {
+   "righe": 429,
+   "sha256": "108a7921665f534de7c9ef59608cb4850aaf5875e2484654603aa18ab566a703"
+  },
+  "UMAUSDT_1Dutc.csv": {
+   "righe": 751,
+   "sha256": "8d649b7e773f45a39f619cb6437e23a64712f30aeb2525e60372127c5932a321"
+  },
+  "UNITASUSDT_1Dutc.csv": {
+   "righe": 167,
+   "sha256": "f2b4cae542cc5098eac6b32f93795ba25cc9930980e874119f1069c07b7e4d0c"
+  },
+  "UNIUSDT_1Dutc.csv": {
+   "righe": 2245,
+   "sha256": "c3eee958cfa4020743675ebf7fc9891f25e655fbe4cace1c9cafd4716dd47937"
+  },
+  "USELESSUSDT_1Dutc.csv": {
+   "righe": 489,
+   "sha256": "fd153f69d013c0c16742fe9b894cec29ffc23f5191e916b611b3e3705eda565a"
+  },
+  "USTCUSDT_1Dutc.csv": {
+   "righe": 641,
+   "sha256": "f58cce2deaa6b2317f7c3ca68eac2821fc87642430d76544ad59c12a75f19229"
+  },
+  "USUALUSDT_1Dutc.csv": {
+   "righe": 697,
+   "sha256": "4474abdcfbe47c4fe6dcfda813851b9954df0a1012484759c3b5d8678f4d28a3"
+  },
+  "USUSDT_1Dutc.csv": {
+   "righe": 338,
+   "sha256": "096f5599f015e41a07c220d5e00fc36062b49612d071008a27f7c3b5919fb196"
+  },
+  "VANAUSDT_1Dutc.csv": {
+   "righe": 699,
+   "sha256": "22fa8221ab9941f6aaed2b91bbbf68463eb66254c5e2231011cc89161e5e0d14"
+  },
+  "VELVETUSDT_1Dutc.csv": {
+   "righe": 488,
+   "sha256": "0220a1344db02c15d5b807ff2e2f42f765dd2a9bb6392d77e98ad327dc261043"
+  },
+  "VETUSDT_1Dutc.csv": {
+   "righe": 1338,
+   "sha256": "5f41751a86df940cd00216dbc23a20a6f4e7ab077723fed40a10eda84eac2060"
+  },
+  "VIRTUALUSDT_1Dutc.csv": {
+   "righe": 744,
+   "sha256": "85acd7c8e51e0b85d0b9f89f60c3b23ff11b30da070e5f16ac5ecad801d35583"
+  },
+  "VTHOUSDT_1Dutc.csv": {
+   "righe": 662,
+   "sha256": "d97315efb538b20e0f0465d12c52f3505ff98465179a09aa7ed4658d910594b7"
+  },
+  "VVVUSDT_1Dutc.csv": {
+   "righe": 656,
+   "sha256": "535aa45f2dff66e098d49b3a9d5a9c1a82180f5381771c1a4c84bd66df82df06"
+  },
+  "WALUSDT_1Dutc.csv": {
+   "righe": 598,
+   "sha256": "9adc7238b44a8237107a88470f71535313f3db623c0c97f8bcb4726f09522e41"
+  },
+  "WAXPUSDT_1Dutc.csv": {
+   "righe": 1123,
+   "sha256": "16015a94f2dda7f4dc76cd8e3b37ebceb97a34dfa94b954c95bc2ab1a030d8fa"
+  },
+  "WCTUSDT_1Dutc.csv": {
+   "righe": 579,
+   "sha256": "b21332273674060f78d0dbe1b0fdcf8f572ba8da96bed9390e08b7f0f576edec"
+  },
+  "WETUSDT_1Dutc.csv": {
+   "righe": 340,
+   "sha256": "9060420e99627392f38f32500bce07f6c6f03c8827e0c2a5d66117b91adce205"
+  },
+  "WIFUSDT_1Dutc.csv": {
+   "righe": 981,
+   "sha256": "e00d4e588723a1588a8c0cc364ebf748f9f07a0a2db635c44c0d6cd493933e11"
+  },
+  "WLDUSDT_1Dutc.csv": {
+   "righe": 1209,
+   "sha256": "1f2be395e983e8fec4942aaf27185a39c3f52c658698e34b930a403c58c7d08f"
+  },
+  "WLFIUSDT_1Dutc.csv": {
+   "righe": 449,
+   "sha256": "cff3ed12dd3b2ce8d4ad3081065c388712ab2a79f30372d7cb97af426904bcac"
+  },
+  "WOOUSDT_1Dutc.csv": {
+   "righe": 1538,
+   "sha256": "ca964c4f7e34f9602b2578b09823e6fa233e6069492517956d521038075ad946"
+  },
+  "WUSDT_1Dutc.csv": {
+   "righe": 955,
+   "sha256": "5d0dc737ede59d78bf796aa4fa0cc16c859ef95d7cd623db71d6f8115f5e23df"
+  },
+  "XAIUSDT_1Dutc.csv": {
+   "righe": 1035,
+   "sha256": "da9191c2149a29d332f6945a63898aedad9683cb0e1c638fcc36e2606e6a9958"
+  },
+  "XANUSDT_1Dutc.csv": {
+   "righe": 411,
+   "sha256": "2a9f6f8f0c8a2a8be3033de39d1b9f0fddf812cb9e01d7433a04cb94ba7a32f9"
+  },
+  "XLMUSDT_1Dutc.csv": {
+   "righe": 2067,
+   "sha256": "3c0747f72d06a51404ad8134f1675d6cdad47a8075159cf345c15993aae03492"
+  },
+  "XMRUSDT_1Dutc.csv": {
+   "righe": 369,
+   "sha256": "8b35828188f1a6b7229d6a5c4c494a79d3465bb8241f5e358301d277e166d9f2"
+  },
+  "XPINUSDT_1Dutc.csv": {
+   "righe": 429,
+   "sha256": "5f446ef698c28ea58898c9423bfdb2f5b608e8acdeac072b606d0b977027fe42"
+  },
+  "XPLUSDT_1Dutc.csv": {
+   "righe": 446,
+   "sha256": "072998c5fbb66ff0faed3d38a4ce7c05526bc87b677ad363f3b38e0241bfdbee"
+  },
+  "XRPUSDT_1Dutc.csv": {
+   "righe": 2510,
+   "sha256": "3309965dff57af8a8f2effbc24cfe21d67f9546a4a15dfe96745ee46f182700a"
+  },
+  "XTZUSDT_1Dutc.csv": {
+   "righe": 2253,
+   "sha256": "193afe2db867dec9da4de3cd8ffe8a1a1a4ab60ef8a683ec7986d2757db2ddda"
+  },
+  "XVGUSDT_1Dutc.csv": {
+   "righe": 1228,
+   "sha256": "26b46aaf5bb64493febbed3a23fcfb4019ca466ba96f1b67a74f5e4e4fa068ab"
+  },
+  "XVSUSDT_1Dutc.csv": {
+   "righe": 921,
+   "sha256": "1826fde6ac13770632e556dd161ef336fd4514a5c50bb45487b2e69a6e2171aa"
+  },
+  "YBUSDT_1Dutc.csv": {
+   "righe": 400,
+   "sha256": "57a8afd8c13cdc113d7dc429c6851533277fd518a6e6a51525b95127d86555c3"
+  },
+  "YGGUSDT_1Dutc.csv": {
+   "righe": 1196,
+   "sha256": "eda360c08201c72ca6e99efdf2dbd86c48bd815426ba4409e2afcafc0deaedc5"
+  },
+  "ZAMAUSDT_1Dutc.csv": {
+   "righe": 286,
+   "sha256": "5f2b6c9841cb2c845aa29c9a958fe3cb757f317c4a5ef9e15cd442cae6641d5e"
+  },
+  "ZBTUSDT_1Dutc.csv": {
+   "righe": 394,
+   "sha256": "74748dc120c4be89c3a894cae16aa35485aded65a8fb5fc73eb50b7b17243599"
+  },
+  "ZECUSDT_1Dutc.csv": {
+   "righe": 395,
+   "sha256": "2560f02585f8034f3334748a13559361ad16cbb9cb56bf6545acd408cb18c5c8"
+  },
+  "ZENUSDT_1Dutc.csv": {
+   "righe": 678,
+   "sha256": "6e92f10b1bb755c374f7d78d7fa721c6d5692dcd1904c7b92cdf05e254b30a04"
+  },
+  "ZESTUSDT_1Dutc.csv": {
+   "righe": 164,
+   "sha256": "7dc8573d47806c2f9aabe338f61d2948647f41dafdaeb11d4711e81d38d9fbd2"
+  },
+  "ZETAUSDT_1Dutc.csv": {
+   "righe": 1014,
+   "sha256": "10ae3736112a5df0ce5073eeafff42eb7f79b28de86f2ef5709cc1ad34976ebe"
+  },
+  "ZILUSDT_1Dutc.csv": {
+   "righe": 1682,
+   "sha256": "3a27da069b0a7e2cbc41f3c3ad4ae8ebf5e000153780b04ace078450782727bc"
+  },
+  "ZKCUSDT_1Dutc.csv": {
+   "righe": 426,
+   "sha256": "fb99b5d6f00c499552915bfd3c5b3447edccdea9a0b0cb28e9298be21fb99b1f"
+  },
+  "ZKPUSDT_1Dutc.csv": {
+   "righe": 329,
+   "sha256": "aeb406aa56ba6f3f7c5a9fe16a755630b7cae31f1c5bc51dce8c3715d1568d37"
+  },
+  "ZKUSDT_1Dutc.csv": {
+   "righe": 881,
+   "sha256": "b38804ab0c5870152407e16032159d568f1e9e2b4f05bc471bbaa850bbf13e2b"
+  },
+  "ZORAUSDT_1Dutc.csv": {
+   "righe": 571,
+   "sha256": "e99edd4b49cc61a376b7c315acd176298b81a84f7eae184eddf5e4c3c317588c"
+  },
+  "ZROUSDT_1Dutc.csv": {
+   "righe": 878,
+   "sha256": "43282686c8e6a85ac8192241a6a134aca714ea4bbaf6fc0c5f9cb8f30879f0e8"
+  },
+  "ZRXUSDT_1Dutc.csv": {
+   "righe": 1650,
+   "sha256": "cd8d505be3ca732f4a07acd1a4c6f65bbdff7463950dafb9ef792ba6e500895c"
+  },
+  "\u54c8\u57fa\u7c73USDT_1Dutc.csv": {
+   "righe": 70,
+   "sha256": "51561e404f9ffcafe3f7d05a477f1bf19158cb2ead16dd6e3e4727c0bdc7d20d"
+  },
+  "\u725b\u6765USDT_1Dutc.csv": {
+   "righe": 77,
+   "sha256": "f56495a967627ad398be21af1dbab80cdbf3fe0de879795c7b3b602ab453928b"
+  },
+  "\u9f99\u867eUSDT_1Dutc.csv": {
+   "righe": 247,
+   "sha256": "4f388169fb5d16ad11451116a5041d9f95fe7a06598040162488b139f51467c0"
+  }
+ },
+ "fonte": "https://api.bitget.com history-candles USDT-FUTURES",
+ "gran": "1Dutc",
+ "inizio": "2020-01-01",
+ "scaricato_ms": 1794722283693
+}
