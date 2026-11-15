@@ -52,7 +52,7 @@ def test_each_brain_view_is_classified_inside_the_24h_window(tmp_path):
     eth = next(f for f in res["fatti"] if f["simbolo"] == "ETHUSDT")
     assert eth["esiti_brain"] == [{"lato": 1, "pnl_usdt": 12.5, "uscita": "take_profit"}]
     noprop = CC.compare(tmp_path / "toro", tmp_path / "j.db", RUN)
-    assert {f["simbolo"]: f["vista_brain"] for f in noprop["fatti"]}["SOLUSDT"] == "NO_TRADE"
+    assert {f["simbolo"]: f["vista_brain"] for f in noprop["fatti"]}["SOLUSDT"] == "RESPINTO_LATO_IGNOTO"
 
 
 def test_journal_is_opened_read_only(tmp_path):
