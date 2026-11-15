@@ -1,0 +1,546 @@
+{
+ "SHORT_fisso_0.74%": {
+  "tutti": {
+   "n": 390,
+   "vincenti": 0.58,
+   "R_medio": 0.53,
+   "usdt_medio": 31.5,
+   "usdt_totale": 12302.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 67
+  },
+  "EXPANSION": {
+   "n": 241,
+   "vincenti": 0.5,
+   "R_medio": 0.28,
+   "usdt_medio": 16.7,
+   "usdt_totale": 4027.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 58
+  },
+  "altri_regimi": {
+   "n": 149,
+   "vincenti": 0.71,
+   "R_medio": 0.94,
+   "usdt_medio": 55.5,
+   "usdt_totale": 8274.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 81
+  },
+  "BTCUSDT": {
+   "n": 50,
+   "vincenti": 0.7,
+   "R_medio": 0.89,
+   "usdt_medio": 52.7,
+   "usdt_totale": 2635.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 126
+  },
+  "ETHUSDT": {
+   "n": 50,
+   "vincenti": 0.54,
+   "R_medio": 0.42,
+   "usdt_medio": 24.6,
+   "usdt_totale": 1231.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 66
+  },
+  "BNBUSDT": {
+   "n": 45,
+   "vincenti": 0.69,
+   "R_medio": 0.87,
+   "usdt_medio": 51.6,
+   "usdt_totale": 2321.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 77
+  }
+ },
+ "SHORT_1.0xATR15m": {
+  "tutti": {
+   "n": 396,
+   "vincenti": 0.52,
+   "R_medio": 0.29,
+   "usdt_medio": 15.2,
+   "usdt_totale": 6014.0,
+   "stop_mediano_pct": 0.65,
+   "nozionale_mediano": 8924.0,
+   "leva_a_400_di_margine": 22.3,
+   "minuti_mediani": 62
+  },
+  "EXPANSION": {
+   "n": 242,
+   "vincenti": 0.44,
+   "R_medio": 0.1,
+   "usdt_medio": 5.3,
+   "usdt_totale": 1272.0,
+   "stop_mediano_pct": 0.78,
+   "nozionale_mediano": 7627.0,
+   "leva_a_400_di_margine": 19.1,
+   "minuti_mediani": 66
+  },
+  "altri_regimi": {
+   "n": 154,
+   "vincenti": 0.64,
+   "R_medio": 0.6,
+   "usdt_medio": 30.8,
+   "usdt_totale": 4742.0,
+   "stop_mediano_pct": 0.52,
+   "nozionale_mediano": 10656.0,
+   "leva_a_400_di_margine": 26.6,
+   "minuti_mediani": 60
+  },
+  "BTCUSDT": {
+   "n": 50,
+   "vincenti": 0.56,
+   "R_medio": 0.35,
+   "usdt_medio": 17.2,
+   "usdt_totale": 860.0,
+   "stop_mediano_pct": 0.53,
+   "nozionale_mediano": 10402.0,
+   "leva_a_400_di_margine": 26.0,
+   "minuti_mediani": 67
+  },
+  "ETHUSDT": {
+   "n": 50,
+   "vincenti": 0.48,
+   "R_medio": 0.2,
+   "usdt_medio": 9.2,
+   "usdt_totale": 461.0,
+   "stop_mediano_pct": 0.66,
+   "nozionale_mediano": 8806.0,
+   "leva_a_400_di_margine": 22.0,
+   "minuti_mediani": 63
+  },
+  "BNBUSDT": {
+   "n": 48,
+   "vincenti": 0.58,
+   "R_medio": 0.46,
+   "usdt_medio": 23.3,
+   "usdt_totale": 1117.0,
+   "stop_mediano_pct": 0.48,
+   "nozionale_mediano": 11190.0,
+   "leva_a_400_di_margine": 28.0,
+   "minuti_mediani": 61
+  }
+ },
+ "SHORT_1.5xATR15m": {
+  "tutti": {
+   "n": 369,
+   "vincenti": 0.58,
+   "R_medio": 0.57,
+   "usdt_medio": 33.1,
+   "usdt_totale": 12229.0,
+   "stop_mediano_pct": 0.96,
+   "nozionale_mediano": 6439.0,
+   "leva_a_400_di_margine": 16.1,
+   "minuti_mediani": 100
+  },
+  "EXPANSION": {
+   "n": 227,
+   "vincenti": 0.46,
+   "R_medio": 0.24,
+   "usdt_medio": 14.3,
+   "usdt_totale": 3255.0,
+   "stop_mediano_pct": 1.19,
+   "nozionale_mediano": 5350.0,
+   "leva_a_400_di_margine": 13.4,
+   "minuti_mediani": 122
+  },
+  "altri_regimi": {
+   "n": 142,
+   "vincenti": 0.76,
+   "R_medio": 1.09,
+   "usdt_medio": 63.2,
+   "usdt_totale": 8974.0,
+   "stop_mediano_pct": 0.77,
+   "nozionale_mediano": 7746.0,
+   "leva_a_400_di_margine": 19.4,
+   "minuti_mediani": 81
+  },
+  "BTCUSDT": {
+   "n": 49,
+   "vincenti": 0.63,
+   "R_medio": 0.69,
+   "usdt_medio": 38.8,
+   "usdt_totale": 1901.0,
+   "stop_mediano_pct": 0.79,
+   "nozionale_mediano": 7548.0,
+   "leva_a_400_di_margine": 18.9,
+   "minuti_mediani": 121
+  },
+  "ETHUSDT": {
+   "n": 44,
+   "vincenti": 0.59,
+   "R_medio": 0.62,
+   "usdt_medio": 36.5,
+   "usdt_totale": 1608.0,
+   "stop_mediano_pct": 0.94,
+   "nozionale_mediano": 6534.0,
+   "leva_a_400_di_margine": 16.3,
+   "minuti_mediani": 86
+  },
+  "BNBUSDT": {
+   "n": 44,
+   "vincenti": 0.66,
+   "R_medio": 0.78,
+   "usdt_medio": 44.4,
+   "usdt_totale": 1952.0,
+   "stop_mediano_pct": 0.73,
+   "nozionale_mediano": 8135.0,
+   "leva_a_400_di_margine": 20.3,
+   "minuti_mediani": 90
+  }
+ },
+ "SHORT_2.0xATR15m": {
+  "tutti": {
+   "n": 329,
+   "vincenti": 0.67,
+   "R_medio": 0.89,
+   "usdt_medio": 55.2,
+   "usdt_totale": 18164.0,
+   "stop_mediano_pct": 1.27,
+   "nozionale_mediano": 5027.0,
+   "leva_a_400_di_margine": 12.6,
+   "minuti_mediani": 180
+  },
+  "EXPANSION": {
+   "n": 205,
+   "vincenti": 0.53,
+   "R_medio": 0.49,
+   "usdt_medio": 31.2,
+   "usdt_totale": 6393.0,
+   "stop_mediano_pct": 1.59,
+   "nozionale_mediano": 4106.0,
+   "leva_a_400_di_margine": 10.3,
+   "minuti_mediani": 198
+  },
+  "altri_regimi": {
+   "n": 124,
+   "vincenti": 0.9,
+   "R_medio": 1.55,
+   "usdt_medio": 94.9,
+   "usdt_totale": 11771.0,
+   "stop_mediano_pct": 0.97,
+   "nozionale_mediano": 6360.0,
+   "leva_a_400_di_margine": 15.9,
+   "minuti_mediani": 89
+  },
+  "BTCUSDT": {
+   "n": 42,
+   "vincenti": 0.69,
+   "R_medio": 0.93,
+   "usdt_medio": 55.6,
+   "usdt_totale": 2334.0,
+   "stop_mediano_pct": 1.0,
+   "nozionale_mediano": 6229.0,
+   "leva_a_400_di_margine": 15.6,
+   "minuti_mediani": 182
+  },
+  "ETHUSDT": {
+   "n": 40,
+   "vincenti": 0.68,
+   "R_medio": 0.9,
+   "usdt_medio": 56.2,
+   "usdt_totale": 2246.0,
+   "stop_mediano_pct": 1.24,
+   "nozionale_mediano": 5156.0,
+   "leva_a_400_di_margine": 12.9,
+   "minuti_mediani": 157
+  },
+  "BNBUSDT": {
+   "n": 40,
+   "vincenti": 0.72,
+   "R_medio": 1.04,
+   "usdt_medio": 62.6,
+   "usdt_totale": 2503.0,
+   "stop_mediano_pct": 0.99,
+   "nozionale_mediano": 6248.0,
+   "leva_a_400_di_margine": 15.6,
+   "minuti_mediani": 170
+  }
+ },
+ "LONG_fisso_0.74%": {
+  "tutti": {
+   "n": 367,
+   "vincenti": 0.13,
+   "R_medio": -0.87,
+   "usdt_medio": -51.3,
+   "usdt_totale": -18818.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 54
+  },
+  "EXPANSION": {
+   "n": 235,
+   "vincenti": 0.19,
+   "R_medio": -0.66,
+   "usdt_medio": -39.1,
+   "usdt_totale": -9192.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 46
+  },
+  "altri_regimi": {
+   "n": 132,
+   "vincenti": 0.03,
+   "R_medio": -1.23,
+   "usdt_medio": -72.9,
+   "usdt_totale": -9626.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 62
+  },
+  "BTCUSDT": {
+   "n": 47,
+   "vincenti": 0.06,
+   "R_medio": -1.06,
+   "usdt_medio": -63.0,
+   "usdt_totale": -2961.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 80
+  },
+  "ETHUSDT": {
+   "n": 45,
+   "vincenti": 0.11,
+   "R_medio": -0.95,
+   "usdt_medio": -56.0,
+   "usdt_totale": -2519.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 53
+  },
+  "BNBUSDT": {
+   "n": 45,
+   "vincenti": 0.07,
+   "R_medio": -1.08,
+   "usdt_medio": -63.7,
+   "usdt_totale": -2866.0,
+   "stop_mediano_pct": 0.74,
+   "nozionale_mediano": 8000.0,
+   "leva_a_400_di_margine": 20.0,
+   "minuti_mediani": 73
+  }
+ },
+ "LONG_1.0xATR15m": {
+  "tutti": {
+   "n": 370,
+   "vincenti": 0.14,
+   "R_medio": -0.9,
+   "usdt_medio": -50.7,
+   "usdt_totale": -18769.0,
+   "stop_mediano_pct": 0.66,
+   "nozionale_mediano": 8812.0,
+   "leva_a_400_di_margine": 22.0,
+   "minuti_mediani": 46
+  },
+  "EXPANSION": {
+   "n": 235,
+   "vincenti": 0.17,
+   "R_medio": -0.73,
+   "usdt_medio": -43.4,
+   "usdt_totale": -10192.0,
+   "stop_mediano_pct": 0.8,
+   "nozionale_mediano": 7536.0,
+   "leva_a_400_di_margine": 18.8,
+   "minuti_mediani": 61
+  },
+  "altri_regimi": {
+   "n": 135,
+   "vincenti": 0.09,
+   "R_medio": -1.19,
+   "usdt_medio": -63.5,
+   "usdt_totale": -8576.0,
+   "stop_mediano_pct": 0.51,
+   "nozionale_mediano": 10760.0,
+   "leva_a_400_di_margine": 26.9,
+   "minuti_mediani": 33
+  },
+  "BTCUSDT": {
+   "n": 48,
+   "vincenti": 0.12,
+   "R_medio": -1.01,
+   "usdt_medio": -54.2,
+   "usdt_totale": -2599.0,
+   "stop_mediano_pct": 0.54,
+   "nozionale_mediano": 10244.0,
+   "leva_a_400_di_margine": 25.6,
+   "minuti_mediani": 45
+  },
+  "ETHUSDT": {
+   "n": 45,
+   "vincenti": 0.13,
+   "R_medio": -0.94,
+   "usdt_medio": -53.2,
+   "usdt_totale": -2394.0,
+   "stop_mediano_pct": 0.69,
+   "nozionale_mediano": 8425.0,
+   "leva_a_400_di_margine": 21.1,
+   "minuti_mediani": 49
+  },
+  "BNBUSDT": {
+   "n": 45,
+   "vincenti": 0.09,
+   "R_medio": -1.12,
+   "usdt_medio": -59.9,
+   "usdt_totale": -2693.0,
+   "stop_mediano_pct": 0.51,
+   "nozionale_mediano": 10781.0,
+   "leva_a_400_di_margine": 27.0,
+   "minuti_mediani": 38
+  }
+ },
+ "LONG_1.5xATR15m": {
+  "tutti": {
+   "n": 356,
+   "vincenti": 0.09,
+   "R_medio": -0.95,
+   "usdt_medio": -57.6,
+   "usdt_totale": -20503.0,
+   "stop_mediano_pct": 0.97,
+   "nozionale_mediano": 6363.0,
+   "leva_a_400_di_margine": 15.9,
+   "minuti_mediani": 78
+  },
+  "EXPANSION": {
+   "n": 226,
+   "vincenti": 0.13,
+   "R_medio": -0.77,
+   "usdt_medio": -47.8,
+   "usdt_totale": -10792.0,
+   "stop_mediano_pct": 1.19,
+   "nozionale_mediano": 5322.0,
+   "leva_a_400_di_margine": 13.3,
+   "minuti_mediani": 108
+  },
+  "altri_regimi": {
+   "n": 130,
+   "vincenti": 0.02,
+   "R_medio": -1.28,
+   "usdt_medio": -74.7,
+   "usdt_totale": -9711.0,
+   "stop_mediano_pct": 0.75,
+   "nozionale_mediano": 7912.0,
+   "leva_a_400_di_margine": 19.8,
+   "minuti_mediani": 61
+  },
+  "BTCUSDT": {
+   "n": 47,
+   "vincenti": 0.04,
+   "R_medio": -1.13,
+   "usdt_medio": -65.9,
+   "usdt_totale": -3099.0,
+   "stop_mediano_pct": 0.83,
+   "nozionale_mediano": 7302.0,
+   "leva_a_400_di_margine": 18.3,
+   "minuti_mediani": 102
+  },
+  "ETHUSDT": {
+   "n": 45,
+   "vincenti": 0.09,
+   "R_medio": -0.99,
+   "usdt_medio": -59.7,
+   "usdt_totale": -2687.0,
+   "stop_mediano_pct": 1.04,
+   "nozionale_mediano": 5991.0,
+   "leva_a_400_di_margine": 15.0,
+   "minuti_mediani": 90
+  },
+  "BNBUSDT": {
+   "n": 45,
+   "vincenti": 0.04,
+   "R_medio": -1.11,
+   "usdt_medio": -65.0,
+   "usdt_totale": -2926.0,
+   "stop_mediano_pct": 0.76,
+   "nozionale_mediano": 7811.0,
+   "leva_a_400_di_margine": 19.5,
+   "minuti_mediani": 73
+  }
+ },
+ "LONG_2.0xATR15m": {
+  "tutti": {
+   "n": 329,
+   "vincenti": 0.1,
+   "R_medio": -0.88,
+   "usdt_medio": -55.0,
+   "usdt_totale": -18082.0,
+   "stop_mediano_pct": 1.27,
+   "nozionale_mediano": 5045.0,
+   "leva_a_400_di_margine": 12.6,
+   "minuti_mediani": 106
+  },
+  "EXPANSION": {
+   "n": 201,
+   "vincenti": 0.16,
+   "R_medio": -0.65,
+   "usdt_medio": -41.4,
+   "usdt_totale": -8311.0,
+   "stop_mediano_pct": 1.53,
+   "nozionale_mediano": 4250.0,
+   "leva_a_400_di_margine": 10.6,
+   "minuti_mediani": 150
+  },
+  "altri_regimi": {
+   "n": 128,
+   "vincenti": 0.01,
+   "R_medio": -1.25,
+   "usdt_medio": -76.3,
+   "usdt_totale": -9771.0,
+   "stop_mediano_pct": 0.99,
+   "nozionale_mediano": 6274.0,
+   "leva_a_400_di_margine": 15.7,
+   "minuti_mediani": 64
+  },
+  "BTCUSDT": {
+   "n": 42,
+   "vincenti": 0.05,
+   "R_medio": -1.08,
+   "usdt_medio": -65.8,
+   "usdt_totale": -2765.0,
+   "stop_mediano_pct": 1.09,
+   "nozionale_mediano": 5780.0,
+   "leva_a_400_di_margine": 14.4,
+   "minuti_mediani": 113
+  },
+  "ETHUSDT": {
+   "n": 43,
+   "vincenti": 0.09,
+   "R_medio": -0.96,
+   "usdt_medio": -60.4,
+   "usdt_totale": -2596.0,
+   "stop_mediano_pct": 1.39,
+   "nozionale_mediano": 4648.0,
+   "leva_a_400_di_margine": 11.6,
+   "minuti_mediani": 122
+  },
+  "BNBUSDT": {
+   "n": 43,
+   "vincenti": 0.09,
+   "R_medio": -0.92,
+   "usdt_medio": -56.0,
+   "usdt_totale": -2409.0,
+   "stop_mediano_pct": 1.01,
+   "nozionale_mediano": 6129.0,
+   "leva_a_400_di_margine": 15.3,
+   "minuti_mediani": 115
+  }
+ }
+}

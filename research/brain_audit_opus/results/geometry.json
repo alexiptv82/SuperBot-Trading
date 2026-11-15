@@ -1,0 +1,1478 @@
+{
+ "finestra_utc": [
+  "2026-11-13 15:00",
+  "2026-11-15 19:00"
+ ],
+ "volatilita": {
+  "BTCUSDT": {
+   "dev_std_1m_bp": 10.32,
+   "atr15m_medio_bp": 55.5,
+   "variazione_finestra_pct": -6.05
+  },
+  "ETHUSDT": {
+   "dev_std_1m_bp": 13.24,
+   "atr15m_medio_bp": 71.7,
+   "variazione_finestra_pct": -6.67
+  },
+  "SOLUSDT": {
+   "dev_std_1m_bp": 14.75,
+   "atr15m_medio_bp": 79.0,
+   "variazione_finestra_pct": -11.66
+  },
+  "XRPUSDT": {
+   "dev_std_1m_bp": 14.93,
+   "atr15m_medio_bp": 77.6,
+   "variazione_finestra_pct": -7.6
+  },
+  "BNBUSDT": {
+   "dev_std_1m_bp": 10.87,
+   "atr15m_medio_bp": 55.1,
+   "variazione_finestra_pct": -7.26
+  },
+  "DOGEUSDT": {
+   "dev_std_1m_bp": 15.24,
+   "atr15m_medio_bp": 76.7,
+   "variazione_finestra_pct": -10.62
+  },
+  "ADAUSDT": {
+   "dev_std_1m_bp": 16.1,
+   "atr15m_medio_bp": 80.4,
+   "variazione_finestra_pct": -11.27
+  },
+  "LINKUSDT": {
+   "dev_std_1m_bp": 15.1,
+   "atr15m_medio_bp": 76.0,
+   "variazione_finestra_pct": -8.12
+  }
+ },
+ "risultati": {
+  "SHORT_stop_0.50%": {
+   "tutti": {
+    "n": 397,
+    "vincenti": 0.514,
+    "R_medio": 0.223,
+    "ic95_R": [
+     0.066,
+     0.379
+    ],
+    "minuti_mediani": 32,
+    "usdt_medio_su_8000": 8.9
+   },
+   "per_simbolo": {
+    "BTCUSDT": {
+     "n": 50,
+     "vincenti": 0.58,
+     "R_medio": 0.413,
+     "ic95_R": [
+      -0.032,
+      0.858
+     ],
+     "minuti_mediani": 53,
+     "usdt_medio_su_8000": 16.5
+    },
+    "ETHUSDT": {
+     "n": 50,
+     "vincenti": 0.48,
+     "R_medio": 0.121,
+     "ic95_R": [
+      -0.322,
+      0.563
+     ],
+     "minuti_mediani": 35,
+     "usdt_medio_su_8000": 4.8
+    },
+    "SOLUSDT": {
+     "n": 50,
+     "vincenti": 0.44,
+     "R_medio": 0.003,
+     "ic95_R": [
+      -0.435,
+      0.442
+     ],
+     "minuti_mediani": 26,
+     "usdt_medio_su_8000": 0.1
+    },
+    "XRPUSDT": {
+     "n": 50,
+     "vincenti": 0.46,
+     "R_medio": 0.048,
+     "ic95_R": [
+      -0.398,
+      0.493
+     ],
+     "minuti_mediani": 21,
+     "usdt_medio_su_8000": 1.9
+    },
+    "BNBUSDT": {
+     "n": 47,
+     "vincenti": 0.617,
+     "R_medio": 0.564,
+     "ic95_R": [
+      0.125,
+      1.004
+     ],
+     "minuti_mediani": 48,
+     "usdt_medio_su_8000": 22.6
+    },
+    "DOGEUSDT": {
+     "n": 50,
+     "vincenti": 0.52,
+     "R_medio": 0.234,
+     "ic95_R": [
+      -0.212,
+      0.681
+     ],
+     "minuti_mediani": 31,
+     "usdt_medio_su_8000": 9.4
+    },
+    "ADAUSDT": {
+     "n": 50,
+     "vincenti": 0.5,
+     "R_medio": 0.178,
+     "ic95_R": [
+      -0.267,
+      0.623
+     ],
+     "minuti_mediani": 25,
+     "usdt_medio_su_8000": 7.1
+    },
+    "LINKUSDT": {
+     "n": 50,
+     "vincenti": 0.52,
+     "R_medio": 0.241,
+     "ic95_R": [
+      -0.205,
+      0.686
+     ],
+     "minuti_mediani": 24,
+     "usdt_medio_su_8000": 9.6
+    }
+   },
+   "per_regime": {
+    "EXPANSION": {
+     "n": 244,
+     "vincenti": 0.443,
+     "R_medio": -0.013,
+     "ic95_R": [
+      -0.213,
+      0.187
+     ],
+     "minuti_mediani": 26,
+     "usdt_medio_su_8000": -0.5
+    },
+    "RANGE": {
+     "n": 54,
+     "vincenti": 0.463,
+     "R_medio": 0.077,
+     "ic95_R": [
+      -0.345,
+      0.499
+     ],
+     "minuti_mediani": 40,
+     "usdt_medio_su_8000": 3.1
+    },
+    "SHOCK": {
+     "n": 1,
+     "vincenti": 1.0,
+     "R_medio": 1.761,
+     "ic95_R": null,
+     "minuti_mediani": 15,
+     "usdt_medio_su_8000": 70.4
+    },
+    "TREND_DOWN": {
+     "n": 67,
+     "vincenti": 0.701,
+     "R_medio": 0.831,
+     "ic95_R": [
+      0.487,
+      1.176
+     ],
+     "minuti_mediani": 58,
+     "usdt_medio_su_8000": 33.3
+    },
+    "TREND_UP": {
+     "n": 11,
+     "vincenti": 0.727,
+     "R_medio": 0.913,
+     "ic95_R": [
+      0.054,
+      1.772
+     ],
+     "minuti_mediani": 21,
+     "usdt_medio_su_8000": 36.5
+    },
+    "UNCERTAIN": {
+     "n": 20,
+     "vincenti": 0.75,
+     "R_medio": 0.997,
+     "ic95_R": [
+      0.402,
+      1.592
+     ],
+     "minuti_mediani": 49,
+     "usdt_medio_su_8000": 39.9
+    }
+   },
+   "per_stop_su_atr15m": {
+    "stretto (<0.65 ATR)": {
+     "n": 132,
+     "vincenti": 0.402,
+     "R_medio": -0.151,
+     "ic95_R": [
+      -0.421,
+      0.12
+     ],
+     "minuti_mediani": 15,
+     "usdt_medio_su_8000": -6.0
+    },
+    "medio": {
+     "n": 132,
+     "vincenti": 0.432,
+     "R_medio": -0.016,
+     "ic95_R": [
+      -0.282,
+      0.25
+     ],
+     "minuti_mediani": 38,
+     "usdt_medio_su_8000": -0.6
+    },
+    "largo (>=0.91 ATR)": {
+     "n": 133,
+     "vincenti": 0.707,
+     "R_medio": 0.83,
+     "ic95_R": [
+      0.583,
+      1.077
+     ],
+     "minuti_mediani": 55,
+     "usdt_medio_su_8000": 33.2
+    }
+   },
+   "per_rendimento_4h_prima": {
+    "gia_sceso (<-1.33%)": {
+     "n": 132,
+     "vincenti": 0.439,
+     "R_medio": -0.004,
+     "ic95_R": [
+      -0.272,
+      0.265
+     ],
+     "minuti_mediani": 22,
+     "usdt_medio_su_8000": -0.1
+    },
+    "intermedio": {
+     "n": 132,
+     "vincenti": 0.515,
+     "R_medio": 0.236,
+     "ic95_R": [
+      -0.034,
+      0.506
+     ],
+     "minuti_mediani": 42,
+     "usdt_medio_su_8000": 9.4
+    },
+    "salito (>=-0.03%)": {
+     "n": 133,
+     "vincenti": 0.586,
+     "R_medio": 0.434,
+     "ic95_R": [
+      0.163,
+      0.705
+     ],
+     "minuti_mediani": 37,
+     "usdt_medio_su_8000": 17.4
+    }
+   }
+  },
+  "LONG_stop_0.50%": {
+   "tutti": {
+    "n": 385,
+    "vincenti": 0.226,
+    "R_medio": -0.681,
+    "ic95_R": [
+     -0.815,
+     -0.548
+    ],
+    "minuti_mediani": 26,
+    "usdt_medio_su_8000": -27.3
+   },
+   "per_simbolo": {
+    "BTCUSDT": {
+     "n": 49,
+     "vincenti": 0.163,
+     "R_medio": -0.874,
+     "ic95_R": [
+      -1.206,
+      -0.542
+     ],
+     "minuti_mediani": 39,
+     "usdt_medio_su_8000": -35.0
+    },
+    "ETHUSDT": {
+     "n": 48,
+     "vincenti": 0.229,
+     "R_medio": -0.649,
+     "ic95_R": [
+      -1.033,
+      -0.266
+     ],
+     "minuti_mediani": 20,
+     "usdt_medio_su_8000": -26.0
+    },
+    "SOLUSDT": {
+     "n": 50,
+     "vincenti": 0.24,
+     "R_medio": -0.656,
+     "ic95_R": [
+      -1.042,
+      -0.271
+     ],
+     "minuti_mediani": 28,
+     "usdt_medio_su_8000": -26.3
+    },
+    "XRPUSDT": {
+     "n": 49,
+     "vincenti": 0.286,
+     "R_medio": -0.49,
+     "ic95_R": [
+      -0.895,
+      -0.085
+     ],
+     "minuti_mediani": 20,
+     "usdt_medio_su_8000": -19.6
+    },
+    "BNBUSDT": {
+     "n": 45,
+     "vincenti": 0.156,
+     "R_medio": -0.871,
+     "ic95_R": [
+      -1.206,
+      -0.537
+     ],
+     "minuti_mediani": 38,
+     "usdt_medio_su_8000": -34.9
+    },
+    "DOGEUSDT": {
+     "n": 48,
+     "vincenti": 0.208,
+     "R_medio": -0.737,
+     "ic95_R": [
+      -1.109,
+      -0.365
+     ],
+     "minuti_mediani": 20,
+     "usdt_medio_su_8000": -29.5
+    },
+    "ADAUSDT": {
+     "n": 49,
+     "vincenti": 0.286,
+     "R_medio": -0.512,
+     "ic95_R": [
+      -0.923,
+      -0.102
+     ],
+     "minuti_mediani": 24,
+     "usdt_medio_su_8000": -20.5
+    },
+    "LINKUSDT": {
+     "n": 47,
+     "vincenti": 0.234,
+     "R_medio": -0.676,
+     "ic95_R": [
+      -1.074,
+      -0.279
+     ],
+     "minuti_mediani": 18,
+     "usdt_medio_su_8000": -27.0
+    }
+   },
+   "per_regime": {
+    "EXPANSION": {
+     "n": 241,
+     "vincenti": 0.27,
+     "R_medio": -0.512,
+     "ic95_R": [
+      -0.687,
+      -0.337
+     ],
+     "minuti_mediani": 20,
+     "usdt_medio_su_8000": -20.5
+    },
+    "RANGE": {
+     "n": 46,
+     "vincenti": 0.13,
+     "R_medio": -0.986,
+     "ic95_R": [
+      -1.301,
+      -0.671
+     ],
+     "minuti_mediani": 40,
+     "usdt_medio_su_8000": -39.4
+    },
+    "SHOCK": {
+     "n": 1,
+     "vincenti": 0.0,
+     "R_medio": -1.279,
+     "ic95_R": null,
+     "minuti_mediani": 3,
+     "usdt_medio_su_8000": -51.2
+    },
+    "TREND_DOWN": {
+     "n": 66,
+     "vincenti": 0.197,
+     "R_medio": -0.852,
+     "ic95_R": [
+      -1.179,
+      -0.526
+     ],
+     "minuti_mediani": 49,
+     "usdt_medio_su_8000": -34.1
+    },
+    "TREND_UP": {
+     "n": 11,
+     "vincenti": 0.091,
+     "R_medio": -1.203,
+     "ic95_R": [
+      -1.802,
+      -0.604
+     ],
+     "minuti_mediani": 4,
+     "usdt_medio_su_8000": -48.1
+    },
+    "UNCERTAIN": {
+     "n": 20,
+     "vincenti": 0.1,
+     "R_medio": -1.14,
+     "ic95_R": [
+      -1.613,
+      -0.667
+     ],
+     "minuti_mediani": 24,
+     "usdt_medio_su_8000": -45.6
+    }
+   },
+   "per_stop_su_atr15m": {
+    "stretto (<0.63 ATR)": {
+     "n": 128,
+     "vincenti": 0.281,
+     "R_medio": -0.475,
+     "ic95_R": [
+      -0.719,
+      -0.231
+     ],
+     "minuti_mediani": 15,
+     "usdt_medio_su_8000": -19.0
+    },
+    "medio": {
+     "n": 128,
+     "vincenti": 0.273,
+     "R_medio": -0.519,
+     "ic95_R": [
+      -0.763,
+      -0.275
+     ],
+     "minuti_mediani": 32,
+     "usdt_medio_su_8000": -20.7
+    },
+    "largo (>=0.89 ATR)": {
+     "n": 129,
+     "vincenti": 0.124,
+     "R_medio": -1.048,
+     "ic95_R": [
+      -1.239,
+      -0.856
+     ],
+     "minuti_mediani": 38,
+     "usdt_medio_su_8000": -41.9
+    }
+   },
+   "per_rendimento_4h_prima": {
+    "gia_sceso (<-1.34%)": {
+     "n": 128,
+     "vincenti": 0.258,
+     "R_medio": -0.574,
+     "ic95_R": [
+      -0.814,
+      -0.333
+     ],
+     "minuti_mediani": 17,
+     "usdt_medio_su_8000": -23.0
+    },
+    "intermedio": {
+     "n": 128,
+     "vincenti": 0.211,
+     "R_medio": -0.763,
+     "ic95_R": [
+      -0.996,
+      -0.531
+     ],
+     "minuti_mediani": 34,
+     "usdt_medio_su_8000": -30.5
+    },
+    "salito (>=-0.03%)": {
+     "n": 129,
+     "vincenti": 0.209,
+     "R_medio": -0.707,
+     "ic95_R": [
+      -0.928,
+      -0.485
+     ],
+     "minuti_mediani": 39,
+     "usdt_medio_su_8000": -28.3
+    }
+   }
+  },
+  "SHORT_stop_0.74%": {
+   "tutti": {
+    "n": 390,
+    "vincenti": 0.582,
+    "R_medio": 0.533,
+    "ic95_R": [
+     0.379,
+     0.686
+    ],
+    "minuti_mediani": 67,
+    "usdt_medio_su_8000": 31.5
+   },
+   "per_simbolo": {
+    "BTCUSDT": {
+     "n": 50,
+     "vincenti": 0.7,
+     "R_medio": 0.89,
+     "ic95_R": [
+      0.483,
+      1.297
+     ],
+     "minuti_mediani": 126,
+     "usdt_medio_su_8000": 52.7
+    },
+    "ETHUSDT": {
+     "n": 50,
+     "vincenti": 0.54,
+     "R_medio": 0.416,
+     "ic95_R": [
+      -0.017,
+      0.848
+     ],
+     "minuti_mediani": 66,
+     "usdt_medio_su_8000": 24.6
+    },
+    "SOLUSDT": {
+     "n": 50,
+     "vincenti": 0.58,
+     "R_medio": 0.552,
+     "ic95_R": [
+      0.128,
+      0.976
+     ],
+     "minuti_mediani": 57,
+     "usdt_medio_su_8000": 32.7
+    },
+    "XRPUSDT": {
+     "n": 48,
+     "vincenti": 0.542,
+     "R_medio": 0.406,
+     "ic95_R": [
+      -0.04,
+      0.852
+     ],
+     "minuti_mediani": 48,
+     "usdt_medio_su_8000": 24.0
+    },
+    "BNBUSDT": {
+     "n": 45,
+     "vincenti": 0.689,
+     "R_medio": 0.871,
+     "ic95_R": [
+      0.445,
+      1.297
+     ],
+     "minuti_mediani": 77,
+     "usdt_medio_su_8000": 51.6
+    },
+    "DOGEUSDT": {
+     "n": 48,
+     "vincenti": 0.583,
+     "R_medio": 0.53,
+     "ic95_R": [
+      0.085,
+      0.974
+     ],
+     "minuti_mediani": 64,
+     "usdt_medio_su_8000": 31.4
+    },
+    "ADAUSDT": {
+     "n": 50,
+     "vincenti": 0.52,
+     "R_medio": 0.314,
+     "ic95_R": [
+      -0.131,
+      0.76
+     ],
+     "minuti_mediani": 63,
+     "usdt_medio_su_8000": 18.6
+    },
+    "LINKUSDT": {
+     "n": 49,
+     "vincenti": 0.51,
+     "R_medio": 0.308,
+     "ic95_R": [
+      -0.136,
+      0.751
+     ],
+     "minuti_mediani": 61,
+     "usdt_medio_su_8000": 18.2
+    }
+   },
+   "per_regime": {
+    "EXPANSION": {
+     "n": 241,
+     "vincenti": 0.502,
+     "R_medio": 0.282,
+     "ic95_R": [
+      0.084,
+      0.481
+     ],
+     "minuti_mediani": 58,
+     "usdt_medio_su_8000": 16.7
+    },
+    "RANGE": {
+     "n": 50,
+     "vincenti": 0.62,
+     "R_medio": 0.649,
+     "ic95_R": [
+      0.222,
+      1.075
+     ],
+     "minuti_mediani": 78,
+     "usdt_medio_su_8000": 38.4
+    },
+    "SHOCK": {
+     "n": 1,
+     "vincenti": 1.0,
+     "R_medio": 1.839,
+     "ic95_R": null,
+     "minuti_mediani": 19,
+     "usdt_medio_su_8000": 108.9
+    },
+    "TREND_DOWN": {
+     "n": 67,
+     "vincenti": 0.746,
+     "R_medio": 1.047,
+     "ic95_R": [
+      0.719,
+      1.375
+     ],
+     "minuti_mediani": 82,
+     "usdt_medio_su_8000": 62.0
+    },
+    "TREND_UP": {
+     "n": 11,
+     "vincenti": 0.818,
+     "R_medio": 1.279,
+     "ic95_R": [
+      0.543,
+      2.015
+     ],
+     "minuti_mediani": 40,
+     "usdt_medio_su_8000": 75.7
+    },
+    "UNCERTAIN": {
+     "n": 20,
+     "vincenti": 0.75,
+     "R_medio": 1.065,
+     "ic95_R": [
+      0.461,
+      1.668
+     ],
+     "minuti_mediani": 78,
+     "usdt_medio_su_8000": 63.0
+    }
+   },
+   "per_stop_su_atr15m": {
+    "stretto (<0.95 ATR)": {
+     "n": 130,
+     "vincenti": 0.515,
+     "R_medio": 0.312,
+     "ic95_R": [
+      0.039,
+      0.585
+     ],
+     "minuti_mediani": 33,
+     "usdt_medio_su_8000": 18.5
+    },
+    "medio": {
+     "n": 130,
+     "vincenti": 0.477,
+     "R_medio": 0.214,
+     "ic95_R": [
+      -0.054,
+      0.482
+     ],
+     "minuti_mediani": 80,
+     "usdt_medio_su_8000": 12.7
+    },
+    "largo (>=1.34 ATR)": {
+     "n": 130,
+     "vincenti": 0.754,
+     "R_medio": 1.072,
+     "ic95_R": [
+      0.84,
+      1.304
+     ],
+     "minuti_mediani": 82,
+     "usdt_medio_su_8000": 63.5
+    }
+   },
+   "per_rendimento_4h_prima": {
+    "gia_sceso (<-1.33%)": {
+     "n": 130,
+     "vincenti": 0.562,
+     "R_medio": 0.462,
+     "ic95_R": [
+      0.192,
+      0.731
+     ],
+     "minuti_mediani": 36,
+     "usdt_medio_su_8000": 27.3
+    },
+    "intermedio": {
+     "n": 130,
+     "vincenti": 0.554,
+     "R_medio": 0.446,
+     "ic95_R": [
+      0.178,
+      0.715
+     ],
+     "minuti_mediani": 83,
+     "usdt_medio_su_8000": 26.4
+    },
+    "salito (>=-0.03%)": {
+     "n": 130,
+     "vincenti": 0.631,
+     "R_medio": 0.69,
+     "ic95_R": [
+      0.431,
+      0.95
+     ],
+     "minuti_mediani": 87,
+     "usdt_medio_su_8000": 40.9
+    }
+   }
+  },
+  "LONG_stop_0.74%": {
+   "tutti": {
+    "n": 367,
+    "vincenti": 0.134,
+    "R_medio": -0.866,
+    "ic95_R": [
+     -0.976,
+     -0.756
+    ],
+    "minuti_mediani": 54,
+    "usdt_medio_su_8000": -51.3
+   },
+   "per_simbolo": {
+    "BTCUSDT": {
+     "n": 47,
+     "vincenti": 0.064,
+     "R_medio": -1.064,
+     "ic95_R": [
+      -1.287,
+      -0.842
+     ],
+     "minuti_mediani": 80,
+     "usdt_medio_su_8000": -63.0
+    },
+    "ETHUSDT": {
+     "n": 45,
+     "vincenti": 0.111,
+     "R_medio": -0.946,
+     "ic95_R": [
+      -1.244,
+      -0.647
+     ],
+     "minuti_mediani": 53,
+     "usdt_medio_su_8000": -56.0
+    },
+    "SOLUSDT": {
+     "n": 48,
+     "vincenti": 0.167,
+     "R_medio": -0.737,
+     "ic95_R": [
+      -1.068,
+      -0.406
+     ],
+     "minuti_mediani": 38,
+     "usdt_medio_su_8000": -43.6
+    },
+    "XRPUSDT": {
+     "n": 47,
+     "vincenti": 0.213,
+     "R_medio": -0.584,
+     "ic95_R": [
+      -0.949,
+      -0.22
+     ],
+     "minuti_mediani": 33,
+     "usdt_medio_su_8000": -34.6
+    },
+    "BNBUSDT": {
+     "n": 45,
+     "vincenti": 0.067,
+     "R_medio": -1.076,
+     "ic95_R": [
+      -1.309,
+      -0.842
+     ],
+     "minuti_mediani": 73,
+     "usdt_medio_su_8000": -63.7
+    },
+    "DOGEUSDT": {
+     "n": 45,
+     "vincenti": 0.111,
+     "R_medio": -0.967,
+     "ic95_R": [
+      -1.267,
+      -0.667
+     ],
+     "minuti_mediani": 49,
+     "usdt_medio_su_8000": -57.2
+    },
+    "ADAUSDT": {
+     "n": 45,
+     "vincenti": 0.133,
+     "R_medio": -0.882,
+     "ic95_R": [
+      -1.202,
+      -0.563
+     ],
+     "minuti_mediani": 45,
+     "usdt_medio_su_8000": -52.2
+    },
+    "LINKUSDT": {
+     "n": 45,
+     "vincenti": 0.2,
+     "R_medio": -0.686,
+     "ic95_R": [
+      -1.063,
+      -0.308
+     ],
+     "minuti_mediani": 46,
+     "usdt_medio_su_8000": -40.6
+    }
+   },
+   "per_regime": {
+    "EXPANSION": {
+     "n": 235,
+     "vincenti": 0.191,
+     "R_medio": -0.661,
+     "ic95_R": [
+      -0.817,
+      -0.504
+     ],
+     "minuti_mediani": 46,
+     "usdt_medio_su_8000": -39.1
+    },
+    "RANGE": {
+     "n": 37,
+     "vincenti": 0.027,
+     "R_medio": -1.177,
+     "ic95_R": [
+      -1.346,
+      -1.008
+     ],
+     "minuti_mediani": 62,
+     "usdt_medio_su_8000": -69.7
+    },
+    "SHOCK": {
+     "n": 1,
+     "vincenti": 0.0,
+     "R_medio": -1.188,
+     "ic95_R": null,
+     "minuti_mediani": 11,
+     "usdt_medio_su_8000": -70.4
+    },
+    "TREND_DOWN": {
+     "n": 65,
+     "vincenti": 0.031,
+     "R_medio": -1.273,
+     "ic95_R": [
+      -1.425,
+      -1.12
+     ],
+     "minuti_mediani": 65,
+     "usdt_medio_su_8000": -75.3
+    },
+    "TREND_UP": {
+     "n": 11,
+     "vincenti": 0.0,
+     "R_medio": -1.271,
+     "ic95_R": [
+      -1.334,
+      -1.208
+     ],
+     "minuti_mediani": 26,
+     "usdt_medio_su_8000": -75.2
+    },
+    "UNCERTAIN": {
+     "n": 18,
+     "vincenti": 0.056,
+     "R_medio": -1.175,
+     "ic95_R": [
+      -1.547,
+      -0.804
+     ],
+     "minuti_mediani": 50,
+     "usdt_medio_su_8000": -69.6
+    }
+   },
+   "per_stop_su_atr15m": {
+    "stretto (<0.92 ATR)": {
+     "n": 122,
+     "vincenti": 0.213,
+     "R_medio": -0.591,
+     "ic95_R": [
+      -0.817,
+      -0.365
+     ],
+     "minuti_mediani": 31,
+     "usdt_medio_su_8000": -35.0
+    },
+    "medio": {
+     "n": 122,
+     "vincenti": 0.148,
+     "R_medio": -0.794,
+     "ic95_R": [
+      -0.99,
+      -0.598
+     ],
+     "minuti_mediani": 60,
+     "usdt_medio_su_8000": -47.0
+    },
+    "largo (>=1.34 ATR)": {
+     "n": 123,
+     "vincenti": 0.041,
+     "R_medio": -1.211,
+     "ic95_R": [
+      -1.33,
+      -1.091
+     ],
+     "minuti_mediani": 63,
+     "usdt_medio_su_8000": -71.7
+    }
+   },
+   "per_rendimento_4h_prima": {
+    "gia_sceso (<-1.33%)": {
+     "n": 122,
+     "vincenti": 0.197,
+     "R_medio": -0.641,
+     "ic95_R": [
+      -0.86,
+      -0.422
+     ],
+     "minuti_mediani": 22,
+     "usdt_medio_su_8000": -38.0
+    },
+    "intermedio": {
+     "n": 122,
+     "vincenti": 0.107,
+     "R_medio": -0.997,
+     "ic95_R": [
+      -1.176,
+      -0.818
+     ],
+     "minuti_mediani": 61,
+     "usdt_medio_su_8000": -59.0
+    },
+    "salito (>=0.01%)": {
+     "n": 123,
+     "vincenti": 0.098,
+     "R_medio": -0.959,
+     "ic95_R": [
+      -1.124,
+      -0.794
+     ],
+     "minuti_mediani": 64,
+     "usdt_medio_su_8000": -56.8
+    }
+   }
+  },
+  "SHORT_stop_0.91%": {
+   "tutti": {
+    "n": 371,
+    "vincenti": 0.588,
+    "R_medio": 0.596,
+    "ic95_R": [
+     0.44,
+     0.751
+    ],
+    "minuti_mediani": 85,
+    "usdt_medio_su_8000": 43.4
+   },
+   "per_simbolo": {
+    "BTCUSDT": {
+     "n": 43,
+     "vincenti": 0.721,
+     "R_medio": 0.999,
+     "ic95_R": [
+      0.575,
+      1.422
+     ],
+     "minuti_mediani": 182,
+     "usdt_medio_su_8000": 72.7
+    },
+    "ETHUSDT": {
+     "n": 48,
+     "vincenti": 0.542,
+     "R_medio": 0.468,
+     "ic95_R": [
+      0.033,
+      0.904
+     ],
+     "minuti_mediani": 89,
+     "usdt_medio_su_8000": 34.1
+    },
+    "SOLUSDT": {
+     "n": 48,
+     "vincenti": 0.625,
+     "R_medio": 0.702,
+     "ic95_R": [
+      0.27,
+      1.134
+     ],
+     "minuti_mediani": 77,
+     "usdt_medio_su_8000": 51.1
+    },
+    "XRPUSDT": {
+     "n": 48,
+     "vincenti": 0.521,
+     "R_medio": 0.396,
+     "ic95_R": [
+      -0.043,
+      0.836
+     ],
+     "minuti_mediani": 74,
+     "usdt_medio_su_8000": 28.9
+    },
+    "BNBUSDT": {
+     "n": 41,
+     "vincenti": 0.634,
+     "R_medio": 0.738,
+     "ic95_R": [
+      0.276,
+      1.2
+     ],
+     "minuti_mediani": 115,
+     "usdt_medio_su_8000": 53.7
+    },
+    "DOGEUSDT": {
+     "n": 47,
+     "vincenti": 0.617,
+     "R_medio": 0.688,
+     "ic95_R": [
+      0.254,
+      1.122
+     ],
+     "minuti_mediani": 82,
+     "usdt_medio_su_8000": 50.1
+    },
+    "ADAUSDT": {
+     "n": 50,
+     "vincenti": 0.52,
+     "R_medio": 0.383,
+     "ic95_R": [
+      -0.05,
+      0.816
+     ],
+     "minuti_mediani": 75,
+     "usdt_medio_su_8000": 27.9
+    },
+    "LINKUSDT": {
+     "n": 46,
+     "vincenti": 0.543,
+     "R_medio": 0.458,
+     "ic95_R": [
+      0.007,
+      0.908
+     ],
+     "minuti_mediani": 75,
+     "usdt_medio_su_8000": 33.3
+    }
+   },
+   "per_regime": {
+    "EXPANSION": {
+     "n": 230,
+     "vincenti": 0.483,
+     "R_medio": 0.271,
+     "ic95_R": [
+      0.07,
+      0.471
+     ],
+     "minuti_mediani": 73,
+     "usdt_medio_su_8000": 19.7
+    },
+    "RANGE": {
+     "n": 44,
+     "vincenti": 0.682,
+     "R_medio": 0.888,
+     "ic95_R": [
+      0.459,
+      1.318
+     ],
+     "minuti_mediani": 103,
+     "usdt_medio_su_8000": 64.7
+    },
+    "SHOCK": {
+     "n": 1,
+     "vincenti": 1.0,
+     "R_medio": 1.869,
+     "ic95_R": null,
+     "minuti_mediani": 69,
+     "usdt_medio_su_8000": 136.1
+    },
+    "TREND_DOWN": {
+     "n": 66,
+     "vincenti": 0.773,
+     "R_medio": 1.165,
+     "ic95_R": [
+      0.849,
+      1.481
+     ],
+     "minuti_mediani": 103,
+     "usdt_medio_su_8000": 84.8
+    },
+    "TREND_UP": {
+     "n": 11,
+     "vincenti": 0.909,
+     "R_medio": 1.594,
+     "ic95_R": [
+      1.056,
+      2.133
+     ],
+     "minuti_mediani": 41,
+     "usdt_medio_su_8000": 116.1
+    },
+    "UNCERTAIN": {
+     "n": 19,
+     "vincenti": 0.789,
+     "R_medio": 1.225,
+     "ic95_R": [
+      0.649,
+      1.802
+     ],
+     "minuti_mediani": 86,
+     "usdt_medio_su_8000": 89.2
+    }
+   },
+   "per_stop_su_atr15m": {
+    "stretto (<1.14 ATR)": {
+     "n": 124,
+     "vincenti": 0.492,
+     "R_medio": 0.292,
+     "ic95_R": [
+      0.017,
+      0.567
+     ],
+     "minuti_mediani": 43,
+     "usdt_medio_su_8000": 21.3
+    },
+    "medio": {
+     "n": 123,
+     "vincenti": 0.48,
+     "R_medio": 0.271,
+     "ic95_R": [
+      -0.001,
+      0.544
+     ],
+     "minuti_mediani": 126,
+     "usdt_medio_su_8000": 19.7
+    },
+    "largo (>=1.62 ATR)": {
+     "n": 124,
+     "vincenti": 0.79,
+     "R_medio": 1.221,
+     "ic95_R": [
+      0.998,
+      1.443
+     ],
+     "minuti_mediani": 102,
+     "usdt_medio_su_8000": 88.9
+    }
+   },
+   "per_rendimento_4h_prima": {
+    "gia_sceso (<-1.35%)": {
+     "n": 124,
+     "vincenti": 0.573,
+     "R_medio": 0.543,
+     "ic95_R": [
+      0.271,
+      0.815
+     ],
+     "minuti_mediani": 62,
+     "usdt_medio_su_8000": 39.5
+    },
+    "intermedio": {
+     "n": 123,
+     "vincenti": 0.618,
+     "R_medio": 0.687,
+     "ic95_R": [
+      0.42,
+      0.954
+     ],
+     "minuti_mediani": 109,
+     "usdt_medio_su_8000": 50.0
+    },
+    "salito (>=-0.08%)": {
+     "n": 124,
+     "vincenti": 0.573,
+     "R_medio": 0.557,
+     "ic95_R": [
+      0.289,
+      0.826
+     ],
+     "minuti_mediani": 109,
+     "usdt_medio_su_8000": 40.6
+    }
+   }
+  },
+  "LONG_stop_0.91%": {
+   "tutti": {
+    "n": 363,
+    "vincenti": 0.099,
+    "R_medio": -0.922,
+    "ic95_R": [
+     -1.019,
+     -0.826
+    ],
+    "minuti_mediani": 64,
+    "usdt_medio_su_8000": -67.1
+   },
+   "per_simbolo": {
+    "BTCUSDT": {
+     "n": 45,
+     "vincenti": 0.044,
+     "R_medio": -1.086,
+     "ic95_R": [
+      -1.278,
+      -0.895
+     ],
+     "minuti_mediani": 104,
+     "usdt_medio_su_8000": -79.1
+    },
+    "ETHUSDT": {
+     "n": 45,
+     "vincenti": 0.111,
+     "R_medio": -0.909,
+     "ic95_R": [
+      -1.205,
+      -0.614
+     ],
+     "minuti_mediani": 64,
+     "usdt_medio_su_8000": -66.2
+    },
+    "SOLUSDT": {
+     "n": 47,
+     "vincenti": 0.106,
+     "R_medio": -0.892,
+     "ic95_R": [
+      -1.169,
+      -0.614
+     ],
+     "minuti_mediani": 62,
+     "usdt_medio_su_8000": -64.9
+    },
+    "XRPUSDT": {
+     "n": 47,
+     "vincenti": 0.128,
+     "R_medio": -0.797,
+     "ic95_R": [
+      -1.093,
+      -0.502
+     ],
+     "minuti_mediani": 64,
+     "usdt_medio_su_8000": -58.1
+    },
+    "BNBUSDT": {
+     "n": 45,
+     "vincenti": 0.044,
+     "R_medio": -1.068,
+     "ic95_R": [
+      -1.257,
+      -0.88
+     ],
+     "minuti_mediani": 88,
+     "usdt_medio_su_8000": -77.8
+    },
+    "DOGEUSDT": {
+     "n": 45,
+     "vincenti": 0.089,
+     "R_medio": -0.963,
+     "ic95_R": [
+      -1.229,
+      -0.697
+     ],
+     "minuti_mediani": 62,
+     "usdt_medio_su_8000": -70.1
+    },
+    "ADAUSDT": {
+     "n": 45,
+     "vincenti": 0.133,
+     "R_medio": -0.82,
+     "ic95_R": [
+      -1.135,
+      -0.505
+     ],
+     "minuti_mediani": 52,
+     "usdt_medio_su_8000": -59.7
+    },
+    "LINKUSDT": {
+     "n": 44,
+     "vincenti": 0.136,
+     "R_medio": -0.848,
+     "ic95_R": [
+      -1.175,
+      -0.522
+     ],
+     "minuti_mediani": 62,
+     "usdt_medio_su_8000": -61.7
+    }
+   },
+   "per_regime": {
+    "EXPANSION": {
+     "n": 231,
+     "vincenti": 0.152,
+     "R_medio": -0.752,
+     "ic95_R": [
+      -0.896,
+      -0.608
+     ],
+     "minuti_mediani": 62,
+     "usdt_medio_su_8000": -54.8
+    },
+    "RANGE": {
+     "n": 37,
+     "vincenti": 0.027,
+     "R_medio": -1.107,
+     "ic95_R": [
+      -1.271,
+      -0.943
+     ],
+     "minuti_mediani": 63,
+     "usdt_medio_su_8000": -80.6
+    },
+    "SHOCK": {
+     "n": 1,
+     "vincenti": 0.0,
+     "R_medio": -1.153,
+     "ic95_R": null,
+     "minuti_mediani": 14,
+     "usdt_medio_su_8000": -83.9
+    },
+    "TREND_DOWN": {
+     "n": 65,
+     "vincenti": 0.0,
+     "R_medio": -1.282,
+     "ic95_R": [
+      -1.334,
+      -1.229
+     ],
+     "minuti_mediani": 77,
+     "usdt_medio_su_8000": -93.3
+    },
+    "TREND_UP": {
+     "n": 11,
+     "vincenti": 0.0,
+     "R_medio": -1.193,
+     "ic95_R": [
+      -1.229,
+      -1.156
+     ],
+     "minuti_mediani": 30,
+     "usdt_medio_su_8000": -86.8
+    },
+    "UNCERTAIN": {
+     "n": 18,
+     "vincenti": 0.0,
+     "R_medio": -1.253,
+     "ic95_R": [
+      -1.337,
+      -1.17
+     ],
+     "minuti_mediani": 62,
+     "usdt_medio_su_8000": -91.3
+    }
+   },
+   "per_stop_su_atr15m": {
+    "stretto (<1.13 ATR)": {
+     "n": 121,
+     "vincenti": 0.174,
+     "R_medio": -0.687,
+     "ic95_R": [
+      -0.898,
+      -0.476
+     ],
+     "minuti_mediani": 53,
+     "usdt_medio_su_8000": -50.0
+    },
+    "medio": {
+     "n": 121,
+     "vincenti": 0.099,
+     "R_medio": -0.906,
+     "ic95_R": [
+      -1.072,
+      -0.74
+     ],
+     "minuti_mediani": 79,
+     "usdt_medio_su_8000": -66.0
+    },
+    "largo (>=1.65 ATR)": {
+     "n": 121,
+     "vincenti": 0.025,
+     "R_medio": -1.174,
+     "ic95_R": [
+      -1.267,
+      -1.082
+     ],
+     "minuti_mediani": 66,
+     "usdt_medio_su_8000": -85.5
+    }
+   },
+   "per_rendimento_4h_prima": {
+    "gia_sceso (<-1.35%)": {
+     "n": 121,
+     "vincenti": 0.157,
+     "R_medio": -0.736,
+     "ic95_R": [
+      -0.939,
+      -0.534
+     ],
+     "minuti_mediani": 47,
+     "usdt_medio_su_8000": -53.6
+    },
+    "intermedio": {
+     "n": 121,
+     "vincenti": 0.091,
+     "R_medio": -0.966,
+     "ic95_R": [
+      -1.128,
+      -0.803
+     ],
+     "minuti_mediani": 67,
+     "usdt_medio_su_8000": -70.3
+    },
+    "salito (>=0.01%)": {
+     "n": 121,
+     "vincenti": 0.05,
+     "R_medio": -1.066,
+     "ic95_R": [
+      -1.188,
+      -0.943
+     ],
+     "minuti_mediani": 83,
+     "usdt_medio_su_8000": -77.6
+    }
+   }
+  }
+ }
+}
