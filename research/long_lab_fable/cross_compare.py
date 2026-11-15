@@ -28,7 +28,12 @@ from pathlib import Path
 DAY = 86_400_000
 WINDOW_MS = DAY            # Toro decide alla chiusura giornaliera: si guarda Brain nelle 24 ore successive
 MIN_N = 30
-VIEWS = ("LONG_aperto", "SHORT_aperto", "LONG_proposto_respinto", "SHORT_proposto_respinto", "NO_TRADE", "non_valutato")
+VIEWS = (
+    "LONG_aperto", "SHORT_aperto", "MISTO_aperto",
+    "LONG_proposto_respinto", "SHORT_proposto_respinto", "RIFIUTI_MISTI",
+    "APPROVATO_NON_ESEGUITO", "PROPOSTA_ESITO_IGNOTO",
+    "NO_TRADE", "RESPINTO_LATO_IGNOTO", "non_valutato",
+)
 
 
 def _day_close_ms(date: str) -> int:
@@ -39,23 +44,24 @@ def _day_close_ms(date: str) -> int:
 def _brain(journal: Path, run_id: str) -> dict:
     con = sqlite3.connect(Path(journal).resolve().as_uri() + "?mode=ro", uri=True, timeout=3)
     try:
-        rows = con.execute("SELECT kind, occurred_at_ms, payload_json FROM v3_events "
+        rows = con.execute("SELECT event_id, kind, occurred_at_ms, payload_json FROM v3_events "
                            "WHERE portfolio_id='brain' AND run_id=? ORDER BY seq", (run_id,)).fetchall()
     finally:
         con.close()
-    decisions, opens, closes = [], {}, {}
-    for kind, ts, raw in rows:
+    decisions, opens, closes, open_links = [], {}, {}, {}
+    for event_id, kind, ts, raw in rows:
         try:
             p = json.loads(raw)
         except ValueError:
             continue
         if kind == "brain_decision":
-            decisions.append((ts, p.get("symbol"), p.get("kind"), p.get("status")))
+            decisions.append((ts, p.get("symbol"), p.get("kind"), p.get("status"), p.get("rationale"), event_id))
         elif kind == "paper_open" and isinstance(p.get("position_id"), str):
             opens[p["position_id"]] = (ts, p.get("symbol"), p.get("side"))
+            open_links[p["position_id"]] = p.get("decision_event_id")
         elif kind == "paper_close" and isinstance(p.get("position_id"), str):
             closes[p["position_id"]] = (p.get("realized_pnl"), p.get("reason"))
-    return {"decisions": decisions, "opens": opens, "closes": closes}
+    return {"decisions": decisions, "opens": opens, "closes": closes, "open_links": open_links}
 
 
 def _proposals(path: Path | None) -> list:
@@ -73,30 +79,72 @@ def _proposals(path: Path | None) -> list:
 
 
 def brain_view(symbol: str, t0: int, brain: dict, proposals: list) -> dict:
+    """Confronta fatti causalmente accoppiati. Una proposta senza esito NON e' un rifiuto.
+
+    L'osservatorio delle proposte precede la verifica di rischio, quindi il lato
+    di una proposta e' noto solo se il journal contiene una decisione nello
+    STESSO (timestamp, simbolo). Un OPEN approvato ma senza fill non e' uno
+    SHORT/LONG eseguito. Le aperture con lati opposti non vengono nascoste.
+    """
     t1 = t0 + WINDOW_MS
-    opened = [(ts, side, pid) for pid, (ts, sym, side) in brain["opens"].items() if sym == symbol and t0 <= ts < t1]
-    proposed = [side for ts, sym, side in proposals if sym == symbol and t0 <= ts < t1]
+    opened = [(ts, side, pid) for pid, (ts, sym, side) in brain["opens"].items()
+              if sym == symbol and t0 <= ts < t1]
+    proposed = [(ts, side) for ts, sym, side in proposals
+                if sym == symbol and t0 <= ts < t1]
     decided = [d for d in brain["decisions"] if d[1] == symbol and t0 <= d[0] < t1]
-    if any(s == 1 for _, s, _ in opened):
+    by_ts = {}
+    for d in decided:
+        by_ts.setdefault(d[0], []).append(d)
+
+    # Lo status del journal e' l'unica conferma osservabile di un rifiuto.
+    # Se manca, non dedurre che il modello sia stato respinto dal rischio.
+    rejected = []
+    unmatched = 0
+    for ts, side in proposed:
+        matches = by_ts.get(ts, ())
+        if any(d[2] == "NO_TRADE" and d[3] in ("REJECTED", "RISK_REJECTED") for d in matches):
+            rejected.append(side)
+        elif not matches:
+            unmatched += 1
+    approved_without_fill = [
+        d for d in decided
+        if d[2] == "OPEN" and d[3] == "APPROVED"
+        and not any(oid == d[5] for _ts, _side, pid in opened
+                    for oid in [brain.get("open_links", {}).get(pid)])
+    ]
+    sides = {side for _ts, side, _pid in opened}
+    if sides == {1, -1}:
+        view = "MISTO_aperto"
+    elif sides == {1}:
         view = "LONG_aperto"
-    elif any(s == -1 for _, s, _ in opened):
+    elif sides == {-1}:
         view = "SHORT_aperto"
-    elif 1 in proposed:
+    elif approved_without_fill:
+        view = "APPROVATO_NON_ESEGUITO"
+    elif set(rejected) == {1, -1}:
+        view = "RIFIUTI_MISTI"
+    elif 1 in rejected:
         view = "LONG_proposto_respinto"
-    elif -1 in proposed:
+    elif -1 in rejected:
         view = "SHORT_proposto_respinto"
-    elif decided:
+    elif proposed:
+        view = "PROPOSTA_ESITO_IGNOTO"
+    elif any(d[2] == "NO_TRADE" and d[3] == "DRAFT" for d in decided):
         view = "NO_TRADE"
+    elif decided:
+        view = "RESPINTO_LATO_IGNOTO"
     else:
         view = "non_valutato"
     pnl = []
-    for _, side, pid in opened:
+    for _ts, side, pid in opened:
         c = brain["closes"].get(pid)
         if c and c[0] is not None:
             pnl.append({"lato": side, "pnl_usdt": float(c[0]), "uscita": c[1]})
-    return {"vista_brain": view, "decisioni_brain": len(decided), "proposte_registrate": len(proposed),
+    return {"vista_brain": view, "decisioni_brain": len(decided),
+            "proposte_registrate": len(proposed), "rifiuti_confermati": len(rejected),
+            "proposte_senza_decisione": unmatched,
+            "approvazioni_senza_fill": len(approved_without_fill),
             "esiti_brain": pnl}
-
 
 def _ci(xs: list) -> dict:
     n = len(xs)
@@ -109,7 +157,12 @@ def _ci(xs: list) -> dict:
 def groups(facts: list) -> dict:
     out = {}
     for v in VIEWS:
-        xs = [f["toro"]["R"] for f in facts if f["vista_brain"] == v and f["toro"].get("R") is not None]
+        xs = [float(f["toro"]["R"]) for f in facts
+              if f["vista_brain"] == v
+              and f["toro"].get("esito") == "eseguito_virtuale"
+              and f["toro"].get("stato") == "chiusa"
+              and type(f["toro"].get("R")) in (float, int)
+              and math.isfinite(f["toro"]["R"])]
         if len(xs) >= 2:
             out[v] = _ci(xs)
     return out
@@ -139,12 +192,14 @@ def compare(toro_dir: Path, journal: Path, run_id: str, proposals: Path | None =
             rules.append({"vista_brain": v, "scoperta": g, "validazione": w,
                           "lettura": ("Toro guadagna quando Brain " if w["R_medio"] > 0 else "Toro perde quando Brain ")
                           + v.replace("_", " ").lower()})
-    return {"versione": "cross_compare_v1", "segnali_toro": len(facts),
+    return {"versione": "cross_compare_v2", "segnali_toro": len(facts),
             "conteggio_viste": {v: sum(f["vista_brain"] == v for f in facts) for v in VIEWS},
             "fatti": facts, "ipotesi": hyp, "ipotesi_sotto_soglia": {v: g for v, g in groups(discovery).items() if g["n"] < MIN_N},
             "regole_validate": rules,
             "avvertenze": ["una regola validata e' un'evidenza statistica, non un ordine per Brain",
-                           "senza proposal_observations.jsonl le proposte respinte risultano NO_TRADE"]}
+                           "senza proposta osservata, un NO_TRADE/RISK_REJECTED e' RESPINTO_LATO_IGNOTO",
+                           "proposte e rifiuti si collegano per simbolo+timestamp; cause specifiche non registrate",
+                           "APPROVATO_NON_ESEGUITO non e' un'apertura, e un risultato causale incompleto"]}
 
 
 def main() -> None:
