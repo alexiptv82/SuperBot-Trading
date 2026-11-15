@@ -278,6 +278,10 @@ def main(argv: list[str] | None = None) -> None:
             or (args.observer is not None and target == args.observer.resolve(strict=True))):
         ap.error('output_must_be_outside_input_directories')
     rows, summary = build(db, args.run_id, candles, args.observer)
+    from research.brain_counterfactual.analysis import analyze
+    from research.brain_counterfactual.post_ai import audit
+    summary['post_ai_gap_audit'] = audit(rows)
+    summary['paired_hypotheses'] = {str(lag): analyze(rows, str(lag)) for lag in (0, 1, 3)}
     with target.open('x', encoding='utf-8') as f:
         for row in rows:
             f.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + '\n')
