@@ -147,14 +147,29 @@ def analyze(journal: Path, run_id: str, candles_dir: Path) -> list[dict]:
             except ValueError as exc:
                 cached[symbol] = (None, None, None, str(exc))
         m15, h1, h4, error = cached[symbol]
+        # A linked Brain decision precedes execution and is the correct
+        # conservative "what could the model have known?" timestamp.
+        # A missing link falls back to open time, explicitly labelled.
+        signal_ts = (
+            row["decision_ts_ms"] if row["decision_link"] == "verified"
+            else row["as_of_ms"]
+        )
         # Outcome is intentionally withheld from the observer.
         observation = observe(
-            m15, h1, bars_4h=h4, as_of_ms=row["as_of_ms"],
+            m15, h1, bars_4h=h4, as_of_ms=signal_ts,
             regime=row["regime"],
         ).as_dict()
         if error is not None:
             observation["reason"] = "offline_" + error
-        out.append({**row, "frrd": observation})
+        out.append({
+            **row,
+            "signal_ts_ms": signal_ts,
+            "observation_time_basis": (
+                "linked_brain_decision" if row["decision_link"] == "verified"
+                else "paper_open_fallback"
+            ),
+            "frrd": observation,
+        })
     return out
 
 
