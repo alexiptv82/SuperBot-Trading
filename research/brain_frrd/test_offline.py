@@ -122,12 +122,9 @@ def test_invalid_csv_header_or_nonfinite_number_cannot_be_silently_processed(tmp
     with pytest.raises(ValueError):
         offline.read_bars(bad)
     bad.write_text("open_time_ms,open,high,low,close,volume\n0,NaN,1,1,1,1\n")
-    # Parsing as Decimal succeeds, but the market view rejects non-finite
-    # values as INCERTO rather than generating directional signals.
-    rows = offline.read_bars(bad)
-    from research.brain_frrd.detector import observe
-    obs = observe(rows, rows, as_of_ms=END)
-    assert obs.state == "INCERTO"
+    # NaN must be rejected at the CSV boundary before any market signal.
+    with pytest.raises(ValueError):
+        offline.read_bars(bad)
 
 
 def test_lying_or_unlinked_decision_never_invents_a_regime(tmp_path):
