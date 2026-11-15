@@ -143,3 +143,25 @@ def test_paired_summary_keeps_unknown_side_out_of_model_score(tmp_path):
     assert stats['no_real_pnl_mixed_in'] is True
     assert stats['opening_state_counts']['APPROVED_NOT_OPENED_CAUSE_UNKNOWN'] == 1
     assert stats['model_minus_always_short_r'] == '0.0000'  # actual was short
+
+
+def test_post_ai_report_does_not_invent_reasons_for_missing_fills():
+    from research.brain_counterfactual.post_ai import audit
+    rows = [
+        {'symbol':'BTCUSDT','kind':'OPEN','status':'APPROVED','opening':{'position_id':'p1'}},
+        {'symbol':'ETHUSDT','kind':'OPEN','status':'APPROVED','opening':None},
+        {'symbol':'ETHUSDT','kind':'NO_TRADE','status':'RISK_REJECTED','opening':None},
+    ]
+    result = audit(rows, {'last_error':'cycle:ETHUSDT:risk_changed_after_ai'})
+    assert result['approved_total'] == 2
+    assert result['approved_unexecuted_reason_unknown'] == 1
+    assert result['risk_rejected_before_approval'] == 1
+    assert result['last_heartbeat_error_codes_observed'] == ['risk_changed_after_ai']
+    assert result['post_ai_rejection_reason_per_decision_known'] is False
+    assert result['last_heartbeat_is_complete_history'] is False
+
+
+def test_post_ai_rejects_nonstring_heartbeat_error():
+    from research.brain_counterfactual.post_ai import audit
+    with pytest.raises(ValueError,match='heartbeat_invalid'):
+        audit([], {'last_error':['unsafe']})
