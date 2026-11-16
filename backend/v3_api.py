@@ -719,6 +719,27 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
         raise ValueError('invalid_paths')
     router = APIRouter(prefix='/api/v3')
 
+    # Opt-in ONLY: this adds a session-gated, read-only GET. No service starts,
+    # orders, pause flags or journal writes. Without a verified trial date and
+    # explicit PAPER mode, the route does not exist.
+    arena_day = os.environ.get('V3_ARENA_TRIAL_DAY', '')
+    if (os.environ.get('V3_ARENA_READONLY_ENABLED') == '1'
+            and os.environ.get('DESK_MODE') == 'paper'
+            and os.environ.get('TRADING_MODE') == 'paper'
+            and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', arena_day)):
+        from datetime import date
+        from backend.v3.arena.trial_plan import build_trial_plan
+        from backend.v3.arena.read_router import make_arena_router
+        try:
+            arena_date = date.fromisoformat(arena_day)
+        except ValueError:
+            arena_date = None
+        if arena_date is not None:
+            arena_plans = build_trial_plan(
+                arena_date, root=Path('/opt/superbot-ai-arena-paper'))
+            router.include_router(make_arena_router(
+                require_session, arena_plans, enabled=True, nested=True))
+
     @router.get('/overview')
     def overview(response: Response, session=Depends(require_session)):
         response.headers['Cache-Control'] = 'no-store'
