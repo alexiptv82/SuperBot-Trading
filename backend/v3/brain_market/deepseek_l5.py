@@ -47,6 +47,19 @@ class DeepSeekL5Analyst(Analyst):
         self.menu, self.spending_gate, self.enabled = menu, spending_gate, enabled
         self.max_tokens = max_tokens
 
+    def _identity(self) -> str:
+        """Stable origin for the historic DeepSeek runner. Arena may override."""
+        return "deepseek"
+
+    def _response_format(self) -> dict:
+        return {"type": "json_object"}
+
+    def _request_extras(self) -> dict:
+        return {}
+
+    def _decode_output(self, obj: dict) -> dict:
+        return obj
+
     def analyze(self, context: MarketContext, open_positions: list[Mapping]) -> BrainDecision:
         if (not isinstance(context, MarketContext) or not _safe_str(context.symbol)
                 or not _safe_str(context.regime) or context.regime not in REGIMES
@@ -89,18 +102,21 @@ class DeepSeekL5Analyst(Analyst):
         if peer_positions:
             info["peer_paper_positions"] = peer_positions
         info_json = json.dumps(info, sort_keys=True)
-        sources = ["deepseek:analysis"] + [
+        provider = self._identity()
+        rationale = provider + ":analysis"
+        sources = [rationale] + [
             key + ":paper_position_observation" for key in ("falco", "toro")
             if key in peer_positions]
         payload = {
             "model": self.model, "stream": False, "max_tokens": self.max_tokens,
-            "response_format": {"type": "json_object"},
+            "response_format": self._response_format(),
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": info_json},
             ],
         }
-        body = _call(self.transport, self.spending_gate, "deepseek", self.model,
+        payload.update(self._request_extras())
+        body = _call(self.transport, self.spending_gate, provider, self.model,
                      self.enabled, payload)
         try:
             choices = body["choices"]
@@ -109,9 +125,9 @@ class DeepSeekL5Analyst(Analyst):
             choice = choices[0]
             if choice["finish_reason"] != "stop":
                 raise ValueError()
-            obj = _json_object(choice["message"]["content"])
+            obj = self._decode_output(_json_object(choice["message"]["content"]))
             if obj.get("kind") == "NO_TRADE" and set(obj) == {"kind"}:
-                return BrainDecision(kind=DecisionKind.NO_TRADE, rationale="deepseek:analysis",
+                return BrainDecision(kind=DecisionKind.NO_TRADE, rationale=rationale,
                                      sources=sources,
                                      occurred_at_ms=context.timestamp_ms)
             keys = {"kind", "side", "entry_price", "stop_price", "leverage", "confidence"}
@@ -131,14 +147,14 @@ class DeepSeekL5Analyst(Analyst):
                 symbol=context.symbol, side=obj["side"],
                 entry_price=_bounded_decimal(obj["entry_price"]),
                 stop_price=_bounded_decimal(obj["stop_price"]),
-                leverage=obj["leverage"], rationale="deepseek:analysis",
-                confidence=float(obj["confidence"]), originating_ai="deepseek",
+                leverage=obj["leverage"], rationale=rationale,
+                confidence=float(obj["confidence"]), originating_ai=provider,
                 context_hash=hashlib.sha256(info_json.encode()).hexdigest(),
                 strategy_id=obj["strategy_id"] if labelled else None,
                 strategy_origin=obj["strategy_origin"] if labelled else None,
             )
             return BrainDecision(kind=DecisionKind.OPEN, proposal=proposal,
-                                 rationale="deepseek:analysis", sources=sources,
+                                 rationale=rationale, sources=sources,
                                  occurred_at_ms=context.timestamp_ms)
         except Exception:
             raise ProviderUnavailable("invalid_model_output") from None
