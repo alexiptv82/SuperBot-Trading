@@ -46,7 +46,28 @@ export function sanitizedShadow(profileId, payload) {
       || payload.portfolio_id !== profileId || payload.mode !== 'paper'
       || !CODES.has(payload.state) || payload.initial_capital !== 2000
       || payload.source !== 'arena_independent_journal_v1'
-      || typeof payload.run_id !== 'string' || payload.run_id.length < 4) return null;
+      || typeof payload.run_id !== 'string' || !new RegExp('^brain-' + profileId + '-paper[0-9]{8}
+  // No fallback from DeepSeek's record: absent or malformed shadow data stays unknown.
+  const value = key => {
+    const v = payload[key];
+    return v === null || v === undefined || !Number.isFinite(Number(v)) ? null : v;
+  };
+  return {
+    state: payload.state, initial_capital: 2000,
+    equity: value('equity'), settled_equity: value('settled_equity'),
+    realized_pnl: value('realized_pnl'), unrealized_pnl: value('unrealized_pnl'),
+    day_pnl: value('day_pnl'), margin_in_use: value('margin_in_use'),
+    total_closed: value('total_closed'), win_rate: value('win_rate'),
+    open_count: value('open_count'),
+    open_positions: Array.isArray(payload.open_positions) ? payload.open_positions : null,
+    closed_trades: Array.isArray(payload.closed_trades) ? payload.closed_trades : null,
+    last_decision: payload.last_decision ?? null,
+    updated_ms: Number.isInteger(payload.updated_ms) ? payload.updated_ms : null,
+    source: 'arena_independent_journal_v1', run_id: payload.run_id,
+    equity_basis: payload.equity_basis ?? null,
+  };
+}
+).test(payload.run_id)) return null;
   // No fallback from DeepSeek's record: absent or malformed shadow data stays unknown.
   const value = key => {
     const v = payload[key];
