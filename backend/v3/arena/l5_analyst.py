@@ -38,7 +38,7 @@ class ArenaL5Analyst(DeepSeekL5Analyst):
     def __init__(
         self, *, provider: str, run_id: str,
         model: str, enabled: bool = False, reasoning_mode: str = "omit",
-        **kwargs: Any,
+        max_tokens: int = 2048, **kwargs: Any,
     ):
         if (type(provider) is not str or provider not in MODELS
                 or model != MODELS[provider]
@@ -46,9 +46,10 @@ class ArenaL5Analyst(DeepSeekL5Analyst):
                     r"brain-" + provider + r"-paper[0-9]{8}", run_id,
                 ) is None
                 or type(enabled) is not bool
+                or type(max_tokens) is not int or not 1024 <= max_tokens <= 8192
                 or reasoning_mode not in ("omit", "disabled")):
             raise ValueError("arena_analyst_invalid_scope")
-        super().__init__(model=model, enabled=enabled, **kwargs)
+        super().__init__(model=model, enabled=enabled, max_tokens=max_tokens, **kwargs)
         self.arena_provider = provider
         self.arena_run_id = run_id
         self.reasoning_mode = reasoning_mode
