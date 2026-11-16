@@ -43,6 +43,7 @@ class TestArenaOpenRouterTransport(TestCase):
             "minimax", allow_inference=True,
             request=lambda *a: calls.append(a),
             key_reader=lambda name: calls.append(("KEY", name)),
+            spending_gate=lambda provider: True,
         )
         with patch.dict("os.environ", {"DESK_MODE": "live"}):
             with self.assertRaisesRegex(ProviderUnavailable, "provider_disabled"):
@@ -55,6 +56,7 @@ class TestArenaOpenRouterTransport(TestCase):
             "minimax", allow_inference=True,
             request=lambda *a: calls.append(a),
             key_reader=lambda name: calls.append(name),
+            spending_gate=lambda provider: True,
         )
         with patch.dict("os.environ", {"DESK_MODE": "paper"}):
             with self.assertRaisesRegex(ProviderUnavailable, "invalid_model_payload"):
@@ -68,6 +70,20 @@ class TestArenaOpenRouterTransport(TestCase):
             with self.assertRaisesRegex(ProviderUnavailable, "invalid_model_payload"):
                 transport(bad)
         self.assertEqual(calls, [])
+
+
+    def test_missing_or_denied_budget_gate_never_reads_key(self):
+        for gate in (None, lambda provider: False):
+            calls = []
+            provider = openrouter_transport(
+                "qwen", allow_inference=True, spending_gate=gate,
+                request=lambda *args: calls.append(args),
+                key_reader=lambda p: calls.append(("secret", p)),
+            )
+            with patch.dict("os.environ", {"DESK_MODE": "paper"}):
+                with self.assertRaisesRegex(ProviderUnavailable, "budget_denied"):
+                    provider(sample_payload(MODELS["qwen"]))
+            self.assertEqual(calls, [])
 
     def test_invalid_or_unlimited_budget_fails_closed(self):
         for data in (
@@ -96,6 +112,7 @@ class TestArenaOpenRouterTransport(TestCase):
         provider = openrouter_transport(
             "qwen", allow_inference=True,
             request=request, key_reader=read_key,
+            spending_gate=lambda name: name == "qwen",
         )
         with patch.dict("os.environ", {"DESK_MODE": "paper"}):
             response = provider(sample_payload(MODELS["qwen"]))
@@ -115,6 +132,7 @@ class TestArenaOpenRouterTransport(TestCase):
         provider = openrouter_transport(
             "qwen", allow_inference=True, request=broken,
             key_reader=lambda _: "synthetic-qwen-key",
+            spending_gate=lambda provider: provider == "qwen",
         )
         with patch.dict("os.environ", {"DESK_MODE": "paper"}):
             with self.assertRaisesRegex(ProviderUnavailable, "^provider_unavailable$"):
