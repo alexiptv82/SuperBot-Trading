@@ -116,7 +116,7 @@ def catalog_snapshot():
     return symbols, listing, asof_ms
 
 
-def collect(symbols: tuple[str, ...], asof_ms: int, get):
+def collect(symbols: tuple[str, ...], asof_ms: int, get, *, on_symbol=None):
     """Fail if any historical candle is missing; never silently drop assets."""
     if (type(symbols) is not tuple or len(symbols) != SYMBOLS_TOTAL
             or len(set(symbols)) != SYMBOLS_TOTAL
@@ -148,6 +148,8 @@ def collect(symbols: tuple[str, ...], asof_ms: int, get):
             market[frame] = bars
         counters[symbol] = used
         data[symbol] = market
+        if on_symbol is not None:
+            on_symbol(symbol, used)
     if sum(counters.values()) != estimate:
         raise ValueError("PAGE_ACCOUNTING_MISMATCH")
     frozen = freeze_market_batch(
@@ -262,7 +264,10 @@ def run(mode: str) -> int:
 
     try:
         frozen, per_symbol, required = collect(
-            symbols, asof_ms, public_history
+            symbols, asof_ms, public_history,
+            on_symbol=lambda sym, pages: print(
+                "ARENA_FULL25 completed=" + sym + " pages=" + str(pages)
+                + " historical_GETs=" + str(count), flush=True),
         )
     except ValueError as exc:
         reason = str(exc)
