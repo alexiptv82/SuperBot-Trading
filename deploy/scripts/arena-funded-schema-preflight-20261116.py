@@ -249,7 +249,7 @@ def selftest() -> int:
     assert set(OUTPUT_SCHEMA["json_schema"]["schema"]["properties"]) == set(EXPECTED_NO_TRADE)
     assert OUTPUT_SCHEMA["json_schema"]["schema"]["required"] == list(EXPECTED_NO_TRADE)
     assert payload(MODELS["qwen"])["model"] == MODELS["qwen"]
-    print("ARENA_SCHEMA SELFTEST=PASS_OFFLINE_13_CHECKS")
+    print("ARENA_SCHEMA SELFTEST=PASS_OFFLINE")
     print("ARENA_SCHEMA SELFTEST api_calls=0 secrets_read=0 orders=0")
     return 0
 
