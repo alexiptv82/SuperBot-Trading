@@ -57,6 +57,9 @@ class DeepSeekL5Analyst(Analyst):
     def _request_extras(self) -> dict:
         return {}
 
+    def _system_prompt(self) -> str:
+        return SYSTEM_PROMPT
+
     def _decode_output(self, obj: dict) -> dict:
         return obj
 
@@ -111,7 +114,7 @@ class DeepSeekL5Analyst(Analyst):
             "model": self.model, "stream": False, "max_tokens": self.max_tokens,
             "response_format": self._response_format(),
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self._system_prompt()},
                 {"role": "user", "content": info_json},
             ],
         }
