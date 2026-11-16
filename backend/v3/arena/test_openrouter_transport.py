@@ -3,9 +3,6 @@ from __future__ import annotations
 
 from unittest import TestCase, main
 from unittest.mock import patch
-from pathlib import Path
-import json
-import tempfile
 
 from backend.v3.arena.openrouter_transport import (
     MODELS, _read_key, _verify_key_budget, openrouter_transport,
