@@ -88,3 +88,42 @@ L'output è un JSONL creato **solo se non esiste già** (`open('x')`) fuori dall
 - I registri controfattuali **non allenano automaticamente DeepSeek**. Una eventuale pipeline di apprendimento richiede una progettazione separata, un dataset verificato e autorizzazione.
 
 **Stato:** implementazione offline e test locali sintetici; **nessuna esecuzione sul journal VPS e nessuna analisi su candele reali completata da questo codice**, perché i dati non sono presenti nel ramo. Nessun deploy, merge, modifica dei bot o GitHub Actions.
+
+## Procedura VPS per il replay reale (senza esportare il journal)
+
+E' disponibile `research/brain_counterfactual/replay_vps.py`: uno script **separato dai servizi di trading** che l'operatore puo' eseguire manualmente tramite Termius. Il codice e' solo Python standard, senza installazione di pacchetti, senza GitHub Actions e senza modifiche ai bot.
+
+**Cosa fa:** verifica il journal Brain PAPER preesistente, crea con `sqlite3.Connection.backup` uno snapshot coerente in una directory privata `/tmp/superbot-brain-research-*`, recupera le versioni del laboratorio dallo **stesso commit GitHub immutabile**, verifica la raggiungibilita' dell'API pubblica Bitget, scarica le candele 1m di otto simboli e produce `counterfactual.jsonl` e `summary.json` *solo nella directory di ricerca*. Non invia il journal a servizi esterni: soltanto richieste GET per dati di mercato pubblici, e il download del codice dal repository GitHub dell'utente.
+
+Per proteggere il runtime si rifiuta di usare un journal mancante o un link simbolico, legge con `mode=ro`, non esegue comandi Docker/systemd, non tocca `/opt/.../journal.db` in scrittura, non usa API autenticate e non esegue ordini. La copia dei dati resta locale alla VPS sotto permessi `0700` e **non viene caricata su GitHub**.
+
+### Uso operatorio
+
+Lo script richiede l'**identificativo completo di 40 caratteri** del commit immutabile. Scaricare lo stesso file da quel commit, validare la sintassi, poi:
+
+```bash
+sudo python3 /tmp/brain-replay-vps.py --revision FULL_GIT_COMMIT_SHA
+```
+
+Il comando costruisce un rapporto sulla run `brain-v3-paper20261111` e stampa soltanto:
+
+- `BRAIN_REPLAY snapshot_decisions=...`
+- `BRAIN_REPLAY candles_BTCUSDT=...` etc., con la **copertura effettiva** e i buchi;
+- `BRAIN_REPLAY approvals=...`
+- `BRAIN_REPLAY verified_opens=...`
+- `BRAIN_REPLAY unexecuted_unknown_cause=...`
+- `BRAIN_REPLAY model_side_unknown=...`
+- `BRAIN_REPLAY paired_lag_0m/1m/3m=...`
+- `BRAIN_REPLAY summary_file=/tmp/.../summary.json`
+- `BRAIN_REPLAY RESULT=COMPLETED_WITH_COVERAGE_LIMITS`
+
+`COMPLETED_WITH_COVERAGE_LIMITS` significa **programma eseguito**, non dataset completo e non validazione statistica. Controllare `coverage`, `UNAVAILABLE`, `CENSORED` prima di interpretare le medie R. Se il download di un simbolo fallisce, l'assenza di dati viene mantenuta esplicita. Se Bitget non risponde, si interrompe senza cambiare il runtime.
+
+Per approfondire i risultati, aprire la copia privata di `summary.json` sulla VPS e condividere **soltanto un estratto o lo screenshot**, non il database intero o le credenziali. Lasciare la vecchia run PAPER intatta.
+
+Test offline aggiuntivi:
+```bash
+PYTHONPATH=. python -m pytest -q research/brain_counterfactual/test_ledger.py research/brain_counterfactual/test_replay_vps.py
+```
+
+I test dello script VPS sono **scritti ma non eseguiti** da GitHub Actions. Il replay reale deve essere confermato da output Termius; non dichiariamo di aver avuto accesso SSH alla VPS da GitHub.
