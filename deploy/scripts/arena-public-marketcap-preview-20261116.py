@@ -306,11 +306,22 @@ def selftest() -> int:
     # Reject a ticker shared by two distinct CoinGecko assets. The next
     # eligible rank is allowed to fill the candidate slot instead.
     collision = [dict(x) for x in assets]
-    collision[30]["symbol"] = "A1"
+    collision[30]["symbol"] = "A1"  # two IDs, ranks 1 and 31
     collision_result = preview(collision,contracts,ticks,now_ms=now)
-    assert collision_result["ambiguous_tickers_excluded"] == 2
+    # Count is for rows actually scanned before 23 eligible entries
+    # were collected: rank 31 is not scanned, but rank 1 is still
+    # rejected because all 250 ranking rows were checked for collisions.
+    assert collision_result["ambiguous_tickers_excluded"] == 1
     assert collision_result["candidate_crypto"][0]["market_cap_rank"] == 2
     assert collision_result["candidate_crypto"][-1]["market_cap_rank"] == 24
+    # When both colliding assets occur inside the scanned portion, both
+    # appear in the exclusion count and neither can be attributed to Bitget.
+    early_collision = [dict(x) for x in assets]
+    early_collision[1]["symbol"] = "A1"  # ranks 1 and 2
+    early_result = preview(early_collision,contracts,ticks,now_ms=now)
+    assert early_result["ambiguous_tickers_excluded"] == 2
+    assert early_result["candidate_crypto"][0]["market_cap_rank"] == 3
+    assert early_result["candidate_crypto"][-1]["market_cap_rank"] == 25
     # Bitget baseCoin is a second (exchange-owned) symbol consistency check.
     mismatch = [dict(x) for x in contracts]
     mismatch[0]["baseCoin"] = "DIFFERENT_ASSET"
