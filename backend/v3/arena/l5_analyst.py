@@ -11,32 +11,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from backend.v3.arena.openrouter_transport import MODELS
+from backend.v3.arena.openrouter_transport import (MODELS, ARENA_SCHEMA_PROPERTIES, ARENA_RESPONSE_FORMAT)
 from backend.v3.brain_market.deepseek_l5 import DeepSeekL5Analyst, SYSTEM_PROMPT
 
-_SCHEMA_PROPERTIES: dict[str, dict] = {
-    "kind": {"type": "string", "enum": ["NO_TRADE", "OPEN"]},
-    "side": {"type": "integer", "enum": [-1, 0, 1]},
-    "entry_price": {"type": "string", "maxLength": 48},
-    "stop_price": {"type": "string", "maxLength": 48},
-    "leverage": {"type": "integer", "minimum": 0, "maximum": 100},
-    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-    "strategy_id": {"type": "string", "maxLength": 64},
-    "strategy_origin": {"type": "string", "enum": ["", "library", "ai_proposed"]},
-}
-ARENA_RESPONSE_FORMAT = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "superbot_arena_brain_decision_v1",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": _SCHEMA_PROPERTIES,
-            "required": list(_SCHEMA_PROPERTIES),
-            "additionalProperties": False,
-        },
-    },
-}
 _Neutral_NO_TRADE = {
     "kind": "NO_TRADE", "side": 0, "entry_price": "0",
     "stop_price": "0", "leverage": 0, "confidence": 0,
@@ -100,7 +77,7 @@ class ArenaL5Analyst(DeepSeekL5Analyst):
         A malformed model response is deliberately *not* repaired into a trade.
         DeepSeekL5Analyst will reject it as invalid_model_output.
         """
-        if type(obj) is not dict or set(obj) != set(_SCHEMA_PROPERTIES):
+        if type(obj) is not dict or set(obj) != set(ARENA_SCHEMA_PROPERTIES):
             raise ValueError("invalid_arena_output")
         if obj["kind"] == "NO_TRADE":
             if obj != _Neutral_NO_TRADE:
