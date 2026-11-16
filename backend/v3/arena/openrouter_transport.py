@@ -51,6 +51,8 @@ ARENA_SCHEMA_PROPERTIES: dict[str, dict] = {
     "strategy_id": {"type": "string"},
     "strategy_origin": {"type": "string", "enum": ["", "library", "ai_proposed"]},
 }
+ARENA_JSON_OBJECT_FORMAT = {"type": "json_object"}
+
 ARENA_RESPONSE_FORMAT = {
     "type": "json_schema",
     "json_schema": {
@@ -166,21 +168,42 @@ def _verify_key_budget(body: dict) -> None:
 
 
 def _validate_payload(payload: Mapping, model: str) -> dict:
+    # Not every endpoint enforces JSON Schema. We only permit the provider's
+    # explicitly tested mode; regardless of mode the Brain analyst validates
+    # every value and fails closed before creating a proposal.
+    if model == MODELS["qwen"]:
+        expected_format = ARENA_RESPONSE_FORMAT
+        requires_provider_gate = True
+    elif model == MODELS["minimax"]:
+        expected_format = ARENA_JSON_OBJECT_FORMAT
+        requires_provider_gate = False
+    else:
+        raise _error("invalid_model_payload")
     if (not isinstance(payload, Mapping)
             or payload.get("model") != model
             or payload.get("stream") is not False
             or type(payload.get("max_tokens")) is not int
             or not 1 <= payload["max_tokens"] <= MAX_TOKENS
-            or payload.get("response_format") != ARENA_RESPONSE_FORMAT):
+            or payload.get("response_format") != expected_format):
         raise _error("invalid_model_payload")
     # Restrict optional parameters to an explicitly reviewed subset.
     if set(payload) - {"model", "stream", "max_tokens", "response_format",
-                       "messages", "provider", "reasoning"}:
+                       "messages", "provider", "reasoning", "temperature"}:
         raise _error("invalid_model_payload")
-    if payload.get("provider") not in (None, {"require_parameters": True}):
-        raise _error("invalid_model_payload")
-    if payload.get("reasoning") not in (None, {"enabled": False}):
-        raise _error("invalid_model_payload")
+    if requires_provider_gate:
+        if payload.get("provider") != {"require_parameters": True}:
+            raise _error("invalid_model_payload")
+        if "temperature" in payload:
+            raise _error("invalid_model_payload")
+        if payload.get("reasoning") not in (None, {"enabled": False}):
+            raise _error("invalid_model_payload")
+    else:
+        # MiniMax passed the previous json_object API test without a provider
+        # override or reasoning override. Do not silently force unsupported
+        # strict parameters again.
+        if ("provider" in payload or "reasoning" in payload
+                or payload.get("temperature") != 0):
+            raise _error("invalid_model_payload")
     forbidden = {"tools", "tool_choice", "functions", "function_call",
                  "user_api_key", "api_key", "web_search", "plugins"}
     if any(key in payload for key in forbidden):
