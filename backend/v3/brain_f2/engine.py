@@ -133,6 +133,7 @@ class BrainEngine:
         policy_mandate: Optional[dict] = None,
         policy_verifier: Optional[Callable[[dict, Any], bool]] = None,
         allowed_strategy_ids: Optional[Iterable[str]] = None,
+        arena_provider: Optional[str] = None,
     ):
         # L1: elenco chiuso degli id di biblioteca ammessi come etichetta. None/vuoto = nessuna
         # etichetta "library" viene mai scritta nel journal (le "ai_proposed" seguono la loro regola).
@@ -164,6 +165,22 @@ class BrainEngine:
         self.journal = journal
         self.portfolio_id = portfolio_id
         self.run_id = run_id
+        # Normal runs preserve their exact historic AI origin allowlist.
+        # Arena override is narrowly scoped to an isolated, named PAPER run.
+        if arena_provider is not None:
+            import re
+            if (portfolio_id != "brain" or type(arena_provider) is not str
+                    or arena_provider not in ("deepseek", "qwen", "minimax")
+                    or type(run_id) is not str
+                    or re.fullmatch(
+                        r"brain-" + arena_provider + r"-paper[0-9]{8}",
+                        run_id,
+                    ) is None):
+                raise ValueError("invalid_arena_provider_scope")
+            self.allowed_origins = frozenset({arena_provider})
+        else:
+            self.allowed_origins = _ALLOWED_ORIGINS
+        self.arena_provider = arena_provider
         self.policy_mandate = policy_mandate
         self.policy_verifier = policy_verifier
         self.open_positions: list[dict] = []
@@ -294,10 +311,12 @@ class BrainEngine:
     def _sanitize_sources(self, sources: Any) -> list[str]:
         if not isinstance(sources, list):
             return []
-        return [s for s in sources if isinstance(s, str) and s in _ALLOWED_SOURCES]
+        return [s for s in sources if isinstance(s, str) and (s in _ALLOWED_SOURCES
+                or (self.arena_provider is not None and s == self.arena_provider + ":analysis"))]
 
     def _sanitize_rationale(self, rationale: Any) -> str:
-        if not isinstance(rationale, str) or rationale not in _ALLOWED_RATIONALE:
+        if not isinstance(rationale, str) or (rationale not in _ALLOWED_RATIONALE
+                and not (self.arena_provider is not None and rationale == self.arena_provider + ":analysis")):
             return "sanitized"
         return rationale
 
@@ -330,9 +349,9 @@ class BrainEngine:
             # Reconstruct proposal with only validated fields
             prop = decision.proposal
             # Rationale: only allowlisted strings
-            rat = prop.rationale if isinstance(prop.rationale, str) and prop.rationale in _ALLOWED_RATIONALE else "sanitized"
+            rat = self._sanitize_rationale(prop.rationale)
             # Origin: only allowlisted strings
-            origin = prop.originating_ai if isinstance(prop.originating_ai, str) and prop.originating_ai in _ALLOWED_ORIGINS else None
+            origin = prop.originating_ai if isinstance(prop.originating_ai, str) and prop.originating_ai in self.allowed_origins else None
             # Context hash: only allow short hex or None
             ctx_hash = prop.context_hash if isinstance(prop.context_hash, str) and len(prop.context_hash) <= 64 and all(c in "0123456789abcdef" for c in prop.context_hash) else None
             # L1: etichetta della strategia: o valida (elenco chiuso) o scartata; non blocca mai il trade
@@ -508,6 +527,10 @@ class BrainEngine:
                 "symbol": _safe_symbol(getattr(context, "symbol", None)),
                 "regime": _safe_regime(getattr(context, "regime", None)),
             }
+            # Only new opt-in Arena runs include provider provenance. The
+            # historic DeepSeek journal schema/payload remains byte-identical.
+            if self.arena_provider is not None:
+                payload["originating_ai"] = self.arena_provider
             # L1: l'etichetta entra nel journal solo per un'apertura approvata e solo se valida; una
             # decisione senza etichetta scrive esattamente il payload di prima (stesso hash).
             prop = decision.proposal
@@ -553,7 +576,7 @@ class BrainEngine:
         # (o presente su una decisione non approvata) non si conserva.
         link_allowed = kind == DecisionKind.OPEN and status == ProposalStatus.APPROVED
         # Rationale allowlist
-        rationale = decision.rationale if isinstance(decision.rationale, str) and decision.rationale in _ALLOWED_RATIONALE else "sanitized"
+        rationale = self._sanitize_rationale(decision.rationale)
         # Sources allowlist
         sources = self._sanitize_sources(decision.sources)
         return BrainDecision(
