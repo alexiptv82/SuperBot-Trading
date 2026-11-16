@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import API from '../api';
-import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedShadow } from '../brainArenaModel';
+import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedTrial, trialTotalPnl } from '../brainArenaModel';
 
 const BLOCK = { background: '#172338', border: '1px solid #30465e', borderRadius: 16, padding: 16 };
 const MUTED = { color: '#a4b6cd', fontSize: 12 };
@@ -59,20 +59,22 @@ export default function BrainArena() {
           status.status === 'fulfilled' ? status.value.data : null,
           trades.status === 'fulfilled' ? trades.value.data : null,
         ) : null;
-    let shadow = { qwen: null, minimax: null };
+    let shadow = { deepseek: null, qwen: null, minimax: null };
     // Disabled unless the independent read-only API has been audited and deployed.
     if (process.env.REACT_APP_BRAIN_ARENA_SHADOW_API === '1') {
       try {
         const response = await API.get('/api/v3/arena', { signal });
         if (signal.aborted) return;
         shadow = {
-          qwen: sanitizedShadow('qwen', response?.data?.portfolios?.qwen),
-          minimax: sanitizedShadow('minimax', response?.data?.portfolios?.minimax),
+          deepseek: sanitizedTrial('deepseek', response?.data?.portfolios?.deepseek),
+          qwen: sanitizedTrial('qwen', response?.data?.portfolios?.qwen),
+          minimax: sanitizedTrial('minimax', response?.data?.portfolios?.minimax),
         };
       } catch (_) { /* Keep absent instead of showing stale/fake performance. */ }
     }
-    setRows({ deepseek: brain, ...shadow });
-    setWarning(brain ? null : 'Il Brain PAPER attuale non risponde. Non vengono mostrati numeri presunti.');
+    const shownBrain = shadow.deepseek || brain;
+    setRows({ deepseek: shownBrain, qwen: shadow.qwen, minimax: shadow.minimax });
+    setWarning(shownBrain ? null : 'Il Brain PAPER attuale non risponde. Non vengono mostrati numeri presunti.');
     setLoading(false);
   }, []);
 
@@ -93,9 +95,7 @@ export default function BrainArena() {
 
   const selected = ARENA_PROFILES.find(p => p.id === chosen);
   const data = rows[chosen];
-  const totalRealized = ARENA_PROFILES.every(p => rows[p.id]?.realized_pnl != null)
-    ? ARENA_PROFILES.reduce((acc, p) => acc + Number(rows[p.id].realized_pnl), 0)
-    : null;
+  const totalRealized = trialTotalPnl(rows);
   return <main style={{ background: '#0b1323', color: '#eef5ff', minHeight: '100vh', padding: '16px 12px 100px', maxWidth: 1200, margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
     <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', marginBottom: 16 }}>
       <div>
@@ -106,9 +106,9 @@ export default function BrainArena() {
       <button onClick={() => setRefresh(v => v + 1)} style={{ padding: 9, borderRadius: 10, border: '1px solid #456079', color: '#e2e8f0', background: '#172338' }}>Aggiorna</button>
     </header>
     <section role="note" style={{ ...BLOCK, marginBottom: 14, borderColor: '#365375', color: '#b6cce2', fontSize: 13 }}>
-      <strong>Anteprima non operativa.</strong> DeepSeek mostra esclusivamente dati PAPER verificati. Qwen e MiniMax
-      restano non configurati finché non esistono journal, motori di esecuzione simulata e API indipendenti.
-      Nascondere Falco/Toro nella navigazione non ne interrompe l'attività sulla VPS.
+      <strong>Anteprima non operativa.</strong> DeepSeek può mostrare lo storico PAPER esistente.
+      I tre risultati diventano confrontabili solo quando sono verificati i journal indipendenti e il T0 comune.
+      Qwen e MiniMax senza journal rimangono non configurati. Nascondere Falco e Toro nell'app non li mette in pausa.
     </section>
     {warning && <p role="alert" style={{ color: '#fda4af' }}>{warning}</p>}
     <section aria-label="Seleziona modello AI" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 15 }}>
@@ -132,7 +132,7 @@ export default function BrainArena() {
     </section>
     <div style={{ ...BLOCK, marginBottom: 14, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 7, fontSize: 12 }}>
       <span>Capitale iniziale di confronto: <strong>6.000 USDT</strong></span>
-      <span>PnL totale dei tre: <strong>{money(totalRealized)}</strong></span>
+      <span>PnL del test comune: <strong>{money(totalRealized)}</strong></span>
     </div>
     <nav aria-label="Dettagli del portafoglio" style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 12 }}>
       {PANELS.map(p => <button key={p} onClick={() => setTab(p)} aria-current={p === tab ? 'page' : undefined}
@@ -141,6 +141,9 @@ export default function BrainArena() {
           borderRadius: 11, whiteSpace: 'nowrap', cursor: 'pointer' }}>{p}</button>)}
     </nav>
     <h2 style={{ fontSize: 19, marginTop: 4 }}>{selected.title} <span style={{ ...MUTED }}>· {selected.kind}</span></h2>
+    {data?.source === 'v3_existing_brain_paper' && <div role="note" style={{ ...MUTED, marginBottom: 12 }}>
+      Storico DeepSeek precedente al test: non incluso nel PnL comparativo dei tre portafogli.
+    </div>}
     {!data ? <div role="status" style={BLOCK}>
       {loading ? 'Caricamento…' : 'Portafoglio non ancora disponibile. Nessuna operazione simulata da mostrare.'}
     </div> : <>
