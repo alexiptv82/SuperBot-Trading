@@ -53,7 +53,8 @@ def _read_key(provider: str) -> str:
             raise ValueError()
         d = CREDENTIALS.parent.stat()
         f = CREDENTIALS.stat()
-        if (not stat.S_ISDIR(d.st_mode) or stat.S_IMODE(d.st_mode) != 0o700
+        if (not stat.S_ISDIR(d.st_mode) or d.st_uid != 0
+                or stat.S_IMODE(d.st_mode) != 0o700
                 or not stat.S_ISREG(f.st_mode) or f.st_uid != 0
                 or stat.S_IMODE(f.st_mode) != 0o600):
             raise ValueError()
@@ -170,6 +171,7 @@ def openrouter_transport(
     provider: str, *, allow_inference: bool = False,
     request: Callable[[str, str, dict | None], dict] = _request,
     key_reader: Callable[[str], str] = _read_key,
+    spending_gate: Callable[[str], bool] | None = None,
 ) -> Callable[[Mapping], TransportResponse]:
     """Make a disabled-by-default callable; never touch other provider keys."""
     if provider not in MODELS or type(allow_inference) is not bool:
@@ -179,6 +181,15 @@ def openrouter_transport(
     def send(payload: Mapping) -> TransportResponse:
         if allow_inference is not True or os.environ.get("DESK_MODE") != "paper":
             raise _error("provider_disabled")
+        # Do not allow even a low-credit-limit key to be used without the
+        # isolated, per-provider daily budget gate: it may be called repeatedly.
+        if spending_gate is None or not callable(spending_gate):
+            raise _error("budget_denied")
+        try:
+            if spending_gate(provider) is not True:
+                raise _error("budget_denied")
+        except Exception:
+            raise _error("budget_denied") from None
         clean = _validate_payload(payload, model)
         try:
             key = key_reader(provider)
