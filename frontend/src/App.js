@@ -13,6 +13,7 @@ import LiveTrades from './pages/LiveTrades';
 import LivePerformance from './pages/LivePerformance';
 import BrainDashboard from './pages/BrainDashboard';
 import Overview from './pages/Overview';
+import BrainArena from './pages/BrainArena';
 import Supervisor from './pages/Supervisor';
 
 // Error boundary globale: cattura qualsiasi crash di render nell'albero React
@@ -105,7 +106,8 @@ export default function App() {
           <div style={{ paddingBottom: '75px' }}>
             <Routes>
               {/* ── Sezione PAPER (soldi simulati) ── */}
-              <Route path="/" element={<Navigate to="/overview" replace />} />
+              <Route path="/" element={<Navigate to={process.env.REACT_APP_BRAIN_ARENA_PREVIEW === '1' ? '/arena' : '/overview'} replace />} />
+              <Route path="/arena" element={<BrainArena />} />
               <Route path="/classic" element={<Dashboard />} />
               <Route path="/trades" element={<Trades />} />
               <Route path="/performance" element={<Performance />} />
