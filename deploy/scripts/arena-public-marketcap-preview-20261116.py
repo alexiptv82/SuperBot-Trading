@@ -128,6 +128,8 @@ def futures_precheck(contract: dict | None, ticker: dict | None,
     if (contract.get("symbolType") != "perpetual"
             or contract.get("symbolStatus") != "normal"
             or contract.get("quoteCoin") != "USDT"
+            or type(contract.get("baseCoin")) is not str
+            or contract["baseCoin"] + "USDT" != contract.get("symbol")
             or contract.get("symbol") != ticker.get("symbol")):
         return False
     try:
@@ -154,15 +156,26 @@ def preview(coins: object, contracts: object, tickers: object, *,
             or type(now_ms) is not int or now_ms <= 0):
         raise ValueError("INVALID_PREVIEW_INPUTS")
     ranked = rank_rows(coins)
+    # CoinGecko IDs are unique, ticker strings are NOT. If multiple ranked
+    # IDs use the same ticker, the match to one Bitget contract is ambiguous.
+    # Never silently attribute the first candidate's market cap to another.
+    ticker_ids: dict[str, set[str]] = {}
+    for coin in ranked:
+        ticker_ids.setdefault(coin["symbol"], set()).add(coin["id"])
+    ambiguous = {ticker for ticker, ids in ticker_ids.items() if len(ids) > 1}
     selected = []
     seen = set()
     excluded_non_native = 0
+    excluded_ambiguous = 0
     unavailable_on_bitget = 0
     for coin in ranked:
         if len(selected) >= CRYPTO_COUNT:
             break
         if obviously_non_native(coin):
             excluded_non_native += 1
+            continue
+        if coin["symbol"] in ambiguous:
+            excluded_ambiguous += 1
             continue
         symbol = coin["symbol"] + "USDT"
         if symbol in seen or symbol in METALS:
@@ -176,6 +189,7 @@ def preview(coins: object, contracts: object, tickers: object, *,
         selected.append({
             "coin_id": coin["id"], "symbol": symbol,
             "market_cap_rank": coin["rank"],
+            "identity_status": "SYMBOL_MATCH_ONLY_REVIEW_REQUIRED",
         })
     return {
         "schema": "arena_marketcap_preview_v1",
@@ -184,6 +198,7 @@ def preview(coins: object, contracts: object, tickers: object, *,
         "crypto_target": CRYPTO_COUNT,
         "crypto_candidates_found": len(selected),
         "obvious_non_native_excluded": excluded_non_native,
+        "ambiguous_tickers_excluded": excluded_ambiguous,
         "unavailable_or_illiquid_excluded": unavailable_on_bitget,
         "metals_reserved": list(METALS),
         "candidate_crypto": selected,
@@ -244,7 +259,7 @@ def selftest() -> int:
     symbols = [x["symbol"].upper()+"USDT" for x in assets]
     contracts = [
         {"symbol":sym,"symbolType":"perpetual",
-         "quoteCoin":"USDT","symbolStatus":"normal",
+         "quoteCoin":"USDT","baseCoin":sym[:-4],"symbolStatus":"normal",
          "minLever":"1","maxLever":"50"} for sym in symbols
     ]
     ticks = [
@@ -288,6 +303,20 @@ def selftest() -> int:
             raise AssertionError("invalid decimal accepted")
     assert obviously_non_native({"id":"pax-gold","symbol":"PAXG",
                                   "name":"PAX Gold"})
+    # Reject a ticker shared by two distinct CoinGecko assets. The next
+    # eligible rank is allowed to fill the candidate slot instead.
+    collision = [dict(x) for x in assets]
+    collision[30]["symbol"] = "A1"
+    collision_result = preview(collision,contracts,ticks,now_ms=now)
+    assert collision_result["ambiguous_tickers_excluded"] == 2
+    assert collision_result["candidate_crypto"][0]["market_cap_rank"] == 2
+    assert collision_result["candidate_crypto"][-1]["market_cap_rank"] == 24
+    # Bitget baseCoin is a second (exchange-owned) symbol consistency check.
+    mismatch = [dict(x) for x in contracts]
+    mismatch[0]["baseCoin"] = "DIFFERENT_ASSET"
+    mismatch_result = preview(assets,mismatch,ticks,now_ms=now)
+    assert mismatch_result["candidate_crypto"][0]["market_cap_rank"] == 2
+    assert mismatch_result["unavailable_or_illiquid_excluded"] >= 1
     unsupported = [dict(x) for x in assets]
     unsupported[45]["symbol"] = "Ω"
     assert preview(unsupported,contracts,ticks,now_ms=now)["crypto_candidates_found"] == 23
@@ -326,6 +355,8 @@ def probe() -> int:
     print("ARENA_CAP crypto_found="+str(result["crypto_candidates_found"])+"/23",flush=True)
     print("ARENA_CAP excluded_obvious_nonnative="+str(
         result["obvious_non_native_excluded"]),flush=True)
+    print("ARENA_CAP excluded_ambiguous_tickers="+str(
+        result["ambiguous_tickers_excluded"]),flush=True)
     print("ARENA_CAP contracts_unavailable_or_illiquid="+str(
         result["unavailable_or_illiquid_excluded"]),flush=True)
     print("ARENA_CAP metals_reserved=XAUUSDT,XAGUSDT",flush=True)
