@@ -183,6 +183,9 @@ def read_wallet(plan: WalletPlan, now_ms: int) -> dict:
         # journal under Qwen's folder must not become fake Qwen performance.
         for stored in events:
             ev = stored.event
+            if ev.kind == "brain_decision":
+                if ev.payload.get("originating_ai") != plan.provider:
+                    raise ValueError("wrong_decision_provider")
             if ev.kind == "paper_open":
                 if ev.payload.get("originating_ai") != plan.provider:
                     raise ValueError("wrong_originating_ai")
