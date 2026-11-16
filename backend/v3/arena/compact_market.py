@@ -100,12 +100,13 @@ def build_compact_market(frozen: FrozenMarketBatch,
             or type(payload) is not dict or set(payload) != set(symbols)):
         raise ValueError("INCONSISTENT_FROZEN_MARKET_DOCUMENT")
     if (set(spec.name for spec in params.timeframes) != {"15m", "1h", "4h"}
-            or params.base_timeframe != "15m"
-            or required["1m"] < 60):
+            or params.base_timeframe != "15m"):
         raise ValueError("UNSUPPORTED_BRAIN_TIMEFRAMES")
-    specs = {spec.name: spec for spec in params.timeframes}
     if any(type(n) is not int or n < 1 for n in required.values()):
         raise ValueError("INVALID_HISTORY_REQUIREMENTS")
+    if required["1m"] < 60:
+        raise ValueError("UNSUPPORTED_BRAIN_TIMEFRAMES")
+    specs = {spec.name: spec for spec in params.timeframes}
     if any(required[tf] < min_bars(specs[tf], params.indicators)
            for tf in specs):
         raise ValueError("BRAIN_HISTORY_TOO_SHORT")
