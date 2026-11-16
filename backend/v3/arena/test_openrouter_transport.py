@@ -5,7 +5,7 @@ from unittest import TestCase, main
 from unittest.mock import patch
 
 from backend.v3.arena.openrouter_transport import (
-    MODELS, ARENA_RESPONSE_FORMAT, _read_key, _verify_key_budget,
+    MODELS, ARENA_RESPONSE_FORMAT, ARENA_JSON_OBJECT_FORMAT, _read_key, _verify_key_budget,
     openrouter_transport,
 )
 from backend.v3.brain_f3.providers import ProviderUnavailable, TransportResponse
@@ -14,11 +14,12 @@ from backend.v3.brain_f3.providers import ProviderUnavailable, TransportResponse
 def sample_payload(model: str) -> dict:
     return {
         "model": model, "stream": False, "max_tokens": 256,
-        "response_format": ARENA_RESPONSE_FORMAT,
+        "response_format": ARENA_RESPONSE_FORMAT if model == MODELS["qwen"] else ARENA_JSON_OBJECT_FORMAT,
         "messages": [
             {"role": "system", "content": "Return JSON only."},
             {"role": "user", "content": '{"symbol":"BTCUSDT","regime":"UNKNOWN"}'},
         ],
+        **({"provider": {"require_parameters": True}} if model == MODELS["qwen"] else {"temperature": 0}),
     }
 
 
@@ -93,6 +94,51 @@ class TestArenaOpenRouterTransport(TestCase):
             with self.assertRaisesRegex(ProviderUnavailable, "invalid_model_payload"):
                 transport(bad_provider)
         self.assertEqual(calls, [])
+
+    def test_minimax_json_object_only_and_no_reasoning_or_provider_override(self):
+        calls = []
+        transport = openrouter_transport(
+            "minimax", allow_inference=True,
+            spending_gate=lambda _: True,
+            request=lambda *args: calls.append(args),
+            key_reader=lambda p: calls.append(("KEY", p)),
+        )
+        with patch.dict("os.environ", {"DESK_MODE": "paper"}):
+            for invalid in (
+                {"response_format": ARENA_RESPONSE_FORMAT},
+                {"provider": {"require_parameters": True}},
+                {"reasoning": {"enabled": False}},
+                {"temperature": 0.7},
+            ):
+                bad = sample_payload(MODELS["minimax"])
+                bad.update(invalid)
+                with self.subTest(invalid=invalid):
+                    with self.assertRaisesRegex(ProviderUnavailable, "invalid_model_payload"):
+                        transport(bad)
+        self.assertEqual(calls, [])
+
+    def test_minimax_can_call_its_own_key_using_proven_json_object_shape(self):
+        trace = []
+        def provider(path, key, obj):
+            trace.append((path, key, obj))
+            if path == "/key":
+                return {"data": {"limit": 2, "limit_remaining": 1.92}}
+            return {"choices": [{"message": {"content": '{"kind":"NO_TRADE"}'},
+                                 "finish_reason": "stop"}]}
+        transport = openrouter_transport(
+            "minimax", allow_inference=True,
+            spending_gate=lambda p: p == "minimax",
+            key_reader=lambda p: "private-minimax-only",
+            request=provider,
+        )
+        with patch.dict("os.environ", {"DESK_MODE": "paper"}):
+            result = transport(sample_payload(MODELS["minimax"]))
+        self.assertIsInstance(result, TransportResponse)
+        self.assertEqual([x[0] for x in trace], ["/key", "/chat/completions"])
+        self.assertEqual(trace[1][2]["response_format"], ARENA_JSON_OBJECT_FORMAT)
+        self.assertEqual(trace[1][2]["temperature"], 0)
+        self.assertNotIn("provider", trace[1][2])
+        self.assertNotIn("reasoning", trace[1][2])
 
     def test_missing_or_denied_budget_gate_never_reads_key(self):
         for gate in (None, lambda provider: False):
