@@ -7,6 +7,7 @@ The caller supplies strictly closed public candles for each missing interval.
 from __future__ import annotations
 
 from base64 import b64decode, b64encode
+from binascii import Error as Base64Error
 from pathlib import Path
 from collections.abc import Mapping
 import json
@@ -22,6 +23,7 @@ CACHE_FORMAT = "arena_research_cache_v1"
 MAX_CACHE_BYTES = 24 * 1024 * 1024
 MAX_ELAPSED_MS = 30 * 60 * 1000
 MAX_DELTA_BARS_PER_FRAME = 60
+RESEARCH_DISK_ROOT = Path("/var/lib/superbot-arena-research")
 
 
 def delta_plan(previous: FrozenMarketBatch, target_asof_ms: int) -> dict:
@@ -41,6 +43,10 @@ def delta_plan(previous: FrozenMarketBatch, target_asof_ms: int) -> dict:
             or type(doc.get("candles")) is not dict
             or set(doc["candles"]) != set(previous.symbols)):
         raise ValueError("CACHE_SCOPE_CORRUPT")
+    if (any(type(n) is not int or not 1 <= n <= 6000
+            for n in doc["required"].values())
+            or type(doc.get("source_id")) is not str):
+        raise ValueError("CACHE_BAD_REQUIREMENTS")
     result = {}
     for symbol in previous.symbols:
         missing = {}
@@ -112,6 +118,29 @@ def merge_delta(previous: FrozenMarketBatch, target_asof_ms: int,
     return result
 
 
+def _isolated_path(filename: Path) -> Path:
+    """Explicit scratch or dedicated research directory; reject bot paths."""
+    path = Path(filename)
+    if not path.is_absolute() or path.name != "arena-market-research-cache.json":
+        raise ValueError("CACHE_PATH_NOT_ISOLATED")
+    parent = path.parent
+    if not parent.is_dir() or parent.is_symlink():
+        raise ValueError("CACHE_DIRECTORY_MUST_EXIST_AND_BE_REAL")
+    # Refuse symlinks at every level of the supplied directory.
+    if parent.resolve(strict=True) != parent:
+        raise ValueError("CACHE_DIRECTORY_SYMLINK_CHAIN")
+    if not (
+        parent == RESEARCH_DISK_ROOT
+        or (parent.parent == Path("/tmp")
+            and parent.name.startswith("superbot-arena-research-")
+            and len(parent.name) <= 90)
+    ):
+        raise ValueError("CACHE_PATH_OUTSIDE_RESEARCH_ROOT")
+    if path.is_symlink():
+        raise ValueError("CACHE_SYMLINK_REJECTED")
+    return path
+
+
 def save_research_cache(snapshot: FrozenMarketBatch, filename: Path) -> None:
     """Atomic replacement in caller-owned research path, NEVER a bot path."""
     if type(snapshot) is not FrozenMarketBatch:
@@ -119,14 +148,8 @@ def save_research_cache(snapshot: FrozenMarketBatch, filename: Path) -> None:
     snapshot.verify()
     if len(snapshot.canonical_bytes) > MAX_CACHE_BYTES // 2:
         raise ValueError("CACHE_PAYLOAD_OVERSIZED")
-    path = Path(filename)
-    if not path.is_absolute() or path.name != "arena-market-research-cache.json":
-        raise ValueError("CACHE_PATH_NOT_ISOLATED")
+    path = _isolated_path(filename)
     directory = path.parent
-    if not directory.is_dir() or directory.is_symlink():
-        raise ValueError("CACHE_DIRECTORY_MUST_EXIST_AND_BE_REAL")
-    if path.is_symlink():
-        raise ValueError("CACHE_SYMLINK_REJECTED")
     envelope = {
         "schema": CACHE_FORMAT,
         "asof_ms": snapshot.asof_ms,
@@ -158,11 +181,7 @@ def save_research_cache(snapshot: FrozenMarketBatch, filename: Path) -> None:
 
 
 def load_research_cache(filename: Path) -> FrozenMarketBatch:
-    path = Path(filename)
-    if not path.is_absolute() or path.name != "arena-market-research-cache.json":
-        raise ValueError("CACHE_PATH_NOT_ISOLATED")
-    if path.is_symlink() or path.parent.is_symlink():
-        raise ValueError("CACHE_SYMLINK_REJECTED")
+    path = _isolated_path(filename)
     info = path.stat()
     if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_CACHE_BYTES:
         raise ValueError("CACHE_NOT_REGULAR_OR_TOO_LARGE")
@@ -183,5 +202,5 @@ def load_research_cache(filename: Path) -> FrozenMarketBatch:
         )
         snapshot.verify()
         return snapshot
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, Base64Error, ValueError, TypeError) as exc:
         raise ValueError("CACHE_CORRUPT_OR_UNVERIFIED") from exc
