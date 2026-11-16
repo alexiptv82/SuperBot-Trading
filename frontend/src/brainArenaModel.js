@@ -7,6 +7,7 @@ export const ARENA_PROFILES = Object.freeze([
 
 const CODES = new Set(['running', 'paused', 'halted', 'stale', 'not_started']);
 const RUN_IDS = {
+  deepseek: /^brain-deepseek-paper\d{8}$/,
   qwen: /^brain-qwen-paper\d{8}$/,
   minimax: /^brain-minimax-paper\d{8}$/,
 };
@@ -52,7 +53,7 @@ export function portfolioFromExisting(overview, status, trades) {
   };
 }
 
-export function sanitizedShadow(profileId, payload) {
+export function sanitizedTrial(profileId, payload) {
   if (!Object.prototype.hasOwnProperty.call(RUN_IDS, profileId) ||
       !payload || typeof payload !== 'object' || Array.isArray(payload) ||
       payload.portfolio_id !== profileId || payload.mode !== 'paper' ||
@@ -81,6 +82,11 @@ export function sanitizedShadow(profileId, payload) {
       payload.trial_start_ms > 0 ? payload.trial_start_ms : null,
     trial_comparable: payload.trial_comparable === true,
   };
+}
+
+export function sanitizedShadow(profileId, payload) {
+  if (profileId !== 'qwen' && profileId !== 'minimax') return null;
+  return sanitizedTrial(profileId, payload);
 }
 
 export function trialTotalPnl(portfolios) {
