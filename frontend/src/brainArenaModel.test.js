@@ -1,4 +1,4 @@
-import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedShadow } from './brainArenaModel';
+import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedShadow, sanitizedTrial, trialTotalPnl } from './brainArenaModel';
 
 test('three independent initial PAPER capital references', () => {
   expect(ARENA_PROFILES.map(x => x.id)).toEqual(['deepseek','qwen','minimax']);
@@ -53,4 +53,46 @@ test('future shadow with partial data does not fabricate PnL or positions', () =
   expect(partial.open_positions).toBeNull();
   expect(partial.closed_trades).toBeNull();
   expect(money(partial.equity)).toBe('—');
+});
+
+
+test('existing DeepSeek history never counts in a three-way trial total', () => {
+  const legacy = portfolioFromExisting({
+    generated_at_ms: 1000, portfolios: [{ id: 'brain', state: 'running', realized_pnl: '523.50' }],
+  }, null, null);
+  const start = 1794830400000;
+  const shadow = (provider, pnl) => sanitizedTrial(provider, {
+    portfolio_id: provider, mode: 'paper', state: 'running',
+    initial_capital: 2000, source: 'arena_independent_journal_v1',
+    run_id: 'brain-' + provider + '-paper20261116',
+    trial_start_ms: start, trial_comparable: true, realized_pnl: pnl,
+  });
+  const qwen = shadow('qwen', '25');
+  const minimax = shadow('minimax', '50');
+  expect(trialTotalPnl({deepseek: legacy, qwen, minimax})).toBeNull();
+  const deepseek = shadow('deepseek', '15');
+  expect(trialTotalPnl({deepseek, qwen, minimax})).toBe(90);
+  expect(trialTotalPnl({
+    deepseek: {...deepseek, trial_start_ms: start - 60_000}, qwen, minimax,
+  })).toBeNull();
+});
+
+test('old history cannot impersonate DeepSeek trial and absent values stay unknown', () => {
+  expect(sanitizedTrial('deepseek', {
+    portfolio_id: 'deepseek', mode: 'paper', state: 'running',
+    source: 'v3_existing_brain_paper', initial_capital: 2000,
+    run_id: 'brain-v3-paper20261111',
+  })).toBeNull();
+  expect(sanitizedShadow('deepseek', {})).toBeNull();
+  expect(money(false)).toBe('—');
+  expect(money('')).toBe('—');
+});
+
+test('not-started shadow is not displayed as a zero-profit wallet', () => {
+  expect(sanitizedTrial('qwen', {
+    portfolio_id:'qwen', mode:'paper', state:'not_started',
+    initial_capital:2000, source:'arena_independent_journal_v1',
+    run_id:'brain-qwen-paper20261116',
+    realized_pnl: null,
+  })).toBeNull();
 });
