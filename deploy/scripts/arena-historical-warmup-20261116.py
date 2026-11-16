@@ -49,7 +49,7 @@ def requirements() -> dict[str, int]:
 
 
 def _public_get(symbol: str, frame: str, first: int, last: int) -> list:
-    if (symbol != SYMBOL or not SAFE_SYMBOL.fullmatch(symbol)
+    if (type(symbol) is not str or not SAFE_SYMBOL.fullmatch(symbol)
             or frame not in FRAME_MS or last < first):
         raise ValueError("INVALID_PUBLIC_GET_SCOPE")
     step = FRAME_MS[frame]
@@ -87,9 +87,11 @@ def _public_get(symbol: str, frame: str, first: int, last: int) -> list:
 
 def _fetch_frame(
     frame: str, required: int, asof_ms: int,
-    get: Callable[[str, str, int, int], list]
+    get: Callable[[str, str, int, int], list], *, symbol: str = SYMBOL
 ) -> tuple[list[list], int]:
-    if frame not in FRAME_MS or type(required) is not int or not 1 <= required <= MAX_HISTORY:
+    if (frame not in FRAME_MS or type(required) is not int
+            or not 1 <= required <= MAX_HISTORY or type(symbol) is not str
+            or not SAFE_SYMBOL.fullmatch(symbol)):
         raise ValueError("INVALID_FETCH_SCOPE")
     step = FRAME_MS[frame]
     last_closed = asof_ms // step * step - step
@@ -99,7 +101,7 @@ def _fetch_frame(
     for offset in range(0, required, PAGE):
         first = first_needed + offset * step
         last = min(last_closed, first + (PAGE - 1) * step)
-        rows = get(SYMBOL, frame, first, last)
+        rows = get(symbol, frame, first, last)
         pages += 1
         if type(rows) is not list or len(rows) > 200:
             raise ValueError("INVALID_PAGE")
@@ -121,18 +123,19 @@ def _fetch_frame(
     return [collected[t] for t in sorted(collected)], pages
 
 
-def _sample(get: Callable[[str, str, int, int], list], asof_ms: int) -> tuple[str, dict, int]:
+def _sample(get: Callable[[str, str, int, int], list], asof_ms: int, *,
+            symbol: str = SYMBOL) -> tuple[str, dict, int]:
     wanted = requirements()
     dataset = {}
     calls = 0
     for frame in FRAME_MS:
-        rows, n = _fetch_frame(frame, wanted[frame], asof_ms, get)
+        rows, n = _fetch_frame(frame, wanted[frame], asof_ms, get, symbol=symbol)
         dataset[frame] = rows
         calls += n
     if calls > MAX_REQUESTS:
         raise ValueError("PUBLIC_REQUEST_BUDGET_EXCEEDED")
     frozen = freeze_market_batch(
-        {SYMBOL: dataset}, wanted, asof_ms=asof_ms,
+        {symbol: dataset}, wanted, asof_ms=asof_ms,
         source_id="bitget.v2.history-candles")
     return frozen.sha256_hex, wanted, calls
 
