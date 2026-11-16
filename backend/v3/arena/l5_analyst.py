@@ -11,7 +11,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from backend.v3.arena.openrouter_transport import (MODELS, ARENA_SCHEMA_PROPERTIES, ARENA_RESPONSE_FORMAT)
+from backend.v3.arena.openrouter_transport import (
+    MODELS, ARENA_SCHEMA_PROPERTIES, ARENA_RESPONSE_FORMAT, ARENA_JSON_OBJECT_FORMAT,
+)
 from backend.v3.brain_market.deepseek_l5 import DeepSeekL5Analyst, SYSTEM_PROMPT
 
 _Neutral_NO_TRADE = {
@@ -20,7 +22,7 @@ _Neutral_NO_TRADE = {
     "strategy_id": "", "strategy_origin": "",
 }
 ARENA_SYSTEM_PROMPT = (
-    "Return JSON only, with exactly the eight required fields. "
+    "Return valid JSON only, with exactly the eight required fields. "
     + SYSTEM_PROMPT[SYSTEM_PROMPT.index("The market object"):]
     + " JSON SCHEMA CONTRACT: return exactly all eight required fields. "
     "For NO_TRADE use kind=NO_TRADE, side=0, entry_price='0', "
@@ -48,7 +50,8 @@ class ArenaL5Analyst(DeepSeekL5Analyst):
                 ) is None
                 or type(enabled) is not bool
                 or type(max_tokens) is not int or not 1024 <= max_tokens <= 8192
-                or reasoning_mode not in ("omit", "disabled")):
+                or reasoning_mode not in ("omit", "disabled")
+                or (provider == "minimax" and reasoning_mode == "disabled")):
             raise ValueError("arena_analyst_invalid_scope")
         super().__init__(model=model, enabled=enabled, max_tokens=max_tokens, **kwargs)
         self.arena_provider = provider
@@ -59,15 +62,19 @@ class ArenaL5Analyst(DeepSeekL5Analyst):
         return self.arena_provider
 
     def _response_format(self) -> dict:
-        return ARENA_RESPONSE_FORMAT
+        return (ARENA_RESPONSE_FORMAT if self.arena_provider == "qwen"
+                else ARENA_JSON_OBJECT_FORMAT)
 
     def _system_prompt(self) -> str:
         return ARENA_SYSTEM_PROMPT
 
     def _request_extras(self) -> dict:
-        # API diagnostic already demonstrated reasoning=disabled and strict
-        # JSON for Qwen. Omit mode permits the model's default reasoning, but
-        # must be verified (including output limits) before any paid trial.
+        if self.arena_provider == "minimax":
+            # MiniMax passed json_object with temperature=0 before strict
+            # schema routing produced HTTP 400. Keep it separate from Qwen.
+            return {"temperature": 0}
+        # Qwen supports strict schema. Reasoning-off worked in the prior
+        # diagnostic; default reasoning has NOT been certified yet.
         extras: dict = {"provider": {"require_parameters": True}}
         if self.reasoning_mode == "disabled":
             extras["reasoning"] = {"enabled": False}
