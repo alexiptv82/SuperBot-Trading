@@ -21,13 +21,21 @@ SCHEMA = "arena_three_ai_common_candidate_v1"
 CLASSIFICATION = "RESEARCH_ONLY_NOT_TRADE_APPROVED"
 LANES = ("deepseek", "qwen", "minimax")
 METALS = frozenset(("XAUUSDT", "XAGUSDT"))
+COLUMN_KEYS = (
+    "tf", "close", "regime", "ema_fast_gap_bp", "ema_slow_gap_bp",
+    "ema_cross", "atr_bp", "atr_pct_rank", "rsi", "macd_hist_bp",
+    "macd_above_signal", "bb_pct_b", "bb_bandwidth", "donchian_pos",
+    "adx", "di_dir", "ema9_gap_bp", "vwap_gap_bp",
+)
+MAX_COMMON_INPUT_BYTES = 24_000
 
 # Model output is an observation, not an order or a trading contract.
 # Do not copy execution geometry out of the AI's response.
 COMMON_SYSTEM = (
     "You are comparing market opportunities for a PAPER-ONLY research audit. "
     "The user message is a time-frozen snapshot of the exact same 25 markets "
-    "that other models receive. Use ONLY that snapshot; do not add news, "
+    "that other models receive. Read each row using the columns array. "
+    "Use ONLY that snapshot; do not add news, "
     "outside prices, hindsight or candles after asof_ms. "
     "Select at most ONE best-supported candidate across all 25 markets, "
     "or select NO_TRADE. There is no obligation to trade. "
@@ -46,6 +54,7 @@ COMMON_SYSTEM = (
 @dataclass(frozen=True)
 class CommonMarketPacket:
     compact_sha256: str
+    packet_sha256: str
     canonical_market_bytes: bytes
     symbols: tuple[str, ...]
     asof_ms: int
@@ -55,7 +64,9 @@ class CommonMarketPacket:
     def verify(self) -> None:
         if (type(self.canonical_market_bytes) is not bytes
                 or sha256(self.canonical_market_bytes).hexdigest()
-                != self.compact_sha256
+                != self.packet_sha256
+                or not re.fullmatch(r"[a-f0-9]{64}", self.compact_sha256)
+                or len(self.canonical_market_bytes) > MAX_COMMON_INPUT_BYTES
                 or sha256(COMMON_SYSTEM.encode("utf-8")).hexdigest()
                 != self.policy_sha256
                 or type(self.symbols) is not tuple
@@ -71,13 +82,17 @@ class CommonMarketPacket:
         except (ValueError, UnicodeError):
             raise ValueError("ARENA_COMMON_PACKET_JSON") from None
         if (type(doc) is not dict
-                or doc.get("classification") != "PROVISIONAL_NOT_TRADE_APPROVED"
+                or doc.get("schema") != SCHEMA
+                or doc.get("classification") != CLASSIFICATION
+                or doc.get("input_compact_sha256") != self.compact_sha256
                 or doc.get("contains_trading_authorization") is not False
                 or doc.get("contains_raw_candles") is not False
                 or doc.get("asof_ms") != self.asof_ms
-                or type(doc.get("markets")) is not list
-                or tuple(x.get("symbol") for x in doc["markets"]
-                         if type(x) is dict) != self.symbols):
+                or doc.get("columns") != list(COLUMN_KEYS)
+                or type(doc.get("rows")) is not list
+                or len(doc["rows"]) != 25
+                or tuple(x[0] for x in doc["rows"]
+                         if type(x) is list and len(x) == 3) != self.symbols):
             raise ValueError("ARENA_COMMON_PACKET_SCOPE")
 
     def identical_messages(self, provider: str) -> tuple[dict, dict]:
@@ -106,14 +121,42 @@ def build_common_packet(compact: CompactMarketEvidence) -> CommonMarketPacket:
                    or x["market"].get("regime") in ("UNKNOWN", None)
                    or type(x["market"].get("timeframes")) is not list
                    or len(x["market"]["timeframes"]) != 3
-                   or any(t.get("status") != "ok"
-                          for t in x["market"]["timeframes"]
-                          if type(t) is dict)
+                   or any(type(t) is not dict or t.get("status") != "ok"
+                          for t in x["market"]["timeframes"])
                    for x in markets)):
         raise ValueError("ARENA_COMMON_MARKETS_NOT_READY")
+    rows = []
+    for market in markets:
+        view = market["market"]
+        tfs = view["timeframes"]
+        if any(type(tf) is not dict or tf.get("status") != "ok"
+               or any(key not in tf for key in COLUMN_KEYS)
+               for tf in tfs):
+            raise ValueError("ARENA_COMMON_MARKETS_NOT_READY")
+        rows.append([
+            market["symbol"], view["regime"],
+            [[tf[key] for key in COLUMN_KEYS] for tf in tfs],
+        ])
+    compressed = {
+        "schema": SCHEMA,
+        "classification": CLASSIFICATION,
+        "asof_ms": compact.asof_ms,
+        "input_compact_sha256": compact.sha256_hex,
+        "contains_raw_candles": False,
+        "contains_trading_authorization": False,
+        "columns": list(COLUMN_KEYS),
+        "rows": rows,
+    }
+    market_bytes = json.dumps(
+        compressed, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    if len(market_bytes) > MAX_COMMON_INPUT_BYTES:
+        raise ValueError("ARENA_COMMON_INPUT_TOO_LARGE")
     packet = CommonMarketPacket(
         compact_sha256=compact.sha256_hex,
-        canonical_market_bytes=compact.canonical_bytes,
+        packet_sha256=sha256(market_bytes).hexdigest(),
+        canonical_market_bytes=market_bytes,
         symbols=symbols,
         asof_ms=compact.asof_ms,
         policy_sha256=sha256(COMMON_SYSTEM.encode("utf-8")).hexdigest(),
