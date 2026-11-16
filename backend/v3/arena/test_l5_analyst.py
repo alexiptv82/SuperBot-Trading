@@ -7,7 +7,7 @@ from unittest import TestCase, main
 from unittest.mock import patch
 
 from backend.v3.arena.l5_analyst import ArenaL5Analyst
-from backend.v3.arena.openrouter_transport import MODELS, ARENA_RESPONSE_FORMAT
+from backend.v3.arena.openrouter_transport import MODELS, ARENA_RESPONSE_FORMAT, ARENA_JSON_OBJECT_FORMAT
 from backend.v3.brain_f2.contracts import DecisionKind, MarketContext
 from backend.v3.brain_f3.providers import ProviderUnavailable, TransportResponse
 from backend.v3.brain_market.params import load_default_params as load_market_params
@@ -93,7 +93,8 @@ class ArenaL5AnalystTests(TestCase):
                 self.assertEqual(result.sources, [provider + ":analysis"])
                 self.assertEqual(len(captured), 1)
                 self.assertEqual(captured[0]["model"], MODELS[provider])
-                self.assertEqual(captured[0]["response_format"], ARENA_RESPONSE_FORMAT)
+                self.assertEqual(captured[0]["response_format"],
+                                 ARENA_RESPONSE_FORMAT if provider == "qwen" else ARENA_JSON_OBJECT_FORMAT)
                 self.assertEqual(captured[0]["max_tokens"], 2048)
                 self.assertIn('"market"', captured[0]["messages"][1]["content"])
                 self.assertIn('"scoreboard"', captured[0]["messages"][1]["content"])
@@ -135,6 +136,21 @@ class ArenaL5AnalystTests(TestCase):
         b = mk("qwen", mode="omit")
         self.assertNotIn("reasoning", b._request_extras())
         self.assertEqual(b._request_extras()["provider"], {"require_parameters": True})
+
+    def test_minimax_json_object_settings_and_diagnostic_override_denied(self):
+        a = mk("minimax", mode="omit")
+        self.assertEqual(a._response_format(), ARENA_JSON_OBJECT_FORMAT)
+        self.assertEqual(a._request_extras(), {"temperature": 0})
+        with self.assertRaisesRegex(ValueError, "arena_analyst_invalid_scope"):
+            mk("minimax", mode="disabled")
+
+    def test_qwen_strict_schema_remains_isolated(self):
+        a = mk("qwen", mode="disabled")
+        self.assertEqual(a._response_format(), ARENA_RESPONSE_FORMAT)
+        self.assertEqual(a._request_extras(), {
+            "provider": {"require_parameters": True},
+            "reasoning": {"enabled": False},
+        })
 
     def test_invalid_token_size_rejected_before_calls(self):
         a = mk("minimax")
