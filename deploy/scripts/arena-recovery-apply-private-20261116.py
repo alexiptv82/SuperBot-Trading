@@ -32,6 +32,8 @@ from backend.v3.arena.incremental_cache import (
 from backend.v3.arena.recovery_gap import (
     MAX_PUBLIC_GETS, recover_gap, recovery_plan,
 )
+from backend.v3.arena.compact_market import build_compact_market
+from backend.v3.brain_market.params import load_default_params
 
 CACHE_DIR = Path("/var/lib/superbot-arena-research")
 CACHE = CACHE_DIR / "arena-market-research-cache.json"
@@ -241,6 +243,12 @@ def apply(expected_sha: str):
         # Avoid lengthy public traffic when backup capacity is exhausted.
         if len(list(CACHE_DIR.glob(".arena-backup-*.json"))) >= MAX_BACKUP_COUNT:
             raise ValueError("APPLY_BACKUP_RETENTION_LIMIT_REVIEW")
+        previous_backup = CACHE_DIR / (".arena-backup-" + old.sha256_hex + ".json")
+        if previous_backup.exists() or previous_backup.is_symlink():
+            raise ValueError("APPLY_BACKUP_NAME_ALREADY_EXISTS")
+        available_bytes = os.statvfs(CACHE_DIR)
+        if available_bytes.f_bavail * available_bytes.f_frsize < 64 * 1024 * 1024:
+            raise ValueError("APPLY_INSUFFICIENT_DISK")
         print("ARENA_APPLY mode=ONE_SHOT_PUBLIC_RESEARCH_UPDATE", flush=True)
         print("ARENA_APPLY source_SHA256=" + old.sha256_hex, flush=True)
         print("ARENA_APPLY planned_public_GETs=" + str(len(plan.pages)), flush=True)
@@ -264,11 +272,19 @@ def apply(expected_sha: str):
             raise ValueError("APPLY_FETCH_TIMEOUT")
         if int(time.time() * 1000) - target > FETCH_MAX_SECONDS * 1000:
             raise ValueError("APPLY_RESULT_EXPIRED_DURING_FETCH")
+        # Preserve the historical Brain analysis format before committing.
+        compact = build_compact_market(updated, load_default_params())
+        compact.verify()
+        for lane in ("deepseek", "qwen", "minimax"):
+            market, digest = compact.for_provider(lane)
+            if market != compact.canonical_bytes or digest != compact.sha256_hex:
+                raise ValueError("APPLY_INDICATOR_PROVIDER_MISMATCH")
         backup, replay = _commit(old, updated, CACHE, expected_sha)
         print("ARENA_APPLY public_GETs=" + str(used))
         print("ARENA_APPLY backup_file=" + str(backup))
         print("ARENA_APPLY source_SHA256=" + old.sha256_hex)
         print("ARENA_APPLY updated_SHA256=" + replay.sha256_hex)
+        print("ARENA_APPLY updated_compact_SHA256=" + compact.sha256_hex)
         print("ARENA_APPLY updated_asof_ms=" + str(replay.asof_ms))
         print("ARENA_APPLY rebase_frames=" + str(len(plan.rebased)))
         print("ARENA_APPLY classification=PROVISIONAL_NOT_TRADE_APPROVED")
