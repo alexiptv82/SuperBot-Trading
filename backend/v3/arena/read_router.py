@@ -20,8 +20,9 @@ def make_arena_router(
     plans: tuple[WalletPlan, ...],
     *,
     enabled: bool = False,
+    nested: bool = False,
 ) -> APIRouter:
-    router = APIRouter(prefix="/api/v3")
+    router = APIRouter(prefix="" if nested else "/api/v3")
     if enabled is not True:
         return router
 
