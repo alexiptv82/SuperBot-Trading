@@ -258,11 +258,12 @@ def pick_ai_shortlist(
     # Existing positions must stay in the exit-monitor scope even after
     # their symbol leaves the market-cap top 23. No duplicate entry allowed.
     monitoring = tuple(open_position_symbols)
-    candidates = set(universe.tradeable_symbols) - set(monitoring)
+    all_tradeable = set(universe.tradeable_symbols)
+    candidates = all_tradeable - set(monitoring)
     found: dict[str, SignalScreen] = {}
     for signal in signals:
         if (type(signal) is not SignalScreen
-                or signal.symbol not in candidates
+                or signal.symbol not in all_tradeable
                 or signal.symbol in found
                 or signal.side not in ("LONG", "SHORT", "NO_TRADE")
                 or type(signal.quality) is not Decimal
@@ -275,7 +276,7 @@ def pick_ai_shortlist(
         found[signal.symbol] = signal
     usable = [
         s for s in found.values()
-        if (s.side in ("LONG", "SHORT")
+        if (s.symbol in candidates and s.side in ("LONG", "SHORT")
             and s.closed_bars_only and s.contract_liquid
             and 0 <= now_ms - s.market_data_timestamp_ms <= BAR_MAX_AGE_MS)
     ]
