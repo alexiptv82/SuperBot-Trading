@@ -165,8 +165,13 @@ def read_wallet(plan: WalletPlan, now_ms: int) -> dict:
         return unknown
     try:
         journal = EventJournal(plan.journal)
-        journal.verify_chain()
         events = journal.list_run("brain", plan.run_id)
+        # A separate journal must not contain events from another provider/run.
+        chain_count, _ = journal.verify_chain()
+        if chain_count != len(events):
+            raise ValueError("foreign_events_in_isolated_db")
+        if not events and _state(plan, now_ms) == "stale":
+            raise ValueError("uninitialized_inactive_wallet")
         summary = build_summary(journal, "brain", plan.run_id)
         outcome_report = extract_outcomes(journal, "brain", plan.run_id)
         if outcome_report.skipped or len(outcome_report.outcomes) != len(summary.closed_trades):
@@ -252,6 +257,7 @@ def read_arena(
 ) -> dict:
     """Same contract for a future session-gated GET /api/v3/arena."""
     if type(plans) is not tuple or len(plans) != 3 or (
+        any(type(p) is not WalletPlan for p in plans) or
         tuple(p.provider for p in plans) != ("deepseek", "qwen", "minimax")
     ) or len({p.journal for p in plans}) != 3:
         raise ValueError("invalid_arena_plan")
