@@ -50,6 +50,7 @@ def _open(plan, *, originating_ai=None):
     _append(plan, "brain_decision", "decision.proposal0", {
         "kind": "OPEN", "status": "APPROVED", "symbol": "BTCUSDT",
         "regime": "TREND_DOWN",
+        "originating_ai": plan.provider,
     })
     _append(plan, "paper_open", "paper_open.pos0", {
         "position_id": "pos0", "symbol": "BTCUSDT", "side": -1,
