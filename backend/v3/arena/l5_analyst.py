@@ -20,8 +20,9 @@ _Neutral_NO_TRADE = {
     "strategy_id": "", "strategy_origin": "",
 }
 ARENA_SYSTEM_PROMPT = (
-    SYSTEM_PROMPT +
-    " JSON SCHEMA CONTRACT: return exactly all eight required fields. "
+    "Return JSON only, with exactly the eight required fields. "
+    + SYSTEM_PROMPT[SYSTEM_PROMPT.index("The market object"):]
+    + " JSON SCHEMA CONTRACT: return exactly all eight required fields. "
     "For NO_TRADE use kind=NO_TRADE, side=0, entry_price='0', "
     "stop_price='0', leverage=0, confidence=0, strategy_id='', "
     "strategy_origin=''. For OPEN use kind=OPEN, side=1 or -1, "
