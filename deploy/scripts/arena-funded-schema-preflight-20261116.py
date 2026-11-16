@@ -177,7 +177,16 @@ def parse_decision(result: dict) -> tuple[str, dict]:
         obj = json.loads(content)
     except ValueError:
         return "OUTPUT_NOT_JSON", meta
-    if obj != EXPECTED_NO_TRADE or type(obj) is not dict:
+    if (type(obj) is not dict or set(obj) != set(EXPECTED_NO_TRADE)
+            or obj["kind"] != "NO_TRADE"
+            or type(obj["side"]) is not int or obj["side"] != 0
+            or type(obj["entry_price"]) is not str or obj["entry_price"] != "0"
+            or type(obj["stop_price"]) is not str or obj["stop_price"] != "0"
+            or type(obj["leverage"]) is not int or obj["leverage"] != 0
+            or type(obj["confidence"]) not in (int, float)
+            or obj["confidence"] != 0
+            or type(obj["strategy_id"]) is not str or obj["strategy_id"] != ""
+            or type(obj["strategy_origin"]) is not str or obj["strategy_origin"] != ""):
         return "SCHEMA_OR_DECISION_MISMATCH", meta
     if c.get("finish_reason") != "stop":
         return "INCOMPLETE_GENERATION", meta
@@ -208,7 +217,46 @@ def payload(model: str) -> dict:
     }
 
 
+def selftest() -> int:
+    """Fully offline assertions: no file, key or internet access."""
+    fixture = lambda obj, reason="stop": {
+        "model": MODELS["qwen"],
+        "choices": [{"finish_reason": reason,
+                     "message": {"content": json.dumps(obj)}}],
+        "usage": {"prompt_tokens": 31, "completion_tokens": 18},
+    }
+    assert parse_decision(fixture(EXPECTED_NO_TRADE))[0] == "PASS_NO_TRADE_EIGHT_FIELDS"
+    assert parse_decision(fixture({**EXPECTED_NO_TRADE, "side": -1}))[0] == "SCHEMA_OR_DECISION_MISMATCH"
+    assert parse_decision(fixture({**EXPECTED_NO_TRADE, "leverage": True}))[0] == "SCHEMA_OR_DECISION_MISMATCH"
+    assert parse_decision(fixture({**EXPECTED_NO_TRADE, "entry_price": 0}))[0] == "SCHEMA_OR_DECISION_MISMATCH"
+    assert parse_decision(fixture({**EXPECTED_NO_TRADE, "extra": 1}))[0] == "SCHEMA_OR_DECISION_MISMATCH"
+    assert parse_decision(fixture(EXPECTED_NO_TRADE, "length"))[0] == "INCOMPLETE_GENERATION"
+    assert parse_decision({"choices":[{"message":{"content":"not-json"}}]})[0] == "OUTPUT_NOT_JSON"
+    assert validate_budget({"data":{"limit":2, "limit_remaining":1.50}}) == (
+        Decimal(2), Decimal("1.50")
+    )
+    for disallowed in (
+        {"data":{"limit":50,"limit_remaining":50}},
+        {"data":{"limit":2,"limit_remaining":0}},
+        {"data":{"limit":None,"limit_remaining":None}},
+        {"data":{"limit":2,"limit_remaining":2,"is_management_key":True}},
+    ):
+        try:
+            validate_budget(disallowed)
+            raise AssertionError("budget gate allowed invalid source")
+        except ValueError:
+            pass
+    assert set(OUTPUT_SCHEMA["json_schema"]["schema"]["properties"]) == set(EXPECTED_NO_TRADE)
+    assert OUTPUT_SCHEMA["json_schema"]["schema"]["required"] == list(EXPECTED_NO_TRADE)
+    assert payload(MODELS["qwen"])["model"] == MODELS["qwen"]
+    print("ARENA_SCHEMA SELFTEST=PASS_OFFLINE_13_CHECKS")
+    print("ARENA_SCHEMA SELFTEST api_calls=0 secrets_read=0 orders=0")
+    return 0
+
+
 def main() -> int:
+    if sys.argv[1:] == ["--selftest"]:
+        return selftest()
     if sys.argv[1:] != ["--probe"]:
         print("ARENA_SCHEMA RESULT=NOT_RUN_USE_PROBE_FLAG")
         return 2
