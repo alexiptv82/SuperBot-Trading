@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+"""SuperBot AI Arena: TWO explicit, bounded, non-trading API schema probes.
+
+Purpose: verify that Qwen and MiniMax can each return the exact eight-field
+Arena Brain decision schema. No live candles or account data are transmitted;
+the single synthetic NO_MARKET_DATA case must produce NO_TRADE. One paid
+request maximum per provider. No retry, no journal modification, no orders,
+no systemd/docker actions. Requires root-only keys already installed.
+"""
+from __future__ import annotations
+
+from decimal import Decimal, InvalidOperation
+import json
+import os
+from pathlib import Path
+import re
+import ssl
+import stat
+import sys
+import urllib.error
+import urllib.request
+
+SECRETS = Path("/etc/superbot-brain-ai-arena/openrouter-keys.json")
+BASE_URL = "https://openrouter.ai/api/v1"
+KEY_URL = BASE_URL + "/key"
+CHAT_URL = BASE_URL + "/chat/completions"
+MODELS = {
+    "qwen": "qwen/qwen3.7-plus",
+    "minimax": "minimax/minimax-m3.1-flash",
+}
+EXPECTED_NO_TRADE = {
+    "kind": "NO_TRADE", "side": 0,
+    "entry_price": "0", "stop_price": "0",
+    "leverage": 0, "confidence": 0,
+    "strategy_id": "", "strategy_origin": "",
+}
+OUTPUT_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "superbot_arena_brain_decision_v1",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["NO_TRADE", "OPEN"]},
+                "side": {"type": "integer", "enum": [-1, 0, 1]},
+                "entry_price": {"type": "string"},
+                "stop_price": {"type": "string"},
+                "leverage": {"type": "integer"},
+                "confidence": {"type": "number"},
+                "strategy_id": {"type": "string"},
+                "strategy_origin": {"type": "string", "enum": ["", "library", "ai_proposed"]},
+            },
+            "required": list(EXPECTED_NO_TRADE),
+            "additionalProperties": False,
+        },
+    },
+}
+MAX_KEY_USD = Decimal("2")
+MIN_REMAINING_USD = Decimal("0.10")
+MAX_COMPLETION_TOKENS = 1024
+MAX_HTTP_RESPONSE_BYTES = 100_000
+TOKEN_FMT = re.compile(r"sk-or-v1-[A-Za-z0-9_-]{16,}\Z")
+
+
+def _money(value: object) -> Decimal:
+    if type(value) not in (str, int, float):
+        raise ValueError("INVALID_BUDGET_FORMAT")
+    try:
+        num = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError("INVALID_BUDGET_FORMAT") from None
+    if not num.is_finite() or num < 0:
+        raise ValueError("INVALID_BUDGET_FORMAT")
+    return num
+
+
+def validate_budget(data: dict) -> tuple[Decimal, Decimal]:
+    details = data.get("data") if type(data) is dict else None
+    if type(details) is not dict or details.get("is_management_key"):
+        raise ValueError("INVALID_KEY_DETAILS")
+    limit = _money(details.get("limit"))
+    remaining = _money(details.get("limit_remaining"))
+    if limit > MAX_KEY_USD:
+        raise ValueError("KEY_LIMIT_EXCEEDS_2_USD")
+    if remaining < MIN_REMAINING_USD:
+        raise ValueError("INSUFFICIENT_KEY_ALLOWANCE")
+    return limit, remaining
+
+
+def read_keys() -> dict[str, str]:
+    if os.geteuid() != 0:
+        raise ValueError("ROOT_REQUIRED")
+    if SECRETS.is_symlink() or SECRETS.parent.is_symlink():
+        raise ValueError("UNSAFE_SECRET_PATH")
+    mode = SECRETS.stat()
+    folder = SECRETS.parent.stat()
+    if (not stat.S_ISREG(mode.st_mode) or mode.st_uid != 0
+            or stat.S_IMODE(mode.st_mode) != 0o600
+            or not stat.S_ISDIR(folder.st_mode) or folder.st_uid != 0
+            or stat.S_IMODE(folder.st_mode) != 0o700):
+        raise ValueError("UNSAFE_SECRET_PERMISSIONS")
+    with SECRETS.open(encoding="utf-8") as f:
+        config = json.load(f)
+    if (type(config) is not dict
+            or config.get("schema") != "brain_arena_openrouter_keys_v1"
+            or config.get("mode") != "CREDENTIALS_ONLY_NO_INFERENCE"
+            or config.get("base_url") != BASE_URL
+            or config.get("models") != MODELS):
+        raise ValueError("UNEXPECTED_CREDENTIAL_CONFIG")
+    keys = config.get("api_keys")
+    if (type(keys) is not dict or set(keys) != set(MODELS)
+            or any(type(x) is not str or not TOKEN_FMT.fullmatch(x)
+                   for x in keys.values())
+            or keys["qwen"] == keys["minimax"]):
+        raise ValueError("KEYS_NOT_INDEPENDENT")
+    return keys
+
+
+def call_api(url: str, key: str, data: dict | None = None) -> dict:
+    request = urllib.request.Request(
+        url,
+        data=None if data is None else json.dumps(
+            data, ensure_ascii=True, allow_nan=False,
+        ).encode("utf-8"),
+        method="GET" if data is None else "POST",
+        headers={
+            "Authorization": "Bearer " + key,
+            "Accept": "application/json",
+            "User-Agent": "SuperBot-Arena-Funded-Schema-Preflight/1.0",
+            **({"Content-Type": "application/json"} if data is not None else {}),
+        },
+    )
+    try:
+        with urllib.request.urlopen(
+            request, timeout=60, context=ssl.create_default_context(),
+        ) as response:
+            raw = response.read(MAX_HTTP_RESPONSE_BYTES + 1)
+    except urllib.error.HTTPError as exc:
+        # Never print provider body: it may contain partial request and secrets.
+        raise ValueError("HTTP_" + str(exc.code)) from None
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise ValueError("NETWORK_" + type(exc).__name__) from None
+    if len(raw) > MAX_HTTP_RESPONSE_BYTES:
+        raise ValueError("HTTP_RESPONSE_TOO_LARGE")
+    try:
+        result = json.loads(raw)
+    except (UnicodeDecodeError, ValueError):
+        raise ValueError("HTTP_RESPONSE_NOT_JSON") from None
+    if type(result) is not dict:
+        raise ValueError("HTTP_RESPONSE_NOT_OBJECT")
+    return result
+
+
+def parse_decision(result: dict) -> tuple[str, dict]:
+    choices = result.get("choices")
+    if type(choices) is not list or len(choices) != 1:
+        return "CHOICES_INVALID", {}
+    c = choices[0]
+    if type(c) is not dict or type(c.get("message")) is not dict:
+        return "MESSAGE_INVALID", {}
+    msg = c["message"]
+    usage = result.get("usage") or {}
+    if type(usage) is not dict:
+        usage = {}
+    meta = {
+        "model": result.get("model") if result.get("model") in MODELS.values() else "unknown",
+        "finish_reason": c.get("finish_reason"),
+        "input_tokens": usage.get("prompt_tokens") if type(usage.get("prompt_tokens")) is int else None,
+        "output_tokens": usage.get("completion_tokens") if type(usage.get("completion_tokens")) is int else None,
+        "reasoning_present": bool(msg.get("reasoning") or msg.get("reasoning_details")),
+    }
+    content = msg.get("content")
+    if type(content) is not str:
+        return "CONTENT_ABSENT", meta
+    try:
+        obj = json.loads(content)
+    except ValueError:
+        return "OUTPUT_NOT_JSON", meta
+    if obj != EXPECTED_NO_TRADE or type(obj) is not dict:
+        return "SCHEMA_OR_DECISION_MISMATCH", meta
+    if c.get("finish_reason") != "stop":
+        return "INCOMPLETE_GENERATION", meta
+    return "PASS_NO_TRADE_EIGHT_FIELDS", meta
+
+
+def payload(model: str) -> dict:
+    return {
+        "model": model,
+        "stream": False,
+        "max_completion_tokens": MAX_COMPLETION_TOKENS,
+        "reasoning": {"enabled": False},
+        "provider": {"require_parameters": True},
+        "response_format": OUTPUT_SCHEMA,
+        "messages": [
+            {"role": "system", "content": (
+                "Lab-only JSON validation. No market data exists. Return exactly "
+                "the eight JSON fields from the schema. Always select NO_TRADE. "
+                "Never invent market data, and never give instructions to trade."
+            )},
+            {"role": "user", "content": (
+                "SYNTHETIC TEST: tickers, prices, candles, timeframes, risk and "
+                "volume are all absent. Return NO_TRADE with zeros for side, "
+                "entry_price, stop_price, leverage, confidence; empty strings "
+                "for strategy_id and strategy_origin."
+            )},
+        ],
+    }
+
+
+def main() -> int:
+    if sys.argv[1:] != ["--probe"]:
+        print("ARENA_SCHEMA RESULT=NOT_RUN_USE_PROBE_FLAG")
+        return 2
+    try:
+        keys = read_keys()
+    except (ValueError, OSError, TypeError, KeyError) as exc:
+        print("ARENA_SCHEMA RESULT=NOT_RUN_" + type(exc).__name__)
+        return 2
+    print("=== Brain AI Arena — strict JSON schema test ===", flush=True)
+    print("ARENA_SCHEMA paid_requests_max=2 (one Qwen and one MiniMax)")
+    print("ARENA_SCHEMA no_market_or_account_data_sent=YES")
+    print("ARENA_SCHEMA no_orders_no_journals_no_services=YES")
+    try:
+        confirmation = input("Autorizzi massimo DUE piccole chiamate API a pagamento? Scrivi SI: ")
+    except (EOFError, KeyboardInterrupt):
+        print("\nARENA_SCHEMA RESULT=CANCELLED")
+        return 130
+    if confirmation.strip() != "SI":
+        print("ARENA_SCHEMA RESULT=CANCELLED")
+        return 0
+    passed = 0
+    for provider, model in MODELS.items():
+        try:
+            limit, before = validate_budget(call_api(KEY_URL, keys[provider]))
+            print(f"ARENA_SCHEMA {provider.upper()}_key_limit_usd={limit}"
+                  f" remaining_before_usd={before}", flush=True)
+            # No automatic retry on failed/uncertain billable request.
+            result = call_api(CHAT_URL, keys[provider], payload(model))
+            status, meta = parse_decision(result)
+            # Summarize only numeric metadata; never display model text.
+            print(f"ARENA_SCHEMA {provider.upper()}={status}", flush=True)
+            print(f"ARENA_SCHEMA {provider.upper()}_meta="
+                  + json.dumps(meta, sort_keys=True, ensure_ascii=True), flush=True)
+            if status == "PASS_NO_TRADE_EIGHT_FIELDS":
+                passed += 1
+        except ValueError as exc:
+            code = str(exc)
+            if re.fullmatch("[A-Z0-9_]+", code) is None:
+                code = type(exc).__name__.upper()
+            print(f"ARENA_SCHEMA {provider.upper()}=FAILED_{code}", flush=True)
+    print("ARENA_SCHEMA passed=" + str(passed) + "/2")
+    print("ARENA_SCHEMA orders=0 services_changed=0")
+    print("ARENA_SCHEMA RESULT=" + (
+        "BOTH_EIGHT_FIELD_MODELS_VERIFIED_NO_DEPLOY" if passed == 2
+        else "REVIEW_MODEL_RESULTS_NO_DEPLOY"
+    ), flush=True)
+    return 0 if passed == 2 else 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
