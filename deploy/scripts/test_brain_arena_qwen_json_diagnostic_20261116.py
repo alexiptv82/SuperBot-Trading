@@ -48,7 +48,7 @@ class QwenDiagnosticTests(unittest.TestCase):
             "usage":{"prompt_tokens":70,"completion_tokens":20},
         })
         self.assertEqual(status, "PASS_NO_TRADE_JSON")
-        self.assertEqual(meta["content_chars"], 59 if False else meta["content_chars"])
+        self.assertGreater(meta["content_chars"], 20)
         self.assertEqual(meta["output_tokens"], 20)
 
     def test_invalid_json_reports_only_safe_metadata(self):
