@@ -11,6 +11,12 @@ const PAPER_TABS = [
   { path: '/performance', icon: '🏆', label: 'Performance' },
 ];
 
+// Anteprima AI Arena: solo navigazione PAPER, non mette in pausa Falco/Toro.
+const ARENA_PREVIEW_TABS = [
+  { path: '/arena', icon: '🧠', label: 'AI Arena' },
+  { path: '/supervisor', icon: '🛰️', label: 'Agenti' },
+];
+
 // Tab per modalità LIVE
 const LIVE_TABS = [
   { path: '/live',             icon: '📊', label: 'Dashboard' },
@@ -24,7 +30,7 @@ export default function NavBar({ onLogout }) {
   const { mode, toggleMode } = useAppMode();
 
   const isLive = mode === 'live';
-  const tabs = isLive ? LIVE_TABS : PAPER_TABS;
+  const tabs = isLive ? LIVE_TABS : (process.env.REACT_APP_BRAIN_ARENA_PREVIEW === '1' ? ARENA_PREVIEW_TABS : PAPER_TABS);
 
   const handleToggle = () => {
     toggleMode();
