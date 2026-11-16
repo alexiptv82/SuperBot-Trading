@@ -34,6 +34,7 @@ MAX_SPREAD_BPS = Decimal("30")
 MAX_AGE_MS = 3 * 60 * 1000
 MAX_BODY = 1_000_000
 SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}$")
+ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,99}$")
 # Guards against OBVIOUS non-native entries only. Dynamic category
 # verification (stablecoin/wrapped/tokenized RWA) is still mandatory.
 BLOCK_IDS = frozenset({
@@ -82,11 +83,14 @@ def rank_rows(body: object) -> list[dict]:
         name = row.get("name")
         rank = row.get("market_cap_rank")
         cap = row.get("market_cap")
-        if (type(asset_id) is not str or not 1 <= len(asset_id) <= 100
+        if (type(asset_id) is not str or ID_RE.fullmatch(asset_id) is None
                 or type(name) is not str or not 1 <= len(name) <= 100
-                or type(symbol) is not str or not SYMBOL_RE.fullmatch(symbol.upper())
                 or type(rank) is not int or rank < 1 or rank > 20000):
             raise ValueError("INVALID_RANKED_ASSET")
+        if type(symbol) is not str or SYMBOL_RE.fullmatch(symbol.upper()) is None:
+            # Unsupported exchange ticker format does not invalidate other
+            # market-cap ranking rows; it can never become a trade candidate.
+            continue
         try:
             cap_num = decimal(cap)
         except ValueError:
@@ -284,6 +288,9 @@ def selftest() -> int:
             raise AssertionError("invalid decimal accepted")
     assert obviously_non_native({"id":"pax-gold","symbol":"PAXG",
                                   "name":"PAX Gold"})
+    unsupported = [dict(x) for x in assets]
+    unsupported[45]["symbol"] = "Ω"
+    assert preview(unsupported,contracts,ticks,now_ms=now)["crypto_candidates_found"] == 23
     print("ARENA_CAP SELFTEST=PASS_OFFLINE")
     print("ARENA_CAP SELFTEST paid_ai_calls=0 public_GET_calls=0 orders=0")
     return 0
