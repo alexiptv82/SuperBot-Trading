@@ -94,6 +94,7 @@ class SignalScreen:
 @dataclass(frozen=True)
 class ScanResult:
     watched_symbols: tuple[str, ...]
+    exit_monitor_symbols: tuple[str, ...]
     ai_shortlist: tuple[str, ...]
     bullish_candidates: tuple[str, ...]
     bearish_candidates: tuple[str, ...]
@@ -234,6 +235,7 @@ def pick_ai_shortlist(
     *,
     now_ms: int,
     slots: int = DEFAULT_AI_SHORTLIST,
+    open_position_symbols: tuple[str, ...] = (),
 ) -> ScanResult:
     """One deterministic shortlist, shared by all three AI runners.
 
@@ -246,10 +248,17 @@ def pick_ai_shortlist(
             or type(signals) is not tuple
             or type(now_ms) is not int or now_ms <= 0
             or type(slots) is not int or not 1 <= slots <= UNIVERSE_SLOTS
+            or type(open_position_symbols) is not tuple
+            or any(type(s) is not str or SYMBOL.fullmatch(s) is None
+                   for s in open_position_symbols)
+            or len(set(open_position_symbols)) != len(open_position_symbols)
             or universe.mode != "PAPER_OFFLINE_READONLY"
             or not 0 <= now_ms - universe.asof_ms <= CONTRACT_MAX_AGE_MS):
         raise ValueError("invalid_scan_request")
-    candidates = set(universe.tradeable_symbols)
+    # Existing positions must stay in the exit-monitor scope even after
+    # their symbol leaves the market-cap top 23. No duplicate entry allowed.
+    monitoring = tuple(open_position_symbols)
+    candidates = set(universe.tradeable_symbols) - set(monitoring)
     found: dict[str, SignalScreen] = {}
     for signal in signals:
         if (type(signal) is not SignalScreen
@@ -284,6 +293,7 @@ def pick_ai_shortlist(
         raise ValueError("duplicate_selected_signal")
     return ScanResult(
         watched_symbols=tuple(x.symbol for x in universe.markets),
+        exit_monitor_symbols=monitoring,
         ai_shortlist=tuple(s.symbol for s in selected),
         bullish_candidates=tuple(s.symbol for s in selected if s.side == "LONG"),
         bearish_candidates=tuple(s.symbol for s in selected if s.side == "SHORT"),
