@@ -77,3 +77,41 @@ Istruzione di lettura Termius sul `summary.json` e sul `counterfactual.jsonl` de
 - Test successivo ancora non fatto: misurare se Brain seleziona **tempi/simboli** migliori rispetto a ingressi di controllo, appaiando i limiti di capitale, le posizioni contemporanee e il regime. I confronti `sempre SHORT nello stesso timestamp` non testano tale capacita'.
 
 L'esito resta **esplorativo, PAPER, offline, nessuna modifica operativa**.
+
+## Terzo screenshot VPS — 16 novembre, ore 07:20 Europe/Rome: LONG spiegano il delta
+
+**Evidenza nuova, verificata visivamente in Termius**, sui medesimi file `summary.json` e `counterfactual.jsonl` e non su una nuova run.
+
+### Due LONG reali, due SHORT solo virtuali
+
+- LINKUSDT, decisione 13/11 15:00 UTC: LONG simulato `-1.1884 R` (stop dopo 14 minuti), SHORT ipotetico `+1.8390 R` (TP dopo 25 minuti). PnL realizzato PAPER LONG **−83,49090849 USDT**.
+- BTCUSDT, decisione 13/11 22:00 UTC: LONG simulato `-1.1884 R` (stop dopo 65 minuti), SHORT ipotetico `+1.8390 R` (TP dopo 266 minuti). PnL realizzato PAPER LONG **−53,92702358 USDT**.
+- PnL reale dei due LONG: **−137,41793207 USDT**, pari a −137,42 USDT arrotondati.
+- Con ritardo virtuale di 1 minuto, dei **34 confronti completi**: 32 SHORT reali `Brain_R=0.4192` e `Sempre_SHORT_R=0.4192`; 2 LONG reali `Brain_R=-1.1884` e `Sempre_SHORT_R=1.8390`. Da questi soltanto deriva `model_minus_always_short_R = 2*(-1.1884 - 1.8390)/34 = -0.17808 ` (~−0,1781 R).
+- Ritardo 3 minuti: SHORT n=32 `Brain_R=0.5138`, LONG n=2 `Brain_R=-1.1884`, SHORT virtuale per i due LONG `+1.8390`. Uguale decomposizione del delta. Ritardo 0 minuti: LONG n=2 stessi valori; la parte SHORT non e' completamente visibile nello screenshot.
+- Il `R` e' su **stop virtuale fisso 0,74%, TP 2R e costi prefissati**. Non e' il rischio reale per trade ne' prova di eseguibilita' dell'alternativa SHORT.
+
+### Controfattuali per classe di decisione (ritardo 1 minuto, entrambi i lati risolti)
+
+| Tipo di decisione | n | LONG virtuale, R medio | SHORT virtuale, R medio |
+| --- | ---: | ---: | ---: |
+| `NO_TRADE/DRAFT` | 101 | −0,8589 | +0,8193 |
+| `NO_TRADE/REJECTED` | 2 | −1,1884 | +0,3245 |
+| `NO_TRADE/RISK_REJECTED` | 237 | −0,4736 | +0,3692 |
+| `OPEN/APPROVED` | 56 | −0,9723 | +0,7572 |
+
+**Importante:** per NO_TRADE il simulatore produce *entrambe* le direzioni, ma non registra quale avrebbe scelto DeepSeek. Non chiamare questi R profitti persi o guadagni reali; simulazioni sovrapposte, senza slot, limiti risk/guard o esecuzione reale.
+
+### Nota critica su confronto Opus originale
+
+Il file `research/brain_audit_opus/geometry.py` definisce `PAUSE` artificiale **13/11 21:30—14/11 00:10 UTC** e scarta campioni in quella fascia. Tuttavia il journal del replay collega un `paper_open` LONG BTC alla decisione del **13/11 22:00 UTC**, dentro quella fascia. Non e' prova che lo script Opus abbia un bug, ma **la finestra esclusa non rappresenta fedelmente ogni opportunita' della run reale**: il confronto casuale original va ripensato usando stati e tempi effettivi della run anziche' pause assunte a priori. Per i timestamp il replay riporta il tempo della decisione, mentre quello esatto di apertura potrebbe essere successivo.
+
+### Raccomandazioni conseguenti
+
+1. **Indagare i due LONG con dati causali**, perche' la AI li riteneva validi nonostante un regime ribassista piu' ampio: contesto 1h/4h, settore/strategia proposta, asset e ATR al momento decisione. Non trarre conclusioni di efficacia generale da soli due casi.
+2. **Lasciare gli SHORT operativi invariati**: i 32 SHORT allineati sono identici al benchmark sempre-short per costruzione; quel benchmark non valuta *selezione di orario e simbolo*. Il confronto su opportunita' NO_TRADE puo' aiutare un test, ma va corretto per esposizione e covariate.
+3. **Non convertire automaticamente LONG in SHORT.** Il controfattuale e' post-hoc su mercato ribassista e manca un gate di rischio indipendente. Studiare in shadow l'alternativa LONG vs NO_TRADE e LONG vs SHORT condizionata al contesto.
+4. **Investigare i 23 APPROVED senza apertura** con osservabilita' persistente autorizzata separatamente; non confonderli con i 247 rifiuti pre-approvazione.
+5. Conservare FREEZE operativo fino a validazione fuori campione; nessun filtro FRRD, blacklist ETH, leva/stop ATR, merge o deploy.
+
+**Stato:** questo documento riporta output Termius e analisi aritmetica; nessun cambiamento ai servizi PAPER.
