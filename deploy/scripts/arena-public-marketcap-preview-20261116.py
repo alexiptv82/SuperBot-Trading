@@ -296,7 +296,7 @@ def probe() -> int:
     print("ARENA_CAP classification=INCOMPLETE_REVIEW_REQUIRED",flush=True)
     url = GECKO+COIN_ENDPOINT+"?"+urllib.parse.urlencode({
         "vs_currency":"usd", "order":"market_cap_desc",
-        "per_page":"100", "page":"1", "sparkline":"false",
+        "per_page":"250", "page":"1", "sparkline":"false",
     })
     try:
         ranking = _get(url)
