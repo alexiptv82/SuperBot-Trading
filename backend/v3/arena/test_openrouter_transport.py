@@ -5,7 +5,8 @@ from unittest import TestCase, main
 from unittest.mock import patch
 
 from backend.v3.arena.openrouter_transport import (
-    MODELS, _read_key, _verify_key_budget, openrouter_transport,
+    MODELS, ARENA_RESPONSE_FORMAT, _read_key, _verify_key_budget,
+    openrouter_transport,
 )
 from backend.v3.brain_f3.providers import ProviderUnavailable, TransportResponse
 
@@ -13,7 +14,7 @@ from backend.v3.brain_f3.providers import ProviderUnavailable, TransportResponse
 def sample_payload(model: str) -> dict:
     return {
         "model": model, "stream": False, "max_tokens": 256,
-        "response_format": {"type": "json_object"},
+        "response_format": ARENA_RESPONSE_FORMAT,
         "messages": [
             {"role": "system", "content": "Return JSON only."},
             {"role": "user", "content": '{"symbol":"BTCUSDT","regime":"UNKNOWN"}'},
@@ -68,6 +69,30 @@ class TestArenaOpenRouterTransport(TestCase):
                 transport(bad)
         self.assertEqual(calls, [])
 
+
+
+    def test_arbitrary_schema_or_injected_parameters_are_rejected(self):
+        calls = []
+        transport = openrouter_transport(
+            "qwen", allow_inference=True,
+            spending_gate=lambda provider: True,
+            request=lambda *args: calls.append(args),
+            key_reader=lambda p: calls.append(("KEY", p)),
+        )
+        with patch.dict("os.environ", {"DESK_MODE": "paper"}):
+            bad_schema = sample_payload(MODELS["qwen"])
+            bad_schema["response_format"] = {"type": "json_object"}
+            with self.assertRaisesRegex(ProviderUnavailable, "invalid_model_payload"):
+                transport(bad_schema)
+            bad_setting = sample_payload(MODELS["qwen"])
+            bad_setting["reasoning"] = {"enabled": True}
+            with self.assertRaisesRegex(ProviderUnavailable, "invalid_model_payload"):
+                transport(bad_setting)
+            bad_provider = sample_payload(MODELS["qwen"])
+            bad_provider["provider"] = {"allow_fallbacks": True}
+            with self.assertRaisesRegex(ProviderUnavailable, "invalid_model_payload"):
+                transport(bad_provider)
+        self.assertEqual(calls, [])
 
     def test_missing_or_denied_budget_gate_never_reads_key(self):
         for gate in (None, lambda provider: False):
