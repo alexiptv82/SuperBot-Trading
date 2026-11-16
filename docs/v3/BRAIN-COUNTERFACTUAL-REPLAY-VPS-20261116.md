@@ -33,3 +33,47 @@ Da Termius estrarre **soltanto** `decision_counts`, `post_ai_gap_audit.by_symbol
 Solo in seguito, preparare osservabilita' prospettica **con autorizzazione distinta** per motivi di diniego post-AI e proposte scartate. Non disattivare controlli, non modificare leva/stop, nessun deploy/merge/riavvio.
 
 **Fonti:** screenshot operatore e sorgenti nel ramo di ricerca; dati reali di `summary.json` non letti direttamente in questa chat.
+
+## Secondo screenshot VPS — 16 novembre, ore 06:06 Europe/Rome
+
+Istruzione di lettura Termius sul `summary.json` e sul `counterfactual.jsonl` della **stessa run**, con output limitato, nessuna modifica ai bot.
+
+**Decisioni (430):**
+- `NO_TRADE/DRAFT=120`
+- `NO_TRADE/REJECTED=2`
+- `NO_TRADE/RISK_REJECTED=247`
+- `OPEN/APPROVED=61`
+
+**Approvate/aperture verificate/rischio pre-approvazione/non eseguite, per asset:**
+
+| Simbolo | Approved | Executed | Risk rejected | Approved senza apertura (motivo ignoto) |
+| --- | ---: | ---: | ---: | ---: |
+| ADAUSDT | 5 | 3 | 34 | 2 |
+| BNBUSDT | 9 | 6 | 31 | 3 |
+| BTCUSDT | 16 | 12 | 15 | 4 |
+| DOGEUSDT | 5 | 1 | 39 | 4 |
+| ETHUSDT | 8 | 6 | 31 | 2 |
+| LINKUSDT | 6 | 4 | 27 | 2 |
+| SOLUSDT | 6 | 3 | 33 | 3 |
+| XRPUSDT | 6 | 3 | 37 | 3 |
+| **Totale** | **61** | **38** | **247** | **23** |
+
+**Ipotesi stessa ora/simbolo, 34 coppie risolte (R medi virtuali; non PnL reale):**
+
+| Ritardo | Brain lato scelto | Sempre SHORT | Hash coin | Differenza Brain - SHORT |
+| --- | ---: | ---: | ---: | ---: |
+| 0 min | +0,4137 | +0,5918 | −0,3875 | −0,1781 |
+| 1 min | +0,3246 | +0,5027 | −0,4765 | −0,1781 |
+| 3 min | +0,4137 | +0,5918 | −0,3876 | −0,1781 |
+
+**38 aperture collegate:** 36 SHORT (`side=-1`) e 2 LONG (`side=+1`). Simulazioni virtuali a 1 min: 34 righe con LONG e SHORT risolti, 2 con LONG censurato e SHORT risolto, 2 con LONG risolto e SHORT censurato. Le 34 coppie sono un sottoinsieme delle 38 aperture. Il costo del ritardo medio passa da 0 a 1 minuto, ma il delta fra i lati rimane costante fino alle 4 cifre stampate.
+
+### Inferenze e nuove priorita'
+
+- Il delta negativo Brain-vs-sempre-SHORT **non prova che 36 SHORT Brain siano scadenti**: per i 36 SHORT scelti, il confronto per lato e' identico per costruzione. Sono i soli LONG, se inclusi nelle 34 coppie, a spiegare il delta; occorre confrontare le singole righe LONG senza pubblicare informazioni sensibili.
+- La media Brain +0,3246R a ritardo 1 min e' **simulata e condizionata** alle decisioni con side osservato; non dimostra vantaggio realizzato e non considera i vincoli dell'intero portafoglio.
+- Il 37,7% di approvazioni senza fill e' una categoria investigativa: non attribuire i 23 alla logica post-AI senza eventi di rifiuto verificabili. DOGE e' il simbolo con la maggiore percentuale (4/5); BTC ha il maggiore numero assoluto (4). I 247 rifiuti risk sono **precedenti all'approvazione**, non sono i 23 gap.
+- Controllo successivo: stampare aggregati per LONG e SHORT nelle coppie, i casi singoli LONG senza event-id completo, e i due gruppi di censura; confrontare i `NO_TRADE/DRAFT` con le ipotesi controfattuali **senza attribuire loro una direzione**.
+- Test successivo ancora non fatto: misurare se Brain seleziona **tempi/simboli** migliori rispetto a ingressi di controllo, appaiando i limiti di capitale, le posizioni contemporanee e il regime. I confronti `sempre SHORT nello stesso timestamp` non testano tale capacita'.
+
+L'esito resta **esplorativo, PAPER, offline, nessuna modifica operativa**.
