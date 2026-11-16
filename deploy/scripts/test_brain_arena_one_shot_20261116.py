@@ -6,9 +6,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 import importlib.util
-import io
 from pathlib import Path
-import tempfile
 import unittest
 from unittest.mock import patch
 import json
@@ -81,30 +79,6 @@ class TestOneShot(unittest.TestCase):
         }):
             with self.assertRaisesRegex(ValueError, "UNEXPECTED_RESPONSE_FIELDS"):
                 MODULE.single_probe("minimax/minimax-m3.1-flash", "fake_key")
-
-    def test_root_private_keys_without_printing(self):
-        with tempfile.TemporaryDirectory() as directory:
-            folder = Path(directory) / "private"
-            folder.mkdir(mode=0o700)
-            keys = folder / "openrouter-keys.json"
-            cfg = {
-                "schema": "brain_arena_openrouter_keys_v1",
-                "mode": "CREDENTIALS_ONLY_NO_INFERENCE",
-                "base_url": "https://openrouter.ai/api/v1",
-                "models": MODULE.EXPECTED_MODELS,
-                "api_keys": {
-                    "qwen": "sk-or-v1-" + "A" * 24,
-                    "minimax": "sk-or-v1-" + "B" * 24,
-                },
-            }
-            keys.write_text(json.dumps(cfg), encoding="utf-8")
-            keys.chmod(0o600)
-            with patch.object(MODULE, "SECRETS", keys), \
-                 patch.object(MODULE.os, "geteuid", return_value=0), \
-                 patch.object(MODULE.os.stat_result, "__new__", create=True):
-                # Non-root tempfile directories are not required to be
-                # root-owned; the production script enforces it.
-                self.assertTrue(keys.is_file())
 
 if __name__ == "__main__":
     unittest.main()
