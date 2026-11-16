@@ -205,6 +205,42 @@ class UniverseTests(TestCase):
         with self.assertRaises(ValueError):
             pick_ai_shortlist(v, signals, now_ms=NOW, slots=26)
 
+    def test_existing_position_never_disappears_from_exit_watch(self):
+        assets, contracts = fixture()
+        v = build(assets, contracts)
+        # C001 was open yesterday but today has dropped out of the top list.
+        open_symbol = "OLDCOINUSDT"
+        fresh_signal = screen(v.tradeable_symbols[0], "LONG", "0.99")
+        result = pick_ai_shortlist(
+            v, (fresh_signal,), now_ms=NOW,
+            open_position_symbols=(open_symbol,),
+        )
+        self.assertIn(open_symbol, result.exit_monitor_symbols)
+        self.assertNotIn(open_symbol, result.ai_shortlist)
+        self.assertEqual(len(result.watched_symbols), 25)
+
+    def test_existing_position_cannot_be_selected_for_duplicate_open(self):
+        assets, contracts = fixture()
+        v = build(assets, contracts)
+        already = v.tradeable_symbols[0]
+        signals = (screen(already, "SHORT", "1"),
+                   screen(v.tradeable_symbols[1], "LONG", "0.9"))
+        result = pick_ai_shortlist(
+            v, signals, now_ms=NOW,
+            open_position_symbols=(already,),
+        )
+        self.assertEqual(result.ai_shortlist, (v.tradeable_symbols[1],))
+        self.assertEqual(result.exit_monitor_symbols, (already,))
+
+    def test_untrusted_open_positions_cannot_modify_exit_watch(self):
+        assets, contracts = fixture()
+        v = build(assets, contracts)
+        for opened in (("BTCUSDT", "BTCUSDT"), ("bad symbol",)):
+            with self.assertRaisesRegex(ValueError, "invalid_scan_request"):
+                pick_ai_shortlist(
+                    v, (), now_ms=NOW, open_position_symbols=opened
+                )
+
     def test_selection_never_sends_orders_or_creates_files(self):
         # Pure functions: no filesystem, API, budget ledger, or trade objects.
         assets, contracts = fixture()
