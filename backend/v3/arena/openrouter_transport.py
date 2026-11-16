@@ -39,6 +39,33 @@ KEY_LIMIT = Decimal("2")
 KEY_MIN_REMAINING = Decimal("0.03")
 _KEY_RE = re.compile(r"sk-or-v1-[A-Za-z0-9_-]{16,}\Z")
 
+# One pinned output contract for Qwen AND MiniMax, irrespective of provider.
+# Values undergo stricter validation in ArenaL5Analyst before any proposal.
+ARENA_SCHEMA_PROPERTIES: dict[str, dict] = {
+    "kind": {"type": "string", "enum": ["NO_TRADE", "OPEN"]},
+    "side": {"type": "integer", "enum": [-1, 0, 1]},
+    "entry_price": {"type": "string"},
+    "stop_price": {"type": "string"},
+    "leverage": {"type": "integer"},
+    "confidence": {"type": "number"},
+    "strategy_id": {"type": "string"},
+    "strategy_origin": {"type": "string", "enum": ["", "library", "ai_proposed"]},
+}
+ARENA_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "superbot_arena_brain_decision_v1",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": ARENA_SCHEMA_PROPERTIES,
+            "required": list(ARENA_SCHEMA_PROPERTIES),
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 
 def _error(code: str = "provider_unavailable") -> ProviderUnavailable:
     # No secrets, response body, path or free-form HTTP error messages.
@@ -144,10 +171,15 @@ def _validate_payload(payload: Mapping, model: str) -> dict:
             or payload.get("stream") is not False
             or type(payload.get("max_tokens")) is not int
             or not 1 <= payload["max_tokens"] <= MAX_TOKENS
-            or payload.get("response_format") not in (
-                {"type": "json_object"},  # compared below without requiring dict hash
-            )):
-        # The above response_format membership uses a tuple of dicts, not a set.
+            or payload.get("response_format") != ARENA_RESPONSE_FORMAT):
+        raise _error("invalid_model_payload")
+    # Restrict optional parameters to an explicitly reviewed subset.
+    if set(payload) - {"model", "stream", "max_tokens", "response_format",
+                       "messages", "provider", "reasoning"}:
+        raise _error("invalid_model_payload")
+    if payload.get("provider") not in (None, {"require_parameters": True}):
+        raise _error("invalid_model_payload")
+    if payload.get("reasoning") not in (None, {"enabled": False}):
         raise _error("invalid_model_payload")
     forbidden = {"tools", "tool_choice", "functions", "function_call",
                  "user_api_key", "api_key", "web_search", "plugins"}
