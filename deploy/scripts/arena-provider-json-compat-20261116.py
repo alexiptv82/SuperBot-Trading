@@ -167,7 +167,9 @@ def parse_decision(result: dict) -> tuple[str, dict]:
         usage = {}
     meta = {
         "model": result.get("model") if result.get("model") in MODELS.values() else "unknown",
-        "finish_reason": c.get("finish_reason"),
+        "finish_reason": c.get("finish_reason") if c.get("finish_reason") in (
+            "stop", "length", "tool_calls", "content_filter", "error", None,
+        ) else "unknown",
         "input_tokens": usage.get("prompt_tokens") if type(usage.get("prompt_tokens")) is int else None,
         "output_tokens": usage.get("completion_tokens") if type(usage.get("completion_tokens")) is int else None,
         "reasoning_present": bool(msg.get("reasoning") or msg.get("reasoning_details")),
@@ -259,6 +261,9 @@ def selftest() -> int:
     }
     assert parse_decision(fixture(EXPECTED_NO_TRADE))[0] == "PASS_NO_TRADE_EIGHT_FIELDS"
     assert parse_decision(fixture({**EXPECTED_NO_TRADE, "side": -1}))[0] == "SCHEMA_OR_DECISION_MISMATCH"
+    assert parse_decision(fixture({**EXPECTED_NO_TRADE, "side": -1}))[1]["field_issues"] == ["side_VALUE"]
+    assert parse_decision(fixture({**EXPECTED_NO_TRADE, "leverage": True}))[1]["field_issues"] == ["leverage_TYPE"]
+    assert parse_decision(fixture({**EXPECTED_NO_TRADE, "unexpected_private_data": 1}))[1]["extra_field_count"] == 1
     assert parse_decision(fixture({**EXPECTED_NO_TRADE, "leverage": True}))[0] == "SCHEMA_OR_DECISION_MISMATCH"
     assert parse_decision(fixture({**EXPECTED_NO_TRADE, "entry_price": 0}))[0] == "SCHEMA_OR_DECISION_MISMATCH"
     assert parse_decision(fixture({**EXPECTED_NO_TRADE, "extra": 1}))[0] == "SCHEMA_OR_DECISION_MISMATCH"
