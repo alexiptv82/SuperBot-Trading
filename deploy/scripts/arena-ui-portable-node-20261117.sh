@@ -51,6 +51,8 @@ export PATH="$WORK/localbin:$NODE_HOME/bin:$PATH"
 export COREPACK_HOME="$WORK/corepack-cache"
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 export COREPACK_DEFAULT_TO_LATEST=0
+# Do not let Corepack auto-pin a packageManager entry into frontend/package.json.
+export COREPACK_ENABLE_AUTO_PIN=0
 export HOME="$WORK/home"
 echo "ARENA_NODE version=$(node --version)"
 echo "ARENA_NODE mode=TEMPORARY_NO_APT_NO_GLOBAL_INSTALL"
