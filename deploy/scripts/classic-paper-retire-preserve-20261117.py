@@ -18,7 +18,15 @@ import tarfile
 from datetime import datetime, timezone
 
 CLASSICS = (("falco", "hawk"), ("toro", "bull"))
-DATA_ROOT = Path("/opt/superbot-desk-data")
+# Confirmed from /proc/<MainPID>/environ on 17-Nov-2026, not inferred from
+# the older /opt/superbot-desk-data paths.
+RUNTIME_ROOT = Path("/opt/superbot-v3-paper-runs")
+LIVE_DIRS = {
+    "hawk": RUNTIME_ROOT / "classic-hawk-paper20261111",
+    "bull": RUNTIME_ROOT / "classic-bull-paper20261111",
+}
+# Preserve historical memory as a second, separate source.
+HISTORICAL_ROOT = Path("/opt/superbot-desk-data")
 BACKUP_ROOT = Path("/opt/superbot-v3-backups")
 BRAIN_UNITS = ("superbot-v3-paper-brain-runner.service",
                "superbot-v3-paper-brain-exit.service")
@@ -74,10 +82,11 @@ def check_classic(name: str, portfolio: str) -> dict:
                  or (b"--portfolio" in argv and portfolio.encode() in argv))):
         refuse(name.upper() + "_PROCESS_NOT_EXPECTED_DESK_LOOP")
     env = real_process_env(pid)
-    expected = DATA_ROOT / portfolio
+    expected = LIVE_DIRS[portfolio]
     if env.get("DESK_DATA_DIR") != str(expected) or env.get("DESK_MODE") != "paper":
         refuse(name.upper() + "_DATA_PATH_OR_PAPER_MODE_UNVERIFIED")
-    if DATA_ROOT.is_symlink() or expected.is_symlink() or not expected.is_dir():
+    if (RUNTIME_ROOT.is_symlink() or expected.is_symlink()
+            or not RUNTIME_ROOT.is_dir() or not expected.is_dir()):
         refuse(name.upper() + "_DATA_DIRECTORY_UNSAFE")
     if not (expected / "pause.flag").is_file():
         refuse(name.upper() + "_NOT_PAUSED")
@@ -152,7 +161,8 @@ def main() -> int:
             refuse("CRITICAL_STATE_BACKUP_MISSING")
         (archive / (d["name"] + "-unit.txt")).write_text(
             ctl("cat", d["unit"]), encoding="utf-8")
-        records.append({"portfolio": d["portfolio"], "prestop_sha256": hashes})
+        records.append({"portfolio": d["portfolio"],
+                        "runtime_dir": str(src), "prestop_sha256": hashes})
     # Re-validate pause, open positions, process PID and state after copying.
     updated = [check_classic(name, portfolio) for name, portfolio in CLASSICS]
     if [(d["pid"], d["state_sha256"]) for d in details] != [
@@ -175,24 +185,40 @@ def main() -> int:
             refuse("CLASSIC_SERVICE_STILL_ENABLED")
     print("CLASSIC_RETIRE_CLASSIC_SERVICES=STOPPED_DISABLED", flush=True)
 
-    # Full, post-stop snapshot of the unchanged classic directories.
+    # Full post-stop snapshot of BOTH the actual runtime and legacy archive.
+    # Neither directory is modified; the archive is private root:0700.
+    if HISTORICAL_ROOT.is_symlink() or not HISTORICAL_ROOT.is_dir():
+        refuse("HISTORICAL_ROOT_MISSING_OR_UNSAFE")
     output = archive / "classic-data-full.tar.gz"
+    sources = []
+    for _, portfolio in CLASSICS:
+        runtime = LIVE_DIRS[portfolio]
+        historical = HISTORICAL_ROOT / portfolio
+        if historical.is_symlink() or not historical.is_dir():
+            refuse("HISTORICAL_DIR_MISSING_OR_UNSAFE")
+        sources.extend(((runtime, "runtime/" + portfolio),
+                        (historical, "historical/" + portfolio)))
     with tarfile.open(output, "w:gz", dereference=False) as tar:
-        for _, portfolio in CLASSICS:
-            tar.add(DATA_ROOT / portfolio, arcname=portfolio, recursive=True)
+        for src, arcname in sources:
+            tar.add(src, arcname=arcname, recursive=True)
     with tarfile.open(output, "r:gz") as tar:
         files = set(tar.getnames())
-        if not {"hawk/state_v2.json", "bull/state_v2.json"} <= files:
+        if not {"runtime/hawk/state_v2.json", "runtime/bull/state_v2.json",
+                "historical/hawk/state_v2.json",
+                "historical/bull/state_v2.json"} <= files:
             refuse("FULL_ARCHIVE_MISSING_STATE")
         if not tar.getmembers():
             refuse("FULL_ARCHIVE_EMPTY")
-        # Re-read archived bytes, not just tar headers, for the critical history.
-        for _, portfolio in CLASSICS:
-            for basename in ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl"):
-                source = DATA_ROOT / portfolio / basename
+        # Read *decompressed bytes* and verify critical history of both sources.
+        for src, arcname in sources:
+            for basename in ("state_v2.json", "trade_history.jsonl",
+                             "learning_log.jsonl", "lessons.md", "errors.md"):
+                source = src / basename
+                if source.is_symlink():
+                    refuse("FULL_ARCHIVE_CRITICAL_SYMLINK")
                 if not source.is_file():
                     continue
-                entry = portfolio + "/" + basename
+                entry = arcname + "/" + basename
                 stream = tar.extractfile(entry)
                 if stream is None:
                     refuse("FULL_ARCHIVE_CRITICAL_FILE_MISSING")
