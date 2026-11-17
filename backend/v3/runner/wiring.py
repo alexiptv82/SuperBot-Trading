@@ -129,10 +129,18 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                  alert_send: Optional[Callable[[str], bool]] = None,
                  exit_mode: str = "legacy", clock_ms: Optional[Callable[[], int]] = None,
                  desk_mode: Optional[str] = None,
-                 classic_peer_dirs: Optional[Mapping[str, Path]] = None) -> Built:
+                 classic_peer_dirs: Optional[Mapping[str, Path]] = None,
+                 arena_provider: Optional[str] = None) -> Built:
     """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test."""
     if type(exit_mode) is not str or exit_mode not in ("legacy", "sidecar"):
         raise ValueError("invalid_exit_mode")
+    # Arena: una run isolata per provider. Sempre con il servizio uscite separato e senza osservare altri
+    # portafogli (nessuna informazione condivisa fra i concorrenti durante la prova).
+    if arena_provider is not None:
+        if (arena_provider not in ("deepseek", "qwen", "minimax") or exit_mode != "sidecar"
+                or classic_peer_dirs is not None or inner_transport is None):
+            raise ValueError("invalid_arena_scope")
+    provider = PROVIDER if arena_provider is None else arena_provider
     # Peer observation is opt-in and can only read explicitly provided, isolated dirs.
     peer_reader = None
     if classic_peer_dirs is not None:
@@ -160,7 +168,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     vp = view_params if view_params is not None else load_market_params()
     menu = build_menu(load_library())
     metered = MeteredTransport(
-        inner_transport if inner_transport is not None else deepseek_transport(), ledger, PROVIDER,
+        inner_transport if inner_transport is not None else deepseek_transport(), ledger, provider,
         input_usd_per_million=config.input_usd_per_million, output_usd_per_million=config.output_usd_per_million,
         extra_payload=config.model_extra_payload)
     holder = CycleBars()
@@ -168,15 +176,15 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         transport=metered, model=config.model,
         outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
         bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
-        spending_gate=ledger.spending_gate(daily_limits={PROVIDER: config.daily_cap_units}), enabled=True,
-        max_tokens=config.max_tokens))
+        spending_gate=ledger.spending_gate(daily_limits={provider: config.daily_cap_units}), enabled=True,
+        max_tokens=config.max_tokens, provider=provider))
     store = CandleStore(get_json, keep={s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP)
                                         for s in vp.timeframes})
     minutes = CandleStore(get_json, keep={"1m": (60_000, MINUTE_STORE_BARS)})
     rules = ContractRules(get_json, maintenance_fraction=config.maintenance_fraction)
     exit_policy = load_default_policy()
     mandate = MandateFile(data_dir / MANDATE_FILE, config.risk_policy, run_id)
-    budget_halt = BudgetHalt(ledger, PROVIDER, config.daily_cap_units, metered)
+    budget_halt = BudgetHalt(ledger, provider, config.daily_cap_units, metered)
     allowed = tuple(sorted(menu_ids(menu)))
 
     def halted() -> Optional[str]:
@@ -218,7 +226,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             allowed_strategy_ids=allowed, price_source=lambda sym, now: last_minute_close(sym, now, get_json),
             rotate=slot, require_open_commit=(exit_mode == "sidecar"),
             open_commit=safety_open_commit if exit_mode == "sidecar" else None,
-            peer_source=peer_reader)
+            peer_source=peer_reader, arena_provider=arena_provider)
 
     def run_monitor(now_ms: int) -> MonitorReport:
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,

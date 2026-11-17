@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "BNBUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "LINKUSDT"
+  ],
+  "initial_equity": "2000",
+  "slippage_bps": 2,
+  "fee_bps": "6",
+  "maintenance_fraction": "0.005",
+  "risk_policy": {
+    "max_loss_fraction": "0.042857142857142857",
+    "max_open_risk_fraction": "0.12",
+    "max_position_margin_fraction": "0.20",
+    "max_total_margin_fraction": "0.55",
+    "minimum_equity": "450",
+    "estimated_roundtrip_cost_bp": "16",
+    "liquidation_buffer_fraction": "0.5",
+    "max_loss_margin_fraction": "0.214285714285714285",
+    "min_leverage": 20,
+    "max_leverage": 50
+  },
+  "model": "deepseek-flash",
+  "thinking": "enabled",
+  "reasoning_effort": "high",
+  "max_tokens": 6000,
+  "cycle_minutes": 60,
+  "input_usd_per_million_tokens": "0.30",
+  "output_usd_per_million_tokens": "1.20",
+  "daily_cap_usd": "0.75",
+  "daily_loss_warn_fraction": "0.35",
+  "daily_loss_halt_fraction": "0.50"
+}

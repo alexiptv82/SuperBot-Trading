@@ -33,7 +33,12 @@ class DeepSeekL5Analyst(Analyst):
     def __init__(self, *, transport: Transport, model: str, outcomes_source,
                  bars_source, view_params: ViewParams, market_params: MarketViewParams,
                  menu: tuple[MenuItem, ...], spending_gate: SpendingGate | None = None,
-                 enabled: bool = False, max_tokens: int = 256):
+                 enabled: bool = False, max_tokens: int = 256, provider: str = "deepseek"):
+        # provider: provenienza scritta nel journal e voce del registro di spesa. Il default "deepseek"
+        # lascia identico il Brain storico; "qwen"/"minimax" solo per le run isolate dell'Arena.
+        if provider not in ("deepseek", "qwen", "minimax"):
+            raise ValueError("invalid_provider") from None
+        self.provider = provider
         if type(max_tokens) is not int or not 1 <= max_tokens <= 65_536:
             raise ValueError("invalid_max_tokens") from None
         if type(view_params) is not ViewParams:
@@ -89,7 +94,8 @@ class DeepSeekL5Analyst(Analyst):
         if peer_positions:
             info["peer_paper_positions"] = peer_positions
         info_json = json.dumps(info, sort_keys=True)
-        sources = ["deepseek:analysis"] + [
+        tag = self.provider + ":analysis"
+        sources = [tag] + [
             key + ":paper_position_observation" for key in ("falco", "toro")
             if key in peer_positions]
         payload = {
@@ -100,7 +106,7 @@ class DeepSeekL5Analyst(Analyst):
                 {"role": "user", "content": info_json},
             ],
         }
-        body = _call(self.transport, self.spending_gate, "deepseek", self.model,
+        body = _call(self.transport, self.spending_gate, self.provider, self.model,
                      self.enabled, payload)
         try:
             choices = body["choices"]
@@ -111,7 +117,7 @@ class DeepSeekL5Analyst(Analyst):
                 raise ValueError()
             obj = _json_object(choice["message"]["content"])
             if obj.get("kind") == "NO_TRADE" and set(obj) == {"kind"}:
-                return BrainDecision(kind=DecisionKind.NO_TRADE, rationale="deepseek:analysis",
+                return BrainDecision(kind=DecisionKind.NO_TRADE, rationale=tag,
                                      sources=sources,
                                      occurred_at_ms=context.timestamp_ms)
             keys = {"kind", "side", "entry_price", "stop_price", "leverage", "confidence"}
@@ -131,14 +137,14 @@ class DeepSeekL5Analyst(Analyst):
                 symbol=context.symbol, side=obj["side"],
                 entry_price=_bounded_decimal(obj["entry_price"]),
                 stop_price=_bounded_decimal(obj["stop_price"]),
-                leverage=obj["leverage"], rationale="deepseek:analysis",
-                confidence=float(obj["confidence"]), originating_ai="deepseek",
+                leverage=obj["leverage"], rationale=tag,
+                confidence=float(obj["confidence"]), originating_ai=self.provider,
                 context_hash=hashlib.sha256(info_json.encode()).hexdigest(),
                 strategy_id=obj["strategy_id"] if labelled else None,
                 strategy_origin=obj["strategy_origin"] if labelled else None,
             )
             return BrainDecision(kind=DecisionKind.OPEN, proposal=proposal,
-                                 rationale="deepseek:analysis", sources=sources,
+                                 rationale=tag, sources=sources,
                                  occurred_at_ms=context.timestamp_ms)
         except Exception:
             raise ProviderUnavailable("invalid_model_output") from None

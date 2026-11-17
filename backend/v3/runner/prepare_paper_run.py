@@ -59,6 +59,13 @@ def prepare_new_paper_run(*, parent: Path, run_name: str, run_id: str,
     recursive delete and no writes to sibling/historical portfolio directories.
     """
     root = _safe_scope(parent, run_name, run_id, desk_mode=desk_mode)
+    return provision_paused_run(root, run_id=run_id, config_bytes=config_bytes, now_ms=now_ms,
+                                expected_initial_equity=expected_initial_equity)
+
+
+def provision_paused_run(root: Path, *, run_id: str, config_bytes: bytes, now_ms: int,
+                         expected_initial_equity: str) -> Path:
+    """Crea la run in ``root`` (gia' validata dal chiamante; non deve esistere). Usata anche dall'Arena."""
     if type(now_ms) is not int or now_ms <= 0:
         raise RunPreparationError("invalid_time")
     if type(config_bytes) is not bytes:

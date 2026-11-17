@@ -127,7 +127,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     price_source: Optional[Callable[[str, int], Decimal]] = None,
                     rotate: int = 0, open_commit: Optional[Callable[[BrainDecision], object]] = None,
                     require_open_commit: bool = False,
-                    peer_source: Optional[Callable[[str, int], Mapping]] = None) -> CycleReport:
+                    peer_source: Optional[Callable[[str, int], Mapping]] = None,
+                    arena_provider: Optional[str] = None) -> CycleReport:
     """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare)."""
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
@@ -189,7 +190,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 portfolio_snapshot=snapshot_from_summary(summary, initial_equity),
                 market_params=_market_params(rules), journal=journal, portfolio_id=PORTFOLIO_ID,
                 run_id=run_id, policy_mandate=dict(mandate) if mandate is not None else None,
-                policy_verifier=policy_verifier, allowed_strategy_ids=allowed)
+                policy_verifier=policy_verifier, allowed_strategy_ids=allowed,
+                arena_provider=arena_provider)
             engine.open_positions = [{"symbol": p.symbol, "side": p.side} for p in summary.open_positions]
             peers: Mapping = {}
             if peer_source is not None:
