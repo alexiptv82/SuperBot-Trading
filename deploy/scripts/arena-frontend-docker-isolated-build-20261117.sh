@@ -17,9 +17,12 @@ fail() { msg "REFUSED=$1"; exit 2; }
 [[ -d "$SOURCE/.git" && ! -L "$SOURCE" ]] || fail 'SOURCE_NOT_FOUND'
 [[ "$(git -C "$SOURCE" rev-parse HEAD)" == "$EXPECTED_SHA" ]] || fail 'SOURCE_SHA_MISMATCH'
 [[ ! -L "$SOURCE/frontend" ]] || fail 'FRONTEND_SYMLINK'
-for name in package.json package-lock.json; do
-  [[ -f "$SOURCE/frontend/$name" && ! -L "$SOURCE/frontend/$name" ]] || fail "MISSING_$name"
-done
+[[ -f "$SOURCE/frontend/package.json" && ! -L "$SOURCE/frontend/package.json" ]] || fail 'MISSING_package.json'
+# The PR #102 commit does not track package-lock.json: absence is valid.
+# npm must create it only in the isolated build workspace.
+if [[ -e "$SOURCE/frontend/package-lock.json" || -L "$SOURCE/frontend/package-lock.json" ]]; then
+  [[ -f "$SOURCE/frontend/package-lock.json" && ! -L "$SOURCE/frontend/package-lock.json" ]] || fail 'UNSAFE_package-lock.json'
+fi
 for name in src public; do
   [[ -d "$SOURCE/frontend/$name" && ! -L "$SOURCE/frontend/$name" ]] || fail "MISSING_$name"
 done
@@ -28,19 +31,6 @@ if [[ ! -d "$RESULTS" ]]; then install -d -o root -g root -m 0700 "$RESULTS"; fi
 [[ "$(stat -c '%u:%a' "$RESULTS")" == '0:700' ]] || fail 'RESULTS_OWNERSHIP_UNSAFE'
 command -v docker >/dev/null 2>&1 || fail 'DOCKER_MISSING'
 command -v python3.12 >/dev/null 2>&1 || fail 'PYTHON_MISSING'
-
-# The lockfile is a local file in the staged checkout; it is absent on the
-# inspected GitHub commit. Check it belongs to this package before using it.
-python3.12 - "$SOURCE/frontend" <<'PY'
-import json, pathlib, sys
-p = pathlib.Path(sys.argv[1])
-pkg = json.loads((p/'package.json').read_text())
-lock = json.loads((p/'package-lock.json').read_text())
-root = (lock.get('packages') or {}).get('')
-assert root and root.get('dependencies') == pkg.get('dependencies'), 'LOCKFILE_ROOT_MISMATCH'
-assert lock.get('lockfileVersion') in (2, 3), 'LOCKFILE_VERSION_UNSUPPORTED'
-print('ARENA_UI_BUILD_LOCKFILE_MATCH=TRUE', flush=True)
-PY
 
 # Do not stop any running container, do not modify Nginx/web/brain.
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
@@ -52,7 +42,13 @@ msg 'NODE_IMAGE=READY'
 JOB="$(mktemp -d "$RESULTS/preview.XXXXXXXX")" || fail 'NEW_BUILD_FOLDER_FAILED'
 chmod 0700 "$JOB"
 cp -a "$SOURCE/frontend/src" "$SOURCE/frontend/public" \
-  "$SOURCE/frontend/package.json" "$SOURCE/frontend/package-lock.json" "$JOB/"
+  "$SOURCE/frontend/package.json" "$JOB/"
+if [[ -f "$SOURCE/frontend/package-lock.json" ]]; then
+  cp -a "$SOURCE/frontend/package-lock.json" "$JOB/"
+  msg 'LOCKFILE_SOURCE=STAGED_FILE'
+else
+  msg 'LOCKFILE_SOURCE=GENERATE_IN_ISOLATED_WORKSPACE'
+fi
 msg "BUILD_WORKDIR=$JOB"
 msg "SOURCE_SHA=$EXPECTED_SHA"
 msg 'APP_PUBLIC_BUILD=UNTOUCHED'
@@ -75,11 +71,28 @@ if ! docker run --rm \
   -e REACT_APP_BRAIN_ARENA_SHADOW_API=0 \
   -e REACT_APP_ARENA_MANUAL_CLOSE=0 \
   -e REACT_APP_ARENA_EXISTING_CLOSE=0 \
-  "$IMAGE" sh -ec 'npm ci --no-audit --no-fund --prefer-offline && npm run build'; then
+  "$IMAGE" sh -ec '
+    if [ ! -f package-lock.json ]; then
+      npm install --package-lock-only --ignore-scripts --no-audit --no-fund --legacy-peer-deps
+    fi
+    node -e "
+      const fs=require(\"fs\");
+      const pkg=JSON.parse(fs.readFileSync(\"package.json\"));
+      const lock=JSON.parse(fs.readFileSync(\"package-lock.json\"));
+      const root=lock.packages && lock.packages[\"\"];
+      if (!root || JSON.stringify(root.dependencies)!==JSON.stringify(pkg.dependencies)) process.exit(11);
+      if (![2,3].includes(lock.lockfileVersion)) process.exit(12);
+      console.log(\"ARENA_UI_BUILD_LOCKFILE_MATCH=TRUE\");
+    "
+    npm ci --no-audit --no-fund --legacy-peer-deps
+    npm run build
+  '; then
     fail 'BUILD_FAILED_NO_DEPLOY'
 fi
 [[ -s "$JOB/build/index.html" ]] || fail 'BUILD_OUTPUT_MISSING'
 [[ -d "$JOB/build/static" ]] || fail 'BUILD_STATIC_MISSING'
+[[ -s "$JOB/package-lock.json" ]] || fail 'GENERATED_LOCKFILE_MISSING'
+msg "LOCKFILE_SHA256=$(sha256sum "$JOB/package-lock.json" | cut -d' ' -f1)"
 msg "BUILD_READY_DIR=$JOB/build"
 msg "BUILD_INDEX_SHA256=$(sha256sum "$JOB/build/index.html" | cut -d' ' -f1)"
 msg 'PUBLIC_APP_UPDATED=FALSE'
