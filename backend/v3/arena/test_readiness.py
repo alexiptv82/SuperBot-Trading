@@ -21,22 +21,25 @@ def test_repository_arena_is_not_claimed_ready():
     assert report["configured_decision_cadence_identical"] is True
     assert report["configured_capital_equal"] is True
     assert set(report["providers"]) == {"deepseek", "qwen", "minimax"}
-    assert all(p["symbol_count"] == 8 for p in report["providers"].values())
-    assert "CRYPTO_UNIVERSE_BELOW_25_TARGET" in report["blocking_evidence"]
+    # universo dall'istantanea 17/11: 25 crypto + oro + argento, identico per le tre AI
+    assert all(p["symbol_count"] == 27 for p in report["providers"].values())
+    assert "CRYPTO_UNIVERSE_BELOW_25_TARGET" not in report["blocking_evidence"]
+    assert report["universe_snapshot_matches_configs"] is True
+    assert "UNIVERSE_SNAPSHOT_RECHECK_REQUIRED_AT_T0" in report["blocking_evidence"]
 
 
 def test_model_cost_projection_is_only_a_stress_scenario():
     result = audit_trial_configs()
     qwen = result["providers"]["qwen"]
     moderate = qwen["scenarios"]["moderate"]
-    assert moderate["evaluations_per_day_if_all_symbols_eligible"] == 192
-    assert moderate["configured_rate_projected_usd_per_day"] == "2.496000"
+    assert moderate["evaluations_per_day_if_all_symbols_eligible"] == 648        # 24 cicli x 27 simboli
+    assert moderate["configured_rate_projected_usd_per_day"] == "8.424000"
     assert moderate["configured_cap_usd_per_day"] == "0.750000"
     assert moderate["projection_over_cap"] is True
     assert "stress_scenario_not_actual_calls_or_current_price" == moderate["note"]
     assert result["providers"]["deepseek"]["scenarios"]["moderate"][
         "configured_rate_projected_usd_per_day"
-    ] == "0.374400"
+    ] == "1.263600"
     assert "DAILY_AI_BUDGET_NEEDS_COVERAGE_REVIEW" in result["blocking_evidence"]
 
 
@@ -94,7 +97,7 @@ def test_nondivisor_cycle_forecast_rounds_up_to_actual_tick_count(tmp_path):
     result = audit_trial_configs(root)
     # 24h / 75m = 19.2, so a cycle at T0 may run 20 times.
     forecast = result["providers"]["qwen"]["scenarios"]["moderate"]
-    assert forecast["evaluations_per_day_if_all_symbols_eligible"] == 160
+    assert forecast["evaluations_per_day_if_all_symbols_eligible"] == 540         # 20 cicli x 27 simboli
     assert "DIFFERENT_DECISION_CADENCE" in result["blocking_evidence"]
 
 

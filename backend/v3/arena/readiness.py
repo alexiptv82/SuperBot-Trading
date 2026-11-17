@@ -7,7 +7,8 @@ market eligibility, feed, budgets, exits and VPS health need runtime proofs.
 """
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_CEILING
+import json
+from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
 
 from backend.v3.arena.trial_plan import PROVIDERS
@@ -24,6 +25,21 @@ SCENARIOS = (
     ("moderate", 2500, 1000),
     ("max_configured_output", 2500, None),
 )
+
+
+_METALS = frozenset(("XAUUSDT", "XAGUSDT"))
+UNIVERSE_SNAPSHOT = Path(__file__).resolve().parents[3] / "docs" / "v3" / "arena_universe_snapshot_20261117.json"
+
+
+def _universe_snapshot(directory: Path):
+    """Solo l'istantanea del repository e solo per le config del repository (un'altra cartella non la eredita)."""
+    if directory != CONFIG_DIR:
+        return None
+    try:
+        data = json.loads(UNIVERSE_SNAPSHOT.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if type(data) is dict and data.get("schema") == "arena_universe_snapshot_v1" else None
 
 
 def _money(value: Decimal) -> str:
@@ -105,14 +121,21 @@ def audit_trial_configs(directory: Path = CONFIG_DIR) -> dict:
         blockers.append("DIFFERENT_DECISION_CADENCE")
     if not capital_equal:
         blockers.append("DIFFERENT_PAPER_CAPITAL")
-    if len(first.symbols) < MIN_CRYPTO_TARGET:
+    snapshot = _universe_snapshot(directory)
+    snapshot_ok = (snapshot is not None and snapshot.get("crypto_target_met") is True
+                   and len(snapshot.get("crypto_included") or ()) >= MIN_CRYPTO_TARGET
+                   and list(first.symbols) == snapshot.get("symbols"))
+    if len(first.symbols) - len(_METALS & set(first.symbols)) < MIN_CRYPTO_TARGET:
         blockers.append("CRYPTO_UNIVERSE_BELOW_25_TARGET")
-    # Source config has no ranking snapshot, exchange eligibility, metal
-    # contracts or proof of 1m/15m/1h/4h candle coverage. Never waive these.
+    if snapshot_ok:
+        # Classifica, identita', contratti e candele verificati in un'istantanea datata: va rifatta a T0.
+        blockers.append("UNIVERSE_SNAPSHOT_RECHECK_REQUIRED_AT_T0")
+        if not {"XAUUSDT", "XAGUSDT"} <= set(first.symbols):
+            blockers.append("GOLD_AND_SILVER_CONTRACTS_NOT_VERIFIED")
+    else:
+        blockers.extend(("MARKET_CAP_RANKING_NOT_VERIFIED", "GOLD_AND_SILVER_CONTRACTS_NOT_VERIFIED",
+                         "MARKET_FEED_AND_SYMBOL_RULES_NOT_VERIFIED"))
     blockers.extend((
-        "MARKET_CAP_RANKING_NOT_VERIFIED",
-        "GOLD_AND_SILVER_CONTRACTS_NOT_VERIFIED",
-        "MARKET_FEED_AND_SYMBOL_RULES_NOT_VERIFIED",
         "OPENROUTER_PRICE_AND_REASONING_NOT_VERIFIED",
         "RUNTIME_EXIT_WORKERS_AND_BACKUP_NOT_VERIFIED",
         "TRIAL_T0_AND_THREE_JOURNALS_NOT_VERIFIED",
@@ -132,6 +155,8 @@ def audit_trial_configs(directory: Path = CONFIG_DIR) -> dict:
         "configured_risk_policy_identical": policy_equal,
         "configured_decision_cadence_identical": cycles_equal,
         "configured_capital_equal": capital_equal,
+        "universe_snapshot_matches_configs": snapshot_ok,
+        "universe_snapshot_as_of_ms": snapshot.get("as_of_ms") if snapshot else None,
         "providers": entries,
         "blocking_evidence": blockers,
         "warning": (
