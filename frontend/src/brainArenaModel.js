@@ -45,6 +45,14 @@ export function portfolioFromExisting(overview, status, trades) {
   const entry = overview && Array.isArray(overview.portfolios)
     ? overview.portfolios.find(x => x && x.id === 'brain') : null;
   if (!entry || !CODES.has(entry.state)) return null;
+  const marked = markedOpenPnl(trades);
+  // Overview and trades are distinct GETs: refuse a mixed-timestamp
+  // aggregate if an open/close happened between the two snapshots.
+  const comparableOpenCount = Number.isSafeInteger(entry.open_positions)
+    ? entry.open_positions : null;
+  const openCountMatches = comparableOpenCount === null ||
+    (Array.isArray(trades?.open_positions) &&
+     trades.open_positions.length === comparableOpenCount);
   return {
     state: entry.state,
     initial_capital: 2000,
@@ -53,7 +61,7 @@ export function portfolioFromExisting(overview, status, trades) {
     equity_basis: entry.equity_basis ?? null,
     realized_pnl: entry.realized_pnl ?? null,
     unrealized_pnl: trades
-      ? markedOpenPnl(trades)
+      ? (openCountMatches ? marked : null)
       : (entry.unrealized_pnl ?? null),
     day_pnl: entry.day_pnl ?? null,
     total_closed: entry.total_closed ?? null,
