@@ -71,7 +71,9 @@ test('DeepSeek old-paper data and marked open PnL appear without mixing with Qwe
     expect(node.textContent).toContain('12,45 USDT');
     expect(node.textContent).toContain('9,40 USDT');
     expect(node.textContent).toContain('Saldo contabile');
-    expect(node.textContent).toContain('2.012,45 USDT');
+    // CLDR/ICU versions can differ on grouping for 4-digit Italian numbers.
+    // Both 2012,45 and 2.012,45 represent the same exact displayed amount.
+    expect(node.textContent).toMatch(/2[.\u00a0\u202f]?012,45 USDT/);
     expect(node.textContent).toContain('Non calcolabile');
     expect(node.textContent).toContain('PnL del test comune: —');
     expect(API.get.mock.calls.map(([url]) => url)).toEqual([
