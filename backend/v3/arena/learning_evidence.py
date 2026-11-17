@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections import Counter
 from hashlib import sha256
 import json
-from pathlib import Path
 import re
 
 from backend.v3.arena.read_view import read_wallet
@@ -19,7 +18,6 @@ from backend.v3.events import EventJournal
 from backend.v3.outcomes import extract_outcomes
 
 _HEX_SHA = re.compile(r"^[a-f0-9]{64}$")
-_ALLOWED_DECISIONS = frozenset({"brain_decision", "paper_open", "paper_close"})
 
 
 def _safe_reason(value):
@@ -88,7 +86,12 @@ def collect_arena_learning_evidence(
             kinds[ev.kind] += 1
             if ev.portfolio_id != "brain" or ev.run_id != plan.run_id:
                 raise ValueError("arena_learning_foreign_events")
-            if ev.kind in _ALLOWED_DECISIONS and ev.payload.get("originating_ai") != plan.provider:
+            if ev.kind in ("brain_decision", "paper_open") and ev.payload.get("originating_ai") != plan.provider:
+                raise ValueError("arena_learning_origin_mismatch")
+            # Existing executor.paper_close writes no originating_ai field.
+            # Trust the linked opening outcome for attribution; if the close
+            # DOES declare an origin, it must agree with the provider.
+            if ev.kind == "paper_close" and ev.payload.get("originating_ai", plan.provider) != plan.provider:
                 raise ValueError("arena_learning_origin_mismatch")
             if ev.kind == "brain_decision":
                 # The decision is evidence even if it says NO_TRADE or
