@@ -64,7 +64,15 @@ def preflight():
         refuse("GIT_HEAD_UNAVAILABLE")
     if git("diff", "--quiet", EXPECTED_SOURCE, result.stdout.strip(), "--", "frontend").returncode:
         refuse("FRONTEND_CHANGED_SINCE_VERIFIED_BUILD")
-    if git("status", "--porcelain").stdout.strip():
+    # CRA has regenerated frontend/build from the validated source. Some
+    # historical build artifacts are tracked in Git, so git status must not
+    # reject those generated differences. Every OTHER file remains guarded.
+    # The new bundle is independently pinned by EXPECTED_BUNDLE below.
+    status = git("status", "--porcelain", "--untracked-files=normal",
+                 "--", ".", ":(exclude)frontend/build")
+    if status.returncode:
+        refuse("GIT_STATUS_UNAVAILABLE")
+    if status.stdout.strip():
         refuse("DIRTY_SOURCE_CHECKOUT")
     js = STATIC / "static/js/main.a48d3857.js"
     # Do not trust a guessed bundle name if the fingerprint differs.
