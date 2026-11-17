@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import API from '../api';
+import { BrainCloseControls } from '../components/OverviewCloseControls';
 import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedTrial, trialTotalPnl } from '../brainArenaModel';
 
 const BLOCK = { background: '#172338', border: '1px solid #30465e', borderRadius: 16, padding: 16 };
@@ -120,7 +121,9 @@ export default function BrainArena() {
       I tre risultati sono confrontabili soltanto dopo la verifica dei journal indipendenti
       e l'avvio contemporaneo dei tre portafogli.
       Finché Qwen e MiniMax non sono avviati, non esistono profitti o trade da mostrare.
-      Questa pagina non può aprire o chiudere posizioni e non modifica Falco o Toro.
+      Questa pagina non apre posizioni e non modifica Falco o Toro.
+      La chiusura manuale del Brain storico richiede un servizio PAPER sano e abilitazione esplicita;
+      per Qwen e MiniMax serviranno comandi separati, non ancora attivi.
     </section>
     {warning && <p role="alert" style={{ color: '#fda4af' }}>{warning}</p>}
     <section aria-label="Seleziona modello AI" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 15 }}>
@@ -186,9 +189,25 @@ export default function BrainArena() {
       </>}
       {tab === 'Posizioni aperte' && (data.open_positions == null
         ? <div role="status" style={BLOCK}>Dettagli delle posizioni non disponibili.</div>
-        : data.open_positions.length
-          ? data.open_positions.map((t, i) => <Trade key={t.position_id || i} t={t} open/>)
-          : <div style={BLOCK}>Nessuna posizione aperta.</div>)}
+        : data.open_positions.length === 0
+          ? <div style={BLOCK}>Nessuna posizione aperta.</div>
+          : chosen === 'deepseek' && data.source === 'v3_existing_brain_paper'
+            ? <BrainCloseControls
+                positions={data.open_positions}
+                serverPending={data.close_pending === true}
+                readOnly={process.env.REACT_APP_ARENA_EXISTING_CLOSE !== '1' ||
+                          data.manual_close_allowed !== true}
+                allowCloseAll={false}
+                onRefresh={() => setRefresh(v => v + 1)}
+                renderPosition={t => <Trade t={t} open/>}
+              />
+            : <section>
+                {data.open_positions.map((t, i) => <Trade key={t.position_id || i} t={t} open/>)}
+                <div role="status" style={{ ...MUTED, padding: 9 }}>
+                  Chiusura manuale di {selected.title} non ancora abilitata:
+                  servirà il suo servizio di uscita PAPER dedicato.
+                </div>
+              </section>)}
       {tab === 'Storico' && (data.closed_trades == null
         ? <div role="status" style={BLOCK}>Storico non disponibile.</div>
         : data.closed_trades.length
