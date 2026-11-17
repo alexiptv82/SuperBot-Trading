@@ -112,6 +112,13 @@ class ArenaLearningEvidenceTests(TestCase):
                          "AWAITING_USER_ANNOTATION")
         self.assertIsNone(qwen["closed_outcomes"][0]["user_reason"])
 
+    def test_legacy_close_event_without_origin_uses_verified_open_outcome(self):
+        # executor.paper_close does not repeat originating_ai on paper_close.
+        self.journals[self.plans[0].journal].events[-1].event.payload.pop("originating_ai")
+        output = self._collect()
+        self.assertEqual(output["providers"]["deepseek"]["closed_outcomes"][0]["originating_ai"],
+                         "deepseek")
+
     def test_t0_must_match(self):
         times = {p.provider: self.t0 for p in self.plans}
         times["minimax"] += 1000
