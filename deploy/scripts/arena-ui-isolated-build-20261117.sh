@@ -35,7 +35,10 @@ echo "ARENA_UI_BUILD service_changes=0 orders=0 paid_AI_calls=0"
 cd "$ROOT/frontend"
 nice -n 10 "${YARN[@]}" install --frozen-lockfile --ignore-scripts --non-interactive --no-progress
 echo "ARENA_UI_BUILD step=THREE_TARGETED_JEST_FILES"
-CI=true nice -n 10 "${YARN[@]}" test --watchAll=false --runInBand --runTestsByPath \
+# package.json defines "start" and "build", but NO "test" script.
+# Invoke locally installed react-scripts directly; do not change package.json.
+[[ -x node_modules/.bin/react-scripts ]] || fail REACT_SCRIPTS_MISSING
+CI=true nice -n 10 ./node_modules/.bin/react-scripts test --watchAll=false --runInBand --runTestsByPath \
   src/brainArenaModel.test.js \
   src/pages/BrainArena.test.js \
   src/pages/Overview.test.js
