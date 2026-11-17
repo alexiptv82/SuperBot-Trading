@@ -6,6 +6,8 @@ This is an HTTP guard, not a substitute for PAUSED worker/risk checks.
 """
 from __future__ import annotations
 
+import re
+
 _BLOCKED_PREFIXES = (
     "/api/bot",
     "/api/desk",
@@ -49,9 +51,15 @@ def brain_single_close_enabled(env) -> bool:
             and _paper_close_bridge_enabled(env))
 
 
+# Arena: solo le due rotte di chiusura singola / motivazione, mai /api/v3/brain/close.
+_ARENA_CLOSE_PATH = re.compile(
+    r"/api/v3/arena/(deepseek|qwen|minimax)/close(/[A-Za-z0-9-]{16,64}/annotation)?")
+
+
 def should_refuse_mutation(method: str, path: str, *, readonly: bool,
                            allow_paper_single_close: bool = False,
-                           allow_paper_brain_single_close: bool = False) -> bool:
+                           allow_paper_brain_single_close: bool = False,
+                           allow_arena_manual_close: bool = False) -> bool:
     if not readonly or type(method) is not str or type(path) is not str:
         return False
     if method.upper() in _READ_METHODS:
@@ -61,6 +69,9 @@ def should_refuse_mutation(method: str, path: str, *, readonly: bool,
         return False
     if (allow_paper_brain_single_close and method.upper() == "POST"
             and path == "/api/v3/brain/close"):
+        return False
+    if (allow_arena_manual_close and method.upper() == "POST"
+            and _ARENA_CLOSE_PATH.fullmatch(path)):
         return False
     return any(path == prefix or path.startswith(prefix + "/")
                for prefix in _BLOCKED_PREFIXES)

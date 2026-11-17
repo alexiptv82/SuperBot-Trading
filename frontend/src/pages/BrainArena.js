@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import API from '../api';
 import { BrainCloseControls } from '../components/OverviewCloseControls';
+import ArenaCloseControls from '../components/ArenaCloseControls';
 import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedTrial, trialTotalPnl } from '../brainArenaModel';
+import { arenaCloseUiEnabled } from '../arenaCloseModel';
 
 const BLOCK = { background: '#172338', border: '1px solid #30465e', borderRadius: 16, padding: 16 };
 const MUTED = { color: '#a4b6cd', fontSize: 12 };
@@ -51,6 +53,8 @@ export default function BrainArena() {
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState(null);
   const [refresh, setRefresh] = useState(0);
+  // Chiusure manuali dell'esperimento: solo con flag UI e rotte dedicate per AI attive sul server.
+  const [closeInfo, setCloseInfo] = useState({});
 
   const fetchData = useCallback(async signal => {
     // Existing PAPER read APIs, unchanged. Missing data NEVER treated as zero.
@@ -80,6 +84,18 @@ export default function BrainArena() {
       } catch (_) { /* Keep absent instead of showing stale/fake performance. */ }
     }
     const shownBrain = shadow.deepseek || brain;
+    if (arenaCloseUiEnabled()) {
+      const trial = ['deepseek', 'qwen', 'minimax'].filter(id => shadow[id]);
+      const infos = await Promise.allSettled(trial.map(id => API.get(`/api/v3/arena/${id}/annotations`, { signal })));
+      if (signal.aborted) return;
+      const next = {};
+      trial.forEach((id, i) => {
+        const d = infos[i].status === 'fulfilled' ? infos[i].value.data : null;
+        next[id] = d && d.ok === true && d.provider === id && Array.isArray(d.annotations)
+          ? { ready: d.manual_close_ready === true, annotations: d.annotations } : null;
+      });
+      setCloseInfo(next);
+    }
     setRows({ deepseek: shownBrain, qwen: shadow.qwen, minimax: shadow.minimax });
     setWarning(shownBrain ? null : 'Il Brain PAPER attuale non risponde. Non vengono mostrati numeri presunti.');
     setLoading(false);
@@ -123,7 +139,7 @@ export default function BrainArena() {
       Finché Qwen e MiniMax non sono avviati, non esistono profitti o trade da mostrare.
       Questa pagina non apre posizioni e non modifica Falco o Toro.
       La chiusura manuale del Brain storico richiede un servizio PAPER sano e abilitazione esplicita;
-      per Qwen e MiniMax serviranno comandi separati, non ancora attivi.
+      ogni AI dell'esperimento ha comandi di chiusura separati, attivi solo dopo abilitazione esplicita.
     </section>
     {warning && <p role="alert" style={{ color: '#fda4af' }}>{warning}</p>}
     <section aria-label="Seleziona modello AI" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 15 }}>
@@ -201,11 +217,19 @@ export default function BrainArena() {
                 onRefresh={() => setRefresh(v => v + 1)}
                 renderPosition={t => <Trade t={t} open/>}
               />
-            : <section>
+            : data.source === 'arena_independent_journal_v1' && arenaCloseUiEnabled() && closeInfo[chosen]
+              ? <ArenaCloseControls key={chosen} provider={chosen}
+                  positions={data.open_positions}
+                  ready={closeInfo[chosen].ready}
+                  annotations={closeInfo[chosen].annotations}
+                  onRefresh={() => setRefresh(v => v + 1)}
+                  renderPosition={t => <Trade t={t} open/>}
+                />
+              : <section>
                 {data.open_positions.map((t, i) => <Trade key={t.position_id || i} t={t} open/>)}
                 <div role="status" style={{ ...MUTED, padding: 9 }}>
-                  Chiusura manuale di {selected.title} non ancora abilitata:
-                  servirà il suo servizio di uscita PAPER dedicato.
+                  Chiusura manuale di {selected.title} non abilitata su questa dashboard:
+                  richiede il servizio di uscita PAPER dedicato e l'attivazione esplicita.
                 </div>
               </section>)}
       {tab === 'Storico' && (data.closed_trades == null
@@ -240,10 +264,12 @@ export default function BrainArena() {
           <Metric title="NO_TRADE registrati" value={shown(data.no_trade_count)}/>
           <Metric title="Trade con esito collegato" value={shown(data.verified_outcome_count)}/>
           <Metric title="Chiusure manuali registrate" value={shown(data.manual_close_count)}/>
+          <Metric title="Motivazioni umane registrate"
+            value={closeInfo[chosen] ? closeInfo[chosen].annotations.length : '—'}/>
         </div>
         <p style={{ ...MUTED, marginTop: 12 }}>
-          Gli esempi manuali conservano l'origine umana; il motivo della scelta resta
-          da annotare esplicitamente. Nessuna strategia viene modificata automaticamente.
+          Gli esempi manuali conservano l'origine umana; il motivo è solo quello indicato
+          dall'operatore, mai dedotto dal risultato. Nessuna strategia viene modificata automaticamente.
         </p>
       </section>}
     </>}

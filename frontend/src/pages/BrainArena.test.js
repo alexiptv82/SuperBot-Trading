@@ -155,3 +155,71 @@ test('Memory view does not invent historical learning statistics', async () => {
     expect(node.textContent).not.toContain('42');
   } finally { await dispose(); }
 });
+
+// Esperimento: i controlli per AI compaiono solo con entrambi i flag UI e i dati delle rotte dedicate.
+const QWEN = { portfolio_id: 'qwen', mode: 'paper', state: 'running', initial_capital: 2000,
+  source: 'arena_independent_journal_v1', run_id: 'brain-qwen-paper20261118', realized_pnl: '0',
+  open_count: 1, open_positions: [{ position_id: 'q1', symbol: 'ETHUSDT', side: -1, leverage: 20 }],
+  closed_trades: [], decision_count: 3, no_trade_count: 2 };
+function trialInputs(annotationsOk = true) {
+  API.get.mockImplementation((url) => {
+    if (url === '/api/v3/overview') return Promise.resolve({ data: BRAIN });
+    if (url === '/api/v3/brain/status') return Promise.resolve({ data: { state: 'running' } });
+    if (url === '/api/v3/brain/trades?limit=100') return Promise.resolve({ data: TRADES });
+    if (url === '/api/v3/arena') return Promise.resolve({ data: { portfolios: { qwen: QWEN } } });
+    if (url === '/api/v3/arena/qwen/annotations') {
+      return annotationsOk
+        ? Promise.resolve({ data: { ok: true, provider: 'qwen', manual_close_ready: true,
+            annotations: [{ position_id: 'q0', reason: 'trend_change' }] } })
+        : Promise.reject(new Error('404'));
+    }
+    throw new Error('UNEXPECTED_ENDPOINT_' + url);
+  });
+}
+async function withFlags(flags, fn) {
+  const prior = {};
+  for (const [k, v] of Object.entries(flags)) { prior[k] = process.env[k]; process.env[k] = v; }
+  try { await fn(); } finally {
+    for (const k of Object.keys(flags)) {
+      if (prior[k] === undefined) delete process.env[k]; else process.env[k] = prior[k];
+    }
+  }
+}
+const click = async (node, text) => {
+  const b = Array.from(node.querySelectorAll('button')).find(x => x.textContent.includes(text));
+  await act(async () => { b.click(); });
+};
+
+test('Qwen trial wallet gets its own close controls and reason count only with both flags', async () => {
+  await withFlags({ REACT_APP_BRAIN_ARENA_SHADOW_API: '1', REACT_APP_ARENA_MANUAL_CLOSE: '1' }, async () => {
+    trialInputs();
+    const { node, dispose } = await mount();
+    try {
+      await click(node, 'Qwen');
+      await click(node, 'Posizioni aperte');
+      const close = Array.from(node.querySelectorAll('button')).find(x => x.textContent.trim() === 'Chiudi ETHUSDT');
+      expect(close).toBeDefined();
+      expect(close.disabled).toBe(false);
+      expect(API.get.mock.calls.map(([u]) => u)).toContain('/api/v3/arena/qwen/annotations');
+      await click(node, 'Memoria');
+      expect(node.textContent).toContain('Motivazioni umane registrate');
+      expect(node.textContent).toContain('mai dedotto dal risultato');
+    } finally { await dispose(); }
+  });
+});
+
+test('without the close flag, or if the dedicated route is missing, Qwen stays read-only', async () => {
+  for (const [flags, ok] of [[{ REACT_APP_BRAIN_ARENA_SHADOW_API: '1' }, true],
+    [{ REACT_APP_BRAIN_ARENA_SHADOW_API: '1', REACT_APP_ARENA_MANUAL_CLOSE: '1' }, false]]) {
+    await withFlags(flags, async () => {
+      trialInputs(ok);
+      const { node, dispose } = await mount();
+      try {
+        await click(node, 'Qwen');
+        await click(node, 'Posizioni aperte');
+        expect(Array.from(node.querySelectorAll('button')).some(x => x.textContent.trim() === 'Chiudi ETHUSDT')).toBe(false);
+        expect(node.textContent).toContain('non abilitata su questa dashboard');
+      } finally { await dispose(); API.get.mockReset(); }
+    });
+  }
+});
