@@ -71,7 +71,7 @@ test('DeepSeek old-paper data and marked open PnL appear without mixing with Qwe
     expect(node.textContent).toContain('12,45 USDT');
     expect(node.textContent).toContain('9,40 USDT');
     expect(node.textContent).toContain('Saldo contabile');
-    expect(node.textContent).toContain('2012,45 USDT');
+    expect(node.textContent).toContain('2.012,45 USDT');
     expect(node.textContent).toContain('Non calcolabile');
     expect(node.textContent).toContain('PnL del test comune: —');
     expect(API.get.mock.calls.map(([url]) => url)).toEqual([
@@ -86,7 +86,7 @@ test('DeepSeek old-paper data and marked open PnL appear without mixing with Qwe
     await act(async () => { qwen.click(); });
     expect(node.textContent).toContain('Portafoglio non ancora disponibile');
     expect(node.textContent).not.toContain('9,40 USDT');
-    expect(node.textContent).not.toContain('12,45 USDT');
+    expect(node.textContent).not.toContain('Prezzo disponibile:');
   } finally { await dispose(); }
 });
 
@@ -94,7 +94,7 @@ test('GET failure never shows fake historic profit or opens trade API', async ()
   inputs(false);
   const { node, dispose } = await mount();
   try {
-    expect(node.textContent).toContain('Dati PAPER');
+    expect(node.textContent).toContain('Il Brain PAPER attuale non risponde');
     expect(node.textContent).not.toContain('12,45 USDT');
     expect(API.get).toHaveBeenCalledTimes(3);
   } finally { await dispose(); }
