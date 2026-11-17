@@ -25,6 +25,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
+from backend.v3.arena.inference_trace import TracedTransport
 from backend.v3.arena.openrouter_transport import openrouter_transport
 from backend.v3.arena.prepare import plan_for, shared_policy_hash
 from backend.v3.arena.trial_plan import PROVIDERS, WalletPlan
@@ -81,6 +82,8 @@ def build_arena_runner(plan: WalletPlan, *, environ: Mapping[str, str], clock_ms
         raise ArenaRunnerError("config_does_not_match_plan")
     check_manifest(plan, config)
     transport = inner_transport if inner_transport is not None else provider_transport(plan, config, environ)
+    # Traccia per chiamata (parametri di ragionamento inviati, token, latenza): solo misura, nessun effetto.
+    transport = TracedTransport(transport, plan.folder / "inference_trace.jsonl", provider=plan.provider)
     kw = {} if view_params is None else {"view_params": view_params}
     try:
         return build_runner(data_dir=plan.folder, run_id=plan.run_id, config=config, get_json=get_json,

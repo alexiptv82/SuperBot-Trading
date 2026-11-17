@@ -138,6 +138,11 @@ def test_qwen_opens_and_exits_with_its_own_provenance_budget_and_journal(root):
     spent = sqlite3.connect((plan.folder / "budget.db").as_uri() + "?mode=ro", uri=True).execute(
         "SELECT DISTINCT provider FROM spend_events").fetchall()
     assert spent == [("qwen",)]
+    trace = [json.loads(x) for x in (plan.folder / "inference_trace.jsonl").read_text().splitlines()]
+    assert len(trace) == len(model.payloads) and all(t["model"] == "qwen/qwen3.7-plus" for t in trace)
+    assert all(t["prompt_tokens"] == 2500 and t["completion_tokens"] == 60 for t in trace)
+    assert all(t["reasoning_params_sent"] == {} for t in trace)          # qwen: "omit" -> nessun parametro
+    assert all("content" not in json.dumps(t) and "messages" not in t for t in trace)
     view = read_wallet(plan, G + 30 * M)
     assert view["data_status"] == "VERIFIED" and view["portfolio_id"] == "qwen"
     assert view["total_closed"] == len(closes) and view["open_count"] == 0

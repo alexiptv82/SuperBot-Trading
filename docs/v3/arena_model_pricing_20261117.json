@@ -1,0 +1,124 @@
+{
+ "models": {
+  "deepseek/deepseek-v4.1-flash": {
+   "context_length": 1048576,
+   "max_completion_tokens": 943718,
+   "pricing_usd_per_token": {
+    "completion": "0.0000012",
+    "input_cache_read": "0.000000006",
+    "prompt": "0.0000003"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "parallel_tool_calls",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_a",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ]
+  },
+  "minimax/minimax-m3.1-flash": {
+   "context_length": 1048576,
+   "max_completion_tokens": 524288,
+   "pricing_usd_per_token": {
+    "completion": "0.0000003",
+    "input_cache_read": "0.0000000075",
+    "overrides": [
+     {
+      "completion": "0.0000003",
+      "input_cache_read": "0.0000000075",
+      "prompt": "0.000000075",
+      "utc_end": 100,
+      "utc_start": 1500
+     },
+     {
+      "completion": "0.0000006",
+      "input_cache_read": "0.000000015",
+      "prompt": "0.00000015",
+      "utc_end": 1500,
+      "utc_start": 100
+     }
+    ],
+    "prompt": "0.000000075"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ]
+  },
+  "qwen/qwen3.7-plus": {
+   "context_length": 1000000,
+   "max_completion_tokens": 131072,
+   "pricing_usd_per_token": {
+    "completion": "0.00000128",
+    "input_cache_read": "0.000000064",
+    "input_cache_write": "0.0000004",
+    "overrides": [
+     {
+      "completion": "0.00000384",
+      "input_cache_read": "0.000000192",
+      "input_cache_write": "0.0000012",
+      "min_prompt_tokens": 256000,
+      "prompt": "0.00000096"
+     }
+    ],
+    "prompt": "0.00000032"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logprobs",
+    "max_tokens",
+    "presence_penalty",
+    "reasoning",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ]
+  }
+ },
+ "retrieved_utc": "2026-11-17T16:48:10Z",
+ "schema": "arena_model_pricing_evidence_v1",
+ "source": "https://openrouter.ai/api/v1/models (pubblico, nessuna chiave)"
+}
