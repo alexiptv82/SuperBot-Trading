@@ -22,10 +22,10 @@ La modalità `--inspect` è sola lettura (stato servizi storici, esistenza perco
 
 ## Esecuzione in Termius (solo sulla VPS SuperBot Singapore)
 
-Non eseguire in altri VPS (es. HiTV). Sostituire `<SCRIPT_COMMIT>` con il commit dello script dopo il suo push:
+Non eseguire in altri VPS (es. HiTV). Sostituire `979ae97acfff93769bec8e97d51bafc2c755159d` con il commit dello script dopo il suo push:
 
 ```sh
-curl -fsSL 'https://raw.githubusercontent.com/alexiptv82/SuperBot-Trading/<SCRIPT_COMMIT>/deploy/scripts/arena-vps-stage-paused-only-20261117.sh' -o /tmp/arena-stage.sh
+curl -fsSL 'https://raw.githubusercontent.com/alexiptv82/SuperBot-Trading/979ae97acfff93769bec8e97d51bafc2c755159d/deploy/scripts/arena-vps-stage-paused-only-20261117.sh' -o /tmp/arena-stage.sh
 bash -n /tmp/arena-stage.sh
 if [ "$(id -u)" -eq 0 ]; then bash /tmp/arena-stage.sh --stage; else sudo bash /tmp/arena-stage.sh --stage; fi
 ```
