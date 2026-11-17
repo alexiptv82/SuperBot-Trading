@@ -31,7 +31,8 @@ from typing import Optional
 from backend.v3.risk import RiskPolicy
 
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}USDT$")
-_MODEL_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+# Un solo prefisso "fornitore/" ammesso (es. modelli OpenRouter dell'Arena); i nomi DeepSeek restano validi.
+_MODEL_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}(/[a-z0-9][a-z0-9._-]{0,63})?$")
 _KEYS = {"schema_version", "symbols", "initial_equity", "slippage_bps", "fee_bps", "maintenance_fraction",
          "risk_policy", "model", "thinking", "reasoning_effort", "max_tokens", "cycle_minutes",
          "input_usd_per_million_tokens", "output_usd_per_million_tokens", "daily_cap_usd",

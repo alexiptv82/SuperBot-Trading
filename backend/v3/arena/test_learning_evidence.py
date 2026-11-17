@@ -28,7 +28,8 @@ class FakeJournal:
                                 "status": "REJECTED", "symbol": "ETHUSDT",
                                 "reason_code": "RANGE_NO_EDGE"}),
             ("paper_open", {"originating_ai": p}),
-            ("paper_close", {"originating_ai": p}),
+            ("paper_close", {"originating_ai": p, "position_id": "position-1",
+                             "reason": "manual" if plan.provider == "qwen" else "take_profit"}),
         ]
         if drop_close:
             event_specs.pop()
@@ -112,6 +113,61 @@ class ArenaLearningEvidenceTests(TestCase):
         self.assertEqual(qwen["closed_outcomes"][0]["user_reason_status"],
                          "AWAITING_USER_ANNOTATION")
         self.assertIsNone(qwen["closed_outcomes"][0]["user_reason"])
+
+    def test_human_reason_is_included_only_for_matching_verified_manual_close(self):
+        annotation = {
+            "schema": "human_close_annotation_v1",
+            "provider": "qwen",
+            "run_id": self.plans[1].run_id,
+            "position_id": "position-1",
+            "close_event_id": "paper_close.3",
+            "request_id": "req-1234567890123456",
+            "reason": "profit_protection",
+            "note": "private operator remark",
+            "annotated_ms": 1795000000500,
+            "source": "human_operator",
+            "prev": "0" * 64,
+            "hash": "f" * 64,
+        }
+        def records(plan):
+            return [annotation] if plan.provider == "qwen" else []
+        with patch("backend.v3.arena.learning_evidence.read_annotations", side_effect=records):
+            result = self._collect()
+        self.assertEqual(result["schema"], "arena_learning_evidence_v2")
+        qwen = result["providers"]["qwen"]
+        trade = qwen["closed_outcomes"][0]
+        self.assertEqual(trade["user_reason"], "profit_protection")
+        self.assertEqual(trade["user_reason_status"], "VERIFIED_HUMAN_ANNOTATION")
+        self.assertEqual(trade["user_annotation_sha256"], "f" * 64)
+        self.assertFalse(trade["eligible_for_automatic_promotion"])
+        self.assertEqual(qwen["verified_human_annotation_count"], 1)
+        self.assertNotIn("private operator remark", str(result))
+        self.assertIsNone(result["providers"]["deepseek"]["closed_outcomes"][0]["user_reason"])
+
+    def test_annotation_changed_during_read_invalidates_export(self):
+        annotation = {
+            "schema": "human_close_annotation_v1",
+            "provider": "qwen",
+            "run_id": self.plans[1].run_id,
+            "position_id": "position-1",
+            "close_event_id": "paper_close.3",
+            "request_id": "req-1234567890123456",
+            "reason": "trend_change",
+            "note": None,
+            "annotated_ms": 1795000000500,
+            "source": "human_operator",
+            "prev": "0" * 64,
+            "hash": "f" * 64,
+        }
+        reads = {"qwen": 0}
+        def records(plan):
+            if plan.provider != "qwen":
+                return []
+            reads["qwen"] += 1
+            return [annotation] if reads["qwen"] == 1 else []
+        with patch("backend.v3.arena.learning_evidence.read_annotations", side_effect=records):
+            with self.assertRaisesRegex(ValueError, "annotation_changed_during_read"):
+                self._collect()
 
     def test_legacy_close_event_without_origin_uses_verified_open_outcome(self):
         # executor.paper_close does not repeat originating_ai on paper_close.

@@ -1,0 +1,29 @@
+# AI ARENA — TEMPLATE ONLY. Runner decisionale PAPER di UNA AI (%i), legato al suo servizio uscite.
+# Spesa AI possibile SOLO con: mandato approvato nella run, pause.flag rimosso e, per qwen/minimax,
+# V3_ARENA_ALLOW_INFERENCE=1 in /etc/superbot-arena/%i.env. Non avviare senza OK esplicito dell'utente.
+[Unit]
+Description=SuperBot AI Arena PAPER decision runner (%i)
+BindsTo=superbot-arena-exit@%i.service
+After=superbot-arena-exit@%i.service
+Requires=superbot-arena-exit@%i.service
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/superbot-arena/trial.env
+# deepseek: DEEPSEEK_API_KEY; qwen/minimax: V3_ARENA_ALLOW_INFERENCE (chiavi nel file OpenRouter 0600, mai qui)
+EnvironmentFile=-/etc/superbot-arena/%i.env
+WorkingDirectory=/opt/superbot-arena-stage
+Environment=DESK_MODE=paper
+Environment=PYTHONPATH=/opt/superbot-arena-stage:/opt/superbot-arena-stage/backend
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/usr/bin/test -f /opt/superbot-ai-arena-paper/%i/brain-%i-paper${ARENA_DAY_COMPACT}/arena_manifest.json
+ExecStart=/opt/superbot-arena-stage/.venv/bin/python3 -m backend.v3.arena.runner --provider %i --root /opt/superbot-ai-arena-paper --day ${ARENA_DAY}
+Restart=on-failure
+RestartSec=15
+RestartPreventExitStatus=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/superbot-ai-arena-paper/%i

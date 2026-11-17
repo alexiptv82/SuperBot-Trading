@@ -41,7 +41,7 @@ def build_trial_plan(
     day_utc: date, *, root: Path = DEFAULT_ROOT,
 ) -> tuple[WalletPlan, WalletPlan, WalletPlan]:
     """Return only paths/metadata. Do not touch filesystem or network."""
-    if type(day_utc) is not date or type(root) is not Path or not root.is_absolute():
+    if type(day_utc) is not date or not isinstance(root, Path) or not root.is_absolute():
         raise ValueError("arena_plan_invalid")
     if ".." in root.parts or root == Path("/"):
         raise ValueError("arena_root_invalid")

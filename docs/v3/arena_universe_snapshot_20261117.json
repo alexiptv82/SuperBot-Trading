@@ -1,0 +1,1016 @@
+{
+ "as_of_ms": 1794933280600,
+ "crypto_included": [
+  {
+   "bitget_last_price": "63901.9",
+   "coingecko_id": "bitcoin",
+   "pair": "BTCUSDT",
+   "rank": 1,
+   "reference_price": "63815",
+   "symbol": "BTC"
+  },
+  {
+   "bitget_last_price": "1779.92",
+   "coingecko_id": "ethereum",
+   "pair": "ETHUSDT",
+   "rank": 2,
+   "reference_price": "1779.26",
+   "symbol": "ETH"
+  },
+  {
+   "bitget_last_price": "586.01",
+   "coingecko_id": "binancecoin",
+   "pair": "BNBUSDT",
+   "rank": 4,
+   "reference_price": "585.89",
+   "symbol": "BNB"
+  },
+  {
+   "bitget_last_price": "0.959",
+   "coingecko_id": "ripple",
+   "pair": "XRPUSDT",
+   "rank": 6,
+   "reference_price": "0.960427",
+   "symbol": "XRP"
+  },
+  {
+   "bitget_last_price": "72.346",
+   "coingecko_id": "solana",
+   "pair": "SOLUSDT",
+   "rank": 7,
+   "reference_price": "72.39",
+   "symbol": "SOL"
+  },
+  {
+   "bitget_last_price": "0.30744",
+   "coingecko_id": "tron",
+   "pair": "TRXUSDT",
+   "rank": 8,
+   "reference_price": "0.307393",
+   "symbol": "TRX"
+  },
+  {
+   "bitget_last_price": "68.114",
+   "coingecko_id": "hyperliquid",
+   "pair": "HYPEUSDT",
+   "rank": 10,
+   "reference_price": "68.06",
+   "symbol": "HYPE"
+  },
+  {
+   "bitget_last_price": "936.09",
+   "coingecko_id": "zcash",
+   "pair": "ZECUSDT",
+   "rank": 11,
+   "reference_price": "934.71",
+   "symbol": "ZEC"
+  },
+  {
+   "bitget_last_price": "500.26",
+   "coingecko_id": "monero",
+   "pair": "XMRUSDT",
+   "rank": 12,
+   "reference_price": "500.7",
+   "symbol": "XMR"
+  },
+  {
+   "bitget_last_price": "0.05843",
+   "coingecko_id": "dogecoin",
+   "pair": "DOGEUSDT",
+   "rank": 13,
+   "reference_price": "0.058416",
+   "symbol": "DOGE"
+  },
+  {
+   "bitget_last_price": "9.122",
+   "coingecko_id": "chainlink",
+   "pair": "LINKUSDT",
+   "rank": 17,
+   "reference_price": "9.12",
+   "symbol": "LINK"
+  },
+  {
+   "bitget_last_price": "0.152",
+   "coingecko_id": "cardano",
+   "pair": "ADAUSDT",
+   "rank": 18,
+   "reference_price": "0.151995",
+   "symbol": "ADA"
+  },
+  {
+   "bitget_last_price": "0.13764",
+   "coingecko_id": "stellar",
+   "pair": "XLMUSDT",
+   "rank": 19,
+   "reference_price": "0.137873",
+   "symbol": "XLM"
+  },
+  {
+   "bitget_last_price": "207.79",
+   "coingecko_id": "bitcoin-cash",
+   "pair": "BCHUSDT",
+   "rank": 22,
+   "reference_price": "207.88",
+   "symbol": "BCH"
+  },
+  {
+   "bitget_last_price": "3.1664",
+   "coingecko_id": "near",
+   "pair": "NEARUSDT",
+   "rank": 23,
+   "reference_price": "3.17",
+   "symbol": "NEAR"
+  },
+  {
+   "bitget_last_price": "44.39",
+   "coingecko_id": "litecoin",
+   "pair": "LTCUSDT",
+   "rank": 25,
+   "reference_price": "44.44",
+   "symbol": "LTC"
+  },
+  {
+   "bitget_last_price": "5.304",
+   "coingecko_id": "uniswap",
+   "pair": "UNIUSDT",
+   "rank": 26,
+   "reference_price": "5.31",
+   "symbol": "UNI"
+  },
+  {
+   "bitget_last_price": "0.08003",
+   "coingecko_id": "canton-network",
+   "pair": "CCUSDT",
+   "rank": 27,
+   "reference_price": "0.079857",
+   "symbol": "CC"
+  },
+  {
+   "bitget_last_price": "7.108",
+   "coingecko_id": "avalanche-2",
+   "pair": "AVAXUSDT",
+   "rank": 28,
+   "reference_price": "7.11",
+   "symbol": "AVAX"
+  },
+  {
+   "bitget_last_price": "1.0524",
+   "coingecko_id": "the-open-network",
+   "pair": "GRAMUSDT",
+   "rank": 30,
+   "reference_price": "1.052",
+   "symbol": "GRAM"
+  },
+  {
+   "bitget_last_price": "0.7218",
+   "coingecko_id": "sui",
+   "pair": "SUIUSDT",
+   "rank": 31,
+   "reference_price": "0.72228",
+   "symbol": "SUI"
+  },
+  {
+   "bitget_last_price": "0.05675",
+   "coingecko_id": "hedera-hashgraph",
+   "pair": "HBARUSDT",
+   "rank": 35,
+   "reference_price": "0.056822",
+   "symbol": "HBAR"
+  },
+  {
+   "bitget_last_price": "0.04373",
+   "coingecko_id": "crypto-com-chain",
+   "pair": "CROUSDT",
+   "rank": 38,
+   "reference_price": "0.04384642",
+   "symbol": "CRO"
+  },
+  {
+   "bitget_last_price": "191.44",
+   "coingecko_id": "bittensor",
+   "pair": "TAOUSDT",
+   "rank": 39,
+   "reference_price": "191.67",
+   "symbol": "TAO"
+  },
+  {
+   "bitget_last_price": "0.00000381",
+   "coingecko_id": "shiba-inu",
+   "pair": "SHIBUSDT",
+   "rank": 40,
+   "reference_price": "3.81e-06",
+   "symbol": "SHIB"
+  }
+ ],
+ "crypto_target": 25,
+ "crypto_target_met": true,
+ "excluded_before_target": [
+  {
+   "coingecko_id": "tether",
+   "rank": 3,
+   "reason": "stablecoin",
+   "symbol": "USDT"
+  },
+  {
+   "coingecko_id": "usd-coin",
+   "rank": 5,
+   "reason": "stablecoin",
+   "symbol": "USDC"
+  },
+  {
+   "coingecko_id": "figure-heloc",
+   "rank": 9,
+   "reason": "tokenized_asset",
+   "symbol": "FIGR_HELOC"
+  },
+  {
+   "coingecko_id": "leo-token",
+   "pair": "LEOUSDT",
+   "rank": 14,
+   "reason": "no_bitget_usdt_perpetual",
+   "symbol": "LEO"
+  },
+  {
+   "coingecko_id": "usds",
+   "rank": 15,
+   "reason": "stablecoin",
+   "symbol": "USDS"
+  },
+  {
+   "coingecko_id": "whitebit",
+   "pair": "WBTUSDT",
+   "rank": 16,
+   "reason": "no_bitget_usdt_perpetual",
+   "symbol": "WBT"
+  },
+  {
+   "coingecko_id": "ethena-usde",
+   "rank": 20,
+   "reason": "stablecoin",
+   "symbol": "USDE"
+  },
+  {
+   "coingecko_id": "dai",
+   "rank": 21,
+   "reason": "stablecoin",
+   "symbol": "DAI"
+  },
+  {
+   "coingecko_id": "rain",
+   "pair": "RAINUSDT",
+   "rank": 24,
+   "reason": "no_bitget_usdt_perpetual",
+   "symbol": "RAIN"
+  },
+  {
+   "coingecko_id": "tether-gold",
+   "rank": 29,
+   "reason": "tokenized_asset",
+   "symbol": "XAUT"
+  },
+  {
+   "coingecko_id": "usd1-wlfi",
+   "rank": 32,
+   "reason": "stablecoin",
+   "symbol": "USD1"
+  },
+  {
+   "coingecko_id": "ripple-usd",
+   "rank": 33,
+   "reason": "stablecoin",
+   "symbol": "RLUSD"
+  },
+  {
+   "coingecko_id": "global-dollar",
+   "rank": 34,
+   "reason": "stablecoin",
+   "symbol": "USDG"
+  },
+  {
+   "coingecko_id": "ondo-us-dollar-yield",
+   "rank": 36,
+   "reason": "stablecoin",
+   "symbol": "USDY"
+  },
+  {
+   "coingecko_id": "paypal-usd",
+   "rank": 37,
+   "reason": "stablecoin",
+   "symbol": "PYUSD"
+  }
+ ],
+ "feed_evidence": {
+  "ADAUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "AVAXUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "BCHUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "BNBUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "BTCUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "CCUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0374
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "CROUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.1032
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.004
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "DOGEUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "ETHUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "GRAMUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0027
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "HBARUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "HYPEUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "LINKUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "LTCUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "NEARUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "SHIBUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "SOLUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "SUIUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "TAOUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "TRXUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0031
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "UNIUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "XAGUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0007
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "XAUUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "XLMUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "XMRUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "XRPUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  },
+  "ZECUSDT": {
+   "code": "ok",
+   "ok": true,
+   "timeframes": {
+    "15m": {
+     "bars": 2916,
+     "contiguous": 2916,
+     "required": 2893,
+     "zero_volume_share": 0.0
+    },
+    "1h": {
+     "bars": 756,
+     "contiguous": 756,
+     "required": 733,
+     "zero_volume_share": 0.0
+    },
+    "4h": {
+     "bars": 216,
+     "contiguous": 216,
+     "required": 193,
+     "zero_volume_share": 0.0
+    }
+   }
+  }
+ },
+ "feed_requirements": {
+  "15m": {
+   "candle_ms": 900000,
+   "min_contiguous_bars": 2893
+  },
+  "1h": {
+   "candle_ms": 3600000,
+   "min_contiguous_bars": 733
+  },
+  "4h": {
+   "candle_ms": 14400000,
+   "min_contiguous_bars": 193
+  }
+ },
+ "identity_price_tolerance": "0.03",
+ "metals": [
+  {
+   "included": true,
+   "pair": "XAUUSDT",
+   "reason": null
+  },
+  {
+   "included": true,
+   "pair": "XAGUSDT",
+   "reason": null
+  }
+ ],
+ "min_leverage_checked": 20,
+ "note": "Istantanea point-in-time; non si aggiorna da sola durante la prova di 14 giorni.",
+ "ranking_sha256": "0f5aee20d76ef48c0f9df2ac26f4a36a7108966fe9a7e0039de7399e861e8fe8",
+ "ranking_size": 100,
+ "ranking_source": "coingecko_coins_markets_usd",
+ "same_for_all_providers": true,
+ "schema": "arena_universe_snapshot_v1",
+ "symbols": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "BNBUSDT",
+  "XRPUSDT",
+  "SOLUSDT",
+  "TRXUSDT",
+  "HYPEUSDT",
+  "ZECUSDT",
+  "XMRUSDT",
+  "DOGEUSDT",
+  "LINKUSDT",
+  "ADAUSDT",
+  "XLMUSDT",
+  "BCHUSDT",
+  "NEARUSDT",
+  "LTCUSDT",
+  "UNIUSDT",
+  "CCUSDT",
+  "AVAXUSDT",
+  "GRAMUSDT",
+  "SUIUSDT",
+  "HBARUSDT",
+  "CROUSDT",
+  "TAOUSDT",
+  "SHIBUSDT",
+  "XAUUSDT",
+  "XAGUSDT"
+ ],
+ "symbols_sha256": "79ba255778bfceffa36e3984b078f07dec5b91c9f227cdc22b0363f6eb3be5ba"
+}

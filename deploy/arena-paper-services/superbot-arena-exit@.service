@@ -1,0 +1,29 @@
+# AI ARENA — TEMPLATE ONLY. Proprietario UNICO delle uscite PAPER della run di UNA AI (%i = deepseek|qwen|minimax).
+# Non installare ne' avviare senza OK esplicito dell'utente. Nessuna chiave, nessun ordine reale.
+[Unit]
+Description=SuperBot AI Arena PAPER exit owner (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=root
+EnvironmentFile=/etc/superbot-arena/trial.env
+WorkingDirectory=/opt/superbot-arena-stage
+Environment=DESK_MODE=paper
+Environment=PYTHONPATH=/opt/superbot-arena-stage:/opt/superbot-arena-stage/backend
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/usr/bin/test -f /opt/superbot-ai-arena-paper/%i/brain-%i-paper${ARENA_DAY_COMPACT}/arena_manifest.json
+ExecStart=/opt/superbot-arena-stage/.venv/bin/python3 -m backend.v3.runner.exit_worker --data-dir /opt/superbot-ai-arena-paper/%i/brain-%i-paper${ARENA_DAY_COMPACT} --run-id brain-%i-paper${ARENA_DAY_COMPACT} --config /opt/superbot-ai-arena-paper/%i/brain-%i-paper${ARENA_DAY_COMPACT}/runner_config.json --start-paper --legacy-exits-disabled
+TimeoutStartSec=180
+WatchdogSec=60
+Restart=on-failure
+RestartSec=15
+RestartPreventExitStatus=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/superbot-ai-arena-paper/%i
+# Nessuna sezione di installazione: solo avvio esplicito dell'operatore.

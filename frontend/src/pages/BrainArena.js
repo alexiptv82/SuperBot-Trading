@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import API from '../api';
 import { BrainCloseControls } from '../components/OverviewCloseControls';
+import ArenaCloseControls from '../components/ArenaCloseControls';
 import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedTrial, trialTotalPnl } from '../brainArenaModel';
+import { arenaCloseUiEnabled } from '../arenaCloseModel';
 
 const BLOCK = { background: '#172338', border: '1px solid #30465e', borderRadius: 16, padding: 16 };
 const MUTED = { color: '#a4b6cd', fontSize: 12 };
@@ -51,6 +53,8 @@ export default function BrainArena() {
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState(null);
   const [refresh, setRefresh] = useState(0);
+  // Chiusure manuali dell'esperimento: solo con flag UI e rotte dedicate per AI attive sul server.
+  const [closeInfo, setCloseInfo] = useState({});
 
   const fetchData = useCallback(async signal => {
     // Existing PAPER read APIs, unchanged. Missing data NEVER treated as zero.
@@ -80,6 +84,18 @@ export default function BrainArena() {
       } catch (_) { /* Keep absent instead of showing stale/fake performance. */ }
     }
     const shownBrain = shadow.deepseek || brain;
+    if (arenaCloseUiEnabled()) {
+      const trial = ['deepseek', 'qwen', 'minimax'].filter(id => shadow[id]);
+      const infos = await Promise.allSettled(trial.map(id => API.get(`/api/v3/arena/${id}/annotations`, { signal })));
+      if (signal.aborted) return;
+      const next = {};
+      trial.forEach((id, i) => {
+        const d = infos[i].status === 'fulfilled' ? infos[i].value.data : null;
+        next[id] = d && d.ok === true && d.provider === id && Array.isArray(d.annotations)
+          ? { ready: d.manual_close_ready === true, annotations: d.annotations } : null;
+      });
+      setCloseInfo(next);
+    }
     setRows({ deepseek: shownBrain, qwen: shadow.qwen, minimax: shadow.minimax });
     setWarning(shownBrain ? null : 'Il Brain PAPER attuale non risponde. Non vengono mostrati numeri presunti.');
     setLoading(false);
@@ -103,12 +119,16 @@ export default function BrainArena() {
   const selected = ARENA_PROFILES.find(p => p.id === chosen);
   const data = rows[chosen];
   const totalRealized = trialTotalPnl(rows);
+  // La prova e' "in corso" solo se i tre portafogli sono verificati con lo stesso T0 (stesso criterio del PnL comune).
+  const trialLive = totalRealized !== null;
   return <main style={{ background: '#0b1323', color: '#eef5ff', minHeight: '100vh', padding: '16px 12px 100px', maxWidth: 1200, margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
     <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', marginBottom: 16 }}>
       <div>
         <div style={{ ...MUTED, color: '#7dd3fc', fontWeight: 800, letterSpacing: 1.5 }}>SUPERBOT V3 · PAPER ONLY</div>
         <h1 style={{ margin: '5px 0', fontSize: 25 }}>🧠 AI Arena</h1>
-        <div style={MUTED}>Confronto PAPER di 14 giorni · in attesa di attivazione comune</div>
+        <div style={MUTED}>Confronto PAPER di 14 giorni · {trialLive
+          ? 'prova in corso dal ' + new Date(rows.qwen.trial_start_ms).toLocaleDateString('it-IT')
+          : 'in attesa di attivazione comune'}</div>
         <div style={{ ...MUTED, marginTop: 6 }}>
           Lettura automatica ogni 30 secondi · valori da dati verificati, non ordini
         </div>
@@ -116,14 +136,20 @@ export default function BrainArena() {
       <button onClick={() => setRefresh(v => v + 1)} style={{ padding: 9, borderRadius: 10, border: '1px solid #456079', color: '#e2e8f0', background: '#172338' }}>Aggiorna</button>
     </header>
     <section role="note" style={{ ...BLOCK, marginBottom: 14, borderColor: '#365375', color: '#b6cce2', fontSize: 13 }}>
-      <strong>Stato: sola lettura.</strong> DeepSeek può mostrare lo storico PAPER esistente,
-      che non fa parte dei 14 giorni del nuovo esperimento.
-      I tre risultati sono confrontabili soltanto dopo la verifica dei journal indipendenti
-      e l'avvio contemporaneo dei tre portafogli.
-      Finché Qwen e MiniMax non sono avviati, non esistono profitti o trade da mostrare.
-      Questa pagina non apre posizioni e non modifica Falco o Toro.
-      La chiusura manuale del Brain storico richiede un servizio PAPER sano e abilitazione esplicita;
-      per Qwen e MiniMax serviranno comandi separati, non ancora attivi.
+      {trialLive ? <>
+        <strong>Prova PAPER in corso.</strong> Tre portafogli indipendenti da 2.000 USDT, stesso universo,
+        stesso mandato di rischio e stesso avvio. Nessun ordine reale; Falco e Toro non vengono toccati.
+        Ogni AI ha comandi di chiusura separati, attivi solo se il suo servizio di uscita PAPER è sano.
+      </> : <>
+        <strong>Stato: sola lettura.</strong> DeepSeek può mostrare lo storico PAPER esistente,
+        che non fa parte dei 14 giorni del nuovo esperimento.
+        I tre risultati sono confrontabili soltanto dopo la verifica dei journal indipendenti
+        e l'avvio contemporaneo dei tre portafogli.
+        Finché Qwen e MiniMax non sono avviati, non esistono profitti o trade da mostrare.
+        Questa pagina non apre posizioni e non modifica Falco o Toro.
+        La chiusura manuale del Brain storico richiede un servizio PAPER sano e abilitazione esplicita;
+        ogni AI dell'esperimento ha comandi di chiusura separati, attivi solo dopo abilitazione esplicita.
+      </>}
     </section>
     {warning && <p role="alert" style={{ color: '#fda4af' }}>{warning}</p>}
     <section aria-label="Seleziona modello AI" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 15 }}>
@@ -201,11 +227,19 @@ export default function BrainArena() {
                 onRefresh={() => setRefresh(v => v + 1)}
                 renderPosition={t => <Trade t={t} open/>}
               />
-            : <section>
+            : data.source === 'arena_independent_journal_v1' && arenaCloseUiEnabled() && closeInfo[chosen]
+              ? <ArenaCloseControls key={chosen} provider={chosen}
+                  positions={data.open_positions}
+                  ready={closeInfo[chosen].ready}
+                  annotations={closeInfo[chosen].annotations}
+                  onRefresh={() => setRefresh(v => v + 1)}
+                  renderPosition={t => <Trade t={t} open/>}
+                />
+              : <section>
                 {data.open_positions.map((t, i) => <Trade key={t.position_id || i} t={t} open/>)}
                 <div role="status" style={{ ...MUTED, padding: 9 }}>
-                  Chiusura manuale di {selected.title} non ancora abilitata:
-                  servirà il suo servizio di uscita PAPER dedicato.
+                  Chiusura manuale di {selected.title} non abilitata su questa dashboard:
+                  richiede il servizio di uscita PAPER dedicato e l'attivazione esplicita.
                 </div>
               </section>)}
       {tab === 'Storico' && (data.closed_trades == null
@@ -240,10 +274,12 @@ export default function BrainArena() {
           <Metric title="NO_TRADE registrati" value={shown(data.no_trade_count)}/>
           <Metric title="Trade con esito collegato" value={shown(data.verified_outcome_count)}/>
           <Metric title="Chiusure manuali registrate" value={shown(data.manual_close_count)}/>
+          <Metric title="Motivazioni umane registrate"
+            value={closeInfo[chosen] ? closeInfo[chosen].annotations.length : '—'}/>
         </div>
         <p style={{ ...MUTED, marginTop: 12 }}>
-          Gli esempi manuali conservano l'origine umana; il motivo della scelta resta
-          da annotare esplicitamente. Nessuna strategia viene modificata automaticamente.
+          Gli esempi manuali conservano l'origine umana; il motivo è solo quello indicato
+          dall'operatore, mai dedotto dal risultato. Nessuna strategia viene modificata automaticamente.
         </p>
       </section>}
     </>}

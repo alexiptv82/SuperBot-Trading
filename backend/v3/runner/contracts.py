@@ -18,6 +18,8 @@ from typing import Callable, Mapping, Optional
 
 from backend.v3.lab_tools.fetch_candles import BASE, http_json
 
+ENGINE_LEVER_CAP = 125          # tetto di executor e rischio; mai superato
+MAX_EXCHANGE_LEVER = 1000       # valori dell'exchange oltre questo = risposta non plausibile, contratto scartato
 CONTRACTS_URL = f"{BASE}/api/v2/mix/market/contracts?productType=USDT-FUTURES"
 GetJson = Callable[[str], object]
 
@@ -47,9 +49,11 @@ def parse_contract_rules(payload: object, *, maintenance_fraction: Decimal) -> d
         symbol = item.get("symbol")
         step, notional, lever = _dec(item.get("sizeMultiplier")), _dec(item.get("minTradeUSDT")), _dec(item.get("maxLever"))
         if (type(symbol) is not str or not symbol or step is None or step <= 0 or notional is None or notional < 0
-                or lever is None or lever != lever.to_integral_value() or not 1 <= lever <= 125 or symbol in out):
+                or lever is None or lever != lever.to_integral_value() or not 1 <= lever <= MAX_EXCHANGE_LEVER or symbol in out):
             continue
-        out[symbol] = {"exchange_leverage_limit": int(lever), "quantity_step": step,
+        # Bitget oggi offre fino a 150x su BTC/ETH: il contratto resta valido, il limite registrato si ferma al
+        # tetto del motore (125), sempre piu' prudente del valore dell'exchange. Prima venivano scartati.
+        out[symbol] = {"exchange_leverage_limit": min(int(lever), ENGINE_LEVER_CAP), "quantity_step": step,
                        "minimum_notional": notional, "maintenance_fraction": maintenance_fraction}
     if not out:
         raise ValueError("invalid_contracts")

@@ -739,6 +739,12 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
                 arena_date, root=Path('/opt/superbot-ai-arena-paper'))
             router.include_router(make_arena_router(
                 require_session, arena_plans, enabled=True, nested=True))
+            # Chiusura manuale PAPER per AI: opt-in separato, solo via canale host dedicato.
+            from backend.v3.arena.close_bridge import arena_manual_close_enabled, send as arena_send
+            from backend.v3.arena.close_router import make_arena_close_router
+            if arena_manual_close_enabled(os.environ):
+                router.include_router(make_arena_close_router(
+                    require_session, arena_plans, send=arena_send))
 
     @router.get('/overview')
     def overview(response: Response, session=Depends(require_session)):

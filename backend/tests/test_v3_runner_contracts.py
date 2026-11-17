@@ -37,7 +37,7 @@ def test_parse_builds_exact_rules():
     _c(symbolStatus="maintain"), _c(symbolStatus=None), _c(symbol=""), _c(symbol=5), _c(sizeMultiplier="0"),
     _c(sizeMultiplier="-1"), _c(sizeMultiplier=0.01), _c(sizeMultiplier="x"), _c(sizeMultiplier="NaN"),
     _c(sizeMultiplier=None), _c(minTradeUSDT="-1"), _c(minTradeUSDT=None), _c(minTradeUSDT="Infinity"),
-    _c(maxLever="0"), _c(maxLever="126"), _c(maxLever="10.5"), _c(maxLever=10), _c(maxLever=None), "x", None,
+    _c(maxLever="0"), _c(maxLever="1001"), _c(maxLever="10.5"), _c(maxLever=10), _c(maxLever=None), "x", None,
     {"symbol": "BTCUSDT"}])
 def test_a_malformed_or_inactive_contract_is_dropped_and_good_ones_survive(bad):
     t = parse_contract_rules(_ok(bad, _c("ETHUSDT")), maintenance_fraction=MAINT)
@@ -132,3 +132,11 @@ def test_bad_refresh_interval(r):
 def test_bad_now(now):
     with pytest.raises(ValueError, match="invalid_now"):
         ContractRules(lambda u: _ok(_c()), maintenance_fraction=MAINT).load(now)
+
+
+def test_exchange_leverage_above_engine_cap_keeps_the_contract_capped_at_125():
+    """Bitget (11/2026) offre 150x su BTC/ETH: prima il contratto spariva e il ciclo saltava il simbolo."""
+    t = parse_contract_rules(_ok(_c("BTCUSDT", maxLever="150"), _c("ETHUSDT", maxLever="150"), _c("BAD", maxLever="5000")),
+                             maintenance_fraction=D("0.005"))
+    assert t["BTCUSDT"]["exchange_leverage_limit"] == 125 and t["ETHUSDT"]["exchange_leverage_limit"] == 125
+    assert "BAD" not in t

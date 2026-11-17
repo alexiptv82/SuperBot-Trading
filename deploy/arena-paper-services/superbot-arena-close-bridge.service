@@ -1,0 +1,29 @@
+# AI ARENA — TEMPLATE ONLY. Canale host per chiusure manuali PAPER (una posizione), separato dal bridge RC84.
+# Senza rete. Scrive solo close_request.json e i due registri append-only nelle tre run dell'Arena.
+# V3_ARENA_CLOSE_GROUP_GID (opzionale) = GID DEDICATO del processo web non-root; altrimenti socket root-only.
+[Unit]
+Description=SuperBot AI Arena PAPER manual-close bridge (no network)
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/superbot-arena/trial.env
+EnvironmentFile=-/etc/superbot-arena/bridge.env
+WorkingDirectory=/opt/superbot-arena-stage
+Environment=DESK_MODE=paper
+Environment=TRADING_MODE=paper
+Environment=V3_ARENA_ALLOW_MANUAL_CLOSE=1
+Environment=V3_ARENA_CLOSE_SOCKET=/run/superbot-arena-close/arena.sock
+Environment=PYTHONPATH=/opt/superbot-arena-stage:/opt/superbot-arena-stage/backend
+Environment=PYTHONDONTWRITEBYTECODE=1
+# La cartella del socket (root:root 0700, oppure root:GID 0710) va preparata dall'operatore: il bridge la verifica.
+ExecStart=/opt/superbot-arena-stage/.venv/bin/python3 -m backend.v3.arena.close_bridge_server
+Restart=on-failure
+RestartSec=8
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ReadWritePaths=/run/superbot-arena-close /opt/superbot-ai-arena-paper
