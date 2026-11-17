@@ -141,3 +141,17 @@ test('legacy DeepSeek close requires separately certified backend and explicit U
     else process.env.REACT_APP_ARENA_EXISTING_CLOSE = prior;
   }
 });
+
+test('Memory view does not invent historical learning statistics', async () => {
+  const { node, dispose } = await mount();
+  try {
+    const tab = Array.from(node.querySelectorAll('button')).find(x => x.textContent === 'Memoria');
+    expect(tab).toBeDefined();
+    await act(async () => { tab.click(); });
+    expect(node.textContent).toContain('Registro delle esperienze');
+    expect(node.textContent).toContain('NO_TRADE registrati');
+    expect(node.textContent).toContain('Memoria operativa non ancora certificata');
+    expect(node.textContent).toContain('Nessuna strategia viene modificata automaticamente');
+    expect(node.textContent).not.toContain('42');
+  } finally { await dispose(); }
+});
