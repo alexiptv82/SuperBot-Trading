@@ -1,4 +1,4 @@
-import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedShadow, sanitizedTrial, trialTotalPnl } from './brainArenaModel';
+import { ARENA_PROFILES, money, portfolioFromExisting, markedOpenPnl, sanitizedShadow, sanitizedTrial, trialTotalPnl } from './brainArenaModel';
 
 test('three independent initial PAPER capital references', () => {
   expect(ARENA_PROFILES.map(x => x.id)).toEqual(['deepseek','qwen','minimax']);
@@ -95,4 +95,36 @@ test('not-started shadow is not displayed as a zero-profit wallet', () => {
     run_id:'brain-qwen-paper20261116',
     realized_pnl: null,
   })).toBeNull();
+});
+
+test('live Brain open PnL uses only complete, verified ticker marks', () => {
+  const ok = {
+    open_positions: [
+      {symbol:'BTCUSDT',price_source:'ticker',price:'108',unrealized_pnl:'12.30'},
+      {symbol:'ETHUSDT',price_source:'ticker',price:'2150',unrealized_pnl:'-3.25'},
+    ],
+  };
+  expect(markedOpenPnl(ok)).toBeCloseTo(9.05);
+  const legacy = portfolioFromExisting({
+    generated_at_ms: 1700000100000,
+    portfolios:[{id:'brain',state:'running',realized_pnl:'14'}],
+  },null,ok);
+  expect(legacy.unrealized_pnl).toBeCloseTo(9.05);
+  expect(legacy.realized_pnl).toBe('14'); // realized and open PnL never mixed
+  expect(legacy.trial_comparable).toBe(false);
+});
+
+test('unmarked or invalid ticker data never becomes an invented PnL', () => {
+  expect(markedOpenPnl(null)).toBeNull();
+  expect(markedOpenPnl({open_positions:[]})).toBe(0);
+  expect(markedOpenPnl({open_positions:[{price_source:'ticker',price:null,unrealized_pnl:'0'}]})).toBeNull();
+  expect(markedOpenPnl({open_positions:[{price_source:'entry',price:'100',unrealized_pnl:'0'}]})).toBeNull();
+  expect(markedOpenPnl({open_positions:[{price_source:'ticker',price:'100',unrealized_pnl:'NaN'}]})).toBeNull();
+  expect(markedOpenPnl({open_positions:[
+    {price_source:'ticker',price:'100',unrealized_pnl:'2'},
+    {price_source:null,price:null,unrealized_pnl:null},
+  ]})).toBeNull();
+  const missing = portfolioFromExisting({portfolios:[{id:'brain',state:'running'}]}, null,
+    {open_positions:[{price_source:null,price:null,unrealized_pnl:null}]});
+  expect(missing.unrealized_pnl).toBeNull();
 });
