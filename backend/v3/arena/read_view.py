@@ -90,6 +90,11 @@ def _empty(plan: WalletPlan, reason: str) -> dict:
         "open_positions": None,
         "closed_trades": None,
         "last_decision": None,
+        "decision_count": None,
+        "no_trade_count": None,
+        "manual_close_count": None,
+        "verified_outcome_count": None,
+        "learning_status": "NOT_CONFIGURED",
         "updated_ms": None,
     }
 
@@ -221,6 +226,9 @@ def read_wallet(plan: WalletPlan, now_ms: int) -> dict:
                 last.payload.get("kind") in ("OPEN", "NO_TRADE") else None,
         }
         win_count = sum(1 for o in closes if o.realized_pnl > 0)
+        decisions = [stored.event for stored in events if stored.event.kind == "brain_decision"]
+        no_trades = sum(ev.payload.get("kind") == "NO_TRADE" for ev in decisions)
+        manual_exits = sum(o.is_manual for o in closes)
         total = len(closes)
         result = _empty(plan, "VERIFIED")
         result.update({
@@ -246,6 +254,11 @@ def read_wallet(plan: WalletPlan, now_ms: int) -> dict:
                 "exit_reason": o.exit_reason, "closed_at_ms": o.closed_at_ms,
             } for o in closes[:100]],
             "last_decision": last_decision,
+            "decision_count": len(decisions),
+            "no_trade_count": no_trades,
+            "manual_close_count": manual_exits,
+            "verified_outcome_count": len(outcome_report.linked_outcomes),
+            "learning_status": "JOURNAL_EVIDENCE_ONLY_NOT_MODEL_TRAINING",
             "updated_ms": summary.last_event_ms,
         })
         return result
