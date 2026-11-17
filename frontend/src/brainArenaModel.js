@@ -76,6 +76,9 @@ export function portfolioFromExisting(overview, status, trades) {
     run_id: null,
     trial_start_ms: null,
     trial_comparable: false,
+    // Only the existing Brain's certified single-close bridge may be used.
+    manual_close_allowed: entry.manual_close_allowed === true,
+    close_pending: trades?.close_pending === true,
   };
 }
 
@@ -107,6 +110,10 @@ export function sanitizedTrial(profileId, payload) {
     trial_start_ms: Number.isSafeInteger(payload.trial_start_ms) &&
       payload.trial_start_ms > 0 ? payload.trial_start_ms : null,
     trial_comparable: payload.trial_comparable === true,
+    // A trial wallet cannot be closed via /api/v3/brain/close.
+    // Dedicated provider-scoped commands must be audited first.
+    manual_close_allowed: false,
+    close_pending: false,
   };
 }
 
