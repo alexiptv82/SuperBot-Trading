@@ -32,7 +32,13 @@ function Trade({ t, open = false }) {
       Entrata {shown(price)} · {open ? 'Stop ' + shown(t.stop ?? t.stop_price) : 'Uscita ' + shown(exit)}
       {' · '}Margine {money(t.margin ?? t.margin_used)}
     </div>
-    {open && <div style={{ ...MUTED, marginTop: 5 }}>Take profit: {shown(t.take_profit ?? t.tp_price)} · Posizione PAPER</div>}
+    {open && <div style={{ ...MUTED, marginTop: 5 }}>
+      Prezzo disponibile: {t.price_source === 'ticker' ? shown(t.price) : '—'}
+      {' · '}ROI: {t.price_source === 'ticker' && t.roi_pct != null ? shown(t.roi_pct) + '%' : '—'}
+    </div>}
+    {open && <div style={{ ...MUTED, marginTop: 5 }}>
+      Take profit: {shown(t.take_profit ?? t.tp_price)} · Posizione PAPER
+    </div>}
     {!open && <div style={{ ...MUTED, marginTop: 5 }}>Commissioni: {money(t.fees)} · Motivo: {shown(t.exit_reason ?? t.reason)}</div>}
   </article>;
 }
@@ -102,6 +108,9 @@ export default function BrainArena() {
         <div style={{ ...MUTED, color: '#7dd3fc', fontWeight: 800, letterSpacing: 1.5 }}>SUPERBOT V3 · PAPER ONLY</div>
         <h1 style={{ margin: '5px 0', fontSize: 25 }}>🧠 AI Arena</h1>
         <div style={MUTED}>Confronto PAPER di 14 giorni · in attesa di attivazione comune</div>
+        <div style={{ ...MUTED, marginTop: 6 }}>
+          Lettura automatica ogni 30 secondi · valori da dati verificati, non ordini
+        </div>
       </div>
       <button onClick={() => setRefresh(v => v + 1)} style={{ padding: 9, borderRadius: 10, border: '1px solid #456079', color: '#e2e8f0', background: '#172338' }}>Aggiorna</button>
     </header>
@@ -166,6 +175,11 @@ export default function BrainArena() {
           <div style={{ ...MUTED, marginTop: 7 }}>
             {data.last_decision ? [data.last_decision.symbol, data.last_decision.status,
               data.last_decision.strategy_id].filter(Boolean).join(' · ') : 'Non disponibile'}
+          </div>
+          <div style={{ ...MUTED, marginTop: 7 }}>
+            Ultimo evento verificato: {Number.isSafeInteger(data.updated_ms) && data.updated_ms > 0
+              ? new Date(data.updated_ms).toLocaleString('it-IT')
+              : 'Non disponibile'}
           </div>
           <div style={{ ...MUTED, marginTop: 7 }}>Sorgente: {data.source}. Nessuna API di trading accessibile da questa pagina.</div>
         </div>
