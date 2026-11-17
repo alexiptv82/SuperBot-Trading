@@ -33,7 +33,9 @@ test('shadow data requires independently verified run ID and source, never DeepS
     run_id:'brain-qwen-paper20261116', realized_pnl:'22.50',
     open_positions:[{symbol:'BTCUSDT',side:-1}],closed_trades:[],
   };
-  expect(sanitizedShadow('qwen',valid).realized_pnl).toBe('22.50');
+  // The frontend intentionally converts verified PAPER PnL to a finite number.
+  expect(sanitizedShadow('qwen',valid).realized_pnl).toBe(22.5);
+  expect(money(sanitizedShadow('qwen',valid).realized_pnl)).toBe('22,50 USDT');
   expect(sanitizedShadow('minimax',valid)).toBeNull();
   expect(sanitizedShadow('qwen',{...valid,run_id:'brain-v3-paper20261111'})).toBeNull();
   expect(sanitizedShadow('qwen',{...valid,source:'v3_existing_brain_paper'})).toBeNull();
