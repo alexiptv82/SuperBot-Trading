@@ -14,6 +14,8 @@ const PAPER_TABS = [
 // Anteprima AI Arena: solo navigazione PAPER, non mette in pausa Falco/Toro.
 const ARENA_PREVIEW_TABS = [
   { path: '/arena', icon: '🧠', label: 'AI Arena' },
+  // Archive access is navigation only: does not stop/erase Falco or Toro.
+  { path: '/classic', icon: '🦅', label: 'Falco / Toro' },
   { path: '/supervisor', icon: '🛰️', label: 'Agenti' },
 ];
 
