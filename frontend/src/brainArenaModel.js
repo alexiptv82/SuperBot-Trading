@@ -24,6 +24,22 @@ export function money(value) {
     number.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
 }
 
+/** Marked PnL is displayed ONLY when every open position has a valid ticker mark. */
+export function markedOpenPnl(trades) {
+  if (!trades || !Array.isArray(trades.open_positions)) return null;
+  if (trades.open_positions.length === 0) return 0;
+  let total = 0;
+  for (const position of trades.open_positions) {
+    if (!position || position.price_source !== 'ticker') return null;
+    const mark = finite(position.price);
+    const pnl = finite(position.unrealized_pnl);
+    if (mark === null || mark <= 0 || pnl === null) return null;
+    total += pnl;
+    if (!Number.isFinite(total)) return null;
+  }
+  return total;
+}
+
 export function portfolioFromExisting(overview, status, trades) {
   // The old DeepSeek run is an archive/baseline, not a newly reset trial wallet.
   const entry = overview && Array.isArray(overview.portfolios)
@@ -36,7 +52,9 @@ export function portfolioFromExisting(overview, status, trades) {
     settled_equity: entry.settled_equity ?? null,
     equity_basis: entry.equity_basis ?? null,
     realized_pnl: entry.realized_pnl ?? null,
-    unrealized_pnl: entry.unrealized_pnl ?? null,
+    unrealized_pnl: trades
+      ? markedOpenPnl(trades)
+      : (entry.unrealized_pnl ?? null),
     day_pnl: entry.day_pnl ?? null,
     total_closed: entry.total_closed ?? null,
     win_rate: entry.win_rate ?? null,
