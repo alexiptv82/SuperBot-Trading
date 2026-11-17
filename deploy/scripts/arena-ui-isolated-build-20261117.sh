@@ -40,10 +40,21 @@ echo "ARENA_UI_BUILD step=THREE_TARGETED_JEST_FILES"
 # package.json defines "start" and "build", but NO "test" script.
 # Invoke locally installed react-scripts directly; do not change package.json.
 [[ -x node_modules/.bin/react-scripts ]] || fail REACT_SCRIPTS_MISSING
-CI=true nice -n 10 ./node_modules/.bin/react-scripts test --watchAll=false --runInBand --runTestsByPath \
+# Keep complete failures outside the Git worktree, so the user can inspect
+# the exact two failing test names on a small Termius screen.
+TEST_LOG="$(dirname "$ROOT")/arena-ui-jest-20261117.log"
+if CI=true nice -n 10 ./node_modules/.bin/react-scripts test --watchAll=false --runInBand --runTestsByPath \
   src/brainArenaModel.test.js \
   src/pages/BrainArena.test.js \
-  src/pages/Overview.test.js
+  src/pages/Overview.test.js >"$TEST_LOG" 2>&1; then
+  tail -n 16 "$TEST_LOG"
+else
+  echo "ARENA_UI_BUILD diagnostic=JEST_FAILED"
+  grep -nE '(^FAIL |● |Test Suites:|Tests:|Expected:|Received:|at Object)' "$TEST_LOG" | tail -n 45 || true
+  echo "ARENA_UI_BUILD jest_full_log=$TEST_LOG"
+  echo "ARENA_UI_BUILD RESULT=TEST_FAILURE_BUILD_NOT_RUN_NO_DEPLOY"
+  exit 2
+fi
 echo "ARENA_UI_BUILD step=FRONTEND_COMPILE"
 CI=false REACT_APP_BACKEND_URL='' REACT_APP_PREVIEW_READONLY=0 \
 REACT_APP_BRAIN_ARENA_PREVIEW=0 REACT_APP_BRAIN_ARENA_SHADOW_API=0 \
