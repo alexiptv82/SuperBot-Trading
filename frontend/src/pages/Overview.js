@@ -1,6 +1,5 @@
 /** Unified PAPER overview: read-only metrics plus authenticated close requests. */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 
 import API from '../api';
 import { BrainCloseControls, ClassicCloseControls, PortfolioTradeFields } from '../components/OverviewCloseControls';
@@ -92,8 +91,8 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
       <div style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>SUPERBOT V3 · PAPER</div>
       <h1 style={{ fontSize: 25, margin: '6px 0' }}>I tre portafogli</h1>
       <div style={MUTED}>Monitoraggio · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
-      <Link
-        to="/arena"
+      <a
+        href={`${(process.env.REACT_APP_BASENAME || '').replace(/\/$/, '')}/arena`}
         aria-label="Apri AI Arena: confronto PAPER di DeepSeek, Qwen e MiniMax"
         style={{
           display: 'inline-flex', alignItems: 'center', marginTop: 14,
@@ -103,7 +102,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
           maxWidth: '100%', boxSizing: 'border-box'
         }}>
         🧠 AI Arena · DeepSeek / Qwen / MiniMax
-      </Link>
+      </a>
       <div style={{ ...MUTED, marginTop: 6 }}>
         Confronto PAPER in sola lettura. Qwen e MiniMax mostreranno profitti e posizioni
         soltanto dopo l'avvio verificato dei rispettivi portafogli.
