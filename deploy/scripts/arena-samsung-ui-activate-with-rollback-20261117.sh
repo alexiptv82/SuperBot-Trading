@@ -49,7 +49,11 @@ RELEASE="$(mktemp -d "$BASE/release.XXXXXXXX")" || stop RELEASE_DIR_FAILED
 chmod 0700 "$RELEASE"
 SOURCE="$RELEASE/source"
 say "RELEASE_WORKDIR=$RELEASE"
-GIT_TERMINAL_PROMPT=0 git clone --quiet --no-tags --single-branch --depth 1 --branch "$BRANCH" "$REPO" "$SOURCE" || stop SOURCE_CLONE_FAILED
+# The branch contains later safety/runbook commits; build the reviewed code PIN,
+# not the moving branch HEAD. Fetch a shallow but sufficient reachable history.
+GIT_TERMINAL_PROMPT=0 git clone --quiet --no-tags --single-branch --depth 40 --branch "$BRANCH" "$REPO" "$SOURCE" || stop SOURCE_CLONE_FAILED
+git -C "$SOURCE" cat-file -e "$PIN^{commit}" 2>/dev/null || stop PINNED_CODE_NOT_IN_CLONE
+git -C "$SOURCE" checkout --quiet --detach "$PIN" || stop CODE_CHECKOUT_FAILED
 [[ "$(git -C "$SOURCE" rev-parse HEAD)" == "$PIN" ]] || stop CODE_COMMIT_CHANGED
 
 python3.12 - "$SOURCE/frontend/package.json" "$SEED/package.json" <<'PY'
