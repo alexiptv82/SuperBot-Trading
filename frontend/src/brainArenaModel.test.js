@@ -128,3 +128,16 @@ test('unmarked or invalid ticker data never becomes an invented PnL', () => {
     {open_positions:[{price_source:null,price:null,unrealized_pnl:null}]});
   expect(missing.unrealized_pnl).toBeNull();
 });
+
+test('inconsistent asynchronous position counts must not show a misleading open PnL', () => {
+  const result = portfolioFromExisting(
+    {portfolios:[{id:'brain',state:'running',open_positions:2,realized_pnl:'10'}]},
+    null,
+    {open_positions:[{
+      symbol:'BTCUSDT',price_source:'ticker',price:'100',
+      unrealized_pnl:'25',
+    }]},
+  );
+  expect(result.realized_pnl).toBe('10');
+  expect(result.unrealized_pnl).toBeNull();
+});
