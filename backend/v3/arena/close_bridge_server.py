@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socketserver
 import stat
 import sys
@@ -30,6 +31,52 @@ from backend.v3.arena.close_bridge import (
 from backend.v3.arena.trial_plan import build_trial_plan
 
 ROOT = Path("/opt/superbot-ai-arena-paper")
+# Optional host-side group for the separately running web container.
+# Group IDs are deployment-specific; the bridge never chooses or creates one.
+GROUP_GID_ENV = "V3_ARENA_CLOSE_GROUP_GID"
+
+
+def socket_group_gid(environ) -> int | None:
+    """Root-only by default; explicit numeric GID enables narrowly scoped access.
+
+    A Docker bind mount does not make root:0600 sockets accessible to a
+    non-root web process. A host administrator must supply a *dedicated* GID,
+    prepare the parent directory root:GID mode 0710 and grant the web
+    process that supplementary group. No 0777 or web-as-root workaround.
+    """
+    raw = environ.get(GROUP_GID_ENV)
+    if raw is None:
+        return None
+    if type(raw) is not str or re.fullmatch(r"[1-9][0-9]{0,9}", raw) is None:
+        raise RuntimeError("arena_socket_gid_invalid")
+    gid = int(raw)
+    if gid > 2_147_483_647:
+        raise RuntimeError("arena_socket_gid_invalid")
+    return gid
+
+
+def validate_socket_directory(parent: Path, group_gid: int | None) -> None:
+    """Require root-owned, non-world-accessible, deliberately provisioned dir."""
+    if parent.is_symlink() or not parent.is_dir():
+        raise RuntimeError("socket_directory_missing")
+    st = parent.stat()
+    expected_mode = 0o700 if group_gid is None else 0o710
+    if (st.st_uid != 0 or stat.S_IMODE(st.st_mode) != expected_mode
+            or (group_gid is not None and st.st_gid != group_gid)):
+        raise RuntimeError("socket_directory_permissions_invalid")
+
+
+def set_socket_permissions(sock: Path, group_gid: int | None) -> None:
+    """Limit socket connections to root, or root plus the opt-in bridge group."""
+    if sock.is_symlink() or not sock.is_socket():
+        raise RuntimeError("socket_not_owned")
+    os.chown(sock, 0, 0 if group_gid is None else group_gid)
+    expected_mode = 0o600 if group_gid is None else 0o660
+    os.chmod(sock, expected_mode)
+    st = sock.stat()
+    if (st.st_uid != 0 or stat.S_IMODE(st.st_mode) != expected_mode
+            or (group_gid is not None and st.st_gid != group_gid)):
+        raise RuntimeError("socket_permissions_invalid")
 
 
 def _manifest_ok(plan) -> bool:
@@ -96,16 +143,13 @@ def main() -> int:
     plans = load_plans(os.environ)
     sock = Path(SOCKET_PATH)
     parent = sock.parent
-    if parent.is_symlink() or not parent.is_dir():
-        raise RuntimeError("socket_directory_missing")
-    pst = parent.stat()
-    if pst.st_uid != 0 or stat.S_IMODE(pst.st_mode) != 0o700:
-        raise RuntimeError("socket_directory_must_be_private")
+    group_gid = socket_group_gid(os.environ)
+    validate_socket_directory(parent, group_gid)
     if sock.exists() or sock.is_symlink():
         raise RuntimeError("socket_path_already_occupied")
     try:
         with _Server(str(sock), _handler(plans)) as server:
-            os.chmod(sock, 0o600)
+            set_socket_permissions(sock, group_gid)
             print("ARENA_PAPER_CLOSE_BRIDGE_READY=True", flush=True)
             server.serve_forever(poll_interval=0.5)
     finally:
