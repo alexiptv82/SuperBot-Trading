@@ -186,6 +186,21 @@ def main() -> int:
             refuse("FULL_ARCHIVE_MISSING_STATE")
         if not tar.getmembers():
             refuse("FULL_ARCHIVE_EMPTY")
+        # Re-read archived bytes, not just tar headers, for the critical history.
+        for _, portfolio in CLASSICS:
+            for basename in ("state_v2.json", "trade_history.jsonl", "learning_log.jsonl"):
+                source = DATA_ROOT / portfolio / basename
+                if not source.is_file():
+                    continue
+                entry = portfolio + "/" + basename
+                stream = tar.extractfile(entry)
+                if stream is None:
+                    refuse("FULL_ARCHIVE_CRITICAL_FILE_MISSING")
+                h = hashlib.sha256()
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    h.update(chunk)
+                if h.hexdigest() != digest(source):
+                    refuse("FULL_ARCHIVE_CRITICAL_SHA_MISMATCH")
 
     for brain_unit in BRAIN_UNITS:
         if ctl("is-active", brain_unit, check=False) != "active":
