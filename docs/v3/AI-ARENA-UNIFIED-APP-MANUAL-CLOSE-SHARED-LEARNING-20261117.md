@@ -71,3 +71,10 @@ La funzione di collezione è una base **offline**, non equivale a un training, a
 7. Avviare la prova comune di 14 giorni solo quando tutte e tre sono pronte. Nessun automatismo che scelga il vincitore dopo 14 giorni; la selezione deve tenere conto di mercati diversi, errori e costi.
 
 **Stato:** nessun deploy, merge, stop/riavvio di Falco, Toro o Brain, apertura/chiusura di trade, crediti AI consumati o apprendimento automatico attivato da questo ramo.
+
+## Aggiornamento: schermata Memoria e audit storico (stesso ramo, non distribuito)
+
+- La nuova quinta scheda `Memoria` in `frontend/src/pages/BrainArena.js` mostra i contatori verificati solo se provengono dalla run Arena con origine, run_id e journal accettati dal backend; altrimenti mostra `—`. Lo storico DeepSeek non possiede ancora il contratto completo dei contatori, quindi non vengono inventati.
+- In `backend/v3/arena/read_view.py`, la risposta GET verifica e restituisce `decision_count`, `no_trade_count`, `manual_close_count`, `verified_outcome_count`, `learning_status=JOURNAL_EVIDENCE_ONLY_NOT_MODEL_TRAINING`. Sono *conteggi di esperienza*, non prova di aggiornamento della strategia o pesi AI.
+- Creato `deploy/scripts/arena-learning-readonly-audit-20261117.py` per ispezionare in sola lettura il journal V3 Brain **effettivamente installato**: catena hash, decisioni, NO_TRADE, paper_open/close, outcome collegati, manual exit e gap. Richiede il percorso e run_id reali della VPS, non li indovina dal repository; non legge segreti o modifica bot. Dice esplicitamente `model_learning_active=NOT_PROVEN_BY_JOURNAL` e `archive_backup_restore=NOT_CHECKED`.
+- I nuovi test React/Python sono preparati ma non ancora eseguiti. Non riutilizzare l'esito 31/31 della build precedente come prova di queste nuove funzionalità.
