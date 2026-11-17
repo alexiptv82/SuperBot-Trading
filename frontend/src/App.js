@@ -88,8 +88,19 @@ function PasswordBanner() {
   );
 }
 
+// A preview banner alone cannot make legacy control pages read-only.
+// In a read-only build, never mount operational routes or the LIVE toggle.
+export const isArenaReadOnlyPreview = (env = process.env) =>
+  env.REACT_APP_PREVIEW_READONLY === '1';
+
 export default function App() {
   const [auth, setAuth] = useState(!!sessionStorage.getItem('sb_token'));
+  const previewOnly = isArenaReadOnlyPreview();
+  const handleLogout = () => {
+    sessionStorage.removeItem('sb_token');
+    sessionStorage.removeItem('sb_mode');
+    setAuth(false);
+  };
   if (!auth) return (
     <AppErrorBoundary>
       <Login onLogin={() => setAuth(true)} />
@@ -99,12 +110,15 @@ export default function App() {
     <AppErrorBoundary>
       <AppProvider>
         <BrowserRouter basename={process.env.REACT_APP_BASENAME || undefined}>
-          {process.env.REACT_APP_PREVIEW_READONLY === '1' && <div role="status" style={{ background:'#78350f', color:'#fff7ed', padding:'10px 14px', fontWeight:700, textAlign:'center', fontSize:13 }}>
-            COLLAUDO V3 PAPER IN SOLA LETTURA — dati di prova, chiusure disabilitate, bot fermi.
+          {previewOnly && <div role="status" style={{ background:'#78350f', color:'#fff7ed', padding:'10px 14px', fontWeight:700, textAlign:'center', fontSize:13 }}>
+            ANTEPRIMA AI ARENA IN SOLA LETTURA — nuovi portafogli non avviati; il Brain storico può essere operativo. Nessuna chiusura abilitata in questa anteprima.
           </div>}
-          <PasswordBanner />
+          {!previewOnly && <PasswordBanner />}
           <div style={{ paddingBottom: '75px' }}>
-            <Routes>
+            {previewOnly ? <Routes>
+              <Route path="/arena" element={<BrainArena />} />
+              <Route path="*" element={<Navigate to="/arena" replace />} />
+            </Routes> : <Routes>
               {/* ── Sezione PAPER (soldi simulati) ── */}
               <Route path="/" element={<Navigate to={process.env.REACT_APP_BRAIN_ARENA_PREVIEW === '1' ? '/arena' : '/overview'} replace />} />
               <Route path="/arena" element={<BrainArena />} />
@@ -121,13 +135,14 @@ export default function App() {
               <Route path="/overview" element={<Overview />} />
               <Route path="/supervisor" element={<Supervisor />} />
               <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
+            </Routes>}
           </div>
-          <NavBar onLogout={() => {
-            sessionStorage.removeItem('sb_token');
-            sessionStorage.removeItem('sb_mode');
-            setAuth(false);
-          }} />
+          {previewOnly
+            ? <div style={{ padding: '12px', textAlign: 'center', background: '#0e1a2d' }}>
+                <button onClick={handleLogout} style={{ border: '1px solid #456079', borderRadius: 10,
+                  padding: '9px 16px', background: '#172338', color: '#eef5ff' }}>Esci dall'anteprima</button>
+              </div>
+            : <NavBar onLogout={handleLogout} />}
         </BrowserRouter>
       </AppProvider>
     </AppErrorBoundary>
