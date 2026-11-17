@@ -1,5 +1,6 @@
 /** Unified PAPER overview: read-only metrics plus authenticated close requests. */
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import API from '../api';
 import { BrainCloseControls, ClassicCloseControls, PortfolioTradeFields } from '../components/OverviewCloseControls';
@@ -91,6 +92,22 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
       <div style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>SUPERBOT V3 · PAPER</div>
       <h1 style={{ fontSize: 25, margin: '6px 0' }}>I tre portafogli</h1>
       <div style={MUTED}>Monitoraggio · Ultimo aggiornamento {ageText(overview.generated_at_ms, nowMs)}</div>
+      <Link
+        to="/arena"
+        aria-label="Apri AI Arena: confronto PAPER di DeepSeek, Qwen e MiniMax"
+        style={{
+          display: 'inline-flex', alignItems: 'center', marginTop: 14,
+          background: '#183957', border: '1px solid #38bdf8',
+          borderRadius: 12, padding: '12px 14px', fontSize: 14,
+          color: '#e0f2fe', fontWeight: 800, textDecoration: 'none',
+          maxWidth: '100%', boxSizing: 'border-box'
+        }}>
+        🧠 AI Arena · DeepSeek / Qwen / MiniMax
+      </Link>
+      <div style={{ ...MUTED, marginTop: 6 }}>
+        Confronto PAPER in sola lettura. Qwen e MiniMax mostreranno profitti e posizioni
+        soltanto dopo l'avvio verificato dei rispettivi portafogli.
+      </div>
     </header>
     <section aria-label="Portafogli" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap:12, alignItems:'start', marginBottom:14 }}>
       {portfolios.map(p => <article key={p.id} data-testid={`portfolio-${p.id}`} aria-label={`Portafoglio ${p.id}`} style={{ ...BLOCK, marginBottom:0, borderTop: `3px solid ${p.id === 'falco' ? '#38bdf8' : p.id === 'toro' ? '#fbbf24' : '#a78bfa'}` }}>
