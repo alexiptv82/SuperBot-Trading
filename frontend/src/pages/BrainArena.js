@@ -101,14 +101,17 @@ export default function BrainArena() {
       <div>
         <div style={{ ...MUTED, color: '#7dd3fc', fontWeight: 800, letterSpacing: 1.5 }}>SUPERBOT V3 · PAPER ONLY</div>
         <h1 style={{ margin: '5px 0', fontSize: 25 }}>🧠 AI Arena</h1>
-        <div style={MUTED}>Tre portafogli indipendenti · confronto di 14 giorni</div>
+        <div style={MUTED}>Confronto PAPER di 14 giorni · in attesa di attivazione comune</div>
       </div>
       <button onClick={() => setRefresh(v => v + 1)} style={{ padding: 9, borderRadius: 10, border: '1px solid #456079', color: '#e2e8f0', background: '#172338' }}>Aggiorna</button>
     </header>
     <section role="note" style={{ ...BLOCK, marginBottom: 14, borderColor: '#365375', color: '#b6cce2', fontSize: 13 }}>
-      <strong>Anteprima non operativa.</strong> DeepSeek può mostrare lo storico PAPER esistente.
-      I tre risultati diventano confrontabili solo quando sono verificati i journal indipendenti e il T0 comune.
-      Qwen e MiniMax senza journal rimangono non configurati. Nascondere Falco e Toro nell'app non li mette in pausa.
+      <strong>Stato: sola lettura.</strong> DeepSeek può mostrare lo storico PAPER esistente,
+      che non fa parte dei 14 giorni del nuovo esperimento.
+      I tre risultati sono confrontabili soltanto dopo la verifica dei journal indipendenti
+      e l'avvio contemporaneo dei tre portafogli.
+      Finché Qwen e MiniMax non sono avviati, non esistono profitti o trade da mostrare.
+      Questa pagina non può aprire o chiudere posizioni e non modifica Falco o Toro.
     </section>
     {warning && <p role="alert" style={{ color: '#fda4af' }}>{warning}</p>}
     <section aria-label="Seleziona modello AI" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 15 }}>
@@ -121,7 +124,9 @@ export default function BrainArena() {
             color: '#eef5ff', minWidth: 0 }}>
           <div style={{ fontSize: 22 }}>{MODELS[p.id].icon}</div>
           <strong style={{ fontSize: 14 }}>{p.title}</strong>
-          <div style={{ ...MUTED, marginTop: 3, fontSize: 10 }}>{info ? info.state : 'Non configurato'}</div>
+          <div style={{ ...MUTED, marginTop: 3, fontSize: 10 }}>
+            {info ? (info.source === 'v3_existing_brain_paper' ? 'Storico precedente' : info.state) : 'Non avviato'}
+          </div>
           <div style={{ fontSize: 18, fontWeight: 800, marginTop: 8 }}>2.000</div>
           <div style={{ ...MUTED, fontSize: 10 }}>USDT iniziali</div>
           <div style={{ color: info ? (Number(info.realized_pnl) < 0 ? '#fda4af' : '#4ade80') : '#94a3b8', fontSize: 12, marginTop: 8 }}>
@@ -131,7 +136,7 @@ export default function BrainArena() {
       })}
     </section>
     <div style={{ ...BLOCK, marginBottom: 14, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 7, fontSize: 12 }}>
-      <span>Capitale iniziale di confronto: <strong>6.000 USDT</strong></span>
+      <span>Capitale previsto per il test: <strong>6.000 USDT PAPER</strong></span>
       <span>PnL del test comune: <strong>{money(totalRealized)}</strong></span>
     </div>
     <nav aria-label="Dettagli del portafoglio" style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 12 }}>
