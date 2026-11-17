@@ -5,7 +5,7 @@ import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedTrial, trialTota
 
 const BLOCK = { background: '#172338', border: '1px solid #30465e', borderRadius: 16, padding: 16 };
 const MUTED = { color: '#a4b6cd', fontSize: 12 };
-const PANELS = ['Panoramica', 'Posizioni aperte', 'Storico', 'Performance'];
+const PANELS = ['Panoramica', 'Posizioni aperte', 'Storico', 'Performance', 'Memoria'];
 const MODELS = Object.freeze({
   deepseek: { accent: '#4ade80', icon: '🧠' },
   qwen: { accent: '#60a5fa', icon: '🔷' },
@@ -220,6 +220,31 @@ export default function BrainArena() {
         <Metric title="Margine in uso" value={money(data.margin_in_use)}/>
         <Metric title="Trade chiusi" value={shown(data.total_closed)}/>
         <Metric title="Capitale iniziale" value="2.000 USDT"/>
+      </section>}
+      {tab === 'Memoria' && <section>
+        <div role="note" style={{ ...BLOCK, marginBottom: 12 }}>
+          <strong>Registro delle esperienze · {selected.title}</strong>
+          <p style={{ ...MUTED, marginTop: 8 }}>
+            Il journal registra decisioni, NO_TRADE, esiti e chiusure manuali.
+            Registrare un evento non significa che il modello abbia già imparato:
+            la memoria condivisa sarà validata prima di essere utilizzata dal Brain principale.
+          </p>
+          <div style={{ ...MUTED, marginTop: 7 }}>
+            Stato apprendimento: {data.learning_status === 'JOURNAL_EVIDENCE_ONLY_NOT_MODEL_TRAINING'
+              ? 'Evidenze del journal verificate; apprendimento AI non ancora certificato'
+              : 'Memoria operativa non ancora certificata'}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 9 }}>
+          <Metric title="Decisioni registrate" value={shown(data.decision_count)}/>
+          <Metric title="NO_TRADE registrati" value={shown(data.no_trade_count)}/>
+          <Metric title="Trade con esito collegato" value={shown(data.verified_outcome_count)}/>
+          <Metric title="Chiusure manuali registrate" value={shown(data.manual_close_count)}/>
+        </div>
+        <p style={{ ...MUTED, marginTop: 12 }}>
+          Gli esempi manuali conservano l'origine umana; il motivo della scelta resta
+          da annotare esplicitamente. Nessuna strategia viene modificata automaticamente.
+        </p>
       </section>}
     </>}
   </main>;
