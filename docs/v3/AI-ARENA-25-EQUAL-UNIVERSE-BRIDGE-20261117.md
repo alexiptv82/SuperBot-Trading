@@ -26,3 +26,24 @@ Branch `work/arena-shared25-runner-bridge-20261117` derivato da `work/arena-firs
 Nessun deploy, merge, reset, ordine, chiamata AI a pagamento, GitHub Action avviata o modifica del runner attuale da questo branch. Le posizioni PAPER già aperte sul vecchio Brain devono continuare ad avere il servizio di uscita e la possibilità di chiusura manuale anche dopo l'eventuale avvio di un trial separato.
 
 Le prove dei nuovi 14 test rimangono da eseguire prima di presentarle come PASS.
+
+
+## Colllaudo VPS confermato dall'utente (17/11/2026 ore 11:01 Europe/Rome)
+
+Il comando `python3 -m unittest -q backend.v3.arena.test_trial_universe_bridge` ha prodotto `Ran 14 tests in 15.898s / OK`.
+L'audit sulla cache privata ha prodotto:
+- `repository_brain2000_config_symbols=8`, `candidate_count=25`, `parity_across_3_models=TRUE`
+- `readiness_issues=STALE_RESEARCH_SNAPSHOT,ASSET_IDENTITY_AND_CONTRACTS_NOT_REVIEWED`
+- `live_deepseek_config_changed=NO`, `paper_wallets_started=0`, `orders=0`, `paid_AI_calls=0`
+- `RESULT=UNIVERSE_PREVIEW_ONLY_NOT_DEPLOYED`
+
+I 25 candidati nello snapshot storico includevano GRAMUSDT, HBARUSDT, HYPEUSDT, PEPEUSDT, QNTUSDT e ZECUSDT. Non attribuire loro categorie o eleggibilità finché CoinGecko ID e contratto Bitget non sono esaminati con una nuova fotografia. La stessa parità tra tre AI NON implica che la lista sia corretta o autorizzata per trading.
+
+### Prossima diagnosi con soli tre GET pubblici
+Sul checkout VPS già esistente (senza cambiare branch o bot):
+```bash
+python3 -m unittest -q backend.v3.arena.test_universe &&
+python3 deploy/scripts/arena-public-marketcap-preview-20261116.py --selftest &&
+python3 deploy/scripts/arena-public-marketcap-preview-20261116.py --probe
+```
+Il probe legge un catalogo CoinGecko e due cataloghi Bitget, stampa coin_id, rank, ticker, esiti di preselezione, e dichiara che rimane PROVISIONAL. Nessuna operazione, credential, scrittura, deploy. Il test `test_universe` è offline e controlla che il monitor uscite mantenga il simbolo già aperto anche se scompare dalla lista top-cap.
