@@ -246,3 +246,42 @@ test('header says the trial is running only when all three wallets share a verif
     });
   }
 });
+
+test('readonly preview blocks historical Brain close even with explicit close opt-in', async () => {
+  const previousAllowed = BRAIN.portfolios[1].manual_close_allowed;
+  await withFlags({ REACT_APP_PREVIEW_READONLY: '1', REACT_APP_ARENA_EXISTING_CLOSE: '1' }, async () => {
+    BRAIN.portfolios[1].manual_close_allowed = true;
+    const { node, dispose } = await mount();
+    try {
+      await click(node, 'Posizioni aperte');
+      const closeButton = Array.from(node.querySelectorAll('button')).find(
+        x => x.textContent.trim() === 'Chiudi DOGEUSDT',
+      );
+      expect(closeButton).toBeDefined();
+      expect(closeButton.disabled).toBe(true);
+    } finally {
+      BRAIN.portfolios[1].manual_close_allowed = previousAllowed;
+      await dispose();
+    }
+  });
+});
+
+test('readonly preview blocks trial-AI close even with provider close opt-in', async () => {
+  await withFlags({
+    REACT_APP_PREVIEW_READONLY: '1',
+    REACT_APP_BRAIN_ARENA_SHADOW_API: '1',
+    REACT_APP_ARENA_MANUAL_CLOSE: '1',
+  }, async () => {
+    trialInputs();
+    const { node, dispose } = await mount();
+    try {
+      await click(node, 'Qwen');
+      await click(node, 'Posizioni aperte');
+      expect(Array.from(node.querySelectorAll('button')).some(
+        x => x.textContent.trim() === 'Chiudi ETHUSDT',
+      )).toBe(false);
+    } finally {
+      await dispose();
+    }
+  });
+});
