@@ -315,3 +315,44 @@ def test_backup_copy_restores_journal_and_human_registers_verifiably(root, tmp_p
     assert MC.close_status(copy, request_id=RID, now_ms=T0 + 7_000)["annotation"]["reason"] == "trend_change"
     # la sola cronologia degli eventi resta: nessun file dell'Arena tocca altre run
     assert sorted(p.name for p in root.iterdir()) == ["qwen"]
+
+
+def test_annotation_survives_backup_and_reaches_the_verified_memory_export(root, tmp_path):
+    """annotazione -> copia di backup -> ripristino -> raccolta della memoria (PR #104): motivo legato, nota esclusa."""
+    import shutil
+
+    from backend.v3.arena.learning_evidence import collect_arena_learning_evidence
+    from backend.v3.arena.prepare import plan_for
+    plan, exits, _, (pid, _) = _opened(root)
+    others = []
+    for provider in ("deepseek", "minimax"):              # stesse condizioni, nessuna operazione
+        p = _prepare(root, provider)
+        _approve_and_unpause(p)
+        others.append(p)
+    try:
+        MC.request_close(plan, position_id=pid, request_id=RID, now_ms=T0 + 1)
+        exits.tick(T0 + 5_000)
+        MC.annotate(plan, request_id=RID, reason="profit_protection", note="nota privata", now_ms=T0 + 6_000)
+    finally:
+        exits.stop()
+    restored = tmp_path / "restored"
+    shutil.copytree(root, restored, ignore=shutil.ignore_patterns(".exit_service.lock"))
+    plans = tuple(plan_for(p, DAY, restored) for p in ("deepseek", "qwen", "minimax"))
+    bundle = collect_arena_learning_evidence(plans, T0 + 7_000)
+    text = json.dumps(bundle)
+    assert "nota privata" not in text                    # la nota resta solo nel registro sorgente
+    qwen = bundle["providers"]["qwen"]
+    manual = [o for o in qwen["closed_outcomes"] if o["position_id"] == pid]
+    assert len(manual) == 1 and manual[0]["user_reason"] == "profit_protection"
+    assert manual[0]["user_reason_status"] == "VERIFIED_HUMAN_ANNOTATION"
+    assert manual[0]["eligible_for_automatic_promotion"] is False
+    assert qwen["verified_human_annotation_count"] == 1
+    # un'annotazione orfana (posizione mai chiusa a mano) blocca l'esportazione, non viene ignorata
+    reg = plans[1].folder / MC.ANNOTATIONS_FILE
+    rec = json.loads(reg.read_text())
+    forged = dict(rec, position_id="ghost", prev=rec["hash"])
+    forged["hash"] = MC._digest(forged)
+    with reg.open("a") as fh:
+        fh.write(json.dumps(forged, sort_keys=True, separators=(",", ":")) + "\n")
+    with pytest.raises(ValueError):
+        collect_arena_learning_evidence(plans, T0 + 8_000)
