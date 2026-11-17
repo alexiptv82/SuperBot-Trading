@@ -7,7 +7,7 @@ market eligibility, feed, budgets, exits and VPS health need runtime proofs.
 """
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from pathlib import Path
 
 from backend.v3.arena.trial_plan import PROVIDERS
@@ -33,7 +33,11 @@ def _money(value: Decimal) -> str:
 def _forecast(cfg: RunnerConfig, input_tokens: int, output_tokens: int) -> dict:
     # One request per configured symbol per cycle is a STRESS CASE, not a
     # prediction. The runner skips symbols holding open positions.
-    cycles_per_day = Decimal(1440) / Decimal(cfg.cycle_minutes)
+    # At T0, a 75-minute cycle, for example, can occur 20 times in 24h,
+    # not 19.2; ceil ensures conservative, integer-aligned call forecasts.
+    cycles_per_day = (Decimal(1440) / Decimal(cfg.cycle_minutes)).to_integral_value(
+        rounding=ROUND_CEILING,
+    )
     requests = cycles_per_day * Decimal(len(cfg.symbols))
     per_request = (
         Decimal(input_tokens) * cfg.input_usd_per_million
