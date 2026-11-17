@@ -52,7 +52,7 @@ def test_explicit_group_requires_exact_root_owned_directory():
     for overrides in ({"uid": 99}, {"gid": 0}, {"mode": 0o700},
                       {"mode": 0o750}, {"mode": 0o711}, {"symlink": True}):
         with pytest.raises(RuntimeError):
-            CBS.validate_socket_directory(FakePath(**dict(directory=True, gid=1400, mode=0o710, **overrides)), 1400)
+            CBS.validate_socket_directory(FakePath(**{"directory": True, "gid": 1400, "mode": 0o710, **overrides}), 1400)
 
 
 @pytest.mark.parametrize("group_gid,expected_gid,expected_mode", [(None, 0, 0o600), (1400, 1400, 0o660)])
