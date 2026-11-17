@@ -13,6 +13,8 @@ import json
 import re
 
 from backend.v3.arena.read_view import read_wallet
+from backend.v3.arena.annotation_evidence import attach_verified_human_reasons
+from backend.v3.arena.manual_close import read_annotations
 from backend.v3.arena.trial_plan import PROVIDERS, WalletPlan
 from backend.v3.events import EventJournal
 from backend.v3.outcomes import extract_outcomes
@@ -80,6 +82,7 @@ def collect_arena_learning_evidence(
         if report.run_id != plan.run_id or report.portfolio_id != "brain":
             raise ValueError("arena_learning_report_scope_mismatch")
         decisions = []
+        close_events = {}
         kinds = Counter()
         for se in events:
             ev = se.event
@@ -93,6 +96,14 @@ def collect_arena_learning_evidence(
             # DOES declare an origin, it must agree with the provider.
             if ev.kind == "paper_close" and ev.payload.get("originating_ai", plan.provider) != plan.provider:
                 raise ValueError("arena_learning_origin_mismatch")
+            if ev.kind == "paper_close":
+                if ev.event_id in close_events:
+                    raise ValueError("arena_learning_duplicate_close_event")
+                close_events[ev.event_id] = {
+                    "position_id": ev.payload.get("position_id"),
+                    "reason": ev.payload.get("reason"),
+                    "occurred_at_ms": ev.occurred_at_ms,
+                }
             if ev.kind == "brain_decision":
                 # The decision is evidence even if it says NO_TRADE or
                 # RISK_REJECTED. Short reason codes only; no secrets/prompts.
@@ -121,6 +132,16 @@ def collect_arena_learning_evidence(
             record["user_reason_status"] = "AWAITING_USER_ANNOTATION" if o.is_manual else "NOT_APPLICABLE"
             record["eligible_for_automatic_promotion"] = False
             outcomes.append(record)
+        # Manual reasons are stored in their own hash-chained append-only file.
+        # Link every annotation to a verified manual close before exporting any
+        # human reason. Private free-text notes are NOT copied to this bundle.
+        annotations = read_annotations(plan)
+        annotation_meta = attach_verified_human_reasons(
+            outcomes, close_events, annotations, provider=plan.provider,
+            run_id=plan.run_id, trial_start_ms=t0, now_ms=now_ms,
+        )
+        if read_annotations(plan) != annotations:
+            raise ValueError("arena_learning_annotation_changed_during_read")
         # Re-check the journal after gathering data: fail if a position opened
         # or closed while we were reading, rather than exporting mixed epochs.
         journal.verify_chain(expected_count=count, expected_head=head)
@@ -137,9 +158,10 @@ def collect_arena_learning_evidence(
             "decisions": decisions,
             "closed_outcomes": outcomes,
             "manual_closed_count": sum(o.is_manual for o in report.outcomes),
+            **annotation_meta,
         }
     summary = {
-        "schema": "arena_learning_evidence_v1",
+        "schema": "arena_learning_evidence_v2",
         "mode": "paper",
         "trial_start_ms": t0,
         "generated_at_ms": now_ms,
