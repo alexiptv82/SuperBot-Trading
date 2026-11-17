@@ -143,3 +143,22 @@ test('inconsistent asynchronous position counts must not show a misleading open 
   expect(result.realized_pnl).toBe('10');
   expect(result.unrealized_pnl).toBeNull();
 });
+
+test('three-provider trial memory counters require verified wallet provenance; no shadow close', () => {
+  const payload = {
+    portfolio_id:'qwen', mode:'paper', state:'running', source:'arena_independent_journal_v1',
+    run_id:'brain-qwen-paper20261118', initial_capital:2000,
+    decision_count:42, no_trade_count:11, manual_close_count:3,
+    verified_outcome_count:15, learning_status:'JOURNAL_EVIDENCE_ONLY_NOT_MODEL_TRAINING',
+    manual_close_allowed:true,
+  };
+  const q = sanitizedTrial('qwen',payload);
+  expect(q.decision_count).toBe(42);
+  expect(q.no_trade_count).toBe(11);
+  expect(q.manual_close_count).toBe(3);
+  expect(q.verified_outcome_count).toBe(15);
+  expect(q.learning_status).toBe('JOURNAL_EVIDENCE_ONLY_NOT_MODEL_TRAINING');
+  expect(q.manual_close_allowed).toBe(false); // dedicated provider worker not yet certified
+  expect(sanitizedTrial('minimax', payload)).toBeNull();
+  expect(sanitizedTrial('qwen', {...payload, source:'legacy_brain'})).toBeNull();
+});
