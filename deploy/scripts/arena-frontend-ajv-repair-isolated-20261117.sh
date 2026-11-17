@@ -76,6 +76,9 @@ docker run --rm --network bridge \
   -e REACT_APP_ARENA_MANUAL_CLOSE=0 \
   -e REACT_APP_ARENA_EXISTING_CLOSE=0 \
   "$IMAGE" sh -ec '
+    node --check .arena-ajv-before.cjs
+    node --check .arena-ajv-after.cjs
+    echo ARENA_AJV_FIX_JS_SYNTAX=OK
     node .arena-ajv-before.cjs
     # Workspace-only dependency change, never touch pinned source.
     npm pkg set devDependencies.ajv=8.17.1
