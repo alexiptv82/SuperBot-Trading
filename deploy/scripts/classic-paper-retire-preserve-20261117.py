@@ -170,6 +170,9 @@ def main() -> int:
     for unit in RUNNER_UNITS + EXIT_UNITS:
         if ctl("is-active", unit, check=False) == "active":
             refuse("CLASSIC_SERVICE_STILL_ACTIVE")
+        if ctl("is-enabled", unit, check=False) in (
+                "enabled", "enabled-runtime", "linked", "linked-runtime"):
+            refuse("CLASSIC_SERVICE_STILL_ENABLED")
     print("CLASSIC_RETIRE_CLASSIC_SERVICES=STOPPED_DISABLED", flush=True)
 
     # Full, post-stop snapshot of the unchanged classic directories.
