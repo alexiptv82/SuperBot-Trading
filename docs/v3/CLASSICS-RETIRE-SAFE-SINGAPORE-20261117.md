@@ -6,7 +6,11 @@
 
 Alle 20:02 lo stato nei file `/opt/superbot-desk-data/{hawk,bull}/state_v2.json` indica, per entrambi, directory presente, `pause.flag` presente e `main.positions` vuoto (zero posizioni). I processi systemd `superbot-v3-paper-falco.service` e `superbot-v3-paper-toro.service` erano ancora active e usavano `desk.cli loop --portfolio hawk/bull`.
 
-La corrispondenza **effettiva tra directory e processo** non è stata ancora verificata: l'operazione di disattivazione DEVE controllare `DESK_DATA_DIR` e `DESK_MODE=paper` da `/proc/<MainPID>/environ` prima di eseguire alcuno stop. `RUN_CLASSICI_TROVATE=0` era un controllo sullo schema V3 errato per questi servizi desk e **non** autorizza da solo lo stop.
+**Diagnostica aggiuntiva delle 20:58:** il processo Falco (`DESK_MODE=paper`) usa in realtà `/opt/superbot-v3-paper-runs/classic-hawk-paper20261111`; Toro usa `/opt/superbot-v3-paper-runs/classic-bull-paper20261111`. Le cartelle `/opt/superbot-desk-data/{hawk,bull}` sono **storiche**. Il primo tentativo di ritiro è stato rifiutato correttamente: `FALCO_DATA_PATH_OR_PAPER_MODE_UNVERIFIED`. La versione aggiornata del file di ritiro ora controlla i dati **effettivi**, conserva un backup pre-stop della loro storia e un backup post-stop **sia dei due runtime sia dei due archivi storici**.
+
+**La presenza di zero posizioni nelle due cartelle storiche non prova ancora zero posizioni nei runtime reali**: il codice aggiornato deve trovare `pause.flag` e `state_v2.json` con `main.positions={}` in entrambe le cartelle reali **prima** di fermare qualsiasi servizio. Se questa verifica fallisce, lo script deve rifiutare.
+
+`RUN_CLASSICI_TROVATE=0` era un controllo sullo schema V3 errato e non autorizza lo stop.
 
 ## Procedura predisposta sul ramo della PR #106
 
@@ -26,3 +30,5 @@ Invocare esclusivamente come root con `--retire`. Usa solo stdlib Python + syste
 La strategia SHORT è già referenziata dal ramo GitHub `archive/falco-short-before-ai-arena-20261116` sullo SHA `fed2e3fd32ff162d22b045b4a8e5f0524e88a9b7`. Questo NON sostituisce i backup VPS di stato, che vengono creati dalla procedura.
 
 **Stato alla stesura:** script salvato e da eseguire tramite Termius su VPS Singapore. Non è stato eseguito né testato sul target da ChatGPT; solo lo screenshot dell'inventario e delle posizioni è verificato. I servizi classici NON sono ancora stati spenti.
+
+**Versione aggiornata:** commit `0519858d14cad3fad759c4248dcf00233ef55cce`. Prima di usarla, verificarne sintassi e percorsi e NON ripetere lo script vecchio al commit `f0bc3970`. A oggi non è stato eseguito alcun ritiro completo.
