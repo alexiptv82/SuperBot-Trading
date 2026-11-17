@@ -28,6 +28,10 @@ const sample = {
 test('phone-first unified cards and learning metrics, only safe text', () => {
   const html = renderToStaticMarkup(<OverviewContent {...sample} regime="TREND_UP" onRegime={() => {}} nowMs={now} />);
   expect(html).toContain('Falco');
+  expect(html).toContain('/arena');
+  expect(html).toContain('AI Arena');
+  expect(html).toContain('Qwen');
+  expect(html).toContain('MiniMax');
   expect(html).toContain('Toro');
   expect(html).toContain('Brain V3');
   expect(html).toContain('In attesa del mandato dell’utente');
