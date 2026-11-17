@@ -80,7 +80,7 @@ if ! docker run --rm \
       const pkg=JSON.parse(fs.readFileSync(\"package.json\"));
       const lock=JSON.parse(fs.readFileSync(\"package-lock.json\"));
       const root=lock.packages && lock.packages[\"\"];
-      if (!root || JSON.stringify(root.dependencies)!==JSON.stringify(pkg.dependencies)) process.exit(11);
+      if (!root || !root.dependencies || Object.keys(root.dependencies).length!==Object.keys(pkg.dependencies).length || !Object.entries(pkg.dependencies).every(([k,v])=>root.dependencies[k]===v)) process.exit(11);
       if (![2,3].includes(lock.lockfileVersion)) process.exit(12);
       console.log(\"ARENA_UI_BUILD_LOCKFILE_MATCH=TRUE\");
     "
