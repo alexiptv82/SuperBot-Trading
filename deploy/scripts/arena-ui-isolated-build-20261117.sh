@@ -34,6 +34,8 @@ echo "ARENA_UI_BUILD node=$(node --version) yarn=$YARN_VERSION"
 echo "ARENA_UI_BUILD service_changes=0 orders=0 paid_AI_calls=0"
 cd "$ROOT/frontend"
 nice -n 10 "${YARN[@]}" install --frozen-lockfile --ignore-scripts --non-interactive --no-progress
+# The install may write node_modules, but must NOT rewrite tracked app configuration.
+git -C "$ROOT" diff --quiet -- frontend/package.json || fail PACKAGE_JSON_MUTATED_BY_YARN
 echo "ARENA_UI_BUILD step=THREE_TARGETED_JEST_FILES"
 # package.json defines "start" and "build", but NO "test" script.
 # Invoke locally installed react-scripts directly; do not change package.json.
