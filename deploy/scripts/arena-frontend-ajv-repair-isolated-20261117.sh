@@ -30,6 +30,38 @@ say "ISOLATED_WORKSPACE=$JOB"
 say 'PUBLIC_APP=UNTOUCHED'
 say 'NO_MODEL_INFERENCE=TRUE'
 
+# Diagnostic scripts are written as actual JS files in the isolated workspace.
+# Avoid nested Bash/JS heredoc quoting inside 'sh -ec' (previous syntax bug).
+cat > "$JOB/.arena-ajv-before.cjs" <<'ARENA_NODE_BEFORE'
+const path = require("path");
+const kwPath = require.resolve("ajv-keywords/package.json");
+const kw = require(kwPath);
+let ajv = null;
+try {
+  const ajvPath = require.resolve("ajv/package.json", { paths: [path.dirname(kwPath)] });
+  ajv = require(ajvPath).version;
+} catch (_) {}
+console.log("ARENA_AJV_FIX_BEFORE_AJV_KEYWORDS=" + kw.version);
+console.log("ARENA_AJV_FIX_BEFORE_AJV=" + (ajv || "missing"));
+if (Number(kw.version.split(".")[0]) !== 5 ||
+    (ajv && Number(ajv.split(".")[0]) >= 8)) {
+  console.log("ARENA_AJV_FIX_REFUSED=UNEXPECTED_DEPENDENCY_TREE");
+  process.exit(12);
+}
+console.log("ARENA_AJV_FIX_MISMATCH_CONFIRMED=TRUE");
+ARENA_NODE_BEFORE
+
+cat > "$JOB/.arena-ajv-after.cjs" <<'ARENA_NODE_AFTER'
+const path = require("path");
+const kwPath = require.resolve("ajv-keywords/package.json");
+const p = require.resolve("ajv/package.json", { paths: [path.dirname(kwPath)] });
+const v = require(p).version;
+console.log("ARENA_AJV_FIX_AFTER_AJV=" + v);
+if (Number(v.split(".")[0]) !== 8) process.exit(14);
+require("ajv-keywords/dist/definitions/typeof");
+console.log("ARENA_AJV_FIX_MODULE_RESOLUTION=OK");
+ARENA_NODE_AFTER
+
 docker run --rm --network bridge \
   --name "arena-ajv-repair-$(basename "$JOB")" \
   --security-opt no-new-privileges --cap-drop ALL \
@@ -44,37 +76,11 @@ docker run --rm --network bridge \
   -e REACT_APP_ARENA_MANUAL_CLOSE=0 \
   -e REACT_APP_ARENA_EXISTING_CLOSE=0 \
   "$IMAGE" sh -ec '
-    node - <<\x27JS\x27
-const path = require("path");
-const kwPath = require.resolve("ajv-keywords/package.json");
-const kw = require(kwPath);
-let ajv = null;
-try {
-  const ajvPath = require.resolve("ajv/package.json", {paths:[path.dirname(kwPath)]});
-  ajv = require(ajvPath).version;
-} catch (_) {}
-console.log("ARENA_AJV_FIX_BEFORE_AJV_KEYWORDS=" + kw.version);
-console.log("ARENA_AJV_FIX_BEFORE_AJV=" + (ajv || "missing"));
-if (Number(kw.version.split(".")[0]) !== 5 ||
-    (ajv && Number(ajv.split(".")[0]) >= 8)) {
-  console.log("ARENA_AJV_FIX_REFUSED=UNEXPECTED_DEPENDENCY_TREE");
-  process.exit(12);
-}
-console.log("ARENA_AJV_FIX_MISMATCH_CONFIRMED=TRUE");
-JS
-    # Workspace-only dependency change. Never touch the pinned source tree.
+    node .arena-ajv-before.cjs
+    # Workspace-only dependency change, never touch pinned source.
     npm pkg set devDependencies.ajv=8.17.1
     npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
-    node - <<\x27JS\x27
-const path = require("path");
-const kwPath = require.resolve("ajv-keywords/package.json");
-const p = require.resolve("ajv/package.json", {paths:[path.dirname(kwPath)]});
-const v = require(p).version;
-console.log("ARENA_AJV_FIX_AFTER_AJV=" + v);
-if (Number(v.split(".")[0]) !== 8) process.exit(14);
-require("ajv-keywords/dist/definitions/typeof");
-console.log("ARENA_AJV_FIX_MODULE_RESOLUTION=OK");
-JS
+    node .arena-ajv-after.cjs
     npm run build
   ' || die FIX_OR_BUILD_FAILED_NO_DEPLOY
 
