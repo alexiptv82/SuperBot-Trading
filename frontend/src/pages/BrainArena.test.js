@@ -101,3 +101,43 @@ test('GET failure never shows fake historic profit or opens trade API', async ()
     expect(API.get).toHaveBeenCalledTimes(3);
   } finally { await dispose(); }
 });
+
+// Manual closing is explicit opt-in for the legacy DeepSeek only.  The test
+// does not send a POST; the provider-specific trial services are not installed.
+test('Arena never exposes an active close button without both flags', async () => {
+  const original = BRAIN.portfolios[1].manual_close_allowed;
+  BRAIN.portfolios[1].manual_close_allowed = true;
+  const { node, dispose } = await mount();
+  try {
+    const posTab = Array.from(node.querySelectorAll('button')).find(x => x.textContent === 'Posizioni aperte');
+    await act(async () => { posTab.click(); });
+    const close = Array.from(node.querySelectorAll('button')).find(x => x.textContent === 'Chiudi DOGEUSDT');
+    expect(close).toBeDefined();
+    expect(close.disabled).toBe(true);
+    expect(node.textContent).not.toContain('Chiudi tutte');
+  } finally {
+    await dispose();
+    BRAIN.portfolios[1].manual_close_allowed = original;
+  }
+});
+
+test('legacy DeepSeek close requires separately certified backend and explicit UI opt-in', async () => {
+  const prior = process.env.REACT_APP_ARENA_EXISTING_CLOSE;
+  const original = BRAIN.portfolios[1].manual_close_allowed;
+  process.env.REACT_APP_ARENA_EXISTING_CLOSE = '1';
+  BRAIN.portfolios[1].manual_close_allowed = true;
+  const { node, dispose } = await mount();
+  try {
+    const posTab = Array.from(node.querySelectorAll('button')).find(x => x.textContent === 'Posizioni aperte');
+    await act(async () => { posTab.click(); });
+    const close = Array.from(node.querySelectorAll('button')).find(x => x.textContent === 'Chiudi DOGEUSDT');
+    expect(close).toBeDefined();
+    expect(close.disabled).toBe(false);
+    expect(API.get).toHaveBeenCalledTimes(3);
+  } finally {
+    await dispose();
+    BRAIN.portfolios[1].manual_close_allowed = original;
+    if (prior === undefined) delete process.env.REACT_APP_ARENA_EXISTING_CLOSE;
+    else process.env.REACT_APP_ARENA_EXISTING_CLOSE = prior;
+  }
+});
