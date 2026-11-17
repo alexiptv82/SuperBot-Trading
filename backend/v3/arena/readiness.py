@@ -57,7 +57,7 @@ def _forecast(cfg: RunnerConfig, input_tokens: int, output_tokens: int) -> dict:
 
 def audit_trial_configs(directory: Path = CONFIG_DIR) -> dict:
     """Read only three repository config files; no network, secrets, or DB."""
-    if type(directory) is not Path:
+    if not isinstance(directory, Path):
         raise ValueError("arena_readiness_invalid_config_dir")
     cfgs: dict[str, RunnerConfig] = {}
     for provider in PROVIDERS:
