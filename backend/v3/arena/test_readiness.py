@@ -88,6 +88,16 @@ def test_larger_universe_does_not_magically_certify_market_feed(tmp_path):
     assert "MARKET_FEED_AND_SYMBOL_RULES_NOT_VERIFIED" in result["blocking_evidence"]
 
 
+def test_nondivisor_cycle_forecast_rounds_up_to_actual_tick_count(tmp_path):
+    root = _copy_config_dir(tmp_path)
+    _modify(root / "qwen.json", lambda d: d.update(cycle_minutes=75))
+    result = audit_trial_configs(root)
+    # 24h / 75m = 19.2, so a cycle at T0 may run 20 times.
+    forecast = result["providers"]["qwen"]["scenarios"]["moderate"]
+    assert forecast["evaluations_per_day_if_all_symbols_eligible"] == 160
+    assert "DIFFERENT_DECISION_CADENCE" in result["blocking_evidence"]
+
+
 def test_no_missing_config_is_silently_assumed(tmp_path):
     root = _copy_config_dir(tmp_path)
     (root / "qwen.json").unlink()
