@@ -79,6 +79,9 @@ export function portfolioFromExisting(overview, status, trades) {
     // Only the existing Brain's certified single-close bridge may be used.
     manual_close_allowed: entry.manual_close_allowed === true,
     close_pending: trades?.close_pending === true,
+    // The historical dashboard does not expose full-journal learning counts.
+    decision_count: null, no_trade_count: null, manual_close_count: null,
+    verified_outcome_count: null, learning_status: 'NOT_VERIFIED_FOR_OLD_RUN',
   };
 }
 
@@ -114,6 +117,12 @@ export function sanitizedTrial(profileId, payload) {
     // Dedicated provider-scoped commands must be audited first.
     manual_close_allowed: false,
     close_pending: false,
+    decision_count: val('decision_count'),
+    no_trade_count: val('no_trade_count'),
+    manual_close_count: val('manual_close_count'),
+    verified_outcome_count: val('verified_outcome_count'),
+    learning_status: payload.learning_status === 'JOURNAL_EVIDENCE_ONLY_NOT_MODEL_TRAINING'
+      ? payload.learning_status : 'NOT_VERIFIED',
   };
 }
 
