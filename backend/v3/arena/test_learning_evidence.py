@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from backend.v3.arena.trial_plan import PROVIDERS, build_trial_plan
 from backend.v3.arena.learning_evidence import collect_arena_learning_evidence
+from backend.v3.arena.read_view import _empty
 
 
 class FakeJournal:
@@ -142,6 +143,14 @@ class ArenaLearningEvidenceTests(TestCase):
         self.reports[p.run_id] = report(p, skipped=(Obj(code="corrupt_close"),))
         with self.assertRaisesRegex(ValueError, "skipped_outcomes"):
             self._collect()
+
+    def test_unconfigured_wallet_has_unknown_memory_counts_not_zeros(self):
+        row = _empty(self.plans[1], "NOT_CONFIGURED")
+        self.assertIsNone(row["decision_count"])
+        self.assertIsNone(row["no_trade_count"])
+        self.assertIsNone(row["manual_close_count"])
+        self.assertIsNone(row["verified_outcome_count"])
+        self.assertEqual(row["learning_status"], "NOT_CONFIGURED")
 
     def test_winner_is_not_auto_selected_or_trained(self):
         result = self._collect()
