@@ -223,3 +223,26 @@ test('without the close flag, or if the dedicated route is missing, Qwen stays r
     });
   }
 });
+
+test('header says the trial is running only when all three wallets share a verified T0', async () => {
+  const t0 = 1794900000000;
+  const w = id => ({ ...QWEN, portfolio_id: id, run_id: `brain-${id}-paper20261118`, trial_start_ms: t0,
+    trial_comparable: true, realized_pnl: '1' });
+  for (const [portfolios, live] of [[{ deepseek: w('deepseek'), qwen: w('qwen'), minimax: w('minimax') }, true],
+    [{ deepseek: w('deepseek'), qwen: w('qwen'), minimax: { ...w('minimax'), trial_start_ms: t0 + 1 } }, false]]) {
+    await withFlags({ REACT_APP_BRAIN_ARENA_SHADOW_API: '1' }, async () => {
+      API.get.mockImplementation((url) => {
+        if (url === '/api/v3/arena') return Promise.resolve({ data: { portfolios } });
+        if (url === '/api/v3/overview') return Promise.resolve({ data: BRAIN });
+        if (url === '/api/v3/brain/status') return Promise.resolve({ data: { state: 'running' } });
+        return Promise.resolve({ data: TRADES });
+      });
+      const { node, dispose } = await mount();
+      try {
+        expect(node.textContent.includes('Prova PAPER in corso')).toBe(live);
+        expect(node.textContent.includes('in attesa di attivazione comune')).toBe(!live);
+        expect(node.textContent.includes('Finché Qwen e MiniMax non sono avviati')).toBe(!live);
+      } finally { await dispose(); API.get.mockReset(); }
+    });
+  }
+});

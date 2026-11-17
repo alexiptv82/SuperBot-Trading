@@ -119,12 +119,16 @@ export default function BrainArena() {
   const selected = ARENA_PROFILES.find(p => p.id === chosen);
   const data = rows[chosen];
   const totalRealized = trialTotalPnl(rows);
+  // La prova e' "in corso" solo se i tre portafogli sono verificati con lo stesso T0 (stesso criterio del PnL comune).
+  const trialLive = totalRealized !== null;
   return <main style={{ background: '#0b1323', color: '#eef5ff', minHeight: '100vh', padding: '16px 12px 100px', maxWidth: 1200, margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
     <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', marginBottom: 16 }}>
       <div>
         <div style={{ ...MUTED, color: '#7dd3fc', fontWeight: 800, letterSpacing: 1.5 }}>SUPERBOT V3 · PAPER ONLY</div>
         <h1 style={{ margin: '5px 0', fontSize: 25 }}>🧠 AI Arena</h1>
-        <div style={MUTED}>Confronto PAPER di 14 giorni · in attesa di attivazione comune</div>
+        <div style={MUTED}>Confronto PAPER di 14 giorni · {trialLive
+          ? 'prova in corso dal ' + new Date(rows.qwen.trial_start_ms).toLocaleDateString('it-IT')
+          : 'in attesa di attivazione comune'}</div>
         <div style={{ ...MUTED, marginTop: 6 }}>
           Lettura automatica ogni 30 secondi · valori da dati verificati, non ordini
         </div>
@@ -132,14 +136,20 @@ export default function BrainArena() {
       <button onClick={() => setRefresh(v => v + 1)} style={{ padding: 9, borderRadius: 10, border: '1px solid #456079', color: '#e2e8f0', background: '#172338' }}>Aggiorna</button>
     </header>
     <section role="note" style={{ ...BLOCK, marginBottom: 14, borderColor: '#365375', color: '#b6cce2', fontSize: 13 }}>
-      <strong>Stato: sola lettura.</strong> DeepSeek può mostrare lo storico PAPER esistente,
-      che non fa parte dei 14 giorni del nuovo esperimento.
-      I tre risultati sono confrontabili soltanto dopo la verifica dei journal indipendenti
-      e l'avvio contemporaneo dei tre portafogli.
-      Finché Qwen e MiniMax non sono avviati, non esistono profitti o trade da mostrare.
-      Questa pagina non apre posizioni e non modifica Falco o Toro.
-      La chiusura manuale del Brain storico richiede un servizio PAPER sano e abilitazione esplicita;
-      ogni AI dell'esperimento ha comandi di chiusura separati, attivi solo dopo abilitazione esplicita.
+      {trialLive ? <>
+        <strong>Prova PAPER in corso.</strong> Tre portafogli indipendenti da 2.000 USDT, stesso universo,
+        stesso mandato di rischio e stesso avvio. Nessun ordine reale; Falco e Toro non vengono toccati.
+        Ogni AI ha comandi di chiusura separati, attivi solo se il suo servizio di uscita PAPER è sano.
+      </> : <>
+        <strong>Stato: sola lettura.</strong> DeepSeek può mostrare lo storico PAPER esistente,
+        che non fa parte dei 14 giorni del nuovo esperimento.
+        I tre risultati sono confrontabili soltanto dopo la verifica dei journal indipendenti
+        e l'avvio contemporaneo dei tre portafogli.
+        Finché Qwen e MiniMax non sono avviati, non esistono profitti o trade da mostrare.
+        Questa pagina non apre posizioni e non modifica Falco o Toro.
+        La chiusura manuale del Brain storico richiede un servizio PAPER sano e abilitazione esplicita;
+        ogni AI dell'esperimento ha comandi di chiusura separati, attivi solo dopo abilitazione esplicita.
+      </>}
     </section>
     {warning && <p role="alert" style={{ color: '#fda4af' }}>{warning}</p>}
     <section aria-label="Seleziona modello AI" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 15 }}>
