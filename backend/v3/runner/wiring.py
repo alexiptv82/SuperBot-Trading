@@ -158,6 +158,12 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     if arena_trial_cap_units is not None:
         if arena_provider is None or type(arena_trial_cap_units) is not int or arena_trial_cap_units <= 0:
             raise ValueError("invalid_arena_trial_cap")
+
+    def arena_gate(base):
+        """Arena: dopo la scadenza nessuna NUOVA chiamata AI, anche a meta' ciclo (27 simboli in sequenza)."""
+        if arena_stop_new_entries_at_ms is None:
+            return base
+        return lambda p: (not arena_expired()) and base(p)
     provider = PROVIDER if arena_provider is None else arena_provider
     # Peer observation is opt-in and can only read explicitly provided, isolated dirs.
     peer_reader = None
@@ -188,15 +194,19 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     metered = MeteredTransport(
         inner_transport if inner_transport is not None else deepseek_transport(), ledger, provider,
         input_usd_per_million=config.input_usd_per_million, output_usd_per_million=config.output_usd_per_million,
-        extra_payload=config.model_extra_payload)
+        extra_payload=config.model_extra_payload,
+        # Arena: prenotazione prudente prima di ogni chiamata (tetto giornaliero e cumulativo, un solo processo).
+        reserve=None if arena_trial_cap_units is None else {
+            "daily_cap_units": config.daily_cap_units, "total_cap_units": arena_trial_cap_units,
+            "lock_path": data_dir / ".ai_spend.lock"})
     holder = CycleBars()
     analyst = MarketEntryAnalyst(DeepSeekL5Analyst(
         transport=metered, model=config.model,
         outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
         bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
-        spending_gate=ledger.spending_gate(
+        spending_gate=arena_gate(ledger.spending_gate(
             daily_limits={provider: config.daily_cap_units},
-            total_limits={provider: arena_trial_cap_units} if arena_trial_cap_units is not None else None),
+            total_limits={provider: arena_trial_cap_units} if arena_trial_cap_units is not None else None)),
         enabled=True,
         max_tokens=config.max_tokens, provider=provider))
     store = CandleStore(get_json, keep={s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP)

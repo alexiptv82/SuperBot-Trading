@@ -18,7 +18,9 @@ se la richiesta non li ha gia': i campi scelti dall'analista restano autorevoli.
 """
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 from decimal import ROUND_CEILING, Decimal
 from typing import Any, Mapping, Optional
 
@@ -58,7 +60,12 @@ def estimate_units(payload: Mapping[str, Any], input_per_m: Decimal, output_per_
 
 class MeteredTransport:
     def __init__(self, inner: Transport, ledger: BudgetLedger, provider: str, *, input_usd_per_million: Decimal,
-                 output_usd_per_million: Decimal, extra_payload: Optional[Mapping[str, Any]] = None):
+                 output_usd_per_million: Decimal, extra_payload: Optional[Mapping[str, Any]] = None,
+                 reserve: Optional[Mapping[str, Any]] = None):
+        """``reserve`` (solo Arena): ``{"daily_cap_units", "total_cap_units", "lock_path"}``. Prima di OGNI chiamata,
+        sotto un lock di file esclusivo e non bloccante, si rifiuta se speso + stima MASSIMA della chiamata supera il
+        tetto giornaliero o cumulativo: una chiamata non puo' partire sotto il tetto e chiudersi sopra (entro la stima
+        prudente: caratteri/2 token in ingresso + max_tokens in uscita). Un secondo processo concorrente e' rifiutato."""
         if not callable(inner) or not isinstance(ledger, BudgetLedger) or type(provider) is not str or not provider:
             raise ValueError("invalid_meter")
         for p in (input_usd_per_million, output_usd_per_million):
@@ -68,6 +75,13 @@ class MeteredTransport:
         self._in, self._out = input_usd_per_million, output_usd_per_million
         self._extra = dict(extra_payload or {})
         self.accounting_failed = False
+        self._reserve = None
+        if reserve is not None:
+            d, t, lp = reserve.get("daily_cap_units"), reserve.get("total_cap_units"), reserve.get("lock_path")
+            if (type(d) is not int or d <= 0 or type(t) is not int or t <= 0 or not isinstance(lp, (str, os.PathLike))
+                    or set(reserve) != {"daily_cap_units", "total_cap_units", "lock_path"}):
+                raise ValueError("invalid_reserve")
+            self._reserve = (d, t, os.fspath(lp))
 
     def _charge(self, units: int, basis: str) -> None:
         try:
@@ -78,6 +92,31 @@ class MeteredTransport:
 
     def __call__(self, payload: Mapping[str, Any]) -> TransportResponse:
         sent = {**{k: v for k, v in self._extra.items() if k not in payload}, **payload}
+        if self._reserve is None:
+            return self._call(sent)
+        daily_cap, total_cap, lock_path = self._reserve
+        try:
+            fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        except OSError:
+            raise ProviderUnavailable("budget_reserve_unavailable") from None
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                raise ProviderUnavailable("budget_reserve_busy") from None      # altro processo sulla stessa AI
+            try:
+                worst = estimate_units(sent, self._in, self._out)
+                total = self._ledger.total_spend(self._provider)
+                daily = self._ledger.daily_spend(self._provider)
+            except Exception:
+                raise ProviderUnavailable("budget_reserve_unavailable") from None
+            if type(daily) is not int or total + worst > total_cap or daily + worst > daily_cap:
+                raise ProviderUnavailable("budget_reserve_denied")
+            return self._call(sent)
+        finally:
+            os.close(fd)                                                       # rilascia anche il lock
+
+    def _call(self, sent: Mapping[str, Any]) -> TransportResponse:
         try:
             response = self._inner(sent)
         except Exception:
