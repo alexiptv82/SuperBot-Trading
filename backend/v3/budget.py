@@ -123,6 +123,19 @@ class BudgetLedger:
         except Exception:
             return 0
 
+    def total_spend(self, provider: str) -> int:
+        """Durable, all-UTC-days total. Raises on DB errors (Arena must fail closed)."""
+        if not isinstance(provider, str) or not provider:
+            raise ValueError("invalid_provider")
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(units), 0) FROM spend_events WHERE provider = ?",
+                (provider,),
+            ).fetchone()
+        if not row or type(row[0]) is not int or row[0] < 0:
+            raise ValueError("invalid_total_spend")
+        return row[0]
+
     def session_spend(self, provider: str) -> int:
         """Return units accumulated for *provider* in this process lifetime."""
         with self._lock:
@@ -137,6 +150,7 @@ class BudgetLedger:
         *,
         daily_limits: Mapping[str, int] | None = None,
         session_limits: Mapping[str, int] | None = None,
+        total_limits: Mapping[str, int] | None = None,
     ) -> SpendingGate:
         """
         Return a ``SpendingGate`` callable that checks this ledger.
@@ -153,6 +167,7 @@ class BudgetLedger:
         """
         d_limits: dict[str, int] = dict(daily_limits or {})
         s_limits: dict[str, int] = dict(session_limits or {})
+        t_limits: dict[str, int] = dict(total_limits or {})
 
         def gate(provider: str) -> bool:
             if not isinstance(provider, str) or not provider:
@@ -162,7 +177,23 @@ class BudgetLedger:
                 return False
             try:
                 daily_max = int(d_limits[provider])
-                daily_used = self.daily_spend(provider)
+                if provider in t_limits:
+                    # The Arena uses a persistent all-days cap. One SQL read
+                    # returns daily and cumulative usage; failures deny spend.
+                    day = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+                    with self._lock:
+                        row = self._conn.execute(
+                            "SELECT COALESCE(SUM(CASE WHEN occurred_at LIKE ? THEN units ELSE 0 END),0),"
+                            " COALESCE(SUM(units),0) FROM spend_events WHERE provider=?",
+                            (day + "%", provider),
+                        ).fetchone()
+                    if row is None or any(type(x) is not int or x < 0 for x in row):
+                        return False
+                    daily_used, cumulative_used = row
+                    if cumulative_used >= int(t_limits[provider]):
+                        return False
+                else:
+                    daily_used = self.daily_spend(provider)
                 if daily_used >= daily_max:
                     return False
                 if provider in s_limits:
