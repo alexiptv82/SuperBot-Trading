@@ -1,5 +1,17 @@
 # STATO — SuperBot Trading
 
+## 18/11/2026 20:48 Europe/Rome — backend Arena e dashboard pubblicati; Samsung pendente
+
+- Nuovo checkpoint delta: [`diario/2026-11-18_arena-web-backend-ui-released-samsung-pending.md`](diario/2026-11-18_arena-web-backend-ui-released-samsung-pending.md), commit [`f974da8…`](https://github.com/alexiptv82/SuperBot-Trading/commit/f974da8aaa1fadcaa7d3ac43417780dc820c211d).
+- Backend read-only pubblicato alle 19:43: `PASS_LIVE`, 401 senza sessione/200 valida, T0 identico, worker Arena intatti, backup/rollback pronti.
+- Preflight UI: 172 PASS/3 FAIL e stop sicuro; fix test-only `af5f159…`. Successivo 175 PASS/build invalidato per controllo `grep` malformato; script corretti a `b78a5fc…` e `86288a3…`.
+- Dashboard pubblicata alle 20:06: `SUCCESS_UI_ONLY`, `DASHBOARD_ARENA_PUBBLICATA=TRUE`, PWA preservata, auth 200 JSON, nessun riavvio container/nginx e servizi Brain invariati.
+- PR #112 resta open/draft, non mergiata, HEAD `86288a356209cef9264a369d24a2e8d7914c5ec2`. Test Samsung/biometria reale ancora mancanti.
+- Probe: DeepSeek 2 chiuse/1 aperta, Qwen 1/0, MiniMax 4/1, tutti running e stesso T0. Readout 19:35: MiniMax realizzato circa −222,10 USDT; equity/unrealized n.d.
+- Gara PAPER invariata; non toccare runner, uscite, T0 o journal. Age PC `ESITO: VERIFICA OK` non certifica VPS; extbackup non installato.
+
+---
+
 ## 18/11/2026 19:43 Europe/Rome — candidato web Arena PASS, non pubblicato
 
 - Nuovo checkpoint delta: [`diario/2026-11-18_arena-web-candidate-pass-not-published.md`](diario/2026-11-18_arena-web-candidate-pass-not-published.md), commit [`715602f…`](https://github.com/alexiptv82/SuperBot-Trading/commit/715602f465a4acb1ddd427012eb64f03effbabc1).
