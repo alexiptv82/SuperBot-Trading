@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 18/11/2026 15:51 Europe/Rome — run Arena sostituite; smoke PASS; quote chiavi da riverificare
+
+- Nuovo checkpoint delta: [`diario/2026-11-18_arena-runs-replaced-smoke-pass-keys-pending.md`](diario/2026-11-18_arena-runs-replaced-smoke-pass-keys-pending.md), commit [`3aa8ead…`](https://github.com/alexiptv82/SuperBot-Trading/commit/3aa8ead1dbc4b8f0fd5c59db55538e4723e155ea).
+- Evidenza Termius/GitHub: `--replace-prepared` pinnato a `3dd6aa5…` completato con zero posizioni, vecchie run/stage archiviati, tre nuove run `PREPARED_PAUSED_NO_T0` e tre exit sani; T0/runner/inferenza pagata restano falsi.
+- Smoke VPS con feed Bitget reale e modello finto NO_TRADE completato: Qwen 27/27 decisioni simulate, zero aperture/errori; run reali rimaste in pausa. Dettagli completi degli altri due provider non tutti visibili nello screenshot.
+- Due chiavi OpenRouter distinte e raggiungibili, ma al test delle 15:35 entrambe `LIMITE_6_USD=NON_CONFORME`. Screenshot successivo mostra MiniMax impostata a 6 USD/N-A, senza verifica API post-salvataggio; Qwen e MiniMax restano da riverificare.
+- PR #110 invariata draft a `3dd6aa5…`; manual close Samsung/web bridge e memoria finale non certificati. Nessun T0, LIVE, merge o API AI pagata.
+
+---
+
 ## 18/11/2026 14:48 Europe/Rome — inventario web read-only; bridge Arena ancora non collegato
 
 - Nuovo checkpoint delta: [`diario/2026-11-18_web-container-inventory-pre-t0.md`](diario/2026-11-18_web-container-inventory-pre-t0.md), commit [`cdd5b74…`](https://github.com/alexiptv82/SuperBot-Trading/commit/cdd5b74030a2ccf395aece77ce20c6e0b4c1d7c9).
