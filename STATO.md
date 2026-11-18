@@ -1,5 +1,14 @@
 # STATO — SuperBot Trading
 
+## 18/11/2026 14:48 Europe/Rome — inventario web read-only; bridge Arena ancora non collegato
+
+- Nuovo checkpoint delta: [`diario/2026-11-18_web-container-inventory-pre-t0.md`](diario/2026-11-18_web-container-inventory-pre-t0.md), commit [`cdd5b74…`](https://github.com/alexiptv82/SuperBot-Trading/commit/cdd5b74030a2ccf395aece77ce20c6e0b4c1d7c9).
+- Screenshot Termius delle 14:13 riportato sulla [PR #110](https://github.com/alexiptv82/SuperBot-Trading/pull/110#issuecomment-6979645646): container `superbot` su immagine `superbot:brain-close-ro-candidate-20261115`, utente predefinito root, restart `always`, label Compose vuote; bridge Arena e servizi Brain storico risultavano `active`.
+- Il gestore del container non è ancora provato. Resta `CHANNEL_NOT_OK`: socket Arena non montato e flag Arena assenti. Nessuna ricreazione container, mount, deploy o T0 autorizzati; manual close Samsung non operativo.
+- PR #110 invariata draft a `3dd6aa5…`; gara PAPER 72h non iniziata. Age PC, extbackup non installato, backup locale Arena e vincoli di conservazione invariati.
+
+---
+
 ## 18/11/2026 13:53 Europe/Rome — AI Arena 72h preparata, T0 assente; bridge web non collegato
 
 - Nuovo checkpoint: [`diario/2026-11-18_ai-arena-72h-pre-t0-gates.md`](diario/2026-11-18_ai-arena-72h-pre-t0-gates.md), commit [`5ba4263…`](https://github.com/alexiptv82/SuperBot-Trading/commit/5ba426300e06d96f3f1454c53acf90c13ddd0834).
