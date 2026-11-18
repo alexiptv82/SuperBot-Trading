@@ -101,13 +101,22 @@ class MeteredTransport:
 class BudgetHalt:
     """``halted()`` per il Runner: ``"budget"`` a tetto giornaliero raggiunto, ``"ledger_error"`` se il registro e' rotto."""
 
-    def __init__(self, ledger: BudgetLedger, provider: str, daily_cap_units: int, metered: MeteredTransport):
+    def __init__(self, ledger: BudgetLedger, provider: str, daily_cap_units: int, metered: MeteredTransport,
+                 *, trial_cap_units: Optional[int] = None):
         if (not isinstance(ledger, BudgetLedger) or type(provider) is not str or not provider
                 or type(daily_cap_units) is not int or daily_cap_units <= 0 or not isinstance(metered, MeteredTransport)):
             raise ValueError("invalid_halt")
+        if trial_cap_units is not None and (type(trial_cap_units) is not int or trial_cap_units <= 0):
+            raise ValueError("invalid_trial_budget")
         self._ledger, self._provider, self._cap, self._metered = ledger, provider, daily_cap_units, metered
+        self._trial_cap = trial_cap_units
 
     def __call__(self) -> Optional[str]:
         if self._metered.accounting_failed:
             return "ledger_error"
-        return "budget" if self._ledger.daily_spend(self._provider) >= self._cap else None
+        try:
+            if self._trial_cap is not None and self._ledger.total_spend(self._provider) >= self._trial_cap:
+                return "trial_budget"
+            return "budget" if self._ledger.daily_spend(self._provider) >= self._cap else None
+        except Exception:
+            return "ledger_error"  # Arena total must never fail open
