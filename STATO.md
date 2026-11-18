@@ -1,5 +1,16 @@
 # STATO — SuperBot Trading
 
+## 18/11/2026 16:51 Europe/Rome — credenziali/preflight OK; fix ordine universo non testato
+
+- Nuovo checkpoint delta: [`diario/2026-11-18_arena-credentials-preflight-universe-order-fix-untested.md`](diario/2026-11-18_arena-credentials-preflight-universe-order-fix-untested.md), commit [`9c82d35…`](https://github.com/alexiptv82/SuperBot-Trading/commit/9c82d350c91e8074b493a0013c26ff3350854743).
+- Qwen/MiniMax: limite 6 USD verificato tramite introspezione non pagata. DeepSeek Arena predisposto separatamente con permessi 0600, ma senza prova live/hard-cap e senza toccare Brain storico.
+- Decisione utente: gara PAPER 72h autonoma DeepSeek/Qwen/MiniMax, tre portafogli e uscite automatiche; nessuna chiusura manuale Samsung durante la gara. Brain separato/fuori classifica, Falco/Toro spenti. Web/manual-close differito e non blocker T0.
+- Preflight delle 16:31: `PREPARED_PAUSED_NO_T0`, zero posizioni, uscite abilitate, budget 18 USD, nessun blocco. Nessun T0/runner decisionale/inferenza.
+- Snapshot Bitget fresco e stesso insieme di 27 simboli per tutti; il gate falliva solo per ordine diverso. PR #110 ora draft HEAD [`9b417e7…`](https://github.com/alexiptv82/SuperBot-Trading/commit/9b417e7e24c3a59aa003937cc2bb47685ace3863) con fix minimo e test aggiunti, ma **pytest non eseguito**; nessun deploy/installazione.
+- Age PC ed extbackup invariati: `ESITO: VERIFICA OK` non certifica VPS; backup esterno preparato, non installato. Prossimo: pytest isolato, poi eventuale stage/preflight senza T0 e solo con autorizzazione separata.
+
+---
+
 ## 18/11/2026 15:51 Europe/Rome — run Arena sostituite; smoke PASS; quote chiavi da riverificare
 
 - Nuovo checkpoint delta: [`diario/2026-11-18_arena-runs-replaced-smoke-pass-keys-pending.md`](diario/2026-11-18_arena-runs-replaced-smoke-pass-keys-pending.md), commit [`3aa8ead…`](https://github.com/alexiptv82/SuperBot-Trading/commit/3aa8ead1dbc4b8f0fd5c59db55538e4723e155ea).
