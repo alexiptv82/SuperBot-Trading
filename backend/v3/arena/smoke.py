@@ -76,7 +76,9 @@ def run_smoke(root: Path, day: date, *, now_fn: Callable[[], int], get_json=http
         try:
             symbols = list(load_runner_config((plans["qwen"].folder / "runner_config.json").read_bytes()).symbols)
             snap = tmp / "universe-smoke.json"
+            import hashlib as _hl
             snap.write_text(json.dumps({"schema": "arena_universe_snapshot_v1", "symbols": symbols,
+                                        "symbols_sha256": _hl.sha256(",".join(symbols).encode()).hexdigest(),
                                         "crypto_target_met": True, "as_of_ms": now}))
             TS.activate(copy_root, day, t0_ms=now, now_ms=now, desk_mode="paper",
                         confirm=f"{TS.ACTIVATE_PREFIX}{now}", approved_by="smoke-copy",
