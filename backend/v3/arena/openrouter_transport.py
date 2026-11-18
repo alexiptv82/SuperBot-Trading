@@ -35,7 +35,7 @@ CREDENTIALS = Path("/etc/superbot-brain-ai-arena/openrouter-keys.json")
 BASE = "https://openrouter.ai/api/v1"
 MAX_BYTES = 65536
 MAX_TOKENS = 8192
-KEY_LIMIT = Decimal("2")
+KEY_LIMIT = Decimal("6")  # maximum for each DISTINCT provider key over 3-day PAPER trial
 KEY_MIN_REMAINING = Decimal("0.03")
 _KEY_RE = re.compile(r"sk-or-v1-[A-Za-z0-9_-]{16,}\Z")
 
@@ -134,7 +134,7 @@ def _verify_key_budget(body: dict) -> None:
         remaining = _decimal(details.get("limit_remaining"))
     except ValueError:
         raise _error("budget_denied") from None
-    if max_usd > KEY_LIMIT or remaining < KEY_MIN_REMAINING:
+    if max_usd != KEY_LIMIT or remaining < KEY_MIN_REMAINING:
         raise _error("budget_denied")
 
 
