@@ -18,6 +18,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -339,7 +340,8 @@ def _compensate(plans: dict, saved: dict, written_t0: list) -> None:
 SUPERSEDE_PREFIX = "ARCHIVIA-TRE-RUN-PREPARATE-"
 
 
-def supersede_prepared(root: Path, day: date, *, archive_parent: Path, now_ms: int, confirm: str) -> dict:
+def supersede_prepared(root: Path, day: date, *, archive_parent: Path, now_ms: int, confirm: str,
+                       archive_basename: Optional[str] = None) -> dict:
     """Sposta (mai modifica, mai cancella) le tre run PREPARATE, mai avviate, in un archivio verificabile, per
     prepararne tre nuove con la config aggiornata. Solo con: stadio PREPARED_PAUSED_NO_T0, journal con il solo
     ``run_prepared``, 0 posizioni verificate, servizi uscite delle tre run FERMI (fermati dall'operatore con
@@ -360,7 +362,18 @@ def supersede_prepared(root: Path, day: date, *, archive_parent: Path, now_ms: i
         raise SetupRefused("archive_parent_missing")
     if archive_parent.stat().st_dev != root.stat().st_dev:
         raise SetupRefused("archive_on_other_filesystem")            # rename non atomico: rifiuto prima
-    archive = archive_parent / f"arena-superseded-{day.isoformat()}-{now_ms}"
+    if archive_basename is not None:
+        # The wrapper provides the exact name BEFORE stopping exits or moving any files.
+        # This lets its EXIT/HUP trap recover even if SSH drops during the archive call.
+        if (type(archive_basename) is not str or
+                re.fullmatch(rf"arena-superseded-{day.isoformat()}-[0-9]{{13}}-[0-9a-f]{{8}}",
+                             archive_basename) is None):
+            raise SetupRefused("archive_name_invalid")
+    else:
+        archive_basename = f"arena-superseded-{day.isoformat()}-{now_ms}"
+    archive = archive_parent / archive_basename
+    if archive.exists() or archive.is_symlink():
+        raise SetupRefused("archive_already_exists")
     archive.mkdir(mode=0o700)
     plans = _plans(root, day)
     record = {"schema": "arena_superseded_runs_v1", "archived_at_ms": now_ms, "day": day.isoformat(), "runs": {}}
@@ -404,6 +417,7 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     ap.add_argument("--universe-snapshot")
     ap.add_argument("--provider", choices=PROVIDERS)
     ap.add_argument("--archive-parent", default="/opt/superbot-v3-backups")
+    ap.add_argument("--archive-basename", default=None, help="nome immutabile preassegnato dal wrapper")
     ap.add_argument("--approved-total-budget-usd", help="budget totale della gara approvato dall'utente")
     a = ap.parse_args(argv)
     environ = os.environ if env is None else env
@@ -419,7 +433,8 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
             print(json.dumps({"ok": True, "command": a.command, **out}, sort_keys=True))
             return 0 if out["exit_stop_allowed"] else 2
         elif a.command == "supersede-prepared":
-            out = supersede_prepared(root, day, archive_parent=Path(a.archive_parent), now_ms=now, confirm=a.confirm)
+            out = supersede_prepared(root, day, archive_parent=Path(a.archive_parent), now_ms=now,
+                                     confirm=a.confirm, archive_basename=a.archive_basename)
         elif a.command == "prepare-paused":
             out = prepare_paused(root, day, now_ms=now, desk_mode=environ.get("DESK_MODE", ""), confirm=a.confirm)
         else:
