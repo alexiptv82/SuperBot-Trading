@@ -140,7 +140,7 @@ def _old_runs(prefix: Path):
     return root
 
 
-def test_replace_prepared_archives_old_runs_and_prepares_new_ones(env, tmp_path):
+def test_replace_prepared_restores_old_runs_if_new_exit_services_are_unhealthy(env, tmp_path):
     prefix, sha, e = env
     if not (prefix / "opt" / "superbot-arena-stage" / "backend" / "v3" / "arena" / "trial_setup.py").read_text() \
             .count("supersede_prepared"):
@@ -171,7 +171,8 @@ def test_replace_prepared_archives_old_runs_and_prepares_new_ones(env, tmp_path)
     assert len(stops) == 6 and len(starts) == 6 and min(stops) < min(starts)
     assert not any("brain" in c and c.split()[0] in ("stop", "start", "restart") for c in calls)
     assert not any("runner@" in c and c.split()[0] in ("stop", "start") for c in calls)
-    assert list(prefix.glob("opt/superbot-arena-stage.prev-*"))                 # stage precedente conservato
+    assert (prefix / "opt" / "superbot-arena-stage" / ".git").is_dir()  # stage vecchio ripristinato
+    assert list(prefix.glob("opt/superbot-arena-stage.failed-*"))            # stage nuovo non cancellato
 
 
 def test_replace_prepared_refuses_with_active_runner_or_down_brain_and_restarts_exits_on_failure(env, tmp_path):
