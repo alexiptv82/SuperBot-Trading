@@ -131,7 +131,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                  desk_mode: Optional[str] = None,
                  classic_peer_dirs: Optional[Mapping[str, Path]] = None,
                  arena_provider: Optional[str] = None,
-                 arena_stop_new_entries_at_ms: Optional[int] = None) -> Built:
+                 arena_stop_new_entries_at_ms: Optional[int] = None,
+                 arena_trial_cap_units: Optional[int] = None) -> Built:
     """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test."""
     if type(exit_mode) is not str or exit_mode not in ("legacy", "sidecar"):
         raise ValueError("invalid_exit_mode")
@@ -154,6 +155,9 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             return type(now) is not int or now <= 0 or now >= arena_stop_new_entries_at_ms
         except Exception:
             return True  # fail closed; exit worker is independent
+    if arena_trial_cap_units is not None:
+        if arena_provider is None or type(arena_trial_cap_units) is not int or arena_trial_cap_units <= 0:
+            raise ValueError("invalid_arena_trial_cap")
     provider = PROVIDER if arena_provider is None else arena_provider
     # Peer observation is opt-in and can only read explicitly provided, isolated dirs.
     peer_reader = None
@@ -190,7 +194,10 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         transport=metered, model=config.model,
         outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
         bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
-        spending_gate=ledger.spending_gate(daily_limits={provider: config.daily_cap_units}), enabled=True,
+        spending_gate=ledger.spending_gate(
+            daily_limits={provider: config.daily_cap_units},
+            total_limits={provider: arena_trial_cap_units} if arena_trial_cap_units is not None else None),
+        enabled=True,
         max_tokens=config.max_tokens, provider=provider))
     store = CandleStore(get_json, keep={s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP)
                                         for s in vp.timeframes})
@@ -198,7 +205,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     rules = ContractRules(get_json, maintenance_fraction=config.maintenance_fraction)
     exit_policy = load_default_policy()
     mandate = MandateFile(data_dir / MANDATE_FILE, config.risk_policy, run_id)
-    budget_halt = BudgetHalt(ledger, provider, config.daily_cap_units, metered)
+    budget_halt = BudgetHalt(ledger, provider, config.daily_cap_units, metered,
+                             trial_cap_units=arena_trial_cap_units)
     allowed = tuple(sorted(menu_ids(menu)))
 
     def halted() -> Optional[str]:
