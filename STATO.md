@@ -1,5 +1,17 @@
 # STATO — SuperBot Trading
 
+## 18/11/2026 21:43 Europe/Rome — Samsung mostra Arena; possibile dato fermo, attesa prudente
+
+- Nuovo checkpoint delta: [`diario/2026-11-18_arena-samsung-visible-possible-stale-wait.md`](diario/2026-11-18_arena-samsung-visible-possible-stale-wait.md), commit [`1605366…`](https://github.com/alexiptv82/SuperBot-Trading/commit/1605366f549271d29700620a73a958ffce65a3d5).
+- Screenshot Samsung 20:53: dashboard AI Arena caricata; DeepSeek/Qwen/MiniMax tutti `running`.
+- PnL PAPER mostrato: DeepSeek −62,00, Qwen −59,71, MiniMax −222,10 USDT; totale −343,81. MiniMax 1 aperta/4 chiuse, equity/unrealized non disponibili.
+- MiniMax ultimo evento 20:00:23, circa 53 minuti prima dello screenshot. È possibile dato UI non aggiornato, assenza eventi o stallo: nessuna causa verificata.
+- L'utente nota apparente inattività e Brain storico senza posizioni, ma decide di attendere domani senza interventi. Nessun SSH post-rilascio prova processi/heartbeat.
+- Domani: confronto read-only di timestamp, trade/posizioni, runner/exit, Brain storico e journal/T0. Nessun restart/reset; preservare PAPER e EventJournal.
+- PR #112 invariata draft a `86288a3…`; age PC `ESITO: VERIFICA OK` non certifica VPS; extbackup non installato.
+
+---
+
 ## 18/11/2026 20:48 Europe/Rome — backend Arena e dashboard pubblicati; Samsung pendente
 
 - Nuovo checkpoint delta: [`diario/2026-11-18_arena-web-backend-ui-released-samsung-pending.md`](diario/2026-11-18_arena-web-backend-ui-released-samsung-pending.md), commit [`f974da8…`](https://github.com/alexiptv82/SuperBot-Trading/commit/f974da8aaa1fadcaa7d3ac43417780dc820c211d).
