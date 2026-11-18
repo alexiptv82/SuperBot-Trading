@@ -262,3 +262,35 @@ def test_arena_inflight_ai_cannot_open_after_72h(root):
         built.runner.tick(G + 25_000)
     assert model.payloads  # Inference began while trial was open
     assert _kinds(plan, "paper_open") == []  # But cannot commit after deadline
+
+
+def test_arena_total_budget_survives_midnight_and_restart(tmp_path):
+    """Four UTC calendar dates cannot multiply the authorized three-day spend."""
+    from backend.v3.budget import BudgetLedger
+    db = tmp_path / "budget.db"
+    ledger = BudgetLedger(str(db))
+    ledger.close()
+    # Test-only synthetic rows from prior UTC days; never mutates live journals.
+    with sqlite3.connect(db) as conn:
+        conn.executemany(
+            "INSERT INTO spend_events(occurred_at,provider,units,metadata) VALUES(?,?,?,?)",
+            [("2026-11-15T18:00:00+00:00", "qwen", 1_900_000, "{}"),
+             ("2026-11-16T18:00:00+00:00", "qwen", 1_900_000, "{}"),
+             ("2026-11-17T18:00:00+00:00", "qwen", 1_900_000, "{}"),
+             ("2026-11-17T18:00:00+00:00", "minimax", 5_900_000, "{}")])
+    second = BudgetLedger(str(db))
+    gate = second.spending_gate(
+        daily_limits={"qwen": 2_000_000, "minimax": 2_000_000},
+        total_limits={"qwen": 6_000_000, "minimax": 6_000_000})
+    assert second.total_spend("qwen") == 5_700_000
+    assert gate("qwen") is True
+    assert gate("minimax") is True
+    second.record_spend("qwen", 300_000)
+    second.close()
+    third = BudgetLedger(str(db))
+    gate2 = third.spending_gate(
+        daily_limits={"qwen": 2_000_000, "minimax": 2_000_000},
+        total_limits={"qwen": 6_000_000, "minimax": 6_000_000})
+    assert third.total_spend("qwen") == 6_000_000
+    assert gate2("qwen") is False
+    third.close()
