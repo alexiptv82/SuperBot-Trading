@@ -217,7 +217,7 @@ def test_cli_defaults_to_read_only_inspect(root, capsys):
 
 
 def test_budget_gate_blocks_activation_with_todays_repository_configs(root, tmp_path, monkeypatch):
-    """Config di oggi: prezzi Qwen/MiniMax 6-13x sopra listino, tetto 0,75 x 14 > limite chiave 2 USD."""
+    """Prezzi allineati, ma il limite chiave di 2 USD rimane insufficiente per 14 giorni."""
     from decimal import Decimal
     from backend.v3.arena import openrouter_transport as ORT
     monkeypatch.setattr(ORT, "KEY_LIMIT", Decimal("2"))
@@ -228,10 +228,9 @@ def test_budget_gate_blocks_activation_with_todays_repository_configs(root, tmp_
         with pytest.raises(TS.SetupRefused) as e:
             _activate(root, tmp_path)
         code = str(e.value)
-        for b in ("PRICE_ESTIMATE_DISTORTS_COMPARISON:qwen", "PRICE_ESTIMATE_DISTORTS_COMPARISON:minimax",
-                  "KEY_LIMIT_BELOW_TRIAL_BUDGET:qwen"):
+        for b in ("KEY_LIMIT_BELOW_TRIAL_BUDGET:qwen", "KEY_LIMIT_BELOW_TRIAL_BUDGET:minimax"):
             assert b in code
-        assert "PRICE_ESTIMATE_DISTORTS_COMPARISON:deepseek" not in code      # DeepSeek allineato al listino
+        assert "PRICE_ESTIMATE_DISTORTS_COMPARISON" not in code           # prezzi uguali al listino di picco
         with pytest.raises(TS.SetupRefused, match="TOTAL_BUDGET_NOT_APPROVED"):
             _activate(root, tmp_path, approved_total_budget_usd=None)
         assert TS.inspect(root, DAY, NOW)["stage"] == "PREPARED_PAUSED_NO_T0"
