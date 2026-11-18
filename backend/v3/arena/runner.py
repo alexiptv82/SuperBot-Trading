@@ -25,6 +25,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
+from backend.v3.arena.budget_gate import TRIAL_DAYS
 from backend.v3.arena.inference_trace import TracedTransport
 from backend.v3.arena.openrouter_transport import openrouter_transport
 from backend.v3.arena.prepare import plan_for, shared_policy_hash
@@ -91,7 +92,8 @@ def build_arena_runner(plan: WalletPlan, *, environ: Mapping[str, str], clock_ms
         raise ArenaRunnerError("config_invalid") from None
     if config.model != plan.model or config.initial_equity != plan.capital_usdt:
         raise ArenaRunnerError("config_does_not_match_plan")
-    check_manifest(plan, config)
+    t0 = check_manifest(plan, config)
+    deadline_ms = t0 + TRIAL_DAYS * 24 * 60 * 60 * 1000
     transport = inner_transport if inner_transport is not None else provider_transport(plan, config, environ)
     # Traccia per chiamata (parametri di ragionamento inviati, token, latenza): solo misura, nessun effetto.
     transport = TracedTransport(transport, plan.folder / "inference_trace.jsonl", provider=plan.provider)
@@ -99,7 +101,8 @@ def build_arena_runner(plan: WalletPlan, *, environ: Mapping[str, str], clock_ms
     try:
         return build_runner(data_dir=plan.folder, run_id=plan.run_id, config=config, get_json=get_json,
                             inner_transport=transport, alert_send=None, exit_mode="sidecar", clock_ms=clock_ms,
-                            desk_mode="paper", arena_provider=plan.provider, **kw)
+                            desk_mode="paper", arena_provider=plan.provider,
+                            arena_stop_new_entries_at_ms=deadline_ms, **kw)
     except ValueError:
         raise ArenaRunnerError("setup_invalid") from None
 
