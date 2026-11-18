@@ -155,14 +155,20 @@ def test_replace_prepared_archives_old_runs_and_prepares_new_ones(env, tmp_path)
     assert "ZERO_POSITIONS_VERIFIED=TRUE" in out and "OLD_RUNS_ARCHIVED=" in out, out + r.stderr
     assert "NEW_RUNS_PREPARED_PAUSED_NO_T0=TRUE" in out
     assert "REFUSED=EXITS_NOT_HEALTHY_COUNT_0" in out          # nessun servizio uscite vero in questo ambiente
-    archived = list((prefix / "opt" / "superbot-v3-backups").glob("arena-superseded-*/qwen/brain-qwen-paper20261118"))
-    assert len(archived) == 1 and (archived[0] / "runner_config.json").read_bytes() == old_cfg
-    new_cfg = json.loads((root / "qwen" / "brain-qwen-paper20261118" / "runner_config.json").read_text())
+    assert "ROLLBACK_RESTORED=TRUE" in out, out + r.stderr
+    # Un'uscita non sana AFTER il nuovo prepare non lascia le run nuove attive nel percorso operativo.
+    restored = root / "qwen" / "brain-qwen-paper20261118"
+    assert (restored / "runner_config.json").read_bytes() == old_cfg
+    archived = list((prefix / "opt" / "superbot-v3-backups").glob("arena-superseded-*/SUPERSEDED-ROLLED-BACK.json"))
+    assert len(archived) == 1
+    quarantined = list((prefix / "opt" / "superbot-v3-backups").glob("arena-replace-failed-*/qwen/brain-qwen-paper20261118"))
+    assert len(quarantined) == 1
+    new_cfg = json.loads((quarantined[0] / "runner_config.json").read_text())
     assert new_cfg["daily_cap_usd"] == "2.00" and new_cfg["input_usd_per_million_tokens"] == "0.32"
     calls = log.read_text().splitlines()
-    stops = [i for i, c in enumerate(calls) if c.startswith("stop superbot-arena-exit@")]
-    starts = [i for i, c in enumerate(calls) if c.startswith("start superbot-arena-exit@")]
-    assert len(stops) == 3 and len(starts) == 3 and max(stops) < min(starts)
+    stops = [i for i, x in enumerate(calls) if x.startswith("stop superbot-arena-exit@")]
+    starts = [i for i, x in enumerate(calls) if x.startswith("start superbot-arena-exit@")]
+    assert len(stops) == 6 and len(starts) == 6 and min(stops) < min(starts)
     assert not any("brain" in c and c.split()[0] in ("stop", "start", "restart") for c in calls)
     assert not any("runner@" in c and c.split()[0] in ("stop", "start") for c in calls)
     assert list(prefix.glob("opt/superbot-arena-stage.prev-*"))                 # stage precedente conservato
@@ -190,7 +196,45 @@ def test_replace_prepared_refuses_with_active_runner_or_down_brain_and_restarts_
              dict(e, PATH=f"{tmp_path / 'sbin-f'}:/usr/bin:/bin", ARENA_PREP_TEST_SOURCE=str(REPO)))
     assert "SUPERSEDE_REFUSED_OLD_RUNS_KEPT_EXITS_RESTARTED" in r.stdout
     calls = log.read_text().splitlines()
-    assert sum(c.startswith("stop superbot-arena-exit@") for c in calls) == 3
-    assert sum(c.startswith("start superbot-arena-exit@") for c in calls) == 3
+    assert sum(c.startswith("stop superbot-arena-exit@") for c in calls) == 6
+    assert sum(c.startswith("start superbot-arena-exit@") for c in calls) == 6
+    assert "ROLLBACK_RESTORED=TRUE" in r.stdout
     assert json.loads((root / "qwen" / "brain-qwen-paper20261118" / "runner_config.json").read_text())[
         "daily_cap_usd"] == "0.75"
+
+
+@pytest.mark.parametrize("failpoint", ("after_archive", "after_stage_saved", "after_new_prepared"))
+def test_replace_prepared_rolls_back_every_failure_after_archive(env, tmp_path, failpoint):
+    """No loss of immutable pre-trial history, even after stage switched or new run created."""
+    prefix, sha, e = env
+    root = _old_runs(prefix)
+    old = {}
+    for p in ("deepseek", "qwen", "minimax"):
+        old[p] = (root / p / f"brain-{p}-paper20261118" / "runner_config.json").read_bytes()
+    stage = prefix / "opt" / "superbot-arena-stage"
+    original_sha = subprocess.check_output(
+        ["git", "-C", str(stage), "rev-parse", "HEAD"], text=True).strip()
+    log = tmp_path / (failpoint + ".log")
+    sbin = tmp_path / ("sbin-" + failpoint)
+    _stateful_systemctl(sbin, log)
+    e2 = dict(e, PATH=f"{sbin}:/usr/bin:/bin",
+              ARENA_PREP_TEST_SOURCE=str(REPO), ARENA_PREP_HEALTH_WAIT_S="1",
+              ARENA_PREP_TEST_FAILPOINT=failpoint)
+    result = _run(["--replace-prepared", "--sha", sha], e2)
+    assert result.returncode != 0
+    assert f"REFUSED=INJECTED_FAILURE_{failpoint.upper()}" in result.stdout
+    assert "ROLLBACK_RESTORED=TRUE" in result.stdout, result.stdout + result.stderr
+    assert subprocess.check_output(
+        ["git", "-C", str(stage), "rev-parse", "HEAD"], text=True).strip() == original_sha
+    for p in ("deepseek", "qwen", "minimax"):
+        run = root / p / f"brain-{p}-paper20261118"
+        assert (run / "runner_config.json").read_bytes() == old[p]
+        assert (run / "pause.flag").is_file()
+        assert not (run / "arena_t0.json").exists()
+    backup = prefix / "opt" / "superbot-v3-backups"
+    assert len(list(backup.glob("arena-superseded-*/SUPERSEDED-ROLLED-BACK.json"))) == 1
+    if failpoint == "after_new_prepared":
+        assert len(list(backup.glob("arena-replace-failed-*/qwen/brain-qwen-paper20261118"))) == 1
+    calls = log.read_text().splitlines()
+    assert not any("brain" in x and x.split()[0] in ("stop", "start", "restart") for x in calls)
+    assert not any("runner@" in x and x.split()[0] in ("stop", "start") for x in calls)
