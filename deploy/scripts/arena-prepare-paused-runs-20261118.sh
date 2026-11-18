@@ -259,17 +259,26 @@ PY
   [[ "$REPLACE_TX_ARCHIVE" == "$BACKUPS"/arena-superseded-* && -d "$REPLACE_TX_ARCHIVE" ]] \
     || die 'ARCHIVE_PATH_INVALID'
   say "OLD_RUNS_ARCHIVED=$REPLACE_TX_ARCHIVE"
+  if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == after_archive ]]; then
+    die 'INJECTED_FAILURE_AFTER_ARCHIVE'
+  fi
   # 4) stage nuovo (il precedente resta accanto) e 5) tre run nuove in pausa
   old="$STAGE.prev-$(git -C "$STAGE" rev-parse --short=8 HEAD 2>/dev/null || echo x)-$(date -u +%Y%m%dT%H%M%SZ)"
   [[ -e "$STAGE" ]] || die 'STAGE_MISSING_AFTER_ARCHIVE'
   mv -T -- "$STAGE" "$old"
   REPLACE_TX_OLD_STAGE="$old"
   say "PREVIOUS_STAGE_KEPT=$old"
+  if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == after_stage_saved ]]; then
+    die 'INJECTED_FAILURE_AFTER_STAGE_SAVED'
+  fi
   mv -T -- "$code" "$STAGE"
   # Conservare lo scratch finche' il nuovo stage e le nuove uscite non siano sani.
   setup prepare-paused --root "$ROOT" --day "$DAY" --confirm 'PREPARA-TRE-RUN-PAPER-IN-PAUSA' >/dev/null \
     || die 'NEW_PREPARE_FAILED_NO_RUNS_EXITS_STOPPED_OLD_RUNS_IN_ARCHIVE'
   say 'NEW_RUNS_PREPARED_PAUSED_NO_T0=TRUE'
+  if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == after_new_prepared ]]; then
+    die 'INJECTED_FAILURE_AFTER_NEW_PREPARED'
+  fi
   # 6) uscite di nuovo attive e sane sulle run nuove
   restart_exits
   for i in $(seq 1 "$HEALTH_WAIT_S"); do
