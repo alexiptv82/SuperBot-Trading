@@ -2,6 +2,7 @@
 Dati sintetici, servizi uscite veri in processo, modello finto, nessuna rete, nessuna spesa."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -58,6 +59,7 @@ def _prepare(root):
 def _snapshot(tmp_path, symbols=SYMS, as_of=NOW - 60_000):
     path = tmp_path / f"universe-{as_of}-{len(symbols)}.json"
     path.write_text(json.dumps({"schema": "arena_universe_snapshot_v1", "symbols": symbols,
+                             "symbols_sha256": hashlib.sha256(",".join(symbols).encode()).hexdigest(),
                                 "crypto_target_met": True, "as_of_ms": as_of}))
     return path
 
@@ -146,6 +148,50 @@ def test_activate_refuses_without_authorization_healthy_exits_fresh_universe_or_
         with pytest.raises(TS.SetupRefused, match="universe_snapshot"):
             _activate(root, tmp_path, universe_snapshot=_snapshot(tmp_path, symbols=["BTCUSDT"]))
         assert TS.inspect(root, DAY, NOW)["stage"] == "PREPARED_PAUSED_NO_T0"   # niente e' cambiato
+    finally:
+        for w in exits.values():
+            w.stop()
+
+
+def test_activate_accepts_same_markets_in_snapshot_ranking_order_without_modifying_evidence(root, tmp_path):
+    _prepare(root)
+    snap = _snapshot(tmp_path, symbols=list(reversed(SYMS)))
+    original = snap.read_bytes()
+    configs_before = {
+        p: (plan.folder / "runner_config.json").read_bytes()
+        for p, plan in TS._plans(root, DAY).items()
+    }
+    exits, _ = _exits(root)
+    try:
+        report = _activate(root, tmp_path, universe_snapshot=snap)
+        assert report["stage"] == "ACTIVE"
+        for p, plan in TS._plans(root, DAY).items():
+            t0 = json.loads((plan.folder / T0_FILE).read_text())
+            assert t0["universe_snapshot_sha256"] == hashlib.sha256(original).hexdigest()
+            assert t0["symbols_sha256"] == hashlib.sha256(",".join(SYMS).encode()).hexdigest()
+            assert (plan.folder / "runner_config.json").read_bytes() == configs_before[p]
+        assert snap.read_bytes() == original
+    finally:
+        for w in exits.values():
+            w.stop()
+
+
+def test_activate_refuses_duplicate_changed_or_tampered_snapshot_symbols(root, tmp_path):
+    _prepare(root)
+    exits, _ = _exits(root)
+    try:
+        for syms in ([SYMS[0], SYMS[0]], [SYMS[0], "XRPUSDT"]):
+            snap = _snapshot(tmp_path, symbols=syms)
+            with pytest.raises(TS.SetupRefused, match="universe_snapshot_not_fresh_or_different"):
+                _activate(root, tmp_path, universe_snapshot=snap)
+        snap = _snapshot(tmp_path, symbols=list(reversed(SYMS)))
+        data = json.loads(snap.read_text())
+        data["symbols_sha256"] = "0" * 64
+        snap.write_text(json.dumps(data))
+        with pytest.raises(TS.SetupRefused, match="universe_snapshot_not_fresh_or_different"):
+            _activate(root, tmp_path, universe_snapshot=snap)
+        assert TS.inspect(root, DAY, NOW)["stage"] == "PREPARED_PAUSED_NO_T0"
+        assert all(not (plan.folder / T0_FILE).exists() for plan in TS._plans(root, DAY).values())
     finally:
         for w in exits.values():
             w.stop()
