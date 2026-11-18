@@ -65,5 +65,5 @@ export function validNote(note) {
 }
 
 export function arenaCloseUiEnabled(env = process.env) {
-  return env.REACT_APP_ARENA_MANUAL_CLOSE === '1';
+  return env.REACT_APP_PREVIEW_READONLY !== '1' && env.REACT_APP_ARENA_MANUAL_CLOSE === '1';
 }

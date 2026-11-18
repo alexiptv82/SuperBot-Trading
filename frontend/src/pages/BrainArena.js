@@ -221,7 +221,8 @@ export default function BrainArena() {
             ? <BrainCloseControls
                 positions={data.open_positions}
                 serverPending={data.close_pending === true}
-                readOnly={process.env.REACT_APP_ARENA_EXISTING_CLOSE !== '1' ||
+                readOnly={process.env.REACT_APP_PREVIEW_READONLY === '1' ||
+                          process.env.REACT_APP_ARENA_EXISTING_CLOSE !== '1' ||
                           data.manual_close_allowed !== true}
                 allowCloseAll={false}
                 onRefresh={() => setRefresh(v => v + 1)}
