@@ -1,0 +1,66 @@
+{
+ "in_sample|brain_4x_notional|A_baseline": {
+  "trades": 442,
+  "net_pnl": -1748.918,
+  "expectancy_r": -0.206,
+  "max_drawdown_pct": 89.118,
+  "worst_trade": -79.414,
+  "fees": 1430.46
+ },
+ "in_sample|brain_4x_notional|common_candidate": {
+  "trades": 8,
+  "net_pnl": -256.388,
+  "expectancy_r": -0.703,
+  "max_drawdown_pct": 13.442,
+  "worst_trade": -80.654,
+  "fees": 63.064
+ },
+ "in_sample|1x_notional|A_baseline": {
+  "trades": 499.4,
+  "net_pnl": -820.788,
+  "expectancy_r": -0.219,
+  "max_drawdown_pct": 43.99,
+  "worst_trade": -20.588,
+  "fees": 732.128
+ },
+ "in_sample|1x_notional|common_candidate": {
+  "trades": 135.6,
+  "net_pnl": -213.868,
+  "expectancy_r": -0.323,
+  "max_drawdown_pct": 11.316,
+  "worst_trade": -20.872,
+  "fees": 228.814
+ },
+ "out_of_sample|brain_4x_notional|A_baseline": {
+  "trades": 333,
+  "net_pnl": -1290.178,
+  "expectancy_r": -0.19,
+  "max_drawdown_pct": 74.174,
+  "worst_trade": -80.648,
+  "fees": 1425.238
+ },
+ "out_of_sample|brain_4x_notional|common_candidate": {
+  "trades": 17.6,
+  "net_pnl": -210.484,
+  "expectancy_r": -0.27,
+  "max_drawdown_pct": 16.57,
+  "worst_trade": -84.728,
+  "fees": 142.946
+ },
+ "out_of_sample|1x_notional|A_baseline": {
+  "trades": 361.4,
+  "net_pnl": -563.45,
+  "expectancy_r": -0.192,
+  "max_drawdown_pct": 33.206,
+  "worst_trade": -20.752,
+  "fees": 603.922
+ },
+ "out_of_sample|1x_notional|common_candidate": {
+  "trades": 58.8,
+  "net_pnl": -146.638,
+  "expectancy_r": -0.174,
+  "max_drawdown_pct": 11.034,
+  "worst_trade": -21.534,
+  "fees": 116.326
+ }
+}

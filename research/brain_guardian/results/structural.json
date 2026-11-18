@@ -1,0 +1,2719 @@
+{
+ "end_ms": 1794895680000,
+ "mode": "structural",
+ "seeds": {
+  "1": {
+   "combo": "E_combo[A_baseline+C1_stop_4x_costs+D3_equity_brakes]",
+   "in_sample": {
+    "A_baseline": {
+     "avg_loss": 24.9,
+     "avg_win": 35.1,
+     "exit_reasons": {
+      "stop": 281,
+      "take_profit": 142,
+      "timeout": 23
+     },
+     "expectancy": -3.91,
+     "expectancy_r": -0.185,
+     "fees": 1700.01,
+     "final_equity": 256.02,
+     "max_drawdown_pct": 88.82,
+     "net_pnl": -1743.98,
+     "profit_factor": 0.758,
+     "reached_1r_then_lost": 60,
+     "skipped": {
+      "below_min_notional": 214,
+      "margin_full": 3360,
+      "symbol_already_open": 1924
+     },
+     "trades": 446,
+     "variant": "A_baseline",
+     "win_rate": 0.35,
+     "worst_trade": -77.45
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 19.08,
+     "avg_win": 12.8,
+     "exit_reasons": {
+      "breakeven": 153,
+      "stop": 284,
+      "take_profit": 128,
+      "timeout": 14
+     },
+     "expectancy": -3.17,
+     "expectancy_r": -0.182,
+     "fees": 1672.49,
+     "final_equity": 164.82,
+     "max_drawdown_pct": 92.08,
+     "net_pnl": -1835.18,
+     "profit_factor": 0.668,
+     "reached_1r_then_lost": 2,
+     "skipped": {
+      "below_min_notional": 226,
+      "margin_full": 3249,
+      "symbol_already_open": 1890
+     },
+     "trades": 579,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.499,
+     "worst_trade": -80.25
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 16.09,
+     "avg_win": 15.67,
+     "exit_reasons": {
+      "stop": 287,
+      "timeout": 14,
+      "trail": 274
+     },
+     "expectancy": -3.11,
+     "expectancy_r": -0.199,
+     "fees": 1594.38,
+     "final_equity": 211.94,
+     "max_drawdown_pct": 92.77,
+     "net_pnl": -1788.06,
+     "profit_factor": 0.673,
+     "reached_1r_then_lost": 49,
+     "skipped": {
+      "below_min_notional": 185,
+      "margin_full": 3272,
+      "symbol_already_open": 1912
+     },
+     "trades": 575,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.409,
+     "worst_trade": -77.45
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 19.77,
+     "avg_win": 24.26,
+     "exit_reasons": {
+      "stop": 283,
+      "take_profit": 142,
+      "timeout": 23
+     },
+     "expectancy": -3.94,
+     "expectancy_r": -0.21,
+     "fees": 1599.86,
+     "final_equity": 233.09,
+     "max_drawdown_pct": 89.32,
+     "net_pnl": -1766.91,
+     "profit_factor": 0.689,
+     "reached_1r_then_lost": 56,
+     "skipped": {
+      "below_min_notional": 111,
+      "margin_full": 3404,
+      "symbol_already_open": 1981
+     },
+     "trades": 448,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.359,
+     "worst_trade": -77.45
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 23.19,
+     "avg_win": 29.58,
+     "exit_reasons": {
+      "stop": 232,
+      "take_profit": 116,
+      "timeout": 32
+     },
+     "expectancy": -4.17,
+     "expectancy_r": -0.14,
+     "fees": 1142.9,
+     "final_equity": 416.6,
+     "max_drawdown_pct": 79.67,
+     "net_pnl": -1583.4,
+     "profit_factor": 0.719,
+     "reached_1r_then_lost": 54,
+     "skipped": {
+      "below_min_notional": 22,
+      "margin_full": 1483,
+      "stop_inside_costs": 1811,
+      "symbol_already_open": 2248
+     },
+     "trades": 380,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.361,
+     "worst_trade": -77.5
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 23.87,
+     "avg_win": 32.59,
+     "exit_reasons": {
+      "stop": 221,
+      "take_profit": 98,
+      "timeout": 22
+     },
+     "expectancy": -5.33,
+     "expectancy_r": -0.248,
+     "fees": 1180.73,
+     "final_equity": 184.15,
+     "max_drawdown_pct": 91.25,
+     "net_pnl": -1815.85,
+     "profit_factor": 0.668,
+     "reached_1r_then_lost": 52,
+     "skipped": {
+      "atr_unavailable": 24,
+      "below_min_notional": 141,
+      "margin_full": 1769,
+      "stop_inside_noise": 1669,
+      "symbol_already_open": 2000
+     },
+     "trades": 341,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.328,
+     "worst_trade": -80.93
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 26.31,
+     "avg_win": 36.33,
+     "exit_reasons": {
+      "stop": 287,
+      "take_profit": 144,
+      "timeout": 26
+     },
+     "expectancy": -3.55,
+     "expectancy_r": -0.173,
+     "fees": 1835.92,
+     "final_equity": 375.86,
+     "max_drawdown_pct": 83.16,
+     "net_pnl": -1624.14,
+     "profit_factor": 0.788,
+     "reached_1r_then_lost": 66,
+     "skipped": {
+      "below_min_notional": 112,
+      "cooldown_after_stop": 1145,
+      "margin_full": 2199,
+      "symbol_already_open": 2031
+     },
+     "trades": 457,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.363,
+     "worst_trade": -83.0
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 21.69,
+     "avg_win": 31.26,
+     "exit_reasons": {
+      "stop": 290,
+      "take_profit": 135,
+      "timeout": 25
+     },
+     "expectancy": -3.92,
+     "expectancy_r": -0.236,
+     "fees": 1501.26,
+     "final_equity": 236.08,
+     "max_drawdown_pct": 88.92,
+     "net_pnl": -1763.92,
+     "profit_factor": 0.728,
+     "reached_1r_then_lost": 65,
+     "skipped": {
+      "below_min_notional": 42,
+      "correlated_cap": 2214,
+      "margin_full": 1236,
+      "symbol_already_open": 2002
+     },
+     "trades": 450,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.336,
+     "worst_trade": -77.45
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 47.59,
+     "avg_win": 86.64,
+     "exit_reasons": {
+      "stop": 21,
+      "take_profit": 8
+     },
+     "expectancy": -10.56,
+     "expectancy_r": -0.368,
+     "fees": 201.02,
+     "final_equity": 1693.7,
+     "max_drawdown_pct": 18.04,
+     "net_pnl": -306.3,
+     "profit_factor": 0.694,
+     "reached_1r_then_lost": 2,
+     "skipped": {
+      "hwm_drawdown_halt": 5629,
+      "margin_full": 189,
+      "symbol_already_open": 97
+     },
+     "trades": 29,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.276,
+     "worst_trade": -77.45
+    },
+    "E_combo[A_baseline+C1_stop_4x_costs+D3_equity_brakes]": {
+     "avg_loss": 68.68,
+     "avg_win": 87.41,
+     "exit_reasons": {
+      "stop": 6,
+      "take_profit": 2
+     },
+     "expectancy": -29.66,
+     "expectancy_r": -0.423,
+     "fees": 68.43,
+     "final_equity": 1762.74,
+     "max_drawdown_pct": 12.43,
+     "net_pnl": -237.26,
+     "profit_factor": 0.424,
+     "reached_1r_then_lost": 1,
+     "skipped": {
+      "daily_loss_halt": 35,
+      "hwm_drawdown_halt": 2953,
+      "margin_full": 28,
+      "stop_inside_costs": 2879,
+      "symbol_already_open": 41
+     },
+     "trades": 8,
+     "variant": "E_combo[A_baseline+C1_stop_4x_costs+D3_equity_brakes]",
+     "win_rate": 0.25,
+     "worst_trade": -77.45
+    }
+   },
+   "out_of_sample": {
+    "A_baseline": {
+     "avg_loss": 23.68,
+     "avg_win": 35.51,
+     "exit_reasons": {
+      "stop": 231,
+      "take_profit": 104,
+      "timeout": 5
+     },
+     "expectancy": -5.05,
+     "expectancy_r": -0.27,
+     "fees": 1204.49,
+     "final_equity": 282.82,
+     "max_drawdown_pct": 86.79,
+     "net_pnl": -1717.18,
+     "profit_factor": 0.689,
+     "reached_1r_then_lost": 55,
+     "skipped": {
+      "below_min_notional": 129,
+      "margin_full": 1681,
+      "symbol_already_open": 970
+     },
+     "trades": 340,
+     "variant": "A_baseline",
+     "win_rate": 0.315,
+     "worst_trade": -75.77
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 24.26,
+     "avg_win": 15.93,
+     "exit_reasons": {
+      "breakeven": 121,
+      "stop": 208,
+      "take_profit": 91,
+      "timeout": 4
+     },
+     "expectancy": -3.98,
+     "expectancy_r": -0.196,
+     "fees": 1530.82,
+     "final_equity": 314.3,
+     "max_drawdown_pct": 88.1,
+     "net_pnl": -1685.7,
+     "profit_factor": 0.669,
+     "reached_1r_then_lost": 0,
+     "skipped": {
+      "below_min_notional": 112,
+      "margin_full": 1729,
+      "symbol_already_open": 855
+     },
+     "trades": 424,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.505,
+     "worst_trade": -84.8
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 17.53,
+     "avg_win": 18.71,
+     "exit_reasons": {
+      "stop": 220,
+      "timeout": 3,
+      "trail": 213
+     },
+     "expectancy": -4.15,
+     "expectancy_r": -0.226,
+     "fees": 1362.86,
+     "final_equity": 192.48,
+     "max_drawdown_pct": 91.21,
+     "net_pnl": -1807.52,
+     "profit_factor": 0.625,
+     "reached_1r_then_lost": 53,
+     "skipped": {
+      "below_min_notional": 68,
+      "margin_full": 1743,
+      "symbol_already_open": 873
+     },
+     "trades": 436,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.369,
+     "worst_trade": -84.38
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 19.5,
+     "avg_win": 26.5,
+     "exit_reasons": {
+      "stop": 233,
+      "take_profit": 105,
+      "timeout": 5
+     },
+     "expectancy": -4.88,
+     "expectancy_r": -0.261,
+     "fees": 1232.46,
+     "final_equity": 326.2,
+     "max_drawdown_pct": 85.1,
+     "net_pnl": -1673.8,
+     "profit_factor": 0.633,
+     "reached_1r_then_lost": 53,
+     "skipped": {
+      "below_min_notional": 43,
+      "margin_full": 1765,
+      "symbol_already_open": 969
+     },
+     "trades": 343,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.318,
+     "worst_trade": -76.78
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 36.61,
+     "avg_win": 52.3,
+     "exit_reasons": {
+      "stop": 170,
+      "take_profit": 93,
+      "timeout": 5
+     },
+     "expectancy": -4.76,
+     "expectancy_r": -0.104,
+     "fees": 1248.09,
+     "final_equity": 724.38,
+     "max_drawdown_pct": 73.98,
+     "net_pnl": -1275.62,
+     "profit_factor": 0.797,
+     "reached_1r_then_lost": 44,
+     "skipped": {
+      "below_min_notional": 43,
+      "margin_full": 771,
+      "stop_inside_costs": 949,
+      "symbol_already_open": 1089
+     },
+     "trades": 268,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.358,
+     "worst_trade": -86.98
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 50.74,
+     "avg_win": 84.62,
+     "exit_reasons": {
+      "stop": 101,
+      "take_profit": 54,
+      "timeout": 6
+     },
+     "expectancy": -2.82,
+     "expectancy_r": -0.128,
+     "fees": 1154.0,
+     "final_equity": 1546.09,
+     "max_drawdown_pct": 36.05,
+     "net_pnl": -453.91,
+     "profit_factor": 0.914,
+     "reached_1r_then_lost": 26,
+     "skipped": {
+      "below_min_notional": 4,
+      "margin_full": 743,
+      "stop_inside_noise": 1286,
+      "symbol_already_open": 926
+     },
+     "trades": 161,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.354,
+     "worst_trade": -93.63
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 26.14,
+     "avg_win": 37.63,
+     "exit_reasons": {
+      "stop": 203,
+      "take_profit": 102,
+      "timeout": 8
+     },
+     "expectancy": -4.75,
+     "expectancy_r": -0.201,
+     "fees": 1223.08,
+     "final_equity": 513.06,
+     "max_drawdown_pct": 80.15,
+     "net_pnl": -1486.94,
+     "profit_factor": 0.727,
+     "reached_1r_then_lost": 57,
+     "skipped": {
+      "below_min_notional": 29,
+      "cooldown_after_stop": 796,
+      "margin_full": 1016,
+      "symbol_already_open": 966
+     },
+     "trades": 313,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.335,
+     "worst_trade": -73.73
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 24.43,
+     "avg_win": 34.58,
+     "exit_reasons": {
+      "stop": 212,
+      "take_profit": 104,
+      "timeout": 8
+     },
+     "expectancy": -4.76,
+     "expectancy_r": -0.217,
+     "fees": 1186.71,
+     "final_equity": 458.11,
+     "max_drawdown_pct": 80.95,
+     "net_pnl": -1541.89,
+     "profit_factor": 0.708,
+     "reached_1r_then_lost": 50,
+     "skipped": {
+      "below_min_notional": 32,
+      "correlated_cap": 1159,
+      "margin_full": 658,
+      "symbol_already_open": 947
+     },
+     "trades": 324,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.333,
+     "worst_trade": -77.58
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 48.93,
+     "avg_win": 45.29,
+     "exit_reasons": {
+      "stop": 10,
+      "take_profit": 5,
+      "timeout": 1
+     },
+     "expectancy": -13.6,
+     "expectancy_r": -0.165,
+     "fees": 110.6,
+     "final_equity": 1782.45,
+     "max_drawdown_pct": 11.62,
+     "net_pnl": -217.55,
+     "profit_factor": 0.555,
+     "reached_1r_then_lost": 3,
+     "skipped": {
+      "hwm_drawdown_halt": 2803,
+      "margin_full": 163,
+      "symbol_already_open": 138
+     },
+     "trades": 16,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.375,
+     "worst_trade": -75.77
+    },
+    "E_combo[A_baseline+C1_stop_4x_costs+D3_equity_brakes]": {
+     "avg_loss": 71.56,
+     "avg_win": 83.43,
+     "exit_reasons": {
+      "stop": 6,
+      "take_profit": 2,
+      "timeout": 1
+     },
+     "expectancy": -19.9,
+     "expectancy_r": -0.309,
+     "fees": 80.58,
+     "final_equity": 1820.93,
+     "max_drawdown_pct": 16.28,
+     "net_pnl": -179.07,
+     "profit_factor": 0.583,
+     "reached_1r_then_lost": 3,
+     "skipped": {
+      "daily_loss_halt": 19,
+      "hwm_drawdown_halt": 1498,
+      "margin_full": 80,
+      "stop_inside_costs": 1418,
+      "symbol_already_open": 96
+     },
+     "trades": 9,
+     "variant": "E_combo[A_baseline+C1_stop_4x_costs+D3_equity_brakes]",
+     "win_rate": 0.333,
+     "worst_trade": -86.98
+    }
+   }
+  },
+  "2": {
+   "combo": "E_combo[B3_partial_half_1R+C1_stop_4x_costs+D3_equity_brakes]",
+   "in_sample": {
+    "A_baseline": {
+     "avg_loss": 22.21,
+     "avg_win": 31.37,
+     "exit_reasons": {
+      "stop": 283,
+      "take_profit": 135,
+      "timeout": 23
+     },
+     "expectancy": -3.99,
+     "expectancy_r": -0.215,
+     "fees": 1477.94,
+     "final_equity": 241.28,
+     "max_drawdown_pct": 88.59,
+     "net_pnl": -1758.72,
+     "profit_factor": 0.728,
+     "reached_1r_then_lost": 70,
+     "skipped": {
+      "below_min_notional": 157,
+      "margin_full": 3240,
+      "symbol_already_open": 2106
+     },
+     "trades": 441,
+     "variant": "A_baseline",
+     "win_rate": 0.34,
+     "worst_trade": -78.14
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 18.94,
+     "avg_win": 12.16,
+     "exit_reasons": {
+      "breakeven": 144,
+      "stop": 273,
+      "take_profit": 119,
+      "timeout": 14
+     },
+     "expectancy": -3.39,
+     "expectancy_r": -0.189,
+     "fees": 1509.6,
+     "final_equity": 134.42,
+     "max_drawdown_pct": 93.46,
+     "net_pnl": -1865.58,
+     "profit_factor": 0.642,
+     "reached_1r_then_lost": 1,
+     "skipped": {
+      "below_min_notional": 129,
+      "margin_full": 3316,
+      "symbol_already_open": 1949
+     },
+     "trades": 550,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.5,
+     "worst_trade": -83.73
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 18.83,
+     "avg_win": 17.96,
+     "exit_reasons": {
+      "stop": 262,
+      "timeout": 9,
+      "trail": 269
+     },
+     "expectancy": -3.3,
+     "expectancy_r": -0.187,
+     "fees": 1731.65,
+     "final_equity": 220.61,
+     "max_drawdown_pct": 89.7,
+     "net_pnl": -1779.39,
+     "profit_factor": 0.697,
+     "reached_1r_then_lost": 47,
+     "skipped": {
+      "below_min_notional": 263,
+      "margin_full": 3209,
+      "symbol_already_open": 1932
+     },
+     "trades": 540,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.422,
+     "worst_trade": -74.9
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 19.46,
+     "avg_win": 24.11,
+     "exit_reasons": {
+      "stop": 284,
+      "take_profit": 138,
+      "timeout": 23
+     },
+     "expectancy": -3.89,
+     "expectancy_r": -0.201,
+     "fees": 1593.07,
+     "final_equity": 268.44,
+     "max_drawdown_pct": 87.11,
+     "net_pnl": -1731.56,
+     "profit_factor": 0.689,
+     "reached_1r_then_lost": 65,
+     "skipped": {
+      "below_min_notional": 53,
+      "margin_full": 3354,
+      "symbol_already_open": 2092
+     },
+     "trades": 445,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.357,
+     "worst_trade": -80.8
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 25.17,
+     "avg_win": 36.76,
+     "exit_reasons": {
+      "stop": 247,
+      "take_profit": 101,
+      "timeout": 33
+     },
+     "expectancy": -4.53,
+     "expectancy_r": -0.24,
+     "fees": 1281.59,
+     "final_equity": 274.84,
+     "max_drawdown_pct": 87.95,
+     "net_pnl": -1725.16,
+     "profit_factor": 0.73,
+     "reached_1r_then_lost": 60,
+     "skipped": {
+      "below_min_notional": 14,
+      "margin_full": 1505,
+      "stop_inside_costs": 1792,
+      "symbol_already_open": 2252
+     },
+     "trades": 381,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.333,
+     "worst_trade": -80.14
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 25.63,
+     "avg_win": 35.39,
+     "exit_reasons": {
+      "stop": 201,
+      "take_profit": 77,
+      "timeout": 24
+     },
+     "expectancy": -6.03,
+     "expectancy_r": -0.299,
+     "fees": 1106.09,
+     "final_equity": 179.21,
+     "max_drawdown_pct": 91.39,
+     "net_pnl": -1820.79,
+     "profit_factor": 0.653,
+     "reached_1r_then_lost": 37,
+     "skipped": {
+      "atr_unavailable": 24,
+      "below_min_notional": 54,
+      "margin_full": 1880,
+      "stop_inside_noise": 1665,
+      "symbol_already_open": 2019
+     },
+     "trades": 302,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.321,
+     "worst_trade": -84.9
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 17.46,
+     "avg_win": 24.25,
+     "exit_reasons": {
+      "stop": 318,
+      "take_profit": 145,
+      "timeout": 17
+     },
+     "expectancy": -3.99,
+     "expectancy_r": -0.254,
+     "fees": 1233.64,
+     "final_equity": 85.53,
+     "max_drawdown_pct": 96.04,
+     "net_pnl": -1914.47,
+     "profit_factor": 0.663,
+     "reached_1r_then_lost": 63,
+     "skipped": {
+      "below_min_notional": 193,
+      "cooldown_after_stop": 1259,
+      "margin_full": 1903,
+      "symbol_already_open": 2109
+     },
+     "trades": 480,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.323,
+     "worst_trade": -81.95
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 17.53,
+     "avg_win": 22.36,
+     "exit_reasons": {
+      "stop": 274,
+      "take_profit": 121,
+      "timeout": 24
+     },
+     "expectancy": -4.39,
+     "expectancy_r": -0.253,
+     "fees": 1063.36,
+     "final_equity": 159.69,
+     "max_drawdown_pct": 92.47,
+     "net_pnl": -1840.31,
+     "profit_factor": 0.626,
+     "reached_1r_then_lost": 73,
+     "skipped": {
+      "below_min_notional": 36,
+      "correlated_cap": 2282,
+      "margin_full": 1131,
+      "symbol_already_open": 2076
+     },
+     "trades": 419,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.329,
+     "worst_trade": -78.14
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 56.03,
+     "avg_win": 28.47,
+     "exit_reasons": {
+      "stop": 6,
+      "take_profit": 3
+     },
+     "expectancy": -27.86,
+     "expectancy_r": -0.2,
+     "fees": 59.14,
+     "final_equity": 1749.22,
+     "max_drawdown_pct": 14.06,
+     "net_pnl": -250.78,
+     "profit_factor": 0.254,
+     "reached_1r_then_lost": 3,
+     "skipped": {
+      "hwm_drawdown_halt": 5787,
+      "margin_full": 73,
+      "symbol_already_open": 75
+     },
+     "trades": 9,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.333,
+     "worst_trade": -78.14
+    },
+    "E_combo[B3_partial_half_1R+C1_stop_4x_costs+D3_equity_brakes]": {
+     "avg_loss": 49.79,
+     "avg_win": 53.23,
+     "exit_reasons": {
+      "stop": 6,
+      "take_profit": 1
+     },
+     "expectancy": -35.07,
+     "expectancy_r": -0.526,
+     "fees": 57.21,
+     "final_equity": 1754.5,
+     "max_drawdown_pct": 14.94,
+     "net_pnl": -245.5,
+     "profit_factor": 0.178,
+     "reached_1r_then_lost": 2,
+     "skipped": {
+      "daily_loss_halt": 75,
+      "hwm_drawdown_halt": 2960,
+      "margin_full": 19,
+      "stop_inside_costs": 2857,
+      "symbol_already_open": 26
+     },
+     "trades": 7,
+     "variant": "E_combo[B3_partial_half_1R+C1_stop_4x_costs+D3_equity_brakes]",
+     "win_rate": 0.143,
+     "worst_trade": -80.14
+    }
+   },
+   "out_of_sample": {
+    "A_baseline": {
+     "avg_loss": 22.66,
+     "avg_win": 32.21,
+     "exit_reasons": {
+      "stop": 218,
+      "take_profit": 101,
+      "timeout": 5
+     },
+     "expectancy": -5.39,
+     "expectancy_r": -0.256,
+     "fees": 1061.04,
+     "final_equity": 254.46,
+     "max_drawdown_pct": 87.69,
+     "net_pnl": -1745.54,
+     "profit_factor": 0.653,
+     "reached_1r_then_lost": 50,
+     "skipped": {
+      "below_min_notional": 285,
+      "margin_full": 1578,
+      "symbol_already_open": 933
+     },
+     "trades": 324,
+     "variant": "A_baseline",
+     "win_rate": 0.315,
+     "worst_trade": -81.55
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 23.28,
+     "avg_win": 15.63,
+     "exit_reasons": {
+      "breakeven": 118,
+      "stop": 213,
+      "take_profit": 83,
+      "timeout": 4
+     },
+     "expectancy": -4.38,
+     "expectancy_r": -0.248,
+     "fees": 1352.92,
+     "final_equity": 167.86,
+     "max_drawdown_pct": 91.91,
+     "net_pnl": -1832.14,
+     "profit_factor": 0.634,
+     "reached_1r_then_lost": 0,
+     "skipped": {
+      "below_min_notional": 115,
+      "margin_full": 1755,
+      "symbol_already_open": 832
+     },
+     "trades": 418,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.486,
+     "worst_trade": -81.55
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 14.62,
+     "avg_win": 10.84,
+     "exit_reasons": {
+      "stop": 224,
+      "timeout": 3,
+      "trail": 198
+     },
+     "expectancy": -4.55,
+     "expectancy_r": -0.317,
+     "fees": 949.61,
+     "final_equity": 64.84,
+     "max_drawdown_pct": 96.84,
+     "net_pnl": -1935.16,
+     "profit_factor": 0.485,
+     "reached_1r_then_lost": 31,
+     "skipped": {
+      "below_min_notional": 79,
+      "margin_full": 1796,
+      "symbol_already_open": 820
+     },
+     "trades": 425,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.395,
+     "worst_trade": -81.55
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 19.11,
+     "avg_win": 23.26,
+     "exit_reasons": {
+      "stop": 218,
+      "take_profit": 104,
+      "timeout": 5
+     },
+     "expectancy": -5.25,
+     "expectancy_r": -0.242,
+     "fees": 1085.99,
+     "final_equity": 283.53,
+     "max_drawdown_pct": 85.98,
+     "net_pnl": -1716.47,
+     "profit_factor": 0.592,
+     "reached_1r_then_lost": 48,
+     "skipped": {
+      "below_min_notional": 80,
+      "margin_full": 1764,
+      "symbol_already_open": 949
+     },
+     "trades": 327,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.327,
+     "worst_trade": -81.55
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 28.65,
+     "avg_win": 45.43,
+     "exit_reasons": {
+      "stop": 192,
+      "take_profit": 81,
+      "timeout": 4
+     },
+     "expectancy": -6.45,
+     "expectancy_r": -0.277,
+     "fees": 1030.22,
+     "final_equity": 212.74,
+     "max_drawdown_pct": 90.42,
+     "net_pnl": -1787.26,
+     "profit_factor": 0.678,
+     "reached_1r_then_lost": 40,
+     "skipped": {
+      "below_min_notional": 41,
+      "margin_full": 856,
+      "stop_inside_costs": 990,
+      "symbol_already_open": 956
+     },
+     "trades": 277,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.3,
+     "worst_trade": -89.52
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 42.3,
+     "avg_win": 64.36,
+     "exit_reasons": {
+      "stop": 96,
+      "take_profit": 50,
+      "timeout": 7
+     },
+     "expectancy": -6.75,
+     "expectancy_r": -0.149,
+     "fees": 860.8,
+     "final_equity": 967.82,
+     "max_drawdown_pct": 55.32,
+     "net_pnl": -1032.18,
+     "profit_factor": 0.761,
+     "reached_1r_then_lost": 28,
+     "skipped": {
+      "below_min_notional": 80,
+      "margin_full": 750,
+      "stop_inside_noise": 1271,
+      "symbol_already_open": 866
+     },
+     "trades": 153,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.333,
+     "worst_trade": -81.55
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 25.08,
+     "avg_win": 32.28,
+     "exit_reasons": {
+      "stop": 212,
+      "take_profit": 113,
+      "timeout": 3
+     },
+     "expectancy": -5.15,
+     "expectancy_r": -0.162,
+     "fees": 1144.51,
+     "final_equity": 311.93,
+     "max_drawdown_pct": 84.4,
+     "net_pnl": -1688.07,
+     "profit_factor": 0.686,
+     "reached_1r_then_lost": 58,
+     "skipped": {
+      "below_min_notional": 25,
+      "cooldown_after_stop": 835,
+      "margin_full": 1001,
+      "symbol_already_open": 931
+     },
+     "trades": 328,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.348,
+     "worst_trade": -81.55
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 25.61,
+     "avg_win": 34.32,
+     "exit_reasons": {
+      "stop": 207,
+      "take_profit": 106,
+      "timeout": 7
+     },
+     "expectancy": -5.01,
+     "expectancy_r": -0.181,
+     "fees": 1158.84,
+     "final_equity": 398.15,
+     "max_drawdown_pct": 80.64,
+     "net_pnl": -1601.85,
+     "profit_factor": 0.702,
+     "reached_1r_then_lost": 50,
+     "skipped": {
+      "below_min_notional": 9,
+      "correlated_cap": 1256,
+      "margin_full": 537,
+      "symbol_already_open": 998
+     },
+     "trades": 320,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.344,
+     "worst_trade": -81.55
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 62.51,
+     "avg_win": 90.6,
+     "exit_reasons": {
+      "stop": 9,
+      "take_profit": 4
+     },
+     "expectancy": -15.4,
+     "expectancy_r": -0.263,
+     "fees": 108.97,
+     "final_equity": 1799.75,
+     "max_drawdown_pct": 15.11,
+     "net_pnl": -200.25,
+     "profit_factor": 0.644,
+     "reached_1r_then_lost": 2,
+     "skipped": {
+      "hwm_drawdown_halt": 2854,
+      "margin_full": 155,
+      "symbol_already_open": 98
+     },
+     "trades": 13,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.308,
+     "worst_trade": -81.55
+    },
+    "E_combo[B3_partial_half_1R+C1_stop_4x_costs+D3_equity_brakes]": {
+     "avg_loss": 49.19,
+     "avg_win": 71.22,
+     "exit_reasons": {
+      "stop": 8,
+      "take_profit": 3
+     },
+     "expectancy": -16.35,
+     "expectancy_r": -0.397,
+     "fees": 84.13,
+     "final_equity": 1820.13,
+     "max_drawdown_pct": 14.09,
+     "net_pnl": -179.87,
+     "profit_factor": 0.543,
+     "reached_1r_then_lost": 1,
+     "skipped": {
+      "hwm_drawdown_halt": 1556,
+      "margin_full": 69,
+      "stop_inside_costs": 1385,
+      "symbol_already_open": 99
+     },
+     "trades": 11,
+     "variant": "E_combo[B3_partial_half_1R+C1_stop_4x_costs+D3_equity_brakes]",
+     "win_rate": 0.273,
+     "worst_trade": -81.55
+    }
+   }
+  },
+  "3": {
+   "combo": "E_combo[B3_partial_half_1R+C2_stop_1p5_atr+D3_equity_brakes]",
+   "in_sample": {
+    "A_baseline": {
+     "avg_loss": 21.18,
+     "avg_win": 29.51,
+     "exit_reasons": {
+      "stop": 272,
+      "take_profit": 126,
+      "timeout": 25
+     },
+     "expectancy": -4.16,
+     "expectancy_r": -0.228,
+     "fees": 1335.48,
+     "final_equity": 238.4,
+     "max_drawdown_pct": 90.04,
+     "net_pnl": -1761.6,
+     "profit_factor": 0.704,
+     "reached_1r_then_lost": 68,
+     "skipped": {
+      "below_min_notional": 249,
+      "margin_full": 3157,
+      "symbol_already_open": 2115
+     },
+     "trades": 423,
+     "variant": "A_baseline",
+     "win_rate": 0.336,
+     "worst_trade": -85.02
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 15.4,
+     "avg_win": 9.02,
+     "exit_reasons": {
+      "breakeven": 156,
+      "stop": 284,
+      "take_profit": 113,
+      "timeout": 11
+     },
+     "expectancy": -3.37,
+     "expectancy_r": -0.23,
+     "fees": 1242.53,
+     "final_equity": 101.64,
+     "max_drawdown_pct": 94.93,
+     "net_pnl": -1898.36,
+     "profit_factor": 0.569,
+     "reached_1r_then_lost": 0,
+     "skipped": {
+      "below_min_notional": 97,
+      "margin_full": 3323,
+      "symbol_already_open": 1960
+     },
+     "trades": 564,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.493,
+     "worst_trade": -74.19
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 14.31,
+     "avg_win": 13.17,
+     "exit_reasons": {
+      "stop": 284,
+      "timeout": 11,
+      "trail": 258
+     },
+     "expectancy": -3.47,
+     "expectancy_r": -0.249,
+     "fees": 1343.72,
+     "final_equity": 78.84,
+     "max_drawdown_pct": 96.25,
+     "net_pnl": -1921.16,
+     "profit_factor": 0.599,
+     "reached_1r_then_lost": 49,
+     "skipped": {
+      "below_min_notional": 164,
+      "margin_full": 3228,
+      "symbol_already_open": 1999
+     },
+     "trades": 553,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.394,
+     "worst_trade": -78.19
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 17.7,
+     "avg_win": 21.07,
+     "exit_reasons": {
+      "stop": 276,
+      "take_profit": 131,
+      "timeout": 25
+     },
+     "expectancy": -3.97,
+     "expectancy_r": -0.208,
+     "fees": 1348.29,
+     "final_equity": 286.2,
+     "max_drawdown_pct": 87.67,
+     "net_pnl": -1713.8,
+     "profit_factor": 0.653,
+     "reached_1r_then_lost": 62,
+     "skipped": {
+      "below_min_notional": 146,
+      "margin_full": 3225,
+      "symbol_already_open": 2141
+     },
+     "trades": 432,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.354,
+     "worst_trade": -86.78
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 31.34,
+     "avg_win": 45.64,
+     "exit_reasons": {
+      "stop": 232,
+      "take_profit": 102,
+      "timeout": 30
+     },
+     "expectancy": -4.69,
+     "expectancy_r": -0.202,
+     "fees": 1514.84,
+     "final_equity": 291.22,
+     "max_drawdown_pct": 87.74,
+     "net_pnl": -1708.78,
+     "profit_factor": 0.771,
+     "reached_1r_then_lost": 54,
+     "skipped": {
+      "below_min_notional": 68,
+      "margin_full": 1449,
+      "stop_inside_costs": 1739,
+      "symbol_already_open": 2324
+     },
+     "trades": 364,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.346,
+     "worst_trade": -89.51
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 25.0,
+     "avg_win": 31.44,
+     "exit_reasons": {
+      "stop": 199,
+      "take_profit": 92,
+      "timeout": 22
+     },
+     "expectancy": -5.34,
+     "expectancy_r": -0.201,
+     "fees": 1052.35,
+     "final_equity": 327.63,
+     "max_drawdown_pct": 84.38,
+     "net_pnl": -1672.37,
+     "profit_factor": 0.672,
+     "reached_1r_then_lost": 43,
+     "skipped": {
+      "atr_unavailable": 24,
+      "below_min_notional": 34,
+      "margin_full": 1829,
+      "stop_inside_noise": 1641,
+      "symbol_already_open": 2103
+     },
+     "trades": 313,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.348,
+     "worst_trade": -82.02
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 14.48,
+     "avg_win": 18.11,
+     "exit_reasons": {
+      "stop": 321,
+      "take_profit": 137,
+      "timeout": 17
+     },
+     "expectancy": -4.05,
+     "expectancy_r": -0.285,
+     "fees": 992.88,
+     "final_equity": 74.33,
+     "max_drawdown_pct": 96.69,
+     "net_pnl": -1925.67,
+     "profit_factor": 0.588,
+     "reached_1r_then_lost": 69,
+     "skipped": {
+      "below_min_notional": 73,
+      "cooldown_after_stop": 1280,
+      "margin_full": 2123,
+      "symbol_already_open": 1993
+     },
+     "trades": 475,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.32,
+     "worst_trade": -84.41
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 20.75,
+     "avg_win": 30.5,
+     "exit_reasons": {
+      "stop": 285,
+      "take_profit": 124,
+      "timeout": 23
+     },
+     "expectancy": -4.14,
+     "expectancy_r": -0.269,
+     "fees": 1365.22,
+     "final_equity": 211.69,
+     "max_drawdown_pct": 90.22,
+     "net_pnl": -1788.31,
+     "profit_factor": 0.705,
+     "reached_1r_then_lost": 60,
+     "skipped": {
+      "below_min_notional": 54,
+      "correlated_cap": 2348,
+      "margin_full": 1003,
+      "symbol_already_open": 2107
+     },
+     "trades": 432,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.324,
+     "worst_trade": -86.63
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 55.11,
+     "avg_win": 96.97,
+     "exit_reasons": {
+      "stop": 10,
+      "take_profit": 2,
+      "timeout": 1
+     },
+     "expectancy": -20.01,
+     "expectancy_r": -0.567,
+     "fees": 105.65,
+     "final_equity": 1739.83,
+     "max_drawdown_pct": 15.52,
+     "net_pnl": -260.17,
+     "profit_factor": 0.528,
+     "reached_1r_then_lost": 5,
+     "skipped": {
+      "daily_loss_halt": 12,
+      "hwm_drawdown_halt": 5668,
+      "margin_full": 160,
+      "symbol_already_open": 91
+     },
+     "trades": 13,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.231,
+     "worst_trade": -84.44
+    },
+    "E_combo[B3_partial_half_1R+C2_stop_1p5_atr+D3_equity_brakes]": {
+     "avg_loss": 40.84,
+     "avg_win": 40.81,
+     "exit_reasons": {
+      "stop": 9,
+      "take_profit": 3,
+      "timeout": 1
+     },
+     "expectancy": -15.71,
+     "expectancy_r": -0.235,
+     "fees": 103.42,
+     "final_equity": 1795.72,
+     "max_drawdown_pct": 13.95,
+     "net_pnl": -204.28,
+     "profit_factor": 0.444,
+     "reached_1r_then_lost": 3,
+     "skipped": {
+      "atr_unavailable": 24,
+      "daily_loss_halt": 53,
+      "hwm_drawdown_halt": 3815,
+      "margin_full": 52,
+      "stop_inside_noise": 1868,
+      "symbol_already_open": 119
+     },
+     "trades": 13,
+     "variant": "E_combo[B3_partial_half_1R+C2_stop_1p5_atr+D3_equity_brakes]",
+     "win_rate": 0.308,
+     "worst_trade": -85.6
+    }
+   },
+   "out_of_sample": {
+    "A_baseline": {
+     "avg_loss": 34.26,
+     "avg_win": 48.3,
+     "exit_reasons": {
+      "stop": 199,
+      "take_profit": 119,
+      "timeout": 5
+     },
+     "expectancy": -3.59,
+     "expectancy_r": -0.089,
+     "fees": 1618.46,
+     "final_equity": 841.28,
+     "max_drawdown_pct": 61.28,
+     "net_pnl": -1158.72,
+     "profit_factor": 0.833,
+     "reached_1r_then_lost": 39,
+     "skipped": {
+      "below_min_notional": 106,
+      "margin_full": 1777,
+      "symbol_already_open": 914
+     },
+     "trades": 323,
+     "variant": "A_baseline",
+     "win_rate": 0.372,
+     "worst_trade": -77.87
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 22.2,
+     "avg_win": 14.33,
+     "exit_reasons": {
+      "breakeven": 107,
+      "stop": 207,
+      "take_profit": 98,
+      "timeout": 3
+     },
+     "expectancy": -4.07,
+     "expectancy_r": -0.171,
+     "fees": 1277.92,
+     "final_equity": 310.44,
+     "max_drawdown_pct": 84.49,
+     "net_pnl": -1689.56,
+     "profit_factor": 0.636,
+     "reached_1r_then_lost": 0,
+     "skipped": {
+      "below_min_notional": 160,
+      "margin_full": 1699,
+      "symbol_already_open": 846
+     },
+     "trades": 415,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.496,
+     "worst_trade": -77.87
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 18.99,
+     "avg_win": 19.28,
+     "exit_reasons": {
+      "stop": 212,
+      "timeout": 2,
+      "trail": 204
+     },
+     "expectancy": -3.8,
+     "expectancy_r": -0.175,
+     "fees": 1344.51,
+     "final_equity": 413.59,
+     "max_drawdown_pct": 81.0,
+     "net_pnl": -1586.41,
+     "profit_factor": 0.669,
+     "reached_1r_then_lost": 39,
+     "skipped": {
+      "below_min_notional": 56,
+      "margin_full": 1797,
+      "symbol_already_open": 849
+     },
+     "trades": 418,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.397,
+     "worst_trade": -77.87
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 24.51,
+     "avg_win": 28.24,
+     "exit_reasons": {
+      "stop": 200,
+      "take_profit": 120,
+      "timeout": 5
+     },
+     "expectancy": -4.39,
+     "expectancy_r": -0.148,
+     "fees": 1334.68,
+     "final_equity": 574.31,
+     "max_drawdown_pct": 72.33,
+     "net_pnl": -1425.69,
+     "profit_factor": 0.711,
+     "reached_1r_then_lost": 37,
+     "skipped": {
+      "below_min_notional": 52,
+      "margin_full": 1822,
+      "symbol_already_open": 921
+     },
+     "trades": 325,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.382,
+     "worst_trade": -77.87
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 56.63,
+     "avg_win": 84.29,
+     "exit_reasons": {
+      "stop": 159,
+      "take_profit": 102,
+      "timeout": 10
+     },
+     "expectancy": -0.99,
+     "expectancy_r": 0.009,
+     "fees": 1977.34,
+     "final_equity": 1731.64,
+     "max_drawdown_pct": 45.76,
+     "net_pnl": -268.36,
+     "profit_factor": 0.971,
+     "reached_1r_then_lost": 39,
+     "skipped": {
+      "below_min_notional": 43,
+      "margin_full": 762,
+      "stop_inside_costs": 969,
+      "symbol_already_open": 1075
+     },
+     "trades": 271,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.395,
+     "worst_trade": -95.32
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 27.93,
+     "avg_win": 42.57,
+     "exit_reasons": {
+      "stop": 121,
+      "take_profit": 45,
+      "timeout": 8
+     },
+     "expectancy": -8.89,
+     "expectancy_r": -0.355,
+     "fees": 684.62,
+     "final_equity": 453.29,
+     "max_drawdown_pct": 79.63,
+     "net_pnl": -1546.71,
+     "profit_factor": 0.564,
+     "reached_1r_then_lost": 26,
+     "skipped": {
+      "below_min_notional": 95,
+      "margin_full": 622,
+      "stop_inside_noise": 1312,
+      "symbol_already_open": 917
+     },
+     "trades": 174,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.27,
+     "worst_trade": -77.87
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 28.24,
+     "avg_win": 39.27,
+     "exit_reasons": {
+      "stop": 208,
+      "take_profit": 115,
+      "timeout": 6
+     },
+     "expectancy": -4.23,
+     "expectancy_r": -0.137,
+     "fees": 1350.36,
+     "final_equity": 608.27,
+     "max_drawdown_pct": 73.78,
+     "net_pnl": -1391.73,
+     "profit_factor": 0.768,
+     "reached_1r_then_lost": 47,
+     "skipped": {
+      "below_min_notional": 22,
+      "cooldown_after_stop": 824,
+      "margin_full": 1011,
+      "symbol_already_open": 934
+     },
+     "trades": 329,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.356,
+     "worst_trade": -77.87
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 26.35,
+     "avg_win": 39.4,
+     "exit_reasons": {
+      "stop": 211,
+      "take_profit": 107,
+      "timeout": 5
+     },
+     "expectancy": -4.57,
+     "expectancy_r": -0.199,
+     "fees": 1265.74,
+     "final_equity": 525.25,
+     "max_drawdown_pct": 75.02,
+     "net_pnl": -1474.75,
+     "profit_factor": 0.741,
+     "reached_1r_then_lost": 42,
+     "skipped": {
+      "below_min_notional": 25,
+      "correlated_cap": 1126,
+      "margin_full": 720,
+      "symbol_already_open": 926
+     },
+     "trades": 323,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.331,
+     "worst_trade": -77.87
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 56.54,
+     "avg_win": null,
+     "exit_reasons": {
+      "stop": 6
+     },
+     "expectancy": -56.54,
+     "expectancy_r": -1.213,
+     "fees": 49.84,
+     "final_equity": 1660.79,
+     "max_drawdown_pct": 16.96,
+     "net_pnl": -339.21,
+     "profit_factor": 0.0,
+     "reached_1r_then_lost": 1,
+     "skipped": {
+      "daily_loss_halt": 77,
+      "hwm_drawdown_halt": 2914,
+      "margin_full": 65,
+      "symbol_already_open": 58
+     },
+     "trades": 6,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.0,
+     "worst_trade": -77.87
+    },
+    "E_combo[B3_partial_half_1R+C2_stop_1p5_atr+D3_equity_brakes]": {
+     "avg_loss": 49.88,
+     "avg_win": null,
+     "exit_reasons": {
+      "stop": 6
+     },
+     "expectancy": -49.88,
+     "expectancy_r": -1.045,
+     "fees": 49.86,
+     "final_equity": 1700.7,
+     "max_drawdown_pct": 14.96,
+     "net_pnl": -299.3,
+     "profit_factor": 0.0,
+     "reached_1r_then_lost": 1,
+     "skipped": {
+      "daily_loss_halt": 71,
+      "hwm_drawdown_halt": 1479,
+      "margin_full": 57,
+      "stop_inside_noise": 1449,
+      "symbol_already_open": 58
+     },
+     "trades": 6,
+     "variant": "E_combo[B3_partial_half_1R+C2_stop_1p5_atr+D3_equity_brakes]",
+     "win_rate": 0.0,
+     "worst_trade": -77.87
+    }
+   }
+  },
+  "4": {
+   "combo": "E_combo[B2_trailing_1R+C2_stop_1p5_atr+D3_equity_brakes]",
+   "in_sample": {
+    "A_baseline": {
+     "avg_loss": 19.74,
+     "avg_win": 26.21,
+     "exit_reasons": {
+      "stop": 283,
+      "take_profit": 135,
+      "timeout": 23
+     },
+     "expectancy": -4.11,
+     "expectancy_r": -0.215,
+     "fees": 1306.0,
+     "final_equity": 188.11,
+     "max_drawdown_pct": 92.32,
+     "net_pnl": -1811.89,
+     "profit_factor": 0.685,
+     "reached_1r_then_lost": 69,
+     "skipped": {
+      "below_min_notional": 206,
+      "margin_full": 3250,
+      "symbol_already_open": 2047
+     },
+     "trades": 441,
+     "variant": "A_baseline",
+     "win_rate": 0.34,
+     "worst_trade": -81.35
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 21.55,
+     "avg_win": 14.91,
+     "exit_reasons": {
+      "breakeven": 151,
+      "stop": 273,
+      "take_profit": 120,
+      "timeout": 11
+     },
+     "expectancy": -3.29,
+     "expectancy_r": -0.191,
+     "fees": 1827.55,
+     "final_equity": 176.71,
+     "max_drawdown_pct": 91.89,
+     "net_pnl": -1823.29,
+     "profit_factor": 0.695,
+     "reached_1r_then_lost": 0,
+     "skipped": {
+      "below_min_notional": 195,
+      "margin_full": 3297,
+      "symbol_already_open": 1897
+     },
+     "trades": 555,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.501,
+     "worst_trade": -81.35
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 18.28,
+     "avg_win": 19.36,
+     "exit_reasons": {
+      "stop": 282,
+      "timeout": 12,
+      "trail": 271
+     },
+     "expectancy": -3.09,
+     "expectancy_r": -0.193,
+     "fees": 1867.29,
+     "final_equity": 254.26,
+     "max_drawdown_pct": 87.3,
+     "net_pnl": -1745.74,
+     "profit_factor": 0.717,
+     "reached_1r_then_lost": 52,
+     "skipped": {
+      "below_min_notional": 182,
+      "margin_full": 3178,
+      "symbol_already_open": 2019
+     },
+     "trades": 565,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.404,
+     "worst_trade": -84.4
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 17.62,
+     "avg_win": 21.56,
+     "exit_reasons": {
+      "stop": 287,
+      "take_profit": 136,
+      "timeout": 23
+     },
+     "expectancy": -3.92,
+     "expectancy_r": -0.21,
+     "fees": 1475.42,
+     "final_equity": 252.76,
+     "max_drawdown_pct": 88.73,
+     "net_pnl": -1747.24,
+     "profit_factor": 0.658,
+     "reached_1r_then_lost": 67,
+     "skipped": {
+      "below_min_notional": 157,
+      "margin_full": 3263,
+      "symbol_already_open": 2078
+     },
+     "trades": 446,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.35,
+     "worst_trade": -82.59
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 18.63,
+     "avg_win": 23.99,
+     "exit_reasons": {
+      "stop": 246,
+      "take_profit": 102,
+      "timeout": 26
+     },
+     "expectancy": -4.84,
+     "expectancy_r": -0.249,
+     "fees": 894.45,
+     "final_equity": 190.4,
+     "max_drawdown_pct": 91.22,
+     "net_pnl": -1809.6,
+     "profit_factor": 0.616,
+     "reached_1r_then_lost": 60,
+     "skipped": {
+      "below_min_notional": 60,
+      "margin_full": 1618,
+      "stop_inside_costs": 1751,
+      "symbol_already_open": 2141
+     },
+     "trades": 374,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.324,
+     "worst_trade": -81.35
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 22.02,
+     "avg_win": 28.95,
+     "exit_reasons": {
+      "stop": 203,
+      "take_profit": 83,
+      "timeout": 22
+     },
+     "expectancy": -5.8,
+     "expectancy_r": -0.28,
+     "fees": 951.99,
+     "final_equity": 212.66,
+     "max_drawdown_pct": 89.95,
+     "net_pnl": -1787.34,
+     "profit_factor": 0.614,
+     "reached_1r_then_lost": 53,
+     "skipped": {
+      "atr_unavailable": 24,
+      "below_min_notional": 79,
+      "margin_full": 1860,
+      "stop_inside_noise": 1628,
+      "symbol_already_open": 2045
+     },
+     "trades": 308,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.318,
+     "worst_trade": -84.96
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 26.57,
+     "avg_win": 43.17,
+     "exit_reasons": {
+      "stop": 310,
+      "take_profit": 144,
+      "timeout": 19
+     },
+     "expectancy": -3.72,
+     "expectancy_r": -0.236,
+     "fees": 1968.81,
+     "final_equity": 242.17,
+     "max_drawdown_pct": 88.96,
+     "net_pnl": -1757.83,
+     "profit_factor": 0.792,
+     "reached_1r_then_lost": 74,
+     "skipped": {
+      "below_min_notional": 107,
+      "cooldown_after_stop": 1231,
+      "margin_full": 2117,
+      "symbol_already_open": 2016
+     },
+     "trades": 473,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.328,
+     "worst_trade": -85.19
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 18.1,
+     "avg_win": 25.74,
+     "exit_reasons": {
+      "stop": 292,
+      "take_profit": 119,
+      "timeout": 22
+     },
+     "expectancy": -4.33,
+     "expectancy_r": -0.307,
+     "fees": 1212.27,
+     "final_equity": 125.2,
+     "max_drawdown_pct": 94.52,
+     "net_pnl": -1874.8,
+     "profit_factor": 0.651,
+     "reached_1r_then_lost": 62,
+     "skipped": {
+      "below_min_notional": 130,
+      "correlated_cap": 2141,
+      "margin_full": 1282,
+      "symbol_already_open": 1958
+     },
+     "trades": 433,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.314,
+     "worst_trade": -86.33
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 58.18,
+     "avg_win": 67.86,
+     "exit_reasons": {
+      "stop": 10,
+      "take_profit": 7
+     },
+     "expectancy": -6.28,
+     "expectancy_r": 0.021,
+     "fees": 142.63,
+     "final_equity": 1893.21,
+     "max_drawdown_pct": 14.13,
+     "net_pnl": -106.79,
+     "profit_factor": 0.816,
+     "reached_1r_then_lost": 3,
+     "skipped": {
+      "hwm_drawdown_halt": 5720,
+      "margin_full": 139,
+      "symbol_already_open": 68
+     },
+     "trades": 17,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.412,
+     "worst_trade": -81.35
+    },
+    "E_combo[B2_trailing_1R+C2_stop_1p5_atr+D3_equity_brakes]": {
+     "avg_loss": 63.23,
+     "avg_win": null,
+     "exit_reasons": {
+      "stop": 6
+     },
+     "expectancy": -63.23,
+     "expectancy_r": -1.187,
+     "fees": 50.36,
+     "final_equity": 1620.63,
+     "max_drawdown_pct": 18.97,
+     "net_pnl": -379.37,
+     "profit_factor": 0.0,
+     "reached_1r_then_lost": 0,
+     "skipped": {
+      "atr_unavailable": 24,
+      "daily_loss_halt": 70,
+      "hwm_drawdown_halt": 3966,
+      "margin_full": 14,
+      "stop_inside_noise": 1854,
+      "symbol_already_open": 10
+     },
+     "trades": 6,
+     "variant": "E_combo[B2_trailing_1R+C2_stop_1p5_atr+D3_equity_brakes]",
+     "win_rate": 0.0,
+     "worst_trade": -84.96
+    }
+   },
+   "out_of_sample": {
+    "A_baseline": {
+     "avg_loss": 16.84,
+     "avg_win": 21.96,
+     "exit_reasons": {
+      "stop": 238,
+      "take_profit": 101,
+      "timeout": 5
+     },
+     "expectancy": -5.23,
+     "expectancy_r": -0.313,
+     "fees": 836.87,
+     "final_equity": 202.08,
+     "max_drawdown_pct": 91.04,
+     "net_pnl": -1797.92,
+     "profit_factor": 0.557,
+     "reached_1r_then_lost": 52,
+     "skipped": {
+      "below_min_notional": 27,
+      "margin_full": 1858,
+      "symbol_already_open": 891
+     },
+     "trades": 344,
+     "variant": "A_baseline",
+     "win_rate": 0.299,
+     "worst_trade": -72.06
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 14.28,
+     "avg_win": 7.23,
+     "exit_reasons": {
+      "breakeven": 114,
+      "stop": 231,
+      "take_profit": 89,
+      "timeout": 4
+     },
+     "expectancy": -4.31,
+     "expectancy_r": -0.269,
+     "fees": 841.47,
+     "final_equity": 112.23,
+     "max_drawdown_pct": 94.81,
+     "net_pnl": -1887.77,
+     "profit_factor": 0.437,
+     "reached_1r_then_lost": 1,
+     "skipped": {
+      "below_min_notional": 105,
+      "margin_full": 1766,
+      "symbol_already_open": 811
+     },
+     "trades": 438,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.463,
+     "worst_trade": -77.63
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 13.72,
+     "avg_win": 11.71,
+     "exit_reasons": {
+      "stop": 229,
+      "timeout": 3,
+      "trail": 207
+     },
+     "expectancy": -4.22,
+     "expectancy_r": -0.27,
+     "fees": 973.45,
+     "final_equity": 147.95,
+     "max_drawdown_pct": 93.81,
+     "net_pnl": -1852.05,
+     "profit_factor": 0.509,
+     "reached_1r_then_lost": 44,
+     "skipped": {
+      "below_min_notional": 101,
+      "margin_full": 1771,
+      "symbol_already_open": 809
+     },
+     "trades": 439,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.374,
+     "worst_trade": -75.83
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 14.77,
+     "avg_win": 16.59,
+     "exit_reasons": {
+      "stop": 238,
+      "take_profit": 102,
+      "timeout": 5
+     },
+     "expectancy": -5.13,
+     "expectancy_r": -0.303,
+     "fees": 875.16,
+     "final_equity": 229.59,
+     "max_drawdown_pct": 89.78,
+     "net_pnl": -1770.41,
+     "profit_factor": 0.498,
+     "reached_1r_then_lost": 50,
+     "skipped": {
+      "below_min_notional": 64,
+      "margin_full": 1819,
+      "symbol_already_open": 892
+     },
+     "trades": 345,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.307,
+     "worst_trade": -69.93
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 26.0,
+     "avg_win": 38.86,
+     "exit_reasons": {
+      "stop": 178,
+      "take_profit": 79,
+      "timeout": 10
+     },
+     "expectancy": -5.84,
+     "expectancy_r": -0.237,
+     "fees": 910.55,
+     "final_equity": 441.51,
+     "max_drawdown_pct": 80.54,
+     "net_pnl": -1558.49,
+     "profit_factor": 0.674,
+     "reached_1r_then_lost": 42,
+     "skipped": {
+      "below_min_notional": 62,
+      "margin_full": 765,
+      "stop_inside_costs": 1044,
+      "symbol_already_open": 982
+     },
+     "trades": 267,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.311,
+     "worst_trade": -80.95
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 25.73,
+     "avg_win": 34.96,
+     "exit_reasons": {
+      "stop": 124,
+      "take_profit": 47,
+      "timeout": 8
+     },
+     "expectancy": -9.46,
+     "expectancy_r": -0.35,
+     "fees": 620.28,
+     "final_equity": 306.92,
+     "max_drawdown_pct": 87.62,
+     "net_pnl": -1693.08,
+     "profit_factor": 0.498,
+     "reached_1r_then_lost": 22,
+     "skipped": {
+      "below_min_notional": 4,
+      "margin_full": 744,
+      "stop_inside_noise": 1324,
+      "symbol_already_open": 869
+     },
+     "trades": 179,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.268,
+     "worst_trade": -78.13
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 24.05,
+     "avg_win": 33.42,
+     "exit_reasons": {
+      "stop": 211,
+      "take_profit": 100,
+      "timeout": 5
+     },
+     "expectancy": -5.68,
+     "expectancy_r": -0.244,
+     "fees": 1111.1,
+     "final_equity": 203.62,
+     "max_drawdown_pct": 90.53,
+     "net_pnl": -1796.38,
+     "profit_factor": 0.653,
+     "reached_1r_then_lost": 40,
+     "skipped": {
+      "below_min_notional": 13,
+      "cooldown_after_stop": 832,
+      "margin_full": 1026,
+      "symbol_already_open": 933
+     },
+     "trades": 316,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.32,
+     "worst_trade": -83.53
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 23.06,
+     "avg_win": 34.71,
+     "exit_reasons": {
+      "stop": 219,
+      "take_profit": 101,
+      "timeout": 7
+     },
+     "expectancy": -5.04,
+     "expectancy_r": -0.261,
+     "fees": 1127.84,
+     "final_equity": 352.05,
+     "max_drawdown_pct": 83.78,
+     "net_pnl": -1647.95,
+     "profit_factor": 0.682,
+     "reached_1r_then_lost": 50,
+     "skipped": {
+      "below_min_notional": 11,
+      "correlated_cap": 1143,
+      "margin_full": 720,
+      "symbol_already_open": 919
+     },
+     "trades": 327,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.312,
+     "worst_trade": -73.55
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 48.35,
+     "avg_win": 75.65,
+     "exit_reasons": {
+      "stop": 6,
+      "take_profit": 1,
+      "timeout": 1
+     },
+     "expectancy": -32.85,
+     "expectancy_r": -0.747,
+     "fees": 67.37,
+     "final_equity": 1737.2,
+     "max_drawdown_pct": 13.14,
+     "net_pnl": -262.8,
+     "profit_factor": 0.224,
+     "reached_1r_then_lost": 3,
+     "skipped": {
+      "daily_loss_halt": 64,
+      "hwm_drawdown_halt": 2908,
+      "margin_full": 75,
+      "symbol_already_open": 65
+     },
+     "trades": 8,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.125,
+     "worst_trade": -67.75
+    },
+    "E_combo[B2_trailing_1R+C2_stop_1p5_atr+D3_equity_brakes]": {
+     "avg_loss": 46.1,
+     "avg_win": 26.33,
+     "exit_reasons": {
+      "stop": 6,
+      "trail": 3
+     },
+     "expectancy": -30.0,
+     "expectancy_r": -0.718,
+     "fees": 75.18,
+     "final_equity": 1729.96,
+     "max_drawdown_pct": 14.35,
+     "net_pnl": -270.04,
+     "profit_factor": 0.163,
+     "reached_1r_then_lost": 1,
+     "skipped": {
+      "daily_loss_halt": 55,
+      "hwm_drawdown_halt": 1457,
+      "margin_full": 65,
+      "stop_inside_noise": 1476,
+      "symbol_already_open": 58
+     },
+     "trades": 9,
+     "variant": "E_combo[B2_trailing_1R+C2_stop_1p5_atr+D3_equity_brakes]",
+     "win_rate": 0.222,
+     "worst_trade": -61.91
+    }
+   }
+  },
+  "5": {
+   "combo": "E_combo[A_baseline+C2_stop_1p5_atr+D3_equity_brakes]",
+   "in_sample": {
+    "A_baseline": {
+     "avg_loss": 19.53,
+     "avg_win": 26.93,
+     "exit_reasons": {
+      "stop": 292,
+      "take_profit": 150,
+      "timeout": 17
+     },
+     "expectancy": -3.63,
+     "expectancy_r": -0.185,
+     "fees": 1332.87,
+     "final_equity": 331.6,
+     "max_drawdown_pct": 85.82,
+     "net_pnl": -1668.4,
+     "profit_factor": 0.717,
+     "reached_1r_then_lost": 63,
+     "skipped": {
+      "below_min_notional": 218,
+      "margin_full": 3248,
+      "symbol_already_open": 2019
+     },
+     "trades": 459,
+     "variant": "A_baseline",
+     "win_rate": 0.342,
+     "worst_trade": -75.11
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 15.04,
+     "avg_win": 9.52,
+     "exit_reasons": {
+      "breakeven": 139,
+      "stop": 291,
+      "take_profit": 127,
+      "timeout": 10
+     },
+     "expectancy": -3.26,
+     "expectancy_r": -0.204,
+     "fees": 1233.34,
+     "final_equity": 153.55,
+     "max_drawdown_pct": 92.95,
+     "net_pnl": -1846.45,
+     "profit_factor": 0.584,
+     "reached_1r_then_lost": 0,
+     "skipped": {
+      "below_min_notional": 302,
+      "margin_full": 3203,
+      "symbol_already_open": 1872
+     },
+     "trades": 567,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.48,
+     "worst_trade": -75.11
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 13.61,
+     "avg_win": 14.84,
+     "exit_reasons": {
+      "stop": 316,
+      "timeout": 8,
+      "trail": 238
+     },
+     "expectancy": -3.43,
+     "expectancy_r": -0.296,
+     "fees": 1269.86,
+     "final_equity": 71.41,
+     "max_drawdown_pct": 96.43,
+     "net_pnl": -1928.59,
+     "profit_factor": 0.607,
+     "reached_1r_then_lost": 41,
+     "skipped": {
+      "below_min_notional": 151,
+      "margin_full": 3235,
+      "symbol_already_open": 1996
+     },
+     "trades": 562,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.358,
+     "worst_trade": -75.11
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 16.46,
+     "avg_win": 19.54,
+     "exit_reasons": {
+      "stop": 294,
+      "take_profit": 152,
+      "timeout": 17
+     },
+     "expectancy": -3.71,
+     "expectancy_r": -0.207,
+     "fees": 1345.33,
+     "final_equity": 284.14,
+     "max_drawdown_pct": 87.37,
+     "net_pnl": -1715.86,
+     "profit_factor": 0.651,
+     "reached_1r_then_lost": 59,
+     "skipped": {
+      "below_min_notional": 314,
+      "margin_full": 3127,
+      "symbol_already_open": 2040
+     },
+     "trades": 463,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.354,
+     "worst_trade": -75.11
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 18.97,
+     "avg_win": 25.44,
+     "exit_reasons": {
+      "stop": 254,
+      "take_profit": 107,
+      "timeout": 23
+     },
+     "expectancy": -4.75,
+     "expectancy_r": -0.249,
+     "fees": 931.01,
+     "final_equity": 176.47,
+     "max_drawdown_pct": 92.31,
+     "net_pnl": -1823.53,
+     "profit_factor": 0.632,
+     "reached_1r_then_lost": 57,
+     "skipped": {
+      "below_min_notional": 68,
+      "margin_full": 1542,
+      "stop_inside_costs": 1748,
+      "symbol_already_open": 2202
+     },
+     "trades": 384,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.32,
+     "worst_trade": -75.11
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 19.01,
+     "avg_win": 21.5,
+     "exit_reasons": {
+      "stop": 194,
+      "take_profit": 90,
+      "timeout": 21
+     },
+     "expectancy": -5.46,
+     "expectancy_r": -0.223,
+     "fees": 769.72,
+     "final_equity": 333.78,
+     "max_drawdown_pct": 86.05,
+     "net_pnl": -1666.22,
+     "profit_factor": 0.568,
+     "reached_1r_then_lost": 50,
+     "skipped": {
+      "atr_unavailable": 24,
+      "below_min_notional": 177,
+      "margin_full": 1725,
+      "stop_inside_noise": 1660,
+      "symbol_already_open": 2053
+     },
+     "trades": 305,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.334,
+     "worst_trade": -69.98
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 21.35,
+     "avg_win": 32.77,
+     "exit_reasons": {
+      "stop": 331,
+      "take_profit": 151,
+      "timeout": 19
+     },
+     "expectancy": -3.64,
+     "expectancy_r": -0.242,
+     "fees": 1652.46,
+     "final_equity": 178.0,
+     "max_drawdown_pct": 93.4,
+     "net_pnl": -1822.0,
+     "profit_factor": 0.747,
+     "reached_1r_then_lost": 56,
+     "skipped": {
+      "below_min_notional": 85,
+      "cooldown_after_stop": 1320,
+      "margin_full": 2019,
+      "symbol_already_open": 2019
+     },
+     "trades": 501,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.327,
+     "worst_trade": -93.88
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 26.73,
+     "avg_win": 37.27,
+     "exit_reasons": {
+      "stop": 256,
+      "take_profit": 138,
+      "timeout": 17
+     },
+     "expectancy": -3.53,
+     "expectancy_r": -0.146,
+     "fees": 1623.39,
+     "final_equity": 549.38,
+     "max_drawdown_pct": 75.69,
+     "net_pnl": -1450.62,
+     "profit_factor": 0.793,
+     "reached_1r_then_lost": 52,
+     "skipped": {
+      "below_min_notional": 65,
+      "correlated_cap": 2182,
+      "margin_full": 1265,
+      "symbol_already_open": 2021
+     },
+     "trades": 411,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.363,
+     "worst_trade": -75.11
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 54.67,
+     "avg_win": 77.59,
+     "exit_reasons": {
+      "stop": 10,
+      "take_profit": 3,
+      "timeout": 1
+     },
+     "expectancy": -16.88,
+     "expectancy_r": -0.414,
+     "fees": 108.87,
+     "final_equity": 1763.64,
+     "max_drawdown_pct": 15.84,
+     "net_pnl": -236.36,
+     "profit_factor": 0.568,
+     "reached_1r_then_lost": 2,
+     "skipped": {
+      "below_min_notional": 10,
+      "daily_loss_halt": 133,
+      "hwm_drawdown_halt": 5668,
+      "margin_full": 65,
+      "symbol_already_open": 54
+     },
+     "trades": 14,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.286,
+     "worst_trade": -75.11
+    },
+    "E_combo[A_baseline+C2_stop_1p5_atr+D3_equity_brakes]": {
+     "avg_loss": 55.03,
+     "avg_win": null,
+     "exit_reasons": {
+      "stop": 6
+     },
+     "expectancy": -55.03,
+     "expectancy_r": -1.226,
+     "fees": 50.6,
+     "final_equity": 1669.84,
+     "max_drawdown_pct": 16.51,
+     "net_pnl": -330.16,
+     "profit_factor": 0.0,
+     "reached_1r_then_lost": 2,
+     "skipped": {
+      "atr_unavailable": 24,
+      "daily_loss_halt": 50,
+      "hwm_drawdown_halt": 3960,
+      "margin_full": 13,
+      "stop_inside_noise": 1859,
+      "symbol_already_open": 32
+     },
+     "trades": 6,
+     "variant": "E_combo[A_baseline+C2_stop_1p5_atr+D3_equity_brakes]",
+     "win_rate": 0.0,
+     "worst_trade": -69.98
+    }
+   },
+   "out_of_sample": {
+    "A_baseline": {
+     "avg_loss": 47.68,
+     "avg_win": 70.92,
+     "exit_reasons": {
+      "stop": 197,
+      "take_profit": 128,
+      "timeout": 9
+     },
+     "expectancy": -0.09,
+     "expectancy_r": -0.02,
+     "fees": 2405.33,
+     "final_equity": 1968.47,
+     "max_drawdown_pct": 44.07,
+     "net_pnl": -31.53,
+     "profit_factor": 0.997,
+     "reached_1r_then_lost": 43,
+     "skipped": {
+      "below_min_notional": 41,
+      "margin_full": 1735,
+      "symbol_already_open": 1010
+     },
+     "trades": 334,
+     "variant": "A_baseline",
+     "win_rate": 0.401,
+     "worst_trade": -95.99
+    },
+    "B1_breakeven_1R": {
+     "avg_loss": 26.53,
+     "avg_win": 18.57,
+     "exit_reasons": {
+      "breakeven": 110,
+      "stop": 200,
+      "take_profit": 93,
+      "timeout": 2
+     },
+     "expectancy": -3.92,
+     "expectancy_r": -0.179,
+     "fees": 1552.94,
+     "final_equity": 410.9,
+     "max_drawdown_pct": 81.15,
+     "net_pnl": -1589.1,
+     "profit_factor": 0.703,
+     "reached_1r_then_lost": 0,
+     "skipped": {
+      "below_min_notional": 192,
+      "margin_full": 1662,
+      "symbol_already_open": 861
+     },
+     "trades": 405,
+     "variant": "B1_breakeven_1R",
+     "win_rate": 0.501,
+     "worst_trade": -77.44
+    },
+    "B2_trailing_1R": {
+     "avg_loss": 22.55,
+     "avg_win": 20.68,
+     "exit_reasons": {
+      "stop": 194,
+      "timeout": 2,
+      "trail": 215
+     },
+     "expectancy": -3.72,
+     "expectancy_r": -0.133,
+     "fees": 1519.66,
+     "final_equity": 471.17,
+     "max_drawdown_pct": 76.59,
+     "net_pnl": -1528.83,
+     "profit_factor": 0.708,
+     "reached_1r_then_lost": 36,
+     "skipped": {
+      "below_min_notional": 39,
+      "margin_full": 1783,
+      "symbol_already_open": 887
+     },
+     "trades": 411,
+     "variant": "B2_trailing_1R",
+     "win_rate": 0.436,
+     "worst_trade": -77.06
+    },
+    "B3_partial_half_1R": {
+     "avg_loss": 31.66,
+     "avg_win": 42.29,
+     "exit_reasons": {
+      "stop": 197,
+      "take_profit": 128,
+      "timeout": 9
+     },
+     "expectancy": -1.77,
+     "expectancy_r": -0.079,
+     "fees": 1960.2,
+     "final_equity": 1409.65,
+     "max_drawdown_pct": 47.6,
+     "net_pnl": -590.35,
+     "profit_factor": 0.906,
+     "reached_1r_then_lost": 42,
+     "skipped": {
+      "below_min_notional": 101,
+      "margin_full": 1673,
+      "symbol_already_open": 1012
+     },
+     "trades": 334,
+     "variant": "B3_partial_half_1R",
+     "win_rate": 0.404,
+     "worst_trade": -82.13
+    },
+    "C1_stop_4x_costs": {
+     "avg_loss": 52.35,
+     "avg_win": 79.77,
+     "exit_reasons": {
+      "stop": 155,
+      "take_profit": 89,
+      "timeout": 10
+     },
+     "expectancy": -2.42,
+     "expectancy_r": -0.056,
+     "fees": 1721.1,
+     "final_equity": 1385.63,
+     "max_drawdown_pct": 41.76,
+     "net_pnl": -614.37,
+     "profit_factor": 0.926,
+     "reached_1r_then_lost": 37,
+     "skipped": {
+      "below_min_notional": 17,
+      "margin_full": 785,
+      "stop_inside_costs": 993,
+      "symbol_already_open": 1071
+     },
+     "trades": 254,
+     "variant": "C1_stop_4x_costs",
+     "win_rate": 0.378,
+     "worst_trade": -91.83
+    },
+    "C2_stop_1p5_atr": {
+     "avg_loss": 63.18,
+     "avg_win": 102.07,
+     "exit_reasons": {
+      "stop": 85,
+      "take_profit": 58,
+      "timeout": 9
+     },
+     "expectancy": 5.31,
+     "expectancy_r": 0.048,
+     "fees": 1302.95,
+     "final_equity": 2807.52,
+     "max_drawdown_pct": 31.07,
+     "net_pnl": 807.52,
+     "profit_factor": 1.144,
+     "reached_1r_then_lost": 18,
+     "skipped": {
+      "below_min_notional": 69,
+      "margin_full": 716,
+      "stop_inside_noise": 1301,
+      "symbol_already_open": 882
+     },
+     "trades": 152,
+     "variant": "C2_stop_1p5_atr",
+     "win_rate": 0.414,
+     "worst_trade": -149.55
+    },
+    "D1_cooldown_4h": {
+     "avg_loss": 27.03,
+     "avg_win": 38.15,
+     "exit_reasons": {
+      "stop": 202,
+      "take_profit": 103,
+      "timeout": 4
+     },
+     "expectancy": -5.09,
+     "expectancy_r": -0.196,
+     "fees": 1224.23,
+     "final_equity": 427.58,
+     "max_drawdown_pct": 80.79,
+     "net_pnl": -1572.42,
+     "profit_factor": 0.716,
+     "reached_1r_then_lost": 53,
+     "skipped": {
+      "below_min_notional": 68,
+      "cooldown_after_stop": 797,
+      "margin_full": 976,
+      "symbol_already_open": 970
+     },
+     "trades": 309,
+     "variant": "D1_cooldown_4h",
+     "win_rate": 0.337,
+     "worst_trade": -77.06
+    },
+    "D2_max2_same_side": {
+     "avg_loss": 35.11,
+     "avg_win": 54.79,
+     "exit_reasons": {
+      "stop": 202,
+      "take_profit": 110,
+      "timeout": 6
+     },
+     "expectancy": -2.6,
+     "expectancy_r": -0.143,
+     "fees": 1699.89,
+     "final_equity": 1172.37,
+     "max_drawdown_pct": 51.31,
+     "net_pnl": -827.63,
+     "profit_factor": 0.884,
+     "reached_1r_then_lost": 34,
+     "skipped": {
+      "below_min_notional": 39,
+      "correlated_cap": 1101,
+      "margin_full": 745,
+      "symbol_already_open": 917
+     },
+     "trades": 318,
+     "variant": "D2_max2_same_side",
+     "win_rate": 0.362,
+     "worst_trade": -77.06
+    },
+    "D3_equity_brakes": {
+     "avg_loss": 56.55,
+     "avg_win": 78.89,
+     "exit_reasons": {
+      "stop": 18,
+      "take_profit": 12
+     },
+     "expectancy": -2.37,
+     "expectancy_r": -0.001,
+     "fees": 238.86,
+     "final_equity": 1928.83,
+     "max_drawdown_pct": 17.02,
+     "net_pnl": -71.17,
+     "profit_factor": 0.93,
+     "reached_1r_then_lost": 4,
+     "skipped": {
+      "daily_loss_halt": 42,
+      "hwm_drawdown_halt": 2580,
+      "margin_full": 281,
+      "symbol_already_open": 187
+     },
+     "trades": 30,
+     "variant": "D3_equity_brakes",
+     "win_rate": 0.4,
+     "worst_trade": -88.36
+    },
+    "E_combo[A_baseline+C2_stop_1p5_atr+D3_equity_brakes]": {
+     "avg_loss": 49.15,
+     "avg_win": 65.73,
+     "exit_reasons": {
+      "stop": 18,
+      "take_profit": 9,
+      "timeout": 1
+     },
+     "expectancy": -8.12,
+     "expectancy_r": -0.173,
+     "fees": 194.66,
+     "final_equity": 1772.68,
+     "max_drawdown_pct": 13.56,
+     "net_pnl": -227.32,
+     "profit_factor": 0.743,
+     "reached_1r_then_lost": 3,
+     "skipped": {
+      "daily_loss_halt": 68,
+      "hwm_drawdown_halt": 1224,
+      "margin_full": 183,
+      "stop_inside_noise": 1432,
+      "symbol_already_open": 185
+     },
+     "trades": 28,
+     "variant": "E_combo[A_baseline+C2_stop_1p5_atr+D3_equity_brakes]",
+     "win_rate": 0.357,
+     "worst_trade": -84.33
+    }
+   }
+  }
+ },
+ "split_ms": 1793491200000,
+ "start_ms": 1790812800000,
+ "symbols": [
+  "ADAUSDT",
+  "BNBUSDT",
+  "BTCUSDT",
+  "DOGEUSDT",
+  "ETHUSDT",
+  "LINKUSDT",
+  "SOLUSDT",
+  "XRPUSDT"
+ ]
+}
