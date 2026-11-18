@@ -47,11 +47,20 @@ async function mount() {
     node.remove();
   } };
 }
+// The deployed UI fetches /api/v3/arena when its build flag is enabled.
+// Legacy-only tests below explicitly run with that optional route disabled;
+// trial-specific tests opt in via withFlags() and verify the extra GET.
+const originalShadowApiFlag = process.env.REACT_APP_BRAIN_ARENA_SHADOW_API;
 beforeEach(() => {
   global.IS_REACT_ACT_ENVIRONMENT = true;
+  process.env.REACT_APP_BRAIN_ARENA_SHADOW_API = '0';
   inputs();
 });
-afterEach(() => API.get.mockReset());
+afterEach(() => {
+  API.get.mockReset();
+  if (originalShadowApiFlag === undefined) delete process.env.REACT_APP_BRAIN_ARENA_SHADOW_API;
+  else process.env.REACT_APP_BRAIN_ARENA_SHADOW_API = originalShadowApiFlag;
+});
 
 test('standalone SSR dashboard has exactly three choices and no invented trial result', () => {
   const html = renderToStaticMarkup(<BrainArena />);
