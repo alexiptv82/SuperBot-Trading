@@ -18,6 +18,14 @@ differire: per Qwen/MiniMax il tetto vero resta il limite di 6 USD sulla chiave 
 `limit` esattamente 6); per **DeepSeek** (API diretta) non esiste un tetto lato fornitore: caricare sul conto DeepSeek
 un credito non superiore a quanto si accetta di perdere (es. 6 USD) è l'unico limite indipendente dal nostro codice.
 
+## Stato del rilascio, al checkpoint 18/11/2026
+La PR #110 include un *nuovo* recupero EXIT/HUP/INT/TERM con nome archivio preassegnato, ripristino delle
+run storiche e dello stage, quarantena delle run nuove se la sostituzione fallisce.
+**NON eseguire la sostituzione sulla VPS finche' il nuovo script non supera bash -n e
+backend/v3/arena/test_prepare_script.py (fault injection dopo archivio, stage, prepare e health).**
+In caso di interruzione non recuperabile dal trap (SIGKILL/power loss), usare un recupero manuale
+verificato prima di riavviare i runner. Il backup locale del 18 novembre resta intoccato.
+
 ## Fase 1 — sostituzione delle tre run preparate (uscite fermate solo con 0 posizioni)
 
 ```
@@ -29,7 +37,11 @@ sudo bash $S --replace-prepared --sha <SHA>
 
 Atteso: `ZERO_POSITIONS_VERIFIED=TRUE`, `OLD_RUNS_ARCHIVED=...`, `NEW_RUNS_PREPARED_PAUSED_NO_T0=TRUE`,
 `RESULT=PREPARED_RUNS_REPLACED_EXITS_HEALTHY`. Rifiuti previsti: runner Arena attivo, Brain storico non attivo,
-`can-stop-exit` negato, archivio su altro disco. Se l'archivio fallisce: run vecchie al loro posto e uscite riavviate.
+`can-stop-exit` negato, archivio su altro disco. Se la sostituzione fallisce, il wrapper prova a ripristinare le run precedenti, lo stage precedente
+e i servizi di uscita. `ROLLBACK_RESTORED=TRUE` significa che le richieste di start delle uscite
+sono state inviate, **non** che gli heartbeat siano automaticamente verificati: prima di riprovare,
+eseguire `trial_setup inspect` e accertare le tre `exit_service_healthy=true`.
+Se appare `MANUAL_RECOVERY_REQUIRED=TRUE`, NON avviare i runner e conservare l'archivio.
 Il bridge resta acceso con il codice precedente in memoria fino a un riavvio separato.
 
 ## Fase 2 — prova a secco sul VPS (nessun credito)
