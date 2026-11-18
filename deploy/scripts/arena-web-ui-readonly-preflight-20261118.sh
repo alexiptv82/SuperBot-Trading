@@ -79,7 +79,7 @@ docker run --rm --network none --security-opt no-new-privileges --cap-drop ALL \
 
 JS="$WORK/build/static/js"
 [[ -s "$WORK/build/index.html" && -d "$JS" ]] || refuse BUILD_MISSING
-has(){ grep -RlqF -- "$1" "$JS" --include='*.js'; }
+has(){ grep -RlqF --include='*.js' -- "$1" "$JS"; }
 if has 'http://51.91.109.45:8002'; then refuse BUNDLE_HAS_OLD_HTTP_FALLBACK; fi
 has '/api/v3/arena' || refuse BUNDLE_WITHOUT_ARENA_READ_API
 has '3 giorni' || refuse BUNDLE_WITHOUT_3_DAYS_TEXT
