@@ -13,11 +13,11 @@ from backend.v3.arena import runner as R
 from backend.v3.arena.test_arena_runner import ENV, PolicyModel, _approve_and_unpause, _prepare
 from backend.v3.brain_f3.providers import ProviderUnavailable, TransportResponse
 from backend.v3.budget import BudgetLedger
-from backend.v3.runner.metering import MeteredTransport, estimate_units
+from backend.v3.runner.metering import MeteredTransport, worst_case_units
 
 IN, OUT = Decimal("0.32"), Decimal("1.28")             # Qwen al listino
 PAYLOAD = {"model": "qwen/qwen3.7-plus", "max_tokens": 6000, "messages": [{"role": "user", "content": "x" * 20000}]}
-WORST = estimate_units(PAYLOAD, IN, OUT)
+WORST = worst_case_units(PAYLOAD, IN, OUT)
 
 
 class Model:
@@ -133,3 +133,43 @@ def test_deadline_reached_mid_cycle_stops_the_remaining_ai_calls(tmp_path):
         exits.tick(G + 25_000)
         built.runner.tick(G + 25_000)
     assert len(model.payloads) == 1                                       # il 2o simbolo non chiama l'AI
+
+
+def test_worst_case_is_a_true_upper_bound_even_for_dense_non_ascii_text():
+    """Il costo massimo non puo' essere sotto la spesa reale nemmeno con testo che il tokenizer spezza al massimo."""
+    for text in ("x" * 20_000, "価格は上昇している。" * 2000, "😀" * 5000, "0123456789" * 2000):
+        p = {"model": "m", "max_tokens": 6000, "messages": [{"role": "user", "content": text}]}
+        worst = worst_case_units(p, IN, OUT)
+        real_if_one_token_per_byte = len(json.dumps(p, sort_keys=True, ensure_ascii=False).encode()) * IN + 6000 * OUT
+        assert worst >= int(real_if_one_token_per_byte)
+    no_cap = {"model": "m", "messages": [{"role": "user", "content": "x"}]}
+    assert worst_case_units(no_cap, IN, OUT) >= 65_536 * OUT                  # niente max_tokens: massimo accettato
+
+
+def test_failed_call_on_arena_is_counted_at_the_upper_bound(tmp_path):
+    def boom(_p):
+        raise ProviderUnavailable("timeout")
+    led, m = _meter(tmp_path, boom)
+    with pytest.raises(ProviderUnavailable):
+        m(PAYLOAD)
+    assert led.total_spend("qwen") == WORST                                   # forse fatturata: mai sotto-contare
+
+
+def test_inspect_reports_ai_spend_and_alerts_above_five_usd(tmp_path):
+    from backend.v3.arena import trial_setup as TS
+    from backend.v3.arena.test_trial_setup import DAY, NOW, _key_limit, _prepare  # noqa: F401
+    root = tmp_path / "arena"
+    root.mkdir(mode=0o700)
+    _prepare(root)
+    plan = TS._plans(root, DAY)["qwen"]
+    led = BudgetLedger(str(plan.folder / "budget.db"))
+    led.record_spend("qwen", 4_990_000, {"basis": "test"})
+    led.close()
+    rep = TS.inspect(root, DAY, NOW)
+    assert rep["providers"]["qwen"]["ai_spend_total_usd"] == "4.99" and rep["alerts"] == []
+    led = BudgetLedger(str(plan.folder / "budget.db"))
+    led.record_spend("qwen", 20_000, {"basis": "test"})
+    led.close()
+    rep = TS.inspect(root, DAY, NOW)
+    assert rep["alerts"] == ["qwen:AI_SPEND_ABOVE_5.00_USD"] and rep["blockers"] == []
+    assert rep["providers"]["deepseek"]["ai_spend_total_usd"] == "0"

@@ -58,6 +58,20 @@ def estimate_units(payload: Mapping[str, Any], input_per_m: Decimal, output_per_
     return _ceil((chars // 2 + 1) * input_per_m + out * output_per_m)
 
 
+def worst_case_units(payload: Mapping[str, Any], input_per_m: Decimal, output_per_m: Decimal) -> int:
+    """LIMITE SUPERIORE della spesa di una chiamata (non una stima): nessun tokenizer produce piu' token dei byte
+    UTF-8 del testo inviato, e il fornitore tronca l'uscita (ragionamento compreso) a ``max_tokens``. Senza un
+    ``max_tokens`` valido si assume il massimo accettato. Usato dalla prenotazione dell'Arena."""
+    try:
+        raw = json.dumps(payload, sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
+        in_tokens = len(raw)
+    except Exception:
+        in_tokens = 1_000_000                                      # non misurabile: massimo prudente
+    max_out = payload.get("max_tokens") if isinstance(payload, Mapping) else None
+    out = max_out if type(max_out) is int and 0 < max_out <= _MAX_OUT_CAP else _MAX_OUT_CAP
+    return _ceil(in_tokens * input_per_m + out * output_per_m)
+
+
 class MeteredTransport:
     def __init__(self, inner: Transport, ledger: BudgetLedger, provider: str, *, input_usd_per_million: Decimal,
                  output_usd_per_million: Decimal, extra_payload: Optional[Mapping[str, Any]] = None,
@@ -65,7 +79,7 @@ class MeteredTransport:
         """``reserve`` (solo Arena): ``{"daily_cap_units", "total_cap_units", "lock_path"}``. Prima di OGNI chiamata,
         sotto un lock di file esclusivo e non bloccante, si rifiuta se speso + stima MASSIMA della chiamata supera il
         tetto giornaliero o cumulativo: una chiamata non puo' partire sotto il tetto e chiudersi sopra (entro la stima
-        prudente: caratteri/2 token in ingresso + max_tokens in uscita). Un secondo processo concorrente e' rifiutato."""
+        massimo POSSIBILE: byte UTF-8 come token in ingresso + max_tokens in uscita, vedi ``worst_case_units``). Un secondo processo concorrente e' rifiutato."""
         if not callable(inner) or not isinstance(ledger, BudgetLedger) or type(provider) is not str or not provider:
             raise ValueError("invalid_meter")
         for p in (input_usd_per_million, output_usd_per_million):
@@ -105,7 +119,7 @@ class MeteredTransport:
             except OSError:
                 raise ProviderUnavailable("budget_reserve_busy") from None      # altro processo sulla stessa AI
             try:
-                worst = estimate_units(sent, self._in, self._out)
+                worst = worst_case_units(sent, self._in, self._out)
                 total = self._ledger.total_spend(self._provider)
                 daily = self._ledger.daily_spend(self._provider)
             except Exception:
@@ -120,8 +134,9 @@ class MeteredTransport:
         try:
             response = self._inner(sent)
         except Exception:
-            try:
-                self._charge(estimate_units(sent, self._in, self._out), "estimate_failed_call")
+            try:                  # chiamata fallita: forse fatturata. Arena = limite superiore, mai sotto-contare
+                bound = worst_case_units if self._reserve is not None else estimate_units
+                self._charge(bound(sent, self._in, self._out), "estimate_failed_call")
             except Exception:
                 pass                                           # il guasto del registro e' gia' segnato
             raise
@@ -129,7 +144,8 @@ class MeteredTransport:
         units = usage_units(body, self._in, self._out)
         basis = "usage"
         if units is None:
-            units, basis = estimate_units(sent, self._in, self._out), "estimate_no_usage"
+            bound = worst_case_units if self._reserve is not None else estimate_units
+            units, basis = bound(sent, self._in, self._out), "estimate_no_usage"
         try:
             self._charge(units, basis)
         except Exception:

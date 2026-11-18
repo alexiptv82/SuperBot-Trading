@@ -99,11 +99,35 @@ def exit_stop_check(root: Path, day: date, provider: str) -> dict:
     return {"provider": provider, "run_id": plan.run_id, "open_positions": n, "exit_stop_allowed": n == 0}
 
 
+# ------------------------------------------------------------------------------------------------------- spesa AI
+SPEND_ALERT_USD = Decimal("5.00")          # avviso: 5 USD su 6 per AI (83% del tetto cumulativo)
+
+
+def ai_spend(folder: Path, provider: str, now_ms: int):
+    """(totale, oggi UTC) in USD dal registro della run, in sola lettura; ``None`` se illeggibile."""
+    import sqlite3
+    path = folder / "budget.db"
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        con = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=5)
+        try:
+            day = time.strftime("%Y-%m-%d", time.gmtime(now_ms / 1000))
+            tot, today = con.execute(
+                "SELECT COALESCE(SUM(units),0), COALESCE(SUM(CASE WHEN occurred_at LIKE ? THEN units ELSE 0 END),0) "
+                "FROM spend_events WHERE provider=?", (day + "%", provider)).fetchone()
+        finally:
+            con.close()
+        return Decimal(tot) / 1_000_000, Decimal(today) / 1_000_000
+    except Exception:
+        return None
+
+
 # ------------------------------------------------------------------------------------------------------- inspect
 def inspect(root: Path, day: date, now_ms: int) -> dict:
     """Sola lettura: nessuna scrittura, nessun lock, nessuna rete."""
     plans = _plans(root, day)
-    rows, blockers = {}, []
+    rows, blockers, alerts = {}, [], []
     configs = {}
     for p, plan in plans.items():
         f = plan.folder
@@ -141,6 +165,13 @@ def inspect(root: Path, day: date, now_ms: int) -> dict:
                 "exit_service_healthy": exit_service_healthy(data_dir=f, run_id=plan.run_id, now_ms=now_ms),
                 "open_positions": open_positions(f, plan.run_id),
             })
+            spend = ai_spend(f, p, now_ms)
+            row["ai_spend_total_usd"] = None if spend is None else str(spend[0])
+            row["ai_spend_today_usd"] = None if spend is None else str(spend[1])
+            if spend is None:
+                alerts.append(f"{p}:AI_SPEND_UNREADABLE")
+            elif spend[0] >= SPEND_ALERT_USD:
+                alerts.append(f"{p}:AI_SPEND_ABOVE_{SPEND_ALERT_USD}_USD")
             if not row["manifest_ok"] or not chain_ok or cfg is None:
                 blockers.append(f"{p}:RUN_INVALID")
             if row["open_positions"] == "UNKNOWN":
@@ -174,7 +205,7 @@ def inspect(root: Path, day: date, now_ms: int) -> dict:
     if len(configs) == 3:
         budget = budget_gate(configs, evidence=load_evidence(), approved_total_usd=None, key_limit_usd=ORT.KEY_LIMIT)
     return {"schema": "arena_trial_inspect_v1", "budget": budget, "root": str(root), "day": day.isoformat(), "stage": stage,
-            "providers": rows, "blockers": blockers, "read_only": True}
+            "providers": rows, "blockers": blockers, "alerts": alerts, "read_only": True}
 
 
 # ------------------------------------------------------------------------------------------------------- prepare

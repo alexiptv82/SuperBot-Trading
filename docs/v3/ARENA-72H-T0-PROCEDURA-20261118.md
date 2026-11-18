@@ -13,18 +13,33 @@ l'OK dell'utente. Il Brain storico non viene mai fermato, riavviato o modificato
 | Prova di un ciclo senza crediti | `python -m backend.v3.arena.smoke`: copia delle tre run, T0/mandati solo nella copia, feed Bitget reale, modello finto NO_TRADE, run vere intatte |
 | **Nuovo P0 trovato dallo smoke reale** | `history-candles` di Bitget non restituisce l'ultima candela chiusa (misurato per 13+ minuti dopo la chiusura): ogni ciclo risultava `stale` → `data_unavailable` su tutti i 27 simboli, cioè **nessuna decisione per 72 ore**. Corretto: la coda si completa dall'endpoint `candles`, solo barre chiuse. Vale anche per il monitor delle uscite (minuti) |
 
-Limite onesto del tetto: la prenotazione usa i prezzi della config (= listino di picco). La fatturazione reale può
-differire: per Qwen/MiniMax il tetto vero resta il limite di 6 USD sulla chiave OpenRouter (verificato dal trasporto,
-`limit` esattamente 6); per **DeepSeek** (API diretta) non esiste un tetto lato fornitore: caricare sul conto DeepSeek
-un credito non superiore a quanto si accetta di perdere (es. 6 USD) è l'unico limite indipendente dal nostro codice.
+### Limite di spesa: cosa è garantito e cosa no (aggiornato dopo la revisione ChatGPT)
 
-## Stato del rilascio, al checkpoint 18/11/2026
-La PR #110 include un *nuovo* recupero EXIT/HUP/INT/TERM con nome archivio preassegnato, ripristino delle
-run storiche e dello stage, quarantena delle run nuove se la sostituzione fallisce.
-**NON eseguire la sostituzione sulla VPS finche' il nuovo script non supera bash -n e
-backend/v3/arena/test_prepare_script.py (fault injection dopo archivio, stage, prepare e health).**
-In caso di interruzione non recuperabile dal trap (SIGKILL/power loss), usare un recupero manuale
-verificato prima di riavviare i runner. Il backup locale del 18 novembre resta intoccato.
+* **Prenotazione**: il costo massimo di una chiamata è ora un **limite superiore vero** (`worst_case_units`): byte UTF-8
+  del testo inviato come token in ingresso (nessun tokenizer ne produce di più) + `max_tokens` in uscita (il fornitore
+  tronca l'uscita, ragionamento compreso). Una chiamata fallita sull'Arena è registrata a quel limite, mai sotto. Costo
+  massimo per chiamata a DeepSeek circa 0,010 USD: la prenotazione non frena il lavoro normale, solo gli ultimi centesimi
+  del tetto.
+* **Resta fuori dal nostro controllo**: la fatturazione reale del fornitore (listino che cambia, sconti di cache). Il
+  registro usa i prezzi della config (listino di picco).
+* **Qwen e MiniMax**: tetto lato fornitore = chiave OpenRouter con limite esattamente 6 USD (controllato a ogni chiamata).
+* **DeepSeek**: **nessun tetto lato fornitore garantito da questo codice**. Il tetto è interno (2 USD/giorno, 6 USD
+  cumulativi) con avviso a 5 USD. **Non abbassare il saldo del conto DeepSeek**: è un saldo di account, condiviso con il
+  Brain storico, che si fermerebbe. Non dichiarare "18 USD garantiti": per DeepSeek sono **un limite interno con margine**.
+  Da verificare nella console DeepSeek (non fatto): se esistono chiavi API separate con limite proprio, usarne una per l'Arena.
+* **Avviso**: `trial_setup inspect` mostra la spesa per AI (`ai_spend_total_usd`, `ai_spend_today_usd`) e l'avviso
+  `<ai>:AI_SPEND_ABOVE_5.00_USD`. Da controllare a mano a ogni verifica; non ferma nulla da solo.
+
+## Stato del rilascio (aggiornato)
+`--replace-prepared` scrive lo stato della sostituzione su disco (`/opt/superbot-v3-backups/.arena-replace-tx`) PRIMA
+di fermare o spostare qualunque cosa, e ha il trap EXIT/HUP/INT/TERM scritto da ChatGPT. Dopo **SIGKILL, blackout o
+sessione persa** (dove nessun trap scatta) si recupera con `--recover-replace`: idempotente, mai cancella, riporta run,
+stage e uscite allo stato precedente. Finché il file esiste, una nuova sostituzione è rifiutata. Provato con `kill -9`
+dopo l'archivio e dopo il salvataggio dello stage. Corretto anche un difetto del rollback: se l'archiviazione falliva a
+metà, le run originali finivano tra i "falliti" invece di restare al loro posto.
+
+**Eseguire in una sessione che non muore con Termius:**
+`sudo systemd-run --unit=arena-replace --collect --wait --pty bash $S --replace-prepared --sha <SHA>` oppure dentro `tmux`.
 
 ## Fase 1 — sostituzione delle tre run preparate (uscite fermate solo con 0 posizioni)
 
@@ -41,7 +56,8 @@ Atteso: `ZERO_POSITIONS_VERIFIED=TRUE`, `OLD_RUNS_ARCHIVED=...`, `NEW_RUNS_PREPA
 e i servizi di uscita. `ROLLBACK_RESTORED=TRUE` significa che le richieste di start delle uscite
 sono state inviate, **non** che gli heartbeat siano automaticamente verificati: prima di riprovare,
 eseguire `trial_setup inspect` e accertare le tre `exit_service_healthy=true`.
-Se appare `MANUAL_RECOVERY_REQUIRED=TRUE`, NON avviare i runner e conservare l'archivio.
+Se appare `MANUAL_RECOVERY_REQUIRED=TRUE`, NON avviare i runner e conservare l'archivio; dopo una sessione persa:
+`sudo bash $S --recover-replace --sha <SHA>` (atteso `RECOVERY_DONE=TRUE` oppure `NOTHING_TO_RECOVER=TRUE`), poi `inspect`.
 Il bridge resta acceso con il codice precedente in memoria fino a un riavvio separato.
 
 ## Fase 2 — prova a secco sul VPS (nessun credito)
@@ -56,9 +72,20 @@ Atteso: per ogni AI `state: running`, `opened: 0`, `model_calls` vicino a 27 (me
 
 ## Fase 3 — web/Samsung in sola lettura e chiusure
 
-`GET /api/v3/arena` autenticato deve mostrare tre card "Preparato · in pausa". Prova web → socket dal container reale
-(UID effettivo) prima di dichiarare la chiusura manuale operativa (matrice §6). Se non certificata, la chiusura dal
-Samsung resta **non dichiarata**; l'arresto delle nuove aperture resta disponibile da Termius (`pause.flag`).
+`GET /api/v3/arena` autenticato deve mostrare tre card "Preparato · in pausa". Il collegamento app → bridge si verifica,
+in sola lettura, con:
+
+```
+sudo bash /opt/superbot-arena-stage/deploy/scripts/arena-bridge-web-check-readonly-20261118.sh superbot
+```
+
+Esegue DENTRO il container web (con il suo UID/GID reale) una sola richiesta `status` per un id inesistente. Risultati:
+`CHANNEL_OK` (404 atteso), `PERMISSION_DENIED_ON_SOCKET_NEEDS_DEDICATED_GROUP` (socket root 0600 e web non-root: il
+caso più probabile oggi, serve `V3_ARENA_CLOSE_GROUP_GID` nel bridge e `--group-add` nel container, vedi matrice §3),
+`SOCKET_MISSING...` (mount assente), `BRIDGE_NOT_LISTENING`. **Provato in locale con un utente reale** per i diversi
+casi; **non** provato sul container vero. Con qualunque esito diverso da `CHANNEL_OK` la chiusura dal Samsung **non è
+dichiarata operativa**; il fallback sicuro è fermare le nuove aperture con `pause.flag` da Termius. Anche con
+`CHANNEL_OK` resta da provare una chiusura vera su UNA posizione PAPER, con il tuo OK.
 
 ## Fase 4 — T0 (solo con OK esplicito)
 
