@@ -189,22 +189,19 @@ def test_replace_prepared_refuses_with_active_runner_or_down_brain_and_restarts_
                  dict(e, PATH=f"{tmp_path / f'sbin-{name}'}:/usr/bin:/bin", ARENA_PREP_TEST_SOURCE=str(REPO)))
         assert f"REFUSED={code}" in r.stdout
         assert not any(c.startswith(("stop", "start")) for c in log.read_text().splitlines())
-    # archivio impossibile (cartella dei backup assente): le vecchie run restano, uscite riavviate
+    # cartella dei backup assente: rifiuto PRIMA di fermare qualunque servizio, nulla viene toccato
     (prefix / "opt" / "superbot-v3-backups").rmdir()
     log = tmp_path / "f.log"
     _stateful_systemctl(tmp_path / "sbin-f", log)
     r = _run(["--replace-prepared", "--sha", sha],
              dict(e, PATH=f"{tmp_path / 'sbin-f'}:/usr/bin:/bin", ARENA_PREP_TEST_SOURCE=str(REPO)))
-    assert "SUPERSEDE_REFUSED_OLD_RUNS_KEPT_EXITS_RESTARTED" in r.stdout
-    calls = log.read_text().splitlines()
-    assert sum(c.startswith("stop superbot-arena-exit@") for c in calls) == 6
-    assert sum(c.startswith("start superbot-arena-exit@") for c in calls) == 6
-    assert "ROLLBACK_RESTORED=TRUE" in r.stdout
+    assert "REFUSED=BACKUPS_DIR_MISSING_NOTHING_TOUCHED" in r.stdout
+    assert not any(c.startswith(("stop", "start")) for c in (log.read_text().splitlines() if log.exists() else []))
     assert json.loads((root / "qwen" / "brain-qwen-paper20261118" / "runner_config.json").read_text())[
         "daily_cap_usd"] == "0.75"
 
 
-@pytest.mark.parametrize("failpoint", ("after_archive", "after_stage_saved", "after_new_prepared"))
+@pytest.mark.parametrize("failpoint", ("during_supersede", "after_archive", "after_stage_saved", "after_new_prepared"))
 def test_replace_prepared_rolls_back_every_failure_after_archive(env, tmp_path, failpoint):
     """No loss of immutable pre-trial history, even after stage switched or new run created."""
     prefix, sha, e = env
@@ -223,7 +220,8 @@ def test_replace_prepared_rolls_back_every_failure_after_archive(env, tmp_path, 
               ARENA_PREP_TEST_FAILPOINT=failpoint)
     result = _run(["--replace-prepared", "--sha", sha], e2)
     assert result.returncode != 0
-    assert f"REFUSED=INJECTED_FAILURE_{failpoint.upper()}" in result.stdout
+    if failpoint != "during_supersede":
+        assert f"REFUSED=INJECTED_FAILURE_{failpoint.upper()}" in result.stdout
     assert "ROLLBACK_RESTORED=TRUE" in result.stdout, result.stdout + result.stderr
     assert subprocess.check_output(
         ["git", "-C", str(stage), "rev-parse", "HEAD"], text=True).strip() == original_sha
@@ -233,9 +231,62 @@ def test_replace_prepared_rolls_back_every_failure_after_archive(env, tmp_path, 
         assert (run / "pause.flag").is_file()
         assert not (run / "arena_t0.json").exists()
     backup = prefix / "opt" / "superbot-v3-backups"
-    assert len(list(backup.glob("arena-superseded-*/SUPERSEDED-ROLLED-BACK.json"))) == 1
+    if failpoint != "during_supersede":
+        assert len(list(backup.glob("arena-superseded-*/SUPERSEDED-ROLLED-BACK.json"))) == 1
+    else:                                                  # run mai archiviate: nessuna deve finire tra i "falliti"
+        assert not list(backup.glob("arena-replace-failed-*/*/*"))
     if failpoint == "after_new_prepared":
         assert len(list(backup.glob("arena-replace-failed-*/qwen/brain-qwen-paper20261118"))) == 1
     calls = log.read_text().splitlines()
     assert not any("brain" in x and x.split()[0] in ("stop", "start", "restart") for x in calls)
     assert not any("runner@" in x and x.split()[0] in ("stop", "start") for x in calls)
+
+
+
+@pytest.mark.parametrize("failpoint", ("kill9_after_archive", "kill9_after_stage_saved"))
+def test_sigkill_mid_replacement_is_recoverable_and_blocks_a_second_replacement(env, tmp_path, failpoint):
+    """Nessun trap scatta con SIGKILL/blackout: lo stato su disco permette --recover-replace, senza cancellare nulla."""
+    prefix, sha, e = env
+    root = _old_runs(prefix)
+    old = {p: (root / p / f"brain-{p}-paper20261118" / "runner_config.json").read_bytes()
+           for p in ("deepseek", "qwen", "minimax")}
+    stage = prefix / "opt" / "superbot-arena-stage"
+    original_sha = subprocess.check_output(["git", "-C", str(stage), "rev-parse", "HEAD"], text=True).strip()
+    log = tmp_path / "k.log"
+    sbin = tmp_path / "sbin-k"
+    _stateful_systemctl(sbin, log)
+    e2 = dict(e, PATH=f"{sbin}:/usr/bin:/bin", ARENA_PREP_TEST_SOURCE=str(REPO), ARENA_PREP_HEALTH_WAIT_S="1",
+              ARENA_PREP_TEST_FAILPOINT=failpoint)
+    r = _run(["--replace-prepared", "--sha", sha], e2)
+    assert r.returncode == -9 or r.returncode == 137, (r.returncode, r.stdout, r.stderr)
+    assert "ROLLBACK_STARTED" not in r.stdout                           # il trap non e' scattato
+    backup = prefix / "opt" / "superbot-v3-backups"
+    assert (backup / ".arena-replace-tx").is_file()                    # ma lo stato e' su disco
+    assert not (root / "qwen" / "brain-qwen-paper20261118").exists() or failpoint == "kill9_after_stage_saved"
+    # una seconda sostituzione, o un nuovo avvio, e' rifiutato finche' non si recupera
+    again = _run(["--replace-prepared", "--sha", sha], dict(e2, ARENA_PREP_TEST_FAILPOINT=""))
+    assert "REFUSED=REPLACE_TX_PENDING_RUN_RECOVER_REPLACE_FIRST" in again.stdout
+    rec = _run(["--recover-replace", "--sha", sha], dict(e2, ARENA_PREP_TEST_FAILPOINT=""))
+    assert "RECOVERY_DONE=TRUE" in rec.stdout or "ROLLBACK_RESTORED=TRUE" in rec.stdout, rec.stdout + rec.stderr
+    assert not (backup / ".arena-replace-tx").exists()
+    assert subprocess.check_output(["git", "-C", str(stage), "rev-parse", "HEAD"], text=True).strip() == original_sha
+    for p in ("deepseek", "qwen", "minimax"):
+        run = root / p / f"brain-{p}-paper20261118"
+        assert (run / "runner_config.json").read_bytes() == old[p] and (run / "pause.flag").is_file()
+    calls = log.read_text().splitlines()
+    assert not any("brain" in x and x.split()[0] in ("stop", "start", "restart") for x in calls)
+    # idempotente: un secondo recupero non trova nulla da fare e non tocca niente
+    nothing = _run(["--recover-replace", "--sha", sha], dict(e2, ARENA_PREP_TEST_FAILPOINT=""))
+    assert "NOTHING_TO_RECOVER=TRUE" in nothing.stdout
+
+
+def test_a_clean_replacement_leaves_no_transaction_file(env, tmp_path):
+    prefix, sha, e = env
+    _old_runs(prefix)
+    log = tmp_path / "c.log"
+    sbin = tmp_path / "sbin-c"
+    _stateful_systemctl(sbin, log)
+    r = _run(["--replace-prepared", "--sha", sha], dict(e, PATH=f"{sbin}:/usr/bin:/bin", ARENA_PREP_TEST_SOURCE=str(REPO),
+                                                        ARENA_PREP_HEALTH_WAIT_S="1"))
+    assert "NEW_RUNS_PREPARED_PAUSED_NO_T0=TRUE" in r.stdout          # (salute delle uscite: non simulabile qui)
+    assert not (prefix / "opt" / "superbot-v3-backups" / ".arena-replace-tx").exists()
