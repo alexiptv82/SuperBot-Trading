@@ -3,6 +3,8 @@ Dati sintetici, servizi uscite veri in processo, modello finto, nessuna rete, ne
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 from datetime import date
 
 import pytest
@@ -361,3 +363,72 @@ def test_runner_refuses_when_t0_files_disagree_between_runs(root, tmp_path):
     for p in ("qwen", "minimax"):                             # anche la run "intatta" rifiuta: discordanza nel trio
         with pytest.raises(R.ArenaRunnerError, match="arena_t0_inconsistent"):
             R.build_arena_runner(plans[p], environ=ENV, clock_ms=lambda: NOW, inner_transport=PolicyModel())
+
+
+# ---------------------------------------------------------------- PR #110: sostituzione delle run preparate
+def test_supersede_moves_prepared_runs_to_a_verifiable_archive_then_new_runs_can_be_prepared(root, tmp_path):
+    def vps_old(p):                                     # come le run preparate sul VPS: tetto 0,75, stime 2/8
+        c = json.loads(_cfg(p))
+        c["daily_cap_usd"] = "0.75"
+        if p != "deepseek":
+            c["input_usd_per_million_tokens"], c["output_usd_per_million_tokens"] = "2.00", "8.00"
+        return json.dumps(c).encode()
+    old = {p: vps_old(p) for p in ("deepseek", "qwen", "minimax")}
+    TS.prepare_paused(root, DAY, now_ms=NOW - 60_000, desk_mode="paper", confirm=TS.PREPARE_PHRASE,
+                      config_loader=lambda p: old[p])
+    before = {p: (pl.folder / "runner_config.json").read_bytes() for p, pl in TS._plans(root, DAY).items()}
+    archive_parent = tmp_path / "backups"
+    archive_parent.mkdir()
+    with pytest.raises(TS.SetupRefused, match="confirmation_required"):
+        TS.supersede_prepared(root, DAY, archive_parent=archive_parent, now_ms=NOW, confirm="si")
+    exits, _ = _exits(root)
+    try:                                                  # servizi uscite ancora attivi: rifiuto
+        with pytest.raises(TS.SetupRefused, match="exit_service_still_running"):
+            TS.supersede_prepared(root, DAY, archive_parent=archive_parent, now_ms=NOW,
+                                  confirm=f"{TS.SUPERSEDE_PREFIX}2026-11-18")
+    finally:
+        for w in exits.values():
+            w.stop()
+    out = TS.supersede_prepared(root, DAY, archive_parent=archive_parent, now_ms=NOW,
+                                confirm=f"{TS.SUPERSEDE_PREFIX}2026-11-18")
+    assert out["stage_after"] == "NOT_PREPARED"
+    archive = Path(out["archive"])
+    rec = json.loads((archive / "SUPERSEDED.json").read_text())
+    for p, plan in TS._plans(archive, DAY).items():
+        assert (plan.folder / "runner_config.json").read_bytes() == before[p]          # byte identici, solo spostati
+        assert rec["runs"][p]["journal_events"] == 1
+    rep = _prepare(root)                                                                # nuove run, nuova config
+    assert rep["stage"] == "PREPARED_PAUSED_NO_T0"
+    assert all(rep["providers"][p]["config_sha256"] != rec["runs"][p]["config_sha256"] for p in rep["providers"])
+
+
+def test_supersede_refuses_runs_that_have_already_traded_and_other_filesystems(root, tmp_path, monkeypatch):
+    _prepare(root)
+    exits, gj = _exits(root)
+    try:
+        _activate(root, tmp_path)
+    finally:
+        for w in exits.values():
+            w.stop()
+    with pytest.raises(TS.SetupRefused, match="runs_not_prepared_paused"):          # gara gia' avviata: mai
+        TS.supersede_prepared(root, DAY, archive_parent=tmp_path, now_ms=NOW,
+                              confirm=f"{TS.SUPERSEDE_PREFIX}2026-11-18")
+
+
+def test_supersede_failure_midway_puts_runs_back(root, tmp_path, monkeypatch):
+    _prepare(root)
+    archive_parent = tmp_path / "backups"
+    archive_parent.mkdir()
+    real, n = os.rename, {"n": 0}
+
+    def flaky(src, dst):
+        n["n"] += 1
+        if n["n"] == 3:
+            raise OSError("io")
+        return real(src, dst)
+    monkeypatch.setattr(TS.os, "rename", flaky)
+    with pytest.raises(OSError):
+        TS.supersede_prepared(root, DAY, archive_parent=archive_parent, now_ms=NOW,
+                              confirm=f"{TS.SUPERSEDE_PREFIX}2026-11-18")
+    monkeypatch.undo()
+    assert TS.inspect(root, DAY, NOW)["stage"] == "PREPARED_PAUSED_NO_T0"

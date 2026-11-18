@@ -335,12 +335,67 @@ def _compensate(plans: dict, saved: dict, written_t0: list) -> None:
             pass
 
 
+# ------------------------------------------------------------------------------------------------------- sostituzione
+SUPERSEDE_PREFIX = "ARCHIVIA-TRE-RUN-PREPARATE-"
+
+
+def supersede_prepared(root: Path, day: date, *, archive_parent: Path, now_ms: int, confirm: str) -> dict:
+    """Sposta (mai modifica, mai cancella) le tre run PREPARATE, mai avviate, in un archivio verificabile, per
+    prepararne tre nuove con la config aggiornata. Solo con: stadio PREPARED_PAUSED_NO_T0, journal con il solo
+    ``run_prepared``, 0 posizioni verificate, servizi uscite delle tre run FERMI (fermati dall'operatore con
+    ``can-stop-exit``), archivio sullo stesso filesystem. Errore a meta' = run gia' spostate rimesse al loro posto."""
+    if confirm != f"{SUPERSEDE_PREFIX}{day.isoformat()}":
+        raise SetupRefused("confirmation_required")
+    report = inspect(root, day, now_ms)
+    if report["stage"] != "PREPARED_PAUSED_NO_T0" or report["blockers"]:
+        raise SetupRefused("runs_not_prepared_paused")
+    for p, row in report["providers"].items():
+        if row["event_kinds"] != ["run_prepared"]:
+            raise SetupRefused(f"journal_not_fresh:{p}")
+        if row["open_positions"] != 0:
+            raise SetupRefused(f"open_positions:{p}")
+        if row["exit_service_healthy"]:
+            raise SetupRefused(f"exit_service_still_running:{p}")
+    if not archive_parent.is_dir() or archive_parent.is_symlink():
+        raise SetupRefused("archive_parent_missing")
+    if archive_parent.stat().st_dev != root.stat().st_dev:
+        raise SetupRefused("archive_on_other_filesystem")            # rename non atomico: rifiuto prima
+    archive = archive_parent / f"arena-superseded-{day.isoformat()}-{now_ms}"
+    archive.mkdir(mode=0o700)
+    plans = _plans(root, day)
+    record = {"schema": "arena_superseded_runs_v1", "archived_at_ms": now_ms, "day": day.isoformat(), "runs": {}}
+    for p, plan in plans.items():
+        count, head = EventJournal(plan.folder / "journal.db").verify_chain()
+        record["runs"][p] = {"run_id": plan.run_id, "journal_events": count, "journal_head": head,
+                             "config_sha256": report["providers"][p]["config_sha256"],
+                             "files_sha256": {f.name: _sha(f.read_bytes()) for f in sorted(plan.folder.iterdir())
+                                              if f.is_file() and not f.is_symlink()
+                                              and not f.name.endswith(("-shm", "-wal"))}}
+    moved: list[tuple[Path, Path]] = []
+    try:
+        for p, plan in plans.items():
+            dst = archive / p / plan.run_id
+            dst.parent.mkdir(mode=0o700)
+            os.rename(plan.folder, dst)
+            moved.append((plan.folder, dst))
+        _atomic_write(archive / "SUPERSEDED.json", json.dumps(record, sort_keys=True, indent=1).encode())
+    except BaseException:
+        for src, dst in reversed(moved):
+            try:
+                os.rename(dst, src)
+            except OSError:
+                pass
+        raise
+    after = inspect(root, day, now_ms)
+    return {"archive": str(archive), "stage_after": after["stage"], "archived": record["runs"]}
+
+
 # ------------------------------------------------------------------------------------------------------- CLI
 def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None,
          now_fn: Callable[[], int] = lambda: int(time.time() * 1000)) -> int:
     ap = argparse.ArgumentParser(description="Tre run PAPER dell'Arena: ispezione, preparazione in pausa, attivazione.")
     ap.add_argument("command", nargs="?", default="inspect", choices=("inspect", "prepare-paused", "activate",
-                                                                   "can-stop-exit"))
+                                                                   "can-stop-exit", "supersede-prepared"))
     ap.add_argument("--root", default=str(DEFAULT_ROOT))
     ap.add_argument("--day", required=True, help="AAAA-MM-GG del run_id")
     ap.add_argument("--confirm", default="")
@@ -348,6 +403,7 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     ap.add_argument("--approved-by", default="")
     ap.add_argument("--universe-snapshot")
     ap.add_argument("--provider", choices=PROVIDERS)
+    ap.add_argument("--archive-parent", default="/opt/superbot-v3-backups")
     ap.add_argument("--approved-total-budget-usd", help="budget totale della gara approvato dall'utente")
     a = ap.parse_args(argv)
     environ = os.environ if env is None else env
@@ -362,6 +418,8 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
             out = exit_stop_check(root, day, a.provider)
             print(json.dumps({"ok": True, "command": a.command, **out}, sort_keys=True))
             return 0 if out["exit_stop_allowed"] else 2
+        elif a.command == "supersede-prepared":
+            out = supersede_prepared(root, day, archive_parent=Path(a.archive_parent), now_ms=now, confirm=a.confirm)
         elif a.command == "prepare-paused":
             out = prepare_paused(root, day, now_ms=now, desk_mode=environ.get("DESK_MODE", ""), confirm=a.confirm)
         else:

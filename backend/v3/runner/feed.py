@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Callable, Optional
 
 from backend.v3.features.indicators import Bar
-from backend.v3.lab_tools.fetch_candles import fetch_rows, http_json
+from backend.v3.lab_tools.fetch_candles import fetch_recent_rows, fetch_rows, http_json
 
 GetJson = Callable[[str], object]
 
@@ -47,8 +47,21 @@ def contiguous_runs(bars: list[Bar], candle_ms: int) -> list[list[Bar]]:
 
 def fetch_closed_bars(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
                       get_json: GetJson = http_json) -> list[Bar]:
-    """Barre chiuse con ``start_ms <= apertura < end_ms``; ``end_ms`` va allineato alla griglia del timeframe."""
-    return rows_to_bars(fetch_rows(symbol, start_ms, end_ms, candle_ms=candle_ms, get_json=get_json))
+    """Barre chiuse con ``start_ms <= apertura < end_ms``; ``end_ms`` va allineato alla griglia del timeframe.
+
+    Lo storico Bitget omette l'ultima candela chiusa (verificato 18/11/2026): se manca, la coda recente si completa
+    con l'endpoint ``candles``, sempre e solo con barre chiuse. Senza, la vista risulta ``stale`` e il ciclo non decide."""
+    rows = fetch_rows(symbol, start_ms, end_ms, candle_ms=candle_ms, get_json=get_json)
+    last = end_ms - candle_ms
+    if last >= start_ms and last not in rows:
+        try:
+            recent = fetch_recent_rows(symbol, max(start_ms, end_ms - 10 * candle_ms), end_ms,
+                                       candle_ms=candle_ms, get_json=get_json)
+        except Exception:
+            recent = {}                                   # resta senza: la vista dira' stale, nessuna decisione
+        for ts, vals in recent.items():
+            rows.setdefault(ts, vals)                     # lo storico, quando c'e', ha la precedenza
+    return rows_to_bars(rows)
 
 
 class CandleStore:

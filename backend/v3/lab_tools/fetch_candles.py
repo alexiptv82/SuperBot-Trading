@@ -26,6 +26,9 @@ from typing import Callable, Optional
 
 BASE = "https://api.bitget.com"
 PATH = "/api/v2/mix/market/history-candles"
+# "history-candles" (verificato 18/11/2026) NON restituisce l'ultima candela chiusa per l'intero intervallo
+# successivo; "candles" si'. Serve solo a completare la coda recente (vedi fetch_recent_rows).
+RECENT_PATH = "/api/v2/mix/market/candles"
 HEADER = ["open_time_ms", "open", "high", "low", "close", "volume"]
 _SYMBOL = re.compile(r"[A-Z0-9]{3,30}")
 _NUM = re.compile(r"-?\d+(\.\d+)?([eE][+-]?\d+)?")
@@ -118,6 +121,27 @@ def fetch_rows(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
         cur_end = s - 1
     else:
         raise RuntimeError("troppe richieste")
+    return rows
+
+
+def fetch_recent_rows(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
+                      get_json: Callable[[str], object] = http_json, limit: int = 10) -> dict:
+    """Ultime barre CHIUSE dall'endpoint ``candles`` (``start_ms <= apertura < end_ms``: la candela in formazione,
+    con apertura == end_ms allineato alla griglia, e' esclusa da ``_row``). Una sola richiesta."""
+    if not _SYMBOL.fullmatch(symbol):
+        raise ValueError("invalid_symbol")
+    if candle_ms < 60_000 or candle_ms % 60_000 or end_ms <= start_ms or not 1 <= limit <= 200:
+        raise ValueError("invalid_window")
+    gran = _GRANULARITY.get(candle_ms, f"{candle_ms // 60_000}m")
+    s = max(start_ms, end_ms - limit * candle_ms)
+    d = get_json(f"{BASE}{RECENT_PATH}?symbol={symbol}&productType=USDT-FUTURES&granularity={gran}"
+                 f"&startTime={s}&endTime={end_ms - 1}&limit={limit}")
+    data = d.get("data") if isinstance(d, dict) and d.get("code") == "00000" else None
+    rows: dict = {}
+    for raw in data or ():
+        r = _row(raw, start_ms, end_ms)
+        if r is not None and r[0] != "invalid":
+            rows[r[0]] = r[1]
     return rows
 
 

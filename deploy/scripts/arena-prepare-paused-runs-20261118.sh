@@ -5,10 +5,13 @@
 #   --inspect  --sha <40hex> --day AAAA-MM-GG            (predefinito, sola lettura)
 #   --update-stage --sha <40hex>                          stage codice al commit revisionato + venv senza pacchetti
 #   --prepare-paused --sha <40hex> --day AAAA-MM-GG       tre run in pausa (frase di conferma interna al comando)
+#   --replace-prepared --sha <40hex>                      SOSTITUISCE le tre run preparate (mai avviate, 0 posizioni)
+#        con tre nuove alla config del commit: archivio verificabile delle vecchie, stage aggiornato, uscite
+#        fermate SOLO dopo can-stop-exit e riavviate. Brain storico, bridge e runner decisionali non toccati.
 set -Eeuo pipefail
 IFS=$'\n\t'
 REPO='https://github.com/alexiptv82/SuperBot-Trading.git'
-BRANCH='work/arena-prepare-paused-runs-20261118'
+BRANCH='work/arena-72h-18usd-budget-20261118'
 STAGE='/opt/superbot-arena-stage'
 ROOT='/opt/superbot-ai-arena-paper'
 ETC='/etc/superbot-arena'
@@ -24,7 +27,8 @@ die(){ say "REFUSED=$1"; exit 2; }
 MODE='--inspect'; SHA=''; DAY=''
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --inspect|--update-stage|--prepare-paused) MODE="$1"; shift ;;
+    --inspect|--update-stage|--prepare-paused|--replace-prepared) MODE="$1"; shift ;;
+    --branch) BRANCH="${2:-}"; shift 2 ;;
     --sha) SHA="${2:-}"; shift 2 ;;
     --day) DAY="${2:-}"; shift 2 ;;
     *) die "UNKNOWN_ARGUMENT" ;;
@@ -46,7 +50,29 @@ arena_units_inactive(){
   s="$(systemctl is-active superbot-arena-close-bridge.service 2>/dev/null || true)"
   [[ "$s" == 'inactive' || "$s" == 'unknown' || "$s" == 'failed' ]]
 }
+runners_inactive(){
+  for p in deepseek qwen minimax; do
+    s="$(systemctl is-active "superbot-arena-runner@$p.service" 2>/dev/null || true)"
+    [[ "$s" == 'inactive' || "$s" == 'unknown' || "$s" == 'failed' ]] || return 1
+  done
+}
+BACKUPS="${ARENA_PREP_TEST_PREFIX:-}/opt/superbot-v3-backups"
+HEALTH_WAIT_S="${ARENA_PREP_HEALTH_WAIT_S:-150}"
 stage_py(){ printf '%s' "$STAGE/.venv/bin/python3"; }
+code_setup(){                                     # trial_setup da una cartella di codice qualunque (es. temporanea)
+  local dir="$1"; shift
+  env -u DEEPSEEK_API_KEY -u OPENROUTER_API_KEY -u V3_ARENA_ALLOW_INFERENCE \
+    PYTHONPATH="$dir:$dir/backend" PYTHONDONTWRITEBYTECODE=1 DESK_MODE=paper TRADING_MODE=paper \
+    "$dir/.venv/bin/python3" -s -m backend.v3.arena.trial_setup "$@"
+}
+fetch_code(){                                     # clone del commit revisionato in una cartella nuova + venv vuota
+  local dest="$1"
+  if [[ -n "${ARENA_PREP_TEST_SOURCE:-}" ]]; then git clone -q --no-hardlinks "$ARENA_PREP_TEST_SOURCE" "$dest" || return 1
+  else GIT_TERMINAL_PROMPT=0 git clone --quiet --no-tags --single-branch --branch "$BRANCH" "$REPO" "$dest" || return 1; fi
+  git -C "$dest" checkout --quiet --detach "$SHA" || return 1
+  [[ "$(git -C "$dest" rev-parse HEAD)" == "$SHA" ]] || return 1
+  "$PY_SYS" -m venv "$dest/.venv" || return 1
+}
 setup(){
   env -u DEEPSEEK_API_KEY -u OPENROUTER_API_KEY -u V3_ARENA_ALLOW_INFERENCE \
     PYTHONPATH="$STAGE:$STAGE/backend" PYTHONDONTWRITEBYTECODE=1 DESK_MODE=paper TRADING_MODE=paper \
@@ -80,7 +106,7 @@ update_stage(){
   if [[ -d "$STAGE/.git" && "$(git -C "$STAGE" rev-parse HEAD)" == "$SHA" ]]; then
     say 'STAGE_ALREADY_AT_SHA=TRUE'
   else
-    scratch="$(mktemp -d /opt/.arena-stage-new.XXXXXXXX)"
+    scratch="$(mktemp -d "${ARENA_PREP_TEST_PREFIX:-}/opt/.arena-stage-new.XXXXXXXX")"
     GIT_TERMINAL_PROMPT=0 git clone --quiet --no-tags --single-branch --branch "$BRANCH" "$REPO" "$scratch/c" \
       || die 'CLONE_FAILED'
     git -C "$scratch/c" checkout --quiet --detach "$SHA" || die 'SHA_NOT_ON_BRANCH'
@@ -131,8 +157,56 @@ prepare(){
   say 'T0_ASSIGNED=FALSE MANDATES_APPROVED=FALSE SERVICES_STARTED=FALSE PAID_INFERENCE=FALSE'
 }
 
+replace_prepared(){
+  [[ "$(id -u)" == 0 ]] || die 'ROOT_REQUIRED'
+  [[ -f "$ETC/trial.env" ]] || die 'TRIAL_ENV_MISSING'
+  DAY="$(sed -n 's/^ARENA_DAY=//p' "$ETC/trial.env")"
+  [[ "$DAY" =~ ^20[0-9]{2}-[01][0-9]-[0-3][0-9]$ ]] || die 'TRIAL_ENV_DAY_INVALID'
+  brain_ok || die 'BRAIN_HISTORICAL_NOT_ACTIVE'
+  runners_inactive || die 'ARENA_RUNNER_ACTIVE'
+  new="$(mktemp -d "${ARENA_PREP_TEST_PREFIX:-}/opt/.arena-stage-new.XXXXXXXX")"; code="$new/c"
+  fetch_code "$code" || die 'FETCH_OR_SHA_FAILED'
+  say "NEW_CODE_SHA=$SHA DAY=$DAY"
+  # 1) sola lettura con il codice nuovo: tre run preparate, 0 posizioni ciascuna
+  code_setup "$code" inspect --root "$ROOT" --day "$DAY" > "$new/inspect-before.json" || true
+  grep -q '"stage": "PREPARED_PAUSED_NO_T0"' "$new/inspect-before.json" || die 'RUNS_NOT_PREPARED_PAUSED_NO_T0'
+  for p in deepseek qwen minimax; do
+    code_setup "$code" can-stop-exit --provider "$p" --root "$ROOT" --day "$DAY" >/dev/null || die "CAN_STOP_EXIT_DENIED_$p"
+  done
+  say 'ZERO_POSITIONS_VERIFIED=TRUE'
+  # 2) solo ora: stop delle tre uscite (nessuna posizione da gestire)
+  for p in deepseek qwen minimax; do systemctl stop "superbot-arena-exit@$p.service"; done
+  restart_exits(){ for p in deepseek qwen minimax; do systemctl start "superbot-arena-exit@$p.service" || true; done; }
+  # 3) archivio delle vecchie run (mai cancellate)
+  if ! code_setup "$code" supersede-prepared --root "$ROOT" --day "$DAY" --archive-parent "$BACKUPS" \
+        --confirm "ARCHIVIA-TRE-RUN-PREPARATE-$DAY" > "$new/supersede.json"; then
+    restart_exits; cat "$new/supersede.json"; die 'SUPERSEDE_REFUSED_OLD_RUNS_KEPT_EXITS_RESTARTED'
+  fi
+  say "OLD_RUNS_ARCHIVED=$(grep -o '"archive": "[^"]*"' "$new/supersede.json")"
+  # 4) stage nuovo (il precedente resta accanto) e 5) tre run nuove in pausa
+  old="$STAGE.prev-$(git -C "$STAGE" rev-parse --short=8 HEAD 2>/dev/null || echo x)-$(date -u +%Y%m%dT%H%M%SZ)"
+  [[ -e "$STAGE" ]] && mv -T -- "$STAGE" "$old" && say "PREVIOUS_STAGE_KEPT=$old"
+  mv -T -- "$code" "$STAGE"; rm -rf "$new"
+  setup prepare-paused --root "$ROOT" --day "$DAY" --confirm 'PREPARA-TRE-RUN-PAPER-IN-PAUSA' >/dev/null \
+    || die 'NEW_PREPARE_FAILED_NO_RUNS_EXITS_STOPPED_OLD_RUNS_IN_ARCHIVE'
+  say 'NEW_RUNS_PREPARED_PAUSED_NO_T0=TRUE'
+  # 6) uscite di nuovo attive e sane sulle run nuove
+  restart_exits
+  for i in $(seq 1 "$HEALTH_WAIT_S"); do
+    setup inspect --root "$ROOT" --day "$DAY" > /tmp/.arena-inspect.$$ 2>/dev/null || true
+    [[ "$(grep -c '"exit_service_healthy": true' /tmp/.arena-inspect.$$)" == 3 ]] && break
+    sleep 1
+  done
+  n="$(grep -c '"exit_service_healthy": true' /tmp/.arena-inspect.$$ || true)"; rm -f /tmp/.arena-inspect.$$
+  brain_ok || say 'BRAIN_STATE_CHANGED_ALERT'
+  [[ "$n" == 3 ]] || die "EXITS_NOT_HEALTHY_COUNT_$n"
+  say 'RESULT=PREPARED_RUNS_REPLACED_EXITS_HEALTHY'
+  say 'T0_ASSIGNED=FALSE RUNNERS_STARTED=FALSE PAID_INFERENCE=FALSE BRIDGE_UNTOUCHED=TRUE'
+}
+
 case "$MODE" in
   --inspect) inspect ;;
   --update-stage) inspect; update_stage ;;
   --prepare-paused) prepare; inspect ;;
+  --replace-prepared) replace_prepared ;;
 esac
