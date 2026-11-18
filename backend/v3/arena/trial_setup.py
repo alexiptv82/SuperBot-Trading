@@ -300,7 +300,15 @@ def activate(root: Path, day: date, *, t0_ms: int, now_ms: int, desk_mode: str, 
     snap = _read_json(universe_snapshot)
     cfgs = {p: load_runner_config((plans[p].folder / "runner_config.json").read_bytes()) for p in PROVIDERS}
     symbols = list(cfgs["qwen"].symbols)
-    if (not snap or snap.get("schema") != "arena_universe_snapshot_v1" or snap.get("symbols") != symbols
+    # L'istantanea conserva l'ordine di ranking di CoinGecko; il runner puo' usare
+    # gli stessi mercati in un altro ordine. Conservare lo snapshot originale e il suo hash.
+    snap_symbols = None if not snap else snap.get("symbols")
+    if (not snap or snap.get("schema") != "arena_universe_snapshot_v1"
+            or type(snap_symbols) is not list or len(snap_symbols) != len(symbols)
+            or any(type(s) is not str for s in snap_symbols)
+            or len(set(snap_symbols)) != len(snap_symbols)
+            or set(snap_symbols) != set(symbols)
+            or snap.get("symbols_sha256") != _sha(",".join(snap_symbols).encode())
             or snap.get("crypto_target_met") is not True
             or type(snap.get("as_of_ms")) is not int or not 0 <= now_ms - snap["as_of_ms"] <= 6 * 3_600_000):
         raise SetupRefused("universe_snapshot_not_fresh_or_different")   # va rifatta entro 6 ore dal T0
