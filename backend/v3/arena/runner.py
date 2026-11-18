@@ -28,6 +28,7 @@ from typing import Callable, Mapping, Optional
 from backend.v3.arena.inference_trace import TracedTransport
 from backend.v3.arena.openrouter_transport import openrouter_transport
 from backend.v3.arena.prepare import plan_for, shared_policy_hash
+from backend.v3.arena.t0 import trial_start
 from backend.v3.arena.trial_plan import PROVIDERS, WalletPlan
 from backend.v3.brain_f2.engine import _policy_hash
 from backend.v3.budget import BudgetLedger
@@ -52,11 +53,14 @@ def check_manifest(plan: WalletPlan, config: RunnerConfig) -> int:
     expected = {"schema": "brain_arena_trial_v1", "provider": plan.provider, "run_id": plan.run_id,
                 "initial_capital": "2000", "mode": "paper", "model": plan.model, "experiment": "independent",
                 "risk_policy_hash": _policy_hash(config.risk_policy)}
-    if type(m) is not dict or any(m.get(k) != v for k, v in expected.items()) or type(m.get("trial_start_ms")) is not int:
+    if type(m) is not dict or any(m.get(k) != v for k, v in expected.items()) or "trial_start_ms" not in m:
         raise ArenaRunnerError("arena_manifest_mismatch")
     if m["risk_policy_hash"] != shared_policy_hash():
         raise ArenaRunnerError("arena_risk_policy_differs")
-    return m["trial_start_ms"]
+    t0 = trial_start(plan.folder, plan.provider, plan.run_id, m["trial_start_ms"])
+    if t0 is None:                                     # run preparata ma gara non assegnata: non parte
+        raise ArenaRunnerError("arena_t0_not_assigned")
+    return t0
 
 
 def provider_transport(plan: WalletPlan, config: RunnerConfig, environ: Mapping[str, str]):
