@@ -16,6 +16,7 @@ import re
 import sqlite3
 import stat
 
+from backend.v3.arena.t0 import trial_start
 from backend.v3.arena.trial_plan import WalletPlan
 from backend.v3.dashboard import build_summary
 from backend.v3.events import EventJournal
@@ -114,7 +115,7 @@ def _trial_manifest(plan: WalletPlan, now_ms: int) -> int | None:
     }
     if any(raw.get(key) != value for key, value in expected.items()):
         return None
-    started = raw.get("trial_start_ms")
+    started = trial_start(plan.folder, plan.provider, plan.run_id, raw.get("trial_start_ms"))
     if type(started) is not int or not 0 < started <= now_ms:
         return None
     return started
@@ -164,6 +165,11 @@ def read_wallet(plan: WalletPlan, now_ms: int) -> dict:
         return unknown
     t0 = _trial_manifest(plan, now_ms)
     if t0 is None:
+        # Run preparata in pausa ma gara non assegnata: stato autentico "non avviato", nessun numero mostrato.
+        raw = _blocked(plan.folder / "arena_manifest.json", MAX_MANIFEST_BYTES)
+        if (raw and raw.get("provider") == plan.provider and raw.get("run_id") == plan.run_id
+                and raw.get("trial_start_ms") is None and (plan.folder / "pause.flag").is_file()):
+            unknown["data_status"] = "PREPARED_AWAITING_T0"
         return unknown
     if plan.journal.is_symlink() or not plan.journal.is_file():
         unknown["data_status"] = "JOURNAL_NOT_AVAILABLE"

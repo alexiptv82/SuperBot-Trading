@@ -50,10 +50,12 @@ def plan_for(provider: str, day: date, root: Path) -> WalletPlan:
 
 
 def prepare_arena_run(plan: WalletPlan, *, config_bytes: bytes, desk_mode: str, now_ms: int,
-                      trial_start_ms: int, expected_initial_equity: str) -> Path:
+                      trial_start_ms: Optional[int], expected_initial_equity: str) -> Path:
+    """``trial_start_ms=None`` (consigliato): run preparata senza T0; il T0 comune si assegna solo all'attivazione."""
     if desk_mode != "paper":
         raise RunPreparationError("paper_only")
-    if type(trial_start_ms) is not int or not 0 < trial_start_ms or type(now_ms) is not int or now_ms <= 0:
+    if ((trial_start_ms is not None and (type(trial_start_ms) is not int or not 0 < trial_start_ms))
+            or type(now_ms) is not int or now_ms <= 0):
         raise RunPreparationError("invalid_time")
     config = load_runner_config(config_bytes)
     if config.model != plan.model or config.initial_equity != plan.capital_usdt:
@@ -88,7 +90,7 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     ap.add_argument("--provider", required=True, choices=PROVIDERS)
     ap.add_argument("--root", required=True)
     ap.add_argument("--day", required=True, help="AAAA-MM-GG, giorno del run_id")
-    ap.add_argument("--trial-start-ms", required=True, type=int)
+    ap.add_argument("--trial-start-ms", type=int, default=None, help="sconsigliato: usare trial_setup activate")
     ap.add_argument("--config")
     ap.add_argument("--confirm-capital", required=True)
     a = ap.parse_args(argv)

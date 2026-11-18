@@ -285,3 +285,28 @@ test('readonly preview blocks trial-AI close even with provider close opt-in', a
     }
   });
 });
+
+test('prepared paused runs without T0 show a label only, never numbers', async () => {
+  const prep = id => ({ portfolio_id: id, mode: 'paper', state: 'not_started', initial_capital: 2000,
+    source: 'arena_independent_journal_v1', run_id: `brain-${id}-paper20261118`, trial_start_ms: null,
+    trial_comparable: false, data_status: 'PREPARED_AWAITING_T0', realized_pnl: null });
+  await withFlags({ REACT_APP_BRAIN_ARENA_SHADOW_API: '1' }, async () => {
+    API.get.mockImplementation((url) => {
+      if (url === '/api/v3/arena') {
+        return Promise.resolve({ data: { portfolios: { deepseek: prep('deepseek'), qwen: prep('qwen'),
+          minimax: { ...prep('minimax'), data_status: 'NOT_CONFIGURED' } } } });
+      }
+      if (url === '/api/v3/overview') return Promise.resolve({ data: BRAIN });
+      if (url === '/api/v3/brain/status') return Promise.resolve({ data: { state: 'running' } });
+      return Promise.resolve({ data: TRADES });
+    });
+    const { node, dispose } = await mount();
+    try {
+      const cards = Array.from(node.querySelectorAll('button[aria-pressed]')).map(b => b.textContent);
+      expect(cards.find(c => c.includes('Qwen'))).toContain('Preparato · in pausa');
+      expect(cards.find(c => c.includes('MiniMax'))).toContain('Non avviato');
+      expect(cards.find(c => c.includes('Qwen'))).toContain('PnL —');
+      expect(node.textContent).toContain('in attesa di attivazione comune');
+    } finally { await dispose(); API.get.mockReset(); }
+  });
+});
