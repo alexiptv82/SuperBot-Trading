@@ -34,13 +34,14 @@ def test_model_cost_projection_is_only_a_stress_scenario():
     moderate = qwen["scenarios"]["moderate"]
     assert moderate["evaluations_per_day_if_all_symbols_eligible"] == 648        # 24 cicli x 27 simboli
     assert moderate["configured_rate_projected_usd_per_day"] == "1.347840"
-    assert moderate["configured_cap_usd_per_day"] == "0.750000"
-    assert moderate["projection_over_cap"] is True
+    assert moderate["configured_cap_usd_per_day"] == "2.000000"
+    assert moderate["projection_over_cap"] is False          # tetto 2 USD/giorno: lo scenario moderato ci sta
+    assert qwen["scenarios"]["max_configured_output"]["projection_over_cap"] is True   # 6000 token: serve il cap cumulativo
     assert "stress_scenario_not_actual_calls_or_current_price" == moderate["note"]
     assert result["providers"]["deepseek"]["scenarios"]["moderate"][
         "configured_rate_projected_usd_per_day"
     ] == "1.263600"
-    assert "DAILY_AI_BUDGET_NEEDS_COVERAGE_REVIEW" in result["blocking_evidence"]
+    assert "DAILY_AI_BUDGET_NEEDS_COVERAGE_REVIEW" not in result["blocking_evidence"]
 
 
 def _copy_config_dir(tmp_path: Path) -> Path:

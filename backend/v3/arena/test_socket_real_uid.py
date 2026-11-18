@@ -99,3 +99,44 @@ def test_default_root_only_socket_refuses_the_web_uid(sockdir):
     finally:
         server.shutdown()
         server.server_close()
+
+
+PROBE = Path(__file__).resolve().parents[3] / "deploy" / "scripts" / "arena_bridge_probe.py"
+
+
+def _probe(groups, sock, tmp_lib):
+    tmp_lib.mkdir(exist_ok=True, mode=0o755)
+    dst = tmp_lib / "probe.py"
+    shutil.copy(PROBE, dst)
+    os.chmod(dst, 0o644)
+    done = subprocess.run([sys.executable, "-I", str(dst), sock], user=NOBODY, group=NOBODY, extra_groups=groups,
+                          cwd="/", env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True, timeout=30)
+    line = next(x for x in done.stdout.splitlines() if x.startswith("ARENA_BRIDGE_PROBE "))
+    return done.returncode, json.loads(line.split(" ", 1)[1])
+
+
+def test_probe_distinguishes_missing_socket_denied_and_working_channel(sockdir):
+    base = sockdir.parent
+    rc, out = _probe([], str(sockdir / "arena.sock"), base / "lib")             # nessun socket
+    assert rc == 3 and out["result"] == "SOCKET_MISSING_NOT_MOUNTED_OR_BRIDGE_DOWN"
+    server, sock = _serve(sockdir, GID)
+    try:
+        rc, out = _probe([GID], sock, base / "lib")                            # web con il gruppo dedicato
+        assert rc == 0 and out["result"] == "CHANNEL_OK" and out["groups"] == [GID]
+        assert out["socket_stat"]["mode"] == "0o660" and out["dir_stat"]["mode"] == "0o710"
+        rc, out = _probe([], sock, base / "lib")                               # web senza il gruppo
+        assert rc == 3 and out["result"] == "PERMISSION_DENIED_ON_DIRECTORY"
+    finally:
+        server.shutdown()
+        server.server_close()
+    os.chmod(sockdir, 0o750)
+    os.chown(sockdir, 0, GID)                                                   # directory attraversabile, socket 0600 root
+    server2 = CBS._Server(str(sockdir / "s2.sock"), CBS._handler({}))
+    os.chmod(sockdir / "s2.sock", 0o600)
+    threading.Thread(target=server2.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
+    try:
+        rc, out = _probe([GID], str(sockdir / "s2.sock"), base / "lib")         # il caso probabile sul VPS oggi
+        assert rc == 3 and out["result"] == "PERMISSION_DENIED_ON_SOCKET_NEEDS_DEDICATED_GROUP"
+    finally:
+        server2.shutdown()
+        server2.server_close()

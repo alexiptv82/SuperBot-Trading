@@ -25,6 +25,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
+from backend.v3.arena.budget_gate import TRIAL_DAYS
 from backend.v3.arena.inference_trace import TracedTransport
 from backend.v3.arena.openrouter_transport import openrouter_transport
 from backend.v3.arena.prepare import plan_for, shared_policy_hash
@@ -70,12 +71,15 @@ def check_manifest(plan: WalletPlan, config: RunnerConfig) -> int:
     return t0
 
 
-def provider_transport(plan: WalletPlan, config: RunnerConfig, environ: Mapping[str, str]):
+def provider_transport(plan: WalletPlan, config: RunnerConfig, environ: Mapping[str, str],
+                       *, trial_cap_units: Optional[int] = None):
     """DeepSeek: chiave DEEPSEEK_API_KEY letta a ogni chiamata. Qwen/MiniMax: OpenRouter, spento per default."""
     if plan.provider == "deepseek":
         return deepseek_transport()
     ledger = BudgetLedger(str(plan.folder / "budget.db"))
-    gate = ledger.spending_gate(daily_limits={plan.provider: config.daily_cap_units})
+    gate = ledger.spending_gate(
+        daily_limits={plan.provider: config.daily_cap_units},
+        total_limits={plan.provider: trial_cap_units} if trial_cap_units is not None else None)
     return openrouter_transport(plan.provider, allow_inference=environ.get("V3_ARENA_ALLOW_INFERENCE") == "1",
                                 spending_gate=gate)
 
@@ -91,15 +95,20 @@ def build_arena_runner(plan: WalletPlan, *, environ: Mapping[str, str], clock_ms
         raise ArenaRunnerError("config_invalid") from None
     if config.model != plan.model or config.initial_equity != plan.capital_usdt:
         raise ArenaRunnerError("config_does_not_match_plan")
-    check_manifest(plan, config)
-    transport = inner_transport if inner_transport is not None else provider_transport(plan, config, environ)
+    t0 = check_manifest(plan, config)
+    deadline_ms = t0 + TRIAL_DAYS * 24 * 60 * 60 * 1000
+    trial_cap_units = config.daily_cap_units * TRIAL_DAYS
+    transport = inner_transport if inner_transport is not None else provider_transport(
+        plan, config, environ, trial_cap_units=trial_cap_units)
     # Traccia per chiamata (parametri di ragionamento inviati, token, latenza): solo misura, nessun effetto.
     transport = TracedTransport(transport, plan.folder / "inference_trace.jsonl", provider=plan.provider)
     kw = {} if view_params is None else {"view_params": view_params}
     try:
         return build_runner(data_dir=plan.folder, run_id=plan.run_id, config=config, get_json=get_json,
                             inner_transport=transport, alert_send=None, exit_mode="sidecar", clock_ms=clock_ms,
-                            desk_mode="paper", arena_provider=plan.provider, **kw)
+                            desk_mode="paper", arena_provider=plan.provider,
+                            arena_stop_new_entries_at_ms=deadline_ms,
+                            arena_trial_cap_units=trial_cap_units, **kw)
     except ValueError:
         raise ArenaRunnerError("setup_invalid") from None
 

@@ -5,10 +5,15 @@
 #   --inspect  --sha <40hex> --day AAAA-MM-GG            (predefinito, sola lettura)
 #   --update-stage --sha <40hex>                          stage codice al commit revisionato + venv senza pacchetti
 #   --prepare-paused --sha <40hex> --day AAAA-MM-GG       tre run in pausa (frase di conferma interna al comando)
+#   --recover-replace --sha <40hex>                       dopo una sessione persa / SIGKILL / blackout durante
+#        --replace-prepared: riporta run, stage e uscite allo stato precedente (idempotente, mai cancella)
+#   --replace-prepared --sha <40hex>                      SOSTITUISCE le tre run preparate (mai avviate, 0 posizioni)
+#        con tre nuove alla config del commit: archivio verificabile delle vecchie, stage aggiornato, uscite
+#        fermate SOLO dopo can-stop-exit e riavviate. Brain storico, bridge e runner decisionali non toccati.
 set -Eeuo pipefail
 IFS=$'\n\t'
 REPO='https://github.com/alexiptv82/SuperBot-Trading.git'
-BRANCH='work/arena-prepare-paused-runs-20261118'
+BRANCH='work/arena-72h-18usd-budget-20261118'
 STAGE='/opt/superbot-arena-stage'
 ROOT='/opt/superbot-ai-arena-paper'
 ETC='/etc/superbot-arena'
@@ -24,7 +29,8 @@ die(){ say "REFUSED=$1"; exit 2; }
 MODE='--inspect'; SHA=''; DAY=''
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --inspect|--update-stage|--prepare-paused) MODE="$1"; shift ;;
+    --inspect|--update-stage|--prepare-paused|--replace-prepared|--recover-replace) MODE="$1"; shift ;;
+    --branch) BRANCH="${2:-}"; shift 2 ;;
     --sha) SHA="${2:-}"; shift 2 ;;
     --day) DAY="${2:-}"; shift 2 ;;
     *) die "UNKNOWN_ARGUMENT" ;;
@@ -46,7 +52,29 @@ arena_units_inactive(){
   s="$(systemctl is-active superbot-arena-close-bridge.service 2>/dev/null || true)"
   [[ "$s" == 'inactive' || "$s" == 'unknown' || "$s" == 'failed' ]]
 }
+runners_inactive(){
+  for p in deepseek qwen minimax; do
+    s="$(systemctl is-active "superbot-arena-runner@$p.service" 2>/dev/null || true)"
+    [[ "$s" == 'inactive' || "$s" == 'unknown' || "$s" == 'failed' ]] || return 1
+  done
+}
+BACKUPS="${ARENA_PREP_TEST_PREFIX:-}/opt/superbot-v3-backups"
+HEALTH_WAIT_S="${ARENA_PREP_HEALTH_WAIT_S:-150}"
 stage_py(){ printf '%s' "$STAGE/.venv/bin/python3"; }
+code_setup(){                                     # trial_setup da una cartella di codice qualunque (es. temporanea)
+  local dir="$1"; shift
+  env -u DEEPSEEK_API_KEY -u OPENROUTER_API_KEY -u V3_ARENA_ALLOW_INFERENCE \
+    PYTHONPATH="$dir:$dir/backend" PYTHONDONTWRITEBYTECODE=1 DESK_MODE=paper TRADING_MODE=paper \
+    "$dir/.venv/bin/python3" -s -m backend.v3.arena.trial_setup "$@"
+}
+fetch_code(){                                     # clone del commit revisionato in una cartella nuova + venv vuota
+  local dest="$1"
+  if [[ -n "${ARENA_PREP_TEST_SOURCE:-}" ]]; then git clone -q --no-hardlinks "$ARENA_PREP_TEST_SOURCE" "$dest" || return 1
+  else GIT_TERMINAL_PROMPT=0 git clone --quiet --no-tags --single-branch --branch "$BRANCH" "$REPO" "$dest" || return 1; fi
+  git -C "$dest" checkout --quiet --detach "$SHA" || return 1
+  [[ "$(git -C "$dest" rev-parse HEAD)" == "$SHA" ]] || return 1
+  "$PY_SYS" -m venv "$dest/.venv" || return 1
+}
 setup(){
   env -u DEEPSEEK_API_KEY -u OPENROUTER_API_KEY -u V3_ARENA_ALLOW_INFERENCE \
     PYTHONPATH="$STAGE:$STAGE/backend" PYTHONDONTWRITEBYTECODE=1 DESK_MODE=paper TRADING_MODE=paper \
@@ -80,7 +108,7 @@ update_stage(){
   if [[ -d "$STAGE/.git" && "$(git -C "$STAGE" rev-parse HEAD)" == "$SHA" ]]; then
     say 'STAGE_ALREADY_AT_SHA=TRUE'
   else
-    scratch="$(mktemp -d /opt/.arena-stage-new.XXXXXXXX)"
+    scratch="$(mktemp -d "${ARENA_PREP_TEST_PREFIX:-}/opt/.arena-stage-new.XXXXXXXX")"
     GIT_TERMINAL_PROMPT=0 git clone --quiet --no-tags --single-branch --branch "$BRANCH" "$REPO" "$scratch/c" \
       || die 'CLONE_FAILED'
     git -C "$scratch/c" checkout --quiet --detach "$SHA" || die 'SHA_NOT_ON_BRANCH'
@@ -131,8 +159,200 @@ prepare(){
   say 'T0_ASSIGNED=FALSE MANDATES_APPROVED=FALSE SERVICES_STARTED=FALSE PAID_INFERENCE=FALSE'
 }
 
+# Recupero fail-closed di --replace-prepared. Non tocca mai Brain storico o runner decisionali.
+# Stato globale: i trap EXIT/HUP/INT/TERM devono poterlo leggere anche dopo l'uscita dalla funzione.
+REPLACE_TX_ACTIVE=0
+REPLACE_TX_DAY=''
+REPLACE_TX_ARCHIVE=''
+REPLACE_TX_OLD_STAGE=''
+REPLACE_TX_SCRATCH=''
+TXFILE="$BACKUPS/.arena-replace-tx"
+tx_save(){        # stato della sostituzione su disco: sopravvive a SIGKILL, blackout o sessione persa
+  [[ -d "$BACKUPS" && ! -L "$BACKUPS" ]] && umask 077 && {
+    printf 'TX_DAY=%s\nTX_ARCHIVE=%s\nTX_OLD_STAGE=%s\nTX_SCRATCH=%s\n' \
+      "$REPLACE_TX_DAY" "$REPLACE_TX_ARCHIVE" "$REPLACE_TX_OLD_STAGE" "$REPLACE_TX_SCRATCH" > "$TXFILE.tmp" \
+      && sync "$TXFILE.tmp" 2>/dev/null; mv -T -- "$TXFILE.tmp" "$TXFILE"; }
+}
+tx_load(){        # lettura prudente: solo chiavi note e valori senza caratteri strani
+  local k v
+  while IFS='=' read -r k v; do
+    case "$k" in
+      TX_DAY) [[ "$v" =~ ^20[0-9]{2}-[01][0-9]-[0-3][0-9]$ ]] && REPLACE_TX_DAY="$v" ;;
+      TX_ARCHIVE) [[ -z "$v" || "$v" == "$BACKUPS"/arena-superseded-* ]] && REPLACE_TX_ARCHIVE="$v" ;;
+      TX_OLD_STAGE) [[ -z "$v" || "$v" == "$STAGE".prev-* ]] && REPLACE_TX_OLD_STAGE="$v" ;;
+      TX_SCRATCH) REPLACE_TX_SCRATCH="$v" ;;
+    esac
+  done < "$TXFILE"
+  [[ -n "$REPLACE_TX_DAY" ]]
+}
+recover_replace(){
+  [[ "$(id -u)" == 0 ]] || die 'ROOT_REQUIRED'
+  [[ -f "$TXFILE" ]] || { say 'NOTHING_TO_RECOVER=TRUE'; return 0; }
+  tx_load || die 'TX_FILE_INVALID_KEPT'
+  REPLACE_TX_ACTIVE=1
+  replace_rollback 0
+  if [[ "${ROLLBACK_OK:-0}" == 1 ]]; then rm -f "$TXFILE"; say 'RECOVERY_DONE=TRUE'
+  else die 'RECOVERY_INCOMPLETE_TX_FILE_KEPT'; fi
+}
+replace_rollback(){
+  local rc="${1:-1}" p run oldrun newrun failed now ok=1 compact
+  trap - EXIT HUP INT TERM
+  [[ "$REPLACE_TX_ACTIVE" == 1 ]] || return 0
+  set +e
+  say "ROLLBACK_STARTED=TRUE CODE=$rc"
+  compact="${REPLACE_TX_DAY//-/}"
+  now="$(date -u +%Y%m%dT%H%M%SZ)"
+  failed="$BACKUPS/arena-replace-failed-$REPLACE_TX_DAY-$now-$RANDOM"
+  # Gli exit sulle run nuove (ancora in pausa) devono rilasciare il journal prima del ripristino.
+  for p in deepseek qwen minimax; do
+    systemctl stop "superbot-arena-exit@$p.service" >/dev/null 2>&1 || ok=0
+  done
+  if [[ -n "$REPLACE_TX_ARCHIVE" && -d "$REPLACE_TX_ARCHIVE" ]]; then
+    mkdir -p "$failed" || ok=0
+    for p in deepseek qwen minimax; do
+      run="brain-$p-paper$compact"
+      newrun="$ROOT/$p/$run"
+      oldrun="$REPLACE_TX_ARCHIVE/$p/$run"
+      if [[ -d "$oldrun" ]]; then
+        # La vecchia run e' in archivio: quella al suo posto (se c'e') e' una run NUOVA, da conservare a parte.
+        if [[ -e "$newrun" ]]; then
+          mkdir -p "$failed/$p" && mv -T -- "$newrun" "$failed/$p/$run" || ok=0
+        fi
+        mkdir -p "$ROOT/$p" && mv -T -- "$oldrun" "$newrun" || ok=0
+      elif [[ ! -d "$newrun" ]]; then
+        ok=0                                   # ne' in archivio ne' al suo posto: serve intervento umano
+      fi                                       # altrimenti NON archiviata: la run al suo posto e' l'originale, intatta
+    done
+    if [[ -f "$REPLACE_TX_ARCHIVE/SUPERSEDED.json" ]]; then
+      mv -T -- "$REPLACE_TX_ARCHIVE/SUPERSEDED.json" "$REPLACE_TX_ARCHIVE/SUPERSEDED-ROLLED-BACK.json" || ok=0
+    fi
+  fi
+  # Lo stage precedente deve tornare al percorso originale PRIMA dei tre start.
+  if [[ -n "$REPLACE_TX_OLD_STAGE" && -d "$REPLACE_TX_OLD_STAGE" ]]; then
+    if [[ -e "$STAGE" ]]; then
+      mv -T -- "$STAGE" "$STAGE.failed-$now-$RANDOM" || ok=0
+    fi
+    if [[ -d "$REPLACE_TX_OLD_STAGE" && ! -e "$STAGE" ]]; then
+      mv -T -- "$REPLACE_TX_OLD_STAGE" "$STAGE" || ok=0
+    else
+      ok=0
+    fi
+  fi
+  for p in deepseek qwen minimax; do
+    systemctl start "superbot-arena-exit@$p.service" >/dev/null 2>&1 || ok=0
+  done
+  ROLLBACK_OK="$ok"
+  if [[ "$ok" == 1 ]] && brain_ok; then
+    [[ "${REPLACE_TX_FROM_RUN:-0}" == 1 ]] && rm -f "$TXFILE"
+    say 'ROLLBACK_RESTORED=TRUE OLD_RUNS_BACK=TRUE EXIT_START_REQUESTED=TRUE'
+  else
+    say "ROLLBACK_INCOMPLETE=TRUE FAILED_NEW_SAVED=$failed"
+    say 'MANUAL_RECOVERY_REQUIRED=TRUE DO_NOT_START_RUNNERS'
+  fi
+}
+
+replace_prepared(){
+  [[ "$(id -u)" == 0 ]] || die 'ROOT_REQUIRED'
+  [[ ! -e "$TXFILE" ]] || die 'REPLACE_TX_PENDING_RUN_RECOVER_REPLACE_FIRST'
+  [[ -d "$BACKUPS" && ! -L "$BACKUPS" ]] || die 'BACKUPS_DIR_MISSING_NOTHING_TOUCHED'
+  [[ -f "$ETC/trial.env" ]] || die 'TRIAL_ENV_MISSING'
+  DAY="$(sed -n 's/^ARENA_DAY=//p' "$ETC/trial.env")"
+  [[ "$DAY" =~ ^20[0-9]{2}-[01][0-9]-[0-3][0-9]$ ]] || die 'TRIAL_ENV_DAY_INVALID'
+  brain_ok || die 'BRAIN_HISTORICAL_NOT_ACTIVE'
+  runners_inactive || die 'ARENA_RUNNER_ACTIVE'
+  new="$(mktemp -d "${ARENA_PREP_TEST_PREFIX:-}/opt/.arena-stage-new.XXXXXXXX")"; code="$new/c"
+  fetch_code "$code" || die 'FETCH_OR_SHA_FAILED'
+  say "NEW_CODE_SHA=$SHA DAY=$DAY"
+  # 1) sola lettura con il codice nuovo: tre run preparate, 0 posizioni ciascuna
+  code_setup "$code" inspect --root "$ROOT" --day "$DAY" > "$new/inspect-before.json" || true
+  grep -q '"stage": "PREPARED_PAUSED_NO_T0"' "$new/inspect-before.json" || die 'RUNS_NOT_PREPARED_PAUSED_NO_T0'
+  for p in deepseek qwen minimax; do
+    code_setup "$code" can-stop-exit --provider "$p" --root "$ROOT" --day "$DAY" >/dev/null || die "CAN_STOP_EXIT_DENIED_$p"
+  done
+  say 'ZERO_POSITIONS_VERIFIED=TRUE'
+  # 2) da qui i trap ripristinano stage, vecchie run e uscite in caso di errore/HUP.
+  [[ -d "$STAGE/.git" && ! -L "$STAGE" ]] || die 'STAGE_INVALID'
+  REPLACE_TX_ACTIVE=1; REPLACE_TX_DAY="$DAY"; REPLACE_TX_ARCHIVE=''; REPLACE_TX_OLD_STAGE=''
+  REPLACE_TX_SCRATCH="$new"; REPLACE_TX_FROM_RUN=1
+  # Il percorso di archivio e' noto PRIMA di qualunque move, anche se Termius si disconnette.
+  REPLACE_TX_ARCHIVE="$BACKUPS/arena-superseded-$DAY-$(date -u +%s%3N)-$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \\n')"
+  [[ "$REPLACE_TX_ARCHIVE" == "$BACKUPS"/arena-superseded-* && ! -e "$REPLACE_TX_ARCHIVE" ]] \
+    || die 'ARCHIVE_NAME_COLLISION'
+  tx_save || die 'TX_SAVE_FAILED'                 # PRIMA di qualunque stop o spostamento
+  trap 'replace_rollback "$?"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  for p in deepseek qwen minimax; do systemctl stop "superbot-arena-exit@$p.service"; done
+  restart_exits(){ for p in deepseek qwen minimax; do systemctl start "superbot-arena-exit@$p.service"; done; }
+  # 3) archivio delle vecchie run (mai cancellate)
+  if ! { if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == during_supersede ]]; then
+           # Stato reale di un archivio fallito a meta': cartella creata, run gia' rimesse al loro posto dal comando.
+           mkdir -m 0700 "$REPLACE_TX_ARCHIVE" && echo '{"ok": false, "code": "injected"}' && false
+         else
+           code_setup "$code" supersede-prepared --root "$ROOT" --day "$DAY" --archive-parent "$BACKUPS" \
+             --confirm "ARCHIVIA-TRE-RUN-PREPARATE-$DAY" --archive-basename "${REPLACE_TX_ARCHIVE##*/}"
+         fi; } > "$new/supersede.json"; then
+    restart_exits; cat "$new/supersede.json"; die 'SUPERSEDE_REFUSED_OLD_RUNS_KEPT_EXITS_RESTARTED'
+  fi
+  archived_actual="$("$PY_SYS" - "$new/supersede.json" <<'PY'
+import json,sys
+o=json.load(open(sys.argv[1],encoding="utf-8"))
+print(o["archive"])
+PY
+)"
+  [[ "$archived_actual" == "$REPLACE_TX_ARCHIVE" && -d "$REPLACE_TX_ARCHIVE" ]] \
+    || die 'ARCHIVE_PATH_INVALID'
+  say "OLD_RUNS_ARCHIVED=$REPLACE_TX_ARCHIVE"
+  if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == kill9_after_archive ]]; then
+    kill -9 $$                                    # nessun trap puo' scattare: serve --recover-replace
+  fi
+  if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == after_archive ]]; then
+    die 'INJECTED_FAILURE_AFTER_ARCHIVE'
+  fi
+  # 4) stage nuovo (il precedente resta accanto) e 5) tre run nuove in pausa
+  old="$STAGE.prev-$(git -C "$STAGE" rev-parse --short=8 HEAD 2>/dev/null || echo x)-$(date -u +%Y%m%dT%H%M%SZ)"
+  [[ -e "$STAGE" ]] || die 'STAGE_MISSING_AFTER_ARCHIVE'
+  REPLACE_TX_OLD_STAGE="$old"; tx_save           # il nome e' registrato PRIMA dello spostamento
+  mv -T -- "$STAGE" "$old"
+  say "PREVIOUS_STAGE_KEPT=$old"
+  if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == kill9_after_stage_saved ]]; then
+    kill -9 $$
+  fi
+  if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == after_stage_saved ]]; then
+    die 'INJECTED_FAILURE_AFTER_STAGE_SAVED'
+  fi
+  mv -T -- "$code" "$STAGE"
+  # Conservare lo scratch finche' il nuovo stage e le nuove uscite non siano sani.
+  setup prepare-paused --root "$ROOT" --day "$DAY" --confirm 'PREPARA-TRE-RUN-PAPER-IN-PAUSA' >/dev/null \
+    || die 'NEW_PREPARE_FAILED_NO_RUNS_EXITS_STOPPED_OLD_RUNS_IN_ARCHIVE'
+  say 'NEW_RUNS_PREPARED_PAUSED_NO_T0=TRUE'
+  if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == after_new_prepared ]]; then
+    die 'INJECTED_FAILURE_AFTER_NEW_PREPARED'
+  fi
+  # 6) uscite di nuovo attive e sane sulle run nuove
+  restart_exits
+  for i in $(seq 1 "$HEALTH_WAIT_S"); do
+    setup inspect --root "$ROOT" --day "$DAY" > /tmp/.arena-inspect.$$ 2>/dev/null || true
+    [[ "$(grep -c '"exit_service_healthy": true' /tmp/.arena-inspect.$$)" == 3 ]] && break
+    sleep 1
+  done
+  n="$(grep -c '"exit_service_healthy": true' /tmp/.arena-inspect.$$ || true)"; rm -f /tmp/.arena-inspect.$$
+  brain_ok || say 'BRAIN_STATE_CHANGED_ALERT'
+  [[ "$n" == 3 ]] || die "EXITS_NOT_HEALTHY_COUNT_$n"
+  # Commit della sostituzione: da qui in poi nessun trap deve ripristinare le vecchie run.
+  REPLACE_TX_ACTIVE=0
+  trap - EXIT HUP INT TERM
+  rm -f "$TXFILE"
+  rmdir "$new" 2>/dev/null || true
+  say 'RESULT=PREPARED_RUNS_REPLACED_EXITS_HEALTHY'
+  say 'T0_ASSIGNED=FALSE RUNNERS_STARTED=FALSE PAID_INFERENCE=FALSE BRIDGE_UNTOUCHED=TRUE'
+}
+
 case "$MODE" in
   --inspect) inspect ;;
   --update-stage) inspect; update_stage ;;
   --prepare-paused) prepare; inspect ;;
+  --replace-prepared) replace_prepared ;;
+  --recover-replace) recover_replace ;;
 esac

@@ -18,6 +18,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -98,11 +99,35 @@ def exit_stop_check(root: Path, day: date, provider: str) -> dict:
     return {"provider": provider, "run_id": plan.run_id, "open_positions": n, "exit_stop_allowed": n == 0}
 
 
+# ------------------------------------------------------------------------------------------------------- spesa AI
+SPEND_ALERT_USD = Decimal("5.00")          # avviso: 5 USD su 6 per AI (83% del tetto cumulativo)
+
+
+def ai_spend(folder: Path, provider: str, now_ms: int):
+    """(totale, oggi UTC) in USD dal registro della run, in sola lettura; ``None`` se illeggibile."""
+    import sqlite3
+    path = folder / "budget.db"
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        con = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=5)
+        try:
+            day = time.strftime("%Y-%m-%d", time.gmtime(now_ms / 1000))
+            tot, today = con.execute(
+                "SELECT COALESCE(SUM(units),0), COALESCE(SUM(CASE WHEN occurred_at LIKE ? THEN units ELSE 0 END),0) "
+                "FROM spend_events WHERE provider=?", (day + "%", provider)).fetchone()
+        finally:
+            con.close()
+        return Decimal(tot) / 1_000_000, Decimal(today) / 1_000_000
+    except Exception:
+        return None
+
+
 # ------------------------------------------------------------------------------------------------------- inspect
 def inspect(root: Path, day: date, now_ms: int) -> dict:
     """Sola lettura: nessuna scrittura, nessun lock, nessuna rete."""
     plans = _plans(root, day)
-    rows, blockers = {}, []
+    rows, blockers, alerts = {}, [], []
     configs = {}
     for p, plan in plans.items():
         f = plan.folder
@@ -140,6 +165,13 @@ def inspect(root: Path, day: date, now_ms: int) -> dict:
                 "exit_service_healthy": exit_service_healthy(data_dir=f, run_id=plan.run_id, now_ms=now_ms),
                 "open_positions": open_positions(f, plan.run_id),
             })
+            spend = ai_spend(f, p, now_ms)
+            row["ai_spend_total_usd"] = None if spend is None else str(spend[0])
+            row["ai_spend_today_usd"] = None if spend is None else str(spend[1])
+            if spend is None:
+                alerts.append(f"{p}:AI_SPEND_UNREADABLE")
+            elif spend[0] >= SPEND_ALERT_USD:
+                alerts.append(f"{p}:AI_SPEND_ABOVE_{SPEND_ALERT_USD}_USD")
             if not row["manifest_ok"] or not chain_ok or cfg is None:
                 blockers.append(f"{p}:RUN_INVALID")
             if row["open_positions"] == "UNKNOWN":
@@ -173,7 +205,7 @@ def inspect(root: Path, day: date, now_ms: int) -> dict:
     if len(configs) == 3:
         budget = budget_gate(configs, evidence=load_evidence(), approved_total_usd=None, key_limit_usd=ORT.KEY_LIMIT)
     return {"schema": "arena_trial_inspect_v1", "budget": budget, "root": str(root), "day": day.isoformat(), "stage": stage,
-            "providers": rows, "blockers": blockers, "read_only": True}
+            "providers": rows, "blockers": blockers, "alerts": alerts, "read_only": True}
 
 
 # ------------------------------------------------------------------------------------------------------- prepare
@@ -268,7 +300,15 @@ def activate(root: Path, day: date, *, t0_ms: int, now_ms: int, desk_mode: str, 
     snap = _read_json(universe_snapshot)
     cfgs = {p: load_runner_config((plans[p].folder / "runner_config.json").read_bytes()) for p in PROVIDERS}
     symbols = list(cfgs["qwen"].symbols)
-    if (not snap or snap.get("schema") != "arena_universe_snapshot_v1" or snap.get("symbols") != symbols
+    # L'istantanea conserva l'ordine di ranking di CoinGecko; il runner puo' usare
+    # gli stessi mercati in un altro ordine. Conservare lo snapshot originale e il suo hash.
+    snap_symbols = None if not snap else snap.get("symbols")
+    if (not snap or snap.get("schema") != "arena_universe_snapshot_v1"
+            or type(snap_symbols) is not list or len(snap_symbols) != len(symbols)
+            or any(type(s) is not str for s in snap_symbols)
+            or len(set(snap_symbols)) != len(snap_symbols)
+            or set(snap_symbols) != set(symbols)
+            or snap.get("symbols_sha256") != _sha(",".join(snap_symbols).encode())
             or snap.get("crypto_target_met") is not True
             or type(snap.get("as_of_ms")) is not int or not 0 <= now_ms - snap["as_of_ms"] <= 6 * 3_600_000):
         raise SetupRefused("universe_snapshot_not_fresh_or_different")   # va rifatta entro 6 ore dal T0
@@ -335,12 +375,79 @@ def _compensate(plans: dict, saved: dict, written_t0: list) -> None:
             pass
 
 
+# ------------------------------------------------------------------------------------------------------- sostituzione
+SUPERSEDE_PREFIX = "ARCHIVIA-TRE-RUN-PREPARATE-"
+
+
+def supersede_prepared(root: Path, day: date, *, archive_parent: Path, now_ms: int, confirm: str,
+                       archive_basename: Optional[str] = None) -> dict:
+    """Sposta (mai modifica, mai cancella) le tre run PREPARATE, mai avviate, in un archivio verificabile, per
+    prepararne tre nuove con la config aggiornata. Solo con: stadio PREPARED_PAUSED_NO_T0, journal con il solo
+    ``run_prepared``, 0 posizioni verificate, servizi uscite delle tre run FERMI (fermati dall'operatore con
+    ``can-stop-exit``), archivio sullo stesso filesystem. Errore a meta' = run gia' spostate rimesse al loro posto."""
+    if confirm != f"{SUPERSEDE_PREFIX}{day.isoformat()}":
+        raise SetupRefused("confirmation_required")
+    report = inspect(root, day, now_ms)
+    if report["stage"] != "PREPARED_PAUSED_NO_T0" or report["blockers"]:
+        raise SetupRefused("runs_not_prepared_paused")
+    for p, row in report["providers"].items():
+        if row["event_kinds"] != ["run_prepared"]:
+            raise SetupRefused(f"journal_not_fresh:{p}")
+        if row["open_positions"] != 0:
+            raise SetupRefused(f"open_positions:{p}")
+        if row["exit_service_healthy"]:
+            raise SetupRefused(f"exit_service_still_running:{p}")
+    if not archive_parent.is_dir() or archive_parent.is_symlink():
+        raise SetupRefused("archive_parent_missing")
+    if archive_parent.stat().st_dev != root.stat().st_dev:
+        raise SetupRefused("archive_on_other_filesystem")            # rename non atomico: rifiuto prima
+    if archive_basename is not None:
+        # The wrapper provides the exact name BEFORE stopping exits or moving any files.
+        # This lets its EXIT/HUP trap recover even if SSH drops during the archive call.
+        if (type(archive_basename) is not str or
+                re.fullmatch(rf"arena-superseded-{day.isoformat()}-[0-9]{{13}}-[0-9a-f]{{8}}",
+                             archive_basename) is None):
+            raise SetupRefused("archive_name_invalid")
+    else:
+        archive_basename = f"arena-superseded-{day.isoformat()}-{now_ms}"
+    archive = archive_parent / archive_basename
+    if archive.exists() or archive.is_symlink():
+        raise SetupRefused("archive_already_exists")
+    archive.mkdir(mode=0o700)
+    plans = _plans(root, day)
+    record = {"schema": "arena_superseded_runs_v1", "archived_at_ms": now_ms, "day": day.isoformat(), "runs": {}}
+    for p, plan in plans.items():
+        count, head = EventJournal(plan.folder / "journal.db").verify_chain()
+        record["runs"][p] = {"run_id": plan.run_id, "journal_events": count, "journal_head": head,
+                             "config_sha256": report["providers"][p]["config_sha256"],
+                             "files_sha256": {f.name: _sha(f.read_bytes()) for f in sorted(plan.folder.iterdir())
+                                              if f.is_file() and not f.is_symlink()
+                                              and not f.name.endswith(("-shm", "-wal"))}}
+    moved: list[tuple[Path, Path]] = []
+    try:
+        for p, plan in plans.items():
+            dst = archive / p / plan.run_id
+            dst.parent.mkdir(mode=0o700)
+            os.rename(plan.folder, dst)
+            moved.append((plan.folder, dst))
+        _atomic_write(archive / "SUPERSEDED.json", json.dumps(record, sort_keys=True, indent=1).encode())
+    except BaseException:
+        for src, dst in reversed(moved):
+            try:
+                os.rename(dst, src)
+            except OSError:
+                pass
+        raise
+    after = inspect(root, day, now_ms)
+    return {"archive": str(archive), "stage_after": after["stage"], "archived": record["runs"]}
+
+
 # ------------------------------------------------------------------------------------------------------- CLI
 def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None,
          now_fn: Callable[[], int] = lambda: int(time.time() * 1000)) -> int:
     ap = argparse.ArgumentParser(description="Tre run PAPER dell'Arena: ispezione, preparazione in pausa, attivazione.")
     ap.add_argument("command", nargs="?", default="inspect", choices=("inspect", "prepare-paused", "activate",
-                                                                   "can-stop-exit"))
+                                                                   "can-stop-exit", "supersede-prepared"))
     ap.add_argument("--root", default=str(DEFAULT_ROOT))
     ap.add_argument("--day", required=True, help="AAAA-MM-GG del run_id")
     ap.add_argument("--confirm", default="")
@@ -348,6 +455,8 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     ap.add_argument("--approved-by", default="")
     ap.add_argument("--universe-snapshot")
     ap.add_argument("--provider", choices=PROVIDERS)
+    ap.add_argument("--archive-parent", default="/opt/superbot-v3-backups")
+    ap.add_argument("--archive-basename", default=None, help="nome immutabile preassegnato dal wrapper")
     ap.add_argument("--approved-total-budget-usd", help="budget totale della gara approvato dall'utente")
     a = ap.parse_args(argv)
     environ = os.environ if env is None else env
@@ -362,6 +471,9 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
             out = exit_stop_check(root, day, a.provider)
             print(json.dumps({"ok": True, "command": a.command, **out}, sort_keys=True))
             return 0 if out["exit_stop_allowed"] else 2
+        elif a.command == "supersede-prepared":
+            out = supersede_prepared(root, day, archive_parent=Path(a.archive_parent), now_ms=now,
+                                     confirm=a.confirm, archive_basename=a.archive_basename)
         elif a.command == "prepare-paused":
             out = prepare_paused(root, day, now_ms=now, desk_mode=environ.get("DESK_MODE", ""), confirm=a.confirm)
         else:

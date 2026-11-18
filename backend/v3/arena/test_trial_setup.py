@@ -2,7 +2,10 @@
 Dati sintetici, servizi uscite veri in processo, modello finto, nessuna rete, nessuna spesa."""
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+from pathlib import Path
 from datetime import date
 
 import pytest
@@ -30,7 +33,7 @@ def _cfg(provider: str, aligned: bool = True) -> bytes:
     c["symbols"] = SYMS                                  # mercato sintetico: due simboli, uguali per tutte
     if aligned:                                          # prezzi al listino di picco e tetto uguale (scenario A)
         c["input_usd_per_million_tokens"], c["output_usd_per_million_tokens"] = ALIGNED[provider]
-        c["daily_cap_usd"] = "3.50"
+        c["daily_cap_usd"] = "2.00"
     return json.dumps(c).encode()
 
 
@@ -38,7 +41,7 @@ def _cfg(provider: str, aligned: bool = True) -> bytes:
 def _key_limit(monkeypatch):
     from decimal import Decimal
     from backend.v3.arena import openrouter_transport as ORT
-    monkeypatch.setattr(ORT, "KEY_LIMIT", Decimal("60"))   # scenario: limite chiave alzato per 14 giorni
+    monkeypatch.setattr(ORT, "KEY_LIMIT", Decimal("6"))   # scenario: limite singola chiave per 3 giorni
 
 
 @pytest.fixture
@@ -56,6 +59,7 @@ def _prepare(root):
 def _snapshot(tmp_path, symbols=SYMS, as_of=NOW - 60_000):
     path = tmp_path / f"universe-{as_of}-{len(symbols)}.json"
     path.write_text(json.dumps({"schema": "arena_universe_snapshot_v1", "symbols": symbols,
+                             "symbols_sha256": hashlib.sha256(",".join(symbols).encode()).hexdigest(),
                                 "crypto_target_met": True, "as_of_ms": as_of}))
     return path
 
@@ -74,7 +78,7 @@ def _exits(root):
 
 def _activate(root, tmp_path, **kw):
     args = dict(t0_ms=NOW, now_ms=NOW, desk_mode="paper", confirm=f"{TS.ACTIVATE_PREFIX}{NOW}",
-                approved_by="utente", approved_total_budget_usd="147")
+                approved_by="utente", approved_total_budget_usd="18")
     args.update(kw)
     if "universe_snapshot" not in args:
         args["universe_snapshot"] = _snapshot(tmp_path)
@@ -149,6 +153,50 @@ def test_activate_refuses_without_authorization_healthy_exits_fresh_universe_or_
             w.stop()
 
 
+def test_activate_accepts_same_markets_in_snapshot_ranking_order_without_modifying_evidence(root, tmp_path):
+    _prepare(root)
+    snap = _snapshot(tmp_path, symbols=list(reversed(SYMS)))
+    original = snap.read_bytes()
+    configs_before = {
+        p: (plan.folder / "runner_config.json").read_bytes()
+        for p, plan in TS._plans(root, DAY).items()
+    }
+    exits, _ = _exits(root)
+    try:
+        report = _activate(root, tmp_path, universe_snapshot=snap)
+        assert report["stage"] == "ACTIVE"
+        for p, plan in TS._plans(root, DAY).items():
+            t0 = json.loads((plan.folder / T0_FILE).read_text())
+            assert t0["universe_snapshot_sha256"] == hashlib.sha256(original).hexdigest()
+            assert t0["symbols_sha256"] == hashlib.sha256(",".join(SYMS).encode()).hexdigest()
+            assert (plan.folder / "runner_config.json").read_bytes() == configs_before[p]
+        assert snap.read_bytes() == original
+    finally:
+        for w in exits.values():
+            w.stop()
+
+
+def test_activate_refuses_duplicate_changed_or_tampered_snapshot_symbols(root, tmp_path):
+    _prepare(root)
+    exits, _ = _exits(root)
+    try:
+        for syms in ([SYMS[0], SYMS[0]], [SYMS[0], "XRPUSDT"]):
+            snap = _snapshot(tmp_path, symbols=syms)
+            with pytest.raises(TS.SetupRefused, match="universe_snapshot_not_fresh_or_different"):
+                _activate(root, tmp_path, universe_snapshot=snap)
+        snap = _snapshot(tmp_path, symbols=list(reversed(SYMS)))
+        data = json.loads(snap.read_text())
+        data["symbols_sha256"] = "0" * 64
+        snap.write_text(json.dumps(data))
+        with pytest.raises(TS.SetupRefused, match="universe_snapshot_not_fresh_or_different"):
+            _activate(root, tmp_path, universe_snapshot=snap)
+        assert TS.inspect(root, DAY, NOW)["stage"] == "PREPARED_PAUSED_NO_T0"
+        assert all(not (plan.folder / T0_FILE).exists() for plan in TS._plans(root, DAY).values())
+    finally:
+        for w in exits.values():
+            w.stop()
+
+
 def test_activation_failure_midway_rolls_everything_back(root, tmp_path, monkeypatch):
     _prepare(root)
     exits, _ = _exits(root)
@@ -217,7 +265,7 @@ def test_cli_defaults_to_read_only_inspect(root, capsys):
 
 
 def test_budget_gate_blocks_activation_with_todays_repository_configs(root, tmp_path, monkeypatch):
-    """Prezzi allineati, ma il limite chiave di 2 USD rimane insufficiente per 14 giorni."""
+    """Prezzi allineati, ma il limite chiave di 2 USD rimane insufficiente per 3 giorni."""
     from decimal import Decimal
     from backend.v3.arena import openrouter_transport as ORT
     monkeypatch.setattr(ORT, "KEY_LIMIT", Decimal("2"))
@@ -243,14 +291,14 @@ def test_budget_gate_rules_on_aligned_configs():
     from decimal import Decimal
     from backend.v3.arena.budget_gate import budget_gate, load_evidence
     cfgs = {p: load_runner_config(_cfg(p)) for p in ("deepseek", "qwen", "minimax")}
-    ok = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("147"), key_limit_usd=Decimal("60"))
-    assert ok["blockers"] == [] and ok["worst_case_trial_usd"] == "147.00"
-    low = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("100"), key_limit_usd=Decimal("60"))
+    ok = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("18"), key_limit_usd=Decimal("6"))
+    assert ok["blockers"] == [] and ok["worst_case_trial_usd"] == "18.00"
+    low = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("10"), key_limit_usd=Decimal("6"))
     assert low["blockers"] == ["WORST_CASE_EXCEEDS_APPROVED_BUDGET"]
     under = dict(cfgs, qwen=load_runner_config(json.dumps(dict(json.loads(_cfg("qwen")),
                                                                 input_usd_per_million_tokens="0.10")).encode()))
-    assert "PRICE_BELOW_LISTING:qwen" in budget_gate(under, evidence=load_evidence(), approved_total_usd=Decimal("147"),
-                                                      key_limit_usd=Decimal("60"))["blockers"]
+    assert "PRICE_BELOW_LISTING:qwen" in budget_gate(under, evidence=load_evidence(), approved_total_usd=Decimal("18"),
+                                                      key_limit_usd=Decimal("6"))["blockers"]
 
 
 # ---------------------------------------------------------------- revisione ChatGPT PR #107 (6970648930)
@@ -361,3 +409,72 @@ def test_runner_refuses_when_t0_files_disagree_between_runs(root, tmp_path):
     for p in ("qwen", "minimax"):                             # anche la run "intatta" rifiuta: discordanza nel trio
         with pytest.raises(R.ArenaRunnerError, match="arena_t0_inconsistent"):
             R.build_arena_runner(plans[p], environ=ENV, clock_ms=lambda: NOW, inner_transport=PolicyModel())
+
+
+# ---------------------------------------------------------------- PR #110: sostituzione delle run preparate
+def test_supersede_moves_prepared_runs_to_a_verifiable_archive_then_new_runs_can_be_prepared(root, tmp_path):
+    def vps_old(p):                                     # come le run preparate sul VPS: tetto 0,75, stime 2/8
+        c = json.loads(_cfg(p))
+        c["daily_cap_usd"] = "0.75"
+        if p != "deepseek":
+            c["input_usd_per_million_tokens"], c["output_usd_per_million_tokens"] = "2.00", "8.00"
+        return json.dumps(c).encode()
+    old = {p: vps_old(p) for p in ("deepseek", "qwen", "minimax")}
+    TS.prepare_paused(root, DAY, now_ms=NOW - 60_000, desk_mode="paper", confirm=TS.PREPARE_PHRASE,
+                      config_loader=lambda p: old[p])
+    before = {p: (pl.folder / "runner_config.json").read_bytes() for p, pl in TS._plans(root, DAY).items()}
+    archive_parent = tmp_path / "backups"
+    archive_parent.mkdir()
+    with pytest.raises(TS.SetupRefused, match="confirmation_required"):
+        TS.supersede_prepared(root, DAY, archive_parent=archive_parent, now_ms=NOW, confirm="si")
+    exits, _ = _exits(root)
+    try:                                                  # servizi uscite ancora attivi: rifiuto
+        with pytest.raises(TS.SetupRefused, match="exit_service_still_running"):
+            TS.supersede_prepared(root, DAY, archive_parent=archive_parent, now_ms=NOW,
+                                  confirm=f"{TS.SUPERSEDE_PREFIX}2026-11-18")
+    finally:
+        for w in exits.values():
+            w.stop()
+    out = TS.supersede_prepared(root, DAY, archive_parent=archive_parent, now_ms=NOW,
+                                confirm=f"{TS.SUPERSEDE_PREFIX}2026-11-18")
+    assert out["stage_after"] == "NOT_PREPARED"
+    archive = Path(out["archive"])
+    rec = json.loads((archive / "SUPERSEDED.json").read_text())
+    for p, plan in TS._plans(archive, DAY).items():
+        assert (plan.folder / "runner_config.json").read_bytes() == before[p]          # byte identici, solo spostati
+        assert rec["runs"][p]["journal_events"] == 1
+    rep = _prepare(root)                                                                # nuove run, nuova config
+    assert rep["stage"] == "PREPARED_PAUSED_NO_T0"
+    assert all(rep["providers"][p]["config_sha256"] != rec["runs"][p]["config_sha256"] for p in rep["providers"])
+
+
+def test_supersede_refuses_runs_that_have_already_traded_and_other_filesystems(root, tmp_path, monkeypatch):
+    _prepare(root)
+    exits, gj = _exits(root)
+    try:
+        _activate(root, tmp_path)
+    finally:
+        for w in exits.values():
+            w.stop()
+    with pytest.raises(TS.SetupRefused, match="runs_not_prepared_paused"):          # gara gia' avviata: mai
+        TS.supersede_prepared(root, DAY, archive_parent=tmp_path, now_ms=NOW,
+                              confirm=f"{TS.SUPERSEDE_PREFIX}2026-11-18")
+
+
+def test_supersede_failure_midway_puts_runs_back(root, tmp_path, monkeypatch):
+    _prepare(root)
+    archive_parent = tmp_path / "backups"
+    archive_parent.mkdir()
+    real, n = os.rename, {"n": 0}
+
+    def flaky(src, dst):
+        n["n"] += 1
+        if n["n"] == 3:
+            raise OSError("io")
+        return real(src, dst)
+    monkeypatch.setattr(TS.os, "rename", flaky)
+    with pytest.raises(OSError):
+        TS.supersede_prepared(root, DAY, archive_parent=archive_parent, now_ms=NOW,
+                              confirm=f"{TS.SUPERSEDE_PREFIX}2026-11-18")
+    monkeypatch.undo()
+    assert TS.inspect(root, DAY, NOW)["stage"] == "PREPARED_PAUSED_NO_T0"

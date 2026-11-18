@@ -130,7 +130,7 @@ export default function BrainArena() {
       <div>
         <div style={{ ...MUTED, color: '#7dd3fc', fontWeight: 800, letterSpacing: 1.5 }}>SUPERBOT V3 · PAPER ONLY</div>
         <h1 style={{ margin: '5px 0', fontSize: 25 }}>🧠 AI Arena</h1>
-        <div style={MUTED}>Confronto PAPER di 14 giorni · {trialLive
+        <div style={MUTED}>Confronto PAPER di 3 giorni · {trialLive
           ? 'prova in corso dal ' + new Date(rows.qwen.trial_start_ms).toLocaleDateString('it-IT')
           : 'in attesa di attivazione comune'}</div>
         <div style={{ ...MUTED, marginTop: 6 }}>
@@ -146,7 +146,7 @@ export default function BrainArena() {
         Ogni AI ha comandi di chiusura separati, attivi solo se il suo servizio di uscita PAPER è sano.
       </> : <>
         <strong>Stato: sola lettura.</strong> DeepSeek può mostrare lo storico PAPER esistente,
-        che non fa parte dei 14 giorni del nuovo esperimento.
+        che non fa parte dei 3 giorni del nuovo esperimento.
         I tre risultati sono confrontabili soltanto dopo la verifica dei journal indipendenti
         e l'avvio contemporaneo dei tre portafogli.
         Finché Qwen e MiniMax non sono avviati, non esistono profitti o trade da mostrare.
