@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 18/11/2026 13:53 Europe/Rome — AI Arena 72h preparata, T0 assente; bridge web non collegato
+
+- Nuovo checkpoint: [`diario/2026-11-18_ai-arena-72h-pre-t0-gates.md`](diario/2026-11-18_ai-arena-72h-pre-t0-gates.md), commit [`5ba4263…`](https://github.com/alexiptv82/SuperBot-Trading/commit/5ba426300e06d96f3f1454c53acf90c13ddd0834).
+- Decisione utente: Falco/Toro ritirati ma storici e Falco SHORT preservati; futuro Brain con Arena PAPER DeepSeek/Qwen/MiniMax, 27 mercati, stessa baseline/rischio, primo screening 72h e massimo desiderato 18 USD. Nessuna estensione automatica.
+- PR draft #110 HEAD [`3dd6aa5…`](https://github.com/alexiptv82/SuperBot-Trading/commit/3dd6aa588339c6136d52e9ff027c91e5e3f80377): 1.028 test locali riportati PASS + 2 fallimenti di base; hard stop T0+72h, budget guard, feed candele chiuse e recovery sostituzione run. Nessun deploy/T0.
+- Evidenze Termius riportate: run `PREPARED_PAUSED_NO_T0`, zero posizioni, backup locale verificato; alle 13:42 probe reale `CHANNEL_NOT_OK` perché socket Arena non montato nel container/flag assenti. Manual close Samsung e memoria finale non certificati.
+- Nessun accesso SSH live in questo checkpoint. Age PC `ESITO: VERIFICA OK` non certifica VPS; extbackup storico non installato. Solo PAPER, storici/EventJournal preservati.
+
+---
+
 ## 14/11/2026 08:48 Europe/Rome — FRRD registrato; Toro Swing LONG solo proposto; weekend senza modifiche
 
 - Nuovo checkpoint: [`diario/2026-11-14_frrd-issue95-toro-swing-weekend-hold.md`](diario/2026-11-14_frrd-issue95-toro-swing-weekend-hold.md).
