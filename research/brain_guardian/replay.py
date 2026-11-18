@@ -12,6 +12,7 @@ Regole fisse, senza sguardo al futuro:
 """
 from __future__ import annotations
 
+import bisect
 import heapq
 import math
 import random
@@ -103,6 +104,25 @@ class TradeResult:
     margin: float
 
 
+# ------------------------------------------------------------------------------------------------ indice per tempo
+_TIMES: dict = {}
+
+
+def _times(bars: Sequence[Bar]) -> list:
+    """Tempi delle candele (cache per lista): ricerca binaria invece di scorrere dall'inizio."""
+    key = id(bars)
+    hit = _TIMES.get(key)
+    if hit is None or hit[0] is not bars or len(hit[1]) != len(bars):
+        hit = (bars, [b.t for b in bars])
+        _TIMES[key] = hit
+    return hit[1]
+
+
+def _iter_from(bars: Sequence[Bar], i: int):
+    for k in range(i, len(bars)):
+        yield bars[k]
+
+
 # ------------------------------------------------------------------------------------------------ singola operazione
 def simulate_exit(e: Entry, bars: Sequence[Bar], qty: float, pol: ExitPolicy, costs: Costs) -> TradeResult:
     """Percorre ``bars`` (gia' ordinate) dalla candela successiva al minuto d'ingresso."""
@@ -115,6 +135,7 @@ def simulate_exit(e: Entry, bars: Sequence[Bar], qty: float, pol: ExitPolicy, co
     target = None if pol.tp_r is None else fill + s * pol.tp_r * risk
     deadline = e.t + pol.max_hold_h * HOUR
     first = e.t // MINUTE * MINUTE + MINUTE
+    i0 = bisect.bisect_left(_times(bars), first)
     remaining, pnl, fees = qty, 0.0, qty * fill * costs.fee_bp / 1e4
     best = 0.0      # massimo favorevole in R
     worst = 0.0
@@ -128,9 +149,7 @@ def simulate_exit(e: Entry, bars: Sequence[Bar], qty: float, pol: ExitPolicy, co
         fees += part * px * costs.fee_bp / 1e4
         remaining -= part
 
-    for b in bars:
-        if b.t < first:
-            continue
+    for b in _iter_from(bars, i0):
         # attivazioni decise sulla candela precedente: valgono da questa
         if pending_be and not be_armed:
             be_armed = True
@@ -181,9 +200,10 @@ def atr15(bars: Sequence[Bar], t: int, n: int = 14) -> Optional[float]:
     end = t // (15 * MINUTE) * (15 * MINUTE)
     start = end - (n + 1) * 15 * MINUTE
     buckets: dict[int, list[Bar]] = {}
-    for b in bars:
-        if start <= b.t < end:
-            buckets.setdefault(b.t // (15 * MINUTE), []).append(b)
+    ts = _times(bars)
+    for k in range(bisect.bisect_left(ts, start), bisect.bisect_left(ts, end)):
+        b = bars[k]
+        buckets.setdefault(b.t // (15 * MINUTE), []).append(b)
     if len(buckets) < n + 1:
         return None
     agg = []

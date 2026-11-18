@@ -1,7 +1,8 @@
 """Esportazione in SOLA LETTURA del journal PAPER del Brain storico, a livello di singola operazione.
 
 Solo libreria standard (gira con /usr/bin/python3 -I sulla VPS). Non scrive dati nella cartella della run (l'unico
-file toccato e' l'indice condiviso ``*-shm`` dei database in WAL, che qualunque lettore SQLite aggiorna):
+file toccato e' l'indice ``*-shm`` dei database in WAL, che qualunque lettore SQLite aggiorna, e un ``*-wal`` vuoto
+se mancava):
 1. copia coerente del journal con l'API di backup SQLite (sorgente aperta ``mode=ro``) in una cartella temporanea;
 2. lettura della copia; nessun testo libero del modello esportato (solo codici ``[a-z0-9_:.-]``);
 3. JSON unico: aperture, chiusure, decisioni aggregate per ora, heartbeat, spesa AI per giorno.

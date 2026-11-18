@@ -18,8 +18,10 @@ from research.brain_guardian import journal_export as JE
 def _fingerprint(folder: Path):
     # "-shm" e' l'indice di memoria condivisa del WAL: qualunque lettore SQLite (anche mode=ro) lo aggiorna.
     # Non contiene dati; tutti gli altri file devono restare identici byte per byte.
+    # Leggere un DB in WAL puo' anche creare un "-wal" VUOTO se mancava: ammesso solo se di 0 byte.
     return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(folder.iterdir())
-            if p.is_file() and not p.name.endswith("-shm")}
+            if p.is_file() and not p.name.endswith("-shm")
+            and not (p.name.endswith("-wal") and p.stat().st_size == 0)}
 
 
 def _run_with_trades(tmp_path):
@@ -63,3 +65,25 @@ def test_export_is_trade_level_read_only_and_text_free(tmp_path):
 def test_free_text_is_never_exported():
     assert JE._code("risk_quote_ok") == "risk_quote_ok"
     assert JE._code("Il prezzo sale perche' ...") is None and JE._code("x" * 65) is None
+
+
+def test_replay_reproduces_the_real_exit_engine_on_the_same_bars(tmp_path):
+    """Fedelta': il replay A sugli ingressi esportati riproduce motivo, minuto e PnL netto del servizio uscite vero."""
+    from backend.tests.test_v3_runner_e2e import _world
+    from research.brain_guardian import experiment as X
+    plan = _run_with_trades(tmp_path)
+    out = tmp_path / "export.json"
+    JE.main(["--run-dir", str(plan.folder), "--run-id", plan.run_id, "--out", str(out)])
+    bars_dir = tmp_path / "bars"
+    bars_dir.mkdir()
+    for sym, per in _world().items():
+        (bars_dir / f"{sym}_1m.csv").write_text("ts,o,h,l,c,v\n" + "".join(
+            f"{b.open_time_ms},{b.open},{b.high},{b.low},{b.close},{b.volume}\n" for b in per["1m"]))
+    rep = tmp_path / "rep.json"
+    assert X.main(["brain", "--bars", str(bars_dir), "--export", str(out), "--out", str(rep)]) == 0
+    r = json.loads(rep.read_text())
+    assert r["fidelity_reason_match"] == 1.0 and len(r["fidelity"]) == 2
+    for f in r["fidelity"]:
+        assert abs(f["pnl_real"] - f["pnl_replay"]) < 1e-6 * max(1, abs(f["pnl_real"])) + 0.01, f
+        assert f["close_delay_min"] == 0, f                         # stessa candela d'uscita, nessun ritardo
+    assert r["late_exits"] == 0
