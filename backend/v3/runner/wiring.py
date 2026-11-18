@@ -130,7 +130,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                  exit_mode: str = "legacy", clock_ms: Optional[Callable[[], int]] = None,
                  desk_mode: Optional[str] = None,
                  classic_peer_dirs: Optional[Mapping[str, Path]] = None,
-                 arena_provider: Optional[str] = None) -> Built:
+                 arena_provider: Optional[str] = None,
+                 arena_stop_new_entries_at_ms: Optional[int] = None) -> Built:
     """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test."""
     if type(exit_mode) is not str or exit_mode not in ("legacy", "sidecar"):
         raise ValueError("invalid_exit_mode")
@@ -140,6 +141,19 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         if (arena_provider not in ("deepseek", "qwen", "minimax") or exit_mode != "sidecar"
                 or classic_peer_dirs is not None or inner_transport is None):
             raise ValueError("invalid_arena_scope")
+    if arena_stop_new_entries_at_ms is not None:
+        if (arena_provider is None or type(arena_stop_new_entries_at_ms) is not int
+                or arena_stop_new_entries_at_ms <= 0 or not callable(clock_ms)):
+            raise ValueError("invalid_arena_deadline")
+    # Only independent Arena runs have a trial deadline. The historical Brain is unchanged.
+    def arena_expired() -> bool:
+        if arena_stop_new_entries_at_ms is None:
+            return False
+        try:
+            now = clock_ms()
+            return type(now) is not int or now <= 0 or now >= arena_stop_new_entries_at_ms
+        except Exception:
+            return True  # fail closed; exit worker is independent
     provider = PROVIDER if arena_provider is None else arena_provider
     # Peer observation is opt-in and can only read explicitly provided, isolated dirs.
     peer_reader = None
@@ -188,7 +202,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     allowed = tuple(sorted(menu_ids(menu)))
 
     def halted() -> Optional[str]:
-        return mandate.problem() or budget_halt()
+        return "arena_trial_expired" if arena_expired() else (mandate.problem() or budget_halt())
 
     def safety_open_commit(decision):
         # Split mode only. The *real* on-disk exit owner is checked again under
@@ -206,7 +220,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             # Unlike the scheduled one-minute cache, this checks CURRENT PnL
             # and durably latches HALT if the limit was crossed during AI wait.
             "daily_loss_halted": lambda t: daily_loss.recheck(t).level == "halt",
-            "paused": lambda: (data_dir / "pause.flag").exists(),
+            "paused": lambda: arena_expired() or (data_dir / "pause.flag").exists(),
             "market_rules": lambda sym: rules(sym),
             "market_price": lambda sym, t: last_minute_close(sym, t, get_json),
             "market_fresh": fresh_market,
