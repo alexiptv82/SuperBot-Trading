@@ -4,9 +4,9 @@ Blocca (codici fissi) se:
 * tetto giornaliero, cadenza o max_tokens differiscono fra le tre AI (stesse opportunita');
 * il prezzo in config di un modello e' SOTTO il listino (spesa sottostimata) o oltre 1,5x il listino di picco
   (quel modello verrebbe fermato dal tetto prima degli altri: confronto falsato);
-* il budget dei 14 giorni di un modello OpenRouter supera il limite massimo di chiave accettato dal trasporto
+* il budget dei 3 giorni di un modello OpenRouter supera il limite massimo di chiave accettato dal trasporto
   (la gara si fermerebbe da sola dopo pochi giorni);
-* manca un budget totale approvato dall'utente, o il massimo teorico (3 x tetto x 14) lo supera.
+* manca un budget totale approvato dall'utente, o il massimo teorico (3 x tetto x 3) lo supera.
 Non cambia mai prezzi, tetti o cadenza: segnala soltanto. Nessuna rete.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Mapping, Optional
 
 from backend.v3.runner.config import RunnerConfig
 
-TRIAL_DAYS = 14
+TRIAL_DAYS = 3
 MAX_PRICE_RATIO = Decimal("1.5")
 PRICING_EVIDENCE = Path(__file__).resolve().parents[3] / "docs" / "v3" / "arena_model_pricing_20261117.json"
 # Modello del listino usato come riferimento per ciascuna AI (DeepSeek diretto = stesso modello su OpenRouter).
