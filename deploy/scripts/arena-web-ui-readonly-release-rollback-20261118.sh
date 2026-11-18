@@ -86,10 +86,10 @@ case "$MODE" in
     [[ "$(digest "$CAND")" == "$NEW_SHA" ]] || fail CANDIDATE_SHA_MISMATCH
     [[ ! -e "$PREV" && ! -L "$PREV" ]] || fail PREVIOUS_BACKUP_ALREADY_EXISTS
     [[ -d "$CAND/static/js" ]] || fail CANDIDATE_JS_MISSING
-    if grep -RlqF -- 'http://51.91.109.45:8002' "$CAND/static/js" --include='*.js'; then fail HTTP_FALLBACK_PRESENT; fi
-    grep -RlqF -- '/api/v3/arena' "$CAND/static/js" --include='*.js' || fail CANDIDATE_WITHOUT_ARENA_API
-    grep -RlqF -- '3 giorni' "$CAND/static/js" --include='*.js' || fail CANDIDATE_WITHOUT_3_DAYS
-    if grep -RlqF -- '14 giorni' "$CAND/static/js" --include='*.js'; then fail CANDIDATE_SAYS_14_DAYS; fi
+    if grep -RlqF --include='*.js' -- 'http://51.91.109.45:8002' "$CAND/static/js"; then fail HTTP_FALLBACK_PRESENT; fi
+    grep -RlqF --include='*.js' -- '/api/v3/arena' "$CAND/static/js" || fail CANDIDATE_WITHOUT_ARENA_API
+    grep -RlqF --include='*.js' -- '3 giorni' "$CAND/static/js" || fail CANDIDATE_WITHOUT_3_DAYS
+    if grep -RlqF --include='*.js' -- '14 giorni' "$CAND/static/js"; then fail CANDIDATE_SAYS_14_DAYS; fi
     for f in manifest.json service-worker.js; do
       [[ -s "$LIVE/$f" ]] || fail "PWA_FILE_MISSING_$f"
     done
