@@ -1,5 +1,17 @@
 # STATO — SuperBot Trading
 
+## 18/11/2026 19:43 Europe/Rome — candidato web Arena PASS, non pubblicato
+
+- Nuovo checkpoint delta: [`diario/2026-11-18_arena-web-candidate-pass-not-published.md`](diario/2026-11-18_arena-web-candidate-pass-not-published.md), commit [`715602f…`](https://github.com/alexiptv82/SuperBot-Trading/commit/715602f465a4acb1ddd427012eb64f03effbabc1).
+- [PR #112](https://github.com/alexiptv82/SuperBot-Trading/pull/112) open/draft a `80a51aa8b5921e8b54c9c103e6a4d8c73c91dacc`: candidato web-only read-only con rollback; 128 backend e 23 suite/175 frontend riportati PASS.
+- Evidenza VPS puntuale 19:38 via screenshot/commento: candidate probe GET-only, 401 senza sessione, 200 con sessione valida, T0 identico, `PASS_CANDIDATE`; immagine candidata preparata.
+- Confine esplicito: `web_untouched=TRUE`, `deploy_executed=NO`; `--publish` non eseguito e UI statica ancora separata. App Samsung non attestata aggiornata.
+- Readout 19:38: DeepSeek 1 aperta/2 chiuse, Qwen 0/1, MiniMax 1/4. Equity e PnL non realizzato restano `n.d.` senza quotazioni verificate.
+- Gara PAPER invariata: T0 `1795021392344`, stop nuove inferenze/aperture 21/11/2026 18:03:12, uscite operative. Non modificare runner/exit/journal.
+- Age PC ed extbackup invariati: `ESITO: VERIFICA OK` non certifica VPS; backup esterno non installato. Nessun deploy/merge/LIVE.
+
+---
+
 ## 18/11/2026 18:48 Europe/Rome — gara Arena 72h avviata; UI non collegata
 
 - Nuovo checkpoint delta: [`diario/2026-11-18_arena-t0-running-ui-not-connected.md`](diario/2026-11-18_arena-t0-running-ui-not-connected.md), commit [`c1b1935…`](https://github.com/alexiptv82/SuperBot-Trading/commit/c1b1935e502af1a3a2a17562121d12e3b0b2e5a7).
