@@ -172,7 +172,7 @@ replace_rollback(){
   say "ROLLBACK_STARTED=TRUE CODE=$rc"
   compact="${REPLACE_TX_DAY//-/}"
   now="$(date -u +%Y%m%dT%H%M%SZ)"
-  failed="$BACKUPS/arena-replace-failed-$REPLACE_TX_DAY-$now-$"
+  failed="$BACKUPS/arena-replace-failed-$REPLACE_TX_DAY-$now-$RANDOM"
   # Gli exit sulle run nuove (ancora in pausa) devono rilasciare il journal prima del ripristino.
   for p in deepseek qwen minimax; do
     systemctl stop "superbot-arena-exit@$p.service" >/dev/null 2>&1 || ok=0
@@ -197,9 +197,9 @@ replace_rollback(){
     fi
   fi
   # Lo stage precedente deve tornare al percorso originale PRIMA dei tre start.
-  if [[ -n "$REPLACE_TX_OLD_STAGE" ]]; then
+  if [[ -n "$REPLACE_TX_OLD_STAGE" && -d "$REPLACE_TX_OLD_STAGE" ]]; then
     if [[ -e "$STAGE" ]]; then
-      mv -T -- "$STAGE" "$STAGE.failed-$now-$" || ok=0
+      mv -T -- "$STAGE" "$STAGE.failed-$now-$RANDOM" || ok=0
     fi
     if [[ -d "$REPLACE_TX_OLD_STAGE" && ! -e "$STAGE" ]]; then
       mv -T -- "$REPLACE_TX_OLD_STAGE" "$STAGE" || ok=0
@@ -239,6 +239,10 @@ replace_prepared(){
   [[ -d "$STAGE/.git" && ! -L "$STAGE" ]] || die 'STAGE_INVALID'
   REPLACE_TX_ACTIVE=1; REPLACE_TX_DAY="$DAY"; REPLACE_TX_ARCHIVE=''; REPLACE_TX_OLD_STAGE=''
   REPLACE_TX_SCRATCH="$new"
+  # Il percorso di archivio e' noto PRIMA di qualunque move, anche se Termius si disconnette.
+  REPLACE_TX_ARCHIVE="$BACKUPS/arena-superseded-$DAY-$(date -u +%s%3N)-$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \\n')"
+  [[ "$REPLACE_TX_ARCHIVE" == "$BACKUPS"/arena-superseded-* && ! -e "$REPLACE_TX_ARCHIVE" ]] \
+    || die 'ARCHIVE_NAME_COLLISION'
   trap 'replace_rollback "$?"' EXIT
   trap 'exit 129' HUP
   trap 'exit 130' INT
@@ -247,16 +251,17 @@ replace_prepared(){
   restart_exits(){ for p in deepseek qwen minimax; do systemctl start "superbot-arena-exit@$p.service"; done; }
   # 3) archivio delle vecchie run (mai cancellate)
   if ! code_setup "$code" supersede-prepared --root "$ROOT" --day "$DAY" --archive-parent "$BACKUPS" \
-        --confirm "ARCHIVIA-TRE-RUN-PREPARATE-$DAY" > "$new/supersede.json"; then
+        --confirm "ARCHIVIA-TRE-RUN-PREPARATE-$DAY" \
+        --archive-basename "${REPLACE_TX_ARCHIVE##*/}" > "$new/supersede.json"; then
     restart_exits; cat "$new/supersede.json"; die 'SUPERSEDE_REFUSED_OLD_RUNS_KEPT_EXITS_RESTARTED'
   fi
-  REPLACE_TX_ARCHIVE="$("$PY_SYS" - "$new/supersede.json" <<'PY'
+  archived_actual="$("$PY_SYS" - "$new/supersede.json" <<'PY'
 import json,sys
 o=json.load(open(sys.argv[1],encoding="utf-8"))
 print(o["archive"])
 PY
 )"
-  [[ "$REPLACE_TX_ARCHIVE" == "$BACKUPS"/arena-superseded-* && -d "$REPLACE_TX_ARCHIVE" ]] \
+  [[ "$archived_actual" == "$REPLACE_TX_ARCHIVE" && -d "$REPLACE_TX_ARCHIVE" ]] \
     || die 'ARCHIVE_PATH_INVALID'
   say "OLD_RUNS_ARCHIVED=$REPLACE_TX_ARCHIVE"
   if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == after_archive ]]; then
@@ -265,8 +270,8 @@ PY
   # 4) stage nuovo (il precedente resta accanto) e 5) tre run nuove in pausa
   old="$STAGE.prev-$(git -C "$STAGE" rev-parse --short=8 HEAD 2>/dev/null || echo x)-$(date -u +%Y%m%dT%H%M%SZ)"
   [[ -e "$STAGE" ]] || die 'STAGE_MISSING_AFTER_ARCHIVE'
-  mv -T -- "$STAGE" "$old"
   REPLACE_TX_OLD_STAGE="$old"
+  mv -T -- "$STAGE" "$old"
   say "PREVIOUS_STAGE_KEPT=$old"
   if [[ -n "${ARENA_PREP_TEST_PREFIX:-}" && "${ARENA_PREP_TEST_FAILPOINT:-}" == after_stage_saved ]]; then
     die 'INJECTED_FAILURE_AFTER_STAGE_SAVED'
