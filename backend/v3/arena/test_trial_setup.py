@@ -30,7 +30,7 @@ def _cfg(provider: str, aligned: bool = True) -> bytes:
     c["symbols"] = SYMS                                  # mercato sintetico: due simboli, uguali per tutte
     if aligned:                                          # prezzi al listino di picco e tetto uguale (scenario A)
         c["input_usd_per_million_tokens"], c["output_usd_per_million_tokens"] = ALIGNED[provider]
-        c["daily_cap_usd"] = "3.50"
+        c["daily_cap_usd"] = "2.00"
     return json.dumps(c).encode()
 
 
@@ -38,7 +38,7 @@ def _cfg(provider: str, aligned: bool = True) -> bytes:
 def _key_limit(monkeypatch):
     from decimal import Decimal
     from backend.v3.arena import openrouter_transport as ORT
-    monkeypatch.setattr(ORT, "KEY_LIMIT", Decimal("60"))   # scenario: limite chiave alzato per 14 giorni
+    monkeypatch.setattr(ORT, "KEY_LIMIT", Decimal("6"))   # scenario: limite singola chiave per 3 giorni
 
 
 @pytest.fixture
@@ -74,7 +74,7 @@ def _exits(root):
 
 def _activate(root, tmp_path, **kw):
     args = dict(t0_ms=NOW, now_ms=NOW, desk_mode="paper", confirm=f"{TS.ACTIVATE_PREFIX}{NOW}",
-                approved_by="utente", approved_total_budget_usd="147")
+                approved_by="utente", approved_total_budget_usd="18")
     args.update(kw)
     if "universe_snapshot" not in args:
         args["universe_snapshot"] = _snapshot(tmp_path)
@@ -217,7 +217,7 @@ def test_cli_defaults_to_read_only_inspect(root, capsys):
 
 
 def test_budget_gate_blocks_activation_with_todays_repository_configs(root, tmp_path, monkeypatch):
-    """Prezzi allineati, ma il limite chiave di 2 USD rimane insufficiente per 14 giorni."""
+    """Prezzi allineati, ma il limite chiave di 2 USD rimane insufficiente per 3 giorni."""
     from decimal import Decimal
     from backend.v3.arena import openrouter_transport as ORT
     monkeypatch.setattr(ORT, "KEY_LIMIT", Decimal("2"))
@@ -243,14 +243,14 @@ def test_budget_gate_rules_on_aligned_configs():
     from decimal import Decimal
     from backend.v3.arena.budget_gate import budget_gate, load_evidence
     cfgs = {p: load_runner_config(_cfg(p)) for p in ("deepseek", "qwen", "minimax")}
-    ok = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("147"), key_limit_usd=Decimal("60"))
-    assert ok["blockers"] == [] and ok["worst_case_trial_usd"] == "147.00"
-    low = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("100"), key_limit_usd=Decimal("60"))
+    ok = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("18"), key_limit_usd=Decimal("6"))
+    assert ok["blockers"] == [] and ok["worst_case_trial_usd"] == "18.00"
+    low = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("10"), key_limit_usd=Decimal("6"))
     assert low["blockers"] == ["WORST_CASE_EXCEEDS_APPROVED_BUDGET"]
     under = dict(cfgs, qwen=load_runner_config(json.dumps(dict(json.loads(_cfg("qwen")),
                                                                 input_usd_per_million_tokens="0.10")).encode()))
-    assert "PRICE_BELOW_LISTING:qwen" in budget_gate(under, evidence=load_evidence(), approved_total_usd=Decimal("147"),
-                                                      key_limit_usd=Decimal("60"))["blockers"]
+    assert "PRICE_BELOW_LISTING:qwen" in budget_gate(under, evidence=load_evidence(), approved_total_usd=Decimal("18"),
+                                                      key_limit_usd=Decimal("6"))["blockers"]
 
 
 # ---------------------------------------------------------------- revisione ChatGPT PR #107 (6970648930)
