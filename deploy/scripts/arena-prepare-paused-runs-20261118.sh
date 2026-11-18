@@ -157,6 +157,67 @@ prepare(){
   say 'T0_ASSIGNED=FALSE MANDATES_APPROVED=FALSE SERVICES_STARTED=FALSE PAID_INFERENCE=FALSE'
 }
 
+# Recupero fail-closed di --replace-prepared. Non tocca mai Brain storico o runner decisionali.
+# Stato globale: i trap EXIT/HUP/INT/TERM devono poterlo leggere anche dopo l'uscita dalla funzione.
+REPLACE_TX_ACTIVE=0
+REPLACE_TX_DAY=''
+REPLACE_TX_ARCHIVE=''
+REPLACE_TX_OLD_STAGE=''
+REPLACE_TX_SCRATCH=''
+replace_rollback(){
+  local rc="${1:-1}" p run oldrun newrun failed now ok=1 compact
+  trap - EXIT HUP INT TERM
+  [[ "$REPLACE_TX_ACTIVE" == 1 ]] || return 0
+  set +e
+  say "ROLLBACK_STARTED=TRUE CODE=$rc"
+  compact="${REPLACE_TX_DAY//-/}"
+  now="$(date -u +%Y%m%dT%H%M%SZ)"
+  failed="$BACKUPS/arena-replace-failed-$REPLACE_TX_DAY-$now-$"
+  # Gli exit sulle run nuove (ancora in pausa) devono rilasciare il journal prima del ripristino.
+  for p in deepseek qwen minimax; do
+    systemctl stop "superbot-arena-exit@$p.service" >/dev/null 2>&1 || ok=0
+  done
+  if [[ -n "$REPLACE_TX_ARCHIVE" && -d "$REPLACE_TX_ARCHIVE" ]]; then
+    mkdir -p "$failed" || ok=0
+    for p in deepseek qwen minimax; do
+      run="brain-$p-paper$compact"
+      newrun="$ROOT/$p/$run"
+      oldrun="$REPLACE_TX_ARCHIVE/$p/$run"
+      if [[ -e "$newrun" ]]; then
+        mkdir -p "$failed/$p" && mv -T -- "$newrun" "$failed/$p/$run" || ok=0
+      fi
+      if [[ -d "$oldrun" ]]; then
+        mkdir -p "$ROOT/$p" && mv -T -- "$oldrun" "$newrun" || ok=0
+      elif [[ ! -d "$newrun" ]]; then
+        ok=0
+      fi
+    done
+    if [[ -f "$REPLACE_TX_ARCHIVE/SUPERSEDED.json" ]]; then
+      mv -T -- "$REPLACE_TX_ARCHIVE/SUPERSEDED.json" "$REPLACE_TX_ARCHIVE/SUPERSEDED-ROLLED-BACK.json" || ok=0
+    fi
+  fi
+  # Lo stage precedente deve tornare al percorso originale PRIMA dei tre start.
+  if [[ -n "$REPLACE_TX_OLD_STAGE" ]]; then
+    if [[ -e "$STAGE" ]]; then
+      mv -T -- "$STAGE" "$STAGE.failed-$now-$" || ok=0
+    fi
+    if [[ -d "$REPLACE_TX_OLD_STAGE" && ! -e "$STAGE" ]]; then
+      mv -T -- "$REPLACE_TX_OLD_STAGE" "$STAGE" || ok=0
+    else
+      ok=0
+    fi
+  fi
+  for p in deepseek qwen minimax; do
+    systemctl start "superbot-arena-exit@$p.service" >/dev/null 2>&1 || ok=0
+  done
+  if [[ "$ok" == 1 ]] && brain_ok; then
+    say 'ROLLBACK_RESTORED=TRUE OLD_RUNS_BACK=TRUE EXIT_START_REQUESTED=TRUE'
+  else
+    say "ROLLBACK_INCOMPLETE=TRUE FAILED_NEW_SAVED=$failed"
+    say 'MANUAL_RECOVERY_REQUIRED=TRUE DO_NOT_START_RUNNERS'
+  fi
+}
+
 replace_prepared(){
   [[ "$(id -u)" == 0 ]] || die 'ROOT_REQUIRED'
   [[ -f "$ETC/trial.env" ]] || die 'TRIAL_ENV_MISSING'
@@ -174,19 +235,38 @@ replace_prepared(){
     code_setup "$code" can-stop-exit --provider "$p" --root "$ROOT" --day "$DAY" >/dev/null || die "CAN_STOP_EXIT_DENIED_$p"
   done
   say 'ZERO_POSITIONS_VERIFIED=TRUE'
-  # 2) solo ora: stop delle tre uscite (nessuna posizione da gestire)
+  # 2) da qui i trap ripristinano stage, vecchie run e uscite in caso di errore/HUP.
+  [[ -d "$STAGE/.git" && ! -L "$STAGE" ]] || die 'STAGE_INVALID'
+  REPLACE_TX_ACTIVE=1; REPLACE_TX_DAY="$DAY"; REPLACE_TX_ARCHIVE=''; REPLACE_TX_OLD_STAGE=''
+  REPLACE_TX_SCRATCH="$new"
+  trap 'replace_rollback "$?"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   for p in deepseek qwen minimax; do systemctl stop "superbot-arena-exit@$p.service"; done
-  restart_exits(){ for p in deepseek qwen minimax; do systemctl start "superbot-arena-exit@$p.service" || true; done; }
+  restart_exits(){ for p in deepseek qwen minimax; do systemctl start "superbot-arena-exit@$p.service"; done; }
   # 3) archivio delle vecchie run (mai cancellate)
   if ! code_setup "$code" supersede-prepared --root "$ROOT" --day "$DAY" --archive-parent "$BACKUPS" \
         --confirm "ARCHIVIA-TRE-RUN-PREPARATE-$DAY" > "$new/supersede.json"; then
     restart_exits; cat "$new/supersede.json"; die 'SUPERSEDE_REFUSED_OLD_RUNS_KEPT_EXITS_RESTARTED'
   fi
-  say "OLD_RUNS_ARCHIVED=$(grep -o '"archive": "[^"]*"' "$new/supersede.json")"
+  REPLACE_TX_ARCHIVE="$("$PY_SYS" - "$new/supersede.json" <<'PY'
+import json,sys
+o=json.load(open(sys.argv[1],encoding="utf-8"))
+print(o["archive"])
+PY
+)"
+  [[ "$REPLACE_TX_ARCHIVE" == "$BACKUPS"/arena-superseded-* && -d "$REPLACE_TX_ARCHIVE" ]] \
+    || die 'ARCHIVE_PATH_INVALID'
+  say "OLD_RUNS_ARCHIVED=$REPLACE_TX_ARCHIVE"
   # 4) stage nuovo (il precedente resta accanto) e 5) tre run nuove in pausa
   old="$STAGE.prev-$(git -C "$STAGE" rev-parse --short=8 HEAD 2>/dev/null || echo x)-$(date -u +%Y%m%dT%H%M%SZ)"
-  [[ -e "$STAGE" ]] && mv -T -- "$STAGE" "$old" && say "PREVIOUS_STAGE_KEPT=$old"
-  mv -T -- "$code" "$STAGE"; rm -rf "$new"
+  [[ -e "$STAGE" ]] || die 'STAGE_MISSING_AFTER_ARCHIVE'
+  mv -T -- "$STAGE" "$old"
+  REPLACE_TX_OLD_STAGE="$old"
+  say "PREVIOUS_STAGE_KEPT=$old"
+  mv -T -- "$code" "$STAGE"
+  # Conservare lo scratch finche' il nuovo stage e le nuove uscite non siano sani.
   setup prepare-paused --root "$ROOT" --day "$DAY" --confirm 'PREPARA-TRE-RUN-PAPER-IN-PAUSA' >/dev/null \
     || die 'NEW_PREPARE_FAILED_NO_RUNS_EXITS_STOPPED_OLD_RUNS_IN_ARCHIVE'
   say 'NEW_RUNS_PREPARED_PAUSED_NO_T0=TRUE'
@@ -200,6 +280,10 @@ replace_prepared(){
   n="$(grep -c '"exit_service_healthy": true' /tmp/.arena-inspect.$$ || true)"; rm -f /tmp/.arena-inspect.$$
   brain_ok || say 'BRAIN_STATE_CHANGED_ALERT'
   [[ "$n" == 3 ]] || die "EXITS_NOT_HEALTHY_COUNT_$n"
+  # Commit della sostituzione: da qui in poi nessun trap deve ripristinare le vecchie run.
+  REPLACE_TX_ACTIVE=0
+  trap - EXIT HUP INT TERM
+  rmdir "$new" 2>/dev/null || true
   say 'RESULT=PREPARED_RUNS_REPLACED_EXITS_HEALTHY'
   say 'T0_ASSIGNED=FALSE RUNNERS_STARTED=FALSE PAID_INFERENCE=FALSE BRIDGE_UNTOUCHED=TRUE'
 }
