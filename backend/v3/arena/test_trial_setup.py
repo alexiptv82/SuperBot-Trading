@@ -22,10 +22,23 @@ NOW = G + 25_000
 SYMS = ["BTCUSDT", "ETHUSDT"]
 
 
-def _cfg(provider: str) -> bytes:
+ALIGNED = {"deepseek": ("0.30", "1.20"), "qwen": ("0.32", "1.28"), "minimax": ("0.15", "0.60")}
+
+
+def _cfg(provider: str, aligned: bool = True) -> bytes:
     c = json.loads(config_path(provider).read_bytes())
     c["symbols"] = SYMS                                  # mercato sintetico: due simboli, uguali per tutte
+    if aligned:                                          # prezzi al listino di picco e tetto uguale (scenario A)
+        c["input_usd_per_million_tokens"], c["output_usd_per_million_tokens"] = ALIGNED[provider]
+        c["daily_cap_usd"] = "3.50"
     return json.dumps(c).encode()
+
+
+@pytest.fixture(autouse=True)
+def _key_limit(monkeypatch):
+    from decimal import Decimal
+    from backend.v3.arena import openrouter_transport as ORT
+    monkeypatch.setattr(ORT, "KEY_LIMIT", Decimal("60"))   # scenario: limite chiave alzato per 14 giorni
 
 
 @pytest.fixture
@@ -61,7 +74,7 @@ def _exits(root):
 
 def _activate(root, tmp_path, **kw):
     args = dict(t0_ms=NOW, now_ms=NOW, desk_mode="paper", confirm=f"{TS.ACTIVATE_PREFIX}{NOW}",
-                approved_by="utente")
+                approved_by="utente", approved_total_budget_usd="147")
     args.update(kw)
     if "universe_snapshot" not in args:
         args["universe_snapshot"] = _snapshot(tmp_path)
@@ -201,3 +214,41 @@ def test_cli_defaults_to_read_only_inspect(root, capsys):
     assert TS.main(["prepare-paused", "--root", str(root), "--day", "2026-11-18"], env={"DESK_MODE": "paper"},
                    now_fn=lambda: NOW) == 2                                  # senza frase di conferma
     assert list(root.iterdir()) == []
+
+
+def test_budget_gate_blocks_activation_with_todays_repository_configs(root, tmp_path, monkeypatch):
+    """Config di oggi: prezzi Qwen/MiniMax 6-13x sopra listino, tetto 0,75 x 14 > limite chiave 2 USD."""
+    from decimal import Decimal
+    from backend.v3.arena import openrouter_transport as ORT
+    monkeypatch.setattr(ORT, "KEY_LIMIT", Decimal("2"))
+    TS.prepare_paused(root, DAY, now_ms=NOW - 60_000, desk_mode="paper", confirm=TS.PREPARE_PHRASE,
+                      config_loader=lambda p: _cfg(p, aligned=False))
+    exits, _ = _exits(root)
+    try:
+        with pytest.raises(TS.SetupRefused) as e:
+            _activate(root, tmp_path)
+        code = str(e.value)
+        for b in ("PRICE_ESTIMATE_DISTORTS_COMPARISON:qwen", "PRICE_ESTIMATE_DISTORTS_COMPARISON:minimax",
+                  "KEY_LIMIT_BELOW_TRIAL_BUDGET:qwen"):
+            assert b in code
+        assert "PRICE_ESTIMATE_DISTORTS_COMPARISON:deepseek" not in code      # DeepSeek allineato al listino
+        with pytest.raises(TS.SetupRefused, match="TOTAL_BUDGET_NOT_APPROVED"):
+            _activate(root, tmp_path, approved_total_budget_usd=None)
+        assert TS.inspect(root, DAY, NOW)["stage"] == "PREPARED_PAUSED_NO_T0"
+    finally:
+        for w in exits.values():
+            w.stop()
+
+
+def test_budget_gate_rules_on_aligned_configs():
+    from decimal import Decimal
+    from backend.v3.arena.budget_gate import budget_gate, load_evidence
+    cfgs = {p: load_runner_config(_cfg(p)) for p in ("deepseek", "qwen", "minimax")}
+    ok = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("147"), key_limit_usd=Decimal("60"))
+    assert ok["blockers"] == [] and ok["worst_case_trial_usd"] == "147.00"
+    low = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=Decimal("100"), key_limit_usd=Decimal("60"))
+    assert low["blockers"] == ["WORST_CASE_EXCEEDS_APPROVED_BUDGET"]
+    under = dict(cfgs, qwen=load_runner_config(json.dumps(dict(json.loads(_cfg("qwen")),
+                                                                input_usd_per_million_tokens="0.10")).encode()))
+    assert "PRICE_BELOW_LISTING:qwen" in budget_gate(under, evidence=load_evidence(), approved_total_usd=Decimal("147"),
+                                                      key_limit_usd=Decimal("60"))["blockers"]

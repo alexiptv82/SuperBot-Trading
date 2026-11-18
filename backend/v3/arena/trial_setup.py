@@ -21,10 +21,13 @@ import os
 import shutil
 import sys
 import time
+from decimal import Decimal
 from datetime import date
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
+from backend.v3.arena import openrouter_transport as ORT
+from backend.v3.arena.budget_gate import budget_gate, load_evidence
 from backend.v3.arena.prepare import FORBIDDEN_ROOTS, config_path, plan_for, prepare_arena_run, shared_policy_hash
 from backend.v3.arena.t0 import T0_FILE, T0_SCHEMA, read_t0
 from backend.v3.arena.trial_plan import PROVIDERS, WalletPlan
@@ -131,7 +134,10 @@ def inspect(root: Path, day: date, now_ms: int) -> dict:
                 blockers.append("RISK_POLICY_DIFFERS_BETWEEN_RUNS")
         except Exception:
             blockers.append("RISK_POLICY_UNREADABLE")
-    return {"schema": "arena_trial_inspect_v1", "root": str(root), "day": day.isoformat(), "stage": stage,
+    budget = None
+    if len(configs) == 3:
+        budget = budget_gate(configs, evidence=load_evidence(), approved_total_usd=None, key_limit_usd=ORT.KEY_LIMIT)
+    return {"schema": "arena_trial_inspect_v1", "budget": budget, "root": str(root), "day": day.isoformat(), "stage": stage,
             "providers": rows, "blockers": blockers, "read_only": True}
 
 
@@ -200,7 +206,7 @@ def _atomic_write(path: Path, data: bytes) -> None:
 
 
 def activate(root: Path, day: date, *, t0_ms: int, now_ms: int, desk_mode: str, confirm: str, approved_by: str,
-             universe_snapshot: Path) -> dict:
+             universe_snapshot: Path, approved_total_budget_usd: Optional[str]) -> dict:
     """Avvio simultaneo della gara (NON eseguire senza autorizzazione esplicita). I runner si avviano dopo, a parte."""
     if confirm != f"{ACTIVATE_PREFIX}{t0_ms}":
         raise SetupRefused("confirmation_required")
@@ -227,6 +233,14 @@ def activate(root: Path, day: date, *, t0_ms: int, now_ms: int, desk_mode: str, 
             or snap.get("crypto_target_met") is not True
             or type(snap.get("as_of_ms")) is not int or not 0 <= now_ms - snap["as_of_ms"] <= 6 * 3_600_000):
         raise SetupRefused("universe_snapshot_not_fresh_or_different")   # va rifatta entro 6 ore dal T0
+    try:
+        approved = None if approved_total_budget_usd is None else Decimal(approved_total_budget_usd)
+    except ArithmeticError:
+        raise SetupRefused("approved_budget_invalid") from None
+    gate = budget_gate(cfgs, evidence=load_evidence(), approved_total_usd=approved,
+                       key_limit_usd=ORT.KEY_LIMIT)
+    if gate["blockers"]:
+        raise SetupRefused("budget_gate:" + ",".join(gate["blockers"]))
     policy = shared_policy_hash()
     record = {"schema": T0_SCHEMA, "trial_start_ms": t0_ms,
               "run_ids": {p: plans[p].run_id for p in PROVIDERS},
@@ -282,6 +296,7 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     ap.add_argument("--t0-ms", type=int)
     ap.add_argument("--approved-by", default="")
     ap.add_argument("--universe-snapshot")
+    ap.add_argument("--approved-total-budget-usd", help="budget totale della gara approvato dall'utente")
     a = ap.parse_args(argv)
     environ = os.environ if env is None else env
     root, now = Path(a.root), now_fn()
@@ -295,7 +310,8 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
             if a.t0_ms is None or not a.universe_snapshot:
                 raise SetupRefused("t0_and_snapshot_required")
             out = activate(root, day, t0_ms=a.t0_ms, now_ms=now, desk_mode=environ.get("DESK_MODE", ""),
-                           confirm=a.confirm, approved_by=a.approved_by, universe_snapshot=Path(a.universe_snapshot))
+                           confirm=a.confirm, approved_by=a.approved_by, universe_snapshot=Path(a.universe_snapshot),
+                           approved_total_budget_usd=a.approved_total_budget_usd)
     except (SetupRefused, RunPreparationError, ValueError, OSError) as exc:
         code = str(exc) if isinstance(exc, (SetupRefused, RunPreparationError)) else "setup_failed"
         print(json.dumps({"ok": False, "command": a.command, "code": code}))
