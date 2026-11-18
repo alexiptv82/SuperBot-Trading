@@ -216,3 +216,49 @@ def test_cli_once_prints_state_without_secrets(root, capsys):
     assert plan.folder.is_dir()
     assert R.main(["--provider", "qwen", "--root", str(root), "--day", "2026-11-18", "--once"],
                   env={"DESK_MODE": "live"}) == 2
+
+
+def test_arena_expired_blocks_new_model_requests_and_opens(root):
+    """No new AI call after T0+72 hours, without stopping the exit service."""
+    from backend.v3.arena.budget_gate import TRIAL_DAYS
+    plan = _prepare(root, "qwen")
+    _approve_and_unpause(plan)
+    t0 = json.loads((plan.folder / "arena_manifest.json").read_text())["trial_start_ms"]
+    expiry = t0 + TRIAL_DAYS * 86_400_000
+    model = PolicyModel()
+    built = R.build_arena_runner(
+        plan, environ=ENV, clock_ms=lambda: expiry + 1, inner_transport=model,
+        get_json=_get_json_factory(), view_params=VIEW)
+    result = built.runner.tick(expiry + 1)
+    assert result.state == "halted"
+    assert model.payloads == []
+    assert _kinds(plan, "paper_open") == []
+
+
+def test_arena_inflight_ai_cannot_open_after_72h(root):
+    """Decision started before T0 deadline must not commit OPEN after it."""
+    from backend.v3.arena.budget_gate import TRIAL_DAYS
+    plan = _prepare(root, "qwen")
+    _approve_and_unpause(plan)
+    t0 = json.loads((plan.folder / "arena_manifest.json").read_text())["trial_start_ms"]
+    expiry = t0 + TRIAL_DAYS * 86_400_000
+    clock = {"now": G + 25_000}
+
+    class SlowModel(PolicyModel):
+        def __call__(self, payload):
+            result = super().__call__(payload)
+            clock["now"] = expiry + 1
+            return result
+
+    model = SlowModel()
+    get_json = _get_json_factory()
+    built = R.build_arena_runner(
+        plan, environ=ENV, clock_ms=lambda: clock["now"], inner_transport=model,
+        get_json=get_json, view_params=VIEW)
+    cfg = load_runner_config((plan.folder / "runner_config.json").read_bytes())
+    exits = build_exit_worker(data_dir=plan.folder, run_id=plan.run_id, config=cfg, get_json=get_json)
+    with exits:
+        exits.tick(G + 25_000)
+        built.runner.tick(G + 25_000)
+    assert model.payloads  # Inference began while trial was open
+    assert _kinds(plan, "paper_open") == []  # But cannot commit after deadline
