@@ -7,7 +7,7 @@ storico, il bridge RC84 e HI-TV non vengono toccati. Le tre run dell'Arena vivon
 
 | Verifica | Comando (sola lettura) | Atteso |
 |---|---|---|
-| Python e SQLAlchemy del target | `/opt/superbot-v3-rc70-stage/.venv/bin/python3 -c 'import sys,sqlalchemy;print(sys.version,sqlalchemy.__version__)'` | versione su cui i 6 test di base passano (qui falliscono con Python 3.13) |
+| Python e SQLAlchemy del target | `/opt/superbot-v3-rc70-stage/.venv/bin/python3 -c 'import sys,sqlalchemy;print(sys.version,sqlalchemy.__version__)'` | versione su cui gli **8** test di base passano (localmente falliscono identici sul ramo base: 4 `single_manual_close_gate`, 2 `cutover_gate`, 1 `claim_visibility`, 1 `import_paths` per SQLAlchemy/Python 3.13) |
 | UID/GID del processo web | `docker exec <container-web> id` | se `uid=0`: il socket root-only basta; se non-root: serve il gruppo dedicato (§3) |
 | Remap dei namespace utente | `docker info --format '{{.SecurityOptions}}'` | senza `userns`: il GID numerico nel container coincide con quello dell'host |
 | Spazio libero | `df -h /opt /run` | margine per tre journal SQLite |
@@ -20,18 +20,11 @@ storico, il bridge RC84 e HI-TV non vengono toccati. Le tre run dell'Arena vivon
 * **Correzione `contracts.py` (BTC/ETH con leva exchange 150×)**: riguarda anche il Brain storico. Va decisa e
   installata a parte; senza, l'Arena non valuta mai BTC ed ETH.
 
-## 2. Run PAPER (in pausa, mandato non approvato)
+## 2. Run PAPER (in pausa, mandato non approvato, SENZA T0)
 
-```
-mkdir -m 0700 /opt/superbot-ai-arena-paper
-python -m backend.v3.arena.universe_cli --out /opt/superbot-ai-arena-paper/universe_T0.json   # rifare a T0
-python -m backend.v3.arena.readiness_cli                                                  # exit 2 finché mancano prove
-for p in deepseek qwen minimax; do DESK_MODE=paper python -m backend.v3.arena.prepare --provider $p \
-  --root /opt/superbot-ai-arena-paper --day <AAAA-MM-GG> --trial-start-ms <T0 comune> --confirm-capital 2000; done
-```
-
-Le tre AI ricevono lo stesso `trial-start-ms`. Se l'istantanea a T0 cambia la lista dei simboli, va aggiornata la
-config prima di `prepare`, uguale per tutte e tre.
+Aggiornato il 18/11: usare `deploy/scripts/arena-prepare-paused-runs-20261118.sh` (vedi
+`docs/v3/ARENA-AVVIO-SIMULTANEO-PROCEDURA-20261118.md`). Le run nascono con `trial_start_ms: null`: il T0 comune
+si assegna solo con `trial_setup activate`, su autorizzazione. Il vecchio `prepare --trial-start-ms` è sconsigliato.
 
 ## 3. Canale di chiusura (bridge Arena)
 
@@ -77,7 +70,21 @@ config prima di `prepare`, uguale per tutte e tre.
 | Prezzo mancante / crash | arresto del servizio uscite con richiesta in volo, poi riavvio | `pending`, poi `closed` alla ripresa; oltre ~12 minuti `unconfirmed` |
 | Backup / ripristino | copia di journal + `*.jsonl` e `collect_arena_learning_evidence` sulla copia | stesse catene di hash, motivo umano legato |
 
-## 7. Ritorno indietro
+## 7. Ritorno indietro ed emergenza (corretto il 18/11, P0 segnalato da ChatGPT)
 
-Fermare `superbot-arena-runner@*`, poi `superbot-arena-exit@*`, poi il bridge Arena. Togliere le quattro variabili web e
-ricompilare il frontend senza flag. Le run in `/opt/superbot-ai-arena-paper` **non si cancellano** (memoria).
+**Mai fermare un servizio uscite (`superbot-arena-exit@*`) mentre la sua run ha posizioni aperte:** stop e target
+resterebbero senza gestione.
+
+1. **Fermare le nuove aperture**, non le uscite: ricreare `pause.flag` nelle tre run (il runner va `halted` al ciclo
+   successivo e non chiama più il modello), poi fermare `superbot-arena-runner@*`. Provato in
+   `test_trial_setup.py::test_simultaneous_activation_then_emergency_stop_keeps_exits_running`: con la pausa nessuna
+   chiamata al modello, i servizi uscite chiudono comunque su stop/target.
+2. **Lasciare attivi i servizi uscite** finché `trial_setup inspect` non mostra 0 posizioni aperte per quella run
+   (chiusura naturale, oppure chiusura manuale una posizione alla volta dall'app).
+3. Solo con 0 posizioni aperte: fermare `superbot-arena-exit@<provider>` e poi il bridge.
+4. Se il backend stesso è compromesso (servizio uscite che non parte o heartbeat fermo): **non** è un rollback
+   sicuro. Registrare le posizioni aperte (`trial_setup inspect`, backup `backup snapshot`), segnalarlo all'utente e
+   ripristinare il servizio uscite prima di qualunque altra azione. In PAPER il rischio è contabile, ma il journal
+   deve restare coerente.
+5. Web: togliere le variabili Arena e ricompilare il frontend senza flag.
+6. Le run in `/opt/superbot-ai-arena-paper` **non si cancellano** (memoria).
