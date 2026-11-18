@@ -126,6 +126,14 @@ export function sanitizedTrial(profileId, payload) {
   };
 }
 
+/** Run preparata in pausa, gara non ancora assegnata (nessun T0): solo un'etichetta, mai numeri. */
+export function preparedAwaitingT0(profileId, payload) {
+  return Object.prototype.hasOwnProperty.call(RUN_IDS, profileId) && !!payload &&
+    typeof payload === 'object' && payload.portfolio_id === profileId && payload.mode === 'paper' &&
+    payload.state === 'not_started' && payload.data_status === 'PREPARED_AWAITING_T0' &&
+    typeof payload.run_id === 'string' && RUN_IDS[profileId].test(payload.run_id);
+}
+
 export function sanitizedShadow(profileId, payload) {
   if (profileId !== 'qwen' && profileId !== 'minimax') return null;
   return sanitizedTrial(profileId, payload);

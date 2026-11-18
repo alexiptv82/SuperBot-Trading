@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import API from '../api';
 import { BrainCloseControls } from '../components/OverviewCloseControls';
 import ArenaCloseControls from '../components/ArenaCloseControls';
-import { ARENA_PROFILES, money, portfolioFromExisting, sanitizedTrial, trialTotalPnl } from '../brainArenaModel';
+import { ARENA_PROFILES, money, portfolioFromExisting, preparedAwaitingT0, sanitizedTrial, trialTotalPnl } from '../brainArenaModel';
 import { arenaCloseUiEnabled } from '../arenaCloseModel';
 
 const BLOCK = { background: '#172338', border: '1px solid #30465e', borderRadius: 16, padding: 16 };
@@ -55,6 +55,7 @@ export default function BrainArena() {
   const [refresh, setRefresh] = useState(0);
   // Chiusure manuali dell'esperimento: solo con flag UI e rotte dedicate per AI attive sul server.
   const [closeInfo, setCloseInfo] = useState({});
+  const [prepared, setPrepared] = useState({});
 
   const fetchData = useCallback(async signal => {
     // Existing PAPER read APIs, unchanged. Missing data NEVER treated as zero.
@@ -76,6 +77,9 @@ export default function BrainArena() {
       try {
         const response = await API.get('/api/v3/arena', { signal });
         if (signal.aborted) return;
+        const raw = response?.data?.portfolios || {};
+        setPrepared({ deepseek: preparedAwaitingT0('deepseek', raw.deepseek),
+          qwen: preparedAwaitingT0('qwen', raw.qwen), minimax: preparedAwaitingT0('minimax', raw.minimax) });
         shadow = {
           deepseek: sanitizedTrial('deepseek', response?.data?.portfolios?.deepseek),
           qwen: sanitizedTrial('qwen', response?.data?.portfolios?.qwen),
@@ -163,7 +167,8 @@ export default function BrainArena() {
           <div style={{ fontSize: 22 }}>{MODELS[p.id].icon}</div>
           <strong style={{ fontSize: 14 }}>{p.title}</strong>
           <div style={{ ...MUTED, marginTop: 3, fontSize: 10 }}>
-            {info ? (info.source === 'v3_existing_brain_paper' ? 'Storico precedente' : info.state) : 'Non avviato'}
+            {info ? (info.source === 'v3_existing_brain_paper' ? 'Storico precedente' : info.state)
+              : prepared[p.id] ? 'Preparato · in pausa' : 'Non avviato'}
           </div>
           <div style={{ fontSize: 18, fontWeight: 800, marginTop: 8 }}>2.000</div>
           <div style={{ ...MUTED, fontSize: 10 }}>USDT iniziali</div>
