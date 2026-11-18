@@ -1,5 +1,16 @@
 # STATO — SuperBot Trading
 
+## 18/11/2026 17:50 Europe/Rome — fix universo collaudato; regressione smoke corretta; VPS invariata
+
+- Nuovo checkpoint delta: [`diario/2026-11-18_arena-tests-pass-smoke-fix-vps-unchanged.md`](diario/2026-11-18_arena-tests-pass-smoke-fix-vps-unchanged.md), commit [`1115a00…`](https://github.com/alexiptv82/SuperBot-Trading/commit/1115a0087cecc3b7e67c53c1c4fadc856d42a071).
+- PR #110 ancora draft, nuovo HEAD [`6a88857…`](https://github.com/alexiptv82/SuperBot-Trading/commit/6a88857ac2ff117bd7711958c63604700f113cb0): fix order-insensitive collaudato; 39/39 test mirati e 202/202 suite Arena riportati PASS da Claude Code.
+- Trovata e corretta regressione dello smoke: lo snapshot sintetico ora include `symbols_sha256`. Il commit usa `[skip ci]`; nessuna GitHub Action e nessuna riesecuzione indipendente in questo checkpoint.
+- Nessun deploy/VPS/T0: runtime/stage resta all'ultimo SHA attestato `3dd6aa58`; run all'ultimo stato provato `PREPARED_PAUSED_NO_T0`, zero posizioni, exit sani e runner decisionali fermi.
+- Proposto soltanto un activator da checkout isolato pinnato a `6a88857a`, poiché `--update-stage` rifiuta con exit attivi. Non eseguito e non approvato; non fermare uscite, non ripetere replace/smoke.
+- Age PC ed extbackup invariati: `ESITO: VERIFICA OK` non certifica VPS; backup esterno preparato, non installato. T0 e avvio PAPER richiedono consenso separato.
+
+---
+
 ## 18/11/2026 16:51 Europe/Rome — credenziali/preflight OK; fix ordine universo non testato
 
 - Nuovo checkpoint delta: [`diario/2026-11-18_arena-credentials-preflight-universe-order-fix-untested.md`](diario/2026-11-18_arena-credentials-preflight-universe-order-fix-untested.md), commit [`9c82d35…`](https://github.com/alexiptv82/SuperBot-Trading/commit/9c82d350c91e8074b493a0013c26ff3350854743).
