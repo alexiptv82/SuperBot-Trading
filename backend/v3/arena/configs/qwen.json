@@ -50,8 +50,8 @@
   "reasoning_effort": "omit",
   "max_tokens": 6000,
   "cycle_minutes": 60,
-  "input_usd_per_million_tokens": "2.00",
-  "output_usd_per_million_tokens": "8.00",
+  "input_usd_per_million_tokens": "0.32",
+  "output_usd_per_million_tokens": "1.28",
   "daily_cap_usd": "0.75",
   "daily_loss_warn_fraction": "0.35",
   "daily_loss_halt_fraction": "0.50"
