@@ -1,5 +1,17 @@
 # STATO — SuperBot Trading
 
+## 18/11/2026 18:48 Europe/Rome — gara Arena 72h avviata; UI non collegata
+
+- Nuovo checkpoint delta: [`diario/2026-11-18_arena-t0-running-ui-not-connected.md`](diario/2026-11-18_arena-t0-running-ui-not-connected.md), commit [`c1b1935…`](https://github.com/alexiptv82/SuperBot-Trading/commit/c1b1935e502af1a3a2a17562121d12e3b0b2e5a7).
+- T0 comune autorizzato ed eseguito: `1795021392344`, 18/11/2026 18:03:12.344 Europe/Rome; stop nuove inferenze/aperture 21/11/2026 18:03:12, uscite ancora operative per posizioni aperte.
+- Checkpoint VPS 18:05: `BLOCCHI=[]`, tre runner active, tre exit healthy, 19 tracce AI, 26 eventi, 4 posizioni PAPER (DeepSeek 1, Qwen 1, MiniMax 2), spesa interna modellata 0,031873 USD; non è fatturazione provider né stato continuo.
+- Screenshot DeepSeek mostrava saldo circa 4,20 USD; eventuale rabbocco 10 USD non verificato eseguito. Il cap Arena 6 USD non è hard cap provider e il conto può essere condiviso col Brain storico.
+- App Samsung ancora 14 giorni/AI non avviate: gara VPS attiva ma web non collegato. Diagnosi 18:21: `GET /api/v3/arena=404`, immagine web pre-Arena, reader/route/env/mount Arena assenti, bundle vecchio.
+- Candidate web-only autenticata/read-only e rollback sono soltanto da preparare/testare in ramo isolato; nessun deploy web autorizzato. Non fermare runner/exit o resettare T0 per correggere l'app.
+- PR #110 open/draft a `6a88857a…`; Brain storico separato, Falco/Toro spenti. Age PC ed extbackup invariati: `ESITO: VERIFICA OK` non certifica VPS; backup esterno non installato.
+
+---
+
 ## 18/11/2026 17:50 Europe/Rome — fix universo collaudato; regressione smoke corretta; VPS invariata
 
 - Nuovo checkpoint delta: [`diario/2026-11-18_arena-tests-pass-smoke-fix-vps-unchanged.md`](diario/2026-11-18_arena-tests-pass-smoke-fix-vps-unchanged.md), commit [`1115a00…`](https://github.com/alexiptv82/SuperBot-Trading/commit/1115a0087cecc3b7e67c53c1c4fadc856d42a071).
