@@ -32,7 +32,9 @@ from backend.v3.arena.prepare import FORBIDDEN_ROOTS, config_path, plan_for, pre
 from backend.v3.arena.t0 import T0_FILE, T0_SCHEMA, read_t0
 from backend.v3.arena.trial_plan import PROVIDERS, WalletPlan
 from backend.v3.brain_f2.engine import _policy_hash
+from backend.v3.dashboard import build_summary
 from backend.v3.events import EventJournal
+from backend.v3.outcomes import extract_outcomes
 from backend.v3.runner.config import load_runner_config
 from backend.v3.runner.exit_service import exit_service_healthy
 from backend.v3.runner.prepare_paper_run import RunPreparationError
@@ -64,6 +66,36 @@ def _read_json(path: Path) -> Optional[dict]:
     except (OSError, ValueError, UnicodeError):
         return None
     return data if type(data) is dict else None
+
+
+# ------------------------------------------------------------------------------------------------------- posizioni
+def open_positions(folder: Path, run_id: str):
+    """Numero di posizioni aperte derivato dal journal DI QUESTA RUN, oppure ``"UNKNOWN"`` (fail-closed) se la
+    catena non verifica, se il riepilogo e gli esiti non concordano o se compaiono eventi di un'altra run."""
+    try:
+        journal = EventJournal(folder / "journal.db")
+        if not (folder / "journal.db").is_file():
+            return "UNKNOWN"
+        count, _head = journal.verify_chain()
+        if count != len(journal.list_run("brain", run_id)):
+            return "UNKNOWN"                                   # eventi estranei nel journal isolato
+        summary = build_summary(journal, "brain", run_id)
+        report = extract_outcomes(journal, "brain", run_id)
+        ids = {p.position_id for p in summary.open_positions}
+        if report.skipped or ids != set(report.open_position_ids) or len(ids) != len(summary.open_positions):
+            return "UNKNOWN"
+        return len(ids)
+    except Exception:
+        return "UNKNOWN"
+
+
+def exit_stop_check(root: Path, day: date, provider: str) -> dict:
+    """Cancello prima di fermare ``superbot-arena-exit@<provider>``: consentito SOLO con 0 posizioni verificate."""
+    if provider not in PROVIDERS:
+        raise SetupRefused("invalid_provider")
+    plan = _plans(root, day)[provider]
+    n = open_positions(plan.folder, plan.run_id) if plan.folder.is_dir() else "UNKNOWN"
+    return {"provider": provider, "run_id": plan.run_id, "open_positions": n, "exit_stop_allowed": n == 0}
 
 
 # ------------------------------------------------------------------------------------------------------- inspect
@@ -106,9 +138,12 @@ def inspect(root: Path, day: date, now_ms: int) -> dict:
                 "symbols": None if cfg is None else len(cfg.symbols),
                 "capital": None if cfg is None else str(cfg.initial_equity),
                 "exit_service_healthy": exit_service_healthy(data_dir=f, run_id=plan.run_id, now_ms=now_ms),
+                "open_positions": open_positions(f, plan.run_id),
             })
             if not row["manifest_ok"] or not chain_ok or cfg is None:
                 blockers.append(f"{p}:RUN_INVALID")
+            if row["open_positions"] == "UNKNOWN":
+                blockers.append(f"{p}:OPEN_POSITIONS_UNKNOWN")
         rows[p] = row
     existing = [p for p in PROVIDERS if rows[p]["exists"]]
     if not existing:
@@ -170,16 +205,23 @@ def prepare_paused(root: Path, day: date, *, now_ms: int, desk_mode: str, confir
             sp = plan_for(p, day, stage)
             prepare_arena_run(sp, config_bytes=configs[p], desk_mode="paper", now_ms=now_ms,
                               trial_start_ms=None, expected_initial_equity="2000")
-            EventJournal(sp.journal).verify_chain()
+        pre = inspect(stage, day, now_ms)                            # validazione completa PRIMA di spostare
+        if pre["stage"] != "PREPARED_PAUSED_NO_T0" or pre["blockers"]:
+            raise SetupRefused("staging_check_failed")
         for p in PROVIDERS:                                         # tutte valide: ora si spostano
             dst = plans[p].folder
             dst.parent.mkdir(mode=0o700, exist_ok=True)
-            if dst.parent.is_symlink() or dst.exists():
+            if dst.parent.is_symlink() or dst.exists() or dst.is_symlink():
                 raise SetupRefused("run_already_exists")
-            os.rename(plan_for(p, day, stage).folder, dst)
-            moved.append((dst, plan_for(p, day, stage).folder))
+            src = plan_for(p, day, stage).folder
+            os.rename(src, dst)
+            moved.append((dst, src))
+        report = inspect(root, day, now_ms)                         # controllo finale sulle posizioni definitive
+        if report["stage"] != "PREPARED_PAUSED_NO_T0" or report["blockers"]:
+            raise SetupRefused("post_check_failed")
     except BaseException:
-        for dst, src in reversed(moved):                            # rimette indietro solo cio' che ha spostato ora
+        # Riporta in staging SOLO le run spostate da questa esecuzione (mai run preesistenti), poi elimina lo staging.
+        for dst, src in reversed(moved):
             try:
                 os.rename(dst, src)
             except OSError:
@@ -187,9 +229,6 @@ def prepare_paused(root: Path, day: date, *, now_ms: int, desk_mode: str, confir
         shutil.rmtree(stage, ignore_errors=True)
         raise
     shutil.rmtree(stage, ignore_errors=True)
-    report = inspect(root, day, now_ms)
-    if report["stage"] != "PREPARED_PAUSED_NO_T0" or report["blockers"]:
-        raise SetupRefused("post_check_failed")
     return report
 
 
@@ -258,44 +297,57 @@ def activate(root: Path, day: date, *, t0_ms: int, now_ms: int, desk_mode: str, 
             m = mandate_template(cfgs[p].risk_policy, plans[p].run_id)
             m.update(approved=True, approved_by=approved_by.strip())
             _atomic_write(plans[p].folder / "mandate.json", json.dumps(m, sort_keys=True).encode())
+        for p in PROVIDERS:                                             # 3) ultime: le tre pause
+            _remove_pause(plans[p].folder / "pause.flag")
+        after = inspect(root, day, now_ms)                              # 4) controllo finale
+        if after["stage"] != "ACTIVE" or after["blockers"]:
+            raise SetupRefused("post_check_failed")
     except BaseException:
-        for p, raw in saved.items():
-            try:
-                _atomic_write(plans[p].folder / "mandate.json", raw)
-            except OSError:
-                pass
-        for path in written_t0:
-            try:
-                path.unlink()
-            except OSError:
-                pass
+        _compensate(plans, saved, written_t0)
         raise
-    removed: list[Path] = []
-    try:                                                                # 3) ultime: le tre pause
-        for p in PROVIDERS:
-            (plans[p].folder / "pause.flag").unlink()
-            removed.append(plans[p].folder / "pause.flag")
-    except BaseException:
-        for path in removed:                                            # meglio tutte in pausa che una sola avanti
-            path.write_text("activation_rolled_back\n", encoding="ascii")
-        raise
-    after = inspect(root, day, now_ms)
-    if after["stage"] != "ACTIVE":
-        raise SetupRefused("post_check_failed")
     return after
+
+
+def _remove_pause(path: Path) -> None:
+    path.unlink()
+
+
+def _compensate(plans: dict, saved: dict, written_t0: list) -> None:
+    """Ritorno allo stato preparato: PRIMA le tre pause (blocco immediato delle aperture), poi mandati originali,
+    poi rimozione dei T0 scritti da questa esecuzione. Ogni passo prosegue anche se uno precedente fallisce."""
+    for plan in plans.values():
+        flag = plan.folder / "pause.flag"
+        try:
+            if not flag.exists():
+                flag.write_text("activation_rolled_back\n", encoding="ascii")
+                os.chmod(flag, 0o600)
+        except OSError:
+            pass
+    for p, raw in saved.items():
+        try:
+            _atomic_write(plans[p].folder / "mandate.json", raw)
+        except OSError:
+            pass
+    for path in written_t0:
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
 
 # ------------------------------------------------------------------------------------------------------- CLI
 def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None,
          now_fn: Callable[[], int] = lambda: int(time.time() * 1000)) -> int:
     ap = argparse.ArgumentParser(description="Tre run PAPER dell'Arena: ispezione, preparazione in pausa, attivazione.")
-    ap.add_argument("command", nargs="?", default="inspect", choices=("inspect", "prepare-paused", "activate"))
+    ap.add_argument("command", nargs="?", default="inspect", choices=("inspect", "prepare-paused", "activate",
+                                                                   "can-stop-exit"))
     ap.add_argument("--root", default=str(DEFAULT_ROOT))
     ap.add_argument("--day", required=True, help="AAAA-MM-GG del run_id")
     ap.add_argument("--confirm", default="")
     ap.add_argument("--t0-ms", type=int)
     ap.add_argument("--approved-by", default="")
     ap.add_argument("--universe-snapshot")
+    ap.add_argument("--provider", choices=PROVIDERS)
     ap.add_argument("--approved-total-budget-usd", help="budget totale della gara approvato dall'utente")
     a = ap.parse_args(argv)
     environ = os.environ if env is None else env
@@ -304,6 +356,12 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
         day = date.fromisoformat(a.day)
         if a.command == "inspect":
             out = inspect(root, day, now)
+        elif a.command == "can-stop-exit":
+            if a.provider is None:
+                raise SetupRefused("provider_required")
+            out = exit_stop_check(root, day, a.provider)
+            print(json.dumps({"ok": True, "command": a.command, **out}, sort_keys=True))
+            return 0 if out["exit_stop_allowed"] else 2
         elif a.command == "prepare-paused":
             out = prepare_paused(root, day, now_ms=now, desk_mode=environ.get("DESK_MODE", ""), confirm=a.confirm)
         else:

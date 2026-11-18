@@ -28,7 +28,7 @@ from typing import Callable, Mapping, Optional
 from backend.v3.arena.inference_trace import TracedTransport
 from backend.v3.arena.openrouter_transport import openrouter_transport
 from backend.v3.arena.prepare import plan_for, shared_policy_hash
-from backend.v3.arena.t0 import trial_start
+from backend.v3.arena.t0 import read_t0, read_t0_agreed, trial_start
 from backend.v3.arena.trial_plan import PROVIDERS, WalletPlan
 from backend.v3.brain_f2.engine import _policy_hash
 from backend.v3.budget import BudgetLedger
@@ -57,8 +57,15 @@ def check_manifest(plan: WalletPlan, config: RunnerConfig) -> int:
         raise ArenaRunnerError("arena_manifest_mismatch")
     if m["risk_policy_hash"] != shared_policy_hash():
         raise ArenaRunnerError("arena_risk_policy_differs")
+    if m["trial_start_ms"] is None:                    # run preparata senza T0 nel manifest: serve il T0 comune
+        if read_t0(plan.folder, plan.provider, plan.run_id) is None:
+            raise ArenaRunnerError("arena_t0_not_assigned")
+        agreed = read_t0_agreed(plan.folder, plan.provider, plan.run_id)
+        if agreed is None:                             # le tre run non concordano: nessuna partenza
+            raise ArenaRunnerError("arena_t0_inconsistent")
+        return agreed["trial_start_ms"]
     t0 = trial_start(plan.folder, plan.provider, plan.run_id, m["trial_start_ms"])
-    if t0 is None:                                     # run preparata ma gara non assegnata: non parte
+    if t0 is None:
         raise ArenaRunnerError("arena_t0_not_assigned")
     return t0
 

@@ -79,9 +79,16 @@ resterebbero senza gestione.
    successivo e non chiama più il modello), poi fermare `superbot-arena-runner@*`. Provato in
    `test_trial_setup.py::test_simultaneous_activation_then_emergency_stop_keeps_exits_running`: con la pausa nessuna
    chiamata al modello, i servizi uscite chiudono comunque su stop/target.
-2. **Lasciare attivi i servizi uscite** finché `trial_setup inspect` non mostra 0 posizioni aperte per quella run
-   (chiusura naturale, oppure chiusura manuale una posizione alla volta dall'app).
-3. Solo con 0 posizioni aperte: fermare `superbot-arena-exit@<provider>` e poi il bridge.
+2. **Lasciare attivi i servizi uscite** finché il cancello verificato non lo consente (chiusura naturale, oppure
+   chiusura manuale una posizione alla volta dall'app):
+   `python3 -s -m backend.v3.arena.trial_setup can-stop-exit --provider <p> --day <giorno>` → uscita **0** solo con
+   `open_positions: 0` derivato dal journal di quella run (catena verificata, riepilogo ed esiti concordi, nessun
+   evento estraneo). In ogni altro caso esce con **2** e `open_positions: "UNKNOWN"` oppure un numero > 0: il servizio
+   uscite NON si ferma. Lo stesso conteggio compare in `trial_setup inspect` (`open_positions`, blocco
+   `<p>:OPEN_POSITIONS_UNKNOWN`). Provato in `test_open_positions_count_and_exit_stop_gate` (2 aperte → 0 → journal
+   manomesso = `UNKNOWN`).
+3. Solo con `can-stop-exit` = 0: fermare `superbot-arena-exit@<provider>`; il bridge per ultimo, quando lo consentono
+   tutte e tre le run.
 4. Se il backend stesso è compromesso (servizio uscite che non parte o heartbeat fermo): **non** è un rollback
    sicuro. Registrare le posizioni aperte (`trial_setup inspect`, backup `backup snapshot`), segnalarlo all'utente e
    ripristinare il servizio uscite prima di qualunque altra azione. In PAPER il rischio è contabile, ma il journal

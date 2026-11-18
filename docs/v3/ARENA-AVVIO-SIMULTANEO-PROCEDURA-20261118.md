@@ -16,8 +16,22 @@ sudo bash $S --prepare-paused --sha <SHA> --day 2026-11-18      # tre run in pau
 
 Atteso: `ARENA_PREP_RESULT=THREE_RUNS_PREPARED_PAUSED_NO_T0`, `stage: PREPARED_PAUSED_NO_T0`, `BRAIN_HISTORICAL=ACTIVE`,
 `ARENA_UNITS=ALL_INACTIVE`. Rifiuti previsti: Brain storico non attivo, unità Arena attive, stage a SHA diverso, run
-già esistenti (mai sovrascritte), `trial.env` di un altro giorno. Se qualcosa fallisce a metà, nella posizione
-finale non resta nulla (preparazione in staging, spostamento solo con tre run valide).
+già esistenti (mai sovrascritte), `trial.env` di un altro giorno. `trial.env` viene scritto solo dopo una
+preparazione riuscita.
+
+**Garanzie e loro limite (non è una transazione atomica fra tre cartelle).** Le tre run si creano e si verificano in
+`.staging-*`. Si spostano solo se tutte e tre passano. Dopo lo spostamento c'è un controllo finale: se fallisce, le run
+spostate **da questa esecuzione** tornano nello staging, che viene eliminato; le run preesistenti non si toccano mai.
+Questo copre ogni errore Python. Non copre la morte improvvisa del processo (SIGKILL, blackout) fra uno spostamento e
+l'altro: in quel caso `inspect` mostra `PARTIAL_RUNS` oppure resta una cartella `.staging-*`.
+
+**Recupero non distruttivo di `PARTIAL_RUNS`** (nessuna run della gara è ancora partita, quindi nessun dato di gara):
+1. `bash $S --inspect --sha <SHA> --day <giorno>`: annotare quali run esistono. Ognuna contiene solo l'evento
+   `run_prepared`.
+2. Spostare (non cancellare) le run presenti e l'eventuale `.staging-*` in
+   `/opt/superbot-v3-backups/arena-partial-<data>/` con `mv`, conservando i permessi.
+3. Rieseguire `--prepare-paused`. Se le run spostate contenessero eventi diversi da `run_prepared`, fermarsi e
+   segnalarlo: non dovrebbe mai accadere prima del T0.
 
 Correzione inclusa: i template installati avviano `/opt/superbot-arena-stage/.venv/bin/python3`, ma lo stage #106
 non aveva creato la venv, quindi ogni servizio sarebbe fallito all'avvio. `--update-stage` la crea con la sola libreria
@@ -74,9 +88,17 @@ sudo systemctl start superbot-arena-runner@deepseek superbot-arena-runner@qwen s
 
 `activate` controlla nell'ordine: frase con il T0, T0 = adesso (±5 min), tre run in pausa e "fresche" (solo
 `run_prepared` nel journal), tre servizi uscite sani, istantanea dell'universo con gli stessi simboli e meno di 6 ore,
-cancello economico. Poi scrive T0 comune → mandati approvati → rimozione delle tre pause. Se fallisce a metà riporta
-tutto allo stato preparato. Provato in `test_trial_setup.py`: guasto al terzo mandato, rifiuti e attivazione con
-apertura nello stesso minuto per le tre AI.
+cancello economico. Poi scrive: T0 comune, mandati approvati, rimozione delle tre pause, controllo finale `ACTIVE`.
+**Qualunque** errore, anche sulla 2ª o 3ª pausa o sul controllo finale, attiva la compensazione completa in quest'ordine:
+tre pause ricreate per prime (blocco immediato delle aperture), mandati originali, T0 rimossi. Provato in
+`test_trial_setup.py` con guasti iniettati sul terzo mandato, sulla 2ª e 3ª pausa e sul controllo finale.
+
+**T0 concorde:** il runner parte solo se i tre `arena_t0.json` sono byte per byte identici e coerenti con i tre
+run_id. Altrimenti `arena_t0_inconsistent`, anche per la run il cui file è intatto.
+
+Come per la preparazione, la compensazione copre gli errori Python, non un SIGKILL a metà. Dopo un'interruzione
+`inspect` mostra `INCONSISTENT`: riportare a mano le tre `pause.flag` (sempre sicuro) e chiedere una revisione prima di
+riprovare.
 
 ## Emergenza
 

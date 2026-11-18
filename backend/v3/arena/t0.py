@@ -42,3 +42,25 @@ def trial_start(folder: Path, provider: str, run_id: str, manifest_value: object
         return None
     t0 = read_t0(folder, provider, run_id)
     return None if t0 is None else t0["trial_start_ms"]
+
+
+def read_t0_agreed(folder: Path, provider: str, run_id: str) -> Optional[dict]:
+    """Come ``read_t0`` ma richiede che le TRE run della stessa gara abbiano lo stesso identico file T0
+    (stessi byte: stesso T0, run_id, universo, rischio e firma). Altrimenti None: il runner non parte."""
+    own = read_t0(folder, provider, run_id)
+    if own is None:
+        return None
+    root = folder.parent.parent
+    try:
+        body = (folder / T0_FILE).read_bytes()
+        for other, other_run in own["run_ids"].items():
+            if type(other_run) is not str or other_run != run_id.replace(f"brain-{provider}-", f"brain-{other}-", 1):
+                return None
+            path = root / other / other_run / T0_FILE
+            if path.is_symlink() or not path.is_file() or path.read_bytes() != body:
+                return None
+            if read_t0(root / other / other_run, other, other_run) is None:
+                return None
+    except OSError:
+        return None
+    return own

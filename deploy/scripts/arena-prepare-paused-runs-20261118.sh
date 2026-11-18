@@ -114,15 +114,17 @@ prepare(){
   [[ -x "$(stage_py)" ]] || die 'STAGE_VENV_MISSING'
   [[ -d "$ROOT" && ! -L "$ROOT" && "$(stat -c '%u:%a' "$ROOT")" == '0:700' ]] || die 'ARENA_ROOT_UNSAFE'
   compact="${DAY//-/}"
-  if [[ -e "$ETC/trial.env" ]]; then
+  if [[ -e "$ETC/trial.env" ]]; then                       # controllo PRIMA di preparare, scrittura solo DOPO
     grep -qx "ARENA_DAY=$DAY" "$ETC/trial.env" || die 'TRIAL_ENV_DIFFERENT_DAY'
-  else
-    install -d -o root -g root -m 0700 "$ETC"
-    umask 077
-    printf 'ARENA_DAY=%s\nARENA_DAY_COMPACT=%s\nV3_ARENA_TRIAL_DAY=%s\n' "$DAY" "$compact" "$DAY" > "$ETC/trial.env"
-    say 'TRIAL_ENV_WRITTEN=TRUE'
   fi
   setup prepare-paused --root "$ROOT" --day "$DAY" --confirm 'PREPARA-TRE-RUN-PAPER-IN-PAUSA' || die 'PREPARE_REFUSED'
+  if [[ ! -e "$ETC/trial.env" ]]; then
+    install -d -o root -g root -m 0700 "$ETC"
+    tmp="$(mktemp "$ETC/.trial.env.XXXXXX")"
+    printf 'ARENA_DAY=%s\nARENA_DAY_COMPACT=%s\nV3_ARENA_TRIAL_DAY=%s\n' "$DAY" "$compact" "$DAY" > "$tmp"
+    chmod 0600 "$tmp"; mv -T -- "$tmp" "$ETC/trial.env"
+    say 'TRIAL_ENV_WRITTEN=TRUE'
+  fi
   arena_units_inactive || die 'ARENA_UNIT_STATE_CHANGED_ALERT'
   brain_ok || die 'BRAIN_STATE_CHANGED_ALERT'
   say 'RESULT=THREE_RUNS_PREPARED_PAUSED_NO_T0'

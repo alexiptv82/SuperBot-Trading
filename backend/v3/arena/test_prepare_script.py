@@ -84,3 +84,15 @@ def test_stage_at_a_different_sha_is_refused(env):
     prefix, sha, e = env
     r = _run(["--prepare-paused", "--sha", "0" * 40, "--day", "2026-11-18"], e)
     assert "STAGE_NOT_AT_SHA" in r.stdout
+
+
+def test_failed_preparation_leaves_no_trial_env(env):
+    prefix, sha, e = env
+    if not (prefix / "opt" / "superbot-arena-stage" / "backend" / "v3" / "arena" / "trial_setup.py").exists():
+        pytest.skip("trial_setup non ancora nel commit HEAD")
+    blocker = prefix / "opt" / "superbot-ai-arena-paper" / "qwen" / "brain-qwen-paper20261118"
+    blocker.mkdir(parents=True)                               # una run preesistente: la preparazione rifiuta
+    r = _run(["--prepare-paused", "--sha", sha, "--day", "2026-11-18"], e)
+    assert "REFUSED=PREPARE_REFUSED" in r.stdout
+    assert not (prefix / "etc" / "superbot-arena" / "trial.env").exists()
+    assert blocker.is_dir() and list(blocker.iterdir()) == []              # la run preesistente non e' toccata

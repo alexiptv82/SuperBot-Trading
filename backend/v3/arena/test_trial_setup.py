@@ -252,3 +252,113 @@ def test_budget_gate_rules_on_aligned_configs():
                                                                 input_usd_per_million_tokens="0.10")).encode()))
     assert "PRICE_BELOW_LISTING:qwen" in budget_gate(under, evidence=load_evidence(), approved_total_usd=Decimal("147"),
                                                       key_limit_usd=Decimal("60"))["blockers"]
+
+
+# ---------------------------------------------------------------- revisione ChatGPT PR #107 (6970648930)
+def _state_files(root):
+    plans = TS._plans(root, DAY)
+    return {p: ((pl.folder / "mandate.json").read_bytes(), (pl.folder / "pause.flag").exists(),
+                (pl.folder / T0_FILE).exists()) for p, pl in plans.items()}
+
+
+@pytest.mark.parametrize("fail_at", [2, 3, "post_check"])
+def test_activation_compensates_completely_on_pause_removal_or_post_check_failure(root, tmp_path, monkeypatch,
+                                                                                   fail_at):
+    _prepare(root)
+    before = _state_files(root)
+    exits, _ = _exits(root)
+    if fail_at == "post_check":
+        real_inspect, calls = TS.inspect, {"n": 0}
+
+        def flaky_inspect(*a, **k):
+            calls["n"] += 1
+            r = real_inspect(*a, **k)
+            return dict(r, stage="INCONSISTENT") if calls["n"] == 2 else r     # la 2a chiamata e' il post-check
+        monkeypatch.setattr(TS, "inspect", flaky_inspect)
+    else:
+        real_remove, n = TS._remove_pause, {"n": 0}
+
+        def flaky_remove(path):
+            n["n"] += 1
+            if n["n"] == fail_at:
+                raise OSError("io_error")
+            real_remove(path)
+        monkeypatch.setattr(TS, "_remove_pause", flaky_remove)
+    try:
+        with pytest.raises((OSError, TS.SetupRefused)):
+            _activate(root, tmp_path)
+    finally:
+        for w in exits.values():
+            w.stop()
+    assert _state_files(root) == before                       # mandati originali, tre pause, nessun T0
+    monkeypatch.undo()
+    assert TS.inspect(root, DAY, NOW)["stage"] == "PREPARED_PAUSED_NO_T0"
+
+
+@pytest.mark.parametrize("which", ["staging", "final"])
+def test_prepare_check_failure_moves_back_only_its_own_runs(root, monkeypatch, which):
+    real = TS.inspect
+
+    def bad(r, day, now_ms):
+        out = real(r, day, now_ms)
+        hit = (".staging-" in str(r)) if which == "staging" else (r == root)
+        return dict(out, stage="INCONSISTENT") if hit else out
+    monkeypatch.setattr(TS, "inspect", bad)
+    with pytest.raises(TS.SetupRefused):
+        _prepare(root)
+    runs = [x for x in root.rglob("brain-*-paper*")]
+    assert runs == [] and not any(x.name.startswith(".staging-") for x in root.iterdir())
+    monkeypatch.undo()
+    assert _prepare(root)["stage"] == "PREPARED_PAUSED_NO_T0"          # riesecuzione possibile
+
+
+def test_open_positions_count_and_exit_stop_gate(root, tmp_path):
+    _prepare(root)
+    assert all(TS.exit_stop_check(root, DAY, p)["open_positions"] == 0 for p in ("deepseek", "qwen", "minimax"))
+    exits, gj = _exits(root)
+    try:
+        _activate(root, tmp_path)
+        plan = TS._plans(root, DAY)["qwen"]
+        R.build_arena_runner(plan, environ=ENV, clock_ms=lambda: NOW, get_json=gj, inner_transport=PolicyModel(),
+                             view_params=VIEW).runner.tick(NOW)
+        chk = TS.exit_stop_check(root, DAY, "qwen")
+        assert chk == {"provider": "qwen", "run_id": plan.run_id, "open_positions": 2, "exit_stop_allowed": False}
+        assert TS.main(["can-stop-exit", "--provider", "qwen", "--root", str(root), "--day", "2026-11-18"],
+                       env={}, now_fn=lambda: NOW) == 2
+        assert TS.inspect(root, DAY, NOW)["providers"]["qwen"]["open_positions"] == 2
+        for minute in range(1, 26):
+            exits["qwen"].tick(NOW + minute * M)
+        assert TS.exit_stop_check(root, DAY, "qwen")["exit_stop_allowed"] is True
+        assert TS.main(["can-stop-exit", "--provider", "qwen", "--root", str(root), "--day", "2026-11-18"],
+                       env={}, now_fn=lambda: NOW) == 0
+    finally:
+        for w in exits.values():
+            w.stop()
+    # journal manomesso: conteggio sconosciuto, stop delle uscite NON consentito
+    import sqlite3
+    con = sqlite3.connect(plan.journal)
+    for (name,) in con.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall():
+        con.execute(f"DROP TRIGGER {name}")                     # manomissione diretta del file, non via codice
+    con.execute("UPDATE v3_events SET payload_json = replace(payload_json, 'BTCUSDT', 'XXXUSDT') WHERE kind='paper_open'")
+    con.commit()
+    con.close()
+    chk = TS.exit_stop_check(root, DAY, "qwen")
+    assert chk["open_positions"] == "UNKNOWN" and chk["exit_stop_allowed"] is False
+    assert "qwen:OPEN_POSITIONS_UNKNOWN" in TS.inspect(root, DAY, NOW)["blockers"]
+
+
+def test_runner_refuses_when_t0_files_disagree_between_runs(root, tmp_path):
+    _prepare(root)
+    exits, gj = _exits(root)
+    try:
+        _activate(root, tmp_path)
+    finally:
+        for w in exits.values():
+            w.stop()
+    plans = TS._plans(root, DAY)
+    t0 = json.loads((plans["minimax"].folder / T0_FILE).read_text())
+    (plans["minimax"].folder / T0_FILE).write_text(json.dumps(dict(t0, trial_start_ms=NOW + 1), sort_keys=True,
+                                                              separators=(",", ":")))
+    for p in ("qwen", "minimax"):                             # anche la run "intatta" rifiuta: discordanza nel trio
+        with pytest.raises(R.ArenaRunnerError, match="arena_t0_inconsistent"):
+            R.build_arena_runner(plans[p], environ=ENV, clock_ms=lambda: NOW, inner_transport=PolicyModel())
