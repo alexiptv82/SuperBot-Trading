@@ -86,9 +86,10 @@ class TestArenaOpenRouterTransport(TestCase):
         for data in (
             {}, {"data": {"limit": None, "limit_remaining": None}},
             {"data": {"limit": 50, "limit_remaining": 20}},
-            {"data": {"limit": 2, "limit_remaining": 0.001}},
-            {"data": {"limit": 2, "limit_remaining": "NaN"}},
-            {"data": {"limit": 2, "limit_remaining": 2, "is_management_key": True}},
+            {"data": {"limit": 2, "limit_remaining": 2}},  # too small for 72h budget
+            {"data": {"limit": 6, "limit_remaining": 0.001}},
+            {"data": {"limit": 6, "limit_remaining": "NaN"}},
+            {"data": {"limit": 6, "limit_remaining": 2, "is_management_key": True}},
         ):
             with self.subTest(data=data):
                 with self.assertRaises(ProviderUnavailable):
@@ -99,7 +100,7 @@ class TestArenaOpenRouterTransport(TestCase):
         def request(path, key, payload):
             traces.append((path, key, payload))
             if path == "/key":
-                return {"data": {"limit": 2, "limit_remaining": 1.95}}
+                return {"data": {"limit": 6, "limit_remaining": 1.95}}
             return {"model": MODELS["qwen"], "choices": [
                 {"finish_reason":"stop", "message":{"content":'{"kind":"NO_TRADE"}'}}
             ]}
@@ -124,7 +125,7 @@ class TestArenaOpenRouterTransport(TestCase):
         def broken(path, key, payload):
             paths.append(path)
             if path == "/key":
-                return {"data": {"limit": 2, "limit_remaining": 1.9}}
+                return {"data": {"limit": 6, "limit_remaining": 1.9}}
             raise RuntimeError("internal-should-not-leak-private-details")
         provider = openrouter_transport(
             "qwen", allow_inference=True, request=broken,
