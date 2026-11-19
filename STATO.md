@@ -1,5 +1,14 @@
 # STATO — SuperBot Trading
 
+## 19/11/2026 07:47 Europe/Rome — roadmap Brain unico, storico intatto e collaborazione Work/Cloud
+
+- Nuovo checkpoint delta: [`diario/2026-11-19_unified-brain-roadmap-work-cloud-history-learning.md`](diario/2026-11-19_unified-brain-roadmap-work-cloud-history-learning.md), commit [`5195069…`](https://github.com/alexiptv82/SuperBot-Trading/commit/5195069f93ea4c492a8495e6a714041927f31528).
+- Decisione utente: iniziare la preparazione del Brain unico mentre Arena/training continua invariata; collaborazione desiderata fra ChatGPT Work e Cloud per distribuire il lavoro.
+- Requisiti: nessun reset totale; preservare mesi di trade, journal, memorie e scoreboard; apprendimento reale da dimostrare; Falco e la logica SHORT restano patrimonio consultivo; futura UI dedicata al Brain.
+- Desiderio di agente Cloud e accesso VPS futuro registrato come roadmap soltanto: nessun accesso, credenziale, agente o modifica VPS configurati in questo checkpoint.
+- Stato invariato: runner Brain fermo all'ultimo riscontro, exit service sano; PR #112 draft `86288a3…`; RC84 PR #80 draft `0e29a73…`; extbackup preparato non installato; age PC `ESITO: VERIFICA OK` non certifica VPS.
+- Nessun nuovo test eseguito; nessun merge, deploy, Action, restart, reset, ordine o API a pagamento. PAPER, storici ed EventJournal preservati.
+
 ## 19/11/2026 06:47 Europe/Rome — causa halt Brain verificata; apprendimento da auditare prima del restart
 
 - Nuovo checkpoint delta: [`diario/2026-11-19_brain-halt-cause-learning-gate-arena-finish.md`](diario/2026-11-19_brain-halt-cause-learning-gate-arena-finish.md), commit [`c3ae462…`](https://github.com/alexiptv82/SuperBot-Trading/commit/c3ae46241ec7d05132d6adc0e9cb6dab8c43599d).
