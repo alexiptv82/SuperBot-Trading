@@ -83,6 +83,8 @@ class BrainDecision:
     occurred_at_ms: int = 0
     status: ProposalStatus = ProposalStatus.DRAFT
     journal_event_id: Optional[str] = None
+    # Osservabilità del router LLM. Non è un segnale di trading e non autorizza aperture.
+    llm_route: Optional[Mapping[str, Any]] = None
 
 
 @dataclass(frozen=True)
