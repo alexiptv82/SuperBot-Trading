@@ -61,6 +61,33 @@ def make_chain_db(path, n=3):
     con.close()
 
 
+def append_event(path, kind, ts, payload):
+    con = sqlite3.connect(path)
+    row = con.execute("SELECT seq,event_hash FROM v3_events ORDER BY seq DESC LIMIT 1").fetchone()
+    prev, seq = (row[1], row[0]) if row else (audit.GENESIS, 0)
+    pj = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    eid = f"x{seq + 1}"
+    h = audit._digest(prev, eid, "brain", "run1", kind, ts, "src", pj)
+    con.execute("INSERT INTO v3_events(event_id,portfolio_id,run_id,kind,occurred_at_ms,source,payload_json,previous_hash,"
+                "event_hash) VALUES(?,?,?,?,?,?,?,?,?)", (eid, "brain", "run1", kind, ts, "src", pj, prev, h))
+    con.commit()
+    con.close()
+
+
+T_START = 1_795_021_392_344                                   # T0 sintetico
+H = 3_600_000
+
+
+def add_trade(path, pid, ts, *, loss=-40, lev=30, risk_loss=30, reason="stop", close=True):
+    qty = risk_loss / 0.5
+    append_event(path, "paper_open", ts, {"position_id": pid, "symbol": "SECRETUSDT", "side": 1, "fill_price": "100",
+                                          "quantity": str(qty), "notional": str(100 * qty), "margin_used": str(100 * qty / lev),
+                                          "leverage": lev, "stop_price": "99.5", "rationale": "TESTO-RISERVATO"})
+    if close:
+        append_event(path, "paper_close", ts + H, {"position_id": pid, "realized_pnl": str(loss), "fees": "1",
+                                                   "reason": reason, "held_ms": H, "loss_exceeds_margin": False})
+
+
 def make_wal_db(path):
     c = sqlite3.connect(path)
     c.execute("PRAGMA journal_mode=WAL")
@@ -88,6 +115,9 @@ class Env:
         os.makedirs(self.proc)
         self.units = {"superbot-test-falco.service": ("inactive", "dead", "0", "0"),
                       "superbot-test-arena.service": ("active", "running", "100", "0")}
+        for i, p in enumerate(("deepseek", "qwen", "minimax")):
+            self.units[f"superbot-arena-runner@{p}.service"] = ("active", "running", str(200 + i), "0")
+            self.units[f"superbot-arena-exit@{p}.service"] = ("active", "running", str(300 + i), "0")
         self.build()
 
     def d(self, *a):
@@ -112,8 +142,10 @@ class Env:
         make_chain_db(self.d("brain", "brain.sqlite3"), 4)
         for p in ("deepseek", "qwen", "minimax"):
             self.w(f"arena/{p}/budget.json", "{}")
+            self.w(f"arena/{p}/arena_t0.json", json.dumps({"trial_start_ms": T_START}))
             make_chain_db(self.d("arena", p, "journal.db"), 3)
-        self.spec = {"schema": 1, "require_data": True,
+        self.spec = {"schema": 1, "require_data": True, "arena_planned_hours": 72,
+                     "arena_risk_policy": load(build_sealed.SPEC)["arena_risk_policy"],
                      "required_groups": ["falco", "toro", "brain_storico", "arena_deepseek", "arena_qwen", "arena_minimax"],
                      "sources": [
                          {"id": "falco_data", "group": "falco", "kind": "tree", "path": self.d("falco"),
@@ -158,6 +190,36 @@ class Env:
                                    chain_anchor=self.R, proc_root=self.proc, code_sha="a" * 64, reserve_mb=1,
                                    sleep=NOSLEEP, out=out.append, **kw)
         return code, summary
+
+    def stopper(self, calls, fail=(), noeffect=False):
+        def st(argv):
+            calls.append(list(argv))
+            unit = argv[2]
+            if unit in fail:
+                return 1, ""
+            if not noeffect:
+                self.units[unit] = ("inactive", "dead", "0", "0")
+            return 0, ""
+        return st
+
+    def stop(self, **kw):
+        calls = kw.pop("calls", [])
+        kw.setdefault("runner", self.runner())
+        kw.setdefault("stopper", self.stopper(calls, kw.pop("fail", ()), kw.pop("noeffect", False)))
+        self._clock = getattr(self, "_clock", 1_800_000_000.0) + 1
+        kw.setdefault("now", lambda t=self._clock: t)
+        out = []
+        code, s = sr.execute_stop(self.spec, ended_early_reason=kw.pop("reason", "arena_priority_brain_unico"),
+                                  auth_ref=kw.pop("auth_ref", "ISSUE113-STOP"), base=self.base, allowed_root=self.opt,
+                                  trusted_uid=ME, chain_anchor=self.R, code_sha="b" * 64, out=out.append, **kw)
+        return code, s, calls
+
+    def status(self, **kw):
+        self._clock = getattr(self, "_clock", 1_800_000_000.0) + 1
+        kw.setdefault("runner", self.runner())
+        kw.setdefault("now", lambda t=self._clock: t)
+        return sr.execute_status(self.spec, base=self.base, allowed_root=self.opt, trusted_uid=ME, chain_anchor=self.R,
+                                 code_sha="c" * 64, out=lambda *_: None, **kw)
 
     def run_dirs(self):
         return sorted(os.listdir(self.base)) if os.path.isdir(self.base) else []
@@ -520,6 +582,217 @@ class ExecuteFull(unittest.TestCase):
     def test_mode_validation(self):
         with self.assertRaises(ValueError):
             sr.execute(self.e.spec, "snapshot", base=self.e.base)
+
+
+class GroupsRiskAndWindow(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+
+    def test_groups_filter_limits_sources_and_requirements(self):
+        code, s = self.e.go("preflight", groups=["arena_minimax"])
+        self.assertEqual((code, s["verdict"], s["groups"]), (0, "PREFLIGHT_GO", ["arena_minimax"]))
+        self.assertEqual(list(s["preflight"]["bytes_by_group"]), ["arena_minimax"])
+        with self.assertRaises(ValueError):
+            self.e.go("preflight", groups=["arena_minimax", "nope"])
+        self.assertEqual(self.e.run_dirs(), [d for d in self.e.run_dirs()])               # nessuna directory per l'errore
+        n_before = len(self.e.run_dirs())
+        with self.assertRaises(ValueError):
+            self.e.go("preflight", groups=["zzz"])
+        with self.assertRaises(ValueError):
+            self.e.go("preflight", groups=[])                                             # [] non significa "tutti"
+        self.assertEqual(len(self.e.run_dirs()), n_before)
+
+    def test_full_adds_numbers_only_risk_audit_and_effective_window(self):
+        mm = self.e.d("arena", "minimax", "journal.db")
+        for i in range(6):
+            add_trade(mm, f"m{i}", T_START + (i + 1) * 2 * H, loss=-40)
+        code, s = self.e.go("full", groups=["arena_minimax"], ended_early_reason="arena_priority_brain_unico")
+        self.assertEqual((code, s["verdict"]), (0, "SNAPSHOT_GO"))
+        r = s["risk"]["minimax"]
+        self.assertEqual((r["trades"]["closed"], r["trades"]["realized_pnl"]), (6, "-240.0000"))
+        self.assertTrue(r["verdict"]["limits_held"], r["verdict"])
+        w = s["arena_window"]["minimax"]
+        self.assertEqual((w["t0_ms"], w["planned_hours"]), (T_START, 72))
+        self.assertAlmostEqual(w["effective_hours"], 13.0, places=2)                      # 6 trade: ultimo evento T0+13h
+        self.assertEqual(s["ended_early_reason"], "arena_priority_brain_unico")
+        text = json.dumps(s)
+        for leak in ("SECRETUSDT", "TESTO-RISERVATO", self.e.R, "m0"):
+            self.assertNotIn(leak, text)
+        self.assertFalse(os.path.exists(os.path.join(self.e.base, s["run_id"], "private", "restore")))
+
+    def test_risk_violation_is_reported_but_does_not_fail_the_snapshot(self):
+        mm = self.e.d("arena", "minimax", "journal.db")
+        add_trade(mm, "bad", T_START + H, lev=10, risk_loss=140, loss=-150)             # leva fuori profilo + rischio > tetto
+        code, s = self.e.go("full", groups=["arena_minimax"])
+        self.assertEqual((code, s["verdict"]), (0, "SNAPSHOT_GO"))                       # lo snapshot e' valido
+        v = s["risk"]["minimax"]["verdict"]
+        self.assertFalse(v["limits_held"])
+        self.assertIn("leverage_out_of_policy_range", v["hard_flags"])
+        self.assertIn("per_position_risk_clearly_over_cap", v["hard_flags"])
+
+    def test_minus_800_style_loss_within_limits_is_reported_as_held(self):
+        mm = self.e.d("arena", "minimax", "journal.db")
+        for i in range(20):
+            add_trade(mm, f"m{i}", T_START + (i % 10 + 1) * 2 * H + (24 * H if i >= 10 else 0), loss=-40)
+        code, s = self.e.go("full", groups=["arena_minimax"])
+        r = s["risk"]["minimax"]
+        self.assertEqual(r["trades"]["realized_pnl"], "-800.0000")
+        self.assertTrue(r["verdict"]["limits_held"], r["verdict"])
+
+    def test_multiple_providers_each_reported(self):
+        add_trade(self.e.d("arena", "qwen", "journal.db"), "q", T_START + H)
+        code, s = self.e.go("full")
+        self.assertEqual(sorted(s["risk"]), ["deepseek", "minimax", "qwen"])
+        self.assertEqual(s["risk"]["qwen"]["trades"]["closed"], 1)
+
+
+class StatusCommand(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+
+    def test_status_reports_units_and_open_positions_read_only(self):
+        mm = self.e.d("arena", "minimax", "journal.db")
+        add_trade(mm, "open1", T_START + H, close=False)
+        add_trade(mm, "closed1", T_START + 2 * H)
+        before = tree_state(self.e.opt)
+        with mock.patch.object(subprocess, "run", side_effect=AssertionError("nessun sottoprocesso")):
+            code, s = self.e.status()
+        self.assertEqual(code, 0)
+        p = s["providers"]["minimax"]
+        self.assertEqual((p["runner"], p["exit"]), ("active", "active"))
+        self.assertEqual((p["positions"]["opened"], p["positions"]["open_now"], p["positions"]["closed"]), (2, 1, 1))
+        self.assertEqual(s["providers"]["qwen"]["positions"]["open_now"], 0)
+        self.assertEqual(before, tree_state(self.e.opt))
+        text = rd(os.path.join(self.e.base, s["run_id"], "public", "summary.json"))
+        for leak in ("open1", "SECRETUSDT", self.e.R):
+            self.assertNotIn(leak, text)
+
+    def test_idle_wal_journal_is_not_opened(self):
+        p = self.e.d("arena", "qwen", "journal.db")
+        os.remove(p)
+        make_wal_db(p)
+        before = tree_state(self.e.opt)
+        code, s = self.e.status()
+        self.assertEqual(s["providers"]["qwen"]["positions"]["status"], "skipped:wal_quiescence_unproven")
+        self.assertEqual(before, tree_state(self.e.opt))                                  # nessun -shm/-wal creato
+
+    def test_systemd_unavailable_is_reported_not_fatal(self):
+        code, s = self.e.status(runner=self.e.runner(fail_list=True))
+        self.assertEqual((code, s["systemd_readable"], s["providers"]["minimax"]["runner"]), (0, False, "unknown"))
+
+    def test_untrusted_source_path_is_not_read(self):
+        os.chmod(self.e.opt, 0o775)
+        self.addCleanup(os.chmod, self.e.opt, 0o755)
+        code, s = self.e.status()
+        self.assertEqual(s["providers"]["minimax"]["positions"]["status"], "path_not_root_controlled")
+
+
+class StopOpenings(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+
+    def runner_unit(self, p):
+        return f"superbot-arena-runner@{p}.service"
+
+    def test_stops_only_runners_and_leaves_exits_untouched(self):
+        code, s, calls = self.e.stop()
+        self.assertEqual((code, s["verdict"]), (0, "OPENINGS_STOPPED"))
+        self.assertEqual(sorted(c[2] for c in calls), sorted(self.runner_unit(p) for p in ("deepseek", "qwen", "minimax")))
+        self.assertTrue(all(c[:2] == ["systemctl", "stop"] and len(c) == 3 for c in calls))
+        self.assertTrue(s["exit_services_untouched"])
+        for p in ("deepseek", "qwen", "minimax"):
+            self.assertEqual(self.e.units[f"superbot-arena-exit@{p}.service"][0], "active")
+            self.assertEqual(self.e.units[self.runner_unit(p)][0], "inactive")
+        self.assertEqual(self.e.units["superbot-test-arena.service"][0], "active")          # nessuna altra unita' toccata
+        self.assertEqual(s["ended_early_reason"], "arena_priority_brain_unico")
+        self.assertIn("positions_after", s)
+
+    def test_idempotent_second_run_does_not_stop_again(self):
+        self.e.stop()
+        code, s, calls = self.e.stop()
+        self.assertEqual((code, calls, sorted(s["already_stopped"])), (0, [], ["deepseek", "minimax", "qwen"]))
+
+    def test_single_provider_only(self):
+        code, s, calls = self.e.stop(providers=["minimax"])
+        self.assertEqual([c[2] for c in calls], [self.runner_unit("minimax")])
+        self.assertEqual(self.e.units[self.runner_unit("qwen")][0], "active")
+
+    def test_exit_service_not_active_stops_nothing(self):
+        self.e.units["superbot-arena-exit@qwen.service"] = ("failed", "failed", "0", "0")
+        code, s, calls = self.e.stop()
+        self.assertEqual((code, s["verdict"], calls), (1, "NO-GO", []))
+        self.assertIn("exit_service_not_active:qwen", s["nogo"])
+
+    def test_runner_unit_missing_stops_nothing(self):
+        del self.e.units[self.runner_unit("deepseek")]
+        code, s, calls = self.e.stop()
+        self.assertEqual((code, calls), (1, []))
+        self.assertIn("runner_unit_not_found:deepseek", s["nogo"])
+
+    def test_systemd_unavailable_stops_nothing(self):
+        code, s, calls = self.e.stop(runner=self.e.runner(fail_list=True))
+        self.assertEqual((code, calls, s["nogo"]), (1, [], ["systemd_unavailable"]))
+
+    def test_stop_failure_and_ineffective_stop_are_nogo(self):
+        code, s, calls = self.e.stop(fail=(self.runner_unit("qwen"),))
+        self.assertEqual((code, s["stop_failed"]), (1, ["qwen"]))
+        e2 = Env(self)
+        code, s, calls = e2.stop(noeffect=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(sorted(s["runners_still_active"]), ["deepseek", "minimax", "qwen"])
+
+    def test_exit_service_changed_during_stop_is_nogo(self):
+        base = self.e.stopper([])
+
+        def st(argv):
+            r = base(argv)
+            self.e.units["superbot-arena-exit@minimax.service"] = ("active", "running", "999", "1")   # riavviata da altri
+            return r
+        code, s, _ = self.e.stop(stopper=st)
+        self.assertEqual(code, 1)
+        self.assertFalse(s["exit_services_untouched"])
+
+    def test_argument_validation(self):
+        for kw in ({"providers": []}, {"providers": ["nope"]}, {"providers": ["qwen", "qwen"]},
+                   {"reason": "ha spazi"}, {"reason": ""}, {"reason": "x" * 65}, {"auth_ref": "  "}):
+            with self.assertRaises(ValueError):
+                self.e.stop(**kw)
+        self.assertEqual(self.e.run_dirs(), [])                                           # nessuna esecuzione registrata
+
+    def test_default_stopper_whitelist(self):
+        for argv in (["systemctl", "stop", "superbot-arena-exit@minimax.service"],
+                     ["systemctl", "stop", "superbot-arena-close-bridge.service"],
+                     ["systemctl", "stop", "superbot-v3-paper-brain-exit.service"],
+                     ["systemctl", "stop", "superbot-arena-runner@other.service"],
+                     ["systemctl", "stop", "superbot-arena-runner@minimax.service", "--force"],
+                     ["systemctl", "restart", "superbot-arena-runner@minimax.service"],
+                     ["systemctl", "kill", "superbot-arena-runner@minimax.service"],
+                     ["systemctl", "stop", "superbot-arena-runner@minimax.service;id"],
+                     ["sh", "-c", "id"], []):
+            with self.assertRaises(ValueError, msg=argv):
+                sr.default_stopper(argv)
+        with self.assertRaises(ValueError):
+            sr.default_runner(["systemctl", "stop", "superbot-arena-runner@minimax.service"])      # il runner di lettura non puo' fermare
+
+    def test_public_summary_has_no_paths_or_contents(self):
+        add_trade(self.e.d("arena", "minimax", "journal.db"), "p1", T_START + H, close=False)
+        code, s, _ = self.e.stop()
+        text = rd(os.path.join(self.e.base, s["run_id"], "public", "summary.json"))
+        for leak in (self.e.R, "SECRETUSDT", "TESTO-RISERVATO", "p1"):
+            self.assertNotIn(leak, text)
+        self.assertEqual(s["positions_before"]["minimax"]["open_now"], 1)
+
+    def test_cli_requires_confirmation_and_root(self):
+        sha = hashlib.sha256(rd(BUNDLE, "rb")).hexdigest()
+        base = [sys.executable, "-I", BUNDLE, "stop-openings", "--expect-sha256", sha, "--auth-ref", "x",
+                "--ended-early-reason", "r"]
+        r = subprocess.run(base, capture_output=True, text=True, cwd="/")
+        self.assertEqual(r.returncode, 2)                                                  # manca --confirm-stop-runners
+        self.assertIn("--confirm-stop-runners", r.stderr)
+        if not IS_ROOT:
+            r = subprocess.run(base + ["--confirm-stop-runners"], capture_output=True, text=True, cwd="/")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("richiede root", r.stdout)
 
 
 if __name__ == "__main__":

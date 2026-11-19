@@ -95,9 +95,21 @@ Serve da te: la chiave pubblica `age`, la destinazione e chi custodisce la priva
 python3 ops/brain-unico/sealed/build_sealed.py --check      # il bundle committato coincide con i sorgenti
 sha256sum ops/brain-unico/sealed/phase0_sealed.py            # = <SHA256> del messaggio
 python3 -I ops/brain-unico/sealed/phase0_sealed.py selftest  # versioni e hash dei moduli, senza privilegi né dati
-python3 ops/brain-unico/sealed/test_sealed.py                # 40 test sintetici
+python3 ops/brain-unico/sealed/test_sealed.py                # 61 test sintetici
+python3 ops/brain-unico/phase0/test_risk_audit.py            # 17 test sintetici
 python3 ops/brain-unico/phase0/test_phase0.py                # 90 test sintetici
 python3 ops/brain-unico/test_inventory.py                    # 29 test sintetici
 ```
 
 Il bundle è un file di testo: i moduli incorporati compaiono come commenti `#|`, leggibili in review; `selftest` stampa lo SHA256 di ciascun modulo, confrontabile con i file del repository.
+
+## 10. Comandi aggiunti dopo la decisione "Brain Unico prioritario" (19/11/2026, 10:20)
+
+Stesso bundle, stessa riga di avvio, stessi controlli di fiducia. Dettagli, GO/NO-GO e valutazione del rischio MiniMax in `BRAIN-UNICO-ARENA-FINALIZZAZIONE-ANTICIPATA-20261119.md`.
+
+| Comando | Effetto | Consenso |
+|---|---|---|
+| `status` | sola lettura: unità Arena e posizioni aperte per provider | operatore |
+| `full --groups arena_minimax` | copia del solo gruppo indicato + **audit dei limiti di rischio** dalle copie (solo numeri) | operatore |
+| `full … --ended-early-reason TOKEN` | registra motivo e durata effettiva rispetto alle 72 ore | operatore |
+| `stop-openings --providers … --ended-early-reason TOKEN --auth-ref … --confirm-stop-runners` | ferma **solo** i runner Arena indicati; le uscite restano attive; idempotente | **consenso operativo esplicito** |

@@ -9,8 +9,9 @@ Moduli incorporati (sha256 dei sorgenti):
   inventory    e363261aa42656a8160c7a9e9c9b0b43bb1d28093f0d78cc7014c1f5cc977c19
   snapshot     b60f8aba7b79af47bc5da7b528adf7867c48e40e769fa725c08fb5b07848fb70
   audit        f9ccf2475f267cd4f3fa65a06e81017fbcf624b94606f55534bae5fee5604da8
-  sealed_root  e00a7c7ded2b9d81f511e344c4f58f9fd5fa2482f640a136048da855c4d11741
-  sources.json 9845b98efc9f37b39117b2026057be17e9d6881e2198da81b84f2b95d25cea44
+  risk_audit   32728d8f3af023e9ac1d79c44f97257a86d79d4e3e25bab71e496f80ee5aafc6
+  sealed_root  7308eaa05c6f1b1f2fd20b86276ff7228c765484bb391d88f9a11dd0e416ce06
+  sources.json 0fae8f465fdfa8363cd0225cce51da475a6c05e9ee95f4d2e3dd35e619a09751
 """
 import hashlib
 import json
@@ -18,7 +19,7 @@ import os
 import sys
 import types
 
-_ORDER = ('inventory', 'snapshot', 'audit', 'sealed_root')
+_ORDER = ('inventory', 'snapshot', 'audit', 'risk_audit', 'sealed_root')
 
 
 def _extract(raw):
@@ -1321,6 +1322,250 @@ if __name__ == "__main__":
 #|    sys.exit(main())
 #@@ END audit
 
+#@@ BEGIN risk_audit
+#|"""Verifica dei limiti di rischio PAPER su un journal V3 (di una COPIA o in sola lettura): solo numeri.
+#|
+#|Risponde a: "i limiti di rischio hanno retto?" per una run (es. MiniMax) leggendo `paper_open`, `paper_close` e
+#|`brain_decision` del journal e confrontandoli con la politica dichiarata nella configurazione della gara.
+#|
+#|Cosa controlla (tutto in sola lettura, nessun contenuto di testo viene esportato: solo conteggi, rapporti, codici):
+#|- tetto di perdita per posizione: rischio allo stop (distanza dallo stop x quantita' + costi stimati) / capitale
+#|  e / margine, contro `max_loss_fraction` e `max_loss_margin_fraction`;
+#|- rischio aperto aggregato, margine per posizione e totale, leva, soglia minima di capitale;
+#|- perdita realizzata contro il tetto per posizione (gap e slippage possono superare la stima: e' dichiarato);
+#|- freno giornaliero (avviso 35 %, blocco 50 %) in versione LIMITE INFERIORE (solo realizzato: il non realizzato non e'
+#|  nel journal): se si apre dopo che il solo realizzato ha gia' superato il blocco, e' una prova di violazione;
+#|- coerenza del registro: aperture senza chiusura (posizioni aperte), chiusure senza apertura (orfane), doppie
+#|  chiusure, durata oltre il massimo della politica di uscita, motivi di uscita, chiusure manuali.
+#|
+#|LIMITE DICHIARATO: il capitale usato dal sistema comprende il non realizzato, che il journal non registra. Qui il
+#|capitale e' "iniziale + realizzato": i rapporti sono INDICATIVI (per questo si riportano sia >1,0 sia >1,1 del tetto).
+#|Una violazione certa richiede un rapporto molto sopra 1 o un'apertura dopo il blocco provato dal solo realizzato.
+#|"""
+#|from __future__ import annotations
+#|
+#|import json
+#|import sqlite3
+#|from decimal import Decimal, ROUND_HALF_EVEN
+#|from typing import Any, Optional
+#|from urllib.parse import quote
+#|
+#|DAY_MS = 86_400_000
+#|HOUR_MS = 3_600_000
+#|Q = Decimal("0.0001")
+#|
+#|
+#|def _d(v: Any, default: str = "0") -> Decimal:
+#|    try:
+#|        out = Decimal(str(v))
+#|        return out if out.is_finite() else Decimal(default)
+#|    except Exception:
+#|        return Decimal(default)
+#|
+#|
+#|def _s(x: Decimal) -> str:
+#|    return str(x.quantize(Q, rounding=ROUND_HALF_EVEN))
+#|
+#|
+#|def read_events(db_path: str) -> list:
+#|    con = sqlite3.connect("file:" + quote(db_path, safe="/") + "?mode=ro", uri=True, timeout=2)
+#|    try:
+#|        con.execute("PRAGMA query_only=1")
+#|        if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='v3_events'").fetchone():
+#|            return []
+#|        rows = []
+#|        for seq, kind, ts, payload in con.execute(
+#|                "SELECT seq,kind,occurred_at_ms,payload_json FROM v3_events ORDER BY seq"):
+#|            try:
+#|                p = json.loads(payload)
+#|            except ValueError:
+#|                p = {}
+#|            rows.append((seq, kind, ts, p if isinstance(p, dict) else {}))
+#|        return rows
+#|    finally:
+#|        con.close()
+#|
+#|
+#|def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
+#|    rp = policy["risk_policy"]
+#|    init = _d(policy["initial_equity"])
+#|    cap = _d(rp["max_loss_fraction"])
+#|    cap_margin = _d(rp.get("max_loss_margin_fraction", "1"))
+#|    open_cap, pos_margin_cap, tot_margin_cap = (_d(rp["max_open_risk_fraction"]), _d(rp["max_position_margin_fraction"]),
+#|                                                _d(rp["max_total_margin_fraction"]))
+#|    floor, cost_bp = _d(rp["minimum_equity"]), _d(rp["estimated_roundtrip_cost_bp"])
+#|    lev_min, lev_max = int(rp.get("min_leverage", 1)), int(rp.get("max_leverage", 125))
+#|    warn, halt = _d(policy["daily_loss_warn_fraction"]), _d(policy["daily_loss_halt_fraction"])
+#|
+#|    equity = init
+#|    min_equity, peak, max_dd = init, init, Decimal(0)
+#|    open_pos: dict[str, dict] = {}
+#|    seen_closed: set = set()
+#|    cnt = dict(opens=0, closes=0, wins=0, orphan_closes=0, duplicate_closes=0, manual_closes=0, loss_exceeds_margin=0,
+#|               held_over_max=0, leverage_out_of_range=0, open_below_floor=0, open_risk_over=0, position_margin_over=0,
+#|               total_margin_over=0, risk_over_cap=0, risk_over_cap_10pct=0, risk_over_margin_cap=0,
+#|               realized_loss_over_cap=0, realized_loss_over_cap_150pct=0, opens_after_daily_halt_proof=0)
+#|    mx = dict(risk_ratio=Decimal(0), risk_margin_ratio=Decimal(0), open_risk_ratio=Decimal(0),
+#|              total_margin_ratio=Decimal(0), position_margin_ratio=Decimal(0), realized_loss_ratio=Decimal(0),
+#|              daily_loss_fraction=Decimal(0))
+#|    reasons: dict[str, int] = {}
+#|    decisions: dict[str, int] = {}
+#|    realized_total, fees_total = Decimal(0), Decimal(0)
+#|    day, day_start_capital, day_realized, day_halt_at = None, init, Decimal(0), None
+#|    days_warn, days_halt = set(), set()
+#|    first_ts = last_ts = None
+#|    equity_at_open: dict[str, Decimal] = {}
+#|    max_hold_ms = exit_max_hold_hours * HOUR_MS
+#|
+#|    for _seq, kind, ts, p in events:
+#|        first_ts = ts if first_ts is None else min(first_ts, ts)
+#|        last_ts = ts if last_ts is None else max(last_ts, ts)
+#|        d = ts // DAY_MS
+#|        if day != d:
+#|            day, day_start_capital, day_realized, day_halt_at = d, equity, Decimal(0), None
+#|        if kind == "brain_decision":
+#|            key = f"{p.get('kind', '?')}:{p.get('status', '?')}"
+#|            decisions[key] = decisions.get(key, 0) + 1
+#|        elif kind == "paper_open":
+#|            pid = str(p.get("position_id", ""))
+#|            fill, stop, qty = _d(p.get("fill_price")), _d(p.get("stop_price")), _d(p.get("quantity"))
+#|            notional, margin, lev = _d(p.get("notional")), _d(p.get("margin_used")), int(_d(p.get("leverage")))
+#|            cnt["opens"] += 1
+#|            risk = abs(fill - stop) * qty + notional * cost_bp / Decimal(10000)
+#|            eq = equity if equity > 0 else Decimal("0.0001")
+#|            r_cap = risk / eq / cap if cap else Decimal(0)
+#|            r_mar = (risk / margin / cap_margin) if margin > 0 and cap_margin else Decimal(0)
+#|            mx["risk_ratio"], mx["risk_margin_ratio"] = max(mx["risk_ratio"], r_cap), max(mx["risk_margin_ratio"], r_mar)
+#|            cnt["risk_over_cap"] += r_cap > 1
+#|            cnt["risk_over_cap_10pct"] += r_cap > Decimal("1.1")
+#|            cnt["risk_over_margin_cap"] += r_mar > Decimal("1.0001")
+#|            open_pos[pid] = {"risk": risk, "margin": margin, "ts": ts}
+#|            equity_at_open[pid] = equity
+#|            tot_risk = sum((o["risk"] for o in open_pos.values()), Decimal(0))
+#|            tot_margin = sum((o["margin"] for o in open_pos.values()), Decimal(0))
+#|            mx["open_risk_ratio"] = max(mx["open_risk_ratio"], tot_risk / eq / open_cap if open_cap else Decimal(0))
+#|            mx["total_margin_ratio"] = max(mx["total_margin_ratio"], tot_margin / eq / tot_margin_cap)
+#|            mx["position_margin_ratio"] = max(mx["position_margin_ratio"], margin / eq / pos_margin_cap)
+#|            cnt["open_risk_over"] += tot_risk / eq > open_cap
+#|            cnt["total_margin_over"] += tot_margin / eq > tot_margin_cap
+#|            cnt["position_margin_over"] += margin / eq > pos_margin_cap
+#|            cnt["leverage_out_of_range"] += not (lev_min <= lev <= lev_max)
+#|            cnt["open_below_floor"] += equity <= floor
+#|            if day_halt_at is not None:
+#|                cnt["opens_after_daily_halt_proof"] += 1
+#|        elif kind == "paper_close":
+#|            pid = str(p.get("position_id", ""))
+#|            realized, fees = _d(p.get("realized_pnl")), _d(p.get("fees"))
+#|            if pid in seen_closed:
+#|                cnt["duplicate_closes"] += 1
+#|                continue
+#|            seen_closed.add(pid)
+#|            cnt["closes"] += 1
+#|            if pid not in open_pos:
+#|                cnt["orphan_closes"] += 1
+#|            eq_open = equity_at_open.get(pid, equity)
+#|            open_pos.pop(pid, None)
+#|            equity += realized
+#|            realized_total += realized
+#|            fees_total += fees
+#|            cnt["wins"] += realized > 0
+#|            reason = str(p.get("reason", "?"))
+#|            reasons[reason] = reasons.get(reason, 0) + 1
+#|            cnt["manual_closes"] += reason == "manual"
+#|            cnt["loss_exceeds_margin"] += bool(p.get("loss_exceeds_margin"))
+#|            cnt["held_over_max"] += _d(p.get("held_ms")) > max_hold_ms + HOUR_MS
+#|            if realized < 0 and eq_open > 0 and cap:
+#|                ratio = (-realized) / eq_open / cap
+#|                mx["realized_loss_ratio"] = max(mx["realized_loss_ratio"], ratio)
+#|                cnt["realized_loss_over_cap"] += ratio > 1
+#|                cnt["realized_loss_over_cap_150pct"] += ratio > Decimal("1.5")
+#|            min_equity, peak = min(min_equity, equity), max(peak, equity)
+#|            if peak > 0:
+#|                max_dd = max(max_dd, (peak - equity) / peak)
+#|            day_realized += realized
+#|            frac = (-day_realized / day_start_capital) if day_realized < 0 and day_start_capital > 0 else Decimal(0)
+#|            mx["daily_loss_fraction"] = max(mx["daily_loss_fraction"], frac)
+#|            if frac >= warn:
+#|                days_warn.add(day)
+#|            if frac >= halt:
+#|                days_halt.add(day)
+#|                day_halt_at = day_halt_at or ts
+#|
+#|    still_open = len(open_pos)
+#|    oldest = max(((last_ts - o["ts"]) for o in open_pos.values()), default=0) if last_ts else 0
+#|    return {
+#|        "schema": 1, "classification": "NUMBERS_ONLY", "approximation": "equity=initial+realized (unrealized not in journal)",
+#|        "window": {"first_event_ms": first_ts, "last_event_ms": last_ts,
+#|                   "hours": _s(Decimal((last_ts or 0) - (first_ts or 0)) / Decimal(HOUR_MS)) if first_ts else "0"},
+#|        "trades": {"opened": cnt["opens"], "closed": cnt["closes"], "still_open": still_open,
+#|                   "wins": cnt["wins"], "losses": cnt["closes"] - cnt["wins"], "realized_pnl": _s(realized_total),
+#|                   "fees": _s(fees_total), "exit_reasons": dict(sorted(reasons.items())),
+#|                   "oldest_open_age_hours": _s(Decimal(oldest) / Decimal(HOUR_MS))},
+#|        "equity_realized_only": {"initial": _s(init), "now": _s(equity), "min": _s(min_equity),
+#|                                 "max_drawdown_fraction": _s(max_dd), "floor": _s(floor)},
+#|        "ratios_vs_limit": {k: _s(v) for k, v in mx.items()},
+#|        "violations_or_flags": {k: cnt[k] for k in (
+#|            "risk_over_cap", "risk_over_cap_10pct", "risk_over_margin_cap", "open_risk_over", "total_margin_over",
+#|            "position_margin_over", "leverage_out_of_range", "open_below_floor", "realized_loss_over_cap",
+#|            "realized_loss_over_cap_150pct", "loss_exceeds_margin", "held_over_max", "orphan_closes",
+#|            "duplicate_closes", "manual_closes", "opens_after_daily_halt_proof")},
+#|        "daily_guard_lower_bound": {"days_at_or_over_warn": len(days_warn), "days_at_or_over_halt": len(days_halt),
+#|                                    "max_daily_loss_fraction": _s(mx["daily_loss_fraction"]),
+#|                                    "warn": _s(warn), "halt": _s(halt)},
+#|        "decisions": dict(sorted(decisions.items())),
+#|        "verdict": _verdict(cnt, mx),
+#|    }
+#|
+#|
+#|def _verdict(cnt: dict, mx: dict) -> dict:
+#|    hard = []
+#|    if cnt["opens_after_daily_halt_proof"]:
+#|        hard.append("opens_after_daily_halt_proven_by_realized_only")
+#|    if cnt["leverage_out_of_range"]:
+#|        hard.append("leverage_out_of_policy_range")
+#|    if cnt["open_below_floor"]:
+#|        hard.append("open_at_or_below_minimum_equity")
+#|    if cnt["risk_over_cap_10pct"] or cnt["risk_over_margin_cap"]:
+#|        hard.append("per_position_risk_clearly_over_cap")
+#|    if cnt["open_risk_over"] or cnt["total_margin_over"] or cnt["position_margin_over"]:
+#|        hard.append("aggregate_risk_or_margin_over_limit_indicative")
+#|    if cnt["orphan_closes"] or cnt["duplicate_closes"]:
+#|        hard.append("journal_consistency_problem")
+#|    soft = []
+#|    if cnt["realized_loss_over_cap"]:
+#|        soft.append("realized_loss_over_cap_gap_or_slippage")
+#|    if cnt["held_over_max"]:
+#|        soft.append("positions_held_over_policy_max_hold")
+#|    return {"limits_held": not hard, "hard_flags": hard, "soft_flags": soft}
+#|
+#|
+#|def analyze_db(db_path: str, policy: dict, exit_max_hold_hours: int = 24) -> dict:
+#|    return analyze(read_events(db_path), policy, exit_max_hold_hours)
+#|
+#|
+#|def open_positions_status(db_path: str) -> dict:
+#|    """Stato leggero di un journal: posizioni aperte, orfane, ultimo evento. Solo numeri."""
+#|    opened, closed, orphan, last = set(), set(), 0, None
+#|    for _seq, kind, ts, p in read_events(db_path):
+#|        last = ts if last is None else max(last, ts)
+#|        pid = str(p.get("position_id", ""))
+#|        if kind == "paper_open":
+#|            opened.add(pid)
+#|        elif kind == "paper_close":
+#|            if pid not in opened:
+#|                orphan += 1
+#|            closed.add(pid)
+#|    return {"opened": len(opened), "closed": len(closed & opened), "open_now": len(opened - closed),
+#|            "orphan_closes": orphan, "last_event_ms": last}
+#|
+#|
+#|if __name__ == "__main__":
+#|    import sys
+#|    with open(sys.argv[2]) as fh:
+#|        cfg = json.load(fh)
+#|    print(json.dumps(analyze_db(sys.argv[1], cfg), indent=1, sort_keys=True))
+#@@ END risk_audit
+
 #@@ BEGIN sealed_root
 #|"""Runner PRIVILEGIATO della Fase 0 (opzione B): eseguito UNA volta dall'operatore, da un bundle sigillato.
 #|
@@ -1358,6 +1603,7 @@ if __name__ == "__main__":
 #|
 #|import audit
 #|import inventory as inv
+#|import risk_audit
 #|import snapshot as snap
 #|
 #|SCHEMA = 1
@@ -1367,6 +1613,9 @@ if __name__ == "__main__":
 #|STATE_PROPS = ("ActiveState", "SubState", "MainPID", "NRestarts")
 #|ACTIVE_STATES = frozenset({"active", "activating", "reloading", "deactivating", "refreshing"})
 #|MAX_TOTAL_GB = 10
+#|PROVIDERS = ("deepseek", "qwen", "minimax")
+#|RUNNER_UNIT_RE = re.compile(r"superbot-arena-runner@(deepseek|qwen|minimax)\.service")
+#|TOKEN_RE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 #|Runner = Callable[[list], tuple]
 #|
 #|
@@ -1430,6 +1679,22 @@ if __name__ == "__main__":
 #|        return 127, ""
 #|    try:
 #|        r = subprocess.run([exe] + argv[1:], capture_output=True, text=True, timeout=30,
+#|                           env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
+#|    except (OSError, subprocess.SubprocessError):
+#|        return 127, ""
+#|    return r.returncode, r.stdout
+#|
+#|
+#|def default_stopper(argv: list) -> tuple:
+#|    """UNICO comando di scrittura ammesso nel bundle: `systemctl stop` di uno dei TRE runner dell'Arena (mai le
+#|    uscite, mai il close-bridge, mai altre unita'). Il runner gestisce SIGTERM in modo ordinato."""
+#|    if len(argv) != 3 or argv[0] != "systemctl" or argv[1] != "stop" or not RUNNER_UNIT_RE.fullmatch(argv[2]):
+#|        raise ValueError("command_not_allowed")
+#|    exe = next((p for p in ("/usr/bin/systemctl", "/bin/systemctl") if os.path.exists(p)), None)
+#|    if exe is None:
+#|        return 127, ""
+#|    try:
+#|        r = subprocess.run([exe, "stop", argv[2]], capture_output=True, text=True, timeout=300,
 #|                           env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
 #|    except (OSError, subprocess.SubprocessError):
 #|        return 127, ""
@@ -1519,14 +1784,8 @@ if __name__ == "__main__":
 #|    return sorted({x["code"] for x in items})
 #|
 #|
-#|def execute(spec: dict, mode: str, *, base: str = BASE_DIR, allowed_root: str = ALLOWED_SRC_ROOT, trusted_uid: int = 0,
-#|            chain_anchor: str = "/", runner: Runner = default_runner, proc_root: str = "/proc", auth_ref: Optional[str] = None,
-#|            code_sha: str = "", space_factor: float = 2.0, reserve_mb: int = 512, max_total_gb: float = MAX_TOTAL_GB,
-#|            keep_restore: bool = False, sleep: Callable[[float], None] = time.sleep, now: Callable[[], float] = time.time,
-#|            out: Callable[[str], None] = print) -> tuple:
-#|    if mode not in ("preflight", "full"):
-#|        raise ValueError("bad_mode")
-#|    # ---- directory base e di esecuzione
+#|def _new_run(base: str, trusted_uid: int, chain_anchor: str, now: Callable[[], float], code_sha: str) -> tuple:
+#|    """Directory base fidata + nuova directory di esecuzione (public 0755 / private 0700). Errori: (1, {...})."""
 #|    bp = os.path.abspath(base)
 #|    if not os.path.lexists(bp):
 #|        if chain_problems(bp, trusted_uid, anchor=chain_anchor):
@@ -1544,11 +1803,31 @@ if __name__ == "__main__":
 #|    _mkdir_new(pub, 0o755)
 #|    _mkdir_new(priv, 0o700)
 #|    _mkdir_new(os.path.join(priv, "reports"), 0o700)
-#|    snapdir, restdir = os.path.join(priv, "snapshot"), os.path.join(priv, "restore")
+#|    return run_id, run_dir, pub, priv, os.path.join(priv, "snapshot"), os.path.join(priv, "restore"), t0
+#|
+#|
+#|def execute(spec: dict, mode: str, *, base: str = BASE_DIR, allowed_root: str = ALLOWED_SRC_ROOT, trusted_uid: int = 0,
+#|            chain_anchor: str = "/", runner: Runner = default_runner, proc_root: str = "/proc", auth_ref: Optional[str] = None,
+#|            code_sha: str = "", space_factor: float = 2.0, reserve_mb: int = 512, max_total_gb: float = MAX_TOTAL_GB,
+#|            keep_restore: bool = False, groups: Optional[list] = None, ended_early_reason: Optional[str] = None,
+#|            sleep: Callable[[float], None] = time.sleep, now: Callable[[], float] = time.time,
+#|            out: Callable[[str], None] = print) -> tuple:
+#|    if mode not in ("preflight", "full"):
+#|        raise ValueError("bad_mode")
+#|    if groups is not None:
+#|        unknown = sorted(set(groups) - set(spec["required_groups"]))
+#|        if unknown or not groups:
+#|            raise ValueError("unknown_group")
+#|        spec = {**spec, "required_groups": [g for g in spec["required_groups"] if g in groups],
+#|                "sources": [s for s in spec["sources"] if s["group"] in groups]}
+#|    nr = _new_run(base, trusted_uid, chain_anchor, now, code_sha)
+#|    if isinstance(nr[0], int):
+#|        return nr
+#|    run_id, run_dir, pub, priv, snapdir, restdir, t0 = nr
 #|
 #|    summary: dict[str, Any] = {"schema": SCHEMA, "run_id": run_id, "mode": mode, "code_sha256": code_sha,
 #|                               "python": sys.version.split()[0], "sqlite": sqlite3.sqlite_version,
-#|                               "certifies_backup": False,
+#|                               "certifies_backup": False, "groups": sorted(groups) if groups else "all",
 #|                               "certification_blockers": ["same_host_copy", "capture_not_atomic_across_sources",
 #|                                                          "external_encrypted_copy_not_done"]}
 #|
@@ -1656,6 +1935,34 @@ if __name__ == "__main__":
 #|                        "v3_chains_total": asum["v3_chains_total"], "anchors_digest": digest}
 #|    summary["certification_blockers"] = asum["certification_blockers"] + [
 #|        b for b in summary["certification_blockers"] if b not in asum["certification_blockers"]]
+#|    pol = spec.get("arena_risk_policy")
+#|    if pol:
+#|        risk, window = {}, {}
+#|        for src in spec["sources"]:
+#|            if not src["id"].startswith("arena_"):
+#|                continue
+#|            prov = src["id"][len("arena_"):]
+#|            dbs, t0s = [], []
+#|            for d, _, fn in os.walk(os.path.join(restdir, src["id"])):
+#|                dbs += [os.path.join(d, n) for n in sorted(fn) if n == "journal.db"]
+#|                t0s += [os.path.join(d, n) for n in fn if n == "arena_t0.json"]
+#|            try:
+#|                reps = [risk_audit.analyze(risk_audit.read_events(p), pol, pol.get("exit_max_hold_hours", 24)) for p in sorted(dbs)]
+#|                risk[prov] = reps[0] if len(reps) == 1 else reps
+#|                t0_ms = None
+#|                for tp in t0s[:1]:
+#|                    with open(tp, encoding="utf-8") as fh:
+#|                        t0_ms = json.load(fh).get("trial_start_ms")
+#|                last = max((r["window"]["last_event_ms"] or 0) for r in reps) if reps else None
+#|                if isinstance(t0_ms, int) and last:
+#|                    hrs = round((last - t0_ms) / 3_600_000, 2)
+#|                    window[prov] = {"t0_ms": t0_ms, "last_event_ms": last, "effective_hours": hrs,
+#|                                    "planned_hours": spec.get("arena_planned_hours", 72)}
+#|            except (sqlite3.Error, OSError, ValueError, KeyError) as exc:
+#|                risk[prov] = "error:" + type(exc).__name__
+#|        summary["risk"], summary["arena_window"] = risk, window
+#|        if ended_early_reason:
+#|            summary["ended_early_reason"] = ended_early_reason
 #|    if not keep_restore:
 #|        shutil.rmtree(restdir)                              # la copia di ripristino e' solo una prova: si rimuove
 #|    summary["services"] = compare_states(before, unit_states(runner))
@@ -1664,19 +1971,153 @@ if __name__ == "__main__":
 #|    return finish("SNAPSHOT_GO", 0)
 #|
 #|
+#|# --------------------------------------------------------------------------- status e arresto ordinato delle aperture
+#|
+#|def _arena_units(provider: str) -> tuple:
+#|    return f"superbot-arena-runner@{provider}.service", f"superbot-arena-exit@{provider}.service"
+#|
+#|
+#|def _live_positions(spec: dict, provider: str, allowed_root: str, trusted_uid: int, chain_anchor: str) -> dict:
+#|    """Posizioni aperte di un journal VIVO, in sola lettura e SENZA effetti sulla sorgente: si legge solo se il DB non e'
+#|    in WAL, o e' in WAL con -shm gia' presente; un WAL fermo (senza sidecar) non si apre (creerebbe file)."""
+#|    src = next((x for x in spec["sources"] if x["id"] == f"arena_{provider}"), None)
+#|    if src is None:
+#|        return {"status": "no_source"}
+#|    if not (os.path.abspath(src["path"]) + os.sep).startswith(os.path.abspath(allowed_root).rstrip(os.sep) + os.sep):
+#|        return {"status": "outside_allowed_root"}
+#|    if chain_problems(src["path"], trusted_uid, anchor=chain_anchor):
+#|        return {"status": "path_not_root_controlled"}
+#|    dbs = [os.path.join(d, n) for d, _, fn in os.walk(src["path"], followlinks=False) for n in sorted(fn) if n == "journal.db"]
+#|    if not dbs:
+#|        return {"status": "journal_not_found"}
+#|    out = []
+#|    for p in dbs:
+#|        method = snap.sqlite_method(snap.probe_sqlite(p))
+#|        if method != "backup":
+#|            out.append({"status": "skipped:" + method.replace("nogo:", "")})
+#|            continue
+#|        try:
+#|            out.append({"status": "ok", **risk_audit.open_positions_status(p)})
+#|        except (sqlite3.Error, OSError):
+#|            out.append({"status": "unreadable"})
+#|    return out[0] if len(out) == 1 else {"status": "multiple", "journals": out}
+#|
+#|
+#|def execute_status(spec: dict, *, base: str = BASE_DIR, allowed_root: str = ALLOWED_SRC_ROOT, trusted_uid: int = 0,
+#|                   chain_anchor: str = "/", runner: Runner = default_runner, code_sha: str = "",
+#|                   now: Callable[[], float] = time.time, out: Callable[[str], None] = print) -> tuple:
+#|    """SOLA LETTURA: stato delle unita' Arena e posizioni aperte per provider. Nessun lock persistente, nessuna copia."""
+#|    nr = _new_run(base, trusted_uid, chain_anchor, now, code_sha)
+#|    if isinstance(nr[0], int):
+#|        return nr
+#|    run_id, run_dir, pub, priv, _snap, _rest, t0 = nr
+#|    states = unit_states(runner)
+#|    summary: dict[str, Any] = {"schema": SCHEMA, "run_id": run_id, "mode": "status", "code_sha256": code_sha,
+#|                               "at_ms": int(t0 * 1000), "certifies_backup": False}
+#|    prov = {}
+#|    for p in PROVIDERS:
+#|        ru, eu = _arena_units(p)
+#|        prov[p] = {"runner": (states or {}).get(ru, {}).get("ActiveState", "unknown"),
+#|                   "exit": (states or {}).get(eu, {}).get("ActiveState", "unknown"),
+#|                   "positions": _live_positions(spec, p, allowed_root, trusted_uid, chain_anchor)}
+#|    summary["providers"] = prov
+#|    summary["systemd_readable"] = states is not None
+#|    _write_json_new(os.path.join(pub, "summary.json"), summary, 0o644)
+#|    summary["verdict"] = "STATUS"
+#|    out(f"STATUS: vedi {os.path.join(pub, 'summary.json')}")
+#|    return 0, summary
+#|
+#|
+#|def execute_stop(spec: dict, *, providers: Optional[list] = None, ended_early_reason: str, auth_ref: str,
+#|                 base: str = BASE_DIR, allowed_root: str = ALLOWED_SRC_ROOT, trusted_uid: int = 0,
+#|                 chain_anchor: str = "/", runner: Runner = default_runner, stopper: Callable[[list], tuple] = default_stopper,
+#|                 code_sha: str = "", now: Callable[[], float] = time.time, out: Callable[[str], None] = print) -> tuple:
+#|    """Blocca le NUOVE aperture fermando SOLO i runner Arena selezionati (SIGTERM ordinato). Le uscite (exit service) restano
+#|    attive e chiudono le posizioni con le regole normali (stop, take-profit, durata massima): nessuna chiusura manuale.
+#|    Idempotente. Si rifiuta di fermare qualsiasi cosa se un exit service selezionato non e' attivo (posizioni orfane)."""
+#|    sel = list(PROVIDERS) if providers is None else list(providers)     # [] NON significa "tutti"
+#|    if not sel or any(p not in PROVIDERS for p in sel) or len(set(sel)) != len(sel):
+#|        raise ValueError("bad_providers")
+#|    if not TOKEN_RE.fullmatch(ended_early_reason or "") or not (auth_ref or "").strip():
+#|        raise ValueError("bad_reason_or_auth_ref")
+#|    nr = _new_run(base, trusted_uid, chain_anchor, now, code_sha)
+#|    if isinstance(nr[0], int):
+#|        return nr
+#|    run_id, run_dir, pub, priv, _snap, _rest, t0 = nr
+#|    summary: dict[str, Any] = {"schema": SCHEMA, "run_id": run_id, "mode": "stop-openings", "code_sha256": code_sha,
+#|                               "providers": sel, "ended_early_reason": ended_early_reason, "at_ms": int(t0 * 1000),
+#|                               "certifies_backup": False}
+#|
+#|    def finish(verdict: str, code: int) -> tuple:
+#|        summary["verdict"] = verdict
+#|        _write_json_new(os.path.join(pub, "summary.json"), summary, 0o644)
+#|        out(f"{verdict}: vedi {os.path.join(pub, 'summary.json')}")
+#|        return code, summary
+#|
+#|    before = unit_states(runner)
+#|    if before is None:
+#|        summary["nogo"] = ["systemd_unavailable"]
+#|        return finish("NO-GO", 1)
+#|    nogo = []
+#|    for p in sel:
+#|        ru, eu = _arena_units(p)
+#|        if ru not in before:
+#|            nogo.append(f"runner_unit_not_found:{p}")
+#|        if before.get(eu, {}).get("ActiveState") != "active":
+#|            nogo.append(f"exit_service_not_active:{p}")               # fermare il runner lascerebbe posizioni senza uscite
+#|    summary["positions_before"] = {p: _live_positions(spec, p, allowed_root, trusted_uid, chain_anchor) for p in sel}
+#|    if nogo:
+#|        summary["nogo"] = nogo
+#|        summary["services_before"] = {u: before[u] for u in before if u.startswith("superbot-arena-")}
+#|        return finish("NO-GO", 1)
+#|    stopped, already, failed = [], [], []
+#|    for p in sel:
+#|        ru, _eu = _arena_units(p)
+#|        if before[ru].get("ActiveState") not in ACTIVE_STATES:
+#|            already.append(p)
+#|            continue
+#|        rc, _o = stopper(["systemctl", "stop", ru])
+#|        (stopped if rc == 0 else failed).append(p)
+#|    after = unit_states(runner) or {}
+#|    still_active = [p for p in sel if after.get(_arena_units(p)[0], {}).get("ActiveState") in ACTIVE_STATES]
+#|    exits_ok = all(after.get(_arena_units(p)[1], {}).get("ActiveState") == "active"
+#|                   and after[_arena_units(p)[1]].get("MainPID") == before[_arena_units(p)[1]].get("MainPID")
+#|                   and after[_arena_units(p)[1]].get("NRestarts") == before[_arena_units(p)[1]].get("NRestarts") for p in sel)
+#|    summary.update({"stopped": stopped, "already_stopped": already, "stop_failed": failed,
+#|                    "runners_still_active": still_active, "exit_services_untouched": exits_ok,
+#|                    "services_before": {u: before[u] for u in before if u.startswith("superbot-arena-")},
+#|                    "services_after": {u: after[u] for u in after if u.startswith("superbot-arena-")},
+#|                    "positions_after": {p: _live_positions(spec, p, allowed_root, trusted_uid, chain_anchor) for p in sel},
+#|                    "next": "attendere la chiusura naturale delle posizioni (max 24h) poi eseguire 'full' per lo snapshot definitivo"})
+#|    ok = not failed and not still_active and exits_ok
+#|    return finish("OPENINGS_STOPPED" if ok else "NO-GO", 0 if ok else 1)
+#|
+#|
 #|# --------------------------------------------------------------------------- CLI
 #|
 #|def main(argv: list, *, data: bytes, spec: dict, code_path: str, module_hashes: Optional[dict] = None) -> int:
 #|    ap = argparse.ArgumentParser(prog="phase0_sealed.py", description=__doc__.split("\n")[0])
 #|    sub = ap.add_subparsers(dest="cmd", required=True)
 #|    sub.add_parser("selftest", help="nessun privilegio, nessun dato: versioni e hash dei moduli incorporati")
-#|    for name, hlp in (("preflight", "SOLA LETTURA di metadati: nessuna copia"),
-#|                      ("full", "preflight + snapshot + manifest + ripristino + audit")):
-#|        p = sub.add_parser(name, help=hlp)
+#|
+#|    def common(p, auth_required: bool):
 #|        p.add_argument("--expect-sha256", required=True, help="hash atteso di QUESTO file (dal messaggio dell'operatore)")
-#|        p.add_argument("--auth-ref", required=(name == "full"))
+#|        if auth_required:
+#|            p.add_argument("--auth-ref", required=True)
+#|    for name, hlp in (("preflight", "SOLA LETTURA di metadati: nessuna copia"),
+#|                      ("full", "preflight + snapshot + manifest + ripristino + audit + limiti di rischio")):
+#|        p = sub.add_parser(name, help=hlp)
+#|        common(p, name == "full")
 #|        p.add_argument("--max-total-gb", type=float, default=MAX_TOTAL_GB)
 #|        p.add_argument("--keep-restore", action="store_true")
+#|        p.add_argument("--groups", help="sottoinsieme di gruppi separati da virgola (es. arena_minimax)")
+#|        p.add_argument("--ended-early-reason", help="motivo (token) se l'Arena e' conclusa prima delle 72h")
+#|    common(sub.add_parser("status", help="SOLA LETTURA: unita' Arena e posizioni aperte"), False)
+#|    p = sub.add_parser("stop-openings", help="ferma SOLO i runner Arena selezionati (le uscite restano attive)")
+#|    common(p, True)
+#|    p.add_argument("--ended-early-reason", required=True)
+#|    p.add_argument("--providers", help="es. minimax oppure deepseek,qwen,minimax (default: tutti e tre)")
+#|    p.add_argument("--confirm-stop-runners", action="store_true", required=True)
 #|    a = ap.parse_args(argv)
 #|    sha = hashlib.sha256(data).hexdigest()
 #|    if a.cmd == "selftest":
@@ -1697,36 +2138,150 @@ if __name__ == "__main__":
 #|        os.nice(19)
 #|    except OSError:
 #|        pass
-#|    code, _ = execute(spec, a.cmd, auth_ref=getattr(a, "auth_ref", None), code_sha=sha,
-#|                      max_total_gb=a.max_total_gb, keep_restore=getattr(a, "keep_restore", False))
+#|    if a.cmd == "status":
+#|        return execute_status(spec, code_sha=sha)[0]
+#|    if a.cmd == "stop-openings":
+#|        try:
+#|            return execute_stop(spec, providers=a.providers.split(",") if a.providers else None,
+#|                                ended_early_reason=a.ended_early_reason, auth_ref=a.auth_ref, code_sha=sha)[0]
+#|        except ValueError as exc:
+#|            print(f"NO-GO: argomenti non validi ({exc}); nessuna azione eseguita")
+#|            return 2
+#|    reason = getattr(a, "ended_early_reason", None)
+#|    if reason is not None and not TOKEN_RE.fullmatch(reason):
+#|        print("NO-GO: --ended-early-reason deve essere un token [A-Za-z0-9_.:-]{1,64}")
+#|        return 2
+#|    try:
+#|        code, _ = execute(spec, a.cmd, auth_ref=getattr(a, "auth_ref", None), code_sha=sha, max_total_gb=a.max_total_gb,
+#|                          keep_restore=a.keep_restore, groups=a.groups.split(",") if a.groups else None,
+#|                          ended_early_reason=reason)
+#|    except ValueError as exc:
+#|        print(f"NO-GO: argomenti non validi ({exc}); nessuna azione eseguita")
+#|        return 2
 #|    return code
 #@@ END sealed_root
 
 #@@ BEGIN sources.json
 #|{
-#|  "schema": 1,
-#|  "_comment": "Spec INCORPORATA nel bundle sigillato (coperta dall'hash). Percorsi pubblici dichiarati nel repository e confermati in parte dallo STEP 1: la verifica reale e' il preflight (NO-GO se mancano). 'quiescence.units' = unita' che devono risultare NON attive e senza DB aperti per ammettere la copia di un DB WAL senza -wal/-shm; le sorgenti con servizi attivi NON dichiarano quiescenza. 'optional' = ammessa se assente, ma ogni gruppo obbligatorio richiede almeno una sorgente non opzionale e almeno un FILE DI DATI (sqlite/jsonl).",
-#|  "require_data": true,
-#|  "required_groups": ["falco", "toro", "brain_storico", "arena_deepseek", "arena_qwen", "arena_minimax"],
-#|  "sources": [
-#|    {"id": "falco_data", "group": "falco", "kind": "tree", "path": "/opt/superbot-desk-data/hawk",
-#|     "quiescence": {"units": ["superbot-v3-paper-falco.service", "superbot-v3-falco-exit.service"]}},
-#|    {"id": "v3_falco_run", "group": "falco", "kind": "tree", "optional": true,
-#|     "path": "/opt/superbot-v3-paper-runs/classic-hawk-paper20261111",
-#|     "quiescence": {"units": ["superbot-v3-paper-falco.service", "superbot-v3-falco-exit.service"]}},
-#|    {"id": "toro_data", "group": "toro", "kind": "tree", "path": "/opt/superbot-desk-data/bull",
-#|     "quiescence": {"units": ["superbot-v3-paper-toro.service", "superbot-v3-toro-exit.service"]}},
-#|    {"id": "v3_toro_run", "group": "toro", "kind": "tree", "optional": true,
-#|     "path": "/opt/superbot-v3-paper-runs/classic-bull-paper20261111",
-#|     "quiescence": {"units": ["superbot-v3-paper-toro.service", "superbot-v3-toro-exit.service"]}},
-#|    {"id": "brain_free", "group": "brain_storico", "kind": "tree", "path": "/opt/superbot-brain-free",
-#|     "quiescence": {"units": ["superbot-v3-paper-brain-runner.service", "superbot-brain-worker.service",
-#|                              "superbot-v3-paper-brain.service"]}},
-#|    {"id": "v3_brain_run", "group": "brain_storico", "kind": "tree", "optional": true,
-#|     "path": "/opt/superbot-v3-paper-runs/brain-v3-paper20261111"},
-#|    {"id": "arena_deepseek", "group": "arena_deepseek", "kind": "tree", "path": "/opt/superbot-ai-arena-paper/deepseek"},
-#|    {"id": "arena_qwen", "group": "arena_qwen", "kind": "tree", "path": "/opt/superbot-ai-arena-paper/qwen"},
-#|    {"id": "arena_minimax", "group": "arena_minimax", "kind": "tree", "path": "/opt/superbot-ai-arena-paper/minimax"}
-#|  ]
+#| "schema": 1,
+#| "_comment": "Spec INCORPORATA nel bundle sigillato (coperta dall'hash). Percorsi pubblici dichiarati nel repository e confermati in parte dallo STEP 1: la verifica reale e' il preflight (NO-GO se mancano). 'quiescence.units' = unita' che devono risultare NON attive e senza DB aperti per ammettere la copia di un DB WAL senza -wal/-shm; le sorgenti con servizi attivi NON dichiarano quiescenza. 'optional' = ammessa se assente, ma ogni gruppo obbligatorio richiede almeno una sorgente non opzionale e almeno un FILE DI DATI (sqlite/jsonl). 'arena_risk_policy' = copia della politica di rischio delle config Arena (stessa per le tre run): serve all'audit dei limiti.",
+#| "require_data": true,
+#| "required_groups": [
+#|  "falco",
+#|  "toro",
+#|  "brain_storico",
+#|  "arena_deepseek",
+#|  "arena_qwen",
+#|  "arena_minimax"
+#| ],
+#| "arena_risk_policy": {
+#|  "initial_equity": "2000",
+#|  "daily_loss_warn_fraction": "0.35",
+#|  "daily_loss_halt_fraction": "0.50",
+#|  "exit_max_hold_hours": 24,
+#|  "risk_policy": {
+#|   "max_loss_fraction": "0.042857142857142857",
+#|   "max_open_risk_fraction": "0.12",
+#|   "max_position_margin_fraction": "0.20",
+#|   "max_total_margin_fraction": "0.55",
+#|   "minimum_equity": "450",
+#|   "estimated_roundtrip_cost_bp": "16",
+#|   "liquidation_buffer_fraction": "0.5",
+#|   "max_loss_margin_fraction": "0.214285714285714285",
+#|   "min_leverage": 20,
+#|   "max_leverage": 50
+#|  }
+#| },
+#| "arena_planned_hours": 72,
+#| "sources": [
+#|  {
+#|   "id": "falco_data",
+#|   "group": "falco",
+#|   "kind": "tree",
+#|   "path": "/opt/superbot-desk-data/hawk",
+#|   "quiescence": {
+#|    "units": [
+#|     "superbot-v3-paper-falco.service",
+#|     "superbot-v3-falco-exit.service"
+#|    ]
+#|   }
+#|  },
+#|  {
+#|   "id": "v3_falco_run",
+#|   "group": "falco",
+#|   "kind": "tree",
+#|   "optional": true,
+#|   "path": "/opt/superbot-v3-paper-runs/classic-hawk-paper20261111",
+#|   "quiescence": {
+#|    "units": [
+#|     "superbot-v3-paper-falco.service",
+#|     "superbot-v3-falco-exit.service"
+#|    ]
+#|   }
+#|  },
+#|  {
+#|   "id": "toro_data",
+#|   "group": "toro",
+#|   "kind": "tree",
+#|   "path": "/opt/superbot-desk-data/bull",
+#|   "quiescence": {
+#|    "units": [
+#|     "superbot-v3-paper-toro.service",
+#|     "superbot-v3-toro-exit.service"
+#|    ]
+#|   }
+#|  },
+#|  {
+#|   "id": "v3_toro_run",
+#|   "group": "toro",
+#|   "kind": "tree",
+#|   "optional": true,
+#|   "path": "/opt/superbot-v3-paper-runs/classic-bull-paper20261111",
+#|   "quiescence": {
+#|    "units": [
+#|     "superbot-v3-paper-toro.service",
+#|     "superbot-v3-toro-exit.service"
+#|    ]
+#|   }
+#|  },
+#|  {
+#|   "id": "brain_free",
+#|   "group": "brain_storico",
+#|   "kind": "tree",
+#|   "path": "/opt/superbot-brain-free",
+#|   "quiescence": {
+#|    "units": [
+#|     "superbot-v3-paper-brain-runner.service",
+#|     "superbot-brain-worker.service",
+#|     "superbot-v3-paper-brain.service"
+#|    ]
+#|   }
+#|  },
+#|  {
+#|   "id": "v3_brain_run",
+#|   "group": "brain_storico",
+#|   "kind": "tree",
+#|   "optional": true,
+#|   "path": "/opt/superbot-v3-paper-runs/brain-v3-paper20261111"
+#|  },
+#|  {
+#|   "id": "arena_deepseek",
+#|   "group": "arena_deepseek",
+#|   "kind": "tree",
+#|   "path": "/opt/superbot-ai-arena-paper/deepseek"
+#|  },
+#|  {
+#|   "id": "arena_qwen",
+#|   "group": "arena_qwen",
+#|   "kind": "tree",
+#|   "path": "/opt/superbot-ai-arena-paper/qwen"
+#|  },
+#|  {
+#|   "id": "arena_minimax",
+#|   "group": "arena_minimax",
+#|   "kind": "tree",
+#|   "path": "/opt/superbot-ai-arena-paper/minimax"
+#|  }
+#| ]
 #|}
 #@@ END sources.json
