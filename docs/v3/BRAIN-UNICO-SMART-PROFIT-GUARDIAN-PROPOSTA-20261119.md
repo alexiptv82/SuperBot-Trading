@@ -57,7 +57,7 @@ Rischio monetario fisso = 1R = 85,71 USDT. Margine 400 USDT. Costi ipotetici: 0,
 MarketData ─► FeatureBuilder (point-in-time, log schema v2)
                  │
                  ▼
-          Guardian.precheck ──LOCKED──► NO_TRADE(reason=guardian_locked), nessuna chiamata LLM
+          Guardian.precheck ──LOCKED──► screened_signal (screener leggero, nessuna chiamata LLM) + NO_TRADE(reason=guardian_locked)
                  │ budget>0
                  ▼
           DeepSeek: LONG/SHORT/NO_TRADE + tesi (invalidazione, target, orizzonte, confidenza)
@@ -77,7 +77,7 @@ MarketData ─► FeatureBuilder (point-in-time, log schema v2)
           OrderManager (PAPER) ─► ExitService (indipendente; il Guardian non lo ferma né lo modifica)
                  │
                  ▼
-          Journal (eventi): decision, guardian_state, guardian_block (con candidato completo),
+          Journal (eventi): full_decision, screened_signal, guardian_state, guardian_block,
                             thesis_open/close, sizing_breakdown ─► Dataset Builder (PR #118)
                  │
                  ▼
@@ -102,7 +102,7 @@ Integrazione con le AI:
 | Politica | Regola | Pro | Contro |
 |---|---|---|---|
 | **B. Soglia fissa** (report) | ≥ +400: metà del rischio; ≥ +500: stop alle nuove aperture | Semplice e comprensibile | Dipende dalla scala del conto; limita il lato destro; non protegge il p5 |
-| **D. Floor mobile in R / % equity** (raccomandata come primo test) | Si arma quando il picco MTM netto è ≥ A (es. 4,67R ≈ +400 oggi, o +8 % dell'equity d'inizio sessione). Floor = inizio + (1−g)·(picco−inizio), solo crescente. Rischio di ogni nuova apertura (costi e stress inclusi) ≤ equity_MTM − floor − rischio_aperto_a_stop. Sotto 0,25R: LOCKED | Un solo meccanismo; il giveback massimo è rispettato *per costruzione* (salvo gap); la size si riduce gradualmente invece di passare da tutto a niente; scala con il conto | Due parametri (A, g); serve un'equity MTM affidabile |
+| **D. Floor mobile in R / % equity** (raccomandata come primo test) | Si arma quando il picco MTM netto è ≥ A (es. 4,67R ≈ +400 oggi, o +8 % dell'equity d'inizio sessione). Floor = inizio + (1−g)·(picco−inizio), solo crescente. Rischio di ogni nuova apertura (costi e stress inclusi) ≤ equity_MTM − floor − rischio_aperto_a_stop. Sotto 0,25R: LOCKED | Un solo meccanismo; il giveback massimo è rispettato **solo in simulazione, con chiusure singole e senza gap**: nella realtà è un obiettivo probabilistico (vedi §H); la size si riduce gradualmente invece di passare da tutto a niente; scala con il conto | Due parametri (A, g); serve un'equity MTM affidabile |
 | **V. Adattiva a volatilità/regime** | Come D, con g e A funzione dell'ATR di portafoglio o del regime | In teoria la più efficiente | Più parametri, rischio di overfitting; da tentare solo con molti dati |
 
 **Raccomandazione: testare per prima la D** (con g = 25 % e A ≈ +400 come ipotesi), affiancata da un limite di perdita di sessione. La B resta come braccio di confronto, perché è il modello mentale dell'utente. La V va rimandata a quando il dataset avrà almeno 1.000 esempi e 45 giorni.
@@ -120,7 +120,7 @@ Risultati sintetici (40.000 sessioni, ~6 occasioni per sessione, R = 85,71, valo
 Cosa insegna la simulazione:
 1. **Nessuna regola di arresto aumenta la media se i trade sono indipendenti** (S1, S2). Le regole spostano soltanto la forma della distribuzione: è un costo in rendimento atteso pagato per ridurre la varianza.
 2. **I lock guadagnano solo se esiste il decadimento** (S3). Va quindi misurato su dati reali.
-3. **Il floor D2 garantisce il giveback** (0 % delle sessioni sotto il 75 % del picco, senza gap simulati) **quasi senza costo in S1** (−1 %). La soglia B invece taglia anche il lato destro e lascia comunque un 5 % di sessioni sotto il 75 % del picco.
+3. **Nella simulazione il floor D2 rispetta il giveback** (0 % delle sessioni sotto il 75 % del picco, ma con trade uno alla volta, senza gap, slippage, liquidazione né mark-to-market intratrade: **non è una garanzia**) **quasi senza costo in S1** (−1 %). La soglia B invece taglia anche il lato destro e lascia comunque un 5 % di sessioni sotto il 75 % del picco.
 4. **Solo il limite di perdita di sessione migliora il p5** (−40 %). Costa media se l'edge è costante, quindi va calibrato, ma è l'unico che protegge il capitale nelle giornate cattive.
 
 Limiti della simulazione: esiti binari e indipendenti, nessun gap, nessuna correlazione tra posizioni contemporanee, costi fissi. **Non è una stima del comportamento reale.**
@@ -147,7 +147,7 @@ Stati, derivati dal budget e mostrati in dashboard:
 | NORMAL | Nessun vincolo di sessione attivo | Size fino a 1R_base |
 | SELECTIVE | Floor armato, budget ≥ 1R | Soglia di qualità più alta (es. +0,1R di EV), reingressi a metà size |
 | PROTECTED | Budget tra 0,25R e 1R | Size = budget; solo tesi nuove e indipendenti dalle posizioni aperte |
-| LOCKED | Budget < 0,25R, oppure limite di sessione o globale, oppure errore dati | Nessuna nuova apertura e nessuna chiamata LLM; uscite sempre attive |
+| LOCKED | Budget < 0,25R, oppure limite di sessione o globale, oppure errore dati | Nessuna nuova apertura e nessuna chiamata LLM; lo screener leggero continua a registrare `screened_signal`; uscite sempre attive |
 
 Le transizioni verso stati più restrittivi sono immediate. Quelle verso stati meno restrittivi avvengono solo al reset di sessione, salvo l'aumento di budget dovuto a chiusure in profitto, mai a ribassi di prezzo.
 
@@ -236,7 +236,7 @@ Domande per l'utente:
 4. **L'anti-reingresso prima della soglia di sessione.** Colpisce il meccanismo osservato direttamente.
 5. **L'LLM non vede il PnL di sessione e non viene chiamato in LOCKED.** Si eliminano bias e costi.
 6. **La leva come risultato, con la scelta della minima ammissibile.** La "leva alta" resta possibile, ma la tabella di §A mostra quando costa più di quanto renda.
-7. **Ogni blocco registra il candidato completo.** Il Dataset Builder potrà così misurare il costo opportunità reale del Guardian, invece di supporlo.
+7. **Ogni blocco registra ciò che è osservabile.** Se l'LLM è stato chiamato, la `full_decision`; in LOCKED, il `screened_signal` (vedi §H). Il Dataset Builder potrà così stimare il costo opportunità invece di supporlo.
 
 ### Rischi residui dichiarati
 - Il floor non è garantito: gap, slippage e liquidazione possono superarlo. Lo stress di gap va incluso nel rischio aperto.
@@ -247,3 +247,62 @@ Domande per l'utente:
 ```
 python3 -I ops/brain-unico/guardian/sim_policies.py --sessions 40000 --seed 7
 ```
+
+---
+
+## H. Aggiornamento dopo la revisione della PR #119 e le decisioni provvisorie dell'utente (19/11/2026)
+
+**Decisioni provvisorie dell'utente (base di ricerca, non parametri operativi approvati):**
+- non ereditare il 4,29 % dell'Arena: in PAPER si prova un rischio base dell'**1–1,5 %** dell'equity;
+- leve fino a 50× disponibili, ma ogni operazione si dimensiona da rischio monetario, costi e stop;
+- Guardian dinamico confrontato con le soglie di riferimento +400/+500, che non diventano obiettivi;
+- priorità ad anti-reingresso, protezione dell'equity e meno operazioni dopo profitti importanti;
+- **nessuna eccezione discrezionale** nella prima versione;
+- in LOCKED il Brain continua a osservare il mercato con segnali leggeri e senza chiamate AI inutili, distinguendo segnali e decisioni complete;
+- il floor non è garantito;
+- Claude resta disponibile come consulente mirato se il suo valore aggiunto viene dimostrato.
+
+### H.1 Segnali osservati e decisioni complete (rilievo 2)
+| Evento | Quando | Contenuto | Uso |
+|---|---|---|---|
+| `full_decision` | L'LLM è stato chiamato (stati NORMAL, SELECTIVE, PROTECTED) | Feature point-in-time, azione LONG/SHORT/NO_TRADE, tesi (invalidazione, target, orizzonte, confidenza), esito dei gate, sizing | Training e analisi della decisione |
+| `screened_signal` | **Ogni ciclo, anche in LOCKED**, prodotto da uno screener deterministico senza LLM | Feature leggere (prezzo, ATR, momentum, volume, funding), direzione suggerita dalla regola, `screener_version`, stato del Guardian, `would_call_llm` (vero se fuori da LOCKED lo screener avrebbe passato il candidato all'LLM) | Costo opportunità **approssimato** dei blocchi: esito controfattuale dalle candele (`label_origin=counterfactual_simulation`), mai trattato come una decisione dell'AI |
+| `shadow_decision` (opzionale) | Solo con budget approvato: campione di `screened_signal` in LOCKED inviato all'LLM in sola osservazione | Come `full_decision`, marcato `shadow`, **mai eseguibile** | Misurare se l'LLM avrebbe trovato occasioni migliori dello screener |
+
+Budget predefinito delle chiamate shadow: **0**. Un eventuale tetto giornaliero di chiamate e di costo si propone solo dopo aver misurato il costo reale.
+
+### H.2 Floor con posizioni simultanee, correlazione, gap, liquidazione, slippage (rilievo 1)
+Il budget del floor diventa: `budget = equity_MTM − costi_attesi_di_uscita − floor − rischio_aperto_stressato`, dove:
+- **rischio_aperto_stressato** = somma, su posizioni aperte **e ordini pendenti**, del maggiore fra:
+  - la perdita a stop più lo slippage di uscita;
+  - la perdita in uno scenario di gap (k·ATR oltre lo stop; ipotesi k = 1).
+- **Correlazione**: per ogni cluster di posizioni nella stessa direzione (correlazione > 0,7) si aggiunge lo scenario "tutto il cluster colpisce lo stop insieme, con gap".
+- **Liquidazione**: se nello scenario di gap il prezzo supera la liquidazione, la perdita è l'intero margine isolato più le commissioni di liquidazione. In quel caso la posizione è **rifiutata** già dal RiskManager, perché la liquidazione deve stare oltre lo scenario di gap.
+- **Simulazione**: il simulatore attuale (trade uno alla volta, nessun gap) **non** valida questo calcolo. In E2 si ricostruiscono l'equity mark-to-market e le posizioni simultanee dalle candele attestate. La percentuale di sessioni sotto il floor si riporterà come stima, mai come garanzia.
+
+### H.3 Comparabilità (rilievo 3)
+Le politiche si confrontano sulle **stesse sequenze** di segnali e trade (replay sovrapposto E2), con PnL netto, eventi dipendenti dal percorso e drawdown intra-trade dalle candele. La domanda "i 4° e 5° reingressi hanno EV negativo?" non si risolve con la simulazione sintetica: si misura in **E0** (`BRAIN-UNICO-E0-MISURA-STORICI-20261119.md`, strumento `e0_measure.py`).
+
+### H.4 Parametri (rilievi 4–6)
+Restano tutti ipotesi da pre-registrare prima di E2:
+- `R_base` 1–1,5 %;
+- limite di perdita di sessione;
+- drawdown globale;
+- armamento (USDT oppure % dell'equity);
+- giveback g;
+- reingressi 2 o 3;
+- sessione alle 08:00;
+- eccezioni OFF.
+
+Le soglie 1.000 esempi / 45 giorni non bastano da sole a riattivare le eccezioni: servono validazione fuori campione, calibrazione, copertura dei regimi e shadow. Per la leva: prima lo stop da struttura e volatilità, poi nozionale e leva. Le commissioni e lo slippage di `leverage_table` sono ipotesi.
+
+### H.5 Sicurezza (rilievo 7)
+Il Guardian non modifica, non ferma e non rallenta l'exit service. Non richiede nuovi permessi per Claude. Il cambio di sessione non azzera limiti globali, high-watermark, drawdown né cooldown.
+
+### H.6 Claude come consulente mirato
+Oggi zero chiamate (decisione in Issue #113). Per dimostrarne il valore, quando sarà autorizzato:
+- revisione **offline** di un campione di casi ambigui (es. conflitto Falco SHORT contro LONG, o EV vicino alla soglia);
+- confronto delle sue indicazioni con gli esiti a parità di casi, contro DeepSeek da solo;
+- tetto di costo dichiarato prima.
+
+Il valore si dimostra se migliora l'EV netto **dopo** il costo delle chiamate.
