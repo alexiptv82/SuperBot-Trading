@@ -1,3 +1,14 @@
+## 19/11/2026 21:48 Europe/Rome — P0 bis, PR #123 integrata in laboratorio, autorizzazione risolta
+
+- Checkpoint: [`diario/2026-11-19_2148_p0-bis-pr123-autorizzazione-risolta.md`](diario/2026-11-19_2148_p0-bis-pr123-autorizzazione-risolta.md), commit [`4922506…`](https://github.com/alexiptv82/SuperBot-Trading/commit/4922506fc595dfea92969c0df96d7c39221f84bd).
+- Conversazione ora accessibile: merge temporaneamente autorizzati **solo** in `integration/brain-unico-20261119` con test/rollback/isolamento e senza deploy/main/rami operativi. Il conflitto di visibilità del checkpoint 20:49 è risolto; Issue #113 non contiene ancora una conferma pubblica successiva.
+- P0 #124: lo scenario 10:00/10:01/10:02 era ancora fail-open su `ddd1308`; corretto in `a177729107231199f802f38e5592ab6e5373ea48`, merge laboratorio `cc35f532`. Test riferiti: 6 nuovi rossi prima/verdi dopo; integrazione 5087→5095, zero fail. Non VPS/Actions; Issue #124 open.
+- `integration/brain-unico-20261119` verificato @ `dd414831ef329ab1bc34d517dffffb85731af5bc`. PR #123 Grok è stata recuperata direttamente dal repository (nessun trasferimento manuale): laboratorio shadow isolato + input equivalente + prova `context_hash`; 26 test e mutazioni 9/9 riferiti, suite 5095→5120→5121.
+- PR #120 resta non integrata; DeepSeek resta decisore. #123 non apre trade, non chiama provider e non modifica journal operativo. Storici/provider/chiavi/VPS/shadow forward richiedono consenso distinto.
+- Rischio v2 corretto: 20–50× possono essere compatibili con rischio 1–1,5% usando margine ridotto; il conflitto è margine fisso elevato + leva alta + stop largo + basso rischio. Nessun parametro runtime modificato; 35%/50% e floor 450 invariati.
+- Falco/Toro/Brain, Arena, storici ed EventJournal preservati. RC84 #80 `0e29a73…`; extbackup `3dc2116a…` non certificato; age PC `ESITO: VERIFICA OK` ma non prova VPS.
+- Solo documentazione in questo checkpoint; nessun merge, deploy, Action, VPS, restart, reset, ordine, training, LIVE o API a pagamento eseguito qui.
+
 ## 19/11/2026 notte — Claude: P0 #124 seconda correzione, laboratorio LLM integrato, rischio v2 rivisto
 
 - **P0 #124, scenario 10:00/10:01/10:02 del proprietario:** era un **fail-open reale** (riavvio entro 3 minuti → `ok`), riprodotto sul codice `ddd1308` e corretto in `a177729`: dopo ogni avvio si ricostruisce sempre; nello stesso processo solo se non si è saltato alcun minuto. 6 nuovi test rossi prima, verdi ora; nessun blocco permanente; uscite indipendenti. Evidenze: [`diario/2026-11-19_claude-p0-124-evidenze.md`](diario/2026-11-19_claude-p0-124-evidenze.md).
