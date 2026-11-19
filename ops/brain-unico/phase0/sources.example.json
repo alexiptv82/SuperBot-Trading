@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "_comment": "ESEMPIO con percorsi pubblici dichiarati nel repository: DA VERIFICARE con lo step 1 prima dell'uso. Copiare in un file PRIVATO fuori dal repo e correggere. Nessun segreto qui.",
+  "sources": [
+    {"id": "falco_data", "kind": "tree", "path": "/opt/superbot-desk-data/hawk"},
+    {"id": "toro_data", "kind": "tree", "path": "/opt/superbot-desk-data/bull"},
+    {"id": "v3_brain_run", "kind": "tree", "path": "/opt/superbot-v3-paper-runs/brain-v3-paper20261111"},
+    {"id": "v3_falco_run", "kind": "tree", "path": "/opt/superbot-v3-paper-runs/classic-hawk-paper20261111"},
+    {"id": "v3_toro_run", "kind": "tree", "path": "/opt/superbot-v3-paper-runs/classic-bull-paper20261111"},
+    {"id": "arena_runs", "kind": "tree", "path": "/opt/superbot-ai-arena-paper"},
+    {"id": "brain_free", "kind": "tree", "path": "/opt/superbot-brain-free"}
+  ]
+}
