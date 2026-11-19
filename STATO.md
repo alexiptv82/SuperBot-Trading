@@ -1,3 +1,11 @@
+## 19/11/2026 12:30 Europe/Rome — Claude: finalizzazione Arena, rischio MiniMax, dataset builder (branch pubblicati)
+
+- Nuovo checkpoint: [`diario/2026-11-19_claude-arena-finalizzazione-rischio-dataset-builder.md`](diario/2026-11-19_claude-arena-finalizzazione-rischio-dataset-builder.md).
+- Branch `claude/brain-unico-fase0-conclusion-20261119` HEAD `ad6d2f18…` (base PR #116): `risk_audit`, `status`, `stop-openings` (solo runner Arena), procedura di finalizzazione anticipata; bundle sigillato SHA256 `358f4793…24b5` (sostituisce `afcab6f7…`).
+- Branch `claude/brain-unico-training-dataset-20261119` HEAD `ab1a38ac…` (base `main`): Training Dataset Builder offline, 54 test sintetici.
+- Rischio MiniMax: perdita riferita dall'utente **non certificata**; con la politica configurata un −40 % è compatibile con i limiti (blocco giornaliero al 50 %); verifica dal journal tramite `status` e `full --groups arena_minimax` dopo consenso.
+- Nessun dato reale letto, nessuna esecuzione privilegiata, nessuno stop, merge o deploy. PR draft da aprire a cura di ChatGPT.
+
 ## 19/11/2026 11:44 Europe/Rome — STEP 1, PR #116 e Arena non bloccante
 
 - Nuovo checkpoint: [`diario/2026-11-19_brain-unico-pr116-arena-non-bloccante.md`](diario/2026-11-19_brain-unico-pr116-arena-non-bloccante.md), commit [`3bf6a158…`](https://github.com/alexiptv82/SuperBot-Trading/commit/3bf6a158a8f94390ca3e0647d62ac16a8d6d5037).
