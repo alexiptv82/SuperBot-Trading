@@ -179,22 +179,34 @@ def test_the_day_boundary_resets_the_count_for_the_same_journal():
     assert nxt == DailyLoss("ok", D("0"), D("0"), DAY0 + DAY_MS)
 
 
-def test_missing_or_invalid_price_counts_only_the_realized_part():
+def test_missing_or_invalid_price_blocks_instead_of_returning_partial_realized_loss():
+    # One unknown mark makes the *whole* daily-loss estimate unreliable.
+    # The caller must halt new openings, not treat the realized PnL as sufficient.
     for bad in (RuntimeError("no_recent_bar"), ValueError("no_recent_bar"), D("0"), D("-5"), D("NaN"), D("Infinity"),
                 65.0, "65", None, 65):
         r = Rig({"AAAUSDT": bad})
         r.open("AAAUSDT", side=1)
         r.lose("-100")
-        out = r.evaluate()
-        assert (out.level, out.loss_usd) == ("ok", D("100")), bad
+        code = "daily_loss_price_unavailable" if isinstance(bad, Exception) else "daily_loss_price_invalid"
+        with pytest.raises(ValueError, match=f"^{code}$"):
+            r.evaluate()
+        assert r.asked == [("AAAUSDT", NOW)], bad
 
 
-def test_one_missing_price_does_not_hide_the_loss_of_another_position():
+def test_one_missing_price_blocks_partial_estimate_even_when_another_position_is_losing():
     r = Rig({"AAAUSDT": RuntimeError("down"), "BBBUSDT": D("135")})
     r.open("AAAUSDT", side=1)
-    r.open("BBBUSDT", side=-1)                                  # -350
+    r.open("BBBUSDT", side=-1)                                  # a valid quote would give -350
+    with pytest.raises(ValueError, match="^daily_loss_price_unavailable$"):
+        r.evaluate()
+    assert [s for s, _ in r.asked] == ["AAAUSDT"]             # must not return a partial result
+
+    # Once both prices are valid, the original PnL formula still applies.
+    r.prices["AAAUSDT"] = D("100")
+    r.asked.clear()
     out = r.evaluate()
-    assert (out.level, out.loss_usd) == ("warn", D("350")) and [s for s, _ in r.asked] == ["AAAUSDT", "BBBUSDT"]
+    assert (out.level, out.loss_usd) == ("warn", D("350"))
+    assert [s for s, _ in r.asked] == ["AAAUSDT", "BBBUSDT"]
 
 
 @pytest.mark.parametrize("past", ["-1000", "-1200"])
