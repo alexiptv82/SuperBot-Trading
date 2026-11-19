@@ -1,3 +1,11 @@
+## 19/11/2026 Claude — revisione strategica Brain Unico e Guardian v2 (solo giudizio)
+
+- Voce: [`diario/2026-11-19_claude-revisione-strategica-brain-unico.md`](diario/2026-11-19_claude-revisione-strategica-brain-unico.md).
+- Priorità: edge d'ingresso e registro decisionale v2 (feature, thesis_id, segnali osservati) prima del Guardian.
+- Conflitti nel profilo V3: `min_leverage 20` + limite perdita/margine forzano stop 0,27 % a 50× (costi 37 % di R); halt giornaliero 50 % troppo largo; fallback MTM fail-open.
+- Con rischio 1–1,5 % le soglie +400/+500 valgono 13–25R: quasi inerti. Guardian C (risk budget scaling in R) per primo, B/A come bracci ombra.
+- Nessuna PR, nessun branch in revisione toccato, nessun dato reale/VPS.
+
 ## 19/11/2026 15:45 Europe/Rome — PR #118/#119 aggiornate e FreeLLMAPI
 
 - Nuovo checkpoint: [`diario/2026-11-19_pr118-pr119-e0-freellmapi.md`](diario/2026-11-19_pr118-pr119-e0-freellmapi.md), commit [`64861fc…`](https://github.com/alexiptv82/SuperBot-Trading/commit/64861fcf34aa80dabd6cc738cb5a643d529d2b86).
