@@ -1,3 +1,10 @@
+## 19/11/2026 13:10 Europe/Rome — Claude: fix delle revisioni PR #117 e #118
+
+- Nuovo checkpoint: [`diario/2026-11-19_claude-fix-revisioni-pr117-pr118.md`](diario/2026-11-19_claude-fix-revisioni-pr117-pr118.md).
+- PR #118 (Training Dataset Builder, schema v2): HEAD `e983d36f…`; 88 test sintetici, 33/33 mutazioni; feature Brain storico solo con legame causale, `verified` a mano ignorato (serve attestazione), ammissione uniforme al training, barriera sul prefisso, MFE/MAE approssimati dichiarati.
+- PR #117 (finalizzazione Arena): HEAD `6dcdedc3…`; `status-services` solo systemd, `stop-openings` richiede un checkpoint coerente PRE-stop, nessuna promessa sulle uscite, audit `no_breach_proven`/`fully_checked=false`; 76+90+24+29 test, 28/28 mutazioni. Nuovo hash bundle `4dcaff8b…66a7b3`: i precedenti sono sostituiti.
+- Nessun dato reale letto, nessuna esecuzione privilegiata, nessuno stop, merge o deploy; nessun modello addestrato. Test sintetici non replicati da ChatGPT.
+
 ## 19/11/2026 12:30 Europe/Rome — Claude: finalizzazione Arena, rischio MiniMax, dataset builder (branch pubblicati)
 
 - Nuovo checkpoint: [`diario/2026-11-19_claude-arena-finalizzazione-rischio-dataset-builder.md`](diario/2026-11-19_claude-arena-finalizzazione-rischio-dataset-builder.md).
