@@ -9,14 +9,14 @@ Decisione (Issue #113, 10:20): la gara Arena **non blocca** il Brain Unico. Si l
 | **A. Conservazione degli storici (opzione B)** | preparato e collaudato in laboratorio | `claude/brain-unico-fase0-sealed-20261119` (bundle sigillato), `…-conclusion-…` (audit rischio, status, stop-openings) | revisione di ChatGPT del bundle; consenso dell'operatore per eseguire come root |
 | **B. Finalizzazione anticipata dell'Arena** | procedura e comandi pronti, **non eseguiti** | `claude/brain-unico-fase0-conclusion-20261119` | consenso esplicito per `stop-openings`; attesa ≤ 24 h per la chiusura naturale delle posizioni |
 | **C. Training Dataset Builder** | implementato offline (schema v2), 88 test sintetici, fix della revisione #118 applicati | `claude/brain-unico-training-dataset-20261119` | copie verificate (da A) per la prima esecuzione reale; cache di candele |
-| **D. Verifica dei limiti di rischio MiniMax** | strumento pronto (`risk_audit`) | `claude/brain-unico-fase0-conclusion-20261119` | `status` e `full --groups arena_minimax` (sola lettura / copia di un journal) |
+| **D. Verifica dei limiti di rischio MiniMax** | strumento pronto (`risk_audit`, verdetto `no_breach_proven` / `fully_checked=false`) | `claude/brain-unico-fase0-conclusion-20261119` | `status-services` (solo systemd) e `full --groups arena_minimax` (copia di un journal, azione autorizzata a parte) |
 | **E. Brain Unico (decisore, risk manager, UI)** | in attesa | — | storico preservato + dataset + audit di apprendimento |
 
 ## Ordine consigliato, senza attese inutili
 
 1. **Subito, in parallelo**: revisione dei branch A/B/C da parte di ChatGPT (nessun costo operativo).
-2. **Primo consenso operativo (basso rischio)**: `status` e `full --groups arena_minimax` → risponde alla domanda sui limiti di rischio e produce la prima copia verificata di un journal.
-3. **Decisione sull'Arena**: se non serve più, `stop-openings` (solo runner; uscite attive) → attesa della chiusura naturale → `full` definitivo con `ended_early_reason`.
+2. **Primo consenso operativo (basso rischio)**: `status-services` (nessun database) e `full --groups arena_minimax` → risponde alla domanda sui limiti di rischio (*nessuna violazione provata*, non *tutto verificato*) e produce la prima copia verificata di un journal.
+3. **Decisione sull'Arena**: se non serve più, **prima un checkpoint coerente (`full` di tutte le run)**, poi `stop-openings --checkpoint-run …` (solo runner; uscite attive; rifiutato senza checkpoint valido) → verifica dell'avanzamento delle uscite (senza promettere i tempi) → `full` definitivo con `ended_early_reason`.
 4. **Prima esecuzione reale del dataset builder** sulle copie (schema reale del Brain storico da verificare), poi `sufficiency`.
 5. **Solo con campione sufficiente**: baseline e modello shadow offline; nessuna promozione senza approvazione.
 6. **Brain Unico**: un solo portafoglio, DeepSeek decisore, risk manager deterministico, Falco SHORT solo advisory, con il log in avanti di schema v2 (vedi builder, §8) per non dover più ricostruire.
