@@ -99,5 +99,50 @@ class DailyLossMarkFailClosedTests(unittest.TestCase):
             self.assertEqual(beat["state"], "halted")
 
 
+    def test_stale_one_minute_quote_denies_complete_daily_loss_check(self):
+        # The real feed's last_minute_close raises this code for a stale candle.
+        with self.assertRaisesRegex(ValueError, "^daily_loss_price_unavailable$"):
+            _eval(
+                positions=[_position("BTCUSDT")],
+                price_of=lambda _s, _t: (_ for _ in ()).throw(ValueError("stale_minute_bar")),
+            )
+
+    def test_daily_loss_warn_and_halt_boundaries_unchanged(self):
+        position = _position("BTCUSDT", fill="1100")
+        warn = _eval(positions=[position], price_of=lambda _s, _t: D("400"))
+        halt = _eval(positions=[position], price_of=lambda _s, _t: D("100"))
+        self.assertEqual((warn.level, warn.loss_fraction), ("warn", D("0.35")))
+        self.assertEqual((halt.level, halt.loss_fraction), ("halt", D("0.50")))
+
+    def test_sidecar_exit_owner_is_not_called_or_stopped_by_failed_daily_loss(self):
+        # In sidecar mode exits belong to a separate process: runner must only
+        # fail closed for entries, without taking ownership of exit monitoring.
+        with tempfile.TemporaryDirectory() as tmp:
+            opened, health_checks = [], []
+            def exit_healthy(now):
+                health_checks.append(now)
+                return True
+
+            runner = Runner(
+                run_id="brain-paper", data_dir=Path(tmp), run_monitor=None,
+                run_cycle=lambda now, slot: opened.append((now, slot)),
+                cycle_delay_ms=0, exit_mode="sidecar",
+                exit_healthy=exit_healthy, fresh_clock_ms=lambda: NOW_MS + 1_000,
+                daily_loss=lambda _now: _eval(
+                    positions=[_position("BTCUSDT")],
+                    price_of=lambda _s, _t: (_ for _ in ()).throw(TimeoutError("no quote")),
+                ),
+            )
+            result = runner.tick(NOW_MS)
+            self.assertEqual(result.state, "halted")
+            self.assertIn("halted:daily_loss_check_failed", result.last_error)
+            self.assertEqual(health_checks, [NOW_MS])
+            self.assertEqual(opened, [])
+            self.assertIsNone(result.monitor)
+            beat = json.loads((Path(tmp) / "heartbeat.json").read_text())
+            self.assertEqual(beat["daily_loss_level"], "unknown")
+            self.assertEqual(beat["state"], "halted")
+
+
 if __name__ == "__main__":
     unittest.main()
