@@ -251,7 +251,8 @@ def read_brain_free(path: str) -> dict:
                               "entry": _num(_first(b, "entry", "fill_price", "price")),
                               "stop": _num(_first(b, "stop", "stop_loss", "sl", "stop_price")),
                               "target": _num(_first(b, "target", "take_profit", "tp")),
-                              "leverage": _num(b.get("leverage")), "margin": _num(_first(b, "margin", "margin_used"))}
+                              "leverage": _num(b.get("leverage")), "margin": _num(_first(b, "margin", "margin_used")),
+                              "cycle": _first(b, "cycle_id", "decision_id", "input_id")}
             elif kind == "partial_trade":
                 partials[(epoch, str(b.get("symbol")), str(_first(b, "position_id", "id")))].append(
                     {"ts": ts, "net": _num(_first(b, "net", "pnl"))})
@@ -261,12 +262,17 @@ def read_brain_free(path: str) -> dict:
                     "funding": _num(b.get("funding")), "reason_raw": _first(b, "reason", "exit_reason", "why"),
                     "mfe_r": _num(b.get("mfe_r")), "mae_r": _num(b.get("mae_r"))}
             elif kind == "ai_input":
-                inputs.append({"ts": ts, "features": _flat_numeric(b)})
+                # epoca, simbolo e ciclo servono a un legame CAUSALE con la decisione: senza, nessuna feature.
+                inputs.append({"ts": ts, "epoch": epoch, "symbol": b.get("symbol"),
+                               "cycle": _first(b, "cycle_id", "decision_id", "input_id"), "features": _flat_numeric(b)})
             elif kind == "ai_decision":
-                decisions.append({"ts": ts, "symbol": b.get("symbol"), "action": str(_first(b, "action", "decision", "kind") or "").lower(),
+                decisions.append({"ts": ts, "epoch": epoch, "symbol": b.get("symbol"),
+                                  "cycle": _first(b, "cycle_id", "decision_id", "input_id"),
+                                  "action": str(_first(b, "action", "decision", "kind") or "").lower(),
                                   "side": _side(_first(b, "side", "direction"))})
             elif kind == "execution_rejected":
-                rejects.append({"ts": ts, "symbol": b.get("symbol"), "side": _side(_first(b, "side", "direction")),
+                rejects.append({"ts": ts, "epoch": epoch, "symbol": b.get("symbol"), "side": _side(_first(b, "side", "direction")),
+                                "cycle": _first(b, "cycle_id", "decision_id", "input_id"),
                                 "reason": short_code(_first(b, "reason", "code", "error"))})
             else:
                 st["other_kinds"] += 1
@@ -275,3 +281,23 @@ def read_brain_free(path: str) -> dict:
     return {"kind": "brain_free", "opens": opens, "partials": dict(partials), "closed": closed, "ai_inputs": inputs,
             "ai_decisions": decisions, "rejects": rejects, "epochs": epoch + 1, "stats": dict(st),
             "keys_seen": {k: sorted(v) for k, v in keys.items()}}
+
+
+# --------------------------------------------------------------------------- annotazioni manuali dell'Arena
+
+ARENA_REASONS = ("profit_protection", "loss_reduction", "trend_change", "other", "unspecified")
+
+
+def read_annotations(path: str) -> dict:
+    """`human_close_annotations.jsonl` (COPIA): position_id -> codice del motivo. Il testo libero (`note`) NON viene letto
+    nel dataset. Un motivo fuori dalla lista chiusa diventa `invalid`; piu' annotazioni per la stessa posizione: vale l'ultima."""
+    st: Counter = Counter()
+    out: dict = {}
+    for rec in _lines(path, st):
+        pid = rec.get("position_id")
+        if pid is None:
+            st["without_position_id"] += 1
+            continue
+        reason = rec.get("reason")
+        out[str(pid)] = reason if reason in ARENA_REASONS else "invalid"
+    return {"by_position": out, "stats": dict(st)}

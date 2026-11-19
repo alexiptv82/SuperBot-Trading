@@ -20,20 +20,22 @@ import math
 import time
 from typing import Any
 
-SCHEMA_VERSION = 1
-BUILDER_VERSION = "0.1.0"
+SCHEMA_VERSION = 2
+BUILDER_VERSION = "0.2.0"
 SOURCES = ("falco", "toro", "brain_storico", "arena_deepseek", "arena_qwen", "arena_minimax")
 RECORD_KINDS = ("executed", "candidate_rejected", "no_trade")
 ACTIONS = ("LONG", "SHORT", "NO_TRADE", "OPEN_REJECTED")
-OUTCOME_STATUS = ("closed", "open_censored", "not_executed")
+OUTCOME_STATUS = ("closed", "closed_unknown_pnl", "open_censored", "not_executed")
+LABEL_ORIGINS = ("realized_outcome", "counterfactual_simulation", "censored", "unknown_pnl")
 FEATURE_SOURCES = ("logged_at_decision", "reconstructed_from_candles", "none")
-MFE_SOURCES = ("logged", "reconstructed_from_candles", "none")
+MFE_SOURCES = ("logged", "approximate_candles", "none")
 KNOWN_EXIT = frozenset({"stop", "take_profit", "timeout", "manual", "liquidation", "brain_close", "tp", "sl",
                         "ai_close", "trailing", "unknown"})
 
 REQUIRED = ("schema_version", "example_id", "source_system", "source_run", "source_kind", "record_kind",
             "decision_ts_ms", "decision_day", "symbol", "action", "side", "executed", "features", "feature_source",
-            "proposal", "outcome", "labels", "label_complete", "is_synthetic", "provenance")
+            "proposal", "outcome", "labels", "label_complete", "horizons_complete", "label_origin", "quality_flags",
+            "eligible_for_training", "ineligible_reasons", "is_synthetic", "provenance")
 
 
 def example_id(source_system: str, source_run: str, record_kind: str, source_key: str) -> str:
@@ -111,8 +113,15 @@ def validate_row(r: dict) -> list:
         e.append("executed_kind_not_executed")
     if r["is_synthetic"] is not False:
         e.append("synthetic_example")
-    if not isinstance(r["label_complete"], bool):
+    if not isinstance(r["label_complete"], bool) or not isinstance(r["horizons_complete"], bool):
         e.append("label_complete")
+    if r["label_origin"] not in LABEL_ORIGINS:
+        e.append("label_origin")
+    if not isinstance(r["quality_flags"], list) or any(not isinstance(x, str) for x in r["quality_flags"]):
+        e.append("quality_flags")
+    if (not isinstance(r["eligible_for_training"], bool) or not isinstance(r["ineligible_reasons"], list)
+            or r["eligible_for_training"] != (not r["ineligible_reasons"])):
+        e.append("eligibility_inconsistent")
     for k in ("proposal", "labels", "provenance"):
         if not isinstance(r[k], dict):
             e.append(k)

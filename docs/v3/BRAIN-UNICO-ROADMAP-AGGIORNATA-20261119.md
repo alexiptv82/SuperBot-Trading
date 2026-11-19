@@ -8,7 +8,7 @@ Decisione (Issue #113, 10:20): la gara Arena **non blocca** il Brain Unico. Si l
 |---|---|---|---|
 | **A. Conservazione degli storici (opzione B)** | preparato e collaudato in laboratorio | `claude/brain-unico-fase0-sealed-20261119` (bundle sigillato), `…-conclusion-…` (audit rischio, status, stop-openings) | revisione di ChatGPT del bundle; consenso dell'operatore per eseguire come root |
 | **B. Finalizzazione anticipata dell'Arena** | procedura e comandi pronti, **non eseguiti** | `claude/brain-unico-fase0-conclusion-20261119` | consenso esplicito per `stop-openings`; attesa ≤ 24 h per la chiusura naturale delle posizioni |
-| **C. Training Dataset Builder** | implementato offline, 54 test sintetici | `claude/brain-unico-training-dataset-20261119` | copie verificate (da A) per la prima esecuzione reale; cache di candele |
+| **C. Training Dataset Builder** | implementato offline (schema v2), 88 test sintetici, fix della revisione #118 applicati | `claude/brain-unico-training-dataset-20261119` | copie verificate (da A) per la prima esecuzione reale; cache di candele |
 | **D. Verifica dei limiti di rischio MiniMax** | strumento pronto (`risk_audit`) | `claude/brain-unico-fase0-conclusion-20261119` | `status` e `full --groups arena_minimax` (sola lettura / copia di un journal) |
 | **E. Brain Unico (decisore, risk manager, UI)** | in attesa | — | storico preservato + dataset + audit di apprendimento |
 

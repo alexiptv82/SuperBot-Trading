@@ -5,6 +5,9 @@ Regole (pure, nessuna rete, nessuna interpolazione):
 - orizzonte h: servono TUTTE le h/intervallo candele; se ne manca una l'etichetta e' `complete=false` senza numeri;
 - barriere: stop/target toccati per candela; se nella stessa candela si toccano entrambi vince lo STOP e il caso e'
   marcato `ambiguous` (scelta prudente); nessun tocco = `timeout` alla chiusura dell'ultima candela;
+- la barriera usa il PREFISSO CONTIGUO di candele dall'ingresso: un tocco avvenuto in quel prefisso e' un'etichetta
+  completa anche se l'archivio finisce (o ha un buco) DOPO l'uscita; `timeout` e rendimenti forward richiedono
+  invece l'orizzonte intero;
 - costi: `cost_bp` round-trip sottratti dal rendimento (net_bp = gross_bp - cost_bp).
 """
 from __future__ import annotations
@@ -36,11 +39,22 @@ def forward_returns(store, symbol: str, ts: int, side: int, cost_bp: float, hori
     return out
 
 
+def _prefix(store, symbol: str, ts: int, n: int) -> list:
+    """Candele contigue a partire dalla prima barra dopo la decisione, fino a `n`: si ferma al primo buco."""
+    start = first_bar_start(ts, store.interval)
+    out = []
+    for i, c in enumerate(store.window(symbol, start, start + n * store.interval)):
+        if c.t != start + i * store.interval:
+            break
+        out.append(c)
+    return out
+
+
 def barrier(store, symbol: str, ts: int, side: int, stop_pct: float, target_pct: float, max_ms: int, cost_bp: float) -> dict:
     """stop_pct/target_pct: distanze in FRAZIONE del prezzo d'ingresso (es. 0.01 = 1 %)."""
     n = max_ms // store.interval
-    cs = _bars(store, symbol, ts, n)
-    if cs is None or stop_pct <= 0 or target_pct <= 0 or side not in (-1, 1):
+    cs = _prefix(store, symbol, ts, n)
+    if not cs or stop_pct <= 0 or target_pct <= 0 or side not in (-1, 1):
         return {"first": "incomplete", "complete": False}
     entry = cs[0].o
     stop = entry * (1 - side * stop_pct)
@@ -61,6 +75,8 @@ def barrier(store, symbol: str, ts: int, side: int, stop_pct: float, target_pct:
                     "mae_bp": round(max(worst, adv if hit_stop else worst) * 10_000, 2),
                     "stop_pct": round(stop_pct, 6), "target_pct": round(target_pct, 6)}
         best, worst = max(best, fav), max(worst, adv)
+    if len(cs) < n:                                      # nessun tocco e orizzonte non coperto: il timeout non e' dimostrabile
+        return {"first": "incomplete", "complete": False, "bars_available": len(cs)}
     gross = side * (cs[-1].c - entry) / entry * 10_000
     return {"first": "timeout", "ambiguous": False, "complete": True, "bars": n, "net_bp": round(gross - cost_bp, 4),
             "mfe_bp": round(best * 10_000, 2), "mae_bp": round(worst * 10_000, 2),
@@ -68,16 +84,20 @@ def barrier(store, symbol: str, ts: int, side: int, stop_pct: float, target_pct:
 
 
 def mfe_mae_r(store, symbol: str, side: int, entry: float, stop: float, open_ms: int, close_ms: int) -> Optional[dict]:
-    """MFE/MAE in multipli di R (distanza entry-stop) tra apertura e chiusura reali, ricostruiti dalle candele CHIUSE.
-    Risoluzione = intervallo delle candele; None se mancano candele o la distanza dello stop non e' valida."""
+    """MFE/MAE in multipli di R (distanza entry-stop), APPROSSIMATI: si usano solo le candele INTERAMENTE comprese tra
+    apertura e chiusura reali (quelle parziali, dove l'escursione potrebbe precedere l'apertura o seguire la chiusura,
+    sono escluse), quindi i valori sono una stima per difetto con risoluzione = intervallo delle candele. Mai misure
+    esatte. None se non c'e' nessuna candela intera, se ne manca una o se la distanza dello stop non e' valida."""
     r = abs(entry - stop)
     if r <= 0 or side not in (-1, 1) or close_ms <= open_ms:
         return None
     start = first_bar_start(open_ms, store.interval)
-    n = max(1, -(-(close_ms - start) // store.interval))
+    n = (close_ms - start) // store.interval
+    if n < 1:
+        return None
     cs = store.window(symbol, start, start + n * store.interval)
-    if len(cs) != n or not store.contiguous(cs):
+    if len(cs) != n or not store.contiguous(cs) or cs[0].t != start:
         return None
     fav = max((c.h - entry) if side == 1 else (entry - c.l) for c in cs)
     adv = max((entry - c.l) if side == 1 else (c.h - entry) for c in cs)
-    return {"mfe_r": round(max(fav, 0) / r, 4), "mae_r": round(max(adv, 0) / r, 4)}
+    return {"mfe_r": round(max(fav, 0) / r, 4), "mae_r": round(max(adv, 0) / r, 4), "resolution_ms": store.interval}
