@@ -1,3 +1,13 @@
+## 19/11/2026 17:46 Europe/Rome — avanzamento PR #121/#122 e lavoro parallelo LLM
+
+- Checkpoint: [`diario/2026-11-19_1746_pr121-pr122-grok-llm.md`](diario/2026-11-19_1746_pr121-pr122-grok-llm.md), commit [`6cbc328…`](https://github.com/alexiptv82/SuperBot-Trading/commit/6cbc3281ad0bc1258a0f950e22875e42fdc82029).
+- PR #121 open/draft → `454020a…`: aggiunte regressioni stale quote, soglie 35/50 e sidecar. 8 unittest nel repo ancora da eseguire sul checkout completo; 6 smoke PASS riferiti solo su trascrizione della funzione; 0 workflow/status.
+- PR #122 open/draft → `513448e…`: guardia kind/status e 5 regressioni SQLite. 18 test/21 subtest PASS riferiti su riproduzione isolata V3, non checkout completo; 0 workflow/status; adapter non collegato e non eleggibile al training.
+- Decisione utente: sviluppo LLM/router con Grok in parallelo e integrazione solo dopo valutazione. PR #120 resta separata e da riallineare a DeepSeek primario + FreeLLMAPI shadow, modelli fissati, niente auto-routing libero.
+- L’utente dichiara che Claude dispone di accesso VPS: registrato come capacità, non come prova di accesso/stato live né autorizzazione operativa.
+- RC84 #80 `0e29a73…`, extbackup `3dc2116…` non installato e age PC `ESITO: VERIFICA OK` ma non VPS invariati.
+- Solo documentazione; nessun merge/deploy/Action/VPS/restart/reset/ordine/API. PAPER, storici ed EventJournal preservati.
+
 ## 19/11/2026 Claude — verifica indipendente PR #121 (fail-closed prezzi)
 
 - Voce: [`diario/2026-11-19_claude-verifica-pr121.md`](diario/2026-11-19_claude-verifica-pr121.md).
