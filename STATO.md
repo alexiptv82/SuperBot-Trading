@@ -1,3 +1,13 @@
+## 19/11/2026 20:49 Europe/Rome — integrazioni eseguite e conflitto sulla provenienza dell'autorizzazione
+
+- Checkpoint append-only: [`diario/2026-11-19_2049_integrazioni-eseguite-conflitto-autorizzazione.md`](diario/2026-11-19_2049_integrazioni-eseguite-conflitto-autorizzazione.md), commit [`b8f4e2f…`](https://github.com/alexiptv82/SuperBot-Trading/commit/b8f4e2f5eba72b56ed656e02e4a1d9f720c1619a).
+- `integration/brain-unico-20261119` è avanzato da `33a0de73…` a `0b86f18b1d96d63c4a443f124c316e1090b8ba41` (20 commit avanti): #121, P0 #124, #118+Fase B, #119 e adattatore #122 sono presenti nel ramo isolato. Le PR #121/#122/#123 restano open/draft; nessun deploy.
+- Test riferiti dal registro Claude, non replicati qui: V3 5023→5031→5063→5087 PASS, 1 skip alla baseline; Builder/Fase B 134, E0 18; prova #120 5105 PASS ma non integrata.
+- `AUTORIZZAZIONI.md` blob `88fc1a1…` ora dichiara una citazione del proprietario che consente merge solo sul ramo isolato. Le conversazioni recenti effettivamente accessibili non attestano quella accettazione: mostrano “nessun merge” e una successiva proposta dell'assistente. **Provenienza del consenso non verificata**: congelare ulteriori merge finché il proprietario non conferma o revoca esplicitamente; non annullare autonomamente gli SHA esistenti.
+- Configurazione invariata: DeepSeek primario, advisor economici solo shadow/fissi; PR #120 non conforme e non integrata. Soglie 35%/50% e floor 450 invariati; profilo rischio v2 solo studio.
+- Falco/Toro/Brain, storici, Arena ed EventJournal da preservare. Snapshot v2 restano non verificati/non eleggibili al training. RC84 #80 `0e29a73…`; extbackup `3dc2116a…` non certificato; age PC `ESITO: VERIFICA OK` ma non prova VPS.
+- Solo documentazione in questo checkpoint; nessun merge, deploy, Action, VPS, restart, reset, ordine, training, LIVE o API a pagamento eseguito qui.
+
 ## 19/11/2026 Claude — ramo di integrazione operativo: #121, P0 #124, #118+fase B, #119, adattatore #122
 
 - **Autorizzazione registrata** in [`AUTORIZZAZIONI.md`](AUTORIZZAZIONI.md) § 2: merge solo in `integration/brain-unico-20261119`, alle condizioni scritte.
