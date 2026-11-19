@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 19/11/2026 05:46 Europe/Rome — Brain storico fermo; gap verificato nell'universo Arena
+
+- Nuovo checkpoint delta: [`diario/2026-11-19_brain-stopped-arena-universe-gap.md`](diario/2026-11-19_brain-stopped-arena-universe-gap.md), commit [`72bc47c…`](https://github.com/alexiptv82/SuperBot-Trading/commit/72bc47ce2be89b9fde72b1b8e08d156cd68c26a9).
+- Screenshot Samsung 04:55: Falco/Toro `non risponde`; Brain `pausa / fermo`, 2 posizioni PAPER aperte e 96 chiuse; P&L realizzato −78,13 USDT, aperto −55,92 USDT. È stato dell'app, non prova SSH.
+- L'utente riferisce Arena ancora attiva ma con simboli ripetuti e crypto oltre rank 25; lo screenshot disponibile non certifica la pagina Arena.
+- Gap di requisito verificato nel codice: il ramo gara `6a88857…` seleziona 25 crypto **idonee** continuando oltre il rank 25 dopo le esclusioni, mentre l'utente desidera rank assoluto 1–25 più XAU/XAG idonei.
+- Snapshot universo realmente usato dalla run non accessibile: nessuna violazione operativa ancora certificata. Prossimo passo solo read-only su snapshot, timestamp, runner/exit/heartbeat, T0 e journal.
+- PR #112 invariata draft a `86288a3…`; RC84 PR #80 invariata a `0e29a73…`; age PC `ESITO: VERIFICA OK` non certifica VPS; extbackup non installato.
+- Nessun merge, deploy, Action, restart, reset, ordine o modifica di rischio eseguiti; PAPER, storici ed EventJournal da preservare.
+
 ## 18/11/2026 21:43 Europe/Rome — Samsung mostra Arena; possibile dato fermo, attesa prudente
 
 - Nuovo checkpoint delta: [`diario/2026-11-18_arena-samsung-visible-possible-stale-wait.md`](diario/2026-11-18_arena-samsung-visible-possible-stale-wait.md), commit [`1605366…`](https://github.com/alexiptv82/SuperBot-Trading/commit/1605366f549271d29700620a73a958ffce65a3d5).
