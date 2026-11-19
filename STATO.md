@@ -1,3 +1,13 @@
+## 19/11/2026 sera — Claude responsabile sviluppo: master handover, PR #121 verde, P0 #124 corretto su branch
+
+- Rapporto: [`diario/2026-11-19_claude-master-handover-roadmap.md`](diario/2026-11-19_claude-master-handover-roadmap.md) — stato reale, VPS (non-root), PR, P0, dipendenze, piano A–G con criteri di accettazione, autorizzazioni.
+- **PR #121 `5b7403a` verificata:** 8/8 + suite pertinente 1117 pass, **0 fail**. I "5 fail preesistenti" `rc84_import_paths` erano ambientali (numpy mancante), non difetti.
+- **P0 #124 corretto** su `claude/brain-unico-daily-loss-latch-p0-20261119` @ `ddd1308` (impilato su #121): stato v2 con continuità dimostrata + ricostruzione da journal e candele, fail-closed; baseline `ok` ⇒ ora `halt`; 32 nuovi test, suite V3 5063 pass, mutazioni 14/15. Voce: [`diario/2026-11-19_claude-p0-124-latch.md`](diario/2026-11-19_claude-p0-124-latch.md). **PR draft da aprire manualmente** (403 per Claude).
+- PR #122 `513448e`: 11 test pass; rischio di leakage (journal senza ordine temporale imposto) ⇒ il collegamento con #118 userà il `seq` del journal.
+- PR #120 non conforme (router gratuito primario + fallback DeepSeek, `auto:smart`) e in conflitto su `wiring.py`: da riallineare prima di qualsiasi integrazione.
+- VPS [non-root]: Arena attiva (3 runner + 3 servizi uscite) su `3dd6aa5`; uscite Brain V3 attive; runner di apertura Brain fermo; **`superbot-extbackup.timer` attivo, ultimo esito success 19/11 03:21 UTC**: incongruente con "extbackup non installato", da verificare (contenuto/ripristino non verificabili).
+- Nessun merge/deploy/restart/reset/ordine/API/LIVE; nessun servizio toccato.
+
 ## 19/11/2026 18:45 Europe/Rome — Cloud temporaneo, Arena preservata, P0 latch e PR #123
 
 - Checkpoint: [`diario/2026-11-19_1845_cloud-temporaneo-arena-preservata-p0-latch-pr123.md`](diario/2026-11-19_1845_cloud-temporaneo-arena-preservata-p0-latch-pr123.md), commit [`7c58694…`](https://github.com/alexiptv82/SuperBot-Trading/commit/7c5869444e7583c827789d9e848db7a18fe2975d).
