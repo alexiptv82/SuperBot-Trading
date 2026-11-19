@@ -1,3 +1,14 @@
+## 19/11/2026 Claude — ramo di integrazione operativo: #121, P0 #124, #118+fase B, #119, adattatore #122
+
+- **Autorizzazione registrata** in [`AUTORIZZAZIONI.md`](AUTORIZZAZIONI.md) § 2: merge solo in `integration/brain-unico-20261119`, alle condizioni scritte.
+- **Ramo `integration/brain-unico-20261119` @ `0b86f18b…`** (base `33a0de7`); registro completo in [`diario/2026-11-19_claude-registro-integrazione.md`](diario/2026-11-19_claude-registro-integrazione.md). Suite V3: 5023 → 5031 (#121) → 5063 (P0 #124) → 5087 (adattatore #122 + controllo di ordine). **0 falliti, 0 nuove regressioni.** Rollback dimostrato su ogni passo.
+- **P0 #124 confermata:** commit `ddd1308`; evidenze per requisito in [`diario/2026-11-19_claude-p0-124-evidenze.md`](diario/2026-11-19_claude-p0-124-evidenze.md). I "5 fallimenti preesistenti" erano ambientali (numpy mancante), non difetti.
+- **#118/#119** integrate con cherry-pick (non merge: i rami da `main` avrebbero portato 36 workflow e 35 trigger di deploy). Builder 134 test, E0 18 test.
+- **Adattatore #122:** ora rifiuta alla scrittura gli snapshot tardivi o dopo l'apertura (branch `claude/brain-unico-snapshot-order-20261119` @ `2e0662a`). Gli snapshot restano **non ammessi al training** (`snapshot_unverified`).
+- **#120:** merge di prova pulito e suite verde (5105), non integrata: non conforme (router decisore, `auto:smart`); requisiti R1–R10 in [`diario/2026-11-19_claude-requisiti-pr120.md`](diario/2026-11-19_claude-requisiti-pr120.md). Ricerca modelli economici a Grok.
+- **Profilo di rischio v2:** solo studio, nessuna soglia modificata: [`diario/2026-11-19_claude-profilo-rischio-v2-studio.md`](diario/2026-11-19_claude-profilo-rischio-v2-studio.md).
+- Clone di lavoro era shallow: completato in sola lettura. Nessun merge su `main`, deploy, restart, reset, ordine, API a pagamento o LIVE.
+
 ## 19/11/2026 Claude — Fase B: collegamento snapshot v2 → Dataset Builder (branch, PR da aprire)
 
 - Voce: [`diario/2026-11-19_claude-fase-b-collegamento-snapshot.md`](diario/2026-11-19_claude-fase-b-collegamento-snapshot.md); branch `claude/brain-unico-snapshot-link-20261119` @ `ef25c69` (sopra #118). 134 test, mutazioni 28/28, formato reale verificato.
