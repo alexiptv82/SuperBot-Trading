@@ -1,12 +1,13 @@
 """Training Dataset Builder (offline, solo libreria standard): decisioni storiche -> esempi con feature, esiti ed etichette.
 
-Uso:  python3 builder.py --spec spec.json --out DIR_NUOVA [--candles DIR] [--cost-bp 16]
+Uso:  python3 builder.py --spec spec.json --out DIR_NUOVA [--candles DIR] [--cost-bp 16] [--anchors ANCORE.json]
 
 spec.json: {"inputs": [{"id": "falco_hawk", "source_system": "falco", "kind": "classic", "path": "<COPIA>",
                         "attestation": "<attestation.json>", "annotations": "<human_close_annotations.jsonl COPIA>"}, ...]}
 `path` e' SEMPRE una copia ferma (Fase 0), mai un file vivo. Un input e' "attestato" SOLO con un'attestazione
-`phase0_attestation_v1` i cui SHA-256 coincidono con quelli dei file letti: il vecchio flag `verified` NON vale piu'
-(fail-closed; se presente senza attestazione viene ignorato e segnalato).
+`phase0_attestation_v2` RICALCOLATA dalla directory della run sigillata (`attestation.py`), i cui SHA-256 coincidono con
+quelli dei file letti, E con `summary.json` uguale all'ancora esterna passata con `--anchors` (mai dalla spec). Senza
+ancora: `hash_matched_untrusted`, non ammesso. Il vecchio flag `verified` NON vale (fail-closed, ignorato e segnalato).
 
 Il dataset completo conserva TUTTO. Solo le righe con `eligible_for_training` vero (criteri in `eligibility.py`) possono
 entrare in split e sufficienza. Sicurezza: output in directory NUOVA fuori da git, file 0600, nessuna rete, nessuna
@@ -75,17 +76,18 @@ def _round(x: Optional[float], nd: int = 6) -> Optional[float]:
     return None if x is None else round(x, nd)
 
 
-def verify_input(inp: dict) -> tuple:
-    """(attestato, motivo). Il flag `verified` della spec e' ignorato: serve un'attestazione che coincida con gli hash."""
+def verify_input(inp: dict, anchors: Optional[dict] = None) -> tuple:
+    """(stato, motivo) con stato in attested / hash_matched_untrusted / not_certified. Il flag `verified` della spec e'
+    ignorato; le ancore arrivano SOLO dall'argomento (CLI `--anchors`), mai dalla spec."""
     path = inp.get("attestation")
     if not path:
-        return False, "no_attestation"
+        return AT.NOT_CERTIFIED, "no_attestation"
     try:
         with open(path, encoding="utf-8") as fh:
             att = json.load(fh)
     except (OSError, ValueError):
-        return False, "attestation_unreadable"
-    return AT.check(att, [sha_file(f) for f in input_files(inp)])
+        return AT.NOT_CERTIFIED, "attestation_unreadable"
+    return AT.check(att, [sha_file(f) for f in input_files(inp)], anchors)
 
 
 # --------------------------------------------------------------------------- feature ed etichette
@@ -363,21 +365,39 @@ def build_v3(inp: dict, store, cost_bp: float) -> Ctx:
 # --------------------------------------------------------------------------- Brain storico (formato tollerante)
 
 def link_input(inputs: list, ts: int, epoch: int, symbol: Optional[str], cycle: Any, stats: Counter) -> tuple:
-    """Feature registrate collegabili a una decisione SOLO con una chiave causale dimostrabile: stessa epoca, precedenti alla
-    decisione, e (stesso ciclo oppure stesso simbolo). Nessun legame per sola vicinanza temporale: in quel caso nessuna
-    feature (e conteggio `ambiguous_feature_link` se esistevano input vicini senza simbolo/ciclo)."""
+    """Feature registrate collegabili a una decisione SOLO con una chiave causale dimostrabile. Politica (conservativa):
+
+    1. stessa epoca, input precedente alla decisione ed entro NEAREST_INPUT_MS;
+    2. il SIMBOLO deve essere noto da entrambe le parti e uguale. Un input di un altro simbolo non si collega MAI, nemmeno
+       con lo stesso `cycle_id` (conteggio `symbol_conflict`); un input SENZA simbolo non si collega mai (un ciclo puo'
+       valutare piu' simboli: le sue feature non sono attribuibili) -> `ambiguous_feature_link`;
+    3. a parita' di simbolo, se entrambi hanno un ciclo deve coincidere (altrimenti `cycle_conflict`); si preferisce
+       l'input dello stesso ciclo, poi l'ultimo dello stesso simbolo senza ciclo.
+    Ritorna (feature|None, ambiguo)."""
     near = [x for x in inputs if x["epoch"] == epoch and x["ts"] and x["ts"] <= ts and ts - x["ts"] <= NEAREST_INPUT_MS]
+    if not near:
+        stats["feature_link_missing"] += 1
+        return None, False
+    if not symbol:
+        stats["ambiguous_feature_link"] += 1
+        return None, True
+    same = [x for x in near if x["symbol"] == symbol]
     if cycle is not None:
-        m = [x for x in near if x["cycle"] is not None and x["cycle"] == cycle]
-        if m:
-            return R.sanitize_features(m[-1]["features"]) or None, False
-    if symbol:
-        m = [x for x in near if x["symbol"] == symbol]
-        if m:
-            return R.sanitize_features(m[-1]["features"]) or None, False
-    ambiguous = any(x["symbol"] is None and x["cycle"] is None for x in near)
-    stats["ambiguous_feature_link" if ambiguous else "feature_link_missing"] += 1
-    return None, ambiguous
+        exact = [x for x in same if x["cycle"] == cycle]
+        if exact:
+            return R.sanitize_features(exact[-1]["features"]) or None, False
+        if any(x["cycle"] is not None for x in same):
+            stats["cycle_conflict"] += 1
+        same = [x for x in same if x["cycle"] is None]
+    if same:
+        return R.sanitize_features(same[-1]["features"]) or None, False
+    if cycle is not None and any(x["symbol"] and x["symbol"] != symbol and x["cycle"] == cycle for x in near):
+        stats["symbol_conflict"] += 1
+    if any(x["symbol"] is None for x in near):
+        stats["ambiguous_feature_link"] += 1
+        return None, True
+    stats["feature_link_missing"] += 1
+    return None, False
 
 
 def build_brain_free(inp: dict, store, cost_bp: float) -> Ctx:
@@ -444,19 +464,22 @@ def dedup_key(r: dict) -> Optional[str]:
     return hashlib.sha256(f"{r['symbol']}|{r['side']}|{o['opened_ms'] // 60000}|{round(p['entry'], 4)}".encode()).hexdigest()[:24]
 
 
-def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_BP) -> dict:
+def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_BP, anchors: Optional[dict] = None) -> dict:
     store = C.CandleStore(candles_dir) if candles_dir else None
     rows, per_input, keys_seen = [], {}, {}
     seen_ids: dict = {}
     seen_trades: dict = {}
     dup_ids = dup_trades = 0
     attested: set = set()
+    untrusted: set = set()
     for inp in spec["inputs"]:
         if inp["source_system"] not in S.SOURCES or inp["kind"] not in BUILDERS:
             raise ValueError("bad_input_spec")
-        ok, why = verify_input(inp)
-        if ok:
+        state, why = verify_input(inp, anchors)
+        if state == AT.ATTESTED:
             attested.add(inp["id"])
+        elif state == AT.UNTRUSTED:
+            untrusted.add(inp["id"])
         cx = BUILDERS[inp["kind"]](inp, store, cost_bp)
         keep = []
         for r in cx.rows:
@@ -473,7 +496,7 @@ def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_B
             keep.append(r)
         rows += keep
         per_input[inp["id"]] = {"source_system": inp["source_system"], "kind": inp["kind"], "rows": len(keep),
-                                "verification": {"state": "attested" if ok else "not_certified", "reason": why,
+                                "verification": {"state": state, "reason": why,
                                                  "verified_flag_in_spec_ignored": bool(inp.get("verified"))},
                                 "stats": dict(sorted(cx.stats.items())),
                                 "files": {os.path.basename(f): sha_file(f) for f in input_files(inp)}}
@@ -481,7 +504,7 @@ def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_B
             keys_seen[inp["id"]] = cx.keys_seen
     rows.sort(key=lambda r: (r["decision_ts_ms"], r["example_id"]))
     for r in rows:                                               # ammissione uniforme, calcolata UNA volta a dataset completo
-        reasons = EL.reasons(r, attested)
+        reasons = EL.reasons(r, attested, untrusted)
         r["eligible_for_training"], r["ineligible_reasons"] = not reasons, reasons
         errs = S.validate_row(r)
         if errs:
@@ -491,7 +514,7 @@ def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_B
         used = sorted({r["symbol"] for r in rows if r["labels"].get("status") == "ok" or r["feature_source"] == "reconstructed_from_candles"})
         candles_info = {"meta": store.meta, "meta_id": store.meta_id, "meta_problem": store.meta_problem, "stats": store.stats,
                         "files_sha256": {s: store.file_sha(s) for s in used}}
-    return {"rows": rows, "per_input": per_input, "attested": attested, "keys_seen": keys_seen,
+    return {"rows": rows, "per_input": per_input, "attested": attested, "untrusted": untrusted, "keys_seen": keys_seen,
             "duplicate_example_ids": dup_ids, "duplicate_trades_flagged": dup_trades, "candles": candles_info}
 
 
@@ -508,7 +531,8 @@ def summarize(res: dict) -> dict:
             "label_complete": c(lambda r: r["label_complete"]), "horizons_complete": c(lambda r: r["horizons_complete"]),
             "eligible_for_training": sum(1 for r in rows if r["eligible_for_training"]),
             "ineligible_reasons": dict(sorted(reasons.items())), "quality_flags": dict(sorted(flags.items())),
-            "inputs_attested": sorted(res["attested"]), "inputs_not_certified": sorted(set(res["per_input"]) - res["attested"]),
+            "inputs_attested": sorted(res["attested"]), "inputs_hash_matched_untrusted": sorted(res.get("untrusted", set())),
+            "inputs_not_certified": sorted(set(res["per_input"]) - res["attested"] - res.get("untrusted", set())),
             "executed": len(ex), "losses": sum(1 for r in ex if (r["outcome"].get("net_pnl") or 0) < 0),
             "wins": sum(1 for r in ex if (r["outcome"].get("net_pnl") or 0) > 0),
             "manual_closes": sum(1 for r in ex if r["outcome"].get("is_manual")),
@@ -553,11 +577,12 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--candles")
     ap.add_argument("--cost-bp", type=float, default=COST_BP)
+    ap.add_argument("--anchors", help="ancore esterne {run_id: sha256 di public/summary.json}, registrate dall'operatore")
     a = ap.parse_args(argv)
     with open(a.spec, encoding="utf-8") as fh:
         spec = json.load(fh)
     try:
-        res = build(spec, a.candles, a.cost_bp)
+        res = build(spec, a.candles, a.cost_bp, AT.load_anchors(a.anchors))
         info = write_outputs(res, a.out)
     except (ValueError, OSError) as exc:
         print(f"NO-GO: {type(exc).__name__}: {str(exc)[:80]}")

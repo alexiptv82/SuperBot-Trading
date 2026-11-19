@@ -6,20 +6,23 @@ devono usare QUESTO campo, mai filtri propri. Ogni riga esclusa riporta i motivi
 """
 from __future__ import annotations
 
-REASONS = ("duplicate", "synthetic", "input_not_attested", "schema_unverified", "no_features", "label_incomplete",
+REASONS = ("duplicate", "synthetic", "input_not_attested", "provenance_not_anchored", "schema_unverified", "no_features", "label_incomplete",
            "open_censored", "unknown_pnl", "manual_close_not_imitable", "decision_link_untrusted",
            "ambiguous_feature_link", "market_data_unattested")
 _BLOCKING_FLAGS = ("ambiguous_feature_link", "market_data_unattested")
 
 
-def reasons(row: dict, attested_inputs: set) -> list:
+def reasons(row: dict, attested_inputs: set, untrusted_inputs: frozenset = frozenset()) -> list:
+    """`untrusted_inputs`: input con hash coincidenti ma SENZA ancora esterna (`hash_matched_untrusted`): non ammessi."""
     r = []
     p, o = row["provenance"], row["outcome"]
     if p.get("duplicate_of"):
         r.append("duplicate")
     if row["is_synthetic"]:
         r.append("synthetic")
-    if p["input_id"] not in attested_inputs:
+    if p["input_id"] in untrusted_inputs and p["input_id"] not in attested_inputs:
+        r.append("provenance_not_anchored")
+    elif p["input_id"] not in attested_inputs:
         r.append("input_not_attested")
     if p.get("schema_unverified"):
         r.append("schema_unverified")
