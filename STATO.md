@@ -1,3 +1,11 @@
+## 19/11/2026 Claude — autorizzazioni registrate e ramo di integrazione proposto
+
+- Nuovo [`AUTORIZZAZIONI.md`](AUTORIZZAZIONI.md): autorizzazioni stabili, temporanee e revocabili conferite dal proprietario; Claude non ne modifica il contenuto. **Merge ancora NON autorizzati.**
+- Proposta: [`diario/2026-11-19_claude-ramo-integrazione-proposta.md`](diario/2026-11-19_claude-ramo-integrazione-proposta.md) — ramo `integration/brain-unico-20261119` (puntatore a `33a0de7`, nessun codice nuovo). Controlli: non usato da servizi (nato oggi), nessun workflow con trigger push/PR su 90 analizzati, gate = suite V3 (base 5023 pass), rollback con `--no-ff` + revert. In attesa di decisione del proprietario.
+- GitHub: la scrittura di PR e commenti da parte dell'app di Claude è ancora 403; il proprietario vuole prima tentare di correggere i permessi dell'app. Nessuna credenziale creata.
+- Checkpoint: il meccanismo esistente (commit `docs: checkpoint …` e `docs: indicizza …` di ChatGPT) non viene duplicato; Claude aggiunge solo voci proprie con il prefisso `diario: Claude …`.
+- Nessun merge/deploy/restart/reset/ordine/API/LIVE.
+
 ## 19/11/2026 sera — Claude responsabile sviluppo: master handover, PR #121 verde, P0 #124 corretto su branch
 
 - Rapporto: [`diario/2026-11-19_claude-master-handover-roadmap.md`](diario/2026-11-19_claude-master-handover-roadmap.md) — stato reale, VPS (non-root), PR, P0, dipendenze, piano A–G con criteri di accettazione, autorizzazioni.
