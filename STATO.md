@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 19/11/2026 06:47 Europe/Rome — causa halt Brain verificata; apprendimento da auditare prima del restart
+
+- Nuovo checkpoint delta: [`diario/2026-11-19_brain-halt-cause-learning-gate-arena-finish.md`](diario/2026-11-19_brain-halt-cause-learning-gate-arena-finish.md), commit [`c3ae462…`](https://github.com/alexiptv82/SuperBot-Trading/commit/c3ae46241ec7d05132d6adc0e9cb6dab8c43599d).
+- Screenshot Termius 06:13: runner Brain `inactive/dead`; servizio uscite `active/running`, heartbeat sano. Il runner era `halted:exit_service_unhealthy`; l'uscita si è ripresa ma il runner è rimasto fermo. Nessun restart.
+- Decisione utente: prima del restart verificare che lo storico alimenti davvero l'apprendimento dagli errori; conservare trade e posizioni.
+- Arena deve concludersi invariata. DeepSeek è il favorito provvisorio; MiniMax giudicato scarso. Possibile futuro test DeepSeek + “Cloud”, non definito né approvato.
+- Conservazione dello storico non prova apprendimento autonomo: serve audit read-only journal → memoria/scoreboard → contesto → gate.
+- PR #112 invariata a `86288a3…`; RC84 PR #80 invariata a `0e29a73…`; age PC non certifica VPS; extbackup non installato.
+- Nessun merge, deploy, Action, modifica VPS, restart, reset, ordine o API a pagamento; PAPER, storici ed EventJournal preservati.
+
 ## 19/11/2026 05:46 Europe/Rome — Brain storico fermo; gap verificato nell'universo Arena
 
 - Nuovo checkpoint delta: [`diario/2026-11-19_brain-stopped-arena-universe-gap.md`](diario/2026-11-19_brain-stopped-arena-universe-gap.md), commit [`72bc47c…`](https://github.com/alexiptv82/SuperBot-Trading/commit/72bc47ce2be89b9fde72b1b8e08d156cd68c26a9).
