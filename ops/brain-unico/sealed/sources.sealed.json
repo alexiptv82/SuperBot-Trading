@@ -1,26 +1,122 @@
 {
-  "schema": 1,
-  "_comment": "Spec INCORPORATA nel bundle sigillato (coperta dall'hash). Percorsi pubblici dichiarati nel repository e confermati in parte dallo STEP 1: la verifica reale e' il preflight (NO-GO se mancano). 'quiescence.units' = unita' che devono risultare NON attive e senza DB aperti per ammettere la copia di un DB WAL senza -wal/-shm; le sorgenti con servizi attivi NON dichiarano quiescenza. 'optional' = ammessa se assente, ma ogni gruppo obbligatorio richiede almeno una sorgente non opzionale e almeno un FILE DI DATI (sqlite/jsonl).",
-  "require_data": true,
-  "required_groups": ["falco", "toro", "brain_storico", "arena_deepseek", "arena_qwen", "arena_minimax"],
-  "sources": [
-    {"id": "falco_data", "group": "falco", "kind": "tree", "path": "/opt/superbot-desk-data/hawk",
-     "quiescence": {"units": ["superbot-v3-paper-falco.service", "superbot-v3-falco-exit.service"]}},
-    {"id": "v3_falco_run", "group": "falco", "kind": "tree", "optional": true,
-     "path": "/opt/superbot-v3-paper-runs/classic-hawk-paper20261111",
-     "quiescence": {"units": ["superbot-v3-paper-falco.service", "superbot-v3-falco-exit.service"]}},
-    {"id": "toro_data", "group": "toro", "kind": "tree", "path": "/opt/superbot-desk-data/bull",
-     "quiescence": {"units": ["superbot-v3-paper-toro.service", "superbot-v3-toro-exit.service"]}},
-    {"id": "v3_toro_run", "group": "toro", "kind": "tree", "optional": true,
-     "path": "/opt/superbot-v3-paper-runs/classic-bull-paper20261111",
-     "quiescence": {"units": ["superbot-v3-paper-toro.service", "superbot-v3-toro-exit.service"]}},
-    {"id": "brain_free", "group": "brain_storico", "kind": "tree", "path": "/opt/superbot-brain-free",
-     "quiescence": {"units": ["superbot-v3-paper-brain-runner.service", "superbot-brain-worker.service",
-                              "superbot-v3-paper-brain.service"]}},
-    {"id": "v3_brain_run", "group": "brain_storico", "kind": "tree", "optional": true,
-     "path": "/opt/superbot-v3-paper-runs/brain-v3-paper20261111"},
-    {"id": "arena_deepseek", "group": "arena_deepseek", "kind": "tree", "path": "/opt/superbot-ai-arena-paper/deepseek"},
-    {"id": "arena_qwen", "group": "arena_qwen", "kind": "tree", "path": "/opt/superbot-ai-arena-paper/qwen"},
-    {"id": "arena_minimax", "group": "arena_minimax", "kind": "tree", "path": "/opt/superbot-ai-arena-paper/minimax"}
-  ]
+ "schema": 1,
+ "_comment": "Spec INCORPORATA nel bundle sigillato (coperta dall'hash). Percorsi pubblici dichiarati nel repository e confermati in parte dallo STEP 1: la verifica reale e' il preflight (NO-GO se mancano). 'quiescence.units' = unita' che devono risultare NON attive e senza DB aperti per ammettere la copia di un DB WAL senza -wal/-shm; le sorgenti con servizi attivi NON dichiarano quiescenza. 'optional' = ammessa se assente, ma ogni gruppo obbligatorio richiede almeno una sorgente non opzionale e almeno un FILE DI DATI (sqlite/jsonl). 'arena_risk_policy' = copia della politica di rischio delle config Arena (stessa per le tre run): serve all'audit dei limiti.",
+ "require_data": true,
+ "required_groups": [
+  "falco",
+  "toro",
+  "brain_storico",
+  "arena_deepseek",
+  "arena_qwen",
+  "arena_minimax"
+ ],
+ "arena_risk_policy": {
+  "initial_equity": "2000",
+  "daily_loss_warn_fraction": "0.35",
+  "daily_loss_halt_fraction": "0.50",
+  "exit_max_hold_hours": 24,
+  "risk_policy": {
+   "max_loss_fraction": "0.042857142857142857",
+   "max_open_risk_fraction": "0.12",
+   "max_position_margin_fraction": "0.20",
+   "max_total_margin_fraction": "0.55",
+   "minimum_equity": "450",
+   "estimated_roundtrip_cost_bp": "16",
+   "liquidation_buffer_fraction": "0.5",
+   "max_loss_margin_fraction": "0.214285714285714285",
+   "min_leverage": 20,
+   "max_leverage": 50
+  }
+ },
+ "arena_planned_hours": 72,
+ "sources": [
+  {
+   "id": "falco_data",
+   "group": "falco",
+   "kind": "tree",
+   "path": "/opt/superbot-desk-data/hawk",
+   "quiescence": {
+    "units": [
+     "superbot-v3-paper-falco.service",
+     "superbot-v3-falco-exit.service"
+    ]
+   }
+  },
+  {
+   "id": "v3_falco_run",
+   "group": "falco",
+   "kind": "tree",
+   "optional": true,
+   "path": "/opt/superbot-v3-paper-runs/classic-hawk-paper20261111",
+   "quiescence": {
+    "units": [
+     "superbot-v3-paper-falco.service",
+     "superbot-v3-falco-exit.service"
+    ]
+   }
+  },
+  {
+   "id": "toro_data",
+   "group": "toro",
+   "kind": "tree",
+   "path": "/opt/superbot-desk-data/bull",
+   "quiescence": {
+    "units": [
+     "superbot-v3-paper-toro.service",
+     "superbot-v3-toro-exit.service"
+    ]
+   }
+  },
+  {
+   "id": "v3_toro_run",
+   "group": "toro",
+   "kind": "tree",
+   "optional": true,
+   "path": "/opt/superbot-v3-paper-runs/classic-bull-paper20261111",
+   "quiescence": {
+    "units": [
+     "superbot-v3-paper-toro.service",
+     "superbot-v3-toro-exit.service"
+    ]
+   }
+  },
+  {
+   "id": "brain_free",
+   "group": "brain_storico",
+   "kind": "tree",
+   "path": "/opt/superbot-brain-free",
+   "quiescence": {
+    "units": [
+     "superbot-v3-paper-brain-runner.service",
+     "superbot-brain-worker.service",
+     "superbot-v3-paper-brain.service"
+    ]
+   }
+  },
+  {
+   "id": "v3_brain_run",
+   "group": "brain_storico",
+   "kind": "tree",
+   "optional": true,
+   "path": "/opt/superbot-v3-paper-runs/brain-v3-paper20261111"
+  },
+  {
+   "id": "arena_deepseek",
+   "group": "arena_deepseek",
+   "kind": "tree",
+   "path": "/opt/superbot-ai-arena-paper/deepseek"
+  },
+  {
+   "id": "arena_qwen",
+   "group": "arena_qwen",
+   "kind": "tree",
+   "path": "/opt/superbot-ai-arena-paper/qwen"
+  },
+  {
+   "id": "arena_minimax",
+   "group": "arena_minimax",
+   "kind": "tree",
+   "path": "/opt/superbot-ai-arena-paper/minimax"
+  }
+ ]
 }

@@ -19,6 +19,7 @@ OUT = os.path.join(HERE, "phase0_sealed.py")
 MODULES = (("inventory", os.path.join(ROOT, "inventory.py")),
            ("snapshot", os.path.join(ROOT, "phase0", "snapshot.py")),
            ("audit", os.path.join(ROOT, "phase0", "audit.py")),
+           ("risk_audit", os.path.join(ROOT, "phase0", "risk_audit.py")),
            ("sealed_root", os.path.join(HERE, "sealed_root.py")))
 SPEC = os.path.join(HERE, "sources.sealed.json")
 
