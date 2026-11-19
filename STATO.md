@@ -1,3 +1,14 @@
+## 19/11/2026 14:45 Europe/Rome — PR #119 e gate del PAPER definitivo
+
+- Nuovo checkpoint: [`diario/2026-11-19_pr119-guardian-gate-paper-definitivo.md`](diario/2026-11-19_pr119-guardian-gate-paper-definitivo.md), commit [`96603c9…`](https://github.com/alexiptv82/SuperBot-Trading/commit/96603c968fc6694cb49de3794c9af5e3f103ec6d).
+- Nuova [PR #119](https://github.com/alexiptv82/SuperBot-Trading/pull/119) open/draft, HEAD `cec2b872…`: proposta Guardian + simulatore sintetico; nessun runtime, dato reale o deploy. 40.000 sessioni sintetiche dichiarate, ma 0 check/status GitHub.
+- Decisione utente: il prossimo PAPER del Brain unico dovrà essere un unico collaudo finale completo e integrato, non una nuova prova parziale. Necessaria tracciabilità requisito → implementazione → test → evidenza.
+- La proposta raccomanda E0 sui dati certificati, anti-reingresso e floor mobile con limite di perdita; +400/+500 restano braccio sperimentale, non configurazione approvata.
+- PR #117 `6dcdedc…` e PR #118 `e983d36…` invariate; i due gap PR #118 restano blocker. PR #119 non li corregge.
+- “Niente pause/stop” significa nessun fermo involontario per integrazioni mancanti: `LOCKED` può bloccare nuove aperture per sicurezza, mentre ExitService/monitoraggio/chiusure devono restare attivi.
+- RC84 #80 `0e29a73…`, extbackup `3dc2116…` non installato e age PC `ESITO: VERIFICA OK` ma non VPS restano invariati.
+- Solo documentazione: nessun merge/deploy/Action/VPS/restart/reset/ordine/API a pagamento; PAPER, storici ed EventJournal preservati.
+
 ## 19/11/2026 Claude — Smart Profit Guardian: revisione indipendente (solo docs)
 
 - Voce: [`diario/2026-11-19_claude-smart-profit-guardian-revisione.md`](diario/2026-11-19_claude-smart-profit-guardian-revisione.md).
