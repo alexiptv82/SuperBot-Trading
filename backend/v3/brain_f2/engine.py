@@ -38,6 +38,11 @@ _ALLOWED_RATIONALE = frozenset({
     "symbol_mismatch", "price_divergence", "close_modify_not_executable_r1",
     "risk_quote_ok", "sanitized", "policy_not_authorized",
     "deepseek:mock", "claude:mock", "deepseek:analysis", "claude:review",
+    "free_router:analysis", "free_router:timeout", "free_router:connection",
+    "free_router:http_429", "free_router:http_5xx", "free_router:invalid_json",
+    "free_router:schema", "free_router:missing_key", "free_router:url_rejected",
+    "free_router:deepseek_failed", "free_router:deepseek_cap",
+    "free_router:fallback_used", "free_router:invalid_market",
 })
 _ALLOWED_SOURCES = frozenset({
     "deepseek:mock", "claude:mock", "engine:fail_closed", "engine:validate",
@@ -46,6 +51,7 @@ _ALLOWED_SOURCES = frozenset({
     # Advisory-only context evidence; may affect the model's analysis but never
     # bypass a risk gate, grant execution authority, or become an order.
     "falco:paper_position_observation", "toro:paper_position_observation",
+    "free_router:analysis",
 })
 _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
 _SYMBOL_RE = __import__("re").compile(r"^[A-Z0-9][A-Z0-9/_:.-]{0,31}$")
@@ -73,7 +79,38 @@ def _safe_event_id(eid):
         return eid
     return None
 
-_ALLOWED_ORIGINS = frozenset({"deepseek", "claude", "deepseek:mock", "claude:mock"})
+_ALLOWED_ORIGINS = frozenset({"deepseek", "claude", "deepseek:mock", "claude:mock", "free_router"})
+_ROUTER_FAILURES = frozenset({
+    "free_router:timeout", "free_router:connection", "free_router:http_429",
+    "free_router:http_5xx", "free_router:invalid_json", "free_router:schema",
+    "free_router:missing_key", "free_router:url_rejected",
+    "free_router:deepseek_failed", "free_router:deepseek_cap",
+    "free_router:fallback_used", "free_router:invalid_market",
+})
+
+
+def _safe_llm_route(value: Any) -> Optional[dict]:
+    """Campi osservabili del router. Scarta URL, chiavi e testi liberi."""
+    if type(value) is not dict:
+        return None
+    out: dict = {}
+    source = value.get("source")
+    if source in ("free_router", "deepseek_fallback"):
+        out["source"] = source
+    reason = value.get("router_failure")
+    if reason in _ROUTER_FAILURES:
+        out["router_failure"] = reason
+    via = value.get("routed_via")
+    if (type(via) is str and 1 <= len(via) <= 64 and via.isascii()
+            and "://" not in via and " " not in via and "@" not in via
+            and all(c.isalnum() or c in "-_./" for c in via)):
+        out["routed_via"] = via
+    for key in ("latency_ms", "fallback_attempts", "prompt_tokens",
+                "completion_tokens", "deepseek_cost_units"):
+        number = value.get(key)
+        if type(number) is int and 0 <= number <= 10_000_000:
+            out[key] = number
+    return out or None
 logger = logging.getLogger(__name__)
 _TRUSTED_APPROVERS = frozenset({"operator", "system-admin"})  # external trust anchor required
 
@@ -518,6 +555,9 @@ class BrainEngine:
                 if sid:
                     payload["strategy_id"] = sid
                     payload["strategy_origin"] = sor
+            route = _safe_llm_route(getattr(decision, "llm_route", None))
+            if route:
+                payload["llm_route"] = route
             event = Event(
                 event_id=eid,
                 portfolio_id="brain",
@@ -565,6 +605,7 @@ class BrainEngine:
             occurred_at_ms=decision.occurred_at_ms if isinstance(decision.occurred_at_ms, int) else 0,
             status=status,
             journal_event_id=_safe_event_id(getattr(decision, "journal_event_id", None)) if link_allowed else None,
+            llm_route=_safe_llm_route(getattr(decision, "llm_route", None)),
         )
 
     def _persist_and_return(self, decision: BrainDecision, context: MarketContext, write_journal: bool = True) -> BrainDecision:

@@ -47,7 +47,7 @@ class DeepSeekL5Analyst(Analyst):
         self.menu, self.spending_gate, self.enabled = menu, spending_gate, enabled
         self.max_tokens = max_tokens
 
-    def analyze(self, context: MarketContext, open_positions: list[Mapping]) -> BrainDecision:
+    def l5_packet(self, context: MarketContext, open_positions: list[Mapping]) -> tuple[str, list[str]]:
         if (not isinstance(context, MarketContext) or not _safe_str(context.symbol)
                 or not _safe_str(context.regime) or context.regime not in REGIMES
                 or type(context.timestamp_ms) is not int or context.timestamp_ms <= 0):
@@ -92,6 +92,10 @@ class DeepSeekL5Analyst(Analyst):
         sources = ["deepseek:analysis"] + [
             key + ":paper_position_observation" for key in ("falco", "toro")
             if key in peer_positions]
+        return info_json, sources
+
+    def analyze(self, context: MarketContext, open_positions: list[Mapping]) -> BrainDecision:
+        info_json, sources = self.l5_packet(context, open_positions)
         payload = {
             "model": self.model, "stream": False, "max_tokens": self.max_tokens,
             "response_format": {"type": "json_object"},
@@ -102,43 +106,50 @@ class DeepSeekL5Analyst(Analyst):
         }
         body = _call(self.transport, self.spending_gate, "deepseek", self.model,
                      self.enabled, payload)
-        try:
-            choices = body["choices"]
-            if type(choices) is not list or len(choices) != 1:
-                raise ValueError()
-            choice = choices[0]
-            if choice["finish_reason"] != "stop":
-                raise ValueError()
-            obj = _json_object(choice["message"]["content"])
-            if obj.get("kind") == "NO_TRADE" and set(obj) == {"kind"}:
-                return BrainDecision(kind=DecisionKind.NO_TRADE, rationale="deepseek:analysis",
-                                     sources=sources,
-                                     occurred_at_ms=context.timestamp_ms)
-            keys = {"kind", "side", "entry_price", "stop_price", "leverage", "confidence"}
-            labelled_keys = keys | {"strategy_id", "strategy_origin"}
-            if (obj.get("kind") != "OPEN" or set(obj) not in (keys, labelled_keys)
-                    or type(obj["side"]) is not int or obj["side"] not in (-1, 1)
-                    or type(obj["leverage"]) is not int or not 1 <= obj["leverage"] <= 100
-                    or type(obj["confidence"]) not in (float, int)
-                    or not math.isfinite(obj["confidence"])
-                    or not 0 <= obj["confidence"] <= 1):
-                raise ValueError()
-            labelled = set(obj) == labelled_keys
-            if labelled and (not _safe_str(obj["strategy_id"], max_len=64)
-                             or not _safe_str(obj["strategy_origin"], max_len=64)):
-                raise ValueError()
-            proposal = OpenProposal(
-                symbol=context.symbol, side=obj["side"],
-                entry_price=_bounded_decimal(obj["entry_price"]),
-                stop_price=_bounded_decimal(obj["stop_price"]),
-                leverage=obj["leverage"], rationale="deepseek:analysis",
-                confidence=float(obj["confidence"]), originating_ai="deepseek",
-                context_hash=hashlib.sha256(info_json.encode()).hexdigest(),
-                strategy_id=obj["strategy_id"] if labelled else None,
-                strategy_origin=obj["strategy_origin"] if labelled else None,
-            )
-            return BrainDecision(kind=DecisionKind.OPEN, proposal=proposal,
-                                 rationale="deepseek:analysis", sources=sources,
-                                 occurred_at_ms=context.timestamp_ms)
-        except Exception:
-            raise ProviderUnavailable("invalid_model_output") from None
+        return decision_from_chat_body(
+            body, context=context, info_json=info_json, sources=sources,
+            rationale="deepseek:analysis", originating_ai="deepseek")
+
+
+def decision_from_chat_body(body, *, context: MarketContext, info_json: str, sources: list[str],
+                            rationale: str, originating_ai: str) -> BrainDecision:
+    """Stesso contratto JSON di L5. Solleva ProviderUnavailable se il testo non è valido."""
+    try:
+        choices = body["choices"]
+        if type(choices) is not list or len(choices) != 1:
+            raise ValueError()
+        choice = choices[0]
+        if choice["finish_reason"] != "stop":
+            raise ValueError()
+        obj = _json_object(choice["message"]["content"])
+        if obj.get("kind") == "NO_TRADE" and set(obj) == {"kind"}:
+            return BrainDecision(kind=DecisionKind.NO_TRADE, rationale=rationale,
+                                 sources=list(sources), occurred_at_ms=context.timestamp_ms)
+        keys = {"kind", "side", "entry_price", "stop_price", "leverage", "confidence"}
+        labelled_keys = keys | {"strategy_id", "strategy_origin"}
+        if (obj.get("kind") != "OPEN" or set(obj) not in (keys, labelled_keys)
+                or type(obj["side"]) is not int or obj["side"] not in (-1, 1)
+                or type(obj["leverage"]) is not int or not 1 <= obj["leverage"] <= 100
+                or type(obj["confidence"]) not in (float, int)
+                or not math.isfinite(obj["confidence"])
+                or not 0 <= obj["confidence"] <= 1):
+            raise ValueError()
+        labelled = set(obj) == labelled_keys
+        if labelled and (not _safe_str(obj["strategy_id"], max_len=64)
+                         or not _safe_str(obj["strategy_origin"], max_len=64)):
+            raise ValueError()
+        proposal = OpenProposal(
+            symbol=context.symbol, side=obj["side"],
+            entry_price=_bounded_decimal(obj["entry_price"]),
+            stop_price=_bounded_decimal(obj["stop_price"]),
+            leverage=obj["leverage"], rationale=rationale,
+            confidence=float(obj["confidence"]), originating_ai=originating_ai,
+            context_hash=hashlib.sha256(info_json.encode()).hexdigest(),
+            strategy_id=obj["strategy_id"] if labelled else None,
+            strategy_origin=obj["strategy_origin"] if labelled else None,
+        )
+        return BrainDecision(kind=DecisionKind.OPEN, proposal=proposal,
+                             rationale=rationale, sources=list(sources),
+                             occurred_at_ms=context.timestamp_ms)
+    except Exception:
+        raise ProviderUnavailable("invalid_model_output") from None

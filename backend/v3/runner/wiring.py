@@ -34,6 +34,9 @@ from typing import Callable, Mapping, Optional
 from backend.v3.brain_f2.engine import _policy_hash
 from backend.v3.brain_f3.providers import Transport
 from backend.v3.brain_market.deepseek_l5 import DeepSeekL5Analyst
+from backend.v3.brain_market.free_router_l5 import (
+    FreeRouterL5Analyst, brain_llm_provider, deepseek_fallback_enabled,
+)
 from backend.v3.brain_market.classic_peers import read_peers
 from backend.v3.brain_market.params import MarketViewParams, load_default_params as load_market_params
 from backend.v3.brain_market.view import min_bars, regime_for_context
@@ -164,12 +167,20 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         input_usd_per_million=config.input_usd_per_million, output_usd_per_million=config.output_usd_per_million,
         extra_payload=config.model_extra_payload)
     holder = CycleBars()
-    analyst = MarketEntryAnalyst(DeepSeekL5Analyst(
+    deepseek_analyst = DeepSeekL5Analyst(
         transport=metered, model=config.model,
         outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
         bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
         spending_gate=ledger.spending_gate(daily_limits={PROVIDER: config.daily_cap_units}), enabled=True,
-        max_tokens=config.max_tokens))
+        max_tokens=config.max_tokens)
+    # Default deepseek: stesso comportamento di prima. Il router si accende solo con la variabile.
+    if brain_llm_provider() == "free_router":
+        chosen = FreeRouterL5Analyst(
+            template=deepseek_analyst, fallback=deepseek_analyst,
+            fallback_enabled=deepseek_fallback_enabled(), ledger=ledger)
+    else:
+        chosen = deepseek_analyst
+    analyst = MarketEntryAnalyst(chosen)
     store = CandleStore(get_json, keep={s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP)
                                         for s in vp.timeframes})
     minutes = CandleStore(get_json, keep={"1m": (60_000, MINUTE_STORE_BARS)})
