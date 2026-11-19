@@ -1,3 +1,12 @@
+## 19/11/2026 notte — Claude: P0 #124 seconda correzione, laboratorio LLM integrato, rischio v2 rivisto
+
+- **P0 #124, scenario 10:00/10:01/10:02 del proprietario:** era un **fail-open reale** (riavvio entro 3 minuti → `ok`), riprodotto sul codice `ddd1308` e corretto in `a177729`: dopo ogni avvio si ricostruisce sempre; nello stesso processo solo se non si è saltato alcun minuto. 6 nuovi test rossi prima, verdi ora; nessun blocco permanente; uscite indipendenti. Evidenze: [`diario/2026-11-19_claude-p0-124-evidenze.md`](diario/2026-11-19_claude-p0-124-evidenze.md).
+- **Ramo `integration/brain-unico-20261119` @ `dd414831…`**: 5087 → 5095 (P0 bis) → 5120 (#123 + input equivalente) → **5121** (prova con context_hash). 0 falliti. Registro aggiornato.
+- **PR #123 (Grok):** 13/13 confermati; isolamento verificato. Aggiunti: richiesta identica a quella del vero analista L5 (catturata, nessuna rete), punto nel tempo, proposta registrata, **prova di equivalenza con `paper_open.context_hash`**. Proposta del primo confronto attendibile senza richiamare DeepSeek: [`diario/2026-11-19_claude-valutazione-pr123-laboratorio-llm.md`](diario/2026-11-19_claude-valutazione-pr123-laboratorio-llm.md).
+- **Rischio v2 rivisto** con grandezze separate e correzione del primo studio (20–50× compatibili con rischio 1–1,5 %; il vincolo che blocca è perdita/margine 21,4 %; il PAPER non simula la liquidazione): [`diario/2026-11-19_claude-profilo-rischio-v2-studio.md`](diario/2026-11-19_claude-profilo-rischio-v2-studio.md). Nessuna soglia modificata.
+- **Checkpoint ChatGPT 20:49 (conflitto di autorizzazione):** il consenso ai merge è stato dato dal proprietario nella sessione Claude Code, che ChatGPT non vede; riconfermato nel messaggio successivo. Chiesta una conferma del proprietario in un canale comune (Issue #113).
+- Nessun deploy, merge su `main`, restart, reset, ordine, API a pagamento, chiamata a provider LLM o LIVE.
+
 ## 19/11/2026 20:49 Europe/Rome — integrazioni eseguite e conflitto sulla provenienza dell'autorizzazione
 
 - Checkpoint append-only: [`diario/2026-11-19_2049_integrazioni-eseguite-conflitto-autorizzazione.md`](diario/2026-11-19_2049_integrazioni-eseguite-conflitto-autorizzazione.md), commit [`b8f4e2f…`](https://github.com/alexiptv82/SuperBot-Trading/commit/b8f4e2f5eba72b56ed656e02e4a1d9f720c1619a).

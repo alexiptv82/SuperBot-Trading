@@ -22,3 +22,41 @@
 **Cinque fallimenti "preesistenti":** erano `test_v3_rc84_import_paths` (5 test). **Non erano difetti del codice**: nell'ambiente di prova mancava `numpy`. Con le dipendenze installate passano (6 passed, 1 skipped) sia sulla base sia con le correzioni. **Nuove regressioni: 0.**
 
 **Limiti:** la ricostruzione vede gli stessi istanti del controllo vivo (chiusura di ogni minuto), non i picchi intra-minuto. Senza rete al riavvio il blocco `unverified` ferma le nuove aperture (le uscite no) finché una ricostruzione non riesce. Non provato su VPS: nessun deploy.
+
+---
+
+## Seconda verifica richiesta dal proprietario (scenario 10:00 / 10:01 / 10:02) — **era un fail-open reale, corretto**
+
+**Scenario:** stato `ok` persistito alle 10:00; alle 10:01 la perdita supera lo stop ma il latch non si scrive (disco); il PnL rientra; riavvio alle 10:02.
+
+**Riprodotto sul codice reale `ddd1308`:** il riavvio dava **`ok`** senza ricostruzione. `_reconcile()` considerava valido lo stato del disco perché era entro la tolleranza di 3 minuti, ma quella tolleranza presumeva che il disco avesse visto tutto ciò che il processo aveva visto.
+
+**Correzione:** commit **`a177729107231199f802f38e5592ab6e5373ea48`** (ramo `claude/brain-unico-daily-loss-latch-p0-20261119`), integrata con il merge `cc35f532`.
+- La finestra di tolleranza non esiste più.
+- La ricostruzione si salta **solo nello stesso processo** e solo se **nessuna chiusura di minuto è stata saltata** dall'ultima valutazione riuscita.
+- **Al primo controllo dopo ogni avvio si ricostruisce sempre** dall'ultimo istante persistito.
+- Copre anche la variante senza riavvio: il minuto del crollo saltato per prezzi mancanti viene ricostruito.
+
+| Test (`test_daily_loss_latch_p0.py`) | Codice `ddd1308` | Correzione |
+|---|---|---|
+| `test_owner_scenario_failed_latch_write_then_restart_within_minutes_stays_halted` | **FAIL** (riapre) | PASS |
+| `test_any_restart_after_an_unpersisted_crash_minute_reconstructs_it` (riavvio 10:01:50, 10:02, 10:02:59, 10:03) | **FAIL** ×3, pass ×1 | PASS ×4 |
+| `test_a_minute_skipped_for_missing_prices_in_the_same_process_is_reconstructed` | **FAIL** | PASS |
+| `test_restart_reconstruction_failing_is_not_a_permanent_block` | **FAIL** | PASS |
+| `test_a_normal_restart_without_any_crash_is_not_blocked` | pass | PASS |
+| `test_continuous_operation_in_the_same_process_does_not_reconstruct` | — | PASS |
+
+**Nessun blocco permanente:**
+- un riavvio normale resta `ok`;
+- una ricostruzione fallita al riavvio dà `unverified`, che si toglie alla prima ricostruzione riuscita (riprovata entro 5 minuti) o con il nuovo giorno UTC.
+
+**Uscite:** i test sidecar e legacy restano verdi; il freno non è sul percorso delle uscite.
+
+**Suite V3:** ramo P0 **5071**; ramo di integrazione 5087 → **5095**; 0 falliti.
+
+**Mutazioni:**
+- riportare la tolleranza di 3 minuti → **rilevata**;
+- non azzerare `fresh_start` → **rilevata**;
+- togliere la ricostruzione forzata al riavvio → **equivalente** con valutazioni al minuto: un riavvio nello stesso minuto rivaluta la stessa barra e vede il crollo. La tengo come difesa in profondità; costa una lettura del journal e al più pochi minuti di candele per avvio.
+
+**Stato P0:** corretta e verificata offline sul ramo di integrazione. Resta in bozza, nessun deploy.
