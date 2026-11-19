@@ -81,11 +81,12 @@ Per non dover più ricostruire, il Brain Unico deve **scrivere al momento della 
 ## 10. Uso e verifica
 
 ```
-python3 ops/brain-unico/training/builder.py --spec spec.json --out /percorso/nuovo --candles /percorso/candele
-python3 ops/brain-unico/training/test_training.py      # 88 test sintetici
+python3 ops/brain-unico/training/attestation.py /BASE/run-AAAAMMGGThhmmssZ-xxxx --out attestation.json   # da una run `full` sigillata
+python3 ops/brain-unico/training/builder.py --spec spec.json --out /percorso/nuovo --candles /percorso/candele --anchors ancore.json
+python3 ops/brain-unico/training/test_training.py      # 103 test sintetici
 ```
 
-`spec.json`: `{"inputs": [{"id": "...", "source_system": "falco|toro|brain_storico|arena_deepseek|arena_qwen|arena_minimax", "kind": "classic|v3|brain_free", "path": "<COPIA>", "attestation": "<attestation.json>", "annotations": "<copia, opzionale, solo v3>"}]}`. Il vecchio flag `verified` **non vale più** (se presente senza attestazione viene ignorato e segnalato nel manifest). L'output è una directory nuova (0700) fuori da qualunque repository: `examples.jsonl` (0600), `manifest.json` (0600, privato), `public_summary.json` (solo numeri). **Non mettere mai gli esempi o il manifest nel repository.**
+`spec.json`: `{"inputs": [{"id": "...", "source_system": "falco|toro|brain_storico|arena_deepseek|arena_qwen|arena_minimax", "kind": "classic|v3|brain_free", "path": "<COPIA>", "attestation": "<attestation.json>", "annotations": "<copia, opzionale, solo v3>"}]}`. Il vecchio flag `verified` **non vale più** (se presente senza attestazione viene ignorato e segnalato nel manifest). `ancore.json` = `{"<run_id>": "<sha256 di public/summary.json>"}`, registrato dall'**operatore** al momento della run sigillata (per esempio nella Issue #113, solo numeri); non viene mai letto dalla spec. L'output è una directory nuova (0700) fuori da qualunque repository: `examples.jsonl` (0600), `manifest.json` (0600, privato), `public_summary.json` (solo numeri). **Non mettere mai gli esempi o il manifest nel repository.**
 
 ## 11. Correzioni dalla revisione della PR #118 (commento del 19/11/2026, 11:19)
 
@@ -104,3 +105,14 @@ python3 ops/brain-unico/training/test_training.py      # 88 test sintetici
 **Limiti dichiarati.** L'attestazione è affidabile quanto chi la genera: non è una firma e non certifica il backup. Il builder lega l'input a una copia di Fase 0 riuscita e auditata, ma non rifà la verifica della catena. Le candele restano una fonte pubblica ricostruita: il legame a scambio/mercato è dichiarato, non dimostrato.
 
 **Verifica.** 88 test sintetici (54 + 34 nuovi). Per mutazione: reintroducendo in una copia di scratch ciascuno di **33** difetti (legame per vicinanza, epoche o cicli ignorati, input futuri, flag `verified` a mano, hash o audit non controllati, ciascun motivo di ammissione rimosso, split o sufficienza che contano tutto, barriera che richiede l'orizzonte intero o ignora i buchi, MFE/MAE con barre parziali o non marcato approssimato, PnL mancante = 0, annotazioni ignorate, meta di mercato non richiesta, origine dell'etichetta errata, duplicati non marcati) almeno un test fallisce: **33 su 33 rilevati**.
+
+## 12. Correzioni dalla seconda revisione della PR #118 (commento del 19/11/2026, 11:42)
+
+| Rilievo | Difetto | Correzione | Test |
+|---|---|---|---|
+| 1 | Con lo stesso `cycle_id` un input di BTC poteva essere collegato a un trade ETH (il ciclo veniva controllato prima del simbolo) | Politica conservativa in `builder.link_input`: il **simbolo deve essere noto da entrambe le parti e uguale**; un input di un altro simbolo non si collega mai, nemmeno con lo stesso ciclo (`symbol_conflict`). Un input senza simbolo non si collega mai, perché un ciclo può valutare più simboli (`ambiguous_feature_link`, escluso dal training). A parità di simbolo, un ciclo noto e diverso esclude il legame (`cycle_conflict`); si preferisce lo stesso ciclo, poi lo stesso simbolo senza ciclo | `BrainFreeLinkTests` (+6) |
+| 2 | L'attestazione accettava qualunque `snapshot_log.json` completo più un report con `verdict=PASS`: un JSON costruito ad arte bastava | **`phase0_attestation_v2`**, costruita solo da una directory di run sigillata `full` con verdetto `SNAPSHOT_GO`. Ricalcola e lega fra loro `summary.json` (run_id = nome della directory), `snapshot_log.json` (conteggi uguali al summary), `manifest.json` (digest **ricalcolato** dalle entry = summary; ogni item vi compare) e `audit.json` (verdetto = summary; digest delle teste di catena ricalcolato = `anchors_digest`; catene ok). `check` **ricostruisce** l'attestazione dalla run e rifiuta ogni differenza (`attestation_stale_or_tampered`). **Senza un'ancora esterna** (`--anchors`, mai dalla spec) che coincida con lo SHA-256 di `summary.json`, lo stato è `hash_matched_untrusted` e le righe hanno il motivo `provenance_not_anchored` (escluse). La v1 è rifiutata (`attestation_legacy_unbound`) | `AttestationTests` (+10) |
+
+**Che cosa resta vero.** Una run sigillata ricostruita a mano in modo coerente in ogni campo **non** diventa `attested`: resta `hash_matched_untrusted` (test `test_self_made_consistent_run_is_never_attested_without_anchor`). L'ancora vale quanto la sua registrazione: non è una firma. Va registrata dall'operatore subito dopo la run sigillata, e non da chi costruisce il dataset. Nota pratica: i file `private/` della run sono di root (0600), quindi la prima esecuzione reale richiederà un passaggio di copia autorizzato separatamente.
+
+**Verifica.** 103 test sintetici (88 + 15 nuovi), stabili su più esecuzioni. Mutazioni: **25 su 25** nuove rilevate. Le 8 mutazioni del giro precedente sul codice riscritto, tradotte sul codice nuovo (`verified` a mano, hash, snapshot incompleto, item non OK, audit FAIL, ammissione dei non attestati, legame per vicinanza, ciclo ignorato), sono **8 su 8** rilevate. Le altre 25 del giro precedente restano **25 su 25**.

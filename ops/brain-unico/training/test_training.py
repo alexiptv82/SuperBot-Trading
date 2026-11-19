@@ -1,6 +1,9 @@
 """Test SINTETICI del Training Dataset Builder (nessun dato reale, nessuna rete)."""
 import hashlib
+import contextlib
+import io
 import json
+from collections import Counter
 import os
 import random
 import socket
@@ -76,14 +79,42 @@ def write_meta(root, **over):
         json.dump({**META, **over}, fh)
 
 
-def make_attestation(dirpath, files, verdict="PASS", complete=True, status="OK", name="att"):
-    """Attestazione sintetica nel modo reale: snapshot_log.json + report di audit -> build_attestation."""
-    log = {"complete": complete, "items": [{"status": status, "sha256": sha(f)} for f in files]}
-    with open(os.path.join(dirpath, name + "_log.json"), "w") as fh:
-        json.dump(log, fh)
-    with open(os.path.join(dirpath, name + "_audit.json"), "w") as fh:
-        json.dump({"verdict": verdict}, fh)
-    att = AT.build_attestation(os.path.join(dirpath, name + "_log.json"), os.path.join(dirpath, name + "_audit.json"))
+RUN_SEQ = [0]
+
+
+def make_run(dirpath, files, verdict="PASS", complete=True, status="OK", mutate=None):
+    """Directory di run sigillata SINTETICA, coerente come quella di `sealed_root.execute` (mode=full, SNAPSHOT_GO)."""
+    RUN_SEQ[0] += 1
+    run_dir = os.path.join(dirpath, "run-20261119T120000Z-r%06d" % RUN_SEQ[0])
+    for sub in (("public",), ("private", "snapshot"), ("private", "reports")):
+        os.makedirs(os.path.join(run_dir, *sub))
+    items = [{"id": "src%d" % i, "status": status, "sha256": sha(f)} for i, f in enumerate(files)]
+    entries = [{"path": "snapshot/src%d/%s" % (i, os.path.basename(f)), "bytes": os.path.getsize(f), "sha256": sha(f)}
+               for i, f in enumerate(files)]
+    chains = {"db0": {"ok": True, "count": 3, "head": "h" * 64, "max_seq": 3, "per_run": {}}}
+    man = {"complete": True, "unstable_count": 0, "entries": entries, "manifest_digest": AT.manifest_digest(entries)}
+    aud = {"verdict": verdict, "checks": {"v3_chains": chains}, "certifies_backup": False}
+    summ = {"schema": 1, "run_id": os.path.basename(run_dir), "mode": "full", "verdict": "SNAPSHOT_GO", "code_sha256": "c" * 64,
+            "certifies_backup": False,
+            "snapshot": {"complete": complete, "items": len(items), "items_ok": sum(i["status"] == "OK" for i in items)},
+            "manifest": {"complete": True, "unstable_count": 0, "files_hashed": len(entries), "manifest_digest": man["manifest_digest"]},
+            "audit": {"verdict": verdict, "v3_chains_ok": 1, "v3_chains_total": 1, "anchors_digest": AT.anchors_digest(chains)}}
+    docs = {"summary": summ, "snapshot_log": {"complete": complete, "items": items}, "manifest": man, "audit": aud}
+    if mutate:
+        mutate(docs)
+    for k, d in docs.items():
+        with open(os.path.join(run_dir, *AT.PATHS[k]), "w") as fh:
+            json.dump(d, fh)
+    return run_dir
+
+
+def make_attestation(dirpath, files, verdict="PASS", complete=True, status="OK", name="att", anchors=None, mutate=None):
+    """Attestazione sintetica nel modo reale: run sigillata -> build_attestation. Con `anchors` (dict) registra l'ancora
+    esterna come farebbe l'operatore al momento della run."""
+    run_dir = make_run(dirpath, files, verdict, complete, status, mutate)
+    att = AT.build_attestation(run_dir)
+    if anchors is not None:
+        anchors[att["run_id"]] = att["summary_sha256"]
     path = os.path.join(dirpath, name + ".json")
     with open(path, "w") as fh:
         json.dump(att, fh)
@@ -434,13 +465,16 @@ class BuilderBase(Tmp):
         with open(os.path.join(d, "trade_history.jsonl"), "w") as fh:
             fh.write(json.dumps({"id": "p1", "close_ms": self.base + 13 * H, "net": -7.5}) + "\n")
         os.makedirs(self.p("att"))
+        self.anchors = {}
         self.spec = {"inputs": [
             {"id": "falco_hawk", "source_system": "falco", "kind": "classic", "path": d,
-             "attestation": make_attestation(self.p("att"), [self.p("hawk", "learning_log.jsonl"), self.p("hawk", "trade_history.jsonl")], name="a1")},
+             "attestation": make_attestation(self.p("att"), [self.p("hawk", "learning_log.jsonl"), self.p("hawk", "trade_history.jsonl")],
+                                             name="a1", anchors=self.anchors)},
             {"id": "arena_minimax", "source_system": "arena_minimax", "kind": "v3", "path": self.v3,
-             "attestation": make_attestation(self.p("att"), [self.v3], name="a2")}]}
+             "attestation": make_attestation(self.p("att"), [self.v3], name="a2", anchors=self.anchors)}]}
 
     def build(self, **kw):
+        kw.setdefault("anchors", self.anchors)
         return B.build(self.spec, self.p("candles"), **kw)
 
     def by(self, res, **kv):
@@ -906,12 +940,11 @@ class AttestationTests(BuilderBase):
         self.assertIn("arena_minimax", res["attested"])
 
     def test_failed_audit_incomplete_snapshot_and_bad_files_are_refused(self):
-        self.spec["inputs"][1]["attestation"] = make_attestation(self.p("att"), [self.v3], verdict="FAIL", name="f")
-        self.assertEqual(self.build()["per_input"]["arena_minimax"]["verification"]["reason"], "audit_not_passed")
-        with self.assertRaises(ValueError):
-            make_attestation(self.p("att"), [self.v3], complete=False, name="g")
-        with self.assertRaises(ValueError):
-            make_attestation(self.p("att"), [self.v3], status="FAILED", name="h")
+        for kw, why in ((dict(verdict="FAIL"), "audit_not_passed_or_mismatch"), (dict(complete=False), "snapshot_not_complete"),
+                        (dict(status="FAILED"), "snapshot_item_not_ok")):
+            with self.assertRaises(ValueError) as cm:
+                make_attestation(self.p("att"), [self.v3], name="x", **kw)
+            self.assertEqual(str(cm.exception), why)
         self.spec["inputs"][1]["attestation"] = self.p("att", "does_not_exist.json")
         self.assertEqual(self.build()["per_input"]["arena_minimax"]["verification"]["reason"], "attestation_unreadable")
         with open(self.p("att", "junk.json"), "w") as fh:
@@ -923,13 +956,159 @@ class AttestationTests(BuilderBase):
         self.spec["inputs"][1]["attestation"] = self.spec["inputs"][0]["attestation"]
         self.assertEqual(self.build()["per_input"]["arena_minimax"]["verification"]["reason"], "file_hash_not_attested")
 
-    def test_attestation_check_unit_rules(self):
-        ok = {"kind": AT.KIND, "files": {"a" * 64: {"status": "OK"}}, "audit_verdict": "WARN"}
-        self.assertEqual(AT.check(ok, ["a" * 64]), (True, "attested"))
-        self.assertEqual(AT.check(ok, []), (False, "input_without_files"))
-        self.assertEqual(AT.check({**ok, "audit_verdict": None}, ["a" * 64])[1], "audit_not_passed")
-        self.assertEqual(AT.check({**ok, "kind": "x"}, ["a" * 64])[1], "attestation_invalid")
-        self.assertEqual(AT.check(ok, ["a" * 64, "b" * 64])[1], "file_hash_not_attested")
+    # ---- PR #118, 2a revisione: provenienza legata alla run reale e ad un'ancora esterna -------------------------------
+
+    def verif(self, res, inp="arena_minimax"):
+        v = res["per_input"][inp]["verification"]
+        return v["state"], v["reason"]
+
+    def test_without_external_anchor_hashes_match_but_rows_are_not_eligible(self):
+        res = self.build(anchors={})
+        self.assertEqual(self.verif(res), ("hash_matched_untrusted", "no_external_anchor"))
+        self.assertEqual(res["attested"], set())
+        rows = self.rows_of(res, "arena_minimax")
+        self.assertTrue(rows and all("provenance_not_anchored" in r["ineligible_reasons"] and not r["eligible_for_training"]
+                                     for r in rows))
+        self.assertTrue(all("input_not_attested" not in r["ineligible_reasons"] for r in rows))   # motivo distinto e preciso
+        self.assertEqual(B.summarize(res)["inputs_hash_matched_untrusted"], ["arena_minimax", "falco_hawk"])
+        self.assertEqual(SU.report(res["rows"])["status"], "insufficient")
+
+    def test_wrong_anchor_is_refused(self):
+        bad = {k: "0" * 64 for k in self.anchors}
+        self.assertEqual(self.verif(self.build(anchors=bad)), ("hash_matched_untrusted", "external_anchor_mismatch"))
+
+    def test_anchors_in_the_spec_are_ignored(self):
+        self.spec["anchors"] = dict(self.anchors)
+        for inp in self.spec["inputs"]:
+            inp["anchors"] = dict(self.anchors)
+        self.assertEqual(self.verif(self.build(anchors=None)), ("hash_matched_untrusted", "no_external_anchor"))
+
+    def test_self_made_consistent_run_is_never_attested_without_anchor(self):
+        """Il controesempio della revisione: un JSON/run costruito ad arte, coerente in ogni campo, NON basta."""
+        self.spec["inputs"][1]["attestation"] = make_attestation(self.p("att"), [self.v3], name="forged")
+        self.assertEqual(self.verif(self.build())[0], "hash_matched_untrusted")
+
+    def test_edited_attestation_json_is_recomputed_and_refused(self):
+        path = self.spec["inputs"][1]["attestation"]
+        with open(path) as fh:
+            att = json.load(fh)
+        att["files"]["f" * 64] = {"status": "OK"}                                           # aggiunta di un file non copiato
+        with open(path, "w") as fh:
+            json.dump(att, fh)
+        self.assertEqual(self.verif(self.build()), ("not_certified", "attestation_stale_or_tampered"))
+
+    def test_run_files_edited_after_attestation_are_refused(self):
+        with open(self.spec["inputs"][1]["attestation"]) as fh:
+            run_dir = json.load(fh)["run_dir"]
+        sp = os.path.join(run_dir, *AT.PATHS["summary"])
+        with open(sp) as fh:
+            summ = json.load(fh)
+        summ["note"] = "edited"
+        with open(sp, "w") as fh:
+            json.dump(summ, fh)
+        self.assertEqual(self.verif(self.build()), ("not_certified", "attestation_stale_or_tampered"))
+        os.remove(os.path.join(run_dir, *AT.PATHS["audit"]))
+        self.assertEqual(self.verif(self.build()), ("not_certified", "run_audit_missing"))
+
+    def test_legacy_v1_attestation_is_not_accepted(self):
+        path = self.p("att", "v1.json")
+        with open(path, "w") as fh:
+            json.dump({"kind": "phase0_attestation_v1", "files": {sha(self.v3): {"status": "OK"}}, "audit_verdict": "PASS"}, fh)
+        self.spec["inputs"][1]["attestation"] = path
+        self.assertEqual(self.verif(self.build()), ("not_certified", "attestation_legacy_unbound"))
+
+    def test_incoherent_runs_are_refused_by_build_attestation(self):
+        def m(*kv):
+            def f(d):
+                for (doc, key), val in kv:
+                    if key is None:
+                        d[doc] = val
+                    elif isinstance(key, tuple):
+                        d[doc][key[0]][key[1]] = val
+                    else:
+                        d[doc][key] = val
+            return f
+        cases = {
+            "summary_run_id_mismatch": m((("summary", "run_id"), "run-20200101T000000Z-zz")),
+            "run_not_a_successful_full": m((("summary", "mode"), "preflight")),
+            "snapshot_counts_mismatch": m((("summary", ("snapshot", "items")), 7)),
+            "manifest_not_complete": m((("manifest", "unstable_count"), 1)),
+            "snapshot_not_complete": m((("snapshot_log", "complete"), False)),        # solo il log, summary dice completo
+            "manifest_digest_mismatch": m((("summary", ("manifest", "manifest_digest")), "0" * 64)),
+            "audit_not_passed_or_mismatch": m((("summary", ("audit", "verdict")), "WARN")),
+            "audit_chain_mismatch": m((("summary", ("audit", "anchors_digest")), "0" * 64)),
+            "audit_invalid": m((("audit", "checks"), {})),
+        }
+        for why, mut in cases.items():
+            with self.assertRaises(ValueError, msg=why) as cm:
+                make_attestation(self.p("att"), [self.v3], name="bad", mutate=mut)
+            self.assertEqual(str(cm.exception), why)
+
+        def drop_from_manifest(d):
+            d["manifest"]["entries"] = []
+            d["manifest"]["manifest_digest"] = d["summary"]["manifest"]["manifest_digest"] = AT.manifest_digest([])
+        with self.assertRaises(ValueError) as cm:
+            make_attestation(self.p("att"), [self.v3], name="bad", mutate=drop_from_manifest)
+        self.assertEqual(str(cm.exception), "snapshot_items_not_in_manifest")
+
+        def forged_digest(d):                                    # digest coerenti fra loro ma NON calcolati dalle entry
+            d["manifest"]["manifest_digest"] = d["summary"]["manifest"]["manifest_digest"] = "0" * 64
+        with self.assertRaises(ValueError) as cm:
+            make_attestation(self.p("att"), [self.v3], name="bad", mutate=forged_digest)
+        self.assertEqual(str(cm.exception), "manifest_digest_mismatch")
+
+        def broken_chain(d):
+            d["audit"]["checks"]["v3_chains"]["db0"]["ok"] = False
+        with self.assertRaises(ValueError) as cm:
+            make_attestation(self.p("att"), [self.v3], name="bad", mutate=broken_chain)
+        self.assertEqual(str(cm.exception), "audit_chain_mismatch")
+
+    def test_run_dir_name_and_symlinked_files_are_checked(self):
+        run = make_run(self.p("att"), [self.v3])
+        other = self.p("att", "not-a-run")
+        os.rename(run, other)
+        with self.assertRaises(ValueError) as cm:
+            AT.build_attestation(other)
+        self.assertEqual(str(cm.exception), "run_id_invalid")
+        run = make_run(self.p("att"), [self.v3])
+        ap = os.path.join(run, *AT.PATHS["audit"])
+        os.rename(ap, ap + ".real")
+        os.symlink(ap + ".real", ap)
+        with self.assertRaises(ValueError) as cm:
+            AT.build_attestation(run)
+        self.assertEqual(str(cm.exception), "audit_missing")
+
+    def test_anchor_file_format_and_cli(self):
+        good = self.p("att", "anchors.json")
+        with open(good, "w") as fh:
+            json.dump(self.anchors, fh)
+        self.assertEqual(AT.load_anchors(good), self.anchors)
+        bad = self.p("att", "anchors_bad.json")
+        for content in ({"not-a-run": "0" * 64}, {next(iter(self.anchors)): "xyz"}, [1]):
+            with open(bad, "w") as fh:
+                json.dump(content, fh)
+            with self.assertRaises(ValueError):
+                AT.load_anchors(bad)
+        spec = self.p("spec.json")
+        with open(spec, "w") as fh:
+            json.dump(self.spec, fh)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(B.main(["--spec", spec, "--out", self.p("o1"), "--candles", self.p("candles"), "--anchors", good]), 0)
+            self.assertEqual(B.main(["--spec", spec, "--out", self.p("o2"), "--candles", self.p("candles")]), 0)
+            self.assertEqual(B.main(["--spec", spec, "--out", self.p("o3"), "--candles", self.p("candles"), "--anchors", bad]), 1)
+        with open(self.p("o1", "public_summary.json")) as fh:
+            self.assertEqual(json.load(fh)["inputs_attested"], ["arena_minimax", "falco_hawk"])
+        with open(self.p("o2", "public_summary.json")) as fh:
+            o2 = json.load(fh)
+        self.assertEqual((o2["inputs_attested"], o2["eligible_for_training"]), ([], 0))
+        run = make_run(self.p("att"), [self.v3])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(AT.main([run, "--out", self.p("att", "cli.json")]), 0)
+            self.assertEqual(AT.main([run, "--out", self.p("att", "cli.json")]), 1)        # mai sovrascrivere
+            self.assertEqual(AT.main([self.p("att"), "--out", self.p("att", "cli2.json")]), 1)
+        self.assertEqual(oct(os.stat(self.p("att", "cli.json")).st_mode & 0o777), "0o600")
+        self.assertIn("summary_sha256=", buf.getvalue())
 
 
 class EligibilityAndSplitTests(BuilderBase):
@@ -1073,10 +1252,57 @@ class BrainFreeLinkTests(Tmp):
                           self.op(T0 + 100, "ETHUSDT")])                                       # stessa finestra, epoca diversa
         self.assertEqual((res["rows"][0]["features"], res["rows"][0]["source_run"]), (None, "epoch1"))
 
-    def test_cycle_id_links_even_without_symbol_and_beats_proximity(self):
-        res = self.build([("ai_input", T0, {"cycle_id": "c1", "rsi": 41}), ("ai_input", T0 + 5, {"cycle_id": "c2", "rsi": 99}),
-                          ("open", T0 + 100, {"position_id": 1, "symbol": "ETHUSDT", "side": "long", "entry": 10, "cycle_id": "c1"})])
+    def opc(self, ts, sym, cycle, pid=1):
+        return ("open", ts, {"position_id": pid, "symbol": sym, "side": "long", "entry": 10, "cycle_id": cycle})
+
+    def test_same_cycle_but_different_symbol_never_links(self):
+        """Controesempio della 2a revisione: input BTC del ciclo c1, trade ETH del ciclo c1 -> nessuna feature."""
+        res = self.build([("ai_input", T0, {"cycle_id": "c1", "symbol": "BTCUSDT", "rsi": 11}), self.opc(T0 + 100, "ETHUSDT", "c1")])
+        r = res["rows"][0]
+        self.assertEqual((r["features"], r["feature_source"]), (None, "none"))
+        self.assertEqual(res["per_input"]["bf"]["stats"]["symbol_conflict"], 1)
+        self.assertIn("no_features", r["ineligible_reasons"])
+
+    def test_same_cycle_same_symbol_beats_proximity(self):
+        res = self.build([("ai_input", T0, {"cycle_id": "c1", "symbol": "ETHUSDT", "rsi": 41}),
+                          ("ai_input", T0 + 5, {"cycle_id": "c2", "symbol": "ETHUSDT", "rsi": 99}),
+                          ("ai_input", T0 + 6, {"cycle_id": "c1", "symbol": "BTCUSDT", "rsi": 7}),
+                          self.opc(T0 + 100, "ETHUSDT", "c1")])
         self.assertEqual(res["rows"][0]["features"], {"rsi": 41})
+
+    def test_same_symbol_from_another_known_cycle_is_not_used(self):
+        res = self.build([("ai_input", T0, {"cycle_id": "c2", "symbol": "ETHUSDT", "rsi": 99}), self.opc(T0 + 100, "ETHUSDT", "c1")])
+        self.assertIsNone(res["rows"][0]["features"])
+        self.assertEqual(res["per_input"]["bf"]["stats"]["cycle_conflict"], 1)
+
+    def test_same_symbol_input_without_cycle_links_to_a_cycled_decision(self):
+        res = self.build([("ai_input", T0, {"symbol": "ETHUSDT", "rsi": 33}), self.opc(T0 + 100, "ETHUSDT", "c1")])
+        self.assertEqual(res["rows"][0]["features"], {"rsi": 33})
+
+    def test_symbolless_input_never_links_even_with_the_same_cycle(self):
+        """Politica conservativa documentata: un ciclo puo' valutare piu' simboli, le sue feature non sono attribuibili."""
+        res = self.build([("ai_input", T0, {"cycle_id": "c1", "rsi": 41}), self.opc(T0 + 100, "ETHUSDT", "c1")])
+        r = res["rows"][0]
+        self.assertIsNone(r["features"])
+        self.assertIn("ambiguous_feature_link", r["quality_flags"])
+        self.assertIn("ambiguous_feature_link", r["ineligible_reasons"])
+
+    def test_link_unit_decision_without_symbol_never_links(self):
+        inputs = [{"epoch": 1, "ts": T0, "symbol": None, "cycle": "c1", "features": {"rsi": 1}},
+                  {"epoch": 1, "ts": T0 + 1, "symbol": "ETHUSDT", "cycle": "c1", "features": {"rsi": 2}}]
+        st = Counter()
+        self.assertEqual(B.link_input(inputs, T0 + 100, 1, None, "c1", st), (None, True))
+        self.assertEqual(B.link_input(inputs, T0 + 100, 1, "", "c1", st), (None, True))
+        self.assertEqual(st["ambiguous_feature_link"], 2)
+        self.assertEqual(B.link_input(inputs, T0 + 100, 1, "ETHUSDT", "c1", st), ({"rsi": 2}, False))
+
+    def test_no_trade_decisions_follow_the_same_symbol_rule(self):
+        res = self.build([("ai_input", T0, {"cycle_id": "c1", "symbol": "BTCUSDT", "rsi": 11}),
+                          ("ai_decision", T0 + 50, {"action": "hold", "symbol": "ETHUSDT", "cycle_id": "c1"})])
+        nt = [r for r in res["rows"] if r["action"] == "NO_TRADE"]
+        self.assertEqual(len(nt), 1)
+        self.assertIsNone(nt[0]["features"])
+        self.assertEqual(res["per_input"]["bf"]["stats"]["symbol_conflict"], 1)
 
     def test_missing_input_leaves_row_without_features_and_ineligible(self):
         res = self.build([self.op(T0 + 100, "ETHUSDT")])
