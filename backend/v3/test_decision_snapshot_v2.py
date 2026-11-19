@@ -86,5 +86,58 @@ class DecisionSnapshotTests(unittest.TestCase):
         self.assertFalse(evt.payload["eligible_for_training"])
 
 
+    def test_real_sqlite_hash_chain_and_external_anchor(self):
+        append_snapshot(journal=self.journal, run_id="brain-paper", snapshot=self.snap())
+        count, head = self.journal.verify_chain()
+        self.assertEqual(count, 2)
+        self.assertEqual(self.journal.verify_chain(count, head), (count, head))
+        with self.assertRaisesRegex(ValueError, "journal_does_not_match_external_manifest"):
+            self.journal.verify_chain(count - 1, head)
+
+    def test_invalid_no_trade_approved_cannot_be_imported(self):
+        self.journal.append(Event(
+            event_id="decision-002", portfolio_id="brain", run_id="brain-paper",
+            kind="brain_decision", occurred_at_ms=T, source="brain_f2_engine",
+            payload={"symbol": "BTCUSDT", "kind": "NO_TRADE", "status": "APPROVED"},
+        ))
+        with self.assertRaisesRegex(ValueError, "source_decision_invalid"):
+            make_snapshot_event(journal=self.journal, run_id="brain-paper",
+                                snapshot=self.snap(decision_event_id="decision-002"))
+        self.assertEqual(self.journal.verify_chain()[0], 2)
+
+    def test_open_approved_remains_unverified_for_training(self):
+        self.journal.append(Event(
+            event_id="decision-003", portfolio_id="brain", run_id="brain-paper",
+            kind="brain_decision", occurred_at_ms=T, source="brain_f2_engine",
+            payload={"symbol": "ETHUSDT", "kind": "OPEN", "status": "APPROVED"},
+        ))
+        evt = make_snapshot_event(journal=self.journal, run_id="brain-paper",
+                                  snapshot=self.snap(decision_event_id="decision-003"))
+        self.assertEqual((evt.payload["action"], evt.payload["status"]), ("OPEN", "APPROVED"))
+        self.assertIs(evt.payload["inputs_verified"], False)
+        self.assertIs(evt.payload["eligible_for_training"], False)
+
+    def test_invalid_feature_and_risk_maps_leave_journal_untouched(self):
+        invalid = (
+            self.snap(features={"api_key": D("NaN")}),
+            self.snap(features={"feature_" + str(i): D("1") for i in range(65)}),
+            self.snap(risk={"unknown_balance": D("1")}),
+            self.snap(risk={"equity_usd": D("-1")}),
+        )
+        count, head = self.journal.verify_chain()
+        for snap in invalid:
+            with self.subTest(snap=snap):
+                with self.assertRaises(ValueError):
+                    append_snapshot(journal=self.journal, run_id="brain-paper", snapshot=snap)
+        self.assertEqual(self.journal.verify_chain(), (count, head))
+
+    def test_conflicting_append_preserves_hash_chain(self):
+        first = append_snapshot(journal=self.journal, run_id="brain-paper", snapshot=self.snap())
+        with self.assertRaises(EventConflict):
+            append_snapshot(journal=self.journal, run_id="brain-paper",
+                            snapshot=self.snap(risk={"equity_usd": D("999")}))
+        self.assertEqual(self.journal.verify_chain(), (2, first.event_hash))
+
+
 if __name__ == "__main__":
     unittest.main()
