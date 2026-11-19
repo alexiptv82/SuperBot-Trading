@@ -28,7 +28,8 @@ import sys
 from typing import Any, Optional
 from urllib.parse import quote
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if not getattr(sys, "_phase0_sealed", False):          # bundle sigillato: nessuna modifica di sys.path
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import inventory as inv  # noqa: E402
 from snapshot import inside_git, mkdirs_private, safe_new_dir  # noqa: E402
 

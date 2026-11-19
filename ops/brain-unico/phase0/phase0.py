@@ -26,8 +26,10 @@ import sys
 from typing import Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.dirname(HERE))
+if not getattr(sys, "_phase0_sealed", False):          # bundle sigillato: nessuna modifica di sys.path
+    sys.path.insert(0, HERE)
+if not getattr(sys, "_phase0_sealed", False):          # bundle sigillato: nessuna modifica di sys.path
+    sys.path.insert(0, os.path.dirname(HERE))
 import audit  # noqa: E402
 import discover  # noqa: E402
 import inventory as inv  # noqa: E402
