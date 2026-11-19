@@ -1,3 +1,13 @@
+## 19/11/2026 13:50 Europe/Rome — Smart Profit Guardian: proposta, non approvazione
+
+- Nuovo checkpoint: [`diario/2026-11-19_smart-profit-guardian-proposta-laboratorio.md`](diario/2026-11-19_smart-profit-guardian-proposta-laboratorio.md), commit [`b0ecf6f…`](https://github.com/alexiptv82/SuperBot-Trading/commit/b0ecf6f564506be7d501e83beec4f86bf6bc90ee).
+- Nuovo rapporto privato verificato: il Guardian propone stati `NORMAL/SELECTIVE/PROTECTED/LOCKED`, soglie sperimentali +400/+500 USDT, giveback 20–25%, confronto reset 00:00/08:00 Europe/Rome e 2–3 rientri per tesi. Sono **ipotesi da laboratorio**, non configurazioni approvate.
+- PnL realizzato ed equity mark-to-market vanno riconciliati; leva 20x–50x resta solo possibilità tecnica soggetta a rischio, mai automatismo.
+- Nessun nuovo commit/PR/test operativo: PR #117 `6dcdedc…` e PR #118 `e983d36…` restano open/draft; i due gap PR #118 restano aperti e impediscono training affidabile.
+- Falco advisory SHORT, Toro/Brain storici e EventJournal preservati; Arena PAPER separata. Nessun Guardian installato o attivo.
+- Age PC `ESITO: VERIFICA OK` non certifica VPS; extbackup `3dc2116…` preparato/non installato; RC84 #80 `0e29a73…` invariata.
+- Nessun merge/deploy/Action/VPS/restart/reset/ordine/API a pagamento; prossimo passo è critica indipendente e design isolato, dopo correzione PR #118 e dati certificati.
+
 ## 19/11/2026 12:47 Europe/Rome — PR #117/#118, review e gap residui
 
 - Nuovo checkpoint: [`diario/2026-11-19_pr117-pr118-review-gap-residui.md`](diario/2026-11-19_pr117-pr118-review-gap-residui.md), commit [`e743de1…`](https://github.com/alexiptv82/SuperBot-Trading/commit/e743de12825f408c0ec8865ade097e0801b8bc69).
