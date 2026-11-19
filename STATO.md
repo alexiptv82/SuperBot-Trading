@@ -1,3 +1,13 @@
+## 19/11/2026 16:45 Europe/Rome — PR #120/#121/#122 e ripresa Brain Unico
+
+- Checkpoint consolidato: [`diario/2026-11-19_1645_pr120-pr121-pr122-ripresa.md`](diario/2026-11-19_1645_pr120-pr121-pr122-ripresa.md), commit [`85c2755…`](https://github.com/alexiptv82/SuperBot-Trading/commit/85c27555006925991a3abde9e0ba54a05d2ef0ae).
+- Corretto il gap del checkpoint tecnico 16:44: il commit `10c96e7…` non aveva aggiornato questo indice né la copia Library, quindi non costituiva doppio salvataggio verificato.
+- PR #120 open/draft `f4f7457…`: router LLM gratuito preparato; 18/560/156 PASS riferiti da Cursor, 0 workflow/status. La modalità `free_router` primario + DeepSeek fallback e `auto:smart` non coincide con la policy approvata DeepSeek primario + FreeLLMAPI shadow con modelli fissati: riallineamento necessario, nessun deploy.
+- PR #121 open/draft `b6acaf0…`: prezzi mancanti/invalidi nel daily-loss ora fail-closed; 5 test scritti non eseguiti, 0 workflow/status. Restano freshness e recheck pre-apertura.
+- PR #122 open/draft `a81cb89…`: snapshot decisionale v2 append-only, non integrata nei runner, sempre non verificata/non eleggibile al training; 6 test offline con EventJournal V3/SQLite temporaneo riferiti, 0 workflow/status.
+- PR #117/#118/#119 e riferimenti RC84, extbackup non installato e age PC `ESITO: VERIFICA OK` ma non VPS restano invariati.
+- Solo documentazione; nessun merge/deploy/Action/VPS/restart/reset/ordine/API. PAPER, storici ed EventJournal preservati.
+
 ## 19/11/2026 Claude — revisione strategica Brain Unico e Guardian v2 (solo giudizio)
 
 - Voce: [`diario/2026-11-19_claude-revisione-strategica-brain-unico.md`](diario/2026-11-19_claude-revisione-strategica-brain-unico.md).
