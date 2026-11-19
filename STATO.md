@@ -1,3 +1,10 @@
+## 19/11/2026 Claude — Fase B: collegamento snapshot v2 → Dataset Builder (branch, PR da aprire)
+
+- Voce: [`diario/2026-11-19_claude-fase-b-collegamento-snapshot.md`](diario/2026-11-19_claude-fase-b-collegamento-snapshot.md); branch `claude/brain-unico-snapshot-link-20261119` @ `ef25c69` (sopra #118). 134 test, mutazioni 28/28, formato reale verificato.
+- **Scoperta:** l'adattatore #122 accetta uno snapshot retrodatato scritto dopo l'apertura (il journal non impone l'ordine temporale). Il builder usa l'ordine di scrittura (`seq`) e lo rifiuta. Gli snapshot ammessi restano non ammessi al training (`snapshot_unverified`) finché le feature non sono verificate.
+- Proposta: far rifiutare lo snapshot tardivo già all'adattatore #122 (su branch mio, non su quello di ChatGPT).
+- Nessun merge/deploy/restart/reset/ordine/API/LIVE.
+
 ## 19/11/2026 19:44 Europe/Rome — autorizzazioni Claude, P0 #124 e handover operativo
 
 - Checkpoint: [`diario/2026-11-19_1944_autorizzazioni-p0-124-handover-vps.md`](diario/2026-11-19_1944_autorizzazioni-p0-124-handover-vps.md), commit [`cc157bb…`](https://github.com/alexiptv82/SuperBot-Trading/commit/cc157bb3f85e6aed48e616722b2bfae5ced0b2d4).
