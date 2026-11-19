@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 19/11/2026 10:48 Europe/Rome — PR #114 finale e PR #115 Fase 0 Brain unico
+
+- Nuovo checkpoint delta: [`diario/2026-11-19_brain-unico-pr114-final-pr115-phase0.md`](diario/2026-11-19_brain-unico-pr114-final-pr115-phase0.md), commit [`f0f9f5c…`](https://github.com/alexiptv82/SuperBot-Trading/commit/f0f9f5ce6bd5d9d8eaf832c57da42c838932e841).
+- PR #114 resta draft, HEAD finale `52d8477…`: chiusi gli edge case JSONL multi-chunk e collisione output; 29 PASS riportati da Claude, senza CI.
+- Nuova [PR #115](https://github.com/alexiptv82/SuperBot-Trading/pull/115) draft Fase 0, dipende da #114, HEAD `465e0d9…`, 7 file/2 commit; 85 test Fase 0 + 29 inventory e 17/17 mutazioni riportati, non rieseguiti indipendentemente.
+- P0-A…D chiusi in code review: directory sicure, discovery NO-GO se incompleta, roster/gruppi obbligatori, WAL senza prova quiescenza NO-GO. `certifies_backup=false` resta obbligatorio.
+- Step 1 discovery è solo proponibile e **non autorizzato**; Step 2/3, dati reali, snapshot, merge, deploy e VPS vietati.
+- 0 workflow/check su entrambe le HEAD; `main` invariato. PR #112 `86288a3…`, RC84 #80 `0e29a73…`, extbackup non installato, age PC non certifica VPS.
+- PAPER, storici ed EventJournal preservati; Arena invariata.
+
 ## 19/11/2026 09:45 Europe/Rome — PR #114 Brain unico, inventory v2 e review statica
 
 - Nuovo checkpoint delta: [`diario/2026-11-19_brain-unico-pr114-inventory-v2-review.md`](diario/2026-11-19_brain-unico-pr114-inventory-v2-review.md), commit [`f49118e…`](https://github.com/alexiptv82/SuperBot-Trading/commit/f49118e6aaa03310992ed10f0c9dabf3632de1ea).
