@@ -13,8 +13,10 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import attestation as AT  # noqa: E402
 import builder as B  # noqa: E402
 import candles as C  # noqa: E402
+import eligibility as EL  # noqa: E402
 import features as F  # noqa: E402
 import labels as L  # noqa: E402
 import readers as R  # noqa: E402
@@ -65,6 +67,29 @@ def hand(t0, bars):
     return [{"t": t0 + i * IV, "o": o, "h": h, "l": l, "c": c, "v": 1} for i, (o, h, l, c) in enumerate(bars)]
 
 
+META = {"exchange": "bitget", "market": "usdt_perp", "interval_ms": IV, "price_basis": "last", "source": "public_rest_v2"}
+
+
+def write_meta(root, **over):
+    os.makedirs(root, exist_ok=True)
+    with open(os.path.join(root, C.META_FILE), "w") as fh:
+        json.dump({**META, **over}, fh)
+
+
+def make_attestation(dirpath, files, verdict="PASS", complete=True, status="OK", name="att"):
+    """Attestazione sintetica nel modo reale: snapshot_log.json + report di audit -> build_attestation."""
+    log = {"complete": complete, "items": [{"status": status, "sha256": sha(f)} for f in files]}
+    with open(os.path.join(dirpath, name + "_log.json"), "w") as fh:
+        json.dump(log, fh)
+    with open(os.path.join(dirpath, name + "_audit.json"), "w") as fh:
+        json.dump({"verdict": verdict}, fh)
+    att = AT.build_attestation(os.path.join(dirpath, name + "_log.json"), os.path.join(dirpath, name + "_audit.json"))
+    path = os.path.join(dirpath, name + ".json")
+    with open(path, "w") as fh:
+        json.dump(att, fh)
+    return path
+
+
 class Tmp(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -79,18 +104,21 @@ class Tmp(unittest.TestCase):
 
 class SchemaTests(unittest.TestCase):
     def good(self):
-        return {"schema_version": 1, "example_id": "x", "source_system": "falco", "source_run": "run1", "source_kind": "classic",
+        return {"schema_version": 2, "example_id": "x", "source_system": "falco", "source_run": "run1", "source_kind": "classic",
                 "record_kind": "executed", "decision_ts_ms": T0, "decision_day": S.utc_day(T0), "symbol": "BTCUSDT",
                 "action": "LONG", "side": 1, "executed": True, "features": {"a": 1}, "feature_source": "logged_at_decision",
                 "proposal": {}, "outcome": {"status": "closed", "net_pnl": -5.0, "closed_ms": T0 + 1, "mfe_mae_source": "none"},
-                "labels": {}, "label_complete": False, "is_synthetic": False, "provenance": {"input_id": "i"}}
+                "labels": {}, "label_complete": False, "horizons_complete": False, "label_origin": "realized_outcome",
+                "quality_flags": [], "eligible_for_training": True, "ineligible_reasons": [], "is_synthetic": False,
+                "provenance": {"input_id": "i"}}
 
     def test_valid_row_and_each_corruption_is_caught(self):
         self.assertEqual(S.validate_row(self.good()), [])
         cases = {"source_system": ("source_system", "nope"), "record_kind": ("record_kind", "x"), "action": ("action", "BUY"),
                  "decision_ts_ms": ("decision_ts_ms", -1), "decision_day": ("decision_day", "1999-01-01"),
                  "feature_source": ("feature_source", "magic"), "synthetic_example": ("is_synthetic", True),
-                 "schema_version": ("schema_version", 2), "label_complete": ("label_complete", "yes")}
+                 "schema_version": ("schema_version", 1), "label_complete": ("label_complete", "yes"),
+                 "label_origin": ("label_origin", "x"), "quality_flags": ("quality_flags", "s")}
         for code, (k, v) in cases.items():
             r = self.good()
             r[k] = v
@@ -111,6 +139,12 @@ class SchemaTests(unittest.TestCase):
         self.assertTrue(any(e.startswith("non_finite") for e in S.validate_row(r)))
         r = self.good(); del r["provenance"]
         self.assertIn("missing:provenance", S.validate_row(r))
+        r = self.good(); r["eligible_for_training"] = True; r["ineligible_reasons"] = ["duplicate"]
+        self.assertIn("eligibility_inconsistent", S.validate_row(r))
+        r = self.good(); r["eligible_for_training"] = False
+        self.assertIn("eligibility_inconsistent", S.validate_row(r))
+        r = self.good(); r["outcome"] = {"status": "closed_unknown_pnl", "net_pnl": None, "closed_ms": T0 + 1, "mfe_mae_source": "none"}
+        self.assertEqual(S.validate_row(r), [])
 
     def test_example_id_stable_and_short_code_strips_free_text(self):
         self.assertEqual(S.example_id("falco", "run1", "executed", "k"), S.example_id("falco", "run1", "executed", "k"))
@@ -256,12 +290,13 @@ class LabelTests(Tmp):
             args = dict(side=1, stop_pct=0.01, target_pct=0.02)
             args.update(kw)
             self.assertFalse(L.barrier(st, "X", T0 + 60_000, args["side"], args["stop_pct"], args["target_pct"], 2 * H, 0)["complete"])
-        self.assertFalse(L.barrier(st, "X", T0 + 60_000, 1, 0.01, 0.02, 10 * H, 0)["complete"])
+        quiet = self.store([(100, 100.5, 99.6, 100)] * 8)
+        self.assertFalse(L.barrier(quiet, "X", T0 + 60_000, 1, 0.01, 0.02, 10 * H, 0)["complete"])  # nessun tocco, orizzonte non coperto
 
     def test_mfe_mae_in_r(self):
         st = self.store([(100, 103, 99.5, 102), (102, 104, 98, 99), (99, 100, 98.5, 99.5)], start=T0)
         m = L.mfe_mae_r(st, "X", 1, 100.0, 98.0, T0 - 1, T0 + 3 * IV)               # R = 2: MFE (104-100)/2, MAE (100-98)/2
-        self.assertEqual(m, {"mfe_r": 2.0, "mae_r": 1.0})
+        self.assertEqual(m, {"mfe_r": 2.0, "mae_r": 1.0, "resolution_ms": IV})
         self.assertIsNone(L.mfe_mae_r(st, "X", 1, 100.0, 100.0, T0, T0 + IV))            # R nullo
         self.assertIsNone(L.mfe_mae_r(st, "X", 1, 100.0, 98.0, T0, T0 + 10 * IV))        # mancano candele
 
@@ -375,6 +410,7 @@ class BuilderBase(Tmp):
         write_store(self.p("candles"), "ETHUSDT", gen_candles(n, seed=11, p0=100.0))
         write_store(self.p("candles"), "BTCUSDT", gen_candles(n, seed=12, p0=200.0))
         write_store(self.p("candles"), "SOLUSDT", gen_candles(n, seed=13, p0=50.0))
+        write_meta(self.p("candles"))
         self.v3 = self.p("arena_minimax.db")
         make_v3(self.v3, v3_events(self.base))
         d = self.p("hawk")
@@ -397,9 +433,12 @@ class BuilderBase(Tmp):
             fh.write("\n".join(json.dumps(x) for x in ll) + "\n")
         with open(os.path.join(d, "trade_history.jsonl"), "w") as fh:
             fh.write(json.dumps({"id": "p1", "close_ms": self.base + 13 * H, "net": -7.5}) + "\n")
+        os.makedirs(self.p("att"))
         self.spec = {"inputs": [
-            {"id": "falco_hawk", "source_system": "falco", "kind": "classic", "path": d, "verified": True},
-            {"id": "arena_minimax", "source_system": "arena_minimax", "kind": "v3", "path": self.v3, "verified": True}]}
+            {"id": "falco_hawk", "source_system": "falco", "kind": "classic", "path": d,
+             "attestation": make_attestation(self.p("att"), [self.p("hawk", "learning_log.jsonl"), self.p("hawk", "trade_history.jsonl")], name="a1")},
+            {"id": "arena_minimax", "source_system": "arena_minimax", "kind": "v3", "path": self.v3,
+             "attestation": make_attestation(self.p("att"), [self.v3], name="a2")}]}
 
     def build(self, **kw):
         return B.build(self.spec, self.p("candles"), **kw)
@@ -462,7 +501,9 @@ class BuilderRows(BuilderBase):
         res = self.build()
         r = next(r for r in res["rows"] if r["source_system"] == "arena_minimax" and r["outcome"].get("net_pnl") == -12.5)
         self.assertEqual(r["feature_source"], "reconstructed_from_candles")
-        self.assertEqual(r["outcome"]["mfe_mae_source"], "reconstructed_from_candles")
+        self.assertEqual(r["outcome"]["mfe_mae_source"], "approximate_candles")
+        self.assertIn("mfe_mae_approximate", r["quality_flags"])
+        self.assertEqual(r["outcome"]["mfe_mae_resolution_ms"], IV)
         self.assertIsNotNone(r["outcome"]["mfe_r"])
         self.assertFalse(r["outcome"]["funding_known"])
         self.assertEqual((r["proposal"]["strategy_id"], r["proposal"]["regime"]), ("s07", "trending"))
@@ -516,7 +557,7 @@ class BuilderBrainFree(Tmp):
         con = sqlite3.connect(db)
         con.execute("CREATE TABLE events(seq INTEGER PRIMARY KEY, kind TEXT, ts INTEGER, body TEXT)")
         evs = [("experiment_started", T0, {}),
-               ("ai_input", T0 + 10, {"btc_ret": 0.01, "rsi": 55, "note": "testo"}),
+               ("ai_input", T0 + 10, {"symbol": "ETHUSDT", "btc_ret": 0.01, "rsi": 55, "note": "testo"}),
                ("open", T0 + 20, {"position_id": 1, "symbol": "ETHUSDT", "side": "long", "entry": 100, "sl": 99, "tp": 102, "leverage": 10}),
                ("partial_trade", T0 + H, {"position_id": 1, "symbol": "ETHUSDT", "net": 2.0}),
                ("trade_closed", T0 + 2 * H, {"position_id": 1, "symbol": "ETHUSDT", "net": -1.0, "reason": "SL", "fees": 0.5}),
@@ -561,7 +602,7 @@ class BuilderOutputs(BuilderBase):
             self.assertNotIn("TESTO-RISERVATO", rd(self.p("out", n)))
         pub = json.loads(rd(self.p("out", "public_summary.json")))
         self.assertEqual(pub["classification"], "NUMBERS_ONLY")
-        for leak in (self.t, "ETHUSDT", "BTCUSDT", "pos2", "falco_hawk"):
+        for leak in (self.t, "ETHUSDT", "BTCUSDT", "pos2"):
             self.assertNotIn(leak, json.dumps(pub))
         self.assertEqual((pub["rows"], pub["executed"], pub["losses"], pub["manual_closes"]), (len(res["rows"]), 7, 2, 2))
         self.assertEqual(pub["sufficiency"]["status"], "insufficient")
@@ -627,6 +668,7 @@ def synth_rows(n, days=None, span_ms=H, verified="i", executed=True, manual=Fals
             ts = start + (i * (days * DAY // n if days else 600_000))
         rows.append({"example_id": f"e{i:05d}", "decision_ts_ms": ts, "decision_day": S.utc_day(ts), "source_system": "falco",
                      "executed": executed, "is_synthetic": False, "features": {"a": 1} if feats else None,
+                     "eligible_for_training": True, "ineligible_reasons": [], "quality_flags": [],
                      "label_complete": complete, "outcome": {"status": "closed" if executed else "not_executed",
                                                            "net_pnl": 1.0 if executed else None, "closed_ms": ts + span_ms if executed else None,
                                                            "is_manual": manual},
@@ -642,6 +684,7 @@ class SplitTests(unittest.TestCase):
             for i in range(rng.randint(30, 120)):
                 ts = T0 + rng.randint(0, 20 * DAY)
                 rows.append({"example_id": f"s{seed}-{i}", "decision_ts_ms": ts, "is_synthetic": False, "provenance": {},
+                             "eligible_for_training": True, "ineligible_reasons": [],
                              "outcome": {"closed_ms": ts + rng.randint(0, 3 * DAY) if rng.random() < 0.7 else None}})
             emb = rng.choice([0, H, DAY])
             sp = SP.chronological_split(rows, embargo_ms=emb)
@@ -668,8 +711,8 @@ class SplitTests(unittest.TestCase):
 
     def test_duplicates_and_synthetic_rows_are_excluded_from_splits(self):
         rows = synth_rows(30, days=30)
-        rows[3]["provenance"]["duplicate_of"] = "e00000"
-        rows[4]["is_synthetic"] = True
+        for i, why in ((3, "duplicate"), (4, "synthetic")):
+            rows[i]["eligible_for_training"], rows[i]["ineligible_reasons"] = False, [why]
         used = {r["example_id"] for k in ("train", "valid", "test", "purged") for r in SP.chronological_split(rows)[k]}
         self.assertEqual((rows[3]["example_id"] in used, rows[4]["example_id"] in used), (False, False))
 
@@ -700,8 +743,8 @@ class SplitTests(unittest.TestCase):
 
 
 class SufficiencyTests(unittest.TestCase):
-    def rep(self, rows, verified=("i",)):
-        return SU.report(rows, set(verified))
+    def rep(self, rows, verified=None):
+        return SU.report(rows)
 
     def test_thresholds_exactly(self):
         rr = lambda n, d: self.rep(synth_rows(n, distinct_days=d))  # noqa: E731
@@ -716,31 +759,387 @@ class SufficiencyTests(unittest.TestCase):
         self.assertIn("explicit_user_approval", r["promotion_also_requires"])
         self.assertIn("non garanzie", r["note"])
 
-    def test_only_verified_featured_complete_non_manual_rows_count(self):
-        base = synth_rows(300, distinct_days=25)
-        for variant, kw in (("unverified", {"verified": "other"}), ("no_features", {"feats": False}),
-                            ("incomplete", {"complete": False}), ("manual", {"manual": True})):
-            r = self.rep(synth_rows(300, days=25, **kw))
-            self.assertEqual(r["status"], "insufficient", variant)
-            self.assertEqual(r["labeled_verified_examples"], 0, variant)
-        self.assertEqual(self.rep(base)["status"], "shadow_offline_ok")
+    def test_only_eligible_rows_count_and_reasons_are_reported(self):
+        rows = synth_rows(300, distinct_days=25)
+        self.assertEqual(self.rep(rows)["status"], "shadow_offline_ok")
+        for i in range(20):
+            rows[i]["eligible_for_training"], rows[i]["ineligible_reasons"] = False, ["label_incomplete"]
+        r = self.rep(rows)
+        self.assertEqual((r["eligible_examples"], r["status"], r["excluded_by_reason"]), (280, "insufficient", {"label_incomplete": 20}))
+
+    def test_sufficiency_ignores_a_verified_argument(self):
+        rows = synth_rows(300, distinct_days=25)
+        for x in rows:
+            x["eligible_for_training"], x["ineligible_reasons"] = False, ["input_not_attested"]
+        self.assertEqual(SU.report(rows, {"i"})["status"], "insufficient")                     # un set "verified" non conta piu'
 
     def test_duplicates_excluded_and_reported(self):
         rows = synth_rows(300, distinct_days=25)
-        rows[0]["provenance"]["duplicate_of"] = "x"
+        rows[0]["eligible_for_training"], rows[0]["ineligible_reasons"] = False, ["duplicate"]
         r = self.rep(rows)
-        self.assertEqual((r["labeled_verified_examples"], r["status"], r["excluded"]["duplicates"]), (299, "insufficient", 1))
+        self.assertEqual((r["eligible_examples"], r["status"], r["excluded_by_reason"]), (299, "insufficient", {"duplicate": 1}))
 
     def test_non_executed_counterfactual_rows_count_when_labeled(self):
         r = self.rep(synth_rows(300, days=25, executed=False))
-        self.assertEqual((r["status"], r["not_executed"], r["executed"]), ("shadow_offline_ok", 300, 0))
+        self.assertEqual((r["status"], r["counterfactual_simulations"], r["realized_outcomes"]), ("shadow_offline_ok", 300, 0))
 
     def test_losses_and_wins_are_reported(self):
         rows = synth_rows(10, days=2)
         for r in rows[:4]:
             r["outcome"]["net_pnl"] = -2.0
         r = self.rep(rows)
-        self.assertEqual((r["losses"], r["wins"], r["executed"]), (4, 6, 10))
+        self.assertEqual((r["losses"], r["wins"], r["realized_outcomes"]), (4, 6, 10))
+
+
+# ----------------------------------------------------------------------------------------------- fix della revisione PR #118
+
+class BarrierPrefixTests(Tmp):
+    def store(self, bars, start=T0 + IV):
+        return write_store(self.p("c" + str(random.random())), "X", hand(start, bars))
+
+    def test_early_hit_is_complete_even_if_archive_ends_before_the_horizon(self):
+        st = self.store([(100, 100.4, 99.8, 100.2), (100.2, 102.5, 100, 102)])              # target alla 2a barra; l'archivio finisce li'
+        b = L.barrier(st, "X", T0 + 60_000, 1, 0.01, 0.02, 24 * H, 0)
+        self.assertEqual((b["first"], b["bars"], b["complete"]), ("target", 2, True))
+        self.assertEqual(L.forward_returns(st, "X", T0 + 60_000, 1, 0, {"24h": 24 * H}), {"24h": {"complete": False}})   # il forward NO
+
+    def test_no_hit_with_short_archive_is_incomplete_timeout_requires_full_horizon(self):
+        st = self.store([(100, 100.5, 99.6, 100.1)] * 10)
+        b = L.barrier(st, "X", T0 + 60_000, 1, 0.01, 0.02, 24 * H, 0)
+        self.assertEqual((b["first"], b["complete"], b["bars_available"]), ("incomplete", False, 10))
+        full = self.store([(100, 100.5, 99.6, 100.1)] * 96)
+        self.assertEqual(L.barrier(full, "X", T0 + 60_000, 1, 0.01, 0.02, 24 * H, 0)["first"], "timeout")
+
+    def test_gap_before_the_hit_blocks_the_label_gap_after_it_does_not(self):
+        before = hand(T0 + IV, [(100, 100.4, 99.8, 100.2)] * 3 + [(100, 100.4, 99.8, 100.2)] * 3)
+        del before[2]                                                                       # buco prima di qualunque tocco
+        before[-1] = dict(before[-1], h=103)                                               # il target e' DOPO il buco: non dimostrabile
+        st = write_store(self.p("gap1"), "X", before)
+        self.assertFalse(L.barrier(st, "X", T0 + 60_000, 1, 0.01, 0.02, 3 * H, 0)["complete"])
+        after = hand(T0 + IV, [(100, 100.4, 99.8, 100.2), (100.2, 102.6, 100, 102)] + [(102, 103, 101, 102)] * 4)
+        del after[4]                                                                        # buco DOPO il tocco
+        st2 = write_store(self.p("gap2"), "X", after)
+        b = L.barrier(st2, "X", T0 + 60_000, 1, 0.01, 0.02, 3 * H, 0)
+        self.assertEqual((b["first"], b["complete"]), ("target", True))
+
+    def test_label_complete_is_the_barrier_while_horizons_complete_is_separate(self):
+        rows = {}
+        base = T0 + 150 * IV + 60_000
+        cs = gen_candles(150 + 6, seed=5)                                                   # solo 6 candele dopo la decisione
+        cs[150] = dict(cs[150], l=cs[150]["o"] * 0.90)                                      # crollo nella prima candela futura
+        write_store(self.p("cd"), "ETHUSDT", cs)
+        write_meta(self.p("cd"))
+        make_v3(self.p("j.db"), [("d1", "brain_decision", base, {"kind": "NO_TRADE", "status": "REJECTED", "symbol": "ETHUSDT"})])
+        res = B.build({"inputs": [{"id": "x", "source_system": "arena_minimax", "kind": "v3", "path": self.p("j.db")}]}, self.p("cd"))
+        r = res["rows"][0]
+        self.assertTrue(r["label_complete"], r["labels"])                                   # il lato long ha toccato lo stop subito
+        self.assertFalse(r["horizons_complete"])                                            # ma gli orizzonti 4h/24h non sono coperti
+
+
+class MfeMaeApproximationTests(Tmp):
+    def test_partial_bars_are_excluded_so_spikes_outside_the_position_do_not_count(self):
+        bars = [(100, 101, 99.5, 100.5), (100.5, 102, 100, 101), (101, 130, 100.8, 101)]    # la 3a barra ha un picco enorme
+        st = write_store(self.p("c"), "X", hand(T0, bars))
+        m = L.mfe_mae_r(st, "X", 1, 100.0, 98.0, T0 - 1, T0 + 2 * IV + IV // 2)           # chiusura A META' della 3a barra
+        self.assertEqual(m["mfe_r"], 1.0)                                                   # (102-100)/2: il picco a 130 NON conta
+        self.assertEqual(m["resolution_ms"], IV)
+        self.assertIsNone(L.mfe_mae_r(st, "X", 1, 100.0, 98.0, T0 + 10, T0 + IV // 2))     # nessuna barra intera
+
+    def test_builder_marks_reconstructed_mfe_mae_as_approximate_not_certified(self):
+        b = BuilderBase()
+        b.setUp()
+        try:
+            res = b.build()
+            r = next(r for r in res["rows"] if r["source_system"] == "arena_minimax" and r["outcome"].get("net_pnl") == -12.5)
+            self.assertEqual(r["outcome"]["mfe_mae_source"], "approximate_candles")
+            self.assertIn("mfe_mae_approximate", r["quality_flags"])
+            p1 = next(r for r in res["rows"] if r["source_system"] == "falco" and r["outcome"].get("net_pnl") == -7.5)
+            self.assertEqual(p1["outcome"]["mfe_mae_source"], "logged")
+            self.assertNotIn("mfe_mae_approximate", p1["quality_flags"])
+        finally:
+            b.tmp.cleanup()
+
+
+class AttestationTests(BuilderBase):
+    def rows_of(self, res, inp):
+        return [r for r in res["rows"] if r["provenance"]["input_id"] == inp]
+
+    def test_valid_attestation_makes_inputs_attested_and_rows_eligible_where_sound(self):
+        res = self.build()
+        self.assertEqual(sorted(res["attested"]), ["arena_minimax", "falco_hawk"])
+        self.assertEqual(res["per_input"]["falco_hawk"]["verification"]["state"], "attested")
+        elig = [r for r in res["rows"] if r["eligible_for_training"]]
+        self.assertGreater(len(elig), 0)
+        self.assertTrue(all(S.validate_row(r) == [] for r in res["rows"]))
+
+    def test_verified_flag_alone_is_ignored_fail_closed(self):
+        for inp in self.spec["inputs"]:
+            inp.pop("attestation")
+            inp["verified"] = True
+        res = self.build()
+        self.assertEqual(res["attested"], set())
+        v = res["per_input"]["falco_hawk"]["verification"]
+        self.assertEqual((v["state"], v["reason"], v["verified_flag_in_spec_ignored"]), ("not_certified", "no_attestation", True))
+        self.assertTrue(all("input_not_attested" in r["ineligible_reasons"] and not r["eligible_for_training"] for r in res["rows"]))
+        self.assertGreater(len(res["rows"]), 0)                                              # le righe restano tutte nel dataset
+        self.assertEqual(SU.report(res["rows"])["status"], "insufficient")
+
+    def test_attestation_does_not_cover_a_modified_input(self):
+        con = sqlite3.connect(self.v3)                                                       # un evento in piu' DOPO l'attestazione
+        con.execute("INSERT INTO v3_events(event_id,portfolio_id,run_id,kind,occurred_at_ms,source,payload_json,previous_hash,"
+                    "event_hash) VALUES('late','brain','runA','brain_decision',?, 's', ?, '0','0')",
+                    (self.base + 99 * H, json.dumps({"kind": "NO_TRADE", "status": "REJECTED", "symbol": "ETHUSDT"})))
+        con.commit()
+        con.close()
+        res = self.build()
+        self.assertNotIn("arena_minimax", res["attested"])
+        self.assertEqual(res["per_input"]["arena_minimax"]["verification"]["reason"], "file_hash_not_attested")
+        mm = [r for r in res["rows"] if r["provenance"]["input_id"] == "arena_minimax"]
+        self.assertTrue(mm and all("input_not_attested" in r["ineligible_reasons"] for r in mm))      # lette, ma non ammesse
+
+    def test_tampered_jsonl_input_loses_attestation(self):
+        with open(self.p("hawk", "trade_history.jsonl"), "a") as fh:
+            fh.write(json.dumps({"id": "zz", "close_ms": 1, "net": 1}) + "\n")
+        res = self.build()
+        self.assertNotIn("falco_hawk", res["attested"])
+        self.assertEqual(res["per_input"]["falco_hawk"]["verification"]["reason"], "file_hash_not_attested")
+        self.assertIn("arena_minimax", res["attested"])
+
+    def test_failed_audit_incomplete_snapshot_and_bad_files_are_refused(self):
+        self.spec["inputs"][1]["attestation"] = make_attestation(self.p("att"), [self.v3], verdict="FAIL", name="f")
+        self.assertEqual(self.build()["per_input"]["arena_minimax"]["verification"]["reason"], "audit_not_passed")
+        with self.assertRaises(ValueError):
+            make_attestation(self.p("att"), [self.v3], complete=False, name="g")
+        with self.assertRaises(ValueError):
+            make_attestation(self.p("att"), [self.v3], status="FAILED", name="h")
+        self.spec["inputs"][1]["attestation"] = self.p("att", "does_not_exist.json")
+        self.assertEqual(self.build()["per_input"]["arena_minimax"]["verification"]["reason"], "attestation_unreadable")
+        with open(self.p("att", "junk.json"), "w") as fh:
+            fh.write("[1,2]")
+        self.spec["inputs"][1]["attestation"] = self.p("att", "junk.json")
+        self.assertEqual(self.build()["per_input"]["arena_minimax"]["verification"]["reason"], "attestation_invalid")
+
+    def test_attestation_for_another_file_does_not_transfer(self):
+        self.spec["inputs"][1]["attestation"] = self.spec["inputs"][0]["attestation"]
+        self.assertEqual(self.build()["per_input"]["arena_minimax"]["verification"]["reason"], "file_hash_not_attested")
+
+    def test_attestation_check_unit_rules(self):
+        ok = {"kind": AT.KIND, "files": {"a" * 64: {"status": "OK"}}, "audit_verdict": "WARN"}
+        self.assertEqual(AT.check(ok, ["a" * 64]), (True, "attested"))
+        self.assertEqual(AT.check(ok, []), (False, "input_without_files"))
+        self.assertEqual(AT.check({**ok, "audit_verdict": None}, ["a" * 64])[1], "audit_not_passed")
+        self.assertEqual(AT.check({**ok, "kind": "x"}, ["a" * 64])[1], "attestation_invalid")
+        self.assertEqual(AT.check(ok, ["a" * 64, "b" * 64])[1], "file_hash_not_attested")
+
+
+class EligibilityAndSplitTests(BuilderBase):
+    def test_every_reason_is_reachable_and_the_full_dataset_is_preserved(self):
+        res = self.build()
+        total = len(res["rows"])
+        reasons = {x for r in res["rows"] for x in r["ineligible_reasons"]}
+        self.assertTrue({"open_censored", "manual_close_not_imitable", "decision_link_untrusted"} <= reasons, reasons)
+        self.assertEqual(sum(1 for r in res["rows"] if r["eligible_for_training"]) + sum(1 for r in res["rows"] if not r["eligible_for_training"]), total)
+        self.assertTrue(all(r["eligible_for_training"] == (r["ineligible_reasons"] == []) for r in res["rows"]))
+
+    def test_unit_reasons(self):
+        base = self.build()["rows"]
+        ok = next(r for r in base if r["eligible_for_training"])
+        att = {ok["provenance"]["input_id"]}
+        self.assertEqual(EL.reasons(ok, att), [])
+
+        def mod(**kv):
+            import copy
+            r = copy.deepcopy(ok)
+            for k, v in kv.items():
+                if k == "prov":
+                    r["provenance"].update(v)
+                elif k == "out":
+                    r["outcome"].update(v)
+                else:
+                    r[k] = v
+            return r
+        cases = {"duplicate": mod(prov={"duplicate_of": "x"}), "synthetic": mod(is_synthetic=True),
+                 "schema_unverified": mod(prov={"schema_unverified": True}), "no_features": mod(features=None),
+                 "label_incomplete": mod(label_complete=False), "open_censored": mod(out={"status": "open_censored"}),
+                 "unknown_pnl": mod(out={"status": "closed_unknown_pnl"}), "manual_close_not_imitable": mod(out={"is_manual": True}),
+                 "decision_link_untrusted": mod(prov={"link_status": "unlinked"}),
+                 "ambiguous_feature_link": mod(quality_flags=["ambiguous_feature_link"]),
+                 "market_data_unattested": mod(quality_flags=["market_data_unattested"])}
+        for reason, row in cases.items():
+            self.assertIn(reason, EL.reasons(row, att), reason)
+        self.assertIn("input_not_attested", EL.reasons(ok, set()))
+
+    def test_splits_only_ever_contain_eligible_rows(self):
+        res = self.build()
+        rows = res["rows"]
+        for r in rows:                                                    # rendiamo il campione abbastanza grande per dividerlo
+            pass
+        big = []
+        for k in range(30):
+            for r in rows:
+                if r["eligible_for_training"]:
+                    big.append(dict(r, example_id=f"{r['example_id']}-{k}", decision_ts_ms=r["decision_ts_ms"] + k * DAY))
+        mixed = big + [r for r in rows if not r["eligible_for_training"]]
+        sp = SP.chronological_split(mixed, embargo_ms=0)
+        for part in ("train", "valid", "test"):
+            self.assertTrue(all(r["eligible_for_training"] for r in sp[part]), part)
+        ids = {r["example_id"] for r in sp["train"] + sp["valid"] + sp["test"]}
+        self.assertFalse(ids & {r["example_id"] for r in rows if not r["eligible_for_training"]})
+        self.assertTrue(all(r["eligible_for_training"] for r in SP.usable(mixed)))
+        for f in SP.walk_forward(mixed, 5 * DAY, 2 * DAY, 2 * DAY, 0, H):
+            self.assertTrue(all(r["eligible_for_training"] for r in f["train"] + f["test"]))
+
+    def test_split_rejects_rows_without_the_eligibility_field(self):
+        r = {"example_id": "x", "decision_ts_ms": T0}
+        with self.assertRaises(KeyError):
+            SP.usable([r])
+
+    def test_summary_separates_realized_from_counterfactual_and_lists_reasons(self):
+        s = B.summarize(self.build())
+        self.assertGreater(s["by_label_origin"].get("counterfactual_simulation", 0), 0)
+        self.assertGreater(s["by_label_origin"].get("realized_outcome", 0), 0)
+        self.assertIn("counterfactual_simulation", s["quality_flags"])
+        self.assertIn("atr_default_barrier", s["quality_flags"])
+        self.assertEqual(s["eligible_for_training"], sum(1 for r in self.build()["rows"] if r["eligible_for_training"]))
+
+
+class MarketDataAttestationTests(BuilderBase):
+    def test_without_candles_meta_every_market_derived_row_is_ineligible(self):
+        os.remove(self.p("candles", C.META_FILE))
+        res = self.build()
+        self.assertIsNotNone(res["candles"]["meta_problem"])
+        self.assertIsNone(res["candles"]["meta_id"])
+        mk = [r for r in res["rows"] if r["labels"]["status"] == "ok"]
+        self.assertTrue(mk and all("market_data_unattested" in r["quality_flags"] and not r["eligible_for_training"] for r in mk))
+
+    def test_meta_with_wrong_interval_or_missing_keys_is_not_accepted(self):
+        write_meta(self.p("candles"), interval_ms=60_000)
+        self.assertEqual(self.build()["candles"]["meta_problem"], "meta_incomplete_or_interval_mismatch")
+        os.remove(self.p("candles", C.META_FILE))
+        with open(self.p("candles", C.META_FILE), "w") as fh:
+            json.dump({"exchange": "x"}, fh)
+        self.assertEqual(self.build()["candles"]["meta_problem"], "meta_incomplete_or_interval_mismatch")
+
+    def test_valid_meta_is_bound_into_rows_and_manifest_with_file_hashes(self):
+        res = self.build()
+        c = res["candles"]
+        self.assertEqual((c["meta"]["exchange"], c["meta_problem"]), ("bitget", None))
+        self.assertTrue(all(r["provenance"]["market_dataset_id"] == c["meta_id"] for r in res["rows"]))
+        self.assertEqual(c["files_sha256"]["ETHUSDT"], sha(self.p("candles", "ETHUSDT.jsonl")))
+        self.assertTrue(set(c["files_sha256"]) <= {"ETHUSDT", "BTCUSDT", "SOLUSDT"})
+        B.write_outputs(res, self.p("o"))
+        m = json.loads(rd(self.p("o", "manifest.json")))
+        self.assertEqual(m["candles"]["meta_id"], c["meta_id"])
+
+
+class BrainFreeLinkTests(Tmp):
+    def build(self, evs):
+        db = self.p("bf%s.sqlite3" % random.random())
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE events(seq INTEGER PRIMARY KEY, kind TEXT, ts INTEGER, body TEXT)")
+        for k, ts, b in evs:
+            con.execute("INSERT INTO events(kind,ts,body) VALUES(?,?,?)", (k, ts, json.dumps(b)))
+        con.commit()
+        con.close()
+        return B.build({"inputs": [{"id": "bf", "source_system": "brain_storico", "kind": "brain_free", "path": db}]}, None)
+
+    def op(self, ts, sym, pid=1):
+        return ("open", ts, {"position_id": pid, "symbol": sym, "side": "long", "entry": 10, "sl": 9})
+
+    def test_two_symbols_in_the_same_window_get_their_own_features(self):
+        res = self.build([("ai_input", T0, {"symbol": "BTCUSDT", "rsi": 11}), ("ai_input", T0 + 5, {"symbol": "ETHUSDT", "rsi": 77}),
+                          self.op(T0 + 100, "ETHUSDT"), self.op(T0 + 110, "BTCUSDT", 2)])
+        got = {r["symbol"]: r["features"] for r in res["rows"]}
+        self.assertEqual(got, {"ETHUSDT": {"rsi": 77}, "BTCUSDT": {"rsi": 11}})                # mai l'input dell'altro simbolo
+        self.assertTrue(all(r["feature_source"] == "logged_at_decision" for r in res["rows"]))
+
+    def test_input_of_another_symbol_only_is_not_used(self):
+        res = self.build([("ai_input", T0, {"symbol": "BTCUSDT", "rsi": 11}), self.op(T0 + 100, "ETHUSDT")])
+        r = res["rows"][0]
+        self.assertEqual((r["features"], r["feature_source"]), (None, "none"))
+        self.assertIn("no_features", r["ineligible_reasons"])
+        self.assertEqual(res["per_input"]["bf"]["stats"]["feature_link_missing"], 1)
+
+    def test_input_without_symbol_or_cycle_is_ambiguous_and_never_attached(self):
+        res = self.build([("ai_input", T0, {"rsi": 50}), self.op(T0 + 100, "ETHUSDT")])
+        r = res["rows"][0]
+        self.assertEqual((r["features"], r["feature_source"]), (None, "none"))
+        self.assertIn("ambiguous_feature_link", r["quality_flags"])
+        self.assertIn("ambiguous_feature_link", r["ineligible_reasons"])
+        self.assertEqual(res["per_input"]["bf"]["stats"]["ambiguous_feature_link"], 1)
+
+    def test_inputs_never_cross_epochs(self):
+        res = self.build([("ai_input", T0, {"symbol": "ETHUSDT", "rsi": 30}), ("experiment_reframed", T0 + 10, {}),
+                          self.op(T0 + 100, "ETHUSDT")])                                       # stessa finestra, epoca diversa
+        self.assertEqual((res["rows"][0]["features"], res["rows"][0]["source_run"]), (None, "epoch1"))
+
+    def test_cycle_id_links_even_without_symbol_and_beats_proximity(self):
+        res = self.build([("ai_input", T0, {"cycle_id": "c1", "rsi": 41}), ("ai_input", T0 + 5, {"cycle_id": "c2", "rsi": 99}),
+                          ("open", T0 + 100, {"position_id": 1, "symbol": "ETHUSDT", "side": "long", "entry": 10, "cycle_id": "c1"})])
+        self.assertEqual(res["rows"][0]["features"], {"rsi": 41})
+
+    def test_missing_input_leaves_row_without_features_and_ineligible(self):
+        res = self.build([self.op(T0 + 100, "ETHUSDT")])
+        r = res["rows"][0]
+        self.assertEqual((r["features"], r["eligible_for_training"]), (None, False))
+        self.assertTrue({"no_features", "schema_unverified", "input_not_attested"} <= set(r["ineligible_reasons"]))
+
+    def test_old_or_future_inputs_are_not_used(self):
+        res = self.build([("ai_input", T0, {"symbol": "ETHUSDT", "rsi": 1}), ("ai_input", T0 + 900_000, {"symbol": "ETHUSDT", "rsi": 2}),
+                          self.op(T0 + 700_000, "ETHUSDT")])                                   # il 1o e' > 10 min prima, il 2o e' DOPO
+        self.assertIsNone(res["rows"][0]["features"])
+
+
+class OutcomeAndAnnotationTests(BuilderBase):
+    def test_classic_partial_without_net_is_unknown_pnl_not_a_partial_sum(self):
+        with open(self.p("hawk", "learning_log.jsonl"), "a") as fh:
+            fh.write(json.dumps({"ev": "open", "id": "q1", "run_no": 3, "ts": self.base + 20 * H, "symbol": "ETHUSDT", "side": 1,
+                                 "entry": 100, "sl": 99, "features": {"rsi1h": 50}}) + "\n")
+            fh.write(json.dumps({"ev": "close", "id": "q1", "run_no": 3, "open_ms": self.base + 20 * H, "close_ms": self.base + 21 * H,
+                                 "net": 5.0, "why": "TP", "symbol": "ETHUSDT", "side": 1}) + "\n")
+            fh.write(json.dumps({"ev": "close", "id": "q1", "run_no": 3, "open_ms": self.base + 20 * H, "close_ms": self.base + 22 * H,
+                                 "why": "SL", "symbol": "ETHUSDT", "side": 1}) + "\n")      # parziale SENZA net
+        res = self.build()
+        r = next(r for r in res["rows"] if r["source_system"] == "falco" and r["source_run"] == "run3" and r["outcome"]["status"] == "closed_unknown_pnl")
+        self.assertIsNone(r["outcome"]["net_pnl"])
+        self.assertEqual((r["label_origin"], r["outcome"]["partials"]), ("unknown_pnl", 2))
+        self.assertIn("unknown_pnl", r["ineligible_reasons"])
+
+    def test_arena_annotations_are_linked_by_code_and_free_text_is_not_read(self):
+        ann = self.p("human_close_annotations.jsonl")
+        with open(ann, "w") as fh:
+            fh.write(json.dumps({"position_id": "pos3", "reason": "profit_protection", "note": "TESTO-RISERVATO"}) + "\n")
+            fh.write(json.dumps({"position_id": "pos2", "reason": "trend_change"}) + "\n")      # su una chiusura NON manuale
+            fh.write(json.dumps({"position_id": "pos9", "reason": "boh"}) + "\n")
+        self.spec["inputs"][1]["annotations"] = ann
+        res = self.build()
+        man = next(r for r in res["rows"] if r["outcome"].get("is_manual") and r["source_system"] == "arena_minimax")
+        self.assertEqual(man["outcome"]["manual_reason_code"], "profit_protection")
+        self.assertNotIn("manual_reason_not_available", man["quality_flags"])
+        stop = next(r for r in res["rows"] if r["source_system"] == "arena_minimax" and r["outcome"].get("net_pnl") == -12.5)
+        self.assertIn("manual_annotation_conflict", stop["quality_flags"])                        # annotazione su una chiusura non manuale
+        self.assertNotIn("TESTO-RISERVATO", json.dumps(res["rows"]))
+        self.assertEqual(R.read_annotations(ann)["by_position"]["pos9"], "invalid")
+
+    def test_manual_close_without_annotation_is_still_manual_and_flagged(self):
+        ann = self.p("empty_annotations.jsonl")
+        open(ann, "w").close()
+        self.spec["inputs"][1]["annotations"] = ann
+        man = next(r for r in self.build()["rows"] if r["outcome"].get("is_manual") and r["source_system"] == "arena_minimax")
+        self.assertEqual(man["outcome"]["manual_reason_code"], "unannotated")
+        self.assertIn("manual_unannotated", man["quality_flags"])
+
+    def test_without_annotation_file_manual_rows_say_so(self):
+        for r in self.build()["rows"]:
+            if r["outcome"].get("is_manual"):
+                self.assertIn("manual_reason_not_available", r["quality_flags"])
+                self.assertIn("manual_close_not_imitable", r["ineligible_reasons"])
+
+    def test_counterfactual_rows_are_marked_as_simulation_with_assumptions(self):
+        nt = next(r for r in self.build()["rows"] if r["record_kind"] == "no_trade")
+        self.assertEqual(nt["label_origin"], "counterfactual_simulation")
+        self.assertTrue({"counterfactual_simulation", "atr_default_barrier"} <= set(nt["quality_flags"]))
+        self.assertEqual((nt["labels"]["cost_bp"], nt["labels"]["resolution_ms"]), (16.0, IV))
 
 
 if __name__ == "__main__":

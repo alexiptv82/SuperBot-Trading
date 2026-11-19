@@ -6,6 +6,7 @@ Una candela con open_ms = t e intervallo i e' CHIUSA all'istante t + i: e' usabi
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 INTERVAL_MS = 900_000          # 15 minuti
+META_FILE = "candles_meta.json"
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,32 @@ class CandleStore:
         self.root, self.interval = os.path.abspath(root), interval_ms
         self._cache: dict[str, list] = {}
         self.stats = {"files": 0, "bad_rows": 0, "duplicates": 0, "unsorted_fixed": 0}
+        self.meta, self.meta_id, self.meta_problem = self._read_meta()
+
+    def _read_meta(self) -> tuple:
+        """`candles_meta.json` lega le candele a scambio, mercato, intervallo e base prezzo: senza, i dati di mercato NON
+        sono attestati e le righe che li usano restano escluse dal training (fail-closed)."""
+        path = os.path.join(self.root, META_FILE)
+        try:
+            st = os.lstat(path)
+            if not stat.S_ISREG(st.st_mode):
+                return None, None, "meta_not_regular"
+            with open(path, encoding="utf-8") as fh:
+                raw = fh.read()
+            m = json.loads(raw)
+        except (OSError, ValueError):
+            return None, None, "meta_missing_or_invalid"
+        need = ("exchange", "market", "interval_ms", "price_basis", "source")
+        if not isinstance(m, dict) or any(k not in m for k in need) or m["interval_ms"] != self.interval:
+            return m if isinstance(m, dict) else None, None, "meta_incomplete_or_interval_mismatch"
+        return m, hashlib.sha256(json.dumps(m, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16], None
+
+    def file_sha(self, symbol: str) -> Optional[str]:
+        try:
+            with open(os.path.join(self.root, symbol + ".jsonl"), "rb") as fh:
+                return hashlib.sha256(fh.read()).hexdigest()
+        except OSError:
+            return None
 
     def symbols(self) -> list:
         return sorted(n[:-6] for n in os.listdir(self.root) if n.endswith(".jsonl"))

@@ -18,8 +18,9 @@ def label_end_ms(row: dict, span_ms: int = DEFAULT_LABEL_SPAN_MS) -> int:
 
 
 def usable(rows: Iterable[dict]) -> list:
-    """Righe ammesse al training: non duplicate e non sintetiche. Le altre restano nel dataset ma fuori dagli split."""
-    return [r for r in rows if not r["provenance"].get("duplicate_of") and r["is_synthetic"] is False]
+    """Righe ammesse al training: SOLO `eligible_for_training` (criteri uniformi in eligibility.py: attestate, con feature,
+    etichetta completa, non duplicate/sintetiche/manuali/censurate...). Le altre restano nel dataset, fuori dagli split."""
+    return [r for r in rows if r["eligible_for_training"] is True]
 
 
 def chronological_split(rows: list, fractions=(0.6, 0.2, 0.2), embargo_ms: int = 0, span_ms: int = DEFAULT_LABEL_SPAN_MS) -> dict:

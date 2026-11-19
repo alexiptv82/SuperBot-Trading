@@ -1,6 +1,6 @@
 """Sufficienza del campione, secondo la decisione dell'utente (Issue #113, 19/11/2026). NON e' una prova di profitto.
 
-- primo modello SHADOW esclusivamente offline: >= 300 esempi etichettati e verificati e >= 20 giorni;
+- primo modello SHADOW esclusivamente offline: >= 300 esempi AMMESSI (`eligible_for_training`) e >= 20 giorni;
 - per CONSIDERARE la promozione: >= 1000 esempi, >= 45 giorni, piu' OOS cronologico con embargo, confronto con baseline,
   calibrazione, EV netto, drawdown, sufficienza delle classi e approvazione esplicita (condizioni qui solo elencate).
 Se insufficiente: continuare la raccolta, senza addestrare ne' promuovere.
@@ -15,34 +15,26 @@ PROMOTION_REQUIRES = ("chronological_oos_with_embargo", "baseline_comparison", "
                       "class_sufficiency", "explicit_user_approval")
 
 
-def is_labeled_verified(r: dict, verified_inputs: set) -> bool:
-    """Etichettato e verificato: input verificato (audit di catena / riconciliazione), feature presenti, etichetta completa,
-    nessuna chiusura manuale usata come esempio da imitare."""
-    o = r["outcome"]
-    return (r["provenance"]["input_id"] in verified_inputs and r["features"] is not None and r["label_complete"]
-            and not o.get("is_manual") and (o["status"] in ("closed", "not_executed")))
-
-
-def report(rows: list, verified_inputs: set) -> dict:
-    us = usable(rows)
-    good = [r for r in us if is_labeled_verified(r, verified_inputs)]
-    days = len({r["decision_day"] for r in good})
-    n = len(good)
+def report(rows: list, verified_inputs=None) -> dict:
+    """`verified_inputs` e' IGNORATO (compatibilita'): conta solo `eligible_for_training`, calcolato una volta dal builder."""
+    el = usable(rows)
+    days = len({r["decision_day"] for r in el})
+    n = len(el)
     status = ("promotion_considerable" if n >= PROMOTION["examples"] and days >= PROMOTION["days"] else
               "shadow_offline_ok" if n >= SHADOW["examples"] and days >= SHADOW["days"] else "insufficient")
     by_src: dict = {}
-    for r in good:
+    for r in el:
         by_src[r["source_system"]] = by_src.get(r["source_system"], 0) + 1
-    executed = [r for r in good if r["executed"]]
-    return {"status": status, "labeled_verified_examples": n, "distinct_days": days, "by_source": dict(sorted(by_src.items())),
-            "executed": len(executed), "not_executed": n - len(executed),
+    executed = [r for r in el if r["executed"]]
+    reasons: dict = {}
+    for r in rows:
+        for x in r["ineligible_reasons"]:
+            reasons[x] = reasons.get(x, 0) + 1
+    return {"status": status, "eligible_examples": n, "distinct_days": days, "by_source": dict(sorted(by_src.items())),
+            "realized_outcomes": len(executed), "counterfactual_simulations": n - len(executed),
             "losses": sum(1 for r in executed if (r["outcome"].get("net_pnl") or 0) < 0),
             "wins": sum(1 for r in executed if (r["outcome"].get("net_pnl") or 0) > 0),
             "thresholds": {"shadow_offline": SHADOW, "promotion_considerable": PROMOTION},
             "promotion_also_requires": list(PROMOTION_REQUIRES),
-            "excluded": {"duplicates": sum(1 for r in rows if r["provenance"].get("duplicate_of")),
-                         "manual_closes": sum(1 for r in us if r["outcome"].get("is_manual")),
-                         "unverified_input": sum(1 for r in us if r["provenance"]["input_id"] not in verified_inputs),
-                         "without_features": sum(1 for r in us if r["features"] is None),
-                         "labels_incomplete": sum(1 for r in us if not r["label_complete"])},
-            "note": "soglie minime, non garanzie statistiche e non prova di profitto"}
+            "excluded_by_reason": dict(sorted(reasons.items())),
+            "note": "soglie minime, non garanzie statistiche e non prova di profitto; le simulazioni controfattuali non sono profitto realizzato"}
