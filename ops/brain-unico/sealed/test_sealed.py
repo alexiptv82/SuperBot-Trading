@@ -202,10 +202,19 @@ class Env:
             return 0, ""
         return st
 
+    def checkpoint(self, groups=None, **kw):
+        """Checkpoint coerente PRE-stop reale: un `full` su tutte le run Arena (o sui gruppi indicati)."""
+        code, s = self.go("full", groups=groups or ["arena_deepseek", "arena_qwen", "arena_minimax"], **kw)
+        assert code == 0, s
+        self.last_checkpoint = s["run_id"]
+        return s["run_id"]
+
     def stop(self, **kw):
         calls = kw.pop("calls", [])
         kw.setdefault("runner", self.runner())
         kw.setdefault("stopper", self.stopper(calls, kw.pop("fail", ()), kw.pop("noeffect", False)))
+        if "checkpoint_run" not in kw:
+            kw["checkpoint_run"] = getattr(self, "last_checkpoint", None) or self.checkpoint()
         self._clock = getattr(self, "_clock", 1_800_000_000.0) + 1
         kw.setdefault("now", lambda t=self._clock: t)
         out = []
@@ -218,8 +227,8 @@ class Env:
         self._clock = getattr(self, "_clock", 1_800_000_000.0) + 1
         kw.setdefault("runner", self.runner())
         kw.setdefault("now", lambda t=self._clock: t)
-        return sr.execute_status(self.spec, base=self.base, allowed_root=self.opt, trusted_uid=ME, chain_anchor=self.R,
-                                 code_sha="c" * 64, out=lambda *_: None, **kw)
+        return sr.execute_status_services(base=self.base, trusted_uid=ME, chain_anchor=self.R, code_sha="c" * 64,
+                                          out=lambda *_: None, **kw)
 
     def run_dirs(self):
         return sorted(os.listdir(self.base)) if os.path.isdir(self.base) else []
@@ -610,7 +619,7 @@ class GroupsRiskAndWindow(unittest.TestCase):
         self.assertEqual((code, s["verdict"]), (0, "SNAPSHOT_GO"))
         r = s["risk"]["minimax"]
         self.assertEqual((r["trades"]["closed"], r["trades"]["realized_pnl"]), (6, "-240.0000"))
-        self.assertTrue(r["verdict"]["limits_held"], r["verdict"])
+        self.assertTrue(r["verdict"]["no_breach_proven"], r["verdict"])
         w = s["arena_window"]["minimax"]
         self.assertEqual((w["t0_ms"], w["planned_hours"]), (T_START, 72))
         self.assertAlmostEqual(w["effective_hours"], 13.0, places=2)                      # 6 trade: ultimo evento T0+13h
@@ -626,7 +635,7 @@ class GroupsRiskAndWindow(unittest.TestCase):
         code, s = self.e.go("full", groups=["arena_minimax"])
         self.assertEqual((code, s["verdict"]), (0, "SNAPSHOT_GO"))                       # lo snapshot e' valido
         v = s["risk"]["minimax"]["verdict"]
-        self.assertFalse(v["limits_held"])
+        self.assertFalse(v["no_breach_proven"])
         self.assertIn("leverage_out_of_policy_range", v["hard_flags"])
         self.assertIn("per_position_risk_clearly_over_cap", v["hard_flags"])
 
@@ -637,7 +646,7 @@ class GroupsRiskAndWindow(unittest.TestCase):
         code, s = self.e.go("full", groups=["arena_minimax"])
         r = s["risk"]["minimax"]
         self.assertEqual(r["trades"]["realized_pnl"], "-800.0000")
-        self.assertTrue(r["verdict"]["limits_held"], r["verdict"])
+        self.assertTrue(r["verdict"]["no_breach_proven"], r["verdict"])
 
     def test_multiple_providers_each_reported(self):
         add_trade(self.e.d("arena", "qwen", "journal.db"), "q", T_START + H)
@@ -646,45 +655,58 @@ class GroupsRiskAndWindow(unittest.TestCase):
         self.assertEqual(s["risk"]["qwen"]["trades"]["closed"], 1)
 
 
-class StatusCommand(unittest.TestCase):
+class StatusServicesCommand(unittest.TestCase):
     def setUp(self):
         self.e = Env(self)
 
-    def test_status_reports_units_and_open_positions_read_only(self):
-        mm = self.e.d("arena", "minimax", "journal.db")
-        add_trade(mm, "open1", T_START + H, close=False)
-        add_trade(mm, "closed1", T_START + 2 * H)
+    def test_services_ok_when_systemd_answers_and_units_exist(self):
+        code, s = self.e.status()
+        self.assertEqual((code, s["verdict"], s["systemd_readable"], s["problems"]), (0, "SERVICES_OK", True, []))
+        p = s["providers"]["minimax"]
+        self.assertEqual((p["runner"], p["exit"], p["exit_main_pid_present"]), ("active", "active", True))
+        self.assertFalse(s["reads_databases"])
+
+    def test_it_can_never_touch_a_database_or_a_data_file(self):
+        add_trade(self.e.d("arena", "minimax", "journal.db"), "open1", T_START + H, close=False)
         before = tree_state(self.e.opt)
-        with mock.patch.object(subprocess, "run", side_effect=AssertionError("nessun sottoprocesso")):
+        real_open = open
+        opened = []
+
+        def spy(p, *a, **k):
+            opened.append(str(p))
+            return real_open(p, *a, **k)
+        with mock.patch.object(subprocess, "run", side_effect=AssertionError("nessun sottoprocesso")), \
+                mock.patch.object(sqlite3, "connect", side_effect=AssertionError("NESSUN database")), \
+                mock.patch("builtins.open", spy):
             code, s = self.e.status()
         self.assertEqual(code, 0)
-        p = s["providers"]["minimax"]
-        self.assertEqual((p["runner"], p["exit"]), ("active", "active"))
-        self.assertEqual((p["positions"]["opened"], p["positions"]["open_now"], p["positions"]["closed"]), (2, 1, 1))
-        self.assertEqual(s["providers"]["qwen"]["positions"]["open_now"], 0)
-        self.assertEqual(before, tree_state(self.e.opt))
+        self.assertEqual(before, tree_state(self.e.opt))                                     # nemmeno -shm/-wal toccati
+        self.assertFalse([p for p in opened if p.startswith(self.e.opt)], "ha aperto file di dati")
+
+    def test_incomplete_is_an_explicit_failure_not_a_success(self):
+        code, s = self.e.status(runner=self.e.runner(fail_list=True))
+        self.assertEqual((code, s["verdict"], s["systemd_readable"]), (1, "INCOMPLETE", False))
+        self.assertIn("systemd_unavailable", s["problems"])
+        del self.e.units["superbot-arena-exit@qwen.service"]
+        code, s = self.e.status()
+        self.assertEqual((code, s["verdict"]), (1, "INCOMPLETE"))
+        self.assertIn("unit_missing:superbot-arena-exit@qwen.service", s["problems"])
+
+    def test_summary_is_numbers_and_unit_states_only(self):
+        add_trade(self.e.d("arena", "minimax", "journal.db"), "open1", T_START + H, close=False)
+        code, s = self.e.status()
         text = rd(os.path.join(self.e.base, s["run_id"], "public", "summary.json"))
-        for leak in ("open1", "SECRETUSDT", self.e.R):
+        for leak in ("open1", "SECRETUSDT", self.e.R, "positions"):
             self.assertNotIn(leak, text)
 
-    def test_idle_wal_journal_is_not_opened(self):
-        p = self.e.d("arena", "qwen", "journal.db")
-        os.remove(p)
-        make_wal_db(p)
-        before = tree_state(self.e.opt)
-        code, s = self.e.status()
-        self.assertEqual(s["providers"]["qwen"]["positions"]["status"], "skipped:wal_quiescence_unproven")
-        self.assertEqual(before, tree_state(self.e.opt))                                  # nessun -shm/-wal creato
-
-    def test_systemd_unavailable_is_reported_not_fatal(self):
-        code, s = self.e.status(runner=self.e.runner(fail_list=True))
-        self.assertEqual((code, s["systemd_readable"], s["providers"]["minimax"]["runner"]), (0, False, "unknown"))
-
-    def test_untrusted_source_path_is_not_read(self):
-        os.chmod(self.e.opt, 0o775)
-        self.addCleanup(os.chmod, self.e.opt, 0o755)
-        code, s = self.e.status()
-        self.assertEqual(s["providers"]["minimax"]["positions"]["status"], "path_not_root_controlled")
+    def test_cli_exposes_status_services_not_a_database_status(self):
+        sha = hashlib.sha256(rd(BUNDLE, "rb")).hexdigest()
+        r = subprocess.run([sys.executable, "-I", BUNDLE, "status", "--expect-sha256", sha], capture_output=True, text=True, cwd="/")
+        self.assertEqual(r.returncode, 2)                                                    # il vecchio comando 'status' non esiste piu'
+        if not IS_ROOT:
+            r = subprocess.run([sys.executable, "-I", BUNDLE, "status-services", "--expect-sha256", sha],
+                               capture_output=True, text=True, cwd="/")
+            self.assertEqual((r.returncode, "richiede root" in r.stdout), (2, True))
 
 
 class StopOpenings(unittest.TestCase):
@@ -705,7 +727,9 @@ class StopOpenings(unittest.TestCase):
             self.assertEqual(self.e.units[self.runner_unit(p)][0], "inactive")
         self.assertEqual(self.e.units["superbot-test-arena.service"][0], "active")          # nessuna altra unita' toccata
         self.assertEqual(s["ended_early_reason"], "arena_priority_brain_unico")
-        self.assertIn("positions_after", s)
+        self.assertFalse(s["reads_databases"])
+        self.assertNotIn("positions_after", s)
+        self.assertEqual(s["checkpoint_run_id"], self.e.last_checkpoint)
 
     def test_idempotent_second_run_does_not_stop_again(self):
         self.e.stop()
@@ -757,7 +781,7 @@ class StopOpenings(unittest.TestCase):
                    {"reason": "ha spazi"}, {"reason": ""}, {"reason": "x" * 65}, {"auth_ref": "  "}):
             with self.assertRaises(ValueError):
                 self.e.stop(**kw)
-        self.assertEqual(self.e.run_dirs(), [])                                           # nessuna esecuzione registrata
+        self.assertEqual(len(self.e.run_dirs()), 1)                                       # solo il checkpoint: nessuna esecuzione di stop
 
     def test_default_stopper_whitelist(self):
         for argv in (["systemctl", "stop", "superbot-arena-exit@minimax.service"],
@@ -778,21 +802,165 @@ class StopOpenings(unittest.TestCase):
         add_trade(self.e.d("arena", "minimax", "journal.db"), "p1", T_START + H, close=False)
         code, s, _ = self.e.stop()
         text = rd(os.path.join(self.e.base, s["run_id"], "public", "summary.json"))
-        for leak in (self.e.R, "SECRETUSDT", "TESTO-RISERVATO", "p1"):
+        for leak in (self.e.R, "SECRETUSDT", "TESTO-RISERVATO", '"p1"'):
             self.assertNotIn(leak, text)
-        self.assertEqual(s["positions_before"]["minimax"]["open_now"], 1)
 
     def test_cli_requires_confirmation_and_root(self):
         sha = hashlib.sha256(rd(BUNDLE, "rb")).hexdigest()
         base = [sys.executable, "-I", BUNDLE, "stop-openings", "--expect-sha256", sha, "--auth-ref", "x",
                 "--ended-early-reason", "r"]
         r = subprocess.run(base, capture_output=True, text=True, cwd="/")
-        self.assertEqual(r.returncode, 2)                                                  # manca --confirm-stop-runners
+        self.assertEqual(r.returncode, 2)                                                  # mancano --confirm-stop-runners e --checkpoint-run
         self.assertIn("--confirm-stop-runners", r.stderr)
+        self.assertIn("--checkpoint-run", r.stderr)
         if not IS_ROOT:
-            r = subprocess.run(base + ["--confirm-stop-runners"], capture_output=True, text=True, cwd="/")
+            r = subprocess.run(base + ["--confirm-stop-runners", "--checkpoint-run", "run-20260101T000000Z-abc"],
+                               capture_output=True, text=True, cwd="/")
             self.assertEqual(r.returncode, 2)
             self.assertIn("richiede root", r.stdout)
+
+
+class StopRequiresCheckpoint(unittest.TestCase):
+    """Fix PR #117: nessuno stop senza un checkpoint coerente, recente e completo; su NO-GO nulla viene fermato."""
+
+    def setUp(self):
+        self.e = Env(self)
+        self.runner_units = [f"superbot-arena-runner@{p}.service" for p in ("deepseek", "qwen", "minimax")]
+
+    def nogo(self, expected, **kw):
+        code, s, calls = self.e.stop(**kw)
+        self.assertEqual((code, s["verdict"], calls), (1, "NO-GO", []), s)
+        self.assertEqual(s["nogo"], [expected])
+        for u in self.runner_units:
+            self.assertEqual(self.e.units[u][0], "active")                                   # nessun runner fermato
+        return s
+
+    def test_no_checkpoint_at_all_is_refused(self):
+        for bad in ("", "nope", "../run-20260101T000000Z-abc", "run-20260101T000000Z-../x", "run-1-2"):
+            self.nogo("checkpoint_run_id_invalid", checkpoint_run=bad)
+
+    def test_unknown_run_id_is_refused(self):
+        self.nogo("checkpoint_missing_or_path_not_trusted", checkpoint_run="run-20260101T000000Z-abcdef12")
+
+    def test_valid_checkpoint_allows_the_stop_and_is_recorded(self):
+        cp = self.e.checkpoint()
+        code, s, calls = self.e.stop(checkpoint_run=cp)
+        self.assertEqual((code, s["checkpoint_run_id"], len(calls)), (0, cp, 3))
+
+    def test_checkpoint_must_be_a_full_run_not_a_preflight(self):
+        code, s = self.e.go("preflight", groups=["arena_deepseek", "arena_qwen", "arena_minimax"])
+        self.nogo("checkpoint_not_a_full_run", checkpoint_run=s["run_id"])
+
+    def test_checkpoint_must_cover_every_selected_provider(self):
+        cp = self.e.checkpoint(groups=["arena_minimax"])
+        self.nogo("checkpoint_does_not_cover_selected_providers", checkpoint_run=cp)
+        code, s, calls = self.e.stop(checkpoint_run=cp, providers=["minimax"])
+        self.assertEqual((code, [c[2] for c in calls]), (0, ["superbot-arena-runner@minimax.service"]))
+
+    def test_checkpoint_too_old_or_from_the_future_is_refused(self):
+        cp = self.e.checkpoint()
+        base_t = self.e._clock
+        self.nogo("checkpoint_too_old", checkpoint_run=cp, now=lambda: base_t + 7200)
+        self.nogo("checkpoint_from_the_future", checkpoint_run=cp, now=lambda: base_t - 3600)
+        code, s, calls = self.e.stop(checkpoint_run=cp, now=lambda: base_t + 7300, max_checkpoint_age_s=3 * 3600)
+        self.assertEqual(code, 0)
+
+    def tamper(self, cp, **changes):
+        p = os.path.join(self.e.base, cp, "public", "summary.json")
+        s = load(p)
+        for k, v in changes.items():
+            cur = s
+            *path, last = k.split(".")
+            for x in path:
+                cur = cur[x]
+            cur[last] = v
+        os.chmod(p, 0o644)
+        with open(p, "w") as fh:
+            json.dump(s, fh)
+
+    def test_each_weakness_of_the_checkpoint_is_refused(self):
+        cases = (("verdict", "NO-GO", "checkpoint_not_go"), ("certifies_backup", True, "checkpoint_not_go"),
+                 ("snapshot.complete", False, "checkpoint_snapshot_incomplete"),
+                 ("snapshot.items_ok", 0, "checkpoint_snapshot_incomplete"),
+                 ("manifest.complete", False, "checkpoint_manifest_incomplete"),
+                 ("manifest.unstable_count", 1, "checkpoint_manifest_incomplete"),
+                 ("audit.verdict", "FAIL", "checkpoint_audit_or_hash_chain_not_ok"),
+                 ("audit.fail_codes", ["sha256_mismatch"], "checkpoint_audit_or_hash_chain_not_ok"),
+                 ("audit.v3_chains_ok", 0, "checkpoint_audit_or_hash_chain_not_ok"),
+                 ("audit.v3_chains_total", 1, "checkpoint_audit_or_hash_chain_not_ok"),
+                 ("risk.minimax", "error:OperationalError", "checkpoint_risk_audit_missing"),
+                 ("services.unchanged", False, "checkpoint_services_changed_or_unknown"),
+                 ("services.comparable", False, "checkpoint_services_changed_or_unknown"))
+        for key, val, code in cases:
+            e = Env(self)
+            self.e = e
+            cp = e.checkpoint()
+            self.tamper(cp, **{key: val})
+            self.nogo(code, checkpoint_run=cp)
+
+    def test_checkpoint_file_must_be_in_a_trusted_location_and_regular(self):
+        cp = self.e.checkpoint()
+        p = os.path.join(self.e.base, cp, "public", "summary.json")
+        os.chmod(p, 0o666)                                                                   # scrivibile da tutti: non fidato
+        self.nogo("checkpoint_missing_or_path_not_trusted", checkpoint_run=cp)
+        os.chmod(p, 0o644)
+        e2 = Env(self)
+        self.e = e2
+        cp2 = e2.checkpoint()
+        pp = os.path.join(e2.base, cp2, "public", "summary.json")
+        os.rename(pp, pp + ".real")
+        os.symlink(pp + ".real", pp)                                                         # symlink al posto del file
+        self.nogo("checkpoint_missing_or_path_not_trusted", checkpoint_run=cp2)
+
+    def test_garbage_checkpoint_is_refused_without_crashing(self):
+        cp = self.e.checkpoint()
+        p = os.path.join(self.e.base, cp, "public", "summary.json")
+        os.chmod(p, 0o644)
+        with open(p, "w") as fh:
+            fh.write("[1, 2, 3]")
+        self.nogo("checkpoint_not_a_full_run", checkpoint_run=cp)
+        with open(p, "w") as fh:
+            fh.write("{not json")
+        self.nogo("checkpoint_unreadable", checkpoint_run=cp)
+
+    def test_systemd_exit_and_runner_conditions_still_apply_after_a_good_checkpoint(self):
+        cp = self.e.checkpoint()
+        self.e.units["superbot-arena-exit@qwen.service"] = ("failed", "failed", "0", "0")
+        code, s, calls = self.e.stop(checkpoint_run=cp)
+        self.assertEqual((code, calls), (1, []))
+        self.assertIn("exit_service_not_active:qwen", s["nogo"])
+
+    def test_stop_never_reads_a_database(self):
+        cp = self.e.checkpoint()
+        with mock.patch.object(sqlite3, "connect", side_effect=AssertionError("NESSUN database")):
+            code, s, calls = self.e.stop(checkpoint_run=cp)
+        self.assertEqual(code, 0)
+
+    def test_auth_ref_is_only_a_trace_the_checkpoint_is_the_gate(self):
+        code, s, calls = self.e.stop(auth_ref="qualunque-cosa", checkpoint_run="run-20260101T000000Z-abcdef12")
+        self.assertEqual((code, calls), (1, []))                                              # un riferimento non sostituisce il checkpoint
+
+
+class FullReportsExitProgress(unittest.TestCase):
+    def setUp(self):
+        self.e = Env(self)
+
+    def test_full_measures_open_position_age_from_now_and_flags_overdue_exits(self):
+        mm = self.e.d("arena", "minimax", "journal.db")
+        add_trade(mm, "stuck", T_START + H, close=False)
+        old_now = (T_START + 30 * H) / 1000.0                                               # 29 h dopo l'apertura
+        code, s = self.e.go("full", groups=["arena_minimax"], now=lambda: old_now)
+        r = s["risk"]["minimax"]
+        self.assertEqual((r["trades"]["still_open"], r["trades"]["open_overdue"], r["trades"]["open_age_reference"]), (1, 1, "now"))
+        self.assertIn("open_positions_overdue_for_exit", r["verdict"]["soft_flags"])
+        self.assertFalse(r["verdict"]["fully_checked"])
+        self.assertTrue(r["verdict"]["no_breach_proven"])
+
+    def test_recent_open_positions_are_not_overdue(self):
+        mm = self.e.d("arena", "minimax", "journal.db")
+        add_trade(mm, "fresh", T_START + H, close=False)
+        code, s = self.e.go("full", groups=["arena_minimax"], now=lambda: (T_START + 5 * H) / 1000.0)
+        self.assertEqual(s["risk"]["minimax"]["trades"]["open_overdue"], 0)
 
 
 if __name__ == "__main__":

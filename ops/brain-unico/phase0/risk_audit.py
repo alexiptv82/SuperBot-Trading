@@ -1,26 +1,29 @@
 """Verifica dei limiti di rischio PAPER su un journal V3 (di una COPIA o in sola lettura): solo numeri.
 
-Risponde a: "i limiti di rischio hanno retto?" per una run (es. MiniMax) leggendo `paper_open`, `paper_close` e
-`brain_decision` del journal e confrontandoli con la politica dichiarata nella configurazione della gara.
+Risponde a una domanda stretta: "il journal contiene la PROVA di una violazione dei limiti?". NON risponde a "tutti i
+limiti sono stati rispettati": per questo il verdetto distingue `no_breach_proven` (nessuna violazione provata dai dati
+disponibili) da `fully_checked` (che qui e' SEMPRE falso: il journal non contiene il non realizzato, la storia dei blocchi
+del freno giornaliero ne' la politica effettivamente caricata dalla run).
 
-Cosa controlla (tutto in sola lettura, nessun contenuto di testo viene esportato: solo conteggi, rapporti, codici):
-- tetto di perdita per posizione: rischio allo stop (distanza dallo stop x quantita' + costi stimati) / capitale
-  e / margine, contro `max_loss_fraction` e `max_loss_margin_fraction`;
+Cosa controlla (sola lettura, nessun testo esportato: solo conteggi, rapporti, codici):
+- tetto di perdita per posizione (rischio allo stop = distanza x quantita' + costi stimati) su capitale e su margine;
 - rischio aperto aggregato, margine per posizione e totale, leva, soglia minima di capitale;
-- perdita realizzata contro il tetto per posizione (gap e slippage possono superare la stima: e' dichiarato);
-- freno giornaliero (avviso 35 %, blocco 50 %) in versione LIMITE INFERIORE (solo realizzato: il non realizzato non e'
-  nel journal): se si apre dopo che il solo realizzato ha gia' superato il blocco, e' una prova di violazione;
-- coerenza del registro: aperture senza chiusura (posizioni aperte), chiusure senza apertura (orfane), doppie
-  chiusure, durata oltre il massimo della politica di uscita, motivi di uscita, chiusure manuali.
+- perdita realizzata contro il tetto (gap e slippage possono superare la stima: dichiarato);
+- freno giornaliero UTC (avviso 35 %, blocco 50 %) come LIMITE INFERIORE (solo realizzato), con ripartizione per giorno;
+- coerenza: aperture senza chiusura, chiusure orfane o doppie, durata oltre il massimo, motivi di uscita, manuali;
+- DATI MANCANTI: un evento senza i campi numerici necessari NON vale zero: e' contato in `data_gaps` e rende falso
+  `no_breach_proven`.
 
-LIMITE DICHIARATO: il capitale usato dal sistema comprende il non realizzato, che il journal non registra. Qui il
-capitale e' "iniziale + realizzato": i rapporti sono INDICATIVI (per questo si riportano sia >1,0 sia >1,1 del tetto).
-Una violazione certa richiede un rapporto molto sopra 1 o un'apertura dopo il blocco provato dal solo realizzato.
+Politica: e' la copia incorporata nel bundle (config pubbliche dell'Arena); `policy.verified_against_run` e' falso perche'
+il journal non la riporta. Un −40 % aggregato in pochi giorni resta strategicamente inadatto a un futuro profilo LIVE
+anche se compatibile con questa politica permissiva.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+import time
 from decimal import Decimal, ROUND_HALF_EVEN
 from typing import Any, Optional
 from urllib.parse import quote
@@ -28,6 +31,8 @@ from urllib.parse import quote
 DAY_MS = 86_400_000
 HOUR_MS = 3_600_000
 Q = Decimal("0.0001")
+OPEN_FIELDS = ("fill_price", "stop_price", "quantity", "notional", "margin_used", "leverage")
+NOT_CHECKABLE = ("unrealized_equity", "daily_guard_exact_with_unrealized", "guard_block_history", "policy_effectively_loaded_by_run")
 
 
 def _d(v: Any, default: str = "0") -> Decimal:
@@ -38,8 +43,19 @@ def _d(v: Any, default: str = "0") -> Decimal:
         return Decimal(default)
 
 
+def _has(p: dict, key: str) -> bool:
+    try:
+        return key in p and p[key] is not None and Decimal(str(p[key])).is_finite()
+    except Exception:
+        return False
+
+
 def _s(x: Decimal) -> str:
     return str(x.quantize(Q, rounding=ROUND_HALF_EVEN))
+
+
+def policy_hash(policy: dict) -> str:
+    return hashlib.sha256(json.dumps(policy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
 
 
 def read_events(db_path: str) -> list:
@@ -61,7 +77,7 @@ def read_events(db_path: str) -> list:
         con.close()
 
 
-def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
+def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24, now_ms: Optional[int] = None) -> dict:
     rp = policy["risk_policy"]
     init = _d(policy["initial_equity"])
     cap = _d(rp["max_loss_fraction"])
@@ -80,6 +96,7 @@ def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
                held_over_max=0, leverage_out_of_range=0, open_below_floor=0, open_risk_over=0, position_margin_over=0,
                total_margin_over=0, risk_over_cap=0, risk_over_cap_10pct=0, risk_over_margin_cap=0,
                realized_loss_over_cap=0, realized_loss_over_cap_150pct=0, opens_after_daily_halt_proof=0)
+    gaps = {"opens_incomplete": 0, "closes_incomplete": 0, "events_unparsable": 0}
     mx = dict(risk_ratio=Decimal(0), risk_margin_ratio=Decimal(0), open_risk_ratio=Decimal(0),
               total_margin_ratio=Decimal(0), position_margin_ratio=Decimal(0), realized_loss_ratio=Decimal(0),
               daily_loss_fraction=Decimal(0))
@@ -88,6 +105,7 @@ def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
     realized_total, fees_total = Decimal(0), Decimal(0)
     day, day_start_capital, day_realized, day_halt_at = None, init, Decimal(0), None
     days_warn, days_halt = set(), set()
+    daily: dict[int, dict] = {}
     first_ts = last_ts = None
     equity_at_open: dict[str, Decimal] = {}
     max_hold_ms = exit_max_hold_hours * HOUR_MS
@@ -98,14 +116,23 @@ def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
         d = ts // DAY_MS
         if day != d:
             day, day_start_capital, day_realized, day_halt_at = d, equity, Decimal(0), None
+            daily.setdefault(d, {"start": day_start_capital, "realized": Decimal(0), "opens": 0, "opens_after_halt": 0})
+        if kind in ("paper_open", "paper_close") and not p:
+            gaps["events_unparsable"] += 1
         if kind == "brain_decision":
             key = f"{p.get('kind', '?')}:{p.get('status', '?')}"
             decisions[key] = decisions.get(key, 0) + 1
         elif kind == "paper_open":
             pid = str(p.get("position_id", ""))
-            fill, stop, qty = _d(p.get("fill_price")), _d(p.get("stop_price")), _d(p.get("quantity"))
-            notional, margin, lev = _d(p.get("notional")), _d(p.get("margin_used")), int(_d(p.get("leverage")))
             cnt["opens"] += 1
+            daily[d]["opens"] += 1
+            if not all(_has(p, k) for k in OPEN_FIELDS):
+                gaps["opens_incomplete"] += 1                    # dato mancante: NON si inventa ne' si tratta come zero
+                open_pos[pid] = {"risk": Decimal(0), "margin": Decimal(0), "ts": ts}
+                equity_at_open[pid] = equity
+                continue
+            fill, stop, qty = _d(p["fill_price"]), _d(p["stop_price"]), _d(p["quantity"])
+            notional, margin, lev = _d(p["notional"]), _d(p["margin_used"]), int(_d(p["leverage"]))
             risk = abs(fill - stop) * qty + notional * cost_bp / Decimal(10000)
             eq = equity if equity > 0 else Decimal("0.0001")
             r_cap = risk / eq / cap if cap else Decimal(0)
@@ -128,9 +155,9 @@ def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
             cnt["open_below_floor"] += equity <= floor
             if day_halt_at is not None:
                 cnt["opens_after_daily_halt_proof"] += 1
+                daily[d]["opens_after_halt"] += 1
         elif kind == "paper_close":
             pid = str(p.get("position_id", ""))
-            realized, fees = _d(p.get("realized_pnl")), _d(p.get("fees"))
             if pid in seen_closed:
                 cnt["duplicate_closes"] += 1
                 continue
@@ -140,13 +167,17 @@ def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
                 cnt["orphan_closes"] += 1
             eq_open = equity_at_open.get(pid, equity)
             open_pos.pop(pid, None)
+            reason = str(p.get("reason", "?"))
+            reasons[reason] = reasons.get(reason, 0) + 1
+            cnt["manual_closes"] += reason == "manual"
+            if not _has(p, "realized_pnl"):
+                gaps["closes_incomplete"] += 1                   # PnL mancante: l'equity non si aggiorna con uno zero inventato
+                continue
+            realized, fees = _d(p["realized_pnl"]), _d(p.get("fees"))
             equity += realized
             realized_total += realized
             fees_total += fees
             cnt["wins"] += realized > 0
-            reason = str(p.get("reason", "?"))
-            reasons[reason] = reasons.get(reason, 0) + 1
-            cnt["manual_closes"] += reason == "manual"
             cnt["loss_exceeds_margin"] += bool(p.get("loss_exceeds_margin"))
             cnt["held_over_max"] += _d(p.get("held_ms")) > max_hold_ms + HOUR_MS
             if realized < 0 and eq_open > 0 and cap:
@@ -158,6 +189,7 @@ def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
             if peak > 0:
                 max_dd = max(max_dd, (peak - equity) / peak)
             day_realized += realized
+            daily[d]["realized"] += realized
             frac = (-day_realized / day_start_capital) if day_realized < 0 and day_start_capital > 0 else Decimal(0)
             mx["daily_loss_fraction"] = max(mx["daily_loss_fraction"], frac)
             if frac >= warn:
@@ -166,16 +198,28 @@ def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
                 days_halt.add(day)
                 day_halt_at = day_halt_at or ts
 
-    still_open = len(open_pos)
-    oldest = max(((last_ts - o["ts"]) for o in open_pos.values()), default=0) if last_ts else 0
+    ref = now_ms if now_ms is not None else last_ts          # l'eta' delle posizioni aperte si misura da ADESSO, non dall'ultimo evento
+    ages = [(ref - o["ts"]) for o in open_pos.values()] if ref else []
+    overdue = sum(1 for a in ages if a > max_hold_ms + HOUR_MS)
+    day_rows = []
+    for dd in sorted(daily):
+        v = daily[dd]
+        loss = max(Decimal(0), -v["realized"])
+        day_rows.append({"day": time.strftime("%Y-%m-%d", time.gmtime(dd * DAY_MS / 1000)),
+                         "start_capital": _s(v["start"]), "realized": _s(v["realized"]),
+                         "realized_loss_fraction": _s(loss / v["start"]) if v["start"] > 0 else "0.0000",
+                         "opens": v["opens"], "opens_after_halt_proof": v["opens_after_halt"]})
     return {
-        "schema": 1, "classification": "NUMBERS_ONLY", "approximation": "equity=initial+realized (unrealized not in journal)",
+        "schema": 2, "classification": "NUMBERS_ONLY",
+        "policy": {"hash": policy_hash(policy), "source": "embedded_copy_of_public_arena_config", "verified_against_run": False},
+        "approximation": "equity=initial+realized (unrealized not in journal)",
         "window": {"first_event_ms": first_ts, "last_event_ms": last_ts,
                    "hours": _s(Decimal((last_ts or 0) - (first_ts or 0)) / Decimal(HOUR_MS)) if first_ts else "0"},
-        "trades": {"opened": cnt["opens"], "closed": cnt["closes"], "still_open": still_open,
+        "trades": {"opened": cnt["opens"], "closed": cnt["closes"], "still_open": len(open_pos),
                    "wins": cnt["wins"], "losses": cnt["closes"] - cnt["wins"], "realized_pnl": _s(realized_total),
                    "fees": _s(fees_total), "exit_reasons": dict(sorted(reasons.items())),
-                   "oldest_open_age_hours": _s(Decimal(oldest) / Decimal(HOUR_MS))},
+                   "oldest_open_age_hours": _s(Decimal(max(ages, default=0)) / Decimal(HOUR_MS)),
+                   "open_overdue": overdue, "open_age_reference": "now" if now_ms is not None else "last_event"},
         "equity_realized_only": {"initial": _s(init), "now": _s(equity), "min": _s(min_equity),
                                  "max_drawdown_fraction": _s(max_dd), "floor": _s(floor)},
         "ratios_vs_limit": {k: _s(v) for k, v in mx.items()},
@@ -184,15 +228,16 @@ def analyze(events: list, policy: dict, exit_max_hold_hours: int = 24) -> dict:
             "position_margin_over", "leverage_out_of_range", "open_below_floor", "realized_loss_over_cap",
             "realized_loss_over_cap_150pct", "loss_exceeds_margin", "held_over_max", "orphan_closes",
             "duplicate_closes", "manual_closes", "opens_after_daily_halt_proof")},
+        "data_gaps": gaps,
         "daily_guard_lower_bound": {"days_at_or_over_warn": len(days_warn), "days_at_or_over_halt": len(days_halt),
                                     "max_daily_loss_fraction": _s(mx["daily_loss_fraction"]),
-                                    "warn": _s(warn), "halt": _s(halt)},
+                                    "warn": _s(warn), "halt": _s(halt), "by_day_utc": day_rows},
         "decisions": dict(sorted(decisions.items())),
-        "verdict": _verdict(cnt, mx),
+        "verdict": _verdict(cnt, gaps, overdue),
     }
 
 
-def _verdict(cnt: dict, mx: dict) -> dict:
+def _verdict(cnt: dict, gaps: dict, overdue: int) -> dict:
     hard = []
     if cnt["opens_after_daily_halt_proof"]:
         hard.append("opens_after_daily_halt_proven_by_realized_only")
@@ -211,15 +256,20 @@ def _verdict(cnt: dict, mx: dict) -> dict:
         soft.append("realized_loss_over_cap_gap_or_slippage")
     if cnt["held_over_max"]:
         soft.append("positions_held_over_policy_max_hold")
-    return {"limits_held": not hard, "hard_flags": hard, "soft_flags": soft}
+    if overdue:
+        soft.append("open_positions_overdue_for_exit")           # l'exit service non sta chiudendo: serve attenzione, non timeout
+    if any(gaps.values()):
+        soft.append("data_gaps_present")
+    return {"no_breach_proven": not hard and not any(gaps.values()), "fully_checked": False,
+            "not_checkable": list(NOT_CHECKABLE), "hard_flags": hard, "soft_flags": soft}
 
 
-def analyze_db(db_path: str, policy: dict, exit_max_hold_hours: int = 24) -> dict:
-    return analyze(read_events(db_path), policy, exit_max_hold_hours)
+def analyze_db(db_path: str, policy: dict, exit_max_hold_hours: int = 24, now_ms: Optional[int] = None) -> dict:
+    return analyze(read_events(db_path), policy, exit_max_hold_hours, now_ms)
 
 
 def open_positions_status(db_path: str) -> dict:
-    """Stato leggero di un journal: posizioni aperte, orfane, ultimo evento. Solo numeri."""
+    """Stato leggero di un journal (da usare su COPIE): posizioni aperte, orfane, ultimo evento. Solo numeri."""
     opened, closed, orphan, last = set(), set(), 0, None
     for _seq, kind, ts, p in read_events(db_path):
         last = ts if last is None else max(last, ts)

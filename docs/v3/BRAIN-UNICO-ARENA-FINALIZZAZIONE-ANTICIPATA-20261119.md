@@ -1,10 +1,12 @@
 # Brain Unico — finalizzazione anticipata dell'Arena e verifica dei limiti di rischio (MiniMax)
 
-Stato: **PREPARAZIONE, nulla eseguito**. Nessun servizio fermato, nessuna chiusura, nessun dato reale letto. Riferimenti: Issue #113 (decisione del 19/11/2026 10:20: Brain Unico prioritario, Arena non bloccante), procedura dell'operatore (`BRAIN-UNICO-FASE0-PROCEDURA-OPERATORE-20261119.md`).
+Stato: **PREPARAZIONE, nulla eseguito**. Nessun servizio fermato, nessuna chiusura, nessun dato reale letto. L'utente ha autorizzato la **pianificazione** della finalizzazione, **non la sua esecuzione**. Riferimenti: Issue #113 (decisioni del 19/11/2026: Brain Unico prioritario, Arena non bloccante, ogni intervento reale richiede runbook verificato e consenso separato), revisione ChatGPT della PR #117.
 
 ## 1. Principio
 
-L'Arena può essere conclusa prima delle 72 ore **senza perdere nulla** e **senza chiusure manuali**: si ferma solo ciò che apre posizioni (i tre *runner*), mentre il servizio di uscita di ogni run continua a gestire le posizioni con le regole normali. Il codice lo conferma: il runner gestisce `SIGTERM` in modo ordinato, le uscite sono un servizio separato, e la politica di uscita è `stop` / `take_profit` a 2R / `timeout` a 24 ore (`exit_policy.json`). Quindi **tutte le posizioni si chiudono da sole entro circa 24 ore**, con motivo e timestamp nel journal append-only e senza il marchio `manual`, che un apprendimento serio deve trattare a parte.
+Si può concludere l'Arena prima delle 72 ore **senza perdere l'esperienza** e **senza chiusure manuali**: si ferma solo ciò che apre posizioni (i tre *runner*) e si lascia attivo il servizio di uscita di ogni run. Il runner gestisce `SIGTERM` in modo ordinato; la politica di uscita è `stop` / `take_profit` a 2R / `timeout` a 24 ore (`exit_policy.json`).
+
+**Questo non garantisce che le posizioni si chiudano entro 24 ore.** Le uscite dipendono dal servizio di uscita, da un feed di prezzi valido e dalla politica caricata: `24 h + 1 h` è un'attesa *condizionata*, non una promessa. Per questo la procedura non assume la chiusura: la **verifica** a ogni controllo e, se le uscite non progrediscono, **si ferma e torna all'utente** (nessun timeout automatico, nessuna chiusura forzata).
 
 ## 2. Che cosa va preservato e dove vive
 
@@ -12,47 +14,49 @@ L'Arena può essere conclusa prima delle 72 ore **senza perdere nulla** e **senz
 |---|---|---|
 | Decisioni (anche `NO_TRADE` e rifiuti) | `brain_decision` nel journal V3 della run | copia per file + hash chain ricalcolata |
 | Posizioni, aperture, chiusure, esiti | `paper_open` / `paper_close` nello stesso journal | idem; le posizioni aperte sono *derivate* (aperture senza chiusura) |
-| Chiusure manuali con motivazione | annotazioni dell'Arena nella cartella della run | la copia è per directory (`tree`), non solo per journal |
+| Chiusure manuali con motivazione | annotazioni dell'Arena nella cartella della run | copia per directory (`tree`) |
 | Tracce di inferenza, budget, T0, battiti | `inference_trace.jsonl`, `budget*`, `arena_t0.json`, heartbeat | idem |
-| Stato dei servizi al momento dello stop | letture `systemctl show` | `summary.json` (prima/dopo) |
+| Stato dei servizi | letture `systemctl show` | `summary.json` (prima/dopo) |
 | Durata effettiva | primo/ultimo evento vs `trial_start_ms` | `arena_window` in `summary.json` |
 
 Nulla viene cancellato, riscritto o "ricostruito": si fermano processi e si copiano file.
 
-## 3. Procedura ordinata e idempotente (mappata sui passi della Issue)
+## 3. Procedura ordinata e idempotente
 
-Comandi del bundle sigillato (stessa riga di avvio della procedura dell'operatore: download da commit fissato, controllo dell'hash, `python3 -I`). Tutti richiedono root e rifiutano un codice non fidato.
+Tutti i comandi sono del bundle sigillato (download da commit fissato, controllo dell'hash, `python3 -I`), richiedono root e rifiutano un codice non fidato. **`--auth-ref` serve solo a tracciare: non è un'autorizzazione e non sostituisce il consenso esplicito dell'utente.**
 
-| Passo (Issue #113) | Comando | Effetto | Rischio |
-|---|---|---|---|
-| (0) fotografia a metà gara, facoltativa ma consigliata | `full --groups arena_deepseek,arena_qwen,arena_minimax --auth-ref …` | copia consistente + audit + **limiti di rischio** + manifest; nessun servizio toccato | basso |
-| (b) stato e posizioni, in qualsiasi momento | `status` | unità Arena e posizioni aperte per provider, sola lettura | nullo |
-| (a) **blocco nuove aperture** | `stop-openings --providers … --ended-early-reason TOKEN --auth-ref … --confirm-stop-runners` | `systemctl stop` dei **soli** runner scelti; le uscite restano attive | medio (modifica di servizi: serve consenso operativo) |
-| (c) gestione delle uscite | nessun comando: lavora l'exit service | chiusure con motivo `stop`/`take_profit`/`timeout`, journal append-only | — |
-| (d) riconciliazione PnL, ID, hash chain | `status` (ripetuto fino a `open_now = 0`) e poi `full` | verifica che non restino posizioni aperte né orfane; hash chain ricalcolata dall'audit | nullo |
-| (e) snapshot definitivo | `full --groups … --ended-early-reason TOKEN --auth-ref …` | copia consistente su directory privata + manifest + ripristino provato + audit | basso |
-| (f) stop finale | **non incluso nel bundle** | solo dopo `open_now = 0` per tutti e snapshot definitivo; richiede un consenso separato | — |
+| # | Passo | Comando | Effetto | Rischio |
+|---|---|---|---|---|
+| 1 | stato dei servizi | `status-services` | **solo systemd**: nessun database, nessun file di dati aperto; esito `SERVICES_OK` o `INCOMPLETE` (exit 1) | nullo |
+| 2 | **checkpoint coerente PRE-stop (obbligatorio)** | `full --groups arena_deepseek,arena_qwen,arena_minimax --auth-ref …` | copia consistente per file di tutte e tre le run + audit di catena + manifest + audit dei limiti + stato dei servizi prima/dopo | basso, azione autorizzata a parte |
+| 3 | **blocco nuove aperture** | `stop-openings --checkpoint-run <run_id del passo 2> --providers … --ended-early-reason TOKEN --auth-ref … --confirm-stop-runners` | `systemctl stop` dei **soli** runner scelti; le uscite restano attive | medio: modifica di servizi, consenso esplicito |
+| 4 | avanzamento delle uscite | `full --groups …` ripetuto | per ogni run: posizioni aperte, età (da *adesso*), posizioni in ritardo di uscita, esito dell'audit | basso |
+| 5 | snapshot definitivo | `full --groups … --ended-early-reason TOKEN` quando `still_open = 0` | copia consistente + manifest + ripristino provato + audit | basso |
+| 6 | stop finale | **non incluso nel bundle** | solo dopo il passo 5 e con consenso separato | — |
 
-`stop-openings` **non può**: fermare altro che i tre runner (whitelist esatta, testata), toccare le uscite o il close-bridge, chiudere posizioni, cancellare file, modificare configurazioni o T0. Si rifiuta di fermare **qualsiasi** runner se un'uscita selezionata non è attiva (le posizioni resterebbero senza chi le chiude) e non ferma nulla se systemd non risponde. È idempotente: rieseguito, i runner già fermi risultano `already_stopped` e non viene emesso alcun comando. Un elenco di provider vuoto **non** significa "tutti".
+### Il checkpoint PRE-stop è una condizione, non un suggerimento
+
+`stop-openings` **rifiuta di fermare qualsiasi runner** se non gli si indica un `--checkpoint-run` che sia: un `full` (non un preflight) con esito `SNAPSHOT_GO`; che copra **tutti** i provider selezionati; con snapshot e manifest completi e nessun file instabile; con audit `PASS` o `WARN` e **tutte le catene V3 verificate**; con l'audit dei limiti presente per ogni run; con servizi invariati durante il checkpoint; **recente** (default 60 minuti) e non datato nel futuro; in una directory fidata (di root, non scrivibile da altri, non un link). Su qualunque rifiuto: **nulla viene fermato e nulla viene distrutto**, si torna all'utente.
+
+**Se la copia coerente con i runner attivi non è possibile** (per esempio un DB WAL senza prova di quiescenza → NO-GO del `full`), la procedura **non prosegue silenziosamente** e il bundle non offre alcuna scorciatoia: la scelta (attendere, correggere la causa, o una decisione esplicita e scritta dell'utente di rinunciare al checkpoint con un runbook diverso) resta dell'utente. Quel runbook alternativo non esiste e non viene proposto qui.
+
+### `stop-openings`: cosa può e non può fare
+
+Può fermare **solo** i tre runner indicati (whitelist esatta, testata). Non può fermare le uscite o il close-bridge, chiudere posizioni, cancellare file, toccare configurazioni o T0, né leggere database. Non ferma nulla se un'uscita selezionata non è attiva, se systemd non risponde o se il checkpoint non è valido. È idempotente: rieseguito, i runner già fermi risultano `already_stopped`. Un elenco di provider vuoto **non** significa "tutti". Esito `OPENINGS_STOPPED` solo se nessuno stop è fallito, nessun runner è ancora attivo e le uscite hanno stesso PID e stesso numero di riavvii di prima.
+
+### Attesa e NO-GO sulle uscite
+
+- Il controllo (passo 4) riporta, per run: posizioni aperte, età della più vecchia **misurata da adesso** (non dall'ultimo evento, che con un feed fermo sarebbe ingannevole) e il numero di posizioni oltre `24 h + 1 h` (`open_overdue`).
+- **NO-GO / attenzione** se `open_overdue > 0` (flag `open_positions_overdue_for_exit`), se un'uscita non è `active`, se `NRestarts` cambia, o se le posizioni aperte non diminuiscono tra due controlli. In quel caso: **nessun timeout automatico, nessuna chiusura incontrollata**, si torna all'utente con i numeri.
+- La chiusura manuale esiste (close-bridge e annotazione) ma sporca l'apprendimento: l'esito diventa `manual`, non imitabile alla cieca. Se l'utente la richiede, va fatta posizione per posizione con motivazione; il dataset la conserverà con il flag `manual`.
 
 Dopo lo stop: `ended_early_reason` e la durata effettiva (`arena_window.effective_hours` contro `planned_hours = 72`) restano nel riepilogo. **I risultati non vanno confrontati come gara da 72 ore completa.**
 
-### Attesa e GO/NO-GO
-
-- Attesa massima prevista: 24 ore (durata massima delle posizioni) più un margine di 1 ora. `status` mostra `open_now` per provider.
-- **GO per `stop-openings`**: systemd leggibile; per ogni provider selezionato, runner caricato ed exit service `active`.
-- **NO-GO**: exit service non attivo, runner non trovato, systemd non disponibile. Non viene eseguito alcun comando.
-- **Esito `OPENINGS_STOPPED`** solo se: nessuno stop fallito, nessun runner ancora attivo, exit service con stesso PID e stesso numero di riavvii di prima.
-
-### Se serve chiudere subito
-
-La chiusura manuale delle posizioni (close-bridge e annotazione) esiste, ma sporca l'apprendimento: l'esito diventa `manual`, non imitabile alla cieca. Per questo la procedura **non** la usa. Se l'utente la richiede, va fatta posizione per posizione con motivazione, e il dataset la conserverà con il flag `manual`.
-
 ## 4. MiniMax: la perdita richiede una verifica urgente dei limiti?
 
-**Dati.** L'utente riferisce circa −800 PAPER; l'ultimo valore nel diario (18/11, 19:35) era circa −222 (realizzato). Non posso verificare né l'uno né l'altro: i journal sono di root e non leggibili da `superbot-agent`. **Il −800 non è certificato.**
+**Dati.** L'utente riferisce circa −800 PAPER (−40 % su 2000); l'ultimo valore nel diario (18/11, 19:35) era circa −222. Non posso verificare né l'uno né l'altro: i journal sono di root. **Il −800 non è certificato.**
 
-**Cosa dicono i limiti configurati** (identici per le tre run, `risk_policy_hash` comune):
+**Limiti configurati** (copia pubblica delle config, identici per le tre run; il journal **non** riporta la politica effettivamente caricata, quindi `policy.verified_against_run = false`):
 
 | Limite | Valore | Su 2000 USDT |
 |---|---|---|
@@ -61,18 +65,26 @@ La chiusura manuale delle posizioni (close-bridge e annotazione) esiste, ma spor
 | margine per posizione / totale | 20 % / 55 % | 400 / 1100 USDT |
 | leva | 20–50 | — |
 | capitale minimo per aprire | 450 | −77,5 % |
-| freno giornaliero (UTC) | avviso 35 %, **blocco 50 %** del capitale di inizio giornata | — |
+| freno giornaliero (giorno UTC) | avviso 35 %, blocco 50 % del capitale di inizio giornata | — |
 
-**Valutazione.** −800 su 2000 è **−40 %**: sopra la soglia di avviso (35 %) ma **sotto** il blocco giornaliero (50 %) e ben sopra il capitale minimo (450). Se la perdita si è formata su due giorni UTC, nessun giorno raggiunge nemmeno l'avviso. Quindi **−800 è compatibile con i limiti** decisi dall'utente: non basta, da solo, a dire che un gate sia rotto. Per perdere 800 con posizioni dentro il tetto servono almeno 10 stop pieni, plausibile in circa due giorni con 27 simboli, leva 20–50 e cicli orari. Il regime è però permissivo *per scelta*: la sua efficacia come protezione è bassa, e il rischio per il Brain Unico è di ereditarlo.
+**Valutazione, con cautela.** Un −40 % *complessivo* **non** consente di dedurre il rispetto del freno *giornaliero*: dipende da come la perdita si distribuisce nei giorni UTC, dal non realizzato e dalla storia dei blocchi, che il journal non contiene. Si può dire solo che −40 % non supera, di per sé, né il blocco giornaliero del 50 % né il capitale minimo, e che **non è una violazione provata**. Non è nemmeno un esito sano: una perdita superiore al 40 % in pochi giorni resta **strategicamente inadatta a un futuro profilo LIVE**, anche se compatibile con una politica permissiva scelta per l'esperimento.
 
-**Quando sarebbe una violazione** (e solo il journal può dirlo): apertura dopo che il solo realizzato ha già superato il blocco giornaliero; rischio per posizione molto sopra il tetto; leva fuori da 20–50; apertura con capitale ≤ 450; posizioni oltre 24 ore; chiusure orfane o duplicate. `risk_audit.py` calcola tutto questo dalla **copia** del journal e riporta solo numeri e codici (`limits_held`, `hard_flags`, `soft_flags`, rapporti rispetto ai tetti). Limite dichiarato: il capitale del sistema include il non realizzato, assente dal journal; i rapporti sono indicativi (si riportano soglie 1,0 e 1,1) e il blocco giornaliero è un **limite inferiore** (solo realizzato).
+**Che cosa può dimostrare l'audit (`risk_audit`)**, dalla *copia* del journal e solo con numeri:
+- `no_breach_proven`: nessuna violazione provata dai dati disponibili. **Non** significa "nessun problema".
+- `fully_checked`: **sempre `false`**; `not_checkable` elenca ciò che il journal non permette di verificare (equity non realizzato, calcolo esatto del freno giornaliero, storia dei blocchi, politica caricata dalla run).
+- `data_gaps`: eventi senza i campi numerici necessari. Un dato mancante **non vale zero**: viene contato e rende falso `no_breach_proven`.
+- ripartizione per **giorno UTC** (capitale di inizio giornata, perdita realizzata, frazione, aperture dopo il blocco provato dal solo realizzato); il blocco giornaliero è un **limite inferiore**.
+- `hard_flags` (violazioni indicative: aperture dopo il blocco, rischio per posizione molto sopra il tetto, leva fuori profilo, apertura con capitale ≤ 450, rischio aggregato o margine oltre i limiti, chiusure orfane o doppie) e `soft_flags` (perdita realizzata oltre il tetto per gap/slippage, durata oltre il massimo, posizioni in ritardo di uscita, dati mancanti).
+- i rapporti usano "capitale = iniziale + realizzato": sono **indicativi** (si riportano le soglie 1,0 e 1,1).
 
-**Raccomandazione.** Urgenza = *integrità dell'esperimento e fiducia nel risk manager che il Brain Unico riuserà*, non esposizione reale (i fondi sono simulati). Al primo consenso operativo, nell'ordine:
-1. `status` (sola lettura, nessuna copia): posizioni aperte e stato servizi.
-2. `full --groups arena_minimax --auth-ref …`: copia del solo journal MiniMax + audit dei limiti. Non tocca servizi.
-3. **Solo se** il report indica `hard_flags` non vuoto: `stop-openings --providers minimax …`, che blocca le sole nuove aperture di MiniMax e preserva le uscite.
-Se `limits_held = true`, nessuna azione sul rischio: la perdita è l'esito di una strategia, non di un guasto dei gate, ed è proprio il tipo di esperienza che il Brain Unico deve imparare.
+**Raccomandazione.** L'urgenza è *integrità dell'esperimento e fiducia nel risk manager che il Brain Unico riuserà*, non esposizione reale (i fondi sono simulati). Ordine, ciascun passo con consenso dell'operatore:
+1. `status-services` (solo systemd): servizi attivi, nessun database toccato.
+2. `full --groups arena_minimax --auth-ref …`: copia del solo journal MiniMax + audit; non tocca servizi. Posizioni aperte e limiti vengono **da qui**, non da una lettura dal vivo.
+3. Se `hard_flags` non è vuoto: valutare `stop-openings --providers minimax …`, **che richiede un checkpoint valido** (il `full` del passo 2 lo è se copre il provider).
+`no_breach_proven = true` con `fully_checked = false` significa: *la violazione non è provata*, non *i limiti hanno retto*.
 
-## 5. Verifica (sintetica)
+## 5. Verifica (sintetica, non replicata da ChatGPT)
 
-`sealed/test_sealed.py` (61 test) copre: whitelist dello stop, assenza di stop se un'uscita non è attiva o systemd non risponde, idempotenza, uscite intatte (stesso PID e riavvii), fallimento o inefficacia dello stop, `[]` ≠ tutti, validazione di motivo e riferimento, `status` che non apre DB WAL fermi né crea file, percorsi non fidati non letti, riepiloghi senza percorsi né contenuti, selezione dei gruppi. `phase0/test_risk_audit.py` (17 test) copre ogni limite e uno scenario −800 dentro i limiti. Ogni controllo è stato verificato anche per mutazione: reintroducendo il difetto in una copia di scratch (bundle ricostruito), almeno un test fallisce. **18 mutazioni su 18 rilevate** (whitelist dello stop, guardia sulle uscite, idempotenza, `[]` ≠ tutti, validazione, `status` su WAL fermi, catena dei percorsi, filtro dei gruppi e ciascun limite dell'audit di rischio, inclusa l'esportazione di contenuti).
+`sealed/test_sealed.py` (76 test): whitelist dello stop; nessuno stop senza checkpoint valido e un test per ciascuna causa di rifiuto (run id, percorso non fidato, non-`full`, verdetto, copertura dei provider, snapshot/manifest/audit/catene, limiti di rischio, servizi, età); uscite intatte; idempotenza; `[]` ≠ tutti; `status-services` che non apre database né file di dati, con esito `INCOMPLETE` esplicito; età delle posizioni misurata da adesso. `phase0/test_risk_audit.py` (24 test): ciascun limite, dati mancanti ≠ zero, ripartizione giornaliera, `fully_checked` sempre falso, politica non verificata. Ogni controllo è stato verificato anche per mutazione (reintroducendo il difetto in una copia di scratch con bundle ricostruito, almeno un test fallisce): **28 su 28 rilevati** per questa revisione (ciascuna condizione del checkpoint, stop senza checkpoint, database toccato da `stop-openings` o `status-services`, esito sempre 0 o sempre OK, unità mancanti, età non da adesso, dati mancanti trattati come zero, `fully_checked` vero, politica dichiarata verificata, ripartizione giornaliera assente, posizioni in ritardo non segnalate), dopo i 18 su 18 della versione precedente.
+
+**Verifica indipendente del bundle.** L'hash del bundle va calcolato sui *byte del commit* (`git show <commit>:ops/brain-unico/sealed/phase0_sealed.py | sha256sum`) e confrontato con il messaggio ricevuto; dopo **qualunque** patch l'hash cambia e quello precedente non vale più.

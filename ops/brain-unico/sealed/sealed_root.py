@@ -20,6 +20,7 @@ Principi (ognuno e' un controllo automatico con test sintetici):
 from __future__ import annotations
 
 import argparse
+import calendar
 import hashlib
 import json
 import os
@@ -378,7 +379,8 @@ def execute(spec: dict, mode: str, *, base: str = BASE_DIR, allowed_root: str = 
                 dbs += [os.path.join(d, n) for n in sorted(fn) if n == "journal.db"]
                 t0s += [os.path.join(d, n) for n in fn if n == "arena_t0.json"]
             try:
-                reps = [risk_audit.analyze(risk_audit.read_events(p), pol, pol.get("exit_max_hold_hours", 24)) for p in sorted(dbs)]
+                reps = [risk_audit.analyze(risk_audit.read_events(p), pol, pol.get("exit_max_hold_hours", 24), now_ms=int(now() * 1000))
+                        for p in sorted(dbs)]
                 risk[prov] = reps[0] if len(reps) == 1 else reps
                 t0_ms = None
                 for tp in t0s[:1]:
@@ -402,70 +404,110 @@ def execute(spec: dict, mode: str, *, base: str = BASE_DIR, allowed_root: str = 
     return finish("SNAPSHOT_GO", 0)
 
 
-# --------------------------------------------------------------------------- status e arresto ordinato delle aperture
+# --------------------------------------------------------------------------- stato dei servizi e arresto ordinato delle aperture
+
+RUN_ID_RE = re.compile(r"run-([0-9]{8}T[0-9]{6}Z)-[A-Za-z0-9]{1,16}")
+MAX_CHECKPOINT_AGE_S = 3600
+
 
 def _arena_units(provider: str) -> tuple:
     return f"superbot-arena-runner@{provider}.service", f"superbot-arena-exit@{provider}.service"
 
 
-def _live_positions(spec: dict, provider: str, allowed_root: str, trusted_uid: int, chain_anchor: str) -> dict:
-    """Posizioni aperte di un journal VIVO, in sola lettura e SENZA effetti sulla sorgente: si legge solo se il DB non e'
-    in WAL, o e' in WAL con -shm gia' presente; un WAL fermo (senza sidecar) non si apre (creerebbe file)."""
-    src = next((x for x in spec["sources"] if x["id"] == f"arena_{provider}"), None)
-    if src is None:
-        return {"status": "no_source"}
-    if not (os.path.abspath(src["path"]) + os.sep).startswith(os.path.abspath(allowed_root).rstrip(os.sep) + os.sep):
-        return {"status": "outside_allowed_root"}
-    if chain_problems(src["path"], trusted_uid, anchor=chain_anchor):
-        return {"status": "path_not_root_controlled"}
-    dbs = [os.path.join(d, n) for d, _, fn in os.walk(src["path"], followlinks=False) for n in sorted(fn) if n == "journal.db"]
-    if not dbs:
-        return {"status": "journal_not_found"}
-    out = []
-    for p in dbs:
-        method = snap.sqlite_method(snap.probe_sqlite(p))
-        if method != "backup":
-            out.append({"status": "skipped:" + method.replace("nogo:", "")})
-            continue
-        try:
-            out.append({"status": "ok", **risk_audit.open_positions_status(p)})
-        except (sqlite3.Error, OSError):
-            out.append({"status": "unreadable"})
-    return out[0] if len(out) == 1 else {"status": "multiple", "journals": out}
-
-
-def execute_status(spec: dict, *, base: str = BASE_DIR, allowed_root: str = ALLOWED_SRC_ROOT, trusted_uid: int = 0,
-                   chain_anchor: str = "/", runner: Runner = default_runner, code_sha: str = "",
-                   now: Callable[[], float] = time.time, out: Callable[[str], None] = print) -> tuple:
-    """SOLA LETTURA: stato delle unita' Arena e posizioni aperte per provider. Nessun lock persistente, nessuna copia."""
+def execute_status_services(*, base: str = BASE_DIR, trusted_uid: int = 0, chain_anchor: str = "/",
+                            runner: Runner = default_runner, code_sha: str = "", now: Callable[[], float] = time.time,
+                            out: Callable[[str], None] = print) -> tuple:
+    """SOLO systemd (`list-units` / `show`): NESSUN database, NESSUN file di dati aperto. Non puo' avere effetti sui journal.
+    Le posizioni aperte NON si leggono qui: vengono da uno snapshot coerente (`full`), che e' un'azione autorizzata a parte.
+    Esito: SERVICES_OK (exit 0) solo se systemd risponde e i sei servizi Arena sono presenti; altrimenti INCOMPLETE (exit 1)."""
     nr = _new_run(base, trusted_uid, chain_anchor, now, code_sha)
     if isinstance(nr[0], int):
         return nr
     run_id, run_dir, pub, priv, _snap, _rest, t0 = nr
     states = unit_states(runner)
-    summary: dict[str, Any] = {"schema": SCHEMA, "run_id": run_id, "mode": "status", "code_sha256": code_sha,
-                               "at_ms": int(t0 * 1000), "certifies_backup": False}
+    summary: dict[str, Any] = {"schema": SCHEMA, "run_id": run_id, "mode": "status-services", "code_sha256": code_sha,
+                               "at_ms": int(t0 * 1000), "certifies_backup": False, "reads_databases": False}
+    problems = []
+    if states is None:
+        problems.append("systemd_unavailable")
     prov = {}
     for p in PROVIDERS:
         ru, eu = _arena_units(p)
-        prov[p] = {"runner": (states or {}).get(ru, {}).get("ActiveState", "unknown"),
-                   "exit": (states or {}).get(eu, {}).get("ActiveState", "unknown"),
-                   "positions": _live_positions(spec, p, allowed_root, trusted_uid, chain_anchor)}
-    summary["providers"] = prov
-    summary["systemd_readable"] = states is not None
+        r_state, e_state = (states or {}).get(ru), (states or {}).get(eu)
+        if states is not None and r_state is None:
+            problems.append(f"unit_missing:{ru}")
+        if states is not None and e_state is None:
+            problems.append(f"unit_missing:{eu}")
+        prov[p] = {"runner": (r_state or {}).get("ActiveState", "unknown"), "exit": (e_state or {}).get("ActiveState", "unknown"),
+                   "exit_main_pid_present": bool((e_state or {}).get("MainPID") not in (None, "", "0")),
+                   "exit_restarts": (e_state or {}).get("NRestarts")}
+    summary.update({"providers": prov, "systemd_readable": states is not None, "problems": problems})
+    summary["verdict"] = "SERVICES_OK" if not problems else "INCOMPLETE"
     _write_json_new(os.path.join(pub, "summary.json"), summary, 0o644)
-    summary["verdict"] = "STATUS"
-    out(f"STATUS: vedi {os.path.join(pub, 'summary.json')}")
-    return 0, summary
+    out(f"{summary['verdict']}: vedi {os.path.join(pub, 'summary.json')}")
+    return (0 if not problems else 1), summary
 
 
-def execute_stop(spec: dict, *, providers: Optional[list] = None, ended_early_reason: str, auth_ref: str,
+def verify_checkpoint(base: str, run_id: str, providers: list, *, trusted_uid: int, chain_anchor: str, now_s: float,
+                      max_age_s: int = MAX_CHECKPOINT_AGE_S) -> tuple:
+    """Il checkpoint PRE-stop deve essere uno snapshot coerente RECENTE (`full`) di TUTTE le run selezionate, con audit non FAIL,
+    manifest completo, catene V3 verificate, audit dei limiti presente e servizi invariati. Ritorna (ok, codice)."""
+    m = RUN_ID_RE.fullmatch(run_id or "")
+    if not m:
+        return False, "checkpoint_run_id_invalid"
+    path = os.path.join(os.path.abspath(base), run_id, "public", "summary.json")
+    if not os.path.lexists(path) or chain_problems(path, trusted_uid, include_leaf=True, anchor=chain_anchor):
+        return False, "checkpoint_missing_or_path_not_trusted"
+    try:
+        if not stat.S_ISREG(os.lstat(path).st_mode) or os.path.getsize(path) > 2_000_000:
+            return False, "checkpoint_not_a_regular_small_file"
+        with open(path, encoding="utf-8") as fh:
+            s = json.load(fh)
+    except (OSError, ValueError):
+        return False, "checkpoint_unreadable"
+    if not isinstance(s, dict) or s.get("mode") != "full":
+        return False, "checkpoint_not_a_full_run"
+    if s.get("verdict") != "SNAPSHOT_GO" or s.get("certifies_backup") is not False:
+        return False, "checkpoint_not_go"
+    grp = s.get("groups")
+    if grp != "all" and not (isinstance(grp, list) and all(f"arena_{p}" in grp for p in providers)):
+        return False, "checkpoint_does_not_cover_selected_providers"
+    snapd, man, aud, svc = s.get("snapshot"), s.get("manifest"), s.get("audit"), s.get("services")
+    if not (isinstance(snapd, dict) and snapd.get("complete") is True and snapd.get("items") and snapd.get("items") == snapd.get("items_ok")):
+        return False, "checkpoint_snapshot_incomplete"
+    if not (isinstance(man, dict) and man.get("complete") is True and man.get("unstable_count") == 0):
+        return False, "checkpoint_manifest_incomplete"
+    if not (isinstance(aud, dict) and aud.get("verdict") in ("PASS", "WARN") and not aud.get("fail_codes")
+            and isinstance(aud.get("v3_chains_total"), int) and aud["v3_chains_total"] >= len(providers)
+            and aud.get("v3_chains_ok") == aud["v3_chains_total"]):
+        return False, "checkpoint_audit_or_hash_chain_not_ok"
+    risk = s.get("risk")
+    if not (isinstance(risk, dict) and all(isinstance(risk.get(p), dict) for p in providers)):
+        return False, "checkpoint_risk_audit_missing"
+    if not (isinstance(svc, dict) and svc.get("comparable") is True and svc.get("unchanged") is True):
+        return False, "checkpoint_services_changed_or_unknown"
+    try:
+        at = calendar.timegm(time.strptime(m.group(1), "%Y%m%dT%H%M%SZ"))
+    except ValueError:
+        return False, "checkpoint_run_id_invalid"
+    if at > now_s + 120:
+        return False, "checkpoint_from_the_future"
+    if now_s - at > max_age_s:
+        return False, "checkpoint_too_old"
+    return True, "ok"
+
+
+def execute_stop(spec: dict, *, providers: Optional[list] = None, ended_early_reason: str, auth_ref: str, checkpoint_run: str,
+                 max_checkpoint_age_s: int = MAX_CHECKPOINT_AGE_S,
                  base: str = BASE_DIR, allowed_root: str = ALLOWED_SRC_ROOT, trusted_uid: int = 0,
                  chain_anchor: str = "/", runner: Runner = default_runner, stopper: Callable[[list], tuple] = default_stopper,
                  code_sha: str = "", now: Callable[[], float] = time.time, out: Callable[[str], None] = print) -> tuple:
-    """Blocca le NUOVE aperture fermando SOLO i runner Arena selezionati (SIGTERM ordinato). Le uscite (exit service) restano
-    attive e chiudono le posizioni con le regole normali (stop, take-profit, durata massima): nessuna chiusura manuale.
-    Idempotente. Si rifiuta di fermare qualsiasi cosa se un exit service selezionato non e' attivo (posizioni orfane)."""
+    """Blocca le NUOVE aperture fermando SOLO i runner Arena selezionati (SIGTERM ordinato). Le uscite restano attive.
+    Condizioni (NESSUNO stop se una manca; nulla viene cancellato):
+    - un checkpoint COERENTE PRE-stop recente (`full`, di tutte le run selezionate) con audit, manifest, catene e limiti;
+    - ogni exit service selezionato attivo; systemd leggibile;
+    - consenso esplicito: `--auth-ref` serve SOLO a tracciare, NON e' un'autorizzazione.
+    Non legge database. Non promette che le posizioni si chiudano entro 24 h: l'avanzamento si verifica con `full`."""
     sel = list(PROVIDERS) if providers is None else list(providers)     # [] NON significa "tutti"
     if not sel or any(p not in PROVIDERS for p in sel) or len(set(sel)) != len(sel):
         raise ValueError("bad_providers")
@@ -477,7 +519,7 @@ def execute_stop(spec: dict, *, providers: Optional[list] = None, ended_early_re
     run_id, run_dir, pub, priv, _snap, _rest, t0 = nr
     summary: dict[str, Any] = {"schema": SCHEMA, "run_id": run_id, "mode": "stop-openings", "code_sha256": code_sha,
                                "providers": sel, "ended_early_reason": ended_early_reason, "at_ms": int(t0 * 1000),
-                               "certifies_backup": False}
+                               "certifies_backup": False, "checkpoint_run_id": checkpoint_run, "reads_databases": False}
 
     def finish(verdict: str, code: int) -> tuple:
         summary["verdict"] = verdict
@@ -485,6 +527,11 @@ def execute_stop(spec: dict, *, providers: Optional[list] = None, ended_early_re
         out(f"{verdict}: vedi {os.path.join(pub, 'summary.json')}")
         return code, summary
 
+    ok, why = verify_checkpoint(base, checkpoint_run, sel, trusted_uid=trusted_uid, chain_anchor=chain_anchor, now_s=t0,
+                                max_age_s=max_checkpoint_age_s)
+    if not ok:
+        summary["nogo"] = [why]                                  # NO-GO: nulla fermato, nulla distrutto, si torna all'utente
+        return finish("NO-GO", 1)
     before = unit_states(runner)
     if before is None:
         summary["nogo"] = ["systemd_unavailable"]
@@ -495,8 +542,7 @@ def execute_stop(spec: dict, *, providers: Optional[list] = None, ended_early_re
         if ru not in before:
             nogo.append(f"runner_unit_not_found:{p}")
         if before.get(eu, {}).get("ActiveState") != "active":
-            nogo.append(f"exit_service_not_active:{p}")               # fermare il runner lascerebbe posizioni senza uscite
-    summary["positions_before"] = {p: _live_positions(spec, p, allowed_root, trusted_uid, chain_anchor) for p in sel}
+            nogo.append(f"exit_service_not_active:{p}")               # fermare il runner lascerebbe posizioni senza chi le chiude
     if nogo:
         summary["nogo"] = nogo
         summary["services_before"] = {u: before[u] for u in before if u.startswith("superbot-arena-")}
@@ -518,10 +564,10 @@ def execute_stop(spec: dict, *, providers: Optional[list] = None, ended_early_re
                     "runners_still_active": still_active, "exit_services_untouched": exits_ok,
                     "services_before": {u: before[u] for u in before if u.startswith("superbot-arena-")},
                     "services_after": {u: after[u] for u in after if u.startswith("superbot-arena-")},
-                    "positions_after": {p: _live_positions(spec, p, allowed_root, trusted_uid, chain_anchor) for p in sel},
-                    "next": "attendere la chiusura naturale delle posizioni (max 24h) poi eseguire 'full' per lo snapshot definitivo"})
-    ok = not failed and not still_active and exits_ok
-    return finish("OPENINGS_STOPPED" if ok else "NO-GO", 0 if ok else 1)
+                    "next": "verificare l'avanzamento delle uscite con `full --groups ...` (posizioni aperte, eta', exit service): "
+                            "nessun timeout automatico, nessuna chiusura forzata"})
+    ok_all = not failed and not still_active and exits_ok
+    return finish("OPENINGS_STOPPED" if ok_all else "NO-GO", 0 if ok_all else 1)
 
 
 # --------------------------------------------------------------------------- CLI
@@ -543,12 +589,14 @@ def main(argv: list, *, data: bytes, spec: dict, code_path: str, module_hashes: 
         p.add_argument("--keep-restore", action="store_true")
         p.add_argument("--groups", help="sottoinsieme di gruppi separati da virgola (es. arena_minimax)")
         p.add_argument("--ended-early-reason", help="motivo (token) se l'Arena e' conclusa prima delle 72h")
-    common(sub.add_parser("status", help="SOLA LETTURA: unita' Arena e posizioni aperte"), False)
+    common(sub.add_parser("status-services", help="SOLO systemd (nessun database): stato dei servizi Arena"), False)
     p = sub.add_parser("stop-openings", help="ferma SOLO i runner Arena selezionati (le uscite restano attive)")
     common(p, True)
     p.add_argument("--ended-early-reason", required=True)
     p.add_argument("--providers", help="es. minimax oppure deepseek,qwen,minimax (default: tutti e tre)")
     p.add_argument("--confirm-stop-runners", action="store_true", required=True)
+    p.add_argument("--checkpoint-run", required=True, help="run_id di un `full` RECENTE (checkpoint coerente PRE-stop)")
+    p.add_argument("--max-checkpoint-age-min", type=int, default=MAX_CHECKPOINT_AGE_S // 60)
     a = ap.parse_args(argv)
     sha = hashlib.sha256(data).hexdigest()
     if a.cmd == "selftest":
@@ -569,12 +617,13 @@ def main(argv: list, *, data: bytes, spec: dict, code_path: str, module_hashes: 
         os.nice(19)
     except OSError:
         pass
-    if a.cmd == "status":
-        return execute_status(spec, code_sha=sha)[0]
+    if a.cmd == "status-services":
+        return execute_status_services(code_sha=sha)[0]
     if a.cmd == "stop-openings":
         try:
             return execute_stop(spec, providers=a.providers.split(",") if a.providers else None,
-                                ended_early_reason=a.ended_early_reason, auth_ref=a.auth_ref, code_sha=sha)[0]
+                                ended_early_reason=a.ended_early_reason, auth_ref=a.auth_ref, code_sha=sha,
+                                checkpoint_run=a.checkpoint_run, max_checkpoint_age_s=a.max_checkpoint_age_min * 60)[0]
         except ValueError as exc:
             print(f"NO-GO: argomenti non validi ({exc}); nessuna azione eseguita")
             return 2

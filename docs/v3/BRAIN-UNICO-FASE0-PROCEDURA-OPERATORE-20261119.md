@@ -95,21 +95,27 @@ Serve da te: la chiave pubblica `age`, la destinazione e chi custodisce la priva
 python3 ops/brain-unico/sealed/build_sealed.py --check      # il bundle committato coincide con i sorgenti
 sha256sum ops/brain-unico/sealed/phase0_sealed.py            # = <SHA256> del messaggio
 python3 -I ops/brain-unico/sealed/phase0_sealed.py selftest  # versioni e hash dei moduli, senza privilegi né dati
-python3 ops/brain-unico/sealed/test_sealed.py                # 61 test sintetici
-python3 ops/brain-unico/phase0/test_risk_audit.py            # 17 test sintetici
+python3 ops/brain-unico/sealed/test_sealed.py                # 76 test sintetici
+python3 ops/brain-unico/phase0/test_risk_audit.py            # 24 test sintetici
 python3 ops/brain-unico/phase0/test_phase0.py                # 90 test sintetici
 python3 ops/brain-unico/test_inventory.py                    # 29 test sintetici
 ```
 
 Il bundle è un file di testo: i moduli incorporati compaiono come commenti `#|`, leggibili in review; `selftest` stampa lo SHA256 di ciascun modulo, confrontabile con i file del repository.
 
-## 10. Comandi aggiunti dopo la decisione "Brain Unico prioritario" (19/11/2026, 10:20)
+## 10. Comandi aggiunti dopo la decisione "Brain Unico prioritario" (19/11/2026, 10:20) e corretti dopo la revisione della PR #117
 
 Stesso bundle, stessa riga di avvio, stessi controlli di fiducia. Dettagli, GO/NO-GO e valutazione del rischio MiniMax in `BRAIN-UNICO-ARENA-FINALIZZAZIONE-ANTICIPATA-20261119.md`.
 
 | Comando | Effetto | Consenso |
 |---|---|---|
-| `status` | sola lettura: unità Arena e posizioni aperte per provider | operatore |
-| `full --groups arena_minimax` | copia del solo gruppo indicato + **audit dei limiti di rischio** dalle copie (solo numeri) | operatore |
+| `status-services` | **solo systemd**: nessun database, nessun file di dati. Esito `SERVICES_OK` (exit 0) oppure `INCOMPLETE` (exit 1) | operatore |
+| `full --groups arena_minimax` | copia del solo gruppo indicato (azione autorizzata a parte) + **audit dei limiti** dalle copie, solo numeri; posizioni aperte, età e ritardi di uscita vengono **da qui** | operatore |
 | `full … --ended-early-reason TOKEN` | registra motivo e durata effettiva rispetto alle 72 ore | operatore |
-| `stop-openings --providers … --ended-early-reason TOKEN --auth-ref … --confirm-stop-runners` | ferma **solo** i runner Arena indicati; le uscite restano attive; idempotente | **consenso operativo esplicito** |
+| `stop-openings --checkpoint-run <run_id> --providers … --ended-early-reason TOKEN --auth-ref … --confirm-stop-runners` | ferma **solo** i runner indicati; richiede un **checkpoint coerente PRE-stop recente e completo** (un `full` valido di tutti i provider selezionati); le uscite restano attive; idempotente | **consenso operativo esplicito** |
+
+Il vecchio comando `status` (che apriva i journal) **non esiste più**: leggere un DB in WAL può aggiornare o creare `-shm`, quindi nessun comando eseguito come root lo fa senza un'azione autorizzata a parte.
+
+**`--auth-ref` non è un'autorizzazione né un'autenticazione:** è soltanto un riferimento per la tracciabilità. Il consenso è quello esplicito dell'utente nella conversazione; il bundle non può verificarlo.
+
+**Verifica indipendente dell'hash.** Calcolarlo sui byte del commit pubblicato, non sul file scaricato da altre fonti: `git show <commit>:ops/brain-unico/sealed/phase0_sealed.py | sha256sum`. Dopo qualunque patch l'hash cambia: un hash vecchio non vale per il bundle nuovo.
