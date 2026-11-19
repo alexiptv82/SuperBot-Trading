@@ -17,6 +17,7 @@ from typing import Any, Optional
 from urllib.parse import quote
 
 from schema import short_code
+import snapshot_link as SL
 
 _SAFE_STR = re.compile(r"[A-Za-z0-9_.:/+-]{1,24}")
 _DROP_KEYS = frozenset({"reason", "why", "seasonal", "rationale", "note", "text", "pattern"})
@@ -164,14 +165,21 @@ def read_v3(path: str) -> dict:
     opens: dict = {}
     closes: dict = {}
     runs: set = set()
+    snapshots: dict = {}
+    timeline = SL.Timeline()
     con = open_frozen(path)
     try:
         if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='v3_events'").fetchone():
-            return {"kind": "v3", "decisions": {}, "opens": {}, "closes": {}, "runs": [], "stats": {"no_v3_table": 1}}
-        for seq, eid, run, kind, ts, payload in con.execute(
-                "SELECT seq,event_id,run_id,kind,occurred_at_ms,payload_json FROM v3_events ORDER BY seq"):
+            return {"kind": "v3", "decisions": {}, "opens": {}, "closes": {}, "runs": [], "stats": {"no_v3_table": 1},
+                    "snapshots": {}, "timeline": timeline}
+        cols = {r[1] for r in con.execute("PRAGMA table_info(v3_events)")}
+        hash_col = "event_hash" if "event_hash" in cols else "NULL"
+        for seq, eid, run, kind, ts, payload, ehash in con.execute(
+                f"SELECT seq,event_id,run_id,kind,occurred_at_ms,payload_json,{hash_col} FROM v3_events ORDER BY seq"):
             st["rows"] += 1
             runs.add(run)
+            if kind != SL.KIND and type(ts) is int:
+                timeline.add(run, ts, seq)
             try:
                 p = json.loads(payload)
             except ValueError:
@@ -181,9 +189,12 @@ def read_v3(path: str) -> dict:
                 st["non_dict_rows"] += 1
                 continue
             if kind == "brain_decision":
-                decisions[eid] = {"ts": ts, "run": run, "seq": seq, "kind": p.get("kind"), "status": p.get("status"),
+                decisions[eid] = {"ts": ts, "run": run, "seq": seq, "hash": ehash, "kind": p.get("kind"), "status": p.get("status"),
                                   "symbol": p.get("symbol"), "regime": p.get("regime"),
                                   "strategy_id": p.get("strategy_id"), "strategy_origin": p.get("strategy_origin")}
+            elif kind == SL.KIND:
+                snapshots.setdefault(str(p.get("decision_event_id")), []).append({"seq": seq, "run": run, "ts": ts, "p": p})
+                st["snapshots"] += 1
             elif kind == "paper_open":
                 opens[str(p.get("position_id"))] = {"ts": ts, "run": run, "seq": seq, "p": p}
             elif kind == "paper_close":
@@ -196,7 +207,8 @@ def read_v3(path: str) -> dict:
                 st["other_kinds"] += 1
     finally:
         con.close()
-    return {"kind": "v3", "decisions": decisions, "opens": opens, "closes": closes, "runs": sorted(runs), "stats": dict(st)}
+    return {"kind": "v3", "decisions": decisions, "opens": opens, "closes": closes, "runs": sorted(runs), "stats": dict(st),
+            "snapshots": snapshots, "timeline": timeline}
 
 
 # --------------------------------------------------------------------------- Brain storico (SQLite legacy, formato tollerante)

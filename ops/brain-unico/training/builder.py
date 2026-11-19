@@ -31,6 +31,7 @@ import features as F  # noqa: E402
 import labels as L  # noqa: E402
 import readers as R  # noqa: E402
 import schema as S  # noqa: E402
+import snapshot_link as SL  # noqa: E402
 import sufficiency as SU  # noqa: E402
 
 COST_BP = 16.0
@@ -151,7 +152,8 @@ class Ctx:
         self.stats: Counter = Counter()
 
     def add(self, run: str, kind: str, key: str, ts: int, symbol: str, action: str, proposal: dict, outcome: dict,
-            logged_features: Optional[dict], extra_prov: Optional[dict] = None, flags: Optional[list] = None) -> None:
+            logged_features: Optional[dict], extra_prov: Optional[dict] = None, flags: Optional[list] = None,
+            asof_ms: Optional[int] = None) -> None:
         side = 1 if action == "LONG" else -1 if action == "SHORT" else 0
         feats, fsrc = get_features(self.store, symbol, ts, logged_features)
         lab, bar_ok, hz_ok = make_labels(self.store, symbol, ts, side, proposal, feats, self.cost)
@@ -180,7 +182,7 @@ class Ctx:
                "source_system": self.inp["source_system"], "source_run": run, "source_kind": self.inp["kind"],
                "record_kind": kind, "decision_ts_ms": ts, "decision_day": S.utc_day(ts), "symbol": symbol, "action": action,
                "side": side, "executed": kind == "executed", "features": feats, "feature_source": fsrc,
-               "feature_asof_ms": (feats or {}).get("asof_candle_open_ms"), "proposal": proposal, "outcome": outcome,
+               "feature_asof_ms": asof_ms if asof_ms is not None and fsrc == "logged_at_decision" else (feats or {}).get("asof_candle_open_ms"), "proposal": proposal, "outcome": outcome,
                "labels": lab, "label_complete": bar_ok, "horizons_complete": hz_ok, "label_origin": _label_origin(outcome["status"]),
                "quality_flags": sorted(q), "eligible_for_training": False, "ineligible_reasons": ["pending"],
                "is_synthetic": False,
@@ -329,6 +331,9 @@ def build_v3(inp: dict, store, cost_bp: float) -> Ctx:
         sym = str(dec.get("symbol") or "")
         kind, status = str(dec.get("kind") or ""), str(dec.get("status") or "")
         pids = by_decision.get(eid, [])
+        adm = SL.admit(eid, dec, d["snapshots"].get(eid), [d["opens"][x]["seq"] for x in pids], d["timeline"])
+        if adm.status != "none":
+            cx.stats["snapshot:" + adm.status + (":" + adm.reason if adm.reason else "")] += 1
         for pid in pids:
             o = d["opens"][pid]
             side = R._side(o["p"].get("side"))
@@ -336,16 +341,18 @@ def build_v3(inp: dict, store, cost_bp: float) -> Ctx:
                 linked.add(pid)
                 out = outcome_for(pid, o)
                 cx.add(o["run"], "executed", pid, dec["ts"], sym, "LONG" if side == 1 else "SHORT", proposal_for(o, dec),
-                       out, None, {"link_status": "linked"}, manual_flags(out, pid))
+                       out, adm.features, {"link_status": "linked", **adm.prov}, manual_flags(out, pid) + adm.flags, adm.asof_ms)
         if pids:
             continue
         if kind == "NO_TRADE" and sym:
             cx.add(dec["run"], "no_trade", eid, dec["ts"], sym, "NO_TRADE", {"entry": None, "stop": None, "target": None,
-                   "regime": S.short_code(dec.get("regime")) if dec.get("regime") else None}, not_executed(), None)
+                   "regime": S.short_code(dec.get("regime")) if dec.get("regime") else None}, not_executed(), adm.features,
+                   adm.prov, adm.flags, adm.asof_ms)
         elif kind == "OPEN" and sym:
             code = "approved_not_executed" if status == "APPROVED" else S.short_code(status)
             cx.add(dec["run"], "candidate_rejected", eid, dec["ts"], sym, "OPEN_REJECTED",
-                   {"entry": None, "stop": None, "target": None, "reject_code": code}, not_executed(), None)
+                   {"entry": None, "stop": None, "target": None, "reject_code": code}, not_executed(), adm.features,
+                   adm.prov, adm.flags, adm.asof_ms)
         else:
             cx.stats["non_entry_decisions"] += 1
     for pid, o in sorted(d["opens"].items(), key=lambda kv: (kv[1]["ts"], kv[0])):
