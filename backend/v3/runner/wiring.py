@@ -49,10 +49,10 @@ from backend.v3.runner.alerts import telegram_sender
 from backend.v3.runner.config import RunnerConfig, default_config_path, load_runner_config
 from backend.v3.runner.prepared_config_guard import verify_prepared_run_config
 from backend.v3.runner.contracts import ContractRules
-from backend.v3.runner.daily_loss import DailyLossGuard, evaluate_daily_loss
+from backend.v3.runner.daily_loss import DailyLossGuard, evaluate_daily_loss, max_daily_loss_between
 from backend.v3.runner.cycle import CycleBars, CycleReport, MarketEntryAnalyst, PORTFOLIO_ID, run_brain_cycle
 from backend.v3.runner.exits import load_default_policy
-from backend.v3.runner.feed import CandleStore, last_minute_close, minute_fetcher
+from backend.v3.runner.feed import CandleStore, fetch_closed_bars, last_minute_close, minute_fetcher
 from backend.v3.runner.manual_close import ManualCloseReport, run_manual_close
 from backend.v3.runner.metering import BudgetHalt, MeteredTransport
 from backend.v3.runner.monitor import MonitorReport, run_exit_monitor
@@ -235,7 +235,12 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         evaluate=lambda now_ms: evaluate_daily_loss(
             journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id, initial_equity=config.initial_equity,
             now_ms=now_ms, price_of=lambda sym, now: last_minute_close(sym, now, get_json),
-            warn_fraction=config.daily_loss_warn, halt_fraction=config.daily_loss_halt))
+            warn_fraction=config.daily_loss_warn, halt_fraction=config.daily_loss_halt),
+        audit=lambda from_ms, now_ms: max_daily_loss_between(
+            journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id, initial_equity=config.initial_equity,
+            from_ms=from_ms, now_ms=now_ms,
+            closes_of=lambda sym, lo, hi: {b.open_time_ms: b.close for b in fetch_closed_bars(
+                sym, lo, hi, candle_ms=60_000, get_json=get_json)}))
 
     runner = Runner(
         run_id=run_id, data_dir=data_dir,
