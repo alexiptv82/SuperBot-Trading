@@ -1,3 +1,14 @@
+## 19/11/2026 18:45 Europe/Rome — Cloud temporaneo, Arena preservata, P0 latch e PR #123
+
+- Checkpoint: [`diario/2026-11-19_1845_cloud-temporaneo-arena-preservata-p0-latch-pr123.md`](diario/2026-11-19_1845_cloud-temporaneo-arena-preservata-p0-latch-pr123.md), commit [`7c58694…`](https://github.com/alexiptv82/SuperBot-Trading/commit/7c5869444e7583c827789d9e848db7a18fe2975d).
+- Decisione temporanea: Claude/Cloud operatore principale fino a nuova indicazione; ChatGPT resta consulente sui report e custode del checkpoint. Non è un passaggio definitivo e non amplia automaticamente le autorizzazioni VPS.
+- Decisione Arena: dati, EventJournal, trade, decisioni, scoreboard e metadati vanno preservati integralmente anche se performano male; conservazione non equivale a eleggibilità al training.
+- PR #121 open/draft → `5b7403a…`: due test legacy aggiornati dopo verifica Claude della precedente HEAD (8/8 nuovi PASS; suite 1110 PASS, 7 FAIL, 1 skip). Nuova HEAD non ancora rieseguita sul checkout completo; 0 workflow/status.
+- Nuova Issue #124 P0: latch HALT daily-loss può perdersi dopo file corrotto/scrittura fallita + restart. NO-GO a nuovi deploy Brain Unico finché non chiusa e verificata; uscite/sidecar restano autonome.
+- PR #123 open/draft → `c51c752…`: laboratorio SHADOW costi con tre modelli fissi, niente auto-routing/fallback/provider reali/journal operativo. 13 PASS locali riferiti, 0 workflow/status, non integrata. Era precedente al checkpoint 17:46 ma omessa: lacuna recuperata.
+- PR #122 `513448e…`, RC84 #80 `0e29a73…`, extbackup `3dc2116…` non installato e age PC `ESITO: VERIFICA OK` ma non VPS invariati.
+- Solo documentazione; nessun merge/deploy/Action/VPS/restart/reset/ordine/training/API. PAPER, storici ed EventJournal preservati.
+
 ## 19/11/2026 17:46 Europe/Rome — avanzamento PR #121/#122 e lavoro parallelo LLM
 
 - Checkpoint: [`diario/2026-11-19_1746_pr121-pr122-grok-llm.md`](diario/2026-11-19_1746_pr121-pr122-grok-llm.md), commit [`6cbc328…`](https://github.com/alexiptv82/SuperBot-Trading/commit/6cbc3281ad0bc1258a0f950e22875e42fdc82029).
