@@ -1,3 +1,14 @@
+## 19/11/2026 15:45 Europe/Rome — PR #118/#119 aggiornate e FreeLLMAPI
+
+- Nuovo checkpoint: [`diario/2026-11-19_pr118-pr119-e0-freellmapi.md`](diario/2026-11-19_pr118-pr119-e0-freellmapi.md), commit [`64861fc…`](https://github.com/alexiptv82/SuperBot-Trading/commit/64861fcf34aa80dabd6cc738cb5a643d529d2b86).
+- PR #118 open/draft → `0833c0d…`: gap simbolo/cycle e attestazione affrontati nel codice; 103 test sintetici e mutazioni riferiti da Claude, ma 0 check/status. Prova reale con run/ancora esterna ancora mancante.
+- PR #119 open/draft → `d6ed73d…`: aggiunto E0 offline per EV post-profitto e reingressi; 18 test/23 mutazioni riferiti, 0 check/status; nessun dato reale e Guardian runtime non iniziato.
+- Decisione utente formalizzata nella [Issue #113](https://github.com/alexiptv82/SuperBot-Trading/issues/113#issuecomment-7011676720): predisporre FreeLLMAPI nello stesso Brain unico come consulente opzionale in shadow per misurare utilità/costi; DeepSeek resta decisore, RiskManager/ExitService indipendenti.
+- FreeLLMAPI non è installato né approvato operativamente: feature flag OFF, allowlist e modelli fissati; niente auto-routing libero, chiavi/spese/VPS. Free tier e SLA non garantiti.
+- Release contract [Issue #113](https://github.com/alexiptv82/SuperBot-Trading/issues/113#issuecomment-7010755049) invariato: release candidate completa, zero P0 e un solo GO/NO-GO prima del PAPER finale integrato.
+- RC84 #80 `0e29a73…`, extbackup `3dc2116…` non installato e age PC `ESITO: VERIFICA OK` ma non VPS invariati.
+- Solo documentazione: nessun merge/deploy/Action/VPS/restart/reset/ordine/API; PAPER, storici ed EventJournal preservati.
+
 ## 19/11/2026 Claude — fix residui PR #118 e misura E0 (PR #119)
 
 - Voce: [`diario/2026-11-19_claude-fix-pr118-provenienza-e0.md`](diario/2026-11-19_claude-fix-pr118-provenienza-e0.md).
