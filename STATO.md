@@ -1,3 +1,13 @@
+## 19/11/2026 12:47 Europe/Rome — PR #117/#118, review e gap residui
+
+- Nuovo checkpoint: [`diario/2026-11-19_pr117-pr118-review-gap-residui.md`](diario/2026-11-19_pr117-pr118-review-gap-residui.md), commit [`e743de1…`](https://github.com/alexiptv82/SuperBot-Trading/commit/e743de12825f408c0ec8865ade097e0801b8bc69).
+- [PR #117](https://github.com/alexiptv82/SuperBot-Trading/pull/117) open/draft HEAD `6dcdedc…`: finalizzazione Arena e audit rischio preparati; `status-services` solo systemd, checkpoint PRE-stop obbligatorio. 76+90+24+29 PASS e 28/28 mutazioni riferiti, non replicati; 0 Actions/check/status.
+- [PR #118](https://github.com/alexiptv82/SuperBot-Trading/pull/118) open/draft HEAD `e983d36…`: Dataset Builder schema v2, 88 PASS e 33/33 mutazioni riferiti; 0 Actions/check/status.
+- Restano due gap PR #118 senza nuovo SHA: conflitto simbolo/ciclo nel linking feature e attestazione non sufficientemente legata a run/manifest/audit reali. Nessun training o dato reale autorizzato.
+- I checkpoint Claude `0aaa61f…` e `1e84f92…` erano già nel diario ma non nella Library; riallineamento richiesto. La sezione `STATO.md` “13:10” del commit delle 12:37 è mantenuta come storico e marcata temporalmente incoerente.
+- Age PC `ESITO: VERIFICA OK` non certifica VPS; extbackup `3dc2116…` preparato/non installato; RC84 #80 `0e29a73…` invariata.
+- Nessun merge/deploy/root/snapshot/stop Arena/VPS/reset/ordine/API a pagamento; PAPER, storici ed EventJournal preservati.
+
 ## 19/11/2026 13:10 Europe/Rome — Claude: fix delle revisioni PR #117 e #118
 
 - Nuovo checkpoint: [`diario/2026-11-19_claude-fix-revisioni-pr117-pr118.md`](diario/2026-11-19_claude-fix-revisioni-pr117-pr118.md).
