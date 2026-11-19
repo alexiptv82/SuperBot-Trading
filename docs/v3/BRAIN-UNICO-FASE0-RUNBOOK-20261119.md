@@ -64,6 +64,7 @@ Rollback: tutto ciò che i passi producono sta in una directory di laboratorio; 
 
 ## 7. Decisioni che potrebbero servire dopo lo step 1–2
 
+0. **Decisione presa (19/11/2026): opzione B**, eseguita dall'operatore con un bundle sigillato: vedi `BRAIN-UNICO-FASE0-PROCEDURA-OPERATORE-20261119.md`. Il resto di questa sezione resta come registro delle alternative.
 1. Se le sorgenti non sono leggibili da `superbot-agent`: (A) tu concedi una lettura mirata e reversibile (richiede un intervento privilegiato **non autorizzato ora**), oppure (B) lo snapshot lo esegue l'utente proprietario dei dati con un solo comando (lo preparo), oppure (C) si resta alla sola discovery.
 2. Se un DB WAL vivo ha `-shm` non scrivibile da noi: stessa scelta (A/B/C); non si usa mai `immutable=1` su un DB vivo (leggerebbe il solo file principale, incoerente).
 3. Dove conservare il backup esterno cifrato (fuori host) e chi custodisce la chiave.

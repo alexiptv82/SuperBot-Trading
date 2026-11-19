@@ -1193,5 +1193,59 @@ class P1_AuditDoesNotCertify(AuditHelpers):
         self.assertEqual(rep["certification_blockers"], ["same_host_copy", "capture_not_atomic_across_sources"])
 
 
+class SealedSupportFeatures(Base):
+    """Funzioni dello snapshot usate dal bundle sigillato: esclusioni, opzionali, dati obbligatori, tetto."""
+
+    def test_default_excluded_dirs_are_pruned_and_counted(self):
+        self.write("t/data.jsonl", "{}\n")
+        for d in (".venv", "node_modules", "__pycache__", ".git", "venv", "site-packages"):
+            self.write(f"t/{d}/x.py", "x=1\n")
+            self.write(f"t/sub/{d}/y.py", "y=1\n")
+        code, rep, dest = self.go([{"id": "t", "kind": "tree", "path": self.p("t")}])
+        self.assertEqual(code, 0)
+        self.assertEqual([i["dst_rel"] for i in rep["items"]], ["t/data.jsonl"])
+        self.assertEqual(rep["preflight"]["by_source"]["t"]["excluded_dirs"], 12)
+        self.assertEqual(rep["preflight"]["skipped"]["excluded_dirs"], 12)
+
+    def test_optional_missing_source_is_allowed_with_warning(self):
+        f = self.write("a.jsonl", "{}\n")
+        sp = self.spec([{"id": "a", "kind": "jsonl", "path": f, "group": "g"},
+                        {"id": "ot", "kind": "tree", "path": self.p("nope_tree"), "group": "g", "optional": True},
+                        {"id": "of", "kind": "file", "path": self.p("nope.json"), "group": "g", "optional": True}])
+        code, rep = snap.run_snapshot(sp, os.path.join(self.work, "d"), "ref", True)[0:2]
+        self.assertEqual(code, 0, rep["preflight"]["nogo"])
+        self.assertEqual(sorted(w["id"] for w in rep["preflight"]["warn"] if w["code"] == "optional_source_missing"),
+                         ["of", "ot"])
+        self.assertTrue(rep["preflight"]["by_source"]["ot"]["missing"])
+
+    def test_required_missing_source_is_still_nogo(self):
+        sp = self.spec([{"id": "a", "kind": "jsonl", "path": self.write("a.jsonl", "{}\n"), "group": "g"},
+                        {"id": "m", "kind": "tree", "path": self.p("nope"), "group": "g"}])
+        code, rep = snap.run_snapshot(sp, os.path.join(self.work, "d"), "ref", True)[0:2]
+        self.assertEqual(code, 1)
+
+    def test_require_data_rejects_group_with_only_code_or_config(self):
+        self.write("c/app.py", "x=1\n")
+        self.write("c/config.json", "{}")
+        sp = self.spec([{"id": "c", "kind": "tree", "path": self.p("c"), "group": "g"}])
+        code, rep = snap.run_snapshot(sp, os.path.join(self.work, "d"), "ref", True, require_data=False)[0:2]
+        self.assertEqual(code, 0)
+        code, rep = snap.run_snapshot(sp, os.path.join(self.work, "d2"), "ref", True, require_data=True)[0:2]
+        self.assertEqual(code, 1)
+        self.assertIn("required_group_without_data_files", {n["code"] for n in rep["preflight"]["nogo"]})
+        self.write("c/h.jsonl", "{}\n")
+        code, rep = snap.run_snapshot(sp, os.path.join(self.work, "d3"), "ref", True, require_data=True)[0:2]
+        self.assertEqual(code, 0)
+
+    def test_total_size_cap_and_bytes_by_group(self):
+        sp = self.spec([{"id": "a", "kind": "jsonl", "path": self.write("a.jsonl", "x" * 500 + "\n"), "group": "g1"},
+                        {"id": "b", "kind": "jsonl", "path": self.write("b.jsonl", "y" * 100 + "\n"), "group": "g2"}])
+        code, rep = snap.run_snapshot(sp, os.path.join(self.work, "d"), "ref", True, max_total_bytes=100)[0:2]
+        self.assertEqual(code, 1)
+        self.assertIn("total_size_exceeds_limit", {n["code"] for n in rep["preflight"]["nogo"]})
+        code, rep = snap.run_snapshot(sp, os.path.join(self.work, "d2"), "ref", True, max_total_bytes=10_000)[0:2]
+        self.assertEqual(rep["preflight"]["bytes_by_group"], {"g1": 501, "g2": 101})
+
+
 if __name__ == "__main__":
     unittest.main()

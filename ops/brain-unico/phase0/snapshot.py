@@ -33,7 +33,8 @@ import time
 from typing import Any, Callable, Optional
 from urllib.parse import quote
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if not getattr(sys, "_phase0_sealed", False):          # bundle sigillato: nessuna modifica di sys.path
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import inventory as inv  # noqa: E402
 
 SCHEMA = 1
@@ -46,6 +47,7 @@ SQLITE_BUSY_S = 1.0
 SQLITE_MAX_SECONDS = 600
 ID_RE = re.compile(r"[A-Za-z0-9_.-]{1,60}")
 KINDS = ("sqlite", "jsonl", "file", "tree")
+EXCLUDE_DIRS = frozenset({".venv", "venv", "node_modules", "__pycache__", ".git", "site-packages"})
 SIDE = inv.DB_SIDE
 
 # Solo per i test: _HOOK(stage, path) con stage in {"after_copy"}.
@@ -134,14 +136,18 @@ def load_spec(path: str) -> tuple:
 
 def expand(sources: list[dict]) -> tuple:
     """Espande i 'tree' in file singoli. Ritorna (items, skipped_totali, per_sorgente)."""
-    items, total = [], {"sensitive": 0, "side_files": 0, "symlinks": 0, "special": 0, "walk_errors": 0}
+    items, total = [], {"sensitive": 0, "side_files": 0, "symlinks": 0, "special": 0, "walk_errors": 0,
+                        "excluded_dirs": 0}
     by_source: dict[str, dict] = {}
     for s in sources:
-        sk = {"sensitive": 0, "side_files": 0, "symlinks": 0, "special": 0, "walk_errors": 0}
+        sk = {"sensitive": 0, "side_files": 0, "symlinks": 0, "special": 0, "walk_errors": 0, "excluded_dirs": 0}
         n0 = len(items)
+        missing = s["optional"] and not os.path.lexists(s["path"])          # sorgente opzionale assente: ammessa
         base = {"group": s["group"], "optional": s["optional"], "quiescence_evidence": s["quiescence_evidence"],
                 "source_id": s["id"]}
-        if s["kind"] != "tree":
+        if missing:
+            pass
+        elif s["kind"] != "tree":
             items.append({"id": s["id"], "kind": s["kind"], "path": s["path"],
                           "rel": os.path.join(s["id"], os.path.basename(s["path"])), **base})
         elif os.path.islink(s["path"]) or not os.path.isdir(s["path"]):
@@ -150,7 +156,9 @@ def expand(sources: list[dict]) -> tuple:
             def onerr(_e: OSError, _sk=sk) -> None:
                 _sk["walk_errors"] += 1
             for d, dn, fn in os.walk(s["path"], followlinks=False, onerror=onerr):
-                dn.sort()
+                kept = sorted(x for x in dn if x not in EXCLUDE_DIRS)
+                sk["excluded_dirs"] += len(dn) - len(kept)
+                dn[:] = kept
                 for name in sorted(fn):
                     full = os.path.join(d, name)
                     rel = os.path.relpath(full, s["path"])
@@ -172,7 +180,8 @@ def expand(sources: list[dict]) -> tuple:
                         kind = "jsonl" if low.endswith(".jsonl") else "sqlite" if low.endswith(inv.DB_EXT) else "file"
                         items.append({"id": f"{s['id']}/{rel}", "kind": kind, "path": full,
                                       "rel": os.path.join(s["id"], rel), **base})
-        by_source[s["id"]] = {**sk, "items": len(items) - n0, "optional": s["optional"], "group": s["group"]}
+        by_source[s["id"]] = {**sk, "items": len(items) - n0, "optional": s["optional"], "group": s["group"],
+                              "missing": bool(missing)}
         for k in sk:
             total[k] += sk[k]
     return items, total, by_source
@@ -180,9 +189,20 @@ def expand(sources: list[dict]) -> tuple:
 
 # --------------------------------------------------------------------------- preflight
 
+def _bytes_by_group(items: list) -> dict:
+    out: dict[str, int] = {}
+    for it in items:
+        try:
+            out[it["group"]] = out.get(it["group"], 0) + os.lstat(it["path"]).st_size
+        except OSError:
+            pass
+    return out
+
+
 def preflight(items: list[dict], skipped: dict, dest: str, space_factor: float, reserve_bytes: int,
               roots: Optional[list[dict]] = None, by_source: Optional[dict] = None,
-              required_groups: Optional[list] = None) -> dict:
+              required_groups: Optional[list] = None, require_data: bool = False,
+              max_total_bytes: Optional[int] = None) -> dict:
     nogo: list[dict] = []
     warn: list[dict] = []
     dest_abs = os.path.abspath(dest)
@@ -204,6 +224,8 @@ def preflight(items: list[dict], skipped: dict, dest: str, space_factor: float, 
     for sid, bs in (by_source or {}).items():
         if bs["items"] == 0 and not bs["optional"]:
             nogo.append({"code": "source_yields_no_items", "id": sid})
+        if bs.get("missing"):
+            warn.append({"code": "optional_source_missing", "id": sid})
         if bs["symlinks"] or bs["special"]:
             warn.append({"code": "source_has_excluded_symlinks_or_special", "id": sid,
                          "symlinks": bs["symlinks"], "special": bs["special"]})
@@ -212,6 +234,8 @@ def preflight(items: list[dict], skipped: dict, dest: str, space_factor: float, 
         for g in required_groups:
             if g not in present:
                 nogo.append({"code": "required_group_without_items", "group": g})
+            elif require_data and not any(it["group"] == g and it["kind"] in ("sqlite", "jsonl") for it in items):
+                nogo.append({"code": "required_group_without_data_files", "group": g})   # solo codice/config non e' storico
     for it in items:
         p = it["path"]
         try:
@@ -241,6 +265,8 @@ def preflight(items: list[dict], skipped: dict, dest: str, space_factor: float, 
                     warn.append({"code": "hot_journal_present", "id": it["id"]})
     if skipped.get("walk_errors"):
         nogo.append({"code": "tree_walk_errors", "count": skipped["walk_errors"]})
+    if max_total_bytes is not None and total > max_total_bytes:
+        nogo.append({"code": "total_size_exceeds_limit", "total": total, "limit": max_total_bytes})
     free = None
     if os.path.isdir(parent):
         free = shutil.disk_usage(parent).free
@@ -248,7 +274,8 @@ def preflight(items: list[dict], skipped: dict, dest: str, space_factor: float, 
         if free < need:
             nogo.append({"code": "insufficient_space", "free": free, "need": need})
     return {"go": not nogo, "nogo": nogo, "warn": warn, "total_source_bytes": total, "free_bytes": free,
-            "items": len(items), "skipped": skipped, "by_source": by_source or {}}
+            "items": len(items), "skipped": skipped, "by_source": by_source or {},
+            "bytes_by_group": _bytes_by_group(items)}
 
 
 # --------------------------------------------------------------------------- copy primitives
@@ -533,10 +560,12 @@ COPIERS = {"sqlite": copy_sqlite, "jsonl": copy_append_only, "file": copy_small_
 # --------------------------------------------------------------------------- run
 
 def run_snapshot(spec_path: str, dest: str, auth_ref: Optional[str], dry_run: bool,
-                 space_factor: float = 2.0, reserve_mb: int = 512, sleep: Callable[[float], None] = time.sleep) -> tuple[int, dict]:
+                 space_factor: float = 2.0, reserve_mb: int = 512, sleep: Callable[[float], None] = time.sleep,
+                 require_data: bool = False, max_total_bytes: Optional[int] = None) -> tuple[int, dict]:
     roots, required = load_spec(spec_path)
     items, skipped, by_source = expand(roots)
-    pf = preflight(items, skipped, dest, space_factor, reserve_mb * 1024 * 1024, roots, by_source, required)
+    pf = preflight(items, skipped, dest, space_factor, reserve_mb * 1024 * 1024, roots, by_source, required,
+                   require_data, max_total_bytes)
     report: dict[str, Any] = {"schema": SCHEMA, "classification": "PRIVATE_DO_NOT_COMMIT", "preflight": pf,
                               "dry_run": dry_run}
     if dry_run or not pf["go"]:

@@ -26,7 +26,8 @@ import subprocess
 import sys
 from typing import Any, Callable, Optional
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if not getattr(sys, "_phase0_sealed", False):          # bundle sigillato: nessuna modifica di sys.path
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import inventory as inv  # noqa: E402
 
 RELEVANT = re.compile(r"superbot|brain|arena|falco|toro|hawk|bull|exit[-_]|v3|uvicorn|gunicorn", re.I)
