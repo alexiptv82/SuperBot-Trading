@@ -1,13 +1,16 @@
 {
   "schema": 1,
-  "_comment": "ESEMPIO con percorsi pubblici dichiarati nel repository: DA VERIFICARE con lo step 1 prima dell'uso. Copiare in un file PRIVATO fuori dal repo e correggere. Nessun segreto qui.",
+  "_comment": "ESEMPIO con percorsi pubblici dichiarati nel repository: DA VERIFICARE con lo step 1 prima dell'uso. Copiare in un file PRIVATO fuori dal repo. Nessun segreto. required_groups elenca cio' che DEVE essere coperto: un gruppo senza almeno un item e' NO-GO (non si deduce la completezza dall'esistenza dei percorsi). Per un DB WAL senza -wal/-shm aggiungere 'quiescence_evidence' (riferimento a una prova esterna, es. unita' verificata inattiva nello step 1), altrimenti NO-GO. Le tre Arena hanno directory <provider>/<run_id>/ sotto la radice; la run DeepSeek precedente all'Arena puo' stare altrove: verificarlo.",
+  "required_groups": ["falco", "toro", "brain_storico", "arena_deepseek", "arena_qwen", "arena_minimax"],
   "sources": [
-    {"id": "falco_data", "kind": "tree", "path": "/opt/superbot-desk-data/hawk"},
-    {"id": "toro_data", "kind": "tree", "path": "/opt/superbot-desk-data/bull"},
-    {"id": "v3_brain_run", "kind": "tree", "path": "/opt/superbot-v3-paper-runs/brain-v3-paper20261111"},
-    {"id": "v3_falco_run", "kind": "tree", "path": "/opt/superbot-v3-paper-runs/classic-hawk-paper20261111"},
-    {"id": "v3_toro_run", "kind": "tree", "path": "/opt/superbot-v3-paper-runs/classic-bull-paper20261111"},
-    {"id": "arena_runs", "kind": "tree", "path": "/opt/superbot-ai-arena-paper"},
-    {"id": "brain_free", "kind": "tree", "path": "/opt/superbot-brain-free"}
+    {"id": "falco_data", "group": "falco", "kind": "tree", "path": "/opt/superbot-desk-data/hawk"},
+    {"id": "toro_data", "group": "toro", "kind": "tree", "path": "/opt/superbot-desk-data/bull"},
+    {"id": "v3_falco_run", "group": "falco", "kind": "tree", "path": "/opt/superbot-v3-paper-runs/classic-hawk-paper20261111", "optional": true},
+    {"id": "v3_toro_run", "group": "toro", "kind": "tree", "path": "/opt/superbot-v3-paper-runs/classic-bull-paper20261111", "optional": true},
+    {"id": "brain_free", "group": "brain_storico", "kind": "tree", "path": "/opt/superbot-brain-free"},
+    {"id": "v3_brain_run", "group": "brain_storico", "kind": "tree", "path": "/opt/superbot-v3-paper-runs/brain-v3-paper20261111"},
+    {"id": "arena_deepseek", "group": "arena_deepseek", "kind": "tree", "path": "/opt/superbot-ai-arena-paper/deepseek"},
+    {"id": "arena_qwen", "group": "arena_qwen", "kind": "tree", "path": "/opt/superbot-ai-arena-paper/qwen"},
+    {"id": "arena_minimax", "group": "arena_minimax", "kind": "tree", "path": "/opt/superbot-ai-arena-paper/minimax"}
   ]
 }

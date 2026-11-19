@@ -30,7 +30,7 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import inventory as inv  # noqa: E402
-from snapshot import inside_git  # noqa: E402
+from snapshot import inside_git, mkdirs_private, safe_new_dir  # noqa: E402
 
 GENESIS = "0" * 64
 MAX_WINDOW_WARN_S = 900
@@ -91,20 +91,18 @@ def restore(snapshot_dir: str, restore_dir: str) -> dict:
     with open(log_path, encoding="utf-8") as fh:
         log = json.load(fh)
     rd = os.path.abspath(restore_dir)
-    if os.path.lexists(rd) and not (os.path.isdir(rd) and not os.listdir(rd)):
-        raise FileExistsError("restore_dir_not_empty")
     sd = os.path.realpath(snapshot_dir)
     rreal = os.path.join(os.path.realpath(os.path.dirname(rd)), os.path.basename(rd))
     if rreal == sd or rreal.startswith(sd + os.sep) or sd.startswith(rreal + os.sep):
         raise ValueError("restore_dir_overlaps_snapshot")
-    os.makedirs(rd, mode=0o700, exist_ok=True)
+    rd = safe_new_dir(rd)                           # deve essere NUOVA: mai riusare o toccare directory esistenti
     restored, bad = [], []
     for it in log["items"]:
         if it["status"] != "OK":
             continue
         src = os.path.join(snapshot_dir, it["dst_rel"])
         dst = os.path.join(rd, it["dst_rel"])
-        os.makedirs(os.path.dirname(dst), mode=0o700, exist_ok=True)
+        mkdirs_private(rd, os.path.dirname(it["dst_rel"]))
         try:
             with open(src, "rb") as fi, open(dst, "xb") as fo:
                 while True:
@@ -198,12 +196,16 @@ def audit(restore_dir: str, log: dict, expect_v3: Optional[dict] = None) -> dict
     checks["v3_chains"] = {k: {kk: v[kk] for kk in ("ok", "count", "head", "max_seq", "per_run")}
                            for k, v in chains.items()}
     verdict = "FAIL" if fails else ("WARN" if warns else "PASS")
-    return {"schema": 1, "classification": "PRIVATE_DO_NOT_COMMIT", "verdict": verdict, "fails": fails,
+    blockers = ["same_host_copy", "capture_not_atomic_across_sources"]
+    if any(w["code"] == "v3_chain_no_external_anchor" for w in warns):
+        blockers.append("no_external_anchor")
+    return {"schema": 1, "certifies_backup": False, "certification_blockers": blockers, "classification": "PRIVATE_DO_NOT_COMMIT", "verdict": verdict, "fails": fails,
             "warnings": warns, "notes": ["capture_not_atomic_across_sources"], "checks": checks, "items_expected": len(expected), "files_present": len(present)}
 
 
 def summary_of(rep: dict) -> dict:
     return {"schema": 1, "classification": "PUBLIC_SUMMARY_NUMBERS_ONLY", "verdict": rep["verdict"],
+            "certifies_backup": False, "certification_blockers": rep["certification_blockers"],
             "fail_codes": sorted({f["code"] for f in rep["fails"]}),
             "warning_codes": sorted({w["code"] for w in rep["warnings"]}),
             "items_expected": rep["items_expected"], "files_present": rep["files_present"],
@@ -250,7 +252,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     if a.summary:
         _write_new(a.summary, summary_of(rep), 0o644)
     print(f"{'GO' if rep['verdict'] != 'FAIL' else 'NO-GO'}: audit={rep['verdict']} "
-          f"fails={len(rep['fails'])} warnings={len(rep['warnings'])}")
+          f"fails={len(rep['fails'])} warnings={len(rep['warnings'])} certifies_backup=False "
+          f"blockers={','.join(rep['certification_blockers'])}")
     return 0 if rep["verdict"] != "FAIL" else 1
 
 

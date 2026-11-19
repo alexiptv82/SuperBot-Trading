@@ -109,7 +109,8 @@ class Base(unittest.TestCase):
         path = os.path.join(self.t, f"spec{self.n}.json")
         self.n += 1
         with open(path, "w") as fh:
-            json.dump({"schema": 1, "sources": sources}, fh)
+            json.dump({"schema": 1, "required_groups": sorted({s.get("group", s["id"]) for s in sources}),
+                       "sources": sources}, fh)
         return path
 
     def dest(self):
@@ -204,7 +205,8 @@ class SnapshotSqlite(Base):
         db, _ = self.make_wal_db("idle.sqlite3")
         self.assertEqual(os.listdir(self.src), ["idle.sqlite3"])         # chiusura pulita: nessun -wal/-shm
         before = tree_state(self.src)
-        res = snap.copy_sqlite(db, os.path.join(self.work, "o.sqlite3"), sleep=NOSLEEP)
+        res = snap.copy_sqlite(db, os.path.join(self.work, "o.sqlite3"), sleep=NOSLEEP,
+                               quiescence_evidence="STEP1: unita' inactive, verificata")
         self.assertEqual((res["status"], res["method"], res["tables"]), ("OK", "file_copy_checkpointed", {"t": 50}))
         self.assertEqual(before, tree_state(self.src))                  # NIENTE -shm/-wal creati nella sorgente
         self.assertEqual(sorted(os.listdir(self.work)), ["o.sqlite3"])  # copia standalone
@@ -396,7 +398,7 @@ class SnapshotPreflight(Base):
         os.makedirs(d)
         open(os.path.join(d, "x"), "w").close()
         code, rep = snap.run_snapshot(self.spec(self.src_spec()), d, "ref", True)[0:2]
-        self.assertIn("dest_exists_not_empty", self.codes(rep))
+        self.assertIn("dest_exists", self.codes(rep))
         inside = os.path.join(self.src, "dest_inside_src")
         code, rep = snap.run_snapshot(self.spec(self.src_spec()), inside, "ref", True)[0:2]
         self.assertEqual(code, 0)                                         # un file sorgente non contiene la dest
@@ -451,7 +453,7 @@ class SnapshotPreflight(Base):
         self.assertEqual(snap.main(["--spec", spec, "--dest", os.path.join(repo, "d"), "--dry-run"]), 1)
 
 
-class AuditRestore(Base):
+class AuditHelpers(Base):
     def build(self, tamper=None, anchor_count=None):
         head = make_v3_db(self.p("j.sqlite3"), 5, tamper)
         self.write("h.jsonl", '{"run_no":1}\n{"run_no":2}\n')
@@ -472,6 +474,10 @@ class AuditRestore(Base):
 
     def codes(self, rep, key="fails"):
         return {x["code"] for x in rep[key]}
+
+
+
+class AuditRestore(AuditHelpers):
 
     def test_clean_roundtrip_pass_with_anchor(self):
         d = self.build()
@@ -793,6 +799,398 @@ class Orchestrator(Base):
         spec = self.spec([{"id": "a", "kind": "file", "path": self.write("a.json", "{}")}])
         self.assertEqual(phase0.main(["--work", os.path.join(repo, "w", "deep"), "step2-preflight", "--spec", spec]), 1)
         self.assertFalse(os.path.exists(os.path.join(repo, "w")))
+
+
+class P0A_DirectorySafety(Base):
+    """P0-A: nessun chmod/scrittura su directory preesistenti, nessun symlink."""
+
+    def setUp(self):
+        super().setUp()
+        self.f = self.write("a.jsonl", '{"a":1}\n')
+        self.sp = self.spec([{"id": "a", "kind": "jsonl", "path": self.f}])
+
+    def test_prepare_refuses_existing_dir_without_marker_and_does_not_chmod(self):
+        w = os.path.join(self.t, "preexisting")
+        os.makedirs(w)
+        os.chmod(w, 0o755)
+        open(os.path.join(w, "keep.txt"), "w").close()
+        before = tree_state(w)
+        self.assertEqual(phase0.main(["--work", w, "step2-preflight", "--spec", self.sp]), 1)
+        self.assertEqual(stat.S_IMODE(os.stat(w).st_mode), 0o755)                 # permessi INTATTI
+        self.assertEqual(before, tree_state(w))
+        self.assertEqual(sorted(os.listdir(w)), ["keep.txt"])                      # niente reports/marker creati
+
+    def test_prepare_refuses_symlink_work_dir(self):
+        target = os.path.join(self.t, "target")
+        os.makedirs(target)
+        os.chmod(target, 0o755)
+        link = os.path.join(self.t, "link")
+        os.symlink(target, link)
+        self.assertEqual(phase0.main(["--work", link, "step2-preflight", "--spec", self.sp]), 1)
+        self.assertEqual((stat.S_IMODE(os.stat(target).st_mode), os.listdir(target)), (0o755, []))
+
+    def test_prepare_refuses_symlink_in_parent_and_missing_parent(self):
+        real = os.path.join(self.t, "real")
+        os.makedirs(real)
+        os.symlink(real, os.path.join(self.t, "viaLink"))
+        self.assertEqual(phase0.main(["--work", os.path.join(self.t, "viaLink", "w"), "step2-preflight",
+                                      "--spec", self.sp]), 1)
+        self.assertEqual(os.listdir(real), [])
+        missing = os.path.join(self.t, "no", "such", "w")
+        self.assertEqual(phase0.main(["--work", missing, "step2-preflight", "--spec", self.sp]), 1)
+        self.assertFalse(os.path.exists(os.path.join(self.t, "no")))
+
+    def test_prepare_new_dir_is_0700_marked_and_reused_without_chmod(self):
+        w = os.path.join(self.t, "ph")
+        self.assertEqual(phase0.main(["--work", w, "step2-preflight", "--spec", self.sp]), 0)
+        self.assertEqual(stat.S_IMODE(os.stat(w).st_mode), 0o700)
+        self.assertTrue(os.path.isfile(os.path.join(w, phase0.MARKER)))
+        os.chmod(w, 0o750)                                                         # scelta dell'utente: non va toccata
+        self.assertEqual(phase0.main(["--work", w, "step2-preflight", "--spec", self.sp]), 0)
+        self.assertEqual(stat.S_IMODE(os.stat(w).st_mode), 0o750)
+
+    def test_status_does_not_create_anything(self):
+        w = os.path.join(self.t, "never")
+        self.assertEqual(phase0.main(["--work", w, "status"]), 0)
+        self.assertFalse(os.path.exists(w))
+
+    def test_nothing_written_outside_work_dir(self):
+        before = tree_state(self.t)
+        w = os.path.join(self.t, "ph2")
+        phase0.main(["--work", w, "step2-preflight", "--spec", self.sp])
+        after = tree_state(self.t)
+        new = {k for k in after if k not in before}
+        self.assertTrue(all(k.startswith(w) for k in new), sorted(new)[:5])
+
+    def test_snapshot_dest_preexisting_even_empty_is_nogo_and_untouched(self):
+        d = os.path.join(self.work, "emptydest")
+        os.makedirs(d)
+        os.chmod(d, 0o755)
+        code, rep = snap.run_snapshot(self.sp, d, "ref", False)[0:2]
+        self.assertEqual(code, 1)
+        self.assertIn("dest_exists", {n["code"] for n in rep["preflight"]["nogo"]})
+        self.assertEqual((stat.S_IMODE(os.stat(d).st_mode), os.listdir(d)), (0o755, []))
+
+    def test_snapshot_dest_through_symlink_parent_refused(self):
+        real = os.path.join(self.t, "real")
+        os.makedirs(real)
+        os.symlink(real, os.path.join(self.t, "lnk"))
+        code, rep = snap.run_snapshot(self.sp, os.path.join(self.t, "lnk", "d"), "ref", True)[0:2]
+        self.assertEqual(code, 1)
+        self.assertIn("dest_parent_missing_or_symlink", {n["code"] for n in rep["preflight"]["nogo"]})
+
+    def test_safe_new_dir_rules(self):
+        d = os.path.join(self.t, "new")
+        self.assertEqual(snap.safe_new_dir(d), d)
+        self.assertEqual(stat.S_IMODE(os.stat(d).st_mode), 0o700)
+        with self.assertRaises(FileExistsError):
+            snap.safe_new_dir(d)
+        os.symlink(os.path.join(self.t, "nowhere"), os.path.join(self.t, "dangling"))
+        with self.assertRaises(FileExistsError):
+            snap.safe_new_dir(os.path.join(self.t, "dangling"))
+        with self.assertRaises(ValueError):
+            snap.safe_new_dir(os.path.join(self.t, "x", "y"))
+
+    def test_nested_dirs_are_private_in_snapshot_and_restore(self):
+        self.write("tr/a/b/c.jsonl", '{"run_no":1}\n')
+        old = os.umask(0)                                                          # umask permissiva: i modi devono restare 0700
+        try:
+            code, rep, d = self.go([{"id": "tr", "kind": "tree", "path": self.p("tr")}])
+            self.assertEqual(code, 0)
+            for sub in ("tr", "tr/a", "tr/a/b"):
+                self.assertEqual(stat.S_IMODE(os.stat(os.path.join(d, sub)).st_mode), 0o700, sub)
+            rd_ = os.path.join(self.work, "rest")
+            audit.restore(d, rd_)
+            for sub in ("", "tr", "tr/a", "tr/a/b"):
+                self.assertEqual(stat.S_IMODE(os.stat(os.path.join(rd_, sub)).st_mode), 0o700, sub)
+        finally:
+            os.umask(old)
+
+    def test_restore_into_existing_empty_dir_refused(self):
+        code, rep, d = self.go([{"id": "a", "kind": "jsonl", "path": self.f}])
+        e = os.path.join(self.work, "emptyrest")
+        os.makedirs(e)
+        os.chmod(e, 0o755)
+        with self.assertRaises(FileExistsError):
+            audit.restore(d, e)
+        self.assertEqual((stat.S_IMODE(os.stat(e).st_mode), os.listdir(e)), (0o755, []))
+
+    def test_dotdot_and_empty_basename_ids_rejected(self):
+        for bad in ({"id": "..", "kind": "file", "path": self.f}, {"id": ".", "kind": "file", "path": self.f},
+                    {"id": "..", "kind": "file", "path": self.f, "group": "g"},      # gruppo valido: isola il controllo sull'id
+                    {"id": ".", "kind": "file", "path": self.f, "group": "g"},
+                    {"id": "x", "kind": "file", "path": self.f, "group": ".."},
+                    {"id": "x", "kind": "file", "path": "/"}):
+            with self.assertRaises(ValueError):
+                snap.load_spec(self.spec([bad]))
+        before = tree_state(self.t)
+        with self.assertRaises(ValueError):
+            snap.run_snapshot(self.spec([{"id": "..", "kind": "file", "path": self.f}]),
+                              os.path.join(self.work, "esc"), "ref", False)
+        self.assertEqual(before.keys() - tree_state(self.t).keys(), set())          # nulla scritto fuori
+
+
+class P0B_DiscoveryCompleteness(unittest.TestCase):
+    def runner(self, ps_rc=0, list_rc=0, show_rc=0, units="superbot-a.service loaded active running A\n"):
+        def run(argv):
+            if argv[0] == "ps":
+                return ps_rc, "  1 0 svc 9 /opt/superbot/x.py\n" if ps_rc == 0 else "boom"
+            if argv[:2] == ["systemctl", "list-units"]:
+                return list_rc, units if list_rc == 0 else ""
+            if argv[:2] == ["systemctl", "show"]:
+                return show_rc, "Id=superbot-a.service\nActiveState=active\n" if show_rc == 0 else ""
+            return 0, "1001\n"
+        return run
+
+    def test_complete_when_everything_readable(self):
+        c = discover.run_discovery([], self.runner())["completeness"]
+        self.assertEqual((c["complete"], c["problems"], c["notes"]), (True, [], []))
+
+    def test_systemd_unavailable_is_incomplete(self):
+        c = discover.run_discovery([], self.runner(list_rc=1))["completeness"]
+        self.assertFalse(c["complete"])
+        self.assertIn("systemd_unavailable", c["problems"])
+
+    def test_ps_unavailable_is_incomplete(self):
+        c = discover.run_discovery([], self.runner(ps_rc=1))["completeness"]
+        self.assertIn("ps_unavailable", c["problems"])
+
+    def test_unit_show_failure_is_incomplete(self):
+        c = discover.run_discovery([], self.runner(show_rc=1))["completeness"]
+        self.assertEqual(c["problems"], ["unit_show_failed:superbot-a.service"])
+
+    def test_no_matching_units_is_legitimate_but_noted(self):
+        c = discover.run_discovery([], self.runner(units="other.service loaded active running X\n"))["completeness"]
+        self.assertEqual((c["complete"], c["notes"]), (True, ["no_matching_units"]))
+
+    def test_cli_exit_codes_and_report_written(self):
+        for kw, rc, word in (({}, 0, "GO"), ({"list_rc": 1}, 1, "NO-GO (INCOMPLETO"),
+                             ({"units": "x.service loaded a b c\n"}, 0, "no_matching_units")):
+            with tempfile.TemporaryDirectory() as t, mock.patch.object(discover, "real_runner", self.runner(**kw)), \
+                    mock.patch("sys.stdout") as out:
+                rep = os.path.join(t, "r.json")
+                self.assertEqual(discover.main(["services", "--report", rep]), rc)
+                self.assertTrue(os.path.exists(rep))                               # report scritto anche se incompleto
+                self.assertEqual(stat.S_IMODE(os.stat(rep).st_mode), 0o600)
+                printed = "".join(c.args[0] for c in out.write.call_args_list)
+                self.assertIn(word, printed)
+
+    def test_redaction_urls_querystrings_and_glued_flags(self):
+        r = discover.redact_args("/usr/bin/python3 /opt/x/run.py?token=abc123SECRET --url https://h/p?key=SEKRET99 "
+                                 "-psecret123 -H\"Authorization:Bearer xyz\" --name hunter2.x.y --k=v "
+                                 "/opt/a/" + "A" * 40 + "/cfg.json /opt/superbot-v3-paper-runs/brain-v3-paper20261111/runner_config.json "
+                                 "/opt/x;pw=zzz")
+        for leak in ("abc123", "SEKRET", "secret123", "xyz", "hunter2", "zzz", "A" * 40):
+            self.assertNotIn(leak, r)
+        self.assertIn("/opt/x/run.py", r)
+        self.assertIn("-p<arg>", r)
+        self.assertIn("--k=<arg>", r)
+        self.assertIn("/opt/superbot-v3-paper-runs/brain-v3-paper20261111/runner_config.json", r)   # path legittimo conservato
+        self.assertIn("<redacted>", r)
+        self.assertEqual(discover.redact_args("py -m a.b.c"), "py -m a.b.c")
+        self.assertEqual(discover.redact_args("py a.b.c"), "py <arg>")
+
+    def test_execstart_through_parse_show_is_redacted(self):
+        txt = ("ExecStart={ path=/usr/bin/x ; argv[]=/usr/bin/x --db postgres://u:pw@h/db /opt/r.py?k=SECRETV -ppw99 ; "
+               "ignore_errors=no }\\n").replace("\\n", "\n")
+        e = discover.parse_show(txt)["ExecStart"]
+        for leak in ("postgres", "pw@", "SECRETV", "pw99"):
+            self.assertNotIn(leak, e)
+
+    def test_codefp_cli_no_files_and_bad_ref_are_nogo(self):
+        with tempfile.TemporaryDirectory() as t:
+            repo = os.path.join(t, "repo")
+            subprocess.run(["git", "init", "-q", repo], check=True)
+            subprocess.run(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                            "--allow-empty", "-m", "x"], check=True)
+            empty = os.path.join(t, "empty")
+            os.makedirs(empty)
+            with mock.patch("sys.stdout"):
+                self.assertEqual(discover.main(["codefp", "--code-dir", empty, "--repo", repo, "--ref", "HEAD",
+                                                "--report", os.path.join(t, "a.json")]), 1)
+                full = os.path.join(t, "full")
+                os.makedirs(full)
+                with open(os.path.join(full, "a.py"), "w") as fh:
+                    fh.write("x=1\n")
+                self.assertEqual(discover.main(["codefp", "--code-dir", full, "--repo", repo, "--ref", "nonexistent",
+                                                "--report", os.path.join(t, "b.json")]), 1)
+
+
+class P0C_RosterCompleteness(Base):
+    def codes(self, rep):
+        return {n["code"] for n in rep["preflight"]["nogo"]}
+
+    def test_empty_tree_is_nogo_and_creates_nothing(self):
+        os.makedirs(self.p("empty"))
+        code, rep, d = self.go([{"id": "e", "kind": "tree", "path": self.p("empty")}])
+        self.assertEqual(code, 1)
+        self.assertTrue({"source_yields_no_items", "no_items", "required_group_without_items"} <= self.codes(rep))
+        self.assertFalse(os.path.exists(d))
+
+    def test_tree_with_only_symlinks_and_excluded_files_is_nogo_with_report(self):
+        self.write("t/.env", "S")
+        self.write("t/x.sqlite3-wal", "w")
+        os.symlink("/etc/hostname", self.p("t", "ln"))
+        code, rep, d = self.go([{"id": "t", "kind": "tree", "path": self.p("t")}])
+        self.assertEqual(code, 1)
+        self.assertIn("source_yields_no_items", self.codes(rep))
+        bs = rep["preflight"]["by_source"]["t"]
+        self.assertEqual((bs["items"], bs["sensitive"], bs["side_files"], bs["symlinks"]), (0, 1, 1, 1))
+        self.assertIn("source_has_excluded_symlinks_or_special", {w["code"] for w in rep["preflight"]["warn"]})
+        self.assertFalse(os.path.exists(d))
+
+    def test_tree_root_symlink_or_file_is_nogo(self):
+        real = self.p("real")
+        os.makedirs(real)
+        self.write("real/a.jsonl", "{}\n")
+        os.symlink(real, self.p("linkroot"))
+        code, rep, _ = self.go([{"id": "l", "kind": "tree", "path": self.p("linkroot")}], dry_run=True)
+        self.assertEqual(code, 1)
+        self.assertIn("tree_walk_errors", self.codes(rep))
+        code, rep, _ = self.go([{"id": "f", "kind": "tree", "path": self.write("plain.txt", "x")}], dry_run=True)
+        self.assertIn("tree_walk_errors", self.codes(rep))
+
+    def test_required_groups_mandatory_and_must_have_source(self):
+        f = self.write("a.jsonl", "{}\n")
+        sp = os.path.join(self.t, "nogroups.json")
+        with open(sp, "w") as fh:
+            json.dump({"schema": 1, "sources": [{"id": "a", "kind": "jsonl", "path": f}]}, fh)
+        with self.assertRaisesRegex(ValueError, "spec_without_required_groups"):
+            snap.load_spec(sp)
+        sp2 = os.path.join(self.t, "missinggroup.json")
+        with open(sp2, "w") as fh:
+            json.dump({"schema": 1, "required_groups": ["falco", "toro"],
+                       "sources": [{"id": "a", "kind": "jsonl", "path": f, "group": "falco"}]}, fh)
+        with self.assertRaisesRegex(ValueError, "required_group_without_source:toro"):
+            snap.load_spec(sp2)
+
+    def test_optional_source_may_be_empty_but_required_group_needs_items(self):
+        os.makedirs(self.p("opt"))
+        f = self.write("a.jsonl", "{}\n")
+        sp = os.path.join(self.t, "opt.json")
+        with open(sp, "w") as fh:
+            json.dump({"schema": 1, "required_groups": ["main"], "sources": [
+                {"id": "a", "kind": "jsonl", "path": f, "group": "main"},
+                {"id": "o", "kind": "tree", "path": self.p("opt"), "group": "extra", "optional": True}]}, fh)
+        code, rep = snap.run_snapshot(sp, os.path.join(self.work, "d1"), "ref", True)[0:2]
+        self.assertEqual(code, 0, rep["preflight"]["nogo"])
+        # il gruppo obbligatorio coperto SOLO da una sorgente che non produce item e' NO-GO
+        os.makedirs(self.p("e2"))
+        sp2 = os.path.join(self.t, "e2.json")
+        with open(sp2, "w") as fh:
+            json.dump({"schema": 1, "required_groups": ["g"], "sources": [
+                {"id": "t", "kind": "tree", "path": self.p("e2"), "group": "g"}]}, fh)
+        code, rep = snap.run_snapshot(sp2, os.path.join(self.work, "d2"), "ref", True)[0:2]
+        self.assertEqual(code, 1)
+        self.assertIn("required_group_without_items", {n["code"] for n in rep["preflight"]["nogo"]})
+
+    def test_all_of_empty_cannot_signal_success(self):
+        f = self.write("a.jsonl", "{}\n")
+        sp = self.spec([{"id": "a", "kind": "jsonl", "path": f}])
+        forced = {"go": True, "nogo": [], "warn": [], "total_source_bytes": 0, "free_bytes": 1, "items": 0,
+                  "skipped": {}, "by_source": {}}
+        with mock.patch.object(snap, "expand", return_value=([], {}, {})), \
+                mock.patch.object(snap, "preflight", return_value=forced):
+            code, rep = snap.run_snapshot(sp, os.path.join(self.work, "dz"), "ref", False)
+        self.assertEqual(code, 1)
+        self.assertFalse(rep["complete"])
+        self.assertEqual(rep["verdict"], "NO-GO")
+
+    def test_log_reports_by_source_and_groups(self):
+        code, rep, d = self.go([{"id": "a", "kind": "jsonl", "path": self.write("a.jsonl", "{}\n"), "group": "falco"}])
+        log = load(os.path.join(d, "snapshot_log.json"))
+        self.assertEqual(log["required_groups"], ["falco"])
+        self.assertEqual(log["by_source"]["a"]["items"], 1)
+
+    def test_invalid_quiescence_field_values_rejected(self):
+        f = self.write("d.sqlite3", "x")
+        for bad in ("", "  ", "x" * 201, "a\nb", 5):
+            with self.assertRaises(ValueError):
+                snap.load_spec(self.spec([{"id": "d", "kind": "sqlite", "path": f, "quiescence_evidence": bad}]))
+
+
+class P0D_WalQuiescence(Base):
+    def idle_wal(self, name="idle.sqlite3"):
+        db = self.p(name)
+        c = sqlite3.connect(db)
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("CREATE TABLE t(a)")
+        c.execute("INSERT INTO t VALUES(1)")
+        c.commit()
+        c.close()
+        return db
+
+    def test_idle_wal_without_evidence_is_nogo_everywhere(self):
+        db = self.idle_wal()
+        before = tree_state(self.src)
+        res = snap.copy_sqlite(db, os.path.join(self.work, "o.sqlite3"), sleep=NOSLEEP)
+        self.assertEqual((res["status"], res["reason"]), ("FAILED", "wal_quiescence_unproven"))
+        code, rep, d = self.go([{"id": "d", "kind": "sqlite", "path": db}])
+        self.assertEqual(code, 1)
+        self.assertIn("wal_quiescence_unproven", {n["code"] for n in rep["preflight"]["nogo"]})
+        self.assertFalse(os.path.exists(d))
+        self.assertEqual(os.listdir(self.work), [])
+        self.assertEqual(before, tree_state(self.src))
+
+    def test_idle_wal_with_evidence_copies_and_records_it(self):
+        db = self.idle_wal()
+        code, rep, d = self.go([{"id": "d", "kind": "sqlite", "path": db,
+                                 "quiescence_evidence": "STEP1 2026-11-19: unita' inactive/dead"}])
+        self.assertEqual(code, 0, rep.get("items"))
+        it = rep["items"][0]
+        self.assertEqual((it["method"], it["quiescence_evidence"]), ("file_copy_checkpointed",
+                                                                    "STEP1 2026-11-19: unita' inactive/dead"))
+        self.assertEqual(os.listdir(self.src), ["idle.sqlite3"])
+
+    def test_tree_children_inherit_the_evidence(self):
+        self.idle_wal("sub.sqlite3")
+        os.makedirs(self.p("tr"))
+        os.rename(self.p("sub.sqlite3"), self.p("tr", "sub.sqlite3"))
+        code, rep, _ = self.go([{"id": "tr", "kind": "tree", "path": self.p("tr")}], dry_run=True)
+        self.assertEqual(code, 1)
+        code, rep, _ = self.go([{"id": "tr", "kind": "tree", "path": self.p("tr"), "quiescence_evidence": "ev"}],
+                               dry_run=True)
+        self.assertEqual(code, 0, rep["preflight"]["nogo"])
+
+    def test_sidecar_appearing_during_copy_fails_and_removes_copy(self):
+        db = self.idle_wal()
+        snap._HOOK = lambda stage, p: open(p + "-wal", "w").close()      # un servizio apre il DB mentre copiamo
+        res = snap.copy_sqlite(db, os.path.join(self.work, "o.sqlite3"), sleep=NOSLEEP, quiescence_evidence="ev")
+        self.assertEqual((res["status"], res["reason"]), ("FAILED", "wal_sidecar_appeared_during_copy"))
+        self.assertEqual(os.listdir(self.work), [])
+
+    def test_non_wal_db_needs_no_evidence(self):
+        db = self.p("plain.sqlite3")
+        c = sqlite3.connect(db)
+        c.execute("CREATE TABLE t(a)")
+        c.commit()
+        c.close()
+        code, rep, _ = self.go([{"id": "p", "kind": "sqlite", "path": db}], dry_run=True)
+        self.assertEqual(code, 0)
+
+
+class P1_AuditDoesNotCertify(AuditHelpers):
+    def test_summary_and_cli_never_claim_certification(self):
+        d = self.build()
+        rep_p, sum_p = os.path.join(self.t, "r.json"), os.path.join(self.t, "s.json")
+        with mock.patch("sys.stdout") as out:
+            rc = audit.main(["--snapshot", d, "--restore-dir", os.path.join(self.work, "rr"), "--report", rep_p,
+                             "--summary", sum_p])
+        self.assertEqual(rc, 0)                                          # WARN (nessuna ancora) non e' FAIL
+        s = load(sum_p)
+        self.assertEqual((s["verdict"], s["certifies_backup"]), ("WARN", False))
+        self.assertEqual(s["certification_blockers"],
+                         ["same_host_copy", "capture_not_atomic_across_sources", "no_external_anchor"])
+        printed = "".join(c.args[0] for c in out.write.call_args_list)
+        self.assertIn("certifies_backup=False", printed)
+        self.assertFalse(load(rep_p)["certifies_backup"])
+
+    def test_pass_with_anchor_still_not_certified(self):
+        d = self.build()
+        _, _, rep = self.restore_and_audit(d, self.anchor)
+        self.assertEqual(rep["verdict"], "PASS")
+        self.assertFalse(rep["certifies_backup"])
+        self.assertEqual(rep["certification_blockers"], ["same_host_copy", "capture_not_atomic_across_sources"])
 
 
 if __name__ == "__main__":

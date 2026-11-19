@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import sys
 from typing import Optional
 
@@ -38,12 +39,36 @@ def paths(work: str) -> dict:
             "restore": os.path.join(work, "restore")}
 
 
+MARKER = ".phase0-workdir"
+
+
 def prepare(work: str) -> Optional[str]:
-    work = os.path.abspath(work)
-    if snap.inside_git(work):
+    """Crea la directory di lavoro SOLO se nuova. Una directory preesistente e' accettata solo se e' una nostra
+    directory di Fase 0 (marcatore, stesso utente, nessun symlink): mai chmod, mai scritture altrove."""
+    w = os.path.abspath(work)
+    if snap.inside_git(w):
         return "NO-GO: la directory di lavoro non puo' stare in un working tree git"
-    os.makedirs(paths(work)["reports"], mode=0o700, exist_ok=True)
-    os.chmod(work, 0o700)
+    try:
+        if os.path.lexists(w):
+            st = os.lstat(w)
+            mk = os.path.join(w, MARKER)
+            ok = (stat.S_ISDIR(st.st_mode) and st.st_uid == os.geteuid() and os.path.realpath(w) == w
+                  and os.path.lexists(mk) and stat.S_ISREG(os.lstat(mk).st_mode))
+            if not ok:
+                return ("NO-GO: la directory di lavoro esiste gia' e non e' una directory di Fase 0 "
+                        "(o e' un symlink/di altro utente): nessuna modifica effettuata")
+        else:
+            snap.safe_new_dir(w)
+            fd = os.open(os.path.join(w, MARKER), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w") as fh:
+                fh.write("brain-unico phase0 workdir v1\n")
+        rep = paths(w)["reports"]
+        if not os.path.lexists(rep):
+            os.mkdir(rep, 0o700)
+        elif os.path.islink(rep) or not os.path.isdir(rep):
+            return "NO-GO: 'reports' non e' una directory regolare"
+    except (ValueError, OSError) as exc:
+        return f"NO-GO: directory di lavoro non utilizzabile ({type(exc).__name__}: {str(exc)[:80]})"
     return None
 
 
@@ -67,6 +92,9 @@ def main(argv: Optional[list] = None) -> int:
     s5.add_argument("--expect-v3")
     sub.add_parser("status")
     a = ap.parse_args(argv)
+    if a.step == "status" and not os.path.lexists(a.work):
+        print(json.dumps({"done": {}, "note": "nessuna directory di lavoro"}))
+        return 0
     err = prepare(a.work)
     if err:
         print(err)

@@ -62,18 +62,49 @@ def inside_git(path: str) -> bool:
     return inv.inside_git_worktree(p)
 
 
+def safe_new_dir(path: str) -> str:
+    """Crea UNA directory nuova (0700 per costruzione, nessun chmod). Rifiuta: percorso gia' esistente (anche
+    symlink, anche pendente), genitore mancante o raggiunto attraverso un symlink. Mai tocca directory preesistenti."""
+    p = os.path.abspath(path)
+    parent = os.path.dirname(p)
+    if not os.path.basename(p) or not os.path.isdir(parent) or os.path.realpath(parent) != parent:
+        raise ValueError("parent_missing_or_symlink_in_path")
+    if os.path.lexists(p):
+        raise FileExistsError("path_exists")
+    os.mkdir(p, 0o700)
+    return p
+
+
+def mkdirs_private(root: str, rel_dir: str) -> str:
+    """Crea i sotto-livelli di `rel_dir` sotto `root` UNO PER UNO con 0700 (makedirs applica il mode al solo ultimo)."""
+    cur = root
+    for part in [x for x in rel_dir.split(os.sep) if x]:
+        if part in (".", ".."):
+            raise ValueError("bad_relative_dir")
+        cur = os.path.join(cur, part)
+        if not os.path.isdir(cur):
+            os.mkdir(cur, 0o700)
+    return cur
+
+
 # --------------------------------------------------------------------------- spec
 
-def load_spec(path: str) -> list[dict]:
+def load_spec(path: str) -> tuple:
+    """Ritorna (sources, required_groups). La spec DEVE dichiarare required_groups: la completezza non si
+    deduce dall'esistenza dei percorsi (es. Falco, Toro, Brain storico e ciascuna Arena)."""
     with open(path, encoding="utf-8") as fh:
         spec = json.load(fh)
     srcs = spec.get("sources") if isinstance(spec, dict) else None
     if not isinstance(srcs, list) or not srcs:
         raise ValueError("spec_without_sources")
+    req = spec.get("required_groups")
+    if (not isinstance(req, list) or not req or len(set(req)) != len(req)
+            or any(not isinstance(g, str) or not ID_RE.fullmatch(g) or g in (".", "..") for g in req)):
+        raise ValueError("spec_without_required_groups")
     seen, out = set(), []
     for s in srcs:
         sid, kind, p = s.get("id"), s.get("kind"), s.get("path")
-        if not isinstance(sid, str) or not ID_RE.fullmatch(sid) or sid in seen:
+        if (not isinstance(sid, str) or not ID_RE.fullmatch(sid) or sid in (".", "..") or sid in seen):
             raise ValueError(f"bad_or_duplicate_id:{sid!r}")
         if kind not in KINDS:
             raise ValueError(f"bad_kind:{sid}")
@@ -81,68 +112,106 @@ def load_spec(path: str) -> list[dict]:
             raise ValueError(f"bad_path:{sid}")
         if inv.SENSITIVE.search(p):
             raise ValueError(f"sensitive_name_source:{sid}")
+        np_ = os.path.normpath(p)
+        if kind != "tree" and not os.path.basename(np_):
+            raise ValueError(f"bad_path:{sid}")
+        grp = s.get("group", sid)
+        if not isinstance(grp, str) or not ID_RE.fullmatch(grp) or grp in (".", ".."):
+            raise ValueError(f"bad_group:{sid}")
+        opt = s.get("optional", False)
+        ev = s.get("quiescence_evidence")
+        if not isinstance(opt, bool) or (ev is not None and (not isinstance(ev, str) or not ev.strip() or len(ev) > 200
+                                                             or re.search(r"[\x00-\x1f]", ev))):
+            raise ValueError(f"bad_field:{sid}")
         seen.add(sid)
-        out.append({"id": sid, "kind": kind, "path": os.path.normpath(p)})
-    return out
+        out.append({"id": sid, "kind": kind, "path": np_, "group": grp, "optional": opt,
+                    "quiescence_evidence": ev.strip() if ev else None})
+    for g in req:
+        if not any(s["group"] == g and not s["optional"] for s in out):
+            raise ValueError(f"required_group_without_source:{g}")
+    return out, req
 
 
-def expand(sources: list[dict]) -> tuple[list[dict], dict]:
-    """Espande i 'tree' in file singoli. Ritorna (items, skipped_counts)."""
-    items, skipped = [], {"sensitive": 0, "side_files": 0, "symlinks": 0, "special": 0, "walk_errors": 0}
+def expand(sources: list[dict]) -> tuple:
+    """Espande i 'tree' in file singoli. Ritorna (items, skipped_totali, per_sorgente)."""
+    items, total = [], {"sensitive": 0, "side_files": 0, "symlinks": 0, "special": 0, "walk_errors": 0}
+    by_source: dict[str, dict] = {}
     for s in sources:
+        sk = {"sensitive": 0, "side_files": 0, "symlinks": 0, "special": 0, "walk_errors": 0}
+        n0 = len(items)
+        base = {"group": s["group"], "optional": s["optional"], "quiescence_evidence": s["quiescence_evidence"],
+                "source_id": s["id"]}
         if s["kind"] != "tree":
-            items.append({**s, "rel": os.path.basename(s["path"])})
-            continue
-
-        def onerr(_e: OSError) -> None:
-            skipped["walk_errors"] += 1
-        for d, dn, fn in os.walk(s["path"], followlinks=False, onerror=onerr):
-            dn.sort()
-            for name in sorted(fn):
-                full = os.path.join(d, name)
-                rel = os.path.relpath(full, s["path"])
-                try:
-                    st = os.lstat(full)
-                except OSError:
-                    skipped["walk_errors"] += 1
-                    continue
-                if stat.S_ISLNK(st.st_mode):
-                    skipped["symlinks"] += 1
-                elif not stat.S_ISREG(st.st_mode):
-                    skipped["special"] += 1
-                elif inv.SENSITIVE.search(rel):
-                    skipped["sensitive"] += 1
-                elif name.lower().endswith(SIDE):
-                    skipped["side_files"] += 1
-                else:
-                    low = name.lower()
-                    kind = "jsonl" if low.endswith(".jsonl") else "sqlite" if low.endswith(inv.DB_EXT) else "file"
-                    items.append({"id": f"{s['id']}/{rel}", "kind": kind, "path": full, "rel": os.path.join(s["id"], rel),
-                                  "group": s["id"]})
-    for it in items:
-        if "rel" in it and it["kind"] != "tree" and "group" not in it:
-            it["rel"] = os.path.join(it["id"], it["rel"])
-    return items, skipped
+            items.append({"id": s["id"], "kind": s["kind"], "path": s["path"],
+                          "rel": os.path.join(s["id"], os.path.basename(s["path"])), **base})
+        elif os.path.islink(s["path"]) or not os.path.isdir(s["path"]):
+            sk["walk_errors"] += 1                                      # radice non valida: NO-GO in preflight
+        else:
+            def onerr(_e: OSError, _sk=sk) -> None:
+                _sk["walk_errors"] += 1
+            for d, dn, fn in os.walk(s["path"], followlinks=False, onerror=onerr):
+                dn.sort()
+                for name in sorted(fn):
+                    full = os.path.join(d, name)
+                    rel = os.path.relpath(full, s["path"])
+                    try:
+                        st = os.lstat(full)
+                    except OSError:
+                        sk["walk_errors"] += 1
+                        continue
+                    if stat.S_ISLNK(st.st_mode):
+                        sk["symlinks"] += 1
+                    elif not stat.S_ISREG(st.st_mode):
+                        sk["special"] += 1
+                    elif inv.SENSITIVE.search(rel):
+                        sk["sensitive"] += 1
+                    elif name.lower().endswith(SIDE):
+                        sk["side_files"] += 1
+                    else:
+                        low = name.lower()
+                        kind = "jsonl" if low.endswith(".jsonl") else "sqlite" if low.endswith(inv.DB_EXT) else "file"
+                        items.append({"id": f"{s['id']}/{rel}", "kind": kind, "path": full,
+                                      "rel": os.path.join(s["id"], rel), **base})
+        by_source[s["id"]] = {**sk, "items": len(items) - n0, "optional": s["optional"], "group": s["group"]}
+        for k in sk:
+            total[k] += sk[k]
+    return items, total, by_source
 
 
 # --------------------------------------------------------------------------- preflight
 
 def preflight(items: list[dict], skipped: dict, dest: str, space_factor: float, reserve_bytes: int,
-              roots: Optional[list[dict]] = None) -> dict:
+              roots: Optional[list[dict]] = None, by_source: Optional[dict] = None,
+              required_groups: Optional[list] = None) -> dict:
     nogo: list[dict] = []
     warn: list[dict] = []
     dest_abs = os.path.abspath(dest)
     parent = os.path.dirname(dest_abs)
-    if os.path.lexists(dest_abs) and not (os.path.isdir(dest_abs) and not os.listdir(dest_abs)):
-        nogo.append({"code": "dest_exists_not_empty"})
-    if not os.path.isdir(parent) or not os.access(parent, os.W_OK):
+    if os.path.lexists(dest_abs):
+        nogo.append({"code": "dest_exists"})                            # la destinazione deve essere NUOVA
+    if not os.path.isdir(parent) or os.path.realpath(parent) != parent:
+        nogo.append({"code": "dest_parent_missing_or_symlink"})
+    elif not os.access(parent, os.W_OK):
         nogo.append({"code": "dest_parent_not_writable"})
     real_dest = os.path.join(os.path.realpath(parent), os.path.basename(dest_abs))
     total = 0
+    if not items:
+        nogo.append({"code": "no_items"})
     for r in (roots if roots is not None else items):          # radici originali, anche per i 'tree'
         rp = os.path.realpath(r["path"])
         if real_dest == rp or real_dest.startswith(rp.rstrip(os.sep) + os.sep) or rp.startswith(real_dest + os.sep):
             nogo.append({"code": "dest_overlaps_source", "id": r["id"]})
+    for sid, bs in (by_source or {}).items():
+        if bs["items"] == 0 and not bs["optional"]:
+            nogo.append({"code": "source_yields_no_items", "id": sid})
+        if bs["symlinks"] or bs["special"]:
+            warn.append({"code": "source_has_excluded_symlinks_or_special", "id": sid,
+                         "symlinks": bs["symlinks"], "special": bs["special"]})
+    if required_groups:
+        present = {it["group"] for it in items}
+        for g in required_groups:
+            if g not in present:
+                nogo.append({"code": "required_group_without_items", "group": g})
     for it in items:
         p = it["path"]
         try:
@@ -163,7 +232,7 @@ def preflight(items: list[dict], skipped: dict, dest: str, space_factor: float, 
             total += st.st_size
             if it["kind"] == "sqlite":
                 pr = probe_sqlite(p)
-                m = sqlite_method(pr)
+                m = sqlite_method(pr, it.get("quiescence_evidence"))
                 if m.startswith("nogo:"):
                     nogo.append({"code": m[5:], "id": it["id"]})
                 elif pr.get("wal") and pr["shm_exists"]:
@@ -179,7 +248,7 @@ def preflight(items: list[dict], skipped: dict, dest: str, space_factor: float, 
         if free < need:
             nogo.append({"code": "insufficient_space", "free": free, "need": need})
     return {"go": not nogo, "nogo": nogo, "warn": warn, "total_source_bytes": total, "free_bytes": free,
-            "items": len(items), "skipped": skipped}
+            "items": len(items), "skipped": skipped, "by_source": by_source or {}}
 
 
 # --------------------------------------------------------------------------- copy primitives
@@ -237,10 +306,13 @@ def probe_sqlite(path: str) -> dict:
             "hot_journal": os.path.lexists(path + "-journal")}
 
 
-def sqlite_method(pr: dict) -> str:
-    """'backup' | 'file_copy' | 'nogo:<codice>'. Regola: la sorgente non deve MAI ricevere file nuovi.
-    Un DB WAL aperto anche solo in lettura crea/usa -shm e -wal: ok solo se gia' esistono e -shm e' scrivibile
-    (servizio vivo); se non esistono il DB e' fermo e checkpointato e si copia il file senza aprirlo."""
+def sqlite_method(pr: dict, quiescence_evidence: Optional[str] = None) -> str:
+    """'backup' | 'file_copy' | 'nogo:<codice>'. Regola: la sorgente non deve ricevere file nuovi ne' scritture
+    di contenuto. Un DB WAL aperto anche solo in lettura crea/usa -shm e -wal (indice wal-index, volatile, mai
+    dati durevoli): ok solo se gia' esistono e -shm e' scrivibile (servizio vivo).
+    L'ASSENZA di -wal/-shm NON prova che nessuno stia scrivendo (un servizio puo' aprire il DB un attimo dopo):
+    senza `quiescence_evidence` (riferimento a una prova ESTERNA, es. unita' verificata inattiva nello step 1)
+    il metodo e' NO-GO; con l'evidenza si copia il file senza aprirlo e si controlla che nessun sidecar compaia."""
     if "error" in pr:
         return "nogo:sqlite_probe_" + pr["error"]
     if not pr["wal"]:
@@ -249,6 +321,8 @@ def sqlite_method(pr: dict) -> str:
         return "backup" if pr["shm_writable"] else "nogo:wal_shm_not_writable_by_snapshot_user"
     if pr["wal_exists"] and pr["wal_size"] > 0:
         return "nogo:wal_data_without_shm"
+    if not quiescence_evidence:
+        return "nogo:wal_quiescence_unproven"
     return "file_copy"
 
 
@@ -267,15 +341,19 @@ def _finalize_copy(dst: str) -> tuple:
     return ic, tables
 
 
-def copy_sqlite(src: str, dst: str, sleep: Callable[[float], None] = time.sleep) -> dict:
+def copy_sqlite(src: str, dst: str, sleep: Callable[[float], None] = time.sleep,
+                quiescence_evidence: Optional[str] = None) -> dict:
     pr = probe_sqlite(src)
-    method = sqlite_method(pr)
+    method = sqlite_method(pr, quiescence_evidence)
     if method.startswith("nogo:"):
         return {"status": "FAILED", "reason": method[5:], "attempts": 0}
     if method == "file_copy":
         res = copy_small_file(src, dst, sleep=sleep)
         if res["status"] != "OK":
             return res
+        if os.path.lexists(src + "-wal") or os.path.lexists(src + "-shm"):      # qualcuno ha aperto il DB nel frattempo
+            os.remove(dst)
+            return {"status": "FAILED", "reason": "wal_sidecar_appeared_during_copy", "attempts": res["attempts"]}
         try:
             ic, tables = _finalize_copy(dst)
         except sqlite3.Error as exc:
@@ -287,7 +365,7 @@ def copy_sqlite(src: str, dst: str, sleep: Callable[[float], None] = time.sleep)
                 os.remove(x)
             return {"status": "FAILED", "reason": "copy_not_standalone" if left else "integrity_check_failed",
                     "attempts": res["attempts"]}
-        res.update({"method": "file_copy_checkpointed", "integrity": "ok", "tables": tables, "journal_mode_src": "wal",
+        res.update({"method": "file_copy_checkpointed", "quiescence_evidence": quiescence_evidence, "integrity": "ok", "tables": tables, "journal_mode_src": "wal",
                     "bytes": os.path.getsize(dst), "sha256": _sha(dst)})
         _fsync_path(dst)
         return res
@@ -456,9 +534,9 @@ COPIERS = {"sqlite": copy_sqlite, "jsonl": copy_append_only, "file": copy_small_
 
 def run_snapshot(spec_path: str, dest: str, auth_ref: Optional[str], dry_run: bool,
                  space_factor: float = 2.0, reserve_mb: int = 512, sleep: Callable[[float], None] = time.sleep) -> tuple[int, dict]:
-    roots = load_spec(spec_path)
-    items, skipped = expand(roots)
-    pf = preflight(items, skipped, dest, space_factor, reserve_mb * 1024 * 1024, roots)
+    roots, required = load_spec(spec_path)
+    items, skipped, by_source = expand(roots)
+    pf = preflight(items, skipped, dest, space_factor, reserve_mb * 1024 * 1024, roots, by_source, required)
     report: dict[str, Any] = {"schema": SCHEMA, "classification": "PRIVATE_DO_NOT_COMMIT", "preflight": pf,
                               "dry_run": dry_run}
     if dry_run or not pf["go"]:
@@ -468,16 +546,15 @@ def run_snapshot(spec_path: str, dest: str, auth_ref: Optional[str], dry_run: bo
         report["verdict"] = "NO-GO"
         report["preflight"]["nogo"].append({"code": "missing_authorization_reference"})
         return 1, report
-    dest = os.path.abspath(dest)
-    os.makedirs(dest, mode=0o700, exist_ok=True)
-    os.chmod(dest, 0o700)
+    dest = safe_new_dir(dest)                       # nuova, 0700 per costruzione; niente chmod su directory esistenti
     started = int(time.time() * 1000)
     results = []
     for it in items:
         dst = os.path.join(dest, it["rel"])
-        os.makedirs(os.path.dirname(dst), mode=0o700, exist_ok=True)
+        mkdirs_private(dest, os.path.dirname(it["rel"]))
         t0 = int(time.time() * 1000)
-        res = COPIERS[it["kind"]](it["path"], dst, sleep=sleep)
+        extra = {"quiescence_evidence": it.get("quiescence_evidence")} if it["kind"] == "sqlite" else {}
+        res = COPIERS[it["kind"]](it["path"], dst, sleep=sleep, **extra)
         res.update({"id": it["id"], "kind": it["kind"], "src": it["path"], "dst_rel": it["rel"],
                     "captured_at_ms": t0, "finished_at_ms": int(time.time() * 1000)})
         if res["status"] == "OK" and it["kind"] == "jsonl":
@@ -487,10 +564,11 @@ def run_snapshot(spec_path: str, dest: str, auth_ref: Optional[str], dry_run: bo
             os.chmod(dst, 0o400)
         results.append(res)
     ended = int(time.time() * 1000)
-    ok = all(r["status"] == "OK" for r in results)
+    ok = bool(results) and len(results) == len(items) and all(r["status"] == "OK" for r in results)
     report.update({"auth_ref": auth_ref, "started_ms": started, "ended_ms": ended,
                    "window_seconds": round((ended - started) / 1000, 3),
                    "consistency": "per_item_not_atomic_across_sources", "items": results, "complete": ok,
+                   "required_groups": required, "by_source": by_source,
                    "verdict": "GO" if ok else "NO-GO"})
     log = os.path.join(dest, "snapshot_log.json")
     fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
@@ -514,7 +592,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         code, rep = run_snapshot(a.spec, a.dest, a.auth_ref, a.dry_run, a.space_factor, a.reserve_mb)
     except (ValueError, OSError, json.JSONDecodeError) as exc:
-        print(f"NO-GO: spec non valida ({type(exc).__name__}: {str(exc)[:80]})")
+        print(f"NO-GO: spec o destinazione non valida ({type(exc).__name__}: {str(exc)[:80]})")
         return 1
     pf = rep["preflight"]
     if code:

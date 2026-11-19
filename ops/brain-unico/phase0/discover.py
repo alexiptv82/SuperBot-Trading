@@ -51,23 +51,39 @@ def real_runner(argv: list) -> tuple:
     return r.returncode, r.stdout
 
 
+_FLAG_LONG = re.compile(r"--[A-Za-z][A-Za-z0-9-]{0,40}")
+_SEG_SECRET = re.compile(r"(sk-[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]{10,}|[A-Za-z0-9+_=-]{32,})")
+
+
+def _clean_path(tok: str) -> str:
+    tok = re.split(r"[?#;=]", tok, 1)[0]                          # niente querystring/frammenti/valori incorporati
+    return "/".join("<redacted>" if _SEG_SECRET.fullmatch(s) else s for s in tok.split("/"))
+
+
 def redact_args(cmdline: str) -> str:
+    """Restano: nome dell'eseguibile, nomi di opzione, percorsi ripuliti, modulo dopo -m. Tutto il resto -> <arg>."""
     toks = cmdline.split()
     if not toks:
         return ""
     out = [os.path.basename(toks[0])]
+    prev = ""
     for t in toks[1:]:
-        if t.startswith("-"):
-            name, eq, val = t.partition("=")
-            out.append(name + ("=<arg>" if eq else ""))
-        elif SECRETISH.search(t):
+        if t.startswith("--"):
+            name, eq, _ = t.partition("=")
+            out.append((name if _FLAG_LONG.fullmatch(name) else "<arg>") + ("=<arg>" if eq else ""))
+        elif t.startswith("-") and len(t) > 1:
+            out.append(t if len(t) == 2 and t[1].isalpha() else (t[:2] + "<arg>" if t[1].isalpha() else "<arg>"))
+        elif "://" in t:
             out.append("<redacted>")
         elif t.startswith(("/", "./")) or t.endswith((".py", ".json", ".service")):
-            out.append(t)
-        elif re.fullmatch(r"-?m|[A-Za-z_][A-Za-z0-9_.]*", t) and "." in t:
-            out.append(t)                                   # modulo python (a.b.c)
+            out.append(_clean_path(t))
+        elif SECRETISH.search(t):
+            out.append("<redacted>")
+        elif prev == "-m" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", t):
+            out.append(t)                                          # modulo python
         else:
             out.append("<arg>")
+        prev = t
     return " ".join(out)
 
 
@@ -190,14 +206,31 @@ def match_commits(fp: dict, repo: str, refs: list, subdir: str = "", exts: tuple
 
 # ------------------------------------------------------------------ CLI
 
+def completeness(rep: dict) -> dict:
+    """Distingue i FALLIMENTI (dati mancanti per la mappatura) dalle assenze legittime (nessuna unita' superbot-*)."""
+    problems, notes = [], []
+    if not isinstance(rep["processes"], list):
+        problems.append("ps_unavailable")
+    sd = rep["systemd"]
+    if not sd["readable"]:
+        problems.append("systemd_unavailable")
+    else:
+        if not sd["units"]:
+            notes.append("no_matching_units")
+        problems += [f"unit_show_failed:{u['unit']}" for u in sd["units"] if u.get("error")]
+    return {"complete": not problems, "problems": problems, "notes": notes}
+
+
 def run_discovery(paths: list, run: Runner = real_runner) -> dict:
     rc, ps = run(["ps", "-eo", "pid=,ppid=,user=,etimes=,args="])
     me = run(["id", "-u"])[1].strip()
-    return {"schema": 1, "classification": "PRIVATE_DO_NOT_COMMIT", "euid": me,
-            "processes": parse_ps(ps) if rc == 0 else {"readable": False},
-            "systemd": discover_services(run),
-            "containers": {"readable": False, "note": "docker non accessibile senza privilegi: non verificato"},
-            "paths": [path_meta(p) for p in paths]}
+    rep = {"schema": 1, "classification": "PRIVATE_DO_NOT_COMMIT", "euid": me,
+           "processes": parse_ps(ps) if rc == 0 else {"readable": False},
+           "systemd": discover_services(run),
+           "containers": {"readable": False, "note": "docker non accessibile senza privilegi: non verificato"},
+           "paths": [path_meta(p) for p in paths]}
+    rep["completeness"] = completeness(rep)
+    return rep
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -222,21 +255,29 @@ def main(argv: Optional[list] = None) -> int:
         if a.spec:
             with open(a.spec, encoding="utf-8") as fh:
                 paths += [s["path"] for s in json.load(fh)["sources"]]
-        rep = run_discovery(paths)
-        msg = (f"GO: processi={len(rep['processes']) if isinstance(rep['processes'], list) else 'n/d'} "
+        rep = run_discovery(paths, real_runner)
+        cmp_ = rep["completeness"]
+        msg = (f"{'GO' if cmp_['complete'] else 'NO-GO (INCOMPLETO: ' + ', '.join(cmp_['problems']) + ')'}: processi={len(rep['processes']) if isinstance(rep['processes'], list) else 'n/d'} "
                f"unita={len(rep['systemd']['units'])} percorsi={len(rep['paths'])} "
-               f"non_leggibili={sum(1 for p in rep['paths'] if p['status'] != 'ok')}")
+               f"non_leggibili={sum(1 for p in rep['paths'] if p['status'] != 'ok')}"
+               + (f" note={','.join(cmp_['notes'])}" if cmp_["notes"] else ""))
+        rc_out = 0 if cmp_["complete"] else 1
     else:
         fp = fingerprint_dir(a.code_dir)
         rep = {"schema": 1, "classification": "PRIVATE_DO_NOT_COMMIT", "files_fingerprinted": len(fp["files"]),
                "skipped": fp["skipped"], "matches": match_commits(fp, a.repo, a.ref, a.subdir)}
         best = rep["matches"][0] if rep["matches"] else {}
-        msg = f"GO: file={len(fp['files'])} migliore={best.get('ref')} esatto={best.get('exact_match')}"
+        bad = [] if fp["files"] else ["no_files_fingerprinted"]
+        bad += [f"{m['ref']}:{m['error']}" for m in rep["matches"] if "error" in m]
+        rep["completeness"] = {"complete": not bad, "problems": bad}
+        rc_out = 0 if not bad else 1
+        msg = (f"{'GO' if not bad else 'NO-GO (INCOMPLETO: ' + ', '.join(bad) + ')'}: file={len(fp['files'])} "
+               f"migliore={best.get('ref')} esatto={best.get('exact_match')}")
     fd = os.open(a.report, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(rep, fh, indent=1, sort_keys=True)
     print(msg)
-    return 0
+    return rc_out
 
 
 if __name__ == "__main__":
