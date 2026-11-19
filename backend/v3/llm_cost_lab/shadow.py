@@ -11,6 +11,7 @@ from backend.v3.brain_market.deepseek_l5 import SYSTEM_PROMPT
 from backend.v3.llm_cost_lab.models import ModelSpec, forbid_auto_model
 from backend.v3.llm_cost_lab.schema import chat_content, parse_decision, token_pair
 from backend.v3.llm_cost_lab.store import ShadowStore
+from backend.v3.llm_cost_lab.equivalent import request_fingerprint, request_for
 from backend.v3.runner.metering import estimate_units, usage_units
 
 log = logging.getLogger(__name__)
@@ -70,16 +71,19 @@ class ShadowSession:
         self._spent_micro = 0
         self.calls_made: list[str] = []
 
-    def evaluate(self, sample: MarketSample) -> list[dict]:
+    def evaluate(self, sample: MarketSample, request: Optional[Mapping] = None) -> list[dict]:
+        """``request``: richiesta equivalente a quella del Brain (``equivalent.capture_l5_request``). Ogni braccio
+        riceve la stessa, cambiando solo ``model``. Senza, si usa il vecchio input semplificato (solo test)."""
         records = []
         for spec in self.models:
-            record = self._one(spec, sample)
+            record = self._one(spec, sample, request)
             self.store.append(record)
             records.append(record)
         return records
 
-    def _one(self, spec: ModelSpec, sample: MarketSample) -> dict:
+    def _one(self, spec: ModelSpec, sample: MarketSample, request: Optional[Mapping] = None) -> dict:
         base = self._base(spec, sample)
+        base["input_kind"] = "equivalent_l5" if request is not None else "simplified"
         problem = self._sample_problem(sample)
         if problem:
             base.update(action="NO_TRADE", direction=None, valid=False, failure=problem,
@@ -91,7 +95,8 @@ class ShadowSession:
                         reason="rate_limit", attempts=0, may_open=False)
             self._log(base)
             return base
-        payload = self._payload(spec, sample)
+        payload = request_for(request, spec) if request is not None else self._payload(spec, sample)
+        base["request_sha256"] = request_fingerprint(payload)
         estimate = estimate_units(
             payload, spec.input_usd_per_million, spec.output_usd_per_million)
         if self._spent_micro + estimate > self.max_micro_usd:
@@ -154,6 +159,8 @@ class ShadowSession:
             self._charge(base, spec, payload, body)
             self._log(base)
             return base
+        if parsed.get("proposal"):
+            base["proposal"] = dict(parsed["proposal"])
         base.update(action=parsed["action"], direction=parsed["direction"], valid=True,
                     failure=None, confidence=None,
                     reason="schema_no_trade" if parsed["action"] == "NO_TRADE" else "schema_open")

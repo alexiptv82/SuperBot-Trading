@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Optional
 
 
@@ -48,12 +49,28 @@ def parse_decision(content: str) -> dict:
             text = obj.get(label)
             if type(text) is not str or not text.isascii() or not 1 <= len(text) <= 64:
                 raise ValueError("invalid_schema")
+    proposal = {}
+    for price_key in ("entry_price", "stop_price"):
+        try:
+            number = Decimal(obj[price_key])
+        except (InvalidOperation, ValueError):
+            raise ValueError("invalid_schema") from None
+        if not number.is_finite() or number <= 0:
+            raise ValueError("invalid_schema")
+        proposal[price_key] = format(number, "f")
+    proposal["leverage"] = leverage
+    # Come in produzione: l'analista accetta, il motore di rischio rifiuta (stop_wrong_side). Qui lo si registra.
+    right_side = (direction == "LONG") == (Decimal(proposal["stop_price"]) < Decimal(proposal["entry_price"]))
+    proposal["executable"] = right_side
+    proposal["not_executable_reason"] = None if right_side else "stop_wrong_side"
     return {
         "action": direction,
         "direction": direction,
         "valid": True,
         # Il numero arriva dal modello: non è una confidenza verificata.
         "reported_confidence_unverified": None,
+        # Registrata solo per etichettarla dopo con esiti di mercato; non e' mai un ordine.
+        "proposal": proposal,
     }
 
 
