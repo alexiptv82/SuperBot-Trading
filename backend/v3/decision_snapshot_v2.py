@@ -18,6 +18,11 @@ from backend.v3.events import Event, EventJournal
 _TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _FEATURE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9/_:.-]{0,31}$")
+# The journal does not enforce that occurred_at_ms is truthful, so a timestamp alone cannot show that a snapshot was
+# written BEFORE the outcome was known. Write ORDER (journal seq) can. Keep WRITE_GRACE_MS equal to the dataset builder's
+# `snapshot_link.WRITE_GRACE_MS`: the builder re-checks the same rule on the copied journal.
+SNAPSHOT_KIND = "brain_decision_snapshot_v2"
+WRITE_GRACE_MS = 120_000
 _ALLOWED_RISK = frozenset({
     "equity_usd", "margin_in_use_usd", "open_risk_usd", "daily_loss_fraction",
     "portfolio_exposure_usd", "available_margin_usd",
@@ -65,6 +70,24 @@ def _safe_source_code(value: object) -> str | None:
     return value if (type(value) is str and _TOKEN.fullmatch(value) and len(value) <= 64) else None
 
 
+def _require_write_order(run_events, original, snapshot: DecisionSnapshotV2) -> None:
+    """Refuse a snapshot the journal can show was NOT written at decision time.
+
+    * ``snapshot_after_open``: a paper_open already exists for this decision (the outcome path has started);
+    * ``snapshot_written_late``: some other event written after the decision carries a time beyond
+      decision_ts + WRITE_GRACE_MS. Other snapshots are not evidence of time (their timestamps are claims too).
+    Necessary, not sufficient: it does not prove the features were computed from the right inputs.
+    """
+    decision_id = original.event.event_id
+    horizon = snapshot.decision_ts_ms + WRITE_GRACE_MS
+    for item in run_events:
+        ev = item.event
+        if ev.kind == "paper_open" and isinstance(ev.payload, Mapping) and ev.payload.get("decision_event_id") == decision_id:
+            raise ValueError("snapshot_after_open")
+        if item.seq > original.seq and ev.kind != SNAPSHOT_KIND and ev.occurred_at_ms > horizon:
+            raise ValueError("snapshot_written_late")
+
+
 def make_snapshot_event(*, journal: EventJournal, run_id: str,
                         snapshot: DecisionSnapshotV2) -> Event:
     """Validate a journal link, return a deterministic V3 event, without writing."""
@@ -85,8 +108,8 @@ def make_snapshot_event(*, journal: EventJournal, run_id: str,
 
     features = _finite_num_map(snapshot.features, risk=False)
     risk = _finite_num_map(snapshot.risk, risk=True)
-    records = [item for item in journal.list_run("brain", run_id)
-               if item.event.event_id == snapshot.decision_event_id]
+    run_events = journal.list_run("brain", run_id)
+    records = [item for item in run_events if item.event.event_id == snapshot.decision_event_id]
     if len(records) != 1 or records[0].event.kind != "brain_decision":
         raise ValueError("decision_source_not_found")
     original = records[0]
@@ -106,9 +129,13 @@ def make_snapshot_event(*, journal: EventJournal, run_id: str,
     # Deterministic idempotency key, bound to original decision and immutable hash.
     suffix = hashlib.sha256((run_id + "\0" + event.event_id + "\0" + original.event_hash
                              + "\0snapshot-v2").encode("utf-8")).hexdigest()[:32]
+    event_id = "snapshot-v2-" + suffix
+    # A re-append of an already stored snapshot is decided by the journal (idempotent or conflict), not re-judged here.
+    if not any(item.event.event_id == event_id for item in run_events):
+        _require_write_order(run_events, original, snapshot)
     return Event(
-        event_id="snapshot-v2-" + suffix,
-        portfolio_id="brain", run_id=run_id, kind="brain_decision_snapshot_v2",
+        event_id=event_id,
+        portfolio_id="brain", run_id=run_id, kind=SNAPSHOT_KIND,
         occurred_at_ms=snapshot.decision_ts_ms, source="brain_snapshot_v2_lab",
         payload={
             "schema_version": 2,
