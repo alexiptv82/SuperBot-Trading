@@ -119,6 +119,15 @@ class CoreTest(Base):
         os.symlink(os.path.join(self.outdir, "nowhere"), dang)
         self.assertEqual(inv.main(["--root", f"lab={self.src}", "--out", dang]), 2)
 
+    def test_out_equals_summary_out_refused_before_writing(self):
+        same = os.path.join(self.outdir, "same.json")
+        self.assertEqual(inv.main(["--root", f"lab={self.src}", "--out", same, "--summary-out", same]), 2)
+        self.assertFalse(os.path.exists(same))
+        alias = os.path.join(self.outdir, "sub", "..", "same.json")           # stesso file, percorso diverso
+        os.makedirs(os.path.join(self.outdir, "sub"))
+        self.assertEqual(inv.main(["--root", f"lab={self.src}", "--out", same, "--summary-out", alias]), 2)
+        self.assertEqual(os.listdir(self.outdir), ["sub"])
+
     def test_out_inside_git_worktree_refused(self):
         repo = os.path.join(self.tmp.name, "repo")
         subprocess.run(["git", "init", "-q", repo], check=True)
@@ -313,6 +322,63 @@ class PrivacyTest(Base):
         _, out = self.run_cli()
         e = self.entry(load(out), "big.jsonl")
         self.assertGreaterEqual(e["invalid_lines"], 1)
+
+
+class LongLineTest(Base):
+    """Righe oltre MAX_LINE e oltre CHUNK: contate UNA volta, la coda non diventa una riga nuova."""
+
+    def setUp(self):
+        super().setUp()
+        for name, val in (("MAX_LINE", 100), ("CHUNK", 64)):
+            old = getattr(inv, name)
+            setattr(inv, name, val)
+            self.addCleanup(setattr, inv, name, old)
+
+    def stats(self, content):
+        self.write("l.jsonl", content)
+        _, out = self.run_cli("--include-ids")
+        return self.entry(load(out), "l.jsonl")
+
+    def test_single_line_over_max_and_chunk_counted_once(self):
+        e = self.stats('{"run_id":"a"}\n' + "A" * 1000 + '\n{"run_id":"b"}\n')
+        self.assertEqual((e["lines"], e["invalid_lines"]), (3, 1))
+        self.assertEqual(e["distinct_run_id"], ["a", "b"])
+
+    def test_tail_of_long_line_is_not_a_new_line(self):
+        # la coda assomiglia a una riga JSON valida ma appartiene alla riga lunga
+        e = self.stats("A" * 500 + '{"run_id":"tail"}\n{"run_id":"b"}\n')
+        self.assertEqual((e["lines"], e["invalid_lines"]), (2, 1))
+        self.assertEqual(e["distinct_run_id"], ["b"])
+
+    def test_long_line_at_eof_without_newline(self):
+        e = self.stats('{"run_id":"a"}\n' + "A" * 700)
+        self.assertEqual((e["lines"], e["invalid_lines"]), (2, 1))
+
+    def test_long_line_ending_exactly_on_chunk_boundary(self):
+        e = self.stats("A" * 127 + "\n" + '{"run_id":"b"}\n')      # 127 + a-capo = 2 chunk da 64
+        self.assertEqual((e["lines"], e["invalid_lines"]), (2, 1))
+        self.assertEqual(e["distinct_run_id"], ["b"])
+
+    def test_valid_line_spanning_chunks_still_parsed(self):
+        row = json.dumps({"run_id": "multi", "pad": "x" * 55})
+        self.assertTrue(inv.CHUNK < len(row) <= inv.MAX_LINE, len(row))   # >1 chunk ma entro il limite
+        e = self.stats(row + "\n")
+        self.assertEqual((e["lines"], e["invalid_lines"]), (1, 0))
+        self.assertEqual(e["distinct_run_id"], ["multi"])
+
+    def test_complete_long_line_inside_one_chunk_is_invalid(self):
+        inv.CHUNK = 1 << 20
+        e = self.stats('{"run_id":"' + "z" * 300 + '"}\n{"run_id":"b"}\n')
+        self.assertEqual((e["lines"], e["invalid_lines"]), (2, 1))
+        self.assertEqual(e["distinct_run_id"], ["b"])
+
+    def test_hash_unaffected_by_discarding(self):
+        content = "A" * 1000 + "\n"
+        p = self.write("h.jsonl", content)
+        import hashlib
+        _, out = self.run_cli()
+        self.assertEqual(self.entry(load(out), "h.jsonl")["sha256"],
+                         hashlib.sha256(content.encode()).hexdigest())
 
 
 if __name__ == "__main__":

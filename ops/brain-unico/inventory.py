@@ -64,6 +64,9 @@ class _Jsonl:
         if not raw.strip():
             return
         self.lines += 1
+        if len(raw) > MAX_LINE:
+            self.bad += 1
+            return
         try:
             row = json.loads(raw)
         except (ValueError, RecursionError):
@@ -116,22 +119,31 @@ def read_regular(path: str, parse_jsonl: bool = False) -> dict:
         total = 0
         js = _Jsonl() if parse_jsonl else None
         buf = b""
+        discarding = False        # dentro una riga oltre MAX_LINE: si scarta fino al prossimo a-capo
         while True:
             chunk = os.read(fd, CHUNK)
             if not chunk:
                 break
             total += len(chunk)
             h.update(chunk)
-            if js is not None:
-                buf += chunk
-                *done, buf = buf.split(b"\n")
-                for ln in done:
-                    js.line(ln)
-                if len(buf) > MAX_LINE:
-                    js.lines += 1
-                    js.bad += 1
-                    buf = b""
-        if js is not None and buf:
+            if js is None:
+                continue
+            if discarding:
+                nl = chunk.find(b"\n")
+                if nl < 0:
+                    continue
+                chunk = chunk[nl + 1:]
+                discarding = False
+            buf += chunk
+            *done, buf = buf.split(b"\n")
+            for ln in done:
+                js.line(ln)
+            if len(buf) > MAX_LINE:       # riga ancora aperta e troppo lunga: contata UNA volta
+                js.lines += 1
+                js.bad += 1
+                buf = b""
+                discarding = True
+        if js is not None and buf and not discarding:
             js.line(buf)
         if _TEST_HOOK is not None:
             _TEST_HOOK(path)
@@ -312,6 +324,10 @@ def main(argv: list[str] | None = None) -> int:
     # Percorsi di output: NON si risolve l'ultimo componente (un symlink, anche pendente, e' "esistente").
     a.out = os.path.abspath(a.out)
     a.summary_out = os.path.abspath(a.summary_out) if a.summary_out else None
+    if a.summary_out and os.path.join(os.path.realpath(os.path.dirname(a.out)), os.path.basename(a.out)) == \
+            os.path.join(os.path.realpath(os.path.dirname(a.summary_out)), os.path.basename(a.summary_out)):
+        print("--out e --summary-out devono essere file diversi", file=sys.stderr)
+        return 2
     for p in (a.out, a.summary_out):
         if not p:
             continue
