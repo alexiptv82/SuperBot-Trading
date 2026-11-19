@@ -233,6 +233,17 @@ Fase 0 e Fase 2 (entrambe read-only): ti preparo uno script di inventario **solo
 
 Conseguenze sul piano: la Fase 6 resta bloccata fino a fine Arena e audit; il `Training Dataset Builder` (feature point-in-time con provenance, esiti dei NO_TRADE, MFE/MAE, funding, split temporali) è la prima implementazione dopo l'audit; lo scoreboard LLM non va presentato come addestramento.
 
-## 11. Strumento allegato
+## 11. Strumento allegato (v2, dopo la revisione della PR #114)
 
-`ops/brain-unico/inventory.py`: manifest read-only (byte, mtime, SHA256, righe e run distinti dei `.jsonl`, commit in esecuzione, file tracciati modificati). Non legge né stampa contenuti, salta file dal nome sensibile, non segue symlink, non apre SQLite salvo `--sqlite` su copia ferma, rifiuta di sovrascrivere. Test: `python3 ops/brain-unico/test_inventory.py` (5 test su fixture sintetiche).
+Questa PR contiene documentazione **e** una utility Python (`ops/brain-unico/inventory.py`); il titolo "solo documentazione" non è esatto. `main` non è il runtime V3: nessuna implementazione Brain va basata su `main` prima del mapping VPS↔commit.
+
+Cosa fa: manifest **privato** (byte, mtime, SHA256, righe e numero di run distinti dei `.jsonl`, commit in esecuzione, file tracciati modificati). Cosa garantisce:
+
+- **Completezza dichiarata:** errori di attraversamento o lettura e file instabili producono `complete=false`. `complete=true` **non** certifica un backup (`certifies_backup` è sempre `false`).
+- **Solo file regolari:** `lstat` senza seguire i link; FIFO, socket e device non vengono mai aperti (contati in `special_files`); apertura con `O_NOFOLLOW|O_NONBLOCK` e verifica di dev/inode dopo l'apertura.
+- **Stabilità:** hash e statistiche JSONL vengono da un'unica lettura; se dimensione, mtime o inode cambiano durante la lettura l'entry è `unstable=true`.
+- **Database:** `.sqlite/.sqlite3/.db` e `-wal/-shm/-journal` non sono né letti né hashati per default (`skipped=live_db_not_read`): l'hash di un DB vivo non è una copia coerente. `--include-db` li hasha, `--sqlite` conta anche le righe; entrambi **solo su una copia ferma**. Con un `-wal` non vuoto il SQL viene saltato (`sql_skipped=wal_present`). Gestite le tabelle `WITHOUT ROWID`.
+- **Privacy:** di default nessun valore di ID, solo conteggi. Con `--include-ids` solo valori con formato sicuro (`[A-Za-z0-9_.:-]{1,64}`); gli altri sono contati in `id_values_not_exported`. Il manifest va scritto fuori da qualunque working tree git (lo script rifiuta il contrario), con permessi 0600, e **non va incollato nel repository**. Per condividere esiti c'è `--summary-out`, con soli numeri.
+- **Output:** file nuovi, mai sovrascritti; un symlink (anche pendente) come destinazione è rifiutato.
+
+Test: `python3 ops/brain-unico/test_inventory.py` (21 test su fixture sintetiche: directory illeggibile, FIFO, file che cambia o viene sostituito durante la lettura, DB con e senza WAL, `WITHOUT ROWID`, collisioni di output, privacy degli ID). I test su fixture non certificano l'idoneità a runtime. L'esecuzione su dati reali richiede consenso separato e, per i DB, una copia consistente.
