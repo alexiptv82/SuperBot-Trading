@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 19/11/2026 08:50 Europe/Rome — Issue #113 e decisioni del primo audit Brain unico
+
+- Nuovo checkpoint delta: [`diario/2026-11-19_brain-unico-issue113-first-audit-decisions.md`](diario/2026-11-19_brain-unico-issue113-first-audit-decisions.md), commit [`9d07d96…`](https://github.com/alexiptv82/SuperBot-Trading/commit/9d07d967ac817b4a1cdec4e413509fd1d5f22369).
+- [Issue #113](https://github.com/alexiptv82/SuperBot-Trading/issues/113) formalizza il Brain unico; [commento decisionale](https://github.com/alexiptv82/SuperBot-Trading/issues/113#issuecomment-7003083560) registra il primo audit Claude senza certificare runtime.
+- Autorizzata solo la preparazione dell'inventario read-only e di una PR documentale isolata; vietate esecuzione privilegiata, ACL/sudo/docker, merge, deploy, servizi e CI onerosa.
+- Soglie proposte: 300 esempi/20 giorni per shadow offline; 1000/45 giorni per considerare una promozione, mai sufficienti da sole. Zero API Claude e zero budget aggiuntivo per ora.
+- Falco SHORT resta advisory-only e non bloccante; Risk Manager mantiene il veto. DeepSeek è proposta di continuità, non vincitore certificato.
+- Rapporto PDF privato marcato [Non verificato]; rapporto Markdown sulla VPS non ispezionato qui. Nessun nuovo test runtime, Action o commit operativo.
+- PR #112 invariata a `86288a3…`; RC84 #80 a `0e29a73…`; extbackup `3dc2116…` non installato; age PC non certifica VPS. PAPER e storici preservati.
+
 ## 19/11/2026 07:47 Europe/Rome — roadmap Brain unico, storico intatto e collaborazione Work/Cloud
 
 - Nuovo checkpoint delta: [`diario/2026-11-19_unified-brain-roadmap-work-cloud-history-learning.md`](diario/2026-11-19_unified-brain-roadmap-work-cloud-history-learning.md), commit [`5195069…`](https://github.com/alexiptv82/SuperBot-Trading/commit/5195069f93ea4c492a8495e6a714041927f31528).
