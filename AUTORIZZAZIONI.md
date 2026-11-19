@@ -15,17 +15,31 @@ Il ruolo di responsabile operativo principale di Claude è temporaneo e revocabi
 5. Coordinare autonomamente lo sviluppo del Brain Unico: memoria, Dataset Builder, strategie, gestione del rischio, dashboard e integrazioni sperimentali.
 6. Correggere i problemi già identificati, comprese la PR #121 e la Issue #124, e prepararne la validazione.
 
-## 2. Merge nei rami di integrazione — **NON ancora autorizzati**
+## 2. Merge nei rami di integrazione — AUTORIZZATI SOLO in `integration/brain-unico-20261119`
 
-Il proprietario è favorevole ad autorizzare merge tecnici senza conferma per ogni PR, ma **per il momento non autorizza alcun merge**. Prima Claude deve comunicare il nome esatto del ramo e l'esito di questi controlli:
+**Decisione del proprietario, seconda comunicazione del 19/11/2026 (riportata fedelmente):**
 
-- non è utilizzato dalla VPS operativa;
-- non attiva deploy o modifiche ai servizi;
-- non è collegato a workflow che producano cambiamenti operativi;
-- ogni modifica è verificata con test pertinenti;
-- è possibile tornare allo stato precedente.
+> **Ti autorizzo a effettuare merge tecnici esclusivamente nel ramo:**
+>
+> `integration/brain-unico-20261119`
+>
+> Questa autorizzazione è temporanea, revocabile e subordinata alle seguenti condizioni:
+>
+> - Il ramo deve rimanere completamente separato dal sistema operativo.
+> - Nessun deploy o modifica ai servizi VPS.
+> - Nessuna modifica al ramo `main` o ai rami operativi.
+> - Test pertinenti eseguiti prima e dopo ogni integrazione.
+> - Nessuna nuova regressione rispetto alla baseline.
+> - Verifica dei conflitti e delle dipendenze tra PR.
+> - Commit e risultati documentati.
+> - Possibilità concreta di rollback.
+> - Nessuna modifica alle soglie operative senza autorizzazione.
+>
+> Non autorizzo merge indiscriminati: ogni componente deve essere tecnicamente pronto.
+>
+> Se scopri che il ramo viene utilizzato da qualche procedura operativa, questa autorizzazione si sospende automaticamente.
 
-Dopo la comunicazione, il proprietario potrà autorizzarne l'uso continuativo. Fino ad allora: nessun merge.
+Resta **non autorizzato** ogni merge verso `main` o altri rami operativi (§ 3).
 
 ## 3. Operazioni che richiedono SEMPRE l'autorizzazione del proprietario
 
@@ -55,12 +69,21 @@ Claude salva i progressi nel diario, verifica il meccanismo dei checkpoint già 
 
 Completare il Brain Unico: verifica finale della PR #121, correzione P0 della Issue #124, successive integrazioni della memoria. Autonomia tecnica, qualità e continuità, con le operazioni a conseguenze reali sotto il controllo del proprietario.
 
+## 7. Altre direttive della seconda comunicazione del 19/11/2026 (riportate fedelmente)
+
+- **P0 #124:** prima di considerare completato il RiskManager, il proprietario vuole la conferma della soluzione, documentando commit esatto, test di riavvio dopo HALT, file corrotto o mancante, errore di scrittura, recupero del PnL sotto la soglia, sblocco al giorno UTC successivo, indipendenza dell'ExitService, compatibilità con la PR #121, distinguendo i fallimenti preesistenti dalle nuove regressioni. Se risolto e verificato, l'integrazione nel ramo autorizzato può essere preparata.
+- **Memoria e Dataset Builder:** l'ordine degli eventi nel journal è una condizione necessaria, non una certificazione sufficiente della provenienza delle feature; si continuano a escludere dal training gli snapshot non attestati. Autorizzato lo sviluppo, su un ramo isolato di Claude, della correzione dell'adattatore #122, **senza modificare direttamente il ramo originario di ChatGPT**; poi integrazione verificando assenza di leakage temporale e storici intatti.
+- **Grok:** lascia a Grok la ricerca e la sperimentazione sui modelli economici; Claude può analizzare la PR #120 e definire i requisiti di compatibilità, e valuterà l'integrazione quando riceverà il lavoro. DeepSeek resta il decisore principale fino a nuova decisione.
+- **Strategia e rischio:** si procede con lo studio del profilo di rischio v2, **separato** dalle correzioni P0. Niente leve elevate imposte automaticamente quando il rischio non lo consente. **Le soglie operative attuali restano invariate fino all'approvazione del proprietario.**
+- **Arena e storici:** conservazione integrale dello storico dell'Arena, comprese le operazioni in perdita; i risultati negativi non vanno inseriti automaticamente nel training. L'Arena non deve ritardare il Brain Unico; una sua conclusione anticipata richiede comunque l'autorizzazione del proprietario e un backup verificato.
+- **Autonomia:** Claude organizza le priorità e gestisce le dipendenze; un componente pronto, testato e compatibile può essere integrato nel ramo di laboratorio autorizzato. Nessun deploy operativo, merge su `main`, reset, modifica ai servizi attivi o nuova spesa senza consenso.
+
 ---
 
 ## Stato (aggiornabile da Claude, senza cambiare le autorizzazioni)
 
 | Voce | Stato al 19/11/2026 |
 |---|---|
-| Merge | **non autorizzati**. Proposta di ramo di integrazione in `diario/2026-11-19_claude-ramo-integrazione-proposta.md`, in attesa di decisione |
+| Merge | **autorizzati solo in `integration/brain-unico-20261119`** alle condizioni del § 2; verso `main` e rami operativi non autorizzati. Registro delle integrazioni in `diario/2026-11-19_claude-registro-integrazione.md` |
 | App GitHub di Claude | scrittura su PR e Issue ancora **403**: da correggere nei permessi dell'app (vedi § 4) |
 | Revoca | il proprietario può revocare tutto o in parte con un messaggio; Claude si ferma e registra qui la revoca |
