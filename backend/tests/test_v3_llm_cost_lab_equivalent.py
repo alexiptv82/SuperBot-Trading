@@ -170,3 +170,25 @@ def test_the_analyst_only_sees_outcomes_closed_by_the_decision_time(world, monke
     assert [o.closed_at_ms for o in seen["outcomes"]] == [T - 5]
     step = {s.name: s.candle_ms for s in p.timeframes}
     assert all(b.open_time_ms + step[tf] <= T for tf, rows in seen["bars"].items() for b in rows)
+
+
+def test_reconstruction_is_verifiable_against_the_hash_the_real_analyst_records(world):
+    """Il vero analista calcola context_hash sul messaggio che invia (finisce in paper_open.context_hash)."""
+    import hashlib
+    from backend.tests.test_v3_brain_market_l5 import OPEN_JSON, TransportRecorder
+    from backend.v3.brain_f2.contracts import MarketContext
+    from backend.v3.brain_market.deepseek_l5 import DeepSeekL5Analyst
+    from backend.v3.brain_market.view import regime_for_context
+    p, bars, menu = world
+    rec = TransportRecorder(OPEN_JSON)
+    real = DeepSeekL5Analyst(transport=rec, model="deepseek-flash", bars_source=lambda s: bars, outcomes_source=lambda: [],
+                             view_params=VIEW, market_params=p, menu=menu, spending_gate=lambda v: True, enabled=True)
+    ctx = MarketContext("BTCUSDT", bars[p.timeframes[0].name][-1].close, T, regime_for_context(bars, timestamp_ms=T, params=p))
+    decision = real.analyze(ctx, [])
+    rebuilt = capture(world)
+    assert EQ.matches_recorded_context(rebuilt, decision.proposal.context_hash)
+    assert EQ.context_sha256(rebuilt) == hashlib.sha256(rec.calls[0]["messages"][1]["content"].encode()).hexdigest()
+    later = capture(world, count=1)                           # un'informazione diversa -> hash diverso -> escluso
+    assert not EQ.matches_recorded_context(later, decision.proposal.context_hash)
+    for bad in (None, "", "x" * 64, 5):
+        assert not EQ.matches_recorded_context(rebuilt, bad)
