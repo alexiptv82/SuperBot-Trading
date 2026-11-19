@@ -96,6 +96,9 @@ def make_snapshot_event(*, journal: EventJournal, run_id: str,
     payload = event.payload
     if (payload.get("kind") not in ("OPEN", "NO_TRADE", "HOLD")
             or payload.get("status") not in ("APPROVED", "REJECTED", "RISK_REJECTED", "DRAFT")
+            # Brain F2 permits APPROVED only for OPEN; reject impossible
+            # journal status/action pairs before linking a snapshot.
+            or (payload.get("status") == "APPROVED" and payload.get("kind") != "OPEN")
             or not isinstance(payload.get("symbol"), str)
             or not _SYMBOL.fullmatch(payload["symbol"])):
         raise ValueError("source_decision_invalid")
