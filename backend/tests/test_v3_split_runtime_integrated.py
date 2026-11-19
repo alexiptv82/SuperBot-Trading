@@ -364,14 +364,14 @@ def test_post_ai_daily_loss_recheck_persists_halt_across_immediate_recovery(tmp_
         return DailyLoss(lvl,D('.55') if lvl=='halt' else D('.1'),D('550') if lvl=='halt' else D('100'),
                          (t//86_400_000)*86_400_000)
     guard=DailyLossGuard(data_dir=tmp_path,evaluate=evaluator,send=None,
-                         warn_fraction=D('.35'),halt_fraction=D('.50'))
+                         warn_fraction=D('.35'),halt_fraction=D('.50'),audit=lambda f,t: D('0'))
     assert guard(ms).level=='ok'
     values['level']='halt'
     assert guard.recheck(ms).level=='halt'
     values['level']='ok'
     assert guard.recheck(ms).level=='halt'  # same minute: persistent latch
     rebuilt=DailyLossGuard(data_dir=tmp_path,evaluate=evaluator,send=None,
-                           warn_fraction=D('.35'),halt_fraction=D('.50'))
+                           warn_fraction=D('.35'),halt_fraction=D('.50'),audit=lambda f,t: D('0'))
     assert rebuilt(ms+60_000).level=='halt'  # survives service restart
     assert values['calls']==4
 
@@ -381,7 +381,7 @@ def test_post_ai_daily_loss_disk_write_failure_denies_open(tmp_path, monkeypatch
     ms=G+25_000
     g=DailyLossGuard(data_dir=tmp_path,evaluate=lambda t: DailyLoss('halt',D('.6'),D('600'),
                     (t//86_400_000)*86_400_000),send=None,
-                    warn_fraction=D('.35'),halt_fraction=D('.50'))
+                    warn_fraction=D('.35'),halt_fraction=D('.50'),audit=lambda f,t: D('0'))
     monkeypatch.setattr(g,'_save',lambda:None)  # mimic full disk
     with pytest.raises(ValueError,match='^daily_loss_latch_not_persisted$'):
         g.recheck(ms)

@@ -289,13 +289,27 @@ class Sender:
         return self.reply
 
 
-def _guard(stub, sender=None, *, data_dir=None):
+def _no_loss_audit(_from_ms, _now_ms):
+    """Ricostruzione finta (Issue #124): nessuna perdita oltre a quella del valutatore."""
+    return D("0")
+
+
+def _guard(stub, sender=None, *, data_dir=None, audit=_no_loss_audit):
     d = data_dir if data_dir is not None else Path(tempfile.mkdtemp())
-    return DailyLossGuard(data_dir=d, evaluate=stub, send=sender, warn_fraction=WARN, halt_fraction=HALT), d
+    return DailyLossGuard(data_dir=d, evaluate=stub, send=sender, warn_fraction=WARN, halt_fraction=HALT,
+                          audit=audit), d
 
 
 def _state(d):
     return json.loads((d / STATE_FILE).read_text(encoding="utf-8"))
+
+
+_CORE = ("day_start_ms", "warn_sent", "halt_sent", "halt_latched")
+
+
+def _core(state):
+    """Le quattro chiavi storiche dello stato (il formato v2 della Issue #124 ne aggiunge altre, senza importi)."""
+    return {k: state[k] for k in _CORE}
 
 
 def test_guard_evaluates_at_most_once_per_minute_and_returns_the_cached_result():
@@ -342,7 +356,7 @@ def test_halt_is_latched_for_the_rest_of_the_utc_day_even_if_the_loss_recovers()
     assert g(NOW + 5 * HOUR).level == "halt"
     stub.result = _dl("ok", "0.0", start=DAY0 + DAY_MS)          # mezzanotte UTC: si riparte
     nxt = g(DAY0 + DAY_MS + 60_000)
-    assert nxt.level == "ok" and _state(g._path.parent) == {
+    assert nxt.level == "ok" and _core(_state(g._path.parent)) == {
         "day_start_ms": DAY0 + DAY_MS, "warn_sent": False, "halt_sent": False, "halt_latched": False}
 
 
@@ -365,7 +379,7 @@ def test_warn_alert_is_sent_once_per_day_with_percentages_only():
     text = send.texts[0]
     assert "35.2%" in text and "35.0%" in text and "50.0%" in text and "puoi fermarlo tu" in text
     assert "$" not in text and "USD" not in text                 # nessun importo, solo percentuali
-    assert _state(d) == {"day_start_ms": DAY0, "warn_sent": True, "halt_sent": False, "halt_latched": False}
+    assert _core(_state(d)) == {"day_start_ms": DAY0, "warn_sent": True, "halt_sent": False, "halt_latched": False}
     stub.result = _dl("warn", "0.40", start=DAY0 + DAY_MS)       # il giorno dopo l'avviso puo' ripartire
     g(DAY0 + DAY_MS + HOUR)
     assert len(send.texts) == 2 and "40.0%" in send.texts[1]
@@ -382,7 +396,7 @@ def test_warn_then_halt_sends_one_message_per_level_in_order_and_never_again():
     assert "avviso" in send.texts[0] and "50.0%" in send.texts[0]
     assert "51.0%" in send.texts[1] and "mezzanotte UTC" in send.texts[1] and "stop" in send.texts[1]
     assert "$" not in send.texts[1] and "USD" not in send.texts[1]
-    assert _state(d) == {"day_start_ms": DAY0, "warn_sent": True, "halt_sent": True, "halt_latched": True}
+    assert _core(_state(d)) == {"day_start_ms": DAY0, "warn_sent": True, "halt_sent": True, "halt_latched": True}
 
 
 def test_jumping_straight_to_halt_sends_only_the_halt_message():
@@ -463,15 +477,17 @@ def test_a_corrupt_state_file_is_ignored_not_trusted_and_does_not_crash(content)
     send = Sender()
     g, _ = _guard(Stub(_dl("warn", "0.40")), send, data_dir=d)
     assert g(NOW).level == "warn" and len(send.texts) == 1       # parte da zero: l'avviso (non ancora provato) va
-    assert _state(d) == {"day_start_ms": DAY0, "warn_sent": True, "halt_sent": False, "halt_latched": False}
+    assert _core(_state(d)) == {"day_start_ms": DAY0, "warn_sent": True, "halt_sent": False, "halt_latched": False}
 
 
-def test_state_file_has_exactly_four_keys_and_no_amounts():
+def test_state_file_has_exactly_the_v2_keys_and_no_amounts():
     send = Sender()
     g, d = _guard(Stub(_dl("halt", "0.53")), send)
     g(NOW)
     state = _state(d)
-    assert set(state) == {"day_start_ms", "warn_sent", "halt_sent", "halt_latched"}
+    assert set(state) == {"version", "day_start_ms", "warn_sent", "halt_sent", "unverified_sent", "halt_latched",
+                          "latch_reason", "checked_through_ms", "audit_from_ms"}
+    assert state["version"] == 2 and state["latch_reason"] == "loss" and state["checked_through_ms"] == NOW
     assert [p.name for p in d.iterdir()] == [STATE_FILE]         # nessun file temporaneo rimasto
 
 
