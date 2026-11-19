@@ -1,3 +1,10 @@
+## 19/11/2026 Claude — fix residui PR #118 e misura E0 (PR #119)
+
+- Voce: [`diario/2026-11-19_claude-fix-pr118-provenienza-e0.md`](diario/2026-11-19_claude-fix-pr118-provenienza-e0.md).
+- PR #118 → `0833c0d…`: simbolo obbligatorio e uguale nel legame (mai con cycle_id di altro simbolo); attestazione v2 legata alla run sigillata + ancora esterna, altrimenti `hash_matched_untrusted` escluso. 103 test PASS, mutazioni tutte rilevate.
+- PR #119 → `d6ed73d…`: strumento E0 (H1 dopo profitto, H2 reingressi) collaudato su sintetici (18 test, 23/23 mutazioni); doc E0; §H con decisioni provvisorie e rilievi PR #119.
+- Nessun runtime/dato reale/merge/deploy. Prossimo passo reale: copie Fase 0 con consenso + ancora registrata dall'operatore.
+
 ## 19/11/2026 14:45 Europe/Rome — PR #119 e gate del PAPER definitivo
 
 - Nuovo checkpoint: [`diario/2026-11-19_pr119-guardian-gate-paper-definitivo.md`](diario/2026-11-19_pr119-guardian-gate-paper-definitivo.md), commit [`96603c9…`](https://github.com/alexiptv82/SuperBot-Trading/commit/96603c968fc6694cb49de3794c9af5e3f103ec6d).
