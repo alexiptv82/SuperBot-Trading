@@ -1,3 +1,15 @@
+## 19/11/2026 11:44 Europe/Rome — STEP 1, PR #116 e Arena non bloccante
+
+- Nuovo checkpoint: [`diario/2026-11-19_brain-unico-pr116-arena-non-bloccante.md`](diario/2026-11-19_brain-unico-pr116-arena-non-bloccante.md), commit [`3bf6a158…`](https://github.com/alexiptv82/SuperBot-Trading/commit/3bf6a158a8f94390ca3e0647d62ac16a8d6d5037).
+- Step 1 non privilegiato risulta eseguito secondo riepilogo Claude pubblicato: discovery GO, 8/9 radici dati non leggibili; nessun journal/DB letto e nessun servizio modificato. Non è verifica live indipendente.
+- [PR #116](https://github.com/alexiptv82/SuperBot-Trading/pull/116) open/draft, HEAD `9bf08ac36f868aaf96fb9e63d6c43a3912230aae`, base PR #115 `465e0d92d76dc24b1dc8ec5df75ec557457f1498`: bundle sealed/root-owned preparato, non autorizzato all'esecuzione.
+- Test riferiti da Claude: 40 bundle + 90 Fase 0 + 29 inventory PASS, 28/28 mutazioni; 0 Actions/check/status e nessuna replica indipendente.
+- Decisione utente: Brain Unico prioritario; Arena PAPER non deve bloccare. Eventuale conclusione anticipata richiede prima conservazione/riconciliazione e consenso operativo separato; nessuno stop eseguito qui.
+- Age PC `ESITO: VERIFICA OK` non certifica VPS; extbackup preparato ma non installato. RC84 PR #80 invariata a `0e29a73a…`.
+- Solo documentazione: nessun merge/deploy/Action/VPS/root/snapshot/stop/reset/ordine/API a pagamento.
+
+---
+
 # STATO — SuperBot Trading
 
 ## 19/11/2026 10:48 Europe/Rome — PR #114 finale e PR #115 Fase 0 Brain unico
