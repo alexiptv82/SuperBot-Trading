@@ -1,3 +1,15 @@
+## 19/11/2026 19:44 Europe/Rome — autorizzazioni Claude, P0 #124 e handover operativo
+
+- Checkpoint: [`diario/2026-11-19_1944_autorizzazioni-p0-124-handover-vps.md`](diario/2026-11-19_1944_autorizzazioni-p0-124-handover-vps.md), commit [`cc157bb…`](https://github.com/alexiptv82/SuperBot-Trading/commit/cc157bb3f85e6aed48e616722b2bfae5ced0b2d4).
+- [`AUTORIZZAZIONI.md`](AUTORIZZAZIONI.md) formalizza Claude responsabile temporaneo/revocabile: sviluppo, branch, test offline e proprie PR draft/documentazione autorizzati; **merge, deploy, servizi, Arena, posizioni/parametri PAPER, reset, storici/backup privilegiati, restore, spese API, LIVE e permessi richiedono consenso**.
+- PR #121 `5b7403a…`: Claude riferisce nuova verifica 8/8 e suite pertinente 1117 PASS, 0 FAIL dopo dipendenze; risultati offline, non Actions.
+- P0 #124: branch pubblicato `claude/brain-unico-daily-loss-latch-p0-20261119` @ `ddd130847ae6ccdd2300b4d4ceba1ccde7e2a75e`; 32 nuovi test, suite V3 5063 PASS/0 FAIL/1 skip e mutazioni 14/15 riferiti da Claude. Nessuna PR aperta per 403; NO-GO deploy invariato.
+- Ramo `integration/brain-unico-20261119` creato a `33a0de7…`, non protetto e senza codice nuovo. **Merge ancora non autorizzati**; la richiesta di uso continuativo è solo proposta.
+- PR #122: 11 test/13 sottotest PASS riferiti da Claude; resta rischio leakage temporale, collegamento a #118 da vincolare al `seq` del journal.
+- Stato VPS solo da rapporto Claude non-root, non ricontrollato qui: Arena runner/uscite e Brain uscite riferiti attivi, runner aperture Brain fermo. Timer extbackup riferito attivo/success 19/11 03:21 UTC.
+- Extbackup: ramo GitHub `3dc2116a…` verificato, ma l'asserzione precedente “non installato” è in conflitto col timer riferito. Versione/contenuto/off-host/restore non verificati: backup esterno non certificato.
+- RC84 #80 `0e29a73…` e age PC `ESITO: VERIFICA OK` ma non VPS invariati. Solo documentazione; nessun merge/deploy/Action/VPS/restart/reset/ordine/training/API.
+
 ## 19/11/2026 Claude — autorizzazioni registrate e ramo di integrazione proposto
 
 - Nuovo [`AUTORIZZAZIONI.md`](AUTORIZZAZIONI.md): autorizzazioni stabili, temporanee e revocabili conferite dal proprietario; Claude non ne modifica il contenuto. **Merge ancora NON autorizzati.**
