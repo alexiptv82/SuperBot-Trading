@@ -1,3 +1,10 @@
+## 19/11/2026 Claude — Smart Profit Guardian: revisione indipendente (solo docs)
+
+- Voce: [`diario/2026-11-19_claude-smart-profit-guardian-revisione.md`](diario/2026-11-19_claude-smart-profit-guardian-revisione.md).
+- Branch `claude/brain-unico-profit-guardian-20261119` @ `cec2b87…` (base main): proposta + simulazione sintetica. PR draft da aprire a cura di ChatGPT.
+- Tesi chiave: prima E0 (EV condizionato a PnL di sessione e indice di reingresso su copie certificate); floor mobile come budget di rischio invece di soglie fisse; limite di perdita di sessione prioritario; leva come output.
+- Fix residui PR #118 ancora aperti. Nessun runtime/dato reale/merge/deploy.
+
 ## 19/11/2026 13:50 Europe/Rome — Smart Profit Guardian: proposta, non approvazione
 
 - Nuovo checkpoint: [`diario/2026-11-19_smart-profit-guardian-proposta-laboratorio.md`](diario/2026-11-19_smart-profit-guardian-proposta-laboratorio.md), commit [`b0ecf6f…`](https://github.com/alexiptv82/SuperBot-Trading/commit/b0ecf6f564506be7d501e83beec4f86bf6bc90ee).
