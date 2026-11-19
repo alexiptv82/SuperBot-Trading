@@ -8,8 +8,8 @@ from __future__ import annotations
 
 REASONS = ("duplicate", "synthetic", "input_not_attested", "provenance_not_anchored", "schema_unverified", "no_features", "label_incomplete",
            "open_censored", "unknown_pnl", "manual_close_not_imitable", "decision_link_untrusted",
-           "ambiguous_feature_link", "market_data_unattested")
-_BLOCKING_FLAGS = ("ambiguous_feature_link", "market_data_unattested")
+           "ambiguous_feature_link", "market_data_unattested", "snapshot_unverified")
+_BLOCKING_FLAGS = ("ambiguous_feature_link", "market_data_unattested", "snapshot_unverified")
 
 
 def reasons(row: dict, attested_inputs: set, untrusted_inputs: frozenset = frozenset()) -> list:

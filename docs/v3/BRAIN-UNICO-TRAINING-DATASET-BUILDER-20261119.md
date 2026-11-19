@@ -116,3 +116,39 @@ python3 ops/brain-unico/training/test_training.py      # 103 test sintetici
 **Che cosa resta vero.** Una run sigillata ricostruita a mano in modo coerente in ogni campo **non** diventa `attested`: resta `hash_matched_untrusted` (test `test_self_made_consistent_run_is_never_attested_without_anchor`). L'ancora vale quanto la sua registrazione: non è una firma. Va registrata dall'operatore subito dopo la run sigillata, e non da chi costruisce il dataset. Nota pratica: i file `private/` della run sono di root (0600), quindi la prima esecuzione reale richiederà un passaggio di copia autorizzato separatamente.
 
 **Verifica.** 103 test sintetici (88 + 15 nuovi), stabili su più esecuzioni. Mutazioni: **25 su 25** nuove rilevate. Le 8 mutazioni del giro precedente sul codice riscritto, tradotte sul codice nuovo (`verified` a mano, hash, snapshot incompleto, item non OK, audit FAIL, ammissione dei non attestati, legame per vicinanza, ciclo ignorato), sono **8 su 8** rilevate. Le altre 25 del giro precedente restano **25 su 25**.
+
+## 13. Collegamento con gli snapshot decisionali v2 (PR #122) — builder 0.4.0
+
+Il Brain V3 non salva le feature al momento della decisione. La PR #122 aggiunge l'evento `brain_decision_snapshot_v2`, ma
+un'etichetta di tempo scritta da chi appende non prova *quando* lo snapshot e' stato scritto: **uno snapshot compilato dopo
+l'esito e retrodatato alla decisione e' indistinguibile da uno vero se si guarda l'orologio**. Provato con il vero
+`EventJournal` e il vero adattatore #122: lo snapshot scritto dopo il `paper_open` con l'istante della decisione viene
+accettato dall'adattatore (il builder lo rifiuta, vedi sotto).
+
+**Regola: si usa l'ordine di scrittura nel journal (`seq`), non l'orologio.** Una riga riceve le feature dello snapshot solo se
+(`snapshot_link.py`, un codice breve per ogni rifiuto):
+
+1. e' l'unico snapshot della decisione, nello stesso run, schema 2;
+2. e' legato alla decisione per id **e** per hash dell'evento (64 esadecimali; un journal senza colonna hash non lega nulla);
+3. istante, simbolo, azione e stato coincidono con quelli della decisione;
+4. `feature_asof <= captured <= decision_ts`, interi positivi, feature solo con un `asof`;
+5. `seq(snapshot) > seq(decisione)`, `seq(snapshot) <` di ogni `paper_open` collegato, e `<` del primo evento (esclusi gli
+   altri snapshot) con istante oltre la decisione + 120 s di grazia;
+6. valori numerici finiti, nomi `[a-z][a-z0-9_]{0,31}`, al massimo 64, nessun testo.
+
+Se uno snapshot e' rifiutato le sue feature **non** entrano e la riga ricade sulle feature ricostruite dalle candele chiuse,
+con `snapshot_status: rejected`, `snapshot_reject: <codice>` e il flag `snapshot_rejected`. Se e' ammesso, la riga ha
+`feature_source: logged_at_decision` e il flag `snapshot_unverified`.
+
+**Anche uno snapshot ammesso resta NON ammesso al training** (motivo `snapshot_unverified`, bloccante): l'adattatore stesso
+dichiara `inputs_verified: false`, e le dichiarazioni `inputs_verified`/`eligible_for_training` dello snapshot sono ignorate.
+Il blocco si toglie solo con una verifica indipendente della fonte di mercato (da progettare: ricalcolo delle feature
+dalle candele attestate e confronto); fino ad allora il training usa le feature ricostruite dalle candele.
+
+Limiti dichiarati: la grazia di 120 s e' un parametro (`WRITE_GRACE_MS`); l'ordine di scrittura dimostra solo che lo
+snapshot precede gli eventi successivi, non che le feature fossero corrette; per una decisione senza apertura la prova e'
+la sola successione con l'evento successivo.
+
+Verifica: 31 test sintetici nuovi (`test_snapshot_link.py`, journal con `seq` e hash per evento), 134 test in totale,
+stabili su tre esecuzioni; 28/28 mutazioni rilevate (una per regola di ammissione, per propagazione nel builder, per
+lettura dell'hash e per il blocco di ammissibilita'); prova sul formato reale con `EventJournal` e adattatore #122.
