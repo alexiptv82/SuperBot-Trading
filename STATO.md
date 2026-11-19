@@ -1,5 +1,15 @@
 # STATO — SuperBot Trading
 
+## 19/11/2026 09:45 Europe/Rome — PR #114 Brain unico, inventory v2 e review statica
+
+- Nuovo checkpoint delta: [`diario/2026-11-19_brain-unico-pr114-inventory-v2-review.md`](diario/2026-11-19_brain-unico-pr114-inventory-v2-review.md), commit [`f49118e…`](https://github.com/alexiptv82/SuperBot-Trading/commit/f49118e6aaa03310992ed10f0c9dabf3632de1ea).
+- [PR #114](https://github.com/alexiptv82/SuperBot-Trading/pull/114) draft verso `main`: branch `claude/brain-unico-audit-docs-20261119`, HEAD `3b889953…`, 2 commit/3 file; `main` invariato a `a1e9722…`.
+- Inventory v2 affronta directory illeggibili, DB live esclusi per default, file speciali/symlink, privacy manifest, file instabili e amplia a 21 test sintetici.
+- PASS dei 21 test riportato/rilanciato da Claude, non verificato da CI: 0 workflow, 0 check, nessun merge.
+- Restano due edge case: riga JSONL oltre MAX_LINE+chunk e collisione `--out == --summary-out`; nessun nuovo SHA li chiude.
+- Rapporto statico: memoria/scoreboard non equivalgono a training; mancano snapshot causale completo e label forward dei NO_TRADE. Runtime VPS non certificato.
+- PR #112 `86288a3…`, RC84 #80 `0e29a73…`, extbackup non installato e age PC non certifica VPS. Nessun VPS/servizio/PAPER/Arena modificato.
+
 ## 19/11/2026 08:50 Europe/Rome — Issue #113 e decisioni del primo audit Brain unico
 
 - Nuovo checkpoint delta: [`diario/2026-11-19_brain-unico-issue113-first-audit-decisions.md`](diario/2026-11-19_brain-unico-issue113-first-audit-decisions.md), commit [`9d07d96…`](https://github.com/alexiptv82/SuperBot-Trading/commit/9d07d967ac817b4a1cdec4e413509fd1d5f22369).
