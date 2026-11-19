@@ -4,8 +4,9 @@
 * giorno = giorno UTC (stessa regola del tetto di spesa del modello): riparte a mezzanotte UTC;
 * capitale di inizio giornata = capitale iniziale + PnL realizzato delle chiusure PRIMA di mezzanotte;
 * perdita di oggi = perdita realizzata oggi + perdita NON realizzata delle posizioni aperte (prezzo dell'ultimo minuto
-  chiuso contro il prezzo d'ingresso); un guadagno compensa. Se il prezzo di una posizione non c'e' si conta solo
-  il realizzato per quella posizione (lo stop la limita comunque);
+  chiuso contro il prezzo d'ingresso); un guadagno compensa. Se anche un solo prezzo necessario manca
+  o non e' valido, la valutazione fallisce senza produrre una perdita parziale: il Runner blocca
+  le nuove aperture (daily_loss_check_failed), mentre il servizio uscite resta indipendente;
 * frazione = perdita / capitale di inizio giornata. ``>= warn`` -> ``warn`` (avviso, il Brain continua);
   ``>= halt`` -> ``halt``: nessuna nuova apertura e nessuna chiamata al modello fino a mezzanotte UTC
   (uscite, stop e chiusura manuale proseguono). Lo stop e' **agganciato per il resto del giorno**: anche se
@@ -77,9 +78,12 @@ def evaluate_daily_loss(*, journal: EventJournal, portfolio_id: str, run_id: str
         try:
             price = price_of(pos.symbol, now_ms)
         except Exception:
-            continue                                            # prezzo non disponibile: conta solo il realizzato
+            # Il caller (Runner.tick) entra in halted:daily_loss_check_failed:
+            # continuare con una stima parziale sottostimerebbe il rischio.
+            # Non includere dettagli del provider/simbolo nei messaggi operativi.
+            raise ValueError("daily_loss_price_unavailable") from None
         if type(price) is not Decimal or not price.is_finite() or price <= 0:
-            continue
+            raise ValueError("daily_loss_price_invalid")
         unrealized += (price - pos.fill_price) * pos.quantity * pos.side
     start_equity = initial_equity + before
     if start_equity <= 0:
