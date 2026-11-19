@@ -8,7 +8,7 @@ Data: 19 novembre 2026. Il laboratorio è SHADOW e offline. Non è collegato al 
 
 È lo stesso SHA su cui poggiano le bozze del router (#120), del freno prezzi (#121) e del registro v2 (#122), ed è l'ultimo Brain di cui risulta il riscontro di esecuzione. La PR #118 (dataset) parte da `main` e non è il runner. Non ho unito quelle bozze: il fallback DeepSeek della #120 non è approvato, e questo laboratorio non deve avere un fallback operativo.
 
-Il nome richiesto `grok/brain-llm-cost-lab-20261119` non è ammesso da questo ambiente. Il ramo usato è `cursor/brain-llm-cost-lab-20261119-31c4`.
+Il nome richiesto `grok/brain-llm-cost-lab-20261119` non è ammesso da questo ambiente. Il ramo usato è `cursor/brain-llm-cost-lab-20261119-31c4`. Il commit del laboratorio è `cacedcc4e8a0e325a384fdc7514d55342e0f3d29`.
 
 ## Cosa è stato riusato, senza copiarlo nei servizi vivi
 
