@@ -112,3 +112,17 @@ def request_fingerprint(payload: Mapping) -> str:
     """Impronta di cio' che il modello vede (messaggi + limiti), escluso il nome del modello."""
     body = {k: v for k, v in payload.items() if k != "model"}
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def context_sha256(payload: Mapping) -> str:
+    """SHA-256 del messaggio utente: la stessa formula di ``DeepSeekL5Analyst`` per ``OpenProposal.context_hash``,
+    che l'executor PAPER scrive in ``paper_open.context_hash``."""
+    return hashlib.sha256(payload["messages"][1]["content"].encode()).hexdigest()
+
+
+def matches_recorded_context(payload: Mapping, recorded_context_hash: object) -> bool:
+    """Prova di equivalenza su dati storici: la richiesta ricostruita e' IDENTICA a quella che DeepSeek vide davvero
+    solo se l'hash coincide con quello registrato nel journal. Se non coincide, quel campione non e' confrontabile
+    (vista o scoreboard diversi) e va escluso, non approssimato."""
+    return type(recorded_context_hash) is str and len(recorded_context_hash) == 64 and \
+        context_sha256(payload) == recorded_context_hash
