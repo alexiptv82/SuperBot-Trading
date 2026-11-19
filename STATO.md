@@ -1,3 +1,12 @@
+## 19/11/2026 Claude — verifica indipendente PR #121 (fail-closed prezzi)
+
+- Voce: [`diario/2026-11-19_claude-verifica-pr121.md`](diario/2026-11-19_claude-verifica-pr121.md).
+- HEAD `454020a` e base `33a0de7` confermate; 8/8 test della PR PASS su worktree isolato; i test falliscono sul codice di base (rilevano la regressione).
+- **Bloccante:** 2 test legacy in `backend/tests/test_v3_runner_daily_loss.py` attendono il vecchio fail-open e ora falliscono; vanno aggiornati. 5 fail `test_v3_rc84_import_paths` preesistenti anche sulla base.
+- Candela vecchia/assente → `halted:daily_loss_check_failed`, monitor uscite attivo, post-AI nega: verificato.
+- Rischio residuo (preesistente): latch HALT perso al riavvio se `daily_loss.json` non scritto o corrotto. Proposta di fix, non applicata.
+- Nessun runtime/VPS/API/merge/deploy.
+
 ## 19/11/2026 16:45 Europe/Rome — PR #120/#121/#122 e ripresa Brain Unico
 
 - Checkpoint consolidato: [`diario/2026-11-19_1645_pr120-pr121-pr122-ripresa.md`](diario/2026-11-19_1645_pr120-pr121-pr122-ripresa.md), commit [`85c2755…`](https://github.com/alexiptv82/SuperBot-Trading/commit/85c27555006925991a3abde9e0ba54a05d2ef0ae).
