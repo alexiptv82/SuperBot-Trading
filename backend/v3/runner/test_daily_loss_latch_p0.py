@@ -252,7 +252,7 @@ def test_a_fresh_state_of_yesterday_does_not_skip_the_first_minutes_of_today():
     st["checked_through_ms"] = day1 - MINUTE_MS
     (w.dir / STATE_FILE).write_text(json.dumps(st), encoding="utf-8")
     w.price_at = staticmethod(lambda m: D("45") if day1 < m <= day1 + MINUTE_MS else D("100"))
-    out = w.guard()(day1 + 2 * MINUTE_MS)                     # entro CONTINUITY_MS, ma di un altro giorno UTC
+    out = w.guard()(day1 + 2 * MINUTE_MS)                     # entro pochi minuti, ma di un altro giorno UTC
     assert out.level == "halt" and w.state()["day_start_ms"] == day1 and w.state()["latch_reason"] == "loss"
 
 
@@ -263,14 +263,90 @@ def test_clock_going_backwards_keeps_a_loss_block_as_a_loss_block():
     assert w.state()["latch_reason"] == "loss"
 
 
-def test_continuous_operation_does_not_reconstruct():
+def test_continuous_operation_in_the_same_process_does_not_reconstruct():
     w = World()
     g = w.guard()
-    for k in range(4):
-        g(NOW - 2 * HOUR + k * MINUTE_MS)
+    g(NOW - 2 * HOUR)                                          # primo controllo dopo l'avvio: ricostruisce (vedi sotto)
     first = len(w.closes_calls)
-    w.guard()(NOW - 2 * HOUR + 5 * MINUTE_MS)                 # riavvio entro 3 minuti dall'ultimo controllo persistito
+    for k in range(1, 5):
+        g(NOW - 2 * HOUR + k * MINUTE_MS)                     # un controllo per minuto, nessun minuto saltato
     assert len(w.closes_calls) == first
+
+
+# ----------------------------------------------------------------------------- Issue #124, verifica 10:00/10:01/10:02
+T10 = NOW - 2 * HOUR                                           # 10:00 UTC
+
+
+def _crash_only_at_1001(w):
+    w.price_at = staticmethod(lambda m: D("45") if m == T10 + MINUTE_MS else D("100"))
+
+
+def test_owner_scenario_failed_latch_write_then_restart_within_minutes_stays_halted(broken_disk):
+    """Ok persistito alle 10:00; alle 10:01 la perdita supera lo stop ma il latch non si scrive; il PnL rientra;
+    riavvio alle 10:02. Prima della correzione: ``ok`` (fail-open)."""
+    w = World()
+    _crash_only_at_1001(w)
+    g = w.guard()
+    assert g(T10).level == "ok"
+    broken_disk["v"] = True
+    assert g(T10 + MINUTE_MS).level == "halt"
+    broken_disk["v"] = False
+    assert w.state()["halt_latched"] is False and w.state()["checked_through_ms"] == T10
+    out = w.guard()(T10 + 2 * MINUTE_MS)
+    assert out.level == "halt" and w.state()["latch_reason"] == "loss"
+
+
+@pytest.mark.parametrize("restart_at", [T10 + MINUTE_MS + 50_000, T10 + 2 * MINUTE_MS, T10 + 2 * MINUTE_MS + 59_000,
+                                        T10 + 3 * MINUTE_MS])
+def test_any_restart_after_an_unpersisted_crash_minute_reconstructs_it(broken_disk, restart_at):
+    w = World()
+    _crash_only_at_1001(w)
+    g = w.guard()
+    g(T10)
+    broken_disk["v"] = True
+    g(T10 + MINUTE_MS)
+    broken_disk["v"] = False
+    assert w.guard()(restart_at).level == "halt"
+
+
+def test_a_minute_skipped_for_missing_prices_in_the_same_process_is_reconstructed():
+    """Nessun riavvio: alle 10:01 il prezzo manca (la valutazione fallisce, nessuna apertura), proprio nel minuto del
+    crollo; alle 10:02 il prezzo c'e' ed e' risalito. Il minuto saltato va ricostruito."""
+    w = World()
+    _crash_only_at_1001(w)
+    g = w.guard()
+    assert g(T10).level == "ok"
+    live = w.evaluate
+    w.evaluate = lambda now: (_ for _ in ()).throw(ValueError("daily_loss_price_unavailable")) if now // MINUTE_MS == (T10 + MINUTE_MS) // MINUTE_MS else live(now)
+    g._evaluate = w.evaluate
+    with pytest.raises(ValueError):
+        g(T10 + MINUTE_MS)
+    assert g(T10 + 2 * MINUTE_MS).level == "halt" and w.state()["latch_reason"] == "loss"
+
+
+def test_a_normal_restart_without_any_crash_is_not_blocked():
+    w = World()
+    g = w.guard()
+    for k in range(3):
+        assert g(T10 + k * MINUTE_MS).level == "ok"
+    assert w.guard()(T10 + 4 * MINUTE_MS).level == "ok"       # riavvio: ricostruisce 10:03-10:04, nessun crollo
+    assert w.state()["halt_latched"] is False
+
+
+def test_restart_reconstruction_failing_is_not_a_permanent_block():
+    w = World()
+    w.guard()(T10)
+    calls = {"n": 0}
+
+    def flaky(from_ms, now_ms):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TimeoutError("history unavailable")
+        return w.audit(from_ms, now_ms)
+
+    g = w.guard(audit=flaky)
+    assert g(T10 + 2 * MINUTE_MS).level == "halt" and w.state()["latch_reason"] == "unverified"
+    assert g(T10 + 7 * MINUTE_MS).level == "ok" and w.state()["halt_latched"] is False
 
 
 def test_halt_alert_text_distinguishes_unverified_from_a_real_loss():

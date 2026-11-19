@@ -97,7 +97,9 @@ def evaluate_daily_loss(*, journal: EventJournal, portfolio_id: str, run_id: str
 
 
 STATE_VERSION = 2
-CONTINUITY_MS = 3 * MINUTE_MS          # buco massimo fra due controlli PERSISTITI senza dover ricostruire la giornata
+# Nessuna "finestra di tolleranza": la ricostruzione si salta SOLO nello stesso processo e solo se nessun istante di
+# controllo (chiusura di minuto) e' andato perso dall'ultima valutazione riuscita. Dopo un riavvio si ricostruisce sempre
+# dall'ultimo istante persistito, perche' il disco non prova cio' che il processo precedente ha visto (Issue #124, 10:01).
 AUDIT_RETRY_MS = 5 * MINUTE_MS         # un blocco «non verificabile» si riprova al massimo ogni 5 minuti
 LATCH_REASONS = ("", "loss", "unverified")
 _STATE_KEYS = frozenset({"version", "day_start_ms", "warn_sent", "halt_sent", "unverified_sent", "halt_latched",
@@ -205,10 +207,13 @@ class DailyLossGuard:
     **Continuita' dimostrata (Issue #124).** Lo stato su disco (v2) registra fino a quale istante la perdita e' stata
     controllata (``checked_through_ms``). Il blocco non dipende dal fatto che *ora* la perdita sia sotto soglia:
 
-    * stato del giorno valido e ultimo controllo persistito da non piu' di ``CONTINUITY_MS``: si prosegue;
-    * altrimenti (file assente, corrotto, del formato precedente, del giorno prima, buco di controlli, scrittura
-      fallita prima di un riavvio) la giornata viene **ricostruita** con ``audit(da, adesso)`` (journal + candele 1m,
-      vedi ``max_daily_loss_between``) dall'ultimo istante dimostrato, o dalla mezzanotte UTC;
+    * nello STESSO processo, se nessuna chiusura di minuto e' stata saltata dall'ultima valutazione riuscita: si prosegue
+      (la memoria del processo ha visto tutto);
+    * altrimenti la giornata viene **ricostruita** con ``audit(da, adesso)`` (journal + candele 1m, vedi
+      ``max_daily_loss_between``) dall'ultimo istante dimostrato, o dalla mezzanotte UTC. In particolare **sempre al
+      primo controllo dopo un avvio**: uno stato ``ok`` persistito alle 10:00 non prova che alle 10:01 la perdita non
+      abbia superato lo stop con una scrittura fallita. Anche file assente, corrotto, del formato precedente, del
+      giorno prima, o minuti saltati per prezzi mancanti;
     * ricostruzione >= soglia di stop -> blocco ``loss`` fino a mezzanotte UTC;
     * ricostruzione impossibile (``audit`` assente o in errore) -> blocco ``unverified``: nessuna nuova apertura
       finche' una ricostruzione successiva non riesce (riprovata al piu' ogni ``AUDIT_RETRY_MS``) o finche' il giorno
@@ -234,6 +239,7 @@ class DailyLossGuard:
         self._minute = -1
         self._last: Optional[DailyLoss] = None
         self._last_audit_try = -1
+        self._fresh_start = True                                  # nessuna valutazione riuscita in questo processo
         self._state, self._trust = self._load()
 
     @staticmethod
@@ -342,9 +348,9 @@ class DailyLossGuard:
         if same_day and st["halt_latched"] and st["latch_reason"] == "loss":
             self._trust = "v2"
             return                                               # gia' bloccato per perdita: nulla da dimostrare
-        if (same_day and trust == "v2" and not st["halt_latched"]
-                and now_ms - st["checked_through_ms"] <= CONTINUITY_MS):
-            return                                               # continuita' dimostrata dal disco o dalla memoria
+        if (same_day and trust == "v2" and not st["halt_latched"] and not self._fresh_start
+                and now_ms // MINUTE_MS - st["checked_through_ms"] // MINUTE_MS <= 1):
+            return                                               # stesso processo, nessun minuto saltato
         if same_day and st["halt_latched"] and st["latch_reason"] == "unverified":
             from_ms = st["audit_from_ms"]
             if now_ms - self._last_audit_try < AUDIT_RETRY_MS and self._last_audit_try >= 0:
@@ -401,5 +407,6 @@ class DailyLossGuard:
                 f"🛑 Brain PAPER: raggiunta la perdita massima di oggi ({pct_text(result.loss_fraction)}%). "
                 f"Nessuna nuova apertura fino a mezzanotte UTC. Le posizioni aperte restano protette dai loro stop "
                 f"e puoi chiuderle a mano."))
+        self._fresh_start = False
         self._minute, self._last = minute, result
         return result
