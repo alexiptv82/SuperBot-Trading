@@ -87,7 +87,7 @@ DAY_MS = 86_400_000
 MIN_SAMPLE = 30
 LIMITS = (
     "simulated_labels_are_counterfactual",       # nessun candidato ha mai aperto: esiti simulati con regole fisse
-    "bracket_exit_not_production_exit_policy",   # stop/obiettivo/orizzonte, non l'ExitService reale (trailing, ecc.)
+    "bracket_exit_not_production_exit_policy",   # stop/obiettivo/orizzonte, non la politica d'uscita reale
     "no_slippage_or_gap_model",                  # uscita esattamente al livello; costi uguali per ogni barriera
     "intrabar_order_unknown",                    # candela con stop e obiettivo: risolta dalla policy dichiarata
     "no_trade_judged_relative_to_reference",     # un NO_TRADE e' giudicato contro la proposta di riferimento,
