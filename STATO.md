@@ -1,3 +1,8 @@
+## 21/11/2026 (4) — Prova storici: NO-GO sui classici, causa individuata
+
+- Prova del proprietario: inventario OK (sorgenti 535 MiB, necessari 4237 MiB, disponibili 21305 MiB), poi NO-GO "confine di ciclo non verificabile" nel backup del cervello di Falco/Toro.
+- Diagnosi in sola lettura: nessun processo dei bot Falco/Toro nei 4 container attivi (3 backend web + bridge di chiusura), cartelle `hawk/` e `bull/` ferme dal 14/11 06:28 → bot fermi, battito vecchio; la prova usava il percorso normale. Correzione `4a4db056` (branch `claude/extbackup-storici-20261121`): stessa scelta di `run.sh` (docker; entrambi fermi → `--bot-stopped`, rifiuta battito fresco; misto/non verificabile → NO-GO). 54 test. In attesa di un comando diagnostico in sola lettura del proprietario prima della nuova prova.
+
 ## 20/11/2026 15:46 Europe/Rome — EventJournal V3 obbligatorio nel candidato extbackup
 
 - Checkpoint append-only: [diario/2026-11-20_1546_checkpoint-eventjournal-v3-obbligatorio.md](diario/2026-11-20_1546_checkpoint-eventjournal-v3-obbligatorio.md).
