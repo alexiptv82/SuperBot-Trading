@@ -1,3 +1,10 @@
+## 21/11/2026 (12) — Uscite preregistrate e proposta del rischio definitivo
+
+- `26e4159f` (gate verde: V3 5388, builder 158, Jest 153).
+- **Uscite:** `ops/brain-unico/exits` contiene il riferimento (= `exits.py`), pareggio, trailing, protezione dei profitti e inversione EMA 1h, più la valutazione preregistrata (`preregistration.json`, SHA-256 `acfb5f9f…`): calibrazione ed embargo, Holm, scenari di funding, minimo 100 trade e 20 giorni. Nessuna esecuzione su dati reali; analisi dopo la RC, solo su dati attestati.
+- **Rischio:** `docs/v3/BRAIN-UNICO-PROFILO-RISCHIO-PROPOSTA-20261121.md` propone tre profili per 2.000 USDT PAPER (A 0,75 %, B 1 % raccomandato, C 1,5 %; giorno fermato a 4 R; pavimento 1.700/1.600/1.500), con parità verificata col RiskManager ed esprimibili in configurazione senza codice. 35 % e 50 % non approvati.
+- Piano RC, sezione 11: restano scelta del profilo e mandato, prova finale e installazione del backup con primo invio, ripristino sul PC, chiusura di #124, pre-collaudo, consenso al deploy.
+
 ## 20/11/2026 20:46 Europe/Rome — decisioni audit, backup per componente e memoria completa
 
 - Checkpoint append-only: [diario/2026-11-20_2046_checkpoint-decisioni-backup-memoria.md](diario/2026-11-20_2046_checkpoint-decisioni-backup-memoria.md).
