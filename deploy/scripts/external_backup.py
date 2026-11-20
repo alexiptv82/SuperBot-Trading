@@ -184,6 +184,8 @@ def make_staging(a, stage):
         raise Fail("backup del cervello non riuscito (nessuna finestra di fine ciclo verificata o file mancanti): "
                    + last[-400:])
     # lasciamo nell'archivio solo il contenuto: la copia del cervello e' una cartella bots-*
+    for src in a.required_v3_run_dirs:
+        copy_run_dir(src, os.path.join(stage, "runs"), required=True, v3=True)
     for src in a.required_run_dirs:
         copy_run_dir(src, os.path.join(stage, "runs"), required=True)
     for src in a.run_dirs:
@@ -252,7 +254,7 @@ def source_has_prefix(src_db, events, head):
     return row is not None and row[0] == head
 
 
-def copy_run_dir(src, runs_root, required=False):
+def copy_run_dir(src, runs_root, required=False, v3=False):
     """Storico di una run (Brain V3, Arena, Brain libero, adattivo...): copia COERENTE e RICORSIVA in sola lettura.
     SQLite con l'API di backup (sorgente mode=ro) + integrity_check; per i journal V3 anche la catena degli eventi,
     con verifica che la copia sia un prefisso dell'originale; esclusi link, file nascosti, lock/WAL/temporanei e
@@ -299,12 +301,16 @@ def copy_run_dir(src, runs_root, required=False):
                     if not source_has_prefix(full, ch[0], ch[1]):
                         raise Fail("la copia del journal non e' un prefisso dell'originale: %s" % full)
                     rel = os.path.relpath(out, os.path.dirname(runs_root)).replace(os.sep, "/")
-                    journals.append({"file": "dati/" + rel, "events": ch[0], "head": ch[1]})
+                    journals.append({"file": "dati/" + rel, "events": ch[0], "head": ch[1],
+                                     "required": bool(v3 and rel_dir == "." and name == "journal.db")})
             else:
                 shutil.copy2(full, out)
             copied += 1
     if copied == 0:
         raise Fail("cartella di run vuota: %s" % src)
+    if v3 and not any(j["required"] for j in journals):
+        # run con EventJournal V3 obbligatorio: journal.db presente, tabella v3_events, catena verificata
+        raise Fail("run V3 obbligatoria senza EventJournal valido (journal.db con v3_events): %s" % src)
     index = os.path.join(runs_root, JOURNAL_INDEX)
     entries = []
     if os.path.exists(index):
@@ -617,6 +623,8 @@ def main(argv=None):
     ap.add_argument("--keep-recent", type=int, default=14)
     ap.add_argument("--keep-weeks", type=int, default=8)
     ap.add_argument("--keep-months", type=int, default=6)
+    ap.add_argument("--required-v3-run-dir", action="append", default=[], dest="required_v3_run_dirs",
+                    help="run OBBLIGATORIA con EventJournal V3 (journal.db, v3_events, catena): altrimenti NO-GO")
     ap.add_argument("--required-run-dir", action="append", default=[], dest="required_run_dirs",
                     help="cartella di run OBBLIGATORIA: se manca non parte nulla; ripetibile")
     ap.add_argument("--run-dir", action="append", default=[], dest="run_dirs",

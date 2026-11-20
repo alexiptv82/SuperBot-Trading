@@ -141,7 +141,10 @@ def _chain(path):
 def check_v3_journals(out, problems):
     """Per ogni journal V3 degli storici: catena valida e numero di eventi/testa uguali a quelli registrati al backup."""
     index = os.path.join(out, "dati", "runs", "_journal_v3.json")
+    if not os.path.isdir(os.path.join(out, "dati", "runs")):
+        return                                                    # archivio senza storici di run
     if not os.path.isfile(index):
+        problems.add("indice dei journal V3 mancante: impossibile verificare gli storici delle run")
         return
     try:
         with open(index) as f:
@@ -160,7 +163,8 @@ def check_v3_journals(out, problems):
         elif got != (e["events"], e["head"]):
             problems.add("journal V3 diverso dall'originale (eventi/testa): %s" % e["file"])
         else:
-            print("  journal V3 %s: %d eventi, catena verificata" % (e["file"], got[0]))
+            print("  journal V3 %s: %d eventi, catena verificata%s" % (
+                e["file"], got[0], " (obbligatorio)" if e.get("required") else ""))
 
 
 def check_brain(out, problems):

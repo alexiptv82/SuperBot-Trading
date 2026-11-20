@@ -13,10 +13,11 @@ BASE=/root/extbackup-prova-storici
 
 # --- archivi OBBLIGATORI: se ne manca uno, NO-GO prima di qualunque copia
 DESK=/opt/superbot-desk-data
-REQUIRED="/opt/superbot-v3-paper-runs/brain-v3-paper20261111
+REQUIRED_V3="/opt/superbot-v3-paper-runs/brain-v3-paper20261111
 /opt/superbot-ai-arena-paper/deepseek/brain-deepseek-paper20261118
 /opt/superbot-ai-arena-paper/qwen/brain-qwen-paper20261118
-/opt/superbot-ai-arena-paper/minimax/brain-minimax-paper20261118
+/opt/superbot-ai-arena-paper/minimax/brain-minimax-paper20261118"
+REQUIRED="$REQUIRED_V3
 $DESK/brain"
 for d in $REQUIRED "$DESK/hawk" "$DESK/bull"; do
   [ -d "$d" ] && [ ! -L "$d" ] || { echo "NO-GO: archivio obbligatorio mancante: $d"; exit 1; }
@@ -58,7 +59,8 @@ age-keygen -o "$BASE/prova.key" 2>/dev/null
 age-keygen -y "$BASE/prova.key" > "$BASE/recipient-prova.txt"
 git init -q --bare -b main "$BASE/remote.git"
 ARGS=""
-for d in $REQUIRED; do ARGS="$ARGS --required-run-dir $d"; done
+for d in $REQUIRED_V3; do ARGS="$ARGS --required-v3-run-dir $d"; done
+ARGS="$ARGS --required-run-dir $DESK/brain"
 for d in $OPTIONAL; do ARGS="$ARGS --run-dir $d"; done
 
 echo "== backup (verso il repository LOCALE di prova)"

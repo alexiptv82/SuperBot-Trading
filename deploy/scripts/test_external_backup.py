@@ -205,7 +205,7 @@ class ExternalBackupTests(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertEqual(self.archives(self.clone_remote()), [])
 
-    def _wrapper(self, drop=None):
+    def _wrapper(self, drop=None, empty_journal=None):
         """prova_storici.sh con i percorsi /opt sostituiti da cartelle di prova e senza il controllo di root."""
         t = self.td.name
         o = os.path.join(t, "finto")
@@ -215,6 +215,9 @@ class ExternalBackupTests(unittest.TestCase):
             if rel == drop:
                 continue
             os.makedirs(os.path.join(o, rel))
+            if empty_journal and os.path.join(o, rel) == empty_journal:
+                put(os.path.join(o, rel, "heartbeat.json"), "{}")       # run Arena senza journal
+                continue
             make_v3_journal(os.path.join(o, rel, "journal.db"), 3).close()
         os.makedirs(os.path.join(o, "adaptive", "hawk"))
         c = sqlite3.connect(os.path.join(o, "adaptive", "hawk", "brain.sqlite3"))
@@ -251,6 +254,14 @@ class ExternalBackupTests(unittest.TestCase):
         self.assertEqual(p.stdout.count(": 3 eventi, catena verificata"), 5, p.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.td.name, "base")))  # tutto cancellato
         self.assertFalse(any(m.decode() in p.stdout for m in MARKERS))        # nessun contenuto stampato
+
+    def test_admin_wrapper_refuses_when_an_arena_run_has_no_journal(self):
+        t = self.td.name
+        p0 = os.path.join(t, "finto", "arena", "minimax", "brain-minimax-paper20261118")
+        p = self._wrapper(empty_journal=p0)
+        self.assertNotEqual(p.returncode, 0, p.stdout)
+        self.assertIn("NO-GO: backup", p.stdout)
+        self.assertFalse(os.path.exists(os.path.join(t, "base")))
 
     def test_admin_wrapper_refuses_when_a_required_archive_is_missing(self):
         p = self._wrapper(drop="arena/qwen/brain-qwen-paper20261118")
@@ -834,6 +845,70 @@ class RunDirTests(unittest.TestCase):
         self.assertTrue(self.ext.source_has_prefix(a, *ch))
         self.assertTrue(self.ext.source_has_prefix(a, 2, self.ext.journal_chain(a)[1]) is False)  # testa sbagliata
         self.assertFalse(self.ext.source_has_prefix(a, 5, ch[1]))                                 # originale piu' corto
+
+    # ---- run obbligatorie con EventJournal V3 (Brain V3 attivo, Arena) ----
+    def _v3(self, d):
+        return self.ext.copy_run_dir(d, os.path.join(self.tmp, "sv3"), required=True, v3=True)
+
+    def test_required_v3_run_registers_its_journal_as_required(self):
+        d, con = self.make_run("arena/qwen/brain-qwen-paper20261118")
+        self._v3(d)
+        with open(os.path.join(self.tmp, "sv3", self.ext.JOURNAL_INDEX)) as f:
+            entries = json.load(f)
+        self.assertEqual([e["required"] for e in entries if e["file"].endswith("/journal.db")], [True])
+        con.close()
+
+    def test_required_v3_run_without_journal_db_refuses(self):
+        d = os.path.join(self.tmp, "v3", "nojournal")
+        os.makedirs(d)
+        put(os.path.join(d, "heartbeat.json"), "{}")
+        with self.assertRaisesRegex(self.ext.Fail, "senza EventJournal"):
+            self._v3(d)
+
+    def test_required_v3_run_whose_journal_has_no_v3_events_refuses(self):
+        d = os.path.join(self.tmp, "v3", "wrongtable")
+        os.makedirs(d)
+        c = sqlite3.connect(os.path.join(d, "journal.db"))
+        c.execute("create table altro(x)"); c.commit(); c.close()
+        with self.assertRaisesRegex(self.ext.Fail, "senza EventJournal"):
+            self._v3(d)
+
+    def test_required_v3_run_with_broken_chain_refuses(self):
+        d, con = self.make_run("v3/brokenchain")
+        con.execute("UPDATE v3_events SET event_hash='%s' WHERE seq=1" % ("0" * 64))
+        con.commit(); con.close()
+        with self.assertRaisesRegex(self.ext.Fail, "catena del journal non valida"):
+            self._v3(d)
+
+    def test_required_v3_run_with_journal_only_in_a_subfolder_refuses(self):
+        d = os.path.join(self.tmp, "v3", "nested")
+        os.makedirs(os.path.join(d, "sub"))
+        make_v3_journal(os.path.join(d, "sub", "journal.db")).close()
+        with self.assertRaisesRegex(self.ext.Fail, "senza EventJournal"):
+            self._v3(d)
+
+    def test_non_v3_archives_are_not_forced_into_the_v3_format(self):
+        d = os.path.join(self.tmp, "storico", "brain")
+        os.makedirs(d)
+        put(os.path.join(d, "trade_history.jsonl"), "{}\n")
+        self.ext.copy_run_dir(d, os.path.join(self.tmp, "snv3"), required=True)
+        with open(os.path.join(self.tmp, "snv3", self.ext.JOURNAL_INDEX)) as f:
+            self.assertEqual(json.load(f), [])                      # indice scritto comunque, vuoto
+
+    def test_restore_fails_when_the_index_is_missing(self):
+        out, _ = self._restored_tree()
+        os.remove(os.path.join(out, "dati", "runs", "_journal_v3.json"))
+        self.assertTrue(any("indice dei journal V3 mancante" in m for m in self._problems(out)))
+
+    def test_restore_fails_when_a_required_journal_is_missing(self):
+        out, db = self._restored_tree()
+        idx = os.path.join(out, "dati", "runs", "_journal_v3.json")
+        with open(idx) as f:
+            entries = json.load(f)
+        entries[0]["required"] = True
+        put(idx, json.dumps(entries))
+        os.remove(db)
+        self.assertTrue(any("mancante" in m for m in self._problems(out)))
 
     def test_same_label_twice_refuses(self):
         a, c1 = self.make_run("x/p/run1")
