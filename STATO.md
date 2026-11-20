@@ -1,3 +1,10 @@
+## 21/11/2026 (14) — Configurazione e mandato del profilo B pronti per la revisione (non attivi)
+
+- `45b95ff8` (gate verde: V3 5393, builder 158, Jest 153).
+- Configurazione `runner_config_brain_unico_paper_b.json`: cambiano solo i campi del profilo B.
+- Modello di mandato `approved: false` per la run `brain-unico-paper-rc1`, `policy_hash ba5c074ec2ecfe34`, con le avvertenze del proprietario: 1 % = perdita stimata, non garantita; pavimento e limite giornaliero non garantiscono l'equity.
+- Revisione: `docs/v3/BRAIN-UNICO-MANDATO-PROFILO-B-20261121.md`. Nulla applicato.
+
 ## 20/11/2026 21:44 Europe/Rome — uscite preregistrate e profilo rischio B scelto
 
 - Checkpoint append-only: [diario/2026-11-20_2144_checkpoint-uscite-rischio-b.md](diario/2026-11-20_2144_checkpoint-uscite-rischio-b.md).
