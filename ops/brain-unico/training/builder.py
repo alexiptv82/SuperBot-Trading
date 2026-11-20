@@ -540,6 +540,7 @@ def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_B
     for r in rows:                                               # ammissione uniforme, calcolata UNA volta a dataset completo
         reasons = EL.reasons(r, attested, untrusted)
         r["eligible_for_training"], r["ineligible_reasons"] = not reasons, reasons
+        r["data_status"] = EL.data_status(reasons)
         errs = S.validate_row(r)
         if errs:
             raise ValueError("invalid_row_after_eligibility:" + errs[0])
@@ -565,6 +566,8 @@ def summarize(res: dict) -> dict:
             "by_label_origin": c(lambda r: r["label_origin"]), "feature_source": c(lambda r: r["feature_source"]),
             "label_complete": c(lambda r: r["label_complete"]), "horizons_complete": c(lambda r: r["horizons_complete"]),
             "eligible_for_training": sum(1 for r in rows if r["eligible_for_training"]),
+            "data_status": {k: sum(1 for r in rows if r.get("data_status") == k) for k in EL.DATA_STATUSES},
+            "training_authorized": False,          # nessun addestramento ne' promozione senza decisione del proprietario
             "ineligible_reasons": dict(sorted(reasons.items())), "quality_flags": dict(sorted(flags.items())),
             "inputs_attested": sorted(res["attested"]), "inputs_hash_matched_untrusted": sorted(res.get("untrusted", set())),
             "inputs_not_certified": sorted(set(res["per_input"]) - res["attested"] - res.get("untrusted", set())),

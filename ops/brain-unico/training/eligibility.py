@@ -11,6 +11,22 @@ REASONS = ("duplicate", "synthetic", "input_not_attested", "provenance_not_ancho
            "ambiguous_feature_link", "market_data_unattested", "snapshot_unverified")
 _BLOCKING_FLAGS = ("ambiguous_feature_link", "market_data_unattested", "snapshot_unverified")
 
+# Tre stati DISTINTI per ogni riga (tutte le righe restano nel dataset, nessuna viene cancellata):
+#   verified    nessun motivo di esclusione: CANDIDATA al training. Non e' un'autorizzazione ad addestrare.
+#   unverified  manca soltanto un'attestazione o una provenienza che potrebbe arrivare (Fase 0, ancore, candele).
+#   excluded    difetto strutturale che nessuna attestazione risolve (duplicato, sintetico, etichetta incompleta,
+#               posizione aperta, PnL ignoto, chiusura manuale, legame decisione o feature non affidabile).
+UNVERIFIED_REASONS = ("input_not_attested", "provenance_not_anchored", "schema_unverified", "market_data_unattested",
+                      "snapshot_unverified")
+EXCLUDED_REASONS = tuple(x for x in REASONS if x not in UNVERIFIED_REASONS)
+DATA_STATUSES = ("verified", "unverified", "excluded")
+
+
+def data_status(reasons_: list) -> str:
+    if any(x in EXCLUDED_REASONS for x in reasons_):
+        return "excluded"
+    return "unverified" if reasons_ else "verified"
+
 
 def reasons(row: dict, attested_inputs: set, untrusted_inputs: frozenset = frozenset()) -> list:
     """`untrusted_inputs`: input con hash coincidenti ma SENZA ancora esterna (`hash_matched_untrusted`): non ammessi."""

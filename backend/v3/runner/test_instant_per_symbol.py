@@ -323,3 +323,55 @@ def test_the_dataset_builder_admits_per_symbol_snapshots_and_verifies_their_feat
 
 def test_the_wired_runner_keeps_the_current_mode():
     assert "instant=" not in (ROOT / "backend/v3/runner/wiring.py").read_text()
+
+
+# ------------------------------------------------------------------------------------------------ sidecar e costi
+
+def test_per_symbol_works_with_the_sidecar_open_commit_and_its_own_post_ai_clock():
+    """Nel percorso sidecar l'apertura passa dal writer serializzato, che ricontrolla con il PROPRIO orologio dopo il
+    modello: la modalita' per simbolo non lo aggira e la traccia resta prima dell'apertura."""
+    from backend.v3.executor.paper import execute_paper
+    from backend.v3.runner.open_serial import OpenCommit
+    j, clock = _journal(), Clock()
+    calls = []
+
+    def commit(decision):
+        calls.append(decision.occurred_at_ms)
+        rec = execute_paper(decision, portfolio_id="brain", run_id=RUN, journal=j, slippage_bps=2,
+                            now_ms=clock())                               # ora reale del writer, dopo il modello
+        return OpenCommit(True, "ok", rec)
+
+    rep = run_brain_cycle(
+        now_ms=NOW, journal=j, run_id=RUN, symbols=SYMBOLS[:3], store=TimeStore(), bars_holder=CycleBars(),
+        analyst=MarketEntryAnalyst(SlowModel(clock, j, latency=30_000, exit_at=99, kind="OPEN")), view_params=VIEW,
+        risk_policy=POLICY, mandate=_mandate(), policy_verifier=lambda m, p: True, market_rules=lambda s: RULES,
+        initial_equity=D("100000"), slippage_bps=2, allowed_strategy_ids=("S25",), trace="required", wall_ms=clock,
+        price_source=lambda sym, at: _price(at // 900_000 * 900_000), instant="per_symbol", slot_start_ms=G,
+        slot_end_ms=SLOT_END, require_open_commit=True, open_commit=commit)
+    assert len(rep.opened) == 3 and calls == [t for _, t in rep.instants]
+    rows = j.list_run("brain", RUN)
+    for op in [r for r in rows if r.event.kind == "paper_open"]:
+        did = op.event.payload["decision_event_id"]
+        dec = j.get(did)
+        snap = [r for r in rows if r.event.kind == SNAPSHOT_KIND and r.event.payload["decision_event_id"] == did][0]
+        assert dec.seq < snap.seq < op.seq and op.event.occurred_at_ms >= dec.event.occurred_at_ms
+    assert dt.trace_coverage(j, RUN).valid == 3
+
+
+@pytest.mark.parametrize("mode", ["cycle", "per_symbol"])
+def test_model_calls_one_per_symbol_and_none_after_a_restart(mode):
+    j, clock = _journal(), Clock()
+    m1 = SlowModel(clock, j, latency=1_000, exit_at=99, kind="NO_TRADE")
+    m2 = SlowModel(clock, j, latency=1_000, exit_at=99, kind="NO_TRADE")
+    if mode == "cycle":
+        run = lambda m, now: run_brain_cycle(
+            now_ms=now, journal=j, run_id=RUN, symbols=SYMBOLS, store=TimeStore(), bars_holder=CycleBars(),
+            analyst=MarketEntryAnalyst(m), view_params=VIEW, risk_policy=POLICY, mandate=_mandate(),
+            policy_verifier=lambda a, b: True, market_rules=lambda s: RULES, initial_equity=D("100000"),
+            slippage_bps=2, trace="required", wall_ms=clock, slot_start_ms=G, slot_end_ms=SLOT_END)
+    else:
+        run = lambda m, now: _cycle(j, m, clock, instant="per_symbol", now=now)
+    run(m1, NOW)
+    clock.t = NOW + 125_000
+    run(m2, NOW + 120_000)
+    assert (len(m1.seen), len(m2.seen)) == (8, 0)            # stesso costo AI per ciclo; zero dopo il riavvio

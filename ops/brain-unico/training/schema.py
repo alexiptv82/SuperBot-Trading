@@ -125,5 +125,8 @@ def validate_row(r: dict) -> list:
     for k in ("proposal", "labels", "provenance"):
         if not isinstance(r[k], dict):
             e.append(k)
+    if "data_status" in r and (r["data_status"] not in ("verified", "unverified", "excluded")
+                               or (r["data_status"] == "verified") != (r["eligible_for_training"] is True)):
+        e.append("data_status_inconsistent")
     _scan(r, "row", e)
     return e

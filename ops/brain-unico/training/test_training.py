@@ -1210,6 +1210,40 @@ class EligibilityAndSplitTests(BuilderBase):
         self.assertEqual(s["eligible_for_training"], sum(1 for r in self.build()["rows"] if r["eligible_for_training"]))
 
 
+class DataStatusTests(BuilderBase):
+    """Verificati, non verificati ed esclusi: tre stati distinti, nessuna riga cancellata, nessun training autorizzato."""
+
+    def test_every_row_has_exactly_one_consistent_status(self):
+        res = self.build()
+        st = {r["data_status"] for r in res["rows"]}
+        self.assertTrue(st <= {"verified", "unverified", "excluded"} and "verified" in st and "excluded" in st)
+        for r in res["rows"]:
+            self.assertEqual(r["data_status"], EL.data_status(r["ineligible_reasons"]))
+            self.assertEqual(r["data_status"] == "verified", r["eligible_for_training"])
+            self.assertEqual(S.validate_row(r), [])
+        s = B.summarize(res)
+        self.assertEqual(sum(s["data_status"].values()), s["rows"])
+        self.assertEqual(s["data_status"]["verified"], s["eligible_for_training"])
+        self.assertIs(s["training_authorized"], False)
+
+    def test_missing_attestation_is_unverified_not_excluded(self):
+        res = self.build(anchors={})
+        sound = [r for r in res["rows"] if set(r["ineligible_reasons"]) <= set(EL.UNVERIFIED_REASONS)]
+        self.assertTrue(sound and all(r["data_status"] == "unverified" for r in sound))
+
+    def test_structural_defects_are_excluded_even_without_attestation_problems(self):
+        self.assertEqual(EL.data_status(["duplicate"]), "excluded")
+        self.assertEqual(EL.data_status(["input_not_attested", "label_incomplete"]), "excluded")
+        self.assertEqual(EL.data_status(["snapshot_unverified", "market_data_unattested"]), "unverified")
+        self.assertEqual(EL.data_status([]), "verified")
+        self.assertEqual(set(EL.UNVERIFIED_REASONS) | set(EL.EXCLUDED_REASONS), set(EL.REASONS))
+
+    def test_an_inconsistent_status_is_rejected_by_the_schema(self):
+        r = next(x for x in self.build()["rows"] if x["eligible_for_training"])
+        self.assertIn("data_status_inconsistent", S.validate_row(dict(r, data_status="unverified")))
+        self.assertIn("data_status_inconsistent", S.validate_row(dict(r, data_status="maybe")))
+
+
 class MarketDataAttestationTests(BuilderBase):
     def test_without_candles_meta_every_market_derived_row_is_ineligible(self):
         os.remove(self.p("candles", C.META_FILE))
