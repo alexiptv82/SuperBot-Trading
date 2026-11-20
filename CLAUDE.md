@@ -18,3 +18,22 @@ Regole inviolabili (decisioni dell'utente, sempre valide):
 9. Un solo autore alla volta per componente.
 
 Le commit che non devono far partire nulla (documenti, diario) portano `[skip ci]` nel messaggio.
+
+## Skill specialistiche (`.claude/skills/`)
+
+Dieci skill metodologiche per il trading (fonte e modifiche in `.claude/skills/PROVENIENZA.md`): `risk-management`, `position-sizing`, `exit-strategies`, `trade-journal`, `regime-detection`, `slippage-modeling`, `portfolio-analytics`, `walk-forward-validation`, `signal-classification`, `strategy-framework`.
+
+Regole permanenti (non sostituiscono le regole inviolabili sopra, che prevalgono sempre):
+
+1. Prima di ogni attività di sviluppo, analisi, debugging o miglioramento di SuperBot, valuta quali skill siano pertinenti.
+2. Richiama le skill appropriate con lo strumento Skill senza attendere una richiesta esplicita.
+3. Capitale, drawdown, esposizione: `risk-management` e `position-sizing`.
+4. Take profit, trailing stop, chiusure tardive, restituzione dei profitti: `exit-strategies` e `trade-journal`.
+5. Cambi di trend, bias LONG/SHORT, cambi di volatilità: `regime-detection`.
+6. Strategie, validazione storica, overfitting: `walk-forward-validation` e `strategy-framework`.
+7. Commissioni, slippage, redditività netta: `slippage-modeling` e `portfolio-analytics`.
+8. Brain AI e valutazione dei segnali: `signal-classification`, quando pertinente.
+9. Carica solo le skill necessarie al compito: nessun caricamento preventivo di tutte.
+10. Le skill sono metodologia, **non prova** che un risultato sia corretto. Verifica sempre l'applicabilità ai futures USDT-M di Bitget: `slippage-modeling` è scritta per pool AMM/DEX e `regime-detection` ha una modalità live per Solana (da non usare).
+
+Limiti: le skill servono ad analizzare e proporre. **Non rendono automatici** deploy, invio di ordini, riavvio di servizi né modifiche a parametri, soglie o strategie in esecuzione: restano soggetti alle regole 1–3 sopra e al consenso esplicito del proprietario. Non eseguire gli script delle skill con rete o installare librerie senza necessità.
