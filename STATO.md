@@ -1,3 +1,12 @@
+## 20/11/2026 12:47 Europe/Rome — policy token, feed reale, Arena, perdita giornaliera e backup Brain
+
+- Checkpoint append-only: [diario/2026-11-20_1247_checkpoint-token-feed-arena-perdita-backup.md](diario/2026-11-20_1247_checkpoint-token-feed-arena-perdita-backup.md), commit [def1e33…](https://github.com/alexiptv82/SuperBot-Trading/commit/def1e3380f4cefdf68d3ce94042dbb50cca2e547).
+- Laboratorio `integration/brain-unico-20261119` @ `03607bec2ab884c173bce290720e283bb69d9da7`: policy token applicata @ `ccbcf547`; Arena read-only e sonda feed documentata @ `e6c3f3d7`; perdita giornaliera read-only @ `32ea96e4`; backup/restore Brain preparato @ `03607bec`.
+- Gate riferito dal diario Claude: suite 5.341, builder 157, Jest 152, 0 falliti; non rieseguito qui, commit `[skip ci]`. Sonda feed attestata dal commit/diario, rapporto grezzo fuori repository non letto.
+- Backup sui dati reali, cifratura e copia fuori VPS non eseguiti; extbackup `3dc2116a…` ancora non installato/certificato. RC84 PR #80 open/draft; Issue #124 P0 open.
+- Copia age PC: `ESITO: VERIFICA OK` e chiave pubblica coincidente, solo prova locale e non certificazione VPS.
+- Nessun main/merge/deploy/VPS/restart/reset/ordine/training/LIVE/API a pagamento. PAPER, Falco/Toro/Brain, storici ed EventJournal preservati.
+
 ## 20/11/2026 (8) — Claude: feed confermato, storico Arena, perdita giornaliera, backup
 
 - **Sonda feed** (autorizzata, 2 tentativi): ultima candela chiusa presente e pagine contigue: correzione confermata sull'API reale. Rapporto `~/brain-unico-lab/data/probe-feed-20261120.json` (completato a mano dopo un errore dello script di contorno, nessuna nuova richiesta).
