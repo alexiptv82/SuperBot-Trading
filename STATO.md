@@ -1,3 +1,10 @@
+## 21/11/2026 (17) — Tetto di 4 posizioni (branch isolato) e rischio aperto verificato
+
+- `claude/tetto-posizioni-20261121` @ `6eac67aa`: `max_open_positions` in `recheck_paper_open`, cioè nel percorso serializzato sotto lock e sullo stato fresco. 7 test mirati; due test di `open_serial` adeguati (budget di rischio con ≤ 3 posizioni). Suite V3 sul ramo: 5400 test. **Da approvare** prima di unirlo all'integrazione.
+- Il rischio aperto dal journal non include i costi stimati. Senza tetto la stima complessiva arriverebbe al 5,3–6,1 % con il profilo B; con il tetto resta ≤ 4 %. Correzione contabile minima proposta, **non applicata**.
+- Piano RC `1debd53d` (gate verde): sezione 3 con i parametri storici separati da quelli della nuova run.
+- Prossimo: pre-collaudo del servizio delle uscite e del rollback, sul commit della RC con il tetto.
+
 ## 21/11/2026 (16) — DECISIONE: collaudo in due fasi; universo ampliato dopo la verifica tecnica
 
 - `66989d8a` (gate verde).
