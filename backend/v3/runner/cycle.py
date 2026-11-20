@@ -42,6 +42,7 @@ from backend.v3.events import EventJournal
 from backend.v3.executor.paper import ExecutionError, execute_paper
 from backend.v3.features.indicators import Bar
 from backend.v3.risk import RiskPolicy
+from backend.v3.runner.decision_trace import journal_tip, record_decision_trace
 
 PORTFOLIO_ID = "brain"
 MIN_PRICE_PLACES = 8
@@ -94,6 +95,8 @@ class CycleReport:
     decisions: tuple[tuple[str, str, str, str], ...]       # (simbolo, tipo, stato, motivo)
     opened: tuple[tuple[str, str], ...]                    # (simbolo, position_id)
     errors: tuple[tuple[str, str], ...]                    # (simbolo, codice)
+    # (simbolo, esito, id decisione, id snapshot) per ogni decisione tracciata; vuoto se la traccia e' spenta
+    traces: tuple[tuple[str, str, str, str], ...] = ()
 
 
 def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal) -> BrainPortfolioSnapshot:
@@ -127,8 +130,15 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     price_source: Optional[Callable[[str, int], Decimal]] = None,
                     rotate: int = 0, open_commit: Optional[Callable[[BrainDecision], object]] = None,
                     require_open_commit: bool = False,
-                    peer_source: Optional[Callable[[str, int], Mapping]] = None) -> CycleReport:
-    """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare)."""
+                    peer_source: Optional[Callable[[str, int], Mapping]] = None,
+                    trace: str = "off") -> CycleReport:
+    """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare).
+
+    ``trace="required"``: ogni decisione scritta dal motore (anche NO_TRADE) riceve subito uno snapshot v2
+    (``decision_trace``), prima di qualunque apertura. Se la traccia fallisce l'errore va nel rapporto e una OPEN
+    approvata NON si apre (``open_blocked_untraced``): nessuna apertura senza evidenza. Le uscite e il controllo
+    della perdita giornaliera non passano dal ciclo e non dipendono dalla traccia.
+    """
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
     if type(rotate) is not int or rotate < 0:
@@ -139,6 +149,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
         raise ValueError("split_open_commit_required")
     if not require_open_commit and open_commit is not None:
         raise ValueError("open_commit_requires_split_mode")
+    if type(trace) is not str or trace not in ("off", "required"):
+        raise ValueError("invalid_trace_mode")
     syms = list(symbols)
     if syms:
         k = rotate % len(syms)
@@ -149,6 +161,7 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
     decisions: list[tuple[str, str, str, str]] = []
     opened: list[tuple[str, str]] = []
     errors: list[tuple[str, str]] = []
+    traces: list[tuple[str, str, str, str]] = []
     tf_names = [spec.name for spec in view_params.timeframes]
     base_tf = view_params.base_timeframe
     bars_holder.clear()
@@ -184,9 +197,10 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 continue
             price = price_with_room(price)
             bars_holder.set(symbol, bars_by_tf)
+            portfolio = snapshot_from_summary(summary, initial_equity)
             engine = BrainEngine(
                 analyst=analyst, reviewer=NoReviewer(), risk_policy=risk_policy,
-                portfolio_snapshot=snapshot_from_summary(summary, initial_equity),
+                portfolio_snapshot=portfolio,
                 market_params=_market_params(rules), journal=journal, portfolio_id=PORTFOLIO_ID,
                 run_id=run_id, policy_mandate=dict(mandate) if mandate is not None else None,
                 policy_verifier=policy_verifier, allowed_strategy_ids=allowed)
@@ -204,9 +218,22 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 falco_signal=validate_peer_signal(peers.get("falco"), "falco", symbol, now_ms),
                 toro_signal=validate_peer_signal(peers.get("toro"), "toro", symbol, now_ms))
 
+            tip = journal_tip(journal, run_id) if trace != "off" else 0
             decision = engine.step(context, 0.0)
             decisions.append((symbol, decision.kind.value, decision.status.value, decision.rationale))
-            if decision.kind == DecisionKind.OPEN and decision.status == ProposalStatus.APPROVED:
+            approved_open = decision.kind == DecisionKind.OPEN and decision.status == ProposalStatus.APPROVED
+            if trace != "off":
+                tr = record_decision_trace(
+                    journal=journal, run_id=run_id, symbol=symbol, now_ms=now_ms, after_seq=tip,
+                    expected_event_id=decision.journal_event_id if approved_open else None,
+                    bars_by_tf=bars_by_tf, timeframes=view_params.timeframes, portfolio=portfolio)
+                traces.append((symbol, tr.code, tr.decision_event_id or "", tr.snapshot_event_id or ""))
+                if not tr.ok:
+                    errors.append((symbol, tr.code))
+                    if approved_open:
+                        errors.append((symbol, "open_blocked_untraced"))
+                        continue
+            if approved_open:
                 if require_open_commit:
                     # No fallback to execute_paper. The cooperating writer rechecks
                     # current equity, mandate, pause and exit ownership *after* AI.
@@ -250,4 +277,4 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 summary = build_summary(journal, PORTFOLIO_ID, run_id)   # il prossimo simbolo vede questa posizione
         except Exception:
             errors.append((symbol, "cycle_error"))
-    return CycleReport(now_ms, skipped, tuple(decisions), tuple(opened), tuple(errors))
+    return CycleReport(now_ms, skipped, tuple(decisions), tuple(opened), tuple(errors), tuple(traces))

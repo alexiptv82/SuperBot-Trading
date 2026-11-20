@@ -218,7 +218,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             allowed_strategy_ids=allowed, price_source=lambda sym, now: last_minute_close(sym, now, get_json),
             rotate=slot, require_open_commit=(exit_mode == "sidecar"),
             open_commit=safety_open_commit if exit_mode == "sidecar" else None,
-            peer_source=peer_reader)
+            peer_source=peer_reader, trace="required")
 
     def run_monitor(now_ms: int) -> MonitorReport:
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,
