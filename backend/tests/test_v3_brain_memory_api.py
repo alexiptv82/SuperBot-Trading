@@ -15,7 +15,7 @@ from backend.v3.runner.test_thesis import _chain
 from backend.v3_api import V3Paths, make_router
 
 
-def _client(journal_path, run_id=RUN, authorized=True):
+def _client(journal_path, run_id=RUN, authorized=True, config=None):
     app = FastAPI()
 
     def auth():
@@ -24,7 +24,8 @@ def _client(journal_path, run_id=RUN, authorized=True):
         return "ok"
     app.include_router(make_router(auth, V3Paths(journal_path=journal_path, run_id=run_id, budget_db_path=None,
                                                   heartbeat_path=None, pause_flag_path=None,
-                                                  falco_data_dir="/nonexistent", toro_data_dir="/nonexistent")))
+                                                  falco_data_dir="/nonexistent", toro_data_dir="/nonexistent",
+                                                  brain_config_path=config)))
     return TestClient(app)
 
 
@@ -155,3 +156,41 @@ def test_status_exposes_only_sanitised_daily_loss(tmp_path):
     hb.write_text(_j.dumps({"ts_ms": 1, "cycle": 1, "state": "running", "last_error": None, "run_id": "r",
                             "daily_loss_level": "<b>x</b>", "daily_loss_pct": "1e9"}))
     assert c.get("/api/v3/brain/status").json()["daily_loss"] == {"level": None, "pct": None}
+
+
+def _config(tmp_path, minutes):
+    import json
+    from backend.v3.runner.config import default_config_path
+    raw = json.loads(default_config_path().read_text())
+    raw["cycle_minutes"] = minutes
+    p = tmp_path / "runner_config.json"
+    p.write_text(json.dumps(raw))
+    return str(p)
+
+
+def test_duplicate_decisions_in_the_same_slot_are_counted(tmp_path):
+    """Collaudo PAPER: 0 decisioni duplicate per slot. Il difetto reale: un riavvio a meta' slot ridecide con un nuovo
+    istante (senza i limiti dello slot il ciclo non deduplica)."""
+    j = _journal_with(lambda j: _run(j, ScriptAnalyst(kind="NO_TRADE"), symbols=("AAAUSDT",)))
+    m = _get(_client(str(j.filename), config=_config(tmp_path, 15)))["memory"]
+    assert (m["duplicate_slot_decisions"], m["slot_minutes"]) == (0, 15)
+    later = NOW + 1000
+    assert later // (15 * 60_000) == NOW // (15 * 60_000)                # stesso slot
+    _run(j, ScriptAnalyst(kind="NO_TRADE"), symbols=("AAAUSDT",), now=later)
+    api._MEMORY_CACHE.clear()
+    assert _get(_client(str(j.filename), config=_config(tmp_path, 15)))["memory"]["duplicate_slot_decisions"] == 1
+
+
+def test_decisions_in_different_slots_are_not_duplicates(tmp_path):
+    j = _journal_with(lambda j: (_run(j, ScriptAnalyst(kind="NO_TRADE"), symbols=("AAAUSDT",)),
+                                 _run(j, ScriptAnalyst(kind="NO_TRADE"), symbols=("AAAUSDT",), now=NOW + 15 * 60_000)))
+    assert _get(_client(str(j.filename), config=_config(tmp_path, 15)))["memory"]["duplicate_slot_decisions"] == 0
+
+
+def test_without_runner_config_duplicates_are_not_verifiable_never_zero(tmp_path):
+    j = _journal_with(lambda j: _run(j, ScriptAnalyst(kind="NO_TRADE"), symbols=("AAAUSDT",)))
+    m = _get(_client(str(j.filename)))["memory"]
+    assert m["duplicate_slot_decisions"] is None and m["slot_minutes"] is None
+    api._MEMORY_CACHE.clear()
+    m = _get(_client(str(j.filename), config=str(tmp_path / "manca.json")))["memory"]
+    assert m["duplicate_slot_decisions"] is None

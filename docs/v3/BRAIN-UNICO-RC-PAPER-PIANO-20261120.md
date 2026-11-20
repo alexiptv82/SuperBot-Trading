@@ -36,7 +36,7 @@
 |---|---|---|
 | Aperture senza traccia valida | 0 | `/api/v3/brain/memory` |
 | Copertura valida delle decisioni | ≥ 95 % (gli snapshot in ritardo sono misurati, non nascosti) | memoria |
-| Decisioni duplicate nello stesso slot | 0 | journal |
+| Decisioni duplicate nello stesso slot | 0 | memoria (`duplicate_slot_decisions`, slot = `cycle_minutes` del runner; senza configurazione: "non verificabile", mai 0) |
 | Catena di hash del journal | integra | memoria (`chain_ok`) |
 | Exit service / heartbeat | sempre sano; nessuna uscita persa | heartbeat |
 | Daily loss | latch persistente; nessuna apertura dopo HALT | journal / heartbeat |

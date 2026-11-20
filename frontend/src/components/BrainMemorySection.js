@@ -65,6 +65,9 @@ export default function BrainMemorySection({ memory }) {
       <Row label="Decisioni “nessun trade” conservate">{n(m.no_trade)}</Row>
       <Row label="Aperture senza traccia valida">
         <span style={{ color: m.untraced_opens > 0 ? '#fbbf24' : undefined }}>{n(m.untraced_opens)}</span></Row>
+      <Row label="Decisioni duplicate nello stesso slot">
+        {m.duplicate_slot_decisions == null ? <span style={MUTED}>non verificabile</span>
+          : <span style={{ color: m.duplicate_slot_decisions > 0 ? '#fbbf24' : undefined }}>{n(m.duplicate_slot_decisions)}</span>}</Row>
       <p style={MUTED}>Conta solo i collegamenti verificati (hash, ordine, coerenza), non le semplici associazioni.</p>
       <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>Ultime decisioni</h3>
       {recent.map((d, i) => <div key={`${d.ts_ms}-${d.symbol}-${i}`} style={{ borderTop: '1px solid #314357', padding: '7px 0', fontSize: 13 }}>

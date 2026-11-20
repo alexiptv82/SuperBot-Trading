@@ -56,3 +56,11 @@ test('progress never exceeds 100%', () => {
   const big = { ...ok, learning: { ...ok.learning, valid_examples_collected: 5000 } };
   expect(renderToStaticMarkup(<BrainMemorySection memory={big} />)).toContain('aria-valuenow="100"');
 });
+
+test('duplicate decisions per slot: counted, highlighted, and never a false zero', () => {
+  const dup = renderToStaticMarkup(<BrainMemorySection memory={{ ...ok, memory: { ...ok.memory, duplicate_slot_decisions: 2 } }} />);
+  expect(dup).toContain('Decisioni duplicate nello stesso slot');
+  expect(dup).toMatch(/#fbbf24[^>]*>2</);
+  const unknown = renderToStaticMarkup(<BrainMemorySection memory={ok} />);
+  expect(unknown).toMatch(/Decisioni duplicate nello stesso slot.*non verificabile/);
+});

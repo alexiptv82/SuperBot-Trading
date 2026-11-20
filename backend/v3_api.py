@@ -416,6 +416,31 @@ _MEMORY_CACHE: dict = {}
 _MEMORY_RECENT = 12
 
 
+def _cycle_ms(paths: V3Paths):
+    """Durata dello slot del runner (stessa di wiring.run_cycle), dalla sua configurazione; None se non leggibile."""
+    from backend.v3.runner.config import load_runner_config
+    if not paths.brain_config_path:
+        return None
+    try:
+        with open(paths.brain_config_path, 'rb') as f:
+            ms = load_runner_config(f.read()).cycle_ms
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+    return ms if type(ms) is int and ms > 0 else None
+
+
+def _duplicate_slot_decisions(decisions, cycle_ms):
+    """Decisioni IN PIU' per (simbolo, slot): 0 atteso (deduplicazione per slot). None se lo slot non e' noto:
+    mai un falso zero."""
+    if cycle_ms is None:
+        return None
+    seen: dict = {}
+    for r in decisions:
+        k = (r.event.payload.get('symbol'), r.event.occurred_at_ms // cycle_ms)
+        seen[k] = seen.get(k, 0) + 1
+    return sum(n - 1 for n in seen.values() if n > 1)
+
+
 def _memory(paths: V3Paths, now_ms: int) -> dict:
     """Memoria e apprendimento del Brain, in sola lettura dal journal. Nessun segreto, nessun testo del modello."""
     from backend.v3.decision_snapshot_v2 import SNAPSHOT_KIND
@@ -424,11 +449,12 @@ def _memory(paths: V3Paths, now_ms: int) -> dict:
     if journal is None:
         return {'state': 'not_started', 'run_id': paths.run_id or None}
     try:
-        key = (paths.journal_path, paths.run_id, journal.last_seq('brain', paths.run_id))
+        key = (paths.journal_path, paths.run_id, journal.last_seq('brain', paths.run_id), paths.brain_config_path)
         if _MEMORY_CACHE.get('key') == key:
             return _MEMORY_CACHE['value']
         cov = trace_coverage(journal, paths.run_id)
         rows = journal.list_run('brain', paths.run_id)
+        cycle_ms = _cycle_ms(paths)
     except (ValueError, sqlite3.Error, OSError):
         return {'state': 'unavailable', 'run_id': paths.run_id}
     verdict = dict(cov.invalid)
@@ -462,6 +488,9 @@ def _memory(paths: V3Paths, now_ms: int) -> dict:
                    'chain_ok': cov.chain_ok, 'missing': len(cov.missing), 'invalid': len(cov.invalid),
                    'verdicts': dict(cov.verdicts), 'untraced_opens': len(cov.untraced_opens),
                    'no_trade': sum(1 for r in decisions if r.event.payload.get('kind') == 'NO_TRADE'),
+                   # collaudo PAPER: decisioni duplicate nello stesso slot = 0 (None = durata dello slot non nota)
+                   'duplicate_slot_decisions': _duplicate_slot_decisions(decisions, cycle_ms),
+                   'slot_minutes': cycle_ms // 60_000 if cycle_ms else None,
                    # chiusure dell'operatore conservate come interventi, distinte dalle uscite automatiche
                    'manual_closes': sum(1 for r in rows if r.event.kind == 'paper_close'
                                         and isinstance(r.event.payload, dict) and r.event.payload.get('reason') == 'manual'),
