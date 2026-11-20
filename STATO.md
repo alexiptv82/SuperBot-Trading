@@ -1,3 +1,11 @@
+## 20/11/2026 09:53 Europe/Rome — cinque skill attivate e integrate nel ramo laboratorio
+
+- Checkpoint append-only: [diario/2026-11-20_0953_checkpoint-skill-attivate-integrate-laboratorio.md](diario/2026-11-20_0953_checkpoint-skill-attivate-integrate-laboratorio.md), commit [60250b2…](https://github.com/alexiptv82/SuperBot-Trading/commit/60250b22c7baf430f154b8adf2732edf22ac347b).
+- `integration/brain-unico-20261119` verificato @ `3a231dd1824846ad0737b3d90ff5fbc361ed8fb8`: cinque skill consultive richiamate con successo e integrate; solo skill/documentazione, nessun cambiamento a strategie, soglie, rischio o servizi.
+- Test riferiti dalla sessione/diario: V3 5311, builder 157, Jest 137, 0 fallimenti. Evidenza documentale, nessun controllo live VPS in questo checkpoint.
+- Archivio ancora `manifest_unanchored`; fix feed solo offline; Issue #124 P0 aperta; RC84 PR #80 draft; extbackup preparato/non certificato; age PC verificata localmente ma non prova VPS.
+- Nessun main/merge/deploy/VPS/restart/reset/ordine/training/LIVE/API a pagamento. PAPER, storici ed EventJournal preservati.
+
 ## 20/11/2026 (6) — Claude: skill attivate e integrate
 
 - Sessione locale Claude Code sulla VPS (non cloud/Project). Le 5 skill installate come skill personali in `~/.claude/skills/` (rilevate senza riavvio, come da documentazione ufficiale) e **richiamate davvero** con lo strumento Skill: tutte e cinque caricate. Integrate nel ramo di laboratorio @ `3a231dd1` (suite 5311, builder 157, Jest 137). Consultive: nessuna modifica a strategie, soglie, rischio. Dettagli in `.claude/skills/PROVENIENZA.md`.
