@@ -55,10 +55,17 @@ Si ripristina il commit precedente del runner e la build web precedente. Il jour
 - Vista storica dell'Arena: integrata in sola lettura (`/arena`, opt-in); la chiusura dell'Arena resta nel suo ramo.
 - Profilo di rischio v2: decisioni numeriche.
 
-## 7. Backup: stato al 20/11/2026 (prova autorizzata)
-- **Run Brain da proteggere:** dalla configurazione di deploy risulta `brain-rc-2000-20261106` in `/opt/superbot-v3-paper-runs/brain-v3-rc20261106/`. Quella cartella è leggibile **solo da root** (`drwx------` già sulla cartella padre): come utente non-root, senza sudo, non è nemmeno elencabile. **Prova di backup non eseguita.** Come da istruzione, nessuna altra cartella operativa è stata tentata.
-- Per eseguirla serve una delle due strade, con consenso: (a) l'operatore lancia `python3 -m backend.v3.runner.run_backup --source <cartella run> --dest <nuova> --restore-test <nuova>` come root, in sola lettura sulla sorgente; (b) una lettura delegata (gruppo o ACL in sola lettura per l'utente di laboratorio sulla sola cartella della run).
-- **Run Brain ≠ patrimonio storico.** Falco e Toro (`/opt/superbot-desk-data`), il DB dell'app e del pool sono coperti dall'extbackup esistente (age + repository privato `superbot-backups`), ma la sua installazione e il ripristino **non sono certificati**. La run Brain V3 e le tre run dell'Arena (`/opt/superbot-ai-arena-paper`, solo root; l'Arena ha un suo `backup.py`) **non sono coperte** dall'extbackup. La protezione generale **non è completa**.
+## 7. Backup: stato al 21/11/2026
+- **Prove reali sulla VPS**, eseguite dal proprietario come root, senza trasferimenti, con il branch `claude/extbackup-storici-20261121`:
+  - backup cifrato creato;
+  - dopo il ripristino, catena, numero di eventi e testa verificati per i journal obbligatori: Brain V3 1058, DeepSeek 1260, Qwen 1281, MiniMax 1306;
+  - integrità tecnica verificata.
+- **Esiti separati** (commit `f60b90d6`): **0** = certificato; **1** = difetto tecnico, che è NO-GO; **3** = integro ma **non certificato semanticamente**. L'esito 3 conserva l'archivio, ma non è un successo.
+- **Falco e Toro:** decisione del proprietario del 21/11, vedi la sezione 10.
+- **Aperto:**
+  - l'archivio cifrato di prova pesa **117 MB**, oltre il limite di 100 MB per file di GitHub (`superbot-backups`): per la copia esterna serve un archivio per componente, o diviso in parti;
+  - installazione dell'extbackup aggiornato in produzione, con consenso;
+  - ripristino dal file cifrato sul PC del proprietario.
 
 ## 8. Cifratura e copia esterna (proposta, senza nuovi costi)
 - **Correzione (21/11):** la cifratura `tar | age` è in streaming, ma la fase precedente di backup crea COPIE IN CHIARO dei database. Le due fasi sono distinte: le copie in chiaro stanno in una cartella di lavoro 0700 e vengono cancellate dopo le verifiche. Procedura amministrativa circoscritta: `ops/brain-unico/backup/PROCEDURA.md`. Cifratura solo verso la chiave PUBBLICA già approvata (`/opt/superbot-extbackup/recipient.txt`); la privata resta sul PC del proprietario.
@@ -66,3 +73,17 @@ Si ripristina il commit precedente del runner e la build web precedente. Il jour
 
 ## 9. Freschezza dei dati (requisito del GO)
 - 15m su BTCUSDT confermato sull'API reale (sonda autorizzata, 20/11). 1m (monitor delle uscite), 1h e 4h usano la stessa funzione corretta: verificato con il CandleStore del runtime ed emulazione della selezione per chiusura (test). Conferma reale su 1m/1h/4h: facoltativa, con una sonda autorizzata.
+
+## 10. Componenti indispensabili e storici (decisione del proprietario, 21/11/2026)
+| Classe | Componenti | Backup | Training |
+|---|---|---|---|
+| **Indispensabili per Brain Unico** | run Brain V3 attiva, 3 run Arena (journal V3), DB dell'app e del pool | obbligatori; integrità tecnica e catene V3 rigorose; un difetto è NO-GO | solo con i quattro requisiti del Dataset Builder |
+| **Storici classici** | Falco (`hawk`), Toro (`bull`) | conservati integralmente, **non certificati semanticamente** (esito 3): contabilità e storico di Toro non riconciliati con lo stato | **esclusi**: `semantic_not_certified` in `eligibility.py`; le righe restano nel dataset |
+| **Altri storici** | Brain storico (`desk-data/brain`), Brain libero, Brain adattivo, `ai-data`, run V3 preparate | conservati; non bloccano i componenti indipendenti | solo con attestazione |
+
+**Anomalie registrate** di Falco e Toro, dalla prova del 20/11. Sono importi PAPER, non saldi reali:
+- **Falco:** cassa + salvadanaio superano capitale + risultati di 21,13 USDT.
+- **Toro:** stessa differenza, di 39,08 USDT.
+- **Toro:** 25 trade nello stato, 55 nello storico della run, di cui 30 solo nello storico.
+
+Il motore toglie dalla cassa al massimo margine + commissione d'apertura (`engine.py`). L'ipotesi è compatibile con il segno delle differenze, ma non è verificata. **Nessuna ulteriore indagine** senza una nuova richiesta del proprietario. Per Falco e Toro i dati originali non si modificano.

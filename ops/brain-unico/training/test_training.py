@@ -521,6 +521,23 @@ class BuilderRows(BuilderBase):
         self.assertTrue(all(S.validate_row(r) == [] for r in res["rows"]))
         self.assertEqual(sum(1 for r in res["rows"] if r["is_synthetic"]), 0)
 
+    def test_falco_and_toro_are_kept_but_never_eligible_for_training(self):
+        """Decisione del proprietario (20/11/2026): archivi classici conservati, NON certificati semanticamente."""
+        res = self.build()
+        falco = [r for r in res["rows"] if r["source_system"] == "falco"]
+        self.assertEqual(len(falco), 4)                                                     # nessuna riga persa
+        for r in falco:
+            self.assertFalse(r["eligible_for_training"])
+            self.assertIn("semantic_not_certified", r["ineligible_reasons"])
+            self.assertEqual(r["data_status"], "excluded")
+        arena = [r for r in res["rows"] if r["source_system"] == "arena_minimax"]
+        self.assertFalse(any("semantic_not_certified" in r["ineligible_reasons"] for r in arena))
+        self.assertEqual(EL.SEMANTIC_NOT_CERTIFIED_SOURCES, ("falco", "toro"))
+        self.assertIn("semantic_not_certified", EL.EXCLUDED_REASONS)
+        self.spec["inputs"][0]["semantic_certified"] = True                                 # nessun flag della spec lo revoca
+        self.assertTrue(all("semantic_not_certified" in r["ineligible_reasons"]
+                            for r in self.build()["rows"] if r["source_system"] == "falco"))
+
     def test_losses_manual_closes_and_open_positions_are_kept(self):
         res = self.build()
         loss = next(r for r in res["rows"] if r["source_system"] == "arena_minimax" and r["outcome"].get("net_pnl") == -12.5)

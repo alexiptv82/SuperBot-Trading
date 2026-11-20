@@ -8,14 +8,20 @@ from __future__ import annotations
 
 REASONS = ("duplicate", "synthetic", "input_not_attested", "provenance_not_anchored", "schema_unverified", "no_features", "label_incomplete",
            "open_censored", "unknown_pnl", "manual_close_not_imitable", "decision_link_untrusted",
-           "ambiguous_feature_link", "market_data_unattested", "snapshot_unverified")
+           "ambiguous_feature_link", "market_data_unattested", "snapshot_unverified", "semantic_not_certified")
+# Decisione del proprietario (20/11/2026): gli archivi classici Falco (hawk) e Toro (bull) sono conservati integralmente
+# ma NON certificati semanticamente (contabilita' e storico non riconciliati con lo stato, anomalie registrate nel
+# ramo diario). Le loro righe restano nel dataset ma non sono mai ammesse al training automatico. Revocabile solo con
+# una nuova decisione esplicita del proprietario (modifica di codice revisionata, mai un flag della spec).
+SEMANTIC_NOT_CERTIFIED_SOURCES = ("falco", "toro")
 _BLOCKING_FLAGS = ("ambiguous_feature_link", "market_data_unattested", "snapshot_unverified")
 
 # Tre stati DISTINTI per ogni riga (tutte le righe restano nel dataset, nessuna viene cancellata):
 #   verified    nessun motivo di esclusione: CANDIDATA al training. Non e' un'autorizzazione ad addestrare.
 #   unverified  manca soltanto un'attestazione o una provenienza che potrebbe arrivare (Fase 0, ancore, candele).
 #   excluded    difetto strutturale che nessuna attestazione risolve (duplicato, sintetico, etichetta incompleta,
-#               posizione aperta, PnL ignoto, chiusura manuale, legame decisione o feature non affidabile).
+#               posizione aperta, PnL ignoto, chiusura manuale, legame decisione o feature non affidabile, archivio
+#               classico non certificato semanticamente).
 UNVERIFIED_REASONS = ("input_not_attested", "provenance_not_anchored", "schema_unverified", "market_data_unattested",
                       "snapshot_unverified")
 EXCLUDED_REASONS = tuple(x for x in REASONS if x not in UNVERIFIED_REASONS)
@@ -57,4 +63,6 @@ def reasons(row: dict, attested_inputs: set, untrusted_inputs: frozenset = froze
     for f in _BLOCKING_FLAGS:
         if f in row["quality_flags"]:
             r.append(f)
+    if row.get("source_system") in SEMANTIC_NOT_CERTIFIED_SOURCES:
+        r.append("semantic_not_certified")
     return r
