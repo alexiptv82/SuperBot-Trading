@@ -1,3 +1,11 @@
+## 20/11/2026 22:51 Europe/Rome — config e mandato profilo B preparati, non attivi
+
+- Checkpoint append-only: [diario/2026-11-20_2251_checkpoint-config-mandato-profilo-b.md](diario/2026-11-20_2251_checkpoint-config-mandato-profilo-b.md).
+- Integrazione @ `f50baf89be1e1c8a2e4128f1bd054ec58b8fdde2`: config PAPER B e template mandato `approved:false`; configurazioni attive invariate, nessuna run/deploy/VPS.
+- Il mandato operativo corrente non è firmato: prova coerenza, non identità. Il verificatore Ed25519 a validità max 24h è separato e non cablato al runner; `policy_hash` non copre tutti i campi, quindi serve verifica SHA-256 della config completa.
+- Gate riferito per `45b95ff8`: V3 5.393, Builder 158, Jest 153; 5 test mirati. RC84 #80 open/draft; Issue #124 open/P0; extbackup `75a714be…` preparato ma non installato/off-host.
+- Age PC `ESITO: VERIFICA OK` con chiave pubblica coincidente resta prova locale, non certificazione VPS. Nessun merge/deploy/servizio/ordine/API a pagamento.
+
 ## 21/11/2026 (15) — Mandato: garanzie effettive; universo e modello verificati
 
 - `f50baf89` (gate verde): il mandato operativo non è firmato. Dimostra la coerenza tra approvazione, limiti e run, non l'identità di chi approva. Le ricevute Ed25519 sono separate e non collegate al runner. All'attivazione è obbligatorio `sha256sum --strict` della configurazione completa. Mandato ancora `approved: false`.
