@@ -1,3 +1,11 @@
+## 20/11/2026 21:44 Europe/Rome — uscite preregistrate e profilo rischio B scelto
+
+- Checkpoint append-only: [diario/2026-11-20_2144_checkpoint-uscite-rischio-b.md](diario/2026-11-20_2144_checkpoint-uscite-rischio-b.md).
+- Integrazione @ `73f68ad03fa5c14e86eca1f5f02116aace34d93c`: profilo B scelto per il primo PAPER da 2.000 USDT (1% per trade, 4 posizioni/4% aperto, avviso 3%, stop nuove aperture 4%, pavimento 1.600, leva 1–30×), ma mandato e configurazione non applicati.
+- Laboratorio uscite @ `26e4159ffa9b427e0d4e599591a973a5bf2ccd64`: bracci controfattuali preregistrati, SHA-256 `acfb5f9f…`; nessuna analisi su dati reali o modifica runtime. Gate riferito: V3 5.388, Builder 158, Jest 153.
+- Leva minima calcolata e filtro costi >25% restano non operativi; solo metriche di collaudo. RC84 #80 open/draft; Issue #124 open/P0; extbackup `75a714be…` preparato ma non installato/provato off-host.
+- Falco/Toro restano integri, `semantic_not_certified` ed esclusi dal training. Age PC `ESITO: VERIFICA OK` resta prova locale, non certificazione VPS. Nessun merge/deploy/VPS/ordine/training/API a pagamento.
+
 ## 21/11/2026 (13) — DECISIONE: profilo di rischio B per il primo PAPER
 
 - **Decisione del proprietario:** profilo B per 2.000 USDT PAPER: 1 % per trade, 4 posizioni e 4 % di rischio aperto, giornata con avviso al 3 % e stop al 4 %, pavimento 1.600, leva 1–30×. Mandato **non** applicato.
