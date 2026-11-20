@@ -1,3 +1,13 @@
+## 20/11/2026 08:46 Europe/Rome — seconda acquisizione, feed, Brain Unico, skill e validazione reale
+
+- Checkpoint: [08:43](diario/2026-11-20_0843_checkpoint-seconda-acquisizione-feed-brain-unico.md), commit [c1371121…](https://github.com/alexiptv82/SuperBot-Trading/commit/c1371121e13653db410cb998c16cb0da502e459e); addendum append-only [08:46](diario/2026-11-20_0846_addendum-skill-suite-5311.md), commit [720904e…](https://github.com/alexiptv82/SuperBot-Trading/commit/720904ee98c5df972d497eb69d31288826e34190).
+- Seconda acquisizione: 24 file/47.352 righe, manifest `candles-20261120T064955Z-95a00e9b`, integrità intatta ma `manifest_unanchored`; nessun training autorizzato.
+- Difetto feed ultima candela chiusa corretto offline @ `315edf15`, ancora da provare con sonda reale autorizzata max 3 tentativi.
+- Brain Unico e chiusure manuali non imitabili @ `095a0432`; piano RC PAPER @ `8fa61d18`; validatore dati reali @ `733182f6`, suite 5311/builder 157/Jest 137, 0 falliti.
+- Skill selezionate su ramo isolato `claude/skills-brain-unico-20261120` @ `0ce8adf8`: non integrate, riconoscimento non verificato; limiti metodologici registrati.
+- PR/issue invariati; RC84 PR #80 open/draft; extbackup `3dc2116a` preparato/non certificato; age PC `ESITO: VERIFICA OK` ma non prova VPS.
+- Nessun main/merge/deploy/VPS/servizio/restart/reset/ordine/training/LIVE/API a pagamento. PAPER, storici ed EventJournal preservati.
+
 ## 20/11/2026 (5) — Claude: skill (prima selezione) e validazione delle feature su dati reali
 
 - Skill: ramo isolato `claude/skills-brain-unico-20261120` @ `0ce8adf8` (5 skill adattate, confronto offline); non integrato finché il riconoscimento non è provato in una nuova sessione. Dettagli: [`diario/2026-11-20_claude-skill-confronto-validazione-reale.md`](diario/2026-11-20_claude-skill-confronto-validazione-reale.md).
