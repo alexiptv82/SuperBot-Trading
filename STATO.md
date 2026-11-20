@@ -1,3 +1,10 @@
+## 20/11/2026 17:49 Europe/Rome — supplemento: audit fonti esterne solo documentale
+
+- Supplemento append-only: [diario/2026-11-20_1749_supplemento-audit-fonti-esterne-solo-documentale.md](diario/2026-11-20_1749_supplemento-audit-fonti-esterne-solo-documentale.md).
+- Integrazione avanzata a `bead82a349e71868d112e1e5eb513f8e666b1e14`: audit read-only di quattro fonti pubbliche; nessuna fonte idonea come dati attestati per Brain Unico.
+- Nessun dataset importato, codice di terzi eseguito, runtime/training modificato o API a pagamento usata. Le ipotesi metodologiche restano proposte non approvate.
+- Resta valida la decisione delle 17:46: Falco/Toro conservati, `semantic_not_certified`, esclusi dal training e nessuna ulteriore indagine senza nuova richiesta.
+
 ## 20/11/2026 17:46 Europe/Rome — Falco/Toro conservati ma esclusi dal training
 
 - Checkpoint append-only: [diario/2026-11-20_1746_checkpoint-falco-toro-esclusi-training.md](diario/2026-11-20_1746_checkpoint-falco-toro-esclusi-training.md).
