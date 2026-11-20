@@ -1,3 +1,12 @@
+## 20/11/2026 16:52 Europe/Rome — prova storici: integrità tecnica OK, semantica Falco/Toro non certificata
+
+- Checkpoint append-only: [diario/2026-11-20_1652_checkpoint-prova-storici-integrita-tecnica-semantica-non-certificata.md](diario/2026-11-20_1652_checkpoint-prova-storici-integrita-tecnica-semantica-non-certificata.md).
+- Prova reale: archivio cifrato 117.472.954 byte; journal validi Brain 1.058, DeepSeek 1.260, Qwen 1.281, MiniMax 1.306.
+- Ripristino non certificato: 4 anomalie Falco/Toro, scarti +21,13/+39,08 USDT PAPER e 30 trade Toro presenti solo nello storico. Esito corretto: integrità tecnica OK, semantica non certificata.
+- Candidato `claude/extbackup-storici-20261121` @ `f60b90d6…`: diagnostica read-only, esiti tecnico/semantico separati, 67 test dichiarati; nessuna nuova prova completa dopo la correzione.
+- RC84 #80 open/draft; Issue #124 open/P0; integrazione `de59f677…`; extbackup storico `3dc2116a…` non installato/certificato. Age PC `ESITO: VERIFICA OK` resta prova locale.
+- Nessun merge/deploy/VPS/restart/reset/ordine/training/LIVE/API a pagamento; PAPER, storici ed EventJournal preservati.
+
 ## 21/11/2026 (6) — Prova storici: integrità tecnica OK, semantica di Falco/Toro da diagnosticare
 
 - Seconda prova reale: backup cifrato e journal V3 verificati (Brain V3 1058, DeepSeek 1260, Qwen 1281, MiniMax 1306). Ripristino: 4 anomalie su Falco/Toro (contabilità +21,13 / +39,08 USDT PAPER; Toro 25 trade nello stato, 55 nello storico).
