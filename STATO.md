@@ -1,3 +1,11 @@
+## 20/11/2026 11:46 Europe/Rome — proposta politica permanente di ottimizzazione token
+
+- Checkpoint append-only: [diario/2026-11-20_1146_checkpoint-proposta-politica-token.md](diario/2026-11-20_1146_checkpoint-proposta-politica-token.md), commit [c0e043d…](https://github.com/alexiptv82/SuperBot-Trading/commit/c0e043d5991c5a648f2d4f88e83a1fe7e7d9d9d7).
+- Decisione/richiesta utente: valutare una politica permanente in `CLAUDE.md` per ridurre token, chiamate inutili e ridondanze; qualità, sicurezza, affidabilità, correttezza e test prevalgono.
+- Vincoli: niente codice applicativo, agenti/plugin, sovrascritture o duplicazioni. **Non risulta ancora applicata, committata o testata.**
+- Ramo laboratorio invariato @ `3a231dd1`; archivio ancora `manifest_unanchored`; fix feed solo offline; Issue #124 P0 aperta; RC84 #80 draft; extbackup non installato/certificato; age PC verificata localmente, non VPS.
+- Nessun main/merge/deploy/VPS/restart/reset/ordine/training/LIVE/API a pagamento. PAPER, storici ed EventJournal preservati.
+
 ## 20/11/2026 09:53 Europe/Rome — cinque skill attivate e integrate nel ramo laboratorio
 
 - Checkpoint append-only: [diario/2026-11-20_0953_checkpoint-skill-attivate-integrate-laboratorio.md](diario/2026-11-20_0953_checkpoint-skill-attivate-integrate-laboratorio.md), commit [60250b2…](https://github.com/alexiptv82/SuperBot-Trading/commit/60250b22c7baf430f154b8adf2732edf22ac347b).
