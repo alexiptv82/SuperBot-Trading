@@ -1,3 +1,12 @@
+## 20/11/2026 (4) — Claude: seconda acquisizione riuscita, difetto del feed, schermata Brain Unico
+
+- `integration/brain-unico-20261119` @ `8fa61d18`: suite **5310**, builder 157, Jest 137, 0 falliti. Dettagli: [`diario/2026-11-20_claude-seconda-acquisizione-brain-unico-rc.md`](diario/2026-11-20_claude-seconda-acquisizione-brain-unico-rc.md).
+- **Candele acquisite:** controllo preliminare positivo (2 tentativi); archivio `candles-20261120T064955Z-95a00e9b`, SHA-256 `4c982882e53324ce944279b3e016cc8b71f4b96e64e76e7a03afa0021aecf407`; 266/350 tentativi, 8,47 MB, integrità intatta; **ancora da registrare dal proprietario**.
+- **Difetto del feed:** il runtime non riceveva mai l'ultima candela chiusa (Bitget seleziona per chiusura), quindi decideva con una candela di ritardo. Corretto offline; serve una sonda autorizzata per confermarlo.
+- **Chiusure manuali** verificate end-to-end: interventi dell'operatore, mai strategie da imitare.
+- **App:** schermata principale Brain Unico, storico separato, nessuna reinstallazione necessaria. **Piano RC PAPER** in `docs/v3`.
+- Nessun deploy, servizio, parametro attivo, spesa o LIVE.
+
 ## 20/11/2026 07:45 Europe/Rome — acquisizione interrotta, dedup slot e memoria nell'app
 
 - Checkpoint append-only: [`diario/2026-11-20_0745_checkpoint-acquisizione-interrotta-dedup-memoria-app.md`](diario/2026-11-20_0745_checkpoint-acquisizione-interrotta-dedup-memoria-app.md), commit [`9ddfe8c…`](https://github.com/alexiptv82/SuperBot-Trading/commit/9ddfe8c23769e3251ac0a487853973167c67b1d8).

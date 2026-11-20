@@ -32,6 +32,10 @@
 | 22 | stato verificato / non verificato / escluso nel Dataset Builder; verifiche per simbolo (sidecar, costi AI) | commit `b71e706f` | 5286 → **5289** | builder 157 |
 | 23 | memoria e apprendimento nell'app SuperBot (endpoint + sezioni Overview) | commit locale `c768a6f4` | **bloccato dal gate** (1 fallito: inventario rotte RC84) | non pubblicato da solo |
 | 24 | inventario delle rotte aggiornato con la sola lettura `/brain/memory` | commit `8e03235d` | **5298**, 0 falliti | builder 157, Jest 129/129, build di produzione OK; pubblicati insieme 23+24 |
+| 25 | controllo preliminare delle candele e budget residuo | commit `78fa5022` | 5298 → **5302** | |
+| 26 | feed: l'ultima candela chiusa non veniva mai scaricata (Bitget seleziona per chiusura) | commit `315edf15` | 5302 → **5306** | evidenza reale da sonda e acquisizione; da confermare sull'API con una sonda autorizzata |
+| 27 | schermata principale Brain Unico; chiusure manuali verificate end-to-end (`closed_by`) | commit `095a0432` | 5306 → **5310** | Jest 137/137, build OK |
+| 28 | piano della release candidate PAPER (documento) | commit `8fa61d18` | 5310 | |
 
 ### Provenienza dell'autorizzazione (risposta al checkpoint ChatGPT 20:49)
 Il consenso ai merge in questo ramo è stato dato dal proprietario **direttamente nella sessione Claude Code** (link di sessione nei trailer dei commit), in due messaggi del 19/11/2026: il primo autorizza i merge nel solo `integration/brain-unico-20261119` con le condizioni del § 2; il successivo lo riconferma («Continua autonomamente con lo sviluppo e i test sul ramo di integrazione autorizzato», «Puoi integrare nel ramo di laboratorio autorizzato i componenti della PR #123»). ChatGPT non vede quella sessione: il conflitto è di visibilità, non di contenuto. **Richiesta al proprietario:** una riga di conferma in un canale leggibile da entrambi (es. commento nella Issue #113) chiude la questione; Claude non può scriverlo (403).
