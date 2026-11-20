@@ -1,3 +1,11 @@
+## 21/11/2026 (16) — DECISIONE: collaudo in due fasi; universo ampliato dopo la verifica tecnica
+
+- `66989d8a` (gate verde).
+- **Fase 1:** verifica tecnica rapida, 72 h proposte, 8 simboli e profilo B. Non è una valutazione delle prestazioni.
+- **Fase 2:** prime 25 cripto più XAUUSDT/XAGUSDT, solo dopo una Fase 1 positiva, con nuova configurazione e nuovo mandato. Massimo 4 posizioni; budget dal costo AI **misurato** in `budget.db`.
+- **Massimo di 4 posizioni:** oggi è solo implicito (4 % / 1 %), senza un tetto esplicito nel codice. Si misura in Fase 1 e il proprietario decide prima della Fase 2. Nessuna modifica al motore ora.
+- Mandato `approved: false` fino a pre-collaudo e protezione degli storici.
+
 ## 20/11/2026 22:51 Europe/Rome — config e mandato profilo B preparati, non attivi
 
 - Checkpoint append-only: [diario/2026-11-20_2251_checkpoint-config-mandato-profilo-b.md](diario/2026-11-20_2251_checkpoint-config-mandato-profilo-b.md).
