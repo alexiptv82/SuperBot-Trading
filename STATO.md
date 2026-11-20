@@ -1,3 +1,13 @@
+## 20/11/2026 (3) — Claude: acquisizione interrotta in sicurezza, duplicazione corretta, memoria nell'app
+
+- `integration/brain-unico-20261119` @ `8e03235d`: suite **5298**, 0 falliti; builder 157; Jest 129/129. Dettagli: [`diario/2026-11-20_claude-acquisizione-duplicazione-dashboard.md`](diario/2026-11-20_claude-acquisizione-duplicazione-dashboard.md).
+- **Acquisizione candele** (una, autorizzata): limiti rigidi aggiunti e collaudati; `--plan` di 272 richieste e ~11,8 MB su 47 giorni; esecuzione **interrotta dopo 24 tentativi HTTP** dal controllo di coerenza con il runtime, **nessun archivio** né manifest. Derivazione corretta; per riprovare serve una nuova autorizzazione.
+- **Duplicazione dopo riavvio** classificata (media: costi AI e campioni duplicati, nessuna doppia posizione) e **corretta** anche in modalità `cycle`.
+- **Dataset Builder:** stati verificato / non verificato / escluso; `training_authorized=false`.
+- **App SuperBot:** memoria decisionale, tesi e reingressi, apprendimento nella schermata V3 esistente.
+- **Gate di pubblicazione** (suite, builder, frontend) collaudato; ha bloccato un commit con un test fallito.
+- Anti-reingresso sempre `observe`; modalità per simbolo non attivata. Nessun deploy, servizio, parametro attivo, spesa o LIVE.
+
 ## 20/11/2026 06:51 Europe/Rome — provenienza candele, istante per simbolo e acquisizione preparata
 
 - Checkpoint append-only: [`diario/2026-11-20_0651_checkpoint-provenienza-candele-istante-acquisizione.md`](diario/2026-11-20_0651_checkpoint-provenienza-candele-istante-acquisizione.md), commit [`0d5502f…`](https://github.com/alexiptv82/SuperBot-Trading/commit/0d5502f2908d0ba1504965ab148bd4595ce23d14).
