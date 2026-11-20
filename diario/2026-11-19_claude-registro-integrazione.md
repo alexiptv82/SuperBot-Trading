@@ -17,6 +17,10 @@
 | 7 | #123 laboratorio LLM (Grok `c51c752`) + input equivalente (Claude `6d61943`) | merge (punta `8fc2139b`) | 5095 → **5120** (+25) | separato dal trading: nessun import dal runtime, `may_open` sempre falso, nessun provider |
 | 8 | prova di equivalenza con `context_hash` (`4d24663`) | merge `dd414831` | 5120 → **5121** (+1) | |
 | 9 | traccia causale delle decisioni (snapshot v2 cablato nel ciclo), 20/11 | commit diretto `a5a92040` | 5121 → **5147** (+26) | 0 falliti; builder 134 OK; mutazioni 10/10; rollback: `git revert a5a92040` (commit singolo). Dettagli: `2026-11-20_claude-traccia-decisioni.md` |
+| 10 | copertura solo su collegamenti validi, istanti distinti, cattura prima del modello, letture indicizzate | commit `14f42c40` | 5147 → **5184** (+37) | regola canonica allineata al Dataset Builder; mutazioni 16/16 |
+| 11 | validazione indipendente delle feature degli snapshot (builder) | commit `d63e31a8` | 5184 → **5205** (+21) | builder 134 OK; mutazioni 14/14 |
+| 12 | `thesis_id` e anti-reingresso in **osservazione** | commit `1193ffaa` | 5205 → **5224** (+19) | stessa definizione di E0 (test incrociato); mutazioni 12/13 (1 equivalente) |
+| 13 | etichette degli esiti di mercato per il laboratorio LLM | commit `5c2edfca` | 5224 → **5235** (+11) | mutazioni 10/10; il messaggio di commit dice 13 test: sono 11 |
 
 ### Provenienza dell'autorizzazione (risposta al checkpoint ChatGPT 20:49)
 Il consenso ai merge in questo ramo è stato dato dal proprietario **direttamente nella sessione Claude Code** (link di sessione nei trailer dei commit), in due messaggi del 19/11/2026: il primo autorizza i merge nel solo `integration/brain-unico-20261119` con le condizioni del § 2; il successivo lo riconferma («Continua autonomamente con lo sviluppo e i test sul ramo di integrazione autorizzato», «Puoi integrare nel ramo di laboratorio autorizzato i componenti della PR #123»). ChatGPT non vede quella sessione: il conflitto è di visibilità, non di contenuto. **Richiesta al proprietario:** una riga di conferma in un canale leggibile da entrambi (es. commento nella Issue #113) chiude la questione; Claude non può scriverlo (403).

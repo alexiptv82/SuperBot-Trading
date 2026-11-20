@@ -1,3 +1,13 @@
+## 20/11/2026 — Claude: copertura affidabile, validazione indipendente, thesis_id, etichette degli esiti
+
+- `integration/brain-unico-20261119` @ `5c2edfca`: suite 5147 → **5235**, 0 falliti; builder 134 OK. Dettagli: [`diario/2026-11-20_claude-copertura-validazione-tesi-esiti.md`](diario/2026-11-20_claude-copertura-validazione-tesi-esiti.md).
+- **Copertura:** conta solo collegamenti validi (hash, ordine, causalità, catena) con la stessa regola del Dataset Builder; corretta un'incoerenza adattatore/builder sui ritardi (cicli lunghi in sidecar).
+- **Provenienza:** feature catturate prima del modello; istanti di riferimento, dati, cattura e scrittura separati; digest e finestra delle candele. Letture indicizzate: ciclo 8 simboli su 60k eventi 28,7 s → 1,3 s.
+- **Validazione indipendente** nel builder da candele attestate: solo `verified` toglie `snapshot_unverified`; la riga resta esclusa finché il journal non è attestato (Fase 0).
+- **`thesis_id`** (stessa definizione di E0) e **anti-reingresso in sola osservazione**; blocco reale non attivo, soglie da E0 e decisione del proprietario.
+- **Laboratorio LLM:** etichette degli esiti di mercato, stesse regole per tutti i modelli, accordo mai criterio. Nessun provider chiamato.
+- Nessun deploy, servizio, restart, reset, parametro attivo, spesa API o LIVE.
+
 ## 20/11/2026 01:49 Europe/Rome — traccia causale decisioni e autorizzazione riconfermata
 
 - Checkpoint append-only: [`diario/2026-11-20_0149_traccia-causale-decisioni-autorizzazione-riconfermata.md`](diario/2026-11-20_0149_traccia-causale-decisioni-autorizzazione-riconfermata.md), commit [`98d6908…`](https://github.com/alexiptv82/SuperBot-Trading/commit/98d6908ffa57263ece37165a9962536f2fce3b45).
