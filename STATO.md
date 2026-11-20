@@ -1,3 +1,7 @@
+## 21/11/2026 (8) — Audit esplorativo delle fonti esterne di trading AI
+
+- `docs/v3/AUDIT-FONTI-ESTERNE-20261121.md` (`bead82a3`, gate verde): nof1-arena-data, nof1-tracker, LLM_trader, continuous-record. Nessuna fonte utilizzabile come dati (niente trade crypto perp per singola operazione con contesto e provenienza attestabile); valore metodologico da verificare sui nostri journal. Nessun dato scaricato, nessun codice di terzi eseguito. Proposta minima (rapporto offline dopo la RC) **in attesa di approvazione**.
+
 ## 21/11/2026 (7) — DECISIONE: Falco/Toro archivi storici non certificati; priorità Brain Unico
 
 - **Decisione del proprietario:** Falco e Toro si conservano integralmente come archivi storici, **non certificati semanticamente**. Anomalie registrate, importi PAPER: Falco cassa+salvadanaio +21,13 USDT; Toro +39,08 USDT; Toro con 25 trade nello stato contro 55 nello storico, 30 solo nello storico. **Nessuna ulteriore indagine né prova Termius** sulla loro contabilità senza una nuova richiesta. Dati originali intoccabili.
