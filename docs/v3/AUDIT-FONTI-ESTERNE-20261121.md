@@ -45,3 +45,29 @@ Ogni punto si verifica come **analisi controfattuale pre-registrata sui nostri j
 - **Esclusi:** importare trade o conversazioni di nof1 (licenza dei dati non chiara, azioni, nessuna attestazione); eseguire scraper o il codice di qrak; scaricare il pacchetto DXRG, che non contiene righe per posizione.
 
 Costo stimato della Fase A: piccolo e dopo la RC. Non rallenta backup, RC e completamento di Brain Unico.
+
+## Decisione del proprietario (21/11/2026)
+- **Conclusioni approvate.** Questo documento resta come **riferimento**.
+- **Nessuna importazione** di operazioni esterne nel Dataset Builder e **nessuna seconda memoria operativa**: la Fase B non si fa.
+- **Risultati da usare per migliorare Brain Unico**, non per copiare strategie altrui:
+  1. restituzione dei profitti prima della chiusura;
+  2. leva in funzione della volatilità e del rischio;
+  3. recupero selettivo delle esperienze storiche pertinenti.
+- **Fase A** autorizzata **dopo la preparazione della RC**: analisi offline, in sola lettura, solo su dati attestati. Priorità alla protezione dei profitti.
+
+### Vincoli della Fase A
+- **Stesse condizioni** per tutte le alternative: candele attestate, commissioni, funding, slippage e costi del motore. Ogni alternativa è un braccio **controfattuale pre-registrato**.
+- **Confronto fuori campione:** la strategia si sceglie su una finestra e si valuta su un'altra, separata nel tempo e con embargo. Nessun parametro si regola sugli stessi dati usati per sceglierlo.
+- **Nessuna modifica** alle decisioni originali del journal, ai parametri o al runtime. I risultati sono proposte, mai applicazioni automatiche.
+
+### Conteggi richiesti (gli eventi non sono trade)
+Gli ~4.900 eventi V3 e Arena **non** sono 4.900 trade né 4.900 esempi idonei. Con gli storici attestati, il rapporto riporterà i campi già prodotti dal Dataset Builder (`summary.json`):
+
+| Richiesta | Campo |
+|---|---|
+| decisioni registrate | `rows`, `by_record_kind` |
+| operazioni aperte e chiuse | `executed`, `by_outcome` (`closed`, `open_censored`, …), `wins`/`losses` |
+| NO_TRADE | `by_record_kind.no_trade` (più `candidate_rejected`) |
+| esempi con feature verificabili | `feature_source`, `quality_flags` |
+| esempi candidati al training | `eligible_for_training`, `data_status.verified` |
+| giorni distinti | `days` (tutte le righe), `sufficiency.days` (solo le righe idonee) |
