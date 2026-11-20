@@ -1,3 +1,10 @@
+## 21/11/2026 (7) — DECISIONE: Falco/Toro archivi storici non certificati; priorità Brain Unico
+
+- **Decisione del proprietario:** Falco e Toro si conservano integralmente come archivi storici, **non certificati semanticamente**. Anomalie registrate, importi PAPER: Falco cassa+salvadanaio +21,13 USDT; Toro +39,08 USDT; Toro con 25 trade nello stato contro 55 nello storico, 30 solo nello storico. **Nessuna ulteriore indagine né prova Termius** sulla loro contabilità senza una nuova richiesta. Dati originali intoccabili.
+- **Training:** in `f9009aee` (integration, gate verde: V3 5352, builder 158, Jest 152) le righe di `falco`/`toro` hanno `semantic_not_certified`: restano nel dataset ma sono escluse dal training; revocabile solo con una nuova decisione.
+- **Backup:** esiti 0 certificato / 1 difetto tecnico (NO-GO) / 3 integro ma non certificato (`claude/extbackup-storici-20261121` @ `f60b90d6`). Aperto: archivio di 117 MB oltre il limite di GitHub, da dividere per componente; installazione in produzione e ripristino sul PC con consenso.
+- Componenti indispensabili, storici e altri storici separati nel piano RC (sezione 10).
+
 ## 20/11/2026 16:52 Europe/Rome — prova storici: integrità tecnica OK, semantica Falco/Toro non certificata
 
 - Checkpoint append-only: [diario/2026-11-20_1652_checkpoint-prova-storici-integrita-tecnica-semantica-non-certificata.md](diario/2026-11-20_1652_checkpoint-prova-storici-integrita-tecnica-semantica-non-certificata.md).
