@@ -141,9 +141,16 @@ def write_archive(root: str, *, manifest_id: str, acquired_at_ms: int, tool: dic
             with open(raw_path, "w", encoding="utf-8") as fh:
                 json.dump(body, fh, sort_keys=True, separators=(",", ":"))
             reqs.append({"url": url, "raw": raw_rel})
-        entries.append({"path": rel, "symbol": sym, "interval_ms": iv, "rows": len(rows),
-                        "first_open_ms": min(rows) if rows else None, "last_open_ms": max(rows) if rows else None,
-                        "requests": reqs})
+        entry = {"path": rel, "symbol": sym, "interval_ms": iv, "rows": len(rows),
+                 "first_open_ms": min(rows) if rows else None, "last_open_ms": max(rows) if rows else None,
+                 "requests": reqs}
+        if "window" in f:                                       # copertura: cio' che manca resta dichiarato, mai riempito
+            lo, hi = f["window"]
+            expected = [t for t in range(-(-lo // iv) * iv, hi, iv)]
+            missing = [t for t in expected if t not in rows]
+            entry.update(requested_window=[lo, hi], expected_rows=len(expected), missing_rows=len(missing),
+                         missing_open_ms_sample=missing[:50])
+        entries.append(entry)
     hashes = {rel: _sha(os.path.join(root, rel)) for rel in _files(root)}
     manifest = {"kind": KIND, "manifest_id": manifest_id, "source": dict(SOURCE), "tool": dict(tool),
                 "acquired_at_ms": acquired_at_ms, "files": entries, "sha256": hashes,
