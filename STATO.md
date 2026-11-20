@@ -1,3 +1,11 @@
+## 20/11/2026 20:46 Europe/Rome — decisioni audit, backup per componente e memoria completa
+
+- Checkpoint append-only: [diario/2026-11-20_2046_checkpoint-decisioni-backup-memoria.md](diario/2026-11-20_2046_checkpoint-decisioni-backup-memoria.md).
+- Integrazione @ `48876b97340432e31b0ac47cc57cfd8783a3b24e`: audit esterno chiuso senza importazioni/seconda memoria; Fase A solo dopo RC; memoria read-only con `duplicate_slot_decisions`. Gate riferito: V3 5.355, Builder 158, Jest 153.
+- Candidato extbackup @ `75a714be3976a732afa88a9aed3c6dc8c248e70f`: componenti `indispensabili`/`storici`, parti cifrate da 90 MiB e 74 test dichiarati; prova reale, installazione, copia off-host e restore PC non eseguiti/certificati.
+- Falco/Toro restano integri, `semantic_not_certified` ed esclusi dal training. RC84 #80 open/draft; Issue #124 open/P0; ramo storico `3dc2116a…` non installato/certificato.
+- Age PC `ESITO: VERIFICA OK` e chiave pubblica coincidente restano prova locale, non certificazione VPS. Nessun merge/deploy/VPS/restart/reset/ordine/training/LIVE/API a pagamento.
+
 ## 21/11/2026 (11) — Memoria decisionale: duplicati per slot misurati
 
 - `48876b97` (gate verde: V3 5355, builder 158, Jest 153): `/api/v3/brain/memory` e schermata Brain Unico mostrano `duplicate_slot_decisions`, misura del collaudo PAPER. Slot = `cycle_minutes` della configurazione del runner (`V3_RUNNER_CONFIG_PATH`, già impostato dai cutover). Senza configurazione il valore è "non verificabile", mai 0. La memoria copre ora tutte le misure del collaudo: copertura, catena, aperture senza traccia, duplicati, NO_TRADE, chiusure manuali e automatiche, tesi e reingressi.
