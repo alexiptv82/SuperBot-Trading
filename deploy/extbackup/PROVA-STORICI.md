@@ -28,6 +28,19 @@ La prima prova reale (20/11) è terminata con 4 problemi, riprodotti offline sul
 
 Tutti gli altri controlli sono invariati. Restano errori: trade diversi tra stato e storico, run successive, contabilità errata e saldo del salvadanaio illeggibile o negativo.
 
+## Componenti separati (dal 21/11/2026)
+La prova crea **due archivi cifrati indipendenti**, ciascuno con il proprio ripristino ed esito:
+
+| Componente | Contenuto | Esito accettato |
+|---|---|---|
+| `indispensabili` | database dell'app e del pool; Brain V3 attivo e 3 run Arena (journal V3 obbligatori) | solo **0** (certificato); altrimenti NO-GO |
+| `storici` | Falco e Toro (cervello classico), Brain storico, run V3 preparate, Brain libero, adattivo, ai-data | 0, oppure **3** (integro ma non certificato) |
+
+- **Indipendenza:** un difetto degli storici non impedisce di verificare gli indispensabili. L'esito generale però è OK solo se entrambi sono certificati, ed è NO-GO se uno dei due ha un difetto tecnico.
+- **Divisione in parti:** un archivio cifrato oltre `--part-mib`, cioè 90 MiB, si divide in parti `.part000`, `.part001`, … sotto il limite di 100 MB di GitHub. Il manifesto pubblico elenca ogni parte con SHA-256 e dimensione. Verifica remota e ripristino controllano ogni parte e poi il file ricomposto, che resta cifrato.
+- **Retention:** si applica separatamente per componente.
+- **Compatibilità:** senza `--component` il comportamento è quello di prima (`completo`). Il `run.sh` di produzione non cambia finché non sarà installato con consenso.
+
 ## Integrità tecnica e coerenza semantica: esiti separati
 Il ripristino ha tre esiti:
 - **0, OK:** tutto verificato e certificato.
@@ -76,7 +89,7 @@ sudo install -d -m 700 -o root -g root /root/extbackup-diagnosi && sudo install 
 Si ferma da solo se un'impronta non coincide: i comandi sono concatenati con `&&`.
 ```
 sudo install -d -m 700 -o root -g root /root/extbackup-strumenti && sudo install -m 500 -o root -g root /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/external_backup.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/restore_external_backup.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/backup_app_db.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/backup_brain.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/extbackup/prova_storici.sh /root/extbackup-strumenti/ && printf '%s
-' '999bbbfe0d1482f3f965856169b69ab8af70c75b82d93e7a622deb395b2af6a8  /root/extbackup-strumenti/external_backup.py' 'c1a8f4b641c4ccacddb7447e49313ef120902020f04d2ee5500ee1fe696771e9  /root/extbackup-strumenti/restore_external_backup.py' '6bd6ebc209400c7a0b222c62690e2c2f11b6f0a927b83fa937a35dcaac0700c6  /root/extbackup-strumenti/backup_app_db.py' '4a92e7daa6cff9fbf339f471656df8ba44067b6927d15b411b50313de0cb5d2c  /root/extbackup-strumenti/backup_brain.py' '15bb056720966b5ba6b34b6a680919474b8eced743d2df6ac4758a3dc208ecc0  /root/extbackup-strumenti/prova_storici.sh' | sudo sha256sum --strict -c - && sudo sh /root/extbackup-strumenti/prova_storici.sh /root/extbackup-strumenti
+' '331d44b4266a719c5ce7854b867b2f0a25b401c8c605cfca349063860753d1ee  /root/extbackup-strumenti/external_backup.py' 'faa73399a7fa2bf28fa7768f73e4fc9978d0b5b7f84739dd1e261b49efca835f  /root/extbackup-strumenti/restore_external_backup.py' '6bd6ebc209400c7a0b222c62690e2c2f11b6f0a927b83fa937a35dcaac0700c6  /root/extbackup-strumenti/backup_app_db.py' '4a92e7daa6cff9fbf339f471656df8ba44067b6927d15b411b50313de0cb5d2c  /root/extbackup-strumenti/backup_brain.py' 'deb7d6c32263f0e0e844506dc467f434cc80973959286bf5e2a51a4a31a80127  /root/extbackup-strumenti/prova_storici.sh' | sudo sha256sum --strict -c - && sudo sh /root/extbackup-strumenti/prova_storici.sh /root/extbackup-strumenti
 ```
 **Esito atteso:**
 - inventario con dimensioni, file e sottocartelle;

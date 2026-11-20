@@ -41,7 +41,10 @@ import time
 from datetime import datetime, timedelta, timezone
 
 FORMAT = 1
-NAME_RE = re.compile(r"^superbot-backup-(\d{8}T\d{6}Z)\.tar\.gz\.age$")
+COMPONENTS = ("completo", "indispensabili", "storici")
+# superbot-backup-[<componente>-]<istante>.tar.gz.age, eventualmente diviso in .part000, .part001, ...
+NAME_RE = re.compile(r"^superbot-backup-(?:(indispensabili|storici)-)?(\d{8}T\d{6}Z)\.tar\.gz\.age$")
+PART_RE = re.compile(r"^(superbot-backup-.+\.tar\.gz\.age)\.part(\d{3})$")
 KEY_RE = re.compile(r"^age1[0-9a-z]{58}$")
 AGE_MAGIC = b"age-encryption.org/v1"
 INTERNAL_MANIFEST = "INTERNAL-MANIFEST.json"
@@ -141,21 +144,79 @@ def manifest_name(archive_name):
     return archive_name[: -len(".tar.gz.age")] + ".manifest.json"
 
 
+def archive_component(name):
+    m = NAME_RE.match(name)
+    return (m.group(1) or "completo") if m else None
+
+
 def archives_in(repo):
-    out = []
+    """Archivi LOGICI: (percorso dell'archivio, istante). Un archivio diviso in parti conta una volta sola e il
+    suo percorso e' quello del file intero (che nel repository non esiste: ci sono le parti)."""
+    out = {}
     base = os.path.join(repo, "archives")
     for dp, _dn, fn in os.walk(base):
         for f in fn:
-            m = NAME_RE.match(f)
+            pm = PART_RE.match(f)
+            name = pm.group(1) if pm else f
+            m = NAME_RE.match(name)
             if m:
-                out.append((os.path.join(dp, f), parse_stamp(m.group(1))))
+                out[os.path.join(dp, name)] = parse_stamp(m.group(2))
+    return sorted(out.items())
+
+
+def parts_of(path):
+    d, name = os.path.split(path)
+    if not os.path.isdir(d):
+        return []
+    return sorted(os.path.join(d, f) for f in os.listdir(d)
+                  if PART_RE.match(f) and PART_RE.match(f).group(1) == name)
+
+
+def split_file(path, part_bytes):
+    """Divide `path` in parti di al massimo part_bytes (path.part000, ...) e lo cancella. Restituisce le parti."""
+    out = []
+    with open(path, "rb") as f:
+        i = 0
+        while True:
+            chunk = f.read(part_bytes)
+            if not chunk:
+                break
+            dst = "%s.part%03d" % (path, i)
+            with open(dst, "wb") as g:
+                g.write(chunk)
+            os.chmod(dst, 0o600)
+            out.append(dst)
+            i += 1
+    if i > 999:
+        raise Fail("troppe parti: aumentare --part-mib")
+    os.unlink(path)
     return out
 
 
 # ---- copie fresche e verificate -------------------------------------------------
 
 def make_staging(a, stage):
+    """completo = tutto; indispensabili = database + run (V3/Arena), senza cervello classico; storici = cervello
+    classico + run storiche, senza database. Il componente e' scritto nel manifesto interno."""
     py = [sys.executable, "-I"]
+    if a.component == "indispensabili" and not a.required_v3_run_dirs:
+        raise Fail("il componente indispensabili richiede almeno una --required-v3-run-dir")
+    if a.component == "storici" and a.required_v3_run_dirs:
+        raise Fail("le run V3 obbligatorie appartengono al componente indispensabili")
+    if a.component != "storici":
+        make_databases(a, stage, py)
+    if a.component != "indispensabili":
+        make_brain(a, stage, py)
+    for src in a.required_v3_run_dirs:
+        copy_run_dir(src, os.path.join(stage, "runs"), required=True, v3=True)
+    for src in a.required_run_dirs:
+        copy_run_dir(src, os.path.join(stage, "runs"), required=True)
+    for src in a.run_dirs:
+        copy_run_dir(src, os.path.join(stage, "runs"))
+    return stage
+
+
+def make_databases(a, stage, py):
     dbs = os.path.join(stage, "database")
     os.makedirs(dbs, mode=0o700)
     for label, src in (("app", a.app_db), ("pool", a.pool_db)):
@@ -165,6 +226,9 @@ def make_staging(a, stage):
         say("  " + (p.stdout.strip().splitlines() or ["(nessun output)"])[0])
         if p.returncode != 0:
             raise Fail("backup del database %s non riuscito: %s" % (label, (p.stdout + p.stderr).strip()[-400:]))
+
+
+def make_brain(a, stage, py):
     brain = os.path.join(stage, "cervello")
     os.makedirs(brain, mode=0o700)
     last = ""
@@ -183,14 +247,6 @@ def make_staging(a, stage):
     else:
         raise Fail("backup del cervello non riuscito (nessuna finestra di fine ciclo verificata o file mancanti): "
                    + last[-400:])
-    # lasciamo nell'archivio solo il contenuto: la copia del cervello e' una cartella bots-*
-    for src in a.required_v3_run_dirs:
-        copy_run_dir(src, os.path.join(stage, "runs"), required=True, v3=True)
-    for src in a.required_run_dirs:
-        copy_run_dir(src, os.path.join(stage, "runs"), required=True)
-    for src in a.run_dirs:
-        copy_run_dir(src, os.path.join(stage, "runs"))
-    return stage
 
 
 RUN_SKIP_SUFFIX = ("-wal", "-shm", "-journal", ".lock", ".tmp", ".work")
@@ -380,7 +436,7 @@ def build_archive(stage, out_path, created, a):
             rel = os.path.relpath(full, stage)
             files.append({"file": "dati/" + rel.replace(os.sep, "/"), "size": os.path.getsize(full),
                           "sha256": sha256_file(full), "_full": full})
-    meta = {"formato": FORMAT, "creato": created, "origine": {"host": socket.gethostname()},
+    meta = {"formato": FORMAT, "componente": a.component, "creato": created, "origine": {"host": socket.gethostname()},
             "versioni": code_versions(a), "file": [{k: v for k, v in x.items() if k != "_full"} for x in files]}
     manifest_bytes = json.dumps(meta, indent=1, sort_keys=True).encode()
     with open(out_path, "wb") as raw:
@@ -460,7 +516,7 @@ class Repo:
             self.git("rebase", "-q", "origin/main")       # nessun push forzato: ci si rimette in fila
         return True
 
-    def verify_remote(self, relpath, expect_sha):
+    def verify_remote(self, relpath, expect_sha, expect_parts=None):
         """Verifica INDIPENDENTE: un clone nuovo da GitHub in una cartella vuota (nessun oggetto gia' presente
         in locale puo' essere riusato), stessa punta del push, file presente e SHA-256 ricalcolato."""
         tmp = os.path.join(self.a.work, "verifica-%d" % os.getpid())
@@ -477,9 +533,23 @@ class Repo:
             if fresh != head:
                 raise Fail("verifica: la punta scaricata (%s) non e' quella appena inviata (%s)" % (fresh[:10], head[:10]))
             path = os.path.join(tmp, *relpath.split("/"))
-            if not os.path.isfile(path):
+            parts = parts_of(path)
+            if os.path.isfile(path) and not parts:
+                got = sha256_file(path)
+            elif parts and not os.path.exists(path):
+                if expect_parts is None or [os.path.basename(x) for x in parts] != [x["file"] for x in expect_parts]:
+                    raise Fail("verifica: le parti nel clone nuovo non sono quelle inviate")
+                h = hashlib.sha256()
+                for x, part in zip(expect_parts, parts):
+                    if sha256_file(part) != x["sha256"]:
+                        raise Fail("verifica: la parte %s riscaricata ha uno SHA-256 diverso" % x["file"])
+                    with open(part, "rb") as f:
+                        for chunk in iter(lambda: f.read(1 << 20), b""):
+                            h.update(chunk)
+                got = h.hexdigest()
+            else:
                 raise Fail("verifica: l'archivio non c'e' nel clone nuovo")
-            if sha256_file(path) != expect_sha:
+            if got != expect_sha:
                 raise Fail("il file riscaricato da GitHub ha uno SHA-256 diverso da quello inviato")
             mpath = os.path.join(os.path.dirname(path), manifest_name(os.path.basename(path)))
             if not os.path.isfile(mpath):
@@ -503,13 +573,22 @@ def repo_size(repo_dir):
 
 
 def prune(repo, keep_recent, keep_weeks, keep_months):
+    """Retention SEPARATA per componente: gli archivi storici non scalzano gli indispensabili e viceversa."""
     removed = []
     entries = [(os.path.relpath(p, repo.dir), dt) for p, dt in archives_in(repo.dir)]
     names = {os.path.basename(rel): rel for rel, _ in entries}
-    for name in plan_retention([(os.path.basename(rel), dt) for rel, dt in entries],
-                               keep_recent, keep_weeks, keep_months):
+    groups = {}
+    for rel, dt in entries:
+        groups.setdefault(archive_component(os.path.basename(rel)), []).append((os.path.basename(rel), dt))
+    drop = set()
+    for _comp, group in sorted(groups.items()):
+        drop |= plan_retention(group, keep_recent, keep_weeks, keep_months)
+    for name in sorted(drop):
         rel = names[name]
-        for target in (rel, os.path.join(os.path.dirname(rel), manifest_name(name))):
+        full = os.path.join(repo.dir, rel)
+        targets = [rel, os.path.join(os.path.dirname(rel), manifest_name(name))]
+        targets += [os.path.relpath(x, repo.dir) for x in parts_of(full)]
+        for target in targets:
             if os.path.exists(os.path.join(repo.dir, target)):
                 repo.git("rm", "-q", "--", target)
         removed.append(name)
@@ -547,7 +626,8 @@ def execute(a):
     recipient = read_recipient(a.recipient_file)
     created_dt = now_utc()
     created = created_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    name = "superbot-backup-%s.tar.gz.age" % stamp(created_dt)
+    comp = "" if a.component == "completo" else a.component + "-"
+    name = "superbot-backup-%s%s.tar.gz.age" % (comp, stamp(created_dt))
     stage = os.path.join(a.work, "staging")
     shutil.rmtree(stage, ignore_errors=True)
     os.makedirs(stage, mode=0o700)
@@ -573,8 +653,18 @@ def execute(a):
         repo = Repo(a)
         repo.sync()
         os.makedirs(os.path.join(repo.dir, rel_dir), exist_ok=True)
-        shutil.copyfile(cipher, os.path.join(repo.dir, rel_dir, name))
-        public = {"formato": FORMAT, "archivio": name, "sha256": digest, "dimensione": size, "creato": created,
+        part_list = None
+        if size > a.part_mib * 1048576:
+            # GitHub rifiuta i file oltre 100 MB: il file cifrato si divide in parti, ognuna con il suo SHA-256
+            part_list = []
+            for part in split_file(cipher, a.part_mib * 1048576):
+                part_list.append({"file": os.path.basename(part), "sha256": sha256_file(part),
+                                  "dimensione": os.path.getsize(part)})
+                shutil.move(part, os.path.join(repo.dir, rel_dir, os.path.basename(part)))
+        else:
+            shutil.copyfile(cipher, os.path.join(repo.dir, rel_dir, name))
+        public = {"formato": FORMAT, "componente": a.component, "archivio": name, "sha256": digest,
+                  "dimensione": size, "creato": created, "parti": part_list,
                   "origine": meta["origine"], "versioni": meta["versioni"],
                   "cifratura": {"strumento": "age", "destinatario": recipient},
                   "contenuto": {"file": len(meta["file"])}}
@@ -586,14 +676,15 @@ def execute(a):
             f.write(LEGGIMI)
         removed = prune(repo, a.keep_recent, a.keep_weeks, a.keep_months)
         repo.publish("backup cifrato %s%s" % (name, (" (tolti %d vecchi)" % len(removed)) if removed else ""))
-        repo.verify_remote((rel_dir + "/" + name).replace(os.sep, "/"), digest)
+        repo.verify_remote((rel_dir + "/" + name).replace(os.sep, "/"), digest, part_list)
         git_bytes, n_archives = repo_size(repo.dir)
     finally:
         try:
             os.unlink(cipher)
         except FileNotFoundError:
             pass
-    say("RISULTATO: OK  archivio %s  %d byte  sha256 %s" % (name, size, digest))
+    say("RISULTATO: OK  archivio %s  componente %s  %d byte  sha256 %s%s"
+        % (name, a.component, size, digest, ("  in %d parti" % len(part_list)) if part_list else ""))
     if removed:
         say("  tolti dalla punta del ramo per la retention: %s" % ", ".join(removed))
     say("  repository dei backup: %d archivi visibili, storia git %.1f MB (la retention non riduce la storia)"
@@ -620,6 +711,11 @@ def main(argv=None):
     ap.add_argument("--docker-bin", default="docker")
     ap.add_argument("--containers", default="superbot,superbot-desk-hawk,superbot-desk-bull,superbot-pool",
                     help="container di cui registrare l'immagine in esecuzione")
+    ap.add_argument("--component", choices=COMPONENTS, default="completo",
+                    help="indispensabili = database + run V3/Arena; storici = cervello classico + run storiche; "
+                         "completo = tutto (predefinito, comportamento storico)")
+    ap.add_argument("--part-mib", type=int, default=90,
+                    help="oltre questa dimensione il file cifrato si divide in parti (GitHub: massimo 100 MB)")
     ap.add_argument("--keep-recent", type=int, default=14)
     ap.add_argument("--keep-weeks", type=int, default=8)
     ap.add_argument("--keep-months", type=int, default=6)
@@ -634,6 +730,9 @@ def main(argv=None):
     ap.add_argument("--brain-arg", action="append", default=[], dest="brain_args",
                     help="argomento in piu' per backup_brain.py (solo per le prove)")
     a = ap.parse_args(argv)
+    if not 1 <= a.part_mib <= 95:
+        print("ERRORE: --part-mib deve stare tra 1 e 95")
+        return 1
     if a.ssh_key and not a.known_hosts:
         print("ERRORE: con --ssh-key serve anche --known-hosts (la chiave di GitHub va verificata)")
         return 1

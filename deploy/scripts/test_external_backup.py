@@ -146,9 +146,14 @@ class ExternalBackupTests(unittest.TestCase):
         return dst
 
     def archives(self, clone):
-        out = []
+        """Archivi logici: il file intero oppure, se diviso, il suo nome (nel repository ci sono le parti)."""
+        out = set()
         for dp, _dn, fn in os.walk(os.path.join(clone, "archives")):
-            out += [os.path.join(dp, f) for f in fn if f.endswith(".tar.gz.age")]
+            for f in fn:
+                if f.endswith(".tar.gz.age"):
+                    out.add(os.path.join(dp, f))
+                elif ".tar.gz.age.part" in f:
+                    out.add(os.path.join(dp, f.split(".part")[0]))
         return sorted(out)
 
     def restore(self, archive, ident=None, out=None, *extra):
@@ -225,6 +230,134 @@ class ExternalBackupTests(unittest.TestCase):
         self.assertEqual(rc, 1, rout)                                    # il tecnico prevale
         self.assertIn("RISULTATO: FALLITO (1 problemi tecnici, 1 anomalie semantiche)", rout)
 
+    # ---- componenti separati e archivi in parti ----
+
+    def _v3_run(self, name="brain-v3-paper20261111", n=5):
+        run = os.path.join(self.td.name, "v3", name)
+        os.makedirs(run)
+        make_v3_journal(os.path.join(run, "journal.db"), n).close()
+        return run
+
+    def test_essential_component_holds_databases_and_v3_runs_but_no_classic_brain(self):
+        run = self._v3_run()
+        rc, out = self.backup("--component", "indispensabili", "--required-v3-run-dir", run)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("componente indispensabili", out)
+        (arc,) = self.archives(self.clone_remote())
+        self.assertIn("superbot-backup-indispensabili-", os.path.basename(arc))
+        rc, rout, dest = self.restore(arc)
+        self.assertEqual(rc, 0, rout)
+        self.assertIn("componente: indispensabili", rout)
+        self.assertIn("5 eventi, catena verificata (obbligatorio)", rout)
+        self.assertFalse(os.path.exists(os.path.join(dest, "dati", "cervello")))
+        self.assertTrue(os.path.isdir(os.path.join(dest, "dati", "database")))
+
+    def test_essential_component_without_v3_runs_is_refused(self):
+        rc, out = self.backup("--component", "indispensabili")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("richiede almeno una --required-v3-run-dir", out)
+        rc, out = self.backup("--component", "storici", "--required-v3-run-dir", self._v3_run())
+        self.assertNotEqual(rc, 0)
+        self.assertIn("appartengono al componente indispensabili", out)
+
+    def test_historical_component_is_kept_but_not_certified_without_databases(self):
+        path = os.path.join(self.root, "bull", "state_v2.json")
+        with open(path) as f:
+            st = json.load(f)
+        st["main"]["cash"] += 5
+        put(path, json.dumps(st).encode())
+        old = time.time() - 300
+        os.utime(path, (old, old))
+        rc, out = self.backup("--component", "storici")
+        self.assertEqual(rc, 0, out)
+        (arc,) = self.archives(self.clone_remote())
+        rc, rout, dest = self.restore(arc)
+        self.assertEqual(rc, 3, rout)                                    # integro, NON certificato
+        self.assertIn("componente: storici", rout)
+        self.assertFalse(os.path.exists(os.path.join(dest, "dati", "database")))
+        self.assertNotIn("attesi almeno due database", rout)
+
+    def test_restore_refuses_an_essential_archive_without_required_journals(self):
+        mod = load(RESTORE, "restore_comp")
+        out = os.path.join(self.td.name, "r-ess")
+        os.makedirs(os.path.join(out, "dati", "runs"))
+        put(os.path.join(out, "dati", "runs", "_journal_v3.json"), "[]")
+        probs = mod.Problems()
+        mod.check_v3_journals(out, probs, require_v3=True)
+        self.assertTrue(any("senza journal V3 obbligatori" in x for x in probs), probs)
+        probs = mod.Problems()
+        mod.check_v3_journals(os.path.join(self.td.name, "vuoto"), probs, require_v3=True)
+        self.assertTrue(any("senza run V3" in x for x in probs), probs)
+
+    def _big_split_backup(self):
+        run = self._v3_run()
+        put(os.path.join(run, "blob.bin"), os.urandom(3 * 1048576))         # incomprimibile: ~3 MiB cifrati
+        rc, out = self.backup("--component", "indispensabili", "--required-v3-run-dir", run, "--part-mib", "1")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("in 4 parti", out)
+        clone = self.clone_remote()
+        (arc,) = self.archives(clone)
+        return clone, arc
+
+    def test_large_archive_is_split_verified_and_restored_from_parts(self):
+        clone, arc = self._big_split_backup()
+        self.assertFalse(os.path.exists(arc))                            # nel repository solo le parti
+        parts = sorted(f for f in os.listdir(os.path.dirname(arc)) if ".part" in f)
+        self.assertEqual(len(parts), 4)
+        for f in parts:
+            self.assertLessEqual(os.path.getsize(os.path.join(os.path.dirname(arc), f)), 1048576)
+        with open(arc[: -len(".tar.gz.age")] + ".manifest.json") as f:
+            man = json.load(f)
+        self.assertEqual([x["file"] for x in man["parti"]], parts)
+        rc, rout, _ = self.restore(arc)
+        self.assertEqual(rc, 0, rout)
+        self.assertIn("4 parti: SHA-256 e dimensione uguali al manifesto", rout)
+
+    def test_a_tampered_or_missing_part_fails_the_restore(self):
+        clone, arc = self._big_split_backup()
+        d = os.path.dirname(arc)
+        p1 = os.path.join(d, os.path.basename(arc) + ".part001")
+        data = bytearray(open(p1, "rb").read())
+        data[100] ^= 1
+        put(p1, bytes(data))
+        rc, rout, _ = self.restore(arc)
+        self.assertEqual(rc, 1, rout)
+        self.assertIn("parte %s.part001 diversa dal manifesto" % os.path.basename(arc), rout)
+        os.remove(p1)
+        rc, rout, _ = self.restore(arc)
+        self.assertEqual(rc, 1, rout)
+        self.assertIn("le parti presenti non sono quelle elencate nel manifesto", rout)
+
+    def test_archive_names_parts_and_retention_per_component(self):
+        ext = load(EXT, "ext_comp")
+        repo = os.path.join(self.td.name, "repo-ret")
+        d = os.path.join(repo, "archives", "2026", "11")
+        os.makedirs(d)
+        names = ["superbot-backup-202611%02dT030000Z.tar.gz.age" % i for i in (1, 2)]          # nome storico
+        names += ["superbot-backup-indispensabili-202611%02dT030000Z.tar.gz.age" % i for i in (3, 4)]
+        for n in names:
+            put(os.path.join(d, n), b"x")
+        put(os.path.join(d, "superbot-backup-storici-20261105T030000Z.tar.gz.age.part000"), b"x")
+        put(os.path.join(d, "superbot-backup-storici-20261105T030000Z.tar.gz.age.part001"), b"x")
+        found = [os.path.basename(p) for p, _ in ext.archives_in(repo)]
+        self.assertEqual(len(found), 5)                                   # le parti contano come un archivio
+        self.assertIn("superbot-backup-storici-20261105T030000Z.tar.gz.age", found)
+        self.assertEqual(ext.archive_component(names[0]), "completo")
+        self.assertEqual(ext.archive_component(names[2]), "indispensabili")
+        sh("git", "-C", repo, "init", "-q")
+        sh("git", "-C", repo, "add", "-A")
+        sh("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.invalid", "commit", "-q", "-m", "x")
+
+        class R:
+            dir = repo
+
+            def git(self, *args, **kw):
+                return sh("git", "-C", repo, *args)
+        removed = ext.prune(R(), 1, 0, 0)                                 # 1 per componente
+        self.assertEqual(removed, [names[0], names[2]])                   # lo storico unico resta
+        left = sorted(os.listdir(d))
+        self.assertIn("superbot-backup-storici-20261105T030000Z.tar.gz.age.part001", left)
+
     def test_an_unreadable_run_dir_sends_nothing(self):
         rc, out = self.backup("--required-run-dir", os.path.join(self.td.name, "manca"))
         self.assertNotEqual(rc, 0)
@@ -289,6 +422,9 @@ class ExternalBackupTests(unittest.TestCase):
             self.assertIn(x, p.stdout)
         self.assertEqual(p.stdout.count("ripristinata"), 7, p.stdout)       # 5 run + Brain storico + adattivo
         self.assertEqual(p.stdout.count(": 3 eventi, catena verificata"), 5, p.stdout)
+        self.assertEqual(p.stdout.count(": 3 eventi, catena verificata (obbligatorio)"), 4, p.stdout)
+        self.assertIn("componente: indispensabili", p.stdout)
+        self.assertIn("componente: storici", p.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.td.name, "base")))  # tutto cancellato
         self.assertFalse(any(m.decode() in p.stdout for m in MARKERS))        # nessun contenuto stampato
 
@@ -309,8 +445,11 @@ class ExternalBackupTests(unittest.TestCase):
     def test_bot_stopped_still_refuses_a_fresh_heartbeat(self):
         """docker dice fermo ma il battito e' fresco: backup_brain.py non accetta la copia (controllo non indebolito)."""
         p = self._wrapper(docker="false false", old_heartbeats=False)
-        self.assertNotEqual(p.returncode, 0, p.stdout)
-        self.assertIn("NO-GO: backup", p.stdout)
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertIn("NO-GO: backup del componente storici", p.stdout)
+        # gli storici non bloccano la verifica degli indispensabili, ma l'esito generale resta NO-GO
+        self.assertIn("COMPONENTE indispensabili (database, Brain V3, Arena): CERTIFICATI", p.stdout)
+        self.assertIn("ESITO PROVA: NO-GO", p.stdout)
 
     def test_admin_wrapper_passes_on_the_real_bot_shape(self):
         self.bot_shape("hawk", vault=37.5)
@@ -327,7 +466,10 @@ class ExternalBackupTests(unittest.TestCase):
         self.assertIn("ANOMALIA SEMANTICA: bull: contabilita' incoerente", p.stdout)
         self.assertIn("ANOMALIA SEMANTICA: hawk: i trade chiusi nello stato (39)", p.stdout)
         self.assertIn("RISULTATO: INTEGRO MA NON CERTIFICATO", p.stdout)
-        self.assertIn("ESITO PROVA: INTEGRITA' TECNICA OK, SEMANTICA DI FALCO/TORO NON CERTIFICATA", p.stdout)
+        self.assertIn("ESITO PROVA: INDISPENSABILI CERTIFICATI, STORICI NON CERTIFICATI SEMANTICAMENTE", p.stdout)
+        self.assertIn("COMPONENTE indispensabili (database, Brain V3, Arena): CERTIFICATI", p.stdout)
+        self.assertIn("COMPONENTE storici (Falco/Toro, Brain storico e libero, adattivo, ai-data): INTEGRI MA NON "
+                      "CERTIFICATI", p.stdout)
         self.assertNotIn("ESITO PROVA: OK", p.stdout)
         self.assertEqual(p.stdout.count(": 3 eventi, catena verificata"), 5, p.stdout)   # V3 comunque verificati
         self.assertNotIn("resta per l'esame", p.stdout)

@@ -156,10 +156,13 @@ def _chain(path):
         con.close()
 
 
-def check_v3_journals(out, problems):
-    """Per ogni journal V3 degli storici: catena valida e numero di eventi/testa uguali a quelli registrati al backup."""
+def check_v3_journals(out, problems, require_v3=False):
+    """Per ogni journal V3 degli storici: catena valida e numero di eventi/testa uguali a quelli registrati al backup.
+    require_v3 (componente indispensabili): almeno un journal V3 OBBLIGATORIO registrato, altrimenti difetto tecnico."""
     index = os.path.join(out, "dati", "runs", "_journal_v3.json")
     if not os.path.isdir(os.path.join(out, "dati", "runs")):
+        if require_v3:
+            problems.add("archivio degli indispensabili senza run V3: nessun journal obbligatorio")
         return                                                    # archivio senza storici di run
     if not os.path.isfile(index):
         problems.add("indice dei journal V3 mancante: impossibile verificare gli storici delle run")
@@ -170,6 +173,8 @@ def check_v3_journals(out, problems):
     except (OSError, ValueError):
         problems.add("indice dei journal V3 illeggibile")
         return
+    if require_v3 and not any(isinstance(e, dict) and e.get("required") for e in entries):
+        problems.add("archivio degli indispensabili senza journal V3 obbligatori registrati")
     for e in entries:
         path = os.path.join(out, e["file"])
         try:
@@ -398,13 +403,54 @@ def main(argv=None):
         print("ATTENZIONE: la chiave privata ha permessi troppo larghi (consigliato chmod 600)")
     problems = Problems()
     print("RIPRISTINO DI PROVA di %s" % os.path.basename(a.archive))
+    joindir = tempfile.mkdtemp(prefix="restore-parti-")
+    try:
+        return _restore(a, problems, joindir)
+    finally:
+        shutil.rmtree(joindir, ignore_errors=True)
 
+
+def _parts(archive):
+    d, name = os.path.split(os.path.abspath(archive))
+    if not os.path.isdir(d):
+        return []
+    return sorted(os.path.join(d, f) for f in os.listdir(d)
+                  if f.startswith(name + ".part") and f[len(name) + 5:].isdigit() and len(f) == len(name) + 8)
+
+
+def _restore(a, problems, joindir):
     mpath = a.manifest or (a.archive[: -len(".tar.gz.age")] + ".manifest.json" if a.archive.endswith(".tar.gz.age") else "")
+    pub = None
     if mpath and os.path.isfile(mpath):
         with open(mpath) as f:
             pub = json.load(f)
-        digest = sha256_file(a.archive)
-        if digest != pub.get("sha256") or os.path.getsize(a.archive) != pub.get("dimensione"):
+    archive = a.archive
+    if not os.path.isfile(archive):
+        # archivio diviso in parti (GitHub: massimo 100 MB per file): ogni parte si confronta col manifesto,
+        # poi si ricompone il file cifrato (resta cifrato) in una cartella temporanea
+        parts = _parts(archive)
+        if not parts:
+            print("ERRORE: archivio %s non trovato (ne' intero ne' in parti)" % archive)
+            return 1
+        declared = (pub or {}).get("parti")
+        if not declared:
+            problems.add("archivio in parti ma il manifesto non elenca le parti: impossibile verificarle")
+        elif [x.get("file") for x in declared] != [os.path.basename(x) for x in parts]:
+            problems.add("le parti presenti non sono quelle elencate nel manifesto (mancanti o in piu')")
+        else:
+            for x, part in zip(declared, parts):
+                if sha256_file(part) != x.get("sha256") or os.path.getsize(part) != x.get("dimensione"):
+                    problems.add("parte %s diversa dal manifesto" % x.get("file"))
+            if not problems:
+                print("  %d parti: SHA-256 e dimensione uguali al manifesto" % len(parts))
+        archive = os.path.join(joindir, os.path.basename(a.archive))
+        with open(archive, "wb") as out:
+            for part in parts:
+                with open(part, "rb") as f:
+                    shutil.copyfileobj(f, out, 1 << 20)
+    if pub is not None:
+        digest = sha256_file(archive)
+        if digest != pub.get("sha256") or os.path.getsize(archive) != pub.get("dimensione"):
             problems.add("l'archivio cifrato NON coincide col manifesto (SHA-256 o dimensione diversi): alterato o incompleto")
         else:
             print("  archivio cifrato: SHA-256 e dimensione uguali al manifesto")
@@ -415,7 +461,7 @@ def main(argv=None):
     tmpdir = tempfile.mkdtemp(prefix="restore-")
     try:
         plain = os.path.join(tmpdir, "archivio.tar.gz")
-        p = subprocess.run(["age", "-d", "-i", a.identity, "-o", plain, a.archive], capture_output=True, text=True)
+        p = subprocess.run(["age", "-d", "-i", a.identity, "-o", plain, archive], capture_output=True, text=True)
         if p.returncode != 0:
             problems.add("decifratura non riuscita (chiave sbagliata o archivio alterato): %s" % p.stderr.strip()[-200:])
             print("RISULTATO: FALLITO")
@@ -450,9 +496,16 @@ def main(argv=None):
     print("  manifesto interno: %d file controllati (dimensione e SHA-256)" % len(declared))
     print("  creato %s | origine %s | versioni %s" % (inner.get("creato"), inner.get("origine"), inner.get("versioni")))
 
-    check_databases(a.out, problems)
-    check_brain(a.out, problems)
-    check_v3_journals(a.out, problems)
+    comp = inner.get("componente", "completo")
+    if comp not in ("completo", "indispensabili", "storici"):
+        problems.add("componente dell'archivio sconosciuto: %s" % comp)
+        comp = "completo"
+    print("  componente: %s" % comp)
+    if comp != "storici":
+        check_databases(a.out, problems)
+    if comp != "indispensabili":
+        check_brain(a.out, problems)
+    check_v3_journals(a.out, problems, require_v3=(comp == "indispensabili"))
 
     if problems:
         print("RISULTATO: FALLITO (%d problemi tecnici, %d anomalie semantiche). La cartella %s resta per "

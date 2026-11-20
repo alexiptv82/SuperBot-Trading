@@ -76,7 +76,7 @@ LOGKEEP="$BASE-$(date -u +%Y%m%dT%H%M%SZ).log"
 finish() {
   rc=$?
   if [ "$rc" -ne 0 ] && [ -d "$BASE" ]; then
-    cat "$BASE/backup.log" "$BASE/restore.log" > "$LOGKEEP" 2>/dev/null || true
+    cat "$BASE"/*.log > "$LOGKEEP" 2>/dev/null || true
     echo "registri della prova conservati in $LOGKEEP (solo root); cartella di prova e dati in chiaro cancellati"
   fi
   rm -rf "$BASE"
@@ -86,36 +86,70 @@ trap finish EXIT
 age-keygen -o "$BASE/prova.key" 2>/dev/null
 age-keygen -y "$BASE/prova.key" > "$BASE/recipient-prova.txt"
 git init -q --bare -b main "$BASE/remote.git"
-ARGS=""
-for d in $REQUIRED_V3; do ARGS="$ARGS --required-v3-run-dir $d"; done
-ARGS="$ARGS --required-run-dir $DESK/brain"
-for d in $OPTIONAL; do ARGS="$ARGS --run-dir $d"; done
+ESS_ARGS="--component indispensabili"
+for d in $REQUIRED_V3; do ESS_ARGS="$ESS_ARGS --required-v3-run-dir $d"; done
+STO_ARGS="--component storici --required-run-dir $DESK/brain"
+for d in $OPTIONAL; do STO_ARGS="$STO_ARGS --run-dir $d"; done
 
-echo "== backup (verso il repository LOCALE di prova)"
+# backup di un componente verso il repository LOCALE di prova; esito nel file $BASE/<componente>.rc
+backup_one() {
+  comp="$1"; shift
+  echo "== backup del componente $comp (verso il repository LOCALE di prova)"
+  # shellcheck disable=SC2068,SC2086
+  if python3 -I "$TOOLS/external_backup.py" --root "$DESK" --app-db /opt/superbot/data/superbot.db \
+      --pool-db /opt/superbot-pool-data/pool.db --tools "$TOOLS" --work "$BASE/work" --remote "$BASE/remote.git" \
+      --recipient-file "$BASE/recipient-prova.txt" --app-repo /opt/superbot --bots-repo /opt/superbot-desk $@ \
+      > "$BASE/backup-$comp.log" 2>&1; then
+    grep -E "storico run|RISULTATO" "$BASE/backup-$comp.log" || true
+    echo 0 > "$BASE/$comp.rc"
+  else
+    grep -E "ERRORE|Fail|NO-GO|errore|mancante|rifiut" "$BASE/backup-$comp.log" | tail -40
+    echo "NO-GO: backup del componente $comp"
+    echo 1 > "$BASE/$comp.rc"
+  fi
+}
+
+# ripristino di un componente con lo script ufficiale: 0 certificato, 3 integro ma non certificato, 1 difetto tecnico
+restore_one() {
+  comp="$1"
+  [ "$(cat "$BASE/$comp.rc")" = 0 ] || return 0
+  echo "== ripristino del componente $comp con lo script ufficiale"
+  ARC=$(find "$BASE/clone/archives" -name "superbot-backup-$comp-*.tar.gz.age*" | sed 's/\.part[0-9]*$//' | sort -u | head -1)
+  if [ -z "$ARC" ]; then echo "NO-GO: archivio $comp non trovato nel repository di prova"; echo 1 > "$BASE/$comp.rc"; return 0; fi
+  RC=0
+  python3 -I "$TOOLS/restore_external_backup.py" --archive "$ARC" --identity "$BASE/prova.key" \
+    --out "$BASE/restore-$comp" > "$BASE/restore-$comp.log" 2>&1 || RC=$?
+  if [ "$RC" != 0 ] && [ "$RC" != 3 ]; then
+    grep -E "ERRORE:|ANOMALIA SEMANTICA:|journal V3|coerenza|FALLITO" "$BASE/restore-$comp.log" | sed 's/ La cartella .* resta per l.esame\.//' | head -60
+    echo "NO-GO: ripristino del componente $comp (difetto TECNICO)"; echo 1 > "$BASE/$comp.rc"; return 0
+  fi
+  grep -E "parti:|ANOMALIA SEMANTICA:|coerenza|journal V3|componente:|RISULTATO" "$BASE/restore-$comp.log" | sed 's/ Cartella .*//'
+  for r in "$BASE/restore-$comp"/dati/runs/*/; do
+    [ -d "$r" ] && echo "ripristinata $(find "$r" -type f | wc -l) file  $(basename "$r")"
+  done
+  echo "$RC" > "$BASE/$comp.rc"
+}
+
 # shellcheck disable=SC2086
-python3 -I "$TOOLS/external_backup.py" --root "$DESK" --app-db /opt/superbot/data/superbot.db \
-  --pool-db /opt/superbot-pool-data/pool.db --tools "$TOOLS" --work "$BASE/work" --remote "$BASE/remote.git" \
-  --recipient-file "$BASE/recipient-prova.txt" --app-repo /opt/superbot --bots-repo /opt/superbot-desk $ARGS $BRAIN_MODE \
-  > "$BASE/backup.log" 2>&1 || { grep -E "ERRORE|Fail|NO-GO|errore|mancante|rifiut" "$BASE/backup.log" | tail -40; echo "NO-GO: backup"; exit 1; }
-grep -E "storico run|RISULTATO" "$BASE/backup.log" || true
-
-echo "== ripristino con lo script ufficiale"
+backup_one indispensabili $ESS_ARGS
+# shellcheck disable=SC2086
+backup_one storici $STO_ARGS $BRAIN_MODE
 git clone -q "$BASE/remote.git" "$BASE/clone"
-ARC=$(find "$BASE/clone/archives" -name '*.tar.gz.age' | head -1)
-[ -n "$ARC" ] || { echo "NO-GO: archivio non trovato nel repository di prova"; exit 1; }
-RC=0
-python3 -I "$TOOLS/restore_external_backup.py" --archive "$ARC" --identity "$BASE/prova.key" --out "$BASE/restore" \
-  > "$BASE/restore.log" 2>&1 || RC=$?
-if [ "$RC" != 0 ] && [ "$RC" != 3 ]; then
-  grep -E "ERRORE:|ANOMALIA SEMANTICA:|journal V3|coerenza|FALLITO" "$BASE/restore.log" | sed 's/ La cartella .* resta per l.esame\.//' | head -60
-  echo "NO-GO: ripristino (difetto TECNICO)"; exit 1
+restore_one indispensabili
+restore_one storici
+
+ESS=$(cat "$BASE/indispensabili.rc"); STO=$(cat "$BASE/storici.rc")
+case "$ESS" in 0) E="CERTIFICATI" ;; *) E="NO-GO (difetto tecnico)" ;; esac
+case "$STO" in 0) T="CERTIFICATI" ;; 3) T="INTEGRI MA NON CERTIFICATI (Falco/Toro conservati com'e')" ;; *) T="NO-GO (difetto tecnico)" ;; esac
+echo "COMPONENTE indispensabili (database, Brain V3, Arena): $E"
+echo "COMPONENTE storici (Falco/Toro, Brain storico e libero, adattivo, ai-data): $T"
+if [ "$ESS" = 0 ] && [ "$STO" = 0 ]; then
+  echo "ESITO PROVA: OK (archivi di prova, chiave e copie cancellati all'uscita; nessun trasferimento)"
+  exit 0
 fi
-grep -E "ANOMALIA SEMANTICA:|coerenza|journal V3|RISULTATO" "$BASE/restore.log" | sed 's/ Cartella .*//'
-for r in "$BASE"/restore/dati/runs/*/; do
-  echo "ripristinata $(find "$r" -type f | wc -l) file  $(basename "$r")"
-done
-if [ "$RC" = 3 ]; then
-  echo "ESITO PROVA: INTEGRITA' TECNICA OK, SEMANTICA DI FALCO/TORO NON CERTIFICATA (archivio conservato com'e', NON certificato; nessun trasferimento)"
+if [ "$ESS" = 0 ] && [ "$STO" = 3 ]; then
+  echo "ESITO PROVA: INDISPENSABILI CERTIFICATI, STORICI NON CERTIFICATI SEMANTICAMENTE (nessun trasferimento)"
   exit 3
 fi
-echo "ESITO PROVA: OK (archivio di prova, chiave e copie cancellati all'uscita; nessun trasferimento)"
+echo "ESITO PROVA: NO-GO (vedi i componenti sopra)"
+exit 1
