@@ -9,8 +9,13 @@
 ``verify_restore`` copia il backup in una cartella NUOVA e verifica: impronte uguali al manifest, catena del journal
 uguale (stesso numero di eventi e stessa testa: nessun troncamento), basi SQLite integre, latch leggibile.
 
-Nessuna rete, nessuna scrittura nella sorgente, nessun servizio fermato. Cifratura e copia fuori dalla VPS sono passi
-separati, con consenso del proprietario. Destinazioni sempre NUOVE: mai sovrascrivere un backup.
+Nessuna rete, nessuna scrittura nella sorgente, nessun servizio fermato. Destinazioni sempre NUOVE: mai sovrascrivere.
+
+ATTENZIONE, due fasi distinte: ``backup`` scrive COPIE IN CHIARO dei database e dei file di stato nella cartella di
+destinazione (proteggerla: utente dedicato, permessi 0700); solo ``encrypt`` poi cifra in streaming (tar | age) senza
+creare ALTRE copie in chiaro. Le copie in chiaro vanno cancellate dopo le verifiche. Per l'esecuzione amministrativa
+sui dati reali usare lo script autonomo ``ops/brain-unico/backup/brain_run_backup_root.py`` (lavora in una cartella
+0700 e cancella da se' le copie in chiaro).
 """
 from __future__ import annotations
 

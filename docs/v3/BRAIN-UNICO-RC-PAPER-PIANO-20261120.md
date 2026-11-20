@@ -61,7 +61,7 @@ Si ripristina il commit precedente del runner e la build web precedente. Il jour
 - **Run Brain ≠ patrimonio storico.** Falco e Toro (`/opt/superbot-desk-data`), il DB dell'app e del pool sono coperti dall'extbackup esistente (age + repository privato `superbot-backups`), ma la sua installazione e il ripristino **non sono certificati**. La run Brain V3 e le tre run dell'Arena (`/opt/superbot-ai-arena-paper`, solo root; l'Arena ha un suo `backup.py`) **non sono coperte** dall'extbackup. La protezione generale **non è completa**.
 
 ## 8. Cifratura e copia esterna (proposta, senza nuovi costi)
-- Riusare il canale esistente: `run_backup ... --encrypt-to recipient.txt --encrypted-out <nuovo>.tar.age` cifra con **age** verso la chiave PUBBLICA del proprietario già usata dall'extbackup (la privata resta solo sul suo PC); il chiaro non viene mai scritto (tar | age). Provato con una chiave di test.
+- **Correzione (21/11):** la cifratura `tar | age` è in streaming, ma la fase precedente di backup crea COPIE IN CHIARO dei database. Le due fasi sono distinte: le copie in chiaro stanno in una cartella di lavoro 0700 e vengono cancellate dopo le verifiche. Procedura amministrativa circoscritta: `ops/brain-unico/backup/PROCEDURA.md`. Cifratura solo verso la chiave PUBBLICA già approvata (`/opt/superbot-extbackup/recipient.txt`); la privata resta sul PC del proprietario.
 - Copia fuori dalla VPS: lo stesso repository privato `superbot-backups` tramite la deploy key di root già esistente: nessuna credenziale nuova. Da autorizzare: aggiungere la run Brain V3 (e le run Arena) ai percorsi dell'extbackup, e una prova di ripristino dal file cifrato sul PC.
 
 ## 9. Freschezza dei dati (requisito del GO)
