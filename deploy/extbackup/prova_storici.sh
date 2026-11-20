@@ -103,10 +103,19 @@ echo "== ripristino con lo script ufficiale"
 git clone -q "$BASE/remote.git" "$BASE/clone"
 ARC=$(find "$BASE/clone/archives" -name '*.tar.gz.age' | head -1)
 [ -n "$ARC" ] || { echo "NO-GO: archivio non trovato nel repository di prova"; exit 1; }
+RC=0
 python3 -I "$TOOLS/restore_external_backup.py" --archive "$ARC" --identity "$BASE/prova.key" --out "$BASE/restore" \
-  > "$BASE/restore.log" 2>&1 || { grep -E "ERRORE:|journal V3|coerenza|FALLITO" "$BASE/restore.log" | sed 's/ La cartella .* resta per l.esame\.//' | head -60; echo "NO-GO: ripristino"; exit 1; }
-grep -E "journal V3|RISULTATO" "$BASE/restore.log"
+  > "$BASE/restore.log" 2>&1 || RC=$?
+if [ "$RC" != 0 ] && [ "$RC" != 3 ]; then
+  grep -E "ERRORE:|ANOMALIA SEMANTICA:|journal V3|coerenza|FALLITO" "$BASE/restore.log" | sed 's/ La cartella .* resta per l.esame\.//' | head -60
+  echo "NO-GO: ripristino (difetto TECNICO)"; exit 1
+fi
+grep -E "ANOMALIA SEMANTICA:|coerenza|journal V3|RISULTATO" "$BASE/restore.log" | sed 's/ Cartella .*//'
 for r in "$BASE"/restore/dati/runs/*/; do
   echo "ripristinata $(find "$r" -type f | wc -l) file  $(basename "$r")"
 done
+if [ "$RC" = 3 ]; then
+  echo "ESITO PROVA: INTEGRITA' TECNICA OK, SEMANTICA DI FALCO/TORO NON CERTIFICATA (archivio conservato com'e', NON certificato; nessun trasferimento)"
+  exit 3
+fi
 echo "ESITO PROVA: OK (archivio di prova, chiave e copie cancellati all'uscita; nessun trasferimento)"

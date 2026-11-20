@@ -28,6 +28,24 @@ La prima prova reale (20/11) è terminata con 4 problemi, riprodotti offline sul
 
 Tutti gli altri controlli sono invariati. Restano errori: trade diversi tra stato e storico, run successive, contabilità errata e saldo del salvadanaio illeggibile o negativo.
 
+## Integrità tecnica e coerenza semantica: esiti separati
+Il ripristino ha tre esiti:
+- **0, OK:** tutto verificato e certificato.
+- **1, FALLITO:** un difetto **tecnico** in cifratura, estrazione, impronte, SQLite, catene e journal V3 obbligatori o file del cervello.
+- **3, INTEGRO MA NON CERTIFICATO:** l'integrità tecnica è verificata, ma Falco o Toro hanno anomalie **semantiche** (righe `ANOMALIA SEMANTICA:`). L'archivio li conserva così come sono, senza certificarli. La prova termina con `ESITO PROVA: INTEGRITA' TECNICA OK, SEMANTICA DI FALCO/TORO NON CERTIFICATA` e codice 3: **non** è un successo.
+
+I controlli delle quattro run V3 restano tecnici e rigorosi.
+
+**Contabilità ricostruita dal motore** (`engine.py`, `vault_manager.py`):
+- cassa + salvadanaio + (margine + commissione d'apertura delle posizioni aperte) = capitale iniziale + Σ variazioni di cassa dei trade;
+- una chiusura vale `max(net, −(margine + commissione d'apertura))`, perché il motore non toglie dalla cassa più del margine anche quando `net` registra una perdita maggiore.
+
+## Diagnostica in sola lettura (Falco e Toro)
+Non scrive nulla e stampa solo conteggi, id, date, motivi e importi PAPER aggregati.
+```
+sudo install -d -m 700 -o root -g root /root/extbackup-diagnosi && sudo install -m 500 -o root -g root /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/restore_external_backup.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/extbackup/diagnosi_classici.py /root/extbackup-diagnosi/ && printf '%s\n' 'c1a8f4b641c4ccacddb7447e49313ef120902020f04d2ee5500ee1fe696771e9  /root/extbackup-diagnosi/restore_external_backup.py' 'f8fa4e295b53c19f292f0c2e9be68224aecc45d8ecb5c8d6382f60f85c548663  /root/extbackup-diagnosi/diagnosi_classici.py' | sudo sha256sum --strict -c - && sudo python3 -I /root/extbackup-diagnosi/diagnosi_classici.py /root/extbackup-diagnosi /opt/superbot-desk-data /root/extbackup-prova-storici-20261120T153630Z.log
+```
+
 ## Copia e controlli
 - **Copia:** ricorsiva, comprese le sottocartelle.
 - **Escluse**, e solo contate per categoria:
@@ -58,7 +76,7 @@ Tutti gli altri controlli sono invariati. Restano errori: trade diversi tra stat
 Si ferma da solo se un'impronta non coincide: i comandi sono concatenati con `&&`.
 ```
 sudo install -d -m 700 -o root -g root /root/extbackup-strumenti && sudo install -m 500 -o root -g root /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/external_backup.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/restore_external_backup.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/backup_app_db.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/backup_brain.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/extbackup/prova_storici.sh /root/extbackup-strumenti/ && printf '%s
-' '999bbbfe0d1482f3f965856169b69ab8af70c75b82d93e7a622deb395b2af6a8  /root/extbackup-strumenti/external_backup.py' 'aa35906bae4aef267cc3113321f9cad6dfaebdbebda11724e30fabc9bb7e85c3  /root/extbackup-strumenti/restore_external_backup.py' '6bd6ebc209400c7a0b222c62690e2c2f11b6f0a927b83fa937a35dcaac0700c6  /root/extbackup-strumenti/backup_app_db.py' '4a92e7daa6cff9fbf339f471656df8ba44067b6927d15b411b50313de0cb5d2c  /root/extbackup-strumenti/backup_brain.py' 'ff9b36a25b13389be20d1bbe4d956a84c0041f9a8f90f6df8e188a8071a5a82f  /root/extbackup-strumenti/prova_storici.sh' | sudo sha256sum --strict -c - && sudo sh /root/extbackup-strumenti/prova_storici.sh /root/extbackup-strumenti
+' '999bbbfe0d1482f3f965856169b69ab8af70c75b82d93e7a622deb395b2af6a8  /root/extbackup-strumenti/external_backup.py' 'c1a8f4b641c4ccacddb7447e49313ef120902020f04d2ee5500ee1fe696771e9  /root/extbackup-strumenti/restore_external_backup.py' '6bd6ebc209400c7a0b222c62690e2c2f11b6f0a927b83fa937a35dcaac0700c6  /root/extbackup-strumenti/backup_app_db.py' '4a92e7daa6cff9fbf339f471656df8ba44067b6927d15b411b50313de0cb5d2c  /root/extbackup-strumenti/backup_brain.py' '15bb056720966b5ba6b34b6a680919474b8eced743d2df6ac4758a3dc208ecc0  /root/extbackup-strumenti/prova_storici.sh' | sudo sha256sum --strict -c - && sudo sh /root/extbackup-strumenti/prova_storici.sh /root/extbackup-strumenti
 ```
 **Esito atteso:**
 - inventario con dimensioni, file e sottocartelle;

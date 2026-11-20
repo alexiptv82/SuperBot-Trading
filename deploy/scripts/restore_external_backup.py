@@ -8,7 +8,9 @@ Uso:
 Serve la chiave PRIVATA di recupero (quella che l'utente custodisce fuori da GitHub). Non tocca mai il
 server di produzione: scrive soltanto dentro --out, che deve essere vuota o inesistente.
 
-Passi (qualunque difetto = uscita 1, e --out resta per l'esame):
+Esiti: 0 = OK; 1 = difetto TECNICO (--out resta per l'esame); 3 = integrita' tecnica verificata ma anomalie
+SEMANTICHE nei portafogli classici (archivio conservato, NON certificato: non e' un successo).
+Passi:
   1. SHA-256 e dimensione dell'archivio cifrato uguali al manifesto in chiaro (se c'e');
   2. decifratura con age (la cifratura e' autenticata: un archivio alterato non si decifra);
   3. estrazione SICURA: solo file normali sotto dati/, niente percorsi assoluti, niente "..", niente link;
@@ -22,8 +24,11 @@ Passi (qualunque difetto = uscita 1, e --out resta per l'esame):
      risultato) con le righe dello storico della stessa run; nessun id oltre next_id; nessuna chiusura prima
      dell'apertura; nessuna run futura nello storico o nel registro di apprendimento; contabilita': senza
      posizioni aperte cassa = capitale iniziale + somma dei risultati (tolleranza 1 centesimo), con
-     posizioni aperte la cassa non puo' superare quella somma. La cassa comprende il saldo del salvadanaio
-     (capital.vault.balance), che il bot sposta dalla cassa e viceversa conservando la somma; le righe dello
+     posizioni aperte la cassa non puo' superare quella somma. Contabilita' ESATTA del motore: cassa +
+     salvadanaio + (margine + commissione d'apertura delle posizioni aperte) = capitale iniziale + somma delle
+     variazioni di cassa dei trade, dove una chiusura vale max(net, -(margine + commissione d'apertura)): oltre
+     il margine il motore non toglie cassa. Il salvadanaio
+     (capital.vault.balance) il bot lo sposta dalla cassa e viceversa conservando la somma; le righe dello
      storico senza run_no appartengono alla run corrente (il bot non le etichetta e archivia lo storico a ogni
      nuova run).
 """
@@ -60,9 +65,19 @@ def sha256_file(path):
 
 
 class Problems(list):
+    """Difetti TECNICI (integrita': cifratura, estrazione, impronte, SQLite, catene V3, file del cervello).
+    In .semantic le anomalie SEMANTICHE dei portafogli classici: l'archivio le conserva, ma non certificate."""
+    def __init__(self):
+        super().__init__()
+        self.semantic = []
+
     def add(self, msg):
         self.append(msg)
         print("  ERRORE: " + msg)
+
+    def add_semantic(self, msg):
+        self.semantic.append(msg)
+        print("  ANOMALIA SEMANTICA: " + msg)
 
 
 def safe_extract(tar_path, out, problems):
@@ -230,8 +245,73 @@ def _num(x):
     return isinstance(x, (int, float)) and not isinstance(x, bool)
 
 
+def close_cash_delta(rec, fee_bp):
+    """Effetto sulla CASSA di un record di chiusura (finale o parziale), con la regola del motore (engine.py):
+    all'apertura escono margine + commissione d'apertura; in chiusura rientra max(0, margine + lordo -
+    commissione di chiusura - funding). Quindi variazione = max(net, -(margine + commissione d'apertura)): una
+    perdita oltre il margine senza liquidazione formale (es. gap oltre lo stop) toglie dalla cassa solo il
+    margine e la commissione d'apertura, mentre net registra la perdita intera.
+    Restituisce (variazione, eccedenza assorbita) oppure None se il record non permette il calcolo."""
+    try:
+        net, margin, fees = float(rec["net"]), float(rec["margin"]), float(rec.get("fees") or 0)
+        lev, entry, exit_ = float(rec["leverage"]), float(rec["entry"]), float(rec["exit"])
+        if entry <= 0 or margin < 0:
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
+    fee_close = margin * lev * exit_ / entry * fee_bp / 1e4      # qty * exit * bp, con qty * entry = margine * leva
+    floor = -(margin + max(0.0, fees - fee_close))
+    delta = max(net, floor)
+    return delta, delta - net
+
+
+def engine_accounting(st, closed):
+    """Ricostruzione della cassa con le regole del motore. Restituisce un dizionario con i termini del conto
+    (nessuna decisione): capitale iniziale, somma dei net, somma delle variazioni di cassa, eccedenze assorbite,
+    impegno delle posizioni aperte, salvadanaio, differenza finale. 'errore' se non e' ricostruibile."""
+    m = st.get("main") or {}
+    limits = m.get("limits") or {}
+    out = {"start": limits.get("start_equity"), "fee_bp": limits.get("fee_bp_side", 6.0), "vault": 0.0}
+    if not _num(out["start"]) or not _num(out["fee_bp"]):
+        out["errore"] = "capitale iniziale o commissione della run sconosciuti"
+        return out
+    cap = st.get("capital")
+    if cap is not None:
+        try:
+            v = float((cap.get("vault") or {}).get("balance", 0))
+            if not (0 <= v < float("inf")):
+                raise ValueError
+            out["vault"] = v
+        except (AttributeError, TypeError, ValueError):
+            out["errore"] = "saldo del salvadanaio illeggibile o negativo"
+            return out
+    total_net = total_delta = excess = 0.0
+    absorbed = 0
+    for c in closed:
+        r = close_cash_delta(c, out["fee_bp"])
+        if r is None:
+            out["errore"] = "record di chiusura senza i campi per la variazione di cassa (id %s)" % c.get("id")
+            return out
+        total_net += float(c["net"])
+        total_delta += r[0]
+        if r[1] > 1e-6:
+            absorbed += 1
+            excess += r[1]
+    committed = 0.0
+    for k, pos in (m.get("positions") or {}).items():
+        try:
+            committed += float(pos["total_margin"]) + float(pos["fee_open"])
+        except (KeyError, TypeError, ValueError):
+            out["errore"] = "posizione aperta %s senza margine o commissione d'apertura" % k
+            return out
+    out.update(net=total_net, delta=total_delta, excess=excess, absorbed=absorbed, committed=committed,
+               diff=float(m.get("cash")) + out["vault"] + committed - (out["start"] + total_delta))
+    return out
+
+
 def check_semantics(base, name, problems):
-    """Coerenza tra stato, posizioni, storico e contabilita' di un portafoglio (vedi punto 8 in testa)."""
+    """Coerenza tra stato, posizioni, storico e contabilita' di un portafoglio (vedi punto 8 in testa).
+    Le anomalie trovate qui sono SEMANTICHE: il portafoglio resta nell'archivio ma non e' certificato."""
     try:
         with open(os.path.join(base, "state_v2.json")) as f:
             st = json.load(f)
@@ -250,7 +330,8 @@ def check_semantics(base, name, problems):
         problems.add("%s: stato senza i campi essenziali (run_no, main.cash, main.positions, main.closed, "
                      "main.next_id)" % name)
         return
-    before = len(problems)
+    before = len(problems.semantic)
+    sem = problems.add_semantic
     closed, positions, next_id = m["closed"], m["positions"], m["next_id"]
 
     def key(r):
@@ -259,63 +340,44 @@ def check_semantics(base, name, problems):
     from collections import Counter
     # Il bot (engine.py) non scrive run_no nelle righe dei trade chiusi e, a ogni nuova run, sposta
     # trade_history.jsonl in archive/: le righe SENZA run_no del file attivo sono quindi della run corrente.
-    # Righe etichettate con un'altra run restano escluse (e una run successiva resta un errore, sotto).
+    # Righe etichettate con un'altra run restano escluse (e una run successiva resta un'anomalia, sotto).
     in_run = [r for r in hist if r.get("run_no") == run or not isinstance(r.get("run_no"), int)]
     a, b = Counter(key(r) for r in in_run), Counter(key(c) for c in closed)
     if a != b:
-        problems.add("%s: i trade chiusi nello stato (%d) non coincidono con lo storico della run %d (%d): "
-                     "%d solo nello stato, %d solo nello storico"
-                     % (name, len(closed), run, len(in_run), sum((b - a).values()), sum((a - b).values())))
+        sem("%s: i trade chiusi nello stato (%d) non coincidono con lo storico della run %d (%d): "
+            "%d solo nello stato, %d solo nello storico"
+            % (name, len(closed), run, len(in_run), sum((b - a).values()), sum((a - b).values())))
     ids = [c.get("id") for c in closed] + [pos.get("id", k) if isinstance(pos, dict) else k
                                            for k, pos in positions.items()]
     bad = [i for i in ids if isinstance(i, int) and i >= next_id]
     if bad:
-        problems.add("%s: id %s oltre next_id=%d" % (name, bad[:5], next_id))
+        sem("%s: id %s oltre next_id=%d" % (name, bad[:5], next_id))
     back = [r.get("id") for r in hist if _num(r.get("open_ms")) and _num(r.get("close_ms"))
             and r["close_ms"] < r["open_ms"]]
     if back:
-        problems.add("%s: %d trade chiusi prima di essere aperti (id %s)" % (name, len(back), back[:5]))
+        sem("%s: %d trade chiusi prima di essere aperti (id %s)" % (name, len(back), back[:5]))
     fut = sum(1 for r in hist if isinstance(r.get("run_no"), int) and r["run_no"] > run)
     fut += sum(1 for r in learn if isinstance(r.get("run_no"), int) and r["run_no"] > run)
     if fut:
-        problems.add("%s: %d righe di storico/apprendimento di una run successiva a quella dello stato (%d)"
-                     % (name, fut, run))
+        sem("%s: %d righe di storico/apprendimento di una run successiva a quella dello stato (%d)"
+            % (name, fut, run))
     other = sum(1 for r in learn if r.get("portfolio") not in (None, name))
     if other:
-        problems.add("%s: %d righe del registro di apprendimento di un altro portafoglio" % (name, other))
-    start = (m.get("limits") or {}).get("start_equity")
-    if not _num(start):
-        starts = {r.get("start_equity") for r in in_run if _num(r.get("start_equity"))}
-        start = starts.pop() if len(starts) == 1 else None
-    total = sum(float(c.get("net") or 0) for c in closed)
-    # Salvadanaio (vault_manager.py): rollover e saldo spostano denaro dalla cassa al vault, il prelievo dal vault
-    # alla cassa; ogni transizione conserva cassa + vault. Senza salvadanaio il vault vale 0.
-    vault = 0.0
-    cap = st.get("capital")
-    if cap is not None:
-        try:
-            vault = float((cap.get("vault") or {}).get("balance", 0))
-            if not vault >= 0 or vault != vault or vault == float("inf"):
-                raise ValueError
-        except (AttributeError, TypeError, ValueError):
-            problems.add("%s: saldo del salvadanaio illeggibile o negativo: contabilita' non verificabile" % name)
-            start = None
-    if start is None:
-        problems.add("%s: capitale iniziale della run sconosciuto: contabilita' non verificabile" % name)
+        sem("%s: %d righe del registro di apprendimento di un altro portafoglio" % (name, other))
+    acc = engine_accounting(st, closed)
+    if "errore" in acc:
+        sem("%s: contabilita' non verificabile: %s" % (name, acc["errore"]))
         acct = "non verificabile"
-    elif not positions:
-        diff = m["cash"] + vault - (start + total)
-        if abs(diff) > 0.01:
-            problems.add("%s: contabilita' incoerente: cassa + salvadanaio %.4f, capitale iniziale + risultati %.4f "
-                         "(diff %.4f)" % (name, m["cash"] + vault, start + total, diff))
-        acct = "cassa + salvadanaio = capitale iniziale + risultati (diff %.6f)" % diff
     else:
-        if m["cash"] + vault > start + total + 0.01:
-            problems.add("%s: con posizioni aperte cassa + salvadanaio (%.4f) supera capitale iniziale + risultati "
-                         "(%.4f)" % (name, m["cash"] + vault, start + total))
-        acct = "posizioni aperte %d: cassa + salvadanaio <= capitale iniziale + risultati" % len(positions)
-    print("  coerenza %s: run %d | %d trade chiusi = storico della run | %d posizioni aperte | %s | %s"
-          % (name, run, len(closed), len(positions), acct, "OK" if len(problems) == before else "PROBLEMI"))
+        if abs(acc["diff"]) > 0.01:
+            sem("%s: contabilita' incoerente: cassa + salvadanaio + impegno delle posizioni aperte %.4f, capitale "
+                "iniziale + variazioni di cassa dei trade %.4f (diff %.4f)"
+                % (name, m["cash"] + acc["vault"] + acc["committed"], acc["start"] + acc["delta"], acc["diff"]))
+        acct = ("cassa + salvadanaio + posizioni aperte = capitale iniziale + variazioni di cassa (diff %.6f); "
+                "perdite oltre il margine assorbite: %d trade, %.4f" % (acc["diff"], acc["absorbed"], acc["excess"]))
+    print("  coerenza %s: run %d | %d trade chiusi | %d posizioni aperte | %s | %s"
+          % (name, run, len(closed), len(positions), acct,
+             "OK" if len(problems.semantic) == before else "SEMANTICA NON CERTIFICATA"))
 
 
 def main(argv=None):
@@ -393,8 +455,15 @@ def main(argv=None):
     check_v3_journals(a.out, problems)
 
     if problems:
-        print("RISULTATO: FALLITO (%d problemi). La cartella %s resta per l'esame." % (len(problems), a.out))
+        print("RISULTATO: FALLITO (%d problemi tecnici, %d anomalie semantiche). La cartella %s resta per "
+              "l'esame." % (len(problems), len(problems.semantic), a.out))
         return 1
+    if problems.semantic:
+        # integrita' tecnica verificata, ma la coerenza dei portafogli classici NO: non e' un successo
+        print("RISULTATO: INTEGRO MA NON CERTIFICATO  integrita' tecnica verificata; %d anomalie semantiche nei "
+              "portafogli classici (conservati come sono, NON certificati). Cartella %s"
+              % (len(problems.semantic), a.out))
+        return 3
     print("RISULTATO: OK  backup decifrato, completo e integro in %s" % a.out)
     return 0
 
