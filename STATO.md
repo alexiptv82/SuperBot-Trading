@@ -1,3 +1,9 @@
+## 20/11/2026 (5) — Claude: skill (prima selezione) e validazione delle feature su dati reali
+
+- Skill: ramo isolato `claude/skills-brain-unico-20261120` @ `0ce8adf8` (5 skill adattate, confronto offline); non integrato finché il riconoscimento non è provato in una nuova sessione. Dettagli: [`diario/2026-11-20_claude-skill-confronto-validazione-reale.md`](diario/2026-11-20_claude-skill-confronto-validazione-reale.md).
+- Validazione indipendente su **dati Bitget reali**: corretto un difetto che rifiutava tutte le feature reali; ora 24/24 verificate e 24/24 manomissioni rilevate. Integrazione @ `733182f6`, suite 5311.
+- Nessun deploy, servizio, parametro attivo, spesa o merge su main.
+
 ## 20/11/2026 (4) — Claude: seconda acquisizione riuscita, difetto del feed, schermata Brain Unico
 
 - `integration/brain-unico-20261119` @ `8fa61d18`: suite **5310**, builder 157, Jest 137, 0 falliti. Dettagli: [`diario/2026-11-20_claude-seconda-acquisizione-brain-unico-rc.md`](diario/2026-11-20_claude-seconda-acquisizione-brain-unico-rc.md).
