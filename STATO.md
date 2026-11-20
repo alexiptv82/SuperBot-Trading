@@ -1,3 +1,7 @@
+## 21/11/2026 (3) — Prova extbackup: EventJournal V3 obbligatorio, comando definitivo
+
+- `claude/extbackup-storici-20261121` @ `aa09cb6e`: Brain V3 attivo e 3 run Arena richiedono journal.db con `v3_events` e catena valida, registrato nell'indice e riverificato dopo il ripristino (NO-GO altrimenti); indice obbligatorio nel ripristino; archivi non V3 invariati. 51 test. Comando definitivo con impronte in `deploy/extbackup/PROVA-STORICI.md`. In attesa dell'esecuzione del proprietario.
+
 ## 20/11/2026 14:46 Europe/Rome — backup riuscito su run vuota; storici reali ancora scoperti
 
 - Checkpoint append-only: [diario/2026-11-20_1446_checkpoint-backup-run-vuota-storici-da-proteggere.md](diario/2026-11-20_1446_checkpoint-backup-run-vuota-storici-da-proteggere.md), commit [376a734…](https://github.com/alexiptv82/SuperBot-Trading/commit/376a7341efd7ff9a34d3689bd1883e2f7d9fc2bb).
