@@ -31,7 +31,12 @@
 - **Web:** build di produzione dal commit della RC, copiata con lo script di cutover esistente. Il service worker carica le pagine prima dalla rete: alla prima apertura dopo il deploy l'app mostra la schermata Brain Unico **senza reinstallazione**, perché il manifest non cambia.
 - **Nessun cambio** a `DESK_MODE` (resta `paper`), alle soglie 35 %/50 % e al pavimento 450.
 
-## 4. Collaudo PAPER (proposta: 14 giorni)
+## 4. Collaudo PAPER in due fasi distinte (decisione del proprietario, 21/11/2026)
+### Fase 1: verifica TECNICA rapida (8 simboli, profilo B)
+- **Scopo:** dimostrare che il sistema funziona tecnicamente. **Non** serve a valutare le prestazioni del Brain.
+- **Durata proposta:** 72 ore, cioè 3 cambi di giorno UTC, così si vede anche l'azzeramento del limite giornaliero, e circa 72 cicli orari. Finisce prima con NO-GO se una misura tecnica fallisce.
+- **Esito:** GO o NO-GO tecnico. Se è positivo, si prepara la Fase 2.
+
 | Misura | Atteso | Fonte |
 |---|---|---|
 | Aperture senza traccia valida | 0 | `/api/v3/brain/memory` |
@@ -44,8 +49,20 @@
 | Spesa AI | entro il tetto giornaliero | stato Brain |
 | Aperture con costi > 25 % del rischio | solo misurate, nessun blocco nel primo PAPER | journal (`paper_open`: ingresso, stop, nozionale) + costi stimati della configurazione |
 | Leve abbassate dal motore (`risk:leverage_adjusted`) | solo misurate | journal (fonti della decisione) |
+| Costo AI **effettivo** per decisione | misurato (spesa del giorno in `budget.db` / decisioni registrate). Le chiamate con stima prudente, senza `usage`, sono contate a parte. Mai dedotto da 0,75 / 192 | `budget.db` (`spend_events`) + journal |
+| Posizioni aperte contemporaneamente (massimo osservato) | ≤ 4. Vedi la nota sotto | journal |
 
-Al termine: rapporto con i numeri, nessuna promozione automatica. L'addestramento resta subordinato ai quattro requisiti del dataset e alle soglie dell'Issue #113 (300 esempi e 20 giorni per lo shadow).
+**Nota sul massimo di quattro posizioni:** nel codice **non** c'è un limite esplicito al numero di posizioni. Il "4" deriva da 4 % di rischio aperto diviso 1 % per operazione. Un'operazione ridotta dal tetto di margine rischia meno dell'1 %, quindi in casi rari possono aprirsene più di quattro, entro il 50 % di margine totale e una sola posizione per simbolo. Nella Fase 1 si **misura**. Prima della Fase 2, che ha più simboli, il proprietario decide se introdurre un tetto esplicito di 4 posizioni, con test mirati.
+
+### Fase 2: valutazione delle PRESTAZIONI (universo ampliato)
+- **Universo:** indicativamente le prime 25 criptovalute per capitalizzazione, più oro e argento (`XAUUSDT`, `XAGUSDT`, confermati dal proprietario sulla documentazione Bitget). Il numero massimo di posizioni resta **4**.
+- **Avvio:** **solo dopo** una Fase 1 positiva, con una **nuova configurazione e un nuovo mandato** approvati.
+- **Budget AI:** ricavato dal costo per decisione **misurato** nella Fase 1 (c'è una chiamata per simbolo senza posizione aperta e per ciclo).
+- **Risultati confrontabili:** stesso profilo di rischio, metriche fissate prima dell'avvio, nessun cambio di parametri durante la fase. Addestramento e promozione restano subordinati ai quattro requisiti e alle soglie dell'Issue #113.
+- **Oro e argento, da verificare senza modificare il motore prima della Fase 2:**
+  - il formato dei simboli è già ammesso dalla configurazione (`^[A-Z0-9]{2,20}USDT$`);
+  - resta da verificare: candele e prezzi dal feed pubblico, passo di quantità, nozionale minimo, leva massima dell'exchange (il motore la rispetta già), margine di mantenimento (oggi unico allo 0,5 %), orari e funding.
+- **Nessun nuovo filtro** e nessuna modifica al motore introdotti solo per ampliare la scelta.
 
 ## 5. Rollback
 Si ripristina il commit precedente del runner e la build web precedente. Il journal è append-only: nessun dato si perde, e la nuova run resta come storico.
@@ -99,6 +116,7 @@ Il motore toglie dalla cassa al massimo margine + commissione d'apertura (`engin
 | 4 | Chiusura formale dell'Issue #124 e conferma di zero P0 aperti | proprietario | da confermare |
 | 5 | Pre-collaudo: exit service sidecar sano e indipendente; rollback provato (commit e build web precedenti) | Claude prepara, proprietario autorizza | da fare al rilascio |
 | 6 | Gate verde sul commit della RC e configurazione della nuova run (`V3_RUN_ID`, `V3_RUNNER_CONFIG_PATH`, journal nuovo) | Claude | al rilascio |
+| — | **Mandato:** resta `approved: false` fino al completamento del pre-collaudo (punto 5) e della protezione degli storici (punti 2–3) | proprietario | decisione del 21/11 |
 | 7 | Consenso al deploy della RC PAPER | proprietario | dopo i punti 1–6 |
 
 **Non bloccanti per il GO:**
