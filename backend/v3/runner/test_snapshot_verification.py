@@ -152,38 +152,97 @@ def test_the_validator_does_not_import_the_runtime():
 
 
 # ------------------------------------------------------------------------------------------------ nel builder
+# Quattro requisiti DISTINTI: coerenza delle feature, integrita' dell'archivio, provenienza verificabile delle candele
+# (manifest + risposte grezze + ancora esterna) e attestazione del journal (Fase 0). Nessuno sostituisce gli altri.
 
-def _build(j, dc_root):
+MID = "candles-20261120T090000Z-e2e"
+
+
+def _attested_archive(root: Path, symbols=("AAAUSDT",), edit=None):
+    """Archivio come lo produce la procedura di acquisizione: risposte grezze della fonte pubblica -> file derivati."""
+    B, SV = _builder()
+    import candle_provenance as CP
+    fetched, last = {}, 0
+    for tf, ms in STEP.items():
+        for sym in symbols:
+            rows = []
+            for b in _bars(tf):
+                r = {"t": b.open_time_ms, "o": str(b.open), "h": str(b.high), "l": str(b.low), "c": str(b.close),
+                     "v": str(b.volume)}
+                rows.append(edit(tf, r) if edit else r)
+            last = max(last, rows[-1]["t"] + ms)
+            gran = CP.GRANULARITY[ms]
+            url = (f"{CP.SOURCE['base_url']}{CP.SOURCE['path']}?symbol={sym}&productType=USDT-FUTURES"
+                   f"&granularity={gran}&startTime={rows[0]['t']}&endTime={rows[-1]['t']}&limit=200")
+            body = {"code": "00000", "data": [[str(r["t"]), r["o"], r["h"], r["l"], r["c"], r["v"], "0"]
+                                              for r in rows]}
+            fetched[f"{tf}/{sym}.jsonl"] = {"symbol": sym, "interval_ms": ms, "responses": [(url, body)]}
+    sha = CP.write_archive(str(root), manifest_id=MID, acquired_at_ms=last, tool={"name": "test"},
+                           fetched=fetched, meta=META)
+    return root, {MID: sha}
+
+
+def _build(j, dc_root, candle_anchors=None):
     B, SV = _builder()
     spec = {"inputs": [{"id": "brain-lab", "source_system": "brain_unico", "kind": "v3", "path": str(j.filename)}]}
-    return B.build(spec, None, decision_candles_dir=str(dc_root) if dc_root else None)
+    return B.build(spec, None, decision_candles_dir=str(dc_root) if dc_root else None, candle_anchors=candle_anchors)
 
 
 def _rows_by_kind(res):
     return {r["record_kind"]: r for r in res["rows"]}
 
 
-def test_the_builder_lifts_snapshot_unverified_only_after_verification():
+def test_without_decision_candles_nothing_is_promoted():
     j = _decided()
     plain = _rows_by_kind(_build(j, None))["no_trade"]
-    assert "snapshot_unverified" in plain["quality_flags"]
-    assert plain["provenance"]["snapshot_verification"] == "no_decision_candles"
-    assert "snapshot_unverified" in plain["ineligible_reasons"]
-
-    verified = _rows_by_kind(_build(j, _archive(Path(tempfile.mkdtemp()) / "dc")))["no_trade"]
-    assert "snapshot_unverified" not in verified["quality_flags"]
-    assert verified["provenance"]["snapshot_verification"] == "verified"
-    assert verified["provenance"]["snapshot_risk_values"] == "excluded_unverified"
-    assert not any(k.startswith("risk_") for k in (verified["features"] or {}))
-    assert "snapshot_unverified" not in verified["ineligible_reasons"]
-    # resta comunque escluso finche' l'input (journal) non e' attestato dalla Fase 0: nessuna scorciatoia
-    assert verified["eligible_for_training"] is False and "input_not_attested" in verified["ineligible_reasons"]
+    assert "snapshot_unverified" in plain["quality_flags"] and "snapshot_unverified" in plain["ineligible_reasons"]
+    assert plain["provenance"]["feature_consistency"] == "no_decision_candles"
+    assert plain["provenance"]["candle_provenance"] == "archive_missing"
 
 
-def test_a_tampered_archive_keeps_the_row_out_of_training():
+def test_all_three_market_requirements_promote_the_snapshot_but_not_the_row():
     j = _decided()
-    root = _archive(Path(tempfile.mkdtemp()) / "dc",
-                    edit=lambda tf, r: {**r, "l": str(D(r["l"]) - D("0.01"))} if r["t"] == LAST[tf] else r)
-    row = _rows_by_kind(_build(j, root))["no_trade"]
-    assert row["provenance"]["snapshot_verification"] == "inputs_mismatch"
+    root, anchors = _attested_archive(Path(tempfile.mkdtemp()) / "dc")
+    res = _build(j, root, anchors)
+    row = _rows_by_kind(res)["no_trade"]
+    p = row["provenance"]
+    assert (p["feature_consistency"], p["candle_archive_integrity"], p["candle_provenance"]) == (
+        "verified", "intact", "attested")
+    assert "snapshot_unverified" not in row["quality_flags"] and "snapshot_unverified" not in row["ineligible_reasons"]
+    assert p["snapshot_risk_values"] == "excluded_unverified"
+    assert not any(k.startswith("risk_") for k in (row["features"] or {}))
+    # quarto requisito separato: journal e decisioni non attestati dalla Fase 0 => nessun training
+    assert row["eligible_for_training"] is False and "input_not_attested" in row["ineligible_reasons"]
+    assert res["decision_candles"]["provenance"] == "attested"
+
+
+def test_consistent_features_on_a_merely_declared_archive_are_not_promoted():
+    j = _decided()
+    root = _archive(Path(tempfile.mkdtemp()) / "dc")            # solo candles_meta.json: provenienza dichiarata
+    p = _rows_by_kind(_build(j, root))["no_trade"]["provenance"]
+    assert (p["feature_consistency"], p["candle_provenance"]) == ("verified", "declared_only")
+    assert "snapshot_unverified" in _rows_by_kind(_build(j, root))["no_trade"]["ineligible_reasons"]
+
+
+def test_an_unanchored_or_broken_archive_is_not_promoted_even_with_consistent_features():
+    j = _decided()
+    root, anchors = _attested_archive(Path(tempfile.mkdtemp()) / "dc")
+    row = _rows_by_kind(_build(j, root, {}))["no_trade"]                       # ancora non registrata
+    assert row["provenance"]["feature_consistency"] == "verified"
+    assert row["provenance"]["candle_provenance"] == "manifest_unanchored"
+    assert "snapshot_unverified" in row["ineligible_reasons"]
+    (root / "15m" / "NOTE.txt").write_text("aggiunto dopo")                    # integrita' rotta
+    row = _rows_by_kind(_build(j, root, anchors))["no_trade"]
+    assert row["provenance"]["candle_archive_integrity"] == "file_unlisted"
+    assert "snapshot_unverified" in row["ineligible_reasons"]
+
+
+def test_an_attested_archive_with_different_market_data_is_not_promoted():
+    j = _decided()
+    root, anchors = _attested_archive(
+        Path(tempfile.mkdtemp()) / "dc",
+        edit=lambda tf, r: {**r, "l": str(D(r["l"]) - D("0.01"))} if r["t"] == LAST[tf] else r)
+    row = _rows_by_kind(_build(j, root, anchors))["no_trade"]
+    assert row["provenance"]["candle_provenance"] == "attested"
+    assert row["provenance"]["feature_consistency"] == "inputs_mismatch"   # il runtime ha visto altri dati
     assert "snapshot_unverified" in row["ineligible_reasons"]

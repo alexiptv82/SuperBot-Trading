@@ -79,6 +79,31 @@ def write_meta(root, **over):
         json.dump({**META, **over}, fh)
 
 
+def attest_store(root, candle_anchors, manifest_id="candles-20261120T000000Z-test"):
+    """Rende un archivio di prova ATTESTATO come lo produrrebbe la procedura di acquisizione: le righe diventano risposte
+    grezze della fonte pubblica, l'archivio si riscrive con manifest e l'ancora va nel registro dell'operatore."""
+    import candle_provenance as CP
+    fetched, last = {}, 0
+    for name in sorted(os.listdir(root)):
+        if not name.endswith(".jsonl"):
+            continue
+        sym = name[:-6]
+        with open(os.path.join(root, name)) as fh:
+            rows = [json.loads(x) for x in fh if x.strip()]
+        os.remove(os.path.join(root, name))
+        ts = [r["t"] for r in rows]
+        last = max([last] + ts)
+        url = (f"{CP.SOURCE['base_url']}{CP.SOURCE['path']}?symbol={sym}&productType=USDT-FUTURES"
+               f"&granularity={CP.GRANULARITY[IV]}&startTime={min(ts)}&endTime={max(ts)}&limit=200")
+        body = {"code": "00000", "data": [[str(r["t"]), str(r["o"]), str(r["h"]), str(r["l"]), str(r["c"]),
+                                           str(r.get("v", 0)), "0"] for r in rows]}
+        fetched[name] = {"symbol": sym, "interval_ms": IV, "responses": [(url, body)]}
+    sha_m = CP.write_archive(root, manifest_id=manifest_id, acquired_at_ms=last + IV, tool={"name": "test"},
+                             fetched=fetched, meta=META)
+    candle_anchors[manifest_id] = sha_m
+    return sha_m
+
+
 RUN_SEQ = [0]
 
 
@@ -442,6 +467,8 @@ class BuilderBase(Tmp):
         write_store(self.p("candles"), "BTCUSDT", gen_candles(n, seed=12, p0=200.0))
         write_store(self.p("candles"), "SOLUSDT", gen_candles(n, seed=13, p0=50.0))
         write_meta(self.p("candles"))
+        self.candle_anchors = {}
+        attest_store(self.p("candles"), self.candle_anchors)
         self.v3 = self.p("arena_minimax.db")
         make_v3(self.v3, v3_events(self.base))
         d = self.p("hawk")
@@ -475,6 +502,7 @@ class BuilderBase(Tmp):
 
     def build(self, **kw):
         kw.setdefault("anchors", self.anchors)
+        kw.setdefault("candle_anchors", self.candle_anchors)
         return B.build(self.spec, self.p("candles"), **kw)
 
     def by(self, res, **kv):
@@ -1190,6 +1218,18 @@ class MarketDataAttestationTests(BuilderBase):
         self.assertIsNone(res["candles"]["meta_id"])
         mk = [r for r in res["rows"] if r["labels"]["status"] == "ok"]
         self.assertTrue(mk and all("market_data_unattested" in r["quality_flags"] and not r["eligible_for_training"] for r in mk))
+
+    def test_valid_meta_without_verifiable_provenance_is_not_attested(self):
+        """Il meta DICHIARA la fonte; senza manifest ancorato le etichette di mercato non sono attestate."""
+        res = self.build(candle_anchors={})
+        self.assertEqual(res["candles"]["archive"]["provenance"], "manifest_unanchored")
+        self.assertIsNotNone(res["candles"]["meta_id"])
+        mk = [r for r in res["rows"] if r["labels"]["status"] == "ok"]
+        self.assertTrue(mk and all("market_data_unattested" in r["quality_flags"] and not r["eligible_for_training"]
+                                   and r["provenance"]["market_data_provenance"] == "manifest_unanchored" for r in mk))
+        attested = self.build()
+        self.assertEqual(attested["candles"]["archive"]["provenance"], "attested")
+        self.assertTrue(any(r["eligible_for_training"] for r in attested["rows"]))
 
     def test_meta_with_wrong_interval_or_missing_keys_is_not_accepted(self):
         write_meta(self.p("candles"), interval_ms=60_000)

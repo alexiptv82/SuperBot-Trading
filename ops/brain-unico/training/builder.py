@@ -34,6 +34,7 @@ import readers as R  # noqa: E402
 import schema as S  # noqa: E402
 import snapshot_link as SL  # noqa: E402
 import snapshot_verify as SV  # noqa: E402
+import candle_provenance as CP  # noqa: E402
 import sufficiency as SU  # noqa: E402
 
 COST_BP = 16.0
@@ -176,7 +177,9 @@ class Ctx:
             q.add("funding_unknown")
         if any(s.get("barrier", {}).get("barrier_source") == "atr_default" for s in lab.get("sides", {}).values()):
             q.add("atr_default_barrier")
-        if (fsrc == "reconstructed_from_candles" or lab.get("status") == "ok") and (self.store is None or self.store.meta_id is None):
+        # dati di mercato attestati = meta dichiarato E provenienza verificabile (manifest + risposte grezze + ancora)
+        if (fsrc == "reconstructed_from_candles" or lab.get("status") == "ok") and (
+                self.store is None or self.store.meta_id is None or getattr(self.store, "provenance", None) != CP.ATTESTED):
             q.add("market_data_unattested")
         if (extra_prov or {}).get("schema_unverified"):
             q.add("schema_unverified")
@@ -189,7 +192,8 @@ class Ctx:
                "quality_flags": sorted(q), "eligible_for_training": False, "ineligible_reasons": ["pending"],
                "is_synthetic": False,
                "provenance": {"input_id": self.inp["id"], "builder_version": S.BUILDER_VERSION, "feature_set": F.FEATURE_SET,
-                              "market_dataset_id": getattr(self.store, "meta_id", None), **(extra_prov or {})}}
+                              "market_dataset_id": getattr(self.store, "meta_id", None),
+                              "market_data_provenance": getattr(self.store, "provenance", None), **(extra_prov or {})}}
         errs = S.validate_row(row)
         if errs:
             self.stats["invalid_rows_skipped"] += 1
@@ -275,7 +279,7 @@ def build_classic(inp: dict, store, cost_bp: float) -> Ctx:
 
 # --------------------------------------------------------------------------- journal V3 (Arena, Brain V3)
 
-def build_v3(inp: dict, store, cost_bp: float, decision_candles=None) -> Ctx:
+def build_v3(inp: dict, store, cost_bp: float, decision_candles=None, decision_archive: Optional[dict] = None) -> Ctx:
     cx = Ctx(inp, store, cost_bp)
     d = R.read_v3(inp["path"])
     cx.stats.update({"reader:" + k: v for k, v in d["stats"].items()})
@@ -337,11 +341,15 @@ def build_v3(inp: dict, store, cost_bp: float, decision_candles=None) -> Ctx:
         if adm.status != "none":
             cx.stats["snapshot:" + adm.status + (":" + adm.reason if adm.reason else "")] += 1
         if adm.status == "admitted":
-            # Validazione indipendente delle feature: solo con candele attestate per ogni timeframe dello snapshot.
+            # Tre requisiti DISTINTI, tutti necessari per togliere snapshot_unverified (il quarto, l'attestazione del
+            # journal e delle decisioni, resta in eligibility come input_not_attested):
+            #   coerenza matematica delle feature | integrita' dell'archivio | provenienza verificabile delle candele
             verdict, vprov = SV.verify(d["snapshots"][eid][0]["p"], decision_candles)
-            cx.stats["snapshot_verification:" + verdict] += 1
-            adm.prov = {**adm.prov, "snapshot_verification": verdict, **vprov}
-            if verdict == SV.VERIFIED:
+            arch = decision_archive or {"integrity": "archive_missing", "provenance": "archive_missing"}
+            cx.stats["snapshot_feature_consistency:" + verdict] += 1
+            adm.prov = {**adm.prov, "feature_consistency": verdict, "candle_archive_integrity": arch["integrity"],
+                        "candle_provenance": arch["provenance"], **vprov}
+            if verdict == SV.VERIFIED and arch["integrity"] == CP.INTACT and arch["provenance"] == CP.ATTESTED:
                 adm.flags = [f for f in adm.flags if f != "snapshot_unverified"]
                 # i numeri di rischio vengono dal portafoglio del runtime, non dalle candele: non sono verificati qui
                 adm.features = {k: v for k, v in adm.features.items() if not k.startswith(SL.RISK_PREFIX)}
@@ -484,9 +492,13 @@ def dedup_key(r: dict) -> Optional[str]:
 
 
 def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_BP, anchors: Optional[dict] = None,
-          decision_candles_dir: Optional[str] = None) -> dict:
+          decision_candles_dir: Optional[str] = None, candle_anchors: Optional[dict] = None) -> dict:
     store = C.CandleStore(candles_dir) if candles_dir else None
+    label_archive = CP.check(candles_dir, candle_anchors) if candles_dir else None
+    if store is not None:
+        store.provenance = label_archive["provenance"]
     decision_candles = SV.DecisionCandles(decision_candles_dir) if decision_candles_dir else None
+    decision_archive = CP.check(decision_candles_dir, candle_anchors) if decision_candles_dir else None
     rows, per_input, keys_seen = [], {}, {}
     seen_ids: dict = {}
     seen_trades: dict = {}
@@ -501,7 +513,7 @@ def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_B
             attested.add(inp["id"])
         elif state == AT.UNTRUSTED:
             untrusted.add(inp["id"])
-        cx = (build_v3(inp, store, cost_bp, decision_candles) if inp["kind"] == "v3"
+        cx = (build_v3(inp, store, cost_bp, decision_candles, decision_archive) if inp["kind"] == "v3"
               else BUILDERS[inp["kind"]](inp, store, cost_bp))
         keep = []
         for r in cx.rows:
@@ -535,9 +547,10 @@ def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_B
     if store is not None:
         used = sorted({r["symbol"] for r in rows if r["labels"].get("status") == "ok" or r["feature_source"] == "reconstructed_from_candles"})
         candles_info = {"meta": store.meta, "meta_id": store.meta_id, "meta_problem": store.meta_problem, "stats": store.stats,
-                        "files_sha256": {s: store.file_sha(s) for s in used}}
+                        "files_sha256": {s: store.file_sha(s) for s in used}, "archive": label_archive}
     return {"rows": rows, "per_input": per_input, "attested": attested, "untrusted": untrusted, "keys_seen": keys_seen,
-            "duplicate_example_ids": dup_ids, "duplicate_trades_flagged": dup_trades, "candles": candles_info}
+            "duplicate_example_ids": dup_ids, "duplicate_trades_flagged": dup_trades, "candles": candles_info,
+            "decision_candles": decision_archive}
 
 
 def summarize(res: dict) -> dict:
@@ -586,7 +599,8 @@ def write_outputs(res: dict, out_dir: str) -> dict:
     _write_new(os.path.join(out, "examples.jsonl"), body, 0o600)
     summary = summarize(res)
     manifest = {"classification": "PRIVATE_DO_NOT_COMMIT", "examples_sha256": digest, "summary": summary,
-                "per_input": res["per_input"], "candles": res["candles"], "keys_seen_unverified_schemas": res["keys_seen"]}
+                "per_input": res["per_input"], "candles": res["candles"],
+                "decision_candles": res.get("decision_candles"), "keys_seen_unverified_schemas": res["keys_seen"]}
     _write_new(os.path.join(out, "manifest.json"), json.dumps(manifest, indent=1, sort_keys=True).encode(), 0o600)
     _write_new(os.path.join(out, "public_summary.json"),
                json.dumps({**summary, "examples_sha256": digest}, indent=1, sort_keys=True).encode(), 0o644)
@@ -601,11 +615,13 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--decision-candles", help="candele attestate per timeframe (15m/ 1h/ 4h/) per validare gli snapshot")
     ap.add_argument("--cost-bp", type=float, default=COST_BP)
     ap.add_argument("--anchors", help="ancore esterne {run_id: sha256 di public/summary.json}, registrate dall'operatore")
+    ap.add_argument("--candle-anchors", help="ancore esterne {manifest_id: sha256 di candle_manifest.json}, dall'operatore")
     a = ap.parse_args(argv)
     with open(a.spec, encoding="utf-8") as fh:
         spec = json.load(fh)
     try:
-        res = build(spec, a.candles, a.cost_bp, AT.load_anchors(a.anchors), a.decision_candles)
+        res = build(spec, a.candles, a.cost_bp, AT.load_anchors(a.anchors), a.decision_candles,
+                    CP.load_anchors(a.candle_anchors))
         info = write_outputs(res, a.out)
     except (ValueError, OSError) as exc:
         print(f"NO-GO: {type(exc).__name__}: {str(exc)[:80]}")
