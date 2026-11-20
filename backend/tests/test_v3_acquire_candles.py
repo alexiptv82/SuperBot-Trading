@@ -302,3 +302,46 @@ def test_attempt_outcomes_are_counted():
     h = _http(["net", 429, "ok"])
     h("u")
     assert h.outcomes == {"OSError": 1, "http_429": 1, "ok": 1}
+
+
+# ------------------------------------------------------------------------------------------------ controllo preliminare
+
+def test_probe_compares_both_rules_on_the_same_responses_within_3_attempts():
+    rep_path = Path(tempfile.mkdtemp()) / "probe.json"
+    r = AQ.probe(BudgetedFake(AQ.PROBE_MAX_ATTEMPTS), now_ms=END + 600_000, report_path=str(rep_path))
+    assert r["ok"] is True and r["pages"] == 2 and r["runtime_rows"] == AQ.PROBE_BARS
+    assert r["http_attempts"] == 2 and r["outside_request_window_count"] == 0 and r["old_per_request_rule_equal"]
+    assert json.loads(rep_path.read_text())["ok"] is True
+
+
+def test_probe_documents_rows_outside_the_request_window():
+    fake = BudgetedFake(3)
+    fake.spill = True
+    r = AQ.probe(fake, now_ms=END + 600_000, report_path=str(Path(tempfile.mkdtemp()) / "p.json"))
+    assert r["ok"] is True                                   # regola corrente = runtime
+    assert r["old_per_request_rule_equal"] is False and r["outside_request_window_count"] >= 1
+    o = r["outside_request_window"][0]
+    assert o["side"] == "after_end" and o["open_ms"] > o["request_end"]
+    assert r["old_rule_vs_runtime"]["different_values"]       # la candela "fuori finestra" sovrascrive nel runtime
+
+
+def test_probe_never_exceeds_its_budget_and_still_reports():
+    p = Path(tempfile.mkdtemp()) / "p.json"
+    with pytest.raises(AQ.LimitExceeded):
+        AQ.probe(BudgetedFake(1), now_ms=END + 600_000, report_path=str(p))
+    rep = json.loads(p.read_text())
+    assert rep["ok"] is False and rep["http_attempts"] == 1 and "LimitExceeded" in rep["error"]
+    with pytest.raises(ValueError, match="report_exists"):
+        AQ.probe(BudgetedFake(3), now_ms=END + 600_000, report_path=str(p))
+
+
+def test_probe_and_budget_arguments_without_network(monkeypatch, capsys):
+    import backend.v3.lab_tools.fetch_candles as FC
+    monkeypatch.setattr(FC, "http_json", lambda url: (_ for _ in ()).throw(AssertionError("rete")))
+    called = []
+    monkeypatch.setattr(AQ, "LimitedHttp", lambda *a, **k: called.append(k) or (_ for _ in ()).throw(AssertionError))
+    assert AQ.main(["--probe"]) == 0 and called == []                           # senza conferma: niente
+    assert AQ.main(["--max-attempts", "351", "--probe"]) == 2
+    assert AQ.main(["--start", "2026-10-04", "--end", "2026-11-20", "--out", "/nonexistent/x",
+                    "--max-attempts", "100", "--plan"]) == 2                    # stima 272 > budget residuo
+    assert "stima oltre i limiti" in capsys.readouterr().out

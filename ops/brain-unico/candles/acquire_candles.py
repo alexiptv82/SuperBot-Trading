@@ -219,6 +219,71 @@ def _acquire_into(out, *, start_ms, end_ms, get_json, now_ms, symbols, timeframe
                             meta=META, cross_check=cross)
 
 
+PROBE_MAX_ATTEMPTS = 3
+PROBE_BARS = 400                       # due pagine da 200: il dubbio riguarda il confine fra richieste
+
+
+def probe(get_json, *, now_ms: int, report_path: str, symbol: str = "BTCUSDT") -> dict:
+    """Controllo preliminare su ``symbol`` 15m: le stesse risposte reali, due regole di derivazione a confronto con il
+    runtime. Scrive solo un rapporto (istanti e conteggi, nessun archivio). ``ok`` = regola corrente == runtime."""
+    if os.path.exists(report_path):
+        raise ValueError("report_exists")
+    if symbol not in SYMBOLS:
+        raise ValueError("symbol_not_authorized")
+    step = TIMEFRAMES["15m"]
+    end = now_ms // step * step
+    start = end - PROBE_BARS * step
+    recorded = []
+
+    def rec(url):
+        body = get_json(url)
+        recorded.append((url, body))
+        return body
+
+    result = {"symbol": symbol, "timeframe": "15m", "window": [start, end], "ok": False}
+    try:
+        runtime = fetch_rows(symbol, start, end, candle_ms=step, get_json=rec)
+        current = CP.derive_rows(recorded, step, now_ms, (start, end))
+        old = CP.derive_rows(recorded, step, now_ms)
+        outside, seen, conflicts = [], {}, []
+        for i, (url, body) in enumerate(recorded):
+            from urllib.parse import parse_qs, urlsplit
+            q = parse_qs(urlsplit(url).query)
+            lo, hi = int(q["startTime"][0]), int(q["endTime"][0])
+            data = body.get("data") if isinstance(body, dict) and body.get("code") == "00000" else None
+            for raw in data or ():
+                try:
+                    ts = int(float(raw[0]))
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if not lo <= ts <= hi:
+                    outside.append({"request": i, "open_ms": ts, "request_start": lo, "request_end": hi,
+                                    "side": "before_start" if ts < lo else "after_end"})
+                vals = tuple(str(x) for x in raw[1:6])
+                if ts in seen and seen[ts] != vals:
+                    conflicts.append(ts)
+                seen.setdefault(ts, vals)
+
+        def diff(a, b):
+            return {"only_runtime": sorted(set(b) - set(a))[:50], "only_derived": sorted(set(a) - set(b))[:50],
+                    "different_values": sorted(t for t in set(a) & set(b) if a[t] != b[t])[:50]}
+        result.update(ok=current == runtime, pages=len(recorded), runtime_rows=len(runtime),
+                      derived_rows=len(current), current_rule_vs_runtime=diff(current, runtime),
+                      old_per_request_rule_equal=old == runtime, old_rule_vs_runtime=diff(old, runtime),
+                      outside_request_window_count=len(outside), outside_request_window=outside[:50],
+                      conflicting_duplicate_opens=sorted(set(conflicts))[:50])
+    except BaseException as exc:
+        result.update(error=f"{type(exc).__name__}: {str(exc)[:200]}")
+        raise
+    finally:
+        result.update(http_attempts=getattr(get_json, "attempts", None),
+                      http_outcomes=getattr(get_json, "outcomes", None), at_ms=now_ms)
+        os.makedirs(os.path.dirname(os.path.abspath(report_path)), exist_ok=True)
+        with open(report_path, "w", encoding="utf-8") as fh:
+            json.dump(result, fh, indent=1)
+    return result
+
+
 def _git_commit() -> Optional[str]:
     try:
         return subprocess.run(["git", "-C", ROOT, "rev-parse", "HEAD"], capture_output=True, text=True,
@@ -229,14 +294,37 @@ def _git_commit() -> Optional[str]:
 
 def main(argv: Optional[list] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--start", required=True, help="inizio UTC, es. 2026-10-04")
-    ap.add_argument("--end", required=True, help="fine UTC (esclusa), mai nel futuro")
-    ap.add_argument("--out", required=True, help="directory NUOVA di destinazione")
+    ap.add_argument("--probe", action="store_true", help="solo controllo preliminare BTCUSDT 15m (max 3 tentativi)")
+    ap.add_argument("--probe-report", help="file NUOVO per il rapporto del controllo preliminare")
+    ap.add_argument("--max-attempts", type=int, default=MAX_HTTP_ATTEMPTS,
+                    help="budget di tentativi per questa esecuzione (al massimo 350 meno quelli gia' usati)")
+    ap.add_argument("--start", help="inizio UTC, es. 2026-10-04")
+    ap.add_argument("--end", help="fine UTC (esclusa), mai nel futuro")
+    ap.add_argument("--out", help="directory NUOVA di destinazione")
     ap.add_argument("--symbols", default=",".join(SYMBOLS))
     ap.add_argument("--plan", action="store_true", help="solo stima, nessuna rete")
     ap.add_argument("--confirm-network", action="store_true", help="scarica davvero (serve autorizzazione)")
     ap.add_argument("--compare-with", help="archivio precedente per il controllo incrociato")
     a = ap.parse_args(argv)
+    if not 1 <= a.max_attempts <= MAX_HTTP_ATTEMPTS:
+        print("RIFIUTATO: max-attempts fuori da 1..350")
+        return 2
+    if a.probe:
+        if not a.confirm_network or not a.probe_report:
+            print("PLAN ONLY: il controllo preliminare richiede --confirm-network e --probe-report")
+            return 0
+        http = LimitedHttp(max_attempts=min(PROBE_MAX_ATTEMPTS, a.max_attempts))
+        try:
+            r = probe(http, now_ms=int(time.time() * 1000), report_path=a.probe_report)
+        except BaseException as exc:
+            print(f"SONDA INTERROTTA: {type(exc).__name__}: {str(exc)[:160]} (tentativi {http.attempts})")
+            return 1
+        print(f"SONDA: ok={r['ok']} pagine={r['pages']} righe={r['runtime_rows']} tentativi={http.attempts} "
+              f"fuori_finestra={r['outside_request_window_count']} vecchia_regola_uguale={r['old_per_request_rule_equal']}")
+        return 0 if r["ok"] else 1
+    if not (a.start and a.end and a.out):
+        print("RIFIUTATO: servono --start, --end e --out")
+        return 2
     start, end = _ms(a.start), _ms(a.end)
     symbols = tuple(s for s in a.symbols.split(",") if s)
     now = int(time.time() * 1000)
@@ -247,13 +335,13 @@ def main(argv: Optional[list] = None) -> int:
         return 2
     p = plan(start, end, symbols)
     print(json.dumps(p))
-    if p["requests_estimate"] > MAX_HTTP_ATTEMPTS or p["bytes_estimate"] > MAX_BYTES:
+    if p["requests_estimate"] > a.max_attempts or p["bytes_estimate"] > MAX_BYTES:
         print("RIFIUTATO: stima oltre i limiti")
         return 2
     if a.plan or not a.confirm_network:
         print("PLAN ONLY: nessuna richiesta inviata (serve --confirm-network)")
         return 0
-    http = LimitedHttp()
+    http = LimitedHttp(max_attempts=a.max_attempts)
     try:
         sha = acquire(a.out, start_ms=start, end_ms=end, get_json=http, now_ms=now, symbols=symbols,
                       tool={"name": "acquire_candles", "version": "2", "git_commit": _git_commit()},
