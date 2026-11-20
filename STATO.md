@@ -1,3 +1,8 @@
+## 21/11/2026 (2) — Prova extbackup degli storici: correzioni pronte, in attesa di autorizzazione
+
+- Branch `claude/extbackup-storici-20261121` @ `ad3ae567`: copia ricorsiva filtrata (link, nascosti, lock/WAL, possibili segreti esclusi), archivi obbligatori con NO-GO (Brain V3 attivo, 3 run Arena, Brain storico `desk-data/brain`, Falco/Toro), facoltativi (altre run V3, Brain libero, adattivo con `hawk/`/`bull/`, ai-data), controllo dello spazio, catena dei journal V3 registrata e confrontata con l'originale al backup e dopo il ripristino. 42 test da non-root. Procedura con comando unico in `deploy/extbackup/PROVA-STORICI.md`.
+- Coperture **non ancora verificate sui dati reali**: contenuto di `ai-data`, `brain-adaptive`, `desk-data/brain` e delle altre run V3 (solo root); lo confermerà l'inventario della prova. Brain libero: `brain.sqlite3` 469 MB (oltre il limite di 100 MB di GitHub per l'invio futuro).
+
 ## 21/11/2026 — Backup: run preparata verificata; storici reali ancora da proteggere
 
 - **Eseguito dal proprietario** (procedura `de59f677`, impronta OK): `brain-rc-2000-20261106-20261120T131142Z.tar.age`, 1 evento, 6 file, esito OK. **È la run `brain-rc-2000-20261106` PREPARATA IN PAUSA e mai avviata**: `prepare_paper_run.py` scrive esattamente 1 evento `run_prepared` + config, mandato, budget, pausa, marcatore. Backup corretto ma **senza storico di trading**.
