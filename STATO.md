@@ -1,3 +1,12 @@
+## 20/11/2026 17:46 Europe/Rome — Falco/Toro conservati ma esclusi dal training
+
+- Checkpoint append-only: [diario/2026-11-20_1746_checkpoint-falco-toro-esclusi-training.md](diario/2026-11-20_1746_checkpoint-falco-toro-esclusi-training.md).
+- Decisione proprietario: archivi Falco/Toro integri e intoccabili, semanticamente non certificati; nessuna ulteriore indagine o prova Termius senza nuova richiesta.
+- Integrazione @ `f9009aee2432a31e6304032ffb000fe5eba88243`: righe classiche conservate nel dataset come `excluded` / `semantic_not_certified`, fuori da split, sufficienza e training. Gate V3 5.352, Builder 158, Jest 152 dichiarati.
+- Backup: Brain/Arena con integrità tecnica verificata; Falco/Toro non certificati semanticamente. Archivio di prova ~117 MB oltre il limite GitHub per singolo file; separazione per componente, installazione e restore PC non eseguiti.
+- RC84 #80 open/draft; Issue #124 open/P0; candidato extbackup `f60b90d6…`; ramo storico `3dc2116a…` non installato/certificato. Age PC `ESITO: VERIFICA OK` resta prova locale.
+- Nessun merge/deploy/VPS/restart/reset/ordine/training/LIVE/API a pagamento; PAPER, storici ed EventJournal preservati.
+
 ## 21/11/2026 (8) — Audit esplorativo delle fonti esterne di trading AI
 
 - `docs/v3/AUDIT-FONTI-ESTERNE-20261121.md` (`bead82a3`, gate verde): nof1-arena-data, nof1-tracker, LLM_trader, continuous-record. Nessuna fonte utilizzabile come dati (niente trade crypto perp per singola operazione con contesto e provenienza attestabile); valore metodologico da verificare sui nostri journal. Nessun dato scaricato, nessun codice di terzi eseguito. Proposta minima (rapporto offline dopo la RC) **in attesa di approvazione**.
