@@ -1,3 +1,8 @@
+## 21/11/2026 (11) — Memoria decisionale: duplicati per slot misurati
+
+- `48876b97` (gate verde: V3 5355, builder 158, Jest 153): `/api/v3/brain/memory` e schermata Brain Unico mostrano `duplicate_slot_decisions`, misura del collaudo PAPER. Slot = `cycle_minutes` della configurazione del runner (`V3_RUNNER_CONFIG_PATH`, già impostato dai cutover). Senza configurazione il valore è "non verificabile", mai 0. La memoria copre ora tutte le misure del collaudo: copertura, catena, aperture senza traccia, duplicati, NO_TRADE, chiusure manuali e automatiche, tesi e reingressi.
+- Prossimo: studio delle uscite (preparazione dei bracci controfattuali, analisi dopo la RC), poi proposta del rischio definitivo.
+
 ## 21/11/2026 (10) — Backup separato per componente pronto (prova reale da autorizzare)
 
 - `claude/extbackup-storici-20261121` @ `75a714be`: `--component indispensabili` (database + Brain V3 + Arena, solo esito 0) e `storici` (Falco/Toro e altri, esito 0 o 3); file cifrati divisi in parti da 90 MiB (limite di GitHub 100 MB), con SHA-256 per parte; retention per componente; `run.sh` di produzione invariato. 74 test da non-root.
