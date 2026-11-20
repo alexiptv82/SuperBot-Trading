@@ -345,3 +345,18 @@ def test_probe_and_budget_arguments_without_network(monkeypatch, capsys):
     assert AQ.main(["--start", "2026-10-04", "--end", "2026-11-20", "--out", "/nonexistent/x",
                     "--max-attempts", "100", "--plan"]) == 2                    # stima 272 > budget residuo
     assert "stima oltre i limiti" in capsys.readouterr().out
+
+
+def test_with_close_time_selection_the_archive_has_no_missing_last_candle():
+    """Bitget reale seleziona per chiusura: con le finestre corrette nessuna candela manca (prima: l'ultima di ogni file)."""
+    class CloseTimeBitget(FakeBitget):
+        def __call__(self, url):
+            q = parse_qs(urlsplit(url).query)
+            step = GRAN_MS[q["granularity"][0]]
+            lo, hi = int(q["startTime"][0]), int(q["endTime"][0])
+            shifted = url.replace(f"startTime={lo}", f"startTime={lo - step}").replace(f"endTime={hi}", f"endTime={hi - step}")
+            return super().__call__(shifted)
+    out = Path(tempfile.mkdtemp()) / "arch"
+    _acquire(out, get_json=CloseTimeBitget())
+    m = json.loads((out / CP.MANIFEST).read_text())
+    assert all(f["missing_rows"] == 0 for f in m["files"]), [(f["path"], f["missing_rows"]) for f in m["files"]]

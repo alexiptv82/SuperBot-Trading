@@ -220,7 +220,7 @@ def _acquire_into(out, *, start_ms, end_ms, get_json, now_ms, symbols, timeframe
 
 
 PROBE_MAX_ATTEMPTS = 3
-PROBE_BARS = 400                       # due pagine da 200: il dubbio riguarda il confine fra richieste
+PROBE_BARS = 399                       # esattamente due pagine da 200 (finestre (fine-200*passo, fine]): resta 1 tentativo di margine
 
 
 def probe(get_json, *, now_ms: int, report_path: str, symbol: str = "BTCUSDT") -> dict:

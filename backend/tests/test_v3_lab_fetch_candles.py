@@ -165,3 +165,40 @@ def test_inconsistent_rows_are_dropped_like_missing_bars_and_reported(tmp_path):
     meta = json.loads((tmp_path / "fetch_meta.json").read_text())["BTCUSDT"]
     assert meta["n_invalid_rows_dropped"] == 4 and meta["n_missing_bars"] == 4 and meta["n_bars"] == 96 - 4
     assert len(R.split_contiguous(R.read_candles_csv(tmp_path / "BTCUSDT_15m.csv"), MS)) == 2     # il lab vede un buco
+
+
+# ------------------------------------------------------------------------------------------------ semantica della fonte
+
+def stub_close_time(hist, log=None):
+    """Come Bitget osservato il 20/11/2026: seleziona le candele per ORARIO DI CHIUSURA in [startTime, endTime]."""
+    def get_json(url):
+        q = dict(re.findall(r"(\w+)=([^&]+)", url.split("?", 1)[1]))
+        if log is not None:
+            log.append(url)
+        lo, hi, lim = int(q["startTime"]), int(q["endTime"]), int(q["limit"])
+        rows = [hist[t] for t in sorted(hist) if lo <= t + MS <= hi]
+        assert len(rows) <= lim, "la finestra chiede piu' righe del limite"
+        return {"code": "00000", "data": rows[::-1]}
+    return get_json
+
+
+@pytest.mark.parametrize("semantics", ["open_time", "close_time"])
+def test_the_last_closed_candle_and_every_page_boundary_are_included(semantics):
+    end = (NOW // MS) * MS
+    start = end - 3 * DAY                                     # piu' pagine
+    hist, _ = history(start - 5 * MS, end + 2 * MS)
+    get = stub(hist) if semantics == "open_time" else stub_close_time(hist)
+    rows = FC.fetch_rows("BTCUSDT", start, end, candle_ms=MS, get_json=get)
+    assert sorted(rows) == list(range(start, end, MS))        # anche end - MS, la candela appena chiusa
+    assert end not in rows                                    # mai la candela in formazione
+
+
+def test_the_old_windows_missed_the_last_closed_candle_with_close_time_selection():
+    """Regressione documentata: con endTime = fine - 1 ms (vecchia regola) la fonte reale non restituiva end - MS."""
+    end = (NOW // MS) * MS
+    hist, _ = history(end - 300 * MS, end + MS)
+    get = stub_close_time(hist)
+    url = (f"{FC.BASE}{FC.PATH}?symbol=BTCUSDT&productType=USDT-FUTURES&granularity=15m"
+           f"&startTime={end - 1 - 200 * MS}&endTime={end - 1}&limit=200")
+    got = {int(r[0]) for r in get(url)["data"]}
+    assert end - MS not in got and end - 201 * MS in got     # come nella sonda reale: manca l'ultima, c'e' quella prima di startTime

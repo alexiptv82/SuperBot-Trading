@@ -88,16 +88,22 @@ def fetch_rows(symbol: str, start_ms: int, end_ms: int, *, candle_ms: int,
                get_json: Callable[[str], object] = http_json, window_bars: int = 200,
                max_requests: int = 3000, empty_limit: int = 6, stats: Optional[dict] = None) -> dict:
     """{apertura_ms: (open, high, low, close, volume)} per le barre con `start_ms <= apertura < end_ms`, scorrendo a ritroso
-    a finestre di `window_bars` barre. Si ferma quando la storia finisce (`empty_limit` finestre vuote di fila)."""
+    a finestre di `window_bars` barre. Si ferma quando la storia finisce (`empty_limit` finestre vuote di fila).
+
+    Finestre (20/11/2026): Bitget `history-candles` seleziona per ORARIO DI CHIUSURA (osservato: con endTime = fine - 1 ms
+    l'ultima candela chiusa, che chiude esattamente a `end_ms`, non arriva mai; arriva invece la candela che contiene
+    startTime). Ogni richiesta copre quindi (cur_end - window*candle, cur_end] con cur_end = end_ms alla prima pagina:
+    la candela appena chiusa e' inclusa se la fonte seleziona per chiusura, e la candela in formazione (apertura =
+    end_ms) e' comunque scartata dal filtro `apertura < end_ms`. Le pagine sono contigue con entrambe le semantiche."""
     if not _SYMBOL.fullmatch(symbol):
         raise ValueError("invalid_symbol")
     if candle_ms < 60_000 or candle_ms % 60_000 or end_ms <= start_ms:
         raise ValueError("invalid_window")
     gran = _GRANULARITY.get(candle_ms, f"{candle_ms // 60_000}m")
     rows: dict = {}
-    cur_end, empty = end_ms - 1, 0
+    cur_end, empty = end_ms, 0
     for _ in range(max_requests):
-        s = max(start_ms, cur_end - window_bars * candle_ms)
+        s = max(start_ms, cur_end - window_bars * candle_ms + 1)
         url = f"{BASE}{PATH}?symbol={symbol}&productType=USDT-FUTURES&granularity={gran}&startTime={s}&endTime={cur_end}&limit={window_bars}"
         d = get_json(url)
         data = d.get("data") if isinstance(d, dict) and d.get("code") == "00000" else None
