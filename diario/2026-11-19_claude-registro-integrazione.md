@@ -21,6 +21,11 @@
 | 11 | validazione indipendente delle feature degli snapshot (builder) | commit `d63e31a8` | 5184 → **5205** (+21) | builder 134 OK; mutazioni 14/14 |
 | 12 | `thesis_id` e anti-reingresso in **osservazione** | commit `1193ffaa` | 5205 → **5224** (+19) | stessa definizione di E0 (test incrociato); mutazioni 12/13 (1 equivalente) |
 | 13 | etichette degli esiti di mercato per il laboratorio LLM | commit `5c2edfca` | 5224 → **5235** (+11) | mutazioni 10/10; il messaggio di commit dice 13 test: sono 11 |
+| 14 | integrità e provenienza verificabile degli archivi di candele (separate) | commit `9acd96d7` | 5235 → **5238** | builder 153 OK; mutazioni 15/15 |
+| 15 | istante decisionale per simbolo (opzione di laboratorio, cablaggio invariato) | commit `1aadf4ec` | 5238 → **5250** | mutazioni 10/10 |
+| 16 | etichette LLM: osservati separati dai controfattuali, NO_TRADE relative, incertezza | commit `0453433e` | **1 FALLITO**, 5255 passati | **regressione pubblicata per errore**: un commento citava un componente operativo, violando il test di isolamento del laboratorio; la pubblicazione non era condizionata all'esito della suite |
+| 17 | correzione della regressione | commit `24b18d08` | **5256**, 0 falliti | ramo rimasto rosso per circa 5 minuti; da qui in poi si pubblica solo se suite e test del builder sono verdi |
+| 18 | procedura di acquisizione delle candele (preparata, NON eseguita) | commit `3f1c5b9f` | 5256 → **5264** | 8 test offline con finto endpoint |
 
 ### Provenienza dell'autorizzazione (risposta al checkpoint ChatGPT 20:49)
 Il consenso ai merge in questo ramo è stato dato dal proprietario **direttamente nella sessione Claude Code** (link di sessione nei trailer dei commit), in due messaggi del 19/11/2026: il primo autorizza i merge nel solo `integration/brain-unico-20261119` con le condizioni del § 2; il successivo lo riconferma («Continua autonomamente con lo sviluppo e i test sul ramo di integrazione autorizzato», «Puoi integrare nel ramo di laboratorio autorizzato i componenti della PR #123»). ChatGPT non vede quella sessione: il conflitto è di visibilità, non di contenuto. **Richiesta al proprietario:** una riga di conferma in un canale leggibile da entrambi (es. commento nella Issue #113) chiude la questione; Claude non può scriverlo (403).

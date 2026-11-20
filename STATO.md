@@ -1,3 +1,13 @@
+## 20/11/2026 (2) — Claude: provenienza delle candele, istante per simbolo, esiti LLM, procedura di acquisizione
+
+- `integration/brain-unico-20261119` @ `3f1c5b9f`: suite 5235 → **5264**, 0 falliti; builder 153 OK. Dettagli: [`diario/2026-11-20_claude-provenienza-istante-esiti-acquisizione.md`](diario/2026-11-20_claude-provenienza-istante-esiti-acquisizione.md).
+- **Quattro requisiti distinti:** coerenza delle feature, integrità dell'archivio, provenienza verificabile (risposte grezze + ancora dell'operatore), attestazione del journal. Il solo `candles_meta.json` non attesta più nulla, nemmeno per le etichette.
+- **Istante per simbolo** pronto come opzione di laboratorio (8/8 snapshot validi contro 2/8); cablaggio invariato. Constatazione: in modalità attuale un riavvio nello stesso slot ridecide tutti i simboli.
+- **Anti-reingresso** sempre in `observe`. **Etichette LLM:** controfattuali e osservati separati, NO_TRADE solo relative, incertezza e limiti dichiarati.
+- **Procedura di acquisizione delle candele** pronta e **non eseguita**: serve autorizzazione.
+- **Incidente:** il commit `0453433e` è stato pubblicato con 1 test fallito, corretto in `24b18d08` dopo ~5 minuti; ora la pubblicazione è condizionata alla suite verde.
+- Nessun deploy, servizio, restart, reset, parametro attivo, spesa, download o LIVE.
+
 ## 20/11/2026 05:47 Europe/Rome — copertura verificabile, validazione indipendente, tesi ed esiti
 
 - Checkpoint append-only: [`diario/2026-11-20_0547_checkpoint-copertura-validazione-tesi-esiti.md`](diario/2026-11-20_0547_checkpoint-copertura-validazione-tesi-esiti.md), commit [`72d2c92…`](https://github.com/alexiptv82/SuperBot-Trading/commit/72d2c92aa615f25797e73e6bdc24b3b6439e6496).
