@@ -1,3 +1,13 @@
+## 20/11/2026 06:51 Europe/Rome — provenienza candele, istante per simbolo e acquisizione preparata
+
+- Checkpoint append-only: [`diario/2026-11-20_0651_checkpoint-provenienza-candele-istante-acquisizione.md`](diario/2026-11-20_0651_checkpoint-provenienza-candele-istante-acquisizione.md), commit [`0d5502f…`](https://github.com/alexiptv82/SuperBot-Trading/commit/0d5502f2908d0ba1504965ab148bd4595ce23d14).
+- `integration/brain-unico-20261119` verificato @ `3f1c5b9fa2b672f37d303193e85b6ce5c2b2e93f`: provenienza/integrità candele separate, opzione `per_symbol`, etichette LLM migliorate e acquisizione pubblica preparata ma non eseguita.
+- Test riferiti dal diario Claude, non rieseguiti/Actions/VPS qui: V3 5235→5264, 0 fail alla HEAD; Builder 153; mutazioni confermate senza cache. Incidente intermedio `0453433e` con 1 fail, corretto append-only da `24b18d08`.
+- Conversazione accessibile riporta consenso limitato a una acquisizione controllata; diario dice ancora “serve autorizzazione”. Divergenza registrata: nessuna rete/download/training finché il mandato non è riconciliato.
+- `per_symbol` e dedup slot restano laboratorio, cablaggio operativo invariato; anti-reingresso resta observe. PR #80/#120/#121/#122/#123 e Issue #124 invariati.
+- RC84 `0e29a73…`; extbackup `3dc2116a…` preparato/non certificato; age PC `ESITO: VERIFICA OK` e chiave pubblica coincidente, non prova VPS.
+- Nessun main/deploy/VPS/servizio/restart/reset/parametro/ordine/training/provider/LIVE/API a pagamento. PAPER, storici ed EventJournal preservati.
+
 ## 20/11/2026 (2) — Claude: provenienza delle candele, istante per simbolo, esiti LLM, procedura di acquisizione
 
 - `integration/brain-unico-20261119` @ `3f1c5b9f`: suite 5235 → **5264**, 0 falliti; builder 153 OK. Dettagli: [`diario/2026-11-20_claude-provenienza-istante-esiti-acquisizione.md`](diario/2026-11-20_claude-provenienza-istante-esiti-acquisizione.md).
