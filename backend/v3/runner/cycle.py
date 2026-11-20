@@ -43,6 +43,7 @@ from backend.v3.executor.paper import ExecutionError, execute_paper
 from backend.v3.features.indicators import Bar
 from backend.v3.risk import RiskPolicy
 from backend.v3.runner.decision_trace import capture_inputs, journal_tip, record_decision_trace
+from backend.v3.runner.thesis import ReentryPolicy, ThesisBook, evaluate as evaluate_reentry
 
 PORTFOLIO_ID = "brain"
 MIN_PRICE_PLACES = 8
@@ -97,6 +98,8 @@ class CycleReport:
     errors: tuple[tuple[str, str], ...]                    # (simbolo, codice)
     # (simbolo, esito, id decisione, id snapshot) per ogni decisione tracciata; vuoto se la traccia e' spenta
     traces: tuple[tuple[str, str, str, str], ...] = ()
+    # (simbolo, thesis_id, indice di reingresso, regola che bloccherebbe o "") per ogni OPEN approvata
+    theses: tuple[tuple[str, str, int, str], ...] = ()
 
 
 def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal) -> BrainPortfolioSnapshot:
@@ -131,7 +134,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     rotate: int = 0, open_commit: Optional[Callable[[BrainDecision], object]] = None,
                     require_open_commit: bool = False,
                     peer_source: Optional[Callable[[str, int], Mapping]] = None,
-                    trace: str = "off", wall_ms: Optional[Callable[[], int]] = None) -> CycleReport:
+                    trace: str = "off", wall_ms: Optional[Callable[[], int]] = None,
+                    reentry_policy: Optional[ReentryPolicy] = None) -> CycleReport:
     """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare).
 
     ``trace="required"``: ogni decisione scritta dal motore (anche NO_TRADE) riceve subito uno snapshot v2
@@ -140,6 +144,10 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
     della perdita giornaliera non passano dal ciclo e non dipendono dalla traccia. Le feature si catturano PRIMA della
     chiamata al modello, dalle stesse candele; ``wall_ms`` (facoltativo) e' l'orologio di parete per le sole
     dichiarazioni di cattura/scrittura.
+
+    ``reentry_policy`` (``thesis.py``): per ogni OPEN approvata calcola tesi e indice di reingresso dal journal (una
+    query filtrata per giro) e li scrive nello snapshot. In ``observe`` registra che cosa bloccherebbe senza bloccare;
+    in ``enforce`` una OPEN che viola la regola non si apre (``anti_reentry_blocked``). ``None`` = spento.
     """
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
@@ -153,6 +161,11 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
         raise ValueError("open_commit_requires_split_mode")
     if type(trace) is not str or trace not in ("off", "required"):
         raise ValueError("invalid_trace_mode")
+    if reentry_policy is not None and type(reentry_policy) is not ReentryPolicy:
+        raise ValueError("invalid_reentry_policy")
+    reentry_on = reentry_policy is not None and reentry_policy.mode != "off"
+    if reentry_on and trace == "off":
+        raise ValueError("reentry_requires_trace")       # una tesi non registrata non e' verificabile
     syms = list(symbols)
     if syms:
         k = rotate % len(syms)
@@ -164,6 +177,9 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
     opened: list[tuple[str, str]] = []
     errors: list[tuple[str, str]] = []
     traces: list[tuple[str, str, str, str]] = []
+    theses: list[tuple[str, str, int, str]] = []
+    book = (ThesisBook.from_journal(journal, run_id, now_ms=now_ms, window_ms=reentry_policy.window_ms)
+            if reentry_on else None)
     tf_names = [spec.name for spec in view_params.timeframes]
     base_tf = view_params.base_timeframe
     bars_holder.clear()
@@ -231,17 +247,35 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
             decision = engine.step(context, 0.0)
             decisions.append((symbol, decision.kind.value, decision.status.value, decision.rationale))
             approved_open = decision.kind == DecisionKind.OPEN and decision.status == ProposalStatus.APPROVED
+            thesis = reentry = None
+            blocked_by = None
+            if approved_open and book is not None:
+                side = decision.proposal.side
+                info = book.assess(symbol, side, now_ms, decision.journal_event_id)
+                would, rule = evaluate_reentry(info, reentry_policy, now_ms)
+                thesis = {"thesis_id": info.thesis_id, "reentry_index": info.reentry_index,
+                          "prev_outcome": info.prev_outcome, "truncated": info.truncated}
+                reentry = {"mode": reentry_policy.mode, "would_block": would, "rule": rule,
+                           "window_ms": reentry_policy.window_ms,
+                           "max_reentry_index": reentry_policy.max_reentry_index,
+                           "loss_cooldown_ms": reentry_policy.loss_cooldown_ms}
+                theses.append((symbol, info.thesis_id, info.reentry_index, rule or ""))
+                if would and reentry_policy.mode == "enforce":
+                    blocked_by = rule
             if trace != "off":
                 tr = record_decision_trace(
                     journal=journal, run_id=run_id, symbol=symbol, now_ms=now_ms, after_seq=tip,
                     expected_event_id=decision.journal_event_id if approved_open else None,
-                    capture=capture, portfolio=portfolio, wall_ms=wall_ms)
+                    capture=capture, portfolio=portfolio, wall_ms=wall_ms, thesis=thesis, anti_reentry=reentry)
                 traces.append((symbol, tr.code, tr.decision_event_id or "", tr.snapshot_event_id or ""))
                 if not tr.ok:
                     errors.append((symbol, tr.code))
                     if approved_open:
                         errors.append((symbol, "open_blocked_untraced"))
                         continue
+            if blocked_by is not None:
+                errors.append((symbol, "anti_reentry_blocked"))       # registrato nello snapshot, nessuna apertura
+                continue
             if approved_open:
                 if require_open_commit:
                     # No fallback to execute_paper. The cooperating writer rechecks
@@ -282,8 +316,9 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     except ExecutionError as exc:
                         errors.append((symbol, str(exc)))
                         continue
-                opened.append((symbol, receipt.position_id))
+                opened.append((symbol, receipt.position_id))   # la tesi si ricostruisce dal journal al giro dopo
                 summary = build_summary(journal, PORTFOLIO_ID, run_id)   # il prossimo simbolo vede questa posizione
         except Exception:
             errors.append((symbol, "cycle_error"))
-    return CycleReport(now_ms, skipped, tuple(decisions), tuple(opened), tuple(errors), tuple(traces))
+    return CycleReport(now_ms, skipped, tuple(decisions), tuple(opened), tuple(errors), tuple(traces),
+                       tuple(theses))

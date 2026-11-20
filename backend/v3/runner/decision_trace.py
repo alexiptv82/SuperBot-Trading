@@ -171,7 +171,8 @@ def journal_tip(journal: EventJournal, run_id: str) -> int:
 
 def record_decision_trace(*, journal: EventJournal, run_id: str, symbol: str, now_ms: int, after_seq: int,
                           expected_event_id: Optional[str], capture: Optional[Capture], portfolio,
-                          wall_ms: Optional[Callable[[], int]] = None) -> Trace:
+                          wall_ms: Optional[Callable[[], int]] = None, thesis: Optional[Mapping] = None,
+                          anti_reentry: Optional[Mapping] = None) -> Trace:
     try:
         mine = [r for r in journal.list_run_after("brain", run_id, after_seq)
                 if r.event.kind == "brain_decision" and r.event.occurred_at_ms == now_ms
@@ -190,7 +191,8 @@ def record_decision_trace(*, journal: EventJournal, run_id: str, symbol: str, no
             feature_asof_ms=capture.asof_ms, features=capture.features, risk=_risk_numbers(portfolio),
             inputs_digest=capture.inputs_digest, capture_phase="pre_model", capture_wall_ms=capture.capture_wall_ms,
             write_wall_ms=_wall(wall_ms) if capture.capture_wall_ms is not None else None,
-            feature_set=FEATURE_SET if capture.features else None, inputs_window=capture.inputs_window)
+            feature_set=FEATURE_SET if capture.features else None, inputs_window=capture.inputs_window,
+            thesis=thesis, anti_reentry=anti_reentry)
         if (snapshot.write_wall_ms is not None and capture.capture_wall_ms is not None
                 and snapshot.write_wall_ms < capture.capture_wall_ms):
             snapshot = replace(snapshot, write_wall_ms=None)        # orologio tornato indietro: nessuna dichiarazione

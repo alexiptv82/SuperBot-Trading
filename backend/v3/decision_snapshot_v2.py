@@ -31,6 +31,23 @@ _ALLOWED_RISK = frozenset({
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _TF = re.compile(r"^[0-9]{1,3}[mhd]$")
+_THESIS_ID = re.compile(r"^th-[0-9a-f]{24}$")
+_THESIS_KEYS = {"thesis_id", "reentry_index", "prev_outcome", "truncated"}
+_REENTRY_KEYS = {"mode", "would_block", "rule", "window_ms", "max_reentry_index", "loss_cooldown_ms"}
+
+
+def _thesis_ok(t) -> bool:
+    return (isinstance(t, Mapping) and set(t) == _THESIS_KEYS and type(t["thesis_id"]) is str
+            and bool(_THESIS_ID.fullmatch(t["thesis_id"])) and type(t["reentry_index"]) is int
+            and 1 <= t["reentry_index"] <= 100_000 and t["prev_outcome"] in ("none", "win", "loss", "flat")
+            and type(t["truncated"]) is bool)
+
+
+def _reentry_ok(a) -> bool:
+    return (isinstance(a, Mapping) and set(a) == _REENTRY_KEYS and a["mode"] in ("observe", "enforce")
+            and type(a["would_block"]) is bool and a["rule"] in (None, "reentry_limit", "loss_cooldown")
+            and (a["rule"] is None) == (not a["would_block"])
+            and all(type(a[k]) is int and a[k] >= 0 for k in ("window_ms", "max_reentry_index", "loss_cooldown_ms")))
 CAPTURE_PHASES = frozenset({"pre_model"})
 
 
@@ -66,6 +83,9 @@ class DecisionSnapshotV2:
     feature_set: str | None = None
     # timeframe -> (open time of the first candle used, number of candles): the exact window to recompute from
     inputs_window: Mapping[str, tuple[int, int]] = field(default_factory=dict)
+    # approved OPEN only: thesis of the entry and anti-reentry verdict (see backend/v3/runner/thesis.py)
+    thesis: Mapping | None = None
+    anti_reentry: Mapping | None = None
 
 
 def _finite_num_map(values: Mapping[str, Decimal], *, risk: bool) -> dict[str, str]:
@@ -140,6 +160,10 @@ def make_snapshot_event(*, journal: EventJournal, run_id: str,
                    or any(type(x) is not int or x <= 0 for x in v) for k, v in window.items())):
         raise ValueError("invalid_inputs_window")
 
+    if (snapshot.thesis is not None and not _thesis_ok(snapshot.thesis)) or (
+            snapshot.anti_reentry is not None and (snapshot.thesis is None or not _reentry_ok(snapshot.anti_reentry))):
+        raise ValueError("invalid_thesis")
+
     features = _finite_num_map(snapshot.features, risk=False)
     risk = _finite_num_map(snapshot.risk, risk=True)
     original = journal.get(snapshot.decision_event_id)          # indexed: no full read of the run per decision
@@ -158,6 +182,8 @@ def make_snapshot_event(*, journal: EventJournal, run_id: str,
             or not isinstance(payload.get("symbol"), str)
             or not _SYMBOL.fullmatch(payload["symbol"])):
         raise ValueError("source_decision_invalid")
+    if snapshot.thesis is not None and (payload.get("kind") != "OPEN" or payload.get("status") != "APPROVED"):
+        raise ValueError("thesis_without_open")
 
     # Deterministic idempotency key, bound to original decision and immutable hash.
     suffix = hashlib.sha256((run_id + "\0" + event.event_id + "\0" + original.event_hash
@@ -189,6 +215,8 @@ def make_snapshot_event(*, journal: EventJournal, run_id: str,
             "feature_set": snapshot.feature_set,
             "inputs_window": {k: list(v) for k, v in sorted(snapshot.inputs_window.items())},
             "inputs_digest": snapshot.inputs_digest,
+            "thesis": dict(snapshot.thesis) if snapshot.thesis is not None else None,
+            "anti_reentry": dict(snapshot.anti_reentry) if snapshot.anti_reentry is not None else None,
             "capture_phase": snapshot.capture_phase,
             "capture_wall_ms": snapshot.capture_wall_ms,
             "write_wall_ms": snapshot.write_wall_ms,

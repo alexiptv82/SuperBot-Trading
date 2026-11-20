@@ -213,6 +213,19 @@ class EventJournal:
                              (portfolio_id, run_id)).fetchone()
         return row[0] or 0
 
+    def list_run_kinds_since(self, portfolio_id: str, run_id: str, kinds: tuple, since_ms: int) -> list[StoredEvent]:
+        """Eventi della run dei tipi dati con istante >= ``since_ms``; filtro in SQL, si decodificano solo quelli."""
+        if portfolio_id not in _ALLOWED_PORTFOLIOS or not _TOKEN.fullmatch(run_id):
+            raise ValueError("invalid_run")
+        if (type(kinds) is not tuple or not kinds or len(kinds) > 8 or any(type(k) is not str for k in kinds)
+                or type(since_ms) is not int):
+            raise ValueError("invalid_query")
+        marks = ",".join("?" * len(kinds))
+        with self._connect(read_only=True) as db:
+            return [_from_row(row) for row in db.execute(
+                f"""SELECT {self._COLUMNS} FROM v3_events WHERE portfolio_id=? AND run_id=? AND kind IN ({marks})
+                   AND occurred_at_ms>=? ORDER BY seq""", (portfolio_id, run_id, *kinds, since_ms)).fetchall()]
+
     def first_seq_stamped_after(self, portfolio_id: str, run_id: str, threshold_ms: int,
                                 exclude_kind: str) -> int | None:
         """Il primo seq (ordine di scrittura) di un evento della run, di tipo diverso da ``exclude_kind``, che dichiara

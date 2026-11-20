@@ -51,6 +51,7 @@ from backend.v3.runner.prepared_config_guard import verify_prepared_run_config
 from backend.v3.runner.contracts import ContractRules
 from backend.v3.runner.daily_loss import DailyLossGuard, evaluate_daily_loss, max_daily_loss_between
 from backend.v3.runner.cycle import CycleBars, CycleReport, MarketEntryAnalyst, PORTFOLIO_ID, run_brain_cycle
+from backend.v3.runner.thesis import ReentryPolicy
 from backend.v3.runner.exits import load_default_policy
 from backend.v3.runner.feed import CandleStore, fetch_closed_bars, last_minute_close, minute_fetcher
 from backend.v3.runner.manual_close import ManualCloseReport, run_manual_close
@@ -219,7 +220,9 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             rotate=slot, require_open_commit=(exit_mode == "sidecar"),
             open_commit=safety_open_commit if exit_mode == "sidecar" else None,
             peer_source=peer_reader, trace="required",
-            wall_ms=clock_ms if clock_ms is not None else (lambda: int(time.time() * 1000)))
+            wall_ms=clock_ms if clock_ms is not None else (lambda: int(time.time() * 1000)),
+            # anti-reingresso in sola osservazione: soglie provvisorie finche' E0 e il proprietario non decidono
+            reentry_policy=ReentryPolicy(mode="observe"))
 
     def run_monitor(now_ms: int) -> MonitorReport:
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,
