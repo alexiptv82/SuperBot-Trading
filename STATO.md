@@ -1,3 +1,12 @@
+## 20/11/2026 01:49 Europe/Rome — traccia causale decisioni e autorizzazione riconfermata
+
+- Checkpoint append-only: [`diario/2026-11-20_0149_traccia-causale-decisioni-autorizzazione-riconfermata.md`](diario/2026-11-20_0149_traccia-causale-decisioni-autorizzazione-riconfermata.md), commit [`98d6908…`](https://github.com/alexiptv82/SuperBot-Trading/commit/98d6908ffa57263ece37165a9962536f2fce3b45).
+- Confermata la riconferma utente: merge solo in `integration/brain-unico-20261119`; esclusi `main`, deploy, servizi, reset, parametri attivi, spese API e LIVE.
+- Ramo laboratorio avanzato a `a5a920401e0259c63a316ceb6eea573b4a12ac8a`: decisione → snapshot v2 → eventuale apertura; NO_TRADE incluse; fallimento traccia blocca OPEN; snapshot non eleggibili al training.
+- Test riferiti dal diario Claude, non replicati/Actions/VPS: V3 5121→5147, 1 skip, 0 fail; builder 134; mutazioni 10/10. Limite concorrente 120 s da collaudare PAPER.
+- PR #80/#120/#121/#122/#123 e Issue #124 restano open/draft come documentato; RC84 `0e29a73…`, extbackup `3dc2116a…` non certificato, age PC `ESITO: VERIFICA OK` ma non VPS.
+- Solo documentazione da questo checkpoint; nessun codice operativo, deploy, Action, VPS, restart, reset, ordine, training, LIVE o API a pagamento.
+
 ## 20/11/2026 — Claude: ogni decisione del Brain ora tracciata prima dell'apertura
 
 - `integration/brain-unico-20261119` @ `a5a92040`: snapshot v2 scritto nel ciclo dopo **ogni** decisione (anche NO_TRADE) e prima di qualunque apertura; feature solo da candele chiuse; nessun duplicato; se la traccia fallisce errore esplicito e **nessuna apertura** (`open_blocked_untraced`); copertura misurabile dal journal. Uscite e rischio indipendenti. Snapshot sempre esclusi dal training finché non validati.
