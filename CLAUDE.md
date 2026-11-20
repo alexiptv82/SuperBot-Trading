@@ -18,3 +18,16 @@ Regole inviolabili (decisioni dell'utente, sempre valide):
 9. Un solo autore alla volta per componente.
 
 Le commit che non devono far partire nulla (documenti, diario) portano `[skip ci]` nel messaggio.
+
+## Skill specialistiche (`.claude/skills/`)
+
+Prima selezione (supporto metodologico, fonte in `.claude/skills/PROVENIENZA.md`): `exit-strategies`, `risk-management`, `position-sizing`, `trade-journal`, `walk-forward-validation`.
+
+1. Prima di sviluppo, analisi, debugging o miglioramento di SuperBot valuta quali skill sono **davvero pertinenti** e richiama solo quelle, senza attendere una richiesta esplicita. Nessuna skill e' obbligatoria per ogni attivita'.
+2. Uscite, take profit, trailing, chiusure tardive, restituzione dei profitti: `exit-strategies` (e `trade-journal` per l'analisi dei trade chiusi).
+3. Capitale, margine, leva, drawdown, esposizione: `risk-management` e `position-sizing`.
+4. Validazione storica, split, leakage temporale, overfitting: `walk-forward-validation`.
+5. Leggi sempre la sezione "SuperBot: leggere prima" della skill: futures USDT-M Bitget (non DEX/Solana), capitale/margine/leva distinti, costi e funding reali.
+6. Le regole approvate del progetto **prevalgono** sulle skill: regole inviolabili qui sopra, protezioni P0, RiskManager, NO_TRADE sempre consentito, EventJournal e storico mai riscritti, nessun apprendimento su dati non attestati.
+7. Le skill sono metodologia, **non prova** di correttezza: possono contenere errori (vedi l'avviso in `walk-forward-validation`).
+8. Le skill non rendono automatici deploy, ordini, riavvii, merge o modifiche a parametri, soglie e strategie: servono ad analizzare e proporre. Non eseguire i loro script con rete e non installare dipendenze senza necessita'.
