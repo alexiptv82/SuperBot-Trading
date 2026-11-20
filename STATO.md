@@ -1,3 +1,7 @@
+## 21/11/2026 — Claude: procedura amministrativa per il backup cifrato della run Brain (non eseguita)
+
+- Script autonomo `ops/brain-unico/backup/brain_run_backup_root.py` (SHA-256 `1e0a3a3e…40a3`) e `PROCEDURA.md` con il comando esatto; collaudato da non-root (6 test). Correzione: `run_backup` crea copie in chiaro, solo la cifratura è in streaming. Integrazione @ `de59f677` (suite 5352, builder 157, Jest 152). In attesa di autorizzazione per l'unica esecuzione come root. Nessun trasferimento, nessun permesso cambiato.
+
 ## 20/11/2026 (9) — Claude: prova di backup bloccata dai permessi, cifratura pronta, requisiti RC
 
 - **Backup run Brain** (`brain-rc-2000-20261106`, `/opt/superbot-v3-paper-runs/…`): cartella solo root, non leggibile senza sudo → **prova non eseguita**, nessun'altra cartella tentata. Strade: lancio come root dell'operatore o lettura delegata in sola lettura.
