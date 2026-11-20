@@ -1,3 +1,7 @@
+## 20/11/2026 (7) — Claude: TOKEN EFFICIENCY POLICY
+
+- Sezione aggiunta in coda a `CLAUDE.md` nel ramo di integrazione (commit `ccbcf547`, solo documentazione, 14 righe). Gate invariato e superato (suite 5311, builder 157, Jest 137). Nessun codice, parametro o configurazione toccati.
+
 ## 20/11/2026 11:46 Europe/Rome — proposta politica permanente di ottimizzazione token
 
 - Checkpoint append-only: [diario/2026-11-20_1146_checkpoint-proposta-politica-token.md](diario/2026-11-20_1146_checkpoint-proposta-politica-token.md), commit [c0e043d…](https://github.com/alexiptv82/SuperBot-Trading/commit/c0e043d5991c5a648f2d4f88e83a1fe7e7d9d9d7).
