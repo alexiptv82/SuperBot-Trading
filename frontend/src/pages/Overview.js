@@ -16,9 +16,9 @@ const MUTED = { color: '#a8bacd', fontSize: 12 };
 const money = value => value === null || value === undefined ? '—' : `${value} USDT`;
 const bp = value => value === null || value === undefined ? '—' : `${value} bp`;
 const field = value => value === null || value === undefined || value === '' ? '—' : value;
-const pnlColor = value => value === null || value === undefined ? '#a8bacd' : String(value).startsWith('-') ? '#fda4af' : '#4ade80';
-const detailBox = { padding: '10px 11px', background: '#0e1a2d', borderRadius: 10, border: '1px solid #30465e' };
-const amountUsd = value => value === null || value === undefined ? '—' : `$${value}`;
+export const pnlColor = value => value === null || value === undefined ? '#a8bacd' : String(value).startsWith('-') ? '#fda4af' : '#4ade80';
+export const detailBox = { padding: '10px 11px', background: '#0e1a2d', borderRadius: 10, border: '1px solid #30465e' };
+export const amountUsd = value => value === null || value === undefined ? '—' : `$${value}`;
 const direction = side => side === 1 ? 'LONG' : side === -1 ? 'SHORT' : '—';
 // Only Brain trade exit reasons are translated; unknown codes never reach the UI.
 const EXIT_REASONS = Object.freeze({
@@ -30,12 +30,12 @@ export const brainExitReason = reason => (
   typeof reason === 'string' && Object.prototype.hasOwnProperty.call(EXIT_REASONS, reason)
     ? EXIT_REASONS[reason] : 'altro'
 );
-const ageText = (ts, nowMs) => {
+export const ageText = (ts, nowMs) => {
   if (!Number.isInteger(ts) || ts <= 0) return 'Mai';
   const seconds = Math.max(0, Math.floor((nowMs - ts) / 1000));
   return seconds < 60 ? `${seconds} s fa` : `${Math.floor(seconds / 60)} min fa`;
 };
-const reasonText = code => {
+export const reasonText = code => {
   if (!code || typeof code !== 'string') return null;
   if (/(?:^|;)(?:halted:)?(?:no_mandate|mandate_not_approved|mandate_invalid|mandate_mismatch)(?:;|$)/.test(code)) {
     return 'In attesa del mandato dell’utente';
@@ -47,7 +47,7 @@ const reasonText = code => {
 };
 
 /** Identical closed-trade presentation across Falco, Toro and Brain; AI metadata is additive. */
-function ClosedTradeDetails({ t, brain = false, nowMs }) {
+export function ClosedTradeDetails({ t, brain = false, nowMs }) {
   const reason = brain ? brainExitReason(t.exit_reason) : field(t.close_reason);
   return <div style={{ padding:'10px 0', borderBottom:'1px solid #314357' }}>
     <strong>{t.symbol} · {direction(t.side)} · {field(t.leverage)}×
@@ -66,7 +66,7 @@ function ClosedTradeDetails({ t, brain = false, nowMs }) {
   </div>;
 }
 
-function StateLabel({ state }) {
+export function StateLabel({ state }) {
   return <span style={{ color: PALETTE[state] || '#94a3b8', fontWeight: 700, fontSize: 13 }}>
     <span aria-hidden="true">● </span>{STATE_TEXT[state] || 'Non disponibile'}
   </span>;

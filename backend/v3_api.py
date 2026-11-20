@@ -454,7 +454,13 @@ def _memory(paths: V3Paths, now_ms: int) -> dict:
                        (cov.ratio * 100).quantize(Decimal('0.1'))) if cov.decisions else None,
                    'chain_ok': cov.chain_ok, 'missing': len(cov.missing), 'invalid': len(cov.invalid),
                    'verdicts': dict(cov.verdicts), 'untraced_opens': len(cov.untraced_opens),
-                   'no_trade': sum(1 for r in decisions if r.event.payload.get('kind') == 'NO_TRADE')},
+                   'no_trade': sum(1 for r in decisions if r.event.payload.get('kind') == 'NO_TRADE'),
+                   # chiusure dell'operatore conservate come interventi, distinte dalle uscite automatiche
+                   'manual_closes': sum(1 for r in rows if r.event.kind == 'paper_close'
+                                        and isinstance(r.event.payload, dict) and r.event.payload.get('reason') == 'manual'),
+                   'automatic_closes': sum(1 for r in rows if r.event.kind == 'paper_close'
+                                           and isinstance(r.event.payload, dict)
+                                           and r.event.payload.get('reason') not in (None, 'manual'))},
         'theses': {'mode': reentry[-1].get('mode') if reentry else None, 'enforce_active': any(
                        a.get('mode') == 'enforce' for a in reentry),
                    'opens_with_thesis': len(theses), 'distinct_theses': len({t.get('thesis_id') for t in theses}),

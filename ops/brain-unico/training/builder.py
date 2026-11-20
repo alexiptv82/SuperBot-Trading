@@ -158,6 +158,9 @@ class Ctx:
             logged_features: Optional[dict], extra_prov: Optional[dict] = None, flags: Optional[list] = None,
             asof_ms: Optional[int] = None) -> None:
         side = 1 if action == "LONG" else -1 if action == "SHORT" else 0
+        # Chi ha chiuso: l'operatore (intervento conservato, mai una strategia da imitare) o il sistema.
+        outcome["closed_by"] = ("operator" if outcome.get("is_manual")
+                                else "automatic" if outcome.get("status") in ("closed", "closed_unknown_pnl") else None)
         feats, fsrc = get_features(self.store, symbol, ts, logged_features)
         lab, bar_ok, hz_ok = make_labels(self.store, symbol, ts, side, proposal, feats, self.cost)
         if outcome["status"] == "closed" and outcome.get("mfe_mae_source") == "none" and self.store is not None:
@@ -574,6 +577,7 @@ def summarize(res: dict) -> dict:
             "executed": len(ex), "losses": sum(1 for r in ex if (r["outcome"].get("net_pnl") or 0) < 0),
             "wins": sum(1 for r in ex if (r["outcome"].get("net_pnl") or 0) > 0),
             "manual_closes": sum(1 for r in ex if r["outcome"].get("is_manual")),
+            "closed_by": c(lambda r: r["outcome"].get("closed_by") or "not_closed"),
             "funding_known": sum(1 for r in ex if r["outcome"].get("funding_known")),
             "mfe_mae_source": c(lambda r: r["outcome"].get("mfe_mae_source", "none")),
             "duplicates_flagged": res["duplicate_trades_flagged"], "duplicate_example_ids": res["duplicate_example_ids"],
