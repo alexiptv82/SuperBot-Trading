@@ -100,6 +100,8 @@ class CycleReport:
     traces: tuple[tuple[str, str, str, str], ...] = ()
     # (simbolo, thesis_id, indice di reingresso, regola che bloccherebbe o "") per ogni OPEN approvata
     theses: tuple[tuple[str, str, int, str], ...] = ()
+    # (simbolo, istante di riferimento della decisione): uguale a now_ms in modalita' "cycle"
+    instants: tuple[tuple[str, int], ...] = ()
 
 
 def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal) -> BrainPortfolioSnapshot:
@@ -135,7 +137,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     require_open_commit: bool = False,
                     peer_source: Optional[Callable[[str, int], Mapping]] = None,
                     trace: str = "off", wall_ms: Optional[Callable[[], int]] = None,
-                    reentry_policy: Optional[ReentryPolicy] = None) -> CycleReport:
+                    reentry_policy: Optional[ReentryPolicy] = None, instant: str = "cycle",
+                    slot_start_ms: Optional[int] = None, slot_end_ms: Optional[int] = None) -> CycleReport:
     """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare).
 
     ``trace="required"``: ogni decisione scritta dal motore (anche NO_TRADE) riceve subito uno snapshot v2
@@ -148,6 +151,14 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
     ``reentry_policy`` (``thesis.py``): per ogni OPEN approvata calcola tesi e indice di reingresso dal journal (una
     query filtrata per giro) e li scrive nello snapshot. In ``observe`` registra che cosa bloccherebbe senza bloccare;
     in ``enforce`` una OPEN che viola la regola non si apre (``anti_reentry_blocked``). ``None`` = spento.
+
+    ``instant`` (LABORATORIO): ``"cycle"`` (predefinito, comportamento attuale) usa ``now_ms`` per ogni simbolo;
+    ``"per_symbol"`` da' a ogni simbolo il PROPRIO istante di riferimento, letto da ``wall_ms`` quando il simbolo
+    comincia (candele, prezzo, decisione, snapshot e tesi a quell'istante: dati piu' freschi e decisione scritta
+    subito dopo). Richiede ``wall_ms``, ``slot_start_ms <= now_ms < slot_end_ms``; l'istante deve essere >= ``now_ms``,
+    non decrescente e < ``slot_end_ms`` (altrimenti ``instant_out_of_slot``, nessuna decisione). Deduplicazione per
+    slot: un simbolo che ha gia' una decisione nel journal con istante in [slot_start_ms, slot_end_ms) non viene
+    deciso di nuovo (``already_decided_in_slot``), anche dopo un riavvio a meta' slot.
     """
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
@@ -163,6 +174,11 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
         raise ValueError("invalid_trace_mode")
     if reentry_policy is not None and type(reentry_policy) is not ReentryPolicy:
         raise ValueError("invalid_reentry_policy")
+    if instant not in ("cycle", "per_symbol"):
+        raise ValueError("invalid_instant_mode")
+    if instant == "per_symbol" and (not callable(wall_ms) or type(slot_start_ms) is not int
+                                    or type(slot_end_ms) is not int or not slot_start_ms <= now_ms < slot_end_ms):
+        raise ValueError("per_symbol_requires_clock_and_slot")
     reentry_on = reentry_policy is not None and reentry_policy.mode != "off"
     if reentry_on and trace == "off":
         raise ValueError("reentry_requires_trace")       # una tesi non registrata non e' verificabile
@@ -178,6 +194,13 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
     errors: list[tuple[str, str]] = []
     traces: list[tuple[str, str, str, str]] = []
     theses: list[tuple[str, str, int, str]] = []
+    instants: list[tuple[str, int]] = []
+    decided_in_slot: set = set()
+    if instant == "per_symbol":
+        decided_in_slot = {r.event.payload.get("symbol") for r in journal.list_run_kinds_since(
+            PORTFOLIO_ID, run_id, ("brain_decision",), slot_start_ms)
+            if r.event.occurred_at_ms < slot_end_ms and isinstance(r.event.payload, Mapping)}
+    last_t = now_ms
     book = (ThesisBook.from_journal(journal, run_id, now_ms=now_ms, window_ms=reentry_policy.window_ms)
             if reentry_on else None)
     tf_names = [spec.name for spec in view_params.timeframes]
@@ -186,18 +209,32 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
     for symbol in syms:
         if symbol in {p.symbol for p in summary.open_positions}:
             continue
+        if symbol in decided_in_slot:
+            errors.append((symbol, "already_decided_in_slot"))
+            continue
+        t = now_ms
+        if instant == "per_symbol":
+            try:
+                t = wall_ms()
+            except Exception:
+                t = None
+            if type(t) is not int or t < last_t or t >= slot_end_ms:
+                errors.append((symbol, "instant_out_of_slot"))
+                continue
+            last_t = t
+        instants.append((symbol, t))
         try:
             rules = market_rules(symbol)
             if not isinstance(rules, Mapping) or any(k not in rules for k in RULE_KEYS):
                 errors.append((symbol, "no_market_rules"))
                 continue
             try:
-                bars_by_tf = {tf: store.refresh(symbol, tf, now_ms) for tf in tf_names}
+                bars_by_tf = {tf: store.refresh(symbol, tf, t) for tf in tf_names}
             except Exception:
                 errors.append((symbol, "feed_error"))
                 continue
             try:
-                regime = regime_for_context(bars_by_tf, timestamp_ms=now_ms, params=view_params)
+                regime = regime_for_context(bars_by_tf, timestamp_ms=t, params=view_params)
             except ValueError:
                 errors.append((symbol, "view_error"))
                 continue
@@ -206,7 +243,7 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 errors.append((symbol, "data_unavailable"))   # base non ok: nessuna decisione, nessuna spesa
                 continue
             try:
-                price = base[-1].close if price_source is None else price_source(symbol, now_ms)
+                price = base[-1].close if price_source is None else price_source(symbol, t)
             except Exception:
                 errors.append((symbol, "price_error"))
                 continue
@@ -226,21 +263,21 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
             peers: Mapping = {}
             if peer_source is not None:
                 try:
-                    candidate = peer_source(symbol, now_ms)
+                    candidate = peer_source(symbol, t)
                     if type(candidate) is dict:
                         peers = candidate
                 except Exception:
                     peers = {}  # no data, never an AI override
             context = MarketContext(
-                symbol, price, now_ms, regime,
-                falco_signal=validate_peer_signal(peers.get("falco"), "falco", symbol, now_ms),
-                toro_signal=validate_peer_signal(peers.get("toro"), "toro", symbol, now_ms))
+                symbol, price, t, regime,
+                falco_signal=validate_peer_signal(peers.get("falco"), "falco", symbol, t),
+                toro_signal=validate_peer_signal(peers.get("toro"), "toro", symbol, t))
 
             capture = None
             tip = 0
             if trace != "off":
                 try:
-                    capture = capture_inputs(bars_by_tf, view_params.timeframes, now_ms=now_ms, wall_ms=wall_ms)
+                    capture = capture_inputs(bars_by_tf, view_params.timeframes, now_ms=t, wall_ms=wall_ms)
                 except Exception:
                     capture = None                      # registrato come capture_missing dopo la decisione
                 tip = journal_tip(journal, run_id)
@@ -251,8 +288,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
             blocked_by = None
             if approved_open and book is not None:
                 side = decision.proposal.side
-                info = book.assess(symbol, side, now_ms, decision.journal_event_id)
-                would, rule = evaluate_reentry(info, reentry_policy, now_ms)
+                info = book.assess(symbol, side, t, decision.journal_event_id)
+                would, rule = evaluate_reentry(info, reentry_policy, t)
                 thesis = {"thesis_id": info.thesis_id, "reentry_index": info.reentry_index,
                           "prev_outcome": info.prev_outcome, "truncated": info.truncated}
                 reentry = {"mode": reentry_policy.mode, "would_block": would, "rule": rule,
@@ -264,7 +301,7 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     blocked_by = rule
             if trace != "off":
                 tr = record_decision_trace(
-                    journal=journal, run_id=run_id, symbol=symbol, now_ms=now_ms, after_seq=tip,
+                    journal=journal, run_id=run_id, symbol=symbol, now_ms=t, after_seq=tip,
                     expected_event_id=decision.journal_event_id if approved_open else None,
                     capture=capture, portfolio=portfolio, wall_ms=wall_ms, thesis=thesis, anti_reentry=reentry)
                 traces.append((symbol, tr.code, tr.decision_event_id or "", tr.snapshot_event_id or ""))
@@ -312,7 +349,7 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 else:
                     try:
                         receipt = execute_paper(decision, portfolio_id=PORTFOLIO_ID, run_id=run_id,
-                                                journal=journal, slippage_bps=slippage_bps, now_ms=now_ms)
+                                                journal=journal, slippage_bps=slippage_bps, now_ms=t)
                     except ExecutionError as exc:
                         errors.append((symbol, str(exc)))
                         continue
@@ -321,4 +358,4 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
         except Exception:
             errors.append((symbol, "cycle_error"))
     return CycleReport(now_ms, skipped, tuple(decisions), tuple(opened), tuple(errors), tuple(traces),
-                       tuple(theses))
+                       tuple(theses), tuple(instants))
