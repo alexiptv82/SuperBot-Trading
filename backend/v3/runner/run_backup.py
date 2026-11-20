@@ -131,12 +131,39 @@ def verify_restore(backup_dir: Path, restore_dir: Path) -> dict:
             "files": len(manifest["files"]), "restore_dir": str(restore_dir)}
 
 
+def encrypt(backup_dir: Path, out_file: Path, recipient_file: Path) -> str:
+    """Archivio tar del backup cifrato con age per i destinatari del file indicato (chiavi PUBBLICHE). Il file in
+    chiaro non viene mai scritto: tar | age. Restituisce lo SHA-256 del file cifrato. Nessun trasferimento."""
+    import subprocess
+    backup_dir, out_file, recipient_file = Path(backup_dir), Path(out_file), Path(recipient_file)
+    if not (backup_dir / MANIFEST).is_file():
+        raise BackupError("not_a_backup")
+    if out_file.exists():
+        raise BackupError("destination_exists")
+    if not recipient_file.is_file():
+        raise BackupError("recipient_missing")
+    tar = subprocess.Popen(["tar", "-C", str(backup_dir.parent), "-cf", "-", backup_dir.name], stdout=subprocess.PIPE)
+    try:
+        age = subprocess.run(["age", "-R", str(recipient_file), "-o", str(out_file)], stdin=tar.stdout,
+                             capture_output=True, timeout=600)
+    finally:
+        tar.stdout.close()
+        tar_rc = tar.wait()
+    if tar_rc != 0 or age.returncode != 0 or not out_file.is_file():
+        if out_file.exists():
+            out_file.unlink()
+        raise BackupError("encryption_failed")
+    return _sha(out_file)
+
+
 def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Backup e prova di ripristino della cartella dati del Brain Unico")
     ap.add_argument("--source", required=True)
     ap.add_argument("--dest", required=True, help="cartella NUOVA per il backup")
     ap.add_argument("--restore-test", help="cartella NUOVA dove provare il ripristino")
+    ap.add_argument("--encrypt-to", help="file con le chiavi PUBBLICHE age dei destinatari")
+    ap.add_argument("--encrypted-out", help="file NUOVO .tar.age")
     a = ap.parse_args(argv)
     try:
         m = backup(Path(a.source), Path(a.dest))
@@ -144,6 +171,8 @@ def main(argv=None) -> int:
         if a.restore_test:
             r = verify_restore(Path(a.dest), Path(a.restore_test))
             print(f"RIPRISTINO VERIFICATO: eventi={r['journal_events']} file={r['files']}")
+        if a.encrypt_to and a.encrypted_out:
+            print(f"CIFRATO: {a.encrypted_out} sha256={encrypt(Path(a.dest), Path(a.encrypted_out), Path(a.encrypt_to))}")
     except BackupError as exc:
         print(f"NO-GO: {exc}")
         return 1

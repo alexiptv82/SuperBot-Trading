@@ -105,3 +105,23 @@ def test_cli_reports_go_and_no_go(capsys):
     assert RB.main(["--source", str(src), "--dest", str(out / "b"), "--restore-test", str(out / "r")]) == 0
     assert "RIPRISTINO VERIFICATO" in capsys.readouterr().out
     assert RB.main(["--source", str(src), "--dest", str(out / "b")]) == 1
+
+
+@pytest.mark.skipif(not __import__("shutil").which("age"), reason="age non installato")
+def test_encrypted_backup_round_trip_with_a_test_key():
+    import subprocess
+    src, _ = _run_dir()
+    out = Path(tempfile.mkdtemp())
+    RB.backup(src, out / "b")
+    key = out / "test.key"                                              # chiave di PROVA, mai quella del proprietario
+    subprocess.run(["age-keygen", "-o", str(key)], check=True, capture_output=True)
+    pub = subprocess.run(["age-keygen", "-y", str(key)], check=True, capture_output=True, text=True).stdout
+    (out / "recipient.txt").write_text(pub)
+    sha = RB.encrypt(out / "b", out / "b.tar.age", out / "recipient.txt")
+    assert len(sha) == 64 and b"journal" not in (out / "b.tar.age").read_bytes()[:4096]   # nessun nome in chiaro
+    (out / "x").mkdir()
+    dec = subprocess.run(["age", "-d", "-i", str(key), str(out / "b.tar.age")], check=True, capture_output=True).stdout
+    subprocess.run(["tar", "-C", str(out / "x"), "-xf", "-"], input=dec, check=True)
+    assert RB.verify_restore(out / "x" / "b", out / "r")["restored"]
+    with pytest.raises(RB.BackupError, match="destination_exists"):
+        RB.encrypt(out / "b", out / "b.tar.age", out / "recipient.txt")

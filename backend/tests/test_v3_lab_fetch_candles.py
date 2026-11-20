@@ -202,3 +202,23 @@ def test_the_old_windows_missed_the_last_closed_candle_with_close_time_selection
            f"&startTime={end - 1 - 200 * MS}&endTime={end - 1}&limit=200")
     got = {int(r[0]) for r in get(url)["data"]}
     assert end - MS not in got and end - 201 * MS in got     # come nella sonda reale: manca l'ultima, c'e' quella prima di startTime
+
+
+@pytest.mark.parametrize("tf, step", [("1m", 60_000), ("15m", 900_000), ("1h", 3_600_000), ("4h", 14_400_000)])
+def test_runtime_store_sees_the_candle_just_closed_on_every_timeframe(tf, step):
+    """Freschezza (requisito RC): il CandleStore del runtime, anche per il monitor delle uscite a 1 m, riceve la candela
+    che chiude esattamente all'inizio dell'istante corrente, con la selezione per CHIUSURA osservata su Bitget."""
+    import re as _re
+    from backend.v3.runner.feed import CandleStore
+    gran = {60_000: "1m", 900_000: "15m", 3_600_000: "1H", 14_400_000: "4H"}[step]
+    now = (1_750_000_000_000 // 14_400_000) * 14_400_000 + 5_000          # 5 s dopo la chiusura di tutti i timeframe
+    def get_json(url):
+        q = dict(_re.findall(r"(\w+)=([^&]+)", url.split("?", 1)[1]))
+        assert q["granularity"] == gran
+        lo, hi = int(q["startTime"]), int(q["endTime"])
+        rows = [[str(t), "1", "2", "0.5", "1.5", "3", "4"] for t in range(now // step * step - 300 * step, now, step)
+                if lo <= t + step <= hi]
+        return {"code": "00000", "data": rows[::-1]}
+    bars = CandleStore(get_json, keep={tf: (step, 50)}).refresh("BTCUSDT", tf, now)
+    assert bars[-1].open_time_ms == now // step * step - step               # l'ultima chiusa, nessun ritardo
+    assert all(b.open_time_ms + step <= now for b in bars)                   # mai la candela in formazione
