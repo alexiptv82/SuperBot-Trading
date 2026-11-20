@@ -1,3 +1,13 @@
+## 20/11/2026 13:50 Europe/Rome — backup cifrato Brain preparato, non eseguito
+
+- Checkpoint append-only: [diario/2026-11-20_1350_checkpoint-backup-cifrato-preparato-non-eseguito.md](diario/2026-11-20_1350_checkpoint-backup-cifrato-preparato-non-eseguito.md), commit [75ba444…](https://github.com/alexiptv82/SuperBot-Trading/commit/75ba444a400f85930dc2b6479f584a5d9b4f1175).
+- Laboratorio `integration/brain-unico-20261119` @ `de59f6775915cb46a2ae63025dbea0466abc04bb`: cifratura age e procedura amministrativa preparate/testate sinteticamente; backup reale non eseguito, nessun sudo/trasferimento/cambio permessi.
+- Correzione: il backup crea copie temporanee in chiaro in area privata; solo la cifratura è in streaming. Pulizia testata, ma cancellazione ordinaria del filesystem.
+- Gate riferito: suite 5.352, builder 157, Jest 152, 0 falliti; non rieseguito qui e `[skip ci]`.
+- RC84 #80 open/draft; Issue #124 P0 open; extbackup `3dc2116a…` non installato/certificato; age PC `ESITO: VERIFICA OK` resta prova locale, non VPS.
+- Anomalia preservata: la voce precedente è datata 21/11, ma il relativo commit risulta del 20/11/2026 13:37 Europe/Rome.
+- Nessun main/merge/deploy/VPS/servizio/restart/reset/ordine/training/LIVE/API a pagamento. PAPER, Falco/Toro/Brain, storici ed EventJournal preservati.
+
 ## 21/11/2026 — Claude: procedura amministrativa per il backup cifrato della run Brain (non eseguita)
 
 - Script autonomo `ops/brain-unico/backup/brain_run_backup_root.py` (SHA-256 `1e0a3a3e…40a3`) e `PROCEDURA.md` con il comando esatto; collaudato da non-root (6 test). Correzione: `run_backup` crea copie in chiaro, solo la cifratura è in streaming. Integrazione @ `de59f677` (suite 5352, builder 157, Jest 152). In attesa di autorizzazione per l'unica esecuzione come root. Nessun trasferimento, nessun permesso cambiato.
