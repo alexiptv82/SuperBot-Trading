@@ -181,14 +181,11 @@ class ExternalBackupTests(unittest.TestCase):
 
     def test_round_trip_includes_run_histories(self):
         run = os.path.join(self.td.name, "arena", "deepseek", "brain-deepseek-paper20261118")
-        os.makedirs(run)
-        c = sqlite3.connect(os.path.join(run, "journal.db"))
-        c.execute("CREATE TABLE v3_events(seq INTEGER PRIMARY KEY, payload TEXT)")
-        c.executemany("INSERT INTO v3_events(payload) VALUES(?)", [(M_STATE,)] * 7)
-        c.commit()
-        c.close()
+        os.makedirs(os.path.join(run, "sub"))
+        make_v3_journal(os.path.join(run, "journal.db"), 7).close()
+        put(os.path.join(run, "sub", "trace.jsonl"), M_STATE)
         put(os.path.join(run, ".exit_service.lock"), "")
-        rc, out = self.backup("--run-dir", run)
+        rc, out = self.backup("--required-run-dir", run)
         self.assertEqual(rc, 0, out)
         clone = self.clone_remote()
         for dp, _dn, fn in os.walk(clone):                       # nel repository nessun dato in chiaro
@@ -199,50 +196,67 @@ class ExternalBackupTests(unittest.TestCase):
         (arc,) = self.archives(clone)
         rc, rout, dest = self.restore(arc)
         self.assertEqual(rc, 0, rout)
+        self.assertIn("journal V3 dati/runs/deepseek__brain-deepseek-paper20261118/journal.db: 7 eventi", rout)
         r = os.path.join(dest, "dati", "runs", "deepseek__brain-deepseek-paper20261118")
-        self.assertEqual(sorted(os.listdir(r)), ["journal.db"])
-        n = sqlite3.connect(os.path.join(r, "journal.db")).execute("SELECT COUNT(*) FROM v3_events").fetchone()[0]
-        self.assertEqual(n, 7)
+        self.assertEqual(sorted(os.listdir(r)), ["journal.db", "sub"])
 
     def test_an_unreadable_run_dir_sends_nothing(self):
-        rc, out = self.backup("--run-dir", os.path.join(self.td.name, "manca"))
+        rc, out = self.backup("--required-run-dir", os.path.join(self.td.name, "manca"))
         self.assertNotEqual(rc, 0)
         self.assertEqual(self.archives(self.clone_remote()), [])
 
-    def test_admin_wrapper_end_to_end_without_root(self):
-        """prova_storici.sh, con i percorsi /opt sostituiti da cartelle di prova e senza il controllo di root."""
+    def _wrapper(self, drop=None):
+        """prova_storici.sh con i percorsi /opt sostituiti da cartelle di prova e senza il controllo di root."""
         t = self.td.name
-        for rel in ("v3/brain-v3-paper20261111", "arena/deepseek/brain-deepseek-paper20261118", "free"):
-            d = os.path.join(t, "opt", rel)
-            os.makedirs(d)
-            c = sqlite3.connect(os.path.join(d, "journal.db" if rel != "free" else "brain.sqlite3"))
-            c.execute("CREATE TABLE v3_events(seq INTEGER PRIMARY KEY, p TEXT)")
-            c.executemany("INSERT INTO v3_events(p) VALUES(?)", [(M_DB,)] * 3)
-            c.commit()
-            c.close()
+        o = os.path.join(t, "finto")
+        runs = ["v3/brain-v3-paper20261111", "v3/brain-v3-rc20261106", "arena/deepseek/brain-deepseek-paper20261118",
+                "arena/qwen/brain-qwen-paper20261118", "arena/minimax/brain-minimax-paper20261118"]
+        for rel in runs:
+            if rel == drop:
+                continue
+            os.makedirs(os.path.join(o, rel))
+            make_v3_journal(os.path.join(o, rel, "journal.db"), 3).close()
+        os.makedirs(os.path.join(o, "adaptive", "hawk"))
+        c = sqlite3.connect(os.path.join(o, "adaptive", "hawk", "brain.sqlite3"))
+        c.execute("create table t(x)"); c.execute("insert into t values(?)", (M_DB,)); c.commit(); c.close()
+        os.makedirs(os.path.join(self.root, "brain"), exist_ok=True)
+        put(os.path.join(self.root, "brain", "state.json"), '{"a":1}')
         src = open(os.path.join(HERE, "..", "extbackup", "prova_storici.sh")).read()
         subs = [('[ "$(id -u)" = 0 ] || { echo "NO-GO: serve root"; exit 2; }', ""),
                 ("BASE=/root/extbackup-prova-storici", "BASE=%s/base" % t),
-                ("/opt/superbot-v3-paper-runs", t + "/opt/v3"), ("/opt/superbot-ai-arena-paper", t + "/opt/arena"),
-                ("/opt/superbot-brain-free/", t + "/opt/free/"), ("/opt/superbot-desk-data", self.root),
-                ("/opt/superbot-brain-adaptive", t + "/opt/nessuna1"), ("/opt/superbot-ai-data", t + "/opt/nessuna2"),
+                ("df --output=avail -B1 /root", "df --output=avail -B1 %s" % t),
+                ("DESK=/opt/superbot-desk-data", "DESK=%s" % self.root),
+                ("/opt/superbot-v3-paper-runs", o + "/v3"), ("/opt/superbot-ai-arena-paper", o + "/arena"),
+                ("/opt/superbot-brain-free/", o + "/free/"), ("/opt/superbot-brain-adaptive/", o + "/adaptive/"),
+                ("/opt/superbot-ai-data/", o + "/aidata/"),
                 ("/opt/superbot/data/superbot.db", self.app_db), ("/opt/superbot-pool-data/pool.db", self.pool_db),
                 ("--app-repo /opt/superbot --bots-repo /opt/superbot-desk",
                  "--app-repo /nonexistent --bots-repo /nonexistent --brain-retries 0 --brain-arg=--quiet-secs "
                  "--brain-arg=1 --brain-arg=--attempts --brain-arg=2 --brain-arg=--wait --brain-arg=0.1 "
                  "--brain-arg=--quiet-timeout --brain-arg=2")]
-        for a, b in subs:
-            self.assertIn(a, src)
-            src = src.replace(a, b)
+        for x, y in subs:
+            self.assertIn(x, src)
+            src = src.replace(x, y)
+        self.assertNotIn("/opt/", src)                                     # nessun percorso reale nel test
         script = os.path.join(t, "prova.sh")
         put(script, src)
-        p = subprocess.run(["sh", script, HERE], capture_output=True, text=True, timeout=300)
+        return subprocess.run(["sh", script, HERE], capture_output=True, text=True, timeout=300)
+
+    def test_admin_wrapper_end_to_end_without_root(self):
+        p = self._wrapper()
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        self.assertIn("ESITO PROVA: OK", p.stdout)
-        self.assertIn("RISULTATO: OK", p.stdout)
-        self.assertEqual(p.stdout.count("ripristinata"), 3, p.stdout)
-        self.assertFalse(os.path.exists(os.path.join(t, "base")))           # tutto cancellato
+        for x in ("ESITO PROVA: OK", "RISULTATO: OK", "== spazio:", "(obbligatorio)", "sottocartelle"):
+            self.assertIn(x, p.stdout)
+        self.assertEqual(p.stdout.count("ripristinata"), 7, p.stdout)       # 5 run + Brain storico + adattivo
+        self.assertEqual(p.stdout.count(": 3 eventi, catena verificata"), 5, p.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.td.name, "base")))  # tutto cancellato
         self.assertFalse(any(m.decode() in p.stdout for m in MARKERS))        # nessun contenuto stampato
+
+    def test_admin_wrapper_refuses_when_a_required_archive_is_missing(self):
+        p = self._wrapper(drop="arena/qwen/brain-qwen-paper20261118")
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("NO-GO: archivio obbligatorio mancante", p.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.td.name, "base")))
 
     def test_repository_contains_only_encrypted_archives_and_minimal_manifest(self):
         self.assertEqual(self.backup()[0], 0)
@@ -682,8 +696,36 @@ class ExternalBackupTests(unittest.TestCase):
         self.assertIn(removed[0], hist)
 
 
+GOLDEN = ["1b2a7566a936c3791d431621f8bb2e606a574706a2c2e859b4e54df81e08c7fc",
+          "aaee5f8c6ee6f67f578377a416391cbca75f1e010ccd4370cb93fbd7c5a08abd",
+          "6d2dbc9035424abb61d69eaa38b8c6e09deb0dc19b5ae6f4da4607fe94dc350f"]
+
+
+def make_v3_journal(path, n=3):
+    """Journal V3 con la stessa regola di hash del progetto (verificata dai vettori GOLDEN)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ext_golden", EXT)
+    ext = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ext)
+    con = sqlite3.connect(path)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("CREATE TABLE v3_events(seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT, portfolio_id TEXT,"
+                " run_id TEXT, kind TEXT, occurred_at_ms INTEGER, source TEXT, payload_json TEXT, previous_hash TEXT,"
+                " event_hash TEXT)")
+    prev = ext.GENESIS
+    for i in range(n):
+        row = (i + 1, "e%d" % i, "brain", "r1", "brain_decision", 1700000000000 + i, "s",
+               json.dumps({"k": i, "t": "\u00e8"}, separators=(",", ":"), sort_keys=True))
+        h = ext.chain_digest(prev, row)
+        con.execute("INSERT INTO v3_events(event_id,portfolio_id,run_id,kind,occurred_at_ms,source,payload_json,"
+                    "previous_hash,event_hash) VALUES(?,?,?,?,?,?,?,?,?)", row[1:] + (prev, h))
+        prev = h
+    con.commit()
+    return con
+
+
 class RunDirTests(unittest.TestCase):
-    """Storici delle run (Brain V3, Arena, Brain libero) nell'archivio dell'extbackup: copia coerente, niente lock."""
+    """Storici delle run nell'archivio dell'extbackup: copia ricorsiva coerente, esclusioni, catena dei journal V3."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -692,36 +734,106 @@ class RunDirTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def make_run(self, rel):
+    def make_run(self, rel, n=3):
         d = os.path.join(self.tmp, rel)
-        os.makedirs(d)
-        con = sqlite3.connect(os.path.join(d, "journal.db"))
-        con.execute("PRAGMA journal_mode=WAL")
-        con.execute("CREATE TABLE v3_events(seq INTEGER PRIMARY KEY, payload TEXT)")
-        con.executemany("INSERT INTO v3_events(payload) VALUES(?)", [(M_DB,)] * 5)
-        con.commit()                                          # WAL ancora aperto: la copia deve includerlo
+        os.makedirs(os.path.join(d, "hawk"))
+        con = make_v3_journal(os.path.join(d, "journal.db"), n)       # WAL aperto: la copia deve includerlo
         put(os.path.join(d, "heartbeat.json"), '{"state":"running"}')
         put(os.path.join(d, ".exit_service.lock"), "")
-        put(os.path.join(d, "inference_trace.jsonl"), '{"a":1}\n')
+        put(os.path.join(d, "writer.lock"), "")
+        put(os.path.join(d, "api_token.txt"), "segreto")
+        put(os.path.join(d, ".env"), "KEY=x")
+        os.symlink("/etc/hostname", os.path.join(d, "link.txt"))
+        c2 = sqlite3.connect(os.path.join(d, "hawk", "brain.sqlite3"))
+        c2.execute("CREATE TABLE t(x)")
+        c2.execute("INSERT INTO t VALUES(1)")
+        c2.commit()
+        c2.close()
         return d, con
 
-    def test_run_dir_copy_is_consistent_and_skips_locks(self):
-        d, con = self.make_run("arena/deepseek/brain-deepseek-paper20261118")
+    def test_golden_vectors_match_the_project_journal_rule(self):
+        con = make_v3_journal(os.path.join(self.tmp, "g.db"))
+        self.assertEqual([r[0] for r in con.execute("select event_hash from v3_events order by seq")], GOLDEN)
+
+    def test_recursive_copy_with_exclusions_and_journal_chain(self):
+        d, con = self.make_run("arena/deepseek/brain-deepseek-paper20261118", n=5)
         runs = os.path.join(self.tmp, "stage", "runs")
-        self.ext.copy_run_dir(d, runs)
+        self.ext.copy_run_dir(d, runs, required=True)
         out = os.path.join(runs, "deepseek__brain-deepseek-paper20261118")
-        self.assertEqual(sorted(os.listdir(out)), ["heartbeat.json", "inference_trace.jsonl", "journal.db"])
-        n = sqlite3.connect(os.path.join(out, "journal.db")).execute("SELECT COUNT(*) FROM v3_events").fetchone()[0]
-        self.assertEqual(n, 5)
+        got = sorted(os.path.relpath(os.path.join(dp, f), out) for dp, _d, fn in os.walk(out) for f in fn)
+        self.assertEqual(got, ["hawk/brain.sqlite3", "heartbeat.json", "journal.db"])   # niente lock/segreti/link
+        with open(os.path.join(runs, self.ext.JOURNAL_INDEX)) as f:
+            (j,) = json.load(f)
+        self.assertEqual(j["events"], 5)
+        self.assertEqual(j["file"], "dati/runs/deepseek__brain-deepseek-paper20261118/journal.db")
         con.close()
 
-    def test_missing_relative_or_empty_run_dir_refuses(self):
-        for bad in (os.path.join(self.tmp, "nope"), "relative/dir"):
-            with self.assertRaises(self.ext.Fail):
-                self.ext.copy_run_dir(bad, os.path.join(self.tmp, "s1"))
+    def test_a_broken_source_chain_refuses(self):
+        d, con = self.make_run("v3/brain-v3-x")
+        con.execute("UPDATE v3_events SET payload_json='{}' WHERE seq=2")
+        con.commit()
+        with self.assertRaises(self.ext.Fail):
+            self.ext.copy_run_dir(d, os.path.join(self.tmp, "s"))
+        con.close()
+
+    def test_missing_required_relative_or_empty_refuses(self):
+        with self.assertRaisesRegex(self.ext.Fail, "OBBLIGATORIO"):
+            self.ext.copy_run_dir(os.path.join(self.tmp, "nope"), os.path.join(self.tmp, "s1"), required=True)
+        with self.assertRaises(self.ext.Fail):
+            self.ext.copy_run_dir("relative/dir", os.path.join(self.tmp, "s1"))
         os.makedirs(os.path.join(self.tmp, "empty"))
         with self.assertRaises(self.ext.Fail):
             self.ext.copy_run_dir(os.path.join(self.tmp, "empty"), os.path.join(self.tmp, "s2"))
+
+    def _restored_tree(self, n=4):
+        out = os.path.join(self.tmp, "restore")
+        run = os.path.join(out, "dati", "runs", "a__b")
+        os.makedirs(run)
+        make_v3_journal(os.path.join(run, "journal.db"), n).close()
+        ch = self.ext.journal_chain(os.path.join(run, "journal.db"))
+        put(os.path.join(out, "dati", "runs", "_journal_v3.json"),
+            json.dumps([{"file": "dati/runs/a__b/journal.db", "events": ch[0], "head": ch[1]}]))
+        return out, os.path.join(run, "journal.db")
+
+    def _problems(self, out):
+        rest = load(RESTORE, "restore_mod")
+        class P(list):
+            def add(self, m):
+                self.append(m)
+        p = P()
+        rest.check_v3_journals(out, p)
+        return p
+
+    def test_restore_accepts_an_intact_journal(self):
+        out, _ = self._restored_tree()
+        self.assertEqual(self._problems(out), [])
+
+    def test_restore_detects_a_truncated_journal(self):
+        out, db = self._restored_tree()
+        c = sqlite3.connect(db)
+        c.execute("DELETE FROM v3_events WHERE seq=(SELECT MAX(seq) FROM v3_events)")
+        c.commit(); c.close()
+        self.assertTrue(any("diverso dall'originale" in m for m in self._problems(out)))
+
+    def test_restore_detects_a_tampered_chain(self):
+        out, db = self._restored_tree()
+        c = sqlite3.connect(db)
+        c.execute("UPDATE v3_events SET payload_json='{}' WHERE seq=2")
+        c.commit(); c.close()
+        self.assertTrue(any("catena non valida" in m for m in self._problems(out)))
+
+    def test_restore_detects_a_missing_journal(self):
+        out, db = self._restored_tree()
+        os.remove(db)
+        self.assertTrue(any("mancante" in m for m in self._problems(out)))
+
+    def test_a_rewritten_original_is_not_accepted_as_prefix(self):
+        a = os.path.join(self.tmp, "a.db")
+        make_v3_journal(a, 3).close()
+        ch = self.ext.journal_chain(a)
+        self.assertTrue(self.ext.source_has_prefix(a, *ch))
+        self.assertTrue(self.ext.source_has_prefix(a, 2, self.ext.journal_chain(a)[1]) is False)  # testa sbagliata
+        self.assertFalse(self.ext.source_has_prefix(a, 5, ch[1]))                                 # originale piu' corto
 
     def test_same_label_twice_refuses(self):
         a, c1 = self.make_run("x/p/run1")

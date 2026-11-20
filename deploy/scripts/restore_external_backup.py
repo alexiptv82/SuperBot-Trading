@@ -118,6 +118,51 @@ def check_databases(out, problems):
         problems.add("attesi almeno due database (app e pool), trovati %d" % found)
 
 
+GENESIS = "0" * 64
+
+
+def _chain(path):
+    fields_of = lambda prev, r: [prev, r[1], r[2], r[3], r[4], str(r[5]), r[6], r[7]]
+    con = sqlite3.connect("file:%s?mode=ro" % path, uri=True)
+    try:
+        prev, n = GENESIS, 0
+        for r in con.execute("select seq,event_id,portfolio_id,run_id,kind,occurred_at_ms,source,payload_json,"
+                             "previous_hash,event_hash from v3_events order by seq"):
+            d = hashlib.sha256(json.dumps(fields_of(prev, r), separators=(",", ":"), ensure_ascii=True)
+                               .encode("utf-8")).hexdigest()
+            if r[8] != prev or r[9] != d:
+                return None
+            prev, n = r[9], n + 1
+        return n, prev
+    finally:
+        con.close()
+
+
+def check_v3_journals(out, problems):
+    """Per ogni journal V3 degli storici: catena valida e numero di eventi/testa uguali a quelli registrati al backup."""
+    index = os.path.join(out, "dati", "runs", "_journal_v3.json")
+    if not os.path.isfile(index):
+        return
+    try:
+        with open(index) as f:
+            entries = json.load(f)
+    except (OSError, ValueError):
+        problems.add("indice dei journal V3 illeggibile")
+        return
+    for e in entries:
+        path = os.path.join(out, e["file"])
+        try:
+            got = _chain(path) if os.path.isfile(path) else None
+        except sqlite3.Error:
+            got = None
+        if got is None:
+            problems.add("journal V3 mancante o con catena non valida: %s" % e["file"])
+        elif got != (e["events"], e["head"]):
+            problems.add("journal V3 diverso dall'originale (eventi/testa): %s" % e["file"])
+        else:
+            print("  journal V3 %s: %d eventi, catena verificata" % (e["file"], got[0]))
+
+
 def check_brain(out, problems):
     brain = load_brain()
     root = os.path.join(out, "dati", "cervello")
@@ -323,6 +368,7 @@ def main(argv=None):
 
     check_databases(a.out, problems)
     check_brain(a.out, problems)
+    check_v3_journals(a.out, problems)
 
     if problems:
         print("RISULTATO: FALLITO (%d problemi). La cartella %s resta per l'esame." % (len(problems), a.out))

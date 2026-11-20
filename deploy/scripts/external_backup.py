@@ -184,6 +184,8 @@ def make_staging(a, stage):
         raise Fail("backup del cervello non riuscito (nessuna finestra di fine ciclo verificata o file mancanti): "
                    + last[-400:])
     # lasciamo nell'archivio solo il contenuto: la copia del cervello e' una cartella bots-*
+    for src in a.required_run_dirs:
+        copy_run_dir(src, os.path.join(stage, "runs"), required=True)
     for src in a.run_dirs:
         copy_run_dir(src, os.path.join(stage, "runs"))
     return stage
@@ -191,49 +193,128 @@ def make_staging(a, stage):
 
 RUN_SKIP_SUFFIX = ("-wal", "-shm", "-journal", ".lock", ".tmp", ".work")
 SQLITE_SUFFIX = (".db", ".sqlite3", ".sqlite")
+SECRET_NAMES = (".env", "known_hosts", "authorized_keys")
+SECRET_SUFFIX = (".env", ".pem", ".key", ".p12", ".pfx")
+SECRET_WORDS = ("secret", "token", "credential", "password", "id_rsa", "id_ed25519", "apikey", "api_key")
+JOURNAL_INDEX = "_journal_v3.json"
+GENESIS = "0" * 64
 
 
 def run_label(src):
-    """Etichetta stabile e univoca: ultimi due componenti del percorso (es. deepseek/brain-deepseek-paper20261118)."""
+    """Etichetta stabile e univoca: ultimi due componenti del percorso (es. deepseek__brain-deepseek-paper20261118)."""
     parts = [x for x in os.path.normpath(src).split(os.sep) if x]
     return "__".join(parts[-2:])
 
 
-def copy_run_dir(src, runs_root):
-    """Storico di una run (Brain V3, Arena, Brain libero): copia COERENTE in sola lettura.
-    Basi SQLite con l'API di backup (sorgente mode=ro) + integrity_check; altri file regolari copiati come sono;
-    mai lock, WAL/SHM, temporanei o link. Sorgente assente o illeggibile: errore, non parte nulla."""
+def excluded_reason(name):
+    low = name.lower()
+    if name.startswith("."):
+        return "nascosto"
+    if low.endswith(RUN_SKIP_SUFFIX) or low == "writer.lock":
+        return "lock_wal_temporaneo"
+    if low in SECRET_NAMES or low.endswith(SECRET_SUFFIX) or any(w in low for w in SECRET_WORDS):
+        return "possibile_segreto"
+    return None
+
+
+def chain_digest(previous, row):
+    """Stessa regola di backend/v3/events.py::_digest (vettori di riferimento nei test)."""
+    fields = [previous, row[1], row[2], row[3], row[4], str(row[5]), row[6], row[7]]
+    return hashlib.sha256(json.dumps(fields, separators=(",", ":"), ensure_ascii=True).encode("utf-8")).hexdigest()
+
+
+def journal_chain(path):
+    """(eventi, testa) della catena di un journal V3 (tabella v3_events); None se non e' un journal V3."""
+    con = sqlite3.connect("file:%s?mode=ro" % path, uri=True)
+    try:
+        if not con.execute("select 1 from sqlite_master where type='table' and name='v3_events'").fetchone():
+            return None
+        prev, n = GENESIS, 0
+        for row in con.execute("select seq,event_id,portfolio_id,run_id,kind,occurred_at_ms,source,payload_json,"
+                               "previous_hash,event_hash from v3_events order by seq"):
+            if row[8] != prev or row[9] != chain_digest(prev, row):
+                raise Fail("catena del journal non valida: %s" % path)
+            prev, n = row[9], n + 1
+        return n, prev
+    finally:
+        con.close()
+
+
+def source_has_prefix(src_db, events, head):
+    """La copia e' un prefisso dell'originale (append-only): l'evento numero `events` della sorgente ha la testa `head`."""
+    if events == 0:
+        return head == GENESIS
+    con = sqlite3.connect("file:%s?mode=ro" % src_db, uri=True)
+    try:
+        row = con.execute("select event_hash from v3_events order by seq limit 1 offset ?", (events - 1,)).fetchone()
+    finally:
+        con.close()
+    return row is not None and row[0] == head
+
+
+def copy_run_dir(src, runs_root, required=False):
+    """Storico di una run (Brain V3, Arena, Brain libero, adattivo...): copia COERENTE e RICORSIVA in sola lettura.
+    SQLite con l'API di backup (sorgente mode=ro) + integrity_check; per i journal V3 anche la catena degli eventi,
+    con verifica che la copia sia un prefisso dell'originale; esclusi link, file nascosti, lock/WAL/temporanei e
+    possibili segreti (contati per categoria, mai copiati). Sorgente mancante: errore se obbligatoria."""
     if not os.path.isabs(src) or not os.path.isdir(src) or os.path.islink(src):
+        if required:
+            raise Fail("archivio OBBLIGATORIO mancante o non valido: %s" % src)
         raise Fail("cartella di run non valida: %s" % src)
-    dst = os.path.join(runs_root, run_label(src))
+    label = run_label(src)
+    dst = os.path.join(runs_root, label)
     if os.path.exists(dst):
         raise Fail("due cartelle di run con la stessa etichetta: %s" % src)
     os.makedirs(dst, mode=0o700)
-    copied = 0
-    for name in sorted(os.listdir(src)):
-        full = os.path.join(src, name)
-        if os.path.islink(full) or not os.path.isfile(full) or name.startswith(".") or name.endswith(RUN_SKIP_SUFFIX):
-            continue
-        out = os.path.join(dst, name)
-        if name.endswith(SQLITE_SUFFIX):
-            source = sqlite3.connect("file:%s?mode=ro" % full, uri=True)
-            try:
-                target = sqlite3.connect(out)
+    copied, excluded, journals = 0, {}, []
+    for dp, dn, fn in os.walk(src):
+        dn[:] = sorted(d for d in dn if not os.path.islink(os.path.join(dp, d)) and not d.startswith("."))
+        rel_dir = os.path.relpath(dp, src)
+        out_dir = dst if rel_dir == "." else os.path.join(dst, rel_dir)
+        os.makedirs(out_dir, mode=0o700, exist_ok=True)
+        for name in sorted(fn):
+            full = os.path.join(dp, name)
+            why = "link" if os.path.islink(full) else (None if os.path.isfile(full) else "non_regolare")
+            why = why or excluded_reason(name)
+            if why:
+                excluded[why] = excluded.get(why, 0) + 1
+                continue
+            out = os.path.join(out_dir, name)
+            if name.endswith(SQLITE_SUFFIX):
+                source = sqlite3.connect("file:%s?mode=ro" % full, uri=True)
                 try:
-                    source.backup(target)
-                    ok = target.execute("PRAGMA integrity_check").fetchone()[0]
+                    target = sqlite3.connect(out)
+                    try:
+                        source.backup(target)
+                        target.execute("PRAGMA journal_mode=DELETE")        # copia autonoma: niente -wal/-shm
+                        ok = target.execute("PRAGMA integrity_check").fetchone()[0]
+                    finally:
+                        target.close()
                 finally:
-                    target.close()
-            finally:
-                source.close()
-            if ok != "ok":
-                raise Fail("integrity_check fallito: %s" % full)
-        else:
-            shutil.copy2(full, out)
-        copied += 1
+                    source.close()
+                if ok != "ok":
+                    raise Fail("integrity_check fallito: %s" % full)
+                ch = journal_chain(out)
+                if ch is not None:
+                    if not source_has_prefix(full, ch[0], ch[1]):
+                        raise Fail("la copia del journal non e' un prefisso dell'originale: %s" % full)
+                    rel = os.path.relpath(out, os.path.dirname(runs_root)).replace(os.sep, "/")
+                    journals.append({"file": "dati/" + rel, "events": ch[0], "head": ch[1]})
+            else:
+                shutil.copy2(full, out)
+            copied += 1
     if copied == 0:
         raise Fail("cartella di run vuota: %s" % src)
-    say("storico run %s: %d file" % (run_label(src), copied))
+    index = os.path.join(runs_root, JOURNAL_INDEX)
+    entries = []
+    if os.path.exists(index):
+        with open(index) as f:
+            entries = json.load(f)
+    with open(index, "w") as f:
+        json.dump(entries + journals, f, indent=1, sort_keys=True)
+    say("storico run %s: %d file, %d journal V3%s%s" % (
+        label, copied, len(journals), " (obbligatorio)" if required else "",
+        "" if not excluded else ", esclusi " + ", ".join("%s=%d" % kv for kv in sorted(excluded.items()))))
 
 
 def clean_stage_locks(stage):
@@ -536,6 +617,8 @@ def main(argv=None):
     ap.add_argument("--keep-recent", type=int, default=14)
     ap.add_argument("--keep-weeks", type=int, default=8)
     ap.add_argument("--keep-months", type=int, default=6)
+    ap.add_argument("--required-run-dir", action="append", default=[], dest="required_run_dirs",
+                    help="cartella di run OBBLIGATORIA: se manca non parte nulla; ripetibile")
     ap.add_argument("--run-dir", action="append", default=[], dest="run_dirs",
                     help="cartella di una run da includere (Brain V3, Arena, Brain libero); ripetibile")
     ap.add_argument("--brain-retries", type=int, default=2, help="nuovi tentativi se manca la finestra di fine ciclo")
