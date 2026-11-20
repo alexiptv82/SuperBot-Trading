@@ -1,3 +1,9 @@
+## 21/11/2026 — Backup: run preparata verificata; storici reali ancora da proteggere
+
+- **Eseguito dal proprietario** (procedura `de59f677`, impronta OK): `brain-rc-2000-20261106-20261120T131142Z.tar.age`, 1 evento, 6 file, esito OK. **È la run `brain-rc-2000-20261106` PREPARATA IN PAUSA e mai avviata**: `prepare_paper_run.py` scrive esattamente 1 evento `run_prepared` + config, mandato, budget, pausa, marcatore. Backup corretto ma **senza storico di trading**.
+- **Storici reali individuati** (dai processi in esecuzione, senza leggere dati): Brain V3 attivo `brain-v3-paper20261111` (`/opt/superbot-v3-paper-runs/`, almeno altre 2 cartelle non elencabili), Arena `brain-{deepseek,qwen,minimax}-paper20261118` (`/opt/superbot-ai-arena-paper/`), Brain libero (`/opt/superbot-brain-free`), Falco/Toro (`/opt/superbot-desk-data`), più `/opt/superbot-brain-adaptive` e `/opt/superbot-ai-data` (contenuto da inventariare). **Nessuno di questi è ancora protetto da un backup verificato**: l'extbackup copre Falco/Toro/app/pool ma non è certificato, e non copre Brain V3, Arena e Brain libero.
+- **Preparato (branch `claude/extbackup-storici-20261121` @ `16571ae3`)**: extbackup con `--run-dir` + `prova_storici.sh`, che esegue l'extbackup reale su TUTTI gli storici verso un repository locale con una chiave di prova, ripristina con lo script ufficiale e cancella tutto. Nessun trasferimento. 34 test. Comandi con impronte in `deploy/extbackup/PROVA-STORICI.md`. In attesa di autorizzazione.
+
 ## 20/11/2026 13:50 Europe/Rome — backup cifrato Brain preparato, non eseguito
 
 - Checkpoint append-only: [diario/2026-11-20_1350_checkpoint-backup-cifrato-preparato-non-eseguito.md](diario/2026-11-20_1350_checkpoint-backup-cifrato-preparato-non-eseguito.md), commit [75ba444…](https://github.com/alexiptv82/SuperBot-Trading/commit/75ba444a400f85930dc2b6479f584a5d9b4f1175).
