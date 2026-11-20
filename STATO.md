@@ -1,3 +1,9 @@
+## 21/11/2026 (13) — DECISIONE: profilo di rischio B per il primo PAPER
+
+- **Decisione del proprietario:** profilo B per 2.000 USDT PAPER: 1 % per trade, 4 posizioni e 4 % di rischio aperto, giornata con avviso al 3 % e stop al 4 %, pavimento 1.600, leva 1–30×. Mandato **non** applicato.
+- **Non operativi:** leva minima calcolata (oggi la propone il modello e il motore la abbassa soltanto se insicura, `risk:leverage_adjusted`) e filtro sui costi > 25 % del rischio, tenuto fuori dal primo PAPER e misurato nel collaudo (`73f68ad0`, gate verde).
+- Il laboratorio delle uscite resta offline. Prossimo: preparare il mandato e la configurazione della nuova run, da approvare.
+
 ## 21/11/2026 (12) — Uscite preregistrate e proposta del rischio definitivo
 
 - `26e4159f` (gate verde: V3 5388, builder 158, Jest 153).
