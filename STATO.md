@@ -1,3 +1,14 @@
+## 20/11/2026 14:46 Europe/Rome — backup riuscito su run vuota; storici reali ancora scoperti
+
+- Checkpoint append-only: [diario/2026-11-20_1446_checkpoint-backup-run-vuota-storici-da-proteggere.md](diario/2026-11-20_1446_checkpoint-backup-run-vuota-storici-da-proteggere.md), commit [376a734…](https://github.com/alexiptv82/SuperBot-Trading/commit/376a7341efd7ff9a34d3689bd1883e2f7d9fc2bb).
+- Il diario attesta backup cifrato OK della run preparata/mai avviata: 1 evento e 6 file. Prova lo strumento, **non protegge gli storici reali**.
+- Storici individuati read-only: Brain V3 attivo, 3 Arena, Brain libero/storico/adattivo, area AI, Falco/Toro; nessun backup+restore end-to-end certificato. Brain libero ~469 MB, oltre 100 MB per file GitHub.
+- Candidato `claude/extbackup-storici-20261121` @ `ad3ae56734f740ec87b1466c6f89e1bdcd61c3cb`: 42 test non-root, prova reale non eseguita, nessun trasferimento/installazione.
+- Integrazione invariata @ `de59f677…`; RC84 #80 open/draft; Issue #124 P0 open; extbackup storico `3dc2116a…` non certificato/installato.
+- Age PC `ESITO: VERIFICA OK` resta prova locale; non certifica backup/restore VPS.
+- Le voci precedenti datate 21/11 derivano da commit del 20/11; discrepanza preservata senza riscrivere lo storico.
+- Nessun main/merge/deploy/VPS/servizio/restart/reset/ordine/training/LIVE/API a pagamento. PAPER, Falco/Toro/Brain, storici ed EventJournal preservati.
+
 ## 21/11/2026 (2) — Prova extbackup degli storici: correzioni pronte, in attesa di autorizzazione
 
 - Branch `claude/extbackup-storici-20261121` @ `ad3ae567`: copia ricorsiva filtrata (link, nascosti, lock/WAL, possibili segreti esclusi), archivi obbligatori con NO-GO (Brain V3 attivo, 3 run Arena, Brain storico `desk-data/brain`, Falco/Toro), facoltativi (altre run V3, Brain libero, adattivo con `hawk/`/`bull/`, ai-data), controllo dello spazio, catena dei journal V3 registrata e confrontata con l'originale al backup e dopo il ripristino. 42 test da non-root. Procedura con comando unico in `deploy/extbackup/PROVA-STORICI.md`.
