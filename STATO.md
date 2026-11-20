@@ -1,3 +1,7 @@
+## 20/11/2026 (6) — Claude: skill attivate e integrate
+
+- Sessione locale Claude Code sulla VPS (non cloud/Project). Le 5 skill installate come skill personali in `~/.claude/skills/` (rilevate senza riavvio, come da documentazione ufficiale) e **richiamate davvero** con lo strumento Skill: tutte e cinque caricate. Integrate nel ramo di laboratorio @ `3a231dd1` (suite 5311, builder 157, Jest 137). Consultive: nessuna modifica a strategie, soglie, rischio. Dettagli in `.claude/skills/PROVENIENZA.md`.
+
 ## 20/11/2026 08:46 Europe/Rome — seconda acquisizione, feed, Brain Unico, skill e validazione reale
 
 - Checkpoint: [08:43](diario/2026-11-20_0843_checkpoint-seconda-acquisizione-feed-brain-unico.md), commit [c1371121…](https://github.com/alexiptv82/SuperBot-Trading/commit/c1371121e13653db410cb998c16cb0da502e459e); addendum append-only [08:46](diario/2026-11-20_0846_addendum-skill-suite-5311.md), commit [720904e…](https://github.com/alexiptv82/SuperBot-Trading/commit/720904ee98c5df972d497eb69d31288826e34190).
