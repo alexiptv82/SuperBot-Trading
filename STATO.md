@@ -1,3 +1,8 @@
+## 21/11/2026 (15) — Mandato: garanzie effettive; universo e modello verificati
+
+- `f50baf89` (gate verde): il mandato operativo non è firmato. Dimostra la coerenza tra approvazione, limiti e run, non l'identità di chi approva. Le ricevute Ed25519 sono separate e non collegate al runner. All'attivazione è obbligatorio `sha256sum --strict` della configurazione completa. Mandato ancora `approved: false`.
+- **Universo:** 8 simboli, ereditati dalla configurazione PAPER 2.000; nessuna decisione li rende definitivi. Il codice ne ammette fino a 40 `*USDT`. Oro e argento non sono verificati su Bitget. Il budget AI scala con i simboli (1 chiamata per simbolo per ciclo). **Da decidere dal proprietario**; nessun ampliamento automatico.
+
 ## 21/11/2026 (14) — Configurazione e mandato del profilo B pronti per la revisione (non attivi)
 
 - `45b95ff8` (gate verde: V3 5393, builder 158, Jest 153).
