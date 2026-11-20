@@ -159,6 +159,10 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
     non decrescente e < ``slot_end_ms`` (altrimenti ``instant_out_of_slot``, nessuna decisione). Deduplicazione per
     slot: un simbolo che ha gia' una decisione nel journal con istante in [slot_start_ms, slot_end_ms) non viene
     deciso di nuovo (``already_decided_in_slot``), anche dopo un riavvio a meta' slot.
+
+    Deduplicazione per slot anche in modalita' ``"cycle"``: basta passare ``slot_start_ms``/``slot_end_ms`` (il runner
+    cablato lo fa). Corregge il difetto per cui un riavvio nello stesso slot ridecideva tutti i simboli con un nuovo
+    ``now_ms`` (nuovi id, chiamate AI e campioni duplicati). Senza i limiti dello slot: comportamento precedente.
     """
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
@@ -179,6 +183,10 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
     if instant == "per_symbol" and (not callable(wall_ms) or type(slot_start_ms) is not int
                                     or type(slot_end_ms) is not int or not slot_start_ms <= now_ms < slot_end_ms):
         raise ValueError("per_symbol_requires_clock_and_slot")
+    slot_given = slot_start_ms is not None or slot_end_ms is not None
+    if slot_given and (type(slot_start_ms) is not int or type(slot_end_ms) is not int
+                       or not slot_start_ms <= now_ms < slot_end_ms):
+        raise ValueError("invalid_slot")
     reentry_on = reentry_policy is not None and reentry_policy.mode != "off"
     if reentry_on and trace == "off":
         raise ValueError("reentry_requires_trace")       # una tesi non registrata non e' verificabile
@@ -196,7 +204,7 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
     theses: list[tuple[str, str, int, str]] = []
     instants: list[tuple[str, int]] = []
     decided_in_slot: set = set()
-    if instant == "per_symbol":
+    if slot_given:
         decided_in_slot = {r.event.payload.get("symbol") for r in journal.list_run_kinds_since(
             PORTFOLIO_ID, run_id, ("brain_decision",), slot_start_ms)
             if r.event.occurred_at_ms < slot_end_ms and isinstance(r.event.payload, Mapping)}

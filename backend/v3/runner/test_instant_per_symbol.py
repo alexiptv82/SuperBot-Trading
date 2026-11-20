@@ -166,13 +166,75 @@ def test_a_restart_in_the_same_slot_does_not_decide_again_per_symbol():
     assert {c for _, c in rep2.errors} == {"already_decided_in_slot"}
 
 
-def test_finding_the_current_cycle_mode_decides_again_after_a_restart_in_the_same_slot():
-    """Comportamento ATTUALE documentato (non corretto qui: percorso operativo): duplicati nello stesso slot."""
+def _cycle_mode(j, clock, now, *, slot=True, kind="NO_TRADE", symbols=SYMBOLS):
+    return run_brain_cycle(
+        now_ms=now, journal=j, run_id=RUN, symbols=symbols, store=TimeStore(), bars_holder=CycleBars(),
+        analyst=MarketEntryAnalyst(SlowModel(clock, j, latency=1_000, exit_at=99, kind=kind)), view_params=VIEW,
+        risk_policy=POLICY, mandate=_mandate(), policy_verifier=lambda m, p: True, market_rules=lambda s: RULES,
+        initial_equity=D("100000"), slippage_bps=2, allowed_strategy_ids=("S25",), trace="required", wall_ms=clock,
+        price_source=lambda sym, at: _price(at // 900_000 * 900_000),
+        slot_start_ms=G if slot else None, slot_end_ms=SLOT_END if slot else None)
+
+
+def test_defect_without_slot_bounds_a_restart_decides_every_symbol_again():
+    """Difetto classificato (20/11): senza limiti dello slot un riavvio ridecide tutto (comportamento precedente)."""
     j, clock = _journal(), Clock()
-    _cycle(j, SlowModel(clock, j, latency=1_000, exit_at=99, kind="NO_TRADE"), clock, instant="cycle")
-    _cycle(j, SlowModel(clock, j, latency=1_000, exit_at=99, kind="NO_TRADE"), clock, instant="cycle",
-           now=NOW + 120_000)
+    _cycle_mode(j, clock, NOW, slot=False)
+    _cycle_mode(j, clock, NOW + 120_000, slot=False)
     assert len(_events(j, "brain_decision")) == 16
+
+
+def test_fixed_with_slot_bounds_cycle_mode_does_not_decide_again_after_a_restart():
+    j, clock = _journal(), Clock()
+    _cycle_mode(j, clock, NOW)
+    rep2 = _cycle_mode(j, clock, NOW + 120_000)
+    assert len(_events(j, "brain_decision")) == 8 and rep2.decisions == ()
+    assert {c for _, c in rep2.errors} == {"already_decided_in_slot"}
+
+
+def test_a_restart_after_a_partial_cycle_decides_only_the_missing_symbols():
+    j, clock = _journal(), Clock()
+    _cycle_mode(j, clock, NOW, symbols=SYMBOLS[:3])                         # crash dopo 3 simboli
+    rep2 = _cycle_mode(j, clock, NOW + 120_000)
+    assert [d[0] for d in rep2.decisions] == list(SYMBOLS[3:])
+    assert len(_events(j, "brain_decision")) == 8
+
+
+@pytest.mark.parametrize("mode", ["cycle", "per_symbol"])
+def test_no_double_open_after_a_restart_in_the_same_slot(mode):
+    j, clock = _journal(), Clock()
+    first = (_cycle_mode(j, clock, NOW, kind="OPEN") if mode == "cycle"
+             else _cycle(j, SlowModel(clock, j, latency=1_000, exit_at=99, kind="OPEN"), clock, instant="per_symbol"))
+    opened = {s for s, _ in first.opened}
+    assert opened
+    clock.t = NOW + 125_000
+    second = (_cycle_mode(j, clock, NOW + 120_000, kind="OPEN") if mode == "cycle"
+              else _cycle(j, SlowModel(clock, j, latency=1_000, exit_at=99, kind="OPEN"), clock,
+                          instant="per_symbol", now=NOW + 120_000))
+    assert second.opened == () and len(_events(j, "paper_open")) == len(opened)
+    # anche un simbolo chiuso nel frattempo non si riapre nello stesso slot
+    pid = first.opened[0][1]
+    j.append(Event("close-x", "brain", RUN, "paper_close", NOW + 130_000, "exit_service",
+                   {"position_id": pid, "symbol": first.opened[0][0], "realized_pnl": "-1"}))
+    clock.t = NOW + 200_000
+    third = (_cycle_mode(j, clock, NOW + 190_000, kind="OPEN") if mode == "cycle"
+             else _cycle(j, SlowModel(clock, j, latency=1_000, exit_at=99, kind="OPEN"), clock,
+                         instant="per_symbol", now=NOW + 190_000))
+    assert third.opened == ()
+
+
+def test_slot_bounds_are_validated():
+    with pytest.raises(ValueError, match="invalid_slot"):
+        run_brain_cycle(now_ms=NOW, journal=_journal(), run_id=RUN, symbols=(), store=None, bars_holder=None,
+                        analyst=None, view_params=None, risk_policy=None, mandate=None, policy_verifier=None,
+                        market_rules=None, initial_equity=D("1"), slippage_bps=0, slot_start_ms=NOW + 1,
+                        slot_end_ms=SLOT_END)
+
+
+def test_the_wired_runner_passes_the_runner_slot():
+    src = (ROOT / "backend/v3/runner/wiring.py").read_text()
+    assert "slot_start = slot * config.cycle_ms" in src
+    assert "slot_start_ms=slot_start, slot_end_ms=slot_start + config.cycle_ms" in src
 
 
 def test_a_decision_outside_the_current_slot_does_not_count_as_already_decided():

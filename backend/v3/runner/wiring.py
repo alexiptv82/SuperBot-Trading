@@ -211,6 +211,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
 
     def run_cycle(now_ms: int, slot: int) -> CycleReport:
         rules.load(now_ms)
+        # stesso slot che il runner usa per decidere quando girare: un riavvio a meta' slot non ridecide i simboli
+        slot_start = slot * config.cycle_ms
         return run_brain_cycle(
             now_ms=now_ms, journal=journal, run_id=run_id, symbols=config.symbols, store=store,
             bars_holder=holder, analyst=analyst, view_params=vp, risk_policy=config.risk_policy,
@@ -222,7 +224,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             peer_source=peer_reader, trace="required",
             wall_ms=clock_ms if clock_ms is not None else (lambda: int(time.time() * 1000)),
             # anti-reingresso in sola osservazione: soglie provvisorie finche' E0 e il proprietario non decidono
-            reentry_policy=ReentryPolicy(mode="observe"))
+            reentry_policy=ReentryPolicy(mode="observe"),
+            slot_start_ms=slot_start, slot_end_ms=slot_start + config.cycle_ms)
 
     def run_monitor(now_ms: int) -> MonitorReport:
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,
