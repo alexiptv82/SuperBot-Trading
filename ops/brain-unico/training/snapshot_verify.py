@@ -41,7 +41,7 @@ TOLERANCE = Decimal("1e-9")
 VERIFIED = "verified"
 _CTX = Context(prec=60, rounding=ROUND_HALF_EVEN)
 _Q = Decimal("1e-10")
-_NAME = re.compile(r"^t(15m|1h|4h)_(ret_([0-9]{1,3})|atr14_pct|rsi14)$")
+_NAME = re.compile(r"^t(15m|1h|4h)_(ret_([0-9]{1,5})|atr14_pct|rsi14)$")  # finestre reali: 2880 / 720 / 180
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _NUMBER = re.compile(r"^-?[0-9]+(\.[0-9]+)?$")
 

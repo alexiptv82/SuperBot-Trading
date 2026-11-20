@@ -246,3 +246,30 @@ def test_an_attested_archive_with_different_market_data_is_not_promoted():
     assert row["provenance"]["candle_provenance"] == "attested"
     assert row["provenance"]["feature_consistency"] == "inputs_mismatch"   # il runtime ha visto altri dati
     assert "snapshot_unverified" in row["ineligible_reasons"]
+
+
+def test_features_with_the_real_view_parameters_are_recognised():
+    """Regressione trovata sui dati Bitget reali (20/11/2026): le finestre reali sono 2880/720/180 candele e i nomi
+    `t15m_ret_2880` venivano rifiutati come `unknown_feature` dal validatore (che ne accettava al massimo 3 cifre)."""
+    import tempfile as tf
+    from backend.v3.brain_market.params import load_default_params
+    from backend.v3.runner import decision_trace as dt
+    B, SV = _builder()
+    vp = load_default_params()
+    assert {s.pct_window for s in vp.timeframes} >= {2880}
+    now = NOW
+    bars = {s.name: _bars(s.name, now, n=s.pct_window + 30) for s in vp.timeframes}
+    cap = dt.capture_inputs(bars, vp.timeframes, now_ms=now)
+    assert "t15m_ret_2880" in cap.features
+    root = Path(tf.mkdtemp()) / "dc"
+    for s in vp.timeframes:
+        d = root / s.name
+        d.mkdir(parents=True)
+        (d / "candles_meta.json").write_text(json.dumps({**META, "interval_ms": s.candle_ms}))
+        (d / "AAAUSDT.jsonl").write_text("".join(json.dumps({"t": b.open_time_ms, "o": str(b.open), "h": str(b.high),
+                                                             "l": str(b.low), "c": str(b.close), "v": str(b.volume)}) + "\n"
+                                                 for b in bars[s.name]))
+    payload = {"feature_set": dt.FEATURE_SET, "inputs_window": {k: list(v) for k, v in cap.inputs_window.items()},
+               "inputs_digest": cap.inputs_digest, "features": {k: format(v, "f") for k, v in cap.features.items()},
+               "snapshot_captured_at_ms": now, "feature_asof_ms": cap.asof_ms, "symbol": "AAAUSDT"}
+    assert SV.verify(payload, SV.DecisionCandles(str(root)))[0] == "verified"
