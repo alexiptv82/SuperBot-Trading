@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "approved": false,
+  "approved_by": "",
+  "portfolio_id": "brain",
+  "run_id": "brain-unico-paper-rc1",
+  "policy_hash": "ba5c074ec2ecfe34",
+  "avvertenze": [
+    "Il limite dell'1 % per operazione e' la perdita STIMATA allo stop (costi stimati inclusi, 16 bp andata e ritorno), non una perdita massima garantita: gap di prezzo, slippage o funding superiori alle ipotesi possono produrre perdite maggiori.",
+    "Il pavimento di 1.600 USDT blocca le NUOVE aperture quando l'equity lo raggiunge; non garantisce che l'equity non scenda oltre: le posizioni gia' aperte proseguono fino al loro stop, e gap o slippage possono superarlo.",
+    "Il limite giornaliero (avviso 3 %, stop alle nuove aperture 4 % del capitale di inizio giornata UTC) non chiude le posizioni aperte: la perdita della giornata puo' superare il 4 %.",
+    "Solo PAPER: nessun ordine reale. Leva proposta dal modello entro 1-30x, abbassata dal motore se troppo vicina alla liquidazione, mai alzata."
+  ]
+}

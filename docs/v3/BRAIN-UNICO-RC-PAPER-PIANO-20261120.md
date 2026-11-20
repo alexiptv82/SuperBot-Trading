@@ -93,7 +93,7 @@ Il motore toglie dalla cassa al massimo margine + commissione d'apertura (`engin
 ## 11. Requisiti ancora mancanti per il GO PAPER (21/11/2026)
 | # | Requisito | Chi | Stato |
 |---|---|---|---|
-| 1 | **Profilo B scelto (21/11).** Restano il mandato definitivo per la nuova run (cambia il `policy_hash`) e la sua approvazione | Claude prepara, proprietario approva | da preparare |
+| 1 | **Profilo B scelto (21/11).** Configurazione e modello di mandato pronti (`BRAIN-UNICO-MANDATO-PROFILO-B-20261121.md`, `policy_hash ba5c074ec2ecfe34`): da esaminare e approvare all'attivazione | proprietario | **pronti per la revisione** |
 | 2 | Prova amministrativa finale del backup per componente, poi installazione dell'extbackup aggiornato e primo invio cifrato al repository privato | proprietario (root, consenso) | procedura pronta (`75a714be`) |
 | 3 | Ripristino del file cifrato sul PC del proprietario, con la chiave privata | proprietario | da fare |
 | 4 | Chiusura formale dell'Issue #124 e conferma di zero P0 aperti | proprietario | da confermare |
