@@ -29,7 +29,19 @@
 ## 3. Deploy (solo con consenso, descrizione)
 - **Backend:** runner in modalità sidecar con `trace="required"`, `ReentryPolicy(observe)` e deduplicazione per slot; nuova run id, senza riusare né cancellare journal storici. Falco, Toro, Arena e Brain storico restano intatti.
 - **Web:** build di produzione dal commit della RC, copiata con lo script di cutover esistente. Il service worker carica le pagine prima dalla rete: alla prima apertura dopo il deploy l'app mostra la schermata Brain Unico **senza reinstallazione**, perché il manifest non cambia.
-- **Nessun cambio** a `DESK_MODE` (resta `paper`), alle soglie 35 %/50 % e al pavimento 450.
+- **Nessun cambio** a `DESK_MODE`, che resta `paper`.
+- **Parametri di rischio:**
+
+| | Storici (run precedenti: NON approvati per la nuova run) | **Nuova run Brain Unico, profilo B** (`runner_config_brain_unico_paper_b.json`, mandato `approved: false`) |
+|---|---|---|
+| Limite giornaliero: avviso | 35 % | **3 %** |
+| Limite giornaliero: stop alle nuove aperture | 50 % | **4 %** |
+| Pavimento di capitale | 450 USDT | **1.600 USDT** |
+| Rischio per operazione (stimato allo stop) | 4,29 % | **1 %** |
+| Posizioni aperte | nessun tetto numerico | **massimo 4** (tetto esplicito, branch `claude/tetto-posizioni-20261121`, da approvare) |
+| Leva | 20–50× | **1–30×** |
+
+  Le run storiche restano com'erano: nessuna modifica ai loro parametri o journal.
 
 ## 4. Collaudo PAPER in due fasi distinte (decisione del proprietario, 21/11/2026)
 ### Fase 1: verifica TECNICA rapida (8 simboli, profilo B)
@@ -52,7 +64,16 @@
 | Costo AI **effettivo** per decisione | misurato (spesa del giorno in `budget.db` / decisioni registrate). Le chiamate con stima prudente, senza `usage`, sono contate a parte. Mai dedotto da 0,75 / 192 | `budget.db` (`spend_events`) + journal |
 | Posizioni aperte contemporaneamente (massimo osservato) | ≤ 4. Vedi la nota sotto | journal |
 
-**Nota sul massimo di quattro posizioni:** nel codice **non** c'è un limite esplicito al numero di posizioni. Il "4" deriva da 4 % di rischio aperto diviso 1 % per operazione. Un'operazione ridotta dal tetto di margine rischia meno dell'1 %, quindi in casi rari possono aprirsene più di quattro, entro il 50 % di margine totale e una sola posizione per simbolo. Nella Fase 1 si **misura**. Prima della Fase 2, che ha più simboli, il proprietario decide se introdurre un tetto esplicito di 4 posizioni, con test mirati.
+**Massimo quattro posizioni (decisione del 21/11):** tetto **esplicito** sul branch isolato `claude/tetto-posizioni-20261121` @ `6eac67aa`, da approvare prima della RC.
+- **Dove agisce:** il controllo è in `recheck_paper_open`, eseguito da `commit_paper_open` sotto il lock e sullo stato fresco del journal. Rifiuta la quinta apertura con `max_open_positions`.
+- **Test:** 7 test mirati; la suite V3 completa passa sul branch con 5400 test.
+- **Limite noto:** vale nella modalità sidecar prevista per la RC. Il vecchio percorso `legacy` non passa da questa conferma.
+
+**Rischio aperto ricostruito dal journal e perdita stimata (verifica del 21/11, non corretta):**
+- **La discrepanza:** `snapshot_from_summary` calcola il rischio aperto come Σ |ingresso − stop| × quantità, **senza costi**. Il RiskManager stima invece ogni perdita **con** i costi (16 bp). Ogni posizione aperta è quindi contata meno: con il profilo B è 15,15 invece di 20 USDT con stop allo 0,5 %, e 13,04 invece di 20 con stop allo 0,3 %.
+- **Impatto misurato con le funzioni reali:** senza tetto si sarebbero aperte tutte le 8 posizioni possibili, con una perdita stimata complessiva del **5,3 %** (stop 0,5 %) e del **6,1 %** (stop 0,3 %), oltre il budget del 4 %. **Con il tetto** le posizioni sono al massimo 4, ciascuna ≤ 1 % stimato: totale ≤ **4,0 %**. Il budget complessivo non viene più superato.
+- **Effetto residuo:** il controllo del pavimento (equity − pavimento − rischio aperto) usa lo stesso rischio sottostimato. Vicino a 1.600 USDT le nuove aperture possono superare la stima del pavimento al massimo della parte di costi delle posizioni aperte, circa 5–7 USDT ciascuna.
+- **Correzione minima proposta, NON applicata (da approvare):** includere i costi stimati nel rischio aperto, cioè Σ (|ingresso − stop| + ingresso × costi stimati) × quantità, passando `estimated_roundtrip_cost_bp` a `snapshot_from_summary` nei suoi due usi, con test di parità con `quote_paper_risk`. Cambia solo la contabilità del rischio aperto, non i parametri.
 
 ### Fase 2: valutazione delle PRESTAZIONI (universo ampliato)
 - **Universo:** indicativamente le prime 25 criptovalute per capitalizzazione, più oro e argento (`XAUUSDT`, `XAGUSDT`, confermati dal proprietario sulla documentazione Bitget). Il numero massimo di posizioni resta **4**.
