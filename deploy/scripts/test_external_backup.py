@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import tarfile
@@ -286,6 +287,34 @@ class ExternalBackupTests(unittest.TestCase):
         p = self._wrapper(docker="false false", old_heartbeats=False)
         self.assertNotEqual(p.returncode, 0, p.stdout)
         self.assertIn("NO-GO: backup", p.stdout)
+
+    def test_admin_wrapper_passes_on_the_real_bot_shape(self):
+        self.bot_shape("hawk", vault=37.5)
+        self.bot_shape("bull", vault=12.25)
+        p = self._wrapper()
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("ESITO PROVA: OK", p.stdout)
+
+    def test_admin_wrapper_shows_every_restore_error_and_keeps_only_the_text_logs(self):
+        self.edit_state("bull", lambda st: st["main"].__setitem__("cash", st["main"]["cash"] + 5))
+        self.edit_state("hawk", lambda st: st["main"]["closed"].pop())
+        p = self._wrapper()
+        self.assertNotEqual(p.returncode, 0, p.stdout)
+        self.assertIn("ERRORE: bull: contabilita' incoerente", p.stdout)
+        self.assertIn("ERRORE: hawk: i trade chiusi nello stato (39)", p.stdout)
+        self.assertIn("NO-GO: ripristino", p.stdout)
+        self.assertNotIn("resta per l'esame", p.stdout)
+        t = self.td.name
+        self.assertFalse(os.path.exists(os.path.join(t, "base")))                 # dati in chiaro cancellati
+        logs = [f for f in os.listdir(t) if f.startswith("base-") and f.endswith(".log")]
+        self.assertEqual(len(logs), 1, os.listdir(t))
+        path = os.path.join(t, logs[0])
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode) & 0o077, 0)          # solo il proprietario
+        body = open(path, "rb").read()
+        self.assertIn(b"ERRORE: bull", body)
+        self.assertFalse(any(m in body for m in MARKERS))                         # nessun contenuto
+        self.assertNotIn(b"AGE-SECRET-KEY", body)                                 # nessuna chiave
+        self.assertIn(logs[0], p.stdout)
 
     def test_admin_wrapper_refuses_when_an_arena_run_has_no_journal(self):
         t = self.td.name
@@ -664,6 +693,72 @@ class ExternalBackupTests(unittest.TestCase):
         probs, text = self.check(out)
         self.assertEqual(probs, [], text)
         self.assertIn("ECCEZIONE AMMESSA", text)
+
+    def bot_shape(self, p, vault=0.0, tag=None):
+        """Forma prodotta dal bot reale: righe dello storico SENZA run_no (engine.py non le etichetta, cli.py
+        archivia lo storico a ogni nuova run) e, con il salvadanaio, denaro spostato dalla cassa al vault."""
+        path = os.path.join(self.root, p, "trade_history.jsonl")
+        with open(path) as f:
+            rows = [json.loads(x) for x in f if x.strip()]
+        for r in rows:
+            r.pop("run_no", None)
+            if tag is not None:
+                r["run_no"] = tag
+        put(path, "".join(json.dumps(r) + "\n" for r in rows).encode())
+        old = time.time() - 300
+        os.utime(path, (old, old))
+
+        def move(st):
+            for c in st["main"]["closed"]:
+                c.pop("run_no", None)
+            st["main"]["cash"] -= vault
+            st["capital"] = {"schema_version": 1, "policy": "salvadanaio-only-v1",
+                             "vault": {"balance": "%.2f" % vault, "pending": [], "revision": 3}}
+        self.edit_state(p, move)
+        jp = os.path.join(self.root, p, "salvadanaio-journal.jsonl")    # richiesto da backup_brain.py
+        put(jp, (json.dumps({"schema": 1, "bot": p, "cash_delta": "%.2f" % -vault}) + "\n").encode())
+        os.utime(jp, (old, old))
+
+    def test_semantic_check_accepts_the_real_bot_shape(self):
+        """Riproduce il NO-GO della prova reale: storico senza run_no e salvadanaio facevano fallire due controlli
+        per portafoglio (4 problemi) su dati coerenti."""
+        self.bot_shape("hawk", vault=37.5)
+        self.bot_shape("bull", vault=12.25)
+        out, _ = self.brain_snapshot()
+        probs, text = self.check(out)
+        self.assertEqual(probs, [], text)
+        self.assertIn("coerenza hawk: run 3 | 40 trade chiusi = storico della run", text)
+        self.assertIn("cassa + salvadanaio = capitale iniziale + risultati", text)
+
+    def test_semantic_check_still_catches_wrong_accounting_with_the_vault(self):
+        self.bot_shape("hawk", vault=37.5)
+        self.edit_state("hawk", lambda st: st["capital"]["vault"].__setitem__("balance", "40.00"))
+        out, _ = self.brain_snapshot()
+        probs, _ = self.check(out)
+        self.assertTrue(any("hawk: contabilita' incoerente" in x for x in probs), probs)
+
+    def test_semantic_check_refuses_an_unreadable_or_negative_vault(self):
+        for bad in ("-1", "abc", None):
+            self.bot_shape("bull", vault=5.0)
+            self.edit_state("bull", lambda st: st["capital"].__setitem__("vault", {"balance": bad}))
+            out, _ = self.brain_snapshot()
+            probs, _ = self.check(out)
+            self.assertTrue(any("bull: saldo del salvadanaio illeggibile" in x for x in probs), (bad, probs))
+            shutil.rmtree(out)
+
+    def test_semantic_check_catches_an_untagged_history_row_missing_from_the_state(self):
+        self.bot_shape("hawk")
+        self.edit_state("hawk", lambda st: st["main"]["closed"].pop())
+        out, _ = self.brain_snapshot()
+        probs, _ = self.check(out)
+        self.assertTrue(any("hawk: i trade chiusi nello stato (39)" in x and "1 solo nello storico" in x
+                            for x in probs), probs)
+
+    def test_semantic_check_still_flags_history_of_a_later_run(self):
+        self.bot_shape("bull", tag=4)                                    # stato run 3, storico run 4
+        out, _ = self.brain_snapshot()
+        probs, _ = self.check(out)
+        self.assertTrue(any("bull:" in x and "run successiva" in x for x in probs), probs)
 
     def test_semantic_check_catches_state_and_history_out_of_sync(self):
         self.edit_state("hawk", lambda st: st["main"]["closed"].pop())        # un trade sparito dallo stato

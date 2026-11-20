@@ -22,7 +22,10 @@ Passi (qualunque difetto = uscita 1, e --out resta per l'esame):
      risultato) con le righe dello storico della stessa run; nessun id oltre next_id; nessuna chiusura prima
      dell'apertura; nessuna run futura nello storico o nel registro di apprendimento; contabilita': senza
      posizioni aperte cassa = capitale iniziale + somma dei risultati (tolleranza 1 centesimo), con
-     posizioni aperte la cassa non puo' superare quella somma.
+     posizioni aperte la cassa non puo' superare quella somma. La cassa comprende il saldo del salvadanaio
+     (capital.vault.balance), che il bot sposta dalla cassa e viceversa conservando la somma; le righe dello
+     storico senza run_no appartengono alla run corrente (il bot non le etichetta e archivia lo storico a ogni
+     nuova run).
 """
 import argparse
 import gzip
@@ -254,7 +257,10 @@ def check_semantics(base, name, problems):
         return (r.get("id"), r.get("open_ms"), r.get("close_ms"), round(float(r.get("net") or 0), 6))
 
     from collections import Counter
-    in_run = [r for r in hist if r.get("run_no") == run]
+    # Il bot (engine.py) non scrive run_no nelle righe dei trade chiusi e, a ogni nuova run, sposta
+    # trade_history.jsonl in archive/: le righe SENZA run_no del file attivo sono quindi della run corrente.
+    # Righe etichettate con un'altra run restano escluse (e una run successiva resta un errore, sotto).
+    in_run = [r for r in hist if r.get("run_no") == run or not isinstance(r.get("run_no"), int)]
     a, b = Counter(key(r) for r in in_run), Counter(key(c) for c in closed)
     if a != b:
         problems.add("%s: i trade chiusi nello stato (%d) non coincidono con lo storico della run %d (%d): "
@@ -282,20 +288,32 @@ def check_semantics(base, name, problems):
         starts = {r.get("start_equity") for r in in_run if _num(r.get("start_equity"))}
         start = starts.pop() if len(starts) == 1 else None
     total = sum(float(c.get("net") or 0) for c in closed)
+    # Salvadanaio (vault_manager.py): rollover e saldo spostano denaro dalla cassa al vault, il prelievo dal vault
+    # alla cassa; ogni transizione conserva cassa + vault. Senza salvadanaio il vault vale 0.
+    vault = 0.0
+    cap = st.get("capital")
+    if cap is not None:
+        try:
+            vault = float((cap.get("vault") or {}).get("balance", 0))
+            if not vault >= 0 or vault != vault or vault == float("inf"):
+                raise ValueError
+        except (AttributeError, TypeError, ValueError):
+            problems.add("%s: saldo del salvadanaio illeggibile o negativo: contabilita' non verificabile" % name)
+            start = None
     if start is None:
         problems.add("%s: capitale iniziale della run sconosciuto: contabilita' non verificabile" % name)
         acct = "non verificabile"
     elif not positions:
-        diff = m["cash"] - (start + total)
+        diff = m["cash"] + vault - (start + total)
         if abs(diff) > 0.01:
-            problems.add("%s: contabilita' incoerente: cassa %.4f, capitale iniziale + risultati %.4f (diff %.4f)"
-                         % (name, m["cash"], start + total, diff))
-        acct = "cassa = capitale iniziale + risultati (diff %.6f)" % diff
+            problems.add("%s: contabilita' incoerente: cassa + salvadanaio %.4f, capitale iniziale + risultati %.4f "
+                         "(diff %.4f)" % (name, m["cash"] + vault, start + total, diff))
+        acct = "cassa + salvadanaio = capitale iniziale + risultati (diff %.6f)" % diff
     else:
-        if m["cash"] > start + total + 0.01:
-            problems.add("%s: con posizioni aperte la cassa (%.4f) supera capitale iniziale + risultati (%.4f)"
-                         % (name, m["cash"], start + total))
-        acct = "posizioni aperte %d: cassa <= capitale iniziale + risultati" % len(positions)
+        if m["cash"] + vault > start + total + 0.01:
+            problems.add("%s: con posizioni aperte cassa + salvadanaio (%.4f) supera capitale iniziale + risultati "
+                         "(%.4f)" % (name, m["cash"] + vault, start + total))
+        acct = "posizioni aperte %d: cassa + salvadanaio <= capitale iniziale + risultati" % len(positions)
     print("  coerenza %s: run %d | %d trade chiusi = storico della run | %d posizioni aperte | %s | %s"
           % (name, run, len(closed), len(positions), acct, "OK" if len(problems) == before else "PROBLEMI"))
 

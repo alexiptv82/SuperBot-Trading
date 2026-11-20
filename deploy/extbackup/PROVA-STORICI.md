@@ -21,6 +21,13 @@
 - **entrambi attivi:** backup normale, con il confine di ciclo;
 - **stati diversi o non verificabili:** NO-GO.
 
+## Coerenza di Falco e Toro nel ripristino
+La prima prova reale (20/11) è terminata con 4 problemi, riprodotti offline sulla forma dei dati scritta dal bot:
+- le righe di `trade_history.jsonl` non hanno `run_no` (`engine.py`) e lo storico attivo viene archiviato a ogni nuova run (`cli.py`): le righe senza etichetta sono quindi della run corrente;
+- il salvadanaio sposta denaro dalla cassa al vault e viceversa, conservando la somma: il controllo verifica cassa + salvadanaio = capitale iniziale + risultati.
+
+Tutti gli altri controlli sono invariati. Restano errori: trade diversi tra stato e storico, run successive, contabilità errata e saldo del salvadanaio illeggibile o negativo.
+
 ## Copia e controlli
 - **Copia:** ricorsiva, comprese le sottocartelle.
 - **Escluse**, e solo contate per categoria:
@@ -51,7 +58,7 @@
 Si ferma da solo se un'impronta non coincide: i comandi sono concatenati con `&&`.
 ```
 sudo install -d -m 700 -o root -g root /root/extbackup-strumenti && sudo install -m 500 -o root -g root /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/external_backup.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/restore_external_backup.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/backup_app_db.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/backup_brain.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/extbackup/prova_storici.sh /root/extbackup-strumenti/ && printf '%s
-' '999bbbfe0d1482f3f965856169b69ab8af70c75b82d93e7a622deb395b2af6a8  /root/extbackup-strumenti/external_backup.py' '8f4e39fb5c24c031bbe65069b8251b9a2d7acc8bba7a4429ed8aa7fd457da47f  /root/extbackup-strumenti/restore_external_backup.py' '6bd6ebc209400c7a0b222c62690e2c2f11b6f0a927b83fa937a35dcaac0700c6  /root/extbackup-strumenti/backup_app_db.py' '4a92e7daa6cff9fbf339f471656df8ba44067b6927d15b411b50313de0cb5d2c  /root/extbackup-strumenti/backup_brain.py' 'f9c1e08d9fbc0186941abb1f9dbd5a7612f0534d3ed68987cce3cfd9e6ec07a8  /root/extbackup-strumenti/prova_storici.sh' | sudo sha256sum --strict -c - && sudo sh /root/extbackup-strumenti/prova_storici.sh /root/extbackup-strumenti
+' '999bbbfe0d1482f3f965856169b69ab8af70c75b82d93e7a622deb395b2af6a8  /root/extbackup-strumenti/external_backup.py' 'aa35906bae4aef267cc3113321f9cad6dfaebdbebda11724e30fabc9bb7e85c3  /root/extbackup-strumenti/restore_external_backup.py' '6bd6ebc209400c7a0b222c62690e2c2f11b6f0a927b83fa937a35dcaac0700c6  /root/extbackup-strumenti/backup_app_db.py' '4a92e7daa6cff9fbf339f471656df8ba44067b6927d15b411b50313de0cb5d2c  /root/extbackup-strumenti/backup_brain.py' 'ff9b36a25b13389be20d1bbe4d956a84c0041f9a8f90f6df8e188a8071a5a82f  /root/extbackup-strumenti/prova_storici.sh' | sudo sha256sum --strict -c - && sudo sh /root/extbackup-strumenti/prova_storici.sh /root/extbackup-strumenti
 ```
 **Esito atteso:**
 - inventario con dimensioni, file e sottocartelle;
@@ -61,7 +68,7 @@ sudo install -d -m 700 -o root -g root /root/extbackup-strumenti && sudo install
 - una riga `ripristinata …` per ogni archivio;
 - `ESITO PROVA: OK`.
 
-Ogni errore produce `NO-GO: …`. La cartella di prova viene cancellata in ogni caso; `/root/extbackup-strumenti` resta e contiene solo gli script.
+Ogni errore produce `NO-GO: …` preceduto da **tutte** le righe `ERRORE:` del passo fallito. In caso di NO-GO restano solo i due registri testuali in `/root/extbackup-prova-storici-<data>.log` (permessi 600): nomi di file, conteggi ed esiti, senza contenuti né chiavi. I dati in chiaro vengono sempre cancellati. La cartella di prova viene cancellata in ogni caso; `/root/extbackup-strumenti` resta e contiene solo gli script.
 
 ## Dopo la prova (ciascun punto con un'autorizzazione specifica)
 - Aggiornare l'extbackup installato con queste versioni e i percorsi delle run.

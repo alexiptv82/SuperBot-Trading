@@ -70,8 +70,19 @@ case "$STATES" in
 esac
 
 umask 077
+# All'uscita i dati in chiaro, la chiave di prova e gli archivi si cancellano SEMPRE. Se la prova fallisce restano
+# solo i due registri testuali (nomi di file, conteggi, esiti; nessun contenuto, nessuna chiave) in un file 600.
+LOGKEEP="$BASE-$(date -u +%Y%m%dT%H%M%SZ).log"
+finish() {
+  rc=$?
+  if [ "$rc" -ne 0 ] && [ -d "$BASE" ]; then
+    cat "$BASE/backup.log" "$BASE/restore.log" > "$LOGKEEP" 2>/dev/null || true
+    echo "registri della prova conservati in $LOGKEEP (solo root); cartella di prova e dati in chiaro cancellati"
+  fi
+  rm -rf "$BASE"
+}
 mkdir -m 700 "$BASE"
-trap 'rm -rf "$BASE"' EXIT
+trap finish EXIT
 age-keygen -o "$BASE/prova.key" 2>/dev/null
 age-keygen -y "$BASE/prova.key" > "$BASE/recipient-prova.txt"
 git init -q --bare -b main "$BASE/remote.git"
@@ -85,7 +96,7 @@ echo "== backup (verso il repository LOCALE di prova)"
 python3 -I "$TOOLS/external_backup.py" --root "$DESK" --app-db /opt/superbot/data/superbot.db \
   --pool-db /opt/superbot-pool-data/pool.db --tools "$TOOLS" --work "$BASE/work" --remote "$BASE/remote.git" \
   --recipient-file "$BASE/recipient-prova.txt" --app-repo /opt/superbot --bots-repo /opt/superbot-desk $ARGS $BRAIN_MODE \
-  > "$BASE/backup.log" 2>&1 || { grep -E "Fail|NO-GO|errore|ERRORE|mancante" "$BASE/backup.log" | tail -5; echo "NO-GO: backup"; exit 1; }
+  > "$BASE/backup.log" 2>&1 || { grep -E "ERRORE|Fail|NO-GO|errore|mancante|rifiut" "$BASE/backup.log" | tail -40; echo "NO-GO: backup"; exit 1; }
 grep -E "storico run|RISULTATO" "$BASE/backup.log" || true
 
 echo "== ripristino con lo script ufficiale"
@@ -93,7 +104,7 @@ git clone -q "$BASE/remote.git" "$BASE/clone"
 ARC=$(find "$BASE/clone/archives" -name '*.tar.gz.age' | head -1)
 [ -n "$ARC" ] || { echo "NO-GO: archivio non trovato nel repository di prova"; exit 1; }
 python3 -I "$TOOLS/restore_external_backup.py" --archive "$ARC" --identity "$BASE/prova.key" --out "$BASE/restore" \
-  > "$BASE/restore.log" 2>&1 || { grep -E "journal|diverso|mancante|FALLITO" "$BASE/restore.log" | tail -8; echo "NO-GO: ripristino"; exit 1; }
+  > "$BASE/restore.log" 2>&1 || { grep -E "ERRORE:|journal V3|coerenza|FALLITO" "$BASE/restore.log" | sed 's/ La cartella .* resta per l.esame\.//' | head -60; echo "NO-GO: ripristino"; exit 1; }
 grep -E "journal V3|RISULTATO" "$BASE/restore.log"
 for r in "$BASE"/restore/dati/runs/*/; do
   echo "ripristinata $(find "$r" -type f | wc -l) file  $(basename "$r")"
