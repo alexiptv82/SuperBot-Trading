@@ -99,3 +99,11 @@ test('an unavailable overview is an explicit alert', async () => {
     expect(el.textContent).toContain('Impossibile aggiornare il Brain');
   } finally { await act(async () => { root.unmount(); }); API.get.mockReset(); }
 });
+
+test('daily loss state is shown from the runner heartbeat', () => {
+  const h = html({ status: { ...status, daily_loss: { level: 'warn', pct: '36.2' } } });
+  expect(h).toContain('Perdita giornaliera');
+  expect(h).toContain('avviso');
+  expect(h).toContain('36.2%');
+  expect(html({ status: { ...status, daily_loss: { level: 'toString', pct: null } } })).toContain('non disponibile');
+});

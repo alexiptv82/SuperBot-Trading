@@ -137,3 +137,21 @@ def test_arena_history_route_is_opt_in_read_only_and_has_no_close(monkeypatch):
     assert c.post("/api/v3/arena").status_code == 405                                  # solo lettura
     assert c.post("/api/v3/arena/close", json={}).status_code == 404                   # chiusura non portata
     assert client({**on, "TRADING_MODE": "live"}).get("/api/v3/arena").status_code == 404
+
+
+def test_status_exposes_only_sanitised_daily_loss(tmp_path):
+    import json as _j
+    from fastapi import FastAPI
+    from backend.v3_api import V3Paths, make_router
+    hb = tmp_path / "heartbeat.json"
+    paths = V3Paths(journal_path=None, run_id="r", budget_db_path=None, heartbeat_path=str(hb),
+                    pause_flag_path=None, falco_data_dir="/x", toro_data_dir="/y")
+    app = FastAPI()
+    app.include_router(make_router(lambda: "ok", paths))
+    c = TestClient(app)
+    hb.write_text(_j.dumps({"ts_ms": 1, "cycle": 1, "state": "running", "last_error": None, "run_id": "r",
+                            "daily_loss_level": "warn", "daily_loss_pct": "36.2"}))
+    assert c.get("/api/v3/brain/status").json()["daily_loss"] == {"level": "warn", "pct": "36.2"}
+    hb.write_text(_j.dumps({"ts_ms": 1, "cycle": 1, "state": "running", "last_error": None, "run_id": "r",
+                            "daily_loss_level": "<b>x</b>", "daily_loss_pct": "1e9"}))
+    assert c.get("/api/v3/brain/status").json()["daily_loss"] == {"level": None, "pct": None}

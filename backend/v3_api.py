@@ -136,7 +136,9 @@ def _heartbeat(paths: V3Paths) -> dict | None:
     # Only closed error tokens, never arbitrary provider text in a UI.
     codes = [s for s in raw.split(';') if _CODE_RE.fullmatch(s)] if type(raw) is str else []
     return {'ts_ms': obj['ts_ms'], 'cycle': obj['cycle'], 'state': obj['state'],
-            'last_error': ';'.join(codes) if codes else None, 'run_id': obj['run_id']}
+            'last_error': ';'.join(codes) if codes else None, 'run_id': obj['run_id'],
+            # valori grezzi della perdita giornaliera: filtrati (livelli fissi, numero) in _brain_status
+            'daily_loss_level': obj.get('daily_loss_level'), 'daily_loss_pct': obj.get('daily_loss_pct')}
 
 
 def _brain_state(paths: V3Paths, hb: dict | None, now_ms: int) -> str:
@@ -396,6 +398,11 @@ def _brain_status(paths: V3Paths, now_ms: int) -> dict:
     return {'state': state, 'run_id': paths.run_id or None,
             'heartbeat': ({k: hb[k] for k in ('ts_ms', 'cycle', 'state', 'last_error')}
                           if hb is not None else None),
+            # perdita giornaliera dal battito del runner (livelli fissi ok/warn/halt/unknown; percentuale numerica)
+            'daily_loss': ({'level': hb.get('daily_loss_level') if hb.get('daily_loss_level') in ('ok', 'warn', 'halt', 'unknown') else None,
+                            'pct': hb.get('daily_loss_pct') if isinstance(hb.get('daily_loss_pct'), str)
+                            and re.fullmatch(r'[0-9]{1,4}(\.[0-9])?', hb.get('daily_loss_pct')) else None}
+                           if hb is not None else None),
             'paused': _exists(paths.pause_flag_path),
             'regime': last_decision['regime'] if last_decision else None,
             'last_decision': last_decision, 'spend': _spend(paths)}

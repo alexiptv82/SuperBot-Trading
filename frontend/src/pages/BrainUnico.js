@@ -92,6 +92,9 @@ export function BrainUnicoContent({ overview, status, trades, memory, nowMs = Da
         <div style={{ fontWeight: 700, margin: '5px 0 8px' }}>{status.regime || 'Non disponibile'} · {status.last_decision?.kind || 'Nessuna'}</div>
         {status.last_decision && <div style={MUTED}>{status.last_decision.symbol || '—'} · {status.last_decision.status || '—'} · {ageText(status.last_decision.ts_ms, nowMs)}</div>}
         <div style={{ ...MUTED, marginTop: 8 }}>Battito: {status.heartbeat ? ageText(status.heartbeat.ts_ms, nowMs) : '—'}{status.paused ? ' · in pausa' : ''}</div>
+        <div style={{ ...MUTED, marginTop: 6 }}>Perdita giornaliera: <strong style={{ color: { ok: '#34d399', warn: '#fbbf24', halt: '#fb7185' }[status.daily_loss?.level] || '#a8bacd' }}>
+          {{ ok: 'nei limiti', warn: 'avviso', halt: 'blocco nuove aperture', unknown: 'non verificabile' }[status.daily_loss?.level] || 'non disponibile'}</strong>
+          {status.daily_loss?.pct != null ? ` · ${status.daily_loss.pct}%` : ''}</div>
       </>}
       <div style={{ borderTop: '1px solid #314357', marginTop: 12, paddingTop: 12 }}>
         <div style={MUTED}>Spesa AI oggi / tetto giornaliero</div>
