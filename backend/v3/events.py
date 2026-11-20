@@ -184,6 +184,49 @@ class EventJournal:
                    ORDER BY seq""", (portfolio_id, run_id)
             ).fetchall()]
 
+    # Letture puntuali e indicizzate (sola lettura). Servono ai percorsi che girano a ogni decisione: list_run legge e
+    # decodifica tutta la run (~20 us per evento: 4-5 s a 200 000 eventi).
+    _COLUMNS = """seq,event_id,portfolio_id,run_id,kind,occurred_at_ms,source,payload_json,previous_hash,event_hash"""
+
+    def get(self, event_id: str) -> StoredEvent | None:
+        if type(event_id) is not str or not event_id:
+            raise ValueError("invalid_event_id")
+        with self._connect(read_only=True) as db:
+            row = db.execute(f"SELECT {self._COLUMNS} FROM v3_events WHERE event_id=?", (event_id,)).fetchone()
+        return _from_row(row) if row is not None else None
+
+    def list_run_after(self, portfolio_id: str, run_id: str, after_seq: int) -> list[StoredEvent]:
+        if portfolio_id not in _ALLOWED_PORTFOLIOS or not _TOKEN.fullmatch(run_id):
+            raise ValueError("invalid_run")
+        if type(after_seq) is not int or after_seq < 0:
+            raise ValueError("invalid_seq")
+        with self._connect(read_only=True) as db:
+            return [_from_row(row) for row in db.execute(
+                f"""SELECT {self._COLUMNS} FROM v3_events WHERE portfolio_id=? AND run_id=? AND seq>?
+                   ORDER BY seq""", (portfolio_id, run_id, after_seq)).fetchall()]
+
+    def last_seq(self, portfolio_id: str, run_id: str) -> int:
+        if portfolio_id not in _ALLOWED_PORTFOLIOS or not _TOKEN.fullmatch(run_id):
+            raise ValueError("invalid_run")
+        with self._connect(read_only=True) as db:
+            row = db.execute("SELECT MAX(seq) FROM v3_events WHERE portfolio_id=? AND run_id=?",
+                             (portfolio_id, run_id)).fetchone()
+        return row[0] or 0
+
+    def first_seq_stamped_after(self, portfolio_id: str, run_id: str, threshold_ms: int,
+                                exclude_kind: str) -> int | None:
+        """Il primo seq (ordine di scrittura) di un evento della run, di tipo diverso da ``exclude_kind``, che dichiara
+        un istante > ``threshold_ms``. Senza decodificare i payload."""
+        if portfolio_id not in _ALLOWED_PORTFOLIOS or not _TOKEN.fullmatch(run_id):
+            raise ValueError("invalid_run")
+        if type(threshold_ms) is not int:
+            raise ValueError("invalid_threshold")
+        with self._connect(read_only=True) as db:
+            row = db.execute("""SELECT MIN(seq) FROM v3_events WHERE portfolio_id=? AND run_id=?
+                                AND occurred_at_ms>? AND kind<>?""",
+                             (portfolio_id, run_id, threshold_ms, exclude_kind)).fetchone()
+        return row[0]
+
     def verify_chain(self, expected_count: int | None = None,
                      expected_head: str | None = None) -> tuple[int, str]:
         """Verify chain; detect tail truncation only when an external anchor is given."""

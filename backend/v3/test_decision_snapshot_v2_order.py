@@ -12,7 +12,7 @@ import unittest
 
 from backend.v3.events import Event, EventConflict, EventJournal
 from backend.v3.decision_snapshot_v2 import (
-    SNAPSHOT_KIND, WRITE_GRACE_MS, DecisionSnapshotV2, append_snapshot, make_snapshot_event,
+    SNAPSHOT_KIND, WRITE_GRACE_MS, DecisionSnapshotV2, append_snapshot, assess_link, make_snapshot_event,
 )
 
 D = Decimal
@@ -74,32 +74,50 @@ class WriteOrderTests(unittest.TestCase):
         self.open_for("decision-002", T + 61_000, "p2")
         append_snapshot(journal=self.j, run_id=RUN, snapshot=self.snap())
 
+    def verdict(self, decision="decision-001"):
+        dec = self.j.get(decision)
+        snaps = [r for r in self.j.list_run("brain", RUN) if r.event.kind == SNAPSHOT_KIND
+                 and r.event.payload.get("decision_event_id") == decision]
+        return assess_link(dec, snaps, [], lambda t: self.j.first_seq_stamped_after("brain", RUN, t, SNAPSHOT_KIND))
+
+    # Lateness is no longer refused at write time (20/11/2026): the snapshot is written and the canonical rule
+    # (same as the dataset builder) makes it inadmissible. Refusing would turn a quality fact into a missing record.
     def test_a_later_event_beyond_the_grace_window_makes_the_snapshot_late(self):
         self.other("late-1", T + WRITE_GRACE_MS + 1)
-        self.refused("snapshot_written_late")
+        append_snapshot(journal=self.j, run_id=RUN, snapshot=self.snap())
+        self.assertEqual(self.verdict(), "snapshot_written_late")
 
     def test_a_later_event_inside_or_exactly_at_the_grace_window_is_tolerated(self):
         self.other("ok-1", T + WRITE_GRACE_MS)                                      # strictly greater is late
         append_snapshot(journal=self.j, run_id=RUN, snapshot=self.snap())
+        self.assertEqual(self.verdict(), "valid")
 
     def test_a_later_decision_event_beyond_the_grace_window_is_the_evidence_of_lateness(self):
         self.decide("decision-009", T + 5_000_000)
         append_snapshot(journal=self.j, run_id=RUN, snapshot=self.snap("decision-009", T + 5_000_000))
         # the decision-009 EVENT (not its snapshot) is a later event with a far time, so decision-001 is late
-        self.refused("snapshot_written_late")
+        append_snapshot(journal=self.j, run_id=RUN, snapshot=self.snap())
+        self.assertEqual(self.verdict(), "snapshot_written_late")
 
     def test_a_snapshot_event_with_a_far_time_is_not_evidence_of_time_for_others(self):
         # a foreign snapshot (unknown decision cannot be appended through the adapter): write the raw event instead
         self.j.append(Event("raw-snap", "brain", RUN, SNAPSHOT_KIND, T + 9_000_000, "x", {"decision_event_id": "ghost"}))
         append_snapshot(journal=self.j, run_id=RUN, snapshot=self.snap())
+        self.assertEqual(self.verdict(), "valid")
 
-    def test_events_written_before_the_decision_never_make_it_late(self):
+    def test_an_event_stamped_beyond_the_window_before_the_decision_makes_the_decision_late(self):
+        # Aligned with the dataset builder (Timeline): if another writer had already stamped a time beyond
+        # decision_ts + grace, the decision itself was written late; the write is allowed, the link is not valid.
         j2 = EventJournal(Path(self.tmp.name) / "j2.db")
         j2.init_schema()
         j2.append(Event("early", "brain", RUN, "paper_close", T + 10_000_000, "paper", {"position_id": "e"}))
         j2.append(Event("decision-001", "brain", RUN, "brain_decision", T, "brain_f2_engine",
                         {"symbol": "BTCUSDT", "kind": "OPEN", "status": "APPROVED"}))
         append_snapshot(journal=j2, run_id=RUN, snapshot=self.snap())
+        snaps = [r for r in j2.list_run("brain", RUN) if r.event.kind == SNAPSHOT_KIND]
+        verdict = assess_link(j2.get("decision-001"), snaps, [],
+                              lambda t: j2.first_seq_stamped_after("brain", RUN, t, SNAPSHOT_KIND))
+        self.assertEqual(verdict, "decision_written_late")
 
     def test_reappending_the_identical_snapshot_after_later_events_is_idempotent(self):
         first = append_snapshot(journal=self.j, run_id=RUN, snapshot=self.snap())

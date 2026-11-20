@@ -104,6 +104,13 @@ class SynchronizingJournal(EventJournal):
             self.first=False
             self.barrier.wait(timeout=5)
         return rows
+    # il motore verifica la propria scrittura con una lettura per id: la stessa barriera tiene viva la gara
+    def get(self,event_id):
+        row=super().get(event_id)
+        if self.first:
+            self.first=False
+            self.barrier.wait(timeout=5)
+        return row
 
 def test_concurrent_duplicate_request_not_twice_approved():
     with TemporaryDirectory() as td:

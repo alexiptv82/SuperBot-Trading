@@ -528,9 +528,10 @@ class BrainEngine:
                 payload=payload,
             )
             stored = self.journal.append(event)
-            after = self.journal.list_run("brain", self.run_id)
-            match = [r for r in after if r.event.event_id == eid]
-            if not match or match[0].event.payload.get("claim") != claim:
+            # lettura puntuale per id (indice UNIQUE), non l'intera run: costo costante al crescere dello storico
+            match = self.journal.get(eid)
+            if (match is None or match.event.run_id != self.run_id or match.event.portfolio_id != "brain"
+                    or match.event.payload.get("claim") != claim):
                 return None
             return eid
         except Exception:

@@ -42,7 +42,7 @@ from backend.v3.events import EventJournal
 from backend.v3.executor.paper import ExecutionError, execute_paper
 from backend.v3.features.indicators import Bar
 from backend.v3.risk import RiskPolicy
-from backend.v3.runner.decision_trace import journal_tip, record_decision_trace
+from backend.v3.runner.decision_trace import capture_inputs, journal_tip, record_decision_trace
 
 PORTFOLIO_ID = "brain"
 MIN_PRICE_PLACES = 8
@@ -131,13 +131,15 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     rotate: int = 0, open_commit: Optional[Callable[[BrainDecision], object]] = None,
                     require_open_commit: bool = False,
                     peer_source: Optional[Callable[[str, int], Mapping]] = None,
-                    trace: str = "off") -> CycleReport:
+                    trace: str = "off", wall_ms: Optional[Callable[[], int]] = None) -> CycleReport:
     """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare).
 
     ``trace="required"``: ogni decisione scritta dal motore (anche NO_TRADE) riceve subito uno snapshot v2
     (``decision_trace``), prima di qualunque apertura. Se la traccia fallisce l'errore va nel rapporto e una OPEN
     approvata NON si apre (``open_blocked_untraced``): nessuna apertura senza evidenza. Le uscite e il controllo
-    della perdita giornaliera non passano dal ciclo e non dipendono dalla traccia.
+    della perdita giornaliera non passano dal ciclo e non dipendono dalla traccia. Le feature si catturano PRIMA della
+    chiamata al modello, dalle stesse candele; ``wall_ms`` (facoltativo) e' l'orologio di parete per le sole
+    dichiarazioni di cattura/scrittura.
     """
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
@@ -218,7 +220,14 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 falco_signal=validate_peer_signal(peers.get("falco"), "falco", symbol, now_ms),
                 toro_signal=validate_peer_signal(peers.get("toro"), "toro", symbol, now_ms))
 
-            tip = journal_tip(journal, run_id) if trace != "off" else 0
+            capture = None
+            tip = 0
+            if trace != "off":
+                try:
+                    capture = capture_inputs(bars_by_tf, view_params.timeframes, now_ms=now_ms, wall_ms=wall_ms)
+                except Exception:
+                    capture = None                      # registrato come capture_missing dopo la decisione
+                tip = journal_tip(journal, run_id)
             decision = engine.step(context, 0.0)
             decisions.append((symbol, decision.kind.value, decision.status.value, decision.rationale))
             approved_open = decision.kind == DecisionKind.OPEN and decision.status == ProposalStatus.APPROVED
@@ -226,7 +235,7 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 tr = record_decision_trace(
                     journal=journal, run_id=run_id, symbol=symbol, now_ms=now_ms, after_seq=tip,
                     expected_event_id=decision.journal_event_id if approved_open else None,
-                    bars_by_tf=bars_by_tf, timeframes=view_params.timeframes, portfolio=portfolio)
+                    capture=capture, portfolio=portfolio, wall_ms=wall_ms)
                 traces.append((symbol, tr.code, tr.decision_event_id or "", tr.snapshot_event_id or ""))
                 if not tr.ok:
                     errors.append((symbol, tr.code))
