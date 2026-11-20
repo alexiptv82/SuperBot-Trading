@@ -1,3 +1,9 @@
+## 20/11/2026 — Claude: ogni decisione del Brain ora tracciata prima dell'apertura
+
+- `integration/brain-unico-20261119` @ `a5a92040`: snapshot v2 scritto nel ciclo dopo **ogni** decisione (anche NO_TRADE) e prima di qualunque apertura; feature solo da candele chiuse; nessun duplicato; se la traccia fallisce errore esplicito e **nessuna apertura** (`open_blocked_untraced`); copertura misurabile dal journal. Uscite e rischio indipendenti. Snapshot sempre esclusi dal training finché non validati.
+- Suite 5121 → **5147**, 0 falliti; builder 134 OK; mutazioni 10/10. Dettagli: [`diario/2026-11-20_claude-traccia-decisioni.md`](diario/2026-11-20_claude-traccia-decisioni.md).
+- Nessun deploy, servizio, restart, reset, parametro attivo, spesa API o LIVE.
+
 ## 20/11/2026 — Claude: autorizzazione al ramo di integrazione riconfermata
 
 - Il proprietario ha riconfermato a Claude Code l'autorizzazione temporanea e revocabile a sviluppare e integrare **solo** in `integration/brain-unico-20261119` (test prima/dopo, zero regressioni, documentazione, rollback). Restano esclusi merge su `main`, deploy, servizi operativi, reset, parametri attivi, nuove spese API e LIVE.
