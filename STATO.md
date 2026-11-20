@@ -1,3 +1,8 @@
+## 21/11/2026 (5) — Prova storici: backup cifrato OK, ripristino 4 problemi riprodotti e corretti
+
+- Prova reale del proprietario: archivio cifrato di prova riuscito (117 MB); journal V3 verificati: Brain V3 1058, DeepSeek 1259, Qwen 1281, MiniMax 1306, run preparata 1, catene valide. Ripristino FALLITO (4 problemi); motivi non visibili (filtro senza `ERRORE:`) e cartella cancellata.
+- Riprodotti offline: il controllo di coerenza di Falco/Toro presupponeva storico con `run_no` e cassa senza salvadanaio; sulla forma reale del bot dava esattamente 4 problemi su dati coerenti. Correzione `c692ce68` (branch `claude/extbackup-storici-20261121`): righe senza `run_no` = run corrente, cassa + salvadanaio = capitale + risultati; al NO-GO tutte le righe `ERRORE:` e registri testuali conservati (600), dati in chiaro sempre cancellati. 61 test. Serve una nuova prova reale (in attesa di autorizzazione).
+
 ## 21/11/2026 (4) — Prova storici: NO-GO sui classici, causa individuata
 
 - Prova del proprietario: inventario OK (sorgenti 535 MiB, necessari 4237 MiB, disponibili 21305 MiB), poi NO-GO "confine di ciclo non verificabile" nel backup del cervello di Falco/Toro.
