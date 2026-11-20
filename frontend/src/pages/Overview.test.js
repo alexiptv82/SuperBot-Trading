@@ -73,8 +73,9 @@ test('safe status when network rejects, no stale content', async () => {
 test('poll GET only every 30 sec, aborts pending on unmount', async () => {
   jest.useFakeTimers();
   global.IS_REACT_ACT_ENVIRONMENT = true;
-  const paths = ['/api/v3/overview', '/api/v3/brain/status', '/api/v3/brain/scoreboard', '/api/v3/brain/trades?limit=20'];
-  const bodies = [sample.overview, sample.status, sample.scoreboard, sample.trades];
+  const paths = ['/api/v3/overview', '/api/v3/brain/status', '/api/v3/brain/scoreboard', '/api/v3/brain/trades?limit=20',
+    '/api/v3/brain/memory'];
+  const bodies = [sample.overview, sample.status, sample.scoreboard, sample.trades, { state: 'not_started' }];
   API.get.mockImplementation(path => Promise.resolve({ data: bodies[paths.indexOf(path)] }));
   const rootEl = document.createElement('div');
   const root = createRoot(rootEl);
@@ -83,7 +84,7 @@ test('poll GET only every 30 sec, aborts pending on unmount', async () => {
     expect(API.get.mock.calls.map(call => call[0])).toEqual(paths);
     expect(rootEl.textContent).toContain('Falco');
     await act(async () => { jest.advanceTimersByTime(30000); });
-    expect(API.get).toHaveBeenCalledTimes(8);
+    expect(API.get).toHaveBeenCalledTimes(10);
     expect(API.get.mock.calls.every(([path]) => path.startsWith('/api/v3/'))).toBe(true);
     const signal = API.get.mock.calls[0][1].signal;
     expect(signal).toBeDefined();
@@ -136,6 +137,7 @@ test('RC84: Overview keeps Falco/Toro running alerts if Brain API fails', async 
     expect(el.textContent).toContain('P&L aperto');
     expect(el.querySelector('[data-testid="portfolio-brain"]').textContent).toContain('—');
     expect(el.querySelector('[data-testid="portfolio-brain"] button')).toBeNull();
+    expect(el.textContent).toContain('Memoria non disponibile');           // la memoria non blocca il resto
   }finally{
     await act(async()=>{root.unmount()});
     API.get.mockReset();

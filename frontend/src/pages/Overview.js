@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 import API from '../api';
 import { BrainCloseControls, ClassicCloseControls, PortfolioTradeFields } from '../components/OverviewCloseControls';
+import BrainMemorySection from '../components/BrainMemorySection';
 import ClassicStopNotice from '../components/ClassicStopNotice';
 import ClaimReconciliationNotice from '../components/ClaimReconciliationNotice';
 
@@ -71,7 +72,7 @@ function StateLabel({ state }) {
   </span>;
 }
 
-export function OverviewContent({ overview, status, scoreboard, trades, nowMs = Date.now(), regime, onRegime, onRefresh = () => {} }) {
+export function OverviewContent({ overview, status, scoreboard, trades, memory, nowMs = Date.now(), regime, onRegime, onRefresh = () => {} }) {
   if (!overview) return <section role="status" style={BLOCK}>Nessun dato disponibile.</section>;
   const portfolios = overview.portfolios || [];
   const regimes = scoreboard?.regimes || [];
@@ -212,6 +213,7 @@ export function OverviewContent({ overview, status, scoreboard, trades, nowMs = 
         Insufficiente ≠ cattivo: significa non ancora misurato.
       </div>
     </section>
+    {memory !== undefined && <BrainMemorySection memory={memory} />}
   </main>;
 }
 
@@ -230,11 +232,12 @@ export default function Overview() {
       const controller = new AbortController();
       active = controller;
       try {
-        const [a, b, c, d] = await Promise.allSettled([
+        const [a, b, c, d, e] = await Promise.allSettled([
           API.get('/api/v3/overview', { signal: controller.signal }),
           API.get('/api/v3/brain/status', { signal: controller.signal }),
           API.get('/api/v3/brain/scoreboard', { signal: controller.signal }),
           API.get('/api/v3/brain/trades?limit=20', { signal: controller.signal }),
+          API.get('/api/v3/brain/memory', { signal: controller.signal }),
         ]);
         if (a.status !== 'fulfilled' || !Array.isArray(a.value?.data?.portfolios))
           throw new Error('overview_unavailable');
@@ -244,6 +247,8 @@ export default function Overview() {
             status: b.status === 'fulfilled' ? b.value.data : null,
             scoreboard: c.status === 'fulfilled' ? c.value.data : { regimes: [] },
             trades: d.status === 'fulfilled' ? d.value.data : null,
+            // memoria non disponibile: sezione dedicata con avviso, le altre restano intatte
+            memory: e.status === 'fulfilled' ? e.value.data : null,
           });
           setError(false);
         }

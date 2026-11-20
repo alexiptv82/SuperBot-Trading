@@ -401,6 +401,76 @@ def _brain_status(paths: V3Paths, now_ms: int) -> dict:
             'last_decision': last_decision, 'spend': _spend(paths)}
 
 
+# Soglie dell'Issue #113 (decisione del proprietario): raccolta per lo SHADOW e per valutare una promozione.
+# Mostrate come avanzamento della RACCOLTA: la verifica dei dati avviene nel Dataset Builder, non qui.
+SHADOW_THRESHOLD = {'examples': 300, 'days': 20}
+PROMOTION_REVIEW_THRESHOLD = {'examples': 1000, 'days': 45}
+_MEMORY_CACHE: dict = {}
+_MEMORY_RECENT = 12
+
+
+def _memory(paths: V3Paths, now_ms: int) -> dict:
+    """Memoria e apprendimento del Brain, in sola lettura dal journal. Nessun segreto, nessun testo del modello."""
+    from backend.v3.decision_snapshot_v2 import SNAPSHOT_KIND
+    from backend.v3.runner.decision_trace import trace_coverage
+    journal = _journal(paths)
+    if journal is None:
+        return {'state': 'not_started', 'run_id': paths.run_id or None}
+    try:
+        key = (paths.journal_path, paths.run_id, journal.last_seq('brain', paths.run_id))
+        if _MEMORY_CACHE.get('key') == key:
+            return _MEMORY_CACHE['value']
+        cov = trace_coverage(journal, paths.run_id)
+        rows = journal.list_run('brain', paths.run_id)
+    except (ValueError, sqlite3.Error, OSError):
+        return {'state': 'unavailable', 'run_id': paths.run_id}
+    verdict = dict(cov.invalid)
+    verdict.update({d: 'missing' for d in cov.missing})
+    snaps = {}
+    for r in rows:
+        if r.event.kind == SNAPSHOT_KIND and isinstance(r.event.payload, dict):
+            snaps.setdefault(r.event.payload.get('decision_event_id'), r.event.payload)
+    decisions = [r for r in rows if r.event.kind == 'brain_decision' and isinstance(r.event.payload, dict)]
+    valid_days = {r.event.occurred_at_ms // 86_400_000 for r in decisions
+                  if r.event.event_id not in verdict and cov.chain_ok is not False}
+    theses = [p['thesis'] for p in snaps.values() if isinstance(p.get('thesis'), dict)]
+    reentry = [p['anti_reentry'] for p in snaps.values() if isinstance(p.get('anti_reentry'), dict)]
+    rules: dict = {}
+    for a in reentry:
+        if a.get('would_block') is True and isinstance(a.get('rule'), str):
+            rules[a['rule']] = rules.get(a['rule'], 0) + 1
+    recent = []
+    for r in decisions[-_MEMORY_RECENT:][::-1]:
+        p, sp = r.event.payload, snaps.get(r.event.event_id) or {}
+        th = sp.get('thesis') if isinstance(sp.get('thesis'), dict) else None
+        recent.append({'ts_ms': r.event.occurred_at_ms, 'symbol': p.get('symbol'), 'kind': p.get('kind'),
+                       'status': p.get('status'), 'rationale': p.get('rationale'),
+                       'link': 'chain_broken' if cov.chain_ok is False else verdict.get(r.event.event_id, 'valid'),
+                       'reentry_index': th.get('reentry_index') if th else None,
+                       'would_block': (sp.get('anti_reentry') or {}).get('would_block') if th else None})
+    value = {
+        'state': 'ok', 'run_id': paths.run_id, 'generated_at_ms': now_ms,
+        'memory': {'decisions': cov.decisions, 'valid_links': cov.valid, 'coverage_pct': str(
+                       (cov.ratio * 100).quantize(Decimal('0.1'))) if cov.decisions else None,
+                   'chain_ok': cov.chain_ok, 'missing': len(cov.missing), 'invalid': len(cov.invalid),
+                   'verdicts': dict(cov.verdicts), 'untraced_opens': len(cov.untraced_opens),
+                   'no_trade': sum(1 for r in decisions if r.event.payload.get('kind') == 'NO_TRADE')},
+        'theses': {'mode': reentry[-1].get('mode') if reentry else None, 'enforce_active': any(
+                       a.get('mode') == 'enforce' for a in reentry),
+                   'opens_with_thesis': len(theses), 'distinct_theses': len({t.get('thesis_id') for t in theses}),
+                   'reentries': sum(1 for t in theses if (t.get('reentry_index') or 1) > 1),
+                   'would_block': sum(rules.values()), 'rules': rules},
+        'learning': {'valid_examples_collected': cov.valid if cov.chain_ok is not False else 0,
+                     'distinct_days': len(valid_days), 'shadow_threshold': SHADOW_THRESHOLD,
+                     'promotion_review_threshold': PROMOTION_REVIEW_THRESHOLD,
+                     'inputs_verified': 0, 'verification': 'dataset_builder',
+                     'training_authorized': False, 'model_active': False},
+        'recent': recent,
+    }
+    _MEMORY_CACHE.update(key=key, value=value)
+    return value
+
+
 def _overview(paths: V3Paths, now_ms: int) -> dict:
     now_s = now_ms / 1000
     entries = [_classic('falco', paths.falco_data_dir, now_s),
@@ -694,6 +764,11 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
     def brain_scoreboard(response: Response, session=Depends(require_session)):
         response.headers['Cache-Control'] = 'no-store'
         return _scoreboard(paths, int(time.time() * 1000))
+
+    @router.get('/brain/memory')
+    def brain_memory(response: Response, session=Depends(require_session)):
+        response.headers['Cache-Control'] = 'no-store'
+        return _memory(paths, int(time.time() * 1000))
 
     @router.get('/brain/trades')
     async def brain_trades(response: Response, limit: int = Query(50, ge=1, le=200),
