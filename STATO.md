@@ -1,3 +1,12 @@
+## 20/11/2026 05:47 Europe/Rome — copertura verificabile, validazione indipendente, tesi ed esiti
+
+- Checkpoint append-only: [`diario/2026-11-20_0547_checkpoint-copertura-validazione-tesi-esiti.md`](diario/2026-11-20_0547_checkpoint-copertura-validazione-tesi-esiti.md), commit [`72d2c92…`](https://github.com/alexiptv82/SuperBot-Trading/commit/72d2c92aa615f25797e73e6bdc24b3b6439e6496).
+- `integration/brain-unico-20261119` verificato @ `5c2edfcaa4d64a50f0a1496515ec64bb9d8caf87`: quattro commit dopo `a5a92040` per copertura causale valida, provenienza/letture indicizzate, validatore indipendente, `thesis_id`/anti-reingresso observe ed etichette LLM.
+- Test **riferiti** dal diario Claude, non rieseguiti/Actions/VPS qui: V3 5147→5235, 0 fail; Builder 134; mutazioni 16/16, 14/14, 12/13 equivalente, 10/10. Benchmark riferito: 200k eventi ~4,5 s per lettura completa; 8 simboli/60k 28,7→1,3 s.
+- Limiti: snapshot tardivi registrati ma non validi al training; candele e journal non attestati; numeri rischio esclusi; anti-reingresso enforce non attivo; protocollo/provider LLM non approvati.
+- PR #80/#120/#121/#122/#123 open/draft e Issue #124 open. RC84 `0e29a73…`; extbackup `3dc2116a…` preparato ma non certificato/installato; age PC `ESITO: VERIFICA OK` e chiave pubblica coincidente, non prova VPS.
+- Nessun merge su main, deploy, VPS, servizio, restart, reset, parametro runtime, ordine, training, LIVE o API a pagamento. PAPER e storici/EventJournal preservati.
+
 ## 20/11/2026 — Claude: copertura affidabile, validazione indipendente, thesis_id, etichette degli esiti
 
 - `integration/brain-unico-20261119` @ `5c2edfca`: suite 5147 → **5235**, 0 falliti; builder 134 OK. Dettagli: [`diario/2026-11-20_claude-copertura-validazione-tesi-esiti.md`](diario/2026-11-20_claude-copertura-validazione-tesi-esiti.md).
