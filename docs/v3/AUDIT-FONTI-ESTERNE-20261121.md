@@ -61,13 +61,20 @@ Costo stimato della Fase A: piccolo e dopo la RC. Non rallenta backup, RC e comp
 - **Nessuna modifica** alle decisioni originali del journal, ai parametri o al runtime. I risultati sono proposte, mai applicazioni automatiche.
 
 ### Conteggi richiesti (gli eventi non sono trade)
-Gli ~4.900 eventi V3 e Arena **non** sono 4.900 trade né 4.900 esempi idonei. Con gli storici attestati, il rapporto riporterà i campi già prodotti dal Dataset Builder (`summary.json`):
+Gli ~4.900 eventi V3 e Arena **non** sono 4.900 trade né 4.900 esempi idonei. Con gli storici attestati, il rapporto riporterà questi conteggi.
 
-| Richiesta | Campo |
+**Due fonti distinte, da non confondere:**
+- **le decisioni effettive nel journal**, cioè gli eventi di decisione di `v3_events`, contati direttamente sul journal attestato;
+- **le righe generate nel dataset** dal Dataset Builder. Il riepilogo di queste righe è scritto in `public_summary.json` e nel campo di riepilogo di `manifest.json`, nella cartella di output.
+
+Il numero di righe può differire dal numero di decisioni: righe per candidati rifiutati, duplicati segnalati, decisioni senza riga.
+
+| Richiesta | Dove |
 |---|---|
-| decisioni registrate | `rows`, `by_record_kind` |
+| decisioni effettive | journal V3 attestato: eventi di decisione, inclusi i NO_TRADE |
+| righe del dataset | `rows`, `by_record_kind` |
 | operazioni aperte e chiuse | `executed`, `by_outcome` (`closed`, `open_censored`, …), `wins`/`losses` |
-| NO_TRADE | `by_record_kind.no_trade` (più `candidate_rejected`) |
-| esempi con feature verificabili | `feature_source`, `quality_flags` |
+| NO_TRADE nel dataset | `by_record_kind.no_trade` (più `candidate_rejected`) |
+| esempi con feature verificabili | **non** dedotti automaticamente da `feature_source` o `quality_flags`: questi campi descrivono l'origine delle feature e i difetti noti, non una verifica indipendente. Il conteggio si fa sulle righe senza i motivi `no_features`, `ambiguous_feature_link`, `snapshot_unverified` e `market_data_unattested`, dichiarando il criterio usato |
 | esempi candidati al training | `eligible_for_training`, `data_status.verified` |
-| giorni distinti | `days` (tutte le righe), `sufficiency.days` (solo le righe idonee) |
+| giorni distinti | `days` (tutte le righe), `sufficiency.distinct_days` (solo le righe idonee) |

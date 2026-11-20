@@ -63,7 +63,7 @@ Si ripristina il commit precedente del runner e la build web precedente. Il jour
 - **Esiti separati** (commit `f60b90d6`): **0** = certificato; **1** = difetto tecnico, che è NO-GO; **3** = integro ma **non certificato semanticamente**. L'esito 3 conserva l'archivio, ma non è un successo.
 - **Falco e Toro:** decisione del proprietario del 21/11, vedi la sezione 10.
 - **Aperto:**
-  - l'archivio cifrato di prova pesa **117 MB**, oltre il limite di 100 MB per file di GitHub (`superbot-backups`): per la copia esterna serve un archivio per componente, o diviso in parti;
+  - ~~archivio di 117 MB oltre il limite di GitHub~~: risolto nel branch `claude/extbackup-storici-20261121` @ `75a714be`. Ci sono due archivi separati, `indispensabili` (database + Brain V3 + Arena, solo esito 0) e `storici` (Falco/Toro e altri, esito 0 o 3), con file cifrati divisi in parti da 90 MiB, verificate una per una, e retention per componente. 74 test da non-root; prova reale da autorizzare;
   - installazione dell'extbackup aggiornato in produzione, con consenso;
   - ripristino dal file cifrato sul PC del proprietario.
 
