@@ -82,8 +82,9 @@ Completare il Brain Unico: verifica finale della PR #121, correzione P0 della Is
 
 ## Stato (aggiornabile da Claude, senza cambiare le autorizzazioni)
 
-| Voce | Stato al 19/11/2026 |
+| Voce | Stato al 20/11/2026 |
 |---|---|
 | Merge | **autorizzati solo in `integration/brain-unico-20261119`** alle condizioni del § 2; verso `main` e rami operativi non autorizzati. Registro delle integrazioni in `diario/2026-11-19_claude-registro-integrazione.md` |
 | App GitHub di Claude | scrittura su PR e Issue ancora **403**: da correggere nei permessi dell'app (vedi § 4) |
+| Conferma del 20/11/2026 | il proprietario ha riconfermato nella sessione Claude Code: sviluppo e integrazione **solo** in `integration/brain-unico-20261119`, test prima/dopo, zero regressioni, documentazione, rollback; esclusi merge su `main`, deploy, servizi operativi, reset, parametri attivi, nuove spese API, LIVE; revocabile in ogni momento. Il conflitto di provenienza segnalato dal checkpoint ChatGPT 20:49 è chiuso (vedi anche checkpoint 21:48). Il testo delle autorizzazioni (§ 1–4) non è stato modificato |
 | Revoca | il proprietario può revocare tutto o in parte con un messaggio; Claude si ferma e registra qui la revoca |

@@ -1,3 +1,9 @@
+## 20/11/2026 — Claude: autorizzazione al ramo di integrazione riconfermata
+
+- Il proprietario ha riconfermato a Claude Code l'autorizzazione temporanea e revocabile a sviluppare e integrare **solo** in `integration/brain-unico-20261119` (test prima/dopo, zero regressioni, documentazione, rollback). Restano esclusi merge su `main`, deploy, servizi operativi, reset, parametri attivi, nuove spese API e LIVE.
+- Registrato nel § Stato di [`AUTORIZZAZIONI.md`](AUTORIZZAZIONI.md); testo delle autorizzazioni invariato. Conflitto di provenienza (checkpoint 20:49) chiuso, coerente con il checkpoint 21:48.
+- Ramo di integrazione invariato @ `dd414831…` (5121 test, 0 falliti). Nessun deploy, restart, reset, ordine, API o LIVE.
+
 ## 19/11/2026 21:48 Europe/Rome — P0 bis, PR #123 integrata in laboratorio, autorizzazione risolta
 
 - Checkpoint: [`diario/2026-11-19_2148_p0-bis-pr123-autorizzazione-risolta.md`](diario/2026-11-19_2148_p0-bis-pr123-autorizzazione-risolta.md), commit [`4922506…`](https://github.com/alexiptv82/SuperBot-Trading/commit/4922506fc595dfea92969c0df96d7c39221f84bd).
