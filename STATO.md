@@ -1,3 +1,9 @@
+## 21/11/2026 (9) — DECISIONE: fonti esterne solo come riferimento; Fase A dopo la RC
+
+- Approvate le conclusioni dell'audit. Nessuna importazione esterna e nessuna seconda memoria operativa. Da usare: restituzione dei profitti, leva rispetto a volatilità e rischio, recupero selettivo delle esperienze.
+- **Fase A** dopo la preparazione della RC: offline, sola lettura, dati attestati, priorità alla protezione dei profitti; stesse condizioni (commissioni, funding, slippage), confronto fuori campione, nessun parametro scelto sugli stessi dati, journal intatto.
+- Il rapporto distinguerà eventi, decisioni, trade, NO_TRADE, feature verificabili, candidati al training e giorni: campi già in `summary.json` del Dataset Builder (`docs/v3/AUDIT-FONTI-ESTERNE-20261121.md`, `3d76edbb`).
+
 ## 20/11/2026 17:49 Europe/Rome — supplemento: audit fonti esterne solo documentale
 
 - Supplemento append-only: [diario/2026-11-20_1749_supplemento-audit-fonti-esterne-solo-documentale.md](diario/2026-11-20_1749_supplemento-audit-fonti-esterne-solo-documentale.md).
