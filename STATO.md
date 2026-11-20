@@ -1,3 +1,10 @@
+## 20/11/2026 (9) — Claude: prova di backup bloccata dai permessi, cifratura pronta, requisiti RC
+
+- **Backup run Brain** (`brain-rc-2000-20261106`, `/opt/superbot-v3-paper-runs/…`): cartella solo root, non leggibile senza sudo → **prova non eseguita**, nessun'altra cartella tentata. Strade: lancio come root dell'operatore o lettura delegata in sola lettura.
+- Protezione generale **non completa**: Falco/Toro/app/pool nell'extbackup (non certificato); run Brain V3 e Arena non coperte.
+- Cifratura age dei backup pronta (chiave pubblica esistente, nessun chiaro su disco), copia esterna proposta sul repository privato già esistente; nessun trasferimento.
+- Freschezza verificata (test) su 1m/15m/1h/4h; 15m confermato sull'API reale. Profilo di rischio definitivo da approvare. Integrazione @ `f53df73c`, suite 5346, builder 157, Jest 152.
+
 ## 20/11/2026 12:47 Europe/Rome — policy token, feed reale, Arena, perdita giornaliera e backup Brain
 
 - Checkpoint append-only: [diario/2026-11-20_1247_checkpoint-token-feed-arena-perdita-backup.md](diario/2026-11-20_1247_checkpoint-token-feed-arena-perdita-backup.md), commit [def1e33…](https://github.com/alexiptv82/SuperBot-Trading/commit/def1e3380f4cefdf68d3ce94042dbb50cca2e547).
