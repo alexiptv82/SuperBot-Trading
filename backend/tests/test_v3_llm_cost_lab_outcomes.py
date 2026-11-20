@@ -106,7 +106,8 @@ def test_score_measures_market_outcome_not_agreement():
     labs = _label(records, _candles(stop_path))
     sc = score(records, labs, reference_model="deepseek-flash")
     g, l, d = sc["arms"]["gemini"], sc["arms"]["llama"], sc["arms"]["deepseek-flash"]
-    assert g["avoided_unfavorable"] == 1 and g["missed_favorable"] == 0 and g["ev_net_r"] is None
+    assert g["no_trade"]["avoided_unfavorable"] == 1 and g["no_trade"]["missed_favorable"] == 0
+    assert g["ev_net_r"] is None
     assert l["ev_net_r"] == d["ev_net_r"] == D("-1.16") and l["losses"] == 1
     assert sc["agreement_is_correctness"] is False and sc["basis"] == "market_outcomes"
     assert sc["sample_size_warning"] is True
@@ -116,7 +117,8 @@ def test_a_no_trade_that_skips_a_winner_is_a_missed_opportunity():
     win = [(D("102.5"), D("99.9"), D("102.2"))] + FLAT[:9]
     records = [_rec("deepseek-flash"), _rec("gemini", action="NO_TRADE")]
     sc = score(records, _label(records, _candles(win)), reference_model="deepseek-flash")
-    assert sc["arms"]["gemini"]["missed_favorable"] == 1 and sc["arms"]["gemini"]["avoided_unfavorable"] == 0
+    nt = sc["arms"]["gemini"]["no_trade"]
+    assert nt["missed_favorable"] == 1 and nt["avoided_unfavorable"] == 0
 
 
 def test_score_refuses_misaligned_labels():
@@ -126,3 +128,79 @@ def test_score_refuses_misaligned_labels():
         score(records, list(reversed(labs)), reference_model="deepseek-flash")
     with pytest.raises(ValueError, match="labels_mismatch"):
         score(records, labs[:1], reference_model="deepseek-flash")
+
+
+# ------------------------------------------------------------------------------------------------ limiti e incertezza
+
+def test_abstaining_together_with_the_reference_is_not_counted_as_avoiding_anything():
+    records = [_rec("deepseek-flash", action="NO_TRADE"), _rec("gemini", action="NO_TRADE")]
+    nt = score(records, _label(records, _candles(FLAT)), reference_model="deepseek-flash")["arms"]["gemini"]["no_trade"]
+    assert nt == {"total": 1, "avoided_unfavorable": 0, "missed_favorable": 0, "reference_flat": 0,
+                  "reference_also_abstained": 1, "unjudged": 0}
+
+
+def test_a_no_trade_without_a_usable_reference_is_unjudged():
+    c = _candles(FLAT)
+    del c["BTCUSDT"][4]
+    records = [_rec("deepseek-flash"), _rec("gemini", action="NO_TRADE"), _rec("llama", action="NO_TRADE", sample="s9")]
+    arms = score(records, _label(records, c), reference_model="deepseek-flash")["arms"]
+    assert arms["gemini"]["no_trade"]["unjudged"] == 1 and arms["llama"]["no_trade"]["unjudged"] == 1
+
+
+DAY = 86_400_000
+
+
+def _multi(paths_by_sample, models, days=None):
+    """Un campione per percorso; ogni modello apre LONG con stop 99 su ogni campione (giorno ``days[i]``)."""
+    records, candles = [], {}
+    for i, path in enumerate(paths_by_sample):
+        sym = f"S{i}USDT"
+        start = T0 + (days[i] if days else 0) * DAY + i * M          # istanti diversi anche nello stesso giorno
+        candles.update(_candles(path, start=start, symbol=sym))
+        for m in models:
+            r = _rec(m, sample=f"s{i}", decision=start)
+            r["symbol"] = sym
+            records.append(r)
+    return records, candles
+
+
+WIN = [(D("102.5"), D("99.9"), D("102.2"))] + FLAT[:9]
+LOSS = [(D("100.2"), D("98.9"), D("99"))] + FLAT[:9]
+
+
+def test_uncertainty_days_and_sample_flag_are_reported():
+    records, candles = _multi([WIN, LOSS, WIN, LOSS], ["gemini"], days=[0, 0, 1, 3])
+    a = score(records, _label(records, candles), reference_model="deepseek-flash")["arms"]["gemini"]
+    assert a["labelled"] == 4 and a["ev_net_r"] == D("0.34")             # (1,84 - 1,16) / 2
+    # scarti +-1,5: varianza campionaria 9/3 = 3, sd 1,7321, se 0,8660, 95 % = 0,34 +- 1,96 * 0,8660
+    assert (a["sd_net_r"], a["se"]) == (D("1.7321"), D("0.8660"))
+    assert a["ci95_approx"] == [D("-1.3574"), D("2.0374")]
+    assert a["distinct_days"] == 3 and a["sample"] == "insufficient" and a["label_kind"] == "simulated_counterfactual"
+
+
+def test_paired_difference_uses_only_samples_where_both_opened():
+    records, candles = _multi([WIN, LOSS], ["deepseek-flash", "gemini"])
+    records[3] = dict(records[3], action="NO_TRADE", direction=None)      # gemini si astiene sul secondo
+    records[3].pop("proposal")
+    sc = score(records, _label(records, candles), reference_model="deepseek-flash")
+    assert sc["paired_vs_reference"]["gemini"]["pairs"] == 1 and sc["paired_vs_reference"]["gemini"]["mean_diff_r"] == 0
+    assert sc["arms"]["gemini"]["no_trade"]["avoided_unfavorable"] == 1
+
+
+def test_observed_paper_trades_stay_separate_from_simulations():
+    records, candles = _multi([WIN, LOSS], ["deepseek-flash", "gemini"])
+    sc = score(records, _label(records, candles), reference_model="deepseek-flash",
+               observed={"s0": D("1.2"), "s1": D("-1.0")})
+    obs = sc["reference_observed"]
+    assert obs["label_kind"] == "observed_paper_trade" and obs["comparable_with_simulated_arms"] is False
+    assert obs["n"] == 2 and obs["ev_net_r"] == D("0.1")
+    assert obs["simulated_minus_observed"]["mean_r"] == D("0.24")        # ((1,84-1,2) + (-1,16+1,0)) / 2
+    assert sc["arms"]["deepseek-flash"]["ev_net_r"] == D("0.34")         # le simulazioni non cambiano
+
+
+def test_every_report_declares_its_limits():
+    records = [_rec("gemini")]
+    sc = score(records, _label(records, _candles(FLAT)), reference_model="deepseek-flash")
+    assert {"simulated_labels_are_counterfactual", "no_trade_judged_relative_to_reference",
+            "bracket_exit_not_production_exit_policy", "samples_not_independent"} <= set(sc["limits"])
+    assert sc["reference_observed"] is None

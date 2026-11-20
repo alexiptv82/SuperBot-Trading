@@ -11,9 +11,9 @@ Regole uguali per ogni modello, fissate PRIMA di vedere i risultati (argomenti o
 * etichettatura con ``backend.v3.learning.opportunity`` (gia' collaudato): solo candele che APRONO dopo la decisione,
   la candela che la contiene e' esclusa; una candela mancante => ``incomplete``, mai interpolare.
 
-``score`` riassume per modello: aperture eseguibili ed etichettate, EV netto medio in R, vittorie/perdite,
-e per le NO_TRADE gli ingressi sfavorevoli EVITATI e le occasioni MANCATE rispetto alla proposta di riferimento
-(``reference_model``) sullo stesso campione. L'accordo con il riferimento non e' mai un criterio.
+``score`` riassume per modello (vedi la sua docstring): esiti SIMULATI e controfattuali per ogni modello, esiti
+OSSERVATI (trade PAPER reali del riferimento) in una sezione separata, NO_TRADE giudicate solo in RELAZIONE al
+riferimento, incertezza e limiti del campione sempre dichiarati. L'accordo con il riferimento non e' mai un criterio.
 """
 from __future__ import annotations
 
@@ -49,7 +49,8 @@ def label_records(records: Sequence[Mapping], candles: Mapping[str, Sequence[Can
     todo: list[tuple[int, Candidate, Decimal]] = []
     for i, r in enumerate(records):
         base = {"sample_id": r.get("sample_id"), "model_id": r.get("model_id"), "status": None,
-                "barrier": None, "net_bp": None, "net_r": None, "ambiguous": None}
+                "barrier": None, "net_bp": None, "net_r": None, "ambiguous": None,
+                "label_kind": "simulated_counterfactual"}
         out.append(base)
         if r.get("valid") is not True:
             base["status"] = "invalid"
@@ -82,46 +83,114 @@ def label_records(records: Sequence[Mapping], candles: Mapping[str, Sequence[Can
     return out
 
 
-def score(records: Sequence[Mapping], labels: Sequence[Mapping], *, reference_model: str) -> dict:
-    """Per modello. ``avoided_unfavorable``: NO_TRADE dove la proposta di riferimento ha perso (net_r < 0);
-    ``missed_favorable``: NO_TRADE dove ha guadagnato. Campioni senza etichetta di riferimento: non giudicati."""
+DAY_MS = 86_400_000
+MIN_SAMPLE = 30
+LIMITS = (
+    "simulated_labels_are_counterfactual",       # nessun candidato ha mai aperto: esiti simulati con regole fisse
+    "bracket_exit_not_production_exit_policy",   # stop/obiettivo/orizzonte, non l'ExitService reale (trailing, ecc.)
+    "no_slippage_or_gap_model",                  # uscita esattamente al livello; costi uguali per ogni barriera
+    "intrabar_order_unknown",                    # candela con stop e obiettivo: risolta dalla policy dichiarata
+    "no_trade_judged_relative_to_reference",     # un NO_TRADE e' giudicato contro la proposta di riferimento,
+                                                 # non contro la migliore decisione possibile
+    "samples_not_independent",                   # stesse ore/simboli correlati: l'intervallo e' approssimato
+)
+
+
+def _stats(values: list) -> dict:
+    n = len(values)
+    if n == 0:
+        return {"n": 0, "ev_net_r": None, "sd_net_r": None, "se": None, "ci95_approx": None}
+    q = Decimal("0.0001")
+    mean = sum(values, Decimal(0)) / n
+    if n < 2:
+        return {"n": n, "ev_net_r": mean.quantize(q), "sd_net_r": None, "se": None, "ci95_approx": None}
+    var = sum(((v - mean) ** 2 for v in values), Decimal(0)) / (n - 1)
+    sd = var.sqrt()
+    se = sd / Decimal(n).sqrt()
+    half = Decimal("1.96") * se
+    return {"n": n, "ev_net_r": mean.quantize(q), "sd_net_r": sd.quantize(q), "se": se.quantize(q),
+            "ci95_approx": [(mean - half).quantize(q), (mean + half).quantize(q)]}
+
+
+def score(records: Sequence[Mapping], labels: Sequence[Mapping], *, reference_model: str,
+          observed: Optional[Mapping[str, Decimal]] = None) -> dict:
+    """Per modello, su esiti SIMULATI (controfattuali, regole uguali per tutti):
+    * aperture: EV netto in R con deviazione, errore standard e intervallo al 95 % APPROSSIMATO, giorni UTC distinti,
+      ``sample`` = ``insufficient`` sotto 30 etichette;
+    * NO_TRADE, giudicate SOLO in relazione al riferimento sullo stesso campione: ingresso sfavorevole evitato
+      (riferimento in perdita), occasione mancata (in utile), entrambi astenuti (``reference_also_abstained``: non
+      e' una prova di correttezza), non giudicabili;
+    * ``paired_vs_reference``: differenza media di R sui soli campioni dove entrambi hanno aperto.
+    ``observed`` ({sample_id: R netto del trade PAPER reale del riferimento}) resta in una sezione SEPARATA: e' un
+    esito osservato con la politica d'uscita reale, non confrontabile alla pari con le simulazioni; se ne riporta
+    solo la distanza media dalla simulazione dello stesso campione (quanto la simulazione rappresenta la realta').
+    """
     if len(records) != len(labels):
         raise ValueError("labels_mismatch")
-    ref = {lab["sample_id"]: lab for r, lab in zip(records, labels)
-           if r.get("model_id") == reference_model and lab["status"] == "labelled"}
-    per: dict = defaultdict(lambda: {"records": 0, "opens": 0, "labelled": 0, "incomplete": 0, "not_executable": 0,
-                                     "wins": 0, "losses": 0, "sum_net_r": Decimal(0), "no_trade": 0,
-                                     "no_trade_judged": 0, "avoided_unfavorable": 0, "missed_favorable": 0,
-                                     "invalid": 0})
     for r, lab in zip(records, labels):
         if r.get("sample_id") != lab["sample_id"] or r.get("model_id") != lab["model_id"]:
             raise ValueError("labels_mismatch")
+    ref_lab = {lab["sample_id"]: lab for r, lab in zip(records, labels) if r.get("model_id") == reference_model}
+    per: dict = defaultdict(lambda: {"records": 0, "opens": 0, "incomplete": 0, "not_executable": 0, "invalid": 0,
+                                     "values": [], "days": set(), "by_sample": {},
+                                     "no_trade": {"total": 0, "avoided_unfavorable": 0, "missed_favorable": 0,
+                                                  "reference_flat": 0, "reference_also_abstained": 0,
+                                                  "unjudged": 0}})
+    for r, lab in zip(records, labels):
         s = per[str(r.get("model_id"))]
         s["records"] += 1
         st = lab["status"]
         if st == "invalid":
             s["invalid"] += 1
         elif st == "no_trade":
-            s["no_trade"] += 1
-            other = ref.get(lab["sample_id"])
-            if other is not None:
-                s["no_trade_judged"] += 1
-                if other["net_r"] < 0:
-                    s["avoided_unfavorable"] += 1
-                elif other["net_r"] > 0:
-                    s["missed_favorable"] += 1
+            nt = s["no_trade"]
+            nt["total"] += 1
+            other = ref_lab.get(lab["sample_id"])
+            if other is None or other["status"] in ("incomplete", "invalid", "not_executable"):
+                nt["unjudged"] += 1
+            elif other["status"] == "no_trade":
+                nt["reference_also_abstained"] += 1
+            elif other["net_r"] < 0:
+                nt["avoided_unfavorable"] += 1
+            elif other["net_r"] > 0:
+                nt["missed_favorable"] += 1
+            else:
+                nt["reference_flat"] += 1
         else:
             s["opens"] += 1
             if st == "labelled":
-                s["labelled"] += 1
-                s["sum_net_r"] += lab["net_r"]
-                s["wins" if lab["net_r"] > 0 else "losses"] += 1
+                s["values"].append(lab["net_r"])
+                s["by_sample"][lab["sample_id"]] = lab["net_r"]
+                ms = r.get("decision_ms")
+                if type(ms) is int:
+                    s["days"].add(ms // DAY_MS)
             else:
                 s[st] += 1
-    arms = {}
+    arms, paired = {}, {}
+    ref_values = per[reference_model]["by_sample"] if reference_model in per else {}
     for model, s in sorted(per.items()):
-        s["ev_net_r"] = (s["sum_net_r"] / s["labelled"]).quantize(Decimal("0.0001")) if s["labelled"] else None
-        s["sum_net_r"] = s["sum_net_r"].quantize(Decimal("0.0001"))
-        arms[model] = s
-    return {"arms": arms, "reference_model": reference_model, "agreement_is_correctness": False,
-            "basis": "market_outcomes", "sample_size_warning": any(a["labelled"] < 30 for a in arms.values())}
+        st = _stats(s["values"])
+        arms[model] = {"records": s["records"], "opens": s["opens"], "labelled": st["n"], "incomplete": s["incomplete"],
+                       "not_executable": s["not_executable"], "invalid": s["invalid"],
+                       "wins": sum(1 for v in s["values"] if v > 0), "losses": sum(1 for v in s["values"] if v <= 0),
+                       **{k: st[k] for k in ("ev_net_r", "sd_net_r", "se", "ci95_approx")},
+                       "distinct_days": len(s["days"]),
+                       "sample": "insufficient" if st["n"] < MIN_SAMPLE else "ok",
+                       "label_kind": "simulated_counterfactual", "no_trade": dict(s["no_trade"])}
+        if model != reference_model:
+            diffs = [v - ref_values[k] for k, v in s["by_sample"].items() if k in ref_values]
+            d = _stats(diffs)
+            paired[model] = {"pairs": d["n"], "mean_diff_r": d["ev_net_r"], "se": d["se"],
+                             "ci95_approx": d["ci95_approx"]}
+    obs = None
+    if observed:
+        vals = [Decimal(v) for v in observed.values()]
+        gaps = [ref_values[k] - Decimal(v) for k, v in observed.items() if k in ref_values]
+        o, g = _stats(vals), _stats(gaps)
+        obs = {"label_kind": "observed_paper_trade", "model_id": reference_model, "n": o["n"],
+               "ev_net_r": o["ev_net_r"], "se": o["se"], "ci95_approx": o["ci95_approx"],
+               "simulated_minus_observed": {"n": g["n"], "mean_r": g["ev_net_r"], "se": g["se"]},
+               "comparable_with_simulated_arms": False}
+    return {"arms": arms, "paired_vs_reference": paired, "reference_model": reference_model,
+            "reference_observed": obs, "agreement_is_correctness": False, "basis": "market_outcomes",
+            "limits": list(LIMITS), "sample_size_warning": any(a["sample"] == "insufficient" for a in arms.values())}
