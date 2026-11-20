@@ -1,3 +1,9 @@
+## 21/11/2026 (10) — Backup separato per componente pronto (prova reale da autorizzare)
+
+- `claude/extbackup-storici-20261121` @ `75a714be`: `--component indispensabili` (database + Brain V3 + Arena, solo esito 0) e `storici` (Falco/Toro e altri, esito 0 o 3); file cifrati divisi in parti da 90 MiB (limite di GitHub 100 MB), con SHA-256 per parte; retention per componente; `run.sh` di produzione invariato. 74 test da non-root.
+- Integration `f456cee8` (gate verde): piano RC aggiornato; correzioni del proprietario sull'audit (`public_summary.json`, `sufficiency.distinct_days`, feature verificate non dedotte da `feature_source`, decisioni del journal distinte dalle righe).
+- Prossimo: verifica della memoria decisionale, poi uscite e rischio.
+
 ## 21/11/2026 (9) — DECISIONE: fonti esterne solo come riferimento; Fase A dopo la RC
 
 - Approvate le conclusioni dell'audit. Nessuna importazione esterna e nessuna seconda memoria operativa. Da usare: restituzione dei profitti, leva rispetto a volatilità e rischio, recupero selettivo delle esperienze.
