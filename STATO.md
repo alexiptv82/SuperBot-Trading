@@ -1,3 +1,9 @@
+## 21/11/2026 (6) — Prova storici: integrità tecnica OK, semantica di Falco/Toro da diagnosticare
+
+- Seconda prova reale: backup cifrato e journal V3 verificati (Brain V3 1058, DeepSeek 1260, Qwen 1281, MiniMax 1306). Ripristino: 4 anomalie su Falco/Toro (contabilità +21,13 / +39,08 USDT PAPER; Toro 25 trade nello stato, 55 nello storico).
+- Contabilità del motore ricostruita: una chiusura toglie dalla cassa al massimo margine + commissione d'apertura (`max(0, …)` in `engine.py`), mentre `net` registra la perdita intera. Ipotesi compatibile con il segno delle differenze, **non confermata**. Origine dei 30 trade di Toro: non nota.
+- `f60b90d6`: contabilità esatta del motore; esiti separati (0 OK, 1 difetto tecnico, 3 integro ma non certificato, mai OK); V3 invariati; `diagnosi_classici.py` in sola lettura. 67 test. In attesa della diagnostica del proprietario; nessuna nuova prova completa.
+
 ## 21/11/2026 (5) — Prova storici: backup cifrato OK, ripristino 4 problemi riprodotti e corretti
 
 - Prova reale del proprietario: archivio cifrato di prova riuscito (117 MB); journal V3 verificati: Brain V3 1058, DeepSeek 1259, Qwen 1281, MiniMax 1306, run preparata 1, catene valide. Ripristino FALLITO (4 problemi); motivi non visibili (filtro senza `ERRORE:`) e cartella cancellata.
