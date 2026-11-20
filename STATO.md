@@ -1,3 +1,11 @@
+## 20/11/2026 (8) — Claude: feed confermato, storico Arena, perdita giornaliera, backup
+
+- **Sonda feed** (autorizzata, 2 tentativi): ultima candela chiusa presente e pagine contigue: correzione confermata sull'API reale. Rapporto `~/brain-unico-lab/data/probe-feed-20261120.json` (completato a mano dopo un errore dello script di contorno, nessuna nuova richiesta).
+- **Storico Arena** in sola lettura nell'app (`/arena`, opt-in; codice di lettura copiato invariato da `3dd6aa5`, chiusura Arena non portata) — `e6c3f3d7`.
+- **Perdita giornaliera** nella schermata Brain (dal battito, filtrata) — `32ea96e4`.
+- **Backup a caldo + prova di ripristino** della cartella dati Brain (`backend/v3/runner/run_backup.py`), piano RC aggiornato — `03607bec`. Esecuzione sui dati reali, cifratura e copia esterna: con consenso.
+- Integrazione @ `03607bec`: suite 5341, builder 157, Jest 152, 0 falliti (gate). Nessun deploy, servizio o parametro toccato. In attesa: ancora dell'archivio candele (proprietario).
+
 ## 20/11/2026 (7) — Claude: TOKEN EFFICIENCY POLICY
 
 - Sezione aggiunta in coda a `CLAUDE.md` nel ramo di integrazione (commit `ccbcf547`, solo documentazione, 14 righe). Gate invariato e superato (suite 5311, builder 157, Jest 137). Nessun codice, parametro o configurazione toccati.
