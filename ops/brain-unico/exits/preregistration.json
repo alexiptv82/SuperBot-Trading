@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "registered_on": "2026-11-21",
+  "status": "registrata prima di qualunque analisi su dati reali; modificabile solo con una nuova versione datata",
+  "question": "A parita' di entrate, candele, commissioni, funding e slippage, un'uscita alternativa protegge meglio i profitti del riferimento (stop, take-profit 2R, 24 h)?",
+  "data": {
+    "positions": "aperture del Brain V3 e delle run Arena con input attestati (Dataset Builder: input_attested) e candele 1m attestate (ancora del proprietario)",
+    "excluded": ["Falco e Toro (non certificati semanticamente)", "dati non attestati", "fonti esterne"],
+    "entries_unchanged": true
+  },
+  "arms": [
+    {"name": "A0_riferimento", "family": "baseline", "tp_r": 2.0, "max_hold_hours": 24},
+    {"name": "BE_075", "family": "break_even", "tp_r": 2.0, "be_at_r": 0.75},
+    {"name": "BE_100", "family": "break_even", "tp_r": 2.0, "be_at_r": 1.0},
+    {"name": "TR_100_075", "family": "trailing", "tp_r": 2.0, "trail_at_r": 1.0, "trail_dist_r": 0.75},
+    {"name": "TR_100_100", "family": "trailing", "tp_r": 2.0, "trail_at_r": 1.0, "trail_dist_r": 1.0},
+    {"name": "TR_100_100_senza_tp", "family": "trailing", "tp_r": null, "trail_at_r": 1.0, "trail_dist_r": 1.0},
+    {"name": "PR_100_033", "family": "protect", "tp_r": 2.0, "protect_at_r": 1.0, "protect_frac": 0.33},
+    {"name": "PR_100_050", "family": "protect", "tp_r": 2.0, "protect_at_r": 1.0, "protect_frac": 0.5},
+    {"name": "INV_EMA20_1H", "family": "reversal", "tp_r": 2.0, "reversal_ema": 20}
+  ],
+  "costs": {"fee_bp_per_side": 6, "stop_slippage_bp": 2, "market_slippage_bp": 2,
+            "funding_scenarios": ["tassi attestati, se disponibili", "0 per scadenza", "+0,01 % per scadenza (il long paga)", "+0,03 % per scadenza"]},
+  "rules": {
+    "calibration_fraction": 0.6,
+    "embargo_days": 1,
+    "min_test_trades": 100,
+    "min_test_days": 20,
+    "alpha": 0.05,
+    "multiple_comparisons": "Holm sulle 4 famiglie",
+    "bootstrap_samples": 10000,
+    "bootstrap": "a blocchi per giorno UTC, seme fisso",
+    "seed": 20261121,
+    "max_drawdown_worsening": 0.10,
+    "selection": "un parametro per famiglia, scelto SOLO sulla calibrazione (media di R netti)",
+    "superiority": "limite inferiore > 0 dopo Holm, drawdown non peggiore oltre il 10 %, campione minimo, in TUTTI gli scenari di funding e con lo stesso braccio scelto",
+    "outcome": "solo una proposta al proprietario; nessuna modifica di exit_policy.json o del runtime"
+  },
+  "metrics_reported": ["R netti medi e mediani per braccio", "differenza appaiata e intervallo", "drawdown in R",
+                       "quota di trade con MFE >= 1R chiusi in perdita (restituzione)", "cattura = R realizzati / MFE",
+                       "distribuzione dei motivi d'uscita", "esiti per simbolo e per fascia di volatilita' (descrittivi, non decisionali)"],
+  "known_limits": [
+    "valutazione per trade in R: uscite anticipate avrebbero liberato il simbolo per nuove entrate non osservate (effetto di secondo ordine non stimato)",
+    "INV_EMA20_1H e' un'approssimazione deterministica dell'inversione della tesi: il runner oggi non consulta il modello sui simboli con posizione aperta",
+    "candele 1m: l'ordine dei prezzi dentro la candela e' ignoto; vince lo stop (come il runtime)",
+    "nell'analisi tutte le uscite a mercato (anche la durata massima del riferimento) pagano la stessa slippage, a differenza del runtime che chiude il timeout alla chiusura esatta"
+  ]
+}

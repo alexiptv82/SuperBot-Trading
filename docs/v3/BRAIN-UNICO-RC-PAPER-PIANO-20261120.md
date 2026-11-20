@@ -22,7 +22,7 @@
 2. Suite V3, builder e Jest verdi sul commit da rilasciare, con il gate di pubblicazione.
 3. ~~Sonda del feed~~ **fatta il 20/11** (2 tentativi): ultima candela chiusa presente, pagine contigue.
 4. Backup e restore del journal e dei dati Brain **attestati**. Strumento pronto: `backend/v3/runner/run_backup.py` (backup a caldo in sola lettura, catena verificata, manifest, prova di ripristino in cartella nuova). Da eseguire sulla cartella reale con consenso, più cifratura e copia fuori dalla VPS. Senza questo, NO-GO.
-5. **Profilo di rischio definitivo approvato dal proprietario.** Le soglie storiche WARN 35 % / HALT 50 % e i valori di `runner_config_brain2000_paper.json` NON sono automaticamente quelli del Brain Unico (studio v2 in attesa di decisione). Poi il mandato di rischio approvato per la nuova run. Le decisioni sul profilo di rischio v2 restano del proprietario; senza mandato il motore rifiuta ogni apertura.
+5. **Profilo di rischio definitivo approvato dal proprietario.** Proposta pronta: `docs/v3/BRAIN-UNICO-PROFILO-RISCHIO-PROPOSTA-20261121.md`, con tre profili; raccomandato B Bilanciato, 1 % per trade. Le soglie storiche WARN 35 % / HALT 50 % e i valori di `runner_config_brain2000_paper.json` NON sono automaticamente quelli del Brain Unico (studio v2 in attesa di decisione). Poi il mandato di rischio approvato per la nuova run. Le decisioni sul profilo di rischio v2 restano del proprietario; senza mandato il motore rifiuta ogni apertura.
 6. Exit service sidecar sano e indipendente, verificato in pre-collaudo.
 7. Piano di rollback provato: commit precedente e build web precedente conservati.
 
@@ -87,3 +87,19 @@ Si ripristina il commit precedente del runner e la build web precedente. Il jour
 - **Toro:** 25 trade nello stato, 55 nello storico della run, di cui 30 solo nello storico.
 
 Il motore toglie dalla cassa al massimo margine + commissione d'apertura (`engine.py`). L'ipotesi è compatibile con il segno delle differenze, ma non è verificata. **Nessuna ulteriore indagine** senza una nuova richiesta del proprietario. Per Falco e Toro i dati originali non si modificano.
+
+## 11. Requisiti ancora mancanti per il GO PAPER (21/11/2026)
+| # | Requisito | Chi | Stato |
+|---|---|---|---|
+| 1 | Scelta del profilo di rischio (A, B o C) e **nuovo mandato** per la nuova run (cambia il `policy_hash`) | proprietario | proposta pronta |
+| 2 | Prova amministrativa finale del backup per componente, poi installazione dell'extbackup aggiornato e primo invio cifrato al repository privato | proprietario (root, consenso) | procedura pronta (`75a714be`) |
+| 3 | Ripristino del file cifrato sul PC del proprietario, con la chiave privata | proprietario | da fare |
+| 4 | Chiusura formale dell'Issue #124 e conferma di zero P0 aperti | proprietario | da confermare |
+| 5 | Pre-collaudo: exit service sidecar sano e indipendente; rollback provato (commit e build web precedenti) | Claude prepara, proprietario autorizza | da fare al rilascio |
+| 6 | Gate verde sul commit della RC e configurazione della nuova run (`V3_RUN_ID`, `V3_RUNNER_CONFIG_PATH`, journal nuovo) | Claude | al rilascio |
+| 7 | Consenso al deploy della RC PAPER | proprietario | dopo i punti 1–6 |
+
+**Non bloccanti per il GO:**
+- confronto delle uscite (preregistrato, `docs/v3/BRAIN-UNICO-USCITE-CONTROFATTUALE-20261121.md`, da eseguire dopo la RC su dati attestati);
+- ancora dell'archivio delle candele (serve alla Fase A e al training, non al collaudo);
+- facoltativi del rischio (leva calcolata, filtro sui costi, tetto per direzione, stop minimo con ATR).
