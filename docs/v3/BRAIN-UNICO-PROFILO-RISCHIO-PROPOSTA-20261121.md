@@ -1,5 +1,14 @@
 # Brain Unico: proposta del profilo di rischio definitivo (21/11/2026)
 
+> **Decisione del proprietario (21/11/2026):** profilo **B Bilanciato** come riferimento del primo collaudo PAPER (2.000 USDT):
+> - rischio per operazione 1 %;
+> - massimo 4 posizioni e 4 % di rischio aperto;
+> - limite giornaliero: avviso al 3 %, stop alle nuove aperture al 4 %;
+> - pavimento di capitale 1.600 USDT;
+> - leva consentita 1–30×.
+>
+> Il mandato **non** è ancora applicato. La leva minima calcolata e il filtro sui costi **non** sono operativi.
+
 **Natura:** proposta per la decisione del proprietario. Nessun parametro operativo è cambiato.
 **Riferimento:** capitale PAPER di 2.000 USDT, futures USDT-M Bitget.
 **Costi della configurazione:**
@@ -15,7 +24,13 @@
 - **Rifiuti legati alla leva richiesta:**
   - stop oltre metà della distanza di liquidazione;
   - rapporto perdita/margine (oggi 21,4 %).
-- **La leva oggi la chiede il modello.** "Leva dinamica" significa calcolarla: la **minima** che dà il rischio pieno entro il tetto di margine. È la più lontana dalla liquidazione e quella con la perdita da gap più contenuta.
+- **Leva: cosa è operativo oggi** (`brain_f2/engine.py`, con il profilo di leva attivo):
+  1. il motore parte dalla leva **proposta dal modello**, limitata all'intervallo del profilo (1–30× per B) e al limite dell'exchange;
+  2. se è troppo vicina alla liquidazione, **scende automaticamente** di un passo alla volta fino a 1×, e la decisione registra `risk:leverage_adjusted`;
+  3. **non sale mai**: se la leva proposta è bassa e il tetto di margine limita la size, il rischio effettivo resta **sotto** l'1 %, sempre nella direzione prudente.
+
+  In nessun caso la perdita allo stop supera il rischio scelto.
+- **Non operativo:** la scelta automatica della leva **minima che dà il rischio pieno**. Le colonne "Leva" delle tabelle mostrano quel calcolo **ipotetico**, per confrontare i profili, non la leva che il runtime userà.
 
 ## Le alternative
 | Profilo | Rischio/trade | Posizioni max | Rischio aperto | Margine pos./tot. | Leva | Stop minimo (costi) | Giorno: avviso / stop | Giorno peggiore* | Pavimento | Perdite piene fino al pavimento |
@@ -55,7 +70,7 @@
   - un gap del 3 % con stop allo 0,5 % costa il 20 % del capitale.
 - **Profili A, B e C:**
   - limitano la giornata a 4 perdite piene;
-  - lasciano scegliere la leva dal calcolo;
+  - ammettono la leva da 1×, così gli stop larghi non vengono più rifiutati;
   - rifiutano i trade dominati dai costi: il filtro sui costi è proposto, vedi sotto;
   - con un gap del 3 % perdono tra l'1 % e il 7 % del capitale.
 
@@ -63,7 +78,7 @@
 | Profilo | Vantaggi | Svantaggi |
 |---|---|---|
 | **A Prudente** (0,75 %) | danni minimi negli errori iniziali; 20 perdite piene prima del pavimento; costi ≤ 20 % del rischio | esclude gli stop sotto lo 0,64 % (niente scalp stretto); campioni per l'apprendimento più lenti a pesare in USDT |
-| **B Bilanciato** (1 %) | equilibrio tra crescita e sopravvivenza; stop dallo 0,48 %; leva fino a 30× solo quando il calcolo la richiede; giorno peggiore circa −8 % | 4 posizioni da 1 R tutte correlate a BTC equivalgono a una scommessa da 4 R |
+| **B Bilanciato** (1 %) | equilibrio tra crescita e sopravvivenza; leva consentita 1–30×, abbassata dal motore se troppo vicina alla liquidazione; giorno peggiore circa −8 % | 4 posizioni da 1 R tutte correlate a BTC equivalgono a una scommessa da 4 R |
 | **C Dinamico** (1,5 %) | rendimento più alto se esiste un vantaggio; ammette stop dallo 0,32 % e leva fino a 50× | giorno peggiore circa −12 %; un gap del 3 % con stop allo 0,5 % costa il 7,2 %; senza un vantaggio misurato, accelera soltanto le perdite |
 
 **Raccomandazione per il collaudo PAPER: B Bilanciato.** Il vantaggio del Brain non è ancora misurato fuori campione: la priorità è sopravvivere abbastanza a lungo da misurarlo, con trade abbastanza grandi da essere significativi.
@@ -73,13 +88,25 @@
 
 `max_loss_margin_fraction 1` disattiva il vincolo storico. Il vincolo di liquidazione resta sempre più stretto, perché impone leva × (stop + costi) < 0,5.
 
-## Facoltativi: richiedono codice e la tua approvazione
-1. **Leva calcolata** al posto di quella chiesta dal modello: la minima che dà il rischio pieno. È consigliata.
-2. **Filtro sui costi:** rifiutare se costi > 25 % del rischio. Oggi non esiste, e la tabella lo mostra come proposta.
+## Facoltativi: richiedono codice e la tua approvazione (nessuno nel primo PAPER)
+1. **Leva minima per il rischio pieno, calcolata:** non implementata. Nel primo PAPER resta il comportamento sopra: proposta del modello, abbassata se insicura.
+2. **Filtro sui costi (> 25 % del rischio): fuori dal primo PAPER.** Il motivo è nella sezione successiva.
 3. **Tetto nella stessa direzione** per gli 8 simboli correlati a BTC, ad esempio 3 R.
 4. **Stop minimo** come multiplo dell'ATR del timeframe d'ingresso.
 
-Nessuno è indispensabile per il collaudo PAPER. Senza il filtro sui costi, gli stop stretti restano ammessi con costi fino al 35 % del rischio.
+## Filtro sui costi: decisione proposta (minima)
+**Raccomandazione:** tenerlo **fuori** dal primo PAPER e **misurarlo**.
+
+**Perché non è una protezione essenziale del capitale.** Il RiskManager include già i costi stimati (16 bp) nella perdita allo stop. Un trade con stop stretto perde quindi al massimo l'1 % come ogni altro, e limite giornaliero e pavimento restano intatti. Il filtro migliora l'**aspettativa**, non la sopravvivenza: con stop allo 0,3 % serve il 51 % di vincite per andare in pari, contro il 39 % con stop all'1 %.
+
+**Perché non introdurlo adesso:**
+- rifiutare trade proposti dal modello cambia il comportamento della strategia, e richiede una tua decisione esplicita;
+- serve un nuovo campo nella politica di rischio, quindi cambiano schema, configurazione e mandato, con test dedicati: è un ciclo di sviluppo;
+- la soglia del 25 % non è misurata sui nostri dati.
+
+**Cosa si fa invece, senza codice:**
+- **Misura nel collaudo:** quota delle aperture con costi > 25 % del rischio, e loro esito netto. Si calcola dal journal: l'evento `paper_open` registra prezzo d'ingresso, stop, leva e nozionale, e i costi stimati (16 bp) vengono dalla configurazione della run. Le leve abbassate dal motore sono registrate come `risk:leverage_adjusted` nelle fonti della decisione.
+- **Decisione dopo il collaudo:** se le aperture con costi oltre il 25 % risultano in perdita netta fuori campione, il filtro si introduce con test mirati, come modifica approvata.
 
 ## Limiti dichiarati
 - **Funding:** non è nei 16 bp. A 0,01 % ogni 8 ore su un nozionale di 3.030 USDT costa 0,30 USDT per scadenza, cioè l'1,5 % di R. Va misurato per simbolo.

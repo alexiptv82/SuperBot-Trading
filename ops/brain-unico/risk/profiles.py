@@ -58,8 +58,9 @@ def checks(p: Profile, stop: float, lev: int) -> str | None:
 
 
 def quote(p: Profile, stop: float) -> dict:
-    """Come `quote_paper_risk`: quantita' = min(da rischio, da tetto di margine x leva). Si sceglie la leva MINIMA
-    che da' il rischio pieno; se nessuna leva ammessa lo consente, la leva ammessa piu' alta con rischio RIDOTTO."""
+    """Come `quote_paper_risk`: quantita' = min(da rischio, da tetto di margine x leva). Per CONFRONTARE i profili si
+    usa la leva MINIMA che da' il rischio pieno (calcolo IPOTETICO: nel runtime la leva la propone il modello e il
+    motore la abbassa soltanto se insicura); se nessuna leva ammessa lo consente, la piu' alta, con rischio RIDOTTO."""
     risk_usd = EQUITY * p.risk
     cap = EQUITY * p.pos_margin
     full = risk_usd / (stop + COST)

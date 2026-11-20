@@ -42,6 +42,8 @@
 | Daily loss | latch persistente; nessuna apertura dopo HALT | journal / heartbeat |
 | Reingressi "che sarebbero stati bloccati" | solo misurati | memoria (tesi) |
 | Spesa AI | entro il tetto giornaliero | stato Brain |
+| Aperture con costi > 25 % del rischio | solo misurate, nessun blocco nel primo PAPER | journal (`paper_open`: ingresso, stop, nozionale) + costi stimati della configurazione |
+| Leve abbassate dal motore (`risk:leverage_adjusted`) | solo misurate | journal (fonti della decisione) |
 
 Al termine: rapporto con i numeri, nessuna promozione automatica. L'addestramento resta subordinato ai quattro requisiti del dataset e alle soglie dell'Issue #113 (300 esempi e 20 giorni per lo shadow).
 
@@ -91,7 +93,7 @@ Il motore toglie dalla cassa al massimo margine + commissione d'apertura (`engin
 ## 11. Requisiti ancora mancanti per il GO PAPER (21/11/2026)
 | # | Requisito | Chi | Stato |
 |---|---|---|---|
-| 1 | Scelta del profilo di rischio (A, B o C) e **nuovo mandato** per la nuova run (cambia il `policy_hash`) | proprietario | proposta pronta |
+| 1 | **Profilo B scelto (21/11).** Restano il mandato definitivo per la nuova run (cambia il `policy_hash`) e la sua approvazione | Claude prepara, proprietario approva | da preparare |
 | 2 | Prova amministrativa finale del backup per componente, poi installazione dell'extbackup aggiornato e primo invio cifrato al repository privato | proprietario (root, consenso) | procedura pronta (`75a714be`) |
 | 3 | Ripristino del file cifrato sul PC del proprietario, con la chiave privata | proprietario | da fare |
 | 4 | Chiusura formale dell'Issue #124 e conferma di zero P0 aperti | proprietario | da confermare |
