@@ -11,7 +11,7 @@
 | Copertura valida (regola canonica = Dataset Builder) | integrato | |
 | Deduplicazione per slot dopo un riavvio | integrato, cablato | difetto di duplicazione corretto |
 | `thesis_id` e anti-reingresso | integrato, **solo `observe`** | blocco solo dopo E0 e approvazione |
-| Ultima candela chiusa scaricata (feed) | integrato | **da confermare sull'API reale** con una sonda autorizzata |
+| Ultima candela chiusa scaricata (feed) | integrato | confermato sull'API reale il 20/11 |
 | Istante per simbolo | opzione di laboratorio, **non cablata** | decisione del proprietario dopo il collaudo |
 | Dataset Builder: quattro requisiti, verificato / non verificato / escluso | integrato | nessun training |
 | Laboratorio LLM (#123) | isolato, nessun provider | non fa parte del percorso di trading |
@@ -20,8 +20,8 @@
 ## 2. GO/NO-GO prima del deploy (tutti necessari)
 1. Zero P0 aperti; Issue #124 chiusa formalmente.
 2. Suite V3, builder e Jest verdi sul commit da rilasciare, con il gate di pubblicazione.
-3. Sonda del feed (≤ 3 tentativi) che confermi la candela appena chiusa con le nuove finestre.
-4. Backup e restore del journal e dei dati Brain **attestati**: oggi l'extbackup non è certificato. Senza questo, NO-GO.
+3. ~~Sonda del feed~~ **fatta il 20/11** (2 tentativi): ultima candela chiusa presente, pagine contigue.
+4. Backup e restore del journal e dei dati Brain **attestati**. Strumento pronto: `backend/v3/runner/run_backup.py` (backup a caldo in sola lettura, catena verificata, manifest, prova di ripristino in cartella nuova). Da eseguire sulla cartella reale con consenso, più cifratura e copia fuori dalla VPS. Senza questo, NO-GO.
 5. Mandato di rischio approvato per la nuova run. Le decisioni sul profilo di rischio v2 restano del proprietario; senza mandato il motore rifiuta ogni apertura.
 6. Exit service sidecar sano e indipendente, verificato in pre-collaudo.
 7. Piano di rollback provato: commit precedente e build web precedente conservati.
@@ -52,5 +52,5 @@ Si ripristina il commit precedente del runner e la build web precedente. Il jour
 - Sonda del feed e ancora dell'archivio delle candele (`candles-20261120T064955Z-95a00e9b`).
 - Istante per simbolo: dopo il collaudo, e con la freschezza misurata sui dati reali.
 - Anti-reingresso `enforce`: dopo E0 e approvazione.
-- Vista storica dell'Arena nell'app: da integrare dal ramo dell'Arena senza toccarne il runtime.
+- Vista storica dell'Arena: integrata in sola lettura (`/arena`, opt-in); la chiusura dell'Arena resta nel suo ramo.
 - Profilo di rischio v2: decisioni numeriche.
