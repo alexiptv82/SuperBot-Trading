@@ -57,8 +57,9 @@ test('model and symbol text is escaped', () => {
   expect(h).not.toContain('<script>x');
 });
 
-test('the Arena is not presented as available', () => {
-  expect(html()).toContain('Arena non è ancora integrata');
+test('the Arena history is linked read-only', () => {
+  expect(html()).toContain('href="/arena"');
+  expect(html()).toContain('sola lettura');
 });
 
 test('not started and missing details fail safe', () => {

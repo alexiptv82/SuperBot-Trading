@@ -756,6 +756,24 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
         raise ValueError('invalid_paths')
     router = APIRouter(prefix='/api/v3')
 
+    # Storico Arena (codice di lettura copiato dal ramo dell'Arena @ 3dd6aa5, invariato). Opt-in, sessione obbligatoria,
+    # solo GET: nessun servizio avviato, nessun ordine, nessuna scrittura. La chiusura manuale dell'Arena NON e' portata.
+    arena_day = os.environ.get('V3_ARENA_TRIAL_DAY', '')
+    if (os.environ.get('V3_ARENA_READONLY_ENABLED') == '1'
+            and os.environ.get('DESK_MODE') == 'paper'
+            and os.environ.get('TRADING_MODE') == 'paper'
+            and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', arena_day)):
+        from backend.v3.arena.trial_plan import build_trial_plan
+        from backend.v3.arena.read_router import make_arena_router
+        try:
+            arena_date = datetime.strptime(arena_day, '%Y-%m-%d').date()
+        except ValueError:
+            arena_date = None
+        if arena_date is not None:
+            router.include_router(make_arena_router(
+                require_session, build_trial_plan(arena_date, root=Path(os.environ.get('V3_ARENA_ROOT') or '/opt/superbot-ai-arena-paper')),
+                enabled=True, nested=True))
+
     @router.get('/overview')
     def overview(response: Response, session=Depends(require_session)):
         response.headers['Cache-Control'] = 'no-store'

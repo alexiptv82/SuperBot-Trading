@@ -103,11 +103,12 @@ export function BrainUnicoContent({ overview, status, trades, memory, nowMs = Da
 
     <section style={BLOCK} aria-label="Storico">
       <h2 style={{ fontSize: 17, marginTop: 0 }}>🗄️ Storico</h2>
-      <p style={MUTED}>Falco, Toro e i Brain precedenti restano consultabili, separati dal Brain Unico. La vista storica dell’Arena non è ancora integrata in questa versione dell’app.</p>
+      <p style={MUTED}>Falco, Toro e i Brain precedenti restano consultabili, separati dal Brain Unico. L’Arena è consultabile in sola lettura.</p>
       <nav aria-label="Storico portafogli" style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         <a href="/overview" style={{ color: '#7dd3fc', fontSize: 13 }}>Falco · Toro · Brain V3</a>
         <a href="/classic" style={{ color: '#7dd3fc', fontSize: 13 }}>Dashboard classica</a>
         <a href="/brain/archive" style={{ color: '#7dd3fc', fontSize: 13 }}>Brain precedenti</a>
+        <a href="/arena" style={{ color: '#7dd3fc', fontSize: 13 }}>Arena</a>
       </nav>
     </section>
   </main>;

@@ -111,3 +111,29 @@ def test_the_endpoint_never_exposes_features_risk_or_model_text():
     text = _client(str(j.filename)).get("/api/v3/brain/memory").text
     for banned in ("features", "inputs_digest", "equity_usd", "claim", "context_hash"):
         assert banned not in text
+
+
+def test_arena_history_route_is_opt_in_read_only_and_has_no_close(monkeypatch):
+    from fastapi import FastAPI
+    from backend.v3_api import V3Paths, make_router
+    paths = V3Paths(journal_path=None, run_id="r", budget_db_path=None, heartbeat_path=None, pause_flag_path=None,
+                    falco_data_dir="/x", toro_data_dir="/y")
+
+    def client(env):
+        for k in ("V3_ARENA_READONLY_ENABLED", "DESK_MODE", "TRADING_MODE", "V3_ARENA_TRIAL_DAY", "V3_ARENA_ROOT"):
+            monkeypatch.delenv(k, raising=False)
+        for k, v in env.items():
+            monkeypatch.setenv(k, v)
+        app = FastAPI()
+        app.include_router(make_router(lambda: "ok", paths))
+        return TestClient(app)
+    import tempfile
+    on = {"V3_ARENA_READONLY_ENABLED": "1", "DESK_MODE": "paper", "TRADING_MODE": "paper", "V3_ARENA_TRIAL_DAY": "2026-11-18",
+          "V3_ARENA_ROOT": tempfile.mkdtemp()}                                       # mai i dati reali in un test
+    assert client({}).get("/api/v3/arena").status_code == 404                          # spento di default
+    c = client(on)
+    r = c.get("/api/v3/arena")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+    assert c.post("/api/v3/arena").status_code == 405                                  # solo lettura
+    assert c.post("/api/v3/arena/close", json={}).status_code == 404                   # chiusura non portata
+    assert client({**on, "TRADING_MODE": "live"}).get("/api/v3/arena").status_code == 404
