@@ -42,14 +42,23 @@ Il campo `avvertenze` riporta le tue precisazioni. Non ha effetto sui controlli:
 3. **Limite giornaliero:** il 4 % ferma le nuove aperture, **non** chiude le posizioni. La perdita della giornata può superare il 4 %.
 4. **Solo PAPER.** Leva proposta dal modello entro 1–30×, abbassata dal motore se è troppo vicina alla liquidazione, mai alzata.
 
+## Natura del mandato: garanzie effettive
+- **Il mandato operativo NON è firmato.** `mandate.json` è un file che il runner rilegge a ogni giro. Il runner (`wiring.MandateFile`) e il motore (`engine._mandate_ok`) controllano soltanto: `approved` vero, `approved_by` non vuoto, `version`, `portfolio_id` = `brain`, `run_id` e `policy_hash`.
+- **Garanzia effettiva:** chi può scrivere nella cartella dati della run, cioè root sulla VPS, può approvare. Il mandato dimostra la **coerenza** tra approvazione, limiti e run, **non l'identità** di chi ha approvato.
+- **Sistema separato, non collegato al runner:** `backend/v3/brain_f3/authorization.py` verifica ricevute firmate Ed25519 con chiave pubblica fissata e validità massima di 24 ore. Nessun componente operativo lo usa oggi. Per il primo PAPER, come da tua decisione, nessuna nuova infrastruttura crittografica.
+
 ## Che cosa lega il mandato (e che cosa no)
 - **Legati:** `policy_hash` lega i 7 limiti di rischio e il profilo di leva (`max_loss_margin_fraction`, `min_leverage`, `max_leverage`), oltre a `run_id` e portafoglio. Cambiarne uno invalida il mandato, e il runner resta fermo con `mandate_mismatch`.
 - **Non legati:** limite giornaliero, simboli, modello, ciclo e budget AI. Per questi fa fede lo **SHA-256 della configurazione** indicato sopra, da ricontrollare all'attivazione.
 - **Verifica:** `backend/tests/test_v3_brain_unico_paper_b_config.py` controlla i valori, l'hash, il rifiuto con limiti diversi o con un'altra run, l'accettazione di una copia approvata e la perdita stimata di 20 USDT con stop all'1 %.
 
 ## Attivazione (SOLO con la tua autorizzazione, insieme al deploy della RC)
-1. Creare la cartella della nuova run `brain-unico-paper-rc1`, con journal nuovo e senza riusare né cancellare run storiche. Copiare la configurazione come `runner_config.json` e ricontrollarne lo SHA-256.
-2. Impostare `V3_RUN_ID` e `V3_RUNNER_CONFIG_PATH` per runner e API.
-3. **Tu** copi il modello come `mandate.json` nella cartella dati della run, impostando `"approved": true` e `"approved_by"`. Finché manca o non coincide, il runner resta `halted` e non spende nulla. Il file viene riletto a ogni giro, senza riavvio.
+1. Creare la cartella della nuova run `brain-unico-paper-rc1`, con journal nuovo e senza riusare né cancellare run storiche. Copiare la configurazione come `runner_config.json`.
+2. **Verifica obbligatoria dell'impronta della configurazione COMPLETA.** Il runtime non la verifica da solo, e l'impronta del mandato non copre limite giornaliero, simboli, modello, ciclo e budget. Il passo si ferma se non coincide:
+   ```
+   printf '%s\n' 'e415ca968e7475be820712294fd97a81dfe6ef03e21df00342a0eab68203eedc  <cartella-run>/runner_config.json' | sha256sum --strict -c - && echo "CONFIGURAZIONE VERIFICATA"
+   ```
+3. Impostare `V3_RUN_ID` e `V3_RUNNER_CONFIG_PATH` per runner e API.
+4. **Tu** copi il modello come `mandate.json` nella cartella dati della run, impostando `"approved": true` e `"approved_by"`. Finché manca o non coincide, il runner resta `halted` e non spende nulla. Il file viene riletto a ogni giro, senza riavvio.
 
 Nessun passo è stato eseguito.
