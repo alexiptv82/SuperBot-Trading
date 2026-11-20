@@ -179,6 +179,71 @@ class ExternalBackupTests(unittest.TestCase):
         c = sqlite3.connect(os.path.join(dest, "dati", "database", [d for d in dbs if d.startswith("app-")][0]))
         self.assertEqual(c.execute("select count(*) from users").fetchone()[0], 30)
 
+    def test_round_trip_includes_run_histories(self):
+        run = os.path.join(self.td.name, "arena", "deepseek", "brain-deepseek-paper20261118")
+        os.makedirs(run)
+        c = sqlite3.connect(os.path.join(run, "journal.db"))
+        c.execute("CREATE TABLE v3_events(seq INTEGER PRIMARY KEY, payload TEXT)")
+        c.executemany("INSERT INTO v3_events(payload) VALUES(?)", [(M_STATE,)] * 7)
+        c.commit()
+        c.close()
+        put(os.path.join(run, ".exit_service.lock"), "")
+        rc, out = self.backup("--run-dir", run)
+        self.assertEqual(rc, 0, out)
+        clone = self.clone_remote()
+        for dp, _dn, fn in os.walk(clone):                       # nel repository nessun dato in chiaro
+            if ".git" in dp:
+                continue
+            for f in fn:
+                self.assertFalse(any(m in get(os.path.join(dp, f)) for m in MARKERS), f)
+        (arc,) = self.archives(clone)
+        rc, rout, dest = self.restore(arc)
+        self.assertEqual(rc, 0, rout)
+        r = os.path.join(dest, "dati", "runs", "deepseek__brain-deepseek-paper20261118")
+        self.assertEqual(sorted(os.listdir(r)), ["journal.db"])
+        n = sqlite3.connect(os.path.join(r, "journal.db")).execute("SELECT COUNT(*) FROM v3_events").fetchone()[0]
+        self.assertEqual(n, 7)
+
+    def test_an_unreadable_run_dir_sends_nothing(self):
+        rc, out = self.backup("--run-dir", os.path.join(self.td.name, "manca"))
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(self.archives(self.clone_remote()), [])
+
+    def test_admin_wrapper_end_to_end_without_root(self):
+        """prova_storici.sh, con i percorsi /opt sostituiti da cartelle di prova e senza il controllo di root."""
+        t = self.td.name
+        for rel in ("v3/brain-v3-paper20261111", "arena/deepseek/brain-deepseek-paper20261118", "free"):
+            d = os.path.join(t, "opt", rel)
+            os.makedirs(d)
+            c = sqlite3.connect(os.path.join(d, "journal.db" if rel != "free" else "brain.sqlite3"))
+            c.execute("CREATE TABLE v3_events(seq INTEGER PRIMARY KEY, p TEXT)")
+            c.executemany("INSERT INTO v3_events(p) VALUES(?)", [(M_DB,)] * 3)
+            c.commit()
+            c.close()
+        src = open(os.path.join(HERE, "..", "extbackup", "prova_storici.sh")).read()
+        subs = [('[ "$(id -u)" = 0 ] || { echo "NO-GO: serve root"; exit 2; }', ""),
+                ("BASE=/root/extbackup-prova-storici", "BASE=%s/base" % t),
+                ("/opt/superbot-v3-paper-runs", t + "/opt/v3"), ("/opt/superbot-ai-arena-paper", t + "/opt/arena"),
+                ("/opt/superbot-brain-free/", t + "/opt/free/"), ("/opt/superbot-desk-data", self.root),
+                ("/opt/superbot-brain-adaptive", t + "/opt/nessuna1"), ("/opt/superbot-ai-data", t + "/opt/nessuna2"),
+                ("/opt/superbot/data/superbot.db", self.app_db), ("/opt/superbot-pool-data/pool.db", self.pool_db),
+                ("--app-repo /opt/superbot --bots-repo /opt/superbot-desk",
+                 "--app-repo /nonexistent --bots-repo /nonexistent --brain-retries 0 --brain-arg=--quiet-secs "
+                 "--brain-arg=1 --brain-arg=--attempts --brain-arg=2 --brain-arg=--wait --brain-arg=0.1 "
+                 "--brain-arg=--quiet-timeout --brain-arg=2")]
+        for a, b in subs:
+            self.assertIn(a, src)
+            src = src.replace(a, b)
+        script = os.path.join(t, "prova.sh")
+        put(script, src)
+        p = subprocess.run(["sh", script, HERE], capture_output=True, text=True, timeout=300)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("ESITO PROVA: OK", p.stdout)
+        self.assertIn("RISULTATO: OK", p.stdout)
+        self.assertEqual(p.stdout.count("ripristinata"), 3, p.stdout)
+        self.assertFalse(os.path.exists(os.path.join(t, "base")))           # tutto cancellato
+        self.assertFalse(any(m.decode() in p.stdout for m in MARKERS))        # nessun contenuto stampato
+
     def test_repository_contains_only_encrypted_archives_and_minimal_manifest(self):
         self.assertEqual(self.backup()[0], 0)
         clone = self.clone_remote()
@@ -615,6 +680,57 @@ class ExternalBackupTests(unittest.TestCase):
         # la storia git li conserva ancora
         hist = sh("git", "-C", clone, "log", "--all", "--name-only", "--format=").stdout
         self.assertIn(removed[0], hist)
+
+
+class RunDirTests(unittest.TestCase):
+    """Storici delle run (Brain V3, Arena, Brain libero) nell'archivio dell'extbackup: copia coerente, niente lock."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.ext = load(EXT, "ext_rundir")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def make_run(self, rel):
+        d = os.path.join(self.tmp, rel)
+        os.makedirs(d)
+        con = sqlite3.connect(os.path.join(d, "journal.db"))
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("CREATE TABLE v3_events(seq INTEGER PRIMARY KEY, payload TEXT)")
+        con.executemany("INSERT INTO v3_events(payload) VALUES(?)", [(M_DB,)] * 5)
+        con.commit()                                          # WAL ancora aperto: la copia deve includerlo
+        put(os.path.join(d, "heartbeat.json"), '{"state":"running"}')
+        put(os.path.join(d, ".exit_service.lock"), "")
+        put(os.path.join(d, "inference_trace.jsonl"), '{"a":1}\n')
+        return d, con
+
+    def test_run_dir_copy_is_consistent_and_skips_locks(self):
+        d, con = self.make_run("arena/deepseek/brain-deepseek-paper20261118")
+        runs = os.path.join(self.tmp, "stage", "runs")
+        self.ext.copy_run_dir(d, runs)
+        out = os.path.join(runs, "deepseek__brain-deepseek-paper20261118")
+        self.assertEqual(sorted(os.listdir(out)), ["heartbeat.json", "inference_trace.jsonl", "journal.db"])
+        n = sqlite3.connect(os.path.join(out, "journal.db")).execute("SELECT COUNT(*) FROM v3_events").fetchone()[0]
+        self.assertEqual(n, 5)
+        con.close()
+
+    def test_missing_relative_or_empty_run_dir_refuses(self):
+        for bad in (os.path.join(self.tmp, "nope"), "relative/dir"):
+            with self.assertRaises(self.ext.Fail):
+                self.ext.copy_run_dir(bad, os.path.join(self.tmp, "s1"))
+        os.makedirs(os.path.join(self.tmp, "empty"))
+        with self.assertRaises(self.ext.Fail):
+            self.ext.copy_run_dir(os.path.join(self.tmp, "empty"), os.path.join(self.tmp, "s2"))
+
+    def test_same_label_twice_refuses(self):
+        a, c1 = self.make_run("x/p/run1")
+        b, c2 = self.make_run("y/p/run1")
+        runs = os.path.join(self.tmp, "s3")
+        self.ext.copy_run_dir(a, runs)
+        with self.assertRaises(self.ext.Fail):
+            self.ext.copy_run_dir(b, runs)
+        c1.close(); c2.close()
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import socket
 import subprocess
 import sys
@@ -183,7 +184,56 @@ def make_staging(a, stage):
         raise Fail("backup del cervello non riuscito (nessuna finestra di fine ciclo verificata o file mancanti): "
                    + last[-400:])
     # lasciamo nell'archivio solo il contenuto: la copia del cervello e' una cartella bots-*
+    for src in a.run_dirs:
+        copy_run_dir(src, os.path.join(stage, "runs"))
     return stage
+
+
+RUN_SKIP_SUFFIX = ("-wal", "-shm", "-journal", ".lock", ".tmp", ".work")
+SQLITE_SUFFIX = (".db", ".sqlite3", ".sqlite")
+
+
+def run_label(src):
+    """Etichetta stabile e univoca: ultimi due componenti del percorso (es. deepseek/brain-deepseek-paper20261118)."""
+    parts = [x for x in os.path.normpath(src).split(os.sep) if x]
+    return "__".join(parts[-2:])
+
+
+def copy_run_dir(src, runs_root):
+    """Storico di una run (Brain V3, Arena, Brain libero): copia COERENTE in sola lettura.
+    Basi SQLite con l'API di backup (sorgente mode=ro) + integrity_check; altri file regolari copiati come sono;
+    mai lock, WAL/SHM, temporanei o link. Sorgente assente o illeggibile: errore, non parte nulla."""
+    if not os.path.isabs(src) or not os.path.isdir(src) or os.path.islink(src):
+        raise Fail("cartella di run non valida: %s" % src)
+    dst = os.path.join(runs_root, run_label(src))
+    if os.path.exists(dst):
+        raise Fail("due cartelle di run con la stessa etichetta: %s" % src)
+    os.makedirs(dst, mode=0o700)
+    copied = 0
+    for name in sorted(os.listdir(src)):
+        full = os.path.join(src, name)
+        if os.path.islink(full) or not os.path.isfile(full) or name.startswith(".") or name.endswith(RUN_SKIP_SUFFIX):
+            continue
+        out = os.path.join(dst, name)
+        if name.endswith(SQLITE_SUFFIX):
+            source = sqlite3.connect("file:%s?mode=ro" % full, uri=True)
+            try:
+                target = sqlite3.connect(out)
+                try:
+                    source.backup(target)
+                    ok = target.execute("PRAGMA integrity_check").fetchone()[0]
+                finally:
+                    target.close()
+            finally:
+                source.close()
+            if ok != "ok":
+                raise Fail("integrity_check fallito: %s" % full)
+        else:
+            shutil.copy2(full, out)
+        copied += 1
+    if copied == 0:
+        raise Fail("cartella di run vuota: %s" % src)
+    say("storico run %s: %d file" % (run_label(src), copied))
 
 
 def clean_stage_locks(stage):
@@ -486,6 +536,8 @@ def main(argv=None):
     ap.add_argument("--keep-recent", type=int, default=14)
     ap.add_argument("--keep-weeks", type=int, default=8)
     ap.add_argument("--keep-months", type=int, default=6)
+    ap.add_argument("--run-dir", action="append", default=[], dest="run_dirs",
+                    help="cartella di una run da includere (Brain V3, Arena, Brain libero); ripetibile")
     ap.add_argument("--brain-retries", type=int, default=2, help="nuovi tentativi se manca la finestra di fine ciclo")
     ap.add_argument("--brain-retry-wait", type=float, default=300.0)
     ap.add_argument("--brain-arg", action="append", default=[], dest="brain_args",
