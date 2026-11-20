@@ -176,7 +176,9 @@ def test_guard_budget_after_prior_open_in_same_run(tmp_path):
                    'test',{'symbol':'ETHUSDT','kind':'OPEN','status':'APPROVED','rationale':next_d.rationale}))
     # Fill synthetic portfolio via existing executor; a stale decision approved
     # before those positions existed must now be vetoed by fresh risk quote.
-    for i in range(10):
+    # Two more positions (3 open, under the 4-position cap) already exceed the
+    # 50 USDT open-risk budget: the veto below is the RISK veto, not the cap.
+    for i in range(2):
         other=copy.deepcopy(d)
         other.status=ProposalStatus.APPROVED
         other.proposal=replace(other.proposal,symbol=f'ALT{i}USDT')
@@ -184,7 +186,7 @@ def test_guard_budget_after_prior_open_in_same_run(tmp_path):
         execute_paper(other,portfolio_id='brain',run_id=RUN,journal=j,now_ms=NOW-300)
     r=_commit(j,next_d,tmp_path)
     assert r.code in ('risk_changed_after_ai','risk_rejected_after_ai')
-    assert len([e for e in j.list_run('brain',RUN) if e.event.kind=='paper_open'])==11
+    assert len([e for e in j.list_run('brain',RUN) if e.event.kind=='paper_open'])==3
 
 
 def _worker_attempt(folder: str, event, q):
@@ -294,10 +296,11 @@ def test_two_distinct_processes_cannot_oversubscribe_near_budget(tmp_path):
     from backend.v3.risk import RiskQuote
     from backend.v3.events import Event
     j,_,_,_=_args(tmp_path)
-    # Existing PAPER positions use 40 out of allowed 50 USDT open risk.
+    # Existing PAPER positions use 40 out of allowed 50 USDT open risk (2 x 20,
+    # under the 4-position cap, so the veto tested here is the RISK budget one).
     # These are a synthetic fixture through the real PAPER executor, not live positions.
-    for i in range(4):
-        d=_hand(side=1,entry='100',stop='90',symbol=f'ALT{i}USDT')
+    for i in range(2):
+        d=_hand(side=1,entry='100',stop='80',symbol=f'ALT{i}USDT')
         d.risk_quote=RiskQuote(True,'quote_only',D('1'),D('100'),D('20'),D('10.32'),D('20'))
         execute_paper(d,portfolio_id='brain',run_id=RUN,journal=j,now_ms=NOW-100)
     for symbol in ('ETHUSDT','SOLUSDT'):
@@ -328,7 +331,7 @@ def test_two_distinct_processes_cannot_oversubscribe_near_budget(tmp_path):
     retry.risk_quote=RiskQuote(True,'quote_only',D('1'),D('100'),D('20'),D('5.16'),D('20'))
     retry.journal_event_id='brain-decision.'+failed_symbol
     assert _commit(j,retry,tmp_path).code in ('risk_changed_after_ai','risk_rejected_after_ai')
-    assert len([e for e in j.list_run('brain',RUN) if e.event.kind=='paper_open'])==5
+    assert len([e for e in j.list_run('brain',RUN) if e.event.kind=='paper_open'])==3
 
 
 def test_callback_cannot_fake_a_real_exit_owner(tmp_path):

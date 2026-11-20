@@ -18,6 +18,12 @@ from backend.v3.risk import RiskRequest, RiskPolicy, RiskQuote, quote_paper_risk
 from backend.v3.runner.cycle import snapshot_from_summary
 
 
+# Vincolo del proprietario (21/11/2026): al massimo 4 posizioni aperte contemporaneamente, qualunque sia il numero
+# di simboli analizzati. Non deriva dal rischio aperto: e' un tetto numerico, controllato sullo stato FRESCO del
+# journal nel percorso serializzato di conferma dell'apertura (sotto il lock di open_serial).
+MAX_OPEN_POSITIONS = 4
+
+
 @dataclass(frozen=True)
 class OpenGuardResult:
     allowed: bool
@@ -94,6 +100,8 @@ def recheck_paper_open(*, decision: BrainDecision, journal: EventJournal,
         summary = build_summary(journal,'brain',run_id)
         if p.symbol in {x.symbol for x in summary.open_positions}:
             return deny('already_open')
+        if len(summary.open_positions) >= MAX_OPEN_POSITIONS:
+            return deny('max_open_positions')
         if market_fresh(p.symbol, now_ms) is not True:
             return deny('market_unavailable')
         price = market_price(p.symbol,now_ms)
