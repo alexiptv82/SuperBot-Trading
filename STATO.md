@@ -1,3 +1,14 @@
+## 20/11/2026 07:45 Europe/Rome — acquisizione interrotta, dedup slot e memoria nell'app
+
+- Checkpoint append-only: [`diario/2026-11-20_0745_checkpoint-acquisizione-interrotta-dedup-memoria-app.md`](diario/2026-11-20_0745_checkpoint-acquisizione-interrotta-dedup-memoria-app.md), commit [`9ddfe8c…`](https://github.com/alexiptv82/SuperBot-Trading/commit/9ddfe8c23769e3251ac0a487853973167c67b1d8).
+- `integration/brain-unico-20261119` verificato @ `8e03235dd9e3d9f3ccd467be9e051254cbf7ca52`.
+- Unica acquisizione autorizzata: plan 272 richieste/~11,8 MB; interrotta fail-closed dopo 24 tentativi su divergenza col runtime. Nessun archivio, manifest, SHA o dato conservato; serve nuova autorizzazione per riprovare.
+- Dedup per slot corretta anche in `cycle`; Dataset Builder espone verified/unverified/excluded con `training_authorized=false`; memoria/apprendimento read-only aggiunti alla Overview V3.
+- Test riferiti, non rieseguiti/Actions/VPS: V3 5298, Builder 157, Jest 129/129, build OK. Gate pubblicazione ha bloccato il nuovo endpoint finché l'inventario RC84 non è stato aggiornato.
+- PR #80/#120/#121/#122/#123 e Issue #124 invariati; anti-reingresso observe, `per_symbol` non attivo.
+- RC84 `0e29a73…`; extbackup `3dc2116a…` preparato/non certificato; age PC `ESITO: VERIFICA OK` con chiave pubblica coincidente, non prova VPS.
+- Nessun main/deploy/VPS/servizio/restart/reset/parametro/ordine/training/provider/LIVE/API a pagamento. PAPER, storici ed EventJournal preservati.
+
 ## 20/11/2026 (3) — Claude: acquisizione interrotta in sicurezza, duplicazione corretta, memoria nell'app
 
 - `integration/brain-unico-20261119` @ `8e03235d`: suite **5298**, 0 falliti; builder 157; Jest 129/129. Dettagli: [`diario/2026-11-20_claude-acquisizione-duplicazione-dashboard.md`](diario/2026-11-20_claude-acquisizione-duplicazione-dashboard.md).
