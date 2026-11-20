@@ -58,17 +58,22 @@ def _files(root: str) -> list:
     return out
 
 
-def derive_rows(responses: list, interval_ms: int, acquired_at_ms: int) -> dict:
+def derive_rows(responses: list, interval_ms: int, acquired_at_ms: int, window: Optional[tuple] = None) -> dict:
     """{apertura_ms: (o, h, l, c, v)} come stringhe, dalle risposte grezze. Stesse regole del runtime
-    (`fetch_candles._row`): righe non numeriche o incoerenti scartate, mai corrette; in piu' solo righe dentro la
-    finestra della PROPRIA richiesta e candele gia' CHIUSE all'istante di acquisizione."""
+    (`fetch_candles._row` / `fetch_rows`): righe non numeriche o incoerenti scartate, mai corrette; con ``window``
+    (inizio, fine esclusa dello scaricamento) il filtro e' quello del runtime, sull'intervallo COMPLESSIVO, e
+    l'ultima risposta vince sui doppioni come nel runtime. Senza ``window`` (archivi precedenti) vale la finestra
+    della singola richiesta. Sempre: solo candele gia' CHIUSE all'istante di acquisizione."""
     rows: dict = {}
     for url, body in responses:
-        q = parse_qs(urlsplit(url).query)
-        try:
-            lo, hi = int(q["startTime"][0]), int(q["endTime"][0])
-        except (KeyError, ValueError, IndexError):
-            raise ValueError("request_window_missing") from None
+        if window is not None:
+            lo, hi = window[0], window[1] - 1
+        else:
+            q = parse_qs(urlsplit(url).query)
+            try:
+                lo, hi = int(q["startTime"][0]), int(q["endTime"][0])
+            except (KeyError, ValueError, IndexError):
+                raise ValueError("request_window_missing") from None
         data = body.get("data") if isinstance(body, dict) and body.get("code") == "00000" else None
         for raw in data or ():
             if not isinstance(raw, (list, tuple)) or len(raw) < 6:
@@ -122,7 +127,7 @@ def write_archive(root: str, *, manifest_id: str, acquired_at_ms: int, tool: dic
         sym, iv = f["symbol"], f["interval_ms"]
         if not _SYMBOL.fullmatch(sym) or iv not in GRANULARITY or os.path.basename(rel) != sym + ".jsonl":
             raise ValueError("bad_file_spec")
-        rows = derive_rows(f["responses"], iv, acquired_at_ms)
+        rows = derive_rows(f["responses"], iv, acquired_at_ms, f.get("window"))
         path = os.path.join(root, rel)
         os.makedirs(os.path.dirname(path) or root, exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
@@ -253,8 +258,11 @@ def _provenance(root: str, m: dict, msha: str, anchors: dict) -> str:
                     responses.append((url, json.load(fh)))
             except (OSError, ValueError):
                 return "raw_unreadable"
+        win = e.get("requested_window")
+        if win is not None and (not isinstance(win, list) or len(win) != 2 or any(type(x) is not int for x in win)):
+            return "request_window_invalid"
         try:
-            derived = derive_rows(responses, iv, acquired)
+            derived = derive_rows(responses, iv, acquired, tuple(win) if win else None)
         except ValueError:
             return "request_window_missing"
         stored = _read_jsonl(os.path.join(root, rel))

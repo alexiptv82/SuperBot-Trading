@@ -30,8 +30,8 @@ class FakeBitget:
     """Risponde come history-candles: righe [ts, o, h, l, c, baseVol, quoteVol] nella finestra, al massimo `limit`,
     le piu' recenti per prime; prezzo funzione dell'istante. ``bump``: candela da alterare (secondo scaricamento)."""
 
-    def __init__(self, bump=None, missing=()):
-        self.urls, self.bump, self.missing = [], bump, set(missing)
+    def __init__(self, bump=None, missing=(), spill=False):
+        self.urls, self.bump, self.missing, self.spill = [], bump, set(missing), spill
 
     def __call__(self, url):
         self.urls.append(url)
@@ -49,6 +49,9 @@ class FakeBitget:
                 c += 0.05
             rows.append([str(t), "100.0", f"{max(100, c) + 0.3:.2f}", f"{min(100, c) - 0.3:.2f}", f"{c:.2f}",
                          "12.5", "1250"])
+        if self.spill:          # come una fonte che restituisce anche una candela oltre endTime, con volume diverso
+            t = (hi // step + 1) * step
+            rows.insert(0, [str(t), "100.0", "100.5", "99.5", "100.0", "99.9", "1"])
         return {"code": "00000", "data": rows}
 
 
@@ -262,3 +265,40 @@ def test_the_limits_are_those_of_the_owner_authorization():
     assert (AQ.MAX_HTTP_ATTEMPTS, AQ.MAX_BYTES, AQ.MAX_DAYS) == (350, 100 * 1024 * 1024, 47)
     assert AQ.LimitedHttp().max_attempts == 350
     assert set(AQ.TIMEFRAMES) == {"15m", "1h", "4h"} and len(AQ.SYMBOLS) == 8
+
+
+def test_derivation_follows_the_runtime_even_when_the_source_spills_outside_the_request_window():
+    """Caso dell'interruzione del 20/11 (ipotesi): la fonte restituisce candele fuori dalla finestra della richiesta.
+    Il filtro per singola richiesta (vecchia regola) diverge dal runtime; il filtro sul periodo complessivo no."""
+    from backend.v3.lab_tools.fetch_candles import fetch_rows
+    fake = FakeBitget(spill=True)
+    recorded = []
+
+    def rec(url):
+        body = fake(url)
+        recorded.append((url, body))
+        return body
+    end = END // 900_000 * 900_000
+    runtime = fetch_rows("BTCUSDT", START, end, candle_ms=900_000, get_json=rec)
+    assert CP.derive_rows(recorded, 900_000, END + 600_000) != runtime                     # vecchia regola
+    assert CP.derive_rows(recorded, 900_000, END + 600_000, (START, end)) == runtime       # regola del runtime
+    out = Path(tempfile.mkdtemp()) / "arch"
+    sha = _acquire(out, get_json=FakeBitget(spill=True))
+    mid = json.loads((out / CP.MANIFEST).read_text())["manifest_id"]
+    assert CP.check(str(out), {mid: sha})["provenance"] == "attested"
+
+
+def test_a_divergence_is_explained_in_the_abort_report(monkeypatch):
+    real = AQ.CP.derive_rows
+    monkeypatch.setattr(AQ.CP, "derive_rows", lambda *a, **k: dict(list(real(*a, **k).items())[1:]))
+    base = Path(tempfile.mkdtemp())
+    with pytest.raises(ValueError):
+        _acquire(base / "arch")
+    rep = json.loads((base / "arch.ABORTED.json").read_text())
+    assert "only_runtime=1" in rep["reason"] and "only_derived=0" in rep["reason"]
+
+
+def test_attempt_outcomes_are_counted():
+    h = _http(["net", 429, "ok"])
+    h("u")
+    assert h.outcomes == {"OSError": 1, "http_429": 1, "ok": 1}

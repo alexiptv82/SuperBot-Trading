@@ -71,6 +71,7 @@ class LimitedHttp:
     def __init__(self, max_attempts: int = MAX_HTTP_ATTEMPTS, opener: Optional[Callable] = None,
                  sleep: Callable[[float], None] = time.sleep, min_gap: float = 0.09):
         self.max_attempts, self.attempts, self.sleep, self.min_gap = max_attempts, 0, sleep, min_gap
+        self.outcomes: dict = {}                                      # esito -> numero di tentativi
         self._open = opener or self._urlopen
         self._last = 0.0
 
@@ -80,6 +81,9 @@ class LimitedHttp:
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=25) as r:
             return r.read()
+
+    def _count(self, key: str) -> None:
+        self.outcomes[key] = self.outcomes.get(key, 0) + 1
 
     def __call__(self, url: str):
         import urllib.error
@@ -93,13 +97,17 @@ class LimitedHttp:
             self._last = time.time()
             self.attempts += 1
             try:
-                return json.loads(self._open(url))
+                body = json.loads(self._open(url))
+                self._count("ok")
+                return body
             except urllib.error.HTTPError as e:
                 last = e
+                self._count(f"http_{e.code}")
                 if e.code not in (429, 500, 502, 503, 504):
                     raise
             except (OSError, ValueError) as e:
                 last = e
+                self._count(type(e).__name__)
             self.sleep(wait)
             wait *= 2
         raise RuntimeError(f"source_unavailable: {type(last).__name__}")
@@ -158,8 +166,9 @@ def acquire(out: str, *, start_ms: int, end_ms: int, get_json: Callable[[str], o
         import shutil
         shutil.rmtree(staging, ignore_errors=True)
         with open(out + ".ABORTED.json", "w", encoding="utf-8") as fh:
-            json.dump({"aborted": True, "reason": str(exc)[:200], "kind": type(exc).__name__,
-                       "http_attempts": getattr(get_json, "attempts", None), "archive_written": False,
+            json.dump({"aborted": True, "reason": str(exc)[:600], "kind": type(exc).__name__,
+                       "http_attempts": getattr(get_json, "attempts", None),
+                       "http_outcomes": getattr(get_json, "outcomes", None), "archive_written": False,
                        "at_ms": now_ms}, fh, indent=1)
         raise
 
@@ -177,10 +186,13 @@ def _acquire_into(out, *, start_ms, end_ms, get_json, now_ms, symbols, timeframe
                 return body
 
             runtime_rows = fetch_rows(sym, start_ms, end, candle_ms=step, get_json=rec)
-            derived = CP.derive_rows(recorded, step, now_ms)
-            derived = {t: v for t, v in derived.items() if start_ms <= t < end}
+            derived = CP.derive_rows(recorded, step, now_ms, (start_ms, end))
             if derived != runtime_rows:
-                raise ValueError(f"derivation_differs_from_runtime:{tf}:{sym}")
+                only_rt = sorted(set(runtime_rows) - set(derived))
+                only_dv = sorted(set(derived) - set(runtime_rows))
+                diff = sorted(t for t in set(derived) & set(runtime_rows) if derived[t] != runtime_rows[t])
+                raise ValueError(f"derivation_differs_from_runtime:{tf}:{sym}:only_runtime={len(only_rt)}"
+                                 f"{only_rt[:3]}:only_derived={len(only_dv)}{only_dv[:3]}:values={len(diff)}{diff[:3]}")
             fetched[f"{tf}/{sym}.jsonl"] = {"symbol": sym, "interval_ms": step, "responses": recorded,
                                             "window": (start_ms, end)}
     cross = None
