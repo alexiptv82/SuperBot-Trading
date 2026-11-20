@@ -205,7 +205,7 @@ class ExternalBackupTests(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertEqual(self.archives(self.clone_remote()), [])
 
-    def _wrapper(self, drop=None, empty_journal=None):
+    def _wrapper(self, drop=None, empty_journal=None, docker="true true", old_heartbeats=False):
         """prova_storici.sh con i percorsi /opt sostituiti da cartelle di prova e senza il controllo di root."""
         t = self.td.name
         o = os.path.join(t, "finto")
@@ -243,7 +243,19 @@ class ExternalBackupTests(unittest.TestCase):
         self.assertNotIn("/opt/", src)                                     # nessun percorso reale nel test
         script = os.path.join(t, "prova.sh")
         put(script, src)
-        return subprocess.run(["sh", script, HERE], capture_output=True, text=True, timeout=300)
+        # finto docker: stato dei container classici (hawk, bull) per la scelta della modalita' del cervello
+        fb = os.path.join(t, "fakebin")
+        os.makedirs(fb, exist_ok=True)
+        h, b = docker.split()
+        put(os.path.join(fb, "docker"), "#!/bin/sh\ncase \"$*\" in *hawk*) s=%s;; *bull*) s=%s;; *) s=x;; esac\n"
+            "[ \"$s\" = x ] && { echo 'Error: No such object' >&2; exit 1; }\necho $s\n" % (h, b))
+        os.chmod(os.path.join(fb, "docker"), 0o755)
+        if old_heartbeats:
+            old = time.time() - 7 * 86400
+            for p in ("hawk", "bull"):
+                os.utime(os.path.join(self.root, p, "heartbeat.json"), (old, old))
+        env = dict(os.environ, PATH=fb + os.pathsep + os.environ["PATH"])
+        return subprocess.run(["sh", script, HERE], capture_output=True, text=True, timeout=300, env=env)
 
     def test_admin_wrapper_end_to_end_without_root(self):
         p = self._wrapper()
@@ -254,6 +266,26 @@ class ExternalBackupTests(unittest.TestCase):
         self.assertEqual(p.stdout.count(": 3 eventi, catena verificata"), 5, p.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.td.name, "base")))  # tutto cancellato
         self.assertFalse(any(m.decode() in p.stdout for m in MARKERS))        # nessun contenuto stampato
+
+    def test_admin_wrapper_uses_bot_stopped_when_both_classics_are_stopped(self):
+        p = self._wrapper(docker="false false", old_heartbeats=True)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("entrambi fermi -> --bot-stopped", p.stdout)
+        self.assertIn("ESITO PROVA: OK", p.stdout)
+
+    def test_admin_wrapper_refuses_mixed_or_unverifiable_classic_states(self):
+        for state in ("true false", "false true", "x x"):
+            p = self._wrapper(docker=state)
+            self.assertNotEqual(p.returncode, 0, state)
+            self.assertIn("NO-GO: stato di Falco/Toro misto o non verificabile", p.stdout)
+            self.assertFalse(os.path.exists(os.path.join(self.td.name, "base")))
+            shutil.rmtree(os.path.join(self.td.name, "finto"), ignore_errors=True)
+
+    def test_bot_stopped_still_refuses_a_fresh_heartbeat(self):
+        """docker dice fermo ma il battito e' fresco: backup_brain.py non accetta la copia (controllo non indebolito)."""
+        p = self._wrapper(docker="false false", old_heartbeats=False)
+        self.assertNotEqual(p.returncode, 0, p.stdout)
+        self.assertIn("NO-GO: backup", p.stdout)
 
     def test_admin_wrapper_refuses_when_an_arena_run_has_no_journal(self):
         t = self.td.name

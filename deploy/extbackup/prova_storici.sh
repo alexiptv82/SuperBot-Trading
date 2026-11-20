@@ -52,6 +52,23 @@ AVAIL=$(df --output=avail -B1 /root | tail -1 | tr -d ' ')
 echo "== spazio: sorgenti $((SRC_BYTES / 1048576)) MiB, necessari $((NEED / 1048576)) MiB, disponibili $((AVAIL / 1048576)) MiB"
 [ "$AVAIL" -gt "$NEED" ] || { echo "NO-GO: spazio insufficiente"; exit 1; }
 
+# --- modalita' del cervello di Falco/Toro: la STESSA scelta di run.sh (docker, mai dedotta dai file).
+# Entrambi i container fermi (docker inspect = false) -> --bot-stopped (backup_brain.py riverifica il fermo per
+# ciascun portafoglio e il battito vecchio); entrambi attivi -> percorso normale (confine di ciclo).
+# Stati diversi o non verificabili -> NO-GO: nessuna copia incoerente dichiarata valida.
+BRAIN_MODE=""
+STATES=""
+for C in superbot-desk-hawk superbot-desk-bull; do
+  R="$(timeout 30 docker inspect -f '{{.State.Running}}' "$C" 2>/dev/null)" || R=
+  echo "classico $C: running=${R:-non verificabile}"
+  STATES="$STATES ${R:-x}"
+done
+case "$STATES" in
+  " false false") BRAIN_MODE="--brain-arg=--bot-stopped --brain-retries 0"; echo "== Falco/Toro: entrambi fermi -> --bot-stopped" ;;
+  " true true") echo "== Falco/Toro: entrambi attivi -> backup normale (confine di ciclo)" ;;
+  *) echo "NO-GO: stato di Falco/Toro misto o non verificabile:$STATES"; exit 1 ;;
+esac
+
 umask 077
 mkdir -m 700 "$BASE"
 trap 'rm -rf "$BASE"' EXIT
@@ -67,7 +84,7 @@ echo "== backup (verso il repository LOCALE di prova)"
 # shellcheck disable=SC2086
 python3 -I "$TOOLS/external_backup.py" --root "$DESK" --app-db /opt/superbot/data/superbot.db \
   --pool-db /opt/superbot-pool-data/pool.db --tools "$TOOLS" --work "$BASE/work" --remote "$BASE/remote.git" \
-  --recipient-file "$BASE/recipient-prova.txt" --app-repo /opt/superbot --bots-repo /opt/superbot-desk $ARGS \
+  --recipient-file "$BASE/recipient-prova.txt" --app-repo /opt/superbot --bots-repo /opt/superbot-desk $ARGS $BRAIN_MODE \
   > "$BASE/backup.log" 2>&1 || { grep -E "Fail|NO-GO|errore|ERRORE|mancante" "$BASE/backup.log" | tail -5; echo "NO-GO: backup"; exit 1; }
 grep -E "storico run|RISULTATO" "$BASE/backup.log" || true
 

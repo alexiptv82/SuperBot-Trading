@@ -15,6 +15,12 @@
 | **Obbligatori** | con EventJournal V3 (journal.db, `v3_events`, catena verificata, registrato e riverificato dopo il ripristino): Brain V3 attivo `brain-v3-paper20261111`, Arena `brain-{deepseek,qwen,minimax}-paper20261118`; senza formato V3 imposto: Brain storico `/opt/superbot-desk-data/brain`; Falco `hawk/` e Toro `bull/` (tramite `backup_brain.py`); database dell'app e del pool | **NO-GO**, prima di qualunque copia |
 | **Facoltativi** | le altre run in `/opt/superbot-v3-paper-runs/*`; `/opt/superbot-brain-free`; `/opt/superbot-brain-adaptive` (con `hawk/`, `bull/`); `/opt/superbot-ai-data` | inclusi se presenti |
 
+## Falco e Toro: modalità del cervello
+È la stessa scelta del `run.sh` dell'extbackup installato, fatta con `docker inspect` e mai dedotta dai file:
+- **entrambi i container fermi:** si usa `--bot-stopped`. `backup_brain.py` riverifica, per ciascun portafoglio, che il container sia fermo e che il battito sia vecchio, e rifiuta un battito fresco;
+- **entrambi attivi:** backup normale, con il confine di ciclo;
+- **stati diversi o non verificabili:** NO-GO.
+
 ## Copia e controlli
 - **Copia:** ricorsiva, comprese le sottocartelle.
 - **Escluse**, e solo contate per categoria:
@@ -45,7 +51,7 @@
 Si ferma da solo se un'impronta non coincide: i comandi sono concatenati con `&&`.
 ```
 sudo install -d -m 700 -o root -g root /root/extbackup-strumenti && sudo install -m 500 -o root -g root /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/external_backup.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/restore_external_backup.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/backup_app_db.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/scripts/backup_brain.py /home/superbot-agent/brain-unico-lab/wt-ext/deploy/extbackup/prova_storici.sh /root/extbackup-strumenti/ && printf '%s
-' '999bbbfe0d1482f3f965856169b69ab8af70c75b82d93e7a622deb395b2af6a8  /root/extbackup-strumenti/external_backup.py' '8f4e39fb5c24c031bbe65069b8251b9a2d7acc8bba7a4429ed8aa7fd457da47f  /root/extbackup-strumenti/restore_external_backup.py' '6bd6ebc209400c7a0b222c62690e2c2f11b6f0a927b83fa937a35dcaac0700c6  /root/extbackup-strumenti/backup_app_db.py' '4a92e7daa6cff9fbf339f471656df8ba44067b6927d15b411b50313de0cb5d2c  /root/extbackup-strumenti/backup_brain.py' 'e4566373dc7c4f103da2e1d63c96ae013163d8a7da413393616dba64ae9e3bb6  /root/extbackup-strumenti/prova_storici.sh' | sudo sha256sum --strict -c - && sudo sh /root/extbackup-strumenti/prova_storici.sh /root/extbackup-strumenti
+' '999bbbfe0d1482f3f965856169b69ab8af70c75b82d93e7a622deb395b2af6a8  /root/extbackup-strumenti/external_backup.py' '8f4e39fb5c24c031bbe65069b8251b9a2d7acc8bba7a4429ed8aa7fd457da47f  /root/extbackup-strumenti/restore_external_backup.py' '6bd6ebc209400c7a0b222c62690e2c2f11b6f0a927b83fa937a35dcaac0700c6  /root/extbackup-strumenti/backup_app_db.py' '4a92e7daa6cff9fbf339f471656df8ba44067b6927d15b411b50313de0cb5d2c  /root/extbackup-strumenti/backup_brain.py' 'f9c1e08d9fbc0186941abb1f9dbd5a7612f0534d3ed68987cce3cfd9e6ec07a8  /root/extbackup-strumenti/prova_storici.sh' | sudo sha256sum --strict -c - && sudo sh /root/extbackup-strumenti/prova_storici.sh /root/extbackup-strumenti
 ```
 **Esito atteso:**
 - inventario con dimensioni, file e sottocartelle;
