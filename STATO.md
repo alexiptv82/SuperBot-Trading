@@ -1,3 +1,11 @@
+## 20/11/2026 23:45 Europe/Rome — due fasi, tetto 4 posizioni e rischio aperto
+
+- Checkpoint append-only: [diario/2026-11-20_2345_checkpoint-fasi-tetto-rischio-aperto.md](diario/2026-11-20_2345_checkpoint-fasi-tetto-rischio-aperto.md).
+- Decisione: Fase 1 tecnica 72h/8 simboli/profilo B; Fase 2 universo ampliato solo dopo esito positivo, nuova config e nuovo mandato. Mandato ancora `approved:false`.
+- Tetto esplicito di 4 posizioni pronto su `claude/tetto-posizioni-20261121` @ `6eac67aa896d7115b7dd03fd5cb8fec703a1edc3`: 7 test mirati e suite V3 5.400 dichiarati; **non integrato né approvato**. Integrazione `1debd53d…` contiene solo il piano.
+- Rischio aperto dal journal sottostima i costi: senza tetto 5,3–6,1% stimati; con tetto ≤4%, ma la correzione contabile resta proposta/non applicata.
+- Il checkpoint delle 22:51 conserva per errore `+` iniziali nelle righe; questo nuovo record ne corregge la leggibilità senza riscriverlo. RC84 #80 open/draft; #124 open/P0; extbackup non installato. Age PC `ESITO: VERIFICA OK` resta prova locale.
+
 ## 21/11/2026 (17) — Tetto di 4 posizioni (branch isolato) e rischio aperto verificato
 
 - `claude/tetto-posizioni-20261121` @ `6eac67aa`: `max_open_positions` in `recheck_paper_open`, cioè nel percorso serializzato sotto lock e sullo stato fresco. 7 test mirati; due test di `open_serial` adeguati (budget di rischio con ≤ 3 posizioni). Suite V3 sul ramo: 5400 test. **Da approvare** prima di unirlo all'integrazione.
