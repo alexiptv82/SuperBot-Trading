@@ -1,6 +1,7 @@
 """Training Dataset Builder (offline, solo libreria standard): decisioni storiche -> esempi con feature, esiti ed etichette.
 
 Uso:  python3 builder.py --spec spec.json --out DIR_NUOVA [--candles DIR] [--cost-bp 16] [--anchors ANCORE.json]
+                         [--decision-candles DIR_CON_15m_1h_4h]
 
 spec.json: {"inputs": [{"id": "falco_hawk", "source_system": "falco", "kind": "classic", "path": "<COPIA>",
                         "attestation": "<attestation.json>", "annotations": "<human_close_annotations.jsonl COPIA>"}, ...]}
@@ -32,6 +33,7 @@ import labels as L  # noqa: E402
 import readers as R  # noqa: E402
 import schema as S  # noqa: E402
 import snapshot_link as SL  # noqa: E402
+import snapshot_verify as SV  # noqa: E402
 import sufficiency as SU  # noqa: E402
 
 COST_BP = 16.0
@@ -273,7 +275,7 @@ def build_classic(inp: dict, store, cost_bp: float) -> Ctx:
 
 # --------------------------------------------------------------------------- journal V3 (Arena, Brain V3)
 
-def build_v3(inp: dict, store, cost_bp: float) -> Ctx:
+def build_v3(inp: dict, store, cost_bp: float, decision_candles=None) -> Ctx:
     cx = Ctx(inp, store, cost_bp)
     d = R.read_v3(inp["path"])
     cx.stats.update({"reader:" + k: v for k, v in d["stats"].items()})
@@ -334,6 +336,16 @@ def build_v3(inp: dict, store, cost_bp: float) -> Ctx:
         adm = SL.admit(eid, dec, d["snapshots"].get(eid), [d["opens"][x]["seq"] for x in pids], d["timeline"])
         if adm.status != "none":
             cx.stats["snapshot:" + adm.status + (":" + adm.reason if adm.reason else "")] += 1
+        if adm.status == "admitted":
+            # Validazione indipendente delle feature: solo con candele attestate per ogni timeframe dello snapshot.
+            verdict, vprov = SV.verify(d["snapshots"][eid][0]["p"], decision_candles)
+            cx.stats["snapshot_verification:" + verdict] += 1
+            adm.prov = {**adm.prov, "snapshot_verification": verdict, **vprov}
+            if verdict == SV.VERIFIED:
+                adm.flags = [f for f in adm.flags if f != "snapshot_unverified"]
+                # i numeri di rischio vengono dal portafoglio del runtime, non dalle candele: non sono verificati qui
+                adm.features = {k: v for k, v in adm.features.items() if not k.startswith(SL.RISK_PREFIX)}
+                adm.prov["snapshot_risk_values"] = "excluded_unverified"
         for pid in pids:
             o = d["opens"][pid]
             side = R._side(o["p"].get("side"))
@@ -471,8 +483,10 @@ def dedup_key(r: dict) -> Optional[str]:
     return hashlib.sha256(f"{r['symbol']}|{r['side']}|{o['opened_ms'] // 60000}|{round(p['entry'], 4)}".encode()).hexdigest()[:24]
 
 
-def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_BP, anchors: Optional[dict] = None) -> dict:
+def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_BP, anchors: Optional[dict] = None,
+          decision_candles_dir: Optional[str] = None) -> dict:
     store = C.CandleStore(candles_dir) if candles_dir else None
+    decision_candles = SV.DecisionCandles(decision_candles_dir) if decision_candles_dir else None
     rows, per_input, keys_seen = [], {}, {}
     seen_ids: dict = {}
     seen_trades: dict = {}
@@ -487,7 +501,8 @@ def build(spec: dict, candles_dir: Optional[str] = None, cost_bp: float = COST_B
             attested.add(inp["id"])
         elif state == AT.UNTRUSTED:
             untrusted.add(inp["id"])
-        cx = BUILDERS[inp["kind"]](inp, store, cost_bp)
+        cx = (build_v3(inp, store, cost_bp, decision_candles) if inp["kind"] == "v3"
+              else BUILDERS[inp["kind"]](inp, store, cost_bp))
         keep = []
         for r in cx.rows:
             if r["example_id"] in seen_ids:
@@ -583,13 +598,14 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--spec", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--candles")
+    ap.add_argument("--decision-candles", help="candele attestate per timeframe (15m/ 1h/ 4h/) per validare gli snapshot")
     ap.add_argument("--cost-bp", type=float, default=COST_BP)
     ap.add_argument("--anchors", help="ancore esterne {run_id: sha256 di public/summary.json}, registrate dall'operatore")
     a = ap.parse_args(argv)
     with open(a.spec, encoding="utf-8") as fh:
         spec = json.load(fh)
     try:
-        res = build(spec, a.candles, a.cost_bp, AT.load_anchors(a.anchors))
+        res = build(spec, a.candles, a.cost_bp, AT.load_anchors(a.anchors), a.decision_candles)
         info = write_outputs(res, a.out)
     except (ValueError, OSError) as exc:
         print(f"NO-GO: {type(exc).__name__}: {str(exc)[:80]}")

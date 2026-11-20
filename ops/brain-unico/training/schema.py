@@ -22,7 +22,7 @@ from typing import Any
 
 SCHEMA_VERSION = 2
 BUILDER_VERSION = "0.4.0"
-SOURCES = ("falco", "toro", "brain_storico", "arena_deepseek", "arena_qwen", "arena_minimax")
+SOURCES = ("falco", "toro", "brain_storico", "arena_deepseek", "arena_qwen", "arena_minimax", "brain_unico")
 RECORD_KINDS = ("executed", "candidate_rejected", "no_trade")
 ACTIONS = ("LONG", "SHORT", "NO_TRADE", "OPEN_REJECTED")
 OUTCOME_STATUS = ("closed", "closed_unknown_pnl", "open_censored", "not_executed")
