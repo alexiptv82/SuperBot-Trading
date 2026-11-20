@@ -1,3 +1,11 @@
+## 20/11/2026 15:46 Europe/Rome — EventJournal V3 obbligatorio nel candidato extbackup
+
+- Checkpoint append-only: [diario/2026-11-20_1546_checkpoint-eventjournal-v3-obbligatorio.md](diario/2026-11-20_1546_checkpoint-eventjournal-v3-obbligatorio.md).
+- Candidato `claude/extbackup-storici-20261121` avanzato a `0da29766e7bd03720a1268b458640f0ff0807218`: Brain V3 attivo e tre Arena richiedono journal V3 valido, indice obbligatorio e riconfronto dopo restore.
+- 51 test non-root dichiarati dal commit; prova sugli storici reali non eseguita, nessuna installazione/trasferimento/root/VPS.
+- Backup precedente con 1 evento resta prova sulla run vuota, non certificazione degli storici; age PC `ESITO: VERIFICA OK` resta solo verifica locale.
+- Integrazione `de59f677…`, RC84 #80 open/draft, extbackup storico `3dc2116a…`; PAPER Falco/Toro/Brain e storici preservati.
+
 ## 21/11/2026 (3) — Prova extbackup: EventJournal V3 obbligatorio, comando definitivo
 
 - `claude/extbackup-storici-20261121` @ `0da29766`: Brain V3 attivo e 3 run Arena richiedono journal.db con `v3_events` e catena valida, registrato nell'indice e riverificato dopo il ripristino (NO-GO altrimenti); indice obbligatorio nel ripristino; archivi non V3 invariati. 51 test. Comando definitivo con impronte in `deploy/extbackup/PROVA-STORICI.md`. In attesa dell'esecuzione del proprietario.
