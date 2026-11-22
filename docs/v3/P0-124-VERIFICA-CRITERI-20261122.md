@@ -1,6 +1,6 @@
 # Issue #124 (P0): verifica dei criteri di accettazione (22/11/2026)
 
-**Esito:** criteri 1–8 coperti con evidenze verificabili. Il criterio 6 (**concorrenza**) **non lo era**: difetto riprodotto e corretto sul branch isolato `claude/p0-124-chiusura-20261122` (`7169558c`, più il lock non bloccante della verifica finale).
+**Esito:** criteri 1–8 coperti con evidenze verificabili. **Integrato** nell'integrazione con `5f110379` (gate verde V3 5418). Il criterio 6 (**concorrenza**) **non lo era**: difetto riprodotto e corretto sul branch isolato `claude/p0-124-chiusura-20261122` (`7169558c`, più il lock non bloccante della verifica finale).
 
 **L'Issue NON è chiusa:** la chiusura spetta al proprietario dopo la revisione.
 
