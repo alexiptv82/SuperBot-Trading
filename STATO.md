@@ -1,3 +1,11 @@
+## 22/11/2026 — Tetto 4 posizioni e rischio aperto con i costi INTEGRATI; pre-collaudo preparato
+
+- **Approvati e integrati** (`c11e6d7d`, gate `302e94d2`: V3 5410, builder 158, Jest 153):
+  - tetto di 4 posizioni nel percorso serializzato (`6eac67aa`);
+  - rischio aperto dal journal con i costi stimati, con la stessa formula del RiskManager, `risk.estimated_loss_per_unit` (`887fc961`). Dopo quattro aperture la stima totale resta ≤ 4 % anche con l'equity cambiata, e vicino al pavimento la stima non scavalca 1.600. Profilo B invariato, journal non riscritto.
+- **Pre-collaudo preparato** (`ce1d1a7e`): `docs/v3/BRAIN-UNICO-PRECOLLAUDO-20261122.md`, 7 controlli PASS/FAIL e rollback. Stato VPS letto senza privilegi: uscite del Brain attive sulla run in pausa `brain-v3-paper20261111`; nessun runner del Brain attivo; unità d'uscita di Falco/Toro `failed` (solo annotato). **Nulla eseguito.**
+- In attesa dell'autorizzazione all'installazione senza mandato (runner `halted`) e alle prove di arresto e rollback.
+
 ## 20/11/2026 23:45 Europe/Rome — due fasi, tetto 4 posizioni e rischio aperto
 
 - Checkpoint append-only: [diario/2026-11-20_2345_checkpoint-fasi-tetto-rischio-aperto.md](diario/2026-11-20_2345_checkpoint-fasi-tetto-rischio-aperto.md).
