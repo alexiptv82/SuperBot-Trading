@@ -1,3 +1,13 @@
+## 22/11/2026 (6) — BACKUP ESTERNO CIFRATO INVIATO E VERIFICATO (Termius, proprietario)
+
+- **Prova reale su VPS Singapore:** il proprietario ha eseguito `backup_definitivo.sh` con gli strumenti del branch `claude/extbackup-storici-20261121` @ `517ad7c9`; screenshot dell'output Termius delle 21:16 CET.
+- **Indispensabili:** `RISULTATO: OK` per `superbot-backup-indispensabili-20261122T201218Z.tar.gz.age` (1.240.846 byte, SHA-256 nell'output); Brain V3 e 3 Arena riconosciuti come journal V3 obbligatori. Inviato nel repository privato `alexiptv82/superbot-backups`.
+- **Storici:** `RISULTATO: OK` per `superbot-backup-storici-20261122T201334Z.tar.gz.age` (116.511.584 byte; **2 parti**), incluso Brain storico, Falco/Toro, Brain libero/adattivo e ai-data.
+- **ESITO esatto:** `INDISPENSABILI E STORICI INVIATI E VERIFICATI DA UN CLONE NUOVO (ripristino da fare sul PC del proprietario)`. Verifica remota riferita dallo script (nuovo clone e SHA-256) e confermata dall'output Termius; il connettore GitHub disponibile a ChatGPT **non ha accesso** al repository privato dei backup, quindi non ne ha rieseguito una seconda lettura indipendente.
+- **Certificazione semantica:** Falco/Toro restano **integri tecnicamente ma non certificati semanticamente** (esito 3 della prova locale precedente); non ammetterli al training finché non certificati.
+- **NON ancora fatto:** ripristino dei nuovi archivi cifrati sul PC Windows con la chiave privata del proprietario. La chiave non va inviata a ChatGPT né caricata su GitHub. Gli storici possono richiedere WSL per `fcntl`; indispensabili da testare con `restore_external_backup.py` su Windows nativo.
+- **Nessuna modifica a Brain o mandato; nessun avvio PAPER autorizzato.** Issue #124 risulta formalmente chiusa (22/11/2026). Prossimo passo: ripristino PC, poi pre-collaudo su VPS senza mandato.
+
 ## 22/11/2026 (5) — PROVA REALE DEI BACKUP: indispensabili CERTIFICATI; storici integri ma NON certificati
 
 - **Prova del proprietario** (root, Termius), con gli strumenti di `claude/extbackup-storici-20261121` @ `54e4342e` (script identici a `75a714be`; impronte: `external_backup.py 331d44b4…`, `restore_external_backup.py faa73399…`, `backup_app_db.py 6bd6ebc2…`, `backup_brain.py 4a92e7da…`, `prova_storici.sh deb7d6c3…`). Registro: `/root/extbackup-prova-storici-20261122T190332Z.log`.
