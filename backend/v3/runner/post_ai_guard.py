@@ -116,7 +116,7 @@ def recheck_paper_open(*, decision: BrainDecision, journal: EventJournal,
         required=('exchange_leverage_limit','quantity_step','minimum_notional','maintenance_fraction')
         if not all(k in rules for k in required):
             return deny('market_rules_unavailable')
-        snap = snapshot_from_summary(summary,initial_equity)
+        snap = snapshot_from_summary(summary,initial_equity,risk_policy.estimated_roundtrip_cost_bp)
         fresh_quote = quote_paper_risk(risk_policy, RiskRequest(
             equity=snap.equity, available_cash=snap.available_cash,
             margin_used=snap.margin_used, existing_open_risk=snap.existing_open_risk,
