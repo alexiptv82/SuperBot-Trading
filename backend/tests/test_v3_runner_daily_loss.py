@@ -488,7 +488,9 @@ def test_state_file_has_exactly_the_v2_keys_and_no_amounts():
     assert set(state) == {"version", "day_start_ms", "warn_sent", "halt_sent", "unverified_sent", "halt_latched",
                           "latch_reason", "checked_through_ms", "audit_from_ms"}
     assert state["version"] == 2 and state["latch_reason"] == "loss" and state["checked_through_ms"] == NOW
-    assert [p.name for p in d.iterdir()] == [STATE_FILE]         # nessun file temporaneo rimasto
+    # nessun file temporaneo rimasto; il lock della sezione critica (Issue #124, concorrenza) e' vuoto
+    assert sorted(p.name for p in d.iterdir()) == sorted([STATE_FILE, ".daily_loss.lock"])
+    assert (d / ".daily_loss.lock").stat().st_size == 0
 
 
 def test_a_disk_error_on_save_is_swallowed_and_memory_still_holds_the_latch(monkeypatch):
@@ -499,7 +501,7 @@ def test_a_disk_error_on_save_is_swallowed_and_memory_still_holds_the_latch(monk
     g, d = _guard(stub, Sender())
     assert g(NOW).level == "halt"
     stub.result = _dl("ok", "0.0")
-    assert g(NOW + 60_000).level == "halt" and list(d.iterdir()) == []
+    assert g(NOW + 60_000).level == "halt" and [p.name for p in d.iterdir()] == [".daily_loss.lock"]
 
 
 # ----------------------------------------------------------------------------- telegram_sender

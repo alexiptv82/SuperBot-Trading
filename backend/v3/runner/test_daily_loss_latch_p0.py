@@ -420,3 +420,55 @@ def test_no_amounts_in_the_state_file():
     raw = (w.dir / STATE_FILE).read_text(encoding="utf-8")
     assert "1000" not in raw and "100" not in raw.replace(str(NOW), "").replace(str(DAY0), "")
     assert sorted(os.listdir(w.dir)) == ["journal.db", STATE_FILE] or set(os.listdir(w.dir)) >= {STATE_FILE}
+
+
+# ----------------------------------------------------------------------------- concorrenza tra processi (criterio 6)
+
+def _two_guards(tmp_path):
+    """Due processi sulla stessa run e sullo stesso file di stato; prezzi visti in modo diverso al minuto dello stop."""
+    la, lb = {"v": D("0.1")}, {"v": D("0.1")}
+
+    def mk(box):
+        return lambda now: dl.DailyLoss("halt" if box["v"] >= HALT else "ok", box["v"], D("0"), dl.day_start_ms(now))
+    kw = dict(data_dir=tmp_path, warn_fraction=WARN, halt_fraction=HALT, audit=lambda f, n: D("0.1"))
+    return DailyLossGuard(evaluate=mk(la), **kw), DailyLossGuard(evaluate=mk(lb), **kw), la, lb
+
+
+def test_a_second_process_cannot_erase_the_loss_latch_of_the_first(tmp_path):
+    a, b, la, lb = _two_guards(tmp_path)
+    a(NOW), b(NOW)
+    la["v"] = D("0.6")
+    assert a(NOW + MINUTE_MS).level == "halt"                   # solo A vede lo stop
+    assert b(NOW + MINUTE_MS).level == "halt"                   # B adotta il blocco scritto da A
+    assert json.loads((tmp_path / STATE_FILE).read_text())["latch_reason"] == "loss"
+    la["v"] = lb["v"] = D("0.1")                                # il PnL recupera
+    assert b.recheck(NOW + 2 * MINUTE_MS).level == "halt"       # B non apre
+    assert a.recheck(NOW + 2 * MINUTE_MS).level == "halt"
+
+
+def test_a_process_that_never_saw_the_stop_adopts_it_before_opening(tmp_path):
+    a, b, la, lb = _two_guards(tmp_path)
+    a(NOW), b(NOW)
+    la["v"] = D("0.6")
+    a(NOW + MINUTE_MS)
+    la["v"] = D("0.1")
+    assert b.recheck(NOW + 2 * MINUTE_MS).level == "halt"       # prima chiamata di B dopo lo stop di A
+
+
+def test_a_loss_latch_of_yesterday_on_disk_is_not_adopted_today(tmp_path):
+    a, b, la, lb = _two_guards(tmp_path)
+    la["v"] = D("0.6")
+    a(NOW)
+    assert a(NOW).level == "halt"
+    la["v"] = D("0.1")
+    assert b(NOW + DAY_MS).level == "ok"                        # nuovo giorno UTC: il blocco di ieri non vale
+
+
+def test_without_the_state_lock_new_openings_are_denied(tmp_path, monkeypatch):
+    a, _b, _la, _lb = _two_guards(tmp_path)
+
+    def no_lock(*_a, **_k):
+        raise OSError("lock unavailable")
+    monkeypatch.setattr(dl.fcntl, "flock", no_lock)
+    with pytest.raises(ValueError, match="^daily_loss_state_not_persisted$"):
+        a.recheck(NOW)
