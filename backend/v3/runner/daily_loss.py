@@ -21,9 +21,11 @@ oltre alle frazioni; nessuna rete se non l'invio dell'avviso e la ricostruzione 
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import tempfile
+import time
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
@@ -35,6 +37,9 @@ from backend.v3.events import EventJournal
 DAY_MS = 86_400_000
 MINUTE_MS = 60_000
 STATE_FILE = "daily_loss.json"
+LOCK_FILE = ".daily_loss.lock"
+LOCK_ATTEMPTS = 20                     # al massimo ~2 s di attesa del lock dello stato, poi fail-closed
+LOCK_WAIT_S = 0.1
 LEVELS = ("ok", "warn", "halt")
 
 
@@ -300,6 +305,41 @@ class DailyLossGuard:
                 except OSError:
                     pass
 
+    def _sync_and_save(self) -> None:
+        """Scrittura dello stato in una sezione critica tra processi (Issue #124, concorrenza).
+
+        Sotto un lock esclusivo sul file di stato: si rilegge il disco e si ADOTTA un blocco ``loss`` dello stesso giorno
+        scritto da un altro processo sulla stessa run, poi si scrive. Il blocco puo' solo aggiungersi, mai togliersi:
+        un secondo runner non puo' cancellare con il proprio stato il blocco del primo. Lock non disponibile: lo stato
+        non viene scritto e ``recheck`` nega le nuove aperture (fail-closed)."""
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        try:
+            fd = os.open(self._path.parent / LOCK_FILE, flags, 0o600)
+        except OSError:
+            return
+        try:
+            for attempt in range(LOCK_ATTEMPTS):              # mai un'attesa illimitata: un lock tenuto da un processo
+                try:                                          # bloccato non deve fermare il giro del runner
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if attempt == LOCK_ATTEMPTS - 1:
+                        return                                # non salvato: recheck nega le nuove aperture
+                    time.sleep(LOCK_WAIT_S)
+            disk, trust = self._load()
+            if (trust in ("v2", "legacy") and disk["day_start_ms"] == self._state["day_start_ms"]
+                    and disk["halt_latched"] and disk["latch_reason"] == "loss"):
+                self._latch("loss")
+            self._save()
+        except OSError:
+            return
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass                                            # il close rilascia comunque il lock
+            os.close(fd)
+
     def _notify(self, key: str, text: str) -> None:
         if self._send is None or self._state[key]:
             return
@@ -309,7 +349,7 @@ class DailyLossGuard:
             sent = False
         if sent:
             self._state[key] = True                              # se l'invio fallisce si riprova al minuto dopo
-            self._save()
+            self._sync_and_save()
 
     def recheck(self, now_ms: int) -> DailyLoss:
         """Force a fresh evaluation after an AI wait, bypassing minute cache.
@@ -389,7 +429,7 @@ class DailyLossGuard:
         if result.level == "halt":
             self._latch("loss")                                  # anche «unverified» -> «loss»
         self._state["checked_through_ms"] = now_ms
-        self._save()
+        self._sync_and_save()
         if self._state["halt_latched"] and result.level != "halt":
             result = DailyLoss("halt", result.loss_fraction, result.loss_usd, result.day_start_ms)
         if result.level == "warn":                               # se salta dritto a halt, un avviso «si ferma al 50 %» sarebbe falso

@@ -420,3 +420,130 @@ def test_no_amounts_in_the_state_file():
     raw = (w.dir / STATE_FILE).read_text(encoding="utf-8")
     assert "1000" not in raw and "100" not in raw.replace(str(NOW), "").replace(str(DAY0), "")
     assert sorted(os.listdir(w.dir)) == ["journal.db", STATE_FILE] or set(os.listdir(w.dir)) >= {STATE_FILE}
+
+
+# ----------------------------------------------------------------------------- concorrenza tra processi (criterio 6)
+
+def _two_guards(tmp_path):
+    """Due processi sulla stessa run e sullo stesso file di stato; prezzi visti in modo diverso al minuto dello stop."""
+    la, lb = {"v": D("0.1")}, {"v": D("0.1")}
+
+    def mk(box):
+        return lambda now: dl.DailyLoss("halt" if box["v"] >= HALT else "ok", box["v"], D("0"), dl.day_start_ms(now))
+    kw = dict(data_dir=tmp_path, warn_fraction=WARN, halt_fraction=HALT, audit=lambda f, n: D("0.1"))
+    return DailyLossGuard(evaluate=mk(la), **kw), DailyLossGuard(evaluate=mk(lb), **kw), la, lb
+
+
+def test_a_second_process_cannot_erase_the_loss_latch_of_the_first(tmp_path):
+    a, b, la, lb = _two_guards(tmp_path)
+    a(NOW), b(NOW)
+    la["v"] = D("0.6")
+    assert a(NOW + MINUTE_MS).level == "halt"                   # solo A vede lo stop
+    assert b(NOW + MINUTE_MS).level == "halt"                   # B adotta il blocco scritto da A
+    assert json.loads((tmp_path / STATE_FILE).read_text())["latch_reason"] == "loss"
+    la["v"] = lb["v"] = D("0.1")                                # il PnL recupera
+    assert b.recheck(NOW + 2 * MINUTE_MS).level == "halt"       # B non apre
+    assert a.recheck(NOW + 2 * MINUTE_MS).level == "halt"
+
+
+def test_a_process_that_never_saw_the_stop_adopts_it_before_opening(tmp_path):
+    a, b, la, lb = _two_guards(tmp_path)
+    a(NOW), b(NOW)
+    la["v"] = D("0.6")
+    a(NOW + MINUTE_MS)
+    la["v"] = D("0.1")
+    assert b.recheck(NOW + 2 * MINUTE_MS).level == "halt"       # prima chiamata di B dopo lo stop di A
+
+
+def test_a_loss_latch_of_yesterday_on_disk_is_not_adopted_today(tmp_path):
+    a, b, la, lb = _two_guards(tmp_path)
+    la["v"] = D("0.6")
+    a(NOW)
+    assert a(NOW).level == "halt"
+    la["v"] = D("0.1")
+    assert b(NOW + DAY_MS).level == "ok"                        # nuovo giorno UTC: il blocco di ieri non vale
+
+
+def test_without_the_state_lock_new_openings_are_denied(tmp_path, monkeypatch):
+    a, _b, _la, _lb = _two_guards(tmp_path)
+
+    def no_lock(*_a, **_k):
+        raise OSError("lock unavailable")
+    monkeypatch.setattr(dl.fcntl, "flock", no_lock)
+    with pytest.raises(ValueError, match="^daily_loss_state_not_persisted$"):
+        a.recheck(NOW)
+
+
+# ----------------------------------------------------------------------------- processi del sistema operativo reali
+
+def _os_worker(folder, role, start, a_done, out):
+    """Processo indipendente (spawn): A aggancia lo stop dal minuto 20, B non lo vede mai e scrive di continuo."""
+    from decimal import Decimal as Dec
+    from pathlib import Path as P
+    from backend.v3.runner import daily_loss as m
+
+    def ev(now):
+        i = (now - NOW) // MINUTE_MS
+        f = Dec("0.6") if role == "A" and i >= 20 else Dec("0.1")
+        return m.DailyLoss("halt" if f >= HALT else "ok", f, Dec("0"), m.day_start_ms(now))
+    g = m.DailyLossGuard(data_dir=P(folder), evaluate=ev, warn_fraction=WARN, halt_fraction=HALT,
+                         audit=lambda f, n: Dec("0.1"))
+    start.wait(10)
+    for i in range(300):
+        g(NOW + i * MINUTE_MS)
+    if role == "A":
+        a_done.set()
+        out.put(("A", "done"))
+        return
+    a_done.wait(30)
+    try:
+        out.put(("B", g.recheck(NOW + 301 * MINUTE_MS).level))
+    except ValueError as e:
+        out.put(("B", "denied:%s" % e))
+
+
+def _lock_holder(folder, held, release):
+    import fcntl as f
+    import os as o
+    fd = o.open(o.path.join(folder, dl.LOCK_FILE), o.O_RDWR | o.O_CREAT, 0o600)
+    f.flock(fd, f.LOCK_EX)
+    held.set()
+    release.wait(30)
+    f.flock(fd, f.LOCK_UN)
+    o.close(fd)
+
+
+def test_two_real_os_processes_the_second_cannot_erase_the_loss_latch_of_the_first(tmp_path):
+    import multiprocessing as mp
+    ctx = mp.get_context("spawn")
+    start, a_done, out = ctx.Event(), ctx.Event(), ctx.Queue()
+    procs = [ctx.Process(target=_os_worker, args=(str(tmp_path), r, start, a_done, out)) for r in ("A", "B")]
+    for p in procs:
+        p.start()
+    start.set()                                                  # partono insieme: scritture davvero concorrenti
+    res = dict(out.get(timeout=60) for _ in procs)
+    for p in procs:
+        p.join(timeout=30)
+        assert p.exitcode == 0
+    assert res["B"] == "halt", res                              # B non apre dopo il recupero del PnL
+    assert json.loads((tmp_path / STATE_FILE).read_text())["latch_reason"] == "loss"
+
+
+def test_a_lock_held_by_another_os_process_denies_new_openings_quickly(tmp_path):
+    import multiprocessing as mp
+    import time as t
+    ctx = mp.get_context("spawn")
+    held, release = ctx.Event(), ctx.Event()
+    holder = ctx.Process(target=_lock_holder, args=(str(tmp_path), held, release))
+    holder.start()
+    try:
+        assert held.wait(20)
+        g, _b, _la, _lb = _two_guards(tmp_path)
+        t0 = t.monotonic()
+        with pytest.raises(ValueError, match="^daily_loss_state_not_persisted$"):
+            g.recheck(NOW)                                       # lock occupato: stato non scritto, apertura negata
+        assert t.monotonic() - t0 < 10                           # mai un'attesa illimitata
+    finally:
+        release.set()
+        holder.join(timeout=30)
+    assert g.recheck(NOW + MINUTE_MS).level == "ok"             # lock libero: si torna a scrivere
