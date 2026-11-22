@@ -1,3 +1,16 @@
+## 22/11/2026 (4) — Certificazione dei backup: verifiche preliminari OK, prova pronta per il proprietario (root)
+
+- #124 chiusa dal proprietario; piano RC di ChatGPT `34403402` (integrazione).
+- **Verifiche preliminari, senza privilegi:**
+  - extbackup `75a714be` allineato al remoto;
+  - 5 impronte = documento;
+  - suite extbackup 74 verde;
+  - `age`, `git`, `python3` e `docker` presenti;
+  - spazio libero 21 GB (contro circa 4,2 GB richiesti nell'ultima prova);
+  - nessun processo Falco/Toro attivo.
+- Difetto nel documento: il comando conteneva un a capo dentro `printf`. Riga unica rigenerata con le stesse impronte, script invariati (`54e4342e`).
+- La prova richiede root, quindi la esegue il proprietario. Nessun trasferimento esterno.
+
 ## 22/11/2026 (3) — P0 #124: correzione completa INTEGRATA; Issue in attesa di chiusura del proprietario
 
 - **Verifica finale:**
