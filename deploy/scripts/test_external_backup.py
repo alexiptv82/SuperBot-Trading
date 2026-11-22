@@ -495,6 +495,189 @@ class ExternalBackupTests(unittest.TestCase):
         p = self._definitivo(busy=True)
         self.assertIn("NO-GO: il backup periodico e' in esecuzione", p.stdout)
 
+    # ---- copia aggiuntiva per la chiave Android e ripristino con Termux ----
+
+    def _tree(self, clone, *roots):
+        """{percorso: sha256} dei file sotto roots (archivi originali, recipient.txt, LEGGIMI.md)."""
+        out = {}
+        for r in roots:
+            full = os.path.join(clone, r)
+            if os.path.isfile(full):
+                out[r] = hashlib.sha256(get(full)).hexdigest()
+            for dp, _dn, fn in os.walk(full):
+                for f in fn:
+                    p = os.path.join(dp, f)
+                    out[os.path.relpath(p, clone)] = hashlib.sha256(get(p)).hexdigest()
+        return out
+
+    def _android(self, android_pub, prod_key=None, busy=False, big=True):
+        """copia_android.sh con remoto, chiavi e percorsi /opt sostituiti da elementi di prova (niente rete)."""
+        t = self.td.name
+        o = os.path.join(t, "finto")
+        if not os.path.isdir(o):
+            for rel in ("v3/brain-v3-paper20261111", "arena/deepseek/brain-deepseek-paper20261118",
+                        "arena/qwen/brain-qwen-paper20261118", "arena/minimax/brain-minimax-paper20261118"):
+                os.makedirs(os.path.join(o, rel))
+                make_v3_journal(os.path.join(o, rel, "journal.db"), 3).close()
+            if big:                                                             # archivio grande: va diviso
+                put(os.path.join(o, "v3/brain-v3-paper20261111", "blob.bin"), os.urandom(3 * 1048576))
+        key = [x for x in open(self.recfile).read().split() if x.startswith("age1")][0]
+        dummy = os.path.join(t, "dummy")
+        put(dummy, "x")
+        src = open(os.path.join(HERE, "..", "extbackup", "copia_android.sh")).read()
+        subs = [('[ "$(id -u)" = 0 ] || { echo "NO-GO: serve root"; exit 2; }', ""),
+                ("WORK=/root/extbackup-android", "WORK=%s/work-android" % t),
+                ("REMOTE=git@github.com:alexiptv82/superbot-backups.git", "REMOTE=%s" % self.remote),
+                ("SSH_KEY=/root/.ssh/superbot_backup_ed25519", "SSH_KEY=%s" % dummy),
+                ("KNOWN=/opt/superbot-extbackup/known_hosts", "KNOWN=%s" % dummy),
+                ("PROD_RECIPIENT=/opt/superbot-extbackup/recipient.txt", "PROD_RECIPIENT=%s" % self.recfile),
+                ("APPROVED_KEY=age142uj5c8xx4d9csj2dsy2uvda6e0kt9y8xln3xpetemzhts6ljaqq40qy6u",
+                 "APPROVED_KEY=%s" % (prod_key or key)),
+                ("ANDROID_KEY=age1kpdfwmlpjmmwre34kg5zpdjlrc3kjw7syymzax8tg2jm892wa5sqnzc9nm",
+                 "ANDROID_KEY=%s" % android_pub),
+                ("systemctl is-active superbot-extbackup.service", "echo %s" % ("active" if busy else "inactive")),
+                ('--ssh-key "$SSH_KEY" --known-hosts "$KNOWN" ', "--part-mib 1 --app-repo /nonexistent "
+                                                               "--bots-repo /nonexistent "),
+                ("df --output=avail -B1 /root", "df --output=avail -B1 %s" % t),
+                ("--root /opt/superbot-desk-data", "--root %s" % self.root),
+                ("/opt/superbot-v3-paper-runs", o + "/v3"), ("/opt/superbot-ai-arena-paper", o + "/arena"),
+                ("APP_DB=/opt/superbot/data/superbot.db", "APP_DB=%s" % self.app_db),
+                ("POOL_DB=/opt/superbot-pool-data/pool.db", "POOL_DB=%s" % self.pool_db)]
+        for x, y in subs:
+            self.assertIn(x, src)
+            src = src.replace(x, y)
+        self.assertNotIn("/opt/", src)
+        self.assertNotIn("github.com", src)                                # nessun trasferimento nel test
+        script = os.path.join(t, "android.sh")
+        put(script, src)
+        tools = os.path.join(t, "strumenti")                               # come /root/extbackup-strumenti
+        if not os.path.isdir(tools):
+            os.makedirs(tools)
+            for f in ("external_backup.py", "backup_app_db.py", "backup_brain.py"):
+                shutil.copy(os.path.join(HERE, f), tools)
+            shutil.copy(os.path.join(HERE, "..", "extbackup", "copia_aggiuntiva.py"), tools)
+        return subprocess.run(["sh", script, tools], capture_output=True, text=True, timeout=300)
+
+    def _termux(self, downloads, ident, android_pub, margin=None):
+        """ripristino_termux.sh in una HOME finta, utente normale, con il solo restore accanto (niente backup_brain.py,
+        niente repository SuperBot): come sul telefono."""
+        t = self.td.name
+        phone = os.path.join(t, "telefono-%d" % int(time.time() * 1000))
+        scripts = os.path.join(phone, "script")
+        os.makedirs(scripts)
+        shutil.copy(RESTORE, scripts)
+        src = open(os.path.join(HERE, "..", "extbackup", "ripristino_termux.sh")).read()
+        subs = [("ANDROID_KEY=age1kpdfwmlpjmmwre34kg5zpdjlrc3kjw7syymzax8tg2jm892wa5sqnzc9nm",
+                 "ANDROID_KEY=%s" % android_pub)]
+        if margin:
+            subs.append(("+ 268435456))", "+ %d))" % margin))
+        for x, y in subs:
+            self.assertIn(x, src)
+            src = src.replace(x, y)
+        put(os.path.join(scripts, "ripristino_termux.sh"), src)
+        fb = os.path.join(t, "fakebin-termux")
+        if not os.path.isdir(fb):
+            os.makedirs(fb)
+            os.symlink(sys.executable, os.path.join(fb, "python"))        # su Termux "python" e' Python 3
+        env = dict(os.environ, HOME=os.path.join(phone, "home"), PATH=fb + os.pathsep + os.environ["PATH"])
+        os.makedirs(env["HOME"])
+        p = subprocess.run(["sh", os.path.join(scripts, "ripristino_termux.sh"), downloads, ident],
+                           capture_output=True, text=True, timeout=300, env=env)
+        return p, os.path.join(env["HOME"], "superbot-ripristino")
+
+    def test_android_copy_leaves_originals_intact_and_restores_on_termux_without_root(self):
+        rc, out = self.backup()                                            # archivio originale gia' presente
+        self.assertEqual(rc, 0, out)
+        before = self._tree(self.clone_remote(), "archives", "recipient.txt", "LEGGIMI.md")
+        self.assertTrue(before)
+        prod_before = get(self.recfile)
+        android_id = os.path.join(self.td.name, "android.txt")
+        android_pub = keygen(android_id)
+        p = self._android(android_pub)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("ESITO: COPIA ANDROID DEGLI INDISPENSABILI INVIATA E VERIFICATA DA UN CLONE NUOVO", p.stdout)
+        self.assertIn("recipient.txt di produzione invariato", p.stdout)
+        self.assertIn("nessuno tolto; retention non applicata", p.stdout)
+        self.assertEqual(get(self.recfile), prod_before)
+        clone = self.clone_remote()
+        self.assertEqual(self._tree(clone, "archives", "recipient.txt", "LEGGIMI.md"), before)  # originali intatti
+        msg = sh("git", "-C", clone, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
+        self.assertTrue(all(x.startswith("copie/android/") for x in msg[1:] if x.strip()), msg)
+        mans = [os.path.join(dp, f) for dp, _d, fn in os.walk(os.path.join(clone, "copie", "android"))
+                for f in fn if f.endswith(".manifest.json")]
+        self.assertEqual(len(mans), 1)
+        man = json.load(open(mans[0]))
+        self.assertEqual(man["cifratura"]["destinatario"], android_pub)
+        self.assertEqual((man["componente"], man["copia_aggiuntiva"], man["retention"]),
+                         ("indispensabili", "android", "nessuna"))
+        self.assertGreaterEqual(len(man["parti"]), 3)                      # diviso in parti
+        arc = os.path.join(os.path.dirname(mans[0]), man["archivio"])
+        rc, rout, _ = self.restore(arc)                                    # la chiave dei periodici NON la apre
+        self.assertEqual(rc, 1, rout)
+        self.assertIn("decifratura non riuscita", rout)
+        # telefono: i file scaricati dal browser finiscono in Download (memoria condivisa)
+        downloads = os.path.join(self.td.name, "Download")
+        os.makedirs(downloads)
+        for f in os.listdir(os.path.dirname(mans[0])):
+            shutil.copy(os.path.join(os.path.dirname(mans[0]), f), downloads)
+        t, base = self._termux(downloads, android_id, android_pub)
+        self.assertEqual(t.returncode, 0, t.stdout + t.stderr)
+        self.assertIn("== spazio telefono:", t.stdout)
+        self.assertIn("catene EventJournal V3 obbligatorie verificate: 4", t.stdout)
+        self.assertIn("ESITO: RIPRISTINO SU ANDROID CERTIFICATO", t.stdout)
+        self.assertIn("parti: SHA-256 e dimensione uguali al manifesto", t.stdout)
+        self.assertEqual(sorted(x.endswith(".log") for x in os.listdir(base)), [True])  # solo il registro
+        self.assertFalse(any(m.decode() in t.stdout + p.stdout for m in MARKERS))
+        # chiave sbagliata (quella dei periodici): NO-GO prima di decifrare
+        t, _ = self._termux(downloads, self.ident, android_pub)
+        self.assertEqual(t.returncode, 2, t.stdout)
+        self.assertIn("NO-GO: la chiave privata non corrisponde", t.stdout)
+        # spazio insufficiente sul telefono: NO-GO prima di copiare
+        t, base = self._termux(downloads, android_id, android_pub, margin=1 << 60)
+        self.assertEqual(t.returncode, 1, t.stdout)
+        self.assertIn("NO-GO: spazio insufficiente sul telefono", t.stdout)
+        self.assertFalse([x for x in os.listdir(base) if x.startswith(("archivio-", "ripristino-"))])
+        # parte mancante: NO-GO
+        os.unlink(os.path.join(downloads, man["parti"][1]["file"]))
+        t, _ = self._termux(downloads, android_id, android_pub)
+        self.assertIn("NO-GO: file mancante", t.stdout)
+
+    def test_android_copy_refusals(self):
+        android_pub = keygen(os.path.join(self.td.name, "android.txt"))
+        p = self._android(android_pub, prod_key="age1" + "q" * 58, big=False)  # recipient.txt di produzione diverso
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertIn("NO-GO: il recipient.txt di produzione non e' la sola chiave approvata", p.stdout)
+        p = self._android(android_pub, busy=True)
+        self.assertIn("NO-GO: il backup periodico e' in esecuzione", p.stdout)
+        key = [x for x in open(self.recfile).read().split() if x.startswith("age1")][0]
+        p = self._android(key)                                             # stessa chiave dei periodici: rifiutata
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("e' la chiave dei backup periodici", p.stdout)
+        self.assertIn("recipient.txt di produzione invariato", p.stdout)
+        self.assertFalse(os.path.isdir(os.path.join(self.clone_remote(), "copie")))   # niente inviato
+
+    def test_periodic_retention_never_touches_the_android_copy(self):
+        ext = load(EXT, "ext_android_ret")
+        repo = os.path.join(self.td.name, "repo-android")
+        for sub in ("archives/2026/11", "copie/android/2026/11"):
+            os.makedirs(os.path.join(repo, sub))
+        for i in (1, 2):
+            put(os.path.join(repo, "archives/2026/11", "superbot-backup-indispensabili-202611%02dT030000Z.tar.gz.age" % i), b"x")
+        copy = os.path.join(repo, "copie/android/2026/11", "superbot-backup-indispensabili-20261101T010000Z.tar.gz.age")
+        put(copy, b"x")
+        self.assertEqual(len(ext.archives_in(repo)), 2)                    # la copia non e' fra gli archivi gestiti
+        sh("git", "-C", repo, "init", "-q")
+        sh("git", "-C", repo, "add", "-A")
+        sh("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.invalid", "commit", "-q", "-m", "x")
+
+        class R:
+            dir = repo
+
+            def git(self, *args, **kw):
+                return sh("git", "-C", repo, *args)
+        ext.prune(R(), 1, 0, 0)
+        self.assertTrue(os.path.isfile(copy))
+
     def test_admin_wrapper_end_to_end_without_root(self):
         p = self._wrapper()
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
