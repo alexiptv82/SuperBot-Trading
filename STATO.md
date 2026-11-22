@@ -1,3 +1,12 @@
+## 22/11/2026 (3) — P0 #124: correzione completa INTEGRATA; Issue in attesa di chiusura del proprietario
+
+- **Verifica finale:**
+  - due processi OS concorrenti (`spawn`): il secondo non cancella più il blocco `loss`; prima di `7169558c` apriva;
+  - lock reso **non bloccante** (`0f71d0be`): con `7169558c` un lock occupato faceva attendere il processo e poi non negava; ora nega in pochi secondi.
+- Unito nell'integrazione con `5f110379`, senza force e conservando il pre-collaudo `e8804ac9`. **Gate unico completo verde:** V3 5418, builder 158, Jest 153. Riepilogo per la chiusura: `docs/v3/P0-124-RIEPILOGO-CHIUSURA-20261122.md` (`ea5c44b4`).
+- **Issue #124 aperta:** la chiusura spetta al proprietario.
+- Prossimo, per decisione del proprietario: solo backup certificati e pre-collaudo, nessuna nuova funzionalità.
+
 ## 22/11/2026 (2) — P0 #124: criteri verificati, difetto di concorrenza corretto su branch; pacchetto di pre-collaudo pronto
 
 - **#124:** criteri 1–8 verificati con evidenze (`docs/v3/P0-124-VERIFICA-CRITERI-20261122.md`).
