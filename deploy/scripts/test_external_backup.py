@@ -415,6 +415,86 @@ class ExternalBackupTests(unittest.TestCase):
         env = dict(os.environ, PATH=fb + os.pathsep + os.environ["PATH"])
         return subprocess.run(["sh", script, HERE], capture_output=True, text=True, timeout=300, env=env)
 
+    def _definitivo(self, approved=None, busy=False):
+        """backup_definitivo.sh con remoto, chiavi e percorsi /opt sostituiti da elementi di prova (niente rete)."""
+        t = self.td.name
+        o = os.path.join(t, "finto")
+        for rel in ("v3/brain-v3-paper20261111", "arena/deepseek/brain-deepseek-paper20261118",
+                    "arena/qwen/brain-qwen-paper20261118", "arena/minimax/brain-minimax-paper20261118"):
+            os.makedirs(os.path.join(o, rel))
+            make_v3_journal(os.path.join(o, rel, "journal.db"), 3).close()
+        os.makedirs(os.path.join(o, "free"))
+        put(os.path.join(o, "free", "blob.bin"), os.urandom(3 * 1048576))     # storico grande: va diviso in parti
+        os.makedirs(os.path.join(self.root, "brain"), exist_ok=True)
+        put(os.path.join(self.root, "brain", "state.json"), '{"a":1}')
+        key = [x for x in open(self.recfile).read().split() if x.startswith("age1")][0]
+        dummy = os.path.join(t, "dummy")
+        put(dummy, "x")
+        src = open(os.path.join(HERE, "..", "extbackup", "backup_definitivo.sh")).read()
+        subs = [('[ "$(id -u)" = 0 ] || { echo "NO-GO: serve root"; exit 2; }', ""),
+                ("WORK=/root/extbackup-definitivo", "WORK=%s/work-def" % t),
+                ("REMOTE=git@github.com:alexiptv82/superbot-backups.git", "REMOTE=%s" % self.remote),
+                ("SSH_KEY=/root/.ssh/superbot_backup_ed25519", "SSH_KEY=%s" % dummy),
+                ("KNOWN=/opt/superbot-extbackup/known_hosts", "KNOWN=%s" % dummy),
+                ("RECIPIENT=/opt/superbot-extbackup/recipient.txt", "RECIPIENT=%s" % self.recfile),
+                ("APPROVED_KEY=age142uj5c8xx4d9csj2dsy2uvda6e0kt9y8xln3xpetemzhts6ljaqq40qy6u",
+                 "APPROVED_KEY=%s" % (approved or key)),
+                ("systemctl is-active superbot-extbackup.service", "echo %s" % ("active" if busy else "inactive")),
+                ('--ssh-key "$SSH_KEY" --known-hosts "$KNOWN" ', ""),
+                ("df --output=avail -B1 /root", "df --output=avail -B1 %s" % t),
+                ("DESK=/opt/superbot-desk-data", "DESK=%s" % self.root),
+                ("/opt/superbot-v3-paper-runs", o + "/v3"), ("/opt/superbot-ai-arena-paper", o + "/arena"),
+                ("/opt/superbot-brain-free/", o + "/free/"), ("/opt/superbot-brain-adaptive/", o + "/adaptive/"),
+                ("/opt/superbot-ai-data/", o + "/aidata/"),
+                ("/opt/superbot/data/superbot.db", self.app_db), ("/opt/superbot-pool-data/pool.db", self.pool_db),
+                ('STO_ARGS="--component storici', 'STO_ARGS="--part-mib 1 --component storici'),
+                ("--app-repo /opt/superbot --bots-repo /opt/superbot-desk",
+                 "--app-repo /nonexistent --bots-repo /nonexistent --brain-retries 0 --brain-arg=--quiet-secs "
+                 "--brain-arg=1 --brain-arg=--attempts --brain-arg=2 --brain-arg=--wait --brain-arg=0.1 "
+                 "--brain-arg=--quiet-timeout --brain-arg=2")]
+        for x, y in subs:
+            self.assertIn(x, src)
+            src = src.replace(x, y)
+        self.assertNotIn("/opt/", src)
+        self.assertNotIn("github.com", src)                                # nessun trasferimento nel test
+        script = os.path.join(t, "definitivo.sh")
+        put(script, src)
+        fb = os.path.join(t, "fakebin")
+        os.makedirs(fb, exist_ok=True)
+        put(os.path.join(fb, "docker"), "#!/bin/sh\necho true\n")         # classici attivi: percorso normale
+        os.chmod(os.path.join(fb, "docker"), 0o755)
+        env = dict(os.environ, PATH=fb + os.pathsep + os.environ["PATH"])
+        return subprocess.run(["sh", script, HERE], capture_output=True, text=True, timeout=300, env=env)
+
+    def test_definitive_backup_sends_both_components_splits_the_large_one_and_restores(self):
+        p = self._definitivo()
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("ESITO: INDISPENSABILI E STORICI INVIATI E VERIFICATI", p.stdout)
+        self.assertEqual(p.stdout.count("RISULTATO: OK"), 2, p.stdout)
+        clone = self.clone_remote()
+        arcs = self.archives(clone)
+        ess = [a for a in arcs if "-indispensabili-" in a]
+        sto = [a for a in arcs if "-storici-" in a]
+        self.assertEqual((len(ess), len(sto)), (1, 1), arcs)
+        self.assertFalse(os.path.exists(sto[0]))                           # storico grande: solo parti
+        self.assertGreaterEqual(len([f for f in os.listdir(os.path.dirname(sto[0])) if ".part" in f]), 3)
+        rc, rout, _ = self.restore(ess[0])
+        self.assertEqual(rc, 0, rout)                                       # indispensabili certificati
+        self.assertEqual(rout.count("catena verificata (obbligatorio)"), 4, rout)
+        rc, rout, _ = self.restore(sto[0])
+        self.assertIn(rc, (0, 3), rout)                                     # storici: integri (3 = non certificati)
+        self.assertIn("parti: SHA-256 e dimensione uguali al manifesto", rout)
+        self.assertFalse(any(m.decode() in p.stdout for m in MARKERS))
+
+    def test_definitive_backup_refuses_a_different_recipient_or_a_running_periodic_backup(self):
+        p = self._definitivo(approved="age1" + "q" * 58)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("NO-GO: il destinatario non e' la sola chiave pubblica approvata", p.stdout)
+        self.assertEqual(self.archives(self.clone_remote()), [])            # niente inviato
+        shutil.rmtree(os.path.join(self.td.name, "finto"))
+        p = self._definitivo(busy=True)
+        self.assertIn("NO-GO: il backup periodico e' in esecuzione", p.stdout)
+
     def test_admin_wrapper_end_to_end_without_root(self):
         p = self._wrapper()
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
