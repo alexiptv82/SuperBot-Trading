@@ -1,3 +1,12 @@
+## 22/11/2026 (2) — P0 #124: criteri verificati, difetto di concorrenza corretto su branch; pacchetto di pre-collaudo pronto
+
+- **#124:** criteri 1–8 verificati con evidenze (`docs/v3/P0-124-VERIFICA-CRITERI-20261122.md`).
+  - Scenario dell'Issue: la baseline riapre, il codice attuale resta bloccato.
+  - **Criterio 6 (concorrenza) non soddisfatto:** riprodotto (un secondo runner cancellava il blocco e apriva). Corretto con una sezione critica che adotta il blocco `loss` (`7169558c`, branch `claude/p0-124-chiusura-20261122`, 4 test, 3 rossi sul codice precedente, suite sul ramo 5414).
+  - **Da approvare e integrare;** l'Issue NON è chiusa e non è stata commentata.
+- **Pre-collaudo** (`e8804ac9`, gate verde V3 5412): script in `deploy/brain-unico/precollaudo/`, **non eseguiti**. Prova offline con processi reali: 7 PASS; uscite ferme rilevate dal controllo diretto mentre il runner mostrava `mandate_not_approved`. Cartella della run `brain-v3-unico-paper-rc1`, `run_id` `brain-unico-paper-rc1`.
+- Piano corretto: i PASS non autorizzano il mandato senza zero P0, backup certificato, ripristino verificato e approvazione. Rollback web solo isolato.
+
 ## 22/11/2026 — Tetto 4 posizioni e rischio aperto con i costi INTEGRATI; pre-collaudo preparato
 
 - **Approvati e integrati** (`c11e6d7d`, gate `302e94d2`: V3 5410, builder 158, Jest 153):
