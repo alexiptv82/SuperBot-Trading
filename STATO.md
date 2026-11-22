@@ -1,3 +1,13 @@
+## 22/11/2026 (7) — Copia Android degli indispensabili e ripristino con Termux: PREPARATI, NON eseguiti (Claude)
+
+- **Richiesta del proprietario:** certificare il ripristino degli indispensabili sullo smartphone (Termux, senza root), con una **seconda copia** cifrata **solo** per la chiave pubblica Android `age1kpdfwmlpjmmwre34kg5zpdjlrc3kjw7syymzax8tg2jm892wa5sqnzc9nm`. Storici non duplicati. Nessun trasferimento sulla VPS autorizzato.
+- **Preparato** su `claude/extbackup-storici-20261121` @ `0789e8af` (codice e test) e `1588c95a` (`deploy/extbackup/COPIA-ANDROID.md`, comandi Termius e Termux):
+  - `copia_aggiuntiva.py` + `copia_android.sh`: riusa `external_backup.py` senza modificarlo (impronta `331d44b4…` invariata). Scrive solo in `copie/android/` di `superbot-backups`: nessuna retention; `archives/`, `recipient.txt` e `LEGGIMI.md` intatti, verificati prima del commit e dopo il push. Il `recipient.txt` di produzione è solo letto, con impronta confrontata prima e dopo. Verifica da clone nuovo.
+  - `ripristino_termux.sh`: controlla strumenti, corrispondenza chiave privata/pubblica (`age-keygen -y`), **spazio libero**, parti; ripristina nella memoria privata di Termux; richiede 4 catene EventJournal V3 obbligatorie; cancella i dati in chiaro se l'esito è OK.
+  - Suite extbackup **79** verde: copia Android con archivi originali intatti, ripristino in stile Termux (dash, utente normale, solo il restore accanto), rifiuti (chiave sbagliata, spazio, parte mancante, recipient di produzione diverso, backup periodico in corso, stessa chiave dei periodici), retention che non tocca `copie/`.
+- **Limite:** non provato su un telefono reale (Python 3.12 in laboratorio; versione di `age` in Termux non verificata).
+- **In attesa:** autorizzazione del comando Termius; poi ripristino su Termux. Nessuna modifica a Brain, mandato o servizi.
+
 ## 22/11/2026 (6) — BACKUP ESTERNO CIFRATO INVIATO E VERIFICATO (Termius, proprietario)
 
 - **Prova reale su VPS Singapore:** il proprietario ha eseguito `backup_definitivo.sh` con gli strumenti del branch `claude/extbackup-storici-20261121` @ `517ad7c9`; screenshot dell'output Termius delle 21:16 CET.
