@@ -38,7 +38,7 @@
 | Limite giornaliero: stop alle nuove aperture | 50 % | **4 %** |
 | Pavimento di capitale | 450 USDT | **1.600 USDT** |
 | Rischio per operazione (stimato allo stop) | 4,29 % | **1 %** |
-| Posizioni aperte | nessun tetto numerico | **massimo 4** (tetto esplicito, branch `claude/tetto-posizioni-20261121`, da approvare) |
+| Posizioni aperte | nessun tetto numerico | **massimo 4** (tetto esplicito, integrato il 22/11) |
 | Leva | 20–50× | **1–30×** |
 
   Le run storiche restano com'erano: nessuna modifica ai loro parametri o journal.
@@ -64,16 +64,21 @@
 | Costo AI **effettivo** per decisione | misurato (spesa del giorno in `budget.db` / decisioni registrate). Le chiamate con stima prudente, senza `usage`, sono contate a parte. Mai dedotto da 0,75 / 192 | `budget.db` (`spend_events`) + journal |
 | Posizioni aperte contemporaneamente (massimo osservato) | ≤ 4. Vedi la nota sotto | journal |
 
-**Massimo quattro posizioni (decisione del 21/11):** tetto **esplicito** sul branch isolato `claude/tetto-posizioni-20261121` @ `6eac67aa`, da approvare prima della RC.
+**Massimo quattro posizioni (approvato e integrato, 22/11):** tetto **esplicito** (`6eac67aa`, unito nell'integrazione con `c11e6d7d`).
 - **Dove agisce:** il controllo è in `recheck_paper_open`, eseguito da `commit_paper_open` sotto il lock e sullo stato fresco del journal. Rifiuta la quinta apertura con `max_open_positions`.
 - **Test:** 7 test mirati; la suite V3 completa passa sul branch con 5400 test.
 - **Limite noto:** vale nella modalità sidecar prevista per la RC. Il vecchio percorso `legacy` non passa da questa conferma.
 
-**Rischio aperto ricostruito dal journal e perdita stimata (verifica del 21/11, non corretta):**
-- **La discrepanza:** `snapshot_from_summary` calcola il rischio aperto come Σ |ingresso − stop| × quantità, **senza costi**. Il RiskManager stima invece ogni perdita **con** i costi (16 bp). Ogni posizione aperta è quindi contata meno: con il profilo B è 15,15 invece di 20 USDT con stop allo 0,5 %, e 13,04 invece di 20 con stop allo 0,3 %.
-- **Impatto misurato con le funzioni reali:** senza tetto si sarebbero aperte tutte le 8 posizioni possibili, con una perdita stimata complessiva del **5,3 %** (stop 0,5 %) e del **6,1 %** (stop 0,3 %), oltre il budget del 4 %. **Con il tetto** le posizioni sono al massimo 4, ciascuna ≤ 1 % stimato: totale ≤ **4,0 %**. Il budget complessivo non viene più superato.
-- **Effetto residuo:** il controllo del pavimento (equity − pavimento − rischio aperto) usa lo stesso rischio sottostimato. Vicino a 1.600 USDT le nuove aperture possono superare la stima del pavimento al massimo della parte di costi delle posizioni aperte, circa 5–7 USDT ciascuna.
-- **Correzione minima proposta, NON applicata (da approvare):** includere i costi stimati nel rischio aperto, cioè Σ (|ingresso − stop| + ingresso × costi stimati) × quantità, passando `estimated_roundtrip_cost_bp` a `snapshot_from_summary` nei suoi due usi, con test di parità con `quote_paper_risk`. Cambia solo la contabilità del rischio aperto, non i parametri.
+**Rischio aperto con i costi stimati (approvato e integrato, 22/11, `887fc961`):**
+- **Correzione:** il rischio delle posizioni aperte ricostruito dal journal ora comprende i costi stimati, con la **stessa formula** del RiskManager (`risk.estimated_loss_per_unit`), usata sia per la nuova posizione sia per quelle aperte. Prima era contato senza costi: con il profilo B 15,15 invece di 20 USDT a stop 0,5 %, e senza tetto la stima complessiva arrivava al 5,3–6,1 %.
+- **Test di parità** (`test_v3_open_risk_costs`, 10):
+  - rischio aperto dal journal = stime del RiskManager dopo ogni apertura;
+  - stima totale ≤ 4 % dopo quattro aperture, **anche senza contare sul tetto**;
+  - budget residuo rispettato con l'equity cambiata;
+  - vicino al pavimento la stima non scavalca 1.600;
+  - journal immutato.
+- **Garanzia:** senza la correzione, 7 test su 10 falliscono.
+- **Cosa non cambia:** nessun parametro nuovo, profilo B invariato.
 
 ### Fase 2: valutazione delle PRESTAZIONI (universo ampliato)
 - **Universo:** indicativamente le prime 25 criptovalute per capitalizzazione, più oro e argento (`XAUUSDT`, `XAGUSDT`, confermati dal proprietario sulla documentazione Bitget). Il numero massimo di posizioni resta **4**.
