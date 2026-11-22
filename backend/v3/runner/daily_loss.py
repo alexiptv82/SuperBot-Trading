@@ -25,6 +25,7 @@ import fcntl
 import json
 import os
 import tempfile
+import time
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
@@ -37,6 +38,8 @@ DAY_MS = 86_400_000
 MINUTE_MS = 60_000
 STATE_FILE = "daily_loss.json"
 LOCK_FILE = ".daily_loss.lock"
+LOCK_ATTEMPTS = 20                     # al massimo ~2 s di attesa del lock dello stato, poi fail-closed
+LOCK_WAIT_S = 0.1
 LEVELS = ("ok", "warn", "halt")
 
 
@@ -315,7 +318,14 @@ class DailyLossGuard:
         except OSError:
             return
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            for attempt in range(LOCK_ATTEMPTS):              # mai un'attesa illimitata: un lock tenuto da un processo
+                try:                                          # bloccato non deve fermare il giro del runner
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if attempt == LOCK_ATTEMPTS - 1:
+                        return                                # non salvato: recheck nega le nuove aperture
+                    time.sleep(LOCK_WAIT_S)
             disk, trust = self._load()
             if (trust in ("v2", "legacy") and disk["day_start_ms"] == self._state["day_start_ms"]
                     and disk["halt_latched"] and disk["latch_reason"] == "loss"):
