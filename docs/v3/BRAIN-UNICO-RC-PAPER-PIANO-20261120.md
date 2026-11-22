@@ -145,6 +145,13 @@ Il motore toglie dalla cassa al massimo margine + commissione d'apertura (`engin
 | — | **Mandato:** resta `approved: false` fino al completamento del pre-collaudo (punto 5) e della protezione degli storici (punti 2–3) | proprietario | decisione del 21/11 |
 | 7 | Consenso al deploy della RC PAPER | proprietario | dopo i punti 1–6 |
 
+**I PASS del pre-collaudo non autorizzano automaticamente il mandato.** Per approvarlo e avviare la Fase 1 servono **tutti** insieme:
+- pre-collaudo con tutti i controlli PASS;
+- **zero P0 aperti** (Issue #124: verifica dei criteri sul branch `claude/p0-124-chiusura-20261122`, chiusura del proprietario);
+- **backup certificato**;
+- **ripristino verificato** sul PC del proprietario;
+- **approvazione esplicita del proprietario**.
+
 **Non bloccanti per il GO:**
 - confronto delle uscite (preregistrato, `docs/v3/BRAIN-UNICO-USCITE-CONTROFATTUALE-20261121.md`, da eseguire dopo la RC su dati attestati);
 - ancora dell'archivio delle candele (serve alla Fase A e al training, non al collaudo);
