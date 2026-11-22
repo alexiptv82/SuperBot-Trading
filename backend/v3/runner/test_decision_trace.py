@@ -180,7 +180,7 @@ def test_feature_values_and_digest_are_recomputable_from_the_same_bars():
 def _portfolio(j):
     from backend.v3.dashboard import build_summary
     from backend.v3.runner.cycle import snapshot_from_summary
-    return snapshot_from_summary(build_summary(j, "brain", RUN), D("1000"))
+    return snapshot_from_summary(build_summary(j, "brain", RUN), D("1000"), POLICY.estimated_roundtrip_cost_bp)
 
 
 def test_retracing_the_same_decision_does_not_duplicate():

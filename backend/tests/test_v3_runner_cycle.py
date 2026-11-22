@@ -429,15 +429,17 @@ def test_snapshot_from_summary_uses_realized_pnl_margin_and_open_risk():
     _cycle(j, ScriptAnalyst(), symbols=("AAAUSDT",), slip=0)
     s = build_summary(j, "brain", RUN)
     pos = s.open_positions[0]
-    snap = snapshot_from_summary(s, D("1000"))
+    snap = snapshot_from_summary(s, D("1000"), D("16"))
     assert snap.equity == D("1000") and snap.margin_used == pos.margin_used
     assert snap.available_cash == D("1000") - pos.margin_used
-    assert snap.existing_open_risk == abs(pos.fill_price - pos.stop_price) * pos.quantity
+    # rischio aperto = perdita STIMATA allo stop, costi stimati inclusi (stessa formula del RiskManager)
+    assert snap.existing_open_risk == (abs(pos.fill_price - pos.stop_price) + pos.fill_price * D("0.0016")) * pos.quantity
+    assert snapshot_from_summary(s, D("1000"), D("0")).existing_open_risk == abs(pos.fill_price - pos.stop_price) * pos.quantity
     big = dataclasses.replace(s, realized_pnl=D("-50"), margin_in_use=D("2000"))
-    snap2 = snapshot_from_summary(big, D("1000"))
+    snap2 = snapshot_from_summary(big, D("1000"), D("16"))
     assert snap2.equity == D("950") and snap2.available_cash == D("0")       # mai negativa
     empty = dataclasses.replace(s, open_positions=(), margin_in_use=D("0"), realized_pnl=D("12.5"))
-    snap3 = snapshot_from_summary(empty, D("1000"))
+    snap3 = snapshot_from_summary(empty, D("1000"), D("16"))
     assert (snap3.equity, snap3.available_cash, snap3.margin_used, snap3.existing_open_risk) == (
         D("1012.5"), D("1012.5"), D("0"), D("0"))
 

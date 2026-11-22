@@ -70,6 +70,13 @@ def _rejected(reason: str) -> RiskQuote:
     return RiskQuote(False, reason)
 
 
+def estimated_loss_per_unit(price: Decimal, stop: Decimal, roundtrip_cost_bp: Decimal) -> Decimal:
+    """Perdita STIMATA allo stop per unita': distanza dallo stop piu' i costi stimati andata e ritorno sul prezzo.
+    Unica formula, usata dal RiskManager per la nuova posizione e dalla ricostruzione del rischio aperto
+    (``cycle.snapshot_from_summary``) per quelle gia' aperte: le due misure restano coerenti per costruzione."""
+    return abs(price - stop) + price * (roundtrip_cost_bp / Decimal("10000"))
+
+
 def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
     """Return a conservative quote, not an order.
 
@@ -162,8 +169,8 @@ def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
     if margin_budget <= 0:
         return _rejected("margin_budget_exhausted")
 
-    estimated_loss_per_unit = abs(price - stop) + price * cost_fraction
-    quantity_by_risk = risk_budget / estimated_loss_per_unit
+    loss_per_unit = estimated_loss_per_unit(price, stop, costs_bp)
+    quantity_by_risk = risk_budget / loss_per_unit
     quantity_by_margin = margin_budget * leverage / price
     max_qty = min(quantity_by_risk, quantity_by_margin)
     steps = (max_qty / step).to_integral_value(rounding=ROUND_DOWN)
@@ -173,7 +180,7 @@ def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
 
     notional = quantity * price
     margin = notional / leverage
-    loss = quantity * estimated_loss_per_unit
+    loss = quantity * loss_per_unit
     if (loss > risk_budget or margin > margin_budget or
             (loss_per_margin is not None and loss > margin * loss_per_margin)):
         return _rejected("internal_risk_invariant")

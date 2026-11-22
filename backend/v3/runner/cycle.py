@@ -41,7 +41,7 @@ from backend.v3.brain_market.classic_peers import validate_peer_signal
 from backend.v3.events import EventJournal
 from backend.v3.executor.paper import ExecutionError, execute_paper
 from backend.v3.features.indicators import Bar
-from backend.v3.risk import RiskPolicy
+from backend.v3.risk import RiskPolicy, estimated_loss_per_unit
 from backend.v3.runner.decision_trace import capture_inputs, journal_tip, record_decision_trace
 from backend.v3.runner.thesis import ReentryPolicy, ThesisBook, evaluate as evaluate_reentry
 
@@ -104,12 +104,20 @@ class CycleReport:
     instants: tuple[tuple[str, int], ...] = ()
 
 
-def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal) -> BrainPortfolioSnapshot:
-    """Equity PAPER = capitale iniziale + PnL realizzato; margine e rischio aperto dalle posizioni aperte."""
+def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal,
+                          roundtrip_cost_bp: Decimal) -> BrainPortfolioSnapshot:
+    """Equity PAPER = capitale iniziale + PnL realizzato; margine e rischio aperto dalle posizioni aperte.
+
+    Rischio aperto = perdita STIMATA allo stop delle posizioni aperte, costi stimati inclusi, con la STESSA formula
+    del RiskManager (``risk.estimated_loss_per_unit``) sul prezzo di riempimento. Senza i costi ogni posizione era
+    contata meno della sua stima (21/11/2026: con il profilo B 15,15 invece di 20 USDT a stop 0,5 %). Il journal
+    non cambia: si cambia solo come lo si legge."""
+    if type(roundtrip_cost_bp) is not Decimal or not roundtrip_cost_bp.is_finite() or roundtrip_cost_bp < 0:
+        raise ValueError("invalid_cost_bp")
     equity = initial_equity + summary.realized_pnl
     margin = summary.margin_in_use
-    open_risk = sum((abs(p.fill_price - p.stop_price) * p.quantity for p in summary.open_positions),
-                    Decimal("0"))
+    open_risk = sum((estimated_loss_per_unit(p.fill_price, p.stop_price, roundtrip_cost_bp) * p.quantity
+                     for p in summary.open_positions), Decimal("0"))
     cash = max(equity - margin, Decimal("0"))
     return BrainPortfolioSnapshot(equity, cash, margin, open_risk)
 
@@ -260,7 +268,7 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 continue
             price = price_with_room(price)
             bars_holder.set(symbol, bars_by_tf)
-            portfolio = snapshot_from_summary(summary, initial_equity)
+            portfolio = snapshot_from_summary(summary, initial_equity, risk_policy.estimated_roundtrip_cost_bp)
             engine = BrainEngine(
                 analyst=analyst, reviewer=NoReviewer(), risk_policy=risk_policy,
                 portfolio_snapshot=portfolio,
