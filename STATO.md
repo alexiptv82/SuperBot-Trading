@@ -1,3 +1,12 @@
+## 22/11/2026 (5) — PROVA REALE DEI BACKUP: indispensabili CERTIFICATI; storici integri ma NON certificati
+
+- **Prova del proprietario** (root, Termius), con gli strumenti di `claude/extbackup-storici-20261121` @ `54e4342e` (script identici a `75a714be`; impronte: `external_backup.py 331d44b4…`, `restore_external_backup.py faa73399…`, `backup_app_db.py 6bd6ebc2…`, `backup_brain.py 4a92e7da…`, `prova_storici.sh deb7d6c3…`). Registro: `/root/extbackup-prova-storici-20261122T190332Z.log`.
+  - **Indispensabili** (Brain V3, 3 run Arena, database dell'app e del pool): **CERTIFICATI**. Integrità SQLite, catene e journal V3 obbligatori, manifest e ripristino tutti verificati.
+  - **Storici:** **integri** tecnicamente, ma **NON certificati** semanticamente (esito 3: anomalie contabili di Falco e Toro già registrate; nessuna nuova indagine). Non è una certificazione completa degli storici.
+  - Nessun trasferimento esterno; cartella di prova e dati temporanei cancellati.
+- **Preparato e NON eseguito** (`517ad7c9`): `deploy/extbackup/backup_definitivo.sh` e `BACKUP-DEFINITIVO.md`, per il backup cifrato esterno definitivo verso `superbot-backups` (stessa selezione, chiave pubblica approvata, verifica da clone nuovo, parti da 90 MiB) e il ripristino sul PC con la chiave privata solo sul PC. Suite extbackup 76.
+- **In attesa** dell'autorizzazione del proprietario al trasferimento. L'installazione dell'extbackup periodico aggiornato è un'autorizzazione separata.
+
 ## 22/11/2026 (4) — Certificazione dei backup: verifiche preliminari OK, prova pronta per il proprietario (root)
 
 - #124 chiusa dal proprietario; piano RC di ChatGPT `34403402` (integrazione).
