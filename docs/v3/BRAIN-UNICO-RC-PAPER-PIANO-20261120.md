@@ -140,7 +140,7 @@ Il motore toglie dalla cassa al massimo margine + commissione d'apertura (`engin
 | 2 | Prova amministrativa finale del backup per componente, poi installazione dell'extbackup aggiornato e primo invio cifrato al repository privato | proprietario (root, consenso) | procedura pronta (`75a714be`) |
 | 3 | Ripristino del file cifrato sul PC del proprietario, con la chiave privata | proprietario | da fare |
 | 4 | Chiusura formale dell'Issue #124 e conferma di zero P0 aperti | proprietario | da confermare |
-| 5 | Pre-collaudo: exit service sidecar sano e indipendente; rollback provato (commit e build web precedenti) | Claude prepara, proprietario autorizza | da fare al rilascio |
+| 5 | Pre-collaudo: exit service sidecar sano e indipendente; rollback provato | Claude prepara, proprietario autorizza | **procedura pronta** (`BRAIN-UNICO-PRECOLLAUDO-20261122.md`, 7 controlli); da autorizzare |
 | 6 | Gate verde sul commit della RC e configurazione della nuova run (`V3_RUN_ID`, `V3_RUNNER_CONFIG_PATH`, journal nuovo) | Claude | al rilascio |
 | — | **Mandato:** resta `approved: false` fino al completamento del pre-collaudo (punto 5) e della protezione degli storici (punti 2–3) | proprietario | decisione del 21/11 |
 | 7 | Consenso al deploy della RC PAPER | proprietario | dopo i punti 1–6 |
