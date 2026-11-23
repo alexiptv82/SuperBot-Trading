@@ -1,3 +1,12 @@
+## 23/11/2026 (3) — Correzione dalla revisione di ChatGPT su 70-interfaccia/00-avvio (Claude)
+
+- **Difetto confermato** (`dd43213a`): con `IFS=$'\n\t'`, `for u in $UNITS` passava a `systemctl` un solo nome con lo spazio. Il rilascio dell'interfaccia veniva **sempre rifiutato** (blocco, non falso via libera). La simulazione precedente non lo aveva visto perché il finto `systemctl` rispondeva sempre `active`.
+- **Integrazione `9b153278`** (gate verde: V3 5430, builder 158, Jest 153; backend e frontend identici a `dd43213a`, build UI `ui-7da57b60` invariata):
+  - unità in un array `"${UNITS[@]}"`;
+  - `00-avvio-completo.sh`: se l'interfaccia non si pubblica dopo il cutover del backend → `--rollback` di web e bridge, altrimenti messaggio esplicito di ripristino manuale;
+  - test `test_avvio_scripts.py` (5): due unità controllate separatamente (fallisce sulla versione precedente), rifiuto se una è inattiva, ripristino/messaggio dopo il fallimento dell'interfaccia, nessun rollback sul percorso riuscito.
+- Comando Termius aggiornato con `bash -o pipefail` (il `tee` non maschera più l'esito). Mandato `approved:false`; nessuna apertura autorizzata.
+
 ## 23/11/2026 (2) — Pre-collaudo TUTTI PASS; avvio PAPER e dashboard Brain Unico preparati, comando unico pronto (Claude)
 
 - **Pre-collaudo (proprietario, Termius, 04:40 UTC): TUTTI PASS.** Registro `/home/superbot-agent/precollaudo-esiti/precollaudo.log`: controlli 1, 2, 3, 3bis, 4, 5 (secondo exit_worker → `exit_owner_busy`), 6, 7a; mandato `approved:false`; vecchia run e altri 41 unità/container invariati. 7b non eseguito (va gestito con il rollback del deploy web).
