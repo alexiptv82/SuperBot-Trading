@@ -232,6 +232,7 @@ export function BrainUnicoContent({ overview, status, trades, memory, nowMs = Da
     <Fold title="🗄️ Storico" label="Storico">
       <p style={MUTED}>Falco, Toro e i Brain precedenti restano consultabili, separati dal Brain Unico. L’Arena è consultabile in sola lettura.</p>
       <nav aria-label="Storico portafogli" style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        <a href="/brain-unico" style={{ color: '#7dd3fc', fontSize: 13 }}>Brain: Falco Evoluto · Brain Scalp</a>
         <a href="/overview" style={{ color: '#7dd3fc', fontSize: 13 }}>Falco · Toro · Brain V3</a>
         <a href="/classic" style={{ color: '#7dd3fc', fontSize: 13 }}>Dashboard classica</a>
         <a href="/brain/archive" style={{ color: '#7dd3fc', fontSize: 13 }}>Brain precedenti</a>

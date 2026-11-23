@@ -14,6 +14,7 @@ import LivePerformance from './pages/LivePerformance';
 import BrainDashboard from './pages/BrainDashboard';
 import Overview from './pages/Overview';
 import BrainUnico from './pages/BrainUnico';
+import PaperBots from './pages/PaperBots';
 import Compare from './pages/Compare';
 import ArenaStorico from './pages/ArenaStorico';
 import Supervisor from './pages/Supervisor';
@@ -109,7 +110,8 @@ export default function App() {
             <Routes>
               {/* ── Sezione PAPER (soldi simulati) ── */}
               <Route path="/" element={<Navigate to="/brain-unico" replace />} />
-              <Route path="/brain-unico" element={<BrainUnico />} />
+              <Route path="/brain-unico" element={<PaperBots />} />
+              <Route path="/brain-unico/rc1" element={<BrainUnico />} />
               <Route path="/compare" element={<Compare />} />
               <Route path="/arena" element={<ArenaStorico />} />
               <Route path="/classic" element={<Dashboard />} />

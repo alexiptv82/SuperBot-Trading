@@ -15,7 +15,7 @@ const GUARDIAN = {
   NORMAL: ['Normale', '#4ade80'], SELECTIVE: ['Selettivo', '#38bdf8'],
   PROTECTED: ['Protetto', '#fbbf24'], LOCKED: ['Bloccato', '#f87171'],
 };
-const REASON = {
+export const REASON = {
   falco_no_trade_regime: 'nessun trade: mercato laterale, incerto o shock',
   falco_no_trade_score: 'nessun trade: segnale insufficiente',
   falco_no_trade_conflict: 'nessun trade: segnali contrastanti',
@@ -26,7 +26,7 @@ const REASON = {
   'deepseek:analysis': 'decisione DeepSeek', risk_rejected: 'rifiutata dal rischio', risk_quote_ok: 'approvata',
   policy_not_authorized: 'mandato non approvato', market_gate: 'mercato non idoneo',
 };
-const RISK = {
+export const RISK = {
   below_min_margin: 'margine sotto il minimo', margin_loss_ratio_exceeded: 'stop troppo largo per la leva minima',
   stop_near_liquidation: 'stop troppo vicino alla liquidazione', max_positions_reached: 'posizioni al massimo',
   guardian_budget_exhausted: 'budget del Guardian esaurito', risk_budget_exhausted: 'rischio disponibile esaurito',

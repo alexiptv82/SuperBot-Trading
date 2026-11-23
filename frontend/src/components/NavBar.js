@@ -19,6 +19,10 @@ const LIVE_TABS = [
   { path: '/live/performance', icon: '🏆', label: 'Performance' },
 ];
 
+// Le pagine dello Storico raggiungibili dal Brain (RC1, confronto affiancato) tengono acceso il tab Storico.
+const STORICO_PATHS = ['/overview', '/brain-unico/rc1', '/compare'];
+export const isActive = (tabPath, pathname) => (tabPath === '/overview' ? STORICO_PATHS.includes(pathname) : pathname === tabPath);
+
 export default function NavBar({ onLogout }) {
   const nav = useNavigate();
   const loc = useLocation();
@@ -48,7 +52,7 @@ export default function NavBar({ onLogout }) {
       transition: 'background 0.3s, border-color 0.3s',
     }}>
       {tabs.slice(0, 2).map(t => {
-        const active = loc.pathname === t.path;
+        const active = isActive(t.path, loc.pathname);
         return (
           <button key={t.path} onClick={() => nav(t.path)} style={{
             flex: 1, padding: '5px 0 7px', margin: '0 2px', borderRadius: '10px',
@@ -107,7 +111,7 @@ export default function NavBar({ onLogout }) {
 
       {/* Tab 3+ */}
       {tabs.slice(2).map(t => {
-        const active = loc.pathname === t.path;
+        const active = isActive(t.path, loc.pathname);
         return (
           <button key={t.path} onClick={() => nav(t.path)} style={{
             flex: 1, padding: '5px 0 7px', margin: '0 2px', borderRadius: '10px',
