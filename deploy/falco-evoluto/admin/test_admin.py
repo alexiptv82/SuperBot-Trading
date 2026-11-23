@@ -105,12 +105,13 @@ def test_a_modified_script_blocks_the_wrapper(tmp_path):
 def test_installer_pins_the_exact_files():
     text = (HERE / "installa.sh").read_text()
     pairs = re.findall(r"^([0-9a-f]{64}) (deploy/\S+)$", text, re.M)
-    assert len(pairs) == 16
+    assert len(pairs) == 19 and "deploy/falco-evoluto/rilascio/00-ripresa.sh" in [r for _, r in pairs]
     for h, rel in pairs:
         assert hashlib.sha256((REPO / rel).read_bytes()).hexdigest() == h, rel
     for name in ("superbot-ops", "superbot-ops.sudoers"):
         assert hashlib.sha256((HERE / name).read_bytes()).hexdigest() in text
-    assert "SHA=393b38f61702c18ffc93a1a6fcc6046922df42bb" in text and "6dad215321b725f7a129228dba793de7f2abee64c9878a89014612effe2f198b" in text
+    assert "SHA=246a3a92fc21d30b775f866bc266876c84199552" in text
+    assert 'rilascio) nogo "le run esistono gia' in text and 'sh "$PKG/00-ripresa.sh"' in text   # niente run ricreate and "6dad215321b725f7a129228dba793de7f2abee64c9878a89014612effe2f198b" in text
     assert subprocess.run(["bash", "-n", str(HERE / "installa.sh")]).returncode == 0
 
 
