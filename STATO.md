@@ -1,3 +1,10 @@
+## 23/11/2026 (15) — Opzione A approvata: aggiornamento BTC/ETH preparato e verificato, NON installato (Claude)
+
+- Verifica con dati Bitget attuali (pubblici) e parser corretto `5539ee47`: 8/8 simboli con regole (BTC 125x passo 0,0001, ETH 125x passo 0,01, SOL 100x, XRP 125x, BNB/DOGE/ADA/LINK 75x; nozionale minimo 5). RiskManager vero ai prezzi attuali (BTC 63.668, ETH 1.818), stop 0,3-1 %: Falco leva 17-43x, margine ~202, rischio <= 40 (19,8 % del margine); Scalp leva 17-43x, margine ~405, rischio <= 80; quantita' multipli del passo, nozionale sopra il minimo.
+- `472169b7`: `60-aggiorna-codice.sh` + `contratti_check.py`; `installa.sh` modalita' `aggiorna-contratti` (sha `cae3c644…`). Cambia SOLO la cartella del codice nelle 4 unita' di Falco Evoluto e Brain Scalp (codice `5539ee47` in `/opt/superbot-falco-scalp-5539ee474476`); run, journal, mandati approved:false, pause, RC1, web e bridge invariati; rollback automatico delle unita'. Nessuna apertura possibile durante l'aggiornamento (pausa + mandato verificati prima; runner fermato prima del riavvio delle uscite e ricontrollato dopo).
+- Test: pacchetti 56/56 (aggiornamento: riuscito, regole incomplete, riavvio fallito con rollback, run non in pausa); gate DRY_RUN V3 5495, builder 158, Jest 170.
+- Stato attuale (superbot-ops): Falco Evoluto e Brain Scalp uscite/runner active, pausa ATTIVA, mandato non approvato; RC1 pausa ATTIVA (mandato valido, 1 posizione). Installazione del codice: richiede root (non in superbot-ops) -> un comando breve al proprietario.
+
 ## 23/11/2026 (14) — Autonomia limitata attiva; verifica con superbot-ops; difetto BTC/ETH trovato (Claude)
 
 - Autonomia installata dal proprietario. `sudo -n /usr/local/sbin/superbot-ops stato` funziona senza password; operazione non concessa (`attiva falco`) rifiutata da sudo.
