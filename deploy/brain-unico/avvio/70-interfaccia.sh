@@ -20,7 +20,7 @@ WEB="${BRAIN_UI_ROOT:-/opt/superbot-web}"
 LIVE="$WEB/build"
 PREV="$WEB/.brain-unico-webui-previous"
 BACKUPS="${BRAIN_UI_BACKUPS:-/opt/superbot-v3-backups}"
-UNITS="superbot-brain-unico-rc1-exit.service superbot-brain-unico-rc1-runner.service"
+UNITS=(superbot-brain-unico-rc1-exit.service superbot-brain-unico-rc1-runner.service)
 
 say(){ printf 'BRAIN_UI_%s\n' "$*"; }
 fail(){ say "REFUSED=$1"; exit 2; }
@@ -36,7 +36,7 @@ web_ok(){
   [[ "$c" == 200 && "$a" == "$(digest "$LIVE")" ]]
 }
 api_ok(){ [[ "$(code_of /api/auth/webauthn/status)" == 200 && "$(code_of /api/v3/brain/config)" == 401 ]]; }
-units_ok(){ for u in $UNITS; do [[ "$(systemctl is-active "$u" 2>/dev/null || true)" == active ]] || return 1; done; }
+units_ok(){ local u; for u in "${UNITS[@]}"; do [[ "$(systemctl is-active "$u" 2>/dev/null || true)" == active ]] || return 1; done; }
 
 case "$MODE" in
   --rollback)

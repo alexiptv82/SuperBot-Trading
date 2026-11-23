@@ -39,6 +39,19 @@ res $rc "2 web app e canale di chiusura sulla nuova run (sonde candidate e live,
 
 bash "$D/70-interfaccia.sh" --activate --candidate "$UI" --manifest-sha "$UISHA"; rc=$?
 res $rc "3 interfaccia Brain Unico pubblicata (PWA invariata, backup e rollback pronti)"
+if [ $rc != 0 ]; then
+  # nessuno stato parziale: backend e canale di chiusura tornano ai precedenti (l'interfaccia non e' cambiata o e'
+  # gia' stata riportata indietro da 70-interfaccia.sh)
+  if [ -e /opt/superbot-web/.brain-unico-webui-previous ]; then
+    echo "RIPRISTINO MANUALE NECESSARIO (interfaccia): sudo bash $D/70-interfaccia.sh --rollback"
+  fi
+  if python3 "$D/brain_unico_web_cutover.py" --rollback; then
+    echo "ESITO AVVIO: NON PRONTO (interfaccia). Web e bridge precedenti RIPRISTINATI; unita' Brain Unico attive senza mandato."
+  else
+    echo "ESITO AVVIO: NON PRONTO (interfaccia). RIPRISTINO MANUALE NECESSARIO: sudo python3 $D/brain_unico_web_cutover.py --rollback"
+  fi
+  exit 1
+fi
 
 sh "$D/30-controlli.sh" tutti; res $? "4 controlli: mandato approved:false, runner halted, nessuna spesa AI, nessuna apertura, uscite sane"
 "$PY" -c "import json,sys; sys.exit(0 if json.load(open('$RUN/mandate.json')).get('approved') is False else 1)"
