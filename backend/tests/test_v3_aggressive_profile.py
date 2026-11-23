@@ -258,3 +258,29 @@ def test_precise_risk_rejection_reason_is_journaled_only_for_the_aggressive_prof
     assert aggressive[-1]["rationale"] == "risk_rejected" and aggressive[-1]["risk_reason"] == "margin_loss_ratio_exceeded"
     legacy = decide(cfg(RC1).risk_policy, "b")
     assert all("risk_reason" not in p for p in legacy)
+
+
+def test_both_runs_are_prepared_paused_unapproved_and_wired_to_the_right_analyst(tmp_path, monkeypatch):
+    import backend.v3.falco_evoluto as fe
+    import backend.v3.runner.wiring as w
+    from backend.v3.runner.prepare_paper_run import prepare_new_paper_run
+    built = []
+    real_falco, real_deepseek = fe.FalcoEvolutoAnalyst, w.DeepSeekL5Analyst
+    monkeypatch.setattr(fe, "FalcoEvolutoAnalyst", lambda **kw: built.append(("falco", kw)) or real_falco(**kw))
+    monkeypatch.setattr(w, "DeepSeekL5Analyst", lambda **kw: built.append(("deepseek", kw)) or real_deepseek(**kw))
+    keeps = []
+    real_store = w.CandleStore
+    monkeypatch.setattr(w, "CandleStore", lambda get_json, keep: keeps.append(dict(keep)) or real_store(get_json, keep=keep))
+    for name, path, equity in (("brain-v3-falco-evoluto-t1", FALCO, "1000"), ("brain-v3-brain-scalp-t1", SCALP, "2000")):
+        root = prepare_new_paper_run(parent=tmp_path, run_name=name, run_id=name, config_bytes=path.read_bytes(),
+                                     desk_mode="paper", now_ms=NOW, expected_initial_equity=equity)
+        mandate = json.loads((root / "mandate.json").read_text())
+        assert mandate["approved"] is False and (root / "pause.flag").exists()
+        assert mandate["policy_hash"] == _policy_hash(cfg(path).risk_policy)
+        w.build_runner(data_dir=root, run_id=name, config=cfg(path), get_json=lambda url: [],
+                       inner_transport=lambda payload: None, desk_mode="paper")
+    assert [b[0] for b in built] == ["falco", "deepseek"]
+    falco_kw = built[0][1]
+    assert falco_kw["max_leverage"] == 45 and falco_kw["ai_enabled"] is True
+    four = [k["4h"][1] for k in keeps if "4h" in k]                       # la cache 1m non ha il 4h
+    assert len(four) == 2 and four[0] >= fe.EMA200_MIN_BARS and four[1] < four[0]

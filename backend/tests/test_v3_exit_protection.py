@@ -223,3 +223,16 @@ def test_monitor_carries_the_protection_across_a_feed_gap_and_reports_it(tmp_pat
     rep2 = run_exit_monitor(journal=j2, portfolio_id="brain", run_id=RUN, fetch_bars=lambda s, a, b: bars,
                             policy=load_default_policy(), fee_bps=6, now_ms=NOW + 300_000)
     assert rep2.closed == ((pid2, "take_profit"),) and rep2.protected == ()
+
+
+def test_net_target_proposal_is_explicit_and_not_applied():
+    from backend.v3.runner.exits import gross_r_for_net_target
+    d, c = D("0.005"), D("0.0016")
+    k = gross_r_for_net_target(d, c, D("3"))
+    assert k.quantize(D("0.01")) == D("4.28")
+    assert ((D("3") * d - c) / (d + c)).quantize(D("0.01")) == D("2.03")      # 3R lordi = circa 2R netti
+    assert gross_r_for_net_target(d, D("0"), D("3")) == D("3")               # senza costi lordo = netto
+    for bad in ((D("0"), c, D("3")), (d, c, D("0")), (d, D("-1"), D("3"))):
+        with pytest.raises(ValueError):
+            gross_r_for_net_target(*bad)
+    assert load_default_policy().take_profit_r == D("2")                     # nessuna politica cambiata

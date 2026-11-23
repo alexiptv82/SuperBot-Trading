@@ -278,3 +278,19 @@ def default_policy_path() -> Path:
 def load_default_policy() -> ExitPolicy:
     """Unico punto che legge il file: da chiamare in configurazione."""
     return load_exit_policy(default_policy_path().read_bytes())
+
+
+def gross_r_for_net_target(stop_fraction: Decimal, roundtrip_cost_fraction: Decimal, net_r: Decimal) -> Decimal:
+    """PROPOSTA, non applicata: multiplo LORDO della distanza dallo stop che serve per un obiettivo NETTO.
+
+    Il RiskManager misura il rischio a stop COSTI INCLUSI: 1R netto = (d + c) del prezzo (d = distanza dallo stop,
+    c = costi di andata e ritorno). Al take-profit lordo k*d il risultato netto e' (k*d - c), quindi
+    netto in R = (k*d - c) / (d + c)  ->  k = (net_r * (d + c) + c) / d.
+    Esempio: d = 0,5 %, c = 0,16 %: il TP lordo 3R vale circa 2,03R netti; per 3R netti serve circa 4,28R lordi."""
+    for v in (stop_fraction, roundtrip_cost_fraction, net_r):
+        if type(v) is not Decimal or not v.is_finite() or v < 0:
+            raise ValueError("invalid_input") from None
+    if stop_fraction <= 0 or net_r <= 0:
+        raise ValueError("invalid_input") from None
+    with localcontext(_CTX):
+        return (net_r * (stop_fraction + roundtrip_cost_fraction) + roundtrip_cost_fraction) / stop_fraction
