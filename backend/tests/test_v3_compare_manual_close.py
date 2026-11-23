@@ -126,14 +126,13 @@ def test_bridge_refuses_wallets_that_are_not_configured_or_do_not_match(tmp_path
 
 
 def test_extra_runs_from_the_unit_environment_are_strict():
-    ok = json.dumps({"falco_evoluto": {"dir": "brain-v3-falco-evoluto-t1", "run_id": "brain-v3-falco-evoluto-t1"},
-                     "brain_scalp": {"dir": "brain-v3-brain-scalp-t1", "run_id": "brain-v3-brain-scalp-t1"}})
+    ok = "falco_evoluto=brain-v3-falco-evoluto-t1:falco-evoluto-t1,brain_scalp=brain-v3-brain-scalp-t1:brain-scalp-t1"
     got = bridge_host._extra_from_env({"V3_BRIDGE_EXTRA_RUNS": ok})
-    assert set(got) == {"falco_evoluto", "brain_scalp"}
-    assert got["falco_evoluto"][0] == bridge_host.RUN_ROOT / "brain-v3-falco-evoluto-t1"
-    for bad in ("", "x", json.dumps({"toro": {"dir": "brain-v3-xxx", "run_id": "abc"}}),
-                json.dumps({"falco_evoluto": {"dir": "../etc", "run_id": "abc"}}),
-                json.dumps({"falco_evoluto": {"dir": "brain-v3-same", "run_id": "abc"},
-                            "brain_scalp": {"dir": "brain-v3-same", "run_id": "abd"}}),
-                json.dumps({"falco_evoluto": {"dir": "brain-v3-paper20261111", "run_id": "abc"}})):   # = run RC1/V3
+    assert got == {"falco_evoluto": (bridge_host.RUN_ROOT / "brain-v3-falco-evoluto-t1", "falco-evoluto-t1"),
+                   "brain_scalp": (bridge_host.RUN_ROOT / "brain-v3-brain-scalp-t1", "brain-scalp-t1")}
+    for bad in ("", "x", "toro=brain-v3-xxx:abc", "falco_evoluto=../etc:abc", "falco_evoluto=brain-v3-aaa",
+                "falco_evoluto=brain-v3-same:abc,brain_scalp=brain-v3-same:abd",
+                "falco_evoluto=brain-v3-aaa:abc,falco_evoluto=brain-v3-bbb:abd",
+                "falco_evoluto=brain-v3-paper20261111:abc",                    # = run del Brain servita dal bridge
+                'falco_evoluto=brain-v3-aaa:a"b', "falco_evoluto=brain-v3-aaa:abc extra"):
         assert bridge_host._extra_from_env({"V3_BRIDGE_EXTRA_RUNS": bad}) == {}

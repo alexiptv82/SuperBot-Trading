@@ -44,32 +44,28 @@ def _brain_from_env(env) -> tuple:
 
 BRAIN, RUN_ID = _brain_from_env(os.environ)
 # Portafogli PAPER aggiuntivi (23/11: Falco Evoluto, Brain Scalp), ognuno con la SUA run. Nomi fissi; cartelle e run_id
-# dall'unita' systemd: V3_BRIDGE_EXTRA_RUNS = {"falco_evoluto": {"dir": "brain-v3-...", "run_id": "..."}, ...}.
+# dall'unita' systemd, in formato compatto senza virgolette ne' spazi (sicuro in ExecStart):
+#   V3_BRIDGE_EXTRA_RUNS=falco_evoluto=brain-v3-<cartella>:<run_id>,brain_scalp=brain-v3-<cartella>:<run_id>
 EXTRA_WALLETS = ("falco_evoluto", "brain_scalp")
 
 
 def _extra_from_env(env) -> dict:
     """{nome: (cartella, run_id)}; valore assente o non valido -> {} (portafogli aggiuntivi rifiutati, RC1 invariato)."""
     raw = env.get("V3_BRIDGE_EXTRA_RUNS")
-    if not raw:
+    if not raw or type(raw) is not str or len(raw) > 400:
         return {}
-    try:
-        data = json.loads(raw)
-        if type(data) is not dict or not set(data) <= set(EXTRA_WALLETS):
+    out = {}
+    for item in raw.split(","):
+        name, eq, spec = item.partition("=")
+        folder, colon, run_id = spec.partition(":")
+        if (not eq or not colon or name not in EXTRA_WALLETS or name in out
+                or not _RUN_DIR_RE.fullmatch(folder) or not _RUN_ID_RE.fullmatch(run_id)):
             return {}
-        out = {}
-        for name, spec in data.items():
-            if (type(spec) is not dict or set(spec) != {"dir", "run_id"} or type(spec["dir"]) is not str
-                    or type(spec["run_id"]) is not str or not _RUN_DIR_RE.fullmatch(spec["dir"])
-                    or not _RUN_ID_RE.fullmatch(spec["run_id"])):
-                return {}
-            out[name] = (RUN_ROOT / spec["dir"], spec["run_id"])
-        dirs = [d for d, _ in out.values()]
-        if len(set(dirs)) != len(dirs) or BRAIN in dirs:
-            return {}
-        return out
-    except (ValueError, TypeError):
+        out[name] = (RUN_ROOT / folder, run_id)
+    dirs = [d for d, _ in out.values()]
+    if len(set(dirs)) != len(dirs) or BRAIN in dirs:
         return {}
+    return out
 
 
 EXTRA = _extra_from_env(os.environ)
