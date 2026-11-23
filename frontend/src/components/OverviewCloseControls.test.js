@@ -273,3 +273,19 @@ test('Brain PAPER manual exit stays blocked while exit owner is unavailable', as
     expect(s.host.textContent).toContain('chiusure manuali non ancora attivate');
   } finally { await s.done(); }
 });
+
+test('Brain: custom card style and label keep the confirmation, a single POST and no close-all', async () => {
+  API.post.mockResolvedValue({ data: { ok: true, pending: true, ts_ms: Date.now() } });
+  const s = setup(<BrainCloseControls positions={positions} allowCloseAll={false}
+    itemStyle={{ padding: 16 }} closeLabel={p => `Chiudi ${p.symbol} (PAPER)`} />);
+  try {
+    await s.render();
+    expect(find(s.host, 'Chiudi tutte (1)')).toBeUndefined();
+    await click(find(s.host, 'Chiudi BTCUSDT (PAPER)'));
+    expect(API.post).not.toHaveBeenCalled();                       // prima la conferma
+    expect(s.host.textContent).toContain('Chiudere BTCUSDT adesso a prezzo di mercato?');
+    await click(find(s.host, 'Chiudi'));
+    expect(API.post).toHaveBeenCalledTimes(1);
+    expect(API.post).toHaveBeenCalledWith('/api/v3/brain/close', { position_id: 'p-001' });
+  } finally { await s.done(); }
+});

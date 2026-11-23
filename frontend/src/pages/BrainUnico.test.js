@@ -35,14 +35,77 @@ const memory = { state: 'ok', memory: { decisions: 5, valid_links: 5, coverage_p
 const html = props => renderToStaticMarkup(<BrainUnicoContent overview={overview} status={status} trades={trades}
   memory={memory} nowMs={now} {...props} />);
 
-test('profits, losses, statistics, positions, closed trades and learning on one screen', () => {
+test('classic-style screen: equity, KPI, state, commands, positions, statistics and learning on one screen', () => {
   const h = html();
-  for (const text of ['BRAIN UNICO', '2008.33 USDT', '8.33 USDT', '2.50 USDT', '-1.20 USDT', '66.7%', '2 / 1 / 0',
-    '1 / 2', '11.33 USDT', '-3.00 USDT', 'BTCUSDT', 'chiusa da te', 'Memoria decisionale', 'Apprendimento',
-    'Addestramento autorizzato', 'Storico']) expect(h).toContain(text);
+  for (const text of ['Brain Unico', 'PAPER MODE', 'Equity', '$2008.33', '+8.33$', '+2.50$', '-1.20$', '$1968.33', '66.7%',
+    '2 / 1 / 0', '1 / 2', '$11.33', '-$3.00', 'BTC', 'LONG', 'x20', 'S07', 'SL $99.00', 'Chiudi BTCUSDT (PAPER)', 'chiusa da te',
+    'Memoria decisionale', 'Apprendimento', 'Addestramento autorizzato', 'Storico', 'Budget AI', 'Aperte', 'Chiuse',
+    'Avvia / Riprendi', 'Pausa']) expect(h).toContain(text);
   expect(h).not.toContain('Falco · 13.50');                         // i classici non occupano la schermata
+  expect(h).not.toMatch(/Falco (●|⏸|○)|Toro (●|⏸|○)/);
   expect(h).toContain('href="/overview"');
   expect(h).toContain('href="/classic"');
+});
+
+const livePosition = { position_id: 'p1', symbol: 'BTCUSDT', side: 1, leverage: 20, entry: '100', price: '101.25', stop: '99',
+  take_profit: '104', liquidation: '95.5', unrealized_pnl: '2.50', roi_pct: '6.25', margin: '40', strategy_id: 'S07',
+  opened_at_ms: now - 3600000 };
+
+test('the open position card shows every field of the classic card, with ROI and P&L', () => {
+  const h = html({ trades: { ...trades, open_positions: [livePosition] } });
+  for (const text of ['LONG', 'BTC', 'x20', 'S07', 'Entrata <strong style="color:#e2e8f0">$100.00',
+    'Ora <strong style="color:#e2e8f0">$101.25', 'Margine <strong style="color:#e2e8f0">$40', 'SL $99.00', 'TP $104.00',
+    'Liq $95.50', 'aperta da 1h 0m', '+2.50$', '+6.25% sul margine']) expect(h).toContain(text);
+  expect(h).not.toContain('P&amp;L e ROI non calcolabili');
+});
+
+test('without a verified price the position shows unknown P&L and ROI, never invented values', () => {
+  const h = html({ trades: { ...trades, open_positions: [{ ...livePosition, price: null }] } });
+  expect(h).toContain('P&amp;L e ROI non calcolabili');
+  expect(h).toContain('ROI —');
+  expect(h).not.toContain('+6.25%');
+});
+
+test('commands are disabled and explain why; close-all never exists, single close does', () => {
+  const h = html({ overview: { ...overview, cutover_readonly: true, brain_single_close_allowed: true } });
+  expect(h).toMatch(/<button[^>]*disabled=""[^>]*>▶ Avvia \/ Riprendi<\/button>/);
+  expect(h).toMatch(/<button[^>]*disabled=""[^>]*>⏸ Pausa<\/button>/);
+  expect(h).toContain('non ha un’API sicura');
+  expect(h).not.toContain('Chiudi tutte');
+  expect(h).toMatch(/<button(?![^>]*disabled)[^>]*>Chiudi BTCUSDT \(PAPER\)<\/button>/);
+  expect(html({ overview: { ...overview, cutover_readonly: false } })).not.toContain('Chiudi tutte');
+});
+
+test('the PAPER label is always visible, also before the start', () => {
+  expect(html()).toContain('PAPER MODE');
+  const h = html({ overview: { generated_at_ms: now, portfolios: [{ id: 'brain', state: 'not_started' }] },
+    status: null, trades: null, memory: null });
+  expect(h).toContain('PAPER MODE');
+  expect(h).toContain('>PAPER</span>');
+  expect(h).toContain('Brain Unico ⏸ Non avviato');
+});
+
+test('the Brain state card distinguishes running, paused, risk stop and mandate pending', () => {
+  expect(html()).toContain('DeepSeek operativo');
+  expect(html({ status: { ...status, state: 'paused', paused: true } })).toContain('In pausa');
+  expect(html({ status: { ...status, daily_loss: { level: 'halt', pct: '51.0' } } })).toContain('Bloccato dal rischio');
+  const waiting = html({ status: { ...status, state: 'halted', heartbeat: { ts_ms: now - 5000, last_error: 'halted:mandate_not_approved' } } });
+  expect(waiting).toContain('In attesa del mandato');
+  expect(waiting).not.toContain('DeepSeek operativo');
+});
+
+test('memory sections are collapsible and closed by default, below the operational part', () => {
+  const h = html();
+  expect(h).toMatch(/<details[^>]*aria-label="Memoria Brain"/);
+  expect(h).not.toMatch(/<details[^>]*\sopen[\s=>]/);
+  expect(h.indexOf('Posizioni Aperte')).toBeLessThan(h.indexOf('Memoria decisionale'));
+  expect(h.indexOf('Statistiche')).toBeLessThan(h.indexOf('Memoria decisionale'));
+});
+
+test('the page does not claim that the memory learned from manual closes', () => {
+  const h = html();
+  expect(h).not.toMatch(/ha imparato|appreso dalle chiusure|strategia appresa/i);
+  expect(h).toContain('Modello appreso attivo');
 });
 
 test('manual closes are shown as operator interventions, not strategies', () => {
@@ -84,7 +147,7 @@ test('polls the four Brain endpoints and survives a memory outage', async () => 
     await act(async () => { root.render(<BrainUnico />); });
     expect(API.get.mock.calls.map(c => c[0])).toEqual(['/api/v3/overview', '/api/v3/brain/status',
       '/api/v3/brain/trades?limit=20', '/api/v3/brain/memory']);
-    expect(el.textContent).toContain('Profitti e perdite');
+    expect(el.textContent).toContain('Posizioni Aperte');
     expect(el.textContent).toContain('Memoria non disponibile');
   } finally { await act(async () => { root.unmount(); }); API.get.mockReset(); }
 });

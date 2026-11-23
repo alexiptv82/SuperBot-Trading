@@ -35,18 +35,25 @@ function Progress({ label, value, target }) {
   </div>;
 }
 
-export default function BrainMemorySection({ memory }) {
+// collapsible: ogni blocco diventa una sezione espandibile (chiusa), con lo stesso contenuto. Default: invariato.
+function Sect({ label, title, collapsible, children }) {
+  if (!collapsible) return <section style={BLOCK} aria-label={label}>
+    <h2 style={{ fontSize: 17, marginTop: 0 }}>{title}</h2>{children}</section>;
+  return <details style={BLOCK} aria-label={label}>
+    <summary style={{ fontSize: 15, fontWeight: 700, cursor: 'pointer', color: '#cbd5e1' }}>{title}</summary>
+    <div style={{ marginTop: 10 }}>{children}</div></details>;
+}
+
+export default function BrainMemorySection({ memory, collapsible = false }) {
   if (!memory || memory.state === 'unavailable') {
-    return <section style={BLOCK} aria-label="Memoria Brain">
-      <h2 style={{ fontSize: 17, marginTop: 0 }}>🗂️ Memoria e apprendimento</h2>
+    return <Sect label="Memoria Brain" title="🗂️ Memoria e apprendimento" collapsible={collapsible}>
       <p style={MUTED}>Memoria non disponibile in questo momento. Le altre sezioni restano valide.</p>
-    </section>;
+    </Sect>;
   }
   if (memory.state === 'not_started') {
-    return <section style={BLOCK} aria-label="Memoria Brain">
-      <h2 style={{ fontSize: 17, marginTop: 0 }}>🗂️ Memoria e apprendimento</h2>
+    return <Sect label="Memoria Brain" title="🗂️ Memoria e apprendimento" collapsible={collapsible}>
       <p style={MUTED}>Brain non ancora avviato: nessuna decisione registrata.</p>
-    </section>;
+    </Sect>;
   }
   const m = memory.memory || {};
   const t = memory.theses || {};
@@ -54,8 +61,7 @@ export default function BrainMemorySection({ memory }) {
   const recent = memory.recent || [];
   const chainBroken = m.chain_ok === false;
   return <>
-    <section style={BLOCK} aria-label="Memoria Brain">
-      <h2 style={{ fontSize: 17, marginTop: 0 }}>🗂️ Memoria decisionale</h2>
+    <Sect label="Memoria Brain" title="🗂️ Memoria decisionale" collapsible={collapsible}>
       {chainBroken && <p role="alert" style={{ ...MUTED, color: '#fb7185' }}>
         Catena del registro non integra: nessuna decisione è considerata tracciata finché non viene verificata.</p>}
       <Row label="Decisioni registrate">{n(m.decisions)}</Row>
@@ -80,9 +86,8 @@ export default function BrainMemorySection({ memory }) {
           {d.would_block ? ' · in osservazione: verrebbe bloccato' : ''}</div>
       </div>)}
       {!recent.length && <p style={MUTED}>Nessuna decisione ancora registrata.</p>}
-    </section>
-    <section style={BLOCK} aria-label="Tesi e reingressi">
-      <h2 style={{ fontSize: 17, marginTop: 0 }}>🔁 Tesi e reingressi</h2>
+    </Sect>
+    <Sect label="Tesi e reingressi" title="🔁 Tesi e reingressi" collapsible={collapsible}>
       <Row label="Modalità anti-reingresso">{t.enforce_active ? 'Blocco attivo' : t.mode === 'observe' ? 'Solo osservazione' : 'Non attiva'}</Row>
       <Row label="Aperture con tesi">{n(t.opens_with_thesis)}</Row>
       <Row label="Tesi distinte">{n(t.distinct_theses)}</Row>
@@ -90,9 +95,8 @@ export default function BrainMemorySection({ memory }) {
       <Row label="Che sarebbero stati bloccati">{n(t.would_block)}</Row>
       {Object.entries(t.rules || {}).map(([rule, count]) => <Row key={rule} label={`· ${own(RULE_TEXT, rule) || 'altra regola'}`}>{n(count)}</Row>)}
       <p style={MUTED}>In osservazione nulla viene bloccato: il blocco richiede i risultati E0 e l’approvazione del proprietario.</p>
-    </section>
-    <section style={BLOCK} aria-label="Raccolta per l’apprendimento">
-      <h2 style={{ fontSize: 17, marginTop: 0 }}>🎓 Apprendimento</h2>
+    </Sect>
+    <Sect label="Raccolta per l’apprendimento" title="🎓 Apprendimento" collapsible={collapsible}>
       <Progress label="Esempi tracciati (soglia shadow)" value={l.valid_examples_collected} target={l.shadow_threshold?.examples} />
       <Progress label="Giorni distinti (soglia shadow)" value={l.distinct_days} target={l.shadow_threshold?.days} />
       <Row label="Soglia per valutare una promozione">{n(l.promotion_review_threshold?.examples)} esempi · {n(l.promotion_review_threshold?.days)} giorni</Row>
@@ -101,6 +105,6 @@ export default function BrainMemorySection({ memory }) {
       <p style={MUTED}>È l’avanzamento della raccolta: i dati diventano utilizzabili solo dopo la verifica indipendente
         nel Dataset Builder (candele attestate, registro attestato). Le perdite restano nello storico e non entrano
         automaticamente nell’addestramento.</p>
-    </section>
+    </Sect>
   </>;
 }

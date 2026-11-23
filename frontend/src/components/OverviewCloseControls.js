@@ -58,7 +58,7 @@ export function PortfolioTradeFields({ p, brain = false }) {
   </div>;
 }
 
-export function BrainCloseControls({ positions = [], serverPending = false, readOnly = false, allowCloseAll = true, onRefresh = () => {}, renderPosition = null }) {
+export function BrainCloseControls({ positions = [], serverPending = false, readOnly = false, allowCloseAll = true, onRefresh = () => {}, renderPosition = null, itemStyle = null, closeLabel = null }) {
   const [confirm, setConfirm] = useState(null);
   const [pending, setPending] = useState(null);
   const [sending, setSending] = useState(false);
@@ -134,9 +134,9 @@ export function BrainCloseControls({ positions = [], serverPending = false, read
     {positions.length > 0 && allowCloseAll && <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
       <button type="button" style={BTN} disabled={disabled} onClick={() => ask({ all: true })}>Chiudi tutte ({positions.length})</button>
     </div>}
-    {positions.map(p => <div key={p.position_id} style={{ background:'#0e1a2d', padding:12, border:'1px solid #30465e', borderRadius:11, marginTop:9, minWidth:0 }}>
+    {positions.map(p => <div key={p.position_id} style={itemStyle || { background:'#0e1a2d', padding:12, border:'1px solid #30465e', borderRadius:11, marginTop:9, minWidth:0 }}>
       <div>{renderPosition ? renderPosition(p) : <PortfolioTradeFields p={p} brain />}</div>
-      <button type="button" style={{ ...BTN, marginTop:8 }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>Chiudi {p.symbol}</button>
+      <button type="button" style={{ ...BTN, marginTop:8, ...(closeLabel ? { width:'100%', padding:'10px' } : null) }} disabled={disabled} onClick={() => ask({ position_id: p.position_id, symbol: p.symbol })}>{closeLabel ? closeLabel(p) : `Chiudi ${p.symbol}`}</button>
     </div>)}
     {confirm && <div role="dialog" aria-label="Conferma chiusura Brain" style={{ border: '1px solid #fda4af', padding: 12, borderRadius: 10, marginTop: 8 }}>
       <p style={{ margin: '0 0 10px' }}>{confirm.all
