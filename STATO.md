@@ -1,3 +1,10 @@
+## 23/11/2026 (14) — Autonomia limitata attiva; verifica con superbot-ops; difetto BTC/ETH trovato (Claude)
+
+- Autonomia installata dal proprietario. `sudo -n /usr/local/sbin/superbot-ops stato` funziona senza password; operazione non concessa (`attiva falco`) rifiutata da sudo.
+- Falco Evoluto e Brain Scalp: uscite e runner `active`; uscite SANE; runner `halted:mandate_not_approved`; nessuna spesa AI, nessuna apertura; pausa ATTIVA; mandato non approvato (`mandate_not_approved`). Registri dei 4 servizi puliti (avvio 13:36 UTC).
+- Brain RC1: pausa ATTIVA, uscite SANE, mandato VALIDO (attivato in precedenza). Dal registro del runner: fermo per mandato fino alle 06:38, in funzione dalle ~08:00 (aperture alle 08:00 e 09:00, nessuna dalle 10:00), nessun giro dopo le 12:00 (pausa). 1 posizione aperta gestita dalle uscite. Le righe FAIL di `stato` sono attese per una run gia' attivata.
+- **Difetto preesistente:** in tutti i 5 giri di RC1 BTCUSDT ed ETHUSDT = `no_market_rules`, mai analizzati. Causa: `parse_contract_rules` accettava solo `maxLever` <= 125; Bitget dichiara oggi 150x per BTC ed ETH (dato pubblico verificato). Stesso codice in Falco Evoluto e Brain Scalp. Correzione `5539ee47` (limite dell'exchange accettato e portato a 125; leva effettiva invariata 15-45x); con i dati reali di oggi BTC/ETH tornano disponibili. Gate DRY_RUN V3 5495, builder 158, Jest 170. NON installata: l'aggiornamento del codice non rientra in superbot-ops; serve una decisione del proprietario.
+
 ## 23/11/2026 (13) — RILASCIO PAPER Falco Evoluto + Brain Scalp RIUSCITO; verifica post-installazione (Claude)
 
 - Ripresa eseguita dal proprietario (13:36 UTC): `ESITO RILASCIO: PRONTO PER IL COLLAUDO PAPER`. Registro letto da Claude (`precollaudo-esiti/rilascio-falco-scalp.log.ripresa`): run riusate e intatte, copia di sicurezza in `/opt/superbot-v3-backups/falco-scalp/runs-before-ripresa-20261123T133639Z`, codice `246a3a92` in `/opt/superbot-falco-scalp-246a3a92fc21`, journal con catena integra (1 evento `run_prepared` ciascuno, 0 operazioni).
