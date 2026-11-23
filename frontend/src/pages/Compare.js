@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import API from '../api';
+import { BrainCloseControls } from '../components/OverviewCloseControls';
 
 // Confronto PAPER Falco Evoluto / Brain Scalp (sola lettura, /api/v3/compare). Stessa grafica dei Classici.
 // Ogni numero arriva dal journal della SUA run; quello che manca resta "—" (mai valori inventati).
@@ -64,7 +65,7 @@ function rows(runs) {
   ];
 }
 
-export function CompareContent({ data }) {
+export function CompareContent({ data, onRefresh = () => {} }) {
   if (!data?.available) {
     return <Card><strong>Confronto non ancora attivo</strong>
       <p style={MUTED}>Le due run PAPER (Falco Evoluto e Brain Scalp) non sono ancora state preparate e approvate.
@@ -98,12 +99,17 @@ export function CompareContent({ data }) {
         {(r.guardian?.reasons || []).length ? ` · ${r.guardian.reasons.join(', ')}` : ''}</div>
       <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>Posizioni aperte</div>
       {(r.open_positions || []).length === 0 && <div style={MUTED}>Nessuna posizione aperta.</div>}
-      {(r.open_positions || []).map(p => <div key={p.position_id} style={{ ...MUTED, padding: '4px 0' }}>
-        <strong style={{ color: p.side === 1 ? '#4ade80' : '#f87171' }}>{p.side === 1 ? 'LONG' : 'SHORT'}</strong>{' '}
-        {String(p.symbol).replace('USDT', '')} x{p.leverage} · ingresso ${p.entry} · stop ${p.stop} · margine {usd(p.margin, 0)}
-      </div>)}
-      <div style={{ ...MUTED, fontSize: 11 }}>Chiusura manuale singola: dalla pagina del portafoglio, quando il canale di
-        chiusura di questa run sarà attivo.</div>
+      <BrainCloseControls positions={r.open_positions || []} allowCloseAll={false}
+        readOnly={r.manual_close_allowed !== true} serverPending={r.close_pending === true} onRefresh={onRefresh}
+        closeUrl={`/api/v3/compare/${r.name}/close`} resultUrl={`/api/v3/compare/${r.name}/close-result`}
+        itemStyle={{ padding: '6px 0', borderTop: '1px solid #273449' }}
+        closeLabel={p => `Chiudi ${p.symbol} (PAPER)`}
+        renderPosition={p => <div style={{ ...MUTED }}>
+          <strong style={{ color: p.side === 1 ? '#4ade80' : '#f87171' }}>{p.side === 1 ? 'LONG' : 'SHORT'}</strong>{' '}
+          {String(p.symbol).replace('USDT', '')} x{p.leverage} · ingresso ${p.entry} · stop ${p.stop} · margine {usd(p.margin, 0)}
+        </div>} />
+      {(r.open_positions || []).length > 0 && r.manual_close_allowed !== true && <div style={{ ...MUTED, fontSize: 11 }}>
+        Chiusura manuale non disponibile finché il servizio uscite di questo portafoglio non è sano.</div>}
       <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>Ultime decisioni</div>
       {(r.decisions || []).length === 0 && <div style={MUTED}>Nessuna decisione registrata.</div>}
       {(r.decisions || []).map((d, i) => <div key={`${d.ts_ms}-${i}`} style={{ ...MUTED, padding: '3px 0' }}>
@@ -116,6 +122,7 @@ export function CompareContent({ data }) {
 export default function Compare() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     let alive = true;
     const load = async () => {
@@ -129,7 +136,7 @@ export default function Compare() {
     load();
     const t = setInterval(load, 30000);
     return () => { alive = false; clearInterval(t); };
-  }, []);
+  }, [tick]);
   return <div style={{ padding: 16, maxWidth: 600, margin: '0 auto', boxSizing: 'border-box' }}>
     <h1 style={{ fontSize: 22, fontWeight: 'bold', margin: 0, background: 'linear-gradient(90deg, #f1f5f9, #38bdf8)',
       WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>⚖️ Confronto</h1>
@@ -137,6 +144,6 @@ export default function Compare() {
       ○ PAPER MODE · Falco Evoluto vs Brain Scalp · soldi simulati</div>
     {error && <p role="alert" style={{ color: '#fda4af', fontSize: 13 }}>Confronto non disponibile: verifica la connessione o la sessione.</p>}
     {!error && data === null && <p role="status" style={MUTED}>Caricamento…</p>}
-    {!error && data !== null && <CompareContent data={data} />}
+    {!error && data !== null && <CompareContent data={data} onRefresh={() => setTick(n => n + 1)} />}
   </div>;
 }

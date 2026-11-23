@@ -825,6 +825,25 @@ def _close_result(paths: V3Paths, now_ms: int) -> dict:
     return {'result': result, 'pending': _close_inflight(paths)}
 
 
+COMPARE_CLOSE_WALLETS = ('falco_evoluto', 'brain_scalp')   # stessi nomi del bridge (close_bridge_server.EXTRA_WALLETS)
+
+
+def _compare_run_paths(name: str) -> V3Paths | None:
+    """Percorsi della run ``name`` del confronto (solo i portafogli con chiusura manuale prevista)."""
+    if name not in COMPARE_CLOSE_WALLETS:
+        return None
+    from backend.v3.compare_view import runs_from_env
+    ref = next((r for r in runs_from_env(os.environ) or [] if r.name == name), None)
+    if ref is None:
+        return None
+    root = ref.dir
+    return V3Paths(journal_path=str(root / 'journal.db'), run_id=ref.run_id, budget_db_path=str(root / 'budget.db'),
+                   heartbeat_path=str(root / 'heartbeat.json'), pause_flag_path=str(root / 'pause.flag'),
+                   falco_data_dir='', toro_data_dir='', close_request_path=str(root / 'close_request.json'),
+                   close_result_path=str(root / 'close_result.json'),
+                   brain_config_path=str(root / 'runner_config.json'))
+
+
 def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> APIRouter:
     """Create session-gated dashboard and PAPER-only manual-close endpoints."""
     if type(paths) is not V3Paths:
@@ -865,6 +884,41 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
         response.headers['Cache-Control'] = 'no-store'
         from backend.v3.compare_view import compare
         return compare(os.environ, int(time.time() * 1000))
+
+    @router.post('/compare/{name}/close')
+    async def compare_close(name: str, request: Request, response: Response, session=Depends(require_session)):
+        # Chiusura manuale SINGOLA di una posizione della run ``name`` (Falco Evoluto o Brain Scalp), mai globale.
+        response.headers['Cache-Control'] = 'no-store'
+        run_paths = _compare_run_paths(name)
+        if run_paths is None:
+            raise _close_error(404, 'portafoglio_sconosciuto', 'Portafoglio non disponibile.')
+        try:
+            body = await request.json()
+        except (ValueError, UnicodeError):
+            body = None
+        position_id, close_all = _close_body(body)
+        if close_all:
+            raise _close_error(423, 'solo_chiusura_singola', 'Puoi chiudere una sola posizione PAPER alla volta.')
+        now = int(time.time() * 1000)
+        if os.environ.get('V3_CUTOVER_READONLY') == '1':
+            if not brain_single_close_enabled(os.environ):
+                raise _close_error(423, 'solo_lettura', 'Chiusura PAPER non abilitata.')
+            if not _brain_single_close_ready(run_paths, now):
+                raise _close_error(409, 'servizio_uscita_non_pronto',
+                                   'Il servizio di uscita PAPER di questo portafoglio non è pronto.')
+            try:
+                return send_single_close(name, position_id)
+            except CloseBridgeError as error:
+                raise _close_error(error.status, 'bridge_non_disponibile', error.message) from None
+        return _close_request(run_paths, body, now)
+
+    @router.get('/compare/{name}/close-result')
+    def compare_close_result(name: str, response: Response, session=Depends(require_session)):
+        response.headers['Cache-Control'] = 'no-store'
+        run_paths = _compare_run_paths(name)
+        if run_paths is None:
+            raise _close_error(404, 'portafoglio_sconosciuto', 'Portafoglio non disponibile.')
+        return _close_result(run_paths, int(time.time() * 1000))
 
     @router.get('/brain/status')
     def brain_status(response: Response, session=Depends(require_session)):

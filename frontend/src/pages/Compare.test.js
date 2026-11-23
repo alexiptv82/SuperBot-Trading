@@ -5,7 +5,7 @@ import { act } from 'react-dom/test-utils';
 import API from '../api';
 import Compare, { CompareContent } from './Compare';
 
-jest.mock('../api', () => ({ get: jest.fn() }));
+jest.mock('../api', () => ({ get: jest.fn(), post: jest.fn() }));
 
 const run = (name, label, over = {}) => ({
   name, label, run_id: name, available: true, initial_equity: '1000', settled_equity: '1050', net_pnl: '50',
@@ -52,4 +52,31 @@ test('loads the compare endpoint', async () => {
     expect(API.get).toHaveBeenCalledWith('/api/v3/compare');
     expect(el.textContent).toContain('Confronto non ancora attivo');
   } finally { await act(async () => { root.unmount(); }); API.get.mockReset(); }
+});
+
+
+test('single PAPER close per bot: enabled only with a healthy exit service, never close-all, right run', async () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const off = renderToStaticMarkup(<CompareContent data={{ available: true, runs: [run('falco_evoluto', 'Falco Evoluto')] }} />);
+  expect(off).toMatch(/<button[^>]*disabled=""[^>]*>Chiudi BTCUSDT \(PAPER\)<\/button>/);
+  expect(off).toContain('servizio uscite di questo portafoglio non è sano');
+  expect(off).not.toContain('Chiudi tutte');
+  API.post.mockResolvedValue({ data: { ok: true, ts_ms: 5 } });
+  const data = { available: true, runs: [run('falco_evoluto', 'Falco Evoluto', { manual_close_allowed: true }),
+    run('brain_scalp', 'Brain Scalp', { manual_close_allowed: true,
+      open_positions: [{ position_id: 's1', symbol: 'ETHUSDT', side: 1, entry: '10', stop: '9.9', margin: '300', leverage: 20 }] })] };
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  const root = createRoot(el);
+  const click = async b => { await act(async () => { b.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); };
+  const find = label => Array.from(el.querySelectorAll('button')).find(b => b.textContent === label);
+  try {
+    await act(async () => { root.render(<CompareContent data={data} />); });
+    await click(find('Chiudi ETHUSDT (PAPER)'));
+    expect(API.post).not.toHaveBeenCalled();                                 // prima la conferma
+    expect(el.textContent).toContain('Chiudere ETHUSDT adesso a prezzo di mercato?');
+    await click(find('Chiudi'));
+    expect(API.post).toHaveBeenCalledTimes(1);
+    expect(API.post).toHaveBeenCalledWith('/api/v3/compare/brain_scalp/close', { position_id: 's1' });
+  } finally { await act(async () => { root.unmount(); }); el.remove(); API.post.mockReset(); }
 });

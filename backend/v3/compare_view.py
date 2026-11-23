@@ -188,7 +188,19 @@ def read_run(ref: RunRef, now_ms: int) -> dict:
                                  "entry": str(o.fill_price), "stop": str(o.stop_price), "margin": str(o.margin_used),
                                  "leverage": o.leverage, "opened_at_ms": o.opened_at_ms}
                                 for o in summary.open_positions],
-                guardian=guardian, decisions=decisions[-8:][::-1], ai_spend=_spend(ref.dir / "budget.db"))
+                guardian=guardian, decisions=decisions[-8:][::-1], ai_spend=_spend(ref.dir / "budget.db"),
+                manual_close_allowed=_close_ready(ref, now_ms),
+                close_pending=(ref.dir / "close_request.json").exists())
+
+
+def _close_ready(ref: RunRef, now_ms: int) -> bool:
+    """Chiusura manuale singola disponibile: portafoglio previsto e servizio uscite di QUESTA run sano (come per RC1)."""
+    try:
+        from backend.v3_api import _brain_single_close_ready, _compare_run_paths
+        p = _compare_run_paths(ref.name)
+        return p is not None and p.run_id == ref.run_id and _brain_single_close_ready(p, now_ms)
+    except Exception:
+        return False
 
 
 def compare(env: Mapping[str, str], now_ms: int) -> dict:

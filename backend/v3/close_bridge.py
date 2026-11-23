@@ -24,13 +24,15 @@ class CloseBridgeError(Exception):
 
 def send_single_close(wallet: str, value: str) -> dict[str, Any]:
     """A failed socket call is NEVER interpreted as a successfully queued close."""
-    if wallet not in ("falco", "toro", "brain") or type(value) is not str or len(value) > 64:
+    # falco/toro: simbolo; brain (RC1), falco_evoluto, brain_scalp: id della posizione nella LORO run
+    if (wallet not in ("falco", "toro", "brain", "falco_evoluto", "brain_scalp")
+            or type(value) is not str or len(value) > 64):
         raise CloseBridgeError(422, "Richiesta di chiusura non valida.")
     # A pinned socket location only, even if a malicious environment asks for
     # another path. Middleware and authenticated routes are mandatory too.
     if os.environ.get("V3_CLOSE_BRIDGE_SOCKET") != SOCKET_PATH:
         raise CloseBridgeError()
-    name = "position_id" if wallet == "brain" else "symbol"
+    name = "symbol" if wallet in ("falco", "toro") else "position_id"
     message = json.dumps({"wallet": wallet, name: value}, separators=(",", ":")).encode("ascii")
     if len(message) > MAX_REQUEST_BYTES:
         raise CloseBridgeError(422, "Richiesta troppo lunga.")

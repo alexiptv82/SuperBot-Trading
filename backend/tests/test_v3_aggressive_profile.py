@@ -58,7 +58,9 @@ def test_two_paper_configs_carry_exactly_the_requested_parameters():
         assert c.guardian == GuardianPolicy()
     assert (f.analyst, f.daily_cap_usd, f.cycle_minutes) == ("falco_evoluto", D("0.20"), 15)
     assert (s.analyst, s.daily_cap_usd, s.cycle_minutes) == ("deepseek", D("0.75"), 30)
-    assert (f.risk_policy.minimum_equity, s.risk_policy.minimum_equity) == (D("450"), D("1600"))
+    # rischio complessivo allineato (proposta 23/11): margine totale 50 % e protezione patrimoniale 80 % per entrambi
+    assert (f.risk_policy.minimum_equity, s.risk_policy.minimum_equity) == (D("800"), D("1600"))
+    assert f.risk_policy.max_total_margin_fraction == s.risk_policy.max_total_margin_fraction == D("0.50")
     assert _policy_hash(f.risk_policy) != _policy_hash(s.risk_policy) != "ba5c074ec2ecfe34"
 
 
@@ -277,10 +279,53 @@ def test_both_runs_are_prepared_paused_unapproved_and_wired_to_the_right_analyst
         mandate = json.loads((root / "mandate.json").read_text())
         assert mandate["approved"] is False and (root / "pause.flag").exists()
         assert mandate["policy_hash"] == _policy_hash(cfg(path).risk_policy)
-        w.build_runner(data_dir=root, run_id=name, config=cfg(path), get_json=lambda url: [],
-                       inner_transport=lambda payload: None, desk_mode="paper")
+        calls = []
+        b = w.build_runner(data_dir=root, run_id=name, config=cfg(path), get_json=lambda url: [],
+                           inner_transport=lambda payload: calls.append(payload), desk_mode="paper")
+        # un giro vero con mandato approved:false: fermo per il mandato, nessuna AI, nessuna spesa, nessuna apertura
+        t = b.runner.tick(NOW + 3_600_000)
+        assert t.state == "halted" and "mandate" in (t.last_error or "") and t.cycle is None
+        assert calls == [] and b.ledger.daily_spend("deepseek") == 0
+        assert not [r for r in b.journal.list_run("brain", name) if r.event.kind == "paper_open"]
     assert [b[0] for b in built] == ["falco", "deepseek"]
     falco_kw = built[0][1]
     assert falco_kw["max_leverage"] == 45 and falco_kw["ai_enabled"] is True
     four = [k["4h"][1] for k in keeps if "4h" in k]                       # la cache 1m non ha il 4h
     assert len(four) == 2 and four[0] >= fe.EMA200_MIN_BARS and four[1] < four[0]
+
+
+def test_how_many_full_risk_positions_fit_under_the_aligned_limits(tmp_path):
+    """Misura (23/11) per il proprietario: a rischio pieno entrano 2 posizioni, la terza e' rifiutata per margine;
+    4 posizioni non sono raggiungibili con 4 % per trade, 10 % aperto e 50 % di margine totale."""
+    from backend.v3.brain_f2.contracts import BrainDecision, DecisionKind, MarketContext, OpenProposal, ProposalStatus
+    from backend.v3.brain_f2.engine import BrainEngine, BrainPortfolioSnapshot
+    from backend.v3.brain_f2.reviewer import MockClaudeReviewer
+    mp = {"exchange_leverage_limit": 50, "quantity_step": D("0.0001"), "minimum_notional": D(5),
+          "maintenance_fraction": D("0.005"), "market_data_fresh": True, "paused": False, "daily_loss_latched": False}
+    for path, equity, risk in ((FALCO, D(1000), D(40)), (SCALP, D(2000), D(80))):
+        policy = cfg(path).risk_policy
+        for stop_pct in ("0.3", "0.5", "1.0"):
+            margin = open_risk = D(0)
+            opened, last = 0, None
+            for i in range(4):
+                side = 1 if i % 2 == 0 else -1
+                j = EventJournal(str(tmp_path / f"{path.stem}-{stop_pct}-{i}.db"))
+                j.init_schema()
+                eng = BrainEngine(ScriptAnalyst(), MockClaudeReviewer(), risk_policy=policy, market_params=mp,
+                                  portfolio_snapshot=BrainPortfolioSnapshot(equity, equity - margin, margin, open_risk,
+                                                                            open_positions=opened),
+                                  journal=j, run_id="cap")
+                prop = OpenProposal("BTCUSDT", side, D(100), D(100) * (1 - side * D(stop_pct) / 100), 45,
+                                    "sanitized", .8, "falco:rules", "ab")
+                out = eng._apply_risk_gate(BrainDecision(kind=DecisionKind.OPEN, proposal=prop, occurred_at_ms=NOW,
+                                                         status=ProposalStatus.DRAFT),
+                                           MarketContext("BTCUSDT", D(100), NOW, "TREND_UP"))
+                if out.status != ProposalStatus.APPROVED:
+                    last = eng._last_risk_reason
+                    break
+                assert out.risk_quote.worst_case_loss_estimate <= risk
+                margin += out.risk_quote.margin
+                open_risk += out.risk_quote.worst_case_loss_estimate
+                opened += 1
+            assert opened == 2 and last == "below_min_margin", (path.stem, stop_pct, opened, last)
+            assert margin <= equity * D("0.50")

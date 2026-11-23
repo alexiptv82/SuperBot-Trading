@@ -43,6 +43,36 @@ def _brain_from_env(env) -> tuple:
 
 
 BRAIN, RUN_ID = _brain_from_env(os.environ)
+# Portafogli PAPER aggiuntivi (23/11: Falco Evoluto, Brain Scalp), ognuno con la SUA run. Nomi fissi; cartelle e run_id
+# dall'unita' systemd: V3_BRIDGE_EXTRA_RUNS = {"falco_evoluto": {"dir": "brain-v3-...", "run_id": "..."}, ...}.
+EXTRA_WALLETS = ("falco_evoluto", "brain_scalp")
+
+
+def _extra_from_env(env) -> dict:
+    """{nome: (cartella, run_id)}; valore assente o non valido -> {} (portafogli aggiuntivi rifiutati, RC1 invariato)."""
+    raw = env.get("V3_BRIDGE_EXTRA_RUNS")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        if type(data) is not dict or not set(data) <= set(EXTRA_WALLETS):
+            return {}
+        out = {}
+        for name, spec in data.items():
+            if (type(spec) is not dict or set(spec) != {"dir", "run_id"} or type(spec["dir"]) is not str
+                    or type(spec["run_id"]) is not str or not _RUN_DIR_RE.fullmatch(spec["dir"])
+                    or not _RUN_ID_RE.fullmatch(spec["run_id"])):
+                return {}
+            out[name] = (RUN_ROOT / spec["dir"], spec["run_id"])
+        dirs = [d for d, _ in out.values()]
+        if len(set(dirs)) != len(dirs) or BRAIN in dirs:
+            return {}
+        return out
+    except (ValueError, TypeError):
+        return {}
+
+
+EXTRA = _extra_from_env(os.environ)
 SOCKET = Path(SOCKET_PATH)
 CLASSIC_SYMBOL = re.compile(r"^[A-Za-z0-9_-]{1,24}$")
 BRAIN_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
@@ -50,6 +80,37 @@ BRAIN_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 
 def _reject(status: int = 409, message: str = "Chiusura PAPER non disponibile.") -> tuple[int, dict]:
     return status, {"ok": False, "message": message}
+
+
+def _assert_paper_env() -> None:
+    env = os.environ
+    if (env.get("DESK_MODE") != "paper" or env.get("TRADING_MODE") != "paper"
+            or env.get("V3_CUTOVER_READONLY") != "1"
+            or env.get("V3_ALLOW_BRAIN_SINGLE_CLOSE") != "1"
+            or env.get("V3_CLOSE_BRIDGE_ONLY") != "1"
+            or env.get("V3_CLOSE_BRIDGE_SOCKET") != SOCKET_PATH):
+        raise RuntimeError("bridge_not_paper_only")
+
+
+def _assert_extra(name: str) -> tuple:
+    """Identita' della run aggiuntiva ``name``, ricontrollata a ogni richiesta: cartella reale, marcatore PAPER della
+    STESSA run, journal presente. Indipendente da Falco/Toro/RC1."""
+    _assert_paper_env()
+    if name not in EXTRA:
+        raise RuntimeError("extra_run_not_configured")
+    root, run_id = EXTRA[name]
+    marker = root / "PREPARED_PAUSED_ONLY.json"
+    if root.is_symlink() or not root.is_dir() or marker.is_symlink():
+        raise RuntimeError("wallet_path_changed")
+    try:
+        record = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError):
+        raise RuntimeError("paper_marker_missing") from None
+    if type(record) is not dict or record.get("paper_only") is not True or record.get("run_id") != run_id:
+        raise RuntimeError("extra_run_id_mismatch")
+    if not (root / "journal.db").is_file():
+        raise RuntimeError("extra_journal_missing")
+    return root, run_id
 
 
 def _assert_paper() -> None:
@@ -80,19 +141,23 @@ def _assert_paper() -> None:
         raise RuntimeError("brain_run_id_mismatch")
 
 
-def _brain_paths() -> V3Paths:
+def _run_paths(root: Path, run_id: str) -> V3Paths:
     return V3Paths(
-        journal_path=str(BRAIN / "journal.db"),
-        run_id=RUN_ID,
-        budget_db_path=str(BRAIN / "budget.db"),
-        heartbeat_path=str(BRAIN / "heartbeat.json"),
-        pause_flag_path=str(BRAIN / "pause.flag"),
+        journal_path=str(root / "journal.db"),
+        run_id=run_id,
+        budget_db_path=str(root / "budget.db"),
+        heartbeat_path=str(root / "heartbeat.json"),
+        pause_flag_path=str(root / "pause.flag"),
         falco_data_dir=str(FALCO),
         toro_data_dir=str(TORO),
-        close_request_path=str(BRAIN / "close_request.json"),
-        close_result_path=str(BRAIN / "close_result.json"),
-        brain_config_path=str(BRAIN / "runner_config.json"),
+        close_request_path=str(root / "close_request.json"),
+        close_result_path=str(root / "close_result.json"),
+        brain_config_path=str(root / "runner_config.json"),
     )
+
+
+def _brain_paths() -> V3Paths:
+    return _run_paths(BRAIN, RUN_ID)
 
 
 def process_single_close(body: object, now_ms: int | None = None) -> tuple[int, dict]:
@@ -104,12 +169,18 @@ def process_single_close(body: object, now_ms: int | None = None) -> tuple[int, 
         symbol = body.get("symbol")
         if type(symbol) is not str or not CLASSIC_SYMBOL.fullmatch(symbol):
             return _reject(422, "Simbolo non valido.")
-    elif wallet == "brain" and set(body) == {"wallet", "position_id"}:
+    elif wallet in ("brain",) + EXTRA_WALLETS and set(body) == {"wallet", "position_id"}:
         position_id = body.get("position_id")
         if type(position_id) is not str or not BRAIN_ID.fullmatch(position_id):
             return _reject(422, "Posizione Brain non valida.")
     else:
         return _reject(423, "Sono permesse solo chiusure singole PAPER.")
+    if wallet in EXTRA_WALLETS:
+        try:
+            root, run_id = _assert_extra(wallet)
+        except (RuntimeError, OSError, ValueError, TypeError):
+            return _reject()
+        return _queue_run_close(_run_paths(root, run_id), position_id, now_ms)
     try:
         _assert_paper()
         if wallet in ("falco", "toro"):
@@ -122,17 +193,23 @@ def process_single_close(body: object, now_ms: int | None = None) -> tuple[int, 
             # Reject missing, duplicated or not-ready requests: NEVER turn into
             # a queued success response just because the socket is reachable.
             return status if status in (400, 404, 409) else 409, payload
-        try:
-            result = _close_request(_brain_paths(), {"position_id": position_id},
-                                    now_ms or int(time.time() * 1000))
-            return (200, result) if result.get("ok") is True else _reject()
-        except HTTPException as exc:
-            detail = exc.detail
-            if type(detail) is dict:
-                detail = detail.get("message", "")
-            return _reject(
-                exc.status_code if exc.status_code in (404, 409, 422, 423) else 409,
-                str(detail)[:160] or "Posizione Brain non disponibile.")
+        return _queue_run_close(_brain_paths(), position_id, now_ms)
+    except (RuntimeError, OSError, ValueError, TypeError):
+        return _reject()
+
+
+def _queue_run_close(paths: V3Paths, position_id: str, now_ms: int | None) -> tuple[int, dict]:
+    """Una sola posizione della run indicata: il servizio uscite di QUELLA run la chiude e la registra nel journal."""
+    try:
+        result = _close_request(paths, {"position_id": position_id}, now_ms or int(time.time() * 1000))
+        return (200, result) if result.get("ok") is True else _reject()
+    except HTTPException as exc:
+        detail = exc.detail
+        if type(detail) is dict:
+            detail = detail.get("message", "")
+        return _reject(
+            exc.status_code if exc.status_code in (404, 409, 422, 423) else 409,
+            str(detail)[:160] or "Posizione non disponibile.")
     except (RuntimeError, OSError, ValueError, TypeError):
         return _reject()
 

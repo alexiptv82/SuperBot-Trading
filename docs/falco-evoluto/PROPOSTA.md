@@ -17,8 +17,8 @@ slippage), stesso servizio uscite, stessi 8 simboli di Brain. Cambia solo l'anal
 | Budget AI | 0,20 USD/giorno | 0,75 USD/giorno |
 | Leva | 15–45x (mai sotto 15x) | 15–45x |
 | Margine per trade | 100–250 USDT | 250–450 USDT |
-| Margine totale | 95 % (valore storico di Falco) | 50 % (profilo B) |
-| Equity minima | 450 (valore storico di Falco) | 1.600 (profilo B) |
+| Margine totale | 50 % (allineato, proposta 23/11) | 50 % (profilo B) |
+| Equity minima | 800 (80 %, allineata, proposta 23/11) | 1.600 (80 %, profilo B) |
 
 Comuni: rischio a stop per trade 4 % dell'equity, 20 % del margine effettivo, rischio aperto 10 %, rischio nella
 stessa direzione 8 % (le 8 crypto sono correlate a BTC), 4 posizioni al massimo (mai obbligatorie), stop giornaliero
@@ -29,7 +29,14 @@ cercata dalla massima verso 15x, mai sotto; lo stop non viene mai stretto; se nu
 **Conseguenza matematica da conoscere:** perdita a stop <= 20 % del margine significa leva x (stop + costi) <= 0,20.
 A 15x lo stop massimo e' circa 1,17 % (con costi 0,16 %), a 45x circa 0,28 %. Sui simboli con ATR 1h alto lo stop di
 Falco (1,2 x ATR) supera spesso questo limite: quei segnali diventano NO_TRADE. Con 4 % per trade e 10 % aperto, a
-rischio pieno stanno 2 posizioni; la terza e la quarta solo con rischio piu' piccolo.
+rischio pieno stanno 2 posizioni.
+
+**Capacita' misurata (motore e RiskManager veri, `test_how_many_full_risk_positions_fit_under_the_aligned_limits`):**
+con stop 0,3-1,0 % entrano 2 posizioni a rischio pieno (Falco: 40 USDT di rischio, circa 202-208 di margine; Brain:
+80 USDT, circa 404-417). La terza e' rifiutata `below_min_margin`: il rischio residuo (10 % - 2 x 4 % = 2 %) chiede
+circa 101 di margine (Falco) ma ne restano 96 sotto il 50 %. Con il vecchio 95 % di Falco entrava una terza
+posizione a meta' rischio. **4 posizioni non sono raggiungibili** con 4 % per trade e 10 % aperto (2,5 trade pieni):
+servirebbero, ad esempio, rischio per trade 2,5 % oppure rischio aperto 16 %. Nessun valore cambiato senza approvazione.
 
 ## 2. Smart Profit Guardian (`backend/v3/guardian.py`)
 
@@ -84,8 +91,11 @@ residuo, tetto), posizioni, chiusure manuali, stop protettivi, spesa AI, ultime 
 
 1. E0 sugli storici: nessuno storico attestato raggiunge il campione minimo (30 trade e 10 sessioni per gruppo);
    l'anti-reingresso resta in osservazione (vincolante solo in PROTECTED). La misura vera arrivera' dal PAPER.
-2. Chiusura manuale singola delle due nuove run: il bridge di chiusura serve oggi una sola run Brain; va esteso.
+2. Chiusura manuale singola: FATTA (bridge con `V3_BRIDGE_EXTRA_RUNS`, rotte `/api/v3/compare/{nome}/close` e
+   `close-result`, pulsante nella pagina di confronto, test end-to-end offline per entrambi i portafogli).
 3. Chiusure parziali: richiedono un evento di chiusura parziale nel journal (fase successiva).
 4. Costo DeepSeek di Brain Scalp a 30 min: stima circa 0,77 USD/giorno (una sola misura reale, 3.040 token): al limite
    del tetto 0,75; a tetto raggiunto le nuove aperture si fermano fino al giorno UTC successivo (uscite attive).
-5. Le run, le unita' systemd e la configurazione della web per il confronto non sono ancora create sulla VPS.
+5. Rilascio (non eseguito): creare le due run in pausa con `prepare_paper_run`; 2 unita' per run (uscite + runner);
+   unita' del bridge con le due run montate in scrittura e `V3_BRIDGE_EXTRA_RUNS`; container web con le due run in
+   sola lettura e `V3_COMPARE_RUNS` (nomi `falco_evoluto` e `brain_scalp`); nuova build dell'interfaccia.

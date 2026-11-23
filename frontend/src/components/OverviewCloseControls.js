@@ -58,7 +58,8 @@ export function PortfolioTradeFields({ p, brain = false }) {
   </div>;
 }
 
-export function BrainCloseControls({ positions = [], serverPending = false, readOnly = false, allowCloseAll = true, onRefresh = () => {}, renderPosition = null, itemStyle = null, closeLabel = null }) {
+export function BrainCloseControls({ positions = [], serverPending = false, readOnly = false, allowCloseAll = true, onRefresh = () => {}, renderPosition = null, itemStyle = null, closeLabel = null,
+  closeUrl = '/api/v3/brain/close', resultUrl = '/api/v3/brain/close-result' }) {
   const [confirm, setConfirm] = useState(null);
   const [pending, setPending] = useState(null);
   const [sending, setSending] = useState(false);
@@ -81,7 +82,7 @@ export function BrainCloseControls({ positions = [], serverPending = false, read
     const payload = confirm.all ? { all: true } : { position_id: confirm.position_id };
     namesRef.current = Object.fromEntries(positionsRef.current.map(p => [p.position_id, p.symbol]));
     try {
-      const { data } = await API.post('/api/v3/brain/close', payload);
+      const { data } = await API.post(closeUrl, payload);
       setPending({ ts_ms: data.ts_ms, at_ms: Date.now() });
       setConfirm(null);
     } catch (err) {
@@ -107,7 +108,7 @@ export function BrainCloseControls({ positions = [], serverPending = false, read
       if (polling) return;
       polling = true;
       try {
-        const { data } = await API.get('/api/v3/brain/close-result');
+        const { data } = await API.get(resultUrl);
         const result = data?.result;
         if (alive && !data?.pending && result?.request_ts_ms === pending.ts_ms) {
           setNotes(closeResultMessages(result, id => namesRef.current[id] || 'Posizione'));
@@ -123,7 +124,7 @@ export function BrainCloseControls({ positions = [], serverPending = false, read
     };
     const timer = setInterval(tick, 3000);
     return () => { alive = false; clearInterval(timer); };
-  }, [pending]);
+  }, [pending, resultUrl]);
 
   const ask = target => {
     if (!readOnly && (!target.all || allowCloseAll) && !active.current && !sending && !serverPending) { setNotes([]); setProblem(''); setConfirm(target); }
