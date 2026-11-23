@@ -17,7 +17,7 @@ from backend.v3.events import EventJournal
 from backend.v3.executor.paper import ExecutionError
 from backend.v3.executor.paper_close import close_paper
 from backend.v3.features.indicators import Bar
-from backend.v3.runner.exits import ExitPolicy, evaluate_exit
+from backend.v3.runner.exits import ExitPolicy, evaluate_exit, favorable_extreme
 from backend.v3.runner.feed import contiguous_runs
 
 MINUTE_MS = 60_000
@@ -29,6 +29,7 @@ class MonitorReport:
     checked: int
     closed: tuple[tuple[str, str], ...]                  # (position_id, motivo)
     errors: tuple[tuple[str, str], ...]                  # (position_id, codice)
+    protected: tuple[tuple[str, str], ...] = ()          # (position_id, break_even|trailing|protect): stop spostato
 
 
 def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, fetch_bars: FetchBars,
@@ -39,6 +40,11 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
     summary = build_summary(journal, portfolio_id, run_id)
     closed: list[tuple[str, str]] = []
     errors: list[tuple[str, str]] = []
+    protected: list[tuple[str, str]] = []
+    try:                 # serve solo al break-even; un valore non valido diventa un errore per posizione, mai un crash
+        fee = Decimal(str(fee_bps)) if type(fee_bps) in (int, Decimal) else None
+    except ArithmeticError:
+        fee = None
     for pos in summary.open_positions:
         try:
             start = pos.opened_at_ms // MINUTE_MS * MINUTE_MS
@@ -46,12 +52,14 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
                 continue                                  # aperta nello stesso minuto: nessuna barra chiusa ancora
             bars = list(fetch_bars(pos.symbol, start, end))
             signal = None
+            best = None          # miglior prezzo dei tratti precedenti: la protezione non si azzera dopo un buco
             for run in contiguous_runs(bars, MINUTE_MS):
                 signal = evaluate_exit(side=pos.side, fill_price=pos.fill_price, stop_price=pos.stop_price,
                                        opened_at_ms=pos.opened_at_ms, bars=run, candle_ms=MINUTE_MS,
-                                       policy=policy)
+                                       policy=policy, fee_bps=fee, best_before=best)
                 if signal is not None:
                     break
+                best = favorable_extreme(pos.side, best, run, pos.opened_at_ms)
             if signal is None:
                 # Only closed candles whose opens are >= position entry can
                 # be evaluated. The opening partial minute is deliberately
@@ -75,10 +83,12 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
                         exit_price=signal.price, reason=signal.reason, fee_bps=fee_bps,
                         journal=journal, now_ms=now_ms)
             closed.append((pos.position_id, signal.reason))
+            if signal.reason == "stop" and signal.stop_kind != "initial":
+                protected.append((pos.position_id, signal.stop_kind))
         except ExecutionError as exc:
             errors.append((pos.position_id, str(exc)))
         except ValueError as exc:
             errors.append((pos.position_id, str(exc) or "invalid"))
         except Exception:
             errors.append((pos.position_id, "feed_error"))
-    return MonitorReport(len(summary.open_positions), tuple(closed), tuple(errors))
+    return MonitorReport(len(summary.open_positions), tuple(closed), tuple(errors), tuple(protected))

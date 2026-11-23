@@ -25,6 +25,14 @@ Regole (candele in ordine, solo quelle che APRONO a o dopo l'istante di apertura
   precedessero l'apertura): lo stop e' controllato dalla candela successiva.
 * Nessuna uscita: ``None``.
 
+Protezione dei profitti (solo con politica schema 2; lo schema 1 di oggi e' invariato)
+-----------------------------------------------------------------------------------
+Break-even (stop all'ingresso + commissioni di andata e ritorno + slippage dello stop), trailing a distanza in R
+dal miglior prezzo, protezione di una quota dell'escursione favorevole: stesse regole dei bracci pre-registrati del
+laboratorio ``ops/brain-unico/exits/arms.py`` (un test le confronta). Lo stop valido per una candela dipende solo
+dalle candele gia' CHIUSE e si muove solo verso il profitto. L'uscita resta ``stop``; ``ExitSignal.stop_kind`` dice
+se lo stop era quello iniziale o uno spostato. Nessuna chiusura legata all'ora del giorno.
+
 Codici ``ValueError`` (messaggio = codice): ``invalid_policy``, ``invalid_side``,
 ``invalid_position``, ``invalid_opened_at``, ``invalid_bars``, ``invalid_candle_ms``.
 """
@@ -41,6 +49,7 @@ from backend.v3.features.indicators import Bar, check_bars
 EXIT_STOP = "stop"
 EXIT_TAKE_PROFIT = "take_profit"
 EXIT_TIMEOUT = "timeout"
+STOP_INITIAL, STOP_BREAK_EVEN, STOP_TRAILING, STOP_PROTECT = "initial", "break_even", "trailing", "protect"
 
 _CTX = Context(prec=60, rounding=ROUND_HALF_EVEN)
 _Q8 = Decimal("0.00000001")
@@ -53,6 +62,18 @@ class ExitPolicy:
     take_profit_r: Decimal      # multiplo della distanza dallo stop; > 0, al massimo 20
     max_hold_ms: int            # durata massima della posizione; > 0
     stop_slippage_bp: Decimal   # slippage sfavorevole sull'uscita a stop; da 0 a 100
+    # Protezione dei profitti (schema 2, SPENTA se None). Stesse regole e stessi nomi dei bracci del laboratorio
+    # pre-registrato ``ops/brain-unico/exits/arms.py``: lo stop valido per una candela dipende SOLO dal miglior
+    # prezzo delle candele gia' chiuse; si muove solo verso il profitto, mai indietro.
+    be_at_r: Optional[Decimal] = None        # break-even: a +be_at_r R lo stop va all'ingresso + costi
+    trail_at_r: Optional[Decimal] = None     # trailing: attivazione a +trail_at_r R ...
+    trail_dist_r: Optional[Decimal] = None   # ... a trail_dist_r R dal miglior prezzo
+    protect_at_r: Optional[Decimal] = None   # protezione: a +protect_at_r R blocca ...
+    protect_frac: Optional[Decimal] = None   # ... questa quota dell'escursione favorevole (0-1)
+
+    @property
+    def protects(self) -> bool:
+        return any(v is not None for v in (self.be_at_r, self.trail_at_r, self.protect_at_r))
 
 
 @dataclass(frozen=True)
@@ -60,6 +81,13 @@ class ExitSignal:
     reason: str                 # stop | take_profit | timeout
     price: Decimal              # prezzo di uscita, 8 decimali
     bar_open_time_ms: int       # candela che ha causato l'uscita
+    stop_kind: str = STOP_INITIAL   # solo per reason=stop: initial | break_even | trailing | protect
+
+
+def _r_value(v, *, upper=Decimal(20), frac=False) -> bool:
+    if type(v) is not Decimal or not v.is_finite():
+        return False
+    return 0 < v < 1 if frac else 0 < v <= upper
 
 
 def _check_policy(policy: object) -> None:
@@ -70,6 +98,43 @@ def _check_policy(policy: object) -> None:
             or type(policy.stop_slippage_bp) is not Decimal
             or not policy.stop_slippage_bp.is_finite() or not 0 <= policy.stop_slippage_bp <= 100):
         raise ValueError("invalid_policy") from None
+    if ((policy.be_at_r is not None and not _r_value(policy.be_at_r))
+            or (policy.trail_at_r is None) != (policy.trail_dist_r is None)
+            or (policy.trail_at_r is not None
+                and not (_r_value(policy.trail_at_r) and _r_value(policy.trail_dist_r)))
+            or (policy.protect_at_r is None) != (policy.protect_frac is None)
+            or (policy.protect_at_r is not None
+                and not (_r_value(policy.protect_at_r) and _r_value(policy.protect_frac, frac=True)))):
+        raise ValueError("invalid_policy") from None
+
+
+def protected_stop(side: int, fill_price: Decimal, stop_price: Decimal, best: Decimal,
+                   policy: ExitPolicy, fee_bps: Optional[Decimal]) -> tuple[Decimal, str]:
+    """Stop valido dopo che il miglior prezzo favorevole (candele CHIUSE) e' ``best``, e chi lo determina.
+
+    Funzione del solo ``best`` (monotono): per questo il monitor puo' riprendere il calcolo dopo un buco del feed
+    passando il miglior prezzo dei tratti precedenti, con lo stesso risultato di un'unica serie di candele."""
+    stop, kind = stop_price, STOP_INITIAL
+    if not policy.protects:
+        return stop, kind
+    with localcontext(_CTX):
+        risk = abs(fill_price - stop_price)
+        mfe = side * (best - fill_price)
+        levels = []
+        if policy.be_at_r is not None and mfe >= policy.be_at_r * risk:
+            if type(fee_bps) is not Decimal or not fee_bps.is_finite() or not 0 <= fee_bps <= 100:
+                raise ValueError("invalid_fee") from None
+            # ingresso + commissioni di andata e ritorno + slippage dello stop: l'uscita al break-even non perde
+            levels.append((fill_price + side * fill_price * (2 * fee_bps + policy.stop_slippage_bp) / _BP,
+                           STOP_BREAK_EVEN))
+        if policy.trail_at_r is not None and mfe >= policy.trail_at_r * risk:
+            levels.append((best - side * policy.trail_dist_r * risk, STOP_TRAILING))
+        if policy.protect_at_r is not None and mfe >= policy.protect_at_r * risk:
+            levels.append((fill_price + side * policy.protect_frac * mfe, STOP_PROTECT))
+        for level, why in levels:
+            if side * (level - stop) > 0:
+                stop, kind = level, why
+        return stop.quantize(_Q8, rounding=ROUND_HALF_EVEN), kind
 
 
 def take_profit_price(side: int, fill_price: Decimal, stop_price: Decimal,
@@ -92,11 +157,34 @@ def _check_position(side: object, fill: object, stop: object) -> None:
         raise ValueError("invalid_position") from None        # lo stop deve stare dal lato della perdita
 
 
+def favorable_extreme(side: int, best: Optional[Decimal], bars, opened_at_ms: int) -> Optional[Decimal]:
+    """Miglior prezzo favorevole (massimo per il long, minimo per lo short) fra ``best`` e le candele dall'apertura."""
+    for bar in bars:
+        if bar.open_time_ms < opened_at_ms:
+            continue
+        px = bar.high if side == 1 else bar.low
+        if best is None or side * (px - best) > 0:
+            best = px
+    return best
+
+
 def evaluate_exit(*, side: int, fill_price: Decimal, stop_price: Decimal, opened_at_ms: int,
-                  bars, candle_ms: int, policy: ExitPolicy) -> Optional[ExitSignal]:
-    """Prima uscita della posizione sulle candele chiuse ``bars`` (contigue, in ordine), o ``None``."""
+                  bars, candle_ms: int, policy: ExitPolicy, fee_bps: Optional[Decimal] = None,
+                  best_before: Optional[Decimal] = None) -> Optional[ExitSignal]:
+    """Prima uscita della posizione sulle candele chiuse ``bars`` (contigue, in ordine), o ``None``.
+
+    Con protezione attiva (``policy.protects``): ``fee_bps`` = commissioni per lato (servono al break-even) e
+    ``best_before`` = miglior prezzo favorevole delle candele chiuse PRIMA di ``bars`` (tratti precedenti a un
+    buco del feed). Senza protezione i due argomenti non contano e il risultato e' quello di sempre."""
     _check_policy(policy)
     _check_position(side, fill_price, stop_price)
+    if best_before is not None and (type(best_before) is not Decimal or not best_before.is_finite()
+                                    or best_before <= 0):
+        raise ValueError("invalid_position") from None
+    if best_before is None or side * (best_before - fill_price) < 0:
+        best_before = fill_price
+    best = best_before
+    stop_price_now, kind = protected_stop(side, fill_price, stop_price, best, policy, fee_bps)
     if type(opened_at_ms) is not int or opened_at_ms <= 0:
         raise ValueError("invalid_opened_at") from None
     try:
@@ -110,23 +198,29 @@ def evaluate_exit(*, side: int, fill_price: Decimal, stop_price: Decimal, opened
             if bar.open_time_ms < opened_at_ms:
                 continue
             if side == 1:
-                stop_hit, target_hit = bar.low <= stop_price, bar.high >= target
+                stop_hit, target_hit = bar.low <= stop_price_now, bar.high >= target
             else:
-                stop_hit, target_hit = bar.high >= stop_price, bar.low <= target
+                stop_hit, target_hit = bar.high >= stop_price_now, bar.low <= target
             if stop_hit:
-                base = min(stop_price, bar.open) if side == 1 else max(stop_price, bar.open)
+                base = min(stop_price_now, bar.open) if side == 1 else max(stop_price_now, bar.open)
                 price = base - side * base * policy.stop_slippage_bp / _BP
                 return ExitSignal(EXIT_STOP, price.quantize(_Q8, rounding=ROUND_HALF_EVEN),
-                                  bar.open_time_ms)
+                                  bar.open_time_ms, kind)
             if target_hit:
                 return ExitSignal(EXIT_TAKE_PROFIT, target, bar.open_time_ms)
             if bar.open_time_ms + candle_ms - opened_at_ms >= policy.max_hold_ms:
                 return ExitSignal(EXIT_TIMEOUT, bar.close, bar.open_time_ms)
+            if policy.protects:          # aggiornamento a candela CHIUSA: vale dalla candela successiva
+                px = bar.high if side == 1 else bar.low
+                if side * (px - best) > 0:
+                    best = px
+                    stop_price_now, kind = protected_stop(side, fill_price, stop_price, best, policy, fee_bps)
     return None
 
 
 # ----------------------------------------------------------------------------- politica da file
 _POLICY_KEYS = {"schema_version", "take_profit_r", "max_hold_hours", "stop_slippage_bp"}
+_PROTECT_KEYS = {"be_at_r", "trail_at_r", "trail_dist_r", "protect_at_r", "protect_frac"}   # schema 2
 
 
 def _pairs(pairs):
@@ -160,13 +254,17 @@ def load_exit_policy(raw: bytes) -> ExitPolicy:
         raise ValueError("invalid_policy") from None
     try:
         data = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs, parse_constant=_reject_constant)
-        if type(data) is not dict or set(data) != _POLICY_KEYS:
+        version = data.get("schema_version") if type(data) is dict else None
+        if type(version) is not int or version not in (1, 2):
             raise ValueError("invalid_policy")
-        version, hours = data["schema_version"], data["max_hold_hours"]
-        if type(version) is not int or version != 1 or type(hours) is not int or not 1 <= hours <= 720:
+        if set(data) != (_POLICY_KEYS if version == 1 else _POLICY_KEYS | _PROTECT_KEYS):
             raise ValueError("invalid_policy")
+        hours = data["max_hold_hours"]
+        if type(hours) is not int or not 1 <= hours <= 720:
+            raise ValueError("invalid_policy")
+        extra = {k: (None if data[k] is None else _number(data[k])) for k in _PROTECT_KEYS} if version == 2 else {}
         policy = ExitPolicy(_number(data["take_profit_r"]), hours * _HOUR_MS,
-                            _number(data["stop_slippage_bp"]))
+                            _number(data["stop_slippage_bp"]), **extra)
         _check_policy(policy)
         return policy
     except Exception:
