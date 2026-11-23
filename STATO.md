@@ -1,3 +1,11 @@
+## 23/11/2026 (10) — Rilascio Falco Evoluto + Brain Scalp autorizzato: in attesa dell'unico intervento root (Claude)
+
+- Autorizzazione del proprietario: installazione e configurazione PAPER delle due run (in pausa, approved:false), bridge e dashboard. NON autorizzata l'attivazione.
+- Privilegi: nessun metodo amministrativo autorizzato per `superbot-agent` (sudo con password, niente gruppo docker, /root non accessibile). Nessun tentativo di aggiramento. **Rilascio NON eseguito.**
+- Verificato sulla VPS: commit `393b38f6` presente (uguale al remoto, worktree pulito), 16/16 file del pacchetto con le impronte del comando, build `ui-393b38f6` integra (manifesto `6dad2153…`). Unita' RC1 exit/runner `active`; unita' nuove assenti/inattive; nessun registro di rilascio.
+- Brain RC1: pausa riferita dal proprietario da controllo root; non verificabile da Claude. Il pacchetto la ricontrolla come primo passo.
+- Prossimo passo: il proprietario esegue l'unico comando root gia' consegnato (voce 9, invariato); Claude legge `precollaudo-esiti/rilascio-falco-scalp.log` e registra l'esito.
+
 ## 23/11/2026 (9) — Dashboard rifinita e pacchetto unico di rilascio pronto, NON eseguito (Claude)
 
 - Decisione del proprietario: margine totale 50 %, rischio aperto 10 %, rischio per trade 4 % per entrambi; 4 posizioni = limite massimo, non obbligo; leve 15-45x e margini per trade invariati.
