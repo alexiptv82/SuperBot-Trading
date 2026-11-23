@@ -55,7 +55,8 @@ case "$MODE" in
     (cd "$CAND" && sha256sum --strict --quiet -c SHA256SUMS) || fail CANDIDATE_FILES_MISMATCH
     N_LISTED=$(wc -l < "$CAND/SHA256SUMS"); N_FILES=$(cd "$CAND" && find . -type f ! -name SHA256SUMS | wc -l)
     [[ "$N_LISTED" == "$N_FILES" ]] || fail CANDIDATE_HAS_UNLISTED_FILES
-    [[ ! -e "$PREV" && ! -L "$PREV" ]] || fail PREVIOUS_BACKUP_ALREADY_EXISTS
+    [[ ! -L "$PREV" ]] || fail PREVIOUS_BACKUP_IS_SYMLINK
+    [[ ! -e "$PREV" || ( -d "$PREV" && -s "$PREV/index.html" ) ]] || fail PREVIOUS_BACKUP_NOT_VALID
     JS="$CAND/static/js"; [[ -d "$JS" ]] || fail CANDIDATE_JS_MISSING
     has(){ grep -RlqF --include='*.js' -- "$1" "$JS"; }
     if has 'http://51.91.109.45:8002'; then fail HTTP_FALLBACK_PRESENT; fi
@@ -84,12 +85,23 @@ case "$MODE" in
     cmp -s "$LIVE/manifest.json" "$STAGED/manifest.json" || fail PWA_MANIFEST_CHANGED
     cmp -s "$LIVE/service-worker.js" "$STAGED/service-worker.js" || fail SERVICE_WORKER_CHANGED
     say PWA_IDENTITY_FILES=PRESERVED
-    mv -T "$LIVE" "$PREV" || fail LIVE_MOVE_FAILED
-    if ! mv -T "$STAGED" "$LIVE"; then mv -T "$PREV" "$LIVE" || true; fail NEW_BUILD_MOVE_FAILED; fi
+    # Aggiornamento successivo: il backup "previous" del rilascio precedente viene ARCHIVATO (mai cancellato) e il
+    # nuovo "previous" diventa la versione ora online, cosi' il rollback riporta a quella.
+    ARCH=''
+    if [[ -e "$PREV" ]]; then
+      ARCH="$WEB/.brain-unico-webui-archived-$STAMP"
+      [[ ! -e "$ARCH" ]] || fail ALREADY_EXISTS
+      mv -T "$PREV" "$ARCH" || fail ARCHIVE_PREVIOUS_FAILED
+      say "PREVIOUS_ARCHIVED=$ARCH"
+    fi
+    unarchive(){ [[ -z "$ARCH" ]] || mv -T "$ARCH" "$PREV" || true; }
+    mv -T "$LIVE" "$PREV" || { unarchive; fail LIVE_MOVE_FAILED; }
+    if ! mv -T "$STAGED" "$LIVE"; then mv -T "$PREV" "$LIVE" || true; unarchive; fail NEW_BUILD_MOVE_FAILED; fi
     if ! ( web_ok && api_ok && units_ok ); then
       REJECT="$WEB/.brain-unico-webui-auto-rejected-$STAMP"
       mv -T "$LIVE" "$REJECT" || true
       mv -T "$PREV" "$LIVE" || fail AUTO_ROLLBACK_FAILED
+      unarchive
       say AUTO_ROLLBACK=TRUE
       say "REJECTED_BUILD_PRESERVED=$REJECT"
       exit 2

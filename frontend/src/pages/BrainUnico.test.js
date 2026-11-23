@@ -78,6 +78,7 @@ test('commands are disabled and explain why; close-all never exists, single clos
 
 test('the PAPER label is always visible, also before the start', () => {
   expect(html()).toContain('PAPER MODE');
+  expect(html()).toContain('BRAIN UNICO');          // marcatore richiesto da 70-interfaccia.sh nel bundle
   const h = html({ overview: { generated_at_ms: now, portfolios: [{ id: 'brain', state: 'not_started' }] },
     status: null, trades: null, memory: null });
   expect(h).toContain('PAPER MODE');

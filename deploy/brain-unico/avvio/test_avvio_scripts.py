@@ -2,6 +2,7 @@
 import hashlib
 import os
 import subprocess
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -67,6 +68,59 @@ def test_ui_release_refuses_if_one_unit_is_inactive(tmp_path):
         p = run_ui(env, cand, msha)
         assert p.returncode == 2 and "REFUSED=BRAIN_UNICO_UNITS_NOT_ACTIVE" in p.stdout, p.stdout
         assert (web / "build/index.html").read_text() == "old"     # nulla pubblicato
+
+
+def second_candidate(tmp, cand, text):
+    """Seconda build (stessi marcatori) nella cartella sorella; ritorna (cartella, sha del manifesto)."""
+    c2 = tmp / "cand2"
+    put(c2 / "index.html", text)
+    put(c2 / "static/js/main.js", (cand / "static/js/main.js").read_text())
+    files = sorted(p for p in c2.rglob("*") if p.is_file())
+    put(c2 / "SHA256SUMS", "".join("%s  ./%s\n" % (hashlib.sha256(p.read_bytes()).hexdigest(), p.relative_to(c2))
+                                   for p in files))
+    return c2, hashlib.sha256((c2 / "SHA256SUMS").read_bytes()).hexdigest()
+
+
+def test_second_ui_update_archives_the_previous_backup_and_rolls_back_to_the_online_version(tmp_path):
+    env, cand, msha, web = ui_env(tmp_path, [EXIT, RUNNER])
+    assert run_ui(env, cand, msha).returncode == 0                       # 1o rilascio: old -> new
+    prev = web / ".brain-unico-webui-previous"
+    assert (prev / "index.html").read_text() == "old"
+    time.sleep(1.1)                                                      # i backup portano il timestamp al secondo
+    c2, m2 = second_candidate(tmp_path, cand, "new2")
+    p = run_ui(env, c2, m2)                                              # 2o rilascio: new -> new2
+    assert p.returncode == 0 and "RESULT=SUCCESS_UI_BRAIN_UNICO" in p.stdout, p.stdout
+    assert "PREVIOUS_ARCHIVED=" in p.stdout
+    assert (web / "build/index.html").read_text() == "new2"
+    assert (prev / "index.html").read_text() == "new"                    # il rollback torna alla versione online prima
+    archived = [d for d in web.iterdir() if d.name.startswith(".brain-unico-webui-archived-")]
+    assert len(archived) == 1 and (archived[0] / "index.html").read_text() == "old"   # nulla e' stato cancellato
+    assert (web / "build/manifest.json").read_text() == '{"m":1}'        # identita' PWA conservata
+    r = subprocess.run(["bash", str(HERE / "70-interfaccia.sh"), "--rollback"], capture_output=True, text=True, env=env, timeout=60)
+    assert r.returncode == 0 and "RESULT=RESTORED_PREVIOUS_UI" in r.stdout, r.stdout + r.stderr
+    assert (web / "build/index.html").read_text() == "new"
+
+
+def test_update_refuses_an_invalid_or_symlinked_previous_backup(tmp_path):
+    env, cand, msha, web = ui_env(tmp_path, [EXIT, RUNNER])
+    (web / ".brain-unico-webui-previous").mkdir()                        # vuoto: senza index.html
+    p = run_ui(env, cand, msha)
+    assert p.returncode == 2 and "REFUSED=PREVIOUS_BACKUP_NOT_VALID" in p.stdout, p.stdout
+    assert (web / "build/index.html").read_text() == "old"
+
+
+def test_failed_health_check_after_a_second_update_restores_both_directories(tmp_path):
+    env, cand, msha, web = ui_env(tmp_path, [EXIT, RUNNER])
+    assert run_ui(env, cand, msha).returncode == 0
+    time.sleep(1.1)                                                      # i backup portano il timestamp al secondo
+    c2, m2 = second_candidate(tmp_path, cand, "new2")
+    # il finto curl serve sempre build/index.html: se il nuovo index non coincide con quello servito il controllo fallisce
+    put(tmp_path / "bin" / "curl", "#!/bin/sh\nout=''\nwhile [ $# -gt 0 ]; do case \"$1\" in -o) out=\"$2\"; shift 2;; "
+        "-w|--resolve|--max-time) shift 2;; -sS) shift;; *) shift;; esac; done\necho stale > \"$out\"; printf 200\n", 0o755)
+    p = run_ui(env, c2, m2)
+    assert p.returncode == 2, p.stdout
+    assert (web / "build/index.html").read_text() == "new"               # versione precedente di nuovo online
+    assert (web / ".brain-unico-webui-previous/index.html").read_text() == "old"   # backup precedente rimesso a posto
 
 
 def wrapper(tmp, ui_rc, rollback_rc=0):

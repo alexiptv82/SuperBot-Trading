@@ -108,7 +108,7 @@ export function BrainUnicoContent({ overview, status, trades, memory, nowMs = Da
           <h1 style={{ fontSize: 22, fontWeight: 'bold', margin: 0, background: 'linear-gradient(90deg, #f1f5f9, #a78bfa)',
             WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>🧠 Brain Unico</h1>
           <div style={{ fontSize: 10, color: '#a78bfa', fontWeight: 700, letterSpacing: '0.08em', marginTop: 3 }}>
-            ○ PAPER MODE · soldi simulati · nessun ordine reale</div>
+            ○ PAPER MODE · BRAIN UNICO · soldi simulati</div>
         </div>
         <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 'bold', background: '#a78bfa26',
           color: '#c4b5fd', border: '1px solid #a78bfa4d', flexShrink: 0 }}>PAPER</span>
