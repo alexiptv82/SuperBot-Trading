@@ -1,0 +1,67 @@
+#!/bin/sh
+# superbot-ops: operazioni SuperBot consentite a superbot-agent tramite sudo. ELENCO CHIUSO: nessuna shell, nessun
+# argomento libero, nessuna attivazione, nessun mandato approvato, nessun accesso Docker generico, solo PAPER.
+# Ogni script chiamato sta in cartelle di root (0700) ed e' verificato per impronta SHA-256 prima dell'uso.
+# Installazione e revoca: deploy/falco-evoluto/admin/installa.sh (solo dal proprietario, con la sua password).
+set -eu
+umask 077
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+unset PYTHONPATH PYTHONHOME PYTHONSTARTUP ENV BASH_ENV CDPATH LD_PRELOAD LD_LIBRARY_PATH 2>/dev/null || true
+cd /
+refuse() { echo "superbot-ops: operazione non consentita" >&2; exit 2; }
+[ "$(id -u)" = 0 ] || { echo "superbot-ops: eseguire con sudo" >&2; exit 2; }
+[ "$#" -le 2 ] || refuse
+RC1D=/root/brain-unico-avvio
+FSD=/root/falco-scalp-rilascio
+pinned() {  # cartella file impronta: il file deve essere di root, non scrivibile da altri, con l'impronta attesa
+  f="$1/$2"
+  [ -f "$f" ] && [ ! -L "$f" ] && [ "$(stat -c '%u' "$f")" = 0 ] && [ -z "$(find "$f" -perm /022 2>/dev/null)" ] \
+    && [ "$(sha256sum "$f" | cut -d' ' -f1)" = "$3" ] || { echo "superbot-ops: $f assente o modificato" >&2; exit 3; }
+}
+rc1_ok() {
+  pinned "$RC1D" 80-paper.sh 1ea8709f75a4c65fc496bbc191e0dab1eb3a95deabd5ed3e1e1ed0ad168ba9a5
+  pinned "$RC1D" comune.sh c83e9f378b9778582cd7cedc66b174c9f51c1115d2fc84571d967ca674993df9
+  pinned "$RC1D" 30-controlli.sh 3579a61310f72f9e73fa412c7a3d74f9a91700bd80549ac91d9c0363d7211c54
+  pinned "$RC1D" controlli.py 638c4da73615e11439d4e92f89890b5ca92c031b7df789d358d2d92fe7210afd
+}
+fs_ok() {
+  pinned "$FSD" 80-paper.sh 0fc1e6e1ee74ea50b890dc2c6917238a3d84b87b1bb9429c0e173b079182d0f1
+  pinned "$FSD" comune.sh c639a85c6e37ec03adc748586977817aee633e17848d9457adae1f652a3a66e0
+  pinned "$FSD" controlli.py 638c4da73615e11439d4e92f89890b5ca92c031b7df789d358d2d92fe7210afd
+}
+unit() {  # ruolo bot -> nome unita' (solo valori fissi)
+  case "$1:$2" in
+    uscite:rc1) echo superbot-brain-unico-rc1-exit.service ;;   runner:rc1) echo superbot-brain-unico-rc1-runner.service ;;
+    uscite:falco) echo superbot-falco-evoluto-p1-exit.service ;; runner:falco) echo superbot-falco-evoluto-p1-runner.service ;;
+    uscite:scalp) echo superbot-brain-scalp-p1-exit.service ;;   runner:scalp) echo superbot-brain-scalp-p1-runner.service ;;
+    *) refuse ;;
+  esac
+}
+BRIDGE=superbot-v3-paper-single-close-bridge.service
+case "${1:-}:${2:-}" in
+  stato:)
+    for u in $(unit uscite rc1) $(unit runner rc1) $(unit uscite falco) $(unit runner falco) $(unit uscite scalp) \
+             $(unit runner scalp) "$BRIDGE"; do printf '%-45s %s\n' "$u" "$(systemctl is-active "$u" 2>/dev/null || true)"; done
+    printf '%-45s %s\n' "web superbot" "$(docker inspect superbot --format '{{.State.Status}}' 2>/dev/null || echo assente)"
+    rc1_ok; echo "== Brain RC1"; sh "$RC1D/80-paper.sh" stato || true
+    if [ -d "$FSD" ]; then fs_ok
+      for b in falco scalp; do echo "== $b"; sh "$FSD/80-paper.sh" "$b" stato || true; done
+    else echo "== Falco Evoluto / Brain Scalp: pacchetto non installato"; fi ;;
+  pausa:rc1) rc1_ok; sh "$RC1D/80-paper.sh" pausa ;;
+  pausa:falco|pausa:scalp) fs_ok; sh "$FSD/80-paper.sh" "$2" pausa ;;
+  revoca:rc1) rc1_ok; sh "$RC1D/80-paper.sh" revoca ;;
+  revoca:falco|revoca:scalp) fs_ok; sh "$FSD/80-paper.sh" "$2" revoca ;;
+  riavvia-uscite:rc1|riavvia-uscite:falco|riavvia-uscite:scalp) systemctl restart "$(unit uscite "$2")" ;;
+  riavvia-runner:rc1|riavvia-runner:falco|riavvia-runner:scalp) systemctl restart "$(unit runner "$2")" ;;
+  riavvia-bridge:)
+    # il riavvio ricrea la cartella del socket: la web va riavviata per rimontarla (stesso container, stessa immagine)
+    systemctl restart "$BRIDGE"; docker restart -t 10 superbot >/dev/null; echo "bridge e web riavviati" ;;
+  log:rc1-uscite|log:rc1-runner|log:falco-uscite|log:falco-runner|log:scalp-uscite|log:scalp-runner|log:bridge)
+    case "$2" in bridge) u=$BRIDGE ;; *) u=$(unit "${2#*-}" "${2%%-*}") ;; esac
+    journalctl -u "$u" -n 200 --no-pager -o short-iso ;;
+  rollback-falco-scalp:)
+    pinned "$FSD" 90-rollback.sh 8bbe7c9039739b770a1ef2c57f4f0183c3dd153287febf59dd181328071953f3; fs_ok
+    sh "$FSD/90-rollback.sh" ;;
+  *) refuse ;;
+esac

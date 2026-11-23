@@ -1,0 +1,28 @@
+# SuperBot: operazioni limitate per superbot-agent (elenco chiuso di righe di comando esatte, senza jolly).
+# Solo il wrapper di root /usr/local/sbin/superbot-ops; nessuna shell, nessun Docker generico, nessuna attivazione.
+# Revoca: sudo rm -f /etc/sudoers.d/superbot-ops /usr/local/sbin/superbot-ops
+Cmnd_Alias SUPERBOT_OPS = \
+    /usr/local/sbin/superbot-ops stato, \
+    /usr/local/sbin/superbot-ops pausa rc1, \
+    /usr/local/sbin/superbot-ops pausa falco, \
+    /usr/local/sbin/superbot-ops pausa scalp, \
+    /usr/local/sbin/superbot-ops revoca rc1, \
+    /usr/local/sbin/superbot-ops revoca falco, \
+    /usr/local/sbin/superbot-ops revoca scalp, \
+    /usr/local/sbin/superbot-ops riavvia-uscite rc1, \
+    /usr/local/sbin/superbot-ops riavvia-uscite falco, \
+    /usr/local/sbin/superbot-ops riavvia-uscite scalp, \
+    /usr/local/sbin/superbot-ops riavvia-runner rc1, \
+    /usr/local/sbin/superbot-ops riavvia-runner falco, \
+    /usr/local/sbin/superbot-ops riavvia-runner scalp, \
+    /usr/local/sbin/superbot-ops riavvia-bridge, \
+    /usr/local/sbin/superbot-ops log rc1-uscite, \
+    /usr/local/sbin/superbot-ops log rc1-runner, \
+    /usr/local/sbin/superbot-ops log falco-uscite, \
+    /usr/local/sbin/superbot-ops log falco-runner, \
+    /usr/local/sbin/superbot-ops log scalp-uscite, \
+    /usr/local/sbin/superbot-ops log scalp-runner, \
+    /usr/local/sbin/superbot-ops log bridge, \
+    /usr/local/sbin/superbot-ops rollback-falco-scalp
+Defaults!SUPERBOT_OPS env_reset, !setenv
+superbot-agent ALL=(root) NOPASSWD: SUPERBOT_OPS
