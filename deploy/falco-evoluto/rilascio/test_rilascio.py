@@ -89,7 +89,7 @@ def test_create_args_reuse_the_rc1_construction_with_this_release_name_and_mount
 
 
 # ------------------------------------------------------------------ orchestratore con passi finti
-def _package(tmp, fail_at=None):
+def _package(tmp, fail_at=None, main="00-rilascio.sh"):
     d = tmp / "pkg"
     d.mkdir()
     log = tmp / "log"
@@ -100,10 +100,16 @@ def _package(tmp, fail_at=None):
     src = (HERE / "comune.sh").read_text().replace("BACKUPS=/opt/superbot-v3-backups/falco-scalp", f"BACKUPS={backups}")
     src = src.replace("RC1_RUN=$PARENT/brain-v3-unico-paper-rc1", f"RC1_RUN={rc1}")
     (d / "comune.sh").write_text(src)
-    for f in ("00-rilascio.sh", "90-rollback.sh"):
+    for f in (main, "90-rollback.sh"):
         shutil.copy(HERE / f, d / f)
-    for step in ("05-rc1-pausa.sh", "10-preflight.sh", "20-backup.sh", "30-codice.sh", "40-run.sh", "50-unita.sh",
-                 "70-interfaccia.sh", "80-paper.sh"):
+    (tmp / "runs").mkdir(exist_ok=True)
+    src2 = (d / "comune.sh").read_text().replace("PARENT=/opt/superbot-v3-paper-runs", f"PARENT={tmp / 'runs'}")
+    (d / "comune.sh").write_text(src2)
+    for r in ("brain-v3-falco-evoluto-p1", "brain-v3-brain-scalp-p1"):
+        (tmp / "runs" / r).mkdir(exist_ok=True)
+        (tmp / "runs" / r / "journal.db").write_text("journal")
+    for step in ("05-rc1-pausa.sh", "10-preflight.sh", "15-ripresa-preflight.sh", "20-backup.sh", "30-codice.sh",
+                 "35-verifica-run.sh", "40-run.sh", "50-unita.sh", "70-interfaccia.sh", "80-paper.sh"):
         code = 1 if step == fail_at else 0
         (d / step).write_text(f"echo {step} \"$@\" >> {log}\nexit {code}\n")
     code = 1 if fail_at == "web" else 0
@@ -117,7 +123,7 @@ def _package(tmp, fail_at=None):
         (bins / name).write_text(f"#!/bin/sh\n{body}\n")
         (bins / name).chmod(0o755)
     env = dict(os.environ, PATH=f"{bins}:{os.environ['PATH']}")
-    p = subprocess.run(["sh", str(d / "00-rilascio.sh"), "a" * 40, str(tmp), "b" * 64], capture_output=True, text=True,
+    p = subprocess.run(["sh", str(d / main), "a" * 40, str(tmp), "b" * 64], capture_output=True, text=True,
                        env=env, timeout=60)
     return p, (log.read_text() if log.exists() else ""), backups
 
@@ -193,3 +199,130 @@ def test_owner_activation_and_revocation_per_run(tmp_path):
     assert (root / "pause.flag").exists()
     assert run("scalp", "stato").returncode != 0                              # l'altra run non esiste qui: rifiuto
     assert run("falco", "attiva", "").returncode != 0                         # serve un nome
+
+
+def test_compare_probe_reports_the_application_code_and_checks_the_real_gate(monkeypatch):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("compare_probe_t", HERE / "compare_probe.py")
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    assert probe.why(b'{"detail": {"code": "posizione_non_aperta", "message": "x"}}') == "posizione_non_aperta"
+    assert probe.why(b'{"ok": false, "message": "Collaudo V3 in sola lettura: comandi trading disattivati"}') == \
+        "gate_sola_lettura"
+    assert probe.why(b'{"detail": {"code": "<script>"}}') == "sconosciuto" and probe.why(b"nope") == "non_json"
+    env = {"V3_CUTOVER_READONLY": "1", "V3_ALLOW_BRAIN_SINGLE_CLOSE": "1", "TRADING_MODE": "paper",
+           "DESK_MODE": "paper", "V3_CLOSE_BRIDGE_ONLY": "1",
+           "V3_CLOSE_BRIDGE_SOCKET": "/run/superbot-paper-close/close.sock"}
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    probe.check_gate()                                       # con il gate corretto: nessun errore
+    monkeypatch.setenv("V3_ALLOW_BRAIN_SINGLE_CLOSE", "0")   # interruttore spento: il gate blocca -> la sonda fallisce
+    with pytest.raises(SystemExit):
+        probe.check_gate()
+
+
+# ------------------------------------------------------------------ ripresa dopo il NO-GO del 23/11
+def test_resume_reuses_the_runs_never_prepares_new_ones_and_backs_them_up(tmp_path):
+    p, log, backups = _package(tmp_path, main="00-ripresa.sh")
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "ESITO RILASCIO: PRONTO PER IL COLLAUDO PAPER" in p.stdout
+    assert "40-run.sh" not in log and "10-preflight.sh" not in log
+    assert log.index("15-ripresa-preflight.sh") < log.index("30-codice.sh") < log.index("35-verifica-run.sh") \
+        < log.index("50-unita.sh")
+    copies = list(backups.glob("runs-before-ripresa-*"))
+    assert len(copies) == 1 and (copies[0] / "brain-v3-falco-evoluto-p1" / "journal.db").read_text() == "journal"
+    assert (backups / "rilascio.state").read_text().split() == ["codice", "unita_avviate", "unita", "web_avviato",
+                                                               "web", "ui"]
+
+
+def test_resume_failure_rolls_back_without_touching_the_runs(tmp_path):
+    p, log, backups = _package(tmp_path, fail_at="web", main="00-ripresa.sh")
+    assert p.returncode == 1 and "cutover --rollback" in log
+    assert (tmp_path / "runs" / "brain-v3-falco-evoluto-p1" / "journal.db").read_text() == "journal"
+    p, log, _ = _package(tmp_path / "x" if (tmp_path / "x").mkdir() is None else None,
+                         fail_at="35-verifica-run.sh", main="00-ripresa.sh")
+    assert p.returncode == 1 and "50-unita.sh" not in log and "verifica delle run riusate" in p.stdout
+
+
+def _real_runs(tmp_path):
+    from backend.v3.runner.prepare_paper_run import prepare_new_paper_run
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    for name, rid, cfg, eq in (("brain-v3-falco-evoluto-p1", "falco-evoluto-paper-p1",
+                                "runner_config_falco_evoluto_paper.json", "1000"),
+                               ("brain-v3-brain-scalp-p1", "brain-scalp-paper-p1",
+                                "runner_config_brain_scalp_paper.json", "2000")):
+        prepare_new_paper_run(parent=runs, run_name=name, run_id=rid,
+                              config_bytes=(REPO / "backend/v3/runner" / cfg).read_bytes(), desk_mode="paper",
+                              now_ms=int(time.time() * 1000), expected_initial_equity=eq)
+    return runs
+
+
+def _real_pkg(tmp_path, runs, stage):
+    d = tmp_path / "pkg"
+    d.mkdir()
+    src = (HERE / "comune.sh").read_text().replace("PARENT=/opt/superbot-v3-paper-runs", f"PARENT={runs}")
+    src = src.replace("PY=/opt/superbot-v3-rc70-stage/.venv/bin/python3", f"PY={sys.executable}")
+    src = src.replace("LAB=/home/superbot-agent/brain-unico-lab/wt-fe", f"LAB={REPO}")
+    src = src.replace('stage_of() { echo "/opt/superbot-falco-scalp-$(printf \'%s\' "$1" | cut -c1-12)"; }',
+                      f'stage_of() {{ echo "{stage}"; }}')
+    (d / "comune.sh").write_text(src)
+    for f in ("15-ripresa-preflight.sh", "35-verifica-run.sh"):
+        shutil.copy(HERE / f, d / f)
+    bins = tmp_path / "bin"
+    bins.mkdir()
+    for name, body in (("id", "echo 0"), ("systemctl", "echo active"), ("curl", "printf 200"),
+                       ("docker", 'case "$2" in superbot) echo true;; *) exit 1;; esac')):
+        (bins / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bins / name).chmod(0o755)
+    return d, dict(os.environ, PATH=f"{bins}:{os.environ['PATH']}")
+
+
+def test_resume_preflight_and_journal_check_on_real_runs(tmp_path):
+    runs = _real_runs(tmp_path)
+    head = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    d, env = _real_pkg(tmp_path, runs, REPO)
+    ui = tmp_path / "ui"
+    ui.mkdir()
+    (ui / "index.html").write_text("x")
+    (ui / "SHA256SUMS").write_text(subprocess.run(["sha256sum", "./index.html"], cwd=ui, capture_output=True,
+                                                  text=True).stdout)
+    uisha = subprocess.run(["sha256sum", str(ui / "SHA256SUMS")], capture_output=True, text=True).stdout.split()[0]
+    aienv = tmp_path / "ai.env"
+    aienv.write_text("DEEPSEEK_API_KEY=x\n")
+    (d / "comune.sh").write_text((d / "comune.sh").read_text().replace(
+        "AIENV=/etc/superbot-v3-paper/brain-ai.env", f"AIENV={aienv}"))
+    src = (d / "15-ripresa-preflight.sh").read_text().replace(
+        '[ ! -e "$STAGE" ] || nogo "$STAGE esiste gia\'"', ":").replace(
+        "/etc/systemd/system/superbot-v3-paper-single-close-bridge.service", str(tmp_path / "bridge.service"))
+    (tmp_path / "bridge.service").write_text("ExecStart=docker run x\n")
+    (d / "15-ripresa-preflight.sh").write_text(src)
+
+    def pre():
+        return subprocess.run(["sh", str(d / "15-ripresa-preflight.sh"), head, str(ui), uisha], capture_output=True,
+                              text=True, env=env, timeout=60)
+    p = pre()
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert p.stdout.count("intatta") == 2
+    p = subprocess.run(["sh", str(d / "35-verifica-run.sh"), head], capture_output=True, text=True, env=env, timeout=60)
+    assert p.returncode == 0 and "catena integra, aperture/chiusure: 0" in p.stdout, p.stdout + p.stderr
+    # mandato approvato, configurazione cambiata, run mancante: rifiuto (nessuna modifica fatta dal preflight)
+    f = runs / "brain-v3-falco-evoluto-p1"
+    m = json.loads((f / "mandate.json").read_text())
+    (f / "mandate.json").write_text(json.dumps({**m, "approved": True}))
+    assert pre().returncode == 1
+    (f / "mandate.json").write_text(json.dumps(m))
+    cfg = (f / "runner_config.json").read_text()
+    (f / "runner_config.json").write_text(cfg.replace('"initial_equity": "1000"', '"initial_equity": "1001"'))
+    assert pre().returncode == 1
+    (f / "runner_config.json").write_text(cfg)
+    assert pre().returncode == 0
+    shutil.move(str(runs / "brain-v3-brain-scalp-p1"), str(tmp_path / "moved"))
+    assert pre().returncode == 1 and "assente" in pre().stdout
+    shutil.move(str(tmp_path / "moved"), str(runs / "brain-v3-brain-scalp-p1"))
+    # un'apertura registrata nel journal: la run non e' piu' "senza operazioni" -> rifiuto della verifica
+    from backend.v3.events import Event, EventJournal
+    EventJournal(f / "journal.db").append(Event("paper_open.x", "brain", "falco-evoluto-paper-p1", "paper_open",
+                                                int(time.time() * 1000), "test", {"position_id": "x"}))
+    p = subprocess.run(["sh", str(d / "35-verifica-run.sh"), head], capture_output=True, text=True, env=env, timeout=60)
+    assert p.returncode == 1 and "NO-GO" in p.stdout

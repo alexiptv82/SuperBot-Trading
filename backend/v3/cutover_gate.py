@@ -31,6 +31,22 @@ _SINGLE_PAPER_CLOSE_PATHS = frozenset((
 ))
 
 
+# Chiusure SINGOLE delle run V3 (Brain RC1 e, dal 23/11, Falco Evoluto / Brain Scalp): percorsi ESATTI, nessun prefisso.
+# Stesso interruttore e stesso bridge di /api/v3/brain/close; le chiusure globali restano rifiutate dalle rotte.
+_SINGLE_RUN_CLOSE_PATHS = frozenset((
+    "/api/v3/brain/close",
+    "/api/v3/compare/falco_evoluto/close",
+    "/api/v3/compare/brain_scalp/close",
+))
+
+
+def paper_cutover_refuses(method: str, path: str, env) -> bool:
+    """La decisione del middleware della web (server.py), in un solo punto: la usano il server e i test."""
+    return should_refuse_mutation(method, path, readonly=env.get("V3_CUTOVER_READONLY", "0") == "1",
+                                  allow_paper_single_close=classic_single_close_enabled(env),
+                                  allow_paper_brain_single_close=brain_single_close_enabled(env))
+
+
 def classic_single_close_enabled(env) -> bool:
     """Only an explicit PAPER+readonly opt-in can unlock single classic exits."""
     return (env.get("V3_CUTOVER_READONLY") == "1"
@@ -60,7 +76,7 @@ def should_refuse_mutation(method: str, path: str, *, readonly: bool,
             and path in _SINGLE_PAPER_CLOSE_PATHS):
         return False
     if (allow_paper_brain_single_close and method.upper() == "POST"
-            and path == "/api/v3/brain/close"):
+            and path in _SINGLE_RUN_CLOSE_PATHS):
         return False
     return any(path == prefix or path.startswith(prefix + "/")
                for prefix in _BLOCKED_PREFIXES)

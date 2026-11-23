@@ -23,7 +23,8 @@ from webauthn.helpers.structs import (
 import asyncio
 
 from config import config
-from backend.v3.cutover_gate import should_refuse_mutation, classic_single_close_enabled, brain_single_close_enabled
+from backend.v3.cutover_gate import (should_refuse_mutation, classic_single_close_enabled, brain_single_close_enabled,
+                                     paper_cutover_refuses)
 from database import init_db, get_db, Trade, AuditLog
 from bot_engine import bot
 from exchange import exchange
@@ -63,12 +64,7 @@ app = FastAPI(title='SuperBot Trading API', version='1.0.0')
 async def _paper_dashboard_cutover_guard(request: Request, call_next):
     # Explicit opt-in, PAPER-only release hard-stop for all trading commands.
     # Preserve login, password change, WebAuthn and GET-only dashboard views.
-    if should_refuse_mutation(
-        request.method, request.url.path,
-        readonly=os.environ.get('V3_CUTOVER_READONLY', '0') == '1',
-        allow_paper_single_close=classic_single_close_enabled(os.environ),
-        allow_paper_brain_single_close=brain_single_close_enabled(os.environ)
-    ):
+    if paper_cutover_refuses(request.method, request.url.path, os.environ):
         return JSONResponse(
             status_code=423,
             content={'ok': False, 'message': 'Collaudo V3 in sola lettura: comandi trading disattivati'}

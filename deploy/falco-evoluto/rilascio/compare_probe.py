@@ -30,6 +30,37 @@ def fail(code):
     sys.exit(2)
 
 
+def why(body) -> str:
+    """Codice applicativo della risposta, solo da un vocabolario chiuso: mai testo libero, mai segreti."""
+    try:
+        obj = json.loads(body)
+    except (ValueError, TypeError):
+        return "non_json"
+    detail = obj.get("detail") if isinstance(obj, dict) else None
+    code = detail.get("code") if isinstance(detail, dict) else None
+    if isinstance(code, str) and len(code) <= 40 and code.replace("_", "").isalpha() and code.islower():
+        return code
+    if isinstance(obj, dict) and obj.get("ok") is False and "sola lettura" in str(obj.get("message", "")):
+        return "gate_sola_lettura"
+    return "sconosciuto"
+
+
+def check_gate():
+    """Decisione del middleware della web con l'ambiente VERO del container (prima dello scambio)."""
+    try:
+        from backend.v3.cutover_gate import paper_cutover_refuses
+    except Exception as exc:  # noqa: BLE001
+        fail("gate_import_" + type(exc).__name__)
+    for name in EXPECT:
+        if paper_cutover_refuses("POST", f"/api/v3/compare/{name}/close", os.environ):
+            fail("gate_blocks_single_close_" + name)
+        if not paper_cutover_refuses("POST", f"/api/v3/compare/{name}/close-all", os.environ):
+            fail("gate_allows_other_path_" + name)
+    if not paper_cutover_refuses("POST", "/api/v3/compare/arena/close", os.environ):
+        fail("gate_allows_unknown_wallet")
+    say("gate", "single_close_paths_exact")
+
+
 def check(data, live):
     if data.get("available") is not True:
         fail("compare_not_available")
@@ -94,6 +125,7 @@ def _copy_auth_db():
 
 
 def candidate():
+    check_gate()
     _copy_auth_db()
     try:
         from fastapi import FastAPI
@@ -112,10 +144,10 @@ def candidate():
         fail("compare_status_%s" % status)
     check(json.loads(body), live=False)
     for name in EXPECT:
-        status, _ = run(_asgi(app, "POST", f"/api/v3/compare/{name}/close",
-                              auth + [("Content-Type", "application/json")], b'{"all": true}'))
+        status, body = run(_asgi(app, "POST", f"/api/v3/compare/{name}/close",
+                                 auth + [("Content-Type", "application/json")], b'{"all": true}'))
         if status not in (422, 423):
-            fail("close_all_not_refused_" + name)
+            fail("close_all_not_refused_%s_%s_%s" % (name, status, why(body)))
     say("RESULT", "PASS_CANDIDATE")
 
 
@@ -129,6 +161,7 @@ def _http(url, headers=None, data=None):
 
 
 def live():
+    check_gate()
     base = "http://127.0.0.1:8001"
     from backend.auth import create_session_token
     if _http(base + "/api/v3/compare")[0] != 401:
@@ -139,11 +172,13 @@ def live():
         fail("compare_status_%s" % status)
     check(json.loads(body), live=True)
     for name in EXPECT:
-        if _http(base + f"/api/v3/compare/{name}/close", hdr, b'{"all": true}')[0] not in (422, 423):
-            fail("close_all_not_refused_" + name)
-        status, _ = _http(base + f"/api/v3/compare/{name}/close", hdr, b'{"position_id": "probe-posizione-inesistente"}')
-        if status != 404:
-            fail("bridge_negative_close_%s_%s" % (name, status))
+        status, body = _http(base + f"/api/v3/compare/{name}/close", hdr, b'{"all": true}')
+        if status not in (422, 423):
+            fail("close_all_not_refused_%s_%s_%s" % (name, status, why(body)))
+        status, body = _http(base + f"/api/v3/compare/{name}/close", hdr,
+                             b'{"position_id": "probe-posizione-inesistente"}')
+        if status != 404:                       # posizione inesistente nella SUA run: solo 404 e' corretto
+            fail("bridge_negative_close_%s_%s_%s" % (name, status, why(body)))
         say(name + "_bridge_negative_close", 404)
     say("RESULT", "PASS_LIVE")
 

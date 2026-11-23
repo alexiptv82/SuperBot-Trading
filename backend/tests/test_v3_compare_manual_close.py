@@ -58,7 +58,24 @@ def _setup(tmp_path, monkeypatch, *, extra=True):
         [{"name": n, "label": n.replace("_", " ").title(), "dir": str(r), "run_id": rid} for n, (r, rid, _) in out.items()]))
     rc1 = tmp_path / "rc1"
     rc1.mkdir()
-    return out, now, _app(_paths(rc1))[0]
+    return out, now, _guarded_app(_paths(rc1))
+
+
+def _guarded_app(paths):
+    """Router V3 + lo STESSO middleware di sola lettura della web reale (server.py): era cio' che mancava al test e
+    che in produzione ha risposto 423 alla chiusura di Falco Evoluto (23/11)."""
+    import os
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+    from backend.v3.cutover_gate import paper_cutover_refuses
+    app = _app(paths)[0]
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        if paper_cutover_refuses(request.method, request.url.path, os.environ):
+            return JSONResponse(status_code=423, content={"ok": False, "message": "sola lettura"})
+        return await call_next(request)
+    return app
 
 
 def _sidecar(root, run_id):
@@ -87,7 +104,8 @@ def test_each_bot_closes_one_position_in_its_own_run_from_its_dashboard(tmp_path
         # identita' della run: la posizione di Brain Scalp non esiste in Falco Evoluto
         assert client.post("/api/v3/compare/falco_evoluto/close", json={"position_id": bpid}).status_code == 404
         assert client.post("/api/v3/compare/falco_evoluto/close", json={"all": True}).status_code == 423
-        assert client.post("/api/v3/compare/brain_rc1/close", json={"position_id": fpid}).status_code == 404
+        # portafoglio non previsto: fermato gia' dal gate della web (percorso fuori dall'elenco esatto)
+        assert client.post("/api/v3/compare/brain_rc1/close", json={"position_id": fpid}).status_code == 423
         r = client.post("/api/v3/compare/falco_evoluto/close", json={"position_id": fpid})
         assert r.status_code == 200, r.text
         assert (fr / "close_request.json").exists() and not (br / "close_request.json").exists()
@@ -136,3 +154,71 @@ def test_extra_runs_from_the_unit_environment_are_strict():
                 "falco_evoluto=brain-v3-paper20261111:abc",                    # = run del Brain servita dal bridge
                 'falco_evoluto=brain-v3-aaa:a"b', "falco_evoluto=brain-v3-aaa:abc extra"):
         assert bridge_host._extra_from_env({"V3_BRIDGE_EXTRA_RUNS": bad}) == {}
+
+
+def test_server_middleware_is_the_shared_gate_function():
+    src = (Path(__file__).resolve().parents[1] / "server.py").read_text()
+    body = src.split("async def _paper_dashboard_cutover_guard", 1)[1].split("return await call_next", 1)[0]
+    assert "paper_cutover_refuses(request.method, request.url.path, os.environ)" in body
+    assert "status_code=423" in body
+
+
+def test_single_closes_work_separately_for_all_three_runs_through_the_real_gate(tmp_path, monkeypatch):
+    """Falco Evoluto, Brain Scalp e RC1 nello STESSO server con il middleware vero: chiusura singola nella run giusta,
+    chiusure globali e percorsi diversi rifiutati, journal invariati dai tentativi negativi."""
+    from dataclasses import replace
+    from backend.tests.test_v3_dashboard_unified import RUN as RC1_ID, _journal_sample
+    runs, now, _ = _setup(tmp_path, monkeypatch)
+    rc1 = tmp_path / "rc1"
+    paths = replace(_paths_existing(rc1), brain_config_path=str(rc1 / "runner_config.json"),
+                    close_request_path=str(rc1 / "close_request.json"),
+                    close_result_path=str(rc1 / "close_result.json"))
+    (rc1 / "runner_config.json").write_text('{"paper":true}')
+    (rc1 / "pause.flag").write_text("paused")
+    rc1_pid = _journal_sample(paths, close=False)
+    monkeypatch.setattr(bridge_host, "_assert_paper", lambda: None)
+    monkeypatch.setattr(bridge_host, "_brain_paths", lambda: paths)
+    app = _guarded_app(paths)
+    (fr, fid, fpid), (br, bid, bpid) = runs["falco_evoluto"], runs["brain_scalp"]
+
+    def tips():
+        return [len(EventJournal(Path(j)).list_run("brain", rid))
+                for j, rid in ((fr / "journal.db", fid), (br / "journal.db", bid), (paths.journal_path, RC1_ID))]
+    with TestClient(app) as client, _bridge(), _sidecar(fr, fid) as falco, _sidecar(br, bid) as scalp, \
+            _sidecar(rc1, RC1_ID) as brain:
+        for svc in (falco, scalp, brain):
+            assert svc.tick(now).state == "healthy"
+        before = tips()
+        # negativi: posizione inesistente -> 404 (MAI 423), globali -> 423, percorsi non previsti -> 423 dal gate
+        for name in ("falco_evoluto", "brain_scalp"):
+            r = client.post(f"/api/v3/compare/{name}/close", json={"position_id": "probe-posizione-inesistente"})
+            assert r.status_code == 404, (name, r.text)
+            assert client.post(f"/api/v3/compare/{name}/close", json={"all": True}).status_code == 423
+        assert client.post("/api/v3/brain/close", json={"position_id": "probe-posizione-inesistente"}).status_code == 404
+        assert client.post("/api/v3/brain/close", json={"all": True}).status_code == 423
+        for bad in ("/api/v3/compare/arena/close", "/api/v3/compare/falco_evoluto/close-all", "/api/desk/close-all",
+                    "/api/v3/compare/falco_evoluto/close/x"):
+            assert client.post(bad, json={"position_id": fpid}).status_code == 423, bad
+        assert tips() == before                                               # nessuna scrittura dai negativi
+        assert not any((d / "close_request.json").exists() for d in (fr, br, rc1))
+        # positivi: una per run, ognuna nella SUA run
+        for name, pid, svc, root in (("falco_evoluto", fpid, falco, fr), ("brain_scalp", bpid, scalp, br)):
+            assert client.post(f"/api/v3/compare/{name}/close", json={"position_id": pid}).status_code == 200
+            assert svc.tick(now + 3000).state == "healthy"
+            assert client.get(f"/api/v3/compare/{name}/close-result").json()["result"]["closed"] == [pid]
+        assert client.post("/api/v3/brain/close", json={"position_id": rc1_pid}).status_code == 200
+        assert brain.tick(now + 3000).state == "healthy"
+        assert client.get("/api/v3/brain/close-result").json()["result"]["closed"] == [rc1_pid]
+    for root, rid in ((fr, fid), (br, bid), (rc1, RC1_ID)):
+        closes = _closes(root, rid)
+        assert len(closes) == 1 and closes[0].payload["reason"] == "manual"
+
+
+def _paths_existing(root):
+    from backend.v3_api import V3Paths
+    hawk, bull = root / "hawk", root / "bull"
+    hawk.mkdir(exist_ok=True)
+    bull.mkdir(exist_ok=True)
+    return V3Paths(journal_path=str(root / "journal.db"), run_id="run-test", budget_db_path=str(root / "budget.db"),
+                   heartbeat_path=str(root / "heartbeat.json"), pause_flag_path=str(root / "pause.flag"),
+                   falco_data_dir=str(hawk), toro_data_dir=str(bull))

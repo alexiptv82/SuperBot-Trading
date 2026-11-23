@@ -95,3 +95,18 @@ def test_brain_paper_manual_close_is_individual_and_explicitly_opted_in():
         modified[name]='0' if name.startswith('V3_') else 'live'
         assert not brain_single_close_enabled(modified)
     assert not brain_single_close_enabled({})
+
+
+def test_compare_single_closes_are_exact_paths_behind_the_brain_switch():
+    env = {"V3_CUTOVER_READONLY": "1", "V3_ALLOW_BRAIN_SINGLE_CLOSE": "1", "TRADING_MODE": "paper", "DESK_MODE": "paper",
+           "V3_CLOSE_BRIDGE_ONLY": "1", "V3_CLOSE_BRIDGE_SOCKET": "/run/superbot-paper-close/close.sock"}
+    from backend.v3.cutover_gate import paper_cutover_refuses
+    for path in ("/api/v3/compare/falco_evoluto/close", "/api/v3/compare/brain_scalp/close", "/api/v3/brain/close"):
+        assert not paper_cutover_refuses("POST", path, env)
+        for method in ("PUT", "PATCH", "DELETE"):
+            assert paper_cutover_refuses(method, path, env)
+        assert paper_cutover_refuses("POST", path, {**env, "V3_ALLOW_BRAIN_SINGLE_CLOSE": "0"})
+        assert paper_cutover_refuses("POST", path, {**env, "V3_CLOSE_BRIDGE_ONLY": "0"})
+    for path in ("/api/v3/compare/arena/close", "/api/v3/compare/falco_evoluto/close-all",
+                 "/api/v3/compare/falco_evoluto/close/x", "/api/v3/compare/falco_evoluto", "/api/v3/compare"):
+        assert paper_cutover_refuses("POST", path, env), path
