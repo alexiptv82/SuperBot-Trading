@@ -1,3 +1,13 @@
+## 23/11/2026 (20) — Selettori Falco Evoluto / Brain Scalp preparati, NON installati; Brain Scalp FERMO per freno di perdita giornaliera (Claude)
+
+- **Prima versione della schermata installata dal proprietario** (~18:22 UTC): il dominio serve `main.df0611d8.js` (index `56ed568e…`) = candidata `ui-845537f3`.
+- **Richiesta:** le schede superiori non erano cliccabili; volere scegliere il portafoglio come nella vecchia app. Solo frontend.
+- **Correzione (`34c3529b`, ramo `claude/schermata-bot-paper-20261123`):** schede del riepilogo (sempre visibili, con RUNNING/PAUSA/FERMO di entrambi) = `<button>` nativi con `aria-pressed` (stesso schema del selettore della vecchia app); sotto solo i dettagli del bot scelto, con tutte le informazioni di prima; scelta evidenziata, conservata tra gli aggiornamenti, ripiego sul primo bot. Nessuna modifica a backend, runner, mandati, journal, servizi.
+- **Test:** Jest 196 (erano 191), mutazione (selettore disattivato → 5 test falliti); gate DRY_RUN V3 5495, builder 158, Jest 196. **Verifica mobile reale** su Chromium headless (Playwright installato solo nella scratchpad, librerie estratte senza root, dati simulati): 360 e 412 px con tocco, nessuno scorrimento orizzontale, un solo pannello, nessun errore JS; tastiera Tab + Invio/Spazio con focus visibile.
+- **Candidata** `rilascio/ui-34c3529b` (bundle `main.3dd759b4.js`, index `ea3b5a87…`, manifesto `5a8b5a8bb1da…`); prova generale in copia della radice web attuale: attivazione OK, rollback → build identica a quella servita ora. Procedura: `docs/falco-evoluto/SCHERMATA-BOT.md` (`da70ae4d`).
+- **Brain Scalp FERMO (diagnosi separata, nulla modificato):** runner `halted:daily_loss` dalle 17:43 UTC (freno P0 #124, 50 % del capitale di inizio giornata UTC, realizzato + non realizzato; agganciato fino a 00:00 UTC; uscite SANE, stop e chiusura manuale attivi). Con perdita allo stop ~4 % per posizione e 0 chiusure, una perdita reale del 50 % è poco plausibile: da distinguere blocco `loss` vs `unverified` (ricostruzione fallita). Dati necessari (`heartbeat.json` daily_loss_level/pct, `daily_loss.json` latch_reason) leggibili solo da root: comando in sola lettura nel documento. Falco Evoluto running; RC1 in pausa.
+- **Prossimo:** OK del proprietario per installare `ui-34c3529b`; output del comando diagnostico per chiudere la diagnosi del FERMO.
+
 ## 23/11/2026 (19) — Schermata Brain con Falco Evoluto e Brain Scalp: preparata, NON installata (Claude)
 
 - **Problema (dal proprietario):** `/brain-unico` mostrava ancora Brain RC1; il confronto era nascosto nel fold «Storico».
