@@ -1,3 +1,16 @@
+## 23/11/2026 (2) — Pre-collaudo TUTTI PASS; avvio PAPER e dashboard Brain Unico preparati, comando unico pronto (Claude)
+
+- **Pre-collaudo (proprietario, Termius, 04:40 UTC): TUTTI PASS.** Registro `/home/superbot-agent/precollaudo-esiti/precollaudo.log`: controlli 1, 2, 3, 3bis, 4, 5 (secondo exit_worker → `exit_owner_busy`), 6, 7a; mandato `approved:false`; vecchia run e altri 41 unità/container invariati. 7b non eseguito (va gestito con il rollback del deploy web).
+- **Diagnosi web (lettura):** la web in produzione (immagine RC84 + Arena) legge la vecchia run `brain-v3-paper20261111`; la chiusura passa dal bridge RC84 (`superbot-v3-paper-single-close-bridge`), che ha la vecchia run del Brain cablata nel codice; il bridge non era nell'integrazione.
+- **Difetto trovato e corretto:** `exit_service_healthy` apriva il lease in scrittura; con la run montata `:ro` nella web il pulsante **Chiudi** del Brain non si sarebbe mai abilitato. Ora lettura in sola lettura (`flock` non richiede scrittura); test che fallisce senza la correzione.
+- **Integrazione `dd43213a`** (gate verde: V3 5430, builder 158, Jest 153; codice `7da57b60` + inventario rotte): bridge portato con run scelta dall'unità (`V3_BRIDGE_BRAIN_RUN_DIR/ID`, predefinita la storica); test end-to-end HTTP → bridge → servizio uscite → `paper_close` nel journal; `deploy/brain-unico/avvio/`:
+  - `50-unita.sh`: unità definitive (modello RC84: notify+watchdog, runner legato alle uscite, ProtectSystem=strict, `EnvironmentFile` della chiave DeepSeek) sulla run **esistente** (journal conservato, codice `3440340289fd` verificato file per file, configurazione `e415ca96…`), avvio senza mandato;
+  - `brain_unico_web_cutover.py` + sonda: immagine candidata = immagine web in uso + backend del commit; sonda senza rete (sintassi con l'interprete dell'immagine, 401 senza sessione, run/modello/capitale nuovi, chiusura abilitata con uscite sane); bridge sulla nuova run; nuovo container confrontato campo per campo; sonda live con chiusura negativa via bridge (404); rollback automatico (web + bridge);
+  - `70-interfaccia.sh`: build `ui-7da57b60` (manifesto `0a5d1cd9…`), `BrainUnico` come pagina principale, PWA conservata, backup e rollback;
+  - `80-paper.sh`: `stato | attiva "<Nome>" | pausa | riprendi | revoca`; `attiva` verifica uscite sane, impronta, chiave DeepSeek, PAPER, poi mandato approvato e pausa tolta;
+  - `00-avvio-completo.sh`: 50 → web/bridge → interfaccia → controlli; **non approva il mandato**.
+- **Stato:** nulla eseguito sulla VPS da Claude (nessun root). Mandato `approved:false`, nessun trade, 72 ore non avviate. In attesa: comando unico del proprietario, poi consenso finale per `80-paper.sh attiva`.
+
 ## 23/11/2026 (1) — Pre-collaudo Brain Unico: comando unico pronto, in attesa di esecuzione root (Claude)
 
 - Autorizzazione del proprietario a eseguire il pre-collaudo sulla VPS con i permessi di Claude. **Claude non ha root** (`superbot-agent`, nessun sudo; `/opt/superbot-v3-paper-runs`, interprete e systemd non accessibili): nessun tentativo di aggirare i permessi.
