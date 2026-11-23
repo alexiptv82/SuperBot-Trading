@@ -133,6 +133,8 @@ def read_run(ref: RunRef, now_ms: int) -> dict:
                                                                     Decimal("0"))
     sides = {"long": _side_bucket(), "short": _side_bucket()}
     guardian, decisions = None, []
+    mtm_samples: list[Decimal] = []      # equity a mercato registrate dal Guardian con prezzi verificati
+    mtm_incomplete = False
     for r in events:
         ev, p = r.event, (r.event.payload if isinstance(r.event.payload, Mapping) else {})
         if ev.kind == "paper_close":
@@ -154,6 +156,11 @@ def read_run(ref: RunRef, now_ms: int) -> dict:
             manual += p.get("reason") == "manual"
             protected += p.get("stop_kind") in ("break_even", "trailing", "protect")
         elif ev.kind == "guardian_state":
+            mark = _d(p.get("equity"))
+            if mark is None or any(x in (p.get("reasons") or []) for x in ("data_fault", "guardian_error")):
+                mtm_incomplete = True                 # feed mancante: nessun valore stimato per quel giro
+            else:
+                mtm_samples.append(mark)
             guardian = {k: p.get(k) for k in ("state", "reasons", "equity", "session_start_equity", "peak_equity",
                                                "giveback", "floor", "budget", "risk_cap", "open_risk",
                                                "realized_session", "unrealized", "ai_cost_session", "as_of_ms")}
@@ -164,8 +171,18 @@ def read_run(ref: RunRef, now_ms: int) -> dict:
                               "risk_reason": p.get("risk_reason") if _CODE.match(str(p.get("risk_reason", "")))
                               else None,
                               "sources": [s for s in (p.get("sources") or []) if isinstance(s, str) and _CODE.match(s)]})
-    realized = equity - start
+    realized = equity - start                 # P&L di TRADING: realizzato, commissioni incluse, nessun costo AI
     decided = wins + losses
+    spend = _spend(ref.dir / "budget.db")
+    ai_total = _d(spend.get("total"))
+    after_ai = None if ai_total is None else realized - ai_total     # costi AI sottratti UNA sola volta, qui
+    mtm_dd = mtm_dd_pct = None
+    if mtm_samples:
+        top, mtm_dd, mtm_dd_pct = start, Decimal("0"), Decimal("0")
+        for v in mtm_samples:
+            top = max(top, v)
+            if top - v > mtm_dd:
+                mtm_dd, mtm_dd_pct = top - v, (top - v) / top * 100
     for b in sides.values():
         b["net_pnl"] = str(b["net_pnl"])
     hb = None
@@ -179,7 +196,14 @@ def read_run(ref: RunRef, now_ms: int) -> dict:
                 paused=(ref.dir / "pause.flag").exists(),
                 initial_equity=str(start), settled_equity=str(equity), net_pnl=str(realized),
                 return_pct=str((realized / start * 100).quantize(Decimal("0.01"))),
+                ai_cost_total=_s(ai_total), net_after_ai=_s(after_ai),
+                return_after_ai_pct=None if after_ai is None else str((after_ai / start * 100).quantize(Decimal("0.01"))),
+                # drawdown sui trade CHIUSI (curva contabilizzata) ...
                 max_drawdown=str(max_dd), max_drawdown_pct=str(max_dd_pct.quantize(Decimal("0.01"))),
+                # ... e drawdown dell'equity A MERCATO, solo dai campioni del Guardian (None senza campioni)
+                mtm_drawdown=_s(mtm_dd),
+                mtm_drawdown_pct=None if mtm_dd_pct is None else str(mtm_dd_pct.quantize(Decimal("0.01"))),
+                mtm_samples=len(mtm_samples), mtm_incomplete=mtm_incomplete,
                 profit_factor=None if gross_loss == 0 else str((gross_win / gross_loss).quantize(Decimal("0.01"))),
                 wins=wins, losses=losses, closed=len(summary.closed_trades),
                 win_rate=None if not decided else str((Decimal(wins) * 100 / decided).quantize(Decimal("0.1"))),
@@ -188,7 +212,7 @@ def read_run(ref: RunRef, now_ms: int) -> dict:
                                  "entry": str(o.fill_price), "stop": str(o.stop_price), "margin": str(o.margin_used),
                                  "leverage": o.leverage, "opened_at_ms": o.opened_at_ms}
                                 for o in summary.open_positions],
-                guardian=guardian, decisions=decisions[-8:][::-1], ai_spend=_spend(ref.dir / "budget.db"),
+                guardian=guardian, decisions=decisions[-8:][::-1], ai_spend=spend,
                 manual_close_allowed=_close_ready(ref, now_ms),
                 close_pending=(ref.dir / "close_request.json").exists())
 

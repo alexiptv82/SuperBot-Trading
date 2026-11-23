@@ -45,9 +45,14 @@ function rows(runs) {
   return [
     ['Capitale', r => usd(r.initial_equity, 0)],
     ['Equity contabile', r => usd(r.settled_equity)],
-    ['P&L netto', r => <span style={{ color: tone(r.net_pnl) }}>{usd(r.net_pnl)}</span>],
-    ['Rendimento', r => <strong style={{ color: tone(r.return_pct) }}>{pct(r.return_pct)}</strong>],
-    ['Drawdown max', r => `${num(r.max_drawdown_pct) === null ? '—' : `-${num(r.max_drawdown_pct).toFixed(2)}%`} (${usd(r.max_drawdown)})`],
+    ['P&L trading (netto commissioni)', r => <span style={{ color: tone(r.net_pnl) }}>{usd(r.net_pnl)}</span>],
+    ['Rendimento trading', r => <strong style={{ color: tone(r.return_pct) }}>{pct(r.return_pct)}</strong>],
+    ['Spesa AI totale', r => usd(r.ai_cost_total, 3)],
+    ['Risultato dopo AI', r => <strong style={{ color: tone(r.net_after_ai) }}>
+      {usd(r.net_after_ai)}{num(r.return_after_ai_pct) === null ? '' : ` (${pct(r.return_after_ai_pct)})`}</strong>],
+    ['Drawdown trade chiusi', r => `${num(r.max_drawdown_pct) === null ? '—' : `-${num(r.max_drawdown_pct).toFixed(2)}%`} (${usd(r.max_drawdown)})`],
+    ['Drawdown a mercato', r => (num(r.mtm_drawdown_pct) === null ? 'non disponibile'
+      : `-${num(r.mtm_drawdown_pct).toFixed(2)}% (${usd(r.mtm_drawdown)})${r.mtm_incomplete ? ' · feed incompleto' : ''}`)],
     ['Profit factor', r => r.profit_factor ?? '—'],
     ['Win rate', r => (r.win_rate == null ? '—' : `${r.win_rate}% (${r.wins}/${r.losses})`)],
     ['LONG', r => `${r.by_side?.long?.trades ?? 0} · ${usd(r.by_side?.long?.net_pnl)}`],
@@ -90,7 +95,9 @@ export function CompareContent({ data, onRefresh = () => {} }) {
         </tbody>
       </table>
     </Card>
-    <p style={{ ...MUTED, fontSize: 11 }}>Rendimento e drawdown sono calcolati sulle operazioni chiuse; il Guardian mostra
+    <p style={{ ...MUTED, fontSize: 11 }}>Il P&L di trading include commissioni e slippage, non i costi AI: il risultato
+      dopo AI li sottrae una sola volta. Il drawdown a mercato usa solo le equity registrate dal Guardian a ogni giro
+      con prezzi verificati (campioni, non ogni minuto); senza campioni resta non disponibile. Il Guardian mostra
       l’equity a mercato della sessione (dalle 08:00). Il floor del Guardian limita le nuove aperture: non garantisce il
       profitto finale né protegge le posizioni già aperte.</p>
     {live.map(r => <Card key={r.name} aria-label={`Dettaglio ${r.label}`}>

@@ -15,6 +15,8 @@ const run = (name, label, over = {}) => ({
     peak_equity: '1100', giveback: '20', budget: '40', risk_cap: '20' },
   open_positions: [{ position_id: 'p1', symbol: 'BTCUSDT', side: -1, entry: '100', stop: '101', margin: '150', leverage: 30 }],
   manual_closes: 1, protected_stops: 2, ai_spend: { day: '0.042', total: '0.3' },
+  ai_cost_total: '0.3', net_after_ai: '49.7', return_after_ai_pct: '4.97',
+  mtm_drawdown: '60', mtm_drawdown_pct: '5.56', mtm_samples: 12, mtm_incomplete: false,
   config: { max_positions: 4, daily_cap_usd: '0.20', leverage: [15, 45], margin: ['100', '250'] },
   decisions: [{ ts_ms: 1, symbol: 'ETHUSDT', kind: 'NO_TRADE', rationale: 'falco_no_trade_regime' },
     { ts_ms: 2, symbol: 'SOLUSDT', kind: 'NO_TRADE', rationale: 'risk_rejected', risk_reason: 'below_min_margin' },
@@ -28,7 +30,13 @@ test('both bots side by side with return, drawdown, guardian and reasons', () =>
   for (const t of ['Falco Evoluto', 'Brain Scalp', '+5.00%', '-1.50%', '-2.43% ($25.00)', '1.80', '60.0% (3/2)',
     'Selettivo', 'Bloccato', '$1100.00 / $20.00', '$40.00', 'SHORT', 'x30', 'Stop protettivi',
     'nessun trade: mercato laterale, incerto o shock', 'margine sotto il minimo', '15–45× · $100–250',
-    'non garantisce il profitto finale']) expect(h).toContain(t);
+    'non garantisce il profitto finale', 'P&amp;L trading (netto commissioni)', 'Spesa AI totale', '$0.300',
+    'Risultato dopo AI', '$49.70 (+4.97%)', 'Drawdown trade chiusi', 'Drawdown a mercato', '-5.56% ($60.00)',
+    'sottrae una sola volta']) expect(h).toContain(t);
+  const nofeed = renderToStaticMarkup(<CompareContent data={{ available: true, runs: [run('brain_scalp', 'Brain Scalp',
+    { mtm_drawdown: null, mtm_drawdown_pct: null, ai_cost_total: null, net_after_ai: null, return_after_ai_pct: null })] }} />);
+  expect(nofeed).toContain('non disponibile');
+  expect(nofeed).not.toContain('$NaN');
   expect(h).not.toContain('<b>x</b>');
   expect(h).not.toContain('&lt;b&gt;');                       // un codice sconosciuto non diventa mai testo
 });

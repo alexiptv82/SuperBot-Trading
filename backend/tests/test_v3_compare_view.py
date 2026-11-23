@@ -100,3 +100,35 @@ def test_fail_closed_without_or_with_invalid_configuration(tmp_path):
     shutil.copy(RUNNER / "runner_config_brain_scalp_paper.json", missing / "runner_config.json")
     assert compare(_env(("brain_scalp", "Brain Scalp", missing)), T)["runs"][0]["reason"] == "not_started"
     assert not (missing / "journal.db").exists()
+
+
+def test_trading_pnl_ai_cost_and_result_after_ai_are_separate(tmp_path):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%dT10:00:00+00:00")
+    f = _run(tmp_path, "falco_evoluto", "runner_config_falco_evoluto_paper.json",
+             [(-1, "30", "take_profit", None), (-1, "-10", "stop", None)], spend=[(today, 150_000), (today, 50_000)])
+    r = compare(_env(("falco_evoluto", "Falco Evoluto", f)), T)["runs"][0]
+    assert r["net_pnl"] == "20" and r["ai_cost_total"] == "0.2"             # trading (commissioni incluse) e AI
+    assert r["net_after_ai"] == "19.8" and r["return_after_ai_pct"] == "1.98"  # AI sottratta una sola volta
+    assert r["settled_equity"] == "1020"                                     # l'equity contabile non include l'AI
+    b = _run(tmp_path, "brain_scalp", "runner_config_brain_scalp_paper.json", [(1, "5", "stop", None)])
+    r = compare(_env(("brain_scalp", "Brain Scalp", b)), T)["runs"][0]
+    assert r["ai_cost_total"] is None and r["net_after_ai"] is None          # registro assente: mai "0"
+
+
+def test_closed_trade_and_mark_to_market_drawdown_are_distinct(tmp_path):
+    d = _run(tmp_path, "brain_scalp", "runner_config_brain_scalp_paper.json", [(1, "40", "take_profit", None)])
+    j = EventJournal(str(d / "journal.db"))
+    for i, (eq, reasons) in enumerate([("2100", ["floor_armed"]), ("1995", ["floor_armed"]), ("2050", ["test"])]):
+        j.append(Event(f"guardian_state.m{i}", "brain", "brain_scalp", "guardian_state", T + 200_000 + i, "t",
+                       {"state": "SELECTIVE", "reasons": reasons, "equity": eq}))
+    r = compare(_env(("brain_scalp", "Brain Scalp", d)), T)["runs"][0]
+    assert r["max_drawdown"] == "0" and r["max_drawdown_pct"] == "0.00"      # sui chiusi: nessuna perdita
+    assert r["mtm_drawdown"] == "105" and r["mtm_drawdown_pct"] == "5.00"    # a mercato: 2100 -> 1995
+    assert r["mtm_samples"] == 3 and r["mtm_incomplete"] is False
+    j.append(Event("guardian_state.m9", "brain", "brain_scalp", "guardian_state", T + 300_000, "t",
+                   {"state": "LOCKED", "reasons": ["data_fault"], "equity": None}))
+    r = compare(_env(("brain_scalp", "Brain Scalp", d)), T)["runs"][0]
+    assert r["mtm_samples"] == 3 and r["mtm_incomplete"] is True and r["mtm_drawdown"] == "105"
+    plain = _run(tmp_path, "falco_evoluto", "runner_config_falco_evoluto_paper.json", [(1, "5", "stop", None)])
+    r = compare(_env(("falco_evoluto", "Falco Evoluto", plain)), T)["runs"][0]
+    assert r["mtm_drawdown"] is None and r["mtm_samples"] == 0               # nessun campione: nessun valore
