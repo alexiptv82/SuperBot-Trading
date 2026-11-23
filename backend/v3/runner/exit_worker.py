@@ -126,7 +126,7 @@ def build_exit_worker(*, data_dir: Path, run_id: str, config: RunnerConfig,
     # A distinct 1m store belongs only to this exit worker: never share the AI
     # worker's in-memory cache or mutate its portfolio state.
     minutes = CandleStore(get_json, keep={'1m': (60_000, 1_500)})
-    policy = load_default_policy()
+    policy = config.exit_policy if config.exit_policy is not None else load_default_policy()   # schema 2: della run
     def guard(now_ms: int) -> None:
         code = foreign_exit_owner(data_dir, now_ms)
         if code is not None:

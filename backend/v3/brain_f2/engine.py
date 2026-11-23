@@ -48,6 +48,8 @@ _ALLOWED_SOURCES = frozenset({
     "falco:paper_position_observation", "toro:paper_position_observation",
 })
 _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
+# Rifiuti che una leva PIU' BASSA (mai sotto il minimo del profilo) puo' risolvere senza toccare stop o rischio.
+_LEVERAGE_RETRY = ("margin_loss_ratio_exceeded", "stop_near_liquidation", "invalid_leverage", "below_min_margin")
 _SYMBOL_RE = __import__("re").compile(r"^[A-Z0-9][A-Z0-9/_:.-]{0,31}$")
 # Vocabolario dei regimi che una decisione puo' registrare: le 4 etichette storiche piu' le 6 del
 # classificatore P8 (features/regime.py), cosi' il tabellone puo' raggruppare per regime P8.
@@ -90,6 +92,10 @@ def _policy_hash(policy) -> str:
             or policy.min_leverage != 1 or policy.max_leverage != 125):
         fields += (str(policy.max_loss_margin_fraction),
                    str(policy.min_leverage), str(policy.max_leverage))
+    aggressive = (getattr(policy, "min_margin", None), getattr(policy, "max_margin", None),
+                  getattr(policy, "max_positions", None), getattr(policy, "max_same_side_risk_fraction", None))
+    if any(v is not None for v in aggressive):          # profilo 23/11: il mandato lega anche questi limiti
+        fields += tuple("-" if v is None else str(v) for v in aggressive)
     return hashlib.sha256("|".join(fields).encode()).hexdigest()[:16]
 
 
@@ -112,11 +118,16 @@ def _request_id(run_id: str, ts: int, symbol: str, proposal: Any) -> str:
 
 
 class BrainPortfolioSnapshot:
-    def __init__(self, equity: Decimal, available_cash: Decimal, margin_used: Decimal, existing_open_risk: Decimal):
+    def __init__(self, equity: Decimal, available_cash: Decimal, margin_used: Decimal, existing_open_risk: Decimal,
+                 *, open_positions: int = 0, side_open_risk: Optional[dict] = None,
+                 risk_cap: Optional[Decimal] = None):
         self.equity = equity
         self.available_cash = available_cash
         self.margin_used = margin_used
         self.existing_open_risk = existing_open_risk
+        self.open_positions = open_positions            # posizioni aperte (limite max_positions)
+        self.side_open_risk = side_open_risk or {}      # {+1: rischio a stop dei long, -1: degli short}
+        self.risk_cap = risk_cap                        # tetto del Profit Guardian per la nuova apertura
 
 
 class BrainEngine:
@@ -463,16 +474,18 @@ class BrainEngine:
                 market_data_fresh=mp["market_data_fresh"],
                 paused=mp["paused"],
                 daily_loss_latched=mp["daily_loss_latched"],
+                open_positions=getattr(self.portfolio_snapshot, "open_positions", 0),
+                same_side_open_risk=getattr(self.portfolio_snapshot, "side_open_risk", {}).get(
+                    decision.proposal.side, Decimal("0")),
+                external_risk_cap=getattr(self.portfolio_snapshot, "risk_cap", None),
             )
             quote = quote_paper_risk(profile, request)
             approved_leverage = request.requested_leverage
-            if profile_mode and not quote.allowed and quote.reason in (
-                    "margin_loss_ratio_exceeded", "stop_near_liquidation", "invalid_leverage"):
+            if profile_mode and not quote.allowed and quote.reason in _LEVERAGE_RETRY:
                 for trial in list(candidates)[1:]:
                     quote = quote_paper_risk(profile, replace(request, requested_leverage=trial))
                     approved_leverage = trial
-                    if quote.allowed or quote.reason not in (
-                            "margin_loss_ratio_exceeded", "stop_near_liquidation", "invalid_leverage"):
+                    if quote.allowed or quote.reason not in _LEVERAGE_RETRY:
                         break
             if profile_mode and quote.allowed and approved_leverage != suggested_leverage:
                 decision.proposal = replace(decision.proposal, leverage=approved_leverage)

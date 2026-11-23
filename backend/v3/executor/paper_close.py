@@ -58,6 +58,8 @@ from backend.v3.executor.paper import ExecutionError
 # Insieme chiuso delle ragioni di chiusura.
 # take_profit e timeout: uscite meccaniche del runner (backend/v3/runner/exits.py).
 CLOSE_REASONS = frozenset({"stop", "brain_close", "manual", "liquidation", "take_profit", "timeout"})
+# Stop spostato dalla protezione dei profitti (runner/exits.py); lo stop iniziale non scrive il campo.
+STOP_KINDS = frozenset({"break_even", "trailing", "protect"})
 
 _QUANT = Decimal("0.00000001")
 _MAX_FEE_BPS = Decimal("100")  # 1% per lato: oltre e' quasi certamente un errore di unita'
@@ -147,6 +149,7 @@ def close_paper(
     fee_bps: Decimal | int,
     journal: EventJournal,
     now_ms: int | None = None,
+    stop_kind: str | None = None,
 ) -> CloseReceipt:
     """Chiude una posizione PAPER aperta e ne registra l'esito nel journal.
 
@@ -234,6 +237,12 @@ def close_paper(
         "loss_exceeds_margin": loss_exceeds_margin,
         "decision_event_id": decision_event_id,
     }
+    # Tipo di stop protettivo (exits.ExitSignal.stop_kind): scritto SOLO per uno stop spostato, cosi' le chiusure di
+    # sempre restano identiche byte per byte (stesso hash di evento).
+    if stop_kind is not None:
+        if reason != "stop" or stop_kind not in STOP_KINDS:
+            raise ExecutionError("invalid_stop_kind")
+        payload["stop_kind"] = stop_kind
     event = Event(
         event_id=f"paper_close.{position_id}",
         portfolio_id=portfolio_id,

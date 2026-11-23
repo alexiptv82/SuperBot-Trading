@@ -34,6 +34,13 @@ class RiskPolicy:
     max_loss_margin_fraction: Decimal | None = None
     min_leverage: int = 1
     max_leverage: int = 125
+    # Profilo aggressivo (Falco Evoluto / Brain Scalp, 23/11). None = comportamento storico invariato.
+    min_margin: Decimal | None = None             # margine minimo per trade, USDT: sotto -> NO_TRADE (mai rischio in piu')
+    max_margin: Decimal | None = None             # margine massimo per trade, USDT
+    max_positions: int | None = None              # posizioni aperte contemporanee
+    # Esposizione correlata: le crypto del runner si muovono con BTC. Rischio a stop di TUTTE le posizioni nella
+    # stessa direzione (piu' la nuova) entro questa frazione dell'equity.
+    max_same_side_risk_fraction: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +60,9 @@ class RiskRequest:
     market_data_fresh: bool
     paused: bool
     daily_loss_latched: bool
+    open_positions: int = 0
+    same_side_open_risk: Decimal = Decimal("0")   # rischio a stop delle posizioni aperte nella stessa direzione
+    external_risk_cap: Decimal | None = None      # tetto del Profit Guardian (USDT); None = nessun tetto esterno
 
 
 @dataclass(frozen=True)
@@ -75,6 +85,27 @@ def estimated_loss_per_unit(price: Decimal, stop: Decimal, roundtrip_cost_bp: De
     Unica formula, usata dal RiskManager per la nuova posizione e dalla ricostruzione del rischio aperto
     (``cycle.snapshot_from_summary``) per quelle gia' aperte: le due misure restano coerenti per costruzione."""
     return abs(price - stop) + price * (roundtrip_cost_bp / Decimal("10000"))
+
+
+def _aggressive_limits(policy: RiskPolicy, request: RiskRequest):
+    """Limiti opzionali del profilo aggressivo: (min_margin, max_margin, same_side_fraction, guardian_cap) o rifiuto."""
+    try:
+        mn = None if policy.min_margin is None else _d(policy.min_margin)
+        mx = None if policy.max_margin is None else _d(policy.max_margin)
+        side = None if policy.max_same_side_risk_fraction is None else _d(policy.max_same_side_risk_fraction)
+        cap = None if request.external_risk_cap is None else _d(request.external_risk_cap)
+        same = _d(request.same_side_open_risk)
+    except ValueError:
+        return _rejected("invalid_numeric_input")
+    if ((mn is not None and mn <= 0) or (mx is not None and mx <= 0) or (mn is not None and mx is not None and mn > mx)
+            or (side is not None and not Decimal("0") < side <= Decimal("1")) or same < 0
+            or (policy.max_positions is not None
+                and (type(policy.max_positions) is not int or not 1 <= policy.max_positions <= 100))
+            or type(request.open_positions) is not int or request.open_positions < 0):
+        return _rejected("invalid_policy_or_market")
+    if policy.max_positions is not None and request.open_positions >= policy.max_positions:
+        return _rejected("max_positions_reached")
+    return mn, mx, side, cap
 
 
 def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
@@ -134,6 +165,10 @@ def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
 
     if equity <= floor:
         return _rejected("equity_floor_reached")
+    extra = _aggressive_limits(policy, request)
+    if isinstance(extra, RiskQuote):
+        return extra
+    min_margin, max_margin, side_room, guardian_cap = extra
     if ((request.side == 1 and stop >= price)
             or (request.side == -1 and stop <= price)):
         return _rejected("stop_wrong_side")
@@ -150,22 +185,28 @@ def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
     if loss_per_margin is not None and leverage * (stop_fraction + cost_fraction) > loss_per_margin:
         return _rejected("margin_loss_ratio_exceeded")
 
-    risk_budget = min(
+    if guardian_cap is not None and guardian_cap <= 0:
+        return _rejected("guardian_budget_exhausted")
+    # Il rischio autorizzato e' il MINORE fra tutti i limiti applicabili (mai aumentato per rispettare leva o margine).
+    risk_budget = min(x for x in (
         equity * per_trade,
         equity * total_risk - used_risk,
         equity - floor - used_risk,
-    )
+        None if side_room is None else equity * side_room - _d(request.same_side_open_risk),
+        guardian_cap,
+    ) if x is not None)
     if risk_budget <= 0:
         return _rejected("risk_budget_exhausted")
 
     # Cash reserves include the configured cost buffer; this is deliberately
     # stricter than reserving only the opening fee.
     cash_margin = cash / (Decimal("1") + leverage * cost_fraction)
-    margin_budget = min(
+    margin_budget = min(x for x in (
         equity * position_margin,
         equity * total_margin - used_margin,
         cash_margin,
-    )
+        max_margin,
+    ) if x is not None)
     if margin_budget <= 0:
         return _rejected("margin_budget_exhausted")
 
@@ -181,6 +222,9 @@ def quote_paper_risk(policy: RiskPolicy, request: RiskRequest) -> RiskQuote:
     notional = quantity * price
     margin = notional / leverage
     loss = quantity * loss_per_unit
+    if min_margin is not None and margin < min_margin:
+        # Non si alza il rischio ne' si stringe lo stop: con leva piu' bassa il margine cresce (il motore riprova).
+        return _rejected("below_min_margin")
     if (loss > risk_budget or margin > margin_budget or
             (loss_per_margin is not None and loss > margin * loss_per_margin)):
         return _rejected("internal_risk_invariant")

@@ -116,10 +116,14 @@ def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal,
         raise ValueError("invalid_cost_bp")
     equity = initial_equity + summary.realized_pnl
     margin = summary.margin_in_use
-    open_risk = sum((estimated_loss_per_unit(p.fill_price, p.stop_price, roundtrip_cost_bp) * p.quantity
-                     for p in summary.open_positions), Decimal("0"))
+    side_risk = {1: Decimal("0"), -1: Decimal("0")}
+    for p in summary.open_positions:
+        side_risk[p.side] = side_risk.get(p.side, Decimal("0")) + (
+            estimated_loss_per_unit(p.fill_price, p.stop_price, roundtrip_cost_bp) * p.quantity)
+    open_risk = sum(side_risk.values(), Decimal("0"))
     cash = max(equity - margin, Decimal("0"))
-    return BrainPortfolioSnapshot(equity, cash, margin, open_risk)
+    return BrainPortfolioSnapshot(equity, cash, margin, open_risk, open_positions=len(summary.open_positions),
+                                  side_open_risk=side_risk)
 
 
 def price_with_room(price: Decimal) -> Decimal:

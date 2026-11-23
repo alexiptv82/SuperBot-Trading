@@ -28,7 +28,9 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Optional
 
+from backend.v3.guardian import GuardianPolicy, guardian_policy_from_config
 from backend.v3.risk import RiskPolicy
+from backend.v3.runner.exits import ExitPolicy, load_exit_policy
 
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}USDT$")
 _MODEL_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
@@ -44,6 +46,12 @@ _RISK_KEYS = {"max_loss_fraction", "max_open_risk_fraction", "max_position_margi
               "max_total_margin_fraction", "minimum_equity", "estimated_roundtrip_cost_bp",
               "liquidation_buffer_fraction"}
 _OPTIONAL_PROFILE_KEYS = {"max_loss_margin_fraction", "min_leverage", "max_leverage"}
+# Profilo aggressivo (23/11), solo insieme alle chiavi del profilo di leva: margine per trade in USDT, posizioni,
+# rischio correlato nella stessa direzione.
+# Schema 2 (23/11): per run, legati all'impronta della configurazione come il resto.
+_V2_KEYS = {"analyst", "exit_policy", "guardian"}
+ANALYSTS = ("deepseek", "falco_evoluto")
+_AGGRESSIVE_KEYS = {"min_margin_usd", "max_margin_usd", "max_positions", "max_same_side_risk_fraction"}
 
 
 @dataclass(frozen=True)
@@ -64,6 +72,9 @@ class RunnerConfig:
     daily_cap_usd: Decimal
     daily_loss_warn: Decimal = Decimal("0.35")
     daily_loss_halt: Decimal = Decimal("0.50")
+    analyst: str = "deepseek"                       # schema 2: "deepseek" | "falco_evoluto"
+    exit_policy: Optional[ExitPolicy] = None        # schema 2: None = exit_policy.json del codice (schema 1)
+    guardian: Optional[GuardianPolicy] = None       # schema 2: None = Guardian spento
 
     @property
     def cycle_ms(self) -> int:
@@ -123,9 +134,19 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
         data = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs, parse_constant=_reject_constant)
     except (UnicodeDecodeError, ValueError, RecursionError):
         _fail()
-    if type(data) is not dict or set(data) != _KEYS or type(data["schema_version"]) is not int \
-            or data["schema_version"] != 1:
+    version = data.get("schema_version") if type(data) is dict else None
+    if type(version) is not int or version not in (1, 2) or set(data) != (_KEYS if version == 1 else _KEYS | _V2_KEYS):
         _fail()
+    v2 = {}
+    if version == 2:
+        if type(data["analyst"]) is not str or data["analyst"] not in ANALYSTS:
+            _fail()
+        try:
+            v2 = dict(analyst=data["analyst"],
+                      exit_policy=load_exit_policy(json.dumps(data["exit_policy"]).encode()),
+                      guardian=guardian_policy_from_config(data["guardian"]))
+        except (ValueError, TypeError):
+            _fail()
     syms = data["symbols"]
     if (type(syms) is not list or not 1 <= len(syms) <= 40 or len(set(syms)) != len(syms)
             or any(type(s) is not str or not _SYMBOL_RE.match(s) for s in syms)):
@@ -134,8 +155,22 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
     if type(slip) is not int or not 0 <= slip <= 500:
         _fail()
     risk = data["risk_policy"]
-    if type(risk) is not dict or set(risk) not in (_RISK_KEYS, _RISK_KEYS | _OPTIONAL_PROFILE_KEYS):
+    if type(risk) is not dict or set(risk) not in (_RISK_KEYS, _RISK_KEYS | _OPTIONAL_PROFILE_KEYS,
+                                                   _RISK_KEYS | _OPTIONAL_PROFILE_KEYS | _AGGRESSIVE_KEYS):
         _fail()
+    aggressive = {}
+    if _AGGRESSIVE_KEYS <= set(risk):
+        npos = risk["max_positions"]
+        if type(npos) is not int or not 1 <= npos <= 20:
+            _fail()
+        aggressive = dict(
+            min_margin=_dec(risk["min_margin_usd"], Decimal("0"), Decimal("1000000"), lo_open=True),
+            max_margin=_dec(risk["max_margin_usd"], Decimal("0"), Decimal("1000000"), lo_open=True),
+            max_positions=npos,
+            max_same_side_risk_fraction=_dec(risk["max_same_side_risk_fraction"], Decimal("0"), Decimal("1"),
+                                             lo_open=True))
+        if aggressive["min_margin"] > aggressive["max_margin"]:
+            _fail()
     has_profile = _OPTIONAL_PROFILE_KEYS <= set(risk)
     min_lev, max_lev = (risk["min_leverage"], risk["max_leverage"]) if has_profile else (1, 125)
     if (type(min_lev) is not int or type(max_lev) is not int
@@ -151,7 +186,7 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
         liquidation_buffer_fraction=_dec(risk["liquidation_buffer_fraction"], Decimal("0"), Decimal("1"), lo_open=True),
         max_loss_margin_fraction=(_dec(risk["max_loss_margin_fraction"], Decimal("0"), Decimal("1"), lo_open=True)
                                   if has_profile else None),
-        min_leverage=min_lev, max_leverage=max_lev)
+        min_leverage=min_lev, max_leverage=max_lev, **aggressive)
     if not (policy.max_loss_fraction <= policy.max_open_risk_fraction
             and policy.max_position_margin_fraction <= policy.max_total_margin_fraction):
         _fail()
@@ -183,7 +218,7 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
         max_tokens=max_tokens, cycle_minutes=cycle,
         input_usd_per_million=_dec(data["input_usd_per_million_tokens"], Decimal("0"), Decimal("1000")),
         output_usd_per_million=_dec(data["output_usd_per_million_tokens"], Decimal("0"), Decimal("1000")),
-        daily_cap_usd=cap, daily_loss_warn=warn, daily_loss_halt=halt)
+        daily_cap_usd=cap, daily_loss_warn=warn, daily_loss_halt=halt, **v2)
 
 
 def default_config_path() -> Path:
