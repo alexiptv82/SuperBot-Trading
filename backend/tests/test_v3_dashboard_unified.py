@@ -105,7 +105,14 @@ def test_login_and_only_get(tmp_path):
             assert c.delete(path).status_code == 405
     methods = {route.path: route.methods for route in make_router(auth, paths).routes}
     assert methods['/api/v3/brain/close'] == {'POST'}
-    assert all(methods[path] == {'GET'} for path in methods if path != '/api/v3/brain/close')
+    # 23/11/2026: chiusura SINGOLA di Falco Evoluto / Brain Scalp (autenticata, stesso bridge, mai globale)
+    assert methods['/api/v3/compare/{name}/close'] == {'POST'}
+    writes = {'/api/v3/brain/close', '/api/v3/compare/{name}/close'}
+    assert all(methods[path] == {'GET'} for path in methods if path not in writes)
+    with TestClient(app) as c:                                   # anche la nuova rotta esige la sessione
+        assert c.post('/api/v3/compare/falco_evoluto/close', json={'position_id': 'x'}).status_code == 401
+        assert c.get('/api/v3/compare/falco_evoluto/close-result').status_code == 401
+        assert c.get('/api/v3/compare').status_code == 401
 
 
 def test_real_journal_closed_trade_score_and_immutable(tmp_path):
