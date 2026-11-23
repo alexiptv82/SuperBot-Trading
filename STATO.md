@@ -1,3 +1,12 @@
+## 23/11/2026 (22) — RESET e ripartenza PAPER autorizzati: procedura unica pronta, in attesa dell'esecuzione root (Claude)
+
+- **Decisione del proprietario:** reset reale (non emendamento) di Falco Evoluto (1.000, stop 12 %) e Brain Scalp (2.000, stop 25 % effettivo), rischio 4 %/10 %, leva 15–45×, Guardian e protezione profitti attivi; autorizzata la riattivazione PAPER. Il lavoro `861a2f86` resta come analisi, non applicato.
+- **Valori nuovi:** Falco avviso 6 / stop 12 / sessione 12 %, floor 800, blocco globale 20 %; Scalp avviso 15 / stop 25 / sessione 25 %, **floor 1.400 (era 1.600)**, **blocco globale 30 % (era 20 %)**: lo stop giornaliero è il primo blocco dal capitale pieno e dopo profitti. Mandati nuovi per run (Scalp: impronta nuova per il floor).
+- **Procedura:** `deploy/falco-evoluto/reset/reset_paper.py` (`364edd3e`), doc `docs/falco-evoluto/RESET-PAPER-20261123.md`: pausa → chiusura e contabilità delle posizioni dal canale ufficiale → arresto → archivio integrale per spostamento in `.archivio/reset-<data>` con impronte → run nuove nelle STESSE cartelle/run_id (web, bridge, unità, superbot-ops invariati) → avvio → sonda nel container web → attivazione `80-paper.sh` → sonda finale. Rollback automatico/manuale. RC1 mai toccato.
+- **Test:** `test_reset.py` 6 (procedura completa in cartelle finte con codice vero), deploy 58; gate V3 5495, builder 158, Jest 170. Nota: il commit `364edd3e` è stato pubblicato prima del gate; gate eseguito subito dopo, verde.
+- **Interfaccia:** servita la build con i selettori (`main.3dd759b4.js`, `ui-34c3529b`), installata dal proprietario.
+- **Prossimo:** il proprietario esegue l'unico comando root; Claude verifica con superbot-ops (RUNNING, journal nuovi, prime decisioni) e lo registra qui. Ripartenza NON ancora eseguita.
+
 ## 23/11/2026 (21) — Proposta limiti PAPER analizzata e preparata, NON applicata; correzione: stop di Scalp all'8 %, non al 50 % (Claude)
 
 - **Correzione:** nella voce (20) ho scritto stop giornaliero al 50 %: è il valore di riserva del codice; le run Falco Evoluto e Brain Scalp sono configurate a **avviso 5 % / stop 8 % / sessione Guardian 8 %**. Il blocco di Scalp all'8,2 % (17:43 UTC, `halted:daily_loss`) è coerente con la configurazione; scade alle 00:00 UTC; non cancellato né forzato.
