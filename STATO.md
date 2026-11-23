@@ -1,3 +1,14 @@
+## 23/11/2026 (21) — Proposta limiti PAPER analizzata e preparata, NON applicata; correzione: stop di Scalp all'8 %, non al 50 % (Claude)
+
+- **Correzione:** nella voce (20) ho scritto stop giornaliero al 50 %: è il valore di riserva del codice; le run Falco Evoluto e Brain Scalp sono configurate a **avviso 5 % / stop 8 % / sessione Guardian 8 %**. Il blocco di Scalp all'8,2 % (17:43 UTC, `halted:daily_loss`) è coerente con la configurazione; scade alle 00:00 UTC; non cancellato né forzato.
+- **Proposta del proprietario:** Scalp 15/25/25 %, Falco 6/12/12 % (avviso/stop/sessione); invariati 4 %, 10 %, leva 15–45×, floor 1.600/800, protezione profitti, drawdown globale 10/20 %.
+- **Interazioni (`analisi_limiti.py`, verificate sul codice reale):** Scalp: con 25 % il primo blocco reale diventa floor + drawdown globale a −20 % (1.600); stop e sessione al 25 % non raggiungibili con nuove aperture; dopo profitti il drawdown globale arriva sempre prima; una giornata negativa può portare Scalp al floor (fine del confronto senza intervento). Falco: lo stop al 12 % è il vero stop di giornata (rischio dimezzato a −10 %), ma dopo una giornata a −10 % il floor arriva prima (−11,1 %).
+- **Mandati:** legati solo alla politica di rischio (invariata): restano validi, nessuna nuova approvazione.
+- **Vincolo:** `PREPARED_PAUSED_ONLY.json` contiene l'impronta di `runner_config.json`; runner e uscite rifiutano di avviarsi se diversa. La procedura aggiorna configurazione + impronta, annota `CONFIG_AMENDMENTS.jsonl`, riavvia solo il runner, verifica uscite (stesso processo), ripristino automatico; rollback senza mai riportare indietro `daily_loss.json`; rifiuta con freno agganciato o Guardian bloccato per sessione. Journal mai toccato.
+- **Codice:** ramo `claude/limiti-paper-20261123`, `861a2f86` (configurazioni, analisi, `aggiorna_limiti.py`, `audit_freno.py`, 16 test con mutazioni), doc `docs/falco-evoluto/LIMITI-PAPER-20261123.md` (`0d4bdae3`). Gate DRY_RUN V3 5495, builder 158, Jest 170.
+- **Audit 8,2 %:** script in sola lettura pronto (copia ro del journal, candele pubbliche, confronto con `max_daily_loss_between`); da eseguire come root. Nessuna anomalia indicata dai dati accessibili a Claude (uscite SANE, nessuna apertura dopo il blocco visibile nei log).
+- **Prossimo:** decisione del proprietario su Scalp 25 % (inefficace sotto il floor); autorizzazione esplicita per applicare; Scalp non prima delle 08:00 italiane del 24/11.
+
 ## 23/11/2026 (20) — Selettori Falco Evoluto / Brain Scalp preparati, NON installati; Brain Scalp FERMO per freno di perdita giornaliera (Claude)
 
 - **Prima versione della schermata installata dal proprietario** (~18:22 UTC): il dominio serve `main.df0611d8.js` (index `56ed568e…`) = candidata `ui-845537f3`.
