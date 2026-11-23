@@ -1,3 +1,9 @@
+## 23/11/2026 (17) — Autorizzazione finale concessa; attivazione NON ancora eseguita (verifica 15:35 UTC) (Claude)
+
+- Il proprietario ha autorizzato il confronto PAPER di Falco Evoluto e Brain Scalp. Verifica Claude con superbot-ops alle 15:35 UTC: su entrambi mandato NON approvato (`mandate_not_approved`), pausa ATTIVA, runner `halted:mandate_not_approved`, uscite SANE, nessuna spesa, nessuna apertura; nessun evento nei registri dopo il riavvio delle 15:05. Il comando di attivazione (`80-paper.sh falco|scalp attiva`, root, non incluso in superbot-ops) non risulta eseguito.
+- Brain RC1 invariato: pausa ATTIVA, uscite SANE.
+- Orario di avvio effettivo: da registrare dopo l'esecuzione del comando di attivazione.
+
 ## 23/11/2026 (16) — Aggiornamento BTC/ETH installato e verificato: pronti per il confronto PAPER (Claude)
 
 - Aggiornamento eseguito dal proprietario (15:05 UTC), registro `rilascio-falco-scalp.log.aggiorna`: `ESITO AGGIORNAMENTO: OK`; regole contratti 8/8 con dati Bitget attuali (BTC/ETH 125x); backup unita' in `/opt/superbot-v3-backups/falco-scalp/aggiorna-20261123T150538Z`; codice precedente conservato.
