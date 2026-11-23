@@ -1,3 +1,11 @@
+## 23/11/2026 (11) — Installatore unico e autonomia amministrativa limitata preparati, NON applicati (Claude)
+
+- Commit `b67f760b` (ramo `claude/falco-evoluto-20261123`): `deploy/falco-evoluto/admin/` con `installa.sh` (sha `5adff106…`), wrapper `superbot-ops` (sha `e7158a7f…`) e regola `superbot-ops.sudoers` (sha `2b672bb1…`, `visudo -cf` OK). Il codice del rilascio resta `393b38f6`.
+- Rilascio e autonomia SEPARATI: `installa.sh rilascio` (16 file verificati, poi `00-rilascio.sh`: due run in pausa, approved:false) e `installa.sh autonomia` (opzionale). Revoca: `installa.sh revoca-autonomia`.
+- Privilegi proposti (22 righe esatte, nessun jolly, solo il wrapper): `stato`; `pausa` e `revoca` per rc1/falco/scalp; riavvio servizio uscite o runner per rc1/falco/scalp; riavvio bridge (+ riavvio web per rimontare il socket); `log` di 7 unita' fisse (200 righe); `rollback-falco-scalp`. ESCLUSI: attivazione, ripresa, approvazione mandati, shell, Docker generico, modifica file, trading reale.
+- Sicurezza verificata: interprete e codice installato di proprieta' di root e non scrivibili da `superbot-agent`; il wrapper verifica proprietario, permessi e SHA-256 di ogni script prima dell'uso. Test: 19 autonomia + 29 rilascio; gate DRY_RUN V3 5491, builder 158, Jest 170.
+- Nessun privilegio applicato: serve il proprietario con la sua password sudo.
+
 ## 23/11/2026 (10) — Rilascio Falco Evoluto + Brain Scalp autorizzato: in attesa dell'unico intervento root (Claude)
 
 - Autorizzazione del proprietario: installazione e configurazione PAPER delle due run (in pausa, approved:false), bridge e dashboard. NON autorizzata l'attivazione.
