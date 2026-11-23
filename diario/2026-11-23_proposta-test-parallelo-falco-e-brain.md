@@ -1,0 +1,25 @@
+# 2026-11-23 — Proposta del proprietario: test PAPER parallelo Falco Evoluto vs Brain Scalp
+
+## Richiesta del proprietario (NON autorizzazione a riattivare Falco)
+- Mentre si prepara una nuova strategia più aggressiva per Brain, il proprietario desidera riattivare anche un **Falco semi-automatico** in PAPER per confronto: regole prevalentemente automatiche, AI consultata raramente, capace di SHORT e LONG, miglior lettura cambi di trend e soprattutto protezione dei profitti.
+- Nella richiesta recente è già stata chiesta pausa Brain RC1 e chiusura manuale delle due posizioni, **ma NON è stata mostrata conferma della pausa/chiusure**: verificare LIVE sulla VPS prima di altro.
+- Motivazione: Falco storico ha mostrato fasi profittevoli SHORT, ma spesso restituiva profitto per uscite deboli, short forzati anche in trend sfavorevoli e LONG disastrosi. La bontà statistica del vecchio Falco NON è certificata, perché storici Falco/Toro conservati ma semanticamente non riconciliati.
+
+## Verifica GitHub di ChatGPT sul codice esistente (integrazione 9b153278, 2026-11-23)
+- `backend/desk/signals.py`: segnali tecnici già con punteggio separato `long_score` e `short_score`, indicatori 1h/4h/1d, momentum, pattern e RSI. Questo NON dimostra che la versione installata Falco accetti LONG o sia attualmente short-only: verificarne codice/config live.
+- `backend/desk/trend_change.py`: rileva incrocio EMA20/50 su candele chiuse 1h, bias EMA50/200 4h solo con 200 candele valide, ma **solo advisory**, non è oggi un filtro automatico di ingresso.
+- `backend/desk/long_s25.py`: esiste strategia LONG separata, disattivata di default (`DESK_LONG_S25`), ma non considerarla convalidata: vecchi LONG S25 hanno riportato perdite. Non abilitarla alla cieca.
+- `backend/desk/brain.py`: Claude API storicamente in classic con fallback `rules_decisions()` in `cli.py`; possibile sostituire modalità operativa con regole predominanti, AI come revisore **opt-in** di soli casi complessi, non confermare già attiva.
+- `backend/desk/engine.py`: PAPER account con SL, TP, parziali, leva e limiti; NON presumere profit guardian/trailing live senza controllo. Esiste `paper_stop_monitor.py` per specifici casi di protezione dei classici fermi, distinto da gestione running.
+
+## Architettura raccomandata per progetto comparativo
+1. **Falco SHORT core IMMUTABILE**: congelare codice e parametri della strategia SHORT valida come baseline; non sovrascrivere, resettare o riattivare i dati/servizi storici. Aggiungere modulo LONG separato, attivabile via flag e registrato con `strategy_id` distinto. Prima LONG shadow, poi PAPER in base a test mirati.
+2. **Trend-change**: usare 1h/4h/1d coerenti e candele chiuse; bias UP/DOWN/RANGE/SHOCK/UNCERTAIN, `NO_TRADE`/skip valido; filtro o freno per NON aprire altri SHORT in chiaro trend UP. Un filtro nuovo modifica l'operatività della strategia originale: etichettare Falco-Evoluto, non spacciarlo per algoritmo SHORT identico.
+3. **Profitti**: progetto di protect profit fee-aware (break-even solo quando guadagno netto copre fee/slippage, partials, trailing dopo conferma e soglia minima, exit per inversione) simmetrico LONG/SHORT, evitare stop troppo stretti e duplicazione di exit writer; verificare regole esistenti prima.
+4. **AI occasionale**: nessun Claude fisso ad ogni ciclo; solo casi regime borderline o conflitto, cap e logging spesa; regole e veto rischio sempre proprietari delle aperture; AI non decide liberamente posizioni né bypassa vincoli.
+5. **Confronto isolato**: Brain Scalp RC2 PAPER e Falco Evoluto PAPER su due run/wallet separati, stesso periodo, medesima lista strumenti per quanto disponibile, feed/costi/slippage allineati, nessuna condivisione forzata degli ingressi; Falco può avere capitale PAPER nominale 1000 contro Brain 2000 purché risultati comparati **in percentuale** e rischio normalizzato. Conservare Brain RC1, Falco storico, Arena intatti.
+6. **Metriche**: P&L netto (commissioni/slippage/funding modellati + costi AI separati), rendimento su equity, max drawdown, profit factor, expectancy, worst daily loss, win/loss, LONG vs SHORT, trade count, esposizione/correlazione, ordini rifiutati e NO_TRADE; campione 72h solo test tecnico; confronto indicativo più lungo 14 giorni minimo senza promettere sufficienza.
+7. **Dashboard**: mostrare Brain e Falco fianco a fianco (stato, equity, drawdown, trading PnL, AI cost, manual close) con storico distinto. Non nascondere o mescolare Falco storico e nuova run.
+8. **Stato operativo**: chiedere a Claude inizialmente sola ricognizione read-only delle unità e config effettive; sviluppo su branch isolato, test mirati, consegna una proposta realizzabile. NESSUN deploy, restart, merge, riavvio Falco, mandatizzazione Brain o uso real senza OK del proprietario.
+
+Il presente documento è una proposta progettuale e un checkpoint, NON indica che la strategia sia stata implementata né che i servizi siano attivi.
