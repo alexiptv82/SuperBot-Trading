@@ -1,3 +1,13 @@
+## 23/11/2026 (13) — RILASCIO PAPER Falco Evoluto + Brain Scalp RIUSCITO; verifica post-installazione (Claude)
+
+- Ripresa eseguita dal proprietario (13:36 UTC): `ESITO RILASCIO: PRONTO PER IL COLLAUDO PAPER`. Registro letto da Claude (`precollaudo-esiti/rilascio-falco-scalp.log.ripresa`): run riusate e intatte, copia di sicurezza in `/opt/superbot-v3-backups/falco-scalp/runs-before-ripresa-20261123T133639Z`, codice `246a3a92` in `/opt/superbot-falco-scalp-246a3a92fc21`, journal con catena integra (1 evento `run_prepared` ciascuno, 0 operazioni).
+- Servizi (verificati da Claude): `superbot-falco-evoluto-p1-exit/-runner` e `superbot-brain-scalp-p1-exit/-runner` active, 0 riavvii, codice `246a3a92`; uscite SANE; runner fermi per il mandato (`mandate_not_approved`), nessuna spesa AI, nessuna apertura; pausa ATTIVA e mandato approved:false su entrambe (dal registro: le run sono leggibili solo da root).
+- Web e bridge: immagine `superbot:falco-scalp-web-246a3a92fc21`; bridge con le due run in scrittura e `V3_BRIDGE_EXTRA_RUNS` corretto; sonde candidate e live PASS (gate a percorsi esatti, chiusura negativa 404 per Falco Evoluto, Brain Scalp e RC1). Senza sessione: `/api/v3/compare` e le POST di chiusura (anche `all`) = 401. Web precedente conservata ferma (`superbot-before-falco-scalp-web`); interfaccia precedente pronta per il rollback.
+- Interfaccia: `index.html` servito = build `ui-393b38f6` (edda090a…); `/compare` raggiungibile dal dominio pubblico (200), bundle con confronto, risultato dopo AI e drawdown a mercato.
+- Guardian: configurato su entrambe (sonda: `guardian` attivo); nessuna valutazione `guardian_state` finche' il mandato non e' approvato (il runner non fa giri). Verifica dal vivo al primo giro dopo l'attivazione.
+- **Brain RC1 (dal registro, controllo iniziale):** pausa ATTIVA, uscite SANE, ma mandato VALIDO (approvato in precedenza), spesa AI registrata e **1 posizione aperta** (sonda: `open: 1`). Nessuna nuova apertura con la pausa; la posizione resta gestita dal servizio delle uscite. Nessuna modifica fatta da Claude.
+- Prossimo: autonomia limitata (`installa.sh autonomia`), poi attivazione PAPER separata per bot con `80-paper.sh falco|scalp attiva`.
+
 ## 23/11/2026 (12) — NO-GO del primo rilascio: causa trovata e corretta, procedura di ripresa pronta (Claude)
 
 - Esito riportato dal proprietario: sonde RC1 `PASS_LIVE`, entrambe le run `prepared_paused_close_ready`, poi `FAILED_bridge_negative_close_falco_evoluto_423`; rollback automatico completato (web e bridge precedenti, unita' nuove fermate, run e journal conservati, RC1 in pausa). Stato visibile da Claude coerente (unita' nuove not-found, bridge sull'immagine RC1, RC1 uscite attive).
