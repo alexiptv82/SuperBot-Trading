@@ -1,3 +1,11 @@
+## 23/11/2026 (8) — Chiusura manuale per run, rischio allineato, preparazione verificata (Claude)
+
+- Ramo `claude/falco-evoluto-20261123`, finale `d1f9f016` (`8b68e86f` funzionalita', `d1f9f016` inventario rotte). Gate DRY_RUN verde: V3 5489, builder 158, Jest 170. Pubblicato solo il ramo.
+- Chiusura manuale singola per Falco Evoluto e Brain Scalp: bridge con `V3_BRIDGE_EXTRA_RUNS` (identita' della run ricontrollata a ogni richiesta, solo `position_id`, indipendente da RC1/classici), rotte autenticate `/api/v3/compare/{nome}/close` e `close-result`, pulsante con conferma nella pagina di confronto. Test end-to-end offline per entrambi (pagina -> web -> bridge socket reale -> servizio uscite della run -> journal `manual` -> esiti).
+- Falco Evoluto: margine totale 50 %, equity minima 800 (proposta di allineamento). Misura con motore vero: 2 posizioni a rischio pieno, la terza rifiutata `below_min_margin`; 4 posizioni non raggiungibili con 4 %/trade e 10 % aperto. Nessun altro valore cambiato.
+- Preparazione: entrambe le run create in pausa con mandato approved:false; un giro reale del runner si ferma per il mandato (nessuna AI, spesa o apertura).
+- Rilascio NON eseguito. Brain RC1: pausa ancora da dimostrare con il comando unico gia' consegnato (voce 7).
+
 ## 23/11/2026 (7) — Falco Evoluto + Brain Scalp + Smart Profit Guardian: sviluppati e testati, NON installati (Claude)
 
 - Ripresa dopo API 529: lavoro locale preservato nel checkpoint `c058ec3e` (nessuna operazione distruttiva).
