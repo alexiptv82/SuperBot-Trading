@@ -1,3 +1,15 @@
+## 23/11/2026 (7) — Falco Evoluto + Brain Scalp + Smart Profit Guardian: sviluppati e testati, NON installati (Claude)
+
+- Ripresa dopo API 529: lavoro locale preservato nel checkpoint `c058ec3e` (nessuna operazione distruttiva).
+- Ramo `claude/falco-evoluto-20261123`: `c058ec3e` checkpoint, `c776a7ae` integrazione, `5608daee` finale. Gate DRY_RUN verde: V3 5485, builder 158, Jest 169. Pubblicato solo il ramo.
+- Guardian `backend/v3/guardian.py` nel ciclo: floor mobile (armato +8 %, 75 % del picco), stati NORMAL/SELECTIVE/PROTECTED/LOCKED dai numeri, sessione 08:00 Europe/Rome, LOCKED senza AI, `guardian_state` nel journal, errore = LOCKED.
+- RiskManager: margine min/max USDT, 4 posizioni, rischio stesso lato 8 %, tetto Guardian; leva 15-45x cercata verso il basso, mai sotto 15x; NO_TRADE se nulla quadra; `risk_reason` nel journal (solo profili nuovi).
+- Analista Falco Evoluto (SHORT originale corretto: EMA200 4h e trend 1d con dati sufficienti; LONG indipendente; DeepSeek consulente, 0,20/giorno). Brain Scalp = DeepSeek L5, ciclo 30, 0,75/giorno.
+- Configurazioni schema 2 (rischio 4 %/10 %/20 % margine, stop giornaliero 8 %, TP 3R, BE 1R, trailing 1,5R/1R, 24 h). RC1 e schema 1 invariati (policy_hash `ba5c074ec2ecfe34` verificato da test). `stop_kind` persistente; target netto solo proposto.
+- Confronto: `/api/v3/compare` (sola lettura, `V3_COMPARE_RUNS`) e pagina `/compare`.
+- Limiti: E0 senza storico attestato sufficiente (anti-reingresso in osservazione, vincolante solo in PROTECTED); bridge di chiusura manuale da estendere alle nuove run; chiusure parziali rinviate; costo Brain Scalp ~0,77 USD/giorno stimato (al limite del tetto). Run, unita' e config web non create.
+- Brain RC1: pausa NON verificata (serve root). Preparato un unico comando Termius di verifica e pausa condizionale (solo `pause.flag`, nessuna chiusura, uscite attive). Dettagli: `docs/falco-evoluto/PROPOSTA.md`.
+
 ## 23/11/2026 (6) — Falco Evoluto vs Brain Scalp: verifiche, protezione dei profitti, proposta (Claude)
 
 - Richiesta del proprietario: secondo esperimento PAPER Falco Evoluto (1.000) vs Brain Scalp (2.000), miglior rapporto profitto/rischio. Nessun deploy, merge, riattivazione o avvio senza approvazione finale.
