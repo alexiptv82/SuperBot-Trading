@@ -1,3 +1,12 @@
+## 23/11/2026 (6) — Falco Evoluto vs Brain Scalp: verifiche, protezione dei profitti, proposta (Claude)
+
+- Richiesta del proprietario: secondo esperimento PAPER Falco Evoluto (1.000) vs Brain Scalp (2.000), miglior rapporto profitto/rischio. Nessun deploy, merge, riattivazione o avvio senza approvazione finale.
+- Verifiche dal mio utente: uscite/runner Brain RC1 attivi (0 riavvii); pausa e mandato leggibili solo da root (comando `80-paper.sh stato`). Falco/Toro classici fermi (nessun processo), dati in `/opt/superbot-desk-data` presenti; `superbot-v3-falco-exit`/`-toro-exit` `failed` dal 14/11. Nulla toccato.
+- Inventario: SHORT di Falco = `desk/signals.py` + `rules_decisions` (+ Claude); guardia SHORT-only gia' preparata `work/falco-short-only-20261114`, mai installata; S25 non riattivata. Laboratorio uscite pre-registrato (21/11) con BE/trailing/protezione solo offline; runtime V3 solo stop/TP 2R/24 h. Nessuna chiusura legata all'ora del giorno nel codice.
+- Decisione tecnica proposta: Falco Evoluto come seconda run V3 con analista a regole derivato da Falco (stessa contabilita', costi e uscite di Brain → confronto omogeneo); desk V2 intatto.
+- Implementato su `claude/falco-evoluto-20261123` `a6661a0d`: protezione dei profitti nel runtime (politica schema 2, spenta di default; break-even con costi, trailing in R, quota protetta; equivalenza testata con i 6 bracci del laboratorio; ripresa dopo buchi del feed). 14 test nuovi; gate DRY_RUN verde (V3 5444, builder 158, Jest 166). Pubblicato solo il ramo.
+- Proposta completa e decisioni richieste: `docs/falco-evoluto/PROPOSTA.md` (Brain Scalp A/B, parametri d'uscita, porting SHORT, budget AI, rischio 1.000). Chiusure parziali rinviate (il journal V3 chiude solo posizioni intere).
+
 ## 23/11/2026 (5) — Controllo operativo finale prima del PAPER 72 h (Claude)
 
 - Registri del proprietario: `avvio.log` ESITO PRONTO (runner fermo per `mandate_not_approved`, uscite sane, nessuna spesa/apertura, web e canale di chiusura sulla run `brain-unico-paper-rc1`); `ui-cd56fb71.log` SUCCESS (index `127b1571…` = build, backup precedente archiviato).
