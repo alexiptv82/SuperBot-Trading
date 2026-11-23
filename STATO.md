@@ -1,3 +1,11 @@
+## 23/11/2026 (1) — Pre-collaudo Brain Unico: comando unico pronto, in attesa di esecuzione root (Claude)
+
+- Autorizzazione del proprietario a eseguire il pre-collaudo sulla VPS con i permessi di Claude. **Claude non ha root** (`superbot-agent`, nessun sudo; `/opt/superbot-v3-paper-runs`, interprete e systemd non accessibili): nessun tentativo di aggirare i permessi.
+- **Verificato senza privilegi:** commit `3440340289fdd23398f57390238daf8da3eb3fa9` presente e allineato (differenza da `ea5c44b4`: un solo documento); impronta della configurazione B `e415ca96…` = `comune.sh`; dipendenze del codice nuovo = quelle del servizio in uso (solo moduli standard aggiunti); nessuna unità o cartella `brain-unico` già presente; `superbot-v3-paper-brain-exit` attivo.
+- **Preparato** `deploy/brain-unico/precollaudo/00-precollaudo-completo.sh` (integrazione `e4864d80`, gate verde: V3 5418, builder 158, Jest 153). In un comando: 10 → 20 → controlli 3/5/6 (secondo exit_worker rifiutato dal vivo) → 40 → 3bis → 90. Rollback automatico delle sole unità nuove in caso di FAIL; fotografia di unità `superbot*` e container prima e dopo. Registro in `/home/superbot-agent/precollaudo-esiti/precollaudo.log`.
+- **Non eseguito:** 7b (rollback web isolato). Mandato `approved:false`, 72 ore non avviate.
+- **In attesa:** esecuzione del comando root da parte del proprietario; poi registrazione dei PASS/FAIL.
+
 ## 22/11/2026 (7) — Copia Android degli indispensabili e ripristino con Termux: PREPARATI, NON eseguiti (Claude)
 
 - **Richiesta del proprietario:** certificare il ripristino degli indispensabili sullo smartphone (Termux, senza root), con una **seconda copia** cifrata **solo** per la chiave pubblica Android `age1kpdfwmlpjmmwre34kg5zpdjlrc3kjw7syymzax8tg2jm892wa5sqnzc9nm`. Storici non duplicati. Nessun trasferimento sulla VPS autorizzato.
