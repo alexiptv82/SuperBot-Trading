@@ -1,3 +1,11 @@
+## 23/11/2026 (4) — Grafica Brain Unico sul modello dei Classici: build pronta, NON pubblicata (Claude)
+
+- Richiesta del proprietario dopo la verifica sullo smartphone (2.000 USDT PAPER, mandato in attesa). Solo frontend, ramo isolato `claude/brain-ui-classici-20261123`, commit `cd56fb71` (pubblicato solo il ramo, non l'integrazione).
+- Schermata Brain: intestazione con etichetta PAPER fissa, equity centrale (P&L realizzato, cassa = saldo contabile − margine, margine, aperto, oggi), KPI Aperte/Chiuse/Budget AI, card Stato Brain (operativo, pausa, bloccato dal rischio, in attesa del mandato), comandi Avvia/Pausa **disabilitati** con motivo (nessuna API sicura), posizioni complete con chiusura manuale SINGOLA PAPER con conferma (nessuna chiusura totale), statistiche. Trade chiusi, "Come lavora", memoria AI (tre sezioni) e storico in sezioni espandibili. Stessi quattro endpoint e refresh a 30 s. Backend, auth, strategia, profilo B, journal invariati; mandato `approved:false`, nessuna apertura.
+- Test: Jest 166 (13 nuovi), gate DRY_RUN verde (V3 5430, builder 158). Nessun browser disponibile sulla macchina: leggibilita' a 360 px verificata per calcolo, non su schermo.
+- Rilascio: build `rilascio/ui-cd56fb71` (12 file, manifesto `7136d654…`). `70-interfaccia.sh` ora archivia (mai cancella) il backup `previous` dei rilasci successivi, cosi' il rollback riporta alla versione online prima (test: aggiornamento, rollback, backup non valido, controllo di salute fallito). Il bundle conserva il marcatore `BRAIN UNICO` richiesto dallo script.
+- In attesa dell'OK del proprietario per il rilascio sulla VPS (comando root unico con impronte SHA-256). Rollback: `sudo bash /root/brain-unico-avvio/70-interfaccia.sh --rollback`.
+
 ## 23/11/2026 (3) — Correzione dalla revisione di ChatGPT su 70-interfaccia/00-avvio (Claude)
 
 - **Difetto confermato** (`dd43213a`): con `IFS=$'\n\t'`, `for u in $UNITS` passava a `systemctl` un solo nome con lo spazio. Il rilascio dell'interfaccia veniva **sempre rifiutato** (blocco, non falso via libera). La simulazione precedente non lo aveva visto perché il finto `systemctl` rispondeva sempre `active`.
