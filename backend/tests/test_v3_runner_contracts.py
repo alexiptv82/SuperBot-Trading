@@ -37,7 +37,7 @@ def test_parse_builds_exact_rules():
     _c(symbolStatus="maintain"), _c(symbolStatus=None), _c(symbol=""), _c(symbol=5), _c(sizeMultiplier="0"),
     _c(sizeMultiplier="-1"), _c(sizeMultiplier=0.01), _c(sizeMultiplier="x"), _c(sizeMultiplier="NaN"),
     _c(sizeMultiplier=None), _c(minTradeUSDT="-1"), _c(minTradeUSDT=None), _c(minTradeUSDT="Infinity"),
-    _c(maxLever="0"), _c(maxLever="126"), _c(maxLever="10.5"), _c(maxLever=10), _c(maxLever=None), "x", None,
+    _c(maxLever="0"), _c(maxLever="1001"), _c(maxLever="10.5"), _c(maxLever=10), _c(maxLever=None), "x", None,
     {"symbol": "BTCUSDT"}])
 def test_a_malformed_or_inactive_contract_is_dropped_and_good_ones_survive(bad):
     t = parse_contract_rules(_ok(bad, _c("ETHUSDT")), maintenance_fraction=MAINT)
@@ -132,3 +132,17 @@ def test_bad_refresh_interval(r):
 def test_bad_now(now):
     with pytest.raises(ValueError, match="invalid_now"):
         ContractRules(lambda u: _ok(_c()), maintenance_fraction=MAINT).load(now)
+
+
+def test_exchange_leverage_above_125_is_capped_not_dropped():
+    """23/11/2026: Bitget dichiara 150x per BTCUSDT/ETHUSDT; prima il contratto era scartato (no_market_rules)."""
+    from decimal import Decimal
+    from backend.v3.runner.contracts import parse_contract_rules
+    data = {"code": "00000", "data": [
+        {"symbolStatus": "normal", "symbol": "BTCUSDT", "sizeMultiplier": "0.0001", "minTradeUSDT": "5", "maxLever": "150"},
+        {"symbolStatus": "normal", "symbol": "ADAUSDT", "sizeMultiplier": "1", "minTradeUSDT": "5", "maxLever": "75"},
+        {"symbolStatus": "normal", "symbol": "ODDUSDT", "sizeMultiplier": "1", "minTradeUSDT": "5", "maxLever": "5000"},
+        {"symbolStatus": "normal", "symbol": "BADUSDT", "sizeMultiplier": "1", "minTradeUSDT": "5", "maxLever": "12.5"}]}
+    rules = parse_contract_rules(data, maintenance_fraction=Decimal("0.005"))
+    assert rules["BTCUSDT"]["exchange_leverage_limit"] == 125 and rules["ADAUSDT"]["exchange_leverage_limit"] == 75
+    assert "ODDUSDT" not in rules and "BADUSDT" not in rules

@@ -19,6 +19,8 @@ from typing import Callable, Mapping, Optional
 from backend.v3.lab_tools.fetch_candles import BASE, http_json
 
 CONTRACTS_URL = f"{BASE}/api/v2/mix/market/contracts?productType=USDT-FUTURES"
+ENGINE_MAX_LEVER = 125          # tetto del motore (risk.py, engine.py)
+MAX_EXCHANGE_LEVER = 1000       # oltre: dato implausibile, contratto scartato (fail-closed)
 GetJson = Callable[[str], object]
 
 
@@ -47,9 +49,13 @@ def parse_contract_rules(payload: object, *, maintenance_fraction: Decimal) -> d
         symbol = item.get("symbol")
         step, notional, lever = _dec(item.get("sizeMultiplier")), _dec(item.get("minTradeUSDT")), _dec(item.get("maxLever"))
         if (type(symbol) is not str or not symbol or step is None or step <= 0 or notional is None or notional < 0
-                or lever is None or lever != lever.to_integral_value() or not 1 <= lever <= 125 or symbol in out):
+                or lever is None or lever != lever.to_integral_value() or not 1 <= lever <= MAX_EXCHANGE_LEVER
+                or symbol in out):
             continue
-        out[symbol] = {"exchange_leverage_limit": int(lever), "quantity_step": step,
+        # Bitget dichiara oggi 150x per BTCUSDT ed ETHUSDT: prima venivano SCARTATI (no_market_rules) e non erano mai
+        # analizzati. Il limite dell'exchange e' solo un tetto: lo si porta a 125, il massimo che il motore ammette;
+        # la leva effettiva resta quella del profilo di rischio (es. 15-45x), mai di piu'.
+        out[symbol] = {"exchange_leverage_limit": int(min(lever, ENGINE_MAX_LEVER)), "quantity_step": step,
                        "minimum_notional": notional, "maintenance_fraction": maintenance_fraction}
     if not out:
         raise ValueError("invalid_contracts")
