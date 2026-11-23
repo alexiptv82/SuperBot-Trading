@@ -1,3 +1,11 @@
+## 23/11/2026 (5) — Controllo operativo finale prima del PAPER 72 h (Claude)
+
+- Registri del proprietario: `avvio.log` ESITO PRONTO (runner fermo per `mandate_not_approved`, uscite sane, nessuna spesa/apertura, web e canale di chiusura sulla run `brain-unico-paper-rc1`); `ui-cd56fb71.log` SUCCESS (index `127b1571…` = build, backup precedente archiviato).
+- Dal mio utente: unita' exit/runner/bridge attive (0 riavvii), DESK_MODE=paper su entrambe, bridge su `V3_BRIDGE_BRAIN_RUN_ID=brain-unico-paper-rc1`.
+- Percorso esiti → scoreboard → prompt confermato nel codice installato `34403402`: `outcomes_source=lambda: extract_outcomes(journal, ...)` richiamato a ogni decisione (`deepseek_l5.py:74`, `deepseek_l4.py:58`). Test esistenti non riscritti.
+- Run, chiave DeepSeek e container non leggibili senza root: verifica unica in sola lettura `rilascio/verifica-finale.py` (sha `aa192c90…`), una sola richiesta gratuita `GET /user/balance` (nessun token, nessun journal, nessun registro spesa; stampa solo HTTP e credito si'/no).
+- Attivazione (`80-paper.sh attiva`) solo dopo ESITO VERIFICA: GO e con il consenso del proprietario. Mandato ancora `approved:false`.
+
 ## 23/11/2026 (4) — Grafica Brain Unico sul modello dei Classici: build pronta, NON pubblicata (Claude)
 
 - Richiesta del proprietario dopo la verifica sullo smartphone (2.000 USDT PAPER, mandato in attesa). Solo frontend, ramo isolato `claude/brain-ui-classici-20261123`, commit `cd56fb71` (pubblicato solo il ramo, non l'integrazione).
