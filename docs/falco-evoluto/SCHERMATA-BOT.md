@@ -1,6 +1,29 @@
 # Schermata Brain con Falco Evoluto e Brain Scalp (PAPER)
 
-Stato: **preparata, NON installata** (serve l'OK del proprietario). Codice: commit `845537f3` (ramo `claude/schermata-bot-paper-20261123`).
+Stato: prima versione (`845537f3`) **installata** dal proprietario; **seconda versione con i selettori (`34c3529b`) preparata, NON installata** (serve l'OK del proprietario). Ramo `claude/schermata-bot-paper-20261123`.
+
+## Seconda versione (34c3529b): schede superiori come selettori
+- Le due schede del riepilogo (sempre visibili: nome, stato RUNNING/PAUSA/FERMO, equity, %) sono **pulsanti**: toccando Falco Evoluto o Brain Scalp, sotto compaiono i dettagli del **solo** bot scelto (tutte le informazioni di prima: capitale, equity, P&L, Guardian, decisioni, posizioni, chiusura manuale singola).
+- Scelta evidenziata (bordo viola, «▼ dettagli sotto»); all'apertura è scelto Falco Evoluto; la scelta resta durante l'aggiornamento ogni 30 s; se un bot sparisse dai dati si torna al primo.
+- Stesso schema del selettore di portafoglio della vecchia app: `<button>` nativo con `aria-pressed`, quindi tocco Android/PWA, Tab + Invio/Spazio e lettori di schermo.
+- Lo stato dell'altro bot non si nasconde mai: un FERMO resta nella sua scheda anche quando l'altro è selezionato.
+- Verifica su Chromium headless (Playwright, solo nella cartella temporanea dell'agente; dati simulati): 360×780 e 412×915 con tocco, nessuno scorrimento orizzontale, schede 160×115 / 186×115 px, un solo pannello di dettaglio, nessun errore JavaScript; tastiera: Tab raggiunge le schede con anello di focus visibile, Invio e Spazio selezionano.
+- Jest 196 test (erano 191); mutazione: con il selettore disattivato 5 test falliscono.
+
+Candidata: `/home/superbot-agent/brain-unico-lab/rilascio/ui-34c3529b` (bundle `main.3dd759b4.js`, index `ea3b5a87…`, manifesto `5a8b5a8b…`); stessi file della build servita, cambia solo il bundle; manifest e service worker identici. Prova generale in copia della radice web attuale: `SUCCESS_UI_BRAIN_UNICO`, poi rollback → `RESTORED_PREVIOUS_UI` con la build identica a quella servita ora (`main.df0611d8.js`).
+
+```
+sudo bash /root/falco-scalp-rilascio/70-interfaccia.sh --activate --candidate /home/superbot-agent/brain-unico-lab/rilascio/ui-34c3529b --manifest-sha 5a8b5a8bb1dae9edf0d2bd7a11ab9eba8d1310c69b39633447bad6a410b793e1
+```
+Rollback (torna alla prima versione, quella in uso ora): `sudo bash /root/falco-scalp-rilascio/70-interfaccia.sh --rollback`.
+
+## Brain Scalp FERMO (diagnosi separata, nessuna modifica)
+Il runner di Brain Scalp registra `halted:daily_loss` dalle 17:43 UTC del 23/11 (`superbot-ops log scalp-runner`): è il **freno di perdita giornaliera** (P0 #124, stop al 50 % del capitale di inizio giornata UTC, realizzato + non realizzato). Agganciato fino a mezzanotte UTC; uscite, stop e chiusura manuale proseguono (uscite SANE). La dashboard mostra FERMO correttamente: non è un errore grafico.
+Con posizioni dimensionate a ~4 % di perdita allo stop e nessuna chiusura, una perdita reale del 50 % è poco plausibile: va distinto tra blocco `loss` (perdita calcolata ≥ 50 %) e blocco `unverified` (ricostruzione della giornata non riuscita, es. candele mancanti). L'agente non può leggere i file della run (root 0700). Comando root in sola lettura, solo frazioni, nessun importo:
+```
+sudo sh -c 'cd /opt/superbot-v3-paper-runs/brain-v3-brain-scalp-p1 && python3 -c "import json; h=json.load(open(\"heartbeat.json\")); print({k: h.get(k) for k in (\"state\",\"last_error\",\"daily_loss_level\",\"daily_loss_pct\",\"ts_ms\")}); d=json.load(open(\"daily_loss.json\")); print({k: d.get(k) for k in (\"halt_latched\",\"latch_reason\",\"day_start_ms\",\"checked_through_ms\",\"audit_from_ms\")})"'
+```
+
 
 ## Il problema
 `/brain-unico` rendeva ancora Brain RC1; il confronto Falco Evoluto / Brain Scalp era solo un link dentro il fold «Storico».
