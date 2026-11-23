@@ -2,10 +2,12 @@
 
 Synthetic test data only. Never reads or changes VPS PAPER positions.
 """
+from contextlib import contextmanager
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 import json
+import threading
 import time
 
 from fastapi.testclient import TestClient
@@ -18,6 +20,9 @@ from backend.v3.runner.exit_service import ExitService
 from backend.v3.runner.manual_close import run_manual_close
 from backend.v3.runner.monitor import MonitorReport
 from backend.v3_api import _brain_single_close_ready
+from backend.v3 import close_bridge as bridge_client
+from backend.v3 import close_bridge_server as bridge_host
+from backend.v3 import cutover_gate
 
 def _configure(tmp_path, monkeypatch):
     paths=_paths(tmp_path)
@@ -27,10 +32,29 @@ def _configure(tmp_path, monkeypatch):
     (tmp_path/'pause.flag').write_text('paused')
     for key,val in (
         ('V3_CUTOVER_READONLY','1'),('V3_ALLOW_BRAIN_SINGLE_CLOSE','1'),
-        ('TRADING_MODE','paper'),('DESK_MODE','paper')
+        ('TRADING_MODE','paper'),('DESK_MODE','paper'),('V3_CLOSE_BRIDGE_ONLY','1'),
     ):
         monkeypatch.setenv(key,val)
+    # canale RC84 come in produzione: il web (run in sola lettura) inoltra al bridge host via socket UNIX
+    sock=str(tmp_path/'close.sock')
+    monkeypatch.setenv('V3_CLOSE_BRIDGE_SOCKET',sock)
+    monkeypatch.setattr(bridge_client,'SOCKET_PATH',sock)
+    monkeypatch.setattr(cutover_gate,'_CLOSE_BRIDGE_SOCKET',sock)
+    monkeypatch.setattr(bridge_host,'_assert_paper',lambda: None)
+    monkeypatch.setattr(bridge_host,'_brain_paths',lambda: paths)
     return paths
+
+
+@contextmanager
+def _bridge():
+    with bridge_host._Server(bridge_client.SOCKET_PATH, bridge_host._Handler) as server:
+        task=threading.Thread(target=server.serve_forever,daemon=True)
+        task.start()
+        try:
+            yield
+        finally:
+            server.shutdown()
+            task.join(2)
 
 
 def _sidecar(paths, tmp_path):
@@ -50,7 +74,7 @@ def test_pause_ai_with_live_exit_owner_can_close_one_brain_trade_without_startin
     now=int(time.time()*1000)
     assert _brain_single_close_ready(paths,now) is False
     app,_=_app(paths)
-    with TestClient(app) as client:
+    with TestClient(app) as client, _bridge():
         assert client.get('/api/v3/overview').json()['brain_single_close_allowed'] is False
         with _sidecar(paths,tmp_path) as exit_owner:
             assert exit_owner.tick(now).state=='healthy'
@@ -82,11 +106,11 @@ def test_stale_ai_heartbeat_cannot_substitute_for_missing_sidecar(tmp_path,monke
         'ts_ms':int(time.time()*1000),'run_id':RUN,'cycle':1,
         'state':'paused','last_error':None
     }))
-    with TestClient(_app(paths)[0]) as client:
+    with TestClient(_app(paths)[0]) as client, _bridge():
         assert client.get('/api/v3/overview').json()['brain_single_close_allowed'] is False
         result=client.post('/api/v3/brain/close',json={'position_id':pid})
         assert result.status_code==409
-        assert result.json()['detail']['code']=='servizio_uscita_non_pronto'
+        assert 'servizio di uscita' in result.json()['detail']['message']
     assert not (tmp_path/'close_request.json').exists()
 
 
@@ -118,6 +142,7 @@ def test_explicit_paper_flag_requires_every_condition_even_with_owner(tmp_path,m
             ('V3_ALLOW_BRAIN_SINGLE_CLOSE','0'),
             ('V3_CUTOVER_READONLY','0'),
             ('TRADING_MODE','live'),('DESK_MODE','live'),
+            ('V3_CLOSE_BRIDGE_ONLY','0'),('V3_CLOSE_BRIDGE_SOCKET','/run/altro.sock'),
         ):
             with monkeypatch.context() as patch:
                 patch.setenv(key,value)

@@ -66,7 +66,8 @@ def _active_lease_token(path: Path) -> str | None:
     """
     fd = None
     try:
-        flags = os.O_RDWR | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        # Sola lettura: flock non richiede scrittura, e la web legge la run da un mount in sola lettura.
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(path, flags)
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or st.st_size != 32:

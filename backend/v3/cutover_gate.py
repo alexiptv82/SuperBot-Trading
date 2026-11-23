@@ -14,6 +14,15 @@ _BLOCKED_PREFIXES = (
     "/api/supervisor",
 )
 _READ_METHODS = frozenset(("GET", "HEAD", "OPTIONS"))
+_CLOSE_BRIDGE_SOCKET = "/run/superbot-paper-close/close.sock"
+
+
+def _paper_close_bridge_enabled(env) -> bool:
+    # A runtime gate alone is insufficient: the host-side bridge must exist,
+    # mounted as a socket-only read-only directory into the public container.
+    return (env.get("V3_CLOSE_BRIDGE_ONLY") == "1"
+            and env.get("V3_CLOSE_BRIDGE_SOCKET") == _CLOSE_BRIDGE_SOCKET)
+
 
 
 _SINGLE_PAPER_CLOSE_PATHS = frozenset((
@@ -27,7 +36,8 @@ def classic_single_close_enabled(env) -> bool:
     return (env.get("V3_CUTOVER_READONLY") == "1"
             and env.get("V3_ALLOW_CLASSIC_SINGLE_CLOSE") == "1"
             and env.get("TRADING_MODE") == "paper"
-            and env.get("DESK_MODE") == "paper")
+            and env.get("DESK_MODE") == "paper"
+            and _paper_close_bridge_enabled(env))
 
 
 def brain_single_close_enabled(env) -> bool:
@@ -35,7 +45,8 @@ def brain_single_close_enabled(env) -> bool:
     return (env.get("V3_CUTOVER_READONLY") == "1"
             and env.get("V3_ALLOW_BRAIN_SINGLE_CLOSE") == "1"
             and env.get("TRADING_MODE") == "paper"
-            and env.get("DESK_MODE") == "paper")
+            and env.get("DESK_MODE") == "paper"
+            and _paper_close_bridge_enabled(env))
 
 
 def should_refuse_mutation(method: str, path: str, *, readonly: bool,

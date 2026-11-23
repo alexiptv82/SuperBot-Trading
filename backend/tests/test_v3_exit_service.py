@@ -69,6 +69,25 @@ def test_guard_fail_closed_before_start_and_after_stop(d):
     assert (d / BEAT_FILE).exists() and (d / LOCK_FILE).exists()
 
 
+def test_health_readable_from_a_read_only_view_of_the_run(d):
+    """La web legge la run da un mount in sola lettura: il controllo non deve aprire il lease in scrittura."""
+    service = _fake_service(d)
+    with service:
+        assert service.tick(NOW).state == "healthy"
+        os.chmod(d / LOCK_FILE, 0o444)          # come un bind mount :ro (per un utente non root: EACCES in scrittura)
+        os.chmod(d / BEAT_FILE, 0o444)
+        try:
+            assert _healthy(d)
+        finally:
+            os.chmod(d / LOCK_FILE, 0o600)
+            os.chmod(d / BEAT_FILE, 0o600)
+    os.chmod(d / LOCK_FILE, 0o444)
+    try:
+        assert not _healthy(d)                  # nessun proprietario: resta non sano anche in sola lettura
+    finally:
+        os.chmod(d / LOCK_FILE, 0o600)
+
+
 def test_second_instance_refused_even_in_same_process(d):
     first, second = _fake_service(d), _fake_service(d)
     with first:

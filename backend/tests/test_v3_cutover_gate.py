@@ -65,7 +65,8 @@ def test_classic_single_only_does_not_unlock_any_other_mutation(path):
 
 def test_single_close_feature_flag_requires_all_4_paper_readonly_conditions():
     env={"V3_CUTOVER_READONLY":"1", "V3_ALLOW_CLASSIC_SINGLE_CLOSE":"1",
-         "TRADING_MODE":"paper","DESK_MODE":"paper"}
+         "TRADING_MODE":"paper","DESK_MODE":"paper","V3_CLOSE_BRIDGE_ONLY":"1",
+         "V3_CLOSE_BRIDGE_SOCKET":"/run/superbot-paper-close/close.sock"}
     assert classic_single_close_enabled(env)
     for key in env:
         modified=dict(env,**{key:"0" if key.startswith("V3_") else "live"})
@@ -76,7 +77,8 @@ def test_single_close_feature_flag_requires_all_4_paper_readonly_conditions():
 
 def test_brain_paper_manual_close_is_individual_and_explicitly_opted_in():
     env = {'V3_CUTOVER_READONLY':'1','V3_ALLOW_BRAIN_SINGLE_CLOSE':'1',
-           'TRADING_MODE':'paper','DESK_MODE':'paper'}
+           'TRADING_MODE':'paper','DESK_MODE':'paper','V3_CLOSE_BRIDGE_ONLY':'1',
+           'V3_CLOSE_BRIDGE_SOCKET':'/run/superbot-paper-close/close.sock'}
     assert brain_single_close_enabled(env)
     assert not should_refuse_mutation('POST','/api/v3/brain/close',readonly=True,
                                      allow_paper_brain_single_close=True)
