@@ -236,6 +236,7 @@ export function BrainUnicoContent({ overview, status, trades, memory, nowMs = Da
         <a href="/classic" style={{ color: '#7dd3fc', fontSize: 13 }}>Dashboard classica</a>
         <a href="/brain/archive" style={{ color: '#7dd3fc', fontSize: 13 }}>Brain precedenti</a>
         <a href="/arena" style={{ color: '#7dd3fc', fontSize: 13 }}>Arena</a>
+        <a href="/compare" style={{ color: '#7dd3fc', fontSize: 13 }}>Confronto Falco Evoluto · Brain Scalp</a>
       </nav>
     </Fold>
   </div>;

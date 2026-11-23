@@ -28,6 +28,7 @@ import signal
 import sys
 import time
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
@@ -67,8 +68,47 @@ from backend.v3.transport import deepseek_transport
 PROVIDER = "deepseek"
 MANDATE_FILE = "mandate.json"
 MINUTE_STORE_BARS = 1_500          # 24 ore di durata massima + margine, a 1 minuto (un test lo lega alla politica di uscita)
+FALCO_4H_KEEP = 300                # Falco Evoluto: 50 giorni di 4h (EMA200 4h e trend 1d su giorni completi)
 EXTRA_KEEP = 24                    # barre in piu' del minimo, per non stare sempre sul bordo
 
+
+
+def make_guardian(*, journal, run_id: str, config, ledger, get_json):
+    """Profit Guardian della run: journal della run + chiusure da 1 minuto dal feed (sola lettura, nessuno stato)."""
+    from datetime import datetime, timezone
+    from backend.v3.guardian import MINUTE_MS, evaluate_guardian, session_start_ms
+    policy = config.guardian
+
+    def ai_cost_since(start_ms: int):
+        try:
+            units = 0
+            for r in ledger.all_spend(PROVIDER):
+                ts = datetime.fromisoformat(str(r["occurred_at"]).replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts.timestamp() * 1000 >= start_ms and type(r["units"]) is int:
+                    units += r["units"]
+            return Decimal(units) / Decimal(1_000_000)
+        except Exception:
+            return None                                   # costo non verificabile: mostrato come sconosciuto
+
+    def evaluate(now_ms: int):
+        start = session_start_ms(now_ms, policy)
+        end = now_ms // MINUTE_MS * MINUTE_MS
+        events = [r.event for r in journal.list_run_kinds_since(PORTFOLIO_ID, run_id, ("paper_open", "paper_close"), 0)]
+        cache: dict = {}
+
+        def close_at(symbol: str, minute_ms: int):
+            if symbol not in cache:
+                cache[symbol] = {b.open_time_ms: b.close for b in fetch_closed_bars(
+                    symbol, start - MINUTE_MS, end, candle_ms=MINUTE_MS, get_json=get_json)}
+            return cache[symbol].get(minute_ms)
+
+        return evaluate_guardian(events=events, initial_equity=config.initial_equity, close_at=close_at,
+                                 now_ms=now_ms, policy=policy, max_loss_fraction=config.risk_policy.max_loss_fraction,
+                                 fee_bps=config.fee_bps, roundtrip_cost_bp=config.risk_policy.estimated_roundtrip_cost_bp,
+                                 ai_cost_session=ai_cost_since(start))
+    return evaluate
 
 def mandate_template(policy: RiskPolicy, run_id: str) -> dict:
     """Modello di mandato NON approvato: serve la firma dell'utente (``approved`` e ``approved_by``)."""
@@ -165,20 +205,33 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         input_usd_per_million=config.input_usd_per_million, output_usd_per_million=config.output_usd_per_million,
         extra_payload=config.model_extra_payload)
     holder = CycleBars()
-    analyst = MarketEntryAnalyst(DeepSeekL5Analyst(
-        transport=metered, model=config.model,
-        outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
-        bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
-        spending_gate=ledger.spending_gate(daily_limits={PROVIDER: config.daily_cap_units}), enabled=True,
-        max_tokens=config.max_tokens))
-    store = CandleStore(get_json, keep={s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP)
-                                        for s in vp.timeframes})
+    gate = ledger.spending_gate(daily_limits={PROVIDER: config.daily_cap_units})
+    keep = {s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP) for s in vp.timeframes}
+    if config.analyst == "falco_evoluto":
+        # regole + DeepSeek consulente raro (stesso trasporto metrato, budget proprio della run)
+        from backend.v3.falco_evoluto import EMA200_MIN_BARS, FalcoEvolutoAnalyst
+        analyst = MarketEntryAnalyst(FalcoEvolutoAnalyst(
+            bars_source=holder, max_leverage=config.risk_policy.max_leverage, transport=metered,
+            model=config.model, spending_gate=gate, ai_enabled=True, max_tokens=config.max_tokens))
+        if "4h" in keep:                    # EMA200 4h solo con storia sufficiente (correzione dell'originale)
+            keep["4h"] = (keep["4h"][0], max(keep["4h"][1], FALCO_4H_KEEP))
+    elif config.analyst == "deepseek":
+        analyst = MarketEntryAnalyst(DeepSeekL5Analyst(
+            transport=metered, model=config.model,
+            outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
+            bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
+            spending_gate=gate, enabled=True, max_tokens=config.max_tokens))
+    else:
+        raise ValueError("invalid_analyst")
+    store = CandleStore(get_json, keep=keep)
     minutes = CandleStore(get_json, keep={"1m": (60_000, MINUTE_STORE_BARS)})
     rules = ContractRules(get_json, maintenance_fraction=config.maintenance_fraction)
-    exit_policy = load_default_policy()
+    exit_policy = config.exit_policy if config.exit_policy is not None else load_default_policy()   # schema 2
     mandate = MandateFile(data_dir / MANDATE_FILE, config.risk_policy, run_id)
     budget_halt = BudgetHalt(ledger, PROVIDER, config.daily_cap_units, metered)
     allowed = tuple(sorted(menu_ids(menu)))
+    guardian_eval = (make_guardian(journal=journal, run_id=run_id, config=config, ledger=ledger, get_json=get_json)
+                     if config.guardian is not None else None)
 
     def halted() -> Optional[str]:
         return mandate.problem() or budget_halt()
@@ -225,7 +278,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             wall_ms=clock_ms if clock_ms is not None else (lambda: int(time.time() * 1000)),
             # anti-reingresso in sola osservazione: soglie provvisorie finche' E0 e il proprietario non decidono
             reentry_policy=ReentryPolicy(mode="observe"),
-            slot_start_ms=slot_start, slot_end_ms=slot_start + config.cycle_ms)
+            slot_start_ms=slot_start, slot_end_ms=slot_start + config.cycle_ms,
+            guardian=guardian_eval)
 
     def run_monitor(now_ms: int) -> MonitorReport:
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,

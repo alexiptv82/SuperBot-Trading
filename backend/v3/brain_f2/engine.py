@@ -38,6 +38,9 @@ _ALLOWED_RATIONALE = frozenset({
     "symbol_mismatch", "price_divergence", "close_modify_not_executable_r1",
     "risk_quote_ok", "sanitized", "policy_not_authorized",
     "deepseek:mock", "claude:mock", "deepseek:analysis", "claude:review",
+    # Falco Evoluto (backend/v3/falco_evoluto.py): motivi a codice chiuso delle regole
+    "falco_no_trade_regime", "falco_no_trade_score", "falco_no_trade_conflict", "falco_no_trade_data",
+    "falco_ai_no_trade", "falco_ai_unavailable", "falco_short_signal", "falco_long_signal",
 })
 _ALLOWED_SOURCES = frozenset({
     "deepseek:mock", "claude:mock", "engine:fail_closed", "engine:validate",
@@ -46,6 +49,8 @@ _ALLOWED_SOURCES = frozenset({
     # Advisory-only context evidence; may affect the model's analysis but never
     # bypass a risk gate, grant execution authority, or become an order.
     "falco:paper_position_observation", "toro:paper_position_observation",
+    # Falco Evoluto: modulo che ha proposto l'apertura e conferma dell'AI consulente (mai un'autorizzazione di rischio)
+    "falco_evoluto:short_rules", "falco_evoluto:long_rules", "falco_evoluto:ai_confirmed",
 })
 _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
 # Rifiuti che una leva PIU' BASSA (mai sotto il minimo del profilo) puo' risolvere senza toccare stop o rischio.
@@ -59,6 +64,7 @@ _ALLOWED_REGIMES = frozenset({
     "TREND_UP", "TREND_DOWN", "RANGE", "EXPANSION", "SHOCK", "UNCERTAIN",
 })
 _EVENT_ID_RE = __import__("re").compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$")
+_RISK_REASON_RE = __import__("re").compile(r"^[a-z][a-z0-9_]{0,63}$")
 
 def _safe_symbol(s):
     if isinstance(s, str) and _SYMBOL_RE.match(s):
@@ -75,7 +81,7 @@ def _safe_event_id(eid):
         return eid
     return None
 
-_ALLOWED_ORIGINS = frozenset({"deepseek", "claude", "deepseek:mock", "claude:mock"})
+_ALLOWED_ORIGINS = frozenset({"deepseek", "claude", "deepseek:mock", "claude:mock", "falco:rules"})
 logger = logging.getLogger(__name__)
 _TRUSTED_APPROVERS = frozenset({"operator", "system-admin"})  # external trust anchor required
 
@@ -491,6 +497,7 @@ class BrainEngine:
                 decision.proposal = replace(decision.proposal, leverage=approved_leverage)
                 decision.sources.append("risk:leverage_adjusted")
             decision.risk_quote = quote
+            self._last_risk_reason = None if quote.allowed else quote.reason
             if not quote.allowed:
                 decision.kind = DecisionKind.NO_TRADE
                 decision.status = ProposalStatus.RISK_REJECTED
@@ -521,6 +528,13 @@ class BrainEngine:
                 "symbol": _safe_symbol(getattr(context, "symbol", None)),
                 "regime": _safe_regime(getattr(context, "regime", None)),
             }
+            # Profilo aggressivo (23/11): il motivo PRECISO di un rifiuto di rischio entra nel journal (perche' non si
+            # e' aperto). I profili storici scrivono esattamente il payload di prima.
+            why = getattr(self, "_last_risk_reason", None)       # il preventivo rifiutato non sopravvive a _normalize
+            if (getattr(self.risk_policy, "min_margin", None) is not None
+                    and decision.status == ProposalStatus.RISK_REJECTED
+                    and isinstance(why, str) and _RISK_REASON_RE.match(why)):
+                payload["risk_reason"] = why
             # L1: l'etichetta entra nel journal solo per un'apertura approvata e solo se valida; una
             # decisione senza etichetta scrive esattamente il payload di prima (stesso hash).
             prop = decision.proposal

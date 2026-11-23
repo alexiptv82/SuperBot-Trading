@@ -81,7 +81,9 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
                 continue
             close_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pos.position_id,
                         exit_price=signal.price, reason=signal.reason, fee_bps=fee_bps,
-                        journal=journal, now_ms=now_ms)
+                        journal=journal, now_ms=now_ms,
+                        stop_kind=(signal.stop_kind if signal.reason == "stop" and signal.stop_kind != "initial"
+                                   else None))
             closed.append((pos.position_id, signal.reason))
             if signal.reason == "stop" and signal.stop_kind != "initial":
                 protected.append((pos.position_id, signal.stop_kind))

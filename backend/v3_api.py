@@ -859,6 +859,13 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
         response.headers['Cache-Control'] = 'no-store'
         return _public_brain_config(paths)
 
+    @router.get('/compare')
+    def compare_runs(response: Response, session=Depends(require_session)):
+        # Confronto PAPER Falco Evoluto / Brain Scalp: sola lettura delle run in V3_COMPARE_RUNS (assente = non disponibile)
+        response.headers['Cache-Control'] = 'no-store'
+        from backend.v3.compare_view import compare
+        return compare(os.environ, int(time.time() * 1000))
+
     @router.get('/brain/status')
     def brain_status(response: Response, session=Depends(require_session)):
         response.headers['Cache-Control'] = 'no-store'

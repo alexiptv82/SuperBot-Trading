@@ -38,7 +38,7 @@ from backend.v3.brain_market.params import MarketViewParams
 from backend.v3.brain_market.view import regime_for_context
 from backend.v3.dashboard import PortfolioSummary, build_summary
 from backend.v3.brain_market.classic_peers import validate_peer_signal
-from backend.v3.events import EventJournal
+from backend.v3.events import Event, EventJournal
 from backend.v3.executor.paper import ExecutionError, execute_paper
 from backend.v3.features.indicators import Bar
 from backend.v3.risk import RiskPolicy, estimated_loss_per_unit
@@ -102,6 +102,8 @@ class CycleReport:
     theses: tuple[tuple[str, str, int, str], ...] = ()
     # (simbolo, istante di riferimento della decisione): uguale a now_ms in modalita' "cycle"
     instants: tuple[tuple[str, int], ...] = ()
+    # (istante, stato, motivi) per ogni valutazione del Profit Guardian nel giro; vuoto se il Guardian e' spento
+    guardian: tuple[tuple[int, str, str], ...] = ()
 
 
 def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal,
@@ -150,7 +152,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     peer_source: Optional[Callable[[str, int], Mapping]] = None,
                     trace: str = "off", wall_ms: Optional[Callable[[], int]] = None,
                     reentry_policy: Optional[ReentryPolicy] = None, instant: str = "cycle",
-                    slot_start_ms: Optional[int] = None, slot_end_ms: Optional[int] = None) -> CycleReport:
+                    slot_start_ms: Optional[int] = None, slot_end_ms: Optional[int] = None,
+                    guardian: Optional[Callable[[int], object]] = None) -> CycleReport:
     """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare).
 
     ``trace="required"``: ogni decisione scritta dal motore (anche NO_TRADE) riceve subito uno snapshot v2
@@ -221,8 +224,11 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
             PORTFOLIO_ID, run_id, ("brain_decision",), slot_start_ms)
             if r.event.occurred_at_ms < slot_end_ms and isinstance(r.event.payload, Mapping)}
     last_t = now_ms
-    book = (ThesisBook.from_journal(journal, run_id, now_ms=now_ms, window_ms=reentry_policy.window_ms)
-            if reentry_on else None)
+    window = reentry_policy.window_ms if reentry_policy is not None else ReentryPolicy().window_ms
+    book = (ThesisBook.from_journal(journal, run_id, now_ms=now_ms, window_ms=window)
+            if reentry_on or guardian is not None else None)
+    guardian_log: list[tuple[int, str, str]] = []
+    g = _guardian_check(guardian, journal, run_id, now_ms, guardian_log) if guardian is not None else None
     tf_names = [spec.name for spec in view_params.timeframes]
     base_tf = view_params.base_timeframe
     bars_holder.clear()
@@ -271,8 +277,13 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 errors.append((symbol, "price_error"))
                 continue
             price = price_with_room(price)
+            if guardian is not None and (g is None or g.state == "LOCKED"):
+                errors.append((symbol, "guardian_locked"))            # nessuna chiamata all'AI, nessuna apertura
+                continue
             bars_holder.set(symbol, bars_by_tf)
             portfolio = snapshot_from_summary(summary, initial_equity, risk_policy.estimated_roundtrip_cost_bp)
+            if g is not None:
+                portfolio.risk_cap = g.risk_cap                       # il rischio autorizzato e' il minore dei limiti
             engine = BrainEngine(
                 analyst=analyst, reviewer=NoReviewer(), risk_policy=risk_policy,
                 portfolio_snapshot=portfolio,
@@ -306,19 +317,30 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
             approved_open = decision.kind == DecisionKind.OPEN and decision.status == ProposalStatus.APPROVED
             thesis = reentry = None
             blocked_by = None
+            info = None
             if approved_open and book is not None:
                 side = decision.proposal.side
                 info = book.assess(symbol, side, t, decision.journal_event_id)
-                would, rule = evaluate_reentry(info, reentry_policy, t)
                 thesis = {"thesis_id": info.thesis_id, "reentry_index": info.reentry_index,
                           "prev_outcome": info.prev_outcome, "truncated": info.truncated}
-                reentry = {"mode": reentry_policy.mode, "would_block": would, "rule": rule,
-                           "window_ms": reentry_policy.window_ms,
-                           "max_reentry_index": reentry_policy.max_reentry_index,
-                           "loss_cooldown_ms": reentry_policy.loss_cooldown_ms}
+                rule = None
+                if reentry_on:
+                    would, rule = evaluate_reentry(info, reentry_policy, t)
+                    reentry = {"mode": reentry_policy.mode, "would_block": would, "rule": rule,
+                               "window_ms": reentry_policy.window_ms,
+                               "max_reentry_index": reentry_policy.max_reentry_index,
+                               "loss_cooldown_ms": reentry_policy.loss_cooldown_ms}
+                    if would and reentry_policy.mode == "enforce":
+                        blocked_by = rule
                 theses.append((symbol, info.thesis_id, info.reentry_index, rule or ""))
-                if would and reentry_policy.mode == "enforce":
-                    blocked_by = rule
+            guardian_block = None
+            if approved_open and g is not None and g.state == "PROTECTED":
+                # criteri verificabili, nessuna eccezione dell'AI: confidenza minima e nessun reingresso della tesi
+                conf = getattr(decision.proposal, "confidence", None)
+                if not isinstance(conf, (int, float)) or Decimal(str(conf)) < g.min_confidence:
+                    guardian_block = "guardian_low_confidence"
+                elif not g.allow_reentry and (info is None or info.reentry_index > 1 or info.truncated):
+                    guardian_block = "guardian_reentry"
             if trace != "off":
                 tr = record_decision_trace(
                     journal=journal, run_id=run_id, symbol=symbol, now_ms=t, after_seq=tip,
@@ -332,6 +354,9 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                         continue
             if blocked_by is not None:
                 errors.append((symbol, "anti_reentry_blocked"))       # registrato nello snapshot, nessuna apertura
+                continue
+            if guardian_block is not None:
+                errors.append((symbol, guardian_block))               # decisione nel journal, apertura negata
                 continue
             if approved_open:
                 if require_open_commit:
@@ -375,7 +400,30 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                         continue
                 opened.append((symbol, receipt.position_id))   # la tesi si ricostruisce dal journal al giro dopo
                 summary = build_summary(journal, PORTFOLIO_ID, run_id)   # il prossimo simbolo vede questa posizione
+                if guardian is not None:                                  # il budget ora include la nuova posizione
+                    g = _guardian_check(guardian, journal, run_id, t, guardian_log)
         except Exception:
             errors.append((symbol, "cycle_error"))
     return CycleReport(now_ms, skipped, tuple(decisions), tuple(opened), tuple(errors), tuple(traces),
-                       tuple(theses), tuple(instants))
+                       tuple(theses), tuple(instants), tuple(guardian_log))
+
+
+def _guardian_check(guardian: Callable[[int], object], journal: EventJournal, run_id: str, at_ms: int,
+                    log: list) -> Optional[object]:
+    """Valuta il Guardian e lo registra (``guardian_state``). Errore di calcolo o di scrittura -> None = LOCKED."""
+    from backend.v3.guardian import GuardianState
+    try:
+        g = guardian(at_ms)
+        if type(g) is not GuardianState:
+            raise ValueError("guardian_invalid")
+        payload = g.to_payload()
+    except Exception:
+        g, payload = None, {"state": "LOCKED", "reasons": ["guardian_error"], "as_of_ms": at_ms}
+    try:
+        journal.append(Event(event_id=f"guardian_state.{at_ms}.{len(log)}", portfolio_id=PORTFOLIO_ID,
+                             run_id=run_id, kind="guardian_state", occurred_at_ms=at_ms,
+                             source="runner.guardian", payload=payload))
+    except Exception:
+        g = None                                       # uno stato non registrato non autorizza aperture
+    log.append((at_ms, payload["state"], ",".join(payload["reasons"])))
+    return g
