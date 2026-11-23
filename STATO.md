@@ -1,3 +1,10 @@
+## 23/11/2026 (16) — Aggiornamento BTC/ETH installato e verificato: pronti per il confronto PAPER (Claude)
+
+- Aggiornamento eseguito dal proprietario (15:05 UTC), registro `rilascio-falco-scalp.log.aggiorna`: `ESITO AGGIORNAMENTO: OK`; regole contratti 8/8 con dati Bitget attuali (BTC/ETH 125x); backup unita' in `/opt/superbot-v3-backups/falco-scalp/aggiorna-20261123T150538Z`; codice precedente conservato.
+- Verifica Claude con superbot-ops: le 4 unita' di Falco Evoluto e Brain Scalp attive su `/opt/superbot-falco-scalp-5539ee474476` (0 riavvii); uscite SANE; runner `halted:mandate_not_approved`; nessuna spesa AI, nessuna apertura; pausa ATTIVA e mandato non approvato su entrambi. Web sana, bridge attivo.
+- Brain RC1 invariato: unita' sul suo codice `3440340289fd`, attive dalle 06:38, 0 riavvii; pausa ATTIVA; uscite SANE; mandato valido (attivato in precedenza) con la sua posizione aperta.
+- Pronti per il confronto PAPER: attivazione solo su autorizzazione del proprietario, per bot, con `80-paper.sh falco|scalp attiva "<Nome>"` (non in superbot-ops: resta un intervento root del proprietario).
+
 ## 23/11/2026 (15) — Opzione A approvata: aggiornamento BTC/ETH preparato e verificato, NON installato (Claude)
 
 - Verifica con dati Bitget attuali (pubblici) e parser corretto `5539ee47`: 8/8 simboli con regole (BTC 125x passo 0,0001, ETH 125x passo 0,01, SOL 100x, XRP 125x, BNB/DOGE/ADA/LINK 75x; nozionale minimo 5). RiskManager vero ai prezzi attuali (BTC 63.668, ETH 1.818), stop 0,3-1 %: Falco leva 17-43x, margine ~202, rischio <= 40 (19,8 % del margine); Scalp leva 17-43x, margine ~405, rischio <= 80; quantita' multipli del passo, nozionale sopra il minimo.
