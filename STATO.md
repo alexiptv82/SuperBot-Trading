@@ -1,3 +1,11 @@
+## 23/11/2026 (9) — Dashboard rifinita e pacchetto unico di rilascio pronto, NON eseguito (Claude)
+
+- Decisione del proprietario: margine totale 50 %, rischio aperto 10 %, rischio per trade 4 % per entrambi; 4 posizioni = limite massimo, non obbligo; leve 15-45x e margini per trade invariati.
+- Dashboard (`f58b2b60`): P&L di trading, spesa AI totale e risultato dopo AI separati (AI sottratta una volta); drawdown sui trade chiusi distinto dal drawdown a mercato (solo campioni del Guardian con prezzi verificati; senza campioni "non disponibile", feed mancante segnalato).
+- Pacchetto `deploy/falco-evoluto/rilascio` (`393b38f6`): 05 pausa RC1 se manca, 10 preflight sola lettura, 20 backup, 30 codice da git archive verificato, 40 due run in pausa (approved:false), 50 unita' uscite+runner (runner fermo per il mandato), cutover web/bridge con rollback automatico (libreria del cutover RC1; due run in sola lettura nella web con `V3_COMPARE_RUNS`, in scrittura solo nel bridge con `V3_BRIDGE_EXTRA_RUNS`; sonde RC1 + confronto con chiusura negativa 404), 70 interfaccia `ui-393b38f6` (manifesto `6dad2153…`), 80 comandi per run, 90 rollback dei soli passi registrati (run e codice conservati).
+- Test: gate DRY_RUN V3 5491, builder 158, Jest 170; pacchetti di rilascio 29/29. Ramo pubblicato a `393b38f6`. Comando root unico con 16 impronte SHA-256 consegnato al proprietario, NON eseguito.
+- Brain RC1: pausa ancora da dimostrare; il pacchetto la verifica e la applica come primo passo (stesso 80-paper.sh RC1 verificato). Resta valido anche il comando separato della voce 7.
+
 ## 23/11/2026 (8) — Chiusura manuale per run, rischio allineato, preparazione verificata (Claude)
 
 - Ramo `claude/falco-evoluto-20261123`, finale `d1f9f016` (`8b68e86f` funzionalita', `d1f9f016` inventario rotte). Gate DRY_RUN verde: V3 5489, builder 158, Jest 170. Pubblicato solo il ramo.
