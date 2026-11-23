@@ -4,8 +4,9 @@ import { BrainCloseControls } from '../components/OverviewCloseControls';
 import { ago, botStatus, equityView, guardianView, num } from '../paperBotsModel';
 import { REASON, RISK } from './Compare';
 
-// Schermata principale "Brain": i due bot PAPER in funzione (Falco Evoluto e Brain Scalp), uno sotto l'altro, con stato
-// RUNNING/PAUSA, capitale, equity, profitti, posizioni, Guardian e chiusura manuale SINGOLA (con conferma).
+// Schermata principale "Brain": i due bot PAPER in funzione (Falco Evoluto e Brain Scalp). In alto il riepilogo di
+// entrambi, sempre visibile, che fa anche da selettore; sotto i dettagli del SOLO bot scelto: stato RUNNING/PAUSA/FERMO,
+// capitale, equity, profitti, posizioni, Guardian, decisioni e chiusura manuale SINGOLA (con conferma).
 // Dati: solo /api/v3/compare (sola lettura, ogni numero dal journal della SUA run). Nessun comando di avvio/pausa:
 // l'app non ha API sicure per questo. Brain RC1, Falco classico e Toro restano consultabili nello Storico.
 const usd = (v, d = 2) => (num(v) === null ? '—' : `${num(v) < 0 ? '-' : ''}$${Math.abs(num(v)).toFixed(d)}`);
@@ -43,17 +44,34 @@ const Badge = ({ status }) => (
 
 const ANALYST = { falco_evoluto: 'regole Falco Evoluto', deepseek: 'DeepSeek' };
 
-function Summary({ runs, nowMs }) {
-  return <div role="group" aria-label="Riepilogo dei due bot" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+const ACCENT = '#a78bfa';
+export const panelId = name => `bot-dettagli-${String(name).replace(/[^a-z0-9_-]/gi, '_')}`;
+
+// Riepilogo SEMPRE visibile dei due bot; ogni scheda e' anche il selettore dei dettagli mostrati sotto (come il
+// selettore di portafoglio della vecchia app: <button> nativo con aria-pressed, quindi tocco su Android/PWA, Tab +
+// Invio/Spazio da tastiera e lettori di schermo funzionano senza codice dedicato). Lo stato (RUNNING/PAUSA/FERMO) di
+// ENTRAMBI resta sempre in vista: selezionare un bot non nasconde mai lo stato dell'altro.
+function Summary({ runs, nowMs, selected, onSelect }) {
+  return <div role="group" aria-label="Scegli il portafoglio da consultare" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
     {runs.map(r => {
       const st = botStatus(r, nowMs);
       const eq = equityView(r);
-      return <Card key={r.name} style={{ flex: 1, minWidth: 0, padding: '10px 10px', borderColor: `${st.color}55` }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', overflowWrap: 'anywhere' }}>{r.label}</div>
-        <div style={{ margin: '4px 0' }}><Badge status={st} /></div>
-        <div style={{ fontSize: 20, fontWeight: 'bold', color: '#e2e8f0' }}>{r.available ? usd(eq.value) : '—'}</div>
-        <div style={{ fontSize: 11, color: tone(eq.totalPct) }}>{r.available ? pct(eq.totalPct) : '—'}</div>
-      </Card>;
+      const on = r.name === selected;
+      return <button key={r.name} type="button" aria-pressed={on} aria-controls={panelId(r.name)}
+        aria-label={`${r.label}: ${st.label}${r.available ? `, equity ${usd(eq.value)}` : ''}${on ? ', dettagli mostrati sotto' : ', mostra i dettagli'}`}
+        data-bot={r.name} onClick={() => onSelect(r.name)}
+        style={{ flex: 1, minWidth: 0, textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer',
+          WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', minHeight: 48,
+          borderRadius: 16, padding: on ? '9px 9px' : '10px 10px',
+          background: on ? `${ACCENT}1f` : '#1e293b', border: on ? `2px solid ${ACCENT}` : `1px solid ${st.color}55`,
+          boxShadow: on ? `0 0 0 3px ${ACCENT}33` : 'none', opacity: on ? 1 : 0.85, transition: 'all 0.15s' }}>
+        <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: on ? '#f1f5f9' : '#cbd5e1', overflowWrap: 'anywhere' }}>{r.label}</span>
+        <span style={{ display: 'block', margin: '4px 0' }}><Badge status={st} /></span>
+        <span style={{ display: 'block', fontSize: 20, fontWeight: 'bold', color: '#e2e8f0' }}>{r.available ? usd(eq.value) : '—'}</span>
+        <span style={{ display: 'block', fontSize: 11, color: tone(eq.totalPct) }}>{r.available ? pct(eq.totalPct) : '—'}</span>
+        <span aria-hidden="true" style={{ display: 'block', fontSize: 10, fontWeight: 700, marginTop: 4,
+          color: on ? ACCENT : '#64748b' }}>{on ? '▼ dettagli sotto' : 'tocca per i dettagli'}</span>
+      </button>;
     })}
   </div>;
 }
@@ -199,9 +217,12 @@ export function StoricoFold() {
   </Fold>;
 }
 
-export function PaperBotsContent({ data, error = false, nowMs = Date.now(), onRefresh = () => {} }) {
+export function PaperBotsContent({ data, error = false, nowMs = Date.now(), onRefresh = () => {}, initialSelected = null }) {
   const runs = data?.available ? (data.runs || []) : [];
   const now = new Date(nowMs);
+  const [choice, setChoice] = useState(initialSelected);
+  // scelta valida o, in mancanza, il primo bot (Falco Evoluto): mai un pannello vuoto se i dati cambiano
+  const current = runs.find(r => r.name === choice) || runs[0] || null;
   return <div style={{ padding: 16, maxWidth: 600, margin: '0 auto', boxSizing: 'border-box' }}>
     <header style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -228,8 +249,10 @@ export function PaperBotsContent({ data, error = false, nowMs = Date.now(), onRe
       <p style={MUTED}>Le due run PAPER (Falco Evoluto e Brain Scalp) non sono ancora state preparate e approvate.
         Nessun dato viene mostrato finché non esistono i loro journal.</p></Card>}
     {!error && runs.length > 0 && <>
-      <Summary runs={runs} nowMs={nowMs} />
-      {runs.map(r => <BotCard key={r.name} run={r} nowMs={nowMs} onRefresh={onRefresh} />)}
+      <Summary runs={runs} nowMs={nowMs} selected={current.name} onSelect={setChoice} />
+      <div id={panelId(current.name)} role="region" aria-label={`Dettagli ${current.label}`}>
+        <BotCard key={current.name} run={current} nowMs={nowMs} onRefresh={onRefresh} />
+      </div>
       <p style={{ ...MUTED, fontSize: 11 }}>Soldi simulati: nessun ordine reale. Ogni bot ha la sua run, il suo journal e il suo
         servizio uscite. Ciò che non è registrato resta “—”. Qui sono consentite solo chiusure manuali singole, con conferma;
         avvio, pausa e mandato restano un intervento del proprietario sul server.</p>
