@@ -1,3 +1,16 @@
+## 23/11/2026 (18) — AVVIO PAPER verificato: Falco Evoluto e Brain Scalp in funzione (Claude)
+
+- Attivazione eseguita dal proprietario con `80-paper.sh falco|scalp attiva` (~16:49 UTC = 17:49 ora italiana): `PAPER ATTIVO` per entrambi. Verifica Claude con superbot-ops (16:58 e 17:07 UTC): mandato VALIDO, pausa rimossa, uscite SANE, runner `running`, battito recente, nessun Traceback nei registri.
+- **Avvio effettivo (primo giro registrato dal runner):** Falco Evoluto 16:49:08 UTC; Brain Scalp 16:49:10 UTC (giro concluso 16:52:06, ~3 min per le chiamate AI). Giri successivi allineati all'orologio: Falco 17:00 (ogni 15 min), Scalp 17:00 (ogni 30 min).
+- **Stato iniziale:**
+  - Falco Evoluto: 2 giri, 8 decisioni per giro, 0 aperture, nessun errore, nessuna spesa AI (DeepSeek interpellato solo in conflitto, inversione o espansione).
+  - Brain Scalp: giro 1 con 8 decisioni e **1 apertura**; XRPUSDT `risk_rejected_after_ai`, LINKUSDT `decision_stale`. Giro 2 con 7 decisioni e 0 aperture; BNBUSDT e BTCUSDT `risk_changed_after_ai`. Sono rifiuti di sicurezza (fail-closed), non errori tecnici. Spesa AI presente.
+- BTC/ETH: nessun `no_market_rules` nei riepiloghi dei giri di entrambi i bot; BTCUSDT compare nella valutazione del rischio di Scalp, quindi le regole sono caricate.
+- **Brain RC1:** pausa ATTIVA, uscite SANE; ultimo giro nel registro alle 12:00 UTC, nessun giro o apertura dopo la pausa.
+- **Limite della verifica:** le run sono `0700` root e la dashboard richiede il login. Per questo leva, margini, rischio, stati `guardian_state`, snapshot di memoria e vista del confronto non sono leggibili con superbot-ops. Preparato `deploy/falco-evoluto/rilascio/rapporto_paper.py` (`12f7e31c`, sha `335fbbeb…`): sola lettura su copie sqlite `mode=ro`, verifica della catena, segnalazione di leva/margine/rischio fuori limite e di aperture dopo la pausa di RC1. Test 1/1, pacchetti 36/36, gate DRY_RUN V3 5495, builder 158, Jest 170. Da lanciare come root dal proprietario.
+- Nessuna modifica a strategie, parametri o codice dei bot; nessuna pausa necessaria.
+- Prossimo: rapporto dai dati reali appena il proprietario incolla l'esito di `rapporto_paper.py`; sorveglianza dei giri.
+
 ## 23/11/2026 (17) — Autorizzazione finale concessa; attivazione NON ancora eseguita (verifica 15:35 UTC) (Claude)
 
 - Il proprietario ha autorizzato il confronto PAPER di Falco Evoluto e Brain Scalp. Verifica Claude con superbot-ops alle 15:35 UTC: su entrambi mandato NON approvato (`mandate_not_approved`), pausa ATTIVA, runner `halted:mandate_not_approved`, uscite SANE, nessuna spesa, nessuna apertura; nessun evento nei registri dopo il riavvio delle 15:05. Il comando di attivazione (`80-paper.sh falco|scalp attiva`, root, non incluso in superbot-ops) non risulta eseguito.
