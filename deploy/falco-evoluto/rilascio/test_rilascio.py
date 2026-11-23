@@ -294,7 +294,8 @@ def test_resume_preflight_and_journal_check_on_real_runs(tmp_path):
         "AIENV=/etc/superbot-v3-paper/brain-ai.env", f"AIENV={aienv}"))
     src = (d / "15-ripresa-preflight.sh").read_text().replace(
         '[ ! -e "$STAGE" ] || nogo "$STAGE esiste gia\'"', ":").replace(
-        "/etc/systemd/system/superbot-v3-paper-single-close-bridge.service", str(tmp_path / "bridge.service"))
+        "/etc/systemd/system/superbot-v3-paper-single-close-bridge.service", str(tmp_path / "bridge.service")).replace(
+        "/etc/systemd/system/", str(tmp_path / "no-units") + "/")             # isolato dalle unita' reali della VPS
     (tmp_path / "bridge.service").write_text("ExecStart=docker run x\n")
     (d / "15-ripresa-preflight.sh").write_text(src)
 
@@ -326,3 +327,92 @@ def test_resume_preflight_and_journal_check_on_real_runs(tmp_path):
                                                 int(time.time() * 1000), "test", {"position_id": "x"}))
     p = subprocess.run(["sh", str(d / "35-verifica-run.sh"), head], capture_output=True, text=True, env=env, timeout=60)
     assert p.returncode == 1 and "NO-GO" in p.stdout
+
+
+# ------------------------------------------------------------------ aggiornamento mirato del codice (60)
+UNIT_NAMES = ("superbot-falco-evoluto-p1-exit.service", "superbot-falco-evoluto-p1-runner.service",
+              "superbot-brain-scalp-p1-exit.service", "superbot-brain-scalp-p1-runner.service")
+
+
+def _update_env(tmp_path, *, fail_on="", contracts_ok=True, unpause=False):
+    runs = _real_runs(tmp_path)
+    head = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    old = tmp_path / "opt" / "superbot-falco-scalp-aaaaaaaaaaaa"
+    (old / "backend").mkdir(parents=True)
+    units, bins, log, d = tmp_path / "units", tmp_path / "bin", tmp_path / "log", tmp_path / "pkg"
+    for x in (units, bins, d):
+        x.mkdir()
+    for u in UNIT_NAMES:
+        (units / u).write_text(f"[Service]\nWorkingDirectory={old}\nEnvironment=PYTHONPATH={old}\n"
+                               f"ExecStart=/usr/bin/env DESK_MODE=paper py -m backend.v3.runner.x --data-dir {runs}/r\n")
+    rc1 = tmp_path / "rc1"
+    rc1.mkdir()
+    (rc1 / "pause.flag").write_text("p")
+    if unpause:
+        (runs / "brain-v3-brain-scalp-p1" / "pause.flag").unlink()
+    src = (HERE / "comune.sh").read_text()
+    for a, b in (("PARENT=/opt/superbot-v3-paper-runs", f"PARENT={runs}"),
+                 ("PY=/opt/superbot-v3-rc70-stage/.venv/bin/python3", f"PY={sys.executable}"),
+                 ("LAB=/home/superbot-agent/brain-unico-lab/wt-fe", f"LAB={REPO}"),
+                 ("BACKUPS=/opt/superbot-v3-backups/falco-scalp", f"BACKUPS={tmp_path / 'backups'}"),
+                 ("RC1_RUN=$PARENT/brain-v3-unico-paper-rc1", f"RC1_RUN={rc1}"),
+                 ('echo "/opt/superbot-falco-scalp-', f'echo "{tmp_path}/opt/superbot-falco-scalp-')):
+        assert a in src
+        src = src.replace(a, b)
+    (d / "comune.sh").write_text(src)
+    s60 = (HERE / "60-aggiorna-codice.sh").read_text().replace("/etc/systemd/system", str(units)).replace(
+        "^/opt/superbot-falco-scalp-[0-9a-f]{12}$", f"^{tmp_path}/opt/superbot-falco-scalp-[0-9a-f]{{12}}$")
+    (d / "60-aggiorna-codice.sh").write_text(s60)
+    (d / "30-codice.sh").write_text(f'. "$(dirname "$0")/comune.sh"\nN=$(stage_of "$1"); mkdir -p "$N"; '
+                                    f'ln -s {REPO}/backend "$N/backend"; echo 30 >> {log}\n')
+    (d / "controlli.py").write_text("print('USCITE: SANE')\n")
+    (d / "contratti_check.py").write_text(f"import sys\nprint('regole 8/8')\nsys.exit({0 if contracts_ok else 1})\n")
+    (bins / "id").write_text("#!/bin/sh\necho 0\n")
+    (bins / "systemctl").write_text(
+        f'#!/bin/sh\necho "systemctl $*" >> {log}\n'
+        f'case "$1" in is-active) echo active;; show) sed -n "s/^WorkingDirectory=//p" {units}/"$5";; '
+        f'*) [ "$*" = "{fail_on}" ] && exit 1; exit 0;; esac\n')
+    for b in bins.iterdir():
+        b.chmod(0o755)
+    env = dict(os.environ, PATH=f"{bins}:{os.environ['PATH']}")
+    p = subprocess.run(["sh", str(d / "60-aggiorna-codice.sh"), head], capture_output=True, text=True, env=env,
+                       timeout=120)
+    return p, (log.read_text() if log.exists() else ""), units, runs, old, tmp_path / "opt" / f"superbot-falco-scalp-{head[:12]}"
+
+
+def _snapshot(runs):
+    return {p.relative_to(runs): p.read_bytes() for p in runs.rglob("*") if p.is_file()}
+
+
+def test_code_update_changes_only_the_code_folder_and_keeps_runs_paused(tmp_path):
+    p, log, units, runs, old, new = _update_env(tmp_path)
+    assert p.returncode == 0 and "ESITO AGGIORNAMENTO: OK" in p.stdout, p.stdout + p.stderr
+    for u in UNIT_NAMES:
+        text = (units / u).read_text()
+        assert str(new) in text and str(old) not in text
+        assert text.replace(str(new), str(old)) == (tmp_path / "backups").glob("aggiorna-*").__next__().joinpath(u).read_text()
+    # ordine sicuro per ogni bot: runner fermo, uscite riavviate e sane, poi runner
+    for exit_u, run_u in ((UNIT_NAMES[0], UNIT_NAMES[1]), (UNIT_NAMES[2], UNIT_NAMES[3])):
+        assert log.index(f"stop {run_u}") < log.index(f"restart {exit_u}") < log.index(f"start {run_u}")
+    rc1_cmds = [l for l in log.splitlines() if "brain-unico-rc1" in l]
+    assert rc1_cmds and all(l.startswith("systemctl is-active") for l in rc1_cmds)   # RC1 solo letto, mai toccato
+    for r in ("brain-v3-falco-evoluto-p1", "brain-v3-brain-scalp-p1"):
+        assert (runs / r / "pause.flag").exists()
+        assert json.loads((runs / r / "mandate.json").read_text())["approved"] is False
+
+
+def test_incomplete_contract_rules_stop_before_touching_the_units(tmp_path):
+    p, log, units, runs, old, new = _update_env(tmp_path, contracts_ok=False)
+    assert p.returncode == 1 and "regole dei contratti incomplete" in p.stdout
+    assert all(str(old) in (units / u).read_text() for u in UNIT_NAMES) and "restart" not in log
+
+
+def test_a_failed_restart_restores_the_previous_units(tmp_path):
+    p, log, units, runs, old, new = _update_env(tmp_path, fail_on="restart superbot-brain-scalp-p1-exit.service")
+    assert p.returncode == 1 and "ESITO AGGIORNAMENTO: NO-GO" in p.stdout and "ROLLBACK" in p.stdout
+    assert all(str(old) in (units / u).read_text() and str(new) not in (units / u).read_text() for u in UNIT_NAMES)
+
+
+def test_update_refuses_a_run_that_is_not_paused(tmp_path):
+    p, log, units, runs, old, new = _update_env(tmp_path, unpause=True)
+    assert p.returncode == 1 and "pausa assente" in p.stdout and "30" not in log

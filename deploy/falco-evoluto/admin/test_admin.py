@@ -104,7 +104,8 @@ def test_a_modified_script_blocks_the_wrapper(tmp_path):
 
 def test_installer_pins_the_exact_files():
     text = (HERE / "installa.sh").read_text()
-    pairs = re.findall(r"^([0-9a-f]{64}) (deploy/\S+)$", text, re.M)
+    block = text.split("<<'LISTA'\n", 1)[1].split("LISTA\n", 1)[0]          # blocco della ripresa
+    pairs = re.findall(r"^([0-9a-f]{64}) (deploy/\S+)$", block, re.M)
     assert len(pairs) == 19 and "deploy/falco-evoluto/rilascio/00-ripresa.sh" in [r for _, r in pairs]
     for h, rel in pairs:
         assert hashlib.sha256((REPO / rel).read_bytes()).hexdigest() == h, rel

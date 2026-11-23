@@ -3,6 +3,9 @@
 #   ripresa            installa il pacchetto verificato in /root/falco-scalp-rilascio ed esegue 00-ripresa.sh: RIUSA le
 #                      due run del 23/11 (in pausa, approved:false, journal conservati), codice corretto 246a3a92
 #   (rilascio)         non piu' utilizzabile: le run esistono gia' e non vanno ricreate
+#   aggiorna-contratti aggiornamento mirato del codice di Falco Evoluto e Brain Scalp al commit 5539ee47 (regole dei
+#                      contratti BTC/ETH): solo la cartella del codice nelle 4 unita'; run, mandati, pause, RC1, web
+#                      e bridge invariati; rollback automatico delle unita'
 #   autonomia          installa /usr/local/sbin/superbot-ops e /etc/sudoers.d/superbot-ops (elenco chiuso, vedi file)
 #   revoca-autonomia   rimuove wrapper e regola sudo
 # Ogni file viene copiato nella destinazione di root e verificato LI' con SHA-256 prima dell'uso.
@@ -51,6 +54,20 @@ LISTA
     sh "$PKG/00-ripresa.sh" "$SHA" "$UI" "$UISHA" 2>&1 | tee "$LOG.ripresa" || RC=$?
     chmod 644 "$LOG.ripresa"                 # leggibile dall'operatore: il registro non contiene segreti
     exit "$RC" ;;
+  aggiorna-contratti)
+    install -d -m 700 -o root -g root "$PKG"
+    while read -r h f; do [ -n "$h" ] && put "$h" "$f" "$PKG/$(basename "$f")" 500; done <<'LISTA2'
+c639a85c6e37ec03adc748586977817aee633e17848d9457adae1f652a3a66e0 deploy/falco-evoluto/rilascio/comune.sh
+40fcee764219117c99b9e48fe11e6b9bd6d31584aed117ff5cead5b59870f946 deploy/falco-evoluto/rilascio/30-codice.sh
+5439f8ad8e725874669d37a7ba03a78c9239933f528688dacde07100ad3949b9 deploy/falco-evoluto/rilascio/60-aggiorna-codice.sh
+82dcae2296d176152ffd91c87e0a1861adf33d4620e50b38f22484daf3c53341 deploy/falco-evoluto/rilascio/contratti_check.py
+638c4da73615e11439d4e92f89890b5ca92c031b7df789d358d2d92fe7210afd deploy/brain-unico/precollaudo/controlli.py
+LISTA2
+    echo "PASS  5 file dell'aggiornamento installati e verificati in $PKG"
+    RC=0
+    sh "$PKG/60-aggiorna-codice.sh" 5539ee4744764b14b76e0e8f71c931536523c7af 2>&1 | tee "$LOG.aggiorna" || RC=$?
+    chmod 644 "$LOG.aggiorna"
+    exit "$RC" ;;
   autonomia)
     T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
     put 2b672bb10d8f9163450d8394ad420280a2d0e1a143163e1b0b6bc53b9157af0a deploy/falco-evoluto/admin/superbot-ops.sudoers "$T/superbot-ops" 440
@@ -65,5 +82,5 @@ LISTA
   revoca-autonomia)
     rm -f /etc/sudoers.d/superbot-ops /usr/local/sbin/superbot-ops
     visudo -c >/dev/null && echo "AUTONOMIA REVOCATA: wrapper e regola sudo rimossi" ;;
-  *) nogo "modalita': ripresa | autonomia | revoca-autonomia" ;;
+  *) nogo "modalita': ripresa | aggiorna-contratti | autonomia | revoca-autonomia" ;;
 esac
