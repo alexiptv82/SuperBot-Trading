@@ -1,3 +1,11 @@
+## 24/11/2026 (28) — Brain unico: notifiche Telegram informative; pacchetto DEFINITIVO `brain-unico-d5b0ae8a`, non installato (Claude)
+
+- **Telegram** (stesso bot dei vecchi Falco/Toro): `backend/v3/runner/telegram_feed.py` legge il journal in un thread proprio (aperture una per apertura anche con due quote, chiusure totali/parziali con motivo e tipo di stop, chiusure manuali e del Brain, modalità del Guardian, report di mezzanotte con salvadanaio); nessun comando remoto, mai bloccante, `telegram_state.json` evita i doppioni. `telegram_check.py` nella ripartenza (passo 2c, non bloccante): credenziali dal file del servizio o dai container già presenti (web, vecchi desk) con copia di riserva, una notifica di prova, solo `TELEGRAM=...` stampato.
+- **Credenziali:** non verificabili dall'agente (file e Docker solo root); la verifica e la prova le fa il comando.
+- **Ramo** `claude/brain-unico-2000-20261124` = `d5b0ae8a` (pubblicato). Gate DRY_RUN verde: V3 5.537, Builder 158, Jest 212; deploy 57; mobile 98/0.
+- **Pacchetto DEFINITIVO** `rilascio/brain-unico-d5b0ae8a` (`SHA256SUMS` `5b8851b4…`), comando `brain-unico-d5b0ae8a.COMANDO-TERMIUS.txt` (`54185a36…`). I pacchetti precedenti sono superati.
+- **Stato:** Falco Evoluto e Brain Scalp in pausa, uscite sane; RC1 in pausa. Prossimo: comando del proprietario, poi RUNNING e primo giro.
+
 ## 24/11/2026 (27) — Brain unico: uscite sicure senza Claude, verifica reale dell'API prima della ripartenza; pacchetto DEFINITIVO, non installato (Claude)
 
 - **Correzioni richieste:** (1) se Claude manca (chiave, rete, tetto 3 USD, limite per giro) CLOSE/PARTIAL_CLOSE/MODIFY_STOP di DeepSeek si eseguono dopo il validatore (`claude_unavailable_risk_reducing`, `claude_required_unavailable` nel journal); nuove aperture critiche restano NO_TRADE; (2) `backend/v3/runner/claude_check.py`: richiesta di consulto identica a quella del Brain, controlli HTTP/formato/token, chiave mai stampata; `ripartenza.sh` si ferma con esito 2 PRIMA di toccare le run se Claude non è utilizzabile.
