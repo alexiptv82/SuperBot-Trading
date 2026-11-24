@@ -54,7 +54,7 @@ class DeepSeekL5Analyst(Analyst):
                  bars_source, view_params: ViewParams, market_params: MarketViewParams,
                  menu: tuple[MenuItem, ...], spending_gate: SpendingGate | None = None,
                  enabled: bool = False, max_tokens: int = 256, guidance: str | None = None,
-                 portfolio_state=None):
+                 portfolio_state=None, reasons_parser=None):
         if type(max_tokens) is not int or not 1 <= max_tokens <= 65_536:
             raise ValueError("invalid_max_tokens") from None
         if type(view_params) is not ViewParams:
@@ -68,6 +68,8 @@ class DeepSeekL5Analyst(Analyst):
         self.menu, self.spending_gate, self.enabled = menu, spending_gate, enabled
         self.max_tokens = max_tokens
         self.guidance, self.portfolio_state = guidance, portfolio_state
+        # Brain unico: lettore dei motivi a elenco chiuso (iniettato: ``unico.parse_reasons``); None = motivi rifiutati
+        self.reasons_parser = reasons_parser
 
     def analyze(self, context: MarketContext, open_positions: list[Mapping]) -> BrainDecision:
         if (not isinstance(context, MarketContext) or not _safe_str(context.symbol)
@@ -148,8 +150,9 @@ class DeepSeekL5Analyst(Analyst):
             keys = {"kind", "side", "entry_price", "stop_price", "leverage", "confidence"}
             labelled_keys = keys | {"strategy_id", "strategy_origin"}
             # Brain unico: motivi e incertezza facoltativi, validati su elenco chiuso
-            from backend.v3.unico import parse_reasons
-            reasons = parse_reasons(obj.pop("reasons", None)) if self.guidance is not None else ()
+            if "reasons" in obj and (self.guidance is None or self.reasons_parser is None):
+                raise ValueError()
+            reasons = self.reasons_parser(obj.pop("reasons", None)) if self.reasons_parser is not None else ()
             uncertain = obj.pop("uncertain", False) if self.guidance is not None else False
             if type(uncertain) is not bool:
                 raise ValueError()

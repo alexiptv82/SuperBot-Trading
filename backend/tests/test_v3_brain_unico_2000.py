@@ -346,7 +346,8 @@ def test_wired_runner_uses_fit_leverage_guidance_portfolio_state_and_reviews_ope
                 long_ = info["symbol"] == "BTCUSDT"
                 content = {"kind": "OPEN", "side": 1 if long_ else -1, "entry_price": str(price),
                            "stop_price": str(price * (D("0.99") if long_ else D("1.01"))), "leverage": 3,
-                           "confidence": 0.8, "strategy_id": "S25", "strategy_origin": "library"}
+                           "confidence": 0.8, "strategy_id": "S25", "strategy_origin": "library",
+                           "reasons": ["trend_up" if long_ else "trend_down", "volume_confirms"]}
             return TransportResponse(200, {"choices": [{"finish_reason": "stop",
                                                         "message": {"content": _json.dumps(content)}}],
                                            "usage": {"prompt_tokens": 2500, "completion_tokens": 60}})
@@ -388,6 +389,8 @@ def test_wired_runner_uses_fit_leverage_guidance_portfolio_state_and_reviews_ope
     # collaborazione: ogni OPEN registrata con la proposta DeepSeek; Claude chiamato solo sui criteri; costi separati
     consults = [r.event.payload for r in built.journal.list_run("brain", "unico-e2e") if r.event.kind == "ai_consultation"]
     assert len(consults) == 2 and all(c["deepseek"]["action"] == "OPEN" for c in consults)
+    assert {tuple(c["deepseek"]["reasons"]) for c in consults} == {("trend_up", "volume_confirms"),
+                                                                    ("trend_down", "volume_confirms")}
     asked = [c for c in consults if c["claude"] is not None]
     assert asked and all(c["code"] == "claude_confirmed" and c["final"]["source"] == "agreed" for c in asked)
     assert all(r["triggers"] and r["claude"]["status"] == "ok" for r in reviews)           # stop spostato: consulto

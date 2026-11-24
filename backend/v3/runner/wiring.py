@@ -269,7 +269,9 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         unico_extra = {}
         if unico is not None and unico.guidance:
             from backend.v3.brain_market.deepseek_l5 import UNICO_GUIDANCE
-            unico_extra = {"guidance": UNICO_GUIDANCE, "portfolio_state": portfolio_state}
+            from backend.v3.unico import parse_reasons
+            unico_extra = {"guidance": UNICO_GUIDANCE, "portfolio_state": portfolio_state,
+                           "reasons_parser": parse_reasons}
         ds_analyst = DeepSeekL5Analyst(
             transport=metered, model=config.model,
             outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
