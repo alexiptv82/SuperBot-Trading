@@ -1,3 +1,11 @@
+## 24/11/2026 (26) — Brain unico PAPER 2000: senza limite di tempo + DeepSeek principale / Claude consulente; pacchetto definitivo, NON installato (Claude)
+
+- **Correzioni del proprietario:** (1) nessuna chiusura per solo tempo (`max_hold_hours` null; posizioni lunghe: finestra 1m di 20 h + miglior prezzo precedente dalle candele 15m); (2) DeepSeek principale, Claude consulente (`claude-opus-5-5`, tetto 3 USD/giorno separato, max 4 consulti per giro, pausa 2 h per posizione) chiamato solo sui criteri, arbitro deterministico (`backend/v3/runner/consult.py`) che può adottare Claude; senza Claude le decisioni che lo richiedevano non passano (NO_TRADE / HOLD); stop e uscite mai in attesa delle AI. Journal: `ai_consultation`, `position_review` con proposte, valutazioni, fonte, codici, metriche.
+- **Difetto trovato dal controllo mobile e corretto:** Trade e Performance usavano un elenco fisso di bot (avrebbero aperto Falco Evoluto); ora le run attive da `/api/v3/compare`.
+- **Ramo** `claude/brain-unico-2000-20261124` pubblicato (`32efed3d`; `00086b88`, `46b8df1d`). Gate DRY_RUN verde: V3 5.531, Builder 158, Jest 212; deploy 56; Brain unico 31; mobile 360/412 px 98/0 su build del pacchetto. Integration NON toccato.
+- **Pacchetto** `rilascio/brain-unico-32efed3d` (`SHA256SUMS` `0a7dd1c2…`, UI `main.77990112.js`), comando `brain-unico-32efed3d.COMANDO-TERMIUS.txt` (`56c7aa39…`), provato senza root. Esiti 0/2/3/4/5; rollback `ripartenza.sh --rollback <TIMBRO>`. La procedura verifica l'API di Claude (`CLAUDE_API=...`, chiave mai stampata): la chiave `ANTHROPIC_API_KEY` deve stare in `/etc/superbot-v3-paper/brain-ai.env`.
+- **Stato VPS:** Falco Evoluto e Brain Scalp in pausa dalle 09:00 (nessun giro dopo), uscite sane; RC1 in pausa. Prossimo: OK e comando del proprietario, poi verifica RUNNING e primo giro (`superbot-ops log scalp-runner`).
+
 ## 24/11/2026 (25) — Brain unico PAPER 2000: codice pronto, NON installato; Falco Evoluto e Brain Scalp in pausa (Claude)
 
 - **Fatto sulla VPS:** `superbot-ops pausa falco` e `pausa scalp` (09:00 UTC): nessuna nuova apertura, uscite attive. RC1 in pausa, non toccato. In produzione UI `main.3dd759b4.js`, `/api/v3/paper-archive` 404: `app-f50f7ae4` NON installato (non serve: superato).
