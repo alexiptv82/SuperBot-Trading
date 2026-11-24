@@ -55,16 +55,20 @@ stop 0,2 % → 50× con margine 400 (rischio ~72 < 86); stop 4 % → NO_TRADE (o
   Claude; lato opposto → solo con Claude ≥ 0,75, DeepSeek ≤ 0,6 e regime coerente, altrimenti nessuna apertura.
   Posizioni — accordo → l'azione; disaccordo → punteggio = confidenza + dati (profitto restituito, cambio di regime, R),
   a parità l'azione più prudente. Nessuna AI ha l'ultima parola per definizione.
-- **Claude non disponibile** (chiave, rete, tetto, timeout, formato): le decisioni ordinarie di DeepSeek continuano; quelle
-  che richiedevano il consulto non vengono approvate (apertura → NO_TRADE, azione sulla posizione → HOLD). Stop e uscite
-  non aspettano mai le AI.
+- **Claude non disponibile** (chiave, rete, tetto di 3 USD, limite per giro, timeout, formato): le decisioni ordinarie di
+  DeepSeek continuano; una NUOVA apertura che richiedeva il consulto non viene approvata (NO_TRADE); un'azione di DeepSeek
+  che riduce il rischio di una posizione (chiusura, presa parziale, stop più stretto) si esegue comunque, dopo il
+  validatore deterministico, e il journal registra `claude_required_unavailable` e `claude_unavailable_risk_reducing`.
+  Stop, take profit e protezioni del servizio delle uscite non aspettano mai le AI.
 - **Journal**: `ai_consultation` (ogni apertura proposta: proposta DeepSeek, criteri, valutazione Claude, decisione finale,
   fonte, codice, disaccordo) e `position_review` (lo stesso per le posizioni, con le metriche); chiusure manuali `manual`,
   del Brain `brain_close`. La dashboard mostra consulti, accordi, scelte di Claude, aperture fermate, risultato netto dei
   trade per fonte della decisione e i costi separati DeepSeek/Claude.
 - **Accesso API**: la chiave `ANTHROPIC_API_KEY` deve stare in `/etc/superbot-v3-paper/brain-ai.env` (letta solo dal
-  servizio). L'accesso a Claude Code non è un'API per il bot. La procedura root fa una chiamata di prova e scrive solo
-  `CLAUDE_API=DISPONIBILE` o `NON_DISPONIBILE_...`, mai la chiave.
+  servizio). L'accesso a Claude Code non è un'API per il bot. Prima di toccare le run la procedura root
+  (`backend/v3/runner/claude_check.py`) manda una richiesta di consulto identica a quella del Brain e controlla HTTP,
+  formato della decisione e token; stampa solo `CLAUDE_API=DISPONIBILE ...` o il motivo, mai la chiave. Se Claude non è
+  utilizzabile la ripartenza si ferma con esito 2 (nessuna run toccata) e indica come aggiungere la chiave da Termius.
 
 ## Codice (nessun componente stabile riscritto)
 - `backend/v3/unico.py`: politica del Brain unico, quote, salvadanaio (funzioni pure).

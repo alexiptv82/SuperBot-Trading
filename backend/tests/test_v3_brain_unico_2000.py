@@ -485,7 +485,11 @@ def test_position_triggers_and_no_time_based_trigger():
 def test_position_arbiter_weighs_both_views_with_numbers_and_is_prudent_when_claude_is_missing():
     m = _m(r="0.9", mfe="2.4", give="0.62")
     assert arbitrate_position("HOLD", None, 0.6, None, m).source == "deepseek"
-    assert arbitrate_position("CLOSE", None, 0.8, ClaudeView("budget"), m).action == "HOLD"     # mai finto consenso
+    for status in ("budget", "timeout_or_error", "invalid", "skipped_limit", "unavailable"):
+        for act, stop in (("CLOSE", None), ("PARTIAL_CLOSE", None), ("MODIFY_STOP", D("100.5"))):
+            v = arbitrate_position(act, stop, 0.8, ClaudeView(status), m)   # riduce il rischio: si esegue senza Claude
+            assert (v.action, v.stop, v.source, v.code) == (act, stop, "deepseek", "claude_unavailable_risk_reducing")
+        assert arbitrate_position("HOLD", None, 0.8, ClaudeView(status), m).code == "claude_unavailable_hold"
     claude_close = ClaudeView("ok", "CONTEST", action="CLOSE", confidence=0.6)
     v = arbitrate_position("HOLD", None, 0.7, claude_close, m)          # profitto restituito: i numeri danno ragione
     assert (v.action, v.source) == ("CLOSE", "claude")
@@ -550,3 +554,82 @@ def test_no_time_limit_exit_policy_and_long_positions_use_a_window_plus_history(
     assert sorted(r for _p, r in rep.closed) == ["stop", "stop"] and rep.errors == ()
     kinds = {r.event.payload.get("stop_kind") for r in j.list_run("brain", "r1") if r.event.kind == "paper_close"}
     assert kinds == {"trailing"}                     # la storia prima della finestra conta: il profitto e' protetto
+
+
+def test_claude_over_its_daily_cap_never_blocks_risk_reducing_exits(tmp_path):
+    """Tetto di 3 USD raggiunto (gate negato): la chiusura proposta da DeepSeek passa e va al servizio delle uscite;
+    il journal dice che il consulto era richiesto ma non disponibile; uno stop PIU' LARGO resta rifiutato; una nuova
+    apertura che richiedeva Claude resta NO_TRADE."""
+    j = _journal(tmp_path)
+    _open(j)
+    over_cap = ClaudeConsultant(transport=lambda p: (_ for _ in ()).throw(AssertionError("nessuna chiamata")),
+                                model="claude-opus-5-5", effort="medium", max_tokens=8000,
+                                spending_gate=lambda provider: False, max_per_cycle=4, cooldown_ms=0)
+    now = T0 + 30 * MIN
+    out = review_open_positions(journal=j, run_id="r1", data_dir=tmp_path, now_ms=now, consultant=over_cap,
+                                reviewer=_Reviewer([ReviewProposal("CLOSE", None, 0.7)]), price_of=lambda s, t: D("100.5"))
+    assert [(o.executed, o.code) for o in out] == [("CLOSE", "close_all_legs")]
+    assert (tmp_path / BRAIN_CHANNEL["request_file"]).is_file()
+    rev = [r.event.payload for r in j.list_run("brain", "r1") if r.event.kind == "position_review"][-1]
+    assert rev["claude"]["status"] == "budget" and rev["claude_required_unavailable"] is True
+    assert rev["arbiter"] == "claude_unavailable_risk_reducing" and rev["triggers"] == ["action_proposed"]
+    rep = run_manual_close(journal=j, portfolio_id="brain", run_id="r1", data_dir=tmp_path,
+                           price_of=lambda s, t: D("100.5"), fee_bps=D(6), now_ms=now + MIN, **BRAIN_CHANNEL)
+    assert len(rep.closed) == 2 and not build_summary(j, "brain", "r1").open_positions
+    # stop piu' largo senza Claude: il validatore lo rifiuta comunque
+    j2 = _journal(tmp_path / "b") if (tmp_path / "b").mkdir() is None else None
+    _open(j2)
+    out = review_open_positions(journal=j2, run_id="r1", data_dir=tmp_path / "b", now_ms=now, consultant=over_cap,
+                                reviewer=_Reviewer([ReviewProposal("MODIFY_STOP", D("98.5"), 0.7)]),
+                                price_of=lambda s, t: D("100.5"))
+    assert [(o.executed, o.code) for o in out] == [("HOLD", "stop_not_tighter")]
+    assert not [r for r in j2.list_run("brain", "r1") if r.event.kind == "stop_move"]
+    # nuova apertura critica senza Claude: mai autorizzata
+    assert arbitrate_entry(_prop(conf=0.5), ClaudeView("budget"), "TREND_UP").open is False
+
+
+# ----------------------------------------------------------------------------- verifica reale dell'API di Claude
+def _resp(body, code=200):
+    from backend.v3.brain_f3.providers import TransportResponse
+    return TransportResponse(code, body)
+
+
+GOOD = {"stop_reason": "end_turn", "content": [{"type": "thinking", "thinking": ""},
+        {"type": "text", "text": '{"verdict":"CONTEST","confidence":0.6,"reasons":["setup_weak"]}'}],
+        "usage": {"input_tokens": 2100, "output_tokens": 350}}
+
+
+def test_claude_check_sends_the_brain_request_and_checks_http_format_and_tokens():
+    from backend.v3.runner.claude_check import verify
+    from backend.v3.runner.consult import ENTRY_PROMPT, consult_payload
+    seen = []
+    ok, code, det = verify(cfg(), key="sk-prova", transport=lambda p: seen.append(p) or _resp(GOOD))
+    cp = cfg().unico.claude
+    assert (ok, code, det["verdetto"], det["token_ingresso"], det["costo_usd"]) == (True, "DISPONIBILE", "CONTEST",
+                                                                                    2100, "0.0154")
+    sent = seen[0]
+    assert {k: v for k, v in sent.items() if k != "messages"} == {
+        k: v for k, v in consult_payload(cp.model, cp.effort, cp.max_tokens, ENTRY_PROMPT, {}).items() if k != "messages"}
+    assert sent["model"] == "claude-opus-5-5" and sent["fallbacks"] == "default"
+    for body, want in (({**GOOD, "stop_reason": "refusal"}, "RIFIUTO_DEL_MODELLO"),
+                       ({**GOOD, "content": [{"type": "text", "text": "va bene"}]}, "FORMATO_DELLA_DECISIONE"),
+                       ({**GOOD, "stop_reason": "max_tokens"}, "FORMATO_DELLA_DECISIONE"),
+                       ({k: v for k, v in GOOD.items() if k != "usage"}, "TOKEN_NON_LEGGIBILI")):
+        assert verify(cfg(), key="sk-prova", transport=lambda p, b=body: _resp(b))[:2] == (False, want)
+    assert verify(cfg(), key="", transport=lambda p: _resp(GOOD))[:2] == (False, "CHIAVE_ASSENTE")
+    assert verify(cfg(), key="sk", transport=lambda p: (_ for _ in ()).throw(OSError()))[:2] == (False, "HTTP_O_RETE")
+
+
+def test_claude_check_reads_the_service_env_file_and_never_prints_the_key(tmp_path, monkeypatch, capsys):
+    import backend.v3.transport as tr
+    from backend.v3.runner import claude_check
+    env = tmp_path / "brain-ai.env"
+    env.write_text("DEEPSEEK_API_KEY=ds-segreta\nANTHROPIC_API_KEY=sk-ant-SEGRETISSIMA\n")
+    assert claude_check.read_key(env) == "sk-ant-SEGRETISSIMA" and claude_check.read_key(tmp_path / "no") == ""
+    monkeypatch.setattr(tr, "claude_transport", lambda **kw: (lambda p: _resp(GOOD)))
+    assert claude_check.main(["--config", str(CFG), "--env-file", str(env)]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("CLAUDE_API=DISPONIBILE") and "SEGRETISSIMA" not in out and "ds-segreta" not in out
+    env.write_text("DEEPSEEK_API_KEY=ds\n")
+    assert claude_check.main(["--config", str(CFG), "--env-file", str(env)]) == 1
+    assert capsys.readouterr().out.strip() == "CLAUDE_API=CHIAVE_ASSENTE"

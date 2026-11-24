@@ -76,6 +76,7 @@ export const REVIEW_CODE = { hold: '', close_all_legs: '', close_tp1_leg: '', st
   ai_unavailable: 'AI non disponibile', review_failed: 'revisione non riuscita',
   close_request_pending: 'chiusura in attesa del servizio uscite',
   claude_unavailable_critical: 'Claude non disponibile: azione non eseguita', claude_unavailable_hold: '',
+  claude_unavailable_risk_reducing: 'Claude non disponibile: riduzione del rischio eseguita',
   claude_adopted: 'scelta di Claude', deepseek_kept: 'scelta di DeepSeek', claude_confirmed: '',
   both_tighten_stop: 'stop più stretto fra i due', no_consult_needed: '' };
 export const SOURCE = { deepseek: 'DeepSeek', claude: 'Claude', agreed: 'DeepSeek + Claude d’accordo', none: '—' };

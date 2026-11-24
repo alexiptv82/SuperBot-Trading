@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import os
 import sys
 import threading
 import time
@@ -217,3 +218,45 @@ def test_wrong_config_is_refused_before_any_change(rig, capsys, tmp_path, monkey
     assert rig.rp.main(["--esegui", "--stage", str(ROOT)]) == 3
     assert "configurazione_diversa_dal_commit" in capsys.readouterr().out
     assert not (rig.runs / ".archivio").exists() and not (rig.scalp / "pause.flag").exists()
+
+
+# ------------------------------------------------------------------ ripartenza.sh: Claude verificato PRIMA delle run
+def _package(tmp: Path, env_text: str) -> tuple[Path, dict]:
+    import shutil
+    import subprocess
+    pkg = tmp / "pkg"
+    (pkg / "ui").mkdir(parents=True)
+    shutil.copy(HERE / "ripartenza.sh", pkg / "ripartenza.sh")
+    shutil.copy(RUNNER / U, pkg / U)
+    (pkg / "ui" / "index.html").write_text("<html></html>")
+    (pkg / "COMMIT").write_text("a" * 40)
+    (pkg / ("backend-" + "a" * 12 + ".tar")).write_text("tar finto")
+    marker = tmp / "ripartenza_brain_eseguito"
+    (pkg / "ripartenza_brain.py").write_text(f"open({str(marker)!r}, 'w').write('x')\n")
+    (pkg / "30-codice.sh").write_text(f'ln -s {ROOT} "$NEW_STAGE"\n')
+    (pkg / "contratti_check.py").write_text("print('regole contratti: 27/27')\n")
+    env = tmp / "brain-ai.env"
+    env.write_text(env_text)
+    comune = tmp / "comune.sh"
+    comune.write_text(f'LAB={ROOT}\nPY={sys.executable}\nAIENV={env}\nnogo() {{ echo "NO-GO: $*"; exit 1; }}\n'
+                      f'stage_of() {{ echo "{tmp}/stage"; }}\n')
+    subprocess.run("cd ui && sha256sum index.html > SHA256SUMS && cd .. && sha256sum COMMIT *.tar *.sh *.py *.json "
+                   "ui/SHA256SUMS > SHA256SUMS", shell=True, cwd=pkg, check=True)
+    return pkg, {"marker": marker, "env": dict(os.environ, RIPARTENZA_TEST_MODE="1", RIPARTENZA_TEST_COMUNE=str(comune),
+                                                NEW_STAGE=str(tmp / "stage"), HTTPS_PROXY="http://127.0.0.1:9",
+                                                HTTP_PROXY="http://127.0.0.1:9", PYTHONDONTWRITEBYTECODE="1")}
+
+
+def test_restart_stops_before_touching_any_run_when_claude_is_not_usable(tmp_path):
+    import subprocess
+    for text in ("DEEPSEEK_API_KEY=ds-segreta\n", "DEEPSEEK_API_KEY=ds\nANTHROPIC_API_KEY=sk-ant-NONVALIDA\n"):
+        pkg, ctx = _package(tmp_path / str(len(text)), text)
+        p = subprocess.run(["bash", str(pkg / "ripartenza.sh")], cwd=tmp_path, env=ctx["env"], capture_output=True,
+                           text=True, timeout=180)
+        out = p.stdout + p.stderr
+        assert p.returncode == 2, out
+        assert "RIPARTENZA_RESULT=RIFIUTATA_CLAUDE_NON_UTILIZZABILE_NESSUNA_RUN_TOCCATA" in out
+        assert "CLAUDE_API=CHIAVE_ASSENTE" in out or "CLAUDE_API=HTTP_O_RETE" in out
+        assert "ANTHROPIC_API_KEY=<la chiave" in out                       # come rimediare da Termius
+        assert not ctx["marker"].exists()                                  # la ripartenza non e' mai partita
+        assert "segreta" not in out and "NONVALIDA" not in out             # nessuna chiave stampata

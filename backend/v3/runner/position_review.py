@@ -305,6 +305,8 @@ def review_open_positions(*, journal: EventJournal, run_id: str, data_dir: Path,
                     v = arbitrate_position(prop.action, prop.stop_price, prop.confidence, claude, m, view.side)
                     extra.update(triggers=list(triggers), claude=None if claude is None else claude.payload(),
                                  source=v.source, arbiter=v.code,
+                                 # consulto previsto dai criteri ma Claude assente: registrato in chiaro
+                                 claude_required_unavailable=bool(claude is not None and claude.status != "ok"),
                                  disagreement=bool(claude is not None and claude.status == "ok"
                                                    and claude.verdict != "CONFIRM"))
                     final = ReviewProposal(v.action, v.stop, prop.confidence, prop.reasons, prop.uncertain)

@@ -245,12 +245,12 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
 
     consultant = None
     if unico is not None and unico.claude is not None:
-        from backend.v3.runner.consult import ClaudeConsultant
+        from backend.v3.runner.consult import FALLBACK_BETA, ClaudeConsultant
         from backend.v3.transport import claude_transport
         cp = unico.claude
         claude_metered = MeteredTransport(
             claude_inner_transport if claude_inner_transport is not None else claude_transport(
-                timeout_s=cp.timeout_s, betas=("server-side-fallback-2026-07-01",)),
+                timeout_s=cp.timeout_s, betas=(FALLBACK_BETA,)),
             ledger, "claude", input_usd_per_million=cp.input_usd_per_million,
             output_usd_per_million=cp.output_usd_per_million)
         consultant = ClaudeConsultant(

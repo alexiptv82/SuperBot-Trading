@@ -9,8 +9,9 @@ mercato e di portafoglio (non solo la risposta di DeepSeek) e risponde CONFIRM /
 Un ARBITRO deterministico (``arbitrate_entry`` / ``arbitrate_position``) confronta le due analisi con dati
 quantitativi (R, profitto restituito, regime, confidenze) e puo' adottare la proposta di Claude. Nessuna delle due AI ha
 l'ultima parola per definizione. Se le analisi sono inconciliabili e mancano numeri a favore, una NUOVA apertura non si
-fa. Se Claude non risponde (chiave, rete, budget, timeout, formato), una decisione che richiedeva il consulto NON viene
-approvata come se avesse risposto: apertura -> NO_TRADE, azione sulla posizione -> HOLD. Dopo l'arbitro restano il
+fa. Se Claude non risponde (chiave, rete, budget, timeout, formato), una NUOVA apertura che richiedeva il consulto non
+viene approvata (NO_TRADE); un'azione di DeepSeek che riduce il rischio di una posizione (chiusura, parziale, stop piu'
+stretto) si esegue comunque, registrando che il consulto mancava. Dopo l'arbitro restano il
 RiskManager (aperture) e il validatore (azioni sulle posizioni). Stop, take-profit e protezioni del servizio delle uscite
 non aspettano mai le AI. Nel journal entrano solo codici (azioni, motivi a elenco chiuso, confidenze), mai testo libero.
 """
@@ -104,22 +105,35 @@ class ClaudeConsultant:
             return ClaudeView("budget")
         self._used += 1
         self._last[key] = now_ms
-        payload = {"model": self.model, "max_tokens": self.max_tokens, "thinking": {"type": "adaptive"},
-                   "output_config": {"effort": self.effort}, "fallbacks": "default", "system": system,
-                   "messages": [{"role": "user", "content": json.dumps(info, sort_keys=True, default=str)}]}
+        payload = consult_payload(self.model, self.effort, self.max_tokens, system, info)
         try:
             body = _call(self.transport, self.gate, "claude", self.model, self.enabled, payload)
         except ProviderUnavailable as exc:
             return ClaudeView("budget" if str(exc) == "budget_denied" else
                               "unavailable" if str(exc) == "provider_disabled" else "timeout_or_error")
         try:
-            if body.get("stop_reason") != "end_turn":
-                raise ValueError()
-            text = "".join(b.get("text", "") for b in body.get("content") or [] if isinstance(b, Mapping)
-                           and b.get("type") == "text")
-            return parse_claude(_json_object(text.strip()), position=position)
+            return parse_response(body, position=position)
         except Exception:
             return ClaudeView("invalid")
+
+
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+
+def consult_payload(model: str, effort: str, max_tokens: int, system: str, info: Mapping) -> dict:
+    """La richiesta a Claude, identica per il Brain e per la verifica della procedura root."""
+    return {"model": model, "max_tokens": max_tokens, "thinking": {"type": "adaptive"},
+            "output_config": {"effort": effort}, "fallbacks": "default", "system": system,
+            "messages": [{"role": "user", "content": json.dumps(info, sort_keys=True, default=str)}]}
+
+
+def parse_response(body: Mapping, *, position: bool) -> ClaudeView:
+    """Risposta della Messages API -> valutazione; ``ValueError`` se non e' una risposta completa e valida."""
+    if not isinstance(body, Mapping) or body.get("stop_reason") != "end_turn":
+        raise ValueError("stop_reason")
+    text = "".join(b.get("text", "") for b in body.get("content") or [] if isinstance(b, Mapping)
+                   and b.get("type") == "text")
+    return parse_claude(_json_object(text.strip()), position=position)
 
 
 def parse_claude(obj: Mapping, *, position: bool) -> ClaudeView:
@@ -263,8 +277,12 @@ def arbitrate_position(ds_action: str, ds_stop: Optional[Decimal], ds_conf: Opti
     if claude is None:
         return PositionVerdict(ds_action, ds_stop, "deepseek", "no_consult_needed")
     if claude.status != "ok":
-        return PositionVerdict("HOLD", None, "none",
-                               "claude_unavailable_critical" if ds_action != "HOLD" else "claude_unavailable_hold")
+        # Consulto richiesto ma Claude assente (chiave, rete, tetto giornaliero, limite per giro, formato): un'azione
+        # che RIDUCE il rischio (chiusura, presa parziale, stop piu' stretto) si esegue comunque; il validatore
+        # deterministico controlla poi che lo stop sia davvero piu' protettivo. Nessuna azione nuova inventata.
+        if ds_action in ("CLOSE", "PARTIAL_CLOSE", "MODIFY_STOP"):
+            return PositionVerdict(ds_action, ds_stop, "deepseek", "claude_unavailable_risk_reducing")
+        return PositionVerdict("HOLD", None, "none", "claude_unavailable_hold")
     if claude.verdict == "CONFIRM" or claude.action == ds_action and (ds_action != "MODIFY_STOP"):
         return PositionVerdict(ds_action, ds_stop, "agreed", "claude_confirmed")
     c_action, c_stop = claude.action, claude.stop_price
