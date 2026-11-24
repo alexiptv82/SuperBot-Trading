@@ -1,3 +1,11 @@
+## 24/11/2026 (38) — Nuova sessione V2 RUNNING; web non aggiornata: sonda dell'archivio corretta, pacchetto della sola web (Claude)
+
+- Proprietario: `brain-unico-6a96e599 --nuova-sessione` → `BRAIN_RUNNING_MA_WEB_NON_AGGIORNATA` (rc 5), `FAILED_archive_detail_mismatch`. Brain V2 da 2.000 attivo (vecchia run archiviata, 539 eventi; 3 sessioni di apprendimento collegate); 21:05 prima apertura V2.
+- Causa verificata: `app_probe.py` confrontava le righe del dettaglio d'archivio (una per CHIUSURA) con `closed` (trade distinti). Fallisce solo la sessione BTC appena archiviata (1 trade, 2 quote, −16,75); le altre quattro hanno trade = chiusure (2/2, 3/3, 0/0, 2/2).
+- `d1bc0628`: confronto con `closes` + P&L netto; sonda dal vivo con chiusura manuale pronta e rotta senza sessione 401; `aggiorna_app.sh` per il Brain unico con verifica che runner/uscite/bridge non si riavviino. Test 19/19 (archivio con trade a due quote: la sonda vecchia fallisce). Gate DRY_RUN verde (5.588/158/212).
+- Pacchetto SOLO web `rilascio/web-brain-unico-d1bc0628` (`926d796b…`): backend e UI identici al codice in esecuzione (6a96e599). Comando `web-brain-unico-d1bc0628.COMANDO-TERMIUS.txt` (`9c89a062…`), rollback separato `aggiorna_app.sh --rollback`. Non eseguito.
+- Da osservare: giro delle 21:00 con 4 simboli `instant_out_of_slot` (probabile primo giro a cavallo della fascia).
+
 ## 25/11/2026 (37) — Simulazione fedele e validazione della V2 sul percorso reale; pacchetto definitivo `6a96e599` (Claude, NON installato)
 
 - Simulatore (`6a96e599`): imbuto proposte 37 → approvate 2 → eseguibili 1 (ICP scaduta: decisione scritta 383 s dopo, limite 120 s) → eseguite 1 (BTC, 2 quote) → controfattuali 36. Risultato REALE dal journal: 1 trade, lordo −7,66, commissioni 9,09, netto −16,75; S0 ricostruito = solo BTC (controfattuale aperto +58 a mercato: differenza = stop spostato da Claude non riprodotto, limite dichiarato). Scadenza applicata a ogni scenario: S4 −97 (HYPE 13:15 esclusa, 188 s); S4+filtri −34.
