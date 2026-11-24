@@ -1,3 +1,11 @@
+## 24/11/2026 (25) — Brain unico PAPER 2000: codice pronto, NON installato; Falco Evoluto e Brain Scalp in pausa (Claude)
+
+- **Fatto sulla VPS:** `superbot-ops pausa falco` e `pausa scalp` (09:00 UTC): nessuna nuova apertura, uscite attive. RC1 in pausa, non toccato. In produzione UI `main.3dd759b4.js`, `/api/v3/paper-archive` 404: `app-f50f7ae4` NON installato (non serve: superato).
+- **Codice** (ramo locale `claude/brain-unico-2000-20261124`, commit `00086b88`, NON ancora pubblicato: manca il gate): config schema 3 `runner_config_brain_unico_2000_paper.json` (2000, 25 cripto + XAU/XAG 27/27 su Bitget, 10 slot, 4,3 %/12 %, margine 400/55 %, leva 15-50 scelta dal codice, 35 % a 2R + residuo 3,5R, revisione AI HOLD/CLOSE/PARTIAL_CLOSE/MODIFY_STOP, SELETTIVO +300 / PROTEZIONE +400, salvadanaio a mezzanotte), dashboard a Brain unico, procedura root `deploy/brain-unico-2000/ripartenza.sh` con rollback. Doc `docs/brain-unico-2000/RIPARTENZA-20261124.md`.
+- **Test:** suite V3 5.522 verde (prima degli ultimi ritocchi), nuovi 24 backend + 5 procedura + 2 sonda, deploy 56, Jest 211.
+- **Pacchetto** `rilascio/brain-unico-00086b88` (SHA256SUMS `2ae9560a…`, UI `main.ea9fd449.js`, marcatori ok). Comando Termius NON ancora consegnato.
+- **Prossimo:** finire la verifica mobile (`$S/pw/check_unico.js` va in timeout: da correggere), gate DRY_RUN, push del ramo, comando Termius; dopo l'installazione verificare RUNNING e primo giro con `superbot-ops log scalp-runner`.
+
 ## 24/11/2026 (24) — App PAPER: correzione dell'Archivio prima dell'installazione, pacchetto `app-f50f7ae4` (Claude)
 
 - **Richiesta del proprietario (struttura approvata dopo revisione con ChatGPT):** correggere soltanto il link «Confronto della prima sessione» in Archivio, che puntava a `/compare` (legge le run ATTUALI, `V3_COMPARE_RUNS`).
