@@ -14,7 +14,14 @@ Per ogni proposta di apertura di DeepSeek registrata nei consulti (``ai_consulta
   su ogni parte, slittamento 2 bp sull'ingresso e sugli stop. Una posizione ancora aperta a fine dati e' "incerta"
   (valutata all'ultimo prezzo, separata dai risultati chiusi).
 
-Scenari: S0 veto attuale (esito reale del consulto); S1 S0 + rischio dimezzato quando Claude non ha giudicato;
+Imbuto (25/11, fedelta' di S0): proposte -> approvate dal motore (brain_decision APPROVED) -> eseguibili dopo il
+controllo finale -> eseguite (paper_open, quote contate una volta). Del controllo finale (``post_ai_guard``) si
+riproduce la SCADENZA: la decisione e' scritta nel journal prima del controllo, quindi un'eta' alla scrittura dello
+snapshot oltre 120 s significa scadenza CERTA (``decision_stale``); sotto, eseguibile PRESUNTA (latenza fino al
+controllo, prezzo/divergenza e freschezza del mercato non ricostruibili: limite dichiarato). Il risultato REALE della
+run (chiusure nel journal) e' separato da ogni risultato controfattuale.
+
+Scenari controfattuali (mai il risultato economico della run): S0 ricostruito = approvate ed eseguibili; S1 S0 + rischio dimezzato quando Claude non ha giudicato;
 S2 consulto selettivo (soglie 0,60 BTC/ETH/oro/argento e 0,70 altri, EXPANSION da solo non basta; dove il consulto
 non scatterebbe si apre a rischio pieno, altrove vale l'esito reale di Claude); S3 = S2 + S1; S4 tutte le proposte di
 DeepSeek senza Claude (riferimento). Ogni scenario anche con i filtri V2 (LONG con trend, costi).
@@ -87,8 +94,29 @@ def trend(rows: list[tuple]) -> int | None:
 
 
 # ----------------------------------------------------------------------------- proposte
+MAX_DECISION_AGE_MS = 120_000           # post_ai_guard.recheck_paper_open
+
+
+def decision_info(events: list[dict]) -> dict:
+    """(simbolo, istante) -> stato della decisione, eta' alla scrittura dello snapshot, id."""
+    dec = {e["id"]: e for e in events if e["kind"] == "brain_decision"}
+    out = {}
+    for e in events:
+        if e["kind"] != "brain_decision_snapshot_v2":
+            continue
+        d = dec.get(e["payload"].get("decision_event_id"))
+        if d is None:
+            continue
+        w = e["payload"].get("write_wall_ms") or e["payload"].get("capture_wall_ms")
+        out[(d["payload"].get("symbol"), d["t"])] = {"status": d["payload"].get("status"), "id": d["id"],
+                                                     "age_ms": None if w is None else int(w) - d["t"]}
+    return out
+
+
 def proposals(events: list[dict]) -> list[dict]:
     out = []
+    info = decision_info(events)
+    opened = {e["payload"].get("decision_event_id") for e in events if e["kind"] == "paper_open"}
     for e in events:
         p = e["payload"]
         if e["kind"] != "ai_consultation" or p.get("scope") != "entry":
@@ -101,7 +129,33 @@ def proposals(events: list[dict]) -> list[dict]:
                     "claude_verdict": cl.get("verdict"), "claude_conf": cl.get("confidence"), "code": p.get("code"),
                     "final_open": bool(fin.get("open")), "final_side": fin.get("side"),
                     "final_stop": None if fin.get("stop_price") is None else D(str(fin["stop_price"]))})
+        d = info.get((p["symbol"], e["t"])) or {}
+        age = d.get("age_ms")
+        out[-1].update(approved=d.get("status") == "APPROVED", decision_age_ms=age, executed=d.get("id") in opened,
+                       stale_certain=age is not None and age > MAX_DECISION_AGE_MS)
     return sorted(out, key=lambda x: (x["t"], x["seq"]))
+
+
+def funnel(props: list[dict]) -> dict:
+    appr = [p for p in props if p["approved"]]
+    return {"proposte": len(props), "approvate": len(appr),
+            "eseguibili_dopo_controllo": sum(1 for p in appr if not p["stale_certain"]),
+            "scadute_certe_fra_le_approvate": [(p["symbol"], round(p["decision_age_ms"] / 1000)) for p in appr
+                                              if p["stale_certain"]],
+            "eseguite": sum(1 for p in props if p["executed"]),
+            "controfattuali": len(props) - sum(1 for p in props if p["executed"]),
+            "scadute_certe_fra_tutte": [(p["symbol"], round(p["decision_age_ms"] / 1000)) for p in props
+                                       if p["stale_certain"]]}
+
+
+def real_result(events: list[dict]) -> dict:
+    """Risultato ECONOMICO effettivo della run: solo chiusure registrate, trade distinti per decisione."""
+    closes = [e["payload"] for e in events if e["kind"] in ("paper_close", "paper_reduce")]
+    groups = {c.get("decision_event_id") for c in closes}
+    return {"trade_distinti": len(groups), "chiusure": len(closes),
+            "lordo": str(sum((D(str(c.get("gross_pnl", 0))) for c in closes), D(0))),
+            "commissioni": str(sum((D(str(c.get("fees", 0))) for c in closes), D(0))),
+            "netto": str(sum((D(str(c.get("realized_pnl", 0))) for c in closes), D(0)))}
 
 
 def executions(events: list[dict]) -> dict:
@@ -133,6 +187,10 @@ def decide(pr: dict, scenario: str) -> tuple[bool, float, str]:
     thr = 0.60 if pr["symbol"] in TIER_A else 0.70
     missing = pr["claude_status"] in NOT_CONSULTED
     half_ok = missing and not pr["uncertain"] and pr["conf"] >= thr
+    if pr["stale_certain"]:
+        return False, 0.0, "decision_stale"           # il controllo finale l'avrebbe scartata in ogni scenario
+    if scenario == "S0":
+        return pr["approved"], 1.0, "approvata_ed_eseguibile" if pr["approved"] else (pr["code"] or "veto")
     if scenario == "S4":
         return True, 1.0, "deepseek_alone"
     if scenario in ("S2", "S3") and not selective_triggers(pr):
@@ -344,7 +402,11 @@ def main(argv=None) -> int:
                          "exit": {}}
     ctx = {"config": cfg, "rules": rules, "risk_policy": pol, "bars": bars, "per_prop": per}
     res = [run_scenario(s, props, ctx, filters=f) for f in (False, True) for s in ("S0", "S1", "S2", "S3", "S4")]
-    rep = {"generated_ms": until, "proposals": len(props),
+    rep = {"generated_ms": until, "proposals": len(props), "funnel": funnel(props), "real": real_result(events),
+           "limits": ["uscite solo meccaniche: revisioni AI e stop spostati non riprodotti",
+                      "controllo finale: solo la scadenza e' ricostruibile; latenza oltre lo snapshot, freschezza e "
+                      "divergenza del prezzo non lo sono (eseguibile = presunta)",
+                      "campione di circa 4 ore in un solo regime ribassista"],
            "by_code": {c: sum(1 for p in props if p["code"] == c) for c in sorted({p["code"] for p in props})},
            "executions": executions(events),
            "proposals_detail": [{"t": time.strftime("%H:%M", time.gmtime(p["t"] / 1000)), "symbol": p["symbol"],
@@ -359,6 +421,8 @@ def main(argv=None) -> int:
                                 for p in props],
            "scenarios": res}
     Path(a.out).write_text(json.dumps(rep, indent=1, default=str))
+    print("IMBUTO", json.dumps(rep["funnel"]))
+    print("REALE (journal)", json.dumps(rep["real"]))
     for r in res:
         print(f"{r['scenario']:11s} aperte {r['opened']:3d} chiuse {r['closed']:3d} incerte {r['uncertain']:2d} "
               f"V/P {r['wins']}/{r['losses']} netto {r['net_closed']:>9s} lordo {r['gross_closed']:>9s} "

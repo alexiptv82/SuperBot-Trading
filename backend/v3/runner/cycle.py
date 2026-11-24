@@ -158,7 +158,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     reentry_policy: Optional[ReentryPolicy] = None, instant: str = "cycle",
                     slot_start_ms: Optional[int] = None, slot_end_ms: Optional[int] = None,
                     guardian: Optional[Callable[[int], object]] = None,
-                    reserve_of: Optional[Callable[[PortfolioSummary, int], Decimal]] = None) -> CycleReport:
+                    reserve_of: Optional[Callable[[PortfolioSummary, int], Decimal]] = None,
+                    strategy: Optional[dict] = None) -> CycleReport:
     """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare).
 
     ``trace="required"``: ogni decisione scritta dal motore (anche NO_TRADE) riceve subito uno snapshot v2
@@ -402,7 +403,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 else:
                     try:
                         receipt = execute_paper(decision, portfolio_id=PORTFOLIO_ID, run_id=run_id,
-                                                journal=journal, slippage_bps=slippage_bps, now_ms=t)
+                                                journal=journal, slippage_bps=slippage_bps, now_ms=t,
+                                                strategy=strategy)      # Brain Live Evolution: anche qui la versione
                     except ExecutionError as exc:
                         errors.append((symbol, str(exc)))
                         continue
