@@ -35,14 +35,16 @@ from backend.v3.runner.manual_close import BRAIN_CHANNEL
 from backend.v3.runner.monitor import STOP_MOVE_KIND, stop_moves_by_position
 from backend.v3.unico import parse_reasons
 
-ACTIONS = ("HOLD", "CLOSE", "PARTIAL_CLOSE", "MODIFY_STOP")
+ACTIONS = ("HOLD", "CLOSE", "PARTIAL_CLOSE", "MODIFY_STOP", "ADD")
 MIN_STOP_GAP_BP = Decimal("5")          # uno stop stretto resta ad almeno 5 bp dal prezzo (non scatta all'istante)
 REVIEW_KIND = "position_review"
 _BP = Decimal(10000)
 
 SYSTEM_PROMPT = (
     'You manage one open PAPER crypto/metal perpetual futures position. Return only JSON, exactly one of '
-    '{"action":"HOLD"}, {"action":"CLOSE"}, {"action":"PARTIAL_CLOSE"}, {"action":"MODIFY_STOP","stop_price":"123.45"}; '
+    '{"action":"HOLD"}, {"action":"CLOSE"}, {"action":"PARTIAL_CLOSE"}, {"action":"MODIFY_STOP","stop_price":"123.45"}, '
+    '{"action":"ADD"} (second entry at the current, clearly better price, only when scale_in_reserved is true, the '
+    'thesis still holds and it is not averaging down blindly; size and limits are computed by code); '
     'you may add "confidence" (0 to 1), "reasons" (up to 6 codes from: trend_up, trend_down, trend_weakening, '
     'trend_change, momentum_strong, momentum_fading, volume_confirms, volume_weak, volatility_high, overextended, '
     'reversal_risk, profit_at_risk, costs_high, funding_adverse, better_opportunity, thesis_intact, '
@@ -84,6 +86,10 @@ class GroupView:
     quantity: Decimal = Decimal("0")      # somma delle quote aperte
     margin: Decimal = Decimal("0")
     regime_entry: Optional[str] = None    # regime registrato nella decisione di apertura
+    adds: int = 0                         # posizione unica (24/11): secondi ingressi gia' fatti
+    reduces: int = 0                      # ... e chiusure parziali gia' fatte
+    scale_reserved: bool = False          # rischio riservato a un secondo ingresso all'apertura
+    entry_price: Optional[Decimal] = None  # prezzo della PRIMA entrata (R iniziale)
 
 
 @dataclass(frozen=True)
@@ -98,6 +104,8 @@ class ReviewOutcome:
 def groups_from_journal(journal: EventJournal, run_id: str) -> list[GroupView]:
     summary = build_summary(journal, "brain", run_id)
     moves = stop_moves_by_position(journal, "brain", run_id)
+    opens = {r.event.payload.get("position_id"): r.event.payload for r in journal.list_run("brain", run_id)
+             if r.event.kind == "paper_open" and isinstance(r.event.payload, dict)}
     out: dict[str, dict] = {}
     for p in summary.open_positions:
         g = out.setdefault(p.group, {"positions": [], "stop": p.stop_price})
@@ -115,11 +123,13 @@ def groups_from_journal(journal: EventJournal, run_id: str) -> list[GroupView]:
             regime = dec.event.payload.get("regime") if dec is not None and dec.event.run_id == run_id else None
         except Exception:
             regime = None
+        op = opens.get(first.position_id, {})
         views.append(GroupView(gid, first.symbol, first.side, first.fill_price, first.stop_price, g["stop"],
                                first.opened_at_ms, {p.leg: p.position_id for p in ps},
                                {p.leg: p.take_profit_r for p in ps}, sum((p.quantity for p in ps), Decimal("0")),
                                sum((p.margin_used for p in ps), Decimal("0")),
-                               regime if isinstance(regime, str) else None))
+                               regime if isinstance(regime, str) else None, first.adds, first.reduces,
+                               op.get("scale_in_reserved") is True, Decimal(str(op.get("fill_price", first.fill_price)))))
     return sorted(views, key=lambda v: (v.opened_at_ms, v.group))
 
 
@@ -130,9 +140,20 @@ def validate(proposal: ReviewProposal, view: GroupView, price: Decimal) -> tuple
     if proposal.action == "CLOSE":
         return "CLOSE", "close_all_legs", tuple(view.legs.values())
     if proposal.action == "PARTIAL_CLOSE":
-        if "tp1" in view.legs and "runner" in view.legs:
+        if "tp1" in view.legs and "runner" in view.legs:            # posizioni aperte prima del 24/11: due quote
             return "PARTIAL_CLOSE", "close_tp1_leg", (view.legs["tp1"],)
+        if "" in view.legs and len(view.legs) == 1 and not view.reduces:   # posizione unica: riduzione
+            return "PARTIAL_CLOSE", "reduce_position", (view.legs[""],)
         return "HOLD", "partial_not_available", ()
+    if proposal.action == "ADD":
+        from backend.v3.executor.paper_scale import add_price_ok
+        if not ("" in view.legs and len(view.legs) == 1 and view.scale_reserved and not view.adds and not view.reduces):
+            return "HOLD", "add_not_available", ()
+        risk = abs((view.entry_price or view.fill_price) - view.initial_stop)
+        if not add_price_ok(side=view.side, avg_price=view.fill_price, initial_risk=risk, stop=view.stop_now,
+                            price=price):
+            return "HOLD", "add_price_not_better", ()
+        return "ADD", "add_requested", (view.legs[""],)
     if proposal.action == "MODIFY_STOP":
         new = proposal.stop_price
         if type(new) is not Decimal or not new.is_finite() or new <= 0:
@@ -166,6 +187,8 @@ class DeepSeekPositionReviewer:
                "r_now": str(r_now.quantize(Decimal("0.01"))),
                "minutes_open": max(0, (now_ms - view.opened_at_ms) // 60_000),
                "legs_open": sorted(k or "single" for k in view.legs), "take_profit_prices": targets,
+               "scale_in_reserved": view.scale_reserved and not view.adds and not view.reduces,
+               "partial_taken": bool(view.reduces), "second_entry_done": bool(view.adds),
                "funding_rate": None if funding is None else str(funding)}
         if metrics is not None:
             pos.update({k: v for k, v in metrics.payload().items() if k != "r_now"})
@@ -199,14 +222,14 @@ class DeepSeekPositionReviewer:
             raise ProviderUnavailable("invalid_model_output") from None
 
 
-def _write_close_request(data_dir: Path, ids: list[str], now_ms: int) -> bool:
+def _write_close_request(data_dir: Path, ids: list[str], now_ms: int, fraction: Optional[Decimal] = None) -> bool:
     """Richiesta atomica al servizio delle uscite; ``False`` se ce n'e' gia' una in attesa (si riprova al giro dopo)."""
     target = data_dir / BRAIN_CHANNEL["request_file"]
     if target.exists() or (data_dir / BRAIN_CHANNEL["work_file"]).exists():
         return False
     fd, tmp = tempfile.mkstemp(dir=data_dir, prefix=".brain_close_request.", suffix=".tmp")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump({"ts_ms": now_ms, "position_ids": ids}, f)
+        json.dump({"ts_ms": now_ms, "position_ids": ids, **({"fraction": str(fraction)} if fraction else {})}, f)
     os.chmod(tmp, 0o600)
     os.replace(tmp, target)
     return True
@@ -236,7 +259,8 @@ def metrics_for(view: GroupView, price: Decimal, best: Optional[Decimal], regime
 def review_open_positions(*, journal: EventJournal, run_id: str, data_dir: Path, now_ms: int, reviewer,
                           price_of: Callable[[str, int], Decimal], mode: str = "NORMAL", consultant=None,
                           best_of: Optional[Callable] = None, funding_of: Optional[Callable] = None,
-                          market_of: Optional[Callable] = None) -> tuple[ReviewOutcome, ...]:
+                          market_of: Optional[Callable] = None, add_commit: Optional[Callable] = None,
+                          partial_fraction: Decimal = Decimal("0.35")) -> tuple[ReviewOutcome, ...]:
     """Una revisione per apertura; scrive gli eventi ``position_review`` / ``stop_move`` e al massimo UNA richiesta di
     chiusura. Un errore su un'apertura non ferma le altre e non tocca mai la posizione (resta protetta).
 
@@ -246,6 +270,7 @@ def review_open_positions(*, journal: EventJournal, run_id: str, data_dir: Path,
     from backend.v3.runner.consult import POSITION_PROMPT, arbitrate_position, position_triggers
     outcomes: list[ReviewOutcome] = []
     to_close: list[str] = []
+    to_reduce: list[str] = []
     if consultant is not None:
         consultant.start_cycle(now_ms // 900_000)
     for i, view in enumerate(groups_from_journal(journal, run_id)):
@@ -310,6 +335,9 @@ def review_open_positions(*, journal: EventJournal, run_id: str, data_dir: Path,
                                  disagreement=bool(claude is not None and claude.status == "ok"
                                                    and claude.verdict != "CONFIRM"))
                     final = ReviewProposal(v.action, v.stop, prop.confidence, prop.reasons, prop.uncertain)
+                elif prop.action == "ADD":
+                    final = ReviewProposal("HOLD")                 # senza consulente nessun secondo ingresso
+                    extra["arbiter"] = "add_needs_consult"
                 executed, code, ids = validate(final, view, price)
                 if extra.get("arbiter", "no_consult_needed") not in ("no_consult_needed", "claude_confirmed") \
                         and executed == "HOLD" and code == "hold":
@@ -324,8 +352,14 @@ def review_open_positions(*, journal: EventJournal, run_id: str, data_dir: Path,
                             kind=STOP_MOVE_KIND, occurred_at_ms=now_ms, source="runner.position_review",
                             payload={"position_id": pid, "stop_price": str(final.stop_price),
                                      "previous_stop": str(view.stop_now), "symbol": view.symbol}))
+                elif executed == "PARTIAL_CLOSE" and code == "reduce_position":
+                    to_reduce.extend(ids)
                 elif executed in ("CLOSE", "PARTIAL_CLOSE"):
                     to_close.extend(ids)
+                elif executed == "ADD":
+                    res = add_commit(ids[0], now_ms) if add_commit is not None else None
+                    if res is None or res.allowed is not True:
+                        executed, code = "HOLD", (res.code if res is not None else "add_unavailable")
         except Exception:
             code = code or "review_failed"
         journal.append(Event(
@@ -334,8 +368,17 @@ def review_open_positions(*, journal: EventJournal, run_id: str, data_dir: Path,
             payload={"symbol": view.symbol, "group": view.group, "side": view.side, "proposed": proposed,
                      "executed": executed, "code": code or "ai_unavailable", "guardian_mode": mode, **extra}))
         outcomes.append(ReviewOutcome(view.group, view.symbol, proposed, executed, code or "ai_unavailable"))
-    if to_close and not _write_close_request(data_dir, to_close, now_ms):
-        outcomes = [o if o.executed not in ("CLOSE", "PARTIAL_CLOSE")
-                    else ReviewOutcome(o.group, o.symbol, o.proposed, o.executed, "close_request_pending")
-                    for o in outcomes]
+    # una richiesta per giro: prima le chiusure totali; le riduzioni al giro dopo (mai sovrapposte)
+    pending = set()
+    if to_close:
+        if not _write_close_request(data_dir, to_close, now_ms):
+            pending.add("close")
+        if to_reduce:
+            pending.add("reduce")
+    elif to_reduce and not _write_close_request(data_dir, to_reduce, now_ms, fraction=partial_fraction):
+        pending.add("reduce")
+    outcomes = [ReviewOutcome(o.group, o.symbol, o.proposed, o.executed, "close_request_pending")
+                if (o.code == "reduce_position" and "reduce" in pending)
+                or (o.executed in ("CLOSE", "PARTIAL_CLOSE") and o.code != "reduce_position" and "close" in pending)
+                else o for o in outcomes]
     return tuple(outcomes)

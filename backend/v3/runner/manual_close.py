@@ -62,6 +62,8 @@ def _parse(raw: object, now_ms: int) -> Optional[tuple[int, Optional[tuple[str, 
     """``(ts_ms, ids)`` con ``ids=None`` per «tutte»; ``None`` se la richiesta non e' valida."""
     if not isinstance(raw, dict):
         return None
+    if "fraction" in raw:                                 # solo il canale del Brain: gestito da _fraction
+        raw = {k: v for k, v in raw.items() if k != "fraction"}
     ts = raw.get("ts_ms")
     if type(ts) is not int or ts <= 0 or ts > now_ms + MAX_AGE_MS:
         return None
@@ -72,6 +74,17 @@ def _parse(raw: object, now_ms: int) -> Optional[tuple[int, Optional[tuple[str, 
             or any(type(i) is not str or not _ID_RE.match(i) for i in ids)):
         return None
     return ts, tuple(dict.fromkeys(ids))                  # senza doppioni, ordine di arrivo
+
+
+def _fraction(raw: object):
+    """Frazione da chiudere (solo canale del Brain): ``None`` = chiusura totale, ``"invalid"`` se non valida."""
+    if not isinstance(raw, dict) or "fraction" not in raw:
+        return None
+    try:
+        f = Decimal(str(raw["fraction"])) if type(raw["fraction"]) is str else None
+    except ArithmeticError:
+        f = None
+    return f if f is not None and f.is_finite() and 0 < f < 1 else "invalid"
 
 
 def _write_result(data_dir: Path, body: dict, result_file: str = RESULT_FILE) -> None:
@@ -95,7 +108,8 @@ def _write_result(data_dir: Path, body: dict, result_file: str = RESULT_FILE) ->
 def run_manual_close(*, journal: EventJournal, portfolio_id: str, run_id: str, data_dir: Path,
                      price_of: PriceOf, fee_bps: Decimal | int, now_ms: int, request_file: str = REQUEST_FILE,
                      work_file: str = WORK_FILE, result_file: str = RESULT_FILE,
-                     reason: str = "manual") -> Optional[ManualCloseReport]:
+                     reason: str = "manual", step_of: Optional[Callable[[str], Decimal]] = None
+                     ) -> Optional[ManualCloseReport]:
     """Esegue la richiesta in sospeso, se c'e'. ``None`` = nessuna richiesta (caso comune: un controllo di file)."""
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
@@ -131,6 +145,9 @@ def run_manual_close(*, journal: EventJournal, portfolio_id: str, run_id: str, d
     except (OSError, ValueError):
         raw = None
     parsed = _parse(raw, now_ms)
+    fraction = _fraction(raw) if reason == "brain_close" else None
+    if fraction == "invalid":
+        parsed = None
     if parsed is None:
         report, req_ts = ManualCloseReport("invalid_request", (), ()), 0
     else:
@@ -138,7 +155,7 @@ def run_manual_close(*, journal: EventJournal, portfolio_id: str, run_id: str, d
         if now_ms - req_ts > MAX_AGE_MS:
             report = ManualCloseReport("expired", (), ())
         else:
-            report = _execute(journal, portfolio_id, run_id, ids, price_of, fee_bps, now_ms, reason)
+            report = _execute(journal, portfolio_id, run_id, ids, price_of, fee_bps, now_ms, reason, fraction, step_of)
     _write_result(data_dir, {"request_ts_ms": req_ts, "done_ms": now_ms, "status": report.status,
                              "closed": list(report.closed), "failed": [list(f) for f in report.failed]},
                   result_file)
@@ -150,7 +167,8 @@ def run_manual_close(*, journal: EventJournal, portfolio_id: str, run_id: str, d
 
 
 def _execute(journal: EventJournal, portfolio_id: str, run_id: str, ids: Optional[tuple[str, ...]],
-             price_of: PriceOf, fee_bps: Decimal | int, now_ms: int, reason: str = "manual") -> ManualCloseReport:
+             price_of: PriceOf, fee_bps: Decimal | int, now_ms: int, reason: str = "manual",
+             fraction: Optional[Decimal] = None, step_of=None) -> ManualCloseReport:
     try:
         open_positions = {p.position_id: p for p in build_summary(journal, portfolio_id, run_id).open_positions}
     except Exception:
@@ -169,8 +187,16 @@ def _execute(journal: EventJournal, portfolio_id: str, run_id: str, ids: Optiona
             failed.append((pid, "price_unavailable"))
             continue
         try:
-            close_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pid, exit_price=price,
-                        reason=reason, fee_bps=fee_bps, journal=journal, now_ms=now_ms)
+            if fraction is not None:                     # presa parziale della posizione unica (24/11)
+                if step_of is None:
+                    raise ExecutionError("partial_unavailable")
+                from backend.v3.executor.paper_scale import reduce_paper
+                reduce_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pid, fraction=fraction,
+                             exit_price=price, reason=reason, fee_bps=fee_bps, journal=journal,
+                             quantity_step=step_of(pos.symbol), now_ms=now_ms)
+            else:
+                close_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pid, exit_price=price,
+                            reason=reason, fee_bps=fee_bps, journal=journal, now_ms=now_ms)
             closed.append(pid)
         except ExecutionError as exc:
             failed.append((pid, str(exc)[:64] or "invalid"))

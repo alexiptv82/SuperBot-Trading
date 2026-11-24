@@ -91,7 +91,7 @@ class JournalNotifier:
             return msgs
         new = [r.event for r in rows if r.seq > st["seq"]]
         all_events = [r.event for r in rows]
-        msgs = self._opens(new) + self._closes(new, all_events) + self._guardian(new, st)
+        msgs = self._opens(new) + self._scaling(new) + self._closes(new, all_events) + self._guardian(new, st)
         if today > st.get("report_day", today):
             msgs.append(self._report(st["report_day"], all_events, now_ms))
             st["report_day"] = today
@@ -123,9 +123,24 @@ class JournalNotifier:
                         tp = fill + (fill - stop).copy_abs() * r * (1 if p.get("side") == 1 else -1)
                         tps.append(f"TP {r.normalize():f}R a {tp.normalize():f}")
             out.append(f"🟢 Apertura {_side(p.get('side'))} {str(p.get('symbol', '?')).replace('USDT', '')} · "
-                       f"{len(legs)} quot{'e' if len(legs) > 1 else 'a'} · entrata {_px(p.get('fill_price'))} · "
+                       + (f"{len(legs)} quote · " if len(legs) > 1 else "") + f"entrata {_px(p.get('fill_price'))} · "
                        f"stop {_px(p.get('stop_price'))} · leva {p.get('leverage')}× · margine {margin:.2f} USDT"
                        + (f" · {', '.join(tps)}" if tps else ""))
+        return out
+
+    def _scaling(self, new) -> list[str]:
+        """Posizione unica (24/11): secondo ingresso e chiusure parziali, un messaggio per evento registrato."""
+        out = []
+        for e in new:
+            p = e.payload if isinstance(e.payload, dict) else {}
+            sym = str(p.get("symbol", "?")).replace("USDT", "")
+            if e.kind == "paper_add":
+                out.append(f"➕ Secondo ingresso {_side(p.get('side'))} {sym} a {_px(p.get('fill_price'))} · "
+                           f"prezzo medio {_px(p.get('new_avg_price'))} · stop invariato {_px(p.get('stop_price'))}")
+            elif e.kind == "paper_reduce":
+                what = REASONS.get(p.get("reason"), str(p.get("reason")))
+                out.append(f"✂️ Chiusura parziale {_side(p.get('side'))} {sym} · {what} · uscita {_px(p.get('exit_price'))}"
+                           f" · P&L netto {_usd(p.get('realized_pnl'))} · resta aperta la parte residua")
         return out
 
     def _closes(self, new, all_events) -> list[str]:
@@ -147,8 +162,11 @@ class JournalNotifier:
             pnl = sum((_d(x.get("realized_pnl")) or Decimal(0) for x in legs), Decimal(0))
             what = STOPS.get(kind, "stop loss") if reason == "stop" else REASONS.get(reason, str(reason))
             partial = open_by_group.get(g, 0) > 0
+            rest = any(e.kind == "paper_reduce" and e.payload.get("position_id") == p.get("position_id")
+                       for e in all_events)
             icon = "✅" if pnl > 0 else "🛑" if reason == "stop" else "⚪"
-            out.append(f"{icon} Chiusura {'parziale' if partial else 'totale'} {_side(p.get('side'))} "
+            label = "parziale" if partial else "del residuo" if rest else "totale"
+            out.append(f"{icon} Chiusura {label} {_side(p.get('side'))} "
                        f"{str(p.get('symbol', '?')).replace('USDT', '')} · {what} · uscita {_px(p.get('exit_price'))} · "
                        f"P&L netto {_usd(pnl)}" + (" · resta aperta l'altra quota" if partial else ""))
         return out

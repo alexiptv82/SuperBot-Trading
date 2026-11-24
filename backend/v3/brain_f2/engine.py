@@ -55,6 +55,20 @@ _ALLOWED_SOURCES = frozenset({
 })
 _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
 # Rifiuti che una leva PIU' BASSA (mai sotto il minimo del profilo) puo' risolvere senza toccare stop o rischio.
+def _scale_in_cap(cap, proposal, equity, per_trade):
+    """Tetto della PRIMA entrata quando la proposta riserva rischio a un secondo ingresso (mai piu' del rischio pieno)."""
+    f = getattr(proposal, "risk_fraction", None)
+    if f is None:
+        return cap
+    try:
+        mine = Decimal(str(equity)) * Decimal(str(per_trade)) * Decimal(str(f))
+    except Exception:
+        return Decimal("0")
+    if not (0 < f < 1):
+        return Decimal("0")
+    return mine if cap is None else min(cap, mine)
+
+
 _LEVERAGE_RETRY = ("margin_loss_ratio_exceeded", "stop_near_liquidation", "invalid_leverage", "below_min_margin")
 _SYMBOL_RE = __import__("re").compile(r"^[A-Z0-9][A-Z0-9/_:.-]{0,31}$")
 # Vocabolario dei regimi che una decisione puo' registrare: le 4 etichette storiche piu' le 6 del
@@ -488,7 +502,8 @@ class BrainEngine:
                 open_positions=getattr(self.portfolio_snapshot, "open_positions", 0),
                 same_side_open_risk=getattr(self.portfolio_snapshot, "side_open_risk", {}).get(
                     decision.proposal.side, Decimal("0")),
-                external_risk_cap=getattr(self.portfolio_snapshot, "risk_cap", None),
+                external_risk_cap=_scale_in_cap(getattr(self.portfolio_snapshot, "risk_cap", None),
+                                                decision.proposal, nums["equity"], profile.max_loss_fraction),
             )
             quote = quote_paper_risk(profile, request)
             approved_leverage = request.requested_leverage

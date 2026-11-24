@@ -133,3 +133,87 @@ def commit_paper_open(*, journal: EventJournal, data_dir: Path, run_id: str,
         if locked:
             fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
+
+
+def commit_paper_add(*, journal: EventJournal, data_dir: Path, run_id: str, position_id: str,
+                     clock_ms: Callable[[], int], guard_inputs: Mapping, desk_mode: str,
+                     decision_ref: str = "") -> OpenCommit:
+    """Secondo ingresso della posizione unica (Brain unico, 24/11), con lo STESSO blocco e gli stessi controlli di
+    un'apertura: modalita' PAPER, blocco esclusivo, catena del journal, servizio delle uscite sano, pausa, mandato,
+    budget, perdita giornaliera, prezzo fresco. Dimensione da ``paper_scale.add_quantity`` sui limiti approvati;
+    prezzo da ``paper_scale.add_price_ok``. Nessun allargamento dello stop, nessun aumento del rischio per trade."""
+    from backend.v3.dashboard import build_summary
+    from backend.v3.executor.paper_scale import add_paper, add_price_ok, add_quantity, position_state
+    from backend.v3.runner.cycle import snapshot_from_summary
+    deny = lambda code: OpenCommit(False, code)          # noqa: E731
+    if desk_mode != "paper" or type(desk_mode) is not str:
+        return deny("paper_mode_required")
+    if (type(journal) is not EventJournal or not isinstance(data_dir, Path) or not data_dir.is_absolute()
+            or not data_dir.is_dir() or type(run_id) is not str or _RUN_RE.fullmatch(run_id) is None
+            or not callable(clock_ms) or type(guard_inputs) is not dict or not _REQ_GUARD <= set(guard_inputs)):
+        return deny("add_scope_invalid")
+    g = guard_inputs
+    try:
+        root = data_dir.resolve(strict=True)
+        if journal.filename.resolve(strict=True) != root / "journal.db":
+            return deny("add_scope_invalid")
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        fd = os.open(root / _OPEN_LOCK, flags, 0o600)
+    except (OSError, ValueError):
+        return deny("add_scope_invalid")
+    locked = False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            locked = True
+        except (BlockingIOError, OSError):
+            return deny("open_lease_busy")
+        journal.verify_chain()
+        now_ms = clock_ms()
+        if type(now_ms) is not int or now_ms <= 0:
+            return deny("open_clock_invalid")
+        if exit_service_healthy(data_dir=root, run_id=run_id, now_ms=now_ms) is not True or g["exit_healthy"](now_ms) is not True:
+            return deny("exit_service_unhealthy")
+        if g["paused"]() is not False or g["mandate_problem"]() is not None or g["budget_problem"]() is not None \
+                or g["daily_loss_halted"](now_ms) is not False:
+            return deny("safety_gate_closed")
+        events = [se.event for se in journal.list_run("brain", run_id)]
+        st = position_state(events, position_id)
+        if st is None or st.closed or st.adds or st.reduces or st.open_event.payload.get("scale_in_reserved") is not True:
+            return deny("add_not_allowed")
+        if g["market_fresh"](st.symbol, now_ms) is not True:
+            return deny("market_unavailable")
+        price = g["market_price"](st.symbol, now_ms)
+        rules = g["market_rules"](st.symbol)
+        initial_risk = abs(Decimal(str(st.open_event.payload["fill_price"])) - st.stop)
+        if (type(price) is not Decimal or not price.is_finite() or price <= 0 or not isinstance(rules, Mapping)
+                or not add_price_ok(side=st.side, avg_price=st.avg_price, initial_risk=initial_risk, stop=st.stop,
+                                    price=price)):
+            return deny("add_price_not_better")
+        pol = g["risk_policy"]
+        summary = build_summary(journal, "brain", run_id)
+        reserve = Decimal("0") if g.get("equity_reserve") is None else g["equity_reserve"](summary, now_ms)
+        snap = snapshot_from_summary(summary, g["initial_equity"], pol.estimated_roundtrip_cost_bp, reserve=reserve)
+        cost = pol.estimated_roundtrip_cost_bp / Decimal(10000)
+        e = snap.equity
+        max_margin = min(x for x in (e * pol.max_position_margin_fraction, pol.max_margin) if x is not None)
+        q = add_quantity(
+            side=st.side, quantity=st.quantity, avg_price=st.avg_price, stop=st.stop, price=price, cost_fraction=cost,
+            risk_budget=e * pol.max_loss_fraction, open_risk_room=e * pol.max_open_risk_fraction - snap.existing_open_risk,
+            side_risk_room=(e * pol.max_same_side_risk_fraction - snap.side_open_risk.get(st.side, Decimal(0))
+                            if pol.max_same_side_risk_fraction is not None else e),
+            margin_room=min(max_margin - st.margin, e * pol.max_total_margin_fraction - snap.margin_used,
+                            snap.available_cash),
+            leverage=st.leverage, step=Decimal(str(rules["quantity_step"])),
+            minimum_notional=Decimal(str(rules["minimum_notional"])))
+        if q <= 0:
+            return deny("add_no_risk_room")
+        add_paper(portfolio_id="brain", run_id=run_id, position_id=position_id, fill_price=price, quantity=q,
+                  journal=journal, decision_event_id=decision_ref, now_ms=now_ms)
+        return OpenCommit(True, "paper_add_committed")
+    except Exception:
+        return deny("add_commit_failed")
+    finally:
+        if locked:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)

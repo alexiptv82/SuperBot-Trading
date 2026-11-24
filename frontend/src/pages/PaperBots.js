@@ -163,6 +163,8 @@ function Positions({ run, live, onRefresh, nowMs }) {
           <strong style={{ fontSize: 17 }}>{String(p.symbol || '?').replace('USDT', '')}</strong>
           <span style={{ color: C.soft, fontSize: 14 }}>{p.leverage ?? '—'}×</span>
           {own(LEG, legOf(run, p)) && <span style={{ fontSize: 12, color: C.accent }}>{own(LEG, legOf(run, p))}</span>}
+          {fromRun(run, p).adds > 0 && <span style={{ fontSize: 12, color: C.accent }}>2° ingresso · prezzo medio</span>}
+          {fromRun(run, p).reduces > 0 && <span style={{ fontSize: 12, color: C.up }}>parziale incassata</span>}
           <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 800, color: tone(p.unrealized_pnl) }}>
             {haveLive ? sgn(p.unrealized_pnl) : ''}</span>
         </div>

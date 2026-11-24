@@ -26,6 +26,8 @@ function OpenCard({ p, nowMs }) {
       <strong style={{ fontSize: 17 }}>{String(p.symbol || '?').replace('USDT', '')}</strong>
       <span style={{ color: C.soft, fontSize: 14 }}>{p.leverage ?? '—'}×</span>
       {own(LEG, p.leg) && <span style={{ fontSize: 12, color: C.accent }}>{own(LEG, p.leg)}</span>}
+      {p.adds > 0 && <span style={{ fontSize: 12, color: C.accent }}>2° ingresso · prezzo medio</span>}
+      {p.reduces > 0 && <span style={{ fontSize: 12, color: C.up }}>parziale incassata</span>}
       <span style={{ marginLeft: 'auto', textAlign: 'right' }}>
         <span style={{ display: 'block', fontSize: 18, fontWeight: 800, color: tone(p.unrealized_pnl) }}>{sgn(p.unrealized_pnl)}</span>
         <span style={{ fontSize: 13, color: tone(roi) }}>{roi === null ? 'P&L non verificabile' : `${pct(roi)} sul margine`}</span>
@@ -53,6 +55,7 @@ function ClosedCard({ t }) {
       <strong style={{ fontSize: 17 }}>{String(t.symbol || '?').replace('USDT', '')}</strong>
       <span style={{ color: C.soft, fontSize: 14 }}>{t.leverage ?? '—'}×</span>
       {own(LEG, t.leg) && <span style={{ fontSize: 12, color: C.accent }}>{own(LEG, t.leg)}</span>}
+      {t.partial && <span style={{ fontSize: 12, color: C.accent }}>chiusura parziale</span>}
       <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 800, color: tone(t.realized_pnl) }}>{sgn(t.realized_pnl)}</span>
     </div>
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0' }}>
@@ -119,7 +122,7 @@ export function TradesContent({ name, data, error, nowMs = Date.now(), onSelect,
           disponibile finché il servizio uscite di questo bot non è sano.</Note>}
       </Section> : <Section title="Trade chiusi" hint="Dal più recente. P&L netto = lordo − commissioni; i costi AI sono in Performance.">
         {closed.length === 0 && <Card style={{ textAlign: 'center', color: C.muted, fontSize: 14 }}>Nessun trade chiuso</Card>}
-        {closed.map(t => <ClosedCard key={t.position_id} t={t} />)}
+        {closed.map(t => <ClosedCard key={`${t.position_id}-${t.closed_at_ms}`} t={t} />)}
         {data.has_more && <Note>Sono mostrati i {(data.closed_trades || []).length} trade più recenti.</Note>}
       </Section>}
       <Note>Le chiusure manuali restano esempi per l’apprendimento (profitto protetto o perdita ridotta), mai una regola di

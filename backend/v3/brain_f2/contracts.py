@@ -58,6 +58,9 @@ class OpenProposal:
     # Brain unico (24/11): motivi a codice chiuso (``unico.REASON_CODES``) e incertezza dichiarata dall'analista
     reasons: tuple = ()
     uncertain: bool = False
+    # Ingresso progressivo (24/11): quota del rischio per trade usata dalla PRIMA entrata (es. 0.65); il resto resta
+    # riservato a un eventuale secondo ingresso. None = rischio pieno (comportamento di sempre).
+    risk_fraction: Optional[float] = None
 
 
 @dataclass(frozen=True)

@@ -32,13 +32,13 @@ from backend.v3.unico import REASON_CODES, parse_reasons
 
 CONSULT_KIND = "ai_consultation"
 VERDICTS = ("CONFIRM", "CONTEST", "ALTERNATIVE")
-POSITION_ACTIONS = ("HOLD", "CLOSE", "PARTIAL_CLOSE", "MODIFY_STOP")
+POSITION_ACTIONS = ("HOLD", "CLOSE", "PARTIAL_CLOSE", "MODIFY_STOP", "ADD")
 # soglie dei criteri (codice, non configurazione: sono regole di quando CHIEDERE, non di rischio)
 LOW_CONFIDENCE = 0.65
 PORTFOLIO_RISK_TRIGGER = Decimal("0.08")        # rischio aperto dopo l'ingresso oltre l'8 % dell'equity
 INTERESTING_R, INTERESTING_ROE = Decimal("1.5"), Decimal("20")
 GIVEBACK_TRIGGER, GIVEBACK_MIN_MFE_R = Decimal("0.4"), Decimal("1")
-_CONSERVATIVE = {"CLOSE": 3, "PARTIAL_CLOSE": 2, "MODIFY_STOP": 1, "HOLD": 0}
+_CONSERVATIVE = {"CLOSE": 3, "PARTIAL_CLOSE": 2, "MODIFY_STOP": 1, "HOLD": 0, "ADD": -1}
 
 _CODES = ", ".join(sorted(REASON_CODES))
 ENTRY_PROMPT = (
@@ -56,9 +56,11 @@ POSITION_PROMPT = (
     'back, trend strength, probability of continuation, reversal risk, volatility, momentum, costs and funding, and '
     'whether the capital could be used better elsewhere. Time alone is never a reason to close. The deepseek object is '
     'the primary analyst\'s proposal, for comparison only. Return only JSON: {"verdict":"CONFIRM"} to agree, or '
-    '{"verdict":"CONTEST","action":"HOLD"|"CLOSE"|"PARTIAL_CLOSE"|"MODIFY_STOP","stop_price":"..." (only with '
+    '{"verdict":"CONTEST","action":"HOLD"|"CLOSE"|"PARTIAL_CLOSE"|"MODIFY_STOP"|"ADD","stop_price":"..." (only with '
     'MODIFY_STOP)} for a different action; add "confidence" (0 to 1) and "reasons" (up to 6 codes from: ' + _CODES +
-    '). PARTIAL_CLOSE banks the first leg (about 35 percent); a stop may only be tightened. Deterministic stop and '
+    '). PARTIAL_CLOSE banks about 35 percent of the position; ADD is a second entry at a clearly better price that '
+    'must not be blind averaging down (same stop, risk within the approved per-trade budget); a stop may only be '
+    'tightened. Deterministic stop and '
     'take-profit orders stay active anyway. No orders, no tools.')
 
 
@@ -275,7 +277,18 @@ def arbitrate_position(ds_action: str, ds_stop: Optional[Decimal], ds_conf: Opti
     deterministiche restano attive). Accordo -> l'azione. Disaccordo -> punteggio = confidenza di chi la propone + dati
     (profitto restituito, regime, R); a parita' vince l'azione che riduce di piu' il rischio."""
     if claude is None:
+        if ds_action == "ADD":                                  # un secondo ingresso non passa mai senza consulto
+            return PositionVerdict("HOLD", None, "none", "add_needs_consult")
         return PositionVerdict(ds_action, ds_stop, "deepseek", "no_consult_needed")
+    if ds_action == "ADD" or (claude.status == "ok" and claude.action == "ADD"):
+        # secondo ingresso = piu' rischio: solo con le DUE analisi d'accordo, mai senza Claude
+        if claude.status != "ok":
+            return PositionVerdict("HOLD", None, "none", "claude_unavailable_critical")
+        if ds_action == "ADD" and (claude.verdict == "CONFIRM" or claude.action == "ADD"):
+            return PositionVerdict("ADD", None, "agreed", "claude_confirmed")
+        if ds_action == "ADD":
+            return PositionVerdict(claude.action or "HOLD", claude.stop_price, "claude", "claude_rejected_add")
+        return PositionVerdict(ds_action, ds_stop, "deepseek", "add_needs_both")
     if claude.status != "ok":
         # Consulto richiesto ma Claude assente (chiave, rete, tetto giornaliero, limite per giro, formato): un'azione
         # che RIDUCE il rischio (chiusura, presa parziale, stop piu' stretto) si esegue comunque; il validatore

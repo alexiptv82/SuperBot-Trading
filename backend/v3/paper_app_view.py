@@ -102,7 +102,7 @@ def _payload(r) -> Mapping:
 def enrich_trades(data: dict, run_dir: Path, run_id: str) -> dict:
     """Stop, take-profit, P&L lordo e tipo di stop accanto ai trade di ``_trades`` (stesso journal)."""
     cfg = load_config(run_dir)
-    opens, closes, moved = {}, {}, {}
+    opens, closes, moved, scaled = {}, {}, {}, {}
     for r in _events(run_dir, run_id) or []:
         p = _payload(r)
         pid = p.get("position_id")
@@ -110,6 +110,8 @@ def enrich_trades(data: dict, run_dir: Path, run_id: str) -> dict:
             continue
         if r.event.kind == "stop_move":
             moved[pid] = _s(p.get("stop_price"))
+        if r.event.kind in ("paper_add", "paper_reduce"):        # posizione unica (24/11)
+            scaled.setdefault(pid, []).append((r.event.kind, r.event.occurred_at_ms, p))
         if r.event.kind == "paper_open":
             opens[pid] = p
         elif r.event.kind == "paper_close":
@@ -120,6 +122,9 @@ def enrich_trades(data: dict, run_dir: Path, run_id: str) -> dict:
         t["notional"] = _s(o.get("notional"))
         t["leg"] = o.get("leg") if o.get("leg") in ("tp1", "runner") else None
         t["stop_brain"] = moved.get(t.get("position_id"))
+        ev = scaled.get(t.get("position_id"), [])
+        t["adds"] = sum(1 for k, _t, _p in ev if k == "paper_add")
+        t["reduces"] = sum(1 for k, _t, _p in ev if k == "paper_reduce")
     for t in data.get("closed_trades") or []:
         o, c = opens.get(t.get("position_id"), {}), closes.get(t.get("position_id"), {})
         stop = _s(o.get("stop_price"))
@@ -131,6 +136,10 @@ def enrich_trades(data: dict, run_dir: Path, run_id: str) -> dict:
         t["stop_kind"] = kind if kind in ("initial", "break_even", "trailing", "protect", "brain") else None
         t["leg"] = o.get("leg") if o.get("leg") in ("tp1", "runner") else None
         t["opened_at_ms"] = c.get("opened_at_ms") if type(c.get("opened_at_ms")) is int else None
+        red = [x for k, ts, x in scaled.get(t.get("position_id"), []) if k == "paper_reduce" and ts == t.get("closed_at_ms")]
+        t["partial"] = bool(red)
+        if red:                                           # riga di una chiusura parziale: i suoi numeri, non quelli finali
+            t["gross_pnl"], t["stop_kind"] = _s(red[0].get("gross_pnl")), None
     data["fee_bps"] = None if cfg is None else str(cfg.fee_bps)
     data["take_profit_r"] = None if _policy(cfg) is None else str(_policy(cfg).take_profit_r)
     return data
@@ -197,7 +206,7 @@ def performance(run_dir: Path, run_id: str, now_ms: int, *, archived: bool = Fal
 
     for r in events:
         ev, p = r.event, _payload(r)
-        if ev.kind == "paper_close":
+        if ev.kind in ("paper_close", "paper_reduce"):        # una riduzione e' una chiusura (parziale)
             pnl = _d(p.get("realized_pnl"))
             if pnl is None:
                 continue

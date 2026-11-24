@@ -165,7 +165,7 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
     mtm_incomplete = False
     for r in events:
         ev, p = r.event, (r.event.payload if isinstance(r.event.payload, Mapping) else {})
-        if ev.kind == "paper_close":
+        if ev.kind in ("paper_close", "paper_reduce"):          # chiusure parziali: P&L dello stesso trade
             pnl = _d(p.get("realized_pnl"))
             if pnl is None:
                 continue
@@ -258,7 +258,8 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
                 open_positions=[{"position_id": o.position_id, "symbol": o.symbol, "side": o.side,
                                  "entry": str(o.fill_price), "stop": str(o.stop_price), "margin": str(o.margin_used),
                                  "leverage": o.leverage, "opened_at_ms": o.opened_at_ms,
-                                 "leg": o.leg, "group": o.group, "stop_brain": _s(moved.get(o.position_id))}
+                                 "leg": o.leg, "group": o.group, "stop_brain": _s(moved.get(o.position_id)),
+                                 "quantity": str(o.quantity), "adds": o.adds, "reduces": o.reduces}
                                 for o in summary.open_positions],
                 open_trades=open_groups(summary.open_positions),
                 guardian=guardian, decisions=decisions[-8:][::-1], reviews=reviews[-8:][::-1], ai_spend=spend,
@@ -282,7 +283,7 @@ def _collaboration(events) -> Optional[dict]:
     pnl: dict = {}
     for r in events:
         p = r.event.payload if isinstance(r.event.payload, Mapping) else {}
-        if r.event.kind == "paper_close" and p.get("decision_event_id"):
+        if r.event.kind in ("paper_close", "paper_reduce") and p.get("decision_event_id"):
             v = _d(p.get("realized_pnl"))
             if v is not None:
                 pnl[p["decision_event_id"]] = pnl.get(p["decision_event_id"], Decimal(0)) + v

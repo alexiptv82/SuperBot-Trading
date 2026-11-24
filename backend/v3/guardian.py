@@ -157,7 +157,8 @@ def positions_from_events(events) -> tuple[list[_Pos], list[tuple[int, Decimal]]
     """Posizioni (aperture con eventuale chiusura) e chiusure senza apertura nota (solo PnL), in ordine di journal."""
     opens: dict[str, _Pos] = {}
     orphan: list[tuple[int, Decimal]] = []
-    for ev in events:
+    from backend.v3.executor.paper_scale import expand_scaled
+    for ev in expand_scaled(events):          # ingressi aggiuntivi e chiusure parziali come segmenti equivalenti
         p = ev.payload if isinstance(ev.payload, Mapping) else {}
         if ev.kind == "paper_open":
             pid = p.get("position_id")

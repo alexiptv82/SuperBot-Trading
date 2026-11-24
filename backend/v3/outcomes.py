@@ -224,7 +224,10 @@ def _parse_open(se: StoredEvent, pid: str) -> dict[str, Any]:
 
 def _parse_close(se: StoredEvent, pid: str) -> dict[str, Any]:
     p = se.event.payload
-    if not isinstance(p, Mapping) or se.event.event_id != f"paper_close.{pid}":
+    # una riduzione (chiusura parziale, 24/11) ha gli stessi campi di una chiusura, sulla sola parte chiusa
+    ok_id = (se.event.event_id == f"paper_close.{pid}" if se.event.kind == "paper_close"
+             else se.event.event_id.startswith(f"paper_reduce.{pid}."))
+    if not isinstance(p, Mapping) or not ok_id:
         raise _Bad("corrupt_close")
     reason = p.get("reason")
     if not isinstance(reason, str) or reason not in EXIT_REASONS:
@@ -379,9 +382,14 @@ def extract_outcomes(journal: EventJournal, portfolio_id: str, run_id: str, *,
 
     opens: dict[str, StoredEvent] = {}
     closes: dict[str, list[StoredEvent]] = {}
+    scaled: dict = {}                                  # position_id -> aumenti e riduzioni (posizione unica, 24/11)
     skipped: list[tuple[int, str, str]] = []          # (seq, position_id, code)
     for se in events:
         kind = se.event.kind
+        if kind == "paper_reduce" or kind == "paper_add":
+            pid = se.event.payload.get("position_id") if isinstance(se.event.payload, Mapping) else None
+            scaled.setdefault(pid, []).append(se)
+            continue
         if kind not in ("paper_open", "paper_close"):
             continue
         pid = se.event.payload.get("position_id") if isinstance(se.event.payload, Mapping) else None
@@ -400,6 +408,22 @@ def extract_outcomes(journal: EventJournal, portfolio_id: str, run_id: str, *,
     open_ids: list[str] = []
     for pid, op in opens.items():
         cl = closes.get(pid)
+        if pid in scaled:
+            # posizione unica con ingresso aggiuntivo e/o chiusure parziali: una voce per ogni riduzione e una per la
+            # chiusura finale, ognuna verificata con la stessa formula contro lo stato (prezzo medio, quantita',
+            # margine) che aveva in quel momento; il P&L del trade e' la loro somma, senza doppi conteggi
+            for se in [x for x in scaled[pid] if x.event.kind == "paper_reduce"] + (cl[:1] if cl else []):
+                try:
+                    o = _parse_open(op, pid)
+                    c = _parse_close(se, pid)
+                    outcomes.append((se.seq, _build(pid, portfolio_id, run_id,
+                                                    dict(o, fill=c["entry"], qty=c["qty"], margin=c["margin"]),
+                                                    c, brain)))
+                except _Bad as bad:
+                    skipped.append((se.seq, pid, str(bad.args[0])))
+            if not cl:
+                open_ids.append(pid)
+            continue
         if not cl:
             open_ids.append(pid)
             continue

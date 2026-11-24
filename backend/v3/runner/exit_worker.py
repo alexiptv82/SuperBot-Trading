@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from decimal import Decimal
 from pathlib import Path
 import re
 import signal
@@ -29,6 +30,7 @@ from backend.v3.runner.prepared_config_guard import verify_prepared_run_config
 from backend.v3.runner.exit_service import ExitService, ExitServiceBusy
 from backend.v3.runner.exits import load_default_policy
 from backend.v3.runner.feed import CandleStore, last_minute_close, minute_fetcher
+from backend.v3.executor.paper import ExecutionError
 from backend.v3.runner.manual_close import BRAIN_CHANNEL, ManualCloseReport, run_manual_close
 from backend.v3.runner.monitor import run_exit_monitor
 from backend.v3.lab_tools.fetch_candles import http_json
@@ -134,6 +136,7 @@ def build_exit_worker(*, data_dir: Path, run_id: str, config: RunnerConfig,
     def commands(now_ms: int):
         # ExitService.tick applies the shared OPEN/CLOSE lock to both callbacks.
         guard(now_ms)
+        clock["now"] = now_ms                              # regole dei contratti per le riduzioni del Brain
         report = run_manual_close(journal=journal, portfolio_id='brain', run_id=run_id,
                                   data_dir=data_dir,
                                   price_of=lambda s, t: last_minute_close(s, t, get_json),
@@ -142,7 +145,8 @@ def build_exit_worker(*, data_dir: Path, run_id: str, config: RunnerConfig,
             # Brain unico: chiusure decise dalla revisione AI (canale separato, motivo brain_close)
             brain = run_manual_close(journal=journal, portfolio_id='brain', run_id=run_id, data_dir=data_dir,
                                      price_of=lambda s, t: last_minute_close(s, t, get_json),
-                                     fee_bps=config.fee_bps, now_ms=now_ms, **BRAIN_CHANNEL)
+                                     fee_bps=config.fee_bps, now_ms=now_ms,
+                                     step_of=long_hold.get("step_of"), **BRAIN_CHANNEL)
             if report is None:
                 report = brain
             elif brain is not None and brain.failed:
@@ -155,8 +159,25 @@ def build_exit_worker(*, data_dir: Path, run_id: str, config: RunnerConfig,
         long_hold = {"window_ms": LONG_HOLD_WINDOW_MS, "history_best": history_best_from(
             CandleStore(get_json, keep={HISTORY_TF: (HISTORY_MS, 1_500)}))}
 
+    if config.unico is not None and config.unico.partial is not None:
+        # posizione unica (24/11): presa parziale come riduzione, passo di quantita' dalle regole dei contratti
+        from backend.v3.runner.contracts import ContractRules
+        rules = ContractRules(get_json, maintenance_fraction=config.maintenance_fraction)
+        clock = {"now": 0}
+
+        def step_of(symbol: str):
+            rules.load(clock["now"])
+            r = rules(symbol)
+            if not r:
+                raise ExecutionError("partial_rules_unavailable")
+            return Decimal(str(r["quantity_step"]))
+        long_hold = dict(long_hold, partial=config.unico.partial, step_of=step_of)
+    else:
+        clock = {"now": 0}
+
     def monitor(now_ms: int):
         guard(now_ms)
+        clock["now"] = now_ms
         return run_exit_monitor(journal=journal, portfolio_id='brain', run_id=run_id,
                                 fetch_bars=minute_fetcher(minutes), policy=policy,
                                 fee_bps=config.fee_bps, now_ms=now_ms, **long_hold)

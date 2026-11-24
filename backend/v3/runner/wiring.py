@@ -316,7 +316,20 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     def halted() -> Optional[str]:
         return mandate.problem() or budget_halt()
 
+    def safety_add_commit(position_id: str, now_ms: int):
+        """Secondo ingresso (posizione unica, 24/11): stesso scrittore serializzato e stessi controlli delle aperture."""
+        from backend.v3.runner.open_serial import commit_paper_add
+        return commit_paper_add(journal=journal, data_dir=data_dir, run_id=run_id, position_id=position_id,
+                                clock_ms=clock_ms, guard_inputs=open_guard_inputs(), desk_mode=desk_mode)
+
     def safety_open_commit(decision):
+        return commit_paper_open(
+            journal=journal, data_dir=data_dir, run_id=run_id, decision=decision,
+            clock_ms=clock_ms, guard_inputs=open_guard_inputs(),
+            slippage_bps=config.slippage_bps, desk_mode=desk_mode,
+            partial=None)        # 24/11: una sola posizione all'ingresso (niente quote); il 35 % a 2R e' una riduzione
+
+    def open_guard_inputs() -> dict:
         # Split mode only. The *real* on-disk exit owner is checked again under
         # the single-writer lock, after the model returns and before append.
         def fresh_market(sym: str, at_ms: int) -> bool:
@@ -343,11 +356,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             # DeepSeek con ragionamento + eventuale consulto di Claude possono superare i 2 minuti: la decisione resta
             # valida fino a 5 minuti; il prezzo deve comunque essere entro lo 0,5 % (max_entry_divergence invariato)
             guard_inputs["max_decision_age_ms"] = UNICO_DECISION_AGE_MS
-        return commit_paper_open(
-            journal=journal, data_dir=data_dir, run_id=run_id, decision=decision,
-            clock_ms=clock_ms, guard_inputs=guard_inputs,
-            slippage_bps=config.slippage_bps, desk_mode=desk_mode,
-            partial=unico.partial if unico is not None else None)
+        return guard_inputs
 
     def run_cycle(now_ms: int, slot: int) -> CycleReport:
         rules.load(now_ms)
@@ -361,7 +370,10 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                                       reviewer=reviewer, mode=last_guardian["state"],
                                       price_of=lambda sym, t: last_minute_close(sym, t, get_json),
                                       consultant=consultant, best_of=review_best, funding_of=funding_of,
-                                      market_of=market_view_of)
+                                      market_of=market_view_of,
+                                      add_commit=safety_add_commit if exit_mode == "sidecar" else None,
+                                      partial_fraction=(unico.partial.fraction if unico.partial is not None
+                                                        else Decimal("0.35")))
             except Exception:
                 pass                                        # una revisione fallita non ferma il giro delle aperture
         return run_brain_cycle(
@@ -389,7 +401,12 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         long_hold = {"window_ms": LONG_HOLD_WINDOW_MS, "history_best": history_best_from(
             CandleStore(get_json, keep={HISTORY_TF: (HISTORY_MS, 1_500)}))}
 
+    if unico is not None and unico.partial is not None:   # posizione unica: presa parziale come riduzione
+        long_hold = dict(long_hold, partial=unico.partial,
+                         step_of=lambda sym: Decimal(str(rules(sym)["quantity_step"])))
+
     def run_monitor(now_ms: int) -> MonitorReport:
+        rules.load(now_ms)
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,
                                 fetch_bars=minute_fetcher(minutes), policy=exit_policy,
                                 fee_bps=config.fee_bps, now_ms=now_ms, **long_hold)

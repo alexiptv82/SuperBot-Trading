@@ -19,7 +19,7 @@ Tipi di evento riconosciuti (e chi li produce oggi):
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
@@ -46,6 +46,11 @@ class OpenPosition:
     leg: str = ""
     take_profit_r: Decimal | None = None
     group_id: str = ""
+    # Posizione unica (24/11): secondi ingressi e chiusure parziali gia' avvenuti; quantita', prezzo medio e margine
+    # qui sopra sono gia' quelli residui.
+    adds: int = 0
+    reduces: int = 0
+    tp_reduced: bool = False
 
     @property
     def group(self) -> str:
@@ -165,6 +170,25 @@ def build_summary(
                 **_leg_fields(p),
             )
             open_map[pid] = pos
+
+        elif ev.kind in ("paper_add", "paper_reduce"):
+            pid = _str_field(p.get("position_id"))
+            pos = open_map.get(pid)
+            if pos is None:
+                continue
+            if ev.kind == "paper_add":
+                open_map[pid] = replace(pos, quantity=_decimal(p.get("new_quantity")),
+                                        fill_price=_decimal(p.get("new_avg_price")),
+                                        margin_used=pos.margin_used + _decimal(p.get("margin_added")),
+                                        adds=pos.adds + 1)
+            else:
+                pnl = _decimal(p.get("realized_pnl"))
+                realized_pnl += pnl
+                open_map[pid] = replace(pos, quantity=_decimal(p.get("remaining_quantity")),
+                                        margin_used=pos.margin_used - _decimal(p.get("margin_released")),
+                                        reduces=pos.reduces + 1,
+                                        tp_reduced=pos.tp_reduced or p.get("reason") == "take_profit")
+                closed.append(ClosedTrade(position_id=pid, symbol=pos.symbol, realized_pnl=pnl, closed_at_ms=ts))
 
         elif ev.kind == "paper_close":
             pid = _str_field(p.get("position_id"))

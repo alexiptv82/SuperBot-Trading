@@ -65,9 +65,28 @@ def stop_moves_by_position(journal: EventJournal, portfolio_id: str, run_id: str
     return {k: tuple(v) for k, v in out.items()}
 
 
+def _partial_due(pos, bars, signal, partial) -> bool:
+    """La presa parziale e' toccata (massimo/minimo della candela oltre ``at_r`` R) in una candela chiusa dopo
+    l'apertura e non dopo l'uscita trovata; nella stessa candela di uno stop vince lo stop (regola di sempre)."""
+    risk = abs(pos.fill_price - pos.stop_price)
+    if risk <= 0:
+        return False
+    target = pos.fill_price + pos.side * partial.at_r * risk
+    for b in bars:
+        if b.open_time_ms < pos.opened_at_ms:
+            continue
+        if signal is not None and (b.open_time_ms > signal.bar_open_time_ms or
+                                   (b.open_time_ms == signal.bar_open_time_ms and signal.reason == "stop")):
+            return False
+        if (b.high >= target) if pos.side == 1 else (b.low <= target):
+            return True
+    return False
+
+
 def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, fetch_bars: FetchBars,
                      policy: ExitPolicy, fee_bps: Decimal | int, now_ms: int, window_ms: int | None = None,
-                     history_best: Callable | None = None) -> MonitorReport:
+                     history_best: Callable | None = None, partial=None,
+                     step_of: Callable | None = None) -> MonitorReport:
     """``window_ms`` / ``history_best`` (Brain unico, posizioni senza limite di tempo): le candele da 1 minuto si
     leggono solo per l'ultima finestra; il miglior prezzo raggiunto PRIMA della finestra (serve a pareggio e trailing)
     viene da ``history_best(simbolo, lato, aperta_ms, inizio_finestra_ms)`` (candele piu' lunghe, chiuse). Uno stop
@@ -110,6 +129,22 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
                 if signal is not None:
                     break
                 best = favorable_extreme(pos.side, best, run, pos.opened_at_ms)
+            if (partial is not None and step_of is not None and not pos.leg and not pos.tp_reduced
+                    and not pos.reduces and _partial_due(pos, bars, signal, partial)):
+                # posizione unica (24/11): presa parziale a ``at_r`` R come RIDUZIONE della posizione esistente; il
+                # residuo resta aperto con stop e protezioni (prossimo minuto)
+                from backend.v3.executor.paper_scale import reduce_paper
+                risk = abs(pos.fill_price - pos.stop_price)
+                try:
+                    reduce_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pos.position_id,
+                                 fraction=partial.fraction, reason="take_profit", fee_bps=fee_bps, journal=journal,
+                                 exit_price=(pos.fill_price + pos.side * partial.at_r * risk).quantize(Decimal("1e-8")),
+                                 quantity_step=step_of(pos.symbol), now_ms=now_ms)
+                    closed.append((pos.position_id, "take_profit_partial"))
+                    continue
+                except ExecutionError as exc:
+                    if str(exc) != "reduce_too_small":
+                        errors.append((pos.position_id, str(exc)))
             if signal is None:
                 # Only closed candles whose opens are >= position entry can
                 # be evaluated. The opening partial minute is deliberately

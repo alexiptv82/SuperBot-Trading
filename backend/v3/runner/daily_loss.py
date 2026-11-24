@@ -143,8 +143,8 @@ def max_daily_loss_between(*, journal: EventJournal, portfolio_id: str, run_id: 
     start = day_start_ms(now_ms)
     opens: dict[str, tuple] = {}
     closes: dict[str, tuple] = {}
-    for se in journal.list_run(portfolio_id, run_id):
-        ev = se.event
+    from backend.v3.executor.paper_scale import expand_scaled
+    for ev in expand_scaled([se.event for se in journal.list_run(portfolio_id, run_id)]):
         p = ev.payload if isinstance(ev.payload, dict) else None
         if ev.kind not in ("paper_open", "paper_close"):
             continue

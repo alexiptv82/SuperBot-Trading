@@ -231,6 +231,8 @@ def _append_open(decision, proposal, link, portfolio_id, run_id, journal, slippa
         "decision_event_id": link,
         **extra,
     }
+    if getattr(proposal, "risk_fraction", None) is not None:
+        payload["scale_in_reserved"] = True              # rischio riservato a un eventuale secondo ingresso (24/11)
 
     event_id = f"paper_open.{position_id}"
     event = Event(

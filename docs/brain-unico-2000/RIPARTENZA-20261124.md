@@ -112,3 +112,16 @@ cartelle del codice per bot (Falco e Brain Scalp possono averne di diverse) e **
 (Falco archiviato, slot con la configurazione del Brain unico, stato della ripartenza precedente) la procedura non
 archivia né ricrea nulla, sposta solo le unità di Brain Scalp sul codice nuovo, verifica e attiva. Il rollback completo
 resta `--rollback <timbro della prima ripartenza>` (unità originali dei due bot, con le loro cartelle).
+
+### Posizione unica con ingresso progressivo (correzione del proprietario, 24/11 sera)
+Le nuove aperture sono UNA posizione (`paper_open`), niente più due quote allo stesso prezzo. Eventi nuovi
+(`executor/paper_scale.py`): `paper_add` (secondo ingresso facoltativo a un prezzo migliore di almeno 0,25 R e 10 bp,
+lontano dallo stop di almeno 0,3 R, stesso stop, prezzo medio aggiornato, al massimo uno e mai dopo una parziale; solo se
+DeepSeek all'apertura ha indicato `scale_in` — la prima entrata usa il 65 % del rischio per trade e il resto resta
+riservato — e solo con DeepSeek e Claude d'accordo; dimensione calcolata perché il rischio allo stop resti entro il 4,3 %,
+il rischio aperto entro il 12 %/10 % e il margine entro 400/55 %; stesso scrittore serializzato e controlli delle
+aperture) e `paper_reduce` (chiusura parziale della posizione: 35 % a 2R dal servizio delle uscite, o PARTIAL_CLOSE
+dell'AI tramite il canale delle uscite; P&L, commissioni della sola parte chiusa, margine liberato, residuo). La chiusura
+finale chiude il residuo al prezzo medio: ogni unità paga una volta entrata e uscita. Riepilogo, Guardian (segmenti
+equivalenti), perdita giornaliera, dashboard, esiti per l'apprendimento, salvadanaio e Telegram leggono i nuovi eventi.
+Il trade BTC aperto alle 14:36 (due quote) resta gestito con le regole con cui è stato aperto.

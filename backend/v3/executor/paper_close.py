@@ -200,6 +200,15 @@ def close_paper(
     _require(isinstance(decision_event_id, str) and len(decision_event_id) <= 128,
              "corrupt_position_payload")
     _require(timestamp_ms >= opened.occurred_at_ms, "close_before_open")
+    # Brain unico (24/11): dopo un secondo ingresso o una chiusura parziale si chiude il RESIDUO al prezzo medio con il
+    # margine residuo. Posizioni senza questi eventi: valori dell'apertura, payload identico a prima.
+    from backend.v3.executor.paper_scale import SCALE_KINDS, position_state
+    events = [se.event for se in journal.list_run(portfolio_id, run_id)]
+    if any(e.kind in SCALE_KINDS and isinstance(e.payload, Mapping) and e.payload.get("position_id") == position_id
+           for e in events):
+        st = position_state(events, position_id)
+        entry, qty, margin = st.avg_price, st.quantity, st.margin
+        _require(entry > 0 and qty > 0 and margin > 0, "corrupt_position_payload")
 
     # --- calcolo (Decimal puro; ordine delle operazioni fissato) ---
     # Valori finiti ma estremi (esponenti enormi, troppe cifre) fanno sollevare

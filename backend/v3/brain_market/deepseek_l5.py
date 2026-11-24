@@ -44,7 +44,12 @@ UNICO_GUIDANCE = (
     'volume_weak, volatility_high, volatility_low, near_support, near_resistance, overextended, conflicting_signals, '
     'reversal_risk, costs_high, funding_adverse, liquidity_thin, risk_concentration, setup_strong, setup_weak) and '
     '"uncertain": true when signals conflict or LONG and SHORT are hard to tell apart; a senior consultant may then '
-    'review the trade.')
+    'review the trade. Each OPEN is ONE position with one entry. Add "scale_in": true only if a second entry at a '
+    'clearly better price (higher for SHORT, lower for LONG) is a realistic plan without invalidating the thesis: '
+    'the first entry then uses 65 percent of the risk and the rest stays reserved; the stop never widens.')
+
+
+SCALE_IN_FIRST = 0.65        # quota del rischio della prima entrata quando DeepSeek prevede un secondo ingresso
 
 
 class DeepSeekL5Analyst(Analyst):
@@ -142,7 +147,7 @@ class DeepSeekL5Analyst(Analyst):
             if choice["finish_reason"] != "stop":
                 raise ValueError()
             obj = _json_object(choice["message"]["content"])
-            extra_ok = {"reasons", "uncertain"} if self.guidance is not None else set()
+            extra_ok = {"reasons", "uncertain", "scale_in"} if self.guidance is not None else set()
             if obj.get("kind") == "NO_TRADE" and {"kind"} <= set(obj) <= {"kind"} | extra_ok:
                 return BrainDecision(kind=DecisionKind.NO_TRADE, rationale="deepseek:analysis",
                                      sources=sources,
@@ -154,7 +159,8 @@ class DeepSeekL5Analyst(Analyst):
                 raise ValueError()
             reasons = self.reasons_parser(obj.pop("reasons", None)) if self.reasons_parser is not None else ()
             uncertain = obj.pop("uncertain", False) if self.guidance is not None else False
-            if type(uncertain) is not bool:
+            scale_in = obj.pop("scale_in", False) if self.guidance is not None else False
+            if type(uncertain) is not bool or type(scale_in) is not bool:
                 raise ValueError()
             if (obj.get("kind") != "OPEN" or set(obj) not in (keys, labelled_keys)
                     or type(obj["side"]) is not int or obj["side"] not in (-1, 1)
@@ -176,7 +182,7 @@ class DeepSeekL5Analyst(Analyst):
                 context_hash=hashlib.sha256(info_json.encode()).hexdigest(),
                 strategy_id=obj["strategy_id"] if labelled else None,
                 strategy_origin=obj["strategy_origin"] if labelled else None,
-                reasons=reasons, uncertain=uncertain,
+                reasons=reasons, uncertain=uncertain, risk_fraction=SCALE_IN_FIRST if scale_in else None,
             )
             return BrainDecision(kind=DecisionKind.OPEN, proposal=proposal,
                                  rationale="deepseek:analysis", sources=sources,
