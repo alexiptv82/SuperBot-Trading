@@ -99,6 +99,8 @@ class ThesisBook:
             if type(pid) is not str or not pid or r.event.occurred_at_ms > now_ms:
                 continue                                   # nulla dal futuro dell'istante valutato
             if r.event.kind == "paper_open":
+                if p.get("leg") == "runner":
+                    continue                               # Brain unico: la seconda quota non e' un altro ingresso
                 side, did = p.get("side"), p.get("decision_event_id")
                 if type(p.get("symbol")) is str and side in (1, -1) and type(did) is str and did:
                     dec = journal.get(did)                 # poche aperture: lettura puntuale per id

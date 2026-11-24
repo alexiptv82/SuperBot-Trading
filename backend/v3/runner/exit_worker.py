@@ -29,7 +29,7 @@ from backend.v3.runner.prepared_config_guard import verify_prepared_run_config
 from backend.v3.runner.exit_service import ExitService, ExitServiceBusy
 from backend.v3.runner.exits import load_default_policy
 from backend.v3.runner.feed import CandleStore, last_minute_close, minute_fetcher
-from backend.v3.runner.manual_close import run_manual_close
+from backend.v3.runner.manual_close import BRAIN_CHANNEL, ManualCloseReport, run_manual_close
 from backend.v3.runner.monitor import run_exit_monitor
 from backend.v3.lab_tools.fetch_candles import http_json
 
@@ -134,10 +134,20 @@ def build_exit_worker(*, data_dir: Path, run_id: str, config: RunnerConfig,
     def commands(now_ms: int):
         # ExitService.tick applies the shared OPEN/CLOSE lock to both callbacks.
         guard(now_ms)
-        return run_manual_close(journal=journal, portfolio_id='brain', run_id=run_id,
-                                data_dir=data_dir,
-                                price_of=lambda s, t: last_minute_close(s, t, get_json),
-                                fee_bps=config.fee_bps, now_ms=now_ms)
+        report = run_manual_close(journal=journal, portfolio_id='brain', run_id=run_id,
+                                  data_dir=data_dir,
+                                  price_of=lambda s, t: last_minute_close(s, t, get_json),
+                                  fee_bps=config.fee_bps, now_ms=now_ms)
+        if config.unico is not None and config.unico.position_review:
+            # Brain unico: chiusure decise dalla revisione AI (canale separato, motivo brain_close)
+            brain = run_manual_close(journal=journal, portfolio_id='brain', run_id=run_id, data_dir=data_dir,
+                                     price_of=lambda s, t: last_minute_close(s, t, get_json),
+                                     fee_bps=config.fee_bps, now_ms=now_ms, **BRAIN_CHANNEL)
+            if report is None:
+                report = brain
+            elif brain is not None and brain.failed:
+                report = ManualCloseReport(report.status, report.closed, report.failed + brain.failed)
+        return report
     def monitor(now_ms: int):
         guard(now_ms)
         return run_exit_monitor(journal=journal, portfolio_id='brain', run_id=run_id,

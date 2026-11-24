@@ -36,8 +36,12 @@ def D(v):
     return Decimal(str(v))
 
 
+UNICO = {"brain_scalp": ("brain-scalp-paper-p1", "2000")}      # Brain unico PAPER 2000 (24/11), slot di Brain Scalp
+
+
 def checks(get, post, archived: int):
-    for path in ("/api/v3/compare/falco_evoluto/trades", "/api/v3/compare/brain_scalp/performance", "/api/v3/paper-archive"):
+    first = next(iter(EXPECT))
+    for path in (f"/api/v3/compare/{first}/trades", "/api/v3/compare/brain_scalp/performance", "/api/v3/paper-archive"):
         if get(path, auth=False)[0] != 401:
             fail("no_session_not_401")
     status, body = get("/api/v3/compare")
@@ -57,7 +61,8 @@ def checks(get, post, archived: int):
         closed, opened = t.get("closed_trades") or [], t.get("open_positions") or []
         if t.get("run_id") != run_id or t.get("name") != name:
             fail("trades_run_mismatch_" + name)
-        if t.get("total_closed") != c.get("closed") or len(closed) != c.get("closed"):
+        closes = c.get("closes", c.get("closed"))          # chiusure (le quote di un trade si chiudono a parte)
+        if t.get("total_closed") != closes or len(closed) != closes:
             fail("trades_closed_count_mismatch_" + name)
         if sum((D(x["realized_pnl"]) for x in closed), Decimal(0)) != D(c.get("net_pnl")):
             fail("trades_net_mismatch_" + name)
@@ -77,7 +82,7 @@ def checks(get, post, archived: int):
             fail("performance_unavailable_" + name)
         if D(p["daily"][-1]["equity_end"]) != D(c.get("settled_equity")):
             fail("performance_equity_mismatch_" + name)
-        if sum(p["daily"][i]["trades"] for i in range(len(p["daily"]))) != c.get("closed"):
+        if sum(p["daily"][i]["trades"] for i in range(len(p["daily"]))) != closes:
             fail("performance_daily_count_mismatch_" + name)
         dec = (p.get("decisions") or {}).get("total")
         say(name, f"run {run_id}: {c.get('closed')} chiusi, {len(opened)} aperti, {len(p['daily'])} giorni, "
@@ -85,6 +90,8 @@ def checks(get, post, archived: int):
         st = post(f"/api/v3/compare/{name}/trades")
         if st not in (405, 423):
             fail(f"trades_post_not_refused_{name}_{st}")
+    if "falco_evoluto" not in EXPECT and get("/api/v3/compare/falco_evoluto/trades")[0] != 404:
+        fail("archived_bot_still_live")                   # Brain unico: Falco Evoluto solo in Archivio
     if get("/api/v3/compare/rc1/trades")[0] != 404 or get("/api/v3/paper-archive/..%2F..")[0] != 404:
         fail("unknown_keys_not_404")
     status, body = get("/api/v3/paper-archive")
@@ -189,6 +196,9 @@ def live(archived):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] not in ("candidate", "live") or not sys.argv[2].isdigit():
+    if (len(sys.argv) not in (3, 4) or sys.argv[1] not in ("candidate", "live") or not sys.argv[2].isdigit()
+            or (len(sys.argv) == 4 and sys.argv[3] != "unico")):
         fail("usage")
+    if len(sys.argv) == 4:
+        EXPECT = UNICO
     (candidate if sys.argv[1] == "candidate" else live)(int(sys.argv[2]))

@@ -114,6 +114,7 @@ def execute_paper(
     journal: EventJournal,
     slippage_bps: int = 0,
     now_ms: int | None = None,
+    legs: tuple | None = None,
 ) -> ExecutionReceipt:
     """Simulate a PAPER fill for an APPROVED BrainDecision.
 
@@ -181,8 +182,35 @@ def execute_paper(
     _require(fill_price > 0, "fill_price_zero")
 
     quantity = quote.quantity
+    # Brain unico (24/11): ``legs`` = quote ``(nome, quantita', take_profit_r)`` da ``unico.split_legs``. Ogni quota
+    # e' un paper_open normale (stesso stop, stessa decisione), margine in proporzione; la ricevuta e' quella della
+    # prima quota. Una sola quota senza nome = comportamento storico (payload identico).
+    if legs is not None:
+        _require(type(legs) is tuple and 1 <= len(legs) <= 2, "invalid_legs")
+        total = Decimal("0")
+        for leg in legs:
+            _require(type(leg) is tuple and len(leg) == 3 and leg[0] in ("", "tp1", "runner")
+                     and isinstance(leg[1], Decimal) and leg[1].is_finite() and leg[1] > 0
+                     and (leg[2] is None or (isinstance(leg[2], Decimal) and 0 < leg[2] <= 20)), "invalid_legs")
+            total += leg[1]
+        _require(total == quantity and (len(legs) == 1) == (legs[0][0] == ""), "invalid_legs")
+    if legs is not None and len(legs) == 2:
+        receipts = [_append_open(decision, proposal, link, portfolio_id, run_id, journal, slippage_bps,
+                                 timestamp_ms, fill_price, qty, (quote.margin * qty / quantity).quantize(
+                                     Decimal("0.00000001"), rounding=ROUND_DOWN), {"leg": name, **(
+                                         {"take_profit_r": str(tp)} if tp is not None else {})})
+                    for name, qty, tp in legs]
+        decision.status = ProposalStatus.EXECUTED_PAPER
+        return receipts[0]
+    receipt = _append_open(decision, proposal, link, portfolio_id, run_id, journal, slippage_bps, timestamp_ms,
+                           fill_price, quantity, quote.margin, {})
+    decision.status = ProposalStatus.EXECUTED_PAPER
+    return receipt
+
+
+def _append_open(decision, proposal, link, portfolio_id, run_id, journal, slippage_bps, timestamp_ms, fill_price,
+                 quantity, margin_used, extra: dict) -> ExecutionReceipt:
     notional = (fill_price * quantity).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
-    margin_used = quote.margin
     position_id = uuid.uuid4().hex
 
     # --- build journal event payload (no credentials, no balances) ---
@@ -201,6 +229,7 @@ def execute_paper(
         "context_hash": getattr(proposal, "context_hash", ""),
         "rationale": decision.rationale,
         "decision_event_id": link,
+        **extra,
     }
 
     event_id = f"paper_open.{position_id}"
@@ -219,9 +248,6 @@ def execute_paper(
         stored = journal.append(event)
     except Exception as exc:
         raise ExecutionError("journal_write_failed") from exc
-
-    # --- mark decision as executed only after successful journal write ---
-    decision.status = ProposalStatus.EXECUTED_PAPER
 
     return ExecutionReceipt(
         position_id=position_id,

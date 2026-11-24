@@ -41,6 +41,10 @@ from backend.v3.executor.paper_close import close_paper
 REQUEST_FILE = "close_request.json"
 WORK_FILE = ".close_request.work"
 RESULT_FILE = "close_result.json"
+# Brain unico (24/11): stesso meccanismo per le chiusure decise dalla revisione AI (scritte dal runner, eseguite dal
+# servizio delle uscite, proprietario unico delle chiusure). Motivo ``brain_close``: mai confuso con l'operatore.
+BRAIN_CHANNEL = {"request_file": "brain_close_request.json", "work_file": ".brain_close_request.work",
+                 "result_file": "brain_close_result.json", "reason": "brain_close"}
 MAX_AGE_MS = 600_000
 MAX_IDS = 50
 _ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
@@ -70,13 +74,13 @@ def _parse(raw: object, now_ms: int) -> Optional[tuple[int, Optional[tuple[str, 
     return ts, tuple(dict.fromkeys(ids))                  # senza doppioni, ordine di arrivo
 
 
-def _write_result(data_dir: Path, body: dict) -> None:
+def _write_result(data_dir: Path, body: dict, result_file: str = RESULT_FILE) -> None:
     tmp = None
     try:
         fd, tmp = tempfile.mkstemp(dir=data_dir, prefix=".close_result.", suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(json.dumps(body, sort_keys=True))
-        os.replace(tmp, data_dir / RESULT_FILE)
+        os.replace(tmp, data_dir / result_file)
         tmp = None
     except OSError:
         pass                                              # un disco pieno non deve bloccare il Brain
@@ -89,11 +93,15 @@ def _write_result(data_dir: Path, body: dict) -> None:
 
 
 def run_manual_close(*, journal: EventJournal, portfolio_id: str, run_id: str, data_dir: Path,
-                     price_of: PriceOf, fee_bps: Decimal | int, now_ms: int) -> Optional[ManualCloseReport]:
+                     price_of: PriceOf, fee_bps: Decimal | int, now_ms: int, request_file: str = REQUEST_FILE,
+                     work_file: str = WORK_FILE, result_file: str = RESULT_FILE,
+                     reason: str = "manual") -> Optional[ManualCloseReport]:
     """Esegue la richiesta in sospeso, se c'e'. ``None`` = nessuna richiesta (caso comune: un controllo di file)."""
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
-    request, work = data_dir / REQUEST_FILE, data_dir / WORK_FILE
+    if reason not in ("manual", "brain_close"):
+        raise ValueError("invalid_reason")
+    request, work = data_dir / request_file, data_dir / work_file
     # Match the authenticated API's directory flock while claiming requests.
     # Never overwrite an existing .work: a crashed worker may be resuming it.
     # A second request waits for the NEXT tick, preserving the user's choice.
@@ -130,9 +138,10 @@ def run_manual_close(*, journal: EventJournal, portfolio_id: str, run_id: str, d
         if now_ms - req_ts > MAX_AGE_MS:
             report = ManualCloseReport("expired", (), ())
         else:
-            report = _execute(journal, portfolio_id, run_id, ids, price_of, fee_bps, now_ms)
+            report = _execute(journal, portfolio_id, run_id, ids, price_of, fee_bps, now_ms, reason)
     _write_result(data_dir, {"request_ts_ms": req_ts, "done_ms": now_ms, "status": report.status,
-                             "closed": list(report.closed), "failed": [list(f) for f in report.failed]})
+                             "closed": list(report.closed), "failed": [list(f) for f in report.failed]},
+                  result_file)
     try:
         work.unlink()
     except OSError:
@@ -141,7 +150,7 @@ def run_manual_close(*, journal: EventJournal, portfolio_id: str, run_id: str, d
 
 
 def _execute(journal: EventJournal, portfolio_id: str, run_id: str, ids: Optional[tuple[str, ...]],
-             price_of: PriceOf, fee_bps: Decimal | int, now_ms: int) -> ManualCloseReport:
+             price_of: PriceOf, fee_bps: Decimal | int, now_ms: int, reason: str = "manual") -> ManualCloseReport:
     try:
         open_positions = {p.position_id: p for p in build_summary(journal, portfolio_id, run_id).open_positions}
     except Exception:
@@ -161,7 +170,7 @@ def _execute(journal: EventJournal, portfolio_id: str, run_id: str, ids: Optiona
             continue
         try:
             close_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pid, exit_price=price,
-                        reason="manual", fee_bps=fee_bps, journal=journal, now_ms=now_ms)
+                        reason=reason, fee_bps=fee_bps, journal=journal, now_ms=now_ms)
             closed.append(pid)
         except ExecutionError as exc:
             failed.append((pid, str(exc)[:64] or "invalid"))

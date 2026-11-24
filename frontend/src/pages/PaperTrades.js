@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { BrainCloseControls } from '../components/OverviewCloseControls';
 import {
   BotSwitch, BOTS, C, Card, EXIT_REASON, Fresh, Grid, LEARNING, LoadState, Note, Page, PageHeader, Pill, Section,
-  SideTag, STOP_KIND, Stat, ago, botMeta, duration, num, own, pct, price, sgn, tone, usd, usePoll, when,
+  LEG, SideTag, STOP_KIND, Stat, ago, botMeta, duration, num, own, pct, price, sgn, tone, usd, usePoll, when,
 } from '../paperApp/kit';
 
 // Trade: SOLO le run attuali di Falco Evoluto e Brain Scalp (/api/v3/compare/<bot>/trades, journal della run).
@@ -25,6 +25,7 @@ function OpenCard({ p, nowMs }) {
       <SideTag side={p.side} />
       <strong style={{ fontSize: 17 }}>{String(p.symbol || '?').replace('USDT', '')}</strong>
       <span style={{ color: C.soft, fontSize: 14 }}>{p.leverage ?? '—'}×</span>
+      {own(LEG, p.leg) && <span style={{ fontSize: 12, color: C.accent }}>{own(LEG, p.leg)}</span>}
       <span style={{ marginLeft: 'auto', textAlign: 'right' }}>
         <span style={{ display: 'block', fontSize: 18, fontWeight: 800, color: tone(p.unrealized_pnl) }}>{sgn(p.unrealized_pnl)}</span>
         <span style={{ fontSize: 13, color: tone(roi) }}>{roi === null ? 'P&L non verificabile' : `${pct(roi)} sul margine`}</span>
@@ -34,7 +35,7 @@ function OpenCard({ p, nowMs }) {
       <div style={{ marginTop: 10 }}><Stat compact label="Entrata" value={price(p.entry)} /></div>
       <div style={{ marginTop: 10 }}><Stat compact label="Prezzo ora" value={price(p.price)} /></div>
       <div style={{ marginTop: 10 }}><Stat compact label="Margine" value={usd(p.margin)} /></div>
-      <Stat compact label="Stop iniziale" value={price(p.stop)} color={C.down} />
+      <Stat compact label={p.stop_brain ? 'Stop (Brain)' : 'Stop iniziale'} value={price(p.stop_brain || p.stop)} color={C.down} />
       <Stat compact label="Take profit" value={price(p.take_profit)} color={C.up} />
       <Stat compact label="Nozionale" value={usd(p.notional, 0)} />
     </Grid>
@@ -51,6 +52,7 @@ function ClosedCard({ t }) {
       <SideTag side={t.side} />
       <strong style={{ fontSize: 17 }}>{String(t.symbol || '?').replace('USDT', '')}</strong>
       <span style={{ color: C.soft, fontSize: 14 }}>{t.leverage ?? '—'}×</span>
+      {own(LEG, t.leg) && <span style={{ fontSize: 12, color: C.accent }}>{own(LEG, t.leg)}</span>}
       <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 800, color: tone(t.realized_pnl) }}>{sgn(t.realized_pnl)}</span>
     </div>
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0' }}>

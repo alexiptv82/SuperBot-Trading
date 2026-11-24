@@ -46,6 +46,7 @@ _ALLOWED_SOURCES = frozenset({
     "deepseek:mock", "claude:mock", "engine:fail_closed", "engine:validate",
     "deepseek:analysis", "claude:review", "risk:quote",
     "risk:leverage_adjusted",
+    "risk:leverage_fit",
     # Advisory-only context evidence; may affect the model's analysis but never
     # bypass a risk gate, grant execution authority, or become an order.
     "falco:paper_position_observation", "toro:paper_position_observation",
@@ -459,9 +460,13 @@ class BrainEngine:
                 exchange_limit = mp["exchange_leverage_limit"]
                 if type(exchange_limit) is not int or exchange_limit < profile.min_leverage:
                     raise ValueError("exchange_leverage_below_profile")
-                start_leverage = min(max(suggested_leverage, profile.min_leverage),
-                                     profile.max_leverage, exchange_limit)
-                candidates = range(start_leverage, profile.min_leverage - 1, -1)
+                if getattr(profile, "leverage_fit", False) is True:
+                    # Brain unico: tutte le leve del profilo, dalla piu' bassa (vedi sotto)
+                    candidates = range(profile.min_leverage, min(profile.max_leverage, exchange_limit) + 1)
+                else:
+                    start_leverage = min(max(suggested_leverage, profile.min_leverage),
+                                         profile.max_leverage, exchange_limit)
+                    candidates = range(start_leverage, profile.min_leverage - 1, -1)
             else:
                 candidates = (suggested_leverage,)
             request = RiskRequest(
@@ -487,7 +492,20 @@ class BrainEngine:
             )
             quote = quote_paper_risk(profile, request)
             approved_leverage = request.requested_leverage
-            if profile_mode and not quote.allowed and quote.reason in _LEVERAGE_RETRY:
+            if profile_mode and getattr(profile, "leverage_fit", False) is True:
+                # Leva "fit": la PIU' BASSA che raggiunge la quantita' massima ammessa da rischio e margine. La
+                # quantita' da rischio non dipende dalla leva; quella da margine cresce con la leva; la liquidazione
+                # (stop_near_liquidation) e il rapporto perdita/margine la limitano dall'alto. Lo stop non cambia mai.
+                best = (approved_leverage, quote) if quote.allowed else None
+                for trial in list(candidates)[1:]:
+                    q = quote_paper_risk(profile, replace(request, requested_leverage=trial))
+                    if q.allowed and (best is None or q.quantity > best[1].quantity):
+                        best = (trial, q)
+                    elif not q.allowed and q.reason not in _LEVERAGE_RETRY:
+                        break                       # rifiuto che nessuna leva puo' cambiare (rischio, posizioni...)
+                if best is not None:
+                    approved_leverage, quote = best
+            elif profile_mode and not quote.allowed and quote.reason in _LEVERAGE_RETRY:
                 for trial in list(candidates)[1:]:
                     quote = quote_paper_risk(profile, replace(request, requested_leverage=trial))
                     approved_leverage = trial
@@ -495,7 +513,8 @@ class BrainEngine:
                         break
             if profile_mode and quote.allowed and approved_leverage != suggested_leverage:
                 decision.proposal = replace(decision.proposal, leverage=approved_leverage)
-                decision.sources.append("risk:leverage_adjusted")
+                decision.sources.append("risk:leverage_fit" if getattr(profile, "leverage_fit", False) is True
+                                        else "risk:leverage_adjusted")
             decision.risk_quote = quote
             self._last_risk_reason = None if quote.allowed else quote.reason
             if not quote.allowed:

@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Callable, Mapping
 
 from backend.v3.brain_f2.contracts import BrainDecision, DecisionKind, ProposalStatus, OpenProposal
-from backend.v3.dashboard import build_summary
+from backend.v3.dashboard import build_summary, open_groups
 from backend.v3.events import EventJournal
 from backend.v3.risk import RiskRequest, RiskPolicy, RiskQuote, quote_paper_risk
 from backend.v3.runner.cycle import snapshot_from_summary
@@ -41,6 +41,7 @@ def recheck_paper_open(*, decision: BrainDecision, journal: EventJournal,
                        market_price: Callable[[str,int], Decimal],
                        market_fresh: Callable[[str,int], bool],
                        max_decision_age_ms: int = 120_000,
+                       equity_reserve: Callable | None = None,
                        max_entry_divergence: Decimal = Decimal('0.005')) -> OpenGuardResult:
     """Deny stale, re-sized, unsafe or unprotected PAPER opens. No side effects.
 
@@ -100,7 +101,9 @@ def recheck_paper_open(*, decision: BrainDecision, journal: EventJournal,
         summary = build_summary(journal,'brain',run_id)
         if p.symbol in {x.symbol for x in summary.open_positions}:
             return deny('already_open')
-        if len(summary.open_positions) >= MAX_OPEN_POSITIONS:
+        # slot = aperture distinte (quote del Brain unico contate una volta); limite del profilo se c'e'
+        limit = risk_policy.max_positions if risk_policy.max_positions is not None else MAX_OPEN_POSITIONS
+        if open_groups(summary.open_positions) >= limit:
             return deny('max_open_positions')
         if market_fresh(p.symbol, now_ms) is not True:
             return deny('market_unavailable')
@@ -116,7 +119,8 @@ def recheck_paper_open(*, decision: BrainDecision, journal: EventJournal,
         required=('exchange_leverage_limit','quantity_step','minimum_notional','maintenance_fraction')
         if not all(k in rules for k in required):
             return deny('market_rules_unavailable')
-        snap = snapshot_from_summary(summary,initial_equity,risk_policy.estimated_roundtrip_cost_bp)
+        reserve = Decimal('0') if equity_reserve is None else equity_reserve(summary, now_ms)
+        snap = snapshot_from_summary(summary,initial_equity,risk_policy.estimated_roundtrip_cost_bp,reserve=reserve)
         fresh_quote = quote_paper_risk(risk_policy, RiskRequest(
             equity=snap.equity, available_cash=snap.available_cash,
             margin_used=snap.margin_used, existing_open_risk=snap.existing_open_risk,

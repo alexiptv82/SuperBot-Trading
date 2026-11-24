@@ -33,11 +33,13 @@ aperte (gap, slippage e liquidazione possono superare le stime): quelle restano 
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Callable, Mapping, Optional
 from zoneinfo import ZoneInfo
+
+from backend.v3.unico import ProfitTiers
 
 MINUTE_MS = 60_000
 STATES = ("NORMAL", "SELECTIVE", "PROTECTED", "LOCKED")
@@ -59,6 +61,8 @@ class GuardianPolicy:
     global_drawdown_lock: Decimal = Decimal("0.20")
     session_hour: int = 8
     session_tz: str = "Europe/Rome"
+    # Brain unico (24/11): ATTIVO / SELETTIVO / PROTEZIONE dal netto realizzato di sessione. None = spento.
+    tiers: Optional["ProfitTiers"] = None
 
     def __post_init__(self):
         fr = (self.activation_fraction, self.keep_fraction, self.session_loss_fraction, self.spend_fraction,
@@ -247,16 +251,49 @@ def evaluate_guardian(*, events, initial_equity: Decimal, close_at: CloseAt, now
         return _locked(tuple(reasons), base, **{k: v for k, v in common.items() if k not in base})
     if not armed:
         cap = r_unit if gdd >= policy.global_drawdown_half else None     # drawdown globale: R dimezzato
-        return GuardianState(state="NORMAL", reasons=("drawdown_half",) if cap is not None else (), risk_cap=cap,
-                             min_confidence=None, allow_reentry=True, **common)
+        return _apply_tiers(GuardianState(
+            state="NORMAL", reasons=("drawdown_half",) if cap is not None else (), risk_cap=cap,
+            min_confidence=None, allow_reentry=True, **common), policy)
     if budget < policy.locked_below_r * r_unit:
         return _locked(("floor_budget",), base, **{k: v for k, v in common.items() if k not in base})
     cap = min(r_unit, policy.spend_fraction * budget)
     if budget < policy.protected_below_r * r_unit:
-        return GuardianState(state="PROTECTED", reasons=("floor_budget_low",), risk_cap=cap,
-                             min_confidence=policy.protected_min_confidence, allow_reentry=False, **common)
-    return GuardianState(state="SELECTIVE", reasons=("floor_armed",), risk_cap=cap, min_confidence=None,
-                         allow_reentry=True, **common)
+        return _apply_tiers(GuardianState(
+            state="PROTECTED", reasons=("floor_budget_low",), risk_cap=cap,
+            min_confidence=policy.protected_min_confidence, allow_reentry=False, **common), policy)
+    return _apply_tiers(GuardianState(state="SELECTIVE", reasons=("floor_armed",), risk_cap=cap, min_confidence=None,
+                                      allow_reentry=True, **common), policy)
+
+
+_RANK = {"NORMAL": 0, "SELECTIVE": 1, "PROTECTED": 2}
+
+
+def session_net_realized(state: GuardianState) -> Optional[Decimal]:
+    """Netto realizzato della sessione: chiusure (commissioni incluse) meno il costo AI della sessione."""
+    if state.realized_session is None:
+        return None
+    return state.realized_session - (state.ai_cost_session or Decimal("0"))
+
+
+def _apply_tiers(state: GuardianState, policy: GuardianPolicy) -> GuardianState:
+    """Brain unico: SELETTIVO / PROTEZIONE dal netto realizzato di sessione. Vince sempre il vincolo piu' severo
+    (stato, tetto di rischio, confidenza minima, reingressi); senza ``tiers`` lo stato e' invariato."""
+    t = policy.tiers
+    net = session_net_realized(state)
+    if t is None or net is None or state.r_unit is None:
+        return state
+    if net >= t.protect_usd:
+        tier, why, r_mult, conf, reentry = "PROTECTED", "profit_protect", t.protect_risk_r, t.protect_min_confidence, False
+    elif net >= t.selective_usd:
+        tier, why, r_mult, conf, reentry = "SELECTIVE", "profit_selective", t.selective_risk_r, \
+            t.selective_min_confidence, True
+    else:
+        return state
+    cap = state.r_unit * r_mult if state.risk_cap is None else min(state.risk_cap, state.r_unit * r_mult)
+    conf = conf if state.min_confidence is None else max(conf, state.min_confidence)
+    new_state = tier if _RANK[tier] > _RANK[state.state] else state.state
+    return replace(state, state=new_state, reasons=state.reasons + (why,), risk_cap=cap, min_confidence=conf,
+                   allow_reentry=state.allow_reentry and reentry)
 
 
 def _locked(reasons: tuple, base: dict, **values) -> GuardianState:

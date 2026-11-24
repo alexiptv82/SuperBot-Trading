@@ -8,7 +8,7 @@ una posizione gia' chiusa. Nessuna rete qui: ``fetch_bars`` e' iniettata.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Callable, Sequence
 
@@ -32,6 +32,27 @@ class MonitorReport:
     protected: tuple[tuple[str, str], ...] = ()          # (position_id, break_even|trailing|protect): stop spostato
 
 
+STOP_MOVE_KIND = "stop_move"
+
+
+def stop_moves_by_position(journal: EventJournal, portfolio_id: str, run_id: str) -> dict:
+    """``{position_id: ((valido_dal_minuto_ms, stop), ...)}`` dagli eventi ``stop_move`` del Brain unico. Uno
+    spostamento vale dalla candela che apre DOPO il minuto in cui e' stato registrato (mai retroattivo)."""
+    out: dict = {}
+    for r in journal.list_run_kinds_since(portfolio_id, run_id, (STOP_MOVE_KIND,), 0):
+        p = r.event.payload if isinstance(r.event.payload, dict) else {}
+        pid, raw = p.get("position_id"), p.get("stop_price")
+        try:
+            level = Decimal(str(raw))
+        except ArithmeticError:
+            continue
+        if type(pid) is not str or not level.is_finite() or level <= 0:
+            continue
+        at = (r.event.occurred_at_ms // MINUTE_MS + 1) * MINUTE_MS
+        out.setdefault(pid, []).append((at, level))
+    return {k: tuple(v) for k, v in out.items()}
+
+
 def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, fetch_bars: FetchBars,
                      policy: ExitPolicy, fee_bps: Decimal | int, now_ms: int) -> MonitorReport:
     if type(now_ms) is not int or now_ms <= 0:
@@ -45,8 +66,11 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
         fee = Decimal(str(fee_bps)) if type(fee_bps) in (int, Decimal) else None
     except ArithmeticError:
         fee = None
+    moves = stop_moves_by_position(journal, portfolio_id, run_id)
     for pos in summary.open_positions:
         try:
+            # Brain unico: take-profit proprio della quota e stop stretti dall'AI (run storiche: invariato)
+            pos_policy = policy if pos.take_profit_r is None else replace(policy, take_profit_r=pos.take_profit_r)
             start = pos.opened_at_ms // MINUTE_MS * MINUTE_MS
             if start >= end:
                 continue                                  # aperta nello stesso minuto: nessuna barra chiusa ancora
@@ -56,7 +80,8 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
             for run in contiguous_runs(bars, MINUTE_MS):
                 signal = evaluate_exit(side=pos.side, fill_price=pos.fill_price, stop_price=pos.stop_price,
                                        opened_at_ms=pos.opened_at_ms, bars=run, candle_ms=MINUTE_MS,
-                                       policy=policy, fee_bps=fee, best_before=best)
+                                       policy=pos_policy, fee_bps=fee, best_before=best,
+                                       stop_moves=moves.get(pos.position_id, ()))
                 if signal is not None:
                     break
                 best = favorable_extreme(pos.side, best, run, pos.opened_at_ms)

@@ -27,7 +27,8 @@ export const tone = v => (num(v) === null ? C.muted : num(v) > 0 ? C.up : num(v)
 // Colore fisso per bot: lo stesso in tutte le pagine e nei grafici di confronto
 export const BOTS = {
   falco_evoluto: { label: 'Falco Evoluto', color: '#f59e0b', icon: '🦅', short: 'Falco' },
-  brain_scalp: { label: 'Brain Scalp', color: '#38bdf8', icon: '🧠', short: 'Scalp' },
+  // dal 24/11 lo slot brain_scalp ospita il Brain unico PAPER 2000 (le sessioni Scalp precedenti sono in Archivio)
+  brain_scalp: { label: 'Brain', color: '#38bdf8', icon: '🧠', short: 'Brain' },
 };
 export const botMeta = name => own(BOTS, name) || { label: name, color: C.accent, icon: '•', short: name };
 
@@ -62,7 +63,18 @@ export const EXIT_REASON = {
   stop: 'Stop', take_profit: 'Take profit', timeout: 'Tempo massimo', manual: 'Chiusura manuale',
   brain_close: 'Chiusura del Brain',
 };
-export const STOP_KIND = { initial: 'stop iniziale', break_even: 'stop a pareggio', trailing: 'trailing stop', protect: 'protezione profitti' };
+export const STOP_KIND = { initial: 'stop iniziale', break_even: 'stop a pareggio', trailing: 'trailing stop', protect: 'protezione profitti',
+  brain: 'stop stretto dal Brain' };
+// quote di un'apertura divisa del Brain unico
+export const LEG = { tp1: '1ª quota · presa a 2R', runner: 'Residuo · verso 3,5R' };
+export const REVIEW_ACTION = { HOLD: 'mantiene', CLOSE: 'chiude tutto', PARTIAL_CLOSE: 'incassa la 1ª quota',
+  MODIFY_STOP: 'stringe lo stop', NONE: 'nessuna risposta AI' };
+export const REVIEW_CODE = { hold: '', close_all_legs: '', close_tp1_leg: '', stop_tightened: '',
+  partial_not_available: 'presa parziale non disponibile', stop_not_tighter: 'stop non più stretto: ignorato',
+  stop_too_close_to_price: 'stop troppo vicino al prezzo: ignorato', stop_invalid: 'stop non valido: ignorato',
+  action_invalid: 'risposta non valida', budget_denied: 'budget AI esaurito', invalid_model_output: 'risposta AI non valida',
+  ai_unavailable: 'AI non disponibile', review_failed: 'revisione non riuscita',
+  close_request_pending: 'chiusura in attesa del servizio uscite' };
 export const LEARNING = {
   profit_protection_example: 'esempio di profitto protetto', loss_reduction_example: 'esempio di perdita ridotta',
   break_even_example: 'esempio a pareggio',

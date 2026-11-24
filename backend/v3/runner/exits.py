@@ -50,6 +50,7 @@ EXIT_STOP = "stop"
 EXIT_TAKE_PROFIT = "take_profit"
 EXIT_TIMEOUT = "timeout"
 STOP_INITIAL, STOP_BREAK_EVEN, STOP_TRAILING, STOP_PROTECT = "initial", "break_even", "trailing", "protect"
+STOP_BRAIN = "brain"          # Brain unico: stop stretto dalla revisione AI (solo verso il profitto)
 
 _CTX = Context(prec=60, rounding=ROUND_HALF_EVEN)
 _Q8 = Decimal("0.00000001")
@@ -170,7 +171,7 @@ def favorable_extreme(side: int, best: Optional[Decimal], bars, opened_at_ms: in
 
 def evaluate_exit(*, side: int, fill_price: Decimal, stop_price: Decimal, opened_at_ms: int,
                   bars, candle_ms: int, policy: ExitPolicy, fee_bps: Optional[Decimal] = None,
-                  best_before: Optional[Decimal] = None) -> Optional[ExitSignal]:
+                  best_before: Optional[Decimal] = None, stop_moves: tuple = ()) -> Optional[ExitSignal]:
     """Prima uscita della posizione sulle candele chiuse ``bars`` (contigue, in ordine), o ``None``.
 
     Con protezione attiva (``policy.protects``): ``fee_bps`` = commissioni per lato (servono al break-even) e
@@ -193,19 +194,29 @@ def evaluate_exit(*, side: int, fill_price: Decimal, stop_price: Decimal, opened
         raise ValueError("invalid_candle_ms" if str(exc) == "invalid_candle_ms"
                          else "invalid_bars") from None
     target = take_profit_price(side, fill_price, stop_price, policy)
+    # Brain unico: stop stretti dall'AI ``(valido_dalla_candela_ms, prezzo)``; valgono solo se piu' favorevoli dello
+    # stop del momento (mai un allargamento). Nessuno spostamento = comportamento di sempre.
+    for move in stop_moves:
+        if (type(move) is not tuple or len(move) != 2 or type(move[0]) is not int or type(move[1]) is not Decimal
+                or not move[1].is_finite() or move[1] <= 0):
+            raise ValueError("invalid_position") from None
     with localcontext(_CTX):
         for bar in bars:
             if bar.open_time_ms < opened_at_ms:
                 continue
+            stop_now, kind_now = stop_price_now, kind
+            for at_ms, level in stop_moves:
+                if at_ms <= bar.open_time_ms and side * (level - stop_now) > 0:
+                    stop_now, kind_now = level, STOP_BRAIN
             if side == 1:
-                stop_hit, target_hit = bar.low <= stop_price_now, bar.high >= target
+                stop_hit, target_hit = bar.low <= stop_now, bar.high >= target
             else:
-                stop_hit, target_hit = bar.high >= stop_price_now, bar.low <= target
+                stop_hit, target_hit = bar.high >= stop_now, bar.low <= target
             if stop_hit:
-                base = min(stop_price_now, bar.open) if side == 1 else max(stop_price_now, bar.open)
+                base = min(stop_now, bar.open) if side == 1 else max(stop_now, bar.open)
                 price = base - side * base * policy.stop_slippage_bp / _BP
                 return ExitSignal(EXIT_STOP, price.quantize(_Q8, rounding=ROUND_HALF_EVEN),
-                                  bar.open_time_ms, kind)
+                                  bar.open_time_ms, kind_now)
             if target_hit:
                 return ExitSignal(EXIT_TAKE_PROFIT, target, bar.open_time_ms)
             if bar.open_time_ms + candle_ms - opened_at_ms >= policy.max_hold_ms:

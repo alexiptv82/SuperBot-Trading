@@ -90,6 +90,16 @@ export const GUARDIAN_REASONS = {
   floor_armed: 'floor armato', floor_budget_low: 'margine sul floor ridotto', floor_budget: 'margine sul floor esaurito',
   below_floor: 'equity sotto il floor', session_loss: 'perdita di sessione', global_drawdown: 'drawdown globale',
   drawdown_half: 'drawdown: rischio dimezzato', data_fault: 'dati di mercato mancanti', guardian_error: 'errore del Guardian',
+  profit_selective: 'profitto netto di sessione oltre la soglia selettiva',
+  profit_protect: 'profitto netto di sessione oltre la soglia di protezione',
+};
+
+// Brain unico (24/11): i tre comportamenti del proprietario. Stesso stato del Guardian, nomi e spiegazioni del Brain.
+export const UNICO_MODES = {
+  NORMAL: ['ATTIVO', '#4ade80', 'Cerca opportunità e usa il rischio disponibile quando il vantaggio atteso è sufficiente.'],
+  SELECTIVE: ['SELETTIVO', '#38bdf8', 'Più esigente: nuove aperture con rischio ridotto e confidenza più alta.'],
+  PROTECTED: ['PROTEZIONE', '#fbbf24', 'Conserva il risultato: solo opportunità eccezionali, rischio minimo, nessun rientro.'],
+  LOCKED: ['BLOCCATO', '#f87171', 'Nuove aperture ferme fino alla prossima sessione. Le posizioni aperte restano gestite.'],
 };
 
 const own = (t, k) => (typeof k === 'string' && Object.prototype.hasOwnProperty.call(t, k) ? t[k] : undefined);
@@ -97,9 +107,10 @@ const own = (t, k) => (typeof k === 'string' && Object.prototype.hasOwnProperty.
 /** Guardian leggibile; un codice sconosciuto non diventa mai testo libero. */
 export function guardianView(run) {
   const g = run?.guardian;
-  const s = g ? own(GUARDIAN_STATES, g.state) : undefined;
+  const s = g ? own(run?.config?.unico ? UNICO_MODES : GUARDIAN_STATES, g.state) : undefined;
   if (!s) return null;
   return {
+    unico: !!run?.config?.unico, realizedSession: num(g.realized_session), aiSession: num(g.ai_cost_session),
     state: g.state, label: s[0], color: s[1], detail: s[2],
     reasons: (Array.isArray(g.reasons) ? g.reasons : []).map(r => own(GUARDIAN_REASONS, r)).filter(Boolean),
     floor: num(g.floor), peak: num(g.peak_equity), giveback: num(g.giveback), budget: num(g.budget),

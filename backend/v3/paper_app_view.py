@@ -67,12 +67,17 @@ def _policy(cfg):
         return None
 
 
-def take_profit(cfg, side, entry, stop) -> Optional[str]:
-    """Take-profit della posizione dalla politica d'uscita della run; ``None`` se non calcolabile."""
+def take_profit(cfg, side, entry, stop, tp_r=None) -> Optional[str]:
+    """Take-profit della posizione dalla politica d'uscita della run (o quello proprio della quota, Brain unico);
+    ``None`` se non calcolabile."""
     policy = _policy(cfg)
     e, s = _d(entry), _d(stop)
     if policy is None or e is None or s is None or type(side) is not int:
         return None
+    own = _d(tp_r)
+    if own is not None and 0 < own <= 20:
+        from dataclasses import replace
+        policy = replace(policy, take_profit_r=own)
     try:
         from backend.v3.runner.exits import take_profit_price
         return str(take_profit_price(side, e, s, policy))
@@ -97,28 +102,34 @@ def _payload(r) -> Mapping:
 def enrich_trades(data: dict, run_dir: Path, run_id: str) -> dict:
     """Stop, take-profit, P&L lordo e tipo di stop accanto ai trade di ``_trades`` (stesso journal)."""
     cfg = load_config(run_dir)
-    opens, closes = {}, {}
+    opens, closes, moved = {}, {}, {}
     for r in _events(run_dir, run_id) or []:
         p = _payload(r)
         pid = p.get("position_id")
         if type(pid) is not str:
             continue
+        if r.event.kind == "stop_move":
+            moved[pid] = _s(p.get("stop_price"))
         if r.event.kind == "paper_open":
             opens[pid] = p
         elif r.event.kind == "paper_close":
             closes[pid] = p
     for t in data.get("open_positions") or []:
         o = opens.get(t.get("position_id"), {})
-        t["take_profit"] = take_profit(cfg, t.get("side"), t.get("entry"), t.get("stop"))
+        t["take_profit"] = take_profit(cfg, t.get("side"), t.get("entry"), t.get("stop"), o.get("take_profit_r"))
         t["notional"] = _s(o.get("notional"))
+        t["leg"] = o.get("leg") if o.get("leg") in ("tp1", "runner") else None
+        t["stop_brain"] = moved.get(t.get("position_id"))
     for t in data.get("closed_trades") or []:
         o, c = opens.get(t.get("position_id"), {}), closes.get(t.get("position_id"), {})
         stop = _s(o.get("stop_price"))
         t["stop"] = stop
-        t["take_profit"] = take_profit(cfg, t.get("side"), o.get("fill_price"), stop) if stop else None
+        t["take_profit"] = take_profit(cfg, t.get("side"), o.get("fill_price"), stop,
+                                       o.get("take_profit_r")) if stop else None
         t["gross_pnl"] = _s(c.get("gross_pnl"))
         kind = c.get("stop_kind")
-        t["stop_kind"] = kind if kind in ("initial", "break_even", "trailing", "protect") else None
+        t["stop_kind"] = kind if kind in ("initial", "break_even", "trailing", "protect", "brain") else None
+        t["leg"] = o.get("leg") if o.get("leg") in ("tp1", "runner") else None
         t["opened_at_ms"] = c.get("opened_at_ms") if type(c.get("opened_at_ms")) is int else None
     data["fee_bps"] = None if cfg is None else str(cfg.fee_bps)
     data["take_profit_r"] = None if _policy(cfg) is None else str(_policy(cfg).take_profit_r)

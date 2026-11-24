@@ -49,6 +49,10 @@ ARCHIVE = RUN_ROOT + "/.archivio"
 ENV_ARCHIVE = "V3_PAPER_ARCHIVE_ROOT"
 RUNS = (("falco_evoluto", "Falco Evoluto", "brain-v3-falco-evoluto-p1", "falco-evoluto-paper-p1"),
         ("brain_scalp", "Brain Scalp", "brain-v3-brain-scalp-p1", "brain-scalp-paper-p1"))
+# Brain unico PAPER 2000 (24/11): la web mostra UNA sola run, nello slot di Brain Scalp (stessa cartella e stesso run_id:
+# bridge, unita' e superbot-ops invariati), con l'etichetta "Brain". Falco Evoluto resta solo nell'Archivio.
+UNICO_RUNS = (("brain_scalp", "Brain", "brain-v3-brain-scalp-p1", "brain-scalp-paper-p1"),)
+UNICO = {"on": False}
 _STAMP = re.compile(r"^reset-[0-9]{8}T[0-9]{6}Z$")
 _DIR = re.compile(r"^brain-v3-[a-z0-9-]{1,48}$")
 
@@ -63,9 +67,9 @@ def run_dirs() -> list[str]:
     return [f"{RUN_ROOT}/{folder}" for _, _, folder, _ in RUNS]
 
 
-def compare_env_value() -> str:
-    """Il valore scritto dal cutover di Falco Evoluto/Brain Scalp: la web deve essere quella."""
-    return json.dumps([{"name": n, "label": l, "dir": f"{RUN_ROOT}/{d}", "run_id": r} for n, l, d, r in RUNS],
+def compare_env_value(runs=RUNS) -> str:
+    """Il valore scritto dal cutover di Falco Evoluto/Brain Scalp (o, con ``runs=UNICO_RUNS``, dal Brain unico)."""
+    return json.dumps([{"name": n, "label": l, "dir": f"{RUN_ROOT}/{d}", "run_id": r} for n, l, d, r in runs],
                       separators=(",", ":"))
 
 
@@ -73,11 +77,15 @@ def target_env(old: dict) -> dict:
     for key, value in base.REQUIRED_ENV.items():
         if old.get(key) != value:
             raise Refused("web_paper_or_bridge_gate_unexpected_" + key)
-    if old.get("V3_COMPARE_RUNS") != compare_env_value():
+    accepted = (compare_env_value(), compare_env_value(UNICO_RUNS)) if UNICO["on"] else (compare_env_value(),)
+    if old.get("V3_COMPARE_RUNS") not in accepted:
         raise Refused("web_not_on_falco_evoluto_and_brain_scalp")
     if old.get(ENV_ARCHIVE) not in (None, ARCHIVE):
         raise Refused("archive_root_unexpected")
-    return {**old, ENV_ARCHIVE: ARCHIVE}
+    new = {**old, ENV_ARCHIVE: ARCHIVE}
+    if UNICO["on"]:
+        new["V3_COMPARE_RUNS"] = compare_env_value(UNICO_RUNS)
+    return new
 
 
 def needs_archive_mount(web: dict) -> bool:
@@ -196,7 +204,9 @@ def build_candidate(web: dict, tar: Path, sha: str) -> str:
 
 
 def _probe(args: list[str], mode: str, archived: int) -> None:
-    code, out = run_text(*args, "-B", "-", mode, str(archived), timeout=240, stdin=(HERE / "app_probe.py").read_text())
+    extra = ["unico"] if UNICO["on"] else []
+    code, out = run_text(*args, "-B", "-", mode, str(archived), *extra, timeout=240,
+                         stdin=(HERE / "app_probe.py").read_text())
     for line in out.splitlines():
         if line.startswith("APP_PROBE "):
             say(mode + "_" + line.split(" ", 1)[1].split("=", 1)[0], line.split("=", 1)[1])
@@ -367,7 +377,9 @@ def main() -> None:
     ap.add_argument("--backend-tar")
     ap.add_argument("--tar-sha256")
     ap.add_argument("--sha")
+    ap.add_argument("--brain-unico", action="store_true", help="la web mostra il solo Brain unico PAPER 2000")
     args = ap.parse_args()
+    UNICO["on"] = bool(args.brain_unico)
     try:
         (do_deploy if args.deploy else do_rollback)(args)
     except Refused as exc:

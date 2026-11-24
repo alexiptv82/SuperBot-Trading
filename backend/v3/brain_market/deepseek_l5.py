@@ -27,13 +27,29 @@ from backend.v3.brain_market.classic_peers import validate_peer_signal
 SYSTEM_PROMPT = 'Return only JSON. Either {"kind":"NO_TRADE"} or {"kind":"OPEN","side":1 or -1,"entry_price":"100","stop_price":"99","leverage":2,"confidence":0.7,"strategy_id":"S07","strategy_origin":"library"}. strategy_id is an id from the strategies list (strategy_origin library) or your own name starting with AI_ (strategy_origin ai_proposed). The market object gives, for each timeframe, indicators computed on closed candles only: distances are in basis points of the last close, atr_bp is the average true range, regime is the classifier label. A timeframe whose status is not ok has no data. The scoreboard shows the measured net result, in basis points after costs, of your own past closed trades in the current regime, per strategy and side. Status positive or negative means measured with confidence. Status inconclusive or insufficient means not yet known, not bad. Choose a strategy whose conditions the market shows, prefer strategies measured positive, avoid those measured negative, and you may try unmeasured ones to learn. If the optional peer_paper_positions field is present, it contains read-only observations of Falco and Toro PAPER positions, NOT recommendations, predictions or orders. A position may be stale or absent. Do not copy a peer trade automatically; derive your own LONG/SHORT/NO_TRADE from verified market data and strategy evidence. No tools, no market orders, no execution authority.'
 
 
+# Brain unico PAPER (24/11/2026): filosofia operativa aggiunta al prompt solo con ``guidance`` (schema 3). I numeri
+# sono quelli della configurazione approvata dal proprietario; la dimensione e la leva le decide il codice.
+UNICO_GUIDANCE = (
+    'Operating style (single PAPER Brain, 2000 USDT): intraday scalping and short swings on liquid perpetuals, '
+    'including gold (XAUUSDT) and silver (XAGUSDT). Treat LONG and SHORT symmetrically: take the side the market '
+    'shows. Put the stop where the setup is invalidated, coherent with volatility (atr_bp): scalp stops are often '
+    '20 to 60 basis points and first targets 30 to 100, wider only when volatility requires it. Propose a trade only '
+    'if the first target is at least 2R away and plausibly reachable within hours. The code sizes the position from '
+    'the stop (about 4.3 percent of equity at risk), chooses the leverage between 15x and 50x by itself (your '
+    'leverage field is ignored), banks about 35 percent at 2R and manages the rest toward 3.5R with a protective '
+    'stop. NO_TRADE is correct when the edge after about 16 bp round-trip costs is unclear. The optional portfolio '
+    'object gives the guardian mode (NORMAL = active, SELECTIVE = be pickier, PROTECTED = only exceptional setups) '
+    'and the free slots.')
+
+
 class DeepSeekL5Analyst(Analyst):
     """L5 PAPER analyst with market view and L4 scoreboard, no execution authority."""
 
     def __init__(self, *, transport: Transport, model: str, outcomes_source,
                  bars_source, view_params: ViewParams, market_params: MarketViewParams,
                  menu: tuple[MenuItem, ...], spending_gate: SpendingGate | None = None,
-                 enabled: bool = False, max_tokens: int = 256):
+                 enabled: bool = False, max_tokens: int = 256, guidance: str | None = None,
+                 portfolio_state=None):
         if type(max_tokens) is not int or not 1 <= max_tokens <= 65_536:
             raise ValueError("invalid_max_tokens") from None
         if type(view_params) is not ViewParams:
@@ -46,6 +62,7 @@ class DeepSeekL5Analyst(Analyst):
         self.view_params, self.market_params = view_params, market_params
         self.menu, self.spending_gate, self.enabled = menu, spending_gate, enabled
         self.max_tokens = max_tokens
+        self.guidance, self.portfolio_state = guidance, portfolio_state
 
     def analyze(self, context: MarketContext, open_positions: list[Mapping]) -> BrainDecision:
         if (not isinstance(context, MarketContext) or not _safe_str(context.symbol)
@@ -88,6 +105,13 @@ class DeepSeekL5Analyst(Analyst):
                 peer_positions[key] = valid
         if peer_positions:
             info["peer_paper_positions"] = peer_positions
+        if self.portfolio_state is not None:
+            try:
+                state = self.portfolio_state()
+            except Exception:
+                state = None
+            if isinstance(state, dict):
+                info["portfolio"] = state
         info_json = json.dumps(info, sort_keys=True)
         sources = ["deepseek:analysis"] + [
             key + ":paper_position_observation" for key in ("falco", "toro")
@@ -96,7 +120,8 @@ class DeepSeekL5Analyst(Analyst):
             "model": self.model, "stream": False, "max_tokens": self.max_tokens,
             "response_format": {"type": "json_object"},
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": SYSTEM_PROMPT if self.guidance is None
+                 else SYSTEM_PROMPT + " " + self.guidance},
                 {"role": "user", "content": info_json},
             ],
         }

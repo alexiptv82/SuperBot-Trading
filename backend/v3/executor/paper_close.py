@@ -59,7 +59,7 @@ from backend.v3.executor.paper import ExecutionError
 # take_profit e timeout: uscite meccaniche del runner (backend/v3/runner/exits.py).
 CLOSE_REASONS = frozenset({"stop", "brain_close", "manual", "liquidation", "take_profit", "timeout"})
 # Stop spostato dalla protezione dei profitti (runner/exits.py); lo stop iniziale non scrive il campo.
-STOP_KINDS = frozenset({"break_even", "trailing", "protect"})
+STOP_KINDS = frozenset({"break_even", "trailing", "protect", "brain"})   # brain = stop stretto dall'AI (Brain unico)
 
 _QUANT = Decimal("0.00000001")
 _MAX_FEE_BPS = Decimal("100")  # 1% per lato: oltre e' quasi certamente un errore di unita'

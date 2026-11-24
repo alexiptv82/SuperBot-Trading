@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Optional
@@ -31,6 +31,7 @@ from typing import Optional
 from backend.v3.guardian import GuardianPolicy, guardian_policy_from_config
 from backend.v3.risk import RiskPolicy
 from backend.v3.runner.exits import ExitPolicy, load_exit_policy
+from backend.v3.unico import UnicoPolicy, unico_policy_from_config
 
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}USDT$")
 _MODEL_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
@@ -52,6 +53,8 @@ _OPTIONAL_PROFILE_KEYS = {"max_loss_margin_fraction", "min_leverage", "max_lever
 _V2_KEYS = {"analyst", "exit_policy", "guardian"}
 ANALYSTS = ("deepseek", "falco_evoluto")
 _AGGRESSIVE_KEYS = {"min_margin_usd", "max_margin_usd", "max_positions", "max_same_side_risk_fraction"}
+# Schema 3 (24/11, Brain unico PAPER 2000): schema 2 + la sezione ``brain_unico`` (vedi ``backend/v3/unico.py``).
+_V3_KEYS = {"brain_unico"}
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,7 @@ class RunnerConfig:
     analyst: str = "deepseek"                       # schema 2: "deepseek" | "falco_evoluto"
     exit_policy: Optional[ExitPolicy] = None        # schema 2: None = exit_policy.json del codice (schema 1)
     guardian: Optional[GuardianPolicy] = None       # schema 2: None = Guardian spento
+    unico: Optional[UnicoPolicy] = None             # schema 3: None = comportamento degli schemi 1 e 2
 
     @property
     def cycle_ms(self) -> int:
@@ -135,10 +139,11 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
     except (UnicodeDecodeError, ValueError, RecursionError):
         _fail()
     version = data.get("schema_version") if type(data) is dict else None
-    if type(version) is not int or version not in (1, 2) or set(data) != (_KEYS if version == 1 else _KEYS | _V2_KEYS):
+    if (type(version) is not int or version not in (1, 2, 3)
+            or set(data) != {1: _KEYS, 2: _KEYS | _V2_KEYS, 3: _KEYS | _V2_KEYS | _V3_KEYS}[version]):
         _fail()
     v2 = {}
-    if version == 2:
+    if version >= 2:
         if type(data["analyst"]) is not str or data["analyst"] not in ANALYSTS:
             _fail()
         try:
@@ -147,6 +152,14 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
                       guardian=guardian_policy_from_config(data["guardian"]))
         except (ValueError, TypeError):
             _fail()
+    unico = None
+    if version == 3:
+        try:
+            unico = unico_policy_from_config(data["brain_unico"])
+        except (ValueError, TypeError):
+            _fail()
+        if unico.tiers is not None:
+            v2["guardian"] = replace(v2["guardian"], tiers=unico.tiers)
     syms = data["symbols"]
     if (type(syms) is not list or not 1 <= len(syms) <= 40 or len(set(syms)) != len(syms)
             or any(type(s) is not str or not _SYMBOL_RE.match(s) for s in syms)):
@@ -190,6 +203,13 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
     if not (policy.max_loss_fraction <= policy.max_open_risk_fraction
             and policy.max_position_margin_fraction <= policy.max_total_margin_fraction):
         _fail()
+    if unico is not None and unico.leverage_fit:
+        # la leva "fit" esiste solo nel profilo completo (leva minima/massima e limiti per trade)
+        if not (has_profile and aggressive):
+            _fail()
+        policy = replace(policy, leverage_fit=True)
+    if unico is not None and unico.piggy is not None and unico.piggy.reference_equity != equity_preview(data):
+        _fail()
     model, thinking, effort = data["model"], data["thinking"], data["reasoning_effort"]
     max_tokens, cycle = data["max_tokens"], data["cycle_minutes"]
     if (type(model) is not str or not _MODEL_RE.match(model) or type(thinking) is not str or thinking not in _THINKING
@@ -218,7 +238,15 @@ def load_runner_config(raw: bytes) -> RunnerConfig:
         max_tokens=max_tokens, cycle_minutes=cycle,
         input_usd_per_million=_dec(data["input_usd_per_million_tokens"], Decimal("0"), Decimal("1000")),
         output_usd_per_million=_dec(data["output_usd_per_million_tokens"], Decimal("0"), Decimal("1000")),
-        daily_cap_usd=cap, daily_loss_warn=warn, daily_loss_halt=halt, **v2)
+        daily_cap_usd=cap, daily_loss_warn=warn, daily_loss_halt=halt, unico=unico, **v2)
+
+
+def equity_preview(data: dict) -> Optional[Decimal]:
+    """Capitale iniziale del file (per i controlli incrociati prima del controllo completo)."""
+    try:
+        return Decimal(data["initial_equity"])
+    except (InvalidOperation, TypeError, KeyError):
+        return None
 
 
 def default_config_path() -> Path:

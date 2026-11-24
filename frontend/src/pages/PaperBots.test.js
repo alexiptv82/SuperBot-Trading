@@ -253,3 +253,35 @@ test('the choice survives the refresh; a bot that disappears falls back to the f
     expect(m.region().id).toBe('bot-dettagli-falco_evoluto');
   } finally { await m.close(); }
 });
+
+// Brain unico PAPER 2000 (24/11): una sola run, nessun selettore; modalità, slot, salvadanaio, quote, revisioni AI.
+const unico = () => ({ available: true, generated_at_ms: NOW - 20_000, runs: [run('brain_scalp', 'Brain', {
+  initial_equity: '2000', settled_equity: '2310', net_pnl: '310', open_trades: 1,
+  guardian: { state: 'SELECTIVE', reasons: ['profit_selective'], equity: '2330', session_start_equity: '2000',
+    realized_session: '310', ai_cost_session: '1.2', risk_cap: '51.6', as_of_ms: NOW - 2 * MIN },
+  open_positions: [
+    { position_id: 'a', symbol: 'XAUUSDT', side: 1, entry: '2650', stop: '2640', margin: '120', leverage: 22, leg: 'tp1', stop_brain: null },
+    { position_id: 'b', symbol: 'XAUUSDT', side: 1, entry: '2650', stop: '2640', margin: '220', leverage: 22, leg: 'runner', stop_brain: '2652' }],
+  piggy: { total: '120', operating_equity: '2190', reference_equity: '2000', next_sweep_ms: NOW + 3 * 60 * MIN,
+    sweeps: [[NOW - 21 * 60 * MIN, '120']] },
+  reviews: [{ ts_ms: NOW - 5 * MIN, symbol: 'XAUUSDT', proposed: 'MODIFY_STOP', executed: 'MODIFY_STOP', code: 'stop_tightened' },
+    { ts_ms: NOW - 35 * MIN, symbol: 'XAUUSDT', proposed: 'MODIFY_STOP', executed: 'HOLD', code: 'stop_not_tighter' }],
+  config: { initial_equity: '2000', analyst: 'deepseek', cycle_minutes: 30, max_positions: 10, symbols: 27,
+    leverage: [15, 50], risk_per_trade_pct: '4.300', open_risk_pct: '12.00', daily_stop_pct: '25.00',
+    unico: { leverage_fit: true, position_review: true, partial: { fraction: '0.35', at_r: '2' }, max_hold_hours: 12,
+      exit: { take_profit_r: '3.5' }, tiers: { selective_usd: '300', protect_usd: '400' },
+      piggy: { reference_equity: '2000', tz: 'Europe/Rome', hour: 0 } } } })] });
+
+test('Brain unico: one Brain without bot switch, mode and slots, piggy bank, legs and AI reviews', () => {
+  const h = html({ data: unico() });
+  expect(h).not.toContain('Scegli il bot');
+  expect(h).toContain('Brain unico PAPER');
+  for (const t of ['SELETTIVO', 'Slot 1/10', 'scelta dal codice', '35 % a 2R, residuo a 3.5R, al massimo 12 h', '27 mercati',
+    'Salvadanaio', 'Accantonato', '$120,00', 'Capitale operativo', '$2.190,00', 'senza\n      reintegri'.replace(/\s+/g, ' '),
+    '1ª quota · presa a 2R', 'Residuo · verso 3,5R', 'Stop (Brain)', 'Revisioni AI delle posizioni (2)', 'stringe lo stop',
+    'stop non più stretto: ignorato', 'a mezzanotte (ora italiana)'])
+    expect(h.replace(/\s+/g, ' ')).toContain(t);
+  // la modalità sta nella card di stato, sopra equity e posizioni
+  expect(h.indexOf('SELETTIVO')).toBeLessThan(h.indexOf('Equity Brain'));
+  expect(h.indexOf('Salvadanaio Brain')).toBeLessThan(h.indexOf('Posizioni aperte (2)'));
+});

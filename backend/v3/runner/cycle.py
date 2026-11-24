@@ -36,7 +36,7 @@ from backend.v3.brain_f2.engine import BrainEngine, BrainPortfolioSnapshot
 from backend.v3.brain_f2.reviewer import Reviewer
 from backend.v3.brain_market.params import MarketViewParams
 from backend.v3.brain_market.view import regime_for_context
-from backend.v3.dashboard import PortfolioSummary, build_summary
+from backend.v3.dashboard import PortfolioSummary, build_summary, open_groups
 from backend.v3.brain_market.classic_peers import validate_peer_signal
 from backend.v3.events import Event, EventJournal
 from backend.v3.executor.paper import ExecutionError, execute_paper
@@ -107,7 +107,7 @@ class CycleReport:
 
 
 def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal,
-                          roundtrip_cost_bp: Decimal) -> BrainPortfolioSnapshot:
+                          roundtrip_cost_bp: Decimal, *, reserve: Decimal = Decimal("0")) -> BrainPortfolioSnapshot:
     """Equity PAPER = capitale iniziale + PnL realizzato; margine e rischio aperto dalle posizioni aperte.
 
     Rischio aperto = perdita STIMATA allo stop delle posizioni aperte, costi stimati inclusi, con la STESSA formula
@@ -116,7 +116,10 @@ def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal,
     non cambia: si cambia solo come lo si legge."""
     if type(roundtrip_cost_bp) is not Decimal or not roundtrip_cost_bp.is_finite() or roundtrip_cost_bp < 0:
         raise ValueError("invalid_cost_bp")
-    equity = initial_equity + summary.realized_pnl
+    # ``reserve``: salvadanaio del Brain unico (profitti accantonati, mai reinvestiti); 0 per le altre run.
+    if type(reserve) is not Decimal or not reserve.is_finite() or reserve < 0:
+        raise ValueError("invalid_reserve")
+    equity = initial_equity + summary.realized_pnl - reserve
     margin = summary.margin_in_use
     side_risk = {1: Decimal("0"), -1: Decimal("0")}
     for p in summary.open_positions:
@@ -124,7 +127,8 @@ def snapshot_from_summary(summary: PortfolioSummary, initial_equity: Decimal,
             estimated_loss_per_unit(p.fill_price, p.stop_price, roundtrip_cost_bp) * p.quantity)
     open_risk = sum(side_risk.values(), Decimal("0"))
     cash = max(equity - margin, Decimal("0"))
-    return BrainPortfolioSnapshot(equity, cash, margin, open_risk, open_positions=len(summary.open_positions),
+    # slot = aperture distinte: le due quote di un'apertura divisa occupano uno slot (run storiche: invariato)
+    return BrainPortfolioSnapshot(equity, cash, margin, open_risk, open_positions=open_groups(summary.open_positions),
                                   side_open_risk=side_risk)
 
 
@@ -153,7 +157,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                     trace: str = "off", wall_ms: Optional[Callable[[], int]] = None,
                     reentry_policy: Optional[ReentryPolicy] = None, instant: str = "cycle",
                     slot_start_ms: Optional[int] = None, slot_end_ms: Optional[int] = None,
-                    guardian: Optional[Callable[[int], object]] = None) -> CycleReport:
+                    guardian: Optional[Callable[[int], object]] = None,
+                    reserve_of: Optional[Callable[[PortfolioSummary, int], Decimal]] = None) -> CycleReport:
     """Un giro su tutti i simboli. ``store.refresh(symbol, tf, now_ms)`` -> barre contigue (puo' sollevare).
 
     ``trace="required"``: ogni decisione scritta dal motore (anche NO_TRADE) riceve subito uno snapshot v2
@@ -281,7 +286,9 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                 errors.append((symbol, "guardian_locked"))            # nessuna chiamata all'AI, nessuna apertura
                 continue
             bars_holder.set(symbol, bars_by_tf)
-            portfolio = snapshot_from_summary(summary, initial_equity, risk_policy.estimated_roundtrip_cost_bp)
+            portfolio = snapshot_from_summary(
+                summary, initial_equity, risk_policy.estimated_roundtrip_cost_bp,
+                reserve=reserve_of(summary, t) if reserve_of is not None else Decimal("0"))
             if g is not None:
                 portfolio.risk_cap = g.risk_cap                       # il rischio autorizzato e' il minore dei limiti
             engine = BrainEngine(
@@ -334,7 +341,8 @@ def run_brain_cycle(*, now_ms: int, journal: EventJournal, run_id: str, symbols:
                         blocked_by = rule
                 theses.append((symbol, info.thesis_id, info.reentry_index, rule or ""))
             guardian_block = None
-            if approved_open and g is not None and g.state == "PROTECTED":
+            # PROTECTED (e, con il Brain unico, SELETTIVO da profitto) porta una confidenza minima: stesso controllo
+            if approved_open and g is not None and (g.state == "PROTECTED" or g.min_confidence is not None):
                 # criteri verificabili, nessuna eccezione dell'AI: confidenza minima e nessun reingresso della tesi
                 conf = getattr(decision.proposal, "confidence", None)
                 if not isinstance(conf, (int, float)) or Decimal(str(conf)) < g.min_confidence:

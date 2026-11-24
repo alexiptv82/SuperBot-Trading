@@ -14,6 +14,7 @@ cooperating writers are proven. No real exchange orders are possible.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Callable, Mapping
 import fcntl
@@ -34,7 +35,7 @@ _REQ_GUARD = frozenset({
     "budget_problem", "daily_loss_halted", "paused", "market_rules",
     "market_price", "market_fresh",
 })
-_OPT_GUARD = frozenset({"max_decision_age_ms", "max_entry_divergence"})
+_OPT_GUARD = frozenset({"max_decision_age_ms", "max_entry_divergence", "equity_reserve"})
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,8 @@ class OpenCommit:
 
 def commit_paper_open(*, journal: EventJournal, data_dir: Path, run_id: str,
                       decision: BrainDecision, clock_ms: Callable[[], int],
-                      guard_inputs: Mapping, slippage_bps: int, desk_mode: str) -> OpenCommit:
+                      guard_inputs: Mapping, slippage_bps: int, desk_mode: str,
+                      partial=None) -> OpenCommit:
     """Serialize *cooperating* PAPER OPEN writers, then recheck under lease.
 
     Safety precedence: scope/mode, lease, decision replay, official risk veto,
@@ -114,8 +116,16 @@ def commit_paper_open(*, journal: EventJournal, data_dir: Path, run_id: str,
         if exit_service_healthy(data_dir=root, run_id=run_id, now_ms=now_ms) is not True:
             return deny("exit_service_unhealthy")
         # Guard and append protected by the SAME cooperating-writer lock.
+        legs = None
+        if partial is not None:
+            # Brain unico: due quote (tp1 + runner) se entrambe rispettano passo e nozionale minimo della borsa
+            from backend.v3.unico import split_legs
+            rules = guard_inputs["market_rules"](decision.proposal.symbol)
+            legs = split_legs(decision.risk_quote.quantity, step=Decimal(str(rules["quantity_step"])),
+                              price=decision.proposal.entry_price,
+                              minimum_notional=Decimal(str(rules["minimum_notional"])), partial=partial)
         receipt = execute_paper(decision, portfolio_id="brain", run_id=run_id,
-                                journal=journal, slippage_bps=slippage_bps, now_ms=now_ms)
+                                journal=journal, slippage_bps=slippage_bps, now_ms=now_ms, legs=legs)
         return OpenCommit(True, "paper_open_committed", receipt)
     except Exception:
         return deny("open_commit_failed")

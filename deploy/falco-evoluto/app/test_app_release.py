@@ -275,3 +275,46 @@ def test_tampered_package_is_refused_before_any_change(tmp_path):
     (pkg2 / "ui" / "index.html").write_text("manomessa")
     rc, out = _run(pkg2, env2)
     assert rc == 2 and "RIFIUTATA_IMPRONTE_INTERFACCIA" in out and not log2.exists()
+
+
+# ------------------------------------------------------------------ Brain unico PAPER 2000 (24/11)
+def test_target_env_for_the_single_brain_replaces_the_two_runs_and_is_idempotent(wu):
+    base = dict(wu.base.REQUIRED_ENV, V3_COMPARE_RUNS=wu.compare_env_value(), OTHER="x")
+    with pytest.raises(wu.Refused):                         # senza l'opzione la web a Brain unico non e' accettata
+        wu.target_env(dict(base, V3_COMPARE_RUNS=wu.compare_env_value(wu.UNICO_RUNS)))
+    wu.UNICO["on"] = True
+    try:
+        new = wu.target_env(base)
+        assert json.loads(new["V3_COMPARE_RUNS"]) == [{"name": "brain_scalp", "label": "Brain",
+                                                       "dir": wu.RUN_ROOT + "/brain-v3-brain-scalp-p1",
+                                                       "run_id": "brain-scalp-paper-p1"}]
+        assert wu.target_env(new) == new and dict(new, V3_COMPARE_RUNS=base["V3_COMPARE_RUNS"]) == dict(
+            base, V3_PAPER_ARCHIVE_ROOT=wu.ARCHIVE)
+        with pytest.raises(wu.Refused):
+            wu.target_env(dict(base, V3_COMPARE_RUNS="[]"))
+    finally:
+        wu.UNICO["on"] = False
+
+
+def test_candidate_probe_on_the_single_brain_with_two_legs_counts_closes_and_hides_falco(tmp_path):
+    from backend.v3.unico import PartialTakeProfit, split_legs
+    runs, _arch, penv = _world(tmp_path)
+    unico = runs / "unico"
+    unico.mkdir()
+    rid = "brain-scalp-paper-p1"
+    root = prepare_new_paper_run(parent=unico, run_name="brain-v3-brain-scalp-p1", run_id=rid,
+                                 config_bytes=(RUNNER / "runner_config_brain_unico_2000_paper.json").read_bytes(),
+                                 desk_mode="paper", now_ms=int(time.time() * 1000) - 5 * H, expected_initial_equity="2000")
+    j = EventJournal(root / "journal.db")
+    d = _hand(side=1, entry="100", stop="98", qty="10", margin="100", lev=20, symbol="BTCUSDT")
+    legs = split_legs(D(10), step=D("0.001"), price=D(100), minimum_notional=D(5), partial=PartialTakeProfit(D("0.35"), D(2)))
+    execute_paper(d, portfolio_id="brain", run_id=rid, journal=j, now_ms=int(time.time() * 1000) - 4 * H, legs=legs)
+    first = [r.event.payload["position_id"] for r in j.list_run("brain", rid) if r.event.kind == "paper_open"][0]
+    close_paper(portfolio_id="brain", run_id=rid, position_id=first, exit_price=D(104), reason="take_profit", fee_bps=6,
+                journal=j, now_ms=int(time.time() * 1000) - 3 * H)         # 1a quota a 2R, il residuo resta aperto
+    penv["V3_COMPARE_RUNS"] = json.dumps([{"name": "brain_scalp", "label": "Brain", "dir": str(root), "run_id": rid}])
+    p = subprocess.run([sys.executable, "-B", "-", "candidate", "2", "unico"], input=(HERE / "app_probe.py").read_text(),
+                       cwd=tmp_path, env=penv, capture_output=True, text=True, timeout=120)
+    out = p.stdout + p.stderr
+    assert p.returncode == 0, out
+    assert "APP_PROBE brain_scalp=run brain-scalp-paper-p1: 1 chiusi, 1 aperti" in out and "RESULT=PASS_CANDIDATE" in out

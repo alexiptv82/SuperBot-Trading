@@ -41,6 +41,15 @@ class OpenPosition:
     leverage: int
     stop_price: Decimal
     opened_at_ms: int
+    # Brain unico (24/11): quota di un'apertura divisa (``tp1`` | ``runner`` | "" = posizione unica), take-profit
+    # proprio della quota in R (None = politica della run) e gruppo = apertura di origine (stessa decisione).
+    leg: str = ""
+    take_profit_r: Decimal | None = None
+    group_id: str = ""
+
+    @property
+    def group(self) -> str:
+        return self.group_id or self.position_id
 
 
 @dataclass(frozen=True)
@@ -88,6 +97,26 @@ def _str_field(value: Any, default: str = "") -> str:
     return str(value) if value is not None else default
 
 
+def _leg_fields(p: Mapping) -> dict:
+    """Campi della quota (solo aperture divise del Brain unico); altrimenti i valori predefiniti."""
+    leg = p.get("leg")
+    if leg not in ("tp1", "runner"):
+        return {}
+    try:
+        tp = Decimal(str(p.get("take_profit_r"))) if p.get("take_profit_r") is not None else None
+        if tp is not None and (not tp.is_finite() or not 0 < tp <= 20):
+            tp = None
+    except (InvalidOperation, TypeError, ValueError):
+        tp = None
+    did = p.get("decision_event_id")
+    return {"leg": leg, "take_profit_r": tp, "group_id": did if isinstance(did, str) and did else ""}
+
+
+def open_groups(positions) -> int:
+    """Aperture distinte (slot occupati): le quote di una stessa apertura contano una volta."""
+    return len({p.group for p in positions})
+
+
 # ---------------------------------------------------------------------------
 # Builder principale
 # ---------------------------------------------------------------------------
@@ -133,6 +162,7 @@ def build_summary(
                 leverage=_int_field(p.get("leverage"), 1),
                 stop_price=_decimal(p.get("stop_price")),
                 opened_at_ms=ts,
+                **_leg_fields(p),
             )
             open_map[pid] = pos
 

@@ -24,7 +24,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Mapping, Optional
 
-from backend.v3.dashboard import build_summary
+from backend.v3.dashboard import build_summary, open_groups
 from backend.v3.events import EventJournal
 
 ENV = "V3_COMPARE_RUNS"
@@ -111,7 +111,24 @@ def _config(path: Path) -> Optional[dict]:
             "margin": [_s(p.min_margin), _s(p.max_margin)], "max_positions": p.max_positions,
             "risk_per_trade_pct": str(p.max_loss_fraction * 100), "open_risk_pct": str(p.max_open_risk_fraction * 100),
             "daily_stop_pct": str(c.daily_loss_halt * 100), "guardian": c.guardian is not None,
-            "take_profit_r": None if c.exit_policy is None else str(c.exit_policy.take_profit_r)}
+            "take_profit_r": None if c.exit_policy is None else str(c.exit_policy.take_profit_r),
+            "symbols": len(c.symbols), "unico": _unico_config(c)}
+
+
+def _unico_config(c) -> Optional[dict]:
+    """Brain unico (schema 3): le regole in vigore, per la dashboard (None per le altre run)."""
+    u = c.unico
+    if u is None:
+        return None
+    t = u.tiers
+    return {"leverage_fit": u.leverage_fit, "position_review": u.position_review,
+            "partial": None if u.partial is None else {"fraction": str(u.partial.fraction), "at_r": str(u.partial.at_r)},
+            "tiers": None if t is None else {"selective_usd": str(t.selective_usd), "protect_usd": str(t.protect_usd)},
+            "piggy": None if u.piggy is None else {"reference_equity": str(u.piggy.reference_equity), "tz": u.piggy.tz,
+                                                   "hour": u.piggy.hour},
+            "max_hold_hours": None if c.exit_policy is None else c.exit_policy.max_hold_ms // 3_600_000,
+            "exit": None if c.exit_policy is None else {k: _s(getattr(c.exit_policy, k)) for k in (
+                "take_profit_r", "be_at_r", "trail_at_r", "trail_dist_r")}}
 
 
 def _side_bucket():
@@ -135,7 +152,8 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
     gross_win, gross_loss, wins, losses, manual, protected, fees = (Decimal("0"), Decimal("0"), 0, 0, 0, 0,
                                                                     Decimal("0"))
     sides = {"long": _side_bucket(), "short": _side_bucket()}
-    guardian, decisions = None, []
+    guardian, decisions, reviews = None, [], []
+    trades: dict = {}                    # apertura (gruppo di quote) -> [lato, P&L netto]: un trade = un'apertura
     mtm_samples: list[Decimal] = []      # equity a mercato registrate dal Guardian con prezzi verificati
     mtm_incomplete = False
     for r in events:
@@ -149,13 +167,9 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
             if peak - equity > max_dd:
                 max_dd, max_dd_pct = peak - equity, (peak - equity) / peak * 100
             fees += _d(p.get("fees")) or Decimal("0")
-            b = sides["long" if p.get("side") == 1 else "short"]
-            b["trades"] += 1
-            b["net_pnl"] += pnl
-            if pnl > 0:
-                wins, gross_win, b["wins"] = wins + 1, gross_win + pnl, b["wins"] + 1
-            elif pnl < 0:
-                losses, gross_loss, b["losses"] = losses + 1, gross_loss - pnl, b["losses"] + 1
+            key = p.get("decision_event_id") or p.get("position_id")
+            t = trades.setdefault(key, [p.get("side"), Decimal("0")])
+            t[1] += pnl
             manual += p.get("reason") == "manual"
             protected += p.get("stop_kind") in ("break_even", "trailing", "protect")
         elif ev.kind == "guardian_state":
@@ -167,6 +181,12 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
             guardian = {k: p.get(k) for k in ("state", "reasons", "equity", "session_start_equity", "peak_equity",
                                                "giveback", "floor", "budget", "risk_cap", "open_risk",
                                                "realized_session", "unrealized", "ai_cost_session", "as_of_ms")}
+        elif ev.kind == "position_review":
+            acts = ("NONE", "HOLD", "CLOSE", "PARTIAL_CLOSE", "MODIFY_STOP")      # elenco chiuso
+            reviews.append({"ts_ms": ev.occurred_at_ms, "symbol": p.get("symbol"),
+                            "proposed": p.get("proposed") if p.get("proposed") in acts else None,
+                            "executed": p.get("executed") if p.get("executed") in acts else None,
+                            "code": p.get("code") if _CODE.match(str(p.get("code", ""))) else None})
         elif ev.kind == "brain_decision":
             decisions.append({"ts_ms": ev.occurred_at_ms, "symbol": p.get("symbol"), "kind": p.get("kind"),
                               "status": p.get("status"),
@@ -174,6 +194,14 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
                               "risk_reason": p.get("risk_reason") if _CODE.match(str(p.get("risk_reason", "")))
                               else None,
                               "sources": [s for s in (p.get("sources") or []) if isinstance(s, str) and _CODE.match(s)]})
+    for side, pnl in trades.values():          # statistiche per TRADE (le quote di un'apertura contano una volta)
+        b = sides["long" if side == 1 else "short"]
+        b["trades"] += 1
+        b["net_pnl"] += pnl
+        if pnl > 0:
+            wins, gross_win, b["wins"] = wins + 1, gross_win + pnl, b["wins"] + 1
+        elif pnl < 0:
+            losses, gross_loss, b["losses"] = losses + 1, gross_loss - pnl, b["losses"] + 1
     realized = equity - start                 # P&L di TRADING: realizzato, commissioni incluse, nessun costo AI
     decided = wins + losses
     spend = _spend(ref.dir / "budget.db", immutable=archived)
@@ -188,6 +216,10 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
                 mtm_dd, mtm_dd_pct = top - v, (top - v) / top * 100
     for b in sides.values():
         b["net_pnl"] = str(b["net_pnl"])
+    moved: dict = {}                            # ultimo stop stretto dall'AI per posizione (solo verso il profitto)
+    for r in events:
+        if r.event.kind == "stop_move" and isinstance(r.event.payload, Mapping):
+            moved[r.event.payload.get("position_id")] = _d(r.event.payload.get("stop_price"))
     hb = None
     try:
         hb = json.loads((ref.dir / "heartbeat.json").read_text())
@@ -208,16 +240,31 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
                 mtm_drawdown_pct=None if mtm_dd_pct is None else str(mtm_dd_pct.quantize(Decimal("0.01"))),
                 mtm_samples=len(mtm_samples), mtm_incomplete=mtm_incomplete,
                 profit_factor=None if gross_loss == 0 else str((gross_win / gross_loss).quantize(Decimal("0.01"))),
-                wins=wins, losses=losses, closed=len(summary.closed_trades),
+                wins=wins, losses=losses, closed=len(trades), closes=len(summary.closed_trades),
                 win_rate=None if not decided else str((Decimal(wins) * 100 / decided).quantize(Decimal("0.1"))),
                 fees=str(fees), by_side=sides, manual_closes=manual, protected_stops=protected,
                 open_positions=[{"position_id": o.position_id, "symbol": o.symbol, "side": o.side,
                                  "entry": str(o.fill_price), "stop": str(o.stop_price), "margin": str(o.margin_used),
-                                 "leverage": o.leverage, "opened_at_ms": o.opened_at_ms}
+                                 "leverage": o.leverage, "opened_at_ms": o.opened_at_ms,
+                                 "leg": o.leg, "group": o.group, "stop_brain": _s(moved.get(o.position_id))}
                                 for o in summary.open_positions],
-                guardian=guardian, decisions=decisions[-8:][::-1], ai_spend=spend,
+                open_trades=open_groups(summary.open_positions),
+                guardian=guardian, decisions=decisions[-8:][::-1], reviews=reviews[-8:][::-1], ai_spend=spend,
+                piggy=_piggy(cfg, summary, start, now_ms),
                 manual_close_allowed=_close_ready(ref, now_ms),
                 close_pending=(ref.dir / "close_request.json").exists())
+
+
+def _piggy(cfg: dict, summary, start: Decimal, now_ms: int) -> Optional[dict]:
+    """Salvadanaio del Brain unico, ricostruito con la STESSA funzione del runner (``unico.piggy_from_closed``)."""
+    u = cfg.get("unico")
+    if not u or not u.get("piggy"):
+        return None
+    from backend.v3.unico import PiggyPolicy, piggy_from_closed
+    pol = PiggyPolicy(Decimal(u["piggy"]["reference_equity"]), u["piggy"]["tz"], u["piggy"]["hour"])
+    st = piggy_from_closed(summary.closed_trades, initial_equity=start, now_ms=now_ms, policy=pol)
+    return {"total": str(st.total), "operating_equity": str(st.operating_equity), "next_sweep_ms": st.next_sweep_ms,
+            "reference_equity": str(pol.reference_equity), "sweeps": [[t, str(v)] for t, v in st.sweeps][-14:]}
 
 
 def _close_ready(ref: RunRef, now_ms: int) -> bool:

@@ -41,6 +41,9 @@ class RiskPolicy:
     # Esposizione correlata: le crypto del runner si muovono con BTC. Rischio a stop di TUTTE le posizioni nella
     # stessa direzione (piu' la nuova) entro questa frazione dell'equity.
     max_same_side_risk_fraction: Decimal | None = None
+    # Brain unico (24/11): la leva e' scelta dal motore (la piu' bassa che raggiunge la dimensione massima), non
+    # quella proposta dall'AI. Non cambia nessun controllo di questo modulo: vedi ``brain_f2/engine.py``.
+    leverage_fit: bool = False
 
 
 @dataclass(frozen=True)

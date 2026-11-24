@@ -207,6 +207,22 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     holder = CycleBars()
     gate = ledger.spending_gate(daily_limits={PROVIDER: config.daily_cap_units})
     keep = {s.name: (s.candle_ms, min_bars(s, vp.indicators) + EXTRA_KEEP) for s in vp.timeframes}
+    # ------------------------------------------------------------------ Brain unico (schema 3, 24/11)
+    unico = config.unico
+    last_guardian: dict = {"state": "NORMAL"}
+
+    def reserve_of(summary, at_ms: int) -> Decimal:
+        """Salvadanaio: profitti accantonati a mezzanotte, esclusi dal capitale che il Brain usa."""
+        from backend.v3.unico import piggy_from_closed
+        return piggy_from_closed(summary.closed_trades, initial_equity=config.initial_equity, now_ms=at_ms,
+                                 policy=unico.piggy).total
+
+    def portfolio_state() -> dict:
+        from backend.v3.dashboard import build_summary, open_groups
+        summ = build_summary(journal, PORTFOLIO_ID, run_id)
+        slots = config.risk_policy.max_positions or 0
+        return {"guardian_mode": last_guardian["state"], "open_trades": open_groups(summ.open_positions),
+                "free_slots": max(0, slots - open_groups(summ.open_positions))}
     if config.analyst == "falco_evoluto":
         # regole + DeepSeek consulente raro (stesso trasporto metrato, budget proprio della run)
         from backend.v3.falco_evoluto import EMA200_MIN_BARS, FalcoEvolutoAnalyst
@@ -216,11 +232,15 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         if "4h" in keep:                    # EMA200 4h solo con storia sufficiente (correzione dell'originale)
             keep["4h"] = (keep["4h"][0], max(keep["4h"][1], FALCO_4H_KEEP))
     elif config.analyst == "deepseek":
+        unico_extra = {}
+        if unico is not None and unico.guidance:
+            from backend.v3.brain_market.deepseek_l5 import UNICO_GUIDANCE
+            unico_extra = {"guidance": UNICO_GUIDANCE, "portfolio_state": portfolio_state}
         analyst = MarketEntryAnalyst(DeepSeekL5Analyst(
             transport=metered, model=config.model,
             outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
             bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
-            spending_gate=gate, enabled=True, max_tokens=config.max_tokens))
+            spending_gate=gate, enabled=True, max_tokens=config.max_tokens, **unico_extra))
     else:
         raise ValueError("invalid_analyst")
     store = CandleStore(get_json, keep=keep)
@@ -232,6 +252,21 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     allowed = tuple(sorted(menu_ids(menu)))
     guardian_eval = (make_guardian(journal=journal, run_id=run_id, config=config, ledger=ledger, get_json=get_json)
                      if config.guardian is not None else None)
+    if guardian_eval is not None and unico is not None:
+        inner_guardian = guardian_eval
+
+        def guardian_eval(at_ms: int):                       # ricorda il modo per il prompt e la revisione
+            g = inner_guardian(at_ms)
+            last_guardian["state"] = getattr(g, "state", "LOCKED")
+            return g
+    reviewer = None
+    if unico is not None and unico.position_review:
+        from backend.v3.brain_market.view import build_market_view
+        from backend.v3.runner.position_review import DeepSeekPositionReviewer
+        reviewer = DeepSeekPositionReviewer(
+            transport=metered, model=config.model, spending_gate=gate, max_tokens=config.max_tokens,
+            market_view=lambda sym, t: build_market_view({tf.name: store.refresh(sym, tf.name, t)
+                                                          for tf in vp.timeframes}, timestamp_ms=t, params=vp))
 
     def halted() -> Optional[str]:
         return mandate.problem() or budget_halt()
@@ -257,15 +292,27 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             "market_price": lambda sym, t: last_minute_close(sym, t, get_json),
             "market_fresh": fresh_market,
         }
+        if unico is not None and unico.piggy is not None:
+            guard_inputs["equity_reserve"] = reserve_of
         return commit_paper_open(
             journal=journal, data_dir=data_dir, run_id=run_id, decision=decision,
             clock_ms=clock_ms, guard_inputs=guard_inputs,
-            slippage_bps=config.slippage_bps, desk_mode=desk_mode)
+            slippage_bps=config.slippage_bps, desk_mode=desk_mode,
+            partial=unico.partial if unico is not None else None)
 
     def run_cycle(now_ms: int, slot: int) -> CycleReport:
         rules.load(now_ms)
         # stesso slot che il runner usa per decidere quando girare: un riavvio a meta' slot non ridecide i simboli
         slot_start = slot * config.cycle_ms
+        if reviewer is not None:
+            # Brain unico: prima si rivedono le posizioni aperte (le uscite deterministiche restano attive)
+            from backend.v3.runner.position_review import review_open_positions
+            try:
+                review_open_positions(journal=journal, run_id=run_id, data_dir=data_dir, now_ms=now_ms,
+                                      reviewer=reviewer, mode=last_guardian["state"],
+                                      price_of=lambda sym, t: last_minute_close(sym, t, get_json))
+            except Exception:
+                pass                                        # una revisione fallita non ferma il giro delle aperture
         return run_brain_cycle(
             now_ms=now_ms, journal=journal, run_id=run_id, symbols=config.symbols, store=store,
             bars_holder=holder, analyst=analyst, view_params=vp, risk_policy=config.risk_policy,
@@ -279,7 +326,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             # anti-reingresso in sola osservazione: soglie provvisorie finche' E0 e il proprietario non decidono
             reentry_policy=ReentryPolicy(mode="observe"),
             slot_start_ms=slot_start, slot_end_ms=slot_start + config.cycle_ms,
-            guardian=guardian_eval)
+            guardian=guardian_eval,
+            reserve_of=reserve_of if unico is not None and unico.piggy is not None else None)
 
     def run_monitor(now_ms: int) -> MonitorReport:
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,
