@@ -201,26 +201,40 @@ def performance(run_dir: Path, run_id: str, now_ms: int, *, archived: bool = Fal
     last = []
 
     def bucket(day):
-        return days.setdefault(day, {"date": day, "trades": 0, "wins": 0, "losses": 0, "gross": Decimal(0),
-                                     "fees": Decimal(0), "net": Decimal(0)})
+        return days.setdefault(day, {"date": day, "trades": 0, "closes": 0, "wins": 0, "losses": 0,
+                                     "gross": Decimal(0), "fees": Decimal(0), "net": Decimal(0)})
 
+    # Un TRADE = un'apertura (le quote di prima del 24/11 e le parti di una posizione ridotta contano una volta): il P&L
+    # resta per data dell'evento di chiusura; trade, vinti e persi contano al giorno in cui il trade e' chiuso del tutto,
+    # con il suo risultato complessivo. "closes" = eventi di chiusura (totali e parziali).
+    open_parts: dict = {}                       # trade -> posizioni ancora aperte
+    trade_pnl: dict = {}
     for r in events:
         ev, p = r.event, _payload(r)
-        if ev.kind in ("paper_close", "paper_reduce"):        # una riduzione e' una chiusura (parziale)
+        key = p.get("decision_event_id") or p.get("position_id")
+        if ev.kind == "paper_open":
+            open_parts[key] = open_parts.get(key, 0) + 1
+        elif ev.kind in ("paper_close", "paper_reduce"):        # una riduzione e' una chiusura (parziale)
             pnl = _d(p.get("realized_pnl"))
             if pnl is None:
                 continue
             eq += pnl
             curve.append({"t": ev.occurred_at_ms, "equity": str(eq)})
             b = bucket(_day(ev.occurred_at_ms, tz))
-            b["trades"] += 1
-            b["wins"] += pnl > 0
-            b["losses"] += pnl < 0
+            b["closes"] += 1
             b["gross"] += _d(p.get("gross_pnl")) or Decimal(0)
             b["fees"] += _d(p.get("fees")) or Decimal(0)
             b["net"] += pnl
-            held = p.get("held_ms")
-            trades.append((pnl, held if type(held) is int and held >= 0 else None))
+            trade_pnl[key] = trade_pnl.get(key, Decimal(0)) + pnl
+            if ev.kind == "paper_close":
+                open_parts[key] = open_parts.get(key, 1) - 1
+                if open_parts[key] <= 0:                          # trade chiuso del tutto: conta una volta
+                    total = trade_pnl.pop(key)
+                    b["trades"] += 1
+                    b["wins"] += total > 0
+                    b["losses"] += total < 0
+                    held = p.get("held_ms")
+                    trades.append((total, held if type(held) is int and held >= 0 else None))
         elif ev.kind == "guardian_state":
             mark = _d(p.get("equity"))
             if mark is not None and not any(x in (p.get("reasons") or []) for x in ("data_fault", "guardian_error")):
@@ -253,11 +267,12 @@ def performance(run_dir: Path, run_id: str, now_ms: int, *, archived: bool = Fal
         d = d0
         while d <= d1 and len(daily) < 400:
             k = d.isoformat()
-            b = days.get(k) or {"date": k, "trades": 0, "wins": 0, "losses": 0, "gross": Decimal(0),
+            b = days.get(k) or {"date": k, "trades": 0, "closes": 0, "wins": 0, "losses": 0, "gross": Decimal(0),
                                 "fees": Decimal(0), "net": Decimal(0)}
             running += b["net"]
             ai = None if spend is None else spend.get(k, Decimal(0))
-            daily.append({"date": k, "trades": b["trades"], "wins": b["wins"], "losses": b["losses"],
+            daily.append({"date": k, "trades": b["trades"], "closes": b["closes"], "wins": b["wins"],
+                          "losses": b["losses"],
                           "gross": str(b["gross"]), "fees": str(b["fees"]), "net": str(b["net"]),
                           "ai_cost": _s(ai), "net_after_ai": None if ai is None else str(b["net"] - ai),
                           "equity_end": str(running)})

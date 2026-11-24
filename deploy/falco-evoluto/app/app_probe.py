@@ -82,7 +82,7 @@ def checks(get, post, archived: int):
             fail("performance_unavailable_" + name)
         if D(p["daily"][-1]["equity_end"]) != D(c.get("settled_equity")):
             fail("performance_equity_mismatch_" + name)
-        if sum(p["daily"][i]["trades"] for i in range(len(p["daily"]))) != closes:
+        if sum(p["daily"][i].get("closes", p["daily"][i]["trades"]) for i in range(len(p["daily"]))) != closes:
             fail("performance_daily_count_mismatch_" + name)
         dec = (p.get("decisions") or {}).get("total")
         say(name, f"run {run_id}: {c.get('closed')} chiusi, {len(opened)} aperti, {len(p['daily'])} giorni, "

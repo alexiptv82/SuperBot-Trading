@@ -317,3 +317,48 @@ def test_telegram_reports_second_entry_partial_and_residual_close_once(tmp_path)
     assert msgs[1].startswith("✂️ Chiusura parziale SHORT BTC · take profit · uscita 59000")
     assert msgs[2].startswith("✅ Chiusura del residuo SHORT BTC · stop a pareggio") and len(msgs) == 3
     assert n.poll(T0 + 52 * MIN) == []
+
+
+def test_daily_performance_counts_each_trade_once_and_keeps_pnl_by_date(tmp_path):
+    """Una posizione chiusa in piu' parti (anche su giorni diversi) e le due quote di prima del 24/11 contano UN trade,
+    con il risultato complessivo, nel giorno in cui il trade e' chiuso del tutto; il P&L resta per data dell'evento."""
+    import shutil
+    from backend.tests.test_v3_brain_unico_2000 import _open as legs_open
+    from backend.v3.compare_view import RunRef, read_run
+    from backend.v3.paper_app_view import performance
+    shutil.copy(CFG, tmp_path / "runner_config.json")
+    j = _journal(tmp_path)
+    day1 = _rome_midnight(24) + 10 * 3_600_000
+    pid = _short_btc(j, reserve=False, qty="0.100", margin="200", at=day1)
+    red = reduce_paper(portfolio_id="brain", run_id=RUN, position_id=pid, fraction=D("0.35"), exit_price=D(59000),
+                       reason="take_profit", fee_bps=6, journal=j, quantity_step=D("0.001"), now_ms=day1 + 60 * MIN)
+    fin = close_paper(portfolio_id="brain", run_id=RUN, position_id=pid, exit_price=D(60500), reason="stop",
+                      fee_bps=6, journal=j, now_ms=_rome_midnight(25) + 60 * MIN)       # residuo chiuso il giorno dopo
+    legs_open(j, at=_rome_midnight(25) + 2 * 3_600_000, decision_id="brain-req-legs", symbol="ETHUSDT")
+    for i, p in enumerate(build_summary(j, "brain", RUN).open_positions):              # vecchio stile: due quote
+        close_paper(portfolio_id="brain", run_id=RUN, position_id=p.position_id, exit_price=D(99), reason="stop",
+                    fee_bps=6, journal=j, now_ms=_rome_midnight(25) + (3 + i) * 3_600_000)
+    perf = performance(tmp_path, RUN, _rome_midnight(26) - MIN)
+    d24, d25 = [d for d in perf["daily"] if d["date"] in ("2026-11-24", "2026-11-25")]
+    assert (d24["closes"], d24["trades"], d24["wins"], d24["losses"]) == (1, 0, 0, 0)    # solo la parte incassata
+    assert D(d24["net"]) == D(red["realized_pnl"])
+    assert (d25["closes"], d25["trades"]) == (3, 2)                                      # BTC (residuo) + ETH (2 quote)
+    total_btc = D(red["realized_pnl"]) + fin.realized_pnl
+    assert d25["wins"] + d25["losses"] == 2 and d25["wins"] == (1 if total_btc > 0 else 0)
+    assert sum(D(d["net"]) for d in perf["daily"]) == build_summary(j, "brain", RUN).realized_pnl
+    view = read_run(RunRef("brain_scalp", "Brain", tmp_path, RUN), _rome_midnight(26) - MIN)
+    assert sum(d["closes"] for d in perf["daily"]) == view["closes"] and sum(d["trades"] for d in perf["daily"]) == 2
+
+
+def test_review_history_shows_the_ai_second_entry(tmp_path):
+    import shutil
+    from backend.v3.compare_view import RunRef, read_run
+    from backend.v3.events import Event
+    shutil.copy(CFG, tmp_path / "runner_config.json")
+    j = _journal(tmp_path)
+    _short_btc(j)
+    j.append(Event("position_review.1.0", "brain", RUN, "position_review", T0 + MIN, "runner.position_review",
+                   {"symbol": "BTCUSDT", "group": "g", "side": -1, "proposed": "ADD", "executed": "ADD",
+                    "code": "add_requested", "source": "agreed", "claude": {"status": "ok", "verdict": "CONFIRM"}}))
+    rev = read_run(RunRef("brain_scalp", "Brain", tmp_path, RUN), T0 + 2 * MIN)["reviews"][0]
+    assert (rev["proposed"], rev["executed"], rev["source"]) == ("ADD", "ADD", "agreed")

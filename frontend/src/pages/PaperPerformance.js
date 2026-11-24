@@ -169,7 +169,7 @@ function SingleView({ run, perf, nowMs }) {
           <span style={{ fontSize: 17, fontWeight: 800, color: tone(d.net) }}>{sgn(d.net)}</span>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: 13, color: C.muted, marginTop: 4 }}>
-          <span>{d.trades} trade ({d.wins}V/{d.losses}P)</span>
+          <span>{d.trades} trade ({d.wins}V/{d.losses}P){d.closes > d.trades ? ` · ${d.closes} chiusure` : ''}</span>
           <span>commissioni {usd(d.fees)}</span>
           <span>AI {usd(d.ai_cost, 3)}</span>
           <span>dopo AI <strong style={{ color: tone(d.net_after_ai) }}>{sgn(d.net_after_ai)}</strong></span>

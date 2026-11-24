@@ -68,7 +68,7 @@ export const STOP_KIND = { initial: 'stop iniziale', break_even: 'stop a pareggi
 // quote di un'apertura divisa del Brain unico
 export const LEG = { tp1: '1ª quota · presa a 2R', runner: 'Residuo · verso 3,5R' };
 export const REVIEW_ACTION = { HOLD: 'mantiene', CLOSE: 'chiude tutto', PARTIAL_CLOSE: 'incassa la 1ª quota',
-  MODIFY_STOP: 'stringe lo stop', NONE: 'nessuna risposta AI' };
+  MODIFY_STOP: 'stringe lo stop', ADD: 'secondo ingresso', NONE: 'nessuna risposta AI' };
 export const REVIEW_CODE = { hold: '', close_all_legs: '', close_tp1_leg: '', stop_tightened: '',
   partial_not_available: 'presa parziale non disponibile', stop_not_tighter: 'stop non più stretto: ignorato',
   stop_too_close_to_price: 'stop troppo vicino al prezzo: ignorato', stop_invalid: 'stop non valido: ignorato',
@@ -77,6 +77,10 @@ export const REVIEW_CODE = { hold: '', close_all_legs: '', close_tp1_leg: '', st
   close_request_pending: 'chiusura in attesa del servizio uscite',
   claude_unavailable_critical: 'Claude non disponibile: azione non eseguita', claude_unavailable_hold: '',
   claude_unavailable_risk_reducing: 'Claude non disponibile: riduzione del rischio eseguita',
+  add_requested: '', paper_add_committed: '', reduce_position: '', add_not_available: 'secondo ingresso non previsto',
+  add_price_not_better: 'prezzo non abbastanza conveniente', add_no_risk_room: 'nessun rischio disponibile',
+  claude_rejected_add: 'Claude contrario al secondo ingresso', add_needs_both: 'serve l’accordo delle due AI',
+  add_needs_consult: 'serve il consulto di Claude',
   claude_adopted: 'scelta di Claude', deepseek_kept: 'scelta di DeepSeek', claude_confirmed: '',
   both_tighten_stop: 'stop più stretto fra i due', no_consult_needed: '' };
 export const SOURCE = { deepseek: 'DeepSeek', claude: 'Claude', agreed: 'DeepSeek + Claude d’accordo', none: '—' };

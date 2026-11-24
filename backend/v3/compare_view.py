@@ -189,7 +189,7 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
                                                "giveback", "floor", "budget", "risk_cap", "open_risk",
                                                "realized_session", "unrealized", "ai_cost_session", "as_of_ms")}
         elif ev.kind == "position_review":
-            acts = ("NONE", "HOLD", "CLOSE", "PARTIAL_CLOSE", "MODIFY_STOP")      # elenco chiuso
+            acts = ("NONE", "HOLD", "CLOSE", "PARTIAL_CLOSE", "MODIFY_STOP", "ADD")      # elenco chiuso
             reviews.append({"ts_ms": ev.occurred_at_ms, "symbol": p.get("symbol"),
                             "proposed": p.get("proposed") if p.get("proposed") in acts else None,
                             "executed": p.get("executed") if p.get("executed") in acts else None,
