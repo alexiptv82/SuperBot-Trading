@@ -102,3 +102,13 @@ con lo stesso nome di chi aveva approvato) → web e interfaccia (sonda sui dati
 dal dominio. Rollback: `ripartenza.sh --rollback <TIMBRO>`.
 Slot riusato: stessa cartella, stesso `run_id` tecnico (`brain-scalp-paper-p1`), stesse unità → bridge di chiusura,
 `superbot-ops` (`pausa scalp`, `log scalp-runner`…) e mount della web restano validi senza modifiche ai privilegi.
+
+### Correzioni dopo il primo lancio (24/11 13:15 UTC)
+Il primo lancio ha archiviato Falco Evoluto e Brain Scalp, creato e attivato la run del Brain unico, ma l'attesa del
+primo battito (5 min) è scaduta durante il primo giro su 27 mercati (~7 min) e la run è stata rimessa in pausa; il giro
+ha registrato `decision_stale`. Corretto: istante per simbolo per il Brain unico (`instant="per_symbol"`), età massima di
+una decisione all'apertura 5 minuti (prezzo sempre entro lo 0,5 %), attesa dell'attivazione 40 minuti, controllo delle
+cartelle del codice per bot (Falco e Brain Scalp possono averne di diverse) e **ripresa**: se la run nuova esiste già
+(Falco archiviato, slot con la configurazione del Brain unico, stato della ripartenza precedente) la procedura non
+archivia né ricrea nulla, sposta solo le unità di Brain Scalp sul codice nuovo, verifica e attiva. Il rollback completo
+resta `--rollback <timbro della prima ripartenza>` (unità originali dei due bot, con le loro cartelle).

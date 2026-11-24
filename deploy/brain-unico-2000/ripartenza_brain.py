@@ -34,6 +34,7 @@ import tempfile
 import time
 from decimal import Decimal
 from pathlib import Path
+from typing import Optional
 
 E = os.environ
 PARENT = Path(E.get("RIP_PARENT", "/opt/superbot-v3-paper-runs"))
@@ -61,6 +62,7 @@ SCALP = {"bot": "scalp", "dir": "brain-v3-brain-scalp-p1", "id": "brain-scalp-pa
          "exit": "superbot-brain-scalp-p1-exit.service", "runner": "superbot-brain-scalp-p1-runner.service"}
 RUNS = (FALCO, SCALP)
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z .-]{1,40}$")
+ACTIVATION_WAIT_S = float(E.get("RIP_ACTIVATION_WAIT_S", "2400")) if TEST else 2400.0
 STAGE_RE = re.compile(r"^/opt/superbot-falco-scalp-[0-9a-f]{12}$")
 
 
@@ -188,17 +190,22 @@ def preflight(stage: Path) -> dict:
         p = FSD / f
         if not p.is_file() or p.is_symlink() or sha_file(p) != want:
             raise Blocco(f"pacchetto_installato_modificato:{f}")
-    olds = {workdir(r[k]) for r in RUNS for k in ("exit", "runner")}
-    if len(olds) != 1:
-        raise Blocco("codice_installato_non_univoco")
-    old = olds.pop()
-    if not TEST and (not STAGE_RE.match(old) or not STAGE_RE.match(str(stage))):
+    # ogni bot ha UNA cartella del codice (uscite e runner uguali); i due bot possono averne di diverse
+    old_by_bot = {}
+    for r in RUNS:
+        dirs = {workdir(r[k]) for k in ("exit", "runner")}
+        if len(dirs) != 1:
+            raise Blocco(f"codice_installato_non_univoco:{r['bot']}")
+        old_by_bot[r["bot"]] = dirs.pop()
+    old = old_by_bot["scalp"]                            # solo lo slot di Brain Scalp passa al codice nuovo
+    if not TEST and (not all(STAGE_RE.match(d) for d in old_by_bot.values()) or not STAGE_RE.match(str(stage))):
         raise Blocco("cartelle_del_codice_non_riconosciute")
     if str(stage) == old or not (stage / "backend" / "v3" / "unico.py").is_file():
         raise Blocco("codice_nuovo_assente_o_uguale")
     if Path.cwd().resolve() != stage.resolve():
         raise Blocco("eseguire_dalla_cartella_del_codice_nuovo")
-    say("CODICE_ATTUALE", old)
+    for bot, d in old_by_bot.items():
+        say(f"CODICE_ATTUALE_{bot}", d)
     say("CODICE_NUOVO", stage)
     if not (RC1 / "pause.flag").is_file() or not active(RC1_EXIT):
         raise Blocco("brain_rc1_non_in_pausa_o_uscite_ferme")
@@ -214,7 +221,8 @@ def preflight(stage: Path) -> dict:
     if raw != (stage / "backend" / "v3" / "runner" / CONFIG_NAME).read_bytes():
         raise Blocco("configurazione_diversa_dal_commit")
     cfg = check_config(raw)
-    ctx = {"stage": stage, "old": Path(old), "raw": raw, "cfg": cfg, "runs": []}
+    ctx = {"stage": stage, "old": Path(old), "old_by_bot": {b: Path(d) for b, d in old_by_bot.items()},
+           "raw": raw, "cfg": cfg, "runs": []}
     for r in RUNS:
         run_dir = PARENT / r["dir"]
         if not run_dir.is_dir() or run_dir.is_symlink() or not (run_dir / "PREPARED_PAUSED_ONLY.json").is_file():
@@ -283,7 +291,7 @@ def close_open(ctx: dict, paused_ms: int) -> None:
             if attempt == 3:
                 raise Blocco(f"posizioni_ancora_aperte:{r['bot']}")
             say(f"CHIUSURA_{r['bot']}", f"{len(summ.open_positions)} posizioni aperte, tentativo {attempt + 1}")
-            if not exits_healthy(ctx["old"], r):
+            if not exits_healthy(ctx["old_by_bot"][r["bot"]], r):      # con il codice di QUEL bot
                 raise Blocco(f"uscite_non_sane_per_chiudere:{r['bot']}")
             ts = now_ms()
             fd, tmp = tempfile.mkstemp(dir=r["run_dir"], prefix=".close_request.")
@@ -405,12 +413,14 @@ def start_new(ctx: dict) -> None:
     say("AVVIATA", f"uscite sane; runner {hb.get('state')} {hb.get('last_error') or '-'} (codice nuovo, in pausa)")
 
 
-def check_view() -> None:
-    """La dashboard nuova legge la run (stesso codice della web): Brain unico disponibile, 2.000, nessun trade."""
+def check_view(fresh: bool = True) -> None:
+    """La dashboard nuova legge la run (stesso codice della web): Brain unico disponibile, 2.000; run appena creata:
+    nessun trade e salvadanaio vuoto (``fresh``)."""
     from backend.v3.compare_view import RunRef, read_run
     out = read_run(RunRef("brain_scalp", "Brain", PARENT / SCALP["dir"], SCALP["id"]), now_ms())
-    if (out.get("available") is not True or out.get("initial_equity") != "2000" or out.get("closed") != 0
-            or not (out.get("config") or {}).get("unico") or (out.get("piggy") or {}).get("total") != "0"):
+    if (out.get("available") is not True or out.get("initial_equity") != "2000"
+            or not (out.get("config") or {}).get("unico") or out.get("piggy") is None
+            or (fresh and (out.get("closed") != 0 or out["piggy"].get("total") != "0"))):
         raise Blocco("vista_della_run_nuova_non_conforme")
     say("VISTA", "run nuova leggibile dalla dashboard: 2000, 0 trade, salvadanaio 0, Brain unico")
 
@@ -419,8 +429,9 @@ def activate(ctx: dict) -> None:
     run_dir = PARENT / SCALP["dir"]
     t = now_ms()
     fsd("scalp", "attiva", ctx["who"])
+    # il primo battito "running" arriva a fine giro: con 27 mercati (e i consulti) un giro dura molti minuti
     hb = wait(lambda: (lambda h: h if h.get("ts_ms", 0) >= t and h.get("state") == "running" else None)(
-        heartbeat(run_dir)), 300, "runner_non_running")
+        heartbeat(run_dir)), ACTIVATION_WAIT_S, "runner_non_running")
     cycle = ctx["cfg"].cycle_ms
     nxt = (now_ms() // cycle + 1) * cycle
     say("RUNNING", f"{SCALP['id']} {hb.get('state')} (mandato approvato da {ctx['who']}); primo giro entro le "
@@ -473,7 +484,148 @@ def rollback(stamp: str, *, automatic: bool = False) -> None:
     say("RESULT", "ROLLBACK_AUTOMATICO_RUN_PRECEDENTI_IN_PAUSA" if automatic else "ROLLBACK_RUN_PRECEDENTI_IN_PAUSA")
 
 
+# ------------------------------------------------------------------ ripresa (run nuova gia' creata da un tentativo precedente)
+def previous_restart() -> Optional[str]:
+    """Timbro di una ripartenza precedente arrivata ad avviare la run nuova, se lo stato delle cartelle lo conferma:
+    Falco Evoluto gia' archiviato (cartella vuota), slot di Brain Scalp con la configurazione del Brain unico, archivio
+    completo delle due run. Altrimenti ``None`` (procedura normale)."""
+    falco, scalp = PARENT / FALCO["dir"], PARENT / SCALP["dir"]
+    try:
+        if not falco.is_dir() or os.listdir(falco) or (scalp / "runner_config.json").read_bytes() != CONFIG.read_bytes():
+            return None
+    except OSError:
+        return None
+    for f in sorted(STATE_DIR.glob("ripartenza-*.state"), reverse=True):
+        stamp = f.name[len("ripartenza-"):-len(".state")]
+        base = PARENT / ".archivio" / f"reset-{stamp}"
+        if ("run_nuova_avviata_in_pausa" in f.read_text().split()
+                and all((base / f"{r['dir']}.RISULTATI.json").is_file() for r in RUNS)):
+            return stamp
+    return None
+
+
+def resume_preflight(stage: Path, stamp: str) -> dict:
+    if not TEST and os.geteuid() != 0:
+        raise Blocco("serve_root")
+    for f, want in PINNED.items():
+        p = FSD / f
+        if not p.is_file() or p.is_symlink() or sha_file(p) != want:
+            raise Blocco(f"pacchetto_installato_modificato:{f}")
+    dirs = {workdir(SCALP[k]) for k in ("exit", "runner")}
+    if len(dirs) != 1:
+        raise Blocco("codice_installato_non_univoco:scalp")
+    old = dirs.pop()
+    if not TEST and (not STAGE_RE.match(old) or not STAGE_RE.match(str(stage))):
+        raise Blocco("cartelle_del_codice_non_riconosciute")
+    if not (stage / "backend" / "v3" / "unico.py").is_file() or Path.cwd().resolve() != stage.resolve():
+        raise Blocco("eseguire_dalla_cartella_del_codice_nuovo")
+    if not (RC1 / "pause.flag").is_file() or not active(RC1_EXIT):
+        raise Blocco("brain_rc1_non_in_pausa_o_uscite_ferme")
+    for u in (BRIDGE, SCALP["exit"], SCALP["runner"]):
+        if not active(u):
+            raise Blocco(f"unita_non_attiva:{u}")
+    if any(active(FALCO[k]) for k in ("exit", "runner")):
+        raise Blocco("falco_evoluto_ancora_attivo")
+    if sh(DOCKER, "inspect", "superbot", "--format", "{{.State.Status}}", check=False).stdout.strip() != "running":
+        raise Blocco("web_non_in_esecuzione")
+    raw = CONFIG.read_bytes()
+    if raw != (stage / "backend" / "v3" / "runner" / CONFIG_NAME).read_bytes():
+        raise Blocco("configurazione_diversa_dal_commit")
+    cfg = check_config(raw)
+    run_dir = PARENT / SCALP["dir"]
+    count, _rows, summ = journal_view(run_dir, SCALP["id"])
+    base = PARENT / ".archivio" / f"reset-{stamp}"
+    try:                                                 # chi approva: dal mandato della run Scalp ARCHIVIATA
+        m = json.loads((base / SCALP["dir"] / "mandate.json").read_text())
+    except (OSError, ValueError):
+        raise Blocco("mandato_archiviato_illeggibile") from None
+    who = m.get("approved_by") if m.get("approved") is True else None
+    if not isinstance(who, str) or not NAME_RE.fullmatch(who):
+        raise Blocco("nome_di_chi_approva_non_disponibile")
+    say("RIPRESA", f"run Brain unico gia' creata dalla ripartenza {stamp}: journal {count} eventi, aperte "
+                   f"{len(summ.open_positions)}; Falco Evoluto gia' archiviato; codice attuale {old}")
+    say("PREFLIGHT", "SUPERATO")
+    return {"stage": stage, "old": Path(old), "raw": raw, "cfg": cfg, "who": who, "runs": []}
+
+
+def move_scalp_units(ctx: dict, bak: Path) -> None:
+    """Solo le unita' di Brain Scalp: dalla cartella attuale a quella nuova (unica differenza ammessa)."""
+    bak.mkdir(mode=0o700)
+    old, new = str(ctx["old"]), str(ctx["stage"])
+    for k in ("exit", "runner"):
+        unit = SCALP[k]
+        shutil.copy2(UNIT_DIR / unit, bak / unit)
+        text = (bak / unit).read_text()
+        changed = text.replace(old, new)
+        if changed == text or changed.replace(new, old) != text:
+            raise Blocco(f"unita_non_trasformabile:{unit}")
+        tmp = UNIT_DIR / (unit + ".new")
+        tmp.write_text(changed)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, UNIT_DIR / unit)
+    sh(SYSTEMCTL, "daemon-reload")
+    for k in ("exit", "runner"):
+        if workdir(SCALP[k]) != new:
+            raise Blocco(f"unita_non_sul_codice_nuovo:{SCALP[k]}")
+
+
+def riprendi(stage: Path, prev: str) -> int:
+    ctx = resume_preflight(stage, prev)
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    st = State("ripresa-" + stamp)
+    st.mark("inizio")
+    run_dir = PARENT / SCALP["dir"]
+    t = now_ms()
+    fsd("scalp", "pausa")
+    wait(lambda: (lambda h: h if h.get("ts_ms", 0) >= t and h.get("state") in ("paused", "halted") else None)(
+        heartbeat(run_dir)), 2400, "runner_non_in_pausa:scalp")
+    st.mark("in_pausa")
+    bak = STATE_DIR / f"unita-ripresa-{stamp}"
+    try:
+        if ctx["old"] != ctx["stage"]:
+            sh(SYSTEMCTL, "stop", SCALP["runner"])
+            wait(lambda: not active(SCALP["runner"]), 120, "runner_non_fermato")
+            move_scalp_units(ctx, bak)
+            st.mark("unita_sul_codice_nuovo")
+            sh(SYSTEMCTL, "restart", SCALP["exit"])
+            wait(lambda: exits_healthy(ctx["stage"], SCALP), 180, "uscite_nuove_non_sane")
+            t = now_ms()
+            sh(SYSTEMCTL, "start", SCALP["runner"])
+            wait(lambda: (lambda h: h if h.get("ts_ms", 0) >= t else None)(heartbeat(run_dir)), 300,
+                 "runner_nuovo_senza_battito")
+            say("AVVIATA", f"uscite sane e runner sul codice {ctx['stage']} (in pausa)")
+        check_view(fresh=False)
+        st.mark("vista_verificata")
+    except Exception as exc:                                  # noqa: BLE001
+        say("BLOCCO", exc.args[0] if isinstance(exc, Blocco) else type(exc).__name__)
+        if bak.is_dir():                                      # unita' come prima della ripresa, run in pausa
+            for k in ("exit", "runner"):
+                if (bak / SCALP[k]).is_file():
+                    shutil.copy2(bak / SCALP[k], UNIT_DIR / SCALP[k])
+            sh(SYSTEMCTL, "daemon-reload", check=False)
+            sh(SYSTEMCTL, "restart", SCALP["exit"], check=False)
+            sh(SYSTEMCTL, "restart", SCALP["runner"], check=False)
+        say("RESULT", "NO_GO_RIPRESA_NON_ESEGUITA_RUN_IN_PAUSA")
+        return 4
+    try:
+        activate(ctx)
+        st.mark("brain_unico_attivo")
+    except Exception as exc:                                  # noqa: BLE001
+        say("BLOCCO", exc.args[0] if isinstance(exc, Blocco) else type(exc).__name__)
+        sh("sh", str(FSD / "80-paper.sh"), "scalp", "pausa", check=False)
+        say("RESULT", f"NO_GO_RUN_NUOVA_PRONTA_MA_IN_PAUSA (rollback completo: --rollback {prev})")
+        return 5
+    say("ARCHIVIO", PARENT / ".archivio" / f"reset-{prev}")
+    say("ROLLBACK", f"--rollback {prev}")
+    say("RESULT", "BRAIN_UNICO_PAPER_RUNNING")
+    return 0
+
+
 def esegui(stage: Path) -> int:
+    prev = previous_restart()
+    if prev is not None:
+        say("TIMBRO", prev)
+        return riprendi(stage, prev)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     ctx = preflight(stage)
     st = State(stamp)
@@ -539,7 +691,8 @@ def main(argv=None) -> int:
             raise Blocco("serve_--stage")
         stage = Path(a.stage).resolve()
         if a.controlla:
-            preflight(stage)
+            prev = previous_restart()
+            resume_preflight(stage, prev) if prev is not None else preflight(stage)
             say("RESULT", "CONTROLLI_SUPERATI_NESSUNA_MODIFICA")
             return 0
         return esegui(stage)

@@ -93,8 +93,13 @@ def rig(tmp_path, monkeypatch):
     (r.runs / "brain-v3-unico-paper-rc1" / "pause.flag").write_text("rc1")
     r.falco = _old_run(r.runs, "brain-v3-falco-evoluto-p1", "falco-evoluto-paper-p1", F, "1000", False)
     r.scalp = _old_run(r.runs, "brain-v3-brain-scalp-p1", "brain-scalp-paper-p1", S, "2000", True)
+    # configurazione reale della VPS (24/11): Falco Evoluto e Brain Scalp su DUE cartelle del codice diverse
+    r.old_f = tmp_path / "opt-superbot-falco-scalp-5539ee474476"
+    r.old_f.mkdir()
+    r.old_by_unit = {u: (r.old_f if "falco" in u else r.old) for u in UNITS}
     for u in UNITS:
-        (r.units / u).write_text(f"[Service]\nWorkingDirectory={r.old}\nEnvironment=PYTHONPATH={r.old}\n"
+        d = r.old_by_unit[u]
+        (r.units / u).write_text(f"[Service]\nWorkingDirectory={d}\nEnvironment=PYTHONPATH={d}\n"
                                  f"ExecStart=/usr/bin/env python -m x --data-dir y\n")
     for name, text in (("systemctl", FAKE_SYSTEMCTL), ("docker", FAKE_DOCKER)):
         (r.sd / name).write_text(text)
@@ -107,7 +112,7 @@ def rig(tmp_path, monkeypatch):
     env = dict(RIP_TEST_MODE="1", RIP_PARENT=str(r.runs), RIP_FSD=str(fsd), RIP_STATE=str(r.state),
                RIP_UNIT_DIR=str(r.units), RIP_SYSTEMCTL=str(r.sd / "systemctl"), RIP_DOCKER=str(r.sd / "docker"),
                RIP_POLL_S="0.05", RIP_PINNED=json.dumps(pinned), FAKE_UNITS=str(r.units), FAKE_SD=str(r.sd),
-               FAKE_RUNS=str(r.runs), FAKE_PY=sys.executable, PYTHONPATH=str(ROOT), RIP_CONFIG=str(RUNNER / U))
+               FAKE_RUNS=str(r.runs), FAKE_PY=sys.executable, PYTHONPATH=str(ROOT), RIP_CONFIG=str(RUNNER / U), RIP_ACTIVATION_WAIT_S="1")
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     monkeypatch.chdir(ROOT)                              # si esegue dalla cartella del codice nuovo
@@ -169,8 +174,8 @@ def test_full_restart_with_the_single_brain_and_rollback(rig, capsys):
     for u in UNITS[2:]:
         text = (rig.units / u).read_text()
         assert f"WorkingDirectory={ROOT}" in text and str(rig.old) not in text
-    for u in UNITS[:2]:
-        assert f"WorkingDirectory={rig.old}" in (rig.units / u).read_text()
+    for u in UNITS[:2]:                                   # Falco: la SUA cartella, invariata
+        assert f"WorkingDirectory={rig.old_f}" in (rig.units / u).read_text()
     calls = (rig.sd / "calls").read_text().splitlines()
     assert "disable superbot-falco-evoluto-p1-runner.service" in calls
     assert not any(c.startswith("start superbot-falco") for c in calls)
@@ -181,8 +186,8 @@ def test_full_restart_with_the_single_brain_and_rollback(rig, capsys):
     assert rp.main(["--rollback", base.name.replace("reset-", "")]) == 0
     assert [e.kind for e in _events(rig.scalp, "brain-scalp-paper-p1")].count("paper_close") == 1
     assert (rig.scalp / "pause.flag").exists() and (rig.falco / "pause.flag").exists()
-    for u in UNITS:
-        assert f"WorkingDirectory={rig.old}" in (rig.units / u).read_text()
+    for u in UNITS:                                       # ogni bot torna sulla propria cartella originale
+        assert f"WorkingDirectory={rig.old_by_unit[u]}" in (rig.units / u).read_text()
     scart = base.parent / f"{base.name}-run-nuova-scartata" / "brain-v3-brain-scalp-p1"
     assert [e.kind for e in _events(scart, "brain-scalp-paper-p1")] == ["run_prepared"]
 
@@ -206,7 +211,52 @@ def test_failure_after_archive_rolls_back_runs_and_units(rig, capsys, monkeypatc
     assert kinds.count("paper_open") == 1 and kinds.count("paper_close") == 1
     assert (rig.scalp / "pause.flag").exists() and (rig.falco / "pause.flag").exists()
     for u in UNITS:
-        assert f"WorkingDirectory={rig.old}" in (rig.units / u).read_text()
+        assert f"WorkingDirectory={rig.old_by_unit[u]}" in (rig.units / u).read_text()
+
+
+def test_two_code_dirs_are_accepted_but_each_bot_must_be_consistent(rig, capsys):
+    assert rig.rp.main(["--controlla", "--stage", str(ROOT)]) == 0
+    out = capsys.readouterr().out
+    assert f"CODICE_ATTUALE_falco={rig.old_f}" in out and f"CODICE_ATTUALE_scalp={rig.old}" in out
+    u = rig.units / "superbot-falco-evoluto-p1-runner.service"      # runner e uscite dello STESSO bot diversi: no
+    u.write_text(u.read_text().replace(str(rig.old_f), str(rig.old)))
+    assert rig.rp.main(["--controlla", "--stage", str(ROOT)]) == 3
+    assert "codice_installato_non_univoco:falco" in capsys.readouterr().out
+
+
+def test_resume_after_a_first_attempt_stopped_at_activation_then_full_rollback(rig, capsys):
+    """Lo stato reale del 24/11: il primo lancio ha archiviato, creato la run nuova e attivato, ma l'attesa del primo
+    battito e' scaduta (giro lungo): run nuova in pausa sul codice di allora. Il secondo lancio RIPRENDE: non archivia
+    di nuovo, non ricrea la run, sposta solo le unita' di Brain Scalp sul codice nuovo, verifica e attiva."""
+    rp = rig.rp
+    (rig.sd / "runner_fails").write_text("x")
+    assert rp.main(["--esegui", "--stage", str(ROOT)]) == 5
+    first = capsys.readouterr().out
+    stamp = first.split("RIPARTENZA TIMBRO=")[1].split()[0]
+    (rig.sd / "runner_fails").unlink()
+    prev = rig.runs.parent / "opt-superbot-falco-scalp-d5b0ae8aeb99"            # il codice del primo tentativo
+    prev.mkdir()
+    for u in UNITS[2:]:
+        f = rig.units / u
+        f.write_text(f.read_text().replace(str(ROOT), str(prev)))
+    journal_before = [e.event_id for e in _events(rig.scalp, "brain-scalp-paper-p1")]
+    assert rp.main(["--esegui", "--stage", str(ROOT)]) == 0
+    out = capsys.readouterr().out
+    assert "RIPARTENZA RIPRESA=run Brain unico gia' creata dalla ripartenza " + stamp in out
+    assert "RIPARTENZA RESULT=BRAIN_UNICO_PAPER_RUNNING" in out and f"--rollback {stamp}" in out
+    assert [e.event_id for e in _events(rig.scalp, "brain-scalp-paper-p1")] == journal_before   # stessa run
+    assert len([p for p in (rig.runs / ".archivio").iterdir() if p.is_dir()]) == 1               # nessun nuovo archivio
+    for u in UNITS[2:]:
+        assert f"WorkingDirectory={ROOT}" in (rig.units / u).read_text()
+    for u in UNITS[:2]:
+        assert f"WorkingDirectory={rig.old_f}" in (rig.units / u).read_text()
+    assert json.loads((rig.scalp / "heartbeat.json").read_text())["state"] == "running"
+    # rollback completo dal timbro della ripartenza: run precedenti e unita' originali dei DUE bot
+    assert rp.main(["--rollback", stamp]) == 0
+    for u in UNITS:
+        assert f"WorkingDirectory={rig.old_by_unit[u]}" in (rig.units / u).read_text()
+    kinds = [e.kind for e in _events(rig.scalp, "brain-scalp-paper-p1")]
+    assert kinds.count("paper_open") == 1 and kinds.count("paper_close") == 1 and (rig.falco / "journal.db").is_file()
 
 
 def test_wrong_config_is_refused_before_any_change(rig, capsys, tmp_path, monkeypatch):

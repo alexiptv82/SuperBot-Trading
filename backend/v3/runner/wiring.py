@@ -67,6 +67,7 @@ from backend.v3.transport import deepseek_transport
 
 PROVIDER = "deepseek"
 MANDATE_FILE = "mandate.json"
+UNICO_DECISION_AGE_MS = 300_000    # Brain unico: eta' massima di una decisione all'apertura (vedi safety_open_commit)
 MINUTE_STORE_BARS = 1_500          # 24 ore di durata massima + margine, a 1 minuto (un test lo lega alla politica di uscita)
 FALCO_4H_KEEP = 300                # Falco Evoluto: 50 giorni di 4h (EMA200 4h e trend 1d su giorni completi)
 EXTRA_KEEP = 24                    # barre in piu' del minimo, per non stare sempre sul bordo
@@ -338,6 +339,10 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         }
         if unico is not None and unico.piggy is not None:
             guard_inputs["equity_reserve"] = reserve_of
+        if unico is not None:
+            # DeepSeek con ragionamento + eventuale consulto di Claude possono superare i 2 minuti: la decisione resta
+            # valida fino a 5 minuti; il prezzo deve comunque essere entro lo 0,5 % (max_entry_divergence invariato)
+            guard_inputs["max_decision_age_ms"] = UNICO_DECISION_AGE_MS
         return commit_paper_open(
             journal=journal, data_dir=data_dir, run_id=run_id, decision=decision,
             clock_ms=clock_ms, guard_inputs=guard_inputs,
@@ -372,6 +377,9 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             # anti-reingresso in sola osservazione: soglie provvisorie finche' E0 e il proprietario non decidono
             reentry_policy=ReentryPolicy(mode="observe"),
             slot_start_ms=slot_start, slot_end_ms=slot_start + config.cycle_ms,
+            # Brain unico (27 mercati, un giro dura minuti): ogni simbolo con il PROPRIO istante, altrimenti le decisioni
+            # dei simboli analizzati dopo ~2 minuti arrivano "vecchie" al controllo dopo l'AI (decision_stale)
+            instant="per_symbol" if unico is not None else "cycle",
             guardian=guardian_eval,
             reserve_of=reserve_of if unico is not None and unico.piggy is not None else None)
 

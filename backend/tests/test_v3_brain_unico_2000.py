@@ -364,12 +364,20 @@ def test_wired_runner_uses_fit_leverage_guidance_portfolio_state_and_reviews_ope
     data_dir = Path(tempfile.mkdtemp())
     config = dataclasses.replace(cfg(), symbols=("BTCUSDT", "ETHUSDT"), **LEGACY)
     model = Model()
+    clock = {"t": G + 25_000}
+
+    def wall():                                       # orologio di parete: avanza di 1 s a ogni lettura (per simbolo)
+        clock["t"] += 1_000
+        return clock["t"]
     built = build_runner(data_dir=data_dir, run_id="unico-e2e", config=config, get_json=_get_json_factory(),
-                         inner_transport=model, view_params=VIEW, claude_inner_transport=claude)
+                         inner_transport=model, view_params=VIEW, claude_inner_transport=claude, clock_ms=wall)
     m = mandate_template(config.risk_policy, "unico-e2e")
     m.update(approved=True, approved_by="operator")
     (data_dir / "mandate.json").write_text(_json.dumps(m), encoding="utf-8")
     built.runner.tick(G + 25_000)
+    instants = sorted({r.event.occurred_at_ms for r in built.journal.list_run("brain", "unico-e2e")
+                       if r.event.kind == "brain_decision"})
+    assert len(instants) == 2 and instants[0] > G + 25_000          # ogni simbolo con il proprio istante (mai "vecchio")
     opens = [r.event.payload for r in built.journal.list_run("brain", "unico-e2e") if r.event.kind == "paper_open"]
     assert {o["symbol"] for o in opens} == {"BTCUSDT", "ETHUSDT"}
     assert all(15 <= o["leverage"] <= 50 for o in opens)                  # la leva 3 dell'AI non conta
@@ -379,6 +387,7 @@ def test_wired_runner_uses_fit_leverage_guidance_portfolio_state_and_reviews_ope
                  if r.event.kind == "brain_decision" and r.event.payload.get("kind") == "OPEN"]
     assert all("risk:leverage_fit" in d["sources"] for d in decisions)
     n = len(model.payloads)
+    clock["t"] = G + 15 * MIN + 25_000
     built.runner.tick(G + 15 * MIN + 25_000)                                      # giro dopo: revisione delle aperte
     reviews = [r.event.payload for r in built.journal.list_run("brain", "unico-e2e") if r.event.kind == "position_review"]
     still_open = build_summary(built.journal, "brain", "unico-e2e").open_positions
@@ -419,8 +428,13 @@ def test_claude_unavailable_never_approves_a_decision_that_needed_it(tmp_path):
     def down(payload):
         raise ProviderUnavailable("provider_unavailable")
     config = dataclasses.replace(cfg(), symbols=("BTCUSDT", "ETHUSDT"), **LEGACY)
+    clock = {"t": G + 25_000}
+
+    def wall():
+        clock["t"] += 1_000
+        return clock["t"]
     built = build_runner(data_dir=tmp_path, run_id="unico-down", config=config, get_json=_get_json_factory(),
-                         inner_transport=FakeModel(), view_params=VIEW, claude_inner_transport=down)
+                         inner_transport=FakeModel(), view_params=VIEW, claude_inner_transport=down, clock_ms=wall)
     m = mandate_template(config.risk_policy, "unico-down")
     m.update(approved=True, approved_by="operator")
     (tmp_path / "mandate.json").write_text(_json.dumps(m), encoding="utf-8")
@@ -733,3 +747,25 @@ def test_telegram_check_reuses_the_old_bot_credentials_sends_one_test_and_prints
     env.write_text("X=1\n")
     assert tc.main(["--env-file", str(env), "--docker", "/bin/false"], opener=ok) == 0
     assert capsys.readouterr().out.strip() == "TELEGRAM=NON_CONFIGURATO fonte=nessuna"
+
+
+def test_a_decision_still_valid_after_a_slow_consult_but_never_at_a_moved_price(tmp_path):
+    """Regressione del 24/11 (giro reale su 27 mercati: ``decision_stale``): con DeepSeek + Claude una decisione puo'
+    arrivare all'apertura dopo piu' di 2 minuti; per il Brain unico vale 5 minuti. Il prezzo resta il vero filtro."""
+    from backend.tests.test_v3_post_ai_guard import NOW, RUN, RULES, POL, _setup
+    from backend.v3.runner.post_ai_guard import recheck_paper_open
+    from backend.v3.runner.wiring import UNICO_DECISION_AGE_MS
+    j, d = _setup(tmp_path)
+
+    def check(age_ms, limit=None, price=D(100)):
+        extra = {} if limit is None else {"max_decision_age_ms": limit}
+        return recheck_paper_open(decision=d, journal=j, run_id=RUN, initial_equity=D(1000), risk_policy=POL,
+                                  now_ms=d.occurred_at_ms + age_ms, exit_healthy=lambda t: True,
+                                  mandate_problem=lambda: None, budget_problem=lambda: None,
+                                  daily_loss_halted=lambda t: False, paused=lambda: False,
+                                  market_rules=lambda s: RULES, market_price=lambda s, t: price,
+                                  market_fresh=lambda s, t: True, **extra).code
+    assert check(4 * MIN) == "decision_stale"                                   # limite storico: 2 minuti
+    assert check(4 * MIN, UNICO_DECISION_AGE_MS) == "validated_current_paper_risk"
+    assert check(6 * MIN, UNICO_DECISION_AGE_MS) == "decision_stale"
+    assert check(4 * MIN, UNICO_DECISION_AGE_MS, price=D("100.6")) == "market_price_moved"
