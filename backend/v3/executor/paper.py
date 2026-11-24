@@ -115,6 +115,7 @@ def execute_paper(
     slippage_bps: int = 0,
     now_ms: int | None = None,
     legs: tuple | None = None,
+    strategy: dict | None = None,
 ) -> ExecutionReceipt:
     """Simulate a PAPER fill for an APPROVED BrainDecision.
 
@@ -182,6 +183,11 @@ def execute_paper(
     _require(fill_price > 0, "fill_price_zero")
 
     quantity = quote.quantity
+    # Brain Live Evolution (24/11): ``strategy`` = fotografia della versione (``strategy_versions.Effective.snapshot``)
+    # registrata su OGNI apertura; senza, il payload resta identico a prima (stesso hash).
+    _require(strategy is None or (type(strategy) is dict and type(strategy.get("version")) is str
+                                  and isinstance(strategy.get("exit_policy"), dict)), "invalid_strategy")
+    sx = {"strategy": strategy} if strategy is not None else {}
     # Brain unico (24/11): ``legs`` = quote ``(nome, quantita', take_profit_r)`` da ``unico.split_legs``. Ogni quota
     # e' un paper_open normale (stesso stop, stessa decisione), margine in proporzione; la ricevuta e' quella della
     # prima quota. Una sola quota senza nome = comportamento storico (payload identico).
@@ -198,12 +204,12 @@ def execute_paper(
         receipts = [_append_open(decision, proposal, link, portfolio_id, run_id, journal, slippage_bps,
                                  timestamp_ms, fill_price, qty, (quote.margin * qty / quantity).quantize(
                                      Decimal("0.00000001"), rounding=ROUND_DOWN), {"leg": name, **(
-                                         {"take_profit_r": str(tp)} if tp is not None else {})})
+                                         {"take_profit_r": str(tp)} if tp is not None else {}), **sx})
                     for name, qty, tp in legs]
         decision.status = ProposalStatus.EXECUTED_PAPER
         return receipts[0]
     receipt = _append_open(decision, proposal, link, portfolio_id, run_id, journal, slippage_bps, timestamp_ms,
-                           fill_price, quantity, quote.margin, {})
+                           fill_price, quantity, quote.margin, sx)
     decision.status = ProposalStatus.EXECUTED_PAPER
     return receipt
 

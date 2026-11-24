@@ -317,7 +317,7 @@ def pause_section(cur: Path, ev: list[dict], stage: Path) -> dict:
         out["open_positions"] = [{"position_id": p.position_id, "symbol": p.symbol, "side": p.side,
                                   "stop": str(getattr(p, "stop_price", None)), "leg": getattr(p, "leg", None)}
                                  for p in s.open_positions]
-        out["summary"] = {"realized_pnl": str(s.realized_pnl), "closed": len(getattr(s, "closed_positions", ()) or ())}
+        out["summary"] = {"realized_pnl": str(s.realized_pnl), "closed": len(getattr(s, "closed_trades", ()) or ())}
         try:
             from backend.v3.outcomes import extract_outcomes
             out["memory_outcomes"] = len(extract_outcomes(j, "brain", run_id).outcomes)

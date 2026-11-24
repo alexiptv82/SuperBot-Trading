@@ -49,7 +49,7 @@ class OpenCommit:
 def commit_paper_open(*, journal: EventJournal, data_dir: Path, run_id: str,
                       decision: BrainDecision, clock_ms: Callable[[], int],
                       guard_inputs: Mapping, slippage_bps: int, desk_mode: str,
-                      partial=None) -> OpenCommit:
+                      partial=None, strategy: dict | None = None) -> OpenCommit:
     """Serialize *cooperating* PAPER OPEN writers, then recheck under lease.
 
     Safety precedence: scope/mode, lease, decision replay, official risk veto,
@@ -125,7 +125,8 @@ def commit_paper_open(*, journal: EventJournal, data_dir: Path, run_id: str,
                               price=decision.proposal.entry_price,
                               minimum_notional=Decimal(str(rules["minimum_notional"])), partial=partial)
         receipt = execute_paper(decision, portfolio_id="brain", run_id=run_id,
-                                journal=journal, slippage_bps=slippage_bps, now_ms=now_ms, legs=legs)
+                                journal=journal, slippage_bps=slippage_bps, now_ms=now_ms, legs=legs,
+                                strategy=strategy)
         return OpenCommit(True, "paper_open_committed", receipt)
     except Exception:
         return deny("open_commit_failed")

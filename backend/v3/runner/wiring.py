@@ -172,8 +172,11 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                  exit_mode: str = "legacy", clock_ms: Optional[Callable[[], int]] = None,
                  desk_mode: Optional[str] = None,
                  classic_peer_dirs: Optional[Mapping[str, Path]] = None,
-                 claude_inner_transport: Optional[Transport] = None) -> Built:
-    """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test."""
+                 claude_inner_transport: Optional[Transport] = None, strategy=None) -> Built:
+    """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test.
+    ``strategy`` (Brain Live Evolution, ``strategy_versions.Effective``): ``config`` resta la BASE della run (verificata
+    contro la run preparata); il runner lavora con la configurazione della versione attiva, aggiunge le sue note al
+    prompt e registra la sua fotografia su ogni nuova apertura."""
     if type(exit_mode) is not str or exit_mode not in ("legacy", "sidecar"):
         raise ValueError("invalid_exit_mode")
     # Peer observation is opt-in and can only read explicitly provided, isolated dirs.
@@ -191,7 +194,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             raise ValueError("paper_mode_required")
         # Never create a fresh run/empty journal in a cutover path.
         journal = check_existing_data(data_dir=data_dir, run_id=run_id)
-        verify_prepared_run_config(data_dir=data_dir, run_id=run_id, config=config)
+        verify_prepared_run_config(data_dir=data_dir, run_id=run_id, config=config)     # sempre la BASE
         if not (data_dir / "budget.db").is_file():
             raise ValueError("split_budget_missing")
         if clock_ms is None or not callable(clock_ms):
@@ -199,6 +202,10 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     else:
         journal = EventJournal(str(data_dir / "journal.db"))
         journal.init_schema()
+    if strategy is not None:
+        config = strategy.config                      # da qui: la versione attiva (rischio e mandato = base, sempre)
+    snapshot = strategy.snapshot() if strategy is not None else None
+    notes = strategy.notes if strategy is not None else None
     ledger = BudgetLedger(str(data_dir / "budget.db"))
     vp = view_params if view_params is not None else load_market_params()
     menu = build_menu(load_library())
@@ -271,7 +278,9 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         if unico is not None and unico.guidance:
             from backend.v3.brain_market.deepseek_l5 import UNICO_GUIDANCE
             from backend.v3.unico import parse_reasons
-            unico_extra = {"guidance": UNICO_GUIDANCE, "portfolio_state": portfolio_state,
+            unico_extra = {"guidance": UNICO_GUIDANCE + (f" Operator strategy notes (version {strategy.version}), "
+                                                         f"never above the risk limits: {notes}" if notes else ""),
+                           "portfolio_state": portfolio_state,
                            "reasons_parser": parse_reasons}
         ds_analyst = DeepSeekL5Analyst(
             transport=metered, model=config.model,
@@ -327,7 +336,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             journal=journal, data_dir=data_dir, run_id=run_id, decision=decision,
             clock_ms=clock_ms, guard_inputs=open_guard_inputs(),
             slippage_bps=config.slippage_bps, desk_mode=desk_mode,
-            partial=None)        # 24/11: una sola posizione all'ingresso (niente quote); il 35 % a 2R e' una riduzione
+            partial=None,        # 24/11: una sola posizione all'ingresso (niente quote); il 35 % a 2R e' una riduzione
+            strategy=snapshot)   # Brain Live Evolution: versione e regole d'uscita con cui la posizione nasce
 
     def open_guard_inputs() -> dict:
         # Split mode only. The *real* on-disk exit owner is checked again under
@@ -467,7 +477,8 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     a = ap.parse_args(argv)
     environ = os.environ if env is None else env
     try:
-        config = load_runner_config(Path(a.config or default_config_path()).read_bytes())
+        base_raw = Path(a.config or default_config_path()).read_bytes()
+        config = load_runner_config(base_raw)
     except (OSError, ValueError):
         print("config_invalid", file=sys.stderr)
         return 2
@@ -513,18 +524,28 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
             return 2
     try:
         return _run_built(a, data_dir, config, environ, get_json, inner_transport, now_fn, sleep_fn,
-                          should_stop, split_opts, peer_opts)
+                          should_stop, split_opts, peer_opts, base_raw=base_raw)
     finally:
         if fence is not None:
             fence.stop()
 
 
+def _strategy_of(data_dir: Path, run_id: str, base_raw: Optional[bytes]):
+    """Versione attiva dal journal (Brain Live Evolution). Solo Brain unico (schema 3) con journal esistente."""
+    if base_raw is None or not (data_dir / "journal.db").is_file():
+        return None
+    from backend.v3.strategy_versions import effective, read_registry
+    return effective(base_raw, read_registry(EventJournal(str(data_dir / "journal.db")), run_id))
+
+
 def _run_built(a, data_dir, config, environ, get_json, inner_transport, now_fn, sleep_fn,
-               should_stop, split_opts, peer_opts) -> int:
+               should_stop, split_opts, peer_opts, base_raw: Optional[bytes] = None) -> int:
+    base_raw = base_raw if config.unico is not None else None
     try:
+        strategy = _strategy_of(data_dir, a.run_id, base_raw)
         built = build_runner(data_dir=data_dir, run_id=a.run_id, config=config, get_json=get_json,
                              inner_transport=inner_transport, alert_send=telegram_sender(environ),
-                             **split_opts, **peer_opts)
+                             strategy=strategy, **split_opts, **peer_opts)
     except ValueError:
         print("setup_invalid", file=sys.stderr)
         return 2
@@ -547,10 +568,51 @@ def _run_built(a, data_dir, config, environ, get_json, inner_transport, now_fn, 
         except ValueError:                                   # non nel thread principale (test)
             pass
     last: dict = {}
-    built.runner.run(now_fn=now_fn, sleep_fn=sleep_fn,
-                     should_stop=should_stop if should_stop is not None else (lambda: stop["flag"]),
-                     on_tick=lambda now, r: _log(now, r, last))
-    return 0
+    outer_stop = should_stop if should_stop is not None else (lambda: stop["flag"])
+    while True:
+        switch = {"to": None, "checked": 0}
+
+        def stop_or_switch() -> bool:
+            # Fra un tick e l'altro (mai a meta' giro): richiesta approvata dall'operatore -> eventi nel journal;
+            # versione attiva cambiata -> si esce dal ciclo e si ricostruisce il runner con la nuova versione.
+            if outer_stop():
+                return True
+            if base_raw is None:
+                return False
+            now = now_fn()
+            try:
+                from backend.v3.strategy_versions import REQUEST_FILE, apply_request, read_registry
+                applied = None
+                if (data_dir / REQUEST_FILE).is_file():
+                    applied = apply_request(journal=built.journal, data_dir=data_dir, run_id=a.run_id,
+                                            base_bytes=base_raw, now_ms=now)
+                    print(json.dumps({"strategy_request": applied}, sort_keys=True), flush=True)
+                if applied is not None or now - switch["checked"] >= 60_000:
+                    switch["checked"] = now
+                    active = read_registry(built.journal, a.run_id).active
+                    if strategy is not None and active != strategy.version:
+                        switch["to"] = active
+                        return True
+            except Exception:
+                return False                              # un guasto qui non ferma mai il Brain
+            return False
+
+        built.runner.run(now_fn=now_fn, sleep_fn=sleep_fn, should_stop=stop_or_switch,
+                         on_tick=lambda now, r: _log(now, r, last))
+        if switch["to"] is None:
+            return 0
+        served = built.runner._last_slot * built.runner._cycle_ms if built.runner._last_slot >= 0 else None
+        try:
+            strategy = _strategy_of(data_dir, a.run_id, base_raw)
+            built = build_runner(data_dir=data_dir, run_id=a.run_id, config=config, get_json=get_json,
+                                 inner_transport=inner_transport, alert_send=telegram_sender(environ),
+                                 strategy=strategy, **split_opts, **peer_opts)
+        except ValueError:
+            print("strategy_switch_setup_invalid", file=sys.stderr)
+            return 2                                      # systemd (on-failure) riparte con la stessa versione attiva
+        if served is not None:                            # il giro gia' servito non si ripete con la nuova frequenza
+            built.runner._last_slot = served // built.runner._cycle_ms
+        print(json.dumps({"strategy_switch": strategy.version}, sort_keys=True), flush=True)
 
 
 if __name__ == "__main__":

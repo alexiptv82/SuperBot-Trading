@@ -105,8 +105,13 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
     moves = stop_moves_by_position(journal, portfolio_id, run_id)
     for pos in summary.open_positions:
         try:
-            # Brain unico: take-profit proprio della quota e stop stretti dall'AI (run storiche: invariato)
-            pos_policy = policy if pos.take_profit_r is None else replace(policy, take_profit_r=pos.take_profit_r)
+            # Brain Live Evolution: una posizione con fotografia usa le regole della SUA versione (mai quelle correnti);
+            # senza fotografia, come prima: politica della run e take-profit proprio della quota.
+            if pos.exit_snapshot is not None:
+                pos_policy = pos.exit_snapshot
+            else:
+                pos_policy = policy if pos.take_profit_r is None else replace(policy, take_profit_r=pos.take_profit_r)
+            pos_partial = pos.partial_snapshot if pos.strategy_version else partial
             start = pos.opened_at_ms // MINUTE_MS * MINUTE_MS
             if start >= end:
                 continue                                  # aperta nello stesso minuto: nessuna barra chiusa ancora
@@ -129,16 +134,16 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
                 if signal is not None:
                     break
                 best = favorable_extreme(pos.side, best, run, pos.opened_at_ms)
-            if (partial is not None and step_of is not None and not pos.leg and not pos.tp_reduced
-                    and not pos.reduces and _partial_due(pos, bars, signal, partial)):
+            if (pos_partial is not None and step_of is not None and not pos.leg and not pos.tp_reduced
+                    and not pos.reduces and _partial_due(pos, bars, signal, pos_partial)):
                 # posizione unica (24/11): presa parziale a ``at_r`` R come RIDUZIONE della posizione esistente; il
                 # residuo resta aperto con stop e protezioni (prossimo minuto)
                 from backend.v3.executor.paper_scale import reduce_paper
                 risk = abs(pos.fill_price - pos.stop_price)
                 try:
                     reduce_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pos.position_id,
-                                 fraction=partial.fraction, reason="take_profit", fee_bps=fee_bps, journal=journal,
-                                 exit_price=(pos.fill_price + pos.side * partial.at_r * risk).quantize(Decimal("1e-8")),
+                                 fraction=pos_partial.fraction, reason="take_profit", fee_bps=fee_bps, journal=journal,
+                                 exit_price=(pos.fill_price + pos.side * pos_partial.at_r * risk).quantize(Decimal("1e-8")),
                                  quantity_step=step_of(pos.symbol), now_ms=now_ms)
                     closed.append((pos.position_id, "take_profit_partial"))
                     continue

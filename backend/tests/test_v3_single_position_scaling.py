@@ -54,7 +54,7 @@ def test_new_openings_are_one_position_and_the_wiring_never_splits_them(tmp_path
     p = j.list_run("brain", RUN)[0].event.payload
     assert "leg" not in p and p["scale_in_reserved"] is True
     src = (Path(__file__).resolve().parents[1] / "v3" / "runner" / "wiring.py").read_text()
-    assert "split_legs" not in src and "partial=None)" in src          # nessuna quota automatica nel percorso reale
+    assert "split_legs" not in src and "partial=None,  " in src          # nessuna quota automatica nel percorso reale
 
 
 def test_scale_in_first_entry_uses_only_part_of_the_same_risk_budget(tmp_path):

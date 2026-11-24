@@ -91,7 +91,8 @@ class JournalNotifier:
             return msgs
         new = [r.event for r in rows if r.seq > st["seq"]]
         all_events = [r.event for r in rows]
-        msgs = self._opens(new) + self._scaling(new) + self._closes(new, all_events) + self._guardian(new, st)
+        msgs = (self._strategy(new) + self._opens(new) + self._scaling(new) + self._closes(new, all_events)
+                + self._guardian(new, st))
         if today > st.get("report_day", today):
             msgs.append(self._report(st["report_day"], all_events, now_ms))
             st["report_day"] = today
@@ -126,6 +127,18 @@ class JournalNotifier:
                        + (f"{len(legs)} quote · " if len(legs) > 1 else "") + f"entrata {_px(p.get('fill_price'))} · "
                        f"stop {_px(p.get('stop_price'))} · leva {p.get('leverage')}× · margine {margin:.2f} USDT"
                        + (f" · {', '.join(tps)}" if tps else ""))
+        return out
+
+    @staticmethod
+    def _strategy(new) -> list[str]:
+        """Brain Live Evolution: un messaggio per ogni cambio di strategia approvato (vale per le nuove aperture)."""
+        out = []
+        for e in new:
+            p = e.payload if isinstance(e.payload, dict) else {}
+            if e.kind == "strategy_switch":
+                out.append(f"🧬 Strategia {p.get('from')} → {p.get('to')}" + (" (rollback)" if p.get("rollback") else "")
+                           + " per le NUOVE aperture dal prossimo giro; le posizioni aperte completano la loro versione."
+                           + (f" Motivo: {str(p.get('reason'))[:200]}" if p.get("reason") else ""))
         return out
 
     def _scaling(self, new) -> list[str]:

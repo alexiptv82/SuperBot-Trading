@@ -159,7 +159,7 @@ def build_exit_worker(*, data_dir: Path, run_id: str, config: RunnerConfig,
         long_hold = {"window_ms": LONG_HOLD_WINDOW_MS, "history_best": history_best_from(
             CandleStore(get_json, keep={HISTORY_TF: (HISTORY_MS, 1_500)}))}
 
-    if config.unico is not None and config.unico.partial is not None:
+    if config.unico is not None:      # anche senza presa parziale di base: una versione puo' averla (fotografia)
         # posizione unica (24/11): presa parziale come riduzione, passo di quantita' dalle regole dei contratti
         from backend.v3.runner.contracts import ContractRules
         rules = ContractRules(get_json, maintenance_fraction=config.maintenance_fraction)

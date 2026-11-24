@@ -51,6 +51,11 @@ class OpenPosition:
     adds: int = 0
     reduces: int = 0
     tp_reduced: bool = False
+    # Brain Live Evolution (24/11): versione di strategia con cui la posizione e' nata e la SUA fotografia delle regole
+    # d'uscita (``payload["strategy"]``). "" = posizione senza fotografia: regole della configurazione di base della run.
+    strategy_version: str = ""
+    exit_snapshot: Any = None          # ExitPolicy della versione (None = politica della run)
+    partial_snapshot: Any = None       # PartialTakeProfit della versione (valido solo con ``strategy_version``)
 
     @property
     def group(self) -> str:
@@ -117,6 +122,31 @@ def _leg_fields(p: Mapping) -> dict:
     return {"leg": leg, "take_profit_r": tp, "group_id": did if isinstance(did, str) and did else ""}
 
 
+def _strategy_fields(p: Mapping) -> dict:
+    """Fotografia della strategia (Brain Live Evolution). Una fotografia illeggibile non si inventa: la posizione
+    resta sulle regole della run (valori predefiniti), come prima della versione."""
+    snap = p.get("strategy")
+    if not isinstance(snap, Mapping) or not isinstance(snap.get("version"), str):
+        return {}
+    import json as _json
+    from backend.v3.runner.exits import load_exit_policy
+    try:
+        policy = load_exit_policy(_json.dumps(snap.get("exit_policy")).encode())
+    except (ValueError, TypeError):
+        return {}
+    partial = None
+    part = snap.get("partial_take_profit")
+    if isinstance(part, Mapping):
+        from backend.v3.unico import PartialTakeProfit
+        try:
+            frac, at_r = Decimal(str(part.get("fraction"))), Decimal(str(part.get("at_r")))
+            if frac.is_finite() and at_r.is_finite() and 0 < frac < 1 and 0 < at_r <= 20:
+                partial = PartialTakeProfit(frac, at_r)
+        except (InvalidOperation, TypeError, ValueError):
+            partial = None
+    return {"strategy_version": snap["version"][:16], "exit_snapshot": policy, "partial_snapshot": partial}
+
+
 def open_groups(positions) -> int:
     """Aperture distinte (slot occupati): le quote di una stessa apertura contano una volta."""
     return len({p.group for p in positions})
@@ -168,6 +198,7 @@ def build_summary(
                 stop_price=_decimal(p.get("stop_price")),
                 opened_at_ms=ts,
                 **_leg_fields(p),
+                **_strategy_fields(p),
             )
             open_map[pid] = pos
 
