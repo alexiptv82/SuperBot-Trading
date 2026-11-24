@@ -1,0 +1,23 @@
+{
+  "protocol_version": 1,
+  "run_id": "lab-p10-2026-11",
+  "candle_ms": 900000,
+  "symbols": ["BTCUSDT", "ETHUSDT"],
+  "min_segment_bars": 400,
+  "unit_notional": "1000",
+  "risk": {"atr_n": 14, "stop_atr_mult": "1.5", "target_r_mult": "2", "cooldown_bars": 3},
+  "strategies": [
+    {"id": "S07", "kind": "donchian", "params": {"n": 20, "trend_ema_n": 50}},
+    {"id": "S05", "kind": "bb_macd", "params": {"bb_n": 20, "bb_k": "2", "pb_low": "0.2", "pb_high": "0.8", "macd_fast": 12, "macd_slow": 26, "macd_signal": 9}},
+    {"id": "S02", "kind": "ema_cross_adx", "params": {"fast_n": 9, "slow_n": 21, "adx_n": 14, "adx_min": "25"}}
+  ],
+  "regime": {"atr_n": 14, "pct_window": 2880, "adx_n": 14, "params": {"shock_tr_mult": "3", "expansion_pct_min": "80", "adx_trend_min": "25", "adx_range_max": "20"}},
+  "labeling": {"primary_horizon_ms": 14400000, "primary_cost_bp": "12", "stress_costs_bp": ["0", "20"], "primary_policy": "stop_first", "bound_policy": "target_first"},
+  "evaluation": {
+    "warmup_days": 30, "train_days": 120, "test_days": 30, "step_days": 30, "embargo_days": 1, "expanding": false,
+    "wf": {"min_trades": 30, "min_days": 10, "confidence": "0.9", "n_boot": 2000, "seed": 20261104},
+    "whole": {"min_trades": 30, "min_days": 10, "confidence": "0.99", "n_boot": 5000, "seed": 20261104}
+  },
+  "controls": {"n_shifts": 40, "min_shift_days": 30, "seed": 20261104},
+  "verdict": {"oos_over_train_min": "0.5", "min_oos_trades": 100, "min_folds_with_selection": 3, "control_percentile_min": "95"}
+}

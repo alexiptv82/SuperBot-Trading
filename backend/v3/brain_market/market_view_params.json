@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "base_timeframe": "15m",
+  "max_age_candles": 1,
+  "timeframes": [
+    {
+      "name": "15m",
+      "candle_ms": 900000,
+      "pct_window": 2880
+    },
+    {
+      "name": "1h",
+      "candle_ms": 3600000,
+      "pct_window": 720
+    },
+    {
+      "name": "4h",
+      "candle_ms": 14400000,
+      "pct_window": 180
+    }
+  ],
+  "indicators": {
+    "ema_fast": 20,
+    "ema_slow": 50,
+    "atr_n": 14,
+    "rsi_n": 14,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "bb_n": 20,
+    "bb_k": "2",
+    "donchian_n": 20,
+    "adx_n": 14
+  },
+  "regime": {
+    "shock_tr_mult": "3",
+    "expansion_pct_min": "80",
+    "adx_trend_min": "25",
+    "adx_range_max": "20"
+  }
+}

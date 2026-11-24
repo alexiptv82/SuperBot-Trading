@@ -1,0 +1,60 @@
+name: Laboratorio P10 pre-registrato (solo ricerca, sola lettura)
+
+# Scarica candele da 15 minuti PUBBLICHE di BTCUSDT e ETHUSDT dai futures Bitget (nessuna chiave) ed esegue il
+# protocollo pre-registrato `backend/v3/lab/preregistration.json` (testo: backend/v3/lab/PREREGISTRAZIONE.md).
+# Non fa deploy, non usa segreti, non tocca i bot, il cervello, DESK_MODE ne' la modalita' PAPER.
+#
+# Parte da sola ad ogni push sul ramo di lavoro che tocca QUESTO file, oppure a mano (workflow_dispatch).
+
+on:
+  push:
+    branches: [work/v3-p10-lab-chatgpt-20261105]
+    paths:
+      - ".github/workflows/lab-p10.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Impronta del protocollo (deve essere quella pre-registrata)
+        run: |
+          echo "7e561c2131d33a4214ba973da2163e53a232fe2e6ea115b95443c109d9ab550e  backend/v3/lab/preregistration.json" | sha256sum -c -
+
+      - name: Test del laboratorio (senza rete)
+        run: |
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=.:backend python -m pytest backend/tests/test_v3_lab_p10.py backend/tests/test_v3_lab_p10_independent.py backend/tests/test_v3_lab_fetch_candles.py -q -p no:cacheprovider
+
+      - name: Scarica le candele pubbliche (540 giorni)
+        run: |
+          PYTHONPATH=.:backend python -u -m backend.v3.lab_tools.fetch_candles --symbols BTCUSDT,ETHUSDT --days 540 --out-dir lab_data
+
+      - name: Esegui il laboratorio
+        run: |
+          PYTHONPATH=.:backend python -u -m backend.v3.lab.run --protocol backend/v3/lab/preregistration.json --data-dir lab_data --out-dir lab_out
+
+      - name: Riepilogo del rapporto
+        if: always()
+        run: |
+          if [ -f lab_out/lab_report.md ]; then cat lab_out/lab_report.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Salva risultati
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab-p10-risultati
+          path: |
+            lab_out/
+            lab_data/
+          if-no-files-found: warn
