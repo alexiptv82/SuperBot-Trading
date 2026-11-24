@@ -125,11 +125,12 @@ def enrich_trades(data: dict, run_dir: Path, run_id: str) -> dict:
     return data
 
 
-def _spend_by_day(path: Path, tz) -> Optional[dict]:
+def _spend_by_day(path: Path, tz, immutable: bool = False) -> Optional[dict]:
+    """Costi AI per giorno; ``immutable`` solo per le run archiviate (vedi ``compare_view._spend``)."""
     if not path.is_file():
         return None
     try:
-        uri = path.resolve().as_uri().replace("file://", "file:") + "?mode=ro"
+        uri = path.resolve().as_uri().replace("file://", "file:") + ("?immutable=1" if immutable else "?mode=ro")
         with closing(sqlite3.connect(uri, uri=True)) as db:
             db.execute("PRAGMA query_only=ON")
             rows = db.execute("SELECT occurred_at, units FROM spend_events").fetchall()
@@ -161,7 +162,7 @@ def _day(ms: int, tz) -> str:
     return datetime.fromtimestamp(ms / 1000, tz).date().isoformat()
 
 
-def performance(run_dir: Path, run_id: str, now_ms: int) -> dict:
+def performance(run_dir: Path, run_id: str, now_ms: int, *, archived: bool = False) -> dict:
     """Periodo, risultati giornalieri, curve, statistiche e motivi delle decisioni della run (sola lettura)."""
     cfg = load_config(run_dir)
     events = _events(run_dir, run_id)
@@ -223,7 +224,7 @@ def performance(run_dir: Path, run_id: str, now_ms: int) -> dict:
                 str(p.get("symbol", "")).lower()) else None, "kind": kind, "status": status, "rationale": code,
                 "risk_reason": rr, "regime": reg})
 
-    spend = _spend_by_day(run_dir / "budget.db", tz)
+    spend = _spend_by_day(run_dir / "budget.db", tz, immutable=archived)
     daily = []
     if started is not None:
         d0 = datetime.fromtimestamp(started / 1000, tz).date()
@@ -308,7 +309,7 @@ def archive_index(env: Mapping[str, str], now_ms: int) -> dict:
     runs = []
     for stamp, folder, run_id, res in _archived(root):
         ref = _ref(root, stamp, folder, run_id)
-        row = read_run(ref, now_ms)
+        row = read_run(ref, now_ms, archived=True)
         for k in _LIVE_ONLY:
             row.pop(k, None)
         row["name"] = f"{stamp}~{folder}"
@@ -342,4 +343,5 @@ def archive_detail(env: Mapping[str, str], key: str, now_ms: int) -> Optional[di
               for o in sorted(outcomes, key=lambda o: o.closed_at_ms, reverse=True)]
     data = enrich_trades({"open_positions": [], "closed_trades": closed}, ref.dir, ref.run_id)
     return {"key": key, "label": ref.label, "run_id": ref.run_id, "archive": hit[0],
-            "closed_trades": data["closed_trades"], "performance": performance(ref.dir, ref.run_id, now_ms)}
+            "closed_trades": data["closed_trades"],
+            "performance": performance(ref.dir, ref.run_id, now_ms, archived=True)}

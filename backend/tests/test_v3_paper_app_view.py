@@ -139,6 +139,9 @@ def test_performance_daily_curve_stats_and_decision_reasons(tmp_path, monkeypatc
     traded = [d for d in p["daily"] if d["trades"]]
     assert [(d["wins"], d["losses"]) for d in traded] == [(1, 0), (0, 1)]
     first = traded[0]
+    # TP 100 -> 106, 1 unita': lordo 6, commissioni (100 + 106) * 6 bp, netto = lordo - commissioni
+    assert D(first["gross"]) == D(6) and D(first["fees"]) == D("0.1236") and D(first["net"]) == D("5.8764")
+    assert D(traded[1]["net"]) < 0
     assert first["ai_cost"] == "0.25" and D(first["net_after_ai"]) == D(first["net"]) - D("0.25")
     assert D(p["daily"][-1]["equity_end"]) == D(1000) + sum(D(d["net"]) for d in traded)
     assert [D(x["equity"]) for x in p["curve_settled"]][0] == D(1000) and len(p["curve_settled"]) == 3

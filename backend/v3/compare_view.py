@@ -79,12 +79,15 @@ def _s(v) -> Optional[str]:
     return None if v is None else str(v)
 
 
-def _spend(path: Path) -> dict:
-    """Spesa AI della run (micro-dollari nel registro) letta in sola lettura: oggi (UTC) e totale."""
+def _spend(path: Path, immutable: bool = False) -> dict:
+    """Spesa AI della run (micro-dollari nel registro) letta in sola lettura: oggi (UTC) e totale.
+
+    ``immutable``: solo per run ARCHIVIATE (nessun processo le scrive piu'): il registro e' in WAL e, su un mount in sola
+    lettura senza ``-shm``, ``mode=ro`` non si apre; ``immutable=1`` lo legge senza creare o toccare file."""
     if not path.is_file():
         return {"day": None, "total": None}
     try:
-        uri = path.resolve().as_uri().replace("file://", "file:") + "?mode=ro"
+        uri = path.resolve().as_uri().replace("file://", "file:") + ("?immutable=1" if immutable else "?mode=ro")
         with closing(sqlite3.connect(uri, uri=True)) as db:
             db.execute("PRAGMA query_only=ON")
             rows = db.execute("SELECT occurred_at, units FROM spend_events").fetchall()
@@ -115,7 +118,7 @@ def _side_bucket():
     return {"trades": 0, "wins": 0, "losses": 0, "net_pnl": Decimal("0")}
 
 
-def read_run(ref: RunRef, now_ms: int) -> dict:
+def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
     base = {"name": ref.name, "label": ref.label, "run_id": ref.run_id}
     cfg = _config(ref.dir / "runner_config.json")
     jpath = ref.dir / "journal.db"
@@ -173,7 +176,7 @@ def read_run(ref: RunRef, now_ms: int) -> dict:
                               "sources": [s for s in (p.get("sources") or []) if isinstance(s, str) and _CODE.match(s)]})
     realized = equity - start                 # P&L di TRADING: realizzato, commissioni incluse, nessun costo AI
     decided = wins + losses
-    spend = _spend(ref.dir / "budget.db")
+    spend = _spend(ref.dir / "budget.db", immutable=archived)
     ai_total = _d(spend.get("total"))
     after_ai = None if ai_total is None else realized - ai_total     # costi AI sottratti UNA sola volta, qui
     mtm_dd = mtm_dd_pct = None
