@@ -1,3 +1,10 @@
+## 24/11/2026 (35) — Fase autorizzata (analisi e preparazione, NO deploy): correzioni e V2 sul ramo isolato (Claude)
+
+- Ramo `claude/live-evolution-20261124`: `064f44b1` servizio uscite (rilettura sovrapposta di 60 candele ogni minuto + ricarica completa ogni 30', revisioni registrate, `exit_meta` su ogni uscita, evento `exit_late` + Telegram oltre 2'); `07501b38` politica d'ingresso versionabile (LONG solo con trend 1h+4h, costi/1R, consulto 0,60 BTC/ETH/oro/argento e 0,70 altri, EXPANSION da solo no, rischio dimezzato senza Claude PREPARATO ma spento = veto, guardia stop AI ATR 1h + zona dei costi, secondo ingresso per versione); `d652592a` simulatore offline; `e46aa121` `--nuova-sessione` (archivio integrale, V2, apprendimento delle sessioni archiviate in sola lettura, `superbot-strategia`, rollback solo del Brain), cumulativo in Archivio; `ab0ce860` versione di strategia in dashboard.
+- Esportazione del journal (sola lettura): `rilascio/diagnosi/COMANDO-ESPORTAZIONE.txt` (`e03cc12e…`) — in attesa del proprietario; poi simulazione delle 37 proposte (5 scenari, con/senza filtri) e conferma dei valori V2.
+- Frequenza run storica: 98 trade su 5,54 giorni di attivita' (13/11 15:00 → 19/11 04:03) = 17,7/giorno; su tutta la vita (7,93 giorni) 12,4/giorno.
+- Brain ancora in PAUSA. Nessun reset/merge/deploy.
+
 ## 24/11/2026 (34) — Analisi del rapporto di diagnostica (Claude, nessuna modifica alla VPS)
 
 - **BTC:** SHORT 14:35:51 (2 quote, 60.201,16, stop 60.800). 15:30:23 revisione: DeepSeek HOLD, Claude MODIFY_STOP 60.250 adottato (prezzo ~59.950, 0,5 % dallo stop, ATR 1h ~1,1 %). Candela 15:33 massimo 60.274 ≥ 60.250: stop toccato. Il servizio delle uscite in funzione NON ha chiuso; al riavvio 16:53:52 il nuovo servizio, riscaricata la storia, ha chiuso entrambe le quote a 60.262,05 (stop + 2 bp). Lordo −7,66, commissioni 9,09, netto −16,75. Riavvio = correlazione temporale; causa = stop di Claude dentro il rumore + incoerenza dei dati in cache (candela 1m letta una sola volta subito dopo la chiusura, meccanismo più probabile, non dimostrabile). Risultato non modificato.
