@@ -66,7 +66,7 @@ def _world(tmp: Path):
         if d.is_dir():
             d.chmod(0o555)
     auth = tmp / "auth.db"
-    penv = dict(os.environ, PYTHONPATH=f"{REPO}:{REPO / 'backend'}", PYTHONDONTWRITEBYTECODE="1", DB_PATH=str(auth),
+    penv = dict(os.environ, PYTHONPATH=os.pathsep.join(filter(None, (str(REPO), str(REPO / "backend"), os.environ.get("PYTHONPATH")))), PYTHONDONTWRITEBYTECODE="1", DB_PATH=str(auth),
                 V3_COMPARE_RUNS=json.dumps(env), V3_PAPER_ARCHIVE_ROOT=str(arch), DESK_MODE="paper", TRADING_MODE="paper",
                 HTTP_PROXY="http://127.0.0.1:9", HTTPS_PROXY="http://127.0.0.1:9")
     subprocess.run([sys.executable, "-c", "import auth, database; database.Base.metadata.create_all(database.engine); auth.init_auth()"],

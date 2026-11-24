@@ -11,3 +11,4 @@ button { font-family: inherit; }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: #1e293b; }
 ::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
