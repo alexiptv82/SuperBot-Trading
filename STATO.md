@@ -1,3 +1,9 @@
+## 24/11/2026 (32) — Brain Live Evolution: diagnosi BTC in sola lettura pronta (Claude)
+
+- **Stato:** `612f6b4b` installato (riavvio uscite/runner 16:53:47–16:53:54 UTC). Dashboard: 1 trade chiuso (SHORT BTC, due quote), −16,75 USDT netti; prima dell'installazione il proprietario vedeva circa +67 non realizzati. Journal, archivi e dati dei primi bot sono solo root: causa NON ancora verificata.
+- **Diagnosi** (ramo `claude/live-evolution-20261124`, `5999ecff`): `deploy/brain-unico-2000/diagnosi/diagnosi_paper.py`, sola lettura su copie dei journal; cronologia completa delle quote BTC, totali lordo/commissioni/netto, candele Bitget 1m e riesecuzione del monitor col codice installato, log dei servizi; statistiche di aggressività di tutte le run (anche archiviate) e dei primi Falco/Toro/Brain. Comando `rilascio/diagnosi/COMANDO-DIAGNOSI.txt` (script `05414c13…`); rapporto in `rilascio/diagnosi/rapporto-*.json`.
+- **Prossimo:** rapporto del proprietario → causa verificata; poi Live Evolution (versioni di strategia per nuove aperture), confronto aggressività, nuova base 2.000 su consenso.
+
 ## 24/11/2026 (31) — Posizione unica: due correzioni di revisione, pacchetto DEFINITIVO `brain-unico-612f6b4b`, non installato (Claude)
 
 - **Correzioni** (`612f6b4b`, ramo `claude/ingresso-unico-20261124`): Performance giornaliera con trade distinti separati dagli eventi di chiusura (`closes`); P&L per data invariato, trade/vinti/persi una volta al giorno della chiusura completa; `ADD` nello storico delle revisioni. Gate DRY_RUN verde: V3 5.551, Builder 158, Jest 212; deploy 59; mobile 98/0.
