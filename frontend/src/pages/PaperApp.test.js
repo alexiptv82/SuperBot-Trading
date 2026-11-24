@@ -164,7 +164,10 @@ test('Archivio: archived PAPER sessions and every historical page, read-only, ou
     'href="/archivio/run/reset-20261123T203000Z~brain-v3-brain-scalp-p1"'])
     expect(h).toContain(t);
   for (const href of ['/brain-unico/rc1', '/overview', '/classic', '/archivio/classici/trade', '/archivio/classici/performance',
-    '/arena', '/brain/archive', '/compare']) expect(h).toContain(`href="${href}"`);
+    '/arena', '/brain/archive']) expect(h).toContain(`href="${href}"`);
+  // /compare legge le run attuali: in Archivio sarebbe un "confronto storico" falso.
+  expect(h).not.toContain('href="/compare"');
+  expect(h).not.toContain('Confronto della prima sessione');
   expect(h).not.toMatch(/<button[^>]*>Chiudi/);
   expect(renderToStaticMarkup(R(<ArchiveContent data={{ available: false, runs: [] }} />))).toContain('non è collegato');
   expect(minFont(h)).toBeGreaterThanOrEqual(12);

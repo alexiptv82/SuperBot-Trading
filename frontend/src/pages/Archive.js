@@ -7,7 +7,8 @@ import {
 
 // Archivio: tutto cio' che NON e' la coppia PAPER attiva, in un solo posto e in sola lettura.
 //  * Sessioni PAPER archiviate dal reset (/api/v3/paper-archive): run complete con journal intatto, mai mescolate.
-//  * Brain RC1, Falco/Toro classici, Arena, Brain precedenti e il vecchio confronto: le pagine esistenti, invariate.
+//  * Brain RC1, Falco/Toro classici, Arena, Brain precedenti: le pagine esistenti, invariate.
+//  * Niente link a /compare: legge le run ATTUALI (V3_COMPARE_RUNS), non le sessioni precedenti.
 const LINKS = [
   ['🧠', 'Brain RC1', 'Run Brain Unico RC1 (in pausa): portafoglio, decisioni e trade.', '/brain-unico/rc1'],
   ['🦅', 'Falco e Toro classici', 'Portafogli classici: panoramica, posizioni e storico.', '/overview'],
@@ -16,7 +17,6 @@ const LINKS = [
   ['🏆', 'Performance classiche', 'Statistiche dei portafogli classici.', '/archivio/classici/performance'],
   ['🏟️', 'Arena', 'Gara fra modelli, sola lettura.', '/arena'],
   ['🗃️', 'Brain precedenti', 'Sessioni Brain V3 precedenti a RC1.', '/brain/archive'],
-  ['⚖️', 'Confronto della prima sessione', 'La vecchia pagina di confronto affiancato.', '/compare'],
 ];
 
 function ArchivedRun({ r }) {
