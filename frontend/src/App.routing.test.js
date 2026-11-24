@@ -23,7 +23,9 @@ async function open(path) {
   global.IS_REACT_ACT_ENVIRONMENT = true;
   window.history.pushState({}, '', path);
   sessionStorage.setItem('sb_token', 'test-token');
-  API.get.mockImplementation(url => (url.startsWith('/api/v3/compare') ? Promise.resolve({ data: compare })
+  API.get.mockImplementation(url => (url === '/api/v3/compare' ? Promise.resolve({ data: compare })
+    : url.startsWith('/api/v3/compare/') ? Promise.reject(new Error('non usato qui'))
+    : url === '/api/v3/paper-archive' ? Promise.resolve({ data: { available: true, runs: [] } })
     : Promise.resolve({ data: { portfolios: [], state: 'not_started' } })));
   const el = document.createElement('div');
   document.body.appendChild(el);
@@ -58,4 +60,50 @@ test('Brain RC1 stays available at /brain-unico/rc1 with its own data, and the c
   try {
     expect(cmp.el.textContent).toContain('Confronto');
   } finally { await cmp.close(); }
+});
+
+const tabs = el => Array.from(el.querySelectorAll('nav[aria-label="Navigazione principale"] button')).map(b => b.textContent);
+
+test('the main bar has ONLY Brain, Trade, Performance, Archivio; settings and tools live in the separate menu', async () => {
+  const s = await open('/brain-unico');
+  try {
+    expect(tabs(s.el)).toEqual(['🧠Brain', '💹Trade', '📈Performance', '🗄️Archivio']);
+    const bar = s.el.querySelector('nav[aria-label="Navigazione principale"]').textContent;
+    for (const t of ['Impostazioni', 'Storico', 'Classici', 'Agenti', 'Arena', 'Esci', 'LIVE']) expect(bar).not.toContain(t);
+    const menu = s.el.querySelector('button[aria-label="Menu"]');
+    expect(menu.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => { menu.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    const dlg = s.el.querySelector('[role="dialog"]');
+    for (const t of ['Impostazioni', 'Agenti e supervisione', 'Modalità LIVE', 'Esci']) expect(dlg.textContent).toContain(t);
+    const go = Array.from(dlg.querySelectorAll('button')).find(b => b.textContent.includes('Impostazioni'));
+    await act(async () => { go.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(window.location.pathname).toBe('/settings');
+    expect(s.el.querySelector('[role="dialog"]')).toBeNull();
+  } finally { await s.close(); }
+});
+
+test('Trade, Performance and Archivio are the new pages on the current runs; old pages stay reachable from the Archive', async () => {
+  const t = await open('/trades');
+  try {
+    expect(t.el.textContent).toContain('Solo le run attuali');
+    expect(API.get.mock.calls.map(c => c[0])).toContain('/api/v3/compare/falco_evoluto/trades?limit=300');
+    expect(API.get.mock.calls.map(c => c[0]).some(u => u.startsWith('/api/trades') || u.startsWith('/api/v3/brain/trades'))).toBe(false);
+  } finally { await t.close(); }
+  const p = await open('/performance');
+  try {
+    expect(p.el.textContent).toContain('Confronto diretto');
+  } finally { await p.close(); }
+  const a = await open('/archivio');
+  try {
+    expect(a.el.textContent).toContain('Sessioni PAPER archiviate');
+    expect(a.el.querySelector('a[href="/brain-unico/rc1"]')).not.toBeNull();
+    const lit = a.el.querySelector('nav[aria-label="Navigazione principale"] button[aria-current="page"]');
+    expect(lit.textContent).toContain('Archivio');
+  } finally { await a.close(); }
+  const old = await open('/archivio/classici/trade');
+  try {
+    expect(window.location.pathname).toBe('/archivio/classici/trade');
+    const lit = old.el.querySelector('nav[aria-label="Navigazione principale"] button[aria-current="page"]');
+    expect(lit.textContent).toContain('Archivio');
+  } finally { await old.close(); }
 });

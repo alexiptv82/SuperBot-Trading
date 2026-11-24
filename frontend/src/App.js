@@ -7,7 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Trades from './pages/Trades';
 import Performance from './pages/Performance';
 import Settings from './pages/Settings';
-import NavBar from './components/NavBar';
+import NavBar, { TopBar } from './components/NavBar';
 import LiveDashboard from './pages/LiveDashboard';
 import LiveTrades from './pages/LiveTrades';
 import LivePerformance from './pages/LivePerformance';
@@ -18,6 +18,9 @@ import PaperBots from './pages/PaperBots';
 import Compare from './pages/Compare';
 import ArenaStorico from './pages/ArenaStorico';
 import Supervisor from './pages/Supervisor';
+import PaperTrades from './pages/PaperTrades';
+import PaperPerformance from './pages/PaperPerformance';
+import Archive, { ArchivedRunPage } from './pages/Archive';
 
 // Error boundary globale: cattura qualsiasi crash di render nell'albero React
 // e mostra un messaggio utile invece della schermata nera.
@@ -106,34 +109,41 @@ export default function App() {
             COLLAUDO V3 PAPER IN SOLA LETTURA — dati di prova, chiusure disabilitate, bot fermi.
           </div>}
           <PasswordBanner />
-          <div style={{ paddingBottom: '75px' }}>
-            <Routes>
-              {/* ── Sezione PAPER (soldi simulati) ── */}
-              <Route path="/" element={<Navigate to="/brain-unico" replace />} />
-              <Route path="/brain-unico" element={<PaperBots />} />
-              <Route path="/brain-unico/rc1" element={<BrainUnico />} />
-              <Route path="/compare" element={<Compare />} />
-              <Route path="/arena" element={<ArenaStorico />} />
-              <Route path="/classic" element={<Dashboard />} />
-              <Route path="/trades" element={<Trades />} />
-              <Route path="/performance" element={<Performance />} />
-              <Route path="/settings" element={<Settings />} />
-              {/* ── Sezione LIVE (BitGet reale) ── */}
-              <Route path="/live" element={<LiveDashboard />} />
-              <Route path="/live/trades" element={<LiveTrades />} />
-              <Route path="/live/performance" element={<LivePerformance />} />
-              <Route path="/brain" element={<Navigate to="/classic?portfolio=brain" replace />} />
-              <Route path="/brain/archive" element={<BrainDashboard archiveInitially />} />
-              <Route path="/overview" element={<Overview />} />
-              <Route path="/supervisor" element={<Supervisor />} />
-              <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
-          </div>
-          <NavBar onLogout={() => {
+          <TopBar onLogout={() => {
             sessionStorage.removeItem('sb_token');
             sessionStorage.removeItem('sb_mode');
             setAuth(false);
           }} />
+          <div style={{ paddingBottom: 'calc(84px + env(safe-area-inset-bottom))' }}>
+            <Routes>
+              {/* ── App PAPER: i due bot attuali (Falco Evoluto, Brain Scalp) ── */}
+              <Route path="/" element={<Navigate to="/brain-unico" replace />} />
+              <Route path="/brain-unico" element={<PaperBots />} />
+              <Route path="/trades" element={<PaperTrades />} />
+              <Route path="/performance" element={<PaperPerformance />} />
+              <Route path="/archivio" element={<Archive />} />
+              <Route path="/archivio/run/:key" element={<ArchivedRunPage />} />
+              {/* ── Archivio: pagine storiche invariate, raggiungibili dall'Archivio ── */}
+              <Route path="/archivio/classici/trade" element={<Trades />} />
+              <Route path="/archivio/classici/performance" element={<Performance />} />
+              <Route path="/brain-unico/rc1" element={<BrainUnico />} />
+              <Route path="/compare" element={<Compare />} />
+              <Route path="/arena" element={<ArenaStorico />} />
+              <Route path="/classic" element={<Dashboard />} />
+              <Route path="/overview" element={<Overview />} />
+              <Route path="/brain" element={<Navigate to="/classic?portfolio=brain" replace />} />
+              <Route path="/brain/archive" element={<BrainDashboard archiveInitially />} />
+              {/* ── Menu: impostazioni e strumenti tecnici ── */}
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/supervisor" element={<Supervisor />} />
+              {/* ── Sezione LIVE (sola consultazione) ── */}
+              <Route path="/live" element={<LiveDashboard />} />
+              <Route path="/live/trades" element={<LiveTrades />} />
+              <Route path="/live/performance" element={<LivePerformance />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </div>
+          <NavBar />
         </BrowserRouter>
       </AppProvider>
     </AppErrorBoundary>

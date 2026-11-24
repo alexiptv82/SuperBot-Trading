@@ -73,10 +73,12 @@ test('guardian view: known states only, reasons translated, unknown codes droppe
   expect(guardianView(run({ guardian: null }))).toBeNull();
 });
 
-test('the Storico tab stays lit on the pages reached from it, the Brain tab only on the main screen', () => {
+test('the Archivio tab stays lit on every historical page, the Brain tab only on the main screen', () => {
   expect(isActive('/brain-unico', '/brain-unico')).toBe(true);
   expect(isActive('/brain-unico', '/brain-unico/rc1')).toBe(false);
-  for (const p of ['/overview', '/brain-unico/rc1', '/compare']) expect(isActive('/overview', p)).toBe(true);
-  expect(isActive('/overview', '/brain-unico')).toBe(false);
-  expect(isActive('/classic', '/classic')).toBe(true);
+  for (const p of ['/archivio', '/archivio/run/x', '/archivio/classici/trade', '/overview', '/brain-unico/rc1', '/compare',
+    '/classic', '/arena', '/brain/archive']) expect(isActive('/archivio', p)).toBe(true);
+  for (const p of ['/brain-unico', '/trades', '/performance', '/settings']) expect(isActive('/archivio', p)).toBe(false);
+  expect(isActive('/trades', '/trades')).toBe(true);
+  expect(isActive('/performance', '/performance')).toBe(true);
 });

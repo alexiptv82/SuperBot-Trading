@@ -1,283 +1,241 @@
-import React, { useEffect, useState } from 'react';
-import API from '../api';
+import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { BrainCloseControls } from '../components/OverviewCloseControls';
-import { ago, botStatus, equityView, guardianView, num } from '../paperBotsModel';
-import { REASON, RISK } from './Compare';
+import { botStatus, equityView, guardianView } from '../paperBotsModel';
+import {
+  BotSwitch, C, Card, Fold, Fresh, Grid, LoadState, Note, Page, PageHeader, Pill, Section, SideTag, Stat,
+  ago, botMeta, duration, num, own, pct, price, reasonText, riskText, sgn, tone, usd, usePoll, when,
+} from '../paperApp/kit';
 
-// Schermata principale "Brain": i due bot PAPER in funzione (Falco Evoluto e Brain Scalp). In alto il riepilogo di
-// entrambi, sempre visibile, che fa anche da selettore; sotto i dettagli del SOLO bot scelto: stato RUNNING/PAUSA/FERMO,
-// capitale, equity, profitti, posizioni, Guardian, decisioni e chiusura manuale SINGOLA (con conferma).
-// Dati: solo /api/v3/compare (sola lettura, ogni numero dal journal della SUA run). Nessun comando di avvio/pausa:
-// l'app non ha API sicure per questo. Brain RC1, Falco classico e Toro restano consultabili nello Storico.
-const usd = (v, d = 2) => (num(v) === null ? '—' : `${num(v) < 0 ? '-' : ''}$${Math.abs(num(v)).toFixed(d)}`);
-const sgn = (v, d = 2) => (num(v) === null ? '—' : `${num(v) > 0 ? '+' : num(v) < 0 ? '-' : ''}$${Math.abs(num(v)).toFixed(d)}`);
-const pct = v => (num(v) === null ? '—' : `${num(v) > 0 ? '+' : ''}${num(v).toFixed(2)}%`);
-const tone = v => (num(v) === null ? '#94a3b8' : num(v) > 0 ? '#4ade80' : num(v) < 0 ? '#f87171' : '#94a3b8');
-const MUTED = { color: '#94a3b8', fontSize: 12 };
-const own = (t, k) => (typeof k === 'string' && Object.prototype.hasOwnProperty.call(t, k) ? t[k] : undefined);
-
-const Card = ({ children, style, ...rest }) => (
-  <div {...rest} style={{ background: '#1e293b', borderRadius: 16, padding: 16, border: '1px solid #334155', ...style }}>{children}</div>
-);
-
-const Fold = ({ title, children, label }) => (
-  <details aria-label={label || title} style={{ background: '#1e293b', borderRadius: 16, padding: '12px 16px',
-    border: '1px solid #334155', marginBottom: 12 }}>
-    <summary style={{ fontSize: 15, fontWeight: 700, cursor: 'pointer', color: '#cbd5e1' }}>{title}</summary>
-    <div style={{ marginTop: 10 }}>{children}</div>
-  </details>
-);
-
-const Kpi = ({ label, color, children, sub }) => (
-  <Card style={{ flex: 1, textAlign: 'center', padding: '10px 6px', minWidth: 0 }}>
-    <div style={{ fontSize: 10, color: '#64748b', marginBottom: 2 }}>{label}</div>
-    <div style={{ fontSize: 22, fontWeight: 'bold', color }}>{children}</div>
-    {sub && <div style={{ fontSize: 9, color: '#475569' }}>{sub}</div>}
-  </Card>
-);
-
-const Badge = ({ status }) => (
-  <span aria-label={`Stato ${status.label}`} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 'bold',
-    background: `${status.color}26`, color: status.color, border: `1px solid ${status.color}66`, flexShrink: 0,
-    whiteSpace: 'nowrap' }}>{status.key === 'running' || status.key === 'running_wait' ? '● ' : status.key === 'paused' ? '⏸ ' : ''}{status.label}</span>
-);
-
-const ANALYST = { falco_evoluto: 'regole Falco Evoluto', deepseek: 'DeepSeek' };
-
-const ACCENT = '#a78bfa';
+// Schermata "Brain": i due bot PAPER attuali (Falco Evoluto, Brain Scalp). Gerarchia:
+//   1. stato e capitale  2. equity  3. P&L realizzato / aperto  4. risultato netto dopo i costi AI
+//   5. posizioni aperte con chiusura manuale SINGOLA  6. Guardian e decisioni (sezioni secondarie espandibili).
+// Ogni valore dichiara se e' AGGIORNATO ora (trade chiusi, prezzo del ticker) o riferito all'ULTIMO GIRO del bot
+// (equity a mercato e Guardian, registrati dal runner). Dati: /api/v3/compare e /api/v3/compare/<bot>/trades, sola
+// lettura. Avvio, pausa e mandato restano interventi del proprietario sul server.
+const ANALYST = { falco_evoluto: 'regole Falco Evoluto + AI consulente', deepseek: 'DeepSeek' };
 export const panelId = name => `bot-dettagli-${String(name).replace(/[^a-z0-9_-]/gi, '_')}`;
 
-// Riepilogo SEMPRE visibile dei due bot; ogni scheda e' anche il selettore dei dettagli mostrati sotto (come il
-// selettore di portafoglio della vecchia app: <button> nativo con aria-pressed, quindi tocco su Android/PWA, Tab +
-// Invio/Spazio da tastiera e lettori di schermo funzionano senza codice dedicato). Lo stato (RUNNING/PAUSA/FERMO) di
-// ENTRAMBI resta sempre in vista: selezionare un bot non nasconde mai lo stato dell'altro.
-function Summary({ runs, nowMs, selected, onSelect }) {
-  return <div role="group" aria-label="Scegli il portafoglio da consultare" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-    {runs.map(r => {
-      const st = botStatus(r, nowMs);
-      const eq = equityView(r);
-      const on = r.name === selected;
-      return <button key={r.name} type="button" aria-pressed={on} aria-controls={panelId(r.name)}
-        aria-label={`${r.label}: ${st.label}${r.available ? `, equity ${usd(eq.value)}` : ''}${on ? ', dettagli mostrati sotto' : ', mostra i dettagli'}`}
-        data-bot={r.name} onClick={() => onSelect(r.name)}
-        style={{ flex: 1, minWidth: 0, textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer',
-          WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', minHeight: 48,
-          borderRadius: 16, padding: on ? '9px 9px' : '10px 10px',
-          background: on ? `${ACCENT}1f` : '#1e293b', border: on ? `2px solid ${ACCENT}` : `1px solid ${st.color}55`,
-          boxShadow: on ? `0 0 0 3px ${ACCENT}33` : 'none', opacity: on ? 1 : 0.85, transition: 'all 0.15s' }}>
-        <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: on ? '#f1f5f9' : '#cbd5e1', overflowWrap: 'anywhere' }}>{r.label}</span>
-        <span style={{ display: 'block', margin: '4px 0' }}><Badge status={st} /></span>
-        <span style={{ display: 'block', fontSize: 20, fontWeight: 'bold', color: '#e2e8f0' }}>{r.available ? usd(eq.value) : '—'}</span>
-        <span style={{ display: 'block', fontSize: 11, color: tone(eq.totalPct) }}>{r.available ? pct(eq.totalPct) : '—'}</span>
-        <span aria-hidden="true" style={{ display: 'block', fontSize: 10, fontWeight: 700, marginTop: 4,
-          color: on ? ACCENT : '#64748b' }}>{on ? '▼ dettagli sotto' : 'tocca per i dettagli'}</span>
-      </button>;
-    })}
-  </div>;
+function Badge({ status }) {
+  return <Pill color={status.color}>{status.key === 'running' || status.key === 'running_wait' ? '● ' : status.key === 'paused' ? '⏸ ' : ''}{status.label}</Pill>;
 }
 
-function Guardian({ run, nowMs }) {
-  const g = guardianView(run);
-  if (!g) {
-    return <Card aria-label={`Guardian ${run.label}`} style={{ marginBottom: 12, fontSize: 13, padding: '12px 16px' }}>
-      <div style={{ fontWeight: 'bold', color: '#cbd5e1' }}>🛡️ Smart Profit Guardian</div>
-      <div style={{ ...MUTED, marginTop: 4 }}>Nessuna valutazione registrata finora: compare dopo il primo giro.</div>
-    </Card>;
-  }
-  return <Card aria-label={`Guardian ${run.label}`} style={{ marginBottom: 12, borderColor: g.color, background: `${g.color}14`,
-    fontSize: 13, padding: '12px 16px' }}>
-    <div style={{ color: g.color, fontWeight: 'bold' }}>🛡️ Guardian · {g.label}</div>
-    <div style={{ ...MUTED, marginTop: 4 }}>{g.detail}{g.reasons.length ? ` (${g.reasons.join(', ')})` : ''}</div>
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px', marginTop: 6, fontSize: 11, color: '#94a3b8' }}>
-      <span>Picco <strong style={{ color: '#e2e8f0' }}>{usd(g.peak)}</strong></span>
-      <span>Giveback <strong style={{ color: '#e2e8f0' }}>{usd(g.giveback)}</strong></span>
-      <span>Floor <strong style={{ color: '#e2e8f0' }}>{usd(g.floor)}</strong></span>
-      <span>Rischio residuo <strong style={{ color: '#e2e8f0' }}>{usd(g.budget)}</strong></span>
-      <span>Tetto apertura <strong style={{ color: '#e2e8f0' }}>{g.state === 'NORMAL' ? 'ordinario' : usd(g.riskCap)}</strong></span>
-    </div>
-    <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>
-      Valutato {ago(g.asOfMs, nowMs) || '—'}. Il floor limita le nuove aperture: non garantisce il profitto finale.</div>
-  </Card>;
-}
-
-function Positions({ run, onRefresh }) {
-  const open = run.open_positions || [];
+function SummaryTile(r, on, nowMs) {
+  const st = botStatus(r, nowMs);
+  const eq = equityView(r);
+  const m = botMeta(r.name);
   return <>
-    <h3 style={{ fontSize: 14, fontWeight: 'bold', margin: '4px 0 8px', color: '#cbd5e1' }}>⚡ Posizioni aperte</h3>
-    {open.length === 0 && <Card style={{ marginBottom: 12, textAlign: 'center', color: '#475569', fontSize: 13 }}>
-      Nessuna posizione aperta al momento</Card>}
-    <BrainCloseControls positions={open} allowCloseAll={false} readOnly={run.manual_close_allowed !== true}
-      serverPending={run.close_pending === true} onRefresh={onRefresh}
-      closeUrl={`/api/v3/compare/${run.name}/close`} resultUrl={`/api/v3/compare/${run.name}/close-result`}
-      itemStyle={{ background: '#0f172a', borderRadius: 12, padding: 12, border: '1px solid #334155', marginBottom: 8 }}
-      closeLabel={p => `Chiudi ${p.symbol} (PAPER)`}
-      renderPosition={p => <div data-testid={`bot-position-${run.name}`}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={{ padding: '2px 7px', borderRadius: 5, fontSize: 10, fontWeight: 'bold', color: 'white',
-            background: p.side === 1 ? '#166534' : p.side === -1 ? '#7f1d1d' : '#334155' }}>
-            {p.side === 1 ? 'LONG' : p.side === -1 ? 'SHORT' : '—'}</span>
-          <span style={{ fontWeight: 'bold', fontSize: 14 }}>{String(p.symbol || '?').replace('USDT', '')}</span>
-          <span style={{ color: '#94a3b8', fontSize: 12 }}>x{p.leverage ?? '—'}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 6, fontSize: 11,
-          color: '#94a3b8', gap: '2px 10px' }}>
-          <span>Entrata <strong style={{ color: '#e2e8f0' }}>${p.entry ?? '—'}</strong></span>
-          <span>Margine <strong style={{ color: '#e2e8f0' }}>{usd(p.margin, 0)}</strong></span>
-          <span style={{ color: '#f87171' }}>Stop ${p.stop ?? '—'}</span>
-        </div>
-      </div>} />
-    {open.length > 0 && <p style={{ ...MUTED, fontSize: 10, margin: '0 0 8px' }}>
-      Prezzo e P&L per singola posizione non sono in questa vista: il P&L aperto complessivo è nella card dell’equity.
-      {run.manual_close_allowed !== true && ' Chiusura manuale non disponibile finché il servizio uscite di questo portafoglio non è sano.'}</p>}
+    <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: 14, fontWeight: 800, color: on ? C.text : C.soft, overflowWrap: 'anywhere' }}>{m.icon} {r.label}</span>
+    </span>
+    <span style={{ display: 'block', margin: '6px 0 4px' }}><Badge status={st} /></span>
+    <span style={{ display: 'block', fontSize: 20, fontWeight: 800, color: C.text, fontVariantNumeric: 'tabular-nums' }}>
+      {r.available ? usd(eq.value) : '—'}</span>
+    <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: tone(eq.totalPct) }}>{r.available ? pct(eq.totalPct) : '—'}</span>
   </>;
 }
 
-export function BotCard({ run, nowMs, onRefresh }) {
+function StatusCard({ run, nowMs }) {
   const st = botStatus(run, nowMs);
-  if (run.available !== true) {
-    return <Card aria-label={`Bot ${run.label}`} style={{ marginBottom: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <strong style={{ fontSize: 16 }}>{run.label}</strong><Badge status={st} /></div>
-      <p style={{ ...MUTED, margin: '8px 0 0' }}>{st.detail} Nessun dato viene mostrato finché non esiste il suo journal.</p>
-    </Card>;
-  }
-  const eq = equityView(run);
   const cfg = run.config || {};
-  const equityColor = eq.total === null || eq.total === 0 ? '#e2e8f0' : eq.total > 0 ? '#4ade80'
-    : (eq.initial && eq.value !== null && eq.value < eq.initial * 0.8 ? '#f87171' : '#fbbf24');
-  const open = run.open_positions || [];
-  const spendLimit = num(cfg.daily_cap_usd);
-  const spendDay = num(run.ai_spend?.day);
-  const budgetHigh = spendDay !== null && spendLimit ? spendDay > spendLimit * 0.85 : false;
-  const decisions = run.decisions || [];
-  return <section aria-label={`Bot ${run.label}`} style={{ marginBottom: 18 }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-      <div style={{ minWidth: 0 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', margin: 0, color: '#f1f5f9' }}>{run.label}</h2>
-        <div style={{ fontSize: 11, color: '#64748b' }}>
-          analisi: {own(ANALYST, cfg.analyst) || '—'} · giro ogni {num(cfg.cycle_minutes) ?? '—'} min</div>
-      </div>
+  return <Card aria-label={`Stato ${run.label}`} accent={st.color}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+      <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>{botMeta(run.name).icon} {run.label}</h2>
       <Badge status={st} />
     </div>
-    <div aria-label={`Stato ${run.label}`} style={{ padding: '6px 10px', borderRadius: 10, fontSize: 12, textAlign: 'center',
-      marginBottom: 10, background: `${st.color}14`, border: `1px solid ${st.color}55`, color: st.color }}>
-      {st.detail}{run.manual_close_allowed === true ? ' · uscite sane, chiusura manuale disponibile' : ' · chiusura manuale non disponibile'}</div>
-
-    <Card aria-label={`Equity ${run.label}`} style={{ marginBottom: 10, textAlign: 'center', borderColor: `${equityColor}55` }}>
-      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-        Equity {eq.basis === 'market' ? 'a mercato' : 'contabile'} — PAPER</div>
-      <div style={{ fontSize: 34, fontWeight: 'bold', color: equityColor }}>{usd(eq.value)}</div>
-      <div style={{ fontSize: 13, fontWeight: 'bold', color: tone(eq.total), marginTop: 2 }}>
-        {sgn(eq.total)} ({pct(eq.totalPct)}) su capitale {usd(eq.initial, 0)}</div>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '4px 14px', marginTop: 8, fontSize: 12, flexWrap: 'wrap' }}>
-        <span style={{ color: '#64748b' }}>Chiuso <strong style={{ color: tone(run.net_pnl) }}>{sgn(run.net_pnl)}</strong></span>
-        <span style={{ color: '#64748b' }}>Aperto <strong style={{ color: tone(eq.unrealized) }}>{sgn(eq.unrealized)}</strong></span>
-        <span style={{ color: '#64748b' }}>Sessione <strong style={{ color: tone(eq.session) }}>{sgn(eq.session)}</strong></span>
-        <span style={{ color: '#64748b' }}>Dopo AI <strong style={{ color: tone(run.net_after_ai) }}>{sgn(run.net_after_ai)}</strong></span>
-      </div>
-      <div style={{ fontSize: 10, color: '#475569', marginTop: 6 }}>
-        {eq.basis === 'market' ? `A mercato all’ultimo giro (${ago(eq.asOfMs, nowMs) || '—'}), commissioni di chiusura incluse. ` : 'Nessuna valutazione a mercato ancora registrata. '}
-        Contabile (solo trade chiusi): {usd(eq.settled)}. “Chiuso” include le commissioni e non i costi AI; “Sessione” parte dalle 08:00.</div>
-    </Card>
-
-    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-      <Kpi label="Aperte" color={open.length ? '#38bdf8' : '#94a3b8'} sub={`max ${cfg.max_positions ?? '—'}`}>{open.length}</Kpi>
-      <Kpi label="Chiuse" color="#e2e8f0" sub={`${run.wins ?? 0} vinte · ${run.losses ?? 0} perse`}>{run.closed ?? '—'}</Kpi>
-      <Kpi label="Budget AI" color={budgetHigh ? '#fbbf24' : '#4ade80'} sub={spendLimit !== null ? `/ $${spendLimit.toFixed(2)} oggi` : undefined}>
-        <span style={{ fontSize: 16 }}>{spendDay === null ? '—' : `$${spendDay.toFixed(3)}`}</span></Kpi>
-    </div>
-
-    <Guardian run={run} nowMs={nowMs} />
-    <Positions run={run} onRefresh={onRefresh} />
-
-    <Fold title={`🧾 Ultime decisioni · ${run.label}`} label={`Decisioni ${run.label}`}>
-      {decisions.length === 0 && <p style={MUTED}>Nessuna decisione registrata.</p>}
-      {decisions.map((d, i) => <div key={`${d.ts_ms}-${i}`} style={{ ...MUTED, padding: '3px 0' }}>
-        {ago(d.ts_ms, nowMs) || '—'} · {d.symbol || '—'} · {own(REASON, d.rationale) || d.kind || '—'}
-        {d.risk_reason ? ` · ${own(RISK, d.risk_reason) || 'limite di rischio'}` : ''}</div>)}
-    </Fold>
-    <p style={{ ...MUTED, fontSize: 10, margin: '0 0 4px' }}>
-      Capitale {usd(cfg.initial_equity, 0)} · leva {(cfg.leverage || []).join('–') || '—'}× · margine ${(cfg.margin || []).join('–') || '—'}
-      {' · '}chiusure tue / protettive: {run.manual_closes ?? '—'} / {run.protected_stops ?? '—'}</p>
-  </section>;
+    <p style={{ fontSize: 14, color: st.color, margin: '8px 0 12px', lineHeight: 1.4 }}>{st.detail}</p>
+    <Grid cols={3} gap={10}>
+      <Stat label="Capitale iniziale" value={usd(run.initial_equity, 0)} />
+      <Stat label="Giro ogni" value={`${num(cfg.cycle_minutes) ?? '—'} min`} />
+      <Stat label="Chiusura manuale" value={run.manual_close_allowed === true ? 'attiva' : 'non attiva'}
+        color={run.manual_close_allowed === true ? C.up : C.warn} />
+    </Grid>
+    <Note style={{ marginTop: 10 }}>Analisi: {own(ANALYST, cfg.analyst) || '—'} · rischio {cfg.risk_per_trade_pct ?? '—'} % per
+      trade, {cfg.open_risk_pct ?? '—'} % aperto · leva {(cfg.leverage || []).join('–') || '—'}× · stop giornaliero {cfg.daily_stop_pct ?? '—'} %</Note>
+  </Card>;
 }
 
-export function StoricoFold() {
-  return <Fold title="🗄️ Storico" label="Storico">
-    <p style={MUTED}>Brain RC1, Falco classico, Toro e i Brain precedenti restano consultabili con tutti i loro dati,
-      separati da questi due bot. L’Arena è consultabile in sola lettura.</p>
-    <nav aria-label="Storico portafogli" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <a href="/brain-unico/rc1" style={{ color: '#7dd3fc', fontSize: 14 }}>🧠 Brain RC1</a>
-      <a href="/overview" style={{ color: '#7dd3fc', fontSize: 14 }}>Falco classico · Toro · Brain V3</a>
-      <a href="/compare" style={{ color: '#7dd3fc', fontSize: 14 }}>⚖️ Confronto affiancato Falco Evoluto · Brain Scalp</a>
-      <a href="/classic" style={{ color: '#7dd3fc', fontSize: 14 }}>Dashboard classica</a>
-      <a href="/brain/archive" style={{ color: '#7dd3fc', fontSize: 14 }}>Brain precedenti</a>
-      <a href="/arena" style={{ color: '#7dd3fc', fontSize: 14 }}>Arena</a>
-    </nav>
+function EquityCard({ run, nowMs }) {
+  const eq = equityView(run);
+  return <Card aria-label={`Equity ${run.label}`}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Equity {eq.basis === 'market' ? 'a mercato' : 'contabile'}</span>
+      {eq.basis === 'market' ? <Fresh live={false} atMs={eq.asOfMs} nowMs={nowMs} /> : <Fresh live atMs={null} nowMs={nowMs} />}
+    </div>
+    <div style={{ fontSize: 38, fontWeight: 800, margin: '6px 0 2px', fontVariantNumeric: 'tabular-nums', color: C.text }}>{usd(eq.value)}</div>
+    <div style={{ fontSize: 16, fontWeight: 700, color: tone(eq.total) }}>{sgn(eq.total)} ({pct(eq.totalPct)}) sul capitale</div>
+    <Note>{eq.basis === 'market'
+      ? `Valore a mercato calcolato dal bot all’ultimo giro, posizioni aperte e commissioni di chiusura incluse. Contabile (solo trade chiusi): ${usd(eq.settled)}.`
+      : 'Nessuna valutazione a mercato registrata: è l’equity contabile dei soli trade chiusi.'}</Note>
+  </Card>;
+}
+
+function PnlCard({ run, nowMs }) {
+  const eq = equityView(run);
+  const ai = num(run.ai_cost_total);
+  const fees = num(run.fees);
+  const overall = eq.value !== null && eq.initial !== null && ai !== null ? eq.value - eq.initial - ai : null;
+  return <Card aria-label={`Profitti e perdite ${run.label}`}>
+    <Grid cols={2}>
+      <div>
+        <Stat label="Realizzato (trade chiusi)" value={sgn(run.net_pnl)} color={tone(run.net_pnl)}
+          sub={`commissioni incluse: ${usd(fees)}`} />
+        <div style={{ marginTop: 6 }}><Fresh live atMs={null} nowMs={nowMs} /></div>
+      </div>
+      <div>
+        <Stat label="Aperto (posizioni in corso)" value={sgn(eq.unrealized)} color={tone(eq.unrealized)}
+          sub={eq.unrealized === null ? 'nessuna valutazione' : 'a mercato'} />
+        <div style={{ marginTop: 6 }}><Fresh live={false} atMs={eq.asOfMs} nowMs={nowMs} /></div>
+      </div>
+    </Grid>
+    <div style={{ borderTop: `1px solid ${C.line}`, margin: '14px 0 12px' }} />
+    <Grid cols={2}>
+      <Stat label="Costi AI (totale run)" value={usd(ai, 3)} color={C.soft} />
+      <Stat label="Netto realizzato dopo AI" value={sgn(run.net_after_ai)} color={tone(run.net_after_ai)}
+        sub={num(run.return_after_ai_pct) === null ? null : pct(run.return_after_ai_pct)} />
+    </Grid>
+    <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 14, background: C.card2, border: `1px solid ${C.line}` }}>
+      <Stat big label="Risultato netto complessivo (equity − capitale − costi AI)" value={sgn(overall)} color={tone(overall)}
+        sub={overall === null ? 'non calcolabile: manca un dato registrato' : `${pct(overall / eq.initial * 100)} sul capitale · include l’aperto all’ultimo giro`} />
+    </div>
+  </Card>;
+}
+
+function Positions({ run, live, onRefresh, nowMs }) {
+  const open = live ? live.open_positions || [] : run.open_positions || [];
+  const haveLive = !!live;
+  return <Section title={`Posizioni aperte (${open.length})`}
+    hint={haveLive ? 'Prezzo e P&L aggiornati dal ticker a ogni lettura (P&L lordo, commissioni escluse). Stop = stop iniziale.'
+      : 'Prezzo e P&L per posizione non disponibili in questo momento: il P&L aperto complessivo è nella card sopra.'}>
+    {open.length === 0 && <Card style={{ textAlign: 'center', color: C.muted, fontSize: 14 }}>Nessuna posizione aperta</Card>}
+    <BrainCloseControls positions={open} allowCloseAll={false} readOnly={run.manual_close_allowed !== true}
+      serverPending={run.close_pending === true} onRefresh={onRefresh}
+      closeUrl={`/api/v3/compare/${run.name}/close`} resultUrl={`/api/v3/compare/${run.name}/close-result`}
+      itemStyle={{ background: C.card, borderRadius: 18, padding: 14, border: `1px solid ${C.line}`, marginBottom: 10 }}
+      closeLabel={p => `Chiudi ${p.symbol} (PAPER)`}
+      renderPosition={p => <div data-testid={`bot-position-${run.name}`}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <SideTag side={p.side} />
+          <strong style={{ fontSize: 17 }}>{String(p.symbol || '?').replace('USDT', '')}</strong>
+          <span style={{ color: C.soft, fontSize: 14 }}>{p.leverage ?? '—'}×</span>
+          <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 800, color: tone(p.unrealized_pnl) }}>
+            {haveLive ? sgn(p.unrealized_pnl) : ''}</span>
+        </div>
+        <Grid cols={3} gap={8}>
+          <div style={{ marginTop: 10 }}><Stat compact label="Entrata" value={price(p.entry)} /></div>
+          <div style={{ marginTop: 10 }}><Stat compact label="Prezzo ora" value={haveLive ? price(p.price) : '—'} /></div>
+          <div style={{ marginTop: 10 }}><Stat compact label="Margine" value={usd(p.margin)} /></div>
+          <Stat compact label="Stop" value={price(p.stop)} color={C.down} />
+          <Stat compact label="Take profit" value={haveLive ? price(p.take_profit) : '—'} color={C.up} />
+          <Stat compact label="Aperta da" value={Number.isSafeInteger(p.opened_at_ms) ? duration(nowMs - p.opened_at_ms) : '—'} />
+        </Grid>
+      </div>} />
+    {run.manual_close_allowed !== true && open.length > 0 && <Note>Chiusura manuale non disponibile finché il servizio
+      uscite di questo bot non è sano. Stop e take profit restano attivi.</Note>}
+  </Section>;
+}
+
+function GuardianFold({ run, nowMs }) {
+  const g = guardianView(run);
+  return <Fold title={`🛡️ Guardian${g ? ` · ${g.label}` : ''}`} label={`Guardian ${run.label}`}>
+    {!g ? <Note>Nessuna valutazione registrata finora: compare dopo il primo giro.</Note> : <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Pill color={g.color}>{g.label}</Pill><Fresh live={false} atMs={g.asOfMs} nowMs={nowMs} />
+      </div>
+      <p style={{ fontSize: 14, color: C.soft, margin: '10px 0' }}>{g.detail}{g.reasons.length ? ` (${g.reasons.join(', ')})` : ''}</p>
+      <Grid cols={2} gap={10}>
+        <Stat label="Picco di sessione" value={usd(g.peak)} />
+        <Stat label="Profitto restituito" value={usd(g.giveback)} />
+        <Stat label="Floor" value={usd(g.floor)} />
+        <Stat label="Rischio ancora disponibile" value={usd(g.budget)} />
+        <Stat label="Tetto per nuova apertura" value={g.state === 'NORMAL' ? 'ordinario' : usd(g.riskCap)} />
+      </Grid>
+      <Note>Il floor limita le nuove aperture: non garantisce il risultato finale. La sessione parte alle 08:00.</Note>
+    </>}
   </Fold>;
 }
 
-export function PaperBotsContent({ data, error = false, nowMs = Date.now(), onRefresh = () => {}, initialSelected = null }) {
-  const runs = data?.available ? (data.runs || []) : [];
-  const now = new Date(nowMs);
-  const [choice, setChoice] = useState(initialSelected);
-  // scelta valida o, in mancanza, il primo bot (Falco Evoluto): mai un pannello vuoto se i dati cambiano
-  const current = runs.find(r => r.name === choice) || runs[0] || null;
-  return <div style={{ padding: 16, maxWidth: 600, margin: '0 auto', boxSizing: 'border-box' }}>
-    <header style={{ marginBottom: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <div style={{ minWidth: 0 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 'bold', margin: 0, background: 'linear-gradient(90deg, #f1f5f9, #a78bfa)',
-            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>🧠 Brain</h1>
-          <div style={{ fontSize: 10, color: '#a78bfa', fontWeight: 700, letterSpacing: '0.08em', marginTop: 3 }}>
-            ○ PAPER MODE · FALCO EVOLUTO · BRAIN SCALP · soldi simulati</div>
-        </div>
-        <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 'bold', background: '#a78bfa26',
-          color: '#c4b5fd', border: '1px solid #a78bfa4d', flexShrink: 0 }}>PAPER</span>
+function DecisionsFold({ run, nowMs }) {
+  const decisions = run.decisions || [];
+  return <Fold title={`🧾 Ultime decisioni (${decisions.length})`} label={`Decisioni ${run.label}`}>
+    {decisions.length === 0 && <Note>Nessuna decisione registrata.</Note>}
+    {decisions.map((d, i) => <div key={`${d.ts_ms}-${i}`} style={{ padding: '8px 0', borderBottom: i < decisions.length - 1 ? `1px solid ${C.line}` : 'none' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 14 }}>
+        <strong>{String(d.symbol || '—').replace('USDT', '')}</strong>
+        <span style={{ color: C.muted, fontSize: 13 }}>{ago(d.ts_ms, nowMs) || when(d.ts_ms)}</span>
       </div>
-      <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
-        {now.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })} · <strong style={{ color: '#94a3b8' }}>
-          {now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</strong>
-        <span> · aggiornato {data?.generated_at_ms ? ago(data.generated_at_ms, nowMs) : '—'}</span>
-      </div>
-    </header>
+      <div style={{ fontSize: 14, color: d.kind === 'OPEN' ? C.up : C.soft, marginTop: 2 }}>{reasonText(d.rationale)}
+        {d.risk_reason ? <span style={{ color: C.warn }}> · {riskText(d.risk_reason)}</span> : null}</div>
+    </div>)}
+    <Note><Link to="/performance" style={{ color: '#c4b5fd' }}>Tutti i motivi (anche NO_TRADE) in Performance →</Link></Note>
+  </Fold>;
+}
 
-    {error && <p role="alert" style={{ color: '#fda4af', fontSize: 13 }}>
-      Dati dei bot non disponibili: verifica la connessione o la sessione. Lo Storico resta qui sotto.</p>}
-    {!error && data === null && <p role="status" style={MUTED}>Caricamento dei bot…</p>}
-    {!error && data && !data.available && <Card style={{ marginBottom: 12 }}><strong>Bot non ancora attivi</strong>
-      <p style={MUTED}>Le due run PAPER (Falco Evoluto e Brain Scalp) non sono ancora state preparate e approvate.
-        Nessun dato viene mostrato finché non esistono i loro journal.</p></Card>}
-    {!error && runs.length > 0 && <>
-      <Summary runs={runs} nowMs={nowMs} selected={current.name} onSelect={setChoice} />
+export function BotCard({ run, live, nowMs, onRefresh }) {
+  if (run.available !== true) {
+    const st = botStatus(run, nowMs);
+    return <Card aria-label={`Bot ${run.label}`}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <strong style={{ fontSize: 18 }}>{run.label}</strong><Badge status={st} /></div>
+      <Note>{st.detail} Nessun dato viene mostrato finché non esiste il suo journal.</Note>
+    </Card>;
+  }
+  return <section aria-label={`Bot ${run.label}`}>
+    <StatusCard run={run} nowMs={nowMs} />
+    <EquityCard run={run} nowMs={nowMs} />
+    <PnlCard run={run} nowMs={nowMs} />
+    <Positions run={run} live={live} onRefresh={onRefresh} nowMs={nowMs} />
+    <div style={{ marginTop: 18 }}>
+      <GuardianFold run={run} nowMs={nowMs} />
+      <DecisionsFold run={run} nowMs={nowMs} />
+    </div>
+  </section>;
+}
+
+export function PaperBotsContent({ data, live = null, error = false, nowMs = Date.now(), onRefresh = () => {},
+  initialSelected = null, onSelectedChange = () => {} }) {
+  const runs = data?.available ? (data.runs || []) : [];
+  const [choice, setChoice] = useState(initialSelected);
+  // scelta valida o, in mancanza, il primo bot: mai un pannello vuoto se i dati cambiano
+  const current = runs.find(r => r.name === choice) || runs[0] || null;
+  const currentName = current ? current.name : null;
+  const notify = useRef(onSelectedChange);
+  notify.current = onSelectedChange;
+  useEffect(() => { notify.current(currentName); }, [currentName]);
+  return <Page>
+    <PageHeader title="Brain" subtitle={`Falco Evoluto e Brain Scalp · dati letti ${data?.generated_at_ms ? ago(data.generated_at_ms, nowMs) : '—'}`} />
+    <LoadState error={error && !data} loading={!error && data === null} what="Dati dei bot" />
+    {error && data && <p role="status" style={{ color: C.warn, fontSize: 14, margin: '6px 2px' }}>Ultimo aggiornamento non
+      riuscito: i valori mostrati sono quelli dell’ultima lettura.</p>}
+    {!error && data && !data.available && <Card><strong>Bot non ancora attivi</strong>
+      <Note>Le due run PAPER non sono ancora state preparate: nessun dato viene mostrato finché non esistono i loro journal.</Note></Card>}
+    {runs.length > 0 && <>
+      <BotSwitch runs={runs} selected={current.name} onSelect={setChoice} render={(r, on) => SummaryTile(r, on, nowMs)}
+        controls={r => panelId(r.name)}
+        label={(r, on) => { const st = botStatus(r, nowMs); const eq = equityView(r);
+          return `${r.label}: ${st.label}${r.available ? `, equity ${usd(eq.value)}` : ''}${on ? ', dettagli mostrati sotto' : ', mostra i dettagli'}`; }} />
       <div id={panelId(current.name)} role="region" aria-label={`Dettagli ${current.label}`}>
-        <BotCard key={current.name} run={current} nowMs={nowMs} onRefresh={onRefresh} />
+        <BotCard key={current.name} run={current} live={live && live.name === current.name ? live : null}
+          nowMs={nowMs} onRefresh={onRefresh} />
       </div>
-      <p style={{ ...MUTED, fontSize: 11 }}>Soldi simulati: nessun ordine reale. Ogni bot ha la sua run, il suo journal e il suo
-        servizio uscite. Ciò che non è registrato resta “—”. Qui sono consentite solo chiusure manuali singole, con conferma;
-        avvio, pausa e mandato restano un intervento del proprietario sul server.</p>
+      <Note>Soldi simulati: nessun ordine reale. Ogni bot ha la sua run, il suo journal e il suo servizio uscite. Ciò che non
+        è registrato resta “—”. Qui sono consentite solo chiusure manuali singole, con conferma; avvio, pausa e mandato
+        restano un intervento del proprietario sul server. Le run precedenti e gli altri portafogli sono
+        nell’<Link to="/archivio" style={{ color: '#c4b5fd' }}>Archivio</Link>.</Note>
     </>}
-    <StoricoFold />
-  </div>;
+  </Page>;
 }
 
 export default function PaperBots() {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(false);
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const { data: d } = await API.get('/api/v3/compare');
-        if (alive) { setData(d); setError(false); }
-      } catch (e) {
-        if (alive) { setError(true); }
-      }
-    };
-    load();
-    const t = setInterval(load, 30000);
-    return () => { alive = false; clearInterval(t); };
-  }, [tick]);
-  return <PaperBotsContent data={data} error={error} onRefresh={() => setTick(n => n + 1)} />;
+  const [selected, setSelected] = useState(null);
+  const cmp = usePoll(['/api/v3/compare']);
+  const data = cmp.data ? cmp.data[0] : null;
+  const runs = data?.available ? data.runs || [] : [];
+  const current = runs.find(r => r.name === selected && r.available) || null;
+  // prezzo e P&L per posizione (ticker) solo per il bot mostrato; se la rotta manca o fallisce restano i dati del giro
+  const tr = usePoll(current ? [`/api/v3/compare/${current.name}/trades?limit=1`] : []);
+  const live = !tr.error && tr.data && tr.data[0] && tr.data[0].name === current?.name ? tr.data[0] : null;
+  const refresh = () => { cmp.refresh(); tr.refresh(); };
+  return <PaperBotsContent data={data} live={live} error={cmp.error} onRefresh={refresh} onSelectedChange={setSelected} />;
 }

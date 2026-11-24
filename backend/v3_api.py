@@ -912,6 +912,44 @@ def make_router(require_session: Callable, paths: V3Paths, get_ticker=None) -> A
                 raise _close_error(error.status, 'bridge_non_disponibile', error.message) from None
         return _close_request(run_paths, body, now)
 
+    # App PAPER (Trade, Performance, Archivio): SOLO GET, sessione obbligatoria, ogni dato dal journal della SUA run.
+    @router.get('/compare/{name}/trades')
+    async def compare_trades(name: str, response: Response, limit: int = Query(100, ge=1, le=500),
+                             offset: int = Query(0, ge=0, le=1000000), session=Depends(require_session)):
+        response.headers['Cache-Control'] = 'no-store'
+        run_paths = _compare_run_paths(name)
+        if run_paths is None:
+            raise HTTPException(status_code=404, detail='portafoglio_sconosciuto')
+        from backend.v3.paper_app_view import enrich_trades
+        data = await _trades(run_paths, limit, get_ticker, offset)
+        return dict(enrich_trades(data, Path(run_paths.journal_path).parent, run_paths.run_id),
+                    name=name, run_id=run_paths.run_id, generated_at_ms=int(time.time() * 1000))
+
+    @router.get('/compare/{name}/performance')
+    def compare_performance(name: str, response: Response, session=Depends(require_session)):
+        response.headers['Cache-Control'] = 'no-store'
+        run_paths = _compare_run_paths(name)
+        if run_paths is None:
+            raise HTTPException(status_code=404, detail='portafoglio_sconosciuto')
+        from backend.v3.paper_app_view import performance
+        return dict(performance(Path(run_paths.journal_path).parent, run_paths.run_id, int(time.time() * 1000)),
+                    name=name)
+
+    @router.get('/paper-archive')
+    def paper_archive(response: Response, session=Depends(require_session)):
+        response.headers['Cache-Control'] = 'no-store'
+        from backend.v3.paper_app_view import archive_index
+        return archive_index(os.environ, int(time.time() * 1000))
+
+    @router.get('/paper-archive/{key}')
+    def paper_archive_run(key: str, response: Response, session=Depends(require_session)):
+        response.headers['Cache-Control'] = 'no-store'
+        from backend.v3.paper_app_view import archive_detail
+        data = archive_detail(os.environ, key, int(time.time() * 1000))
+        if data is None:
+            raise HTTPException(status_code=404, detail='run_archiviata_sconosciuta')
+        return data
+
     @router.get('/compare/{name}/close-result')
     def compare_close_result(name: str, response: Response, session=Depends(require_session)):
         response.headers['Cache-Control'] = 'no-store'
