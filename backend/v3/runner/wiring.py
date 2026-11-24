@@ -297,7 +297,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
     else:
         raise ValueError("invalid_analyst")
     store = CandleStore(get_json, keep=keep)
-    minutes = CandleStore(get_json, keep={"1m": (60_000, MINUTE_STORE_BARS)})
+    minutes = CandleStore(get_json, keep={"1m": (60_000, MINUTE_STORE_BARS)}, overlap_bars=60, full_reload_ms=1_800_000)
     rules = ContractRules(get_json, maintenance_fraction=config.maintenance_fraction)
     exit_policy = config.exit_policy if config.exit_policy is not None else load_default_policy()   # schema 2
     mandate = MandateFile(data_dir / MANDATE_FILE, config.risk_policy, run_id)

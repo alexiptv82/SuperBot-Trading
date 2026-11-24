@@ -150,6 +150,7 @@ def close_paper(
     journal: EventJournal,
     now_ms: int | None = None,
     stop_kind: str | None = None,
+    exit_meta: Mapping | None = None,
 ) -> CloseReceipt:
     """Chiude una posizione PAPER aperta e ne registra l'esito nel journal.
 
@@ -252,6 +253,10 @@ def close_paper(
         if reason != "stop" or stop_kind not in STOP_KINDS:
             raise ExecutionError("invalid_stop_kind")
         payload["stop_kind"] = stop_kind
+    # Uscite del monitor (24/11): candela che ha attivato l'uscita, istante di elaborazione, ritardo, prezzo teorico
+    # e ultimo prezzo osservato. Senza: payload identico a prima.
+    if exit_meta is not None:
+        payload["exit_meta"] = _exit_meta(exit_meta)
     event = Event(
         event_id=f"paper_close.{position_id}",
         portfolio_id=portfolio_id,
@@ -278,3 +283,27 @@ def close_paper(
         reason=reason, held_ms=held_ms, timestamp_ms=timestamp_ms,
         journal_seq=stored.seq, journal_event_id=stored.event.event_id,
     )
+
+
+EXIT_META_KEYS = ("signal_bar_ms", "detected_ms", "delay_ms", "late", "theoretical_price", "market_price")
+
+
+def _exit_meta(meta: Mapping) -> dict:
+    if not isinstance(meta, Mapping) or set(meta) - set(EXIT_META_KEYS):
+        raise ExecutionError("invalid_exit_meta")
+    out = {}
+    for k in EXIT_META_KEYS:
+        v = meta.get(k)
+        if v is None:
+            continue
+        if k == "late":
+            if type(v) is not bool:
+                raise ExecutionError("invalid_exit_meta")
+            out[k] = v
+        elif k.endswith("_ms"):
+            if type(v) is not int or v < 0:
+                raise ExecutionError("invalid_exit_meta")
+            out[k] = v
+        else:
+            out[k] = str(_dec(v, "invalid_exit_meta"))
+    return out

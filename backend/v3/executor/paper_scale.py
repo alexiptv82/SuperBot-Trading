@@ -150,7 +150,8 @@ def _read(journal: EventJournal, portfolio_id: str, run_id: str) -> list:
 
 def reduce_paper(*, portfolio_id: str, run_id: str, position_id: str, fraction: Decimal, exit_price: Decimal,
                  reason: str, fee_bps: Decimal | int, journal: EventJournal, quantity_step: Decimal,
-                 minimum_notional: Decimal = Decimal("5"), now_ms: Optional[int] = None) -> dict[str, Any]:
+                 minimum_notional: Decimal = Decimal("5"), now_ms: Optional[int] = None,
+                 exit_meta=None) -> dict[str, Any]:
     """Chiude ``fraction`` della posizione residua (arrotondata al passo). Se la parte chiusa o il residuo restano
     sotto il nozionale minimo, ``ExecutionError("reduce_too_small")``: il chiamante decide (di solito non riduce)."""
     if reason not in REDUCE_REASONS:
@@ -184,6 +185,9 @@ def reduce_paper(*, portfolio_id: str, run_id: str, position_id: str, fraction: 
                "opened_at_ms": st.open_event.occurred_at_ms, "held_ms": ts - st.open_event.occurred_at_ms,
                "loss_exceeds_margin": bool(realized < 0 and -realized > released),
                "decision_event_id": p.get("decision_event_id", "")}
+    if exit_meta is not None:
+        from backend.v3.executor.paper_close import _exit_meta
+        payload["exit_meta"] = _exit_meta(exit_meta)
     try:
         journal.append(Event(f"{REDUCE_KIND}.{position_id}.{st.reduces + 1}", portfolio_id, run_id, REDUCE_KIND, ts,
                              "executor.paper_scale", payload))

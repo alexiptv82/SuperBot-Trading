@@ -18,7 +18,7 @@ import json
 import os
 import tempfile
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Callable, Optional
@@ -91,7 +91,7 @@ class JournalNotifier:
             return msgs
         new = [r.event for r in rows if r.seq > st["seq"]]
         all_events = [r.event for r in rows]
-        msgs = (self._strategy(new) + self._opens(new) + self._scaling(new) + self._closes(new, all_events)
+        msgs = (self._strategy(new) + self._late(new) + self._opens(new) + self._scaling(new) + self._closes(new, all_events)
                 + self._guardian(new, st))
         if today > st.get("report_day", today):
             msgs.append(self._report(st["report_day"], all_events, now_ms))
@@ -127,6 +127,20 @@ class JournalNotifier:
                        + (f"{len(legs)} quote · " if len(legs) > 1 else "") + f"entrata {_px(p.get('fill_price'))} · "
                        f"stop {_px(p.get('stop_price'))} · leva {p.get('leverage')}× · margine {margin:.2f} USDT"
                        + (f" · {', '.join(tps)}" if tps else ""))
+        return out
+
+    @staticmethod
+    def _late(new) -> list[str]:
+        """Uscita rilevata in ritardo (riavvio o candela corretta dopo): anomalia sempre segnalata."""
+        out = []
+        for e in new:
+            p = e.payload if isinstance(e.payload, dict) else {}
+            if e.kind == "exit_late":
+                bar = datetime.fromtimestamp(int(p.get("signal_bar_ms", 0)) / 1000, timezone.utc).strftime("%H:%M")
+                out.append(f"⚠️ Uscita rilevata in ritardo: {str(p.get('symbol', '?')).replace('USDT', '')} · "
+                           f"{REASONS.get(p.get('reason'), str(p.get('reason')))} toccato alle {bar} UTC, elaborato "
+                           f"{int(p.get('delay_ms', 0)) // 60_000} min dopo · prezzo teorico {_px(p.get('theoretical_price'))}"
+                           f" · ultimo prezzo {_px(p.get('market_price'))}")
         return out
 
     @staticmethod

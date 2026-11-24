@@ -60,7 +60,7 @@ class CandleStore:
     """
 
     def __init__(self, get_json: GetJson = http_json, *, keep: Optional[dict] = None,
-                 reload_gap_ms: int = 3_600_000):
+                 reload_gap_ms: int = 3_600_000, overlap_bars: int = 0, full_reload_ms: int = 0):
         # keep: {"15m": (900000, 2960), "1h": (3600000, 760), "4h": (14400000, 200)}
         if not isinstance(keep, dict) or not keep or type(reload_gap_ms) is not int or reload_gap_ms < 0:
             raise ValueError("invalid_keep")
@@ -72,6 +72,23 @@ class CandleStore:
         self._get, self._keep, self._gap = get_json, dict(keep), reload_gap_ms
         self._cache: dict[tuple[str, str], list[Bar]] = {}
         self._retry_at: dict[tuple[str, str], int] = {}
+        # Servizio delle uscite (24/11): una candela letta pochi secondi dopo la chiusura puo' essere ancora
+        # provvisoria. ``overlap_bars`` rilegge a ogni aggiornamento le ultime N candele chiuse e sostituisce quelle in
+        # cache se la fonte le ha corrette; ``full_reload_ms`` ricarica TUTTA la finestra a intervalli (ritardi piu'
+        # lunghi). Ogni correzione finisce in ``revisions`` (simbolo, tf, apertura, prima, dopo), letta dal monitor.
+        if type(overlap_bars) is not int or overlap_bars < 0 or type(full_reload_ms) is not int or full_reload_ms < 0:
+            raise ValueError("invalid_keep")
+        self._overlap, self._full_reload = overlap_bars, full_reload_ms
+        self._loaded_at: dict[tuple[str, str], int] = {}
+        self.revisions: list[tuple] = []
+
+    def _note_revisions(self, symbol: str, tf: str, old: list, fresh: list) -> None:
+        by = {b.open_time_ms: b for b in old}
+        for b in fresh:
+            prev = by.get(b.open_time_ms)
+            if prev is not None and (prev.high, prev.low, prev.close) != (b.high, b.low, b.close):
+                self.revisions.append((symbol, tf, b.open_time_ms, (prev.high, prev.low), (b.high, b.low)))
+        del self.revisions[:-500]
 
     def refresh(self, symbol: str, tf: str, now_ms: int) -> list[Bar]:
         """Aggiorna e restituisce la coda contigua. Solleva se la rete fallisce (la cache resta com'era)."""
@@ -88,9 +105,25 @@ class CandleStore:
         raw = self._cache.get(key, [])
         hole = len(contiguous_tail(raw, step)) < len(raw)
         retry_at = self._retry_at.get(key)
-        if not raw or (hole and now_ms >= (retry_at or 0)):
-            raw = fetch_closed_bars(symbol, end - keep * step, end, candle_ms=step, get_json=self._get)
+        periodic = (self._full_reload and raw and now_ms - self._loaded_at.get(key, now_ms) >= self._full_reload)
+        if not raw or (hole and now_ms >= (retry_at or 0)) or periodic:
+            fresh = fetch_closed_bars(symbol, end - keep * step, end, candle_ms=step, get_json=self._get)
+            if raw and fresh:
+                self._note_revisions(symbol, tf, raw, fresh)
+                old = {b.open_time_ms: b for b in raw if b.open_time_ms < fresh[0].open_time_ms}
+                raw = sorted(list(old.values()) + list(fresh), key=lambda b: b.open_time_ms)
+            else:
+                raw = fresh or raw
+            self._loaded_at[key] = now_ms
             retry_at = (now_ms + self._gap) if len(contiguous_tail(raw, step)) < len(raw) else None
+        elif self._overlap and raw[-1].open_time_ms + step <= end:
+            start = max(raw[0].open_time_ms, min(raw[-1].open_time_ms + step, end - self._overlap * step))
+            fresh = fetch_closed_bars(symbol, start, end, candle_ms=step, get_json=self._get)
+            if fresh:
+                self._note_revisions(symbol, tf, raw, fresh)
+                by = {b.open_time_ms: b for b in raw}
+                by.update({b.open_time_ms: b for b in fresh})
+                raw = sorted(by.values(), key=lambda b: b.open_time_ms)
         elif raw[-1].open_time_ms + step < end:
             raw = raw + fetch_closed_bars(symbol, raw[-1].open_time_ms + step, end, candle_ms=step,
                                           get_json=self._get)

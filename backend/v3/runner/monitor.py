@@ -30,6 +30,7 @@ class MonitorReport:
     closed: tuple[tuple[str, str], ...]                  # (position_id, motivo)
     errors: tuple[tuple[str, str], ...]                  # (position_id, codice)
     protected: tuple[tuple[str, str], ...] = ()          # (position_id, break_even|trailing|protect): stop spostato
+    late: tuple[tuple[str, str], ...] = ()               # (position_id, motivo): uscita rilevata in ritardo
 
 
 STOP_MOVE_KIND = "stop_move"
@@ -65,22 +66,47 @@ def stop_moves_by_position(journal: EventJournal, portfolio_id: str, run_id: str
     return {k: tuple(v) for k, v in out.items()}
 
 
-def _partial_due(pos, bars, signal, partial) -> bool:
-    """La presa parziale e' toccata (massimo/minimo della candela oltre ``at_r`` R) in una candela chiusa dopo
-    l'apertura e non dopo l'uscita trovata; nella stessa candela di uno stop vince lo stop (regola di sempre)."""
+def _partial_due(pos, bars, signal, partial):
+    """Apertura (ms) della candela in cui la presa parziale e' toccata (massimo/minimo oltre ``at_r`` R), chiusa dopo
+    l'apertura e non dopo l'uscita trovata; nella stessa candela di uno stop vince lo stop (regola di sempre).
+    ``None`` se non e' dovuta."""
     risk = abs(pos.fill_price - pos.stop_price)
     if risk <= 0:
-        return False
+        return None
     target = pos.fill_price + pos.side * partial.at_r * risk
     for b in bars:
         if b.open_time_ms < pos.opened_at_ms:
             continue
         if signal is not None and (b.open_time_ms > signal.bar_open_time_ms or
                                    (b.open_time_ms == signal.bar_open_time_ms and signal.reason == "stop")):
-            return False
+            return None
         if (b.high >= target) if pos.side == 1 else (b.low <= target):
-            return True
-    return False
+            return b.open_time_ms
+    return None
+
+
+LATE_EXIT_MS = 2 * MINUTE_MS            # oltre: uscita rilevata in ritardo (riavvio, dati corretti dopo): anomalia
+LATE_KIND = "exit_late"
+
+
+def exit_meta(signal_bar_ms: int, now_ms: int, theoretical: Decimal, bars) -> dict:
+    """Diagnostica di ogni uscita del monitor: candela che l'ha attivata, istante di elaborazione, ritardo rispetto
+    alla chiusura di quella candela, prezzo teorico usato dal simulatore e ultimo prezzo osservato."""
+    delay = max(0, now_ms - (signal_bar_ms + MINUTE_MS))
+    return {"signal_bar_ms": signal_bar_ms, "detected_ms": now_ms, "delay_ms": delay, "late": delay > LATE_EXIT_MS,
+            "theoretical_price": theoretical, "market_price": bars[-1].close if bars else None}
+
+
+def _record_late(journal, portfolio_id, run_id, pos, reason, meta, now_ms) -> None:
+    """Un'uscita in ritardo NON passa in silenzio: evento ``exit_late`` (dashboard e Telegram)."""
+    from backend.v3.events import Event
+    p = {"position_id": pos.position_id, "symbol": pos.symbol, "side": pos.side, "reason": reason,
+         **{k: (str(v) if isinstance(v, Decimal) else v) for k, v in meta.items()}}
+    try:
+        journal.append(Event(f"{LATE_KIND}.{pos.position_id}.{reason}.{now_ms}", portfolio_id, run_id, LATE_KIND,
+                             now_ms, "runner.monitor", p))
+    except Exception:
+        pass
 
 
 def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, fetch_bars: FetchBars,
@@ -98,6 +124,7 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
     closed: list[tuple[str, str]] = []
     errors: list[tuple[str, str]] = []
     protected: list[tuple[str, str]] = []
+    late: list[tuple[str, str]] = []
     try:                 # serve solo al break-even; un valore non valido diventa un errore per posizione, mai un crash
         fee = Decimal(str(fee_bps)) if type(fee_bps) in (int, Decimal) else None
     except ArithmeticError:
@@ -134,18 +161,25 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
                 if signal is not None:
                     break
                 best = favorable_extreme(pos.side, best, run, pos.opened_at_ms)
+            partial_bar = None
             if (pos_partial is not None and step_of is not None and not pos.leg and not pos.tp_reduced
-                    and not pos.reduces and _partial_due(pos, bars, signal, pos_partial)):
+                    and not pos.reduces):
+                partial_bar = _partial_due(pos, bars, signal, pos_partial)
+            if partial_bar is not None:
                 # posizione unica (24/11): presa parziale a ``at_r`` R come RIDUZIONE della posizione esistente; il
                 # residuo resta aperto con stop e protezioni (prossimo minuto)
                 from backend.v3.executor.paper_scale import reduce_paper
                 risk = abs(pos.fill_price - pos.stop_price)
+                px = (pos.fill_price + pos.side * pos_partial.at_r * risk).quantize(Decimal("1e-8"))
+                meta = exit_meta(partial_bar, now_ms, px, bars)
                 try:
                     reduce_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pos.position_id,
                                  fraction=pos_partial.fraction, reason="take_profit", fee_bps=fee_bps, journal=journal,
-                                 exit_price=(pos.fill_price + pos.side * pos_partial.at_r * risk).quantize(Decimal("1e-8")),
-                                 quantity_step=step_of(pos.symbol), now_ms=now_ms)
+                                 exit_price=px, quantity_step=step_of(pos.symbol), now_ms=now_ms, exit_meta=meta)
                     closed.append((pos.position_id, "take_profit_partial"))
+                    if meta["late"]:
+                        _record_late(journal, portfolio_id, run_id, pos, "take_profit_partial", meta, now_ms)
+                        late.append((pos.position_id, "take_profit_partial"))
                     continue
                 except ExecutionError as exc:
                     if str(exc) != "reduce_too_small":
@@ -169,12 +203,16 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
                                    for a, b in zip(timestamps, timestamps[1:]))):
                         errors.append((pos.position_id, "exit_feed_incomplete"))
                 continue
+            meta = exit_meta(signal.bar_open_time_ms, now_ms, signal.price, bars)
             close_paper(portfolio_id=portfolio_id, run_id=run_id, position_id=pos.position_id,
                         exit_price=signal.price, reason=signal.reason, fee_bps=fee_bps,
                         journal=journal, now_ms=now_ms,
                         stop_kind=(signal.stop_kind if signal.reason == "stop" and signal.stop_kind != "initial"
-                                   else None))
+                                   else None), exit_meta=meta)
             closed.append((pos.position_id, signal.reason))
+            if meta["late"]:
+                _record_late(journal, portfolio_id, run_id, pos, signal.reason, meta, now_ms)
+                late.append((pos.position_id, signal.reason))
             if signal.reason == "stop" and signal.stop_kind != "initial":
                 protected.append((pos.position_id, signal.stop_kind))
         except ExecutionError as exc:
@@ -183,4 +221,4 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
             errors.append((pos.position_id, str(exc) or "invalid"))
         except Exception:
             errors.append((pos.position_id, "feed_error"))
-    return MonitorReport(len(summary.open_positions), tuple(closed), tuple(errors), tuple(protected))
+    return MonitorReport(len(summary.open_positions), tuple(closed), tuple(errors), tuple(protected), tuple(late))

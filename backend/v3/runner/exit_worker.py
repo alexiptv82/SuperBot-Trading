@@ -127,7 +127,8 @@ def build_exit_worker(*, data_dir: Path, run_id: str, config: RunnerConfig,
     verify_prepared_run_config(data_dir=data_dir, run_id=run_id, config=config)
     # A distinct 1m store belongs only to this exit worker: never share the AI
     # worker's in-memory cache or mutate its portfolio state.
-    minutes = CandleStore(get_json, keep={'1m': (60_000, 1_500)})
+    # 24/11: le ultime 60 candele si rileggono a ogni minuto e tutta la finestra ogni 30 minuti (candele provvisorie)
+    minutes = CandleStore(get_json, keep={'1m': (60_000, 1_500)}, overlap_bars=60, full_reload_ms=1_800_000)
     policy = config.exit_policy if config.exit_policy is not None else load_default_policy()   # schema 2: della run
     def guard(now_ms: int) -> None:
         code = foreign_exit_owner(data_dir, now_ms)
