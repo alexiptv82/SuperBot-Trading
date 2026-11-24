@@ -1,3 +1,11 @@
+## 24/11/2026 (34) — Analisi del rapporto di diagnostica (Claude, nessuna modifica alla VPS)
+
+- **BTC:** SHORT 14:35:51 (2 quote, 60.201,16, stop 60.800). 15:30:23 revisione: DeepSeek HOLD, Claude MODIFY_STOP 60.250 adottato (prezzo ~59.950, 0,5 % dallo stop, ATR 1h ~1,1 %). Candela 15:33 massimo 60.274 ≥ 60.250: stop toccato. Il servizio delle uscite in funzione NON ha chiuso; al riavvio 16:53:52 il nuovo servizio, riscaricata la storia, ha chiuso entrambe le quote a 60.262,05 (stop + 2 bp). Lordo −7,66, commissioni 9,09, netto −16,75. Riavvio = correlazione temporale; causa = stop di Claude dentro il rumore + incoerenza dei dati in cache (candela 1m letta una sola volta subito dopo la chiusura, meccanismo più probabile, non dimostrabile). Risultato non modificato.
+- **28 errori:** tutti `brain.sqlite3` con schema diverso (Brain pilota `desk-data/brain`, Brain adattivo hawk/bull e loro copie): trade comunque letti dai JSONL (6, 2, 2). Costanti del codice classico non lette (container fermi) → prese dal repository.
+- **Run storica:** `brain-v3-paper20261111` (11/11 05:38 → 19/11 04:03, 98 trade distinti, ciclo 60′, leva 20, margine mediano 382, stop mediano 67 bp, WR 42,9 %, lordo +658, commissioni 857, netto −199). Brain libero 182 trade (PF 0,28, −1.030). Arena DeepSeek 56 (lordo +396, commissioni 406). Falco 335 (PF 1,06), Toro 151 (PF 0,93). LONG in perdita in tutti.
+- **Brain unico attuale:** 37 proposte di apertura in ~4 h, 26 contestate da Claude, 9 bloccate da `skipped_limit` (limite 4 consulti/giro trattato come indisponibilità), 2 eseguite.
+- **Proposte** nel rapporto al proprietario: correzione cache candele; limite consulti ≠ veto; soglie di consulto come i classici (60/70); stop AI non dentro il rumore; costi ≤ 20 % di 1R; misura controfattuale delle 35 aperture bloccate prima di toccare il veto di Claude. Nessuna modifica a leva, perdite, mandato.
+
 ## 24/11/2026 (33) — Pausa del Brain, diagnostica unica pronta, Brain Live Evolution implementato (Claude)
 
 - **Pausa** (`superbot-ops pausa scalp`, 17:21:47 UTC): ATTIVA, uscite SANE, mandato VALIDO, nessuna apertura dopo la pausa (battiti `paused`). Nessuna chiusura forzata. Posizioni aperte: da confermare con la diagnostica (dashboard: 0).
