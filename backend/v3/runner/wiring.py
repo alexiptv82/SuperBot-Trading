@@ -170,7 +170,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                  alert_send: Optional[Callable[[str], bool]] = None,
                  exit_mode: str = "legacy", clock_ms: Optional[Callable[[], int]] = None,
                  desk_mode: Optional[str] = None,
-                 classic_peer_dirs: Optional[Mapping[str, Path]] = None) -> Built:
+                 classic_peer_dirs: Optional[Mapping[str, Path]] = None,
+                 claude_inner_transport: Optional[Transport] = None) -> Built:
     """Assembla tutto. ``get_json`` e ``inner_transport`` sono iniettabili (prove offline); ``view_params`` serve solo ai test."""
     if type(exit_mode) is not str or exit_mode not in ("legacy", "sidecar"):
         raise ValueError("invalid_exit_mode")
@@ -219,10 +220,43 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
 
     def portfolio_state() -> dict:
         from backend.v3.dashboard import build_summary, open_groups
+        from backend.v3.runner.cycle import snapshot_from_summary
         summ = build_summary(journal, PORTFOLIO_ID, run_id)
         slots = config.risk_policy.max_positions or 0
+        snap = snapshot_from_summary(summ, config.initial_equity, config.risk_policy.estimated_roundtrip_cost_bp)
+        eq = snap.equity if snap.equity > 0 else Decimal("1")
         return {"guardian_mode": last_guardian["state"], "open_trades": open_groups(summ.open_positions),
-                "free_slots": max(0, slots - open_groups(summ.open_positions))}
+                "free_slots": max(0, slots - open_groups(summ.open_positions)),
+                "open_risk_pct": str((snap.existing_open_risk / eq * 100).quantize(Decimal("0.01"))),
+                "long_risk_pct": str((snap.side_open_risk.get(1, Decimal(0)) / eq * 100).quantize(Decimal("0.01"))),
+                "short_risk_pct": str((snap.side_open_risk.get(-1, Decimal(0)) / eq * 100).quantize(Decimal("0.01"))),
+                "margin_used": str(snap.margin_used), "equity": str(snap.equity)}
+
+    def market_view_of(sym: str, t: int) -> dict:
+        from backend.v3.brain_market.view import build_market_view
+        return build_market_view({tf.name: store.refresh(sym, tf.name, t) for tf in vp.timeframes},
+                                 timestamp_ms=t, params=vp)
+
+    def funding_of(sym: str):
+        body = get_json("https://api.bitget.com/api/v2/mix/market/current-fund-rate?symbol=" + sym
+                        + "&productType=USDT-FUTURES")
+        rate = Decimal(str(body["data"][0]["fundingRate"]))
+        return rate if rate.is_finite() and abs(rate) < 1 else None
+
+    consultant = None
+    if unico is not None and unico.claude is not None:
+        from backend.v3.runner.consult import ClaudeConsultant
+        from backend.v3.transport import claude_transport
+        cp = unico.claude
+        claude_metered = MeteredTransport(
+            claude_inner_transport if claude_inner_transport is not None else claude_transport(
+                timeout_s=cp.timeout_s, betas=("server-side-fallback-2026-07-01",)),
+            ledger, "claude", input_usd_per_million=cp.input_usd_per_million,
+            output_usd_per_million=cp.output_usd_per_million)
+        consultant = ClaudeConsultant(
+            transport=claude_metered, model=cp.model, effort=cp.effort, max_tokens=cp.max_tokens,
+            spending_gate=ledger.spending_gate(daily_limits={"claude": cp.daily_cap_units}),
+            max_per_cycle=cp.max_per_cycle, cooldown_ms=cp.cooldown_minutes * 60_000)
     if config.analyst == "falco_evoluto":
         # regole + DeepSeek consulente raro (stesso trasporto metrato, budget proprio della run)
         from backend.v3.falco_evoluto import EMA200_MIN_BARS, FalcoEvolutoAnalyst
@@ -236,11 +270,18 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         if unico is not None and unico.guidance:
             from backend.v3.brain_market.deepseek_l5 import UNICO_GUIDANCE
             unico_extra = {"guidance": UNICO_GUIDANCE, "portfolio_state": portfolio_state}
-        analyst = MarketEntryAnalyst(DeepSeekL5Analyst(
+        ds_analyst = DeepSeekL5Analyst(
             transport=metered, model=config.model,
             outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
             bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
-            spending_gate=gate, enabled=True, max_tokens=config.max_tokens, **unico_extra))
+            spending_gate=gate, enabled=True, max_tokens=config.max_tokens, **unico_extra)
+        if consultant is not None:
+            # Brain unico: DeepSeek propone, Claude consulente nei casi importanti, arbitro deterministico
+            from backend.v3.runner.consult import CollaborativeAnalyst
+            ds_analyst = CollaborativeAnalyst(ds_analyst, consultant, journal=journal, run_id=run_id,
+                                              market_view=lambda sym, t: market_view_of(sym, t),
+                                              portfolio_state=portfolio_state)
+        analyst = MarketEntryAnalyst(ds_analyst)
     else:
         raise ValueError("invalid_analyst")
     store = CandleStore(get_json, keep=keep)
@@ -265,8 +306,9 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         from backend.v3.runner.position_review import DeepSeekPositionReviewer
         reviewer = DeepSeekPositionReviewer(
             transport=metered, model=config.model, spending_gate=gate, max_tokens=config.max_tokens,
-            market_view=lambda sym, t: build_market_view({tf.name: store.refresh(sym, tf.name, t)
-                                                          for tf in vp.timeframes}, timestamp_ms=t, params=vp))
+            market_view=lambda sym, t: market_view_of(sym, t))
+        from backend.v3.runner.monitor import HISTORY_MS, HISTORY_TF, history_best_from
+        review_best = history_best_from(CandleStore(get_json, keep={HISTORY_TF: (HISTORY_MS, 1_500)}))
 
     def halted() -> Optional[str]:
         return mandate.problem() or budget_halt()
@@ -310,7 +352,9 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             try:
                 review_open_positions(journal=journal, run_id=run_id, data_dir=data_dir, now_ms=now_ms,
                                       reviewer=reviewer, mode=last_guardian["state"],
-                                      price_of=lambda sym, t: last_minute_close(sym, t, get_json))
+                                      price_of=lambda sym, t: last_minute_close(sym, t, get_json),
+                                      consultant=consultant, best_of=review_best, funding_of=funding_of,
+                                      market_of=market_view_of)
             except Exception:
                 pass                                        # una revisione fallita non ferma il giro delle aperture
         return run_brain_cycle(
@@ -329,10 +373,16 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             guardian=guardian_eval,
             reserve_of=reserve_of if unico is not None and unico.piggy is not None else None)
 
+    long_hold = {}
+    if exit_policy.max_hold_ms is None:                 # Brain unico: nessun limite di tempo (vedi monitor.py)
+        from backend.v3.runner.monitor import HISTORY_MS, HISTORY_TF, LONG_HOLD_WINDOW_MS, history_best_from
+        long_hold = {"window_ms": LONG_HOLD_WINDOW_MS, "history_best": history_best_from(
+            CandleStore(get_json, keep={HISTORY_TF: (HISTORY_MS, 1_500)}))}
+
     def run_monitor(now_ms: int) -> MonitorReport:
         return run_exit_monitor(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id,
                                 fetch_bars=minute_fetcher(minutes), policy=exit_policy,
-                                fee_bps=config.fee_bps, now_ms=now_ms)
+                                fee_bps=config.fee_bps, now_ms=now_ms, **long_hold)
 
     def run_commands(now_ms: int) -> Optional[ManualCloseReport]:
         return run_manual_close(journal=journal, portfolio_id=PORTFOLIO_ID, run_id=run_id, data_dir=data_dir,

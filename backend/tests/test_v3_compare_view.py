@@ -69,7 +69,7 @@ def test_side_by_side_metrics_from_each_journal(tmp_path):
     assert fe["by_side"]["short"] == {"trades": 2, "wins": 1, "losses": 1, "net_pnl": "20"}
     assert fe["by_side"]["long"] == {"trades": 2, "wins": 1, "losses": 1, "net_pnl": "-15"}
     assert fe["manual_closes"] == 1 and fe["protected_stops"] == 1 and len(fe["open_positions"]) == 1
-    assert fe["guardian"]["state"] == "SELECTIVE" and fe["ai_spend"] == {"day": "0.15", "total": "0.2"}
+    assert fe["guardian"]["state"] == "SELECTIVE" and fe["ai_spend"] == {"day": "0.15", "total": "0.2", "by_provider": {"deepseek": {"day": "0.15", "total": "0.2"}}}
     assert fe["config"]["leverage"] == [15, 45] and fe["config"]["margin"] == ["100", "250"]
     assert fe["decisions"][0]["rationale"] == "falco_no_trade_regime"
     assert fe["decisions"][0]["sources"] == ["falco_evoluto:short_rules"]          # testo non valido scartato

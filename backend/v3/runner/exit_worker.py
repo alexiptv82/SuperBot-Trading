@@ -148,11 +148,18 @@ def build_exit_worker(*, data_dir: Path, run_id: str, config: RunnerConfig,
             elif brain is not None and brain.failed:
                 report = ManualCloseReport(report.status, report.closed, report.failed + brain.failed)
         return report
+    long_hold = {}
+    if policy.max_hold_ms is None:
+        # Brain unico: nessun limite di tempo -> finestra da 1 minuto + storia dalle candele da 15 minuti
+        from backend.v3.runner.monitor import HISTORY_MS, HISTORY_TF, LONG_HOLD_WINDOW_MS, history_best_from
+        long_hold = {"window_ms": LONG_HOLD_WINDOW_MS, "history_best": history_best_from(
+            CandleStore(get_json, keep={HISTORY_TF: (HISTORY_MS, 1_500)}))}
+
     def monitor(now_ms: int):
         guard(now_ms)
         return run_exit_monitor(journal=journal, portfolio_id='brain', run_id=run_id,
                                 fetch_bars=minute_fetcher(minutes), policy=policy,
-                                fee_bps=config.fee_bps, now_ms=now_ms)
+                                fee_bps=config.fee_bps, now_ms=now_ms, **long_hold)
     return ExitService(run_id=run_id, data_dir=data_dir,
                        run_commands=commands, run_monitor=monitor)
 

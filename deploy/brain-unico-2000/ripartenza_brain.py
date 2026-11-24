@@ -174,7 +174,8 @@ def check_config(raw: bytes):
           == (Decimal("0.043"), Decimal("0.12"), Decimal("0.55"), Decimal("400"))
           and u.partial is not None and u.piggy is not None and c.guardian is not None and c.guardian.tiers is not None
           and c.initial_equity * (1 - c.daily_loss_halt) > p.minimum_equity
-          and c.daily_loss_halt < c.guardian.global_drawdown_lock and c.analyst == "deepseek")
+          and c.daily_loss_halt < c.guardian.global_drawdown_lock and c.analyst == "deepseek"
+          and c.exit_policy is not None and c.exit_policy.max_hold_ms is None and u.claude is not None)
     if not ok:
         raise Blocco("configurazione_brain_unico_inattesa")
     return c

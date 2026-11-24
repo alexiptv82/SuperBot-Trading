@@ -33,6 +33,18 @@ class MonitorReport:
 
 
 STOP_MOVE_KIND = "stop_move"
+LONG_HOLD_WINDOW_MS = 20 * 60 * MINUTE_MS          # finestra da 1 minuto per le posizioni senza limite di tempo
+HISTORY_TF, HISTORY_MS = "15m", 900_000
+
+
+def history_best_from(store) -> Callable:
+    """Miglior prezzo favorevole fra l'apertura e ``until_ms`` dalle candele da 15 minuti CHIUSE e iniziate dopo
+    l'apertura (``store``: ``CandleStore`` con il 15m). ``None`` se non ce n'e' nessuna."""
+    def best(symbol: str, side: int, opened_ms: int, until_ms: int):
+        bars = [b for b in store.refresh_raw(symbol, HISTORY_TF, until_ms)
+                if b.open_time_ms >= opened_ms and b.open_time_ms + HISTORY_MS <= until_ms]
+        return favorable_extreme(side, None, bars, opened_ms) if bars else None
+    return best
 
 
 def stop_moves_by_position(journal: EventJournal, portfolio_id: str, run_id: str) -> dict:
@@ -54,7 +66,12 @@ def stop_moves_by_position(journal: EventJournal, portfolio_id: str, run_id: str
 
 
 def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, fetch_bars: FetchBars,
-                     policy: ExitPolicy, fee_bps: Decimal | int, now_ms: int) -> MonitorReport:
+                     policy: ExitPolicy, fee_bps: Decimal | int, now_ms: int, window_ms: int | None = None,
+                     history_best: Callable | None = None) -> MonitorReport:
+    """``window_ms`` / ``history_best`` (Brain unico, posizioni senza limite di tempo): le candele da 1 minuto si
+    leggono solo per l'ultima finestra; il miglior prezzo raggiunto PRIMA della finestra (serve a pareggio e trailing)
+    viene da ``history_best(simbolo, lato, aperta_ms, inizio_finestra_ms)`` (candele piu' lunghe, chiuse). Uno stop
+    toccato prima della finestra avrebbe gia' chiuso la posizione in un giro precedente. Senza finestra: come sempre."""
     if type(now_ms) is not int or now_ms <= 0:
         raise ValueError("invalid_now")
     end = now_ms // MINUTE_MS * MINUTE_MS                # solo minuti chiusi
@@ -74,9 +91,17 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
             start = pos.opened_at_ms // MINUTE_MS * MINUTE_MS
             if start >= end:
                 continue                                  # aperta nello stesso minuto: nessuna barra chiusa ancora
+            best = None          # miglior prezzo dei tratti precedenti: la protezione non si azzera dopo un buco
+            if window_ms is not None and end - start > window_ms:
+                start = end - window_ms
+                try:
+                    best = history_best(pos.symbol, pos.side, pos.opened_at_ms, start) if history_best else None
+                except Exception:
+                    best = None
+                if best is None:
+                    errors.append((pos.position_id, "exit_history_unavailable"))   # protezione non verificabile
             bars = list(fetch_bars(pos.symbol, start, end))
             signal = None
-            best = None          # miglior prezzo dei tratti precedenti: la protezione non si azzera dopo un buco
             for run in contiguous_runs(bars, MINUTE_MS):
                 signal = evaluate_exit(side=pos.side, fill_price=pos.fill_price, stop_price=pos.stop_price,
                                        opened_at_ms=pos.opened_at_ms, bars=run, candle_ms=MINUTE_MS,
@@ -89,7 +114,7 @@ def run_exit_monitor(*, journal: EventJournal, portfolio_id: str, run_id: str, f
                 # Only closed candles whose opens are >= position entry can
                 # be evaluated. The opening partial minute is deliberately
                 # excluded by evaluate_exit; it must NOT cause false alarms.
-                first_eligible = ((pos.opened_at_ms + MINUTE_MS - 1) // MINUTE_MS) * MINUTE_MS
+                first_eligible = max(((pos.opened_at_ms + MINUTE_MS - 1) // MINUTE_MS) * MINUTE_MS, start)
                 if first_eligible < end:
                     timestamps = sorted({b.open_time_ms for b in bars
                                          if first_eligible <= b.open_time_ms < end})

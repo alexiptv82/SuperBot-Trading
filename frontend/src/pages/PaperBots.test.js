@@ -257,6 +257,10 @@ test('the choice survives the refresh; a bot that disappears falls back to the f
 // Brain unico PAPER 2000 (24/11): una sola run, nessun selettore; modalità, slot, salvadanaio, quote, revisioni AI.
 const unico = () => ({ available: true, generated_at_ms: NOW - 20_000, runs: [run('brain_scalp', 'Brain', {
   initial_equity: '2000', settled_equity: '2310', net_pnl: '310', open_trades: 1,
+    ai_spend: { day: '0.5', total: '1.2', by_provider: { deepseek: { day: '0.4', total: '0.9' }, claude: { day: '0.1', total: '0.3' } } },
+    collaboration: { entry: { consults: 3, agreed: 2, claude_adopted: 1, blocked: 1, unavailable: 0, deepseek_only: 5 },
+      review: { consults: 2, agreed: 1, claude_adopted: 1, deepseek_kept: 0, unavailable: 0 },
+      results: { deepseek: { trades: 4, net_pnl: '20' }, agreed: { trades: 2, net_pnl: '31.5' }, claude: { trades: 1, net_pnl: '-4' } } },
   guardian: { state: 'SELECTIVE', reasons: ['profit_selective'], equity: '2330', session_start_equity: '2000',
     realized_session: '310', ai_cost_session: '1.2', risk_cap: '51.6', as_of_ms: NOW - 2 * MIN },
   open_positions: [
@@ -264,11 +268,13 @@ const unico = () => ({ available: true, generated_at_ms: NOW - 20_000, runs: [ru
     { position_id: 'b', symbol: 'XAUUSDT', side: 1, entry: '2650', stop: '2640', margin: '220', leverage: 22, leg: 'runner', stop_brain: '2652' }],
   piggy: { total: '120', operating_equity: '2190', reference_equity: '2000', next_sweep_ms: NOW + 3 * 60 * MIN,
     sweeps: [[NOW - 21 * 60 * MIN, '120']] },
-  reviews: [{ ts_ms: NOW - 5 * MIN, symbol: 'XAUUSDT', proposed: 'MODIFY_STOP', executed: 'MODIFY_STOP', code: 'stop_tightened' },
+  reviews: [{ ts_ms: NOW - 5 * MIN, symbol: 'XAUUSDT', proposed: 'MODIFY_STOP', executed: 'MODIFY_STOP', code: 'stop_tightened',
+    claude: 'CONFIRM', source: 'agreed' },
     { ts_ms: NOW - 35 * MIN, symbol: 'XAUUSDT', proposed: 'MODIFY_STOP', executed: 'HOLD', code: 'stop_not_tighter' }],
   config: { initial_equity: '2000', analyst: 'deepseek', cycle_minutes: 30, max_positions: 10, symbols: 27,
     leverage: [15, 50], risk_per_trade_pct: '4.300', open_risk_pct: '12.00', daily_stop_pct: '25.00',
-    unico: { leverage_fit: true, position_review: true, partial: { fraction: '0.35', at_r: '2' }, max_hold_hours: 12,
+    unico: { leverage_fit: true, position_review: true, partial: { fraction: '0.35', at_r: '2' }, max_hold_hours: null,
+      claude: { model: 'claude-opus-5-5', daily_cap_usd: '3' },
       exit: { take_profit_r: '3.5' }, tiers: { selective_usd: '300', protect_usd: '400' },
       piggy: { reference_equity: '2000', tz: 'Europe/Rome', hour: 0 } } } })] });
 
@@ -276,7 +282,9 @@ test('Brain unico: one Brain without bot switch, mode and slots, piggy bank, leg
   const h = html({ data: unico() });
   expect(h).not.toContain('Scegli il bot');
   expect(h).toContain('Brain unico PAPER');
-  for (const t of ['SELETTIVO', 'Slot 1/10', 'scelta dal codice', '35 % a 2R, residuo a 3.5R, al massimo 12 h', '27 mercati',
+  for (const t of ['SELETTIVO', 'Slot 1/10', 'scelta dal codice', '35 % a 2R, residuo verso 3.5R, nessun limite di tempo', '27 mercati',
+    'Claude consulente nei casi importanti', 'DeepSeek + Claude', 'Aperture valutate da Claude', 'scelta di Claude 1',
+    'DeepSeek + Claude d’accordo 2 trade +$31,50', 'Claude: conferma', 'DeepSeek $0,900 · Claude $0,300',
     'Salvadanaio', 'Accantonato', '$120,00', 'Capitale operativo', '$2.190,00', 'senza\n      reintegri'.replace(/\s+/g, ' '),
     '1ª quota · presa a 2R', 'Residuo · verso 3,5R', 'Stop (Brain)', 'Revisioni AI delle posizioni (2)', 'stringe lo stop',
     'stop non più stretto: ignorato', 'a mezzanotte (ora italiana)'])

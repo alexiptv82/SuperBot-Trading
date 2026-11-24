@@ -28,6 +28,22 @@ from typing import Iterable, Mapping, Optional
 from zoneinfo import ZoneInfo
 
 LEG_TP1, LEG_RUNNER = "tp1", "runner"
+# Motivi delle due AI: elenco CHIUSO (nel journal entrano solo questi codici, mai testo libero dei modelli).
+REASON_CODES = frozenset({
+    "trend_up", "trend_down", "trend_weakening", "trend_change", "breakout", "breakdown", "pullback", "range",
+    "momentum_strong", "momentum_fading", "volume_confirms", "volume_weak", "volatility_high", "volatility_low",
+    "near_support", "near_resistance", "overextended", "conflicting_signals", "reversal_risk", "profit_at_risk",
+    "costs_high", "funding_adverse", "better_opportunity", "thesis_intact", "thesis_invalidated", "liquidity_thin",
+    "risk_concentration", "setup_strong", "setup_weak"})
+
+
+def parse_reasons(raw) -> tuple:
+    """Codici validi (al massimo 6, senza doppioni); qualunque altra cosa -> ``ValueError``."""
+    if raw is None:
+        return ()
+    if type(raw) is not list or len(raw) > 6 or any(type(x) is not str or x not in REASON_CODES for x in raw):
+        raise ValueError("invalid_reasons")
+    return tuple(dict.fromkeys(raw))
 
 
 class UnicoConfigError(ValueError):
@@ -70,6 +86,24 @@ class PiggyPolicy:
 
 
 @dataclass(frozen=True)
+class ClaudeConsultPolicy:
+    """Claude consulente (24/11): chiamato solo quando scatta un criterio (``runner/consult.py``)."""
+    model: str
+    effort: str                        # sforzo di ragionamento (low | medium | high)
+    max_tokens: int
+    timeout_s: int
+    daily_cap_usd: Decimal             # tetto PROPRIO di Claude, separato da DeepSeek
+    input_usd_per_million: Decimal
+    output_usd_per_million: Decimal
+    max_per_cycle: int                 # consulti al massimo per giro (aperture + posizioni)
+    cooldown_minutes: int              # stessa posizione: non piu' spesso, salvo un'azione proposta da DeepSeek
+
+    @property
+    def daily_cap_units(self) -> int:
+        return int(self.daily_cap_usd * 1_000_000)
+
+
+@dataclass(frozen=True)
 class UnicoPolicy:
     leverage_fit: bool
     partial: Optional[PartialTakeProfit]
@@ -77,9 +111,32 @@ class UnicoPolicy:
     piggy: Optional[PiggyPolicy]
     position_review: bool
     guidance: bool
+    claude: Optional[ClaudeConsultPolicy] = None
 
 
-_TOP = {"leverage_selection", "partial_take_profit", "profit_tiers", "piggy_bank", "position_review", "guidance"}
+_TOP = {"leverage_selection", "partial_take_profit", "profit_tiers", "piggy_bank", "position_review", "guidance",
+        "claude_consult"}
+_CLAUDE = {"model", "effort", "max_tokens", "timeout_s", "daily_cap_usd", "input_usd_per_million_tokens",
+           "output_usd_per_million_tokens", "max_per_cycle", "cooldown_minutes"}
+
+
+def _claude_from(c) -> ClaudeConsultPolicy:
+    import re
+    if not isinstance(c, Mapping) or set(c) != _CLAUDE:
+        raise UnicoConfigError("invalid_brain_unico")
+    if (type(c["model"]) is not str or not re.fullmatch(r"claude-[a-z0-9-]{1,40}", c["model"])
+            or c["effort"] not in ("low", "medium", "high")
+            or any(type(c[k]) is not int for k in ("max_tokens", "timeout_s", "max_per_cycle", "cooldown_minutes"))
+            or not 256 <= c["max_tokens"] <= 16_000 or not 10 <= c["timeout_s"] <= 300
+            or not 1 <= c["max_per_cycle"] <= 20 or not 0 <= c["cooldown_minutes"] <= 1440):
+        raise UnicoConfigError("invalid_brain_unico")
+    cap = _dec(c["daily_cap_usd"], Decimal("0"), Decimal("100"))
+    if cap * 1_000_000 != (cap * 1_000_000).to_integral_value():
+        raise UnicoConfigError("invalid_brain_unico")
+    return ClaudeConsultPolicy(c["model"], c["effort"], c["max_tokens"], c["timeout_s"], cap,
+                               _dec(c["input_usd_per_million_tokens"], Decimal("0"), Decimal("1000")),
+                               _dec(c["output_usd_per_million_tokens"], Decimal("0"), Decimal("1000")),
+                               c["max_per_cycle"], c["cooldown_minutes"])
 _TIERS = {"selective_usd", "protect_usd", "selective_risk_r", "protect_risk_r", "selective_min_confidence",
           "protect_min_confidence"}
 
@@ -128,8 +185,9 @@ def unico_policy_from_config(raw: object) -> UnicoPolicy:
         except Exception:
             raise UnicoConfigError("invalid_brain_unico") from None
         piggy = PiggyPolicy(_dec(b["reference_equity"], Decimal("450"), Decimal("1000000")), b["tz"], b["hour"])
+    claude = None if raw["claude_consult"] is None else _claude_from(raw["claude_consult"])
     return UnicoPolicy(raw["leverage_selection"] == "fit", partial, tiers, piggy, raw["position_review"],
-                       raw["guidance"])
+                       raw["guidance"], claude)
 
 
 # ----------------------------------------------------------------------------- quote dell'apertura

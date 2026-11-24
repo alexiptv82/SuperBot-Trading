@@ -4,8 +4,8 @@ import { BrainCloseControls } from '../components/OverviewCloseControls';
 import { botStatus, equityView, guardianView } from '../paperBotsModel';
 import {
   BotSwitch, C, Card, Fold, Fresh, Grid, LoadState, Note, Page, PageHeader, Pill, Section, SideTag, Stat,
-  ago, botMeta, duration, LEG, num, own, pct, price, reasonText, REVIEW_ACTION, REVIEW_CODE, riskText, sgn, tone, usd,
-  usePoll, when,
+  ago, botMeta, duration, LEG, num, own, pct, price, reasonText, REVIEW_ACTION, REVIEW_CODE, riskText, sgn, SOURCE, tone,
+  usd, usePoll, when,
 } from '../paperApp/kit';
 
 // Schermata "Brain": i due bot PAPER attuali (Falco Evoluto, Brain Scalp). Gerarchia:
@@ -52,9 +52,9 @@ function StatusCard({ run, nowMs }) {
         color={run.manual_close_allowed === true ? C.up : C.warn} />
     </Grid>
     {cfg.unico && <ModeRow run={run} nowMs={nowMs} />}
-    <Note style={{ marginTop: 10 }}>Analisi: {own(ANALYST, cfg.analyst) || '—'} · rischio {cfg.risk_per_trade_pct ?? '—'} % per
+    <Note style={{ marginTop: 10 }}>Analisi: {own(ANALYST, cfg.analyst) || '—'}{cfg.unico?.claude ? ' + Claude consulente nei casi importanti' : ''} · rischio {cfg.risk_per_trade_pct ?? '—'} % per
       trade, {cfg.open_risk_pct ?? '—'} % aperto · leva {(cfg.leverage || []).join('–') || '—'}×{cfg.unico?.leverage_fit ? ' scelta dal codice' : ''} ·
-      stop giornaliero {cfg.daily_stop_pct ?? '—'} %{cfg.unico?.partial ? ` · ${Math.round(num(cfg.unico.partial.fraction) * 100)} % a ${cfg.unico.partial.at_r}R, residuo a ${cfg.unico.exit?.take_profit_r ?? '—'}R, al massimo ${cfg.unico.max_hold_hours ?? '—'} h` : ''}{cfg.symbols ? ` · ${cfg.symbols} mercati` : ''}</Note>
+      stop giornaliero {cfg.daily_stop_pct ?? '—'} %{cfg.unico?.partial ? ` · ${Math.round(num(cfg.unico.partial.fraction) * 100)} % a ${cfg.unico.partial.at_r}R, residuo verso ${cfg.unico.exit?.take_profit_r ?? '—'}R, ${cfg.unico.max_hold_hours ? `al massimo ${cfg.unico.max_hold_hours} h` : 'nessun limite di tempo'}` : ''}{cfg.symbols ? ` · ${cfg.symbols} mercati` : ''}</Note>
   </Card>;
 }
 
@@ -133,7 +133,8 @@ function PnlCard({ run, nowMs }) {
     </Grid>
     <div style={{ borderTop: `1px solid ${C.line}`, margin: '14px 0 12px' }} />
     <Grid cols={2}>
-      <Stat label="Costi AI (totale run)" value={usd(ai, 3)} color={C.soft} />
+      <Stat label="Costi AI (totale run)" value={usd(ai, 3)} color={C.soft}
+        sub={run.ai_spend?.by_provider?.claude ? `DeepSeek ${usd(run.ai_spend.by_provider.deepseek?.total, 3)} · Claude ${usd(run.ai_spend.by_provider.claude.total, 3)}` : null} />
       <Stat label="Netto realizzato dopo AI" value={sgn(run.net_after_ai)} color={tone(run.net_after_ai)}
         sub={num(run.return_after_ai_pct) === null ? null : pct(run.return_after_ai_pct)} />
     </Grid>
@@ -195,11 +196,34 @@ function ReviewsFold({ run, nowMs }) {
         <span style={{ color: C.muted, fontSize: 13 }}>{ago(r.ts_ms, nowMs) || when(r.ts_ms)}</span>
       </div>
       <div style={{ fontSize: 14, color: r.executed && r.executed !== 'HOLD' ? C.up : C.soft, marginTop: 2 }}>
-        {own(REVIEW_ACTION, r.executed) || '—'}{r.proposed && r.proposed !== r.executed ? ` (proposta: ${own(REVIEW_ACTION, r.proposed) || '—'})` : ''}
+        {own(REVIEW_ACTION, r.executed) || '—'}{r.proposed && r.proposed !== r.executed ? ` (DeepSeek: ${own(REVIEW_ACTION, r.proposed) || '—'})` : ''}
         {own(REVIEW_CODE, r.code) ? <span style={{ color: C.warn }}> · {own(REVIEW_CODE, r.code)}</span> : null}</div>
+      {r.claude && <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>Claude: {own(REVIEW_ACTION, r.claude) || (r.claude === 'CONFIRM' ? 'conferma' : r.claude)} · decisione: {own(SOURCE, r.source) || '—'}</div>}
     </div>)}
-    <Note>L’AI propone, il codice decide: lo stop si sposta solo verso il profitto. Stop, take profit e durata massima restano
-      sempre attivi, anche se l’AI non risponde.</Note>
+    <Note>DeepSeek propone; nei casi importanti Claude dà un parere indipendente e un arbitro deterministico decide; il codice
+      valida: lo stop si sposta solo verso il profitto. Stop, take profit e protezioni restano sempre attivi, anche se le AI
+      non rispondono. Nessuna chiusura per solo tempo.</Note>
+  </Fold>;
+}
+
+// DeepSeek + Claude: quanto collaborano e con quale risultato (dal journal)
+function CollaborationFold({ run }) {
+  const c = run.collaboration;
+  if (!run.config?.unico?.claude) return null;
+  const sp = run.ai_spend?.by_provider || {};
+  return <Fold title="🤝 DeepSeek + Claude" label={`Collaborazione AI ${run.label}`}>
+    {!c ? <Note>Nessun consulto finora: Claude viene chiamato solo nelle situazioni importanti.</Note> : <>
+      <Grid cols={2} gap={10}>
+        <Stat compact label="Aperture valutate da Claude" value={String(c.entry.consults)} sub={`d’accordo ${c.entry.agreed} · scelta di Claude ${c.entry.claude_adopted}`} />
+        <Stat compact label="Aperture fermate" value={String(c.entry.blocked)} sub={`Claude non disponibile: ${c.entry.unavailable}`} />
+        <Stat compact label="Posizioni con consulto" value={String(c.review.consults)} sub={`d’accordo ${c.review.agreed} · Claude ${c.review.claude_adopted} · DeepSeek ${c.review.deepseek_kept}`} />
+        <Stat compact label="Costi Claude" value={usd(sp.claude?.total, 3)} sub={`DeepSeek ${usd(sp.deepseek?.total, 3)}`} />
+      </Grid>
+      <div style={{ marginTop: 10, fontSize: 13, color: C.soft }}>Risultato netto dei trade per decisione: {['deepseek', 'agreed', 'claude']
+        .map(k => `${own(SOURCE, k)} ${c.results[k].trades} trade ${sgn(c.results[k].net_pnl)}`).join(' · ')}</div>
+    </>}
+    <Note>Serve a capire se e quando Claude aggiunge valore, senza presumere che abbia sempre ragione. Limite di spesa di
+      Claude: {usd(run.config.unico.claude.daily_cap_usd, 2)} al giorno.</Note>
   </Fold>;
 }
 
@@ -256,6 +280,7 @@ export function BotCard({ run, live, nowMs, onRefresh }) {
     <Positions run={run} live={live} onRefresh={onRefresh} nowMs={nowMs} />
     <div style={{ marginTop: 18 }}>
       <ReviewsFold run={run} nowMs={nowMs} />
+      <CollaborationFold run={run} />
       <GuardianFold run={run} nowMs={nowMs} />
       <DecisionsFold run={run} nowMs={nowMs} />
     </div>

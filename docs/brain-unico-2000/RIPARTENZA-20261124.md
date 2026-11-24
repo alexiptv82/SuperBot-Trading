@@ -33,14 +33,38 @@ profitti futuri: questi valori sono la base del collaudo PAPER, da correggere co
 | Rischio | 4,3 % per trade (≈ 86 USDT), 12 % aperto, 10 % nella stessa direzione (le cripto si muovono con BTC), costi stimati 16 bp andata e ritorno |
 | Margine | massimo 400 per trade, 55 % totale, minimo 5 (nessuna size minima che blocchi un setup valido) |
 | Leva | 15–50×, **scelta dal codice**: la più bassa che raggiunge la dimensione massima consentita da rischio e margine; lo stop deve restare entro il 60 % della distanza di liquidazione (stessa regola del RiskManager); la leva proposta dall'AI non conta; lo stop non viene mai stretto |
-| Uscite | due quote: **35 % con TP a 2R**, residuo con **TP a 3,5R**, stop a pareggio da 2R, trailing da 2,5R a 1R; durata massima 12 h (intraday); stop obbligatorio sempre |
-| Revisione AI | a ogni giro DeepSeek rivede ogni apertura: HOLD, CLOSE, PARTIAL_CLOSE (incassa la 1ª quota), MODIFY_STOP (solo più stretto, ≥ 5 bp dal prezzo); il codice valida; se l'AI non risponde restano attive le uscite deterministiche |
+| Uscite | due quote: **35 % con TP a 2R**, residuo con **TP a 3,5R** (riferimenti iniziali), stop a pareggio da 2R, trailing da 2,5R a 1R; **nessun limite di tempo** (correzione del 24/11: `max_hold_hours` null, nessuna chiusura per solo tempo né a mezzanotte); stop obbligatorio sempre, gestito dal servizio delle uscite |
+| Revisione AI | a ogni giro DeepSeek rivede ogni apertura con profitto netto e rendimento sul margine, profitto massimo e quota restituita, regime all'ingresso e ora, funding, durata (solo come dato): HOLD, CLOSE, PARTIAL_CLOSE (incassa la 1ª quota), MODIFY_STOP (solo più stretto, ≥ 5 bp dal prezzo); il codice valida; se l'AI non risponde restano attive le uscite deterministiche |
+| Claude consulente | `claude-opus-5-5` (4 / 20 USD per milione di token), ragionamento adattivo a sforzo medium, risposta JSON, timeout 90 s, tetto **3 USD/giorno** separato da DeepSeek, al massimo 4 consulti per giro, stessa posizione non prima di 2 h (salvo azione proposta da DeepSeek) |
 | Modalità | ATTIVO; **SELETTIVO** da +300 USDT netti realizzati nella sessione (rischio 0,6 R, confidenza ≥ 0,65); **PROTEZIONE** da +400 (0,35 R, confidenza ≥ 0,8, nessun rientro); netti = commissioni e costo AI della sessione dedotti; sessione da mezzanotte (ora italiana) |
 | Freni | stop giornaliero 25 % (avviso 15 %), perdita di sessione 20 %, floor dei profitti dal +25 % (conserva il 50 %), drawdown globale: rischio dimezzato dal 15 %, blocco al 30 %; equity minima 1.400 |
 | Salvadanaio | a mezzanotte (ora italiana) il profitto **realizzato** sopra 2.000 passa nel salvadanaio, mai reinvestito; P&L aperto mai accantonato; perdite nel capitale operativo, senza reintegri; ricostruito dal journal con la stessa funzione nel runner e nella dashboard |
 
 Con questi valori: stop 2 % → 15× (rischio pieno, margine ~265); stop 0,4 % → 39× (153,6 unità a 100, margine ~394);
 stop 0,2 % → 50× con margine 400 (rischio ~72 < 86); stop 4 % → NO_TRADE (oltre il limite di liquidazione anche a 15×).
+
+## DeepSeek principale + Claude consulente (correzione del 24/11, `backend/v3/runner/consult.py`)
+- **DeepSeek** analizza ogni giro i 27 mercati e le posizioni aperte e decide le situazioni ordinarie; motiva con codici
+  da un elenco chiuso e può dichiararsi incerto.
+- **Claude** è chiamato solo quando scatta un criterio. Aperture: incertezza o confidenza < 0,65, segnali contrastanti o
+  possibile cambio di trend (anche regime EXPANSION), rischio aperto dopo l'ingresso > 8 %, modalità SELETTIVO/PROTEZIONE.
+  Posizioni: azione proposta da DeepSeek (chiusura, parziale, stop), incertezza, profitto interessante (≥ 1,5R o ≥ 20 %
+  sul margine), ≥ 40 % del profitto massimo restituito (dopo ≥ 1R), cambio di regime. Riceve gli stessi dati di
+  mercato e portafoglio, non solo la risposta di DeepSeek, e conferma, contesta o propone un'alternativa.
+- **Arbitro** deterministico: aperture — conferma → si apre; contestazione → no; alternativa sullo stesso lato → stop di
+  Claude; lato opposto → solo con Claude ≥ 0,75, DeepSeek ≤ 0,6 e regime coerente, altrimenti nessuna apertura.
+  Posizioni — accordo → l'azione; disaccordo → punteggio = confidenza + dati (profitto restituito, cambio di regime, R),
+  a parità l'azione più prudente. Nessuna AI ha l'ultima parola per definizione.
+- **Claude non disponibile** (chiave, rete, tetto, timeout, formato): le decisioni ordinarie di DeepSeek continuano; quelle
+  che richiedevano il consulto non vengono approvate (apertura → NO_TRADE, azione sulla posizione → HOLD). Stop e uscite
+  non aspettano mai le AI.
+- **Journal**: `ai_consultation` (ogni apertura proposta: proposta DeepSeek, criteri, valutazione Claude, decisione finale,
+  fonte, codice, disaccordo) e `position_review` (lo stesso per le posizioni, con le metriche); chiusure manuali `manual`,
+  del Brain `brain_close`. La dashboard mostra consulti, accordi, scelte di Claude, aperture fermate, risultato netto dei
+  trade per fonte della decisione e i costi separati DeepSeek/Claude.
+- **Accesso API**: la chiave `ANTHROPIC_API_KEY` deve stare in `/etc/superbot-v3-paper/brain-ai.env` (letta solo dal
+  servizio). L'accesso a Claude Code non è un'API per il bot. La procedura root fa una chiamata di prova e scrive solo
+  `CLAUDE_API=DISPONIBILE` o `NON_DISPONIBILE_...`, mai la chiave.
 
 ## Codice (nessun componente stabile riscritto)
 - `backend/v3/unico.py`: politica del Brain unico, quote, salvadanaio (funzioni pure).

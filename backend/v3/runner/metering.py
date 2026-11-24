@@ -40,6 +40,13 @@ def usage_units(body: Any, input_per_m: Decimal, output_per_m: Decimal) -> Optio
     if not isinstance(usage, Mapping):
         return None
     p, c = usage.get("prompt_tokens"), usage.get("completion_tokens")
+    if p is None and c is None and "input_tokens" in usage:
+        # formato Anthropic (Claude consulente del Brain unico): i token letti o scritti in cache contano come input
+        # a prezzo pieno (stima prudente, mai sotto la spesa vera)
+        parts = [usage.get(k) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")]
+        if any(x is not None and type(x) is not int for x in parts):
+            return None
+        p, c = sum(x or 0 for x in parts), usage.get("output_tokens")
     if (type(p) is not int or type(c) is not int or not 0 <= p <= _MAX_TOKENS or not 0 <= c <= _MAX_TOKENS):
         return None
     return _ceil(p * input_per_m + c * output_per_m)          # $/M token == micro-dollari per token

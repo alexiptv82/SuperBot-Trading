@@ -90,11 +90,16 @@ def _spend(path: Path, immutable: bool = False) -> dict:
         uri = path.resolve().as_uri().replace("file://", "file:") + ("?immutable=1" if immutable else "?mode=ro")
         with closing(sqlite3.connect(uri, uri=True)) as db:
             db.execute("PRAGMA query_only=ON")
-            rows = db.execute("SELECT occurred_at, units FROM spend_events").fetchall()
+            rows = db.execute("SELECT occurred_at, units, provider FROM spend_events").fetchall()
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        day = sum(u for t, u in rows if type(u) is int and str(t).startswith(today))
-        total = sum(u for _, u in rows if type(u) is int)
-        return {"day": str(Decimal(day) / _MICRO), "total": str(Decimal(total) / _MICRO)}
+        day = sum(u for t, u, _p in rows if type(u) is int and str(t).startswith(today))
+        total = sum(u for _, u, _p in rows if type(u) is int)
+        by = {}
+        for prov in sorted({p for _t, _u, p in rows if p in ("deepseek", "claude")}):   # costi separati per AI
+            by[prov] = {"day": str(Decimal(sum(u for t, u, p in rows if p == prov and type(u) is int
+                                                and str(t).startswith(today))) / _MICRO),
+                        "total": str(Decimal(sum(u for _t, u, p in rows if p == prov and type(u) is int)) / _MICRO)}
+        return {"day": str(Decimal(day) / _MICRO), "total": str(Decimal(total) / _MICRO), "by_provider": by}
     except (sqlite3.Error, OSError, ValueError):
         return {"day": None, "total": None}
 
@@ -126,7 +131,9 @@ def _unico_config(c) -> Optional[dict]:
             "tiers": None if t is None else {"selective_usd": str(t.selective_usd), "protect_usd": str(t.protect_usd)},
             "piggy": None if u.piggy is None else {"reference_equity": str(u.piggy.reference_equity), "tz": u.piggy.tz,
                                                    "hour": u.piggy.hour},
-            "max_hold_hours": None if c.exit_policy is None else c.exit_policy.max_hold_ms // 3_600_000,
+            "max_hold_hours": (None if c.exit_policy is None or c.exit_policy.max_hold_ms is None
+                               else c.exit_policy.max_hold_ms // 3_600_000),
+            "claude": None if u.claude is None else {"model": u.claude.model, "daily_cap_usd": str(u.claude.daily_cap_usd)},
             "exit": None if c.exit_policy is None else {k: _s(getattr(c.exit_policy, k)) for k in (
                 "take_profit_r", "be_at_r", "trail_at_r", "trail_dist_r")}}
 
@@ -186,7 +193,12 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
             reviews.append({"ts_ms": ev.occurred_at_ms, "symbol": p.get("symbol"),
                             "proposed": p.get("proposed") if p.get("proposed") in acts else None,
                             "executed": p.get("executed") if p.get("executed") in acts else None,
-                            "code": p.get("code") if _CODE.match(str(p.get("code", ""))) else None})
+                            "code": p.get("code") if _CODE.match(str(p.get("code", ""))) else None,
+                            "source": p.get("source") if p.get("source") in ("deepseek", "claude", "agreed", "none")
+                            else None,
+                            "claude": (p.get("claude") or {}).get("action") or (p.get("claude") or {}).get("verdict")
+                            if (p.get("claude") or {}).get("status") == "ok" else
+                            ("non disponibile" if p.get("claude") else None)})
         elif ev.kind == "brain_decision":
             decisions.append({"ts_ms": ev.occurred_at_ms, "symbol": p.get("symbol"), "kind": p.get("kind"),
                               "status": p.get("status"),
@@ -250,9 +262,53 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
                                 for o in summary.open_positions],
                 open_trades=open_groups(summary.open_positions),
                 guardian=guardian, decisions=decisions[-8:][::-1], reviews=reviews[-8:][::-1], ai_spend=spend,
-                piggy=_piggy(cfg, summary, start, now_ms),
+                piggy=_piggy(cfg, summary, start, now_ms), collaboration=_collaboration(events),
                 manual_close_allowed=_close_ready(ref, now_ms),
                 close_pending=(ref.dir / "close_request.json").exists())
+
+
+def _collaboration(events) -> Optional[dict]:
+    """DeepSeek + Claude (Brain unico): quante volte Claude e' stato consultato, accordi, proposte di Claude adottate,
+    aperture bloccate, Claude non disponibile; e il risultato netto dei trade aperti secondo la fonte della decisione
+    (deepseek da solo, accordo, Claude). Tutto ricostruito dal journal (codici, nessun testo libero)."""
+    consults = [r.event for r in events if r.event.kind == "ai_consultation"]
+    reviews = [r.event.payload for r in events if r.event.kind == "position_review"
+               and isinstance(r.event.payload, Mapping) and r.event.payload.get("triggers")]
+    if not consults and not reviews:
+        return None
+    decisions = {(r.event.payload.get("symbol"), r.event.occurred_at_ms): r.event.event_id for r in events
+                 if r.event.kind == "brain_decision" and isinstance(r.event.payload, Mapping)
+                 and r.event.payload.get("kind") == "OPEN" and r.event.payload.get("status") == "APPROVED"}
+    pnl: dict = {}
+    for r in events:
+        p = r.event.payload if isinstance(r.event.payload, Mapping) else {}
+        if r.event.kind == "paper_close" and p.get("decision_event_id"):
+            v = _d(p.get("realized_pnl"))
+            if v is not None:
+                pnl[p["decision_event_id"]] = pnl.get(p["decision_event_id"], Decimal(0)) + v
+    results = {k: {"trades": 0, "net_pnl": Decimal(0)} for k in ("deepseek", "agreed", "claude")}
+    codes: dict = {}
+    for e in consults:
+        p = e.payload if isinstance(e.payload, Mapping) else {}
+        if p.get("claude") is not None:
+            codes[p.get("code")] = codes.get(p.get("code"), 0) + 1
+        src = (p.get("final") or {}).get("source")
+        did = decisions.get((p.get("symbol"), e.occurred_at_ms))
+        if src in results and did in pnl:
+            results[src]["trades"] += 1
+            results[src]["net_pnl"] += pnl[did]
+    asked = sum(codes.values())
+    rev = {k: sum(1 for x in reviews if x.get(f) == v) for k, f, v in (
+        ("agreed", "source", "agreed"), ("claude_adopted", "source", "claude"), ("deepseek_kept", "source", "deepseek"))}
+    rev["unavailable"] = sum(1 for x in reviews if str(x.get("arbiter", "")).startswith("claude_unavailable"))
+    rev["consults"] = sum(1 for x in reviews if x.get("claude") is not None)
+    return {"entry": {"consults": asked, "agreed": codes.get("claude_confirmed", 0),
+                      "claude_adopted": codes.get("claude_stop_adopted", 0) + codes.get("claude_alternative_adopted", 0),
+                      "blocked": codes.get("claude_contested", 0) + codes.get("irreconcilable_no_trade", 0),
+                      "unavailable": codes.get("claude_unavailable_critical", 0),
+                      "deepseek_only": sum(1 for e in consults if (e.payload or {}).get("claude") is None)},
+            "review": rev,
+            "results": {k: {"trades": v["trades"], "net_pnl": str(v["net_pnl"])} for k, v in results.items()}}
 
 
 def _piggy(cfg: dict, summary, start: Decimal, now_ms: int) -> Optional[dict]:

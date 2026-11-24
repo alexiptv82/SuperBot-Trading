@@ -61,7 +61,8 @@ _HOUR_MS = 3_600_000
 @dataclass(frozen=True)
 class ExitPolicy:
     take_profit_r: Decimal      # multiplo della distanza dallo stop; > 0, al massimo 20
-    max_hold_ms: int            # durata massima della posizione; > 0
+    max_hold_ms: Optional[int]  # durata massima della posizione; > 0. None (solo schema 2, Brain unico 24/11) = NESSUNA
+                                # chiusura per solo tempo: decidono stop, take-profit, protezione e revisione AI
     stop_slippage_bp: Decimal   # slippage sfavorevole sull'uscita a stop; da 0 a 100
     # Protezione dei profitti (schema 2, SPENTA se None). Stesse regole e stessi nomi dei bracci del laboratorio
     # pre-registrato ``ops/brain-unico/exits/arms.py``: lo stop valido per una candela dipende SOLO dal miglior
@@ -95,7 +96,7 @@ def _check_policy(policy: object) -> None:
     if (type(policy) is not ExitPolicy
             or type(policy.take_profit_r) is not Decimal or not policy.take_profit_r.is_finite()
             or not 0 < policy.take_profit_r <= 20
-            or type(policy.max_hold_ms) is not int or policy.max_hold_ms <= 0
+            or (policy.max_hold_ms is not None and (type(policy.max_hold_ms) is not int or policy.max_hold_ms <= 0))
             or type(policy.stop_slippage_bp) is not Decimal
             or not policy.stop_slippage_bp.is_finite() or not 0 <= policy.stop_slippage_bp <= 100):
         raise ValueError("invalid_policy") from None
@@ -219,7 +220,7 @@ def evaluate_exit(*, side: int, fill_price: Decimal, stop_price: Decimal, opened
                                   bar.open_time_ms, kind_now)
             if target_hit:
                 return ExitSignal(EXIT_TAKE_PROFIT, target, bar.open_time_ms)
-            if bar.open_time_ms + candle_ms - opened_at_ms >= policy.max_hold_ms:
+            if policy.max_hold_ms is not None and bar.open_time_ms + candle_ms - opened_at_ms >= policy.max_hold_ms:
                 return ExitSignal(EXIT_TIMEOUT, bar.close, bar.open_time_ms)
             if policy.protects:          # aggiornamento a candela CHIUSA: vale dalla candela successiva
                 px = bar.high if side == 1 else bar.low
@@ -271,10 +272,10 @@ def load_exit_policy(raw: bytes) -> ExitPolicy:
         if set(data) != (_POLICY_KEYS if version == 1 else _POLICY_KEYS | _PROTECT_KEYS):
             raise ValueError("invalid_policy")
         hours = data["max_hold_hours"]
-        if type(hours) is not int or not 1 <= hours <= 720:
-            raise ValueError("invalid_policy")
+        if not ((type(hours) is int and 1 <= hours <= 720) or (hours is None and version == 2)):
+            raise ValueError("invalid_policy")          # null (solo schema 2) = nessun limite di tempo
         extra = {k: (None if data[k] is None else _number(data[k])) for k in _PROTECT_KEYS} if version == 2 else {}
-        policy = ExitPolicy(_number(data["take_profit_r"]), hours * _HOUR_MS,
+        policy = ExitPolicy(_number(data["take_profit_r"]), None if hours is None else hours * _HOUR_MS,
                             _number(data["stop_slippage_bp"]), **extra)
         _check_policy(policy)
         return policy

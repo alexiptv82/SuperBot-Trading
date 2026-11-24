@@ -64,6 +64,26 @@ say "== 2/5 regole dei contratti Bitget per i mercati del Brain"
 (cd "$NEW" && DESK_MODE=paper PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 "$PY" "$D/contratti_check.py" \
   "$D/runner_config_brain_unico_2000_paper.json") || end 2 RIFIUTATA_REGOLE_DEI_CONTRATTI
 
+say "== 2b/5 accesso API di Claude (consulente): una chiamata di prova minima, la chiave non viene mai stampata"
+CLAUDE="$(set +e; set -a; . "$AIENV" >/dev/null 2>&1; set +a; cd "$NEW" && DESK_MODE=paper PYTHONPATH=. \
+  PYTHONDONTWRITEBYTECODE=1 "$PY" - "$D/runner_config_brain_unico_2000_paper.json" 2>/dev/null <<'PY'
+import os, sys
+from backend.v3.runner.config import load_runner_config
+from backend.v3.transport import claude_transport
+if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+    print("NON_DISPONIBILE_CHIAVE_ASSENTE"); raise SystemExit
+model = load_runner_config(open(sys.argv[1], "rb").read()).unico.claude.model
+try:
+    r = claude_transport(timeout_s=60)({"model": model, "max_tokens": 64,
+                                        "messages": [{"role": "user", "content": "Reply with: ok"}]})
+    print("DISPONIBILE" if r.status_code == 200 else "NON_DISPONIBILE")
+except Exception:
+    print("NON_DISPONIBILE_RIFIUTATA_O_IRRAGGIUNGIBILE")
+PY
+)"
+say "CLAUDE_API=${CLAUDE:-NON_VERIFICABILE}"
+[[ "$CLAUDE" == DISPONIBILE ]] || say "ATTENZIONE: senza Claude il Brain lavora con DeepSeek; le decisioni che richiedono il consulto NON vengono approvate"
+
 say "== 3/5 ripartenza: archivio delle run attuali e Brain unico PAPER 2000"
 LOG="$(mktemp)"; rc=0
 (cd "$NEW" && DESK_MODE=paper PYTHONPATH="$NEW" PYTHONDONTWRITEBYTECODE=1 "$PY" "$D/ripartenza_brain.py" --esegui \
@@ -96,6 +116,7 @@ WANT="$(sha256sum ui/index.html | cut -d' ' -f1)"
 if [[ "$C" == 200 && "$IDX" == "$WANT" && "$(code /api/v3/compare)" == 401 && "$(code /api/v3/paper-archive)" == 401 \
       && "$(code /api/v3/compare/brain_scalp/trades)" == 401 && "$(code /api/health)" == 200 ]]; then
   say "INDEX_SHA256=$IDX"
+  say "CLAUDE_API=${CLAUDE:-NON_VERIFICABILE}"
   end 0 BRAIN_UNICO_PAPER_RUNNING_DASHBOARD_VERIFICATA
 fi
 say "controllo dal dominio fallito (index $C): ripristino interfaccia e web precedenti; il Brain resta RUNNING"

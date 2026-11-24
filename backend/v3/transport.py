@@ -54,7 +54,8 @@ def _make_ssl_context() -> ssl.SSLContext:
     return ctx
 
 
-def _do_post(url: str, headers: dict[str, str], payload: Mapping[str, Any]) -> TransportResponse:
+def _do_post(url: str, headers: dict[str, str], payload: Mapping[str, Any],
+             timeout: float = _TIMEOUT_SECONDS) -> TransportResponse:
     """
     POST *payload* as JSON to *url* with *headers*.
 
@@ -75,7 +76,7 @@ def _do_post(url: str, headers: dict[str, str], payload: Mapping[str, Any]) -> T
 
     ssl_ctx = _make_ssl_context()
     try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS, context=ssl_ctx) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
             status_code: int = resp.getcode()
             raw = resp.read(_MAX_RESPONSE_BYTES)
     except urllib.error.HTTPError as exc:
@@ -136,6 +137,8 @@ def claude_transport(
     *,
     api_key_env: str = "ANTHROPIC_API_KEY",
     anthropic_version: str = _ANTHROPIC_VERSION,
+    timeout_s: float = _TIMEOUT_SECONDS,
+    betas: tuple = (),
 ) -> "Callable[[Mapping[str, Any]], TransportResponse]":
     """
     Return a Transport callable that sends requests to the Anthropic Messages
@@ -154,8 +157,10 @@ def claude_transport(
             "x-api-key": api_key,
             "anthropic-version": anthropic_version,
         }
+        if betas:
+            headers["anthropic-beta"] = ",".join(betas)
         try:
-            return _do_post(_CLAUDE_URL, headers, payload)
+            return _do_post(_CLAUDE_URL, headers, payload, timeout_s)
         finally:
             api_key = ""  # noqa: F841
 

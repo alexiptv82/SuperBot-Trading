@@ -39,7 +39,12 @@ UNICO_GUIDANCE = (
     'leverage field is ignored), banks about 35 percent at 2R and manages the rest toward 3.5R with a protective '
     'stop. NO_TRADE is correct when the edge after about 16 bp round-trip costs is unclear. The optional portfolio '
     'object gives the guardian mode (NORMAL = active, SELECTIVE = be pickier, PROTECTED = only exceptional setups) '
-    'and the free slots.')
+    'and the free slots. With OPEN you may add "reasons" (up to 6 codes from: trend_up, trend_down, trend_weakening, '
+    'trend_change, breakout, breakdown, pullback, range, momentum_strong, momentum_fading, volume_confirms, '
+    'volume_weak, volatility_high, volatility_low, near_support, near_resistance, overextended, conflicting_signals, '
+    'reversal_risk, costs_high, funding_adverse, liquidity_thin, risk_concentration, setup_strong, setup_weak) and '
+    '"uncertain": true when signals conflict or LONG and SHORT are hard to tell apart; a senior consultant may then '
+    'review the trade.')
 
 
 class DeepSeekL5Analyst(Analyst):
@@ -135,12 +140,19 @@ class DeepSeekL5Analyst(Analyst):
             if choice["finish_reason"] != "stop":
                 raise ValueError()
             obj = _json_object(choice["message"]["content"])
-            if obj.get("kind") == "NO_TRADE" and set(obj) == {"kind"}:
+            extra_ok = {"reasons", "uncertain"} if self.guidance is not None else set()
+            if obj.get("kind") == "NO_TRADE" and {"kind"} <= set(obj) <= {"kind"} | extra_ok:
                 return BrainDecision(kind=DecisionKind.NO_TRADE, rationale="deepseek:analysis",
                                      sources=sources,
                                      occurred_at_ms=context.timestamp_ms)
             keys = {"kind", "side", "entry_price", "stop_price", "leverage", "confidence"}
             labelled_keys = keys | {"strategy_id", "strategy_origin"}
+            # Brain unico: motivi e incertezza facoltativi, validati su elenco chiuso
+            from backend.v3.unico import parse_reasons
+            reasons = parse_reasons(obj.pop("reasons", None)) if self.guidance is not None else ()
+            uncertain = obj.pop("uncertain", False) if self.guidance is not None else False
+            if type(uncertain) is not bool:
+                raise ValueError()
             if (obj.get("kind") != "OPEN" or set(obj) not in (keys, labelled_keys)
                     or type(obj["side"]) is not int or obj["side"] not in (-1, 1)
                     or type(obj["leverage"]) is not int or not 1 <= obj["leverage"] <= 100
@@ -161,6 +173,7 @@ class DeepSeekL5Analyst(Analyst):
                 context_hash=hashlib.sha256(info_json.encode()).hexdigest(),
                 strategy_id=obj["strategy_id"] if labelled else None,
                 strategy_origin=obj["strategy_origin"] if labelled else None,
+                reasons=reasons, uncertain=uncertain,
             )
             return BrainDecision(kind=DecisionKind.OPEN, proposal=proposal,
                                  rationale="deepseek:analysis", sources=sources,

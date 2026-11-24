@@ -79,11 +79,13 @@ test('Trade: a position without a verifiable price shows "—", never the entry 
 test('Trade page reads only the current runs (GET), the shown bot first, and switches bot', async () => {
   global.IS_REACT_ACT_ENVIRONMENT = true;
   API.get.mockImplementation(url => Promise.resolve({ data: url.includes('/trades')
-    ? trades({ name: url.includes('brain_scalp') ? 'brain_scalp' : 'falco_evoluto' }) : { available: true, runs: [] } }));
+    ? trades({ name: url.includes('brain_scalp') ? 'brain_scalp' : 'falco_evoluto' })
+    : { available: true, runs: [{ name: 'falco_evoluto', label: 'Falco Evoluto' }, { name: 'brain_scalp', label: 'Brain' }] } }));
   const el = document.createElement('div');
   const root = createRoot(el);
   try {
     await act(async () => { root.render(R(<PaperTrades />)); });
+    await act(async () => {});
     await act(async () => {});
     let urls = API.get.mock.calls.map(c => c[0]);
     expect(urls).toContain('/api/v3/compare/falco_evoluto/trades?limit=300');
@@ -93,6 +95,23 @@ test('Trade page reads only the current runs (GET), the shown bot first, and swi
     urls = API.get.mock.calls.map(c => c[0]);
     expect(urls).toContain('/api/v3/compare/brain_scalp/trades?limit=300');
     expect(API.post).not.toHaveBeenCalled();
+  } finally { await act(async () => { root.unmount(); }); API.get.mockReset(); }
+});
+
+test('Trade page with the single Brain: runs from /api/v3/compare, no bot switch, never an archived bot', async () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  API.get.mockImplementation(url => Promise.resolve({ data: url.includes('/trades') ? trades({ name: 'brain_scalp' })
+    : { available: true, runs: [{ name: 'brain_scalp', label: 'Brain' }] } }));
+  const el = document.createElement('div');
+  const root = createRoot(el);
+  try {
+    await act(async () => { root.render(R(<PaperTrades />)); });
+    await act(async () => {});
+    await act(async () => {});
+    const urls = API.get.mock.calls.map(c => c[0]);
+    expect(urls).toContain('/api/v3/compare/brain_scalp/trades?limit=300');
+    expect(urls.some(u => u.includes('falco_evoluto'))).toBe(false);
+    expect(el.querySelector('[aria-label="Scegli il bot"]')).toBeNull();
   } finally { await act(async () => { root.unmount(); }); API.get.mockReset(); }
 });
 

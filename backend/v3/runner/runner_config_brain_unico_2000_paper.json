@@ -63,7 +63,7 @@
   "exit_policy": {
     "schema_version": 2,
     "take_profit_r": "3.5",
-    "max_hold_hours": 12,
+    "max_hold_hours": null,
     "stop_slippage_bp": "2",
     "be_at_r": "2",
     "trail_at_r": "2.5",
@@ -104,6 +104,17 @@
       "hour": 0
     },
     "position_review": true,
-    "guidance": true
+    "guidance": true,
+    "claude_consult": {
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "max_tokens": 8000,
+      "timeout_s": 90,
+      "daily_cap_usd": "3",
+      "input_usd_per_million_tokens": "4",
+      "output_usd_per_million_tokens": "20",
+      "max_per_cycle": 4,
+      "cooldown_minutes": 120
+    }
   }
 }

@@ -202,11 +202,12 @@ function SingleView({ run, perf, nowMs }) {
 
 export function PerformanceContent({ cmp, perfs, error, nowMs = Date.now(), selected, onSelect }) {
   const runs = cmp?.available ? cmp.runs || [] : [];
-  const current = runs.find(r => r.name === selected);
+  // un solo Brain (dal 24/11): nessun confronto, la sua vista direttamente
+  const current = runs.length === 1 ? runs[0] : runs.find(r => r.name === selected);
   return <Page>
     <PageHeader title="Performance" subtitle="Valutazione del test PAPER dalla nuova ripartenza · run archiviate escluse" />
-    <BotSwitch both runs={runs.length ? runs : NAMES.map(n => ({ name: n, label: BOTS[n].label }))}
-      selected={current ? current.name : '__both'} onSelect={onSelect} />
+    {runs.length !== 1 && <BotSwitch both runs={runs.length ? runs : NAMES.map(n => ({ name: n, label: BOTS[n].label }))}
+      selected={current ? current.name : '__both'} onSelect={onSelect} />}
     <LoadState error={error} loading={!error && !cmp} what="Dati di performance" />
     {cmp && !cmp.available && <Card><Note>Le run PAPER non sono disponibili.</Note></Card>}
     {runs.length > 0 && (current ? <SingleView run={current} perf={perfs[current.name]} nowMs={nowMs} />
@@ -216,9 +217,11 @@ export function PerformanceContent({ cmp, perfs, error, nowMs = Date.now(), sele
 
 export default function PaperPerformance() {
   const [selected, setSelected] = useState('__both');
-  const q = usePoll(['/api/v3/compare', ...NAMES.map(n => `/api/v3/compare/${n}/performance`)], 60000);
-  const cmp = q.data ? q.data[0] : null;
+  const c = usePoll(['/api/v3/compare'], 60000);
+  const cmp = c.data ? c.data[0] : null;
+  const names = cmp?.available ? (cmp.runs || []).map(r => r.name) : [];      // le run attive, non un elenco fisso
+  const q = usePoll(names.map(n => `/api/v3/compare/${n}/performance`), 60000);
   const perfs = {};
-  NAMES.forEach((n, i) => { if (q.data && q.data[i + 1]?.available) perfs[n] = q.data[i + 1]; });
-  return <PerformanceContent cmp={cmp} perfs={perfs} error={q.error && !cmp} selected={selected} onSelect={setSelected} />;
+  names.forEach((n, i) => { if (q.data && q.data[i]?.available) perfs[n] = q.data[i]; });
+  return <PerformanceContent cmp={cmp} perfs={perfs} error={c.error && !cmp} selected={selected} onSelect={setSelected} />;
 }

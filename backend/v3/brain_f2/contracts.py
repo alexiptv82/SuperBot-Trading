@@ -55,6 +55,9 @@ class OpenProposal:
     # attribuzione. Il motore la valida contro un elenco chiuso prima di scriverla nel journal.
     strategy_id: Optional[str] = None
     strategy_origin: Optional[str] = None  # "library" | "ai_proposed"
+    # Brain unico (24/11): motivi a codice chiuso (``unico.REASON_CODES``) e incertezza dichiarata dall'analista
+    reasons: tuple = ()
+    uncertain: bool = False
 
 
 @dataclass(frozen=True)

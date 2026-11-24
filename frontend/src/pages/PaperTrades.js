@@ -74,7 +74,8 @@ function ClosedCard({ t }) {
   </Card>;
 }
 
-export function TradesContent({ name, data, error, nowMs = Date.now(), onSelect, onRefresh = () => {}, compareRun = null }) {
+export function TradesContent({ name, data, error, nowMs = Date.now(), onSelect, onRefresh = () => {}, compareRun = null,
+  runs = null }) {
   const [view, setView] = useState('open');
   const [side, setSide] = useState('all');
   const m = botMeta(name);
@@ -83,7 +84,9 @@ export function TradesContent({ name, data, error, nowMs = Date.now(), onSelect,
   const fees = (data?.closed_trades || []).reduce((s, t) => s + (num(t.fees) || 0), 0);
   return <Page>
     <PageHeader title="Trade" subtitle="Solo le run attuali, dalla nuova ripartenza" />
-    <BotSwitch runs={NAMES.map(n => ({ name: n, label: BOTS[n].label }))} selected={name} onSelect={onSelect} />
+    {/* le run attive vengono da /api/v3/compare (dal 24/11 un solo Brain): il selettore solo se ce n'e' piu' d'una */}
+    {(runs || NAMES.map(n => ({ name: n, label: BOTS[n].label }))).length > 1 &&
+      <BotSwitch runs={runs || NAMES.map(n => ({ name: n, label: BOTS[n].label }))} selected={name} onSelect={onSelect} />}
     <LoadState error={error} loading={!error && !data} what={`Trade di ${m.label}`} />
     {data && <>
       <Card accent={m.color}>
@@ -126,11 +129,13 @@ export function TradesContent({ name, data, error, nowMs = Date.now(), onSelect,
 }
 
 export default function PaperTrades() {
-  const [name, setName] = useState(NAMES[0]);
-  const tr = usePoll([`/api/v3/compare/${name}/trades?limit=300`]);
+  const [choice, setChoice] = useState(null);
   const cmp = usePoll(['/api/v3/compare']);
+  const runs = cmp.data?.[0]?.available ? (cmp.data[0].runs || []).map(r => ({ name: r.name, label: r.label })) : [];
+  const name = (runs.find(r => r.name === choice) || runs[0] || {}).name || null;
+  const tr = usePoll(name ? [`/api/v3/compare/${name}/trades?limit=300`] : []);
   const data = tr.data && tr.data[0] && tr.data[0].name === name ? tr.data[0] : null;
   const run = (cmp.data?.[0]?.runs || []).find(r => r.name === name) || null;
-  return <TradesContent name={name} data={data} error={tr.error && !data} onSelect={setName}
-    onRefresh={() => { tr.refresh(); cmp.refresh(); }} compareRun={run} />;
+  return <TradesContent name={name} data={data} error={(tr.error && !data) || (cmp.error && !cmp.data)}
+    onSelect={setChoice} runs={runs} onRefresh={() => { tr.refresh(); cmp.refresh(); }} compareRun={run} />;
 }

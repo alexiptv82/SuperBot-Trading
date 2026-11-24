@@ -49,7 +49,9 @@ def test_config_values_are_the_owner_profile():
     assert c.unico.partial == PartialTakeProfit(D("0.35"), D("2")) and c.unico.position_review and c.unico.guidance
     assert (c.guardian.tiers.selective_usd, c.guardian.tiers.protect_usd) == (D(300), D(400))
     assert c.unico.piggy == PiggyPolicy(D(2000), "Europe/Rome", 0)
-    assert c.exit_policy.take_profit_r == D("3.5") and c.exit_policy.max_hold_ms == 12 * 3_600_000
+    assert c.exit_policy.take_profit_r == D("3.5") and c.exit_policy.max_hold_ms is None    # nessun limite di tempo
+    cl = c.unico.claude
+    assert (cl.model, cl.effort, cl.daily_cap_usd, cl.max_per_cycle) == ("claude-opus-5-5", "medium", D(3), 4)
 
 
 @pytest.mark.parametrize("mutate", [
@@ -197,7 +199,7 @@ class _Reviewer:
     def __init__(self, props):
         self.props = list(props)
 
-    def review(self, view, *, price, now_ms, mode):
+    def review(self, view, *, price, now_ms, mode, **kw):
         return self.props.pop(0)
 
 
@@ -349,11 +351,20 @@ def test_wired_runner_uses_fit_leverage_guidance_portfolio_state_and_reviews_ope
                                                         "message": {"content": _json.dumps(content)}}],
                                            "usage": {"prompt_tokens": 2500, "completion_tokens": 60}})
 
+    claude_calls = []
+
+    def claude(payload):                                  # Claude finto: conferma, con uso nel formato Anthropic
+        claude_calls.append(_json.loads(_json.dumps(payload)))
+        return TransportResponse(200, {"stop_reason": "end_turn", "content": [
+            {"type": "thinking", "thinking": ""},
+            {"type": "text", "text": _json.dumps({"verdict": "CONFIRM", "confidence": 0.7, "reasons": ["trend_up"]})}],
+            "usage": {"input_tokens": 3000, "output_tokens": 400}})
+
     data_dir = Path(tempfile.mkdtemp())
     config = dataclasses.replace(cfg(), symbols=("BTCUSDT", "ETHUSDT"), **LEGACY)
     model = Model()
     built = build_runner(data_dir=data_dir, run_id="unico-e2e", config=config, get_json=_get_json_factory(),
-                         inner_transport=model, view_params=VIEW)
+                         inner_transport=model, view_params=VIEW, claude_inner_transport=claude)
     m = mandate_template(config.risk_policy, "unico-e2e")
     m.update(approved=True, approved_by="operator")
     (data_dir / "mandate.json").write_text(_json.dumps(m), encoding="utf-8")
@@ -374,3 +385,165 @@ def test_wired_runner_uses_fit_leverage_guidance_portfolio_state_and_reviews_ope
     assert all(r["executed"] == "MODIFY_STOP" for r in reviews) and len(model.payloads) > n
     moves = [r.event.payload for r in built.journal.list_run("brain", "unico-e2e") if r.event.kind == "stop_move"]
     assert {mv["position_id"] for mv in moves} == {p.position_id for p in still_open}
+    # collaborazione: ogni OPEN registrata con la proposta DeepSeek; Claude chiamato solo sui criteri; costi separati
+    consults = [r.event.payload for r in built.journal.list_run("brain", "unico-e2e") if r.event.kind == "ai_consultation"]
+    assert len(consults) == 2 and all(c["deepseek"]["action"] == "OPEN" for c in consults)
+    asked = [c for c in consults if c["claude"] is not None]
+    assert asked and all(c["code"] == "claude_confirmed" and c["final"]["source"] == "agreed" for c in asked)
+    assert all(r["triggers"] and r["claude"]["status"] == "ok" for r in reviews)           # stop spostato: consulto
+    assert claude_calls and claude_calls[0]["model"] == "claude-opus-5-5" and claude_calls[0]["fallbacks"] == "default"
+    assert built.ledger.daily_spend("claude") == len(claude_calls) * (3000 * 4 + 400 * 20)
+    assert built.ledger.daily_spend("deepseek") > 0
+    # dashboard: collaborazione e costi separati, dagli stessi journal e registro
+    import shutil
+    from backend.v3.compare_view import RunRef, read_run
+    shutil.copy(CFG, data_dir / "runner_config.json")
+    out = read_run(RunRef("brain_scalp", "Brain", data_dir, "unico-e2e"), G + 16 * MIN)
+    col = out["collaboration"]
+    assert col["entry"]["consults"] == len(asked) and col["entry"]["agreed"] == len(asked)
+    assert col["entry"]["deepseek_only"] == 2 - len(asked) and col["review"]["consults"] == len(reviews)
+    assert set(out["ai_spend"]["by_provider"]) == {"deepseek", "claude"}
+    assert out["reviews"][0]["source"] == "agreed" and out["reviews"][0]["claude"] == "CONFIRM"
+
+
+def test_claude_unavailable_never_approves_a_decision_that_needed_it(tmp_path):
+    import dataclasses
+    import json as _json
+    from backend.tests.test_v3_runner_e2e import G, LEGACY, VIEW, FakeModel, _get_json_factory
+    from backend.v3.brain_f3.providers import ProviderUnavailable
+    from backend.v3.runner.wiring import build_runner, mandate_template
+
+    def down(payload):
+        raise ProviderUnavailable("provider_unavailable")
+    config = dataclasses.replace(cfg(), symbols=("BTCUSDT", "ETHUSDT"), **LEGACY)
+    built = build_runner(data_dir=tmp_path, run_id="unico-down", config=config, get_json=_get_json_factory(),
+                         inner_transport=FakeModel(), view_params=VIEW, claude_inner_transport=down)
+    m = mandate_template(config.risk_policy, "unico-down")
+    m.update(approved=True, approved_by="operator")
+    (tmp_path / "mandate.json").write_text(_json.dumps(m), encoding="utf-8")
+    built.runner.tick(G + 25_000)
+    rows = [r.event for r in built.journal.list_run("brain", "unico-down")]
+    consults = [e.payload for e in rows if e.kind == "ai_consultation"]
+    needed = [c for c in consults if c["triggers"]]
+    assert needed and all(c["claude"]["status"] != "ok" and c["code"] == "claude_unavailable_critical"
+                          and c["final"]["open"] is False for c in needed)
+    opened = {e.payload["symbol"] for e in rows if e.kind == "paper_open"}
+    assert opened == {c["symbol"] for c in consults if not c["triggers"]}       # solo le decisioni ordinarie
+
+
+# ----------------------------------------------------------------------------- collaborazione DeepSeek + Claude
+from backend.v3.runner.consult import (ClaudeConsultant, ClaudeView, PositionMetrics, arbitrate_entry,  # noqa: E402
+                                       arbitrate_position, entry_triggers, parse_claude, position_triggers)
+
+
+def _prop(side=1, conf=0.8, reasons=(), uncertain=False):
+    return OpenProposal("BTCUSDT", side, D(100), D(99) if side == 1 else D(101), 20, "deepseek:analysis", conf,
+                        "deepseek", "h", reasons=reasons, uncertain=uncertain)
+
+
+def test_entry_triggers_only_in_important_situations():
+    calm = {"open_risk_pct": "0", "guardian_mode": "NORMAL"}
+    assert entry_triggers(_prop(), "TREND_UP", calm) == ()
+    assert entry_triggers(_prop(conf=0.6), "TREND_UP", calm) == ("uncertainty",)
+    assert entry_triggers(_prop(uncertain=True), "TREND_UP", calm) == ("uncertainty",)
+    assert entry_triggers(_prop(reasons=("conflicting_signals",)), "TREND_UP", calm) == ("trend_change_or_conflict",)
+    assert entry_triggers(_prop(), "EXPANSION", calm) == ("trend_change_or_conflict",)
+    assert entry_triggers(_prop(), "TREND_UP", {"open_risk_pct": "4.3", "guardian_mode": "NORMAL"}) == ("portfolio_risk",)
+    assert entry_triggers(_prop(), "TREND_UP", {"open_risk_pct": "0", "guardian_mode": "PROTECTED"}) == ("guardian_mode",)
+
+
+def test_entry_arbiter_can_adopt_claude_and_refuses_irreconcilable_or_missing_opinions():
+    p = _prop(conf=0.55)
+    assert arbitrate_entry(p, None, "TREND_UP").source == "deepseek"
+    assert arbitrate_entry(p, ClaudeView("timeout_or_error"), "TREND_UP").code == "claude_unavailable_critical"
+    assert arbitrate_entry(p, ClaudeView("ok", "CONFIRM"), "TREND_UP").source == "agreed"
+    assert arbitrate_entry(p, ClaudeView("ok", "CONTEST"), "TREND_UP").open is False
+    v = arbitrate_entry(p, ClaudeView("ok", "ALTERNATIVE", side=1, stop_price=D("99.4")), "TREND_UP")
+    assert (v.open, v.stop, v.code) == (True, D("99.4"), "claude_stop_adopted")
+    short = ClaudeView("ok", "ALTERNATIVE", side=-1, stop_price=D("100.8"), confidence=0.8)
+    assert arbitrate_entry(p, short, "TREND_DOWN").code == "claude_alternative_adopted"          # numeri a favore
+    assert arbitrate_entry(p, short, "TREND_UP").code == "irreconcilable_no_trade"               # regime contrario
+    assert arbitrate_entry(_prop(conf=0.8), short, "TREND_DOWN").code == "irreconcilable_no_trade"
+
+
+def _m(r="0.5", roe="5", mfe=None, give=None, entry="TREND_UP", now="TREND_UP"):
+    return PositionMetrics(D(r), D(roe), None if mfe is None else D(mfe), None if give is None else D(give), entry, now)
+
+
+def test_position_triggers_and_no_time_based_trigger():
+    assert position_triggers("HOLD", False, _m()) == ()                  # durata mai un criterio
+    assert position_triggers("CLOSE", False, _m()) == ("action_proposed",)
+    assert position_triggers("HOLD", False, _m(r="1.6")) == ("interesting_profit",)
+    assert position_triggers("HOLD", False, _m(roe="21")) == ("interesting_profit",)
+    assert position_triggers("HOLD", False, _m(r="0.9", mfe="2", give="0.55")) == ("profit_given_back",)
+    assert position_triggers("HOLD", False, _m(now="TREND_DOWN")) == ("trend_change",)
+
+
+def test_position_arbiter_weighs_both_views_with_numbers_and_is_prudent_when_claude_is_missing():
+    m = _m(r="0.9", mfe="2.4", give="0.62")
+    assert arbitrate_position("HOLD", None, 0.6, None, m).source == "deepseek"
+    assert arbitrate_position("CLOSE", None, 0.8, ClaudeView("budget"), m).action == "HOLD"     # mai finto consenso
+    claude_close = ClaudeView("ok", "CONTEST", action="CLOSE", confidence=0.6)
+    v = arbitrate_position("HOLD", None, 0.7, claude_close, m)          # profitto restituito: i numeri danno ragione
+    assert (v.action, v.source) == ("CLOSE", "claude")
+    hold = ClaudeView("ok", "CONTEST", action="HOLD", confidence=0.6)
+    v = arbitrate_position("CLOSE", None, 0.7, hold, _m(r="2"))            # +2R, trend intatto: proseguire
+    assert (v.action, v.source) == ("HOLD", "claude")
+    v = arbitrate_position("CLOSE", None, 0.9, hold, _m(r="2"))            # DeepSeek molto piu' convinto
+    assert (v.action, v.source) == ("CLOSE", "deepseek")
+    v = arbitrate_position("HOLD", None, 0.6, ClaudeView("ok", "CONTEST", action="HOLD"), m)
+    assert v.source == "agreed"
+    v = arbitrate_position("MODIFY_STOP", D("100.2"), 0.6, ClaudeView("ok", "CONTEST", action="MODIFY_STOP",
+                                                                       stop_price=D("100.5")), m, side=1)
+    assert (v.action, v.stop) == ("MODIFY_STOP", D("100.5"))                                     # il piu' stretto
+
+
+def test_claude_answers_are_parsed_strictly_and_calls_are_limited():
+    assert parse_claude({"verdict": "CONFIRM", "confidence": 0.7, "reasons": ["trend_up"]}, position=False).status == "ok"
+    for bad in ({"verdict": "MAYBE"}, {"verdict": "ALTERNATIVE", "side": 2, "stop_price": "1"},
+                {"verdict": "CONFIRM", "reasons": ["free text"]}, {"verdict": "CONFIRM", "note": "x"},
+                {"verdict": "CONTEST", "action": "MODIFY_STOP"}):
+        with pytest.raises(ValueError):
+            parse_claude(bad, position="action" in bad)
+    calls = []
+
+    def ok(payload):
+        from backend.v3.brain_f3.providers import TransportResponse
+        calls.append(payload)
+        return TransportResponse(200, {"stop_reason": "end_turn", "content": [
+            {"type": "text", "text": '{"verdict":"CONFIRM"}'}]})
+    c = ClaudeConsultant(transport=ok, model="claude-opus-5-5", effort="medium", max_tokens=8000,
+                         spending_gate=lambda p: True, max_per_cycle=2, cooldown_ms=120 * MIN)
+    c.start_cycle(1)
+    assert [c.ask("s", {}, key=k, now_ms=T0, position=False).status for k in "abc"] == ["ok", "ok", "skipped_limit"]
+    assert c.cooling("a", T0 + MIN) and not c.cooling("a", T0 + 121 * MIN) and len(calls) == 2
+    assert calls[0]["thinking"] == {"type": "adaptive"} and calls[0]["output_config"] == {"effort": "medium"}
+    refused = ClaudeConsultant(transport=ok, model="claude-opus-5-5", effort="medium", max_tokens=8000,
+                               spending_gate=lambda p: False, max_per_cycle=2, cooldown_ms=0)
+    assert refused.ask("s", {}, key="z", now_ms=T0, position=False).status == "budget" and len(calls) == 2
+
+
+def test_no_time_limit_exit_policy_and_long_positions_use_a_window_plus_history(tmp_path):
+    pol = cfg().exit_policy
+    bars = _bars([(100, "100.2", "99.8", 100)] * 3, T0)
+    assert evaluate_exit(side=1, fill_price=D(100), stop_price=D(99), opened_at_ms=T0 - 30 * 24 * 3_600_000,
+                         bars=bars, candle_ms=MIN, policy=pol) is None          # 30 giorni: nessuna chiusura per tempo
+    j = _journal(tmp_path)
+    _open(j, at=T0)
+    now = T0 + 30 * 3_600_000                                             # 30 ore: oltre la finestra da 1 minuto
+    seen = {}
+
+    def fetch(symbol, start, end):
+        seen["start"] = start
+        return [Bar(t, D(101), D(101), D("100.9"), D(101), D(1)) for t in range(start, end, MIN)]
+    kw = dict(journal=j, portfolio_id="brain", run_id="r1", fetch_bars=fetch, policy=pol, fee_bps=D(6), now_ms=now,
+              window_ms=20 * 60 * MIN)
+    rep = run_exit_monitor(**kw, history_best=lambda *a: None)
+    assert {e for _p, e in rep.errors} == {"exit_history_unavailable"} and rep.closed == ()   # segnalato, non chiuso
+    assert seen["start"] == now // MIN * MIN - 20 * 60 * MIN
+    rep = run_exit_monitor(**kw, history_best=lambda s, side, o, u: D("101.5"))   # +1,5R prima: nessuna protezione
+    assert rep.errors == () and rep.closed == ()
+    rep = run_exit_monitor(**kw, history_best=lambda s, side, o, u: D("102.6"))   # +2,6R prima: trailing a 101,6
+    assert sorted(r for _p, r in rep.closed) == ["stop", "stop"] and rep.errors == ()
+    kinds = {r.event.payload.get("stop_kind") for r in j.list_run("brain", "r1") if r.event.kind == "paper_close"}
+    assert kinds == {"trailing"}                     # la storia prima della finestra conta: il profitto e' protetto
