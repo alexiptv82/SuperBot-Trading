@@ -236,11 +236,13 @@ MIN_ADD_GAP_FRACTION = Decimal("0.001")
 MIN_STOP_ROOM_R = Decimal("0.3")       # e ad almeno 0,3 R dallo stop: un prezzo che sfiora lo stop non e' conveniente
 
 
-def add_price_ok(*, side: int, avg_price: Decimal, initial_risk: Decimal, stop: Decimal, price: Decimal) -> bool:
-    """Prezzo realmente piu' conveniente dell'ingresso e non vicino all'invalidazione (stop invariato)."""
+def add_price_ok(*, side: int, avg_price: Decimal, initial_risk: Decimal, stop: Decimal, price: Decimal,
+                 min_gap_r: Decimal = MIN_ADD_GAP_R, min_stop_room_r: Decimal = MIN_STOP_ROOM_R) -> bool:
+    """Prezzo realmente piu' conveniente dell'ingresso e non vicino all'invalidazione (stop invariato). Le soglie in R
+    sono quelle della versione con cui la posizione e' nata (``entry_policy``); predefinite: quelle di sempre."""
     gap = side * (avg_price - price)
-    return (initial_risk > 0 and gap >= MIN_ADD_GAP_R * initial_risk and gap >= MIN_ADD_GAP_FRACTION * price
-            and side * (price - stop) >= MIN_STOP_ROOM_R * initial_risk)
+    return (initial_risk > 0 and gap >= min_gap_r * initial_risk and gap >= MIN_ADD_GAP_FRACTION * price
+            and side * (price - stop) >= min_stop_room_r * initial_risk)
 
 
 def add_quantity(*, side: int, quantity: Decimal, avg_price: Decimal, stop: Decimal, price: Decimal,

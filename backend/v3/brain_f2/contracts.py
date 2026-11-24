@@ -61,6 +61,9 @@ class OpenProposal:
     # Ingresso progressivo (24/11): quota del rischio per trade usata dalla PRIMA entrata (es. 0.65); il resto resta
     # riservato a un eventuale secondo ingresso. None = rischio pieno (comportamento di sempre).
     risk_fraction: Optional[float] = None
+    # Brain Live Evolution (24/11): quota del rischio per trade concessa (0-1) quando la politica lo riduce (es. Claude
+    # non consultabile e ``consult_limit_fallback = half_risk``). None = rischio pieno (comportamento di prima).
+    risk_scale: Optional[float] = None
 
 
 @dataclass(frozen=True)

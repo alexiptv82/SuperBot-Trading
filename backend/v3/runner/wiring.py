@@ -292,7 +292,8 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
             from backend.v3.runner.consult import CollaborativeAnalyst
             ds_analyst = CollaborativeAnalyst(ds_analyst, consultant, journal=journal, run_id=run_id,
                                               market_view=lambda sym, t: market_view_of(sym, t),
-                                              portfolio_state=portfolio_state)
+                                              portfolio_state=portfolio_state, policy=unico.entry,
+                                              roundtrip_cost_bp=config.risk_policy.estimated_roundtrip_cost_bp)
         analyst = MarketEntryAnalyst(ds_analyst)
     else:
         raise ValueError("invalid_analyst")
@@ -382,6 +383,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                                       consultant=consultant, best_of=review_best, funding_of=funding_of,
                                       market_of=market_view_of,
                                       add_commit=safety_add_commit if exit_mode == "sidecar" else None,
+                                      roundtrip_cost_bp=config.risk_policy.estimated_roundtrip_cost_bp,
                                       partial_fraction=(unico.partial.fraction if unico.partial is not None
                                                         else Decimal("0.35")))
             except Exception:
@@ -535,7 +537,7 @@ def _strategy_of(data_dir: Path, run_id: str, base_raw: Optional[bytes]):
     if base_raw is None or not (data_dir / "journal.db").is_file():
         return None
     from backend.v3.strategy_versions import effective, read_registry
-    return effective(base_raw, read_registry(EventJournal(str(data_dir / "journal.db")), run_id))
+    return effective(base_raw, read_registry(EventJournal(str(data_dir / "journal.db")), run_id, base_raw))
 
 
 def _run_built(a, data_dir, config, environ, get_json, inner_transport, now_fn, sleep_fn,
@@ -589,7 +591,7 @@ def _run_built(a, data_dir, config, environ, get_json, inner_transport, now_fn, 
                     print(json.dumps({"strategy_request": applied}, sort_keys=True), flush=True)
                 if applied is not None or now - switch["checked"] >= 60_000:
                     switch["checked"] = now
-                    active = read_registry(built.journal, a.run_id).active
+                    active = read_registry(built.journal, a.run_id, base_raw).active
                     if strategy is not None and active != strategy.version:
                         switch["to"] = active
                         return True

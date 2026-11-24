@@ -189,7 +189,7 @@ def commit_paper_add(*, journal: EventJournal, data_dir: Path, run_id: str, posi
         initial_risk = abs(Decimal(str(st.open_event.payload["fill_price"])) - st.stop)
         if (type(price) is not Decimal or not price.is_finite() or price <= 0 or not isinstance(rules, Mapping)
                 or not add_price_ok(side=st.side, avg_price=st.avg_price, initial_risk=initial_risk, stop=st.stop,
-                                    price=price)):
+                                    price=price, **_scale_in_rules(st.open_event.payload))):
             return deny("add_price_not_better")
         pol = g["risk_policy"]
         summary = build_summary(journal, "brain", run_id)
@@ -218,3 +218,10 @@ def commit_paper_add(*, journal: EventJournal, data_dir: Path, run_id: str, posi
         if locked:
             fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
+
+
+def _scale_in_rules(open_payload) -> dict:
+    """Condizioni del secondo ingresso della versione con cui la posizione e' nata (predefinite senza fotografia)."""
+    from backend.v3.entry_policy import of_open_payload
+    p = of_open_payload(open_payload)
+    return {"min_gap_r": p.scale_in_min_gap_r, "min_stop_room_r": p.scale_in_min_stop_room_r}

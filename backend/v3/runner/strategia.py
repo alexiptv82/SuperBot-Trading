@@ -23,8 +23,8 @@ from backend.v3.strategy_versions import (LABELS, RESULT_FILE, StrategyError, ap
                                           read_registry, save_proposal, strategy_view)
 
 
-def _registry(data_dir: Path, run_id: str):
-    return read_registry(EventJournal(str(data_dir / "journal.db")), run_id)
+def _registry(data_dir: Path, run_id: str, base: bytes):
+    return read_registry(EventJournal(str(data_dir / "journal.db")), run_id, base)
 
 
 def main(argv=None, *, now_fn=lambda: int(time.time() * 1000), out=sys.stdout) -> int:
@@ -49,8 +49,8 @@ def main(argv=None, *, now_fn=lambda: int(time.time() * 1000), out=sys.stdout) -
     w = lambda line: print(line, file=out)
     try:
         if a.cmd == "stato":
-            v = strategy_view(EventJournal(str(data_dir / "journal.db")), a.run_id)
-            reg = _registry(data_dir, a.run_id)
+            v = strategy_view(EventJournal(str(data_dir / "journal.db")), a.run_id, base)
+            reg = _registry(data_dir, a.run_id, base)
             eff = effective(base, reg)
             w(f"Versione attiva per le nuove aperture: {v['active']}")
             ov = reg.versions[reg.active].overlay
@@ -65,7 +65,7 @@ def main(argv=None, *, now_fn=lambda: int(time.time() * 1000), out=sys.stdout) -
                 w(f"  {time.strftime('%d/%m %H:%M', time.gmtime(h['at_ms'] / 1000))} UTC  {h['from']} → {h['to']}"
                   + (" (rollback)" if h["rollback"] else "") + f"  approvato da {h['approved_by']}")
         elif a.cmd == "proponi":
-            prop = propose(a.testo, _registry(data_dir, a.run_id), base, now_fn())
+            prop = propose(a.testo, _registry(data_dir, a.run_id, base), base, now_fn())
             save_proposal(data_dir, prop)
             for line in describe(prop):
                 w(line)

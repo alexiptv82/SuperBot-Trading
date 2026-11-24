@@ -24,7 +24,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
-from typing import Iterable, Mapping, Optional
+import re
+from typing import Any, Iterable, Mapping, Optional
 from zoneinfo import ZoneInfo
 
 LEG_TP1, LEG_RUNNER = "tp1", "runner"
@@ -112,10 +113,13 @@ class UnicoPolicy:
     position_review: bool
     guidance: bool
     claude: Optional[ClaudeConsultPolicy] = None
+    entry: Any = None                    # entry_policy.EntryPolicy (None = predefinita: comportamento di prima)
+    base_version: str = "V1"             # Brain Live Evolution: nome della versione di base della run
 
 
 _TOP = {"leverage_selection", "partial_take_profit", "profit_tiers", "piggy_bank", "position_review", "guidance",
         "claude_consult"}
+_OPTIONAL = {"entry_policy", "strategy_version"}          # Brain Live Evolution (24/11): facoltativi
 _CLAUDE = {"model", "effort", "max_tokens", "timeout_s", "daily_cap_usd", "input_usd_per_million_tokens",
            "output_usd_per_million_tokens", "max_per_cycle", "cooldown_minutes"}
 
@@ -143,7 +147,7 @@ _TIERS = {"selective_usd", "protect_usd", "selective_risk_r", "protect_risk_r", 
 
 def unico_policy_from_config(raw: object) -> UnicoPolicy:
     """Dal blocco ``brain_unico`` (chiavi esatte; sezioni facoltative = ``null``)."""
-    if not isinstance(raw, Mapping) or set(raw) != _TOP:
+    if not isinstance(raw, Mapping) or set(raw) - _OPTIONAL != _TOP:
         raise UnicoConfigError("invalid_brain_unico")
     if raw["leverage_selection"] not in ("fit", "proposed"):
         raise UnicoConfigError("invalid_brain_unico")
@@ -186,8 +190,13 @@ def unico_policy_from_config(raw: object) -> UnicoPolicy:
             raise UnicoConfigError("invalid_brain_unico") from None
         piggy = PiggyPolicy(_dec(b["reference_equity"], Decimal("450"), Decimal("1000000")), b["tz"], b["hour"])
     claude = None if raw["claude_consult"] is None else _claude_from(raw["claude_consult"])
+    from backend.v3.entry_policy import policy_from_config
+    entry = policy_from_config(raw.get("entry_policy"))
+    base = raw.get("strategy_version", "V1")
+    if type(base) is not str or not re.fullmatch(r"V[1-9][0-9]{0,3}", base):
+        raise ValueError("invalid_unico")
     return UnicoPolicy(raw["leverage_selection"] == "fit", partial, tiers, piggy, raw["position_review"],
-                       raw["guidance"], claude)
+                       raw["guidance"], claude, entry, base)
 
 
 # ----------------------------------------------------------------------------- quote dell'apertura

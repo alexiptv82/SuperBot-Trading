@@ -58,6 +58,9 @@ _MAX_ENTRY_DIVERGENCE = Decimal("0.01")
 def _scale_in_cap(cap, proposal, equity, per_trade):
     """Tetto della PRIMA entrata quando la proposta riserva rischio a un secondo ingresso (mai piu' del rischio pieno)."""
     f = getattr(proposal, "risk_fraction", None)
+    scale = getattr(proposal, "risk_scale", None)
+    if scale is not None:                       # rischio ridotto dalla politica: mai piu' della quota concessa
+        f = scale if f is None else min(float(f), float(scale))
     if f is None:
         return cap
     try:

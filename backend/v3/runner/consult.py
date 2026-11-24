@@ -167,11 +167,16 @@ def parse_claude(obj: Mapping, *, position: bool) -> ClaudeView:
 
 
 # ----------------------------------------------------------------------------- criteri di consulto
-def entry_triggers(proposal: OpenProposal, regime: str, portfolio: Mapping) -> tuple:
+def entry_triggers(proposal: OpenProposal, regime: str, portfolio: Mapping, policy=None) -> tuple:
+    """Criteri del consulto. ``policy`` (EntryPolicy): soglie di confidenza differenziate e regime EXPANSION si'/no;
+    None = criteri di prima (soglia 0,65, EXPANSION incluso)."""
     out = []
-    if proposal.uncertain or proposal.confidence < LOW_CONFIDENCE:
+    low = LOW_CONFIDENCE if policy is None else float(policy.consult_threshold(proposal.symbol))
+    expansion = True if policy is None else policy.consult_on_expansion
+    if proposal.uncertain or proposal.confidence < low:
         out.append("uncertainty")
-    if {"conflicting_signals", "trend_change", "reversal_risk"} & set(proposal.reasons) or regime == "EXPANSION":
+    if ({"conflicting_signals", "trend_change", "reversal_risk"} & set(proposal.reasons)
+            or (expansion and regime == "EXPANSION")):
         out.append("trend_change_or_conflict")
     try:
         risk_after = Decimal(str(portfolio.get("open_risk_pct", 0))) / 100 + Decimal("0.043")
@@ -229,13 +234,19 @@ class EntryVerdict:
     code: str
 
 
-def arbitrate_entry(ds: OpenProposal, claude: Optional[ClaudeView], regime: str) -> EntryVerdict:
+def arbitrate_entry(ds: OpenProposal, claude: Optional[ClaudeView], regime: str, policy=None) -> EntryVerdict:
     """Apertura. Senza consulto: DeepSeek. Con consulto: conferma -> si'; contestazione -> no; alternativa -> stesso
     lato con lo stop di Claude, lato opposto solo con numeri a favore (Claude piu' sicuro e regime coerente), altrimenti
     nessuna apertura. Claude non disponibile su una decisione che lo richiedeva -> nessuna apertura."""
     if claude is None:
         return EntryVerdict(True, ds.side, ds.stop_price, "deepseek", "no_consult_needed")
     if claude.status != "ok":
+        # Politica ``half_risk`` (non attiva per impostazione): Claude non ha giudicato (limite, budget, errore) ->
+        # apertura di DeepSeek a rischio dimezzato, solo con confidenza sopra la soglia dello strumento.
+        from backend.v3.entry_policy import NOT_CONSULTED
+        if (policy is not None and policy.consult_limit_fallback == "half_risk" and claude.status in NOT_CONSULTED
+                and not ds.uncertain and ds.confidence >= float(policy.consult_threshold(ds.symbol))):
+            return EntryVerdict(True, ds.side, ds.stop_price, "deepseek", "claude_missing_half_risk")
         return EntryVerdict(False, None, None, "none", "claude_unavailable_critical")
     if claude.verdict == "CONFIRM":
         return EntryVerdict(True, ds.side, ds.stop_price, "agreed", "claude_confirmed")
@@ -314,11 +325,13 @@ class CollaborativeAnalyst(Analyst):
     """DeepSeek propone; se scatta un criterio Claude valuta; l'arbitro decide. Registra ogni consulto nel journal."""
 
     def __init__(self, inner: Analyst, consultant: ClaudeConsultant, *, journal, run_id: str,
-                 market_view: Callable[[str, int], dict], portfolio_state: Callable[[], dict]):
+                 market_view: Callable[[str, int], dict], portfolio_state: Callable[[], dict],
+                 policy=None, roundtrip_cost_bp=None):
         if not isinstance(inner, Analyst):
             raise ValueError("invalid_analyst")
         self.inner, self.consultant, self.journal, self.run_id = inner, consultant, journal, run_id
         self.market_view, self.portfolio_state = market_view, portfolio_state
+        self.policy, self.cost_bp = policy, roundtrip_cost_bp      # EntryPolicy della versione attiva (o None)
 
     def analyze(self, context: MarketContext, open_positions: list) -> BrainDecision:
         decision = self.inner.analyze(context, open_positions)
@@ -329,22 +342,41 @@ class CollaborativeAnalyst(Analyst):
             portfolio = self.portfolio_state()
         except Exception:
             portfolio = {}
-        triggers = entry_triggers(prop, context.regime, portfolio)
-        claude = None
-        if triggers:
-            self.consultant.start_cycle(context.timestamp_ms // 900_000)
+        market, fetched = None, False
+        if self.policy is not None and (self.policy.long_trend_filter or self.policy.max_cost_fraction_r is not None):
+            from backend.v3.entry_policy import entry_block
             try:
                 market = self.market_view(context.symbol, context.timestamp_ms)
             except Exception:
                 market = None
+            fetched = True
+            block = entry_block(self.policy, side=prop.side, entry=Decimal(str(context.price)),
+                                stop=prop.stop_price, market=market, roundtrip_cost_bp=Decimal(str(self.cost_bp or 16)))
+            if block is not None:                         # filtro deterministico, prima del consulto (nessuna spesa)
+                self._record_filter(context, prop, block)
+                return BrainDecision(DecisionKind.NO_TRADE, rationale=decision.rationale,
+                                     sources=list(decision.sources), occurred_at_ms=decision.occurred_at_ms)
+        triggers = entry_triggers(prop, context.regime, portfolio, self.policy)
+        claude = None
+        if triggers:
+            self.consultant.start_cycle(context.timestamp_ms // 900_000)
+            if not fetched:
+                try:
+                    market = self.market_view(context.symbol, context.timestamp_ms)
+                except Exception:
+                    market = None
             info = {"symbol": context.symbol, "price": str(context.price), "regime": context.regime,
                     "timestamp_ms": context.timestamp_ms, "market": market, "portfolio": portfolio,
                     "deepseek": {"side": prop.side, "stop_price": str(prop.stop_price), "confidence": prop.confidence,
                                  "reasons": list(prop.reasons), "uncertain": prop.uncertain}}
             claude = (self.consultant.ask(ENTRY_PROMPT, info, key=f"entry:{context.symbol}", now_ms=context.timestamp_ms,
                                           position=False) if market is not None else ClaudeView("invalid"))
-        verdict = arbitrate_entry(prop, claude, context.regime)
+        verdict = arbitrate_entry(prop, claude, context.regime, self.policy)
         self._record(context, prop, triggers, claude, verdict)
+        if verdict.code == "claude_missing_half_risk":
+            from backend.v3.entry_policy import HALF_RISK
+            decision.proposal = replace(prop, risk_scale=HALF_RISK)
+            return decision
         if not verdict.open:
             return BrainDecision(DecisionKind.NO_TRADE, rationale=decision.rationale, sources=list(decision.sources),
                                  occurred_at_ms=decision.occurred_at_ms)
@@ -354,6 +386,17 @@ class CollaborativeAnalyst(Analyst):
         if claude is not None and claude.status == "ok":
             decision.sources = list(decision.sources) + ["claude:review"]
         return decision
+
+    def _record_filter(self, context, prop, code: str) -> None:
+        try:
+            self.journal.append(Event(
+                event_id=f"entry_filter.{context.symbol}.{context.timestamp_ms}.{time.monotonic_ns() % 1_000_000}",
+                portfolio_id="brain", run_id=self.run_id, kind="entry_filter", occurred_at_ms=context.timestamp_ms,
+                source="runner.entry_policy",
+                payload={"symbol": context.symbol, "side": prop.side, "price": str(context.price),
+                         "stop_price": str(prop.stop_price), "confidence": prop.confidence, "code": code}))
+        except Exception:
+            pass
 
     def _record(self, context, prop, triggers, claude, verdict) -> None:
         try:

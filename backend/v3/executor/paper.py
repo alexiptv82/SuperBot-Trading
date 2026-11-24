@@ -237,6 +237,8 @@ def _append_open(decision, proposal, link, portfolio_id, run_id, journal, slippa
         "decision_event_id": link,
         **extra,
     }
+    if getattr(proposal, "risk_scale", None) is not None:
+        payload["risk_scale"] = str(proposal.risk_scale)      # rischio ridotto dalla politica d'ingresso (24/11)
     if getattr(proposal, "risk_fraction", None) is not None:
         payload["scale_in_reserved"] = True              # rischio riservato a un eventuale secondo ingresso (24/11)
 

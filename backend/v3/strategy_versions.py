@@ -67,6 +67,14 @@ def _int(allowed):
     return check
 
 
+def _choice(allowed):
+    def check(v):
+        if v not in allowed:
+            raise StrategyError("valore non ammesso: " + ", ".join(allowed))
+        return v
+    return check
+
+
 def _bool(v):
     if type(v) is not bool:
         raise StrategyError("valore non ammesso (si/no)")
@@ -95,6 +103,17 @@ ALLOWED: dict[str, Any] = {
     "brain_unico.claude_consult.max_per_cycle": _int(set(range(0, 9))),
     "brain_unico.claude_consult.cooldown_minutes": _int(set(range(0, 721))),
     "brain_unico.position_review": _bool,
+    # politica d'ingresso e di gestione (entry_policy.py): filtri, consulto, guardia sugli stop, secondo ingresso
+    "brain_unico.entry_policy.long_trend_filter": _bool,
+    "brain_unico.entry_policy.max_cost_fraction_r": _dec("0.05", "1", nullable=True),
+    "brain_unico.entry_policy.consult_conf_tier_a": _dec("0.4", "0.9"),
+    "brain_unico.entry_policy.consult_conf_other": _dec("0.4", "0.9"),
+    "brain_unico.entry_policy.consult_on_expansion": _bool,
+    "brain_unico.entry_policy.consult_limit_fallback": _choice(("veto", "half_risk")),
+    "brain_unico.entry_policy.stop_guard_atr_mult": _dec("0.1", "5", nullable=True),
+    "brain_unico.entry_policy.stop_guard_cost_zone": _bool,
+    "brain_unico.entry_policy.scale_in_min_gap_r": _dec("0.1", "2"),
+    "brain_unico.entry_policy.scale_in_min_stop_room_r": _dec("0.1", "2"),
     NOTES_KEY: _notes,                                   # fuori dalla configurazione: entra nel prompt di DeepSeek
 }
 LABELS = {
@@ -110,6 +129,16 @@ LABELS = {
     "brain_unico.claude_consult.max_per_cycle": "consulti di Claude per giro",
     "brain_unico.claude_consult.cooldown_minutes": "attesa fra consulti sullo stesso mercato (minuti)",
     "brain_unico.position_review": "revisione AI delle posizioni",
+    "brain_unico.entry_policy.long_trend_filter": "LONG solo con trend 1h e 4h a favore",
+    "brain_unico.entry_policy.max_cost_fraction_r": "costi massimi in quota di 1R",
+    "brain_unico.entry_policy.consult_conf_tier_a": "consulto sotto confidenza (BTC, ETH, oro, argento)",
+    "brain_unico.entry_policy.consult_conf_other": "consulto sotto confidenza (altri)",
+    "brain_unico.entry_policy.consult_on_expansion": "consulto anche per il solo regime EXPANSION",
+    "brain_unico.entry_policy.consult_limit_fallback": "se Claude non e' consultabile",
+    "brain_unico.entry_policy.stop_guard_atr_mult": "stop AI: distanza minima in ATR 1h",
+    "brain_unico.entry_policy.stop_guard_cost_zone": "stop AI: rifiuto nella zona dei costi",
+    "brain_unico.entry_policy.scale_in_min_gap_r": "secondo ingresso: miglioramento minimo (R)",
+    "brain_unico.entry_policy.scale_in_min_stop_room_r": "secondo ingresso: distanza minima dallo stop (R)",
     NOTES_KEY: "note strategiche per DeepSeek",
 }
 FORBIDDEN = re.compile(r"\b(leva|leve|leverage|rischi\w*|risk\w*|margin\w*|capitale|perdit\w* giornalier\w*|daily loss"
@@ -178,8 +207,17 @@ class Registry:
         return f"V{max(int(v[1:]) for v in self.versions) + 1}"
 
 
-def read_registry(journal: EventJournal, run_id: str) -> Registry:
-    reg = Registry()
+def base_version_of(base_bytes: Optional[bytes]) -> str:
+    try:
+        name = json.loads(base_bytes.decode("utf-8"))["brain_unico"].get("strategy_version", BASE_VERSION)
+    except Exception:
+        return BASE_VERSION
+    return name if isinstance(name, str) and _VERSION_RE.fullmatch(name) else BASE_VERSION
+
+
+def read_registry(journal: EventJournal, run_id: str, base_bytes: Optional[bytes] = None) -> Registry:
+    base = base_version_of(base_bytes)
+    reg = Registry(versions={base: Version(base, None, {}, "configurazione di base")}, active=base)
     for r in journal.list_run_kinds_since("brain", run_id, (VERSION_KIND, SWITCH_KIND), 0):
         p = r.event.payload if isinstance(r.event.payload, dict) else {}
         if r.event.kind == VERSION_KIND and _VERSION_RE.fullmatch(str(p.get("version"))):
@@ -209,6 +247,9 @@ class Effective:
         part = (data.get("brain_unico") or {}).get("partial_take_profit")
         if part is not None:
             snap["partial_take_profit"] = part
+        entry = (data.get("brain_unico") or {}).get("entry_policy")
+        if entry is not None:                    # guardia sugli stop e secondo ingresso della versione della posizione
+            snap["entry_policy"] = entry
         return snap
 
 
@@ -449,7 +490,7 @@ def apply_request(*, journal: EventJournal, data_dir: Path, run_id: str, base_by
     try:
         req = json.loads(req_path.read_text())
         prop = req["proposal"]
-        reg = read_registry(journal, run_id)
+        reg = read_registry(journal, run_id, base_bytes)
         if prop.get("parent") != reg.active:
             raise StrategyError(f"proposta superata: era per {prop.get('parent')}, ora e' attiva {reg.active}")
         overlay = validate_overlay(prop.get("overlay") or {})
@@ -490,9 +531,9 @@ def apply_request(*, journal: EventJournal, data_dir: Path, run_id: str, base_by
     return result
 
 
-def strategy_view(journal: EventJournal, run_id: str) -> dict:
+def strategy_view(journal: EventJournal, run_id: str, base_bytes: Optional[bytes] = None) -> dict:
     """Per la dashboard: versione attiva, versioni e cronologia dei cambi (sola lettura)."""
-    reg = read_registry(journal, run_id)
+    reg = read_registry(journal, run_id, base_bytes)
     return {"active": reg.active,
             "versions": [{"version": v.name, "parent": v.parent, "description": v.description,
                           "registered_at_ms": v.registered_at_ms} for v in reg.versions.values()],

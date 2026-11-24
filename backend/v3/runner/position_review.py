@@ -26,7 +26,7 @@ import tempfile
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 from backend.v3.brain_f3.providers import ProviderUnavailable, Transport, _bounded_decimal, _call, _json_object
 from backend.v3.dashboard import build_summary
@@ -90,6 +90,7 @@ class GroupView:
     reduces: int = 0                      # ... e chiusure parziali gia' fatte
     scale_reserved: bool = False          # rischio riservato a un secondo ingresso all'apertura
     entry_price: Optional[Decimal] = None  # prezzo della PRIMA entrata (R iniziale)
+    policy: Any = None                    # EntryPolicy della versione con cui la posizione e' nata (None = predefinita)
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,11 @@ class ReviewOutcome:
     proposed: str
     executed: str
     code: str
+
+
+def _policy_of(open_payload):
+    from backend.v3.entry_policy import of_open_payload
+    return of_open_payload(open_payload)
 
 
 def groups_from_journal(journal: EventJournal, run_id: str) -> list[GroupView]:
@@ -129,12 +135,17 @@ def groups_from_journal(journal: EventJournal, run_id: str) -> list[GroupView]:
                                {p.leg: p.take_profit_r for p in ps}, sum((p.quantity for p in ps), Decimal("0")),
                                sum((p.margin_used for p in ps), Decimal("0")),
                                regime if isinstance(regime, str) else None, first.adds, first.reduces,
-                               op.get("scale_in_reserved") is True, Decimal(str(op.get("fill_price", first.fill_price)))))
+                               op.get("scale_in_reserved") is True, Decimal(str(op.get("fill_price", first.fill_price))),
+                               _policy_of(op)))
     return sorted(views, key=lambda v: (v.opened_at_ms, v.group))
 
 
-def validate(proposal: ReviewProposal, view: GroupView, price: Decimal) -> tuple[str, str, tuple[str, ...]]:
-    """``(azione eseguita, codice, position_id coinvolti)``. Tutto cio' che non rispetta le regole diventa HOLD."""
+def validate(proposal: ReviewProposal, view: GroupView, price: Decimal, *, atr_1h_bp: Optional[Decimal] = None,
+             roundtrip_cost_bp: Decimal = Decimal("16")) -> tuple[str, str, tuple[str, ...]]:
+    """``(azione eseguita, codice, position_id coinvolti)``. Tutto cio' che non rispetta le regole diventa HOLD.
+    Le regole di secondo ingresso e la guardia sugli stop sono quelle della versione della posizione (``view.policy``)."""
+    from backend.v3.entry_policy import DEFAULT, stop_guard
+    pol = view.policy if view.policy is not None else DEFAULT
     if proposal.action == "HOLD":
         return "HOLD", "hold", ()
     if proposal.action == "CLOSE":
@@ -151,7 +162,8 @@ def validate(proposal: ReviewProposal, view: GroupView, price: Decimal) -> tuple
             return "HOLD", "add_not_available", ()
         risk = abs((view.entry_price or view.fill_price) - view.initial_stop)
         if not add_price_ok(side=view.side, avg_price=view.fill_price, initial_risk=risk, stop=view.stop_now,
-                            price=price):
+                            price=price, min_gap_r=pol.scale_in_min_gap_r,
+                            min_stop_room_r=pol.scale_in_min_stop_room_r):
             return "HOLD", "add_price_not_better", ()
         return "ADD", "add_requested", (view.legs[""],)
     if proposal.action == "MODIFY_STOP":
@@ -162,6 +174,10 @@ def validate(proposal: ReviewProposal, view: GroupView, price: Decimal) -> tuple
             return "HOLD", "stop_not_tighter", ()                 # mai allargare (ne' ripetere) lo stop
         if view.side * (price - new) < price * MIN_STOP_GAP_BP / _BP:
             return "HOLD", "stop_too_close_to_price", ()
+        why = stop_guard(pol, side=view.side, entry=view.entry_price or view.fill_price, initial_stop=view.initial_stop,
+                         new_stop=new, price=price, atr_1h_bp=atr_1h_bp, roundtrip_cost_bp=roundtrip_cost_bp)
+        if why is not None:
+            return "HOLD", why, ()            # stop incoerente con volatilita'/costi: protezione a pareggio e trailing
         return "MODIFY_STOP", "stop_tightened", tuple(view.legs.values())
     return "HOLD", "action_invalid", ()
 
@@ -260,7 +276,8 @@ def review_open_positions(*, journal: EventJournal, run_id: str, data_dir: Path,
                           price_of: Callable[[str, int], Decimal], mode: str = "NORMAL", consultant=None,
                           best_of: Optional[Callable] = None, funding_of: Optional[Callable] = None,
                           market_of: Optional[Callable] = None, add_commit: Optional[Callable] = None,
-                          partial_fraction: Decimal = Decimal("0.35")) -> tuple[ReviewOutcome, ...]:
+                          partial_fraction: Decimal = Decimal("0.35"),
+                          roundtrip_cost_bp: Decimal = Decimal("16")) -> tuple[ReviewOutcome, ...]:
     """Una revisione per apertura; scrive gli eventi ``position_review`` / ``stop_move`` e al massimo UNA richiesta di
     chiusura. Un errore su un'apertura non ferma le altre e non tocca mai la posizione (resta protetta).
 
@@ -338,7 +355,9 @@ def review_open_positions(*, journal: EventJournal, run_id: str, data_dir: Path,
                 elif prop.action == "ADD":
                     final = ReviewProposal("HOLD")                 # senza consulente nessun secondo ingresso
                     extra["arbiter"] = "add_needs_consult"
-                executed, code, ids = validate(final, view, price)
+                from backend.v3.entry_policy import atr_bp
+                executed, code, ids = validate(final, view, price, atr_1h_bp=atr_bp(market),
+                                               roundtrip_cost_bp=roundtrip_cost_bp)
                 if extra.get("arbiter", "no_consult_needed") not in ("no_consult_needed", "claude_confirmed") \
                         and executed == "HOLD" and code == "hold":
                     code = extra["arbiter"]              # HOLD deciso dall'arbitro: il motivo e' il suo

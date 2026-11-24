@@ -272,7 +272,7 @@ def test_both_runs_are_prepared_paused_unapproved_and_wired_to_the_right_analyst
     monkeypatch.setattr(w, "DeepSeekL5Analyst", lambda **kw: built.append(("deepseek", kw)) or real_deepseek(**kw))
     keeps = []
     real_store = w.CandleStore
-    monkeypatch.setattr(w, "CandleStore", lambda get_json, keep: keeps.append(dict(keep)) or real_store(get_json, keep=keep))
+    monkeypatch.setattr(w, "CandleStore", lambda get_json, keep, **kw: keeps.append(dict(keep)) or real_store(get_json, keep=keep, **kw))
     for name, path, equity in (("brain-v3-falco-evoluto-t1", FALCO, "1000"), ("brain-v3-brain-scalp-t1", SCALP, "2000")):
         root = prepare_new_paper_run(parent=tmp_path, run_name=name, run_id=name, config_bytes=path.read_bytes(),
                                      desk_mode="paper", now_ms=NOW, expected_initial_equity=equity)
