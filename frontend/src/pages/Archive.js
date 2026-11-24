@@ -51,6 +51,19 @@ export function ArchiveContent({ data, error }) {
       {data && !data.available && <Card><Note style={{ margin: 0 }}>L’archivio delle sessioni PAPER non è collegato a questa
         versione del server.</Note></Card>}
       {data?.available && runs.length === 0 && <Card><Note style={{ margin: 0 }}>Nessuna sessione archiviata.</Note></Card>}
+      {data?.cumulative && data.cumulative.sessions > 0 && <Card style={{ padding: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+          <strong style={{ fontSize: 16 }}>Σ Totale esperimenti archiviati</strong>
+          <span style={{ fontSize: 17, fontWeight: 800, color: tone(data.cumulative.net_pnl) }}>{sgn(data.cumulative.net_pnl)}</span>
+        </div>
+        <Grid cols={3} gap={8}>
+          <Stat compact label="Sessioni" value={data.cumulative.sessions} />
+          <Stat compact label="Trade" value={data.cumulative.trades} />
+          <Stat compact label="Vinti / persi" value={`${data.cumulative.wins} / ${data.cumulative.losses}`} />
+          <Stat compact label="Commissioni" value={usd(data.cumulative.fees)} />
+          <Stat compact label="Costi AI" value={usd(data.cumulative.ai_cost_total, 3)} />
+        </Grid>
+      </Card>}
       {runs.map(r => <ArchivedRun key={r.name} r={r} />)}
     </Section>
     <Section title="Portafogli e pagine storiche">

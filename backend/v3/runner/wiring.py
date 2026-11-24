@@ -204,6 +204,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
         journal.init_schema()
     if strategy is not None:
         config = strategy.config                      # da qui: la versione attiva (rischio e mandato = base, sempre)
+    archived_outcomes = learning_outcomes(data_dir)   # apprendimento delle sessioni archiviate (sola lettura)
     snapshot = strategy.snapshot() if strategy is not None else None
     notes = strategy.notes if strategy is not None else None
     ledger = BudgetLedger(str(data_dir / "budget.db"))
@@ -284,7 +285,7 @@ def build_runner(*, data_dir: Path, run_id: str, config: RunnerConfig,
                            "reasons_parser": parse_reasons}
         ds_analyst = DeepSeekL5Analyst(
             transport=metered, model=config.model,
-            outcomes_source=lambda: extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
+            outcomes_source=lambda: archived_outcomes + extract_outcomes(journal, PORTFOLIO_ID, run_id).outcomes,
             bars_source=holder, view_params=load_view_params(), market_params=vp, menu=menu,
             spending_gate=gate, enabled=True, max_tokens=config.max_tokens, **unico_extra)
         if consultant is not None:
@@ -530,6 +531,30 @@ def main(argv: Optional[list] = None, *, env: Optional[Mapping[str, str]] = None
     finally:
         if fence is not None:
             fence.stop()
+
+
+LEARNING_FILE = "learning_sources.json"
+ARCHIVE_ROOT = Path("/opt/superbot-v3-paper-runs/.archivio")
+
+
+def learning_outcomes(data_dir: Path, archive_root: Path = ARCHIVE_ROOT) -> tuple:
+    """Esiti (memoria di DeepSeek) delle sessioni ARCHIVIATE elencate in ``learning_sources.json`` della run, letti una
+    volta in sola lettura: la nuova sessione riparte da 2.000 senza posizioni ne' P&L vecchi, ma con l'apprendimento.
+    Solo journal sotto l'archivio; una fonte illeggibile si salta (mai un blocco del Brain)."""
+    try:
+        spec = json.loads((data_dir / LEARNING_FILE).read_text())
+    except (OSError, ValueError):
+        return ()
+    out = []
+    for src in spec.get("sources", []) if isinstance(spec, dict) else []:
+        try:
+            jpath = Path(src["journal"]).resolve()
+            if archive_root.resolve() not in jpath.parents or not jpath.is_file():
+                continue
+            out.extend(extract_outcomes(EventJournal(str(jpath)), PORTFOLIO_ID, str(src["run_id"])).outcomes)
+        except Exception:
+            continue
+    return tuple(out)
 
 
 def _strategy_of(data_dir: Path, run_id: str, base_raw: Optional[bytes]):

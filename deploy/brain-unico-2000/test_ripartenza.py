@@ -310,3 +310,106 @@ def test_restart_stops_before_touching_any_run_when_claude_is_not_usable(tmp_pat
         assert "ANTHROPIC_API_KEY=<la chiave" in out                       # come rimediare da Termius
         assert not ctx["marker"].exists()                                  # la ripartenza non e' mai partita
         assert "segreta" not in out and "NONVALIDA" not in out             # nessuna chiave stampata
+
+
+# ----------------------------------------------------------------------------- nuova sessione (Brain Live Evolution)
+def _today(rig, *, open_position=False):
+    """Stato reale del 24/11 sera: Falco Evoluto archiviato e spento, Brain unico nello slot di Brain Scalp IN PAUSA."""
+    import shutil
+    from backend.tests.test_brain_f7_outcomes import _hand
+    from backend.v3.executor.paper import execute_paper
+    from backend.v3.executor.paper_close import close_paper
+    for entry in list(rig.falco.iterdir()):
+        shutil.rmtree(entry) if entry.is_dir() else entry.unlink()
+    for u in UNITS[:2]:
+        (rig.sd / f"{u}.stopped").write_text("x")
+    for entry in list(rig.scalp.iterdir()):
+        shutil.rmtree(entry) if entry.is_dir() else entry.unlink()
+    old_cfg = json.loads((RUNNER / U).read_text())
+    for k in ("entry_policy", "strategy_version"):
+        old_cfg["brain_unico"].pop(k)                           # la sessione attuale e' nata senza la V2
+    tmp = rig.runs / ".tmp-prep"
+    tmp.mkdir()
+    root = prepare_new_paper_run(parent=tmp, run_name="brain-v3-brain-scalp-p1", run_id="brain-scalp-paper-p1",
+                                 config_bytes=json.dumps(old_cfg, indent=2).encode(), desk_mode="paper",
+                                 now_ms=int(time.time() * 1000) - 7_200_000, expected_initial_equity="2000")
+    for entry in os.listdir(root):
+        os.rename(root / entry, rig.scalp / entry)
+    root.rmdir()
+    tmp.rmdir()
+    m = json.loads((rig.scalp / "mandate.json").read_text())
+    (rig.scalp / "mandate.json").write_text(json.dumps(dict(m, approved=True, approved_by="Proprietario Test")))
+    j = EventJournal(str(rig.scalp / "journal.db"))
+    t = int(time.time() * 1000) - 3_600_000
+    pid = execute_paper(_hand(side=-1, entry="60200", stop="60800", symbol="BTCUSDT"), portfolio_id="brain",
+                        run_id="brain-scalp-paper-p1", journal=j, now_ms=t).position_id
+    if not open_position:
+        close_paper(portfolio_id="brain", run_id="brain-scalp-paper-p1", position_id=pid, exit_price=D("60262"),
+                    reason="stop", fee_bps=6, journal=j, now_ms=t + 60_000)
+    (rig.scalp / "pause.flag").write_text("pausa del proprietario\n")
+    return j
+
+
+def test_new_session_archives_the_brain_starts_v2_and_keeps_the_learning(rig, capsys):
+    _today(rig)
+    old_events = [e.event_id for e in _events(rig.scalp, "brain-scalp-paper-p1")]
+    assert rig.rp.main(["--nuova-sessione", "--stage", str(ROOT)]) == 0
+    out = capsys.readouterr().out
+    assert "RIPARTENZA RESULT=BRAIN_UNICO_PAPER_RUNNING" in out, out
+    base = next(p for p in (rig.runs / ".archivio").iterdir() if p.is_dir())
+    res = json.loads((base / "brain-v3-brain-scalp-p1.RISULTATI.json").read_text())
+    assert res["closed_trades"] == 1 and D(res["realized_pnl"]) < 0 and res["open_positions"] == 0
+    assert [e.event_id for e in _events(base / "brain-v3-brain-scalp-p1", "brain-scalp-paper-p1")] == old_events
+    assert not (base / "brain-v3-falco-evoluto-p1.RISULTATI.json").exists()          # Falco non toccato
+    assert [e.kind for e in _events(rig.scalp, "brain-scalp-paper-p1")] == ["run_prepared"]
+    assert (rig.scalp / "runner_config.json").read_bytes() == (RUNNER / U).read_bytes()   # V2
+    src = json.loads((rig.scalp / "learning_sources.json").read_text())["sources"]
+    assert [s["run_id"] for s in src] == ["brain-scalp-paper-p1"] and src[0]["archive"] == base.name
+    from backend.v3.runner.wiring import learning_outcomes
+    assert len(learning_outcomes(rig.scalp, archive_root=rig.runs / ".archivio")) == 1     # apprendimento continuo
+    assert json.loads((rig.scalp / "heartbeat.json").read_text())["state"] == "running"
+    calls = (rig.sd / "calls").read_text().splitlines()
+    assert not any("falco" in c and (c.startswith("start") or c.startswith("enable")) for c in calls)
+    for u in UNITS[2:]:
+        assert f"WorkingDirectory={ROOT}" in (rig.units / u).read_text()
+    # rollback della nuova sessione: torna la sessione archiviata, in pausa; Falco resta spento
+    assert rig.rp.main(["--rollback", base.name.replace("reset-", "")]) == 0
+    assert [e.event_id for e in _events(rig.scalp, "brain-scalp-paper-p1")] == old_events
+    assert (rig.scalp / "pause.flag").exists()
+    calls = (rig.sd / "calls").read_text().splitlines()
+    assert not any("falco" in c and (c.startswith("start") or c.startswith("enable")) for c in calls)
+    for u in UNITS[2:]:
+        assert f"WorkingDirectory={rig.old}" in (rig.units / u).read_text()
+
+
+@pytest.mark.parametrize("case,code", [("open", "posizioni_aperte:1"), ("pending", "richiesta_in_attesa:strategy_request.json"),
+                                       ("running", "brain_non_in_pausa")])
+def test_new_session_refuses_before_any_change(rig, capsys, case, code):
+    _today(rig, open_position=(case == "open"))
+    if case == "pending":
+        (rig.scalp / "strategy_request.json").write_text('{"proposal": {}}')
+    if case == "running":
+        (rig.scalp / "pause.flag").unlink()
+    before = (rig.scalp / "journal.db").read_bytes()
+    assert rig.rp.main(["--nuova-sessione", "--stage", str(ROOT)]) == 3
+    assert code in capsys.readouterr().out
+    assert (rig.scalp / "journal.db").read_bytes() == before and not (rig.runs / ".archivio").exists()
+    assert not (rig.sd / "calls").exists() or not any(c.startswith("stop") for c in (rig.sd / "calls").read_text().split("\n"))
+
+
+def test_new_session_failure_after_archive_restores_only_the_brain(rig, capsys, monkeypatch):
+    _today(rig)
+    old_events = [e.event_id for e in _events(rig.scalp, "brain-scalp-paper-p1")]
+
+    def broken(*a, **k):
+        raise rig.rp.Blocco("preparazione_simulata_fallita")
+    monkeypatch.setattr(rig.rp, "prepare_new", broken)
+    assert rig.rp.main(["--nuova-sessione", "--stage", str(ROOT)]) == 4
+    out = capsys.readouterr().out
+    assert "ROLLBACK_AUTOMATICO_RUN_PRECEDENTI_IN_PAUSA" in out and "NO_GO_NUOVA_SESSIONE_NON_ESEGUITA" in out
+    assert [e.event_id for e in _events(rig.scalp, "brain-scalp-paper-p1")] == old_events
+    assert (rig.scalp / "pause.flag").exists()
+    calls = (rig.sd / "calls").read_text().splitlines()
+    assert not any("falco" in c and (c.startswith("start") or c.startswith("enable")) for c in calls)
+    for u in UNITS[2:]:
+        assert f"WorkingDirectory={rig.old}" in (rig.units / u).read_text()

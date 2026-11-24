@@ -9,6 +9,9 @@
 #   4. web con la dashboard nuova (solo il Brain; Falco Evoluto e Scalp in Archivio) e interfaccia (70-interfaccia.sh);
 #   5. controllo finale dal dominio.
 # Uso (root): ripartenza.sh                    -> esegue
+#             ripartenza.sh --nuova-sessione   -> NUOVA SESSIONE del Brain unico (24/11, Brain Live Evolution): solo con
+#                                                 Brain in pausa e zero posizioni aperte; archivio integrale, run nuova
+#                                                 da 2.000 con la V2, apprendimento collegato, comando superbot-strategia
 #             ripartenza.sh --rollback TIMBRO  -> interfaccia, web, unita' e run precedenti (in pausa); nulla si cancella
 # Esito (ultima riga RIPARTENZA_RESULT=...): 0 Brain unico RUNNING e dashboard verificata; 2 rifiutata prima di cambiare
 # (bot precedenti invariati); 3 ripartenza non eseguita, run precedenti ripristinate in pausa; 4 run nuova pronta ma in
@@ -48,6 +51,8 @@ if [[ "${1:-}" == "--rollback" ]]; then
   (cd "$NEW" && DESK_MODE=paper PYTHONPATH="$NEW" PYTHONDONTWRITEBYTECODE=1 "$PY" "$D/ripartenza_brain.py" --rollback "$2") || rc=1
   [[ $rc == 0 ]] && end 0 ROLLBACK_COMPLETATO_RUN_PRECEDENTI_IN_PAUSA || end 5 ROLLBACK_DA_VERIFICARE
 fi
+MODE=esegui
+if [[ "${1:-}" == "--nuova-sessione" ]]; then MODE=nuova-sessione; shift; fi
 [[ $# -eq 0 ]] || end 2 RIFIUTATA_ARGOMENTO
 
 say "COMMIT=$SHA"
@@ -82,7 +87,7 @@ say "${TELEGRAM:-TELEGRAM=NON_VERIFICATO}"
 
 say "== 3/5 ripartenza: archivio delle run attuali e Brain unico PAPER 2000"
 LOG="$(mktemp)"; rc=0
-(cd "$NEW" && DESK_MODE=paper PYTHONPATH="$NEW" PYTHONDONTWRITEBYTECODE=1 "$PY" "$D/ripartenza_brain.py" --esegui \
+(cd "$NEW" && DESK_MODE=paper PYTHONPATH="$NEW" PYTHONDONTWRITEBYTECODE=1 "$PY" "$D/ripartenza_brain.py" "--$MODE" \
   --stage "$NEW") 2>&1 | tee "$LOG" || rc=$?
 TIMBRO="$(sed -n 's/^RIPARTENZA TIMBRO=//p' "$LOG" | tail -1)"; rm -f "$LOG"
 case "$rc" in
@@ -92,6 +97,11 @@ case "$rc" in
   *) end 4 "RUN_NUOVA_PRONTA_MA_IN_PAUSA_rollback:${TIMBRO:-vedi_registro}" ;;
 esac
 say "TIMBRO=$TIMBRO (rollback: bash $D/ripartenza.sh --rollback $TIMBRO)"
+if [[ "$MODE" == nuova-sessione ]]; then
+  # comando dell'operatore per le strategie (solo root): nessun permesso sudo aggiunto ad altri utenti
+  install -m 0755 -o root -g root "$D/superbot-strategia" "${STRATEGIA_BIN:-/usr/local/sbin/superbot-strategia}" \
+    && say "STRATEGIA=sudo superbot-strategia stato | proponi \"...\" | approva <id>" || say "STRATEGIA=NON_INSTALLATA"
+fi
 
 say "== 4/5 web e interfaccia: dashboard del Brain unico"
 python3 "$D/web_app_update.py" --deploy --brain-unico --backend-tar "$D/$TAR" --tar-sha256 "$TAR_SHA" --sha "$SHA" \

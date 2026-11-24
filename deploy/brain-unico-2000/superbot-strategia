@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Brain Live Evolution: strategie versionate del Brain unico PAPER (solo root, dalla VPS).
+#   sudo superbot-strategia stato
+#   sudo superbot-strategia proponi "Da questo momento esamina i mercati ogni 15 minuti"
+#   sudo superbot-strategia approva <id> [--motivo "..."]
+#   sudo superbot-strategia esito
+# La proposta e' interpretata e validata dal Brain (nessuna AI); l'approvazione la consegna al runner, che la registra
+# nel journal e la applica dal giro successivo alle sole NUOVE aperture. Rischio, leva, capitale e mandato: rifiutati.
+set -euo pipefail
+[[ "$(id -u)" == 0 ]] || { echo "serve root: sudo superbot-strategia ..."; exit 2; }
+RUN=/opt/superbot-v3-paper-runs/brain-v3-brain-scalp-p1
+ST="$(systemctl show -p WorkingDirectory --value superbot-brain-scalp-p1-runner.service)"
+[[ "$ST" =~ ^/opt/superbot-falco-scalp-[0-9a-f]{12}$ && -f "$ST/backend/v3/runner/strategia.py" ]] \
+  || { echo "codice del Brain non riconosciuto: nessuna modifica"; exit 2; }
+cd "$ST"
+exec env DESK_MODE=paper PYTHONPATH="$ST" PYTHONDONTWRITEBYTECODE=1 /opt/superbot-v3-rc70-stage/.venv/bin/python3 \
+  -m backend.v3.runner.strategia --data-dir "$RUN" --run-id brain-scalp-paper-p1 --config "$RUN/runner_config.json" "$@"

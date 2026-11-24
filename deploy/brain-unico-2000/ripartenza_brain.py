@@ -8,6 +8,12 @@
                                    runner -> verifica -> attivazione PAPER (80-paper.sh) -> RUNNING
     ripartenza_brain.py --rollback <TIMBRO>                  run precedenti al loro posto (IN PAUSA), unita' e codice
                                    precedenti, Falco Evoluto riattivato; la run nuova scartata resta conservata
+    ripartenza_brain.py --nuova-sessione --stage <codice>   NUOVA SESSIONE del Brain unico (Brain Live Evolution, 24/11):
+                                   solo con Brain in pausa, zero posizioni aperte e nessuna chiusura o richiesta in
+                                   attesa -> arresto -> archivio integrale della sessione (operazioni, decisioni, memoria,
+                                   P&L) -> unita' sul codice nuovo -> run nuova da 2.000 con la configurazione V2 e
+                                   l'apprendimento delle sessioni archiviate in sola lettura -> avvio -> attivazione.
+                                   Nessuna chiusura forzata: con posizioni aperte si ferma prima di cambiare qualcosa.
 
 Si esegue con il codice NUOVO (``cwd`` e ``PYTHONPATH`` = cartella installata da ``30-codice.sh``): la configurazione
 schema 3 si legge solo con quel codice. Slot riusato: stessa cartella, stesso run_id e stesse unita' di Brain Scalp,
@@ -358,7 +364,7 @@ def switch_units(ctx: dict, st: State) -> None:
     bak = STATE_DIR / f"unita-{st.stamp}"
     bak.mkdir(mode=0o700)
     old, new = str(ctx["old"]), str(ctx["stage"])
-    for r in RUNS:
+    for r in ctx.get("unit_runs", RUNS):                  # nuova sessione: solo le unita' del Brain
         for k in ("exit", "runner"):
             shutil.copy2(UNIT_DIR / r[k], bak / r[k])
     for k in ("exit", "runner"):
@@ -441,6 +447,8 @@ def activate(ctx: dict) -> None:
 def rollback(stamp: str, *, automatic: bool = False) -> None:
     base = PARENT / ".archivio" / f"reset-{stamp}"
     bak = STATE_DIR / f"unita-{stamp}"
+    # nuova sessione: solo il Brain (Falco Evoluto non e' stato toccato e non va riattivato); altrimenti come sempre
+    RUNS = [SCALP] if (STATE_DIR / f"nuova-sessione-{stamp}").is_file() else globals()["RUNS"]
     for r in RUNS:                                       # fermo tutto e rimetto le unita' com'erano
         run_dir = PARENT / r["dir"]
         if run_dir.is_dir() and os.listdir(run_dir):
@@ -671,10 +679,144 @@ def esegui(stage: Path) -> int:
     return 0
 
 
+# ------------------------------------------------------------------ nuova sessione (Brain Live Evolution, 24/11)
+PENDING = ("close_request.json", "brain_close_request.json", "strategy_request.json")
+
+
+def session_preflight(stage: Path) -> dict:
+    """Controlli della nuova sessione: niente cambia se uno solo fallisce."""
+    if not TEST and os.geteuid() != 0:
+        raise Blocco("serve_root")
+    for f, want in PINNED.items():
+        p = FSD / f
+        if not p.is_file() or p.is_symlink() or sha_file(p) != want:
+            raise Blocco(f"pacchetto_installato_modificato:{f}")
+    dirs = {workdir(SCALP[k]) for k in ("exit", "runner")}
+    if len(dirs) != 1:
+        raise Blocco("codice_installato_non_univoco:scalp")
+    old = dirs.pop()
+    if not TEST and (not STAGE_RE.match(old) or not STAGE_RE.match(str(stage))):
+        raise Blocco("cartelle_del_codice_non_riconosciute")
+    if str(stage) == old or not (stage / "backend" / "v3" / "strategy_versions.py").is_file():
+        raise Blocco("codice_nuovo_assente_o_uguale")
+    if Path.cwd().resolve() != stage.resolve():
+        raise Blocco("eseguire_dalla_cartella_del_codice_nuovo")
+    say("CODICE_ATTUALE_scalp", old)
+    say("CODICE_NUOVO", stage)
+    if not (RC1 / "pause.flag").is_file() or not active(RC1_EXIT):
+        raise Blocco("brain_rc1_non_in_pausa_o_uscite_ferme")
+    if any(active(FALCO[k]) for k in ("exit", "runner")):
+        raise Blocco("falco_evoluto_ancora_attivo")
+    for u in (BRIDGE, SCALP["exit"], SCALP["runner"]):
+        if not active(u):
+            raise Blocco(f"unita_non_attiva:{u}")
+    if sh(DOCKER, "inspect", "superbot", "--format", "{{.State.Status}}", check=False).stdout.strip() != "running":
+        raise Blocco("web_non_in_esecuzione")
+    raw = CONFIG.read_bytes()
+    if raw != (stage / "backend" / "v3" / "runner" / CONFIG_NAME).read_bytes():
+        raise Blocco("configurazione_diversa_dal_commit")
+    cfg = check_config(raw)
+    if cfg.unico is None or cfg.unico.entry is None:
+        raise Blocco("configurazione_senza_politica_d_ingresso")
+    run_dir = PARENT / SCALP["dir"]
+    if not run_dir.is_dir() or run_dir.is_symlink() or not (run_dir / "PREPARED_PAUSED_ONLY.json").is_file():
+        raise Blocco("run_attuale_assente:scalp")
+    if not (run_dir / "pause.flag").is_file():
+        raise Blocco("brain_non_in_pausa")
+    pending = [f for f in PENDING if (run_dir / f).exists()]
+    if pending:
+        raise Blocco("richiesta_in_attesa:" + ",".join(pending))
+    count, rows, summ = journal_view(run_dir, SCALP["id"])
+    if summ.open_positions:
+        raise Blocco(f"posizioni_aperte:{len(summ.open_positions)}")      # nessuna chiusura forzata
+    say("RUN_ATTUALE_scalp", f"journal {count} eventi catena integra; aperte 0; chiuse {len(summ.closed_trades)}")
+    try:
+        m = json.loads((run_dir / "mandate.json").read_text())
+    except (OSError, ValueError):
+        raise Blocco("mandato_attuale_illeggibile") from None
+    who = m.get("approved_by") if m.get("approved") is True else None
+    if not isinstance(who, str) or not NAME_RE.fullmatch(who):
+        raise Blocco("nome_di_chi_approva_non_disponibile")
+    used = sum(f.stat().st_size for f in run_dir.rglob("*") if f.is_file())
+    if shutil.disk_usage(PARENT).free < 3 * used + 50_000_000:
+        raise Blocco("spazio_disco_insufficiente")
+    if not TEST and not Path("/etc/superbot-v3-paper/brain-ai.env").is_file():
+        raise Blocco("chiave_ai_assente")
+    realized = sum((t.realized_pnl for t in summ.closed_trades), Decimal(0))
+    old_cfg = json.loads((run_dir / "runner_config.json").read_text())
+    risultati = {"run_id": SCALP["id"], "initial_equity": str(old_cfg["initial_equity"]),
+                 "closed_trades": len(summ.closed_trades), "realized_pnl": str(realized), "open_positions": 0,
+                 "closed_at_ms": now_ms(), "journal_head_count": count,
+                 "motivo": "nuova sessione Brain unico PAPER 2000 con Brain Live Evolution (24/11/2026)"}
+    say("PREFLIGHT", "SUPERATO")
+    return {"stage": stage, "old": Path(old), "old_by_bot": {"scalp": Path(old)}, "raw": raw, "cfg": cfg, "who": who,
+            "runs": [{**SCALP, "run_dir": run_dir, "risultati": risultati}], "unit_runs": [SCALP]}
+
+
+def learning_sources() -> list[dict]:
+    """Sessioni archiviate del Brain unico nello slot del Brain (journal in sola lettura): l'apprendimento continua."""
+    out = []
+    for res in sorted((PARENT / ".archivio").glob(f"reset-*/{SCALP['dir']}.RISULTATI.json")):
+        j = res.parent / SCALP["dir"] / "journal.db"
+        try:
+            cfg = json.loads((res.parent / SCALP["dir"] / "runner_config.json").read_text())
+            run_id = json.loads(res.read_text())["run_id"]
+        except (OSError, ValueError, KeyError):
+            continue
+        if j.is_file() and cfg.get("analyst") == "deepseek":
+            out.append({"journal": str(j), "run_id": run_id, "archive": res.parent.name})
+    return out
+
+
+def nuova_sessione(stage: Path) -> int:
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ctx = session_preflight(stage)
+    st = State(stamp)
+    (STATE_DIR / f"nuova-sessione-{stamp}").write_text("nuova sessione del Brain unico: il rollback tocca solo il Brain\n")
+    say("TIMBRO", stamp)
+    st.mark("inizio_nuova_sessione")
+    try:
+        stop_units(ctx)
+        st.mark("vecchi_runner_fermati")
+        archive(ctx, st)
+        st.mark("archiviate")
+        switch_units(ctx, st)
+        st.mark("unita_sul_codice_nuovo")
+        prepare_new(ctx, st)
+        src = learning_sources()
+        run_dir = PARENT / SCALP["dir"]
+        (run_dir / "learning_sources.json").write_text(json.dumps({"sources": src}, indent=1))
+        say("APPRENDIMENTO", f"{len(src)} sessioni archiviate collegate in sola lettura (memoria degli esiti)")
+        st.mark("run_nuova_preparata")
+        start_new(ctx)
+        st.mark("run_nuova_avviata_in_pausa")
+        check_view()
+        st.mark("vista_verificata")
+    except Exception as exc:                                  # noqa: BLE001
+        say("BLOCCO", exc.args[0] if isinstance(exc, Blocco) else type(exc).__name__)
+        if "vecchi_runner_fermati" in st.steps():
+            rollback(stamp, automatic=True)
+        say("RESULT", "NO_GO_NUOVA_SESSIONE_NON_ESEGUITA")
+        return 4
+    try:
+        activate(ctx)
+        st.mark("brain_unico_attivo")
+    except Exception as exc:                                  # noqa: BLE001
+        say("BLOCCO", exc.args[0] if isinstance(exc, Blocco) else type(exc).__name__)
+        sh("sh", str(FSD / "80-paper.sh"), "scalp", "pausa", check=False)
+        say("RESULT", f"NO_GO_RUN_NUOVA_PRONTA_MA_IN_PAUSA (rollback: --rollback {stamp})")
+        return 5
+    say("ARCHIVIO", PARENT / ".archivio" / f"reset-{stamp}")
+    say("ROLLBACK", f"--rollback {stamp}")
+    say("RESULT", "BRAIN_UNICO_PAPER_RUNNING")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="ripartenza PAPER con il Brain unico da 2000 USDT")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--esegui", action="store_true")
+    g.add_argument("--nuova-sessione", action="store_true")
     g.add_argument("--controlla", action="store_true")
     g.add_argument("--rollback", metavar="TIMBRO")
     ap.add_argument("--stage")
@@ -690,6 +832,8 @@ def main(argv=None) -> int:
         if not a.stage:
             raise Blocco("serve_--stage")
         stage = Path(a.stage).resolve()
+        if a.nuova_sessione:
+            return nuova_sessione(stage)
         if a.controlla:
             prev = previous_restart()
             resume_preflight(stage, prev) if prev is not None else preflight(stage)

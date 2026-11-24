@@ -23,7 +23,9 @@ from backend.v3.runner.strategia import main as cli
 from backend.v3.unico import PartialTakeProfit
 
 RUN = "r1"
-BASE = CFG.read_bytes()
+_cfg = json.loads(CFG.read_bytes())
+_cfg["brain_unico"].pop("strategy_version", None)        # questi test usano una base chiamata V1 (nome predefinito)
+BASE = json.dumps(_cfg, indent=2).encode()
 
 
 def _journal(tmp_path):
@@ -233,7 +235,6 @@ def test_notes_reach_the_deepseek_guidance_and_risk_stays_the_base(tmp_path):
 def test_runner_rebuilds_with_the_new_version_between_ticks_without_repeating_the_served_cycle(tmp_path, monkeypatch):
     from backend.v3.runner import wiring
     j = _journal(tmp_path)
-    (tmp_path / "runner_config.json").write_bytes(BASE)
     builds, clock = [], {"t": T0}
 
     class FakeRunner:
@@ -260,6 +261,7 @@ def test_runner_rebuilds_with_the_new_version_between_ticks_without_repeating_th
 
     def outer_stop():
         stops["n"] += 1
+        assert stops["n"] < 500, "il runner non ha cambiato versione"      # mai un ciclo infinito nei test
         return len(builds) == 2 and builds[-1] is not None and stops["n"] > 8
 
     a = SimpleNamespace(run_id=RUN, once=False)

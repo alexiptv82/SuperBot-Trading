@@ -183,6 +183,8 @@ def test_archive_lists_only_complete_reset_archives_never_mixed_with_live(tmp_pa
     [row] = idx["runs"]
     assert row["label"] == "Brain Scalp" and row["closed"] == 1 and row["initial_equity"] == "2000"
     assert D(row["net_pnl"]) < 0 and "manual_close_allowed" not in row and "paused" not in row
+    cum = idx["cumulative"]                              # riepilogo cumulativo: perdite delle run archiviate comprese
+    assert (cum["sessions"], cum["trades"], cum["wins"] + cum["losses"]) == (1, 1, 1) and cum["net_pnl"] == row["net_pnl"]
     det = c.get("/api/v3/paper-archive/" + row["name"]).json()
     assert [t["exit_reason"] for t in det["closed_trades"]] == ["stop"] and det["performance"]["available"]
     # le run attive restano pulite: nessun trade archiviato nella run corrente con lo stesso run_id

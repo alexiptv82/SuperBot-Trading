@@ -115,6 +115,19 @@
       "output_usd_per_million_tokens": "20",
       "max_per_cycle": 4,
       "cooldown_minutes": 120
+    },
+    "strategy_version": "V2",
+    "entry_policy": {
+      "long_trend_filter": true,
+      "max_cost_fraction_r": "0.3",
+      "consult_conf_tier_a": "0.6",
+      "consult_conf_other": "0.7",
+      "consult_on_expansion": false,
+      "consult_limit_fallback": "veto",
+      "stop_guard_atr_mult": "1",
+      "stop_guard_cost_zone": true,
+      "scale_in_min_gap_r": "0.25",
+      "scale_in_min_stop_room_r": "0.3"
     }
   }
 }

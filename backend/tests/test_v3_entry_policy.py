@@ -50,7 +50,13 @@ def _base_with(policy=V2, version=None) -> bytes:
 
 # ----------------------------------------------------------------------------- predefiniti = comportamento di prima
 def test_defaults_reproduce_the_previous_behaviour():
-    assert ep.policy_from_config(None) == ep.DEFAULT and cfg().unico.entry is ep.DEFAULT
+    legacy = json.loads(CFG.read_bytes())
+    for k in ("entry_policy", "strategy_version"):
+        legacy["brain_unico"].pop(k)
+    c = load_runner_config(json.dumps(legacy).encode())
+    assert ep.policy_from_config(None) == ep.DEFAULT and c.unico.entry is ep.DEFAULT and c.unico.base_version == "V1"
+    shipped = cfg().unico                                   # configurazione consegnata: V2, rischio dimezzato SPENTO
+    assert shipped.base_version == "V2" and shipped.entry.consult_limit_fallback == "veto"
     calm = {"open_risk_pct": "0"}
     for p, regime in [(_prop(conf=0.7), "TREND_UP"), (_prop(conf=0.6), "TREND_UP"), (_prop(conf=0.7), "EXPANSION"),
                       (_prop(reasons=("reversal_risk",), conf=0.8), "TREND_UP")]:

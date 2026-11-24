@@ -353,7 +353,17 @@ def archive_index(env: Mapping[str, str], now_ms: int) -> dict:
         evs = _events(ref.dir, run_id) or []
         row["started_at_ms"] = evs[0].event.occurred_at_ms if evs else None
         runs.append(row)
-    return {"available": True, "generated_at_ms": now_ms, "runs": runs}
+    return {"available": True, "generated_at_ms": now_ms, "runs": runs, "cumulative": cumulative(runs)}
+
+
+def cumulative(runs: list) -> dict:
+    """Riepilogo di TUTTE le sessioni archiviate (perdite comprese): trade distinti, vinti/persi, P&L netto realizzato,
+    commissioni e costi AI. Somma semplice dei risultati registrati, mai ricalcolati."""
+    ok = [r for r in runs if r.get("available")]
+    dec = lambda k: sum((Decimal(str(r[k])) for r in ok if r.get(k) is not None), Decimal(0))
+    return {"sessions": len(ok), "trades": sum(int(r.get("closed") or 0) for r in ok),
+            "wins": sum(int(r.get("wins") or 0) for r in ok), "losses": sum(int(r.get("losses") or 0) for r in ok),
+            "net_pnl": str(dec("net_pnl")), "fees": str(dec("fees")), "ai_cost_total": str(dec("ai_cost_total"))}
 
 
 def archive_detail(env: Mapping[str, str], key: str, now_ms: int) -> Optional[dict]:
