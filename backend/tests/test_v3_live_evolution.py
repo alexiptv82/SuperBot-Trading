@@ -285,3 +285,14 @@ def test_the_real_open_path_records_the_active_version_snapshot(tmp_path):
     assert p["position_id"] == pid and p["strategy"]["version"] == "V1"
     assert p["strategy"]["exit_policy"] == json.loads(BASE)["exit_policy"]
     assert p["strategy"]["partial_take_profit"] == json.loads(BASE)["brain_unico"]["partial_take_profit"]
+
+
+def test_dashboard_shows_the_active_version_and_the_version_of_each_position(tmp_path):
+    from backend.v3.compare_view import RunRef, read_run
+    (tmp_path / "runner_config.json").write_bytes(BASE)
+    j = _journal(tmp_path)
+    _long_eth(j, at=T0, strategy=_snapshot(j), link="brain-req-v1")
+    _approve(tmp_path, j, "Take profit finale a 2 R", T0 + MIN)
+    view = read_run(RunRef("brain_scalp", "Brain", tmp_path, RUN), T0 + 2 * MIN)
+    assert view["strategy"]["active"] == "V2" and view["strategy"]["history"][-1]["to"] == "V2"
+    assert view["open_positions"][0]["strategy_version"] == "V1"

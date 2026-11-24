@@ -69,6 +69,10 @@ function ModeRow({ run, nowMs }) {
       {g ? <Pill color={g.color}>{g.label}</Pill> : <Pill color={C.muted}>dal primo giro</Pill>}
       <span style={{ fontSize: 13, color: C.muted }}>Slot {run.open_trades ?? 0}/{run.config?.max_positions ?? '—'}</span>
     </div>
+    {run.strategy?.active && <div style={{ fontSize: 13, color: C.soft, marginTop: 6 }}>
+      Strategia per le nuove aperture: <strong>{run.strategy.active}</strong>
+      {run.strategy.history?.length ? ` · ultimo cambio ${run.strategy.history[run.strategy.history.length - 1].from} → ${run.strategy.history[run.strategy.history.length - 1].to}` : ''}
+      {' '}· le posizioni aperte completano la loro versione</div>}
     {g && <p style={{ fontSize: 13, color: C.soft, margin: '6px 0 0', lineHeight: 1.4 }}>{g.detail}</p>}
     <div style={{ fontSize: 13, color: C.soft, marginTop: 6 }}>Netto realizzato di sessione: <strong style={{ color: tone(net) }}>{sgn(net)}</strong>
       {tiers ? ` · selettivo da ${usd(tiers.selective_usd, 0)}, protezione da ${usd(tiers.protect_usd, 0)}` : ''}

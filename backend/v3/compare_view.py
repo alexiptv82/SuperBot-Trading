@@ -237,7 +237,16 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
         hb = json.loads((ref.dir / "heartbeat.json").read_text())
     except (OSError, ValueError):
         pass
-    return dict(base, available=True, config={k: (str(v) if isinstance(v, Decimal) else v) for k, v in cfg.items()},
+    strategy = None
+    if cfg.get("unico"):                         # Brain Live Evolution: versione attiva e cronologia (sola lettura)
+        try:
+            from backend.v3.strategy_versions import strategy_view
+            sv = strategy_view(journal, ref.run_id, (ref.dir / "runner_config.json").read_bytes())
+            strategy = {"active": sv["active"], "history": sv["history"][-5:]}
+        except Exception:
+            strategy = None
+    return dict(base, available=True, strategy=strategy,
+                config={k: (str(v) if isinstance(v, Decimal) else v) for k, v in cfg.items()},
                 state=hb.get("state") if isinstance(hb, dict) and hb.get("state") in ("running", "paused", "halted")
                 else None,
                 paused=(ref.dir / "pause.flag").exists(),
@@ -259,7 +268,8 @@ def read_run(ref: RunRef, now_ms: int, *, archived: bool = False) -> dict:
                                  "entry": str(o.fill_price), "stop": str(o.stop_price), "margin": str(o.margin_used),
                                  "leverage": o.leverage, "opened_at_ms": o.opened_at_ms,
                                  "leg": o.leg, "group": o.group, "stop_brain": _s(moved.get(o.position_id)),
-                                 "quantity": str(o.quantity), "adds": o.adds, "reduces": o.reduces}
+                                 "quantity": str(o.quantity), "adds": o.adds, "reduces": o.reduces,
+                                 "strategy_version": o.strategy_version or None}
                                 for o in summary.open_positions],
                 open_trades=open_groups(summary.open_positions),
                 guardian=guardian, decisions=decisions[-8:][::-1], reviews=reviews[-8:][::-1], ai_spend=spend,
