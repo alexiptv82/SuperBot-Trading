@@ -240,3 +240,29 @@ def test_scale_in_rules_follow_the_position_version():
     assert _scale_in_rules({"strategy": {"version": "V3", "entry_policy": {**V2, "scale_in_min_gap_r": "0.5"}}}) \
         == {"min_gap_r": D("0.5"), "min_stop_room_r": D("0.3")}
     assert _scale_in_rules({}) == {"min_gap_r": D("0.25"), "min_stop_room_r": D("0.3")}
+
+
+def test_confidence_floor_blocks_weak_proposals_before_spending_a_consult(tmp_path):
+    """Dato del 24/11: sotto 0,56 di confidenza 1 vincita su 15 chiuse (-12,9 R); i consulti si esaurivano su quelle."""
+    assert ep.policy_from_config(V2).min_confidence is None                     # campo facoltativo: vecchie fotografie
+    pol = ep.policy_from_config({**V2, "min_confidence": "0.56"})
+    assert ep.entry_block(pol, side=-1, entry=D(100), stop=D(101), market=None, roundtrip_cost_bp=D(16),
+                          confidence=0.55) == "confidence_below_floor"
+    assert ep.entry_block(pol, side=-1, entry=D(100), stop=D(101), market=None, roundtrip_cost_bp=D(16),
+                          confidence=0.56) is None
+    asked = []
+
+    class Spy(_Busy):
+        def ask(self, *a, **k):
+            asked.append(1)
+            return ClaudeView("ok", "CONFIRM")
+    j = EventJournal(str(tmp_path / "journal.db"))
+    j.init_schema()
+    a = CollaborativeAnalyst(_Inner(_prop("SOLUSDT", conf=0.55, uncertain=True, stop="101", entry="100")), Spy(),
+                             journal=j, run_id=RUN, market_view=lambda s, t: _market(), portfolio_state=lambda: {},
+                             policy=pol, roundtrip_cost_bp=D(16))
+    assert a.analyze(MarketContext("SOLUSDT", D(100), T0, "TREND_DOWN"), []).kind == DecisionKind.NO_TRADE
+    assert asked == [] and [r.event.payload["code"] for r in j.list_run("brain", RUN)] == ["confidence_below_floor"]
+    assert cfg().unico.entry.min_confidence == D("0.56")                        # V2 consegnata
+    raw = sv.apply_overlay(_base_with({**V2, "min_confidence": "0.56"}), {"brain_unico.entry_policy.min_confidence": None})
+    assert load_runner_config(raw).unico.entry.min_confidence is None           # versionabile, anche spegnibile

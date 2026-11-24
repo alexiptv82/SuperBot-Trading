@@ -114,6 +114,7 @@ ALLOWED: dict[str, Any] = {
     "brain_unico.entry_policy.stop_guard_cost_zone": _bool,
     "brain_unico.entry_policy.scale_in_min_gap_r": _dec("0.1", "2"),
     "brain_unico.entry_policy.scale_in_min_stop_room_r": _dec("0.1", "2"),
+    "brain_unico.entry_policy.min_confidence": _dec("0.3", "0.9", nullable=True),
     NOTES_KEY: _notes,                                   # fuori dalla configurazione: entra nel prompt di DeepSeek
 }
 LABELS = {
@@ -139,6 +140,7 @@ LABELS = {
     "brain_unico.entry_policy.stop_guard_cost_zone": "stop AI: rifiuto nella zona dei costi",
     "brain_unico.entry_policy.scale_in_min_gap_r": "secondo ingresso: miglioramento minimo (R)",
     "brain_unico.entry_policy.scale_in_min_stop_room_r": "secondo ingresso: distanza minima dallo stop (R)",
+    "brain_unico.entry_policy.min_confidence": "confidenza minima di DeepSeek per aprire",
     NOTES_KEY: "note strategiche per DeepSeek",
 }
 FORBIDDEN = re.compile(r"\b(leva|leve|leverage|rischi\w*|risk\w*|margin\w*|capitale|perdit\w* giornalier\w*|daily loss"

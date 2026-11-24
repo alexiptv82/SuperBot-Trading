@@ -343,7 +343,8 @@ class CollaborativeAnalyst(Analyst):
         except Exception:
             portfolio = {}
         market, fetched = None, False
-        if self.policy is not None and (self.policy.long_trend_filter or self.policy.max_cost_fraction_r is not None):
+        if self.policy is not None and (self.policy.long_trend_filter or self.policy.max_cost_fraction_r is not None
+                                        or self.policy.min_confidence is not None):
             from backend.v3.entry_policy import entry_block
             try:
                 market = self.market_view(context.symbol, context.timestamp_ms)
@@ -351,7 +352,8 @@ class CollaborativeAnalyst(Analyst):
                 market = None
             fetched = True
             block = entry_block(self.policy, side=prop.side, entry=Decimal(str(context.price)),
-                                stop=prop.stop_price, market=market, roundtrip_cost_bp=Decimal(str(self.cost_bp or 16)))
+                                stop=prop.stop_price, market=market, roundtrip_cost_bp=Decimal(str(self.cost_bp or 16)),
+                                confidence=prop.confidence)
             if block is not None:                         # filtro deterministico, prima del consulto (nessuna spesa)
                 self._record_filter(context, prop, block)
                 return BrainDecision(DecisionKind.NO_TRADE, rationale=decision.rationale,

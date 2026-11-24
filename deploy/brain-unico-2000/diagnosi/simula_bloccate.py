@@ -334,7 +334,9 @@ def main(argv=None) -> int:
         stop = p["ds_stop"]
         cost = None if entry is None or entry == stop else float((entry * D(16) / D(10000)) / abs(entry - stop))
         filt = None
-        if p["side"] == 1 and not (t1 == 1 and t4 == 1):
+        if p["conf"] < 0.56:                                       # confidenza minima della V2
+            filt = "confidence_below_floor"
+        elif p["side"] == 1 and not (t1 == 1 and t4 == 1):
             filt = "long_against_trend" if t1 is not None and t4 is not None else "long_trend_unknown"
         elif cost is not None and cost > 0.30:
             filt = "cost_too_high_for_stop"

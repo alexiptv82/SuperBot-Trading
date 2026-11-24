@@ -42,6 +42,7 @@ class EntryPolicy:
     stop_guard_cost_zone: bool = False
     scale_in_min_gap_r: Decimal = Decimal("0.25")
     scale_in_min_stop_room_r: Decimal = Decimal("0.3")
+    min_confidence: Optional[Decimal] = None      # sotto: NO_TRADE prima del consulto (come la soglia dei classici)
 
     def to_json(self) -> dict:
         return {k: (str(v) if isinstance(v, Decimal) else v) for k, v in asdict(self).items()}
@@ -71,7 +72,7 @@ def _dec(v, lo: str, hi: str, *, nullable: bool = False) -> Optional[Decimal]:
 def policy_from_config(raw) -> EntryPolicy:
     if raw is None:
         return DEFAULT
-    if not isinstance(raw, Mapping) or set(raw) != _KEYS:
+    if not isinstance(raw, Mapping) or set(raw) - {"min_confidence"} != _KEYS - {"min_confidence"}:
         raise ValueError("invalid_entry_policy")
     for k in ("long_trend_filter", "consult_on_expansion", "stop_guard_cost_zone"):
         if type(raw[k]) is not bool:
@@ -88,7 +89,8 @@ def policy_from_config(raw) -> EntryPolicy:
         stop_guard_atr_mult=_dec(raw["stop_guard_atr_mult"], "0.1", "5", nullable=True),
         stop_guard_cost_zone=raw["stop_guard_cost_zone"],
         scale_in_min_gap_r=_dec(raw["scale_in_min_gap_r"], "0.1", "2"),
-        scale_in_min_stop_room_r=_dec(raw["scale_in_min_stop_room_r"], "0.1", "2"))
+        scale_in_min_stop_room_r=_dec(raw["scale_in_min_stop_room_r"], "0.1", "2"),
+        min_confidence=_dec(raw.get("min_confidence"), "0.3", "0.9", nullable=True))
 
 
 def of_open_payload(payload, default: EntryPolicy = DEFAULT) -> EntryPolicy:
@@ -144,8 +146,10 @@ def cost_fraction(entry: Decimal, stop: Decimal, roundtrip_cost_bp: Decimal) -> 
 
 
 def entry_block(policy: EntryPolicy, *, side: int, entry: Decimal, stop: Decimal, market,
-                roundtrip_cost_bp: Decimal) -> Optional[str]:
+                roundtrip_cost_bp: Decimal, confidence: Optional[float] = None) -> Optional[str]:
     """Codice del filtro che blocca l'apertura, o None. Mai un allargamento dello stop."""
+    if policy.min_confidence is not None and (confidence is None or Decimal(str(confidence)) < policy.min_confidence):
+        return "confidence_below_floor"
     if policy.long_trend_filter and side == 1:
         t1, t4 = trend(market, "1h"), trend(market, "4h")
         if t1 is None or t4 is None:
