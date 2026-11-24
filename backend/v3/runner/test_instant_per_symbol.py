@@ -322,7 +322,10 @@ def test_the_dataset_builder_admits_per_symbol_snapshots_and_verifies_their_feat
 
 
 def test_the_wired_runner_keeps_the_current_mode():
-    assert "instant=" not in (ROOT / "backend/v3/runner/wiring.py").read_text()
+    # Le run storiche restano in modalita' "cycle"; solo il Brain unico (schema 3, 27 mercati, 24/11) usa l'istante per
+    # simbolo, unica riga ammessa nel cablaggio.
+    text = (ROOT / "backend/v3/runner/wiring.py").read_text()
+    assert text.count("instant=") == 1 and 'instant="per_symbol" if unico is not None else "cycle",' in text
 
 
 # ------------------------------------------------------------------------------------------------ sidecar e costi
