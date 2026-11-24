@@ -5,7 +5,8 @@
 #      sonda sulle run VERE senza rete, scambio con il vecchio container conservato fermo, sonda dal vivo);
 #   3. interfaccia: 70-interfaccia.sh (backup verificato, PWA preservata, controllo dal dominio, ritorno automatico);
 #   4. controllo finale dal dominio. Se 3 o 4 falliscono: interfaccia e web tornano entrambe alla versione precedente.
-# NON tocca: runner, uscite, bridge, journal, mandati, pause, strategie, Brain RC1, nginx, .env.
+# NON tocca: runner, uscite, bridge, journal, mandati, pause, strategie, Brain RC1, nginx, .env (verificato: le unita'
+# del Brain e il bridge non vengono riavviati). 25/11: web del SOLO Brain unico; sonda dal vivo con la chiusura manuale.
 # Uso (root): aggiorna_app.sh            -> installa
 #             aggiorna_app.sh --rollback -> interfaccia e web precedenti (idempotente, nulla viene cancellato)
 # Esito: ultima riga "APP_RESULT=..."; codice 0 = installata e verificata; 2 = rifiutata prima di cambiare qualcosa;
@@ -45,9 +46,13 @@ if [[ "${1:-}" == "--rollback" ]]; then
 fi
 [[ $# -eq 0 ]] || end 2 RIFIUTATA_ARGOMENTO
 
+UNITS=(superbot-brain-scalp-p1-exit.service superbot-brain-scalp-p1-runner.service superbot-v3-paper-single-close-bridge.service)
+units_state(){ [[ "${PAPER_APP_TEST_MODE:-0}" == 1 ]] && { echo test; return; }
+  for u in "${UNITS[@]}"; do systemctl show -p ActiveState,ActiveEnterTimestampMonotonic,MainPID --value "$u" | tr '\n' ' '; done; }
+BEFORE="$(units_state)"
 say "COMMIT=$SHA"
-say "== 1/3 web: backend con le rotte dell'app e archivio in sola lettura"
-python3 "$D/web_app_update.py" --deploy --backend-tar "$D/$TAR" --tar-sha256 "$TAR_SHA" --sha "$SHA" \
+say "== 1/3 web: backend con le rotte dell'app e archivio in sola lettura (Brain unico)"
+python3 "$D/web_app_update.py" --deploy --brain-unico --backend-tar "$D/$TAR" --tar-sha256 "$TAR_SHA" --sha "$SHA" \
   || end 3 WEB_NON_AGGIORNATA_TORNATA_ALLA_PRECEDENTE
 
 say "== 2/3 interfaccia"
@@ -65,8 +70,13 @@ C="$(curl -sS --max-time 12 --resolve "$DOMAIN:443:127.0.0.1" -o "$T" -w '%{http
 IDX="$(sha256sum "$T" | cut -d' ' -f1)"; rm -f "$T"
 WANT="$(sha256sum ui/index.html | cut -d' ' -f1)"
 if [[ "$C" == 200 && "$IDX" == "$WANT" && "$(code /api/v3/compare)" == 401 && "$(code /api/v3/paper-archive)" == 401 \
-      && "$(code /api/v3/compare/falco_evoluto/trades)" == 401 && "$(code /api/health)" == 200 ]]; then
+      && "$(code /api/v3/compare/brain_scalp/trades)" == 401 && "$(code /api/health)" == 200 ]]; then
   say "INDEX_SHA256=$IDX"
+  if [[ "$(units_state)" != "$BEFORE" ]]; then
+    say "ATTENZIONE: stato delle unita' del Brain o del bridge cambiato durante l'aggiornamento: verificare"
+    end 5 WEB_AGGIORNATA_UNITA_DA_VERIFICARE
+  fi
+  say "BRAIN=runner, uscite e bridge di chiusura non riavviati"
   end 0 APP_PAPER_INSTALLATA_E_VERIFICATA
 fi
 say "controllo finale fallito (index $C, atteso $WANT): ripristino interfaccia e web precedenti"

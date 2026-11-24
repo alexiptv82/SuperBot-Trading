@@ -318,3 +318,91 @@ def test_candidate_probe_on_the_single_brain_with_two_legs_counts_closes_and_hid
     out = p.stdout + p.stderr
     assert p.returncode == 0, out
     assert "APP_PROBE brain_scalp=run brain-scalp-paper-p1: 1 chiusi, 1 aperti" in out and "RESULT=PASS_CANDIDATE" in out
+
+
+def test_archive_with_a_two_leg_trade_counts_closes_and_keeps_the_loss(tmp_path):
+    """Caso del 24/11: la sessione BTC archiviata ha UN trade distinto chiuso in DUE quote (stop): il dettaglio
+    dell'archivio ha due righe; la sonda confronta le chiusure (``closes``) e il P&L netto, mai i trade distinti."""
+    from backend.v3.unico import PartialTakeProfit, split_legs
+    _runs, arch, penv = _world(tmp_path)
+    for d in [arch] + sorted(arch.rglob("*")):
+        if d.is_dir():
+            d.chmod(0o755)
+    base = arch / "reset-20261124T205540Z"
+    base.mkdir()
+    rid, now = "brain-scalp-paper-p1", int(time.time() * 1000)
+    root = prepare_new_paper_run(parent=base, run_name="brain-v3-brain-scalp-p1", run_id=rid,
+                                 config_bytes=(RUNNER / "runner_config_brain_unico_2000_paper.json").read_bytes(),
+                                 desk_mode="paper", now_ms=now - 9 * H, expected_initial_equity="2000")
+    j = EventJournal(root / "journal.db")
+    d = _hand(side=-1, entry="60200", stop="60800", qty="0.1", margin="200", lev=19, symbol="BTCUSDT",
+              link="brain-req-fdd2076ac06e640af59e4634a1689163")              # le due quote: stessa decisione
+    legs = split_legs(D("0.1"), step=D("0.001"), price=D(60200), minimum_notional=D(5),
+                      partial=PartialTakeProfit(D("0.35"), D(2)))
+    execute_paper(d, portfolio_id="brain", run_id=rid, journal=j, now_ms=now - 8 * H, legs=legs)
+    for i, r in enumerate([x for x in j.list_run("brain", rid) if x.event.kind == "paper_open"]):
+        close_paper(portfolio_id="brain", run_id=rid, position_id=r.event.payload["position_id"],
+                    exit_price=D("60262.05"), reason="stop", fee_bps=6, journal=j, now_ms=now - 6 * H + i,
+                    stop_kind="brain")
+    (base / "brain-v3-brain-scalp-p1.RISULTATI.json").write_text(json.dumps({"run_id": rid, "closed_at_ms": now - 5 * H}))
+    for x in sorted(arch.rglob("*"), reverse=True) + [arch]:
+        if x.is_dir():
+            x.chmod(0o555)
+    from backend.v3.compare_view import RunRef, read_run
+    v = read_run(RunRef("archivio", "Brain", root, rid), now)
+    assert (v["closed"], v["closes"]) == (1, 2) and D(v["net_pnl"]) < 0          # 1 trade, 2 chiusure, in perdita
+    code, out = _probe(tmp_path, penv, archived="3")
+    assert code == 0, out
+    assert "APP_PROBE archivio=3 run archiviate leggibili" in out and "RESULT=PASS_CANDIDATE" in out
+    # stesso archivio con il confronto di prima (trade distinti): il controllo falliva come sulla VPS
+    old = (HERE / "app_probe.py").read_text().replace('r.get("closes", r.get("closed"))', 'r.get("closed")')
+    p = subprocess.run([sys.executable, "-B", "-", "candidate", "3"], input=old, cwd=tmp_path, env=penv,
+                       capture_output=True, text=True, timeout=120)
+    assert p.returncode == 2 and "FAILED_archive_detail_mismatch_reset-20261124T205540Z" in p.stdout + p.stderr
+
+
+@pytest.mark.parametrize("ready,close_code,expect", [(True, 401, "PASS_LIVE"), (False, 401, "FAILED_manual_close_not_ready"),
+                                                      (True, 200, "FAILED_manual_close_without_session_not_401")])
+def test_live_probe_checks_the_manual_close_without_ever_closing(monkeypatch, capsys, ready, close_code, expect):
+    import importlib.util
+    import io
+    import types
+    import urllib.error
+    spec = importlib.util.spec_from_file_location("app_probe_live", HERE / "app_probe.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.EXPECT = mod.UNICO
+    monkeypatch.setattr(mod, "checks", lambda get, post, archived: None)
+    monkeypatch.setitem(sys.modules, "backend.auth", types.SimpleNamespace(create_session_token=lambda s: "t"))
+    seen = []
+
+    class Resp(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def urlopen(req, timeout=20):
+        seen.append((req.get_method(), req.full_url, req.data))
+        if req.full_url.endswith("/api/v3/compare"):
+            return Resp(json.dumps({"runs": [{"name": "brain_scalp", "manual_close_allowed": ready}]}).encode())
+        if close_code == 200:
+            return Resp(b"{}")
+        raise urllib.error.HTTPError(req.full_url, close_code, "x", {}, io.BytesIO(b"{}"))
+    monkeypatch.setattr(mod.urllib.request, "urlopen", urlopen)
+    with pytest.raises(SystemExit) if expect != "PASS_LIVE" else _nullcontext():
+        mod.live(5)
+    assert "RESULT=" + expect in capsys.readouterr().out
+    posts = [s for s in seen if s[0] == "POST"]
+    assert all(p[2] == b"{}" and "position_id" not in p[2].decode() for p in posts)    # mai una chiusura vera
+
+
+class _nullcontext:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False

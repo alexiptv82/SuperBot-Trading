@@ -107,8 +107,13 @@ def checks(get, post, archived: int):
         fail("archive_ai_cost_unreadable")
     for r in rows:
         status, body = get("/api/v3/paper-archive/" + r["name"])
-        if status != 200 or len(json.loads(body).get("closed_trades") or []) != r.get("closed"):
-            fail("archive_detail_mismatch")
+        detail = json.loads(body) if status == 200 else {}
+        rows_closed = detail.get("closed_trades") or []
+        # il dettaglio ha una riga per CHIUSURA (le quote e le riduzioni di un trade si chiudono a parte): si confronta
+        # con ``closes``; ``closed`` = trade distinti. Il P&L netto del dettaglio deve coincidere con quello registrato.
+        if (status != 200 or len(rows_closed) != r.get("closes", r.get("closed"))
+                or sum((D(x["realized_pnl"]) for x in rows_closed), Decimal(0)) != D(r.get("net_pnl") or "0")):
+            fail("archive_detail_mismatch_" + r["name"].split("~")[0])
     say("archivio", f"{len(rows)} run archiviate leggibili (journal e costi AI leggibili), separate dalle attive")
     say("ui_build", "rotte nuove presenti, sola lettura")
 
@@ -192,6 +197,21 @@ def live(archived):
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read()
     checks(lambda p, auth=True: http(p, auth=auth), lambda p: http(p, "POST")[0], archived)
+    if EXPECT is UNICO:
+        # chiusura manuale del Brain: pronta dal vivo (servizio uscite sano, bridge configurato) e mai senza sessione.
+        # Nessuna richiesta di chiusura viene inviata.
+        cmp = {r.get("name"): r for r in json.loads(http("/api/v3/compare")[1]).get("runs") or []}
+        if cmp.get("brain_scalp", {}).get("manual_close_allowed") is not True:
+            fail("manual_close_not_ready")
+        req = urllib.request.Request(base + "/api/v3/compare/brain_scalp/close", method="POST", data=b"{}")
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                code = r.status
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+        if code != 401:
+            fail("manual_close_without_session_not_401")
+        say("chiusura_manuale", "pronta per il Brain; senza sessione rifiutata (nessuna chiusura inviata)")
     say("RESULT", "PASS_LIVE")
 
 
