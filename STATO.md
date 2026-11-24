@@ -1,3 +1,9 @@
+## 25/11/2026 (37) — Simulazione fedele e validazione della V2 sul percorso reale; pacchetto definitivo `6a96e599` (Claude, NON installato)
+
+- Simulatore (`6a96e599`): imbuto proposte 37 → approvate 2 → eseguibili 1 (ICP scaduta: decisione scritta 383 s dopo, limite 120 s) → eseguite 1 (BTC, 2 quote) → controfattuali 36. Risultato REALE dal journal: 1 trade, lordo −7,66, commissioni 9,09, netto −16,75; S0 ricostruito = solo BTC (controfattuale aperto +58 a mercato: differenza = stop spostato da Claude non riprodotto, limite dichiarato). Scadenza applicata a ogni scenario: S4 −97 (HYPE 13:15 esclusa, 188 s); S4+filtri −34.
+- Percorso reale: `test_v3_v2_real_path` (build_runner con la V2 consegnata): veto di Claude, una sola apertura, fotografia V2, V2→V3 con posizione aperta (regole V2 preservate), stop con exit_meta, nuova apertura V3; due mutazioni intercettate. Anche il percorso legacy (`cycle.py`) registra ora la versione.
+- Gate DRY_RUN verde (5.588 V3, 158 builder, 212 Jest); ripartenza 13/13, simulatore 2/2. Pacchetto `rilascio/brain-unico-6a96e599` (`be900640…`), configurazione V2 identica a de68504b, UI identica (98/98). Comando `brain-unico-6a96e599.COMANDO-TERMIUS.txt` (`1a790ece…`); de68504b superato. Brain in PAUSA.
+
 ## 24/11/2026 (36) — Simulazione delle 37 proposte reali e V2 definitiva (Claude, nessun deploy)
 
 - Esportazione `esportazione-20261124T201759Z.json` (539 eventi, catena integra). Simulatore `simula_bloccate.py`: 2 aperture registrate = 2 quote dell'UNICO trade BTC; la seconda decisione approvata (ICP LONG, confermata da Claude) non e' stata eseguita (decision_stale).
