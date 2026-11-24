@@ -633,3 +633,103 @@ def test_claude_check_reads_the_service_env_file_and_never_prints_the_key(tmp_pa
     env.write_text("DEEPSEEK_API_KEY=ds\n")
     assert claude_check.main(["--config", str(CFG), "--env-file", str(env)]) == 1
     assert capsys.readouterr().out.strip() == "CLAUDE_API=CHIAVE_ASSENTE"
+
+
+# ----------------------------------------------------------------------------- notifiche Telegram (solo informative)
+def test_telegram_feed_one_message_per_event_from_the_journal_only(tmp_path):
+    from backend.v3.executor.paper_close import close_paper
+    from backend.v3.runner.telegram_feed import JournalNotifier
+    j = _journal(tmp_path)
+    sent = []
+    start = _rome_midnight(24) + 6 * 3_600_000
+    mk = lambda: JournalNotifier(journal=j, run_id="r1", data_dir=tmp_path, send=lambda t: sent.append(t) or True,  # noqa: E731
+                                 initial_equity=D(2000), piggy_policy=cfg().unico.piggy, default_tp_r=D("3.5"))
+    n = mk()
+    assert n.poll(start) == [sent[-1]] and "notifiche Telegram attive" in sent[-1]       # nessuno storico
+    _open(j, at=start + MIN)
+    msgs = n.poll(start + 2 * MIN)
+    assert len(msgs) == 1 and "Apertura LONG BTC · 2 quote" in msgs[0] and "TP 2R a 102" in msgs[0] \
+        and "TP 3.5R a 103.5" in msgs[0]
+    a, b = [p.position_id for p in build_summary(j, "brain", "r1").open_positions]
+    close_paper(portfolio_id="brain", run_id="r1", position_id=a, exit_price=D(102), reason="take_profit",
+                fee_bps=D(6), journal=j, now_ms=start + 10 * MIN)
+    msgs = n.poll(start + 11 * MIN)
+    assert len(msgs) == 1 and msgs[0].startswith("✅ Chiusura parziale LONG BTC · take profit") and "resta aperta" in msgs[0]
+    close_paper(portfolio_id="brain", run_id="r1", position_id=b, exit_price=D("101.5"), reason="stop", fee_bps=D(6),
+                journal=j, now_ms=start + 20 * MIN, stop_kind="trailing")
+    j.append(Event("g1", "brain", "r1", "guardian_state", start + 21 * MIN, "t", {"state": "NORMAL", "reasons": []}))
+    j.append(Event("g2", "brain", "r1", "guardian_state", start + 22 * MIN, "t",
+                   {"state": "SELECTIVE", "reasons": ["profit_selective"]}))
+    msgs = n.poll(start + 23 * MIN)
+    assert msgs[0].startswith("✅ Chiusura totale LONG BTC · trailing stop")
+    assert msgs[1] == "🛡️ Guardian: modalità SELETTIVO (profit_selective)" and len(msgs) == 2
+    assert n.poll(start + 24 * MIN) == [] and mk().poll(start + 25 * MIN) == []           # nessun doppione, anche al riavvio
+    _open(j, at=start + 30 * MIN, decision_id="brain_decision.t.2", symbol="ETHUSDT")
+    ids = [p.position_id for p in build_summary(j, "brain", "r1").open_positions]
+    for pid in ids:                                                       # chiusura manuale di entrambe le quote
+        close_paper(portfolio_id="brain", run_id="r1", position_id=pid, exit_price=D(99), reason="manual",
+                    fee_bps=D(6), journal=j, now_ms=start + 40 * MIN)
+    msgs = n.poll(start + 41 * MIN)
+    assert [m.split(" · ")[1] for m in msgs[1:]] == ["chiusura manuale (operatore)"] and "Chiusura totale" in msgs[1]
+    report = n.poll(_rome_midnight(25) + MIN)                             # mezzanotte: report con salvadanaio
+    assert len(report) == 1 and report[0].startswith("📊 Report 2026-11-24") and "trade chiusi 2" in report[0]
+    assert "salvadanaio" in report[0] and "capitale operativo 2000.00" in report[0]
+    assert n.poll(_rome_midnight(25) + 2 * MIN) == []
+
+
+def test_telegram_problems_never_stop_anything(tmp_path):
+    from backend.v3.runner.telegram_feed import JournalNotifier, start_thread
+    j = _journal(tmp_path)
+
+    def broken(text):
+        raise OSError("rete")
+    n = JournalNotifier(journal=j, run_id="r1", data_dir=tmp_path, send=broken, initial_equity=D(2000))
+    with pytest.raises(OSError):
+        n.poll(T0)                                                        # primo messaggio: l'errore resta nel thread
+    _open(j, at=T0 + MIN)
+    assert len(n.poll(T0 + 2 * MIN)) == 1 and n.poll(T0 + 3 * MIN) == []   # stato salvato, nessuna ripetizione
+    import threading
+    stop = threading.Event()
+    t = start_thread(lambda: (_ for _ in ()).throw(RuntimeError("journal")), lambda: T0, every_s=0.01, stop=stop)
+    t.join(1)
+    assert not t.is_alive()                                               # il thread esce in silenzio
+    stop.set()
+
+
+def test_telegram_check_reuses_the_old_bot_credentials_sends_one_test_and_prints_no_secret(tmp_path, capsys):
+    from backend.v3.runner import telegram_check as tc
+
+    class Resp:
+        def __init__(self, status):
+            self.status = status
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+    calls = []
+    ok = lambda req, timeout: calls.append(req) or Resp(200)          # noqa: E731
+    env = tmp_path / "brain-ai.env"
+    env.write_text("DEEPSEEK_API_KEY=ds\nTELEGRAM_BOT_TOKEN=123:SEGRETO\nTELEGRAM_CHAT_ID=999\n")
+    assert tc.main(["--env-file", str(env)], opener=ok) == 0
+    out = capsys.readouterr().out
+    assert out.strip() == "TELEGRAM=ACCETTATO fonte=file" and len(calls) == 1 and "SEGRETO" not in out
+    assert b"prova delle notifiche" in calls[0].data
+    # credenziali assenti nel file: recuperate dall'ambiente del container della web, copia di riserva del file
+    env.write_text("DEEPSEEK_API_KEY=ds\n")
+    docker = tmp_path / "docker"
+    docker.write_text('#!/bin/sh\n[ "$4" = superbot ] && echo \'["A=1","TELEGRAM_BOT_TOKEN=456:SEGRETO2","TELEGRAM_CHAT_ID=77"]\' '
+                      '|| exit 1\n')
+    docker.chmod(0o755)
+    assert tc.main(["--env-file", str(env), "--docker", str(docker)], opener=ok) == 0
+    out = capsys.readouterr().out
+    assert out.strip() == "TELEGRAM=ACCETTATO fonte=superbot" and "SEGRETO2" not in out
+    assert tc.read_env(env) == {"TELEGRAM_BOT_TOKEN": "456:SEGRETO2", "TELEGRAM_CHAT_ID": "77"}
+    assert "DEEPSEEK_API_KEY=ds" in env.read_text() and list(tmp_path.glob("brain-ai.env.prima-telegram-*"))
+    # Telegram rifiuta o non risponde: segnalato, mai bloccante
+    assert tc.main(["--env-file", str(env)], opener=lambda r, timeout: Resp(401)) == 0
+    assert capsys.readouterr().out.strip() == "TELEGRAM=NON_ACCETTATO fonte=file"
+    env.write_text("X=1\n")
+    assert tc.main(["--env-file", str(env), "--docker", "/bin/false"], opener=ok) == 0
+    assert capsys.readouterr().out.strip() == "TELEGRAM=NON_CONFIGURATO fonte=nessuna"

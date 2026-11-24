@@ -503,6 +503,14 @@ def _run_built(a, data_dir, config, environ, get_json, inner_transport, now_fn, 
     except ValueError:
         print("setup_invalid", file=sys.stderr)
         return 2
+    if (config.unico is not None and not a.once and environ.get("TELEGRAM_BOT_TOKEN")
+            and environ.get("TELEGRAM_CHAT_ID")):
+        # Brain unico: notifiche Telegram solo informative, dal journal, in un thread proprio (mai bloccanti)
+        from backend.v3.runner.telegram_feed import JournalNotifier, start_thread
+        start_thread(lambda: JournalNotifier(
+            journal=EventJournal(str(data_dir / "journal.db")), run_id=a.run_id, data_dir=data_dir,
+            send=telegram_sender(environ), initial_equity=config.initial_equity, piggy_policy=config.unico.piggy,
+            default_tp_r=None if config.exit_policy is None else config.exit_policy.take_profit_r), now_fn)
     if a.once:
         result = built.runner.tick(now_fn())
         print(json.dumps({"state": result.state, "last_error": result.last_error}, sort_keys=True))

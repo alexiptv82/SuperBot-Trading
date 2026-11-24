@@ -75,6 +75,11 @@ if [[ "$CLAUDE" != CLAUDE_API=DISPONIBILE* ]]; then
   end 2 RIFIUTATA_CLAUDE_NON_UTILIZZABILE_NESSUNA_RUN_TOCCATA
 fi
 
+say "== 2c/5 Telegram (solo informativo, mai bloccante): credenziali dei vecchi Falco/Toro e una notifica di prova"
+TELEGRAM="$(cd "$NEW" && DESK_MODE=paper PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 timeout 60 "$PY" -m backend.v3.runner.telegram_check \
+  --env-file "$AIENV" 2>/dev/null | grep '^TELEGRAM=' | tail -1)" || true
+say "${TELEGRAM:-TELEGRAM=NON_VERIFICATO}"
+
 say "== 3/5 ripartenza: archivio delle run attuali e Brain unico PAPER 2000"
 LOG="$(mktemp)"; rc=0
 (cd "$NEW" && DESK_MODE=paper PYTHONPATH="$NEW" PYTHONDONTWRITEBYTECODE=1 "$PY" "$D/ripartenza_brain.py" --esegui \
@@ -108,6 +113,7 @@ if [[ "$C" == 200 && "$IDX" == "$WANT" && "$(code /api/v3/compare)" == 401 && "$
       && "$(code /api/v3/compare/brain_scalp/trades)" == 401 && "$(code /api/health)" == 200 ]]; then
   say "INDEX_SHA256=$IDX"
   say "${CLAUDE:-CLAUDE_API=NON_VERIFICABILE}"
+  say "${TELEGRAM:-TELEGRAM=NON_VERIFICATO}"
   end 0 BRAIN_UNICO_PAPER_RUNNING_DASHBOARD_VERIFICATA
 fi
 say "controllo dal dominio fallito (index $C): ripristino interfaccia e web precedenti; il Brain resta RUNNING"

@@ -70,6 +70,16 @@ stop 0,2 % → 50× con margine 400 (rischio ~72 < 86); stop 4 % → NO_TRADE (o
   formato della decisione e token; stampa solo `CLAUDE_API=DISPONIBILE ...` o il motivo, mai la chiave. Se Claude non è
   utilizzabile la ripartenza si ferma con esito 2 (nessuna run toccata) e indica come aggiungere la chiave da Termius.
 
+## Notifiche Telegram (solo informative)
+Stesso bot dei vecchi Falco e Toro (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` nell'ambiente del runner). `runner/telegram_feed.py`
+legge il journal in un thread proprio e invia: aperture (un messaggio per apertura, anche con due quote), chiusure
+totali e parziali con il motivo (take profit, stop loss, pareggio, trailing, stop del Brain, chiusura manuale, chiusura
+del Brain), cambi di modalità del Guardian, report di mezzanotte con salvadanaio e capitale operativo. Nessun comando
+remoto; un errore di Telegram non ferma mai il runner né le uscite; lo stato in `telegram_state.json` evita i doppioni.
+La procedura root (`runner/telegram_check.py`) usa le credenziali già nel file del servizio o, se mancano, quelle della
+web o dei vecchi desk (copia di riserva del file, nessun valore stampato), invia una notifica di prova e scrive solo
+`TELEGRAM=ACCETTATO|NON_ACCETTATO|NON_CONFIGURATO`; non blocca la ripartenza.
+
 ## Codice (nessun componente stabile riscritto)
 - `backend/v3/unico.py`: politica del Brain unico, quote, salvadanaio (funzioni pure).
 - Motore (`brain_f2/engine.py`): leva "fit". RiskManager invariato.
