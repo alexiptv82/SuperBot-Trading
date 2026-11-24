@@ -1,3 +1,9 @@
+## 24/11/2026 (31) — Posizione unica: due correzioni di revisione, pacchetto DEFINITIVO `brain-unico-612f6b4b`, non installato (Claude)
+
+- **Correzioni** (`612f6b4b`, ramo `claude/ingresso-unico-20261124`): Performance giornaliera con trade distinti separati dagli eventi di chiusura (`closes`); P&L per data invariato, trade/vinti/persi una volta al giorno della chiusura completa; `ADD` nello storico delle revisioni. Gate DRY_RUN verde: V3 5.551, Builder 158, Jest 212; deploy 59; mobile 98/0.
+- **Pacchetto** `rilascio/brain-unico-612f6b4b` (`SHA256SUMS` `68fa4b3c…`), comando `brain-unico-612f6b4b.COMANDO-TERMIUS.txt`: aggiornamento del codice sulla run attiva tramite la ripresa (pausa delle sole aperture, unità sul codice nuovo, uscite sane PRIMA della riattivazione, nessun reset, BTC non chiuso). Configurazione della run identica (stessi byte).
+- **Prossimo:** comando del proprietario; poi RUNNING, uscite sane e un giro completo con `superbot-ops`.
+
 ## 24/11/2026 (30) — Posizione unica con ingresso progressivo e chiusure parziali: ramo isolato pronto, NON installato (Claude)
 
 - **Stato VPS (15:28 UTC):** Brain unico RUNNING (ultima installazione riuscita, UI `main.7b1cfd02.js`); primo trade SHORT BTC aperto alle 14:36 in due quote (comportamento precedente). Falco Evoluto archiviato, RC1 in pausa.
