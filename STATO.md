@@ -1,3 +1,11 @@
+## 24/11/2026 (27) — Brain unico: uscite sicure senza Claude, verifica reale dell'API prima della ripartenza; pacchetto DEFINITIVO, non installato (Claude)
+
+- **Correzioni richieste:** (1) se Claude manca (chiave, rete, tetto 3 USD, limite per giro) CLOSE/PARTIAL_CLOSE/MODIFY_STOP di DeepSeek si eseguono dopo il validatore (`claude_unavailable_risk_reducing`, `claude_required_unavailable` nel journal); nuove aperture critiche restano NO_TRADE; (2) `backend/v3/runner/claude_check.py`: richiesta di consulto identica a quella del Brain, controlli HTTP/formato/token, chiave mai stampata; `ripartenza.sh` si ferma con esito 2 PRIMA di toccare le run se Claude non è utilizzabile.
+- **Ramo** `claude/brain-unico-2000-20261124` = `1a12981b` (pubblicato). Gate DRY_RUN verde: V3 5.534, Builder 158, Jest 212; deploy 57; mobile 98/0.
+- **Pacchetto DEFINITIVO** `rilascio/brain-unico-1a12981b` (`SHA256SUMS` `8b5b3221…`, UI `main.7b1cfd02.js`), comando `brain-unico-1a12981b.COMANDO-TERMIUS.txt` (`393740e7…`). I pacchetti precedenti (32efed3d, 46b8df1d, 00086b88) sono superati: non usarli.
+- **API Claude:** non verificabile dall'agente (file della chiave solo root); la verifica reale la fa il comando, prima di ogni modifica.
+- **Stato:** Falco Evoluto e Brain Scalp in pausa, uscite sane; RC1 in pausa. Prossimo: comando del proprietario, poi RUNNING e primo giro con `superbot-ops log scalp-runner`.
+
 ## 24/11/2026 (26) — Brain unico PAPER 2000: senza limite di tempo + DeepSeek principale / Claude consulente; pacchetto definitivo, NON installato (Claude)
 
 - **Correzioni del proprietario:** (1) nessuna chiusura per solo tempo (`max_hold_hours` null; posizioni lunghe: finestra 1m di 20 h + miglior prezzo precedente dalle candele 15m); (2) DeepSeek principale, Claude consulente (`claude-opus-5-5`, tetto 3 USD/giorno separato, max 4 consulti per giro, pausa 2 h per posizione) chiamato solo sui criteri, arbitro deterministico (`backend/v3/runner/consult.py`) che può adottare Claude; senza Claude le decisioni che lo richiedevano non passano (NO_TRADE / HOLD); stop e uscite mai in attesa delle AI. Journal: `ai_consultation`, `position_review` con proposte, valutazioni, fonte, codici, metriche.
