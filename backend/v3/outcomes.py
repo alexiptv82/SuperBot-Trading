@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Decimal
 from typing import Any, Mapping, Optional
 
 from backend.v3.events import EventJournal, StoredEvent
@@ -273,15 +273,22 @@ def _check_close_against_open(o: dict[str, Any], c: dict[str, Any]) -> None:
         raise _Bad("close_open_mismatch")
 
 
-def _recompute(c: dict[str, Any]) -> None:
-    """Same formula as close_paper; any disagreement means the record is not trusted."""
+def _recompute(c: dict[str, Any], *, partial: bool = False) -> None:
+    """Recompute using the producer's rounding: reduce_paper truncates, close_paper rounds half-even.
+
+    Neither mode accepts a genuinely inconsistent financial record. The event kind,
+    not its numeric contents, selects the correct contract.
+    """
     if c["exit"] <= 0 or c["entry"] <= 0 or c["qty"] <= 0 or not 0 <= c["fee_bps"] <= 100:
         raise _Bad("inconsistent_close")
-    gross = _q8(Decimal(c["side"]) * (c["exit"] - c["entry"]) * c["qty"])
-    n_entry = _q8(c["entry"] * c["qty"])
-    n_exit = _q8(c["exit"] * c["qty"])
-    fees = _q8((n_entry + n_exit) * c["fee_bps"] / Decimal(10000))
-    realized = _q8(gross - fees)
+    def quantize(v: Decimal) -> Decimal:
+        return v.quantize(_Q8, rounding=ROUND_DOWN if partial else ROUND_HALF_EVEN)
+
+    gross = quantize(Decimal(c["side"]) * (c["exit"] - c["entry"]) * c["qty"])
+    n_entry = quantize(c["entry"] * c["qty"])
+    n_exit = quantize(c["exit"] * c["qty"])
+    fees = quantize((n_entry + n_exit) * c["fee_bps"] / Decimal(10000))
+    realized = quantize(gross - fees)
     exceeds = bool(realized < 0 and -realized > c["margin"])
     if not (gross == c["gross"] and n_entry == c["n_entry"] and n_exit == c["n_exit"]
             and fees == c["fees"] and realized == c["realized"]
@@ -315,10 +322,10 @@ def _link(did: str, symbol: str, opened_at_ms: int,
 
 
 def _build(pid: str, portfolio_id: str, run_id: str, o: dict[str, Any], c: dict[str, Any],
-           brain: Mapping[str, StoredEvent]) -> TradeOutcome:
+           brain: Mapping[str, StoredEvent], *, partial: bool = False) -> TradeOutcome:
     _check_close_against_open(o, c)
     try:
-        _recompute(c)
+        _recompute(c, partial=partial)
     except ArithmeticError:           # finite but extreme values (huge exponents)
         raise _Bad("numeric_out_of_range") from None
     try:
@@ -418,7 +425,7 @@ def extract_outcomes(journal: EventJournal, portfolio_id: str, run_id: str, *,
                     c = _parse_close(se, pid)
                     outcomes.append((se.seq, _build(pid, portfolio_id, run_id,
                                                     dict(o, fill=c["entry"], qty=c["qty"], margin=c["margin"]),
-                                                    c, brain)))
+                                                    c, brain, partial=se.event.kind == "paper_reduce")))
                 except _Bad as bad:
                     skipped.append((se.seq, pid, str(bad.args[0])))
             if not cl:
