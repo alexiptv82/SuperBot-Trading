@@ -1,3 +1,10 @@
+## 25/11/2026 20:48 Europe/Rome — checkpoint verificabile runner Brain HALTED
+
+- Checkpoint append-only: [diario/2026-11-25_2048_checkpoint-verificabile-runner-halted.md](diario/2026-11-25_2048_checkpoint-verificabile-runner-halted.md).
+- Osservazione 20:33–20:42: dashboard PAPER con runner fermo/Guardian protezione/0 posizioni; runner `halted:exit_service_unhealthy`, ma controllo successivo con uscite active/healthy e heartbeat recente, mentre heartbeat Brain era vecchio di circa 9.358 s.
+- Equity osservata 2.249,64 USDT, netto sessione 195,86 e “trade chiusi” 2.393,80 non coerenti: anomalia da riconciliare in sola lettura, non prova di stato corrente né causa dimostrata.
+- Nessun riavvio, reset, deploy, merge, Action, modifica VPS, ordine o API a pagamento; prossima attività: diagnosi read-only runner/journal.
+
 Warning: truncated output (original token count: 79990)
 Total output lines: 1838
 
