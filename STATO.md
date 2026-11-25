@@ -1,3 +1,11 @@
+## 25/11/2026 21:50 Europe/Rome — checkpoint verificabile diagnosi watchdog e HALT budget
+
+- Checkpoint append-only: [diario/2026-11-25_2150_checkpoint-verificabile-budget-halt.md](diario/2026-11-25_2150_checkpoint-verificabile-budget-halt.md).
+- Conversazione recente: log riportano watchdog uscite scaduto alle 18:05:56; `BindsTo` ha fermato anche il runner; uscite ripartite alle 18:09:01, runner rimasto fermo. Causa originaria del timeout non dimostrata.
+- Riavvio eseguito dall'utente: runner osservato brevemente `running`, heartbeat aggiornato/ciclo 1; poi nuovo `HALTED` per `halted:budget` (DeepSeek 4,0025/4,00 USD; Claude 0,81/3,00 USD). Nessuna prova di stato successivo.
+- RC84 PR #80 invariata open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessun ulteriore restart, reset, deploy, merge, Action, modifica VPS, ordine o API a pagamento.
+
 ## 25/11/2026 20:48 Europe/Rome — checkpoint verificabile runner Brain HALTED
 
 - Checkpoint append-only: [diario/2026-11-25_2048_checkpoint-verificabile-runner-halted.md](diario/2026-11-25_2048_checkpoint-verificabile-runner-halted.md).
