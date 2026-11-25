@@ -1,3 +1,9 @@
+## 25/11/2026 (39) — Web `d1bc0628` non aggiornata (`trades_closed_count_mismatch_brain_scalp`): analisi preparata, causa NON ancora verificata (Claude)
+
+- Esito 03:55 UTC: sonda candidata fallita, rollback automatico alla web precedente (rc 3). Brain V2, uscite e bridge non toccati (verificato 04:04: uscite SANE, mandato valido, runner attivo). Web servita ancora `main.e1772389.js`.
+- Dal codice: `compare.closes = len(summary.closed_trades)`; `trades.total_closed = len(extract_outcomes(...))`; `_outcomes()` della web trasformava QUALUNQUE errore di lettura in zero esiti senza segnalarlo (e l'estrattore scarta i record che non verifica). `enrich_trades` non cambia il numero di righe. In locale, con il codice vero, i flussi V2 (fotografia sull'apertura, riduzione a 2R con `exit_meta`, chiusura del residuo) tornano coerenti (2 chiusure = 2 esiti): l'anomalia della run attiva NON e' riprodotta, servono i dati reali (run leggibile solo da root).
+- `8a8a43f2` (locale, non ancora pubblicato): `_trades` espone `outcomes_skipped` e `outcomes_error`; sonda con finestra stabile (compare/trades/compare, rilettura se la run scrive, max 3) e diagnostica con conteggi e codici; `analizza_conteggi.py` (snapshot consistente via backup SQLite in sola lettura + prova di stabilita' sul journal vivo). Test sonda 22/22. Comando `rilascio/diagnosi/COMANDO-ANALISI-CONTEGGI.txt` (script `2c382c3c…`), output in `privato/conteggi-*.json`. In attesa del proprietario; poi correzione della causa, test dell'anomalia, nuovo pacchetto web.
+
 ## 24/11/2026 (38) — Nuova sessione V2 RUNNING; web non aggiornata: sonda dell'archivio corretta, pacchetto della sola web (Claude)
 
 - Proprietario: `brain-unico-6a96e599 --nuova-sessione` → `BRAIN_RUNNING_MA_WEB_NON_AGGIORNATA` (rc 5), `FAILED_archive_detail_mismatch`. Brain V2 da 2.000 attivo (vecchia run archiviata, 539 eventi; 3 sessioni di apprendimento collegate); 21:05 prima apertura V2.
