@@ -1,3 +1,11 @@
+## 26/11/2026 15:50 Europe/Rome — pausa Brain raccomandata per contenere costi, non autorizzata
+
+- Checkpoint append-only: [diario/2026-11-26_1550_checkpoint-verificabile-pausa-raccomandata.md](diario/2026-11-26_1550_checkpoint-verificabile-pausa-raccomandata.md).
+- Dopo la domanda sul credito AI consumato senza trade è stata raccomandata una pausa controllata delle nuove aperture, mantenendo le uscite; nessuna prova di autorizzazione o esecuzione.
+- V2 resta l'ultima versione attiva dimostrata; proposta V3 `f9ae6e8bf8` ancora non approvata. Nessun aumento budget, riduzione soglie o trade forzato.
+- RC84 PR #80 invariata open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessun restart, reset, deploy, merge, Action, modifica VPS, ordine o API a pagamento.
+
 ## 26/11/2026 13:43 Europe/Rome — proposta V3 generata, non approvata; sviluppo spostato su Evolution X
 
 - Checkpoint append-only: [diario/2026-11-26_1343_checkpoint-verificabile-v3-proposta-e-roadmap-evolution-x.md](diario/2026-11-26_1343_checkpoint-verificabile-v3-proposta-e-roadmap-evolution-x.md).
