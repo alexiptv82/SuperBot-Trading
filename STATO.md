@@ -1,3 +1,11 @@
+## 26/11/2026 13:43 Europe/Rome — proposta V3 generata, non approvata; sviluppo spostato su Evolution X
+
+- Checkpoint append-only: [diario/2026-11-26_1343_checkpoint-verificabile-v3-proposta-e-roadmap-evolution-x.md](diario/2026-11-26_1343_checkpoint-verificabile-v3-proposta-e-roadmap-evolution-x.md).
+- Screenshot Termius 13:00: V2 ancora attiva; proposta V3 `f9ae6e8bf8` generata con trend 1h+4h, costi/rendimento-rischio e `NO_TRADE` preservati. Nessuna prova di approvazione o attivazione.
+- Decisione utente: sviluppo strategico diretto su Evolution X PAPER (costi AI, Opportunity Discovery, Adaptive Selectivity/Smart Router); Brain originale invariato salvo manutenzione/sicurezza.
+- RC84 PR #80 invariata open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessun restart, reset, deploy, merge, Action, modifica VPS, ordine o API a pagamento eseguito da questo checkpoint.
+
 ## 26/11/2026 12:53 Europe/Rome — checkpoint verificabile soluzione rapida preparata, non eseguita
 
 - Checkpoint append-only: [diario/2026-11-26_1253_checkpoint-verificabile-soluzione-preparata.md](diario/2026-11-26_1253_checkpoint-verificabile-soluzione-preparata.md).
