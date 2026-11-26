@@ -1,3 +1,11 @@
+## 26/11/2026 16:45 Europe/Rome — automazione Evolution X e gate separato per Bitget LIVE
+
+- Checkpoint append-only: [diario/2026-11-26_1645_checkpoint-verificabile-evolutionx-bitget-live-gate.md](diario/2026-11-26_1645_checkpoint-verificabile-evolutionx-bitget-live-gate.md).
+- Requisito utente: futura attivazione Evolution X più automatizzata, senza ripetere il percorso manuale del Brain originale; roadmap, non installazione o prontezza certificata.
+- Vecchie associazioni Bitget Toro/Falco riferite dall'utente: non riutilizzarle automaticamente; inventario/revoca solo dopo verifica. Evolution X resta PAPER, LIVE disabilitato; futuro LIVE solo con credenziale dedicata e autorizzazione esplicita.
+- Nessuna credenziale letta o modificata; nessun inventario, revoca, rotazione, integrazione reale, deploy o ordine eseguito. V2 resta l'ultima attiva dimostrata; V3 `f9ae6e8bf8` e pausa Brain non approvate.
+- RC84 PR #80 invariata open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+
 ## 26/11/2026 15:50 Europe/Rome — pausa Brain raccomandata per contenere costi, non autorizzata
 
 - Checkpoint append-only: [diario/2026-11-26_1550_checkpoint-verificabile-pausa-raccomandata.md](diario/2026-11-26_1550_checkpoint-verificabile-pausa-raccomandata.md).
