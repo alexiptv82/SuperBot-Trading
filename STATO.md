@@ -1,3 +1,12 @@
+## 26/11/2026 11:52 Europe/Rome — checkpoint verificabile zero aperture spiegato dai filtri
+
+- Checkpoint append-only: [diario/2026-11-26_1152_checkpoint-verificabile-zero-aperture.md](diario/2026-11-26_1152_checkpoint-verificabile-zero-aperture.md).
+- Termius 11:28: runner `running` e uscite `healthy`, errori `None`, heartbeat recenti.
+- Ultime 3 ore: 162 decisioni, 146 `NO_TRADE` da `deepseek:analysis`, 16 `ai_unavailable`, 0 aperture; filtri: 25 LONG contro trend, 19 sotto confidenza, 3 costi elevati, 3 contestazioni Claude.
+- Budget applicativo DeepSeek 3,8811/4 USD (~97%, circa 0,12 residui): contatore applicativo, non fattura o saldo provider certificato. Zero aperture coerente con i filtri; nessuna soglia allentata.
+- RC84 PR #80 invariata open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessun restart, reset, deploy, merge, Action, modifica VPS, ordine o API a pagamento.
+
 ## 26/11/2026 09:44 Europe/Rome — checkpoint verificabile post-ricarica DeepSeek
 
 - Checkpoint append-only: [diario/2026-11-26_0944_checkpoint-verificabile-post-ricarica.md](diario/2026-11-26_0944_checkpoint-verificabile-post-ricarica.md).
