@@ -1,3 +1,11 @@
+## 26/11/2026 12:53 Europe/Rome — checkpoint verificabile soluzione rapida preparata, non eseguita
+
+- Checkpoint append-only: [diario/2026-11-26_1253_checkpoint-verificabile-soluzione-preparata.md](diario/2026-11-26_1253_checkpoint-verificabile-soluzione-preparata.md).
+- Conversazione accessibile: proposta strategica Live Evolution preparata con `superbot-strategia stato/proponi`; nessuna prova di esecuzione, approvazione, installazione o modifica a soglie, capitale, leva, stop, servizi o budget.
+- I filtri restano invariati; zero aperture non autorizza allentamenti. EX-08B `cb31997f` riferito in una conversazione ma non trovato su GitHub: escluso dallo stato verificato.
+- RC84 PR #80 invariata open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessun restart, reset, deploy, merge, Action, modifica VPS, ordine o API a pagamento.
+
 ## 26/11/2026 11:52 Europe/Rome — checkpoint verificabile zero aperture spiegato dai filtri
 
 - Checkpoint append-only: [diario/2026-11-26_1152_checkpoint-verificabile-zero-aperture.md](diario/2026-11-26_1152_checkpoint-verificabile-zero-aperture.md).
