@@ -1,3 +1,11 @@
+## 26/11/2026 05:45 Europe/Rome — checkpoint verificabile Brain RUNNING e contabilità da riconciliare
+
+- Checkpoint append-only: [diario/2026-11-26_0545_checkpoint-verificabile-brain-running.md](diario/2026-11-26_0545_checkpoint-verificabile-brain-running.md).
+- Screenshot Chrome 04:53–04:56: Brain PAPER mostrato RUNNING/ATTIVO V2, ultimo ciclo circa 22 minuti prima, 0/10 posizioni; è prova puntuale della dashboard, non stato live successivo della VPS.
+- Valori mostrati: salvadanaio 393,80 USDT, capitale operativo 2.000, costi AI 7,28, realizzato netto 386,52; equity 2.209,73 contro totale contabile 2.393,80 non riconciliati.
+- RC84 PR #80 invariata open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessun restart, reset, deploy, merge, Action, modifica VPS, ordine o API a pagamento.
+
 ## 25/11/2026 21:50 Europe/Rome — checkpoint verificabile diagnosi watchdog e HALT budget
 
 - Checkpoint append-only: [diario/2026-11-25_2150_checkpoint-verificabile-budget-halt.md](diario/2026-11-25_2150_checkpoint-verificabile-budget-halt.md).
