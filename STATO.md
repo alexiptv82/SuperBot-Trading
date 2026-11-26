@@ -1,3 +1,11 @@
+## 26/11/2026 09:44 Europe/Rome — checkpoint verificabile post-ricarica DeepSeek
+
+- Checkpoint append-only: [diario/2026-11-26_0944_checkpoint-verificabile-post-ricarica.md](diario/2026-11-26_0944_checkpoint-verificabile-post-ricarica.md).
+- Chrome 09:33: Brain PAPER RUNNING/ATTIVO V2, ultimo ciclo circa 3 minuti, 0/10 posizioni; equity 2.209,73, totale contabile 2.393,80 e netto sessione -3,54 restano da riconciliare.
+- Termius 09:40, ultima ora: 50 risposte DeepSeek con usage, 0 senza usage, 4 chiamate fallite; decisioni 50 `deepseek:analysis` e 4 `ai_unavailable`; 0 aperture. Ripresa post-ricarica verificata, senza prova su Claude, saldo residuo, qualità o profitto.
+- RC84 PR #80 invariata open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessun restart, reset, deploy, merge, Action, modifica VPS, ordine o API a pagamento eseguiti da questo checkpoint.
+
 ## 26/11/2026 08:50 Europe/Rome — checkpoint verificabile Brain AI non disponibile per credito
 
 - Checkpoint append-only: [diario/2026-11-26_0850_checkpoint-verificabile-ai-credit.md](diario/2026-11-26_0850_checkpoint-verificabile-ai-credit.md).
