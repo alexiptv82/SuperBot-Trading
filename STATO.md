@@ -1,3 +1,12 @@
+## 26/11/2026 08:50 Europe/Rome — checkpoint verificabile Brain AI non disponibile per credito
+
+- Checkpoint append-only: [diario/2026-11-26_0850_checkpoint-verificabile-ai-credit.md](diario/2026-11-26_0850_checkpoint-verificabile-ai-credit.md).
+- Screenshot Termius 08:03–08:08: runner/uscite/heartbeat sani, Guardian NORMAL, zero posizioni; 216 decisioni tutte `ai_unavailable`, nessuna apertura.
+- Diagnostica: DeepSeek 3,3614/4,00 USD; 216 `estimate_failed_call`; chiave caricata, HTTP 200, modello disponibile, saldo utilizzabile `False`. Nessun segreto letto o esposto.
+- Utente: credito esaurito confermato; ricarica dichiarata completata alle 08:13 circa. Nessuna prova post-ricarica ancora disponibile.
+- RC84 PR #80 invariata open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessun restart, reset, deploy, merge, Action, modifica VPS, ordine o API a pagamento eseguiti da questo checkpoint.
+
 ## 26/11/2026 05:45 Europe/Rome — checkpoint verificabile Brain RUNNING e contabilità da riconciliare
 
 - Checkpoint append-only: [diario/2026-11-26_0545_checkpoint-verificabile-brain-running.md](diario/2026-11-26_0545_checkpoint-verificabile-brain-running.md).
