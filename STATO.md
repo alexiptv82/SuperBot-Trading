@@ -1,3 +1,12 @@
+## 27/11/2026 09:50 Europe/Rome — pausa Brain autorizzata, non ancora eseguita
+
+- Checkpoint append-only: [diario/2026-11-27_0950_checkpoint-verificabile-pausa-autorizzata-non-eseguita.md](diario/2026-11-27_0950_checkpoint-verificabile-pausa-autorizzata-non-eseguita.md).
+- Alle 08:55:25 l'utente ha chiesto esplicitamente di mettere in pausa il Brain originale/scalp per evitare ulteriore consumo di crediti e concentrarsi su Evolution X.
+- Effetto desiderato: bloccare nuove analisi/aperture mantenendo protezioni e uscite, senza chiusure forzate.
+- La conversazione prova l'autorizzazione, non l'esecuzione: procedura soltanto preparata e nessuna conferma `pausa: ATTIVA`; il controllo F0 resta read-only.
+- RC84 PR #80 resta open/draft; verifica age sul PC resta locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessuna modifica di codice, merge, deploy, Action operativa, VPS, reboot/reset, ordine o API a pagamento.
+
 ## 27/11/2026 08:46 Europe/Rome — diagnostica F0 ristretta, sola lettura
 
 - Checkpoint append-only: [diario/2026-11-27_0846_checkpoint-verificabile-f0-readonly.md](diario/2026-11-27_0846_checkpoint-verificabile-f0-readonly.md).
