@@ -1,3 +1,11 @@
+## 27/11/2026 08:46 Europe/Rome — diagnostica F0 ristretta, sola lettura
+
+- Checkpoint append-only: [diario/2026-11-27_0846_checkpoint-verificabile-f0-readonly.md](diario/2026-11-27_0846_checkpoint-verificabile-f0-readonly.md).
+- GitHub run [#45958637995](https://github.com/alexiptv82/SuperBot-Trading/actions/runs/45958637995), job `status`, SUCCESS: comando forzato F0 `read_only`/`OBSERVATION_ONLY`.
+- VPS osservata senza modifiche: backup root e database Brain presenti; 10 processi e 11 unità solo `POSSIBLE_ACTIVE`. Non certifica salute, posizioni, P&L o backup ripristinabile.
+- Directory classici presenti, ma archivio/file richiesti `UNAVAILABLE` nel perimetro F0: non provarne assenza o integrità.
+- RC84 PR #80 resta open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+
 ## 26/11/2026 16:45 Europe/Rome — automazione Evolution X e gate separato per Bitget LIVE
 
 - Checkpoint append-only: [diario/2026-11-26_1645_checkpoint-verificabile-evolutionx-bitget-live-gate.md](diario/2026-11-26_1645_checkpoint-verificabile-evolutionx-bitget-live-gate.md).
