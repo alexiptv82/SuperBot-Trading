@@ -1,3 +1,12 @@
+## 27/11/2026 10:41 Europe/Rome — pausa Brain riferita come eseguita, non tecnicamente certificata
+
+- Checkpoint append-only: [diario/2026-11-27_1041_checkpoint-verificabile-pausa-riferita-non-certificata.md](diario/2026-11-27_1041_checkpoint-verificabile-pausa-riferita-non-certificata.md).
+- Alle 10:34:04 l'utente ha riferito che il Brain originale/scalp è stato messo in pausa per problemi DeepSeek e costi AI, concentrandosi su Evolution X Fusion.
+- Aggiornamento del livello di prova: da “solo autorizzata” a “esecuzione riferita dall'utente”; nessun output VPS post-pausa, arresto processi o `pausa: ATTIVA` verificati.
+- Effetto desiderato invariato: niente nuove analisi/aperture o costi AI; protezioni e uscite preservate; nessuna chiusura forzata.
+- RC84 PR #80 resta open/draft; age PC `ESITO: VERIFICA OK` resta prova locale; `work/extbackup-bot-stopped-20261109` resta preparato e non installato.
+- Solo documentazione; nessuna modifica a codice, VPS, servizi, Actions operative, ordini o API a pagamento.
+
 ## 27/11/2026 09:50 Europe/Rome — pausa Brain autorizzata, non ancora eseguita
 
 - Checkpoint append-only: [diario/2026-11-27_0950_checkpoint-verificabile-pausa-autorizzata-non-eseguita.md](diario/2026-11-27_0950_checkpoint-verificabile-pausa-autorizzata-non-eseguita.md).
