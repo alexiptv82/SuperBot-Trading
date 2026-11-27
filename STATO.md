@@ -1,3 +1,12 @@
+## 27/11/2026 12:47 Europe/Rome — backup finale cifrato 4/4 run eseguito e verificato localmente
+
+- Checkpoint append-only: [diario/2026-11-27_1247_checkpoint-verificabile-backup-finale-4-run-eseguito.md](diario/2026-11-27_1247_checkpoint-verificabile-backup-finale-4-run-eseguito.md).
+- Output operatore/Termius: backup cifrato finale completato per 4/4 run PAPER, 5.843 eventi, 33 file, 0 errori; integrità SQLite, catena eventi, hash script e prova locale di decifratura/ripristino riportati OK.
+- Prodotti quattro archivi cifrati e quattro manifest in una directory locale dedicata sulla VPS. Copia esterna/SFTP, restore da destinazione indipendente e memorie extra restano non verificati.
+- Brain originale resta in pausa con zero posizioni nell'ultima diagnostica; nessun servizio risulta fermato/disabilitato o cancellato. Pensionamento reversibile ancora solo proposto/preparato.
+- RC84 PR #80 resta open/draft; `work/extbackup-bot-stopped-20261109` resta preparato e non installato; verifica age PC `ESITO: VERIFICA OK` resta prova locale e non certifica il backup VPS.
+- Solo documentazione; nessuna modifica a codice operativo, merge, deploy, Actions, VPS, servizi, ordini o API a pagamento da questo checkpoint.
+
 ## 27/11/2026 11:51 Europe/Rome — pausa VPS verificata, zero posizioni; pensionamento non eseguito
 
 - Checkpoint append-only: [diario/2026-11-27_1151_checkpoint-verificabile-pausa-vps-zero-posizioni-archivio-non-eseguito.md](diario/2026-11-27_1151_checkpoint-verificabile-pausa-vps-zero-posizioni-archivio-non-eseguito.md).
