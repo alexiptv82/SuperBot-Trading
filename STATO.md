@@ -1,3 +1,12 @@
+## 27/11/2026 11:51 Europe/Rome — pausa VPS verificata, zero posizioni; pensionamento non eseguito
+
+- Checkpoint append-only: [diario/2026-11-27_1151_checkpoint-verificabile-pausa-vps-zero-posizioni-archivio-non-eseguito.md](diario/2026-11-27_1151_checkpoint-verificabile-pausa-vps-zero-posizioni-archivio-non-eseguito.md).
+- Diagnostica Termius: pausa attiva, runner `halted`, uscite sane; quattro journal PAPER verificati con zero posizioni aperte.
+- Sette servizi riportati per ~296,7 MiB, più ~36,7 MiB non identificati; pensionamento reversibile soltanto proposto, nessun servizio arrestato o eliminato.
+- Backup periodico: ultimo successo riportato 04:27 e timer attivo, ma copertura/restore di tutte le run non verificati. Backup finale cifrato delle quattro run preparato/proposto, non eseguito.
+- Memoria trade, journal, dati e backup devono essere preservati. RC84 PR #80 resta open/draft; extbackup resta non installato; verifica age PC resta locale.
+- Solo documentazione; nessuna modifica a codice, VPS, servizi, Actions operative, ordini o API a pagamento da questo checkpoint.
+
 ## 27/11/2026 10:41 Europe/Rome — pausa Brain riferita come eseguita, non tecnicamente certificata
 
 - Checkpoint append-only: [diario/2026-11-27_1041_checkpoint-verificabile-pausa-riferita-non-certificata.md](diario/2026-11-27_1041_checkpoint-verificabile-pausa-riferita-non-certificata.md).
